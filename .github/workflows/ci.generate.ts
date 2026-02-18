@@ -955,11 +955,18 @@ const buildJobs = buildItems.map((rawBuildItem) => {
   const additionalJobs = [];
 
   {
+    const shardedCrates = new Set(["specs", "integration"]);
+    const shardCount = 2;
     const testMatrix = defineMatrix({
-      include: testCrates.map((tc) => ({
-        test_crate: tc.name,
-        test_package: tc.package,
-      })),
+      include: testCrates.flatMap((tc) => {
+        const total = shardedCrates.has(tc.name) ? shardCount : 1;
+        return Array.from({ length: total }, (_, i) => ({
+          test_crate: tc.name,
+          test_package: tc.package,
+          shard_index: i,
+          shard_total: total,
+        }));
+      }),
     });
     const testCrateNameExpr = testMatrix.test_crate;
     const {
@@ -969,11 +976,15 @@ const buildJobs = buildItems.map((rawBuildItem) => {
       ...buildItem,
       cachePrefix: `test-${testCrateNameExpr}`,
     });
+    // shard_index > 0 jobs only run on PRs (main runs unsharded for full timing data)
+    const isShardZero = testMatrix.shard_index.equals(0);
+    const shardCondition = isShardZero.or(isPr);
+    const isSharded = testMatrix.shard_total.notEquals(1);
     additionalJobs.push(job(
       jobIdForJob("test"),
       {
         name:
-          `test ${testMatrix.test_crate} ${buildItem.profile} ${buildItem.os}-${buildItem.arch}`,
+          `test ${testMatrix.test_crate} shard${testMatrix.shard_index} ${buildItem.profile} ${buildItem.os}-${buildItem.arch}`,
         needs: [buildJob],
         runsOn: buildItem.testRunner ?? buildItem.runner,
         timeoutMinutes: 240,
@@ -983,7 +994,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
           matrix: testMatrix,
           failFast: false,
         },
-        steps: step.if(isNotTag.and(buildItem.skip.not()))(
+        steps: step.if(isNotTag.and(buildItem.skip.not()).and(shardCondition))(
           cloneRepoStep,
           cloneSubmodule("./tests/node_compat/runner/suite")
             .if(testCrateNameExpr.equals("node_compat")),
@@ -1004,6 +1015,17 @@ const buildJobs = buildItems.map((rawBuildItem) => {
               .or(testCrateNameExpr.equals("unit"))
               .or(testCrateNameExpr.equals("unit_node")),
           ),
+          {
+            name: "Download timing data",
+            if: isPr.and(isSharded),
+            env: { GH_TOKEN: "${{ github.token }}" },
+            run: [
+              "gh run download --repo ${{ github.repository }} \\",
+              `  --branch main \\`,
+              `  --name test-results-${buildItem.os}-${buildItem.arch}-${buildItem.profile}-${testMatrix.test_crate}-shard0.json \\`,
+              "  --dir target/ || true",
+            ],
+          },
           {
             name: "Set up playwright cache",
             uses: "actions/cache@v5",
@@ -1034,7 +1056,11 @@ const buildJobs = buildItems.map((rawBuildItem) => {
             if: isDebug,
             run:
               `cargo test -p ${testMatrix.test_package} --test ${testMatrix.test_crate}`,
-            env: { CARGO_PROFILE_DEV_DEBUG: 0 },
+            env: {
+              CARGO_PROFILE_DEV_DEBUG: 0,
+              CI_SHARD_INDEX: testMatrix.shard_index,
+              CI_SHARD_TOTAL: testMatrix.shard_total,
+            },
           },
           {
             name: "Test (release)",
@@ -1043,6 +1069,10 @@ const buildJobs = buildItems.map((rawBuildItem) => {
             ),
             run:
               `cargo test -p ${testMatrix.test_package} --test ${testMatrix.test_crate} --release`,
+            env: {
+              CI_SHARD_INDEX: testMatrix.shard_index,
+              CI_SHARD_TOTAL: testMatrix.shard_total,
+            },
           },
           {
             name: "Ensure no git changes",
@@ -1064,8 +1094,8 @@ const buildJobs = buildItems.map((rawBuildItem) => {
             if: conditions.status.always().and(isNotTag),
             with: {
               name:
-                `test-results-${buildItem.os}-${buildItem.arch}-${buildItem.profile}-${testMatrix.test_crate}.json`,
-              path: `target/test_results_${testMatrix.test_crate}.json`,
+                `test-results-${buildItem.os}-${buildItem.arch}-${buildItem.profile}-${testMatrix.test_crate}-shard${testMatrix.shard_index}.json`,
+              path: `target/test_results_${testMatrix.test_crate}*.json`,
             },
           }),
           saveCacheStep.if(buildItem.save_cache),

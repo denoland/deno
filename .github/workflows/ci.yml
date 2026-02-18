@@ -348,7 +348,7 @@ jobs:
             !./target/*/*.tar.gz
           key: '96-cargo-target-macos-x86_64-debug-build-main-${{ github.sha }}'
   test-debug-macos-x86_64:
-    name: 'test ${{ matrix.test_crate }} debug macos-x86_64'
+    name: 'test ${{ matrix.test_crate }} shard${{ matrix.shard_index }} debug macos-x86_64'
     needs:
       - build-debug-macos-x86_64
     runs-on: macos-15-intel
@@ -361,14 +361,32 @@ jobs:
         include:
           - test_crate: integration
             test_package: integration_tests
+            shard_index: 0
+            shard_total: 2
+          - test_crate: integration
+            test_package: integration_tests
+            shard_index: 1
+            shard_total: 2
           - test_crate: node_compat
             test_package: node_compat_tests
+            shard_index: 0
+            shard_total: 1
           - test_crate: specs
             test_package: specs_tests
+            shard_index: 0
+            shard_total: 2
+          - test_crate: specs
+            test_package: specs_tests
+            shard_index: 1
+            shard_total: 2
           - test_crate: unit
             test_package: unit_tests
+            shard_index: 0
+            shard_total: 1
           - test_crate: unit_node
             test_package: unit_node_tests
+            shard_index: 0
+            shard_total: 1
       fail-fast: false
     env:
       CARGO_TERM_COLOR: always
@@ -376,25 +394,25 @@ jobs:
       RUST_LIB_BACKTRACE: 0
     steps:
       - name: Configure git
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         run: |-
           git config --global core.symlinks true
           git config --global fetch.parallel 32
       - name: Clone repository
         uses: actions/checkout@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         with:
           fetch-depth: 5
           submodules: false
       - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'') && matrix.test_crate == ''node_compat'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && matrix.test_crate == ''node_compat'''
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Clone submodule ./tests/util/std
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Restore cache cargo home
         uses: cirruslabs/cache/restore@v4
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         with:
           path: |-
             ~/.cargo/.crates.toml
@@ -407,7 +425,7 @@ jobs:
           restore-keys: '96-cargo-home-macos-x86_64-test-${{ matrix.test_crate }}-'
       - name: Restore cache build output
         uses: cirruslabs/cache/restore@v4
-        if: '!startsWith(github.ref, ''refs/tags/'') && github.ref != ''refs/heads/main'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'''
         with:
           path: |-
             ./target
@@ -419,74 +437,85 @@ jobs:
           restore-keys: '96-cargo-target-macos-x86_64-debug-test-${{ matrix.test_crate }}-'
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         with:
           cache-path: ./target
       - name: Install Node
         uses: actions/setup-node@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         with:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
       - name: Install Deno
         uses: denoland/setup-deno@v2
-        if: '!startsWith(github.ref, ''refs/tags/'') && always()'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && always()'
         with:
           deno-version: v2.x
       - name: Download artifact debug-macos-x86_64-deno
         uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         with:
           name: debug-macos-x86_64-deno
           path: target/debug
       - name: Set target/debug/deno permissions
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         run: chmod +x target/debug/deno
       - name: Download artifact debug-macos-x86_64-denort
         uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'')'
         with:
           name: debug-macos-x86_64-denort
           path: target/debug
       - name: Set target/debug/denort permissions
-        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'')'
         run: chmod +x target/debug/denort
       - name: Download artifact debug-macos-x86_64-test-server
         uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'' || matrix.test_crate == ''unit'' || matrix.test_crate == ''unit_node'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'' || matrix.test_crate == ''unit'' || matrix.test_crate == ''unit_node'')'
         with:
           name: debug-macos-x86_64-test-server
           path: target/debug
       - name: Set target/debug/test_server permissions
-        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'' || matrix.test_crate == ''unit'' || matrix.test_crate == ''unit_node'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'' || matrix.test_crate == ''unit'' || matrix.test_crate == ''unit_node'')'
         run: chmod +x target/debug/test_server
+      - name: Download timing data
+        if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'' && matrix.shard_total != 1'
+        env:
+          GH_TOKEN: '${{ github.token }}'
+        run: |-
+          gh run download --repo ${{ github.repository }} \
+            --branch main \
+            --name test-results-macos-x86_64-debug-${{ matrix.test_crate }}-shard0.json \
+            --dir target/ || true
       - name: Set up playwright cache
         uses: actions/cache@v5
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         with:
           path: ./.ms-playwright
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Build ffi (debug)
-        if: '!startsWith(github.ref, ''refs/tags/'') && matrix.test_crate == ''specs'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && matrix.test_crate == ''specs'''
         run: cargo build -p test_ffi
       - name: Test (debug)
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
+          CI_SHARD_INDEX: '${{ matrix.shard_index }}'
+          CI_SHARD_TOTAL: '${{ matrix.shard_total }}'
         run: 'cargo test -p ${{ matrix.test_package }} --test ${{ matrix.test_crate }}'
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
       - name: Upload test results
         uses: actions/upload-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && always()'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && always()'
         with:
-          name: 'test-results-macos-x86_64-debug-${{ matrix.test_crate }}.json'
-          path: 'target/test_results_${{ matrix.test_crate }}.json'
+          name: 'test-results-macos-x86_64-debug-${{ matrix.test_crate }}-shard${{ matrix.shard_index }}.json'
+          path: 'target/test_results_${{ matrix.test_crate }}*.json'
       - name: Cache cargo home
         uses: cirruslabs/cache/save@v4
-        if: '!startsWith(github.ref, ''refs/tags/'') && github.ref == ''refs/heads/main'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && github.ref == ''refs/heads/main'''
         with:
           path: |-
             ~/.cargo/.crates.toml
@@ -498,7 +527,7 @@ jobs:
           key: '96-cargo-home-macos-x86_64-test-${{ matrix.test_crate }}-${{ github.sha }}'
       - name: Cache build output
         uses: cirruslabs/cache/save@v4
-        if: '!startsWith(github.ref, ''refs/tags/'') && github.ref == ''refs/heads/main'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && github.ref == ''refs/heads/main'''
         with:
           path: |-
             ./target
@@ -740,7 +769,7 @@ jobs:
           body_path: target/release/release-notes.md
           draft: true
   test-release-macos-x86_64:
-    name: 'test ${{ matrix.test_crate }} release macos-x86_64'
+    name: 'test ${{ matrix.test_crate }} shard${{ matrix.shard_index }} release macos-x86_64'
     needs:
       - build-release-macos-x86_64
     runs-on: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && ''ubuntu-24.04'' || ''macos-15-intel'' }}'
@@ -753,14 +782,32 @@ jobs:
         include:
           - test_crate: integration
             test_package: integration_tests
+            shard_index: 0
+            shard_total: 2
+          - test_crate: integration
+            test_package: integration_tests
+            shard_index: 1
+            shard_total: 2
           - test_crate: node_compat
             test_package: node_compat_tests
+            shard_index: 0
+            shard_total: 1
           - test_crate: specs
             test_package: specs_tests
+            shard_index: 0
+            shard_total: 2
+          - test_crate: specs
+            test_package: specs_tests
+            shard_index: 1
+            shard_total: 2
           - test_crate: unit
             test_package: unit_tests
+            shard_index: 0
+            shard_total: 1
           - test_crate: unit_node
             test_package: unit_node_tests
+            shard_index: 0
+            shard_total: 1
       fail-fast: false
     env:
       CARGO_TERM_COLOR: always
@@ -768,25 +815,25 @@ jobs:
       RUST_LIB_BACKTRACE: 0
     steps:
       - name: Configure git
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         run: |-
           git config --global core.symlinks true
           git config --global fetch.parallel 32
       - name: Clone repository
         uses: actions/checkout@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         with:
           fetch-depth: 5
           submodules: false
       - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && matrix.test_crate == ''node_compat'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && matrix.test_crate == ''node_compat'''
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Clone submodule ./tests/util/std
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Restore cache cargo home
         uses: cirruslabs/cache/restore@v4
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         with:
           path: |-
             ~/.cargo/.crates.toml
@@ -799,7 +846,7 @@ jobs:
           restore-keys: '96-cargo-home-macos-x86_64-test-${{ matrix.test_crate }}-'
       - name: Restore cache build output
         uses: cirruslabs/cache/restore@v4
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'''
         with:
           path: |-
             ./target
@@ -811,69 +858,81 @@ jobs:
           restore-keys: '96-cargo-target-macos-x86_64-release-test-${{ matrix.test_crate }}-'
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         with:
           cache-path: ./target
       - name: Install Node
         uses: actions/setup-node@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         with:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
       - name: Install Deno
         uses: denoland/setup-deno@v2
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always()'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && always()'
         with:
           deno-version: v2.x
       - name: Download artifact release-macos-x86_64-deno
         uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         with:
           name: release-macos-x86_64-deno
           path: target/release
       - name: Set target/release/deno permissions
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         run: chmod +x target/release/deno
       - name: Download artifact release-macos-x86_64-denort
         uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'')'
         with:
           name: release-macos-x86_64-denort
           path: target/release
       - name: Set target/release/denort permissions
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'')'
         run: chmod +x target/release/denort
       - name: Download artifact release-macos-x86_64-test-server
         uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'' || matrix.test_crate == ''unit'' || matrix.test_crate == ''unit_node'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'' || matrix.test_crate == ''unit'' || matrix.test_crate == ''unit_node'')'
         with:
           name: release-macos-x86_64-test-server
           path: target/release
       - name: Set target/release/test_server permissions
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'' || matrix.test_crate == ''unit'' || matrix.test_crate == ''unit_node'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'' || matrix.test_crate == ''unit'' || matrix.test_crate == ''unit_node'')'
         run: chmod +x target/release/test_server
+      - name: Download timing data
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'' && matrix.shard_total != 1'
+        env:
+          GH_TOKEN: '${{ github.token }}'
+        run: |-
+          gh run download --repo ${{ github.repository }} \
+            --branch main \
+            --name test-results-macos-x86_64-release-${{ matrix.test_crate }}-shard0.json \
+            --dir target/ || true
       - name: Set up playwright cache
         uses: actions/cache@v5
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         with:
           path: ./.ms-playwright
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Build ffi (release)
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && matrix.test_crate == ''specs'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && matrix.test_crate == ''specs'''
         run: cargo build --release -p test_ffi
       - name: Test (release)
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
+        env:
+          CI_SHARD_INDEX: '${{ matrix.shard_index }}'
+          CI_SHARD_TOTAL: '${{ matrix.shard_total }}'
         run: 'cargo test -p ${{ matrix.test_package }} --test ${{ matrix.test_crate }} --release'
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
       - name: Upload test results
         uses: actions/upload-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always()'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && always()'
         with:
-          name: 'test-results-macos-x86_64-release-${{ matrix.test_crate }}.json'
-          path: 'target/test_results_${{ matrix.test_crate }}.json'
+          name: 'test-results-macos-x86_64-release-${{ matrix.test_crate }}-shard${{ matrix.shard_index }}.json'
+          path: 'target/test_results_${{ matrix.test_crate }}*.json'
   build-debug-macos-aarch64:
     name: build debug macos-aarch64
     needs:
@@ -1013,7 +1072,7 @@ jobs:
             !./target/*/*.tar.gz
           key: '96-cargo-target-macos-aarch64-debug-build-main-${{ github.sha }}'
   test-debug-macos-aarch64:
-    name: 'test ${{ matrix.test_crate }} debug macos-aarch64'
+    name: 'test ${{ matrix.test_crate }} shard${{ matrix.shard_index }} debug macos-aarch64'
     needs:
       - build-debug-macos-aarch64
     runs-on: macos-14
@@ -1026,14 +1085,32 @@ jobs:
         include:
           - test_crate: integration
             test_package: integration_tests
+            shard_index: 0
+            shard_total: 2
+          - test_crate: integration
+            test_package: integration_tests
+            shard_index: 1
+            shard_total: 2
           - test_crate: node_compat
             test_package: node_compat_tests
+            shard_index: 0
+            shard_total: 1
           - test_crate: specs
             test_package: specs_tests
+            shard_index: 0
+            shard_total: 2
+          - test_crate: specs
+            test_package: specs_tests
+            shard_index: 1
+            shard_total: 2
           - test_crate: unit
             test_package: unit_tests
+            shard_index: 0
+            shard_total: 1
           - test_crate: unit_node
             test_package: unit_node_tests
+            shard_index: 0
+            shard_total: 1
       fail-fast: false
     env:
       CARGO_TERM_COLOR: always
@@ -1041,25 +1118,25 @@ jobs:
       RUST_LIB_BACKTRACE: 0
     steps:
       - name: Configure git
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         run: |-
           git config --global core.symlinks true
           git config --global fetch.parallel 32
       - name: Clone repository
         uses: actions/checkout@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         with:
           fetch-depth: 5
           submodules: false
       - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'') && matrix.test_crate == ''node_compat'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && matrix.test_crate == ''node_compat'''
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Clone submodule ./tests/util/std
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Restore cache cargo home
         uses: cirruslabs/cache/restore@v4
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         with:
           path: |-
             ~/.cargo/.crates.toml
@@ -1072,7 +1149,7 @@ jobs:
           restore-keys: '96-cargo-home-macos-aarch64-test-${{ matrix.test_crate }}-'
       - name: Restore cache build output
         uses: cirruslabs/cache/restore@v4
-        if: '!startsWith(github.ref, ''refs/tags/'') && github.ref != ''refs/heads/main'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'''
         with:
           path: |-
             ./target
@@ -1084,83 +1161,94 @@ jobs:
           restore-keys: '96-cargo-target-macos-aarch64-debug-test-${{ matrix.test_crate }}-'
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         with:
           cache-path: ./target
       - name: Install Node
         uses: actions/setup-node@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         with:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
       - name: Install Deno
         uses: denoland/setup-deno@v2
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         with:
           deno-version: v2.x
-      - if: '!startsWith(github.ref, ''refs/tags/'')'
+      - if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         env:
           GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
         run: echo $GITHUB_WORKSPACE/third_party/prebuilt/mac >> $GITHUB_PATH
       - name: Install macOS aarch64 lld
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         env:
           GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
         run: ./tools/install_prebuilt.js ld64.lld
       - name: Download artifact debug-macos-aarch64-deno
         uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         with:
           name: debug-macos-aarch64-deno
           path: target/debug
       - name: Set target/debug/deno permissions
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         run: chmod +x target/debug/deno
       - name: Download artifact debug-macos-aarch64-denort
         uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'')'
         with:
           name: debug-macos-aarch64-denort
           path: target/debug
       - name: Set target/debug/denort permissions
-        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'')'
         run: chmod +x target/debug/denort
       - name: Download artifact debug-macos-aarch64-test-server
         uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'' || matrix.test_crate == ''unit'' || matrix.test_crate == ''unit_node'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'' || matrix.test_crate == ''unit'' || matrix.test_crate == ''unit_node'')'
         with:
           name: debug-macos-aarch64-test-server
           path: target/debug
       - name: Set target/debug/test_server permissions
-        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'' || matrix.test_crate == ''unit'' || matrix.test_crate == ''unit_node'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'' || matrix.test_crate == ''unit'' || matrix.test_crate == ''unit_node'')'
         run: chmod +x target/debug/test_server
+      - name: Download timing data
+        if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'' && matrix.shard_total != 1'
+        env:
+          GH_TOKEN: '${{ github.token }}'
+        run: |-
+          gh run download --repo ${{ github.repository }} \
+            --branch main \
+            --name test-results-macos-aarch64-debug-${{ matrix.test_crate }}-shard0.json \
+            --dir target/ || true
       - name: Set up playwright cache
         uses: actions/cache@v5
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         with:
           path: ./.ms-playwright
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Build ffi (debug)
-        if: '!startsWith(github.ref, ''refs/tags/'') && matrix.test_crate == ''specs'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && matrix.test_crate == ''specs'''
         run: cargo build -p test_ffi
       - name: Test (debug)
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
+          CI_SHARD_INDEX: '${{ matrix.shard_index }}'
+          CI_SHARD_TOTAL: '${{ matrix.shard_total }}'
         run: 'cargo test -p ${{ matrix.test_package }} --test ${{ matrix.test_crate }}'
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
       - name: Upload test results
         uses: actions/upload-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && always()'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && always()'
         with:
-          name: 'test-results-macos-aarch64-debug-${{ matrix.test_crate }}.json'
-          path: 'target/test_results_${{ matrix.test_crate }}.json'
+          name: 'test-results-macos-aarch64-debug-${{ matrix.test_crate }}-shard${{ matrix.shard_index }}.json'
+          path: 'target/test_results_${{ matrix.test_crate }}*.json'
       - name: Cache cargo home
         uses: cirruslabs/cache/save@v4
-        if: '!startsWith(github.ref, ''refs/tags/'') && github.ref == ''refs/heads/main'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && github.ref == ''refs/heads/main'''
         with:
           path: |-
             ~/.cargo/.crates.toml
@@ -1172,7 +1260,7 @@ jobs:
           key: '96-cargo-home-macos-aarch64-test-${{ matrix.test_crate }}-${{ github.sha }}'
       - name: Cache build output
         uses: cirruslabs/cache/save@v4
-        if: '!startsWith(github.ref, ''refs/tags/'') && github.ref == ''refs/heads/main'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && github.ref == ''refs/heads/main'''
         with:
           path: |-
             ./target
@@ -1537,7 +1625,7 @@ jobs:
           body_path: target/release/release-notes.md
           draft: true
   test-release-macos-aarch64:
-    name: 'test ${{ matrix.test_crate }} release macos-aarch64'
+    name: 'test ${{ matrix.test_crate }} shard${{ matrix.shard_index }} release macos-aarch64'
     needs:
       - build-release-macos-aarch64
     runs-on: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && ''ubuntu-24.04'' || ''macos-14'' }}'
@@ -1550,14 +1638,32 @@ jobs:
         include:
           - test_crate: integration
             test_package: integration_tests
+            shard_index: 0
+            shard_total: 2
+          - test_crate: integration
+            test_package: integration_tests
+            shard_index: 1
+            shard_total: 2
           - test_crate: node_compat
             test_package: node_compat_tests
+            shard_index: 0
+            shard_total: 1
           - test_crate: specs
             test_package: specs_tests
+            shard_index: 0
+            shard_total: 2
+          - test_crate: specs
+            test_package: specs_tests
+            shard_index: 1
+            shard_total: 2
           - test_crate: unit
             test_package: unit_tests
+            shard_index: 0
+            shard_total: 1
           - test_crate: unit_node
             test_package: unit_node_tests
+            shard_index: 0
+            shard_total: 1
       fail-fast: false
     env:
       CARGO_TERM_COLOR: always
@@ -1565,25 +1671,25 @@ jobs:
       RUST_LIB_BACKTRACE: 0
     steps:
       - name: Configure git
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         run: |-
           git config --global core.symlinks true
           git config --global fetch.parallel 32
       - name: Clone repository
         uses: actions/checkout@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         with:
           fetch-depth: 5
           submodules: false
       - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && matrix.test_crate == ''node_compat'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && matrix.test_crate == ''node_compat'''
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Clone submodule ./tests/util/std
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Restore cache cargo home
         uses: cirruslabs/cache/restore@v4
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         with:
           path: |-
             ~/.cargo/.crates.toml
@@ -1596,7 +1702,7 @@ jobs:
           restore-keys: '96-cargo-home-macos-aarch64-test-${{ matrix.test_crate }}-'
       - name: Restore cache build output
         uses: cirruslabs/cache/restore@v4
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'''
         with:
           path: |-
             ./target
@@ -1608,78 +1714,90 @@ jobs:
           restore-keys: '96-cargo-target-macos-aarch64-release-test-${{ matrix.test_crate }}-'
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         with:
           cache-path: ./target
       - name: Install Node
         uses: actions/setup-node@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         with:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
       - name: Install Deno
         uses: denoland/setup-deno@v2
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         with:
           deno-version: v2.x
-      - if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+      - if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         env:
           GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
         run: echo $GITHUB_WORKSPACE/third_party/prebuilt/mac >> $GITHUB_PATH
       - name: Install macOS aarch64 lld
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         env:
           GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
         run: ./tools/install_prebuilt.js ld64.lld
       - name: Download artifact release-macos-aarch64-deno
         uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         with:
           name: release-macos-aarch64-deno
           path: target/release
       - name: Set target/release/deno permissions
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         run: chmod +x target/release/deno
       - name: Download artifact release-macos-aarch64-denort
         uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'')'
         with:
           name: release-macos-aarch64-denort
           path: target/release
       - name: Set target/release/denort permissions
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'')'
         run: chmod +x target/release/denort
       - name: Download artifact release-macos-aarch64-test-server
         uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'' || matrix.test_crate == ''unit'' || matrix.test_crate == ''unit_node'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'' || matrix.test_crate == ''unit'' || matrix.test_crate == ''unit_node'')'
         with:
           name: release-macos-aarch64-test-server
           path: target/release
       - name: Set target/release/test_server permissions
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'' || matrix.test_crate == ''unit'' || matrix.test_crate == ''unit_node'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'' || matrix.test_crate == ''unit'' || matrix.test_crate == ''unit_node'')'
         run: chmod +x target/release/test_server
+      - name: Download timing data
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'' && matrix.shard_total != 1'
+        env:
+          GH_TOKEN: '${{ github.token }}'
+        run: |-
+          gh run download --repo ${{ github.repository }} \
+            --branch main \
+            --name test-results-macos-aarch64-release-${{ matrix.test_crate }}-shard0.json \
+            --dir target/ || true
       - name: Set up playwright cache
         uses: actions/cache@v5
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         with:
           path: ./.ms-playwright
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Build ffi (release)
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && matrix.test_crate == ''specs'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && matrix.test_crate == ''specs'''
         run: cargo build --release -p test_ffi
       - name: Test (release)
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
+        env:
+          CI_SHARD_INDEX: '${{ matrix.shard_index }}'
+          CI_SHARD_TOTAL: '${{ matrix.shard_total }}'
         run: 'cargo test -p ${{ matrix.test_package }} --test ${{ matrix.test_crate }} --release'
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
       - name: Upload test results
         uses: actions/upload-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always()'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && always()'
         with:
-          name: 'test-results-macos-aarch64-release-${{ matrix.test_crate }}.json'
-          path: 'target/test_results_${{ matrix.test_crate }}.json'
+          name: 'test-results-macos-aarch64-release-${{ matrix.test_crate }}-shard${{ matrix.shard_index }}.json'
+          path: 'target/test_results_${{ matrix.test_crate }}*.json'
   build-debug-windows-x86_64:
     name: build debug windows-x86_64
     needs:
@@ -1802,7 +1920,7 @@ jobs:
             !./target/*/*.tar.gz
           key: '96-cargo-target-windows-x86_64-debug-build-main-${{ github.sha }}'
   test-debug-windows-x86_64:
-    name: 'test ${{ matrix.test_crate }} debug windows-x86_64'
+    name: 'test ${{ matrix.test_crate }} shard${{ matrix.shard_index }} debug windows-x86_64'
     needs:
       - build-debug-windows-x86_64
     runs-on: windows-2022
@@ -1815,14 +1933,32 @@ jobs:
         include:
           - test_crate: integration
             test_package: integration_tests
+            shard_index: 0
+            shard_total: 2
+          - test_crate: integration
+            test_package: integration_tests
+            shard_index: 1
+            shard_total: 2
           - test_crate: node_compat
             test_package: node_compat_tests
+            shard_index: 0
+            shard_total: 1
           - test_crate: specs
             test_package: specs_tests
+            shard_index: 0
+            shard_total: 2
+          - test_crate: specs
+            test_package: specs_tests
+            shard_index: 1
+            shard_total: 2
           - test_crate: unit
             test_package: unit_tests
+            shard_index: 0
+            shard_total: 1
           - test_crate: unit_node
             test_package: unit_node_tests
+            shard_index: 0
+            shard_total: 1
       fail-fast: false
     env:
       CARGO_TERM_COLOR: always
@@ -1830,25 +1966,25 @@ jobs:
       RUST_LIB_BACKTRACE: 0
     steps:
       - name: Configure git
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         run: |-
           git config --global core.symlinks true
           git config --global fetch.parallel 32
       - name: Clone repository
         uses: actions/checkout@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         with:
           fetch-depth: 5
           submodules: false
       - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'') && matrix.test_crate == ''node_compat'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && matrix.test_crate == ''node_compat'''
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Clone submodule ./tests/util/std
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Restore cache cargo home
         uses: cirruslabs/cache/restore@v4
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         with:
           path: |-
             ~/.cargo/.crates.toml
@@ -1861,7 +1997,7 @@ jobs:
           restore-keys: '96-cargo-home-windows-x86_64-test-${{ matrix.test_crate }}-'
       - name: Restore cache build output
         uses: cirruslabs/cache/restore@v4
-        if: '!startsWith(github.ref, ''refs/tags/'') && github.ref != ''refs/heads/main'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'''
         with:
           path: |-
             ./target
@@ -1873,65 +2009,76 @@ jobs:
           restore-keys: '96-cargo-target-windows-x86_64-debug-test-${{ matrix.test_crate }}-'
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         with:
           cache-path: ./target
       - name: Install Node
         uses: actions/setup-node@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         with:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
       - name: Install Deno
         uses: denoland/setup-deno@v2
-        if: '!startsWith(github.ref, ''refs/tags/'') && always()'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && always()'
         with:
           deno-version: v2.x
       - name: Download artifact debug-windows-x86_64-deno
         uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         with:
           name: debug-windows-x86_64-deno
           path: target/debug
       - name: Download artifact debug-windows-x86_64-denort
         uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'')'
         with:
           name: debug-windows-x86_64-denort
           path: target/debug
       - name: Download artifact debug-windows-x86_64-test-server
         uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'' || matrix.test_crate == ''unit'' || matrix.test_crate == ''unit_node'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'' || matrix.test_crate == ''unit'' || matrix.test_crate == ''unit_node'')'
         with:
           name: debug-windows-x86_64-test-server
           path: target/debug
+      - name: Download timing data
+        if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'' && matrix.shard_total != 1'
+        env:
+          GH_TOKEN: '${{ github.token }}'
+        run: |-
+          gh run download --repo ${{ github.repository }} \
+            --branch main \
+            --name test-results-windows-x86_64-debug-${{ matrix.test_crate }}-shard0.json \
+            --dir target/ || true
       - name: Set up playwright cache
         uses: actions/cache@v5
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         with:
           path: ./.ms-playwright
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Build ffi (debug)
-        if: '!startsWith(github.ref, ''refs/tags/'') && matrix.test_crate == ''specs'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && matrix.test_crate == ''specs'''
         run: cargo build -p test_ffi
       - name: Test (debug)
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
+          CI_SHARD_INDEX: '${{ matrix.shard_index }}'
+          CI_SHARD_TOTAL: '${{ matrix.shard_total }}'
         run: 'cargo test -p ${{ matrix.test_package }} --test ${{ matrix.test_crate }}'
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
       - name: Upload test results
         uses: actions/upload-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && always()'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && always()'
         with:
-          name: 'test-results-windows-x86_64-debug-${{ matrix.test_crate }}.json'
-          path: 'target/test_results_${{ matrix.test_crate }}.json'
+          name: 'test-results-windows-x86_64-debug-${{ matrix.test_crate }}-shard${{ matrix.shard_index }}.json'
+          path: 'target/test_results_${{ matrix.test_crate }}*.json'
       - name: Cache cargo home
         uses: cirruslabs/cache/save@v4
-        if: '!startsWith(github.ref, ''refs/tags/'') && github.ref == ''refs/heads/main'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && github.ref == ''refs/heads/main'''
         with:
           path: |-
             ~/.cargo/.crates.toml
@@ -1943,7 +2090,7 @@ jobs:
           key: '96-cargo-home-windows-x86_64-test-${{ matrix.test_crate }}-${{ github.sha }}'
       - name: Cache build output
         uses: cirruslabs/cache/save@v4
-        if: '!startsWith(github.ref, ''refs/tags/'') && github.ref == ''refs/heads/main'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && github.ref == ''refs/heads/main'''
         with:
           path: |-
             ./target
@@ -2303,7 +2450,7 @@ jobs:
           body_path: target/release/release-notes.md
           draft: true
   test-release-windows-x86_64:
-    name: 'test ${{ matrix.test_crate }} release windows-x86_64'
+    name: 'test ${{ matrix.test_crate }} shard${{ matrix.shard_index }} release windows-x86_64'
     needs:
       - build-release-windows-x86_64
     runs-on: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && ''ubuntu-24.04'' || ''windows-2022'' }}'
@@ -2316,14 +2463,32 @@ jobs:
         include:
           - test_crate: integration
             test_package: integration_tests
+            shard_index: 0
+            shard_total: 2
+          - test_crate: integration
+            test_package: integration_tests
+            shard_index: 1
+            shard_total: 2
           - test_crate: node_compat
             test_package: node_compat_tests
+            shard_index: 0
+            shard_total: 1
           - test_crate: specs
             test_package: specs_tests
+            shard_index: 0
+            shard_total: 2
+          - test_crate: specs
+            test_package: specs_tests
+            shard_index: 1
+            shard_total: 2
           - test_crate: unit
             test_package: unit_tests
+            shard_index: 0
+            shard_total: 1
           - test_crate: unit_node
             test_package: unit_node_tests
+            shard_index: 0
+            shard_total: 1
       fail-fast: false
     env:
       CARGO_TERM_COLOR: always
@@ -2331,25 +2496,25 @@ jobs:
       RUST_LIB_BACKTRACE: 0
     steps:
       - name: Configure git
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         run: |-
           git config --global core.symlinks true
           git config --global fetch.parallel 32
       - name: Clone repository
         uses: actions/checkout@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         with:
           fetch-depth: 5
           submodules: false
       - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && matrix.test_crate == ''node_compat'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && matrix.test_crate == ''node_compat'''
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Clone submodule ./tests/util/std
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Restore cache cargo home
         uses: cirruslabs/cache/restore@v4
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         with:
           path: |-
             ~/.cargo/.crates.toml
@@ -2362,7 +2527,7 @@ jobs:
           restore-keys: '96-cargo-home-windows-x86_64-test-${{ matrix.test_crate }}-'
       - name: Restore cache build output
         uses: cirruslabs/cache/restore@v4
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'''
         with:
           path: |-
             ./target
@@ -2374,60 +2539,72 @@ jobs:
           restore-keys: '96-cargo-target-windows-x86_64-release-test-${{ matrix.test_crate }}-'
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         with:
           cache-path: ./target
       - name: Install Node
         uses: actions/setup-node@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         with:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
       - name: Install Deno
         uses: denoland/setup-deno@v2
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always()'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && always()'
         with:
           deno-version: v2.x
       - name: Download artifact release-windows-x86_64-deno
         uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         with:
           name: release-windows-x86_64-deno
           path: target/release
       - name: Download artifact release-windows-x86_64-denort
         uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'')'
         with:
           name: release-windows-x86_64-denort
           path: target/release
       - name: Download artifact release-windows-x86_64-test-server
         uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'' || matrix.test_crate == ''unit'' || matrix.test_crate == ''unit_node'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'' || matrix.test_crate == ''unit'' || matrix.test_crate == ''unit_node'')'
         with:
           name: release-windows-x86_64-test-server
           path: target/release
+      - name: Download timing data
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'' && matrix.shard_total != 1'
+        env:
+          GH_TOKEN: '${{ github.token }}'
+        run: |-
+          gh run download --repo ${{ github.repository }} \
+            --branch main \
+            --name test-results-windows-x86_64-release-${{ matrix.test_crate }}-shard0.json \
+            --dir target/ || true
       - name: Set up playwright cache
         uses: actions/cache@v5
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         with:
           path: ./.ms-playwright
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Build ffi (release)
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && matrix.test_crate == ''specs'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && matrix.test_crate == ''specs'''
         run: cargo build --release -p test_ffi
       - name: Test (release)
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
+        env:
+          CI_SHARD_INDEX: '${{ matrix.shard_index }}'
+          CI_SHARD_TOTAL: '${{ matrix.shard_total }}'
         run: 'cargo test -p ${{ matrix.test_package }} --test ${{ matrix.test_crate }} --release'
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
       - name: Upload test results
         uses: actions/upload-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always()'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && always()'
         with:
-          name: 'test-results-windows-x86_64-release-${{ matrix.test_crate }}.json'
-          path: 'target/test_results_${{ matrix.test_crate }}.json'
+          name: 'test-results-windows-x86_64-release-${{ matrix.test_crate }}-shard${{ matrix.shard_index }}.json'
+          path: 'target/test_results_${{ matrix.test_crate }}*.json'
   build-debug-windows-aarch64:
     name: build debug windows-aarch64
     needs:
@@ -2550,7 +2727,7 @@ jobs:
             !./target/*/*.tar.gz
           key: '96-cargo-target-windows-aarch64-debug-build-main-${{ github.sha }}'
   test-debug-windows-aarch64:
-    name: 'test ${{ matrix.test_crate }} debug windows-aarch64'
+    name: 'test ${{ matrix.test_crate }} shard${{ matrix.shard_index }} debug windows-aarch64'
     needs:
       - build-debug-windows-aarch64
     runs-on: windows-11-arm
@@ -2563,14 +2740,32 @@ jobs:
         include:
           - test_crate: integration
             test_package: integration_tests
+            shard_index: 0
+            shard_total: 2
+          - test_crate: integration
+            test_package: integration_tests
+            shard_index: 1
+            shard_total: 2
           - test_crate: node_compat
             test_package: node_compat_tests
+            shard_index: 0
+            shard_total: 1
           - test_crate: specs
             test_package: specs_tests
+            shard_index: 0
+            shard_total: 2
+          - test_crate: specs
+            test_package: specs_tests
+            shard_index: 1
+            shard_total: 2
           - test_crate: unit
             test_package: unit_tests
+            shard_index: 0
+            shard_total: 1
           - test_crate: unit_node
             test_package: unit_node_tests
+            shard_index: 0
+            shard_total: 1
       fail-fast: false
     env:
       CARGO_TERM_COLOR: always
@@ -2578,25 +2773,25 @@ jobs:
       RUST_LIB_BACKTRACE: 0
     steps:
       - name: Configure git
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         run: |-
           git config --global core.symlinks true
           git config --global fetch.parallel 32
       - name: Clone repository
         uses: actions/checkout@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         with:
           fetch-depth: 5
           submodules: false
       - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'') && matrix.test_crate == ''node_compat'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && matrix.test_crate == ''node_compat'''
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Clone submodule ./tests/util/std
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Restore cache cargo home
         uses: cirruslabs/cache/restore@v4
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         with:
           path: |-
             ~/.cargo/.crates.toml
@@ -2609,7 +2804,7 @@ jobs:
           restore-keys: '96-cargo-home-windows-aarch64-test-${{ matrix.test_crate }}-'
       - name: Restore cache build output
         uses: cirruslabs/cache/restore@v4
-        if: '!startsWith(github.ref, ''refs/tags/'') && github.ref != ''refs/heads/main'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'''
         with:
           path: |-
             ./target
@@ -2621,65 +2816,76 @@ jobs:
           restore-keys: '96-cargo-target-windows-aarch64-debug-test-${{ matrix.test_crate }}-'
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         with:
           cache-path: ./target
       - name: Install Node
         uses: actions/setup-node@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         with:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
       - name: Install Deno
         uses: denoland/setup-deno@v2
-        if: '!startsWith(github.ref, ''refs/tags/'') && always()'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && always()'
         with:
           deno-version: v2.x
       - name: Download artifact debug-windows-aarch64-deno
         uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         with:
           name: debug-windows-aarch64-deno
           path: target/debug
       - name: Download artifact debug-windows-aarch64-denort
         uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'')'
         with:
           name: debug-windows-aarch64-denort
           path: target/debug
       - name: Download artifact debug-windows-aarch64-test-server
         uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'' || matrix.test_crate == ''unit'' || matrix.test_crate == ''unit_node'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'' || matrix.test_crate == ''unit'' || matrix.test_crate == ''unit_node'')'
         with:
           name: debug-windows-aarch64-test-server
           path: target/debug
+      - name: Download timing data
+        if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'' && matrix.shard_total != 1'
+        env:
+          GH_TOKEN: '${{ github.token }}'
+        run: |-
+          gh run download --repo ${{ github.repository }} \
+            --branch main \
+            --name test-results-windows-aarch64-debug-${{ matrix.test_crate }}-shard0.json \
+            --dir target/ || true
       - name: Set up playwright cache
         uses: actions/cache@v5
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         with:
           path: ./.ms-playwright
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Build ffi (debug)
-        if: '!startsWith(github.ref, ''refs/tags/'') && matrix.test_crate == ''specs'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && matrix.test_crate == ''specs'''
         run: cargo build -p test_ffi
       - name: Test (debug)
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
+          CI_SHARD_INDEX: '${{ matrix.shard_index }}'
+          CI_SHARD_TOTAL: '${{ matrix.shard_total }}'
         run: 'cargo test -p ${{ matrix.test_package }} --test ${{ matrix.test_crate }}'
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
       - name: Upload test results
         uses: actions/upload-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && always()'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && always()'
         with:
-          name: 'test-results-windows-aarch64-debug-${{ matrix.test_crate }}.json'
-          path: 'target/test_results_${{ matrix.test_crate }}.json'
+          name: 'test-results-windows-aarch64-debug-${{ matrix.test_crate }}-shard${{ matrix.shard_index }}.json'
+          path: 'target/test_results_${{ matrix.test_crate }}*.json'
       - name: Cache cargo home
         uses: cirruslabs/cache/save@v4
-        if: '!startsWith(github.ref, ''refs/tags/'') && github.ref == ''refs/heads/main'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && github.ref == ''refs/heads/main'''
         with:
           path: |-
             ~/.cargo/.crates.toml
@@ -2691,7 +2897,7 @@ jobs:
           key: '96-cargo-home-windows-aarch64-test-${{ matrix.test_crate }}-${{ github.sha }}'
       - name: Cache build output
         uses: cirruslabs/cache/save@v4
-        if: '!startsWith(github.ref, ''refs/tags/'') && github.ref == ''refs/heads/main'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && github.ref == ''refs/heads/main'''
         with:
           path: |-
             ./target
@@ -2956,7 +3162,7 @@ jobs:
           body_path: target/release/release-notes.md
           draft: true
   test-release-windows-aarch64:
-    name: 'test ${{ matrix.test_crate }} release windows-aarch64'
+    name: 'test ${{ matrix.test_crate }} shard${{ matrix.shard_index }} release windows-aarch64'
     needs:
       - build-release-windows-aarch64
     runs-on: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && ''ubuntu-24.04'' || ''windows-11-arm'' }}'
@@ -2969,14 +3175,32 @@ jobs:
         include:
           - test_crate: integration
             test_package: integration_tests
+            shard_index: 0
+            shard_total: 2
+          - test_crate: integration
+            test_package: integration_tests
+            shard_index: 1
+            shard_total: 2
           - test_crate: node_compat
             test_package: node_compat_tests
+            shard_index: 0
+            shard_total: 1
           - test_crate: specs
             test_package: specs_tests
+            shard_index: 0
+            shard_total: 2
+          - test_crate: specs
+            test_package: specs_tests
+            shard_index: 1
+            shard_total: 2
           - test_crate: unit
             test_package: unit_tests
+            shard_index: 0
+            shard_total: 1
           - test_crate: unit_node
             test_package: unit_node_tests
+            shard_index: 0
+            shard_total: 1
       fail-fast: false
     env:
       CARGO_TERM_COLOR: always
@@ -2984,25 +3208,25 @@ jobs:
       RUST_LIB_BACKTRACE: 0
     steps:
       - name: Configure git
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         run: |-
           git config --global core.symlinks true
           git config --global fetch.parallel 32
       - name: Clone repository
         uses: actions/checkout@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         with:
           fetch-depth: 5
           submodules: false
       - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && matrix.test_crate == ''node_compat'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && matrix.test_crate == ''node_compat'''
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Clone submodule ./tests/util/std
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Restore cache cargo home
         uses: cirruslabs/cache/restore@v4
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         with:
           path: |-
             ~/.cargo/.crates.toml
@@ -3015,7 +3239,7 @@ jobs:
           restore-keys: '96-cargo-home-windows-aarch64-test-${{ matrix.test_crate }}-'
       - name: Restore cache build output
         uses: cirruslabs/cache/restore@v4
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'''
         with:
           path: |-
             ./target
@@ -3027,60 +3251,72 @@ jobs:
           restore-keys: '96-cargo-target-windows-aarch64-release-test-${{ matrix.test_crate }}-'
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         with:
           cache-path: ./target
       - name: Install Node
         uses: actions/setup-node@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         with:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
       - name: Install Deno
         uses: denoland/setup-deno@v2
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always()'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && always()'
         with:
           deno-version: v2.x
       - name: Download artifact release-windows-aarch64-deno
         uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         with:
           name: release-windows-aarch64-deno
           path: target/release
       - name: Download artifact release-windows-aarch64-denort
         uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'')'
         with:
           name: release-windows-aarch64-denort
           path: target/release
       - name: Download artifact release-windows-aarch64-test-server
         uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'' || matrix.test_crate == ''unit'' || matrix.test_crate == ''unit_node'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'' || matrix.test_crate == ''unit'' || matrix.test_crate == ''unit_node'')'
         with:
           name: release-windows-aarch64-test-server
           path: target/release
+      - name: Download timing data
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'' && matrix.shard_total != 1'
+        env:
+          GH_TOKEN: '${{ github.token }}'
+        run: |-
+          gh run download --repo ${{ github.repository }} \
+            --branch main \
+            --name test-results-windows-aarch64-release-${{ matrix.test_crate }}-shard0.json \
+            --dir target/ || true
       - name: Set up playwright cache
         uses: actions/cache@v5
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         with:
           path: ./.ms-playwright
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Build ffi (release)
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && matrix.test_crate == ''specs'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && matrix.test_crate == ''specs'''
         run: cargo build --release -p test_ffi
       - name: Test (release)
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
+        env:
+          CI_SHARD_INDEX: '${{ matrix.shard_index }}'
+          CI_SHARD_TOTAL: '${{ matrix.shard_total }}'
         run: 'cargo test -p ${{ matrix.test_package }} --test ${{ matrix.test_crate }} --release'
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
       - name: Upload test results
         uses: actions/upload-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always()'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && always()'
         with:
-          name: 'test-results-windows-aarch64-release-${{ matrix.test_crate }}.json'
-          path: 'target/test_results_${{ matrix.test_crate }}.json'
+          name: 'test-results-windows-aarch64-release-${{ matrix.test_crate }}-shard${{ matrix.shard_index }}.json'
+          path: 'target/test_results_${{ matrix.test_crate }}*.json'
   build-release-linux-x86_64:
     name: build release linux-x86_64
     needs:
@@ -3387,7 +3623,7 @@ jobs:
             !./target/*/*.tar.gz
           key: '96-cargo-target-linux-x86_64-release-build-main-${{ github.sha }}'
   test-release-linux-x86_64:
-    name: 'test ${{ matrix.test_crate }} release linux-x86_64'
+    name: 'test ${{ matrix.test_crate }} shard${{ matrix.shard_index }} release linux-x86_64'
     needs:
       - build-release-linux-x86_64
     runs-on: ubuntu-24.04
@@ -3400,14 +3636,32 @@ jobs:
         include:
           - test_crate: integration
             test_package: integration_tests
+            shard_index: 0
+            shard_total: 2
+          - test_crate: integration
+            test_package: integration_tests
+            shard_index: 1
+            shard_total: 2
           - test_crate: node_compat
             test_package: node_compat_tests
+            shard_index: 0
+            shard_total: 1
           - test_crate: specs
             test_package: specs_tests
+            shard_index: 0
+            shard_total: 2
+          - test_crate: specs
+            test_package: specs_tests
+            shard_index: 1
+            shard_total: 2
           - test_crate: unit
             test_package: unit_tests
+            shard_index: 0
+            shard_total: 1
           - test_crate: unit_node
             test_package: unit_node_tests
+            shard_index: 0
+            shard_total: 1
       fail-fast: false
     env:
       CARGO_TERM_COLOR: always
@@ -3415,25 +3669,25 @@ jobs:
       RUST_LIB_BACKTRACE: 0
     steps:
       - name: Configure git
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         run: |-
           git config --global core.symlinks true
           git config --global fetch.parallel 32
       - name: Clone repository
         uses: actions/checkout@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         with:
           fetch-depth: 5
           submodules: false
       - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'') && matrix.test_crate == ''node_compat'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && matrix.test_crate == ''node_compat'''
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Clone submodule ./tests/util/std
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Restore cache cargo home
         uses: cirruslabs/cache/restore@v4
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         with:
           path: |-
             ~/.cargo/.crates.toml
@@ -3446,7 +3700,7 @@ jobs:
           restore-keys: '96-cargo-home-linux-x86_64-test-${{ matrix.test_crate }}-'
       - name: Restore cache build output
         uses: cirruslabs/cache/restore@v4
-        if: '!startsWith(github.ref, ''refs/tags/'') && github.ref != ''refs/heads/main'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'''
         with:
           path: |-
             ./target
@@ -3458,23 +3712,23 @@ jobs:
           restore-keys: '96-cargo-target-linux-x86_64-release-test-${{ matrix.test_crate }}-'
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         with:
           cache-path: ./target
       - name: Install Node
         uses: actions/setup-node@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         with:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
       - name: Install Deno
         uses: denoland/setup-deno@v2
-        if: '!startsWith(github.ref, ''refs/tags/'') && always()'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && always()'
         with:
           deno-version: v2.x
       - name: Set up incremental LTO and sysroot build
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         run: |-
           # Setting up sysroot
           export DEBIAN_FRONTEND=noninteractive
@@ -3556,55 +3810,67 @@ jobs:
           " > $GITHUB_ENV
       - name: Download artifact release-linux-x86_64-deno
         uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         with:
           name: release-linux-x86_64-deno
           path: target/release
       - name: Set target/release/deno permissions
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         run: chmod +x target/release/deno
       - name: Download artifact release-linux-x86_64-denort
         uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'')'
         with:
           name: release-linux-x86_64-denort
           path: target/release
       - name: Set target/release/denort permissions
-        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'')'
         run: chmod +x target/release/denort
       - name: Download artifact release-linux-x86_64-test-server
         uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'' || matrix.test_crate == ''unit'' || matrix.test_crate == ''unit_node'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'' || matrix.test_crate == ''unit'' || matrix.test_crate == ''unit_node'')'
         with:
           name: release-linux-x86_64-test-server
           path: target/release
       - name: Set target/release/test_server permissions
-        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'' || matrix.test_crate == ''unit'' || matrix.test_crate == ''unit_node'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'' || matrix.test_crate == ''unit'' || matrix.test_crate == ''unit_node'')'
         run: chmod +x target/release/test_server
+      - name: Download timing data
+        if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'' && matrix.shard_total != 1'
+        env:
+          GH_TOKEN: '${{ github.token }}'
+        run: |-
+          gh run download --repo ${{ github.repository }} \
+            --branch main \
+            --name test-results-linux-x86_64-release-${{ matrix.test_crate }}-shard0.json \
+            --dir target/ || true
       - name: Set up playwright cache
         uses: actions/cache@v5
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         with:
           path: ./.ms-playwright
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Build ffi (release)
-        if: '!startsWith(github.ref, ''refs/tags/'') && matrix.test_crate == ''specs'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && matrix.test_crate == ''specs'''
         run: cargo build --release -p test_ffi
       - name: Test (release)
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
+        env:
+          CI_SHARD_INDEX: '${{ matrix.shard_index }}'
+          CI_SHARD_TOTAL: '${{ matrix.shard_total }}'
         run: 'cargo test -p ${{ matrix.test_package }} --test ${{ matrix.test_crate }} --release'
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
       - name: Upload test results
         uses: actions/upload-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && always()'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && always()'
         with:
-          name: 'test-results-linux-x86_64-release-${{ matrix.test_crate }}.json'
-          path: 'target/test_results_${{ matrix.test_crate }}.json'
+          name: 'test-results-linux-x86_64-release-${{ matrix.test_crate }}-shard${{ matrix.shard_index }}.json'
+          path: 'target/test_results_${{ matrix.test_crate }}*.json'
       - name: Cache cargo home
         uses: cirruslabs/cache/save@v4
-        if: '!startsWith(github.ref, ''refs/tags/'') && github.ref == ''refs/heads/main'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && github.ref == ''refs/heads/main'''
         with:
           path: |-
             ~/.cargo/.crates.toml
@@ -3616,7 +3882,7 @@ jobs:
           key: '96-cargo-home-linux-x86_64-test-${{ matrix.test_crate }}-${{ github.sha }}'
       - name: Cache build output
         uses: cirruslabs/cache/save@v4
-        if: '!startsWith(github.ref, ''refs/tags/'') && github.ref == ''refs/heads/main'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && github.ref == ''refs/heads/main'''
         with:
           path: |-
             ./target
@@ -3927,7 +4193,7 @@ jobs:
             !./target/*/*.tar.gz
           key: '96-cargo-target-linux-x86_64-debug-build-main-${{ github.sha }}'
   test-debug-linux-x86_64:
-    name: 'test ${{ matrix.test_crate }} debug linux-x86_64'
+    name: 'test ${{ matrix.test_crate }} shard${{ matrix.shard_index }} debug linux-x86_64'
     needs:
       - build-debug-linux-x86_64
     runs-on: ubuntu-24.04
@@ -3940,14 +4206,32 @@ jobs:
         include:
           - test_crate: integration
             test_package: integration_tests
+            shard_index: 0
+            shard_total: 2
+          - test_crate: integration
+            test_package: integration_tests
+            shard_index: 1
+            shard_total: 2
           - test_crate: node_compat
             test_package: node_compat_tests
+            shard_index: 0
+            shard_total: 1
           - test_crate: specs
             test_package: specs_tests
+            shard_index: 0
+            shard_total: 2
+          - test_crate: specs
+            test_package: specs_tests
+            shard_index: 1
+            shard_total: 2
           - test_crate: unit
             test_package: unit_tests
+            shard_index: 0
+            shard_total: 1
           - test_crate: unit_node
             test_package: unit_node_tests
+            shard_index: 0
+            shard_total: 1
       fail-fast: false
     env:
       CARGO_TERM_COLOR: always
@@ -3955,25 +4239,25 @@ jobs:
       RUST_LIB_BACKTRACE: 0
     steps:
       - name: Configure git
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         run: |-
           git config --global core.symlinks true
           git config --global fetch.parallel 32
       - name: Clone repository
         uses: actions/checkout@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         with:
           fetch-depth: 5
           submodules: false
       - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'') && matrix.test_crate == ''node_compat'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && matrix.test_crate == ''node_compat'''
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Clone submodule ./tests/util/std
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Restore cache cargo home
         uses: cirruslabs/cache/restore@v4
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         with:
           path: |-
             ~/.cargo/.crates.toml
@@ -3986,7 +4270,7 @@ jobs:
           restore-keys: '96-cargo-home-linux-x86_64-test-${{ matrix.test_crate }}-'
       - name: Restore cache build output
         uses: cirruslabs/cache/restore@v4
-        if: '!startsWith(github.ref, ''refs/tags/'') && github.ref != ''refs/heads/main'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'''
         with:
           path: |-
             ./target
@@ -3998,23 +4282,23 @@ jobs:
           restore-keys: '96-cargo-target-linux-x86_64-debug-test-${{ matrix.test_crate }}-'
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         with:
           cache-path: ./target
       - name: Install Node
         uses: actions/setup-node@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         with:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
       - name: Install Deno
         uses: denoland/setup-deno@v2
-        if: '!startsWith(github.ref, ''refs/tags/'') && always()'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && always()'
         with:
           deno-version: v2.x
       - name: Set up incremental LTO and sysroot build
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         run: |-
           # Setting up sysroot
           export DEBIAN_FRONTEND=noninteractive
@@ -4096,57 +4380,68 @@ jobs:
           " > $GITHUB_ENV
       - name: Download artifact debug-linux-x86_64-deno
         uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         with:
           name: debug-linux-x86_64-deno
           path: target/debug
       - name: Set target/debug/deno permissions
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         run: chmod +x target/debug/deno
       - name: Download artifact debug-linux-x86_64-denort
         uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'')'
         with:
           name: debug-linux-x86_64-denort
           path: target/debug
       - name: Set target/debug/denort permissions
-        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'')'
         run: chmod +x target/debug/denort
       - name: Download artifact debug-linux-x86_64-test-server
         uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'' || matrix.test_crate == ''unit'' || matrix.test_crate == ''unit_node'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'' || matrix.test_crate == ''unit'' || matrix.test_crate == ''unit_node'')'
         with:
           name: debug-linux-x86_64-test-server
           path: target/debug
       - name: Set target/debug/test_server permissions
-        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'' || matrix.test_crate == ''unit'' || matrix.test_crate == ''unit_node'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'' || matrix.test_crate == ''unit'' || matrix.test_crate == ''unit_node'')'
         run: chmod +x target/debug/test_server
+      - name: Download timing data
+        if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'' && matrix.shard_total != 1'
+        env:
+          GH_TOKEN: '${{ github.token }}'
+        run: |-
+          gh run download --repo ${{ github.repository }} \
+            --branch main \
+            --name test-results-linux-x86_64-debug-${{ matrix.test_crate }}-shard0.json \
+            --dir target/ || true
       - name: Set up playwright cache
         uses: actions/cache@v5
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         with:
           path: ./.ms-playwright
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Build ffi (debug)
-        if: '!startsWith(github.ref, ''refs/tags/'') && matrix.test_crate == ''specs'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && matrix.test_crate == ''specs'''
         run: cargo build -p test_ffi
       - name: Test (debug)
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
+          CI_SHARD_INDEX: '${{ matrix.shard_index }}'
+          CI_SHARD_TOTAL: '${{ matrix.shard_total }}'
         run: 'cargo test -p ${{ matrix.test_package }} --test ${{ matrix.test_crate }}'
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
       - name: Upload test results
         uses: actions/upload-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && always()'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && always()'
         with:
-          name: 'test-results-linux-x86_64-debug-${{ matrix.test_crate }}.json'
-          path: 'target/test_results_${{ matrix.test_crate }}.json'
+          name: 'test-results-linux-x86_64-debug-${{ matrix.test_crate }}-shard${{ matrix.shard_index }}.json'
+          path: 'target/test_results_${{ matrix.test_crate }}*.json'
       - name: Cache cargo home
         uses: cirruslabs/cache/save@v4
-        if: '!startsWith(github.ref, ''refs/tags/'') && github.ref == ''refs/heads/main'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && github.ref == ''refs/heads/main'''
         with:
           path: |-
             ~/.cargo/.crates.toml
@@ -4158,7 +4453,7 @@ jobs:
           key: '96-cargo-home-linux-x86_64-test-${{ matrix.test_crate }}-${{ github.sha }}'
       - name: Cache build output
         uses: cirruslabs/cache/save@v4
-        if: '!startsWith(github.ref, ''refs/tags/'') && github.ref == ''refs/heads/main'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && github.ref == ''refs/heads/main'''
         with:
           path: |-
             ./target
@@ -4381,7 +4676,7 @@ jobs:
             !./target/*/*.tar.gz
           key: '96-cargo-target-linux-aarch64-debug-build-main-${{ github.sha }}'
   test-debug-linux-aarch64:
-    name: 'test ${{ matrix.test_crate }} debug linux-aarch64'
+    name: 'test ${{ matrix.test_crate }} shard${{ matrix.shard_index }} debug linux-aarch64'
     needs:
       - build-debug-linux-aarch64
     runs-on: ubuntu-24.04-arm
@@ -4394,14 +4689,32 @@ jobs:
         include:
           - test_crate: integration
             test_package: integration_tests
+            shard_index: 0
+            shard_total: 2
+          - test_crate: integration
+            test_package: integration_tests
+            shard_index: 1
+            shard_total: 2
           - test_crate: node_compat
             test_package: node_compat_tests
+            shard_index: 0
+            shard_total: 1
           - test_crate: specs
             test_package: specs_tests
+            shard_index: 0
+            shard_total: 2
+          - test_crate: specs
+            test_package: specs_tests
+            shard_index: 1
+            shard_total: 2
           - test_crate: unit
             test_package: unit_tests
+            shard_index: 0
+            shard_total: 1
           - test_crate: unit_node
             test_package: unit_node_tests
+            shard_index: 0
+            shard_total: 1
       fail-fast: false
     env:
       CARGO_TERM_COLOR: always
@@ -4409,25 +4722,25 @@ jobs:
       RUST_LIB_BACKTRACE: 0
     steps:
       - name: Configure git
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         run: |-
           git config --global core.symlinks true
           git config --global fetch.parallel 32
       - name: Clone repository
         uses: actions/checkout@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         with:
           fetch-depth: 5
           submodules: false
       - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'') && matrix.test_crate == ''node_compat'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && matrix.test_crate == ''node_compat'''
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Clone submodule ./tests/util/std
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Restore cache cargo home
         uses: cirruslabs/cache/restore@v4
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         with:
           path: |-
             ~/.cargo/.crates.toml
@@ -4440,7 +4753,7 @@ jobs:
           restore-keys: '96-cargo-home-linux-aarch64-test-${{ matrix.test_crate }}-'
       - name: Restore cache build output
         uses: cirruslabs/cache/restore@v4
-        if: '!startsWith(github.ref, ''refs/tags/'') && github.ref != ''refs/heads/main'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'''
         with:
           path: |-
             ./target
@@ -4452,77 +4765,88 @@ jobs:
           restore-keys: '96-cargo-target-linux-aarch64-debug-test-${{ matrix.test_crate }}-'
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         with:
           cache-path: ./target
       - name: Install Node
         uses: actions/setup-node@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         with:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
       - name: Install Deno
         uses: denoland/setup-deno@v2
-        if: '!startsWith(github.ref, ''refs/tags/'') && always()'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && always()'
         with:
           deno-version: v2.x
       - name: Download artifact debug-linux-aarch64-deno
         uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         with:
           name: debug-linux-aarch64-deno
           path: target/debug
       - name: Set target/debug/deno permissions
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         run: chmod +x target/debug/deno
       - name: Download artifact debug-linux-aarch64-denort
         uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'')'
         with:
           name: debug-linux-aarch64-denort
           path: target/debug
       - name: Set target/debug/denort permissions
-        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'')'
         run: chmod +x target/debug/denort
       - name: Download artifact debug-linux-aarch64-test-server
         uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'' || matrix.test_crate == ''unit'' || matrix.test_crate == ''unit_node'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'' || matrix.test_crate == ''unit'' || matrix.test_crate == ''unit_node'')'
         with:
           name: debug-linux-aarch64-test-server
           path: target/debug
       - name: Set target/debug/test_server permissions
-        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'' || matrix.test_crate == ''unit'' || matrix.test_crate == ''unit_node'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'' || matrix.test_crate == ''unit'' || matrix.test_crate == ''unit_node'')'
         run: chmod +x target/debug/test_server
+      - name: Download timing data
+        if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'' && matrix.shard_total != 1'
+        env:
+          GH_TOKEN: '${{ github.token }}'
+        run: |-
+          gh run download --repo ${{ github.repository }} \
+            --branch main \
+            --name test-results-linux-aarch64-debug-${{ matrix.test_crate }}-shard0.json \
+            --dir target/ || true
       - name: Set up playwright cache
         uses: actions/cache@v5
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         with:
           path: ./.ms-playwright
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Load 'vsock_loopback; kernel module
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         run: sudo modprobe vsock_loopback
       - name: Build ffi (debug)
-        if: '!startsWith(github.ref, ''refs/tags/'') && matrix.test_crate == ''specs'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && matrix.test_crate == ''specs'''
         run: cargo build -p test_ffi
       - name: Test (debug)
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
+          CI_SHARD_INDEX: '${{ matrix.shard_index }}'
+          CI_SHARD_TOTAL: '${{ matrix.shard_total }}'
         run: 'cargo test -p ${{ matrix.test_package }} --test ${{ matrix.test_crate }}'
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
       - name: Upload test results
         uses: actions/upload-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && always()'
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && always()'
         with:
-          name: 'test-results-linux-aarch64-debug-${{ matrix.test_crate }}.json'
-          path: 'target/test_results_${{ matrix.test_crate }}.json'
+          name: 'test-results-linux-aarch64-debug-${{ matrix.test_crate }}-shard${{ matrix.shard_index }}.json'
+          path: 'target/test_results_${{ matrix.test_crate }}*.json'
       - name: Cache cargo home
         uses: cirruslabs/cache/save@v4
-        if: '!startsWith(github.ref, ''refs/tags/'') && github.ref == ''refs/heads/main'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && github.ref == ''refs/heads/main'''
         with:
           path: |-
             ~/.cargo/.crates.toml
@@ -4534,7 +4858,7 @@ jobs:
           key: '96-cargo-home-linux-aarch64-test-${{ matrix.test_crate }}-${{ github.sha }}'
       - name: Cache build output
         uses: cirruslabs/cache/save@v4
-        if: '!startsWith(github.ref, ''refs/tags/'') && github.ref == ''refs/heads/main'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && github.ref == ''refs/heads/main'''
         with:
           path: |-
             ./target
@@ -4936,7 +5260,7 @@ jobs:
           body_path: target/release/release-notes.md
           draft: true
   test-release-linux-aarch64:
-    name: 'test ${{ matrix.test_crate }} release linux-aarch64'
+    name: 'test ${{ matrix.test_crate }} shard${{ matrix.shard_index }} release linux-aarch64'
     needs:
       - build-release-linux-aarch64
     runs-on: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && ''ubuntu-24.04'' || ''ubuntu-24.04-arm'' }}'
@@ -4949,14 +5273,32 @@ jobs:
         include:
           - test_crate: integration
             test_package: integration_tests
+            shard_index: 0
+            shard_total: 2
+          - test_crate: integration
+            test_package: integration_tests
+            shard_index: 1
+            shard_total: 2
           - test_crate: node_compat
             test_package: node_compat_tests
+            shard_index: 0
+            shard_total: 1
           - test_crate: specs
             test_package: specs_tests
+            shard_index: 0
+            shard_total: 2
+          - test_crate: specs
+            test_package: specs_tests
+            shard_index: 1
+            shard_total: 2
           - test_crate: unit
             test_package: unit_tests
+            shard_index: 0
+            shard_total: 1
           - test_crate: unit_node
             test_package: unit_node_tests
+            shard_index: 0
+            shard_total: 1
       fail-fast: false
     env:
       CARGO_TERM_COLOR: always
@@ -4964,25 +5306,25 @@ jobs:
       RUST_LIB_BACKTRACE: 0
     steps:
       - name: Configure git
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         run: |-
           git config --global core.symlinks true
           git config --global fetch.parallel 32
       - name: Clone repository
         uses: actions/checkout@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         with:
           fetch-depth: 5
           submodules: false
       - name: Clone submodule ./tests/node_compat/runner/suite
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && matrix.test_crate == ''node_compat'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && matrix.test_crate == ''node_compat'''
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
       - name: Clone submodule ./tests/util/std
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Restore cache cargo home
         uses: cirruslabs/cache/restore@v4
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         with:
           path: |-
             ~/.cargo/.crates.toml
@@ -4995,7 +5337,7 @@ jobs:
           restore-keys: '96-cargo-home-linux-aarch64-test-${{ matrix.test_crate }}-'
       - name: Restore cache build output
         uses: cirruslabs/cache/restore@v4
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'''
         with:
           path: |-
             ./target
@@ -5007,23 +5349,23 @@ jobs:
           restore-keys: '96-cargo-target-linux-aarch64-release-test-${{ matrix.test_crate }}-'
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         with:
           cache-path: ./target
       - name: Install Node
         uses: actions/setup-node@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         with:
           node-version: 22
       - uses: dsherret/rust-toolchain-file@v1
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
       - name: Install Deno
         uses: denoland/setup-deno@v2
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always()'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && always()'
         with:
           deno-version: v2.x
       - name: Set up incremental LTO and sysroot build
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         run: |-
           # Setting up sysroot
           export DEBIAN_FRONTEND=noninteractive
@@ -5105,55 +5447,67 @@ jobs:
           " > $GITHUB_ENV
       - name: Download artifact release-linux-aarch64-deno
         uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         with:
           name: release-linux-aarch64-deno
           path: target/release
       - name: Set target/release/deno permissions
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         run: chmod +x target/release/deno
       - name: Download artifact release-linux-aarch64-denort
         uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'')'
         with:
           name: release-linux-aarch64-denort
           path: target/release
       - name: Set target/release/denort permissions
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'')'
         run: chmod +x target/release/denort
       - name: Download artifact release-linux-aarch64-test-server
         uses: actions/download-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'' || matrix.test_crate == ''unit'' || matrix.test_crate == ''unit_node'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'' || matrix.test_crate == ''unit'' || matrix.test_crate == ''unit_node'')'
         with:
           name: release-linux-aarch64-test-server
           path: target/release
       - name: Set target/release/test_server permissions
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'' || matrix.test_crate == ''unit'' || matrix.test_crate == ''unit_node'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'' || matrix.test_crate == ''unit'' || matrix.test_crate == ''unit_node'')'
         run: chmod +x target/release/test_server
+      - name: Download timing data
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'' && matrix.shard_total != 1'
+        env:
+          GH_TOKEN: '${{ github.token }}'
+        run: |-
+          gh run download --repo ${{ github.repository }} \
+            --branch main \
+            --name test-results-linux-aarch64-release-${{ matrix.test_crate }}-shard0.json \
+            --dir target/ || true
       - name: Set up playwright cache
         uses: actions/cache@v5
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         with:
           path: ./.ms-playwright
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
       - name: Load 'vsock_loopback; kernel module
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         run: sudo modprobe vsock_loopback
       - name: Build ffi (release)
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && matrix.test_crate == ''specs'''
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && matrix.test_crate == ''specs'''
         run: cargo build --release -p test_ffi
       - name: Test (release)
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
+        env:
+          CI_SHARD_INDEX: '${{ matrix.shard_index }}'
+          CI_SHARD_TOTAL: '${{ matrix.shard_total }}'
         run: 'cargo test -p ${{ matrix.test_package }} --test ${{ matrix.test_crate }} --release'
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
       - name: Upload test results
         uses: actions/upload-artifact@v6
-        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always()'
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && always()'
         with:
-          name: 'test-results-linux-aarch64-release-${{ matrix.test_crate }}.json'
-          path: 'target/test_results_${{ matrix.test_crate }}.json'
+          name: 'test-results-linux-aarch64-release-${{ matrix.test_crate }}-shard${{ matrix.shard_index }}.json'
+          path: 'target/test_results_${{ matrix.test_crate }}*.json'
   lint:
     name: 'lint ${{ matrix.profile }} ${{ matrix.os }}-${{ matrix.arch }}'
     needs:

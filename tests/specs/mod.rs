@@ -273,6 +273,13 @@ pub fn main() {
     })
     .into_flat_category();
 
+  let root_category =
+    if let Some(shard) = test_util::test_runner::ShardConfig::from_env() {
+      test_util::test_runner::filter_to_shard(root_category, &shard, "specs")
+    } else {
+      root_category
+    };
+
   if root_category.is_empty() {
     return; // all tests filtered out
   }
