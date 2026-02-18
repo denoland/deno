@@ -6370,7 +6370,10 @@ fn init_parse(
     let mut args = args.collect::<Vec<_>>();
 
     if matches.get_flag("npm") {
-      package = Some(name);
+      package = Some(format!(
+        "npm:{}",
+        name.strip_prefix("npm:").unwrap_or(&name)
+      ));
       package_args = args;
     } else {
       dir = Some(name);
@@ -6427,31 +6430,37 @@ fn create_parse(
 
 fn normalize_create_package_name(
   package: String,
-  allow_unprefixed: bool,
+  use_npm: bool,
 ) -> Result<String, clap::Error> {
-  if package.starts_with("jsr:") {
-    return Err(clap::Error::raw(
-      clap::error::ErrorKind::InvalidValue,
-      "JSR packages are not supported by `deno create` yet. Use npm: or --npm.",
-    ));
-  }
-
-  let name = package.strip_prefix("npm:").unwrap_or(&package);
-  if name.is_empty() {
-    return Err(clap::Error::raw(
-      clap::error::ErrorKind::InvalidValue,
-      "Missing package name after 'npm:' prefix.",
-    ));
-  }
-
-  if package.starts_with("npm:") {
-    Ok(package)
-  } else if allow_unprefixed {
+  if let Some(name) = package.strip_prefix("jsr:") {
+    if use_npm {
+      Err(clap::Error::raw(
+        clap::error::ErrorKind::InvalidValue,
+        "Cannot use `--npm` with a `jsr:` specifier.",
+      ))
+    } else if name.is_empty() {
+      Err(clap::Error::raw(
+        clap::error::ErrorKind::InvalidValue,
+        "Missing package name after 'jsr:' prefix.",
+      ))
+    } else {
+      Ok(package)
+    }
+  } else if let Some(name) = package.strip_prefix("npm:") {
+    if name.is_empty() {
+      Err(clap::Error::raw(
+        clap::error::ErrorKind::InvalidValue,
+        "Missing package name after 'npm:' prefix.",
+      ))
+    } else {
+      Ok(package)
+    }
+  } else if use_npm {
     Ok(format!("npm:{package}"))
   } else {
     Err(clap::Error::raw(
       clap::error::ErrorKind::InvalidValue,
-      "Missing `npm:` prefix. For example: `deno create npm:vite`.",
+      "Missing `jsr:` or `npm:` prefix. For example: `deno create npm:vite`.",
     ))
   }
 }
@@ -13303,6 +13312,81 @@ mod tests {
 
     let r =
       flags_from_vec(svec!["deno", "create", "jsr:@std/http/file-server"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Init(InitFlags {
+          package: Some("jsr:@std/http/file-server".to_string()),
+          package_args: vec![],
+          dir: None,
+          lib: false,
+          serve: false,
+          empty: false,
+          yes: false,
+        }),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec!["deno", "create", "jsr:@fresh/init"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Init(InitFlags {
+          package: Some("jsr:@fresh/init".to_string()),
+          package_args: vec![],
+          dir: None,
+          lib: false,
+          serve: false,
+          empty: false,
+          yes: false,
+        }),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec!["deno", "create", "--yes", "jsr:@fresh/init"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Init(InitFlags {
+          package: Some("jsr:@fresh/init".to_string()),
+          package_args: vec![],
+          dir: None,
+          lib: false,
+          serve: false,
+          empty: false,
+          yes: true,
+        }),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "create",
+      "jsr:@fresh/init",
+      "--",
+      "my-project"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Init(InitFlags {
+          package: Some("jsr:@fresh/init".to_string()),
+          package_args: svec!["my-project"],
+          dir: None,
+          lib: false,
+          serve: false,
+          empty: false,
+          yes: false,
+        }),
+        ..Flags::default()
+      }
+    );
+
+    // empty jsr: prefix
+    let r = flags_from_vec(svec!["deno", "create", "jsr:"]);
     assert!(r.is_err());
 
     let r = flags_from_vec(svec!["deno", "create", "--jsr", "@std/http"]);
@@ -13311,6 +13395,7 @@ mod tests {
     let r = flags_from_vec(svec!["deno", "create", "npm:"]);
     assert!(r.is_err());
 
+    // --npm with jsr: is contradictory
     let r = flags_from_vec(svec!["deno", "create", "--npm", "jsr:@std/http"]);
     assert!(r.is_err());
   }
