@@ -11,12 +11,12 @@ import {
   type ExpressionValue,
   job,
   step,
-} from "jsr:@david/gagen@0.2.16";
+} from "jsr:@david/gagen@0.2.18";
 
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 94;
+const cacheVersion = 96;
 
 const ubuntuX86Runner = "ubuntu-24.04";
 const ubuntuX86XlRunner = "ghcr.io/cirruslabs/ubuntu-runner-amd64:24.04";
@@ -286,7 +286,13 @@ function createRestoreAndSaveCacheSteps(m: {
     uses: "cirruslabs/cache/save@v4",
     with: {
       path,
-      key: `${m.cacheKeyPrefix}-\${{ hashFiles('Cargo.lock') }}`,
+      // We force saving a new cache on every main run so that PRs can
+      // always be up to date with the freshest information. We do this
+      // unconditionally because we don't want caches that only need updating
+      // occassionally (like the cargo home cache) to be lost over time as
+      // other caches that need to be updated frequently (like the cargo build
+      // cache) get populated and purge old caches.
+      key: `${m.cacheKeyPrefix}-\${{ github.sha }}`,
     },
   });
   return { restoreCacheStep, saveCacheStep };
@@ -338,7 +344,7 @@ function createCacheSteps(m: {
     cacheKeyPrefix:
       `${cacheVersion}-cargo-target-${m.os}-${m.arch}-${m.profile}-${m.cachePrefix}`,
   });
-  const mtimeCacheStep = step({
+  const mtimeCacheAndRestoreStep = step({
     name: "Apply and update mtime cache",
     uses: "./.github/mtime_cache",
     with: {
@@ -348,10 +354,9 @@ function createCacheSteps(m: {
   return {
     restoreCacheStep: step(
       cargoHomeCacheSteps.restoreCacheStep,
-      step(
-        buildCacheSteps.restoreCacheStep,
-        mtimeCacheStep,
-      ).if(isMainBranch.not().and(isNotTag)),
+      buildCacheSteps.restoreCacheStep.if(isMainBranch.not().and(isNotTag)),
+      // this should always be done when saving OR restoring
+      mtimeCacheAndRestoreStep,
     ),
     saveCacheStep: step(
       cargoHomeCacheSteps.saveCacheStep,
@@ -764,8 +769,8 @@ const buildJobs = buildItems.map((rawBuildItem) => {
             sysRootStep,
           )(
             {
+              // do this on PRs as well as main so that PRs can use the cargo build cache from main
               name: "Configure canary build",
-              if: isMainBranch,
               run: 'echo "DENO_CANARY=true" >> $GITHUB_ENV',
             },
             {
@@ -950,25 +955,36 @@ const buildJobs = buildItems.map((rawBuildItem) => {
   const additionalJobs = [];
 
   {
+    const shardedCrates = new Set(["specs", "integration"]);
+    const shardCount = 2;
     const testMatrix = defineMatrix({
-      include: testCrates.map((tc) => ({
-        test_crate: tc.name,
-        test_package: tc.package,
-      })),
+      include: testCrates.flatMap((tc) => {
+        const total = shardedCrates.has(tc.name) ? shardCount : 1;
+        return Array.from({ length: total }, (_, i) => ({
+          test_crate: tc.name,
+          test_package: tc.package,
+          shard_index: i,
+          shard_total: total,
+          shard_label: total > 1 ? `(${i + 1}/${total}) ` : "",
+        }));
+      }),
     });
+    const testCrateNameExpr = testMatrix.test_crate;
     const {
       restoreCacheStep,
       saveCacheStep,
     } = createCacheSteps({
       ...buildItem,
-      cachePrefix: "test-main",
+      cachePrefix: `test-${testCrateNameExpr}`,
     });
-    const testCrateNameExpr = testMatrix.test_crate;
+    // shard_index > 0 jobs only run on PRs (main runs unsharded)
+    const isShardZero = testMatrix.shard_index.equals(0);
+    const shouldRunShard = isShardZero.or(isPr);
     additionalJobs.push(job(
       jobIdForJob("test"),
       {
         name:
-          `test ${testMatrix.test_crate} ${buildItem.profile} ${buildItem.os}-${buildItem.arch}`,
+          `test ${testMatrix.test_crate} ${testMatrix.shard_label}${buildItem.profile} ${buildItem.os}-${buildItem.arch}`,
         needs: [buildJob],
         runsOn: buildItem.testRunner ?? buildItem.runner,
         timeoutMinutes: 240,
@@ -978,7 +994,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
           matrix: testMatrix,
           failFast: false,
         },
-        steps: step.if(isNotTag.and(buildItem.skip.not()))(
+        steps: step.if(isNotTag.and(buildItem.skip.not()).and(shouldRunShard))(
           cloneRepoStep,
           cloneSubmodule("./tests/node_compat/runner/suite")
             .if(testCrateNameExpr.equals("node_compat")),
@@ -1026,11 +1042,14 @@ const buildJobs = buildItems.map((rawBuildItem) => {
           },
           {
             name: "Test (debug)",
-            // run full tests only on Linux
             if: isDebug,
             run:
               `cargo test -p ${testMatrix.test_package} --test ${testMatrix.test_crate}`,
-            env: { CARGO_PROFILE_DEV_DEBUG: 0 },
+            env: {
+              CARGO_PROFILE_DEV_DEBUG: 0,
+              CI_SHARD_INDEX: isPr.then(testMatrix.shard_index).else(""),
+              CI_SHARD_TOTAL: isPr.then(testMatrix.shard_total).else(""),
+            },
           },
           {
             name: "Test (release)",
@@ -1039,6 +1058,10 @@ const buildJobs = buildItems.map((rawBuildItem) => {
             ),
             run:
               `cargo test -p ${testMatrix.test_package} --test ${testMatrix.test_crate} --release`,
+            env: {
+              CI_SHARD_INDEX: isPr.then(testMatrix.shard_index).else(""),
+              CI_SHARD_TOTAL: isPr.then(testMatrix.shard_total).else(""),
+            },
           },
           {
             name: "Ensure no git changes",
@@ -1054,19 +1077,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
               "fi",
             ],
           },
-          step.dependsOn(installDenoStep)({
-            name: "Upload test results",
-            uses: "actions/upload-artifact@v6",
-            if: conditions.status.always().and(isNotTag),
-            with: {
-              name:
-                `test-results-${buildItem.os}-${buildItem.arch}-${buildItem.profile}-${testMatrix.test_crate}.json`,
-              path: `target/test_results_${testMatrix.test_crate}.json`,
-            },
-          }),
-          saveCacheStep.if(buildItem.save_cache
-            // only bother saving for the integration test job because it builds the most
-            .and(testCrateNameExpr.equals("integration"))),
+          saveCacheStep.if(buildItem.save_cache),
         ),
       },
     ));
@@ -1440,7 +1451,8 @@ const lintCiStatusJob = job("lint-ci-status", {
     ...buildJobs.map((j) => [j.buildJob, ...j.additionalJobs]).flat(),
     lintJob,
   ],
-  if: conditions.status.always(),
+  if: preBuildJob.outputs.skip_build.notEquals("true")
+    .and(conditions.status.always()),
   runsOn: "ubuntu-latest",
   steps: step({
     name: "Ensure CI success",

@@ -155,8 +155,6 @@ fn process_node_types(out_dir: &Path) {
     Ok(())
   }
 
-  println!("cargo:rerun-if-changed={}", node_dir.display());
-
   let mut paths = Vec::new();
   visit_dirs(&node_dir, &mut |path| {
     paths.push(path.to_path_buf());
@@ -165,6 +163,12 @@ fn process_node_types(out_dir: &Path) {
 
   // Sort for deterministic builds
   paths.sort();
+
+  for path in &paths {
+    // print for each path instead of directory because
+    // the mtime cache works off files and not directories
+    println!("cargo:rerun-if-changed={}", path.display());
+  }
 
   // Compress all the files if release
   if !cfg!(debug_assertions) && std::env::var("CARGO_FEATURE_HMR").is_err() {

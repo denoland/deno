@@ -118,6 +118,7 @@ pub struct AddFlags {
   pub dev: bool,
   pub default_registry: Option<DefaultRegistry>,
   pub lockfile_only: bool,
+  pub save_exact: bool,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -2221,6 +2222,13 @@ Or multiple dependencies at once:
       .args(lock_args())
       .arg(lockfile_only_arg())
       .args(default_registry_args())
+      .arg(
+        Arg::new("save-exact")
+          .long("save-exact")
+          .alias("exact")
+          .help("Save exact version without the caret (^)")
+          .action(ArgAction::SetTrue),
+      )
   })
 }
 
@@ -2312,6 +2320,13 @@ Don't error if the audit data can't be retrieved from the registry
           .long("ignore-registry-errors")
           .help("Return exit code 0 if remote service(s) responds with an error.")
           .action(ArgAction::SetTrue)
+      )
+      .arg(
+        Arg::new("ignore")
+          .long("ignore")
+          .help("Ignore advisories matching the given CVE IDs")
+          .action(ArgAction::Append)
+          .value_name("CVE")
       )
   })
 }
@@ -3458,6 +3473,15 @@ These must be added to the path manually if required."), UnstableArgsConfig::Res
         .arg(env_file_arg())
         .arg(add_dev_arg().conflicts_with("entrypoint").conflicts_with("global"))
         .args(default_registry_args().into_iter().map(|arg| arg.conflicts_with("entrypoint").conflicts_with("global")))
+        .arg(
+          Arg::new("save-exact")
+            .long("save-exact")
+            .alias("exact")
+            .help("Save exact version without the caret (^)")
+            .action(ArgAction::SetTrue)
+            .conflicts_with("entrypoint")
+            .conflicts_with("global"),
+        )
         .arg(lockfile_only_arg().conflicts_with("global"))
     })
 }
@@ -5762,7 +5786,10 @@ fn audit_parse(
   let dev = true;
   let prod = true;
   let optional = true;
-  let ignore = vec![];
+  let ignore = matches
+    .remove_many::<String>("ignore")
+    .map(|v| v.collect())
+    .unwrap_or_default();
 
   flags.subcommand = DenoSubcommand::Audit(AuditFlags {
     severity,
@@ -5807,6 +5834,7 @@ fn add_parse_inner(
     dev,
     default_registry,
     lockfile_only: matches.get_flag("lockfile-only"),
+    save_exact: matches.get_flag("save-exact"),
   }
 }
 
@@ -13302,6 +13330,7 @@ mod tests {
             dev: false, // default is false
             default_registry: None,
             lockfile_only: false,
+            save_exact: false,
           })
         );
       }
@@ -13319,6 +13348,7 @@ mod tests {
           dev: false,
           default_registry: None,
           lockfile_only: true,
+          save_exact: false,
         });
         expected_flags.frozen_lockfile = Some(true);
         assert_eq!(r.unwrap(), expected_flags);
@@ -13332,6 +13362,7 @@ mod tests {
             dev: true,
             default_registry: None,
             lockfile_only: false,
+            save_exact: false,
           }),
         );
       }
@@ -13344,6 +13375,7 @@ mod tests {
             dev: false,
             default_registry: Some(DefaultRegistry::Npm),
             lockfile_only: false,
+            save_exact: false,
           }),
         );
       }
@@ -13356,6 +13388,7 @@ mod tests {
             dev: false,
             default_registry: Some(DefaultRegistry::Jsr),
             lockfile_only: false,
+            save_exact: false,
           }),
         );
       }

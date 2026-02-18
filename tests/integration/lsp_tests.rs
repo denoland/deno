@@ -8206,7 +8206,7 @@ fn lsp_completions() {
       "sortText": "1",
       "insertTextFormat": 1,
       "data": {
-        "tsc": {
+        "tsJs": {
           "uri": "file:///a/file.ts",
           "position": 5,
           "name": "build",
@@ -8293,7 +8293,7 @@ fn lsp_completions_optional() {
           "insertText": "b",
           "commitCharacters": [".", ",", ";", "("],
           "data": {
-            "tsc": {
+            "tsJs": {
               "uri": "file:///a/file.ts",
               "position": 79,
               "name": "b",
@@ -8313,7 +8313,7 @@ fn lsp_completions_optional() {
       "filterText": "b",
       "insertText": "b",
       "data": {
-        "tsc": {
+        "tsJs": {
           "uri": "file:///a/file.ts",
           "position": 79,
           "name": "b",
@@ -10189,7 +10189,7 @@ fn lsp_completions_snippet() {
             "("
           ],
           "data": {
-            "tsc": {
+            "tsJs": {
               "uri": "file:///a/a.tsx",
               "position": 87,
               "name": "type",
@@ -10217,7 +10217,7 @@ fn lsp_completions_snippet() {
         "("
       ],
       "data": {
-        "tsc": {
+        "tsJs": {
           "uri": "file:///a/a.tsx",
           "position": 87,
           "name": "type",
@@ -10287,7 +10287,7 @@ fn lsp_completions_no_snippet() {
             "("
           ],
           "data": {
-            "tsc": {
+            "tsJs": {
               "uri": "file:///a/a.tsx",
               "position": 87,
               "name": "type",
@@ -10383,7 +10383,7 @@ fn lsp_completions_npm() {
       "sortText": "1",
       "insertTextFormat": 1,
       "data": {
-        "tsc": {
+        "tsJs": {
           "uri": "file:///a/file.ts",
           "position": 69,
           "name": "MyClass",
@@ -10400,7 +10400,7 @@ fn lsp_completions_npm() {
       "sortText": "1",
       "insertTextFormat": 1,
       "data": {
-        "tsc": {
+        "tsJs": {
           "uri": "file:///a/file.ts",
           "position": 69,
           "name": "MyClass",
@@ -12145,7 +12145,7 @@ fn lsp_non_normalized_uri_diagnostics_and_completions() {
       "kind": 6,
       "sortText": "11",
       "data": {
-        "tsc": {
+        "tsJs": {
           // Accordingly, the colon returned here is decoded.
           // Spec-compliant language clients must deal with that. See:
           // https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#uri
@@ -13412,7 +13412,7 @@ fn lsp_completions_complete_function_calls() {
       "sortText": "1",
       "insertTextFormat": 1,
       "data": {
-        "tsc": {
+        "tsJs": {
           "uri": "file:///a/file.ts",
           "position": 3,
           "name": "map",
@@ -13490,7 +13490,7 @@ fn lsp_completions_private_class_fields() {
         "("
       ],
       "data": {
-        "tsc": {
+        "tsJs": {
           "uri": "file:///a/file.ts",
           "position": 88,
           "name": "#prop",
@@ -13526,7 +13526,7 @@ fn lsp_completions_private_class_fields() {
         "("
       ],
       "data": {
-        "tsc": {
+        "tsJs": {
           "uri": "file:///a/file.ts",
           "position": 106,
           "name": "#prop",
