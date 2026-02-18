@@ -338,6 +338,7 @@ jobs:
           key: '97-cargo-home-macos-x86_64-build-main-${{ github.sha }}'
       - name: Cache build output
         uses: cirruslabs/cache/save@v4
+        if: 'github.ref == ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
             ./target
@@ -497,7 +498,7 @@ jobs:
           key: '97-cargo-home-macos-x86_64-test-${{ matrix.test_crate }}-${{ github.sha }}'
       - name: Cache build output
         uses: cirruslabs/cache/save@v4
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && github.ref == ''refs/heads/main'''
         with:
           path: |-
             ./target
@@ -1002,6 +1003,7 @@ jobs:
           key: '97-cargo-home-macos-aarch64-build-main-${{ github.sha }}'
       - name: Cache build output
         uses: cirruslabs/cache/save@v4
+        if: 'github.ref == ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
             ./target
@@ -1170,7 +1172,7 @@ jobs:
           key: '97-cargo-home-macos-aarch64-test-${{ matrix.test_crate }}-${{ github.sha }}'
       - name: Cache build output
         uses: cirruslabs/cache/save@v4
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && github.ref == ''refs/heads/main'''
         with:
           path: |-
             ./target
@@ -1288,7 +1290,7 @@ jobs:
           key: '97-cargo-home-macos-aarch64-test-libs-${{ github.sha }}'
       - name: Cache build output
         uses: cirruslabs/cache/save@v4
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && github.ref == ''refs/heads/main'''
         with:
           path: |-
             ./target
@@ -1790,6 +1792,7 @@ jobs:
           key: '97-cargo-home-windows-x86_64-build-main-${{ github.sha }}'
       - name: Cache build output
         uses: cirruslabs/cache/save@v4
+        if: 'github.ref == ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
             ./target
@@ -1940,7 +1943,7 @@ jobs:
           key: '97-cargo-home-windows-x86_64-test-${{ matrix.test_crate }}-${{ github.sha }}'
       - name: Cache build output
         uses: cirruslabs/cache/save@v4
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && github.ref == ''refs/heads/main'''
         with:
           path: |-
             ./target
@@ -2035,7 +2038,7 @@ jobs:
           key: '97-cargo-home-windows-x86_64-test-libs-${{ github.sha }}'
       - name: Cache build output
         uses: cirruslabs/cache/save@v4
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && github.ref == ''refs/heads/main'''
         with:
           path: |-
             ./target
@@ -2537,6 +2540,7 @@ jobs:
           key: '97-cargo-home-windows-aarch64-build-main-${{ github.sha }}'
       - name: Cache build output
         uses: cirruslabs/cache/save@v4
+        if: 'github.ref == ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
             ./target
@@ -2687,7 +2691,7 @@ jobs:
           key: '97-cargo-home-windows-aarch64-test-${{ matrix.test_crate }}-${{ github.sha }}'
       - name: Cache build output
         uses: cirruslabs/cache/save@v4
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && github.ref == ''refs/heads/main'''
         with:
           path: |-
             ./target
@@ -3373,6 +3377,7 @@ jobs:
           key: '97-cargo-home-linux-x86_64-build-main-${{ github.sha }}'
       - name: Cache build output
         uses: cirruslabs/cache/save@v4
+        if: 'github.ref == ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
             ./target
@@ -3611,7 +3616,7 @@ jobs:
           key: '97-cargo-home-linux-x86_64-test-${{ matrix.test_crate }}-${{ github.sha }}'
       - name: Cache build output
         uses: cirruslabs/cache/save@v4
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && github.ref == ''refs/heads/main'''
         with:
           path: |-
             ./target
@@ -3912,6 +3917,7 @@ jobs:
           key: '97-cargo-home-linux-x86_64-build-main-${{ github.sha }}'
       - name: Cache build output
         uses: cirruslabs/cache/save@v4
+        if: 'github.ref == ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
             ./target
@@ -4152,7 +4158,7 @@ jobs:
           key: '97-cargo-home-linux-x86_64-test-${{ matrix.test_crate }}-${{ github.sha }}'
       - name: Cache build output
         uses: cirruslabs/cache/save@v4
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && github.ref == ''refs/heads/main'''
         with:
           path: |-
             ./target
@@ -4244,7 +4250,7 @@ jobs:
           key: '97-cargo-home-linux-x86_64-build-libs-${{ github.sha }}'
       - name: Cache build output
         uses: cirruslabs/cache/save@v4
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && github.ref == ''refs/heads/main'''
         with:
           path: |-
             ./target
@@ -4365,6 +4371,7 @@ jobs:
           key: '97-cargo-home-linux-aarch64-build-main-${{ github.sha }}'
       - name: Cache build output
         uses: cirruslabs/cache/save@v4
+        if: 'github.ref == ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
             ./target
@@ -4527,7 +4534,7 @@ jobs:
           key: '97-cargo-home-linux-aarch64-test-${{ matrix.test_crate }}-${{ github.sha }}'
       - name: Cache build output
         uses: cirruslabs/cache/save@v4
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && github.ref == ''refs/heads/main'''
         with:
           path: |-
             ./target
@@ -4628,7 +4635,7 @@ jobs:
           key: '97-cargo-home-linux-aarch64-test-libs-${{ github.sha }}'
       - name: Cache build output
         uses: cirruslabs/cache/save@v4
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && github.ref == ''refs/heads/main'''
         with:
           path: |-
             ./target
@@ -5245,6 +5252,7 @@ jobs:
           key: '97-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-lint-${{ github.sha }}'
       - name: Cache build output
         uses: cirruslabs/cache/save@v4
+        if: 'github.ref == ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
             ./target
