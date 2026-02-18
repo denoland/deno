@@ -983,9 +983,8 @@ const buildJobs = buildItems.map((rawBuildItem) => {
     additionalJobs.push(job(
       jobIdForJob("test"),
       {
-        name: `test ${testMatrix.test_crate} ${
-          isPr.then(testMatrix.shard_label).else("")
-        }${buildItem.profile} ${buildItem.os}-${buildItem.arch}`,
+        name:
+          `test ${testMatrix.test_crate} ${testMatrix.shard_label}${buildItem.profile} ${buildItem.os}-${buildItem.arch}`,
         needs: [buildJob],
         runsOn: buildItem.testRunner ?? buildItem.runner,
         timeoutMinutes: 240,
