@@ -1,13 +1,13 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::hash::Hasher;
+use std::io::Read;
 use std::path::Path;
 use std::path::PathBuf;
-use std::time::SystemTime;
 
 use crate::eprintln;
 
-/// A fast hasher for computing a combined hash of files and directory mtimes.
+/// A fast hasher for computing a combined hash of file contents.
 /// Uses xxhash64 for speed.
 pub struct InputHasher(twox_hash::XxHash64);
 
@@ -20,32 +20,39 @@ impl InputHasher {
     hasher
   }
 
-  /// Hash a single file's mtime. Skips if file doesn't exist.
+  /// Hash a single file's contents. Skips if file doesn't exist.
   pub fn hash_file(&mut self, path: impl AsRef<Path>) -> &mut Self {
-    if let Ok(meta) = std::fs::metadata(path.as_ref()) {
-      self.hash_mtime(meta.modified().ok());
+    if let Ok(mut file) = std::fs::File::open(path.as_ref()) {
+      self.hash_reader(&mut file);
     }
     self
   }
 
-  /// Recursively hash all file mtimes in a directory (sorted for determinism).
-  /// Skips if directory doesn't exist.
+  /// Recursively hash all file contents in a directory (sorted for
+  /// determinism). Skips if directory doesn't exist.
   pub fn hash_dir(&mut self, path: impl AsRef<Path>) -> &mut Self {
     let path = path.as_ref();
     let mut entries = Vec::new();
     collect_entries_recursive(path, &mut entries);
-    entries.sort_by(|(a, _), (b, _)| a.cmp(b));
-    for (_, mtime) in &entries {
-      self.hash_mtime(*mtime);
+    entries.sort();
+    for entry_path in &entries {
+      if let Ok(rel) = entry_path.strip_prefix(path) {
+        self.0.write(rel.as_os_str().as_encoded_bytes());
+      }
+      if let Ok(mut file) = std::fs::File::open(entry_path) {
+        self.hash_reader(&mut file);
+      }
     }
     self
   }
 
-  fn hash_mtime(&mut self, mtime: Option<SystemTime>) {
-    if let Some(mtime) = mtime
-      && let Ok(d) = mtime.duration_since(SystemTime::UNIX_EPOCH)
-    {
-      self.0.write_u64(d.as_secs());
+  fn hash_reader(&mut self, reader: &mut impl Read) {
+    let mut buf = [0u8; 8192];
+    loop {
+      match reader.read(&mut buf) {
+        Ok(0) | Err(_) => break,
+        Ok(n) => self.0.write(&buf[..n]),
+      }
     }
   }
 
@@ -54,10 +61,7 @@ impl InputHasher {
   }
 }
 
-fn collect_entries_recursive(
-  dir: &Path,
-  out: &mut Vec<(PathBuf, Option<SystemTime>)>,
-) {
+fn collect_entries_recursive(dir: &Path, out: &mut Vec<PathBuf>) {
   let entries = match std::fs::read_dir(dir) {
     Ok(entries) => entries,
     Err(_) => return,
@@ -70,8 +74,7 @@ fn collect_entries_recursive(
     if file_type.is_dir() {
       collect_entries_recursive(&entry.path(), out);
     } else {
-      let mtime = entry.metadata().ok().and_then(|m| m.modified().ok());
-      out.push((entry.path(), mtime));
+      out.push(entry.path());
     }
   }
 }
@@ -111,14 +114,16 @@ pub fn should_skip_on_ci(
 
   eprintln!("ci hash took {}ms", start.elapsed().as_millis());
 
-  if let Ok(old_hash) = std::fs::read_to_string(&hash_path)
-    && old_hash.trim() == new_hash
-  {
+  let maybe_old_hash = std::fs::read_to_string(&hash_path).ok();
+  let maybe_old_hash = maybe_old_hash.as_ref().map(|h| h.trim());
+  if maybe_old_hash == Some(&new_hash) {
     eprintln!("{name} input hash unchanged ({new_hash}), skipping");
     return true;
   }
 
-  eprintln!("{name} input hash changed, writing new hash ({new_hash})");
+  eprintln!(
+    "{name} input hash changed from {maybe_old_hash:?}, writing new hash ({new_hash})"
+  );
   std::fs::write(&hash_path, &new_hash).ok();
   false
 }
