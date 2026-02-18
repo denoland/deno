@@ -1004,12 +1004,15 @@ impl TsGoServer {
       )
       .await?;
     if let lsp::DocumentDiagnosticReport::Full(report) = &mut report {
-      report.full_document_diagnostic_report.items.retain(|diagnostic| {
-        let Some(lsp::NumberOrString::Number(code)) = &diagnostic.code else {
-          return true;
-        };
-        !IGNORED_DIAGNOSTIC_CODES.contains(&(*code as _))
-      });
+      report
+        .full_document_diagnostic_report
+        .items
+        .retain(|diagnostic| {
+          let Some(lsp::NumberOrString::Number(code)) = &diagnostic.code else {
+            return true;
+          };
+          !IGNORED_DIAGNOSTIC_CODES.contains(&(*code as _))
+        });
     }
     Ok(report)
   }
