@@ -270,6 +270,8 @@ pub struct VirtualFile {
   pub source_map_offset: Option<OffsetWithLength>,
   #[serde(rename = "t", skip_serializing_if = "Option::is_none")]
   pub mtime: Option<u128>, // mtime in milliseconds
+  #[serde(default, rename = "x", skip_serializing_if = "is_false")]
+  pub executable: bool,
 }
 
 fn is_false(value: &bool) -> bool {
@@ -794,6 +796,22 @@ impl VfsBuilder {
       .and_then(|mtime| mtime.duration_since(std::time::UNIX_EPOCH).ok())
       .map(|m| m.as_millis());
 
+    let executable = {
+      #[cfg(unix)]
+      {
+        use std::os::unix::fs::PermissionsExt;
+        // ok, fs implementation
+        #[allow(clippy::disallowed_methods)]
+        std::fs::metadata(path)
+          .map(|m| m.permissions().mode() & 0o111 != 0)
+          .unwrap_or(false)
+      }
+      #[cfg(not(unix))]
+      {
+        false
+      }
+    };
+
     dir.entries.insert_or_modify(
       &name,
       case_sensitivity,
@@ -806,6 +824,7 @@ impl VfsBuilder {
           cjs_export_analysis_offset,
           source_map_offset,
           mtime,
+          executable,
         })
       },
       |entry| match entry {

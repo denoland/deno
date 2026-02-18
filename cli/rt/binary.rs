@@ -25,6 +25,7 @@ use deno_lib::standalone::binary::Metadata;
 use deno_lib::standalone::binary::RemoteModuleEntry;
 use deno_lib::standalone::binary::SpecifierDataStore;
 use deno_lib::standalone::binary::SpecifierId;
+use deno_lib::standalone::virtual_fs::VfsEntry;
 use deno_lib::standalone::virtual_fs::VirtualDirectory;
 use deno_lib::standalone::virtual_fs::VirtualDirectoryEntries;
 use deno_media_type::MediaType;
@@ -114,6 +115,199 @@ pub fn extract_standalone(
     root_path,
     vfs,
   })
+}
+
+/// Extracts the embedded file system to disk for a self-extracting
+/// executable.
+///
+/// Returns the path to the extraction directory, which should be used
+/// as the root_path for module resolution.
+pub fn extract_vfs_to_disk(
+  vfs: &FileBackedVfs,
+  hash_str: &str,
+) -> Result<PathBuf, AnyError> {
+  let extraction_dir = choose_extraction_dir(hash_str)?;
+
+  // check if already extracted
+  let done_marker = extraction_dir.join(".done");
+  if done_marker.exists() {
+    log::debug!("Already extracted to {}", extraction_dir.display());
+    return Ok(extraction_dir);
+  }
+
+  log::debug!("Extracting to {}", extraction_dir.display());
+
+  extract_vfs_dir(vfs, vfs.root_dir(), &extraction_dir, &extraction_dir)
+    .context("Failed to extract embedded files to disk")?;
+
+  // write the done marker
+  std::fs::write(&done_marker, b"")
+    .context("Failed to write extraction done marker")?;
+
+  Ok(extraction_dir)
+}
+
+fn choose_extraction_dir(hash_str: &str) -> Result<PathBuf, AnyError> {
+  let current_exe = std::env::current_exe()
+    .context("Failed to determine current executable path")?;
+  let exe_name = current_exe
+    .file_stem()
+    .map(|s| s.to_string_lossy().into_owned())
+    .unwrap_or_else(|| "binary".to_string());
+
+  // try next to the executable first
+  if let Some(exe_dir) = current_exe.parent() {
+    let dir = exe_dir.join(format!("{}.vfs", exe_name)).join(hash_str);
+    match std::fs::create_dir_all(&dir) {
+      Ok(()) => return Ok(dir),
+      Err(err) => {
+        log::debug!(
+          "Could not create extraction dir next to executable ({}), falling back to data dir: {}",
+          err,
+          dir.display()
+        );
+      }
+    }
+  }
+
+  // fall back to platform-specific data directory
+  let data_dir = get_data_local_dir()
+    .context("Failed to determine local data directory for self-extracting executable")?;
+  let dir = data_dir.join("deno-compile").join(&exe_name).join(hash_str);
+  std::fs::create_dir_all(&dir).with_context(|| {
+    format!("Failed to create extraction directory: {}", dir.display())
+  })?;
+  Ok(dir)
+}
+
+fn get_data_local_dir() -> Option<PathBuf> {
+  #[cfg(target_os = "windows")]
+  {
+    std::env::var_os("LOCALAPPDATA").map(PathBuf::from)
+  }
+  #[cfg(target_os = "macos")]
+  {
+    #[allow(clippy::disallowed_types)]
+    sys_traits::impls::RealSys
+      .env_home_dir()
+      .map(|h| h.join("Library").join("Application Support"))
+  }
+  #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+  {
+    std::env::var_os("XDG_DATA_HOME")
+      .map(PathBuf::from)
+      .or_else(|| {
+        #[allow(clippy::disallowed_types)]
+        sys_traits::impls::RealSys
+          .env_home_dir()
+          .map(|h| h.join(".local").join("share"))
+      })
+  }
+}
+
+fn extract_vfs_dir(
+  vfs: &FileBackedVfs,
+  dir: &VirtualDirectory,
+  disk_path: &Path,
+  extraction_root: &Path,
+) -> Result<(), AnyError> {
+  std::fs::create_dir_all(disk_path).with_context(|| {
+    format!("Failed to create directory: {}", disk_path.display())
+  })?;
+
+  for entry in dir.entries.iter() {
+    match entry {
+      VfsEntry::Dir(sub_dir) => {
+        extract_vfs_dir(
+          vfs,
+          sub_dir,
+          &disk_path.join(&sub_dir.name),
+          extraction_root,
+        )?;
+      }
+      VfsEntry::File(file) => {
+        let file_path = disk_path.join(&file.name);
+        let data = vfs
+          .read_file_all(file)
+          .with_context(|| format!("Failed to read VFS file: {}", file.name))?;
+        std::fs::write(&file_path, &*data).with_context(|| {
+          format!("Failed to write file: {}", file_path.display())
+        })?;
+        #[cfg(unix)]
+        if file.executable {
+          use std::os::unix::fs::PermissionsExt;
+          let perms = std::fs::Permissions::from_mode(0o755);
+          std::fs::set_permissions(&file_path, perms).with_context(|| {
+            format!(
+              "Failed to set executable permission: {}",
+              file_path.display()
+            )
+          })?;
+        }
+      }
+      VfsEntry::Symlink(symlink) => {
+        let link_path = disk_path.join(&symlink.name);
+        // symlink dest_parts are relative to the VFS root,
+        // so resolve them relative to the extraction root
+        let absolute_target = symlink.resolve_dest_from_root(extraction_root);
+        create_symlink(&absolute_target, &link_path)?;
+      }
+    }
+  }
+
+  Ok(())
+}
+
+fn create_symlink(target: &Path, link_path: &Path) -> Result<(), AnyError> {
+  // remove any existing file/symlink at the path
+  if link_path.exists() || link_path.symlink_metadata().is_ok() {
+    let _ = std::fs::remove_file(link_path);
+  }
+
+  #[cfg(unix)]
+  {
+    std::os::unix::fs::symlink(target, link_path).with_context(|| {
+      format!(
+        "Failed to create symlink: {} -> {}",
+        link_path.display(),
+        target.display()
+      )
+    })?;
+  }
+  #[cfg(windows)]
+  {
+    // on Windows, symlinks may require elevated privileges, so fall back
+    // to copying the target file if symlink creation fails
+    if std::os::windows::fs::symlink_file(target, link_path).is_err()
+      && let Ok(resolved) = link_path
+        .parent()
+        .unwrap_or(Path::new("."))
+        .join(target)
+        .canonicalize()
+    {
+      if resolved.is_file() {
+        std::fs::copy(&resolved, link_path).with_context(|| {
+          format!(
+            "Failed to copy file as symlink fallback: {} -> {}",
+            resolved.display(),
+            link_path.display()
+          )
+        })?;
+      } else if resolved.is_dir() {
+        std::os::windows::fs::symlink_dir(target, link_path).with_context(
+          || {
+            format!(
+              "Failed to create dir symlink: {} -> {}",
+              link_path.display(),
+              target.display()
+            )
+          },
+        )?;
+      }
+    }
+  }
+
+  Ok(())
 }
 
 fn find_section() -> Result<&'static [u8], AnyError> {
