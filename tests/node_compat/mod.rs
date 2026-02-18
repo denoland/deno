@@ -118,6 +118,17 @@ struct CollectedResult {
 }
 
 fn main() {
+  if test_util::hash::should_skip_on_ci("node_compat", |hasher| {
+    let tests = test_util::tests_path();
+    hasher
+      .hash_dir(tests.join("node_compat"))
+      .hash_dir(tests.join("util"))
+      .hash_file(test_util::deno_exe_path())
+      .hash_file(test_util::test_server_path());
+  }) {
+    return;
+  }
+
   let cli_args = parse_cli_args();
   let config = load_config();
   let mut category = if cli_args.report {

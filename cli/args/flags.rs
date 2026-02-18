@@ -2313,6 +2313,13 @@ Don't error if the audit data can't be retrieved from the registry
           .help("Return exit code 0 if remote service(s) responds with an error.")
           .action(ArgAction::SetTrue)
       )
+      .arg(
+        Arg::new("ignore")
+          .long("ignore")
+          .help("Ignore advisories matching the given CVE IDs")
+          .action(ArgAction::Append)
+          .value_name("CVE")
+      )
   })
 }
 
@@ -5762,7 +5769,10 @@ fn audit_parse(
   let dev = true;
   let prod = true;
   let optional = true;
-  let ignore = vec![];
+  let ignore = matches
+    .remove_many::<String>("ignore")
+    .map(|v| v.collect())
+    .unwrap_or_default();
 
   flags.subcommand = DenoSubcommand::Audit(AuditFlags {
     severity,

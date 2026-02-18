@@ -246,6 +246,20 @@ struct StepMetaData {
 }
 
 pub fn main() {
+  if test_util::hash::should_skip_on_ci("specs", |hasher| {
+    let tests = test_util::tests_path();
+    hasher
+      .hash_dir(tests.join("specs"))
+      .hash_dir(tests.join("util"))
+      .hash_dir(tests.join("testdata"))
+      .hash_dir(tests.join("registry"))
+      .hash_file(test_util::deno_exe_path())
+      .hash_file(test_util::test_server_path())
+      .hash_file(test_util::denort_exe_path());
+  }) {
+    return;
+  }
+
   let root_category =
     collect_tests_or_exit::<serde_json::Value>(CollectOptions {
       base: tests_path().join("specs").to_path_buf(),

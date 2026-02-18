@@ -18,6 +18,7 @@ pub mod assertions;
 mod builders;
 pub mod consts;
 mod fs;
+pub mod hash;
 #[cfg(feature = "lsp")]
 pub mod lsp;
 mod macros;
