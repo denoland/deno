@@ -1076,7 +1076,6 @@ fn granular_unstable_features() {
       "--output",
       &exe.to_string_lossy(),
       "--unstable-kv",
-      "--unstable-temporal",
       "./compile/unstable_features.ts",
     ])
     .run();

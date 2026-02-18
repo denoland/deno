@@ -5329,12 +5329,8 @@
       "invalid-realm.tentative.window.html": false
     },
     "writable-streams": {
-      "aborting.any.html": [
-        "recursive abort() call from abort() aborting signal"
-      ],
-      "aborting.any.worker.html": [
-        "recursive abort() call from abort() aborting signal"
-      ],
+      "aborting.any.html": true,
+      "aborting.any.worker.html": true,
       "bad-strategies.any.html": true,
       "bad-strategies.any.worker.html": true,
       "bad-underlying-sinks.any.html": true,

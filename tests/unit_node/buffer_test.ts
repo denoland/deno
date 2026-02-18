@@ -1,5 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-import { Buffer, constants } from "node:buffer";
+import { Buffer, constants, File as BufferFile } from "node:buffer";
 import { assertEquals, assertThrows } from "@std/assert";
 import { strictEqual } from "node:assert";
 
@@ -701,5 +701,19 @@ Deno.test({
 
     const buf3 = Buffer.from("123😁aa", "hex");
     assertEquals(buf3, Buffer.from([0x12]));
+  },
+});
+
+Deno.test({
+  name: "[node/buffer] File is exported from node:buffer",
+  fn() {
+    assertEquals(typeof BufferFile, "function");
+    const file = new BufferFile(["hello"], "hello.txt", {
+      type: "text/plain",
+    });
+    assertEquals(file.name, "hello.txt");
+    assertEquals(file.type, "text/plain");
+    assertEquals(file.size, 5);
+    assertEquals(file instanceof Blob, true);
   },
 });

@@ -149,7 +149,7 @@ mod npm {
     npm_url: Url,
     body: serde_json::Value,
   ) -> Result<AuditResponse, AnyError> {
-    let url = npm_url.join("/-/npm/v1/security/audits").unwrap();
+    let url = npm_url.join("-/npm/v1/security/audits").unwrap();
     let future = client.post_json(url, &body)?.send().boxed_local();
     let response = future.await?;
     let json_str = http_util::body_to_string(response)
@@ -319,13 +319,37 @@ mod npm {
     // Merge all responses into a single response
     let response = merge_responses(responses);
 
-    let vulns = response.metadata.vulnerabilities;
+    let mut advisories = response.advisories.values().collect::<Vec<_>>();
+
+    // Filter out ignored CVEs
+    if !audit_flags.ignore.is_empty() {
+      advisories.retain(|adv| {
+        !adv.cves.iter().any(|cve| audit_flags.ignore.contains(cve))
+      });
+    }
+
+    // Compute vulnerability counts from remaining advisories
+    let mut vulns = AuditVulnerabilities {
+      low: 0,
+      moderate: 0,
+      high: 0,
+      critical: 0,
+    };
+    for adv in &advisories {
+      match AdvisorySeverity::parse(&adv.severity) {
+        Some(AdvisorySeverity::Low) => vulns.low += 1,
+        Some(AdvisorySeverity::Moderate) => vulns.moderate += 1,
+        Some(AdvisorySeverity::High) => vulns.high += 1,
+        Some(AdvisorySeverity::Critical) => vulns.critical += 1,
+        None => {}
+      }
+    }
+
     if vulns.total() == 0 {
       _ = writeln!(&mut std::io::stdout(), "No known vulnerabilities found",);
       return Ok(0);
     }
 
-    let mut advisories = response.advisories.values().collect::<Vec<_>>();
     advisories.sort_by_cached_key(|adv| {
       format!("{}@{}", adv.module_name, adv.vulnerable_versions)
     });
@@ -489,8 +513,9 @@ mod npm {
     pub id: i32,
     pub title: String,
     pub findings: Vec<AdvisoryFinding>,
+    #[serde(default)]
+    pub cves: Vec<String>,
     // TODO(bartlomieju): currently not used, commented out so it's not flagged by clippy
-    // pub cves: Vec<String>,
     // pub cwe: Vec<String>,
     pub severity: String,
     pub url: String,

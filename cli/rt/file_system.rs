@@ -269,6 +269,15 @@ impl FileSystem for DenoRtSys {
     RealFs.remove_async(path, recursive).await
   }
 
+  fn rmdir_sync(&self, path: &CheckedPath) -> FsResult<()> {
+    self.error_if_in_vfs(path)?;
+    RealFs.rmdir_sync(path)
+  }
+  async fn rmdir_async(&self, path: CheckedPathBuf) -> FsResult<()> {
+    self.error_if_in_vfs(&path)?;
+    RealFs.rmdir_async(path).await
+  }
+
   fn copy_file_sync(
     &self,
     oldpath: &CheckedPath,
@@ -1353,6 +1362,13 @@ impl deno_io::fs::File for FileBackedVfsFile {
     Err(FsError::NotSupported)
   }
   async fn lock_async(self: Rc<Self>, _exclusive: bool) -> FsResult<()> {
+    Err(FsError::NotSupported)
+  }
+
+  fn try_lock_sync(self: Rc<Self>, _exclusive: bool) -> FsResult<bool> {
+    Err(FsError::NotSupported)
+  }
+  async fn try_lock_async(self: Rc<Self>, _exclusive: bool) -> FsResult<bool> {
     Err(FsError::NotSupported)
   }
 
