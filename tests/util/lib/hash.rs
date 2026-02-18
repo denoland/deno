@@ -35,8 +35,12 @@ impl InputHasher {
     let mut entries = Vec::new();
     collect_entries_recursive(path, &mut entries);
     entries.sort_by(|(a, _), (b, _)| a.cmp(b));
-    for (_, mtime) in &entries {
+    for (entry_path, mtime) in &entries {
+      if let Ok(rel) = entry_path.strip_prefix(path) {
+        self.0.write(rel.as_os_str().as_encoded_bytes());
+      }
       self.hash_mtime(*mtime);
+      eprintln!("{} {:?}", entry_path.display(), mtime);
     }
     self
   }
