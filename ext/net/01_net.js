@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import { core, primordials } from "ext:core/mod.js";
 const {
@@ -52,6 +52,7 @@ const {
   SetPrototypeDelete,
   SetPrototypeForEach,
   SymbolAsyncIterator,
+  SymbolDispose,
   Symbol,
   TypeError,
   TypedArrayPrototypeSubarray,
@@ -65,7 +66,6 @@ import {
   writableStreamForRid,
 } from "ext:deno_web/06_streams.js";
 import * as abortSignal from "ext:deno_web/03_abort_signal.js";
-import { SymbolDispose } from "ext:deno_web/00_infra.js";
 
 async function write(rid, data) {
   return await core.write(rid, data);
@@ -87,7 +87,7 @@ async function resolveDns(query, recordType, options) {
       query,
       recordType,
       options,
-    });
+    }, /* useEdns0 */ true);
     return ArrayPrototypeMap(res, (recordWithTtl) => recordWithTtl.data);
   } finally {
     if (options?.signal) {
@@ -257,6 +257,17 @@ class UnixConn extends Conn {
 class VsockConn extends Conn {
   constructor(rid, remoteAddr, localAddr) {
     super(rid, remoteAddr, localAddr);
+    ObjectDefineProperty(this, internalRidSymbol, {
+      __proto__: null,
+      enumerable: false,
+      value: rid,
+    });
+  }
+}
+
+class PipeConn extends Conn {
+  constructor(rid) {
+    super(rid, null, null);
     ObjectDefineProperty(this, internalRidSymbol, {
       __proto__: null,
       enumerable: false,
@@ -749,6 +760,7 @@ export {
   listen,
   Listener,
   listenOptionApiName,
+  PipeConn,
   resolveDns,
   setDatagramBroadcast,
   setMulticastLoopback,

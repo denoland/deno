@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::cell::RefCell;
 
@@ -86,11 +86,11 @@ impl GPUCanvasContext {
   }
 
   #[getter]
-  #[global]
   fn canvas(&self) -> v8::Global<v8::Object> {
     self.canvas.clone()
   }
 
+  #[undefined]
   fn configure(
     &self,
     #[webidl] configuration: GPUCanvasConfiguration,
@@ -136,13 +136,14 @@ impl GPUCanvasContext {
   }
 
   #[fast]
+  #[undefined]
   fn unconfigure(&self) {
     *self.config.borrow_mut() = None;
   }
 
   fn get_current_texture<'s>(
     &self,
-    scope: &mut v8::HandleScope<'s>,
+    scope: &mut v8::PinScope<'s, '_>,
   ) -> Result<v8::Local<'s, v8::Object>, SurfaceError> {
     let config = self.config.borrow();
     let Some(config) = config.as_ref() else {
@@ -162,7 +163,7 @@ impl GPUCanvasContext {
 
     match output.status {
       SurfaceStatus::Good | SurfaceStatus::Suboptimal => {
-        let id = output.texture_id.unwrap();
+        let id = output.texture.unwrap();
 
         let texture = GPUTexture {
           instance: config.device.instance.clone(),
@@ -170,6 +171,7 @@ impl GPUCanvasContext {
           id,
           device_id: config.device.id,
           queue_id: config.device.queue,
+          default_view_id: Default::default(),
           label: "".to_string(),
           size: wgpu_types::Extent3d {
             width: *self.width.borrow(),
@@ -195,7 +197,7 @@ impl GPUCanvasContext {
 impl GPUCanvasContext {
   pub fn present(
     &self,
-    scope: &mut v8::HandleScope,
+    scope: &mut v8::PinScope<'_, '_>,
   ) -> Result<(), SurfaceError> {
     let config = self.config.borrow();
     let Some(config) = config.as_ref() else {

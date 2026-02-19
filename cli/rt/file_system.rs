@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -267,6 +267,15 @@ impl FileSystem for DenoRtSys {
   ) -> FsResult<()> {
     self.error_if_in_vfs(&path)?;
     RealFs.remove_async(path, recursive).await
+  }
+
+  fn rmdir_sync(&self, path: &CheckedPath) -> FsResult<()> {
+    self.error_if_in_vfs(path)?;
+    RealFs.rmdir_sync(path)
+  }
+  async fn rmdir_async(&self, path: CheckedPathBuf) -> FsResult<()> {
+    self.error_if_in_vfs(&path)?;
+    RealFs.rmdir_async(path).await
   }
 
   fn copy_file_sync(
@@ -546,6 +555,7 @@ impl sys_traits::BaseFsRead for DenoRtSys {
         // we should flip this so that the `deno_fs::FileSystem` implementation uses `sys_traits`
         // rather than this calling into `deno_fs::FileSystem`
         &CheckedPath::unsafe_new(Cow::Borrowed(path)),
+        OpenOptions::read(),
       )
       .map_err(|err| err.into_io_error())
   }
@@ -1254,6 +1264,12 @@ impl FileBackedVfsFile {
 
 #[async_trait::async_trait(?Send)]
 impl deno_io::fs::File for FileBackedVfsFile {
+  fn maybe_path(&self) -> Option<&Path> {
+    // ok because a vfs file will never be written to and this
+    // method is only used for checking write permissions
+    None
+  }
+
   fn read_sync(self: Rc<Self>, buf: &mut [u8]) -> FsResult<usize> {
     self.read_to_buf(buf).map_err(Into::into)
   }
@@ -1346,6 +1362,13 @@ impl deno_io::fs::File for FileBackedVfsFile {
     Err(FsError::NotSupported)
   }
   async fn lock_async(self: Rc<Self>, _exclusive: bool) -> FsResult<()> {
+    Err(FsError::NotSupported)
+  }
+
+  fn try_lock_sync(self: Rc<Self>, _exclusive: bool) -> FsResult<bool> {
+    Err(FsError::NotSupported)
+  }
+  async fn try_lock_async(self: Rc<Self>, _exclusive: bool) -> FsResult<bool> {
     Err(FsError::NotSupported)
   }
 
@@ -1443,13 +1466,13 @@ impl FileBackedVfsMetadata {
       blksize: 0,
       size: self.len,
       dev: 0,
-      ino: 0,
+      ino: None,
       mode: 0,
-      nlink: 0,
+      nlink: None,
       uid: 0,
       gid: 0,
       rdev: 0,
-      blocks: 0,
+      blocks: None,
       is_block_device: false,
       is_char_device: false,
       is_fifo: false,

@@ -1,10 +1,12 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 #![deny(clippy::print_stderr)]
 #![deny(clippy::print_stdout)]
 #![deny(clippy::unused_async)]
 #![deny(clippy::unnecessary_wraps)]
 
+use std::collections::BTreeMap;
+use std::io::ErrorKind;
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -12,7 +14,6 @@ use boxed_error::Boxed;
 use deno_error::JsError;
 use deno_semver::StackString;
 use deno_semver::VersionReq;
-use deno_semver::VersionReqSpecifierParseError;
 use deno_semver::npm::NpmVersionReqParseError;
 use deno_semver::package::PackageReq;
 use indexmap::IndexMap;
@@ -30,9 +31,27 @@ pub type PackageJsonDepsRc = deno_maybe_sync::MaybeArc<PackageJsonDeps>;
 #[allow(clippy::disallowed_types)]
 type PackageJsonDepsRcCell = deno_maybe_sync::MaybeOnceLock<PackageJsonDepsRc>;
 
+pub enum PackageJsonCacheResult {
+  Hit(Option<PackageJsonRc>),
+  NotCached,
+}
+
 pub trait PackageJsonCache {
-  fn get(&self, path: &Path) -> Option<PackageJsonRc>;
-  fn set(&self, path: PathBuf, package_json: PackageJsonRc);
+  fn get(&self, path: &Path) -> PackageJsonCacheResult;
+  fn set(&self, path: PathBuf, package_json: Option<PackageJsonRc>);
+}
+
+#[derive(Debug, Clone)]
+pub enum PackageJsonBins {
+  Directory(PathBuf),
+  Bins(BTreeMap<String, PathBuf>),
+}
+
+#[derive(Debug, Clone, Error, JsError, PartialEq, Eq)]
+#[class(generic)]
+#[error("'{}' did not have a name", pkg_json_path.display())]
+pub struct MissingPkgJsonNameError {
+  pkg_json_path: PathBuf,
 }
 
 #[derive(Debug, Clone, JsError, PartialEq, Eq, Boxed)]
@@ -45,12 +64,12 @@ pub enum PackageJsonDepValueParseErrorKind {
   #[class(inherit)]
   #[error(transparent)]
   VersionReq(#[from] NpmVersionReqParseError),
-  #[class(inherit)]
-  #[error(transparent)]
-  JsrVersionReq(#[from] VersionReqSpecifierParseError),
   #[class(type)]
   #[error("Not implemented scheme '{scheme}'")]
   Unsupported { scheme: String },
+  #[class(inherit)]
+  #[error(transparent)]
+  JsrRequiresScope(#[from] JsrDepPackageParseError),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -65,12 +84,69 @@ pub enum PackageJsonDepWorkspaceReq {
   VersionReq(VersionReq),
 }
 
+/// Error returned when a JSR specifier doesn't have a valid `@scope/name`
+/// format.
+#[derive(Debug, Clone, Error, JsError, PartialEq, Eq)]
+#[class(type)]
+#[error("JSR package name '{name}' requires a scope (e.g. @scope/name)")]
+pub struct JsrDepPackageParseError {
+  pub name: String,
+}
+
+/// Parses a JSR specifier value (the part after the `jsr:` prefix) into an
+/// npm-style package name and version string.
+///
+/// If the value starts with `@`, it's parsed as `@scope/name[@version]`.
+/// Otherwise, `fallback_name` is used as the JSR package name and the
+/// value is treated as a version string.
+pub fn parse_jsr_dep_value<'a>(
+  fallback_name: &'a str,
+  jsr_value: &'a str,
+) -> Result<(StackString, &'a str), JsrDepPackageParseError> {
+  let (jsr_name, version_str) = if jsr_value.starts_with('@') {
+    if let Some((name, version)) = jsr_value.rsplit_once('@') {
+      if name.is_empty() {
+        (jsr_value, "*")
+      } else {
+        (name, version)
+      }
+    } else {
+      (jsr_value, "*")
+    }
+  } else if let Some((name, version)) = jsr_value.split_once('@') {
+    // unscoped name with version, e.g. "test@*"
+    (name, version)
+  } else {
+    // bare version string, e.g. "^1" — derive name from key
+    (fallback_name, jsr_value)
+  };
+
+  let Some((scope, name)) = jsr_name
+    .strip_prefix('@')
+    .and_then(|rest| rest.split_once('/'))
+  else {
+    return Err(JsrDepPackageParseError {
+      name: jsr_name.to_string(),
+    });
+  };
+
+  let npm_name =
+    capacity_builder::StringBuilder::<StackString>::build(|builder| {
+      builder.append("@jsr/");
+      builder.append(scope);
+      builder.append("__");
+      builder.append(name);
+    })
+    .unwrap();
+
+  Ok((npm_name, version_str))
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum PackageJsonDepValue {
   File(String),
   Req(PackageReq),
   Workspace(PackageJsonDepWorkspaceReq),
-  JsrReq(PackageReq),
 }
 
 impl PackageJsonDepValue {
@@ -78,79 +154,61 @@ impl PackageJsonDepValue {
     key: &str,
     value: &str,
   ) -> Result<Self, PackageJsonDepValueParseError> {
-    /// Gets the name and raw version constraint for a registry info or
-    /// package.json dependency entry taking into account npm package aliases.
-    fn parse_dep_entry_name_and_raw_version<'a>(
-      key: &'a str,
-      value: &'a str,
-    ) -> (&'a str, &'a str) {
-      if let Some(package_and_version) = value.strip_prefix("npm:") {
-        if let Some((name, version)) = package_and_version.rsplit_once('@') {
-          // if empty, then the name was scoped and there's no version
-          if name.is_empty() {
-            (package_and_version, "*")
-          } else {
-            (name, version)
-          }
-        } else {
-          (package_and_version, "*")
+    fn from_name_and_version_req(
+      name: StackString,
+      version_req: &str,
+    ) -> Result<PackageJsonDepValue, PackageJsonDepValueParseError> {
+      match VersionReq::parse_from_npm(version_req) {
+        Ok(version_req) => {
+          Ok(PackageJsonDepValue::Req(PackageReq { name, version_req }))
         }
-      } else {
-        (key, value)
+        Err(err) => {
+          Err(PackageJsonDepValueParseErrorKind::VersionReq(err).into_box())
+        }
       }
     }
 
-    if let Some(workspace_key) = value.strip_prefix("workspace:") {
-      let workspace_req = match workspace_key {
-        "~" => PackageJsonDepWorkspaceReq::Tilde,
-        "^" => PackageJsonDepWorkspaceReq::Caret,
-        _ => PackageJsonDepWorkspaceReq::VersionReq(
-          VersionReq::parse_from_npm(workspace_key)?,
+    if let Some((scheme, value)) = value.split_once(':') {
+      match scheme {
+        "file" => Ok(Self::File(value.to_string())),
+        "jsr" => {
+          let (npm_name, version_req) = parse_jsr_dep_value(key, value)
+            .map_err(|e| {
+              PackageJsonDepValueParseErrorKind::JsrRequiresScope(e).into_box()
+            })?;
+          from_name_and_version_req(npm_name, version_req)
+        }
+        "npm" => {
+          if let Some((name, version)) = value.rsplit_once('@') {
+            // if empty, then the name was scoped and there's no version
+            if name.is_empty() {
+              from_name_and_version_req(value.into(), "*")
+            } else {
+              from_name_and_version_req(name.into(), version)
+            }
+          } else {
+            from_name_and_version_req(value.into(), "*")
+          }
+        }
+        "workspace" => {
+          let workspace_req = match value {
+            "~" => PackageJsonDepWorkspaceReq::Tilde,
+            "^" => PackageJsonDepWorkspaceReq::Caret,
+            _ => PackageJsonDepWorkspaceReq::VersionReq(
+              VersionReq::parse_from_npm(value)?,
+            ),
+          };
+          Ok(Self::Workspace(workspace_req))
+        }
+        scheme => Err(
+          PackageJsonDepValueParseErrorKind::Unsupported {
+            scheme: scheme.to_string(),
+          }
+          .into_box(),
         ),
-      };
-      return Ok(Self::Workspace(workspace_req));
-    } else if let Some(raw_jsr_req) = value.strip_prefix("jsr:") {
-      let (name, version_req) =
-        parse_dep_entry_name_and_raw_version(key, raw_jsr_req);
-      let result = VersionReq::parse_from_specifier(version_req);
-      match result {
-        Ok(version_req) => {
-          return Ok(Self::JsrReq(PackageReq {
-            name: name.into(),
-            version_req,
-          }));
-        }
-        Err(err) => {
-          return Err(
-            PackageJsonDepValueParseErrorKind::JsrVersionReq(err).into_box(),
-          );
-        }
       }
-    }
-    if value.starts_with("git:")
-      || value.starts_with("http:")
-      || value.starts_with("https:")
-    {
-      return Err(
-        PackageJsonDepValueParseErrorKind::Unsupported {
-          scheme: value.split(':').next().unwrap().to_string(),
-        }
-        .into_box(),
-      );
-    }
-    if let Some(path) = value.strip_prefix("file:") {
-      return Ok(Self::File(path.to_string()));
-    }
-    let (name, version_req) = parse_dep_entry_name_and_raw_version(key, value);
-    let result = VersionReq::parse_from_npm(version_req);
-    match result {
-      Ok(version_req) => Ok(Self::Req(PackageReq {
-        name: name.into(),
-        version_req,
-      })),
-      Err(err) => {
-        Err(PackageJsonDepValueParseErrorKind::VersionReq(err).into_box())
-      }
+    } else {
+      from_name_and_version_req(key.into(), value)
     }
   }
 }
@@ -227,10 +285,13 @@ pub struct PackageJson {
   pub peer_dependencies: Option<IndexMap<String, String>>,
   pub peer_dependencies_meta: Option<Value>,
   pub optional_dependencies: Option<IndexMap<String, String>>,
+  pub directories: Option<Map<String, Value>>,
   pub scripts: Option<IndexMap<String, String>>,
   pub workspaces: Option<Vec<String>>,
   pub os: Option<Vec<String>>,
   pub cpu: Option<Vec<String>>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub overrides: Option<Map<String, Value>>,
   #[serde(skip_serializing)]
   resolved_deps: PackageJsonDepsRcCell,
 }
@@ -240,24 +301,36 @@ impl PackageJson {
     sys: &impl FsRead,
     maybe_cache: Option<&dyn PackageJsonCache>,
     path: &Path,
-  ) -> Result<PackageJsonRc, PackageJsonLoadError> {
-    match maybe_cache.and_then(|c| c.get(path)) {
-      Some(item) => Ok(item),
-      _ => match sys.fs_read_to_string_lossy(path) {
-        Ok(file_text) => {
-          let pkg_json =
-            PackageJson::load_from_string(path.to_path_buf(), &file_text)?;
-          let pkg_json = deno_maybe_sync::new_rc(pkg_json);
-          if let Some(cache) = maybe_cache {
-            cache.set(path.to_path_buf(), pkg_json.clone());
+  ) -> Result<Option<PackageJsonRc>, PackageJsonLoadError> {
+    let cache_entry = maybe_cache
+      .map(|c| c.get(path))
+      .unwrap_or(PackageJsonCacheResult::NotCached);
+
+    match cache_entry {
+      PackageJsonCacheResult::Hit(item) => Ok(item),
+      PackageJsonCacheResult::NotCached => {
+        match sys.fs_read_to_string_lossy(path) {
+          Ok(file_text) => {
+            let pkg_json =
+              PackageJson::load_from_string(path.to_path_buf(), &file_text)?;
+            let pkg_json = deno_maybe_sync::new_rc(pkg_json);
+            if let Some(cache) = maybe_cache {
+              cache.set(path.to_path_buf(), Some(pkg_json.clone()));
+            }
+            Ok(Some(pkg_json))
           }
-          Ok(pkg_json)
+          Err(err) if err.kind() == ErrorKind::NotFound => {
+            if let Some(cache) = maybe_cache {
+              cache.set(path.to_path_buf(), None);
+            }
+            Ok(None)
+          }
+          Err(err) => Err(PackageJsonLoadError::Io {
+            path: path.to_path_buf(),
+            source: err,
+          }),
         }
-        Err(err) => Err(PackageJsonLoadError::Io {
-          path: path.to_path_buf(),
-          source: err,
-        }),
-      },
+      }
     }
   }
 
@@ -285,10 +358,12 @@ impl PackageJson {
         peer_dependencies: None,
         peer_dependencies_meta: None,
         optional_dependencies: None,
+        directories: None,
         scripts: None,
         workspaces: None,
         os: None,
         cpu: None,
+        overrides: None,
         resolved_deps: Default::default(),
       });
     }
@@ -372,10 +447,10 @@ impl PackageJson {
       .map(|exports| {
         if is_conditional_exports_main_sugar(&exports)? {
           let mut map = Map::new();
-          map.insert(".".to_string(), exports.to_owned());
+          map.insert(".".to_string(), exports);
           Ok::<_, PackageJsonLoadError>(Some(map))
         } else {
-          Ok(exports.as_object().map(|o| o.to_owned()))
+          Ok(map_object(exports))
         }
       })
       .transpose()?
@@ -406,6 +481,8 @@ impl PackageJson {
       .remove("optionalDependencies")
       .and_then(parse_string_map);
 
+    let directories: Option<Map<String, Value>> =
+      package_json.remove("directories").and_then(map_object);
     let scripts: Option<IndexMap<String, String>> =
       package_json.remove("scripts").and_then(parse_string_map);
 
@@ -429,14 +506,14 @@ impl PackageJson {
       .remove("typings")
       .or_else(|| package_json.remove("types"))
       .and_then(map_string);
-    let types_versions = package_json
-      .remove("typesVersions")
-      .and_then(|exports| exports.as_object().map(|o| o.to_owned()));
+    let types_versions =
+      package_json.remove("typesVersions").and_then(map_object);
     let workspaces = package_json
       .remove("workspaces")
       .and_then(parse_string_array);
     let os = package_json.remove("os").and_then(parse_string_array);
     let cpu = package_json.remove("cpu").and_then(parse_string_array);
+    let overrides = package_json.remove("overrides").and_then(map_object);
 
     Ok(PackageJson {
       path,
@@ -457,10 +534,12 @@ impl PackageJson {
       peer_dependencies,
       peer_dependencies_meta,
       optional_dependencies,
+      directories,
       scripts,
       workspaces,
       os,
       cpu,
+      overrides,
       resolved_deps: Default::default(),
     })
   }
@@ -494,6 +573,53 @@ impl PackageJson {
         dev_dependencies: get_map(self.dev_dependencies.as_ref()),
       })
     })
+  }
+
+  pub fn resolve_default_bin_name(
+    &self,
+  ) -> Result<&str, MissingPkgJsonNameError> {
+    let Some(name) = &self.name else {
+      return Err(MissingPkgJsonNameError {
+        pkg_json_path: self.path.clone(),
+      });
+    };
+    let name = name.split("/").last().unwrap();
+    Ok(name)
+  }
+
+  pub fn resolve_bins(
+    &self,
+  ) -> Result<PackageJsonBins, MissingPkgJsonNameError> {
+    match &self.bin {
+      Some(Value::String(path)) => {
+        let name = self.resolve_default_bin_name()?;
+        Ok(PackageJsonBins::Bins(BTreeMap::from([(
+          name.to_string(),
+          self.dir_path().join(path),
+        )])))
+      }
+      Some(Value::Object(o)) => Ok(PackageJsonBins::Bins(
+        o.iter()
+          .filter_map(|(key, value)| {
+            let Value::String(path) = value else {
+              return None;
+            };
+            Some((key.clone(), self.dir_path().join(path)))
+          })
+          .collect::<BTreeMap<_, _>>(),
+      )),
+      _ => {
+        let bin_directory =
+          self.directories.as_ref().and_then(|d| d.get("bin"));
+        match bin_directory {
+          Some(Value::String(bin_dir)) => {
+            let bin_dir = self.dir_path().join(bin_dir);
+            Ok(PackageJsonBins::Directory(bin_dir))
+          }
+          _ => Ok(PackageJsonBins::Bins(Default::default())),
+        }
+      }
+    }
   }
 }
 
@@ -670,20 +796,64 @@ mod test {
     let mut package_json =
       PackageJson::load_from_string(PathBuf::from("/package.json"), "{}")
         .unwrap();
-    package_json.dependencies = Some(IndexMap::from([(
-      "@denotest/foo".to_string(),
-      "jsr:^1.2".to_string(),
-    )]));
+    package_json.dependencies = Some(IndexMap::from([
+      ("@denotest/foo".to_string(), "jsr:^1.2".to_string()),
+      ("@std/path2".to_string(), "jsr:@std/path@1".to_string()),
+      ("@std/fs".to_string(), "jsr:@std/fs".to_string()),
+      ("no-scope".to_string(), "jsr:*".to_string()),
+      ("no-scope2".to_string(), "jsr:test@*".to_string()),
+      ("@denotest/tag".to_string(), "jsr:future-tag".to_string()),
+    ]));
     let map = get_local_package_json_version_reqs_for_tests(&package_json);
     assert_eq!(
       map,
-      IndexMap::from([(
-        "@denotest/foo".to_string(),
-        Ok(PackageJsonDepValue::JsrReq(PackageReq {
-          name: "@denotest/foo".into(),
-          version_req: VersionReq::parse_from_specifier("^1.2").unwrap()
-        }))
-      )])
+      IndexMap::from([
+        (
+          "@denotest/foo".to_string(),
+          Ok(PackageJsonDepValue::Req(PackageReq {
+            name: "@jsr/denotest__foo".into(),
+            version_req: VersionReq::parse_from_specifier("^1.2").unwrap()
+          }))
+        ),
+        (
+          "@std/path2".to_string(),
+          Ok(PackageJsonDepValue::Req(PackageReq {
+            name: "@jsr/std__path".into(),
+            version_req: VersionReq::parse_from_specifier("1").unwrap()
+          }))
+        ),
+        (
+          "@std/fs".to_string(),
+          Ok(PackageJsonDepValue::Req(PackageReq {
+            name: "@jsr/std__fs".into(),
+            version_req: VersionReq::parse_from_specifier("*").unwrap()
+          }))
+        ),
+        (
+          "no-scope".to_string(),
+          Err(PackageJsonDepValueParseErrorKind::JsrRequiresScope(
+            JsrDepPackageParseError {
+              name: "no-scope".to_string()
+            }
+          ))
+        ),
+        (
+          "no-scope2".to_string(),
+          Err(PackageJsonDepValueParseErrorKind::JsrRequiresScope(
+            JsrDepPackageParseError {
+              name: "test".to_string()
+            }
+          ))
+        ),
+        (
+          "@denotest/tag".to_string(),
+          Ok(PackageJsonDepValue::Req(PackageReq {
+            name: "@jsr/denotest__tag".into(),
+            version_req: VersionReq::parse_from_specifier("future-tag")
+              .unwrap()
+          }))
+        ),
+      ])
     );
   }
 
@@ -792,6 +962,9 @@ mod test {
       "type": "module",
       "dependencies": {
         "name": "1.2",
+      },
+      "directories": {
+        "bin": "./bin",
       },
       "devDependencies": {
         "name": "1.2",

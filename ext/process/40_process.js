@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import { core, internals, primordials } from "ext:core/mod.js";
 import {
@@ -17,6 +17,7 @@ const {
   ObjectEntries,
   SafeArrayIterator,
   String,
+  SymbolAsyncDispose,
   ObjectPrototypeIsPrototypeOf,
   PromisePrototypeThen,
   SafePromiseAll,
@@ -26,11 +27,7 @@ const {
 
 import { FsFile } from "ext:deno_fs/30_fs.js";
 import { readAll } from "ext:deno_io/12_io.js";
-import {
-  assert,
-  pathFromURL,
-  SymbolAsyncDispose,
-} from "ext:deno_web/00_infra.js";
+import { assert, pathFromURL } from "ext:deno_web/00_infra.js";
 import { packageData } from "ext:deno_fetch/22_body.js";
 import * as abortSignal from "ext:deno_web/03_abort_signal.js";
 import {
@@ -165,6 +162,7 @@ function run({
 export const kExtraStdio = Symbol("extraStdio");
 export const kIpc = Symbol("ipc");
 export const kNeedsNpmProcessState = Symbol("needsNpmProcessState");
+export const kSerialization = Symbol("serialization");
 
 const illegalConstructorKey = Symbol("illegalConstructorKey");
 
@@ -181,6 +179,7 @@ function spawnChildInner(command, apiName, {
   stderr = "piped",
   windowsRawArguments = false,
   detached = false,
+  [kSerialization]: serialization = "json",
   [kExtraStdio]: extraStdio = [],
   [kIpc]: ipc = -1,
   [kNeedsNpmProcessState]: needsNpmProcessState = false,
@@ -198,6 +197,7 @@ function spawnChildInner(command, apiName, {
     stderr,
     windowsRawArguments,
     ipc,
+    serialization,
     extraStdio,
     detached,
     needsNpmProcessState,
@@ -228,9 +228,17 @@ function collectOutput(readableStream) {
 
 const _ipcPipeRid = Symbol("[[ipcPipeRid]]");
 const _extraPipeRids = Symbol("[[_extraPipeRids]]");
+const _stdinRid = Symbol("[[stdinRid]]");
+const _stdoutRid = Symbol("[[stdoutRid]]");
+const _stderrRid = Symbol("[[stderrRid]]");
 
 internals.getIpcPipeRid = (process) => process[_ipcPipeRid];
 internals.getExtraPipeRids = (process) => process[_extraPipeRids];
+internals.getStdioRids = (process) => ({
+  stdinRid: process[_stdinRid],
+  stdoutRid: process[_stdoutRid],
+  stderrRid: process[_stderrRid],
+});
 internals.kExtraStdio = kExtraStdio;
 
 class ChildProcess {
@@ -240,6 +248,9 @@ class ChildProcess {
 
   [_ipcPipeRid];
   [_extraPipeRids];
+  [_stdinRid];
+  [_stdoutRid];
+  [_stderrRid];
 
   #pid;
   get pid() {
@@ -288,6 +299,9 @@ class ChildProcess {
     this.#pid = pid;
     this[_ipcPipeRid] = ipcPipeRid;
     this[_extraPipeRids] = extraPipeRids;
+    this[_stdinRid] = stdinRid;
+    this[_stdoutRid] = stdoutRid;
+    this[_stderrRid] = stderrRid;
 
     if (stdinRid !== null) {
       this.#stdin = writableStreamForRid(stdinRid);

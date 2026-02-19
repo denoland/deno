@@ -1,4 +1,4 @@
-Check [WILDCARD]/captured_output.ts
+Check [WILDCARD]captured_output.ts
 running 1 test from ./captured_output.ts
 output ...
 ------- output -------
@@ -11,7 +11,7 @@ output ...
 4
 7
 6
-Check [WILDLINE]/captured_output.worker.ts
+Check captured_output.worker.ts
 9
 8
 [UNORDERED_END]

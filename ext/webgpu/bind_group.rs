@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 
@@ -6,8 +6,8 @@ use deno_core::GarbageCollected;
 use deno_core::WebIDL;
 use deno_core::cppgc::Ref;
 use deno_core::op2;
-use deno_core::v8::HandleScope;
 use deno_core::v8::Local;
+use deno_core::v8::PinScope;
 use deno_core::v8::Value;
 use deno_core::webidl::ContextFn;
 use deno_core::webidl::WebIdlConverter;
@@ -18,6 +18,7 @@ use crate::Instance;
 use crate::buffer::GPUBuffer;
 use crate::error::GPUGenericError;
 use crate::sampler::GPUSampler;
+use crate::texture::GPUTexture;
 use crate::texture::GPUTextureView;
 
 pub struct GPUBindGroup {
@@ -96,7 +97,9 @@ pub(crate) struct GPUBufferBinding {
 
 pub(crate) enum GPUBindingResource {
   Sampler(Ref<GPUSampler>),
+  Texture(Ref<GPUTexture>),
   TextureView(Ref<GPUTextureView>),
+  Buffer(Ref<GPUBuffer>),
   BufferBinding(GPUBufferBinding),
 }
 
@@ -104,7 +107,7 @@ impl<'a> WebIdlConverter<'a> for GPUBindingResource {
   type Options = ();
 
   fn convert<'b>(
-    scope: &mut HandleScope<'a>,
+    scope: &mut PinScope<'a, '_>,
     value: Local<'a, Value>,
     prefix: Cow<'static, str>,
     context: ContextFn<'b>,
@@ -119,6 +122,16 @@ impl<'a> WebIdlConverter<'a> for GPUBindingResource {
     )
     .map(Self::Sampler)
     .or_else(|_| {
+      <Ref<GPUTexture>>::convert(
+        scope,
+        value,
+        prefix.clone(),
+        context.borrowed(),
+        options,
+      )
+      .map(Self::Texture)
+    })
+    .or_else(|_| {
       <Ref<GPUTextureView>>::convert(
         scope,
         value,
@@ -127,6 +140,16 @@ impl<'a> WebIdlConverter<'a> for GPUBindingResource {
         options,
       )
       .map(Self::TextureView)
+    })
+    .or_else(|_| {
+      <Ref<GPUBuffer>>::convert(
+        scope,
+        value,
+        prefix.clone(),
+        context.borrowed(),
+        options,
+      )
+      .map(Self::Buffer)
     })
     .or_else(|_| {
       GPUBufferBinding::convert(scope, value, prefix, context, options)

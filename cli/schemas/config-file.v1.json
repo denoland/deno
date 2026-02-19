@@ -16,6 +16,23 @@
         "items": { "type": "string" }
       }]
     },
+    "allowDenyIgnorePermissionConfig": {
+      "type": "object",
+      "description": "Object form to allow, deny, and/or ignore permissions.",
+      "additionalProperties": false,
+      "properties": {
+        "allow": { "$ref": "#/$defs/permissionConfigValue" },
+        "deny": { "$ref": "#/$defs/permissionConfigValue" },
+        "ignore": { "$ref": "#/$defs/permissionConfigValue" }
+      }
+    },
+    "allowDenyIgnorePermissionConfigValue": {
+      "oneOf": [{
+        "$ref": "#/$defs/permissionConfigValue"
+      }, {
+        "$ref": "#/$defs/allowDenyIgnorePermissionConfig"
+      }]
+    },
     "allowDenyPermissionConfig": {
       "type": "object",
       "description": "Object form to allow and/or deny permissions.",
@@ -32,6 +49,14 @@
         "$ref": "#/$defs/allowDenyPermissionConfig"
       }]
     },
+    "allowScriptsList": {
+      "type": "array",
+      "description": "List of npm package constraints to allow or deny for lifecycle scripts.",
+      "items": {
+        "type": "string",
+        "pattern": "^(?:npm:).+"
+      }
+    },
     "permissionSet": {
       "type": "object",
       "description": "Collection of permissions.",
@@ -41,10 +66,10 @@
           "type": "boolean",
           "description": "Allow all permissions for the program to run unrestricted."
         },
-        "read": { "$ref": "#/$defs/allowDenyPermissionConfigValue" },
+        "read": { "$ref": "#/$defs/allowDenyIgnorePermissionConfigValue" },
         "write": { "$ref": "#/$defs/allowDenyPermissionConfigValue" },
         "import": { "$ref": "#/$defs/allowDenyPermissionConfigValue" },
-        "env": { "$ref": "#/$defs/allowDenyPermissionConfigValue" },
+        "env": { "$ref": "#/$defs/allowDenyIgnorePermissionConfigValue" },
         "net": { "$ref": "#/$defs/allowDenyPermissionConfigValue" },
         "run": { "$ref": "#/$defs/allowDenyPermissionConfigValue" },
         "ffi": { "$ref": "#/$defs/allowDenyPermissionConfigValue" },
@@ -59,9 +84,44 @@
       }, {
         "$ref": "#/$defs/permissionSet"
       }]
+    },
+    "minimumDependencyAgeDate": {
+      "oneOf": [{
+        "description": "(Unstable) The age in minutes, ISO-8601 duration or RFC3339 absolute timestamp (e.g. '120' for two hours, 'P2D' for two days, '2025-09-16' for cutoff date, '2025-09-16T12:00:00+00:00' for cutoff time, '0' to disable).",
+        "type": "string"
+      }, {
+        "description": "(Unstable) The age in minutes.",
+        "type": "number"
+      }]
     }
   },
   "properties": {
+    "allowScripts": {
+      "oneOf": [{
+        "description": "Whether to allow npm lifecycle scripts.",
+        "type": "boolean"
+      }, {
+        "$ref": "#/$defs/allowScriptsList"
+      }, {
+        "type": "object",
+        "description": "Allow or deny config for lifecycle scripts.",
+        "additionalProperties": false,
+        "properties": {
+          "allow": {
+            "oneOf": [{
+              "description": "Whether to allow running npm lifecycle scripts.",
+              "type": "boolean"
+            }, {
+              "$ref": "#/$defs/allowScriptsList"
+            }]
+          },
+          "deny": {
+            "description": "List of npm package constraints to deny running lifecycle scripts for.",
+            "$ref": "#/$defs/allowScriptsList"
+          }
+        }
+      }]
+    },
     "compile": {
       "type": "object",
       "description": "Configuration for `deno compile`.",
@@ -181,7 +241,7 @@
           "description": "Specify a set of bundled library declaration files that describe the target runtime environment.",
           "type": "array",
           "uniqueItems": true,
-          "default": ["deno.window"],
+          "default": ["deno.window", "deno.unstable", "node"],
           "items": {
             "type": "string",
             "examples": [
@@ -210,7 +270,8 @@
               "es2022",
               "es2023",
               "es2024",
-              "esnext"
+              "esnext",
+              "node"
             ]
           },
           "markdownDescription": "Specify a set of bundled library declaration files that describe the target runtime environment.\n\nSee more: https://www.typescriptlang.org/tsconfig#lib"
@@ -247,7 +308,7 @@
               ]
             },
             {
-              "pattern": "^([Nn]ode[Nn]ext)|([Bb]undler))$"
+              "pattern": "^([Nn]ode[Nn]ext|[Bb]undler)$"
             }
           ],
           "markdownDescription": "Specify how TypeScript looks up a file from a given module specifier.\n\nSee more: https://www.typescriptlang.org/tsconfig#moduleResolution"
@@ -311,6 +372,24 @@
           "type": "boolean",
           "default": false,
           "markdownDescription": "Raise an error when a function parameter isn't read\n\nSee more: https://www.typescriptlang.org/tsconfig#noUnusedParameters"
+        },
+        "baseUrl": {
+          "description": "Specify the base directory to resolve non-relative module names.",
+          "type": ["string", "null"],
+          "markdownDescription": "Specify the base directory to resolve non-relative module names.\n\nIn Deno, this is only applied to bare specifier entries in `compilerOptions.paths` and `compilerOptions.rootDirs`.\n\nSee more: https://www.typescriptlang.org/tsconfig#baseUrl"
+        },
+        "paths": {
+          "description": "Specify a set of entries that re-map imports to additional lookup locations.",
+          "type": ["object", "null"],
+          "additionalProperties": {
+            "type": ["array", "null"],
+            "uniqueItems": true,
+            "items": {
+              "type": ["string", "null"],
+              "description": "Path mapping to be computed relative to baseUrl option."
+            }
+          },
+          "markdownDescription": "Specify a set of entries that re-map imports to additional lookup locations.\n\nSee more: https://www.typescriptlang.org/tsconfig#paths"
         },
         "rootDirs": {
           "description": "Declare many “virtual” directories acting as a single root.",
@@ -381,6 +460,68 @@
           "type": "boolean",
           "default": false,
           "markdownDescription": "Do not transform or elide any imports or exports not marked as type-only, ensuring they are written in the output file's format based on the 'module' setting.\n\nSee more: https://www.typescriptlang.org/tsconfig/#verbatimModuleSyntax"
+        }
+      }
+    },
+    "deploy": {
+      "type": "object",
+      "description": "Configuration for `deno deploy` and `deno sandbox`.",
+      "additionalProperties": false,
+      "properties": {
+        "org": {
+          "type": "string",
+          "description": "The organization slug or ID to interact with."
+        },
+        "app": {
+          "type": "string",
+          "description": "The application slug or ID to interact with."
+        },
+        "framework": {
+          "type": "string",
+          "description": "The framework this application is built with, such as `nextjs` or `fresh`. Part of the build configuration. When specified, takes precedence over all configuration specified in the console."
+        },
+        "install": {
+          "type": "string",
+          "description": "The command to install dependencies. Part of the build configuration. When specified, takes precedence over all configuration specified in the console."
+        },
+        "build": {
+          "type": "string",
+          "description": "The command to build the application. Part of the build configuration. When specified, takes precedence over all configuration specified in the console."
+        },
+        "predeploy": {
+          "type": "string",
+          "description": "The command to run before deploying, usually used to run database migrations. When specified, takes precedence over all configuration specified in the console."
+        },
+        "runtime": {
+          "type": "object",
+          "description": "Runtime configuration for the deployed application. When specified, takes precedence over all configuration specified in the console.",
+          "additionalProperties": false,
+          "properties": {
+            "mode": {
+              "type": "string",
+              "enum": ["dynamic", "static"],
+              "default": "dynamic",
+              "description": "The runtime mode. Use 'dynamic' for server-rendered applications or 'static' for pre-built static files."
+            },
+            "entrypoint": {
+              "type": "string",
+              "description": "The entrypoint file for dynamic mode (e.g., 'main.ts')."
+            },
+            "args": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Arguments to pass to the entrypoint for dynamic mode."
+            },
+            "cwd": {
+              "type": "string",
+              "description": "The working directory. For dynamic mode, this is the current working directory. For static mode, this is the directory containing static files to serve."
+            },
+            "spa": {
+              "type": "boolean",
+              "description": "Enable single-page application mode for static deployments. When enabled, all routes will fall back to index.html.",
+              "default": false
+            }
+          }
         }
       }
     },
@@ -654,6 +795,26 @@
         }
       }
     },
+    "minimumDependencyAge": {
+      "oneOf": [{
+        "$ref": "#/$defs/minimumDependencyAgeDate"
+      }, {
+        "type": "object",
+        "description": "Minimum dependency age config.",
+        "additionalProperties": false,
+        "properties": {
+          "age": { "$ref": "#/$defs/minimumDependencyAgeDate" },
+          "exclude": {
+            "type": "array",
+            "description": "List of jsr or npm packages to exclude from requiring a minimum dependnecy age.",
+            "items": {
+              "type": "string",
+              "pattern": "^(?:npm:|jsr:).+"
+            }
+          }
+        }
+      }]
+    },
     "nodeModulesDir": {
       "oneOf": [
         {
@@ -732,24 +893,30 @@
       }
     },
     "publish": {
-      "description": "Configuration for deno publish",
-      "type": "object",
-      "properties": {
-        "include": {
-          "type": "array",
-          "description": "List of files, directories or globs that will be included in the published package.",
-          "items": {
-            "type": "string"
-          }
-        },
-        "exclude": {
-          "type": "array",
-          "description": "List of files, directories or globs that will be excluded from the published package.",
-          "items": {
-            "type": "string"
+      "oneOf": [{
+        "description": "Configuration for deno publish",
+        "type": "object",
+        "properties": {
+          "include": {
+            "type": "array",
+            "description": "List of files, directories or globs that will be included in the published package.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "exclude": {
+            "type": "array",
+            "description": "List of files, directories or globs that will be excluded from the published package.",
+            "items": {
+              "type": "string"
+            }
           }
         }
-      }
+      }, {
+        "description": "Disable publishing this package with deno publish",
+        "type": "boolean",
+        "const": "false"
+      }]
     },
     "bench": {
       "description": "Configuration for deno bench",
@@ -801,8 +968,8 @@
       "items": {
         "type": "string",
         "examples": [
-          "broadcast-channel",
           "bare-node-builtins",
+          "bundle",
           "byonm",
           "cron",
           "detect-cjs",
@@ -816,7 +983,6 @@
           "node-globals",
           "raw-imports",
           "sloppy-imports",
-          "temporal",
           "unsafe-proto",
           "webgpu",
           "worker-options"

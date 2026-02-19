@@ -3,7 +3,7 @@ Warning Workspace member '@denotest/add@2.0.0' was not used because it did not m
 Download http://127.0.0.1:4250/@denotest/add/meta.json
 Download http://127.0.0.1:4250/@denotest/add/1.0.0_meta.json
 Download http://127.0.0.1:4250/@denotest/add/1.0.0/mod.ts
-Check file:///[WILDLINE]/mod.test.ts
+Check [WILDCARD]mod.test.ts
 running 1 test from ./subtract/mod.test.ts
 subtract ... ok ([WILDLINE])
 

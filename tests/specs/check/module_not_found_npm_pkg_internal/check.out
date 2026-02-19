@@ -1,4 +1,4 @@
-Check file:///[WILDLINE]/main.ts
+Check [WILDCARD]main.ts
 TS6053 [ERROR]: File 'file:///[WILDLINE]/non-existent.d.ts' not found.
 /// <reference path="./non-existent.d.ts" />
                      ~~~~~~~~~~~~~~~~~~~

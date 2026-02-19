@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -100,7 +100,7 @@ import {
   PipeConnectWrap,
 } from "ext:deno_node/internal_binding/pipe_wrap.ts";
 import { ShutdownWrap } from "ext:deno_node/internal_binding/stream_wrap.ts";
-import { assert } from "ext:deno_node/_util/asserts.ts";
+import assert from "node:assert";
 import { isWindows } from "ext:deno_node/_util/os.ts";
 import { ADDRCONFIG, lookup as dnsLookup } from "node:dns";
 import {
@@ -1531,9 +1531,7 @@ Object.defineProperty(Socket.prototype, "remoteAddress", {
 
 Object.defineProperty(Socket.prototype, "remoteFamily", {
   get: function () {
-    const { family } = this._getpeername();
-
-    return family ? `IPv${family}` : family;
+    return this._getpeername().family;
   },
 });
 
@@ -1808,6 +1806,9 @@ Object.defineProperty(Socket.prototype, "_handle", {
 
 Socket.prototype[kReinitializeHandle] = function (handle) {
   this._handle?.close();
+
+  // Make sure TLS wrap works after reinitialize.
+  handle.afterConnectTls = this._handle.afterConnectTls;
 
   this._handle = handle;
   this._handle[ownerSymbol] = this;

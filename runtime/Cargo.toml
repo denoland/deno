@@ -1,8 +1,8 @@
-# Copyright 2018-2025 the Deno authors. MIT license.
+# Copyright 2018-2026 the Deno authors. MIT license.
 
 [package]
 name = "deno_runtime"
-version = "0.224.0"
+version = "0.240.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -39,11 +39,8 @@ path = "lib.rs"
 
 [dependencies]
 deno_ast = { workspace = true, optional = true }
-deno_broadcast_channel.workspace = true
 deno_bundle_runtime.workspace = true
 deno_cache.workspace = true
-deno_canvas.workspace = true
-deno_console.workspace = true
 deno_core.workspace = true
 deno_cron.workspace = true
 deno_crypto.workspace = true
@@ -53,11 +50,15 @@ deno_fetch.workspace = true
 deno_ffi.workspace = true
 deno_fs = { workspace = true, features = ["sync_fs"] }
 deno_http.workspace = true
+deno_image.workspace = true
+deno_inspector_server.workspace = true
 deno_io.workspace = true
 deno_kv.workspace = true
 deno_napi.workspace = true
 deno_net.workspace = true
 deno_node.workspace = true
+deno_node_crypto.workspace = true
+deno_node_sqlite.workspace = true
 deno_os.workspace = true
 deno_path_util.workspace = true
 deno_permissions.workspace = true
@@ -67,7 +68,6 @@ deno_signals.workspace = true
 deno_telemetry.workspace = true
 deno_terminal.workspace = true
 deno_tls.workspace = true
-deno_url.workspace = true
 deno_web.workspace = true
 deno_webgpu.workspace = true
 deno_webidl.workspace = true
@@ -100,7 +100,7 @@ twox-hash.workspace = true
 uuid.workspace = true
 
 [target.'cfg(windows)'.dependencies]
-winapi = { workspace = true, features = ["commapi", "knownfolders", "mswsock", "objbase", "psapi", "shlobj", "tlhelp32", "winbase", "winerror", "winuser", "winsock2"] }
+winapi = { workspace = true, features = ["commapi", "handleapi", "knownfolders", "mswsock", "objbase", "processthreadsapi", "psapi", "shlobj", "tlhelp32", "winbase", "winerror", "winnt", "winuser", "winsock2"] }
 ntapi = "0.4.0"
 windows-sys.workspace = true
 

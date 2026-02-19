@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
@@ -329,7 +329,7 @@ function createHmac(
   key: string | ArrayBuffer | KeyObject,
   options?: TransformOptions,
 ) {
-  return Hmac(hmac, key, options);
+  return Hmac_(hmac, key, options);
 }
 
 function createSign(algorithm: string, options?: WritableOptions): Sign {

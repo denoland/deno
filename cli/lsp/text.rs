@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use deno_core::error::AnyError;
 use dissimilar::Chunk;
@@ -64,6 +64,10 @@ impl LineIndex {
 
   pub fn text_content_length_utf16(&self) -> TextSize {
     self.inner.text_content_length_utf16()
+  }
+
+  pub fn line_starts(&self) -> &[TextSize] {
+    self.inner.line_starts()
   }
 }
 

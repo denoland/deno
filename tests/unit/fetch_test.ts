@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // deno-lint-ignore-file no-console
 
@@ -2314,6 +2314,38 @@ Deno.test(
 Deno.test(
   {
     permissions: { net: true },
+  },
+  function createHttpClientSocks5ProxyAcceptsSocks5Url() {
+    // Test that socks5 transport accepts socks5:// URLs
+    using client = Deno.createHttpClient({
+      proxy: {
+        transport: "socks5",
+        url: "socks5://localhost:1080",
+      },
+    });
+    assert(client instanceof Deno.HttpClient);
+  },
+);
+
+Deno.test(
+  {
+    permissions: { net: true },
+  },
+  function createHttpClientSocks5ProxyAcceptsSocks5hUrl() {
+    // Test that socks5 transport accepts socks5h:// URLs
+    using client = Deno.createHttpClient({
+      proxy: {
+        transport: "socks5",
+        url: "socks5h://localhost:1080",
+      },
+    });
+    assert(client instanceof Deno.HttpClient);
+  },
+);
+
+Deno.test(
+  {
+    permissions: { net: true },
     ignore: Deno.build.os === "windows",
   },
   function createHttpClientWithVsockProxy() {
@@ -2364,8 +2396,7 @@ Deno.test(
     const resp1 = await fetch("https://example.com/ping", { client });
     assertEquals(resp1.status, 200);
     assertEquals(resp1.headers.get("content-type"), "text/plain");
-    // TODO(@lucacasonato): should be https://example.com/ping. bug in https://github.com/hyperium/hyper-util/blob/00035bac2da1cfa820eda4db7bf7ddcbd30be3c1/src/client/legacy/client.rs#L915-L917
-    assertEquals(await resp1.text(), "http://example.com/ping");
+    assertEquals(await resp1.text(), "https://example.com/ping");
 
     const resp2 = await fetch("http://localhost:42424/ping", { client });
     assertEquals(resp2.status, 200);

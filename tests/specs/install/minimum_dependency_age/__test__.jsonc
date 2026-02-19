@@ -1,0 +1,27 @@
+{
+  "tempDir": true,
+  "variants": {
+    "with_config": {
+      "arg": ""
+    },
+    "with_args": {
+      "arg": "--minimum-dependency-age=2025-05-01T20:00:00.000Z"
+    }
+  },
+  "steps": [{
+    "args": "run -W setup.ts ${arg}",
+    "output": ""
+  }, {
+    "args": "install npm:@denotest/add jsr:@denotest/add ${arg}",
+    "output": "install.out"
+  }, {
+    "args": "outdated ${arg}",
+    "output": "outdated.out"
+  }, {
+    "args": "update --latest ${arg}",
+    "output": "update.out"
+  }, {
+    "args": "outdated --minimum-dependency-age=0",
+    "output": "outdated_no_min_dep_age.out"
+  }]
+}

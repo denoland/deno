@@ -1,4 +1,4 @@
-Check file:///[WILDLINE]/my-pkg/mod.test.ts
+Check [WILDCARD]mod.test.ts
 running 1 test from ./my-pkg/mod.test.ts
 add ...
 ------- output -------

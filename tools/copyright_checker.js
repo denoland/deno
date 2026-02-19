@@ -1,11 +1,11 @@
 #!/usr/bin/env -S deno run --allow-read=. --allow-run=git --config=tests/config/deno.json
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // deno-lint-ignore-file no-console
 
 import { getSources, ROOT_PATH } from "./util.js";
 
-const copyrightYear = 2025;
+const copyrightYear = 2026;
 
 const buffer = new Uint8Array(1024);
 const textDecoder = new TextDecoder();
@@ -29,7 +29,6 @@ export async function checkCopyright() {
     "*.ts",
     "*.tsx",
     ":!:.github/mtime_cache/action.js",
-    ":!:cli/bench/testdata/**",
     ":!:cli/tools/bench/mitata.rs",
     ":!:cli/tools/doc/prism.css",
     ":!:cli/tools/doc/prism.js",
@@ -37,6 +36,7 @@ export async function checkCopyright() {
     ":!:cli/tsc/*typescript.js",
     ":!:cli/tsc/compiler.d.ts",
     ":!:cli/tsc/dts/**",
+    ":!:tests/bench/testdata/**",
     ":!:tests/node_compat/test/**",
     ":!:tests/registry/**",
     ":!:tests/specs/**",
@@ -44,6 +44,7 @@ export async function checkCopyright() {
     ":!:tests/unit_node/testdata/**",
     ":!:tests/wpt/suite/**",
     ":!:libs/config/testdata/**",
+    ":!:libs/eszip/testdata/**",
     ":!:ext/node/polyfills/deps/**",
 
     // rust

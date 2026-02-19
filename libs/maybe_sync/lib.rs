@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 pub use inner::*;
 
@@ -103,4 +103,10 @@ mod inner {
 #[inline]
 pub fn new_rc<T>(value: T) -> MaybeArc<T> {
   MaybeArc::new(value)
+}
+
+#[allow(clippy::disallowed_types)]
+#[inline]
+pub fn new_arc<T>(value: T) -> std::sync::Arc<T> {
+  std::sync::Arc::new(value)
 }

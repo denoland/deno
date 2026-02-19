@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 /// <reference path="../../core/internal.d.ts" />
 
@@ -49,9 +49,9 @@ const {
   TypeError,
 } = primordials;
 
-import { URL } from "ext:deno_url/00_url.js";
+import { URL } from "ext:deno_web/00_url.js";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
+import { createFilteredInspectProxy } from "ext:deno_web/01_console.js";
 import { HTTP_TOKEN_CODE_POINT_RE } from "ext:deno_web/00_infra.js";
 import { DOMException } from "ext:deno_web/01_dom_exception.js";
 import { clearTimeout, setTimeout } from "ext:deno_web/02_timers.js";
@@ -146,7 +146,6 @@ const _sendQueue = Symbol("[[sendQueue]]");
 const _queueSend = Symbol("[[queueSend]]");
 const _cancelHandle = Symbol("[[cancelHandle]]");
 
-const _server = Symbol("[[server]]");
 const _idleTimeoutDuration = Symbol("[[idleTimeout]]");
 const _idleTimeoutTimeout = Symbol("[[idleTimeoutTimeout]]");
 const _serverHandleIdleTimeout = Symbol("[[serverHandleIdleTimeout]]");
@@ -449,7 +448,7 @@ class WebSocket extends EventTarget {
       reason = webidl.converters.USVString(reason, prefix, "Argument 2");
     }
 
-    if (!this[_server]) {
+    if (this[_role] === CLIENT) {
       if (
         code !== undefined &&
         !(code === 1000 || (3000 <= code && code < 5000))
@@ -768,8 +767,8 @@ export {
   _readyState,
   _rid,
   _role,
-  _server,
   _serverHandleIdleTimeout,
+  CLIENT,
   createWebSocketBranded,
   SERVER,
   WebSocket,

@@ -1,6 +1,18 @@
-// Regression test for https://github.com/denoland/deno/issues/27411.
 {
   "args": "check --quiet message_chain_formatting.ts",
-  "output": "message_chain_formatting.out",
-  "exitCode": 1
+  "output": "${out}",
+  "exitCode": 1,
+  "variants": {
+    "tsgo": {
+      "use_tsgo": "1",
+      "out": "message_chain_formatting_tsgo.out"
+    },
+    "tsc": {
+      "use_tsgo": "",
+      "out": "message_chain_formatting.out"
+    }
+  },
+  "envs": {
+    "DENO_UNSTABLE_TSGO": "${use_tsgo}"
+  }
 }

@@ -1,4 +1,4 @@
-Check file://[WILDCARD]/main.ts
+Check [WILDCARD]main.ts
 running 1 test from ./main.ts
 test 0 ... ok ([WILDCARD])
 

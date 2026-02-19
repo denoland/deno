@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 use std::borrow::Cow;
 use std::cell::Cell;
 use std::cell::RefCell;
@@ -8,15 +8,14 @@ use std::rc::Rc;
 use bytes::Bytes;
 use deno_core::AsyncMutFuture;
 use deno_core::AsyncRefCell;
-use deno_core::ByteString;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
-use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
-use deno_core::ToJsBuffer;
+use deno_core::convert::ByteString;
+use deno_core::convert::Uint8Array;
 use deno_core::futures::TryFutureExt;
 use deno_core::op2;
 use deno_core::unsync::spawn;
@@ -28,6 +27,7 @@ use deno_fetch::HttpClientResource;
 use deno_fetch::get_or_create_client_from_state;
 use deno_net::raw::NetworkStream;
 use deno_permissions::PermissionCheckError;
+use deno_permissions::PermissionsContainer;
 use deno_tls::SocketUse;
 use fastwebsockets::CloseCode;
 use fastwebsockets::FragmentCollectorRead;
@@ -50,7 +50,6 @@ use http::header::SEC_WEBSOCKET_VERSION;
 use http::header::UPGRADE;
 use hyper_util::client::legacy::connect::Connection;
 use once_cell::sync::Lazy;
-use serde::Serialize;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncWrite;
 use tokio::io::ReadHalf;
@@ -101,25 +100,6 @@ pub enum WebsocketError {
   Canceled(#[from] deno_core::Canceled),
 }
 
-pub trait WebSocketPermissions {
-  fn check_net_url(
-    &mut self,
-    _url: &url::Url,
-    _api_name: &str,
-  ) -> Result<(), PermissionCheckError>;
-}
-
-impl WebSocketPermissions for deno_permissions::PermissionsContainer {
-  #[inline(always)]
-  fn check_net_url(
-    &mut self,
-    url: &url::Url,
-    api_name: &str,
-  ) -> Result<(), PermissionCheckError> {
-    deno_permissions::PermissionsContainer::check_net_url(self, url, api_name)
-  }
-}
-
 pub struct WsCancelResource(Rc<CancelHandle>);
 
 impl Resource for WsCancelResource {
@@ -137,16 +117,13 @@ impl Resource for WsCancelResource {
 // but actual op that connects WS is async.
 #[op2(stack_trace)]
 #[smi]
-pub fn op_ws_check_permission_and_cancel_handle<WP>(
+pub fn op_ws_check_permission_and_cancel_handle(
   state: &mut OpState,
   #[string] api_name: String,
   #[string] url: String,
   cancel_handle: bool,
-) -> Result<Option<ResourceId>, WebsocketError>
-where
-  WP: WebSocketPermissions + 'static,
-{
-  state.borrow_mut::<WP>().check_net_url(
+) -> Result<Option<ResourceId>, WebsocketError> {
+  state.borrow_mut::<PermissionsContainer>().check_net_url(
     &url::Url::parse(&url).map_err(WebsocketError::Url)?,
     &api_name,
   )?;
@@ -161,8 +138,7 @@ where
   }
 }
 
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(deno_core::ToV8)]
 pub struct CreateResponse {
   rid: ResourceId,
   protocol: String,
@@ -418,23 +394,19 @@ fn populate_common_request_headers(
   Ok(request)
 }
 
-#[op2(async, stack_trace)]
-#[serde]
-pub async fn op_ws_create<WP>(
+#[op2(stack_trace)]
+pub async fn op_ws_create(
   state: Rc<RefCell<OpState>>,
   #[string] api_name: String,
   #[string] url: String,
   #[string] protocols: String,
   #[smi] cancel_handle: Option<ResourceId>,
-  #[serde] headers: Option<Vec<(ByteString, ByteString)>>,
+  #[scoped] headers: Option<Vec<(ByteString, ByteString)>>,
   #[smi] client_rid: Option<u32>,
-) -> Result<CreateResponse, WebsocketError>
-where
-  WP: WebSocketPermissions + 'static,
-{
+) -> Result<CreateResponse, WebsocketError> {
   let (client, allow_host) = {
     let mut s = state.borrow_mut();
-    s.borrow_mut::<WP>()
+    s.borrow_mut::<PermissionsContainer>()
       .check_net_url(
         &url::Url::parse(&url).map_err(WebsocketError::Url)?,
         &api_name,
@@ -656,25 +628,28 @@ pub fn op_ws_send_text(
 }
 
 /// Async version of send. Does not update buffered amount as we rely on the socket itself for backpressure.
-#[op2(async)]
+#[op2]
 pub async fn op_ws_send_binary_async(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
-  #[buffer] data: JsBuffer,
+  data: Uint8Array,
 ) -> Result<(), WebsocketError> {
   let resource = state
     .borrow_mut()
     .resource_table
     .get::<ServerWebSocket>(rid)?;
-  let data = data.to_vec();
+  let data = data.0;
   let lock = resource.reserve_lock();
   resource
-    .write_frame(lock, Frame::new(true, OpCode::Binary, None, data.into()))
+    .write_frame(
+      lock,
+      Frame::new(true, OpCode::Binary, None, (&*data).into()),
+    )
     .await
 }
 
 /// Async version of send. Does not update buffered amount as we rely on the socket itself for backpressure.
-#[op2(async)]
+#[op2]
 pub async fn op_ws_send_text_async(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -709,7 +684,7 @@ pub fn op_ws_get_buffered_amount(
     .get() as u32
 }
 
-#[op2(async)]
+#[op2]
 pub async fn op_ws_send_ping(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -745,7 +720,10 @@ pub async fn op_ws_close(
   const EMPTY_PAYLOAD: &[u8] = &[];
 
   let frame = reason
-    .map(|reason| Frame::close(code.unwrap_or(1005), reason.as_bytes()))
+    .map(|reason| match code {
+      Some(code) => Frame::close(code, &reason.into_bytes()),
+      _ => Frame::close_raw(reason.into_bytes().into()),
+    })
     .unwrap_or_else(|| match code {
       Some(code) => Frame::close(code, EMPTY_PAYLOAD),
       _ => Frame::close_raw(EMPTY_PAYLOAD.into()),
@@ -757,15 +735,14 @@ pub async fn op_ws_close(
 }
 
 #[op2]
-#[serde]
 pub fn op_ws_get_buffer(
   state: &mut OpState,
   #[smi] rid: ResourceId,
-) -> Option<ToJsBuffer> {
+) -> Option<Uint8Array> {
   let Ok(resource) = state.resource_table.get::<ServerWebSocket>(rid) else {
     return None;
   };
-  resource.buffer.take().map(ToJsBuffer::from)
+  resource.buffer.take().map(Uint8Array::from)
 }
 
 #[op2]
@@ -790,7 +767,7 @@ pub fn op_ws_get_error(state: &mut OpState, #[smi] rid: ResourceId) -> String {
   resource.error.take().unwrap_or_default()
 }
 
-#[op2(async)]
+#[op2]
 pub async fn op_ws_next_event(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -869,12 +846,12 @@ pub async fn op_ws_next_event(
   }
 }
 
-deno_core::extension!(deno_websocket,
-  deps = [ deno_url, deno_webidl ],
-  parameters = [P: WebSocketPermissions],
+deno_core::extension!(
+  deno_websocket,
+  deps = [deno_web, deno_webidl],
   ops = [
-    op_ws_check_permission_and_cancel_handle<P>,
-    op_ws_create<P>,
+    op_ws_check_permission_and_cancel_handle,
+    op_ws_create,
     op_ws_close,
     op_ws_next_event,
     op_ws_get_buffer,
@@ -888,7 +865,7 @@ deno_core::extension!(deno_websocket,
     op_ws_send_ping,
     op_ws_get_buffered_amount,
   ],
-  esm = [ "01_websocket.js", "02_websocketstream.js" ],
+  esm = ["01_websocket.js", "02_websocketstream.js"],
 );
 
 // Needed so hyper can use non Send futures

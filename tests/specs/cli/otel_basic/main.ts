@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 const data = {
   spans: [],
@@ -35,6 +35,7 @@ function onListen({ port }) {
       "--env-file=env_file",
       "-A",
       "-q",
+      "--unstable-cron",
       Deno.args[0],
     ],
     env: {

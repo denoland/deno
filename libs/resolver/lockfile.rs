@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -299,13 +299,6 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
           PackageJsonDepValue::Req(req) => {
             Some(JsrDepPackageReq::npm(req.clone()))
           }
-          PackageJsonDepValue::JsrReq(req) => {
-            // TODO: remove once we support JSR specifiers in package.json
-            log::warn!(
-              "JSR specifiers are not yet supported in package.json: {req}"
-            );
-            None
-          }
           PackageJsonDepValue::Workspace(_) => None,
         })
         .collect()
@@ -344,7 +337,8 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
       root: WorkspaceMemberConfig {
         package_json_deps: pkg_json_deps(root_folder.pkg_json.as_deref()),
         dependencies: if let Some(map) = maybe_external_import_map {
-          deno_config::import_map::import_map_deps(map)
+          deno_config::import_map::import_map_deps_from_value(map)
+            .collect::<HashSet<_>>()
         } else {
           root_folder
             .deno_json
@@ -405,8 +399,7 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
                     }
                     // not supported
                     PackageJsonDepValue::File(_)
-                    | PackageJsonDepValue::Workspace(_)
-                    | PackageJsonDepValue::JsrReq(_) => None,
+                    | PackageJsonDepValue::Workspace(_) => None,
                   })
                   .collect()
               })
@@ -427,6 +420,9 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
           // the npm resolution when it changes
           let value = deno_lockfile::LockfileLinkContent {
             dependencies: collect_deps(pkg_json.dependencies.as_ref()),
+            optional_dependencies: collect_deps(
+              pkg_json.optional_dependencies.as_ref(),
+            ),
             peer_dependencies: collect_deps(
               pkg_json.peer_dependencies.as_ref(),
             ),
@@ -451,12 +447,16 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
           .unwrap();
           let value = deno_lockfile::LockfileLinkContent {
             dependencies: deno_json.dependencies(),
+            optional_dependencies: Default::default(),
             peer_dependencies: Default::default(),
             peer_dependencies_meta: Default::default(),
           };
           Some((key, value))
         }))
         .collect(),
+      npm_overrides: workspace
+        .npm_overrides()
+        .map(|m| serde_json::Value::Object(m.clone())),
     };
     lockfile.set_workspace_config(deno_lockfile::SetWorkspaceConfigOptions {
       no_npm: flags.no_npm,

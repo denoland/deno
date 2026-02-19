@@ -1,8 +1,7 @@
 # specs
 
-These are integration tests that execute the `deno` binary. They supersede the
-`itest` macro found in the `tests/integration` folder and are the preferred way
-of writing tests that use the `deno` binary.
+These are integration tests that execute the `deno` binary. They are the
+preferred way of writing tests that use the `deno` binary.
 
 ## Structure
 

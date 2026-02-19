@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -15,6 +15,8 @@ use std::os::fd::AsRawFd;
 use std::os::unix::io::FromRawFd;
 #[cfg(windows)]
 use std::os::windows::io::FromRawHandle;
+use std::path::Path;
+use std::path::PathBuf;
 #[cfg(unix)]
 use std::process::Stdio as StdStdio;
 use std::rc::Rc;
@@ -46,7 +48,6 @@ use fs::FileResource;
 use fs::FsError;
 use fs::FsResult;
 use fs::FsStat;
-use fs3::FileExt;
 use once_cell::sync::Lazy;
 #[cfg(windows)]
 use parking_lot::Condvar;
@@ -255,8 +256,9 @@ deno_core::extension!(deno_io,
           StdioPipeInner::Inherit => StdFileResourceInner::new(
             StdFileResourceKind::Stdin(stdin_state),
             STDIN_HANDLE.try_clone().unwrap(),
+            None,
           ),
-          StdioPipeInner::File(pipe) => StdFileResourceInner::file(pipe),
+          StdioPipeInner::File(pipe) => StdFileResourceInner::file(pipe, None),
         }),
         "stdin".to_string(),
       ));
@@ -267,8 +269,9 @@ deno_core::extension!(deno_io,
           StdioPipeInner::Inherit => StdFileResourceInner::new(
             StdFileResourceKind::Stdout,
             STDOUT_HANDLE.try_clone().unwrap(),
+            None,
           ),
-          StdioPipeInner::File(pipe) => StdFileResourceInner::file(pipe),
+          StdioPipeInner::File(pipe) => StdFileResourceInner::file(pipe, None),
         }),
         "stdout".to_string(),
       ));
@@ -279,8 +282,9 @@ deno_core::extension!(deno_io,
           StdioPipeInner::Inherit => StdFileResourceInner::new(
             StdFileResourceKind::Stderr,
             STDERR_HANDLE.try_clone().unwrap(),
+            None,
           ),
-          StdioPipeInner::File(pipe) => StdFileResourceInner::file(pipe),
+          StdioPipeInner::File(pipe) => StdFileResourceInner::file(pipe, None),
         }),
         "stderr".to_string(),
       ));
@@ -494,14 +498,19 @@ pub struct StdFileResourceInner {
   // to occur at a time
   cell_async_task_queue: Rc<TaskQueue>,
   handle: ResourceHandleFd,
+  maybe_path: Option<PathBuf>,
 }
 
 impl StdFileResourceInner {
-  pub fn file(fs_file: StdFile) -> Self {
-    StdFileResourceInner::new(StdFileResourceKind::File, fs_file)
+  pub fn file(fs_file: StdFile, maybe_path: Option<PathBuf>) -> Self {
+    StdFileResourceInner::new(StdFileResourceKind::File, fs_file, maybe_path)
   }
 
-  fn new(kind: StdFileResourceKind, fs_file: StdFile) -> Self {
+  fn new(
+    kind: StdFileResourceKind,
+    fs_file: StdFile,
+    maybe_path: Option<PathBuf>,
+  ) -> Self {
     // We know this will be an fd
     let handle = ResourceHandle::from_fd_like(&fs_file).as_fd_like().unwrap();
     StdFileResourceInner {
@@ -509,6 +518,7 @@ impl StdFileResourceInner {
       handle,
       cell: RefCell::new(Some(fs_file)),
       cell_async_task_queue: Default::default(),
+      maybe_path,
     }
   }
 
@@ -659,6 +669,10 @@ impl StdFileResourceInner {
 
 #[async_trait::async_trait(?Send)]
 impl crate::fs::File for StdFileResourceInner {
+  fn maybe_path(&self) -> Option<&Path> {
+    self.maybe_path.as_deref()
+  }
+
   fn write_sync(self: Rc<Self>, buf: &[u8]) -> FsResult<usize> {
     // Rust will line buffer and we don't want that behavior
     // (see https://github.com/denoland/deno/issues/948), so flush stdout and stderr.
@@ -1001,9 +1015,9 @@ impl crate::fs::File for StdFileResourceInner {
   fn lock_sync(self: Rc<Self>, exclusive: bool) -> FsResult<()> {
     self.with_sync(|file| {
       if exclusive {
-        file.lock_exclusive()?;
+        file.lock()?;
       } else {
-        fs3::FileExt::lock_shared(file)?;
+        file.lock_shared()?;
       }
       Ok(())
     })
@@ -1012,21 +1026,54 @@ impl crate::fs::File for StdFileResourceInner {
     self
       .with_inner_blocking_task(move |file| {
         if exclusive {
-          file.lock_exclusive()?;
+          file.lock()?;
         } else {
-          fs3::FileExt::lock_shared(file)?;
+          file.lock_shared()?;
         }
         Ok(())
       })
       .await
   }
 
+  fn try_lock_sync(self: Rc<Self>, exclusive: bool) -> FsResult<bool> {
+    use std::fs::TryLockError;
+    self.with_sync(|file| {
+      let result = if exclusive {
+        file.try_lock()
+      } else {
+        file.try_lock_shared()
+      };
+      match result {
+        Ok(()) => Ok(true),
+        Err(TryLockError::WouldBlock) => Ok(false),
+        Err(TryLockError::Error(err)) => Err(err.into()),
+      }
+    })
+  }
+  async fn try_lock_async(self: Rc<Self>, exclusive: bool) -> FsResult<bool> {
+    use std::fs::TryLockError;
+    self
+      .with_inner_blocking_task(move |file| {
+        let result = if exclusive {
+          file.try_lock()
+        } else {
+          file.try_lock_shared()
+        };
+        match result {
+          Ok(()) => Ok(true),
+          Err(TryLockError::WouldBlock) => Ok(false),
+          Err(TryLockError::Error(err)) => Err(err.into()),
+        }
+      })
+      .await
+  }
+
   fn unlock_sync(self: Rc<Self>) -> FsResult<()> {
-    self.with_sync(|file| Ok(fs3::FileExt::unlock(file)?))
+    self.with_sync(|file| Ok(file.unlock()?))
   }
   async fn unlock_async(self: Rc<Self>) -> FsResult<()> {
     self
-      .with_inner_blocking_task(|file| Ok(fs3::FileExt::unlock(file)?))
+      .with_inner_blocking_task(|file| Ok(file.unlock()?))
       .await
   }
 
@@ -1101,6 +1148,7 @@ impl crate::fs::File for StdFileResourceInner {
         cell: RefCell::new(Some(inner.try_clone()?)),
         cell_async_task_queue: Default::default(),
         handle: self.handle,
+        maybe_path: self.maybe_path.clone(),
       })),
       None => Err(FsError::FileBusy),
     }
@@ -1141,7 +1189,7 @@ pub fn op_read_create_cancel_handle(state: &mut OpState) -> u32 {
     .add(ReadCancelResource(CancelHandle::new_rc()))
 }
 
-#[op2(async)]
+#[op2]
 pub async fn op_read_with_cancel_handle(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: u32,
@@ -1183,9 +1231,11 @@ pub fn op_print(
 ) -> Result<(), JsErrorBox> {
   let rid = if is_err { 2 } else { 1 };
   FileResource::with_file(state, rid, move |file| {
-    file
-      .write_all_sync(msg.as_bytes())
-      .map_err(JsErrorBox::from_err)
+    match file.write_all_sync(msg.as_bytes()) {
+      Err(FsError::Io(io)) if io.kind() == ErrorKind::BrokenPipe => Ok(()),
+      other => other,
+    }
+    .map_err(JsErrorBox::from_err)
   })
 }
 
@@ -1305,6 +1355,12 @@ pub fn stat_extra(file: &std::fs::File, fsstat: &mut FsStat) -> FsResult<()> {
           | ((libc::S_IREAD | libc::S_IWRITE) >> 6))
           as u32;
       }
+
+      /* The on-disk allocation size in 512-byte units. */
+      fsstat.blocks =
+        Some(file_info.StandardInformation.AllocationSize as u64 >> 9);
+      fsstat.ino = Some(file_info.InternalInformation.IndexNumber as u64);
+      fsstat.nlink = Some(file_info.StandardInformation.NumberOfLinks as u64);
     }
 
     Ok(())

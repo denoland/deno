@@ -1,5 +1,6 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
+import { join } from "@std/path";
 import { assert, assertEquals, assertRejects } from "./test_util.ts";
 
 Deno.test(function globalThisExists() {
@@ -207,4 +208,45 @@ Deno.test(function globalGlobalIsWritable() {
   globalThis.global = "can write to `global`";
   // @ts-ignore the typings here are wrong
   globalThis.global = globalThis;
+});
+
+Deno.test(async function overwriteEventOnExternalModuleShouldNotCrash() {
+  const tmpDir = await Deno.makeTempDir();
+
+  const externalModulePath = join(tmpDir, "overwrite_event.ts");
+  const externalModuleContent =
+    `globalThis.Event = class {}; export default {};`;
+  await Deno.writeTextFile(externalModulePath, externalModuleContent);
+
+  const entrypointPath = join(tmpDir, "index.ts");
+  const entrypointContent = `import("./overwrite_event.ts");`;
+  await Deno.writeTextFile(entrypointPath, entrypointContent);
+
+  const command = new Deno.Command(Deno.execPath(), {
+    args: ["run", "-A", entrypointPath],
+    stdout: "null",
+    stderr: "null",
+  });
+  const child = command.spawn();
+
+  const status = await child.status;
+  assert(status.success);
+  await Deno.remove(tmpDir, { recursive: true });
+});
+
+Deno.test(function navigatorPlatformExists() {
+  switch (Deno.build.os) {
+    case "linux": {
+      assertEquals(navigator.platform, `Linux ${Deno.build.arch}`);
+      break;
+    }
+    case "darwin": {
+      assertEquals(navigator.platform, "MacIntel");
+      break;
+    }
+    case "windows": {
+      assertEquals(navigator.platform, "Win32");
+      break;
+    }
+  }
 });

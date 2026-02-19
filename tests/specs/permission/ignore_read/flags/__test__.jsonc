@@ -1,0 +1,20 @@
+{
+  "tests": {
+    "all": {
+      "args": "run --ignore-read main.ts",
+      "output": "true\ntrue\n"
+    },
+    "some": {
+      "args": "run --ignore-read=deno.json main.ts",
+      "output": "true\nfalse\n"
+    },
+    "some_allow_env": {
+      "args": "run --ignore-read=deno.json --allow-read main.ts",
+      "output": "true\nloaded\n"
+    },
+    "deny_env": {
+      "args": "run --deny-read --ignore-read=deno.json main.ts",
+      "output": "true\nfalse\n"
+    }
+  }
+}

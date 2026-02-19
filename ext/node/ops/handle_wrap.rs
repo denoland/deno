@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::cell::Cell;
 use std::cell::RefCell;
@@ -139,8 +139,8 @@ impl HandleWrap {
     &self,
     op_state: Rc<RefCell<OpState>>,
     #[this] this: v8::Global<v8::Object>,
-    scope: &mut v8::HandleScope,
-    #[global] cb: Option<v8::Global<v8::Function>>,
+    scope: &mut v8::PinScope<'_, '_>,
+    #[scoped] cb: Option<v8::Global<v8::Function>>,
   ) -> Result<(), ResourceError> {
     if self.state.get() != State::Initialized {
       return Ok(());
@@ -150,7 +150,7 @@ impl HandleWrap {
     // This effectively mimicks Node's OnClose callback.
     //
     // https://github.com/nodejs/node/blob/038d82980ab26cd79abe4409adc2fecad94d7c93/src/handle_wrap.cc#L135-L157
-    let on_close = move |scope: &mut v8::HandleScope| {
+    let on_close = move |scope: &mut v8::PinScope<'_, '_>| {
       assert!(state.get() == State::Closing);
       state.set(State::Closed);
 
@@ -211,12 +211,12 @@ impl HandleWrap {
 }
 
 fn uv_close<F>(
-  scope: &mut v8::HandleScope,
+  scope: &mut v8::PinScope<'_, '_>,
   op_state: Rc<RefCell<OpState>>,
   this: v8::Global<v8::Object>,
   on_close: F,
 ) where
-  F: FnOnce(&mut v8::HandleScope) + 'static,
+  F: FnOnce(&mut v8::PinScope<'_, '_>) + 'static,
 {
   // Call _onClose() on the JS handles. Not needed for Rust handles.
   let this = v8::Local::new(scope, this);

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::path::PathBuf;
@@ -12,7 +12,7 @@ use deno_npm_cache::NpmCache;
 use deno_npm_cache::NpmCacheHttpClient;
 use deno_resolver::lockfile::LockfileLock;
 use deno_resolver::npm::managed::NpmResolutionCell;
-use deno_resolver::workspace::WorkspaceNpmLinkPackages;
+use deno_resolver::workspace::WorkspaceNpmLinkPackagesRc;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 
@@ -32,7 +32,6 @@ pub mod resolution;
 mod rt;
 
 pub use bin_entries::BinEntries;
-pub use bin_entries::BinEntriesError;
 use deno_terminal::colors;
 use deno_unsync::sync::AtomicFlag;
 use deno_unsync::sync::TaskQueue;
@@ -52,7 +51,10 @@ use self::initializer::NpmResolutionInitializer;
 use self::lifecycle_scripts::LifecycleScriptsExecutor;
 use self::local::LocalNpmInstallSys;
 use self::local::LocalNpmPackageInstaller;
+use self::local::LocalNpmPackageInstallerOptions;
 pub use self::local::LocalSetupCache;
+pub use self::local::node_modules_package_actual_dir_to_name;
+pub use self::local::remove_unused_node_modules_symlinks;
 use self::package_json::NpmInstallDepsProvider;
 use self::package_json::PackageJsonDepValueParseWithLocationError;
 use self::resolution::AddPkgReqsResult;
@@ -65,11 +67,11 @@ pub enum PackageCaching<'a> {
   All,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Default)]
 /// The set of npm packages that are allowed to run lifecycle scripts.
+#[derive(Debug, Clone, Eq, PartialEq, Default)]
 pub enum PackagesAllowedScripts {
   All,
-  Some(Vec<String>),
+  Some(Vec<PackageReq>),
   #[default]
   None,
 }
@@ -78,6 +80,7 @@ pub enum PackagesAllowedScripts {
 #[derive(Clone, Debug, Eq, PartialEq, Default)]
 pub struct LifecycleScriptsConfig {
   pub allowed: PackagesAllowedScripts,
+  pub denied: Vec<PackageReq>,
   pub initial_cwd: PathBuf,
   pub root_dir: PathBuf,
   /// Part of an explicit `deno install`
@@ -144,6 +147,15 @@ pub trait NpmInstallerSys:
 {
 }
 
+pub struct NpmInstallerOptions<TSys: NpmInstallerSys> {
+  pub clean_on_install: bool,
+  pub maybe_lockfile: Option<Arc<LockfileLock<TSys>>>,
+  pub maybe_node_modules_path: Option<PathBuf>,
+  pub lifecycle_scripts: Arc<LifecycleScriptsConfig>,
+  pub system_info: NpmSystemInfo,
+  pub workspace_link_packages: WorkspaceNpmLinkPackagesRc,
+}
+
 #[derive(Debug)]
 pub struct NpmInstaller<
   TNpmCacheHttpClient: NpmCacheHttpClient,
@@ -166,6 +178,7 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
 {
   #[allow(clippy::too_many_arguments)]
   pub fn new<TReporter: Reporter>(
+    install_reporter: Option<Arc<dyn InstallReporter>>,
     lifecycle_scripts_executor: Arc<dyn LifecycleScriptsExecutor>,
     npm_cache: Arc<NpmCache<TSys>>,
     npm_install_deps_provider: Arc<NpmInstallDepsProvider>,
@@ -180,40 +193,38 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
     reporter: &TReporter,
     sys: TSys,
     tarball_cache: Arc<deno_npm_cache::TarballCache<TNpmCacheHttpClient, TSys>>,
-    maybe_lockfile: Option<Arc<LockfileLock<TSys>>>,
-    maybe_node_modules_path: Option<PathBuf>,
-    lifecycle_scripts: LifecycleScriptsConfig,
-    system_info: NpmSystemInfo,
-    workspace_link_packages: Arc<WorkspaceNpmLinkPackages>,
-    install_reporter: Option<Arc<dyn InstallReporter>>,
+    options: NpmInstallerOptions<TSys>,
   ) -> Self {
     let fs_installer: Arc<dyn NpmPackageFsInstaller> =
-      match maybe_node_modules_path {
+      match options.maybe_node_modules_path {
         Some(node_modules_folder) => Arc::new(LocalNpmPackageInstaller::new(
           lifecycle_scripts_executor,
           npm_cache.clone(),
           Arc::new(NpmPackageExtraInfoProvider::new(
             npm_registry_info_provider,
             Arc::new(sys.clone()),
-            workspace_link_packages,
+            options.workspace_link_packages,
           )),
           npm_install_deps_provider.clone(),
           dyn_clone::clone(reporter),
           npm_resolution.clone(),
           sys,
           tarball_cache,
-          node_modules_folder,
-          lifecycle_scripts,
-          system_info,
-          install_reporter,
+          LocalNpmPackageInstallerOptions {
+            clean_on_install: options.clean_on_install,
+            lifecycle_scripts: options.lifecycle_scripts,
+            system_info: options.system_info,
+            reporter: install_reporter,
+            node_modules_folder,
+          },
         )),
         None => Arc::new(GlobalNpmPackageInstaller::new(
           npm_cache,
           tarball_cache,
           sys,
           npm_resolution.clone(),
-          lifecycle_scripts,
-          system_info,
+          options.lifecycle_scripts,
+          options.system_info,
           install_reporter,
         )),
       };
@@ -223,7 +234,7 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
       npm_resolution,
       npm_resolution_initializer,
       npm_resolution_installer,
-      maybe_lockfile,
+      maybe_lockfile: options.maybe_lockfile,
       top_level_install_flag: Default::default(),
       install_queue: Default::default(),
       cached_reqs: Default::default(),
@@ -274,7 +285,7 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
     packages: &[PackageReq],
     caching: Option<PackageCaching<'_>>,
   ) -> AddPkgReqsResult {
-    if packages.is_empty() {
+    if packages.is_empty() && !self.npm_resolution.is_pending() {
       return AddPkgReqsResult {
         dependencies_result: Ok(()),
         results: vec![],
@@ -297,54 +308,44 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
     if result.dependencies_result.is_ok()
       && let Some(caching) = caching
     {
-      // the async mutex is unfortunate, but needed to handle the edge case where two workers
-      // try to cache the same package at the same time. we need to hold the lock while we cache
-      // and since that crosses an await point, we need the async mutex.
-      //
-      // should have a negligible perf impact because acquiring the lock is still in the order of nanoseconds
-      // while caching typically takes micro or milli seconds.
-      let _permit = self.install_queue.acquire().await;
-      let uncached = {
-        let cached_reqs = self.cached_reqs.lock();
-        packages
-          .iter()
-          .filter(|req| !cached_reqs.contains(req))
-          .collect::<Vec<_>>()
-      };
-
-      if !uncached.is_empty() {
-        result.dependencies_result = self.cache_packages(caching).await;
-        if result.dependencies_result.is_ok() {
-          let mut cached_reqs = self.cached_reqs.lock();
-          for req in uncached {
-            cached_reqs.insert(req.clone());
-          }
-        }
-      }
+      result.dependencies_result =
+        self.maybe_cache_packages(packages, caching).await;
     }
 
     result
   }
 
-  pub async fn inject_synthetic_types_node_package(
+  async fn maybe_cache_packages(
     &self,
+    packages: &[PackageReq],
+    caching: PackageCaching<'_>,
   ) -> Result<(), JsErrorBox> {
-    self.npm_resolution_initializer.ensure_initialized().await?;
+    // the async mutex is unfortunate, but needed to handle the edge case where two workers
+    // try to cache the same package at the same time. we need to hold the lock while we cache
+    // and since that crosses an await point, we need the async mutex.
+    //
+    // should have a negligible perf impact because acquiring the lock is still in the order of nanoseconds
+    // while caching typically takes micro or milli seconds.
+    let _permit = self.install_queue.acquire().await;
+    let uncached = {
+      let cached_reqs = self.cached_reqs.lock();
+      packages
+        .iter()
+        .filter(|req| !cached_reqs.contains(req))
+        .collect::<Vec<_>>()
+    };
 
-    // don't inject this if it's already been added
-    if self
-      .npm_resolution
-      .any_top_level_package(|id| id.nv.name == "@types/node")
-    {
+    if uncached.is_empty() {
       return Ok(());
     }
-
-    let reqs = &[PackageReq::from_str("@types/node").unwrap()];
-    self
-      .add_package_reqs(reqs, PackageCaching::Only(reqs.into()))
-      .await?;
-
-    Ok(())
+    let result = self.fs_installer.cache_packages(caching).await;
+    if result.is_ok() {
+      let mut cached_reqs = self.cached_reqs.lock();
+      for req in uncached {
+        cached_reqs.insert(req.clone());
+      }
+    }
+    result
   }
 
   pub async fn cache_package_info(
@@ -361,8 +362,12 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
     &self,
     caching: PackageCaching<'_>,
   ) -> Result<(), JsErrorBox> {
-    self.npm_resolution_initializer.ensure_initialized().await?;
-    self.fs_installer.cache_packages(caching).await
+    if self.npm_resolution.is_pending() {
+      self.add_package_reqs(&[], caching).await
+    } else {
+      self.npm_resolution_initializer.ensure_initialized().await?;
+      self.fs_installer.cache_packages(caching).await
+    }
   }
 
   pub fn ensure_no_pkg_json_dep_errors(
@@ -370,15 +375,8 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
   ) -> Result<(), Box<PackageJsonDepValueParseWithLocationError>> {
     for err in self.npm_install_deps_provider.pkg_json_dep_errors() {
       match err.source.as_kind() {
-        deno_package_json::PackageJsonDepValueParseErrorKind::VersionReq(_)
-        | deno_package_json::PackageJsonDepValueParseErrorKind::JsrVersionReq(
-          _,
-        ) => {
-          return Err(Box::new(err.clone()));
-        }
-        deno_package_json::PackageJsonDepValueParseErrorKind::Unsupported {
-          scheme,
-        } if scheme == "jsr" => {
+        deno_package_json::PackageJsonDepValueParseErrorKind::JsrRequiresScope { .. } |
+        deno_package_json::PackageJsonDepValueParseErrorKind::VersionReq { .. } => {
           return Err(Box::new(err.clone()));
         }
         deno_package_json::PackageJsonDepValueParseErrorKind::Unsupported {
@@ -398,10 +396,9 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
   }
 
   /// Ensures that the top level `package.json` dependencies are installed.
-  /// This may set up the `node_modules` directory.
   ///
   /// Returns `true` if the top level packages are already installed. A
-  /// return value of `false` means that new packages were added to the NPM resolution.
+  /// return value of `false` means that new packages were added to the npm resolution.
   pub async fn ensure_top_level_package_json_install(
     &self,
   ) -> Result<bool, JsErrorBox> {
@@ -418,12 +415,14 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
 
     // check if something needs resolving before bothering to load all
     // the package information (which is slow)
-    if pkg_json_remote_pkgs.iter().all(|pkg| {
-      self
-        .npm_resolution
-        .resolve_pkg_id_from_pkg_req(&pkg.req)
-        .is_ok()
-    }) {
+    if !self.npm_resolution.is_pending()
+      && pkg_json_remote_pkgs.iter().all(|pkg| {
+        self
+          .npm_resolution
+          .resolve_pkg_id_from_pkg_req(&pkg.req)
+          .is_ok()
+      })
+    {
       log::debug!(
         "All package.json deps resolvable. Skipping top level install."
       );
@@ -437,5 +436,17 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
     self.add_package_reqs_no_cache(&pkg_reqs).await?;
 
     Ok(false)
+  }
+
+  /// Run a resolution install if the npm snapshot is in a pending state
+  /// due to a config file change.
+  pub async fn install_resolution_if_pending(&self) -> Result<(), JsErrorBox> {
+    self.npm_resolution_initializer.ensure_initialized().await?;
+    self
+      .npm_resolution_installer
+      .install_if_pending()
+      .await
+      .map_err(JsErrorBox::from_err)?;
+    Ok(())
   }
 }

@@ -1,4 +1,4 @@
-Check [WILDCARD]/unhandled_rejection.ts
+Check [WILDCARD]unhandled_rejection.ts
 error: (in promise) Error: rejection
   reject(new Error("rejection"));
          ^

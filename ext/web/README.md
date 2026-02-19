@@ -110,8 +110,6 @@ Where:
 ## Dependencies
 
 - **deno_webidl**: Provided by the `deno_webidl` crate
-- **deno_console**: Provided by the `deno_console` crate
-- **deno_url**: Provided by the `deno_url` crate
 
 ## Provided ops
 

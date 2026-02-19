@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import {
   assert,
@@ -115,6 +115,45 @@ Deno.test({
 
       case "linux":
         assertStrictEquals(util.getSystemErrorName(-98), "EADDRINUSE");
+        break;
+    }
+  },
+});
+
+Deno.test({
+  name: "[util] getSystemErrorMessage()",
+  fn() {
+    type FnTestInvalidArg = (code?: unknown) => void;
+
+    assertThrows(
+      () => (util.getSystemErrorMessage as FnTestInvalidArg)(),
+      TypeError,
+    );
+    assertThrows(
+      () => (util.getSystemErrorMessage as FnTestInvalidArg)(1),
+      RangeError,
+    );
+
+    assertStrictEquals(util.getSystemErrorMessage(-424242), undefined);
+
+    switch (Deno.build.os) {
+      case "windows":
+        assertStrictEquals(
+          util.getSystemErrorMessage(-4091),
+          "address already in use",
+        );
+        break;
+      case "darwin":
+        assertStrictEquals(
+          util.getSystemErrorMessage(-48),
+          "address already in use",
+        );
+        break;
+      case "linux":
+        assertStrictEquals(
+          util.getSystemErrorMessage(-98),
+          "address already in use",
+        );
         break;
     }
   },

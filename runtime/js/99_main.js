@@ -1,9 +1,9 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // Remove Intl.v8BreakIterator because it is a non-standard API.
 delete Intl.v8BreakIterator;
 
-import * as internalConsole from "ext:deno_console/01_console.js";
+import * as internalConsole from "ext:deno_web/01_console.js";
 import { core, internals, primordials } from "ext:core/mod.js";
 const ops = core.ops;
 import {
@@ -44,6 +44,7 @@ const {
   PromiseResolve,
   StringPrototypePadEnd,
   Symbol,
+  SymbolDispose,
   SymbolIterator,
   TypeError,
 } = primordials;
@@ -63,9 +64,9 @@ import {
   inspectArgs,
   quoteString,
   setNoColorFns,
-} from "ext:deno_console/01_console.js";
+} from "ext:deno_web/01_console.js";
 import * as performance from "ext:deno_web/15_performance.js";
-import * as url from "ext:deno_url/00_url.js";
+import * as url from "ext:deno_web/00_url.js";
 import * as fetch from "ext:deno_fetch/26_fetch.js";
 import * as messagePort from "ext:deno_web/13_message_port.js";
 import {
@@ -87,7 +88,7 @@ import {
 import {
   workerRuntimeGlobalProperties,
 } from "ext:runtime/98_global_scope_worker.js";
-import { SymbolDispose, SymbolMetadata } from "ext:deno_web/00_infra.js";
+import { SymbolMetadata } from "ext:deno_web/00_infra.js";
 import { bootstrap as bootstrapOtel } from "ext:deno_telemetry/telemetry.ts";
 import { nodeGlobals } from "ext:deno_node/00_globals.js";
 
@@ -458,17 +459,17 @@ function processRejectionHandled(promise, reason) {
 }
 
 function dispatchLoadEvent() {
-  globalThis_.dispatchEvent(new Event("load"));
+  globalThis_.dispatchEvent(new event.Event("load"));
 }
 
 function dispatchBeforeUnloadEvent() {
   return globalThis_.dispatchEvent(
-    new Event("beforeunload", { cancelable: true }),
+    new event.Event("beforeunload", { cancelable: true }),
   );
 }
 
 function dispatchUnloadEvent() {
-  globalThis_.dispatchEvent(new Event("unload"));
+  globalThis_.dispatchEvent(new event.Event("unload"));
 }
 
 let hasBootstrapped = false;
@@ -798,12 +799,6 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       delete Object.prototype.__proto__;
     }
 
-    if (!ArrayPrototypeIncludes(unstableFeatures, unstableIds.temporal)) {
-      // Removes the `Temporal` API.
-      delete globalThis.Temporal;
-      delete globalThis.Date.prototype.toTemporalInstant;
-    }
-
     // Setup `Deno` global - we're actually overriding already existing global
     // `Deno` with `Deno` namespace from "./deno.ts".
     ObjectDefineProperty(globalThis, "Deno", core.propReadOnly(finalDenoNs));
@@ -921,12 +916,6 @@ function bootstrapWorkerRuntime(
       delete Object.prototype.__proto__;
     }
 
-    if (!ArrayPrototypeIncludes(unstableFeatures, unstableIds.temporal)) {
-      // Removes the `Temporal` API.
-      delete globalThis.Temporal;
-      delete globalThis.Date.prototype.toTemporalInstant;
-    }
-
     // Setup `Deno` global - we're actually overriding already existing global
     // `Deno` with `Deno` namespace from "./deno.ts".
     ObjectDefineProperty(globalThis, "Deno", core.propReadOnly(finalDenoNs));
@@ -974,7 +963,7 @@ event.saveGlobalThisReference(globalThis);
 event.defineEventHandler(globalThis, "unhandledrejection");
 
 // Nothing listens to this, but it warms up the code paths for event dispatch
-(new event.EventTarget()).dispatchEvent(new Event("warmup"));
+(new event.EventTarget()).dispatchEvent(new event.Event("warmup"));
 
 removeImportedOps();
 

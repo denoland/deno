@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::collections::HashMap;
 use std::str::FromStr;
@@ -17,6 +17,7 @@ use deno_core::serde::Deserialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::url::Url;
+use deno_error::JsErrorClass;
 use deno_graph::Resolution;
 use deno_graph::ResolutionError;
 use deno_graph::SpecifierError;
@@ -48,14 +49,13 @@ use super::documents::DocumentModules;
 use super::language_server;
 use super::language_server::StateSnapshot;
 use super::performance::Performance;
-use super::tsc::TsServer;
+use super::ts_server::TsServer;
 use crate::lsp::documents::OpenDocument;
 use crate::lsp::language_server::OnceCellMap;
 use crate::lsp::lint::LspLinter;
 use crate::lsp::logging::lsp_warn;
 use crate::lsp::urls::uri_to_url;
 use crate::sys::CliSys;
-use crate::tsc::DiagnosticCategory;
 use crate::type_checker::ambient_modules_to_regex_string;
 use crate::util::path::to_percent_decoded_str;
 
@@ -876,7 +876,9 @@ fn maybe_ambient_specifier_resolution_err(
           Some(specifier.to_string())
         }
       },
-      ResolveError::ImportMap(import_map_error) => {
+      ResolveError::Other(err) => {
+        let import_map_error =
+          err.get_ref().downcast_ref::<import_map::ImportMapError>()?;
         match import_map_error.as_kind() {
           ImportMapErrorKind::UnmappedBareSpecifier(spec, _) => {
             Some(spec.clone())
@@ -891,7 +893,6 @@ fn maybe_ambient_specifier_resolution_err(
           | ImportMapErrorKind::SpecifierBacktracksAbovePrefix { .. } => None,
         }
       }
-      ResolveError::Other(..) => None,
     },
   }
 }
@@ -1012,17 +1013,6 @@ fn diagnose_resolution(
                           module_name.to_string(),
                         ));
                       }
-                    } else if let Some(npm_resolver) = managed_npm_resolver {
-                      // check that a @types/node package exists in the resolver
-                      let types_node_req =
-                        PackageReq::from_str("@types/node").unwrap();
-                      if !npm_resolver.is_pkg_req_folder_cached(&types_node_req)
-                      {
-                        diagnostics.push(DenoDiagnostic::NotInstalledNpm(
-                          types_node_req,
-                          ModuleSpecifier::parse("npm:@types/node").unwrap(),
-                        ));
-                      }
                     }
                   } else {
                     // When the document is not available, it means that it cannot be found
@@ -1074,6 +1064,22 @@ fn diagnose_dependency(
     .in_node_modules(&referrer_module.specifier)
   {
     return; // ignore, surface typescript errors instead
+  }
+
+  if referrer_module.media_type.is_declaration() {
+    let compiler_options_data = snapshot
+      .compiler_options_resolver
+      .for_key(&referrer_module.compiler_options_key);
+    if compiler_options_data.is_none() {
+      lsp_warn!(
+        "Key was not in sync with resolver while checking `skipLibCheck`. This should be impossible."
+      );
+      #[cfg(debug_assertions)]
+      unreachable!();
+    }
+    if compiler_options_data.is_some_and(|d| d.skip_lib_check) {
+      return;
+    }
   }
 
   let import_map = snapshot
@@ -1313,25 +1319,9 @@ pub async fn generate_module_diagnostics(
     }
   });
 
-  let mut ts_diagnostics = ts_server
-    .get_diagnostics(snapshot.clone(), module, token)
+  let mut diagnostics = ts_server
+    .provide_diagnostics(module, snapshot.clone(), token)
     .await?;
-  let suggestion_actions_settings = snapshot
-    .config
-    .language_settings_for_specifier(&module.specifier)
-    .map(|s| s.suggestion_actions.clone())
-    .unwrap_or_default();
-  if !suggestion_actions_settings.enabled {
-    ts_diagnostics.retain(|d| {
-      d.category != DiagnosticCategory::Suggestion
-        // Still show deprecated and unused diagnostics.
-        // https://github.com/microsoft/vscode/blob/ce50bd4876af457f64d83cfd956bc916535285f4/extensions/typescript-language-features/src/languageFeatures/diagnostics.ts#L113-L114
-        || d.reports_deprecated == Some(true)
-        || d.reports_unnecessary == Some(true)
-    });
-  }
-  let mut diagnostics =
-    ts_json_to_diagnostics(ts_diagnostics, module, &snapshot.document_modules);
 
   let (deps_diagnostics, deferred_deps_diagnostics) = deps_handle
     .await
@@ -1351,9 +1341,9 @@ pub async fn generate_module_diagnostics(
     .get_or_init(async || {
       ts_server
         .get_ambient_modules(
-          snapshot.clone(),
           &module.compiler_options_key,
           module.notebook_uri.as_ref(),
+          snapshot.clone(),
           token,
         )
         .await
@@ -1685,7 +1675,7 @@ mod tests {
               "severity": 1,
               "code": "import-prefix-missing",
               "source": "deno",
-              "message": "Relative import path \"bad.js\" not prefixed with / or ./ or ../",
+              "message": "Import \"bad.js\" not a dependency",
             },
             {
               "range": {
@@ -1695,7 +1685,7 @@ mod tests {
               "severity": 1,
               "code": "import-prefix-missing",
               "source": "deno",
-              "message": "Relative import path \"bad.js\" not prefixed with / or ./ or ../",
+              "message": "Import \"bad.js\" not a dependency",
             },
             {
               "range": {
@@ -1705,7 +1695,7 @@ mod tests {
               "severity": 1,
               "code": "import-prefix-missing",
               "source": "deno",
-              "message": "Relative import path \"bad.d.ts\" not prefixed with / or ./ or ../",
+              "message": "Import \"bad.d.ts\" not a dependency",
             },
           ],
         ],

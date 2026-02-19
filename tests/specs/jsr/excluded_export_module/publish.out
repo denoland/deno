@@ -1,6 +1,6 @@
-Check file:///[WILDLINE]/main.ts
+Check [WILDCARD]main.ts
 Checking for slow types in the public API...
-Check file:///[WILDLINE]/main.ts
+Check [WILDCARD]main.ts
 error[excluded-module]: module in package's module graph was excluded from publishing
  --> [WILDLINE]excluded_file1.ts
   = hint: remove the module from 'exclude' and/or 'publish.exclude' in the config file or use 'publish.exclude' with a negative glob to unexclude from gitignore

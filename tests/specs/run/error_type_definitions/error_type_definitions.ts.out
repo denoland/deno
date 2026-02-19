@@ -1,4 +1,4 @@
-[WILDCARD]TS2307 [ERROR]: Relative import path "baz" not prefixed with / or ./ or ../
+[WILDCARD]TS2307 [ERROR]: Import "baz" not a dependency
   hint: If you want to use the npm package, try running `deno add npm:baz`
     at [WILDCARD]/type_definitions/bar.d.ts:[WILDCARD]
 

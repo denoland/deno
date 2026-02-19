@@ -1,5 +1,5 @@
 Check [WILDCARD]error_012_bad_dynamic_import_specifier.ts
-error: Uncaught (in promise) TypeError: Relative import path "bad-module.ts" not prefixed with / or ./ or ../
+error: Uncaught (in promise) TypeError: Import "bad-module.ts" not a dependency
     at [WILDCARD]/error_012_bad_dynamic_import_specifier.ts:2:35
 
   const _badModule = await import("bad-module.ts");

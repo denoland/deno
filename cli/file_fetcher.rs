@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::sync::Arc;
 
@@ -1063,6 +1063,7 @@ mod tests {
   }
 
   fn create_http_client_adapter() -> HttpClientAdapter {
+    let _ = rustls::crypto::ring::default_provider().install_default();
     HttpClientAdapter {
       http_client_provider: Arc::new(HttpClientProvider::new(None, None)),
       download_log_level: log::Level::Info,

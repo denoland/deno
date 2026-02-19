@@ -1,0 +1,24 @@
+# Copyright 2018-2026 the Deno authors. MIT license.
+
+[package]
+name = "deno_bench_util"
+version = "0.226.0"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = true
+readme = "README.md"
+repository.workspace = true
+description = "Bench and profiling utilities for deno crates"
+
+[lib]
+path = "lib.rs"
+
+[dependencies]
+bencher.workspace = true
+deno_core.workspace = true
+tokio.workspace = true
+
+[[bench]]
+name = "utf8"
+harness = false
