@@ -7,8 +7,9 @@ use std::sync::Arc;
 
 use deno_cache_dir::GlobalOrLocalHttpCache;
 use deno_cache_dir::file_fetcher::CacheSetting;
-use deno_core::anyhow::Context;
 use deno_core::anyhow::bail;
+#[allow(unused_imports)]
+use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_semver::StackString;
 use deno_semver::VersionReq;
@@ -557,13 +558,13 @@ fn enhance_npm_registry_error(err: AnyError, factory: &CliFactory) -> AnyError {
     Ok(npmrc) => npmrc,
     Err(_) => {
       // Still provide helpful message even if we can't access npmrc
-      return err.context(format!(
+      return deno_core::anyhow::Error::from(err).context(format!(
         "Failed to fetch package information from npm registry.\n\n\
         Original error: {}\n\n\
         If you're using a private npm registry, ensure your `.npmrc` is properly configured.\n\
         For more information, see: https://docs.deno.com/runtime/manual/node/npm_registries",
         err_string
-      ));
+      )).into();
     }
   };
 
@@ -635,16 +636,16 @@ fn enhance_npm_registry_error(err: AnyError, factory: &CliFactory) -> AnyError {
       https://docs.deno.com/runtime/manual/node/npm_registries",
     );
 
-    err.context(enhanced_msg)
+    deno_core::anyhow::Error::from(err).context(enhanced_msg).into()
   } else {
     // Not a private registry, but still an npm error - provide general guidance
-    err.context(format!(
+    deno_core::anyhow::Error::from(err).context(format!(
       "Failed to fetch package information from npm registry.\n\n\
       Original error: {}\n\n\
       If you're using a private npm registry, ensure your `.npmrc` is properly configured.\n\
       For more information, see: https://docs.deno.com/runtime/manual/node/npm_registries",
       err_string
-    ))
+    )).into()
   }
 }
 
