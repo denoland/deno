@@ -7,13 +7,13 @@ use deno_core::ResourceHandle;
 use deno_core::ResourceHandleFd;
 use deno_core::op2;
 use deno_core::v8;
+use deno_dotenv::parse_env_content_hook;
 use deno_error::JsErrorBox;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::NpmPackageFolderResolver;
 
 use crate::ExtNodeSys;
 use crate::NodeResolverRc;
-use crate::ops::dotenv::parse_env_content_hook;
 
 #[repr(u32)]
 enum HandleType {

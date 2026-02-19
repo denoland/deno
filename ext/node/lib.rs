@@ -31,6 +31,7 @@ extern crate libz_sys as zlib;
 mod global;
 pub mod ops;
 
+use deno_dotenv::parse_env_content_hook;
 pub use deno_package_json::PackageJson;
 use deno_permissions::PermissionCheckError;
 pub use node_resolver::DENO_SUPPORTED_BUILTIN_NODE_MODULES as SUPPORTED_BUILTIN_NODE_MODULES;
@@ -46,7 +47,6 @@ pub use ops::vm::init_global_template;
 pub use crate::global::GlobalsStorage;
 use crate::global::global_object_middleware;
 use crate::global::global_template_middleware;
-use crate::ops::dotenv::parse_env_content_hook;
 
 pub fn is_builtin_node_module(module_name: &str) -> bool {
   DenoIsBuiltInNodeModuleChecker.is_builtin_node_module(module_name)
