@@ -1316,11 +1316,6 @@ function transformDenoShellCommand(
         }
       }
     }
-    const prefix = shellVarPrefix || command.slice(0, denoPathLength);
-    let transformed = prefix + " " + result.deno_args.join(" ");
-    if (shellSuffix) {
-      transformed += " " + shellSuffix;
-    }
     return transformed;
   } catch {
     // If the Rust parser fails (unknown flags), return the original command
