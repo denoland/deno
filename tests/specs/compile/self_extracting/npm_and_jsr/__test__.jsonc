@@ -5,7 +5,7 @@
     "output": "[WILDCARD]"
   }, {
     "if": "unix",
-    "args": "compile --self-extracting -A --output main main.ts",
+    "args": "compile --self-extracting --no-check -A --output main main.ts",
     "output": "[WILDCARD]"
   }, {
     "if": "unix",
@@ -20,7 +20,7 @@
     "output": "main.out"
   }, {
     "if": "windows",
-    "args": "compile --self-extracting -A --output main.exe main.ts",
+    "args": "compile --self-extracting --no-check -A --output main.exe main.ts",
     "output": "[WILDCARD]"
   }, {
     "if": "windows",
