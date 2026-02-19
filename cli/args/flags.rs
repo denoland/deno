@@ -3359,6 +3359,14 @@ fn create_subcommand() -> Command {
         Arg::new("npm")
           .long("npm")
           .help("Treat unprefixed package names as npm packages")
+          .conflicts_with("jsr")
+          .action(ArgAction::SetTrue),
+      )
+      .arg(
+        Arg::new("jsr")
+          .long("jsr")
+          .help("Treat unprefixed package names as JSR packages")
+          .conflicts_with("npm")
           .action(ArgAction::SetTrue),
       )
       .arg(
@@ -6433,11 +6441,12 @@ fn create_parse(
 ) -> Result<(), clap::Error> {
   let package = matches.remove_one::<String>("package").unwrap();
   let use_npm = matches.get_flag("npm");
+  let use_jsr = matches.get_flag("jsr");
   let package_args = matches
     .remove_many::<String>("package_args")
     .map(|args| args.collect::<Vec<_>>())
     .unwrap_or_default();
-  let package = normalize_create_package_name(package, use_npm)?;
+  let package = normalize_create_package_name(package, use_npm, use_jsr)?;
 
   // `create` is a thin alias to init's package-generator path, not template mode.
   flags.subcommand = DenoSubcommand::Init(InitFlags {
@@ -6456,6 +6465,7 @@ fn create_parse(
 fn normalize_create_package_name(
   package: String,
   use_npm: bool,
+  use_jsr: bool,
 ) -> Result<String, clap::Error> {
   if let Some(name) = package.strip_prefix("jsr:") {
     if use_npm {
@@ -6472,7 +6482,12 @@ fn normalize_create_package_name(
       Ok(package)
     }
   } else if let Some(name) = package.strip_prefix("npm:") {
-    if name.is_empty() {
+    if use_jsr {
+      Err(clap::Error::raw(
+        clap::error::ErrorKind::InvalidValue,
+        "Cannot use `--jsr` with an `npm:` specifier.",
+      ))
+    } else if name.is_empty() {
       Err(clap::Error::raw(
         clap::error::ErrorKind::InvalidValue,
         "Missing package name after 'npm:' prefix.",
@@ -6482,6 +6497,8 @@ fn normalize_create_package_name(
     }
   } else if use_npm {
     Ok(format!("npm:{package}"))
+  } else if use_jsr {
+    Ok(format!("jsr:{package}"))
   } else {
     Err(clap::Error::raw(
       clap::error::ErrorKind::InvalidValue,
@@ -13509,7 +13526,49 @@ mod tests {
     let r = flags_from_vec(svec!["deno", "create", "jsr:"]);
     assert!(r.is_err());
 
-    let r = flags_from_vec(svec!["deno", "create", "--jsr", "@std/http"]);
+    // --jsr flag
+    let r = flags_from_vec(svec!["deno", "create", "--jsr", "@fresh/init"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Init(InitFlags {
+          package: Some("jsr:@fresh/init".to_string()),
+          package_args: vec![],
+          dir: None,
+          lib: false,
+          serve: false,
+          empty: false,
+          yes: false,
+        }),
+        ..Flags::default()
+      }
+    );
+
+    // --jsr with --yes
+    let r =
+      flags_from_vec(svec!["deno", "create", "--jsr", "--yes", "@fresh/init"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Init(InitFlags {
+          package: Some("jsr:@fresh/init".to_string()),
+          package_args: vec![],
+          dir: None,
+          lib: false,
+          serve: false,
+          empty: false,
+          yes: true,
+        }),
+        ..Flags::default()
+      }
+    );
+
+    // --jsr with npm: specifier is contradictory
+    let r = flags_from_vec(svec!["deno", "create", "--jsr", "npm:vite"]);
+    assert!(r.is_err());
+
+    // --jsr and --npm conflict
+    let r = flags_from_vec(svec!["deno", "create", "--jsr", "--npm", "@foo"]);
     assert!(r.is_err());
 
     let r = flags_from_vec(svec!["deno", "create", "npm:"]);
