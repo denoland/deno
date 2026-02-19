@@ -299,6 +299,7 @@ fn create_symlink(
 ) -> Result<(), AnyError> {
   #[cfg(unix)]
   {
+    _ = dest_is_dir; // unused on unix
     std::os::unix::fs::symlink(target, link_path)
       .or_else(|_| {
         // may be left over from an interrupted extraction
