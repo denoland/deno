@@ -3294,12 +3294,19 @@ fn init_subcommand() -> Command {
           Arg::new("npm")
             .long("npm")
             .help("Generate a npm create-* project")
-            .conflicts_with_all(["lib", "serve", "empty"])
+            .conflicts_with_all(["lib", "serve", "empty", "jsr"])
+            .action(ArgAction::SetTrue),
+        )
+        .arg(
+          Arg::new("jsr")
+            .long("jsr")
+            .help("Generate a project from a JSR package")
+            .conflicts_with_all(["lib", "serve", "empty", "npm"])
             .action(ArgAction::SetTrue),
         )
         .arg(
           Arg::new("lib")
-            .long("lib")
+  .long("lib")
             .help("Generate an example library project")
             .action(ArgAction::SetTrue),
         )
@@ -3314,14 +3321,13 @@ fn init_subcommand() -> Command {
           Arg::new("empty")
             .long("empty")
             .help("Generate a minimal project with just main.ts and deno.json")
-            .conflicts_with_all(["lib", "serve", "npm"])
+            .conflicts_with_all(["lib", "serve", "npm", "jsr"])
             .action(ArgAction::SetTrue),
         )
         .arg(
           Arg::new("yes")
             .short('y')
             .long("yes")
-            .requires("npm")
             .help("Bypass the prompt and run with full permissions")
             .action(ArgAction::SetTrue),
         )
@@ -6365,14 +6371,23 @@ fn init_parse(
   let mut package = None;
   let mut package_args = vec![];
 
+  let use_npm = matches.get_flag("npm");
+  let use_jsr = matches.get_flag("jsr");
+
   if let Some(mut args) = matches.remove_many::<String>("args") {
     let name = args.next().unwrap();
     let mut args = args.collect::<Vec<_>>();
 
-    if matches.get_flag("npm") {
+    if use_npm {
       package = Some(format!(
         "npm:{}",
         name.strip_prefix("npm:").unwrap_or(&name)
+      ));
+      package_args = args;
+    } else if use_jsr {
+      package = Some(format!(
+        "jsr:{}",
+        name.strip_prefix("jsr:").unwrap_or(&name)
       ));
       package_args = args;
     } else {
@@ -6387,6 +6402,16 @@ fn init_parse(
         yes = inner_matches.get_flag("yes");
       }
     }
+  } else if use_npm {
+    return Err(clap::Error::raw(
+      clap::error::ErrorKind::MissingRequiredArgument,
+      "Missing package name for --npm.",
+    ));
+  } else if use_jsr {
+    return Err(clap::Error::raw(
+      clap::error::ErrorKind::MissingRequiredArgument,
+      "Missing package name for --jsr.",
+    ));
   }
 
   flags.subcommand = DenoSubcommand::Init(InitFlags {
@@ -13241,6 +13266,101 @@ mod tests {
         ..Flags::default()
       }
     );
+
+    // --jsr basic
+    let r = flags_from_vec(svec!["deno", "init", "--jsr", "@denotest/create"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Init(InitFlags {
+          package: Some("jsr:@denotest/create".to_string()),
+          package_args: vec![],
+          dir: None,
+          lib: false,
+          serve: false,
+          empty: false,
+          yes: false,
+        }),
+        ..Flags::default()
+      }
+    );
+
+    // --jsr with jsr: prefix already present
+    let r = flags_from_vec(svec!["deno", "init", "--jsr", "jsr:@fresh/init"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Init(InitFlags {
+          package: Some("jsr:@fresh/init".to_string()),
+          package_args: vec![],
+          dir: None,
+          lib: false,
+          serve: false,
+          empty: false,
+          yes: false,
+        }),
+        ..Flags::default()
+      }
+    );
+
+    // --jsr with --yes
+    let r = flags_from_vec(svec![
+      "deno",
+      "init",
+      "--jsr",
+      "--yes",
+      "@denotest/create"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Init(InitFlags {
+          package: Some("jsr:@denotest/create".to_string()),
+          package_args: vec![],
+          dir: None,
+          lib: false,
+          serve: false,
+          empty: false,
+          yes: true,
+        }),
+        ..Flags::default()
+      }
+    );
+
+    // --jsr with extra args
+    let r = flags_from_vec(svec![
+      "deno",
+      "init",
+      "--jsr",
+      "@denotest/create",
+      "my-project"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Init(InitFlags {
+          package: Some("jsr:@denotest/create".to_string()),
+          package_args: svec!["my-project"],
+          dir: None,
+          lib: false,
+          serve: false,
+          empty: false,
+          yes: false,
+        }),
+        ..Flags::default()
+      }
+    );
+
+    // --jsr conflicts with --npm, --lib, --serve, --empty
+    let r = flags_from_vec(svec!["deno", "init", "--jsr", "--npm", "@foo/bar"]);
+    assert!(r.is_err());
+
+    let r = flags_from_vec(svec!["deno", "init", "--jsr", "--lib", "@foo/bar"]);
+    assert!(r.is_err());
+
+    // --jsr without package name
+    let r = flags_from_vec(svec!["deno", "init", "--jsr"]);
+    assert!(r.is_err());
   }
 
   #[test]
