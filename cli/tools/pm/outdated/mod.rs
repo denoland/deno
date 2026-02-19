@@ -7,8 +7,8 @@ use std::sync::Arc;
 
 use deno_cache_dir::GlobalOrLocalHttpCache;
 use deno_cache_dir::file_fetcher::CacheSetting;
-use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
+use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_semver::StackString;
 use deno_semver::VersionReq;
@@ -246,7 +246,8 @@ pub async fn outdated(
     )?
   };
 
-  deps.resolve_versions()
+  deps
+    .resolve_versions()
     .await
     .map_err(|err| enhance_npm_registry_error(err, &factory))?;
 
@@ -530,10 +531,7 @@ async fn update(
   Ok(())
 }
 
-fn enhance_npm_registry_error(
-  err: AnyError,
-  factory: &CliFactory,
-) -> AnyError {
+fn enhance_npm_registry_error(err: AnyError, factory: &CliFactory) -> AnyError {
   let err_string = err.to_string();
   let err_lower = err_string.to_lowercase();
 
@@ -610,7 +608,10 @@ fn enhance_npm_registry_error(
         - Check if the package exists in your private registry\n\
         - Ensure the registry URL in `.npmrc` is correct\n",
       );
-    } else if err_lower.contains("network") || err_lower.contains("fetch") || err_lower.contains("connection") {
+    } else if err_lower.contains("network")
+      || err_lower.contains("fetch")
+      || err_lower.contains("connection")
+    {
       enhanced_msg.push_str(
         "This appears to be a network connectivity issue.\n\
         Suggestions:\n\
