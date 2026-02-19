@@ -137,12 +137,15 @@ pub fn extract_vfs_to_disk(
 
   log::debug!("Extracting to {}", extraction_dir.display());
 
+  let start = std::time::Instant::now();
   extract_vfs_dir(vfs, vfs.root_dir(), &extraction_dir, &extraction_dir)
     .context("Failed to extract embedded files to disk")?;
 
   // write the done marker
   std::fs::write(&done_marker, b"")
     .context("Failed to write extraction done marker")?;
+
+  log::debug!("Extracted in {}ms", start.elapsed().as_millis());
 
   Ok(extraction_dir)
 }
