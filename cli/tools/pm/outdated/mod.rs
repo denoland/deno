@@ -571,17 +571,17 @@ fn enhance_npm_registry_error(
 
   // Check if using a private registry by checking the default registry URL
   let default_registry = "https://registry.npmjs.org/";
-  let registry_config = npmrc.get_registry_config("@");
-  let registry_url = registry_config.url.as_str();
-  let is_private_registry = registry_url != default_registry
-    && !registry_url.starts_with("https://registry.npmjs.org");
+  let registry_url = npmrc.get_registry_url("@");
+  let registry_url_str = registry_url.as_str();
+  let is_private_registry = registry_url_str != default_registry
+    && !registry_url_str.starts_with("https://registry.npmjs.org");
 
   if is_private_registry {
     // Provide helpful error message for private registry issues
     let mut enhanced_msg = format!(
       "Failed to fetch package information from private npm registry ({}).\n\n\
       Original error: {}\n\n",
-      registry_url, err_string
+      registry_url_str, err_string
     );
 
     // Check for specific error patterns to provide targeted suggestions
