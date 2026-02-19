@@ -599,6 +599,11 @@ impl StandaloneModules {
       let mut source_map = None;
       let mut cjs_export_analysis = None;
       let mut is_valid_utf8 = false;
+      log::debug!(
+        "Reading module: path={}, root={}",
+        path.display(),
+        self.vfs.root().display()
+      );
       let bytes = match self.vfs.file_entry(&path) {
         Ok(entry) => {
           let bytes = self
