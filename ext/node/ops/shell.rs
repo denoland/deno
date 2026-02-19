@@ -19,8 +19,8 @@ pub struct ParsedShellArgs {
 /// Parses a shell command string into its arguments and shell operator suffix.
 #[op2]
 #[serde]
-pub fn op_node_parse_shell_args(#[string] input: String) -> ParsedShellArgs {
-  scan_and_split(&input)
+pub fn op_node_parse_shell_args(#[string] input: &str) -> ParsedShellArgs {
+  scan_and_split(input)
 }
 
 /// Scan for the first unquoted shell operator (`<`, `>`, `|`, `&`, `;`)
