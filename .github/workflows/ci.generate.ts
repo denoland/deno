@@ -1086,7 +1086,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
             with: {
               name:
                 `test-results-${buildItem.os}-${buildItem.arch}-${buildItem.profile}-${testMatrix.test_crate}${
-                  testMatrix.shard_index.greaterThan(0).then(
+                  testMatrix.shard_total.greaterThan(1).then(
                     literal("-shard-").concat(testMatrix.shard_index),
                   ).else("")
                 }.json`,
