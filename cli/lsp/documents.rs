@@ -1296,6 +1296,49 @@ impl DocumentModules {
     module
   }
 
+  pub fn module_for_tsgo_referrer(
+    &self,
+    uri: &Uri,
+    compiler_options_key: &CompilerOptionsKey,
+  ) -> Option<Arc<DocumentModule>> {
+    let document = self.documents.get(uri)?;
+    let scope = self.primary_scope(document.uri()).unwrap_or_else(|| {
+      self
+        .compiler_options_resolver
+        .for_key(compiler_options_key)
+        .unwrap()
+        .workspace_dir_or_source_url
+        .as_ref()
+        .and_then(|s| self.config.tree.scope_for_specifier(s))
+    });
+    self.module(&document, scope.map(|s| s.as_ref()))
+  }
+
+  pub fn module_for_tsgo_dependency(
+    &self,
+    specifier: &Url,
+    compiler_options_key: &CompilerOptionsKey,
+  ) -> Option<Arc<DocumentModule>> {
+    let scope = if specifier.scheme() == "file"
+      && !self.cache.in_global_cache_directory(specifier)
+    {
+      self.config.tree.scope_for_specifier(specifier)
+    } else {
+      self
+        .compiler_options_resolver
+        .for_key(compiler_options_key)
+        .unwrap()
+        .workspace_dir_or_source_url
+        .as_ref()
+        .and_then(|s| self.config.tree.scope_for_specifier(s))
+    };
+    self.module_for_specifier(
+      specifier,
+      scope.map(|s| s.as_ref()),
+      Some(compiler_options_key),
+    )
+  }
+
   pub fn primary_module(
     &self,
     document: &Document,
@@ -1693,10 +1736,9 @@ impl DocumentModules {
     if let Some(module_name) = specifier.as_str().strip_prefix("node:")
       && deno_node::is_builtin_node_module(module_name)
     {
-      // return itself for node: specifiers because during type checking
-      // we resolve to the ambient modules in the @types/node package
-      // rather than deno_std/node
-      return Some((specifier.clone(), MediaType::Dts, None));
+      // Don't resolve node: specifiers because during type checking we resolve
+      // to the ambient modules in the @types/node package.
+      return None;
     }
     let mut specifier = specifier.clone();
     let mut media_type = None;
@@ -1737,6 +1779,96 @@ impl DocumentModules {
         Some(module.uri.clone()),
       ))
     }
+  }
+
+  #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
+  pub fn resolve_dependency_document(
+    &self,
+    raw_specifier: &str,
+    referrer_module: &DocumentModule,
+    resolution_mode: ResolutionMode,
+  ) -> Option<(Arc<Uri>, MediaType)> {
+    if raw_specifier.starts_with("asset:") {
+      let specifier = resolve_url(raw_specifier).ok()?;
+      let uri = remote_or_asset_url_to_uri(&specifier)?;
+      let media_type = MediaType::from_specifier(&specifier);
+      return Some((Arc::new(uri), media_type));
+    }
+    if let Some(dependency) = referrer_module.dependencies.get(raw_specifier) {
+      let specifier = dependency
+        .maybe_type
+        .maybe_specifier()
+        .or_else(|| dependency.maybe_code.maybe_specifier())?;
+      return self.resolve_dependency_document_inner(
+        specifier,
+        referrer_module,
+        resolution_mode,
+        &referrer_module.compiler_options_key,
+      );
+    }
+    let scoped_resolver = self
+      .resolver
+      .get_scoped_resolver(referrer_module.scope.as_deref());
+    let specifier = scoped_resolver
+      .as_cli_resolver()
+      .resolve(
+        raw_specifier,
+        &referrer_module.specifier,
+        deno_graph::Position::zeroed(),
+        resolution_mode,
+        NodeResolutionKind::Types,
+      )
+      .ok()?;
+    self.resolve_dependency_document_inner(
+      &specifier,
+      referrer_module,
+      resolution_mode,
+      &referrer_module.compiler_options_key,
+    )
+  }
+
+  fn resolve_dependency_document_inner(
+    &self,
+    specifier: &Url,
+    referrer_module: &DocumentModule,
+    resolution_mode: ResolutionMode,
+    compiler_options_key: &CompilerOptionsKey,
+  ) -> Option<(Arc<Uri>, MediaType)> {
+    if let Some(module_name) = specifier.as_str().strip_prefix("node:")
+      && deno_node::is_builtin_node_module(module_name)
+    {
+      // Don't resolve node: specifiers because during type checking we resolve
+      // to the ambient modules in the @types/node package.
+      return None;
+    }
+    let mut specifier = Cow::Borrowed(specifier);
+    if let Ok(npm_ref) = NpmPackageReqReference::from_specifier(&specifier) {
+      let scoped_resolver = self
+        .resolver
+        .get_scoped_resolver(referrer_module.scope.as_deref());
+      let (s, _) = scoped_resolver.npm_to_file_url(
+        &npm_ref,
+        &referrer_module.specifier,
+        NodeResolutionKind::Types,
+        resolution_mode,
+      )?;
+      specifier = Cow::Owned(s);
+    }
+    let module =
+      self.module_for_tsgo_dependency(&specifier, compiler_options_key)?;
+    if let Some(types) = module
+      .types_dependency
+      .as_ref()
+      .and_then(|d| d.dependency.maybe_specifier())
+    {
+      return self.resolve_dependency_document_inner(
+        types,
+        &module,
+        module.resolution_mode,
+        compiler_options_key,
+      );
+    }
+    Some((module.uri.clone(), module.media_type))
   }
 }
 
