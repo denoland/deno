@@ -558,13 +558,13 @@ fn enhance_npm_registry_error(err: AnyError, factory: &CliFactory) -> AnyError {
     Ok(npmrc) => npmrc,
     Err(_) => {
       // Still provide helpful message even if we can't access npmrc
-      return deno_core::anyhow::Error::from(err).context(format!(
+      return err.context(format!(
         "Failed to fetch package information from npm registry.\n\n\
         Original error: {}\n\n\
         If you're using a private npm registry, ensure your `.npmrc` is properly configured.\n\
         For more information, see: https://docs.deno.com/runtime/manual/node/npm_registries",
         err_string
-      )).into();
+      ));
     }
   };
 
@@ -636,16 +636,16 @@ fn enhance_npm_registry_error(err: AnyError, factory: &CliFactory) -> AnyError {
       https://docs.deno.com/runtime/manual/node/npm_registries",
     );
 
-    deno_core::anyhow::Error::from(err).context(enhanced_msg).into()
+    err.context(enhanced_msg)
   } else {
     // Not a private registry, but still an npm error - provide general guidance
-    deno_core::anyhow::Error::from(err).context(format!(
+    err.context(format!(
       "Failed to fetch package information from npm registry.\n\n\
       Original error: {}\n\n\
       If you're using a private npm registry, ensure your `.npmrc` is properly configured.\n\
       For more information, see: https://docs.deno.com/runtime/manual/node/npm_registries",
       err_string
-    )).into()
+    ))
   }
 }
 
