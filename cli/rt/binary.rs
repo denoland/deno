@@ -599,11 +599,6 @@ impl StandaloneModules {
       let mut source_map = None;
       let mut cjs_export_analysis = None;
       let mut is_valid_utf8 = false;
-      log::debug!(
-        "Reading module: path={}, root={}",
-        path.display(),
-        self.vfs.root().display()
-      );
       let bytes = match self.vfs.file_entry(&path) {
         Ok(entry) => {
           let bytes = self
@@ -623,99 +618,6 @@ impl StandaloneModules {
           bytes
         }
         Err(err) if err.kind() == ErrorKind::NotFound => {
-          if log::log_enabled!(log::Level::Debug) {
-            fn collect_vfs_paths_with_filter(
-              dir: &VirtualDirectory,
-              current_path: &mut PathBuf,
-              filter: &str,
-              out: &mut Vec<PathBuf>,
-            ) {
-              for entry in dir.entries.iter() {
-                match entry {
-                  VfsEntry::Dir(sub_dir) => {
-                    current_path.push(&sub_dir.name);
-                    collect_vfs_paths_with_filter(
-                      sub_dir,
-                      current_path,
-                      filter,
-                      out,
-                    );
-                    current_path.pop();
-                  }
-                  VfsEntry::File(file) => {
-                    current_path.push(&file.name);
-                    let path_text = current_path.to_string_lossy();
-                    if path_text.contains(filter) {
-                      out.push(current_path.clone());
-                    }
-                    current_path.pop();
-                  }
-                  VfsEntry::Symlink(symlink) => {
-                    current_path.push(&symlink.name);
-                    let path_text = current_path.to_string_lossy();
-                    if path_text.contains(filter) {
-                      out.push(current_path.clone());
-                    }
-                    current_path.pop();
-                  }
-                }
-              }
-            }
-
-            let normalized_path =
-              deno_path_util::normalize_path(Cow::Borrowed(path.as_path()))
-                .into_owned();
-            #[cfg(windows)]
-            let unc_stripped_path =
-              deno_path_util::strip_unc_prefix(normalized_path.clone());
-            #[cfg(windows)]
-            let unc_stripped_root =
-              deno_path_util::strip_unc_prefix(self.vfs.root().to_path_buf());
-            log::debug!(
-              concat!(
-                "VFS miss for module path. ",
-                "path='{}', normalized='{}', ",
-                "root='{}', path_in_root={}, normalized_in_root={}, ",
-                "vfs_exists_path={}, vfs_exists_normalized={}"
-              ),
-              path.display(),
-              normalized_path.display(),
-              self.vfs.root().display(),
-              path.starts_with(self.vfs.root()),
-              normalized_path.starts_with(self.vfs.root()),
-              self.vfs.exists(&path),
-              self.vfs.exists(&normalized_path),
-            );
-            let mut node_addon_paths = Vec::new();
-            collect_vfs_paths_with_filter(
-              self.vfs.root_dir(),
-              &mut self.vfs.root().to_path_buf(),
-              "node-addon",
-              &mut node_addon_paths,
-            );
-            const MAX_LOGGED_NODE_ADDON_PATHS: usize = 20;
-            for path in node_addon_paths.iter().take(MAX_LOGGED_NODE_ADDON_PATHS) {
-              log::debug!("VFS node-addon path: {}", path.display());
-            }
-            if node_addon_paths.len() > MAX_LOGGED_NODE_ADDON_PATHS {
-              log::debug!(
-                "VFS node-addon paths omitted: {}",
-                node_addon_paths.len() - MAX_LOGGED_NODE_ADDON_PATHS
-              );
-            }
-            #[cfg(windows)]
-            log::debug!(
-              concat!(
-                "VFS miss windows variants. ",
-                "unc_stripped_path='{}', unc_stripped_root='{}', ",
-                "unc_stripped_in_root={}, vfs_exists_unc_stripped={}"
-              ),
-              unc_stripped_path.display(),
-              unc_stripped_root.display(),
-              unc_stripped_path.starts_with(&unc_stripped_root),
-              self.vfs.exists(&unc_stripped_path),
-            );
-          }
           // actually use the real file system here
           #[allow(clippy::disallowed_types)]
           match sys_traits::impls::RealSys.fs_read(&path) {

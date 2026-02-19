@@ -412,13 +412,8 @@ impl<TSys: FsCanonicalize + FsMetadata + FsRead + FsReadDir>
             Cow::Owned(current_folder.join("node_modules"))
           };
 
-          log::debug!(
-            "Checking node_modules folder: {}",
-            node_modules_folder.display()
-          );
           let sub_dir = join_package_name(node_modules_folder, name);
           if sys.is_dir(&sub_dir) {
-            log::debug!("Found package at: {}", sub_dir.display());
             return Ok(sub_dir);
           }
 

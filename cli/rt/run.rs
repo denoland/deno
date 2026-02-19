@@ -201,13 +201,11 @@ impl ModuleLoader for EmbeddedModuleLoader {
         .map_err(JsErrorBox::from_err);
     }
 
-    log::debug!("Resolving {} from {}", raw_specifier, referrer);
     let mapped_resolution = self.shared.workspace_resolver.resolve(
       raw_specifier,
       &referrer,
       deno_resolver::workspace::ResolutionKind::Execution,
     );
-    log::debug!("Mapped resolution: {:?}", mapped_resolution);
 
     match mapped_resolution {
       Ok(MappedResolution::WorkspaceJsrPackage { specifier, .. }) => {
@@ -342,7 +340,6 @@ impl ModuleLoader for EmbeddedModuleLoader {
       Err(err)
         if err.is_unmapped_bare_specifier() && referrer.scheme() == "file" =>
       {
-        log::debug!("Unmapped bare specifier, trying npm resolution");
         let maybe_res = self
           .shared
           .npm_req_resolver
@@ -353,7 +350,6 @@ impl ModuleLoader for EmbeddedModuleLoader {
             NodeResolutionKind::Execution,
           )
           .map_err(JsErrorBox::from_err)?;
-        log::debug!("npm resolution result: {:?}", maybe_res);
         if let Some(res) = maybe_res {
           return res.into_url().map_err(JsErrorBox::from_err);
         }
@@ -382,7 +378,6 @@ impl ModuleLoader for EmbeddedModuleLoader {
     maybe_referrer: Option<&ModuleLoadReferrer>,
     options: ModuleLoadOptions,
   ) -> deno_core::ModuleLoadResponse {
-    log::debug!("Loading: {}", original_specifier);
     if original_specifier.scheme() == "data" {
       let data_url_text =
         match deno_media_type::data_url::RawDataUrl::parse(original_specifier)
