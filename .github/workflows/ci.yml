@@ -361,38 +361,38 @@ jobs:
         include:
           - test_crate: integration
             test_package: integration_tests
-            shard_index: 0
-            shard_total: 2
+            shard_index: '0'
+            shard_total: '2'
             shard_label: '(1/2) '
           - test_crate: integration
             test_package: integration_tests
-            shard_index: 1
-            shard_total: 2
+            shard_index: '1'
+            shard_total: '2'
             shard_label: '(2/2) '
           - test_crate: node_compat
             test_package: node_compat_tests
-            shard_index: 0
-            shard_total: 1
+            shard_index: '0'
+            shard_total: '1'
             shard_label: ''
           - test_crate: specs
             test_package: specs_tests
-            shard_index: 0
-            shard_total: 2
+            shard_index: '0'
+            shard_total: '2'
             shard_label: '(1/2) '
           - test_crate: specs
             test_package: specs_tests
-            shard_index: 1
-            shard_total: 2
+            shard_index: '1'
+            shard_total: '2'
             shard_label: '(2/2) '
           - test_crate: unit
             test_package: unit_tests
-            shard_index: 0
-            shard_total: 1
+            shard_index: '0'
+            shard_total: '1'
             shard_label: ''
           - test_crate: unit_node
             test_package: unit_node_tests
-            shard_index: 0
-            shard_total: 1
+            shard_index: '0'
+            shard_total: '1'
             shard_label: ''
       fail-fast: false
     env:
@@ -500,6 +500,12 @@ jobs:
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
+      - name: Upload test results
+        uses: actions/upload-artifact@v6
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && always()'
+        with:
+          name: 'test-results-macos-x86_64-debug-${{ matrix.test_crate }}${{ matrix.shard_total > 1 && format(''-shard-{0}'', matrix.shard_index) || '''' }}.json'
+          path: 'target/test_results_${{ matrix.test_crate }}.json'
       - name: Cache cargo home
         uses: cirruslabs/cache/save@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && github.ref == ''refs/heads/main'''
@@ -769,38 +775,38 @@ jobs:
         include:
           - test_crate: integration
             test_package: integration_tests
-            shard_index: 0
-            shard_total: 2
+            shard_index: '0'
+            shard_total: '2'
             shard_label: '(1/2) '
           - test_crate: integration
             test_package: integration_tests
-            shard_index: 1
-            shard_total: 2
+            shard_index: '1'
+            shard_total: '2'
             shard_label: '(2/2) '
           - test_crate: node_compat
             test_package: node_compat_tests
-            shard_index: 0
-            shard_total: 1
+            shard_index: '0'
+            shard_total: '1'
             shard_label: ''
           - test_crate: specs
             test_package: specs_tests
-            shard_index: 0
-            shard_total: 2
+            shard_index: '0'
+            shard_total: '2'
             shard_label: '(1/2) '
           - test_crate: specs
             test_package: specs_tests
-            shard_index: 1
-            shard_total: 2
+            shard_index: '1'
+            shard_total: '2'
             shard_label: '(2/2) '
           - test_crate: unit
             test_package: unit_tests
-            shard_index: 0
-            shard_total: 1
+            shard_index: '0'
+            shard_total: '1'
             shard_label: ''
           - test_crate: unit_node
             test_package: unit_node_tests
-            shard_index: 0
-            shard_total: 1
+            shard_index: '0'
+            shard_total: '1'
             shard_label: ''
       fail-fast: false
     env:
@@ -907,6 +913,12 @@ jobs:
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
+      - name: Upload test results
+        uses: actions/upload-artifact@v6
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && always()'
+        with:
+          name: 'test-results-macos-x86_64-release-${{ matrix.test_crate }}${{ matrix.shard_total > 1 && format(''-shard-{0}'', matrix.shard_index) || '''' }}.json'
+          path: 'target/test_results_${{ matrix.test_crate }}.json'
   build-debug-macos-aarch64:
     name: build debug macos-aarch64
     needs:
@@ -1059,38 +1071,38 @@ jobs:
         include:
           - test_crate: integration
             test_package: integration_tests
-            shard_index: 0
-            shard_total: 2
+            shard_index: '0'
+            shard_total: '2'
             shard_label: '(1/2) '
           - test_crate: integration
             test_package: integration_tests
-            shard_index: 1
-            shard_total: 2
+            shard_index: '1'
+            shard_total: '2'
             shard_label: '(2/2) '
           - test_crate: node_compat
             test_package: node_compat_tests
-            shard_index: 0
-            shard_total: 1
+            shard_index: '0'
+            shard_total: '1'
             shard_label: ''
           - test_crate: specs
             test_package: specs_tests
-            shard_index: 0
-            shard_total: 2
+            shard_index: '0'
+            shard_total: '2'
             shard_label: '(1/2) '
           - test_crate: specs
             test_package: specs_tests
-            shard_index: 1
-            shard_total: 2
+            shard_index: '1'
+            shard_total: '2'
             shard_label: '(2/2) '
           - test_crate: unit
             test_package: unit_tests
-            shard_index: 0
-            shard_total: 1
+            shard_index: '0'
+            shard_total: '1'
             shard_label: ''
           - test_crate: unit_node
             test_package: unit_node_tests
-            shard_index: 0
-            shard_total: 1
+            shard_index: '0'
+            shard_total: '1'
             shard_label: ''
       fail-fast: false
     env:
@@ -1212,6 +1224,12 @@ jobs:
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
+      - name: Upload test results
+        uses: actions/upload-artifact@v6
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && always()'
+        with:
+          name: 'test-results-macos-aarch64-debug-${{ matrix.test_crate }}${{ matrix.shard_total > 1 && format(''-shard-{0}'', matrix.shard_index) || '''' }}.json'
+          path: 'target/test_results_${{ matrix.test_crate }}.json'
       - name: Cache cargo home
         uses: cirruslabs/cache/save@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && github.ref == ''refs/heads/main'''
@@ -1604,38 +1622,38 @@ jobs:
         include:
           - test_crate: integration
             test_package: integration_tests
-            shard_index: 0
-            shard_total: 2
+            shard_index: '0'
+            shard_total: '2'
             shard_label: '(1/2) '
           - test_crate: integration
             test_package: integration_tests
-            shard_index: 1
-            shard_total: 2
+            shard_index: '1'
+            shard_total: '2'
             shard_label: '(2/2) '
           - test_crate: node_compat
             test_package: node_compat_tests
-            shard_index: 0
-            shard_total: 1
+            shard_index: '0'
+            shard_total: '1'
             shard_label: ''
           - test_crate: specs
             test_package: specs_tests
-            shard_index: 0
-            shard_total: 2
+            shard_index: '0'
+            shard_total: '2'
             shard_label: '(1/2) '
           - test_crate: specs
             test_package: specs_tests
-            shard_index: 1
-            shard_total: 2
+            shard_index: '1'
+            shard_total: '2'
             shard_label: '(2/2) '
           - test_crate: unit
             test_package: unit_tests
-            shard_index: 0
-            shard_total: 1
+            shard_index: '0'
+            shard_total: '1'
             shard_label: ''
           - test_crate: unit_node
             test_package: unit_node_tests
-            shard_index: 0
-            shard_total: 1
+            shard_index: '0'
+            shard_total: '1'
             shard_label: ''
       fail-fast: false
     env:
@@ -1756,6 +1774,12 @@ jobs:
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
+      - name: Upload test results
+        uses: actions/upload-artifact@v6
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && always()'
+        with:
+          name: 'test-results-macos-aarch64-release-${{ matrix.test_crate }}${{ matrix.shard_total > 1 && format(''-shard-{0}'', matrix.shard_index) || '''' }}.json'
+          path: 'target/test_results_${{ matrix.test_crate }}.json'
   build-debug-windows-x86_64:
     name: build debug windows-x86_64
     needs:
@@ -1891,38 +1915,38 @@ jobs:
         include:
           - test_crate: integration
             test_package: integration_tests
-            shard_index: 0
-            shard_total: 2
+            shard_index: '0'
+            shard_total: '2'
             shard_label: '(1/2) '
           - test_crate: integration
             test_package: integration_tests
-            shard_index: 1
-            shard_total: 2
+            shard_index: '1'
+            shard_total: '2'
             shard_label: '(2/2) '
           - test_crate: node_compat
             test_package: node_compat_tests
-            shard_index: 0
-            shard_total: 1
+            shard_index: '0'
+            shard_total: '1'
             shard_label: ''
           - test_crate: specs
             test_package: specs_tests
-            shard_index: 0
-            shard_total: 2
+            shard_index: '0'
+            shard_total: '2'
             shard_label: '(1/2) '
           - test_crate: specs
             test_package: specs_tests
-            shard_index: 1
-            shard_total: 2
+            shard_index: '1'
+            shard_total: '2'
             shard_label: '(2/2) '
           - test_crate: unit
             test_package: unit_tests
-            shard_index: 0
-            shard_total: 1
+            shard_index: '0'
+            shard_total: '1'
             shard_label: ''
           - test_crate: unit_node
             test_package: unit_node_tests
-            shard_index: 0
-            shard_total: 1
+            shard_index: '0'
+            shard_total: '1'
             shard_label: ''
       fail-fast: false
     env:
@@ -2021,6 +2045,12 @@ jobs:
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
+      - name: Upload test results
+        uses: actions/upload-artifact@v6
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && always()'
+        with:
+          name: 'test-results-windows-x86_64-debug-${{ matrix.test_crate }}${{ matrix.shard_total > 1 && format(''-shard-{0}'', matrix.shard_index) || '''' }}.json'
+          path: 'target/test_results_${{ matrix.test_crate }}.json'
       - name: Cache cargo home
         uses: cirruslabs/cache/save@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && github.ref == ''refs/heads/main'''
@@ -2408,38 +2438,38 @@ jobs:
         include:
           - test_crate: integration
             test_package: integration_tests
-            shard_index: 0
-            shard_total: 2
+            shard_index: '0'
+            shard_total: '2'
             shard_label: '(1/2) '
           - test_crate: integration
             test_package: integration_tests
-            shard_index: 1
-            shard_total: 2
+            shard_index: '1'
+            shard_total: '2'
             shard_label: '(2/2) '
           - test_crate: node_compat
             test_package: node_compat_tests
-            shard_index: 0
-            shard_total: 1
+            shard_index: '0'
+            shard_total: '1'
             shard_label: ''
           - test_crate: specs
             test_package: specs_tests
-            shard_index: 0
-            shard_total: 2
+            shard_index: '0'
+            shard_total: '2'
             shard_label: '(1/2) '
           - test_crate: specs
             test_package: specs_tests
-            shard_index: 1
-            shard_total: 2
+            shard_index: '1'
+            shard_total: '2'
             shard_label: '(2/2) '
           - test_crate: unit
             test_package: unit_tests
-            shard_index: 0
-            shard_total: 1
+            shard_index: '0'
+            shard_total: '1'
             shard_label: ''
           - test_crate: unit_node
             test_package: unit_node_tests
-            shard_index: 0
-            shard_total: 1
+            shard_index: '0'
+            shard_total: '1'
             shard_label: ''
       fail-fast: false
     env:
@@ -2537,6 +2567,12 @@ jobs:
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
+      - name: Upload test results
+        uses: actions/upload-artifact@v6
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && always()'
+        with:
+          name: 'test-results-windows-x86_64-release-${{ matrix.test_crate }}${{ matrix.shard_total > 1 && format(''-shard-{0}'', matrix.shard_index) || '''' }}.json'
+          path: 'target/test_results_${{ matrix.test_crate }}.json'
   build-debug-windows-aarch64:
     name: build debug windows-aarch64
     needs:
@@ -2672,38 +2708,38 @@ jobs:
         include:
           - test_crate: integration
             test_package: integration_tests
-            shard_index: 0
-            shard_total: 2
+            shard_index: '0'
+            shard_total: '2'
             shard_label: '(1/2) '
           - test_crate: integration
             test_package: integration_tests
-            shard_index: 1
-            shard_total: 2
+            shard_index: '1'
+            shard_total: '2'
             shard_label: '(2/2) '
           - test_crate: node_compat
             test_package: node_compat_tests
-            shard_index: 0
-            shard_total: 1
+            shard_index: '0'
+            shard_total: '1'
             shard_label: ''
           - test_crate: specs
             test_package: specs_tests
-            shard_index: 0
-            shard_total: 2
+            shard_index: '0'
+            shard_total: '2'
             shard_label: '(1/2) '
           - test_crate: specs
             test_package: specs_tests
-            shard_index: 1
-            shard_total: 2
+            shard_index: '1'
+            shard_total: '2'
             shard_label: '(2/2) '
           - test_crate: unit
             test_package: unit_tests
-            shard_index: 0
-            shard_total: 1
+            shard_index: '0'
+            shard_total: '1'
             shard_label: ''
           - test_crate: unit_node
             test_package: unit_node_tests
-            shard_index: 0
-            shard_total: 1
+            shard_index: '0'
+            shard_total: '1'
             shard_label: ''
       fail-fast: false
     env:
@@ -2802,6 +2838,12 @@ jobs:
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
+      - name: Upload test results
+        uses: actions/upload-artifact@v6
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && always()'
+        with:
+          name: 'test-results-windows-aarch64-debug-${{ matrix.test_crate }}${{ matrix.shard_total > 1 && format(''-shard-{0}'', matrix.shard_index) || '''' }}.json'
+          path: 'target/test_results_${{ matrix.test_crate }}.json'
       - name: Cache cargo home
         uses: cirruslabs/cache/save@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && github.ref == ''refs/heads/main'''
@@ -3094,38 +3136,38 @@ jobs:
         include:
           - test_crate: integration
             test_package: integration_tests
-            shard_index: 0
-            shard_total: 2
+            shard_index: '0'
+            shard_total: '2'
             shard_label: '(1/2) '
           - test_crate: integration
             test_package: integration_tests
-            shard_index: 1
-            shard_total: 2
+            shard_index: '1'
+            shard_total: '2'
             shard_label: '(2/2) '
           - test_crate: node_compat
             test_package: node_compat_tests
-            shard_index: 0
-            shard_total: 1
+            shard_index: '0'
+            shard_total: '1'
             shard_label: ''
           - test_crate: specs
             test_package: specs_tests
-            shard_index: 0
-            shard_total: 2
+            shard_index: '0'
+            shard_total: '2'
             shard_label: '(1/2) '
           - test_crate: specs
             test_package: specs_tests
-            shard_index: 1
-            shard_total: 2
+            shard_index: '1'
+            shard_total: '2'
             shard_label: '(2/2) '
           - test_crate: unit
             test_package: unit_tests
-            shard_index: 0
-            shard_total: 1
+            shard_index: '0'
+            shard_total: '1'
             shard_label: ''
           - test_crate: unit_node
             test_package: unit_node_tests
-            shard_index: 0
-            shard_total: 1
+            shard_index: '0'
+            shard_total: '1'
             shard_label: ''
       fail-fast: false
     env:
@@ -3223,6 +3265,12 @@ jobs:
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
+      - name: Upload test results
+        uses: actions/upload-artifact@v6
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && always()'
+        with:
+          name: 'test-results-windows-aarch64-release-${{ matrix.test_crate }}${{ matrix.shard_total > 1 && format(''-shard-{0}'', matrix.shard_index) || '''' }}.json'
+          path: 'target/test_results_${{ matrix.test_crate }}.json'
   build-release-linux-x86_64:
     name: build release linux-x86_64
     needs:
@@ -3542,38 +3590,38 @@ jobs:
         include:
           - test_crate: integration
             test_package: integration_tests
-            shard_index: 0
-            shard_total: 2
+            shard_index: '0'
+            shard_total: '2'
             shard_label: '(1/2) '
           - test_crate: integration
             test_package: integration_tests
-            shard_index: 1
-            shard_total: 2
+            shard_index: '1'
+            shard_total: '2'
             shard_label: '(2/2) '
           - test_crate: node_compat
             test_package: node_compat_tests
-            shard_index: 0
-            shard_total: 1
+            shard_index: '0'
+            shard_total: '1'
             shard_label: ''
           - test_crate: specs
             test_package: specs_tests
-            shard_index: 0
-            shard_total: 2
+            shard_index: '0'
+            shard_total: '2'
             shard_label: '(1/2) '
           - test_crate: specs
             test_package: specs_tests
-            shard_index: 1
-            shard_total: 2
+            shard_index: '1'
+            shard_total: '2'
             shard_label: '(2/2) '
           - test_crate: unit
             test_package: unit_tests
-            shard_index: 0
-            shard_total: 1
+            shard_index: '0'
+            shard_total: '1'
             shard_label: ''
           - test_crate: unit_node
             test_package: unit_node_tests
-            shard_index: 0
-            shard_total: 1
+            shard_index: '0'
+            shard_total: '1'
             shard_label: ''
       fail-fast: false
     env:
@@ -3761,6 +3809,12 @@ jobs:
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
+      - name: Upload test results
+        uses: actions/upload-artifact@v6
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && always()'
+        with:
+          name: 'test-results-linux-x86_64-release-${{ matrix.test_crate }}${{ matrix.shard_total > 1 && format(''-shard-{0}'', matrix.shard_index) || '''' }}.json'
+          path: 'target/test_results_${{ matrix.test_crate }}.json'
       - name: Cache cargo home
         uses: cirruslabs/cache/save@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && github.ref == ''refs/heads/main'''
@@ -3815,6 +3869,15 @@ jobs:
       - name: Clone submodule ./tests/wpt/suite
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/wpt/suite
+      - name: Restore cache wpt and autobahn test run hashes
+        uses: cirruslabs/cache/restore@v4
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        with:
+          path: |-
+            ./target/wpt_input_hash
+            ./target/autobahn_input_hash
+          key: never_saved
+          restore-keys: 96-wpt-target-linux-x86_64-release-
       - name: Install Deno
         uses: denoland/setup-deno@v2
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -3882,6 +3945,14 @@ jobs:
         run: |-
           ./target/release/deno run --allow-all --lock=tools/deno.lock.json \
               ./tools/upload_wptfyi.js $(git rev-parse HEAD) --ghstatus
+      - name: Cache wpt and autobahn test run hashes
+        uses: cirruslabs/cache/save@v4
+        if: '!startsWith(github.ref, ''refs/tags/'') && github.ref == ''refs/heads/main'''
+        with:
+          path: |-
+            ./target/wpt_input_hash
+            ./target/autobahn_input_hash
+          key: '96-wpt-target-linux-x86_64-release-${{ github.sha }}'
   build-debug-linux-x86_64:
     name: build debug linux-x86_64
     needs:
@@ -4099,38 +4170,38 @@ jobs:
         include:
           - test_crate: integration
             test_package: integration_tests
-            shard_index: 0
-            shard_total: 2
+            shard_index: '0'
+            shard_total: '2'
             shard_label: '(1/2) '
           - test_crate: integration
             test_package: integration_tests
-            shard_index: 1
-            shard_total: 2
+            shard_index: '1'
+            shard_total: '2'
             shard_label: '(2/2) '
           - test_crate: node_compat
             test_package: node_compat_tests
-            shard_index: 0
-            shard_total: 1
+            shard_index: '0'
+            shard_total: '1'
             shard_label: ''
           - test_crate: specs
             test_package: specs_tests
-            shard_index: 0
-            shard_total: 2
+            shard_index: '0'
+            shard_total: '2'
             shard_label: '(1/2) '
           - test_crate: specs
             test_package: specs_tests
-            shard_index: 1
-            shard_total: 2
+            shard_index: '1'
+            shard_total: '2'
             shard_label: '(2/2) '
           - test_crate: unit
             test_package: unit_tests
-            shard_index: 0
-            shard_total: 1
+            shard_index: '0'
+            shard_total: '1'
             shard_label: ''
           - test_crate: unit_node
             test_package: unit_node_tests
-            shard_index: 0
-            shard_total: 1
+            shard_index: '0'
+            shard_total: '1'
             shard_label: ''
       fail-fast: false
     env:
@@ -4319,6 +4390,12 @@ jobs:
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
+      - name: Upload test results
+        uses: actions/upload-artifact@v6
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && always()'
+        with:
+          name: 'test-results-linux-x86_64-debug-${{ matrix.test_crate }}${{ matrix.shard_total > 1 && format(''-shard-{0}'', matrix.shard_index) || '''' }}.json'
+          path: 'target/test_results_${{ matrix.test_crate }}.json'
       - name: Cache cargo home
         uses: cirruslabs/cache/save@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && github.ref == ''refs/heads/main'''
@@ -4569,38 +4646,38 @@ jobs:
         include:
           - test_crate: integration
             test_package: integration_tests
-            shard_index: 0
-            shard_total: 2
+            shard_index: '0'
+            shard_total: '2'
             shard_label: '(1/2) '
           - test_crate: integration
             test_package: integration_tests
-            shard_index: 1
-            shard_total: 2
+            shard_index: '1'
+            shard_total: '2'
             shard_label: '(2/2) '
           - test_crate: node_compat
             test_package: node_compat_tests
-            shard_index: 0
-            shard_total: 1
+            shard_index: '0'
+            shard_total: '1'
             shard_label: ''
           - test_crate: specs
             test_package: specs_tests
-            shard_index: 0
-            shard_total: 2
+            shard_index: '0'
+            shard_total: '2'
             shard_label: '(1/2) '
           - test_crate: specs
             test_package: specs_tests
-            shard_index: 1
-            shard_total: 2
+            shard_index: '1'
+            shard_total: '2'
             shard_label: '(2/2) '
           - test_crate: unit
             test_package: unit_tests
-            shard_index: 0
-            shard_total: 1
+            shard_index: '0'
+            shard_total: '1'
             shard_label: ''
           - test_crate: unit_node
             test_package: unit_node_tests
-            shard_index: 0
-            shard_total: 1
+            shard_index: '0'
+            shard_total: '1'
             shard_label: ''
       fail-fast: false
     env:
@@ -4711,6 +4788,12 @@ jobs:
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
+      - name: Upload test results
+        uses: actions/upload-artifact@v6
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && always()'
+        with:
+          name: 'test-results-linux-aarch64-debug-${{ matrix.test_crate }}${{ matrix.shard_total > 1 && format(''-shard-{0}'', matrix.shard_index) || '''' }}.json'
+          path: 'target/test_results_${{ matrix.test_crate }}.json'
       - name: Cache cargo home
         uses: cirruslabs/cache/save@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && github.ref == ''refs/heads/main'''
@@ -5140,38 +5223,38 @@ jobs:
         include:
           - test_crate: integration
             test_package: integration_tests
-            shard_index: 0
-            shard_total: 2
+            shard_index: '0'
+            shard_total: '2'
             shard_label: '(1/2) '
           - test_crate: integration
             test_package: integration_tests
-            shard_index: 1
-            shard_total: 2
+            shard_index: '1'
+            shard_total: '2'
             shard_label: '(2/2) '
           - test_crate: node_compat
             test_package: node_compat_tests
-            shard_index: 0
-            shard_total: 1
+            shard_index: '0'
+            shard_total: '1'
             shard_label: ''
           - test_crate: specs
             test_package: specs_tests
-            shard_index: 0
-            shard_total: 2
+            shard_index: '0'
+            shard_total: '2'
             shard_label: '(1/2) '
           - test_crate: specs
             test_package: specs_tests
-            shard_index: 1
-            shard_total: 2
+            shard_index: '1'
+            shard_total: '2'
             shard_label: '(2/2) '
           - test_crate: unit
             test_package: unit_tests
-            shard_index: 0
-            shard_total: 1
+            shard_index: '0'
+            shard_total: '1'
             shard_label: ''
           - test_crate: unit_node
             test_package: unit_node_tests
-            shard_index: 0
-            shard_total: 1
+            shard_index: '0'
+            shard_total: '1'
             shard_label: ''
       fail-fast: false
     env:
@@ -5362,6 +5445,12 @@ jobs:
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
+      - name: Upload test results
+        uses: actions/upload-artifact@v6
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && always()'
+        with:
+          name: 'test-results-linux-aarch64-release-${{ matrix.test_crate }}${{ matrix.shard_total > 1 && format(''-shard-{0}'', matrix.shard_index) || '''' }}.json'
+          path: 'target/test_results_${{ matrix.test_crate }}.json'
   lint:
     name: 'lint ${{ matrix.profile }} ${{ matrix.os }}-${{ matrix.arch }}'
     needs:

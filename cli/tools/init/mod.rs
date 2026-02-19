@@ -291,6 +291,8 @@ Deno.test(function addTest() {
 }
 
 fn npm_name_to_create_package(name: &str) -> String {
+  // Prevent already-prefixed `npm:<package>` from becoming `npm:create-npm:<package>`.
+  let name = name.strip_prefix("npm:").unwrap_or(name);
   let mut s = "npm:".to_string();
 
   let mut scoped = false;
@@ -482,6 +484,14 @@ mod test {
     );
     assert_eq!(
       npm_name_to_create_package("@foo/bar@1.0.0"),
+      "npm:@foo/create-bar@1.0.0".to_string()
+    );
+    assert_eq!(
+      npm_name_to_create_package("npm:vite"),
+      "npm:create-vite".to_string()
+    );
+    assert_eq!(
+      npm_name_to_create_package("npm:@foo/bar@1.0.0"),
       "npm:@foo/create-bar@1.0.0".to_string()
     );
   }
