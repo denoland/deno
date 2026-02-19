@@ -3815,6 +3815,15 @@ jobs:
       - name: Clone submodule ./tests/wpt/suite
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/wpt/suite
+      - name: Restore cache wpt and autobahn test run hashes
+        uses: cirruslabs/cache/restore@v4
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        with:
+          path: |-
+            ./target/wpt_input_hash
+            ./target/autobahn_input_hash
+          key: never_saved
+          restore-keys: 96-wpt-target-linux-x86_64-release-
       - name: Install Deno
         uses: denoland/setup-deno@v2
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -3882,6 +3891,14 @@ jobs:
         run: |-
           ./target/release/deno run --allow-all --lock=tools/deno.lock.json \
               ./tools/upload_wptfyi.js $(git rev-parse HEAD) --ghstatus
+      - name: Cache wpt and autobahn test run hashes
+        uses: cirruslabs/cache/save@v4
+        if: '!startsWith(github.ref, ''refs/tags/'') && github.ref == ''refs/heads/main'''
+        with:
+          path: |-
+            ./target/wpt_input_hash
+            ./target/autobahn_input_hash
+          key: '96-wpt-target-linux-x86_64-release-${{ github.sha }}'
   build-debug-linux-x86_64:
     name: build debug linux-x86_64
     needs:
