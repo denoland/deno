@@ -7,10 +7,10 @@ use std::sync::Arc;
 
 use deno_cache_dir::GlobalOrLocalHttpCache;
 use deno_cache_dir::file_fetcher::CacheSetting;
-#[allow(unused_imports)]
 use deno_core::anyhow::Context;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
+use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_semver::StackString;
 use deno_semver::VersionReq;
 use deno_semver::package::PackageNv;
@@ -247,10 +247,11 @@ pub async fn outdated(
     )?
   };
 
+  let npmrc = factory.npmrc()?;
   deps
     .resolve_versions()
     .await
-    .map_err(|err| enhance_npm_registry_error(err, &factory))?;
+    .map_err(|err| enhance_npm_registry_error(err, &npmrc))?;
 
   match update_flags.kind {
     crate::args::OutdatedKind::Update {
@@ -532,7 +533,7 @@ async fn update(
   Ok(())
 }
 
-fn enhance_npm_registry_error(err: AnyError, factory: &CliFactory) -> AnyError {
+fn enhance_npm_registry_error(err: AnyError, npmrc: &ResolvedNpmRc) -> AnyError {
   let err_string = err.to_string();
   let err_lower = err_string.to_lowercase();
 
@@ -552,21 +553,6 @@ fn enhance_npm_registry_error(err: AnyError, factory: &CliFactory) -> AnyError {
   if !is_npm_registry_error {
     return err;
   }
-
-  // Try to get npmrc to check if using private registry
-  let npmrc = match factory.npmrc() {
-    Ok(npmrc) => npmrc,
-    Err(_) => {
-      // Still provide helpful message even if we can't access npmrc
-      return err.context(format!(
-        "Failed to fetch package information from npm registry.\n\n\
-        Original error: {}\n\n\
-        If you're using a private npm registry, ensure your `.npmrc` is properly configured.\n\
-        For more information, see: https://docs.deno.com/runtime/manual/node/npm_registries",
-        err_string
-      ));
-    }
-  };
 
   // Check if using a private registry by checking the default registry URL
   let default_registry = "https://registry.npmjs.org/";
