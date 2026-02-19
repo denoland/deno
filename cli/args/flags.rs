@@ -159,6 +159,7 @@ pub struct CheckFlags {
   pub files: Vec<String>,
   pub doc: bool,
   pub doc_only: bool,
+  pub check_js: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -2685,6 +2686,14 @@ Unless --reload is specified, this command will not re-download already cached d
           .help("Type-check code blocks in JSDoc and Markdown only")
             .action(ArgAction::SetTrue)
             .conflicts_with("doc")
+        )
+        .arg(
+          Arg::new("check-js")
+            .long("check-js")
+            .help(
+              "Enable type-checking of JavaScript files (equivalent to `compilerOptions.checkJs: true`)",
+            )
+            .action(ArgAction::SetTrue)
         )
         .arg(
           Arg::new("file")
@@ -6027,6 +6036,7 @@ fn check_parse(
     files,
     doc: matches.get_flag("doc"),
     doc_only: matches.get_flag("doc-only"),
+    check_js: matches.get_flag("check-js"),
   });
   flags.code_cache_enabled = !matches.get_flag("no-code-cache");
   allow_and_deny_import_parse(flags, matches)?;
@@ -9257,6 +9267,7 @@ mod tests {
           files: svec!["script.ts"],
           doc: false,
           doc_only: false,
+          check_js: false,
         }),
         type_check_mode: TypeCheckMode::Local,
         code_cache_enabled: true,
@@ -9272,6 +9283,7 @@ mod tests {
           files: svec!["."],
           doc: false,
           doc_only: false,
+          check_js: false,
         }),
         type_check_mode: TypeCheckMode::Local,
         code_cache_enabled: true,
@@ -9287,6 +9299,7 @@ mod tests {
           files: svec!["script.ts"],
           doc: true,
           doc_only: false,
+          check_js: false,
         }),
         type_check_mode: TypeCheckMode::Local,
         code_cache_enabled: true,
@@ -9302,6 +9315,7 @@ mod tests {
           files: svec!["markdown.md"],
           doc: false,
           doc_only: true,
+          check_js: false,
         }),
         type_check_mode: TypeCheckMode::Local,
         code_cache_enabled: true,
@@ -9331,6 +9345,7 @@ mod tests {
             files: svec!["script.ts"],
             doc: false,
             doc_only: false,
+            check_js: false,
           }),
           type_check_mode: TypeCheckMode::All,
           code_cache_enabled: true,
@@ -9350,6 +9365,22 @@ mod tests {
         clap::error::ErrorKind::ArgumentConflict
       );
     }
+
+    let r = flags_from_vec(svec!["deno", "check", "--check-js", "script.js"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Check(CheckFlags {
+          files: svec!["script.js"],
+          doc: false,
+          doc_only: false,
+          check_js: true,
+        }),
+        type_check_mode: TypeCheckMode::Local,
+        code_cache_enabled: true,
+        ..Flags::default()
+      }
+    );
   }
 
   #[test]
@@ -14596,6 +14627,7 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
           files: svec!["script.ts"],
           doc: false,
           doc_only: false,
+          check_js: false,
         }),
         type_check_mode: TypeCheckMode::Local,
         code_cache_enabled: true,
