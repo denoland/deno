@@ -47,8 +47,11 @@ pub enum ByonmResolvePkgFolderFromDenoReqError {
 }
 
 pub struct ByonmNpmResolverCreateOptions<TSys: FsRead + FsMetadata> {
-  // todo(dsherret): investigate removing this
   pub root_node_modules_dir: Option<PathBuf>,
+  /// When set, the ancestor walk for node_modules resolution will not
+  /// go above this directory. Used by deno_rt for self-extracting binaries
+  /// to prevent escaping the VFS root.
+  pub search_stop_dir: Option<PathBuf>,
   pub sys: NodeResolutionSys<TSys>,
   pub pkg_json_resolver: PackageJsonResolverRc<TSys>,
 }
@@ -68,6 +71,7 @@ pub struct ByonmNpmResolver<TSys: ByonmNpmResolverSys> {
   sys: NodeResolutionSys<TSys>,
   pkg_json_resolver: PackageJsonResolverRc<TSys>,
   root_node_modules_dir: Option<PathBuf>,
+  search_stop_dir: Option<PathBuf>,
 }
 
 impl<TSys: ByonmNpmResolverSys + Clone> Clone for ByonmNpmResolver<TSys> {
@@ -76,6 +80,7 @@ impl<TSys: ByonmNpmResolverSys + Clone> Clone for ByonmNpmResolver<TSys> {
       sys: self.sys.clone(),
       pkg_json_resolver: self.pkg_json_resolver.clone(),
       root_node_modules_dir: self.root_node_modules_dir.clone(),
+      search_stop_dir: self.search_stop_dir.clone(),
     }
   }
 }
@@ -84,6 +89,7 @@ impl<TSys: ByonmNpmResolverSys> ByonmNpmResolver<TSys> {
   pub fn new(options: ByonmNpmResolverCreateOptions<TSys>) -> Self {
     Self {
       root_node_modules_dir: options.root_node_modules_dir,
+      search_stop_dir: options.search_stop_dir,
       sys: options.sys,
       pkg_json_resolver: options.pkg_json_resolver,
     }
@@ -284,7 +290,7 @@ impl<TSys: ByonmNpmResolverSys> ByonmNpmResolver<TSys> {
         .and_then(|referrer_path| {
           root_node_modules_dir
             .parent()
-            .map(|root_dir| referrer_path.starts_with(root_dir))
+            .map(|search_stop_dir| referrer_path.starts_with(search_stop_dir))
         })
         .unwrap_or(false);
       if !already_searched
@@ -387,6 +393,7 @@ impl<TSys: FsCanonicalize + FsMetadata + FsRead + FsReadDir>
       sys: &NodeResolutionSys<TSys>,
       name: &str,
       referrer: &UrlOrPathRef,
+      search_stop_dir: Option<&Path>,
     ) -> Result<PathBuf, PackageFolderResolveError> {
       let maybe_referrer_file = referrer.path().ok();
       let maybe_start_folder =
@@ -404,6 +411,11 @@ impl<TSys: FsCanonicalize + FsMetadata + FsRead + FsReadDir>
           if sys.is_dir(&sub_dir) {
             return Ok(sub_dir);
           }
+
+          // prevent code like deno rt from going outside the vfs
+          if search_stop_dir == Some(current_folder) {
+            break;
+          }
         }
       }
 
@@ -417,7 +429,8 @@ impl<TSys: FsCanonicalize + FsMetadata + FsRead + FsReadDir>
       )
     }
 
-    let path = inner(&self.sys, name, referrer)?;
+    let path =
+      inner(&self.sys, name, referrer, self.search_stop_dir.as_deref())?;
     self.sys.fs_canonicalize(&path).map_err(|err| {
       PackageFolderResolveIoError {
         package_name: name.to_string(),

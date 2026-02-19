@@ -633,8 +633,8 @@ impl NodeRequireLoader for EmbeddedModuleLoader {
     permissions: &mut PermissionsContainer,
     path: Cow<'a, Path>,
   ) -> Result<Cow<'a, Path>, JsErrorBox> {
-    if self.shared.modules.has_file(&path) {
-      // allow reading if the file is in the snapshot
+    if self.shared.modules.path_in_root(&path) {
+      // allow reading if the file is in the root directory
       return Ok(path);
     }
 
@@ -827,6 +827,7 @@ pub async fn run(
           sys: node_resolution_sys.clone(),
           pkg_json_resolver: pkg_json_resolver.clone(),
           root_node_modules_dir,
+          search_stop_dir: Some(root_path.clone()),
         }),
       );
       (in_npm_pkg_checker, npm_resolver)

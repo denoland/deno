@@ -84,7 +84,7 @@ impl DenoRtSys {
   }
 
   pub fn is_in_vfs(&self, path: &Path) -> bool {
-    !self.self_extracting && self.vfs.is_path_within(path)
+    self.vfs.is_path_within(path)
   }
 
   fn error_if_in_vfs(&self, path: &Path) -> FsResult<()> {

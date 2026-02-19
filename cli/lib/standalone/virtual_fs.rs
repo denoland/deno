@@ -315,6 +315,10 @@ pub struct VirtualSymlink {
   pub name: String,
   #[serde(rename = "p")]
   pub dest_parts: VirtualSymlinkParts,
+  /// Whether the symlink target is a directory (needed on Windows where
+  /// file and directory symlinks are distinct).
+  #[serde(rename = "d", default, skip_serializing_if = "std::ops::Not::not")]
+  pub dest_is_dir: bool,
 }
 
 impl VirtualSymlink {
@@ -885,6 +889,11 @@ impl VfsBuilder {
     let case_sensitivity = self.case_sensitivity;
     let target =
       normalize_path(Cow::Owned(path.parent().unwrap().join(&target)));
+    // use metadata (follows symlinks) to determine final target type
+    #[allow(clippy::disallowed_methods)]
+    let dest_is_dir = std::fs::metadata(&*target)
+      .map(|m| m.is_dir())
+      .unwrap_or(false);
     let dir = self.add_dir_raw(path.parent().unwrap());
     let name = path.file_name().unwrap().to_string_lossy();
     dir.entries.insert_or_modify(
@@ -894,6 +903,7 @@ impl VfsBuilder {
         VfsEntry::Symlink(VirtualSymlink {
           name: name.to_string(),
           dest_parts: VirtualSymlinkParts::from_path(&target),
+          dest_is_dir,
         })
       },
       |_| {

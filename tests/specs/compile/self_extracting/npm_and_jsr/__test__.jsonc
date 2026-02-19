@@ -4,33 +4,15 @@
     "args": "install --allow-scripts",
     "output": "[WILDCARD]"
   }, {
-    "if": "unix",
     "args": "compile --self-extracting --no-check -A --output main main.ts",
     "output": "[WILDCARD]"
   }, {
-    "if": "unix",
     "commandName": "./main",
     "args": [],
     "output": "main.out"
   }, {
     // run again to verify idempotent extraction
-    "if": "unix",
     "commandName": "./main",
-    "args": [],
-    "output": "main.out"
-  }, {
-    "if": "windows",
-    "args": "compile --self-extracting --no-check -A --output main.exe main.ts",
-    "output": "[WILDCARD]"
-  }, {
-    "if": "windows",
-    "commandName": "./main.exe",
-    "args": [],
-    "output": "main.out"
-  }, {
-    // run again to verify idempotent extraction
-    "if": "windows",
-    "commandName": "./main.exe",
     "args": [],
     "output": "main.out"
   }]
