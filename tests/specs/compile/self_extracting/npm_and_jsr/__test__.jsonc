@@ -1,6 +1,9 @@
 {
   "tempDir": true,
   "steps": [{
+    "args": "install --allow-scripts",
+    "output": "[WILDCARD]"
+  }, {
     "if": "unix",
     "args": "compile --self-extracting -A --output main main.ts",
     "output": "[WILDCARD]"

@@ -68,8 +68,13 @@ impl DenoRtSys {
     }
   }
 
-  pub fn as_deno_rt_native_addon_loader(&self) -> DenoRtNativeAddonLoaderRc {
-    self.vfs.clone()
+  pub fn maybe_native_addon_loader(&self) -> Option<DenoRtNativeAddonLoaderRc> {
+    if self.self_extracting {
+      // native addons are already on disk, no need for VFS extraction
+      None
+    } else {
+      Some(self.vfs.clone())
+    }
   }
 
   pub fn is_specifier_in_vfs(&self, specifier: &Url) -> bool {
