@@ -40,6 +40,7 @@ mod tarball_extract;
 pub use fs_util::hard_link_dir_recursive;
 pub use fs_util::hard_link_file;
 pub use registry_info::RegistryInfoProvider;
+pub use registry_info::RegistryInfoStats;
 pub use registry_info::SerializedCachedPackageInfo;
 pub use registry_info::get_package_url;
 pub use remote::maybe_auth_header_value_for_npm_registry;

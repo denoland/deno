@@ -3,6 +3,8 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
 
 use async_trait::async_trait;
 use deno_error::JsErrorBox;
@@ -134,6 +136,73 @@ pub struct LoadPackageInfoError {
 pub struct LoadPackageInfoInnerError(pub Arc<JsErrorBox>);
 
 #[derive(Debug)]
+pub struct RegistryInfoStats {
+  /// Number of package_info() calls that resolved from the memory cache
+  /// without waiting for any I/O.
+  pub cache_hits: AtomicUsize,
+  /// Number of package_info() calls that had to wait for a pending
+  /// load (either started by prefetch or by this call itself).
+  pub pending_awaits: AtomicUsize,
+  /// Number of load_package_info calls that actually started a new
+  /// network download (as opposed to deduplicating onto an existing one).
+  pub network_fetches: AtomicUsize,
+  /// Current number of in-flight network requests.
+  pub in_flight: AtomicUsize,
+  /// Peak number of concurrent in-flight network requests.
+  pub peak_in_flight: AtomicUsize,
+  /// Number of prefetch_package_info() calls.
+  pub prefetch_calls: AtomicUsize,
+  /// Number of prefetch calls that were already cached (no-op).
+  pub prefetch_already_cached: AtomicUsize,
+  /// Number of prefetch calls skipped because the concurrency limit was hit.
+  pub prefetch_skipped_at_capacity: AtomicUsize,
+}
+
+impl Default for RegistryInfoStats {
+  fn default() -> Self {
+    Self {
+      cache_hits: AtomicUsize::new(0),
+      pending_awaits: AtomicUsize::new(0),
+      network_fetches: AtomicUsize::new(0),
+      in_flight: AtomicUsize::new(0),
+      peak_in_flight: AtomicUsize::new(0),
+      prefetch_calls: AtomicUsize::new(0),
+      prefetch_already_cached: AtomicUsize::new(0),
+      prefetch_skipped_at_capacity: AtomicUsize::new(0),
+    }
+  }
+}
+
+impl std::fmt::Display for RegistryInfoStats {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    write!(
+      f,
+      "cache_hits={}, pending_awaits={}, network_fetches={}, peak_in_flight={}, \
+       prefetch_calls={}, prefetch_already_cached={}, prefetch_skipped_at_capacity={}",
+      self.cache_hits.load(Ordering::Relaxed),
+      self.pending_awaits.load(Ordering::Relaxed),
+      self.network_fetches.load(Ordering::Relaxed),
+      self.peak_in_flight.load(Ordering::Relaxed),
+      self.prefetch_calls.load(Ordering::Relaxed),
+      self.prefetch_already_cached.load(Ordering::Relaxed),
+      self.prefetch_skipped_at_capacity.load(Ordering::Relaxed),
+    )
+  }
+}
+
+/// Maximum number of concurrent speculative prefetch tasks.
+/// This limits background prefetches to avoid overwhelming the registry,
+/// while leaving the critical path (direct package_info() calls from
+/// FuturesOrdered) unlimited so resolution is never blocked by prefetches.
+///
+/// Note: Because prefetch tasks race ahead of the critical path and create
+/// Pending entries that the critical path deduplicates onto, this effectively
+/// caps total concurrent downloads for prefetched packages. The critical path
+/// only starts its own downloads for packages not yet prefetched. Setting this
+/// too low starves the critical path of pre-warmed cache entries.
+const MAX_CONCURRENT_PREFETCH_TASKS: usize = 50;
+
+#[derive(Debug)]
 struct RegistryInfoProviderInner<
   THttpClient: NpmCacheHttpClient,
   TSys: NpmCacheSys,
@@ -144,6 +213,9 @@ struct RegistryInfoProviderInner<
   force_reload_flag: AtomicFlag,
   memory_cache: Mutex<MemoryCache>,
   previously_loaded_packages: Mutex<HashSet<String>>,
+  /// Tracks the number of in-flight prefetch tasks to limit concurrency.
+  prefetch_in_flight: AtomicUsize,
+  stats: RegistryInfoStats,
 }
 
 impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
@@ -182,11 +254,16 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
         cache_item
       };
       match cache_item {
-        MemoryCacheItem::FsCached(info) => return Ok(Some(info)),
+        MemoryCacheItem::FsCached(info) => {
+          self.stats.cache_hits.fetch_add(1, Ordering::Relaxed);
+          return Ok(Some(info));
+        }
         MemoryCacheItem::MemoryCached(maybe_info) => {
+          self.stats.cache_hits.fetch_add(1, Ordering::Relaxed);
           return maybe_info.map_err(LoadPackageInfoInnerError);
         }
         MemoryCacheItem::Pending(value_creator) => {
+          self.stats.pending_awaits.fetch_add(1, Ordering::Relaxed);
           (value_creator, mem_cache.clear_id)
         }
       }
@@ -276,6 +353,9 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
         None => (None, None)
       };
 
+      downloader.stats.network_fetches.fetch_add(1, Ordering::Relaxed);
+      let current = downloader.stats.in_flight.fetch_add(1, Ordering::Relaxed) + 1;
+      downloader.stats.peak_in_flight.fetch_max(current, Ordering::Relaxed);
       let response = downloader
         .http_client
         .download_with_retries_on_any_tokio_runtime(
@@ -283,7 +363,9 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
           maybe_auth_header_value,
           maybe_etag,
         )
-        .await.map_err(JsErrorBox::from_err)?;
+        .await;
+      downloader.stats.in_flight.fetch_sub(1, Ordering::Relaxed);
+      let response = response.map_err(JsErrorBox::from_err)?;
       match response {
         NpmCacheHttpClientResponse::NotModified => {
           log::debug!("Respected etag for packument '{0}'", name); // used in the tests
@@ -362,12 +444,18 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
       force_reload_flag: AtomicFlag::lowered(),
       memory_cache: Default::default(),
       previously_loaded_packages: Default::default(),
+      prefetch_in_flight: AtomicUsize::new(0),
+      stats: Default::default(),
     }))
   }
 
   /// Clears the internal memory cache.
   pub fn clear_memory_cache(&self) {
     self.0.memory_cache.lock().clear();
+  }
+
+  pub fn stats(&self) -> &RegistryInfoStats {
+    &self.0.stats
   }
 
   pub async fn maybe_package_info(
@@ -398,10 +486,48 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys> NpmRegistryApi
   }
 
   fn prefetch_package_info(&self, name: &str) {
+    self.0.stats.prefetch_calls.fetch_add(1, Ordering::Relaxed);
+
+    // Atomically check the cache AND insert a Pending entry if absent,
+    // all under a single lock acquisition. This prevents the TOCTOU race
+    // where multiple concurrent prefetch calls for the same package name
+    // all pass the cache check (seeing no entry) before any of them
+    // creates a Pending entry, each wasting a concurrency slot.
+    {
+      let mut mem_cache = self.0.memory_cache.lock();
+      if mem_cache.get(name).is_some() {
+        self.0.stats.prefetch_already_cached.fetch_add(1, Ordering::Relaxed);
+        return;
+      }
+
+      // Limit concurrent prefetch tasks to avoid overwhelming the registry.
+      // Check under the same lock to avoid races between check and insert.
+      let current = self.0.prefetch_in_flight.load(Ordering::Relaxed);
+      if current >= MAX_CONCURRENT_PREFETCH_TASKS {
+        self.0.stats.prefetch_skipped_at_capacity.fetch_add(1, Ordering::Relaxed);
+        return;
+      }
+      self.0.prefetch_in_flight.fetch_add(1, Ordering::Relaxed);
+
+      // Insert the Pending entry now, while we hold the lock.
+      // This ensures any subsequent prefetch_package_info or load_package_info
+      // call for the same name sees this entry and deduplicates onto it.
+      let value_creator = MultiRuntimeAsyncValueCreator::new({
+        let downloader = self.0.clone();
+        let name = name.to_string();
+        Box::new(move || downloader.create_load_future(&name))
+      });
+      mem_cache.insert(
+        name.to_string(),
+        MemoryCacheItem::Pending(Arc::new(value_creator)),
+      );
+    }
+
     let inner = self.0.clone();
     let name = name.to_string();
     spawn(async move {
       let _ = inner.load_package_info(&name).await;
+      inner.prefetch_in_flight.fetch_sub(1, Ordering::Relaxed);
     });
   }
 
