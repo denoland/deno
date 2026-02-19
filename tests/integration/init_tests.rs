@@ -285,3 +285,21 @@ fn init_npm() {
       assert_eq!(cwd.join("3").read_to_string(), "test");
     });
 }
+
+#[test(flaky)]
+fn create_jsr() {
+  let context = TestContextBuilder::for_jsr().use_temp_cwd().build();
+  let cwd = context.temp_dir().path();
+  context
+    .new_command()
+    .args("create jsr:@denotest/create")
+    .with_pty(|mut pty| {
+      pty.expect("Do you want to continue?");
+      pty.write_raw("y\n");
+      pty.expect("Initialized from JSR!");
+      assert_eq!(
+        cwd.join("initialized.txt").read_to_string(),
+        "jsr-create-test"
+      );
+    });
+}

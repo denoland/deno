@@ -486,7 +486,7 @@ fn jsr_name_to_create_script(name: &str) -> String {
 
   let mut inner = parsed.into_inner();
   let new_sub_path = match inner.sub_path.as_deref() {
-    Some(sub) => format!("{sub}/create"),
+    Some(sub) => format!("{}/create", sub.trim_end_matches('/')),
     None => "create".to_string(),
   };
   inner.sub_path = Some(new_sub_path.as_str().into());

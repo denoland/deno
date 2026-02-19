@@ -13179,7 +13179,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Init(InitFlags {
-          package: Some("vite".to_string()),
+          package: Some("npm:vite".to_string()),
           package_args: svec!["--lib"],
           dir: None,
           lib: false,
@@ -13196,7 +13196,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Init(InitFlags {
-          package: Some("vite".to_string()),
+          package: Some("npm:vite".to_string()),
           package_args: svec!["--serve"],
           dir: None,
           lib: false,
@@ -13213,7 +13213,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Init(InitFlags {
-          package: Some("vite".to_string()),
+          package: Some("npm:vite".to_string()),
           package_args: svec!["new_dir"],
           dir: None,
           lib: false,
@@ -13225,12 +13225,12 @@ mod tests {
       }
     );
 
-    let r = flags_from_vec(svec!["deno", "init", "--npm", "--yes", "vite"]);
+    let r = flags_from_vec(svec!["deno", "init", "--npm", "--yes", "npm:vite"]);
     assert_eq!(
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Init(InitFlags {
-          package: Some("vite".to_string()),
+          package: Some("npm:vite".to_string()),
           package_args: vec![],
           dir: None,
           lib: false,
