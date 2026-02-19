@@ -435,7 +435,7 @@ class ReadableStreamWithCollectors extends ReadableStream {
   }
 }
 
-function spawn(command, options) {
+function spawnInner(command, options) {
   if (options?.stdin === "piped") {
     throw new TypeError(
       "Piped stdin is not supported for this function, use 'Deno.Command().spawn()' instead",
@@ -449,7 +449,7 @@ function spawn(command, options) {
     .output();
 }
 
-function spawnSync(command, {
+function spawnSyncInner(command, {
   args = [],
   cwd = undefined,
   clearEnv = false,
@@ -519,7 +519,7 @@ class Command {
         "Piped stdin is not supported for this function, use 'Deno.Command.spawn()' instead",
       );
     }
-    return spawn(this.#command, this.#options);
+    return spawnInner(this.#command, this.#options);
   }
 
   outputSync() {
@@ -528,7 +528,7 @@ class Command {
         "Piped stdin is not supported for this function, use 'Deno.Command.spawn()' instead",
       );
     }
-    return spawnSync(this.#command, this.#options);
+    return spawnSyncInner(this.#command, this.#options);
   }
 
   spawn() {
@@ -543,4 +543,8 @@ class Command {
   }
 }
 
-export { ChildProcess, Command, kill, kInputOption, Process, run };
+function spawn(command, options) {
+  return new Command(command, options).spawn();
+}
+
+export { ChildProcess, Command, kill, kInputOption, Process, run, spawn };

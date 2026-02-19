@@ -159,6 +159,7 @@ const denoNs = {
   uid: os.uid,
   Command: process.Command,
   ChildProcess: process.ChildProcess,
+  spawn: process.spawn,
   dlopen: ffi.dlopen,
   UnsafeCallback: ffi.UnsafeCallback,
   UnsafePointer: ffi.UnsafePointer,

@@ -3971,6 +3971,32 @@ declare namespace Deno {
     readonly stderr: Uint8Array<ArrayBuffer>;
   }
 
+  /** Spawns a new subprocess, returning a {@linkcode Deno.ChildProcess} handle.
+   *
+   * This is a shorthand for `new Deno.Command(command, options).spawn()`.
+   *
+   * By default, `stdin`, `stdout`, and `stderr` are set to `"inherit"`.
+   *
+   * @example Spawn a subprocess
+   *
+   * ```ts
+   * const child = Deno.spawn(Deno.execPath(), {
+   *   args: ["eval", "console.log('hello')"],
+   *   stdout: "piped",
+   * });
+   * const output = await child.stdout.text();
+   * console.log(output); // "hello\n"
+   * const status = await child.status;
+   * ```
+   *
+   * @tags allow-run
+   * @category Subprocess
+   */
+  export function spawn(
+    command: string | URL,
+    options?: CommandOptions,
+  ): ChildProcess;
+
   /** Option which can be specified when performing {@linkcode Deno.inspect}.
    *
    * @category I/O */

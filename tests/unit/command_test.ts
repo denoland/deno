@@ -1248,3 +1248,63 @@ Deno.test({ permissions: { run: true } }, async function collectText() {
 
   await process.status;
 });
+
+Deno.test(
+  { permissions: { run: true } },
+  async function denoSpawnBasic() {
+    const child = Deno.spawn(Deno.execPath(), {
+      args: ["eval", "console.log('hello from spawn')"],
+      stdout: "piped",
+      stderr: "null",
+    });
+
+    assert(child instanceof Deno.ChildProcess);
+    assert(child.pid > 0);
+
+    const output = await child.stdout.text();
+    assertEquals(output, "hello from spawn\n");
+
+    const status = await child.status;
+    assertEquals(status.success, true);
+    assertEquals(status.code, 0);
+  },
+);
+
+Deno.test(
+  { permissions: { run: true } },
+  async function denoSpawnDefaultsToInherit() {
+    // Deno.spawn should default stdio to "inherit" like Command.spawn()
+    const child = Deno.spawn(Deno.execPath(), {
+      args: ["eval", "Deno.exit(42)"],
+    });
+
+    const status = await child.status;
+    assertEquals(status.success, false);
+    assertEquals(status.code, 42);
+  },
+);
+
+Deno.test(
+  { permissions: { run: true } },
+  async function denoSpawnWithPipedStdin() {
+    const child = Deno.spawn(Deno.execPath(), {
+      args: [
+        "eval",
+        "const buf = new Uint8Array(5); await Deno.stdin.read(buf); console.log(new TextDecoder().decode(buf))",
+      ],
+      stdin: "piped",
+      stdout: "piped",
+      stderr: "null",
+    });
+
+    const writer = child.stdin.getWriter();
+    await writer.write(new TextEncoder().encode("hello"));
+    await writer.close();
+
+    const output = await child.stdout.text();
+    assertEquals(output, "hello\n");
+
+    const status = await child.status;
+    assertEquals(status.success, true);
+  },
+);
