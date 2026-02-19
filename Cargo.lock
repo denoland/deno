@@ -1925,7 +1925,7 @@ dependencies = [
 
 [[package]]
 name = "deno_core"
-version = "0.383.0"
+version = "0.385.0"
 dependencies = [
  "anyhow",
  "az",
@@ -1944,7 +1944,6 @@ dependencies = [
  "futures",
  "indexmap 2.9.0",
  "libc",
- "libuvrust",
  "parking_lot",
  "percent-encoding",
  "pin-project",
@@ -2546,7 +2545,6 @@ dependencies = [
  "k256",
  "libc",
  "libnghttp2",
- "libuvrust",
  "libz-sys",
  "log",
  "md-5",
@@ -2690,7 +2688,7 @@ dependencies = [
 
 [[package]]
 name = "deno_ops"
-version = "0.259.0"
+version = "0.261.0"
 dependencies = [
  "indexmap 2.9.0",
  "proc-macro2",
@@ -5979,15 +5977,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "libuv-sys"
-version = "0.1.0"
-dependencies = [
- "bindgen 0.71.1",
- "cc",
- "libc",
-]
-
-[[package]]
 name = "libuv-sys-lite"
 version = "1.48.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5995,15 +5984,6 @@ checksum = "ca8dfd1a173826d193e3b955e07c22765829890f62c677a59c4a410cb4f47c01"
 dependencies = [
  "bindgen 0.70.1",
  "libloading 0.8.5",
-]
-
-[[package]]
-name = "libuvrust"
-version = "0.1.0"
-dependencies = [
- "libc",
- "libuv-sys",
- "tokio",
 ]
 
 [[package]]
@@ -8489,7 +8469,7 @@ dependencies = [
 
 [[package]]
 name = "serde_v8"
-version = "0.292.0"
+version = "0.294.0"
 dependencies = [
  "deno_error",
  "num-bigint",

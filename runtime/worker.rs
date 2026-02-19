@@ -1266,6 +1266,7 @@ impl ModuleLoader for PlaceholderModuleLoader {
     module_specifier: &ModuleSpecifier,
     maybe_referrer: Option<String>,
     maybe_code: Option<String>,
+    maybe_code: Option<String>,
     options: ModuleLoadOptions,
   ) -> std::pin::Pin<
     Box<

@@ -1082,7 +1082,8 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     &self,
     specifier: &ModuleSpecifier,
     _maybe_referrer: Option<String>,
-    maybe_code: Option<String>,
+
+    _maybe_code: Option<String>,
     options: ModuleLoadOptions,
   ) -> Pin<Box<dyn Future<Output = Result<(), ModuleLoaderError>>>> {
     // always call this first unconditionally because it will be

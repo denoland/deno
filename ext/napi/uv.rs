@@ -44,6 +44,7 @@ struct uv_mutex_t {
   }],
 }
 
+#[unsafe(no_mangle)]
 unsafe extern "C" fn uv_mutex_init(lock: *mut uv_mutex_t) -> c_int {
   unsafe {
     addr_of_mut!((*lock).mutex).write(Mutex::new(()));
@@ -51,6 +52,7 @@ unsafe extern "C" fn uv_mutex_init(lock: *mut uv_mutex_t) -> c_int {
   }
 }
 
+#[unsafe(no_mangle)]
 unsafe extern "C" fn uv_mutex_lock(lock: *mut uv_mutex_t) {
   unsafe {
     let guard = (*lock).mutex.lock();
@@ -60,12 +62,14 @@ unsafe extern "C" fn uv_mutex_lock(lock: *mut uv_mutex_t) {
   }
 }
 
+#[unsafe(no_mangle)]
 unsafe extern "C" fn uv_mutex_unlock(lock: *mut uv_mutex_t) {
   unsafe {
     (*lock).mutex.force_unlock();
   }
 }
 
+#[unsafe(no_mangle)]
 unsafe extern "C" fn uv_mutex_destroy(_lock: *mut uv_mutex_t) {
   // no cleanup required
 }
@@ -141,6 +145,7 @@ struct uv_async_t {
 
 type uv_loop_t = Env;
 type uv_async_cb = extern "C" fn(handle: *mut uv_async_t);
+#[unsafe(export_name = "uv_async_init")]
 unsafe extern "C" fn _napi_uv_async_init(
   r#loop: *mut uv_loop_t,
   // probably uninitialized
@@ -174,6 +179,7 @@ unsafe extern "C" fn _napi_uv_async_init(
   }
 }
 
+#[unsafe(export_name = "uv_async_send")]
 unsafe extern "C" fn _napi_uv_async_send(handle: *mut uv_async_t) -> c_int {
   unsafe { -napi_queue_async_work((*handle).r#loop, (*handle).work) }
 }

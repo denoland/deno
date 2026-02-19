@@ -12,14 +12,15 @@ use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::op2;
 use deno_core::v8;
-use libuvrust::backend::UvBuf;
-use libuvrust::backend::UvConnect;
-use libuvrust::backend::UvHandle;
-use libuvrust::backend::UvLoop;
-use libuvrust::backend::UvShutdown;
-use libuvrust::backend::UvStream;
-use libuvrust::backend::UvTcp;
-use libuvrust::backend::UvWrite;
+use deno_core::uv_compat::UvBuf;
+use deno_core::uv_compat::UvConnect;
+use deno_core::uv_compat::UvHandle;
+use deno_core::uv_compat::UvLoop;
+use deno_core::uv_compat::UvShutdown;
+use deno_core::uv_compat::UvStream;
+use deno_core::uv_compat::UvTcp;
+use deno_core::uv_compat::UvWrite;
+use deno_core::uv_compat;
 
 use super::handle_wrap::AsyncId;
 
@@ -66,10 +67,10 @@ unsafe impl GarbageCollected for TCP {
 
 impl TCP {
   fn init_handle(&self, state: &mut OpState) {
-    let loop_ptr = &mut *state.uv_loop as *mut UvLoop;
+    let loop_ptr: *mut UvLoop = &mut **state.borrow_mut::<Box<UvLoop>>();
     unsafe {
-      let tcp = Box::into_raw(Box::new(libuvrust::backend::new_tcp()));
-      libuvrust::backend::uv_tcp_init(loop_ptr, tcp);
+      let tcp = Box::into_raw(Box::new(uv_compat::new_tcp()));
+      uv_compat::uv_tcp_init(loop_ptr, tcp);
       *self.handle.borrow_mut() = tcp;
     }
   }
@@ -90,7 +91,7 @@ impl TCP {
 }
 
 unsafe fn context_from_loop(
-  loop_ptr: *mut libuvrust::backend::UvLoop,
+  loop_ptr: *mut UvLoop,
 ) -> Option<v8::Local<'static, v8::Context>> {
   unsafe {
     let ctx_ptr = (*loop_ptr).data;
@@ -343,7 +344,7 @@ impl TCP {
         libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK);
       }
       // For C libuv, use uv_tcp_open to assign an existing fd
-      libuvrust::backend::uv_tcp_open(tcp, fd)
+      uv_compat::uv_tcp_open(tcp, fd)
     }
   }
 
@@ -365,7 +366,7 @@ impl TCP {
       }
       let mut storage: libc::sockaddr_storage = std::mem::zeroed();
       let (sa, sa_len) = sockaddr_to_raw(socket_addr, &mut storage);
-      libuvrust::backend::uv_tcp_bind(tcp, sa, sa_len, 0)
+      uv_compat::uv_tcp_bind(tcp, sa as *const _, sa_len as u32, 0)
     }
   }
 
@@ -387,7 +388,7 @@ impl TCP {
       }
       let mut storage: libc::sockaddr_storage = std::mem::zeroed();
       let (sa, sa_len) = sockaddr_to_raw(socket_addr, &mut storage);
-      libuvrust::backend::uv_tcp_bind(tcp, sa, sa_len, 0)
+      uv_compat::uv_tcp_bind(tcp, sa as *const _, sa_len as u32, 0)
     }
   }
 
@@ -398,7 +399,7 @@ impl TCP {
       if stream.is_null() {
         return -1;
       }
-      libuvrust::backend::uv_listen(stream, backlog, Some(server_connection_cb))
+      uv_compat::uv_listen(stream, backlog, Some(server_connection_cb))
     }
   }
 
@@ -410,7 +411,7 @@ impl TCP {
       if server_stream.is_null() || client_stream.is_null() {
         return -1;
       }
-      libuvrust::backend::uv_accept(server_stream, client_stream)
+      uv_compat::uv_accept(server_stream, client_stream)
     }
   }
 
@@ -421,7 +422,7 @@ impl TCP {
       if stream.is_null() {
         return -1;
       }
-      libuvrust::backend::uv_read_start(
+      uv_compat::uv_read_start(
         stream,
         Some(stream_alloc_cb),
         Some(stream_read_cb),
@@ -436,7 +437,7 @@ impl TCP {
       if stream.is_null() {
         return -1;
       }
-      libuvrust::backend::uv_read_stop(stream)
+      uv_compat::uv_read_stop(stream)
     }
   }
 
@@ -450,7 +451,7 @@ impl TCP {
       let data_vec = data.to_vec();
       let data_len = data_vec.len();
       let mut write_req = Box::new(WriteReq {
-        uv_req: libuvrust::backend::new_write(),
+        uv_req: uv_compat::new_write(),
         _data: data_vec,
       });
       let buf = UvBuf {
@@ -460,7 +461,7 @@ impl TCP {
       let req_ptr = &mut write_req.uv_req as *mut UvWrite;
       let _ = Box::into_raw(write_req); // leak; freed in write_cb
       let ret =
-        libuvrust::backend::uv_write(req_ptr, stream, &buf, 1, Some(write_cb));
+        uv_compat::uv_write(req_ptr, stream, &buf, 1, Some(write_cb));
       if ret != 0 {
         // Failed to queue write, reclaim the WriteReq
         let _ = Box::from_raw(req_ptr as *mut WriteReq);
@@ -480,8 +481,8 @@ impl TCP {
       if stream.is_null() {
         return -1;
       }
-      let req = Box::into_raw(Box::new(libuvrust::backend::new_shutdown()));
-      let ret = libuvrust::backend::uv_shutdown(
+      let req = Box::into_raw(Box::new(uv_compat::new_shutdown()));
+      let ret = uv_compat::uv_shutdown(
         req,
         stream,
         Some(shutdown_cb),
@@ -500,7 +501,7 @@ impl TCP {
       if tcp.is_null() {
         return -1;
       }
-      libuvrust::backend::uv_tcp_nodelay(tcp, enable as i32)
+      uv_compat::uv_tcp_nodelay(tcp, enable as i32)
     }
   }
 
@@ -523,14 +524,14 @@ impl TCP {
       let mut storage: libc::sockaddr_storage = std::mem::zeroed();
       let (sa, _sa_len) = sockaddr_to_raw(socket_addr, &mut storage);
       let mut connect_req = Box::new(ConnectReq {
-        uv_req: libuvrust::backend::new_connect(),
+        uv_req: uv_compat::new_connect(),
       });
       let req_ptr = &mut connect_req.uv_req as *mut UvConnect;
       let _ = Box::into_raw(connect_req); // leak; freed in connect_cb
-      let ret = libuvrust::backend::uv_tcp_connect(
+      let ret = uv_compat::uv_tcp_connect(
         req_ptr,
         tcp,
-        sa,
+        sa as *const _,
         Some(connect_cb),
       );
       if ret != 0 {
@@ -551,9 +552,9 @@ impl TCP {
       let mut storage: libc::sockaddr_storage = std::mem::zeroed();
       let mut len =
         std::mem::size_of::<libc::sockaddr_storage>() as i32;
-      let ret = libuvrust::backend::uv_tcp_getpeername(
+      let ret = uv_compat::uv_tcp_getpeername(
         tcp,
-        &mut storage as *mut _ as *mut libc::sockaddr,
+        &mut storage as *mut _ as *mut _,
         &mut len,
       );
       if ret != 0 {
@@ -573,9 +574,9 @@ impl TCP {
       let mut storage: libc::sockaddr_storage = std::mem::zeroed();
       let mut len =
         std::mem::size_of::<libc::sockaddr_storage>() as i32;
-      let ret = libuvrust::backend::uv_tcp_getsockname(
+      let ret = uv_compat::uv_tcp_getsockname(
         tcp,
-        &mut storage as *mut _ as *mut libc::sockaddr,
+        &mut storage as *mut _ as *mut _,
         &mut len,
       );
       if ret != 0 {
@@ -622,7 +623,7 @@ impl TCP {
         // 1. Removed from the loop's handle queue
         // 2. Pending writes cancelled with UV_ECANCELED
         // 3. Handle memory freed only in the callback (after libuv is done)
-        libuvrust::backend::uv_close(
+        uv_compat::uv_close(
           tcp as *mut UvHandle,
           Some(tcp_close_cb),
         );
