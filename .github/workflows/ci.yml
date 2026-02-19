@@ -3893,7 +3893,7 @@ jobs:
               ./tools/upload_wptfyi.js $(git rev-parse HEAD) --ghstatus
       - name: Cache wpt and autobahn test run hashes
         uses: cirruslabs/cache/save@v4
-        if: '!startsWith(github.ref, ''refs/tags/'')'
+        if: '!startsWith(github.ref, ''refs/tags/'') && github.ref == ''refs/heads/main'''
         with:
           path: |-
             ./target/wpt_input_hash

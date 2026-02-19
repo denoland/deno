@@ -3,21 +3,21 @@
 // deno-lint-ignore-file
 
 import { $ } from "https://deno.land/x/dax@0.31.0/mod.ts";
-import {
-  join,
-  ROOT_PATH,
-  shouldSkipOnCi,
-} from "../../../tools/util.js";
+import { join, ROOT_PATH, shouldSkipOnCi } from "../../../tools/util.js";
 
 $.setPrintCommand(true);
 const pwd = new URL(".", import.meta.url).pathname;
 
 const self = Deno.execPath();
 if (
-  await shouldSkipOnCi("autobahn", join(ROOT_PATH, "target"), async (hasher) => {
-    await hasher.hashFile(self);
-    await hasher.hashDir(pwd);
-  })
+  await shouldSkipOnCi(
+    "autobahn",
+    join(ROOT_PATH, "target"),
+    async (hasher) => {
+      await hasher.hashFile(self);
+      await hasher.hashDir(pwd);
+    },
+  )
 ) {
   Deno.exit(0);
 }
