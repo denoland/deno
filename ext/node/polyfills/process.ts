@@ -628,6 +628,7 @@ Object.defineProperty(process, "arch", {
   get() {
     return arch;
   },
+  configurable: true,
 });
 
 Object.defineProperty(process, "report", {

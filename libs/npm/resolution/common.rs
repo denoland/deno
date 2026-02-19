@@ -15,6 +15,7 @@ use thiserror::Error;
 use crate::registry::NpmPackageInfo;
 use crate::registry::NpmPackageVersionInfo;
 use crate::registry::NpmPackageVersionInfosIterator;
+use crate::resolution::overrides::NpmOverrides;
 
 /// Error that occurs when the version is not found in the package information.
 #[derive(Debug, Error, Clone, deno_error::JsError)]
@@ -114,6 +115,8 @@ pub struct NpmVersionResolver {
   /// Packages that are marked as "links" in the config file.
   pub link_packages: Arc<HashMap<PackageName, Vec<NpmPackageVersionInfo>>>,
   pub newest_dependency_date_options: NewestDependencyDateOptions,
+  /// npm overrides from the root package.json.
+  pub overrides: Arc<NpmOverrides>,
 }
 
 impl NpmVersionResolver {
@@ -369,6 +372,7 @@ mod test {
     let resolver = NpmVersionResolver {
       link_packages: Default::default(),
       newest_dependency_date_options: Default::default(),
+      overrides: Default::default(),
     };
     let package_version_resolver = resolver.get_for_package(&package_info);
     let result = package_version_resolver
@@ -437,6 +441,7 @@ mod test {
     let resolver = NpmVersionResolver {
       link_packages: Default::default(),
       newest_dependency_date_options: Default::default(),
+      overrides: Default::default(),
     };
     let version_resolver = resolver.get_for_package(&package_info);
     let result = version_resolver
@@ -493,6 +498,7 @@ mod test {
     let resolver = NpmVersionResolver {
       link_packages: Default::default(),
       newest_dependency_date_options: Default::default(),
+      overrides: Default::default(),
     };
 
     // check for when matches dist tag
