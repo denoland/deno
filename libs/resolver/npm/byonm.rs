@@ -389,7 +389,7 @@ impl<TSys: FsCanonicalize + FsMetadata + FsRead + FsReadDir>
     name: &str,
     referrer: &UrlOrPathRef,
   ) -> Result<PathBuf, PackageFolderResolveError> {
-    fn inner<TSys: FsMetadata>(
+    fn inner<TSys: FsMetadata + FsCanonicalize>(
       sys: &NodeResolutionSys<TSys>,
       name: &str,
       referrer: &UrlOrPathRef,
@@ -399,6 +399,11 @@ impl<TSys: FsCanonicalize + FsMetadata + FsRead + FsReadDir>
       let maybe_start_folder =
         maybe_referrer_file.as_ref().and_then(|f| f.parent());
       if let Some(start_folder) = maybe_start_folder {
+        let start_folder = search_stop_dir
+          .is_some()
+          .then(|| sys.fs_canonicalize(&start_folder).ok().map(Cow::Owned))
+          .flatten()
+          .unwrap_or(Cow::Borrowed(start_folder));
         for current_folder in start_folder.ancestors() {
           let node_modules_folder = if current_folder.ends_with("node_modules")
           {
