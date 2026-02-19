@@ -479,3 +479,43 @@ BnRlc3RDQTCB
   // deno-lint-ignore no-explicit-any
   (tls as any).setDefaultCACertificates([testCert]);
 });
+
+// https://github.com/denoland/deno/issues/30170
+Deno.test("tls.connect strips trailing dot from servername", async () => {
+  const listener = Deno.listenTls({
+    port: 0,
+    key,
+    cert,
+  });
+
+  const conn = tls.connect({
+    host: "localhost",
+    port: listener.addr.port,
+    // Use trailing dot - should be normalized to "localhost"
+    servername: "localhost.",
+    secureContext: {
+      ca: rootCaCert,
+      // deno-lint-ignore no-explicit-any
+    } as any,
+  });
+
+  const serverConn = await listener.accept();
+
+  const { promise: connected, resolve: resolveConnected } = Promise
+    .withResolvers<void>();
+  conn.on("secureConnect", () => {
+    assert(conn.authorized, "Connection should be authorized");
+    resolveConnected();
+  });
+
+  conn.on("error", (err: Error) => {
+    // Should not get a certificate error with trailing dot
+    throw err;
+  });
+
+  await connected;
+  conn.destroy();
+  serverConn.close();
+  listener.close();
+  await new Promise((resolve) => conn.on("close", resolve));
+});

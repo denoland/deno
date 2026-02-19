@@ -178,6 +178,10 @@ impl Utf16Map {
     self.utf8_offsets.len()
   }
 
+  pub fn line_starts(&self) -> &[TextSize] {
+    &self.utf16_offsets
+  }
+
   pub fn line_length_utf16(&self, line: u32) -> TextSize {
     self.utf16_offsets[(line + 1) as usize] - self.utf16_offsets[line as usize]
   }
