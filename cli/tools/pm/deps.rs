@@ -838,23 +838,24 @@ impl DepManager {
             }
             .boxed_local(),
           )
-        DepKind::Jsr => futs.push_back(
-          async {
-            let semver_req = &dep.req;
-            let _permit = jsr_sema.acquire().await;
-            let semver_compatible = self
-              .jsr_fetch_resolver
-              .req_to_nv(semver_req)
-              .await
-              .ok()
-              .flatten();
-            let info =
-              self.jsr_fetch_resolver.package_info(&semver_req.name).await;
-            let latest = info
-              .and_then(|info| {
-                let version_resolver = self
-                  .jsr_fetch_resolver
-                  .version_resolver_for_package(&semver_req.name, &info);
+        DepKind::Jsr => {
+          let jsr_fetch_resolver = self.jsr_fetch_resolver.clone();
+          let dep_req = dep.req.clone();
+          futs.push_back(
+            async move {
+              let semver_req = &dep_req;
+              let _permit = jsr_sema.acquire().await;
+              let semver_compatible = jsr_fetch_resolver
+                .req_to_nv(semver_req)
+                .await
+                .ok()
+                .flatten();
+              let info =
+                jsr_fetch_resolver.package_info(&semver_req.name).await;
+              let latest = info
+                .and_then(|info| {
+                  let version_resolver =
+                    jsr_fetch_resolver.version_resolver_for_package(&semver_req.name, &info);
                 let lower_bound = &semver_compatible.as_ref()?.version;
                 latest_version(
                   Some(lower_bound),
