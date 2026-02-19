@@ -4023,6 +4023,54 @@ declare namespace Deno {
     options?: Omit<CommandOptions, "args">,
   ): ChildProcess;
 
+  /** Spawns a subprocess, waits for it to finish, and returns the output.
+   *
+   * This is a shorthand for `new Deno.Command(command, options).output()`.
+   *
+   * Will throw an error if `stdin: "piped"` is set.
+   *
+   * @example Spawn and wait for output
+   *
+   * ```ts
+   * const { code, stdout, stderr } = await Deno.spawnAndWait(Deno.execPath(), {
+   *   args: ["eval", "console.log('hello')"],
+   * });
+   * console.log(new TextDecoder().decode(stdout)); // "hello\n"
+   * ```
+   *
+   * @tags allow-run
+   * @category Subprocess
+   */
+  export function spawnAndWait(
+    command: string | URL,
+    options?: CommandOptions,
+  ): Promise<CommandOutput>;
+  /** Spawns a subprocess with the given arguments, waits for it to finish,
+   * and returns the output.
+   *
+   * This is a shorthand for `new Deno.Command(command, { ...options, args }).output()`.
+   *
+   * Will throw an error if `stdin: "piped"` is set.
+   *
+   * @example Spawn and wait with args
+   *
+   * ```ts
+   * const { code, stdout } = await Deno.spawnAndWait(
+   *   Deno.execPath(),
+   *   ["eval", "console.log('hello')"],
+   * );
+   * console.log(new TextDecoder().decode(stdout)); // "hello\n"
+   * ```
+   *
+   * @tags allow-run
+   * @category Subprocess
+   */
+  export function spawnAndWait(
+    command: string | URL,
+    args: string[],
+    options?: Omit<CommandOptions, "args">,
+  ): Promise<CommandOutput>;
+
   /** Option which can be specified when performing {@linkcode Deno.inspect}.
    *
    * @category I/O */

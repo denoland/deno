@@ -557,4 +557,26 @@ function spawn(command, argsOrOptions, maybeOptions) {
   return new Command(command, argsOrOptions).spawn();
 }
 
-export { ChildProcess, Command, kill, kInputOption, Process, run, spawn };
+function spawnAndWait(command, argsOrOptions, maybeOptions) {
+  if (ArrayIsArray(argsOrOptions)) {
+    const options = maybeOptions ?? {};
+    if (options.args !== undefined) {
+      throw new TypeError(
+        "Passing 'args' in options is not allowed when args are passed as a separate argument",
+      );
+    }
+    return new Command(command, { ...options, args: argsOrOptions }).output();
+  }
+  return new Command(command, argsOrOptions).output();
+}
+
+export {
+  ChildProcess,
+  Command,
+  kill,
+  kInputOption,
+  Process,
+  run,
+  spawn,
+  spawnAndWait,
+};
