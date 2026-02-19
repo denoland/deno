@@ -38,11 +38,11 @@ use crate::cache::DenoDir;
 use crate::http_util::HttpClientProvider;
 use crate::lsp::completions::CompletionItemData;
 use crate::lsp::documents::Document;
-use crate::lsp::documents::DocumentText;
 use crate::lsp::logging::lsp_log;
 use crate::lsp::logging::lsp_warn;
 use crate::lsp::resolver::SingleReferrerGraphResolver;
 use crate::lsp::urls::uri_to_url;
+use crate::tsc::IGNORED_DIAGNOSTIC_CODES;
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -158,18 +158,19 @@ impl TsGoCompilerOptions {
   }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct TsGoGetDocumentParams {
-  uri: Uri,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct TsGoDocumentData {
-  text: DocumentText,
-  line_starts: Vec<i32>,
-  ascii_only: bool,
+enum TsGoCallbackParams {
+  #[serde(rename_all = "camelCase")]
+  GetDocument { uri: Uri },
+  #[serde(rename_all = "camelCase")]
+  ResolveModuleName {
+    module_name: String,
+    referrer_uri: Uri,
+    import_attribute_type: Option<String>,
+    resolution_mode: deno_typescript_go_client_rust::types::ResolutionMode,
+    compiler_options_key: CompilerOptionsKey,
+  },
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Serialize)]
@@ -612,70 +613,52 @@ impl TsGoServerInner {
             break;
           }
         };
-        // Check if it's a request (has method) vs response (has id but no method)
         if let Some(method) = message.get("method").and_then(|m| m.as_str()) {
           let id = message.get("id");
           let params = message.get("params");
           match method {
-            "deno/host/getDocument" => {
-              let params: TsGoGetDocumentParams = match params
+            "deno/callback" => {
+              let Some(id) = id else {
+                lsp_warn!("Missing id in tsgo callback: {:#}", &message,);
+                continue;
+              };
+              let params: TsGoCallbackParams = match params
                 .and_then(|p| serde_json::from_value(p.clone()).ok())
               {
                 Some(p) => p,
                 None => {
-                  if let Some(id) = id {
-                    let response = json!({
-                      "jsonrpc": "2.0",
-                      "id": id,
-                      "error": {
-                        "code": -32602,
-                        "message": "Invalid params"
-                      }
-                    });
-                    let mut stdin = stdin_clone.lock();
-                    let _ = write_lsp_message(&mut stdin, &response);
-                  }
-                  continue;
-                }
-              };
-
-              let snapshot = snapshot_clone.lock();
-              let result =
-                snapshot.document_modules.documents.get(&params.uri).map(
-                  |doc| {
-                    let text = doc.text();
-                    TsGoDocumentData {
-                      ascii_only: text.is_ascii(),
-                      text,
-                      line_starts: doc
-                        .line_index()
-                        .line_starts()
-                        .iter()
-                        .map(|&s| u32::from(s) as i32)
-                        .collect(),
-                    }
-                  },
-                );
-
-              if let Some(id) = id {
-                let response = match result {
-                  Some(data) => json!({
-                    "jsonrpc": "2.0",
-                    "id": id,
-                    "result": data,
-                  }),
-                  None => json!({
+                  let response = json!({
                     "jsonrpc": "2.0",
                     "id": id,
                     "error": {
-                      "code": -32001,
-                      "message": "Document not found"
+                      "code": -32602,
+                      "message": "Invalid params",
                     },
-                  }),
-                };
-                let mut stdin = stdin_clone.lock();
-                let _ = write_lsp_message(&mut stdin, &response);
-              }
+                  });
+                  let mut stdin = stdin_clone.lock();
+                  let _ = write_lsp_message(&mut stdin, &response);
+                  continue;
+                }
+              };
+              let result =
+                Self::handle_callback(params, &snapshot_clone.lock());
+              let response = match result {
+                Ok(result) => json!({
+                  "jsonrpc": "2.0",
+                  "id": id,
+                  "result": result,
+                }),
+                Err(err) => json!({
+                  "jsonrpc": "2.0",
+                  "id": id,
+                  "error": {
+                    "code": -32001,
+                    "message": err.to_string(),
+                  },
+                }),
+              };
+              let mut stdin = stdin_clone.lock();
+              let _ = write_lsp_message(&mut stdin, &response);
             }
             "client/registerCapability" => {
               let response = json!({
@@ -712,12 +695,11 @@ impl TsGoServerInner {
                 });
                 let mut stdin = stdin_clone.lock();
                 let _ = write_lsp_message(&mut stdin, &response);
-              } else {
-                lsp_warn!(
-                  "Received unknown notification from tsgo: {:#}",
-                  &message
-                );
               }
+              lsp_warn!(
+                "Received unknown notification from tsgo: {:#}",
+                &message,
+              );
             }
           }
         } else if let Some(id) = message.get("id") {
@@ -794,6 +776,68 @@ impl TsGoServerInner {
       pending_requests,
       next_request_id: AtomicI64::new(1),
       child: Mutex::new(child),
+    }
+  }
+
+  fn handle_callback(
+    params: TsGoCallbackParams,
+    snapshot: &StateSnapshot,
+  ) -> Result<serde_json::Value, AnyError> {
+    match params {
+      TsGoCallbackParams::GetDocument { uri } => {
+        let document = snapshot
+          .document_modules
+          .documents
+          .get(&uri)
+          .ok_or_else(|| anyhow!("Document not found"))?;
+        let text = document.text();
+        Ok(json!({
+          "text": &text,
+          "lineStarts": document
+            .line_index()
+            .line_starts()
+            .iter()
+            .map(|&s| u32::from(s) as i32)
+            .collect::<Vec<_>>(),
+          "asciiOnly": text.is_ascii(),
+        }))
+      }
+      TsGoCallbackParams::ResolveModuleName {
+        module_name,
+        referrer_uri,
+        // TODO(nayeemrmn): Use this to redirect bytes/text imports.
+        import_attribute_type: _import_attribute_type,
+        resolution_mode,
+        compiler_options_key,
+      } => {
+        let referrer_module = snapshot
+          .document_modules
+          .module_for_tsgo_referrer(&referrer_uri, &compiler_options_key)
+          .ok_or_else(|| anyhow!("Referrer module not found"))?;
+        let Some((uri, media_type)) = snapshot
+          .document_modules
+          .resolve_dependency_document(
+          &module_name,
+          &referrer_module,
+          match resolution_mode {
+            deno_typescript_go_client_rust::types::ResolutionMode::None => {
+              ResolutionMode::Import
+            }
+            deno_typescript_go_client_rust::types::ResolutionMode::CommonJS => {
+              ResolutionMode::Require
+            }
+            deno_typescript_go_client_rust::types::ResolutionMode::ESM => {
+              ResolutionMode::Import
+            }
+          },
+        ) else {
+          return Ok(json!(null));
+        };
+        Ok(json!({
+          "uri": uri,
+          "extension": media_type.as_ts_extension(),
+        }))
+      }
     }
   }
 
@@ -947,8 +991,8 @@ impl TsGoServer {
     snapshot: Arc<StateSnapshot>,
     token: &CancellationToken,
   ) -> Result<lsp::DocumentDiagnosticReport, AnyError> {
-    self
-      .request(
+    let mut report = self
+      .request::<lsp::DocumentDiagnosticReport>(
         TsGoRequest::LanguageServiceMethod {
           name: "ProvideDiagnostics".to_string(),
           args: json!([&module.uri]),
@@ -958,7 +1002,19 @@ impl TsGoServer {
         snapshot,
         token,
       )
-      .await
+      .await?;
+    if let lsp::DocumentDiagnosticReport::Full(report) = &mut report {
+      report
+        .full_document_diagnostic_report
+        .items
+        .retain(|diagnostic| {
+          let Some(lsp::NumberOrString::Number(code)) = &diagnostic.code else {
+            return true;
+          };
+          !IGNORED_DIAGNOSTIC_CODES.contains(&(*code as _))
+        });
+    }
+    Ok(report)
   }
 
   pub async fn provide_references(
