@@ -500,6 +500,12 @@ jobs:
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
+      - name: Upload test results
+        uses: actions/upload-artifact@v6
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && always()'
+        with:
+          name: 'test-results-macos-x86_64-debug-${{ matrix.test_crate }}${{ matrix.shard_index > 0 && format(''-shard-{0}'', matrix.shard_index) || '''' }}.json'
+          path: 'target/test_results_${{ matrix.test_crate }}.json'
       - name: Cache cargo home
         uses: cirruslabs/cache/save@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && github.ref == ''refs/heads/main'''
@@ -907,6 +913,12 @@ jobs:
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
+      - name: Upload test results
+        uses: actions/upload-artifact@v6
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && always()'
+        with:
+          name: 'test-results-macos-x86_64-release-${{ matrix.test_crate }}${{ matrix.shard_index > 0 && format(''-shard-{0}'', matrix.shard_index) || '''' }}.json'
+          path: 'target/test_results_${{ matrix.test_crate }}.json'
   build-debug-macos-aarch64:
     name: build debug macos-aarch64
     needs:
@@ -1212,6 +1224,12 @@ jobs:
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
+      - name: Upload test results
+        uses: actions/upload-artifact@v6
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && always()'
+        with:
+          name: 'test-results-macos-aarch64-debug-${{ matrix.test_crate }}${{ matrix.shard_index > 0 && format(''-shard-{0}'', matrix.shard_index) || '''' }}.json'
+          path: 'target/test_results_${{ matrix.test_crate }}.json'
       - name: Cache cargo home
         uses: cirruslabs/cache/save@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && github.ref == ''refs/heads/main'''
@@ -1756,6 +1774,12 @@ jobs:
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
+      - name: Upload test results
+        uses: actions/upload-artifact@v6
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && always()'
+        with:
+          name: 'test-results-macos-aarch64-release-${{ matrix.test_crate }}${{ matrix.shard_index > 0 && format(''-shard-{0}'', matrix.shard_index) || '''' }}.json'
+          path: 'target/test_results_${{ matrix.test_crate }}.json'
   build-debug-windows-x86_64:
     name: build debug windows-x86_64
     needs:
@@ -2021,6 +2045,12 @@ jobs:
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
+      - name: Upload test results
+        uses: actions/upload-artifact@v6
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && always()'
+        with:
+          name: 'test-results-windows-x86_64-debug-${{ matrix.test_crate }}${{ matrix.shard_index > 0 && format(''-shard-{0}'', matrix.shard_index) || '''' }}.json'
+          path: 'target/test_results_${{ matrix.test_crate }}.json'
       - name: Cache cargo home
         uses: cirruslabs/cache/save@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && github.ref == ''refs/heads/main'''
@@ -2537,6 +2567,12 @@ jobs:
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
+      - name: Upload test results
+        uses: actions/upload-artifact@v6
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && always()'
+        with:
+          name: 'test-results-windows-x86_64-release-${{ matrix.test_crate }}${{ matrix.shard_index > 0 && format(''-shard-{0}'', matrix.shard_index) || '''' }}.json'
+          path: 'target/test_results_${{ matrix.test_crate }}.json'
   build-debug-windows-aarch64:
     name: build debug windows-aarch64
     needs:
@@ -2802,6 +2838,12 @@ jobs:
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
+      - name: Upload test results
+        uses: actions/upload-artifact@v6
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && always()'
+        with:
+          name: 'test-results-windows-aarch64-debug-${{ matrix.test_crate }}${{ matrix.shard_index > 0 && format(''-shard-{0}'', matrix.shard_index) || '''' }}.json'
+          path: 'target/test_results_${{ matrix.test_crate }}.json'
       - name: Cache cargo home
         uses: cirruslabs/cache/save@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && github.ref == ''refs/heads/main'''
@@ -3223,6 +3265,12 @@ jobs:
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
+      - name: Upload test results
+        uses: actions/upload-artifact@v6
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && always()'
+        with:
+          name: 'test-results-windows-aarch64-release-${{ matrix.test_crate }}${{ matrix.shard_index > 0 && format(''-shard-{0}'', matrix.shard_index) || '''' }}.json'
+          path: 'target/test_results_${{ matrix.test_crate }}.json'
   build-release-linux-x86_64:
     name: build release linux-x86_64
     needs:
@@ -3761,6 +3809,12 @@ jobs:
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
+      - name: Upload test results
+        uses: actions/upload-artifact@v6
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && always()'
+        with:
+          name: 'test-results-linux-x86_64-release-${{ matrix.test_crate }}${{ matrix.shard_index > 0 && format(''-shard-{0}'', matrix.shard_index) || '''' }}.json'
+          path: 'target/test_results_${{ matrix.test_crate }}.json'
       - name: Cache cargo home
         uses: cirruslabs/cache/save@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && github.ref == ''refs/heads/main'''
@@ -4336,6 +4390,12 @@ jobs:
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
+      - name: Upload test results
+        uses: actions/upload-artifact@v6
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && always()'
+        with:
+          name: 'test-results-linux-x86_64-debug-${{ matrix.test_crate }}${{ matrix.shard_index > 0 && format(''-shard-{0}'', matrix.shard_index) || '''' }}.json'
+          path: 'target/test_results_${{ matrix.test_crate }}.json'
       - name: Cache cargo home
         uses: cirruslabs/cache/save@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && github.ref == ''refs/heads/main'''
@@ -4728,6 +4788,12 @@ jobs:
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
+      - name: Upload test results
+        uses: actions/upload-artifact@v6
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && always()'
+        with:
+          name: 'test-results-linux-aarch64-debug-${{ matrix.test_crate }}${{ matrix.shard_index > 0 && format(''-shard-{0}'', matrix.shard_index) || '''' }}.json'
+          path: 'target/test_results_${{ matrix.test_crate }}.json'
       - name: Cache cargo home
         uses: cirruslabs/cache/save@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && github.ref == ''refs/heads/main'''
@@ -5379,6 +5445,12 @@ jobs:
       - name: Ensure no git changes
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
+      - name: Upload test results
+        uses: actions/upload-artifact@v6
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && always()'
+        with:
+          name: 'test-results-linux-aarch64-release-${{ matrix.test_crate }}${{ matrix.shard_index > 0 && format(''-shard-{0}'', matrix.shard_index) || '''' }}.json'
+          path: 'target/test_results_${{ matrix.test_crate }}.json'
   lint:
     name: 'lint ${{ matrix.profile }} ${{ matrix.os }}-${{ matrix.arch }}'
     needs:
