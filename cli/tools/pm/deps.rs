@@ -785,8 +785,8 @@ impl DepManager {
               };
               let latest = Some(info)
                 .and_then(|info| {
-                let version_resolver =
-                  self.npm_version_resolver.get_for_package(&info);
+                  let version_resolver =
+                    npm_version_resolver.get_for_package(&info);
                 let latest_tag = info.dist_tags.get("latest")?;
                 let can_use_latest = version_resolver
                   .version_req_satisfies_and_matches_newest_dependency_date(
@@ -831,13 +831,13 @@ impl DepManager {
                 name: semver_req.name.clone(),
                 version,
               });
-            PackageLatestVersion {
-              latest,
-              semver_compatible,
+              Ok(PackageLatestVersion {
+                latest,
+                semver_compatible,
+              })
             }
-          }
-          .boxed_local(),
-        ),
+            .boxed_local(),
+          )
         DepKind::Jsr => futs.push_back(
           async {
             let semver_req = &dep.req;
