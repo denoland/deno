@@ -1271,6 +1271,23 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
       // go down through the dependencies by tree depth
       let mut previous_seen_optional_peers_count = 0;
       while !self.pending_unresolved_nodes.is_empty() {
+        // Before processing any parent in this batch, prefetch all their
+        // children's manifests in parallel. This converts sequential
+        // per-parent network I/O into a single parallel batch.
+        for parent_path in self.pending_unresolved_nodes.iter() {
+          let node_id = parent_path.node_id();
+          if self.graph.nodes.get(&node_id).unwrap().no_peers {
+            continue;
+          }
+          let pkg_nv =
+            &self.graph.resolved_node_ids.get(node_id).unwrap().nv;
+          if let Some(deps) = self.dep_entry_cache.get(pkg_nv) {
+            for dep in deps.iter() {
+              self.api.prefetch_package_info(&dep.name);
+            }
+          }
+        }
+
         while let Some(parent_path) = self.pending_unresolved_nodes.pop_front()
         {
           self.resolve_next_pending(parent_path).await?;
