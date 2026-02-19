@@ -1048,21 +1048,12 @@ export function normalizeSpawnArguments(
     } else {
       command = file;
     }
-    // Transform Node.js flags to Deno equivalents in shell commands that invoke Deno
-    command = transformDenoShellCommand(command, options.env);
-    // Set the shell, switches, and commands.
+    // Determine shell before transforming so we can pass shell type info
     if (process.platform === "win32") {
       if (typeof options.shell === "string") {
         file = options.shell;
       } else {
         file = Deno.env.get("comspec") || "cmd.exe";
-      }
-      // '/d /s /c' is used only for cmd.exe.
-      if (/^(?:.*\\)?cmd(?:\.exe)?$/i.exec(file) !== null) {
-        args = ["/d", "/s", "/c", `"${command}"`];
-        windowsVerbatimArguments = true;
-      } else {
-        args = ["-c", command];
       }
     } else {
       /** TODO: add Android condition */
@@ -1071,6 +1062,18 @@ export function normalizeSpawnArguments(
       } else {
         file = "/bin/sh";
       }
+    }
+
+    const isCmdExe = /^(?:.*\\)?cmd(?:\.exe)?$/i.exec(file) !== null;
+
+    // Transform Node.js flags to Deno equivalents in shell commands that invoke Deno
+    command = transformDenoShellCommand(command, options.env, isCmdExe);
+
+    // Set the shell switches and command arguments
+    if (isCmdExe) {
+      args = ["/d", "/s", "/c", `"${command}"`];
+      windowsVerbatimArguments = true;
+    } else {
       args = ["-c", command];
     }
   }
@@ -1210,6 +1213,7 @@ function escapeShellArg(arg: string): string {
 function transformDenoShellCommand(
   command: string,
   env?: Record<string, string | number | boolean>,
+  isCmdExe: boolean = false,
 ): string {
   const denoPath = Deno.execPath();
 
@@ -1261,7 +1265,10 @@ function transformDenoShellCommand(
 
   // Parse the command using the shell parser to separate arguments from
   // shell operators (redirections, pipes, etc.).
-  const { args, shell_suffix: shellSuffix } = op_node_parse_shell_args(rest);
+  const { args, shell_suffix: shellSuffix } = op_node_parse_shell_args(
+    rest,
+    isCmdExe,
+  );
 
   try {
     const result = op_node_translate_cli_args(args, false);
