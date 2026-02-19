@@ -805,7 +805,7 @@ impl TsGoServerInner {
       TsGoCallbackParams::ResolveModuleName {
         module_name,
         referrer_uri,
-        // TODO(This PR): Use this to redirect bytes/text imports.
+        // TODO(nayeemrmn): Use this to redirect bytes/text imports.
         import_attribute_type: _import_attribute_type,
         resolution_mode,
         compiler_options_key,

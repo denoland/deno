@@ -1301,7 +1301,7 @@ impl DocumentModules {
     uri: &Uri,
     compiler_options_key: &CompilerOptionsKey,
   ) -> Option<Arc<DocumentModule>> {
-    let document = self.documents.get(&uri)?;
+    let document = self.documents.get(uri)?;
     let scope = self.primary_scope(document.uri()).unwrap_or_else(|| {
       self
         .compiler_options_resolver
