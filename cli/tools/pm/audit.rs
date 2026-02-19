@@ -603,6 +603,7 @@ mod npm {
 
   #[derive(Debug, Deserialize)]
   pub struct AuditResponse {
+    #[serde(default)]
     pub actions: Vec<AuditAction>,
     pub advisories: HashMap<i32, AuditAdvisory>,
     pub metadata: AuditMetadata,
