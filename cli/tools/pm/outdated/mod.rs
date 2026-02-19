@@ -7,9 +7,9 @@ use std::sync::Arc;
 
 use deno_cache_dir::GlobalOrLocalHttpCache;
 use deno_cache_dir::file_fetcher::CacheSetting;
-use deno_core::anyhow::bail;
 #[allow(unused_imports)]
 use deno_core::anyhow::Context;
+use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_semver::StackString;
 use deno_semver::VersionReq;
