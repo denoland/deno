@@ -727,20 +727,64 @@ impl DepManager {
 
     for dep in &self.deps {
       match dep.kind {
-        DepKind::Npm => futs.push_back(
-          async {
-            let semver_req = &dep.req;
-            let _permit = npm_sema.acquire().await;
-            let mut semver_compatible = self
-              .npm_fetch_resolver
-              .req_to_nv(semver_req)
-              .await
-              .ok()
-              .flatten();
-            let info =
-              self.npm_fetch_resolver.package_info(&semver_req.name).await;
-            let latest = info
-              .and_then(|info| {
+        DepKind::Npm => {
+          let npm_fetch_resolver = self.npm_fetch_resolver.clone();
+          let npm_version_resolver = self.npm_version_resolver.clone();
+          let dep_req = dep.req.clone();
+          futs.push_back(
+            async move {
+              let semver_req = &dep_req;
+              let _permit = npm_sema.acquire().await;
+              let mut semver_compatible = npm_fetch_resolver
+                .req_to_nv(semver_req)
+                .await
+                .ok()
+                .flatten();
+              let info = npm_fetch_resolver.package_info(&semver_req.name).await;
+              let info = match info {
+                Some(info) => info,
+                None => {
+                  // package_info() returns None when errors are swallowed (e.g., auth failures)
+                  // Return an error with helpful messaging about private registries
+                  let npmrc = &npm_fetch_resolver.npmrc;
+                  let default_registry = "https://registry.npmjs.org/";
+                  let registry_url = npmrc.get_registry_url("@");
+                  let registry_url_str = registry_url.as_str();
+                  let is_private_registry = registry_url_str != default_registry
+                    && !registry_url_str.starts_with("https://registry.npmjs.org");
+
+                  let mut error_msg = format!(
+                    "Failed to fetch package information for '{}'",
+                    semver_req.name
+                  );
+                  if is_private_registry {
+                    error_msg.push_str(&format!(
+                      " from private npm registry ({}).",
+                      registry_url_str
+                    ));
+                    error_msg.push_str(
+                      "\n\nThis may be due to:\n\
+                      - Authentication issues (check your `.npmrc` for correct tokens)\n\
+                      - Network connectivity problems\n\
+                      - Incorrect registry configuration\n\
+                      - Missing or expired authentication credentials\n\n\
+                      For more information, see:\n\
+                      https://docs.deno.com/runtime/manual/node/npm_registries",
+                    );
+                  } else {
+                    error_msg.push_str(
+                      " from npm registry.\n\n\
+                      This may be due to network issues or registry problems.\n\
+                      If you're using a private npm registry, ensure your `.npmrc` is properly configured.\n\n\
+                      For more information, see:\n\
+                      https://docs.deno.com/runtime/manual/node/npm_registries",
+                    );
+                  }
+                  return Err(AnyError::msg(error_msg));
+                }
+              };
+              let latest = Some(info)
+                .and_then(|info| {
                 let version_resolver =
                   self.npm_version_resolver.get_for_package(&info);
                 let latest_tag = info.dist_tags.get("latest")?;
@@ -830,17 +874,18 @@ impl DepManager {
                 name: semver_req.name.clone(),
                 version,
               });
-            PackageLatestVersion {
-              latest,
-              semver_compatible,
+              Ok(PackageLatestVersion {
+                latest,
+                semver_compatible,
+              })
             }
-          }
-          .boxed_local(),
-        ),
+            .boxed_local(),
+          )
+        }
       }
     }
-    while let Some(nv) = futs.next().await {
-      latest_versions.push(nv);
+    while let Some(result) = futs.next().await {
+      latest_versions.push(result?);
     }
 
     Ok(latest_versions)
