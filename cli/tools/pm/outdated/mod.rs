@@ -8,6 +8,7 @@ use std::sync::Arc;
 use deno_cache_dir::GlobalOrLocalHttpCache;
 use deno_cache_dir::file_fetcher::CacheSetting;
 use deno_core::anyhow::bail;
+use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_semver::StackString;
 use deno_semver::VersionReq;
@@ -245,7 +246,9 @@ pub async fn outdated(
     )?
   };
 
-  deps.resolve_versions().await?;
+  deps.resolve_versions()
+    .await
+    .map_err(|err| enhance_npm_registry_error(err, &factory))?;
 
   match update_flags.kind {
     crate::args::OutdatedKind::Update {
@@ -525,6 +528,123 @@ async fn update(
   }
 
   Ok(())
+}
+
+fn enhance_npm_registry_error(
+  err: AnyError,
+  factory: &CliFactory,
+) -> AnyError {
+  let err_string = err.to_string();
+  let err_lower = err_string.to_lowercase();
+
+  // Check if error is related to npm registry access
+  let is_npm_registry_error = err_lower.contains("npm")
+    || err_lower.contains("registry")
+    || err_lower.contains("401")
+    || err_lower.contains("403")
+    || err_lower.contains("unauthorized")
+    || err_lower.contains("forbidden")
+    || err_lower.contains("authentication")
+    || err_lower.contains("fetch")
+    || err_lower.contains("network")
+    || err_lower.contains("download")
+    || err_lower.contains("http");
+
+  if !is_npm_registry_error {
+    return err;
+  }
+
+  // Try to get npmrc to check if using private registry
+  let npmrc = match factory.npmrc() {
+    Ok(npmrc) => npmrc,
+    Err(_) => {
+      // Still provide helpful message even if we can't access npmrc
+      return err.context(format!(
+        "Failed to fetch package information from npm registry.\n\n\
+        Original error: {}\n\n\
+        If you're using a private npm registry, ensure your `.npmrc` is properly configured.\n\
+        For more information, see: https://docs.deno.com/runtime/manual/node/npm_registries",
+        err_string
+      ));
+    }
+  };
+
+  // Check if using a private registry by checking the default registry URL
+  let default_registry = "https://registry.npmjs.org/";
+  let registry_config = npmrc.get_registry_config("@");
+  let registry_url = registry_config.url.as_str();
+  let is_private_registry = registry_url != default_registry
+    && !registry_url.starts_with("https://registry.npmjs.org");
+
+  if is_private_registry {
+    // Provide helpful error message for private registry issues
+    let mut enhanced_msg = format!(
+      "Failed to fetch package information from private npm registry ({}).\n\n\
+      Original error: {}\n\n",
+      registry_url, err_string
+    );
+
+    // Check for specific error patterns to provide targeted suggestions
+    if err_lower.contains("401") || err_lower.contains("unauthorized") {
+      enhanced_msg.push_str(
+        "This appears to be an authentication error.\n\
+        Suggestions:\n\
+        - Check your `.npmrc` file for correct authentication tokens\n\
+        - Verify that your authentication token is valid and not expired\n\
+        - Ensure your token has the necessary permissions for the private registry\n\
+        - Check if you need to run `npm login` or configure authentication\n",
+      );
+    } else if err_lower.contains("403") || err_lower.contains("forbidden") {
+      enhanced_msg.push_str(
+        "This appears to be a permission error.\n\
+        Suggestions:\n\
+        - Verify that your account has access to the private registry\n\
+        - Check that your authentication token has the correct scopes/permissions\n\
+        - Contact your registry administrator if you believe you should have access\n",
+      );
+    } else if err_lower.contains("404") || err_lower.contains("not found") {
+      enhanced_msg.push_str(
+        "The package was not found in the registry.\n\
+        Suggestions:\n\
+        - Verify the package name is correct\n\
+        - Check if the package exists in your private registry\n\
+        - Ensure the registry URL in `.npmrc` is correct\n",
+      );
+    } else if err_lower.contains("network") || err_lower.contains("fetch") || err_lower.contains("connection") {
+      enhanced_msg.push_str(
+        "This appears to be a network connectivity issue.\n\
+        Suggestions:\n\
+        - Check your network connection\n\
+        - Verify the registry URL in `.npmrc` is accessible\n\
+        - Check if you need to configure a proxy for accessing the private registry\n\
+        - Ensure firewall settings allow access to the registry\n",
+      );
+    } else {
+      enhanced_msg.push_str(
+        "Suggestions:\n\
+        - Check your `.npmrc` configuration file\n\
+        - Verify your authentication credentials are correct\n\
+        - Ensure the registry URL is correct and accessible\n\
+        - Check network connectivity to the private registry\n",
+      );
+    }
+
+    enhanced_msg.push_str(
+      "\nFor more information about configuring npm registries, see:\n\
+      https://docs.deno.com/runtime/manual/node/npm_registries",
+    );
+
+    err.context(enhanced_msg)
+  } else {
+    // Not a private registry, but still an npm error - provide general guidance
+    err.context(format!(
+      "Failed to fetch package information from npm registry.\n\n\
+      Original error: {}\n\n\
+      If you're using a private npm registry, ensure your `.npmrc` is properly configured.\n\
+      For more information, see: https://docs.deno.com/runtime/manual/node/npm_registries",
+      err_string
+    ))
+  }
 }
 
 async fn dep_manager_args(
