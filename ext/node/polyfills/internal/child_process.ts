@@ -1048,12 +1048,22 @@ export function normalizeSpawnArguments(
     } else {
       command = file;
     }
-    // Determine shell before transforming so we can pass shell type info
+    // Set the shell, switches, and commands.
+    // Note: transformDenoShellCommand is NOT called here because buildCommand()
+    // already handles it for both `-c` (POSIX) and `/d /s /c` (cmd.exe) cases.
+    // Calling it here would cause double transformation.
     if (process.platform === "win32") {
       if (typeof options.shell === "string") {
         file = options.shell;
       } else {
         file = Deno.env.get("comspec") || "cmd.exe";
+      }
+      // '/d /s /c' is used only for cmd.exe.
+      if (/^(?:.*\\)?cmd(?:\.exe)?$/i.exec(file) !== null) {
+        args = ["/d", "/s", "/c", `"${command}"`];
+        windowsVerbatimArguments = true;
+      } else {
+        args = ["-c", command];
       }
     } else {
       /** TODO: add Android condition */
@@ -1062,18 +1072,6 @@ export function normalizeSpawnArguments(
       } else {
         file = "/bin/sh";
       }
-    }
-
-    const isCmdExe = /^(?:.*\\)?cmd(?:\.exe)?$/i.exec(file) !== null;
-
-    // Transform Node.js flags to Deno equivalents in shell commands that invoke Deno
-    command = transformDenoShellCommand(command, options.env, isCmdExe);
-
-    // Set the shell switches and command arguments
-    if (isCmdExe) {
-      args = ["/d", "/s", "/c", `"${command}"`];
-      windowsVerbatimArguments = true;
-    } else {
       args = ["-c", command];
     }
   }
@@ -1309,7 +1307,11 @@ function transformDenoShellCommand(
       const pipeMatch = shellSuffix.match(/^\s*\|\s*/);
       if (pipeMatch) {
         const afterPipe = shellSuffix.slice(pipeMatch[0].length);
-        const transformedAfter = transformDenoShellCommand(afterPipe, env);
+        const transformedAfter = transformDenoShellCommand(
+          afterPipe,
+          env,
+          isCmdExe,
+        );
         if (transformedAfter !== afterPipe) {
           transformed = prefix + " " + quotedArgs.join(" ") +
             " | " + transformedAfter;
@@ -1401,7 +1403,7 @@ function buildCommand(
     args.length >= 2 &&
     args[0] === "-c"
   ) {
-    const transformed = transformDenoShellCommand(args[1], env);
+    const transformed = transformDenoShellCommand(args[1], env, false);
     if (transformed !== args[1]) {
       args = args.slice();
       args[1] = transformed;
@@ -1420,7 +1422,7 @@ function buildCommand(
     if (hasWrappingQuotes) {
       cmdStr = cmdStr.slice(1, -1);
     }
-    const transformed = transformDenoShellCommand(cmdStr, env);
+    const transformed = transformDenoShellCommand(cmdStr, env, true);
     if (transformed !== cmdStr) {
       args = args.slice();
       args[3] = hasWrappingQuotes ? `"${transformed}"` : transformed;
