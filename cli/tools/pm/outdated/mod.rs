@@ -533,7 +533,10 @@ async fn update(
   Ok(())
 }
 
-fn enhance_npm_registry_error(err: AnyError, npmrc: &ResolvedNpmRc) -> AnyError {
+fn enhance_npm_registry_error(
+  err: AnyError,
+  npmrc: &ResolvedNpmRc,
+) -> AnyError {
   let err_string = err.to_string();
   let err_lower = err_string.to_lowercase();
 
