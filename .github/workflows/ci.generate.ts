@@ -1262,7 +1262,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
               "    ./tools/upload_wptfyi.js $(git rev-parse HEAD) --ghstatus",
             ],
           },
-          buildCacheSteps.saveCacheStep.if(isMainBranch.and(isNotTag)),
+          buildCacheSteps.saveCacheStep, // .if(isMainBranch.and(isNotTag)),
         ),
       },
     ));
