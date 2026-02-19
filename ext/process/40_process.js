@@ -11,6 +11,7 @@ import {
   op_spawn_wait,
 } from "ext:core/ops";
 const {
+  ArrayIsArray,
   ArrayPrototypeMap,
   ArrayPrototypeSlice,
   TypeError,
@@ -543,8 +544,17 @@ class Command {
   }
 }
 
-function spawn(command, options) {
-  return new Command(command, options).spawn();
+function spawn(command, argsOrOptions, maybeOptions) {
+  if (ArrayIsArray(argsOrOptions)) {
+    const options = maybeOptions ?? {};
+    if (options.args !== undefined) {
+      throw new TypeError(
+        "Passing 'args' in options is not allowed when args are passed as a separate argument",
+      );
+    }
+    return new Command(command, { ...options, args: argsOrOptions }).spawn();
+  }
+  return new Command(command, argsOrOptions).spawn();
 }
 
 export { ChildProcess, Command, kill, kInputOption, Process, run, spawn };

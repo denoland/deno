@@ -1308,3 +1308,39 @@ Deno.test(
     assertEquals(status.success, true);
   },
 );
+
+Deno.test(
+  { permissions: { run: true } },
+  async function denoSpawnWithArgsArray() {
+    const child = Deno.spawn(
+      Deno.execPath(),
+      ["eval", "console.log('args overload')"],
+      { stdout: "piped", stderr: "null" },
+    );
+
+    const output = await child.stdout.text();
+    assertEquals(output, "args overload\n");
+
+    const status = await child.status;
+    assertEquals(status.success, true);
+    assertEquals(status.code, 0);
+  },
+);
+
+Deno.test(
+  { permissions: { run: true } },
+  function denoSpawnWithArgsArrayAndArgsOptionThrows() {
+    assertThrows(
+      () => {
+        Deno.spawn(
+          Deno.execPath(),
+          ["eval", "console.log('hello')"],
+          // @ts-expect-error - args not allowed when using args array overload
+          { args: ["eval", "console.log('hello')"], stdout: "null" },
+        );
+      },
+      TypeError,
+      "Passing 'args' in options is not allowed when args are passed as a separate argument",
+    );
+  },
+);

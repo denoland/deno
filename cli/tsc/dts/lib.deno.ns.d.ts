@@ -3996,6 +3996,32 @@ declare namespace Deno {
     command: string | URL,
     options?: CommandOptions,
   ): ChildProcess;
+  /** Spawns a new subprocess with the given arguments, returning a
+   * {@linkcode Deno.ChildProcess} handle.
+   *
+   * This is a shorthand for `new Deno.Command(command, { ...options, args }).spawn()`.
+   *
+   * By default, `stdin`, `stdout`, and `stderr` are set to `"inherit"`.
+   *
+   * @example Spawn a subprocess with args
+   *
+   * ```ts
+   * const child = Deno.spawn(Deno.execPath(), ["eval", "console.log('hello')"], {
+   *   stdout: "piped",
+   * });
+   * const output = await child.stdout.text();
+   * console.log(output); // "hello\n"
+   * const status = await child.status;
+   * ```
+   *
+   * @tags allow-run
+   * @category Subprocess
+   */
+  export function spawn(
+    command: string | URL,
+    args: string[],
+    options?: Omit<CommandOptions, "args">,
+  ): ChildProcess;
 
   /** Option which can be specified when performing {@linkcode Deno.inspect}.
    *
