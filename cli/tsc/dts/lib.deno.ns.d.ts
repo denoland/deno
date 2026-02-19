@@ -4071,6 +4071,56 @@ declare namespace Deno {
     options?: Omit<CommandOptions, "args">,
   ): Promise<CommandOutput>;
 
+  /** Synchronously spawns a subprocess, waits for it to finish, and returns
+   * the output.
+   *
+   * This is a shorthand for `new Deno.Command(command, options).outputSync()`.
+   *
+   * Will throw an error if `stdin: "piped"` is set.
+   *
+   * @example Spawn and wait synchronously
+   *
+   * ```ts
+   * const { code, stdout } = Deno.spawnAndWaitSync(Deno.execPath(), {
+   *   args: ["eval", "console.log('hello')"],
+   * });
+   * console.log(new TextDecoder().decode(stdout)); // "hello\n"
+   * ```
+   *
+   * @tags allow-run
+   * @category Subprocess
+   */
+  export function spawnAndWaitSync(
+    command: string | URL,
+    options?: CommandOptions,
+  ): CommandOutput;
+  /** Synchronously spawns a subprocess with the given arguments, waits for it
+   * to finish, and returns the output.
+   *
+   * This is a shorthand for
+   * `new Deno.Command(command, { ...options, args }).outputSync()`.
+   *
+   * Will throw an error if `stdin: "piped"` is set.
+   *
+   * @example Spawn and wait synchronously with args
+   *
+   * ```ts
+   * const { code, stdout } = Deno.spawnAndWaitSync(
+   *   Deno.execPath(),
+   *   ["eval", "console.log('hello')"],
+   * );
+   * console.log(new TextDecoder().decode(stdout)); // "hello\n"
+   * ```
+   *
+   * @tags allow-run
+   * @category Subprocess
+   */
+  export function spawnAndWaitSync(
+    command: string | URL,
+    args: string[],
+    options?: Omit<CommandOptions, "args">,
+  ): CommandOutput;
+
   /** Option which can be specified when performing {@linkcode Deno.inspect}.
    *
    * @category I/O */

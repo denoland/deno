@@ -1420,3 +1420,82 @@ Deno.test(
     );
   },
 );
+
+Deno.test(
+  { permissions: { run: true } },
+  function denoSpawnAndWaitSyncBasic() {
+    const { code, stdout, stderr } = Deno.spawnAndWaitSync(
+      Deno.execPath(),
+      {
+        args: ["eval", "console.log('sync waited')"],
+      },
+    );
+
+    assertEquals(code, 0);
+    assertEquals(new TextDecoder().decode(stdout), "sync waited\n");
+    assertEquals(new TextDecoder().decode(stderr), "");
+  },
+);
+
+Deno.test(
+  { permissions: { run: true } },
+  function denoSpawnAndWaitSyncWithArgsArray() {
+    const { code, stdout } = Deno.spawnAndWaitSync(
+      Deno.execPath(),
+      ["eval", "console.log('sync args overload')"],
+    );
+
+    assertEquals(code, 0);
+    assertEquals(
+      new TextDecoder().decode(stdout),
+      "sync args overload\n",
+    );
+  },
+);
+
+Deno.test(
+  { permissions: { run: true } },
+  function denoSpawnAndWaitSyncExitCode() {
+    const { code, success } = Deno.spawnAndWaitSync(
+      Deno.execPath(),
+      ["eval", "Deno.exit(42)"],
+    );
+
+    assertEquals(success, false);
+    assertEquals(code, 42);
+  },
+);
+
+Deno.test(
+  { permissions: { run: true } },
+  function denoSpawnAndWaitSyncPipedStdinThrows() {
+    assertThrows(
+      () => {
+        Deno.spawnAndWaitSync(Deno.execPath(), {
+          args: ["eval", "console.log('hello')"],
+          stdin: "piped",
+        });
+      },
+      TypeError,
+      "Piped stdin is not supported for this function",
+    );
+  },
+);
+
+Deno.test(
+  { permissions: { run: true } },
+  function denoSpawnAndWaitSyncWithArgsArrayAndArgsOptionThrows() {
+    assertThrows(
+      () => {
+        Deno.spawnAndWaitSync(
+          Deno.execPath(),
+          ["eval", "console.log('hello')"],
+          // @ts-expect-error - args not allowed when using args array overload
+          { args: ["eval", "console.log('hello')"] },
+        );
+      },
+      TypeError,
+      "Passing 'args' in options is not allowed when args are passed as a separate argument",
+    );
+  },
+);

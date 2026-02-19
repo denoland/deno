@@ -570,6 +570,20 @@ function spawnAndWait(command, argsOrOptions, maybeOptions) {
   return new Command(command, argsOrOptions).output();
 }
 
+function spawnAndWaitSync(command, argsOrOptions, maybeOptions) {
+  if (ArrayIsArray(argsOrOptions)) {
+    const options = maybeOptions ?? {};
+    if (options.args !== undefined) {
+      throw new TypeError(
+        "Passing 'args' in options is not allowed when args are passed as a separate argument",
+      );
+    }
+    return new Command(command, { ...options, args: argsOrOptions })
+      .outputSync();
+  }
+  return new Command(command, argsOrOptions).outputSync();
+}
+
 export {
   ChildProcess,
   Command,
@@ -579,4 +593,5 @@ export {
   run,
   spawn,
   spawnAndWait,
+  spawnAndWaitSync,
 };

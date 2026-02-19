@@ -161,6 +161,7 @@ const denoNs = {
   ChildProcess: process.ChildProcess,
   spawn: process.spawn,
   spawnAndWait: process.spawnAndWait,
+  spawnAndWaitSync: process.spawnAndWaitSync,
   dlopen: ffi.dlopen,
   UnsafeCallback: ffi.UnsafeCallback,
   UnsafePointer: ffi.UnsafePointer,
