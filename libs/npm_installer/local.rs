@@ -197,6 +197,7 @@ impl<
       return Ok(());
     }
 
+    let sync_start = std::time::Instant::now();
     let sys = self.sys.with_paths_in_errors();
     let deno_local_registry_dir = self.root_node_modules_path.join(".deno");
     let deno_node_modules_dir = deno_local_registry_dir.join("node_modules");
@@ -484,9 +485,16 @@ impl<
 
     // Wait for all npm package installations to complete before applying patches
     // This prevents race conditions where npm packages could overwrite patch files
+    let tarball_start = std::time::Instant::now();
+    let mut tarball_count = 0u32;
     while let Some(result) = cache_futures.next().await {
+      tarball_count += 1;
       result?; // surface the first error
     }
+    eprintln!(
+      "[npm:timing] tarball download+extract+clone ({tarball_count} packages): {:?}",
+      tarball_start.elapsed()
+    );
 
     // 3. Setup the patch packages
     for patch_pkg in self.npm_install_deps_provider.patch_pkgs() {
@@ -579,6 +587,7 @@ impl<
       result?; // surface the first error
     }
 
+    let symlink_start = std::time::Instant::now();
     // 5. Symlink all the dependencies into the .deno directory.
     //
     // Symlink node_modules/.deno/<package_id>/node_modules/<dep_name> to
@@ -797,6 +806,11 @@ impl<
       }
     }
 
+    eprintln!(
+      "[npm:timing] symlinks + setup: {:?}",
+      symlink_start.elapsed()
+    );
+
     // 9. Set up `node_modules/.bin` entries for packages that need it.
     {
       let bin_entries = match Rc::try_unwrap(bin_entries) {
@@ -928,6 +942,11 @@ impl<
     setup_cache.save();
     drop(single_process_lock);
     drop(pb_clear_guard);
+
+    eprintln!(
+      "[npm:timing] sync_resolution_with_fs total: {:?}",
+      sync_start.elapsed()
+    );
 
     Ok(())
   }

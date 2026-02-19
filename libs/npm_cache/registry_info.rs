@@ -74,14 +74,22 @@ struct MemoryCache {
 
 impl MemoryCache {
   #[inline(always)]
-  pub fn clear(&mut self) {
+  pub fn clear(&mut self) -> Vec<(String, MemoryCacheItem)> {
     self.clear_id += 1;
 
-    // if the item couldn't be saved to the fs cache, then we want to continue to hold it in memory
-    // to avoid re-downloading it from the registry
-    self
-      .items
-      .retain(|_, item| matches!(item, MemoryCacheItem::MemoryCached(Ok(_))));
+    // If the item couldn't be saved to the fs cache, then we want to continue
+    // to hold it in memory to avoid re-downloading it from the registry.
+    // Returns the evicted items so the caller can drop them off-thread.
+    let old_items = std::mem::take(&mut self.items);
+    let mut evicted = Vec::new();
+    for (key, item) in old_items {
+      if matches!(&item, MemoryCacheItem::MemoryCached(Ok(_))) {
+        self.items.insert(key, item);
+      } else {
+        evicted.push((key, item));
+      }
+    }
+    evicted
   }
 
   #[inline(always)]
@@ -373,11 +381,15 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
         },
         NpmCacheHttpClientResponse::NotFound => Ok(FutureResult::PackageNotExists),
         NpmCacheHttpClientResponse::Bytes(response) => {
+          let bytes_len = response.bytes.len();
           let future_result = spawn_blocking(
             move || -> Result<FutureResult, JsErrorBox> {
+              let parse_start = std::time::Instant::now();
               let mut package_info: SerializedCachedPackageInfo = serde_json::from_slice(&response.bytes).map_err(JsErrorBox::from_err)?;
+              let parse_elapsed = parse_start.elapsed();
               package_info.etag = response.etag;
-              match downloader.cache.save_package_info(&name, &package_info) {
+              let save_start = std::time::Instant::now();
+              let result = match downloader.cache.save_package_info(&name, &package_info) {
                 Ok(()) => {
                   Ok(FutureResult::SavedFsCache(Arc::new(package_info.info)))
                 }
@@ -389,7 +401,15 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
                   );
                   Ok(FutureResult::ErroredFsCache(Arc::new(package_info.info)))
                 }
+              };
+              let save_elapsed = save_start.elapsed();
+              if parse_elapsed.as_millis() > 5 || save_elapsed.as_millis() > 5 {
+                eprintln!(
+                  "[npm:packument] {name}: parse={parse_elapsed:?}, save={save_elapsed:?}, size={:.1}KB",
+                  bytes_len as f64 / 1024.0
+                );
               }
+              result
             },
           )
           .await
@@ -449,9 +469,14 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
     }))
   }
 
-  /// Clears the internal memory cache.
+  /// Clears the internal memory cache. Evicted items are dropped on a
+  /// blocking thread to avoid blocking the async event loop with large
+  /// NpmPackageInfo destructor chains.
   pub fn clear_memory_cache(&self) {
-    self.0.memory_cache.lock().clear();
+    let evicted = self.0.memory_cache.lock().clear();
+    if !evicted.is_empty() {
+      spawn_blocking(move || drop(evicted));
+    }
   }
 
   pub fn stats(&self) -> &RegistryInfoStats {

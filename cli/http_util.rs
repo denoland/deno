@@ -240,7 +240,8 @@ impl HttpClient {
   }
 
   pub async fn download(&self, url: Url) -> Result<Vec<u8>, DownloadError> {
-    let response = self.download_inner(url, &Default::default(), None).await?;
+    let response =
+      self.download_inner(url, &Default::default(), None, false).await?;
     response.into_bytes()
   }
 
@@ -251,7 +252,29 @@ impl HttpClient {
     progress_guard: &UpdateGuard,
   ) -> Result<HttpClientResponse, DownloadError> {
     crate::util::retry::retry(
-      || self.download_inner(url.clone(), headers, Some(progress_guard)),
+      || self.download_inner(url.clone(), headers, Some(progress_guard), false),
+      |e| {
+        matches!(
+          e.as_kind(),
+          DownloadErrorKind::BadResponse(_) | DownloadErrorKind::Fetch(_)
+        )
+      },
+    )
+    .await
+  }
+
+  /// Like `download_with_progress_and_retries`, but bypasses the transparent
+  /// decompression middleware. The response body will contain raw bytes
+  /// (potentially gzip-compressed). The caller should check the
+  /// Content-Encoding header and decompress if needed.
+  pub async fn download_with_progress_and_retries_no_decompress(
+    &self,
+    url: Url,
+    headers: &HeaderMap,
+    progress_guard: &UpdateGuard,
+  ) -> Result<HttpClientResponse, DownloadError> {
+    crate::util::retry::retry(
+      || self.download_inner(url.clone(), headers, Some(progress_guard), true),
       |e| {
         matches!(
           e.as_kind(),
@@ -267,7 +290,7 @@ impl HttpClient {
     url: Url,
     headers: &HeaderMap<HeaderValue>,
   ) -> Result<Url, AnyError> {
-    let (_, url) = self.get_redirected_response(url, headers).await?;
+    let (_, url) = self.get_redirected_response(url, headers, false).await?;
     Ok(url)
   }
 
@@ -276,8 +299,10 @@ impl HttpClient {
     url: Url,
     headers: &HeaderMap<HeaderValue>,
     progress_guard: Option<&UpdateGuard>,
+    no_decompress: bool,
   ) -> Result<HttpClientResponse, DownloadError> {
-    let (response, _) = self.get_redirected_response(url, headers).await?;
+    let (response, _) =
+      self.get_redirected_response(url, headers, no_decompress).await?;
 
     if response.status() == 404 {
       return Ok(HttpClientResponse::NotFound);
@@ -307,15 +332,16 @@ impl HttpClient {
     &self,
     mut url: Url,
     headers: &HeaderMap<HeaderValue>,
+    no_decompress: bool,
   ) -> Result<(http::Response<deno_fetch::ResBody>, Url), DownloadError> {
     let mut req = self.get(url.clone())?.build();
     *req.headers_mut() = headers.clone();
-    let mut response = self
-      .client
-      .clone()
-      .send(req)
-      .await
-      .map_err(|e| DownloadErrorKind::Fetch(e).into_box())?;
+    let mut response = if no_decompress {
+      self.client.clone().send_no_decompress(req).await
+    } else {
+      self.client.clone().send(req).await
+    }
+    .map_err(|e| DownloadErrorKind::Fetch(e).into_box())?;
     let status = response.status();
     if status.is_redirection() && status != http::StatusCode::NOT_MODIFIED {
       for _ in 0..5 {
@@ -329,12 +355,12 @@ impl HttpClient {
         }
         *req.headers_mut() = headers;
 
-        let new_response = self
-          .client
-          .clone()
-          .send(req)
-          .await
-          .map_err(|e| DownloadErrorKind::Fetch(e).into_box())?;
+        let new_response = if no_decompress {
+          self.client.clone().send_no_decompress(req).await
+        } else {
+          self.client.clone().send(req).await
+        }
+        .map_err(|e| DownloadErrorKind::Fetch(e).into_box())?;
         let status = new_response.status();
         if status.is_redirection() {
           response = new_response;
@@ -374,7 +400,7 @@ pub async fn get_response_body_with_progress(
         let bytes = item?;
         current_size += bytes.len() as u64;
         progress_guard.set_position(current_size);
-        data.extend(bytes.into_iter());
+        data.extend_from_slice(&bytes);
       }
       return Ok((parts.headers, data));
     }
