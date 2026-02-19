@@ -556,13 +556,16 @@ fn enhance_npm_registry_error(err: AnyError, factory: &CliFactory) -> AnyError {
     Ok(npmrc) => npmrc,
     Err(_) => {
       // Still provide helpful message even if we can't access npmrc
-      return deno_core::anyhow::Context::context(err, format!(
-        "Failed to fetch package information from npm registry.\n\n\
-        Original error: {}\n\n\
-        If you're using a private npm registry, ensure your `.npmrc` is properly configured.\n\
-        For more information, see: https://docs.deno.com/runtime/manual/node/npm_registries",
-        err_string
-      ));
+      return deno_core::anyhow::Context::context(
+        err,
+        format!(
+          "Failed to fetch package information from npm registry.\n\n\
+          Original error: {}\n\n\
+          If you're using a private npm registry, ensure your `.npmrc` is properly configured.\n\
+          For more information, see: https://docs.deno.com/runtime/manual/node/npm_registries",
+          err_string
+        ),
+      );
     }
   };
 
@@ -637,13 +640,16 @@ fn enhance_npm_registry_error(err: AnyError, factory: &CliFactory) -> AnyError {
     deno_core::anyhow::Context::context(err, enhanced_msg)
   } else {
     // Not a private registry, but still an npm error - provide general guidance
-    deno_core::anyhow::Context::context(err, format!(
-      "Failed to fetch package information from npm registry.\n\n\
-      Original error: {}\n\n\
-      If you're using a private npm registry, ensure your `.npmrc` is properly configured.\n\
-      For more information, see: https://docs.deno.com/runtime/manual/node/npm_registries",
-      err_string
-    ))
+    deno_core::anyhow::Context::context(
+      err,
+      format!(
+        "Failed to fetch package information from npm registry.\n\n\
+        Original error: {}\n\n\
+        If you're using a private npm registry, ensure your `.npmrc` is properly configured.\n\
+        For more information, see: https://docs.deno.com/runtime/manual/node/npm_registries",
+        err_string
+      ),
+    )
   }
 }
 
