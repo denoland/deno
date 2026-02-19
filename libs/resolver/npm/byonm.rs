@@ -401,7 +401,7 @@ impl<TSys: FsCanonicalize + FsMetadata + FsRead + FsReadDir>
       if let Some(start_folder) = maybe_start_folder {
         let start_folder = search_stop_dir
           .is_some()
-          .then(|| sys.fs_canonicalize(&start_folder).ok().map(Cow::Owned))
+          .then(|| sys.fs_canonicalize(start_folder).ok().map(Cow::Owned))
           .flatten()
           .unwrap_or(Cow::Borrowed(start_folder));
         for current_folder in start_folder.ancestors() {

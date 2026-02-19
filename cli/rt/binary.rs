@@ -66,7 +66,7 @@ pub fn extract_standalone(
   // for self-extracting executables, use the extraction directory as root
   // so that module specifiers resolve to extracted file paths
   let root_path = if let Some(hash) = &metadata.self_extracting {
-    let dir = choose_extraction_dir(hash)?;
+    let dir = choose_and_create_extraction_dir(hash)?;
     dir
       .canonicalize()
       .map(deno_path_util::strip_unc_prefix)
@@ -167,7 +167,9 @@ pub fn extract_vfs_to_disk(
   Ok(())
 }
 
-fn choose_extraction_dir(hash_str: &str) -> Result<PathBuf, AnyError> {
+fn choose_and_create_extraction_dir(
+  hash_str: &str,
+) -> Result<PathBuf, AnyError> {
   let current_exe = std::env::current_exe()
     .context("Failed to determine current executable path")?;
   let exe_name = current_exe
@@ -470,6 +472,7 @@ fn deserialize_binary_data_section(
   root_dir_url: &Url,
   input: &'static [u8],
 ) -> Result<DeserializedDataSection, AnyError> {
+  // 1. Was the metadata above.
   // 2. Npm snapshot
   let (input, data) =
     read_bytes_with_u64_len(input).context("reading npm snapshot")?;

@@ -4,7 +4,7 @@
     "args": "install --allow-scripts",
     "output": "[WILDCARD]"
   }, {
-    "args": "compile --self-extracting --no-check -A --output main main.ts",
+    "args": "compile --self-extracting --no-check --log-level=debug -A --output main main.ts",
     "output": "[WILDCARD]"
   }, {
     "commandName": "./main",
