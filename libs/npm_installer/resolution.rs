@@ -11,6 +11,7 @@ use deno_lockfile::NpmPackageDependencyLockfileInfo;
 use deno_lockfile::NpmPackageLockfileInfo;
 use deno_npm::NpmResolutionPackage;
 use deno_npm::registry::NpmPackageInfo;
+use deno_npm::registry::NpmPackageVersionDistInfo;
 use deno_npm::registry::NpmRegistryApi;
 use deno_npm::registry::NpmRegistryPackageInfoLoadError;
 use deno_npm::resolution::AddPkgReqsOptions;
@@ -21,6 +22,7 @@ use deno_npm::resolution::UnmetPeerDepDiagnostic;
 use deno_npm_cache::NpmCacheHttpClient;
 use deno_npm_cache::NpmCacheSys;
 use deno_npm_cache::RegistryInfoProvider;
+use deno_npm_cache::TarballCache;
 use deno_resolver::display::DisplayTreeNode;
 use deno_resolver::factory::NpmVersionResolverRc;
 use deno_resolver::lockfile::LockfileLock;
@@ -78,6 +80,7 @@ pub struct NpmResolutionInstaller<
   has_js_execution_started_flag: HasJsExecutionStartedFlagRc,
   npm_version_resolver: NpmVersionResolverRc,
   registry_info_provider: Arc<RegistryInfoProvider<TNpmCacheHttpClient, TSys>>,
+  tarball_cache: Option<Arc<TarballCache<TNpmCacheHttpClient, TSys>>>,
   reporter: Option<Arc<dyn deno_npm::resolution::Reporter>>,
   resolution: Arc<NpmResolutionCell>,
   maybe_lockfile: Option<Arc<LockfileLock<TSys>>>,
@@ -93,6 +96,7 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmResolutionInstallerSys>
     registry_info_provider: Arc<
       RegistryInfoProvider<TNpmCacheHttpClient, TSys>,
     >,
+    tarball_cache: Option<Arc<TarballCache<TNpmCacheHttpClient, TSys>>>,
     reporter: Option<Arc<dyn deno_npm::resolution::Reporter>>,
     resolution: Arc<NpmResolutionCell>,
     maybe_lockfile: Option<Arc<LockfileLock<TSys>>>,
@@ -101,6 +105,7 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmResolutionInstallerSys>
       has_js_execution_started_flag,
       npm_version_resolver,
       registry_info_provider,
+      tarball_cache,
       reporter,
       resolution,
       maybe_lockfile,
@@ -119,15 +124,16 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmResolutionInstallerSys>
   /// Run a resolution install if the npm snapshot is in a pending state
   /// due to a config file change.
   pub async fn install_if_pending(&self) -> Result<(), NpmResolutionError> {
-    self.add_package_reqs_inner(&[]).await.1
+    self.add_package_reqs_inner(&[], false).await.1
   }
 
   pub async fn add_package_reqs(
     &self,
     package_reqs: &[PackageReq],
+    prefetch_tarballs: bool,
   ) -> AddPkgReqsResult {
     let (results, dependencies_result) =
-      self.add_package_reqs_inner(package_reqs).await;
+      self.add_package_reqs_inner(package_reqs, prefetch_tarballs).await;
     AddPkgReqsResult {
       results,
       dependencies_result: dependencies_result.map_err(JsErrorBox::from_err),
@@ -137,13 +143,16 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmResolutionInstallerSys>
   async fn add_package_reqs_inner(
     &self,
     package_reqs: &[PackageReq],
+    prefetch_tarballs: bool,
   ) -> (
     Vec<Result<PackageNv, NpmResolutionError>>,
     Result<(), NpmResolutionError>,
   ) {
     // only allow one thread in here at a time
     let _snapshot_lock = self.update_queue.acquire().await;
-    let result = self.add_package_reqs_to_snapshot(package_reqs).await;
+    let result = self
+      .add_package_reqs_to_snapshot(package_reqs, prefetch_tarballs)
+      .await;
 
     (
       result.results,
@@ -157,6 +166,7 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmResolutionInstallerSys>
   async fn add_package_reqs_to_snapshot(
     &self,
     package_reqs: &[PackageReq],
+    prefetch_tarballs: bool,
   ) -> deno_npm::resolution::AddPkgReqsResult {
     let snapshot = self.resolution.snapshot();
     if !self.resolution.is_pending()
@@ -179,9 +189,18 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmResolutionInstallerSys>
       "Running npm resolution."
     );
     let should_dedup = !self.has_js_execution_started_flag.is_raised();
+    let tarball_cache_for_prefetch = if prefetch_tarballs {
+      self.tarball_cache.as_ref()
+    } else {
+      None
+    };
+    let api = TarballPrefetchingRegistryApi {
+      registry_info_provider: self.registry_info_provider.as_ref(),
+      tarball_cache: tarball_cache_for_prefetch,
+    };
     let result = snapshot
       .add_pkg_reqs(
-        self.registry_info_provider.as_ref(),
+        &api,
         AddPkgReqsOptions {
           package_reqs,
           should_dedup,
@@ -199,9 +218,13 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmResolutionInstallerSys>
 
         // try again with forced reloading
         let snapshot = self.resolution.snapshot();
+        let api = TarballPrefetchingRegistryApi {
+          registry_info_provider: self.registry_info_provider.as_ref(),
+          tarball_cache: tarball_cache_for_prefetch,
+        };
         snapshot
           .add_pkg_reqs(
-            self.registry_info_provider.as_ref(),
+            &api,
             AddPkgReqsOptions {
               package_reqs,
               should_dedup,
@@ -332,6 +355,53 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmResolutionInstallerSys>
     for package in snapshot.all_packages_for_every_system() {
       lockfile.insert_npm_package(npm_package_to_lockfile_info(package));
     }
+  }
+}
+
+/// Wraps a [`RegistryInfoProvider`] and optionally a [`TarballCache`] to
+/// start downloading package tarballs in the background as versions are
+/// resolved during npm dependency resolution.
+struct TarballPrefetchingRegistryApi<
+  'a,
+  THttpClient: NpmCacheHttpClient,
+  TSys: NpmCacheSys,
+> {
+  registry_info_provider: &'a RegistryInfoProvider<THttpClient, TSys>,
+  tarball_cache: Option<&'a Arc<TarballCache<THttpClient, TSys>>>,
+}
+
+#[async_trait::async_trait(?Send)]
+impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys> NpmRegistryApi
+  for TarballPrefetchingRegistryApi<'_, THttpClient, TSys>
+{
+  async fn package_info(
+    &self,
+    name: &str,
+  ) -> Result<Arc<NpmPackageInfo>, NpmRegistryPackageInfoLoadError> {
+    self.registry_info_provider.package_info(name).await
+  }
+
+  fn prefetch_package_info(&self, name: &str) {
+    self.registry_info_provider.prefetch_package_info(name);
+  }
+
+  fn prefetch_tarball(
+    &self,
+    nv: &PackageNv,
+    dist: &NpmPackageVersionDistInfo,
+  ) {
+    if let Some(tarball_cache) = &self.tarball_cache {
+      let tarball_cache = (*tarball_cache).clone();
+      let nv = nv.clone();
+      let dist = dist.clone();
+      deno_unsync::spawn(async move {
+        let _ = tarball_cache.ensure_package(&nv, &dist).await;
+      });
+    }
+  }
+
+  fn mark_force_reload(&self) -> bool {
+    self.registry_info_provider.mark_force_reload()
   }
 }
 

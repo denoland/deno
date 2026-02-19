@@ -6,6 +6,20 @@ use deno_unsync::JoinHandle;
 pub type JoinHandle<T> =
   std::future::Ready<Result<T, std::convert::Infallible>>;
 
+pub fn spawn<F: std::future::Future<Output = R> + 'static, R: 'static>(
+  f: F,
+) -> JoinHandle<R> {
+  #[cfg(target_arch = "wasm32")]
+  {
+    let _ = f;
+    std::future::ready(Ok(todo!("wasm spawn not supported")))
+  }
+  #[cfg(not(target_arch = "wasm32"))]
+  {
+    deno_unsync::spawn(f)
+  }
+}
+
 pub fn spawn_blocking<
   F: (FnOnce() -> R) + Send + 'static,
   R: Send + 'static,

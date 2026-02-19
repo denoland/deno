@@ -1256,6 +1256,12 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
       reporter.on_resolved(&package_req, &pkg_nv);
     }
 
+    // Start downloading the tarball in the background so it's ready
+    // by the time the install phase needs it.
+    if let Some(dist) = &info.dist {
+      self.api.prefetch_tarball(&pkg_nv, dist);
+    }
+
     Ok((pkg_nv, node_id))
   }
 
@@ -1404,6 +1410,18 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
               }
             }
           };
+
+          // Speculatively prefetch manifests for this child's dependencies
+          // so they'll be cached by the time we resolve them.
+          let child_resolved_id =
+            self.graph.resolved_node_ids.get(child_id).unwrap();
+          if let Some(transitive_deps) =
+            self.dep_entry_cache.get(&child_resolved_id.nv)
+          {
+            for transitive_dep in transitive_deps.iter() {
+              self.api.prefetch_package_info(&transitive_dep.name);
+            }
+          }
 
           #[cfg(feature = "tracing")]
           {

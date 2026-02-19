@@ -474,6 +474,25 @@ pub trait NpmRegistryApi {
     name: &str,
   ) -> Result<Arc<NpmPackageInfo>, NpmRegistryPackageInfoLoadError>;
 
+  /// Starts loading the package info in the background if it's not already
+  /// cached. This is an optimization to warm the cache for packages that
+  /// will likely be needed soon during resolution.
+  ///
+  /// The default implementation is a no-op.
+  fn prefetch_package_info(&self, _name: &str) {}
+
+  /// Starts downloading a package tarball in the background once a specific
+  /// version has been resolved. This allows overlapping tarball downloads
+  /// with the rest of the resolution process.
+  ///
+  /// The default implementation is a no-op.
+  fn prefetch_tarball(
+    &self,
+    _nv: &PackageNv,
+    _dist: &NpmPackageVersionDistInfo,
+  ) {
+  }
+
   /// Marks that new requests for package information should retrieve it
   /// from the npm registry
   ///

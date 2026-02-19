@@ -25,6 +25,7 @@ use crate::NpmCacheSetting;
 use crate::NpmCacheSys;
 use crate::remote::maybe_auth_header_value_for_npm_registry;
 use crate::rt::MultiRuntimeAsyncValueCreator;
+use crate::rt::spawn;
 use crate::rt::spawn_blocking;
 
 type LoadResult = Result<FutureResult, Arc<JsErrorBox>>;
@@ -394,6 +395,14 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys> NpmRegistryApi
         JsErrorBox::from_err(err),
       ))),
     }
+  }
+
+  fn prefetch_package_info(&self, name: &str) {
+    let inner = self.0.clone();
+    let name = name.to_string();
+    spawn(async move {
+      let _ = inner.load_package_info(&name).await;
+    });
   }
 
   fn mark_force_reload(&self) -> bool {

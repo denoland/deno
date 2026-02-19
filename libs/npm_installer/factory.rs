@@ -318,6 +318,7 @@ impl<
           self.has_js_execution_started_flag.clone(),
           self.resolver_factory.npm_version_resolver()?.clone(),
           self.registry_info_provider()?.clone(),
+          Some(self.tarball_cache()?.clone()),
           self
             .install_reporter
             .as_ref()
