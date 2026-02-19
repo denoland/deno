@@ -75,6 +75,25 @@ pub enum FileSystemCaseSensitivity {
   #[serde(rename = "i")]
   Insensitive,
 }
+
+impl FileSystemCaseSensitivity {
+  pub fn cmp_name(&self, a: &str, b: &str) -> Ordering {
+    match self {
+      FileSystemCaseSensitivity::Sensitive => a.cmp(b),
+      FileSystemCaseSensitivity::Insensitive => a
+        .chars()
+        .zip(b.chars())
+        .map(|(a, b)| a.to_ascii_lowercase().cmp(&b.to_ascii_lowercase()))
+        .find(|&ord| ord != Ordering::Equal)
+        .unwrap_or_else(|| a.len().cmp(&b.len())),
+    }
+  }
+
+  pub fn eq_name(&self, a: &str, b: &str) -> bool {
+    self.cmp_name(a, b) == Ordering::Equal
+  }
+}
+
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct VirtualDirectoryEntries(Vec<VfsEntry>);
 
@@ -140,19 +159,9 @@ impl VirtualDirectoryEntries {
     name: &str,
     case_sensitivity: FileSystemCaseSensitivity,
   ) -> Result<usize, usize> {
-    match case_sensitivity {
-      FileSystemCaseSensitivity::Sensitive => {
-        self.0.binary_search_by(|e| e.name().cmp(name))
-      }
-      FileSystemCaseSensitivity::Insensitive => self.0.binary_search_by(|e| {
-        e.name()
-          .chars()
-          .zip(name.chars())
-          .map(|(a, b)| a.to_ascii_lowercase().cmp(&b.to_ascii_lowercase()))
-          .find(|&ord| ord != Ordering::Equal)
-          .unwrap_or_else(|| e.name().len().cmp(&name.len()))
-      }),
-    }
+    self
+      .0
+      .binary_search_by(|e| case_sensitivity.cmp_name(e.name(), name))
   }
 
   pub fn insert(
@@ -466,6 +475,15 @@ pub struct VfsBuilder {
   min_root_dir: Option<WindowsSystemRootablePath>,
   case_sensitivity: FileSystemCaseSensitivity,
   exclude_paths: HashSet<PathBuf>,
+  /// Cache of path canonicalization results. Maps original paths to their
+  /// canonical forms, used to detect aliased parent directories.
+  /// - `None` = path is already canonical (no changes needed)
+  /// - `Some(path)` = path was aliased, use this canonical form instead
+  ///
+  /// Note: `None` is also inserted upfront in `ensure_canonical_dir` as a
+  /// sentinel to prevent infinite recursion on circular symlinks. It gets
+  /// overwritten to `Some(...)` if the path turns out to have aliases.
+  canonical_path_cache: HashMap<PathBuf, Option<PathBuf>>,
 }
 
 impl Default for VfsBuilder {
@@ -494,6 +512,7 @@ impl VfsBuilder {
         FileSystemCaseSensitivity::Sensitive
       },
       exclude_paths: Default::default(),
+      canonical_path_cache: Default::default(),
     }
   }
 
@@ -737,21 +756,209 @@ impl VfsBuilder {
     }
   }
 
+  /// Canonicalizes the parent directory of the given path and, if it
+  /// differs from the original, adds VFS symlink entries for any aliased
+  /// directory components (e.g. Windows 8.3 short names like
+  /// RUNNER~1 -> runneradmin). Only the parent is canonicalized so that
+  /// symlink files themselves are not followed.
+  /// Returns the path with canonical parent, or the original path if
+  /// canonicalization fails or produces the same result.
+  fn ensure_canonical_path<'a>(&mut self, path: &'a Path) -> Cow<'a, Path> {
+    if let Some(cached) = self.canonical_path_cache.get(path) {
+      return match cached {
+        Some(canonical) => Cow::Owned(canonical.clone()),
+        None => Cow::Borrowed(path),
+      };
+    }
+
+    let Some(parent) = path.parent() else {
+      return Cow::Borrowed(path);
+    };
+    let Some(file_name) = path.file_name() else {
+      return Cow::Borrowed(path);
+    };
+
+    let canonical_parent = self.ensure_canonical_dir(parent);
+    if canonical_parent == parent {
+      self.canonical_path_cache.insert(path.to_path_buf(), None);
+      return Cow::Borrowed(path);
+    }
+    let result = canonical_parent.join(file_name);
+    self
+      .canonical_path_cache
+      .insert(path.to_path_buf(), Some(result.clone()));
+    Cow::Owned(result)
+  }
+
+  /// Resolves a directory path by walking component by component, detecting
+  /// symlinks (via `read_link`) and name aliases (e.g. Windows 8.3 short
+  /// names). For each symlink or alias found, a VFS symlink entry is
+  /// created so the VFS mirrors the real filesystem structure.
+  /// Caches results (including negative) to avoid repeated filesystem calls.
+  fn ensure_canonical_dir<'a>(&mut self, dir_path: &'a Path) -> Cow<'a, Path> {
+    if let Some(cached) = self.canonical_path_cache.get(dir_path) {
+      return match cached {
+        Some(canonical) => Cow::Owned(canonical.clone()),
+        None => Cow::Borrowed(dir_path),
+      };
+    }
+
+    // insert negative cache upfront to prevent infinite recursion
+    // if circular symlinks are encountered
+    self
+      .canonical_path_cache
+      .insert(dir_path.to_path_buf(), None);
+
+    let mut current_real = PathBuf::new();
+    let mut changed = false;
+
+    for component in dir_path.components() {
+      if matches!(
+        component,
+        std::path::Component::RootDir | std::path::Component::Prefix(_)
+      ) {
+        current_real.push(component);
+        continue;
+      }
+
+      let candidate = current_real.join(component.as_os_str());
+
+      // ok, fs implementation
+      #[allow(clippy::disallowed_methods)]
+      let is_symlink = std::fs::symlink_metadata(&candidate)
+        .map(|m| m.is_symlink())
+        .unwrap_or(false);
+
+      if is_symlink {
+        // ok, fs implementation
+        #[allow(clippy::disallowed_methods)]
+        if let Ok(link_target) = std::fs::read_link(&candidate) {
+          let resolved = normalize_path(Cow::Owned(
+            current_real.join(strip_unc_prefix(link_target)),
+          ));
+
+          // recursively ensure the symlink target is canonical
+          let resolved = self.ensure_canonical_dir(&resolved).into_owned();
+
+          // determine if the final target is a directory
+          // ok, fs implementation
+          #[allow(clippy::disallowed_methods)]
+          let dest_is_dir = std::fs::metadata(&candidate)
+            .map(|m| m.is_dir())
+            .unwrap_or(true);
+
+          let name = component.as_os_str().to_string_lossy();
+          let case_sensitivity = self.case_sensitivity;
+          let dir = self.add_dir_raw(&current_real);
+          dir.entries.insert_or_modify(
+            &name,
+            case_sensitivity,
+            || {
+              VfsEntry::Symlink(VirtualSymlink {
+                name: name.to_string(),
+                dest_parts: VirtualSymlinkParts::from_path(&resolved),
+                dest_is_dir,
+              })
+            },
+            |_| {
+              // already exists
+            },
+          );
+
+          log::debug!(
+            "Resolved symlink component: {} -> {}",
+            candidate.display(),
+            resolved.display()
+          );
+
+          current_real = resolved;
+          changed = true;
+          continue;
+        }
+      }
+
+      // not a symlink — on Windows, check for 8.3 short name aliases
+      // by canonicalizing just this path and comparing the last component.
+      // This is Windows-specific; on other platforms non-symlink components
+      // won't have name aliases, and running this could create spurious VFS
+      // symlinks for case differences on case-insensitive filesystems.
+      #[cfg(windows)]
+      {
+        // ok, fs implementation
+        #[allow(clippy::disallowed_methods)]
+        if let Ok(canonical) = std::fs::canonicalize(&candidate) {
+          let canonical = strip_unc_prefix(canonical);
+          if let Some(canon_name) = canonical.file_name() {
+            let orig_name = component.as_os_str();
+            if !self.case_sensitivity.eq_name(
+              &orig_name.to_string_lossy(),
+              &canon_name.to_string_lossy(),
+            ) {
+              let real_dir = current_real.join(canon_name);
+              let orig_name_str = orig_name.to_string_lossy();
+              let case_sensitivity = self.case_sensitivity;
+              let dir = self.add_dir_raw(&current_real);
+              dir.entries.insert_or_modify(
+                &orig_name_str,
+                case_sensitivity,
+                || {
+                  VfsEntry::Symlink(VirtualSymlink {
+                    name: orig_name_str.to_string(),
+                    dest_parts: VirtualSymlinkParts::from_path(&real_dir),
+                    dest_is_dir: true,
+                  })
+                },
+                |_| {
+                  // already exists
+                },
+              );
+
+              log::debug!(
+                "Resolved 8.3 name alias: {} -> {}",
+                candidate.display(),
+                real_dir.display()
+              );
+
+              current_real = real_dir;
+              changed = true;
+              continue;
+            }
+          }
+        }
+      }
+
+      current_real.push(component);
+    }
+
+    if changed {
+      self
+        .canonical_path_cache
+        .insert(dir_path.to_path_buf(), Some(current_real.clone()));
+      Cow::Owned(current_real)
+    } else {
+      // already inserted None upfront
+      Cow::Borrowed(dir_path)
+    }
+  }
+
   pub fn add_file_with_data(
     &mut self,
     path: &Path,
     options: AddFileDataOptions,
   ) -> Result<(), AnyError> {
+    // canonicalize parent to resolve aliased directory components
+    // (e.g. Windows 8.3 short names), adding VFS symlinks as needed
+    let path = self.ensure_canonical_path(path);
     // ok, fs implementation
     #[allow(clippy::disallowed_methods)]
-    let metadata = std::fs::symlink_metadata(path).with_context(|| {
+    let metadata = std::fs::symlink_metadata(&path).with_context(|| {
       format!("Resolving target path for '{}'", path.display())
     })?;
     if metadata.is_symlink() {
-      let target = self.add_symlink(path)?.into_path_buf();
+      let target = self.add_symlink(&path)?.into_path_buf();
       self.add_file_with_data_raw_options(&target, options)
     } else {
-      self.add_file_with_data_raw_options(path, options)
+      self.add_file_with_data_raw_options(&path, options)
     }
   }
 
@@ -953,6 +1160,9 @@ impl VfsBuilder {
     data: Vec<u8>,
     update_file: impl FnOnce(&mut VirtualFile, OffsetWithLength),
   ) {
+    // resolve to canonical path so we find the file even when
+    // the caller uses a non-canonical path
+    let path = self.ensure_canonical_path(path);
     let offset_with_length = self.files.add_data(data);
     let case_sensitivity = self.case_sensitivity;
     let dir = self.get_dir_mut(path.parent().unwrap()).unwrap();
