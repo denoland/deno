@@ -144,12 +144,12 @@ where
 
 #[repr(C)]
 struct H2WriteReq {
-  uv_req: libuvrust::backend::UvWrite,
+  uv_req: deno_core::uv_compat::UvWrite,
   data: Vec<u8>,
 }
 
 unsafe extern "C" fn h2_write_cb(
-  req: *mut libuvrust::backend::UvWrite,
+  req: *mut deno_core::uv_compat::UvWrite,
   status: i32,
 ) {
   // Free the write request
@@ -157,18 +157,18 @@ unsafe extern "C" fn h2_write_cb(
 }
 
 unsafe extern "C" fn h2_stream_close_cb(
-  handle: *mut libuvrust::backend::UvHandle,
+  handle: *mut deno_core::uv_compat::UvHandle,
 ) {
   // The stream handle was a UvTcp allocated by the TCP cppgc object.
   // Now that we've taken ownership via detach(), we're responsible for
   // freeing the memory.
-  let _ = unsafe { Box::from_raw(handle as *mut libuvrust::backend::UvTcp) };
+  let _ = unsafe { Box::from_raw(handle as *mut deno_core::uv_compat::UvTcp) };
 }
 
 unsafe extern "C" fn h2_alloc_cb(
-  _handle: *mut libuvrust::backend::UvHandle,
+  _handle: *mut deno_core::uv_compat::UvHandle,
   suggested_size: usize,
-  buf: *mut libuvrust::backend::UvBuf,
+  buf: *mut deno_core::uv_compat::UvBuf,
 ) {
   let data = vec![0u8; suggested_size];
   let leaked = Box::into_raw(data.into_boxed_slice());
@@ -179,9 +179,9 @@ unsafe extern "C" fn h2_alloc_cb(
 }
 
 unsafe extern "C" fn h2_read_cb(
-  handle: *mut libuvrust::backend::UvStream,
+  handle: *mut deno_core::uv_compat::UvStream,
   nread: isize,
-  buf: *const libuvrust::backend::UvBuf,
+  buf: *const deno_core::uv_compat::UvBuf,
 ) {
   // Get the session from the handle's data pointer
   let session_ptr = unsafe { (*handle).data as *mut Session };
@@ -203,7 +203,7 @@ unsafe extern "C" fn h2_read_cb(
   if nread < 0 {
     // EOF or error - stop reading
     unsafe {
-      libuvrust::backend::uv_read_stop(handle);
+      deno_core::uv_compat::uv_read_stop(handle);
     }
     // Free the buffer
     if !buf.is_null() && !unsafe { (*buf).base.is_null() } {
@@ -1220,7 +1220,7 @@ pub struct Session {
   pub this: v8::Global<v8::Object>,
   pub padding_strategy: PaddingStrategy,
   pub graceful_close_initiated: bool,
-  pub stream: Option<*mut libuvrust::backend::UvStream>,
+  pub stream: Option<*mut deno_core::uv_compat::UvStream>,
 }
 
 impl Session {
@@ -1266,10 +1266,9 @@ impl Session {
 
     // Safety check: ensure the stream handle is still a valid TCP handle
     let handle_type = unsafe {
-      (*(stream as *mut libuvrust::backend::UvHandle)).type_
+      (*(stream as *mut deno_core::uv_compat::UvHandle)).r#type
     };
-    // UV_TCP = 12
-    if handle_type != 12 {
+    if handle_type != deno_core::uv_compat::uv_handle_type::UV_TCP {
       self.stream = None;
       return;
     }
@@ -1285,16 +1284,16 @@ impl Session {
         // Write to libuv stream
         let data_copy = data.to_vec();
         let write_req = Box::new(H2WriteReq {
-          uv_req: libuvrust::backend::new_write(),
+          uv_req: deno_core::uv_compat::new_write(),
           data: data_copy,
         });
         let write_ptr = Box::into_raw(write_req);
         unsafe {
-          let buf = libuvrust::backend::UvBuf {
+          let buf = deno_core::uv_compat::UvBuf {
             base: (*write_ptr).data.as_ptr() as *mut _,
             len: (*write_ptr).data.len(),
           };
-          let ret = libuvrust::backend::uv_write(
+          let ret = deno_core::uv_compat::uv_write(
             &mut (*write_ptr).uv_req,
             stream,
             &buf,
@@ -1315,16 +1314,16 @@ impl Session {
         let data = buffer.data.as_ref();
         let data_copy = data.to_vec();
         let write_req = Box::new(H2WriteReq {
-          uv_req: libuvrust::backend::new_write(),
+          uv_req: deno_core::uv_compat::new_write(),
           data: data_copy,
         });
         let write_ptr = Box::into_raw(write_req);
         unsafe {
-          let buf = libuvrust::backend::UvBuf {
+          let buf = deno_core::uv_compat::UvBuf {
             base: (*write_ptr).data.as_ptr() as *mut _,
             len: (*write_ptr).data.len(),
           };
-          libuvrust::backend::uv_write(
+          deno_core::uv_compat::uv_write(
             &mut (*write_ptr).uv_req,
             stream,
             &buf,
@@ -1546,7 +1545,7 @@ impl Http2Session {
 
     // Stop the existing read on the TCP handle
     unsafe {
-      libuvrust::backend::uv_read_stop(stream);
+      deno_core::uv_compat::uv_read_stop(stream);
     }
 
     // Store the session pointer in the stream's data field so
@@ -1559,7 +1558,7 @@ impl Http2Session {
 
     // Start reading from the stream
     let ret = unsafe {
-      libuvrust::backend::uv_read_start(
+      deno_core::uv_compat::uv_read_start(
         stream,
         Some(h2_alloc_cb),
         Some(h2_read_cb),
@@ -1592,9 +1591,9 @@ impl Http2Session {
     // Close the stream handle we took ownership of via consume_stream
     if let Some(stream) = session.stream.take() {
       unsafe {
-        libuvrust::backend::uv_read_stop(stream);
-        libuvrust::backend::uv_close(
-          stream as *mut libuvrust::backend::UvHandle,
+        deno_core::uv_compat::uv_read_stop(stream);
+        deno_core::uv_compat::uv_close(
+          stream as *mut deno_core::uv_compat::UvHandle,
           Some(h2_stream_close_cb),
         );
       }

@@ -692,6 +692,11 @@ deno_core::extension!(deno_node,
 
     state.put(AsyncId::default());
 
+    // Initialize a uv_loop_t for libuv compat layer (used by TCP/HTTP2)
+    let mut uv_loop = Box::new(unsafe { std::mem::zeroed::<deno_core::uv_compat::UvLoop>() });
+    unsafe { deno_core::uv_compat::uv_loop_init(&mut *uv_loop) };
+    state.put(uv_loop);
+
   },
   global_template_middleware = global_template_middleware,
   global_object_middleware = global_object_middleware,
