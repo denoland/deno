@@ -48,9 +48,9 @@ pub fn filter_to_shard<T>(
 ) -> CollectedTestCategory<T> {
   let all_names = collect_test_names(&category);
 
-  let my_tests = assign_shard_tests(&all_names, shard);
-
   let total_count = all_names.len();
+  let my_tests = assign_shard_tests(all_names, shard);
+
   let shard_count = my_tests.len();
   crate::eprintln!(
     "shard {}/{}: running {shard_count}/{total_count} tests",
@@ -77,11 +77,11 @@ fn collect_test_names<T>(category: &CollectedTestCategory<T>) -> Vec<String> {
 }
 
 fn assign_shard_tests(
-  all_names: &[String],
+  all_names: Vec<String>,
   shard: &ShardConfig,
 ) -> HashSet<String> {
   // round-robin: distribute by sorted name index
-  let mut sorted: Vec<_> = all_names.to_vec();
+  let mut sorted: Vec<_> = all_names;
   sorted.sort();
   sorted
     .into_iter()
@@ -434,14 +434,9 @@ impl JsonReporter {
       let data = self.data.lock();
       serde_json::to_string(&*data).unwrap()
     };
-    let shard_suffix = match ShardConfig::from_env() {
-      Some(shard) => format!("_shard-{}", shard.index),
-      None => String::new(),
-    };
-    let file_path = crate::root_path().join("target").join(format!(
-      "test_results_{}{shard_suffix}.json",
-      self.test_module_name
-    ));
+    let file_path = crate::root_path()
+      .join("target")
+      .join(format!("test_results_{}.json", self.test_module_name));
 
     file_path.write(json);
   }

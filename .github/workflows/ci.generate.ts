@@ -10,6 +10,7 @@ import {
   defineMatrix,
   type ExpressionValue,
   job,
+  literal,
   step,
 } from "jsr:@david/gagen@0.2.18";
 
@@ -963,8 +964,9 @@ const buildJobs = buildItems.map((rawBuildItem) => {
         return Array.from({ length: total }, (_, i) => ({
           test_crate: tc.name,
           test_package: tc.package,
-          shard_index: i,
-          shard_total: total,
+          // make these strings so index isn't falsy when 0
+          shard_index: i.toString(),
+          shard_total: total.toString(),
           shard_label: total > 1 ? `(${i + 1}/${total}) ` : "",
         }));
       }),
@@ -1076,6 +1078,20 @@ const buildJobs = buildItems.map((rawBuildItem) => {
               "exit 1",
               "fi",
             ],
+          },
+          {
+            name: "Upload test results",
+            uses: "actions/upload-artifact@v6",
+            if: conditions.status.always().and(isNotTag),
+            with: {
+              name:
+                `test-results-${buildItem.os}-${buildItem.arch}-${buildItem.profile}-${testMatrix.test_crate}${
+                  testMatrix.shard_total.greaterThan(1).then(
+                    literal("-shard-").concat(testMatrix.shard_index),
+                  ).else("")
+                }.json`,
+              path: `target/test_results_${testMatrix.test_crate}.json`,
+            },
           },
           saveCacheStep.if(buildItem.save_cache),
         ),
