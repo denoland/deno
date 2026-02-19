@@ -8,6 +8,7 @@ use std::sync::Arc;
 use deno_cache_dir::GlobalOrLocalHttpCache;
 use deno_cache_dir::file_fetcher::CacheSetting;
 use deno_core::anyhow::bail;
+use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_semver::StackString;
 use deno_semver::VersionReq;
@@ -556,16 +557,13 @@ fn enhance_npm_registry_error(err: AnyError, factory: &CliFactory) -> AnyError {
     Ok(npmrc) => npmrc,
     Err(_) => {
       // Still provide helpful message even if we can't access npmrc
-      return deno_core::anyhow::Context::context(
-        err,
-        format!(
-          "Failed to fetch package information from npm registry.\n\n\
-          Original error: {}\n\n\
-          If you're using a private npm registry, ensure your `.npmrc` is properly configured.\n\
-          For more information, see: https://docs.deno.com/runtime/manual/node/npm_registries",
-          err_string
-        ),
-      );
+      return err.context(format!(
+        "Failed to fetch package information from npm registry.\n\n\
+        Original error: {}\n\n\
+        If you're using a private npm registry, ensure your `.npmrc` is properly configured.\n\
+        For more information, see: https://docs.deno.com/runtime/manual/node/npm_registries",
+        err_string
+      ));
     }
   };
 
@@ -637,19 +635,16 @@ fn enhance_npm_registry_error(err: AnyError, factory: &CliFactory) -> AnyError {
       https://docs.deno.com/runtime/manual/node/npm_registries",
     );
 
-    deno_core::anyhow::Context::context(err, enhanced_msg)
+    err.context(enhanced_msg)
   } else {
     // Not a private registry, but still an npm error - provide general guidance
-    deno_core::anyhow::Context::context(
-      err,
-      format!(
-        "Failed to fetch package information from npm registry.\n\n\
-        Original error: {}\n\n\
-        If you're using a private npm registry, ensure your `.npmrc` is properly configured.\n\
-        For more information, see: https://docs.deno.com/runtime/manual/node/npm_registries",
-        err_string
-      ),
-    )
+    err.context(format!(
+      "Failed to fetch package information from npm registry.\n\n\
+      Original error: {}\n\n\
+      If you're using a private npm registry, ensure your `.npmrc` is properly configured.\n\
+      For more information, see: https://docs.deno.com/runtime/manual/node/npm_registries",
+      err_string
+    ))
   }
 }
 
