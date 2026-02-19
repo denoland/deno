@@ -1,6 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::io::IsTerminal;
 use std::io::Write;
 use std::sync::Arc;
@@ -11,6 +12,8 @@ use std::time::Instant;
 
 use console_static_text::ConsoleStaticText;
 use file_test_runner::TestResult;
+use file_test_runner::collection::CollectedCategoryOrTest;
+use file_test_runner::collection::CollectedTestCategory;
 use file_test_runner::reporter::LogReporter;
 use parking_lot::Mutex;
 use serde::Serialize;
@@ -18,6 +21,75 @@ use serde::Serialize;
 use crate::IS_CI;
 use crate::colors;
 use crate::semaphore::Semaphore;
+
+pub struct ShardConfig {
+  pub index: usize,
+  pub total: usize,
+}
+
+impl ShardConfig {
+  /// Reads CI_SHARD_INDEX and CI_SHARD_TOTAL from env.
+  /// Returns None if not set or total <= 1.
+  pub fn from_env() -> Option<Self> {
+    let total: usize = std::env::var("CI_SHARD_TOTAL").ok()?.parse().ok()?;
+    let index: usize = std::env::var("CI_SHARD_INDEX").ok()?.parse().ok()?;
+    if total <= 1 {
+      return None;
+    }
+    Some(Self { index, total })
+  }
+}
+
+/// Filter a collected test category to only include tests assigned to this shard.
+/// Uses round-robin distribution by sorted test name.
+pub fn filter_to_shard<T>(
+  category: CollectedTestCategory<T>,
+  shard: &ShardConfig,
+) -> CollectedTestCategory<T> {
+  let all_names = collect_test_names(&category);
+
+  let total_count = all_names.len();
+  let my_tests = assign_shard_tests(all_names, shard);
+
+  let shard_count = my_tests.len();
+  crate::eprintln!(
+    "shard {}/{}: running {shard_count}/{total_count} tests",
+    shard.index + 1,
+    shard.total,
+  );
+
+  let (mine, _) = category.partition(|test| my_tests.contains(&test.name));
+  mine
+}
+
+fn collect_test_names<T>(category: &CollectedTestCategory<T>) -> Vec<String> {
+  let mut names = Vec::new();
+  fn walk<T>(children: &[CollectedCategoryOrTest<T>], names: &mut Vec<String>) {
+    for child in children {
+      match child {
+        CollectedCategoryOrTest::Test(t) => names.push(t.name.clone()),
+        CollectedCategoryOrTest::Category(c) => walk(&c.children, names),
+      }
+    }
+  }
+  walk(&category.children, &mut names);
+  names
+}
+
+fn assign_shard_tests(
+  all_names: Vec<String>,
+  shard: &ShardConfig,
+) -> HashSet<String> {
+  // round-robin: distribute by sorted name index
+  let mut sorted: Vec<_> = all_names;
+  sorted.sort();
+  sorted
+    .into_iter()
+    .enumerate()
+    .filter(|(i, _)| i % shard.total == shard.index)
+    .map(|(_, name)| name)
+    .collect()
+}
 
 /// Tracks the number of times each test has been flaky
 pub struct FlakyTestTracker {

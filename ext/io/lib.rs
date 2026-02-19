@@ -48,7 +48,6 @@ use fs::FileResource;
 use fs::FsError;
 use fs::FsResult;
 use fs::FsStat;
-use fs3::FileExt;
 use once_cell::sync::Lazy;
 #[cfg(windows)]
 use parking_lot::Condvar;
@@ -1016,9 +1015,9 @@ impl crate::fs::File for StdFileResourceInner {
   fn lock_sync(self: Rc<Self>, exclusive: bool) -> FsResult<()> {
     self.with_sync(|file| {
       if exclusive {
-        file.lock_exclusive()?;
+        file.lock()?;
       } else {
-        fs3::FileExt::lock_shared(file)?;
+        file.lock_shared()?;
       }
       Ok(())
     })
@@ -1027,9 +1026,9 @@ impl crate::fs::File for StdFileResourceInner {
     self
       .with_inner_blocking_task(move |file| {
         if exclusive {
-          file.lock_exclusive()?;
+          file.lock()?;
         } else {
-          fs3::FileExt::lock_shared(file)?;
+          file.lock_shared()?;
         }
         Ok(())
       })
@@ -1070,11 +1069,11 @@ impl crate::fs::File for StdFileResourceInner {
   }
 
   fn unlock_sync(self: Rc<Self>) -> FsResult<()> {
-    self.with_sync(|file| Ok(fs3::FileExt::unlock(file)?))
+    self.with_sync(|file| Ok(file.unlock()?))
   }
   async fn unlock_async(self: Rc<Self>) -> FsResult<()> {
     self
-      .with_inner_blocking_task(|file| Ok(fs3::FileExt::unlock(file)?))
+      .with_inner_blocking_task(|file| Ok(file.unlock()?))
       .await
   }
 
