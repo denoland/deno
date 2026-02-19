@@ -1243,6 +1243,10 @@ impl CliFactory {
         ResolverFactoryOptions {
           compiler_options_overrides: CompilerOptionsOverrides {
             no_transpile: false,
+            force_check_js: matches!(
+              &self.flags.subcommand,
+              DenoSubcommand::Check(check_flags) if check_flags.check_js
+            ),
             source_map_base: None,
             preserve_jsx: false,
           },

@@ -10,7 +10,6 @@ use std::sync::Arc;
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
 use deno_config::deno_json::CompilerOptionTypesDeserializeError;
-use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_error::JsErrorBox;
 use deno_graph::Module;
@@ -257,7 +256,6 @@ impl TypeChecker {
         groups: grouped_roots,
         current_group_index: 0,
         options,
-        force_check_js: self.force_check_js(),
         seen_diagnotics: Default::default(),
         code_cache: self.code_cache.clone(),
         tsgo_path: self.tsgo_path.clone(),
@@ -314,13 +312,6 @@ impl TypeChecker {
     }
     Ok(groups_by_key.into_values().collect())
   }
-
-  fn force_check_js(&self) -> bool {
-    matches!(
-      self.cli_options.sub_command(),
-      DenoSubcommand::Check(check_flags) if check_flags.check_js
-    )
-  }
 }
 
 /// This function assumes that 'graph imports' strictly refer to tsconfig
@@ -342,18 +333,6 @@ fn resolve_graph_imports_for_compiler_options_data(
     .collect::<Vec<_>>();
   specifiers.sort();
   specifiers
-}
-
-fn force_check_js_compiler_options(
-  compiler_options: Arc<CompilerOptions>,
-) -> Arc<CompilerOptions> {
-  let mut value = compiler_options.0.clone();
-  if let Some(object) = value.as_object_mut() {
-    object.insert("checkJs".to_string(), serde_json::Value::Bool(true));
-  } else {
-    value = serde_json::json!({ "checkJs": true });
-  }
-  Arc::new(CompilerOptions::new(value))
 }
 
 #[derive(Debug)]
@@ -410,7 +389,6 @@ struct DiagnosticsByFolderRealIterator<'a> {
   npm_check_state_hash: Option<u64>,
   seen_diagnotics: HashSet<String>,
   options: CheckOptions,
-  force_check_js: bool,
   code_cache: Option<Arc<crate::cache::CodeCache>>,
   tsgo_path: Option<PathBuf>,
   initial_cwd: PathBuf,
@@ -494,7 +472,6 @@ impl DiagnosticsByFolderRealIterator<'_> {
       self.npm_check_state_hash,
       check_group.compiler_options,
       self.options.type_check_mode,
-      self.force_check_js,
     );
     for import in check_group.imports.iter() {
       graph_walker.add_config_import(import, &check_group.referrer);
@@ -553,11 +530,7 @@ impl DiagnosticsByFolderRealIterator<'_> {
     // to make tsc build info work, we need to consistently hash modules, so that
     // tsc can better determine if an emit is still valid or not, so we provide
     // that data here.
-    let compiler_options = if self.force_check_js {
-      force_check_js_compiler_options(check_group.compiler_options.clone())
-    } else {
-      check_group.compiler_options.clone()
-    };
+    let compiler_options = check_group.compiler_options.clone();
 
     let compiler_options_hash_data = FastInsecureHasher::new_deno_versioned()
       .write_hashable(&compiler_options)
@@ -680,7 +653,6 @@ struct GraphWalker<'a> {
   seen: HashSet<&'a Url>,
   pending: VecDeque<(&'a Url, bool)>,
   has_seen_node_builtin: bool,
-  force_check_js: bool,
   roots: Vec<(ModuleSpecifier, MediaType)>,
   missing_diagnostics: tsc::Diagnostics,
 }
@@ -696,7 +668,6 @@ impl<'a> GraphWalker<'a> {
     npm_cache_state_hash: Option<u64>,
     compiler_options: &CompilerOptions,
     type_check_mode: TypeCheckMode,
-    force_check_js: bool,
   ) -> Self {
     let maybe_hasher = npm_cache_state_hash.map(|npm_cache_state_hash| {
       let mut hasher = FastInsecureHasher::new_deno_versioned();
@@ -722,7 +693,6 @@ impl<'a> GraphWalker<'a> {
       ),
       pending: VecDeque::new(),
       has_seen_node_builtin: false,
-      force_check_js,
       roots: Vec::with_capacity(graph.imports.len() + graph.specifiers_count()),
       missing_diagnostics: Default::default(),
     }
@@ -910,11 +880,10 @@ impl<'a> GraphWalker<'a> {
           | MediaType::Mjs
           | MediaType::Cjs
           | MediaType::Jsx => {
-            if self.force_check_js
-              || self
-                .compiler_options_resolver
-                .for_specifier(&module.specifier)
-                .check_js()
+            if self
+              .compiler_options_resolver
+              .for_specifier(&module.specifier)
+              .check_js()
               || has_ts_check(module.media_type, &module.source.text)
             {
               Some((module.specifier.clone(), module.media_type))
