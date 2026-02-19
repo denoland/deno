@@ -10,7 +10,6 @@ use deno_cache_dir::file_fetcher::CacheSetting;
 use deno_core::anyhow::Context;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
-use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_semver::StackString;
 use deno_semver::VersionReq;
 use deno_semver::package::PackageNv;
@@ -251,7 +250,7 @@ pub async fn outdated(
   deps
     .resolve_versions()
     .await
-    .map_err(|err| enhance_npm_registry_error(err, &npmrc))?;
+    .map_err(|err| enhance_npm_registry_error(err, npmrc.as_ref()))?;
 
   match update_flags.kind {
     crate::args::OutdatedKind::Update {
@@ -535,7 +534,7 @@ async fn update(
 
 fn enhance_npm_registry_error(
   err: AnyError,
-  npmrc: &ResolvedNpmRc,
+  npmrc: &deno_npm::npm_rc::ResolvedNpmRc,
 ) -> AnyError {
   let err_string = err.to_string();
   let err_lower = err_string.to_lowercase();
