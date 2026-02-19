@@ -361,38 +361,38 @@ jobs:
         include:
           - test_crate: integration
             test_package: integration_tests
-            shard_index: 0
-            shard_total: 2
+            shard_index: '0'
+            shard_total: '2'
             shard_label: '(1/2) '
           - test_crate: integration
             test_package: integration_tests
-            shard_index: 1
-            shard_total: 2
+            shard_index: '1'
+            shard_total: '2'
             shard_label: '(2/2) '
           - test_crate: node_compat
             test_package: node_compat_tests
-            shard_index: 0
-            shard_total: 1
+            shard_index: '0'
+            shard_total: '1'
             shard_label: ''
           - test_crate: specs
             test_package: specs_tests
-            shard_index: 0
-            shard_total: 2
+            shard_index: '0'
+            shard_total: '2'
             shard_label: '(1/2) '
           - test_crate: specs
             test_package: specs_tests
-            shard_index: 1
-            shard_total: 2
+            shard_index: '1'
+            shard_total: '2'
             shard_label: '(2/2) '
           - test_crate: unit
             test_package: unit_tests
-            shard_index: 0
-            shard_total: 1
+            shard_index: '0'
+            shard_total: '1'
             shard_label: ''
           - test_crate: unit_node
             test_package: unit_node_tests
-            shard_index: 0
-            shard_total: 1
+            shard_index: '0'
+            shard_total: '1'
             shard_label: ''
       fail-fast: false
     env:
@@ -775,38 +775,38 @@ jobs:
         include:
           - test_crate: integration
             test_package: integration_tests
-            shard_index: 0
-            shard_total: 2
+            shard_index: '0'
+            shard_total: '2'
             shard_label: '(1/2) '
           - test_crate: integration
             test_package: integration_tests
-            shard_index: 1
-            shard_total: 2
+            shard_index: '1'
+            shard_total: '2'
             shard_label: '(2/2) '
           - test_crate: node_compat
             test_package: node_compat_tests
-            shard_index: 0
-            shard_total: 1
+            shard_index: '0'
+            shard_total: '1'
             shard_label: ''
           - test_crate: specs
             test_package: specs_tests
-            shard_index: 0
-            shard_total: 2
+            shard_index: '0'
+            shard_total: '2'
             shard_label: '(1/2) '
           - test_crate: specs
             test_package: specs_tests
-            shard_index: 1
-            shard_total: 2
+            shard_index: '1'
+            shard_total: '2'
             shard_label: '(2/2) '
           - test_crate: unit
             test_package: unit_tests
-            shard_index: 0
-            shard_total: 1
+            shard_index: '0'
+            shard_total: '1'
             shard_label: ''
           - test_crate: unit_node
             test_package: unit_node_tests
-            shard_index: 0
-            shard_total: 1
+            shard_index: '0'
+            shard_total: '1'
             shard_label: ''
       fail-fast: false
     env:
@@ -1071,38 +1071,38 @@ jobs:
         include:
           - test_crate: integration
             test_package: integration_tests
-            shard_index: 0
-            shard_total: 2
+            shard_index: '0'
+            shard_total: '2'
             shard_label: '(1/2) '
           - test_crate: integration
             test_package: integration_tests
-            shard_index: 1
-            shard_total: 2
+            shard_index: '1'
+            shard_total: '2'
             shard_label: '(2/2) '
           - test_crate: node_compat
             test_package: node_compat_tests
-            shard_index: 0
-            shard_total: 1
+            shard_index: '0'
+            shard_total: '1'
             shard_label: ''
           - test_crate: specs
             test_package: specs_tests
-            shard_index: 0
-            shard_total: 2
+            shard_index: '0'
+            shard_total: '2'
             shard_label: '(1/2) '
           - test_crate: specs
             test_package: specs_tests
-            shard_index: 1
-            shard_total: 2
+            shard_index: '1'
+            shard_total: '2'
             shard_label: '(2/2) '
           - test_crate: unit
             test_package: unit_tests
-            shard_index: 0
-            shard_total: 1
+            shard_index: '0'
+            shard_total: '1'
             shard_label: ''
           - test_crate: unit_node
             test_package: unit_node_tests
-            shard_index: 0
-            shard_total: 1
+            shard_index: '0'
+            shard_total: '1'
             shard_label: ''
       fail-fast: false
     env:
@@ -1622,38 +1622,38 @@ jobs:
         include:
           - test_crate: integration
             test_package: integration_tests
-            shard_index: 0
-            shard_total: 2
+            shard_index: '0'
+            shard_total: '2'
             shard_label: '(1/2) '
           - test_crate: integration
             test_package: integration_tests
-            shard_index: 1
-            shard_total: 2
+            shard_index: '1'
+            shard_total: '2'
             shard_label: '(2/2) '
           - test_crate: node_compat
             test_package: node_compat_tests
-            shard_index: 0
-            shard_total: 1
+            shard_index: '0'
+            shard_total: '1'
             shard_label: ''
           - test_crate: specs
             test_package: specs_tests
-            shard_index: 0
-            shard_total: 2
+            shard_index: '0'
+            shard_total: '2'
             shard_label: '(1/2) '
           - test_crate: specs
             test_package: specs_tests
-            shard_index: 1
-            shard_total: 2
+            shard_index: '1'
+            shard_total: '2'
             shard_label: '(2/2) '
           - test_crate: unit
             test_package: unit_tests
-            shard_index: 0
-            shard_total: 1
+            shard_index: '0'
+            shard_total: '1'
             shard_label: ''
           - test_crate: unit_node
             test_package: unit_node_tests
-            shard_index: 0
-            shard_total: 1
+            shard_index: '0'
+            shard_total: '1'
             shard_label: ''
       fail-fast: false
     env:
@@ -1915,38 +1915,38 @@ jobs:
         include:
           - test_crate: integration
             test_package: integration_tests
-            shard_index: 0
-            shard_total: 2
+            shard_index: '0'
+            shard_total: '2'
             shard_label: '(1/2) '
           - test_crate: integration
             test_package: integration_tests
-            shard_index: 1
-            shard_total: 2
+            shard_index: '1'
+            shard_total: '2'
             shard_label: '(2/2) '
           - test_crate: node_compat
             test_package: node_compat_tests
-            shard_index: 0
-            shard_total: 1
+            shard_index: '0'
+            shard_total: '1'
             shard_label: ''
           - test_crate: specs
             test_package: specs_tests
-            shard_index: 0
-            shard_total: 2
+            shard_index: '0'
+            shard_total: '2'
             shard_label: '(1/2) '
           - test_crate: specs
             test_package: specs_tests
-            shard_index: 1
-            shard_total: 2
+            shard_index: '1'
+            shard_total: '2'
             shard_label: '(2/2) '
           - test_crate: unit
             test_package: unit_tests
-            shard_index: 0
-            shard_total: 1
+            shard_index: '0'
+            shard_total: '1'
             shard_label: ''
           - test_crate: unit_node
             test_package: unit_node_tests
-            shard_index: 0
-            shard_total: 1
+            shard_index: '0'
+            shard_total: '1'
             shard_label: ''
       fail-fast: false
     env:
@@ -2438,38 +2438,38 @@ jobs:
         include:
           - test_crate: integration
             test_package: integration_tests
-            shard_index: 0
-            shard_total: 2
+            shard_index: '0'
+            shard_total: '2'
             shard_label: '(1/2) '
           - test_crate: integration
             test_package: integration_tests
-            shard_index: 1
-            shard_total: 2
+            shard_index: '1'
+            shard_total: '2'
             shard_label: '(2/2) '
           - test_crate: node_compat
             test_package: node_compat_tests
-            shard_index: 0
-            shard_total: 1
+            shard_index: '0'
+            shard_total: '1'
             shard_label: ''
           - test_crate: specs
             test_package: specs_tests
-            shard_index: 0
-            shard_total: 2
+            shard_index: '0'
+            shard_total: '2'
             shard_label: '(1/2) '
           - test_crate: specs
             test_package: specs_tests
-            shard_index: 1
-            shard_total: 2
+            shard_index: '1'
+            shard_total: '2'
             shard_label: '(2/2) '
           - test_crate: unit
             test_package: unit_tests
-            shard_index: 0
-            shard_total: 1
+            shard_index: '0'
+            shard_total: '1'
             shard_label: ''
           - test_crate: unit_node
             test_package: unit_node_tests
-            shard_index: 0
-            shard_total: 1
+            shard_index: '0'
+            shard_total: '1'
             shard_label: ''
       fail-fast: false
     env:
@@ -2708,38 +2708,38 @@ jobs:
         include:
           - test_crate: integration
             test_package: integration_tests
-            shard_index: 0
-            shard_total: 2
+            shard_index: '0'
+            shard_total: '2'
             shard_label: '(1/2) '
           - test_crate: integration
             test_package: integration_tests
-            shard_index: 1
-            shard_total: 2
+            shard_index: '1'
+            shard_total: '2'
             shard_label: '(2/2) '
           - test_crate: node_compat
             test_package: node_compat_tests
-            shard_index: 0
-            shard_total: 1
+            shard_index: '0'
+            shard_total: '1'
             shard_label: ''
           - test_crate: specs
             test_package: specs_tests
-            shard_index: 0
-            shard_total: 2
+            shard_index: '0'
+            shard_total: '2'
             shard_label: '(1/2) '
           - test_crate: specs
             test_package: specs_tests
-            shard_index: 1
-            shard_total: 2
+            shard_index: '1'
+            shard_total: '2'
             shard_label: '(2/2) '
           - test_crate: unit
             test_package: unit_tests
-            shard_index: 0
-            shard_total: 1
+            shard_index: '0'
+            shard_total: '1'
             shard_label: ''
           - test_crate: unit_node
             test_package: unit_node_tests
-            shard_index: 0
-            shard_total: 1
+            shard_index: '0'
+            shard_total: '1'
             shard_label: ''
       fail-fast: false
     env:
@@ -3136,38 +3136,38 @@ jobs:
         include:
           - test_crate: integration
             test_package: integration_tests
-            shard_index: 0
-            shard_total: 2
+            shard_index: '0'
+            shard_total: '2'
             shard_label: '(1/2) '
           - test_crate: integration
             test_package: integration_tests
-            shard_index: 1
-            shard_total: 2
+            shard_index: '1'
+            shard_total: '2'
             shard_label: '(2/2) '
           - test_crate: node_compat
             test_package: node_compat_tests
-            shard_index: 0
-            shard_total: 1
+            shard_index: '0'
+            shard_total: '1'
             shard_label: ''
           - test_crate: specs
             test_package: specs_tests
-            shard_index: 0
-            shard_total: 2
+            shard_index: '0'
+            shard_total: '2'
             shard_label: '(1/2) '
           - test_crate: specs
             test_package: specs_tests
-            shard_index: 1
-            shard_total: 2
+            shard_index: '1'
+            shard_total: '2'
             shard_label: '(2/2) '
           - test_crate: unit
             test_package: unit_tests
-            shard_index: 0
-            shard_total: 1
+            shard_index: '0'
+            shard_total: '1'
             shard_label: ''
           - test_crate: unit_node
             test_package: unit_node_tests
-            shard_index: 0
-            shard_total: 1
+            shard_index: '0'
+            shard_total: '1'
             shard_label: ''
       fail-fast: false
     env:
@@ -3590,38 +3590,38 @@ jobs:
         include:
           - test_crate: integration
             test_package: integration_tests
-            shard_index: 0
-            shard_total: 2
+            shard_index: '0'
+            shard_total: '2'
             shard_label: '(1/2) '
           - test_crate: integration
             test_package: integration_tests
-            shard_index: 1
-            shard_total: 2
+            shard_index: '1'
+            shard_total: '2'
             shard_label: '(2/2) '
           - test_crate: node_compat
             test_package: node_compat_tests
-            shard_index: 0
-            shard_total: 1
+            shard_index: '0'
+            shard_total: '1'
             shard_label: ''
           - test_crate: specs
             test_package: specs_tests
-            shard_index: 0
-            shard_total: 2
+            shard_index: '0'
+            shard_total: '2'
             shard_label: '(1/2) '
           - test_crate: specs
             test_package: specs_tests
-            shard_index: 1
-            shard_total: 2
+            shard_index: '1'
+            shard_total: '2'
             shard_label: '(2/2) '
           - test_crate: unit
             test_package: unit_tests
-            shard_index: 0
-            shard_total: 1
+            shard_index: '0'
+            shard_total: '1'
             shard_label: ''
           - test_crate: unit_node
             test_package: unit_node_tests
-            shard_index: 0
-            shard_total: 1
+            shard_index: '0'
+            shard_total: '1'
             shard_label: ''
       fail-fast: false
     env:
@@ -4170,38 +4170,38 @@ jobs:
         include:
           - test_crate: integration
             test_package: integration_tests
-            shard_index: 0
-            shard_total: 2
+            shard_index: '0'
+            shard_total: '2'
             shard_label: '(1/2) '
           - test_crate: integration
             test_package: integration_tests
-            shard_index: 1
-            shard_total: 2
+            shard_index: '1'
+            shard_total: '2'
             shard_label: '(2/2) '
           - test_crate: node_compat
             test_package: node_compat_tests
-            shard_index: 0
-            shard_total: 1
+            shard_index: '0'
+            shard_total: '1'
             shard_label: ''
           - test_crate: specs
             test_package: specs_tests
-            shard_index: 0
-            shard_total: 2
+            shard_index: '0'
+            shard_total: '2'
             shard_label: '(1/2) '
           - test_crate: specs
             test_package: specs_tests
-            shard_index: 1
-            shard_total: 2
+            shard_index: '1'
+            shard_total: '2'
             shard_label: '(2/2) '
           - test_crate: unit
             test_package: unit_tests
-            shard_index: 0
-            shard_total: 1
+            shard_index: '0'
+            shard_total: '1'
             shard_label: ''
           - test_crate: unit_node
             test_package: unit_node_tests
-            shard_index: 0
-            shard_total: 1
+            shard_index: '0'
+            shard_total: '1'
             shard_label: ''
       fail-fast: false
     env:
@@ -4646,38 +4646,38 @@ jobs:
         include:
           - test_crate: integration
             test_package: integration_tests
-            shard_index: 0
-            shard_total: 2
+            shard_index: '0'
+            shard_total: '2'
             shard_label: '(1/2) '
           - test_crate: integration
             test_package: integration_tests
-            shard_index: 1
-            shard_total: 2
+            shard_index: '1'
+            shard_total: '2'
             shard_label: '(2/2) '
           - test_crate: node_compat
             test_package: node_compat_tests
-            shard_index: 0
-            shard_total: 1
+            shard_index: '0'
+            shard_total: '1'
             shard_label: ''
           - test_crate: specs
             test_package: specs_tests
-            shard_index: 0
-            shard_total: 2
+            shard_index: '0'
+            shard_total: '2'
             shard_label: '(1/2) '
           - test_crate: specs
             test_package: specs_tests
-            shard_index: 1
-            shard_total: 2
+            shard_index: '1'
+            shard_total: '2'
             shard_label: '(2/2) '
           - test_crate: unit
             test_package: unit_tests
-            shard_index: 0
-            shard_total: 1
+            shard_index: '0'
+            shard_total: '1'
             shard_label: ''
           - test_crate: unit_node
             test_package: unit_node_tests
-            shard_index: 0
-            shard_total: 1
+            shard_index: '0'
+            shard_total: '1'
             shard_label: ''
       fail-fast: false
     env:
@@ -5223,38 +5223,38 @@ jobs:
         include:
           - test_crate: integration
             test_package: integration_tests
-            shard_index: 0
-            shard_total: 2
+            shard_index: '0'
+            shard_total: '2'
             shard_label: '(1/2) '
           - test_crate: integration
             test_package: integration_tests
-            shard_index: 1
-            shard_total: 2
+            shard_index: '1'
+            shard_total: '2'
             shard_label: '(2/2) '
           - test_crate: node_compat
             test_package: node_compat_tests
-            shard_index: 0
-            shard_total: 1
+            shard_index: '0'
+            shard_total: '1'
             shard_label: ''
           - test_crate: specs
             test_package: specs_tests
-            shard_index: 0
-            shard_total: 2
+            shard_index: '0'
+            shard_total: '2'
             shard_label: '(1/2) '
           - test_crate: specs
             test_package: specs_tests
-            shard_index: 1
-            shard_total: 2
+            shard_index: '1'
+            shard_total: '2'
             shard_label: '(2/2) '
           - test_crate: unit
             test_package: unit_tests
-            shard_index: 0
-            shard_total: 1
+            shard_index: '0'
+            shard_total: '1'
             shard_label: ''
           - test_crate: unit_node
             test_package: unit_node_tests
-            shard_index: 0
-            shard_total: 1
+            shard_index: '0'
+            shard_total: '1'
             shard_label: ''
       fail-fast: false
     env:
