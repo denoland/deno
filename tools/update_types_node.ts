@@ -330,6 +330,7 @@ function handleVarDecl(decl: VariableDeclaration) {
     case "PerformanceEntry":
     case "PerformanceMark":
     case "PerformanceMeasure":
+    case "QuotaExceededError":
     case "ReadableByteStreamController":
     case "ReadableStream":
     case "ReadableStreamBYOBReader":
