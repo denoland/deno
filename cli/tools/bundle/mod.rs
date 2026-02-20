@@ -65,6 +65,7 @@ use crate::args::BundleFlags;
 use crate::args::Flags;
 use crate::factory::CliFactory;
 use crate::file_fetcher::CliFileFetcher;
+use crate::util::fs::canonicalize_path;
 use crate::graph_container::MainModuleGraphContainer;
 use crate::graph_container::ModuleGraphContainer;
 use crate::graph_container::ModuleGraphUpdatePermit;
@@ -1706,7 +1707,7 @@ fn resolve_url_or_path_absolute(
   } else {
     let path = current_dir.join(specifier);
     let path = deno_path_util::normalize_path(Cow::Owned(path));
-    let path = path.canonicalize()?;
+    let path = canonicalize_path(&path)?;
     Ok(deno_path_util::url_from_file_path(&path)?)
   }
 }

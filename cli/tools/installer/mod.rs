@@ -1989,7 +1989,7 @@ mod tests {
   async fn install_file_url() {
     let temp_dir = TempDir::new();
     let bin_dir = temp_dir.path().join("bin");
-    let module_path = fs::canonicalize(testdata_path().join("cat.ts")).unwrap();
+    let module_path = canonicalize_path(testdata_path().join("cat.ts").as_path()).unwrap();
     let file_module_string =
       Url::from_file_path(module_path).unwrap().to_string();
     assert!(file_module_string.starts_with("file:///"));

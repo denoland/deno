@@ -9,6 +9,7 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 
 use super::fs::FsCleaner;
+use super::fs::canonicalize_path;
 use super::progress_bar::ProgressBar;
 
 pub struct TempNodeModulesDir {
@@ -51,12 +52,9 @@ pub fn create_temp_node_modules_dir() -> Result<TempNodeModulesDir, AnyError> {
   std::fs::write(&package_json_path, "{}").with_context(|| {
     format!("Failed creating '{}'", package_json_path.display())
   })?;
-  let temp_dir_path = temp_node_modules_parent_dir
-    .path()
-    .canonicalize()
-    .ok()
-    .map(deno_path_util::strip_unc_prefix)
-    .unwrap_or_else(|| temp_node_modules_parent_dir.path().to_path_buf());
+  let temp_dir_path =
+    canonicalize_path(temp_node_modules_parent_dir.path())
+      .unwrap_or_else(|_| temp_node_modules_parent_dir.path().to_path_buf());
   let node_modules_dir_path = temp_dir_path.join("node_modules");
   log::debug!(
     "Creating node_modules directory at: {}",

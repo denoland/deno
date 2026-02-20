@@ -55,6 +55,7 @@ use deno_runtime::tokio_util::create_and_run_current_thread_with_maybe_metrics;
 use deno_telemetry::OtelConfig;
 use deno_terminal::colors;
 use factory::CliFactory;
+use util::fs::canonicalize_path;
 
 const MODULE_NOT_FOUND: &str = "Module not found";
 const UNSUPPORTED_SCHEME: &str = "Unsupported scheme";
@@ -417,7 +418,7 @@ async fn run_subcommand(
           unsafe {
             env::set_var(
               "DENO_COVERAGE_DIR",
-              PathBuf::from(coverage_dir).canonicalize()?,
+              canonicalize_path(&PathBuf::from(coverage_dir))?,
             )
           };
         }
