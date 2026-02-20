@@ -1920,32 +1920,8 @@ pub fn flags_from_vec_with_initial_cwd(
   }
 
   apply_node_options(&mut flags);
-  apply_deno_node_compat_env(&mut flags);
 
   Ok(flags)
-}
-
-/// When DENO_NODE_COMPAT=1 is set (injected by child_process.ts when
-/// Deno.execPath() appears in args of a non-deno spawn), enable node
-/// compat mode for bare-run scripts. This allows intermediary processes
-/// (e.g. Python in test-stdio-closed) to re-invoke deno with the right
-/// flags even when they can't pass them directly.
-fn apply_deno_node_compat_env(flags: &mut Flags) {
-  if std::env::var("DENO_NODE_COMPAT").ok().as_deref() != Some("1") {
-    return;
-  }
-  // Only apply for bare run mode (script.js without explicit `run` subcommand)
-  let is_bare_run_with_script = match &flags.subcommand {
-    DenoSubcommand::Run(RunFlags {
-      bare: true, script, ..
-    }) => !script.is_empty(),
-    _ => false,
-  };
-  if is_bare_run_with_script {
-    flags.permissions.allow_all = true;
-    flags.unstable_config.bare_node_builtins = true;
-    flags.unstable_config.detect_cjs = true;
-  }
 }
 
 fn enable_unstable(command: Command) -> Command {

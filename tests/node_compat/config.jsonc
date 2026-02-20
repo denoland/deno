@@ -1176,7 +1176,9 @@
     "parallel/test-stdin-resume-pause.js": {},
     "parallel/test-stdin-script-child-option.js": {},
     "parallel/test-stdin-script-child.js": {},
-    "parallel/test-stdio-closed.js": {},
+    "parallel/test-stdio-closed.js": {
+      "windows": false
+    },
     "parallel/test-stdio-pipe-access.js": {},
     "parallel/test-stdio-pipe-redirect.js": {},
     "parallel/test-stdio-pipe-stderr.js": {

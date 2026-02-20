@@ -1410,19 +1410,6 @@ function buildCommand(
     }
   }
 
-  // When Deno.execPath() appears in the args of a non-deno spawn (e.g. when
-  // Python or another intermediary is given deno's path to re-invoke it),
-  // set DENO_NODE_COMPAT so the eventual child deno process runs in node
-  // compat mode (with require(), -A, etc.). This is needed on Windows where
-  // test-stdio-closed.js passes process.execPath to a Python script that then
-  // calls deno directly, bypassing child_process's normal arg translation.
-  if (file !== Deno.execPath()) {
-    const denoPath = Deno.execPath();
-    if (args.some((arg) => arg === denoPath)) {
-      env["DENO_NODE_COMPAT"] = "1";
-    }
-  }
-
   // Windows cmd.exe: args are ["/d", "/s", "/c", '"command"']
   if (
     file !== Deno.execPath() &&
