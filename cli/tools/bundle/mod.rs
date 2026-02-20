@@ -241,6 +241,9 @@ pub async fn bundle_init(
     emitter: factory.emitter()?.clone(),
     deferred_resolve_errors: Default::default(),
     virtual_modules: None,
+    initial_cwd: deno_path_util::url_from_directory_path(
+      cli_options.initial_cwd(),
+    )?,
   });
 
   let input = prepare_inputs(
@@ -856,6 +859,7 @@ pub struct DenoPluginHandler {
   parsed_source_cache: Arc<ParsedSourceCache>,
   cjs_tracker: Arc<CliCjsTracker>,
   emitter: Arc<CliEmitter>,
+  initial_cwd: Url,
 }
 
 impl DenoPluginHandler {
@@ -1246,9 +1250,7 @@ impl DenoPluginHandler {
     let resolve_dir_path = Path::new(&resolve_dir);
     let mut referrer =
       resolve_url_or_path(importer.unwrap_or(""), resolve_dir_path)
-        .unwrap_or_else(|_| {
-          Url::from_directory_path(std::env::current_dir().unwrap()).unwrap()
-        });
+        .unwrap_or_else(|_| self.initial_cwd.clone());
     if referrer.scheme() == "file" {
       let pth = referrer.to_file_path().unwrap();
       if (pth.is_dir()) && !pth.ends_with(std::path::MAIN_SEPARATOR_STR) {

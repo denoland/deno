@@ -67,6 +67,7 @@ use serde::Deserialize;
 use serde::Serialize;
 
 use super::flags_net;
+use crate::util::env::resolve_cwd;
 use crate::util::fs::canonicalize_path;
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -1415,7 +1416,7 @@ impl Flags {
         exclude: excluded_paths,
         ..
       })) => {
-        let cwd = std::env::current_dir()?;
+        let cwd = resolve_cwd(self.initial_cwd.as_deref())?;
         PathOrPatternSet::from_exclude_relative_path_or_patterns(
           &cwd,
           excluded_paths,
@@ -6131,7 +6132,8 @@ fn completions_parse(
         unsafe {
           std::env::set_var("COMPLETE", &shell);
         }
-        handle_shell_completion_with_args(std::env::args_os().take(1))?;
+        let cwd = resolve_cwd(None)?;
+        handle_shell_completion_with_args(std::env::args_os().take(1), &cwd)?;
         Ok(())
       }),
     ));
@@ -6972,8 +6974,8 @@ fn task_parse(
   Ok(())
 }
 
-pub fn handle_shell_completion() -> Result<(), AnyError> {
-  handle_shell_completion_with_args(std::env::args_os())
+pub fn handle_shell_completion(cwd: &Path) -> Result<(), AnyError> {
+  handle_shell_completion_with_args(std::env::args_os(), cwd)
 }
 
 struct ZshCompleterUnsorted;
@@ -7060,6 +7062,7 @@ compdef _clap_dynamic_completer_NAME BIN"#
 
 fn handle_shell_completion_with_args(
   args: impl IntoIterator<Item = OsString>,
+  cwd: &Path,
 ) -> Result<(), AnyError> {
   let args = args.into_iter().collect::<Vec<_>>();
   let app = clap_root();
@@ -7072,7 +7075,7 @@ fn handle_shell_completion_with_args(
       &clap_complete::env::Powershell,
       &ZshCompleterUnsorted,
     ]))
-    .try_complete(args, Some(&std::env::current_dir()?))?;
+    .try_complete(args, Some(cwd))?;
 
   // we should only run this function when we're doing completions
   assert!(ran_completion);
@@ -12508,12 +12511,12 @@ mod tests {
   #[test]
   fn test_config_path_args() {
     let flags = flags_from_vec(svec!["deno", "run", "foo.js"]).unwrap();
-    let cwd = std::env::current_dir().unwrap();
+    let cwd = resolve_cwd(None).unwrap().into_owned();
 
     assert_eq!(flags.config_path_args(&cwd), Some(vec![cwd.clone()]));
 
     let flags = flags_from_vec(svec!["deno", "run", "sub_dir/foo.js"]).unwrap();
-    let cwd = std::env::current_dir().unwrap();
+    let cwd = resolve_cwd(None).unwrap().into_owned();
     assert_eq!(
       flags.config_path_args(&cwd),
       Some(vec![cwd.join("sub_dir").clone()])
