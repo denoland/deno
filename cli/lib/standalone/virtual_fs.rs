@@ -1147,17 +1147,35 @@ impl VfsBuilder {
     data: Vec<u8>,
     update_file: impl FnOnce(&mut VirtualFile, OffsetWithLength),
   ) {
-    // resolve to canonical path so we find the file even when
-    // the caller uses a non-canonical path
-    let path = self.ensure_canonical_path(path);
+    let canonical = self.ensure_canonical_path(path);
+    if *canonical != *path {
+      log::warn!(
+        "add_data_for_file_or_panic: path differs after canonicalization\n  original: {}\n  canonical: {}",
+        path.display(),
+        canonical.display(),
+      );
+    }
     let offset_with_length = self.files.add_data(data);
     let case_sensitivity = self.case_sensitivity;
-    let dir = self.get_dir_mut(path.parent().unwrap()).unwrap();
+    let parent = path.parent().unwrap();
+    let dir = self.get_dir_mut(parent).unwrap_or_else(|| {
+      panic!(
+        "failed to find parent directory in VFS for '{}'\n  parent: {}",
+        path.display(),
+        parent.display(),
+      )
+    });
     let name = path.file_name().unwrap().to_string_lossy();
     let file = dir
       .entries
       .get_mut_by_name(&name, case_sensitivity)
-      .unwrap();
+      .unwrap_or_else(|| {
+        panic!(
+          "failed to find file entry '{}' in VFS directory '{}'",
+          name,
+          parent.display(),
+        )
+      });
     match file {
       VfsEntry::File(virtual_file) => {
         update_file(virtual_file, offset_with_length);
