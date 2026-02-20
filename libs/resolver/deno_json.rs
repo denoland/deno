@@ -34,6 +34,7 @@ use node_resolver::ResolutionMode;
 use once_cell::sync::OnceCell;
 #[cfg(not(feature = "sync"))]
 use once_cell::unsync::OnceCell;
+use serde::Deserialize;
 use serde::Serialize;
 use serde::Serializer;
 use serde_json::json;
@@ -1327,6 +1328,35 @@ impl Serialize for CompilerOptionsKey {
     S: Serializer,
   {
     self.to_string().serialize(serializer)
+  }
+}
+
+impl<'de> Deserialize<'de> for CompilerOptionsKey {
+  fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+  where
+    D: serde::Deserializer<'de>,
+  {
+    let s = String::deserialize(deserializer)?;
+    if s == "workspace-root" {
+      return Ok(Self::WorkspaceConfig(None));
+    }
+    if let Some(inner) = s
+      .strip_prefix("workspace(")
+      .and_then(|s| s.strip_suffix(')'))
+    {
+      let url = Url::parse(inner).map_err(serde::de::Error::custom)?;
+      return Ok(Self::WorkspaceConfig(Some(new_rc(url))));
+    }
+    if let Some(inner) = s
+      .strip_prefix("ts-config(")
+      .and_then(|s| s.strip_suffix(')'))
+    {
+      let i = inner.parse::<usize>().map_err(serde::de::Error::custom)?;
+      return Ok(Self::TsConfig(i));
+    }
+    Err(serde::de::Error::custom(format!(
+      "invalid CompilerOptionsKey: {s}"
+    )))
   }
 }
 
