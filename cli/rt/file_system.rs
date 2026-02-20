@@ -1733,10 +1733,14 @@ mod test {
     let src_path = src_path.to_path_buf();
     let mut builder = VfsBuilder::new();
     builder
-      .add_file_with_data_raw(&src_path.join("a.txt"), "data".into(), None)
+      .add_file_with_data_raw_for_testing(
+        &src_path.join("a.txt"),
+        "data".into(),
+        None,
+      )
       .unwrap();
     builder
-      .add_file_with_data_raw(
+      .add_file_with_data_raw_for_testing(
         &src_path.join("b.txt"),
         "data".into(),
         Some(
@@ -1748,16 +1752,20 @@ mod test {
       .unwrap();
     assert_eq!(builder.files_len(), 1); // because duplicate data
     builder
-      .add_file_with_data_raw(&src_path.join("c.txt"), "c".into(), None)
+      .add_file_with_data_raw_for_testing(
+        &src_path.join("c.txt"),
+        "c".into(),
+        None,
+      )
       .unwrap();
     builder
-      .add_file_with_data_raw(
+      .add_file_with_data_raw_for_testing(
         &src_path.join("sub_dir").join("d.txt"),
         "d".into(),
         None,
       )
       .unwrap();
-    builder.add_file_at_path(&src_path.join("e.txt")).unwrap();
+    builder.add_path(&src_path.join("e.txt")).unwrap();
     builder
       .add_symlink(&src_path.join("sub_dir").join("e.txt"))
       .unwrap();
@@ -1916,7 +1924,7 @@ mod test {
     let temp_path = temp_dir.path().canonicalize();
     let mut builder = VfsBuilder::new();
     builder
-      .add_file_with_data_raw(
+      .add_file_with_data_raw_for_testing(
         temp_path.join("a.txt").as_path(),
         "0123456789".to_string().into_bytes(),
         None,

@@ -401,7 +401,7 @@ mod test {
       .unwrap();
     // part of the dir
     vfs_builder
-      .add_file_at_path(temp_dir.join("b/a.txt").as_path())
+      .add_path(temp_dir.join("b/a.txt").as_path())
       .unwrap();
     // symlink
     vfs_builder
@@ -409,7 +409,7 @@ mod test {
       .unwrap();
     // file added through a symlinked parent directory
     vfs_builder
-      .add_file_at_path(temp_dir.join("d_link/a.txt").as_path())
+      .add_path(temp_dir.join("d_link/a.txt").as_path())
       .unwrap();
     temp_dir.join("c/c.txt").write(""); // write an extra file so it shows the whole directory
     let node = vfs_as_display_tree(&vfs_builder.build(), "executable");
