@@ -983,9 +983,15 @@ async fn install_global_compiled(
     // files not produced by `deno compile`).
     std::fs::remove_file(&output_path).with_context(|| {
       format!(
-        "Failed to remove existing installation at '{}'. \
-         On Windows, this can happen if the executable is currently running.",
-        output_path.display()
+        concat!(
+          "Failed to remove existing installation at '{0}'.\n\n",
+          "This may be because an existing {1} process is running. Please ensure ",
+          "there are no running {1} processes (ex. run `pkill {1}` on Unix or ",
+          "`Stop-Process -Name {1}` on Windows), and ensure you have sufficient ",
+          "permission to write to the installation path."
+        ),
+        output_path.display(),
+        output_path.file_name().map(|s| s.to_string_lossy()).unwrap_or("<unknown>".into())
       )
     })?;
   }
