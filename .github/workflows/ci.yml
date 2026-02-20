@@ -103,8 +103,8 @@ jobs:
           sudo apt-get -qq remove   'clang-12*' 'clang-13*' 'clang-14*' 'clang-15*' 'clang-16*' 'clang-17*' 'clang-18*' 'clang-19*' 'llvm-12*' 'llvm-13*' 'llvm-14*' 'llvm-15*' 'llvm-16*' 'llvm-17*' 'llvm-18*' 'llvm-19*' 'lld-12*' 'lld-13*' 'lld-14*' 'lld-15*' 'lld-16*' 'lld-17*' 'lld-18*' 'lld-19*' > /dev/null 2> /dev/null
 
           # Install clang-XXX, lld-XXX, and debootstrap.
-          echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-21 main" |
-            sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-jammy-21.list
+          echo "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-21 main" |
+            sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-noble-21.list
           curl https://apt.llvm.org/llvm-snapshot.gpg.key |
             gpg --dearmor                                 |
           sudo dd of=/etc/apt/trusted.gpg.d/llvm-snapshot.gpg
@@ -1347,7 +1347,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: cargo test --locked --lib -p deno -p denort -p node_shim -p deno_lib -p deno_snapshots -p deno_bundle_runtime -p deno_cache -p deno_cron -p deno_crypto -p deno_fetch -p deno_ffi -p deno_fs -p deno_http -p deno_image -p deno_io -p deno_kv -p deno_napi -p napi_sym -p deno_net -p deno_node -p deno_node_crypto -p deno_node_sqlite -p denort_helper -p deno_signals -p deno_telemetry -p deno_url -p deno_web -p deno_webgpu -p deno_webidl -p deno_websocket -p deno_webstorage -p deno_config -p deno_crypto_provider -p eszip -p deno_inspector_server -p deno_lockfile -p deno_maybe_sync -p node_resolver -p deno_npm -p deno_npm_cache -p deno_npm_installer -p deno_package_json -p deno_resolver -p deno_typescript_go_client_rust -p deno_runtime -p deno_features -p deno_permissions -p deno_subprocess_windows
+        run: cargo test --locked --lib -p deno -p denort -p node_shim -p deno_lib -p deno_snapshots -p deno_bundle_runtime -p deno_cache -p deno_cron -p deno_crypto -p deno_fetch -p deno_ffi -p deno_fs -p deno_http -p deno_image -p deno_io -p deno_kv -p deno_napi -p napi_sym -p deno_net -p deno_node -p deno_node_crypto -p deno_node_sqlite -p denort_helper -p deno_signals -p deno_telemetry -p deno_url -p deno_web -p deno_webgpu -p deno_webidl -p deno_websocket -p deno_webstorage -p deno_config -p deno_crypto_provider -p deno_dotenv -p eszip -p deno_inspector_server -p deno_lockfile -p deno_maybe_sync -p node_resolver -p deno_npm -p deno_npm_cache -p deno_npm_installer -p deno_package_json -p deno_resolver -p deno_typescript_go_client_rust -p deno_runtime -p deno_features -p deno_permissions -p deno_subprocess_windows
       - name: Cache cargo home
         uses: cirruslabs/cache/save@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && github.ref == ''refs/heads/main'''
@@ -2145,7 +2145,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: cargo test --locked --lib -p deno -p denort -p node_shim -p deno_lib -p deno_snapshots -p deno_bundle_runtime -p deno_cache -p deno_cron -p deno_crypto -p deno_fetch -p deno_ffi -p deno_fs -p deno_http -p deno_image -p deno_io -p deno_kv -p deno_napi -p napi_sym -p deno_net -p deno_node -p deno_node_crypto -p deno_node_sqlite -p denort_helper -p deno_signals -p deno_telemetry -p deno_url -p deno_web -p deno_webgpu -p deno_webidl -p deno_websocket -p deno_webstorage -p deno_config -p deno_crypto_provider -p eszip -p deno_inspector_server -p deno_lockfile -p deno_maybe_sync -p node_resolver -p deno_npm -p deno_npm_cache -p deno_npm_installer -p deno_package_json -p deno_resolver -p deno_typescript_go_client_rust -p deno_runtime -p deno_features -p deno_permissions -p deno_subprocess_windows
+        run: cargo test --locked --lib -p deno -p denort -p node_shim -p deno_lib -p deno_snapshots -p deno_bundle_runtime -p deno_cache -p deno_cron -p deno_crypto -p deno_fetch -p deno_ffi -p deno_fs -p deno_http -p deno_image -p deno_io -p deno_kv -p deno_napi -p napi_sym -p deno_net -p deno_node -p deno_node_crypto -p deno_node_sqlite -p denort_helper -p deno_signals -p deno_telemetry -p deno_url -p deno_web -p deno_webgpu -p deno_webidl -p deno_websocket -p deno_webstorage -p deno_config -p deno_crypto_provider -p deno_dotenv -p eszip -p deno_inspector_server -p deno_lockfile -p deno_maybe_sync -p node_resolver -p deno_npm -p deno_npm_cache -p deno_npm_installer -p deno_package_json -p deno_resolver -p deno_typescript_go_client_rust -p deno_runtime -p deno_features -p deno_permissions -p deno_subprocess_windows
       - name: Cache cargo home
         uses: cirruslabs/cache/save@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && github.ref == ''refs/heads/main'''
@@ -3346,8 +3346,8 @@ jobs:
           sudo apt-get -qq remove   'clang-12*' 'clang-13*' 'clang-14*' 'clang-15*' 'clang-16*' 'clang-17*' 'clang-18*' 'clang-19*' 'llvm-12*' 'llvm-13*' 'llvm-14*' 'llvm-15*' 'llvm-16*' 'llvm-17*' 'llvm-18*' 'llvm-19*' 'lld-12*' 'lld-13*' 'lld-14*' 'lld-15*' 'lld-16*' 'lld-17*' 'lld-18*' 'lld-19*' > /dev/null 2> /dev/null
 
           # Install clang-XXX, lld-XXX, and debootstrap.
-          echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-21 main" |
-            sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-jammy-21.list
+          echo "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-21 main" |
+            sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-noble-21.list
           curl https://apt.llvm.org/llvm-snapshot.gpg.key |
             gpg --dearmor                                 |
           sudo dd of=/etc/apt/trusted.gpg.d/llvm-snapshot.gpg
@@ -3695,8 +3695,8 @@ jobs:
           sudo apt-get -qq remove   'clang-12*' 'clang-13*' 'clang-14*' 'clang-15*' 'clang-16*' 'clang-17*' 'clang-18*' 'clang-19*' 'llvm-12*' 'llvm-13*' 'llvm-14*' 'llvm-15*' 'llvm-16*' 'llvm-17*' 'llvm-18*' 'llvm-19*' 'lld-12*' 'lld-13*' 'lld-14*' 'lld-15*' 'lld-16*' 'lld-17*' 'lld-18*' 'lld-19*' > /dev/null 2> /dev/null
 
           # Install clang-XXX, lld-XXX, and debootstrap.
-          echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-21 main" |
-            sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-jammy-21.list
+          echo "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-21 main" |
+            sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-noble-21.list
           curl https://apt.llvm.org/llvm-snapshot.gpg.key |
             gpg --dearmor                                 |
           sudo dd of=/etc/apt/trusted.gpg.d/llvm-snapshot.gpg
@@ -4022,8 +4022,8 @@ jobs:
           sudo apt-get -qq remove   'clang-12*' 'clang-13*' 'clang-14*' 'clang-15*' 'clang-16*' 'clang-17*' 'clang-18*' 'clang-19*' 'llvm-12*' 'llvm-13*' 'llvm-14*' 'llvm-15*' 'llvm-16*' 'llvm-17*' 'llvm-18*' 'llvm-19*' 'lld-12*' 'lld-13*' 'lld-14*' 'lld-15*' 'lld-16*' 'lld-17*' 'lld-18*' 'lld-19*' > /dev/null 2> /dev/null
 
           # Install clang-XXX, lld-XXX, and debootstrap.
-          echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-21 main" |
-            sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-jammy-21.list
+          echo "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-21 main" |
+            sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-noble-21.list
           curl https://apt.llvm.org/llvm-snapshot.gpg.key |
             gpg --dearmor                                 |
           sudo dd of=/etc/apt/trusted.gpg.d/llvm-snapshot.gpg
@@ -4275,8 +4275,8 @@ jobs:
           sudo apt-get -qq remove   'clang-12*' 'clang-13*' 'clang-14*' 'clang-15*' 'clang-16*' 'clang-17*' 'clang-18*' 'clang-19*' 'llvm-12*' 'llvm-13*' 'llvm-14*' 'llvm-15*' 'llvm-16*' 'llvm-17*' 'llvm-18*' 'llvm-19*' 'lld-12*' 'lld-13*' 'lld-14*' 'lld-15*' 'lld-16*' 'lld-17*' 'lld-18*' 'lld-19*' > /dev/null 2> /dev/null
 
           # Install clang-XXX, lld-XXX, and debootstrap.
-          echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-21 main" |
-            sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-jammy-21.list
+          echo "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-21 main" |
+            sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-noble-21.list
           curl https://apt.llvm.org/llvm-snapshot.gpg.key |
             gpg --dearmor                                 |
           sudo dd of=/etc/apt/trusted.gpg.d/llvm-snapshot.gpg
@@ -4894,7 +4894,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: cargo test --locked --lib -p deno -p denort -p node_shim -p deno_lib -p deno_snapshots -p deno_bundle_runtime -p deno_cache -p deno_cron -p deno_crypto -p deno_fetch -p deno_ffi -p deno_fs -p deno_http -p deno_image -p deno_io -p deno_kv -p deno_napi -p napi_sym -p deno_net -p deno_node -p deno_node_crypto -p deno_node_sqlite -p denort_helper -p deno_signals -p deno_telemetry -p deno_url -p deno_web -p deno_webgpu -p deno_webidl -p deno_websocket -p deno_webstorage -p deno_config -p deno_crypto_provider -p eszip -p deno_inspector_server -p deno_lockfile -p deno_maybe_sync -p node_resolver -p deno_npm -p deno_npm_cache -p deno_npm_installer -p deno_package_json -p deno_resolver -p deno_typescript_go_client_rust -p deno_runtime -p deno_features -p deno_permissions -p deno_subprocess_windows
+        run: cargo test --locked --lib -p deno -p denort -p node_shim -p deno_lib -p deno_snapshots -p deno_bundle_runtime -p deno_cache -p deno_cron -p deno_crypto -p deno_fetch -p deno_ffi -p deno_fs -p deno_http -p deno_image -p deno_io -p deno_kv -p deno_napi -p napi_sym -p deno_net -p deno_node -p deno_node_crypto -p deno_node_sqlite -p denort_helper -p deno_signals -p deno_telemetry -p deno_url -p deno_web -p deno_webgpu -p deno_webidl -p deno_websocket -p deno_webstorage -p deno_config -p deno_crypto_provider -p deno_dotenv -p eszip -p deno_inspector_server -p deno_lockfile -p deno_maybe_sync -p node_resolver -p deno_npm -p deno_npm_cache -p deno_npm_installer -p deno_package_json -p deno_resolver -p deno_typescript_go_client_rust -p deno_runtime -p deno_features -p deno_permissions -p deno_subprocess_windows
       - name: Cache cargo home
         uses: cirruslabs/cache/save@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && github.ref == ''refs/heads/main'''
@@ -4993,8 +4993,8 @@ jobs:
           sudo apt-get -qq remove   'clang-12*' 'clang-13*' 'clang-14*' 'clang-15*' 'clang-16*' 'clang-17*' 'clang-18*' 'clang-19*' 'llvm-12*' 'llvm-13*' 'llvm-14*' 'llvm-15*' 'llvm-16*' 'llvm-17*' 'llvm-18*' 'llvm-19*' 'lld-12*' 'lld-13*' 'lld-14*' 'lld-15*' 'lld-16*' 'lld-17*' 'lld-18*' 'lld-19*' > /dev/null 2> /dev/null
 
           # Install clang-XXX, lld-XXX, and debootstrap.
-          echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-21 main" |
-            sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-jammy-21.list
+          echo "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-21 main" |
+            sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-noble-21.list
           curl https://apt.llvm.org/llvm-snapshot.gpg.key |
             gpg --dearmor                                 |
           sudo dd of=/etc/apt/trusted.gpg.d/llvm-snapshot.gpg
@@ -5328,8 +5328,8 @@ jobs:
           sudo apt-get -qq remove   'clang-12*' 'clang-13*' 'clang-14*' 'clang-15*' 'clang-16*' 'clang-17*' 'clang-18*' 'clang-19*' 'llvm-12*' 'llvm-13*' 'llvm-14*' 'llvm-15*' 'llvm-16*' 'llvm-17*' 'llvm-18*' 'llvm-19*' 'lld-12*' 'lld-13*' 'lld-14*' 'lld-15*' 'lld-16*' 'lld-17*' 'lld-18*' 'lld-19*' > /dev/null 2> /dev/null
 
           # Install clang-XXX, lld-XXX, and debootstrap.
-          echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-21 main" |
-            sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-jammy-21.list
+          echo "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-21 main" |
+            sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-noble-21.list
           curl https://apt.llvm.org/llvm-snapshot.gpg.key |
             gpg --dearmor                                 |
           sudo dd of=/etc/apt/trusted.gpg.d/llvm-snapshot.gpg
