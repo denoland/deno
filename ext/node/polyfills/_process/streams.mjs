@@ -39,6 +39,13 @@ export function createWritableStdioStream(writer, name, warmup = false) {
         );
         return;
       }
+      // TODO(fraidev): This try/catch is a workaround. When process.stdout
+      // is a pipe (not a TTY), Node.js backs it with a real fd-based net.Socket
+      // so BrokenPipe flows naturally through stream_wrap.ts as EPIPE. Deno
+      // always uses createWritableStdioStream(io.stdout) regardless of pipe/TTY,
+      // so BrokenPipe throws synchronously here instead. Once net.Socket supports
+      // being created from a raw fd (new Socket({ fd: 1 })), process.stdout/stderr
+      // should be switched to net.Socket for non-TTY cases and this can be removed.
       try {
         writer.writeSync(
           ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, buf)
@@ -46,8 +53,6 @@ export function createWritableStdioStream(writer, name, warmup = false) {
             : Buffer.from(buf, enc),
         );
       } catch (e) {
-        // BrokenPipe errors should be emitted as async 'error' events,
-        // not thrown synchronously, matching Node.js behavior.
         if (
           ObjectPrototypeIsPrototypeOf(Deno.errors.BrokenPipe.prototype, e)
         ) {
