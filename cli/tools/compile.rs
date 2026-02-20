@@ -573,6 +573,7 @@ mod test {
         include: Default::default(),
         exclude: Default::default(),
         eszip: true,
+        self_extracting: false,
       },
       &std::env::current_dir().unwrap(),
     )
@@ -604,6 +605,7 @@ mod test {
         icon: None,
         no_terminal: false,
         eszip: true,
+        self_extracting: false,
       },
       &std::env::current_dir().unwrap(),
     )

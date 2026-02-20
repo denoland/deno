@@ -211,6 +211,7 @@ impl LspScopedResolver {
                 root_node_modules_dir: byonm_npm_resolver
                   .root_node_modules_path()
                   .map(|p| p.to_path_buf()),
+                search_stop_dir: None,
                 sys: factory.node_resolution_sys.clone(),
                 pkg_json_resolver: self.pkg_json_resolver.clone(),
               },
@@ -879,6 +880,7 @@ impl<'a> ResolverFactory<'a> {
               .map(|p| p.join("node_modules/"))
           })
         }),
+        search_stop_dir: None,
       })
     } else {
       let npmrc = self
