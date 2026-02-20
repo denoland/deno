@@ -65,7 +65,6 @@ use crate::args::BundleFlags;
 use crate::args::Flags;
 use crate::factory::CliFactory;
 use crate::file_fetcher::CliFileFetcher;
-use crate::util::fs::canonicalize_path;
 use crate::graph_container::MainModuleGraphContainer;
 use crate::graph_container::ModuleGraphContainer;
 use crate::graph_container::ModuleGraphUpdatePermit;
@@ -80,6 +79,7 @@ use crate::resolver::CliResolver;
 use crate::sys::CliSys;
 use crate::tools::bundle::externals::ExternalsMatcher;
 use crate::util::file_watcher::WatcherRestartMode;
+use crate::util::fs::canonicalize_path;
 
 static DISABLE_HACK: LazyLock<bool> =
   LazyLock::new(|| std::env::var("NO_DENO_BUNDLE_HACK").is_err());

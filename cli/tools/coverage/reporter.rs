@@ -440,10 +440,8 @@ impl CoverageReporter for HtmlCoverageReporter {
     }
 
     let root_report = Url::from_file_path(
-      canonicalize_path(
-        &coverage_root.join("html").join("index.html"),
-      )
-      .unwrap(),
+      canonicalize_path(&coverage_root.join("html").join("index.html"))
+        .unwrap(),
     )
     .unwrap();
 

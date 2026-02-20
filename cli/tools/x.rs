@@ -27,8 +27,8 @@ use crate::npm::CliNpmResolver;
 use crate::tools::pm::CacheTopLevelDepsOptions;
 use crate::util::console::ConfirmOptions;
 use crate::util::console::confirm;
-use crate::util::fs::canonicalize_path;
 use crate::util::draw_thread::DrawThread;
+use crate::util::fs::canonicalize_path;
 
 async fn resolve_local_bins(
   node_resolver: &CliNodeResolver,

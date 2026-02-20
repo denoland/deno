@@ -21,9 +21,9 @@ use tokio::sync::oneshot;
 
 use crate::cdp;
 use crate::module_loader::CliEmitter;
-use crate::util::fs::canonicalize_path;
 use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::file_watcher::WatcherRestartMode;
+use crate::util::fs::canonicalize_path;
 
 static NEXT_MSG_ID: AtomicI32 = AtomicI32::new(0);
 fn next_id() -> i32 {
