@@ -370,38 +370,48 @@ fn vfs_as_display_tree(
 mod test {
   use console_static_text::ansi::strip_ansi_codes;
   use deno_lib::standalone::virtual_fs::VfsBuilder;
+  use pretty_assertions::assert_eq;
   use test_util::TempDir;
 
   use super::*;
 
   #[test]
   fn test_vfs_as_display_tree() {
-    let temp_dir = TempDir::new();
-    temp_dir.write("root.txt", "");
-    temp_dir.create_dir_all("a");
-    temp_dir.write("a/a.txt", "data");
-    temp_dir.write("a/b.txt", "other data");
-    temp_dir.create_dir_all("b");
-    temp_dir.write("b/a.txt", "");
-    temp_dir.write("b/b.txt", "");
-    temp_dir.create_dir_all("c");
-    temp_dir.write("c/a.txt", "contents");
+    let temp_dir_guard = TempDir::new();
+    let temp_dir = temp_dir_guard.path().canonicalize();
+    temp_dir.join("root.txt").write("");
+    temp_dir.join("a").create_dir_all();
+    temp_dir.join("a/a.txt").write("data");
+    temp_dir.join("a/b.txt").write("other data");
+    temp_dir.join("b").create_dir_all();
+    temp_dir.join("b/a.txt").write("");
+    temp_dir.join("b/b.txt").write("");
+    temp_dir.join("c").create_dir_all();
+    temp_dir.join("c/a.txt").write("contents");
     temp_dir.symlink_file("c/a.txt", "c/b.txt");
-    assert_eq!(temp_dir.read_to_string("c/b.txt"), "contents"); // ensure the symlink works
+    assert_eq!(temp_dir.join("c/b.txt").read_to_string(), "contents"); // ensure the symlink works
+    // symlinked parent directory: d is the real dir, d_link -> d
+    temp_dir.join("d").create_dir_all();
+    temp_dir.join("d/a.txt").write("d_data");
+    temp_dir.symlink_dir("d", "d_link");
     let mut vfs_builder = VfsBuilder::new();
     // full dir
     vfs_builder
-      .add_dir_recursive(temp_dir.path().join("a").as_path())
+      .add_dir_recursive(temp_dir.join("a").as_path())
       .unwrap();
     // part of the dir
     vfs_builder
-      .add_file_at_path(temp_dir.path().join("b/a.txt").as_path())
+      .add_file_at_path(temp_dir.join("b/a.txt").as_path())
       .unwrap();
     // symlink
     vfs_builder
-      .add_dir_recursive(temp_dir.path().join("c").as_path())
+      .add_dir_recursive(temp_dir.join("c").as_path())
       .unwrap();
-    temp_dir.write("c/c.txt", ""); // write an extra file so it shows the whole directory
+    // file added through a symlinked parent directory
+    vfs_builder
+      .add_file_at_path(temp_dir.join("d_link/a.txt").as_path())
+      .unwrap();
+    temp_dir.join("c/c.txt").write(""); // write an extra file so it shows the whole directory
     let node = vfs_as_display_tree(&vfs_builder.build(), "executable");
     let mut text = String::new();
     node.print(&mut text).unwrap();
@@ -410,9 +420,11 @@ mod test {
       r#"executable
 ├── a/* (14B)
 ├── b/a.txt (0B)
-└─┬ c (8B)
-  ├── a.txt (8B)
-  └── b.txt --> c/a.txt
+├─┬ c (8B)
+│ ├── a.txt (8B)
+│ └── b.txt --> c/a.txt
+├── d/* (6B)
+└── d_link --> d
 "#
     );
   }

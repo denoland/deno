@@ -572,8 +572,8 @@ impl VfsBuilder {
   }
 
   pub fn add_dir_recursive(&mut self, path: &Path) -> Result<(), AnyError> {
-    let target_path = self.resolve_target_path(path)?;
-    self.add_dir_recursive_not_symlink(&target_path)
+    let canonical = self.ensure_canonical_dir(path);
+    self.add_dir_recursive_not_symlink(&canonical)
   }
 
   fn add_dir_recursive_not_symlink(
@@ -1059,19 +1059,6 @@ impl VfsBuilder {
     );
 
     Ok(())
-  }
-
-  fn resolve_target_path(&mut self, path: &Path) -> Result<PathBuf, AnyError> {
-    // ok, fs implementation
-    #[allow(clippy::disallowed_methods)]
-    let metadata = std::fs::symlink_metadata(path).with_context(|| {
-      format!("Resolving target path for '{}'", path.display())
-    })?;
-    if metadata.is_symlink() {
-      Ok(self.add_symlink(path)?.into_path_buf())
-    } else {
-      Ok(path.to_path_buf())
-    }
   }
 
   pub fn add_symlink(
