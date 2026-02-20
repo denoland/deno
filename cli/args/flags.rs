@@ -6076,12 +6076,11 @@ fn compile_parse(
   runtime_args_parse(flags, matches, true, false, true)?;
 
   if let Some(initial_cwd) = flags.initial_cwd.take() {
-    // Usually we don't canonicalize because it's more sys calls, but
-    // with deno compile we want to reduce the chance of the virtual
-    // file system having a deep tree due to the initial directory
-    // being in some symlink somewhere. This is really common when
-    // compiling on GitHub Actions for example, which uses a symlinked
-    // directory.
+    // Usually we don't canonicalize because it's more sys calls, but with deno
+    // compile we want to reduce the chance of the virtual file system having a
+    // deep tree due to the initial directory being in some symlink somewhere.
+    // This is really common when compiling on GitHub Actions for example, which
+    // uses a symlinked directory for the cwd.
     flags.initial_cwd = Some(
       crate::util::fs::canonicalize_path(&initial_cwd)
         .ok()
