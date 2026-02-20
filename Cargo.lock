@@ -2066,6 +2066,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "deno_dotenv"
+version = "0.1.0"
+
+[[package]]
 name = "deno_error"
 version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2512,6 +2516,7 @@ dependencies = [
  "data-encoding",
  "deno_ast",
  "deno_core",
+ "deno_dotenv",
  "deno_error",
  "deno_fetch",
  "deno_fs",
@@ -2527,7 +2532,6 @@ dependencies = [
  "deno_subprocess_windows",
  "deno_tls",
  "deno_whoami",
- "dotenvy",
  "errno 0.3.10",
  "h2 0.4.7",
  "http 1.1.0",
@@ -3174,6 +3178,7 @@ version = "0.263.0"
 dependencies = [
  "async-trait",
  "base64-simd",
+ "brotli",
  "bytes",
  "deno_bench_util",
  "deno_core",
@@ -5879,9 +5884,9 @@ dependencies = [
 
 [[package]]
 name = "keccak"
-version = "0.1.5"
+version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ecc2af9a1119c51f12a14607e783cb977bde58bc069ff0c3da1095e635d70654"
+checksum = "cb26cec98cce3a3d96cbb7bced3c4b16e3d13f27ec56dbd62cbc8f39cfb9d653"
 dependencies = [
  "cpufeatures",
 ]

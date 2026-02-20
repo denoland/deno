@@ -38,6 +38,7 @@ import {
   ERR_OUT_OF_RANGE,
   ERR_UNKNOWN_SIGNAL,
   errnoException,
+  NodeTypeError,
 } from "ext:deno_node/internal/errors.ts";
 import { getOptionValue } from "ext:deno_node/internal/options.ts";
 import assert from "node:assert";
@@ -94,8 +95,18 @@ import * as constants from "ext:deno_node/internal_binding/constants.ts";
 import * as uv from "ext:deno_node/internal_binding/uv.ts";
 import type { BindingName } from "ext:deno_node/internal_binding/mod.ts";
 import { buildAllowedFlags } from "ext:deno_node/internal/process/per_thread.mjs";
+import type fsUtils from "ext:deno_node/internal/fs/utils.mjs";
 
-const { NumberMAX_SAFE_INTEGER, ObjectDefineProperty } = primordials;
+let fsUtilsModule: typeof fsUtils;
+const lazyLoadFsUtils = core.createLazyLoader<typeof fsUtils>(
+  "ext:deno_node/internal/fs/utils.mjs",
+);
+
+const {
+  NumberMAX_SAFE_INTEGER,
+  ObjectDefineProperty,
+  ObjectPrototypeIsPrototypeOf,
+} = primordials;
 
 const notImplementedEvents = [
   "multipleResolves",
@@ -628,6 +639,7 @@ Object.defineProperty(process, "arch", {
   get() {
     return arch;
   },
+  configurable: true,
 });
 
 Object.defineProperty(process, "report", {
@@ -693,6 +705,12 @@ process.exit = exit;
 
 /** https://nodejs.org/api/process.html#processabort */
 process.abort = abort;
+
+/** https://nodejs.org/api/process.html#processopenStdin */
+process.openStdin = () => {
+  process.stdin.resume();
+  return process.stdin;
+};
 
 // NB(bartlomieju): this is a private API in Node.js, but there are packages like
 // `aws-iot-device-sdk-v2` that depend on it
@@ -885,7 +903,22 @@ process.getBuiltinModule = getBuiltinModule;
 process._eval = undefined;
 
 export function loadEnvFile(path = ".env") {
-  return op_node_load_env_file(path);
+  if (typeof path !== "string") {
+    fsUtilsModule ??= lazyLoadFsUtils();
+    path = fsUtilsModule.getValidatedPathToString(path);
+  }
+
+  try {
+    return op_node_load_env_file(path);
+  } catch (err) {
+    if (ObjectPrototypeIsPrototypeOf(Deno.errors.InvalidData.prototype, err)) {
+      throw new NodeTypeError(
+        "ERR_INVALID_ARG_TYPE",
+        `Contents of '${path}' should be a valid string.`,
+      );
+    }
+    throw denoErrorToNodeError(err as Error, { syscall: "open", path });
+  }
 }
 
 process.loadEnvFile = loadEnvFile;

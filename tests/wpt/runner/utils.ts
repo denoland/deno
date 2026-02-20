@@ -50,7 +50,7 @@ async function getWptSubmoduleHash(): Promise<string> {
 }
 
 export function shouldSkipOnCi(): Promise<boolean> {
-  const targetDir = join(ROOT_PATH, "target", release ? "release" : "debug");
+  const targetDir = join(ROOT_PATH, "target");
   return shouldSkipOnCiGeneric("wpt", targetDir, async (hasher) => {
     const hashDenoBinaryTask = hasher.hashFile(denoBinary());
     const submoduleHash = await getWptSubmoduleHash();

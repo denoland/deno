@@ -51,6 +51,7 @@ import {
 import { parseArgs } from "ext:deno_node/internal/util/parse_args/parse_args.js";
 import * as abortSignal from "ext:deno_web/03_abort_signal.js";
 import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
+import binding from "ext:deno_node/internal_binding/util.ts";
 
 let process: NodeJS.Process;
 const lazyLoadProcess = core.createLazyLoader<NodeJS.Process>(
@@ -313,6 +314,13 @@ export function getCallSites(
   return capturedTraces;
 }
 
+export function parseEnv(
+  input: string,
+): Record<string, string> {
+  validateString(input, "content");
+  return binding.parseEnv(input);
+}
+
 export { getSystemErrorMessage, getSystemErrorName, isDeepStrictEqual };
 
 export default {
@@ -340,4 +348,5 @@ export default {
   isDeepStrictEqual,
   isArray,
   styleText,
+  parseEnv,
 };

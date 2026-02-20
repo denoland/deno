@@ -10,6 +10,7 @@ import {
   defineMatrix,
   type ExpressionValue,
   job,
+  literal,
   step,
 } from "jsr:@david/gagen@0.2.18";
 
@@ -116,8 +117,8 @@ sudo apt-get -qq remove \
   'clang-12*' 'clang-13*' 'clang-14*' 'clang-15*' 'clang-16*' 'clang-17*' 'clang-18*' 'clang-19*' 'llvm-12*' 'llvm-13*' 'llvm-14*' 'llvm-15*' 'llvm-16*' 'llvm-17*' 'llvm-18*' 'llvm-19*' 'lld-12*' 'lld-13*' 'lld-14*' 'lld-15*' 'lld-16*' 'lld-17*' 'lld-18*' 'lld-19*' > /dev/null 2> /dev/null
 
 # Install clang-XXX, lld-XXX, and debootstrap.
-echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-${llvmVersion} main" |
-  sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-jammy-${llvmVersion}.list
+echo "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-${llvmVersion} main" |
+  sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-noble-${llvmVersion}.list
 curl https://apt.llvm.org/llvm-snapshot.gpg.key |
   gpg --dearmor                                 |
 sudo dd of=/etc/apt/trusted.gpg.d/llvm-snapshot.gpg
@@ -963,8 +964,9 @@ const buildJobs = buildItems.map((rawBuildItem) => {
         return Array.from({ length: total }, (_, i) => ({
           test_crate: tc.name,
           test_package: tc.package,
-          shard_index: i,
-          shard_total: total,
+          // make these strings so index isn't falsy when 0
+          shard_index: i.toString(),
+          shard_total: total.toString(),
           shard_label: total > 1 ? `(${i + 1}/${total}) ` : "",
         }));
       }),
@@ -1077,6 +1079,20 @@ const buildJobs = buildItems.map((rawBuildItem) => {
               "fi",
             ],
           },
+          {
+            name: "Upload test results",
+            uses: "actions/upload-artifact@v6",
+            if: conditions.status.always().and(isNotTag),
+            with: {
+              name:
+                `test-results-${buildItem.os}-${buildItem.arch}-${buildItem.profile}-${testMatrix.test_crate}${
+                  testMatrix.shard_total.greaterThan(1).then(
+                    literal("-shard-").concat(testMatrix.shard_index),
+                  ).else("")
+                }.json`,
+              path: `target/test_results_${testMatrix.test_crate}.json`,
+            },
+          },
           saveCacheStep.if(buildItem.save_cache),
         ),
       },
@@ -1171,6 +1187,15 @@ const buildJobs = buildItems.map((rawBuildItem) => {
   }
 
   if (buildItem.wpt.isPossiblyTrue()) {
+    const buildCacheSteps = createRestoreAndSaveCacheSteps({
+      name: "wpt and autobahn test run hashes",
+      path: [
+        "./target/wpt_input_hash",
+        "./target/autobahn_input_hash",
+      ],
+      cacheKeyPrefix:
+        `${cacheVersion}-wpt-target-${buildItem.os}-${buildItem.arch}-${buildItem.profile}`,
+    });
     additionalJobs.push(job(
       jobIdForJob("wpt"),
       {
@@ -1184,6 +1209,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
           cloneRepoStep,
           cloneStdSubmoduleStep,
           cloneSubmodule("./tests/wpt/suite"),
+          buildCacheSteps.restoreCacheStep,
           installDenoStep,
           installPythonStep,
           denoArtifact.download(),
@@ -1252,6 +1278,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
               "    ./tools/upload_wptfyi.js $(git rev-parse HEAD) --ghstatus",
             ],
           },
+          buildCacheSteps.saveCacheStep.if(isMainBranch.and(isNotTag)),
         ),
       },
     ));
