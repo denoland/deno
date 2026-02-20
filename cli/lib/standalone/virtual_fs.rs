@@ -523,10 +523,6 @@ pub struct VfsBuilder {
   /// canonical forms, used to detect aliased parent directories.
   /// - `None` = path is already canonical (no changes needed)
   /// - `Some(path)` = path was aliased, use this canonical form instead
-  ///
-  /// Note: `None` is also inserted upfront in `ensure_canonical_dir` as a
-  /// sentinel to prevent infinite recursion on circular symlinks. It gets
-  /// overwritten to `Some(...)` if the path turns out to have aliases.
   canonical_path_cache: HashMap<PathBuf, Option<PathBuf>>,
 }
 
@@ -815,7 +811,8 @@ impl VfsBuilder {
       return CanonicalParentPath(Cow::Borrowed(path));
     };
 
-    let canonical_parent = self.ensure_canonical_dir(parent);
+    let canonical_parent =
+      self.ensure_canonical_dir_inner(parent, &mut HashSet::new());
     if canonical_parent.as_ref() == parent {
       self.canonical_path_cache.insert(path.to_path_buf(), None);
       return CanonicalParentPath(Cow::Borrowed(path));
@@ -836,6 +833,14 @@ impl VfsBuilder {
     &mut self,
     dir_path: &'a Path,
   ) -> CanonicalPath<'a> {
+    self.ensure_canonical_dir_inner(dir_path, &mut HashSet::new())
+  }
+
+  fn ensure_canonical_dir_inner<'a>(
+    &mut self,
+    dir_path: &'a Path,
+    visited: &mut HashSet<PathBuf>,
+  ) -> CanonicalPath<'a> {
     if let Some(cached) = self.canonical_path_cache.get(dir_path) {
       return match cached {
         Some(canonical) => CanonicalPath(Cow::Owned(canonical.clone())),
@@ -843,11 +848,13 @@ impl VfsBuilder {
       };
     }
 
-    // insert negative cache upfront to prevent infinite recursion
-    // if circular symlinks are encountered
-    self
-      .canonical_path_cache
-      .insert(dir_path.to_path_buf(), None);
+    if !visited.insert(dir_path.to_path_buf()) {
+      log::warn!(
+        "Circular symlink detected while canonicalizing directory: {}",
+        dir_path.display()
+      );
+      return CanonicalPath(Cow::Borrowed(dir_path));
+    }
 
     let mut current_real = PathBuf::new();
     let mut changed = false;
@@ -878,7 +885,10 @@ impl VfsBuilder {
           ));
 
           // recursively ensure the symlink target is canonical
-          let resolved = self.ensure_canonical_dir(&resolved).0.into_owned();
+          let resolved = self
+            .ensure_canonical_dir_inner(&resolved, visited)
+            .0
+            .into_owned();
 
           // determine if the final target is a directory
           // ok, fs implementation
@@ -978,7 +988,9 @@ impl VfsBuilder {
         .insert(dir_path.to_path_buf(), Some(current_real.clone()));
       CanonicalPath(Cow::Owned(current_real))
     } else {
-      // already inserted None upfront
+      self
+        .canonical_path_cache
+        .insert(dir_path.to_path_buf(), None);
       CanonicalPath(Cow::Borrowed(dir_path))
     }
   }
