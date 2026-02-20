@@ -55,6 +55,8 @@ import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
 import { _readWithCancelHandle } from "ext:deno_io/12_io.js";
 import { NodeTypeError } from "ext:deno_node/internal/errors.ts";
 
+export const kUseNativeWrap = Symbol("useNativeWrap");
+
 export interface Reader {
   read(p: Uint8Array): Promise<number | null>;
 }
@@ -231,7 +233,9 @@ export class LibuvStreamWrap extends HandleWrap {
     const rid = this[kStreamBaseField]![internalRidSymbol];
     // Fast case optimization: two chunks, and all buffers.
     if (
-      chunks.length === 2 && allBuffers && supportsWritev &&
+      chunks.length === 2 &&
+      allBuffers &&
+      supportsWritev &&
       op_can_write_vectored(rid)
     ) {
       // String chunks.
@@ -239,11 +243,7 @@ export class LibuvStreamWrap extends HandleWrap {
       if (typeof chunks[1] === "string") chunks[1] = Buffer.from(chunks[1]);
 
       PromisePrototypeThen(
-        op_raw_write_vectored(
-          rid,
-          chunks[0],
-          chunks[1],
-        ),
+        op_raw_write_vectored(rid, chunks[0], chunks[1]),
         (nwritten) => {
           try {
             req.oncomplete(0);
@@ -365,8 +365,8 @@ export class LibuvStreamWrap extends HandleWrap {
     const ridBefore = this[kStreamBaseField]![internalRidSymbol];
     try {
       if (this[kStreamBaseField]![_readWithCancelHandle]) {
-        const { cancelHandle, nread: p } = this[kStreamBaseField]!
-          [_readWithCancelHandle](buf);
+        const { cancelHandle, nread: p } =
+          this[kStreamBaseField]![_readWithCancelHandle](buf);
         if (cancelHandle) {
           this.cancelHandle = cancelHandle;
         }
@@ -378,9 +378,7 @@ export class LibuvStreamWrap extends HandleWrap {
     } catch (e) {
       // Try to read again if the underlying stream resource
       // changed. This can happen during TLS upgrades (eg. STARTTLS)
-      if (
-        ridBefore != this[kStreamBaseField]![internalRidSymbol]
-      ) {
+      if (ridBefore != this[kStreamBaseField]![internalRidSymbol]) {
         return this.#read();
       }
 
@@ -454,9 +452,7 @@ export class LibuvStreamWrap extends HandleWrap {
     } catch (e) {
       // Try to read again if the underlying stream resource
       // changed. This can happen during TLS upgrades (eg. STARTTLS)
-      if (
-        ridBefore != this[kStreamBaseField]![internalRidSymbol]
-      ) {
+      if (ridBefore != this[kStreamBaseField]![internalRidSymbol]) {
         return this.#write(req, data.subarray(nwritten));
       }
 

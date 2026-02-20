@@ -42,6 +42,7 @@ import { deprecate } from "node:util";
 import dc from "node:diagnostics_channel";
 import {
   kStreamBaseField,
+  kUseNativeWrap,
 } from "ext:deno_node/internal_binding/stream_wrap.ts";
 import { utcDate } from "ext:deno_node/internal/http.ts";
 import { ShutdownWrap } from "ext:deno_node/internal_binding/stream_wrap.ts";
@@ -3841,6 +3842,8 @@ function connect(authority, options, listener) {
   } else if (authority.host) {
     host = authority.host;
   }
+
+  options[kUseNativeWrap] = true;
 
   let socket;
   if (typeof options.createConnection === "function") {
