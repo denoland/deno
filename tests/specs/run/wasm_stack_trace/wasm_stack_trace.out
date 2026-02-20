@@ -1,0 +1,15 @@
+=== Test 1: unreachable trap ===
+RuntimeError: unreachable
+    at main (wasm://wasm/[WILDCARD]:wasm-function[0]:0x[WILDCARD])
+    at [WILDCARD]wasm_stack_trace.js:7:20
+
+=== Test 2: wasm call chain ===
+Error: from JS
+    at js_func ([WILDCARD]wasm_stack_trace.js:20:15)
+    at call_js (wasm://wasm/[WILDCARD]:wasm-function[1]:0x[WILDCARD])
+    at entry (wasm://wasm/[WILDCARD]:wasm-function[2]:0x[WILDCARD])
+    at [WILDCARD]wasm_stack_trace.js:24:20
+
+=== Test 3: prepareStackTrace ===
+main (wasm://wasm/[WILDCARD]:wasm-function[0]:0x[WILDCARD])
+[WILDCARD]wasm_stack_trace.js:41:20
