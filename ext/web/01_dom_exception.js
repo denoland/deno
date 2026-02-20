@@ -19,6 +19,7 @@ const {
   ObjectSetPrototypeOf,
   ReflectConstruct,
   ReflectHas,
+  RangeError,
   Symbol,
   SymbolFor,
 } = primordials;
@@ -82,7 +83,6 @@ const nameToCodeMapping = ObjectCreate(null, {
   NetworkError: { value: NETWORK_ERR },
   AbortError: { value: ABORT_ERR },
   URLMismatchError: { value: URL_MISMATCH_ERR },
-  QuotaExceededError: { value: QUOTA_EXCEEDED_ERR },
   TimeoutError: { value: TIMEOUT_ERR },
   InvalidNodeTypeError: { value: INVALID_NODE_TYPE_ERR },
   DataCloneError: { value: DATA_CLONE_ERR },
@@ -217,4 +217,77 @@ for (let i = 0; i < entries.length; ++i) {
   ObjectDefineProperty(DOMException.prototype, key, desc);
 }
 
-export { DOMException, DOMExceptionPrototype };
+const _quota = Symbol("quota");
+const _requested = Symbol("requested");
+
+// Defined in WebIDL 4.3.1.
+// https://webidl.spec.whatwg.org/#quotaexceedederror
+class QuotaExceededError extends DOMException {
+  [_quota];
+  [_requested];
+
+  constructor(message = "", options = { __proto__: null }) {
+    super(message, "QuotaExceededError");
+
+    // Override the code to QUOTA_EXCEEDED_ERR (22), since
+    // "QuotaExceededError" is no longer in the DOMException names table
+    // but the legacy code must still be 22 per spec.
+    this[_code] = QUOTA_EXCEEDED_ERR;
+
+    if (options !== null && typeof options === "object") {
+      if (ObjectHasOwn(options, "quota")) {
+        const quota = webidl.converters["unrestricted double"](
+          options.quota,
+          "Failed to construct 'QuotaExceededError'",
+          "'quota' member of QuotaExceededErrorOptions",
+        );
+        if (quota < 0) {
+          throw new RangeError(
+            "Failed to construct 'QuotaExceededError': quota must not be negative",
+          );
+        }
+        this[_quota] = quota;
+      } else {
+        this[_quota] = null;
+      }
+      if (ObjectHasOwn(options, "requested")) {
+        const requested = webidl.converters["unrestricted double"](
+          options.requested,
+          "Failed to construct 'QuotaExceededError'",
+          "'requested' member of QuotaExceededErrorOptions",
+        );
+        if (requested < 0) {
+          throw new RangeError(
+            "Failed to construct 'QuotaExceededError': requested must not be negative",
+          );
+        }
+        this[_requested] = requested;
+      } else {
+        this[_requested] = null;
+      }
+    } else {
+      this[_quota] = null;
+      this[_requested] = null;
+    }
+  }
+
+  get quota() {
+    webidl.assertBranded(this, QuotaExceededErrorPrototype);
+    return this[_quota];
+  }
+
+  get requested() {
+    webidl.assertBranded(this, QuotaExceededErrorPrototype);
+    return this[_requested];
+  }
+}
+
+webidl.configureInterface(QuotaExceededError);
+const QuotaExceededErrorPrototype = QuotaExceededError.prototype;
+
+export {
+  DOMException,
+  DOMExceptionPrototype,
+  QuotaExceededError,
+  QuotaExceededErrorPrototype,
+};
