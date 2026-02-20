@@ -27,7 +27,8 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { TCP as NativeTCP } from "ext:core/ops";
+import { TCP as NativeTCP, op_net_connect_tcp } from "ext:core/ops";
+import { TcpConn } from "ext:deno_net/01_net.js";
 import { primordials } from "ext:core/mod.js";
 const { Error } = primordials;
 import { notImplemented } from "ext:deno_node/_utils.ts";
@@ -246,7 +247,8 @@ export class TCP extends ConnectionWrap {
       if (status !== 0) {
         try {
           self.onconnection!(status, undefined);
-        } catch {
+        } catch (e) {
+          console.log("error in onconnection", e);
           // swallow callback errors.
         }
         return;
@@ -260,7 +262,8 @@ export class TCP extends ConnectionWrap {
 
       try {
         self.onconnection!(0, clientHandle);
-      } catch {
+      } catch (e) {
+        console.log("error in onconnection", e);
         // swallow callback errors.
       }
     };
@@ -401,6 +404,7 @@ export class TCP extends ConnectionWrap {
   override unref() {
     if (this.#useNative && this.#native) {
       // TODO: implement uv_unref on native handle
+      this.#native.unref();
       return;
     }
 
@@ -548,18 +552,7 @@ export class TCP extends ConnectionWrap {
     return 0;
   }
 
-  /**
-   * Connect to an IPv4 or IPv6 address.
-   * @param req A TCPConnectWrap instance.
-   * @param address The hostname to connect to.
-   * @param port The port to connect to.
-   * @return An error status code.
-   */
-  #connect(req: TCPConnectWrap, address: string, port: number): number {
-    this.#remoteAddress = address;
-    this.#remotePort = port;
-    this.#remoteFamily = getIPFamily(address);
-
+  #nativeConnect(req: TCPConnectWrap, address: string, port: number) {
     const self = this;
     this.#native.onconnect = function (status: number) {
       if (status === 0) {
@@ -605,8 +598,56 @@ export class TCP extends ConnectionWrap {
         }
       });
     }
+  }
 
-    return 0;
+  /**
+   * Connect to an IPv4 or IPv6 address.
+   * @param req A TCPConnectWrap instance.
+   * @param address The hostname to connect to.
+   * @param port The port to connect to.
+   * @return An error status code.
+   */
+  #connect(req: TCPConnectWrap, address: string, port: number): number {
+    this.#remoteAddress = address;
+    this.#remotePort = port;
+    this.#remoteFamily = getIPFamily(address);
+
+    if (this.#useNative) {
+      this.#nativeConnect(req, address, port);
+      return 0;
+    } else {
+      this.#remoteAddress = address;
+      this.#remotePort = port;
+      this.#remoteFamily = getIPFamily(address);
+
+      op_net_connect_tcp(
+        { hostname: address ?? "127.0.0.1", port },
+        this.#netPermToken,
+      ).then(
+        ({ 0: rid, 1: localAddr, 2: remoteAddr }) => {
+          // Incorrect / backwards, but correcting the local address and port with
+          // what was actually used given we can't actually specify these in Deno.
+          this.#address = req.localAddress = localAddr.hostname;
+          this.#port = req.localPort = localAddr.port;
+          this[kStreamBaseField] = new TcpConn(rid, remoteAddr, localAddr);
+
+          try {
+            this.afterConnect(req, 0);
+          } catch {
+            // swallow callback errors.
+          }
+        },
+        () => {
+          try {
+            // TODO(cmorten): correct mapping of connection error to status code.
+            this.afterConnect(req, codeMap.get("ECONNREFUSED")!);
+          } catch {
+            // swallow callback errors.
+          }
+        },
+      );
+      return 0;
+    }
   }
 
   /** Handle backoff delays following an unsuccessful accept. */
@@ -701,10 +742,7 @@ export class TCP extends ConnectionWrap {
       this.#native = null;
     }
 
-    if (
-      !this.#useNative &&
-      this.provider === providerType.TCPSERVERWRAP
-    ) {
+    if (!this.#useNative && this.provider === providerType.TCPSERVERWRAP) {
       try {
         this.#listener.close();
       } catch {

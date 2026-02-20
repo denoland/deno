@@ -623,6 +623,16 @@ impl TCP {
     // Drop the owned StreamHandleData (single owner).
     self.handle_data.replace(None);
   }
+
+  #[fast]
+  fn unref(&self) {
+    let tcp = self.raw();
+    unsafe {
+      if !tcp.is_null() {
+        uv_compat::uv_unref(tcp.cast());
+      }
+    }
+  }
 }
 
 // -- helpers --
