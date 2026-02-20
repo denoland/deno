@@ -972,10 +972,22 @@ async fn install_global_compiled(
   };
 
   let output_path = PathBuf::from(&output);
-  if output_path.is_file() && !install_flags_global.force {
-    return Err(anyhow!(
-      "Existing installation found. Aborting (Use -f to overwrite).",
-    ));
+  if output_path.is_file() {
+    if !install_flags_global.force {
+      return Err(anyhow!(
+        "Existing installation found. Aborting (Use -f to overwrite).",
+      ));
+    }
+    // Remove the existing file so that the compile step doesn't
+    // fail its own safety check (which guards against overwriting
+    // files not produced by `deno compile`).
+    std::fs::remove_file(&output_path).with_context(|| {
+      format!(
+        "Failed to remove existing installation at '{}'. \
+         On Windows, this can happen if the executable is currently running.",
+        output_path.display()
+      )
+    })?;
   }
 
   let compile_flags = CompileFlags {
