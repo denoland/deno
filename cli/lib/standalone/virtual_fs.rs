@@ -1155,6 +1155,7 @@ impl VfsBuilder {
         canonical.display(),
       );
     }
+    let path = canonical;
     let offset_with_length = self.files.add_data(data);
     let case_sensitivity = self.case_sensitivity;
     let parent = path.parent().unwrap();
