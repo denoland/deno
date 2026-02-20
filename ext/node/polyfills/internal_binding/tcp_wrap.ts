@@ -46,6 +46,7 @@ import {
   ShutdownWrap,
   streamBaseState,
   WriteWrap,
+  kUseNativeWrap,
 } from "ext:deno_node/internal_binding/stream_wrap.ts";
 import { ownerSymbol } from "ext:deno_node/internal_binding/symbols.ts";
 import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
@@ -117,8 +118,8 @@ export class TCP extends ConnectionWrap {
 
   // Native libuv TCP handle
   #native: any;
-  // True when using the native libuv path (bind/listen/accept)
-  #useNative = false;
+
+  [kUseNativeWrap]: boolean = false;
 
   /**
    * Creates a new TCP class instance.
@@ -191,7 +192,7 @@ export class TCP extends ConnectionWrap {
   bind(address: string, port: number): number {
     this.#address = address;
     this.#port = port;
-    this.#useNative = true;
+    this[kUseNativeWrap] = true;
     return this.#native.bind(address, port);
   }
 
@@ -204,7 +205,7 @@ export class TCP extends ConnectionWrap {
   bind6(address: string, port: number, _flags: number): number {
     this.#address = address;
     this.#port = port;
-    this.#useNative = true;
+    this[kUseNativeWrap] = true;
     return this.#native.bind6(address, port);
   }
 
@@ -236,7 +237,7 @@ export class TCP extends ConnectionWrap {
    * @return An error status code.
    */
   listen(backlog: number): number {
-    if (!this.#useNative) {
+    if (!this[kUseNativeWrap]) {
       return this.#listenLegacy(backlog);
     }
 
@@ -256,7 +257,7 @@ export class TCP extends ConnectionWrap {
 
       self.#connections++;
       const clientHandle = new TCP(socketType.SOCKET);
-      clientHandle.#useNative = true;
+      clientHandle[kUseNativeWrap] = true;
       self.#native.accept(clientHandle.#native);
       clientHandle.#native.setOwner();
 
@@ -272,7 +273,7 @@ export class TCP extends ConnectionWrap {
   }
 
   override readStart(): number {
-    if (!this.#useNative || !this.#native) {
+    if (!this[kUseNativeWrap] || !this.#native) {
       return super.readStart();
     }
 
@@ -303,7 +304,7 @@ export class TCP extends ConnectionWrap {
   }
 
   override readStop(): number {
-    if (!this.#useNative || !this.#native) {
+    if (!this[kUseNativeWrap] || !this.#native) {
       return super.readStop();
     }
 
@@ -315,7 +316,7 @@ export class TCP extends ConnectionWrap {
     req: WriteWrap<LibuvStreamWrap>,
     data: Uint8Array,
   ): number {
-    if (!this.#useNative || !this.#native) {
+    if (!this[kUseNativeWrap] || !this.#native) {
       return super.writeBuffer(req, data);
     }
 
@@ -340,7 +341,7 @@ export class TCP extends ConnectionWrap {
     chunks: Buffer[] | (string | Buffer)[],
     allBuffers: boolean,
   ): number {
-    if (!this.#useNative) {
+    if (!this[kUseNativeWrap]) {
       return super.writev(req, chunks, allBuffers);
     }
 
@@ -369,7 +370,7 @@ export class TCP extends ConnectionWrap {
   }
 
   override shutdown(req: ShutdownWrap<LibuvStreamWrap>): number {
-    if (!this.#useNative) {
+    if (!this[kUseNativeWrap]) {
       return super.shutdown(req);
     }
 
@@ -387,7 +388,7 @@ export class TCP extends ConnectionWrap {
   }
 
   override ref() {
-    if (this.#useNative && this.#native) {
+    if (this[kUseNativeWrap] && this.#native) {
       // TODO: implement uv_ref on native handle
       return;
     }
@@ -402,7 +403,7 @@ export class TCP extends ConnectionWrap {
   }
 
   override unref() {
-    if (this.#useNative && this.#native) {
+    if (this[kUseNativeWrap] && this.#native) {
       // TODO: implement uv_unref on native handle
       this.#native.unref();
       return;
@@ -423,7 +424,7 @@ export class TCP extends ConnectionWrap {
    * @return An error status code.
    */
   getsockname(sockname: Record<string, never> | AddressInfo): number {
-    if (this.#useNative && this.#native) {
+    if (this[kUseNativeWrap] && this.#native) {
       const info = this.#native.getsockname();
       if (info) {
         sockname.address = info.address;
@@ -454,7 +455,7 @@ export class TCP extends ConnectionWrap {
    * @return An error status code.
    */
   getpeername(peername: Record<string, never> | AddressInfo): number {
-    if (this.#useNative && this.#native) {
+    if (this[kUseNativeWrap] && this.#native) {
       const info = this.#native.getpeername();
       if (info) {
         peername.address = info.address;
@@ -484,7 +485,7 @@ export class TCP extends ConnectionWrap {
    * @return An error status code.
    */
   setNoDelay(noDelay: boolean): number {
-    if (this.#useNative) {
+    if (this[kUseNativeWrap]) {
       return this.#native.setNoDelay(noDelay);
     }
 
@@ -556,7 +557,7 @@ export class TCP extends ConnectionWrap {
     const self = this;
     this.#native.onconnect = function (status: number) {
       if (status === 0) {
-        self.#useNative = true;
+        self[kUseNativeWrap] = true;
 
         // Populate local address from the native handle
         const sockname = self.#native.getsockname();
@@ -612,7 +613,7 @@ export class TCP extends ConnectionWrap {
     this.#remotePort = port;
     this.#remoteFamily = getIPFamily(address);
 
-    if (this.#useNative) {
+    if (this[kUseNativeWrap]) {
       this.#nativeConnect(req, address, port);
       return 0;
     } else {
@@ -742,7 +743,7 @@ export class TCP extends ConnectionWrap {
       this.#native = null;
     }
 
-    if (!this.#useNative && this.provider === providerType.TCPSERVERWRAP) {
+    if (!this[kUseNativeWrap] && this.provider === providerType.TCPSERVERWRAP) {
       try {
         this.#listener.close();
       } catch {
