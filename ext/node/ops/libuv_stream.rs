@@ -11,7 +11,7 @@ use deno_core::GarbageCollected;
 use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::op2;
-use deno_core::v8;
+use deno_core::uv_compat;
 use deno_core::uv_compat::UvBuf;
 use deno_core::uv_compat::UvConnect;
 use deno_core::uv_compat::UvHandle;
@@ -20,7 +20,7 @@ use deno_core::uv_compat::UvShutdown;
 use deno_core::uv_compat::UvStream;
 use deno_core::uv_compat::UvTcp;
 use deno_core::uv_compat::UvWrite;
-use deno_core::uv_compat;
+use deno_core::v8;
 
 use super::handle_wrap::AsyncId;
 
@@ -460,8 +460,7 @@ impl TCP {
       };
       let req_ptr = &mut write_req.uv_req as *mut UvWrite;
       let _ = Box::into_raw(write_req); // leak; freed in write_cb
-      let ret =
-        uv_compat::uv_write(req_ptr, stream, &buf, 1, Some(write_cb));
+      let ret = uv_compat::uv_write(req_ptr, stream, &buf, 1, Some(write_cb));
       if ret != 0 {
         // Failed to queue write, reclaim the WriteReq
         let _ = Box::from_raw(req_ptr as *mut WriteReq);
@@ -482,11 +481,7 @@ impl TCP {
         return -1;
       }
       let req = Box::into_raw(Box::new(uv_compat::new_shutdown()));
-      let ret = uv_compat::uv_shutdown(
-        req,
-        stream,
-        Some(shutdown_cb),
-      );
+      let ret = uv_compat::uv_shutdown(req, stream, Some(shutdown_cb));
       if ret != 0 {
         let _ = Box::from_raw(req);
       }
@@ -550,8 +545,7 @@ impl TCP {
         return None;
       }
       let mut storage: libc::sockaddr_storage = std::mem::zeroed();
-      let mut len =
-        std::mem::size_of::<libc::sockaddr_storage>() as i32;
+      let mut len = std::mem::size_of::<libc::sockaddr_storage>() as i32;
       let ret = uv_compat::uv_tcp_getpeername(
         tcp,
         &mut storage as *mut _ as *mut _,
@@ -572,8 +566,7 @@ impl TCP {
         return None;
       }
       let mut storage: libc::sockaddr_storage = std::mem::zeroed();
-      let mut len =
-        std::mem::size_of::<libc::sockaddr_storage>() as i32;
+      let mut len = std::mem::size_of::<libc::sockaddr_storage>() as i32;
       let ret = uv_compat::uv_tcp_getsockname(
         tcp,
         &mut storage as *mut _ as *mut _,
@@ -623,15 +616,22 @@ impl TCP {
         // 1. Removed from the loop's handle queue
         // 2. Pending writes cancelled with UV_ECANCELED
         // 3. Handle memory freed only in the callback (after libuv is done)
-        uv_compat::uv_close(
-          tcp as *mut UvHandle,
-          Some(tcp_close_cb),
-        );
+        uv_compat::uv_close(tcp as *mut UvHandle, Some(tcp_close_cb));
       }
       *self.handle.borrow_mut() = ptr::null_mut();
     }
     // Drop the owned StreamHandleData (single owner).
     self.handle_data.replace(None);
+  }
+
+  #[fast]
+  fn unref(&self) {
+    let tcp = self.raw();
+    unsafe {
+      if !tcp.is_null() {
+        uv_compat::uv_unref(tcp.cast());
+      }
+    }
   }
 }
 
@@ -651,8 +651,7 @@ unsafe fn sockaddr_from_storage(
     match storage.ss_family as i32 {
       libc::AF_INET => {
         let sin = storage as *const _ as *const libc::sockaddr_in;
-        let ip =
-          std::net::Ipv4Addr::from(u32::from_be((*sin).sin_addr.s_addr));
+        let ip = std::net::Ipv4Addr::from(u32::from_be((*sin).sin_addr.s_addr));
         let port = u16::from_be((*sin).sin_port);
         Some(SockAddr {
           address: ip.to_string(),

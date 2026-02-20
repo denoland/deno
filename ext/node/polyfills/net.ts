@@ -515,6 +515,7 @@ function _internalConnectMultipleTimeout(context, req, handle) {
 }
 
 function _checkBindError(err: number, port: number, handle: TCP) {
+  console.log("_checkBindError", err, port);
   // EADDRINUSE may not be reported until we call `listen()` or `connect()`.
   // To complicate matters, a failed `bind()` followed by `listen()` or `connect()`
   // will implicitly bind to a random port. Ergo, check that the socket is
@@ -547,7 +548,7 @@ function _internalConnect(
   port: number,
   addressType: number,
   localAddress: string,
-  localPort: number,
+  localPort: number | undefined,
   flags: number,
 ) {
   assert(socket.connecting);
@@ -555,6 +556,7 @@ function _internalConnect(
   let err;
 
   if (localAddress || localPort) {
+    localPort |= 0;
     if (addressType === 4) {
       localAddress = localAddress || DEFAULT_IPV4_ADDR;
       err = (socket._handle as TCP).bind(localAddress, localPort);
@@ -653,7 +655,8 @@ function _internalConnectMultiple(context, canceled?: boolean) {
     if (addressType === 4) {
       localAddress = DEFAULT_IPV4_ADDR;
       err = self._handle.bind(localAddress, localPort);
-    } else { // addressType === 6
+    } else {
+      // addressType === 6
       localAddress = DEFAULT_IPV6_ADDR;
       err = self._handle.bind6(localAddress, localPort, flags);
     }
@@ -837,10 +840,7 @@ function _initSocketHandle(socket: Socket) {
   }
 }
 
-function _lookupAndConnect(
-  self: Socket,
-  options: TcpSocketConnectOptions,
-) {
+function _lookupAndConnect(self: Socket, options: TcpSocketConnectOptions) {
   const { localAddress, localPort } = options;
   const host = options.host || "localhost";
   let { port, autoSelectFamilyAttemptTimeout, autoSelectFamily } = options;
@@ -930,7 +930,9 @@ function _lookupAndConnect(
   const lookup = options.lookup || dnsLookup;
 
   if (
-    dnsOpts.family !== 4 && dnsOpts.family !== 6 && !localAddress &&
+    dnsOpts.family !== 4 &&
+    dnsOpts.family !== 6 &&
+    !localAddress &&
     autoSelectFamily
   ) {
     debug("connect: autodetecting");
@@ -1232,7 +1234,8 @@ export function Socket(options) {
   this.connecting = false;
 
   const errorStack = new Error().stack;
-  this._needsSockInitWorkaround = options.handle?.ipc !== true &&
+  this._needsSockInitWorkaround =
+    options.handle?.ipc !== true &&
     pkgsNeedsSockInitWorkaround.some((pkg) => errorStack?.includes(pkg));
   if (this._needsSockInitWorkaround) {
     this.pause();
@@ -1282,10 +1285,7 @@ Object.setPrototypeOf(Socket, Duplex);
 Socket.prototype.connect = function (...args) {
   let normalized;
 
-  if (
-    Array.isArray(args[0]) &&
-    args[0][normalizedArgsSymbol]
-  ) {
+  if (Array.isArray(args[0]) && args[0][normalizedArgsSymbol]) {
     normalized = args[0];
   } else {
     normalized = _normalizeArgs(args);
@@ -1294,10 +1294,7 @@ Socket.prototype.connect = function (...args) {
   const options = normalized[0];
   const cb = normalized[1];
 
-  if (
-    options.port === undefined &&
-    options.path == null
-  ) {
+  if (options.port === undefined && options.path == null) {
     throw new ERR_MISSING_ARGS(["options", "port", "path"]);
   }
 
@@ -1347,11 +1344,7 @@ Socket.prototype.connect = function (...args) {
 };
 
 Socket.prototype.pause = function () {
-  if (
-    !this.connecting &&
-    this._handle &&
-    this._handle.reading
-  ) {
+  if (!this.connecting && this._handle && this._handle.reading) {
     this._handle.reading = false;
 
     if (!this.destroyed) {
@@ -1367,11 +1360,7 @@ Socket.prototype.pause = function () {
 };
 
 Socket.prototype.resume = function () {
-  if (
-    !this.connecting &&
-    this._handle &&
-    !this._handle.reading
-  ) {
+  if (!this.connecting && this._handle && !this._handle.reading) {
     _tryReadStart(this);
   }
 
@@ -1478,9 +1467,10 @@ Object.defineProperty(Socket.prototype, "bytesWritten", {
     }
 
     for (const el of writableBuffer) {
-      bytes += el.chunk instanceof Buffer
-        ? el.chunk.length
-        : Buffer.byteLength(el.chunk, el.encoding);
+      bytes +=
+        el.chunk instanceof Buffer
+          ? el.chunk.length
+          : Buffer.byteLength(el.chunk, el.encoding);
     }
 
     if (Array.isArray(data)) {
@@ -1719,12 +1709,7 @@ Socket.prototype._getsockname = function () {
   return this._sockname;
 };
 
-Socket.prototype._writeGeneric = function (
-  writev,
-  data,
-  encoding,
-  cb,
-) {
+Socket.prototype._writeGeneric = function (writev, data, encoding, cb) {
   if (this.connecting) {
     this._pendingData = data;
     this._pendingEncoding = encoding;
@@ -1758,18 +1743,11 @@ Socket.prototype._writeGeneric = function (
   }
 };
 
-Socket.prototype._writev = function (
-  chunks,
-  cb,
-) {
+Socket.prototype._writev = function (chunks, cb) {
   this._writeGeneric(true, chunks, "", cb);
 };
 
-Socket.prototype._write = function (
-  data,
-  encoding,
-  cb,
-) {
+Socket.prototype._write = function (data, encoding, cb) {
   this._writeGeneric(false, data, encoding, cb);
 };
 
@@ -2209,6 +2187,7 @@ function _setupListenHandle(
   const err = this._handle.listen(backlog || 511);
 
   if (err) {
+    console.log("ERR NUMBER", err);
     const ex = uvExceptionWithHostPort(err, "listen", address, port);
     this._handle.close();
     this._handle = null;
