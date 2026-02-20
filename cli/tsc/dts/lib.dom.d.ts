@@ -8150,9 +8150,9 @@ declare var CompositionEvent: {
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CompressionStream)
  */
-interface CompressionStream extends GenericTransformStream {
+interface CompressionStream extends GenericTransformStream<Uint8Array<ArrayBuffer>, ArrayBufferView> {
     readonly readable: ReadableStream<Uint8Array<ArrayBuffer>>;
-    readonly writable: WritableStream<BufferSource>;
+    readonly writable: WritableStream<ArrayBufferView>;
 }
 
 declare var CompressionStream: {
@@ -9591,9 +9591,9 @@ declare var DataTransferItemList: {
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/DecompressionStream)
  */
-interface DecompressionStream extends GenericTransformStream {
+interface DecompressionStream extends GenericTransformStream<Uint8Array<ArrayBuffer>, ArrayBufferView> {
     readonly readable: ReadableStream<Uint8Array<ArrayBuffer>>;
-    readonly writable: WritableStream<BufferSource>;
+    readonly writable: WritableStream<ArrayBufferView>;
 }
 
 declare var DecompressionStream: {
@@ -12468,11 +12468,11 @@ declare var GamepadHapticActuator: {
     new(): GamepadHapticActuator;
 };
 
-interface GenericTransformStream {
+interface GenericTransformStream<R = any, W = any> {
     /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/CompressionStream/readable) */
-    readonly readable: ReadableStream;
+    readonly readable: ReadableStream<R>;
     /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/CompressionStream/writable) */
-    readonly writable: WritableStream;
+    readonly writable: WritableStream<W>;
 }
 
 /**
@@ -31809,7 +31809,7 @@ interface TextDecoderCommon {
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/TextDecoderStream)
  */
-interface TextDecoderStream extends GenericTransformStream, TextDecoderCommon {
+interface TextDecoderStream extends GenericTransformStream<string, BufferSource>, TextDecoderCommon {
     readonly readable: ReadableStream<string>;
     readonly writable: WritableStream<BufferSource>;
 }
@@ -31858,7 +31858,7 @@ interface TextEncoderCommon {
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/TextEncoderStream)
  */
-interface TextEncoderStream extends GenericTransformStream, TextEncoderCommon {
+interface TextEncoderStream extends GenericTransformStream<Uint8Array<ArrayBuffer>, string>, TextEncoderCommon {
     readonly readable: ReadableStream<Uint8Array<ArrayBuffer>>;
     readonly writable: WritableStream<string>;
 }

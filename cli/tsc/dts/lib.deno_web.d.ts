@@ -490,7 +490,10 @@ interface TextEncoderCommon {
 }
 
 /** @category Encoding */
-interface TextDecoderStream extends GenericTransformStream, TextDecoderCommon {
+interface TextDecoderStream
+  extends
+    GenericTransformStream<string, AllowSharedBufferSource>,
+    TextDecoderCommon {
   readonly readable: ReadableStream<string>;
   readonly writable: WritableStream<AllowSharedBufferSource>;
 }
@@ -502,7 +505,10 @@ declare var TextDecoderStream: {
 };
 
 /** @category Encoding */
-interface TextEncoderStream extends GenericTransformStream, TextEncoderCommon {
+interface TextEncoderStream
+  extends
+    GenericTransformStream<Uint8Array<ArrayBuffer>, string>,
+    TextEncoderCommon {
   readonly readable: ReadableStream<Uint8Array<ArrayBuffer>>;
   readonly writable: WritableStream<string>;
 }
@@ -1158,9 +1164,9 @@ interface TransformerCancelCallback {
 }
 
 /** @category Streams */
-interface GenericTransformStream {
-  readonly readable: ReadableStream;
-  readonly writable: WritableStream;
+interface GenericTransformStream<R = any, W = any> {
+  readonly readable: ReadableStream<R>;
+  readonly writable: WritableStream<W>;
 }
 
 /** @category Events */
@@ -1394,9 +1400,10 @@ declare function structuredClone<T = any>(
  *
  * @category Streams
  */
-interface CompressionStream extends GenericTransformStream {
+interface CompressionStream
+  extends GenericTransformStream<Uint8Array<ArrayBuffer>, ArrayBufferView> {
   readonly readable: ReadableStream<Uint8Array<ArrayBuffer>>;
-  readonly writable: WritableStream<BufferSource>;
+  readonly writable: WritableStream<ArrayBufferView>;
 }
 
 /** @category Streams */
@@ -1441,9 +1448,10 @@ declare var CompressionStream: {
  *
  * @category Streams
  */
-interface DecompressionStream extends GenericTransformStream {
+interface DecompressionStream
+  extends GenericTransformStream<Uint8Array<ArrayBuffer>, ArrayBufferView> {
   readonly readable: ReadableStream<Uint8Array<ArrayBuffer>>;
-  readonly writable: WritableStream<BufferSource>;
+  readonly writable: WritableStream<ArrayBufferView>;
 }
 
 /**

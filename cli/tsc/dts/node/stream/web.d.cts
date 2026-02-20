@@ -411,16 +411,16 @@ declare module "stream/web" {
         new(encoding?: string, options?: TextDecoderOptions): TextDecoderStream;
     };
     interface CompressionStream {
-        readonly readable: ReadableStream;
-        readonly writable: WritableStream;
+        readonly readable: ReadableStream<Uint8Array>;
+        readonly writable: WritableStream<ArrayBufferView>;
     }
     const CompressionStream: {
         prototype: CompressionStream;
         new(format: "deflate" | "deflate-raw" | "gzip"): CompressionStream;
     };
     interface DecompressionStream {
-        readonly writable: WritableStream;
-        readonly readable: ReadableStream;
+        readonly writable: WritableStream<ArrayBufferView>;
+        readonly readable: ReadableStream<Uint8Array>;
     }
     const DecompressionStream: {
         prototype: DecompressionStream;
