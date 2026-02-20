@@ -1,2 +1,3 @@
-#!/usr/bin/env node
-console.log("hello from lifecycle-scripts-simple");
+#!/usr/bin/env deno
+const message = require("./message.js");
+console.log(message);

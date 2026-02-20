@@ -5,6 +5,6 @@
     "lifecycle-scripts-simple": "./main.js"
   },
   "scripts": {
-    "postinstall": "echo postinstall"
+    "postinstall": "echo 'module.exports = \"postinstall works\";' > message.js"
   }
 }
