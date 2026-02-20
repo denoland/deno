@@ -3316,7 +3316,7 @@ fn init_subcommand() -> Command {
         )
         .arg(
           Arg::new("lib")
-  .long("lib")
+            .long("lib")
             .help("Generate an example library project")
             .action(ArgAction::SetTrue),
         )
