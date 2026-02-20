@@ -1429,6 +1429,28 @@ function buildCommand(
     }
   }
 
+  // When spawning a non-deno process that has Deno.execPath() in its args
+  // (e.g. Python given deno's path to re-invoke it), pre-translate the args
+  // that follow so the child deno process gets the correct Node.js compat
+  // flags (-A, --unstable-bare-node-builtins, etc.).
+  // This covers cases like test-stdio-closed.js on Windows, where a Python
+  // intermediary closes stdio then calls deno directly via subprocess.call.
+  if (file !== Deno.execPath()) {
+    const denoPath = Deno.execPath();
+    const denoArgIndex = args.findIndex((arg) => arg === denoPath);
+    if (denoArgIndex !== -1) {
+      const argsForDeno = args.slice(denoArgIndex + 1);
+      if (argsForDeno.length > 0) {
+        try {
+          const result = op_node_translate_cli_args(argsForDeno, false, true);
+          args = [...args.slice(0, denoArgIndex + 1), ...result.deno_args];
+        } catch {
+          // If translation fails (unknown flags), leave args unchanged
+        }
+      }
+    }
+  }
+
   return [file, args, includeNpmProcessState];
 }
 
