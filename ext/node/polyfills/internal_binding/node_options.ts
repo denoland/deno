@@ -20,6 +20,7 @@ export function getOptions() {
   const options = new SafeMap([
     ["--warnings", { value: true }],
     ["--pending-deprecation", { value: false }],
+    ["--title", { value: "" }],
   ]);
 
   const nodeOptions = Deno.env.get("NODE_OPTIONS");
@@ -27,6 +28,10 @@ export function getOptions() {
     ? StringPrototypeSplit(nodeOptions, new SafeRegExp("\\s"))
     : [];
   ArrayPrototypeForEach(args, (arg) => {
+    if (arg.startsWith("--title=")) {
+      options.set("--title", { value: arg.slice(8) });
+      return;
+    }
     switch (arg) {
       case "--no-warnings":
         options.set("--warnings", { value: false });
