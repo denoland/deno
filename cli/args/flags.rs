@@ -6587,6 +6587,7 @@ fn install_parse(
 
     if compile {
       flags.type_check_mode = TypeCheckMode::Local;
+      allow_scripts_arg_parse(flags, matches)?;
     }
 
     flags.subcommand =
