@@ -3973,6 +3973,8 @@ declare namespace Deno {
 
   /** Spawns a new subprocess, returning a {@linkcode Deno.ChildProcess} handle.
    *
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
+   *
    * This is a shorthand for `new Deno.Command(command, options).spawn()`.
    *
    * By default, `stdin`, `stdout`, and `stderr` are set to `"inherit"`.
@@ -3998,6 +4000,8 @@ declare namespace Deno {
   ): ChildProcess;
   /** Spawns a new subprocess with the given arguments, returning a
    * {@linkcode Deno.ChildProcess} handle.
+   *
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
    *
    * This is a shorthand for `new Deno.Command(command, { ...options, args }).spawn()`.
    *
@@ -4025,6 +4029,8 @@ declare namespace Deno {
 
   /** Spawns a subprocess, waits for it to finish, and returns the output.
    *
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
+   *
    * This is a shorthand for `new Deno.Command(command, options).output()`.
    *
    * Will throw an error if `stdin: "piped"` is set.
@@ -4047,6 +4053,8 @@ declare namespace Deno {
   ): Promise<CommandOutput>;
   /** Spawns a subprocess with the given arguments, waits for it to finish,
    * and returns the output.
+   *
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
    *
    * This is a shorthand for `new Deno.Command(command, { ...options, args }).output()`.
    *
@@ -4074,6 +4082,8 @@ declare namespace Deno {
   /** Synchronously spawns a subprocess, waits for it to finish, and returns
    * the output.
    *
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
+   *
    * This is a shorthand for `new Deno.Command(command, options).outputSync()`.
    *
    * Will throw an error if `stdin: "piped"` is set.
@@ -4096,6 +4106,8 @@ declare namespace Deno {
   ): CommandOutput;
   /** Synchronously spawns a subprocess with the given arguments, waits for it
    * to finish, and returns the output.
+   *
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
    *
    * This is a shorthand for
    * `new Deno.Command(command, { ...options, args }).outputSync()`.
