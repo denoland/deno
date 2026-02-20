@@ -285,3 +285,75 @@ fn init_npm() {
       assert_eq!(cwd.join("3").read_to_string(), "test");
     });
 }
+
+#[test(flaky)]
+fn create_jsr() {
+  let context = TestContextBuilder::for_jsr().use_temp_cwd().build();
+  let cwd = context.temp_dir().path();
+  context
+    .new_command()
+    .args("create jsr:@denotest/create")
+    .with_pty(|mut pty| {
+      pty.expect("Do you want to continue?");
+      pty.write_raw("y\n");
+      pty.expect("Initialized from JSR!");
+      assert_eq!(
+        cwd.join("initialized.txt").read_to_string(),
+        "jsr-create-test"
+      );
+    });
+}
+
+#[test]
+fn create_jsr_with_yes_flag() {
+  let context = TestContextBuilder::for_jsr().use_temp_cwd().build();
+  let cwd = context.temp_dir().path();
+  let output = context
+    .new_command()
+    .args("create --yes jsr:@denotest/create")
+    .split_output()
+    .run();
+  output.assert_exit_code(0);
+  assert_contains!(output.stdout(), "Initialized from JSR!");
+  assert_eq!(
+    cwd.join("initialized.txt").read_to_string(),
+    "jsr-create-test"
+  );
+  output.skip_output_check();
+}
+
+#[test(flaky)]
+fn init_jsr() {
+  let context = TestContextBuilder::for_jsr().use_temp_cwd().build();
+  let cwd = context.temp_dir().path();
+  context
+    .new_command()
+    .args("init --jsr @denotest/create")
+    .with_pty(|mut pty| {
+      pty.expect("Do you want to continue?");
+      pty.write_raw("y\n");
+      pty.expect("Initialized from JSR!");
+      assert_eq!(
+        cwd.join("initialized.txt").read_to_string(),
+        "jsr-create-test"
+      );
+    });
+}
+
+#[test]
+fn init_jsr_with_yes_flag() {
+  let context = TestContextBuilder::for_jsr().use_temp_cwd().build();
+  let cwd = context.temp_dir().path();
+  let output = context
+    .new_command()
+    .args("init --jsr --yes @denotest/create")
+    .split_output()
+    .run();
+  output.assert_exit_code(0);
+  assert_contains!(output.stdout(), "Initialized from JSR!");
+  assert_eq!(
+    cwd.join("initialized.txt").read_to_string(),
+    "jsr-create-test"
+  );
+  output.skip_output_check();
+}
