@@ -51,6 +51,24 @@ Deno.test("[node/https] Server.address() includes family property", async () => 
   }
 });
 
+// https://github.com/denoland/deno/issues/31758
+Deno.test("[node/https] address() returns assigned port immediately after listen()", async () => {
+  const server = https.createServer({
+    cert: Deno.readTextFileSync("tests/testdata/tls/localhost.crt"),
+    key: Deno.readTextFileSync("tests/testdata/tls/localhost.key"),
+  });
+  server.listen(0);
+
+  // address() should return the real port synchronously, not 0
+  const addr = server.address() as AddressInfo;
+  assert(typeof addr.port === "number");
+  assert(addr.port > 0, `Expected port > 0, got ${addr.port}`);
+
+  const { promise, resolve } = Promise.withResolvers<void>();
+  server.close(() => resolve());
+  await promise;
+});
+
 Deno.test({
   name:
     "request.socket.authorized is true when successfully requested to https server",
