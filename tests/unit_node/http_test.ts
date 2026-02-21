@@ -2268,6 +2268,22 @@ Deno.test("[node/http] Server.address() includes family property", async () => {
   }
 });
 
+// https://github.com/denoland/deno/issues/31758
+Deno.test("[node/http] address() returns assigned port immediately after listen()", async () => {
+  const server = http.createServer();
+  server.listen(0);
+
+  // address() should return the real port synchronously, not 0
+  const addr = server.address()!;
+  assert(typeof addr === "object");
+  assert(typeof addr.port === "number");
+  assert(addr.port > 0, `Expected port > 0, got ${addr.port}`);
+
+  const { promise, resolve } = Promise.withResolvers<void>();
+  server.close(() => resolve());
+  await promise;
+});
+
 Deno.test("[node/http] ServerResponse.writeEarlyHints", async () => {
   const { promise, resolve } = Promise.withResolvers<void>();
   const server = http.createServer((_req, res) => {
