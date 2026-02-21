@@ -4,6 +4,7 @@
 // deno-lint-ignore-file ban-types prefer-primordials
 
 import { AssertionError } from "ext:deno_node/internal/assert/assertion_error.js";
+import { innerOk } from "ext:deno_node/internal/assert/utils.ts";
 import { inspect } from "node:util";
 import {
   ERR_AMBIGUOUS_ARGUMENT,
@@ -102,18 +103,8 @@ function Assert(options: AssertOptions) {
 Assert.prototype.fail = fail;
 // Duplicate of the `ok` function below so we don't inherit
 // the extra assigned properties from `assert` function later on.
-Assert.prototype.ok = function (actual: unknown, message?: string | Error) {
-  if (arguments.length === 0) {
-    throw new AssertionError({
-      message: "No value argument passed to `assert.ok()`",
-      expected: true,
-      operator: "==",
-    });
-  }
-  if (actual) {
-    return;
-  }
-  equal(actual, true, message);
+Assert.prototype.ok = function ok(...args: unknown[]) {
+  innerOk(ok, args.length, ...args);
 };
 Assert.prototype.equal = equal;
 Assert.prototype.notEqual = notEqual;
@@ -154,19 +145,8 @@ function innerFail(obj: {
   });
 }
 
-function assert(actual: unknown, message?: string | Error): asserts actual {
-  if (arguments.length === 0) {
-    throw new AssertionError({
-      message: "No value argument passed to `assert.ok()`",
-      expected: true,
-      operator: "==",
-    });
-  }
-  if (actual) {
-    return;
-  }
-
-  equal(actual, true, message);
+function assert(...args: unknown[]) {
+  innerOk(ok, args.length, ...args);
 }
 const ok = assert;
 
@@ -546,7 +526,7 @@ function doesNotThrow(
   fn: () => void,
   ...args: [(AssertPredicate | string)?, (string | Error)?]
 ) {
-  expectsNoError(() => {}, getActual(fn), ...args);
+  expectsNoError(doesNotThrow, getActual(fn), ...args);
 }
 
 function equal(
@@ -849,13 +829,8 @@ function doesNotMatch(
   internalMatch(string, regexp, message, doesNotMatch);
 }
 
-function strict(actual: unknown, message?: string | Error): asserts actual {
-  if (arguments.length === 0) {
-    throw new AssertionError({
-      message: "No value argument passed to `assert.ok()`",
-    });
-  }
-  assert(actual, message);
+function strict(...args: unknown[]) {
+  innerOk(strict, args.length, ...args);
 }
 
 async function rejects(

@@ -457,10 +457,12 @@ export class LibuvStreamWrap extends HandleWrap {
       }
 
       let status: number;
-      // TODO(cmorten): map err to status codes
       if (
-        ObjectPrototypeIsPrototypeOf(Deno.errors.BadResource.prototype, e) ||
         ObjectPrototypeIsPrototypeOf(Deno.errors.BrokenPipe.prototype, e)
+      ) {
+        status = MapPrototypeGet(codeMap, "EPIPE")!;
+      } else if (
+        ObjectPrototypeIsPrototypeOf(Deno.errors.BadResource.prototype, e)
       ) {
         status = MapPrototypeGet(codeMap, "EBADF")!;
       } else {

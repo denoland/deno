@@ -1088,6 +1088,8 @@ fn common_extensions<
     deno_fs::deno_fs::lazy_init(),
     deno_os::deno_os::lazy_init(),
     deno_process::deno_process::lazy_init(),
+    deno_node_crypto::deno_node_crypto::init(),
+    deno_node_sqlite::deno_node_sqlite::init(),
     deno_node::deno_node::lazy_init::<
       TInNpmPackageChecker,
       TNpmPackageFolderResolver,
@@ -1281,7 +1283,7 @@ impl ModuleLoader for PlaceholderModuleLoader {
     &self,
     module_specifier: &ModuleSpecifier,
     maybe_referrer: Option<String>,
-    maybe_content: Option<String>,
+    maybe_code: Option<String>,
     options: ModuleLoadOptions,
   ) -> std::pin::Pin<
     Box<
@@ -1293,7 +1295,7 @@ impl ModuleLoader for PlaceholderModuleLoader {
     self.0.borrow_mut().clone().unwrap().prepare_load(
       module_specifier,
       maybe_referrer,
-      maybe_content,
+      maybe_code,
       options,
     )
   }

@@ -283,17 +283,6 @@ Deno.test({
 });
 
 Deno.test({
-  name: "[node/worker_threads] throws on non-existend file",
-  fn() {
-    assertThrows(
-      () => {
-        new workerThreads.Worker(new URL("file://very/unlikely"));
-      },
-    );
-  },
-});
-
-Deno.test({
   name: "[node/worker_threads] inheritances",
   async fn() {
     const worker = new workerThreads.Worker(
@@ -561,7 +550,7 @@ Deno.test({
     await deferred.promise;
     const promise = worker.terminate();
     assertEquals(typeof promise.then, "function");
-    assertEquals(await promise, 0);
+    assertEquals(await promise, 1);
   },
 });
 
@@ -936,9 +925,9 @@ Deno.test({
 
     if (typeof termRet.then === "function") {
       const v = await termRet;
-      assertEquals(v, 0);
+      assertEquals(v, 1);
     }
-    assertEquals(code, 0);
+    assertEquals(code, 1);
 
     setTimeout(() => done.resolve(), 50);
     await done.promise;

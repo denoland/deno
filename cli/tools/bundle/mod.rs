@@ -1235,6 +1235,9 @@ impl DenoPluginHandler {
       kind,
       with
     );
+    if path.starts_with("data:") {
+      return Ok(None);
+    }
     let mut resolve_dir = resolve_dir.unwrap_or("").to_string();
     let resolver = self.resolver.clone();
     if !resolve_dir.ends_with(std::path::MAIN_SEPARATOR) {
@@ -1329,6 +1332,7 @@ impl DenoPluginHandler {
           ext_overwrite: None,
           allow_unknown_media_types: true,
           skip_graph_roots_validation: true,
+          file_content_overrides: Default::default(),
         },
       )
       .await?;
@@ -1353,6 +1357,9 @@ impl DenoPluginHandler {
       specifier,
       Path::new(""), // should be absolute already, feels kind of hacky though
     )?;
+    if specifier.scheme() == "data" {
+      return Ok(None);
+    }
     let (specifier, media_type) =
       if let RequestedModuleType::Bytes = requested_type {
         (specifier, MediaType::Unknown)
@@ -1368,13 +1375,6 @@ impl DenoPluginHandler {
           deno_terminal::colors::yellow("warn"),
           specifier
         );
-
-        if specifier.scheme() == "data" {
-          return Ok(Some((
-            specifier.to_string().as_bytes().to_vec(),
-            esbuild_client::BuiltinLoader::DataUrl,
-          )));
-        }
 
         let (media_type, _) =
           deno_media_type::resolve_media_type_and_charset_from_content_type(

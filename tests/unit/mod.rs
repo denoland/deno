@@ -16,6 +16,18 @@ use test_util::test_runner::flaky_test_ci;
 use test_util::tests_path;
 
 fn main() {
+  if test_util::hash::should_skip_on_ci("unit", |hasher| {
+    let tests = test_util::tests_path();
+    hasher
+      .hash_dir(tests.join("unit"))
+      .hash_dir(tests.join("util"))
+      .hash_dir(tests.join("testdata"))
+      .hash_file(test_util::deno_exe_path())
+      .hash_file(test_util::test_server_path());
+  }) {
+    return;
+  }
+
   let category = collect_tests_or_exit(CollectOptions {
     base: tests_path().join("unit").to_path_buf(),
     strategy: Box::new(TestPerFileCollectionStrategy {

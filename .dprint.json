@@ -25,9 +25,6 @@
   "excludes": [
     ".cargo_home",
     ".git",
-    "cli/bench/testdata/express-router.js",
-    "cli/bench/testdata/lsp_benchdata/",
-    "cli/bench/testdata/npm/",
     "cli/tsc/*typescript.js",
     "cli/tsc/dts/lib.d.ts",
     "cli/tsc/dts/lib.decorators*.d.ts",
@@ -41,10 +38,14 @@
     "cli/tools/doc/prism.js",
     "ext/node/polyfills/deps",
     "ext/websocket/autobahn/reports",
+    "libs/eszip/testdata",
     "gh-pages",
     "libs/config/testdata",
     "target",
-    "tests/ffi/tests/test.js",
+    "tests/bench/testdata/express-router.js",
+    "tests/bench/testdata/lsp_benchdata/",
+    "tests/bench/testdata/npm/",
+    "tests/ffi/testdata/test.js",
     "tests/node_compat/runner/suite",
     "tests/node_compat/runner/TODO.md",
     "tests/node_compat/test",
@@ -86,9 +87,9 @@
   "plugins": [
     "https://plugins.dprint.dev/typescript-0.95.15.wasm",
     "https://plugins.dprint.dev/json-0.21.1.wasm",
-    "https://plugins.dprint.dev/markdown-0.20.0.wasm",
+    "https://plugins.dprint.dev/markdown-0.21.1.wasm",
     "https://plugins.dprint.dev/toml-0.7.0.wasm",
     "https://plugins.dprint.dev/exec-0.6.0.json@a054130d458f124f9b5c91484833828950723a5af3f8ff2bd1523bd47b83b364",
-    "https://plugins.dprint.dev/g-plane/pretty_yaml-v0.5.1.wasm"
+    "https://plugins.dprint.dev/g-plane/pretty_yaml-v0.6.0.wasm"
   ]
 }
