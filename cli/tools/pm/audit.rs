@@ -921,3 +921,29 @@ mod socket_dev {
     pub alerts: Vec<FirewallAlert>,
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use super::npm::AuditResponse;
+  use deno_core::serde_json;
+
+  #[test]
+  fn test_audit_response_deserialize_without_actions() {
+    // Test that AuditResponse can be deserialized when the `actions` field is missing
+    // This can happen with some npm registry responses
+    let json = r#"{
+      "advisories": {},
+      "metadata": {
+        "vulnerabilities": {
+          "low": 0,
+          "moderate": 0,
+          "high": 0,
+          "critical": 0
+        }
+      }
+    }"#;
+    let response: AuditResponse = serde_json::from_str(json).unwrap();
+    assert!(response.actions.is_empty());
+    assert!(response.advisories.is_empty());
+  }
+}

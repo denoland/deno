@@ -524,29 +524,6 @@ fn process_npm_security_audits_body(
 
   let requires_map = value.get("requires")?.as_object()?;
   let requires_map_keys = requires_map.keys().cloned().collect::<Vec<_>>();
-
-  // Test case for response without `actions` field - simulates real npm registry
-  // behavior where actions field may be omitted
-  if requires_map_keys.contains(&"@denotest/no-actions-audit".to_string()) {
-    return Some(json!({
-      "advisories": {},
-      "muted": [],
-      "metadata": {
-        "vulnerabilities": {
-          "info": 0,
-          "low": 0,
-          "moderate": 0,
-          "high": 0,
-          "critical": 0,
-        },
-        "dependencies": 0,
-        "devDependencies": 0,
-        "optionalDependencies": 0,
-        "totalDependencies": 0
-      }
-    }));
-  }
-
   if requires_map_keys.contains(&"@denotest/with-vuln1".to_string()) {
     actions.push(get_action_for_with_vuln1());
     advisories.insert(101010, get_advisory_for_with_vuln1());
