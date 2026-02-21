@@ -924,8 +924,9 @@ mod socket_dev {
 
 #[cfg(test)]
 mod tests {
-  use super::npm::AuditResponse;
   use deno_core::serde_json;
+
+  use super::npm::AuditResponse;
 
   #[test]
   fn test_audit_response_deserialize_without_actions() {
