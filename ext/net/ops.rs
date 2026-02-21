@@ -284,14 +284,12 @@ pub fn op_net_validate_multicast(
   #[string] multi_interface: String,
 ) -> Result<(), NetError> {
   let addr = Ipv4Addr::from_str(address.as_str())?;
-  let interface_addr = Ipv4Addr::from_str(multi_interface.as_str())?;
+  // Validate the interface address is a valid IPv4 address (not necessarily multicast).
+  // The interface address is typically 0.0.0.0 (INADDR_ANY) or a specific local interface.
+  let _interface_addr = Ipv4Addr::from_str(multi_interface.as_str())?;
 
   if !addr.is_multicast() {
     return Err(NetError::InvalidHostname(address));
-  }
-
-  if !interface_addr.is_multicast() {
-    return Err(NetError::InvalidHostname(multi_interface));
   }
 
   Ok(())
