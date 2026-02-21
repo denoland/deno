@@ -13,6 +13,9 @@ on:
           - major
         required: true
 
+permissions:
+  contents: read
+
 jobs:
   build:
     name: start release
