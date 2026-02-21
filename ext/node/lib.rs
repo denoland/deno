@@ -770,4 +770,3 @@ pub fn create_host_defined_options<'s>(
   host_defined_options.set(scope, 0, value.into());
   host_defined_options.into()
 }
-

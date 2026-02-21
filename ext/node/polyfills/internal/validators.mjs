@@ -480,6 +480,7 @@ export {
   validateFunction,
   validateInt32,
   validateInteger,
+  validateLinkHeaderValue,
   validateNumber,
   validateObject,
   validateOneOf,
@@ -488,5 +489,4 @@ export {
   validateStringArray,
   validateUint32,
   validateUnion,
-  validateLinkHeaderValue,
 };

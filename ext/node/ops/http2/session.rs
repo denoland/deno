@@ -1265,9 +1265,8 @@ impl Session {
     };
 
     // Safety check: ensure the stream handle is still a valid TCP handle
-    let handle_type = unsafe {
-      (*(stream as *mut deno_core::uv_compat::UvHandle)).r#type
-    };
+    let handle_type =
+      unsafe { (*(stream as *mut deno_core::uv_compat::UvHandle)).r#type };
     if handle_type != deno_core::uv_compat::uv_handle_type::UV_TCP {
       self.stream = None;
       return;
@@ -1279,8 +1278,7 @@ impl Session {
         unsafe { ffi::nghttp2_session_mem_send(self.session, &mut src) };
 
       if src_len > 0 {
-        let data =
-          unsafe { std::slice::from_raw_parts(src, src_len as usize) };
+        let data = unsafe { std::slice::from_raw_parts(src, src_len as usize) };
         // Write to libuv stream
         let data_copy = data.to_vec();
         let write_req = Box::new(H2WriteReq {
@@ -1536,10 +1534,7 @@ impl Http2Session {
   }
 
   #[fast]
-  fn consume_stream(
-    &self,
-    #[cppgc] tcp: &crate::ops::libuv_stream::TCP,
-  ) {
+  fn consume_stream(&self, #[cppgc] tcp: &crate::ops::libuv_stream::TCP) {
     let session = unsafe { &mut *self.inner };
     let stream = tcp.stream();
 
@@ -1632,9 +1627,7 @@ impl Http2Session {
     // When lastStreamID <= 0, use the last processed stream ID
     // so that in-progress streams are not refused.
     let effective_last_stream_id = if last_stream_id <= 0 {
-      unsafe {
-        ffi::nghttp2_session_get_last_proc_stream_id(self.session)
-      }
+      unsafe { ffi::nghttp2_session_get_last_proc_stream_id(self.session) }
     } else {
       last_stream_id
     };

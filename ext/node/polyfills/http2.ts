@@ -76,6 +76,7 @@ import { promisify } from "ext:deno_node/internal/util.mjs";
 import { customInspectSymbol as kInspect } from "ext:deno_node/internal/util.mjs";
 import {
   AbortError,
+  aggregateTwoErrors,
   ERR_HTTP2_ALTSVC_INVALID_ORIGIN,
   ERR_HTTP2_ALTSVC_LENGTH,
   ERR_HTTP2_GOAWAY_SESSION,
@@ -106,7 +107,6 @@ import {
   ERR_INVALID_ARG_VALUE,
   ERR_INVALID_CHAR,
   ERR_OUT_OF_RANGE,
-  aggregateTwoErrors,
   hideStackFrames,
 } from "ext:deno_node/internal/errors.ts";
 import {
@@ -953,19 +953,23 @@ function emit(self, ...args) {
 }
 
 function callTimeout(self, session) {
-  if (self.destroyed)
+  if (self.destroyed) {
     return;
+  }
   if (self[kState].writeQueueSize > 0) {
     const handle = session[kHandle];
-    const chunksSentSinceLastWrite = handle !== undefined ?
-      handle.chunksSentSinceLastWrite : null;
-    if (chunksSentSinceLastWrite !== null &&
-      chunksSentSinceLastWrite !== handle.updateChunksSent()) {
+    const chunksSentSinceLastWrite = handle !== undefined
+      ? handle.chunksSentSinceLastWrite
+      : null;
+    if (
+      chunksSentSinceLastWrite !== null &&
+      chunksSentSinceLastWrite !== handle.updateChunksSent()
+    ) {
       self[kUpdateTimer]();
       return;
     }
   }
-  self.emit('timeout');
+  self.emit("timeout");
 }
 
 // Called when a new block of headers has been received for a given
@@ -1942,8 +1946,14 @@ function tryClose(fd) {
   });
 }
 
-function processRespondWithFD(self, fd, headers, offset = 0, length = -1,
-                              streamOptions = 0) {
+function processRespondWithFD(
+  self,
+  fd,
+  headers,
+  offset = 0,
+  length = -1,
+  streamOptions = 0,
+) {
   const state = self[kState];
   state.flags |= STREAM_FLAGS_HEADERS_SENT;
 
@@ -2017,16 +2027,22 @@ function doSendFD(session, options, fd, headers, streamOptions, err, stat) {
     length: options.length !== undefined ? options.length : -1,
   };
 
-  if ((typeof options.statCheck === "function" &&
-       options.statCheck.call(this, stat, headers, statOptions) === false) ||
-       (this[kState].flags & STREAM_FLAGS_HEADERS_SENT)) {
+  if (
+    (typeof options.statCheck === "function" &&
+      options.statCheck.call(this, stat, headers, statOptions) === false) ||
+    (this[kState].flags & STREAM_FLAGS_HEADERS_SENT)
+  ) {
     return;
   }
 
-  processRespondWithFD(this, fd, headers,
-                       statOptions.offset | 0,
-                       statOptions.length | 0,
-                       streamOptions);
+  processRespondWithFD(
+    this,
+    fd,
+    headers,
+    statOptions.offset | 0,
+    statOptions.length | 0,
+    streamOptions,
+  );
 }
 
 function doSendFileFD(session, options, fd, headers, streamOptions, err, stat) {
@@ -2044,9 +2060,11 @@ function doSendFileFD(session, options, fd, headers, streamOptions, err, stat) {
 
   if (!stat.isFile()) {
     const isDirectory = stat.isDirectory();
-    if (options.offset !== undefined || options.offset > 0 ||
-        options.length !== undefined || options.length >= 0 ||
-        isDirectory) {
+    if (
+      options.offset !== undefined || options.offset > 0 ||
+      options.length !== undefined || options.length >= 0 ||
+      isDirectory
+    ) {
       const err = isDirectory
         ? new ERR_HTTP2_SEND_FILE()
         : new ERR_HTTP2_SEND_FILE_NOSEEK();
@@ -2074,26 +2092,31 @@ function doSendFileFD(session, options, fd, headers, streamOptions, err, stat) {
     length: options.length !== undefined ? options.length : -1,
   };
 
-  if ((typeof options.statCheck === "function" &&
-       options.statCheck.call(this, stat, headers) === false) ||
-       (this[kState].flags & STREAM_FLAGS_HEADERS_SENT)) {
+  if (
+    (typeof options.statCheck === "function" &&
+      options.statCheck.call(this, stat, headers) === false) ||
+    (this[kState].flags & STREAM_FLAGS_HEADERS_SENT)
+  ) {
     tryClose(fd);
     return;
   }
 
   if (stat.isFile()) {
-    statOptions.length =
-      statOptions.length < 0 ? stat.size - (+statOptions.offset) :
-        Math.min(stat.size - (+statOptions.offset),
-                statOptions.length);
+    statOptions.length = statOptions.length < 0
+      ? stat.size - (+statOptions.offset)
+      : Math.min(stat.size - (+statOptions.offset), statOptions.length);
 
     headers[HTTP2_HEADER_CONTENT_LENGTH] = statOptions.length;
   }
 
-  processRespondWithFD(this, fd, headers,
-                       statOptions.offset | 0,
-                       statOptions.length | 0,
-                       streamOptions);
+  processRespondWithFD(
+    this,
+    fd,
+    headers,
+    statOptions.offset | 0,
+    statOptions.length | 0,
+    streamOptions,
+  );
 }
 
 function afterOpen(session, options, headers, streamOptions, err, fd) {
@@ -2113,8 +2136,10 @@ function afterOpen(session, options, headers, streamOptions, err, fd) {
   }
   state.fd = fd;
 
-  fs.fstat(fd,
-           doSendFileFD.bind(this, session, options, fd, headers, streamOptions));
+  fs.fstat(
+    fd,
+    doSendFileFD.bind(this, session, options, fd, headers, streamOptions),
+  );
 }
 
 class ServerHttp2Stream extends Http2Stream {
@@ -3956,14 +3981,19 @@ const SETTING_ID_TO_NAME = new Map([
 ]);
 
 function getUnpackedSettings(buf) {
-  if (!Buffer.isBuffer(buf) && !(buf instanceof ArrayBuffer) &&
-      !ArrayBuffer.isView(buf)) {
+  if (
+    !Buffer.isBuffer(buf) && !(buf instanceof ArrayBuffer) &&
+    !ArrayBuffer.isView(buf)
+  ) {
     throw new ERR_INVALID_ARG_TYPE("buf", [
-      "Buffer", "TypedArray",
+      "Buffer",
+      "TypedArray",
     ], buf);
   }
   if (buf.byteLength === undefined) buf = Buffer.from(buf);
-  else if (!Buffer.isBuffer(buf)) buf = Buffer.from(buf.buffer, buf.byteOffset, buf.byteLength);
+  else if (!Buffer.isBuffer(buf)) {
+    buf = Buffer.from(buf.buffer, buf.byteOffset, buf.byteLength);
+  }
   if (buf.length % 6 !== 0) {
     throw new ERR_HTTP2_INVALID_PACKED_SETTINGS_LENGTH();
   }

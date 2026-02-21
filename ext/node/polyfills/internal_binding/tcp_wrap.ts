@@ -27,7 +27,7 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { TCP as NativeTCP, op_net_connect_tcp } from "ext:core/ops";
+import { op_net_connect_tcp, TCP as NativeTCP } from "ext:core/ops";
 import { TcpConn } from "ext:deno_net/01_net.js";
 import { primordials } from "ext:core/mod.js";
 const { Error } = primordials;
@@ -42,11 +42,11 @@ import {
   kBytesWritten,
   kReadBytesOrError,
   kStreamBaseField,
+  kUseNativeWrap,
   LibuvStreamWrap,
   ShutdownWrap,
   streamBaseState,
   WriteWrap,
-  kUseNativeWrap,
 } from "ext:deno_node/internal_binding/stream_wrap.ts";
 import { ownerSymbol } from "ext:deno_node/internal_binding/symbols.ts";
 import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
