@@ -609,6 +609,26 @@ dependencies = [
 
 [[package]]
 name = "bindgen"
+version = "0.71.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5f58bf3d7db68cfbac37cfc485a8d711e87e064c3d0fe0435b92f7a407f9d6b3"
+dependencies = [
+ "bitflags 2.9.3",
+ "cexpr",
+ "clang-sys",
+ "itertools 0.12.1",
+ "log",
+ "prettyplease",
+ "proc-macro2",
+ "quote",
+ "regex",
+ "rustc-hash 2.1.1",
+ "shlex",
+ "syn 2.0.87",
+]
+
+[[package]]
+name = "bindgen"
 version = "0.72.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "993776b509cfb49c750f11b8f07a46fa23e0a1386ffc01fb1e7d343efc387895"
@@ -1930,8 +1950,7 @@ dependencies = [
 [[package]]
 name = "deno_core"
 version = "0.385.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e348ea58ad12f6bee5407768b571a8af09756246a45c83dfd27a5aeeb338c5eb"
+source = "git+https://github.com/denoland/deno_core.git?branch=event-loop-rewrite-slop#7c249e410f6c461929ca229de1a9d2d33e1d3844"
 dependencies = [
  "anyhow",
  "az",
@@ -2541,6 +2560,7 @@ dependencies = [
  "idna",
  "ipnetwork",
  "libc",
+ "libnghttp2",
  "libz-sys",
  "log",
  "nix 0.27.1",
@@ -2732,8 +2752,7 @@ dependencies = [
 [[package]]
 name = "deno_ops"
 version = "0.261.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "86077bea01b43941082edef61e150fa661bab25a839f17592bb763faaae0c14b"
+source = "git+https://github.com/denoland/deno_core.git?branch=event-loop-rewrite-slop#7c249e410f6c461929ca229de1a9d2d33e1d3844"
 dependencies = [
  "indexmap 2.9.0",
  "proc-macro2",
@@ -6067,6 +6086,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4ec2a862134d2a7d32d7983ddcdd1c4923530833c9f2ea1a44fc5fa473989058"
 
 [[package]]
+name = "libnghttp2"
+version = "1.68.0-rc.0"
+source = "git+https://github.com/littledivy/libnghttp2?branch=main#03e82f01b6ebb98ce63b3024d6ac8945b5141e63"
+dependencies = [
+ "bindgen 0.71.1",
+ "cc",
+ "libc",
+]
+
+[[package]]
 name = "libredox"
 version = "0.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8552,8 +8581,7 @@ dependencies = [
 [[package]]
 name = "serde_v8"
 version = "0.294.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8386a10eddc03e63b28ad6963dbd0552470b430419d81fd6409e19e28146a3c8"
+source = "git+https://github.com/denoland/deno_core.git?branch=event-loop-rewrite-slop#7c249e410f6c461929ca229de1a9d2d33e1d3844"
 dependencies = [
  "deno_error",
  "num-bigint",

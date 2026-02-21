@@ -145,8 +145,8 @@ struct uv_async_t {
 
 type uv_loop_t = Env;
 type uv_async_cb = extern "C" fn(handle: *mut uv_async_t);
-#[unsafe(no_mangle)]
-unsafe extern "C" fn uv_async_init(
+#[unsafe(export_name = "uv_async_init")]
+unsafe extern "C" fn _napi_uv_async_init(
   r#loop: *mut uv_loop_t,
   // probably uninitialized
   r#async: *mut uv_async_t,
@@ -179,15 +179,17 @@ unsafe extern "C" fn uv_async_init(
   }
 }
 
-#[unsafe(no_mangle)]
-unsafe extern "C" fn uv_async_send(handle: *mut uv_async_t) -> c_int {
+#[unsafe(export_name = "uv_async_send")]
+unsafe extern "C" fn _napi_uv_async_send(handle: *mut uv_async_t) -> c_int {
   unsafe { -napi_queue_async_work((*handle).r#loop, (*handle).work) }
 }
 
 type uv_close_cb = unsafe extern "C" fn(*mut uv_handle_t);
 
-#[unsafe(no_mangle)]
-unsafe extern "C" fn uv_close(handle: *mut uv_handle_t, close: uv_close_cb) {
+unsafe extern "C" fn _napi_uv_close(
+  handle: *mut uv_handle_t,
+  close: uv_close_cb,
+) {
   unsafe {
     if handle.is_null() {
       close(handle);

@@ -625,6 +625,24 @@ impl MainWorker {
       state.put(services.feature_checker);
     }
 
+    // Register the uv_loop_t (created by deno_node extension state callback)
+    // with the JsRuntime so that its event loop phases are driven by
+    // poll_event_loop.
+    {
+      let op_state_rc = js_runtime.op_state();
+      let op_state = op_state_rc.borrow();
+      if let Some(uv_loop) =
+        op_state.try_borrow::<Box<deno_core::uv_compat::UvLoop>>()
+      {
+        let loop_ptr: *mut deno_core::uv_compat::UvLoop =
+          &**uv_loop as *const _ as *mut _;
+        drop(op_state);
+        unsafe {
+          js_runtime.register_uv_loop(loop_ptr);
+        }
+      }
+    }
+
     if let Some(server) = get_inspector_server() {
       let inspector_url = server.register_inspector(
         main_module.to_string(),
@@ -1116,7 +1134,7 @@ struct EnableRawImports(Arc<AtomicBool>);
 fn common_runtime(opts: CommonRuntimeOptions) -> JsRuntime {
   let enable_raw_imports = Arc::new(AtomicBool::new(false));
 
-  let js_runtime = JsRuntime::new(RuntimeOptions {
+  let mut js_runtime = JsRuntime::new(RuntimeOptions {
     module_loader: Some(opts.module_loader),
     startup_snapshot: opts.startup_snapshot,
     create_params: opts.create_params,

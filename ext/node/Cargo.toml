@@ -47,6 +47,7 @@ hyper-util.workspace = true
 idna.workspace = true
 ipnetwork.workspace = true
 libc.workspace = true
+libnghttp2 = { git = "https://github.com/littledivy/libnghttp2", branch = "main" }
 libz-sys.workspace = true
 log.workspace = true
 node_resolver.workspace = true
