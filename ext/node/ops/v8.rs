@@ -1,10 +1,10 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::ptr::NonNull;
 
 use deno_core::FastString;
 use deno_core::GarbageCollected;
-use deno_core::ToJsBuffer;
+use deno_core::convert::Uint8Array;
 use deno_core::op2;
 use deno_core::v8;
 use deno_error::JsErrorBox;
@@ -165,8 +165,7 @@ pub fn op_v8_set_treat_array_buffer_views_as_host_objects(
 }
 
 #[op2]
-#[serde]
-pub fn op_v8_release_buffer(#[cppgc] ser: &Serializer) -> ToJsBuffer {
+pub fn op_v8_release_buffer(#[cppgc] ser: &Serializer) -> Uint8Array {
   ser.inner.release().into()
 }
 
@@ -330,11 +329,18 @@ pub fn op_v8_new_deserializer(
 pub fn op_v8_transfer_array_buffer_de(
   #[cppgc] deser: &Deserializer,
   #[smi] id: u32,
-  array_buffer: v8::Local<v8::ArrayBuffer>,
-) {
-  // TODO(nathanwhit): also need binding for TransferSharedArrayBuffer, then call that if
-  // array_buffer is shared
+  array_buffer: v8::Local<v8::Value>,
+) -> Result<(), deno_core::error::DataError> {
+  if let Ok(shared_array_buffer) =
+    array_buffer.try_cast::<v8::SharedArrayBuffer>()
+  {
+    deser
+      .inner
+      .transfer_shared_array_buffer(id, shared_array_buffer)
+  }
+  let array_buffer = array_buffer.try_cast::<v8::ArrayBuffer>()?;
   deser.inner.transfer_array_buffer(id, array_buffer);
+  Ok(())
 }
 
 #[op2(fast)]
@@ -388,7 +394,6 @@ pub fn op_v8_read_uint32(
 }
 
 #[op2]
-#[serde]
 pub fn op_v8_read_uint64(
   #[cppgc] deser: &Deserializer,
 ) -> Result<(u32, u32), JsErrorBox> {

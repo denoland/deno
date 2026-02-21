@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::fs;
 use std::fs::File;
@@ -441,6 +441,7 @@ fn filter_coverages(
     .filter(|e| {
       let is_internal = e.url.starts_with("ext:")
         || e.url.starts_with("data:")
+        || e.url.starts_with("blob:")
         || e.url.ends_with("__anonymous__")
         || e.url.ends_with("$deno$test.mjs")
         || e.url.contains("/$deno$stdin.")
@@ -550,11 +551,14 @@ pub fn cover_files(
       | MediaType::Unknown
       | MediaType::Css
       | MediaType::Html
+      | MediaType::Markdown
       | MediaType::Sql
       | MediaType::Wasm
       | MediaType::Cjs
       | MediaType::Mjs
-      | MediaType::Json => None,
+      | MediaType::Json
+      | MediaType::Jsonc
+      | MediaType::Json5 => None,
       MediaType::Dts | MediaType::Dmts | MediaType::Dcts => Some(String::new()),
       MediaType::TypeScript
       | MediaType::Jsx

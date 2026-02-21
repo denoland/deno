@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -20,6 +20,7 @@ use deno_ast::ModuleKind;
 use deno_cache_dir::file_fetcher::FetchLocalOptions;
 use deno_cache_dir::file_fetcher::MemoryFiles as _;
 use deno_core::FastString;
+use deno_core::ModuleLoadOptions;
 use deno_core::ModuleLoadReferrer;
 use deno_core::ModuleLoader;
 use deno_core::ModuleResolutionError;
@@ -74,6 +75,7 @@ use deno_runtime::deno_node::create_host_defined_options;
 use deno_runtime::deno_node::ops::require::UnableToGetCwdError;
 use deno_runtime::deno_permissions::CheckSpecifierKind;
 use deno_runtime::deno_permissions::PermissionsContainer;
+use deno_runtime::tokio_util::create_basic_runtime;
 use deno_semver::npm::NpmPackageReqReference;
 use eszip::EszipV2;
 use node_resolver::InNpmPackageChecker;
@@ -150,6 +152,7 @@ pub struct PrepareModuleLoadOptions<'a> {
   /// for when you want to defer doing this until later (ex. get the
   /// graph back, reload some specifiers in it, then do graph validation).
   pub skip_graph_roots_validation: bool,
+  pub file_content_overrides: HashMap<ModuleSpecifier, Arc<[u8]>>,
 }
 
 impl ModuleLoadPreparer {
@@ -188,12 +191,16 @@ impl ModuleLoadPreparer {
       ext_overwrite,
       allow_unknown_media_types,
       skip_graph_roots_validation,
+      file_content_overrides,
     } = options;
     let _pb_clear_guard = self.progress_bar.deferred_keep_initialize_alive();
 
     let mut loader = self
       .module_graph_builder
       .create_graph_loader_with_permissions(permissions);
+    if !file_content_overrides.is_empty() {
+      loader.set_file_content_overrides(file_content_overrides);
+    }
     if let Some(ext) = ext_overwrite {
       let maybe_content_type = match ext.as_str() {
         "ts" => Some("text/typescript"),
@@ -219,12 +226,12 @@ impl ModuleLoadPreparer {
 
     self
       .module_graph_builder
-      .build_graph_with_npm_resolution(
+      .build_graph_roots_with_npm_resolution(
         graph,
+        roots.to_vec(),
         BuildGraphWithNpmOptions {
           is_dynamic,
-          request: BuildGraphRequest::Roots(roots.to_vec()),
-          loader: Some(&mut loader),
+          loader: Some(&loader),
           npm_caching: self.options.default_npm_caching_strategy(),
         },
       )
@@ -281,17 +288,17 @@ impl ModuleLoadPreparer {
     );
     let _pb_clear_guard = self.progress_bar.deferred_keep_initialize_alive();
 
-    let mut loader = self
+    let loader = self
       .module_graph_builder
       .create_graph_loader_with_permissions(permissions);
     self
       .module_graph_builder
       .build_graph_with_npm_resolution(
         graph,
+        BuildGraphRequest::Reload(specifiers),
         BuildGraphWithNpmOptions {
           is_dynamic,
-          request: BuildGraphRequest::Reload(specifiers),
-          loader: Some(&mut loader),
+          loader: Some(&loader),
           npm_caching: self.options.default_npm_caching_strategy(),
         },
       )
@@ -751,14 +758,22 @@ impl<TGraphContainer: ModuleGraphContainer>
       )
       .await?;
 
+    let module_type = match requested_module_type {
+      RequestedModuleType::Text => ModuleType::Text,
+      RequestedModuleType::Bytes => ModuleType::Bytes,
+      RequestedModuleType::None => {
+        match file.resolve_media_type_and_charset().0 {
+          MediaType::Wasm => ModuleType::Wasm,
+          _ => ModuleType::JavaScript,
+        }
+      }
+      t => unreachable!("{t}"),
+    };
+
     Ok(ModuleCodeStringSource {
       code: ModuleSourceCode::Bytes(file.source.into()),
       found_url: file.url,
-      module_type: match requested_module_type {
-        RequestedModuleType::Text => ModuleType::Text,
-        RequestedModuleType::Bytes => ModuleType::Bytes,
-        _ => unreachable!(),
-      },
+      module_type,
     })
   }
 
@@ -1013,8 +1028,7 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     &self,
     specifier: &ModuleSpecifier,
     maybe_referrer: Option<&ModuleLoadReferrer>,
-    _is_dynamic: bool,
-    requested_module_type: RequestedModuleType,
+    options: ModuleLoadOptions,
   ) -> deno_core::ModuleLoadResponse {
     let inner = self.0.clone();
 
@@ -1032,7 +1046,7 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
           .load_inner(
             &specifier,
             maybe_referrer.as_ref().map(|r| &r.specifier),
-            &requested_module_type,
+            &options.requested_module_type,
           )
           .await
           .map_err(|err| {
@@ -1067,15 +1081,15 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     &self,
     specifier: &ModuleSpecifier,
     _maybe_referrer: Option<String>,
-    is_dynamic: bool,
-    requested_module_type: RequestedModuleType,
+    maybe_code: Option<String>,
+    options: ModuleLoadOptions,
   ) -> Pin<Box<dyn Future<Output = Result<(), ModuleLoaderError>>>> {
     // always call this first unconditionally because it will be
     // decremented unconditionally in "finish_load"
     self.0.shared.in_flight_loads_tracker.increase();
 
     if matches!(
-      requested_module_type,
+      options.requested_module_type,
       RequestedModuleType::Text | RequestedModuleType::Bytes
     ) {
       return Box::pin(deno_core::futures::future::ready(Ok(())));
@@ -1093,17 +1107,18 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
 
     let specifier = specifier.clone();
     let inner = self.0.clone();
+    let is_synchronous = options.is_synchronous;
 
-    async move {
+    let future = async move {
       let graph_container = &inner.graph_container;
       let module_load_preparer = &inner.shared.module_load_preparer;
-      let permissions = if is_dynamic {
+      let permissions = if options.is_dynamic_import {
         &inner.permissions
       } else {
         &inner.parent_permissions
       };
 
-      if is_dynamic {
+      if options.is_dynamic_import {
         // This doesn't acquire a graph update permit because that will
         // clone the graph which is a bit slow.
         let mut graph = graph_container.graph();
@@ -1133,9 +1148,14 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
         }
       }
 
-      let is_dynamic = is_dynamic || inner.is_worker; // consider workers as dynamic for permissions
+      let is_dynamic = options.is_dynamic_import || inner.is_worker; // consider workers as dynamic for permissions
       let lib = inner.lib;
       let mut update_permit = graph_container.acquire_update_permit().await;
+      let file_overrides = maybe_code
+        .map(|code| {
+          HashMap::from([(specifier.clone(), Arc::from(code.into_bytes()))])
+        })
+        .unwrap_or_default();
       let specifiers = &[specifier];
       {
         let graph = update_permit.graph_mut();
@@ -1150,6 +1170,7 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
               ext_overwrite: None,
               allow_unknown_media_types: false,
               skip_graph_roots_validation: is_dynamic,
+              file_content_overrides: file_overrides,
             },
           )
           .await
@@ -1178,8 +1199,16 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
       }
 
       Ok(())
+    };
+
+    // when is_synchronous is true, the caller is only polling the future
+    // without a tokio runtime, so we need to run it in a new runtime
+    if is_synchronous {
+      let result = run_future_in_new_runtime(future);
+      Box::pin(std::future::ready(result))
+    } else {
+      Box::pin(future)
     }
-    .boxed_local()
   }
 
   fn finish_load(&self) {
@@ -1219,6 +1248,8 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
       "wasm" | "file" | "http" | "https" | "data" | "blob" => (),
       _ => return None,
     }
+
+    // Load the prepared module and extract inline source map
     let graph = self.0.graph_container.graph();
     let source = self
       .0
@@ -1229,29 +1260,95 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     source_map_from_code(source.source.as_bytes()).map(Cow::Owned)
   }
 
+  fn load_external_source_map(
+    &self,
+    source_map_url: &str,
+  ) -> Option<Cow<'_, [u8]>> {
+    let specifier = resolve_url(source_map_url).ok()?;
+
+    if let Ok(Some(file)) = self
+      .0
+      .shared
+      .file_fetcher
+      .get_cached_source_or_local(&specifier)
+    {
+      return Some(Cow::Owned(file.source.to_vec()));
+    }
+
+    None
+  }
+
+  // todo(dsherret): this method is actually only to determine whether
+  // to show the filename in the stack traces so we should rename it
+  // to something more clear that reflects that (since we skip checking
+  // this for non-npm packages)
+  fn source_map_source_exists(&self, source_url: &str) -> Option<bool> {
+    let specifier = resolve_url(source_url).ok()?;
+
+    // some npm packages rely on the file existing or not to end up in
+    // the stack trace, so for backwards compat reasons only check this
+    // for npm packages because we don't want the perf hit otherwise
+    if self.0.shared.in_npm_pkg_checker.in_npm_package(&specifier)
+      && let Ok(path) = deno_path_util::url_to_file_path(&specifier)
+    {
+      return Some(path.is_file());
+    }
+
+    Some(true)
+  }
+
   fn get_source_mapped_source_line(
     &self,
     file_name: &str,
     line_number: usize,
   ) -> Option<String> {
+    let specifier = resolve_url(file_name).ok()?;
     let graph = self.0.graph_container.graph();
-    let code = match graph.get(&resolve_url(file_name).ok()?) {
+
+    let code = match graph.get(&specifier) {
       Some(deno_graph::Module::Js(module)) => &module.source.text,
       Some(deno_graph::Module::Json(module)) => &module.source.text,
-      _ => return None,
+      Some(
+        deno_graph::Module::Wasm(_)
+        | deno_graph::Module::Npm(_)
+        | deno_graph::Module::Node(_)
+        | deno_graph::Module::External(_),
+      ) => {
+        return None;
+      }
+      None => {
+        // Not in graph, try to read from file system (for source-mapped original files)
+        if let Ok(Some(file)) = self
+          .0
+          .shared
+          .file_fetcher
+          .get_cached_source_or_local(&specifier)
+        {
+          return extract_source_line(
+            &String::from_utf8_lossy(&file.source),
+            line_number,
+          );
+        } else {
+          return None;
+        }
+      }
     };
-    // Do NOT use .lines(): it skips the terminating empty line.
-    // (due to internally using_terminator() instead of .split())
-    let lines: Vec<&str> = code.split('\n').collect();
-    if line_number >= lines.len() {
-      Some(format!(
-        "{} Couldn't format source line: Line {} is out of bounds (source may have changed at runtime)",
-        crate::colors::yellow("Warning"),
-        line_number + 1,
-      ))
-    } else {
-      Some(lines[line_number].to_string())
-    }
+
+    extract_source_line(code, line_number)
+  }
+}
+
+/// Extracts a specific line from source code text.
+fn extract_source_line(text: &str, line_number: usize) -> Option<String> {
+  // Do NOT use .lines(): it skips the terminating empty line.
+  // (due to internally using_terminator() instead of .split())
+  match text.split('\n').nth(line_number) {
+    Some(line) => Some(line.to_string()),
+    None => Some(format!(
+      "{} Couldn't format source line: Line {} is out of bounds (source may have changed at runtime)",
+      crate::colors::yellow("Warning"),
+      line_number + 1,
+    )),
   }
 }
 
@@ -1324,7 +1421,7 @@ impl<TGraphContainer: ModuleGraphContainer> NodeRequireLoader
 {
   fn ensure_read_permission<'a>(
     &self,
-    permissions: &mut dyn deno_runtime::deno_node::NodePermissions,
+    permissions: &mut PermissionsContainer,
     path: Cow<'a, Path>,
   ) -> Result<Cow<'a, Path>, JsErrorBox> {
     if let Ok(url) = deno_path_util::url_from_file_path(&path) {
@@ -1494,6 +1591,35 @@ impl EszipModuleLoader {
       ))),
     }
   }
+}
+
+/// Runs the future to completion in a new tokio runtime.
+///
+/// This is used for synchronous module loading (require ESM) where deno_core is blocking
+/// the main thread and polling the future. In this case, tasks in the current runtime
+/// aren't being processed, so we can get around this by creating a new runtime.
+fn run_future_in_new_runtime<F, R>(future: F) -> R
+where
+  F: Future<Output = R> + 'static,
+  R: Send + 'static,
+{
+  // SAFETY: few points here...
+  // 1. The future is moved entirely to the new thread before any execution
+  // 2. The future executes exclusively on that single thread
+  // 3. The original thread waits (joins) until completion
+  // 4. No concurrent access to the future's captured state occurs
+  // 5. HOWEVER: Any thread local state won't work properly... which could
+  //    possibly cause issues.
+  let masked = unsafe { deno_core::unsync::MaskFutureAsSend::new(future) };
+
+  std::thread::scope(|s| {
+    s.spawn(move || {
+      let rt = create_basic_runtime();
+      rt.block_on(masked).into_inner()
+    })
+    .join()
+    .unwrap()
+  })
 }
 
 #[cfg(test)]

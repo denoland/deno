@@ -1,0 +1,14 @@
+{
+  "tests": {
+    "member": {
+      "args": "publish --token 'sadfasdf'",
+      "cwd": "a",
+      "output": "a.out",
+      "exitCode": 1
+    },
+    "root": {
+      "args": "publish --token 'sadfasdf'",
+      "output": "root.out"
+    }
+  }
+}

@@ -1,12 +1,12 @@
-Check file:///[WILDLINE]/package-a/mod.ts
-Check file:///[WILDLINE]/package-b/mod.ts
-Check file:///[WILDLINE]/package-d/mod.ts
+Check [WILDCARD]mod.ts
+Check [WILDCARD]mod.ts
+Check [WILDCARD]mod.ts
 TS2322 [ERROR]: Type 'number' is not assignable to type 'string'.
 const test: string = add(1, 2);
       ~~~~
     at file:///[WILDLINE]/package-b/mod.ts:3:7
 
-Check file:///[WILDLINE]/package-c/mod.ts
+Check [WILDCARD]mod.ts
 TS2554 [ERROR]: Expected 2 arguments, but got 1.
 console.log(Math.pow(""));
                  ~~~

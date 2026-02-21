@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::collections::HashSet;
@@ -39,6 +39,7 @@ use deno_resolver::deno_json::JsxImportSourceConfigResolver;
 use deno_resolver::deno_json::ToMaybeJsxImportSourceConfigError;
 use deno_resolver::file_fetcher::GraphLoaderReporterRc;
 use deno_resolver::graph::EnhanceGraphErrorMode;
+use deno_resolver::graph::EnhancedGraphError;
 use deno_resolver::graph::enhance_graph_error;
 use deno_resolver::graph::enhanced_integrity_error_message;
 use deno_resolver::graph::format_deno_graph_error;
@@ -47,7 +48,6 @@ use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::SmallStackString;
 use deno_semver::jsr::JsrDepPackageReq;
 use import_map::ImportMapErrorKind;
-use indexmap::IndexMap;
 use node_resolver::errors::NodeJsErrorCode;
 use sys_traits::FsMetadata;
 
@@ -117,7 +117,7 @@ pub fn graph_valid(
     },
   );
   match errors.next() {
-    Some(error) => Err(error),
+    Some(error) => Err(JsErrorBox::from_err(error)),
     _ => {
       // finally surface the npm resolution result
       if let Err(err) = &graph.npm_dep_graph_result {
@@ -147,15 +147,14 @@ pub fn graph_walk_errors<'a>(
   sys: &'a CliSys,
   roots: &'a [ModuleSpecifier],
   options: GraphWalkErrorsOptions<'a>,
-) -> impl Iterator<Item = JsErrorBox> + 'a {
+) -> impl Iterator<Item = EnhancedGraphError> + 'a {
   fn should_ignore_error(
     sys: &CliSys,
-    graph_kind: GraphKind,
     allow_unknown_media_types: bool,
     will_type_check: bool,
     error: &ModuleGraphError,
   ) -> bool {
-    if (graph_kind == GraphKind::TypesOnly || allow_unknown_media_types)
+    if allow_unknown_media_types
       && matches!(
         error.as_module_error_kind(),
         Some(ModuleErrorKind::UnsupportedMediaType { .. })
@@ -182,7 +181,6 @@ pub fn graph_walk_errors<'a>(
     .flat_map(move |error| {
       if should_ignore_error(
         sys,
-        graph.graph_kind(),
         options.allow_unknown_media_types,
         options.will_type_check,
         &error,
@@ -210,9 +208,9 @@ pub fn graph_walk_errors<'a>(
       {
         return None;
       }
-      let message = enhance_graph_error(
+      let enhanced = enhance_graph_error(
         sys,
-        &error,
+        error,
         if is_root {
           EnhanceGraphErrorMode::HideRange
         } else {
@@ -220,7 +218,7 @@ pub fn graph_walk_errors<'a>(
         },
       );
 
-      Some(JsErrorBox::new(error.get_class(), message))
+      Some(enhanced)
     })
 }
 
@@ -297,10 +295,10 @@ pub fn resolution_error_for_tsc_diagnostic(
       | NodeJsErrorCode::ERR_UNSUPPORTED_ESM_URL_SCHEME
       | NodeJsErrorCode::ERR_INVALID_FILE_URL_PATH
       | NodeJsErrorCode::ERR_PACKAGE_IMPORT_NOT_DEFINED
-      | NodeJsErrorCode::ERR_UNKNOWN_BUILTIN_MODULE
-      | NodeJsErrorCode::ERR_PACKAGE_PATH_NOT_EXPORTED
-      | NodeJsErrorCode::ERR_TYPES_NOT_FOUND => false,
-      NodeJsErrorCode::ERR_MODULE_NOT_FOUND => true,
+      | NodeJsErrorCode::ERR_PACKAGE_PATH_NOT_EXPORTED => false,
+      NodeJsErrorCode::ERR_MODULE_NOT_FOUND
+      | NodeJsErrorCode::ERR_TYPES_NOT_FOUND
+      | NodeJsErrorCode::ERR_UNKNOWN_BUILTIN_MODULE => true,
     }
   }
 
@@ -333,33 +331,39 @@ pub fn resolution_error_for_tsc_diagnostic(
           })
         }
       },
-      ResolveError::ImportMap(error) => match error.as_kind() {
-        ImportMapErrorKind::JsonParse(_)
-        | ImportMapErrorKind::ImportMapNotObject
-        | ImportMapErrorKind::ImportsFieldNotObject
-        | ImportMapErrorKind::ScopesFieldNotObject
-        | ImportMapErrorKind::ScopePrefixNotObject(_)
-        | ImportMapErrorKind::BlockedByNullEntry(_)
-        | ImportMapErrorKind::SpecifierResolutionFailure { .. }
-        | ImportMapErrorKind::SpecifierBacktracksAbovePrefix { .. } => None,
-        ImportMapErrorKind::UnmappedBareSpecifier(specifier, _) => {
-          Some(ResolutionErrorRef {
+      ResolveError::Other(error) => {
+        if let Some(error) =
+          error.get_ref().downcast_ref::<import_map::ImportMapError>()
+        {
+          match error.as_kind() {
+            ImportMapErrorKind::JsonParse(_)
+            | ImportMapErrorKind::ImportMapNotObject
+            | ImportMapErrorKind::ImportsFieldNotObject
+            | ImportMapErrorKind::ScopesFieldNotObject
+            | ImportMapErrorKind::ScopePrefixNotObject(_)
+            | ImportMapErrorKind::BlockedByNullEntry(_)
+            | ImportMapErrorKind::SpecifierResolutionFailure { .. }
+            | ImportMapErrorKind::SpecifierBacktracksAbovePrefix { .. } => None,
+            ImportMapErrorKind::UnmappedBareSpecifier(specifier, _) => {
+              Some(ResolutionErrorRef {
+                specifier,
+                range,
+                is_module_not_found: false,
+              })
+            }
+          }
+        } else {
+          let is_module_not_found_error =
+            downcast_ref_deno_resolve_error(error)
+              .and_then(|err| err.maybe_node_code())
+              .map(is_module_not_found_code)
+              .unwrap_or(false);
+          is_module_not_found_error.then(|| ResolutionErrorRef {
             specifier,
             range,
-            is_module_not_found: false,
+            is_module_not_found: true,
           })
         }
-      },
-      ResolveError::Other(error) => {
-        let is_module_not_found_error = downcast_ref_deno_resolve_error(error)
-          .and_then(|err| err.maybe_node_code())
-          .map(is_module_not_found_code)
-          .unwrap_or(false);
-        is_module_not_found_error.then(|| ResolutionErrorRef {
-          specifier,
-          range,
-          is_module_not_found: true,
-        })
       }
     },
   }
@@ -381,9 +385,10 @@ fn exit_for_integrity_error(err: &ModuleError) {
 pub struct CreateGraphOptions<'a> {
   pub graph_kind: GraphKind,
   pub roots: Vec<ModuleSpecifier>,
+  pub imports: Vec<deno_graph::ReferrerImports>,
   pub is_dynamic: bool,
   /// Specify `None` to use the default CLI loader.
-  pub loader: Option<&'a mut dyn Loader>,
+  pub loader: Option<&'a dyn Loader>,
   pub npm_caching: NpmCachingStrategy,
 }
 
@@ -438,6 +443,9 @@ impl ModuleGraphCreator {
         is_dynamic: false,
         graph_kind,
         roots,
+        imports: self
+          .module_graph_builder
+          .maybe_resolve_ts_config_imports(graph_kind),
         loader: Some(loader),
         npm_caching,
       })
@@ -499,13 +507,15 @@ impl ModuleGraphCreator {
     let loader = self
       .module_graph_builder
       .create_graph_loader_with_root_permissions();
-    let mut publish_loader = PublishLoader(loader);
+    let publish_loader = PublishLoader(loader);
     let mut graph = self
       .create_graph_with_options(CreateGraphOptions {
         is_dynamic: false,
         graph_kind: deno_graph::GraphKind::All,
         roots,
-        loader: Some(&mut publish_loader),
+        // do not include the tsconfig imports for `deno publish`
+        imports: Vec::new(),
+        loader: Some(&publish_loader),
         npm_caching: self.options.default_npm_caching_strategy(),
       })
       .await?;
@@ -547,8 +557,8 @@ impl ModuleGraphCreator {
       .module_graph_builder
       .build_graph_with_npm_resolution(
         &mut graph,
+        BuildGraphRequest::Roots(options.roots, options.imports),
         BuildGraphWithNpmOptions {
-          request: BuildGraphRequest::Roots(options.roots),
           is_dynamic: options.is_dynamic,
           loader: options.loader,
           npm_caching: options.npm_caching,
@@ -570,6 +580,9 @@ impl ModuleGraphCreator {
         is_dynamic: false,
         graph_kind,
         roots,
+        imports: self
+          .module_graph_builder
+          .maybe_resolve_ts_config_imports(graph_kind),
         loader: None,
         npm_caching: self.options.default_npm_caching_strategy(),
       })
@@ -638,15 +651,14 @@ pub enum BuildGraphWithNpmResolutionError {
 }
 
 pub enum BuildGraphRequest {
-  Roots(Vec<ModuleSpecifier>),
+  Roots(Vec<ModuleSpecifier>, Vec<deno_graph::ReferrerImports>),
   Reload(Vec<ModuleSpecifier>),
 }
 
 pub struct BuildGraphWithNpmOptions<'a> {
-  pub request: BuildGraphRequest,
   pub is_dynamic: bool,
   /// Specify `None` to use the default CLI loader.
-  pub loader: Option<&'a mut dyn Loader>,
+  pub loader: Option<&'a dyn Loader>,
   pub npm_caching: NpmCachingStrategy,
 }
 
@@ -654,6 +666,7 @@ pub struct ModuleGraphBuilder {
   caches: Arc<cache::Caches>,
   cjs_tracker: Arc<CliCjsTracker>,
   cli_options: Arc<CliOptions>,
+  compiler_options_resolver: Arc<CompilerOptionsResolver>,
   file_fetcher: Arc<CliFileFetcher>,
   global_http_cache: Arc<GlobalHttpCache>,
   in_npm_pkg_checker: DenoInNpmPackageChecker,
@@ -669,7 +682,6 @@ pub struct ModuleGraphBuilder {
   resolver: Arc<CliResolver>,
   root_permissions_container: PermissionsContainer,
   sys: CliSys,
-  compiler_options_resolver: Arc<CompilerOptionsResolver>,
   load_reporter: Option<GraphLoaderReporterRc>,
 }
 
@@ -679,6 +691,7 @@ impl ModuleGraphBuilder {
     caches: Arc<cache::Caches>,
     cjs_tracker: Arc<CliCjsTracker>,
     cli_options: Arc<CliOptions>,
+    compiler_options_resolver: Arc<CompilerOptionsResolver>,
     file_fetcher: Arc<CliFileFetcher>,
     global_http_cache: Arc<GlobalHttpCache>,
     in_npm_pkg_checker: DenoInNpmPackageChecker,
@@ -694,13 +707,13 @@ impl ModuleGraphBuilder {
     resolver: Arc<CliResolver>,
     root_permissions_container: PermissionsContainer,
     sys: CliSys,
-    compiler_options_resolver: Arc<CompilerOptionsResolver>,
     load_reporter: Option<GraphLoaderReporterRc>,
   ) -> Self {
     Self {
       caches,
       cjs_tracker,
       cli_options,
+      compiler_options_resolver,
       file_fetcher,
       global_http_cache,
       in_npm_pkg_checker,
@@ -716,23 +729,47 @@ impl ModuleGraphBuilder {
       resolver,
       root_permissions_container,
       sys,
-      compiler_options_resolver,
       load_reporter,
     }
+  }
+
+  pub async fn build_graph_roots_with_npm_resolution(
+    &self,
+    graph: &mut ModuleGraph,
+    roots: Vec<ModuleSpecifier>,
+    options: BuildGraphWithNpmOptions<'_>,
+  ) -> Result<(), BuildGraphWithNpmResolutionError> {
+    let request = BuildGraphRequest::Roots(
+      roots,
+      self.maybe_resolve_ts_config_imports(graph.graph_kind()),
+    );
+    self
+      .build_graph_with_npm_resolution(
+        graph,
+        request,
+        BuildGraphWithNpmOptions {
+          is_dynamic: options.is_dynamic,
+          loader: options.loader,
+          npm_caching: options.npm_caching,
+        },
+      )
+      .await
   }
 
   pub async fn build_graph_with_npm_resolution(
     &self,
     graph: &mut ModuleGraph,
+    request: BuildGraphRequest,
     options: BuildGraphWithNpmOptions<'_>,
   ) -> Result<(), BuildGraphWithNpmResolutionError> {
-    enum MutLoaderRef<'a> {
-      Borrowed(&'a mut dyn Loader),
+    #[allow(clippy::large_enum_variant)]
+    enum LoaderRef<'a> {
+      Borrowed(&'a dyn Loader),
       Owned(CliDenoGraphLoader),
     }
 
-    impl MutLoaderRef<'_> {
-      pub fn as_mut_loader(&mut self) -> &mut dyn Loader {
+    impl LoaderRef<'_> {
+      pub fn as_loader(&mut self) -> &dyn Loader {
         match self {
           Self::Borrowed(loader) => *loader,
           Self::Owned(loader) => loader,
@@ -743,9 +780,9 @@ impl ModuleGraphBuilder {
     let _clear_guard = self.progress_bar.deferred_keep_initialize_alive();
     let analyzer = self.module_info_cache.as_module_analyzer();
     let mut loader = match options.loader {
-      Some(loader) => MutLoaderRef::Borrowed(loader),
+      Some(loader) => LoaderRef::Borrowed(loader),
       None => {
-        MutLoaderRef::Owned(self.create_graph_loader_with_root_permissions())
+        LoaderRef::Owned(self.create_graph_loader_with_root_permissions())
       }
     };
     let jsx_import_source_config_resolver =
@@ -761,8 +798,8 @@ impl ModuleGraphBuilder {
     self
       .build_graph_with_npm_resolution_and_build_options(
         graph,
-        options.request,
-        loader.as_mut_loader(),
+        request,
+        loader.as_loader(),
         deno_graph::BuildOptions {
           skip_dynamic_deps: self.cli_options.unstable_lazy_dynamic_imports()
             && graph.graph_kind() == GraphKind::CodeOnly,
@@ -788,13 +825,6 @@ impl ModuleGraphBuilder {
       )
       .await?;
 
-    if let Some(npm_installer) = &self.npm_installer
-      && graph.has_node_specifier
-      && graph.graph_kind().include_types()
-    {
-      npm_installer.inject_synthetic_types_node_package().await?;
-    }
-
     Ok(())
   }
 
@@ -802,7 +832,7 @@ impl ModuleGraphBuilder {
     &self,
     graph: &mut ModuleGraph,
     request: BuildGraphRequest,
-    loader: &'a mut dyn deno_graph::source::Loader,
+    loader: &'a dyn deno_graph::source::Loader,
     options: deno_graph::BuildOptions<'a>,
     npm_caching: NpmCachingStrategy,
   ) -> Result<(), BuildGraphWithNpmResolutionError> {
@@ -837,46 +867,12 @@ impl ModuleGraphBuilder {
     let initial_package_mappings_len = graph.packages.mappings().len();
 
     match request {
-      BuildGraphRequest::Roots(roots) => {
+      BuildGraphRequest::Roots(roots, imports) => {
         if roots.iter().any(|r| r.scheme() == "npm")
           && self.npm_resolver.is_byonm()
         {
           return Err(BuildGraphWithNpmResolutionError::UnsupportedNpmSpecifierEntrypointResolutionWay);
         }
-        let imports = if graph.graph_kind().include_types() {
-          // Resolve all the imports from every config file. We'll separate
-          // them later based on the folder we're type checking.
-          let mut imports_by_referrer = IndexMap::<_, Vec<_>>::with_capacity(
-            self.compiler_options_resolver.size(),
-          );
-          for (_, compiler_options_data, maybe_files) in
-            self.compiler_options_resolver.entries()
-          {
-            if let Some((referrer, files)) = maybe_files {
-              imports_by_referrer
-                .entry(referrer.as_ref())
-                .or_default()
-                .extend(files.iter().map(|f| f.relative_specifier.clone()));
-            }
-            for (referrer, types) in
-              compiler_options_data.compiler_options_types().as_ref()
-            {
-              imports_by_referrer
-                .entry(referrer)
-                .or_default()
-                .extend(types.iter().cloned());
-            }
-          }
-          imports_by_referrer
-            .into_iter()
-            .map(|(referrer, imports)| deno_graph::ReferrerImports {
-              referrer: referrer.clone(),
-              imports,
-            })
-            .collect()
-        } else {
-          Vec::new()
-        };
         graph.build(roots, imports, loader, options).await;
       }
       BuildGraphRequest::Reload(urls) => {
@@ -1031,6 +1027,17 @@ impl ModuleGraphBuilder {
         allow_unknown_jsr_exports,
       },
     )
+  }
+
+  fn maybe_resolve_ts_config_imports(
+    &self,
+    graph_kind: GraphKind,
+  ) -> Vec<deno_graph::ReferrerImports> {
+    if graph_kind.include_types() {
+      self.compiler_options_resolver.to_graph_imports()
+    } else {
+      Vec::new()
+    }
   }
 }
 

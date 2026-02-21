@@ -1,4 +1,4 @@
-Check file:///[WILDCARD]/pass.ts
+Check [WILDCARD]pass.ts
 {
   "version": 1,
   "runtime": "Deno/[WILDCARD]",

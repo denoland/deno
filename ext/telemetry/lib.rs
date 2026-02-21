@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 #![allow(clippy::too_many_arguments)]
 #![expect(unexpected_cfgs)]
@@ -162,18 +162,15 @@ pub enum OtelPropagators {
   None = 2,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(
+  Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize,
+)]
 #[repr(u8)]
 pub enum OtelConsoleConfig {
+  #[default]
   Ignore = 0,
   Capture = 1,
   Replace = 2,
-}
-
-impl Default for OtelConsoleConfig {
-  fn default() -> Self {
-    Self::Ignore
-  }
 }
 
 static OTEL_SHARED_RUNTIME_SPAWN_TASK_TX: Lazy<
@@ -1002,6 +999,8 @@ pub fn init(
 }
 
 fn before_exit() {
+  log::trace!("deno_telemetry::before_exit");
+
   let Some(OtelGlobals {
     span_processor: spans,
     log_processor: logs,
@@ -1011,8 +1010,6 @@ fn before_exit() {
   else {
     return;
   };
-
-  log::trace!("deno_telemetry::before_exit");
 
   let r = spans.shutdown();
   log::trace!("spans={:?}", r);
@@ -1280,7 +1277,8 @@ fn op_otel_log<'s>(
     ..=0 => Severity::Debug,
     1 => Severity::Info,
     2 => Severity::Warn,
-    3.. => Severity::Error,
+    3 | 5.. => Severity::Error,
+    4 => Severity::Trace,
   };
 
   let mut log_record = LogRecord::default();
@@ -1342,7 +1340,8 @@ fn op_otel_log_foreign(
     ..=0 => Severity::Debug,
     1 => Severity::Info,
     2 => Severity::Warn,
-    3.. => Severity::Error,
+    3 | 5.. => Severity::Error,
+    4 => Severity::Trace,
   };
 
   let trace_id = parse_trace_id(scope, trace_id);
@@ -2515,7 +2514,7 @@ fn op_otel_metric_attribute3<'s>(
 
 struct ObservationDone(oneshot::Sender<()>);
 
-#[op2(async)]
+#[op2]
 async fn op_otel_metric_wait_to_observe(state: Rc<RefCell<OpState>>) -> bool {
   let (tx, rx) = oneshot::channel();
   {

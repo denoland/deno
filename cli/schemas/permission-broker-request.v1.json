@@ -12,6 +12,10 @@
         "1"
       ]
     },
+    "pid": {
+      "type": "number",
+      "description": "The process ID of the Deno process making the request."
+    },
     "id": {
       "type": "number",
       "description": "The numeric ID of the request. The response must have a matching ID."

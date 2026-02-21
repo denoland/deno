@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 #![deny(unsafe_op_in_unsafe_fn)]
 
@@ -299,9 +299,9 @@ fn napi_create_buffer<'s>(
 
   let ab = v8::ArrayBuffer::new(scope, length);
 
-  let buffer_constructor = v8::Local::new(scope, &env.buffer_constructor);
-  let Some(buffer) = buffer_constructor.new_instance(scope, &[ab.into()])
-  else {
+  let create_buffer = v8::Local::new(scope, &env.create_buffer);
+  let recv = v8::null(scope).into();
+  let Some(buffer) = create_buffer.call(scope, recv, &[ab.into()]) else {
     return napi_generic_failure;
   };
 
@@ -341,9 +341,9 @@ fn napi_create_external_buffer<'s>(
   v8::callback_scope!(unsafe scope, env.context());
   let ab = v8::ArrayBuffer::with_backing_store(scope, &store.make_shared());
 
-  let buffer_constructor = v8::Local::new(scope, &env.buffer_constructor);
-  let Some(buffer) = buffer_constructor.new_instance(scope, &[ab.into()])
-  else {
+  let create_buffer = v8::Local::new(scope, &env.create_buffer);
+  let recv = v8::null(scope).into();
+  let Some(buffer) = create_buffer.call(scope, recv, &[ab.into()]) else {
     return napi_generic_failure;
   };
 
@@ -368,9 +368,9 @@ fn napi_create_buffer_copy<'s>(
 
   let ab = v8::ArrayBuffer::new(scope, length);
 
-  let buffer_constructor = v8::Local::new(scope, &env.buffer_constructor);
-  let Some(buffer) = buffer_constructor.new_instance(scope, &[ab.into()])
-  else {
+  let create_buffer = v8::Local::new(scope, &env.create_buffer);
+  let recv = v8::null(scope).into();
+  let Some(buffer) = create_buffer.call(scope, recv, &[ab.into()]) else {
     return napi_generic_failure;
   };
 

@@ -1,4 +1,4 @@
-Check file:///[WILDLINE]/dts_importing_non_existent/index.js
+Check [WILDCARD]index.js
 TS2307 [ERROR]: Cannot find module 'file:///[WILDLINE]/test'.
     at file:///[WILDLINE]/index.d.ts:1:22
 

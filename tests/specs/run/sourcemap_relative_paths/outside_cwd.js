@@ -1,0 +1,8 @@
+// File with source map pointing to a file outside the current working directory
+function throwError() {
+  throw new Error("Error from file outside cwd");
+}
+
+throwError();
+
+//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJzb3VyY2VzIjpbImZpbGU6Ly8vYWJzb2x1dGUvcGF0aC9vdXRzaWRlL29yaWdpbmFsLnRzIl0sInNvdXJjZXNDb250ZW50IjpbIi8vIE9yaWdpbmFsIGZpbGUgb3V0c2lkZSBjd2RcbmZ1bmN0aW9uIHRocm93RXJyb3IoKSB7XG4gIHRocm93IG5ldyBFcnJvcihcIkVycm9yIGZyb20gZmlsZSBvdXRzaWRlIGN3ZFwiKTtcbn1cblxudGhyb3dFcnJvcigpO1xuIl0sIm5hbWVzIjpbXSwibWFwcGluZ3MiOiJBQUFBO0FBQ0E7QUFDQTtBQUNBO0FBQ0E7QUFDQSJ9

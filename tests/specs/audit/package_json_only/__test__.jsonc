@@ -1,0 +1,27 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "install",
+      "output": "install.out"
+    },
+    {
+      "args": "audit",
+      "output": "audit.out",
+      "exitCode": 1
+    },
+    {
+      "args": "audit --socket",
+      "output": "audit_socket.out",
+      "exitCode": 1
+    },
+    {
+      "args": "audit --socket",
+      "output": "audit_socket_authenticated.out",
+      "exitCode": 1,
+      "envs": {
+        "SOCKET_API_KEY": "test-api-key-12345"
+      }
+    }
+  ]
+}

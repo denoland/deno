@@ -13,8 +13,8 @@ Download http://127.0.0.1:4250/@denotest/add/1.0.0/mod.ts
 Installed 2 packages in [WILDLINE]
 Reused 0 packages from cache
 Downloaded 0 packages from JSR
-Downloaded 4 packages from npm
-++++
+Downloaded 2 packages from npm
+++
 
 Dependencies:
 + npm:@denotest/esm-basic 1.0.0

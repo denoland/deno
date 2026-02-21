@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 mod esbuild;
 mod externals;
@@ -32,6 +32,7 @@ use deno_core::parking_lot::RwLock;
 use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_error::JsError;
+use deno_error::JsErrorClass;
 use deno_graph::ModuleErrorKind;
 use deno_graph::Position;
 use deno_path_util::resolve_url_or_path;
@@ -52,6 +53,7 @@ use esbuild_client::EsbuildService;
 use esbuild_client::protocol;
 use esbuild_client::protocol::BuildResponse;
 use indexmap::IndexMap;
+use indexmap::IndexSet;
 use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
 use node_resolver::errors::PackageNotFoundError;
@@ -112,6 +114,13 @@ pub async fn prepare_inputs(
     let roots =
       resolve_roots(resolved_entrypoints, sys, npm_resolver, node_resolver);
     plugin_handler.prepare_module_load(&roots).await?;
+    let graph = plugin_handler.module_graph_container.graph();
+    let mut fully_resolved_roots = IndexSet::with_capacity(graph.roots.len());
+    for root in &graph.roots {
+      fully_resolved_roots.insert(graph.resolve(root).clone());
+    }
+    *plugin_handler.resolved_roots.write() = Arc::new(fully_resolved_roots);
+
     Ok(BundlerInput::Entrypoints(
       roots.into_iter().map(|e| ("".into(), e.into())).collect(),
     ))
@@ -173,6 +182,13 @@ pub async fn prepare_inputs(
     // Pre-cache modules referenced by HTML pages
     let _ = plugin_handler.prepare_module_load(&to_cache_urls).await;
 
+    let graph = plugin_handler.module_graph_container.graph();
+    let mut fully_resolved_roots = IndexSet::with_capacity(graph.roots.len());
+    for root in &graph.roots {
+      fully_resolved_roots.insert(graph.resolve(root).clone());
+    }
+    *plugin_handler.resolved_roots.write() = Arc::new(fully_resolved_roots);
+
     Ok(BundlerInput::EntrypointsWithHtml {
       entries,
       html_pages,
@@ -210,6 +226,7 @@ pub async fn bundle_init(
     file_fetcher: factory.file_fetcher()?.clone(),
     resolver: resolver.clone(),
     module_load_preparer,
+    resolved_roots: Arc::new(RwLock::new(Arc::new(IndexSet::new()))),
     module_graph_container,
     permissions: root_permissions.clone(),
     module_loader: module_loader.clone(),
@@ -647,7 +664,7 @@ fn replace_require_shim(contents: &str, minified: bool) -> String {
     );
     re.replace(contents, |c: &regex::Captures<'_>| {
       let var_name = c.get(1).unwrap().as_str();
-      format!("import{{createRequire}} from \"node:module\";var {var_name}=createRequire(import.meta.url);")
+      format!("import{{createRequire as __deno_internal_createRequire}} from \"node:module\";var {var_name}=__deno_internal_createRequire(import.meta.url);")
     }).into_owned()
   } else {
     let re = lazy_regex::regex!(
@@ -655,8 +672,8 @@ fn replace_require_shim(contents: &str, minified: bool) -> String {
     );
     re.replace_all(
       contents,
-      r#"import { createRequire } from "node:module";
-var __require = createRequire(import.meta.url);
+      r#"import { createRequire as __deno_internal_createRequire } from "node:module";
+var __require = __deno_internal_createRequire(import.meta.url);
 "#,
     )
     .into_owned()
@@ -828,6 +845,7 @@ pub struct DenoPluginHandler {
   file_fetcher: Arc<CliFileFetcher>,
   resolver: Arc<CliResolver>,
   module_load_preparer: Arc<ModuleLoadPreparer>,
+  resolved_roots: Arc<RwLock<Arc<IndexSet<ModuleSpecifier>>>>,
   module_graph_container: Arc<MainModuleGraphContainer>,
   permissions: PermissionsContainer,
   module_loader: Arc<CliDenoResolverModuleLoader>,
@@ -967,6 +985,7 @@ impl esbuild_client::PluginHandler for DenoPluginHandler {
       // to the output file. It will be tricky to figure out which
       // output file this import will end up in. We may have to use the metafile and rewrite at the end
       let is_external = r.starts_with("node:")
+        || r.starts_with("bun:")
         || self
           .externals_matcher
           .as_ref()
@@ -1129,8 +1148,8 @@ impl BundleLoadError {
       BundleLoadError::LoadCodeSource(e) => match e.as_kind() {
         LoadCodeSourceErrorKind::LoadPreparedModule(e) => match e.as_kind() {
           LoadPreparedModuleErrorKind::Graph(e) => matches!(
-            e.error.as_kind(),
-            ModuleErrorKind::UnsupportedMediaType { .. },
+            e.original().as_module_error_kind(),
+            Some(ModuleErrorKind::UnsupportedMediaType { .. }),
           ),
           _ => false,
         },
@@ -1164,8 +1183,11 @@ fn maybe_ignorable_resolution_error(
       ..
     },
   ) = error.as_kind()
-    && let deno_graph::source::ResolveError::ImportMap(import_map_err) =
+    && let deno_graph::source::ResolveError::Other(other_err) =
       resolve_error.deref()
+    && let Some(import_map_err) = other_err
+      .get_ref()
+      .downcast_ref::<import_map::ImportMapError>()
     && let import_map::ImportMapErrorKind::UnmappedBareSpecifier(..) =
       import_map_err.as_kind()
   {
@@ -1213,6 +1235,9 @@ impl DenoPluginHandler {
       kind,
       with
     );
+    if path.starts_with("data:") {
+      return Ok(None);
+    }
     let mut resolve_dir = resolve_dir.unwrap_or("").to_string();
     let resolver = self.resolver.clone();
     if !resolve_dir.ends_with(std::path::MAIN_SEPARATOR) {
@@ -1307,6 +1332,7 @@ impl DenoPluginHandler {
           ext_overwrite: None,
           allow_unknown_media_types: true,
           skip_graph_roots_validation: true,
+          file_content_overrides: Default::default(),
         },
       )
       .await?;
@@ -1331,6 +1357,9 @@ impl DenoPluginHandler {
       specifier,
       Path::new(""), // should be absolute already, feels kind of hacky though
     )?;
+    if specifier.scheme() == "data" {
+      return Ok(None);
+    }
     let (specifier, media_type) =
       if let RequestedModuleType::Bytes = requested_type {
         (specifier, MediaType::Unknown)
@@ -1346,13 +1375,6 @@ impl DenoPluginHandler {
           deno_terminal::colors::yellow("warn"),
           specifier
         );
-
-        if specifier.scheme() == "data" {
-          return Ok(Some((
-            specifier.to_string().as_bytes().to_vec(),
-            esbuild_client::BuiltinLoader::DataUrl,
-          )));
-        }
 
         let (media_type, _) =
           deno_media_type::resolve_media_type_and_charset_from_content_type(
@@ -1494,8 +1516,10 @@ impl DenoPluginHandler {
       let module_graph_container = self.module_graph_container.clone();
       let specifier = specifier.clone();
       let code = source.to_vec();
+      let resolved_roots = self.resolved_roots.read().clone();
       let code = tokio::task::spawn_blocking(move || {
         Self::apply_transform(
+          &resolved_roots,
           &module_graph_container,
           &specifier,
           media_type,
@@ -1542,13 +1566,15 @@ impl DenoPluginHandler {
 
   #[allow(clippy::result_large_err)]
   fn apply_transform(
+    resolved_roots: &IndexSet<ModuleSpecifier>,
     module_graph_container: &MainModuleGraphContainer,
     specifier: &ModuleSpecifier,
     media_type: deno_ast::MediaType,
     code: &str,
   ) -> Result<String, BundleLoadError> {
+    let graph = module_graph_container.graph();
     let mut transform = transform::BundleImportMetaMainTransform::new(
-      module_graph_container.graph().roots.contains(specifier),
+      graph.roots.contains(specifier) || resolved_roots.contains(specifier),
     );
     let parsed_source = deno_ast::parse_program_with_post_process(
       deno_ast::ParseParams {
@@ -1607,9 +1633,11 @@ impl DenoPluginHandler {
       deno_graph::Module::Wasm(_) => {
         return Err(BundleLoadError::WasmUnsupported);
       }
-      deno_graph::Module::Npm(module) => {
-        let url = self.resolver.resolve_npm_nv_ref(
-          &module.nv_reference,
+      deno_graph::Module::Npm(_) => {
+        let req_ref =
+          NpmPackageReqReference::from_specifier(specifier).unwrap();
+        let url = self.resolver.resolve_managed_npm_req_ref(
+          &req_ref,
           None,
           ResolutionMode::Import,
           NodeResolutionKind::Execution,
@@ -1655,6 +1683,9 @@ fn media_type_to_loader(
     Jsx | Tsx => esbuild_client::BuiltinLoader::Jsx,
     Css => esbuild_client::BuiltinLoader::Css,
     Json => esbuild_client::BuiltinLoader::Json,
+    Jsonc => esbuild_client::BuiltinLoader::Text,
+    Json5 => esbuild_client::BuiltinLoader::Text,
+    Markdown => esbuild_client::BuiltinLoader::Text,
     SourceMap => esbuild_client::BuiltinLoader::Text,
     Html => esbuild_client::BuiltinLoader::Text,
     Sql => esbuild_client::BuiltinLoader::Text,
@@ -1722,7 +1753,7 @@ fn resolve_roots(
         let package_folder = npm_resolver
           .resolve_pkg_folder_from_deno_module_req(v.req(), &referrer)
           .unwrap();
-        let Ok(main_module) =
+        let Ok(node_resolver::BinValue::JsFile(main_module)) =
           node_resolver.resolve_binary_export(&package_folder, v.sub_path())
         else {
           roots.push(url);

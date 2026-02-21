@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 import { assertEquals, assertThrows, delay } from "./test_util.ts";
 
 Deno.test(
@@ -306,5 +306,24 @@ Deno.test(
 
     Deno.removeSignalListener("SIGUNUSED", i);
     Deno.removeSignalListener("SIGPOLL", i);
+  },
+);
+
+Deno.test(
+  {
+    ignore: Deno.build.os === "windows",
+    permissions: { run: true },
+  },
+  function killWithSignalZero() {
+    // This should not throw for the current process
+    Deno.kill(Deno.pid, 0);
+
+    // Test with a non-existent PID (very high number unlikely to exist)
+    assertThrows(
+      () => {
+        Deno.kill(999999, 0);
+      },
+      Deno.errors.NotFound,
+    );
   },
 );

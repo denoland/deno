@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -462,8 +462,8 @@ impl<'a> TaskRunner<'a> {
     };
 
     let custom_commands = task_runner::resolve_custom_commands(
-      self.npm_resolver,
       self.node_resolver,
+      self.npm_resolver,
     )?;
 
     self
@@ -505,8 +505,8 @@ impl<'a> TaskRunner<'a> {
       format!("post{}", task_name),
     ];
     let custom_commands = task_runner::resolve_custom_commands(
-      self.npm_resolver,
       self.node_resolver,
+      self.npm_resolver,
     )?;
 
     for task_name in &task_names {
@@ -627,16 +627,12 @@ fn sort_tasks_topo<'a>(
 
   impl TasksConfig for WorkspaceTasksConfig {
     fn task(&self, name: &str) -> Option<(TaskOrScript<'_>, &dyn TasksConfig)> {
-      if let Some(member) = &self.member
-        && let Some(task_or_script) = member.task(name)
-      {
+      if let Some(task_or_script) = self.member.task(name) {
         return Some((task_or_script, self as &dyn TasksConfig));
       }
-      if let Some(root) = &self.root
-        && let Some(task_or_script) = root.task(name)
-      {
+      if let Some(task_or_script) = self.root.task(name) {
         // switch to only using the root tasks for the dependencies
-        return Some((task_or_script, root as &dyn TasksConfig));
+        return Some((task_or_script, &self.root as &dyn TasksConfig));
       }
       None
     }
@@ -784,44 +780,35 @@ fn print_available_tasks_workspace(
   Ok(())
 }
 
-fn print_available_tasks(
-  writer: &mut dyn std::io::Write,
+pub struct AvailableTaskDescription {
+  pub is_root: bool,
+  pub is_deno: bool,
+  pub name: String,
+  pub task: TaskDefinition,
+}
+
+pub fn get_available_tasks_for_completion(
+  flags: Arc<Flags>,
+) -> Result<Vec<AvailableTaskDescription>, AnyError> {
+  let factory = crate::factory::CliFactory::from_flags(flags);
+  let options = factory.cli_options()?;
+
+  let member_dir = &options.start_dir;
+  let tasks_config = member_dir.to_tasks_config()?;
+
+  get_available_tasks(member_dir, &tasks_config).map_err(AnyError::from)
+}
+
+fn get_available_tasks(
   workspace_dir: &Arc<WorkspaceDirectory>,
   tasks_config: &WorkspaceTasksConfig,
-  pkg_name: Option<String>,
-) -> Result<(), std::io::Error> {
-  let heading = if let Some(s) = pkg_name {
-    format!("Available tasks ({}):", colors::cyan(s))
-  } else {
-    "Available tasks:".to_string()
-  };
+) -> Result<Vec<AvailableTaskDescription>, std::io::Error> {
+  let is_cwd_root_dir = tasks_config.root.is_empty();
 
-  writeln!(writer, "{}", colors::green(heading))?;
-  let is_cwd_root_dir = tasks_config.root.is_none();
-
-  if tasks_config.is_empty() {
-    writeln!(
-      writer,
-      "  {}",
-      colors::red("No tasks found in configuration file")
-    )?;
-    return Ok(());
-  }
-
-  struct AvailableTaskDescription {
-    is_root: bool,
-    is_deno: bool,
-    name: String,
-    task: TaskDefinition,
-  }
   let mut seen_task_names = HashSet::with_capacity(tasks_config.tasks_count());
   let mut task_descriptions = Vec::with_capacity(tasks_config.tasks_count());
 
-  for maybe_config in [&tasks_config.member, &tasks_config.root] {
-    let Some(config) = maybe_config else {
-      continue;
-    };
-
+  for config in [&tasks_config.member, &tasks_config.root] {
     if let Some(config) = config.deno_json.as_ref() {
       let is_root = !is_cwd_root_dir
         && config.folder_url
@@ -862,6 +849,33 @@ fn print_available_tasks(
       }
     }
   }
+  Ok(task_descriptions)
+}
+
+fn print_available_tasks(
+  writer: &mut dyn std::io::Write,
+  workspace_dir: &Arc<WorkspaceDirectory>,
+  tasks_config: &WorkspaceTasksConfig,
+  pkg_name: Option<String>,
+) -> Result<(), std::io::Error> {
+  let heading = if let Some(s) = pkg_name {
+    format!("Available tasks ({}):", colors::cyan(s))
+  } else {
+    "Available tasks:".to_string()
+  };
+
+  writeln!(writer, "{}", colors::green(heading))?;
+
+  if tasks_config.is_empty() {
+    writeln!(
+      writer,
+      "  {}",
+      colors::red("No tasks found in configuration file")
+    )?;
+    return Ok(());
+  }
+
+  let task_descriptions = get_available_tasks(workspace_dir, tasks_config)?;
 
   for desc in task_descriptions {
     writeln!(

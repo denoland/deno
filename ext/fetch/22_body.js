@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // @ts-check
 /// <reference path="../webidl/internal.d.ts" />
@@ -41,7 +41,7 @@ import * as webidl from "ext:deno_webidl/00_webidl.js";
 import {
   parseUrlEncoded,
   URLSearchParamsPrototype,
-} from "ext:deno_url/00_url.js";
+} from "ext:deno_web/00_url.js";
 import {
   formDataFromEntries,
   FormDataPrototype,

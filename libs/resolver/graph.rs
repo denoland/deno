@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 
@@ -15,7 +15,6 @@ use deno_graph::ResolutionError;
 use deno_graph::SpecifierError;
 use deno_graph::source::ResolveError;
 use deno_media_type::MediaType;
-use deno_semver::npm::NpmPackageNvReference;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
 use deno_unsync::sync::AtomicFlag;
@@ -34,6 +33,7 @@ use crate::RawDenoResolverRc;
 use crate::cjs::CjsTracker;
 use crate::deno_json::JsxImportSourceConfigResolver;
 use crate::npm;
+use crate::npm::managed::ManagedResolvePkgFolderFromDenoReqError;
 use crate::workspace::MappedResolutionDiagnostic;
 use crate::workspace::sloppy_imports_resolve;
 
@@ -64,7 +64,8 @@ pub struct ResolveWithGraphError(pub Box<ResolveWithGraphErrorKind>);
 impl ResolveWithGraphError {
   pub fn maybe_specifier(&self) -> Option<Cow<'_, UrlOrPath>> {
     match self.as_kind() {
-      ResolveWithGraphErrorKind::CouldNotResolveNpmNv(err) => {
+      ResolveWithGraphErrorKind::ManagedResolvePkgFolderFromDenoReq(_) => None,
+      ResolveWithGraphErrorKind::CouldNotResolveNpmReqRef(err) => {
         err.source.maybe_specifier()
       }
       ResolveWithGraphErrorKind::ResolveNpmReqRef(err) => {
@@ -98,7 +99,12 @@ impl ResolveWithGraphError {
 pub enum ResolveWithGraphErrorKind {
   #[error(transparent)]
   #[class(inherit)]
-  CouldNotResolveNpmNv(#[from] CouldNotResolveNpmNvError),
+  ManagedResolvePkgFolderFromDenoReq(
+    #[from] ManagedResolvePkgFolderFromDenoReqError,
+  ),
+  #[error(transparent)]
+  #[class(inherit)]
+  CouldNotResolveNpmReqRef(#[from] CouldNotResolveNpmReqRefError),
   #[error(transparent)]
   #[class(inherit)]
   ResolvePkgFolderFromDenoModule(
@@ -121,14 +127,14 @@ pub enum ResolveWithGraphErrorKind {
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 #[class(inherit)]
 #[error("Could not resolve '{reference}'")]
-pub struct CouldNotResolveNpmNvError {
-  pub reference: deno_semver::npm::NpmPackageNvReference,
+pub struct CouldNotResolveNpmReqRefError {
+  pub reference: deno_semver::npm::NpmPackageReqReference,
   #[source]
   #[inherit]
   pub source: node_resolver::errors::PackageSubpathFromDenoModuleResolveError,
 }
 
-impl NodeJsErrorCoded for CouldNotResolveNpmNvError {
+impl NodeJsErrorCoded for CouldNotResolveNpmReqRefError {
   fn code(&self) -> node_resolver::errors::NodeJsErrorCode {
     self.source.code()
   }
@@ -282,12 +288,14 @@ impl<
     };
 
     let specifier = match graph.get(&specifier) {
-      Some(Module::Npm(module)) => {
+      Some(Module::Npm(_)) => {
         if options.maintain_npm_specifiers {
           specifier.into_owned()
         } else {
-          self.resolve_npm_nv_ref(
-            &module.nv_reference,
+          let req_ref =
+            NpmPackageReqReference::from_specifier(&specifier).unwrap();
+          self.resolve_managed_npm_req_ref(
+            &req_ref,
             Some(referrer),
             options.mode,
             options.kind,
@@ -342,32 +350,33 @@ impl<
     )
   }
 
-  pub fn resolve_npm_nv_ref(
+  pub fn resolve_managed_npm_req_ref(
     &self,
-    nv_ref: &NpmPackageNvReference,
+    req_ref: &NpmPackageReqReference,
     maybe_referrer: Option<&Url>,
     resolution_mode: node_resolver::ResolutionMode,
     resolution_kind: node_resolver::NodeResolutionKind,
   ) -> Result<Url, ResolveWithGraphError> {
     let node_and_npm_resolver =
       self.resolver.node_and_npm_resolver.as_ref().unwrap();
-    let package_folder = node_and_npm_resolver
+    let managed_resolver = node_and_npm_resolver
       .npm_resolver
       .as_managed()
-      .unwrap() // we won't have an nv ref when not managed
-      .resolve_pkg_folder_from_deno_module(nv_ref.nv())?;
+      .expect("do not call this unless managed");
+    let package_folder = managed_resolver
+      .resolve_pkg_folder_from_deno_module_req(req_ref.req())?;
     Ok(
       node_and_npm_resolver
         .node_resolver
         .resolve_package_subpath_from_deno_module(
           &package_folder,
-          nv_ref.sub_path(),
+          req_ref.sub_path(),
           maybe_referrer,
           resolution_mode,
           resolution_kind,
         )
-        .map_err(|source| CouldNotResolveNpmNvError {
-          reference: nv_ref.clone(),
+        .map_err(|source| CouldNotResolveNpmReqRefError {
+          reference: req_ref.clone(),
           source,
         })?
         .into_url()?,
@@ -534,18 +543,48 @@ impl<
   }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EnhanceGraphErrorMode {
   ShowRange,
   HideRange,
 }
 
+#[derive(Debug, deno_error::JsError)]
+#[class(inherit)]
+pub struct EnhancedGraphError {
+  #[inherit]
+  original: ModuleGraphError,
+  message: String,
+  mode: EnhanceGraphErrorMode,
+}
+
+impl EnhancedGraphError {
+  pub fn original(&self) -> &ModuleGraphError {
+    &self.original
+  }
+}
+
+impl std::fmt::Display for EnhancedGraphError {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    f.write_str(&self.message)?;
+    if let Some(range) = self.original.maybe_range()
+      && self.mode == EnhanceGraphErrorMode::ShowRange
+      && !range.specifier.as_str().contains("/$deno$eval")
+    {
+      write!(f, "\n    at {}", format_range_with_colors(range))?;
+    }
+    Ok(())
+  }
+}
+
+impl std::error::Error for EnhancedGraphError {}
+
 pub fn enhance_graph_error(
   sys: &(impl sys_traits::FsMetadata + Clone),
-  error: &ModuleGraphError,
+  error: ModuleGraphError,
   mode: EnhanceGraphErrorMode,
-) -> String {
-  let mut message = match &error {
+) -> EnhancedGraphError {
+  let message = match &error {
     ModuleGraphError::ResolutionError(resolution_error) => {
       enhanced_resolution_error_message(resolution_error)
     }
@@ -563,14 +602,11 @@ pub fn enhance_graph_error(
     }
   };
 
-  if let Some(range) = error.maybe_range()
-    && mode == EnhanceGraphErrorMode::ShowRange
-    && !range.specifier.as_str().contains("/$deno$eval")
-  {
-    message.push_str("\n    at ");
-    message.push_str(&format_range_with_colors(range));
+  EnhancedGraphError {
+    original: error,
+    message,
+    mode,
   }
-  message
 }
 
 /// Adds more explanatory information to a resolution error.
@@ -747,20 +783,14 @@ fn get_resolution_error_bare_specifier(
   } = error
   {
     Some(specifier.as_str())
-  } else if let ResolutionError::ResolverError { error, .. } = error {
-    if let ResolveError::ImportMap(error) = (*error).as_ref() {
-      if let import_map::ImportMapErrorKind::UnmappedBareSpecifier(
-        specifier,
-        _,
-      ) = error.as_kind()
-      {
-        Some(specifier.as_str())
-      } else {
-        None
-      }
-    } else {
-      None
-    }
+  } else if let ResolutionError::ResolverError { error, .. } = error
+    && let ResolveError::Other(error) = (*error).as_ref()
+    && let Some(error) =
+      error.get_ref().downcast_ref::<import_map::ImportMapError>()
+    && let import_map::ImportMapErrorKind::UnmappedBareSpecifier(specifier, _) =
+      error.as_kind()
+  {
+    Some(specifier.as_str())
   } else {
     None
   }
@@ -799,11 +829,11 @@ fn get_import_prefix_missing_error(error: &ResolutionError) -> Option<&str> {
           other_error.get_ref().downcast_ref::<SpecifierError>()
         {
           maybe_specifier = Some(specifier);
-        }
-      }
-      ResolveError::ImportMap(import_map_err) => {
-        if let ImportMapErrorKind::UnmappedBareSpecifier(specifier, _referrer) =
-          import_map_err.as_kind()
+        } else if let Some(err) = other_error
+          .get_ref()
+          .downcast_ref::<import_map::ImportMapError>()
+          && let ImportMapErrorKind::UnmappedBareSpecifier(specifier, _referrer) =
+            err.as_kind()
         {
           maybe_specifier = Some(specifier);
         }
@@ -898,7 +928,7 @@ mod test {
       let err = import_map.resolve(input, &specifier).err().unwrap();
       let err = ResolutionError::ResolverError {
         #[allow(clippy::disallowed_types)]
-        error: std::sync::Arc::new(ResolveError::ImportMap(err)),
+        error: std::sync::Arc::new(ResolveError::from_err(err)),
         specifier: input.to_string(),
         range: Range {
           specifier,
@@ -923,7 +953,6 @@ mod test {
         },
         error: SpecifierError::ImportPrefixMissing {
           specifier: input.to_string(),
-          referrer: None,
         },
       };
       assert_eq!(get_resolution_error_bare_node_specifier(&err), output,);

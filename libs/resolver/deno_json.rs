@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::collections::BTreeMap;
@@ -34,6 +34,7 @@ use node_resolver::ResolutionMode;
 use once_cell::sync::OnceCell;
 #[cfg(not(feature = "sync"))]
 use once_cell::unsync::OnceCell;
+use serde::Deserialize;
 use serde::Serialize;
 use serde::Serializer;
 use serde_json::json;
@@ -227,6 +228,12 @@ pub struct JsxImportSourceConfig {
   pub import_source_types: Option<JsxImportSourceSpecifierConfig>,
 }
 
+impl JsxImportSourceConfig {
+  pub fn specifier(&self) -> Option<&str> {
+    self.import_source.as_ref().map(|c| c.specifier.as_str())
+  }
+}
+
 #[allow(clippy::disallowed_types)]
 pub type JsxImportSourceConfigRc =
   deno_maybe_sync::MaybeArc<JsxImportSourceConfig>;
@@ -315,10 +322,10 @@ pub fn get_base_compiler_options_for_emit(
       "inlineSources": true,
       "isolatedModules": true,
       "lib": match (lib, source_kind) {
-        (TsTypeLib::DenoWindow, CompilerOptionsSourceKind::DenoJson) => vec!["deno.window", "deno.unstable"],
-        (TsTypeLib::DenoWindow, CompilerOptionsSourceKind::TsConfig) => vec!["deno.window", "deno.unstable", "dom"],
-        (TsTypeLib::DenoWorker, CompilerOptionsSourceKind::DenoJson) => vec!["deno.worker", "deno.unstable"],
-        (TsTypeLib::DenoWorker, CompilerOptionsSourceKind::TsConfig) => vec!["deno.worker", "deno.unstable", "dom"],
+        (TsTypeLib::DenoWindow, CompilerOptionsSourceKind::DenoJson) => vec!["deno.window", "deno.unstable", "node"],
+        (TsTypeLib::DenoWindow, CompilerOptionsSourceKind::TsConfig) => vec!["deno.window", "deno.unstable", "dom", "node"],
+        (TsTypeLib::DenoWorker, CompilerOptionsSourceKind::DenoJson) => vec!["deno.worker", "deno.unstable", "node"],
+        (TsTypeLib::DenoWorker, CompilerOptionsSourceKind::TsConfig) => vec!["deno.worker", "deno.unstable", "dom", "node"],
       },
       "module": "NodeNext",
       "moduleDetection": "force",
@@ -587,6 +594,15 @@ impl CompilerOptionsData {
         let parsed =
           parse_compiler_options(object, Some(source.specifier.as_ref()));
         result.compiler_options.merge_object_mut(parsed.options);
+        if matches!(typ, CompilerOptionsType::Check { .. })
+          && let Some(compiler_options) =
+            result.compiler_options.0.as_object_mut()
+          && compiler_options.get("isolatedDeclarations")
+            == Some(&serde_json::Value::Bool(true))
+        {
+          compiler_options.insert("declaration".into(), true.into());
+          compiler_options.insert("allowJs".into(), false.into());
+        }
         if let Some(ignored) = parsed.maybe_ignored {
           result.ignored_options.push(ignored);
         }
@@ -1145,6 +1161,7 @@ impl<
         warn(e)
       }
     })?;
+    log::debug!("tsconfig.json file found at '{}'", path.display());
     let value = jsonc_parser::parse_to_serde_value(&text, &Default::default())
       .inspect_err(|e| warn(e))
       .ok()
@@ -1311,6 +1328,35 @@ impl Serialize for CompilerOptionsKey {
     S: Serializer,
   {
     self.to_string().serialize(serializer)
+  }
+}
+
+impl<'de> Deserialize<'de> for CompilerOptionsKey {
+  fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+  where
+    D: serde::Deserializer<'de>,
+  {
+    let s = String::deserialize(deserializer)?;
+    if s == "workspace-root" {
+      return Ok(Self::WorkspaceConfig(None));
+    }
+    if let Some(inner) = s
+      .strip_prefix("workspace(")
+      .and_then(|s| s.strip_suffix(')'))
+    {
+      let url = Url::parse(inner).map_err(serde::de::Error::custom)?;
+      return Ok(Self::WorkspaceConfig(Some(new_rc(url))));
+    }
+    if let Some(inner) = s
+      .strip_prefix("ts-config(")
+      .and_then(|s| s.strip_suffix(')'))
+    {
+      let i = inner.parse::<usize>().map_err(serde::de::Error::custom)?;
+      return Ok(Self::TsConfig(i));
+    }
+    Err(serde::de::Error::custom(format!(
+      "invalid CompilerOptionsKey: {s}"
+    )))
   }
 }
 
@@ -1520,6 +1566,37 @@ impl CompilerOptionsResolver {
       ts_configs: ts_config_collector.collect(),
     }
   }
+
+  #[cfg(feature = "graph")]
+  pub fn to_graph_imports(&self) -> Vec<deno_graph::ReferrerImports> {
+    // Resolve all the imports from every config file. These can be separated
+    // them later based on the folder we're type checking.
+    let mut imports_by_referrer =
+      IndexMap::<_, Vec<_>>::with_capacity(self.size());
+    for (_, compiler_options_data, maybe_files) in self.entries() {
+      if let Some((referrer, files)) = maybe_files {
+        imports_by_referrer
+          .entry(referrer.as_ref())
+          .or_default()
+          .extend(files.iter().map(|f| f.relative_specifier.clone()));
+      }
+      for (referrer, types) in
+        compiler_options_data.compiler_options_types().as_ref()
+      {
+        imports_by_referrer
+          .entry(referrer)
+          .or_default()
+          .extend(types.iter().cloned());
+      }
+    }
+    imports_by_referrer
+      .into_iter()
+      .map(|(referrer, imports)| deno_graph::ReferrerImports {
+        referrer: referrer.clone(),
+        imports,
+      })
+      .collect()
+  }
 }
 
 #[cfg(feature = "graph")]
@@ -1535,7 +1612,7 @@ pub type CompilerOptionsResolverRc =
 
 /// JSX config stored in `CompilerOptionsResolver`, but fallibly resolved
 /// ahead of time as needed for the graph resolver.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct JsxImportSourceConfigResolver {
   workspace_configs:
     FolderScopedWithUnscopedMap<Option<JsxImportSourceConfigRc>>,

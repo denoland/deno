@@ -31,7 +31,7 @@ const sock = await Deno.connect({
   path: sockPath,
 });
 
-Deno.writeTextFile(
+Deno.writeTextFileSync(
   testPath,
   `
 console.log(Deno[Deno.internal].isFromUnconfiguredRuntime());

@@ -21422,6 +21422,12 @@ interface Navigator extends NavigatorAutomationInformation, NavigatorBadge, Navi
      */
     readonly mediaSession: MediaSession;
     /**
+     * The **`platform`** read-only property returns a string identifying the platform on which the user's browser is running.
+     *
+     * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Navigator/platform)
+     */
+    readonly platform: string;
+    /**
      * The **`permissions`** read-only property of the Navigator interface returns a status of APIs covered by the Permissions API.
      *
      * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Navigator/permissions)
@@ -21993,6 +21999,7 @@ interface NodeListOf<TNode extends Node> extends NodeList {
     item(index: number): TNode;
     forEach(callbackfn: (value: TNode, key: number, parent: NodeListOf<TNode>) => void, thisArg?: any): void;
     [index: number]: TNode;
+    [Symbol.iterator](): IterableIterator<TNode>;
 }
 
 interface NonDocumentTypeChildNode {
@@ -39279,7 +39286,7 @@ type ColorGamut = "p3" | "rec2020" | "srgb";
 type ColorSpaceConversion = "default" | "none";
 type CompositeOperation = "accumulate" | "add" | "replace";
 type CompositeOperationOrAuto = "accumulate" | "add" | "auto" | "replace";
-type CompressionFormat = "deflate" | "deflate-raw" | "gzip";
+type CompressionFormat = "deflate" | "deflate-raw" | "gzip" | "brotli";
 type CookieSameSite = "lax" | "none" | "strict";
 type CredentialMediationRequirement = "conditional" | "optional" | "required" | "silent";
 type DOMParserSupportedType = "application/xhtml+xml" | "application/xml" | "image/svg+xml" | "text/html" | "text/xml";

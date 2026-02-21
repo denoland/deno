@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import { core, internals, primordials } from "ext:core/mod.js";
 const {
@@ -638,7 +638,7 @@ function mapToCallback(context, callback, onError) {
         { kind: 1 },
         activeContext,
       );
-      enterSpan(span);
+      enterSpan(span, activeContext);
       try {
         return SafePromisePrototypeFinally(
           origMapped(req, span),
@@ -698,6 +698,9 @@ function formatHostName(hostname: string): string {
   return StringPrototypeIncludes(hostname, ":") ? `[${hostname}]` : hostname;
 }
 
+// Flag to track if DENO_SERVE_ADDRESS override has been consumed
+let serveAddressOverrideConsumed = false;
+
 function serve(arg1, arg2) {
   let options: RawServeOptions | undefined;
   let handler: RawHandler | undefined;
@@ -727,6 +730,10 @@ function serve(arg1, arg2) {
     options = { __proto__: null };
   }
 
+  if (serveAddressOverrideConsumed) {
+    return serveInner(options, handler);
+  }
+
   const {
     0: overrideKind,
     1: overrideHost,
@@ -734,6 +741,8 @@ function serve(arg1, arg2) {
     3: duplicateListener,
   } = op_http_serve_address_override();
   if (overrideKind) {
+    serveAddressOverrideConsumed = true;
+
     let envOptions = duplicateListener
       ? { __proto__: null, signal: options.signal, onError: options.onError }
       : options;
@@ -933,7 +942,8 @@ function serveInner(options, handler) {
       const host = formatHostName(addr.hostname);
 
       const url = `${scheme}${host}:${addr.port}/`;
-      const helper = addr.hostname === "0.0.0.0" || addr.hostname === "::"
+      const helper = host !== "localhost" &&
+          (addr.hostname === "0.0.0.0" || addr.hostname === "::")
         ? ` (${scheme}localhost:${addr.port}/)`
         : "";
 

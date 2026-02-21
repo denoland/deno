@@ -1,16 +1,29 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // deno-lint-ignore-file
 
 import { $ } from "https://deno.land/x/dax@0.31.0/mod.ts";
+import { join, ROOT_PATH, shouldSkipOnCi } from "../../../tools/util.js";
 
 $.setPrintCommand(true);
 const pwd = new URL(".", import.meta.url).pathname;
 
+const self = Deno.execPath();
+if (
+  await shouldSkipOnCi(
+    "autobahn",
+    join(ROOT_PATH, "target"),
+    async (hasher) => {
+      await hasher.hashFile(self);
+      await hasher.hashDir(pwd);
+    },
+  )
+) {
+  Deno.exit(0);
+}
+
 const AUTOBAHN_TESTSUITE_DOCKER =
   "crossbario/autobahn-testsuite:25.10.1@sha256:519915fb568b04c9383f70a1c405ae3ff44ab9e35835b085239c258b6fac3074";
-
-const self = Deno.execPath();
 $`${self} run -A --config ${pwd}/../../../tests/config/deno.json ${pwd}/autobahn_server.js`
   .spawn();
 

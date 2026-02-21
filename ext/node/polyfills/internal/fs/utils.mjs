@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 "use strict";
 
@@ -72,7 +72,6 @@ const kType = Symbol("type");
 const kStats = Symbol("stats");
 import assert from "ext:deno_node/internal/assert.mjs";
 import { lstat, lstatSync } from "ext:deno_node/_fs/_fs_lstat.ts";
-import { stat, statSync } from "ext:deno_node/_fs/_fs_stat.ts";
 import { isWindows } from "ext:deno_node/_util/os.ts";
 import process from "node:process";
 import { ERR_INCOMPATIBLE_OPTION_PAIR } from "ext:deno_node/internal/errors.ts";
@@ -196,7 +195,7 @@ export class Dirent {
   }
 }
 
-export function direntFromDeno(entry) {
+export function direntFromDeno(entry, path) {
   let type;
 
   if (entry.isDirectory) {
@@ -207,7 +206,7 @@ export function direntFromDeno(entry) {
     type = UV_DIRENT_LINK;
   }
 
-  return new Dirent(entry.name, type, entry.parentPath);
+  return new Dirent(entry.name, type, path ?? entry.parentPath);
 }
 
 export class DirentFromStats extends Dirent {
@@ -990,12 +989,26 @@ export const validateCpOptions = hideStackFrames((options) => {
   return options;
 });
 
+/**
+ * @typedef {{
+ *   force: boolean;
+ *   recursive?: boolean;
+ *   retryDelay?: number;
+ *   maxRetries?: number;
+ * }} RmOptions
+ */
+
+/**
+ * @typedef {(err: Error | false | null, options?: RmOptions) => void} RmOptionsCallback
+ */
+
+/** @type {(path: string, options: RmOptions, expectDir: boolean, cb: RmOptionsCallback) => void} */
 export const validateRmOptions = hideStackFrames(
   (path, options, expectDir, cb) => {
     options = validateRmdirOptions(options, defaultRmOptions);
     validateBoolean(options.force, "options.force");
 
-    stat(path, (err, stats) => {
+    lstat(path, (err, stats) => {
       if (err) {
         if (options.force && err.code === "ENOENT") {
           return cb(null, options);
@@ -1023,13 +1036,14 @@ export const validateRmOptions = hideStackFrames(
   },
 );
 
+/** @type {(path: string, options: RmOptions, expectDir: boolean) => RmOptions | false} */
 export const validateRmOptionsSync = hideStackFrames(
   (path, options, expectDir) => {
     options = validateRmdirOptions(options, defaultRmOptions);
     validateBoolean(options.force, "options.force");
 
     if (!options.force || expectDir || !options.recursive) {
-      const isDirectory = statSync(path, { throwIfNoEntry: !options.force })
+      const isDirectory = lstatSync(path, { throwIfNoEntry: !options.force })
         ?.isDirectory();
 
       if (expectDir && !isDirectory) {
@@ -1108,6 +1122,7 @@ export const getValidMode = hideStackFrames((mode, type) => {
   );
 });
 
+/** @type {(buffer: unknown, name: string) => asserts value is string} */
 export const validateStringAfterArrayBufferView = hideStackFrames(
   (buffer, name) => {
     if (typeof buffer !== "string") {
@@ -1120,19 +1135,21 @@ export const validateStringAfterArrayBufferView = hideStackFrames(
   },
 );
 
-export const validatePosition = hideStackFrames((position) => {
+/** @type {(position: unknown, name: string, length?: number) => asserts position is number | bigint} */
+export const validatePosition = hideStackFrames((position, name, length) => {
   if (typeof position === "number") {
-    validateInteger(position, "position");
+    validateInteger(position, name, -1);
   } else if (typeof position === "bigint") {
-    if (!(position >= -(2n ** 63n) && position <= 2n ** 63n - 1n)) {
+    const maxPosition = 2n ** 63n - 1n - BigInt(length);
+    if (!(position >= -1n && position <= maxPosition)) {
       throw new ERR_OUT_OF_RANGE(
-        "position",
-        `>= ${-(2n ** 63n)} && <= ${2n ** 63n - 1n}`,
+        name,
+        `>= -1 && <= ${maxPosition}`,
         position,
       );
     }
   } else {
-    throw new ERR_INVALID_ARG_TYPE("position", ["integer", "bigint"], position);
+    throw new ERR_INVALID_ARG_TYPE(name, ["integer", "bigint"], position);
   }
 });
 
@@ -1179,6 +1196,7 @@ export default {
   getOptions,
   getValidatedFd,
   getValidatedPath,
+  getValidatedPathToString,
   getValidMode,
   handleErrorFromBinding,
   kMaxUserId,

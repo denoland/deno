@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import { core, primordials } from "ext:core/mod.js";
 import {
@@ -21,8 +21,8 @@ const {
 } = primordials;
 
 import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
-import { URL } from "ext:deno_url/00_url.js";
+import { createFilteredInspectProxy } from "ext:deno_web/01_console.js";
+import { URL } from "ext:deno_web/00_url.js";
 import { getLocationHref } from "ext:deno_web/12_location.js";
 import { serializePermissions } from "ext:runtime/10_permissions.js";
 import { log } from "ext:runtime/06_util.js";

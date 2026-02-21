@@ -1,9 +1,10 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
 import { core, internals, primordials } from "ext:core/mod.js";
 import {
   op_create_worker,
+  op_host_get_worker_cpu_usage,
   op_host_post_message,
   op_host_recv_ctrl,
   op_host_recv_message,
@@ -19,37 +20,65 @@ import {
   MessagePortPrototype,
   MessagePortReceiveMessageOnPortSymbol,
   nodeWorkerThreadCloseCb,
+  nodeWorkerThreadCloseCbInvoked,
   refMessagePort,
   serializeJsMessageData,
   unrefParentPort,
 } from "ext:deno_web/13_message_port.js";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { notImplemented } from "ext:deno_node/_utils.ts";
+import {
+  ERR_INVALID_ARG_TYPE,
+  ERR_OUT_OF_RANGE,
+  ERR_WORKER_INVALID_EXEC_ARGV,
+  ERR_WORKER_NOT_RUNNING,
+} from "ext:deno_node/internal/errors.ts";
+import {
+  validateArray,
+  validateObject,
+} from "ext:deno_node/internal/validators.mjs";
 import { EventEmitter } from "node:events";
-import { BroadcastChannel } from "ext:deno_broadcast_channel/01_broadcast_channel.js";
+import { Readable, Writable } from "node:stream";
+import {
+  BroadcastChannel as WebBroadcastChannel,
+  refBroadcastChannel,
+} from "ext:deno_web/01_broadcast_channel.js";
 import { untransferableSymbol } from "ext:deno_node/internal_binding/util.ts";
 import process from "node:process";
+import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 
 const {
+  ArrayIsArray,
   encodeURIComponent,
   Error,
   FunctionPrototypeCall,
-  JSONParse,
-  JSONStringify,
+  NumberIsFinite,
   ObjectHasOwn,
+  ObjectKeys,
   ObjectPrototypeIsPrototypeOf,
+  PromiseReject,
   PromiseResolve,
   SafeMap,
+  SafeRegExp,
   SafeSet,
   SafeWeakMap,
+  String,
+  StringPrototypeIndexOf,
+  StringPrototypeSlice,
+  StringPrototypeSplit,
   StringPrototypeStartsWith,
   StringPrototypeTrim,
   Symbol,
+  SymbolAsyncDispose,
   SymbolFor,
   SymbolIterator,
   TypeError,
+  Float64Array,
+  FunctionPrototypeBind,
 } = primordials;
+
+const workerCpuUsageBuffer = new Float64Array(2);
 
 const debugWorkerThreads = false;
 function debugWT(...args) {
@@ -68,6 +97,65 @@ function isWorkerOnlineMsg(data: unknown): data is WorkerOnlineMsg {
     ObjectHasOwn(data, "type") &&
     (data as { "type": unknown })["type"] === "WORKER_ONLINE";
 }
+
+interface WorkerStdioMsg {
+  type: "WORKER_STDERR" | "WORKER_STDOUT";
+  // deno-lint-ignore no-explicit-any
+  data: any;
+}
+
+interface WorkerStdinMsg {
+  type: "WORKER_STDIN";
+  // deno-lint-ignore no-explicit-any
+  data: any;
+}
+
+interface WorkerStdinEndMsg {
+  type: "WORKER_STDIN_END";
+}
+
+function isWorkerStdinMsg(data: unknown): data is WorkerStdinMsg {
+  return typeof data === "object" && data !== null &&
+    ObjectHasOwn(data, "type") &&
+    (data as { "type": unknown })["type"] === "WORKER_STDIN";
+}
+
+function isWorkerStdinEndMsg(data: unknown): data is WorkerStdinEndMsg {
+  return typeof data === "object" && data !== null &&
+    ObjectHasOwn(data, "type") &&
+    (data as { "type": unknown })["type"] === "WORKER_STDIN_END";
+}
+
+function isWorkerStderrMsg(data: unknown): data is WorkerStdioMsg {
+  return typeof data === "object" && data !== null &&
+    ObjectHasOwn(data, "type") &&
+    (data as { "type": unknown })["type"] === "WORKER_STDERR";
+}
+
+function isWorkerStdoutMsg(data: unknown): data is WorkerStdioMsg {
+  return typeof data === "object" && data !== null &&
+    ObjectHasOwn(data, "type") &&
+    (data as { "type": unknown })["type"] === "WORKER_STDOUT";
+}
+
+// Flags that are valid Node.js environment flags but not allowed in workers
+// because they affect per-process state.
+const workerDisallowedFlags = new SafeSet([
+  "--title",
+  "--redirect-warnings",
+  "--trace-event-file-pattern",
+  "--trace-event-categories",
+  "--trace-events-enabled",
+  "--diagnostic-dir",
+  "--report-signal",
+  "--report-filename",
+  "--report-dir",
+  "--report-directory",
+  "--report-compact",
+  "--report-on-signal",
+  "--report-on-fatalerror",
+  "--report-uncaught-exception",
+]);
 
 export interface WorkerOptions {
   // only for typings
@@ -95,10 +183,11 @@ const privateWorkerRef = Symbol("privateWorkerRef");
 class NodeWorker extends EventEmitter {
   #id = 0;
   #name = "";
-  #refCount = 1;
+  #refed = true;
   #messagePromise = undefined;
   #controlPromise = undefined;
   #workerOnline = false;
+  #exited = false;
   // "RUNNING" | "CLOSED" | "TERMINATED"
   // "TERMINATED" means that any controls or messages received will be
   // discarded. "CLOSED" means that we have received a control
@@ -117,9 +206,74 @@ class NodeWorker extends EventEmitter {
     codeRangeSizeMb: -1,
     stackSizeMb: 4,
   };
+  // https://nodejs.org/api/worker_threads.html#workerstdin
+  stdin: Writable | null = null;
+  // https://nodejs.org/api/worker_threads.html#workerstdout
+  stdout: Readable = new Readable({ read() {} });
+  // https://nodejs.org/api/worker_threads.html#workerstderr
+  stderr: Readable = new Readable({ read() {} });
 
   constructor(specifier: URL | string, options?: WorkerOptions) {
     super();
+
+    if (options?.execArgv) {
+      validateArray(options.execArgv, "options.execArgv");
+      if (options.execArgv.length > 0) {
+        const invalidFlags = [];
+        for (let i = 0; i < options.execArgv.length; i++) {
+          const flag = options.execArgv[i];
+          // Items that don't start with '-' are arguments to the
+          // preceding flag (e.g. "--conditions node"), not flags.
+          if (!StringPrototypeStartsWith(flag, "-")) {
+            continue;
+          }
+          if (!process.allowedNodeEnvironmentFlags.has(flag)) {
+            invalidFlags[invalidFlags.length] = flag;
+            continue;
+          }
+          const eqIdx = StringPrototypeIndexOf(flag, "=");
+          const flagName = eqIdx === -1
+            ? flag
+            : StringPrototypeSlice(flag, 0, eqIdx);
+          if (workerDisallowedFlags.has(flagName)) {
+            invalidFlags[invalidFlags.length] = flag;
+          }
+        }
+        if (invalidFlags.length > 0) {
+          throw new ERR_WORKER_INVALID_EXEC_ARGV(invalidFlags);
+        }
+      }
+    }
+
+    if (options?.env) {
+      const nodeOptions = options.env.NODE_OPTIONS;
+      if (typeof nodeOptions === "string" && nodeOptions.length > 0) {
+        // Parse NODE_OPTIONS and validate each flag
+        const parts = StringPrototypeSplit(
+          StringPrototypeTrim(nodeOptions),
+          new SafeRegExp("\\s+"),
+        );
+        let hasInvalid = false;
+        for (let i = 0; i < parts.length; i++) {
+          const part = parts[i];
+          if (StringPrototypeStartsWith(part, "-")) {
+            if (
+              !process.allowedNodeEnvironmentFlags.has(part) ||
+              workerDisallowedFlags.has(part)
+            ) {
+              hasInvalid = true;
+              break;
+            }
+          }
+        }
+        if (hasInvalid) {
+          throw new ERR_WORKER_INVALID_EXEC_ARGV(
+            [nodeOptions],
+            "invalid NODE_OPTIONS env variable",
+          );
+        }
+      }
+    }
 
     if (
       typeof specifier === "object" &&
@@ -129,6 +283,85 @@ class NodeWorker extends EventEmitter {
         "node:worker_threads support only 'file:' and 'data:' URLs",
       );
     }
+
+    // Serialize workerData before resolving the filename so that
+    // DataCloneError is thrown before file-not-found errors,
+    // matching Node.js behavior.
+
+    // Handle the `env` option following Node.js semantics:
+    // - undefined/null: snapshot current process.env (isolated copy)
+    // - SHARE_ENV: worker shares the parent's OS environment
+    // - object: use that object, coercing values to strings
+    // - anything else: throw ERR_INVALID_ARG_TYPE
+    // See https://github.com/denoland/deno/issues/23522.
+    let env_ = undefined;
+    const envOpt = options?.env;
+    if (envOpt != null && envOpt !== SHARE_ENV) {
+      if (typeof envOpt !== "object") {
+        throw new ERR_INVALID_ARG_TYPE(
+          "options.env",
+          ["object", "undefined", "null", "worker_threads.SHARE_ENV"],
+          envOpt,
+        );
+      }
+      // Snapshot the provided env, coercing values to strings like Node.js.
+      // This also handles passing `process.env` (a Proxy in Deno) by
+      // producing a plain object that can be structured-cloned.
+      const envObj = {};
+      const keys = ObjectKeys(envOpt);
+      for (let i = 0; i < keys.length; i++) {
+        envObj[keys[i]] = String(envOpt[keys[i]]);
+      }
+      env_ = envObj;
+    } else if (envOpt !== SHARE_ENV) {
+      // Default: snapshot current process.env so the worker gets an
+      // isolated copy, not a live reference to the OS environment.
+      // Wrap in try/catch because accessing process.env requires
+      // --allow-env permission in Deno. If unavailable, fall back to
+      // shared OS env (env_ stays undefined).
+      try {
+        const envObj = {};
+        const keys = ObjectKeys(process.env);
+        for (let i = 0; i < keys.length; i++) {
+          envObj[keys[i]] = process.env[keys[i]];
+        }
+        env_ = envObj;
+      } catch {
+        // No env permission - worker will share the OS environment.
+      }
+    }
+    // When envOpt === SHARE_ENV, env_ stays undefined and the worker
+    // will use the default process.env backed by Deno.env (shared OS env).
+
+    // Handle the `argv` option: must be an array or undefined.
+    // Values are coerced to strings like Node.js does.
+    let argv_: string[] | undefined = undefined;
+    if (options?.argv != null) {
+      if (!ArrayIsArray(options.argv)) {
+        throw new ERR_INVALID_ARG_TYPE(
+          "options.argv",
+          "Array",
+          options.argv,
+        );
+      }
+      argv_ = [];
+      for (let i = 0; i < options.argv.length; i++) {
+        argv_[i] = String(options.argv[i]);
+      }
+    }
+
+    const serializedWorkerMetadata = serializeJsMessageData({
+      workerData: options?.workerData,
+      environmentData: environmentData,
+      env: env_,
+      argv: argv_,
+      execArgv: options?.execArgv ?? [],
+      name: this.#name,
+      isEval: !!options?.eval,
+      isWorkerThread: true,
+      hasStdin: !!options?.stdin,
+    }, options?.transferList ?? []);
+
     if (options?.eval) {
       const code = typeof specifier === "string"
         ? encodeURIComponent(specifier)
@@ -151,20 +384,6 @@ class NodeWorker extends EventEmitter {
     }
     this.#name = name;
 
-    // One of the most common usages will be to pass `process.env` here,
-    // but because `process.env` is a Proxy in Deno, we need to get a plain
-    // object out of it - otherwise we'll run in `DataCloneError`s.
-    // See https://github.com/denoland/deno/issues/23522.
-    let env_ = undefined;
-    if (options?.env) {
-      env_ = JSONParse(JSONStringify(options?.env));
-    }
-    const serializedWorkerMetadata = serializeJsMessageData({
-      workerData: options?.workerData,
-      environmentData: environmentData,
-      env: env_,
-      isWorkerThread: true,
-    }, options?.transferList ?? []);
     const id = op_create_worker(
       {
         // deno-lint-ignore prefer-primordials
@@ -180,31 +399,59 @@ class NodeWorker extends EventEmitter {
     );
     this.#id = id;
     this.threadId = id;
+
+    if (options?.stdin) {
+      // deno-lint-ignore no-this-alias
+      const worker = this;
+      this.stdin = new Writable({
+        write(chunk, _encoding, callback) {
+          try {
+            worker.postMessage({
+              type: "WORKER_STDIN",
+              data: chunk,
+            });
+            callback();
+          } catch (err) {
+            callback(err);
+          }
+        },
+        final(callback) {
+          try {
+            worker.postMessage({
+              type: "WORKER_STDIN_END",
+            });
+            callback();
+          } catch (err) {
+            callback(err);
+          }
+        },
+      });
+    }
+
     this.#pollControl();
     this.#pollMessages();
     process.nextTick(() => process.emit("worker", this));
   }
 
   [privateWorkerRef](ref) {
-    if (ref) {
-      this.#refCount++;
-    } else {
-      this.#refCount--;
+    if (ref === this.#refed) {
+      return;
     }
+    this.#refed = ref;
 
-    if (!ref && this.#refCount == 0) {
-      if (this.#controlPromise) {
-        core.unrefOpPromise(this.#controlPromise);
-      }
-      if (this.#messagePromise) {
-        core.unrefOpPromise(this.#messagePromise);
-      }
-    } else if (ref && this.#refCount == 1) {
+    if (ref) {
       if (this.#controlPromise) {
         core.refOpPromise(this.#controlPromise);
       }
       if (this.#messagePromise) {
         core.refOpPromise(this.#messagePromise);
+      }
+    } else {
+      if (this.#controlPromise) {
+        core.unrefOpPromise(this.#controlPromise);
+      }
+      if (this.#messagePromise) {
+        core.unrefOpPromise(this.#messagePromise);
       }
     }
   }
@@ -213,10 +460,19 @@ class NodeWorker extends EventEmitter {
     this.emit("error", err);
   }
 
+  #closeStdio() {
+    if (!this.stdout.readableEnded) {
+      FunctionPrototypeCall(Readable.prototype.push, this.stdout, null);
+    }
+    if (!this.stderr.readableEnded) {
+      FunctionPrototypeCall(Readable.prototype.push, this.stderr, null);
+    }
+  }
+
   #pollControl = async () => {
     while (this.#status === "RUNNING") {
       this.#controlPromise = op_host_recv_ctrl(this.#id);
-      if (this.#refCount < 1) {
+      if (!this.#refed) {
         core.unrefOpPromise(this.#controlPromise);
       }
       const { 0: type, 1: data } = await this.#controlPromise;
@@ -229,7 +485,23 @@ class NodeWorker extends EventEmitter {
       switch (type) {
         case 1: { // TerminalError
           this.#status = "CLOSED";
-        } /* falls through */
+          this.#closeStdio();
+          if (this.listenerCount("error") > 0) {
+            const err = new Error(data.errorMessage ?? data.message);
+            if (data.name) {
+              err.name = data.name;
+            }
+            // Stack is unavailable from the worker context (e.g. prepareStackTrace
+            // may have thrown). Match Node.js behavior of setting stack to undefined.
+            err.stack = undefined;
+            this.emit("error", err);
+          }
+          if (!this.#exited) {
+            this.#exited = true;
+            this.emit("exit", data.exitCode ?? 1);
+          }
+          return;
+        }
         case 2: { // Error
           this.#handleError(data);
           break;
@@ -237,6 +509,11 @@ class NodeWorker extends EventEmitter {
         case 3: { // Close
           debugWT(`Host got "close" message from worker: ${this.#name}`);
           this.#status = "CLOSED";
+          this.#closeStdio();
+          if (!this.#exited) {
+            this.#exited = true;
+            this.emit("exit", data ?? 0);
+          }
           return;
         }
         default: {
@@ -249,7 +526,7 @@ class NodeWorker extends EventEmitter {
   #pollMessages = async () => {
     while (this.#status !== "TERMINATED") {
       this.#messagePromise = op_host_recv_message(this.#id);
-      if (this.#refCount < 1) {
+      if (!this.#refed) {
         core.unrefOpPromise(this.#messagePromise);
       }
       const data = await this.#messagePromise;
@@ -273,6 +550,18 @@ class NodeWorker extends EventEmitter {
       ) {
         this.#workerOnline = true;
         this.emit("online");
+      } else if (isWorkerStdoutMsg(message)) {
+        FunctionPrototypeCall(
+          Readable.prototype.push,
+          this.stdout,
+          message.data,
+        );
+      } else if (isWorkerStderrMsg(message)) {
+        FunctionPrototypeCall(
+          Readable.prototype.push,
+          this.stderr,
+          message.data,
+        );
       } else {
         this.emit("message", message);
       }
@@ -311,12 +600,27 @@ class NodeWorker extends EventEmitter {
 
   // https://nodejs.org/api/worker_threads.html#workerterminate
   terminate() {
-    if (this.#status !== "TERMINATED") {
-      this.#status = "TERMINATED";
-      op_host_terminate_worker(this.#id);
-      this.emit("exit", 0);
+    if (this.#status === "TERMINATED") {
+      return PromiseResolve(undefined);
     }
-    return PromiseResolve(0);
+
+    this.#status = "TERMINATED";
+    op_host_terminate_worker(this.#id);
+    this.#closeStdio();
+
+    if (!this.#exited) {
+      this.#exited = true;
+      this.emit("exit", 1);
+      return PromiseResolve(1);
+    }
+
+    // Worker already exited - Node.js returns undefined in this case
+    // (the internal handle is already null).
+    return PromiseResolve(undefined);
+  }
+
+  async [SymbolAsyncDispose]() {
+    await this.terminate();
   }
 
   ref() {
@@ -327,6 +631,63 @@ class NodeWorker extends EventEmitter {
     this[privateWorkerRef](false);
   }
 
+  cpuUsage(prevValue?: { user: number; system: number }) {
+    if (prevValue !== undefined) {
+      validateObject(prevValue, "prevValue");
+      if (typeof prevValue.user !== "number") {
+        throw new ERR_INVALID_ARG_TYPE(
+          "prevValue.user",
+          "number",
+          prevValue.user,
+        );
+      }
+      if (!NumberIsFinite(prevValue.user) || prevValue.user < 0) {
+        throw new ERR_OUT_OF_RANGE(
+          "prevValue.user",
+          ">= 0 && <= 2^53",
+          prevValue.user,
+        );
+      }
+      if (typeof prevValue.system !== "number") {
+        throw new ERR_INVALID_ARG_TYPE(
+          "prevValue.system",
+          "number",
+          prevValue.system,
+        );
+      }
+      if (!NumberIsFinite(prevValue.system) || prevValue.system < 0) {
+        throw new ERR_OUT_OF_RANGE(
+          "prevValue.system",
+          ">= 0 && <= 2^53",
+          prevValue.system,
+        );
+      }
+    }
+
+    if (this.#status !== "RUNNING") {
+      return PromiseReject(new ERR_WORKER_NOT_RUNNING());
+    }
+
+    op_host_get_worker_cpu_usage(this.#id, workerCpuUsageBuffer);
+    const user = workerCpuUsageBuffer[0];
+    const system = workerCpuUsageBuffer[1];
+    if (prevValue) {
+      return PromiseResolve({
+        user: user - prevValue.user,
+        system: system - prevValue.system,
+      });
+    }
+    return PromiseResolve({ user, system });
+  }
+
+  // https://nodejs.org/api/worker_threads.html#workerthreadname
+  get threadName(): string | null {
+    if (this.#exited) {
+      return null;
+    }
+    return this.#name;
+  }
+
   readonly getHeapSnapshot = () =>
     notImplemented("Worker.prototype.getHeapSnapshot");
   // fake performance
@@ -335,6 +696,7 @@ class NodeWorker extends EventEmitter {
 
 export let isMainThread;
 export let resourceLimits;
+export let threadName: string = "";
 
 let threadId = 0;
 let workerData: unknown = null;
@@ -370,6 +732,7 @@ internals.__initWorkerThreads = (
   moduleSpecifier,
 ) => {
   isMainThread = runningOnMainThread;
+  internals.__isWorkerThread = !runningOnMainThread;
 
   defaultExport.isMainThread = isMainThread;
   // fake resourceLimits
@@ -408,14 +771,113 @@ internals.__initWorkerThreads = (
       workerData = metadata.workerData;
       environmentData = metadata.environmentData;
       isWorkerThread = metadata.isWorkerThread;
+      threadName = metadata.name ?? "";
       const env = metadata.env;
       if (env) {
         process.env = env;
+      }
+
+      // Set process.argv for worker threads.
+      // In Node.js, worker process.argv is [execPath, scriptPath, ...argv].
+      if (isWorkerThread) {
+        let scriptPath;
+        if (metadata.isEval) {
+          scriptPath = "[worker eval]";
+        } else if (
+          moduleSpecifier &&
+          StringPrototypeStartsWith(moduleSpecifier, "file:")
+        ) {
+          scriptPath = fileURLToPath(moduleSpecifier);
+        } else {
+          scriptPath = moduleSpecifier ?? "";
+        }
+        process.argv = [process.execPath, scriptPath];
+        if (metadata.argv) {
+          for (let i = 0; i < metadata.argv.length; i++) {
+            process.argv[i + 2] = metadata.argv[i];
+          }
+        }
+
+        // Set process.execArgv for worker threads.
+        if (metadata.execArgv) {
+          process.execArgv = metadata.execArgv;
+          for (let i = 0; i < metadata.execArgv.length; i++) {
+            if (metadata.execArgv[i] === "--trace-warnings") {
+              process.traceProcessWarnings = true;
+            }
+          }
+        }
+
+        // Replace process.stdin with a Readable that receives
+        // data from the parent via WORKER_STDIN messages.
+        if (metadata.hasStdin) {
+          const workerStdin = new Readable({ read() {} });
+          process.stdin = workerStdin;
+
+          // Register an early listener to intercept stdin messages
+          // before any user-registered handlers. Remove the listener
+          // once stdin ends so the worker can exit cleanly.
+          const stdinHandler = (ev) => {
+            const msg = ev.data;
+            if (isWorkerStdinMsg(msg)) {
+              // deno-lint-ignore prefer-primordials
+              workerStdin.push(msg.data);
+              ev.stopImmediatePropagation();
+            } else if (isWorkerStdinEndMsg(msg)) {
+              // deno-lint-ignore prefer-primordials
+              workerStdin.push(null);
+              parentPort.removeEventListener("message", stdinHandler);
+              ev.stopImmediatePropagation();
+            }
+          };
+          parentPort.addEventListener("message", stdinHandler);
+        }
+
+        // Forward stdout writes to the parent so worker.stdout
+        // is readable from the host side.
+        const origStdoutWrite = FunctionPrototypeBind(
+          process.stdout.write,
+          process.stdout,
+        );
+        process.stdout.write = function (chunk, encoding, callback) {
+          parentPort.postMessage({
+            type: "WORKER_STDOUT",
+            data: chunk,
+          });
+          return FunctionPrototypeCall(
+            origStdoutWrite,
+            process.stdout,
+            chunk,
+            encoding,
+            callback,
+          );
+        };
+
+        // Forward stderr writes to the parent so worker.stderr
+        // is readable from the host side.
+        const origStderrWrite = FunctionPrototypeBind(
+          process.stderr.write,
+          process.stderr,
+        );
+        process.stderr.write = function (chunk, encoding, callback) {
+          parentPort.postMessage({
+            type: "WORKER_STDERR",
+            data: chunk,
+          });
+          return FunctionPrototypeCall(
+            origStderrWrite,
+            process.stderr,
+            chunk,
+            encoding,
+            callback,
+          );
+        };
       }
     }
     defaultExport.workerData = workerData;
     defaultExport.parentPort = parentPort;
     defaultExport.threadId = threadId;
+    defaultExport.threadName = threadName;
 
     patchMessagePortIfFound(workerData);
 
@@ -447,12 +909,13 @@ internals.__initWorkerThreads = (
     parentPort.once = function (this: ParentPort, name, listener) {
       // deno-lint-ignore no-explicit-any
       const _listener = (ev: any) => {
+        listeners.delete(listener);
         const message = ev.data;
         patchMessagePortIfFound(message);
         return listener(message);
       };
       listeners.set(listener, _listener);
-      this.addEventListener(name, _listener);
+      this.addEventListener(name, _listener, { once: true });
       return this;
     };
 
@@ -535,6 +998,26 @@ class NodeMessageChannel {
     const { port1, port2 } = new MessageChannel();
     this.port1 = webMessagePortToNodeMessagePort(port1);
     this.port2 = webMessagePortToNodeMessagePort(port2);
+
+    // When one port is closed, the paired port should also receive
+    // a 'close' event (matching Node.js behavior).
+    const origClose1 = FunctionPrototypeBind(port1.close, port1);
+    const origClose2 = FunctionPrototypeBind(port2.close, port2);
+
+    port1.close = () => {
+      origClose1();
+      if (!port2[nodeWorkerThreadCloseCbInvoked]) {
+        port2[nodeWorkerThreadCloseCbInvoked] = true;
+        port2.dispatchEvent(new Event("close"));
+      }
+    };
+    port2.close = () => {
+      origClose2();
+      if (!port1[nodeWorkerThreadCloseCbInvoked]) {
+        port1[nodeWorkerThreadCloseCbInvoked] = true;
+        port1.dispatchEvent(new Event("close"));
+      }
+    };
   }
 }
 
@@ -645,6 +1128,18 @@ function patchMessagePortIfFound(data: any, seen = new SafeSet<any>()) {
   }
 }
 
+class BroadcastChannel extends WebBroadcastChannel {
+  ref() {
+    this[refBroadcastChannel](true);
+    return this;
+  }
+
+  unref() {
+    this[refBroadcastChannel](false);
+    return this;
+  }
+}
+
 export {
   BroadcastChannel,
   MessagePort,
@@ -667,6 +1162,7 @@ const defaultExport = {
   setEnvironmentData,
   SHARE_ENV,
   threadId,
+  threadName,
   workerData,
   resourceLimits,
   parentPort,

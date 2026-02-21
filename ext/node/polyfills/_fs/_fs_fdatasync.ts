@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import { CallbackWithError } from "ext:deno_node/_fs/_fs_common.ts";
 import { FsFile } from "ext:deno_fs/30_fs.js";

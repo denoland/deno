@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::path::Path;
@@ -11,6 +11,8 @@ use deno_cache_dir::GlobalHttpCacheRc;
 use deno_cache_dir::GlobalOrLocalHttpCache;
 use deno_cache_dir::LocalHttpCache;
 use deno_cache_dir::npm::NpmCacheDir;
+use deno_config::deno_json::MinimumDependencyAgeConfig;
+use deno_config::deno_json::NewestDependencyDate;
 use deno_config::deno_json::NodeModulesDirMode;
 use deno_config::workspace::FolderConfigs;
 use deno_config::workspace::VendorEnablement;
@@ -24,9 +26,9 @@ use deno_maybe_sync::MaybeSend;
 use deno_maybe_sync::MaybeSync;
 use deno_maybe_sync::new_rc;
 pub use deno_npm::NpmSystemInfo;
+use deno_npm::resolution::NpmOverrides;
 use deno_npm::resolution::NpmVersionResolver;
 use deno_path_util::fs::canonicalize_path_maybe_not_exists;
-use deno_semver::VersionReq;
 use futures::future::FutureExt;
 use node_resolver::DenoIsBuiltInNodeModuleChecker;
 use node_resolver::NodeResolver;
@@ -161,7 +163,7 @@ pub enum ConfigDiscoveryOption {
   Disabled,
 }
 
-/// Resolves the JSR regsitry URL to use for the given system.
+/// Resolves the JSR registry URL to use for the given system.
 pub fn resolve_jsr_url(sys: &impl sys_traits::EnvVar) -> Url {
   let env_var_name = "JSR_URL";
   if let Ok(registry_url) = sys.env_var(env_var_name) {
@@ -208,7 +210,7 @@ pub struct WorkspaceFactoryOptions {
   pub node_modules_dir: Option<NodeModulesDirMode>,
   pub no_lock: bool,
   pub no_npm: bool,
-  /// The process sate if using ext/node and the current process was "forked".
+  /// The process state if using ext/node and the current process was "forked".
   /// This value is found at `deno_lib::args::NPM_PROCESS_STATE`
   /// but in most scenarios this can probably just be `None`.
   pub npm_process_state: Option<NpmProcessStateOptions>,
@@ -229,6 +231,7 @@ pub trait WorkspaceFactorySys:
   + deno_cache_dir::GlobalHttpCacheSys
   + deno_cache_dir::LocalHttpCacheSys
   + crate::loader::NpmModuleLoaderSys
+  + sys_traits::SystemTimeNow
 {
 }
 
@@ -660,7 +663,7 @@ pub struct ResolverFactoryOptions {
   pub compiler_options_overrides: CompilerOptionsOverrides,
   pub is_cjs_resolution_mode: IsCjsResolutionMode,
   /// Prevents installing packages newer than the specified date.
-  pub newest_dependency_date: Option<chrono::DateTime<chrono::Utc>>,
+  pub newest_dependency_date: Option<NewestDependencyDate>,
   pub node_analysis_cache: Option<NodeAnalysisCacheRc>,
   pub node_code_translator_mode: node_resolver::analyze::NodeCodeTranslatorMode,
   pub node_resolver_options: NodeResolverOptions,
@@ -676,9 +679,8 @@ pub struct ResolverFactoryOptions {
   pub on_mapped_resolution_diagnostic:
     Option<crate::graph::OnMappedResolutionDiagnosticFn>,
   pub allow_json_imports: AllowJsonImports,
-  /// Known good version requirement to use for the `@types/node` package
-  /// when the version is unspecified or "latest".
-  pub types_node_version_req: Option<VersionReq>,
+  /// Modules loaded via --require flag that should always be treated as CommonJS
+  pub require_modules: Vec<Url>,
 }
 
 pub struct ResolverFactory<TSys: WorkspaceFactorySys> {
@@ -697,6 +699,7 @@ pub struct ResolverFactory<TSys: WorkspaceFactorySys> {
   in_npm_package_checker: Deferred<DenoInNpmPackageChecker>,
   #[cfg(feature = "graph")]
   jsr_version_resolver: Deferred<JsrVersionResolverRc>,
+  minimum_dependency_age: Deferred<MinimumDependencyAgeConfig>,
   node_code_translator: Deferred<DenoNodeCodeTranslatorRc<TSys>>,
   node_resolver: Deferred<
     NodeResolverRc<
@@ -733,9 +736,6 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
     workspace_factory: WorkspaceFactoryRc<TSys>,
     options: ResolverFactoryOptions,
   ) -> Self {
-    if let Some(newest_dependency_date) = options.newest_dependency_date {
-      log::debug!("Newest dependency date: {}", newest_dependency_date);
-    }
     Self {
       sys: NodeResolutionSys::new(
         workspace_factory.sys.clone(),
@@ -754,6 +754,7 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
       in_npm_package_checker: Default::default(),
       #[cfg(feature = "graph")]
       jsr_version_resolver: Default::default(),
+      minimum_dependency_age: Default::default(),
       node_code_translator: Default::default(),
       node_resolver: Default::default(),
       npm_module_loader: Default::default(),
@@ -846,6 +847,7 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
         self.in_npm_package_checker()?.clone(),
         self.pkg_json_resolver().clone(),
         self.options.is_cjs_resolution_mode,
+        self.options.require_modules.clone(),
       )))
     })
   }
@@ -932,9 +934,48 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
     &self,
   ) -> Result<&JsrVersionResolverRc, anyhow::Error> {
     self.jsr_version_resolver.get_or_try_init(|| {
+      let minimum_dependency_age_config =
+        self.minimum_dependency_age_config()?;
       Ok(new_rc(deno_graph::packages::JsrVersionResolver {
-        newest_dependency_date: self.options.newest_dependency_date,
+        newest_dependency_date_options:
+          deno_graph::packages::NewestDependencyDateOptions {
+            date: minimum_dependency_age_config
+              .age
+              .as_ref()
+              .and_then(|d| d.into_option())
+              .map(deno_graph::packages::NewestDependencyDate),
+            exclude_jsr_pkgs: minimum_dependency_age_config
+              .exclude
+              .iter()
+              .filter_map(|v| v.strip_prefix("jsr:"))
+              .map(|v| v.into())
+              .collect(),
+          },
       }))
+    })
+  }
+
+  /// The newest allowed dependency date.
+  pub fn minimum_dependency_age_config(
+    &self,
+  ) -> Result<&MinimumDependencyAgeConfig, anyhow::Error> {
+    self.minimum_dependency_age.get_or_try_init(|| {
+      let config = if let Some(date) = self.options.newest_dependency_date {
+        MinimumDependencyAgeConfig {
+          age: Some(date),
+          exclude: Vec::new(),
+        }
+      } else {
+        let workspace_factory = self.workspace_factory();
+        let workspace = &workspace_factory.workspace_directory()?.workspace;
+        workspace.minimum_dependency_age(workspace_factory.sys())?
+      };
+      if let Some(newest_dependency_date) =
+        config.age.and_then(|d| d.into_option())
+      {
+        log::debug!("Newest dependency date: {}", newest_dependency_date);
+      }
+      Ok(config)
     })
   }
 
@@ -1048,14 +1089,35 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
     &self,
   ) -> Result<&NpmVersionResolverRc, anyhow::Error> {
     self.npm_version_resolver.get_or_try_init(|| {
+      let minimum_dependency_age_config =
+        self.minimum_dependency_age_config()?;
+
+      // parse npm overrides from root package.json
+      let workspace = &self.workspace_factory.workspace_directory()?.workspace;
+      let overrides = npm_overrides_from_workspace(workspace);
+
       Ok(new_rc(NpmVersionResolver {
-        types_node_version_req: self.options.types_node_version_req.clone(),
-        newest_dependency_date: self.options.newest_dependency_date,
+        newest_dependency_date_options:
+          deno_npm::resolution::NewestDependencyDateOptions {
+            date: minimum_dependency_age_config
+              .age
+              .as_ref()
+              .and_then(|d| d.into_option())
+              .map(deno_npm::resolution::NewestDependencyDate),
+            exclude: minimum_dependency_age_config
+              .exclude
+              .iter()
+              .filter_map(|v| v.strip_prefix("npm:"))
+              .map(|v| v.into())
+              .collect(),
+          },
         link_packages: self
           .workspace_factory
           .workspace_npm_link_packages()?
           .0
           .clone(),
+        #[allow(clippy::disallowed_types)] // allow Arc
+        overrides: std::sync::Arc::new(overrides),
       }))
     })
   }
@@ -1187,5 +1249,32 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
       self.workspace_factory.node_modules_dir_mode()?
         == NodeModulesDirMode::Manual,
     )
+  }
+}
+
+/// Parses npm overrides from a workspace's root package.json.
+///
+/// Returns `NpmOverrides::default()` if no overrides are present or if parsing fails.
+/// Logs a warning on parse failure.
+pub fn npm_overrides_from_workspace(
+  workspace: &deno_config::workspace::Workspace,
+) -> NpmOverrides {
+  let Some(overrides_json) = workspace.npm_overrides() else {
+    return NpmOverrides::default();
+  };
+  let root_deps = workspace.root_deps_for_npm_overrides();
+  match NpmOverrides::from_value(
+    serde_json::Value::Object(overrides_json.clone()),
+    &root_deps,
+  ) {
+    Ok(overrides) => overrides,
+    Err(e) => {
+      log::warn!(
+        "{} failed to parse npm overrides: {}",
+        deno_terminal::colors::yellow("Warning"),
+        e
+      );
+      NpmOverrides::default()
+    }
   }
 }

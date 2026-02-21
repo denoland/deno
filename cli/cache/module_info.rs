@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::sync::Arc;
 
@@ -305,12 +305,15 @@ fn serialize_media_type(media_type: MediaType) -> i64 {
     Dcts => 10,
     Tsx => 11,
     Json => 12,
-    Wasm => 13,
-    Css => 14,
-    Html => 15,
-    SourceMap => 16,
-    Sql => 17,
-    Unknown => 18,
+    Jsonc => 13,
+    Json5 => 14,
+    Markdown => 15,
+    Wasm => 16,
+    Css => 17,
+    Html => 18,
+    SourceMap => 19,
+    Sql => 20,
+    Unknown => 21,
   }
 }
 

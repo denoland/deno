@@ -1,8 +1,7 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 /// <reference no-default-lib="true" />
 /// <reference lib="deno.ns" />
-/// <reference lib="deno.broadcast_channel" />
 /// <reference lib="esnext" />
 /// <reference lib="es2022.intl" />
 

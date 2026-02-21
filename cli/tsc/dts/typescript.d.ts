@@ -26,6 +26,7 @@ declare namespace ts {
             globals: ts.SymbolTable;
             nodeGlobals: ts.SymbolTable;
         }): DenoForkContext;
+        function isTypesNodePkgPath(path: ts.Path): boolean;
         function tryParseNpmPackageReference(text: string): NpmPackageReference | undefined;
         function parseNpmPackageReference(text: string): NpmPackageReference;
         type IsNodeSourceFileCallback = (sourceFile: ts.SourceFile) => boolean;

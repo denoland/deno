@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::collections::HashMap;
 use std::env;
@@ -326,7 +326,7 @@ pub async fn attest(
   let pae = pre_auth_encoding(type_, data);
 
   let signer = FulcioSigner::new(http_client)?;
-  let (signature, key_material) = signer.sign(&pae).await?;
+  let (signature, key_material) = Box::pin(signer.sign(&pae)).await?;
 
   let content = SignatureBundle {
     case: "dsseSignature",
@@ -471,9 +471,8 @@ impl<'a> FulcioSigner<'a> {
     let pem = spki.to_pem(LineEnding::LF)?;
 
     // Create signing certificate
-    let certificates = self
-      .create_signing_certificate(&token, pem, challenge)
-      .await?;
+    let certificates =
+      Box::pin(self.create_signing_certificate(&token, pem, challenge)).await?;
 
     let signature = self.ephemeral_signer.sign(&self.rng, data)?;
 

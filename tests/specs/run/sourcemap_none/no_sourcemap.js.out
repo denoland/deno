@@ -1,0 +1,5 @@
+error: Uncaught (in promise) Error: Test error without sourcemap
+  throw new Error("Test error without sourcemap");
+        ^
+    at throwError (file:///[WILDCARD]no_sourcemap.js:3:9)
+    at file:///[WILDCARD]no_sourcemap.js:6:1

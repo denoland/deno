@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import {
   assert,
@@ -13,7 +13,11 @@ import { EventEmitter, once } from "node:events";
 import process from "node:process";
 
 Deno.test("[node/worker_threads] BroadcastChannel is exported", () => {
-  assertEquals<unknown>(workerThreads.BroadcastChannel, BroadcastChannel);
+  const bc = new workerThreads.BroadcastChannel("test");
+  assert(bc instanceof BroadcastChannel);
+  assert(typeof bc.ref === "function");
+  assert(typeof bc.unref === "function");
+  bc.close();
 });
 
 Deno.test("[node/worker_threads] MessageChannel are MessagePort are exported", () => {
@@ -273,17 +277,6 @@ Deno.test({
     assertThrows(
       () => {
         new workerThreads.Worker(new URL("https://example.com"));
-      },
-    );
-  },
-});
-
-Deno.test({
-  name: "[node/worker_threads] throws on non-existend file",
-  fn() {
-    assertThrows(
-      () => {
-        new workerThreads.Worker(new URL("file://very/unlikely"));
       },
     );
   },
@@ -557,7 +550,7 @@ Deno.test({
     await deferred.promise;
     const promise = worker.terminate();
     assertEquals(typeof promise.then, "function");
-    assertEquals(await promise, 0);
+    assertEquals(await promise, 1);
   },
 });
 
@@ -890,4 +883,88 @@ Deno.test("[node/worker_threads] Worker works with CJS require", async () => {
   });
 
   await recvMessage.promise;
+});
+
+Deno.test({
+  name: "[node/worker_threads] terminate emits 'exit' and stops receiving",
+  async fn() {
+    const recv: string[] = [];
+    const done = Promise.withResolvers<void>();
+
+    const worker = new (await import("node:worker_threads")).Worker(
+      `
+      import { parentPort } from "node:worker_threads";
+      // Periodically send messages to simulate ongoing work.
+      const id = setInterval(() => {
+        parentPort.postMessage("tick");
+      }, 10);
+
+      parentPort.on("message", (m) => {
+        if (m === "stop") {
+          clearInterval(id);
+          // Attempt to send one more message after stop;
+          // the main thread should not receive it after terminate().
+          parentPort.postMessage("last");
+        }
+      });
+      `,
+      { eval: true },
+    );
+
+    const first = await once(worker, "message");
+    recv.push(first[0]);
+
+    const exitP = new Promise<number>((resolve) =>
+      worker.once("exit", (code) => resolve(code))
+    );
+
+    worker.postMessage("stop");
+
+    const termRet = worker.terminate();
+    const code = await exitP;
+
+    if (typeof termRet.then === "function") {
+      const v = await termRet;
+      assertEquals(v, 1);
+    }
+    assertEquals(code, 1);
+
+    setTimeout(() => done.resolve(), 50);
+    await done.promise;
+
+    assertEquals(recv[0], "tick");
+    assertEquals(recv.length, 1);
+  },
+  sanitizeResources: false,
+});
+
+Deno.test({
+  name:
+    "[node/worker_threads] 'online' fires before first user message (pollMessages)",
+  async fn() {
+    const wt = await import("node:worker_threads");
+    let gotOnline = false;
+
+    const worker = new wt.Worker(
+      `
+      import { parentPort } from "node:worker_threads";
+      // When the worker becomes ready, it will receive 'ping' and respond with 'pong'.
+      parentPort.on("message", (m) => {
+        if (m === "ping") parentPort.postMessage("pong");
+      });
+      `,
+      { eval: true },
+    );
+
+    worker.on("online", () => {
+      gotOnline = true;
+      worker.postMessage("ping");
+    });
+
+    const msg = await once(worker, "message");
+    assertEquals(msg[0], "pong");
+    assertEquals(gotOnline, true);
+
+    await worker.terminate();
+  },
 });

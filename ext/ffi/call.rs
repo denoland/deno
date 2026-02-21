@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::cell::RefCell;
 use std::ffi::c_void;
@@ -13,11 +13,11 @@ use deno_core::serde_v8::BigInt as V8BigInt;
 use deno_core::serde_v8::ExternalPointer;
 use deno_core::unsync::spawn_blocking;
 use deno_core::v8;
+use deno_permissions::PermissionsContainer;
 use libffi::middle::Arg;
 use num_bigint::BigInt;
 use serde::Serialize;
 
-use crate::FfiPermissions;
 use crate::ForeignFunction;
 use crate::callback::PtrSymbol;
 use crate::dlfcn::DynamicLibraryResource;
@@ -298,26 +298,22 @@ fn ffi_call(
   }
 }
 
-#[op2(async, stack_trace)]
+#[op2(stack_trace)]
 #[serde]
-pub fn op_ffi_call_ptr_nonblocking<FP>(
+pub fn op_ffi_call_ptr_nonblocking(
   scope: &mut v8::PinScope<'_, '_>,
   state: Rc<RefCell<OpState>>,
   pointer: *mut c_void,
   #[serde] def: ForeignFunction,
   parameters: v8::Local<v8::Array>,
   out_buffer: Option<v8::Local<v8::TypedArray>>,
-) -> Result<
-  impl Future<Output = Result<FfiValue, CallError>> + use<FP>,
-  CallError,
->
+) -> Result<impl Future<Output = Result<FfiValue, CallError>> + use<>, CallError>
 where
-  FP: FfiPermissions + 'static,
 {
   {
     let mut state = state.borrow_mut();
-    let permissions = state.borrow_mut::<FP>();
-    permissions.check_partial_no_path()?;
+    let permissions = state.borrow_mut::<PermissionsContainer>();
+    permissions.check_ffi_partial_no_path()?;
   };
 
   let symbol = PtrSymbol::new(pointer, &def)?;
@@ -346,7 +342,7 @@ where
 }
 
 /// A non-blocking FFI call.
-#[op2(async)]
+#[op2]
 #[serde]
 pub fn op_ffi_call_nonblocking(
   scope: &mut v8::PinScope<'_, '_>,
@@ -399,21 +395,18 @@ pub fn op_ffi_call_nonblocking(
 
 #[op2(reentrant, stack_trace)]
 #[serde]
-pub fn op_ffi_call_ptr<FP>(
+pub fn op_ffi_call_ptr(
   scope: &mut v8::PinScope<'_, '_>,
   state: Rc<RefCell<OpState>>,
   pointer: *mut c_void,
   #[serde] def: ForeignFunction,
   parameters: v8::Local<v8::Array>,
   out_buffer: Option<v8::Local<v8::TypedArray>>,
-) -> Result<FfiValue, CallError>
-where
-  FP: FfiPermissions + 'static,
-{
+) -> Result<FfiValue, CallError> {
   {
     let mut state = state.borrow_mut();
-    let permissions = state.borrow_mut::<FP>();
-    permissions.check_partial_no_path()?;
+    let permissions = state.borrow_mut::<PermissionsContainer>();
+    permissions.check_ffi_partial_no_path()?;
   };
 
   let symbol = PtrSymbol::new(pointer, &def)?;

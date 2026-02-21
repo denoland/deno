@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
 import { primordials } from "ext:core/mod.js";
@@ -25,6 +25,7 @@ import { Duplex, Readable, Writable } from "node:stream";
 import * as io from "ext:deno_io/12_io.js";
 import { guessHandleType } from "ext:deno_node/internal_binding/util.ts";
 import { op_bootstrap_color_depth } from "ext:core/ops";
+import { validateInteger } from "ext:deno_node/internal/validators.mjs";
 
 // https://github.com/nodejs/node/blob/00738314828074243c9a52a228ab4c68b04259ef/lib/internal/bootstrap/switches/is_main_thread.js#L41
 export function createWritableStdioStream(writer, name, warmup = false) {
@@ -114,6 +115,26 @@ export function createWritableStdioStream(writer, name, warmup = false) {
       writable: true,
       value: () => op_bootstrap_color_depth(),
     },
+    hasColors: {
+      __proto__: null,
+      enumerable: true,
+      configurable: true,
+      writable: true,
+      value: (count, env) => {
+        if (
+          env === undefined &&
+          (count === undefined || typeof count === "object" && count !== null)
+        ) {
+          env = count;
+          count = 16;
+        } else {
+          validateInteger(count, "count", 2);
+        }
+
+        const depth = op_bootstrap_color_depth();
+        return count <= 2 ** depth;
+      },
+    },
   });
 
   // If we're warming up, create a stdout/stderr stream that assumes a terminal (the most likely case).
@@ -149,6 +170,7 @@ function _guessStdinType(fd) {
 }
 
 const _read = function (size) {
+  io.stdin?.[io.REF]();
   const p = Buffer.alloc(size || 16 * 1024);
   PromisePrototypeThen(io.stdin?.read(p), (length) => {
     // deno-lint-ignore prefer-primordials
@@ -243,6 +265,8 @@ export const initStdin = (warmup = false) => {
 
   function onpause() {
     if (!stdin._handle) {
+      // This allows the process to exit when stdin is paused.
+      io.stdin?.[io.UNREF]();
       return;
     }
 
@@ -258,12 +282,18 @@ export const initStdin = (warmup = false) => {
   // so that the process can close down.
   stdin.on("pause", () => nextTick(onpause));
 
+  // Allow users to overwrite isTTY for test isolation and terminal mocking.
+  // This mirrors the stdout/stderr behavior added in #26130.
+  let getStdinIsTTY = () => io.stdin?.isTerminal();
   ObjectDefineProperty(stdin, "isTTY", {
     __proto__: null,
     enumerable: true,
     configurable: true,
     get() {
-      return io.stdin.isTerminal();
+      return getStdinIsTTY();
+    },
+    set(value) {
+      getStdinIsTTY = () => value;
     },
   });
   stdin._isRawMode = false;

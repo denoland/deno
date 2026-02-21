@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -331,7 +331,7 @@ impl CliJsrSearchApi {
       file_fetcher.clone(),
       Arc::new(JsrVersionResolver {
         // not currently supported in the lsp
-        newest_dependency_date: None,
+        newest_dependency_date_options: Default::default(),
       }),
     );
     Self {

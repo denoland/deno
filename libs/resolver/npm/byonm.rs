@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::path::Path;
@@ -44,12 +44,9 @@ pub enum ByonmResolvePkgFolderFromDenoReqError {
   #[class(inherit)]
   #[error(transparent)]
   Io(#[from] std::io::Error),
-  #[class(generic)]
-  #[error("JSR specifiers are not supported in package.json: {req}")]
-  JsrReqUnsupported { req: PackageReq },
 }
 
-pub struct ByonmNpmResolverCreateOptions<TSys: FsRead> {
+pub struct ByonmNpmResolverCreateOptions<TSys: FsRead + FsMetadata> {
   // todo(dsherret): investigate removing this
   pub root_node_modules_dir: Option<PathBuf>,
   pub sys: NodeResolutionSys<TSys>,
@@ -196,13 +193,6 @@ impl<TSys: ByonmNpmResolverSys> ByonmNpmResolver<TSys> {
           match value {
             PackageJsonDepValue::File(_) => {
               // skip
-            }
-            PackageJsonDepValue::JsrReq(req) => {
-              return Err(
-                ByonmResolvePkgFolderFromDenoReqError::JsrReqUnsupported {
-                  req: req.clone(),
-                },
-              );
             }
             PackageJsonDepValue::Req(dep_req) => {
               if dep_req.name == req.name
@@ -436,6 +426,17 @@ impl<TSys: FsCanonicalize + FsMetadata + FsRead + FsReadDir>
       }
       .into()
     })
+  }
+
+  fn resolve_types_package_folder(
+    &self,
+    types_package_name: &str,
+    _maybe_package_version: Option<&Version>,
+    maybe_referrer: Option<&UrlOrPathRef>,
+  ) -> Option<PathBuf> {
+    self
+      .resolve_package_folder_from_package(types_package_name, maybe_referrer?)
+      .ok()
   }
 }
 

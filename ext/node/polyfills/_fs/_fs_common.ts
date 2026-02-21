@@ -1,21 +1,14 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import { primordials } from "ext:core/mod.js";
-const {
-  StringPrototypeToLowerCase,
-  ArrayPrototypeIncludes,
-  ReflectApply,
-  Error,
-} = primordials;
+const { ReflectApply } = primordials;
 import { validateFunction } from "ext:deno_node/internal/validators.mjs";
 import type { ErrnoException } from "ext:deno_node/_global.d.ts";
 import {
   BinaryEncodings,
   Encodings,
-  notImplemented,
   TextEncodings,
 } from "ext:deno_node/_utils.ts";
-import { type Buffer } from "node:buffer";
 import { assertEncoding } from "ext:deno_node/internal/fs/utils.mjs";
 
 export type CallbackWithError = (err: ErrnoException | null) => void;
@@ -33,13 +26,6 @@ export type BinaryOptionsArgument =
   | BinaryEncodings
   | ({ encoding: BinaryEncodings } & FileOptions);
 export type FileOptionsArgument = Encodings | FileOptions;
-
-export type ReadOptions = {
-  buffer: Buffer | ArrayBufferView;
-  offset: number;
-  length: number;
-  position: number | null;
-};
 
 export interface WriteFileOptions extends FileOptions {
   mode?: number;
@@ -103,32 +89,6 @@ export function getSignal(optOrCallback?: FileOptions): AbortSignal | null {
     : null;
 
   return signal;
-}
-
-export function checkEncoding(encoding: Encodings | null): Encodings | null {
-  if (!encoding) return null;
-
-  encoding = StringPrototypeToLowerCase(encoding) as Encodings;
-  if (ArrayPrototypeIncludes(["utf8", "hex", "base64", "ascii"], encoding)) {
-    return encoding;
-  }
-
-  if (encoding === "utf-8") {
-    return "utf8";
-  }
-  if (encoding === "binary") {
-    return "binary";
-    // before this was buffer, however buffer is not used in Node
-    // node -e "require('fs').readFile('../world.txt', 'buffer', console.log)"
-  }
-
-  const notImplementedEncodings = ["utf16le", "latin1", "ucs2"];
-
-  if (ArrayPrototypeIncludes(notImplementedEncodings, encoding as string)) {
-    notImplemented(`"${encoding}" encoding`);
-  }
-
-  throw new Error(`The value "${encoding}" is invalid for option "encoding"`);
 }
 
 export { isUint32 as isFd } from "ext:deno_node/internal/validators.mjs";

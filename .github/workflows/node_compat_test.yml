@@ -19,59 +19,67 @@ jobs:
             runner: macos-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           submodules: true
+      - name: Setup Rust
+        uses: dsherret/rust-toolchain-file@v1
       - name: Setup Deno
         uses: denoland/setup-deno@v2
         with:
           deno-version: canary
       - name: Install Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: 3.11
       - name: Authenticate with Google Cloud
-        uses: google-github-actions/auth@v2
+        if: github.ref == 'refs/heads/main'
+        uses: google-github-actions/auth@v3
         with:
           project_id: denoland
           credentials_json: '${{ secrets.GCP_SA_KEY }}'
           export_environment_variables: true
           create_credentials_file: true
       - name: Setup gcloud
-        uses: google-github-actions/setup-gcloud@v2
+        if: github.ref == 'refs/heads/main'
+        uses: google-github-actions/setup-gcloud@v3
         with:
           project_id: denoland
       - name: Run tests
-        run: deno -A tools/node_compat_tests.js
+        env:
+          # override using ldl in .cargo/config.toml
+          CARGO_ENCODED_RUSTFLAGS: ''
+        run: deno task --cwd tests/node_compat/runner test --report
       - name: Gzip the report
         run: gzip tests/node_compat/report.json
       - name: Upload the report to dl.deno.land
+        if: github.ref == 'refs/heads/main'
         run: |-
           gsutil -h "Cache-Control: public, max-age=3600" cp tests/node_compat/report.json.gz gs://dl.deno.land/node-compat-test/$(date +%F)/report-${{matrix.os}}.json.gz
   summary:
     runs-on: ubuntu-latest
     needs: test
-    if: ${{ always() }}
+    if: ${{ always() && github.ref == 'refs/heads/main' }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           submodules: true
       - name: Setup Deno
         uses: denoland/setup-deno@v2
       - name: Install Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: 3.11
       - name: Authenticate with Google Cloud
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@v3
         with:
           project_id: denoland
           credentials_json: '${{ secrets.GCP_SA_KEY }}'
           export_environment_variables: true
           create_credentials_file: true
       - name: Setup gcloud
-        uses: google-github-actions/setup-gcloud@v2
+        uses: google-github-actions/setup-gcloud@v3
         with:
           project_id: denoland
       - name: Add the day summary to the month summary

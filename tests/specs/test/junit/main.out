@@ -1,4 +1,4 @@
-Check file:///[WILDCARD]/main.ts
+Check [WILDCARD]main.ts
 <?xml version="1.0" encoding="UTF-8"?>
 <testsuites name="deno test" tests="16" failures="0" errors="0" time="[WILDCARD]">
     <testsuite name="./main.ts" tests="16" disabled="0" errors="0" failures="0">

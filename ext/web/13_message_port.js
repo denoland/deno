@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // @ts-check
 /// <reference path="../../core/lib.deno_core.d.ts" />
@@ -32,7 +32,7 @@ const {
   isArrayBuffer,
 } = core;
 import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
+import { createFilteredInspectProxy } from "./01_console.js";
 import {
   defineEventHandler,
   EventTarget,
@@ -112,7 +112,7 @@ export const unrefParentPort = Symbol("unrefParentPort");
  */
 function createMessagePort(id) {
   const port = webidl.createBranded(MessagePort);
-  port[core.hostObjectBrand] = core.hostObjectBrand;
+  port[core.hostObjectBrand] = "MessagePort";
   setEventTargetData(port);
   port[_id] = id;
   port[_enabled] = false;
@@ -343,6 +343,18 @@ defineEventHandler(MessagePort.prototype, "messageerror");
 webidl.configureInterface(MessagePort);
 const MessagePortPrototype = MessagePort.prototype;
 
+core.registerTransferableResource("MessagePort", (port) => {
+  const id = port[_id];
+  port[_id] = null;
+  if (id === null) {
+    throw new DOMException(
+      "Can not transfer disentangled message port",
+      "DataCloneError",
+    );
+  }
+  return id;
+}, (id) => createMessagePort(id));
+
 /**
  * @returns {[number, number]}
  */
@@ -366,10 +378,18 @@ function deserializeJsMessageData(messageData) {
     for (let i = 0; i < messageData.transferables.length; ++i) {
       const transferable = messageData.transferables[i];
       switch (transferable.kind) {
-        case "messagePort": {
-          const port = createMessagePort(transferable.data);
-          ArrayPrototypePush(transferables, port);
-          ArrayPrototypePush(hostObjects, port);
+        case "resource": {
+          const { 0: type, 1: rid } = transferable.data;
+          const hostObj = core.getTransferableResource(type).receive(rid);
+          ArrayPrototypePush(transferables, hostObj);
+          ArrayPrototypePush(hostObjects, hostObj);
+          break;
+        }
+        case "multiResource": {
+          const { 0: type, 1: rids } = transferable.data;
+          const hostObj = core.getTransferableResource(type).receive(rids);
+          ArrayPrototypePush(transferables, hostObj);
+          ArrayPrototypePush(hostObjects, hostObj);
           break;
         }
         case "arrayBuffer": {
@@ -423,7 +443,7 @@ function serializeJsMessageData(data, transferables) {
         }
         j++;
         ArrayPrototypePush(transferredArrayBuffers, t);
-      } else if (ObjectPrototypeIsPrototypeOf(MessagePortPrototype, t)) {
+      } else if (t[core.hostObjectBrand]) {
         ArrayPrototypePush(hostObjects, t);
       }
     }
@@ -444,20 +464,20 @@ function serializeJsMessageData(data, transferables) {
   let arrayBufferI = 0;
   for (let i = 0; i < transferables.length; ++i) {
     const transferable = transferables[i];
-    if (ObjectPrototypeIsPrototypeOf(MessagePortPrototype, transferable)) {
-      webidl.assertBranded(transferable, MessagePortPrototype);
-      const id = transferable[_id];
-      if (id === null) {
-        throw new DOMException(
-          "Can not transfer disentangled message port",
-          "DataCloneError",
-        );
+    if (transferable[core.hostObjectBrand]) {
+      const type = transferable[core.hostObjectBrand];
+      const rid = core.getTransferableResource(type).send(transferable);
+      if (typeof rid === "number") {
+        ArrayPrototypePush(serializedTransferables, {
+          kind: "resource",
+          data: [type, rid],
+        });
+      } else {
+        ArrayPrototypePush(serializedTransferables, {
+          kind: "multiResource",
+          data: [type, rid],
+        });
       }
-      transferable[_id] = null;
-      ArrayPrototypePush(serializedTransferables, {
-        kind: "messagePort",
-        data: id,
-      });
     } else if (isArrayBuffer(transferable)) {
       ArrayPrototypePush(serializedTransferables, {
         kind: "arrayBuffer",
@@ -522,6 +542,7 @@ export {
   MessagePortPrototype,
   MessagePortReceiveMessageOnPortSymbol,
   nodeWorkerThreadCloseCb,
+  nodeWorkerThreadCloseCbInvoked,
   refedMessagePortsCount,
   serializeJsMessageData,
   structuredClone,

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // @ts-check
 /// <reference path="../../core/internal.d.ts" />
@@ -25,7 +25,7 @@ const {
 
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { assert } from "./00_infra.js";
-import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
+import { createFilteredInspectProxy } from "./01_console.js";
 import {
   defineEventHandler,
   Event,
@@ -79,6 +79,7 @@ const sourceSignals = Symbol("[[sourceSignals]]");
 const dependentSignals = Symbol("[[dependentSignals]]");
 const signal = Symbol("[[signal]]");
 const timerId = Symbol("[[timerId]]");
+const activeDependents = Symbol("[[activeDependents]]");
 
 const illegalConstructorKey = Symbol("illegalConstructorKey");
 
@@ -188,6 +189,17 @@ class AbortSignal extends EventTarget {
       setIsTrusted(event, true);
       super.dispatchEvent(event);
     }
+
+    // release strong references from source signals now that abort has been delivered
+    if (this[sourceSignals] !== null) {
+      const sourceSignalArray = this[sourceSignals].toArray();
+      for (let i = 0; i < sourceSignalArray.length; ++i) {
+        const sourceSignal = sourceSignalArray[i];
+        if (sourceSignal[activeDependents]) {
+          SetPrototypeDelete(sourceSignal[activeDependents], this);
+        }
+      }
+    }
   }
 
   [remove](algorithm) {
@@ -234,6 +246,9 @@ class AbortSignal extends EventTarget {
           const sourceSignal = sourceSignalArray[i];
           if (sourceSignal[timerId] !== null) {
             refTimer(sourceSignal[timerId]);
+            // prevent GC of this dependent signal while the timer is keeping the event loop alive
+            sourceSignal[activeDependents] ??= new SafeSet();
+            SetPrototypeAdd(sourceSignal[activeDependents], this);
           }
         }
       }
@@ -260,6 +275,10 @@ class AbortSignal extends EventTarget {
               )
             ) {
               unrefTimer(sourceSignal[timerId]);
+            }
+            // release the strong reference since no more listeners need it
+            if (sourceSignal[activeDependents]) {
+              SetPrototypeDelete(sourceSignal[activeDependents], this);
             }
           }
         }

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // deno-lint-ignore-file no-undef no-console
 
@@ -10,9 +10,16 @@ import process, {
   env,
   execArgv as importedExecArgv,
   execPath as importedExecPath,
+  getegid,
   geteuid,
+  getgid,
+  getuid,
   pid as importedPid,
   platform as importedPlatform,
+  setegid,
+  seteuid,
+  setgid,
+  setuid,
 } from "node:process";
 
 import { Readable } from "node:stream";
@@ -31,8 +38,22 @@ import { stripAnsiCode } from "@std/fmt/colors";
 import * as path from "@std/path";
 import { delay } from "@std/async/delay";
 import { stub } from "@std/testing/mock";
+import { execSync } from "node:child_process";
+import nodeAssert from "node:assert";
 
 const testDir = new URL(".", import.meta.url);
+
+function getGroupNameFromSystem(gid: number): string {
+  const stdout = execSync(`grep ":${gid}:" /etc/group`).toString();
+  const groupInfo = stdout.trim().split(":")[0];
+  return groupInfo;
+}
+
+function getUserNameFromSystem(uid: number): string {
+  const stdout = execSync(`id -un ${uid}`).toString();
+  const name = stdout.trim();
+  return name;
+}
 
 Deno.test({
   name: "process.cwd and process.chdir success",
@@ -526,7 +547,19 @@ Deno.test({
   fn() {
     // @ts-ignore `Deno.stdin.rid` was soft-removed in Deno 2.
     assertEquals(process.stdin.fd, Deno.stdin.rid);
-    assertEquals(process.stdin.isTTY, Deno.stdin.isTerminal());
+    const isTTY = Deno.stdin.isTerminal();
+    assertEquals(process.stdin.isTTY, isTTY);
+
+    // Allows overwriting `process.stdin.isTTY` (mirrors stdout/stderr from #26130)
+    const original = process.stdin.isTTY;
+    try {
+      // @ts-ignore isTTY is defined as readonly in types but we allow setting it
+      process.stdin.isTTY = !isTTY;
+      assertEquals(process.stdin.isTTY, !isTTY);
+    } finally {
+      // @ts-ignore isTTY is defined as readonly in types but we allow setting it
+      process.stdin.isTTY = original;
+    }
   },
 });
 
@@ -1078,6 +1111,51 @@ Deno.test({
 });
 
 Deno.test({
+  name: "process.binding('uv').getErrorMessage",
+  ignore: Deno.build.os === "windows",
+  fn() {
+    // @ts-ignore: untyped internal binding, not actually supposed to be
+    // used by userland modules in Node.js
+    const uv = process.binding("uv");
+    assert(uv.getErrorMessage);
+    assert(typeof uv.getErrorMessage === "function");
+    assertEquals(uv.getErrorMessage(-1), "operation not permitted");
+  },
+});
+
+Deno.test({
+  name: "process.binding('uv').getErrorMap",
+  ignore: Deno.build.os === "windows",
+  fn() {
+    // @ts-ignore: untyped internal binding, not actually supposed to be
+    // used by userland modules in Node.js
+    const uv = process.binding("uv");
+    assert(uv.getErrorMap);
+    assert(typeof uv.getErrorMap === "function");
+    const errorMap = uv.getErrorMap();
+    assert(errorMap instanceof Map);
+    // errorMap maps error code (number) to [name, message]
+    assertEquals(errorMap.get(-1), ["EPERM", "operation not permitted"]);
+  },
+});
+
+Deno.test({
+  name: "process.binding('uv').getCodeMap",
+  ignore: Deno.build.os === "windows",
+  fn() {
+    // @ts-ignore: untyped internal binding, not actually supposed to be
+    // used by userland modules in Node.js
+    const uv = process.binding("uv");
+    assert(uv.getCodeMap);
+    assert(typeof uv.getCodeMap === "function");
+    const codeMap = uv.getCodeMap();
+    assert(codeMap instanceof Map);
+    // codeMap maps error name (string) to error code (number)
+    assertEquals(codeMap.get("EPERM"), -1);
+  },
+});
+
+Deno.test({
   name: "process.report",
   fn() {
     // The process.report is marked as possibly undefined in node 18 typings
@@ -1186,6 +1264,14 @@ Deno.test({
     process.setSourceMapsEnabled(false); // noop
     // @ts-ignore: setSourceMapsEnabled is not available in the types yet.
     process.setSourceMapsEnabled(true); // noop
+  },
+});
+
+Deno.test({
+  name: "process.sourceMapsEnabled",
+  fn() {
+    // @ts-ignore: not available in the types yet.
+    assertEquals(process.sourceMapsEnabled, true);
   },
 });
 
@@ -1335,4 +1421,291 @@ Deno.test("process.emitWarning() does not print to stderr when it is deprecation
   assertEquals(writeStub.calls.length, 0);
   // deno-lint-ignore no-explicit-any
   (process as any).noDeprecation = false; // Reset noDeprecation
+});
+
+Deno.test("process.moduleLoadList", () => {
+  // deno-lint-ignore no-explicit-any
+  const moduleLoadList = (process as any).moduleLoadList;
+  assert(Array.isArray(moduleLoadList));
+  assertEquals(moduleLoadList.length, 0);
+});
+
+Deno.test({
+  name: "process.setegid()",
+  ignore: Deno.build.os === "windows" || Deno.build.os === "android",
+  fn() {
+    const originalEgid = getegid!();
+    const groupName = getGroupNameFromSystem(originalEgid);
+
+    // only assert that it doesn't throw
+    setegid!(originalEgid);
+    setegid!(groupName);
+  },
+});
+
+Deno.test({
+  name: "process.setegid() throws on invalid group",
+  ignore: Deno.build.os === "windows" || Deno.build.os === "android",
+  fn() {
+    assertThrows(
+      () => {
+        setegid!("67?!");
+      },
+      "Group identifier does not exist: 67?!",
+    );
+  },
+});
+
+Deno.test({
+  name: "process.setegid() should be undefined on unsupported platforms",
+  ignore: Deno.build.os !== "windows" && Deno.build.os !== "android",
+  fn() {
+    assertEquals(process.setegid, undefined);
+  },
+});
+
+Deno.test({
+  name: "process.seteuid()",
+  ignore: Deno.build.os === "windows" || Deno.build.os === "android",
+  fn() {
+    const originalEuid = geteuid!();
+    const userName = getUserNameFromSystem(originalEuid);
+
+    // calling with original euid to ensure it doesn't throw
+    seteuid!(originalEuid);
+    seteuid!(userName);
+  },
+});
+
+Deno.test({
+  name: "process.seteuid() throws on invalid user",
+  ignore: Deno.build.os === "windows" || Deno.build.os === "android",
+  fn() {
+    assertThrows(
+      () => {
+        seteuid!("67?!");
+      },
+      "User identifier does not exist: 67?!",
+    );
+  },
+});
+
+Deno.test({
+  name: "process.seteuid() should be undefined on unsupported platforms",
+  ignore: Deno.build.os !== "windows" && Deno.build.os !== "android",
+  fn() {
+    assertEquals(process.seteuid, undefined);
+  },
+});
+
+Deno.test({
+  name: "process.setgid()",
+  ignore: Deno.build.os === "windows" || Deno.build.os === "android",
+  fn() {
+    const originalGid = getgid!();
+    const groupName = getGroupNameFromSystem(originalGid);
+
+    // Calling with original gid to ensure it doesn't throw
+    setgid!(originalGid);
+    setgid!(groupName);
+  },
+});
+
+Deno.test({
+  name: "process.setgid() throws on invalid group",
+  ignore: Deno.build.os === "windows" || Deno.build.os === "android",
+  fn() {
+    assertThrows(
+      () => {
+        setgid!("67?!");
+      },
+      "Group identifier does not exist: 67?!",
+    );
+  },
+});
+
+Deno.test({
+  name: "process.setgid() should be undefined on unsupported platforms",
+  ignore: Deno.build.os !== "windows" && Deno.build.os !== "android",
+  fn() {
+    assertEquals(process.setgid, undefined);
+  },
+});
+
+Deno.test({
+  name: "process.setuid()",
+  ignore: Deno.build.os === "windows" || Deno.build.os === "android",
+  fn() {
+    const originalUid = getuid!();
+    const userName = getUserNameFromSystem(originalUid);
+
+    // Calling with original uid to ensure it doesn't throw
+    setuid!(originalUid);
+    setuid!(userName);
+  },
+});
+
+Deno.test({
+  name: "process.setuid() throws on invalid user",
+  ignore: Deno.build.os === "windows" || Deno.build.os === "android",
+  fn() {
+    assertThrows(
+      () => {
+        setuid!("67?!");
+      },
+      "User identifier does not exist: 67?!",
+    );
+  },
+});
+
+Deno.test({
+  name: "process.setuid() should be undefined on unsupported platforms",
+  ignore: Deno.build.os !== "windows" && Deno.build.os !== "android",
+  fn() {
+    assertEquals(process.setuid, undefined);
+  },
+});
+
+Deno.test({
+  name: "process.loadEnvFile()",
+  async fn() {
+    const dirPath = Deno.makeTempDirSync();
+    const envFilePath = path.join(dirPath, "envfile.env");
+    const envContent = "FOO=foo\nBAR=bar\nBAZ=baz";
+    Deno.writeTextFileSync(envFilePath, envContent);
+
+    const code = `
+    import assert from "node:assert";
+    import process from "node:process";
+    process.loadEnvFile(Deno.args[0]);
+
+    assert.strictEqual(process.env.FOO, "foo");
+    assert.strictEqual(process.env.BAR, "bar");
+    assert.strictEqual(process.env.BAZ, "baz");
+    `;
+
+    const command = new Deno.Command(Deno.execPath(), {
+      args: ["eval", code, envFilePath],
+      cwd: testDir,
+      stderr: "piped",
+      stdout: "piped",
+    });
+    const { code: exitCode, stderr } = await command.output();
+    const decoder = new TextDecoder();
+    const stderrStr = decoder.decode(stderr).trim();
+    if (exitCode !== 0) {
+      console.error("Error output:", stderrStr);
+    }
+
+    Deno.removeSync(dirPath, { recursive: true });
+  },
+});
+
+Deno.test({
+  name: "process.loadEnvFile() with buffer path",
+  async fn() {
+    const dirPath = Deno.makeTempDirSync();
+    const envFilePath = path.join(dirPath, "envfile.env");
+    const envContent = "FOO=foo\nBAR=bar\nBAZ=baz";
+    Deno.writeTextFileSync(envFilePath, envContent);
+
+    const code = `
+    import assert from "node:assert";
+    import process from "node:process";
+    process.loadEnvFile(Buffer.from(Deno.args[0]));
+
+    assert.strictEqual(process.env.FOO, "foo");
+    assert.strictEqual(process.env.BAR, "bar");
+    assert.strictEqual(process.env.BAZ, "baz");
+    `;
+
+    const command = new Deno.Command(Deno.execPath(), {
+      args: ["eval", code, envFilePath],
+      cwd: testDir,
+      stderr: "piped",
+      stdout: "piped",
+    });
+    const { code: exitCode, stderr } = await command.output();
+    const decoder = new TextDecoder();
+    const stderrStr = decoder.decode(stderr).trim();
+    if (exitCode !== 0) {
+      console.error("Error output:", stderrStr);
+    }
+
+    Deno.removeSync(dirPath, { recursive: true });
+  },
+});
+
+Deno.test({
+  name: "process.loadEnvFile() with non-existent file",
+  fn() {
+    const dirPath = Deno.makeTempDirSync();
+    const envFilePath = path.join(dirPath, "envfile.env");
+
+    nodeAssert.throws(
+      () => process.loadEnvFile(envFilePath),
+      {
+        code: "ENOENT",
+        syscall: "open",
+        path: envFilePath,
+      },
+    );
+
+    Deno.removeSync(dirPath, { recursive: true });
+  },
+});
+
+Deno.test({
+  name: "process.loadEnvFile() trim null characters in env values",
+  async fn() {
+    const dirPath = Deno.makeTempDirSync();
+    const envFilePath = path.join(dirPath, "envfile.env");
+    const envContent = "FOO=f\0oo\nBAR=bar\n";
+    Deno.writeTextFileSync(envFilePath, envContent);
+
+    const code = `
+    import assert from "node:assert";
+    import process from "node:process";
+    process.loadEnvFile(Deno.args[0]);
+
+    assert.strictEqual(process.env.FOO, "f");
+    assert.strictEqual(process.env.BAR, "bar");
+    `;
+
+    const command = new Deno.Command(Deno.execPath(), {
+      args: ["eval", code, envFilePath],
+      cwd: testDir,
+      stderr: "piped",
+      stdout: "piped",
+    });
+    const { code: exitCode, stderr } = await command.output();
+    const decoder = new TextDecoder();
+    const stderrStr = decoder.decode(stderr).trim();
+    if (exitCode !== 0) {
+      console.error("Error output:", stderrStr);
+    }
+
+    Deno.removeSync(dirPath, { recursive: true });
+  },
+});
+
+Deno.test({
+  name: "process.loadEnvFile() throws on invalid UTF-8 encoding",
+  fn() {
+    const dirPath = Deno.makeTempDirSync();
+    const envFilePath = path.join(dirPath, "envfile.env");
+    const contentArray = new Uint8Array([0xff, 0xfe, 0xfd]);
+    Deno.writeFileSync(envFilePath, contentArray);
+
+    nodeAssert.throws(
+      () => process.loadEnvFile(envFilePath),
+      {
+        name: "TypeError",
+        code: "ERR_INVALID_ARG_TYPE",
+        message: `Contents of '${envFilePath}' should be a valid string.`,
+      },
+    );
+
+    Deno.removeSync(dirPath, { recursive: true });
+  },
 });

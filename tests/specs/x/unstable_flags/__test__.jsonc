@@ -1,0 +1,18 @@
+{
+  "tempDir": true,
+  "tests": {
+    "without_flag": {
+      "args": "x -y npm:@denotest/unsafe-proto-bin",
+      "output": "without_flag.out"
+    },
+    "with_flag": {
+      "args": "x -y --unstable-unsafe-proto npm:@denotest/unsafe-proto-bin",
+      "output": "with_flag.out"
+    },
+    "with_config": {
+      "cwd": "./with_config",
+      "args": "x -y npm:@denotest/unsafe-proto-bin",
+      "output": "with_flag.out"
+    }
+  }
+}

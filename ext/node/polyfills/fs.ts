@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 import {
   access,
   accessPromise,
@@ -123,7 +123,7 @@ import {
   watchPromise,
 } from "ext:deno_node/_fs/_fs_watch.ts";
 // @deno-types="./_fs/_fs_write.d.ts"
-import { write, writeSync } from "ext:deno_node/_fs/_fs_write.mjs";
+import { write, writeSync } from "ext:deno_node/_fs/_fs_write.ts";
 // @deno-types="./_fs/_fs_writev.d.ts"
 import { writev, writevSync } from "ext:deno_node/_fs/_fs_writev.ts";
 import { readv, readvSync } from "ext:deno_node/_fs/_fs_readv.ts";

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 #![allow(clippy::disallowed_methods)]
 
@@ -303,6 +303,15 @@ impl FileSystem for RealFs {
       .map_err(Into::into)
   }
 
+  fn rmdir_sync(&self, path: &CheckedPath) -> FsResult<()> {
+    fs::remove_dir(path).map_err(Into::into)
+  }
+  async fn rmdir_async(&self, path: CheckedPathBuf) -> FsResult<()> {
+    spawn_blocking(move || fs::remove_dir(path))
+      .await?
+      .map_err(Into::into)
+  }
+
   fn truncate_sync(&self, path: &CheckedPath, len: u64) -> FsResult<()> {
     truncate(path, len)
   }
@@ -409,7 +418,7 @@ impl FileSystem for RealFs {
     &'a self,
     path: CheckedPathBuf,
     options: OpenOptions,
-    data: Vec<u8>,
+    data: Box<[u8]>,
   ) -> FsResult<()> {
     let mut file = open_with_checked_path(options, &path.as_checked_path())?;
     spawn_blocking(move || {
@@ -424,14 +433,12 @@ impl FileSystem for RealFs {
     .await?
   }
 
-  fn read_file_sync(&self, path: &CheckedPath) -> FsResult<Cow<'static, [u8]>> {
-    let mut file = open_with_checked_path(
-      OpenOptions {
-        read: true,
-        ..Default::default()
-      },
-      path,
-    )?;
+  fn read_file_sync(
+    &self,
+    path: &CheckedPath,
+    options: OpenOptions,
+  ) -> FsResult<Cow<'static, [u8]>> {
+    let mut file = open_with_checked_path(options, path)?;
     let mut buf = Vec::new();
     file.read_to_end(&mut buf)?;
     Ok(Cow::Owned(buf))
@@ -439,14 +446,9 @@ impl FileSystem for RealFs {
   async fn read_file_async<'a>(
     &'a self,
     path: CheckedPathBuf,
+    options: OpenOptions,
   ) -> FsResult<Cow<'static, [u8]>> {
-    let mut file = open_with_checked_path(
-      OpenOptions {
-        read: true,
-        ..Default::default()
-      },
-      &path.as_checked_path(),
-    )?;
+    let mut file = open_with_checked_path(options, &path.as_checked_path())?;
     spawn_blocking(move || {
       let mut buf = Vec::new();
       file.read_to_end(&mut buf)?;
@@ -1036,13 +1038,49 @@ fn open_options(options: OpenOptions) -> fs::OpenOptions {
   open_options
 }
 
-#[inline(always)]
 pub fn open_with_checked_path(
-  options: OpenOptions,
+  opts: OpenOptions,
   path: &CheckedPath,
 ) -> FsResult<std::fs::File> {
-  let opts = open_options_for_checked_path(options, path);
-  Ok(opts.open(path)?)
+  // Rust's std::fs::OpenOptions requires write or append when create is set.
+  // However, POSIX allows O_RDONLY | O_CREAT (create the file if it doesn't
+  // exist, then open for reading). Handle this by creating the file first
+  // if needed, then opening for read only.
+  if opts.create && !opts.write && !opts.append {
+    if !path.exists() {
+      let create_opts = open_options_for_checked_path(
+        OpenOptions {
+          read: false,
+          write: true,
+          create: true,
+          truncate: false,
+          append: false,
+          create_new: opts.create_new,
+          custom_flags: None,
+          mode: opts.mode,
+        },
+        path,
+      );
+      // Create and immediately close the file
+      drop(create_opts.open(path)?);
+    }
+    let read_opts = open_options_for_checked_path(
+      OpenOptions {
+        read: true,
+        write: false,
+        create: false,
+        truncate: false,
+        append: false,
+        create_new: false,
+        custom_flags: opts.custom_flags,
+        mode: None,
+      },
+      path,
+    );
+    return Ok(read_opts.open(path)?);
+  }
+  let std_opts = open_options_for_checked_path(opts, path);
+  Ok(std_opts.open(path)?)
 }
 
 #[inline(always)]

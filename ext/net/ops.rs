@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -13,12 +13,15 @@ use deno_core::ByteString;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
+use deno_core::FromV8;
 use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_core::ToV8;
 use deno_core::op2;
+use deno_permissions::PermissionsContainer;
 use hickory_proto::ProtoError;
 use hickory_proto::ProtoErrorKind;
 use hickory_proto::rr::record_data::RData;
@@ -40,7 +43,6 @@ use socket2::Type;
 use tokio::net::TcpStream;
 use tokio::net::UdpSocket;
 
-use crate::NetPermissions;
 use crate::io::TcpStreamResource;
 use crate::raw::NetworkListenerResource;
 use crate::resolve_addr::resolve_addr;
@@ -59,7 +61,7 @@ pub struct TlsHandshakeInfo {
     Option<Vec<rustls::pki_types::CertificateDer<'static>>>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, FromV8, ToV8, Deserialize, Serialize)]
 pub struct IpAddr {
   pub hostname: String,
   pub port: u16,
@@ -182,8 +184,7 @@ pub(crate) fn accept_err(e: std::io::Error) -> NetError {
   }
 }
 
-#[op2(async)]
-#[serde]
+#[op2]
 pub async fn op_net_accept_tcp(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -225,7 +226,7 @@ pub async fn op_net_accept_tcp(
   ))
 }
 
-#[op2(async)]
+#[op2]
 #[serde]
 pub async fn op_net_recv_udp(
   state: Rc<RefCell<OpState>>,
@@ -246,20 +247,17 @@ pub async fn op_net_recv_udp(
   Ok((nread, IpAddr::from(remote_addr)))
 }
 
-#[op2(async, stack_trace)]
+#[op2(stack_trace)]
 #[number]
-pub async fn op_net_send_udp<NP>(
+pub async fn op_net_send_udp(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
-  #[serde] addr: IpAddr,
+  #[scoped] addr: IpAddr,
   #[buffer] zero_copy: JsBuffer,
-) -> Result<usize, NetError>
-where
-  NP: NetPermissions + 'static,
-{
+) -> Result<usize, NetError> {
   {
     let mut s = state.borrow_mut();
-    s.borrow_mut::<NP>().check_net(
+    s.borrow_mut::<PermissionsContainer>().check_net(
       &(&addr.hostname, Some(addr.port)),
       "Deno.DatagramConn.send()",
     )?;
@@ -299,7 +297,7 @@ pub fn op_net_validate_multicast(
   Ok(())
 }
 
-#[op2(async)]
+#[op2]
 pub async fn op_net_join_multi_v4_udp(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -321,7 +319,7 @@ pub async fn op_net_join_multi_v4_udp(
   Ok(())
 }
 
-#[op2(async)]
+#[op2]
 pub async fn op_net_join_multi_v6_udp(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -342,7 +340,7 @@ pub async fn op_net_join_multi_v6_udp(
   Ok(())
 }
 
-#[op2(async)]
+#[op2]
 pub async fn op_net_leave_multi_v4_udp(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -364,7 +362,7 @@ pub async fn op_net_leave_multi_v4_udp(
   Ok(())
 }
 
-#[op2(async)]
+#[op2]
 pub async fn op_net_leave_multi_v6_udp(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -385,7 +383,7 @@ pub async fn op_net_leave_multi_v6_udp(
   Ok(())
 }
 
-#[op2(async)]
+#[op2]
 pub async fn op_net_set_multi_loopback_udp(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -408,7 +406,7 @@ pub async fn op_net_set_multi_loopback_udp(
   Ok(())
 }
 
-#[op2(async)]
+#[op2]
 pub async fn op_net_set_multi_ttl_udp(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -426,7 +424,7 @@ pub async fn op_net_set_multi_ttl_udp(
   Ok(())
 }
 
-#[op2(async)]
+#[op2]
 pub async fn op_net_set_broadcast_udp(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -469,38 +467,29 @@ impl NetPermToken {
 }
 
 #[op2]
-#[serde]
 pub fn op_net_get_ips_from_perm_token(
   #[cppgc] token: &NetPermToken,
 ) -> Vec<String> {
   token.resolved_ips.clone()
 }
 
-#[op2(async, stack_trace)]
-#[serde]
-pub async fn op_net_connect_tcp<NP>(
+#[op2(stack_trace)]
+pub async fn op_net_connect_tcp(
   state: Rc<RefCell<OpState>>,
-  #[serde] addr: IpAddr,
+  #[scoped] addr: IpAddr,
   #[cppgc] net_perm_token: Option<&NetPermToken>,
   #[smi] resource_abort_id: Option<ResourceId>,
-) -> Result<(ResourceId, IpAddr, IpAddr), NetError>
-where
-  NP: NetPermissions + 'static,
-{
-  op_net_connect_tcp_inner::<NP>(state, addr, net_perm_token, resource_abort_id)
-    .await
+) -> Result<(ResourceId, IpAddr, IpAddr), NetError> {
+  op_net_connect_tcp_inner(state, addr, net_perm_token, resource_abort_id).await
 }
 
 #[inline]
-pub async fn op_net_connect_tcp_inner<NP>(
+pub async fn op_net_connect_tcp_inner(
   state: Rc<RefCell<OpState>>,
   addr: IpAddr,
   net_perm_token: Option<&NetPermToken>,
   resource_abort_id: Option<ResourceId>,
-) -> Result<(ResourceId, IpAddr, IpAddr), NetError>
-where
-  NP: NetPermissions + 'static,
-{
+) -> Result<(ResourceId, IpAddr, IpAddr), NetError> {
   {
     let mut state_ = state.borrow_mut();
     // If token exists and the address matches to its resolved ips,
@@ -510,7 +499,7 @@ where
       _ => addr.hostname.clone(),
     };
     state_
-      .borrow_mut::<NP>()
+      .borrow_mut::<PermissionsContainer>()
       .check_net(&(&hostname_to_check, Some(addr.port)), "Deno.connect()")?;
   }
 
@@ -571,22 +560,18 @@ impl Resource for UdpSocketResource {
 }
 
 #[op2(stack_trace)]
-#[serde]
-pub fn op_net_listen_tcp<NP>(
+pub fn op_net_listen_tcp(
   state: &mut OpState,
-  #[serde] addr: IpAddr,
+  #[scoped] addr: IpAddr,
   reuse_port: bool,
   load_balanced: bool,
   tcp_backlog: i32,
-) -> Result<(ResourceId, IpAddr), NetError>
-where
-  NP: NetPermissions + 'static,
-{
+) -> Result<(ResourceId, IpAddr), NetError> {
   if reuse_port {
     super::check_unstable(state, "Deno.listen({ reusePort: true })");
   }
   state
-    .borrow_mut::<NP>()
+    .borrow_mut::<PermissionsContainer>()
     .check_net(&(&addr.hostname, Some(addr.port)), "Deno.listen()")?;
   let addr = resolve_addr_sync(&addr.hostname, addr.port)?
     .next()
@@ -604,17 +589,14 @@ where
   Ok((rid, IpAddr::from(local_addr)))
 }
 
-fn net_listen_udp<NP>(
+fn net_listen_udp(
   state: &mut OpState,
   addr: IpAddr,
   reuse_address: bool,
   loopback: bool,
-) -> Result<(ResourceId, IpAddr), NetError>
-where
-  NP: NetPermissions + 'static,
-{
+) -> Result<(ResourceId, IpAddr), NetError> {
   state
-    .borrow_mut::<NP>()
+    .borrow_mut::<PermissionsContainer>()
     .check_net(&(&addr.hostname, Some(addr.port)), "Deno.listenDatagram()")?;
   let addr = resolve_addr_sync(&addr.hostname, addr.port)?
     .next()
@@ -672,45 +654,33 @@ where
 }
 
 #[op2(stack_trace)]
-#[serde]
-pub fn op_net_listen_udp<NP>(
+pub fn op_net_listen_udp(
   state: &mut OpState,
-  #[serde] addr: IpAddr,
+  #[scoped] addr: IpAddr,
   reuse_address: bool,
   loopback: bool,
-) -> Result<(ResourceId, IpAddr), NetError>
-where
-  NP: NetPermissions + 'static,
-{
+) -> Result<(ResourceId, IpAddr), NetError> {
   super::check_unstable(state, "Deno.listenDatagram");
-  net_listen_udp::<NP>(state, addr, reuse_address, loopback)
+  net_listen_udp(state, addr, reuse_address, loopback)
 }
 
 #[op2(stack_trace)]
-#[serde]
-pub fn op_node_unstable_net_listen_udp<NP>(
+pub fn op_node_unstable_net_listen_udp(
   state: &mut OpState,
-  #[serde] addr: IpAddr,
+  #[scoped] addr: IpAddr,
   reuse_address: bool,
   loopback: bool,
-) -> Result<(ResourceId, IpAddr), NetError>
-where
-  NP: NetPermissions + 'static,
-{
-  net_listen_udp::<NP>(state, addr, reuse_address, loopback)
+) -> Result<(ResourceId, IpAddr), NetError> {
+  net_listen_udp(state, addr, reuse_address, loopback)
 }
 
 #[cfg(any(target_os = "android", target_os = "linux", target_os = "macos"))]
-#[op2(async, stack_trace)]
-#[serde]
-pub async fn op_net_connect_vsock<NP>(
+#[op2(stack_trace)]
+pub async fn op_net_connect_vsock(
   state: Rc<RefCell<OpState>>,
   #[smi] cid: u32,
   #[smi] port: u32,
-) -> Result<(ResourceId, (u32, u32), (u32, u32)), NetError>
-where
-  NP: NetPermissions + 'static,
-{
+) -> Result<(ResourceId, (u32, u32), (u32, u32)), NetError> {
   use std::sync::Arc;
 
   use deno_features::FeatureChecker;
@@ -722,11 +692,10 @@ where
     .borrow::<Arc<FeatureChecker>>()
     .check_or_exit("vsock", "Deno.connect");
 
-  state.borrow_mut().borrow_mut::<NP>().check_vsock(
-    cid,
-    port,
-    "Deno.connect()",
-  )?;
+  state
+    .borrow_mut()
+    .borrow_mut::<PermissionsContainer>()
+    .check_net_vsock(cid, port, "Deno.connect()")?;
 
   let addr = VsockAddr::new(cid, port);
   let vsock_stream = VsockStream::connect(addr).await?;
@@ -755,24 +724,17 @@ where
 )))]
 #[op2]
 #[serde]
-pub fn op_net_connect_vsock<NP>() -> Result<(), NetError>
-where
-  NP: NetPermissions + 'static,
-{
+pub fn op_net_connect_vsock() -> Result<(), NetError> {
   Err(NetError::VsockUnsupported)
 }
 
 #[cfg(any(target_os = "android", target_os = "linux", target_os = "macos"))]
 #[op2(stack_trace)]
-#[serde]
-pub fn op_net_listen_vsock<NP>(
+pub fn op_net_listen_vsock(
   state: &mut OpState,
   #[smi] cid: u32,
   #[smi] port: u32,
-) -> Result<(ResourceId, u32, u32), NetError>
-where
-  NP: NetPermissions + 'static,
-{
+) -> Result<(ResourceId, u32, u32), NetError> {
   use std::sync::Arc;
 
   use deno_features::FeatureChecker;
@@ -783,9 +745,11 @@ where
     .borrow::<Arc<FeatureChecker>>()
     .check_or_exit("vsock", "Deno.listen");
 
-  state
-    .borrow_mut::<NP>()
-    .check_vsock(cid, port, "Deno.listen()")?;
+  state.borrow_mut::<PermissionsContainer>().check_net_vsock(
+    cid,
+    port,
+    "Deno.listen()",
+  )?;
 
   let addr = VsockAddr::new(cid, port);
   let listener = VsockListener::bind(addr)?;
@@ -802,16 +766,12 @@ where
 )))]
 #[op2]
 #[serde]
-pub fn op_net_listen_vsock<NP>() -> Result<(), NetError>
-where
-  NP: NetPermissions + 'static,
-{
+pub fn op_net_listen_vsock() -> Result<(), NetError> {
   Err(NetError::VsockUnsupported)
 }
 
 #[cfg(any(target_os = "android", target_os = "linux", target_os = "macos"))]
-#[op2(async)]
-#[serde]
+#[op2]
 pub async fn op_net_accept_vsock(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -860,7 +820,6 @@ pub fn op_net_accept_vsock() -> Result<(), NetError> {
 }
 
 #[op2]
-#[serde]
 pub fn op_net_listen_tunnel(
   state: &mut OpState,
 ) -> Result<(ResourceId, IpAddr), NetError> {
@@ -875,8 +834,7 @@ pub fn op_net_listen_tunnel(
   Ok((rid, local_addr))
 }
 
-#[op2(async)]
-#[serde]
+#[op2]
 pub async fn op_net_accept_tunnel(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -948,49 +906,40 @@ pub enum DnsRecordData {
   Txt(Vec<String>),
 }
 
-#[derive(Serialize, Eq, PartialEq, Debug)]
-#[serde()]
+#[derive(ToV8, Eq, PartialEq, Debug)]
 pub struct DnsRecordWithTtl {
+  #[to_v8(serde)]
   pub data: DnsRecordData,
   pub ttl: u32,
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(FromV8)]
 pub struct ResolveAddrArgs {
   cancel_rid: Option<ResourceId>,
   query: String,
+  #[from_v8(serde)]
   record_type: RecordType,
   options: Option<ResolveDnsOption>,
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(FromV8)]
 pub struct ResolveDnsOption {
   name_server: Option<NameServer>,
 }
 
-fn default_port() -> u16 {
-  53
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(FromV8)]
 pub struct NameServer {
   ip_addr: String,
-  #[serde(default = "default_port")]
+  #[from_v8(default = 53)]
   port: u16,
 }
 
-#[op2(async, stack_trace)]
-#[serde]
-pub async fn op_dns_resolve<NP>(
+#[op2(stack_trace)]
+pub async fn op_dns_resolve(
   state: Rc<RefCell<OpState>>,
-  #[serde] args: ResolveAddrArgs,
-) -> Result<Vec<DnsRecordWithTtl>, NetError>
-where
-  NP: NetPermissions + 'static,
-{
+  #[scoped] args: ResolveAddrArgs,
+  use_edns: bool,
+) -> Result<Vec<DnsRecordWithTtl>, NetError> {
   let ResolveAddrArgs {
     query,
     record_type,
@@ -1006,24 +955,27 @@ where
       name_server.port,
       true,
     );
-    (
-      ResolverConfig::from_parts(None, vec![], group),
-      ResolverOpts::default(),
-    )
+    (ResolverConfig::from_parts(None, vec![], group), {
+      let mut opts = ResolverOpts::default();
+      if use_edns {
+        opts.edns0 = true;
+      }
+      opts
+    })
   } else {
     system_conf::read_system_conf()?
   };
 
   {
     let mut s = state.borrow_mut();
-    let perm = s.borrow_mut::<NP>();
+    let perm = s.borrow_mut::<PermissionsContainer>();
 
     // Checks permission against the name servers which will be actually queried.
     for ns in config.name_servers() {
       let socker_addr = &ns.socket_addr;
       let ip = socker_addr.ip().to_string();
       let port = socker_addr.port();
-      perm.check_net(&(ip, Some(port)), "Deno.resolveDns()")?;
+      perm.check_net(&(&ip, Some(port)), "Deno.resolveDns()")?;
     }
   }
 
@@ -1207,16 +1159,11 @@ mod tests {
   use std::net::Ipv4Addr;
   use std::net::Ipv6Addr;
   use std::net::ToSocketAddrs;
-  use std::path::Path;
-  use std::sync::Arc;
   use std::sync::Mutex;
 
   use deno_core::JsRuntime;
   use deno_core::RuntimeOptions;
   use deno_core::futures::FutureExt;
-  use deno_permissions::CheckedPath;
-  use deno_permissions::OpenAccessKind;
-  use deno_permissions::PermissionCheckError;
   use hickory_proto::rr::Name;
   use hickory_proto::rr::rdata::SOA;
   use hickory_proto::rr::rdata::a::A;
@@ -1412,36 +1359,6 @@ mod tests {
     );
   }
 
-  struct TestPermission {}
-
-  impl NetPermissions for TestPermission {
-    fn check_net<T: AsRef<str>>(
-      &mut self,
-      _host: &(T, Option<u16>),
-      _api_name: &str,
-    ) -> Result<(), PermissionCheckError> {
-      Ok(())
-    }
-
-    fn check_open<'a>(
-      &mut self,
-      path: Cow<'a, Path>,
-      _access_kind: OpenAccessKind,
-      _api_name: &str,
-    ) -> Result<CheckedPath<'a>, PermissionCheckError> {
-      Ok(CheckedPath::unsafe_new(path))
-    }
-
-    fn check_vsock(
-      &mut self,
-      _cid: u32,
-      _port: u32,
-      _api_name: &str,
-    ) -> Result<(), PermissionCheckError> {
-      Ok(())
-    }
-  }
-
   #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
   async fn tcp_set_no_delay() {
     let set_nodelay = Box::new(|state: &mut OpState, rid| {
@@ -1483,10 +1400,17 @@ mod tests {
     }
     .boxed_local();
 
+    use std::sync::Arc;
+
+    use deno_permissions::RuntimePermissionDescriptorParser;
+
     deno_core::extension!(
       test_ext,
       state = |state| {
-        state.put(TestPermission {});
+        let parser = Arc::new(RuntimePermissionDescriptorParser::new(
+          sys_traits::impls::RealSys,
+        ));
+        state.put(PermissionsContainer::allow_all(parser));
       }
     );
 
@@ -1503,10 +1427,8 @@ mod tests {
       port: server_addr[1].parse().unwrap(),
     };
 
-    let mut connect_fut = op_net_connect_tcp_inner::<TestPermission>(
-      conn_state, ip_addr, None, None,
-    )
-    .boxed_local();
+    let mut connect_fut =
+      op_net_connect_tcp_inner(conn_state, ip_addr, None, None).boxed_local();
     let mut rid = None;
 
     tokio::select! {

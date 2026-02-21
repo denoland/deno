@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 import { internals, primordials } from "ext:core/mod.js";
 import { op_http_websocket_accept_header } from "ext:core/ops";
 const {
@@ -123,7 +123,7 @@ function upgradeWebSocket(request, options = { __proto__: null }) {
     })();
   }
 
-  const response = fromInnerResponse(r, "immutable");
+  const response = fromInnerResponse(r, "response");
 
   response[_ws] = socket;
 

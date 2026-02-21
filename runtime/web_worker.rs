@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::cell::RefCell;
 use std::fmt;
@@ -11,7 +11,6 @@ use std::sync::atomic::Ordering;
 use std::task::Context;
 use std::task::Poll;
 
-use deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_cache::CacheImpl;
 use deno_cache::CreateCache;
 use deno_cache::SqliteBackedCache;
@@ -38,7 +37,7 @@ use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::serde_json::json;
 use deno_core::v8;
-use deno_cron::local::LocalCronHandler;
+use deno_cron::CronHandlerImpl;
 use deno_error::JsErrorClass;
 use deno_fs::FileSystem;
 use deno_io::Stdio;
@@ -52,6 +51,7 @@ use deno_terminal::colors;
 use deno_tls::RootCertStoreProvider;
 use deno_tls::TlsKeys;
 use deno_web::BlobStore;
+use deno_web::InMemoryBroadcastChannel;
 use deno_web::JsMessageData;
 use deno_web::MessagePort;
 use deno_web::Transferable;
@@ -64,7 +64,7 @@ use node_resolver::NpmPackageFolderResolver;
 use crate::BootstrapOptions;
 use crate::FeatureChecker;
 use crate::coverage::CoverageCollector;
-use crate::inspector_server::InspectorServer;
+use crate::deno_inspector_server::MainInspectorSessionChannel;
 use crate::ops;
 use crate::shared::runtime;
 use crate::worker::FormatJsErrorFn;
@@ -133,8 +133,8 @@ impl<'s> WorkerThreadType {
 /// worker.
 #[allow(clippy::large_enum_variant)]
 pub enum WorkerControlEvent {
-  TerminalError(CoreError),
-  Close,
+  TerminalError(CoreError, i32),
+  Close(i32),
 }
 
 use deno_core::serde::Serializer;
@@ -145,12 +145,12 @@ impl Serialize for WorkerControlEvent {
     S: Serializer,
   {
     let type_id = match &self {
-      WorkerControlEvent::TerminalError(_) => 1_i32,
-      WorkerControlEvent::Close => 3_i32,
+      WorkerControlEvent::TerminalError(..) => 1_i32,
+      WorkerControlEvent::Close(_) => 3_i32,
     };
 
     match self {
-      WorkerControlEvent::TerminalError(error) => {
+      WorkerControlEvent::TerminalError(error, exit_code) => {
         let value = match error.as_kind() {
           CoreErrorKind::Js(js_error) => {
             let frame = js_error.frames.iter().find(|f| match &f.file_name {
@@ -159,19 +159,25 @@ impl Serialize for WorkerControlEvent {
             });
             json!({
               "message": js_error.exception_message,
+              "name": js_error.name,
+              "errorMessage": js_error.message,
               "fileName": frame.map(|f| f.file_name.as_ref()),
               "lineNumber": frame.map(|f| f.line_number.as_ref()),
               "columnNumber": frame.map(|f| f.column_number.as_ref()),
+              "exitCode": exit_code,
             })
           }
           _ => json!({
             "message": error.to_string(),
+            "exitCode": exit_code,
           }),
         };
 
         Serialize::serialize(&(type_id, value), serializer)
       }
-      _ => Serialize::serialize(&(type_id, ()), serializer),
+      WorkerControlEvent::Close(exit_code) => {
+        Serialize::serialize(&(type_id, exit_code), serializer)
+      }
     }
   }
 }
@@ -376,7 +382,7 @@ pub struct WebWorkerServiceOptions<
   pub compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
   pub feature_checker: Arc<FeatureChecker>,
   pub fs: Arc<dyn FileSystem>,
-  pub maybe_inspector_server: Option<Arc<InspectorServer>>,
+  pub main_inspector_session_tx: MainInspectorSessionChannel,
   pub module_loader: Rc<dyn ModuleLoader>,
   pub node_services: Option<
     NodeExtInitServices<
@@ -389,6 +395,7 @@ pub struct WebWorkerServiceOptions<
   pub permissions: PermissionsContainer,
   pub root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,
   pub shared_array_buffer_store: Option<SharedArrayBufferStore>,
+  pub bundle_provider: Option<Arc<dyn deno_bundle_runtime::BundleProvider>>,
 }
 
 pub struct WebWorkerOptions {
@@ -434,6 +441,7 @@ pub struct WebWorker {
   maybe_worker_metadata: Option<WorkerMetadata>,
   memory_trim_handle: Option<tokio::task::JoinHandle<()>>,
   maybe_coverage_dir: Option<PathBuf>,
+  bootstrap_error: Option<CoreError>,
 }
 
 impl Drop for WebWorker {
@@ -522,42 +530,34 @@ impl WebWorker {
       deno_telemetry::deno_telemetry::init(),
       // Web APIs
       deno_webidl::deno_webidl::init(),
-      deno_console::deno_console::init(),
-      deno_url::deno_url::init(),
-      deno_web::deno_web::init::<PermissionsContainer>(
+      deno_web::deno_web::init(
         services.blob_store,
         Some(options.main_module.clone()),
-      ),
-      deno_webgpu::deno_webgpu::init(),
-      deno_canvas::deno_canvas::init(),
-      deno_fetch::deno_fetch::init::<PermissionsContainer>(
-        deno_fetch::Options {
-          user_agent: options.bootstrap.user_agent.clone(),
-          root_cert_store_provider: services.root_cert_store_provider.clone(),
-          unsafely_ignore_certificate_errors: options
-            .unsafely_ignore_certificate_errors
-            .clone(),
-          file_fetch_handler: Rc::new(deno_fetch::FsFetchHandler),
-          ..Default::default()
-        },
-      ),
-      deno_cache::deno_cache::init(create_cache),
-      deno_websocket::deno_websocket::init::<PermissionsContainer>(),
-      deno_webstorage::deno_webstorage::init(None).disable(),
-      deno_crypto::deno_crypto::init(options.seed),
-      deno_broadcast_channel::deno_broadcast_channel::init(
         services.broadcast_channel,
       ),
-      deno_ffi::deno_ffi::init::<PermissionsContainer>(
-        services.deno_rt_native_addon_loader.clone(),
-      ),
-      deno_net::deno_net::init::<PermissionsContainer>(
+      deno_webgpu::deno_webgpu::init(),
+      deno_image::deno_image::init(),
+      deno_fetch::deno_fetch::init(deno_fetch::Options {
+        user_agent: options.bootstrap.user_agent.clone(),
+        root_cert_store_provider: services.root_cert_store_provider.clone(),
+        unsafely_ignore_certificate_errors: options
+          .unsafely_ignore_certificate_errors
+          .clone(),
+        file_fetch_handler: Rc::new(deno_fetch::FsFetchHandler),
+        ..Default::default()
+      }),
+      deno_cache::deno_cache::init(create_cache),
+      deno_websocket::deno_websocket::init(),
+      deno_webstorage::deno_webstorage::init(None).disable(),
+      deno_crypto::deno_crypto::init(options.seed),
+      deno_ffi::deno_ffi::init(services.deno_rt_native_addon_loader.clone()),
+      deno_net::deno_net::init(
         services.root_cert_store_provider.clone(),
         options.unsafely_ignore_certificate_errors.clone(),
       ),
       deno_tls::deno_tls::init(),
       deno_kv::deno_kv::init(
-        MultiBackendDbHandler::remote_or_sqlite::<PermissionsContainer>(
+        MultiBackendDbHandler::remote_or_sqlite(
           None,
           options.seed,
           deno_kv::remote::HttpOptions {
@@ -572,20 +572,19 @@ impl WebWorker {
         ),
         deno_kv::KvConfig::builder().build(),
       ),
-      deno_cron::deno_cron::init(LocalCronHandler::new()),
-      deno_napi::deno_napi::init::<PermissionsContainer>(
-        services.deno_rt_native_addon_loader.clone(),
-      ),
+      deno_cron::deno_cron::init(CronHandlerImpl::create_from_env()),
+      deno_napi::deno_napi::init(services.deno_rt_native_addon_loader.clone()),
       deno_http::deno_http::init(deno_http::Options {
         no_legacy_abort: options.bootstrap.no_legacy_abort,
         ..Default::default()
       }),
       deno_io::deno_io::init(Some(options.stdio)),
-      deno_fs::deno_fs::init::<PermissionsContainer>(services.fs.clone()),
-      deno_os::deno_os::init(None),
+      deno_fs::deno_fs::init(services.fs.clone()),
+      deno_os::deno_os::init(Some(deno_os::ExitCode::default())),
       deno_process::deno_process::init(services.npm_process_state_provider),
+      deno_node_crypto::deno_node_crypto::init(),
+      deno_node_sqlite::deno_node_sqlite::init(),
       deno_node::deno_node::init::<
-        PermissionsContainer,
         TInNpmPackageChecker,
         TNpmPackageFolderResolver,
         TExtNodeSys,
@@ -600,7 +599,7 @@ impl WebWorker {
       ops::permissions::deno_permissions::init(),
       ops::tty::deno_tty::init(),
       ops::http::deno_http_runtime::init(),
-      deno_bundle_runtime::deno_bundle_runtime::init(None),
+      deno_bundle_runtime::deno_bundle_runtime::init(services.bundle_provider),
       ops::bootstrap::deno_bootstrap::init(
         options.startup_snapshot.and_then(|_| Default::default()),
         false,
@@ -610,10 +609,12 @@ impl WebWorker {
     ];
 
     #[cfg(feature = "hmr")]
-    assert!(
-      cfg!(not(feature = "only_snapshotted_js_sources")),
-      "'hmr' is incompatible with 'only_snapshotted_js_sources'."
-    );
+    const {
+      assert!(
+        cfg!(not(feature = "only_snapshotted_js_sources")),
+        "'hmr' is incompatible with 'only_snapshotted_js_sources'."
+      );
+    }
 
     for extension in &mut extensions {
       if options.startup_snapshot.is_some() {
@@ -654,7 +655,6 @@ impl WebWorker {
           options.enable_raw_imports,
         ))),
       ),
-      import_assertions_support: deno_core::ImportAssertionsSupport::Error,
       maybe_op_stack_trace_callback: options
         .enable_stack_trace_arg_in_ops
         .then(crate::worker::create_permissions_stack_trace_callback),
@@ -662,6 +662,7 @@ impl WebWorker {
       skip_op_registration: false,
       v8_platform: None,
       is_main: false,
+      worker_id: Some(options.worker_id.0),
       wait_for_inspector_disconnect_callback: None,
       custom_module_evaluation_cb: None,
       eval_context_code_cache_cbs: None,
@@ -684,12 +685,26 @@ impl WebWorker {
       state.put(js_runtime.inspector());
     }
 
-    if let Some(server) = services.maybe_inspector_server {
-      server.register_inspector(
-        options.main_module.to_string(),
-        js_runtime.inspector(),
-        false,
-      );
+    if let Some(main_session_tx) = services.main_inspector_session_tx.get() {
+      let (main_proxy, worker_proxy) =
+        deno_core::create_worker_inspector_session_pair(
+          options.main_module.to_string(),
+        );
+
+      // Send worker proxy to the main runtime
+      if main_session_tx.unbounded_send(main_proxy).is_err() {
+        log::debug!("Failed to send inspector session proxy to main runtime");
+      }
+
+      // Send worker proxy to the worker runtime
+      if js_runtime
+        .inspector()
+        .get_session_sender()
+        .unbounded_send(worker_proxy)
+        .is_err()
+      {
+        log::debug!("Failed to send inspector session proxy to worker runtime");
+      }
     }
 
     let (internal_handle, external_handle) = {
@@ -739,6 +754,7 @@ impl WebWorker {
         maybe_worker_metadata: options.maybe_worker_metadata,
         memory_trim_handle: None,
         maybe_coverage_dir: options.maybe_coverage_dir,
+        bootstrap_error: None,
       },
       external_handle,
       options.bootstrap,
@@ -752,6 +768,7 @@ impl WebWorker {
     // WebWorkers can have empty string as name.
     {
       deno_core::scope!(scope, &mut self.js_runtime);
+      v8::tc_scope!(scope, scope);
       let args = options.as_v8(scope);
       let bootstrap_fn = self.bootstrap_fn_global.take().unwrap();
       let bootstrap_fn = v8::Local::new(scope, bootstrap_fn);
@@ -779,13 +796,26 @@ impl WebWorker {
         v8::Integer::new(scope, self.id.0 as i32).into();
       let worker_type: v8::Local<v8::Value> =
         self.worker_type.to_v8(scope).into();
-      bootstrap_fn
-        .call(
-          scope,
-          undefined.into(),
-          &[args, name_str, id_str, id, worker_type, worker_data],
-        )
-        .unwrap();
+      let result = bootstrap_fn.call(
+        scope,
+        undefined.into(),
+        &[args, name_str, id_str, id, worker_type, worker_data],
+      );
+
+      if result.is_none() {
+        let error: CoreError = match scope.exception() {
+          Some(exception) => {
+            let js_error =
+              deno_core::error::JsError::from_v8_exception(scope, exception);
+            CoreError::from(js_error)
+          }
+          None => CoreError::from(deno_error::JsErrorBox::generic(
+            "Bootstrap unexpectedly failed",
+          )),
+        };
+        self.bootstrap_error = Some(error);
+        return;
+      }
 
       let context = scope.get_current_context();
       let global = context.global(scope);
@@ -1069,7 +1099,16 @@ pub async fn run_web_worker(
   let mut maybe_coverage_collector = worker.maybe_setup_coverage_collector();
 
   let name = worker.name.to_string();
-  let internal_handle = worker.internal_handle.clone();
+  let mut internal_handle = worker.internal_handle.clone();
+
+  // If the bootstrap failed, report it as a terminal error.
+  if let Some(error) = worker.bootstrap_error.take() {
+    print_worker_error(&error, &name, format_js_error_fn.as_deref());
+    internal_handle
+      .post_event(WorkerControlEvent::TerminalError(error, 1))
+      .expect("Failed to post message to host");
+    return Ok(());
+  }
 
   // Execute provided source code immediately
   let result = if let Some(source_code) = maybe_source_code.take() {
@@ -1114,14 +1153,108 @@ pub async fn run_web_worker(
 
   if let Err(e) = result {
     print_worker_error(&e, &name, format_js_error_fn.as_deref());
+
+    // For Node workers, dispatch process 'exit' event before sending
+    // TerminalError so that exit handlers can run and modify the exit code.
+    // If _fatalException was monkey-patched to not be a function, exit
+    // with code 6 (kInvalidFatalExceptionMonkeyPatching) matching Node.js.
+    let exit_code = if internal_handle.worker_type == WorkerThreadType::Node {
+      let _ = worker.execute_script(
+        located_script_name!(),
+        r#"
+        if (typeof globalThis.process !== 'undefined') {
+          if (typeof globalThis.process._fatalException !== 'function') {
+            globalThis.process.exitCode = 6;
+          } else {
+            globalThis.process.exitCode = 1;
+            if (!globalThis.process._exiting) {
+              globalThis.process._exiting = true;
+              globalThis.process.emit("exit", globalThis.process.exitCode);
+            }
+          }
+        }
+        "#
+        .to_string()
+        .into(),
+      );
+      worker
+        .js_runtime
+        .op_state()
+        .borrow()
+        .try_borrow::<deno_os::ExitCode>()
+        .map(|e| e.get())
+        .unwrap_or(1)
+    } else {
+      1
+    };
+
+    // For Node workers, convert "Module not found" to Node-compatible
+    // "Cannot find module" format so it matches Node.js error behavior.
+    let e = if internal_handle.worker_type == WorkerThreadType::Node {
+      let msg = e.to_string();
+      if msg.starts_with("Module not found") {
+        let path = specifier.to_file_path().ok();
+        let display = path
+          .as_deref()
+          .map(|p| p.display().to_string())
+          .unwrap_or_else(|| specifier.to_string());
+        CoreErrorKind::JsBox(deno_error::JsErrorBox::new(
+          "Error",
+          format!("Cannot find module '{display}'"),
+        ))
+        .into_box()
+      } else {
+        e
+      }
+    } else {
+      e
+    };
+
+    // Exit code 6 means _fatalException was not a function. In Node.js
+    // this causes a clean exit without emitting 'error' on the parent Worker.
+    if exit_code == 6 {
+      let _ = internal_handle.post_event(WorkerControlEvent::Close(exit_code));
+      internal_handle.terminate();
+      return Ok(());
+    }
+
     internal_handle
-      .post_event(WorkerControlEvent::TerminalError(e))
+      .post_event(WorkerControlEvent::TerminalError(e, exit_code))
       .expect("Failed to post message to host");
 
     // Failure to execute script is a terminal error, bye, bye.
     return Ok(());
   }
 
+  // For Node workers that exit naturally (event loop idle), dispatch the
+  // process 'exit' event and send the final exit code to the parent.
+  // This matches Node.js behavior where SpinEventLoopInternal calls
+  // EmitProcessExitInternal before the worker thread ends.
+  if worker.worker_type == WorkerThreadType::Node
+    && !internal_handle.is_terminated()
+  {
+    let _ = worker.execute_script(
+      located_script_name!(),
+      r#"
+      if (typeof globalThis.process !== 'undefined' && !globalThis.process._exiting) {
+        globalThis.process._exiting = true;
+        globalThis.process.emit("exit", globalThis.process.exitCode ?? 0);
+      }
+      "#
+      .to_string()
+      .into(),
+    );
+    let exit_code = worker
+      .js_runtime
+      .op_state()
+      .borrow()
+      .try_borrow::<deno_os::ExitCode>()
+      .map(|e| e.get())
+      .unwrap_or(0);
+    let _ = internal_handle.post_event(WorkerControlEvent::Close(exit_code));
+    internal_handle.terminate();
+  }
+
   debug!("Worker thread shuts down {}", &name);
-  result
+  Ok(())
 }

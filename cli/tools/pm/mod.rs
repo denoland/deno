@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::path::Path;
 use std::path::PathBuf;
@@ -35,10 +35,16 @@ use crate::file_fetcher::create_cli_file_fetcher;
 use crate::jsr::JsrFetchResolver;
 use crate::npm::NpmFetchResolver;
 
+mod approve_scripts;
+mod audit;
 mod cache_deps;
 pub(crate) mod deps;
+pub(crate) mod interactive_picker;
 mod outdated;
 
+pub use approve_scripts::approve_scripts;
+pub use audit::audit;
+pub use cache_deps::CacheTopLevelDepsOptions;
 pub use cache_deps::cache_top_level_deps;
 pub use outdated::outdated;
 
@@ -249,6 +255,19 @@ impl ConfigUpdater {
     removed
   }
 
+  fn set_allow_scripts_value(
+    &mut self,
+    value: jsonc_parser::cst::CstInputValue,
+  ) {
+    if let Some(prop) = self.root_object.get("allowScripts") {
+      prop.set_value(value);
+    } else {
+      let index = self.root_object.properties().len();
+      self.root_object.insert(index, "allowScripts", value);
+    }
+    self.modified = true;
+  }
+
   fn commit(&self) -> Result<(), AnyError> {
     if !self.modified {
       return Ok(());
@@ -332,14 +351,14 @@ fn load_configs(
   let cli_factory = CliFactory::from_flags(flags.clone());
   let options = cli_factory.cli_options()?;
   let start_dir = &options.start_dir;
-  let npm_config = match start_dir.maybe_pkg_json() {
+  let npm_config = match start_dir.member_pkg_json() {
     Some(pkg_json) => Some(ConfigUpdater::new(
       ConfigKind::PackageJson,
       pkg_json.path.clone(),
     )?),
     None => None,
   };
-  let deno_config = match start_dir.maybe_deno_json() {
+  let deno_config = match start_dir.member_deno_json() {
     Some(deno_json) => Some(ConfigUpdater::new(
       ConfigKind::DenoJson,
       url_to_file_path(&deno_json.specifier)?,
@@ -357,7 +376,7 @@ fn load_configs(
       let options = factory.cli_options()?.clone();
       let deno_json = options
         .start_dir
-        .maybe_deno_json()
+        .member_or_root_deno_json()
         .expect("Just created deno.json");
       (
         factory,
@@ -385,6 +404,7 @@ pub async fn add(
   add_flags: AddFlags,
   cmd_name: AddCommandName,
 ) -> Result<(), AnyError> {
+  let save_exact = add_flags.save_exact;
   let (cli_factory, mut npm_config, mut deno_config) =
     load_configs(&flags, || {
       add_flags.packages.iter().any(|s| s.starts_with("jsr:"))
@@ -502,6 +522,7 @@ pub async fn add(
           jsr_resolver.clone(),
           npm_resolver.clone(),
           package_req,
+          save_exact,
         )
         .boxed_local()
       }
@@ -580,7 +601,14 @@ pub async fn add(
     deno.commit()?;
   }
 
-  npm_install_after_modification(flags, Some(jsr_resolver)).await?;
+  npm_install_after_modification(
+    flags,
+    Some(jsr_resolver),
+    CacheTopLevelDepsOptions {
+      lockfile_only: add_flags.lockfile_only,
+    },
+  )
+  .await?;
 
   Ok(())
 }
@@ -678,11 +706,13 @@ async fn find_package_and_select_version_for_req(
   jsr_resolver: Arc<JsrFetchResolver>,
   npm_resolver: Arc<NpmFetchResolver>,
   add_package_req: AddRmPackageReq,
+  save_exact: bool,
 ) -> Result<PackageAndVersion, AnyError> {
   async fn select<T: PackageInfoProvider, S: PackageInfoProvider>(
     main_resolver: T,
     fallback_resolver: S,
     add_package_req: AddRmPackageReq,
+    save_exact: bool,
   ) -> Result<PackageAndVersion, AnyError> {
     let req = match &add_package_req.value {
       AddRmPackageReqValue::Jsr(req) => req,
@@ -732,7 +762,9 @@ async fn find_package_and_select_version_for_req(
     };
     let range_symbol = if req.version_req.version_text().starts_with('~') {
       "~"
-    } else if req.version_req.version_text() == nv.version.to_string() {
+    } else if save_exact
+      || req.version_req.version_text() == nv.version.to_string()
+    {
       ""
     } else {
       "^"
@@ -747,10 +779,10 @@ async fn find_package_and_select_version_for_req(
 
   match &add_package_req.value {
     AddRmPackageReqValue::Jsr(_) => {
-      select(jsr_resolver, npm_resolver, add_package_req).await
+      select(jsr_resolver, npm_resolver, add_package_req, save_exact).await
     }
     AddRmPackageReqValue::Npm(_) => {
-      select(npm_resolver, jsr_resolver, add_package_req).await
+      select(npm_resolver, jsr_resolver, add_package_req, save_exact).await
     }
   }
 }
@@ -903,7 +935,14 @@ pub async fn remove(
       config.commit()?;
     }
 
-    npm_install_after_modification(flags, None).await?;
+    npm_install_after_modification(
+      flags,
+      None,
+      CacheTopLevelDepsOptions {
+        lockfile_only: remove_flags.lockfile_only,
+      },
+    )
+    .await?;
   }
 
   Ok(())
@@ -913,6 +952,7 @@ async fn npm_install_after_modification(
   flags: Arc<Flags>,
   // explicitly provided to prevent redownloading
   jsr_resolver: Option<Arc<crate::jsr::JsrFetchResolver>>,
+  cache_options: CacheTopLevelDepsOptions,
 ) -> Result<CliFactory, AnyError> {
   // clear the previously cached package.json from memory before reloading it
   node_resolver::PackageJsonThreadLocalCache::clear();
@@ -924,7 +964,8 @@ async fn npm_install_after_modification(
   let npm_installer = cli_factory.npm_installer().await?;
   npm_installer.ensure_no_pkg_json_dep_errors()?;
   // npm install
-  cache_deps::cache_top_level_deps(&cli_factory, jsr_resolver).await?;
+  cache_deps::cache_top_level_deps(&cli_factory, jsr_resolver, cache_options)
+    .await?;
 
   if let Some(install_reporter) = cli_factory.install_reporter()? {
     let workspace = cli_factory.workspace_resolver().await?;

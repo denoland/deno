@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
@@ -99,7 +99,7 @@ static NEXT_ID: AtomicUsize = AtomicUsize::new(0);
 #[op2]
 fn op_register_bench(
   state: &mut OpState,
-  #[global] function: v8::Global<v8::Function>,
+  #[scoped] function: v8::Global<v8::Function>,
   #[string] name: String,
   baseline: bool,
   #[string] group: Option<String>,
