@@ -1,0 +1,8 @@
+{
+  "tests": {
+    "addMembership_works": {
+      "args": "run --allow-net main.mjs",
+      "output": "success\n"
+    }
+  }
+}

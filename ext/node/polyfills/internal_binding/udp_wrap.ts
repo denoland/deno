@@ -114,8 +114,10 @@ export class UDP extends HandleWrap {
   }
 
   addMembership(multicastAddress: string, interfaceAddress?: string): number {
+    const iface = interfaceAddress ?? "0.0.0.0";
+
     try {
-      op_net_validate_multicast(multicastAddress, interfaceAddress);
+      op_net_validate_multicast(multicastAddress, iface);
     } catch {
       return codeMap.get("EINVAL")!;
     }
@@ -125,9 +127,9 @@ export class UDP extends HandleWrap {
     }
 
     if (this.#family === "IPv6") {
-      this.#listener.joinMulticastV6(multicastAddress, interfaceAddress);
+      this.#listener.joinMulticastV6(multicastAddress, interfaceAddress ?? 0);
     } else if (this.#family === "IPv4") {
-      this.#listener.joinMulticastV4(multicastAddress, interfaceAddress);
+      this.#listener.joinMulticastV4(multicastAddress, iface);
     }
 
     return 0;
@@ -138,9 +140,11 @@ export class UDP extends HandleWrap {
     groupAddress: string,
     interfaceAddress?: string,
   ): number {
+    const iface = interfaceAddress ?? "0.0.0.0";
+
     try {
-      op_net_validate_multicast(groupAddress, interfaceAddress);
-      op_net_validate_multicast(sourceAddress, interfaceAddress);
+      op_net_validate_multicast(groupAddress, iface);
+      op_net_validate_multicast(sourceAddress, iface);
     } catch {
       return codeMap.get("EINVAL")!;
     }
@@ -223,8 +227,10 @@ export class UDP extends HandleWrap {
     multicastAddress: string,
     interfaceAddress?: string,
   ): number {
+    const iface = interfaceAddress ?? "0.0.0.0";
+
     try {
-      op_net_validate_multicast(multicastAddress, interfaceAddress);
+      op_net_validate_multicast(multicastAddress, iface);
     } catch {
       return codeMap.get("EINVAL")!;
     }
@@ -237,7 +243,7 @@ export class UDP extends HandleWrap {
       this.#listener,
       this.#family === "IPv6",
       multicastAddress,
-      interfaceAddress,
+      interfaceAddress ?? iface,
     );
     return 0;
   }
@@ -247,9 +253,11 @@ export class UDP extends HandleWrap {
     groupAddress: string,
     interfaceAddress?: string,
   ): number {
+    const iface = interfaceAddress ?? "0.0.0.0";
+
     try {
-      op_net_validate_multicast(groupAddress, interfaceAddress);
-      op_net_validate_multicast(sourceAddress, interfaceAddress);
+      op_net_validate_multicast(groupAddress, iface);
+      op_net_validate_multicast(sourceAddress, iface);
     } catch {
       return codeMap.get("EINVAL")!;
     }
