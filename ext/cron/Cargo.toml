@@ -19,9 +19,13 @@ chrono = { workspace = true, features = ["now"] }
 deno_core.workspace = true
 deno_error.workspace = true
 deno_features.workspace = true
-once_cell.workspace = true
+deno_net.workspace = true
+http-body-util.workspace = true
+hyper.workspace = true
+hyper-util.workspace = true
 saffron.workspace = true
-serde = { workspace = true, features = ["derive"] }
+serde.workspace = true
+serde_json.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 

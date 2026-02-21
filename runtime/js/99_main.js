@@ -91,6 +91,7 @@ import {
 import { SymbolMetadata } from "ext:deno_web/00_infra.js";
 import { bootstrap as bootstrapOtel } from "ext:deno_telemetry/telemetry.ts";
 import { nodeGlobals } from "ext:deno_node/00_globals.js";
+import { setMainReady as setMainReadyCron } from "ext:deno_cron/01_cron.ts";
 
 // deno-lint-ignore prefer-primordials
 if (Symbol.metadata) {
@@ -714,7 +715,11 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
             });
           }
         }
+
+        setMainReadyCron();
       });
+    } else {
+      setMainReadyCron();
     }
 
     removeImportedOps();
