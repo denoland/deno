@@ -79,6 +79,7 @@ use crate::resolver::CliResolver;
 use crate::sys::CliSys;
 use crate::tools::bundle::externals::ExternalsMatcher;
 use crate::util::file_watcher::WatcherRestartMode;
+use crate::util::fs::canonicalize_path;
 
 static DISABLE_HACK: LazyLock<bool> =
   LazyLock::new(|| std::env::var("NO_DENO_BUNDLE_HACK").is_err());
@@ -241,6 +242,9 @@ pub async fn bundle_init(
     emitter: factory.emitter()?.clone(),
     deferred_resolve_errors: Default::default(),
     virtual_modules: None,
+    initial_cwd: deno_path_util::url_from_directory_path(
+      cli_options.initial_cwd(),
+    )?,
   });
 
   let input = prepare_inputs(
@@ -856,6 +860,7 @@ pub struct DenoPluginHandler {
   parsed_source_cache: Arc<ParsedSourceCache>,
   cjs_tracker: Arc<CliCjsTracker>,
   emitter: Arc<CliEmitter>,
+  initial_cwd: Url,
 }
 
 impl DenoPluginHandler {
@@ -1246,9 +1251,7 @@ impl DenoPluginHandler {
     let resolve_dir_path = Path::new(&resolve_dir);
     let mut referrer =
       resolve_url_or_path(importer.unwrap_or(""), resolve_dir_path)
-        .unwrap_or_else(|_| {
-          Url::from_directory_path(std::env::current_dir().unwrap()).unwrap()
-        });
+        .unwrap_or_else(|_| self.initial_cwd.clone());
     if referrer.scheme() == "file" {
       let pth = referrer.to_file_path().unwrap();
       if (pth.is_dir()) && !pth.ends_with(std::path::MAIN_SEPARATOR_STR) {
@@ -1704,7 +1707,7 @@ fn resolve_url_or_path_absolute(
   } else {
     let path = current_dir.join(specifier);
     let path = deno_path_util::normalize_path(Cow::Owned(path));
-    let path = path.canonicalize()?;
+    let path = canonicalize_path(&path)?;
     Ok(deno_path_util::url_from_file_path(&path)?)
   }
 }

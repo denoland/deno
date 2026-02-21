@@ -132,6 +132,7 @@ mod tests {
   use std::path::Path;
 
   use super::ExternalsMatcher;
+  use crate::util::env::resolve_cwd;
 
   struct Matches {
     pre_resolve: Vec<String>,
@@ -147,7 +148,7 @@ mod tests {
       .into_iter()
       .map(|p| p.as_ref().to_string())
       .collect::<Vec<_>>();
-    let cwd = std::env::current_dir().unwrap();
+    let cwd = resolve_cwd(None).unwrap();
     let matcher = ExternalsMatcher::new(&patterns, &cwd);
     for path in matches.pre_resolve {
       if !matcher.is_pre_resolve_match(&path) {
@@ -213,7 +214,7 @@ mod tests {
       ["/node_modules/foo"]
     ));
 
-    let cwd = std::env::current_dir().unwrap();
+    let cwd = resolve_cwd(None).unwrap();
     assert!(matches_all(
       ["./foo"],
       Matches {
@@ -242,7 +243,7 @@ mod tests {
       },
       ["other/@std/fs", "./@std/fs/foo.ts", "./@std/fs"]
     ));
-    let cwd = std::env::current_dir().unwrap();
+    let cwd = resolve_cwd(None).unwrap();
     assert!(matches_all(
       ["./foo/*"],
       Matches {

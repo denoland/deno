@@ -118,6 +118,7 @@ use crate::tools::fmt::format_file;
 use crate::tools::fmt::format_parsed_source;
 use crate::tools::upgrade::check_for_upgrades_for_lsp;
 use crate::tools::upgrade::upgrade_check_enabled;
+use crate::util::env::resolve_cwd;
 use crate::util::fs::remove_dir_all_if_exists;
 use crate::util::path::to_percent_decoded_str;
 use crate::util::sync::AsyncFlag;
@@ -584,9 +585,7 @@ impl Inner {
       cache.deno_dir(),
       &http_client_provider,
     ));
-    let initial_cwd = std::env::current_dir().unwrap_or_else(|_| {
-      panic!("Could not resolve current working directory")
-    });
+    let initial_cwd = resolve_cwd(None).unwrap().into_owned();
 
     Self {
       ambient_modules_regex_cache: Default::default(),
@@ -3987,7 +3986,7 @@ struct PrepareCacheResult {
 impl Inner {
   async fn initialized(&mut self) -> Vec<Registration> {
     let mut registrations = Vec::with_capacity(2);
-    init_log_file(self.config.log_file());
+    init_log_file(self.config.log_file(), &self.initial_cwd);
     self.update_debug_flag();
     self.update_global_cache().await;
     self.refresh_workspace_files();
