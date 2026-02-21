@@ -190,11 +190,9 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
         reporter.download_started(&package_nv);
 
       }
-      let dl_start = std::time::Instant::now();
       let result = tarball_cache.http_client
         .download_with_retries_on_any_tokio_runtime(tarball_uri, maybe_auth_header, None)
         .await;
-      let dl_elapsed = dl_start.elapsed();
       if let Some(reporter) = &reporter {
         reporter.downloaded(&package_nv);
       }
@@ -239,10 +237,7 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
             TarballExtractionMode::Overwrite
           };
           let dist = dist.clone();
-          let nv_for_log = package_nv.clone();
           let package_nv = package_nv.clone();
-          let bytes_len = bytes.len();
-          let extract_start = std::time::Instant::now();
           let result = spawn_blocking(move || verify_and_extract_tarball(
               &sys,
               &package_nv,
@@ -252,13 +247,6 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
               extraction_mode,
             ))
           .await.map_err(JsErrorBox::from_err)?.map_err(JsErrorBox::from_err);
-          let extract_elapsed = extract_start.elapsed();
-          if dl_elapsed.as_millis() > 100 || extract_elapsed.as_millis() > 50 {
-            eprintln!(
-              "[npm:tarball] {nv_for_log}: download={dl_elapsed:?}, extract={extract_elapsed:?}, size={:.1}KB",
-              bytes_len as f64 / 1024.0
-            );
-          }
           result
         }
         None => {

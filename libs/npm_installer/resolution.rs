@@ -237,10 +237,6 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmResolutionInstallerSys>
       _ => result,
     };
 
-    eprintln!(
-      "[npm:registry] {}",
-      self.registry_info_provider.stats()
-    );
     self.registry_info_provider.clear_memory_cache();
 
     if !result.unmet_peer_diagnostics.is_empty()

@@ -1266,30 +1266,15 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
   }
 
   pub async fn resolve_pending(&mut self) -> Result<(), NpmResolutionError> {
-    let resolve_start = std::time::Instant::now();
-    let mut batch_num = 0u32;
-    let mut total_parents_processed = 0u32;
     let mut did_dedup = false;
     while !self.pending_unresolved_nodes.is_empty() {
       // go down through the dependencies by tree depth
       let mut previous_seen_optional_peers_count = 0;
       while !self.pending_unresolved_nodes.is_empty() {
-        batch_num += 1;
-        let batch_size = self.pending_unresolved_nodes.len();
-
-        let process_start = std::time::Instant::now();
-        let mut parents_in_batch = 0u32;
         while let Some(parent_path) = self.pending_unresolved_nodes.pop_front()
         {
-          parents_in_batch += 1;
           self.resolve_next_pending(parent_path).await?;
         }
-        total_parents_processed += parents_in_batch;
-        eprintln!(
-          "[npm:resolve] batch {batch_num}: {batch_size} initial pending, \
-           processed {parents_in_batch} parents in {:?}",
-          process_start.elapsed()
-        );
 
         let seen_optional_peers_count =
           self.graph.unresolved_optional_peers.seen_count();
@@ -1316,11 +1301,6 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
       }
     }
 
-    eprintln!(
-      "[npm:resolve] resolve_pending done: {total_parents_processed} total parents, \
-       {batch_num} batches, total time {:?}",
-      resolve_start.elapsed()
-    );
     Ok(())
   }
 
@@ -1360,8 +1340,6 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
     // resolve the dependencies
     let mut found_peer = false;
 
-    let fetch_start = std::time::Instant::now();
-    let num_child_deps = child_deps.len();
     let mut infos = futures::stream::FuturesOrdered::from_iter(
       child_deps
         .iter()
@@ -1369,18 +1347,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
     );
 
     let mut child_deps_iter = child_deps.iter();
-    let mut first_info = true;
     while let Some(package_info) = infos.next().await {
-      if first_info {
-        first_info = false;
-        let elapsed = fetch_start.elapsed();
-        if elapsed.as_millis() > 50 {
-          eprintln!(
-            "[npm:resolve]   {} ({num_child_deps} deps): first manifest ready in {elapsed:?}",
-            parent_nv
-          );
-        }
-      }
       let dep = child_deps_iter.next().unwrap();
       let package_info = match package_info {
         Ok(info) => info,
@@ -1531,14 +1498,6 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
           }
         }
       }
-    }
-
-    let fetch_elapsed = fetch_start.elapsed();
-    if fetch_elapsed.as_millis() > 100 {
-      eprintln!(
-        "[npm:resolve]   {} ({num_child_deps} deps): all manifests + processing in {fetch_elapsed:?}",
-        parent_nv
-      );
     }
 
     if !found_peer {

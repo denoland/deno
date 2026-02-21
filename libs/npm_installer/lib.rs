@@ -296,15 +296,10 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
     self.npm_resolution_initializer.debug_assert_initialized();
 
     let prefetch_tarballs = matches!(caching, Some(PackageCaching::All));
-    let resolution_start = std::time::Instant::now();
     let mut result = self
       .npm_resolution_installer
       .add_package_reqs(packages, prefetch_tarballs)
       .await;
-    eprintln!(
-      "[npm:timing] resolution phase: {:?}",
-      resolution_start.elapsed()
-    );
 
     if result.dependencies_result.is_ok()
       && let Some(lockfile) = self.maybe_lockfile.as_ref()
@@ -314,13 +309,8 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
     if result.dependencies_result.is_ok()
       && let Some(caching) = caching
     {
-      let cache_start = std::time::Instant::now();
       result.dependencies_result =
         self.maybe_cache_packages(packages, caching).await;
-      eprintln!(
-        "[npm:timing] cache_packages phase: {:?}",
-        cache_start.elapsed()
-      );
     }
 
     result
