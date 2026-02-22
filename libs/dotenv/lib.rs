@@ -277,9 +277,11 @@ pub fn parse_env_content_hook(content: &str, mut cb: impl FnMut(&str, &str)) {
   }
 }
 
+type IterElement = Result<(String, String), Error>;
+
 pub fn from_path_sanitized_iter(
   path: impl AsRef<Path>,
-) -> Result<std::vec::IntoIter<Result<(String, String), Error>>, Error> {
+) -> Result<std::vec::IntoIter<IterElement>, Error> {
   let content = std::fs::read_to_string(path.as_ref()).map_err(Error::Io)?;
   let mut pairs = Vec::new();
   parse_env_content_hook(&content, |k, v| {
