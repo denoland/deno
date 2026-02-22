@@ -197,6 +197,15 @@ impl KeyObjectHandle {
 
           dsa_signature(dsa_signature_encoding, signature)
         }
+        EcPrivateKey::P521(key) => {
+          let signing_key = p521::ecdsa::SigningKey::from_bytes(&key.to_bytes())
+            .map_err(|_| KeyObjectHandlePrehashedSignAndVerifyError::FailedToSignDigest)?;
+          let signature: p521::ecdsa::Signature = signing_key
+            .sign_prehash(digest)
+            .map_err(|_| KeyObjectHandlePrehashedSignAndVerifyError::FailedToSignDigest)?;
+
+          dsa_signature(dsa_signature_encoding, signature)
+        }
       },
       AsymmetricPrivateKey::X25519(_) => {
         Err(KeyObjectHandlePrehashedSignAndVerifyError::X25519KeyCannotBeUsedForSigning)
@@ -309,6 +318,20 @@ impl KeyObjectHandle {
             p384::ecdsa::Signature::from_der(signature)
           } else {
             p384::ecdsa::Signature::from_bytes(signature.into())
+          };
+          let Ok(signature) = signature else {
+            return Ok(false);
+          };
+          Ok(verifying_key.verify_prehash(digest, &signature).is_ok())
+        }
+        EcPublicKey::P521(key) => {
+          let Ok(verifying_key) = p521::ecdsa::VerifyingKey::from_affine(*key.as_affine()) else {
+            return Ok(false);
+          };
+          let signature = if dsa_signature_encoding == 0 {
+            p521::ecdsa::Signature::from_der(signature)
+          } else {
+            p521::ecdsa::Signature::from_bytes(signature.into())
           };
           let Ok(signature) = signature else {
             return Ok(false);

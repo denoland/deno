@@ -374,7 +374,7 @@ ocb3 = "0.1.0"
 p224 = { version = "0.13.0", features = ["ecdh"] }
 p256 = { version = "0.13.2", features = ["ecdh", "jwk"] }
 p384 = { version = "0.13.0", features = ["ecdh", "jwk"] }
-p521 = "0.13.3"
+p521 = { version = "0.13.3", features = ["ecdh", "jwk"] }
 pbkdf2 = "0.12.1"
 pkcs8 = "0.10.2"
 ripemd = "0.1.3"

@@ -562,6 +562,7 @@ fn extract_key_info(spki: &x509_parser::x509::SubjectPublicKeyInfo) -> KeyInfo {
         const ID_SECP224R1: &[u8] = &oid!(raw 1.3.132.0.33);
         const ID_SECP256R1: &[u8] = &oid!(raw 1.2.840.10045.3.1.7);
         const ID_SECP384R1: &[u8] = &oid!(raw 1.3.132.0.34);
+        const ID_SECP521R1: &[u8] = &oid!(raw 1.3.132.0.35);
 
         match curve_oid.as_bytes() {
           ID_SECP224R1 => {
@@ -578,6 +579,11 @@ fn extract_key_info(spki: &x509_parser::x509::SubjectPublicKeyInfo) -> KeyInfo {
             asn1_curve = Some("1.3.132.0.34".to_string());
             nist_curve = Some("secp384r1".to_string());
             bits = Some(384);
+          }
+          ID_SECP521R1 => {
+            asn1_curve = Some("1.3.132.0.35".to_string());
+            nist_curve = Some("secp521r1".to_string());
+            bits = Some(521);
           }
           _ => {
             asn1_curve = Some(curve_oid.to_string());
