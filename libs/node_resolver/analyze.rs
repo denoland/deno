@@ -848,6 +848,19 @@ export { __deno_export_4__ as "module.exports" };
   }
 
   #[test]
+  fn test_exports_to_wrapper_module_proto_filtered() {
+    let url = Url::parse("file:///test/test.ts").unwrap();
+    let exports = BTreeSet::from(
+      ["__proto__", "required"].map(|s| s.to_string()),
+    );
+    let text = exports_to_wrapper_module(&url, &exports);
+    // __proto__ should be filtered out and not appear as a named export
+    assert!(!text.contains("__proto__"));
+    assert!(text.contains("export const required = mod[\"required\"];"));
+    assert!(text.contains("export default mod;"));
+  }
+
+  #[test]
   fn test_to_double_quote_string() {
     assert_eq!(to_double_quote_string("test"), "\"test\"");
     assert_eq!(
