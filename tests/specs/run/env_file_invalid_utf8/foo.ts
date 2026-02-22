@@ -1,1 +1,1 @@
-console.log(Deno.env.get("BAR"))
+console.log(Deno.env.get("BAR"));
