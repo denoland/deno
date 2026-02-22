@@ -66,6 +66,10 @@ export interface VerifyKeyObjectInput extends SigningOptions {
   key: KeyObject;
 }
 
+function getPadding(options) {
+  return getIntOption("padding", options);
+}
+
 function getSaltLength(options) {
   return getIntOption("saltLength", options);
 }
@@ -124,6 +128,9 @@ export class SignImpl extends Writable {
   ): Buffer | string {
     const res = prepareAsymmetricKey(privateKey, kConsumePrivate);
 
+    // Options specific to RSA
+    const rsaPadding = getPadding(privateKey);
+
     // Options specific to RSA-PSS
     const pssSaltLength = getSaltLength(privateKey);
 
@@ -146,6 +153,7 @@ export class SignImpl extends Writable {
       this.hash.digest(),
       this.#digestType,
       pssSaltLength,
+      rsaPadding,
       dsaSigEnc,
     ));
     return encoding ? ret.toString(encoding) : ret;
@@ -199,6 +207,9 @@ export class VerifyImpl extends Writable {
   ): boolean {
     const res = prepareAsymmetricKey(publicKey, kConsumePublic);
 
+    // Options specific to RSA
+    const rsaPadding = getPadding(publicKey);
+
     // Options specific to RSA-PSS
     const pssSaltLength = getSaltLength(publicKey);
 
@@ -222,6 +233,7 @@ export class VerifyImpl extends Writable {
       this.#digestType,
       Buffer.from(signature, encoding),
       pssSaltLength,
+      rsaPadding,
       dsaSigEnc,
     );
   }
@@ -276,8 +288,13 @@ export function signOneShot(
       "Algorithm must be specified when using non-Ed25519 keys",
     );
   } else {
+    // Preserve padding/saltLength options from the original key
+    const privateKeyObject = new PrivateKeyObject(handle);
+    const signKey = typeof key === "object" && !(key instanceof KeyObject)
+      ? { ...key, key: privateKeyObject }
+      : privateKeyObject;
     result = Sign(algorithm!).update(data)
-      .sign(new PrivateKeyObject(handle));
+      .sign(signKey);
   }
 
   if (callback) {
@@ -330,8 +347,13 @@ export function verifyOneShot(
       "Algorithm must be specified when using non-Ed25519 keys",
     );
   } else {
+    // Preserve padding/saltLength options from the original key
+    const publicKeyObject = new PublicKeyObject(handle);
+    const verifyKey = typeof key === "object" && !(key instanceof KeyObject)
+      ? { ...key, key: publicKeyObject }
+      : publicKeyObject;
     result = Verify(algorithm!).update(data)
-      .verify(new PublicKeyObject(handle), signature);
+      .verify(verifyKey, signature);
   }
 
   if (callback) {

@@ -92,6 +92,7 @@ impl KeyObjectHandle {
     digest_type: &str,
     digest: &[u8],
     pss_salt_length: Option<u32>,
+    padding: Option<u32>,
     dsa_signature_encoding: u32,
   ) -> Result<Box<[u8]>, KeyObjectHandlePrehashedSignAndVerifyError> {
     let private_key = self
@@ -100,6 +101,28 @@ impl KeyObjectHandle {
 
     match private_key {
       AsymmetricPrivateKey::Rsa(key) => {
+        // RSA_PKCS1_PSS_PADDING = 6
+        if padding == Some(6) {
+          let pss = match_fixed_digest_with_oid!(
+            digest_type,
+            fn <D>(algorithm: Option<RsaPssHashAlgorithm>) {
+              let _: Option<RsaPssHashAlgorithm> = algorithm;
+              if let Some(salt_length) = pss_salt_length {
+                rsa::pss::Pss::new_with_salt::<D>(salt_length as usize)
+              } else {
+                rsa::pss::Pss::new::<D>()
+              }
+            },
+            _ => {
+              return Err(KeyObjectHandlePrehashedSignAndVerifyError::DigestNotAllowedForRsaPssSignature(digest_type.to_string()));
+            }
+          );
+          let signature = pss
+            .sign(Some(&mut OsRng), key, digest)
+            .map_err(|_| KeyObjectHandlePrehashedSignAndVerifyError::FailedToSignDigestWithRsaPss)?;
+          return Ok(signature.into());
+        }
+
         let signer = if digest_type == "md5-sha1" {
           rsa::pkcs1v15::Pkcs1v15Sign::new_unprefixed()
         } else {
@@ -214,6 +237,7 @@ impl KeyObjectHandle {
     digest: &[u8],
     signature: &[u8],
     pss_salt_length: Option<u32>,
+    padding: Option<u32>,
     dsa_signature_encoding: u32,
   ) -> Result<bool, KeyObjectHandlePrehashedSignAndVerifyError> {
     let public_key = self.as_public_key().ok_or(
@@ -222,6 +246,25 @@ impl KeyObjectHandle {
 
     match &*public_key {
       AsymmetricPublicKey::Rsa(key) => {
+        // RSA_PKCS1_PSS_PADDING = 6
+        if padding == Some(6) {
+          let pss = match_fixed_digest_with_oid!(
+            digest_type,
+            fn <D>(algorithm: Option<RsaPssHashAlgorithm>) {
+              let _: Option<RsaPssHashAlgorithm> = algorithm;
+              if let Some(salt_length) = pss_salt_length {
+                rsa::pss::Pss::new_with_salt::<D>(salt_length as usize)
+              } else {
+                rsa::pss::Pss::new::<D>()
+              }
+            },
+            _ => {
+              return Err(KeyObjectHandlePrehashedSignAndVerifyError::DigestNotAllowedForRsaPssSignature(digest_type.to_string()));
+            }
+          );
+          return Ok(pss.verify(key, digest, signature).is_ok());
+        }
+
         let signer = if digest_type == "md5-sha1" {
           rsa::pkcs1v15::Pkcs1v15Sign::new_unprefixed()
         } else {
