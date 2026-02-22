@@ -67,11 +67,19 @@ impl WatchEnvTracker {
           index,
           line
         ),
-        deno_dotenv::Error::Io(_) => eprintln!(
-          "{} The `--env-file` flag was used, but the environment file specified '{}' was not found.",
-          colors::yellow("Warning"),
-          file_path.display()
-        ),
+        deno_dotenv::Error::Io(e) => match e.kind() {
+          std::io::ErrorKind::NotFound => println!(
+            "{} The `--env-file` flag was used, but the environment file specified '{}' was not found.",
+            colors::yellow("Warning"),
+            file_path.display(),
+          ),
+          _ => eprintln!(
+            "{} Error reading from environment file '{}': {}.",
+            colors::yellow("Warning"),
+            file_path.display(),
+            e.to_string(),
+          ),
+        },
       }
     }
   }
