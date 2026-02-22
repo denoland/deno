@@ -216,9 +216,6 @@ export class Cipheriv extends Transform implements Cipher {
       !(cipher == "aes-128-gcm" || cipher == "aes-256-gcm" ||
         cipher == "aes-128-ctr" || cipher == "aes-192-ctr" ||
         cipher == "aes-256-ctr");
-    if (this.#context == 0) {
-      throw new TypeError("Unknown cipher");
-    }
   }
 
   final(encoding: string = getDefaultEncoding()): Buffer | string {
