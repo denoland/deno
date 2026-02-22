@@ -52,33 +52,23 @@ impl WatchEnvTracker {
   }
 
   // Consolidated error handling function
-  fn handle_dotenvy_error(
-    error: dotenvy::Error,
+  fn handle_dotenv_error(
+    error: deno_dotenv::Error,
     file_path: &Path,
     log_level: Option<log::Level>,
   ) {
     #[allow(clippy::print_stderr)]
     if log_level.map(|l| l >= log::Level::Info).unwrap_or(true) {
       match error {
-        dotenvy::Error::LineParse(line, index) => eprintln!(
+        deno_dotenv::Error::LineParse(line, index) => eprintln!(
           "{} Parsing failed within the specified environment file: {} at index: {} of the value: {}",
           colors::yellow("Warning"),
           file_path.display(),
           index,
           line
         ),
-        dotenvy::Error::Io(_) => eprintln!(
+        deno_dotenv::Error::Io(_) => eprintln!(
           "{} The `--env-file` flag was used, but the environment file specified '{}' was not found.",
-          colors::yellow("Warning"),
-          file_path.display()
-        ),
-        dotenvy::Error::EnvVar(_) => eprintln!(
-          "{} One or more of the environment variables isn't present or not unicode within the specified environment file: {}",
-          colors::yellow("Warning"),
-          file_path.display()
-        ),
-        _ => eprintln!(
-          "{} Unknown failure occurred with the specified environment file: {}",
           colors::yellow("Warning"),
           file_path.display()
         ),
@@ -107,7 +97,7 @@ impl WatchEnvTracker {
       return;
     }
 
-    match dotenvy::from_path_iter(&file_path) {
+    match deno_dotenv::from_path_sanitized_iter(&file_path) {
       Ok(iter) => {
         for item in iter {
           match item {
@@ -148,7 +138,7 @@ impl WatchEnvTracker {
               inner.unused_variables.remove(&key_os);
             }
             Err(e) => {
-              Self::handle_dotenvy_error(e, &file_path, log_level);
+              Self::handle_dotenv_error(e, &file_path, log_level);
             }
           }
         }
@@ -244,10 +234,10 @@ pub fn load_env_variables_from_env_files(
   };
 
   for env_file_name in env_file_names.iter().rev() {
-    match dotenvy::from_filename(env_file_name) {
+    match deno_dotenv::from_path(env_file_name) {
       Ok(_) => (),
       Err(error) => {
-        WatchEnvTracker::handle_dotenvy_error(
+        WatchEnvTracker::handle_dotenv_error(
           error,
           env_file_name,
           flags_log_level,
