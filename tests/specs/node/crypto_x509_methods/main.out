@@ -1,0 +1,10 @@
+toString: OK
+raw: OK
+subjectAltName: OK
+checkIP: OK
+checkIssued: OK
+checkPrivateKey: OK
+verify: OK
+infoAccess: OK
+toLegacyObject: OK
+All X509Certificate method tests passed!

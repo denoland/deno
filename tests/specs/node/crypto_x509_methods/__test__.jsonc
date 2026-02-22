@@ -1,0 +1,8 @@
+{
+  "tests": {
+    "x509_methods": {
+      "args": "run --allow-read main.ts",
+      "output": "main.out"
+    }
+  }
+}

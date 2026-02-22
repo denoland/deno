@@ -1,7 +1,11 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+use std::net::IpAddr;
+use std::net::Ipv4Addr;
+use std::net::Ipv6Addr;
 use std::ops::Deref;
 
+use base64::Engine;
 use deno_core::ToJsBuffer;
 use deno_core::op2;
 use digest::Digest;
@@ -149,38 +153,7 @@ impl Certificate {
     let fingerprint256 = self.fingerprint::<sha2::Sha256>().unwrap_or_default();
     let fingerprint512 = self.fingerprint::<sha2::Sha512>().unwrap_or_default();
 
-    let mut subjectaltname = String::new();
-    if let Some(subject_alt) = cert
-      .extensions()
-      .iter()
-      .find(|e| {
-        e.oid == x509_parser::oid_registry::OID_X509_EXT_SUBJECT_ALT_NAME
-      })
-      .and_then(|e| match e.parsed_extension() {
-        extensions::ParsedExtension::SubjectAlternativeName(s) => Some(s),
-        _ => None,
-      })
-    {
-      let mut alt_names = Vec::new();
-      for name in &subject_alt.general_names {
-        match name {
-          extensions::GeneralName::DNSName(dns) => {
-            alt_names.push(format!("DNS:{}", dns));
-          }
-          extensions::GeneralName::RFC822Name(email) => {
-            alt_names.push(format!("email:{}", email));
-          }
-          extensions::GeneralName::IPAddress(ip) => {
-            alt_names.push(format!(
-              "IP Address:{}",
-              data_encoding::HEXUPPER.encode(ip)
-            ));
-          }
-          _ => {}
-        }
-      }
-      subjectaltname = alt_names.join(", ");
-    }
+    let subjectaltname = get_subject_alt_name(cert).unwrap_or_default();
 
     let subject = extract_subject_or_issuer(cert.subject());
     let issuer = extract_subject_or_issuer(cert.issuer());
@@ -596,6 +569,367 @@ fn extract_key_info(spki: &x509_parser::x509::SubjectPublicKeyInfo) -> KeyInfo {
     }
     _ => KeyInfo::default(),
   }
+}
+
+fn format_ip_address(ip_bytes: &[u8]) -> Option<String> {
+  match ip_bytes.len() {
+    4 => {
+      let addr =
+        Ipv4Addr::new(ip_bytes[0], ip_bytes[1], ip_bytes[2], ip_bytes[3]);
+      Some(addr.to_string())
+    }
+    16 => {
+      let mut segments = [0u16; 8];
+      for i in 0..8 {
+        segments[i] =
+          u16::from_be_bytes([ip_bytes[i * 2], ip_bytes[i * 2 + 1]]);
+      }
+      let addr = Ipv6Addr::from(segments);
+      Some(addr.to_string())
+    }
+    _ => None,
+  }
+}
+
+fn get_subject_alt_name(cert: &X509Certificate) -> Option<String> {
+  let subject_alt = cert
+    .extensions()
+    .iter()
+    .find(|e| e.oid == x509_parser::oid_registry::OID_X509_EXT_SUBJECT_ALT_NAME)
+    .and_then(|e| match e.parsed_extension() {
+      extensions::ParsedExtension::SubjectAlternativeName(s) => Some(s),
+      _ => None,
+    })?;
+
+  let mut alt_names = Vec::new();
+  for name in &subject_alt.general_names {
+    match name {
+      extensions::GeneralName::DNSName(dns) => {
+        alt_names.push(format!("DNS:{}", dns));
+      }
+      extensions::GeneralName::RFC822Name(email) => {
+        alt_names.push(format!("email:{}", email));
+      }
+      extensions::GeneralName::IPAddress(ip) => {
+        if let Some(formatted) = format_ip_address(ip) {
+          alt_names.push(format!("IP Address:{}", formatted));
+        } else {
+          alt_names
+            .push(format!("IP Address:{}", data_encoding::HEXUPPER.encode(ip)));
+        }
+      }
+      extensions::GeneralName::URI(uri) => {
+        alt_names.push(format!("URI:{}", uri));
+      }
+      extensions::GeneralName::DirectoryName(dn) => {
+        if let Ok(s) = x509name_to_string(dn, oid_registry()) {
+          alt_names.push(format!("DirName:{}", s));
+        }
+      }
+      _ => {}
+    }
+  }
+
+  if alt_names.is_empty() {
+    None
+  } else {
+    Some(alt_names.join(", "))
+  }
+}
+
+#[op2]
+#[string]
+pub fn op_node_x509_to_string(#[cppgc] cert: &Certificate) -> String {
+  let der_bytes = match cert.inner.backing_cart().as_ref() {
+    CertificateSources::Pem(pem) => &pem.contents,
+    CertificateSources::Der(der) => der.as_ref(),
+  };
+
+  let b64 = base64::engine::general_purpose::STANDARD.encode(der_bytes);
+  let mut pem_str = String::from("-----BEGIN CERTIFICATE-----\n");
+  for chunk in b64.as_bytes().chunks(64) {
+    pem_str.push_str(std::str::from_utf8(chunk).unwrap());
+    pem_str.push('\n');
+  }
+  pem_str.push_str("-----END CERTIFICATE-----\n");
+  pem_str
+}
+
+#[op2]
+#[buffer]
+pub fn op_node_x509_get_raw(#[cppgc] cert: &Certificate) -> Box<[u8]> {
+  match cert.inner.backing_cart().as_ref() {
+    CertificateSources::Pem(pem) => pem.contents.clone().into_boxed_slice(),
+    CertificateSources::Der(der) => der.clone(),
+  }
+}
+
+#[op2]
+#[string]
+pub fn op_node_x509_get_subject_alt_name(
+  #[cppgc] cert: &Certificate,
+) -> Option<String> {
+  let cert = cert.inner.get().deref();
+  get_subject_alt_name(cert)
+}
+
+#[op2]
+#[string]
+pub fn op_node_x509_check_ip(
+  #[cppgc] cert: &Certificate,
+  #[string] ip: &str,
+) -> Option<String> {
+  let target_ip: IpAddr = ip.parse().ok()?;
+
+  let cert = cert.inner.get().deref();
+  let subject_alt = cert
+    .extensions()
+    .iter()
+    .find(|e| e.oid == x509_parser::oid_registry::OID_X509_EXT_SUBJECT_ALT_NAME)
+    .and_then(|e| match e.parsed_extension() {
+      extensions::ParsedExtension::SubjectAlternativeName(s) => Some(s),
+      _ => None,
+    })?;
+
+  for name in &subject_alt.general_names {
+    if let extensions::GeneralName::IPAddress(ip_bytes) = name {
+      let san_ip = match ip_bytes.len() {
+        4 => IpAddr::V4(Ipv4Addr::new(
+          ip_bytes[0],
+          ip_bytes[1],
+          ip_bytes[2],
+          ip_bytes[3],
+        )),
+        16 => {
+          let mut segments = [0u16; 8];
+          for i in 0..8 {
+            segments[i] =
+              u16::from_be_bytes([ip_bytes[i * 2], ip_bytes[i * 2 + 1]]);
+          }
+          IpAddr::V6(Ipv6Addr::from(segments))
+        }
+        _ => continue,
+      };
+      if san_ip == target_ip {
+        return Some(ip.to_string());
+      }
+    }
+  }
+
+  None
+}
+
+#[op2(fast)]
+pub fn op_node_x509_check_issued(
+  #[cppgc] cert: &Certificate,
+  #[cppgc] other: &Certificate,
+) -> bool {
+  let cert = cert.inner.get().deref();
+  let other = other.inner.get().deref();
+  // Check if other's subject matches cert's issuer
+  // Compare the raw DER bytes of the issuer and subject
+  cert.issuer().as_raw() == other.subject().as_raw()
+}
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum X509CheckPrivateKeyError {
+  #[class(generic)]
+  #[error(transparent)]
+  X509(#[from] X509Error),
+  #[class(generic)]
+  #[error("Failed to export public key")]
+  ExportFailed,
+}
+
+#[op2(fast)]
+pub fn op_node_x509_check_private_key(
+  #[cppgc] cert: &Certificate,
+  #[cppgc] key: &KeyObjectHandle,
+) -> Result<bool, X509CheckPrivateKeyError> {
+  let private_key = match key.as_private_key() {
+    Some(k) => k,
+    None => return Ok(false),
+  };
+
+  let derived_public_key = private_key.to_public_key();
+  let derived_spki_der = derived_public_key
+    .export_der("spki")
+    .map_err(|_| X509CheckPrivateKeyError::ExportFailed)?;
+
+  let cert = cert.inner.get().deref();
+  let cert_spki_raw = cert.tbs_certificate.subject_pki.raw;
+
+  Ok(cert_spki_raw == derived_spki_der.as_ref())
+}
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum X509VerifyError {
+  #[class(generic)]
+  #[error(transparent)]
+  X509(#[from] X509Error),
+  #[class(generic)]
+  #[error("Failed to export public key")]
+  ExportFailed,
+  #[class(generic)]
+  #[error("Failed to parse public key")]
+  ParseFailed,
+}
+
+#[op2(fast)]
+pub fn op_node_x509_verify(
+  #[cppgc] cert: &Certificate,
+  #[cppgc] key: &KeyObjectHandle,
+) -> Result<bool, X509VerifyError> {
+  use crate::keys::AsymmetricPublicKey;
+
+  let public_key = match key.as_public_key() {
+    Some(k) => k,
+    None => return Ok(false),
+  };
+
+  let cert_inner = cert.inner.get().deref();
+
+  // Get the raw TBS (to-be-signed) certificate bytes and signature
+  let tbs_raw = cert_inner.tbs_certificate.as_ref();
+  let sig_value = cert_inner.signature_value.as_ref();
+  let sig_alg_oid = cert_inner.signature_algorithm.algorithm.to_id_string();
+
+  // Verify based on key type and signature algorithm
+  match &*public_key {
+    AsymmetricPublicKey::Rsa(rsa_key) => {
+      use rsa::pkcs1v15::VerifyingKey;
+      use rsa::signature::Verifier;
+
+      let result = match sig_alg_oid.as_str() {
+        "1.2.840.113549.1.1.5" => {
+          let verifier = VerifyingKey::<sha1::Sha1>::new(rsa_key.clone());
+          let sig = rsa::pkcs1v15::Signature::try_from(sig_value)
+            .map_err(|_| X509VerifyError::ParseFailed)?;
+          verifier.verify(tbs_raw, &sig).is_ok()
+        }
+        "1.2.840.113549.1.1.11" => {
+          let verifier = VerifyingKey::<sha2::Sha256>::new(rsa_key.clone());
+          let sig = rsa::pkcs1v15::Signature::try_from(sig_value)
+            .map_err(|_| X509VerifyError::ParseFailed)?;
+          verifier.verify(tbs_raw, &sig).is_ok()
+        }
+        "1.2.840.113549.1.1.12" => {
+          let verifier = VerifyingKey::<sha2::Sha384>::new(rsa_key.clone());
+          let sig = rsa::pkcs1v15::Signature::try_from(sig_value)
+            .map_err(|_| X509VerifyError::ParseFailed)?;
+          verifier.verify(tbs_raw, &sig).is_ok()
+        }
+        "1.2.840.113549.1.1.13" => {
+          let verifier = VerifyingKey::<sha2::Sha512>::new(rsa_key.clone());
+          let sig = rsa::pkcs1v15::Signature::try_from(sig_value)
+            .map_err(|_| X509VerifyError::ParseFailed)?;
+          verifier.verify(tbs_raw, &sig).is_ok()
+        }
+        _ => false,
+      };
+      Ok(result)
+    }
+    AsymmetricPublicKey::Ec(ec_key) => {
+      use crate::keys::EcPublicKey;
+
+      match ec_key {
+        EcPublicKey::P256(key) => {
+          use p256::ecdsa::signature::Verifier;
+          let verifying_key = p256::ecdsa::VerifyingKey::from(key);
+          let sig = p256::ecdsa::DerSignature::try_from(sig_value)
+            .map_err(|_| X509VerifyError::ParseFailed)?;
+          Ok(verifying_key.verify(tbs_raw, &sig).is_ok())
+        }
+        EcPublicKey::P384(key) => {
+          use p384::ecdsa::signature::Verifier;
+          let verifying_key = p384::ecdsa::VerifyingKey::from(key);
+          let sig = p384::ecdsa::DerSignature::try_from(sig_value)
+            .map_err(|_| X509VerifyError::ParseFailed)?;
+          Ok(verifying_key.verify(tbs_raw, &sig).is_ok())
+        }
+        _ => Ok(false),
+      }
+    }
+    AsymmetricPublicKey::Ed25519(key) => {
+      let verified = aws_lc_rs::signature::UnparsedPublicKey::new(
+        &aws_lc_rs::signature::ED25519,
+        key.as_bytes().as_slice(),
+      )
+      .verify(tbs_raw, sig_value)
+      .is_ok();
+      Ok(verified)
+    }
+    _ => Ok(false),
+  }
+}
+
+#[op2]
+#[string]
+pub fn op_node_x509_get_info_access(
+  #[cppgc] cert: &Certificate,
+) -> Option<String> {
+  let cert = cert.inner.get().deref();
+
+  // OID for Authority Information Access
+  let oid_aia = Oid::from(&[1, 3, 6, 1, 5, 5, 7, 1, 1]).ok()?;
+  let oid_ocsp = Oid::from(&[1, 3, 6, 1, 5, 5, 7, 48, 1]).ok()?;
+  let oid_ca_issuers = Oid::from(&[1, 3, 6, 1, 5, 5, 7, 48, 2]).ok()?;
+
+  let ext = cert.extensions().iter().find(|e| e.oid == oid_aia)?;
+
+  // Parse the AIA extension value manually
+  // AIA is a SEQUENCE of AccessDescription
+  // Each AccessDescription is SEQUENCE { accessMethod OID, accessLocation GeneralName }
+  let data = ext.value;
+  let (_, seq) =
+    x509_parser::der_parser::asn1_rs::Sequence::from_der(data).ok()?;
+
+  let mut entries = Vec::new();
+  let mut remaining = seq.content.as_ref();
+
+  while !remaining.is_empty() {
+    let (rest, access_desc) =
+      x509_parser::der_parser::asn1_rs::Sequence::from_der(remaining).ok()?;
+    remaining = rest;
+
+    let (general_name_data, method_oid) =
+      Oid::from_der(access_desc.content.as_ref()).ok()?;
+
+    let method_name = if method_oid == oid_ocsp {
+      "OCSP - URI"
+    } else if method_oid == oid_ca_issuers {
+      "CA Issuers - URI"
+    } else {
+      continue;
+    };
+
+    // GeneralName is context-tagged. Tag [6] = uniformResourceIdentifier (IA5String)
+    if !general_name_data.is_empty() {
+      let (_, any) =
+        x509_parser::der_parser::asn1_rs::Any::from_der(general_name_data)
+          .ok()?;
+      // Tag 6 is context-specific for URI in GeneralName
+      if any.tag().0 == 6
+        && let Ok(uri) = std::str::from_utf8(any.data)
+      {
+        entries.push(format!("{}:{}", method_name, uri));
+      }
+    }
+  }
+
+  if entries.is_empty() {
+    None
+  } else {
+    Some(entries.join("\n"))
+  }
+}
+
+#[op2]
+#[serde]
+pub fn op_node_x509_to_legacy_object(
+  #[cppgc] cert: &Certificate,
+) -> Result<CertificateObject, JsX509Error> {
+  cert.to_object(true).map_err(Into::into)
 }
 
 #[cfg(test)]

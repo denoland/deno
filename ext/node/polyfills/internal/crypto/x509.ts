@@ -8,29 +8,41 @@ import {
   op_node_x509_ca,
   op_node_x509_check_email,
   op_node_x509_check_host,
+  op_node_x509_check_ip,
+  op_node_x509_check_issued,
+  op_node_x509_check_private_key,
   op_node_x509_fingerprint,
   op_node_x509_fingerprint256,
   op_node_x509_fingerprint512,
+  op_node_x509_get_info_access,
   op_node_x509_get_issuer,
+  op_node_x509_get_raw,
   op_node_x509_get_serial_number,
   op_node_x509_get_subject,
+  op_node_x509_get_subject_alt_name,
   op_node_x509_get_valid_from,
   op_node_x509_get_valid_to,
   op_node_x509_key_usage,
   op_node_x509_parse,
   op_node_x509_public_key,
+  op_node_x509_to_legacy_object,
+  op_node_x509_to_string,
+  op_node_x509_verify,
 } from "ext:core/ops";
 
 import {
   KeyObject,
   PublicKeyObject,
 } from "ext:deno_node/internal/crypto/keys.ts";
+import { kHandle } from "ext:deno_node/internal/crypto/constants.ts";
 import { Buffer } from "node:buffer";
-import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
+import {
+  ERR_INVALID_ARG_TYPE,
+  ERR_INVALID_ARG_VALUE,
+} from "ext:deno_node/internal/errors.ts";
 import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
 import { validateString } from "ext:deno_node/internal/validators.mjs";
-import { notImplemented } from "ext:deno_node/_utils.ts";
-import { BinaryLike } from "ext:deno_node/internal/crypto/types.ts";
+import type { BinaryLike } from "ext:deno_node/internal/crypto/types.ts";
 import { inspect } from "node:util";
 import { customInspectSymbol as kInspect } from "ext:deno_node/internal/util.mjs";
 import type { InspectOptions } from "node:util";
@@ -95,8 +107,7 @@ export class X509Certificate {
         subject: this.subject,
         subjectAltName: this.subjectAltName,
         issuer: this.issuer,
-        // TODO(Tango992): replace with the actual value once implemented
-        infoAccess: undefined,
+        infoAccess: this.infoAccess,
         validFrom: this.validFrom,
         validTo: this.validTo,
         validFromDate: this.validFromDate,
@@ -131,16 +142,41 @@ export class X509Certificate {
     }
   }
 
-  checkIP(_ip: string): string | undefined {
-    notImplemented("crypto.X509Certificate.prototype.checkIP");
+  checkIP(ip: string): string | undefined {
+    validateString(ip, "ip");
+    if (ip.includes("\0")) {
+      return undefined;
+    }
+    return op_node_x509_check_ip(this.#handle, ip) ?? undefined;
   }
 
-  checkIssued(_otherCert: X509Certificate): boolean {
-    notImplemented("crypto.X509Certificate.prototype.checkIssued");
+  checkIssued(otherCert: X509Certificate): boolean {
+    if (!(otherCert instanceof X509Certificate)) {
+      throw new ERR_INVALID_ARG_TYPE(
+        "otherCert",
+        "X509Certificate",
+        otherCert,
+      );
+    }
+    return op_node_x509_check_issued(this.#handle, otherCert.#handle);
   }
 
-  checkPrivateKey(_privateKey: KeyObject): boolean {
-    notImplemented("crypto.X509Certificate.prototype.checkPrivateKey");
+  checkPrivateKey(privateKey: KeyObject): boolean {
+    if (!(privateKey instanceof KeyObject)) {
+      throw new ERR_INVALID_ARG_TYPE(
+        "privateKey",
+        "KeyObject",
+        privateKey,
+      );
+    }
+    if (privateKey.type !== "private") {
+      throw new ERR_INVALID_ARG_VALUE("privateKey", privateKey);
+    }
+    return op_node_x509_check_private_key(
+      this.#handle,
+      // deno-lint-ignore no-explicit-any
+      (privateKey as any)[kHandle],
+    );
   }
 
   get fingerprint(): string {
@@ -156,9 +192,7 @@ export class X509Certificate {
   }
 
   get infoAccess(): string | undefined {
-    notImplemented("crypto.X509Certificate.prototype.infoAccess");
-
-    return "";
+    return op_node_x509_get_info_access(this.#handle) ?? undefined;
   }
 
   get issuer(): string {
@@ -191,9 +225,7 @@ export class X509Certificate {
   }
 
   get raw(): Buffer {
-    notImplemented("crypto.X509Certificate.prototype.raw");
-
-    return {} as Buffer;
+    return Buffer.from(op_node_x509_get_raw(this.#handle));
   }
 
   get serialNumber(): string {
@@ -205,7 +237,7 @@ export class X509Certificate {
   }
 
   get subjectAltName(): string | undefined {
-    return undefined;
+    return op_node_x509_get_subject_alt_name(this.#handle) ?? undefined;
   }
 
   toJSON(): string {
@@ -213,11 +245,11 @@ export class X509Certificate {
   }
 
   toLegacyObject(): PeerCertificate {
-    notImplemented("crypto.X509Certificate.prototype.toLegacyObject");
+    return op_node_x509_to_legacy_object(this.#handle);
   }
 
   toString(): string {
-    notImplemented("crypto.X509Certificate.prototype.toString");
+    return op_node_x509_to_string(this.#handle);
   }
 
   get validFrom(): string {
@@ -236,8 +268,22 @@ export class X509Certificate {
     return new Date(this.validTo);
   }
 
-  verify(_publicKey: KeyObject): boolean {
-    notImplemented("crypto.X509Certificate.prototype.verify");
+  verify(publicKey: KeyObject): boolean {
+    if (!(publicKey instanceof KeyObject)) {
+      throw new ERR_INVALID_ARG_TYPE(
+        "publicKey",
+        "KeyObject",
+        publicKey,
+      );
+    }
+    if (publicKey.type !== "public") {
+      throw new ERR_INVALID_ARG_VALUE("publicKey", publicKey);
+    }
+    return op_node_x509_verify(
+      this.#handle,
+      // deno-lint-ignore no-explicit-any
+      (publicKey as any)[kHandle],
+    );
   }
 }
 
