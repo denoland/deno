@@ -1,0 +1,8 @@
+{
+  "tests": {
+    "cjs_proto_exports": {
+      "args": "run -R main.mjs",
+      "output": "main.out"
+    }
+  }
+}

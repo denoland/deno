@@ -755,6 +755,22 @@ Module._load = function (request, parent, isMain) {
     }
   }
 
+  // Deno removes Object.prototype.__proto__ by default, so when CJS modules
+  // do `exports.__proto__ = someObj` to set up prototype chains, the assignment
+  // creates a regular data property instead of setting the prototype. Fix this
+  // by detecting the own __proto__ property and using Object.setPrototypeOf.
+  if (
+    module.exports &&
+    typeof module.exports === "object" &&
+    ObjectHasOwn(module.exports, "__proto__")
+  ) {
+    const proto = module.exports["__proto__"];
+    if (proto === null || typeof proto === "object") {
+      delete module.exports["__proto__"];
+      ObjectSetPrototypeOf(module.exports, proto);
+    }
+  }
+
   return module.exports;
 };
 

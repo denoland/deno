@@ -1,0 +1,10 @@
+required: function
+obj: true
+obj.isplain: function
+num: true
+num.is: function
+str: true
+str.is: function
+default.required: function
+default.obj: true
+default.obj.isplain: function

@@ -727,7 +727,7 @@ if (import.meta.main) {
 "#);
 
       for (export_name, quoted_name) in &export_names_with_quoted {
-        if !matches!(*export_name, "default" | "module.exports") {
+        if !matches!(*export_name, "default" | "module.exports" | "__proto__") {
           add_export(
             builder,
             export_name,
