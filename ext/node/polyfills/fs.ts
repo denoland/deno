@@ -52,6 +52,7 @@ import {
   mkdtempSync,
 } from "ext:deno_node/_fs/_fs_mkdtemp.ts";
 import { open, openPromise, openSync } from "ext:deno_node/_fs/_fs_open.ts";
+import { openAsBlob } from "ext:deno_node/_fs/_fs_openAsBlob.ts";
 import {
   opendir,
   opendirPromise,
@@ -270,6 +271,7 @@ export default {
   O_TRUNC,
   O_WRONLY,
   open,
+  openAsBlob,
   openSync,
   opendir,
   opendirSync,
@@ -391,6 +393,7 @@ export {
   O_TRUNC,
   O_WRONLY,
   open,
+  openAsBlob,
   opendir,
   opendirSync,
   openSync,
