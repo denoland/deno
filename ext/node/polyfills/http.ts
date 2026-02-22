@@ -98,8 +98,12 @@ import { methods as METHODS } from "node:_http_common";
 import { deprecate } from "node:util";
 
 const { internalRidSymbol } = core;
-const { ArrayIsArray, StringPrototypeToLowerCase, SafeArrayIterator } =
-  primordials;
+const {
+  ArrayIsArray,
+  StringPrototypeIncludes,
+  StringPrototypeToLowerCase,
+  SafeArrayIterator,
+} = primordials;
 
 type Chunk = string | Buffer | Uint8Array;
 
@@ -969,9 +973,9 @@ class ClientRequest extends OutgoingMessage {
       path = "/" + path;
     }
     const url = new URL(
-      `${protocol}//${auth ? `${auth}@` : ""}${host}${
-        port === 80 ? "" : `:${port}`
-      }${path}`,
+      `${protocol}//${auth ? `${auth}@` : ""}${
+        StringPrototypeIncludes(host, ":") ? `[${host}]` : host
+      }${port === 80 ? "" : `:${port}`}${path}`,
     );
     url.hash = hash;
     return url.href;
