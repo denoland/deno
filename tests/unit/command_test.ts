@@ -1248,3 +1248,254 @@ Deno.test({ permissions: { run: true } }, async function collectText() {
 
   await process.status;
 });
+
+Deno.test(
+  { permissions: { run: true } },
+  async function denoSpawnBasic() {
+    const child = Deno.spawn(Deno.execPath(), {
+      args: ["eval", "console.log('hello from spawn')"],
+      stdout: "piped",
+      stderr: "null",
+    });
+
+    assert(child instanceof Deno.ChildProcess);
+    assert(child.pid > 0);
+
+    const output = await child.stdout.text();
+    assertEquals(output, "hello from spawn\n");
+
+    const status = await child.status;
+    assertEquals(status.success, true);
+    assertEquals(status.code, 0);
+  },
+);
+
+Deno.test(
+  { permissions: { run: true } },
+  async function denoSpawnDefaultsToInherit() {
+    // Deno.spawn should default stdio to "inherit" like Command.spawn()
+    const child = Deno.spawn(Deno.execPath(), {
+      args: ["eval", "Deno.exit(42)"],
+    });
+
+    const status = await child.status;
+    assertEquals(status.success, false);
+    assertEquals(status.code, 42);
+  },
+);
+
+Deno.test(
+  { permissions: { run: true } },
+  async function denoSpawnWithPipedStdin() {
+    const child = Deno.spawn(Deno.execPath(), {
+      args: [
+        "eval",
+        "const buf = new Uint8Array(5); await Deno.stdin.read(buf); console.log(new TextDecoder().decode(buf))",
+      ],
+      stdin: "piped",
+      stdout: "piped",
+      stderr: "null",
+    });
+
+    const writer = child.stdin.getWriter();
+    await writer.write(new TextEncoder().encode("hello"));
+    await writer.close();
+
+    const output = await child.stdout.text();
+    assertEquals(output, "hello\n");
+
+    const status = await child.status;
+    assertEquals(status.success, true);
+  },
+);
+
+Deno.test(
+  { permissions: { run: true } },
+  async function denoSpawnWithArgsArray() {
+    const child = Deno.spawn(
+      Deno.execPath(),
+      ["eval", "console.log('args overload')"],
+      { stdout: "piped", stderr: "null" },
+    );
+
+    const output = await child.stdout.text();
+    assertEquals(output, "args overload\n");
+
+    const status = await child.status;
+    assertEquals(status.success, true);
+    assertEquals(status.code, 0);
+  },
+);
+
+Deno.test(
+  { permissions: { run: true } },
+  function denoSpawnWithArgsArrayAndArgsOptionThrows() {
+    assertThrows(
+      () => {
+        Deno.spawn(
+          Deno.execPath(),
+          ["eval", "console.log('hello')"],
+          // @ts-expect-error - args not allowed when using args array overload
+          { args: ["eval", "console.log('hello')"], stdout: "null" },
+        );
+      },
+      TypeError,
+      "Passing 'args' in options is not allowed when args are passed as a separate argument",
+    );
+  },
+);
+
+Deno.test(
+  { permissions: { run: true } },
+  async function denoSpawnAndWaitBasic() {
+    const { code, stdout, stderr } = await Deno.spawnAndWait(
+      Deno.execPath(),
+      {
+        args: ["eval", "console.log('waited')"],
+      },
+    );
+
+    assertEquals(code, 0);
+    assertEquals(new TextDecoder().decode(stdout), "waited\n");
+    assertEquals(new TextDecoder().decode(stderr), "");
+  },
+);
+
+Deno.test(
+  { permissions: { run: true } },
+  async function denoSpawnAndWaitWithArgsArray() {
+    const { code, stdout } = await Deno.spawnAndWait(
+      Deno.execPath(),
+      ["eval", "console.log('args overload waited')"],
+    );
+
+    assertEquals(code, 0);
+    assertEquals(new TextDecoder().decode(stdout), "args overload waited\n");
+  },
+);
+
+Deno.test(
+  { permissions: { run: true } },
+  async function denoSpawnAndWaitExitCode() {
+    const { code, success } = await Deno.spawnAndWait(
+      Deno.execPath(),
+      ["eval", "Deno.exit(42)"],
+    );
+
+    assertEquals(success, false);
+    assertEquals(code, 42);
+  },
+);
+
+Deno.test(
+  { permissions: { run: true } },
+  function denoSpawnAndWaitPipedStdinThrows() {
+    assertThrows(
+      () => {
+        Deno.spawnAndWait(Deno.execPath(), {
+          args: ["eval", "console.log('hello')"],
+          stdin: "piped",
+        });
+      },
+      TypeError,
+      "Piped stdin is not supported for this function",
+    );
+  },
+);
+
+Deno.test(
+  { permissions: { run: true } },
+  function denoSpawnAndWaitWithArgsArrayAndArgsOptionThrows() {
+    assertThrows(
+      () => {
+        Deno.spawnAndWait(
+          Deno.execPath(),
+          ["eval", "console.log('hello')"],
+          // @ts-expect-error - args not allowed when using args array overload
+          { args: ["eval", "console.log('hello')"] },
+        );
+      },
+      TypeError,
+      "Passing 'args' in options is not allowed when args are passed as a separate argument",
+    );
+  },
+);
+
+Deno.test(
+  { permissions: { run: true } },
+  function denoSpawnAndWaitSyncBasic() {
+    const { code, stdout, stderr } = Deno.spawnAndWaitSync(
+      Deno.execPath(),
+      {
+        args: ["eval", "console.log('sync waited')"],
+      },
+    );
+
+    assertEquals(code, 0);
+    assertEquals(new TextDecoder().decode(stdout), "sync waited\n");
+    assertEquals(new TextDecoder().decode(stderr), "");
+  },
+);
+
+Deno.test(
+  { permissions: { run: true } },
+  function denoSpawnAndWaitSyncWithArgsArray() {
+    const { code, stdout } = Deno.spawnAndWaitSync(
+      Deno.execPath(),
+      ["eval", "console.log('sync args overload')"],
+    );
+
+    assertEquals(code, 0);
+    assertEquals(
+      new TextDecoder().decode(stdout),
+      "sync args overload\n",
+    );
+  },
+);
+
+Deno.test(
+  { permissions: { run: true } },
+  function denoSpawnAndWaitSyncExitCode() {
+    const { code, success } = Deno.spawnAndWaitSync(
+      Deno.execPath(),
+      ["eval", "Deno.exit(42)"],
+    );
+
+    assertEquals(success, false);
+    assertEquals(code, 42);
+  },
+);
+
+Deno.test(
+  { permissions: { run: true } },
+  function denoSpawnAndWaitSyncPipedStdinThrows() {
+    assertThrows(
+      () => {
+        Deno.spawnAndWaitSync(Deno.execPath(), {
+          args: ["eval", "console.log('hello')"],
+          stdin: "piped",
+        });
+      },
+      TypeError,
+      "Piped stdin is not supported for this function",
+    );
+  },
+);
+
+Deno.test(
+  { permissions: { run: true } },
+  function denoSpawnAndWaitSyncWithArgsArrayAndArgsOptionThrows() {
+    assertThrows(
+      () => {
+        Deno.spawnAndWaitSync(
+          Deno.execPath(),
+          ["eval", "console.log('hello')"],
+          // @ts-expect-error - args not allowed when using args array overload
+          { args: ["eval", "console.log('hello')"] },
+        );
+      },
+      TypeError,
+      "Passing 'args' in options is not allowed when args are passed as a separate argument",
+    );
+  },
+);

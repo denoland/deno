@@ -35,6 +35,7 @@ members = [
   "ext/webstorage",
   "libs/config",
   "libs/crypto",
+  "libs/dotenv",
   "libs/eszip",
   "libs/inspector_server",
   "libs/lockfile",
@@ -75,8 +76,8 @@ license = "MIT"
 repository = "https://github.com/denoland/deno"
 
 [workspace.dependencies]
-deno_ast = { version = "=0.53.0", features = ["transpiling"] }
-deno_core = { version = "0.385.0" }
+deno_ast = { version = "=0.53.1", features = ["transpiling"] }
+deno_core = { version = "0.386.0" }
 
 deno_cache_dir = "=0.27.0"
 deno_doc = "=0.190.1"
@@ -130,6 +131,7 @@ denort_helper = { version = "0.30.0", path = "./ext/rt_helper" }
 deno_bench_util = { version = "0.226.0", path = "./tests/bench_util" }
 deno_config = { version = "0.82.0", features = ["workspace"], path = "./libs/config" }
 deno_crypto_provider = { version = "0.26.0", path = "./libs/crypto" }
+deno_dotenv = { version = "0.1.0", path = "./libs/dotenv" }
 deno_features = { version = "0.29.0", path = "./runtime/features" }
 deno_inspector_server = { version = "0.6.0", path = "./libs/inspector_server" }
 deno_lib = { version = "0.50.0", path = "./cli/lib" }
@@ -182,7 +184,6 @@ comrak = "0.29.0"
 dashmap = "5.5.3"
 data-encoding = "2.3.3"
 data-url = "=0.3.1"
-dotenvy = "0.15.7"
 dyn-clone = "1"
 encoding_rs = "=0.8.35"
 error_reporter = "1"

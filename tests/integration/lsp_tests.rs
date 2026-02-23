@@ -17415,8 +17415,8 @@ fn lsp_workspace_compiler_options_root_dirs() {
   client.shutdown();
 }
 
-#[test(timeout = 300)]
-fn lsp_tsconfig_scopes() {
+#[test(timeout = 300, fork_with_suffix = "_tsgo")]
+fn lsp_tsconfig_scopes(use_tsgo: bool) {
   let context = TestContextBuilder::new()
     .use_http_server()
     .use_temp_cwd()
@@ -17444,7 +17444,7 @@ fn lsp_tsconfig_scopes() {
     .to_string(),
   );
   let file2 = temp_dir.source_file("project2/file.ts", "Deno;\ndocument;\n");
-  let mut client = context.new_lsp_command().build();
+  let mut client = context.new_lsp_command().set_use_tsgo(use_tsgo).build();
   client.initialize_default();
   client.did_open_file(&file1);
   let diagnostics = client.did_open_file(&file2);

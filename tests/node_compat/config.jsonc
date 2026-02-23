@@ -2,6 +2,12 @@
   "tests": {
     "abort/test-addon-register-signal-handler.js": {},
     "abort/test-addon-uv-handle-leak.js": {},
+    "abort/test-zlib-invalid-internals-usage.js": {
+      "darwin": false,
+      "linux": false,
+      "windows": false,
+      "reason": "Tests Node.js internal C++ binding (internalBinding('zlib').Zlib) which is not implemented in Deno"
+    },
     "es-module/test-cjs-prototype-pollution.js": {},
     "es-module/test-esm-assert-strict.mjs": {},
     "es-module/test-esm-child-process-fork-main.mjs": {},
@@ -191,6 +197,7 @@
     "parallel/test-child-process-fork-no-shell.js": {},
     "parallel/test-child-process-fork-ref.js": {},
     "parallel/test-child-process-fork-ref2.js": {},
+    "parallel/test-child-process-fork-timeout-kill-signal.js": {},
     "parallel/test-child-process-fork3.js": {},
     "parallel/test-child-process-ipc-next-tick.js": {},
     "parallel/test-child-process-no-deprecation.js": {},
@@ -201,6 +208,7 @@
     "parallel/test-child-process-silent.js": {},
     "parallel/test-child-process-spawn-error.js": {},
     "parallel/test-child-process-spawn-event.js": {},
+    "parallel/test-child-process-spawn-timeout-kill-signal.js": {},
     "parallel/test-child-process-spawn-typeerror.js": {},
     "parallel/test-child-process-spawnsync-args.js": {},
     "parallel/test-child-process-spawnsync-env.js": {},
@@ -1176,6 +1184,7 @@
     "parallel/test-stdin-resume-pause.js": {},
     "parallel/test-stdin-script-child-option.js": {},
     "parallel/test-stdin-script-child.js": {},
+    "parallel/test-stdio-closed.js": {},
     "parallel/test-stdio-pipe-access.js": {},
     "parallel/test-stdio-pipe-redirect.js": {},
     "parallel/test-stdio-pipe-stderr.js": {
@@ -1185,6 +1194,8 @@
       "flaky": true
     },
     "parallel/test-stdout-cannot-be-closed-child-process-pipe.js": {},
+    "parallel/test-stdout-close-catch.js": {},
+    "parallel/test-stdout-close-unref.js": {},
     "parallel/test-stdout-pipeline-destroy.js": {},
     "parallel/test-stdout-stderr-reading.js": {},
     "parallel/test-stdout-stderr-write.js": {},
@@ -1473,6 +1484,7 @@
     "parallel/test-util-inherits.js": {},
     "parallel/test-util-inspect-getters-accessing-this.js": {},
     "parallel/test-util-isDeepStrictEqual.js": {},
+    "parallel/test-util-parse-env.js": {},
     "parallel/test-util-primordial-monkeypatching.js": {},
     "parallel/test-util-text-decoder.js": {},
     "parallel/test-util-types-exists.js": {},
@@ -1645,7 +1657,7 @@
     "parallel/test-zlib-from-gzip.js": {},
     "parallel/test-zlib-from-string.js": {},
     "parallel/test-zlib-invalid-arg-value-brotli-compress.js": {},
-    // "parallel/test-zlib-invalid-input-memory.js": {},
+    "parallel/test-zlib-invalid-input-memory.js": {},
     "parallel/test-zlib-invalid-input.js": {},
     "parallel/test-zlib-kmaxlength-rangeerror.js": {
       "darwin": false,
@@ -1664,7 +1676,7 @@
     "parallel/test-zlib-sync-no-event.js": {},
     "parallel/test-zlib-truncated.js": {},
     "parallel/test-zlib-type-error.js": {},
-    // "parallel/test-zlib-unused-weak.js": {},
+    "parallel/test-zlib-unused-weak.js": {},
     "parallel/test-zlib-unzip-one-byte-chunks.js": {},
     "parallel/test-zlib-write-after-close.js": {},
     "parallel/test-zlib-write-after-end.js": {},

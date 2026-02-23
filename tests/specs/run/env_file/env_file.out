@@ -1,4 +1,4 @@
 BAR
-ANOTHER_BAR
+ANOTHER_${FOO}
 First Line
 Second Line

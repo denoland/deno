@@ -23,6 +23,7 @@ use crate::cdp;
 use crate::module_loader::CliEmitter;
 use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::file_watcher::WatcherRestartMode;
+use crate::util::fs::canonicalize_path;
 
 static NEXT_MSG_ID: AtomicI32 = AtomicI32::new(0);
 fn next_id() -> i32 {
@@ -150,7 +151,7 @@ impl HmrRunnerState {
       if params.url.starts_with("file://") {
         let file_url = Url::parse(&params.url).unwrap();
         let file_path = file_url.to_file_path().unwrap();
-        if let Ok(canonicalized_file_path) = file_path.canonicalize() {
+        if let Ok(canonicalized_file_path) = canonicalize_path(&file_path) {
           let canonicalized_file_url =
             Url::from_file_path(canonicalized_file_path).unwrap();
           self
