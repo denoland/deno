@@ -854,16 +854,16 @@ fn compile_npm_cowsay_explicit() {
 #[test]
 fn compile_npm_cowthink() {
   // NB(bartlomieju):
-  // This output is actually an output of `cowsay`, but it's not possible
-  // to make it work correctly, because `cowsay` uses `yargs` to determine
-  // if `cowsay` or `cowthink` should be run. And `yargs` hardcodes a regex
-  // to decide on the script name and that regex checks for `node/iojs/electron`.
+  // When compiled, the binary is named "cowthink", so `process.argv[0]`
+  // contains "cowthink" and yargs correctly detects it as cowthink mode.
+  // This is different from `deno run npm:cowsay/cowthink` where argv[0]
+  // is the deno executable path, so yargs falls back to cowsay mode.
   run_npm_bin_compile_test(RunNpmBinCompileOptions {
     input_specifier: "npm:cowsay@1.5.0/cowthink",
     copy_temp_dir: None,
     compile_args: vec!["--allow-read", "--allow-env"],
     run_args: vec!["Hello"],
-    output_file: "npm/deno_run_cowthink.out",
+    output_file: "npm/deno_run_cowthink_compile.out",
     node_modules_local: false,
     input_name: None,
     expected_name: "cowthink",
