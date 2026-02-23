@@ -288,7 +288,7 @@ pub fn op_node_private_encrypt(
       .or_else(|_| rsa::pkcs1::DecodeRsaPrivateKey::from_pkcs1_pem(pem))
       .map_err(|e| PrivateEncryptDecryptError::Pkcs8(e.into()))?,
     Err(_) => RsaPrivateKey::from_pkcs8_der(&key).or_else(|_| {
-      RsaPrivateKey::from_pkcs1_der(&key).map_err(|e| pkcs8::Error::from(e))
+      RsaPrivateKey::from_pkcs1_der(&key).map_err(pkcs8::Error::from)
     })?,
   };
 
@@ -321,7 +321,7 @@ pub fn op_node_private_decrypt(
       .or_else(|_| rsa::pkcs1::DecodeRsaPrivateKey::from_pkcs1_pem(pem))
       .map_err(|e| PrivateEncryptDecryptError::Pkcs8(e.into()))?,
     Err(_) => RsaPrivateKey::from_pkcs8_der(&key).or_else(|_| {
-      RsaPrivateKey::from_pkcs1_der(&key).map_err(|e| pkcs8::Error::from(e))
+      RsaPrivateKey::from_pkcs1_der(&key).map_err(pkcs8::Error::from)
     })?,
   };
 
@@ -343,7 +343,7 @@ pub fn op_node_public_encrypt(
       .or_else(|_| rsa::pkcs1::DecodeRsaPublicKey::from_pkcs1_pem(pem))
       .map_err(|e| PrivateEncryptDecryptError::Spki(e.into()))?,
     Err(_) => RsaPublicKey::from_public_key_der(&key).or_else(|_| {
-      RsaPublicKey::from_pkcs1_der(&key).map_err(|e| spki::Error::from(e))
+      RsaPublicKey::from_pkcs1_der(&key).map_err(spki::Error::from)
     })?,
   };
 
