@@ -478,6 +478,26 @@ Deno.test({
   },
 });
 
+// https://github.com/denoland/deno/issues/24908
+Deno.test({
+  name: "[node/buffer] Buffer from base64 with non-base64 characters",
+  fn() {
+    // Strings with hyphens should not throw
+    const buf1 = Buffer.from("base64-encoded-bytes-from-browser", "base64");
+    assertEquals(buf1.length, 24);
+    assertEquals(
+      buf1.toString("hex"),
+      "6dab1eeb8f9e9dca1d79df9bcad7acf9fae89be6eba30b1e",
+    );
+
+    const buf2 = Buffer.from("not-valid-base64!!!", "base64");
+    assertEquals(buf2.length, 12);
+
+    // Single character (too short for base64)
+    assertEquals(Buffer.from("A", "base64").length, 0);
+  },
+});
+
 Deno.test({
   name: "[node/buffer] Buffer to string base64",
   fn() {
