@@ -1471,13 +1471,7 @@ function _createSpawnError(
 }
 
 export interface SpawnOptions extends ChildProcessOptions {
-  /**
-   * NOTE: This option is not yet implemented.
-   */
   timeout?: number;
-  /**
-   * NOTE: This option is not yet implemented.
-   */
   killSignal?: string;
 }
 

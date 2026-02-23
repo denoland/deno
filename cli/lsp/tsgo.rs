@@ -886,6 +886,16 @@ impl TsGoServerInner {
   }
 }
 
+fn qualify_tsgo_diagnostic(diagnostic: &mut lsp::Diagnostic) {
+  diagnostic.source = Some("deno-ts".to_string());
+  if let Some(lsp::NumberOrString::Number(code)) = &diagnostic.code {
+    diagnostic.message = crate::tsc::go::maybe_rewrite_message(
+      std::mem::take(&mut diagnostic.message),
+      *code as _,
+    );
+  }
+}
+
 #[derive(Debug)]
 pub struct TsGoServer {
   deno_dir: DenoDir,
@@ -1013,6 +1023,9 @@ impl TsGoServer {
           };
           !IGNORED_DIAGNOSTIC_CODES.contains(&(*code as _))
         });
+      for diagnostic in &mut report.full_document_diagnostic_report.items {
+        qualify_tsgo_diagnostic(diagnostic);
+      }
     }
     Ok(report)
   }
