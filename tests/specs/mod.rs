@@ -599,8 +599,10 @@ fn run_step(
     }
     None => command,
   };
-  let timeout_secs = metadata.timeout.unwrap_or(300);
-  let command = command.timeout(std::time::Duration::from_secs(timeout_secs));
+  let command = match metadata.timeout {
+    Some(secs) => command.timeout(std::time::Duration::from_secs(secs)),
+    None => command,
+  };
   let output = command.run();
 
   let step_output = {
