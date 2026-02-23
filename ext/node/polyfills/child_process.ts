@@ -45,6 +45,7 @@ import {
   convertToValidSignal,
   kEmptyObject,
 } from "ext:deno_node/internal/util.mjs";
+import { toPathIfFileURL } from "ext:deno_node/internal/url.ts";
 import { kNeedsNpmProcessState } from "ext:deno_process/40_process.js";
 
 const {
@@ -69,10 +70,11 @@ type ForkOptions = ChildProcessOptions;
  * @returns
  */
 export function fork(
-  modulePath: string,
+  modulePath: string | URL,
   _args?: string[],
   _options?: ForkOptions,
 ) {
+  modulePath = toPathIfFileURL(modulePath) as string;
   validateString(modulePath, "modulePath");
   validateNullByteNotInArg(modulePath, "modulePath");
 
