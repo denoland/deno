@@ -609,12 +609,10 @@ impl CompilerOptionsData {
       }
       if matches!(typ, CompilerOptionsType::Check { .. })
         && self.overrides.force_check_js
-      {
-        if let Some(compiler_options) =
+        && let Some(compiler_options) =
           result.compiler_options.0.as_object_mut()
-        {
-          compiler_options.insert("checkJs".to_string(), true.into());
-        }
+      {
+        compiler_options.insert("checkJs".to_string(), true.into());
       }
       if self.source_kind != CompilerOptionsSourceKind::TsConfig {
         check_warn_compiler_options(&result, &self.logged_warnings);
