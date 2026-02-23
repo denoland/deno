@@ -62,6 +62,7 @@ import {
   ERR_HTTP2_TRAILERS_ALREADY_SENT,
   ERR_HTTP2_TRAILERS_NOT_READY,
   ERR_HTTP2_UNSUPPORTED_PROTOCOL,
+  ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
   ERR_INVALID_HTTP_TOKEN,
   ERR_SOCKET_CLOSED,
@@ -75,6 +76,11 @@ import {
   kRequest,
   kSocket,
 } from "ext:deno_node/internal/http2/util.ts";
+import {
+  getDefaultSettings as getDefaultSettingsImpl,
+  packSettings,
+  unpackSettings,
+} from "ext:deno_node/internal/http2/settings.ts";
 const {
   StringPrototypeTrim,
   FunctionPrototypeBind,
@@ -2156,20 +2162,25 @@ export const constants = {
 // ]);
 
 export function getDefaultSettings(): Record<string, unknown> {
-  notImplemented("http2.getDefaultSettings");
-  return {};
+  return getDefaultSettingsImpl();
 }
 
-export function getPackedSettings(_settings: Record<string, unknown>): Buffer {
-  notImplemented("http2.getPackedSettings");
-  return {};
+export function getPackedSettings(settings: Record<string, unknown>): Buffer {
+  const isInvalid = settings == null ||
+    typeof settings !== "object" ||
+    Array.isArray(settings);
+  if (isInvalid) {
+    throw new ERR_INVALID_ARG_TYPE("settings", "Object", settings);
+  }
+  return packSettings(
+    settings as import("ext:deno_node/internal/http2/settings.ts").Http2SettingsObject,
+  );
 }
 
 export function getUnpackedSettings(
-  _buffer: Buffer | TypedArray,
+  buffer: Buffer | TypedArray,
 ): Record<string, unknown> {
-  notImplemented("http2.getUnpackedSettings");
-  return {};
+  return unpackSettings(buffer);
 }
 
 export const sensitiveHeaders = Symbol("nodejs.http2.sensitiveHeaders");

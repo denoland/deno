@@ -6,6 +6,13 @@ mod shared;
 fn main() {
   #[cfg(not(feature = "disable"))]
   {
+    // Force snapshot rebuild when node http2 settings polyfill changes
+    // (ext/node is not always loaded during snapshot creation)
+    println!("cargo:rerun-if-changed=../../ext/node/polyfills/http2.ts");
+    println!(
+      "cargo:rerun-if-changed=../../ext/node/polyfills/internal/http2/settings.ts"
+    );
+
     let o = std::path::PathBuf::from(std::env::var_os("OUT_DIR").unwrap());
     let cli_snapshot_path = o.join("CLI_SNAPSHOT.bin");
     create_cli_snapshot(cli_snapshot_path);
