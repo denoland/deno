@@ -138,14 +138,21 @@ export class UDP extends HandleWrap {
     groupAddress: string,
     interfaceAddress?: string,
   ): number {
+    if (!this.#listener) {
+      return codeMap.get("EBADF")!;
+    }
+
     try {
-      op_net_validate_multicast(groupAddress, interfaceAddress);
-      op_net_validate_multicast(sourceAddress, interfaceAddress);
+      net.joinSourceSpecific(
+        this.#listener,
+        sourceAddress,
+        groupAddress,
+        interfaceAddress ?? "0.0.0.0",
+      );
     } catch {
       return codeMap.get("EINVAL")!;
     }
-
-    notImplemented("udp.UDP.prototype.addSourceSpecificMembership");
+    return 0;
   }
 
   /**
@@ -247,14 +254,21 @@ export class UDP extends HandleWrap {
     groupAddress: string,
     interfaceAddress?: string,
   ): number {
+    if (!this.#listener) {
+      return codeMap.get("EBADF")!;
+    }
+
     try {
-      op_net_validate_multicast(groupAddress, interfaceAddress);
-      op_net_validate_multicast(sourceAddress, interfaceAddress);
+      net.leaveSourceSpecific(
+        this.#listener,
+        sourceAddress,
+        groupAddress,
+        interfaceAddress ?? "0.0.0.0",
+      );
     } catch {
       return codeMap.get("EINVAL")!;
     }
-
-    notImplemented("udp.UDP.prototype.dropSourceSpecificMembership");
+    return 0;
   }
 
   /**
@@ -356,8 +370,17 @@ export class UDP extends HandleWrap {
     return 0;
   }
 
-  setMulticastInterface(_interfaceAddress: string): number {
-    notImplemented("udp.UDP.prototype.setMulticastInterface");
+  setMulticastInterface(interfaceAddress: string): number {
+    if (!this.#listener) {
+      return codeMap.get("EBADF")!;
+    }
+
+    net.setMulticastInterface(
+      this.#listener,
+      this.#family === "IPv6",
+      interfaceAddress,
+    );
+    return 0;
   }
 
   setMulticastLoopback(bool: 0 | 1): number {
@@ -392,8 +415,21 @@ export class UDP extends HandleWrap {
     }
   }
 
-  setTTL(_ttl: number): number {
-    notImplemented("udp.UDP.prototype.setTTL");
+  setTTL(ttl: number): number {
+    if (ttl < 1 || ttl > 255) {
+      return codeMap.get("EINVAL")!;
+    }
+
+    if (!this.#listener) {
+      return codeMap.get("EBADF")!;
+    }
+
+    try {
+      net.setTTL(this.#listener, ttl);
+      return 0;
+    } catch {
+      return codeMap.get("EINVAL")!;
+    }
   }
 
   override unref() {

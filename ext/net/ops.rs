@@ -425,6 +425,152 @@ pub async fn op_net_set_multi_ttl_udp(
 }
 
 #[op2]
+pub async fn op_net_set_ttl_udp(
+  state: Rc<RefCell<OpState>>,
+  #[smi] rid: ResourceId,
+  #[smi] ttl: u32,
+) -> Result<(), NetError> {
+  let resource = state
+    .borrow_mut()
+    .resource_table
+    .get::<UdpSocketResource>(rid)
+    .map_err(|_| NetError::SocketClosed)?;
+  let socket = RcRef::map(&resource, |r| &r.socket).borrow().await;
+
+  let sock_ref = socket2::SockRef::from(&*socket);
+  sock_ref.set_ttl(ttl)?;
+
+  Ok(())
+}
+
+#[op2]
+pub async fn op_net_join_source_specific_udp(
+  state: Rc<RefCell<OpState>>,
+  #[smi] rid: ResourceId,
+  #[string] source_address: String,
+  #[string] group_address: String,
+  #[string] interface_address: String,
+) -> Result<(), NetError> {
+  let resource = state
+    .borrow_mut()
+    .resource_table
+    .get::<UdpSocketResource>(rid)
+    .map_err(|_| NetError::SocketClosed)?;
+  let socket = RcRef::map(&resource, |r| &r.socket).borrow().await;
+
+  let source_addr = Ipv4Addr::from_str(source_address.as_str())?;
+  let group_addr = Ipv4Addr::from_str(group_address.as_str())?;
+  let interface_addr = Ipv4Addr::from_str(interface_address.as_str())?;
+
+  let mreq = libc::ip_mreq_source {
+    imr_multiaddr: libc::in_addr {
+      s_addr: u32::from(group_addr).to_be(),
+    },
+    imr_sourceaddr: libc::in_addr {
+      s_addr: u32::from(source_addr).to_be(),
+    },
+    imr_interface: libc::in_addr {
+      s_addr: u32::from(interface_addr).to_be(),
+    },
+  };
+
+  // SAFETY: We pass a valid socket fd, level, option, and correctly-sized struct.
+  let ret = unsafe {
+    libc::setsockopt(
+      std::os::fd::AsRawFd::as_raw_fd(&*socket),
+      libc::IPPROTO_IP,
+      libc::IP_ADD_SOURCE_MEMBERSHIP,
+      &mreq as *const libc::ip_mreq_source as *const libc::c_void,
+      std::mem::size_of::<libc::ip_mreq_source>() as libc::socklen_t,
+    )
+  };
+  if ret != 0 {
+    return Err(std::io::Error::last_os_error().into());
+  }
+
+  Ok(())
+}
+
+#[op2]
+pub async fn op_net_leave_source_specific_udp(
+  state: Rc<RefCell<OpState>>,
+  #[smi] rid: ResourceId,
+  #[string] source_address: String,
+  #[string] group_address: String,
+  #[string] interface_address: String,
+) -> Result<(), NetError> {
+  let resource = state
+    .borrow_mut()
+    .resource_table
+    .get::<UdpSocketResource>(rid)
+    .map_err(|_| NetError::SocketClosed)?;
+  let socket = RcRef::map(&resource, |r| &r.socket).borrow().await;
+
+  let source_addr = Ipv4Addr::from_str(source_address.as_str())?;
+  let group_addr = Ipv4Addr::from_str(group_address.as_str())?;
+  let interface_addr = Ipv4Addr::from_str(interface_address.as_str())?;
+
+  let mreq = libc::ip_mreq_source {
+    imr_multiaddr: libc::in_addr {
+      s_addr: u32::from(group_addr).to_be(),
+    },
+    imr_sourceaddr: libc::in_addr {
+      s_addr: u32::from(source_addr).to_be(),
+    },
+    imr_interface: libc::in_addr {
+      s_addr: u32::from(interface_addr).to_be(),
+    },
+  };
+
+  // SAFETY: We pass a valid socket fd, level, option, and correctly-sized struct.
+  let ret = unsafe {
+    libc::setsockopt(
+      std::os::fd::AsRawFd::as_raw_fd(&*socket),
+      libc::IPPROTO_IP,
+      libc::IP_DROP_SOURCE_MEMBERSHIP,
+      &mreq as *const libc::ip_mreq_source as *const libc::c_void,
+      std::mem::size_of::<libc::ip_mreq_source>() as libc::socklen_t,
+    )
+  };
+  if ret != 0 {
+    return Err(std::io::Error::last_os_error().into());
+  }
+
+  Ok(())
+}
+
+#[op2]
+pub async fn op_net_set_multi_interface_udp(
+  state: Rc<RefCell<OpState>>,
+  #[smi] rid: ResourceId,
+  is_ipv6: bool,
+  #[string] interface_address: String,
+) -> Result<(), NetError> {
+  let resource = state
+    .borrow_mut()
+    .resource_table
+    .get::<UdpSocketResource>(rid)
+    .map_err(|_| NetError::SocketClosed)?;
+  let socket = RcRef::map(&resource, |r| &r.socket).borrow().await;
+
+  let sock_ref = socket2::SockRef::from(&*socket);
+  if is_ipv6 {
+    let index = interface_address.parse::<u32>().unwrap_or(0);
+    sock_ref.set_multicast_if_v6(index)?;
+  } else {
+    let addr: Ipv4Addr = interface_address.parse().map_err(|_| {
+      std::io::Error::new(
+        std::io::ErrorKind::InvalidInput,
+        "invalid IPv4 address",
+      )
+    })?;
+    sock_ref.set_multicast_if_v4(&addr)?;
+  }
+
+  Ok(())
+}
+
+#[op2]
 pub async fn op_net_set_broadcast_udp(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,

@@ -19,8 +19,10 @@ import {
   op_net_connect_vsock,
   op_net_join_multi_v4_udp,
   op_net_join_multi_v6_udp,
+  op_net_join_source_specific_udp,
   op_net_leave_multi_v4_udp,
   op_net_leave_multi_v6_udp,
+  op_net_leave_source_specific_udp,
   op_net_listen_tcp,
   op_net_listen_tunnel,
   op_net_listen_unix,
@@ -30,8 +32,10 @@ import {
   op_net_send_udp,
   op_net_send_unixpacket,
   op_net_set_broadcast_udp,
+  op_net_set_multi_interface_udp,
   op_net_set_multi_loopback_udp,
   op_net_set_multi_ttl_udp,
+  op_net_set_ttl_udp,
   op_set_keepalive,
   op_set_nodelay,
 } from "ext:core/ops";
@@ -407,6 +411,10 @@ const _dropMembership = Symbol("dropMembership");
 const _setBroadcast = Symbol("setBroadcast");
 const _setMultiLoopback = Symbol("setMultiLoopback");
 const _setMulticastTTL = Symbol("setMulticastTTL");
+const _setMultiInterface = Symbol("setMultiInterface");
+const _setTTL = Symbol("setTTL");
+const _joinSourceSpecific = Symbol("joinSourceSpecific");
+const _leaveSourceSpecific = Symbol("leaveSourceSpecific");
 
 function setDatagramBroadcast(conn, broadcast) {
   return conn[_setBroadcast](broadcast);
@@ -422,6 +430,22 @@ function dropMembership(conn, v6, addr, multiInterface) {
 
 function setMulticastTTL(conn, ttl) {
   return conn[_setMulticastTTL](ttl);
+}
+
+function setMulticastInterface(conn, v6, addr) {
+  return conn[_setMultiInterface](v6, addr);
+}
+
+function setTTL(conn, ttl) {
+  return conn[_setTTL](ttl);
+}
+
+function joinSourceSpecific(conn, sourceAddr, groupAddr, interfaceAddr) {
+  return conn[_joinSourceSpecific](sourceAddr, groupAddr, interfaceAddr);
+}
+
+function leaveSourceSpecific(conn, sourceAddr, groupAddr, interfaceAddr) {
+  return conn[_leaveSourceSpecific](sourceAddr, groupAddr, interfaceAddr);
 }
 
 class DatagramConn {
@@ -458,6 +482,32 @@ class DatagramConn {
 
   [_setMultiLoopback](v6, loopback) {
     return op_net_set_multi_loopback_udp(this.#rid, !v6, loopback);
+  }
+
+  [_setMultiInterface](v6, addr) {
+    return op_net_set_multi_interface_udp(this.#rid, v6, addr);
+  }
+
+  [_setTTL](ttl) {
+    return op_net_set_ttl_udp(this.#rid, ttl);
+  }
+
+  [_joinSourceSpecific](sourceAddr, groupAddr, interfaceAddr) {
+    return op_net_join_source_specific_udp(
+      this.#rid,
+      sourceAddr,
+      groupAddr,
+      interfaceAddr,
+    );
+  }
+
+  [_leaveSourceSpecific](sourceAddr, groupAddr, interfaceAddr) {
+    return op_net_leave_source_specific_udp(
+      this.#rid,
+      sourceAddr,
+      groupAddr,
+      interfaceAddr,
+    );
   }
 
   async joinMulticastV4(addr, multiInterface) {
@@ -757,14 +807,18 @@ export {
   connect,
   createListenDatagram,
   dropMembership,
+  joinSourceSpecific,
+  leaveSourceSpecific,
   listen,
   Listener,
   listenOptionApiName,
   PipeConn,
   resolveDns,
   setDatagramBroadcast,
+  setMulticastInterface,
   setMulticastLoopback,
   setMulticastTTL,
+  setTTL,
   TcpConn,
   UnixConn,
   UpgradedConn,
