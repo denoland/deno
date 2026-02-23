@@ -1818,6 +1818,10 @@ fn configure_esbuild_flags(
       PackageHandling::Bundle => esbuild_client::PackagesHandling::Bundle,
     });
 
+  if bundle_flags.keep_names {
+    builder.raw_flag("--keep-names");
+  }
+
   if let Some(sourcemap_type) = bundle_flags.sourcemap {
     builder.sourcemap(match sourcemap_type {
       SourceMapType::Linked => esbuild_client::Sourcemap::Linked,
