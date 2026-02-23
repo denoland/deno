@@ -287,11 +287,9 @@ pub fn op_node_private_encrypt(
     Ok(pem) => RsaPrivateKey::from_pkcs8_pem(pem)
       .or_else(|_| rsa::pkcs1::DecodeRsaPrivateKey::from_pkcs1_pem(pem))
       .map_err(|e| PrivateEncryptDecryptError::Pkcs8(e.into()))?,
-    Err(_) => RsaPrivateKey::from_pkcs8_der(&key)
-      .or_else(|_| {
-        RsaPrivateKey::from_pkcs1_der(&key)
-          .map_err(|e| pkcs8::Error::from(e))
-      })?,
+    Err(_) => RsaPrivateKey::from_pkcs8_der(&key).or_else(|_| {
+      RsaPrivateKey::from_pkcs1_der(&key).map_err(|e| pkcs8::Error::from(e))
+    })?,
   };
 
   let mut rng = rand::thread_rng();
@@ -322,11 +320,9 @@ pub fn op_node_private_decrypt(
     Ok(pem) => RsaPrivateKey::from_pkcs8_pem(pem)
       .or_else(|_| rsa::pkcs1::DecodeRsaPrivateKey::from_pkcs1_pem(pem))
       .map_err(|e| PrivateEncryptDecryptError::Pkcs8(e.into()))?,
-    Err(_) => RsaPrivateKey::from_pkcs8_der(&key)
-      .or_else(|_| {
-        RsaPrivateKey::from_pkcs1_der(&key)
-          .map_err(|e| pkcs8::Error::from(e))
-      })?,
+    Err(_) => RsaPrivateKey::from_pkcs8_der(&key).or_else(|_| {
+      RsaPrivateKey::from_pkcs1_der(&key).map_err(|e| pkcs8::Error::from(e))
+    })?,
   };
 
   match padding {
@@ -346,11 +342,9 @@ pub fn op_node_public_encrypt(
     Ok(pem) => RsaPublicKey::from_public_key_pem(pem)
       .or_else(|_| rsa::pkcs1::DecodeRsaPublicKey::from_pkcs1_pem(pem))
       .map_err(|e| PrivateEncryptDecryptError::Spki(e.into()))?,
-    Err(_) => RsaPublicKey::from_public_key_der(&key)
-      .or_else(|_| {
-        RsaPublicKey::from_pkcs1_der(&key)
-          .map_err(|e| spki::Error::from(e))
-      })?,
+    Err(_) => RsaPublicKey::from_public_key_der(&key).or_else(|_| {
+      RsaPublicKey::from_pkcs1_der(&key).map_err(|e| spki::Error::from(e))
+    })?,
   };
 
   let mut rng = rand::thread_rng();
