@@ -654,3 +654,57 @@ Deno.test({
     );
   },
 });
+
+Deno.test({
+  name: "publicEncrypt/privateDecrypt with DER keys",
+  fn() {
+    const pair = crypto.generateKeyPairSync("rsa", { modulusLength: 2048 });
+
+    // Export as DER (binary) format
+    const publicDer = pair.publicKey.export({ type: "spki", format: "der" });
+    const privateDer = pair.privateKey.export({
+      type: "pkcs8",
+      format: "der",
+    });
+
+    const secret = Buffer.from("hello DER keys");
+    const encrypted = crypto.publicEncrypt(
+      { key: publicDer, padding: crypto.constants.RSA_PKCS1_PADDING },
+      secret,
+    );
+    assert(Buffer.isBuffer(encrypted));
+
+    const decrypted = crypto.privateDecrypt(
+      { key: privateDer, padding: crypto.constants.RSA_PKCS1_PADDING },
+      encrypted,
+    );
+    assertEquals(decrypted, secret);
+  },
+});
+
+Deno.test({
+  name: "publicEncrypt/privateDecrypt with PKCS#1 DER keys",
+  fn() {
+    const pair = crypto.generateKeyPairSync("rsa", { modulusLength: 2048 });
+
+    // Export as PKCS#1 DER (binary) format
+    const publicDer = pair.publicKey.export({ type: "pkcs1", format: "der" });
+    const privateDer = pair.privateKey.export({
+      type: "pkcs1",
+      format: "der",
+    });
+
+    const secret = Buffer.from("hello PKCS1 DER keys");
+    const encrypted = crypto.publicEncrypt(
+      { key: publicDer, padding: crypto.constants.RSA_PKCS1_PADDING },
+      secret,
+    );
+    assert(Buffer.isBuffer(encrypted));
+
+    const decrypted = crypto.privateDecrypt(
+      { key: privateDer, padding: crypto.constants.RSA_PKCS1_PADDING },
+      encrypted,
+    );
+    assertEquals(decrypted, secret);
+  },
+});
