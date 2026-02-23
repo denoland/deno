@@ -53,12 +53,11 @@ impl LogFile {
   }
 }
 
-pub fn init_log_file(enabled: bool) {
+pub fn init_log_file(enabled: bool, cwd: &Path) {
   let prepare_path = || {
     if !enabled {
       return None;
     }
-    let cwd = std::env::current_dir().ok()?;
     let now = SystemTime::now();
     let now: DateTime<Utc> = now.into();
     let now = now.to_rfc3339().replace(':', "_");
