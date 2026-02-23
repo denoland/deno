@@ -805,7 +805,8 @@ impl TestCommandBuilder {
     // Drop the sender to cancel the watchdog, then check if it timed out
     if let Some((cancel_tx, handle)) = timeout_handle {
       drop(cancel_tx);
-      if handle.join().unwrap() {
+      let timed_out = handle.join().unwrap_or(true);
+      if timed_out {
         panic!("Test command timed out");
       }
     }
