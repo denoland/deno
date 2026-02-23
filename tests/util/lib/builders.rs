@@ -383,6 +383,19 @@ impl TestContext {
   }
 }
 
+fn kill_process(pid: u32) {
+  #[cfg(unix)]
+  unsafe {
+    libc::kill(pid as i32, libc::SIGKILL);
+  }
+  #[cfg(not(unix))]
+  {
+    let _ = std::process::Command::new("taskkill")
+      .args(["/F", "/T", "/PID", &pid.to_string()])
+      .output();
+  }
+}
+
 fn curl_fetch(url: &str) -> Vec<u8> {
   let output = std::process::Command::new("curl")
     .args(["--fail", "--silent", "--show-error", "--location", url])
@@ -760,9 +773,6 @@ impl TestCommandBuilder {
     // and dropping it closes them.
     drop(command);
 
-    // Wrap the process so the watchdog thread can kill it on timeout.
-    let process = std::sync::Arc::new(std::sync::Mutex::new(process));
-
     // Set up a watchdog thread that kills the process if it exceeds the timeout.
     let timed_out = std::sync::Arc::new(
       std::sync::atomic::AtomicBool::new(false),
@@ -771,7 +781,7 @@ impl TestCommandBuilder {
       let done = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
       let done_clone = done.clone();
       let timed_out = timed_out.clone();
-      let process = process.clone();
+      let pid = process.id();
       let handle = std::thread::spawn(move || {
         let start = std::time::Instant::now();
         while start.elapsed() < timeout {
@@ -783,8 +793,11 @@ impl TestCommandBuilder {
         if !done_clone.load(std::sync::atomic::Ordering::Relaxed) {
           timed_out
             .store(true, std::sync::atomic::Ordering::Relaxed);
-          eprintln!("Test command timed out after {:?}", timeout);
-          let _ = process.lock().unwrap().kill();
+          eprintln!(
+            "Test command timed out after {:?}, killing pid {}",
+            timeout, pid
+          );
+          kill_process(pid);
         }
       });
       (done, handle)
@@ -794,7 +807,7 @@ impl TestCommandBuilder {
       sanitize_output(read_pipe_to_string(pipe, self.show_output), &args)
     });
 
-    let status = process.lock().unwrap().wait().unwrap();
+    let status = process.wait().unwrap();
     // Signal the watchdog that we're done
     if let Some((done, handle)) = timeout_handle {
       done.store(true, std::sync::atomic::Ordering::Relaxed);
