@@ -11,6 +11,38 @@ import {
   parseFileMode,
   validateBoolean,
 } from "ext:deno_node/internal/validators.mjs";
+import { resolve } from "node:path";
+
+type MkdirCallback =
+  | ((err: Error | null, path?: string) => void)
+  | CallbackWithError;
+
+/** Find the first component of `path` that does not exist. */
+function findFirstNonExistent(path: string): string | undefined {
+  let cursor = resolve(path);
+  while (true) {
+    try {
+      Deno.statSync(cursor);
+      // cursor exists, so the first non-existent is one level deeper
+      return undefined;
+    } catch {
+      const parent = resolve(cursor, "..");
+      if (parent === cursor) {
+        // reached filesystem root - nothing exists
+        return cursor;
+      }
+      // Check if the parent exists
+      try {
+        Deno.statSync(parent);
+        // parent exists but cursor doesn't - cursor is first non-existent
+        return cursor;
+      } catch {
+        // parent also doesn't exist, keep going up
+        cursor = parent;
+      }
+    }
+  }
+}
 
 /**
  * TODO: Also accept 'path' parameter as a Node polyfill Buffer type once these
@@ -23,8 +55,8 @@ type MkdirOptions =
 
 export function mkdir(
   path: string | URL,
-  options?: MkdirOptions | CallbackWithError,
-  callback?: CallbackWithError,
+  options?: MkdirOptions | MkdirCallback,
+  callback?: MkdirCallback,
 ) {
   path = getValidatedPath(path) as string;
 
@@ -45,10 +77,12 @@ export function mkdir(
   }
   validateBoolean(recursive, "options.recursive");
 
+  const firstNonExistent = recursive ? findFirstNonExistent(path) : undefined;
+
   Deno.mkdir(path, { recursive, mode })
     .then(() => {
       if (typeof callback === "function") {
-        callback(null);
+        callback(null, firstNonExistent);
       }
     }, (err) => {
       if (typeof callback === "function") {
@@ -60,9 +94,12 @@ export function mkdir(
 export const mkdirPromise = promisify(mkdir) as (
   path: string | URL,
   options?: MkdirOptions,
-) => Promise<void>;
+) => Promise<string | undefined>;
 
-export function mkdirSync(path: string | URL, options?: MkdirOptions) {
+export function mkdirSync(
+  path: string | URL,
+  options?: MkdirOptions,
+): string | undefined {
   path = getValidatedPath(path) as string;
 
   let mode = 0o777;
@@ -80,9 +117,13 @@ export function mkdirSync(path: string | URL, options?: MkdirOptions) {
   }
   validateBoolean(recursive, "options.recursive");
 
+  const firstNonExistent = recursive ? findFirstNonExistent(path) : undefined;
+
   try {
     Deno.mkdirSync(path, { recursive, mode });
   } catch (err) {
     throw denoErrorToNodeError(err as Error, { syscall: "mkdir", path });
   }
+
+  return firstNonExistent;
 }
