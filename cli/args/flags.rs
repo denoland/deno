@@ -6241,9 +6241,34 @@ fn deploy_parse(
     args.push(String::from("--help"));
   }
 
+  // For static deployments, build-related flags are meaningless since the
+  // site is already built. The @deno/deploy package requires them
+  // unconditionally, so inject no-op defaults when they're missing.
+  if deploy_args_is_static_mode(&args) {
+    for flag in [
+      "--install-command",
+      "--build-command",
+      "--pre-deploy-command",
+    ] {
+      if !args.iter().any(|a| a == flag) {
+        args.push(flag.to_string());
+        args.push("true".to_string());
+      }
+    }
+  }
+
   flags.argv = args;
   flags.subcommand = DenoSubcommand::Deploy(DeployFlags { sandbox });
   Ok(())
+}
+
+/// Returns true if the deploy args contain `create` with `--runtime-mode static`.
+fn deploy_args_is_static_mode(args: &[String]) -> bool {
+  let has_create = args.iter().any(|a| a == "create");
+  let has_static_mode = args.windows(2).any(|pair| {
+    pair[0] == "--runtime-mode" && pair[1] == "static"
+  });
+  has_create && has_static_mode
 }
 
 fn doc_parse(
