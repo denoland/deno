@@ -8,6 +8,8 @@ import { core, primordials } from "ext:core/mod.js";
 import { validateFunction } from "ext:deno_node/internal/validators.mjs";
 import {
   AsyncHook,
+  emitDestroy as emitDestroyHook,
+  emitInit,
   executionAsyncId as internalExecutionAsyncId,
   newAsyncId,
 } from "ext:deno_node/internal/async_hooks.ts";
@@ -26,6 +28,12 @@ const {
   setAsyncContext,
 } = core;
 
+// FinalizationRegistry to emit the async hook destroy callback when an
+// AsyncResource is garbage collected, matching Node.js behaviour.
+const asyncResourceRegistry = new FinalizationRegistry(
+  (asyncId: number) => emitDestroyHook(asyncId),
+);
+
 export class AsyncResource {
   type: string;
   #snapshot: unknown;
@@ -35,6 +43,12 @@ export class AsyncResource {
     this.type = type;
     this.#snapshot = getAsyncContext();
     this.#asyncId = newAsyncId();
+    // Fire the init hook so that async_hooks.createHook({ init }) callbacks
+    // receive this resource, matching Node.js behaviour.
+    emitInit(this.#asyncId, type, internalExecutionAsyncId(), this);
+    // Register with the FinalizationRegistry so emitDestroy is called when
+    // this object is garbage collected.
+    asyncResourceRegistry.register(this, this.#asyncId);
   }
 
   asyncId() {
@@ -55,7 +69,11 @@ export class AsyncResource {
     }
   }
 
-  emitDestroy() {}
+  emitDestroy() {
+    asyncResourceRegistry.unregister(this);
+    emitDestroyHook(this.#asyncId);
+    return this;
+  }
 
   bind(fn: (...args: unknown[]) => unknown, thisArg) {
     validateFunction(fn, "fn");

@@ -2,6 +2,12 @@
   "tests": {
     "abort/test-addon-register-signal-handler.js": {},
     "abort/test-addon-uv-handle-leak.js": {},
+    "abort/test-zlib-invalid-internals-usage.js": {
+      "darwin": false,
+      "linux": false,
+      "windows": false,
+      "reason": "Tests Node.js internal C++ binding (internalBinding('zlib').Zlib) which is not implemented in Deno"
+    },
     "es-module/test-cjs-prototype-pollution.js": {},
     "es-module/test-esm-assert-strict.mjs": {},
     "es-module/test-esm-child-process-fork-main.mjs": {},
@@ -1651,7 +1657,7 @@
     "parallel/test-zlib-from-gzip.js": {},
     "parallel/test-zlib-from-string.js": {},
     "parallel/test-zlib-invalid-arg-value-brotli-compress.js": {},
-    // "parallel/test-zlib-invalid-input-memory.js": {},
+    "parallel/test-zlib-invalid-input-memory.js": {},
     "parallel/test-zlib-invalid-input.js": {},
     "parallel/test-zlib-kmaxlength-rangeerror.js": {
       "darwin": false,
@@ -1670,7 +1676,7 @@
     "parallel/test-zlib-sync-no-event.js": {},
     "parallel/test-zlib-truncated.js": {},
     "parallel/test-zlib-type-error.js": {},
-    // "parallel/test-zlib-unused-weak.js": {},
+    "parallel/test-zlib-unused-weak.js": {},
     "parallel/test-zlib-unzip-one-byte-chunks.js": {},
     "parallel/test-zlib-write-after-close.js": {},
     "parallel/test-zlib-write-after-end.js": {},
