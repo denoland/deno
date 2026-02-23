@@ -1238,7 +1238,7 @@ Deno.test({
 });
 
 // Regression test for https://github.com/denoland/deno/issues/25776
-Deno.test(async function killSignalZero() {
+Deno.test(function killSignalZero() {
   const child = CP.spawn(Deno.execPath(), [
     "eval",
     "setTimeout(() => {}, 60_000)",
