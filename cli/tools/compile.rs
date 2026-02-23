@@ -553,6 +553,7 @@ mod test {
 
   pub use super::*;
   use crate::http_util::HttpClientProvider;
+  use crate::util::env::resolve_cwd;
 
   #[tokio::test]
   async fn resolve_compile_executable_output_path_target_linux() {
@@ -574,7 +575,7 @@ mod test {
         exclude: Default::default(),
         eszip: true,
       },
-      &std::env::current_dir().unwrap(),
+      &resolve_cwd(None).unwrap(),
     )
     .await
     .unwrap();
@@ -605,7 +606,7 @@ mod test {
         no_terminal: false,
         eszip: true,
       },
-      &std::env::current_dir().unwrap(),
+      &resolve_cwd(None).unwrap(),
     )
     .await
     .unwrap();

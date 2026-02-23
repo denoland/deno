@@ -467,6 +467,9 @@ fn parse_flags(source: &str) -> (Vec<String>, Vec<String>) {
           "--expose-gc" => {
             v8_flags.push("--expose-gc".to_string());
           }
+          "--no-concurrent-array-buffer-sweeping" => {
+            v8_flags.push("--no-concurrent-array-buffer-sweeping".to_string());
+          }
           "--no-warnings" => {
             node_options.push("--no-warnings".to_string());
           }

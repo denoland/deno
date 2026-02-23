@@ -58,6 +58,7 @@ use crate::npm::CliNpmResolver;
 use crate::npm::NpmFetchResolver;
 use crate::sys::CliSys;
 use crate::util::display;
+use crate::util::env::resolve_cwd;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 
 mod bin_name_resolver;
@@ -373,7 +374,7 @@ pub async fn uninstall(
     }
   };
 
-  let cwd = std::env::current_dir().context("Unable to get CWD")?;
+  let cwd = resolve_cwd(flags.initial_cwd.as_deref())?;
   let installation_dir =
     get_installer_bin_dir(&cwd, uninstall_flags.root.as_deref())?;
 
@@ -942,7 +943,7 @@ async fn install_global_compiled(
   flags: Arc<Flags>,
   install_flags_global: InstallFlagsGlobal,
 ) -> Result<(), AnyError> {
-  let cwd = std::env::current_dir().context("Unable to get CWD")?;
+  let cwd = resolve_cwd(flags.initial_cwd.as_deref())?;
   let install_dir =
     get_installer_bin_dir(&cwd, install_flags_global.root.as_deref())?;
 
@@ -1314,13 +1315,14 @@ mod tests {
   use crate::args::PermissionFlags;
   use crate::args::UninstallFlagsGlobal;
   use crate::http_util::HttpClientProvider;
+  use crate::util::env::resolve_cwd;
   use crate::util::fs::canonicalize_path;
 
   async fn create_install_shim(
     flags: &Flags,
     install_flags_global: InstallFlagsGlobal,
   ) -> Result<(), AnyError> {
-    let cwd = std::env::current_dir().unwrap();
+    let cwd = resolve_cwd(None).unwrap();
     let http_client = HttpClientProvider::new(None, None);
     let registry_api = deno_npm::registry::TestNpmRegistryApi::default();
     let npm_version_resolver = NpmVersionResolver::default();
@@ -1340,7 +1342,7 @@ mod tests {
     flags: &Flags,
     install_flags_global: &InstallFlagsGlobal,
   ) -> Result<ShimData, AnyError> {
-    let cwd = std::env::current_dir().unwrap();
+    let cwd = resolve_cwd(None).unwrap();
     let http_client = HttpClientProvider::new(None, None);
     let registry_api = deno_npm::registry::TestNpmRegistryApi::default();
     let npm_version_resolver = NpmVersionResolver::default();
@@ -1740,7 +1742,7 @@ mod tests {
     let temp_dir = TempDir::new();
     let bin_dir = temp_dir.path().join("bin");
     std::fs::create_dir(&bin_dir).unwrap();
-    let local_module = env::current_dir().unwrap().join("echo_server.ts");
+    let local_module = resolve_cwd(None).unwrap().join("echo_server.ts");
     let local_module_url = Url::from_file_path(&local_module).unwrap();
     let local_module_str = local_module.to_string_lossy();
 
@@ -2005,7 +2007,8 @@ mod tests {
   async fn install_file_url() {
     let temp_dir = TempDir::new();
     let bin_dir = temp_dir.path().join("bin");
-    let module_path = fs::canonicalize(testdata_path().join("cat.ts")).unwrap();
+    let module_path =
+      canonicalize_path(testdata_path().join("cat.ts").as_path()).unwrap();
     let file_module_string =
       Url::from_file_path(module_path).unwrap().to_string();
     assert!(file_module_string.starts_with("file:///"));

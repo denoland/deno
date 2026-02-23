@@ -11,6 +11,7 @@ import {
   op_spawn_wait,
 } from "ext:core/ops";
 const {
+  ArrayIsArray,
   ArrayPrototypeMap,
   ArrayPrototypeSlice,
   TypeError,
@@ -435,7 +436,7 @@ class ReadableStreamWithCollectors extends ReadableStream {
   }
 }
 
-function spawn(command, options) {
+function spawnInner(command, options) {
   if (options?.stdin === "piped") {
     throw new TypeError(
       "Piped stdin is not supported for this function, use 'Deno.Command().spawn()' instead",
@@ -449,7 +450,7 @@ function spawn(command, options) {
     .output();
 }
 
-function spawnSync(command, {
+function spawnSyncInner(command, {
   args = [],
   cwd = undefined,
   clearEnv = false,
@@ -519,7 +520,7 @@ class Command {
         "Piped stdin is not supported for this function, use 'Deno.Command.spawn()' instead",
       );
     }
-    return spawn(this.#command, this.#options);
+    return spawnInner(this.#command, this.#options);
   }
 
   outputSync() {
@@ -528,7 +529,7 @@ class Command {
         "Piped stdin is not supported for this function, use 'Deno.Command.spawn()' instead",
       );
     }
-    return spawnSync(this.#command, this.#options);
+    return spawnSyncInner(this.#command, this.#options);
   }
 
   spawn() {
@@ -543,4 +544,54 @@ class Command {
   }
 }
 
-export { ChildProcess, Command, kill, kInputOption, Process, run };
+function spawn(command, argsOrOptions, maybeOptions) {
+  if (ArrayIsArray(argsOrOptions)) {
+    const options = maybeOptions ?? {};
+    if (options.args !== undefined) {
+      throw new TypeError(
+        "Passing 'args' in options is not allowed when args are passed as a separate argument",
+      );
+    }
+    return new Command(command, { ...options, args: argsOrOptions }).spawn();
+  }
+  return new Command(command, argsOrOptions).spawn();
+}
+
+function spawnAndWait(command, argsOrOptions, maybeOptions) {
+  if (ArrayIsArray(argsOrOptions)) {
+    const options = maybeOptions ?? {};
+    if (options.args !== undefined) {
+      throw new TypeError(
+        "Passing 'args' in options is not allowed when args are passed as a separate argument",
+      );
+    }
+    return new Command(command, { ...options, args: argsOrOptions }).output();
+  }
+  return new Command(command, argsOrOptions).output();
+}
+
+function spawnAndWaitSync(command, argsOrOptions, maybeOptions) {
+  if (ArrayIsArray(argsOrOptions)) {
+    const options = maybeOptions ?? {};
+    if (options.args !== undefined) {
+      throw new TypeError(
+        "Passing 'args' in options is not allowed when args are passed as a separate argument",
+      );
+    }
+    return new Command(command, { ...options, args: argsOrOptions })
+      .outputSync();
+  }
+  return new Command(command, argsOrOptions).outputSync();
+}
+
+export {
+  ChildProcess,
+  Command,
+  kill,
+  kInputOption,
+  Process,
+  run,
+  spawn,
+  spawnAndWait,
+  spawnAndWaitSync,
+};

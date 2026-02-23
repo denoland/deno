@@ -108,9 +108,9 @@ comrak.workspace = true
 console_static_text.workspace = true
 crossterm.workspace = true
 dashmap.workspace = true
+deno_dotenv.workspace = true
 dhat = { workspace = true, optional = true }
 dissimilar.workspace = true
-dotenvy.workspace = true
 dprint-core.workspace = true
 dprint-plugin-json.workspace = true
 dprint-plugin-jupyter.workspace = true

@@ -38,6 +38,7 @@ use super::tsc;
 use crate::jsr::JsrFetchResolver;
 use crate::lsp::registries::DocumentationCompletionItemData;
 use crate::lsp::tsgo;
+use crate::util::env::resolve_cwd;
 use crate::util::path::is_importable_ext;
 use crate::util::path::relative_specifier;
 
@@ -434,7 +435,7 @@ fn get_local_completions(
     .ok()?;
   let resolved_parent_path = url_to_file_path(&resolved_parent).ok()?;
   if resolved_parent_path.is_dir() {
-    let cwd = std::env::current_dir().ok()?;
+    let cwd = resolve_cwd(None).ok()?;
     let entries = std::fs::read_dir(resolved_parent_path).ok()?;
     let items = entries
       .filter_map(|de| {
