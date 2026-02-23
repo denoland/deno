@@ -1176,6 +1176,7 @@
     "parallel/test-stdin-resume-pause.js": {},
     "parallel/test-stdin-script-child-option.js": {},
     "parallel/test-stdin-script-child.js": {},
+    "parallel/test-stdio-closed.js": {},
     "parallel/test-stdio-pipe-access.js": {},
     "parallel/test-stdio-pipe-redirect.js": {},
     "parallel/test-stdio-pipe-stderr.js": {
@@ -1185,6 +1186,8 @@
       "flaky": true
     },
     "parallel/test-stdout-cannot-be-closed-child-process-pipe.js": {},
+    "parallel/test-stdout-close-catch.js": {},
+    "parallel/test-stdout-close-unref.js": {},
     "parallel/test-stdout-pipeline-destroy.js": {},
     "parallel/test-stdout-stderr-reading.js": {},
     "parallel/test-stdout-stderr-write.js": {},
