@@ -447,6 +447,7 @@ pub struct TestCommandBuilder {
   args_vec: Vec<String>,
   split_output: bool,
   show_output: bool,
+  timeout: Option<std::time::Duration>,
 }
 
 impl TestCommandBuilder {
@@ -467,6 +468,7 @@ impl TestCommandBuilder {
       args_text: "".to_string(),
       args_vec: Default::default(),
       show_output: false,
+      timeout: None,
     }
   }
 
@@ -550,6 +552,11 @@ impl TestCommandBuilder {
   #[deprecated]
   pub fn show_output(mut self) -> Self {
     self.show_output = true;
+    self
+  }
+
+  pub fn timeout(mut self, timeout: std::time::Duration) -> Self {
+    self.timeout = Some(timeout);
     self
   }
 
@@ -753,11 +760,58 @@ impl TestCommandBuilder {
     // and dropping it closes them.
     drop(command);
 
+    // Set up a watchdog thread that kills the process if it exceeds the timeout.
+    let timed_out = std::sync::Arc::new(
+      std::sync::atomic::AtomicBool::new(false),
+    );
+    let timeout_handle = self.timeout.map(|timeout| {
+      let done = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+      let done_clone = done.clone();
+      let timed_out = timed_out.clone();
+      let pid = process.id();
+      let handle = std::thread::spawn(move || {
+        let start = std::time::Instant::now();
+        while start.elapsed() < timeout {
+          if done_clone.load(std::sync::atomic::Ordering::Relaxed) {
+            return;
+          }
+          std::thread::sleep(std::time::Duration::from_millis(500));
+        }
+        if !done_clone.load(std::sync::atomic::Ordering::Relaxed) {
+          timed_out
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+          eprintln!(
+            "Test command timed out after {:?}, killing pid {}",
+            timeout, pid
+          );
+          #[cfg(unix)]
+          unsafe {
+            libc::kill(pid as i32, libc::SIGKILL);
+          }
+          #[cfg(not(unix))]
+          {
+            let _ = std::process::Command::new("taskkill")
+              .args(["/F", "/T", "/PID", &pid.to_string()])
+              .output();
+          }
+        }
+      });
+      (done, handle)
+    });
+
     let combined = combined_reader.map(|pipe| {
       sanitize_output(read_pipe_to_string(pipe, self.show_output), &args)
     });
 
     let status = process.wait().unwrap();
+    // Signal the watchdog that we're done
+    if let Some((done, handle)) = timeout_handle {
+      done.store(true, std::sync::atomic::Ordering::Relaxed);
+      let _ = handle.join();
+    }
+    if timed_out.load(std::sync::atomic::Ordering::Relaxed) {
+      panic!("Test command timed out");
+    }
     let std_out_err = std_out_err_handle.map(|(stdout, stderr)| {
       (
         sanitize_output(stdout.join().unwrap(), &args),
