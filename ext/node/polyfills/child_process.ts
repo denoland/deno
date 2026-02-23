@@ -222,9 +222,27 @@ export function spawn(
   options = normalizeSpawnArguments(command, args, options);
 
   validateAbortSignal(options?.signal, "options.signal");
+  validateTimeout(options?.timeout);
 
   const child = new ChildProcess();
   child.spawn(options);
+
+  const timeout = options?.timeout;
+  if (timeout != null && timeout > 0) {
+    const killSignal = options?.killSignal ?? "SIGTERM";
+    let timeoutId: ReturnType<typeof setTimeout> | null = setTimeout(() => {
+      timeoutId = null;
+      child.kill(killSignal as string);
+    }, timeout);
+
+    child.once("exit", () => {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+    });
+  }
+
   return child;
 }
 
