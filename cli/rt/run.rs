@@ -165,7 +165,9 @@ impl ModuleLoader for EmbeddedModuleLoader {
     _kind: ResolutionKind,
   ) -> Result<Url, ModuleLoaderError> {
     let referrer = if referrer == "." {
-      let current_dir = std::env::current_dir().unwrap();
+      #[allow(clippy::disallowed_methods)] // ok to use current_dir here
+      let current_dir =
+        std::env::current_dir().map_err(JsErrorBox::from_err)?;
       deno_core::resolve_path(".", &current_dir)
         .map_err(JsErrorBox::from_err)?
     } else {
@@ -242,9 +244,6 @@ impl ModuleLoader for EmbeddedModuleLoader {
       {
         PackageJsonDepValue::File(_) => Err(JsErrorBox::from_err(
           DenoResolveErrorKind::UnsupportedPackageJsonFileSpecifier.into_box(),
-        )),
-        PackageJsonDepValue::JsrReq(_) => Err(JsErrorBox::from_err(
-          DenoResolveErrorKind::UnsupportedPackageJsonJsrReq.into_box(),
         )),
         PackageJsonDepValue::Req(req) => Ok(
           self

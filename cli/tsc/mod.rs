@@ -1,6 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 //
-mod go;
+pub mod go;
 mod js;
 
 use std::collections::HashMap;
@@ -553,6 +553,7 @@ pub fn as_ts_script_kind(media_type: MediaType) -> i32 {
     | MediaType::Html
     | MediaType::Jsonc
     | MediaType::Json5
+    | MediaType::Markdown
     | MediaType::Sql
     | MediaType::Wasm
     | MediaType::Unknown => 0,

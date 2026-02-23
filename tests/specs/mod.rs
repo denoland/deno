@@ -246,6 +246,20 @@ struct StepMetaData {
 }
 
 pub fn main() {
+  if test_util::hash::should_skip_on_ci("specs", |hasher| {
+    let tests = test_util::tests_path();
+    hasher
+      .hash_dir(tests.join("specs"))
+      .hash_dir(tests.join("util"))
+      .hash_dir(tests.join("testdata"))
+      .hash_dir(tests.join("registry"))
+      .hash_file(test_util::deno_exe_path())
+      .hash_file(test_util::test_server_path())
+      .hash_file(test_util::denort_exe_path());
+  }) {
+    return;
+  }
+
   let root_category =
     collect_tests_or_exit::<serde_json::Value>(CollectOptions {
       base: tests_path().join("specs").to_path_buf(),
@@ -258,6 +272,13 @@ pub fn main() {
       filter_override: None,
     })
     .into_flat_category();
+
+  let root_category =
+    if let Some(shard) = test_util::test_runner::ShardConfig::from_env() {
+      test_util::test_runner::filter_to_shard(root_category, &shard)
+    } else {
+      root_category
+    };
 
   if root_category.is_empty() {
     return; // all tests filtered out
@@ -470,6 +491,9 @@ fn should_run(if_cond: Option<&str>) -> bool {
       "notMacIntel" => {
         cfg!(unix)
           && !(cfg!(target_os = "macos") && cfg!(target_arch = "x86_64"))
+      }
+      "notWindowsArm" => {
+        !(cfg!(target_os = "windows") && cfg!(target_arch = "aarch64"))
       }
       value => panic!("Unknown if condition: {}", value),
     }

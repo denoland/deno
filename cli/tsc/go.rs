@@ -164,7 +164,7 @@ fn diagnostic_category(category: &str) -> super::DiagnosticCategory {
   }
 }
 
-fn maybe_rewrite_message(message: String, code: u64) -> String {
+pub fn maybe_rewrite_message(message: String, code: u64) -> String {
   if code == 2304 && message.starts_with("Cannot find name 'Deno'") {
     r#"Cannot find name 'Deno'. Do you need to change your target library? Try changing the 'lib' compiler option to include 'deno.ns' or add a triple-slash directive to the top of your entrypoint (main file): /// <reference lib="deno.ns" />"#.to_string()
   } else if code == 2581 {
@@ -713,6 +713,7 @@ fn load_inner(
     | MediaType::Css
     | MediaType::Jsonc
     | MediaType::Json5
+    | MediaType::Markdown
     | MediaType::Html
     | MediaType::Sql
     | MediaType::Wasm

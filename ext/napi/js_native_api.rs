@@ -285,13 +285,6 @@ fn napi_define_class<'s>(
       let setter = p
         .setter
         .map(|s| create_function_template(scope, env_ptr, None, s, p.data));
-      if getter.is_some()
-        && setter.is_some()
-        && (p.attributes & napi_writable) == 0
-      {
-        accessor_property =
-          accessor_property | v8::PropertyAttribute::READ_ONLY;
-      }
       let proto = tpl.prototype_template(scope);
       proto.set_accessor_property(name, getter, setter, accessor_property);
     } else if let Some(method) = p.method {
@@ -2129,16 +2122,12 @@ fn napi_get_value_string_latin1(
       *result = value.length();
     }
   } else if bufsize != 0 {
-    let buffer =
-      unsafe { std::slice::from_raw_parts_mut(buf as _, bufsize - 1) };
-    value.write_one_byte_v2(scope, 0, buffer, v8::WriteFlags::empty());
-    let copied = buffer.len();
-    unsafe {
-      buf.add(copied).write(0);
-    }
+    let length = value.length().min(bufsize - 1);
+    let buffer = unsafe { std::slice::from_raw_parts_mut(buf as _, length) };
+    value.write_one_byte_v2(scope, 0, buffer, v8::WriteFlags::kNullTerminate);
     if !result.is_null() {
       unsafe {
-        *result = copied;
+        *result = length;
       }
     }
   } else if !result.is_null() {
@@ -2177,14 +2166,12 @@ fn napi_get_value_string_utf8(
   } else if bufsize != 0 {
     let buffer =
       unsafe { std::slice::from_raw_parts_mut(buf as _, bufsize - 1) };
-    let mut nchars = 0;
-    value.write_utf8_v2(
+    let copied = value.write_utf8_v2(
       scope,
       buffer,
       v8::WriteFlags::kReplaceInvalidUtf8,
-      Some(&mut nchars),
+      None,
     );
-    let copied = nchars;
     unsafe {
       buf.add(copied).write(0);
     }
@@ -2227,16 +2214,12 @@ fn napi_get_value_string_utf16(
       *result = value.length();
     }
   } else if bufsize != 0 {
-    let buffer =
-      unsafe { std::slice::from_raw_parts_mut(buf as _, bufsize - 1) };
-    value.write_v2(scope, 0, buffer, v8::WriteFlags::empty());
-    let copied = buffer.len();
-    unsafe {
-      buf.add(copied).write(0);
-    }
+    let length = value.length().min(bufsize - 1);
+    let buffer = unsafe { std::slice::from_raw_parts_mut(buf as _, length) };
+    value.write_v2(scope, 0, buffer, v8::WriteFlags::kNullTerminate);
     if !result.is_null() {
       unsafe {
-        *result = copied;
+        *result = length;
       }
     }
   } else if !result.is_null() {

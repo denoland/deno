@@ -2,6 +2,7 @@
 
 use std::sync::Arc;
 
+use deno_config::deno_json::NewestDependencyDate;
 use deno_config::deno_json::NodeModulesDirMode;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
@@ -22,6 +23,7 @@ pub async fn deploy(
 ) -> Result<i32, AnyError> {
   flags.node_modules_dir = Some(NodeModulesDirMode::None);
   flags.no_lock = true;
+  flags.minimum_dependency_age = Some(NewestDependencyDate::Disabled);
   if deploy_flags.sandbox {
     // SAFETY: only this subcommand is running, nothing else, so it's safe to set an env var.
     unsafe {

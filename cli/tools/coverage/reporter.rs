@@ -17,6 +17,7 @@ use super::CoverageReport;
 use super::util;
 use crate::args::CoverageType;
 use crate::colors;
+use crate::util::fs::canonicalize_path;
 
 #[derive(Default, Debug)]
 pub struct CoverageStats<'a> {
@@ -222,7 +223,7 @@ impl CoverageReporter for LcovCoverageReporter {
     if let Some((report, _)) = file_reports.first()
       && let Some(ref output) = report.output
     {
-      if let Ok(path) = output.canonicalize() {
+      if let Ok(path) = canonicalize_path(output) {
         let url = Url::from_file_path(path).unwrap();
         log::info!("Lcov coverage report has been generated at {}", url);
       } else {
@@ -439,10 +440,7 @@ impl CoverageReporter for HtmlCoverageReporter {
     }
 
     let root_report = Url::from_file_path(
-      coverage_root
-        .join("html")
-        .join("index.html")
-        .canonicalize()
+      canonicalize_path(&coverage_root.join("html").join("index.html"))
         .unwrap(),
     )
     .unwrap();

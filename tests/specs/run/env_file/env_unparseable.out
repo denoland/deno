@@ -1,4 +1,4 @@
-Warning Parsing failed within the specified environment file: ./env_unparseable at index: 3 of the value: c:\path
+Warning Parsing failed within the specified environment file: ./env_unparseable at index: 14 of the value: ANOTHER_FOO=c:ath
 valid
 undefined
 undefined

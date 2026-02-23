@@ -1,5 +1,8 @@
 disallowed-methods = [
   { path = "reqwest::Client::new", reason = "create an HttpClient via an HttpClientProvider instead" },
+  { path = "std::fs::canonicalize", reason = "use crate::util::fs::canonicalize_path instead" },
+  { path = "std::path::Path::canonicalize", reason = "use crate::util::fs::canonicalize_path instead" },
+  { path = "std::env::current_dir", reason = "use crate::util::env::resolve_cwd instead and prefer passing it the initial_cwd" },
   { path = "std::process::exit", reason = "use deno_runtime::exit instead" },
   { path = "clap::Arg::env", reason = "ensure environment variables are resolved after loading the .env file instead" },
   { path = "tokio::signal::ctrl_c", reason = "use deno_signals crate instead" },

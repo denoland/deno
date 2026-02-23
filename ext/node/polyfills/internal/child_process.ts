@@ -16,6 +16,7 @@ import {
   op_node_ipc_unref,
   op_node_ipc_write_advanced,
   op_node_ipc_write_json,
+  op_node_parse_shell_args,
   op_node_translate_cli_args,
 } from "ext:core/ops";
 import {
@@ -156,6 +157,8 @@ function flushStdio(subprocess: ChildProcess) {
 // StreamBase, so it can be used with node streams
 class StreamResource implements StreamBase {
   #rid: number;
+  #isUnref = false;
+  #pendingPromises: Set<Promise<number>> = new Set();
   constructor(rid: number) {
     this.#rid = rid;
   }
@@ -164,18 +167,40 @@ class StreamResource implements StreamBase {
   }
   async read(p: Uint8Array): Promise<number | null> {
     const readPromise = core.read(this.#rid, p);
-    core.unrefOpPromise(readPromise);
-    const nread = await readPromise;
-    return nread > 0 ? nread : null;
+    this.#pendingPromises.add(readPromise);
+    if (this.#isUnref) {
+      core.unrefOpPromise(readPromise);
+    }
+    try {
+      const nread = await readPromise;
+      return nread > 0 ? nread : null;
+    } finally {
+      this.#pendingPromises.delete(readPromise);
+    }
   }
   ref(): void {
-    return;
+    this.#isUnref = false;
+    for (const promise of this.#pendingPromises) {
+      core.refOpPromise(promise);
+    }
   }
   unref(): void {
-    return;
+    this.#isUnref = true;
+    for (const promise of this.#pendingPromises) {
+      core.unrefOpPromise(promise);
+    }
   }
-  write(p: Uint8Array): Promise<number> {
-    return core.write(this.#rid, p);
+  async write(p: Uint8Array): Promise<number> {
+    const writePromise = core.write(this.#rid, p);
+    this.#pendingPromises.add(writePromise);
+    if (this.#isUnref) {
+      core.unrefOpPromise(writePromise);
+    }
+    try {
+      return await writePromise;
+    } finally {
+      this.#pendingPromises.delete(writePromise);
+    }
   }
 }
 
@@ -377,9 +402,25 @@ export class ChildProcess extends EventEmitter {
       }).spawn();
       this.pid = this.#process.pid;
 
+      // Get stdio rids to create Socket instances
+      const stdioRids = internals.getStdioRids(this.#process);
+
       if (stdin === "pipe") {
         assert(this.#process.stdin);
-        this.stdin = Writable.fromWeb(this.#process.stdin);
+        if (stdioRids.stdinRid !== null) {
+          // Create Socket instance for stdin (like Node.js does)
+          this.stdin = new Socket({
+            handle: new Pipe(
+              socketType.SOCKET,
+              new StreamResource(stdioRids.stdinRid),
+            ),
+            writable: true,
+            readable: false,
+          });
+        } else {
+          // Fallback to web stream conversion
+          this.stdin = Writable.fromWeb(this.#process.stdin);
+        }
       }
 
       if (stdin instanceof Stream) {
@@ -395,7 +436,20 @@ export class ChildProcess extends EventEmitter {
       if (stdout === "pipe") {
         assert(this.#process.stdout);
         this[kClosesNeeded]++;
-        this.stdout = Readable.fromWeb(this.#process.stdout);
+        if (stdioRids.stdoutRid !== null) {
+          // Create Socket instance for stdout (like Node.js does)
+          this.stdout = new Socket({
+            handle: new Pipe(
+              socketType.SOCKET,
+              new StreamResource(stdioRids.stdoutRid),
+            ),
+            writable: false,
+            readable: true,
+          });
+        } else {
+          // Fallback to web stream conversion
+          this.stdout = Readable.fromWeb(this.#process.stdout);
+        }
         this.stdout.on("close", () => {
           maybeClose(this);
         });
@@ -404,7 +458,20 @@ export class ChildProcess extends EventEmitter {
       if (stderr === "pipe") {
         assert(this.#process.stderr);
         this[kClosesNeeded]++;
-        this.stderr = Readable.fromWeb(this.#process.stderr);
+        if (stdioRids.stderrRid !== null) {
+          // Create Socket instance for stderr (like Node.js does)
+          this.stderr = new Socket({
+            handle: new Pipe(
+              socketType.SOCKET,
+              new StreamResource(stdioRids.stderrRid),
+            ),
+            writable: false,
+            readable: true,
+          });
+        } else {
+          // Fallback to web stream conversion
+          this.stderr = Readable.fromWeb(this.#process.stderr);
+        }
         this.stderr.on("close", () => {
           maybeClose(this);
         });
@@ -476,12 +543,15 @@ export class ChildProcess extends EventEmitter {
 
       (async () => {
         const status = await this.#process.status;
-        this.exitCode = status.code;
+        this.signalCode = this.signalCode || status.signal || null;
+        if (this.signalCode) {
+          this.exitCode = null;
+        } else {
+          this.exitCode = status.code;
+        }
         this.#spawned.promise.then(async () => {
-          const exitCode = this.signalCode == null ? this.exitCode : null;
-          const signalCode = this.signalCode == null ? null : this.signalCode;
           // The 'exit' and 'close' events must be emitted after the 'spawn' event.
-          this.emit("exit", exitCode, signalCode);
+          this.emit("exit", this.exitCode, this.signalCode);
           await this.#_waitForChildStreamsToClose();
           this.#closePipes();
           maybeClose(this);
@@ -968,10 +1038,20 @@ export function normalizeSpawnArguments(
   ]);
 
   if (options.shell) {
-    let command = ArrayPrototypeJoin([file, ...args], " ");
-    // Transform Node.js flags to Deno equivalents in shell commands that invoke Deno
-    command = transformDenoShellCommand(command);
+    // When args are provided, escape them to prevent shell injection.
+    // When no args are provided (just a string command), the user intends
+    // for shell interpretation, so don't escape.
+    let command;
+    if (args.length > 0) {
+      const escapedParts = [escapeShellArg(file), ...args.map(escapeShellArg)];
+      command = ArrayPrototypeJoin(escapedParts, " ");
+    } else {
+      command = file;
+    }
     // Set the shell, switches, and commands.
+    // Note: transformDenoShellCommand is NOT called here because buildCommand()
+    // already handles it for both `-c` (POSIX) and `/d /s /c` (cmd.exe) cases.
+    // Calling it here would cause double transformation.
     if (process.platform === "win32") {
       if (typeof options.shell === "string") {
         file = options.shell;
@@ -1087,10 +1167,52 @@ function waitForStreamToClose(stream: Stream) {
 }
 
 /**
- * Transforms a shell command that invokes Deno with Node.js flags into Deno-compatible flags.
- * Handles cases like: `"/path/to/deno" -c "file.js"` -> `"/path/to/deno" run "file.js"`
+ * Escapes a string for safe use as a shell argument.
+ * On Unix, wraps in single quotes and escapes embedded single quotes.
+ * On Windows, wraps in double quotes and escapes embedded double quotes and backslashes.
  */
-function transformDenoShellCommand(command: string): string {
+function escapeShellArg(arg: string): string {
+  if (process.platform === "win32") {
+    // Windows: use double quotes, escape double quotes and backslashes
+    // Empty string needs to be quoted
+    if (arg === "") {
+      return '""';
+    }
+    // If no special characters, return as-is
+    if (!/[\s"\\]/.test(arg)) {
+      return arg;
+    }
+    // Escape backslashes before quotes, then escape quotes
+    let escaped = arg.replace(/(\\*)"/g, '$1$1\\"');
+    // Escape trailing backslashes
+    escaped = escaped.replace(/(\\+)$/, "$1$1");
+    return `"${escaped}"`;
+  } else {
+    // Unix: use single quotes, escape embedded single quotes
+    // Empty string needs to be quoted
+    if (arg === "") {
+      return "''";
+    }
+    // If no special characters, return as-is
+    if (!/[^a-zA-Z0-9_./-]/.test(arg)) {
+      return arg;
+    }
+    // Wrap in single quotes and escape any embedded single quotes
+    // Single quotes are escaped by ending the string, adding an escaped quote, and starting a new string
+    return "'" + arg.replace(/'/g, "'\\''") + "'";
+  }
+}
+
+/**
+ * Transforms a shell command that invokes Deno with Node.js flags into Deno-compatible flags.
+ * Uses the Rust CLI parser (op_node_translate_cli_args) to handle argument translation,
+ * including subcommand detection, -c/--check flag handling, and adding "run -A".
+ */
+function transformDenoShellCommand(
+  command: string,
+  env?: Record<string, string | number | boolean>,
+  isCmdExe: boolean = false,
+): string {
   const denoPath = Deno.execPath();
 
   // Check if the command starts with the Deno executable (possibly quoted)
@@ -1099,6 +1221,7 @@ function transformDenoShellCommand(command: string): string {
 
   let startsWithDeno = false;
   let denoPathLength = 0;
+  let shellVarPrefix = "";
 
   if (command.startsWith(quotedDenoPath)) {
     startsWithDeno = true;
@@ -1109,6 +1232,22 @@ function transformDenoShellCommand(command: string): string {
   } else if (command.startsWith(denoPath)) {
     startsWithDeno = true;
     denoPathLength = denoPath.length;
+  } else if (env) {
+    // Check for shell variable that references the Deno path
+    // Pattern: "${VARNAME}", "$VARNAME", ${VARNAME}, or $VARNAME at start of command
+    const shellVarMatch = command.match(
+      /^(?:"\$\{([^}]+)\}"|\"\$([A-Za-z_][A-Za-z0-9_]*)\"|\$\{([^}]+)\}|\$([A-Za-z_][A-Za-z0-9_]*))/,
+    );
+    if (shellVarMatch) {
+      const varName = shellVarMatch[1] || shellVarMatch[2] ||
+        shellVarMatch[3] || shellVarMatch[4];
+      const varValue = env[varName];
+      if (varValue !== undefined && String(varValue) === denoPath) {
+        startsWithDeno = true;
+        shellVarPrefix = shellVarMatch[0];
+        denoPathLength = shellVarMatch[0].length;
+      }
+    }
   }
 
   if (!startsWithDeno) {
@@ -1118,17 +1257,72 @@ function transformDenoShellCommand(command: string): string {
   // Extract the rest of the command after the Deno path
   const rest = command.slice(denoPathLength).trimStart();
 
-  // Transform Node.js -c/--check flag to Deno run subcommand
-  // Node's -c does syntax checking (parse without execute). Deno doesn't have an exact equivalent,
-  // but deno run will fail fast on syntax errors during parsing, achieving similar behavior.
-  const checkFlagRegex = /^(-c|--check)\s+(.*)$/;
-  const match = rest.match(checkFlagRegex);
-
-  if (match) {
-    return command.slice(0, denoPathLength) + " run " + match[2];
+  if (rest.length === 0) {
+    return command;
   }
 
-  return command;
+  // Parse the command using the shell parser to separate arguments from
+  // shell operators (redirections, pipes, etc.).
+  const { args, shell_suffix: shellSuffix } = op_node_parse_shell_args(
+    rest,
+    isCmdExe,
+  );
+
+  try {
+    const result = op_node_translate_cli_args(args, false, false);
+    // Shell-quote translated args that contain metacharacters so they are
+    // safe to embed in a shell command string.
+    const quotedArgs = isWindows
+      ? result.deno_args.map((a) => {
+        // Windows cmd.exe: use double quotes for args with spaces or
+        // special chars. Backslash is a path separator, not an escape.
+        if (/[\s"&|<>^]/.test(a)) {
+          let escaped = a.replace(/(\\*)"/g, '$1$1\\"');
+          escaped = escaped.replace(/(\\+)$/, "$1$1");
+          return `"${escaped}"`;
+        }
+        return a;
+      })
+      : result.deno_args.map((a) => {
+        // POSIX: args with shell variable refs use double quotes to
+        // preserve variable expansion. Other metacharacters use single
+        // quotes.
+        if (/\$\{[^}]+\}|\$[A-Za-z_]/.test(a)) {
+          return '"' + a.replace(/"/g, '\\"') + '"';
+        }
+        if (/[();&|<>`!\n\r\s"'\\$]/.test(a)) {
+          return "'" + a.replace(/'/g, "'\\''") + "'";
+        }
+        return a;
+      });
+    const prefix = shellVarPrefix || command.slice(0, denoPathLength);
+    let transformed = prefix + " " + quotedArgs.join(" ");
+    if (shellSuffix) {
+      transformed += " " + shellSuffix;
+    }
+
+    // If the shell suffix starts with a pipe, the command after the pipe
+    // may also be a Deno invocation that needs transformation.
+    if (env) {
+      const pipeMatch = shellSuffix.match(/^\s*\|\s*/);
+      if (pipeMatch) {
+        const afterPipe = shellSuffix.slice(pipeMatch[0].length);
+        const transformedAfter = transformDenoShellCommand(
+          afterPipe,
+          env,
+          isCmdExe,
+        );
+        if (transformedAfter !== afterPipe) {
+          transformed = prefix + " " + quotedArgs.join(" ") +
+            " | " + transformedAfter;
+        }
+      }
+    }
+    return transformed;
+  } catch {
+    // If the Rust parser fails (unknown flags), return the original command
+    return command;
+  }
 }
 
 /**
@@ -1186,7 +1380,7 @@ function buildCommand(
 
     // Use the Rust parser to translate Node.js args to Deno args
     // The parser handles Deno-style args (e.g., "run -A script.js") by passing them through unchanged
-    const result = op_node_translate_cli_args(args, scriptInNpmPackage);
+    const result = op_node_translate_cli_args(args, scriptInNpmPackage, true);
     args = result.deno_args;
     includeNpmProcessState = result.needs_npm_process_state;
 
@@ -1197,6 +1391,62 @@ function buildCommand(
         env.NODE_OPTIONS += " " + options;
       } else {
         env.NODE_OPTIONS = options;
+      }
+    }
+  }
+
+  // When spawning a shell with `-c` (e.g. spawn('/bin/sh', ['-c', cmd])),
+  // transform any Deno commands inside the shell command string so that
+  // Node.js flags are translated and `-A` is added.
+  if (
+    file !== Deno.execPath() &&
+    args.length >= 2 &&
+    args[0] === "-c"
+  ) {
+    const transformed = transformDenoShellCommand(args[1], env, false);
+    if (transformed !== args[1]) {
+      args = args.slice();
+      args[1] = transformed;
+    }
+  }
+
+  // Windows cmd.exe: args are ["/d", "/s", "/c", '"command"']
+  if (
+    file !== Deno.execPath() &&
+    args.length >= 4 &&
+    args[0] === "/d" && args[1] === "/s" && args[2] === "/c"
+  ) {
+    let cmdStr = args[3];
+    // Remove wrapping quotes added by normalizeSpawnArguments
+    const hasWrappingQuotes = cmdStr.startsWith('"') && cmdStr.endsWith('"');
+    if (hasWrappingQuotes) {
+      cmdStr = cmdStr.slice(1, -1);
+    }
+    const transformed = transformDenoShellCommand(cmdStr, env, true);
+    if (transformed !== cmdStr) {
+      args = args.slice();
+      args[3] = hasWrappingQuotes ? `"${transformed}"` : transformed;
+    }
+  }
+
+  // When spawning a non-deno process that has Deno.execPath() in its args
+  // (e.g. Python given deno's path to re-invoke it), pre-translate the args
+  // that follow so the child deno process gets the correct Node.js compat
+  // flags (-A, --unstable-bare-node-builtins, etc.).
+  // This covers cases like test-stdio-closed.js on Windows, where a Python
+  // intermediary closes stdio then calls deno directly via subprocess.call.
+  if (file !== Deno.execPath()) {
+    const denoPath = Deno.execPath();
+    const denoArgIndex = args.findIndex((arg) => arg === denoPath);
+    if (denoArgIndex !== -1) {
+      const argsForDeno = args.slice(denoArgIndex + 1);
+      if (argsForDeno.length > 0) {
+        try {
+          const result = op_node_translate_cli_args(argsForDeno, false, true);
+          args = [...args.slice(0, denoArgIndex + 1), ...result.deno_args];
+        } catch {
+          // If translation fails (unknown flags), leave args unchanged
+        }
       }
     }
   }

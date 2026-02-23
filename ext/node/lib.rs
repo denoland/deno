@@ -5,6 +5,8 @@
 #![allow(clippy::too_many_arguments)]
 
 use std::borrow::Cow;
+use std::env;
+use std::fs;
 use std::path::Path;
 
 use deno_core::FastString;
@@ -29,6 +31,7 @@ extern crate libz_sys as zlib;
 mod global;
 pub mod ops;
 
+use deno_dotenv::parse_env_content_hook;
 pub use deno_package_json::PackageJson;
 use deno_permissions::PermissionCheckError;
 pub use node_resolver::DENO_SUPPORTED_BUILTIN_NODE_MODULES as SUPPORTED_BUILTIN_NODE_MODULES;
@@ -96,9 +99,9 @@ fn op_node_build_os() -> String {
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 enum DotEnvLoadErr {
-  #[class(generic)]
-  #[error(transparent)]
-  DotEnv(#[from] dotenvy::Error),
+  #[class(inherit)]
+  #[error("{0}")]
+  Io(#[from] std::io::Error),
   #[class(inherit)]
   #[error(transparent)]
   Permission(
@@ -123,7 +126,32 @@ fn op_node_load_env_file(
     )
     .map_err(DotEnvLoadErr::Permission)?;
 
-  dotenvy::from_filename(path).map_err(DotEnvLoadErr::DotEnv)?;
+  #[allow(clippy::disallowed_methods)]
+  let contents = fs::read_to_string(path)?;
+
+  parse_env_content_hook(&contents, |key, value| {
+    // Follows Node.js behavior where null bytes are stripped from env keys and values
+    let key = if let Some(null_pos) = key.find('\0') {
+      &key[..null_pos]
+    } else {
+      key
+    };
+
+    if key.is_empty() {
+      return;
+    }
+
+    let value = if let Some(null_pos) = value.find('\0') {
+      &value[..null_pos]
+    } else {
+      value
+    };
+
+    #[allow(clippy::undocumented_unsafe_blocks)]
+    unsafe {
+      env::set_var(key, value);
+    }
+  });
 
   Ok(())
 }
@@ -145,6 +173,8 @@ deno_core::extension!(deno_node,
   deps = [ deno_io, deno_fs ],
   parameters = [TInNpmPackageChecker: InNpmPackageChecker, TNpmPackageFolderResolver: NpmPackageFolderResolver, TSys: ExtNodeSys],
   ops = [
+    ops::assert::op_node_get_first_expression,
+
     ops::blocklist::op_socket_address_parse,
     ops::blocklist::op_socket_address_get_serialization,
 
@@ -161,110 +191,6 @@ deno_core::extension!(deno_node,
     ops::buffer::op_node_buffer_compare_offset,
     ops::constant::op_node_fs_constants,
     ops::buffer::op_node_decode_utf8,
-    ops::crypto::op_node_check_prime_async,
-    ops::crypto::op_node_check_prime_bytes_async,
-    ops::crypto::op_node_check_prime_bytes,
-    ops::crypto::op_node_check_prime,
-    ops::crypto::op_node_cipheriv_encrypt,
-    ops::crypto::op_node_cipheriv_final,
-    ops::crypto::op_node_cipheriv_set_aad,
-    ops::crypto::op_node_cipheriv_take,
-    ops::crypto::op_node_create_cipheriv,
-    ops::crypto::op_node_create_decipheriv,
-    ops::crypto::op_node_create_hash,
-    ops::crypto::op_node_decipheriv_decrypt,
-    ops::crypto::op_node_decipheriv_final,
-    ops::crypto::op_node_decipheriv_set_aad,
-    ops::crypto::op_node_decipheriv_auth_tag,
-    ops::crypto::op_node_dh_compute_secret,
-    ops::crypto::op_node_diffie_hellman,
-    ops::crypto::op_node_ecdh_compute_public_key,
-    ops::crypto::op_node_ecdh_compute_secret,
-    ops::crypto::op_node_ecdh_encode_pubkey,
-    ops::crypto::op_node_ecdh_generate_keys,
-    ops::crypto::op_node_fill_random_async,
-    ops::crypto::op_node_fill_random,
-    ops::crypto::op_node_gen_prime_async,
-    ops::crypto::op_node_gen_prime,
-    ops::crypto::op_node_get_hash_size,
-    ops::crypto::op_node_get_hashes,
-    ops::crypto::op_node_hash_clone,
-    ops::crypto::op_node_hash_digest_hex,
-    ops::crypto::op_node_hash_digest,
-    ops::crypto::op_node_hash_update_str,
-    ops::crypto::op_node_hash_update,
-    ops::crypto::op_node_hkdf_async,
-    ops::crypto::op_node_hkdf,
-    ops::crypto::op_node_pbkdf2_async,
-    ops::crypto::op_node_pbkdf2,
-    ops::crypto::op_node_pbkdf2_validate,
-    ops::crypto::op_node_private_decrypt,
-    ops::crypto::op_node_private_encrypt,
-    ops::crypto::op_node_public_encrypt,
-    ops::crypto::op_node_random_int,
-    ops::crypto::op_node_scrypt_async,
-    ops::crypto::op_node_scrypt_sync,
-    ops::crypto::op_node_sign,
-    ops::crypto::op_node_sign_ed25519,
-    ops::crypto::op_node_verify,
-    ops::crypto::op_node_verify_ed25519,
-    ops::crypto::op_node_verify_spkac,
-    ops::crypto::op_node_cert_export_public_key,
-    ops::crypto::op_node_cert_export_challenge,
-    ops::crypto::keys::op_node_create_private_key,
-    ops::crypto::keys::op_node_create_ed_raw,
-    ops::crypto::keys::op_node_create_rsa_jwk,
-    ops::crypto::keys::op_node_create_ec_jwk,
-    ops::crypto::keys::op_node_create_public_key,
-    ops::crypto::keys::op_node_create_secret_key,
-    ops::crypto::keys::op_node_derive_public_key_from_private_key,
-    ops::crypto::keys::op_node_dh_keys_generate_and_export,
-    ops::crypto::keys::op_node_export_private_key_der,
-    ops::crypto::keys::op_node_export_private_key_jwk,
-    ops::crypto::keys::op_node_export_private_key_pem,
-    ops::crypto::keys::op_node_export_public_key_der,
-    ops::crypto::keys::op_node_export_public_key_pem,
-    ops::crypto::keys::op_node_export_public_key_jwk,
-    ops::crypto::keys::op_node_export_secret_key_b64url,
-    ops::crypto::keys::op_node_export_secret_key,
-    ops::crypto::keys::op_node_generate_dh_group_key_async,
-    ops::crypto::keys::op_node_generate_dh_group_key,
-    ops::crypto::keys::op_node_generate_dh_key_async,
-    ops::crypto::keys::op_node_generate_dh_key,
-    ops::crypto::keys::op_node_generate_dsa_key_async,
-    ops::crypto::keys::op_node_generate_dsa_key,
-    ops::crypto::keys::op_node_generate_ec_key_async,
-    ops::crypto::keys::op_node_generate_ec_key,
-    ops::crypto::keys::op_node_generate_ed25519_key_async,
-    ops::crypto::keys::op_node_generate_ed25519_key,
-    ops::crypto::keys::op_node_generate_rsa_key_async,
-    ops::crypto::keys::op_node_generate_rsa_key,
-    ops::crypto::keys::op_node_generate_rsa_pss_key,
-    ops::crypto::keys::op_node_generate_rsa_pss_key_async,
-    ops::crypto::keys::op_node_generate_secret_key_async,
-    ops::crypto::keys::op_node_generate_secret_key,
-    ops::crypto::keys::op_node_generate_x25519_key_async,
-    ops::crypto::keys::op_node_generate_x25519_key,
-    ops::crypto::keys::op_node_get_asymmetric_key_details,
-    ops::crypto::keys::op_node_get_asymmetric_key_type,
-    ops::crypto::keys::op_node_get_private_key_from_pair,
-    ops::crypto::keys::op_node_get_public_key_from_pair,
-    ops::crypto::keys::op_node_get_symmetric_key_size,
-    ops::crypto::keys::op_node_key_type,
-    ops::crypto::x509::op_node_x509_parse,
-    ops::crypto::x509::op_node_x509_ca,
-    ops::crypto::x509::op_node_x509_check_email,
-    ops::crypto::x509::op_node_x509_check_host,
-    ops::crypto::x509::op_node_x509_fingerprint,
-    ops::crypto::x509::op_node_x509_fingerprint256,
-    ops::crypto::x509::op_node_x509_fingerprint512,
-    ops::crypto::x509::op_node_x509_get_issuer,
-    ops::crypto::x509::op_node_x509_get_subject,
-    ops::crypto::x509::op_node_x509_get_valid_from,
-    ops::crypto::x509::op_node_x509_get_valid_to,
-    ops::crypto::x509::op_node_x509_get_serial_number,
-    ops::crypto::x509::op_node_x509_key_usage,
-    ops::crypto::x509::op_node_x509_public_key,
     ops::dns::op_node_getaddrinfo,
     ops::dns::op_node_getnameinfo,
     ops::fs::op_node_fs_exists_sync,
@@ -279,6 +205,8 @@ deno_core::extension!(deno_node,
     ops::fs::op_node_mkdtemp,
     ops::fs::op_node_open_sync,
     ops::fs::op_node_open,
+    ops::fs::op_node_rmdir_sync,
+    ops::fs::op_node_rmdir,
     ops::fs::op_node_statfs_sync,
     ops::fs::op_node_statfs,
     ops::fs::op_node_file_from_fd,
@@ -369,10 +297,12 @@ deno_core::extension!(deno_node,
     ops::require::op_require_package_imports_resolve<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys>,
     ops::require::op_require_break_on_next_statement,
     ops::util::op_node_guess_handle_type,
+    ops::util::op_node_is_tty,
     ops::util::op_node_view_has_buffer,
     ops::util::op_node_get_own_non_index_properties,
     ops::util::op_node_call_is_from_dependency<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys>,
     ops::util::op_node_in_npm_package<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys>,
+    ops::util::op_node_parse_env,
     ops::worker_threads::op_worker_threads_filename<TSys>,
     ops::ipc::op_node_child_ipc_pipe,
     ops::ipc::op_node_ipc_write_json,
@@ -388,7 +318,9 @@ deno_core::extension!(deno_node,
     ops::process::op_node_process_setgid,
     ops::process::op_node_process_setuid,
     ops::process::op_process_abort,
+    ops::process::op_node_process_constrained_memory<TSys>,
     ops::node_cli_parser::op_node_translate_cli_args,
+    ops::shell::op_node_parse_shell_args,
     ops::tls::op_get_root_certificates,
     ops::tls::op_set_default_ca_certificates,
     ops::tls::op_tls_peer_certificate,
@@ -404,19 +336,16 @@ deno_core::extension!(deno_node,
     ops::inspector::op_inspector_disconnect,
     ops::inspector::op_inspector_emit_protocol_event,
     ops::inspector::op_inspector_enabled,
-    ops::sqlite::op_node_database_backup,
   ],
   objects = [
     ops::perf_hooks::EldHistogram,
-    ops::sqlite::DatabaseSync,
-    ops::sqlite::Session,
     ops::handle_wrap::AsyncWrap,
     ops::handle_wrap::HandleWrap,
-    ops::sqlite::StatementSync,
-    ops::crypto::digest::Hasher,
     ops::zlib::BrotliDecoder,
     ops::zlib::BrotliEncoder,
     ops::zlib::Zlib,
+    ops::zlib::ZstdCompress,
+    ops::zlib::ZstdDecompress,
   ],
   esm_entry_point = "ext:deno_node/02_init.js",
   esm = [
@@ -513,6 +442,7 @@ deno_core::extension!(deno_node,
     "internal/assert/assertion_error.js",
     "internal/assert/calltracker.js",
     "internal/assert/myers_diff.js",
+    "internal/assert/utils.ts",
     "internal/assert.mjs",
     "internal/async_hooks.ts",
     "internal/blocklist.mjs",
@@ -545,6 +475,7 @@ deno_core::extension!(deno_node,
     "internal/dtrace.ts",
     "internal/error_codes.ts",
     "internal/errors.ts",
+    "internal/errors/error_source.ts",
     "internal/event_target.mjs",
     "internal/events/abort_listener.mjs",
     "internal/fixed_queue.ts",

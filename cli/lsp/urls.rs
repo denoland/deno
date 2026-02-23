@@ -1,153 +1,148 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-use std::borrow::Cow;
 use std::path::Component;
 use std::path::Path;
 use std::path::PathBuf;
+use std::path::Prefix;
 use std::str::FromStr;
 
 use deno_config::UrlToFilePathError;
 use deno_core::error::AnyError;
+use deno_core::url::Position;
 use deno_core::url::Url;
 use deno_path_util::url_to_file_path;
 use lsp_types::Uri;
 
 use super::logging::lsp_warn;
 
-/// Matches the `encodeURIComponent()` encoding from JavaScript, which matches
-/// the component percent encoding set.
-///
-/// See: <https://url.spec.whatwg.org/#component-percent-encode-set>
-pub const COMPONENT: &percent_encoding::AsciiSet = &percent_encoding::CONTROLS
-  .add(b' ')
-  .add(b'"')
-  .add(b'#')
-  .add(b'<')
-  .add(b'>')
-  .add(b'?')
-  .add(b'`')
-  .add(b'{')
-  .add(b'}')
-  .add(b'/')
-  .add(b':')
-  .add(b';')
-  .add(b'=')
-  .add(b'@')
-  .add(b'[')
-  .add(b'\\')
-  .add(b']')
-  .add(b'^')
-  .add(b'|')
-  .add(b'$')
-  .add(b'%')
-  .add(b'&')
-  .add(b'+')
-  .add(b',');
-
-/// Characters that are left unencoded in a `Url` path but will be encoded in a
-/// VSCode URI.
-const URL_TO_URI_PATH: &percent_encoding::AsciiSet =
-  &percent_encoding::CONTROLS
-    .add(b' ')
-    .add(b'!')
-    .add(b'$')
-    .add(b'&')
-    .add(b'\'')
-    .add(b'(')
-    .add(b')')
-    .add(b'*')
-    .add(b'+')
-    .add(b',')
-    .add(b':')
-    .add(b';')
-    .add(b'=')
-    .add(b'@')
-    .add(b'[')
-    .add(b']')
-    .add(b'^')
-    .add(b'|');
-
-/// Characters that may be left unencoded in a `Url` query but not valid in a
-/// `Uri` query.
-const URL_TO_URI_QUERY: &percent_encoding::AsciiSet =
-  &URL_TO_URI_PATH.add(b'\\').add(b'`').add(b'{').add(b'}');
-
-/// Characters that may be left unencoded in a `Url` fragment but not valid in
-/// a `Uri` fragment.
-const URL_TO_URI_FRAGMENT: &percent_encoding::AsciiSet =
-  &URL_TO_URI_PATH.add(b'#').add(b'\\').add(b'{').add(b'}');
-
 pub fn uri_parse_unencoded(s: &str) -> Result<Uri, AnyError> {
   url_to_uri(&Url::parse(s)?)
 }
 
-pub fn normalize_uri(uri: &Uri) -> Cow<'_, Uri> {
-  if !uri.scheme().is_some_and(|s| s.eq_lowercase("file")) {
-    return Cow::Borrowed(uri);
+pub fn normalize_uri(uri: &Uri) -> Uri {
+  if !uri.scheme().as_str().eq_ignore_ascii_case("file") {
+    return uri.normalize().into();
   }
-  let url = normalize_url(Url::parse(uri.as_str()).unwrap());
-  let Ok(normalized_uri) = url_to_uri(&url) else {
-    return Cow::Borrowed(uri);
+  let Some(path) = uri.to_file_path() else {
+    return uri.normalize().into();
   };
-  Cow::Owned(normalized_uri)
+  let normalized_path = normalize_path(path);
+  let mut encoded_path =
+    fluent_uri::pct_enc::EString::<fluent_uri::pct_enc::encoder::Path>::new();
+  let mut path_only_has_prefix = false;
+  for component in normalized_path.components() {
+    match component {
+      Component::Prefix(prefix) => {
+        path_only_has_prefix = true;
+        match prefix.kind() {
+          Prefix::Disk(mut letter) | Prefix::VerbatimDisk(mut letter) => {
+            encoded_path.encode_str::<fluent_uri::pct_enc::encoder::Path>("/");
+            letter.make_ascii_uppercase();
+            let b = [letter];
+            // SAFETY: Drive letter is ascii.
+            let s = unsafe { str::from_utf8_unchecked(&b) };
+            encoded_path.encode_str::<fluent_uri::pct_enc::encoder::Path>(s);
+            encoded_path.encode_str::<fluent_uri::pct_enc::encoder::Path>(":");
+          }
+          Prefix::UNC(..) | Prefix::VerbatimUNC(..) => {
+            // These should be carried in `uri.authority()`.
+          }
+          Prefix::Verbatim(_) | Prefix::DeviceNS(_) => {
+            // Not a local path, abort.
+            return uri.normalize().into();
+          }
+        }
+      }
+      Component::RootDir => {}
+      component => {
+        path_only_has_prefix = false;
+        encoded_path.encode_str::<fluent_uri::pct_enc::encoder::Path>("/");
+        encoded_path.encode_str::<fluent_uri::pct_enc::encoder::Path>(
+          &component.as_os_str().to_string_lossy(),
+        );
+      }
+    }
+  }
+  if encoded_path.is_empty() || path_only_has_prefix {
+    encoded_path.encode_str::<fluent_uri::pct_enc::encoder::Path>("/");
+  }
+  fluent_uri::Uri::builder()
+    .scheme(fluent_uri::component::Scheme::new_or_panic("file"))
+    .optional(fluent_uri::build::Builder::authority, uri.authority())
+    .path(encoded_path.as_ref())
+    .optional(fluent_uri::build::Builder::query, uri.query())
+    .optional(fluent_uri::build::Builder::fragment, uri.fragment())
+    .build()
+    .expect("component constraints should be met by the above")
+    .normalize()
+    .into()
 }
 
 pub fn url_to_uri(url: &Url) -> Result<Uri, AnyError> {
-  let components = deno_core::url::quirks::internal_components(url);
-  let mut input = String::with_capacity(url.as_str().len());
-  input.push_str(&url.as_str()[..components.path_start as usize]);
-  let path = url.path();
-  let mut chars = path.chars();
-  let has_drive_letter = chars.next().is_some_and(|c| c == '/')
-    && chars.next().is_some_and(|c| c.is_ascii_alphabetic())
-    && chars.next().is_some_and(|c| c == ':')
-    && chars.next().is_none_or(|c| c == '/');
-  if has_drive_letter {
-    let (dl_part, rest) = path.split_at(2);
-    input.push_str(&dl_part.to_ascii_lowercase());
-    input.push_str(
-      &percent_encoding::utf8_percent_encode(rest, URL_TO_URI_PATH).to_string(),
-    );
-  } else {
-    input.push_str(
-      &percent_encoding::utf8_percent_encode(path, URL_TO_URI_PATH).to_string(),
-    );
-  }
-  if let Some(query) = url.query() {
-    input.push('?');
-    input.push_str(
-      &percent_encoding::utf8_percent_encode(query, URL_TO_URI_QUERY)
-        .to_string(),
-    );
-  }
-  if let Some(fragment) = url.fragment() {
-    input.push('#');
-    input.push_str(
-      &percent_encoding::utf8_percent_encode(fragment, URL_TO_URI_FRAGMENT)
-        .to_string(),
-    );
-  }
-  Ok(Uri::from_str(&input).inspect_err(|err| {
-    lsp_warn!("Could not convert URL \"{url}\" to URI: {err}")
-  })?)
+  let uri_before_path = Uri::from_str(&url[..Position::BeforePath])
+    .inspect_err(|err| {
+      lsp_warn!("Could not convert URL \"{url}\" to URI: {err}")
+    })?;
+  let mut encoded_path =
+    fluent_uri::pct_enc::EString::<fluent_uri::pct_enc::encoder::Path>::new();
+  encoded_path.encode_str::<fluent_uri::pct_enc::encoder::Path>(
+    &percent_encoding::percent_decode_str(url.path()).decode_utf8_lossy(),
+  );
+  let encoded_query = url.query().map(|query| {
+    let mut encoded_query = fluent_uri::pct_enc::EString::<
+      fluent_uri::pct_enc::encoder::Query,
+    >::new();
+    encoded_query.encode_str::<fluent_uri::pct_enc::encoder::Query>(query);
+    encoded_query
+  });
+  let encoded_fragment = url.fragment().map(|fragment| {
+    let mut encoded_fragment = fluent_uri::pct_enc::EString::<
+      fluent_uri::pct_enc::encoder::Fragment,
+    >::new();
+    encoded_fragment
+      .encode_str::<fluent_uri::pct_enc::encoder::Fragment>(fragment);
+    encoded_fragment
+  });
+  let uri = fluent_uri::Uri::builder()
+    .scheme(uri_before_path.scheme())
+    .optional(
+      fluent_uri::build::Builder::authority,
+      uri_before_path.authority(),
+    )
+    .path(encoded_path.as_ref())
+    .optional(fluent_uri::build::Builder::query, encoded_query.as_deref())
+    .optional(
+      fluent_uri::build::Builder::fragment,
+      encoded_fragment.as_deref(),
+    )
+    .build()
+    .expect("component constraints should be met by the above")
+    .into();
+  Ok(normalize_uri(&uri))
 }
 
 pub fn uri_to_url(uri: &Uri) -> Url {
   (|| {
-    let scheme = uri.scheme()?;
-    if !scheme.eq_lowercase("untitled")
-      && !scheme.eq_lowercase("vscode-notebook-cell")
-      && !scheme.eq_lowercase("deno-notebook-cell")
-      && !scheme.eq_lowercase("vscode-userdata")
+    let scheme = uri.scheme();
+    if !scheme.as_str().eq_ignore_ascii_case("untitled")
+      && !scheme.as_str().eq_ignore_ascii_case("vscode-notebook-cell")
+      && !scheme.as_str().eq_ignore_ascii_case("deno-notebook-cell")
+      && !scheme.as_str().eq_ignore_ascii_case("vscode-userdata")
     {
       return None;
     }
-    Url::parse(&format!(
-      "file:///{}",
-      &uri.as_str()[uri.path_bounds.0 as usize..].trim_start_matches('/'),
-    ))
-    .ok()
-    .map(normalize_url)
+    let mut s = String::with_capacity(uri.as_str().len());
+    s.push_str("file:///");
+    s.push_str(uri.path().as_str().trim_start_matches('/'));
+    if let Some(query) = uri.query() {
+      s.push('?');
+      s.push_str(query.as_str());
+    }
+    if let Some(fragment) = uri.fragment() {
+      s.push('#');
+      s.push_str(fragment.as_str());
+    }
+    Url::parse(&s).ok().map(normalize_url)
   })()
   .unwrap_or_else(|| normalize_url(Url::parse(uri.as_str()).unwrap()))
 }
@@ -157,14 +152,12 @@ pub fn uri_to_file_path(uri: &Uri) -> Result<PathBuf, UrlToFilePathError> {
 }
 
 pub fn uri_is_file_like(uri: &Uri) -> bool {
-  let Some(scheme) = uri.scheme() else {
-    return false;
-  };
-  scheme.eq_lowercase("file")
-    || scheme.eq_lowercase("untitled")
-    || scheme.eq_lowercase("vscode-notebook-cell")
-    || scheme.eq_lowercase("deno-notebook-cell")
-    || scheme.eq_lowercase("vscode-userdata")
+  let scheme = uri.scheme();
+  scheme.as_str().eq_ignore_ascii_case("file")
+    || scheme.as_str().eq_ignore_ascii_case("untitled")
+    || scheme.as_str().eq_ignore_ascii_case("vscode-notebook-cell")
+    || scheme.as_str().eq_ignore_ascii_case("deno-notebook-cell")
+    || scheme.as_str().eq_ignore_ascii_case("vscode-userdata")
 }
 
 fn normalize_url(url: Url) -> Url {

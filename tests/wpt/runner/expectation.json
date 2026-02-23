@@ -2368,7 +2368,7 @@
       "event.any.html": true,
       "event.any.worker.html": true,
       "abort-signal-any.any.html": true,
-      "abort-signal-any.any.worker.html": false,
+      "abort-signal-any.any.worker.html": true,
       "abort-signal-timeout.html": false,
       "reason-constructor.html": false
     },
@@ -5329,12 +5329,8 @@
       "invalid-realm.tentative.window.html": false
     },
     "writable-streams": {
-      "aborting.any.html": [
-        "recursive abort() call from abort() aborting signal"
-      ],
-      "aborting.any.worker.html": [
-        "recursive abort() call from abort() aborting signal"
-      ],
+      "aborting.any.html": true,
+      "aborting.any.worker.html": true,
       "bad-strategies.any.html": true,
       "bad-strategies.any.worker.html": true,
       "bad-underlying-sinks.any.html": true,
@@ -11993,7 +11989,7 @@
       "Blob-constructor-dom.window.html": false,
       "Blob-bytes.any.html": true,
       "Blob-bytes.any.worker.html": true,
-      "Blob-constructor-endings.html": false
+      "Blob-constructor-endings.html": true
     },
     "file": {
       "File-constructor.any.html": true,
@@ -12007,7 +12003,7 @@
       "send-file-formdata.any.html": true,
       "send-file-formdata.any.worker.html": true,
       "Worker-read-file-constructor.worker.html": true,
-      "File-constructor-endings.html": false,
+      "File-constructor-endings.html": true,
       "send-file-form-controls.html": false,
       "send-file-form-iso-2022-jp.html": false,
       "send-file-form-punctuation.html": false,
@@ -13155,7 +13151,6 @@
             "appCodeName",
             "appName",
             "appVersion",
-            "platform",
             "product",
             "productSub",
             "userAgent value",
@@ -13168,7 +13163,6 @@
             "appCodeName",
             "appName",
             "appVersion",
-            "platform",
             "product",
             "userAgent value"
           ],
@@ -15157,7 +15151,7 @@
         "navigator": {
           "002.html": false,
           "003.html": false,
-          "004.html": false,
+          "004.html": true,
           "005.html": true,
           "006.html": false,
           "007.html": true,

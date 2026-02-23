@@ -1,0 +1,14 @@
+Downloaded [WILDCARD] bytes
+Computed checksum: [WILDLINE]
+
+=== Test 1: Valid checksum ===
+[WILDCARD]Checksum verified
+[WILDCARD]
+
+=== Test 2: Invalid checksum ===
+[WILDCARD]Checksum verification failed.
+[WILDCARD]
+
+=== Test 3: Uppercase checksum ===
+[WILDCARD]Checksum verified
+[WILDCARD]
