@@ -698,7 +698,7 @@ type GPUStorageTextureAccess =
 
 /** @category GPU */
 interface GPUStorageTextureBindingLayout {
-  access: GPUStorageTextureAccess;
+  access?: GPUStorageTextureAccess;
   format: GPUTextureFormat;
   viewDimension?: GPUTextureViewDimension;
 }
@@ -740,7 +740,7 @@ declare class GPUPipelineLayout implements GPUObjectBase {
 
 /** @category GPU */
 interface GPUPipelineLayoutDescriptor extends GPUObjectDescriptorBase {
-  bindGroupLayouts: GPUBindGroupLayout[];
+  bindGroupLayouts: (GPUBindGroupLayout | null)[];
 }
 
 /** @category GPU */
@@ -1401,8 +1401,8 @@ interface GPURenderPassDescriptor extends GPUObjectDescriptorBase {
 
 /** @category GPU */
 interface GPURenderPassColorAttachment {
-  view: GPUTextureView;
-  resolveTarget?: GPUTextureView;
+  view: GPUTexture | GPUTextureView;
+  resolveTarget?: GPUTexture | GPUTextureView;
 
   clearValue?: GPUColor;
   loadOp: GPULoadOp;
@@ -1411,7 +1411,7 @@ interface GPURenderPassColorAttachment {
 
 /** @category GPU */
 interface GPURenderPassDepthStencilAttachment {
-  view: GPUTextureView;
+  view: GPUTexture | GPUTextureView;
 
   depthClearValue?: number;
   depthLoadOp?: GPULoadOp;
@@ -1627,7 +1627,7 @@ interface GPUOutOfMemoryError extends GPUError {}
 /** @category GPU */
 declare var GPUOutOfMemoryError: {
   prototype: GPUOutOfMemoryError;
-  new (message?: string): GPUOutOfMemoryError;
+  new (message: string): GPUOutOfMemoryError;
 };
 
 /** @category GPU */
@@ -1636,7 +1636,7 @@ interface GPUValidationError extends GPUError {}
 /** @category GPU */
 declare var GPUValidationError: {
   prototype: GPUValidationError;
-  new (message?: string): GPUValidationError;
+  new (message: string): GPUValidationError;
 };
 
 /** @category GPU */
@@ -1645,7 +1645,7 @@ interface GPUInternalError extends GPUError {}
 /** @category GPU */
 declare var GPUInternalError: {
   prototype: GPUInternalError;
-  new (message?: string): GPUInternalError;
+  new (message: string): GPUInternalError;
 };
 
 /** @category GPU */
