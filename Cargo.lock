@@ -1652,6 +1652,7 @@ dependencies = [
  "deno_config",
  "deno_core",
  "deno_doc",
+ "deno_dotenv",
  "deno_error",
  "deno_graph",
  "deno_lib",
@@ -1677,7 +1678,6 @@ dependencies = [
  "deno_typescript_go_client_rust",
  "dhat",
  "dissimilar",
- "dotenvy",
  "dprint-core",
  "dprint-plugin-json",
  "dprint-plugin-jupyter",
@@ -3687,12 +3687,6 @@ checksum = "cb6969eaabd2421f8a2775cfd2471a2b634372b4a25d41e3bd647b79912850a0"
 dependencies = [
  "litrs",
 ]
-
-[[package]]
-name = "dotenvy"
-version = "0.15.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1aaf95b3e5c8f23aa320147307562d361db0ae0d51242340f558153b4eb2439b"
 
 [[package]]
 name = "dprint-core"

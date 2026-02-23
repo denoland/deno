@@ -1257,9 +1257,9 @@ fn get_dev_binary_path() -> Option<OsString> {
 /// in the passed environment file.
 fn get_file_env_vars(
   filename: String,
-) -> Result<IndexMap<String, String>, dotenvy::Error> {
+) -> Result<IndexMap<String, String>, deno_dotenv::Error> {
   let mut file_env_vars = IndexMap::new();
-  for item in dotenvy::from_filename_iter(filename)? {
+  for item in deno_dotenv::from_path_sanitized_iter(filename)? {
     let Ok((key, val)) = item else {
       continue; // this failure will be warned about on load
     };
