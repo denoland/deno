@@ -20,6 +20,9 @@ use super::keys::RsaPssHashAlgorithm;
 use crate::digest::match_fixed_digest;
 use crate::digest::match_fixed_digest_with_oid;
 
+/// OpenSSL RSA_PKCS1_PSS_PADDING constant value.
+const RSA_PKCS1_PSS_PADDING: u32 = 6;
+
 fn dsa_signature<C: elliptic_curve::PrimeCurve>(
   encoding: u32,
   signature: ecdsa::Signature<C>,
@@ -86,6 +89,29 @@ pub enum KeyObjectHandlePrehashedSignAndVerifyError {
   DhKeyCannotBeUsedForVerification,
 }
 
+/// Constructs a PSS scheme for the given digest type and optional salt length.
+/// Used by both sign and verify operations on RSA keys with PSS padding.
+fn new_pss_scheme(
+  digest_type: &str,
+  pss_salt_length: Option<u32>,
+) -> Result<rsa::pss::Pss, KeyObjectHandlePrehashedSignAndVerifyError> {
+  let pss = match_fixed_digest_with_oid!(
+    digest_type,
+    fn <D>(algorithm: Option<RsaPssHashAlgorithm>) {
+      let _: Option<RsaPssHashAlgorithm> = algorithm;
+      if let Some(salt_length) = pss_salt_length {
+        rsa::pss::Pss::new_with_salt::<D>(salt_length as usize)
+      } else {
+        rsa::pss::Pss::new::<D>()
+      }
+    },
+    _ => {
+      return Err(KeyObjectHandlePrehashedSignAndVerifyError::DigestNotAllowedForRsaPssSignature(digest_type.to_string()));
+    }
+  );
+  Ok(pss)
+}
+
 impl KeyObjectHandle {
   pub fn sign_prehashed(
     &self,
@@ -101,22 +127,8 @@ impl KeyObjectHandle {
 
     match private_key {
       AsymmetricPrivateKey::Rsa(key) => {
-        // RSA_PKCS1_PSS_PADDING = 6
-        if padding == Some(6) {
-          let pss = match_fixed_digest_with_oid!(
-            digest_type,
-            fn <D>(algorithm: Option<RsaPssHashAlgorithm>) {
-              let _: Option<RsaPssHashAlgorithm> = algorithm;
-              if let Some(salt_length) = pss_salt_length {
-                rsa::pss::Pss::new_with_salt::<D>(salt_length as usize)
-              } else {
-                rsa::pss::Pss::new::<D>()
-              }
-            },
-            _ => {
-              return Err(KeyObjectHandlePrehashedSignAndVerifyError::DigestNotAllowedForRsaPssSignature(digest_type.to_string()));
-            }
-          );
+        if padding == Some(RSA_PKCS1_PSS_PADDING) {
+          let pss = new_pss_scheme(digest_type, pss_salt_length)?;
           let signature = pss
             .sign(Some(&mut OsRng), key, digest)
             .map_err(|_| KeyObjectHandlePrehashedSignAndVerifyError::FailedToSignDigestWithRsaPss)?;
@@ -246,22 +258,8 @@ impl KeyObjectHandle {
 
     match &*public_key {
       AsymmetricPublicKey::Rsa(key) => {
-        // RSA_PKCS1_PSS_PADDING = 6
-        if padding == Some(6) {
-          let pss = match_fixed_digest_with_oid!(
-            digest_type,
-            fn <D>(algorithm: Option<RsaPssHashAlgorithm>) {
-              let _: Option<RsaPssHashAlgorithm> = algorithm;
-              if let Some(salt_length) = pss_salt_length {
-                rsa::pss::Pss::new_with_salt::<D>(salt_length as usize)
-              } else {
-                rsa::pss::Pss::new::<D>()
-              }
-            },
-            _ => {
-              return Err(KeyObjectHandlePrehashedSignAndVerifyError::DigestNotAllowedForRsaPssSignature(digest_type.to_string()));
-            }
-          );
+        if padding == Some(RSA_PKCS1_PSS_PADDING) {
+          let pss = new_pss_scheme(digest_type, pss_salt_length)?;
           return Ok(pss.verify(key, digest, signature).is_ok());
         }
 
