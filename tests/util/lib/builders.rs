@@ -777,22 +777,21 @@ impl TestCommandBuilder {
     // Set up a watchdog thread that kills the process if it exceeds the timeout.
     // Uses a channel: dropping the sender signals the watchdog to stop. If
     // recv_timeout hits the deadline first, the process is killed.
-    let timed_out =
-      std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let timeout_handle = self.timeout.map(|timeout| {
       let (cancel_tx, cancel_rx) = std::sync::mpsc::channel::<()>();
-      let timed_out = timed_out.clone();
       let pid = process.id();
       let handle =
         spawn_thread(move || match cancel_rx.recv_timeout(timeout) {
-          Ok(()) | Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {}
+          Ok(()) | Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+            false
+          }
           Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-            timed_out.store(true, std::sync::atomic::Ordering::Relaxed);
             eprintln!(
               "Test command timed out after {:?}, killing pid {}",
               timeout, pid
             );
             kill_process(pid);
+            true
           }
         });
       (cancel_tx, handle)
@@ -803,13 +802,12 @@ impl TestCommandBuilder {
     });
 
     let status = process.wait().unwrap();
-    // Drop the sender to cancel the watchdog
+    // Drop the sender to cancel the watchdog, then check if it timed out
     if let Some((cancel_tx, handle)) = timeout_handle {
       drop(cancel_tx);
-      let _ = handle.join();
-    }
-    if timed_out.load(std::sync::atomic::Ordering::Relaxed) {
-      panic!("Test command timed out");
+      if handle.join().unwrap() {
+        panic!("Test command timed out");
+      }
     }
     let std_out_err = std_out_err_handle.map(|(stdout, stderr)| {
       (
