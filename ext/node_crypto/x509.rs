@@ -752,8 +752,7 @@ pub fn op_node_x509_check_issued(
       .extensions()
       .iter()
       .find(|e| {
-        e.oid
-          == x509_parser::oid_registry::OID_X509_EXT_SUBJECT_KEY_IDENTIFIER
+        e.oid == x509_parser::oid_registry::OID_X509_EXT_SUBJECT_KEY_IDENTIFIER
       })
       .and_then(|e| match e.parsed_extension() {
         extensions::ParsedExtension::SubjectKeyIdentifier(ski) => Some(ski),
