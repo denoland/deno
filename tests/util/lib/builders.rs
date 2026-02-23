@@ -385,6 +385,7 @@ impl TestContext {
 
 fn kill_process(pid: u32) {
   #[cfg(unix)]
+  // SAFETY: We're sending SIGKILL to a process we spawned.
   unsafe {
     libc::kill(pid as i32, libc::SIGKILL);
   }
@@ -774,33 +775,27 @@ impl TestCommandBuilder {
     drop(command);
 
     // Set up a watchdog thread that kills the process if it exceeds the timeout.
-    let timed_out = std::sync::Arc::new(
-      std::sync::atomic::AtomicBool::new(false),
-    );
+    // Uses a channel: dropping the sender signals the watchdog to stop. If
+    // recv_timeout hits the deadline first, the process is killed.
+    let timed_out =
+      std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let timeout_handle = self.timeout.map(|timeout| {
-      let done = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-      let done_clone = done.clone();
+      let (cancel_tx, cancel_rx) = std::sync::mpsc::channel::<()>();
       let timed_out = timed_out.clone();
       let pid = process.id();
-      let handle = std::thread::spawn(move || {
-        let start = std::time::Instant::now();
-        while start.elapsed() < timeout {
-          if done_clone.load(std::sync::atomic::Ordering::Relaxed) {
-            return;
+      let handle =
+        spawn_thread(move || match cancel_rx.recv_timeout(timeout) {
+          Ok(()) | Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {}
+          Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+            timed_out.store(true, std::sync::atomic::Ordering::Relaxed);
+            eprintln!(
+              "Test command timed out after {:?}, killing pid {}",
+              timeout, pid
+            );
+            kill_process(pid);
           }
-          std::thread::sleep(std::time::Duration::from_millis(500));
-        }
-        if !done_clone.load(std::sync::atomic::Ordering::Relaxed) {
-          timed_out
-            .store(true, std::sync::atomic::Ordering::Relaxed);
-          eprintln!(
-            "Test command timed out after {:?}, killing pid {}",
-            timeout, pid
-          );
-          kill_process(pid);
-        }
-      });
-      (done, handle)
+        });
+      (cancel_tx, handle)
     });
 
     let combined = combined_reader.map(|pipe| {
@@ -808,9 +803,9 @@ impl TestCommandBuilder {
     });
 
     let status = process.wait().unwrap();
-    // Signal the watchdog that we're done
-    if let Some((done, handle)) = timeout_handle {
-      done.store(true, std::sync::atomic::Ordering::Relaxed);
+    // Drop the sender to cancel the watchdog
+    if let Some((cancel_tx, handle)) = timeout_handle {
+      drop(cancel_tx);
       let _ = handle.join();
     }
     if timed_out.load(std::sync::atomic::Ordering::Relaxed) {
