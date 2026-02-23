@@ -899,14 +899,14 @@ pub fn op_node_ecdh_encode_pubkey(
       Ok(pubkey.to_encoded_point(compress).as_ref().to_vec().into())
     }
     "secp521r1" => {
-      let pubkey = elliptic_curve::PublicKey::<NistP521>::from_encoded_point(
-        &elliptic_curve::sec1::EncodedPoint::<NistP521>::from_bytes(pubkey)?,
-      );
-      if pubkey.is_none().into() {
+      let Some(pubkey): Option<elliptic_curve::PublicKey<NistP521>> =
+        elliptic_curve::PublicKey::<NistP521>::from_encoded_point(
+          &elliptic_curve::sec1::EncodedPoint::<NistP521>::from_bytes(pubkey)?,
+        )
+        .into()
+      else {
         return Err(EcdhEncodePubKey::InvalidPublicKey);
-      }
-
-      let pubkey = pubkey.unwrap();
+      };
 
       Ok(pubkey.to_encoded_point(compress).as_ref().to_vec().into())
     }
@@ -991,7 +991,7 @@ pub fn op_node_ecdh_compute_secret(
   #[buffer] this_priv: Option<JsBuffer>,
   #[buffer] their_pub: &mut [u8],
   #[buffer] secret: &mut [u8],
-) {
+) -> Result<(), JsErrorBox> {
   match curve {
     "secp256k1" => {
       let their_public_key =
@@ -1041,11 +1041,12 @@ pub fn op_node_ecdh_compute_secret(
     "secp521r1" => {
       let their_public_key =
         elliptic_curve::PublicKey::<NistP521>::from_sec1_bytes(their_pub)
-          .expect("bad public key");
+          .map_err(|_| JsErrorBox::type_error("bad public key"))?;
       let this_private_key = elliptic_curve::SecretKey::<NistP521>::from_slice(
-        &this_priv.expect("must supply private key"),
+        &this_priv
+          .ok_or_else(|| JsErrorBox::type_error("must supply private key"))?,
       )
-      .expect("bad private key");
+      .map_err(|_| JsErrorBox::type_error("bad private key"))?;
       let shared_secret = elliptic_curve::ecdh::diffie_hellman(
         this_private_key.to_nonzero_scalar(),
         their_public_key.as_affine(),
@@ -1068,6 +1069,7 @@ pub fn op_node_ecdh_compute_secret(
     }
     &_ => todo!(),
   }
+  Ok(())
 }
 
 #[op2(fast)]

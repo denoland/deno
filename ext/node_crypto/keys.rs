@@ -855,13 +855,11 @@ impl KeyObjectHandle {
             AsymmetricPublicKey::Ed25519(verifying_key)
           }
           ID_X25519 => {
-            let data = spki.subject_public_key.as_ref();
-            if data.len() < 32 {
-              return Err(X509PublicKeyError::InvalidX25519Key);
-            }
-            let mut bytes = [0u8; 32];
-            bytes.copy_from_slice(&data[..32]);
-            AsymmetricPublicKey::X25519(x25519_dalek::PublicKey::from(bytes))
+            let data: &[u8] = spki.subject_public_key.as_ref();
+            let data: [u8; 32] = data
+              .try_into()
+              .map_err(|_| X509PublicKeyError::InvalidX25519Key)?;
+            AsymmetricPublicKey::X25519(x25519_dalek::PublicKey::from(data))
           }
           _ => return Err(X509PublicKeyError::UnsupportedX509KeyType),
         }
@@ -2237,7 +2235,7 @@ fn ec_generate(named_curve: &str) -> Result<KeyObjectHandlePair, JsErrorBox> {
       let key = p384::SecretKey::random(&mut rng);
       AsymmetricPrivateKey::Ec(EcPrivateKey::P384(key))
     }
-    "P-521" | "prime521v1" | "secp521r1" => {
+    "P-521" | "secp521r1" => {
       let key = p521::SecretKey::random(&mut rng);
       AsymmetricPrivateKey::Ec(EcPrivateKey::P521(key))
     }
