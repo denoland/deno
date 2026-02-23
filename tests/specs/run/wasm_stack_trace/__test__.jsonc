@@ -1,5 +1,5 @@
 {
-  "args": "run --quiet --allow-read wasm_stack_trace.js",
+  "args": "run --quiet wasm_stack_trace.js",
   "output": "wasm_stack_trace.out",
   "exitCode": 0
 }
