@@ -726,9 +726,67 @@ pub fn op_node_x509_check_issued(
 ) -> bool {
   let cert = cert.inner.get().deref();
   let other = other.inner.get().deref();
-  // Check if other's subject matches cert's issuer
-  // Compare the raw DER bytes of the issuer and subject
-  cert.issuer().as_raw() == other.subject().as_raw()
+
+  // 1. Check if other's subject matches cert's issuer (name comparison)
+  if cert.issuer().as_raw() != other.subject().as_raw() {
+    return false;
+  }
+
+  // 2. If cert has an Authority Key Identifier extension with a key_identifier,
+  //    it must match the issuer's Subject Key Identifier.
+  let cert_aki = cert
+    .extensions()
+    .iter()
+    .find(|e| {
+      e.oid == x509_parser::oid_registry::OID_X509_EXT_AUTHORITY_KEY_IDENTIFIER
+    })
+    .and_then(|e| match e.parsed_extension() {
+      extensions::ParsedExtension::AuthorityKeyIdentifier(aki) => Some(aki),
+      _ => None,
+    });
+
+  if let Some(aki) = cert_aki {
+    if let Some(aki_key_id) = &aki.key_identifier {
+      let other_ski = other
+        .extensions()
+        .iter()
+        .find(|e| {
+          e.oid
+            == x509_parser::oid_registry::OID_X509_EXT_SUBJECT_KEY_IDENTIFIER
+        })
+        .and_then(|e| match e.parsed_extension() {
+          extensions::ParsedExtension::SubjectKeyIdentifier(ski) => Some(ski),
+          _ => None,
+        });
+
+      match other_ski {
+        Some(ski) => {
+          if aki_key_id.0 != ski.0 {
+            return false;
+          }
+        }
+        None => return false,
+      }
+    }
+  }
+
+  // 3. If issuer has KeyUsage extension, keyCertSign bit must be set.
+  let other_key_usage = other
+    .extensions()
+    .iter()
+    .find(|e| e.oid == x509_parser::oid_registry::OID_X509_EXT_KEY_USAGE)
+    .and_then(|e| match e.parsed_extension() {
+      extensions::ParsedExtension::KeyUsage(k) => Some(k),
+      _ => None,
+    });
+
+  if let Some(key_usage) = other_key_usage {
+    if !key_usage.key_cert_sign() {
+      return false;
+    }
+  }
+
+  true
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -759,6 +817,9 @@ pub fn op_node_x509_check_private_key(
   let cert = cert.inner.get().deref();
   let cert_spki_raw = cert.tbs_certificate.subject_pki.raw;
 
+  // Both `subject_pki.raw` and `export_der("spki")` produce the full
+  // SubjectPublicKeyInfo DER SEQUENCE (tag + length + contents). DER
+  // encoding is canonical, so a byte comparison is sufficient.
   Ok(cert_spki_raw == derived_spki_der.as_ref())
 }
 
@@ -773,6 +834,82 @@ pub enum X509VerifyError {
   #[class(generic)]
   #[error("Failed to parse public key")]
   ParseFailed,
+  #[class(generic)]
+  #[error("Unsupported EC curve for X509 verification")]
+  UnsupportedEcCurve,
+}
+
+/// Verify an RSA-PSS signature. Parses the hash algorithm from the
+/// RSASSA-PSS-params in the certificate's signature algorithm.
+fn verify_rsa_pss(
+  rsa_key: &rsa::RsaPublicKey,
+  sig_alg: &x509_parser::x509::AlgorithmIdentifier,
+  tbs_raw: &[u8],
+  sig_value: &[u8],
+) -> Result<bool, X509VerifyError> {
+  use rsa::signature::Verifier;
+
+  // Parse the hash algorithm OID from the RSA-PSS parameters.
+  // RSASSA-PSS-params ::= SEQUENCE {
+  //   hashAlgorithm [0] AlgorithmIdentifier DEFAULT sha1,
+  //   ...
+  // }
+  // Default hash algorithm is SHA-1 if parameters are absent.
+  let hash_oid = sig_alg.parameters.as_ref().and_then(|params| {
+    let (_, seq) =
+      x509_parser::der_parser::asn1_rs::Sequence::from_der(params.as_bytes())
+        .ok()?;
+    let mut remaining = seq.content.as_ref();
+    while !remaining.is_empty() {
+      let (rest, any) =
+        x509_parser::der_parser::asn1_rs::Any::from_der(remaining).ok()?;
+      remaining = rest;
+      // [0] EXPLICIT tag for hashAlgorithm
+      if any.tag().0 == 0 {
+        // The content is an AlgorithmIdentifier SEQUENCE containing the OID
+        let (_, inner_seq) =
+          x509_parser::der_parser::asn1_rs::Sequence::from_der(any.data)
+            .ok()?;
+        let (_, oid) = Oid::from_der(inner_seq.content.as_ref()).ok()?;
+        return Some(oid.to_id_string());
+      }
+    }
+    None
+  });
+
+  let hash_alg = hash_oid.as_deref().unwrap_or("1.3.14.3.2.26"); // SHA-1 default
+
+  let sig = rsa::pss::Signature::try_from(sig_value)
+    .map_err(|_| X509VerifyError::ParseFailed)?;
+
+  let result = match hash_alg {
+    // id-sha1
+    "1.3.14.3.2.26" => {
+      let verifier = rsa::pss::VerifyingKey::<sha1::Sha1>::new(rsa_key.clone());
+      verifier.verify(tbs_raw, &sig).is_ok()
+    }
+    // id-sha256
+    "2.16.840.1.101.3.4.2.1" => {
+      let verifier =
+        rsa::pss::VerifyingKey::<sha2::Sha256>::new(rsa_key.clone());
+      verifier.verify(tbs_raw, &sig).is_ok()
+    }
+    // id-sha384
+    "2.16.840.1.101.3.4.2.2" => {
+      let verifier =
+        rsa::pss::VerifyingKey::<sha2::Sha384>::new(rsa_key.clone());
+      verifier.verify(tbs_raw, &sig).is_ok()
+    }
+    // id-sha512
+    "2.16.840.1.101.3.4.2.3" => {
+      let verifier =
+        rsa::pss::VerifyingKey::<sha2::Sha512>::new(rsa_key.clone());
+      verifier.verify(tbs_raw, &sig).is_ok()
+    }
+    _ => false,
+  };
+
+  Ok(result)
 }
 
 #[op2(fast)]
@@ -789,7 +926,10 @@ pub fn op_node_x509_verify(
 
   let cert_inner = cert.inner.get().deref();
 
-  // Get the raw TBS (to-be-signed) certificate bytes and signature
+  // Get the raw TBS (to-be-signed) certificate bytes and signature.
+  // `as_ref()` returns the raw DER bytes of the TBSCertificate including
+  // the SEQUENCE header (tag + length), which is what the signature covers.
+  // See: https://github.com/rusticata/x509-parser/blob/b7dcc9397b596cf9fa3df65115c3f405f1748b2a/src/certificate.rs#L770-L773
   let tbs_raw = cert_inner.tbs_certificate.as_ref();
   let sig_value = cert_inner.signature_value.as_ref();
   let sig_alg_oid = cert_inner.signature_algorithm.algorithm.to_id_string();
@@ -797,34 +937,99 @@ pub fn op_node_x509_verify(
   // Verify based on key type and signature algorithm
   match &*public_key {
     AsymmetricPublicKey::Rsa(rsa_key) => {
-      use rsa::pkcs1v15::VerifyingKey;
       use rsa::signature::Verifier;
 
       let result = match sig_alg_oid.as_str() {
+        // sha1WithRSAEncryption
         "1.2.840.113549.1.1.5" => {
-          let verifier = VerifyingKey::<sha1::Sha1>::new(rsa_key.clone());
+          let verifier =
+            rsa::pkcs1v15::VerifyingKey::<sha1::Sha1>::new(rsa_key.clone());
           let sig = rsa::pkcs1v15::Signature::try_from(sig_value)
             .map_err(|_| X509VerifyError::ParseFailed)?;
           verifier.verify(tbs_raw, &sig).is_ok()
         }
+        // sha256WithRSAEncryption
         "1.2.840.113549.1.1.11" => {
-          let verifier = VerifyingKey::<sha2::Sha256>::new(rsa_key.clone());
+          let verifier =
+            rsa::pkcs1v15::VerifyingKey::<sha2::Sha256>::new(rsa_key.clone());
           let sig = rsa::pkcs1v15::Signature::try_from(sig_value)
             .map_err(|_| X509VerifyError::ParseFailed)?;
           verifier.verify(tbs_raw, &sig).is_ok()
         }
+        // sha384WithRSAEncryption
         "1.2.840.113549.1.1.12" => {
-          let verifier = VerifyingKey::<sha2::Sha384>::new(rsa_key.clone());
+          let verifier =
+            rsa::pkcs1v15::VerifyingKey::<sha2::Sha384>::new(rsa_key.clone());
           let sig = rsa::pkcs1v15::Signature::try_from(sig_value)
             .map_err(|_| X509VerifyError::ParseFailed)?;
           verifier.verify(tbs_raw, &sig).is_ok()
         }
+        // sha512WithRSAEncryption
         "1.2.840.113549.1.1.13" => {
-          let verifier = VerifyingKey::<sha2::Sha512>::new(rsa_key.clone());
+          let verifier =
+            rsa::pkcs1v15::VerifyingKey::<sha2::Sha512>::new(rsa_key.clone());
           let sig = rsa::pkcs1v15::Signature::try_from(sig_value)
             .map_err(|_| X509VerifyError::ParseFailed)?;
           verifier.verify(tbs_raw, &sig).is_ok()
         }
+        // id-RSASSA-PSS
+        "1.2.840.113549.1.1.10" => verify_rsa_pss(
+          rsa_key,
+          &cert_inner.signature_algorithm,
+          tbs_raw,
+          sig_value,
+        )?,
+        _ => false,
+      };
+      Ok(result)
+    }
+    AsymmetricPublicKey::RsaPss(rsa_pss_key) => {
+      use rsa::signature::Verifier;
+
+      let result = match sig_alg_oid.as_str() {
+        // sha1WithRSAEncryption
+        "1.2.840.113549.1.1.5" => {
+          let verifier = rsa::pkcs1v15::VerifyingKey::<sha1::Sha1>::new(
+            rsa_pss_key.key.clone(),
+          );
+          let sig = rsa::pkcs1v15::Signature::try_from(sig_value)
+            .map_err(|_| X509VerifyError::ParseFailed)?;
+          verifier.verify(tbs_raw, &sig).is_ok()
+        }
+        // sha256WithRSAEncryption
+        "1.2.840.113549.1.1.11" => {
+          let verifier = rsa::pkcs1v15::VerifyingKey::<sha2::Sha256>::new(
+            rsa_pss_key.key.clone(),
+          );
+          let sig = rsa::pkcs1v15::Signature::try_from(sig_value)
+            .map_err(|_| X509VerifyError::ParseFailed)?;
+          verifier.verify(tbs_raw, &sig).is_ok()
+        }
+        // sha384WithRSAEncryption
+        "1.2.840.113549.1.1.12" => {
+          let verifier = rsa::pkcs1v15::VerifyingKey::<sha2::Sha384>::new(
+            rsa_pss_key.key.clone(),
+          );
+          let sig = rsa::pkcs1v15::Signature::try_from(sig_value)
+            .map_err(|_| X509VerifyError::ParseFailed)?;
+          verifier.verify(tbs_raw, &sig).is_ok()
+        }
+        // sha512WithRSAEncryption
+        "1.2.840.113549.1.1.13" => {
+          let verifier = rsa::pkcs1v15::VerifyingKey::<sha2::Sha512>::new(
+            rsa_pss_key.key.clone(),
+          );
+          let sig = rsa::pkcs1v15::Signature::try_from(sig_value)
+            .map_err(|_| X509VerifyError::ParseFailed)?;
+          verifier.verify(tbs_raw, &sig).is_ok()
+        }
+        // id-RSASSA-PSS
+        "1.2.840.113549.1.1.10" => verify_rsa_pss(
+          &rsa_pss_key.key,
+          &cert_inner.signature_algorithm,
+          tbs_raw,
+          sig_value,
+        )?,
         _ => false,
       };
       Ok(result)
@@ -847,7 +1052,7 @@ pub fn op_node_x509_verify(
             .map_err(|_| X509VerifyError::ParseFailed)?;
           Ok(verifying_key.verify(tbs_raw, &sig).is_ok())
         }
-        _ => Ok(false),
+        _ => Err(X509VerifyError::UnsupportedEcCurve),
       }
     }
     AsymmetricPublicKey::Ed25519(key) => {
