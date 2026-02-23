@@ -853,6 +853,11 @@ fn compile_npm_cowsay_explicit() {
 
 #[test]
 fn compile_npm_cowthink() {
+  // NB(bartlomieju):
+  // This output is actually an output of `cowsay`, but it's not possible
+  // to make it work correctly, because `cowsay` uses `yargs` to determine
+  // if `cowsay` or `cowthink` should be run. And `yargs` hardcodes a regex
+  // to decide on the script name and that regex checks for `node/iojs/electron`.
   run_npm_bin_compile_test(RunNpmBinCompileOptions {
     input_specifier: "npm:cowsay@1.5.0/cowthink",
     copy_temp_dir: None,
