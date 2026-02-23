@@ -11,7 +11,6 @@ use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::serde::Deserialize;
 use deno_core::serde_json;
-use deno_core::serde_json::Value;
 use deno_core::serde_json::json;
 use deno_core::url::ParseError;
 use deno_core::url::Position;
@@ -22,6 +21,7 @@ use deno_resolver::file_fetcher::FetchPermissionsOptionRef;
 use deno_resolver::loader::MemoryFilesRc;
 use log::error;
 use once_cell::sync::Lazy;
+use serde::Serialize;
 use tower_lsp::lsp_types as lsp;
 
 use super::completions::IMPORT_COMMIT_CHARS;
@@ -42,6 +42,7 @@ use crate::file_fetcher::CreateCliFileFetcherOptions;
 use crate::file_fetcher::TextDecodedFile;
 use crate::file_fetcher::create_cli_file_fetcher;
 use crate::http_util::HttpClientProvider;
+use crate::lsp::completions::CompletionItemData;
 use crate::sys::CliSys;
 
 const CONFIG_PATH: &str = "/.well-known/deno-import-intellisense.json";
@@ -146,6 +147,12 @@ fn get_completion_type(
   None
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DocumentationCompletionItemData {
+  pub url: Url,
+}
+
 /// Generate a data value for a completion item that will instruct the client to
 /// resolve the completion item to obtain further information, in this case, the
 /// details/documentation endpoint for the item if it exists in the registry
@@ -155,11 +162,11 @@ fn get_data(
   base: &ModuleSpecifier,
   variable: &Key,
   value: &str,
-) -> Option<Value> {
+) -> Option<DocumentationCompletionItemData> {
   let url = registry.get_documentation_url_for_key(variable)?;
   get_endpoint(url, base, variable, Some(value))
     .ok()
-    .map(|specifier| json!({ "documentation": specifier }))
+    .map(|specifier| DocumentationCompletionItemData { url: specifier })
 }
 
 /// Generate a data value for a completion item that will instruct the client to
@@ -173,7 +180,7 @@ fn get_data_with_match(
   match_result: &MatchResult,
   variable: &Key,
   value: &str,
-) -> Option<Value> {
+) -> Option<DocumentationCompletionItemData> {
   let url = registry.get_documentation_url_for_key(variable)?;
   get_endpoint_with_match(
     variable,
@@ -184,7 +191,7 @@ fn get_data_with_match(
     Some(value),
   )
   .ok()
-  .map(|specifier| json!({ "documentation": specifier }))
+  .map(|specifier| DocumentationCompletionItemData { url: specifier })
 }
 
 /// Convert a single variable templated string into a fully qualified URL which
@@ -823,7 +830,9 @@ impl ModuleRegistry {
                       text_edit,
                       command,
                       preselect,
-                      data,
+                      data: data.map(|data| {
+                        json!(CompletionItemData::Documentation(data))
+                      }),
                       commit_characters,
                       ..Default::default()
                     },
@@ -959,7 +968,9 @@ impl ModuleRegistry {
                         text_edit,
                         command,
                         preselect,
-                        data,
+                        data: data.map(|data| {
+                          json!(CompletionItemData::Documentation(data))
+                        }),
                         commit_characters,
                         ..Default::default()
                       },
@@ -988,15 +999,11 @@ impl ModuleRegistry {
 
   pub async fn get_documentation(
     &self,
-    url: &str,
+    url: &Url,
   ) -> Option<lsp::Documentation> {
-    let specifier = Url::parse(url).ok()?;
     let file_fetcher = self.file_fetcher.clone();
     let file = {
-      let file = file_fetcher
-        .fetch_bypass_permissions(&specifier)
-        .await
-        .ok()?;
+      let file = file_fetcher.fetch_bypass_permissions(url).await.ok()?;
       TextDecodedFile::decode(file).ok()?
     };
     serde_json::from_str(&file.source).ok()
@@ -1422,13 +1429,17 @@ mod tests {
     assert_eq!(
       completions.items[0].data,
       Some(json!({
-        "documentation": format!("http://localhost:4545/lsp/registries/doc_{}.json", completions.items[0].label),
+        "documentation": {
+          "url": format!("http://localhost:4545/lsp/registries/doc_{}.json", completions.items[0].label),
+        },
       }))
     );
 
     // testing getting the documentation
     let documentation = module_registry
-      .get_documentation("http://localhost:4545/lsp/registries/doc_a.json")
+      .get_documentation(
+        &Url::parse("http://localhost:4545/lsp/registries/doc_a.json").unwrap(),
+      )
       .await;
     assert_eq!(
       documentation,
@@ -1457,7 +1468,9 @@ mod tests {
     assert_eq!(
       completions[0].data,
       Some(json!({
-        "documentation": format!("http://localhost:4545/lsp/registries/doc_a_{}.json", completions[0].label),
+        "documentation": {
+          "url": format!("http://localhost:4545/lsp/registries/doc_a_{}.json", completions[0].label),
+        },
       }))
     );
 
@@ -1480,7 +1493,9 @@ mod tests {
     assert_eq!(
       completions[0].data,
       Some(json!({
-        "documentation": format!("http://localhost:4545/lsp/registries/doc_a_{}.json", completions[0].label),
+        "documentation": {
+          "url": format!("http://localhost:4545/lsp/registries/doc_a_{}.json", completions[0].label),
+        },
       }))
     );
 

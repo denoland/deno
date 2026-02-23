@@ -487,6 +487,7 @@ Deno.test(async function compressionStreamWritableMayBeAborted() {
     new CompressionStream("gzip").writable.getWriter().abort(),
     new CompressionStream("deflate").writable.getWriter().abort(),
     new CompressionStream("deflate-raw").writable.getWriter().abort(),
+    new CompressionStream("brotli").writable.getWriter().abort(),
   ]);
 });
 
@@ -495,6 +496,7 @@ Deno.test(async function compressionStreamReadableMayBeCancelled() {
     new CompressionStream("gzip").readable.getReader().cancel(),
     new CompressionStream("deflate").readable.getReader().cancel(),
     new CompressionStream("deflate-raw").readable.getReader().cancel(),
+    new CompressionStream("brotli").readable.getReader().cancel(),
   ]);
 });
 
@@ -503,6 +505,7 @@ Deno.test(async function decompressionStreamWritableMayBeAborted() {
     new DecompressionStream("gzip").writable.getWriter().abort(),
     new DecompressionStream("deflate").writable.getWriter().abort(),
     new DecompressionStream("deflate-raw").writable.getWriter().abort(),
+    new DecompressionStream("brotli").writable.getWriter().abort(),
   ]);
 });
 
@@ -511,6 +514,7 @@ Deno.test(async function decompressionStreamReadableMayBeCancelled() {
     new DecompressionStream("gzip").readable.getReader().cancel(),
     new DecompressionStream("deflate").readable.getReader().cancel(),
     new DecompressionStream("deflate-raw").readable.getReader().cancel(),
+    new DecompressionStream("brotli").readable.getReader().cancel(),
   ]);
 });
 
@@ -527,6 +531,37 @@ Deno.test(async function decompressionStreamValidGzipDoesNotThrow() {
     result = new Uint8Array([...result, ...chunk]);
   }
   assertEquals(result, new Uint8Array([1]));
+});
+
+Deno.test(async function decompressionStreamValidBrotliDoesNotThrow() {
+  const cs = new CompressionStream("brotli");
+  const ds = new DecompressionStream("brotli");
+  cs.readable.pipeThrough(ds);
+  const writer = cs.writable.getWriter();
+  await writer.write(new Uint8Array([1]));
+  writer.releaseLock();
+  await cs.writable.close();
+  let result = new Uint8Array();
+  for await (const chunk of ds.readable.values()) {
+    result = new Uint8Array([...result, ...chunk]);
+  }
+  assertEquals(result, new Uint8Array([1]));
+});
+
+Deno.test(async function brotliCompressionDecompressionRoundTrip() {
+  const original = new TextEncoder().encode(LOREM);
+  const cs = new CompressionStream("brotli");
+  const ds = new DecompressionStream("brotli");
+  cs.readable.pipeThrough(ds);
+  const writer = cs.writable.getWriter();
+  await writer.write(original);
+  writer.releaseLock();
+  await cs.writable.close();
+  let result = new Uint8Array();
+  for await (const chunk of ds.readable.values()) {
+    result = new Uint8Array([...result, ...chunk]);
+  }
+  assertEquals(result, original);
 });
 
 Deno.test(async function decompressionStreamInvalidGzipStillReported() {

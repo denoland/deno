@@ -8206,7 +8206,7 @@ fn lsp_completions() {
       "sortText": "1",
       "insertTextFormat": 1,
       "data": {
-        "tsc": {
+        "tsJs": {
           "uri": "file:///a/file.ts",
           "position": 5,
           "name": "build",
@@ -8293,7 +8293,7 @@ fn lsp_completions_optional() {
           "insertText": "b",
           "commitCharacters": [".", ",", ";", "("],
           "data": {
-            "tsc": {
+            "tsJs": {
               "uri": "file:///a/file.ts",
               "position": 79,
               "name": "b",
@@ -8313,7 +8313,7 @@ fn lsp_completions_optional() {
       "filterText": "b",
       "insertText": "b",
       "data": {
-        "tsc": {
+        "tsJs": {
           "uri": "file:///a/file.ts",
           "position": 79,
           "name": "b",
@@ -10189,7 +10189,7 @@ fn lsp_completions_snippet() {
             "("
           ],
           "data": {
-            "tsc": {
+            "tsJs": {
               "uri": "file:///a/a.tsx",
               "position": 87,
               "name": "type",
@@ -10217,7 +10217,7 @@ fn lsp_completions_snippet() {
         "("
       ],
       "data": {
-        "tsc": {
+        "tsJs": {
           "uri": "file:///a/a.tsx",
           "position": 87,
           "name": "type",
@@ -10287,7 +10287,7 @@ fn lsp_completions_no_snippet() {
             "("
           ],
           "data": {
-            "tsc": {
+            "tsJs": {
               "uri": "file:///a/a.tsx",
               "position": 87,
               "name": "type",
@@ -10383,7 +10383,7 @@ fn lsp_completions_npm() {
       "sortText": "1",
       "insertTextFormat": 1,
       "data": {
-        "tsc": {
+        "tsJs": {
           "uri": "file:///a/file.ts",
           "position": 69,
           "name": "MyClass",
@@ -10400,7 +10400,7 @@ fn lsp_completions_npm() {
       "sortText": "1",
       "insertTextFormat": 1,
       "data": {
-        "tsc": {
+        "tsJs": {
           "uri": "file:///a/file.ts",
           "position": 69,
           "name": "MyClass",
@@ -11855,8 +11855,8 @@ fn lsp_jupyter_import_map_and_diagnostics() {
                 "location": {
                   "uri": "deno:/asset/lib.deno.window.d.ts",
                   "range": {
-                    "start": { "line": 598, "character": 12 },
-                    "end": { "line": 598, "character": 16 },
+                    "start": { "line": 599, "character": 12 },
+                    "end": { "line": 599, "character": 16 },
                   },
                 },
                 "message": "'name' was also declared here.",
@@ -12145,7 +12145,7 @@ fn lsp_non_normalized_uri_diagnostics_and_completions() {
       "kind": 6,
       "sortText": "11",
       "data": {
-        "tsc": {
+        "tsJs": {
           // Accordingly, the colon returned here is decoded.
           // Spec-compliant language clients must deal with that. See:
           // https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#uri
@@ -13412,7 +13412,7 @@ fn lsp_completions_complete_function_calls() {
       "sortText": "1",
       "insertTextFormat": 1,
       "data": {
-        "tsc": {
+        "tsJs": {
           "uri": "file:///a/file.ts",
           "position": 3,
           "name": "map",
@@ -13490,7 +13490,7 @@ fn lsp_completions_private_class_fields() {
         "("
       ],
       "data": {
-        "tsc": {
+        "tsJs": {
           "uri": "file:///a/file.ts",
           "position": 88,
           "name": "#prop",
@@ -13526,7 +13526,7 @@ fn lsp_completions_private_class_fields() {
         "("
       ],
       "data": {
-        "tsc": {
+        "tsJs": {
           "uri": "file:///a/file.ts",
           "position": 106,
           "name": "#prop",
@@ -17415,8 +17415,8 @@ fn lsp_workspace_compiler_options_root_dirs() {
   client.shutdown();
 }
 
-#[test(timeout = 300)]
-fn lsp_tsconfig_scopes() {
+#[test(timeout = 300, fork_with_suffix = "_tsgo")]
+fn lsp_tsconfig_scopes(use_tsgo: bool) {
   let context = TestContextBuilder::new()
     .use_http_server()
     .use_temp_cwd()
@@ -17444,7 +17444,7 @@ fn lsp_tsconfig_scopes() {
     .to_string(),
   );
   let file2 = temp_dir.source_file("project2/file.ts", "Deno;\ndocument;\n");
-  let mut client = context.new_lsp_command().build();
+  let mut client = context.new_lsp_command().set_use_tsgo(use_tsgo).build();
   client.initialize_default();
   client.did_open_file(&file1);
   let diagnostics = client.did_open_file(&file2);

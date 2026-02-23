@@ -859,6 +859,11 @@ declare namespace Deno {
    *
    * `fn` can be async if required.
    *
+   * Tests are discovered before they are executed, so registrations must happen
+   * at module load time.
+   * Nested `Deno.test()` calls are not supported.
+   * Use `t.step()` for nested tests.
+   *
    * ```ts
    * import { assertEquals } from "jsr:@std/assert";
    *
@@ -2222,6 +2227,26 @@ declare namespace Deno {
      * @param [exclusive=false]
      */
     lockSync(exclusive?: boolean): void;
+    /**
+     * Try to acquire an advisory file-system lock for the file. Returns `true`
+     * if the lock was acquired, `false` if the file is already locked.
+     *
+     * Unlike {@linkcode Deno.FsFile.lock}, this method will not block if the
+     * lock cannot be acquired.
+     *
+     * @param [exclusive=false]
+     */
+    tryLock(exclusive?: boolean): Promise<boolean>;
+    /**
+     * Synchronously try to acquire an advisory file-system lock for the file.
+     * Returns `true` if the lock was acquired, `false` if the file is already locked.
+     *
+     * Unlike {@linkcode Deno.FsFile.lockSync}, this method will not block if the
+     * lock cannot be acquired.
+     *
+     * @param [exclusive=false]
+     */
+    tryLockSync(exclusive?: boolean): boolean;
     /**
      * Release an advisory file-system lock for the file.
      */

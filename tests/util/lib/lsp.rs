@@ -540,6 +540,19 @@ impl LspClientBuilder {
     self
   }
 
+  pub fn set_use_tsgo(mut self, use_tsgo: bool) -> Self {
+    if use_tsgo {
+      self
+        .envs
+        .insert("DENO_UNSTABLE_TSGO_LSP".into(), "1".into());
+    } else {
+      self
+        .envs
+        .remove("DENO_UNSTABLE_TSGO_LSP".as_ref() as &OsStr);
+    }
+    self
+  }
+
   pub fn build(&self) -> LspClient {
     self.build_result().unwrap()
   }

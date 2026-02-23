@@ -79,6 +79,7 @@ use crate::resolver::CliResolver;
 use crate::sys::CliSys;
 use crate::tools::bundle::externals::ExternalsMatcher;
 use crate::util::file_watcher::WatcherRestartMode;
+use crate::util::fs::canonicalize_path;
 
 static DISABLE_HACK: LazyLock<bool> =
   LazyLock::new(|| std::env::var("NO_DENO_BUNDLE_HACK").is_err());
@@ -241,6 +242,9 @@ pub async fn bundle_init(
     emitter: factory.emitter()?.clone(),
     deferred_resolve_errors: Default::default(),
     virtual_modules: None,
+    initial_cwd: deno_path_util::url_from_directory_path(
+      cli_options.initial_cwd(),
+    )?,
   });
 
   let input = prepare_inputs(
@@ -856,6 +860,7 @@ pub struct DenoPluginHandler {
   parsed_source_cache: Arc<ParsedSourceCache>,
   cjs_tracker: Arc<CliCjsTracker>,
   emitter: Arc<CliEmitter>,
+  initial_cwd: Url,
 }
 
 impl DenoPluginHandler {
@@ -1235,6 +1240,9 @@ impl DenoPluginHandler {
       kind,
       with
     );
+    if path.starts_with("data:") {
+      return Ok(None);
+    }
     let mut resolve_dir = resolve_dir.unwrap_or("").to_string();
     let resolver = self.resolver.clone();
     if !resolve_dir.ends_with(std::path::MAIN_SEPARATOR) {
@@ -1243,9 +1251,7 @@ impl DenoPluginHandler {
     let resolve_dir_path = Path::new(&resolve_dir);
     let mut referrer =
       resolve_url_or_path(importer.unwrap_or(""), resolve_dir_path)
-        .unwrap_or_else(|_| {
-          Url::from_directory_path(std::env::current_dir().unwrap()).unwrap()
-        });
+        .unwrap_or_else(|_| self.initial_cwd.clone());
     if referrer.scheme() == "file" {
       let pth = referrer.to_file_path().unwrap();
       if (pth.is_dir()) && !pth.ends_with(std::path::MAIN_SEPARATOR_STR) {
@@ -1354,6 +1360,9 @@ impl DenoPluginHandler {
       specifier,
       Path::new(""), // should be absolute already, feels kind of hacky though
     )?;
+    if specifier.scheme() == "data" {
+      return Ok(None);
+    }
     let (specifier, media_type) =
       if let RequestedModuleType::Bytes = requested_type {
         (specifier, MediaType::Unknown)
@@ -1369,13 +1378,6 @@ impl DenoPluginHandler {
           deno_terminal::colors::yellow("warn"),
           specifier
         );
-
-        if specifier.scheme() == "data" {
-          return Ok(Some((
-            specifier.to_string().as_bytes().to_vec(),
-            esbuild_client::BuiltinLoader::DataUrl,
-          )));
-        }
 
         let (media_type, _) =
           deno_media_type::resolve_media_type_and_charset_from_content_type(
@@ -1705,7 +1707,7 @@ fn resolve_url_or_path_absolute(
   } else {
     let path = current_dir.join(specifier);
     let path = deno_path_util::normalize_path(Cow::Owned(path));
-    let path = path.canonicalize()?;
+    let path = canonicalize_path(&path)?;
     Ok(deno_path_util::url_from_file_path(&path)?)
   }
 }

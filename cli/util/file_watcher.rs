@@ -300,6 +300,7 @@ where
   ) -> Result<F, AnyError>,
   F: Future<Output = Result<(), AnyError>>,
 {
+  #[allow(clippy::disallowed_methods)] // ok because initialization
   let initial_cwd = std::env::current_dir()
     .ok()
     .and_then(|path| deno_path_util::url_from_directory_path(&path).ok());

@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "2.6.9"
+version = "2.6.10"
 authors.workspace = true
 default-run = "deno"
 edition.workspace = true
@@ -108,9 +108,9 @@ comrak.workspace = true
 console_static_text.workspace = true
 crossterm.workspace = true
 dashmap.workspace = true
+deno_dotenv.workspace = true
 dhat = { workspace = true, optional = true }
 dissimilar.workspace = true
-dotenvy.workspace = true
 dprint-core.workspace = true
 dprint-plugin-json.workspace = true
 dprint-plugin-jupyter.workspace = true
@@ -122,7 +122,6 @@ faster-hex.workspace = true
 # If you disable the default __vendored_zlib_ng feature above, you _must_ be able to link against `-lz`.
 flate2.workspace = true
 fluent-uri.workspace = true
-fs3.workspace = true
 http.workspace = true
 http-body.workspace = true
 http-body-util.workspace = true

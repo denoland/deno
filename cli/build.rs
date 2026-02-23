@@ -135,6 +135,7 @@ fn compress_decls(out_dir: &Path) {
 }
 
 fn process_node_types(out_dir: &Path) {
+  #[allow(clippy::disallowed_methods)] // build script
   let root_dir = Path::new(".").canonicalize().unwrap();
   let dts_dir = root_dir.join("tsc").join("dts");
   let node_dir = dts_dir.join("node");
@@ -155,8 +156,6 @@ fn process_node_types(out_dir: &Path) {
     Ok(())
   }
 
-  println!("cargo:rerun-if-changed={}", node_dir.display());
-
   let mut paths = Vec::new();
   visit_dirs(&node_dir, &mut |path| {
     paths.push(path.to_path_buf());
@@ -165,6 +164,12 @@ fn process_node_types(out_dir: &Path) {
 
   // Sort for deterministic builds
   paths.sort();
+
+  for path in &paths {
+    // print for each path instead of directory because
+    // the mtime cache works off files and not directories
+    println!("cargo:rerun-if-changed={}", path.display());
+  }
 
   // Compress all the files if release
   if !cfg!(debug_assertions) && std::env::var("CARGO_FEATURE_HMR").is_err() {
@@ -197,6 +202,7 @@ fn process_node_types(out_dir: &Path) {
 }
 
 fn compress_source(out_dir: &Path, file: &str) {
+  #[allow(clippy::disallowed_methods)] // build script
   let path = Path::new(file)
     .canonicalize()
     .unwrap_or_else(|_| panic!("expected file \"{file}\" to exist"));
