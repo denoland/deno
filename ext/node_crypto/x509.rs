@@ -745,28 +745,28 @@ pub fn op_node_x509_check_issued(
       _ => None,
     });
 
-  if let Some(aki) = cert_aki {
-    if let Some(aki_key_id) = &aki.key_identifier {
-      let other_ski = other
-        .extensions()
-        .iter()
-        .find(|e| {
-          e.oid
-            == x509_parser::oid_registry::OID_X509_EXT_SUBJECT_KEY_IDENTIFIER
-        })
-        .and_then(|e| match e.parsed_extension() {
-          extensions::ParsedExtension::SubjectKeyIdentifier(ski) => Some(ski),
-          _ => None,
-        });
+  if let Some(aki) = cert_aki
+    && let Some(aki_key_id) = &aki.key_identifier
+  {
+    let other_ski = other
+      .extensions()
+      .iter()
+      .find(|e| {
+        e.oid
+          == x509_parser::oid_registry::OID_X509_EXT_SUBJECT_KEY_IDENTIFIER
+      })
+      .and_then(|e| match e.parsed_extension() {
+        extensions::ParsedExtension::SubjectKeyIdentifier(ski) => Some(ski),
+        _ => None,
+      });
 
-      match other_ski {
-        Some(ski) => {
-          if aki_key_id.0 != ski.0 {
-            return false;
-          }
+    match other_ski {
+      Some(ski) => {
+        if aki_key_id.0 != ski.0 {
+          return false;
         }
-        None => return false,
       }
+      None => return false,
     }
   }
 
@@ -780,10 +780,10 @@ pub fn op_node_x509_check_issued(
       _ => None,
     });
 
-  if let Some(key_usage) = other_key_usage {
-    if !key_usage.key_cert_sign() {
-      return false;
-    }
+  if let Some(key_usage) = other_key_usage
+    && !key_usage.key_cert_sign()
+  {
+    return false;
   }
 
   true
