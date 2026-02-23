@@ -106,7 +106,9 @@ fn fs_main() -> @location(0) vec4<f32> {
   for (let i = 0; i < bitmapData.length; i++) {
     if (bitmapData[i] !== expectedData[i]) {
       throw new Error(
-        `Mismatch at byte ${i} (pixel ${Math.floor(i / 4)}, channel ${i % 4}): got ${bitmapData[i]}, expected ${expectedData[i]}`,
+        `Mismatch at byte ${i} (pixel ${Math.floor(i / 4)}, channel ${
+          i % 4
+        }): got ${bitmapData[i]}, expected ${expectedData[i]}`,
       );
     }
   }
@@ -178,7 +180,9 @@ Deno.test({
   for (let i = 0; i < outputData.length; i++) {
     if (outputData[i] !== sourceData[i]) {
       throw new Error(
-        `Mismatch at byte ${i} (pixel ${Math.floor(i / 4)}, channel ${i % 4}): got ${outputData[i]}, expected ${sourceData[i]}`,
+        `Mismatch at byte ${i} (pixel ${Math.floor(i / 4)}, channel ${
+          i % 4
+        }): got ${outputData[i]}, expected ${sourceData[i]}`,
       );
     }
   }
