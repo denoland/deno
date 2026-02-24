@@ -18,7 +18,6 @@ use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_error::JsError;
-use sys_traits::FsCanonicalize;
 use deno_error::JsErrorBox;
 use deno_lib::standalone::binary::DenoRtDeserializable;
 use deno_lib::standalone::binary::MAGIC_BYTES;
@@ -37,6 +36,7 @@ use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_semver::StackString;
 use deno_semver::package::PackageReq;
 use indexmap::IndexMap;
+use sys_traits::FsCanonicalize;
 use sys_traits::FsRead;
 use thiserror::Error;
 
