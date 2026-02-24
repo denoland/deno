@@ -1950,7 +1950,7 @@ dependencies = [
 [[package]]
 name = "deno_core"
 version = "0.386.0"
-source = "git+https://github.com/denoland/deno_core.git?branch=event-loop-rewrite-slop#0c400923f8f8a7453955532aea10568bb3d128ec"
+source = "git+https://github.com/denoland/deno_core.git?branch=event-loop-rewrite-slop#e49e59f56e02176e8830e16dd2130d04def1795e"
 dependencies = [
  "anyhow",
  "az",
@@ -2753,7 +2753,7 @@ dependencies = [
 [[package]]
 name = "deno_ops"
 version = "0.262.0"
-source = "git+https://github.com/denoland/deno_core.git?branch=event-loop-rewrite-slop#0c400923f8f8a7453955532aea10568bb3d128ec"
+source = "git+https://github.com/denoland/deno_core.git?branch=event-loop-rewrite-slop#e49e59f56e02176e8830e16dd2130d04def1795e"
 dependencies = [
  "indexmap 2.9.0",
  "proc-macro2",
@@ -8576,7 +8576,7 @@ dependencies = [
 [[package]]
 name = "serde_v8"
 version = "0.295.0"
-source = "git+https://github.com/denoland/deno_core.git?branch=event-loop-rewrite-slop#0c400923f8f8a7453955532aea10568bb3d128ec"
+source = "git+https://github.com/denoland/deno_core.git?branch=event-loop-rewrite-slop#e49e59f56e02176e8830e16dd2130d04def1795e"
 dependencies = [
  "deno_error",
  "num-bigint",
