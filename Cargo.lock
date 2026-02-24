@@ -596,7 +596,7 @@ dependencies = [
  "bitflags 2.9.3",
  "cexpr",
  "clang-sys",
- "itertools 0.13.0",
+ "itertools 0.12.1",
  "log",
  "prettyplease",
  "proc-macro2",
@@ -636,7 +636,7 @@ dependencies = [
  "bitflags 2.9.3",
  "cexpr",
  "clang-sys",
- "itertools 0.13.0",
+ "itertools 0.12.1",
  "log",
  "prettyplease",
  "proc-macro2",
@@ -1949,8 +1949,8 @@ dependencies = [
 
 [[package]]
 name = "deno_core"
-version = "0.385.0"
-source = "git+https://github.com/denoland/deno_core.git?branch=event-loop-rewrite-slop#7c249e410f6c461929ca229de1a9d2d33e1d3844"
+version = "0.386.0"
+source = "git+https://github.com/denoland/deno_core.git?branch=event-loop-rewrite-slop#0c400923f8f8a7453955532aea10568bb3d128ec"
 dependencies = [
  "anyhow",
  "az",
@@ -1968,6 +1968,7 @@ dependencies = [
  "deno_unsync",
  "futures",
  "indexmap 2.9.0",
+ "inventory",
  "libc",
  "parking_lot",
  "percent-encoding",
@@ -2751,8 +2752,8 @@ dependencies = [
 
 [[package]]
 name = "deno_ops"
-version = "0.261.0"
-source = "git+https://github.com/denoland/deno_core.git?branch=event-loop-rewrite-slop#7c249e410f6c461929ca229de1a9d2d33e1d3844"
+version = "0.262.0"
+source = "git+https://github.com/denoland/deno_core.git?branch=event-loop-rewrite-slop#0c400923f8f8a7453955532aea10568bb3d128ec"
 dependencies = [
  "indexmap 2.9.0",
  "proc-macro2",
@@ -7563,7 +7564,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e9552f850d5f0964a4e4d0bf306459ac29323ddfbae05e35a7c0d35cb0803cc5"
 dependencies = [
  "anyhow",
- "itertools 0.13.0",
+ "itertools 0.12.1",
  "proc-macro2",
  "quote",
  "syn 2.0.87",
@@ -8574,8 +8575,8 @@ dependencies = [
 
 [[package]]
 name = "serde_v8"
-version = "0.294.0"
-source = "git+https://github.com/denoland/deno_core.git?branch=event-loop-rewrite-slop#7c249e410f6c461929ca229de1a9d2d33e1d3844"
+version = "0.295.0"
+source = "git+https://github.com/denoland/deno_core.git?branch=event-loop-rewrite-slop#0c400923f8f8a7453955532aea10568bb3d128ec"
 dependencies = [
  "deno_error",
  "num-bigint",
