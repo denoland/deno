@@ -352,7 +352,7 @@ jobs:
     needs:
       - build-debug-macos-x86_64
     runs-on: macos-15-intel
-    timeout-minutes: 240
+    timeout-minutes: 30
     defaults:
       run:
         shell: bash
@@ -766,7 +766,7 @@ jobs:
     needs:
       - build-release-macos-x86_64
     runs-on: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && ''ubuntu-24.04'' || ''macos-15-intel'' }}'
-    timeout-minutes: 240
+    timeout-minutes: 30
     defaults:
       run:
         shell: bash
@@ -1062,7 +1062,7 @@ jobs:
     needs:
       - build-debug-macos-aarch64
     runs-on: macos-14
-    timeout-minutes: 240
+    timeout-minutes: 30
     defaults:
       run:
         shell: bash
@@ -1613,7 +1613,7 @@ jobs:
     needs:
       - build-release-macos-aarch64
     runs-on: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && ''ubuntu-24.04'' || ''macos-14'' }}'
-    timeout-minutes: 240
+    timeout-minutes: 30
     defaults:
       run:
         shell: bash
@@ -1906,7 +1906,7 @@ jobs:
     needs:
       - build-debug-windows-x86_64
     runs-on: windows-2022
-    timeout-minutes: 240
+    timeout-minutes: 30
     defaults:
       run:
         shell: bash
@@ -2429,7 +2429,7 @@ jobs:
     needs:
       - build-release-windows-x86_64
     runs-on: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && ''ubuntu-24.04'' || ''windows-2022'' }}'
-    timeout-minutes: 240
+    timeout-minutes: 30
     defaults:
       run:
         shell: bash
@@ -2699,7 +2699,7 @@ jobs:
     needs:
       - build-debug-windows-aarch64
     runs-on: windows-11-arm
-    timeout-minutes: 240
+    timeout-minutes: 30
     defaults:
       run:
         shell: bash
@@ -3127,7 +3127,7 @@ jobs:
     needs:
       - build-release-windows-aarch64
     runs-on: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && ''ubuntu-24.04'' || ''windows-11-arm'' }}'
-    timeout-minutes: 240
+    timeout-minutes: 30
     defaults:
       run:
         shell: bash
@@ -3581,7 +3581,7 @@ jobs:
     needs:
       - build-release-linux-x86_64
     runs-on: ubuntu-24.04
-    timeout-minutes: 240
+    timeout-minutes: 30
     defaults:
       run:
         shell: bash
@@ -4161,7 +4161,7 @@ jobs:
     needs:
       - build-debug-linux-x86_64
     runs-on: ubuntu-24.04
-    timeout-minutes: 240
+    timeout-minutes: 30
     defaults:
       run:
         shell: bash
@@ -4637,7 +4637,7 @@ jobs:
     needs:
       - build-debug-linux-aarch64
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 240
+    timeout-minutes: 30
     defaults:
       run:
         shell: bash
@@ -5214,7 +5214,7 @@ jobs:
     needs:
       - build-release-linux-aarch64
     runs-on: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && ''ubuntu-24.04'' || ''ubuntu-24.04-arm'' }}'
-    timeout-minutes: 240
+    timeout-minutes: 30
     defaults:
       run:
         shell: bash

@@ -75,6 +75,10 @@ declare namespace Deno {
        */
       minify?: boolean;
       /**
+       * Whether to keep function and class names.
+       */
+      keepNames?: boolean;
+      /**
        * Whether to enable code splitting.
        */
       codeSplitting?: boolean;

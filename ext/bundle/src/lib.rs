@@ -68,6 +68,8 @@ pub struct BundleOptions {
   #[from_v8(default)]
   pub minify: bool,
   #[from_v8(default)]
+  pub keep_names: bool,
+  #[from_v8(default)]
   pub code_splitting: bool,
   #[from_v8(default = true)]
   pub inline_imports: bool,
