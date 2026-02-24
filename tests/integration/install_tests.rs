@@ -55,12 +55,16 @@ fn install_basic() {
   if cfg!(windows) {
     assert_contains!(
       content,
-      &format!(r#""run" "--check" "--config" "{config_path}" "http://localhost:4545/echo.ts""#)
+      &format!(
+        r#""run" "--check" "--config" "{config_path}" "http://localhost:4545/echo.ts""#
+      )
     );
   } else {
     assert_contains!(
       content,
-      &format!("run --check --config '{config_path}' 'http://localhost:4545/echo.ts'")
+      &format!(
+        "run --check --config '{config_path}' 'http://localhost:4545/echo.ts'"
+      )
     );
   }
 
@@ -132,16 +136,25 @@ fn install_basic_global() {
   assert_eq!(content.chars().last().unwrap(), '\n');
 
   // shim should point to a per-command config in .<name>/deno.json
-  let config_path = temp_dir.path().join(".deno").join("bin").join(".echo_test").join("deno.json");
+  let config_path = temp_dir
+    .path()
+    .join(".deno")
+    .join("bin")
+    .join(".echo_test")
+    .join("deno.json");
   if cfg!(windows) {
     assert_contains!(
       content,
-      &format!(r#""run" "--check" "--config" "{config_path}" "http://localhost:4545/echo.ts""#)
+      &format!(
+        r#""run" "--check" "--config" "{config_path}" "http://localhost:4545/echo.ts""#
+      )
     );
   } else {
     assert_contains!(
       content,
-      &format!("run --check --config '{config_path}' 'http://localhost:4545/echo.ts'")
+      &format!(
+        "run --check --config '{config_path}' 'http://localhost:4545/echo.ts'"
+      )
     );
   }
 
@@ -192,16 +205,24 @@ fn install_custom_dir_env_var() {
 
   let content = file_path.read_to_string();
   // shim should point to a per-command config
-  let config_path = temp_dir.path().join("bin").join(".echo_test").join("deno.json");
+  let config_path = temp_dir
+    .path()
+    .join("bin")
+    .join(".echo_test")
+    .join("deno.json");
   if cfg!(windows) {
     assert_contains!(
       content,
-      &format!(r#""run" "--check" "--config" "{config_path}" "http://localhost:4545/echo.ts""#)
+      &format!(
+        r#""run" "--check" "--config" "{config_path}" "http://localhost:4545/echo.ts""#
+      )
     );
   } else {
     assert_contains!(
       content,
-      &format!("run --check --config '{config_path}' 'http://localhost:4545/echo.ts'")
+      &format!(
+        "run --check --config '{config_path}' 'http://localhost:4545/echo.ts'"
+      )
     );
   }
 }
@@ -235,16 +256,24 @@ fn installer_test_custom_dir_with_bin() {
 
   let content = file_path.read_to_string();
   // shim should point to a per-command config
-  let config_path = temp_dir.path().join("bin").join(".echo_test").join("deno.json");
+  let config_path = temp_dir
+    .path()
+    .join("bin")
+    .join(".echo_test")
+    .join("deno.json");
   if cfg!(windows) {
     assert_contains!(
       content,
-      &format!(r#""run" "--check" "--config" "{config_path}" "http://localhost:4545/echo.ts""#)
+      &format!(
+        r#""run" "--check" "--config" "{config_path}" "http://localhost:4545/echo.ts""#
+      )
     );
   } else {
     assert_contains!(
       content,
-      &format!("run --check --config '{config_path}' 'http://localhost:4545/echo.ts'")
+      &format!(
+        "run --check --config '{config_path}' 'http://localhost:4545/echo.ts'"
+      )
     );
   }
 }

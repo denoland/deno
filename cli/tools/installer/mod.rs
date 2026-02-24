@@ -945,8 +945,7 @@ async fn install_global(
       cli_options.initial_cwd(),
       &flags,
       &install_flags_global,
-    )
-    .await?;
+    )?;
   }
   Ok(())
 }
@@ -1153,15 +1152,14 @@ async fn install_global_compiled(
   Ok(())
 }
 
-async fn create_install_shim(
+fn create_install_shim(
   bin_name_and_url: &BinaryNameAndUrl,
   cwd: &Path,
   flags: &Flags,
   install_flags_global: &InstallFlagsGlobal,
 ) -> Result<(), AnyError> {
   let shim_data =
-    resolve_shim_data(bin_name_and_url, cwd, flags, install_flags_global)
-      .await?;
+    resolve_shim_data(bin_name_and_url, cwd, flags, install_flags_global)?;
 
   // ensure directory exists
   if let Ok(metadata) = fs::metadata(&shim_data.installation_dir) {
@@ -1254,7 +1252,7 @@ struct ShimData {
   args: Vec<String>,
 }
 
-async fn resolve_shim_data(
+fn resolve_shim_data(
   bin_name_and_url: &BinaryNameAndUrl,
   cwd: &Path,
   flags: &Flags,
@@ -1442,7 +1440,6 @@ mod tests {
       flags,
       &install_flags_global,
     )
-    .await
   }
 
   /// Returns the config directory path (e.g. `<root>/bin/.<name>/`) for a given
@@ -1476,8 +1473,7 @@ mod tests {
       &cwd,
       flags,
       install_flags_global,
-    )
-    .await?;
+    )?;
     Ok((binary_name_and_url, shim_data))
   }
 
