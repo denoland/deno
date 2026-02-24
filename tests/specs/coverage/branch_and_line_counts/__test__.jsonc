@@ -1,0 +1,13 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "test --coverage=coverage",
+      "output": "[WILDCARD]1 passed[WILDCARD]"
+    },
+    {
+      "args": "coverage coverage --lcov",
+      "output": "expected_lcov.out"
+    }
+  ]
+}
