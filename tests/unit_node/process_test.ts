@@ -951,6 +951,7 @@ Deno.test("process.config", () => {
   assert(process.config !== undefined);
   assert(process.config.target_defaults !== undefined);
   assert(process.config.variables !== undefined);
+  assertEquals(process.config.variables.host_arch, process.arch);
 });
 
 Deno.test("process._exiting", () => {
