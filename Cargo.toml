@@ -394,7 +394,7 @@ cranelift = "0.116"
 cranelift-native = "0.116"
 dlopen2 = "0.6.1"
 libffi = "=4.1.2"
-libffi-sys = "=3.3.3"
+libffi-sys = "=4.1.0"
 memmap2 = "0.9"
 
 # napi
