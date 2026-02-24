@@ -717,3 +717,24 @@ Deno.test({
     assertEquals(file instanceof Blob, true);
   },
 });
+
+Deno.test({
+  name: "[node/buffer] latin1Slice returns correct string",
+  fn() {
+    // deno-lint-ignore no-explicit-any
+    const buf: any = Buffer.of(1, 2, 3, 0xff);
+    assertEquals(buf.latin1Slice().length, 4);
+    assertEquals(buf.latin1Slice(), "\x01\x02\x03\xff");
+    assertEquals(buf.latin1Slice(1, 3), "\x02\x03");
+  },
+});
+
+Deno.test({
+  name: "[node/buffer] hexSlice returns correct string",
+  fn() {
+    // deno-lint-ignore no-explicit-any
+    const buf: any = Buffer.of(1, 2, 3, 0xff);
+    assertEquals(buf.hexSlice(), "010203ff");
+    assertEquals(buf.hexSlice(1, 3), "0203");
+  },
+});

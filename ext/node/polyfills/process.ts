@@ -676,14 +676,24 @@ Object.defineProperty(process, "argv0", {
 process.chdir = chdir;
 
 /** https://nodejs.org/api/process.html#processconfig */
-process.config = Object.freeze({
-  target_defaults: Object.freeze({
-    default_configuration: "Release",
-  }),
-  variables: Object.freeze({
-    llvm_version: "0.0",
-    enable_lto: "false",
-  }),
+let _configCache: Record<string, unknown> | undefined;
+Object.defineProperty(process, "config", {
+  get() {
+    if (_configCache === undefined) {
+      _configCache = Object.freeze({
+        target_defaults: Object.freeze({
+          default_configuration: "Release",
+        }),
+        variables: Object.freeze({
+          llvm_version: "0.0",
+          enable_lto: "false",
+          host_arch: arch,
+        }),
+      });
+    }
+    return _configCache;
+  },
+  configurable: true,
 });
 
 process.cpuUsage = cpuUsage;
