@@ -14270,8 +14270,8 @@ fn lsp_jsx_import_source_package_json_automatic_cache() {
   client.shutdown();
 }
 
-#[test(timeout = 300)]
-fn lsp_jsx_import_source_byonm_preact() {
+#[test(timeout = 300, fork_with_suffix = "_tsgo")]
+fn lsp_jsx_import_source_byonm_preact(use_tsgo: bool) {
   let context = TestContextBuilder::new()
     .use_http_server()
     .use_temp_cwd()
@@ -14300,7 +14300,7 @@ fn lsp_jsx_import_source_byonm_preact() {
   );
   let file = source_file(temp_dir.path().join("file.tsx"), r#"<div></div>;"#);
   context.run_npm("install");
-  let mut client = context.new_lsp_command().build();
+  let mut client = context.new_lsp_command().set_use_tsgo(use_tsgo).build();
   client.initialize_default();
   let diagnostics = client.did_open_file(&file);
   assert_eq!(json!(diagnostics.all()), json!([]));
@@ -14316,7 +14316,11 @@ fn lsp_jsx_import_source_byonm_preact() {
     json!({
       "contents": {
         "kind": "markdown",
-        "value": "```typescript\n(property) JSXInternal.IntrinsicElements.div: JSXInternal.HTMLAttributes<HTMLDivElement>\n```",
+        "value": if use_tsgo {
+          "```tsx\n(property) JSXInternal.IntrinsicElements.div: JSXInternal.HTMLAttributes<HTMLDivElement>\n```\n"
+        } else {
+          "```typescript\n(property) JSXInternal.IntrinsicElements.div: JSXInternal.HTMLAttributes<HTMLDivElement>\n```"
+        },
       },
       "range": {
         "start": { "line": 0, "character": 1 },
@@ -17415,8 +17419,8 @@ fn lsp_workspace_compiler_options_root_dirs() {
   client.shutdown();
 }
 
-#[test(timeout = 300)]
-fn lsp_tsconfig_scopes() {
+#[test(timeout = 300, fork_with_suffix = "_tsgo")]
+fn lsp_tsconfig_scopes(use_tsgo: bool) {
   let context = TestContextBuilder::new()
     .use_http_server()
     .use_temp_cwd()
@@ -17444,7 +17448,7 @@ fn lsp_tsconfig_scopes() {
     .to_string(),
   );
   let file2 = temp_dir.source_file("project2/file.ts", "Deno;\ndocument;\n");
-  let mut client = context.new_lsp_command().build();
+  let mut client = context.new_lsp_command().set_use_tsgo(use_tsgo).build();
   client.initialize_default();
   client.did_open_file(&file1);
   let diagnostics = client.did_open_file(&file2);

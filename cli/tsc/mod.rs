@@ -1,6 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 //
-mod go;
+pub mod go;
 mod js;
 
 use std::collections::HashMap;
