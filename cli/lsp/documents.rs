@@ -1296,7 +1296,7 @@ impl DocumentModules {
     module
   }
 
-  pub fn module_for_tsgo_referrer(
+  pub fn module_for_tsgo_document(
     &self,
     uri: &Uri,
     compiler_options_key: &CompilerOptionsKey,
@@ -1314,7 +1314,7 @@ impl DocumentModules {
     self.module(&document, scope.map(|s| s.as_ref()))
   }
 
-  pub fn module_for_tsgo_dependency(
+  pub fn module_for_tsgo_specifier(
     &self,
     specifier: &Url,
     compiler_options_key: &CompilerOptionsKey,
@@ -1855,7 +1855,7 @@ impl DocumentModules {
       specifier = Cow::Owned(s);
     }
     let module =
-      self.module_for_tsgo_dependency(&specifier, compiler_options_key)?;
+      self.module_for_tsgo_specifier(&specifier, compiler_options_key)?;
     if let Some(types) = module
       .types_dependency
       .as_ref()
