@@ -509,6 +509,7 @@ struct MemoizedValues {
 pub struct CompilerOptionsOverrides {
   /// Skip transpiling in the loaders.
   pub no_transpile: bool,
+  pub force_check_js: bool,
   /// Base to use for the source map. This is useful when bundling
   /// and you want to make file urls relative.
   pub source_map_base: Option<Url>,
@@ -606,6 +607,13 @@ impl CompilerOptionsData {
         if let Some(ignored) = parsed.maybe_ignored {
           result.ignored_options.push(ignored);
         }
+      }
+      if matches!(typ, CompilerOptionsType::Check { .. })
+        && self.overrides.force_check_js
+        && let Some(compiler_options) =
+          result.compiler_options.0.as_object_mut()
+      {
+        compiler_options.insert("checkJs".to_string(), true.into());
       }
       if self.source_kind != CompilerOptionsSourceKind::TsConfig {
         check_warn_compiler_options(&result, &self.logged_warnings);
@@ -776,6 +784,9 @@ impl CompilerOptionsData {
   }
 
   pub fn check_js(&self) -> bool {
+    if self.overrides.force_check_js {
+      return true;
+    }
     *self.memoized.check_js.get_or_init(|| {
       self
         .sources

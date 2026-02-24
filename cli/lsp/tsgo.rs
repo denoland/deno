@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use std::io::BufRead;
 use std::io::Write;
 use std::path::Path;
+use std::path::PathBuf;
 use std::process::Child;
 use std::process::Command;
 use std::process::Stdio;
@@ -13,12 +14,14 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicI64;
 use std::sync::atomic::Ordering;
 
+use deno_ast::MediaType;
 use deno_config::deno_json::CompilerOptions;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
 use deno_graph::source::Resolver;
+use deno_path_util::url_from_directory_path;
 use deno_resolver::deno_json::CompilerOptionsKey;
 use indexmap::IndexSet;
 use lsp_types::Uri;
@@ -169,6 +172,17 @@ enum TsGoCallbackParams {
     referrer_uri: Uri,
     import_attribute_type: Option<String>,
     resolution_mode: deno_typescript_go_client_rust::types::ResolutionMode,
+    compiler_options_key: CompilerOptionsKey,
+  },
+  #[serde(rename_all = "camelCase")]
+  ResolveJsxImportSource {
+    compiler_options_key: CompilerOptionsKey,
+  },
+  #[serde(rename_all = "camelCase")]
+  GetPackageScopeForPath { directory_path: PathBuf },
+  #[serde(rename_all = "camelCase")]
+  GetImpliedNodeFormatForFile {
+    uri: Uri,
     compiler_options_key: CompilerOptionsKey,
   },
 }
@@ -726,6 +740,35 @@ impl TsGoServerInner {
       }
     });
 
+    let capabilities = {
+      let snapshot = snapshot.lock();
+      lsp::ClientCapabilities {
+        text_document: Some(lsp::TextDocumentClientCapabilities {
+          synchronization: None,
+          formatting: None,
+          range_formatting: None,
+          on_type_formatting: None,
+          publish_diagnostics: None,
+          diagnostic: Some(Default::default()),
+          ..snapshot
+            .config
+            .client_capabilities
+            .text_document
+            .clone()
+            .unwrap_or_default()
+        }),
+        workspace: Some(lsp::WorkspaceClientCapabilities {
+          symbol: snapshot
+            .config
+            .client_capabilities
+            .workspace
+            .as_ref()
+            .and_then(|w| w.symbol.clone()),
+          ..Default::default()
+        }),
+        ..Default::default()
+      }
+    };
     let initialize_request = json!({
       "jsonrpc": "2.0",
       "id": 0,
@@ -735,7 +778,7 @@ impl TsGoServerInner {
           "disablePushDiagnostics": true,
         },
         "processId": std::process::id(),
-        "capabilities": {},
+        "capabilities": capabilities,
         "rootUri": null,
         "workspaceFolders": null,
       },
@@ -812,7 +855,7 @@ impl TsGoServerInner {
       } => {
         let referrer_module = snapshot
           .document_modules
-          .module_for_tsgo_referrer(&referrer_uri, &compiler_options_key)
+          .module_for_tsgo_document(&referrer_uri, &compiler_options_key)
           .ok_or_else(|| anyhow!("Referrer module not found"))?;
         let Some((uri, media_type)) = snapshot
           .document_modules
@@ -837,6 +880,65 @@ impl TsGoServerInner {
           "uri": uri,
           "extension": media_type.as_ts_extension(),
         }))
+      }
+      TsGoCallbackParams::ResolveJsxImportSource {
+        compiler_options_key,
+      } => {
+        let compiler_options_data = snapshot
+          .compiler_options_resolver
+          .for_key(&compiler_options_key)
+          .unwrap();
+        let specifier = compiler_options_data
+          .jsx_import_source_config
+          .as_ref()
+          .and_then(|c| c.specifier());
+        Ok(json!(specifier))
+      }
+      TsGoCallbackParams::GetPackageScopeForPath { directory_path } => {
+        let Ok(directory_url) = url_from_directory_path(&directory_path) else {
+          return Ok(json!(null));
+        };
+        let scoped_resolver =
+          snapshot.resolver.get_scoped_resolver(Some(&directory_url));
+        let Ok(Some(package_json)) = scoped_resolver
+          .as_pkg_json_resolver()
+          .get_closest_package_json(&directory_path.join("package.json"))
+        else {
+          return Ok(json!(null));
+        };
+        Ok(json!({
+          "packageDirectoryPath": package_json.path.parent(),
+          "packageJsonText": serde_json::to_string(&package_json).unwrap(),
+        }))
+      }
+      TsGoCallbackParams::GetImpliedNodeFormatForFile {
+        uri,
+        compiler_options_key,
+      } => {
+        let referrer_module = snapshot
+          .document_modules
+          .module_for_tsgo_document(&uri, &compiler_options_key)
+          .ok_or_else(|| anyhow!("Module not found"))?;
+        let resolution_mode =
+          match (referrer_module.resolution_mode, referrer_module.media_type) {
+            (
+              _,
+              MediaType::Css
+              | MediaType::Json
+              | MediaType::Html
+              | MediaType::Sql
+              | MediaType::Wasm
+              | MediaType::SourceMap
+              | MediaType::Unknown,
+            ) => deno_typescript_go_client_rust::types::ResolutionMode::None,
+            (ResolutionMode::Import, _) => {
+              deno_typescript_go_client_rust::types::ResolutionMode::ESM
+            }
+            (ResolutionMode::Require, _) => {
+              deno_typescript_go_client_rust::types::ResolutionMode::CommonJS
+            }
+          };
+        Ok(json!(resolution_mode))
       }
     }
   }
