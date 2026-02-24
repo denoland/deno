@@ -556,18 +556,15 @@ pub async fn upgrade(
   upgrade_flags: UpgradeFlags,
 ) -> Result<(), AnyError> {
   let factory = CliFactory::from_flags(flags);
+  let cli_options = factory.cli_options()?;
   let http_client_provider = factory.http_client_provider();
   let client = http_client_provider.get_or_create()?;
   let current_exe_path = std::env::current_exe()
     .context("failed to get the path of the current executable")?;
-  let full_path_output_flag = match &upgrade_flags.output {
-    Some(output) => Some(
-      std::env::current_dir()
-        .context("failed getting cwd")?
-        .join(output),
-    ),
-    None => None,
-  };
+  let full_path_output_flag = upgrade_flags
+    .output
+    .as_ref()
+    .map(|output| cli_options.initial_cwd().join(output));
   let output_exe_path =
     full_path_output_flag.as_ref().unwrap_or(&current_exe_path);
 

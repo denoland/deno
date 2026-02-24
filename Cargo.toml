@@ -76,7 +76,7 @@ license = "MIT"
 repository = "https://github.com/denoland/deno"
 
 [workspace.dependencies]
-deno_ast = { version = "=0.53.0", features = ["transpiling"] }
+deno_ast = { version = "=0.53.1", features = ["transpiling"] }
 # deno_core = { path = "../deno_core/core" }
 deno_core = { git = "https://github.com/denoland/deno_core.git", branch = "event-loop-rewrite-slop" }
 
@@ -185,7 +185,6 @@ comrak = "0.29.0"
 dashmap = "5.5.3"
 data-encoding = "2.3.3"
 data-url = "=0.3.1"
-dotenvy = "0.15.7"
 dyn-clone = "1"
 encoding_rs = "=0.8.35"
 error_reporter = "1"

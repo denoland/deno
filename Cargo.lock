@@ -1672,6 +1672,7 @@ dependencies = [
  "deno_config",
  "deno_core",
  "deno_doc",
+ "deno_dotenv",
  "deno_error",
  "deno_graph",
  "deno_lib",
@@ -1697,7 +1698,6 @@ dependencies = [
  "deno_typescript_go_client_rust",
  "dhat",
  "dissimilar",
- "dotenvy",
  "dprint-core",
  "dprint-plugin-json",
  "dprint-plugin-jupyter",
@@ -1800,9 +1800,9 @@ dependencies = [
 
 [[package]]
 name = "deno_ast"
-version = "0.53.0"
+version = "0.53.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8ac5df28715465cff3f03294564f38c9cd3c24c4cfb965a32fd1327efa111b02"
+checksum = "292b1ce21933ce7cea00c69b8de023a6a29707e9b6cb2052ca27499710ddd133"
 dependencies = [
  "base64 0.22.1",
  "capacity_builder",
@@ -3706,12 +3706,6 @@ checksum = "cb6969eaabd2421f8a2775cfd2471a2b634372b4a25d41e3bd647b79912850a0"
 dependencies = [
  "litrs",
 ]
-
-[[package]]
-name = "dotenvy"
-version = "0.15.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1aaf95b3e5c8f23aa320147307562d361db0ae0d51242340f558153b4eb2439b"
 
 [[package]]
 name = "dprint-core"
@@ -9480,9 +9474,9 @@ dependencies = [
 
 [[package]]
 name = "syn-match"
-version = "0.3.0"
+version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "783c4140d7ed89f37116e865b49e5a9fdd28608b9071a9dd1e158b50fc0a31fc"
+checksum = "54b8f0a9004d6aafa6a588602a1119e6cdaacec9921aa1605383e6e7d6258fd6"
 dependencies = [
  "proc-macro2",
  "quote",
