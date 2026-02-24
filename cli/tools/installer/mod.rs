@@ -1505,7 +1505,9 @@ mod tests {
     assert!(file_path.exists());
 
     let content = fs::read_to_string(file_path).unwrap();
-    let config_path = bin_dir.join(".echo_test").join("deno.json");
+    let config_path =
+      config_dir_for(&temp_dir.path().to_string(), "echo_test")
+        .join("deno.json");
     if cfg!(windows) {
       assert!(content.contains(&format!(
         r#""run" "--config" "{}" "http://localhost:4545/echo_server.ts""#,
@@ -1513,7 +1515,7 @@ mod tests {
       )));
     } else {
       assert!(content.contains(&format!(
-        "run --config '{}' 'http://localhost:4545/echo_server.ts'",
+        "run --config {} 'http://localhost:4545/echo_server.ts'",
         config_path.to_string_lossy()
       )));
     }
@@ -2072,12 +2074,14 @@ mod tests {
 
     assert!(file_path.exists());
     let content = fs::read_to_string(file_path).unwrap();
-    let config_path = bin_dir.join(".echo_test").join("deno.json");
+    let config_path =
+      config_dir_for(&temp_dir.path().to_string(), "echo_test")
+        .join("deno.json");
     if cfg!(windows) {
       // TODO: see comment above this test
     } else {
       assert!(content.contains(&format!(
-        "run --config '{}' 'http://localhost:4545/echo_server.ts' '\"'",
+        "run --config {} 'http://localhost:4545/echo_server.ts' '\"'",
         config_path.to_string_lossy()
       )));
     }
@@ -2160,9 +2164,11 @@ mod tests {
     }
     assert!(file_path.exists());
 
-    let config_path = bin_dir.join(".echo_test").join("deno.json");
+    let config_path =
+      config_dir_for(&temp_dir.path().to_string(), "echo_test")
+        .join("deno.json");
     let mut expected_string = format!(
-      "--import-map '{import_map_url}' --config '{}' 'http://localhost:4545/cat.ts'",
+      "--import-map '{import_map_url}' --config {} 'http://localhost:4545/cat.ts'",
       config_path.to_string_lossy()
     );
     if cfg!(windows) {
@@ -2207,9 +2213,11 @@ mod tests {
     }
     assert!(file_path.exists());
 
-    let config_path = bin_dir.join(".echo_test").join("deno.json");
+    let config_path =
+      config_dir_for(&temp_dir.path().to_string(), "echo_test")
+        .join("deno.json");
     let mut expected_string = format!(
-      "run --config '{}' '{}'",
+      "run --config {} '{}'",
       config_path.to_string_lossy(),
       &file_module_string
     );

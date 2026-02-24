@@ -63,7 +63,7 @@ fn install_basic() {
     assert_contains!(
       content,
       &format!(
-        "run --check --config '{config_path}' 'http://localhost:4545/echo.ts'"
+        "run --check --config {config_path} 'http://localhost:4545/echo.ts'"
       )
     );
   }
@@ -153,7 +153,7 @@ fn install_basic_global() {
     assert_contains!(
       content,
       &format!(
-        "run --check --config '{config_path}' 'http://localhost:4545/echo.ts'"
+        "run --check --config {config_path} 'http://localhost:4545/echo.ts'"
       )
     );
   }
@@ -208,6 +208,7 @@ fn install_custom_dir_env_var() {
   let config_path = temp_dir
     .path()
     .join("bin")
+    .canonicalize()
     .join(".echo_test")
     .join("deno.json");
   if cfg!(windows) {
@@ -221,7 +222,7 @@ fn install_custom_dir_env_var() {
     assert_contains!(
       content,
       &format!(
-        "run --check --config '{config_path}' 'http://localhost:4545/echo.ts'"
+        "run --check --config {config_path} 'http://localhost:4545/echo.ts'"
       )
     );
   }
@@ -259,6 +260,7 @@ fn installer_test_custom_dir_with_bin() {
   let config_path = temp_dir
     .path()
     .join("bin")
+    .canonicalize()
     .join(".echo_test")
     .join("deno.json");
   if cfg!(windows) {
@@ -272,7 +274,7 @@ fn installer_test_custom_dir_with_bin() {
     assert_contains!(
       content,
       &format!(
-        "run --check --config '{config_path}' 'http://localhost:4545/echo.ts'"
+        "run --check --config {config_path} 'http://localhost:4545/echo.ts'"
       )
     );
   }
