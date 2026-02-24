@@ -141,6 +141,9 @@ interface GPURequestAdapterOptions {
   forceFallbackAdapter?: boolean;
 }
 
+/** @category GPU */
+type GPUPowerPreference = "low-power" | "high-performance";
+
 /**
  * Represents a physical GPU device that can be used to create a logical GPU device.
  *
@@ -197,6 +200,59 @@ interface GPUDeviceDescriptor extends GPUObjectDescriptorBase {
   requiredFeatures?: GPUFeatureName[];
   requiredLimits?: Record<string, number | undefined>;
 }
+
+/** @category GPU */
+type GPUFeatureName =
+  | "depth-clip-control"
+  | "timestamp-query"
+  | "indirect-first-instance"
+  | "shader-f16"
+  | "depth32float-stencil8"
+  | "texture-compression-bc"
+  | "texture-compression-bc-sliced-3d"
+  | "texture-compression-etc2"
+  | "texture-compression-astc"
+  | "rg11b10ufloat-renderable"
+  | "bgra8unorm-storage"
+  | "float32-filterable"
+  | "clip-distances"
+  | "dual-source-blending"
+  | "float32-blendable"
+  | "subgroups"
+  | "core-features-and-limits"
+  | "texture-compression-astc-sliced-3d"
+  | "texture-formats-tier1"
+  | "primitive-index"
+  // extended from spec
+  | "texture-format-16-bit-norm"
+  | "texture-compression-astc-hdr"
+  | "texture-adapter-specific-format-features"
+  | "pipeline-statistics-query"
+  | "timestamp-query-inside-passes"
+  | "mappable-primary-buffers"
+  | "texture-binding-array"
+  | "buffer-binding-array"
+  | "storage-resource-binding-array"
+  | "sampled-texture-and-storage-buffer-array-non-uniform-indexing"
+  | "uniform-buffer-and-storage-texture-array-non-uniform-indexing"
+  | "partially-bound-binding-array"
+  | "multi-draw-indirect"
+  | "multi-draw-indirect-count"
+  | "push-constants"
+  | "address-mode-clamp-to-zero"
+  | "address-mode-clamp-to-border"
+  | "polygon-mode-line"
+  | "polygon-mode-point"
+  | "conservative-rasterization"
+  | "vertex-writable-storage"
+  | "clear-texture"
+  | "spirv-shader-passthrough"
+  | "multiview"
+  | "vertex-attribute-64-bit"
+  | "shader-f64"
+  | "shader-i16"
+  | "shader-primitive-index"
+  | "shader-early-depth-test";
 
 /**
  * The primary interface for interacting with a WebGPU device.
@@ -328,11 +384,20 @@ declare var GPUBuffer: {
 };
 
 /** @category GPU */
+type GPUBufferMapState = "unmapped" | "pending" | "mapped";
+
+/** @category GPU */
 interface GPUBufferDescriptor extends GPUObjectDescriptorBase {
   size: number;
   usage: GPUBufferUsageFlags;
   mappedAtCreation?: boolean;
 }
+
+/** @category GPU */
+type GPUBufferUsageFlags = number;
+
+/** @category GPU */
+type GPUFlagsConstant = number;
 
 /** @category GPU */
 declare class GPUBufferUsage {
@@ -347,6 +412,9 @@ declare class GPUBufferUsage {
   static INDIRECT: 0x0100;
   static QUERY_RESOLVE: 0x0200;
 }
+
+/** @category GPU */
+type GPUMapModeFlags = number;
 
 /** @category GPU */
 declare class GPUMapMode {
@@ -404,6 +472,12 @@ declare var GPUTexture: {
 };
 
 /** @category GPU */
+type GPUTextureDimension = "1d" | "2d" | "3d";
+
+/** @category GPU */
+type GPUTextureUsageFlags = number;
+
+/** @category GPU */
 interface GPUTextureDescriptor extends GPUObjectDescriptorBase {
   size: GPUExtent3D;
   mipLevelCount?: number;
@@ -432,6 +506,116 @@ declare var GPUTextureView: {
   prototype: GPUTextureView;
   new (): GPUTextureView;
 };
+
+/** @category GPU */
+type GPUTextureViewDimension =
+  | "1d"
+  | "2d"
+  | "2d-array"
+  | "cube"
+  | "cube-array"
+  | "3d";
+
+/** @category GPU */
+type GPUTextureAspect = "all" | "stencil-only" | "depth-only";
+
+/** @category GPU */
+type GPUTextureFormat =
+  | "r8unorm"
+  | "r8snorm"
+  | "r8uint"
+  | "r8sint"
+  | "r16uint"
+  | "r16sint"
+  | "r16float"
+  | "rg8unorm"
+  | "rg8snorm"
+  | "rg8uint"
+  | "rg8sint"
+  | "r32uint"
+  | "r32sint"
+  | "r32float"
+  | "rg16uint"
+  | "rg16sint"
+  | "rg16float"
+  | "rgba8unorm"
+  | "rgba8unorm-srgb"
+  | "rgba8snorm"
+  | "rgba8uint"
+  | "rgba8sint"
+  | "bgra8unorm"
+  | "bgra8unorm-srgb"
+  | "rgb9e5ufloat"
+  | "rgb10a2uint"
+  | "rgb10a2unorm"
+  | "rg11b10ufloat"
+  | "rg32uint"
+  | "rg32sint"
+  | "rg32float"
+  | "rgba16uint"
+  | "rgba16sint"
+  | "rgba16float"
+  | "rgba32uint"
+  | "rgba32sint"
+  | "rgba32float"
+  | "stencil8"
+  | "depth16unorm"
+  | "depth24plus"
+  | "depth24plus-stencil8"
+  | "depth32float"
+  | "depth32float-stencil8"
+  | "bc1-rgba-unorm"
+  | "bc1-rgba-unorm-srgb"
+  | "bc2-rgba-unorm"
+  | "bc2-rgba-unorm-srgb"
+  | "bc3-rgba-unorm"
+  | "bc3-rgba-unorm-srgb"
+  | "bc4-r-unorm"
+  | "bc4-r-snorm"
+  | "bc5-rg-unorm"
+  | "bc5-rg-snorm"
+  | "bc6h-rgb-ufloat"
+  | "bc6h-rgb-float"
+  | "bc7-rgba-unorm"
+  | "bc7-rgba-unorm-srgb"
+  | "etc2-rgb8unorm"
+  | "etc2-rgb8unorm-srgb"
+  | "etc2-rgb8a1unorm"
+  | "etc2-rgb8a1unorm-srgb"
+  | "etc2-rgba8unorm"
+  | "etc2-rgba8unorm-srgb"
+  | "eac-r11unorm"
+  | "eac-r11snorm"
+  | "eac-rg11unorm"
+  | "eac-rg11snorm"
+  | "astc-4x4-unorm"
+  | "astc-4x4-unorm-srgb"
+  | "astc-5x4-unorm"
+  | "astc-5x4-unorm-srgb"
+  | "astc-5x5-unorm"
+  | "astc-5x5-unorm-srgb"
+  | "astc-6x5-unorm"
+  | "astc-6x5-unorm-srgb"
+  | "astc-6x6-unorm"
+  | "astc-6x6-unorm-srgb"
+  | "astc-8x5-unorm"
+  | "astc-8x5-unorm-srgb"
+  | "astc-8x6-unorm"
+  | "astc-8x6-unorm-srgb"
+  | "astc-8x8-unorm"
+  | "astc-8x8-unorm-srgb"
+  | "astc-10x5-unorm"
+  | "astc-10x5-unorm-srgb"
+  | "astc-10x6-unorm"
+  | "astc-10x6-unorm-srgb"
+  | "astc-10x8-unorm"
+  | "astc-10x8-unorm-srgb"
+  | "astc-10x10-unorm"
+  | "astc-10x10-unorm-srgb"
+  | "astc-12x10-unorm"
+  | "astc-12x10-unorm-srgb"
+  | "astc-12x12-unorm"
+  | "astc-12x12-unorm-srgb";
 
 /** @category GPU */
 interface GPUTextureViewDescriptor extends GPUObjectDescriptorBase {
@@ -470,6 +654,26 @@ interface GPUSamplerDescriptor extends GPUObjectDescriptorBase {
 }
 
 /** @category GPU */
+type GPUAddressMode = "clamp-to-edge" | "repeat" | "mirror-repeat";
+
+/** @category GPU */
+type GPUFilterMode = "nearest" | "linear";
+
+/** @category GPU */
+type GPUMipmapFilterMode = "nearest" | "linear";
+
+/** @category GPU */
+type GPUCompareFunction =
+  | "never"
+  | "less"
+  | "equal"
+  | "less-equal"
+  | "greater"
+  | "not-equal"
+  | "greater-equal"
+  | "always";
+
+/** @category GPU */
 interface GPUBindGroupLayout extends GPUObjectBase {
 }
 
@@ -483,6 +687,9 @@ declare var GPUBindGroupLayout: {
 interface GPUBindGroupLayoutDescriptor extends GPUObjectDescriptorBase {
   entries: GPUBindGroupLayoutEntry[];
 }
+
+/** @category GPU */
+type GPUShaderStageFlags = number;
 
 /** @category GPU */
 interface GPUBindGroupLayoutEntry {
@@ -510,9 +717,18 @@ interface GPUBufferBindingLayout {
 }
 
 /** @category GPU */
+type GPUBufferBindingType = "uniform" | "storage" | "read-only-storage";
+
+/** @category GPU */
 interface GPUSamplerBindingLayout {
   type?: GPUSamplerBindingType;
 }
+
+/** @category GPU */
+type GPUSamplerBindingType =
+  | "filtering"
+  | "non-filtering"
+  | "comparison";
 
 /** @category GPU */
 interface GPUTextureBindingLayout {
@@ -522,11 +738,25 @@ interface GPUTextureBindingLayout {
 }
 
 /** @category GPU */
+type GPUTextureSampleType =
+  | "float"
+  | "unfilterable-float"
+  | "depth"
+  | "sint"
+  | "uint";
+
+/** @category GPU */
 interface GPUStorageTextureBindingLayout {
   access?: GPUStorageTextureAccess;
   format: GPUTextureFormat;
   viewDimension?: GPUTextureViewDimension;
 }
+
+/** @category GPU */
+type GPUStorageTextureAccess =
+  | "write-only"
+  | "read-only"
+  | "read-write";
 
 /** @category GPU */
 interface GPUBindGroup extends GPUObjectBase {
@@ -549,6 +779,12 @@ interface GPUBindGroupEntry {
   binding: number;
   resource: GPUBindingResource;
 }
+
+/** @category GPU */
+type GPUBindingResource =
+  | GPUSampler
+  | GPUTextureView
+  | GPUBufferBinding;
 
 /** @category GPU */
 interface GPUBufferBinding {
@@ -587,6 +823,9 @@ declare var GPUCompilationMessage: {
   prototype: GPUCompilationMessage;
   new (): GPUCompilationMessage;
 };
+
+/** @category GPU */
+type GPUCompilationMessageType = "error" | "warning" | "info";
 
 /** @category GPU */
 interface GPUCompilationInfo {
@@ -677,6 +916,9 @@ interface GPUShaderModuleDescriptor extends GPUObjectDescriptorBase {
 }
 
 /** @category GPU */
+type GPUAutoLayoutMode = "auto";
+
+/** @category GPU */
 interface GPUPipelineDescriptorBase extends GPUObjectDescriptorBase {
   layout: GPUPipelineLayout | GPUAutoLayoutMode;
 }
@@ -728,6 +970,20 @@ interface GPURenderPipelineDescriptor extends GPUPipelineDescriptorBase {
 }
 
 /** @category GPU */
+type GPUPrimitiveTopology =
+  | "point-list"
+  | "line-list"
+  | "line-strip"
+  | "triangle-list"
+  | "triangle-strip";
+
+/** @category GPU */
+type GPUFrontFace = "ccw" | "cw";
+
+/** @category GPU */
+type GPUCullMode = "none" | "front" | "back";
+
+/** @category GPU */
 interface GPUPrimitiveState {
   topology?: GPUPrimitiveTopology;
   stripIndexFormat?: GPUIndexFormat;
@@ -763,6 +1019,9 @@ interface GPUBlendState {
 }
 
 /** @category GPU */
+type GPUColorWriteFlags = number;
+
+/** @category GPU */
 declare class GPUColorWrite {
   static RED: 0x1;
   static GREEN: 0x2;
@@ -777,6 +1036,34 @@ interface GPUBlendComponent {
   srcFactor?: GPUBlendFactor;
   dstFactor?: GPUBlendFactor;
 }
+
+/** @category GPU */
+type GPUBlendFactor =
+  | "zero"
+  | "one"
+  | "src"
+  | "one-minus-src"
+  | "src-alpha"
+  | "one-minus-src-alpha"
+  | "dst"
+  | "one-minus-dst"
+  | "dst-alpha"
+  | "one-minus-dst-alpha"
+  | "src-alpha-saturated"
+  | "constant"
+  | "one-minus-constant"
+  | "src1"
+  | "one-minus-src1"
+  | "src1-alpha"
+  | "one-minus-src1-alpha";
+
+/** @category GPU */
+type GPUBlendOperation =
+  | "add"
+  | "subtract"
+  | "reverse-subtract"
+  | "min"
+  | "max";
 
 /** @category GPU */
 interface GPUDepthStencilState {
@@ -803,6 +1090,57 @@ interface GPUStencilFaceState {
   depthFailOp?: GPUStencilOperation;
   passOp?: GPUStencilOperation;
 }
+
+/** @category GPU */
+type GPUStencilOperation =
+  | "keep"
+  | "zero"
+  | "replace"
+  | "invert"
+  | "increment-clamp"
+  | "decrement-clamp"
+  | "increment-wrap"
+  | "decrement-wrap";
+
+/** @category GPU */
+type GPUIndexFormat = "uint16" | "uint32";
+
+/** @category GPU */
+type GPUVertexFormat =
+  | "uint8x2"
+  | "uint8x4"
+  | "sint8x2"
+  | "sint8x4"
+  | "unorm8x2"
+  | "unorm8x4"
+  | "snorm8x2"
+  | "snorm8x4"
+  | "uint16x2"
+  | "uint16x4"
+  | "sint16x2"
+  | "sint16x4"
+  | "unorm16x2"
+  | "unorm16x4"
+  | "snorm16x2"
+  | "snorm16x4"
+  | "float16x2"
+  | "float16x4"
+  | "float32"
+  | "float32x2"
+  | "float32x3"
+  | "float32x4"
+  | "uint32"
+  | "uint32x2"
+  | "uint32x3"
+  | "uint32x4"
+  | "sint32"
+  | "sint32x2"
+  | "sint32x3"
+  | "sint32x4"
+  | "unorm10-10-10-2";
+
+/** @category GPU */
+type GPUVertexStepMode = "vertex" | "instance";
 
 /** @category GPU */
 interface GPUVertexState extends GPUProgrammableStage {
@@ -1106,6 +1444,12 @@ interface GPURenderPassDescriptor extends GPUObjectDescriptorBase {
 }
 
 /** @category GPU */
+type GPULoadOp = "load" | "clear";
+
+/** @category GPU */
+type GPUStoreOp = "store" | "discard";
+
+/** @category GPU */
 interface GPURenderPassColorAttachment {
   view: GPUTexture | GPUTextureView;
   resolveTarget?: GPUTexture | GPUTextureView;
@@ -1258,6 +1602,12 @@ interface GPUQuerySetDescriptor extends GPUObjectDescriptorBase {
 }
 
 /** @category GPU */
+type GPUQueryType = "occlusion" | "timestamp";
+
+/** @category GPU */
+type GPUDeviceLostReason = "destroyed";
+
+/** @category GPU */
 interface GPUDeviceLostInfo {
   readonly reason: GPUDeviceLostReason;
   readonly message: string;
@@ -1314,6 +1664,9 @@ declare var GPUInternalError: {
 };
 
 /** @category GPU */
+type GPUErrorFilter = "out-of-memory" | "validation" | "internal";
+
+/** @category GPU */
 interface GPUUncapturedErrorEvent extends Event {
   readonly error: GPUError;
 }
@@ -1341,6 +1694,9 @@ interface GPUColorDict {
 }
 
 /** @category GPU */
+type GPUColor = number[] | GPUColorDict;
+
+/** @category GPU */
 interface GPUOrigin3DDict {
   x?: number;
   y?: number;
@@ -1348,11 +1704,20 @@ interface GPUOrigin3DDict {
 }
 
 /** @category GPU */
+type GPUOrigin3D = number[] | GPUOrigin3DDict;
+
+/** @category GPU */
 interface GPUExtent3DDict {
   width: number;
   height?: number;
   depthOrArrayLayers?: number;
 }
+
+/** @category GPU */
+type GPUExtent3D = number[] | GPUExtent3DDict;
+
+/** @category GPU */
+type GPUCanvasAlphaMode = "opaque" | "premultiplied";
 
 /** @category GPU */
 interface GPUCanvasConfiguration {
