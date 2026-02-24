@@ -255,6 +255,9 @@ async fn format_files(
       )
       .await?;
     incremental_cache.wait_completion().await;
+    if formatter.should_stop() {
+      break;
+    }
   }
 
   formatter.finish()
@@ -938,6 +941,10 @@ trait Formatter {
   ) -> Result<(), AnyError>;
 
   fn finish(&self) -> Result<(), AnyError>;
+
+  fn should_stop(&self) -> bool {
+    false
+  }
 }
 
 struct CheckFormatter {
@@ -972,12 +979,12 @@ impl Formatter for CheckFormatter {
   ) -> Result<(), AnyError> {
     // prevent threads outputting at the same time
     let output_lock = Arc::new(Mutex::new(0));
-
-    run_parallelized(paths, {
+    let check_file = {
       let not_formatted_files_count = self.not_formatted_files_count.clone();
       let checked_files_count = self.checked_files_count.clone();
       let fail_fast_found_error = self.fail_fast_found_error.clone();
-      move |file_path| {
+      let output_lock = output_lock.clone();
+      move |file_path: PathBuf| {
         // Early exit if fail-fast is enabled and we've already found an error
         if let Some(fast) = &fail_fast_found_error
           && fast.load(Ordering::Relaxed)
@@ -1050,8 +1057,27 @@ impl Formatter for CheckFormatter {
         }
         Ok(())
       }
-    })
-    .await?;
+    };
+
+    if let Some(fast) = &self.fail_fast_found_error {
+      for file_path in paths {
+        if fast.load(Ordering::Relaxed) {
+          break;
+        }
+        let check_file = check_file.clone();
+        let file_path_for_task = file_path.clone();
+        match spawn_blocking(move || check_file(file_path_for_task)).await {
+          Ok(Ok(())) => {}
+          Ok(Err(e)) => return Err(e),
+          Err(_) => {
+            panic!("Panic formatting: {}", file_path.display())
+          }
+        }
+      }
+      return Ok(());
+    }
+
+    run_parallelized(paths, check_file).await?;
 
     Ok(())
   }
@@ -1071,6 +1097,13 @@ impl Formatter for CheckFormatter {
         "Found {not_formatted_files_count} not formatted {not_formatted_files_str} in {checked_files_str}",
       ))
     }
+  }
+
+  fn should_stop(&self) -> bool {
+    self
+      .fail_fast_found_error
+      .as_ref()
+      .is_some_and(|fast| fast.load(Ordering::Relaxed))
   }
 }
 
