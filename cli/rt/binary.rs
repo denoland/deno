@@ -18,6 +18,7 @@ use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_error::JsError;
+use sys_traits::FsCanonicalize;
 use deno_error::JsErrorBox;
 use deno_lib::standalone::binary::DenoRtDeserializable;
 use deno_lib::standalone::binary::MAGIC_BYTES;
@@ -67,9 +68,8 @@ pub fn extract_standalone(
   // so that module specifiers resolve to extracted file paths
   let root_path = if let Some(hash) = &metadata.self_extracting {
     let dir = choose_and_create_extraction_dir(hash)?;
-    dir
-      .canonicalize()
-      .map(deno_path_util::strip_unc_prefix)
+    sys_traits::impls::RealSys
+      .fs_canonicalize(&dir)
       .unwrap_or(dir)
   } else {
     let maybe_current_exe = std::env::current_exe().ok();
