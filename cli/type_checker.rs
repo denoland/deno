@@ -530,8 +530,10 @@ impl DiagnosticsByFolderRealIterator<'_> {
     // to make tsc build info work, we need to consistently hash modules, so that
     // tsc can better determine if an emit is still valid or not, so we provide
     // that data here.
+    let compiler_options = check_group.compiler_options.clone();
+
     let compiler_options_hash_data = FastInsecureHasher::new_deno_versioned()
-      .write_hashable(check_group.compiler_options)
+      .write_hashable(&compiler_options)
       .finish();
     let code_cache = self.code_cache.as_ref().map(|c| {
       let c: Arc<dyn deno_runtime::code_cache::CodeCache> = c.clone();
@@ -539,7 +541,7 @@ impl DiagnosticsByFolderRealIterator<'_> {
     });
     let response = tsc::exec(
       tsc::Request {
-        config: check_group.compiler_options.clone(),
+        config: compiler_options,
         debug: self.log_level == Some(log::Level::Debug),
         graph: self.graph.clone(),
         jsx_import_source_config_resolver: self

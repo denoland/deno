@@ -537,6 +537,32 @@ Deno.test({
   },
 });
 
+Deno.test({
+  name: "[node/child_process] child_process.fork with URL",
+  async fn() {
+    const testdataDir = path.join(
+      path.dirname(path.fromFileUrl(import.meta.url)),
+      "testdata",
+    );
+    const script = path.join(
+      testdataDir,
+      "node_modules",
+      "foo",
+      "index.js",
+    );
+    const scriptUrl = path.toFileUrl(script);
+    const p = Promise.withResolvers<void>();
+    const cp = CP.fork(scriptUrl, [], { cwd: testdataDir, stdio: "pipe" });
+    let output = "";
+    cp.on("close", () => p.resolve());
+    cp.stdout?.on("data", (data) => {
+      output += data;
+    });
+    await p.promise;
+    assertEquals(output, "foo\ntrue\ntrue\ntrue\n");
+  },
+});
+
 Deno.test("[node/child_process execFileSync] 'inherit' stdout and stderr", () => {
   execFileSync(Deno.execPath(), ["--help"], { stdio: "inherit" });
 });

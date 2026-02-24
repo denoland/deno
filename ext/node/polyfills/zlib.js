@@ -586,8 +586,9 @@ function processChunk(self, chunk, flushFlag, cb) {
 
   // If the native binding did not call processCallback synchronously
   // (Zlib defers it to match Node.js where compression runs on the libuv
-  // threadpool), schedule it asynchronously.
-  if (handle._callbackPending && !self[kError]) {
+  // threadpool), schedule it asynchronously. Always schedule even on error
+  // so processCallback can call cb() to unblock the Transform write chain.
+  if (handle._callbackPending) {
     process.nextTick(processCallback.bind(handle));
   }
 }
@@ -602,6 +603,15 @@ function processCallback() {
   const state = self._writeState;
 
   if (self.destroyed) {
+    this.buffer = null;
+    this.cb();
+    return;
+  }
+
+  if (self[kError]) {
+    // An error occurred during the native write. Call cb() to unblock the
+    // Transform write chain; the error event will be emitted by the nextTick
+    // destroy scheduled in zlibOnError.
     this.buffer = null;
     this.cb();
     return;
@@ -660,7 +670,7 @@ function processCallback() {
           self._outOffset, // out_off
           self._chunkSize,
         ); // out_len
-        if (handle._callbackPending && !self[kError]) {
+        if (handle._callbackPending) {
           processCallback.call(this);
         }
       });
