@@ -592,6 +592,7 @@ pub struct BundleFlags {
   pub external: Vec<String>,
   pub format: BundleFormat,
   pub minify: bool,
+  pub keep_names: bool,
   pub code_splitting: bool,
   pub inline_imports: bool,
   pub packages: PackageHandling,
@@ -2534,6 +2535,12 @@ If no output file is given, the output is written to standard output:
         Arg::new("minify")
           .long("minify")
           .help("Minify the output")
+          .action(ArgAction::SetTrue),
+      )
+      .arg(
+        Arg::new("keep-names")
+          .long("keep-names")
+          .help("Keep function and class names")
           .action(ArgAction::SetTrue),
       )
       .arg(
@@ -6020,6 +6027,7 @@ fn bundle_parse(
     format: matches.remove_one::<BundleFormat>("format").unwrap(),
     packages: matches.remove_one::<PackageHandling>("packages").unwrap(),
     minify: matches.get_flag("minify"),
+    keep_names: matches.get_flag("keep-names"),
     code_splitting: matches.get_flag("code-splitting"),
     inline_imports: matches.get_flag("inline-imports"),
     platform: matches.remove_one::<BundlePlatform>("platform").unwrap(),

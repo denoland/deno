@@ -4,6 +4,7 @@ import {
   assert,
   assertEquals,
   assertFalse,
+  assertMatch,
   assertStringIncludes,
   unindent,
 } from "./test_util.ts";
@@ -178,6 +179,33 @@ Deno.test("bundle: minify produces smaller output", async () => {
   const minJs = minified.outputFiles!.find((f) => !!f.contents)!;
 
   assert(minJs.text().length < normalJs.text().length);
+});
+
+Deno.test("bundle: keep-names preserves names", async () => {
+  using dir = new TempDir();
+  const entry = dir.join("index.ts");
+
+  await Deno.writeTextFile(
+    entry,
+    unindent`
+      export function add(a: number, b: number) {
+        /* lots of spacing and comments to be minified */
+        const sum = a + b;  // trailing comment
+        return sum;
+      }
+    `,
+  );
+
+  const minifiedWithNames = await Deno.bundle({
+    entrypoints: [entry],
+    minify: true,
+    keepNames: true,
+    write: false,
+  });
+  assertEquals(minifiedWithNames.success, true);
+  const minJs = minifiedWithNames.outputFiles!.find((f) => !!f.contents)!;
+
+  assertMatch(minJs.text(), /export\s*\{[^}]*\badd\b[^}]*\}/);
 });
 
 Deno.test("bundle: code splitting with multiple entrypoints", async () => {
