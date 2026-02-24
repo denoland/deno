@@ -279,8 +279,7 @@ fn generate_coverage_report(
           if range.start_char_offset <= line_start_char_offset
             && range.end_char_offset >= line_end_char_offset
           {
-            let range_size =
-              range.end_char_offset - range.start_char_offset;
+            let range_size = range.end_char_offset - range.start_char_offset;
             if range_size < best_range_size {
               best_range_size = range_size;
               count = range.count;
