@@ -6571,6 +6571,7 @@ fn install_parse(
   runtime_args_parse(flags, matches, true, true, false)?;
 
   let global = matches.get_flag("global");
+  allow_scripts_arg_parse(flags, matches)?;
   if global {
     let root = matches.remove_one::<String>("root");
     let force = matches.get_flag("force");
@@ -6607,7 +6608,6 @@ fn install_parse(
 
     if compile {
       flags.type_check_mode = TypeCheckMode::Local;
-      allow_scripts_arg_parse(flags, matches)?;
     }
 
     flags.subcommand =
@@ -6622,9 +6622,6 @@ fn install_parse(
 
     return Ok(());
   }
-
-  // allow scripts only applies to local install
-  allow_scripts_arg_parse(flags, matches)?;
   let lockfile_only = matches.get_flag("lockfile-only");
   if matches.get_flag("entrypoint") {
     let entrypoints = matches.remove_many::<String>("cmd").unwrap_or_default();
