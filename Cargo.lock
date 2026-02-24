@@ -3356,6 +3356,7 @@ dependencies = [
  "deno_terminal",
  "import_map",
  "indexmap 2.9.0",
+ "junction",
  "libsui",
  "log",
  "memmap2",

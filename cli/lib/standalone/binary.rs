@@ -92,6 +92,10 @@ pub struct Metadata {
   pub unstable_config: UnstableConfig,
   pub otel_config: OtelConfig,
   pub vfs_case_sensitivity: FileSystemCaseSensitivity,
+  /// When set, the binary is self-extracting. The value is a precomputed
+  /// hash of the VFS data used for versioning the extraction directory.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub self_extracting: Option<String>,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
