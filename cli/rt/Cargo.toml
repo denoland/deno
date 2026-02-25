@@ -2,7 +2,7 @@
 
 [package]
 name = "denort"
-version = "2.6.10"
+version = "2.7.0"
 authors.workspace = true
 default-run = "denort"
 edition.workspace = true
@@ -60,6 +60,7 @@ tokio.workspace = true
 url.workspace = true
 
 [target.'cfg(windows)'.dependencies]
+junction.workspace = true
 memmap2.workspace = true
 deno_subprocess_windows.workspace = true
 

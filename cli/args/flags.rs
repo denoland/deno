@@ -67,6 +67,7 @@ use serde::Deserialize;
 use serde::Serialize;
 
 use super::flags_net;
+use crate::util::env::resolve_cwd;
 use crate::util::fs::canonicalize_path;
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -159,6 +160,7 @@ pub struct CheckFlags {
   pub files: Vec<String>,
   pub doc: bool,
   pub doc_only: bool,
+  pub check_js: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -172,6 +174,7 @@ pub struct CompileFlags {
   pub include: Vec<String>,
   pub exclude: Vec<String>,
   pub eszip: bool,
+  pub self_extracting: bool,
 }
 
 impl CompileFlags {
@@ -269,6 +272,7 @@ pub struct EvalFlags {
 #[derive(Clone, Default, Debug, Eq, PartialEq)]
 pub struct FmtFlags {
   pub check: bool,
+  pub fail_fast: bool,
   pub files: FileFlags,
   pub permit_no_files: bool,
   pub use_tabs: Option<bool>,
@@ -589,6 +593,7 @@ pub struct BundleFlags {
   pub external: Vec<String>,
   pub format: BundleFormat,
   pub minify: bool,
+  pub keep_names: bool,
   pub code_splitting: bool,
   pub inline_imports: bool,
   pub packages: PackageHandling,
@@ -1414,7 +1419,7 @@ impl Flags {
         exclude: excluded_paths,
         ..
       })) => {
-        let cwd = std::env::current_dir()?;
+        let cwd = resolve_cwd(self.initial_cwd.as_deref())?;
         PathOrPatternSet::from_exclude_relative_path_or_patterns(
           &cwd,
           excluded_paths,
@@ -2534,6 +2539,12 @@ If no output file is given, the output is written to standard output:
           .action(ArgAction::SetTrue),
       )
       .arg(
+        Arg::new("keep-names")
+          .long("keep-names")
+          .help("Keep function and class names")
+          .action(ArgAction::SetTrue),
+      )
+      .arg(
         Arg::new("code-splitting")
           .long("code-splitting")
           .help("Enable code splitting")
@@ -2687,6 +2698,14 @@ Unless --reload is specified, this command will not re-download already cached d
             .conflicts_with("doc")
         )
         .arg(
+          Arg::new("check-js")
+            .long("check-js")
+            .help(
+              "Enable type-checking of JavaScript files (equivalent to `compilerOptions.checkJs: true`)",
+            )
+            .action(ArgAction::SetTrue)
+        )
+        .arg(
           Arg::new("file")
             .num_args(1..)
             .value_hint(ValueHint::FilePath),
@@ -2782,6 +2801,13 @@ On the first invocation of `deno compile`, Deno will download the relevant binar
           .long("icon")
           .help("Set the icon of the executable on Windows (.ico)")
           .value_parser(value_parser!(String))
+          .help_heading(COMPILE_HEADING),
+      )
+      .arg(
+        Arg::new("self-extracting")
+          .long("self-extracting")
+          .help("Create a self-extracting binary that extracts the embedded file system to disk on first run and then runs from there")
+          .action(ArgAction::SetTrue)
           .help_heading(COMPILE_HEADING),
       )
       .arg(executable_ext_arg())
@@ -3143,6 +3169,15 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
           .help_heading(FMT_HEADING),
       )
       .arg(
+        Arg::new("fail-fast")
+          .long("fail-fast")
+          .alias("failfast")
+          .help("Stop checking files on first format error")
+          .num_args(0)
+          .requires("check")
+          .help_heading(FMT_HEADING),
+      )
+      .arg(
         Arg::new("ext")
           .long("ext")
           .help("Set content type of the supplied file")
@@ -3294,7 +3329,14 @@ fn init_subcommand() -> Command {
           Arg::new("npm")
             .long("npm")
             .help("Generate a npm create-* project")
-            .conflicts_with_all(["lib", "serve", "empty"])
+            .conflicts_with_all(["lib", "serve", "empty", "jsr"])
+            .action(ArgAction::SetTrue),
+        )
+        .arg(
+          Arg::new("jsr")
+            .long("jsr")
+            .help("Generate a project from a JSR package")
+            .conflicts_with_all(["lib", "serve", "empty", "npm"])
             .action(ArgAction::SetTrue),
         )
         .arg(
@@ -3314,14 +3356,13 @@ fn init_subcommand() -> Command {
           Arg::new("empty")
             .long("empty")
             .help("Generate a minimal project with just main.ts and deno.json")
-            .conflicts_with_all(["lib", "serve", "npm"])
+            .conflicts_with_all(["lib", "serve", "npm", "jsr"])
             .action(ArgAction::SetTrue),
         )
         .arg(
           Arg::new("yes")
             .short('y')
             .long("yes")
-            .requires("npm")
             .help("Bypass the prompt and run with full permissions")
             .action(ArgAction::SetTrue),
         )
@@ -3353,6 +3394,14 @@ fn create_subcommand() -> Command {
         Arg::new("npm")
           .long("npm")
           .help("Treat unprefixed package names as npm packages")
+          .conflicts_with("jsr")
+          .action(ArgAction::SetTrue),
+      )
+      .arg(
+        Arg::new("jsr")
+          .long("jsr")
+          .help("Treat unprefixed package names as JSR packages")
+          .conflicts_with("npm")
           .action(ArgAction::SetTrue),
       )
       .arg(
@@ -5986,6 +6035,7 @@ fn bundle_parse(
     format: matches.remove_one::<BundleFormat>("format").unwrap(),
     packages: matches.remove_one::<PackageHandling>("packages").unwrap(),
     minify: matches.get_flag("minify"),
+    keep_names: matches.get_flag("keep-names"),
     code_splitting: matches.get_flag("code-splitting"),
     inline_imports: matches.get_flag("inline-imports"),
     platform: matches.remove_one::<BundlePlatform>("platform").unwrap(),
@@ -6027,6 +6077,7 @@ fn check_parse(
     files,
     doc: matches.get_flag("doc"),
     doc_only: matches.get_flag("doc-only"),
+    check_js: matches.get_flag("check-js"),
   });
   flags.code_cache_enabled = !matches.get_flag("no-code-cache");
   allow_and_deny_import_parse(flags, matches)?;
@@ -6057,6 +6108,19 @@ fn compile_parse(
   flags.type_check_mode = TypeCheckMode::Local;
   runtime_args_parse(flags, matches, true, false, true)?;
 
+  if let Some(initial_cwd) = flags.initial_cwd.take() {
+    // Usually we don't canonicalize because it's more sys calls, but with deno
+    // compile we want to reduce the chance of the virtual file system having a
+    // deep tree due to the initial directory being in some symlink somewhere.
+    // This is really common when compiling on GitHub Actions for example, which
+    // uses a symlinked directory for the cwd.
+    flags.initial_cwd = Some(
+      crate::util::fs::canonicalize_path(&initial_cwd)
+        .ok()
+        .unwrap_or(initial_cwd),
+    );
+  }
+
   let mut script = matches.remove_many::<String>("script_arg").unwrap();
   let source_file = script.next().unwrap();
   let args = script.collect();
@@ -6065,6 +6129,7 @@ fn compile_parse(
   let icon = matches.remove_one::<String>("icon");
   let no_terminal = matches.get_flag("no-terminal");
   let eszip = matches.get_flag("eszip-internal-do-not-use");
+  let self_extracting = matches.get_flag("self-extracting");
   let include = matches
     .remove_many::<String>("include")
     .map(|f| f.collect::<Vec<_>>())
@@ -6087,6 +6152,7 @@ fn compile_parse(
     include,
     exclude,
     eszip,
+    self_extracting,
   });
 
   Ok(())
@@ -6121,7 +6187,8 @@ fn completions_parse(
         unsafe {
           std::env::set_var("COMPLETE", &shell);
         }
-        handle_shell_completion_with_args(std::env::args_os().take(1))?;
+        let cwd = resolve_cwd(None)?;
+        handle_shell_completion_with_args(std::env::args_os().take(1), &cwd)?;
         Ok(())
       }),
     ));
@@ -6338,6 +6405,7 @@ fn fmt_parse(
 
   flags.subcommand = DenoSubcommand::Fmt(FmtFlags {
     check: matches.get_flag("check"),
+    fail_fast: matches.get_flag("fail-fast"),
     files: FileFlags { include, ignore },
     permit_no_files: permit_no_files_parse(matches),
     use_tabs,
@@ -6365,12 +6433,24 @@ fn init_parse(
   let mut package = None;
   let mut package_args = vec![];
 
+  let use_npm = matches.get_flag("npm");
+  let use_jsr = matches.get_flag("jsr");
+
   if let Some(mut args) = matches.remove_many::<String>("args") {
     let name = args.next().unwrap();
     let mut args = args.collect::<Vec<_>>();
 
-    if matches.get_flag("npm") {
-      package = Some(name);
+    if use_npm {
+      package = Some(format!(
+        "npm:{}",
+        name.strip_prefix("npm:").unwrap_or(&name)
+      ));
+      package_args = args;
+    } else if use_jsr {
+      package = Some(format!(
+        "jsr:{}",
+        name.strip_prefix("jsr:").unwrap_or(&name)
+      ));
       package_args = args;
     } else {
       dir = Some(name);
@@ -6384,6 +6464,16 @@ fn init_parse(
         yes = inner_matches.get_flag("yes");
       }
     }
+  } else if use_npm {
+    return Err(clap::Error::raw(
+      clap::error::ErrorKind::MissingRequiredArgument,
+      "Missing package name for --npm.",
+    ));
+  } else if use_jsr {
+    return Err(clap::Error::raw(
+      clap::error::ErrorKind::MissingRequiredArgument,
+      "Missing package name for --jsr.",
+    ));
   }
 
   flags.subcommand = DenoSubcommand::Init(InitFlags {
@@ -6405,11 +6495,12 @@ fn create_parse(
 ) -> Result<(), clap::Error> {
   let package = matches.remove_one::<String>("package").unwrap();
   let use_npm = matches.get_flag("npm");
+  let use_jsr = matches.get_flag("jsr");
   let package_args = matches
     .remove_many::<String>("package_args")
     .map(|args| args.collect::<Vec<_>>())
     .unwrap_or_default();
-  let package = normalize_create_package_name(package, use_npm)?;
+  let package = normalize_create_package_name(package, use_npm, use_jsr)?;
 
   // `create` is a thin alias to init's package-generator path, not template mode.
   flags.subcommand = DenoSubcommand::Init(InitFlags {
@@ -6427,31 +6518,45 @@ fn create_parse(
 
 fn normalize_create_package_name(
   package: String,
-  allow_unprefixed: bool,
+  use_npm: bool,
+  use_jsr: bool,
 ) -> Result<String, clap::Error> {
-  if package.starts_with("jsr:") {
-    return Err(clap::Error::raw(
-      clap::error::ErrorKind::InvalidValue,
-      "JSR packages are not supported by `deno create` yet. Use npm: or --npm.",
-    ));
-  }
-
-  let name = package.strip_prefix("npm:").unwrap_or(&package);
-  if name.is_empty() {
-    return Err(clap::Error::raw(
-      clap::error::ErrorKind::InvalidValue,
-      "Missing package name after 'npm:' prefix.",
-    ));
-  }
-
-  if package.starts_with("npm:") {
-    Ok(package)
-  } else if allow_unprefixed {
+  if let Some(name) = package.strip_prefix("jsr:") {
+    if use_npm {
+      Err(clap::Error::raw(
+        clap::error::ErrorKind::InvalidValue,
+        "Cannot use `--npm` with a `jsr:` specifier.",
+      ))
+    } else if name.is_empty() {
+      Err(clap::Error::raw(
+        clap::error::ErrorKind::InvalidValue,
+        "Missing package name after 'jsr:' prefix.",
+      ))
+    } else {
+      Ok(package)
+    }
+  } else if let Some(name) = package.strip_prefix("npm:") {
+    if use_jsr {
+      Err(clap::Error::raw(
+        clap::error::ErrorKind::InvalidValue,
+        "Cannot use `--jsr` with an `npm:` specifier.",
+      ))
+    } else if name.is_empty() {
+      Err(clap::Error::raw(
+        clap::error::ErrorKind::InvalidValue,
+        "Missing package name after 'npm:' prefix.",
+      ))
+    } else {
+      Ok(package)
+    }
+  } else if use_npm {
     Ok(format!("npm:{package}"))
+  } else if use_jsr {
+    Ok(format!("jsr:{package}"))
   } else {
     Err(clap::Error::raw(
       clap::error::ErrorKind::InvalidValue,
-      "Missing `npm:` prefix. For example: `deno create npm:vite`.",
+      "Missing `jsr:` or `npm:` prefix. For example: `deno create npm:vite`.",
     ))
   }
 }
@@ -6489,6 +6594,7 @@ fn install_parse(
   runtime_args_parse(flags, matches, true, true, false)?;
 
   let global = matches.get_flag("global");
+  allow_scripts_arg_parse(flags, matches)?;
   if global {
     let root = matches.remove_one::<String>("root");
     let force = matches.get_flag("force");
@@ -6539,9 +6645,6 @@ fn install_parse(
 
     return Ok(());
   }
-
-  // allow scripts only applies to local install
-  allow_scripts_arg_parse(flags, matches)?;
   let lockfile_only = matches.get_flag("lockfile-only");
   if matches.get_flag("entrypoint") {
     let entrypoints = matches.remove_many::<String>("cmd").unwrap_or_default();
@@ -6961,8 +7064,8 @@ fn task_parse(
   Ok(())
 }
 
-pub fn handle_shell_completion() -> Result<(), AnyError> {
-  handle_shell_completion_with_args(std::env::args_os())
+pub fn handle_shell_completion(cwd: &Path) -> Result<(), AnyError> {
+  handle_shell_completion_with_args(std::env::args_os(), cwd)
 }
 
 struct ZshCompleterUnsorted;
@@ -7049,6 +7152,7 @@ compdef _clap_dynamic_completer_NAME BIN"#
 
 fn handle_shell_completion_with_args(
   args: impl IntoIterator<Item = OsString>,
+  cwd: &Path,
 ) -> Result<(), AnyError> {
   let args = args.into_iter().collect::<Vec<_>>();
   let app = clap_root();
@@ -7061,7 +7165,7 @@ fn handle_shell_completion_with_args(
       &clap_complete::env::Powershell,
       &ZshCompleterUnsorted,
     ]))
-    .try_complete(args, Some(&std::env::current_dir()?))?;
+    .try_complete(args, Some(cwd))?;
 
   // we should only run this function when we're doing completions
   assert!(ran_completion);
@@ -8598,6 +8702,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Fmt(FmtFlags {
           check: false,
+          fail_fast: false,
           files: FileFlags {
             include: vec!["script_1.ts".to_string(), "script_2.ts".to_string()],
             ignore: vec![],
@@ -8624,6 +8729,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Fmt(FmtFlags {
           check: true,
+          fail_fast: false,
           files: FileFlags {
             include: vec![],
             ignore: vec![],
@@ -8649,6 +8755,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Fmt(FmtFlags {
           check: false,
+          fail_fast: false,
           files: FileFlags {
             include: vec![],
             ignore: vec![],
@@ -8674,6 +8781,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Fmt(FmtFlags {
           check: false,
+          fail_fast: false,
           files: FileFlags {
             include: vec![],
             ignore: vec![],
@@ -8709,6 +8817,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Fmt(FmtFlags {
           check: false,
+          fail_fast: false,
           files: FileFlags {
             include: vec![],
             ignore: vec![],
@@ -8745,6 +8854,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Fmt(FmtFlags {
           check: true,
+          fail_fast: false,
           files: FileFlags {
             include: vec!["foo.ts".to_string()],
             ignore: vec!["bar.js".to_string()],
@@ -8770,6 +8880,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Fmt(FmtFlags {
           check: false,
+          fail_fast: false,
           files: FileFlags {
             include: vec![],
             ignore: vec![],
@@ -8803,6 +8914,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Fmt(FmtFlags {
           check: false,
+          fail_fast: false,
           files: FileFlags {
             include: vec!["foo.ts".to_string()],
             ignore: vec![],
@@ -8841,6 +8953,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Fmt(FmtFlags {
           check: false,
+          fail_fast: false,
           files: FileFlags {
             include: vec![],
             ignore: vec![],
@@ -8873,6 +8986,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Fmt(FmtFlags {
           check: false,
+          fail_fast: false,
           files: FileFlags {
             include: vec![],
             ignore: vec![],
@@ -8900,6 +9014,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Fmt(FmtFlags {
           check: false,
+          fail_fast: false,
           files: FileFlags {
             include: vec!["./**".to_string()],
             ignore: vec![],
@@ -9257,6 +9372,7 @@ mod tests {
           files: svec!["script.ts"],
           doc: false,
           doc_only: false,
+          check_js: false,
         }),
         type_check_mode: TypeCheckMode::Local,
         code_cache_enabled: true,
@@ -9272,6 +9388,7 @@ mod tests {
           files: svec!["."],
           doc: false,
           doc_only: false,
+          check_js: false,
         }),
         type_check_mode: TypeCheckMode::Local,
         code_cache_enabled: true,
@@ -9287,6 +9404,7 @@ mod tests {
           files: svec!["script.ts"],
           doc: true,
           doc_only: false,
+          check_js: false,
         }),
         type_check_mode: TypeCheckMode::Local,
         code_cache_enabled: true,
@@ -9302,6 +9420,7 @@ mod tests {
           files: svec!["markdown.md"],
           doc: false,
           doc_only: true,
+          check_js: false,
         }),
         type_check_mode: TypeCheckMode::Local,
         code_cache_enabled: true,
@@ -9331,6 +9450,7 @@ mod tests {
             files: svec!["script.ts"],
             doc: false,
             doc_only: false,
+            check_js: false,
           }),
           type_check_mode: TypeCheckMode::All,
           code_cache_enabled: true,
@@ -9350,6 +9470,22 @@ mod tests {
         clap::error::ErrorKind::ArgumentConflict
       );
     }
+
+    let r = flags_from_vec(svec!["deno", "check", "--check-js", "script.js"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Check(CheckFlags {
+          files: svec!["script.js"],
+          doc: false,
+          doc_only: false,
+          check_js: true,
+        }),
+        type_check_mode: TypeCheckMode::Local,
+        code_cache_enabled: true,
+        ..Flags::default()
+      }
+    );
   }
 
   #[test]
@@ -12353,6 +12489,7 @@ mod tests {
           include: Default::default(),
           exclude: Default::default(),
           eszip: false,
+          self_extracting: false,
         }),
         type_check_mode: TypeCheckMode::Local,
         code_cache_enabled: true,
@@ -12378,7 +12515,8 @@ mod tests {
           icon: Some(String::from("favicon.ico")),
           include: vec!["include.txt".to_string()],
           exclude: vec!["exclude.txt".to_string()],
-          eszip: false
+          eszip: false,
+          self_extracting: false,
         }),
         import_map_path: Some("import_map.json".to_string()),
         no_remote: true,
@@ -12486,12 +12624,12 @@ mod tests {
   #[test]
   fn test_config_path_args() {
     let flags = flags_from_vec(svec!["deno", "run", "foo.js"]).unwrap();
-    let cwd = std::env::current_dir().unwrap();
+    let cwd = resolve_cwd(None).unwrap().into_owned();
 
     assert_eq!(flags.config_path_args(&cwd), Some(vec![cwd.clone()]));
 
     let flags = flags_from_vec(svec!["deno", "run", "sub_dir/foo.js"]).unwrap();
-    let cwd = std::env::current_dir().unwrap();
+    let cwd = resolve_cwd(None).unwrap().into_owned();
     assert_eq!(
       flags.config_path_args(&cwd),
       Some(vec![cwd.join("sub_dir").clone()])
@@ -13170,7 +13308,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Init(InitFlags {
-          package: Some("vite".to_string()),
+          package: Some("npm:vite".to_string()),
           package_args: svec!["--lib"],
           dir: None,
           lib: false,
@@ -13187,7 +13325,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Init(InitFlags {
-          package: Some("vite".to_string()),
+          package: Some("npm:vite".to_string()),
           package_args: svec!["--serve"],
           dir: None,
           lib: false,
@@ -13204,7 +13342,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Init(InitFlags {
-          package: Some("vite".to_string()),
+          package: Some("npm:vite".to_string()),
           package_args: svec!["new_dir"],
           dir: None,
           lib: false,
@@ -13216,12 +13354,12 @@ mod tests {
       }
     );
 
-    let r = flags_from_vec(svec!["deno", "init", "--npm", "--yes", "vite"]);
+    let r = flags_from_vec(svec!["deno", "init", "--npm", "--yes", "npm:vite"]);
     assert_eq!(
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Init(InitFlags {
-          package: Some("vite".to_string()),
+          package: Some("npm:vite".to_string()),
           package_args: vec![],
           dir: None,
           lib: false,
@@ -13232,6 +13370,101 @@ mod tests {
         ..Flags::default()
       }
     );
+
+    // --jsr basic
+    let r = flags_from_vec(svec!["deno", "init", "--jsr", "@denotest/create"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Init(InitFlags {
+          package: Some("jsr:@denotest/create".to_string()),
+          package_args: vec![],
+          dir: None,
+          lib: false,
+          serve: false,
+          empty: false,
+          yes: false,
+        }),
+        ..Flags::default()
+      }
+    );
+
+    // --jsr with jsr: prefix already present
+    let r = flags_from_vec(svec!["deno", "init", "--jsr", "jsr:@fresh/init"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Init(InitFlags {
+          package: Some("jsr:@fresh/init".to_string()),
+          package_args: vec![],
+          dir: None,
+          lib: false,
+          serve: false,
+          empty: false,
+          yes: false,
+        }),
+        ..Flags::default()
+      }
+    );
+
+    // --jsr with --yes
+    let r = flags_from_vec(svec![
+      "deno",
+      "init",
+      "--jsr",
+      "--yes",
+      "@denotest/create"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Init(InitFlags {
+          package: Some("jsr:@denotest/create".to_string()),
+          package_args: vec![],
+          dir: None,
+          lib: false,
+          serve: false,
+          empty: false,
+          yes: true,
+        }),
+        ..Flags::default()
+      }
+    );
+
+    // --jsr with extra args
+    let r = flags_from_vec(svec![
+      "deno",
+      "init",
+      "--jsr",
+      "@denotest/create",
+      "my-project"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Init(InitFlags {
+          package: Some("jsr:@denotest/create".to_string()),
+          package_args: svec!["my-project"],
+          dir: None,
+          lib: false,
+          serve: false,
+          empty: false,
+          yes: false,
+        }),
+        ..Flags::default()
+      }
+    );
+
+    // --jsr conflicts with --npm, --lib, --serve, --empty
+    let r = flags_from_vec(svec!["deno", "init", "--jsr", "--npm", "@foo/bar"]);
+    assert!(r.is_err());
+
+    let r = flags_from_vec(svec!["deno", "init", "--jsr", "--lib", "@foo/bar"]);
+    assert!(r.is_err());
+
+    // --jsr without package name
+    let r = flags_from_vec(svec!["deno", "init", "--jsr"]);
+    assert!(r.is_err());
   }
 
   #[test]
@@ -13303,14 +13536,132 @@ mod tests {
 
     let r =
       flags_from_vec(svec!["deno", "create", "jsr:@std/http/file-server"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Init(InitFlags {
+          package: Some("jsr:@std/http/file-server".to_string()),
+          package_args: vec![],
+          dir: None,
+          lib: false,
+          serve: false,
+          empty: false,
+          yes: false,
+        }),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec!["deno", "create", "jsr:@fresh/init"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Init(InitFlags {
+          package: Some("jsr:@fresh/init".to_string()),
+          package_args: vec![],
+          dir: None,
+          lib: false,
+          serve: false,
+          empty: false,
+          yes: false,
+        }),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec!["deno", "create", "--yes", "jsr:@fresh/init"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Init(InitFlags {
+          package: Some("jsr:@fresh/init".to_string()),
+          package_args: vec![],
+          dir: None,
+          lib: false,
+          serve: false,
+          empty: false,
+          yes: true,
+        }),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "create",
+      "jsr:@fresh/init",
+      "--",
+      "my-project"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Init(InitFlags {
+          package: Some("jsr:@fresh/init".to_string()),
+          package_args: svec!["my-project"],
+          dir: None,
+          lib: false,
+          serve: false,
+          empty: false,
+          yes: false,
+        }),
+        ..Flags::default()
+      }
+    );
+
+    // empty jsr: prefix
+    let r = flags_from_vec(svec!["deno", "create", "jsr:"]);
     assert!(r.is_err());
 
-    let r = flags_from_vec(svec!["deno", "create", "--jsr", "@std/http"]);
+    // --jsr flag
+    let r = flags_from_vec(svec!["deno", "create", "--jsr", "@fresh/init"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Init(InitFlags {
+          package: Some("jsr:@fresh/init".to_string()),
+          package_args: vec![],
+          dir: None,
+          lib: false,
+          serve: false,
+          empty: false,
+          yes: false,
+        }),
+        ..Flags::default()
+      }
+    );
+
+    // --jsr with --yes
+    let r =
+      flags_from_vec(svec!["deno", "create", "--jsr", "--yes", "@fresh/init"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Init(InitFlags {
+          package: Some("jsr:@fresh/init".to_string()),
+          package_args: vec![],
+          dir: None,
+          lib: false,
+          serve: false,
+          empty: false,
+          yes: true,
+        }),
+        ..Flags::default()
+      }
+    );
+
+    // --jsr with npm: specifier is contradictory
+    let r = flags_from_vec(svec!["deno", "create", "--jsr", "npm:vite"]);
+    assert!(r.is_err());
+
+    // --jsr and --npm conflict
+    let r = flags_from_vec(svec!["deno", "create", "--jsr", "--npm", "@foo"]);
     assert!(r.is_err());
 
     let r = flags_from_vec(svec!["deno", "create", "npm:"]);
     assert!(r.is_err());
 
+    // --npm with jsr: is contradictory
     let r = flags_from_vec(svec!["deno", "create", "--npm", "jsr:@std/http"]);
     assert!(r.is_err());
   }
@@ -14480,6 +14831,7 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
           include: Default::default(),
           exclude: Default::default(),
           eszip: false,
+          self_extracting: false,
         }),
         type_check_mode: TypeCheckMode::Local,
         preload: svec!["p1.js", "./p2.js"],
@@ -14596,6 +14948,7 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
           files: svec!["script.ts"],
           doc: false,
           doc_only: false,
+          check_js: false,
         }),
         type_check_mode: TypeCheckMode::Local,
         code_cache_enabled: true,

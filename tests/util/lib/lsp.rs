@@ -30,7 +30,9 @@ use lsp_types::CodeActionLiteralSupport;
 use lsp_types::CompletionClientCapabilities;
 use lsp_types::CompletionItemCapability;
 use lsp_types::FoldingRangeClientCapabilities;
+use lsp_types::HoverClientCapabilities;
 use lsp_types::InitializeParams;
+use lsp_types::MarkupKind;
 use lsp_types::TextDocumentClientCapabilities;
 use lsp_types::TextDocumentSyncClientCapabilities;
 use lsp_types::Uri;
@@ -264,6 +266,13 @@ impl InitializeParamsBuilder {
                 snippet_support: Some(true),
                 ..Default::default()
               }),
+              ..Default::default()
+            }),
+            hover: Some(HoverClientCapabilities {
+              content_format: Some(vec![
+                MarkupKind::Markdown,
+                MarkupKind::PlainText,
+              ]),
               ..Default::default()
             }),
             diagnostic: Some(Default::default()),
@@ -537,6 +546,19 @@ impl LspClientBuilder {
     self
       .envs
       .insert(key.as_ref().to_owned(), value.as_ref().to_owned());
+    self
+  }
+
+  pub fn set_use_tsgo(mut self, use_tsgo: bool) -> Self {
+    if use_tsgo {
+      self
+        .envs
+        .insert("DENO_UNSTABLE_TSGO_LSP".into(), "1".into());
+    } else {
+      self
+        .envs
+        .remove("DENO_UNSTABLE_TSGO_LSP".as_ref() as &OsStr);
+    }
     self
   }
 

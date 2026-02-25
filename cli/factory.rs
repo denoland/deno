@@ -1150,7 +1150,6 @@ impl CliFactory {
       self.npm_installer_if_managed().await?.cloned(),
       npm_resolver.clone(),
       self.text_only_progress_bar().clone(),
-      self.sys(),
       self.create_cli_main_worker_options()?,
       self.root_permissions_container()?.clone(),
     ))
@@ -1228,7 +1227,7 @@ impl CliFactory {
       create_hmr_runner,
       maybe_coverage_dir,
       default_npm_caching_strategy: cli_options.default_npm_caching_strategy(),
-      maybe_initial_cwd: Some(Arc::new(initial_cwd)),
+      initial_cwd: Arc::new(initial_cwd),
     })
   }
 
@@ -1243,6 +1242,10 @@ impl CliFactory {
         ResolverFactoryOptions {
           compiler_options_overrides: CompilerOptionsOverrides {
             no_transpile: false,
+            force_check_js: matches!(
+              &self.flags.subcommand,
+              DenoSubcommand::Check(check_flags) if check_flags.check_js
+            ),
             source_map_base: None,
             preserve_jsx: false,
           },

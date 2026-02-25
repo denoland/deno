@@ -6,6 +6,10 @@ const testCases = [
   [["darwin", "linux"], null, "/dev/null"],
   [["darwin", "linux"], null, "/etc/passwd"],
   [["windows"], null, "\\\\.\\nul"],
+  // Allowed with --allow-read, system monitoring files
+  [["linux"], null, "/proc/pressure/memory"],
+  [["linux"], null, "/proc/pressure/cpu"],
+  [["linux"], null, "/proc/pressure/io"],
   // Denied, requires `--allow-all`
   [["darwin", "linux"], /NotCapable/, "/dev/ptmx"],
   [["linux"], /NotCapable/, "/proc/self/environ"],
