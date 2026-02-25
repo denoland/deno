@@ -336,6 +336,8 @@ struct JSDuplexResource {
   readable: Arc<Mutex<tokio::sync::mpsc::Receiver<Bytes>>>,
   writable: tokio::sync::mpsc::Sender<Bytes>,
   read_buffer: Arc<Mutex<VecDeque<Bytes>>>,
+  closed: AtomicBool,
+  close_notify: tokio::sync::Notify,
 }
 
 impl JSDuplexResource {
@@ -347,6 +349,8 @@ impl JSDuplexResource {
       readable: Arc::new(Mutex::new(readable)),
       writable,
       read_buffer: Arc::new(Mutex::new(VecDeque::new())),
+      closed: AtomicBool::new(false),
+      close_notify: tokio::sync::Notify::new(),
     }
   }
 
@@ -355,6 +359,10 @@ impl JSDuplexResource {
     self: Rc<Self>,
     data: &mut [u8],
   ) -> Result<usize, std::io::Error> {
+    if self.closed.load(Ordering::Relaxed) {
+      return Ok(0);
+    }
+
     // First check if we have buffered data from previous partial read
     if let Ok(mut buffer) = self.read_buffer.lock()
       && let Some(buffered_data) = buffer.pop_front()
@@ -370,13 +378,19 @@ impl JSDuplexResource {
       return Ok(len);
     }
 
-    // No buffered data, receive new data from channel
+    // No buffered data, receive new data from channel.
+    // We use select! so that close() can wake us up via close_notify
+    // even though we hold the readable mutex across the await (the
+    // close() method uses try_lock to avoid deadlock).
     let bytes = {
       let mut receiver = self
         .readable
         .lock()
         .map_err(|_| Error::other("Failed to acquire lock"))?;
-      receiver.recv().await
+      tokio::select! {
+        result = receiver.recv() => result,
+        _ = self.close_notify.notified() => None,
+      }
     };
 
     match bytes {
@@ -394,7 +408,7 @@ impl JSDuplexResource {
         Ok(len)
       }
       None => {
-        // Channel closed
+        // Channel closed or resource closing
         Ok(0)
       }
     }
@@ -422,6 +436,28 @@ impl Resource for JSDuplexResource {
 
   fn name(&self) -> Cow<'_, str> {
     "JSDuplexResource".into()
+  }
+
+  fn close(self: Rc<Self>) {
+    // Signal that this resource is closing.  The read() method checks
+    // this flag and the close_notify to break out of pending recv().
+    //
+    // Without this cleanup, a circular Rc dependency between
+    // JSDuplexResource and JSStreamTlsResource prevents either from
+    // being dropped, keeping the event loop alive indefinitely.
+    self.closed.store(true, Ordering::Relaxed);
+
+    // Wake up any pending read via Notify.  We use notify_one() which
+    // stores a permit if no one is currently waiting, so the next
+    // notified().await will complete immediately.
+    self.close_notify.notify_one();
+
+    // Also try to close the receiver directly.  We use try_lock()
+    // because read() holds the mutex across an await point; using
+    // lock() here would deadlock.
+    if let Ok(mut rx) = self.readable.try_lock() {
+      rx.close();
+    }
   }
 }
 
