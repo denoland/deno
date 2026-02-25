@@ -152,7 +152,7 @@ declare function createImageBitmap(
  *   console.error("Failed to create ImageBitmap:", error);
  * }
  * ```
- * @see https://developer.mozilla.org/en-US/docs/Web/API/createImageBitmap/createImageBitmap
+ * @see https://developer.mozilla.org/en-US/docs/Web/API/Window/createImageBitmap
  */
 declare function createImageBitmap(
   image: ImageBitmapSource,
@@ -191,4 +191,109 @@ interface ImageBitmap {
 declare var ImageBitmap: {
   prototype: ImageBitmap;
   new (): ImageBitmap;
+};
+
+/** @category Canvas */
+type OffscreenRenderingContextId = "bitmaprenderer" | "webgpu";
+/** @category Canvas */
+type OffscreenRenderingContext = ImageBitmapRenderingContext | GPUCanvasContext;
+
+/** @category Canvas */
+interface ImageEncodeOptions {
+  quality?: number;
+  type?: string;
+}
+
+/** @category Canvas */
+type GPUCanvasAlphaMode = "opaque" | "premultiplied";
+
+/** @category Canvas */
+type GPUPresentMode =
+  | "auto-vsync"
+  | "auto-no-vsync"
+  | "fifo"
+  | "fifo-relaxed"
+  | "immediate"
+  | "mailbox";
+
+/** @category Canvas */
+interface GPUCanvasConfiguration {
+  device: GPUDevice;
+  format: GPUTextureFormat;
+  usage?: GPUTextureUsageFlags;
+  viewFormats?: GPUTextureFormat[];
+  colorSpace?: "srgb" | "display-p3";
+  alphaMode?: GPUCanvasAlphaMode;
+
+  // extended from spec
+  presentMode?: GPUPresentMode;
+}
+
+/** @category Canvas */
+interface GPUCanvasContext {
+  /** The canvas that this context is bound to. */
+  readonly canvas: OffscreenCanvas;
+
+  configure(configuration: GPUCanvasConfiguration): undefined;
+  getConfiguration(): GPUCanvasConfiguration | null;
+  unconfigure(): undefined;
+  getCurrentTexture(): GPUTexture;
+}
+/** @category Canvas */
+declare var GPUCanvasContext: {
+  prototype: GPUCanvasContext;
+};
+
+/** @category Canvas */
+interface ImageBitmapRenderingContext {
+  /** The canvas that this context is bound to. */
+  readonly canvas: OffscreenCanvas;
+
+  transferFromImageBitmap(bitmap: ImageBitmap | null): undefined;
+}
+/** @category Canvas */
+declare var ImageBitmapRenderingContext: {
+  prototype: ImageBitmapRenderingContext;
+};
+
+/**
+ * @category Canvas
+ * @see https://developer.mozilla.org/en-US/docs/Web/API/OffscreenCanvas
+ */
+interface OffscreenCanvas extends EventTarget {
+  /** The height of the canvas. */
+  height: number;
+  /** The width of the canvas. */
+  width: number;
+
+  /** Create a Blob object representing the image contained in the canvas. */
+  convertToBlob(options?: ImageEncodeOptions): Promise<Blob>;
+
+  /**
+   * Get a drawing context for the canvas.
+   * If this was previously called, it will return the same context.
+   */
+  getContext(
+    contextId: "bitmaprenderer",
+    options?: any,
+  ): ImageBitmapRenderingContext | null;
+  getContext(contextId: "webgpu", options?: any): GPUCanvasContext | null;
+  getContext(
+    contextId: OffscreenRenderingContextId,
+    options?: any,
+  ): OffscreenRenderingContext | null;
+
+  /**
+   * Create an ImageBitmap object representing the image contained in the canvas.
+   */
+  transferToImageBitmap(): ImageBitmap;
+}
+
+/**
+ * @category Canvas
+ * @see https://developer.mozilla.org/en-US/docs/Web/API/OffscreenCanvas
+ */
+declare var OffscreenCanvas: {
+  prototype: OffscreenCanvas;
+  new (width: number, height: number): OffscreenCanvas;
 };

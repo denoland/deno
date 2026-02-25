@@ -197,6 +197,11 @@ declare namespace Deno {
    * @experimental
    */
   export class UnsafeWindowSurface {
+    /** The height of the window. */
+    height: number;
+    /** The width of the window. */
+    width: number;
+
     constructor(
       options: {
         system: "cocoa" | "win32" | "x11" | "wayland";
@@ -206,12 +211,13 @@ declare namespace Deno {
         height: number;
       },
     );
-    getContext(context: "webgpu"): GPUCanvasContext;
+
+    getContext(
+      contextId: OffscreenRenderingContextId,
+      options?: any,
+    ): OffscreenRenderingContext | null;
+
     present(): void;
-    /**
-     * This method should be invoked when the size of the window changes.
-     */
-    resize(width: number, height: number): void;
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.

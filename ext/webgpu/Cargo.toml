@@ -28,6 +28,7 @@ thiserror.workspace = true
 indexmap.workspace = true
 serde_json.workspace = true
 deno_unsync.workspace = true
+deno_image.workspace = true
 
 # Apple Platforms
 #

@@ -29,6 +29,7 @@ use wgpu_core::pipeline::CreateComputePipelineError;
 use wgpu_core::pipeline::CreateRenderPipelineError;
 use wgpu_core::pipeline::CreateShaderModuleError;
 use wgpu_core::present::ConfigureSurfaceError;
+use wgpu_core::present::SurfaceError;
 use wgpu_core::resource::BufferAccessError;
 use wgpu_core::resource::CreateBufferError;
 use wgpu_core::resource::CreateQuerySetError;
@@ -369,6 +370,12 @@ impl From<ClearError> for GPUError {
 
 impl From<ConfigureSurfaceError> for GPUError {
   fn from(err: ConfigureSurfaceError) -> Self {
+    GPUError::from_webgpu(err)
+  }
+}
+
+impl From<SurfaceError> for GPUError {
+  fn from(err: SurfaceError) -> Self {
     GPUError::from_webgpu(err)
   }
 }
