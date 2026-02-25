@@ -2585,7 +2585,7 @@ pub enum RunDescriptorArg {
 }
 
 pub enum AllowRunDescriptorParseResult {
-  /// An error occured getting the descriptor that should
+  /// An error occurred getting the descriptor that should
   /// be surfaced as a warning when launching deno, but should
   /// be ignored when creating a worker.
   Unresolved(Box<which::Error>),
