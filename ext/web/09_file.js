@@ -722,10 +722,28 @@ function isBlob(obj) {
   return ObjectPrototypeIsPrototypeOf(BlobPrototype, obj);
 }
 
+/**
+ * Create a Blob from custom parts without going through the normal
+ * constructor validation. This is used for file-backed blobs where
+ * the parts implement the BlobReference interface (size, slice, stream).
+ *
+ * @param {Array<{size: number, slice: function, stream: function}>} parts
+ * @param {number} size
+ * @param {string} type
+ * @returns {Blob}
+ */
+function createLazyBlob(parts, size, type) {
+  const blob = new Blob([], { type });
+  blob[_parts] = parts;
+  blob[_size] = size;
+  return blob;
+}
+
 export {
   Blob,
   blobFromObjectUrl,
   BlobPrototype,
+  createLazyBlob,
   File,
   FilePrototype,
   getParts,
