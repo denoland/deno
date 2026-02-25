@@ -6287,13 +6287,13 @@ dependencies = [
 
 [[package]]
 name = "markup_fmt"
-version = "0.22.0"
+version = "0.26.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2cc6a5130d40b34be77fbd52645323c199d2db25f90922d5cef1da2a9eca96b0"
+checksum = "b7cb640cd04ff332352c815f747692bb594808c6fac1c5a2102ef7f9d5344ab1"
 dependencies = [
  "aho-corasick",
  "css_dataset",
- "itertools 0.13.0",
+ "itertools 0.14.0",
  "memchr",
  "tiny_pretty",
 ]
