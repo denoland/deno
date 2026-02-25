@@ -1068,7 +1068,8 @@ impl sys_traits::ThreadSleep for DenoRtSys {
 impl sys_traits::EnvCurrentDir for DenoRtSys {
   #[inline]
   fn env_current_dir(&self) -> std::io::Result<PathBuf> {
-    #[allow(clippy::disallowed_types)] // ok because we're implementing the fs
+    // ok because we're implementing the fs
+    #[allow(clippy::disallowed_types, clippy::disallowed_methods)]
     sys_traits::impls::RealSys.env_current_dir()
   }
 }
