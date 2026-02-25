@@ -342,7 +342,7 @@ class JSStreamSocket {
     // propagate destroy/close to this.stream, so we listen on the
     // pipe source directly.
     //
-    // TODO: This should be removed once Deno has proper libuv-style
+    // TODO(fraidev): This should be removed once Deno has proper libuv-style
     // ref counting for resources, which would let the event loop
     // exit naturally without needing explicit close propagation.
     const symbols = Object.getOwnPropertySymbols(this.stream);
