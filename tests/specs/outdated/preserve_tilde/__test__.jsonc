@@ -1,0 +1,20 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "install",
+      "output": "[WILDCARD]"
+    },
+    {
+      "args": "update",
+      "output": "update.out"
+    },
+    {
+      "args": [
+        "eval",
+        "const content = Deno.readTextFileSync('./deno.json'); const imports = JSON.parse(content).imports; const version = imports['@denotest/has-patch-versions']; console.log(version);"
+      ],
+      "output": "deno.json.version.out"
+    }
+  ]
+}

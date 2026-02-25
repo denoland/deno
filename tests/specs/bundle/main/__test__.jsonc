@@ -13,7 +13,7 @@
         },
         {
           "args": "bundle --output=out.js main.ts",
-          "output": "[WILDCARD]\nbundled in [WILDCARD]s\n"
+          "output": "npm_specifier.out"
         },
         {
           "args": "clean",
@@ -37,7 +37,7 @@
         },
         {
           "args": "bundle --output=out.js main2.ts",
-          "output": "[WILDCARD]\nbundled in [WILDCARD]s\n"
+          "output": "npm_specifier_with_import_map.out"
         },
         {
           "args": "clean",
@@ -57,7 +57,7 @@
         },
         {
           "args": "bundle --output=out.js main_jsr.ts",
-          "output": "[WILDCARD]\nbundled in [WILDCARD]s\n"
+          "output": "jsr_specifier.out"
         },
         {
           "args": "clean",
@@ -73,7 +73,19 @@
       "steps": [
         {
           "args": "bundle --output=out.js uses_node_builtin.cjs",
-          "output": "[WILDCARD]\nbundled in [WILDCARD]s\n"
+          "output": "requires_node_builtin.out"
+        },
+        {
+          "args": "run --no-lock --cached-only --no-config -A out.js",
+          "output": "{ a: 1, b: 'hello' }\n"
+        }
+      ]
+    },
+    "requires_node_builtin_minified": {
+      "steps": [
+        {
+          "args": "bundle --output=out.js --minify uses_node_builtin.cjs",
+          "output": "requires_node_builtin.out"
         },
         {
           "args": "run --no-lock --cached-only --no-config -A out.js",
@@ -85,7 +97,7 @@
       "steps": [
         {
           "args": "bundle --output=out.js imports_json.ts",
-          "output": "[WILDCARD]\nbundled in [WILDCARD]s\n"
+          "output": "json_import.out"
         },
         {
           "args": ["eval", "console.log(Deno.readTextFileSync('./out.js'))"],
@@ -100,8 +112,8 @@
     "sloppy_imports": {
       "steps": [
         {
-          "args": "bundle --unstable-sloppy-imports --output=out.js sloppy.ts",
-          "output": "[WILDCARD]\nbundled in [WILDCARD]s\n"
+          "args": "bundle --sloppy-imports --output=out.js sloppy.ts",
+          "output": "sloppy_imports.out"
         },
         {
           "args": "run --no-lock --cached-only --no-config -A out.js",

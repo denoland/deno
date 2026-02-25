@@ -1,16 +1,16 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
+use deno_core::convert::Uint8Array;
 use deno_core::op2;
-use deno_core::ToJsBuffer;
-use ed448_goldilocks::curve::MontgomeryPoint;
 use ed448_goldilocks::Scalar;
+use ed448_goldilocks::curve::MontgomeryPoint;
 use elliptic_curve::pkcs8::PrivateKeyInfo;
 use elliptic_curve::subtle::ConstantTimeEq;
-use rand::rngs::OsRng;
 use rand::RngCore;
-use spki::der::asn1::BitString;
+use rand::rngs::OsRng;
 use spki::der::Decode;
 use spki::der::Encode;
+use spki::der::asn1::BitString;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum X448Error {
@@ -62,10 +62,9 @@ const X448_OID: const_oid::ObjectIdentifier =
   const_oid::ObjectIdentifier::new_unwrap("1.3.101.111");
 
 #[op2]
-#[serde]
 pub fn op_crypto_export_spki_x448(
   #[buffer] pubkey: &[u8],
-) -> Result<ToJsBuffer, X448Error> {
+) -> Result<Uint8Array, X448Error> {
   let key_info = spki::SubjectPublicKeyInfo {
     algorithm: spki::AlgorithmIdentifierRef {
       oid: X448_OID,
@@ -82,10 +81,9 @@ pub fn op_crypto_export_spki_x448(
 }
 
 #[op2]
-#[serde]
 pub fn op_crypto_export_pkcs8_x448(
   #[buffer] pkey: &[u8],
-) -> Result<ToJsBuffer, X448Error> {
+) -> Result<Uint8Array, X448Error> {
   use rsa::pkcs1::der::Encode;
 
   let pk_info = rsa::pkcs8::PrivateKeyInfo {

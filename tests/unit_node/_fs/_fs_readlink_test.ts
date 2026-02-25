@@ -1,8 +1,9 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 import { assertCallbackErrorUncaught } from "../_test_utils.ts";
 import { readlink, readlinkSync } from "node:fs";
 import { assert, assertEquals } from "@std/assert";
 import * as path from "@std/path";
+import { Buffer } from "node:buffer";
 
 const testDir = Deno.makeTempDirSync();
 const oldname = path.join(testDir, "oldname");
@@ -72,4 +73,21 @@ Deno.test("[std/node/fs] readlink callback isn't called twice if error is thrown
     prelude: `import { readlink } from ${JSON.stringify(importUrl)}`,
     invocation: `readlink(${JSON.stringify(newname)}, `,
   });
+});
+
+Deno.test("[node/fs] readlink accepts Buffer as path", async () => {
+  const data = await new Promise((res, rej) => {
+    readlink(Buffer.from(newname), (err, data) => {
+      if (err) {
+        rej(err);
+      }
+      res(data);
+    });
+  });
+  assertEquals(data, oldname);
+});
+
+Deno.test("[node/fs] readlinkSync accepts Buffer as path", () => {
+  const data = readlinkSync(Buffer.from(newname));
+  assertEquals(data, oldname);
 });

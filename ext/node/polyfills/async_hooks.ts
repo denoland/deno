@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
@@ -6,7 +6,13 @@
 
 import { core, primordials } from "ext:core/mod.js";
 import { validateFunction } from "ext:deno_node/internal/validators.mjs";
-import { newAsyncId } from "ext:deno_node/internal/async_hooks.ts";
+import {
+  AsyncHook,
+  emitDestroy as emitDestroyHook,
+  emitInit,
+  executionAsyncId as internalExecutionAsyncId,
+  newAsyncId,
+} from "ext:deno_node/internal/async_hooks.ts";
 
 const {
   ObjectDefineProperties,
@@ -22,6 +28,12 @@ const {
   setAsyncContext,
 } = core;
 
+// FinalizationRegistry to emit the async hook destroy callback when an
+// AsyncResource is garbage collected, matching Node.js behaviour.
+const asyncResourceRegistry = new FinalizationRegistry(
+  (asyncId: number) => emitDestroyHook(asyncId),
+);
+
 export class AsyncResource {
   type: string;
   #snapshot: unknown;
@@ -31,6 +43,12 @@ export class AsyncResource {
     this.type = type;
     this.#snapshot = getAsyncContext();
     this.#asyncId = newAsyncId();
+    // Fire the init hook so that async_hooks.createHook({ init }) callbacks
+    // receive this resource, matching Node.js behaviour.
+    emitInit(this.#asyncId, type, internalExecutionAsyncId(), this);
+    // Register with the FinalizationRegistry so emitDestroy is called when
+    // this object is garbage collected.
+    asyncResourceRegistry.register(this, this.#asyncId);
   }
 
   asyncId() {
@@ -51,7 +69,11 @@ export class AsyncResource {
     }
   }
 
-  emitDestroy() {}
+  emitDestroy() {
+    asyncResourceRegistry.unregister(this);
+    emitDestroyHook(this.#asyncId);
+    return this;
+  }
 
   bind(fn: (...args: unknown[]) => unknown, thisArg) {
     validateFunction(fn, "fn");
@@ -138,16 +160,15 @@ export class AsyncLocalStorage {
   }
 
   static snapshot() {
-    return AsyncLocalStorage.bind((
-      cb: (...args: unknown[]) => unknown,
-      ...args: unknown[]
-    ) => ReflectApply(cb, null, args));
+    const resource = new AsyncResource("AsyncLocalStorage.snapshot");
+    return function (cb: (...args: unknown[]) => unknown, ...args: unknown[]) {
+      return resource.runInAsyncScope(cb, null, ...args);
+    };
   }
 }
 
-export function executionAsyncId() {
-  return 0;
-}
+// Re-export executionAsyncId from internal
+export const executionAsyncId = internalExecutionAsyncId;
 
 export function triggerAsyncId() {
   return 0;
@@ -224,16 +245,20 @@ export const asyncWrapProviders = ObjectFreeze({
   VERIFYREQUEST: 62,
 });
 
-class AsyncHook {
-  enable() {
-  }
-
-  disable() {
-  }
-}
-
-export function createHook() {
-  return new AsyncHook();
+// Use the AsyncHook from the internal module
+export function createHook(callbacks: {
+  init?: (
+    asyncId: number,
+    type: string,
+    triggerAsyncId: number,
+    resource: unknown,
+  ) => void;
+  before?: (asyncId: number) => void;
+  after?: (asyncId: number) => void;
+  destroy?: (asyncId: number) => void;
+  promiseResolve?: (asyncId: number) => void;
+}) {
+  return new AsyncHook(callbacks);
 }
 
 export default {

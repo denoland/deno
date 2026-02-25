@@ -1,5 +1,5 @@
 #!/usr/bin/env -S deno run -A --lock=tools/deno.lock.json
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // NOTICE: This deployment/npm folder was lifted from https://github.com/dprint/dprint/blob/0ba79811cc96d2dee8e0cf766a8c8c0fc44879c2/deployment/npm/
 // with permission (Copyright 2019-2023 David Sherret)
 import $ from "jsr:@david/dax@^0.42.0";
@@ -58,7 +58,7 @@ Learn more about the Deno runtime
 [in the documentation](https://docs.deno.com/runtime/manual).
 `;
 
-const currentDir = $.path(import.meta.url).parentOrThrow();
+const currentDir = $.path(import.meta.dirname!);
 const rootDir = currentDir.parentOrThrow().parentOrThrow().parentOrThrow();
 const outputDir = currentDir.join("./dist");
 const scopeDir = outputDir.join("@deno");

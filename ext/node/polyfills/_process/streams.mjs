@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
 import { primordials } from "ext:core/mod.js";
@@ -24,7 +24,9 @@ import { nextTick } from "ext:deno_node/_next_tick.ts";
 import { Duplex, Readable, Writable } from "node:stream";
 import * as io from "ext:deno_io/12_io.js";
 import { guessHandleType } from "ext:deno_node/internal_binding/util.ts";
+import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
 import { op_bootstrap_color_depth } from "ext:core/ops";
+import { validateInteger } from "ext:deno_node/internal/validators.mjs";
 
 // https://github.com/nodejs/node/blob/00738314828074243c9a52a228ab4c68b04259ef/lib/internal/bootstrap/switches/is_main_thread.js#L41
 export function createWritableStdioStream(writer, name, warmup = false) {
@@ -37,11 +39,32 @@ export function createWritableStdioStream(writer, name, warmup = false) {
         );
         return;
       }
-      writer.writeSync(
-        ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, buf)
-          ? buf
-          : Buffer.from(buf, enc),
-      );
+      // TODO(fraidev): This try/catch is a workaround. When process.stdout
+      // is a pipe (not a TTY), Node.js backs it with a real fd-based net.Socket
+      // so BrokenPipe flows naturally through stream_wrap.ts as EPIPE. Deno
+      // always uses createWritableStdioStream(io.stdout) regardless of pipe/TTY,
+      // so BrokenPipe throws synchronously here instead. Once net.Socket supports
+      // being created from a raw fd (new Socket({ fd: 1 })), process.stdout/stderr
+      // should be switched to net.Socket for non-TTY cases and this can be removed.
+      try {
+        writer.writeSync(
+          ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, buf)
+            ? buf
+            : Buffer.from(buf, enc),
+        );
+      } catch (e) {
+        if (
+          ObjectPrototypeIsPrototypeOf(Deno.errors.BrokenPipe.prototype, e)
+        ) {
+          const err = new Error("write EPIPE");
+          err.code = "EPIPE";
+          err.errno = codeMap.get("EPIPE");
+          err.syscall = "write";
+          cb(err);
+          return;
+        }
+        throw e;
+      }
       cb();
     },
     destroy(err, cb) {
@@ -114,6 +137,26 @@ export function createWritableStdioStream(writer, name, warmup = false) {
       writable: true,
       value: () => op_bootstrap_color_depth(),
     },
+    hasColors: {
+      __proto__: null,
+      enumerable: true,
+      configurable: true,
+      writable: true,
+      value: (count, env) => {
+        if (
+          env === undefined &&
+          (count === undefined || typeof count === "object" && count !== null)
+        ) {
+          env = count;
+          count = 16;
+        } else {
+          validateInteger(count, "count", 2);
+        }
+
+        const depth = op_bootstrap_color_depth();
+        return count <= 2 ** depth;
+      },
+    },
   });
 
   // If we're warming up, create a stdout/stderr stream that assumes a terminal (the most likely case).
@@ -149,6 +192,7 @@ function _guessStdinType(fd) {
 }
 
 const _read = function (size) {
+  io.stdin?.[io.REF]();
   const p = Buffer.alloc(size || 16 * 1024);
   PromisePrototypeThen(io.stdin?.read(p), (length) => {
     // deno-lint-ignore prefer-primordials
@@ -219,6 +263,28 @@ export const initStdin = (warmup = false) => {
         // Make sure the stdin can't be `.end()`-ed
         stdin._writableState.ended = true;
       }
+
+      // Provide a minimal _handle so code that checks process.stdin._handle
+      // (e.g. test-stdout-close-unref.js) works. We intentionally omit
+      // readStart/readStop/reading so the onpause handler takes the simple
+      // io.stdin UNREF path - adding those methods causes _readableState.reading
+      // to be reset, which triggers duplicate _read() calls and orphaned
+      // reffed promises that prevent process exit.
+      stdin._handle = {
+        close(cb) {
+          io.stdin?.close();
+          if (typeof cb === "function") cb();
+        },
+        ref() {
+          io.stdin?.[io.REF]();
+        },
+        unref() {
+          io.stdin?.[io.UNREF]();
+        },
+        getAsyncId() {
+          return -1;
+        },
+      };
       break;
     }
     default: {
@@ -242,7 +308,9 @@ export const initStdin = (warmup = false) => {
   }
 
   function onpause() {
-    if (!stdin._handle) {
+    if (!stdin._handle || !stdin._handle.readStop) {
+      // This allows the process to exit when stdin is paused.
+      io.stdin?.[io.UNREF]();
       return;
     }
 
@@ -258,12 +326,18 @@ export const initStdin = (warmup = false) => {
   // so that the process can close down.
   stdin.on("pause", () => nextTick(onpause));
 
+  // Allow users to overwrite isTTY for test isolation and terminal mocking.
+  // This mirrors the stdout/stderr behavior added in #26130.
+  let getStdinIsTTY = () => io.stdin?.isTerminal();
   ObjectDefineProperty(stdin, "isTTY", {
     __proto__: null,
     enumerable: true,
     configurable: true,
     get() {
-      return io.stdin.isTerminal();
+      return getStdinIsTTY();
+    },
+    set(value) {
+      getStdinIsTTY = () => value;
     },
   });
   stdin._isRawMode = false;

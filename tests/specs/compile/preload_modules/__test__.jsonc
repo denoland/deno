@@ -1,0 +1,22 @@
+{
+  "tempDir": true,
+  "steps": [{
+    "if": "unix",
+    "args": "compile --output preload_test --preload preload.js main.js",
+    "output": "[WILDCARD]"
+  }, {
+    "if": "unix",
+    "commandName": "./preload_test",
+    "args": [],
+    "output": "main.out"
+  }, {
+    "if": "windows",
+    "args": "compile --output preload_test.exe --preload preload.js main.js",
+    "output": "[WILDCARD]"
+  }, {
+    "if": "windows",
+    "commandName": "./preload_test.exe",
+    "args": [],
+    "output": "main.out"
+  }]
+}

@@ -1,0 +1,2 @@
+error: Compile permissions were found in the config file. Did you mean to run with `-P` or a permission flag?
+    at file:///[WILDLINE]/deno.json

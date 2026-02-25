@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // deno-lint-ignore-file
 
 import { core, primordials } from "ext:core/mod.js";
@@ -7,7 +7,7 @@ import {
   pledgePermissions,
   restorePermissions,
 } from "ext:cli/40_test_common.js";
-import { Console } from "ext:deno_console/01_console.js";
+import { Console } from "ext:deno_web/01_console.js";
 import { setExitHandler } from "ext:deno_os/30_os.js";
 const {
   op_register_bench,

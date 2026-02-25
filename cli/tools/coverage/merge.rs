@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 //
 // Forked from https://github.com/demurgos/v8-coverage/tree/d0ca18da8740198681e0bc68971b0a6cdb11db3e/rust
 // Copyright 2021 Charles Samborski. All rights reserved. MIT license.
@@ -209,7 +209,7 @@ impl<'a> Iterator for StartEventQueue<'a> {
 
   fn next(&mut self) -> Option<<Self as Iterator>::Item> {
     let pending_offset: Option<usize> = match &self.pending {
-      Some(ref start_event) if !start_event.trees.is_empty() => {
+      Some(start_event) if !start_event.trees.is_empty() => {
         Some(start_event.offset)
       }
       _ => None,
@@ -299,7 +299,7 @@ fn merge_range_tree_children<'a>(
       }
       None => {
         let mut open_range_end: usize = event.offset + 1;
-        for (_, ref tree) in &event.trees {
+        for (_, tree) in &event.trees {
           open_range_end = if tree.end > open_range_end {
             tree.end
           } else {

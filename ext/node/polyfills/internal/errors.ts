@@ -1,12 +1,10 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Node.js contributors. All rights reserved. MIT License.
 
 /** NOT IMPLEMENTED
  * ERR_MANIFEST_ASSERT_INTEGRITY
  * ERR_QUICSESSION_VERSION_NEGOTIATION
  * ERR_REQUIRE_ESM
- * ERR_TLS_CERT_ALTNAME_INVALID
- * ERR_WORKER_INVALID_EXEC_ARGV
  * ERR_WORKER_PATH
  * ERR_QUIC_ERROR
  * ERR_SYSTEM_ERROR //System error, shouldn't ever happen inside Deno
@@ -14,7 +12,7 @@
  * ERR_INVALID_PACKAGE_CONFIG // package.json stuff, probably useless
  */
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 const {
   AggregateError,
   ArrayIsArray,
@@ -35,7 +33,10 @@ const {
   ObjectAssign,
   ObjectDefineProperty,
   ObjectDefineProperties,
+  ObjectGetOwnPropertyDescriptor,
+  ObjectIsExtensible,
   ObjectKeys,
+  ObjectPrototypeHasOwnProperty,
   ObjectPrototypeIsPrototypeOf,
   ObjectSetPrototypeOf,
   RangeErrorPrototype,
@@ -66,12 +67,20 @@ import {
   codeMap,
   errorMap,
   mapSysErrnoToUvErrno,
+  UV_EBADF,
 } from "ext:deno_node/internal_binding/uv.ts";
-import { assert } from "ext:deno_node/_util/asserts.ts";
+import type * as nodeAssert from "node:assert";
 import { isWindows } from "ext:deno_node/_util/os.ts";
 import { os as osConstants } from "ext:deno_node/internal_binding/constants.ts";
 import { hideStackFrames } from "ext:deno_node/internal/hide_stack_frames.ts";
 import { getSystemErrorName } from "ext:deno_node/_utils.ts";
+
+let assert: typeof nodeAssert.default;
+const lazyLoadAssert = () => {
+  return core.createLazyLoader<typeof nodeAssert>(
+    "node:assert",
+  )().default;
+};
 
 export { errorMap };
 
@@ -141,6 +150,17 @@ export function isStackOverflowError(err: Error): boolean {
     err.message === maxStackErrorMessage;
 }
 
+export function isErrorStackTraceLimitWritable(): boolean {
+  const desc = ObjectGetOwnPropertyDescriptor(Error, "stackTraceLimit");
+  if (desc === undefined) {
+    return ObjectIsExtensible(Error);
+  }
+
+  return ObjectPrototypeHasOwnProperty(desc, "writable")
+    ? desc.writable
+    : desc.set !== undefined;
+}
+
 function addNumericalSeparator(val: string) {
   let res = "";
   let i = val.length;
@@ -150,15 +170,6 @@ function addNumericalSeparator(val: string) {
   }
   return `${StringPrototypeSlice(val, 0, i)}${res}`;
 }
-
-const captureLargerStackTrace = hideStackFrames(
-  function captureLargerStackTrace(err) {
-    // @ts-ignore this function is not available in lib.dom.d.ts
-    ErrorCaptureStackTrace(err);
-
-    return err;
-  },
-);
 
 export interface ErrnoException extends Error {
   errno?: number;
@@ -207,7 +218,7 @@ export const uvExceptionWithHostPort = hideStackFrames(
       ex.port = port;
     }
 
-    return captureLargerStackTrace(ex);
+    return ex;
   },
 );
 
@@ -235,7 +246,7 @@ export const errnoException = hideStackFrames(function errnoException(
   ex.code = code;
   ex.syscall = syscall;
 
-  return captureLargerStackTrace(ex);
+  return ex;
 });
 
 function uvErrmapGet(name: number) {
@@ -291,7 +302,7 @@ export const uvException = hideStackFrames(function uvException(ctx) {
     err.dest = dest;
   }
 
-  return captureLargerStackTrace(err);
+  return err;
 });
 
 /**
@@ -336,7 +347,23 @@ export const exceptionWithHostPort = hideStackFrames(
       ex.port = port;
     }
 
-    return captureLargerStackTrace(ex);
+    return ex;
+  },
+);
+
+export const handleDnsError = hideStackFrames(
+  (err: Error, syscall: string, address: string) => {
+    //@ts-expect-error code is safe to access with optional chaining
+    if (typeof err?.uv_errcode === "number") {
+      //@ts-expect-error code is safe to access with optional chaining
+      return dnsException(err?.uv_errcode, syscall, address);
+    }
+
+    if (ObjectPrototypeIsPrototypeOf(Deno.errors.NotCapable.prototype, err)) {
+      return dnsException(codeMap.get("EPERM")!, syscall, address);
+    }
+
+    return denoErrorToNodeError(err, { syscall });
   },
 );
 
@@ -376,7 +403,7 @@ export const dnsException = hideStackFrames(function (code, syscall, hostname) {
     ex.hostname = hostname;
   }
 
-  return captureLargerStackTrace(ex);
+  return ex;
 });
 
 /**
@@ -479,7 +506,7 @@ class NodeSystemError extends Error {
       message += ` => ${context.dest}`;
     }
 
-    captureLargerStackTrace(this);
+    ErrorCaptureStackTrace(this);
 
     ObjectDefineProperties(this, {
       [kIsNodeError]: {
@@ -585,6 +612,38 @@ function makeSystemErrorWithCode(key: string, msgPrfix: string) {
   };
 }
 
+export const ERR_FS_CP_DIR_TO_NON_DIR = makeSystemErrorWithCode(
+  "ERR_FS_CP_DIR_TO_NON_DIR",
+  "Cannot overwrite non-directory with directory",
+);
+export const ERR_FS_CP_EEXIST = makeSystemErrorWithCode(
+  "ERR_FS_CP_EEXIST",
+  "Target already exists",
+);
+export const ERR_FS_CP_EINVAL = makeSystemErrorWithCode(
+  "ERR_FS_CP_EINVAL",
+  "Invalid src or dest",
+);
+export const ERR_FS_CP_FIFO_PIPE = makeSystemErrorWithCode(
+  "ERR_FS_CP_FIFO_PIPE",
+  "Cannot copy a FIFO pipe",
+);
+export const ERR_FS_CP_NON_DIR_TO_DIR = makeSystemErrorWithCode(
+  "ERR_FS_CP_NON_DIR_TO_DIR",
+  "Cannot overwrite directory with non-directory",
+);
+export const ERR_FS_CP_SOCKET = makeSystemErrorWithCode(
+  "ERR_FS_CP_SOCKET",
+  "Cannot copy a socket file",
+);
+export const ERR_FS_CP_SYMLINK_TO_SUBDIRECTORY = makeSystemErrorWithCode(
+  "ERR_FS_CP_SYMLINK_TO_SUBDIRECTORY",
+  "Cannot overwrite symlink in subdirectory of self",
+);
+export const ERR_FS_CP_UNKNOWN = makeSystemErrorWithCode(
+  "ERR_FS_CP_UNKNOWN",
+  "Cannot copy an unknown file type",
+);
 export const ERR_FS_EISDIR = makeSystemErrorWithCode(
   "ERR_FS_EISDIR",
   "Path is a directory",
@@ -758,6 +817,7 @@ export class ERR_OUT_OF_RANGE extends NodeRangeError {
     input: unknown,
     replaceDefaultBoolean = false,
   ) {
+    assert ??= lazyLoadAssert();
     assert(range, 'Missing "range" argument');
     let msg = replaceDefaultBoolean
       ? str
@@ -813,6 +873,12 @@ export class ERR_ASYNC_TYPE extends NodeTypeError {
 export class ERR_BROTLI_INVALID_PARAM extends NodeRangeError {
   constructor(x: string) {
     super("ERR_BROTLI_INVALID_PARAM", `${x} is not a valid Brotli parameter`);
+  }
+}
+
+export class ERR_ZSTD_INVALID_PARAM extends NodeRangeError {
+  constructor(x: string) {
+    super("ERR_ZSTD_INVALID_PARAM", `${x} is not a valid zstd parameter`);
   }
 }
 
@@ -874,6 +940,15 @@ export class ERR_CONSOLE_WRITABLE_STREAM extends NodeTypeError {
     super(
       "ERR_CONSOLE_WRITABLE_STREAM",
       `Console expects a writable stream instance for ${x}`,
+    );
+  }
+}
+
+export class ERR_CONSTRUCT_CALL_REQUIRED extends NodeTypeError {
+  constructor(x: string) {
+    super(
+      "ERR_CONSTRUCT_CALL_REQUIRED",
+      `Class constructor ${x} cannot be invoked without \`new\``,
     );
   }
 }
@@ -986,6 +1061,12 @@ export class ERR_CRYPTO_INVALID_KEY_OBJECT_TYPE extends NodeTypeError {
       "ERR_CRYPTO_INVALID_KEY_OBJECT_TYPE",
       `Invalid key object type ${x}, expected ${y}.`,
     );
+  }
+}
+
+export class ERR_CRYPTO_INVALID_KEYLEN extends NodeRangeError {
+  constructor() {
+    super("ERR_CRYPTO_INVALID_KEYLEN", "Invalid key length");
   }
 }
 
@@ -1113,7 +1194,7 @@ export class ERR_FEATURE_UNAVAILABLE_ON_PLATFORM extends NodeTypeError {
   }
 }
 export class ERR_FS_FILE_TOO_LARGE extends NodeRangeError {
-  constructor(x: string) {
+  constructor(x: string | number) {
     super("ERR_FS_FILE_TOO_LARGE", `File size (${x}) is greater than 2 GB`);
   }
 }
@@ -1454,6 +1535,11 @@ export class ERR_HTTP_TRAILER_INVALID extends NodeError {
     );
   }
 }
+export class ERR_ILLEGAL_CONSTRUCTOR extends NodeTypeError {
+  constructor() {
+    super("ERR_ILLEGAL_CONSTRUCTOR", "Illegal constructor");
+  }
+}
 export class ERR_INCOMPATIBLE_OPTION_PAIR extends NodeTypeError {
   constructor(x: string, y: string) {
     super(
@@ -1567,6 +1653,14 @@ export class ERR_INVALID_HTTP_TOKEN extends NodeTypeError {
 export class ERR_INVALID_IP_ADDRESS extends NodeTypeError {
   constructor(x: string) {
     super("ERR_INVALID_IP_ADDRESS", `Invalid IP address: ${x}`);
+  }
+}
+export class ERR_INVALID_OBJECT_DEFINE_PROPERTY extends NodeTypeError {
+  constructor(message: string) {
+    super(
+      "ERR_INVALID_OBJECT_DEFINE_PROPERTY",
+      message,
+    );
   }
 }
 export class ERR_INVALID_OPT_VALUE_ENCODING extends NodeTypeError {
@@ -1909,6 +2003,7 @@ export class ERR_SOCKET_BAD_BUFFER_SIZE extends NodeTypeError {
 }
 export class ERR_SOCKET_BAD_PORT extends NodeRangeError {
   constructor(name: string, port: unknown, allowZero = true) {
+    assert ??= lazyLoadAssert();
     assert(
       typeof allowZero === "boolean",
       "The 'allowZero' argument must be of type boolean.",
@@ -2283,6 +2378,14 @@ export class ERR_WASI_ALREADY_STARTED extends NodeError {
     super("ERR_WASI_ALREADY_STARTED", `WASI instance has already started`);
   }
 }
+export class ERR_WORKER_INVALID_EXEC_ARGV extends NodeError {
+  constructor(errors: string[], msg = "invalid execArgv flags") {
+    super(
+      "ERR_WORKER_INVALID_EXEC_ARGV",
+      `Initiated Worker with ${msg}: ${ArrayPrototypeJoin(errors, ", ")}`,
+    );
+  }
+}
 export class ERR_WORKER_INIT_FAILED extends NodeError {
   constructor(x: string) {
     super("ERR_WORKER_INIT_FAILED", `Worker initialization failure: ${x}`);
@@ -2326,8 +2429,8 @@ export class ERR_WORKER_UNSUPPORTED_OPERATION extends NodeTypeError {
   }
 }
 export class ERR_ZLIB_INITIALIZATION_FAILED extends NodeError {
-  constructor() {
-    super("ERR_ZLIB_INITIALIZATION_FAILED", `Initialization failed`);
+  constructor(message = "Initialization failed") {
+    super("ERR_ZLIB_INITIALIZATION_FAILED", message);
   }
 }
 export class ERR_FALSY_VALUE_REJECTION extends NodeError {
@@ -2527,6 +2630,7 @@ export class ERR_INVALID_PACKAGE_TARGET extends NodeError {
       target.length &&
       !StringPrototypeStartsWith(target, "./");
     if (key === ".") {
+      assert ??= lazyLoadAssert();
       assert(isImport === false);
       msg = `Invalid "exports" main target ${JSONStringify(target)} defined ` +
         `in the package config ${displayJoin(pkgPath, "package.json")}${
@@ -2656,8 +2760,16 @@ export class ERR_INVALID_STATE extends NodeError {
 interface UvExceptionContext {
   syscall: string;
   path?: string;
+  dest?: string;
 }
 export function denoErrorToNodeError(e: Error, ctx: UvExceptionContext) {
+  if (ObjectPrototypeIsPrototypeOf(Deno.errors.BadResource.prototype, e)) {
+    return uvException({
+      errno: UV_EBADF,
+      ...ctx,
+    });
+  }
+
   const errno = extractOsErrorNumberFromErrorMessage(e);
   if (typeof errno === "undefined") {
     return e;
@@ -2669,6 +2781,65 @@ export function denoErrorToNodeError(e: Error, ctx: UvExceptionContext) {
   });
   return ex;
 }
+
+export function denoWriteFileErrorToNodeError(
+  e: Error,
+  ctx: UvExceptionContext,
+) {
+  if (ObjectPrototypeIsPrototypeOf(Deno.errors.BadResource.prototype, e)) {
+    return uvException({
+      errno: UV_EBADF,
+      ...ctx,
+    });
+  }
+
+  let errno = extractOsErrorNumberFromErrorMessage(e);
+  if (typeof errno === "undefined") {
+    return e;
+  }
+
+  if (isWindows) {
+    // https://learn.microsoft.com/en-us/windows/win32/debug/system-error-codes--0-499-#ERROR_ACCESS_DENIED
+    const ERROR_ACCESS_DENIED = 5;
+    // https://learn.microsoft.com/en-us/windows/win32/debug/system-error-codes--1000-1299-#ERROR_INVALID_FLAGS
+    const ERROR_INVALID_FLAGS = 1004;
+
+    // https://github.com/nodejs/node/blob/70f6b58ac655234435a99d72b857dd7b316d34bf/deps/uv/src/win/fs.c#L1090-L1092
+    if (errno === ERROR_ACCESS_DENIED) {
+      errno = ERROR_INVALID_FLAGS;
+    }
+  }
+
+  return uvException({
+    errno: mapSysErrnoToUvErrno(errno),
+    ...ctx,
+  });
+}
+
+export const denoErrorToNodeSystemError = hideStackFrames((
+  e: Error,
+  syscall: string,
+): Error => {
+  const osErrno = extractOsErrorNumberFromErrorMessage(e);
+  if (typeof osErrno === "undefined") {
+    return e;
+  }
+
+  const uvErrno = mapSysErrnoToUvErrno(osErrno);
+  const { 0: code, 1: message } = uvErrmapGet(uvErrno) || uvUnmappedError;
+  const ctx: NodeSystemErrorCtx = {
+    errno: uvErrno,
+    code,
+    message,
+    syscall,
+  };
+
+  return new NodeSystemError(
+    "ERR_SYSTEM_ERROR",
+    ctx,
+    "A system error occurred",
+  );
+});
 
 function extractOsErrorNumberFromErrorMessage(e: unknown): number | undefined {
   const match = ObjectPrototypeIsPrototypeOf(ErrorPrototype, e)
@@ -2731,6 +2902,7 @@ export class NodeAggregateError extends AggregateError {
   }
 }
 
+codes.ERR_BUFFER_TOO_LARGE = ERR_BUFFER_TOO_LARGE;
 codes.ERR_IPC_CHANNEL_CLOSED = ERR_IPC_CHANNEL_CLOSED;
 codes.ERR_METHOD_NOT_IMPLEMENTED = ERR_METHOD_NOT_IMPLEMENTED;
 codes.ERR_INVALID_RETURN_VALUE = ERR_INVALID_RETURN_VALUE;
@@ -2758,6 +2930,9 @@ codes.ERR_STREAM_PUSH_AFTER_EOF = ERR_STREAM_PUSH_AFTER_EOF;
 codes.ERR_STREAM_UNSHIFT_AFTER_END_EVENT = ERR_STREAM_UNSHIFT_AFTER_END_EVENT;
 codes.ERR_STREAM_WRAP = ERR_STREAM_WRAP;
 codes.ERR_STREAM_WRITE_AFTER_END = ERR_STREAM_WRITE_AFTER_END;
+codes.ERR_BROTLI_INVALID_PARAM = ERR_BROTLI_INVALID_PARAM;
+codes.ERR_ZSTD_INVALID_PARAM = ERR_ZSTD_INVALID_PARAM;
+codes.ERR_ZLIB_INITIALIZATION_FAILED = ERR_ZLIB_INITIALIZATION_FAILED;
 
 // TODO(kt3k): assign all error classes here.
 
@@ -2823,6 +2998,7 @@ export default {
   ERR_ASYNC_CALLBACK,
   ERR_ASYNC_TYPE,
   ERR_BROTLI_INVALID_PARAM,
+  ERR_ZSTD_INVALID_PARAM,
   ERR_BUFFER_OUT_OF_BOUNDS,
   ERR_BUFFER_TOO_LARGE,
   ERR_CANNOT_WATCH_SIGINT,
@@ -2830,6 +3006,7 @@ export default {
   ERR_CHILD_PROCESS_IPC_REQUIRED,
   ERR_CHILD_PROCESS_STDIO_MAXBUFFER,
   ERR_CONSOLE_WRITABLE_STREAM,
+  ERR_CONSTRUCT_CALL_REQUIRED,
   ERR_CONTEXT_NOT_INITIALIZED,
   ERR_CPU_USAGE,
   ERR_CRYPTO_CUSTOM_ENGINE_NOT_SUPPORTED,
@@ -2861,7 +3038,15 @@ export default {
   ERR_EVENT_RECURSION,
   ERR_FALSY_VALUE_REJECTION,
   ERR_FEATURE_UNAVAILABLE_ON_PLATFORM,
+  ERR_FS_CP_DIR_TO_NON_DIR,
+  ERR_FS_CP_EEXIST,
+  ERR_FS_CP_EINVAL,
   ERR_FS_EISDIR,
+  ERR_FS_CP_FIFO_PIPE,
+  ERR_FS_CP_NON_DIR_TO_DIR,
+  ERR_FS_CP_SOCKET,
+  ERR_FS_CP_SYMLINK_TO_SUBDIRECTORY,
+  ERR_FS_CP_UNKNOWN,
   ERR_FS_FILE_TOO_LARGE,
   ERR_FS_INVALID_SYMLINK_TYPE,
   ERR_FS_RMDIR_ENOTDIR,
@@ -2942,6 +3127,7 @@ export default {
   ERR_INVALID_HTTP_TOKEN,
   ERR_INVALID_IP_ADDRESS,
   ERR_INVALID_MODULE_SPECIFIER,
+  ERR_INVALID_OBJECT_DEFINE_PROPERTY,
   ERR_INVALID_OPT_VALUE,
   ERR_INVALID_OPT_VALUE_ENCODING,
   ERR_INVALID_PACKAGE_CONFIG,
@@ -3059,6 +3245,7 @@ export default {
   ERR_VM_MODULE_STATUS,
   ERR_WASI_ALREADY_STARTED,
   ERR_WORKER_INIT_FAILED,
+  ERR_WORKER_INVALID_EXEC_ARGV,
   ERR_WORKER_NOT_RUNNING,
   ERR_WORKER_OUT_OF_MEMORY,
   ERR_WORKER_UNSERIALIZABLE_ERROR,
@@ -3075,12 +3262,14 @@ export default {
   codes,
   connResetException,
   denoErrorToNodeError,
+  denoErrorToNodeSystemError,
   dnsException,
   errnoException,
   errorMap,
   exceptionWithHostPort,
   genericNodeError,
   hideStackFrames,
+  isErrorStackTraceLimitWritable,
   isStackOverflowError,
   uvException,
   uvExceptionWithHostPort,

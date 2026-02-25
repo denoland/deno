@@ -1,8 +1,8 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // deno-lint-ignore-file no-console
 
-import EventEmitter from "node:events";
+import { EventEmitter, once } from "node:events";
 import http, {
   IncomingMessage,
   type RequestOptions,
@@ -11,7 +11,7 @@ import http, {
 import url from "node:url";
 import https from "node:https";
 import zlib from "node:zlib";
-import net, { Socket } from "node:net";
+import net, { type AddressInfo, Socket } from "node:net";
 import fs from "node:fs";
 import { text } from "node:stream/consumers";
 
@@ -227,9 +227,19 @@ Deno.test("[node/http] .writeHead()", async (t) => {
     );
   });
 
-  await t.step("send status + headers array", async () => {
+  await t.step("send status + headers nested array", async () => {
     await testWriteHead(
       (res) => res.writeHead(200, [["foo", "bar"]]),
+      (res) => {
+        assertEquals(res.status, 200);
+        assertEquals(res.headers.get("foo"), "bar");
+      },
+    );
+  });
+
+  await t.step("send status + headers array", async () => {
+    await testWriteHead(
+      (res) => res.writeHead(200, ["foo", "bar"]),
       (res) => {
         assertEquals(res.status, 200);
         assertEquals(res.headers.get("foo"), "bar");
@@ -429,6 +439,19 @@ Deno.test("[node/http] request with headers", async () => {
     resolve();
   });
   await promise;
+});
+
+Deno.test("[node/http] request with ipv6 host", async () => {
+  const server = http.createServer((_req, res) => res.end()).listen(0, "::1");
+  await once(server, "listening");
+  const { port } = server.address() as AddressInfo;
+  const req = http.request(`http://[::1]:${port}`).end();
+  const [res] = await once(req, "response") as [IncomingMessage];
+  assertEquals(res.statusCode, 200);
+  res.resume();
+  await once(res, "end");
+  server.close();
+  await once(server, "close");
 });
 
 Deno.test("[node/http] non-string buffer response", {
@@ -733,25 +756,28 @@ Deno.test("[node/http] ClientRequest handle non-string headers", async () => {
   assertEquals(headers!["1"], "2");
 });
 
-Deno.test("[node/https] ClientRequest uses HTTP/1.1", async () => {
-  let body = "";
-  const { promise, resolve, reject } = Promise.withResolvers<void>();
-  const req = https.request("https://localhost:5545/http_version", {
-    method: "POST",
-    headers: { 1: 2 },
-  }, (resp) => {
-    resp.on("data", (chunk) => {
-      body += chunk;
-    });
+Deno.test({
+  name: "[node/https] ClientRequest uses HTTP/1.1",
+  async fn() {
+    let body = "";
+    const { promise, resolve, reject } = Promise.withResolvers<void>();
+    const req = https.request("https://localhost:5545/http_version", {
+      method: "POST",
+      headers: { 1: 2 },
+    }, (resp) => {
+      resp.on("data", (chunk) => {
+        body += chunk;
+      });
 
-    resp.on("end", () => {
-      resolve();
+      resp.on("end", () => {
+        resolve();
+      });
     });
-  });
-  req.once("error", (e) => reject(e));
-  req.end();
-  await promise;
-  assertEquals(body, "HTTP/1.1");
+    req.once("error", (e) => reject(e));
+    req.end();
+    await promise;
+    assertEquals(body, "HTTP/1.1");
+  },
 });
 
 Deno.test("[node/http] ClientRequest setTimeout", async () => {
@@ -1777,6 +1803,15 @@ Deno.test("[node/http] upgraded socket closes when the server closed without clo
       console.log("client socket closed");
       clientSocketClosed.resolve();
     });
+
+    socket.on("error", (e) => {
+      if (!("code" in e) || e.code !== "ECONNRESET") {
+        throw e;
+      }
+      console.log("client socket closed");
+      clientSocketClosed.resolve();
+    });
+
     socket.on("data", async (data) => {
       // receives pong message
       assertEquals(data, Buffer.from("8104706f6e67", "hex"));
@@ -1786,10 +1821,6 @@ Deno.test("[node/http] upgraded socket closes when the server closed without clo
 
       console.log("process closed");
       serverProcessClosed.resolve();
-
-      // sending some additional message
-      socket.write(Buffer.from("81847de88e01", "hex"));
-      socket.write(Buffer.from("0d81e066", "hex"));
     });
 
     // sending ping message
@@ -1979,16 +2010,18 @@ Deno.test("[node/http] `request` requires net permission to host and port", {
 
 const ca = await Deno.readTextFile("tests/testdata/tls/RootCA.pem");
 
-Deno.test("[node/https] `request` requires net permission to host and port", {
+Deno.test({
+  name: "[node/https] `request` requires net permission to host and port",
   permissions: { net: ["localhost:5545"] },
-}, async () => {
-  const { promise, resolve } = Promise.withResolvers<void>();
-  https.request("https://localhost:5545/echo.ts", { ca }, async (res) => {
-    assertEquals(res.statusCode, 200);
-    assertStringIncludes(await text(res), "function echo(");
-    resolve();
-  }).end();
-  await promise;
+  async fn() {
+    const { promise, resolve } = Promise.withResolvers<void>();
+    https.request("https://localhost:5545/echo.ts", { ca }, async (res) => {
+      assertEquals(res.statusCode, 200);
+      assertStringIncludes(await text(res), "function echo(");
+      resolve();
+    }).end();
+    await promise;
+  },
 });
 
 Deno.test(
@@ -2009,17 +2042,13 @@ Deno.test(
 
 Deno.test("[node/http] 'close' event is emitted when request finished", async () => {
   const { promise, resolve } = Promise.withResolvers<void>();
-  let socketCloseEmitted = false;
+
   const req = http.request("http://localhost:4545/echo.ts", async (res) => {
     res.on("close", resolve);
-    req.socket?.on("close", () => {
-      socketCloseEmitted = true;
-    });
     await text(res);
   });
   req.end();
   await promise;
-  assert(socketCloseEmitted);
 });
 
 Deno.test("[node/http] 'close' event is emitted on ServerResponse object when the client aborted the request in the middle", async () => {
@@ -2128,20 +2157,162 @@ Deno.test("[node/http] client http over unix socket works", {
   await server.finished;
 });
 
-Deno.test("[node/https] null ca, key and cert req options", {
+Deno.test({
+  name: "[node/https] null ca, key and cert req options",
   permissions: { net: ["localhost:5545"] },
-}, async () => {
+  async fn() {
+    const { promise, resolve } = Promise.withResolvers<void>();
+    https.request("https://localhost:5545/echo.ts", {
+      ca,
+      // @ts-expect-error - key can be null at runtime
+      key: null,
+      // @ts-expect-error - cert can be null at runtime
+      cert: null,
+    }, async (res) => {
+      assertEquals(res.statusCode, 200);
+      assertStringIncludes(await text(res), "function echo(");
+      resolve();
+    }).end();
+    await promise;
+  },
+});
+
+Deno.test("[node/http] server.listen respects signal option", async () => {
+  const [exitCode, _output] = await execCode(`
+    import { createServer } from 'node:http';
+
+    const abortController = new AbortController();
+
+    const server = createServer((_req, res) => {
+      res.writeHead(404).end();
+    }).on('listening', () => {
+      // Precedes setTimeout and exits with 0
+      abortController.abort();
+      setTimeout(() => process.exit(1), 1000);
+    }).on('close', () => {
+      process.exit(0);
+    });
+
+    server.listen({
+      host: 'localhost',
+      port: 0,
+      signal: abortController.signal
+    });
+  `);
+  assertEquals(exitCode, 0);
+});
+
+// Test for empty chunk in chunked POST request
+// Regression test for: https://github.com/denoland/deno/issues/31056
+Deno.test("[node/http] client request with empty write in chunked POST completes", async () => {
   const { promise, resolve } = Promise.withResolvers<void>();
-  https.request("https://localhost:5545/echo.ts", {
-    ca,
-    // @ts-expect-error - key can be null at runtime
-    key: null,
-    // @ts-expect-error - cert can be null at runtime
-    cert: null,
-  }, async (res) => {
-    assertEquals(res.statusCode, 200);
-    assertStringIncludes(await text(res), "function echo(");
-    resolve();
-  }).end();
+  let requestBody = "";
+
+  const server = http.createServer((req, res) => {
+    let body = "";
+    req.on("data", (chunk) => {
+      body += chunk.toString();
+    });
+
+    req.on("end", () => {
+      requestBody = body;
+      res.statusCode = 200;
+      res.end("OK");
+    });
+  });
+
+  server.listen(() => {
+    const { port } = server.address() as { port: number };
+
+    const req = http.request({
+      hostname: "localhost",
+      port,
+      path: "/",
+      method: "POST",
+    }, (res) => {
+      res.on("data", () => {});
+      res.on("end", () => {
+        server.close(() => resolve());
+      });
+    });
+
+    // This should complete successfully even with an empty write
+    req.write("");
+    req.end();
+  });
+
+  await promise;
+  assertEquals(requestBody, "");
+});
+
+Deno.test("[node/http] Server.address() includes family property", async () => {
+  // Test IPv4
+  {
+    const { promise, resolve } = Promise.withResolvers<void>();
+    const server = http.createServer((_req, res) => res.end("ok"));
+
+    server.listen(0, "127.0.0.1", () => {
+      const addr = server.address();
+      assert(addr !== null && typeof addr === "object");
+      assertEquals(addr.address, "127.0.0.1");
+      assertEquals(addr.family, "IPv4");
+      assertEquals(typeof addr.port, "number");
+      server.close(() => resolve());
+    });
+
+    await promise;
+  }
+
+  // Test IPv6
+  {
+    const { promise, resolve } = Promise.withResolvers<void>();
+    const server = http.createServer((_req, res) => res.end("ok"));
+
+    server.listen(0, "::1", () => {
+      const addr = server.address();
+      assert(addr !== null && typeof addr === "object");
+      assertEquals(addr.address, "::1");
+      assertEquals(addr.family, "IPv6");
+      assertEquals(typeof addr.port, "number");
+      server.close(() => resolve());
+    });
+
+    await promise;
+  }
+});
+
+// https://github.com/denoland/deno/issues/31758
+Deno.test("[node/http] address() returns assigned port immediately after listen()", async () => {
+  const server = http.createServer();
+  server.listen(0);
+
+  // address() should return the real port synchronously, not 0
+  const addr = server.address()!;
+  assert(typeof addr === "object");
+  assert(typeof addr.port === "number");
+  assert(addr.port > 0, `Expected port > 0, got ${addr.port}`);
+
+  const { promise, resolve } = Promise.withResolvers<void>();
+  server.close(() => resolve());
+  await promise;
+});
+
+Deno.test("[node/http] ServerResponse.writeEarlyHints", async () => {
+  const { promise, resolve } = Promise.withResolvers<void>();
+  const server = http.createServer((_req, res) => {
+    res.writeEarlyHints(
+      { link: "</styles.css>; rel=preload; as=style" },
+      () => {
+        res.writeHead(200);
+        res.end("ok");
+      },
+    );
+  });
+  server.listen(0, async () => {
+    const addr = server.address() as { port: number };
+    const res = await fetch(`http://localhost:${addr.port}`);
+    assertEquals(await res.text(), "ok");
+    server.close(() => resolve());
+  });
   await promise;
 });

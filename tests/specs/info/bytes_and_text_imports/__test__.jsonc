@@ -1,0 +1,12 @@
+{
+  "tests": {
+    "info": {
+      "args": "info main.ts",
+      "output": "info.out"
+    },
+    "json": {
+      "args": "info --json main.ts",
+      "output": "json.out"
+    }
+  }
+}

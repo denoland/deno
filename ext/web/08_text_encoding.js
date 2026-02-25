@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // @ts-check
 /// <reference path="../../core/lib.deno_core.d.ts" />
@@ -44,7 +44,7 @@ const {
 } = primordials;
 
 import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
+import { createFilteredInspectProxy } from "./01_console.js";
 
 class TextDecoder {
   /** @type {string} */
@@ -117,6 +117,10 @@ class TextDecoder {
         "Argument 2",
       );
       stream = options.stream;
+    }
+
+    if (stream && input.length === 0) {
+      return "";
     }
 
     try {

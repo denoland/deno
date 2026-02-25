@@ -1,15 +1,17 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::cell::Cell;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use deno_core::error::ResourceError;
-use deno_core::op2;
-use deno_core::v8;
+use deno_core::CppgcBase;
+use deno_core::CppgcInherits;
 use deno_core::GarbageCollected;
 use deno_core::OpState;
 use deno_core::ResourceId;
+use deno_core::error::ResourceError;
+use deno_core::op2;
+use deno_core::v8;
 
 pub struct AsyncId(i64);
 
@@ -30,8 +32,7 @@ impl AsyncId {
 }
 
 fn next_async_id(state: &mut OpState) -> i64 {
-  let async_id = state.borrow_mut::<AsyncId>().next();
-  async_id
+  state.borrow_mut::<AsyncId>().next()
 }
 
 #[op2(fast)]
@@ -39,12 +40,17 @@ pub fn op_node_new_async_id(state: &mut OpState) -> f64 {
   next_async_id(state) as f64
 }
 
+#[derive(CppgcBase)]
+#[repr(C)]
 pub struct AsyncWrap {
   provider: i32,
   async_id: i64,
 }
 
-impl GarbageCollected for AsyncWrap {
+// SAFETY: we're sure this can be GCed
+unsafe impl GarbageCollected for AsyncWrap {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"AsyncWrap"
   }
@@ -84,20 +90,28 @@ enum State {
   Closed,
 }
 
+#[derive(CppgcBase, CppgcInherits)]
+#[cppgc_inherits_from(AsyncWrap)]
+#[repr(C)]
 pub struct HandleWrap {
+  base: AsyncWrap,
   handle: Option<ResourceId>,
   state: Rc<Cell<State>>,
 }
 
-impl GarbageCollected for HandleWrap {
+// SAFETY: we're sure this can be GCed
+unsafe impl GarbageCollected for HandleWrap {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"HandleWrap"
   }
 }
 
 impl HandleWrap {
-  pub(crate) fn create(handle: Option<ResourceId>) -> Self {
+  pub(crate) fn create(base: AsyncWrap, handle: Option<ResourceId>) -> Self {
     Self {
+      base,
       handle,
       state: Rc::new(Cell::new(State::Initialized)),
     }
@@ -119,11 +133,8 @@ impl HandleWrap {
     state: &mut OpState,
     #[smi] provider: i32,
     #[smi] handle: Option<ResourceId>,
-  ) -> (AsyncWrap, HandleWrap) {
-    (
-      AsyncWrap::create(state, provider),
-      HandleWrap::create(handle),
-    )
+  ) -> HandleWrap {
+    HandleWrap::create(AsyncWrap::create(state, provider), handle)
   }
 
   // Ported from Node.js
@@ -134,8 +145,8 @@ impl HandleWrap {
     &self,
     op_state: Rc<RefCell<OpState>>,
     #[this] this: v8::Global<v8::Object>,
-    scope: &mut v8::HandleScope,
-    #[global] cb: Option<v8::Global<v8::Function>>,
+    scope: &mut v8::PinScope<'_, '_>,
+    #[scoped] cb: Option<v8::Global<v8::Function>>,
   ) -> Result<(), ResourceError> {
     if self.state.get() != State::Initialized {
       return Ok(());
@@ -145,7 +156,7 @@ impl HandleWrap {
     // This effectively mimicks Node's OnClose callback.
     //
     // https://github.com/nodejs/node/blob/038d82980ab26cd79abe4409adc2fecad94d7c93/src/handle_wrap.cc#L135-L157
-    let on_close = move |scope: &mut v8::HandleScope| {
+    let on_close = move |scope: &mut v8::PinScope<'_, '_>| {
       assert!(state.get() == State::Closing);
       state.set(State::Closed);
 
@@ -183,12 +194,12 @@ impl HandleWrap {
   //
   // https://github.com/nodejs/node/blob/038d82980ab26cd79abe4409adc2fecad94d7c93/src/handle_wrap.cc#L40-L46
   #[fast]
-  #[rename("r#ref")]
-  fn ref_(&self, state: &mut OpState) {
-    if self.is_alive() {
-      if let Some(handle) = self.handle {
-        state.uv_ref(handle);
-      }
+  #[rename("ref")]
+  fn ref_method(&self, state: &mut OpState) {
+    if self.is_alive()
+      && let Some(handle) = self.handle
+    {
+      state.uv_ref(handle);
     }
   }
 
@@ -197,21 +208,21 @@ impl HandleWrap {
   // https://github.com/nodejs/node/blob/038d82980ab26cd79abe4409adc2fecad94d7c93/src/handle_wrap.cc#L49-L55
   #[fast]
   fn unref(&self, state: &mut OpState) {
-    if self.is_alive() {
-      if let Some(handle) = self.handle {
-        state.uv_unref(handle);
-      }
+    if self.is_alive()
+      && let Some(handle) = self.handle
+    {
+      state.uv_unref(handle);
     }
   }
 }
 
 fn uv_close<F>(
-  scope: &mut v8::HandleScope,
+  scope: &mut v8::PinScope<'_, '_>,
   op_state: Rc<RefCell<OpState>>,
   this: v8::Global<v8::Object>,
   on_close: F,
 ) where
-  F: FnOnce(&mut v8::HandleScope) + 'static,
+  F: FnOnce(&mut v8::PinScope<'_, '_>) + 'static,
 {
   // Call _onClose() on the JS handles. Not needed for Rust handles.
   let this = v8::Local::new(scope, this);

@@ -1,11 +1,8 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import { validateFunction } from "ext:deno_node/internal/validators.mjs";
-import {
-  normalizeEncoding,
-  slowCases,
-} from "ext:deno_node/internal/normalize_encoding.mjs";
-export { normalizeEncoding, slowCases };
+import { normalizeEncoding } from "ext:deno_node/internal/normalize_encoding.ts";
+export { normalizeEncoding };
 import {
   ObjectCreate,
   StringPrototypeToUpperCase,
@@ -13,17 +10,26 @@ import {
 import { ERR_UNKNOWN_SIGNAL } from "ext:deno_node/internal/errors.ts";
 import { os } from "ext:deno_node/internal_binding/constants.ts";
 import { primordials } from "ext:core/mod.js";
+import { isNativeError } from "ext:deno_node/internal/util/types.ts";
+
 const {
   ArrayPrototypePush,
+  ErrorPrototype,
   ObjectDefineProperties,
   ObjectDefineProperty,
   ObjectFreeze,
   ObjectGetPrototypeOf,
   ObjectGetOwnPropertyDescriptors,
+  ObjectPrototypeIsPrototypeOf,
   ObjectSetPrototypeOf,
   Promise,
   ReflectApply,
+  ReflectConstruct,
+  SafeSet,
+  SetPrototypeAdd,
+  SetPrototypeHas,
   SafeWeakRef,
+  StringPrototypeReplace,
   SymbolFor,
   WeakRefPrototypeDeref,
 } = primordials;
@@ -46,7 +52,9 @@ export function once(callback) {
 // In addition to being accessible through util.promisify.custom,
 // this symbol is registered globally and can be accessed in any environment as
 // Symbol.for('nodejs.util.promisify.custom').
-const kCustomPromisifiedSymbol = SymbolFor("nodejs.util.promisify.custom");
+export const kCustomPromisifiedSymbol = SymbolFor(
+  "nodejs.util.promisify.custom",
+);
 // This is an internal Node symbol used by functions returning multiple
 // arguments, e.g. ['bytesRead', 'buffer'] for fs.read().
 const kCustomPromisifyArgsSymbol = SymbolFor(
@@ -54,6 +62,22 @@ const kCustomPromisifyArgsSymbol = SymbolFor(
 );
 
 export const customPromisifyArgs = kCustomPromisifyArgsSymbol;
+
+/** @param {string} str */
+export function removeColors(str) {
+  return StringPrototypeReplace(str, colorRegExp, "");
+}
+
+/**
+ * @param {unknown} e
+ * @returns {boolean}
+ */
+export function isError(e) {
+  // An error could be an instance of Error while not being a native error
+  // or could be from a different realm and not be instance of Error but still
+  // be a native error.
+  return isNativeError(e) || ObjectPrototypeIsPrototypeOf(ErrorPrototype, e);
+}
 
 export function promisify(
   original,
@@ -138,6 +162,20 @@ export function convertToValidSignal(signal) {
   throw new ERR_UNKNOWN_SIGNAL(signal);
 }
 
+const codesWarned = new SafeSet();
+
+export function deprecateInstantiation(Constructor, deprecationCode, ...args) {
+  if (!SetPrototypeHas(codesWarned, deprecationCode)) {
+    SetPrototypeAdd(codesWarned, deprecationCode);
+    globalThis.process.emitWarning(
+      `Instantiating ${Constructor.name} without the 'new' keyword has been deprecated.`,
+      "DeprecationWarning",
+      deprecationCode,
+    );
+  }
+  return ReflectConstruct(Constructor, args);
+}
+
 export class WeakReference {
   #weak = null;
   #strong = null;
@@ -176,10 +214,12 @@ export default {
   convertToValidSignal,
   customInspectSymbol,
   customPromisifyArgs,
+  deprecateInstantiation,
+  isError,
   kEmptyObject,
   kEnumerableProperty,
   normalizeEncoding,
   once,
   promisify,
-  slowCases,
+  removeColors,
 };

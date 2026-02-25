@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::collections::HashSet;
 use std::collections::VecDeque;
@@ -9,27 +9,61 @@ use std::sync::Arc;
 
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
+use deno_config::deno_json::NodeModulesDirMode;
+use deno_core::anyhow::Context;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
-use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
-use deno_core::resolve_url_or_path;
+use deno_core::futures::FutureExt;
 use deno_graph::GraphKind;
 use deno_npm_installer::graph::NpmCachingStrategy;
+use deno_path_util::resolve_url_or_path;
 use deno_path_util::url_from_file_path;
 use deno_path_util::url_to_file_path;
 use deno_terminal::colors;
 use rand::Rng;
 
-use super::installer::infer_name_from_url;
+use super::installer::BinNameResolver;
+use crate::args::CliOptions;
 use crate::args::CompileFlags;
+use crate::args::ConfigFlag;
 use crate::args::Flags;
 use crate::factory::CliFactory;
-use crate::http_util::HttpClientProvider;
-use crate::standalone::binary::is_standalone_binary;
 use crate::standalone::binary::WriteBinOptions;
+use crate::standalone::binary::is_standalone_binary;
+use crate::util::temp::create_temp_node_modules_dir;
 
 pub async fn compile(
+  mut flags: Flags,
+  compile_flags: CompileFlags,
+) -> Result<(), AnyError> {
+  // use a temporary directory with a node_modules folder when the user
+  // specifies an npm package for better compatibility
+  let _temp_dir =
+    if compile_flags.source_file.to_lowercase().starts_with("npm:")
+      && flags.node_modules_dir.is_none()
+      && !matches!(flags.config_flag, ConfigFlag::Path(_))
+    {
+      let temp_node_modules_dir = create_temp_node_modules_dir()
+        .context("Failed creating temp directory for node_modules folder.")?;
+      flags.initial_cwd = Some(temp_node_modules_dir.parent().to_path_buf());
+      flags.internal.root_node_modules_dir_override =
+        Some(temp_node_modules_dir.node_modules_dir_path().to_path_buf());
+      flags.node_modules_dir = Some(NodeModulesDirMode::Auto);
+      Some(temp_node_modules_dir)
+    } else {
+      None
+    };
+  let flags = Arc::new(flags);
+  // boxed_local() is to avoid large futures
+  if compile_flags.eszip {
+    compile_eszip(flags, compile_flags).boxed_local().await
+  } else {
+    compile_binary(flags, compile_flags).boxed_local().await
+  }
+}
+
+async fn compile_binary(
   flags: Arc<Flags>,
   compile_flags: CompileFlags,
 ) -> Result<(), AnyError> {
@@ -37,10 +71,10 @@ pub async fn compile(
   let cli_options = factory.cli_options()?;
   let module_graph_creator = factory.module_graph_creator().await?;
   let binary_writer = factory.create_compile_binary_writer().await?;
-  let http_client = factory.http_client_provider();
   let entrypoint = cli_options.resolve_main_module()?;
+  let bin_name_resolver = factory.bin_name_resolver()?;
   let output_path = resolve_compile_executable_output_path(
-    http_client,
+    &bin_name_resolver,
     &compile_flags,
     cli_options.initial_cwd(),
   )
@@ -48,7 +82,7 @@ pub async fn compile(
   let (module_roots, include_paths) = get_module_roots_and_include_paths(
     entrypoint,
     &compile_flags,
-    cli_options.initial_cwd(),
+    cli_options,
   )?;
 
   let graph = Arc::try_unwrap(
@@ -72,11 +106,27 @@ pub async fn compile(
     graph
   };
 
+  let initial_cwd =
+    deno_path_util::url_from_directory_path(cli_options.initial_cwd())?;
+
   log::info!(
     "{} {} to {}",
     colors::green("Compile"),
-    entrypoint,
-    output_path.display(),
+    crate::util::path::relative_specifier_path_for_display(
+      &initial_cwd,
+      entrypoint
+    ),
+    {
+      if let Ok(output_path) = deno_path_util::url_from_file_path(&output_path)
+      {
+        crate::util::path::relative_specifier_path_for_display(
+          &initial_cwd,
+          &output_path,
+        )
+      } else {
+        output_path.display().to_string()
+      }
+    }
   );
   validate_output_path(&output_path)?;
 
@@ -84,7 +134,7 @@ pub async fn compile(
   temp_filename.push(format!(
     ".tmp-{}",
     faster_hex::hex_encode(
-      &rand::thread_rng().gen::<[u8; 8]>(),
+      &rand::thread_rng().r#gen::<[u8; 8]>(),
       &mut [0u8; 16]
     )
     .unwrap()
@@ -156,19 +206,19 @@ pub async fn compile(
   Ok(())
 }
 
-pub async fn compile_eszip(
+async fn compile_eszip(
   flags: Arc<Flags>,
   compile_flags: CompileFlags,
 ) -> Result<(), AnyError> {
   let factory = CliFactory::from_flags(flags);
   let cli_options = factory.cli_options()?;
   let module_graph_creator = factory.module_graph_creator().await?;
-  let parsed_source_cache = factory.parsed_source_cache();
-  let tsconfig_resolver = factory.tsconfig_resolver()?;
-  let http_client = factory.http_client_provider();
+  let parsed_source_cache = factory.parsed_source_cache()?;
+  let compiler_options_resolver = factory.compiler_options_resolver()?;
+  let bin_name_resolver = factory.bin_name_resolver()?;
   let entrypoint = cli_options.resolve_main_module()?;
   let mut output_path = resolve_compile_executable_output_path(
-    http_client,
+    &bin_name_resolver,
     &compile_flags,
     cli_options.initial_cwd(),
   )
@@ -180,7 +230,7 @@ pub async fn compile_eszip(
   let (module_roots, _include_paths) = get_module_roots_and_include_paths(
     entrypoint,
     &compile_flags,
-    cli_options.initial_cwd(),
+    cli_options,
   )?;
 
   let graph = Arc::try_unwrap(
@@ -204,13 +254,14 @@ pub async fn compile_eszip(
     graph
   };
 
-  let transpile_and_emit_options = tsconfig_resolver
-    .transpile_and_emit_options(cli_options.workspace().root_dir())?;
+  let transpile_and_emit_options = compiler_options_resolver
+    .for_specifier(cli_options.workspace().root_dir_url())
+    .transpile_options()?;
   let transpile_options = transpile_and_emit_options.transpile.clone();
   let emit_options = transpile_and_emit_options.emit.clone();
 
   let parser = parsed_source_cache.as_capturing_parser();
-  let root_dir_url = cli_options.workspace().root_dir();
+  let root_dir_url = cli_options.workspace().root_dir_url();
   log::debug!("Binary root dir: {}", root_dir_url);
   let relative_file_base = eszip::EszipRelativeFileBaseUrl::new(root_dir_url);
   let mut eszip = eszip::EszipV2::from_graph(eszip::FromGraphOptions {
@@ -221,6 +272,7 @@ pub async fn compile_eszip(
     relative_file_base: Some(relative_file_base),
     npm_packages: None,
     module_kind_resolver: Default::default(),
+    npm_snapshot: Default::default(),
   })?;
 
   if let Some(import_map_specifier) = maybe_import_map_specifier {
@@ -307,13 +359,13 @@ fn validate_output_path(output_path: &Path) -> Result<(), AnyError> {
     let output_base = &output_path.parent().unwrap();
     if output_base.exists() && output_base.is_file() {
       bail!(
-          concat!(
-            "Could not compile to file '{}' because its parent directory ",
-            "is an existing file. You can use the `--output <file-path>` flag to ",
-            "provide an alternative name.",
-          ),
-          output_base.display(),
-        );
+        concat!(
+          "Could not compile to file '{}' because its parent directory ",
+          "is an existing file. You can use the `--output <file-path>` flag to ",
+          "provide an alternative name.",
+        ),
+        output_base.display(),
+      );
     }
     std::fs::create_dir_all(output_base)?;
   }
@@ -324,8 +376,10 @@ fn validate_output_path(output_path: &Path) -> Result<(), AnyError> {
 fn get_module_roots_and_include_paths(
   entrypoint: &ModuleSpecifier,
   compile_flags: &CompileFlags,
-  initial_cwd: &Path,
+  cli_options: &Arc<CliOptions>,
 ) -> Result<(Vec<ModuleSpecifier>, Vec<ModuleSpecifier>), AnyError> {
+  let initial_cwd = cli_options.initial_cwd();
+
   fn is_module_graph_module(url: &ModuleSpecifier) -> bool {
     if url.scheme() != "file" {
       return true;
@@ -350,6 +404,9 @@ fn get_module_roots_and_include_paths(
       | MediaType::Wasm => true,
       MediaType::Css
       | MediaType::Html
+      | MediaType::Jsonc
+      | MediaType::Json5
+      | MediaType::Markdown
       | MediaType::SourceMap
       | MediaType::Sql
       | MediaType::Unknown => false,
@@ -405,10 +462,10 @@ fn get_module_roots_and_include_paths(
     } else {
       analyze_path(&url, &exclude_set, &mut searched_paths, |file_path| {
         let media_type = MediaType::from_path(file_path);
-        if is_module_graph_media_type(media_type) {
-          if let Ok(file_url) = url_from_file_path(file_path) {
-            module_roots.push(file_url);
-          }
+        if is_module_graph_media_type(media_type)
+          && let Ok(file_url) = url_from_file_path(file_path)
+        {
+          module_roots.push(file_url);
         }
       })?;
     }
@@ -416,11 +473,20 @@ fn get_module_roots_and_include_paths(
       include_paths.push(url);
     }
   }
+
+  for preload_module in cli_options.preload_modules()? {
+    module_roots.push(preload_module);
+  }
+
+  for require_module in cli_options.require_modules()? {
+    module_roots.push(require_module);
+  }
+
   Ok((module_roots, include_paths))
 }
 
 async fn resolve_compile_executable_output_path(
-  http_client_provider: &HttpClientProvider,
+  bin_name_resolver: &BinNameResolver<'_>,
   compile_flags: &CompileFlags,
   current_dir: &Path,
 ) -> Result<PathBuf, AnyError> {
@@ -431,10 +497,10 @@ async fn resolve_compile_executable_output_path(
   let mut output_path = if let Some(out) = output_flag.as_ref() {
     let mut out_path = PathBuf::from(out);
     if out.ends_with('/') || out.ends_with('\\') {
-      if let Some(infer_file_name) =
-        infer_name_from_url(http_client_provider, &module_specifier)
-          .await
-          .map(PathBuf::from)
+      if let Some(infer_file_name) = bin_name_resolver
+        .infer_name_from_url(&module_specifier)
+        .await
+        .map(PathBuf::from)
       {
         out_path = out_path.join(infer_file_name);
       }
@@ -447,7 +513,8 @@ async fn resolve_compile_executable_output_path(
   };
 
   if output_flag.is_none() {
-    output_path = infer_name_from_url(http_client_provider, &module_specifier)
+    output_path = bin_name_resolver
+      .infer_name_from_url(&module_specifier)
       .await
       .map(PathBuf::from)
   }
@@ -481,13 +548,22 @@ fn get_os_specific_filepath(
 
 #[cfg(test)]
 mod test {
+  use deno_npm::registry::TestNpmRegistryApi;
+  use deno_npm::resolution::NpmVersionResolver;
+
   pub use super::*;
+  use crate::http_util::HttpClientProvider;
+  use crate::util::env::resolve_cwd;
 
   #[tokio::test]
   async fn resolve_compile_executable_output_path_target_linux() {
     let http_client = HttpClientProvider::new(None, None);
+    let npm_api = TestNpmRegistryApi::default();
+    let npm_version_resolver = NpmVersionResolver::default();
+    let bin_name_resolver =
+      BinNameResolver::new(&http_client, &npm_api, &npm_version_resolver);
     let path = resolve_compile_executable_output_path(
-      &http_client,
+      &bin_name_resolver,
       &CompileFlags {
         source_file: "mod.ts".to_string(),
         output: Some(String::from("./file")),
@@ -498,8 +574,9 @@ mod test {
         include: Default::default(),
         exclude: Default::default(),
         eszip: true,
+        self_extracting: false,
       },
-      &std::env::current_dir().unwrap(),
+      &resolve_cwd(None).unwrap(),
     )
     .await
     .unwrap();
@@ -513,8 +590,12 @@ mod test {
   #[tokio::test]
   async fn resolve_compile_executable_output_path_target_windows() {
     let http_client = HttpClientProvider::new(None, None);
+    let npm_api = TestNpmRegistryApi::default();
+    let npm_version_resolver = NpmVersionResolver::default();
+    let bin_name_resolver =
+      BinNameResolver::new(&http_client, &npm_api, &npm_version_resolver);
     let path = resolve_compile_executable_output_path(
-      &http_client,
+      &bin_name_resolver,
       &CompileFlags {
         source_file: "mod.ts".to_string(),
         output: Some(String::from("./file")),
@@ -525,8 +606,9 @@ mod test {
         icon: None,
         no_terminal: false,
         eszip: true,
+        self_extracting: false,
       },
-      &std::env::current_dir().unwrap(),
+      &resolve_cwd(None).unwrap(),
     )
     .await
     .unwrap();

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::path::Component;
@@ -44,7 +44,7 @@ impl UrlOrPath {
     }
   }
 
-  pub fn to_string_lossy(&self) -> Cow<str> {
+  pub fn to_string_lossy(&self) -> Cow<'_, str> {
     match self {
       UrlOrPath::Url(url) => Cow::Borrowed(url.as_str()),
       UrlOrPath::Path(path) => path.to_string_lossy(),

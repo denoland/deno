@@ -1,16 +1,16 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
 use std::thread;
 
+use deno_core::ModuleSpecifier;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
-use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use deno_core::serde_json::json;
 use deno_core::url::Url;
-use deno_core::ModuleSpecifier;
 use deno_runtime::tokio_util::create_basic_runtime;
 use tokio::sync::mpsc;
 use tower_lsp::jsonrpc::Error as LspError;
@@ -144,12 +144,11 @@ impl TestServer {
                     {
                       client.send_test_notification(params);
                     }
-                  } else if !was_empty {
-                    if let Ok(params) =
+                  } else if !was_empty
+                    && let Ok(params) =
                       as_delete_notification(&module.specifier)
-                    {
-                      client.send_test_notification(params);
-                    }
+                  {
+                    client.send_test_notification(params);
                   }
                   tests.insert(
                     module.specifier.as_ref().clone(),

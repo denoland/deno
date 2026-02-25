@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::sync::Arc;
 
@@ -8,6 +8,8 @@ use deno_terminal::colors;
 use crate::args::CheckFlags;
 use crate::args::Flags;
 use crate::factory::CliFactory;
+use crate::graph_container::CheckSpecifiersOptions;
+use crate::graph_container::CollectSpecifiersOptions;
 use crate::util::extract;
 
 pub async fn check(
@@ -18,8 +20,12 @@ pub async fn check(
 
   let main_graph_container = factory.main_module_graph_container().await?;
 
-  let specifiers =
-    main_graph_container.collect_specifiers(&check_flags.files)?;
+  let specifiers = main_graph_container.collect_specifiers(
+    &check_flags.files,
+    CollectSpecifiersOptions {
+      include_ignored_specified: false,
+    },
+  )?;
   if specifiers.is_empty() {
     log::warn!("{} No matching files found.", colors::yellow("Warning"));
   }
@@ -49,6 +55,12 @@ pub async fn check(
   };
 
   main_graph_container
-    .check_specifiers(&specifiers_for_typecheck, Default::default())
+    .check_specifiers(
+      &specifiers_for_typecheck,
+      CheckSpecifiersOptions {
+        allow_unknown_media_types: true,
+        ..Default::default()
+      },
+    )
     .await
 }

@@ -1,0 +1,2 @@
+error: Requires read access to "[WILDLINE]secret.txt", run again with the --allow-read flag
+    at [WILDLINE]/node_modules/package/index.mjs:1:18

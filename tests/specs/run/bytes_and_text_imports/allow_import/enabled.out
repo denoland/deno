@@ -1,0 +1,8 @@
+Download http://localhost:4545/echo.ts
+function echo(args: string[]) {
+  const msg = args.join(", ");
+  Deno.stdout.write(new TextEncoder().encode(msg));
+}
+
+echo(Deno.args);
+

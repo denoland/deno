@@ -25,7 +25,7 @@ jobs:
           git config --global fetch.parallel 32
 
       - name: Clone repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           submodules: recursive
 
@@ -34,7 +34,7 @@ jobs:
         with:
           deno-version: v2.x
       - name: Install Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: '22.x'
           registry-url: 'https://registry.npmjs.org'

@@ -1,11 +1,11 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::ptr;
 
-use deno_core::op2;
-use deno_core::v8;
 use deno_core::OpState;
 use deno_core::ResourceId;
+use deno_core::op2;
+use deno_core::v8;
 
 use crate::dlfcn::DynamicLibraryResource;
 use crate::symbol::NativeType;
@@ -28,7 +28,7 @@ pub enum StaticError {
 
 #[op2]
 pub fn op_ffi_get_static<'scope>(
-  scope: &mut v8::HandleScope<'scope>,
+  scope: &mut v8::PinScope<'scope, '_>,
   state: &mut OpState,
   #[smi] rid: ResourceId,
   #[string] name: String,

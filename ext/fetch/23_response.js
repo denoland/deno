@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // @ts-check
 /// <reference path="../webidl/internal.d.ts" />
@@ -12,7 +12,7 @@
 
 import { core, primordials } from "ext:core/mod.js";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
+import { createFilteredInspectProxy } from "ext:deno_web/01_console.js";
 import {
   byteLowerCase,
   HTTP_TAB_OR_SPACE,
@@ -22,7 +22,7 @@ import {
 import { extractBody, mixinBody } from "ext:deno_fetch/22_body.js";
 import { getLocationHref } from "ext:deno_web/12_location.js";
 import { extractMimeType } from "ext:deno_web/01_mimesniff.js";
-import { URL } from "ext:deno_url/00_url.js";
+import { URL } from "ext:deno_web/00_url.js";
 import {
   fillHeaders,
   getDecodeSplitHeader,

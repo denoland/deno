@@ -1,0 +1,5 @@
+{
+  "args": "run no_sourcemap.js",
+  "output": "no_sourcemap.js.out",
+  "exitCode": 1
+}

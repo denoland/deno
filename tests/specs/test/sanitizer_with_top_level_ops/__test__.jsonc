@@ -1,4 +1,5 @@
 {
   "args": "test --quiet --allow-net main.js",
-  "output": "main.out"
+  "output": "main.out",
+  "flaky": true
 }

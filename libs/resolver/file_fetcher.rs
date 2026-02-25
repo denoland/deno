@@ -1,13 +1,17 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
 use boxed_error::Boxed;
+use deno_cache_dir::GlobalHttpCacheRc;
+use deno_cache_dir::GlobalHttpCacheSys;
+use deno_cache_dir::HttpCacheRc;
 use deno_cache_dir::file_fetcher::AuthTokens;
 use deno_cache_dir::file_fetcher::BlobStore;
 use deno_cache_dir::file_fetcher::CacheSetting;
+use deno_cache_dir::file_fetcher::CachedOrRedirect;
 use deno_cache_dir::file_fetcher::FetchCachedError;
 use deno_cache_dir::file_fetcher::File;
 use deno_cache_dir::file_fetcher::FileFetcherSys;
@@ -15,12 +19,10 @@ use deno_cache_dir::file_fetcher::FileOrRedirect;
 use deno_cache_dir::file_fetcher::HttpClient;
 use deno_cache_dir::file_fetcher::TooManyRedirectsError;
 use deno_cache_dir::file_fetcher::UnsupportedSchemeError;
-use deno_cache_dir::GlobalHttpCacheRc;
-use deno_cache_dir::GlobalHttpCacheSys;
-use deno_cache_dir::HttpCacheRc;
 use deno_error::JsError;
 use deno_error::JsErrorBox;
 use deno_graph::source::CacheInfo;
+use deno_graph::source::CacheSetting as LoaderCacheSetting;
 use deno_graph::source::LoadFuture;
 use deno_graph::source::LoadResponse;
 use deno_graph::source::Loader;
@@ -29,32 +31,14 @@ use deno_permissions::CheckSpecifierKind;
 use deno_permissions::PermissionCheckError;
 use deno_permissions::PermissionsContainer;
 use futures::FutureExt;
+use futures::future::LocalBoxFuture;
 use http::header;
 use node_resolver::InNpmPackageChecker;
-use parking_lot::Mutex;
 use thiserror::Error;
 use url::Url;
 
+use crate::loader::MemoryFilesRc;
 use crate::npm::DenoInNpmPackageChecker;
-
-#[derive(Debug, Default)]
-struct MemoryFiles(Mutex<HashMap<Url, File>>);
-
-impl MemoryFiles {
-  pub fn insert(&self, specifier: Url, file: File) -> Option<File> {
-    self.0.lock().insert(specifier, file)
-  }
-
-  pub fn clear(&self) {
-    self.0.lock().clear();
-  }
-}
-
-impl deno_cache_dir::file_fetcher::MemoryFiles for MemoryFiles {
-  fn get(&self, specifier: &Url) -> Option<File> {
-    self.0.lock().get(specifier).cloned()
-  }
-}
 
 #[derive(Debug, Boxed, JsError)]
 pub struct FetchError(pub Box<FetchErrorKind>);
@@ -121,6 +105,22 @@ pub struct FetchNoFollowOptions<'a> {
   pub maybe_checksum: Option<&'a LoaderChecksum>,
 }
 
+impl<'a> FetchNoFollowOptions<'a> {
+  fn into_deno_cache_dir_options(
+    self,
+  ) -> deno_cache_dir::file_fetcher::FetchNoFollowOptions<'a> {
+    deno_cache_dir::file_fetcher::FetchNoFollowOptions {
+      local: self.local,
+      maybe_auth: self.maybe_auth,
+      maybe_checksum: self
+        .maybe_checksum
+        .map(|c| deno_cache_dir::Checksum::new(c.as_str())),
+      maybe_accept: self.maybe_accept,
+      maybe_cache_setting: self.maybe_cache_setting,
+    }
+  }
+}
+
 #[sys_traits::auto_impl]
 pub trait PermissionedFileFetcherSys:
   FileFetcherSys + sys_traits::EnvVar
@@ -129,9 +129,9 @@ pub trait PermissionedFileFetcherSys:
 
 #[allow(clippy::disallowed_types)]
 type PermissionedFileFetcherRc<TBlobStore, TSys, THttpClient> =
-  crate::sync::MaybeArc<PermissionedFileFetcher<TBlobStore, TSys, THttpClient>>;
-#[allow(clippy::disallowed_types)]
-type MemoryFilesRc = crate::sync::MaybeArc<MemoryFiles>;
+  deno_maybe_sync::MaybeArc<
+    PermissionedFileFetcher<TBlobStore, TSys, THttpClient>,
+  >;
 
 pub struct PermissionedFileFetcherOptions {
   pub allow_remote: bool,
@@ -151,19 +151,19 @@ pub struct PermissionedFileFetcher<
 }
 
 impl<
-    TBlobStore: BlobStore,
-    TSys: PermissionedFileFetcherSys,
-    THttpClient: HttpClient,
-  > PermissionedFileFetcher<TBlobStore, TSys, THttpClient>
+  TBlobStore: BlobStore,
+  TSys: PermissionedFileFetcherSys,
+  THttpClient: HttpClient,
+> PermissionedFileFetcher<TBlobStore, TSys, THttpClient>
 {
   pub fn new(
     blob_store: TBlobStore,
     http_cache: HttpCacheRc,
     http_client: THttpClient,
+    memory_files: MemoryFilesRc,
     sys: TSys,
     options: PermissionedFileFetcherOptions,
   ) -> Self {
-    let memory_files = crate::sync::new_rc(MemoryFiles::default());
     let auth_tokens = AuthTokens::new_from_sys(&sys);
     let file_fetcher = deno_cache_dir::file_fetcher::FileFetcher::new(
       blob_store,
@@ -298,6 +298,21 @@ impl<
     Err(TooManyRedirectsError(specifier.into_owned()).into())
   }
 
+  /// Ensures the module is cached without following redirects.
+  pub async fn ensure_cached_no_follow(
+    &self,
+    specifier: &Url,
+    permissions: FetchPermissionsOptionRef<'_>,
+    options: FetchNoFollowOptions<'_>,
+  ) -> Result<CachedOrRedirect, FetchNoFollowError> {
+    self.validate_fetch(specifier, permissions)?;
+    self
+      .file_fetcher
+      .ensure_cached_no_follow(specifier, options.into_deno_cache_dir_options())
+      .await
+      .map_err(|err| FetchNoFollowErrorKind::FetchNoFollow(err).into_box())
+  }
+
   /// Fetches without following redirects.
   pub async fn fetch_no_follow(
     &self,
@@ -305,6 +320,19 @@ impl<
     permissions: FetchPermissionsOptionRef<'_>,
     options: FetchNoFollowOptions<'_>,
   ) -> Result<FileOrRedirect, FetchNoFollowError> {
+    self.validate_fetch(specifier, permissions)?;
+    self
+      .file_fetcher
+      .fetch_no_follow(specifier, options.into_deno_cache_dir_options())
+      .await
+      .map_err(|err| FetchNoFollowErrorKind::FetchNoFollow(err).into_box())
+  }
+
+  fn validate_fetch(
+    &self,
+    specifier: &Url,
+    permissions: FetchPermissionsOptionRef<'_>,
+  ) -> Result<(), FetchNoFollowError> {
     validate_scheme(specifier).map_err(|err| {
       FetchNoFollowErrorKind::FetchNoFollow(err.into()).into_box()
     })?;
@@ -316,22 +344,7 @@ impl<
         permissions.check_specifier(specifier, kind)?;
       }
     }
-    self
-      .file_fetcher
-      .fetch_no_follow(
-        specifier,
-        deno_cache_dir::file_fetcher::FetchNoFollowOptions {
-          local: options.local,
-          maybe_auth: options.maybe_auth,
-          maybe_checksum: options
-            .maybe_checksum
-            .map(|c| deno_cache_dir::Checksum::new(c.as_str())),
-          maybe_accept: options.maybe_accept,
-          maybe_cache_setting: options.maybe_cache_setting,
-        },
-      )
-      .await
-      .map_err(|err| FetchNoFollowErrorKind::FetchNoFollow(err).into_box())
+    Ok(())
   }
 
   /// A synchronous way to retrieve a source file, where if the file has already
@@ -370,9 +383,24 @@ impl<
   }
 }
 
+pub trait GraphLoaderReporter: Send + Sync {
+  #[allow(unused_variables)]
+  fn on_load(
+    &self,
+    specifier: &Url,
+    loaded_from: deno_cache_dir::file_fetcher::LoadedFrom,
+  ) {
+  }
+}
+
+#[allow(clippy::disallowed_types)]
+pub type GraphLoaderReporterRc =
+  deno_maybe_sync::MaybeArc<dyn GraphLoaderReporter>;
+
 pub struct DenoGraphLoaderOptions {
   pub file_header_overrides: HashMap<Url, HashMap<String, String>>,
   pub permissions: Option<PermissionsContainer>,
+  pub reporter: Option<GraphLoaderReporterRc>,
 }
 
 #[sys_traits::auto_impl]
@@ -389,19 +417,23 @@ pub struct DenoGraphLoader<
   THttpClient: HttpClient,
 > {
   file_header_overrides: HashMap<Url, HashMap<String, String>>,
+  // Arc is ok because this is for the source
+  #[allow(clippy::disallowed_types)]
+  file_content_overrides: Option<HashMap<Url, std::sync::Arc<[u8]>>>,
   file_fetcher: PermissionedFileFetcherRc<TBlobStore, TSys, THttpClient>,
   global_http_cache: GlobalHttpCacheRc<TSys>,
   in_npm_pkg_checker: DenoInNpmPackageChecker,
   permissions: Option<PermissionsContainer>,
   sys: TSys,
   cache_info_enabled: bool,
+  reporter: Option<GraphLoaderReporterRc>,
 }
 
 impl<
-    TBlobStore: BlobStore,
-    TSys: DenoGraphLoaderSys,
-    THttpClient: HttpClient,
-  > DenoGraphLoader<TBlobStore, TSys, THttpClient>
+  TBlobStore: BlobStore + 'static,
+  TSys: DenoGraphLoaderSys + 'static,
+  THttpClient: HttpClient + 'static,
+> DenoGraphLoader<TBlobStore, TSys, THttpClient>
 {
   pub fn new(
     file_fetcher: PermissionedFileFetcherRc<TBlobStore, TSys, THttpClient>,
@@ -418,7 +450,18 @@ impl<
       file_header_overrides: options.file_header_overrides,
       permissions: options.permissions,
       cache_info_enabled: false,
+      reporter: options.reporter,
+      file_content_overrides: Default::default(),
     }
+  }
+
+  // Arc is ok because this is for the source
+  #[allow(clippy::disallowed_types)]
+  pub fn set_file_content_overrides(
+    &mut self,
+    overrides: HashMap<Url, std::sync::Arc<[u8]>>,
+  ) {
+    self.file_content_overrides = Some(overrides);
   }
 
   pub fn insert_file_header_override(
@@ -447,19 +490,127 @@ impl<
       self.global_http_cache.local_path_for_url(specifier).ok()
     }
   }
+
+  fn load_or_cache<TStrategy: LoadOrCacheStrategy + 'static>(
+    &self,
+    strategy: TStrategy,
+    specifier: &Url,
+    options: deno_graph::source::LoadOptions,
+  ) -> LocalBoxFuture<
+    'static,
+    Result<Option<TStrategy::Response>, deno_graph::source::LoadError>,
+  > {
+    let file_fetcher = self.file_fetcher.clone();
+    let permissions = self.permissions.clone();
+    let specifier = specifier.clone();
+    let is_statically_analyzable = !options.was_dynamic_root;
+
+    async move {
+      let maybe_cache_setting = match options.cache_setting {
+        LoaderCacheSetting::Use => None,
+        LoaderCacheSetting::Reload => {
+          if matches!(file_fetcher.cache_setting(), CacheSetting::Only) {
+            return Err(load_error(JsErrorBox::generic(
+              "Could not resolve version constraint using only cached data. Try running again without --cached-only"
+            )));
+          } else {
+            Some(CacheSetting::ReloadAll)
+          }
+        }
+        LoaderCacheSetting::Only => Some(CacheSetting::Only),
+      };
+      let result = strategy
+        .handle_fetch_or_cache_no_follow(
+          &specifier,
+          match &permissions {
+            Some(permissions) => FetchPermissionsOptionRef::Restricted(
+              permissions,
+              if is_statically_analyzable {
+                CheckSpecifierKind::Static
+              } else {
+                CheckSpecifierKind::Dynamic
+              },
+            ),
+            None => FetchPermissionsOptionRef::AllowAll,
+          },
+          FetchNoFollowOptions {
+            local: FetchLocalOptions {
+              // only include the mtime in dynamic branches because we only
+              // need to know about it then in order to tell whether to reload
+              // or not
+              include_mtime: options.in_dynamic_branch,
+            },
+            maybe_auth: None,
+            maybe_accept: None,
+            maybe_cache_setting: maybe_cache_setting.as_ref(),
+            maybe_checksum: options.maybe_checksum.as_ref(),
+          },
+        )
+        .await;
+      match result {
+        Ok(response) => Ok(Some(response)),
+        Err(err) => {
+          let err = err.into_kind();
+          match err {
+            FetchNoFollowErrorKind::FetchNoFollow(err) => {
+              use deno_cache_dir::file_fetcher::FetchNoFollowErrorKind::*;
+              let err = err.into_kind();
+              match err {
+                NotFound(_) => Ok(None),
+                UrlToFilePath { .. }
+                | ReadingBlobUrl { .. }
+                | ReadingFile { .. }
+                | FetchingRemote { .. }
+                | ClientError { .. }
+                | NoRemote { .. }
+                | DataUrlDecode { .. }
+                | RedirectResolution { .. }
+                | CacheRead { .. }
+                | CacheSave { .. }
+                | UnsupportedScheme { .. }
+                | RedirectHeaderParse { .. }
+                | InvalidHeader { .. } => Err(load_error(JsErrorBox::from_err(err))),
+                NotCached { .. } => {
+                  if options.cache_setting == LoaderCacheSetting::Only {
+                    Ok(None)
+                  } else {
+                    Err(load_error(JsErrorBox::from_err(err)))
+                  }
+                }
+                ChecksumIntegrity(err) => {
+                  // convert to the equivalent deno_graph error so that it
+                  // enhances it if this is passed to deno_graph
+                  Err(deno_graph::source::LoadError::ChecksumIntegrity(
+                    deno_graph::source::ChecksumIntegrityError {
+                      actual: err.actual,
+                      expected: err.expected,
+                    },
+                  ))
+                }
+              }
+            }
+            FetchNoFollowErrorKind::PermissionCheck(permission_check_error) => {
+              Err(load_error(JsErrorBox::from_err(permission_check_error)))
+            }
+          }
+        }
+      }
+    }
+    .boxed_local()
+  }
 }
 
 impl<
-    TBlobStore: BlobStore + 'static,
-    TSys: DenoGraphLoaderSys + 'static,
-    THttpClient: HttpClient + 'static,
-  > Loader for DenoGraphLoader<TBlobStore, TSys, THttpClient>
+  TBlobStore: BlobStore + 'static,
+  TSys: DenoGraphLoaderSys + 'static,
+  THttpClient: HttpClient + 'static,
+> Loader for DenoGraphLoader<TBlobStore, TSys, THttpClient>
 {
-  fn get_cache_info(&self, specifier: &Url) -> Option<CacheInfo> {
-    if !self.cache_info_enabled {
-      return None;
-    }
+  fn cache_info_enabled(&self) -> bool {
+    self.cache_info_enabled
+  }
 
+  fn get_cache_info(&self, specifier: &Url) -> Option<CacheInfo> {
     let local = self.get_local_path(specifier)?;
     if self.sys.fs_is_file_no_err(&local) {
       Some(CacheInfo { local: Some(local) })
@@ -473,8 +624,6 @@ impl<
     specifier: &Url,
     options: deno_graph::source::LoadOptions,
   ) -> LoadFuture {
-    use deno_graph::source::CacheSetting as LoaderCacheSetting;
-
     if specifier.scheme() == "file"
       && specifier.path().contains("/node_modules/")
     {
@@ -493,123 +642,163 @@ impl<
       }
     }
 
-    let file_fetcher = self.file_fetcher.clone();
-    let file_header_overrides = self.file_header_overrides.clone();
-    let permissions = self.permissions.clone();
-    let specifier = specifier.clone();
-    let is_statically_analyzable = !options.was_dynamic_root;
-
-    async move {
-      let maybe_cache_setting = match options.cache_setting {
-        LoaderCacheSetting::Use => None,
-        LoaderCacheSetting::Reload => {
-          if matches!(file_fetcher.cache_setting(), CacheSetting::Only) {
-            return Err(load_error(JsErrorBox::generic(
-              "Could not resolve version constraint using only cached data. Try running again without --cached-only"
-            )));
-          }
-          Some(CacheSetting::ReloadAll)
-        }
-        LoaderCacheSetting::Only => Some(CacheSetting::Only),
-      };
-      file_fetcher
-        .fetch_no_follow(
-          &specifier,
-          match &permissions {
-            Some(permissions) => {
-              FetchPermissionsOptionRef::Restricted(permissions,
-              if is_statically_analyzable {
-                CheckSpecifierKind::Static
-              } else {
-                CheckSpecifierKind::Dynamic
-              })
-            },
-            None => FetchPermissionsOptionRef::AllowAll,
-          },
-          FetchNoFollowOptions {
-            local: FetchLocalOptions {
-              // only include the mtime in dynamic branches because we only
-              // need to know about it then in order to tell whether to reload
-              // or not
-              include_mtime: options.in_dynamic_branch,
-            },
-            maybe_auth: None,
-            maybe_accept: None,
-            maybe_cache_setting: maybe_cache_setting.as_ref(),
-            maybe_checksum: options.maybe_checksum.as_ref(),
-          })
-        .await
-        .map(|file_or_redirect| {
-          match file_or_redirect {
-            FileOrRedirect::File(file) => {
-              let maybe_headers =
-              match (file.maybe_headers, file_header_overrides.get(&specifier)) {
-                (Some(headers), Some(overrides)) => {
-                  Some(headers.into_iter().chain(overrides.clone()).collect())
-                }
-                (Some(headers), None) => Some(headers),
-                (None, Some(overrides)) => Some(overrides.clone()),
-                (None, None) => None,
-              };
-            Ok(Some(LoadResponse::Module {
-              specifier: file.url,
-              maybe_headers,
-              mtime: file.mtime,
-              content: file.source,
-            }))
-            },
-            FileOrRedirect::Redirect(redirect_specifier) => {
-              Ok(Some(LoadResponse::Redirect {
-                specifier: redirect_specifier,
-              }))
-            },
-          }
-        })
-        .unwrap_or_else(|err| {
-          let err = err.into_kind();
-          match err {
-            FetchNoFollowErrorKind::FetchNoFollow(err) => {
-              use deno_cache_dir::file_fetcher::FetchNoFollowErrorKind::*;
-              let err = err.into_kind();
-              match err {
-                NotFound(_) => Ok(None),
-                UrlToFilePath { .. } |
-                ReadingBlobUrl { .. } |
-                ReadingFile { .. } |
-                FetchingRemote { .. } |
-                ClientError { .. } |
-                NoRemote { .. } |
-                DataUrlDecode { .. } |
-                RedirectResolution { .. } |
-                CacheRead { .. } |
-                CacheSave  { .. } |
-                UnsupportedScheme  { .. } |
-                RedirectHeaderParse { .. } |
-                InvalidHeader { .. } => Err(load_error(JsErrorBox::from_err(err))),
-                NotCached { .. } => {
-                  if options.cache_setting == LoaderCacheSetting::Only {
-                    Ok(None)
-                  } else {
-                    Err(load_error(JsErrorBox::from_err(err)))
-                  }
-                },
-                ChecksumIntegrity(err) => {
-                  // convert to the equivalent deno_graph error so that it
-                  // enhances it if this is passed to deno_graph
-                  Err(
-                    deno_graph::source::LoadError::ChecksumIntegrity(deno_graph::source::ChecksumIntegrityError {
-                      actual: err.actual,
-                      expected: err.expected,
-                    }),
-                  )
-                }
-              }
-            },
-            FetchNoFollowErrorKind::PermissionCheck(permission_check_error) => Err(load_error(JsErrorBox::from_err(permission_check_error))),
-          }
-        })
+    if !matches!(
+      specifier.scheme(),
+      "file" | "http" | "https" | "blob" | "data"
+    ) {
+      return Box::pin(std::future::ready(Ok(Some(
+        deno_graph::source::LoadResponse::External {
+          specifier: specifier.clone(),
+        },
+      ))));
     }
-    .boxed_local()
+    if let Some(overrides) = &self.file_content_overrides
+      && let Some(content) = overrides.get(specifier)
+    {
+      return std::future::ready(Ok(Some(LoadResponse::Module {
+        content: content.clone(),
+        mtime: None,
+        specifier: specifier.clone(),
+        maybe_headers: self.file_header_overrides.get(specifier).cloned(),
+      })))
+      .boxed_local();
+    }
+
+    self.load_or_cache(
+      LoadStrategy {
+        file_fetcher: self.file_fetcher.clone(),
+        file_header_overrides: self.file_header_overrides.clone(),
+        reporter: self.reporter.clone(),
+      },
+      specifier,
+      options,
+    )
+  }
+
+  fn ensure_cached(
+    &self,
+    specifier: &Url,
+    options: deno_graph::source::LoadOptions,
+  ) -> deno_graph::source::EnsureCachedFuture {
+    if let Some(overrides) = &self.file_content_overrides
+      && overrides.contains_key(specifier)
+    {
+      return std::future::ready(Ok(Some(
+        deno_graph::source::CacheResponse::Cached,
+      )))
+      .boxed_local();
+    }
+
+    self.load_or_cache(
+      CacheStrategy {
+        file_fetcher: self.file_fetcher.clone(),
+      },
+      specifier,
+      options,
+    )
+  }
+}
+
+#[async_trait::async_trait(?Send)]
+trait LoadOrCacheStrategy {
+  type Response;
+
+  async fn handle_fetch_or_cache_no_follow(
+    &self,
+    specifier: &Url,
+    permissions: FetchPermissionsOptionRef<'_>,
+    options: FetchNoFollowOptions<'_>,
+  ) -> Result<Self::Response, FetchNoFollowError>;
+}
+
+struct LoadStrategy<
+  TBlobStore: BlobStore,
+  TSys: DenoGraphLoaderSys,
+  THttpClient: HttpClient,
+> {
+  file_fetcher: PermissionedFileFetcherRc<TBlobStore, TSys, THttpClient>,
+  file_header_overrides: HashMap<Url, HashMap<String, String>>,
+  reporter: Option<GraphLoaderReporterRc>,
+}
+
+#[async_trait::async_trait(?Send)]
+impl<TBlobStore: BlobStore, TSys: DenoGraphLoaderSys, THttpClient: HttpClient>
+  LoadOrCacheStrategy for LoadStrategy<TBlobStore, TSys, THttpClient>
+{
+  type Response = deno_graph::source::LoadResponse;
+
+  async fn handle_fetch_or_cache_no_follow(
+    &self,
+    specifier: &Url,
+    permissions: FetchPermissionsOptionRef<'_>,
+    options: FetchNoFollowOptions<'_>,
+  ) -> Result<deno_graph::source::LoadResponse, FetchNoFollowError> {
+    self
+      .file_fetcher
+      .fetch_no_follow(specifier, permissions, options)
+      .await
+      .map(|file_or_redirect| match file_or_redirect {
+        FileOrRedirect::File(file) => {
+          let maybe_headers = match (
+            file.maybe_headers,
+            self.file_header_overrides.get(specifier),
+          ) {
+            (Some(headers), Some(overrides)) => {
+              Some(headers.into_iter().chain(overrides.clone()).collect())
+            }
+            (Some(headers), None) => Some(headers),
+            (None, Some(overrides)) => Some(overrides.clone()),
+            (None, None) => None,
+          };
+          if let Some(reporter) = &self.reporter {
+            reporter.on_load(specifier, file.loaded_from);
+          }
+          LoadResponse::Module {
+            specifier: file.url,
+            maybe_headers,
+            mtime: file.mtime,
+            content: file.source,
+          }
+        }
+        FileOrRedirect::Redirect(redirect_specifier) => {
+          LoadResponse::Redirect {
+            specifier: redirect_specifier,
+          }
+        }
+      })
+  }
+}
+
+struct CacheStrategy<
+  TBlobStore: BlobStore,
+  TSys: DenoGraphLoaderSys,
+  THttpClient: HttpClient,
+> {
+  file_fetcher: PermissionedFileFetcherRc<TBlobStore, TSys, THttpClient>,
+}
+
+#[async_trait::async_trait(?Send)]
+impl<TBlobStore: BlobStore, TSys: DenoGraphLoaderSys, THttpClient: HttpClient>
+  LoadOrCacheStrategy for CacheStrategy<TBlobStore, TSys, THttpClient>
+{
+  type Response = deno_graph::source::CacheResponse;
+
+  async fn handle_fetch_or_cache_no_follow(
+    &self,
+    specifier: &Url,
+    permissions: FetchPermissionsOptionRef<'_>,
+    options: FetchNoFollowOptions<'_>,
+  ) -> Result<deno_graph::source::CacheResponse, FetchNoFollowError> {
+    self
+      .file_fetcher
+      .ensure_cached_no_follow(specifier, permissions, options)
+      .await
+      .map(|cached_or_redirect| match cached_or_redirect {
+        CachedOrRedirect::Cached => deno_graph::source::CacheResponse::Cached,
+        CachedOrRedirect::Redirect(url) => {
+          deno_graph::source::CacheResponse::Redirect { specifier: url }
+        }
+      })
   }
 }
 
@@ -626,5 +815,193 @@ fn validate_scheme(specifier: &Url) -> Result<(), UnsupportedSchemeError> {
       scheme: specifier.scheme().to_string(),
       url: specifier.clone(),
     }),
+  }
+}
+
+#[cfg(test)]
+mod test {
+  use std::collections::HashMap;
+  use std::path::PathBuf;
+
+  use deno_cache_dir::file_fetcher::CacheSetting;
+  use deno_cache_dir::file_fetcher::NullBlobStore;
+  use deno_cache_dir::file_fetcher::SendError;
+  use deno_cache_dir::file_fetcher::SendResponse;
+  use deno_graph::source::CacheSetting as LoaderCacheSetting;
+  use deno_graph::source::LoadResponse;
+  use deno_graph::source::Loader;
+  use sys_traits::impls::InMemorySys;
+  use url::Url;
+
+  use super::*;
+  use crate::factory::ConfigDiscoveryOption;
+  use crate::factory::WorkspaceFactory;
+  use crate::factory::WorkspaceFactoryOptions;
+
+  #[derive(Debug)]
+  struct TestHttpClient;
+
+  #[async_trait::async_trait(?Send)]
+  impl deno_cache_dir::file_fetcher::HttpClient for TestHttpClient {
+    async fn send_no_follow(
+      &self,
+      _url: &Url,
+      _headers: http::HeaderMap,
+    ) -> Result<SendResponse, SendError> {
+      Err(SendError::NotFound)
+    }
+  }
+
+  fn create_test_loader(
+    sys: InMemorySys,
+  ) -> DenoGraphLoader<NullBlobStore, InMemorySys, TestHttpClient> {
+    let cwd = get_cwd();
+    let factory = WorkspaceFactory::new(
+      sys.clone(),
+      cwd.join("project"),
+      WorkspaceFactoryOptions {
+        maybe_custom_deno_dir_root: Some(cwd.join("deno_dir")),
+        config_discovery: ConfigDiscoveryOption::Disabled,
+        ..Default::default()
+      },
+    );
+    let global_http_cache = factory.global_http_cache().unwrap().clone();
+    let memory_files =
+      deno_maybe_sync::new_rc(crate::loader::MemoryFiles::default());
+    let file_fetcher = deno_maybe_sync::new_rc(PermissionedFileFetcher::new(
+      NullBlobStore,
+      deno_maybe_sync::new_rc(deno_cache_dir::GlobalOrLocalHttpCache::from(
+        global_http_cache.clone(),
+      )),
+      TestHttpClient,
+      memory_files,
+      sys.clone(),
+      PermissionedFileFetcherOptions {
+        allow_remote: false,
+        cache_setting: CacheSetting::Use,
+      },
+    ));
+    DenoGraphLoader::new(
+      file_fetcher,
+      global_http_cache,
+      crate::npm::DenoInNpmPackageChecker::new(
+        crate::npm::CreateInNpmPkgCheckerOptions::Byonm,
+      ),
+      sys,
+      DenoGraphLoaderOptions {
+        file_header_overrides: HashMap::new(),
+        permissions: None,
+        reporter: None,
+      },
+    )
+  }
+
+  fn load_options() -> deno_graph::source::LoadOptions {
+    deno_graph::source::LoadOptions {
+      in_dynamic_branch: false,
+      was_dynamic_root: false,
+      cache_setting: LoaderCacheSetting::Use,
+      maybe_checksum: None,
+    }
+  }
+
+  #[test]
+  fn file_content_overrides_load_returns_overridden_content() {
+    let cwd = get_cwd();
+    let sys = InMemorySys::new_with_cwd(&cwd);
+    let mut loader = create_test_loader(sys);
+
+    let specifier =
+      deno_path_util::url_from_file_path(&cwd.join("test.ts")).unwrap();
+    let content = b"console.log('hello')".as_slice().into();
+    let mut overrides = HashMap::new();
+    overrides.insert(specifier.clone(), content);
+    loader.set_file_content_overrides(overrides);
+
+    let mut pool = futures::executor::LocalPool::new();
+    let result = pool
+      .run_until(loader.load(&specifier, load_options()))
+      .unwrap();
+
+    match result {
+      Some(LoadResponse::Module {
+        content: loaded_content,
+        specifier: loaded_specifier,
+        mtime,
+        maybe_headers,
+      }) => {
+        assert_eq!(loaded_specifier, specifier);
+        assert_eq!(&*loaded_content, b"console.log('hello')");
+        assert!(mtime.is_none());
+        assert!(maybe_headers.is_none());
+      }
+      other => panic!("expected Module response, got {:?}", other),
+    }
+  }
+
+  #[test]
+  fn file_content_overrides_load_includes_header_overrides() {
+    let cwd = get_cwd();
+    let sys = InMemorySys::new_with_cwd(&cwd);
+    let mut loader = create_test_loader(sys);
+
+    let specifier =
+      deno_path_util::url_from_file_path(&cwd.join("test.ts")).unwrap();
+    let content = b"export {}".as_slice().into();
+    let mut overrides = HashMap::new();
+    overrides.insert(specifier.clone(), content);
+    loader.set_file_content_overrides(overrides);
+
+    let mut headers = HashMap::new();
+    headers.insert(
+      "content-type".to_string(),
+      "application/typescript".to_string(),
+    );
+    loader.insert_file_header_override(specifier.clone(), headers);
+
+    let mut pool = futures::executor::LocalPool::new();
+    let result = pool
+      .run_until(loader.load(&specifier, load_options()))
+      .unwrap();
+
+    match result {
+      Some(LoadResponse::Module { maybe_headers, .. }) => {
+        let h = maybe_headers.unwrap();
+        assert_eq!(h.get("content-type").unwrap(), "application/typescript");
+      }
+      other => panic!("expected Module response, got {:?}", other),
+    }
+  }
+
+  #[test]
+  fn file_content_overrides_ensure_cached_returns_cached() {
+    let cwd = get_cwd();
+    let sys = InMemorySys::new_with_cwd(&cwd);
+    let mut loader = create_test_loader(sys);
+
+    let specifier =
+      deno_path_util::url_from_file_path(&cwd.join("test.ts")).unwrap();
+    let content = b"export {}".as_slice().into();
+    let mut overrides = HashMap::new();
+    overrides.insert(specifier.clone(), content);
+    loader.set_file_content_overrides(overrides);
+
+    let mut pool = futures::executor::LocalPool::new();
+    let result = pool
+      .run_until(loader.ensure_cached(&specifier, load_options()))
+      .unwrap();
+
+    assert!(matches!(
+      result,
+      Some(deno_graph::source::CacheResponse::Cached)
+    ));
+  }
+
+  fn get_cwd() -> PathBuf {
+    if cfg!(windows) {
+      PathBuf::from("K:\\folder\\")
+    } else {
+      PathBuf::from("/")
+    }
   }
 }

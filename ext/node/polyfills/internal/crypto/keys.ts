@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
@@ -95,6 +95,13 @@ export const getArrayBufferOrView = hideStackFrames(
         encoding = "utf8";
       }
       return Buffer.from(buffer, encoding);
+    }
+    if (buffer instanceof DataView) {
+      return new Uint8Array(
+        buffer.buffer,
+        buffer.byteOffset,
+        buffer.byteLength,
+      );
     }
     if (!isArrayBufferView(buffer)) {
       throw new ERR_INVALID_ARG_TYPE(

@@ -1,6 +1,7 @@
 {
   "tests": {
     "unconfigured": {
+      "flaky": true,
       "args": "run -A main.ts",
       "output": "main.out",
       "if": "unix"

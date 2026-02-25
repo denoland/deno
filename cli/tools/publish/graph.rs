@@ -1,32 +1,38 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::collections::HashSet;
 use std::sync::Arc;
 
-use deno_ast::swc::common::comments::CommentKind;
 use deno_ast::ParsedSource;
 use deno_ast::SourceRangedForSpanned;
 use deno_ast::SourceTextInfo;
+use deno_ast::swc::common::comments::CommentKind;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
 use deno_graph::ModuleEntryRef;
 use deno_graph::ModuleGraph;
 use deno_graph::ResolutionResolved;
 use deno_graph::WalkOptions;
+use deno_resolver::cache::ParsedSourceCache;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
 
 use super::diagnostics::PublishDiagnostic;
 use super::diagnostics::PublishDiagnosticsCollector;
-use crate::cache::ParsedSourceCache;
+use crate::npm::CliNpmResolver;
 
 pub struct GraphDiagnosticsCollector {
+  npm_resolver: CliNpmResolver,
   parsed_source_cache: Arc<ParsedSourceCache>,
 }
 
 impl GraphDiagnosticsCollector {
-  pub fn new(parsed_source_cache: Arc<ParsedSourceCache>) -> Self {
+  pub fn new(
+    npm_resolver: CliNpmResolver,
+    parsed_source_cache: Arc<ParsedSourceCache>,
+  ) -> Self {
     Self {
+      npm_resolver,
       parsed_source_cache,
     }
   }
@@ -53,47 +59,48 @@ impl GraphDiagnosticsCollector {
               // check for a missing version constraint
               if let Ok(jsr_req_ref) =
                 JsrPackageReqReference::from_specifier(&resolution.specifier)
+                && jsr_req_ref.req().version_req.version_text() == "*"
               {
-                if jsr_req_ref.req().version_req.version_text() == "*" {
-                  let maybe_version = graph
-                    .packages
-                    .mappings()
-                    .get(jsr_req_ref.req())
-                    .map(|nv| nv.version.clone());
-                  diagnostics_collector.push(
-                    PublishDiagnostic::MissingConstraint {
-                      specifier: resolution.specifier.clone(),
-                      specifier_text: specifier_text.to_string(),
-                      resolved_version: maybe_version,
-                      text_info: SourceTextInfo::new(source_text.clone()),
-                      referrer: resolution.range.clone(),
-                    },
-                  );
-                }
+                let maybe_version = graph
+                  .packages
+                  .mappings()
+                  .get(jsr_req_ref.req())
+                  .map(|nv| nv.version.clone());
+                diagnostics_collector.push(
+                  PublishDiagnostic::MissingConstraint {
+                    specifier: resolution.specifier.clone(),
+                    specifier_text: specifier_text.to_string(),
+                    resolved_version: maybe_version,
+                    text_info: SourceTextInfo::new(source_text.clone()),
+                    referrer: resolution.range.clone(),
+                  },
+                );
               }
             }
             "npm" => {
               skip_specifiers.insert(resolution.specifier.clone());
 
               // check for a missing version constraint
-              if let Ok(jsr_req_ref) =
+              if let Ok(npm_req_ref) =
                 NpmPackageReqReference::from_specifier(&resolution.specifier)
+                && npm_req_ref.req().version_req.version_text() == "*"
               {
-                if jsr_req_ref.req().version_req.version_text() == "*" {
-                  let maybe_version = graph
-                    .get(&resolution.specifier)
-                    .and_then(|m| m.npm())
-                    .map(|n| n.nv_reference.nv().version.clone());
-                  diagnostics_collector.push(
-                    PublishDiagnostic::MissingConstraint {
-                      specifier: resolution.specifier.clone(),
-                      specifier_text: specifier_text.to_string(),
-                      resolved_version: maybe_version,
-                      text_info: SourceTextInfo::new(source_text.clone()),
-                      referrer: resolution.range.clone(),
-                    },
-                  );
-                }
+                let maybe_version =
+                  self.npm_resolver.as_managed().and_then(|managed| {
+                    managed
+                      .resolve_pkg_id_from_deno_module_req(npm_req_ref.req())
+                      .ok()
+                      .map(|id| id.nv.version.clone())
+                  });
+                diagnostics_collector.push(
+                  PublishDiagnostic::MissingConstraint {
+                    specifier: resolution.specifier.clone(),
+                    specifier_text: specifier_text.to_string(),
+                    resolved_version: maybe_version,
+                    text_info: SourceTextInfo::new(source_text.clone()),
+                    referrer: resolution.range.clone(),
+                  },
+                );
               }
             }
             "http" | "https" => {
@@ -159,10 +166,19 @@ impl GraphDiagnosticsCollector {
       );
 
       for (specifier_text, dep) in &module.dependencies {
+        for asset_import in
+          dep.imports.iter().filter(|i| i.attributes.has_asset())
+        {
+          diagnostics_collector.push(PublishDiagnostic::UnstableRawImport {
+            text_info: parsed_source.text_info_lazy().clone(),
+            referrer: asset_import.specifier_range.clone(),
+          });
+        }
+
         if let Some(resolved) = dep.maybe_code.ok() {
           collect_if_invalid(
             &mut skip_specifiers,
-            &module.source,
+            &module.source.text,
             specifier_text,
             resolved,
           );
@@ -170,7 +186,7 @@ impl GraphDiagnosticsCollector {
         if let Some(resolved) = dep.maybe_type.ok() {
           collect_if_invalid(
             &mut skip_specifiers,
-            &module.source,
+            &module.source.text,
             specifier_text,
             resolved,
           );

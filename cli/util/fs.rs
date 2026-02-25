@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::io::Error;
 use std::io::ErrorKind;
@@ -10,10 +10,13 @@ use deno_config::glob::FilePatterns;
 use deno_config::glob::PathOrPattern;
 use deno_config::glob::PathOrPatternSet;
 use deno_config::glob::WalkEntry;
+use deno_core::ModuleSpecifier;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
-use deno_core::ModuleSpecifier;
+use sys_traits::FsMetadataValue;
+use sys_traits::PathsInErrorsExt;
 
+use super::progress_bar::UpdateGuard;
 use crate::sys::CliSys;
 
 /// Creates a std::fs::File handling if the parent does not exist.
@@ -56,6 +59,7 @@ fn add_file_context_to_err(file_path: &Path, err: Error) -> Error {
 
 /// Similar to `std::fs::canonicalize()` but strips UNC prefixes on Windows.
 pub fn canonicalize_path(path: &Path) -> Result<PathBuf, Error> {
+  #[allow(clippy::disallowed_methods)] // allow, implementation
   Ok(deno_path_util::strip_unc_prefix(path.canonicalize()?))
 }
 
@@ -74,18 +78,29 @@ pub fn canonicalize_path_maybe_not_exists(
   )
 }
 
+pub struct CollectSpecifiersOptions {
+  pub file_patterns: FilePatterns,
+  pub vendor_folder: Option<PathBuf>,
+  /// Whether to include paths that are specified even if they're ignored.
+  pub include_ignored_specified: bool,
+}
+
 /// Collects module specifiers that satisfy the given predicate as a file path, by recursively walking `include`.
 /// Specifiers that start with http and https are left intact.
 /// Note: This ignores all .git and node_modules folders.
 pub fn collect_specifiers(
-  mut files: FilePatterns,
-  vendor_folder: Option<PathBuf>,
+  options: CollectSpecifiersOptions,
   predicate: impl Fn(WalkEntry) -> bool,
 ) -> Result<Vec<ModuleSpecifier>, AnyError> {
+  let CollectSpecifiersOptions {
+    mut file_patterns,
+    vendor_folder,
+    include_ignored_specified: always_include_specified,
+  } = options;
   let mut prepared = vec![];
 
-  // break out the remote specifiers
-  if let Some(include_mut) = &mut files.include {
+  // break out the remote specifiers and explicitly specified paths
+  if let Some(include_mut) = &mut file_patterns.include {
     let includes = std::mem::take(include_mut);
     let path_or_patterns = includes.into_path_or_patterns();
     let mut result = Vec::with_capacity(path_or_patterns.len());
@@ -94,7 +109,9 @@ pub fn collect_specifiers(
         PathOrPattern::Path(path) => {
           if path.is_dir() {
             result.push(PathOrPattern::Path(path));
-          } else if !files.exclude.matches_path(&path) {
+          } else if always_include_specified
+            || !file_patterns.exclude.matches_path(&path)
+          {
             let url = specifier_from_file_path(&path)?;
             prepared.push(url);
           }
@@ -119,7 +136,7 @@ pub fn collect_specifiers(
     .ignore_git_folder()
     .ignore_node_modules()
     .set_vendor_folder(vendor_folder)
-    .collect_file_patterns(&CliSys::default(), files);
+    .collect_file_patterns(&CliSys::default(), &file_patterns);
   let mut collected_files_as_urls = collected_files
     .iter()
     .map(|f| specifier_from_file_path(f).unwrap())
@@ -162,31 +179,93 @@ pub fn specifier_from_file_path(
     .map_err(|_| anyhow!("Invalid file path '{}'", path.display()))
 }
 
+#[derive(Default)]
+pub struct FsCleaner {
+  pub files_removed: u64,
+  pub dirs_removed: u64,
+  pub bytes_removed: u64,
+  pub progress_guard: Option<UpdateGuard>,
+}
+
+impl FsCleaner {
+  pub fn new(progress_guard: Option<UpdateGuard>) -> Self {
+    Self {
+      files_removed: 0,
+      dirs_removed: 0,
+      bytes_removed: 0,
+      progress_guard,
+    }
+  }
+
+  pub fn rm_rf(&mut self, path: &Path) -> Result<(), std::io::Error> {
+    let sys = CliSys::default();
+    let sys = sys.with_paths_in_errors();
+    for entry in walkdir::WalkDir::new(path).contents_first(true) {
+      let entry = entry.map_err(std::io::Error::other)?;
+
+      if entry.file_type().is_dir() {
+        self.dirs_removed += 1;
+        self.update_progress();
+        sys.fs_remove_dir_all(entry.path())?;
+      } else {
+        self.remove_file(entry.path(), entry.metadata().ok())?;
+      }
+    }
+
+    Ok(())
+  }
+
+  pub fn remove_file(
+    &mut self,
+    path: &Path,
+    meta: Option<std::fs::Metadata>,
+  ) -> Result<(), std::io::Error> {
+    if let Some(meta) = meta {
+      self.bytes_removed += meta.len();
+    }
+    self.files_removed += 1;
+    self.update_progress();
+    remove_file_or_symlink(&CliSys::default(), path)
+  }
+
+  fn update_progress(&self) {
+    if let Some(pg) = &self.progress_guard {
+      pg.set_position(self.files_removed + self.dirs_removed);
+    }
+  }
+}
+
+pub fn remove_file_or_symlink<
+  TSys: sys_traits::BaseFsRemoveFile
+    + sys_traits::BaseFsRemoveDir
+    + sys_traits::BaseFsMetadata,
+>(
+  sys: &TSys,
+  path: &Path,
+) -> Result<(), Error> {
+  let sys = sys.with_paths_in_errors();
+  match sys.fs_remove_file(path) {
+    Err(e) => {
+      if sys_traits::impls::is_windows()
+        && let Ok(meta) = sys.fs_symlink_metadata(path)
+        && meta.file_type().is_symlink()
+      {
+        sys.fs_remove_dir(path)?;
+        return Ok(());
+      }
+      Err(e)
+    }
+    _ => Ok(()),
+  }
+}
+
 #[cfg(test)]
 mod tests {
-  use deno_path_util::normalize_path;
   use pretty_assertions::assert_eq;
   use test_util::PathRef;
   use test_util::TempDir;
 
   use super::*;
-
-  #[test]
-  fn test_normalize_path() {
-    assert_eq!(normalize_path(Path::new("a/../b")), PathBuf::from("b"));
-    assert_eq!(normalize_path(Path::new("a/./b/")), PathBuf::from("a/b/"));
-    assert_eq!(
-      normalize_path(Path::new("a/./b/../c")),
-      PathBuf::from("a/c")
-    );
-
-    if cfg!(windows) {
-      assert_eq!(
-        normalize_path(Path::new("C:\\a\\.\\b\\..\\c")),
-        PathBuf::from("C:\\a\\c")
-      );
-    }
-  }
 
   #[test]
   fn test_collect_specifiers() {
@@ -235,24 +314,27 @@ mod tests {
     };
 
     let result = collect_specifiers(
-      FilePatterns {
-        base: root_dir_path.to_path_buf(),
-        include: Some(
-          PathOrPatternSet::from_include_relative_path_or_patterns(
-            root_dir_path.as_path(),
-            &[
-              "http://localhost:8080".to_string(),
-              "./".to_string(),
-              "https://localhost:8080".to_string(),
-            ],
-          )
-          .unwrap(),
-        ),
-        exclude: PathOrPatternSet::new(vec![PathOrPattern::Path(
-          ignore_dir_path.to_path_buf(),
-        )]),
+      CollectSpecifiersOptions {
+        file_patterns: FilePatterns {
+          base: root_dir_path.to_path_buf(),
+          include: Some(
+            PathOrPatternSet::from_include_relative_path_or_patterns(
+              root_dir_path.as_path(),
+              &[
+                "http://localhost:8080".to_string(),
+                "./".to_string(),
+                "https://localhost:8080".to_string(),
+              ],
+            )
+            .unwrap(),
+          ),
+          exclude: PathOrPatternSet::new(vec![PathOrPattern::Path(
+            ignore_dir_path.to_path_buf(),
+          )]),
+        },
+        vendor_folder: None,
+        include_ignored_specified: false,
       },
-      None,
       predicate,
     )
     .unwrap();
@@ -286,19 +368,22 @@ mod tests {
       "file://"
     };
     let result = collect_specifiers(
-      FilePatterns {
-        base: root_dir_path.to_path_buf(),
-        include: Some(PathOrPatternSet::new(vec![PathOrPattern::new(
-          &format!(
-            "{}{}",
-            scheme,
-            root_dir_path.join("child").to_string().replace('\\', "/")
-          ),
-        )
-        .unwrap()])),
-        exclude: Default::default(),
+      CollectSpecifiersOptions {
+        file_patterns: FilePatterns {
+          base: root_dir_path.to_path_buf(),
+          include: Some(PathOrPatternSet::new(vec![
+            PathOrPattern::new(&format!(
+              "{}{}",
+              scheme,
+              root_dir_path.join("child").to_string().replace('\\', "/")
+            ))
+            .unwrap(),
+          ])),
+          exclude: Default::default(),
+        },
+        vendor_folder: None,
+        include_ignored_specified: false,
       },
-      None,
       predicate,
     )
     .unwrap();

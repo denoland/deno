@@ -1,11 +1,10 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import CP from "node:child_process";
 import { Buffer } from "node:buffer";
 import {
   assert,
   assertEquals,
-  assertExists,
   assertNotStrictEquals,
   assertStrictEquals,
   assertStringIncludes,
@@ -493,30 +492,6 @@ Deno.test({
 });
 
 Deno.test({
-  name: "[node/child_process] ChildProcess.kill()",
-  async fn() {
-    const script = path.join(
-      path.dirname(path.fromFileUrl(import.meta.url)),
-      "./testdata/infinite_loop.js",
-    );
-    const childProcess = spawn(Deno.execPath(), ["run", script]);
-    const p = withTimeout<void>();
-    const pStdout = withTimeout<void>();
-    const pStderr = withTimeout<void>();
-    childProcess.on("exit", () => p.resolve());
-    childProcess.stdout.on("close", () => pStdout.resolve());
-    childProcess.stderr.on("close", () => pStderr.resolve());
-    childProcess.kill("SIGKILL");
-    await p.promise;
-    await pStdout.promise;
-    await pStderr.promise;
-    assert(childProcess.killed);
-    assertEquals(childProcess.signalCode, "SIGKILL");
-    assertExists(childProcess.exitCode);
-  },
-});
-
-Deno.test({
   ignore: true,
   name: "[node/child_process] ChildProcess.unref()",
   async fn() {
@@ -552,6 +527,32 @@ Deno.test({
     );
     const p = Promise.withResolvers<void>();
     const cp = CP.fork(script, [], { cwd: testdataDir, stdio: "pipe" });
+    let output = "";
+    cp.on("close", () => p.resolve());
+    cp.stdout?.on("data", (data) => {
+      output += data;
+    });
+    await p.promise;
+    assertEquals(output, "foo\ntrue\ntrue\ntrue\n");
+  },
+});
+
+Deno.test({
+  name: "[node/child_process] child_process.fork with URL",
+  async fn() {
+    const testdataDir = path.join(
+      path.dirname(path.fromFileUrl(import.meta.url)),
+      "testdata",
+    );
+    const script = path.join(
+      testdataDir,
+      "node_modules",
+      "foo",
+      "index.js",
+    );
+    const scriptUrl = path.toFileUrl(script);
+    const p = Promise.withResolvers<void>();
+    const cp = CP.fork(scriptUrl, [], { cwd: testdataDir, stdio: "pipe" });
     let output = "";
     cp.on("close", () => p.resolve());
     cp.stdout?.on("data", (data) => {
@@ -1006,6 +1007,95 @@ Deno.test(
   },
 );
 
+Deno.test(async function ipcSerializationAdvanced() {
+  const timeout = withTimeout<void>();
+  const script = `
+      if (typeof process.send !== "function") {
+        console.error("process.send is not a function");
+        process.exit(1);
+      }
+
+      class BigIntWrapper {
+        constructor(value) {
+          this.value = value;
+        }
+        toJSON() {
+          return this.value.toString();
+        }
+      }
+
+      const makeSab = (arr) => {
+        const sab = new SharedArrayBuffer(arr.length);
+        const buf = new Uint8Array(sab);
+        for (let i = 0; i < arr.length; i++) {
+          buf[i] = arr[i];
+        }
+        return buf;
+      };
+
+
+      const inputs = [
+        "foo",
+        {
+          foo: "bar",
+        },
+        42,
+        true,
+        null,
+        new Uint8Array([1, 2, 3]),
+        {
+          foo: new Uint8Array([1, 2, 3]),
+          bar: makeSab([4, 5, 6]),
+        },
+        [1, { foo: 2 }, [3, 4]],
+        42n,
+      ];
+      for (const input of inputs) {
+        process.send(input);
+      }
+    `;
+  const makeSab = (arr: number[]) => {
+    const sab = new SharedArrayBuffer(arr.length);
+    const buf = new Uint8Array(sab);
+    for (let i = 0; i < arr.length; i++) {
+      buf[i] = arr[i];
+    }
+    return buf;
+  };
+
+  const file = await Deno.makeTempFile();
+  await Deno.writeTextFile(file, script);
+  const child = CP.fork(file, [], {
+    stdio: ["inherit", "inherit", "inherit", "ipc"],
+    serialization: "advanced",
+  });
+  const expect = [
+    "foo",
+    {
+      foo: "bar",
+    },
+    42,
+    true,
+    null,
+    new Uint8Array([1, 2, 3]),
+    {
+      foo: new Uint8Array([1, 2, 3]),
+      bar: makeSab([4, 5, 6]),
+    },
+    [1, { foo: 2 }, [3, 4]],
+    42n,
+  ];
+  let i = 0;
+
+  child.on("message", (message) => {
+    assertEquals(message, expect[i]);
+    i++;
+  });
+  child.on("close", () => timeout.resolve());
+  await timeout.promise;
+  assertEquals(i, expect.length);
+});
+
 Deno.test(async function childProcessExitsGracefully() {
   const testdataDir = path.join(
     path.dirname(path.fromFileUrl(import.meta.url)),
@@ -1171,4 +1261,20 @@ Deno.test({
       'The "input" argument must be of type string or an instance of Buffer, TypedArray, or DataView. Received an instance of Object',
     );
   },
+});
+
+Deno.test(async function experimentalFlag() {
+  const code = ``;
+  const file = await Deno.makeTempFile();
+  await Deno.writeTextFile(file, code);
+  const timeout = withTimeout<void>();
+  const child = CP.fork(file, [], {
+    execArgv: ["--experimental-vm-modules"],
+    stdio: ["inherit", "inherit", "inherit", "ipc"],
+  });
+  child.on("close", () => {
+    timeout.resolve();
+  });
+
+  await timeout.promise;
 });

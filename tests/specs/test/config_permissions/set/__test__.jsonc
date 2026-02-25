@@ -1,0 +1,14 @@
+{
+  "tempDir": true,
+  "tests": {
+    "providing_other_set": {
+      "args": "test -P=write-only main.ts",
+      "output": "[WILDCARD]Requires read access to[WILDCARD]",
+      "exitCode": 1
+    },
+    "providing": {
+      "args": "test -P main.ts",
+      "output": "[WILDCARD]"
+    }
+  }
+}

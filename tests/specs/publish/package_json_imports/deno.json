@@ -1,0 +1,8 @@
+{
+  "name": "@foo/package-json-imports",
+  "version": "1.0.0",
+  "exports": {
+    ".": "./mod.ts"
+  },
+  "nodeModulesDir": "none"
+}

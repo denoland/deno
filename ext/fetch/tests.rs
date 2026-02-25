@@ -1,9 +1,12 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
+use std::net::IpAddr;
+use std::net::Ipv4Addr;
+use std::net::Ipv6Addr;
 use std::net::SocketAddr;
+use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering::SeqCst;
-use std::sync::Arc;
 
 use bytes::Bytes;
 use fast_socks5::server::Config as Socks5Config;
@@ -12,8 +15,8 @@ use http_body_util::BodyExt;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 
-use super::create_http_client;
 use super::CreateHttpClientOptions;
+use super::create_http_client;
 use crate::dns;
 
 static EXAMPLE_CRT: &[u8] = include_bytes!("../tls/testdata/example1_cert.der");
@@ -35,18 +38,15 @@ fn test_userspace_resolver() {
 
   rt.block_on(async move {
     assert_eq!(thread_counter.load(SeqCst), 0);
-    let src_addr = create_https_server(true).await;
+    let src_addr = create_https_server(true, Ipv4Addr::LOCALHOST.into()).await;
     assert_eq!(src_addr.ip().to_string(), "127.0.0.1");
     // use `localhost` to ensure dns step happens.
     let addr = format!("localhost:{}", src_addr.port());
 
-    let hickory = hickory_resolver::Resolver::tokio(
-      Default::default(),
-      Default::default(),
-    );
+    let hickory = hickory_resolver::Resolver::builder_tokio().unwrap().build();
 
     assert_eq!(thread_counter.load(SeqCst), 0);
-    rust_test_client_with_resolver(
+    run_test_client_with_resolver(
       None,
       addr.clone(),
       "https",
@@ -55,7 +55,7 @@ fn test_userspace_resolver() {
     )
     .await;
     assert_eq!(thread_counter.load(SeqCst), 0, "userspace resolver shouldn't spawn new threads.");
-    rust_test_client_with_resolver(
+    run_test_client_with_resolver(
       None,
       addr.clone(),
       "https",
@@ -68,41 +68,62 @@ fn test_userspace_resolver() {
 }
 
 #[tokio::test]
-async fn test_https_proxy_http11() {
-  let src_addr = create_https_server(false).await;
+async fn test_http_proxy_http11_ipv4() {
+  let src_addr = create_https_server(false, Ipv4Addr::LOCALHOST.into()).await;
   let prx_addr = create_http_proxy(src_addr).await;
   run_test_client(prx_addr, src_addr, "http", http::Version::HTTP_11).await;
 }
 
 #[tokio::test]
-async fn test_https_proxy_h2() {
-  let src_addr = create_https_server(true).await;
+async fn test_http_proxy_h2_ipv4() {
+  let src_addr = create_https_server(true, Ipv4Addr::LOCALHOST.into()).await;
   let prx_addr = create_http_proxy(src_addr).await;
   run_test_client(prx_addr, src_addr, "http", http::Version::HTTP_2).await;
 }
 
 #[tokio::test]
-async fn test_https_proxy_https_h2() {
-  let src_addr = create_https_server(true).await;
+async fn test_http_proxy_h2_ipv6() {
+  let src_addr = create_https_server(true, Ipv6Addr::LOCALHOST.into()).await;
+  let prx_addr = create_http_proxy(src_addr).await;
+  run_test_client(prx_addr, src_addr, "http", http::Version::HTTP_2).await;
+}
+
+#[tokio::test]
+async fn test_https_proxy_h2_ipv4() {
+  let src_addr = create_https_server(true, Ipv4Addr::LOCALHOST.into()).await;
   let prx_addr = create_https_proxy(src_addr).await;
   run_test_client(prx_addr, src_addr, "https", http::Version::HTTP_2).await;
 }
 
 #[tokio::test]
-async fn test_socks_proxy_http11() {
-  let src_addr = create_https_server(false).await;
+async fn test_https_proxy_h2_ipv6() {
+  let src_addr = create_https_server(true, Ipv6Addr::LOCALHOST.into()).await;
+  let prx_addr = create_https_proxy(src_addr).await;
+  run_test_client(prx_addr, src_addr, "https", http::Version::HTTP_2).await;
+}
+
+#[tokio::test]
+async fn test_socks_proxy_http11_ipv4() {
+  let src_addr = create_https_server(false, Ipv4Addr::LOCALHOST.into()).await;
   let prx_addr = create_socks_proxy(src_addr).await;
   run_test_client(prx_addr, src_addr, "socks5", http::Version::HTTP_11).await;
 }
 
 #[tokio::test]
-async fn test_socks_proxy_h2() {
-  let src_addr = create_https_server(true).await;
+async fn test_socks_proxy_h2_ipv4() {
+  let src_addr = create_https_server(true, Ipv4Addr::LOCALHOST.into()).await;
   let prx_addr = create_socks_proxy(src_addr).await;
   run_test_client(prx_addr, src_addr, "socks5", http::Version::HTTP_2).await;
 }
 
-async fn rust_test_client_with_resolver(
+#[tokio::test]
+async fn test_socks_proxy_h2_ipv6() {
+  let src_addr = create_https_server(true, Ipv6Addr::LOCALHOST.into()).await;
+  let prx_addr = create_socks_proxy(src_addr).await;
+  run_test_client(prx_addr, src_addr, "socks5", http::Version::HTTP_2).await;
+}
+
+async fn run_test_client_with_resolver(
   prx_addr: Option<SocketAddr>,
   src_addr: String,
   proto: &str,
@@ -148,7 +169,7 @@ async fn run_test_client(
   proto: &str,
   ver: http::Version,
 ) {
-  rust_test_client_with_resolver(
+  run_test_client_with_resolver(
     Some(prx_addr),
     src_addr.to_string(),
     proto,
@@ -158,7 +179,9 @@ async fn run_test_client(
   .await
 }
 
-async fn create_https_server(allow_h2: bool) -> SocketAddr {
+async fn create_https_server(allow_h2: bool, bind_addr: IpAddr) -> SocketAddr {
+  let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+
   let mut tls_config = deno_tls::rustls::server::ServerConfig::builder()
     .with_no_client_auth()
     .with_single_cert(
@@ -171,7 +194,7 @@ async fn create_https_server(allow_h2: bool) -> SocketAddr {
   }
   tls_config.alpn_protocols.push("http/1.1".into());
   let tls_acceptor = tokio_rustls::TlsAcceptor::from(Arc::from(tls_config));
-  let src_tcp = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+  let src_tcp = tokio::net::TcpListener::bind((bind_addr, 0)).await.unwrap();
   let src_addr = src_tcp.local_addr().unwrap();
 
   tokio::spawn(async move {

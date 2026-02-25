@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 "use strict";
 
@@ -19,6 +19,8 @@ const {
   Number,
   NumberIsFinite,
   NumberIsInteger,
+  ObjectDefineProperties,
+  ObjectDefineProperty,
   ObjectIs,
   ObjectPrototypeIsPrototypeOf,
   ObjectSetPrototypeOf,
@@ -54,7 +56,7 @@ import {
   isDate,
   isUint8Array,
 } from "ext:deno_node/internal/util/types.ts";
-import { once } from "ext:deno_node/internal/util.mjs";
+import { kEmptyObject, once } from "ext:deno_node/internal/util.mjs";
 import { toPathIfFileURL } from "ext:deno_node/internal/url.ts";
 import {
   validateAbortSignal,
@@ -70,10 +72,9 @@ const kType = Symbol("type");
 const kStats = Symbol("stats");
 import assert from "ext:deno_node/internal/assert.mjs";
 import { lstat, lstatSync } from "ext:deno_node/_fs/_fs_lstat.ts";
-import { stat, statSync } from "ext:deno_node/_fs/_fs_stat.ts";
 import { isWindows } from "ext:deno_node/_util/os.ts";
 import process from "node:process";
-
+import { ERR_INCOMPATIBLE_OPTION_PAIR } from "ext:deno_node/internal/errors.ts";
 import {
   fs as fsConstants,
   os as osConstants,
@@ -154,13 +155,14 @@ export const kMaxUserId = 2 ** 32 - 1;
 export function assertEncoding(encoding) {
   if (encoding && !Buffer.isEncoding(encoding)) {
     const reason = "is invalid encoding";
-    throw new ERR_INVALID_ARG_VALUE(encoding, "encoding", reason);
+    throw new ERR_INVALID_ARG_VALUE("encoding", encoding, reason);
   }
 }
 
 export class Dirent {
-  constructor(name, type) {
+  constructor(name, type, path) {
     this.name = name;
+    this.parentPath = path;
     this[kType] = type;
   }
 
@@ -193,9 +195,23 @@ export class Dirent {
   }
 }
 
-class DirentFromStats extends Dirent {
-  constructor(name, stats) {
-    super(name, null);
+export function direntFromDeno(entry, path) {
+  let type;
+
+  if (entry.isDirectory) {
+    type = UV_DIRENT_DIR;
+  } else if (entry.isFile) {
+    type = UV_DIRENT_FILE;
+  } else if (entry.isSymlink) {
+    type = UV_DIRENT_LINK;
+  }
+
+  return new Dirent(entry.name, type, path ?? entry.parentPath);
+}
+
+export class DirentFromStats extends Dirent {
+  constructor(name, stats, path) {
+    super(name, null, path);
     this[kStats] = stats;
   }
 }
@@ -277,13 +293,13 @@ export function getDirents(path, { 0: names, 1: types }, callback) {
             callback(err);
             return;
           }
-          names[idx] = new DirentFromStats(name, stats);
+          names[idx] = new DirentFromStats(name, stats, path);
           if (--toFinish === 0) {
             callback(null, names);
           }
         });
       } else {
-        names[i] = new Dirent(names[i], types[i]);
+        names[i] = new Dirent(names[i], types[i], path);
       }
     }
     if (toFinish === 0) {
@@ -313,20 +329,26 @@ export function getDirent(path, name, type, callback) {
           callback(err);
           return;
         }
-        callback(null, new DirentFromStats(name, stats));
+        callback(null, new DirentFromStats(name, stats, path));
       });
     } else {
-      callback(null, new Dirent(name, type));
+      callback(null, new Dirent(name, type, path));
     }
   } else if (type === UV_DIRENT_UNKNOWN) {
     const stats = lstatSync(join(path, name));
-    return new DirentFromStats(name, stats);
+    return new DirentFromStats(name, stats, path);
   } else {
-    return new Dirent(name, type);
+    return new Dirent(name, type, path);
   }
 }
 
-export function getOptions(options, defaultOptions) {
+/**
+ * @template T
+ * @param {unknown} options
+ * @param {T} [defaultOptions]
+ * @returns {T}
+ */
+export function getOptions(options, defaultOptions = kEmptyObject) {
   if (
     options === null || options === undefined ||
     typeof options === "function"
@@ -493,6 +515,70 @@ function dateFromMs(ms) {
   return new Date(Number(ms) + 0.5);
 }
 
+const lazyDateFields = {
+  __proto__: null,
+  atime: {
+    __proto__: null,
+    enumerable: true,
+    configurable: true,
+    get() {
+      return this.atime = dateFromMs(this.atimeMs);
+    },
+    set(value) {
+      ObjectDefineProperty(this, "atime", {
+        __proto__: null,
+        value,
+        writable: true,
+      });
+    },
+  },
+  mtime: {
+    __proto__: null,
+    enumerable: true,
+    configurable: true,
+    get() {
+      return this.mtime = dateFromMs(this.mtimeMs);
+    },
+    set(value) {
+      ObjectDefineProperty(this, "mtime", {
+        __proto__: null,
+        value,
+        writable: true,
+      });
+    },
+  },
+  ctime: {
+    __proto__: null,
+    enumerable: true,
+    configurable: true,
+    get() {
+      return this.ctime = dateFromMs(this.ctimeMs);
+    },
+    set(value) {
+      ObjectDefineProperty(this, "ctime", {
+        __proto__: null,
+        value,
+        writable: true,
+      });
+    },
+  },
+  birthtime: {
+    __proto__: null,
+    enumerable: true,
+    configurable: true,
+    get() {
+      return this.birthtime = dateFromMs(this.birthtimeMs);
+    },
+    set(value) {
+      ObjectDefineProperty(this, "birthtime", {
+        __proto__: null,
+        value,
+        writable: true,
+      });
+    },
+  },
+};
+
 export function BigIntStats(
   dev,
   mode,
@@ -533,11 +619,11 @@ export function BigIntStats(
   this.atime = dateFromMs(this.atimeMs);
   this.mtime = dateFromMs(this.mtimeMs);
   this.ctime = dateFromMs(this.ctimeMs);
-  this.birthtime = dateFromMs(this.birthtimeMs);
 }
 
 ObjectSetPrototypeOf(BigIntStats.prototype, StatsBase.prototype);
 ObjectSetPrototypeOf(BigIntStats, StatsBase);
+ObjectDefineProperties(BigIntStats.prototype, lazyDateFields);
 
 BigIntStats.prototype._checkModeProperty = function (property) {
   if (
@@ -586,11 +672,11 @@ export function Stats(
   this.atime = dateFromMs(atimeMs);
   this.mtime = dateFromMs(mtimeMs);
   this.ctime = dateFromMs(ctimeMs);
-  this.birthtime = dateFromMs(birthtimeMs);
 }
 
 ObjectSetPrototypeOf(Stats.prototype, StatsBase.prototype);
 ObjectSetPrototypeOf(Stats, StatsBase);
+ObjectDefineProperties(Stats.prototype, lazyDateFields);
 
 // HACK: Workaround for https://github.com/standard-things/esm/issues/821.
 // TODO(ronag): Remove this as soon as `esm` publishes a fixed version.
@@ -798,6 +884,23 @@ export const getValidatedPath = hideStackFrames(
   },
 );
 
+/**
+ * @param {string | Buffer | Uint8Array | URL} fileURLOrPath
+ * @param {string} [propName]
+ * @returns string
+ */
+export const getValidatedPathToString = (fileURLOrPath, propName) => {
+  const path = getValidatedPath(fileURLOrPath, propName);
+  if (isUint8Array(path)) {
+    return new TextDecoder().decode(path);
+  }
+  if (Buffer.isBuffer(path)) {
+    // deno-lint-ignore prefer-primordials
+    return path.toString();
+  }
+  return path;
+};
+
 export const getValidatedFd = hideStackFrames((fd, propName = "fd") => {
   if (ObjectIs(fd, -0)) {
     return 0;
@@ -838,6 +941,8 @@ export function warnOnNonPortableTemplate(template) {
   }
 }
 
+/** @import { CopyOptionsBase } from "ext:deno_node/_fs/cp/cp.d.ts" */
+/** @type {CopyOptionsBase} */
 const defaultCpOptions = {
   dereference: false,
   errorOnExist: false,
@@ -845,6 +950,7 @@ const defaultCpOptions = {
   force: true,
   preserveTimestamps: false,
   recursive: false,
+  verbatimSymlinks: false,
 };
 
 const defaultRmOptions = {
@@ -860,6 +966,7 @@ const defaultRmdirOptions = {
   recursive: false,
 };
 
+/** @type {(options: CopyOptionsBase | undefined) => CopyOptionsBase} */
 export const validateCpOptions = hideStackFrames((options) => {
   if (options === undefined) {
     return { ...defaultCpOptions };
@@ -871,18 +978,37 @@ export const validateCpOptions = hideStackFrames((options) => {
   validateBoolean(options.force, "options.force");
   validateBoolean(options.preserveTimestamps, "options.preserveTimestamps");
   validateBoolean(options.recursive, "options.recursive");
+  validateBoolean(options.verbatimSymlinks, "options.verbatimSymlinks");
+  options.mode = getValidMode(options.mode, "copyFile");
+  if (options.dereference === true && options.verbatimSymlinks === true) {
+    throw new ERR_INCOMPATIBLE_OPTION_PAIR("dereference", "verbatimSymlinks");
+  }
   if (options.filter !== undefined) {
     validateFunction(options.filter, "options.filter");
   }
   return options;
 });
 
+/**
+ * @typedef {{
+ *   force: boolean;
+ *   recursive?: boolean;
+ *   retryDelay?: number;
+ *   maxRetries?: number;
+ * }} RmOptions
+ */
+
+/**
+ * @typedef {(err: Error | false | null, options?: RmOptions) => void} RmOptionsCallback
+ */
+
+/** @type {(path: string, options: RmOptions, expectDir: boolean, cb: RmOptionsCallback) => void} */
 export const validateRmOptions = hideStackFrames(
   (path, options, expectDir, cb) => {
     options = validateRmdirOptions(options, defaultRmOptions);
     validateBoolean(options.force, "options.force");
 
-    stat(path, (err, stats) => {
+    lstat(path, (err, stats) => {
       if (err) {
         if (options.force && err.code === "ENOENT") {
           return cb(null, options);
@@ -910,13 +1036,14 @@ export const validateRmOptions = hideStackFrames(
   },
 );
 
+/** @type {(path: string, options: RmOptions, expectDir: boolean) => RmOptions | false} */
 export const validateRmOptionsSync = hideStackFrames(
   (path, options, expectDir) => {
     options = validateRmdirOptions(options, defaultRmOptions);
     validateBoolean(options.force, "options.force");
 
     if (!options.force || expectDir || !options.recursive) {
-      const isDirectory = statSync(path, { throwIfNoEntry: !options.force })
+      const isDirectory = lstatSync(path, { throwIfNoEntry: !options.force })
         ?.isDirectory();
 
       if (expectDir && !isDirectory) {
@@ -995,6 +1122,7 @@ export const getValidMode = hideStackFrames((mode, type) => {
   );
 });
 
+/** @type {(buffer: unknown, name: string) => asserts value is string} */
 export const validateStringAfterArrayBufferView = hideStackFrames(
   (buffer, name) => {
     if (typeof buffer !== "string") {
@@ -1007,19 +1135,21 @@ export const validateStringAfterArrayBufferView = hideStackFrames(
   },
 );
 
-export const validatePosition = hideStackFrames((position) => {
+/** @type {(position: unknown, name: string, length?: number) => asserts position is number | bigint} */
+export const validatePosition = hideStackFrames((position, name, length) => {
   if (typeof position === "number") {
-    validateInteger(position, "position");
+    validateInteger(position, name, -1);
   } else if (typeof position === "bigint") {
-    if (!(position >= -(2n ** 63n) && position <= 2n ** 63n - 1n)) {
+    const maxPosition = 2n ** 63n - 1n - BigInt(length);
+    if (!(position >= -1n && position <= maxPosition)) {
       throw new ERR_OUT_OF_RANGE(
-        "position",
-        `>= ${-(2n ** 63n)} && <= ${2n ** 63n - 1n}`,
+        name,
+        `>= -1 && <= ${maxPosition}`,
         position,
       );
     }
   } else {
-    throw new ERR_INVALID_ARG_TYPE("position", ["integer", "bigint"], position);
+    throw new ERR_INVALID_ARG_TYPE(name, ["integer", "bigint"], position);
   }
 });
 
@@ -1066,6 +1196,7 @@ export default {
   getOptions,
   getValidatedFd,
   getValidatedPath,
+  getValidatedPathToString,
   getValidMode,
   handleErrorFromBinding,
   kMaxUserId,

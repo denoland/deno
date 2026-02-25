@@ -1,16 +1,16 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use base64::prelude::BASE64_URL_SAFE_NO_PAD;
 use curve25519_dalek::montgomery::MontgomeryPoint;
+use deno_core::convert::Uint8Array;
 use deno_core::op2;
-use deno_core::ToJsBuffer;
 use elliptic_curve::pkcs8::PrivateKeyInfo;
 use elliptic_curve::subtle::ConstantTimeEq;
-use rand::rngs::OsRng;
 use rand::RngCore;
-use spki::der::asn1::BitString;
+use rand::rngs::OsRng;
 use spki::der::Decode;
 use spki::der::Encode;
+use spki::der::asn1::BitString;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum X25519Error {
@@ -129,10 +129,9 @@ pub fn op_crypto_import_pkcs8_x25519(
 }
 
 #[op2]
-#[serde]
 pub fn op_crypto_export_spki_x25519(
   #[buffer] pubkey: &[u8],
-) -> Result<ToJsBuffer, X25519Error> {
+) -> Result<Uint8Array, X25519Error> {
   let key_info = spki::SubjectPublicKeyInfo {
     algorithm: spki::AlgorithmIdentifierRef {
       // id-X25519
@@ -150,10 +149,9 @@ pub fn op_crypto_export_spki_x25519(
 }
 
 #[op2]
-#[serde]
 pub fn op_crypto_export_pkcs8_x25519(
   #[buffer] pkey: &[u8],
-) -> Result<ToJsBuffer, X25519Error> {
+) -> Result<Uint8Array, X25519Error> {
   use rsa::pkcs1::der::Encode;
 
   // This should probably use OneAsymmetricKey instead

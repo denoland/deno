@@ -1,0 +1,16 @@
+Check [WILDCARD]
+preload.js starts loading
+preload.js finished loading
+import.js starts loading
+import.js finished loading
+Value of __preload__ preload.js
+Value of __import__ import.js
+    CPU | [WILDCARD]
+Runtime | Deno [WILDCARD] ([WILDCARD])
+
+[WILDCARD]/main_bench.ts
+
+| benchmark   | time/iter (avg) |        iter/s |      (min … max)      |      p75 |      p99 |     p995 |
+| ----------- | --------------- | ------------- | --------------------- | -------- | -------- | -------- |
+| hello       | [WILDCARD] | [WILDCARD] | ([WILDCARD] … [WILDCARD]) | [WILDCARD] | [WILDCARD] | [WILDCARD] |
+

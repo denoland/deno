@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -145,10 +145,10 @@ fn build_pkg_deps(
       };
       let mut dep_specifiers =
         Vec::with_capacity(module.dependencies.len() + 1);
-      if let Some(types_dep) = &module.maybe_types_dependency {
-        if let Some(specifier) = types_dep.dependency.maybe_specifier() {
-          dep_specifiers.push(specifier);
-        }
+      if let Some(types_dep) = &module.maybe_types_dependency
+        && let Some(specifier) = types_dep.dependency.maybe_specifier()
+      {
+        dep_specifiers.push(specifier);
       }
       for (_, dep) in &module.dependencies {
         if let Some(specifier) = dep.maybe_code.maybe_specifier() {

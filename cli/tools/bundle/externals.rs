@@ -1,5 +1,6 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
+use std::borrow::Cow;
 use std::collections::HashSet;
 use std::path::Path;
 
@@ -60,9 +61,9 @@ fn to_absolute_path(path: &str, cwd: &Path) -> String {
     path.to_string()
   } else {
     let path = cwd.join(path);
-    deno_path_util::normalize_path(&path)
+    deno_path_util::normalize_path(Cow::Owned(path))
       .to_string_lossy()
-      .to_string()
+      .into_owned()
   }
 }
 
@@ -131,6 +132,7 @@ mod tests {
   use std::path::Path;
 
   use super::ExternalsMatcher;
+  use crate::util::env::resolve_cwd;
 
   struct Matches {
     pre_resolve: Vec<String>,
@@ -146,7 +148,7 @@ mod tests {
       .into_iter()
       .map(|p| p.as_ref().to_string())
       .collect::<Vec<_>>();
-    let cwd = std::env::current_dir().unwrap();
+    let cwd = resolve_cwd(None).unwrap();
     let matcher = ExternalsMatcher::new(&patterns, &cwd);
     for path in matches.pre_resolve {
       if !matcher.is_pre_resolve_match(&path) {
@@ -178,7 +180,7 @@ mod tests {
   }
 
   fn path_str(path: impl AsRef<Path>) -> String {
-    path.as_ref().to_string_lossy().to_string()
+    path.as_ref().to_string_lossy().into_owned()
   }
 
   #[test]
@@ -212,7 +214,7 @@ mod tests {
       ["/node_modules/foo"]
     ));
 
-    let cwd = std::env::current_dir().unwrap();
+    let cwd = resolve_cwd(None).unwrap();
     assert!(matches_all(
       ["./foo"],
       Matches {
@@ -241,7 +243,7 @@ mod tests {
       },
       ["other/@std/fs", "./@std/fs/foo.ts", "./@std/fs"]
     ));
-    let cwd = std::env::current_dir().unwrap();
+    let cwd = resolve_cwd(None).unwrap();
     assert!(matches_all(
       ["./foo/*"],
       Matches {

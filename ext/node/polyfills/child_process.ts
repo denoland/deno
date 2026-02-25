@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // This module implements 'child_process' module of Node.JS API.
 // ref: https://nodejs.org/api/child_process.html
@@ -10,6 +10,7 @@ import { internals, primordials } from "ext:core/mod.js";
 import {
   op_bootstrap_unstable_args,
   op_node_child_ipc_pipe,
+  op_node_translate_cli_args,
 } from "ext:core/ops";
 
 import {
@@ -22,6 +23,7 @@ import {
   type SpawnSyncOptions,
   type SpawnSyncResult,
   stdioStringToArray,
+  validateNullByteNotInArg,
 } from "ext:deno_node/internal/child_process.ts";
 import {
   validateAbortSignal,
@@ -33,7 +35,6 @@ import {
   ERR_CHILD_PROCESS_IPC_REQUIRED,
   ERR_CHILD_PROCESS_STDIO_MAXBUFFER,
   ERR_INVALID_ARG_TYPE,
-  ERR_INVALID_ARG_VALUE,
   ERR_OUT_OF_RANGE,
   genericNodeError,
 } from "ext:deno_node/internal/errors.ts";
@@ -44,6 +45,7 @@ import {
   convertToValidSignal,
   kEmptyObject,
 } from "ext:deno_node/internal/util.mjs";
+import { toPathIfFileURL } from "ext:deno_node/internal/url.ts";
 import { kNeedsNpmProcessState } from "ext:deno_process/40_process.js";
 
 const {
@@ -68,11 +70,13 @@ type ForkOptions = ChildProcessOptions;
  * @returns
  */
 export function fork(
-  modulePath: string,
+  modulePath: string | URL,
   _args?: string[],
   _options?: ForkOptions,
 ) {
+  modulePath = toPathIfFileURL(modulePath) as string;
   validateString(modulePath, "modulePath");
+  validateNullByteNotInArg(modulePath, "modulePath");
 
   // Get options and args arguments.
   let execArgv;
@@ -92,11 +96,37 @@ export function fork(
   }
 
   if (pos < arguments.length && arguments[pos] != null) {
-    if (typeof arguments[pos] !== "object") {
-      throw new ERR_INVALID_ARG_VALUE(`arguments[${pos}]`, arguments[pos]);
+    if (typeof arguments[pos] !== "object" || Array.isArray(arguments[pos])) {
+      throw new ERR_INVALID_ARG_TYPE(
+        `arguments[${pos}]`,
+        "object",
+        arguments[pos],
+      );
     }
 
     options = { ...arguments[pos++] };
+  }
+
+  // Validate null bytes in args
+  for (let i = 0; i < args.length; i++) {
+    if (typeof args[i] === "string") {
+      validateNullByteNotInArg(args[i], `args[${i}]`);
+    }
+  }
+
+  // Validate null bytes in execPath
+  if (options.execPath != null) {
+    validateString(options.execPath, "options.execPath");
+    validateNullByteNotInArg(options.execPath, "options.execPath");
+  }
+
+  // Validate null bytes in execArgv
+  if (options.execArgv != null && Array.isArray(options.execArgv)) {
+    for (let i = 0; i < options.execArgv.length; i++) {
+      if (typeof options.execArgv[i] === "string") {
+        validateNullByteNotInArg(options.execArgv[i], `options.execArgv[${i}]`);
+      }
+    }
   }
 
   // Prepare arguments for fork:
@@ -111,49 +141,42 @@ export function fork(
     }
   }
 
-  // TODO(bartlomieju): this is incomplete, currently only handling a single
-  // V8 flag to get Prisma integration running, we should fill this out with
-  // more
-  const v8Flags: string[] = [];
-  if (Array.isArray(execArgv)) {
-    let index = 0;
-    while (index < execArgv.length) {
-      const flag = execArgv[index];
-      if (flag.startsWith("--max-old-space-size")) {
-        execArgv.splice(index, 1);
-        v8Flags.push(flag);
-      } else if (flag.startsWith("--enable-source-maps")) {
-        // https://github.com/denoland/deno/issues/21750
-        execArgv.splice(index, 1);
-      } else if (flag.startsWith("-C") || flag.startsWith("--conditions")) {
-        let rm = 1;
-        if (flag.indexOf("=") === -1) {
-          // --conditions foo
-          // so remove the next argument as well.
-          rm = 2;
-        }
-        execArgv.splice(index, rm);
-      } else if (flag.startsWith("--no-warnings")) {
-        execArgv[index] = "--quiet";
-      } else {
-        index++;
-      }
-    }
+  // Combine execArgv (Node CLI flags), modulePath (script), and args (script args)
+  const nodeArgs = [...(execArgv || []), modulePath, ...args].map(String);
+
+  // Use the Rust parser to translate Node.js CLI args to Deno args
+  // The parser handles Deno-style args (e.g., from vitest) by passing them through unchanged
+  const result = op_node_translate_cli_args(nodeArgs, false, true);
+  const denoArgs = result.deno_args;
+  const bootstrapArgs = op_bootstrap_unstable_args();
+
+  // Insert bootstrap unstable args after "run" but before other args.
+  // Filter out any that the translator already added to avoid duplicates
+  // (e.g. --unstable-bare-node-builtins).
+  // denoArgs is like ["run", "-A", "--unstable-...", "script.js", ...]
+  // We need ["run", ...uniqueBootstrapArgs, "-A", "--unstable-...", "script.js", ...]
+  const denoArgSet = new Set(denoArgs);
+  const uniqueBootstrapArgs = bootstrapArgs.filter((a) => !denoArgSet.has(a));
+  if (
+    denoArgs.length > 0 && denoArgs[0] === "run" &&
+    uniqueBootstrapArgs.length > 0
+  ) {
+    args = [denoArgs[0], ...uniqueBootstrapArgs, ...denoArgs.slice(1)];
+  } else {
+    args = [...uniqueBootstrapArgs, ...denoArgs];
   }
 
-  const stringifiedV8Flags: string[] = [];
-  if (v8Flags.length > 0) {
-    stringifiedV8Flags.push("--v8-flags=" + v8Flags.join(","));
+  // Handle NODE_OPTIONS if the parser returned any
+  if (result.node_options.length > 0) {
+    const nodeOptionsStr = result.node_options.join(" ");
+    if (options.env) {
+      options.env.NODE_OPTIONS = options.env.NODE_OPTIONS
+        ? options.env.NODE_OPTIONS + " " + nodeOptionsStr
+        : nodeOptionsStr;
+    } else {
+      options.env = { ...process.env, NODE_OPTIONS: nodeOptionsStr };
+    }
   }
-  args = [
-    "run",
-    ...op_bootstrap_unstable_args(),
-    "-A",
-    ...stringifiedV8Flags,
-    ...execArgv,
-    modulePath,
-    ...args,
-  ];
 
   if (typeof options.stdio === "string") {
     options.stdio = stdioStringToArray(options.stdio, "ipc");
@@ -201,7 +224,28 @@ export function spawn(
   options = normalizeSpawnArguments(command, args, options);
 
   validateAbortSignal(options?.signal, "options.signal");
-  return new ChildProcess(command, args, options);
+  validateTimeout(options?.timeout);
+
+  const child = new ChildProcess();
+  child.spawn(options);
+
+  const timeout = options?.timeout;
+  if (timeout != null && timeout > 0) {
+    const killSignal = options?.killSignal ?? "SIGTERM";
+    let timeoutId: ReturnType<typeof setTimeout> | null = setTimeout(() => {
+      timeoutId = null;
+      child.kill(killSignal as string);
+    }, timeout);
+
+    child.once("exit", () => {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+    });
+  }
+
+  return child;
 }
 
 function validateTimeout(timeout?: number) {
@@ -259,7 +303,7 @@ export function spawnSync(
   // Validate and translate the kill signal, if present.
   sanitizeKillSignal(options.killSignal);
 
-  return _spawnSync(command, args, options);
+  return _spawnSync(options.file, options.args, options);
 }
 
 interface ExecOptions extends
@@ -430,14 +474,39 @@ export function execFile(
     args = argsOrOptionsOrCallback;
   } else if (argsOrOptionsOrCallback instanceof Function) {
     callback = argsOrOptionsOrCallback;
-  } else if (argsOrOptionsOrCallback) {
+    // When second arg is callback, ignore remaining args
+  } else if (argsOrOptionsOrCallback != null) {
+    if (typeof argsOrOptionsOrCallback !== "object") {
+      throw new ERR_INVALID_ARG_TYPE(
+        "args",
+        ["object", "array"],
+        argsOrOptionsOrCallback,
+      );
+    }
     options = argsOrOptionsOrCallback;
   }
-  if (optionsOrCallback instanceof Function) {
-    callback = optionsOrCallback;
-  } else if (optionsOrCallback) {
-    options = optionsOrCallback;
-    callback = maybeCallback;
+  // Only process subsequent args if callback wasn't set from second arg
+  if (callback === undefined) {
+    if (optionsOrCallback instanceof Function) {
+      callback = optionsOrCallback;
+    } else if (optionsOrCallback != null) {
+      if (
+        typeof optionsOrCallback !== "object" ||
+        Array.isArray(optionsOrCallback)
+      ) {
+        throw new ERR_INVALID_ARG_TYPE(
+          "options",
+          "object",
+          optionsOrCallback,
+        );
+      }
+      options = optionsOrCallback;
+      callback = maybeCallback;
+    }
+    // Validate callback if provided
+    if (maybeCallback != null && typeof maybeCallback !== "function") {
+      throw new ERR_INVALID_ARG_TYPE("callback", "function", maybeCallback);
+    }
   }
 
   const execOptions = {
@@ -457,6 +526,7 @@ export function execFile(
     );
   }
   const spawnOptions: SpawnOptions = {
+    argv0: execOptions.argv0,
     cwd: execOptions.cwd,
     env: execOptions.env,
     gid: execOptions.gid,
@@ -827,9 +897,12 @@ export function execFileSync(
 }
 
 function setupChildProcessIpcChannel() {
-  const fd = op_node_child_ipc_pipe();
+  const maybePipe = op_node_child_ipc_pipe();
+  if (!maybePipe) return;
+  const [fd, serialization] = maybePipe;
+  const serializationMode = serialization === 0 ? "json" : "advanced";
   if (typeof fd != "number" || fd < 0) return;
-  const control = setupChannel(process, fd);
+  const control = setupChannel(process, fd, serializationMode);
   process.on("newListener", (name: string) => {
     if (name === "message" || name === "disconnect") {
       control.refCounted();

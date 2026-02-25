@@ -1,5 +1,5 @@
-Check [WILDCARD]/test.ts
-Check [WILDCARD]/source.ts$[WILDCARD].ts
+Check [WILDCARD]test.ts
+Check [WILDCARD]source.ts$[WILDCARD].ts
 running 1 test from ./test.ts
 add() ... ok ([WILDCARD])
 running 1 test from ./source.ts$[WILDCARD].ts
@@ -7,12 +7,9 @@ file:///[WILDCARD]/source.ts$[WILDCARD].ts ... ok ([WILDCARD])
 
 ok | 2 passed | 0 failed ([WILDCARD])
 
---------------------------------
-File       | Branch % | Line % |
---------------------------------
- source.ts |    100.0 |  100.0 |
---------------------------------
- All files |    100.0 |  100.0 |
---------------------------------
+| File      | Branch % | Line % |
+| --------- | -------- | ------ |
+| source.ts |    100.0 |  100.0 |
+| All files |    100.0 |  100.0 |
 Lcov coverage report has been generated at file://[WILDCARD]/coverage/lcov.info
 HTML coverage report has been generated at file://[WILDCARD]/coverage/html/index.html

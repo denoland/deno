@@ -1,0 +1,2 @@
+Updated 1 dependency:
+ - npm:@denotest/update-latest-semver ^1.0.0 -> ^1.0.1

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
@@ -1041,7 +1041,7 @@ export class ClientHttp2Stream extends Duplex {
       data = ENCODER.encode(chunk);
     } else if (encoding === "buffer") {
       this.#encoding = encoding;
-      data = chunk.buffer;
+      data = new Uint8Array(chunk.buffer, chunk.byteOffset, chunk.byteLength);
     }
 
     this.#requestPromise

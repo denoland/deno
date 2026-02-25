@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::cell::RefCell;
 use std::collections::HashSet;
@@ -7,24 +7,27 @@ use std::net::Ipv4Addr;
 use std::net::Ipv6Addr;
 use std::net::SocketAddr;
 
-use deno_core::op2;
 use deno_core::OpState;
+use deno_core::ToV8;
+use deno_core::op2;
 use ipnetwork::IpNetwork;
 use ipnetwork::Ipv4Network;
 use ipnetwork::Ipv6Network;
-use serde::Serialize;
 
 pub struct BlockListResource {
   blocklist: RefCell<BlockList>,
 }
 
-impl deno_core::GarbageCollected for BlockListResource {
+// SAFETY: we're sure this can be GCed
+unsafe impl deno_core::GarbageCollected for BlockListResource {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"BlockListResource"
   }
 }
 
-#[derive(Serialize)]
+#[derive(ToV8)]
 struct SocketAddressSerialization(String, String);
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -70,7 +73,6 @@ pub fn op_socket_address_parse(
 }
 
 #[op2]
-#[serde]
 pub fn op_socket_address_get_serialization(
   state: &mut OpState,
 ) -> SocketAddressSerialization {

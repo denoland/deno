@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::ffi::OsStr;
 use std::ffi::OsString;
@@ -39,7 +39,7 @@ impl NpmProcessState {
     NpmProcessState {
       kind: NpmProcessStateKind::Snapshot(snapshot.into_serialized()),
       local_node_modules_path: node_modules_path
-        .map(|p| p.to_string_lossy().to_string()),
+        .map(|p| p.to_string_lossy().into_owned()),
     }
   }
 

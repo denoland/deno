@@ -1,12 +1,12 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::collections::HashMap;
 use std::ops::Range;
 
-use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
-use deno_core::error::AnyError;
+use base64::prelude::BASE64_STANDARD;
 use deno_core::ModuleSourceCode;
+use deno_core::error::AnyError;
 use deno_error::JsErrorBox;
 use text_lines::LineAndColumnIndex;
 use text_size::TextSize;
@@ -176,6 +176,10 @@ impl Utf16Map {
 
   pub fn utf8_offsets_len(&self) -> usize {
     self.utf8_offsets.len()
+  }
+
+  pub fn line_starts(&self) -> &[TextSize] {
+    &self.utf16_offsets
   }
 
   pub fn line_length_utf16(&self, line: u32) -> TextSize {

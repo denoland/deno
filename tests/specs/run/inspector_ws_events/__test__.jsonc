@@ -1,0 +1,16 @@
+{
+  "tempDir": true,
+  "tests": {
+    "ws_events_disabled": {
+      "args": "run -A main.ts",
+      "output": "disabled.out"
+    },
+    "ws_events_enabled": {
+      "args": "run -A main.ts",
+      "envs": {
+        "UNSTABLE_INSPECTOR_WS_EVENTS": "1"
+      },
+      "output": "enabled.out"
+    }
+  }
+}

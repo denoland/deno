@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 import {
   assertEquals,
   assertRejects,
@@ -487,6 +487,7 @@ Deno.test(async function compressionStreamWritableMayBeAborted() {
     new CompressionStream("gzip").writable.getWriter().abort(),
     new CompressionStream("deflate").writable.getWriter().abort(),
     new CompressionStream("deflate-raw").writable.getWriter().abort(),
+    new CompressionStream("brotli").writable.getWriter().abort(),
   ]);
 });
 
@@ -495,6 +496,7 @@ Deno.test(async function compressionStreamReadableMayBeCancelled() {
     new CompressionStream("gzip").readable.getReader().cancel(),
     new CompressionStream("deflate").readable.getReader().cancel(),
     new CompressionStream("deflate-raw").readable.getReader().cancel(),
+    new CompressionStream("brotli").readable.getReader().cancel(),
   ]);
 });
 
@@ -503,6 +505,7 @@ Deno.test(async function decompressionStreamWritableMayBeAborted() {
     new DecompressionStream("gzip").writable.getWriter().abort(),
     new DecompressionStream("deflate").writable.getWriter().abort(),
     new DecompressionStream("deflate-raw").writable.getWriter().abort(),
+    new DecompressionStream("brotli").writable.getWriter().abort(),
   ]);
 });
 
@@ -511,6 +514,7 @@ Deno.test(async function decompressionStreamReadableMayBeCancelled() {
     new DecompressionStream("gzip").readable.getReader().cancel(),
     new DecompressionStream("deflate").readable.getReader().cancel(),
     new DecompressionStream("deflate-raw").readable.getReader().cancel(),
+    new DecompressionStream("brotli").readable.getReader().cancel(),
   ]);
 });
 
@@ -527,6 +531,37 @@ Deno.test(async function decompressionStreamValidGzipDoesNotThrow() {
     result = new Uint8Array([...result, ...chunk]);
   }
   assertEquals(result, new Uint8Array([1]));
+});
+
+Deno.test(async function decompressionStreamValidBrotliDoesNotThrow() {
+  const cs = new CompressionStream("brotli");
+  const ds = new DecompressionStream("brotli");
+  cs.readable.pipeThrough(ds);
+  const writer = cs.writable.getWriter();
+  await writer.write(new Uint8Array([1]));
+  writer.releaseLock();
+  await cs.writable.close();
+  let result = new Uint8Array();
+  for await (const chunk of ds.readable.values()) {
+    result = new Uint8Array([...result, ...chunk]);
+  }
+  assertEquals(result, new Uint8Array([1]));
+});
+
+Deno.test(async function brotliCompressionDecompressionRoundTrip() {
+  const original = new TextEncoder().encode(LOREM);
+  const cs = new CompressionStream("brotli");
+  const ds = new DecompressionStream("brotli");
+  cs.readable.pipeThrough(ds);
+  const writer = cs.writable.getWriter();
+  await writer.write(original);
+  writer.releaseLock();
+  await cs.writable.close();
+  let result = new Uint8Array();
+  for await (const chunk of ds.readable.values()) {
+    result = new Uint8Array([...result, ...chunk]);
+  }
+  assertEquals(result, original);
 });
 
 Deno.test(async function decompressionStreamInvalidGzipStillReported() {
@@ -650,4 +685,73 @@ Deno.test(async function readableStreamFromWithStringThrows() {
   await promise.promise;
   stopSignal.abort();
   await p;
+});
+
+Deno.test(async function readableStreamEmittingManyChunks() {
+  const code = `
+    const serverPort = 4594;
+    const stopSignal = new AbortController();
+    let count = 0;
+    let before = 0;
+    let after = 0;
+
+    function startServer() {
+      Deno.serve({ port: serverPort, signal: stopSignal.signal }, (_) => {
+        return new Response(
+          new ReadableStream({
+            start() {
+              before = Deno.memoryUsage().heapUsed;
+            },
+            pull(controller) {
+              const used = Deno.memoryUsage().heapUsed;
+
+              if (used > after) {
+                after = used;
+              }
+
+              if (count < 30_000) {
+                controller.enqueue(new Uint8Array([0]));
+              } else {
+                controller.close();
+              }
+
+              count += 1;
+            },
+          }),
+        );
+      });
+    }
+
+    async function startClient() {
+      const response = await fetch(\`http://localhost:\${serverPort}\`);
+      const reader = response.body?.getReader();
+      if (!reader) {
+        throw new Error("client: failed to get reader from response");
+      }
+
+      while (true) {
+        const { done } = await reader.read();
+        if (done) break;
+      }
+    }
+
+    startServer();
+    await startClient();
+    stopSignal.abort();
+    console.log(\`\${after} / \${before} = \${after / before}\`);
+    if (after / before > 1.5) {
+      Deno.exit(1);
+    }
+  `;
+  const command = new Deno.Command(Deno.execPath(), {
+    args: ["run", "-N", "-"],
+    stdin: "piped",
+  });
+
+  await using child = command.spawn();
+  await ReadableStream.from([code])
+    .pipeThrough(new TextEncoderStream())
+    .pipeTo(child.stdin);
+
+  assertEquals((await child.status).code, 0, "memory leak");
 });

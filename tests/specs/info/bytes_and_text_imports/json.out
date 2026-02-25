@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "roots": [
+    "file:///[WILDLINE]/main.ts"
+  ],
+  "modules": [
+    {
+      "kind": "external",
+      "specifier": "file:///[WILDLINE]/data.txt",
+      "local": "[WILDLINE]data.txt"
+    },
+    {
+      "kind": "esm",
+      "dependencies": [
+        {
+          "specifier": "./data.txt",
+          "code": {
+            "specifier": "file:///[WILDLINE]/data.txt",
+            "span": {
+              "start": {
+                "line": 0,
+                "character": 17
+              },
+              "end": {
+                "line": 0,
+                "character": 29
+              }
+            }
+          },
+[#! the output here is not ideal as it doesn't say all the two different kinds, but this is fine for now]
+          "assertionType": "text"
+        }
+      ],
+      "local": "[WILDLINE]main.ts",
+      "size": [WILDLINE],
+      "mediaType": "TypeScript",
+      "specifier": "file:///[WILDLINE]/main.ts"
+    }
+  ],
+  "redirects": {},
+  "npmPackages": {}
+}

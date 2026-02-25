@@ -1,0 +1,14 @@
+{
+  "if": "windows",
+  "tempDir": true,
+  "steps": [{
+    "args": "install",
+    "envs": {
+      "DENO_INSTALL_ARCH": "aarch64"
+    },
+    "output": "[WILDCARD]"
+  }, {
+    "args": "run -A verify_output.ts",
+    "output": "FOUND\n"
+  }]
+}

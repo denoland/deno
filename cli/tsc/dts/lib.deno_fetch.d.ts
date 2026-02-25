@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // deno-lint-ignore-file no-explicit-any no-var
 
@@ -45,7 +45,7 @@ declare var FormData: {
 /** @category Fetch */
 interface Body {
   /** A simple getter used to expose a `ReadableStream` of the body contents. */
-  readonly body: ReadableStream<Uint8Array> | null;
+  readonly body: ReadableStream<Uint8Array<ArrayBuffer>> | null;
   /** Stores a `Boolean` that declares whether the body has been used in a
    * response yet.
    */
@@ -61,7 +61,7 @@ interface Body {
   /** Takes a `Response` stream and reads it to completion. It returns a promise
    * that resolves with a `Uint8Array`.
    */
-  bytes(): Promise<Uint8Array>;
+  bytes(): Promise<Uint8Array<ArrayBuffer>>;
   /** Takes a `Response` stream and reads it to completion. It returns a promise
    * that resolves with a `FormData` object.
    */
@@ -292,7 +292,8 @@ interface Request extends Body {
   readonly isHistoryNavigation: boolean;
   /**
    * Returns a boolean indicating whether or not request is for a reload
-   * navigation.
+   * navigation, e.g. a refresh triggered via the browser's reload control or
+   * by calling location.reload().
    */
   readonly isReloadNavigation: boolean;
   /**
@@ -417,6 +418,7 @@ declare function fetch(
  */
 interface EventSourceInit {
   withCredentials?: boolean;
+  headers?: HeadersInit;
 }
 
 /**

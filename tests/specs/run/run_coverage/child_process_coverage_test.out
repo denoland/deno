@@ -1,0 +1,13 @@
+Check [WILDCARD]child_process_coverage_test.ts
+running 2 tests from ./child_process_coverage_test.ts
+foo 1 0 ... ok ([WILDLINE]s)
+foo 0 1 ... ok ([WILDLINE]s)
+
+ok | 2 passed | 0 failed ([WILDLINE]s)
+
+| File      | Branch % | Line % |
+| --------- | -------- | ------ |
+| foo.ts    |    100.0 |  100.0 |
+| All files |    100.0 |  100.0 |
+Lcov coverage report has been generated at file:///[WILDLINE]/coverage/lcov.info
+HTML coverage report has been generated at file:///[WILDLINE]/coverage/html/index.html

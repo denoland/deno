@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
@@ -267,7 +267,8 @@ Agent.prototype.addRequest = function addRequest(
     setRequestSocket(this, req, socket);
     this.sockets[name].push(socket);
   } else if (
-    sockLen < this.maxSockets &&
+    // TODO(littledivy): enable maxSockets again when we use removeSocket properly
+    this.maxSockets != 0 &&
     this.totalSocketCount < this.maxTotalSockets
   ) {
     debug("call onSocket", sockLen, freeLen);

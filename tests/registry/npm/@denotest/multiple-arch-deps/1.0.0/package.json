@@ -1,0 +1,8 @@
+{
+  "name": "@denotest/multiple-arch-deps",
+  "version": "1.0.0",
+  "optionalDependencies": {
+    "@denotest/multiple-arches-win32-x64": "1.0.0",
+    "@denotest/multiple-arches-win32-arm64": "1.0.0"
+  }
+}

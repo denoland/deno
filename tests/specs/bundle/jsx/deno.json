@@ -1,0 +1,8 @@
+{
+  "compilerOptions": {
+    "jsx": "react-jsx"
+  },
+  "imports": {
+    "react": "npm:react"
+  }
+}

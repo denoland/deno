@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::collections::HashSet;
@@ -12,26 +12,29 @@ use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_error::JsErrorBox;
 use deno_lib::version::DENO_VERSION_INFO;
+use deno_npm::NpmResolutionPackage;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmPackageInfo;
+use deno_npm::registry::NpmPackageVersionInfosIterator;
 use deno_npm::resolution::NpmResolutionSnapshot;
-use deno_npm::NpmResolutionPackage;
+use deno_npm::resolution::NpmVersionResolver;
 use deno_npm_cache::NpmCacheHttpClientBytesResponse;
 use deno_npm_cache::NpmCacheHttpClientResponse;
-use deno_npm_installer::lifecycle_scripts::is_broken_default_install_script;
-use deno_npm_installer::lifecycle_scripts::LifecycleScriptsExecutor;
-use deno_npm_installer::lifecycle_scripts::LifecycleScriptsExecutorOptions;
-use deno_npm_installer::lifecycle_scripts::PackageWithScript;
-use deno_npm_installer::lifecycle_scripts::LIFECYCLE_SCRIPTS_RUNNING_ENV_VAR;
 use deno_npm_installer::BinEntries;
 use deno_npm_installer::CachedNpmPackageExtraInfoProvider;
 use deno_npm_installer::ExpectedExtraInfo;
+use deno_npm_installer::lifecycle_scripts::LIFECYCLE_SCRIPTS_RUNNING_ENV_VAR;
+use deno_npm_installer::lifecycle_scripts::LifecycleScriptsExecutor;
+use deno_npm_installer::lifecycle_scripts::LifecycleScriptsExecutorOptions;
+use deno_npm_installer::lifecycle_scripts::PackageWithScript;
+use deno_npm_installer::lifecycle_scripts::is_broken_default_install_script;
 use deno_resolver::npm::ByonmNpmResolverCreateOptions;
 use deno_resolver::npm::ManagedNpmResolverRc;
 use deno_runtime::deno_io::FromRawIoHandle;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use deno_task_shell::KillSignal;
+use sys_traits::PathsInErrorsExt;
 
 use crate::file_fetcher::CliFileFetcher;
 use crate::http_util::HttpClientProvider;
@@ -50,7 +53,7 @@ pub type CliNpmInstaller =
 pub type CliNpmCache = deno_npm_cache::NpmCache<CliSys>;
 pub type CliNpmRegistryInfoProvider =
   deno_npm_cache::RegistryInfoProvider<CliNpmCacheHttpClient, CliSys>;
-pub type CliNpmResolver = deno_resolver::npm::NpmResolver<CliSys>;
+pub type CliNpmResolver<TSys = CliSys> = deno_resolver::npm::NpmResolver<TSys>;
 pub type CliManagedNpmResolver = deno_resolver::npm::ManagedNpmResolver<CliSys>;
 pub type CliNpmResolverCreateOptions =
   deno_resolver::npm::NpmResolverCreateOptions<CliSys>;
@@ -157,45 +160,50 @@ pub struct NpmFetchResolver {
   info_by_name: DashMap<String, Option<Arc<NpmPackageInfo>>>,
   file_fetcher: Arc<CliFileFetcher>,
   npmrc: Arc<ResolvedNpmRc>,
+  version_resolver: Arc<NpmVersionResolver>,
 }
 
 impl NpmFetchResolver {
   pub fn new(
     file_fetcher: Arc<CliFileFetcher>,
     npmrc: Arc<ResolvedNpmRc>,
+    version_resolver: Arc<NpmVersionResolver>,
   ) -> Self {
     Self {
       nv_by_req: Default::default(),
       info_by_name: Default::default(),
       file_fetcher,
       npmrc,
+      version_resolver,
     }
   }
 
-  pub async fn req_to_nv(&self, req: &PackageReq) -> Option<PackageNv> {
+  pub async fn req_to_nv(
+    &self,
+    req: &PackageReq,
+  ) -> Result<Option<PackageNv>, AnyError> {
     if let Some(nv) = self.nv_by_req.get(req) {
-      return nv.value().clone();
+      return Ok(nv.value().clone());
     }
     let maybe_get_nv = || async {
-      let name = req.name.clone();
-      let package_info = self.package_info(&name).await?;
-      if let Some(dist_tag) = req.version_req.tag() {
-        let version = package_info.dist_tags.get(dist_tag)?.clone();
-        return Some(PackageNv { name, version });
-      }
-      // Find the first matching version of the package.
-      let mut versions = package_info.versions.keys().collect::<Vec<_>>();
-      versions.sort();
-      let version = versions
-        .into_iter()
-        .rev()
-        .find(|v| req.version_req.tag().is_none() && req.version_req.matches(v))
-        .cloned()?;
-      Some(PackageNv { name, version })
+      let name = &req.name;
+      let Some(package_info) = self.package_info(name).await else {
+        return Result::<Option<PackageNv>, AnyError>::Ok(None);
+      };
+      let version_resolver =
+        self.version_resolver.get_for_package(&package_info);
+      let version_info = version_resolver.resolve_best_package_version_info(
+        &req.version_req,
+        Vec::new().into_iter(),
+      )?;
+      Ok(Some(PackageNv {
+        name: name.clone(),
+        version: version_info.version.clone(),
+      }))
     };
-    let nv = maybe_get_nv().await;
+    let nv = maybe_get_nv().await?;
     self.nv_by_req.insert(req.clone(), nv.clone());
-    nv
+    Ok(nv)
   }
 
   pub async fn package_info(&self, name: &str) -> Option<Arc<NpmPackageInfo>> {
@@ -231,6 +239,16 @@ impl NpmFetchResolver {
     self.info_by_name.insert(name.to_string(), info.clone());
     info
   }
+
+  pub fn applicable_version_infos<'a>(
+    &'a self,
+    package_info: &'a NpmPackageInfo,
+  ) -> NpmPackageVersionInfosIterator<'a> {
+    self
+      .version_resolver
+      .get_for_package(package_info)
+      .applicable_version_infos()
+  }
 }
 
 pub static NPM_CONFIG_USER_AGENT_ENV_VAR: &str = "npm_config_user_agent";
@@ -251,9 +269,6 @@ pub enum DenoTaskLifecycleScriptsError {
   #[error(transparent)]
   Io(#[from] std::io::Error),
   #[class(inherit)]
-  #[error(transparent)]
-  BinEntries(#[from] deno_npm_installer::BinEntriesError),
-  #[class(inherit)]
   #[error(
     "failed to create npm process state tempfile for running lifecycle scripts"
   )]
@@ -267,6 +282,7 @@ pub enum DenoTaskLifecycleScriptsError {
 }
 
 pub struct DenoTaskLifeCycleScriptsExecutor {
+  progress_bar: ProgressBar,
   npm_resolver: ManagedNpmResolverRc<CliSys>,
 }
 
@@ -278,7 +294,7 @@ impl LifecycleScriptsExecutor for DenoTaskLifeCycleScriptsExecutor {
   ) -> Result<(), AnyError> {
     let mut failed_packages = Vec::new();
     let sys = CliSys::default();
-    let mut bin_entries = BinEntries::new(&sys);
+    let mut bin_entries = BinEntries::new(sys.with_paths_in_errors());
     // get custom commands for each bin available in the node_modules dir (essentially
     // the scripts that are in `node_modules/.bin`)
     let base = self
@@ -340,10 +356,7 @@ impl LifecycleScriptsExecutor for DenoTaskLifeCycleScriptsExecutor {
           {
             continue;
           }
-          let pb = ProgressBar::new(
-            crate::util::progress_bar::ProgressBarStyle::TextOnly,
-          );
-          let _guard = pb.update_with_prompt(
+          let _guard = self.progress_bar.update_with_prompt(
             ProgressMessagePrompt::Initialize,
             &format!("{}: running '{script_name}' script", package.id.nv),
           );
@@ -436,8 +449,14 @@ impl LifecycleScriptsExecutor for DenoTaskLifeCycleScriptsExecutor {
 }
 
 impl DenoTaskLifeCycleScriptsExecutor {
-  pub fn new(npm_resolver: ManagedNpmResolverRc<CliSys>) -> Self {
-    Self { npm_resolver }
+  pub fn new(
+    npm_resolver: ManagedNpmResolverRc<CliSys>,
+    progress_bar: ProgressBar,
+  ) -> Self {
+    Self {
+      npm_resolver,
+      progress_bar,
+    }
   }
 
   // take in all (non copy) packages from snapshot,
@@ -546,7 +565,7 @@ impl DenoTaskLifeCycleScriptsExecutor {
     snapshot: &NpmResolutionSnapshot,
   ) -> crate::task_runner::TaskCustomCommands {
     let sys = CliSys::default();
-    let mut bin_entries = BinEntries::new(&sys);
+    let mut bin_entries = BinEntries::new(sys.with_paths_in_errors());
     self
       .resolve_custom_commands_from_packages(
         extra_info_provider,

@@ -1,0 +1,5 @@
+{
+  "args": "run --allow-write --allow-read main.mjs",
+  "output": "main.out",
+  "exitCode": 0
+}

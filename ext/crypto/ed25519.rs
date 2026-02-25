@@ -1,17 +1,17 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
-use base64::prelude::BASE64_URL_SAFE_NO_PAD;
+use aws_lc_rs::signature::Ed25519KeyPair;
+use aws_lc_rs::signature::KeyPair;
 use base64::Engine;
+use base64::prelude::BASE64_URL_SAFE_NO_PAD;
+use deno_core::convert::Uint8Array;
 use deno_core::op2;
-use deno_core::ToJsBuffer;
 use elliptic_curve::pkcs8::PrivateKeyInfo;
-use rand::rngs::OsRng;
 use rand::RngCore;
-use ring::signature::Ed25519KeyPair;
-use ring::signature::KeyPair;
-use spki::der::asn1::BitString;
+use rand::rngs::OsRng;
 use spki::der::Decode;
 use spki::der::Encode;
+use spki::der::asn1::BitString;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum Ed25519Error {
@@ -23,7 +23,7 @@ pub enum Ed25519Error {
   Der(#[from] rsa::pkcs1::der::Error),
   #[class(generic)]
   #[error(transparent)]
-  KeyRejected(#[from] ring::error::KeyRejected),
+  KeyRejected(#[from] aws_lc_rs::error::KeyRejected),
 }
 
 #[op2(fast)]
@@ -62,9 +62,12 @@ pub fn op_crypto_verify_ed25519(
   #[buffer] data: &[u8],
   #[buffer] signature: &[u8],
 ) -> bool {
-  ring::signature::UnparsedPublicKey::new(&ring::signature::ED25519, pubkey)
-    .verify(data, signature)
-    .is_ok()
+  aws_lc_rs::signature::UnparsedPublicKey::new(
+    &aws_lc_rs::signature::ED25519,
+    pubkey,
+  )
+  .verify(data, signature)
+  .is_ok()
 }
 
 // id-Ed25519 OBJECT IDENTIFIER ::= { 1 3 101 112 }
@@ -124,10 +127,9 @@ pub fn op_crypto_import_pkcs8_ed25519(
 }
 
 #[op2]
-#[serde]
 pub fn op_crypto_export_spki_ed25519(
   #[buffer] pubkey: &[u8],
-) -> Result<ToJsBuffer, Ed25519Error> {
+) -> Result<Uint8Array, Ed25519Error> {
   let key_info = spki::SubjectPublicKeyInfo {
     algorithm: spki::AlgorithmIdentifierOwned {
       // id-Ed25519
@@ -145,10 +147,9 @@ pub fn op_crypto_export_spki_ed25519(
 }
 
 #[op2]
-#[serde]
 pub fn op_crypto_export_pkcs8_ed25519(
   #[buffer] pkey: &[u8],
-) -> Result<ToJsBuffer, Ed25519Error> {
+) -> Result<Uint8Array, Ed25519Error> {
   use rsa::pkcs1::der::Encode;
 
   // This should probably use OneAsymmetricKey instead

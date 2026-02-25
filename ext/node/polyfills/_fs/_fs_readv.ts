@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import {
   ERR_INVALID_ARG_TYPE,
@@ -14,8 +14,14 @@ import * as io from "ext:deno_io/12_io.js";
 import { op_fs_seek_async, op_fs_seek_sync } from "ext:core/ops";
 import process from "node:process";
 import { primordials } from "ext:core/mod.js";
+import { customPromisifyArgs } from "ext:deno_node/internal/util.mjs";
 
-const { PromisePrototypeThen, TypedArrayPrototypeGetByteLength } = primordials;
+const {
+  ObjectDefineProperty,
+  Promise,
+  PromisePrototypeThen,
+  TypedArrayPrototypeGetByteLength,
+} = primordials;
 
 type Callback = (
   err: ErrnoException | null,
@@ -87,6 +93,17 @@ export function readv(
   }, (err) => cb(err, -1, buffers));
 }
 
+ObjectDefineProperty(readv, customPromisifyArgs, {
+  __proto__: null,
+  value: ["bytesRead", "buffers"],
+  enumerable: false,
+});
+
+export interface ReadVResult {
+  bytesRead: number;
+  buffers: readonly ArrayBufferView[];
+}
+
 export function readvSync(
   fd: number,
   buffers: readonly ArrayBufferView[],
@@ -125,4 +142,17 @@ export function readvSync(
   readTotal += readInBuf;
 
   return readTotal;
+}
+
+export function readvPromise(
+  fd: number,
+  buffers: readonly ArrayBufferView[],
+  position?: number,
+): Promise<ReadVResult> {
+  return new Promise((resolve, reject) => {
+    readv(fd, buffers, position ?? null, (err, bytesRead, buffers) => {
+      if (err) reject(err);
+      else resolve({ bytesRead, buffers });
+    });
+  });
 }

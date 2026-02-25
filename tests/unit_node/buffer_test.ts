@@ -1,7 +1,9 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
-import { Buffer } from "node:buffer";
+// Copyright 2018-2026 the Deno authors. MIT license.
+import { Buffer, constants, File as BufferFile } from "node:buffer";
 import { assertEquals, assertThrows } from "@std/assert";
 import { strictEqual } from "node:assert";
+
+const { MAX_STRING_LENGTH } = constants;
 
 Deno.test({
   name: "[node/buffer] alloc fails if size is not a number",
@@ -659,5 +661,80 @@ Deno.test({
     const a = Buffer.from("hello world");
     const b = Buffer.from("hello world");
     strictEqual(a.buffer, b.buffer);
+  },
+});
+
+Deno.test({
+  name: "[node/buffer] toString('utf8') keeps BOM",
+  fn() {
+    assertEquals(
+      Buffer.from([239, 187, 191, 97, 98]).toString("utf8"),
+      "\uFEFFab",
+    );
+  },
+});
+
+Deno.test({
+  name: "[node/buffer] throws ERR_STRING_TOO_LONG with the correct message",
+  fn() {
+    assertThrows(
+      () => {
+        Buffer.allocUnsafe(2 ** 31).toString();
+      },
+      Error,
+      `Cannot create a string longer than 0x${
+        MAX_STRING_LENGTH.toString(16)
+      } characters`,
+    );
+  },
+});
+
+Deno.test({
+  name:
+    "[node/buffer] Buffer.from with hex encoding should truncate first non-hex character",
+  fn() {
+    const buf = Buffer.from("00aafffz", "hex");
+    assertEquals(buf, Buffer.from([0x00, 0xaa, 0xff]));
+
+    const buf2 = Buffer.from("zz34", "hex");
+    assertEquals(buf2, Buffer.from([]));
+
+    const buf3 = Buffer.from("123😁aa", "hex");
+    assertEquals(buf3, Buffer.from([0x12]));
+  },
+});
+
+Deno.test({
+  name: "[node/buffer] File is exported from node:buffer",
+  fn() {
+    assertEquals(typeof BufferFile, "function");
+    const file = new BufferFile(["hello"], "hello.txt", {
+      type: "text/plain",
+    });
+    assertEquals(file.name, "hello.txt");
+    assertEquals(file.type, "text/plain");
+    assertEquals(file.size, 5);
+    assertEquals(file instanceof Blob, true);
+  },
+});
+
+Deno.test({
+  name: "[node/buffer] latin1Slice returns correct string",
+  fn() {
+    // deno-lint-ignore no-explicit-any
+    const buf: any = Buffer.of(1, 2, 3, 0xff);
+    assertEquals(buf.latin1Slice().length, 4);
+    assertEquals(buf.latin1Slice(), "\x01\x02\x03\xff");
+    assertEquals(buf.latin1Slice(1, 3), "\x02\x03");
+  },
+});
+
+Deno.test({
+  name: "[node/buffer] hexSlice returns correct string",
+  fn() {
+    // deno-lint-ignore no-explicit-any
+    const buf: any = Buffer.of(1, 2, 3, 0xff);
+    assertEquals(buf.hexSlice(), "010203ff");
+    assertEquals(buf.hexSlice(1, 3), "0203");
   },
 });

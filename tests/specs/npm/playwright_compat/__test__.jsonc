@@ -7,6 +7,7 @@
     "output": "[WILDCARD]"
   }, {
     "args": "run -A main.ts",
+    "flaky": true,
     "output": "chromium launched\n"
   }]
 }

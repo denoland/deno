@@ -1,23 +1,23 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::collections::BTreeSet;
 use std::fmt::Write as _;
 use std::sync::Arc;
 
+use deno_ast::MediaType;
+use deno_ast::SourceRangedForSpanned as _;
 use deno_ast::swc::ast;
 use deno_ast::swc::atoms::Atom;
-use deno_ast::swc::common::comments::CommentKind;
 use deno_ast::swc::common::DUMMY_SP;
-use deno_ast::swc::ecma_visit::visit_mut_pass;
+use deno_ast::swc::common::comments::CommentKind;
 use deno_ast::swc::ecma_visit::Visit;
 use deno_ast::swc::ecma_visit::VisitMut;
 use deno_ast::swc::ecma_visit::VisitWith as _;
+use deno_ast::swc::ecma_visit::visit_mut_pass;
 use deno_ast::swc::utils as swc_utils;
-use deno_ast::MediaType;
-use deno_ast::SourceRangedForSpanned as _;
 use deno_cache_dir::file_fetcher::File;
-use deno_core::error::AnyError;
 use deno_core::ModuleSpecifier;
+use deno_core::error::AnyError;
 use regex::Regex;
 
 use crate::file_fetcher::TextDecodedFile;
@@ -75,19 +75,20 @@ fn extract_inner(
     Err(_) => ExportCollector::default(),
   };
 
-  let extracted_files = if file.media_type == MediaType::Unknown {
-    extract_files_from_fenced_blocks(
-      &file.specifier,
-      &file.source,
-      file.media_type,
-    )?
-  } else {
-    extract_files_from_source_comments(
-      &file.specifier,
-      file.source.clone(),
-      file.media_type,
-    )?
-  };
+  let extracted_files =
+    if matches!(file.media_type, MediaType::Unknown | MediaType::Markdown) {
+      extract_files_from_fenced_blocks(
+        &file.specifier,
+        &file.source,
+        file.media_type,
+      )?
+    } else {
+      extract_files_from_source_comments(
+        &file.specifier,
+        file.source.clone(),
+        file.media_type,
+      )?
+    };
 
   extracted_files
     .into_iter()
@@ -247,6 +248,7 @@ fn extract_files_from_regex_blocks(
         mtime: None,
         maybe_headers: None,
         source: file_source.into_bytes().into(),
+        loaded_from: deno_cache_dir::file_fetcher::LoadedFrom::Local,
       };
       Some(TestOrSnippet {
         file,
@@ -351,7 +353,9 @@ impl Visit for ExportCollector {
             self.named_exports.insert(ident.sym.clone());
           }
           ast::TsModuleName::Str(s) => {
-            self.named_exports.insert(s.value.clone());
+            self
+              .named_exports
+              .insert(s.value.to_atom_lossy().into_owned());
           }
         }
       }
@@ -402,7 +406,7 @@ impl Visit for ExportCollector {
     fn get_atom(export_name: &ast::ModuleExportName) -> Atom {
       match export_name {
         ast::ModuleExportName::Ident(ident) => ident.sym.clone(),
-        ast::ModuleExportName::Str(s) => s.value.clone(),
+        ast::ModuleExportName::Str(s) => s.value.to_atom_lossy().into_owned(),
       }
     }
 
@@ -616,6 +620,7 @@ fn generate_pseudo_file(
     mtime: None,
     maybe_headers: None,
     source: source.into_bytes().into(),
+    loaded_from: deno_cache_dir::file_fetcher::LoadedFrom::Local,
   })
 }
 
@@ -796,7 +801,7 @@ fn wrap_in_deno_test(stmts: Vec<ast::Stmt>, test_name: Atom) -> ast::Stmt {
           spread: None,
           expr: Box::new(ast::Expr::Lit(ast::Lit::Str(ast::Str {
             span: DUMMY_SP,
-            value: test_name,
+            value: test_name.into(),
             raw: None,
           }))),
         },
@@ -1307,6 +1312,7 @@ Deno.test("file:///main.ts$3-8.ts", async ()=>{
         maybe_headers: None,
         mtime: None,
         source: test.input.source.as_bytes().into(),
+        loaded_from: deno_cache_dir::file_fetcher::LoadedFrom::Local,
       };
       let got_decoded = extract_doc_tests(file)
         .unwrap()
@@ -1544,6 +1550,7 @@ add('1', '2');
         maybe_headers: None,
         mtime: None,
         source: test.input.source.as_bytes().into(),
+        loaded_from: deno_cache_dir::file_fetcher::LoadedFrom::Local,
       };
       let got_decoded = extract_snippet_files(file)
         .unwrap()

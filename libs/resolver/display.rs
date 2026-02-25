@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 //! It would be best to move these utilities out of this
 //! crate as this is not specific to resolution, but for
@@ -6,8 +6,8 @@
 use std::fmt::Write as _;
 
 use deno_terminal::colors;
-use dissimilar::diff as difference;
 use dissimilar::Chunk;
+use dissimilar::diff as difference;
 
 /// Print diff of the same file_path, before and after formatting.
 ///

@@ -8,7 +8,7 @@ Initialize @denotest/bin@1.0.0
 [UNORDERED_END]
 Updated 3 dependencies:
 [UNORDERED_START]
- - npm:@denotest/bin                              0.6.0 -> 1.0.0
- - npm:@denotest/breaking-change-between-versions 1.0.0 -> 2.0.0
- - npm:@denotest/has-patch-versions               0.1.0 -> 0.2.0
+ - npm:@denotest/bin                              ^0.6.0 -> ^1.0.0
+ - npm:@denotest/breaking-change-between-versions  1.0.0 ->  2.0.0
+ - npm:@denotest/has-patch-versions               ^0.1.0 -> ^0.2.0
 [UNORDERED_END]

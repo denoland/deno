@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // @ts-check
 /// <reference path="../../core/internal.d.ts" />
@@ -18,12 +18,13 @@ const {
   ObjectPrototypeIsPrototypeOf,
   ObjectSetPrototypeOf,
   ReflectConstruct,
+  ReflectHas,
   Symbol,
   SymbolFor,
 } = primordials;
 
 import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
+import { createFilteredInspectProxy } from "./01_console.js";
 
 const _name = Symbol("name");
 const _message = Symbol("message");
@@ -95,21 +96,43 @@ class DOMException {
   [_code];
 
   // https://webidl.spec.whatwg.org/#dom-domexception-domexception
-  constructor(message = "", name = "Error") {
+  // Since Node.js allows the second argument to accept an options object, we need to support that
+  // https://github.com/nodejs/node/blob/9e201e61fd8e4b8bfb74409151cbcbbc7377ca67/lib/internal/per_context/domexception.js#L82-L96
+  constructor(message = "", options = "Error") {
     message = webidl.converters.DOMString(
       message,
       "Failed to construct 'DOMException'",
       "Argument 1",
     );
-    name = webidl.converters.DOMString(
-      name,
-      "Failed to construct 'DOMException'",
-      "Argument 2",
-    );
-    const code = nameToCodeMapping[name] ?? 0;
 
     // execute Error constructor to have stack property and [[ErrorData]] internal slot
     const error = ReflectConstruct(Error, [], new.target);
+
+    let name;
+    if (options !== null && typeof options === "object") {
+      name = webidl.converters.DOMString(
+        options.name,
+        "Failed to construct 'DOMException'",
+        "Argument 2",
+      );
+      if (ReflectHas(options, "cause")) {
+        ObjectDefineProperty(error, "cause", {
+          __proto__: null,
+          value: options.cause,
+          configurable: true,
+          writable: true,
+          enumerable: false,
+        });
+      }
+    } else {
+      name = webidl.converters.DOMString(
+        options,
+        "Failed to construct 'DOMException'",
+        "Argument 2",
+      );
+    }
+    const code = nameToCodeMapping[name] ?? 0;
+
     error[_message] = message;
     error[_name] = name;
     error[_code] = code;

@@ -1,0 +1,24 @@
+name: 'pr'
+
+on:
+  pull_request_target:
+    types:
+      - opened
+      - edited
+      - synchronize
+
+# WARNING: This workflow runs in the context of the base repository so the
+# GITHUB_TOKEN it has access to has full write permissions to the repository.
+jobs:
+  main:
+    name: lint title
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: canary
+      - name: Lint
+        env:
+          PR_TITLE: '${{ github.event.pull_request.title }}'
+        run: deno run https://raw.githubusercontent.com/denoland/deno/refs/heads/main/tools/verify_pr_title.js "$PR_TITLE"

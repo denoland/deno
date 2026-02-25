@@ -1,0 +1,65 @@
+# original
+{
+  "version": "5",
+  "specifiers": {
+    "jsr:@pkg/a@1": "1.0.0",
+    "jsr:@pkg/b@1": "1.0.0",
+    "npm:dep@1": "1"
+  },
+  "jsr": {
+    "@pkg/a@1.0.0": {
+      "integrity": "8c7df175465d994c0e3568e3eb91102768c2f1c86d2a513d7fc4cab13f9cb328",
+      "dependencies": [
+        "npm:dep@1"
+      ]
+    },
+    "@pkg/b@1.0.0": {
+      "integrity": "8c7df175465d994c0e3568e3eb91102768c2f1c86d2a513d7fc4cab13f9cb328",
+      "dependencies": [
+        "npm:dep@1"
+      ]
+    }
+  },
+  "npm": {
+    "dep@1.0.0": {
+      "integrity": "sha512-30iZtAPgz+LTIYoeivqYo853f02jBYSd5uGnGpkFV0M3xOt9aN73erkgYAmZU43x4VfqcnLxW9Kpg3R5LC4YYw=="
+    }
+  },
+  "workspace": {
+    "dependencies": [
+      "jsr:@pkg/a@1",
+      "jsr:@pkg/b@1"
+    ]
+  }
+}
+
+
+# remove @pkg/a
+{
+  "dependencies": [
+    "jsr:@pkg/b@1"
+  ]
+}
+
+# output
+{
+  "version": "5",
+  "specifiers": {
+    "jsr:@pkg/b@1": "1.0.0"
+  },
+  "jsr": {
+    "@pkg/b@1.0.0": {
+      "integrity": "8c7df175465d994c0e3568e3eb91102768c2f1c86d2a513d7fc4cab13f9cb328"
+    }
+  },
+  "npm": {
+    "dep@1.0.0": {
+      "integrity": "sha512-30iZtAPgz+LTIYoeivqYo853f02jBYSd5uGnGpkFV0M3xOt9aN73erkgYAmZU43x4VfqcnLxW9Kpg3R5LC4YYw=="
+    }
+  },
+  "workspace": {
+    "dependencies": [
+      "jsr:@pkg/b@1"
+    ]
+  }
+}

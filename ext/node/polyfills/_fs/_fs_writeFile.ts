@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
@@ -8,58 +8,107 @@ import { pathFromURL } from "ext:deno_web/00_infra.js";
 import { Buffer } from "node:buffer";
 import {
   CallbackWithError,
-  checkEncoding,
-  getEncoding,
-  getOpenOptions,
+  getValidatedEncoding,
   isFileOptions,
   WriteFileOptions,
 } from "ext:deno_node/_fs/_fs_common.ts";
-import { isWindows } from "ext:deno_node/_util/os.ts";
 import {
   AbortError,
-  denoErrorToNodeError,
+  denoWriteFileErrorToNodeError,
 } from "ext:deno_node/internal/errors.ts";
 import {
+  constants,
   validateStringAfterArrayBufferView,
 } from "ext:deno_node/internal/fs/utils.mjs";
 import { promisify } from "ext:deno_node/internal/util.mjs";
 import { FileHandle } from "ext:deno_node/internal/fs/handle.ts";
 import { FsFile } from "ext:deno_fs/30_fs.js";
+import { openPromise, openSync } from "ext:deno_node/_fs/_fs_open.ts";
+import { isIterable } from "ext:deno_node/internal/streams/utils.js";
+import { primordials } from "ext:core/mod.js";
+import type { BufferEncoding } from "ext:deno_node/_global.d.ts";
+import { URLPrototype } from "ext:deno_web/00_url.js";
+import { validateFunction } from "ext:deno_node/internal/validators.mjs";
+
+type WriteFileSyncData =
+  | string
+  | DataView
+  | NodeJS.TypedArray
+  | Iterable<NodeJS.TypedArray | string>;
+
+type WriteFileData =
+  | string
+  | DataView
+  | NodeJS.TypedArray
+  | AsyncIterable<NodeJS.TypedArray | string>;
+
+const {
+  kWriteFileMaxChunkSize,
+} = constants;
+
+const {
+  ArrayBufferIsView,
+  MathMin,
+  ObjectPrototypeIsPrototypeOf,
+  SymbolFor,
+  Uint8Array,
+} = primordials;
 
 interface Writer {
-  write(p: Uint8Array): Promise<number>;
+  write(p: NodeJS.TypedArray): Promise<number>;
+  writeSync(p: NodeJS.TypedArray): number;
+}
+
+async function getRid(
+  pathOrRid: string | number,
+  flag: string = "w",
+): Promise<number> {
+  if (typeof pathOrRid === "number") {
+    return pathOrRid;
+  }
+  const fileHandle = await openPromise(pathOrRid, flag);
+  return fileHandle.fd;
+}
+
+function getRidSync(pathOrRid: string | number, flag: string = "w"): number {
+  if (typeof pathOrRid === "number") {
+    return pathOrRid;
+  }
+  return openSync(pathOrRid, flag);
 }
 
 export function writeFile(
   pathOrRid: string | number | URL | FileHandle,
-  data: string | Uint8Array,
-  optOrCallback: Encodings | CallbackWithError | WriteFileOptions | undefined,
+  data: WriteFileData,
+  options: Encodings | CallbackWithError | WriteFileOptions | undefined,
   callback?: CallbackWithError,
 ) {
-  const callbackFn: CallbackWithError | undefined =
-    optOrCallback instanceof Function ? optOrCallback : callback;
-  const options: Encodings | WriteFileOptions | undefined =
-    optOrCallback instanceof Function ? undefined : optOrCallback;
+  let flag: string | undefined;
+  let mode: number | undefined;
+  let signal: AbortSignal | undefined;
 
-  if (!callbackFn) {
-    throw new TypeError("Callback must be a function.");
+  if (typeof options === "function") {
+    callback = options;
+    options = undefined;
   }
 
-  pathOrRid = pathOrRid instanceof URL ? pathFromURL(pathOrRid) : pathOrRid;
-  pathOrRid = pathOrRid instanceof FileHandle ? pathOrRid.fd : pathOrRid;
+  validateFunction(callback, "callback");
 
-  const flag: string | undefined = isFileOptions(options)
-    ? options.flag
-    : undefined;
+  if (ObjectPrototypeIsPrototypeOf(URLPrototype, pathOrRid)) {
+    pathOrRid = pathFromURL(pathOrRid as URL);
+  } else if (ObjectPrototypeIsPrototypeOf(FileHandle.prototype, pathOrRid)) {
+    pathOrRid = (pathOrRid as FileHandle).fd;
+  }
 
-  const mode: number | undefined = isFileOptions(options)
-    ? options.mode
-    : undefined;
+  if (isFileOptions(options)) {
+    flag = options.flag;
+    mode = options.mode;
+    signal = options.signal;
+  }
 
-  const encoding = checkEncoding(getEncoding(options)) || "utf8";
-  const openOptions = getOpenOptions(flag || "w");
+  const encoding = getValidatedEncoding(options) || "utf8";
 
-  if (!ArrayBuffer.isView(data)) {
+  if (!ArrayBufferIsView(data) && !isCustomIterable(data)) {
     validateStringAfterArrayBufferView(data, "data");
     data = Buffer.from(data, encoding);
   }
@@ -70,57 +119,57 @@ export function writeFile(
   let error: Error | null = null;
   (async () => {
     try {
-      file = isRid
-        ? new FsFile(pathOrRid as number, Symbol.for("Deno.internal.FsFile"))
-        : await Deno.open(pathOrRid as string, openOptions);
+      const rid = await getRid(pathOrRid as string | number, flag);
+      file = new FsFile(rid, SymbolFor("Deno.internal.FsFile"));
+      checkAborted(signal);
 
-      // ignore mode because it's not supported on windows
-      // TODO(@bartlomieju): remove `!isWindows` when `Deno.chmod` is supported
-      if (!isRid && mode && !isWindows) {
+      if (!isRid && mode) {
         await Deno.chmod(pathOrRid as string, mode);
+        checkAborted(signal);
       }
 
-      const signal: AbortSignal | undefined = isFileOptions(options)
-        ? options.signal
-        : undefined;
-      await writeAll(file, data as Uint8Array, { signal });
+      await writeAll(
+        file,
+        data as (Exclude<WriteFileData, string>),
+        encoding,
+        signal,
+      );
     } catch (e) {
-      error = e instanceof Error
-        ? denoErrorToNodeError(e, { syscall: "write" })
-        : new Error("[non-error thrown]");
+      error = denoWriteFileErrorToNodeError(e as Error, { syscall: "write" });
     } finally {
       // Make sure to close resource
       if (!isRid && file) file.close();
-      callbackFn(error);
+      callback(error);
     }
   })();
 }
 
 export const writeFilePromise = promisify(writeFile) as (
-  pathOrRid: string | number | URL,
-  data: string | Uint8Array,
+  pathOrRid: string | number | URL | FileHandle,
+  data: WriteFileData,
   options?: Encodings | WriteFileOptions,
 ) => Promise<void>;
 
 export function writeFileSync(
   pathOrRid: string | number | URL,
-  data: string | Uint8Array,
+  data: WriteFileSyncData,
   options?: Encodings | WriteFileOptions,
 ) {
-  pathOrRid = pathOrRid instanceof URL ? pathFromURL(pathOrRid) : pathOrRid;
+  let flag: string | undefined;
+  let mode: number | undefined;
 
-  const flag: string | undefined = isFileOptions(options)
-    ? options.flag
-    : undefined;
+  pathOrRid = ObjectPrototypeIsPrototypeOf(URLPrototype, pathOrRid)
+    ? pathFromURL(pathOrRid as URL)
+    : pathOrRid as string | number;
 
-  const mode: number | undefined = isFileOptions(options)
-    ? options.mode
-    : undefined;
+  if (isFileOptions(options)) {
+    flag = options.flag;
+    mode = options.mode;
+  }
 
-  const encoding = checkEncoding(getEncoding(options)) || "utf8";
-  const openOptions = getOpenOptions(flag || "w");
+  const encoding = getValidatedEncoding(options) || "utf8";
 
-  if (!ArrayBuffer.isView(data)) {
+  if (!ArrayBufferIsView(data) && !isCustomIterable(data)) {
     validateStringAfterArrayBufferView(data, "data");
     data = Buffer.from(data, encoding);
   }
@@ -130,25 +179,20 @@ export function writeFileSync(
 
   let error: Error | null = null;
   try {
-    file = isRid
-      ? new FsFile(pathOrRid as number, Symbol.for("Deno.internal.FsFile"))
-      : Deno.openSync(pathOrRid as string, openOptions);
+    const rid = getRidSync(pathOrRid, flag);
+    file = new FsFile(rid, SymbolFor("Deno.internal.FsFile"));
 
-    // ignore mode because it's not supported on windows
-    // TODO(@bartlomieju): remove `!isWindows` when `Deno.chmod` is supported
-    if (!isRid && mode && !isWindows) {
+    if (!isRid && mode) {
       Deno.chmodSync(pathOrRid as string, mode);
     }
 
-    // TODO(crowlKats): duplicate from runtime/js/13_buffer.js
-    let nwritten = 0;
-    while (nwritten < (data as Uint8Array).length) {
-      nwritten += file.writeSync((data as Uint8Array).subarray(nwritten));
-    }
+    writeAllSync(
+      file,
+      data as (Exclude<WriteFileSyncData, string>),
+      encoding,
+    );
   } catch (e) {
-    error = e instanceof Error
-      ? denoErrorToNodeError(e, { syscall: "write" })
-      : new Error("[non-error thrown]");
+    error = denoWriteFileErrorToNodeError(e as Error, { syscall: "write" });
   } finally {
     // Make sure to close resource
     if (!isRid && file) file.close();
@@ -157,30 +201,88 @@ export function writeFileSync(
   if (error) throw error;
 }
 
-interface WriteAllOptions {
-  offset?: number;
-  length?: number;
-  signal?: AbortSignal;
+function writeAllSync(
+  w: Writer,
+  data: Exclude<WriteFileSyncData, string>,
+  encoding: BufferEncoding,
+) {
+  if (!isCustomIterable(data)) {
+    data = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+    let remaining = data.byteLength;
+    while (remaining > 0) {
+      const bytesWritten = w.writeSync(
+        data.subarray(data.byteLength - remaining),
+      );
+      remaining -= bytesWritten;
+    }
+  } else {
+    for (const buf of data) {
+      let toWrite = ArrayBufferIsView(buf) ? buf : Buffer.from(buf, encoding);
+      toWrite = new Uint8Array(
+        toWrite.buffer,
+        toWrite.byteOffset,
+        toWrite.byteLength,
+      );
+      let remaining = toWrite.byteLength;
+      while (remaining > 0) {
+        const bytesWritten = w.writeSync(
+          toWrite.subarray(toWrite.byteLength - remaining),
+        );
+        remaining -= bytesWritten;
+      }
+    }
+  }
 }
+
 async function writeAll(
   w: Writer,
-  arr: Uint8Array,
-  options: WriteAllOptions = {},
+  data: Exclude<WriteFileData, string>,
+  encoding: BufferEncoding,
+  signal?: AbortSignal,
 ) {
-  const { offset = 0, length = arr.byteLength, signal } = options;
-  checkAborted(signal);
-
-  const written = await w.write(arr.subarray(offset, offset + length));
-
-  if (written === length) {
-    return;
+  if (!isCustomIterable(data)) {
+    data = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+    let remaining = data.byteLength;
+    while (remaining > 0) {
+      const writeSize = MathMin(kWriteFileMaxChunkSize, remaining);
+      const offset = data.byteLength - remaining;
+      const bytesWritten = await w.write(
+        data.subarray(offset, offset + writeSize),
+      );
+      remaining -= bytesWritten;
+      checkAborted(signal);
+    }
+  } else {
+    for await (const buf of data) {
+      checkAborted(signal);
+      let toWrite = ArrayBufferIsView(buf) ? buf : Buffer.from(buf, encoding);
+      toWrite = new Uint8Array(
+        toWrite.buffer,
+        toWrite.byteOffset,
+        toWrite.byteLength,
+      );
+      let remaining = toWrite.byteLength;
+      while (remaining > 0) {
+        const writeSize = MathMin(kWriteFileMaxChunkSize, remaining);
+        const offset = toWrite.byteLength - remaining;
+        const bytesWritten = await w.write(
+          toWrite.subarray(offset, offset + writeSize),
+        );
+        remaining -= bytesWritten;
+        checkAborted(signal);
+      }
+    }
   }
 
-  await writeAll(w, arr, {
-    offset: offset + written,
-    length: length - written,
-    signal,
-  });
+  checkAborted(signal);
+}
+
+function isCustomIterable(
+  obj: unknown,
+): obj is
+  | Iterable<NodeJS.TypedArray | string>
+  | AsyncIterable<NodeJS.TypedArray | string> {
+  return isIterable(obj) && !ArrayBufferIsView(obj) && typeof obj !== "string";
 }
 
 function checkAborted(signal?: AbortSignal) {

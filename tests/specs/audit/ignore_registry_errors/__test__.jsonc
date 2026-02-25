@@ -1,0 +1,16 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "install",
+      "output": "install.out"
+    },
+    {
+      "args": "audit --ignore-registry-errors",
+      "output": "audit.out",
+      "envs": {
+        "NPM_CONFIG_REGISTRY": "http://localhost:1234/non/existent/for/sure"
+      }
+    }
+  ]
+}

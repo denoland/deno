@@ -1,3 +1,5 @@
-[WILDCARD]error: Relative import path "foo" not prefixed with / or ./ or ../
-  hint: If you want to use a JSR or npm package, try running `deno add jsr:foo` or `deno add npm:foo`
+[WILDCARD]TS2307 [ERROR]: Import "foo" not a dependency
+  hint: If you want to use the npm package, try running `deno add npm:foo`
     at file:///[WILDCARD]/095_cache_with_bare_import.ts:[WILDCARD]
+
+error: Type checking failed.

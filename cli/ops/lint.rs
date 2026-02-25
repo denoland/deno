@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
@@ -6,8 +6,10 @@ use deno_ast::ParseDiagnostic;
 use deno_ast::SourceRange;
 use deno_ast::SourceTextInfo;
 use deno_ast::SourceTextProvider;
-use deno_core::op2;
+use deno_core::FromV8;
 use deno_core::OpState;
+use deno_core::convert::Uint8Array;
+use deno_core::op2;
 use deno_lint::diagnostic::LintDiagnostic;
 use deno_lint::diagnostic::LintDiagnosticDetails;
 use deno_lint::diagnostic::LintDiagnosticRange;
@@ -204,13 +206,13 @@ pub enum LintError {
 }
 
 #[op2]
-#[buffer]
 #[allow(clippy::result_large_err)]
 fn op_lint_create_serialized_ast(
   #[string] file_name: &str,
   #[string] source: String,
-) -> Result<Vec<u8>, LintError> {
+) -> Result<Uint8Array, LintError> {
   let file_text = deno_ast::strip_bom(source);
+  #[allow(clippy::disallowed_methods)] // allow a cwd lookup here
   let path = std::env::current_dir()?.join(file_name);
   let specifier = ModuleSpecifier::from_file_path(&path)
     .map_err(|_| LintError::PathParse(path))?;
@@ -224,10 +226,10 @@ fn op_lint_create_serialized_ast(
     maybe_syntax: None,
   })?;
   let utf16_map = Utf16Map::new(parsed_source.text().as_ref());
-  Ok(lint::serialize_ast_to_buffer(&parsed_source, &utf16_map))
+  Ok(lint::serialize_ast_to_buffer(&parsed_source, &utf16_map).into())
 }
 
-#[derive(serde::Deserialize)]
+#[derive(FromV8)]
 struct LintReportFix {
   text: String,
   range: (usize, usize),
@@ -236,7 +238,9 @@ struct LintReportFix {
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum LintReportError {
   #[class(type)]
-  #[error("Invalid range [{start}, {end}], the source has a range of [0, {source_end}]")]
+  #[error(
+    "Invalid range [{start}, {end}], the source has a range of [0, {source_end}]"
+  )]
   IncorrectRange {
     start: usize,
     end: usize,
@@ -252,7 +256,7 @@ fn op_lint_report(
   #[string] hint: Option<String>,
   #[smi] start_utf16: usize,
   #[smi] end_utf16: usize,
-  #[serde] fix: Vec<LintReportFix>,
+  #[scoped] fix: Vec<LintReportFix>,
 ) -> Result<(), LintReportError> {
   let container = state.borrow_mut::<LintPluginContainer>();
   container.report(id, message, hint, start_utf16, end_utf16, fix)?;

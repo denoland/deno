@@ -1,0 +1,68 @@
+{
+  "tempDir": true,
+  "tests": {
+    "local_file_mapping": {
+      "steps": [
+        {
+          "args": "run foo",
+          "output": "local_file.out"
+        },
+        {
+          "args": "run ./src/app.ts",
+          "output": "direct_file.out"
+        }
+      ]
+    },
+    "npm_nmd_none": {
+      "args": "run --node-modules-dir=none bar hello test",
+      "output": "npm.out"
+    },
+    "npm_nmd_auto": {
+      "args": "run --node-modules-dir=auto bar hello test",
+      "output": "npm.out"
+    },
+    "npm_nmd_manual": {
+      "steps": [
+        {
+          "args": "i --node-modules-dir=manual",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "run --node-modules-dir=manual bar hello test",
+          "output": "npm.out"
+        }
+      ]
+    },
+    "jsr_bin": {
+      "args": "run baz",
+      "output": "jsr_specifier.out",
+      "exitCode": 1
+    },
+    "relative_path_not_mapped": {
+      "args": "run ./thing.ts",
+      "output": "relative_mapping.out"
+    },
+    "absolute_path_not_mapped": {
+      "steps": [
+        {
+          "if": "unix",
+          "args": "run /var/thisshouldnotexist.js",
+          "output": "absolute_unix.out",
+          "exitCode": 1
+        },
+        {
+          "if": "windows",
+          "args": "run C:\\var\\thisshouldnotexist.js",
+          "output": "absolute_windows.out",
+          "exitCode": 1
+        },
+        {
+          "if": "windows",
+          "args": "run C:/var/thisshouldnotexist.js",
+          "output": "absolute_windows.out",
+          "exitCode": 1
+        }
+      ]
+    }
+  }
+}

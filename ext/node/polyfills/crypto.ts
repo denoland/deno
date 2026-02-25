@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
@@ -143,8 +143,8 @@ import type {
 import {
   createHash,
   getHashes,
-  Hash,
-  Hmac,
+  Hash as Hash_,
+  Hmac as Hmac_,
 } from "ext:deno_node/internal/crypto/hash.ts";
 import { X509Certificate } from "ext:deno_node/internal/crypto/x509.ts";
 import type {
@@ -164,15 +164,25 @@ import type {
   TransformOptions,
   WritableOptions,
 } from "ext:deno_node/_stream.d.ts";
-import {
-  normalizeEncoding,
-} from "ext:deno_node/internal/normalize_encoding.mjs";
+import { normalizeEncoding } from "ext:deno_node/internal/util.mjs";
 import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
 import { validateString } from "ext:deno_node/internal/validators.mjs";
 import { crypto as webcrypto } from "ext:deno_crypto/00_crypto.js";
+import { deprecate } from "node:util";
 
 const subtle = webcrypto.subtle;
 const fipsForced = getOptionValue("--force-fips");
+
+const Hash = deprecate(
+  Hash_,
+  "crypto.Hash constructor is deprecated.",
+  "DEP0179",
+);
+const Hmac = deprecate(
+  Hmac_,
+  "crypto.Hmac constructor is deprecated.",
+  "DEP0181",
+);
 
 function getRandomValues(typedArray) {
   return webcrypto.getRandomValues(typedArray);
@@ -319,7 +329,7 @@ function createHmac(
   key: string | ArrayBuffer | KeyObject,
   options?: TransformOptions,
 ) {
-  return Hmac(hmac, key, options);
+  return Hmac_(hmac, key, options);
 }
 
 function createSign(algorithm: string, options?: WritableOptions): Sign {

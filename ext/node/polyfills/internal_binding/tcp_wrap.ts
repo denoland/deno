@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -29,10 +29,10 @@
 
 import { op_net_connect_tcp } from "ext:core/ops";
 import { TcpConn } from "ext:deno_net/01_net.js";
-import { core } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 const { internalFdSymbol } = core;
+const { Error } = primordials;
 import { notImplemented } from "ext:deno_node/_utils.ts";
-import { unreachable } from "ext:deno_node/_util/asserts.ts";
 import { ConnectionWrap } from "ext:deno_node/internal_binding/connection_wrap.ts";
 import {
   AsyncWrap,
@@ -43,7 +43,7 @@ import { ownerSymbol } from "ext:deno_node/internal_binding/symbols.ts";
 import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
 import { delay } from "ext:deno_node/_util/async.ts";
 import { kStreamBaseField } from "ext:deno_node/internal_binding/stream_wrap.ts";
-import { isIP } from "ext:deno_node/internal/net.ts";
+import { getIPFamily } from "ext:deno_node/internal/net.ts";
 import {
   ceilPowOf2,
   INITIAL_ACCEPT_BACKOFF_DELAY,
@@ -59,7 +59,7 @@ enum socketType {
 
 interface AddressInfo {
   address: string;
-  family?: number;
+  family?: string;
   port: number;
 }
 
@@ -95,7 +95,7 @@ export class TCP extends ConnectionWrap {
   #port?: number;
 
   #remoteAddress?: string;
-  #remoteFamily?: number;
+  #remoteFamily?: string;
   #remotePort?: number;
 
   #backlog?: number;
@@ -127,7 +127,7 @@ export class TCP extends ConnectionWrap {
         break;
       }
       default: {
-        unreachable();
+        throw new Error("Unreachable code");
       }
     }
 
@@ -143,7 +143,7 @@ export class TCP extends ConnectionWrap {
       const remoteAddr = conn.remoteAddr as Deno.NetAddr;
       this.#remoteAddress = remoteAddr.hostname;
       this.#remotePort = remoteAddr.port;
-      this.#remoteFamily = isIP(remoteAddr.hostname);
+      this.#remoteFamily = getIPFamily(remoteAddr.hostname);
     }
   }
 
@@ -279,7 +279,7 @@ export class TCP extends ConnectionWrap {
 
     sockname.address = this.#address;
     sockname.port = this.#port;
-    sockname.family = isIP(this.#address);
+    sockname.family = getIPFamily(this.#address);
 
     return 0;
   }
@@ -375,7 +375,7 @@ export class TCP extends ConnectionWrap {
   #connect(req: TCPConnectWrap, address: string, port: number): number {
     this.#remoteAddress = address;
     this.#remotePort = port;
-    this.#remoteFamily = isIP(address);
+    this.#remoteFamily = getIPFamily(address);
 
     op_net_connect_tcp(
       { hostname: address ?? "127.0.0.1", port },

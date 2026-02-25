@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
@@ -35,19 +35,26 @@ import {
   getArrayBufferOrView,
   KeyObject,
 } from "ext:deno_node/internal/crypto/keys.ts";
+import { isKeyObject } from "ext:deno_node/internal/crypto/_keys.ts";
 import type { BufferEncoding } from "ext:deno_node/_global.d.ts";
 import type {
   BinaryLike,
   Encoding,
 } from "ext:deno_node/internal/crypto/types.ts";
 import { getDefaultEncoding } from "ext:deno_node/internal/crypto/util.ts";
-import { ERR_INVALID_ARG_VALUE } from "ext:deno_node/internal/errors.ts";
+import {
+  ERR_INVALID_ARG_VALUE,
+  ERR_UNKNOWN_ENCODING,
+} from "ext:deno_node/internal/errors.ts";
 
 import {
   isAnyArrayBuffer,
   isArrayBufferView,
 } from "ext:deno_node/internal/util/types.ts";
 import { ERR_CRYPTO_INVALID_STATE } from "ext:deno_node/internal/errors.ts";
+import { StringDecoder } from "node:string_decoder";
+import assert from "node:assert";
+import { normalizeEncoding } from "ext:deno_node/internal/util.mjs";
 
 const FastBuffer = Buffer[SymbolSpecies];
 
@@ -169,11 +176,15 @@ export class Cipheriv extends Transform implements Cipher {
   /** plaintext data cache */
   #cache: BlockModeCache;
 
+  #decoder?: StringDecoder;
+
   #needsBlockCache: boolean;
 
   #authTag?: Buffer;
 
   #autoPadding = true;
+
+  #finalized = false;
 
   constructor(
     cipher: string,
@@ -181,6 +192,8 @@ export class Cipheriv extends Transform implements Cipher {
     iv: BinaryLike | null,
     options?: TransformOptions,
   ) {
+    const authTagLength = getUIntOption(options, "authTagLength");
+
     super({
       transform(chunk, encoding, cb) {
         this.push(this.update(chunk, encoding));
@@ -193,7 +206,12 @@ export class Cipheriv extends Transform implements Cipher {
       ...options,
     });
     this.#cache = new BlockModeCache(false);
-    this.#context = op_node_create_cipheriv(cipher, toU8(key), toU8(iv));
+    this.#context = op_node_create_cipheriv(
+      cipher,
+      toU8(key),
+      toU8(iv),
+      authTagLength,
+    );
     this.#needsBlockCache =
       !(cipher == "aes-128-gcm" || cipher == "aes-256-gcm" ||
         cipher == "aes-128-ctr" || cipher == "aes-192-ctr" ||
@@ -204,12 +222,23 @@ export class Cipheriv extends Transform implements Cipher {
   }
 
   final(encoding: string = getDefaultEncoding()): Buffer | string {
+    if (this.#finalized) {
+      throw new ERR_CRYPTO_INVALID_STATE("final");
+    }
+
+    this.#lazyInitDecoder(encoding);
+
     const buf = new FastBuffer(16);
-    if (this.#cache.cache.byteLength == 0) {
+    const hasNoBufferedData = this.#cache.cache.byteLength === 0;
+    const shouldPadEmptyBlock = this.#needsBlockCache && this.#autoPadding;
+
+    if (hasNoBufferedData && !shouldPadEmptyBlock) {
       const maybeTag = op_node_cipheriv_take(this.#context);
       if (maybeTag) this.#authTag = Buffer.from(maybeTag);
+      this.#finalized = true;
       return encoding === "buffer" ? Buffer.from([]) : "";
     }
+
     if (!this.#autoPadding && this.#cache.cache.byteLength != 16) {
       throw new Error("Invalid final block size");
     }
@@ -221,9 +250,16 @@ export class Cipheriv extends Transform implements Cipher {
     );
     if (maybeTag) {
       this.#authTag = Buffer.from(maybeTag);
+      this.#finalized = true;
       return encoding === "buffer" ? Buffer.from([]) : "";
     }
-    return encoding === "buffer" ? buf : buf.toString(encoding);
+
+    this.#finalized = true;
+    if (encoding !== "buffer") {
+      return this.#decoder!.end(buf);
+    }
+
+    return buf;
   }
 
   getAuthTag(): Buffer {
@@ -253,19 +289,27 @@ export class Cipheriv extends Transform implements Cipher {
     inputEncoding?: Encoding,
     outputEncoding: Encoding = getDefaultEncoding(),
   ): Buffer | string {
+    if (this.#finalized) {
+      throw new ERR_CRYPTO_INVALID_STATE("update");
+    }
+
     // TODO(kt3k): throw ERR_INVALID_ARG_TYPE if data is not string, Buffer, or ArrayBufferView
     let buf = data;
     if (typeof data === "string") {
       buf = Buffer.from(data, inputEncoding);
     }
+    this.#lazyInitDecoder(outputEncoding);
 
-    let output;
+    let output: Buffer;
     if (!this.#needsBlockCache) {
       output = Buffer.allocUnsafe(buf.length);
       op_node_cipheriv_encrypt(this.#context, buf, output);
-      return outputEncoding === "buffer"
-        ? output
-        : output.toString(outputEncoding);
+
+      if (outputEncoding !== "buffer") {
+        return this.#decoder!.write(output);
+      }
+
+      return output;
     }
 
     this.#cache.add(buf);
@@ -277,9 +321,28 @@ export class Cipheriv extends Transform implements Cipher {
       output = Buffer.allocUnsafe(input.length);
       op_node_cipheriv_encrypt(this.#context, input, output);
     }
-    return outputEncoding === "buffer"
-      ? output
-      : output.toString(outputEncoding);
+
+    if (outputEncoding !== "buffer") {
+      return this.#decoder!.write(output);
+    }
+
+    return output;
+  }
+
+  #lazyInitDecoder(encoding: string) {
+    if (encoding === "buffer") {
+      return;
+    }
+
+    const normalizedEncoding = normalizeEncoding(encoding);
+    this.#decoder ||= new StringDecoder(normalizedEncoding);
+
+    if (this.#decoder.encoding !== normalizedEncoding) {
+      if (normalizedEncoding === undefined) {
+        throw new ERR_UNKNOWN_ENCODING(encoding);
+      }
+      assert(false, "Cannot change encoding");
+    }
   }
 }
 
@@ -345,9 +408,13 @@ export class Decipheriv extends Transform implements Cipher {
   /** ciphertext data cache */
   #cache: BlockModeCache;
 
+  #decoder?: StringDecoder;
+
   #needsBlockCache: boolean;
 
   #authTag?: BinaryLike;
+
+  #finalized = false;
 
   constructor(
     cipher: string,
@@ -385,6 +452,12 @@ export class Decipheriv extends Transform implements Cipher {
   }
 
   final(encoding: string = getDefaultEncoding()): Buffer | string {
+    if (this.#finalized) {
+      throw new ERR_CRYPTO_INVALID_STATE("final");
+    }
+
+    this.#lazyInitDecoder(encoding);
+
     let buf = new FastBuffer(16);
     op_node_decipheriv_final(
       this.#context,
@@ -395,6 +468,7 @@ export class Decipheriv extends Transform implements Cipher {
     );
 
     if (!this.#needsBlockCache || this.#cache.cache.byteLength === 0) {
+      this.#finalized = true;
       return encoding === "buffer" ? Buffer.from([]) : "";
     }
     if (this.#cache.cache.byteLength != 16) {
@@ -402,7 +476,12 @@ export class Decipheriv extends Transform implements Cipher {
     }
 
     buf = buf.subarray(0, 16 - buf.at(-1)); // Padded in Pkcs7 mode
-    return encoding === "buffer" ? buf : buf.toString(encoding);
+    this.#finalized = true;
+    if (encoding !== "buffer") {
+      return this.#decoder!.end(buf);
+    }
+
+    return buf;
   }
 
   setAAD(
@@ -432,19 +511,27 @@ export class Decipheriv extends Transform implements Cipher {
     inputEncoding?: Encoding,
     outputEncoding: Encoding = getDefaultEncoding(),
   ): Buffer | string {
+    if (this.#finalized) {
+      throw new ERR_CRYPTO_INVALID_STATE("update");
+    }
+
     // TODO(kt3k): throw ERR_INVALID_ARG_TYPE if data is not string, Buffer, or ArrayBufferView
     let buf = data;
     if (typeof data === "string") {
       buf = Buffer.from(data, inputEncoding);
     }
+    this.#lazyInitDecoder(outputEncoding);
 
     let output;
     if (!this.#needsBlockCache) {
       output = Buffer.allocUnsafe(buf.length);
       op_node_decipheriv_decrypt(this.#context, buf, output);
-      return outputEncoding === "buffer"
-        ? output
-        : output.toString(outputEncoding);
+
+      if (outputEncoding !== "buffer") {
+        return this.#decoder!.write(output);
+      }
+
+      return output;
     }
 
     this.#cache.add(buf);
@@ -455,9 +542,28 @@ export class Decipheriv extends Transform implements Cipher {
       output = new FastBuffer(input.length);
       op_node_decipheriv_decrypt(this.#context, input, output);
     }
-    return outputEncoding === "buffer"
-      ? output
-      : output.toString(outputEncoding);
+
+    if (outputEncoding !== "buffer") {
+      return this.#decoder!.write(output);
+    }
+
+    return output;
+  }
+
+  #lazyInitDecoder(encoding: string) {
+    if (encoding === "buffer") {
+      return;
+    }
+
+    const normalizedEncoding = normalizeEncoding(encoding);
+    this.#decoder ||= new StringDecoder(normalizedEncoding);
+
+    if (this.#decoder.encoding !== normalizedEncoding) {
+      if (normalizedEncoding === undefined) {
+        throw new ERR_UNKNOWN_ENCODING(encoding);
+      }
+      assert(false, "Cannot change encoding");
+    }
   }
 }
 
@@ -496,10 +602,15 @@ export function publicEncrypt(
 
 export function prepareKey(key) {
   // TODO(@littledivy): handle these cases
-  // - node KeyObject
   // - web CryptoKey
   if (isStringOrBuffer(key)) {
     return { data: getArrayBufferOrView(key, "key") };
+  } else if (isKeyObject(key) && key.type === "public") {
+    const data = key.export({ type: "spki", format: "pem" });
+    return { data: getArrayBufferOrView(data, "key") };
+  } else if (isKeyObject(key) && key.type === "private") {
+    const data = key.export({ type: "pkcs8", format: "pem" });
+    return { data: getArrayBufferOrView(data, "key") };
   } else if (typeof key == "object") {
     const { key: data, encoding } = key;
     if (!isStringOrBuffer(data)) {

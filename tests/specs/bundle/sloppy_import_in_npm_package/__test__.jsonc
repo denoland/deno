@@ -1,0 +1,13 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "bundle -o out.js main.ts",
+      "output": "[WILDCARD]"
+    },
+    {
+      "args": "run out.js",
+      "output": "Hi foo\n"
+    }
+  ]
+}

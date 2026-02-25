@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -29,9 +29,10 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { unreachable } from "ext:deno_node/_util/asserts.ts";
 import { osType } from "ext:deno_node/_util/os.ts";
 import { uvTranslateSysError } from "ext:deno_node/internal_binding/_libuv_winerror.ts";
+import { primordials } from "ext:core/mod.js";
+const { Error } = primordials;
 
 // In Node these values are coming from libuv:
 // Ref: https://github.com/libuv/libuv/blob/v1.x/include/uv/errno.h
@@ -487,6 +488,10 @@ const errorToCodeOpenBSD: CodeMapData = codeToErrorOpenBSD.map((
   [status, [code]],
 ) => [code, status]);
 
+const unreachable = () => {
+  throw new Error("Unreachable code");
+};
+
 export const errorMap = new Map<number, [string, string]>(
   osType === "windows"
     ? codeToErrorWindows
@@ -544,4 +549,21 @@ export function errname(errno: number): string {
     return err[0];
   }
   return `UNKNOWN (${errno})`;
+}
+
+export function getErrorMessage(errno: number): string {
+  const err = errorMap.get(errno);
+
+  if (err) {
+    return err[1];
+  }
+  return `UNKNOWN (${errno})`;
+}
+
+export function getErrorMap(): Map<number, [string, string]> {
+  return errorMap;
+}
+
+export function getCodeMap(): Map<string, number> {
+  return codeMap;
 }

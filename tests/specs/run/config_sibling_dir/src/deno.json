@@ -1,0 +1,8 @@
+{
+  "imports": {
+    "api": "../api/index.ts"
+  },
+  "tasks": {
+    "run": "cd ../api && deno run --config=../src/deno.json ../src/main.ts"
+  }
+}

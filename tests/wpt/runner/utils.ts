@@ -1,8 +1,13 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 /// FLAGS
 
 import { parseArgs } from "@std/cli/parse-args";
-import { join, resolve, ROOT_PATH } from "../../../tools/util.js";
+import {
+  join,
+  resolve,
+  ROOT_PATH,
+  shouldSkipOnCi as shouldSkipOnCiGeneric,
+} from "../../../tools/util.js";
 
 export const {
   json,
@@ -25,7 +30,33 @@ export function denoBinary() {
   if (binary) {
     return resolve(binary);
   }
-  return join(ROOT_PATH, `./target/${release ? "release" : "debug"}/deno`);
+  const ext = Deno.build.os === "windows" ? ".exe" : "";
+  return join(
+    ROOT_PATH,
+    `./target/${release ? "release" : "debug"}/deno${ext}`,
+  );
+}
+
+/// CI SKIP CACHE
+
+async function getWptSubmoduleHash(): Promise<string> {
+  const gitResult = await new Deno.Command("git", {
+    args: ["rev-parse", "HEAD"],
+    cwd: join(ROOT_PATH, "tests", "wpt", "suite"),
+    stdout: "piped",
+    stderr: "piped",
+  }).output();
+  return new TextDecoder().decode(gitResult.stdout).trim();
+}
+
+export function shouldSkipOnCi(): Promise<boolean> {
+  const targetDir = join(ROOT_PATH, "target");
+  return shouldSkipOnCiGeneric("wpt", targetDir, async (hasher) => {
+    const hashDenoBinaryTask = hasher.hashFile(denoBinary());
+    const submoduleHash = await getWptSubmoduleHash();
+    await hashDenoBinaryTask;
+    hasher.writeSync(submoduleHash);
+  });
 }
 
 /// WPT TEST MANIFEST

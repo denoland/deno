@@ -9,16 +9,6 @@ disallowed-methods = [
   { path = "std::path::Path::read_link", reason = "File system operations should be done using sys_traits" },
   { path = "std::path::Path::symlink_metadata", reason = "File system operations should be done using sys_traits" },
   { path = "std::path::Path::try_exists", reason = "File system operations should be done using sys_traits" },
-  { path = "std::path::PathBuf::exists", reason = "File system operations should be done using sys_traits" },
-  { path = "std::path::PathBuf::canonicalize", reason = "File system operations should be done using sys_traits" },
-  { path = "std::path::PathBuf::is_dir", reason = "File system operations should be done using sys_traits" },
-  { path = "std::path::PathBuf::is_file", reason = "File system operations should be done using sys_traits" },
-  { path = "std::path::PathBuf::is_symlink", reason = "File system operations should be done using sys_traits" },
-  { path = "std::path::PathBuf::metadata", reason = "File system operations should be done using sys_traits" },
-  { path = "std::path::PathBuf::read_dir", reason = "File system operations should be done using sys_traits" },
-  { path = "std::path::PathBuf::read_link", reason = "File system operations should be done using sys_traits" },
-  { path = "std::path::PathBuf::symlink_metadata", reason = "File system operations should be done using sys_traits" },
-  { path = "std::path::PathBuf::try_exists", reason = "File system operations should be done using sys_traits" },
   { path = "std::env::set_current_dir", reason = "File system operations should be done using sys_traits" },
   { path = "std::env::temp_dir", reason = "File system operations should be done using sys_traits" },
   { path = "std::fs::canonicalize", reason = "File system operations should be done using sys_traits" },
@@ -48,5 +38,5 @@ disallowed-methods = [
   { path = "url::Url::from_directory_path", reason = "Use deno_path_util instead so it works in Wasm" },
 ]
 disallowed-types = [
-  { path = "std::sync::Arc", reason = "use crate::sync::MaybeArc instead" },
+  { path = "std::sync::Arc", reason = "use deno_maybe_sync::MaybeArc instead" },
 ]

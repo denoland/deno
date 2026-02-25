@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // This file is forked/ported from <https://github.com/evcxr/evcxr>
 // Copyright 2020 The Evcxr Authors. MIT license.
@@ -11,25 +11,25 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
 
+use deno_core::CancelFuture;
+use deno_core::CancelHandle;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
-use deno_core::CancelFuture;
-use deno_core::CancelHandle;
 use deno_lib::version::DENO_VERSION_INFO;
-use jupyter_runtime::messaging;
-use jupyter_runtime::ConnectionInfo;
-use jupyter_runtime::ExecutionCount;
-use jupyter_runtime::JupyterMessage;
-use jupyter_runtime::JupyterMessageContent;
+use jupyter_protocol::ConnectionInfo;
+use jupyter_protocol::ExecutionCount;
+use jupyter_protocol::JupyterMessage;
+use jupyter_protocol::JupyterMessageContent;
+use jupyter_protocol::ReplyError;
+use jupyter_protocol::ReplyStatus;
+use jupyter_protocol::StreamContent;
+use jupyter_protocol::messaging;
 use jupyter_runtime::KernelControlConnection;
 use jupyter_runtime::KernelIoPubConnection;
 use jupyter_runtime::KernelShellConnection;
-use jupyter_runtime::ReplyError;
-use jupyter_runtime::ReplyStatus;
-use jupyter_runtime::StreamContent;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use uuid::Uuid;
@@ -65,19 +65,28 @@ impl JupyterServer {
     let session_id = Uuid::new_v4().to_string();
 
     let mut heartbeat =
-      connection_info.create_kernel_heartbeat_connection().await?;
-    let shell_connection = connection_info
-      .create_kernel_shell_connection(&session_id)
-      .await?;
-    let control_connection = connection_info
-      .create_kernel_control_connection(&session_id)
-      .await?;
-    let mut stdin_connection = connection_info
-      .create_kernel_stdin_connection(&session_id)
-      .await?;
-    let iopub_connection = connection_info
-      .create_kernel_iopub_connection(&session_id)
-      .await?;
+      jupyter_runtime::create_kernel_heartbeat_connection(&connection_info)
+        .await?;
+    let shell_connection = jupyter_runtime::create_kernel_shell_connection(
+      &connection_info,
+      &session_id,
+    )
+    .await?;
+    let control_connection = jupyter_runtime::create_kernel_control_connection(
+      &connection_info,
+      &session_id,
+    )
+    .await?;
+    let mut stdin_connection = jupyter_runtime::create_kernel_stdin_connection(
+      &connection_info,
+      &session_id,
+    )
+    .await?;
+    let iopub_connection = jupyter_runtime::create_kernel_iopub_connection(
+      &connection_info,
+      &session_id,
+    )
+    .await?;
 
     let iopub_connection = Arc::new(Mutex::new(iopub_connection));
     let last_execution_request = Arc::new(Mutex::new(None));
@@ -129,11 +138,7 @@ impl JupyterServer {
     let hearbeat_fut = deno_core::unsync::spawn(async move {
       loop {
         if let Err(err) = heartbeat.single_heartbeat().await {
-          log::error!(
-            "Heartbeat error: {}\nBacktrace:\n{}",
-            err,
-            err.backtrace()
-          );
+          log::error!("Heartbeat error: {}", err);
         }
       }
     });
@@ -144,11 +149,7 @@ impl JupyterServer {
         if let Err(err) =
           Self::handle_control(control_connection, cancel_handle).await
         {
-          log::error!(
-            "Control error: {}\nBacktrace:\n{}",
-            err,
-            err.backtrace()
-          );
+          log::error!("Control error: {}", err);
         }
       }
     });
@@ -666,7 +667,12 @@ impl JupyterServer {
     &mut self,
     message: JupyterMessage,
   ) -> Result<(), AnyError> {
-    self.iopub_connection.lock().send(message.clone()).await
+    self
+      .iopub_connection
+      .lock()
+      .send(message.clone())
+      .await
+      .map_err(|e| e.into())
   }
 }
 
@@ -679,11 +685,11 @@ fn kernel_info() -> messaging::KernelInfoReply {
     language_info: messaging::LanguageInfo {
       name: "typescript".to_string(),
       version: DENO_VERSION_INFO.typescript.to_string(),
-      mimetype: "text/x.typescript".to_string(),
-      file_extension: ".ts".to_string(),
-      pygments_lexer: "typescript".to_string(),
-      codemirror_mode: messaging::CodeMirrorMode::typescript(),
-      nbconvert_exporter: "script".to_string(),
+      mimetype: Some("text/x.typescript".to_string()),
+      file_extension: Some(".ts".to_string()),
+      pygments_lexer: Some("typescript".to_string()),
+      codemirror_mode: Some(messaging::CodeMirrorMode::typescript()),
+      nbconvert_exporter: Some("script".to_string()),
     },
     banner: "Welcome to Deno kernel".to_string(),
     help_links: vec![messaging::HelpLink {
@@ -733,9 +739,8 @@ fn get_expr_from_line_at_pos(line: &str, cursor_pos: usize) -> &str {
 
   let word = &line[start..end];
   let word = word.strip_prefix(is_word_boundary).unwrap_or(word);
-  let word = word.strip_suffix(is_word_boundary).unwrap_or(word);
 
-  word
+  (word.strip_suffix(is_word_boundary).unwrap_or(word)) as _
 }
 
 // TODO(bartlomieju): dedup with repl::editor

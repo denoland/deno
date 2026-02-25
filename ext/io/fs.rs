@@ -1,21 +1,23 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::fmt::Formatter;
 use std::io;
+use std::path::Path;
 #[cfg(unix)]
 use std::process::Stdio as StdStdio;
 use std::rc::Rc;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
-use deno_core::error::ResourceError;
 use deno_core::BufMutView;
 use deno_core::BufView;
 use deno_core::OpState;
 use deno_core::ResourceHandleFd;
 use deno_core::ResourceId;
+use deno_core::error::ResourceError;
 use deno_error::JsErrorBox;
+use deno_permissions::PermissionCheckError;
 #[cfg(windows)]
 use deno_subprocess_windows::Stdio as StdStdio;
 use tokio::task::JoinError;
@@ -28,8 +30,8 @@ pub enum FsError {
   FileBusy,
   #[class(not_supported)]
   NotSupported,
-  #[class("NotCapable")]
-  NotCapable(&'static str),
+  #[class(inherit)]
+  PermissionCheck(PermissionCheckError),
 }
 
 impl std::fmt::Display for FsError {
@@ -38,9 +40,7 @@ impl std::fmt::Display for FsError {
       FsError::Io(err) => std::fmt::Display::fmt(err, f),
       FsError::FileBusy => f.write_str("file busy"),
       FsError::NotSupported => f.write_str("not supported"),
-      FsError::NotCapable(err) => {
-        f.write_str(&format!("requires {err} access"))
-      }
+      FsError::PermissionCheck(err) => std::fmt::Display::fmt(err, f),
     }
   }
 }
@@ -53,7 +53,7 @@ impl FsError {
       Self::Io(err) => err.kind(),
       Self::FileBusy => io::ErrorKind::Other,
       Self::NotSupported => io::ErrorKind::Other,
-      Self::NotCapable(_) => io::ErrorKind::Other,
+      Self::PermissionCheck(e) => e.kind(),
     }
   }
 
@@ -62,9 +62,7 @@ impl FsError {
       FsError::Io(err) => err,
       FsError::FileBusy => io::Error::new(self.kind(), "file busy"),
       FsError::NotSupported => io::Error::new(self.kind(), "not supported"),
-      FsError::NotCapable(err) => {
-        io::Error::new(self.kind(), format!("requires {err} access"))
-      }
+      FsError::PermissionCheck(err) => err.into_io_error(),
     }
   }
 }
@@ -78,6 +76,12 @@ impl From<io::Error> for FsError {
 impl From<io::ErrorKind> for FsError {
   fn from(err: io::ErrorKind) -> Self {
     Self::Io(err.into())
+  }
+}
+
+impl From<PermissionCheckError> for FsError {
+  fn from(err: PermissionCheckError) -> Self {
+    Self::PermissionCheck(err)
   }
 }
 
@@ -107,14 +111,14 @@ pub struct FsStat {
   pub ctime: Option<u64>,
 
   pub dev: u64,
-  pub ino: u64,
+  pub ino: Option<u64>,
   pub mode: u32,
-  pub nlink: u64,
+  pub nlink: Option<u64>,
   pub uid: u32,
   pub gid: u32,
   pub rdev: u64,
   pub blksize: u64,
-  pub blocks: u64,
+  pub blocks: Option<u64>,
   pub is_block_device: bool,
   pub is_char_device: bool,
   pub is_fifo: bool,
@@ -123,6 +127,20 @@ pub struct FsStat {
 
 impl FsStat {
   pub fn from_std(metadata: std::fs::Metadata) -> Self {
+    macro_rules! unix_some_or_none {
+      ($member:ident) => {{
+        #[cfg(unix)]
+        {
+          use std::os::unix::fs::MetadataExt;
+          Some(metadata.$member())
+        }
+        #[cfg(not(unix))]
+        {
+          None
+        }
+      }};
+    }
+
     macro_rules! unix_or_zero {
       ($member:ident) => {{
         #[cfg(unix)]
@@ -186,14 +204,14 @@ impl FsStat {
       ctime: get_ctime(unix_or_zero!(ctime)),
 
       dev: unix_or_zero!(dev),
-      ino: unix_or_zero!(ino),
+      ino: unix_some_or_none!(ino),
       mode: unix_or_zero!(mode),
-      nlink: unix_or_zero!(nlink),
+      nlink: unix_some_or_none!(nlink),
       uid: unix_or_zero!(uid),
       gid: unix_or_zero!(gid),
       rdev: unix_or_zero!(rdev),
       blksize: unix_or_zero!(blksize),
-      blocks: unix_or_zero!(blocks),
+      blocks: unix_some_or_none!(blocks),
       is_block_device: unix_or_false!(is_block_device),
       is_char_device: unix_or_false!(is_char_device),
       is_fifo: unix_or_false!(is_fifo),
@@ -204,6 +222,10 @@ impl FsStat {
 
 #[async_trait::async_trait(?Send)]
 pub trait File {
+  /// Provides the path of the file, which is used for checking
+  /// metadata permission updates.
+  fn maybe_path(&self) -> Option<&Path>;
+
   fn read_sync(self: Rc<Self>, buf: &mut [u8]) -> FsResult<usize>;
   async fn read(self: Rc<Self>, limit: usize) -> FsResult<BufView> {
     let buf = BufMutView::new(limit);
@@ -256,6 +278,9 @@ pub trait File {
 
   fn lock_sync(self: Rc<Self>, exclusive: bool) -> FsResult<()>;
   async fn lock_async(self: Rc<Self>, exclusive: bool) -> FsResult<()>;
+
+  fn try_lock_sync(self: Rc<Self>, exclusive: bool) -> FsResult<bool>;
+  async fn try_lock_async(self: Rc<Self>, exclusive: bool) -> FsResult<bool>;
 
   fn unlock_sync(self: Rc<Self>) -> FsResult<()>;
   async fn unlock_async(self: Rc<Self>) -> FsResult<()>;
@@ -334,7 +359,7 @@ impl FileResource {
 }
 
 impl deno_core::Resource for FileResource {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     Cow::Borrowed(&self.name)
   }
 

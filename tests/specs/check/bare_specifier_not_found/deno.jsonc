@@ -1,0 +1,6 @@
+{
+  // this just exists so that the code surfaces import map errors
+  "imports": {
+    "@scope/bar": "./other.ts"
+  }
+}

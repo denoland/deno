@@ -2,7 +2,7 @@
   "tempDir": true,
   "steps": [
     {
-      "args": "compile --unstable-sloppy-imports -A --output out main.ts",
+      "args": "compile --sloppy-imports -A --output out main.ts",
       "output": "compile.out"
     },
     {

@@ -1,5 +1,5 @@
 #!/usr/bin/env -S deno run --allow-all --config=tests/config/deno.json
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // deno-lint-ignore-file no-console
 
@@ -8,11 +8,14 @@ import {
   dirname,
   getPrebuilt,
   getSources,
+  gitLsFiles,
   join,
   parseJSONC,
   ROOT_PATH,
+  SEPARATOR,
   walk,
 } from "./util.js";
+import { assertEquals } from "@std/assert";
 import { checkCopyright } from "./copyright_checker.js";
 import * as ciFile from "../.github/workflows/ci.generate.ts";
 
@@ -27,14 +30,15 @@ if (!js && !rs) {
 
 if (rs) {
   promises.push(clippy());
+  promises.push(ensureNoNonPermissionCapitalLetterShortFlags());
 }
 
 if (js) {
   promises.push(dlint());
   promises.push(dlintPreferPrimordials());
   promises.push(ensureCiYmlUpToDate());
-  promises.push(ensureNoNewITests());
   promises.push(ensureNoUnusedOutFiles());
+  promises.push(ensureNoNewTopLevelEntries());
 
   if (rs) {
     promises.push(checkCopyright());
@@ -57,18 +61,21 @@ async function dlint() {
     "*.js",
     "*.ts",
     ":!:.github/mtime_cache/action.js",
-    ":!:cli/bench/testdata/npm/*",
-    ":!:cli/bench/testdata/express-router.js",
-    ":!:cli/bench/testdata/react-dom.js",
     ":!:cli/compilers/wasm_wrap.js",
+    ":!:cli/tools/coverage/script.js",
     ":!:cli/tools/doc/prism.css",
     ":!:cli/tools/doc/prism.js",
     ":!:cli/tsc/dts/**",
     ":!:cli/tsc/*typescript.js",
     ":!:cli/tsc/compiler.d.ts",
+    ":!:ext/node/polyfills/deps/**",
     ":!:runtime/examples/",
+    ":!:libs/eszip/testdata/**",
     ":!:target/",
-    ":!:tests/ffi/tests/test.js",
+    ":!:tests/bench/testdata/npm/*",
+    ":!:tests/bench/testdata/express-router.js",
+    ":!:tests/bench/testdata/react-dom.js",
+    ":!:tests/ffi/testdata/test.js",
     ":!:tests/registry/**",
     ":!:tests/specs/**",
     ":!:tests/testdata/**",
@@ -121,6 +128,7 @@ async function dlintPreferPrimordials() {
     "ext/**/*.ts",
     ":!:ext/**/*.d.ts",
     "ext/node/polyfills/*.mjs",
+    ":!:ext/node/polyfills/deps/**",
   ]);
 
   if (!sourceFiles.length) {
@@ -205,63 +213,45 @@ async function ensureCiYmlUpToDate() {
   }
 }
 
-async function ensureNoNewITests() {
-  // Note: Only decrease these numbers. Never increase them!!
-  // This is to help ensure we slowly deprecate these tests and
-  // replace them with spec tests.
-  const iTestCounts = {
-    "bench_tests.rs": 0,
-    "cache_tests.rs": 0,
-    "cert_tests.rs": 0,
-    "check_tests.rs": 0,
-    "compile_tests.rs": 0,
-    "coverage_tests.rs": 0,
-    "eval_tests.rs": 0,
-    "flags_tests.rs": 0,
-    "fmt_tests.rs": 14,
-    "init_tests.rs": 0,
-    "inspector_tests.rs": 0,
-    "install_tests.rs": 0,
-    "jsr_tests.rs": 0,
-    "js_unit_tests.rs": 0,
-    "jupyter_tests.rs": 0,
-    // Read the comment above. Please don't increase these numbers!
-    "lsp_tests.rs": 0,
-    "node_compat_tests.rs": 0,
-    "node_unit_tests.rs": 2,
-    "npm_tests.rs": 5,
-    "pm_tests.rs": 0,
-    "publish_tests.rs": 0,
-    "repl_tests.rs": 0,
-    "run_tests.rs": 17,
-    "shared_library_tests.rs": 0,
-    "task_tests.rs": 2,
-    "test_tests.rs": 0,
-    "upgrade_tests.rs": 0,
-    "vendor_tests.rs": 1,
-    "watcher_tests.rs": 0,
-    "worker_tests.rs": 0,
-  };
-  const integrationDir = join(ROOT_PATH, "tests", "integration");
-  for await (const entry of Deno.readDir(integrationDir)) {
-    if (!entry.name.endsWith("_tests.rs")) {
-      continue;
-    }
-    const fileText = await Deno.readTextFile(join(integrationDir, entry.name));
-    const actualCount = fileText.match(/itest\!/g)?.length ?? 0;
-    const expectedCount = iTestCounts[entry.name] ?? 0;
-    // console.log(`"${entry.name}": ${actualCount},`);
-    if (actualCount > expectedCount) {
-      throw new Error(
-        `New itest added to ${entry.name}! The itest macro is deprecated. Please move your new test to ~/tests/specs.`,
-      );
-    } else if (actualCount < expectedCount) {
-      throw new Error(
-        `Thanks for removing an itest in ${entry.name}. ` +
-          `Please update the count in tools/lint.js for this file to ${actualCount}.`,
-      );
-    }
-  }
+/**
+ * When short permission flags were being proposed, a concern that was raised was that
+ * it would degrade the permission system by making the flags obscure. To address this
+ * concern, we decided to make uppercase short flags ONLY relate to permissions. That
+ * way if someone specifies something like `-E`, the user can scrutinize the command
+ * a bit more than if it were `-e`. This custom lint rule attempts to try to maintain
+ * this convention.
+ */
+async function ensureNoNonPermissionCapitalLetterShortFlags() {
+  const text = await Deno.readTextFile(join(ROOT_PATH, "cli/args/flags.rs"));
+  const shortFlags = text.matchAll(/\.short\('([A-Z])'\)/g);
+  const values = Array.from(shortFlags.map((flag) => flag[1])).sort();
+  // DO NOT update this list with a non-permission short flag without
+  // discussion--there needs to be precedence to add to this list.
+  const expected = [
+    // --allow-all
+    "A",
+    // --dev flag for `deno install` (precedence: `npm install -D <package>`)
+    "D",
+    // --allow-env
+    "E",
+    // --allow-import
+    "I",
+    // log level (precedence: legacy)
+    "L",
+    // --allow-net
+    "N",
+    // --permission-set
+    "P",
+    // --allow-read
+    "R",
+    // --allow-sys
+    "S",
+    // version flag (precedence: legacy)
+    "V",
+    // --allow-write
+    "W",
+  ];
+  assertEquals(values, expected);
 }
 
 async function ensureNoUnusedOutFiles() {
@@ -277,11 +267,37 @@ async function ensureNoUnusedOutFiles() {
     return entry.path.endsWith("__test__.jsonc");
   });
 
-  function checkObject(baseDirPath, obj) {
+  function checkObject(baseDirPath, obj, substsInit = {}) {
+    const substs = { ...substsInit };
+
+    if ("variants" in obj) {
+      for (const variantValue of Object.values(obj.variants)) {
+        for (const [substKey, substValue] of Object.entries(variantValue)) {
+          const subst = `\$\{${substKey}\}`;
+          if (subst in substs) {
+            substs[subst].push(substValue);
+          } else {
+            substs[subst] = [substValue];
+          }
+        }
+      }
+    }
     for (const [key, value] of Object.entries(obj)) {
       if (typeof value === "object") {
-        checkObject(baseDirPath, value);
+        checkObject(baseDirPath, value, substs);
       } else if (key === "output" && typeof value === "string") {
+        for (const [subst, substValues] of Object.entries(substs)) {
+          if (value.includes(subst)) {
+            for (const substValue of substValues) {
+              const substitutedValue = value.replaceAll(subst, substValue);
+              const substitutedOutFilePath = join(
+                baseDirPath,
+                substitutedValue,
+              );
+              outFilePaths.delete(substitutedOutFilePath);
+            }
+          }
+        }
         const outFilePath = join(baseDirPath, value);
         outFilePaths.delete(outFilePath);
       }
@@ -307,5 +323,67 @@ async function ensureNoUnusedOutFiles() {
       console.error(`Unreferenced .out file: ${file}`);
     }
     throw new Error(`${notFoundPaths.length} unreferenced .out files`);
+  }
+}
+
+async function listTopLevelEntries() {
+  const files = await gitLsFiles(ROOT_PATH, []);
+  const rootPrefix = ROOT_PATH.replace(new RegExp(SEPARATOR + "$"), "") +
+    SEPARATOR;
+  return [
+    ...new Set(
+      files.map((f) => f.replace(rootPrefix, ""))
+        .map((file) => {
+          const sepIndex = file.indexOf(SEPARATOR);
+          // top-level file or first path component (directory)
+          return sepIndex === -1 ? file : file.substring(0, sepIndex);
+        }),
+    ),
+  ].sort();
+}
+
+async function ensureNoNewTopLevelEntries() {
+  const currentEntries = await listTopLevelEntries();
+
+  // WARNING: When adding anything to this list it must be discussed!
+  // Keep the root of the repository clean.
+  const allowed = new Set([
+    ".cargo",
+    ".devcontainer",
+    ".github",
+    "cli",
+    "ext",
+    "libs",
+    "runtime",
+    "tests",
+    "tools",
+    ".dlint.json",
+    ".dprint.json",
+    ".editorconfig",
+    ".gitattributes",
+    // WARNING! See Notice above before adding anything here
+    ".gitignore",
+    ".gitmodules",
+    ".rustfmt.toml",
+    "CLAUDE.md",
+    "Cargo.lock",
+    "Cargo.toml",
+    "LICENSE.md",
+    "README.md",
+    "Releases.md",
+    "import_map.json",
+    "rust-toolchain.toml",
+    "flake.nix",
+    "flake.lock",
+  ]);
+
+  const newEntries = currentEntries.filter((e) => !allowed.has(e));
+  if (newEntries.length > 0) {
+    throw new Error(
+      `New top-level entries detected: ${newEntries.join(", ")}. ` +
+        `Only the following top-level entries are allowed: ${
+          Array.from(allowed).join(", ")
+        }`,
+    );
   }
 }

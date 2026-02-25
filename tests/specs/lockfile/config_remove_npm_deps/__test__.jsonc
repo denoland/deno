@@ -1,0 +1,28 @@
+{
+  "tempDir": true,
+  "steps": [{
+    "args": "install",
+    "output": "[WILDCARD]"
+  }, {
+    "args": "run -A output_lockfile.ts",
+    "output": "lock_initial.out"
+  }, {
+    "args": "run -A remove_dep.ts add",
+    "output": "[WILDCARD]"
+  }, {
+    "args": "install",
+    "output": "[WILDCARD]"
+  }, {
+    "args": "run -A output_lockfile.ts",
+    "output": "lock_after_first_remove.out"
+  }, {
+    "args": "run -A remove_dep.ts esm-basic",
+    "output": "[WILDCARD]"
+  }, {
+    "args": "run -A main.ts",
+    "output": "[WILDCARD]"
+  }, {
+    "args": "run -A output_lockfile.ts",
+    "output": "lock_final.out"
+  }]
+}

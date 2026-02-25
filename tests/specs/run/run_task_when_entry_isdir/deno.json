@@ -1,0 +1,5 @@
+{
+  "tasks": {
+    "backend": "deno run -A ./backend/mod.ts"
+  }
+}

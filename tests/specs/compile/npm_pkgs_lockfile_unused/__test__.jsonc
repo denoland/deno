@@ -1,0 +1,10 @@
+{
+  "tempDir": true,
+  "steps": [{
+    "args": "install",
+    "output": "[WILDCARD]"
+  }, {
+    "args": "compile main.ts",
+    "output": "compile.out"
+  }]
+}

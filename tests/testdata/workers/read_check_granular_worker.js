@@ -39,4 +39,10 @@ postMessage({
   writeFoo: (await Deno.permissions.query({ name: "write", path: new URL("foo", import.meta.url) })).state,
   writeBar: (await Deno.permissions.query({ name: "write", path: "bar" })).state,
   writeAbsent: (await Deno.permissions.query({ name: "write", path: "absent" })).state,
+  importGlobal: (await Deno.permissions.query({ name: "import" })).state,
+  importFoo: (await Deno.permissions.query({ name: "import", host: "foo" })).state,
+  importFoo8000: (await Deno.permissions.query({ name: "import", host: "foo:8000" })).state,
+  importBar: (await Deno.permissions.query({ name: "import", host: "bar" })).state,
+  importBar8000: (await Deno.permissions.query({ name: "import", host: "bar:8000" })).state,
+  importAbsent: (await Deno.permissions.query({ name: "import", host: "absent" })).state,
 });

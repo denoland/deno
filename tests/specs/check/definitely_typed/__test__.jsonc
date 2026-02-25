@@ -1,7 +1,8 @@
 {
   "tempDir": true,
   "envs": {
-    "RUST_BACKTRACE": "0"
+    "RUST_BACKTRACE": "0",
+    "DENO_UNSTABLE_TSGO": "${use_tsgo}"
   },
   "tests": {
     "node_modules_dir_auto": {
@@ -71,6 +72,14 @@
           "exitCode": 1
         }
       ]
+    }
+  },
+  "variants": {
+    "tsgo": {
+      "use_tsgo": "1"
+    },
+    "tsc": {
+      "use_tsgo": ""
     }
   }
 }

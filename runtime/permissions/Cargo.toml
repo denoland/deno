@@ -1,8 +1,8 @@
-# Copyright 2018-2025 the Deno authors. MIT license.
+# Copyright 2018-2026 the Deno authors. MIT license.
 
 [package]
 name = "deno_permissions"
-version = "0.66.0"
+version = "0.93.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -15,11 +15,13 @@ path = "lib.rs"
 
 [dependencies]
 capacity_builder.workspace = true
+chrono = { workspace = true, features = ["now"] }
 deno_error.workspace = true
 deno_path_util.workspace = true
 deno_terminal.workspace = true
 deno_unsync.workspace = true
 fqdn.workspace = true
+ipnetwork.workspace = true
 libc.workspace = true
 log.workspace = true
 once_cell.workspace = true
@@ -28,9 +30,9 @@ percent-encoding = { workspace = true, features = [] }
 serde.workspace = true
 serde_json.workspace = true
 sys_traits.workspace = true
-temp_deno_which.workspace = true
 thiserror.workspace = true
 url.workspace = true
+which.workspace = true
 
 [target.'cfg(windows)'.dependencies]
 winapi = { workspace = true, features = ["commapi", "knownfolders", "mswsock", "objbase", "psapi", "shlobj", "tlhelp32", "winbase", "winerror", "winuser", "winsock2", "processenv", "wincon", "wincontypes"] }
@@ -40,4 +42,4 @@ windows-sys = { workspace = true, features = ["Win32_Storage_FileSystem"] }
 nix = { workspace = true, features = ["fs"] }
 
 [dev-dependencies]
-sys_traits = { workspace = true, features = ["real"] }
+sys_traits = { workspace = true, features = ["libc", "real", "winapi"] }

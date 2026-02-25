@@ -1,5 +1,5 @@
 #!/usr/bin/env -S deno run -RWNE --allow-run --lock=tools/deno.lock.json --config=tests/config/deno.json --unsafely-ignore-certificate-errors
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // deno-lint-ignore-file no-console
 
@@ -33,6 +33,7 @@ import {
   rest,
   runGitDiff,
   runPy,
+  shouldSkipOnCi,
   updateManifest,
   wptreport,
 } from "./runner/utils.ts";
@@ -64,6 +65,24 @@ class TestFilter {
     }
     return false;
   }
+
+  shouldKeepWalking(path): boolean {
+    if (this.filter === undefined || this.filter.length == 0) {
+      return true;
+    }
+    for (const filter of this.filter) {
+      if (filter.startsWith("/")) {
+        if (filter.startsWith(path)) {
+          return true;
+        }
+      } else {
+        if (filter.startsWith(path.substring(1))) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
 }
 
 const command = Deno.args[0];
@@ -78,6 +97,7 @@ switch (command) {
   case "run":
     await checkPy3Available();
     await cargoBuild();
+    if (await shouldSkipOnCi()) break;
     await run();
     break;
 
@@ -188,8 +208,8 @@ function getTestTimeout(test: TestToRun) {
 }
 
 async function run() {
-  const startTime = new Date().getTime();
   assert(Array.isArray(rest), "filter must be array");
+  const startTime = Date.now();
   const expectation = getExpectation();
   const filter = new TestFilter(rest);
   const tests = discoverTestsToRun(
@@ -233,7 +253,7 @@ async function run() {
 
     return results;
   });
-  const endTime = new Date().getTime();
+  const endTime = Date.now();
 
   if (json) {
     const minifiedResults = [];
@@ -342,7 +362,16 @@ function assertAllExpectationsHaveTests(
   function walk(parentExpectation: Expectation, parent: string) {
     for (const [key, expectation] of Object.entries(parentExpectation)) {
       const path = `${parent}/${key}`;
-      if (!filter.matches(path)) continue;
+      if (!filter.matches(path)) {
+        if (
+          filter.shouldKeepWalking(path) &&
+          (typeof expectation === "object" && !Array.isArray(expectation)) &&
+          key !== "ignore"
+        ) {
+          walk(expectation, path);
+        }
+        continue;
+      }
       if (
         (typeof expectation == "boolean" || Array.isArray(expectation)) &&
         key !== "ignore"
@@ -372,7 +401,7 @@ function assertAllExpectationsHaveTests(
 
 async function update() {
   assert(Array.isArray(rest), "filter must be array");
-  const startTime = new Date().getTime();
+  const startTime = Date.now();
   const filter = new TestFilter(rest);
   const tests = discoverTestsToRun(filter, true);
   console.log(`Going to run ${tests.length} test files.`);
@@ -395,7 +424,7 @@ async function update() {
 
     return results;
   });
-  const endTime = new Date().getTime();
+  const endTime = Date.now();
 
   if (json) {
     await Deno.writeTextFile(json, JSON.stringify(results) + "\n");

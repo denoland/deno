@@ -1,0 +1,9 @@
+{ subcommand: "run", entrypoint: "client.ts" }
+You are connected to https://localhost:[WILDLINE]
+HTTP/1.1 200 OK
+content-type: application/json
+vary: Accept-Encoding
+content-length: 203
+date: [WILDCARD]
+
+{"method":"GET","url":"https://localhost/","headers":{"host":"localhost"},"remoteAddr":{"transport":"tcp","hostname":"1.2.3.4","port":80},"serveAddr":{"hostname":"0.0.0.0","port":[WILDCARD]}}

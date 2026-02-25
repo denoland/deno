@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import {
   assert,
@@ -790,6 +790,90 @@ Deno.test(
   { permissions: { read: true, run: true } },
   async function fsFileLockFileAsync() {
     await runFlockTests({ sync: false });
+  },
+);
+
+Deno.test(
+  { permissions: { read: true, write: true } },
+  function fsFileTryLockSync() {
+    const path = Deno.makeTempFileSync();
+    try {
+      using file1 = Deno.openSync(path, { read: true, write: true });
+      using file2 = Deno.openSync(path, { read: true, write: true });
+
+      // First lock should succeed
+      assertEquals(file1.tryLockSync(true), true);
+
+      // Second exclusive lock should fail (returns false, not block)
+      assertEquals(file2.tryLockSync(true), false);
+
+      // Shared lock should also fail when exclusive is held
+      assertEquals(file2.tryLockSync(false), false);
+
+      // Unlock first file
+      file1.unlockSync();
+
+      // Now second file should be able to lock
+      assertEquals(file2.tryLockSync(true), true);
+      file2.unlockSync();
+    } finally {
+      Deno.removeSync(path);
+    }
+  },
+);
+
+Deno.test(
+  { permissions: { read: true, write: true } },
+  async function fsFileTryLockAsync() {
+    const path = await Deno.makeTempFile();
+    try {
+      using file1 = await Deno.open(path, { read: true, write: true });
+      using file2 = await Deno.open(path, { read: true, write: true });
+
+      // First lock should succeed
+      assertEquals(await file1.tryLock(true), true);
+
+      // Second exclusive lock should fail (returns false, not block)
+      assertEquals(await file2.tryLock(true), false);
+
+      // Shared lock should also fail when exclusive is held
+      assertEquals(await file2.tryLock(false), false);
+
+      // Unlock first file
+      await file1.unlock();
+
+      // Now second file should be able to lock
+      assertEquals(await file2.tryLock(true), true);
+      await file2.unlock();
+    } finally {
+      await Deno.remove(path);
+    }
+  },
+);
+
+Deno.test(
+  { permissions: { read: true, write: true } },
+  function fsFileTryLockSharedSync() {
+    const path = Deno.makeTempFileSync();
+    try {
+      using file1 = Deno.openSync(path, { read: true, write: true });
+      using file2 = Deno.openSync(path, { read: true, write: true });
+
+      // First shared lock should succeed
+      assertEquals(file1.tryLockSync(false), true);
+
+      // Second shared lock should also succeed
+      assertEquals(file2.tryLockSync(false), true);
+
+      // Exclusive lock should fail when shared locks are held
+      using file3 = Deno.openSync(path, { read: true, write: true });
+      assertEquals(file3.tryLockSync(true), false);
+
+      file1.unlockSync();
+      file2.unlockSync();
+    } finally {
+      Deno.removeSync(path);
+    }
   },
 );
 

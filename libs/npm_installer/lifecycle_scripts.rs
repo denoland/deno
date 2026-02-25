@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -7,12 +7,13 @@ use std::path::PathBuf;
 
 use anyhow::Error as AnyError;
 use deno_error::JsErrorBox;
-use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::NpmPackageExtraInfo;
 use deno_npm::NpmResolutionPackage;
-use deno_semver::package::PackageNv;
+use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_semver::SmallStackString;
 use deno_semver::Version;
+use deno_semver::package::PackageNv;
+use deno_semver::package::PackageReq;
 use sys_traits::FsMetadata;
 
 use crate::CachedNpmPackageExtraInfoProvider;
@@ -35,6 +36,40 @@ pub struct LifecycleScriptsExecutorOptions<'a> {
   pub system_packages: &'a [NpmResolutionPackage],
   pub packages_with_scripts: &'a [PackageWithScript<'a>],
   pub extra_info_provider: &'a CachedNpmPackageExtraInfoProvider,
+}
+
+pub struct LifecycleScriptsWarning {
+  message: String,
+
+  did_warn_fn: DidWarnFn,
+}
+
+impl std::fmt::Debug for LifecycleScriptsWarning {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    f.debug_struct("LifecycleScriptsWarning")
+      .field("message", &self.message)
+      .finish()
+  }
+}
+
+type DidWarnFn =
+  Box<dyn FnOnce(&dyn sys_traits::boxed::FsOpenBoxed) + Send + Sync>;
+
+impl LifecycleScriptsWarning {
+  pub(crate) fn new(message: String, did_warn_fn: DidWarnFn) -> Self {
+    Self {
+      message,
+      did_warn_fn,
+    }
+  }
+
+  pub fn into_message(
+    self,
+    sys: &dyn sys_traits::boxed::FsOpenBoxed,
+  ) -> String {
+    (self.did_warn_fn)(sys);
+    self.message
+  }
 }
 
 #[derive(Debug)]
@@ -127,18 +162,29 @@ impl<'a, TSys: FsMetadata> LifecycleScripts<'a, TSys> {
   }
 
   pub fn can_run_scripts(&self, package_nv: &PackageNv) -> bool {
+    fn matches_nv(req: &PackageReq, package_nv: &PackageNv) -> bool {
+      // we shouldn't support this being a tag because it's too complicated
+      debug_assert!(req.version_req.tag().is_none());
+      package_nv.name == req.name
+        && req.version_req.matches(&package_nv.version)
+    }
+
     if !self.strategy.can_run_scripts() {
       return false;
     }
-    match &self.config.allowed {
+    let matches_allowed = match &self.config.allowed {
       PackagesAllowedScripts::All => true,
-      // TODO: make this more correct
-      PackagesAllowedScripts::Some(allow_list) => allow_list.iter().any(|s| {
-        let s = s.strip_prefix("npm:").unwrap_or(s);
-        s == package_nv.name || s == package_nv.to_string()
-      }),
+      PackagesAllowedScripts::Some(allow_list) => {
+        allow_list.iter().any(|req| matches_nv(req, package_nv))
+      }
       PackagesAllowedScripts::None => false,
-    }
+    };
+    matches_allowed
+      && !self
+        .config
+        .denied
+        .iter()
+        .any(|req| matches_nv(req, package_nv))
   }
 
   pub fn has_run_scripts(&self, package: &NpmResolutionPackage) -> bool {
@@ -154,7 +200,7 @@ impl<'a, TSys: FsMetadata> LifecycleScripts<'a, TSys> {
     &mut self,
     package: &'a NpmResolutionPackage,
     extra: &NpmPackageExtraInfo,
-    package_path: Cow<Path>,
+    package_path: Cow<'_, Path>,
   ) {
     if has_lifecycle_scripts(self.sys, extra, &package_path) {
       if self.can_run_scripts(&package.id.nv) {
@@ -167,6 +213,10 @@ impl<'a, TSys: FsMetadata> LifecycleScripts<'a, TSys> {
         }
       } else if !self.has_run_scripts(package)
         && (self.config.explicit_install || !self.strategy.has_warned(package))
+        && !(self.config.denied.iter().any(|d| {
+          package.id.nv.name == d.name
+            && d.version_req.matches(&package.id.nv.version)
+        }))
       {
         // Skip adding `esbuild` as it is known that it can work properly without lifecycle script
         // being run, and it's also very popular - any project using Vite would raise warnings.
