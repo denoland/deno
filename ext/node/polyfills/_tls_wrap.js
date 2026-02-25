@@ -334,30 +334,6 @@ class JSStreamSocket {
     this.stream.on("close", () => {
       this.close();
     });
-
-    // If the stream is one side of a DuplexPair (e.g. native-duplexpair
-    // used by mssql/tedious), detect the other side and listen for close
-    // propagation from streams piped into it.
-    //
-    // Architecture: rawSocket.pipe(socket2) and socket2.pipe(rawSocket).
-    // When pool.close() destroys rawSocket, DuplexPair doesn't propagate
-    // to socket1, so we must detect rawSocket's close ourselves.
-    const symbols = Object.getOwnPropertySymbols(this.stream);
-    for (let i = 0; i < symbols.length; i++) {
-      const val = this.stream[symbols[i]];
-      if (
-        val != null && typeof val === "object" && val !== this.stream &&
-        typeof val.on === "function" && typeof val._read === "function"
-      ) {
-        val.on("close", () => this.close());
-        // When a stream is piped into the other side (e.g. rawSocket),
-        // listen for its close to propagate cleanup.
-        val.on("pipe", (source) => {
-          source.on("close", () => this.close());
-        });
-        break;
-      }
-    }
   }
 
   // Called by stream_wrap's _onClose() via kStreamBaseField.close(),
