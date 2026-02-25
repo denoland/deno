@@ -734,9 +734,9 @@ const buildJobs = buildItems.map((rawBuildItem) => {
             name: "Upload canary to dl.deno.land",
             if: isDenoland.and(isMainBranch),
             run: [
-              'aws s3 cp ./target/release/*.zip s3://dl-deno-land/canary/$(git rev-parse HEAD)/',
-              'aws s3 cp ./target/release/*.sha256sum s3://dl-deno-land/canary/$(git rev-parse HEAD)/',
-              'aws s3 cp ./target/release/*.symcache s3://dl-deno-land/canary/$(git rev-parse HEAD)/',
+              "aws s3 cp ./target/release/*.zip s3://dl-deno-land/canary/$(git rev-parse HEAD)/",
+              "aws s3 cp ./target/release/*.sha256sum s3://dl-deno-land/canary/$(git rev-parse HEAD)/",
+              "aws s3 cp ./target/release/*.symcache s3://dl-deno-land/canary/$(git rev-parse HEAD)/",
               "echo ${{ github.sha }} > canary-latest.txt",
               'aws s3 cp canary-latest.txt s3://dl-deno-land/canary-$(rustc -vV | sed -n "s|host: ||p")-latest.txt',
               "rm canary-latest.txt",
@@ -830,9 +830,9 @@ const buildJobs = buildItems.map((rawBuildItem) => {
           step.dependsOn(setupS3Step)({
             name: "Upload release to dl.deno.land",
             run: [
-              'aws s3 cp ./target/release/*.zip s3://dl-deno-land/release/${GITHUB_REF#refs/*/}/',
-              'aws s3 cp ./target/release/*.sha256sum s3://dl-deno-land/release/${GITHUB_REF#refs/*/}/',
-              'aws s3 cp ./target/release/*.symcache s3://dl-deno-land/release/${GITHUB_REF#refs/*/}/',
+              "aws s3 cp ./target/release/*.zip s3://dl-deno-land/release/${GITHUB_REF#refs/*/}/",
+              "aws s3 cp ./target/release/*.sha256sum s3://dl-deno-land/release/${GITHUB_REF#refs/*/}/",
+              "aws s3 cp ./target/release/*.symcache s3://dl-deno-land/release/${GITHUB_REF#refs/*/}/",
             ],
           }),
           {
@@ -1232,10 +1232,10 @@ const buildJobs = buildItems.map((rawBuildItem) => {
             ),
             run: [
               "gzip ./wptreport.json",
-              'aws s3 cp ./wpt.json s3://dl-deno-land/wpt/$(git rev-parse HEAD).json',
-              'aws s3 cp ./wptreport.json.gz s3://dl-deno-land/wpt/$(git rev-parse HEAD)-wptreport.json.gz',
+              "aws s3 cp ./wpt.json s3://dl-deno-land/wpt/$(git rev-parse HEAD).json",
+              "aws s3 cp ./wptreport.json.gz s3://dl-deno-land/wpt/$(git rev-parse HEAD)-wptreport.json.gz",
               "echo $(git rev-parse HEAD) > wpt-latest.txt",
-              'aws s3 cp wpt-latest.txt s3://dl-deno-land/wpt-latest.txt',
+              "aws s3 cp wpt-latest.txt s3://dl-deno-land/wpt-latest.txt",
             ],
           }),
           {
@@ -1436,7 +1436,7 @@ const publishCanaryJob = job("publish-canary", {
         name: "Upload canary version file to dl.deno.land",
         run: [
           "echo ${{ github.sha }} > canary-latest.txt",
-          'aws s3 cp canary-latest.txt s3://dl-deno-land/canary-latest.txt',
+          "aws s3 cp canary-latest.txt s3://dl-deno-land/canary-latest.txt",
         ],
       },
     );
