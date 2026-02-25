@@ -661,26 +661,6 @@ jobs:
           strip -x -S ./denort
           zip -r denort-x86_64-apple-darwin.zip denort
           shasum -a 256 denort-x86_64-apple-darwin.zip > denort-x86_64-apple-darwin.zip.sha256sum
-      - name: Install AWS CLI
-        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
-        run: |-
-          if ! command -v aws &> /dev/null; then
-            if [ "$(uname -s)" = "Darwin" ]; then
-              curl -fsSL "https://awscli.amazonaws.com/AWSCLIV2.pkg" -o AWSCLIV2.pkg
-              sudo installer -pkg AWSCLIV2.pkg -target /
-              rm AWSCLIV2.pkg
-            else
-              ARCH=$(uname -m)
-              if [ "$ARCH" = "aarch64" ]; then
-                curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-aarch64.zip" -o awscliv2.zip
-              else
-                curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o awscliv2.zip
-              fi
-              unzip -q awscliv2.zip
-              sudo ./aws/install
-              rm -rf aws awscliv2.zip
-            fi
-          fi
       - name: Configure S3 Credentials
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
         run: |-
@@ -1522,26 +1502,6 @@ jobs:
           strip -x -S ./denort
           zip -r denort-aarch64-apple-darwin.zip denort
           shasum -a 256 denort-aarch64-apple-darwin.zip > denort-aarch64-apple-darwin.zip.sha256sum
-      - name: Install AWS CLI
-        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
-        run: |-
-          if ! command -v aws &> /dev/null; then
-            if [ "$(uname -s)" = "Darwin" ]; then
-              curl -fsSL "https://awscli.amazonaws.com/AWSCLIV2.pkg" -o AWSCLIV2.pkg
-              sudo installer -pkg AWSCLIV2.pkg -target /
-              rm AWSCLIV2.pkg
-            else
-              ARCH=$(uname -m)
-              if [ "$ARCH" = "aarch64" ]; then
-                curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-aarch64.zip" -o awscliv2.zip
-              else
-                curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o awscliv2.zip
-              fi
-              unzip -q awscliv2.zip
-              sudo ./aws/install
-              rm -rf aws awscliv2.zip
-            fi
-          fi
       - name: Configure S3 Credentials
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
         run: |-
@@ -3437,26 +3397,6 @@ jobs:
           zip -r denort-x86_64-unknown-linux-gnu.zip denort
           shasum -a 256 denort-x86_64-unknown-linux-gnu.zip > denort-x86_64-unknown-linux-gnu.zip.sha256sum
           ./deno types > lib.deno.d.ts
-      - name: Install AWS CLI
-        if: 'github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
-        run: |-
-          if ! command -v aws &> /dev/null; then
-            if [ "$(uname -s)" = "Darwin" ]; then
-              curl -fsSL "https://awscli.amazonaws.com/AWSCLIV2.pkg" -o AWSCLIV2.pkg
-              sudo installer -pkg AWSCLIV2.pkg -target /
-              rm AWSCLIV2.pkg
-            else
-              ARCH=$(uname -m)
-              if [ "$ARCH" = "aarch64" ]; then
-                curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-aarch64.zip" -o awscliv2.zip
-              else
-                curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o awscliv2.zip
-              fi
-              unzip -q awscliv2.zip
-              sudo ./aws/install
-              rm -rf aws awscliv2.zip
-            fi
-          fi
       - name: Configure S3 Credentials
         if: 'github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
         run: |-
@@ -3909,26 +3849,6 @@ jobs:
       - name: Autobahn testsuite
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: target/release/deno run -A --config tests/config/deno.json ext/websocket/autobahn/fuzzingclient.js
-      - name: Install AWS CLI
-        if: '!startsWith(github.ref, ''refs/tags/'') && github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'''
-        run: |-
-          if ! command -v aws &> /dev/null; then
-            if [ "$(uname -s)" = "Darwin" ]; then
-              curl -fsSL "https://awscli.amazonaws.com/AWSCLIV2.pkg" -o AWSCLIV2.pkg
-              sudo installer -pkg AWSCLIV2.pkg -target /
-              rm AWSCLIV2.pkg
-            else
-              ARCH=$(uname -m)
-              if [ "$ARCH" = "aarch64" ]; then
-                curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-aarch64.zip" -o awscliv2.zip
-              else
-                curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o awscliv2.zip
-              fi
-              unzip -q awscliv2.zip
-              sudo ./aws/install
-              rm -rf aws awscliv2.zip
-            fi
-          fi
       - name: Configure S3 Credentials
         if: '!startsWith(github.ref, ''refs/tags/'') && github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'''
         run: |-
@@ -5116,26 +5036,6 @@ jobs:
           zip -r denort-aarch64-unknown-linux-gnu.zip denort
           shasum -a 256 denort-aarch64-unknown-linux-gnu.zip > denort-aarch64-unknown-linux-gnu.zip.sha256sum
           ./deno types > lib.deno.d.ts
-      - name: Install AWS CLI
-        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
-        run: |-
-          if ! command -v aws &> /dev/null; then
-            if [ "$(uname -s)" = "Darwin" ]; then
-              curl -fsSL "https://awscli.amazonaws.com/AWSCLIV2.pkg" -o AWSCLIV2.pkg
-              sudo installer -pkg AWSCLIV2.pkg -target /
-              rm AWSCLIV2.pkg
-            else
-              ARCH=$(uname -m)
-              if [ "$ARCH" = "aarch64" ]; then
-                curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-aarch64.zip" -o awscliv2.zip
-              else
-                curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o awscliv2.zip
-              fi
-              unzip -q awscliv2.zip
-              sudo ./aws/install
-              rm -rf aws awscliv2.zip
-            fi
-          fi
       - name: Configure S3 Credentials
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
         run: |-
@@ -5644,25 +5544,6 @@ jobs:
     if: github.repository == 'denoland/deno' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     steps:
-      - name: Install AWS CLI
-        run: |-
-          if ! command -v aws &> /dev/null; then
-            if [ "$(uname -s)" = "Darwin" ]; then
-              curl -fsSL "https://awscli.amazonaws.com/AWSCLIV2.pkg" -o AWSCLIV2.pkg
-              sudo installer -pkg AWSCLIV2.pkg -target /
-              rm AWSCLIV2.pkg
-            else
-              ARCH=$(uname -m)
-              if [ "$ARCH" = "aarch64" ]; then
-                curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-aarch64.zip" -o awscliv2.zip
-              else
-                curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o awscliv2.zip
-              fi
-              unzip -q awscliv2.zip
-              sudo ./aws/install
-              rm -rf aws awscliv2.zip
-            fi
-          fi
       - name: Configure S3 Credentials
         run: |-
           echo "AWS_ACCESS_KEY_ID=${{ secrets.S3_ACCESS_KEY_ID }}" >> $GITHUB_ENV
