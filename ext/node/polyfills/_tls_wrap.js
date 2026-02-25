@@ -302,6 +302,8 @@ export class TLSSocket extends net.Socket {
 
 class JSStreamSocket {
   #rid;
+  #channelRid;
+  #closed = false;
 
   constructor(stream) {
     this.stream = stream;
@@ -310,7 +312,8 @@ class JSStreamSocket {
   init(options) {
     op_node_tls_start(options, tlsStreamRids);
     this.#rid = tlsStreamRids[0];
-    const channelRid = tlsStreamRids[1];
+    this.#channelRid = tlsStreamRids[1];
+    const channelRid = this.#channelRid;
 
     this.stream.on("data", (data) => {
       core.write(channelRid, data);
@@ -329,9 +332,55 @@ class JSStreamSocket {
     })();
 
     this.stream.on("close", () => {
-      core.close(this.#rid);
-      core.close(channelRid);
+      this.close();
     });
+
+    // If the stream is one side of a DuplexPair (e.g. native-duplexpair
+    // used by mssql/tedious), detect the other side and listen for close
+    // propagation from streams piped into it.
+    //
+    // Architecture: rawSocket.pipe(socket2) and socket2.pipe(rawSocket).
+    // When pool.close() destroys rawSocket, DuplexPair doesn't propagate
+    // to socket1, so we must detect rawSocket's close ourselves.
+    const symbols = Object.getOwnPropertySymbols(this.stream);
+    for (let i = 0; i < symbols.length; i++) {
+      const val = this.stream[symbols[i]];
+      if (
+        val != null && typeof val === "object" && val !== this.stream &&
+        typeof val.on === "function" && typeof val._read === "function"
+      ) {
+        val.on("close", () => this.close());
+        // When a stream is piped into the other side (e.g. rawSocket),
+        // listen for its close to propagate cleanup.
+        val.on("pipe", (source) => {
+          source.on("close", () => this.close());
+        });
+        break;
+      }
+    }
+  }
+
+  // Called by stream_wrap's _onClose() via kStreamBaseField.close(),
+  // or by event listeners when the transport/DuplexPair is destroyed.
+  close() {
+    if (this.#closed) return;
+    this.#closed = true;
+    if (this.#rid !== undefined) {
+      try {
+        core.close(this.#rid);
+      } catch {
+        // already closed
+      }
+      this.#rid = undefined;
+    }
+    if (this.#channelRid !== undefined) {
+      try {
+        core.close(this.#channelRid);
+      } catch {
+        // already closed
+      }
+      this.#channelRid = undefined;
+    }
   }
 
   handshake() {
