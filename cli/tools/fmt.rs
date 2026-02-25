@@ -404,105 +404,14 @@ fn format_yaml(
   })
 }
 
-/// Return type for expression formatting that includes processed text and expression mappings
-type ExpressionFormatResult<'a> =
-  Result<(Cow<'a, str>, Vec<(String, String)>), AnyError>;
-
-/// Formats text that may contain JS expressions (e.g., `{a + b}`)
-/// which are temporarily replaced with placeholders,
-/// the text is formatted, then the expressions are restored.
-/// Supports any framework's expression syntax (Svelte `{}`, Vue `{{}}`, etc.)
-fn format_expressions_in_text<'a>(
-  text: &'a str,
-  expr_pattern: &str,
-  open_delim: &str,
-  close_delim: &str,
-  fmt_options: &FmtOptionsConfig,
-) -> ExpressionFormatResult<'a> {
-  use regex::Regex;
-
-  let expr_regex = Regex::new(expr_pattern).unwrap();
-  if !expr_regex.is_match(text) {
-    return Ok((Cow::from(text), Vec::new()));
-  }
-
-  let typescript_config = get_resolved_typescript_config(fmt_options);
-  let mut result = text.to_string();
-  let mut expressions = Vec::new();
-  let mut placeholder_counter = 0;
-
-  // Process expressions in reverse order to maintain string positions
-  let mut captures: Vec<_> = expr_regex.captures_iter(text).collect();
-  captures.reverse();
-
-  for capture in captures {
-    let full_match = capture.get(0).unwrap();
-    let expr_content = capture.get(1).unwrap().as_str().trim();
-
-    if !expr_content.is_empty() {
-      let formatted_expr = if let Ok(Some(formatted)) =
-        dprint_plugin_typescript::format_text(
-          dprint_plugin_typescript::FormatTextOptions {
-            path: &std::path::PathBuf::from("temp.js"),
-            extension: None,
-            text: expr_content.to_string(),
-            config: &typescript_config,
-            external_formatter: None,
-          },
-        ) {
-        formatted.trim_end_matches(['\n', '\r', ';']).to_string()
-      } else {
-        expr_content.to_string()
-      };
-
-      let placeholder = format!("EXPR_PLACEHOLDER_{}", placeholder_counter);
-      let formatted_expression =
-        format!("{}{}{}", open_delim, formatted_expr, close_delim);
-
-      expressions.push((placeholder.clone(), formatted_expression));
-      result.replace_range(full_match.range(), &placeholder);
-      placeholder_counter += 1;
-    }
-  }
-
-  Ok((Cow::from(result), expressions))
-}
-
 pub fn format_html(
   file_path: &Path,
   file_text: &str,
   fmt_options: &FmtOptionsConfig,
   unstable_options: &UnstableFmtOptions,
 ) -> Result<Option<String>, AnyError> {
-  // Pre-format expressions in component files before markup parsing
-  let (preprocessed_text, expressions) =
-    if let Some(ext) = file_path.extension().and_then(|e| e.to_str()) {
-      let (pattern, open, close) = match ext.to_ascii_lowercase().as_str() {
-        "svelte" | "astro" => (r"\{([^{}]+)\}", "{", "}"),
-        "vue" => (r"\{\{([^{}]+)\}\}", "{{", "}}"),
-        _ => ("", "", ""), // No expression formatting for other files
-      };
-
-      if !pattern.is_empty() {
-        match format_expressions_in_text(
-          file_text,
-          pattern,
-          open,
-          close,
-          fmt_options,
-        ) {
-          Ok((processed, expressions)) => (processed.into_owned(), expressions),
-          Err(_) => (file_text.to_string(), Vec::new()),
-        }
-      } else {
-        (file_text.to_string(), Vec::new())
-      }
-    } else {
-      (file_text.to_string(), Vec::new())
-    };
-
   let format_result = markup_fmt::format_text(
-    &preprocessed_text,
+    file_text,
     markup_fmt::detect_language(file_path)
       .unwrap_or(markup_fmt::Language::Html),
     &get_resolved_markup_fmt_config(fmt_options),
@@ -616,12 +525,7 @@ pub fn format_html(
     }
   });
 
-  let mut formatted_str = format_result?;
-
-  // Restore formatted expressions
-  for (placeholder, expression) in expressions {
-    formatted_str = formatted_str.replace(&placeholder, &expression);
-  }
+  let formatted_str = format_result?;
 
   Ok(if formatted_str == file_text {
     None
@@ -795,6 +699,7 @@ fn format_embedded_html(
         config::ClosingTagLineBreakForEmpty::Fit,
       max_attrs_per_line: None,
       prefer_attrs_single_line: false,
+      single_attr_same_line: true,
       html_normal_self_closing: None,
       html_void_self_closing: None,
       component_self_closing: None,
@@ -1611,6 +1516,7 @@ fn get_resolved_markup_fmt_config(
     closing_tag_line_break_for_empty: ClosingTagLineBreakForEmpty::Fit,
     max_attrs_per_line: None,
     prefer_attrs_single_line: false,
+    single_attr_same_line: true,
     html_normal_self_closing: None,
     html_void_self_closing: None,
     component_self_closing: None,
