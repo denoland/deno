@@ -6,6 +6,8 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 2.7.1 / 2026.02.25
+
 ### 2.7.0 / 2026.02.25
 
 Read more: http://deno.com/blog/v2.7
