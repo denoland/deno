@@ -172,7 +172,7 @@ class NodeTestContext {
   }
 
   async [cleanupSymbol]() {
-    await runHooks(globalAfterEachHooks);
+    await runHooks(this.#afterHooks);
   }
 
   test(name, options, fn) {
