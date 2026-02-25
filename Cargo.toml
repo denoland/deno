@@ -219,7 +219,8 @@ ipnet = "2.3"
 ipnetwork = "0.20.0"
 itertools = "0.14"
 jsonc-parser = { version = "0.28.0", features = ["serde"] }
-jupyter_runtime = "=0.19.0"
+jupyter-protocol = "=1.2.1"
+jupyter_runtime = { package = "runtimelib", version = "=1.3.0", default-features = false, features = ["tokio-runtime", "aws-lc-rs"] }
 lazy-regex = "3"
 libc = "0.2.168"
 libz-sys = { version = "1.1.20", default-features = false }
@@ -304,7 +305,7 @@ webpki-root-certs = "0.26.5"
 webpki-roots = "0.26"
 which = { version = "8.0.0", default-features = false }
 yoke = { version = "0.7.4", features = ["derive"] }
-zeromq = { version = "=0.4.1", default-features = false, features = ["tcp-transport", "tokio-runtime"] }
+zeromq = { version = "=0.5.0", default-features = false, features = ["tcp-transport", "tokio-runtime"] }
 zip = { version = "2.4.1", default-features = false, features = ["flate2"] }
 
 opentelemetry = "0.27.0"
