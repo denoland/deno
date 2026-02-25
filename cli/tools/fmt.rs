@@ -489,6 +489,12 @@ pub fn format_html(
             },
           )
         }
+        ext if ext.starts_with("markup-fmt-jinja-") => {
+          // Jinja/Nunjucks expressions may contain non-JS syntax (for example
+          // filters such as `|>`), so preserve the original text instead of
+          // passing it through the TypeScript formatter.
+          Ok(Cow::from(text))
+        }
         _ => {
           let mut typescript_config_builder =
             get_typescript_config_builder(fmt_options);
