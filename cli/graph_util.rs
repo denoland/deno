@@ -766,24 +766,6 @@ impl ModuleGraphBuilder {
     request: BuildGraphRequest,
     options: BuildGraphWithNpmOptions<'_>,
   ) -> Result<(), BuildGraphWithNpmResolutionError> {
-    #[derive(Debug)]
-    struct NoopNpmResolver;
-
-    #[async_trait(?Send)]
-    impl deno_graph::source::NpmResolver for NoopNpmResolver {
-      fn load_and_cache_npm_package_info(&self, _package_name: &str) {}
-
-      async fn resolve_pkg_reqs(
-        &self,
-        package_req: &[PackageReq],
-      ) -> NpmResolvePkgReqsResult {
-        NpmResolvePkgReqsResult {
-          results: package_req.iter().map(|_| Ok(())).collect(),
-          dep_graph_result: Ok(()),
-        }
-      }
-    }
-
     #[allow(clippy::large_enum_variant)]
     enum LoaderRef<'a> {
       Borrowed(&'a dyn Loader),
@@ -818,11 +800,10 @@ impl ModuleGraphBuilder {
     );
     let maybe_reporter = self.maybe_reporter.as_deref();
     let mut locker = self.lockfile.as_ref().map(|l| l.as_deno_graph_locker());
-    let noop_npm_resolver = NoopNpmResolver;
     let npm_graph_resolver: Option<
       &(dyn deno_graph::source::NpmResolver + 'static),
     > = if self.npm_resolver.is_byonm() && self.analyze_npm_sources() {
-      Some(&noop_npm_resolver)
+      None
     } else {
       Some(self.npm_graph_resolver.as_ref())
     };

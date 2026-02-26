@@ -2196,8 +2196,6 @@ dependencies = [
 [[package]]
 name = "deno_graph"
 version = "0.107.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e8a89f45d0d890dc0b1230ffefed23e2b3b6d93873494839256aaa8d4711c1fc"
 dependencies = [
  "async-trait",
  "boxed_error",

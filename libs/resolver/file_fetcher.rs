@@ -631,6 +631,7 @@ impl<
     specifier: &Url,
     options: deno_graph::source::LoadOptions,
   ) -> LoadFuture {
+    eprintln!("LOADING: {}", specifier);
     let specifier = if specifier.scheme() == "file"
       && specifier.path().contains("/node_modules/")
     {
@@ -658,6 +659,10 @@ impl<
     } else {
       Cow::Borrowed(specifier)
     };
+
+    if self.include_npm_sources && specifier.scheme() == "npm" {
+      // todo: resolve npm: specifier to source
+    }
 
     if !matches!(
       specifier.scheme(),
