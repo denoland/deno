@@ -3178,7 +3178,9 @@ pub fn file_text_changes_to_workspace_edit<'a>(
     };
     all_ops.extend(ops);
   }
-
+  if all_ops.is_empty() {
+    return Ok(None);
+  }
   Ok(Some(lsp::WorkspaceEdit {
     document_changes: Some(lsp::DocumentChanges::Operations(all_ops)),
     ..Default::default()
