@@ -193,7 +193,7 @@ const S3Envs: Readonly<Record<string, ConfigValue>> = {
   AWS_ACCESS_KEY_ID: "${{ vars.S3_ACCESS_KEY_ID }}",
   AWS_SECRET_ACCESS_KEY: "${{ secrets.S3_SECRET_ACCESS_KEY }}",
   AWS_ENDPOINT_URL_S3: "${{ vars.S3_ENDPOINT }}",
-  AWS_DEFAULT_REGION: "${{ vars.S3_REGION }}"
+  AWS_DEFAULT_REGION: "${{ vars.S3_REGION }}",
 };
 
 function handleBuildItems(items: {
@@ -869,7 +869,10 @@ const buildJobs = buildItems.map((rawBuildItem) => {
           }, {
             name: "Upload release to dl.deno.land (windows)",
             if: isWindows,
-            env: { ...S3Envs, CLOUDSDK_PYTHON: "${{env.pythonLocation}}\\python.exe" },
+            env: {
+              ...S3Envs,
+              CLOUDSDK_PYTHON: "${{env.pythonLocation}}\\python.exe",
+            },
             run: [
               'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/',
               'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.sha256sum gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/',
