@@ -96,7 +96,9 @@ export function mkdir(
       }
     }, (err) => {
       if (typeof callback === "function") {
-        callback(err);
+        callback(
+          denoErrorToNodeError(err as Error, { syscall: "mkdir", path }),
+        );
       }
     });
 }
