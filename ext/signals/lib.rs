@@ -199,3 +199,21 @@ pub async fn ctrl_c() -> std::io::Result<()> {
     None => Err(std::io::Error::other("failed to receive SIGINT signal")),
   }
 }
+
+/// Creates an async stream that yields when SIGTERM is received.
+#[cfg(unix)]
+pub fn sigterm_stream() -> std::io::Result<SignalStream> {
+  signal_stream(libc::SIGTERM)
+}
+
+/// Re-raises SIGTERM with the default handler so the parent process
+/// sees the correct signal exit status.
+#[cfg(unix)]
+pub fn raise_sigterm_default() {
+  // SAFETY: Restoring the default signal handler and raising the signal
+  // are both well-defined POSIX operations.
+  unsafe {
+    libc::signal(libc::SIGTERM, libc::SIG_DFL);
+    libc::raise(libc::SIGTERM);
+  }
+}

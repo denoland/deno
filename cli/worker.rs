@@ -73,12 +73,19 @@ impl CliMainWorker {
     let mut maybe_coverage_collector = self.maybe_setup_coverage_collector();
     let mut maybe_hmr_runner = self.maybe_setup_hmr_runner();
 
-    // When coverage is enabled, listen for SIGTERM so we can flush coverage
-    // data before exiting. This is important for cases like Playwright's
-    // webServer, which sends SIGTERM to shut down the server process.
+    // Coverage collection requires flushing data via the V8 inspector before
+    // the process exits. Normally this happens through the graceful shutdown
+    // path (after the event loop ends), but when an external process manager
+    // (e.g. Playwright's webServer) sends SIGTERM, the default behavior is
+    // to terminate immediately without flushing. We intercept SIGTERM here
+    // so we can break out of the event loop and run the coverage flush.
+    //
+    // Note: we can't use deno_signals::before_exit for this because coverage
+    // collection requires sending CDP messages through the V8 inspector, which
+    // must happen on the JS runtime thread — not the signal handler thread.
     #[cfg(unix)]
-    let mut sigterm_stream = if maybe_coverage_collector.is_some() {
-      deno_signals::signal_stream(libc::SIGTERM).ok()
+    let mut maybe_sigterm = if maybe_coverage_collector.is_some() {
+      deno_signals::sigterm_stream().ok()
     } else {
       None
     };
@@ -121,7 +128,7 @@ impl CliMainWorker {
       } else {
         // TODO(bartlomieju): this might not be needed anymore
         #[cfg(unix)]
-        if let Some(ref mut stream) = sigterm_stream {
+        if let Some(ref mut sigterm) = maybe_sigterm {
           let event_loop_future = self
             .worker
             .run_event_loop(maybe_coverage_collector.is_none())
@@ -130,7 +137,7 @@ impl CliMainWorker {
             result = event_loop_future => {
               result?;
             },
-            _ = stream.recv() => {
+            _ = sigterm.recv() => {
               received_sigterm = true;
               break;
             }
@@ -172,13 +179,10 @@ impl CliMainWorker {
     }
 
     if received_sigterm {
-      // Re-raise SIGTERM with default handler so the parent process
-      // sees the correct exit status.
+      // After flushing coverage, re-raise SIGTERM with the default handler
+      // so the parent process sees the correct signal exit status.
       #[cfg(unix)]
-      unsafe {
-        libc::signal(libc::SIGTERM, libc::SIG_DFL);
-        libc::raise(libc::SIGTERM);
-      }
+      deno_signals::raise_sigterm_default();
     }
 
     Ok(self.worker.exit_code())
