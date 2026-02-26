@@ -10417,7 +10417,7 @@ mod tests {
       "--reload=http://deno.land/a,http://deno.land/b",
       "script.ts"
     ]);
-    assert!(r.is_ok(), "should accept accept multiple valid urls");
+    assert!(r.is_ok(), "should accept multiple valid urls");
 
     let r = flags_from_vec(svec![
       "deno",
