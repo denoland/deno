@@ -58,7 +58,6 @@ use node_resolver::NodeConditionOptions;
 use node_resolver::NodeResolverOptions;
 use node_resolver::cache::NodeResolutionThreadLocalCache;
 use once_cell::sync::OnceCell;
-use sys_traits::EnvCurrentDir;
 
 use crate::args::BundleFlags;
 use crate::args::CliLockfile;
@@ -700,14 +699,8 @@ impl CliFactory {
       let initial_cwd = match self.overrides.initial_cwd.clone() {
         Some(v) => v,
         None => {
-          if let Some(initial_cwd) = self.flags.initial_cwd.clone() {
-            initial_cwd
-          } else {
-            self
-              .sys()
-              .env_current_dir()
-              .with_context(|| "Failed getting cwd.")?
-          }
+          crate::util::env::resolve_cwd(self.flags.initial_cwd.as_deref())?
+            .into_owned()
         }
       };
       let options = new_workspace_factory_options(&initial_cwd, &self.flags);

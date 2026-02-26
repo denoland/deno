@@ -4,6 +4,7 @@ import { parse as parseToml } from "jsr:@std/toml@1";
 import {
   Condition,
   conditions,
+  type ConfigValue,
   createWorkflow,
   defineArtifact,
   defineExprObj,
@@ -186,6 +187,13 @@ __1
 CC=/usr/bin/clang-${llvmVersion}
 CFLAGS=$CFLAGS
 " > $GITHUB_ENV`,
+};
+
+const S3Envs: Readonly<Record<string, ConfigValue>> = {
+  AWS_ACCESS_KEY_ID: "${{ vars.S3_ACCESS_KEY_ID }}",
+  AWS_SECRET_ACCESS_KEY: "${{ secrets.S3_SECRET_ACCESS_KEY }}",
+  AWS_ENDPOINT_URL_S3: "${{ vars.S3_ENDPOINT }}",
+  AWS_DEFAULT_REGION: "${{ vars.S3_REGION }}",
 };
 
 function handleBuildItems(items: {
@@ -747,12 +755,17 @@ const buildJobs = buildItems.map((rawBuildItem) => {
           step.dependsOn(setupGcloudStep)({
             name: "Upload canary to dl.deno.land",
             if: isDenoland.and(isMainBranch),
+            env: S3Envs,
             run: [
               'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/',
               'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.sha256sum gs://dl.deno.land/canary/$(git rev-parse HEAD)/',
               'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.symcache gs://dl.deno.land/canary/$(git rev-parse HEAD)/',
+              'aws s3 sync ./target/release/ s3://dl-deno-land/canary/$(git rev-parse HEAD)/ --exclude "*" --include "*.zip"',
+              'aws s3 sync ./target/release/ s3://dl-deno-land/canary/$(git rev-parse HEAD)/ --exclude "*" --include "*.sha256sum"',
+              'aws s3 sync ./target/release/ s3://dl-deno-land/canary/$(git rev-parse HEAD)/ --exclude "*" --include "*.symcache"',
               "echo ${{ github.sha }} > canary-latest.txt",
               'gsutil -h "Cache-Control: no-cache" cp canary-latest.txt gs://dl.deno.land/canary-$(rustc -vV | sed -n "s|host: ||p")-latest.txt',
+              'aws s3 cp canary-latest.txt s3://dl-deno-land/canary-$(rustc -vV | sed -n "s|host: ||p")-latest.txt',
               "rm canary-latest.txt gha-creds-*.json",
             ],
           }),
@@ -845,19 +858,29 @@ const buildJobs = buildItems.map((rawBuildItem) => {
           step.dependsOn(setupGcloudStep)({
             name: "Upload release to dl.deno.land (unix)",
             if: isWindows.not(),
+            env: S3Envs,
             run: [
               'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/',
               'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.sha256sum gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/',
               'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.symcache gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/',
+              'aws s3 sync ./target/release/ s3://dl-deno-land/release/${GITHUB_REF#refs/*/}/ --exclude "*" --include "*.zip"',
+              'aws s3 sync ./target/release/ s3://dl-deno-land/release/${GITHUB_REF#refs/*/}/ --exclude "*" --include "*.sha256sum"',
+              'aws s3 sync ./target/release/ s3://dl-deno-land/release/${GITHUB_REF#refs/*/}/ --exclude "*" --include "*.symcache"',
             ],
           }, {
             name: "Upload release to dl.deno.land (windows)",
             if: isWindows,
-            env: { CLOUDSDK_PYTHON: "${{env.pythonLocation}}\\python.exe" },
+            env: {
+              ...S3Envs,
+              CLOUDSDK_PYTHON: "${{env.pythonLocation}}\\python.exe",
+            },
             run: [
               'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/',
               'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.sha256sum gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/',
               'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.symcache gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/',
+              'aws s3 sync ./target/release/ s3://dl-deno-land/release/${GITHUB_REF#refs/*/}/ --exclude "*" --include "*.zip"',
+              'aws s3 sync ./target/release/ s3://dl-deno-land/release/${GITHUB_REF#refs/*/}/ --exclude "*" --include "*.sha256sum"',
+              'aws s3 sync ./target/release/ s3://dl-deno-land/release/${GITHUB_REF#refs/*/}/ --exclude "*" --include "*.symcache"',
             ],
           }),
           {
@@ -1255,12 +1278,16 @@ const buildJobs = buildItems.map((rawBuildItem) => {
             if: isRelease.and(isLinux).and(isDenoland).and(isMainBranch).and(
               isNotTag,
             ),
+            env: S3Envs,
             run: [
               "gzip ./wptreport.json",
               'gsutil -h "Cache-Control: public, max-age=3600" cp ./wpt.json gs://dl.deno.land/wpt/$(git rev-parse HEAD).json',
               'gsutil -h "Cache-Control: public, max-age=3600" cp ./wptreport.json.gz gs://dl.deno.land/wpt/$(git rev-parse HEAD)-wptreport.json.gz',
+              "aws s3 cp ./wpt.json s3://dl-deno-land/wpt/$(git rev-parse HEAD).json",
+              "aws s3 cp ./wptreport.json.gz s3://dl-deno-land/wpt/$(git rev-parse HEAD)-wptreport.json.gz",
               "echo $(git rev-parse HEAD) > wpt-latest.txt",
               'gsutil -h "Cache-Control: no-cache" cp wpt-latest.txt gs://dl.deno.land/wpt-latest.txt',
+              "aws s3 cp wpt-latest.txt s3://dl-deno-land/wpt-latest.txt",
             ],
           }),
           {
@@ -1459,9 +1486,11 @@ const publishCanaryJob = job("publish-canary", {
       setupGcloudStep,
       {
         name: "Upload canary version file to dl.deno.land",
+        env: S3Envs,
         run: [
           "echo ${{ github.sha }} > canary-latest.txt",
           'gsutil -h "Cache-Control: no-cache" cp canary-latest.txt gs://dl.deno.land/canary-latest.txt',
+          "aws s3 cp canary-latest.txt s3://dl-deno-land/canary-latest.txt",
         ],
       },
     );
