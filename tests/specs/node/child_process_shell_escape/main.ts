@@ -152,4 +152,36 @@ if (fs.existsSync(markerFile)) {
   console.log("PASS: $() + $VAR injection blocked");
 }
 
+// Test 12: Backslash-quote breakout + $VAR injection should be blocked
+// A \" in the argument can break out of the double-quote re-quoting:
+// .replace(/"/g, '\\"') turns \" into \\", and the shell interprets
+// \\ as escaped backslash then " as END QUOTE. The # swallows the
+// trailing wrapper quote as a comment.
+console.log("Test 12: Backslash-quote breakout + $VAR injection in args");
+const bsQuotePayload = '$HOME\\";touch ' + markerFile + ";#";
+spawnSync(Deno.execPath(), ["eval", "''", bsQuotePayload], {
+  shell: true,
+  env: { PATH: "/usr/bin:/bin", HOME: "/tmp" },
+});
+if (fs.existsSync(markerFile)) {
+  console.log("FAIL: Backslash-quote breakout injection was not blocked");
+  Deno.exit(1);
+} else {
+  console.log("PASS: Backslash-quote breakout injection blocked");
+}
+
+// Test 13: Backslash-quote breakout with pipe injection
+console.log("Test 13: Backslash-quote breakout + pipe injection in args");
+const bsPipePayload = '$HOME\\"|touch ' + markerFile + " #";
+spawnSync(Deno.execPath(), ["eval", "''", bsPipePayload], {
+  shell: true,
+  env: { PATH: "/usr/bin:/bin", HOME: "/tmp" },
+});
+if (fs.existsSync(markerFile)) {
+  console.log("FAIL: Backslash-quote pipe injection was not blocked");
+  Deno.exit(1);
+} else {
+  console.log("PASS: Backslash-quote pipe injection blocked");
+}
+
 console.log("All tests passed!");

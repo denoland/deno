@@ -1286,11 +1286,11 @@ function transformDenoShellCommand(
       : result.deno_args.map((a) => {
         // POSIX shell quoting for translated args.
         const hasShellVarRef = /\$\{[^}]+\}|\$[A-Za-z_]/.test(a);
-        const hasCmdSubstitution = /`|\$\(/.test(a);
+        const unsafeInDoubleQuotes = /`|\$\(|\\/.test(a);
         const hasShellMetachars = /[();&|<>`!\n\r\s"'\\$]/.test(a);
 
         if (hasShellMetachars) {
-          if (hasShellVarRef && !hasCmdSubstitution) {
+          if (hasShellVarRef && !unsafeInDoubleQuotes) {
             return '"' + a.replace(/"/g, '\\"') + '"';
           }
           return "'" + a.replace(/'/g, "'\\''") + "'";
