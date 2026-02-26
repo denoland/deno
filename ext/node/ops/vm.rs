@@ -614,44 +614,44 @@ fn property_query<'s>(
   args: v8::PropertyCallbackArguments<'s>,
   mut rv: v8::ReturnValue<v8::Integer>,
 ) -> v8::Intercepted {
-  let Some(ctx) = ContextifyContext::get(scope, args.this()) else {
-    return v8::Intercepted::No;
+  let Some(ctx) = ContextifyContext::get(scope, args.holder()) else {
+    return v8::Intercepted::kNo;
   };
 
   let context = ctx.context(scope);
   let scope = &mut v8::ContextScope::new(scope, context);
   let Some(sandbox) = ctx.sandbox(scope) else {
-    return v8::Intercepted::No;
+    return v8::Intercepted::kNo;
   };
 
   match sandbox.has_real_named_property(scope, property) {
-    None => v8::Intercepted::No,
+    None => v8::Intercepted::kNo,
     Some(true) => {
       let Some(attr) =
         sandbox.get_real_named_property_attributes(scope, property)
       else {
-        return v8::Intercepted::No;
+        return v8::Intercepted::kNo;
       };
       rv.set_uint32(attr.as_u32());
-      v8::Intercepted::Yes
+      v8::Intercepted::kYes
     }
     Some(false) => {
       match ctx
         .global_proxy(scope)
         .has_real_named_property(scope, property)
       {
-        None => v8::Intercepted::No,
+        None => v8::Intercepted::kNo,
         Some(true) => {
           let Some(attr) = ctx
             .global_proxy(scope)
             .get_real_named_property_attributes(scope, property)
           else {
-            return v8::Intercepted::No;
+            return v8::Intercepted::kNo;
           };
           rv.set_uint32(attr.as_u32());
-          v8::Intercepted::Yes
+          v8::Intercepted::kYes
         }
-        Some(false) => v8::Intercepted::No,
+        Some(false) => v8::Intercepted::kNo,
       }
     }
   }
@@ -663,12 +663,12 @@ fn property_getter<'s>(
   args: v8::PropertyCallbackArguments<'s>,
   mut ret: v8::ReturnValue,
 ) -> v8::Intercepted {
-  let Some(ctx) = ContextifyContext::get(scope, args.this()) else {
-    return v8::Intercepted::No;
+  let Some(ctx) = ContextifyContext::get(scope, args.holder()) else {
+    return v8::Intercepted::kNo;
   };
 
   let Some(sandbox) = ctx.sandbox(scope) else {
-    return v8::Intercepted::No;
+    return v8::Intercepted::kNo;
   };
 
   v8::tc_scope!(tc_scope, scope);
@@ -688,10 +688,10 @@ fn property_getter<'s>(
     }
 
     ret.set(rv);
-    return v8::Intercepted::Yes;
+    return v8::Intercepted::kYes;
   }
 
-  v8::Intercepted::No
+  v8::Intercepted::kNo
 }
 
 fn property_setter<'s>(
@@ -701,8 +701,8 @@ fn property_setter<'s>(
   args: v8::PropertyCallbackArguments<'s>,
   _rv: v8::ReturnValue<()>,
 ) -> v8::Intercepted {
-  let Some(ctx) = ContextifyContext::get(scope, args.this()) else {
-    return v8::Intercepted::No;
+  let Some(ctx) = ContextifyContext::get(scope, args.holder()) else {
+    return v8::Intercepted::kNo;
   };
 
   let (attributes, is_declared_on_global_proxy) = match ctx
@@ -714,7 +714,7 @@ fn property_setter<'s>(
   };
   let mut read_only = attributes.is_read_only();
   let Some(sandbox) = ctx.sandbox(scope) else {
-    return v8::Intercepted::No;
+    return v8::Intercepted::kNo;
   };
   let (attributes, is_declared_on_sandbox) =
     match sandbox.get_real_named_property_attributes(scope, key) {
@@ -724,14 +724,14 @@ fn property_setter<'s>(
   read_only |= attributes.is_read_only();
 
   if read_only {
-    return v8::Intercepted::No;
+    return v8::Intercepted::kNo;
   }
 
   // true for x = 5
   // false for this.x = 5
   // false for Object.defineProperty(this, 'foo', ...)
   // false for vmResult.x = 5 where vmResult = vm.runInContext();
-  let is_contextual_store = ctx.global_proxy(scope) != args.this();
+  let is_contextual_store = ctx.global_proxy(scope) != args.holder();
 
   // Indicator to not return before setting (undeclared) function declarations
   // on the sandbox in strict mode, i.e. args.ShouldThrowOnError() = true.
@@ -748,15 +748,15 @@ fn property_setter<'s>(
     && is_contextual_store
     && !is_function
   {
-    return v8::Intercepted::No;
+    return v8::Intercepted::kNo;
   }
 
   if !is_declared && key.is_symbol() {
-    return v8::Intercepted::No;
+    return v8::Intercepted::kNo;
   };
 
   if sandbox.set(scope, key.into(), value).is_none() {
-    return v8::Intercepted::No;
+    return v8::Intercepted::kNo;
   }
 
   if is_declared_on_sandbox
@@ -777,11 +777,11 @@ fn property_setter<'s>(
         .has_own_property(scope, set_key.into())
         .unwrap_or(false)
     {
-      return v8::Intercepted::Yes;
+      return v8::Intercepted::kYes;
     }
   }
 
-  v8::Intercepted::No
+  v8::Intercepted::kNo
 }
 
 fn property_descriptor<'s>(
@@ -790,13 +790,13 @@ fn property_descriptor<'s>(
   args: v8::PropertyCallbackArguments<'s>,
   mut rv: v8::ReturnValue,
 ) -> v8::Intercepted {
-  let Some(ctx) = ContextifyContext::get(scope, args.this()) else {
-    return v8::Intercepted::No;
+  let Some(ctx) = ContextifyContext::get(scope, args.holder()) else {
+    return v8::Intercepted::kNo;
   };
 
   let context = ctx.context(scope);
   let Some(sandbox) = ctx.sandbox(scope) else {
-    return v8::Intercepted::No;
+    return v8::Intercepted::kNo;
   };
   let scope = &mut v8::ContextScope::new(scope, context);
 
@@ -804,10 +804,10 @@ fn property_descriptor<'s>(
     && let Some(desc) = sandbox.get_own_property_descriptor(scope, key)
   {
     rv.set(desc);
-    return v8::Intercepted::Yes;
+    return v8::Intercepted::kYes;
   }
 
-  v8::Intercepted::No
+  v8::Intercepted::kNo
 }
 
 fn property_definer<'s>(
@@ -817,8 +817,8 @@ fn property_definer<'s>(
   args: v8::PropertyCallbackArguments<'s>,
   _: v8::ReturnValue<()>,
 ) -> v8::Intercepted {
-  let Some(ctx) = ContextifyContext::get(scope, args.this()) else {
-    return v8::Intercepted::No;
+  let Some(ctx) = ContextifyContext::get(scope, args.holder()) else {
+    return v8::Intercepted::kNo;
   };
 
   let context = ctx.context(scope);
@@ -838,11 +838,11 @@ fn property_definer<'s>(
   // If the property is set on the global as read_only, don't change it on
   // the global or sandbox.
   if is_declared && read_only && dont_delete {
-    return v8::Intercepted::No;
+    return v8::Intercepted::kNo;
   }
 
   let Some(sandbox) = ctx.sandbox(scope) else {
-    return v8::Intercepted::No;
+    return v8::Intercepted::kNo;
   };
 
   let define_prop_on_sandbox =
@@ -891,7 +891,7 @@ fn property_definer<'s>(
     }
   }
 
-  v8::Intercepted::Yes
+  v8::Intercepted::kYes
 }
 
 fn property_deleter<'s>(
@@ -900,22 +900,22 @@ fn property_deleter<'s>(
   args: v8::PropertyCallbackArguments<'s>,
   mut rv: v8::ReturnValue<v8::Boolean>,
 ) -> v8::Intercepted {
-  let Some(ctx) = ContextifyContext::get(scope, args.this()) else {
-    return v8::Intercepted::No;
+  let Some(ctx) = ContextifyContext::get(scope, args.holder()) else {
+    return v8::Intercepted::kNo;
   };
 
   let context = ctx.context(scope);
   let Some(sandbox) = ctx.sandbox(scope) else {
-    return v8::Intercepted::No;
+    return v8::Intercepted::kNo;
   };
 
   let context_scope = &mut v8::ContextScope::new(scope, context);
   if sandbox.delete(context_scope, key.into()).unwrap_or(false) {
-    return v8::Intercepted::No;
+    return v8::Intercepted::kNo;
   }
 
   rv.set_bool(false);
-  v8::Intercepted::Yes
+  v8::Intercepted::kYes
 }
 
 fn property_enumerator<'s>(
@@ -923,7 +923,7 @@ fn property_enumerator<'s>(
   args: v8::PropertyCallbackArguments<'s>,
   mut rv: v8::ReturnValue<v8::Array>,
 ) {
-  let Some(ctx) = ContextifyContext::get(scope, args.this()) else {
+  let Some(ctx) = ContextifyContext::get(scope, args.holder()) else {
     return;
   };
 
@@ -947,7 +947,7 @@ fn indexed_property_enumerator<'s>(
   args: v8::PropertyCallbackArguments<'s>,
   mut rv: v8::ReturnValue<v8::Array>,
 ) {
-  let Some(ctx) = ContextifyContext::get(scope, args.this()) else {
+  let Some(ctx) = ContextifyContext::get(scope, args.holder()) else {
     return;
   };
   let context = ctx.context(scope);
@@ -1047,24 +1047,24 @@ fn indexed_property_deleter<'s>(
   args: v8::PropertyCallbackArguments<'s>,
   mut rv: v8::ReturnValue<v8::Boolean>,
 ) -> v8::Intercepted {
-  let Some(ctx) = ContextifyContext::get(scope, args.this()) else {
-    return v8::Intercepted::No;
+  let Some(ctx) = ContextifyContext::get(scope, args.holder()) else {
+    return v8::Intercepted::kNo;
   };
 
   let context = ctx.context(scope);
   let Some(sandbox) = ctx.sandbox(scope) else {
-    return v8::Intercepted::No;
+    return v8::Intercepted::kNo;
   };
 
   let context_scope = &mut v8::ContextScope::new(scope, context);
   if !sandbox.delete_index(context_scope, index).unwrap_or(false) {
-    return v8::Intercepted::No;
+    return v8::Intercepted::kNo;
   }
 
   // Delete failed on the sandbox, intercept and do not delete on
   // the global object.
   rv.set_bool(false);
-  v8::Intercepted::No
+  v8::Intercepted::kNo
 }
 
 #[allow(clippy::too_many_arguments)]
