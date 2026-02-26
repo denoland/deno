@@ -1553,7 +1553,7 @@ impl SourceFile {
       "vento" => "vento",
       "njk" => "nunjucks",
       "nunjucks" => "nunjucks",
-      other => panic!("unsupported file extension: {other}"),
+      _ => "plaintext",
     };
     Self {
       path,

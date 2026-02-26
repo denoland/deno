@@ -61,7 +61,6 @@ use crate::jsr::JsrFetchResolver;
 use crate::npm::CliNpmResolver;
 use crate::npm::NpmFetchResolver;
 use crate::sys::CliSys;
-use crate::tools::pm::CacheTopLevelDepsOptions;
 use crate::util::display;
 use crate::util::env::resolve_cwd;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
@@ -913,17 +912,6 @@ async fn install_global(
       }
     }
 
-    factory
-      .main_module_graph_container()
-      .await?
-      .load_and_type_check_files(
-        std::slice::from_ref(module_url),
-        CollectSpecifiersOptions {
-          include_ignored_specified: true,
-        },
-      )
-      .await?;
-
     let name_and_url = BinaryNameAndUrl::resolve(
       &factory.bin_name_resolver()?,
       cli_options.initial_cwd(),
@@ -1028,36 +1016,29 @@ async fn setup_config_dir(
         req.name, req.version_req
       ),
     )?;
-
-    // create cloned flags to run cache_top_level_deps
-    let mut new_flags = flags.clone();
-    new_flags.initial_cwd = Some(dir.clone());
-    new_flags.node_modules_dir = flags.node_modules_dir;
-    new_flags.internal.root_node_modules_dir_override =
-      Some(dir.join("node_modules"));
-    new_flags.config_flag =
-      ConfigFlag::Path(dir.join("deno.json").to_string_lossy().into_owned());
-    new_flags.subcommand = DenoSubcommand::Install(InstallFlags::Local(
-      InstallFlagsLocal::TopLevel(InstallTopLevelFlags {
-        lockfile_only: false,
-      }),
-    ));
-
-    let new_factory = CliFactory::from_flags(Arc::new(new_flags));
-
-    crate::tools::pm::cache_top_level_deps(
-      &new_factory,
-      None,
-      CacheTopLevelDepsOptions {
-        lockfile_only: false,
-      },
-    )
-    .await?;
-
-    if let Some(lockfile) = new_factory.maybe_lockfile().await? {
-      lockfile.write_if_changed()?;
-    }
   }
+
+  // create cloned flags to run cache_top_level_deps
+  let mut new_flags = flags.clone();
+  new_flags.initial_cwd = Some(dir.clone());
+  new_flags.node_modules_dir = flags.node_modules_dir;
+  new_flags.internal.root_node_modules_dir_override =
+    Some(dir.join("node_modules"));
+  new_flags.config_flag =
+    ConfigFlag::Path(dir.join("deno.json").to_string_lossy().into_owned());
+  let entrypoint_flags = InstallEntrypointsFlags {
+    lockfile_only: false,
+    entrypoints: vec![bin_name_and_url.module_url.to_string()],
+  };
+  new_flags.subcommand = DenoSubcommand::Install(InstallFlags::Local(
+    InstallFlagsLocal::Entrypoints(entrypoint_flags.clone()),
+  ));
+
+  crate::tools::installer::install_from_entrypoints(
+    Arc::new(new_flags),
+    entrypoint_flags,
+  )
+  .await?;
 
   Ok(())
 }
@@ -1416,6 +1397,7 @@ mod tests {
     flags: &Flags,
     install_flags_global: InstallFlagsGlobal,
   ) -> Result<(), AnyError> {
+    let _http_server_guard = test_util::http_server();
     let cwd = resolve_cwd(None).unwrap();
     let http_client = HttpClientProvider::new(None, None);
     let registry_api = deno_npm::registry::TestNpmRegistryApi::default();
@@ -1456,6 +1438,7 @@ mod tests {
     flags: &Flags,
     install_flags_global: &InstallFlagsGlobal,
   ) -> Result<(BinaryNameAndUrl, ShimData), AnyError> {
+    let _http_server_guard = test_util::http_server();
     let cwd = resolve_cwd(None).unwrap();
     let http_client = HttpClientProvider::new(None, None);
     let registry_api = deno_npm::registry::TestNpmRegistryApi::default();
@@ -1487,7 +1470,7 @@ mod tests {
     create_install_shim(
       &Flags::default(),
       InstallFlagsGlobal {
-        module_urls: vec!["http://localhost:4545/echo_server.ts".to_string()],
+        module_urls: vec!["http://localhost:4545/echo.ts".to_string()],
         args: vec![],
         name: Some("echo_test".to_string()),
         root: Some(temp_dir.path().to_string()),
@@ -1510,12 +1493,12 @@ mod tests {
       .join("deno.json");
     if cfg!(windows) {
       assert!(content.contains(&format!(
-        r#""run" "--config" "{}" "http://localhost:4545/echo_server.ts""#,
+        r#""run" "--config" "{}" "http://localhost:4545/echo.ts""#,
         config_path.to_string_lossy()
       )));
     } else {
       assert!(content.contains(&format!(
-        "run --config {} 'http://localhost:4545/echo_server.ts'",
+        "run --config {} 'http://localhost:4545/echo.ts'",
         config_path.to_string_lossy()
       )));
     }
@@ -1524,12 +1507,11 @@ mod tests {
   #[tokio::test]
   async fn install_inferred_name() {
     let temp_dir_str = env::temp_dir().to_string_lossy().into_owned();
-    let config_path =
-      config_dir_for(&temp_dir_str, "echo_server").join("deno.json");
+    let config_path = config_dir_for(&temp_dir_str, "echo").join("deno.json");
     let (bin_info, shim_data) = resolve_shim_data(
       &Flags::default(),
       &InstallFlagsGlobal {
-        module_urls: vec!["http://localhost:4545/echo_server.ts".to_string()],
+        module_urls: vec!["http://localhost:4545/echo.ts".to_string()],
         args: vec![],
         name: None,
         root: Some(temp_dir_str),
@@ -1540,14 +1522,14 @@ mod tests {
     .await
     .unwrap();
 
-    assert_eq!(bin_info.name, "echo_server");
+    assert_eq!(bin_info.name, "echo");
     assert_eq!(
       shim_data.args,
       vec![
         "run",
         "--config",
         &config_path.to_string_lossy(),
-        "http://localhost:4545/echo_server.ts",
+        "http://localhost:4545/echo.ts",
       ]
     );
   }
@@ -1555,12 +1537,11 @@ mod tests {
   #[tokio::test]
   async fn install_unstable_legacy() {
     let temp_dir_str = env::temp_dir().to_string_lossy().into_owned();
-    let config_path =
-      config_dir_for(&temp_dir_str, "echo_server").join("deno.json");
+    let config_path = config_dir_for(&temp_dir_str, "echo").join("deno.json");
     let (bin_info, shim_data) = resolve_shim_data(
       &Default::default(),
       &InstallFlagsGlobal {
-        module_urls: vec!["http://localhost:4545/echo_server.ts".to_string()],
+        module_urls: vec!["http://localhost:4545/echo.ts".to_string()],
         args: vec![],
         name: None,
         root: Some(temp_dir_str),
@@ -1571,14 +1552,14 @@ mod tests {
     .await
     .unwrap();
 
-    assert_eq!(bin_info.name, "echo_server");
+    assert_eq!(bin_info.name, "echo");
     assert_eq!(
       shim_data.args,
       vec![
         "run",
         "--config",
         &config_path.to_string_lossy(),
-        "http://localhost:4545/echo_server.ts",
+        "http://localhost:4545/echo.ts",
       ]
     );
   }
@@ -1586,8 +1567,7 @@ mod tests {
   #[tokio::test]
   async fn install_unstable_features() {
     let temp_dir_str = env::temp_dir().to_string_lossy().into_owned();
-    let config_path =
-      config_dir_for(&temp_dir_str, "echo_server").join("deno.json");
+    let config_path = config_dir_for(&temp_dir_str, "echo").join("deno.json");
     let (bin_info, shim_data) = resolve_shim_data(
       &Flags {
         unstable_config: UnstableConfig {
@@ -1597,7 +1577,7 @@ mod tests {
         ..Default::default()
       },
       &InstallFlagsGlobal {
-        module_urls: vec!["http://localhost:4545/echo_server.ts".to_string()],
+        module_urls: vec!["http://localhost:4545/echo.ts".to_string()],
         args: vec![],
         name: None,
         root: Some(temp_dir_str),
@@ -1608,7 +1588,7 @@ mod tests {
     .await
     .unwrap();
 
-    assert_eq!(bin_info.name, "echo_server");
+    assert_eq!(bin_info.name, "echo");
     assert_eq!(
       shim_data.args,
       vec![
@@ -1617,7 +1597,7 @@ mod tests {
         "--unstable-cron",
         "--config",
         &config_path.to_string_lossy(),
-        "http://localhost:4545/echo_server.ts",
+        "http://localhost:4545/echo.ts",
       ]
     );
   }
@@ -1694,7 +1674,7 @@ mod tests {
     let (bin_info, shim_data) = resolve_shim_data(
       &Flags::default(),
       &InstallFlagsGlobal {
-        module_urls: vec!["http://localhost:4545/echo_server.ts".to_string()],
+        module_urls: vec!["http://localhost:4545/echo.ts".to_string()],
         args: vec![],
         name: Some("echo_test".to_string()),
         root: Some(temp_dir_str),
@@ -1712,7 +1692,7 @@ mod tests {
         "run",
         "--config",
         &config_path.to_string_lossy(),
-        "http://localhost:4545/echo_server.ts",
+        "http://localhost:4545/echo.ts",
       ]
     );
   }
@@ -1734,7 +1714,7 @@ mod tests {
         ..Flags::default()
       },
       &InstallFlagsGlobal {
-        module_urls: vec!["http://localhost:4545/echo_server.ts".to_string()],
+        module_urls: vec!["http://localhost:4545/echo.ts".to_string()],
         args: vec!["--foobar".to_string()],
         name: Some("echo_test".to_string()),
         root: Some(temp_dir_str),
@@ -1755,7 +1735,7 @@ mod tests {
         "--quiet",
         "--config",
         &config_path.to_string_lossy(),
-        "http://localhost:4545/echo_server.ts",
+        "http://localhost:4545/echo.ts",
         "--foobar",
       ]
     );
@@ -1775,7 +1755,7 @@ mod tests {
         ..Flags::default()
       },
       &InstallFlagsGlobal {
-        module_urls: vec!["http://localhost:4545/echo_server.ts".to_string()],
+        module_urls: vec!["http://localhost:4545/echo.ts".to_string()],
         args: vec![],
         name: Some("echo_test".to_string()),
         root: Some(temp_dir_str),
@@ -1793,7 +1773,7 @@ mod tests {
         "--no-prompt",
         "--config",
         &config_path.to_string_lossy(),
-        "http://localhost:4545/echo_server.ts",
+        "http://localhost:4545/echo.ts",
       ]
     );
   }
@@ -1812,7 +1792,7 @@ mod tests {
         ..Flags::default()
       },
       &InstallFlagsGlobal {
-        module_urls: vec!["http://localhost:4545/echo_server.ts".to_string()],
+        module_urls: vec!["http://localhost:4545/echo.ts".to_string()],
         args: vec![],
         name: Some("echo_test".to_string()),
         root: Some(temp_dir_str),
@@ -1830,7 +1810,7 @@ mod tests {
         "--allow-all",
         "--config",
         &config_path.to_string_lossy(),
-        "http://localhost:4545/echo_server.ts",
+        "http://localhost:4545/echo.ts",
       ]
     );
   }
@@ -1914,7 +1894,7 @@ mod tests {
     let temp_dir = TempDir::new();
     let bin_dir = temp_dir.path().join("bin");
     std::fs::create_dir(&bin_dir).unwrap();
-    let local_module = resolve_cwd(None).unwrap().join("echo_server.ts");
+    let local_module = testdata_path().join("echo.ts");
     let local_module_url = Url::from_file_path(&local_module).unwrap();
     let local_module_str = local_module.to_string_lossy();
 
@@ -1951,7 +1931,7 @@ mod tests {
     create_install_shim(
       &Flags::default(),
       InstallFlagsGlobal {
-        module_urls: vec!["http://localhost:4545/echo_server.ts".to_string()],
+        module_urls: vec!["http://localhost:4545/echo.ts".to_string()],
         args: vec![],
         name: Some("echo_test".to_string()),
         root: Some(temp_dir.path().to_string()),
@@ -1990,7 +1970,7 @@ mod tests {
     );
     // Assert not modified
     let file_content = fs::read_to_string(&file_path).unwrap();
-    assert!(file_content.contains("echo_server.ts"));
+    assert!(file_content.contains("echo.ts"));
 
     // Force. Install success.
     let force_result = create_install_shim(
@@ -2056,7 +2036,7 @@ mod tests {
     create_install_shim(
       &Flags::default(),
       InstallFlagsGlobal {
-        module_urls: vec!["http://localhost:4545/echo_server.ts".to_string()],
+        module_urls: vec!["http://localhost:4545/echo.ts".to_string()],
         args: vec!["\"".to_string()],
         name: Some("echo_test".to_string()),
         root: Some(temp_dir.path().to_string()),
@@ -2080,7 +2060,7 @@ mod tests {
       // TODO: see comment above this test
     } else {
       assert!(content.contains(&format!(
-        "run --config {} 'http://localhost:4545/echo_server.ts' '\"'",
+        "run --config {} 'http://localhost:4545/echo.ts' '\"'",
         config_path.to_string_lossy()
       )));
     }
@@ -2093,7 +2073,7 @@ mod tests {
     std::fs::create_dir(&bin_dir).unwrap();
     let unicode_dir = temp_dir.path().join("Magnús");
     std::fs::create_dir(&unicode_dir).unwrap();
-    let local_module = unicode_dir.join("echo_server.ts");
+    let local_module = unicode_dir.join("echo.ts");
     let local_module_str = local_module.to_string_lossy();
     std::fs::write(&local_module, "// Some JavaScript I guess").unwrap();
 
