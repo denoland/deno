@@ -258,8 +258,8 @@ rustls = { version = "=0.23.28", default-features = false, features = ["logging"
 rustls-pemfile = "2"
 rustls-tokio-stream = "=0.8.0"
 rustls-webpki = "0.102"
-rustyline = "=13.0.0"
-rustyline-derive = "=0.7.0"
+rustyline = { version = "=17.0.0", features = ["custom-bindings"] }
+rustyline-derive = "=0.11.1"
 saffron = "=0.1.0"
 same-file = "1.0.6"
 scopeguard = "1.2.0"
@@ -414,7 +414,7 @@ quote = "1"
 syn = { version = "2", features = ["full", "extra-traits"] }
 
 # unix deps
-nix = "=0.27.1"
+nix = "=0.30.1"
 tokio-vsock = "0.7"
 
 # windows deps
