@@ -1460,6 +1460,11 @@ static ENV_VARS: &[EnvVar] = &[
     example: None,
   },
   EnvVar {
+    name: "DENO_COVERAGE_DIR",
+    description: "Set the directory for collecting code coverage profiles.\nEquivalent to using the --coverage flag.",
+    example: None,
+  },
+  EnvVar {
     name: "DENO_DIR",
     description: "Set the cache directory",
     example: None,
