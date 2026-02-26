@@ -81,14 +81,14 @@ impl<'a, TSys: SetupBinEntrySys> BinEntries<'a, TSys> {
     extra: &'b NpmPackageExtraInfo,
     package_path: PathBuf,
   ) {
-    if extra.bin.is_none() {
+    let Some(bin) = extra.bin.as_ref() else {
       // likely lockfile incorrectly said that the package has a bin
       return;
-    }
+    };
     self.sorted = false;
     // check for a new collision, if we haven't already
     // found one
-    match extra.bin.as_ref().unwrap() {
+    match bin {
       deno_npm::registry::NpmPackageVersionBinEntry::String(_) => {
         let bin_name = default_bin_name(package);
 
