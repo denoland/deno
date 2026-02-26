@@ -596,13 +596,33 @@ dependencies = [
  "bitflags 2.9.3",
  "cexpr",
  "clang-sys",
- "itertools 0.13.0",
+ "itertools 0.12.1",
  "log",
  "prettyplease",
  "proc-macro2",
  "quote",
  "regex",
  "rustc-hash 1.1.0",
+ "shlex",
+ "syn 2.0.87",
+]
+
+[[package]]
+name = "bindgen"
+version = "0.71.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5f58bf3d7db68cfbac37cfc485a8d711e87e064c3d0fe0435b92f7a407f9d6b3"
+dependencies = [
+ "bitflags 2.9.3",
+ "cexpr",
+ "clang-sys",
+ "itertools 0.12.1",
+ "log",
+ "prettyplease",
+ "proc-macro2",
+ "quote",
+ "regex",
+ "rustc-hash 2.1.1",
  "shlex",
  "syn 2.0.87",
 ]
@@ -616,7 +636,7 @@ dependencies = [
  "bitflags 2.9.3",
  "cexpr",
  "clang-sys",
- "itertools 0.13.0",
+ "itertools 0.12.1",
  "log",
  "prettyplease",
  "proc-macro2",
@@ -1930,8 +1950,7 @@ dependencies = [
 [[package]]
 name = "deno_core"
 version = "0.386.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f5cdb60d25f7e87f7f3bb5b1fcbd8d059ab908d614c0ad67dafce7f6c1514f08"
+source = "git+https://github.com/denoland/deno_core.git?branch=event-loop-rewrite-slop#e49e59f56e02176e8830e16dd2130d04def1795e"
 dependencies = [
  "anyhow",
  "az",
@@ -2542,6 +2561,7 @@ dependencies = [
  "idna",
  "ipnetwork",
  "libc",
+ "libnghttp2",
  "libz-sys",
  "log",
  "nix 0.30.1",
@@ -2733,8 +2753,7 @@ dependencies = [
 [[package]]
 name = "deno_ops"
 version = "0.262.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "34b785cc3c336f7414d49a05119fa001ced8dff3150fdda671fc11eb4ccd15f4"
+source = "git+https://github.com/denoland/deno_core.git?branch=event-loop-rewrite-slop#e49e59f56e02176e8830e16dd2130d04def1795e"
 dependencies = [
  "indexmap 2.9.0",
  "proc-macro2",
@@ -6084,6 +6103,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4ec2a862134d2a7d32d7983ddcdd1c4923530833c9f2ea1a44fc5fa473989058"
 
 [[package]]
+name = "libnghttp2"
+version = "1.68.0-rc.0"
+source = "git+https://github.com/littledivy/libnghttp2?branch=main#03e82f01b6ebb98ce63b3024d6ac8945b5141e63"
+dependencies = [
+ "bindgen 0.71.1",
+ "cc",
+ "libc",
+]
+
+[[package]]
 name = "libredox"
 version = "0.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7558,7 +7587,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e9552f850d5f0964a4e4d0bf306459ac29323ddfbae05e35a7c0d35cb0803cc5"
 dependencies = [
  "anyhow",
- "itertools 0.13.0",
+ "itertools 0.12.1",
  "proc-macro2",
  "quote",
  "syn 2.0.87",
@@ -8603,8 +8632,7 @@ dependencies = [
 [[package]]
 name = "serde_v8"
 version = "0.295.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cb620fe7d5bf70c50297bdd48621b1c365c0f6535e607a1b0aaab961939fe3e8"
+source = "git+https://github.com/denoland/deno_core.git?branch=event-loop-rewrite-slop#e49e59f56e02176e8830e16dd2130d04def1795e"
 dependencies = [
  "deno_error",
  "num-bigint",
