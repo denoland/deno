@@ -1,8 +1,0 @@
-{
-  "tests": {
-    "context_hooks": {
-      "args": "test test_context_hooks.js",
-      "output": "test_context_hooks.out"
-    }
-  }
-}
