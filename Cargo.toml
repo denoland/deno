@@ -402,7 +402,7 @@ memmap2 = "0.9"
 libloading = "0.7"
 libuv-sys-lite = "=1.48.2"
 napi-build = "1"
-napi-sys = { version = "=2.2.2", default-features = false }
+napi-sys = { version = "=3.2.1", default-features = false }
 
 # webgpu
 raw-window-handle = "0.6.0"

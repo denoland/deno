@@ -44,7 +44,7 @@ extern "C" fn make_callback(
   assert_napi_ok!(napi_create_string_utf8(
     env,
     cstr!("test"),
-    usize::MAX,
+    -1,
     &mut resource_name
   ));
 
@@ -73,7 +73,7 @@ pub fn init(env: napi_env, exports: napi_value) {
   assert_napi_ok!(napi_create_function(
     env,
     ptr::null_mut(),
-    usize::MAX,
+    -1,
     Some(make_callback),
     ptr::null_mut(),
     &mut fn_,
