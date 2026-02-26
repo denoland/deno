@@ -117,9 +117,9 @@ export function mkdirSync(
   }
   validateBoolean(recursive, "options.recursive");
 
-  const firstNonExistent = recursive ? findFirstNonExistent(path) : undefined;
-
+  let firstNonExistent: string | undefined;
   try {
+    firstNonExistent = recursive ? findFirstNonExistent(path) : undefined;
     Deno.mkdirSync(path, { recursive, mode });
   } catch (err) {
     throw denoErrorToNodeError(err as Error, { syscall: "mkdir", path });
