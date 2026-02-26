@@ -17,7 +17,7 @@ import {
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 96;
+const cacheVersion = 98;
 
 const ubuntuX86Runner = "ubuntu-24.04";
 const ubuntuX86XlRunner = "ghcr.io/cirruslabs/ubuntu-runner-amd64:24.04";
@@ -772,6 +772,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
             {
               // do this on PRs as well as main so that PRs can use the cargo build cache from main
               name: "Configure canary build",
+              if: isNotTag,
               run: 'echo "DENO_CANARY=true" >> $GITHUB_ENV',
             },
             {
@@ -989,7 +990,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
           `test ${testMatrix.test_crate} ${testMatrix.shard_label}${buildItem.profile} ${buildItem.os}-${buildItem.arch}`,
         needs: [buildJob],
         runsOn: buildItem.testRunner ?? buildItem.runner,
-        timeoutMinutes: 240,
+        timeoutMinutes: 30,
         defaults,
         env,
         strategy: {
