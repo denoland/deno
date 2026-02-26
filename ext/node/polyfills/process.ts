@@ -514,9 +514,10 @@ Process.prototype.on = function (
     } else if (event === "SIGTERM" && Deno.build.os === "windows") {
       // Ignores SIGTERM on windows.
     } else if (
-      event !== "SIGBREAK" && event !== "SIGINT" && Deno.build.os === "windows"
+      event !== "SIGBREAK" && event !== "SIGINT" &&
+      event !== "SIGWINCH" && Deno.build.os === "windows"
     ) {
-      // TODO(#26331): Ignores all signals except SIGBREAK and SIGINT on windows.
+      // TODO(#26331): Ignores all signals except SIGBREAK, SIGINT, and SIGWINCH on windows.
     } else {
       EventEmitter.prototype.on.call(this, event, listener);
       Deno.addSignalListener(event as Deno.Signal, listener);
@@ -542,9 +543,10 @@ Process.prototype.off = function (
     if (event === "SIGBREAK" && Deno.build.os !== "windows") {
       // Ignores SIGBREAK if the platform is not windows.
     } else if (
-      event !== "SIGBREAK" && event !== "SIGINT" && Deno.build.os === "windows"
+      event !== "SIGBREAK" && event !== "SIGINT" &&
+      event !== "SIGWINCH" && Deno.build.os === "windows"
     ) {
-      // Ignores all signals except SIGBREAK and SIGINT on windows.
+      // Ignores all signals except SIGBREAK, SIGINT, and SIGWINCH on windows.
     } else {
       EventEmitter.prototype.off.call(this, event, listener);
       Deno.removeSignalListener(event as Deno.Signal, listener);
