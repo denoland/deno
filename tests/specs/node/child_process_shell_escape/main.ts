@@ -121,4 +121,35 @@ await new Promise<void>((resolve) => {
   });
 });
 
+// Test 10: Backtick + $VAR injection should be blocked (CVE-2026-27190 bypass)
+// When an arg contains both $VAR and backticks, the re-quoting logic must not
+// use double quotes (which allow backtick command substitution in POSIX sh).
+console.log("Test 10: Backtick + $VAR injection in args");
+const backtickVarPayload = "`touch " + markerFile + "`$HOME";
+spawnSync(Deno.execPath(), ["eval", "''", backtickVarPayload], {
+  shell: true,
+  env: { PATH: "/usr/bin:/bin", HOME: "/tmp" },
+});
+if (fs.existsSync(markerFile)) {
+  console.log("FAIL: Backtick + $VAR injection was not blocked");
+  Deno.exit(1);
+} else {
+  console.log("PASS: Backtick + $VAR injection blocked");
+}
+
+// Test 11: $() + $VAR injection should be blocked (CVE-2026-27190 bypass)
+// Same issue with $() command substitution syntax combined with $VAR.
+console.log("Test 11: $() + $VAR injection in args");
+const subshellVarPayload = "$(touch " + markerFile + ")$HOME";
+spawnSync(Deno.execPath(), ["eval", "''", subshellVarPayload], {
+  shell: true,
+  env: { PATH: "/usr/bin:/bin", HOME: "/tmp" },
+});
+if (fs.existsSync(markerFile)) {
+  console.log("FAIL: $() + $VAR injection was not blocked");
+  Deno.exit(1);
+} else {
+  console.log("PASS: $() + $VAR injection blocked");
+}
+
 console.log("All tests passed!");
