@@ -173,7 +173,8 @@ fn generate_coverage_report(
     // inner ranges are blocks/branches/loops). The parent count is needed to
     // correctly compute complement branches — e.g. for an if/else inside a
     // loop, the parent is the loop body, not the function.
-    let mut parent_counts: Vec<i64> = Vec::with_capacity(function.ranges.len().saturating_sub(1));
+    let mut parent_counts: Vec<i64> =
+      Vec::with_capacity(function.ranges.len().saturating_sub(1));
     for range in &function.ranges[1..] {
       let mut parent_count = block_hits;
       let mut parent_size = usize::MAX;
