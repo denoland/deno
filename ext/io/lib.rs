@@ -908,6 +908,7 @@ impl crate::fs::File for StdFileResourceInner {
     {
       let owner = _uid.map(nix::unistd::Uid::from_raw);
       let group = _gid.map(nix::unistd::Gid::from_raw);
+      // SAFETY: self.handle is a valid open file descriptor
       let raw_fd = unsafe { std::os::fd::BorrowedFd::borrow_raw(self.handle) };
       let res = nix::unistd::fchown(raw_fd, owner, group);
       if let Err(err) = res {
