@@ -35,7 +35,7 @@ use deno_core::error::CoreError;
 use deno_core::error::JsError;
 use deno_core::merge_op_metrics;
 use deno_core::v8;
-use deno_cron::local::LocalCronHandler;
+use deno_cron::CronHandlerImpl;
 use deno_fs::FileSystem;
 use deno_io::Stdio;
 use deno_kv::dynamic::MultiBackendDbHandler;
@@ -57,7 +57,7 @@ use crate::BootstrapOptions;
 use crate::FeatureChecker;
 use crate::code_cache::CodeCache;
 use crate::code_cache::CodeCacheType;
-use crate::inspector_server::InspectorServer;
+use crate::deno_inspector_server::get_inspector_server;
 use crate::ops;
 use crate::shared::runtime;
 
@@ -244,7 +244,6 @@ pub struct WorkerOptions {
   pub create_web_worker_cb: Arc<ops::worker_host::CreateWebWorkerCb>,
   pub format_js_error_fn: Option<Arc<FormatJsErrorFn>>,
 
-  pub maybe_inspector_server: Option<Arc<InspectorServer>>,
   // If true, the worker will wait for inspector session and break on first
   // statement of user code. Takes higher precedence than
   // `should_wait_for_inspector_session`.
@@ -276,7 +275,6 @@ impl Default for WorkerOptions {
       should_break_on_first_statement: Default::default(),
       should_wait_for_inspector_session: Default::default(),
       trace_ops: Default::default(),
-      maybe_inspector_server: Default::default(),
       format_js_error_fn: Default::default(),
       origin_storage_dir: Default::default(),
       cache_storage_dir: Default::default(),
@@ -455,7 +453,16 @@ impl MainWorker {
     options.startup_snapshot.as_ref().expect("A user snapshot was not provided, even though 'only_snapshotted_js_sources' is used.");
 
     let mut js_runtime = if let Some(u) = options.unconfigured_runtime {
-      u.hydrate(services.module_loader)
+      let js_runtime = u.hydrate(services.module_loader);
+
+      let op_state = js_runtime.op_state();
+      let current_handler =
+        op_state.borrow().borrow::<Rc<CronHandlerImpl>>().clone();
+      if let Some(new_handler) = current_handler.maybe_reload() {
+        op_state.borrow_mut().put(Rc::new(new_handler));
+      }
+
+      js_runtime
     } else {
       let mut extensions = common_extensions::<
         TInNpmPackageChecker,
@@ -618,7 +625,7 @@ impl MainWorker {
       state.put(services.feature_checker);
     }
 
-    if let Some(server) = options.maybe_inspector_server.clone() {
+    if let Some(server) = get_inspector_server() {
       let inspector_url = server.register_inspector(
         main_module.to_string(),
         js_runtime.inspector(),
@@ -1056,13 +1063,15 @@ fn common_extensions<
     deno_net::deno_net::lazy_init(),
     deno_tls::deno_tls::init(),
     deno_kv::deno_kv::lazy_init::<MultiBackendDbHandler>(),
-    deno_cron::deno_cron::init(LocalCronHandler::new()),
+    deno_cron::deno_cron::init(CronHandlerImpl::create_from_env()),
     deno_napi::deno_napi::lazy_init(),
     deno_http::deno_http::lazy_init(),
     deno_io::deno_io::lazy_init(),
     deno_fs::deno_fs::lazy_init(),
     deno_os::deno_os::lazy_init(),
     deno_process::deno_process::lazy_init(),
+    deno_node_crypto::deno_node_crypto::init(),
+    deno_node_sqlite::deno_node_sqlite::init(),
     deno_node::deno_node::lazy_init::<
       TInNpmPackageChecker,
       TNpmPackageFolderResolver,
@@ -1131,7 +1140,6 @@ fn common_runtime(opts: CommonRuntimeOptions) -> JsRuntime {
     validate_import_attributes_cb: Some(
       create_validate_import_attributes_callback(enable_raw_imports.clone()),
     ),
-    import_assertions_support: deno_core::ImportAssertionsSupport::Error,
     maybe_op_stack_trace_callback: opts
       .enable_stack_trace_arg_in_ops
       .then(create_permissions_stack_trace_callback),
@@ -1257,6 +1265,7 @@ impl ModuleLoader for PlaceholderModuleLoader {
     &self,
     module_specifier: &ModuleSpecifier,
     maybe_referrer: Option<String>,
+    maybe_code: Option<String>,
     options: ModuleLoadOptions,
   ) -> std::pin::Pin<
     Box<
@@ -1268,6 +1277,7 @@ impl ModuleLoader for PlaceholderModuleLoader {
     self.0.borrow_mut().clone().unwrap().prepare_load(
       module_specifier,
       maybe_referrer,
+      maybe_code,
       options,
     )
   }

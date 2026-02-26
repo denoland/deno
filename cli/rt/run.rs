@@ -165,7 +165,9 @@ impl ModuleLoader for EmbeddedModuleLoader {
     _kind: ResolutionKind,
   ) -> Result<Url, ModuleLoaderError> {
     let referrer = if referrer == "." {
-      let current_dir = std::env::current_dir().unwrap();
+      #[allow(clippy::disallowed_methods)] // ok to use current_dir here
+      let current_dir =
+        std::env::current_dir().map_err(JsErrorBox::from_err)?;
       deno_core::resolve_path(".", &current_dir)
         .map_err(JsErrorBox::from_err)?
     } else {
@@ -242,9 +244,6 @@ impl ModuleLoader for EmbeddedModuleLoader {
       {
         PackageJsonDepValue::File(_) => Err(JsErrorBox::from_err(
           DenoResolveErrorKind::UnsupportedPackageJsonFileSpecifier.into_box(),
-        )),
-        PackageJsonDepValue::JsrReq(_) => Err(JsErrorBox::from_err(
-          DenoResolveErrorKind::UnsupportedPackageJsonJsrReq.into_box(),
         )),
         PackageJsonDepValue::Req(req) => Ok(
           self
@@ -636,8 +635,8 @@ impl NodeRequireLoader for EmbeddedModuleLoader {
     permissions: &mut PermissionsContainer,
     path: Cow<'a, Path>,
   ) -> Result<Cow<'a, Path>, JsErrorBox> {
-    if self.shared.modules.has_file(&path) {
-      // allow reading if the file is in the snapshot
+    if self.shared.modules.path_in_root(&path) {
+      // allow reading if the file is in the root directory
       return Ok(path);
     }
 
@@ -830,6 +829,7 @@ pub async fn run(
           sys: node_resolution_sys.clone(),
           pkg_json_resolver: pkg_json_resolver.clone(),
           root_node_modules_dir,
+          search_stop_dir: Some(root_path.clone()),
         }),
       );
       (in_npm_pkg_checker, npm_resolver)
@@ -1067,10 +1067,9 @@ pub async fn run(
   let worker_factory = LibMainWorkerFactory::new(
     Arc::new(BlobStore::default()),
     code_cache.map(|c| c.for_deno_core()),
-    Some(sys.as_deno_rt_native_addon_loader()),
+    sys.maybe_native_addon_loader(),
     feature_checker,
     fs,
-    None,
     None,
     Box::new(module_loader_factory),
     node_resolver.clone(),
@@ -1094,8 +1093,7 @@ pub async fn run(
   } else {
     None
   };
-  // TODO(bartlomieju): remove last argument once Deploy no longer needs it
-  deno_core::JsRuntime::init_platform(v8_platform, true);
+  deno_core::JsRuntime::init_platform(v8_platform);
 
   let main_module = match NpmPackageReqReference::from_specifier(&main_module) {
     Ok(package_ref) => {

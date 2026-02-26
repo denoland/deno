@@ -11,7 +11,6 @@ use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_core::RuntimeOptions;
-use deno_core::anyhow::Context;
 use deno_core::located_script_name;
 use deno_core::op2;
 use deno_core::serde::Deserialize;
@@ -51,17 +50,15 @@ fn op_remap_specifier(
 }
 
 #[op2]
-#[serde]
 fn op_libs() -> Vec<String> {
   crate::tsc::lib_names()
 }
 
 #[op2]
-#[serde]
 fn op_resolve(
   state: &mut OpState,
   #[string] base: &str,
-  #[serde] specifiers: Vec<(bool, String)>,
+  #[scoped] specifiers: Vec<(bool, String)>,
 ) -> Result<Vec<(String, Option<&'static str>)>, ResolveError> {
   op_resolve_inner(state, ResolveArgs { base, specifiers })
 }
@@ -177,9 +174,7 @@ deno_core::extension!(deno_cli_tsc,
       options.request.maybe_tsbuildinfo,
       options.root_map,
       options.remapped_specifiers,
-      std::env::current_dir()
-        .context("Unable to get CWD")
-        .unwrap(),
+      options.request.initial_cwd,
     ));
   },
   customizer = |ext: &mut deno_core::Extension| {
@@ -548,6 +543,7 @@ mod tests {
   use crate::args::CompilerOptions;
   use crate::tsc::MISSING_DEPENDENCY_SPECIFIER;
   use crate::tsc::get_lazily_loaded_asset;
+  use crate::util::env::resolve_cwd;
 
   #[derive(Debug, Default)]
   pub struct MockLoader {
@@ -607,9 +603,7 @@ mod tests {
       maybe_tsbuildinfo,
       HashMap::new(),
       HashMap::new(),
-      std::env::current_dir()
-        .context("Unable to get CWD")
-        .unwrap(),
+      resolve_cwd(None).unwrap().into_owned(),
     );
     let mut op_state = OpState::new(None);
     op_state.put(state);
@@ -664,7 +658,7 @@ mod tests {
       maybe_tsbuildinfo: None,
       root_names: vec![(specifier.clone(), MediaType::TypeScript)],
       check_mode: TypeCheckMode::All,
-      initial_cwd: std::env::current_dir().unwrap(),
+      initial_cwd: resolve_cwd(None).unwrap().into_owned(),
     };
     crate::tsc::exec(request, code_cache, None)
   }

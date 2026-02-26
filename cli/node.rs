@@ -17,9 +17,10 @@ pub type CliCjsModuleExportAnalyzer = CjsModuleExportAnalyzer<
   CliNpmResolver,
   CliSys,
 >;
-pub type CliNodeResolver = deno_runtime::deno_node::NodeResolver<
+pub type CliNodeResolver<TSys = CliSys> = deno_runtime::deno_node::NodeResolver<
   DenoInNpmPackageChecker,
-  CliNpmResolver,
-  CliSys,
+  CliNpmResolver<TSys>,
+  TSys,
 >;
-pub type CliPackageJsonResolver = node_resolver::PackageJsonResolver<CliSys>;
+pub type CliPackageJsonResolver<TSys = CliSys> =
+  node_resolver::PackageJsonResolver<TSys>;

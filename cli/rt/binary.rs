@@ -25,6 +25,7 @@ use deno_lib::standalone::binary::Metadata;
 use deno_lib::standalone::binary::RemoteModuleEntry;
 use deno_lib::standalone::binary::SpecifierDataStore;
 use deno_lib::standalone::binary::SpecifierId;
+use deno_lib::standalone::virtual_fs::VfsEntry;
 use deno_lib::standalone::virtual_fs::VirtualDirectory;
 use deno_lib::standalone::virtual_fs::VirtualDirectoryEntries;
 use deno_media_type::MediaType;
@@ -35,6 +36,7 @@ use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_semver::StackString;
 use deno_semver::package::PackageReq;
 use indexmap::IndexMap;
+use sys_traits::FsCanonicalize;
 use sys_traits::FsRead;
 use thiserror::Error;
 
@@ -59,7 +61,17 @@ pub fn extract_standalone(
 ) -> Result<StandaloneData, AnyError> {
   let data = find_section()?;
 
-  let root_path = {
+  // read metadata first to determine the root path
+  let (mut metadata, remaining) = read_section_metadata(data)?;
+
+  // for self-extracting executables, use the extraction directory as root
+  // so that module specifiers resolve to extracted file paths
+  let root_path = if let Some(hash) = &metadata.self_extracting {
+    let dir = choose_and_create_extraction_dir(hash)?;
+    sys_traits::impls::RealSys
+      .fs_canonicalize(&dir)
+      .unwrap_or(dir)
+  } else {
     let maybe_current_exe = std::env::current_exe().ok();
     let current_exe_name = maybe_current_exe
       .as_ref()
@@ -72,12 +84,11 @@ pub fn extract_standalone(
   let root_url = deno_path_util::url_from_directory_path(&root_path)?;
 
   let DeserializedDataSection {
-    mut metadata,
     npm_snapshot,
     modules_store: remote_modules,
     vfs_root_entries,
     vfs_files_data,
-  } = deserialize_binary_data_section(&root_url, data)?;
+  } = deserialize_binary_data_section(&root_url, remaining)?;
 
   let cli_args = cli_args.into_owned();
   metadata.argv.reserve(cli_args.len() - 1);
@@ -114,6 +125,234 @@ pub fn extract_standalone(
     root_path,
     vfs,
   })
+}
+
+/// Extracts the embedded file system to disk for a self-extracting
+/// executable. The extraction_dir is the directory where files will be
+/// extracted, which should match the VFS root_path.
+pub fn extract_vfs_to_disk(
+  vfs: &FileBackedVfs,
+  extraction_dir: &Path,
+) -> Result<(), AnyError> {
+  // check if already extracted
+  let done_marker = extraction_dir.join(".done");
+  if done_marker.exists() {
+    log::debug!("Already extracted to {}", extraction_dir.display());
+    return Ok(());
+  }
+
+  log::debug!("Extracting to {}", extraction_dir.display());
+
+  let start = std::time::Instant::now();
+  std::fs::create_dir_all(extraction_dir).with_context(|| {
+    format!(
+      "Failed to create extraction directory: {}",
+      extraction_dir.display()
+    )
+  })?;
+  extract_vfs_dir(
+    vfs,
+    vfs.root_dir(),
+    &mut extraction_dir.to_path_buf(),
+    extraction_dir,
+  )
+  .context("Failed to extract embedded files to disk")?;
+
+  // write the done marker
+  std::fs::File::create(&done_marker)
+    .context("Failed to write extraction done marker")?;
+
+  log::debug!("Extracted in {}ms", start.elapsed().as_millis());
+
+  Ok(())
+}
+
+fn choose_and_create_extraction_dir(
+  hash_str: &str,
+) -> Result<PathBuf, AnyError> {
+  let current_exe = std::env::current_exe()
+    .context("Failed to determine current executable path")?;
+  let exe_name = current_exe
+    .file_stem()
+    .map(|s| s.to_string_lossy().into_owned())
+    .unwrap_or_else(|| "binary".to_string());
+
+  // try next to the executable first
+  if let Some(exe_dir) = current_exe.parent() {
+    let dir = exe_dir.join(format!("{}.fs", exe_name)).join(hash_str);
+    match std::fs::create_dir_all(&dir) {
+      Ok(()) => return Ok(dir),
+      Err(err) => {
+        log::debug!(
+          "Could not create extraction dir next to executable ({}), falling back to data dir: {}",
+          err,
+          dir.display()
+        );
+      }
+    }
+  }
+
+  // fall back to platform-specific data directory
+  let data_dir = get_data_local_dir().context(
+    "Failed to determine local data directory for self-extracting executable",
+  )?;
+  let dir = data_dir.join(&exe_name).join(hash_str);
+  std::fs::create_dir_all(&dir).with_context(|| {
+    format!("Failed to create extraction directory: {}", dir.display())
+  })?;
+  Ok(dir)
+}
+
+fn get_data_local_dir() -> Option<PathBuf> {
+  #[cfg(target_os = "windows")]
+  {
+    std::env::var_os("LOCALAPPDATA").map(PathBuf::from)
+  }
+  #[cfg(target_os = "macos")]
+  {
+    #[allow(clippy::disallowed_types)]
+    sys_traits::EnvHomeDir::env_home_dir(&sys_traits::impls::RealSys)
+      .map(|h| h.join("Library").join("Application Support"))
+  }
+  #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+  {
+    std::env::var_os("XDG_DATA_HOME")
+      .map(PathBuf::from)
+      .or_else(|| {
+        #[allow(clippy::disallowed_types)]
+        sys_traits::EnvHomeDir::env_home_dir(&sys_traits::impls::RealSys)
+          .map(|h| h.join(".local").join("share"))
+      })
+  }
+}
+
+fn extract_vfs_dir(
+  vfs: &FileBackedVfs,
+  dir: &VirtualDirectory,
+  disk_path: &mut PathBuf,
+  extraction_root: &Path,
+) -> Result<(), AnyError> {
+  for entry in dir.entries.iter() {
+    match entry {
+      VfsEntry::Dir(sub_dir) => {
+        disk_path.push(&sub_dir.name);
+        // parent is guaranteed to exist since we recurse top-down
+        std::fs::create_dir(&*disk_path)
+          .or_else(|e| {
+            if e.kind() == std::io::ErrorKind::AlreadyExists {
+              Ok(())
+            } else {
+              Err(e)
+            }
+          })
+          .with_context(|| {
+            format!("Failed to create directory: {}", disk_path.display())
+          })?;
+        extract_vfs_dir(vfs, sub_dir, disk_path, extraction_root)?;
+        disk_path.pop();
+      }
+      VfsEntry::File(file) => {
+        disk_path.push(&file.name);
+        let data = vfs
+          .read_file_all(file)
+          .with_context(|| format!("Failed to read VFS file: {}", file.name))?;
+        #[cfg(unix)]
+        {
+          use std::io::Write;
+          use std::os::unix::fs::OpenOptionsExt;
+          let mode = if file.executable { 0o755 } else { 0o644 };
+          std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(mode)
+            .open(&*disk_path)
+            .and_then(|mut f| f.write_all(&data))
+            .with_context(|| {
+              format!("Failed to write file: {}", disk_path.display())
+            })?;
+        }
+        #[cfg(not(unix))]
+        {
+          std::fs::write(&*disk_path, &*data).with_context(|| {
+            format!("Failed to write file: {}", disk_path.display())
+          })?;
+        }
+        disk_path.pop();
+      }
+      VfsEntry::Symlink(symlink) => {
+        disk_path.push(&symlink.name);
+        // symlink dest_parts are relative to the VFS root,
+        // so resolve them relative to the extraction root
+        let absolute_target = symlink.resolve_dest_from_root(extraction_root);
+        create_symlink(&absolute_target, disk_path, symlink.dest_is_dir)?;
+        disk_path.pop();
+      }
+    }
+  }
+
+  Ok(())
+}
+
+fn create_symlink(
+  target: &Path,
+  link_path: &Path,
+  dest_is_dir: bool,
+) -> Result<(), AnyError> {
+  #[cfg(unix)]
+  {
+    _ = dest_is_dir; // unused on unix
+    std::os::unix::fs::symlink(target, link_path)
+      .or_else(|_| {
+        // may be left over from an interrupted extraction
+        let _ = std::fs::remove_file(link_path);
+        std::os::unix::fs::symlink(target, link_path)
+      })
+      .with_context(|| {
+        format!(
+          "Failed to create symlink: {} -> {}",
+          link_path.display(),
+          target.display()
+        )
+      })?;
+  }
+  #[cfg(windows)]
+  {
+    // on Windows, symlink_file and symlink_dir are distinct — using the
+    // wrong type causes PermissionDenied when accessing through the link
+    let create_link = |target: &Path, link: &Path| {
+      if dest_is_dir {
+        std::os::windows::fs::symlink_dir(target, link)
+      } else {
+        std::os::windows::fs::symlink_file(target, link)
+      }
+    };
+    create_link(target, link_path)
+      .or_else(|_| {
+        // may be left over from an interrupted extraction
+        let _ = std::fs::remove_file(link_path)
+          .or_else(|_| std::fs::remove_dir(link_path));
+        create_link(target, link_path)
+      })
+      .or_else(|_| {
+        // symlinks may require elevated privileges on Windows,
+        // fall back to junctions for dirs or copying for files
+        if dest_is_dir {
+          junction::create(target, link_path)
+        } else {
+          std::fs::copy(target, link_path).map(|_| ())
+        }
+      })
+      .with_context(|| {
+        format!(
+          "Failed to create symlink: {} -> {}",
+          link_path.display(),
+          target.display()
+        )
+      })?;
+  }
+
+  Ok(())
 }
 
 fn find_section() -> Result<&'static [u8], AnyError> {
@@ -194,38 +433,46 @@ fn read_from_file_fallback() -> Result<&'static [u8], AnyError> {
 }
 
 pub struct DeserializedDataSection {
-  pub metadata: Metadata,
   pub npm_snapshot: Option<ValidSerializedNpmResolutionSnapshot>,
   pub modules_store: RemoteModulesStore,
   pub vfs_root_entries: VirtualDirectoryEntries,
   pub vfs_files_data: &'static [u8],
 }
 
-pub fn deserialize_binary_data_section(
-  root_dir_url: &Url,
-  data: &'static [u8],
-) -> Result<DeserializedDataSection, AnyError> {
-  fn read_magic_bytes(input: &[u8]) -> Result<(&[u8], bool), AnyError> {
-    if input.len() < MAGIC_BYTES.len() {
-      bail!("Unexpected end of data. Could not find magic bytes.");
-    }
-    let (magic_bytes, input) = input.split_at(MAGIC_BYTES.len());
-    if magic_bytes != MAGIC_BYTES {
-      return Ok((input, false));
-    }
-    Ok((input, true))
+fn read_magic_bytes(input: &[u8]) -> Result<(&[u8], bool), AnyError> {
+  if input.len() < MAGIC_BYTES.len() {
+    bail!("Unexpected end of data. Could not find magic bytes.");
   }
+  let (magic_bytes, input) = input.split_at(MAGIC_BYTES.len());
+  if magic_bytes != MAGIC_BYTES {
+    return Ok((input, false));
+  }
+  Ok((input, true))
+}
 
+/// Reads the magic bytes and metadata from the beginning of the data section.
+/// Returns the metadata and the remaining input after the metadata.
+fn read_section_metadata(
+  data: &'static [u8],
+) -> Result<(Metadata, &'static [u8]), AnyError> {
   let (input, found) = read_magic_bytes(data)?;
   if !found {
     bail!("Did not find magic bytes.");
   }
-
-  // 1. Metadata
-  let (input, data) =
+  let (input, metadata_bytes) =
     read_bytes_with_u64_len(input).context("reading metadata")?;
   let metadata: Metadata =
-    serde_json::from_slice(data).context("deserializing metadata")?;
+    serde_json::from_slice(metadata_bytes).context("deserializing metadata")?;
+  Ok((metadata, input))
+}
+
+/// Deserializes the binary data section after the metadata has already been
+/// parsed by `read_section_metadata`.
+fn deserialize_binary_data_section(
+  root_dir_url: &Url,
+  input: &'static [u8],
+) -> Result<DeserializedDataSection, AnyError> {
+  // 1. Was the metadata above.
   // 2. Npm snapshot
   let (input, data) =
     read_bytes_with_u64_len(input).context("reading npm snapshot")?;
@@ -266,7 +513,6 @@ pub fn deserialize_binary_data_section(
   );
 
   Ok(DeserializedDataSection {
-    metadata,
     npm_snapshot,
     modules_store,
     vfs_root_entries,
@@ -337,8 +583,9 @@ impl StandaloneModules {
     }
   }
 
-  pub fn has_file(&self, path: &Path) -> bool {
-    self.vfs.file_entry(path).is_ok()
+  pub fn path_in_root(&self, path: &Path) -> bool {
+    deno_path_util::normalize_path(Cow::Borrowed(path))
+      .starts_with(self.vfs.root())
   }
 
   pub fn read<'a>(
@@ -454,6 +701,7 @@ impl<'a> DenoCompileModuleData<'a> {
       | MediaType::Html
       | MediaType::Jsonc
       | MediaType::Json5
+      | MediaType::Markdown
       | MediaType::SourceMap
       | MediaType::Sql
       | MediaType::Unknown => {

@@ -72,7 +72,6 @@ const kType = Symbol("type");
 const kStats = Symbol("stats");
 import assert from "ext:deno_node/internal/assert.mjs";
 import { lstat, lstatSync } from "ext:deno_node/_fs/_fs_lstat.ts";
-import { stat, statSync } from "ext:deno_node/_fs/_fs_stat.ts";
 import { isWindows } from "ext:deno_node/_util/os.ts";
 import process from "node:process";
 import { ERR_INCOMPATIBLE_OPTION_PAIR } from "ext:deno_node/internal/errors.ts";
@@ -196,7 +195,7 @@ export class Dirent {
   }
 }
 
-export function direntFromDeno(entry) {
+export function direntFromDeno(entry, path) {
   let type;
 
   if (entry.isDirectory) {
@@ -207,7 +206,7 @@ export function direntFromDeno(entry) {
     type = UV_DIRENT_LINK;
   }
 
-  return new Dirent(entry.name, type, entry.parentPath);
+  return new Dirent(entry.name, type, path ?? entry.parentPath);
 }
 
 export class DirentFromStats extends Dirent {
@@ -990,12 +989,26 @@ export const validateCpOptions = hideStackFrames((options) => {
   return options;
 });
 
+/**
+ * @typedef {{
+ *   force: boolean;
+ *   recursive?: boolean;
+ *   retryDelay?: number;
+ *   maxRetries?: number;
+ * }} RmOptions
+ */
+
+/**
+ * @typedef {(err: Error | false | null, options?: RmOptions) => void} RmOptionsCallback
+ */
+
+/** @type {(path: string, options: RmOptions, expectDir: boolean, cb: RmOptionsCallback) => void} */
 export const validateRmOptions = hideStackFrames(
   (path, options, expectDir, cb) => {
     options = validateRmdirOptions(options, defaultRmOptions);
     validateBoolean(options.force, "options.force");
 
-    stat(path, (err, stats) => {
+    lstat(path, (err, stats) => {
       if (err) {
         if (options.force && err.code === "ENOENT") {
           return cb(null, options);
@@ -1023,13 +1036,14 @@ export const validateRmOptions = hideStackFrames(
   },
 );
 
+/** @type {(path: string, options: RmOptions, expectDir: boolean) => RmOptions | false} */
 export const validateRmOptionsSync = hideStackFrames(
   (path, options, expectDir) => {
     options = validateRmdirOptions(options, defaultRmOptions);
     validateBoolean(options.force, "options.force");
 
     if (!options.force || expectDir || !options.recursive) {
-      const isDirectory = statSync(path, { throwIfNoEntry: !options.force })
+      const isDirectory = lstatSync(path, { throwIfNoEntry: !options.force })
         ?.isDirectory();
 
       if (expectDir && !isDirectory) {
@@ -1182,6 +1196,7 @@ export default {
   getOptions,
   getValidatedFd,
   getValidatedPath,
+  getValidatedPathToString,
   getValidMode,
   handleErrorFromBinding,
   kMaxUserId,

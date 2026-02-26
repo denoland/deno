@@ -10,11 +10,11 @@ pub type CliCjsTracker =
   deno_resolver::cjs::CjsTracker<DenoInNpmPackageChecker, CliSys>;
 pub type CliIsCjsResolver =
   deno_resolver::cjs::IsCjsResolver<DenoInNpmPackageChecker, CliSys>;
-pub type CliNpmReqResolver = deno_resolver::npm::NpmReqResolver<
+pub type CliNpmReqResolver<TSys = CliSys> = deno_resolver::npm::NpmReqResolver<
   DenoInNpmPackageChecker,
   DenoIsBuiltInNodeModuleChecker,
-  CliNpmResolver,
-  CliSys,
+  CliNpmResolver<TSys>,
+  TSys,
 >;
 pub type CliResolver = deno_resolver::graph::DenoResolver<
   DenoInNpmPackageChecker,

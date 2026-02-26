@@ -36,6 +36,9 @@ use super::resolver::LspResolver;
 use super::search::PackageSearchApi;
 use super::tsc;
 use crate::jsr::JsrFetchResolver;
+use crate::lsp::registries::DocumentationCompletionItemData;
+use crate::lsp::tsgo;
+use crate::util::env::resolve_cwd;
 use crate::util::path::is_importable_ext;
 use crate::util::path::relative_specifier;
 
@@ -49,11 +52,10 @@ pub(crate) const IMPORT_COMMIT_CHARS: &[&str] = &["\"", "'"];
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct CompletionItemData {
-  #[serde(skip_serializing_if = "Option::is_none")]
-  pub documentation: Option<String>,
-  #[serde(skip_serializing_if = "Option::is_none")]
-  pub tsc: Option<tsc::CompletionItemData>,
+pub enum CompletionItemData {
+  Documentation(DocumentationCompletionItemData),
+  TsJs(tsc::TsJsCompletionItemData),
+  TsGo(tsgo::TsGoCompletionItemData),
 }
 
 /// Check if the origin can be auto-configured for completions, and if so, send
@@ -433,7 +435,7 @@ fn get_local_completions(
     .ok()?;
   let resolved_parent_path = url_to_file_path(&resolved_parent).ok()?;
   if resolved_parent_path.is_dir() {
-    let cwd = std::env::current_dir().ok()?;
+    let cwd = resolve_cwd(None).ok()?;
     let entries = std::fs::read_dir(resolved_parent_path).ok()?;
     let items = entries
       .filter_map(|de| {

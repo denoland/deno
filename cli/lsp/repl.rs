@@ -292,6 +292,7 @@ fn lsp_range_to_std_range(
 }
 
 fn get_cwd_uri() -> Result<ModuleSpecifier, AnyError> {
+  #[allow(clippy::disallowed_methods)] // ok, used for initialization
   let cwd = std::env::current_dir()?;
   ModuleSpecifier::from_directory_path(&cwd)
     .map_err(|_| anyhow!("Could not get URI from {}", cwd.display()))

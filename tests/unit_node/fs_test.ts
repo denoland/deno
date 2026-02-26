@@ -23,6 +23,7 @@ import {
   fchownSync,
   lstatSync,
   mkdtempSync,
+  openAsBlob,
   openSync,
   promises,
   promises as fsPromises,
@@ -71,19 +72,6 @@ Deno.test(
     const dataRead = readFileSync(filename, "utf8");
 
     assert(dataRead === "Hello");
-  },
-);
-
-Deno.test(
-  "[node/fs writeFileSync] write file throws error when encoding is not implemented",
-  () => {
-    const data = "Hello";
-    const filename = mkdtempSync(join(tmpdir(), "foo-")) + "/test.txt";
-
-    assertThrows(
-      () => writeFileSync(filename, data, { encoding: "utf16le" }),
-      'The value "utf16le" is invalid for option "encoding"',
-    );
   },
 );
 
@@ -505,3 +493,38 @@ Deno.test("[node/fs] constants are correct across platforms", () => {
     assert(constants.O_SYMLINK === undefined);
   }
 });
+
+Deno.test(
+  "[node/fs openAsBlob] returns a Blob with file contents",
+  async () => {
+    const filename = mkdtempSync(join(tmpdir(), "foo-")) + "/test.txt";
+    const data = "Hello, openAsBlob!";
+    writeFileSync(filename, data);
+
+    const blob = await openAsBlob(filename);
+    assertEquals(blob instanceof Blob, true);
+    assertEquals(await blob.text(), data);
+    assertEquals(blob.type, "");
+  },
+);
+
+Deno.test(
+  "[node/fs openAsBlob] respects type option",
+  async () => {
+    const filename = mkdtempSync(join(tmpdir(), "foo-")) + "/test.txt";
+    writeFileSync(filename, "content");
+
+    const blob = await openAsBlob(filename, { type: "text/plain" });
+    assertEquals(blob.type, "text/plain");
+    assertEquals(await blob.text(), "content");
+  },
+);
+
+Deno.test(
+  "[node/fs openAsBlob] rejects for non-existent file",
+  async () => {
+    await assertRejects(
+      () => openAsBlob("/non/existent/file.txt"),
+    );
+  },
+);

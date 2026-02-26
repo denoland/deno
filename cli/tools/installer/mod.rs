@@ -5,6 +5,7 @@ use std::env;
 use std::fs;
 use std::fs::File;
 use std::io;
+use std::io::ErrorKind;
 use std::io::Write;
 #[cfg(not(windows))]
 use std::os::unix::fs::PermissionsExt;
@@ -16,6 +17,7 @@ use std::sync::atomic::Ordering;
 
 use dashmap::DashSet;
 use deno_cache_dir::file_fetcher::CacheSetting;
+use deno_config::deno_json::NodeModulesDirMode;
 use deno_core::anyhow::Context;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
@@ -24,10 +26,12 @@ use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
 use deno_lib::args::CaData;
 use deno_npm::NpmPackageId;
+use deno_npm_installer::PackagesAllowedScripts;
 use deno_npm_installer::lifecycle_scripts::LifecycleScriptsWarning;
 use deno_path_util::resolve_url_or_path;
 use deno_resolver::workspace::WorkspaceResolver;
 use deno_semver::npm::NpmPackageReqReference;
+use jsonc_parser::cst::CstInputValue;
 use log::Level;
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -35,7 +39,9 @@ use regex::RegexBuilder;
 
 pub use self::bin_name_resolver::BinNameResolver;
 use crate::args::AddFlags;
+use crate::args::CompileFlags;
 use crate::args::ConfigFlag;
+use crate::args::DenoSubcommand;
 use crate::args::Flags;
 use crate::args::InstallEntrypointsFlags;
 use crate::args::InstallFlags;
@@ -56,6 +62,7 @@ use crate::npm::CliNpmResolver;
 use crate::npm::NpmFetchResolver;
 use crate::sys::CliSys;
 use crate::util::display;
+use crate::util::env::resolve_cwd;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 
 mod bin_name_resolver;
@@ -243,21 +250,6 @@ impl deno_resolver::file_fetcher::GraphLoaderReporter for InstallReporter {
   }
 }
 
-static EXEC_NAME_RE: Lazy<Regex> = Lazy::new(|| {
-  RegexBuilder::new(r"^[a-z0-9][\w-]*$")
-    .case_insensitive(true)
-    .build()
-    .expect("invalid regex")
-});
-
-fn validate_name(exec_name: &str) -> Result<(), AnyError> {
-  if EXEC_NAME_RE.is_match(exec_name) {
-    Ok(())
-  } else {
-    Err(anyhow!("Invalid executable name: {exec_name}"))
-  }
-}
-
 #[cfg(windows)]
 /// On Windows, 2 files are generated.
 /// One compatible with cmd & powershell with a .cmd extension
@@ -371,7 +363,7 @@ pub async fn uninstall(
     }
   };
 
-  let cwd = std::env::current_dir().context("Unable to get CWD")?;
+  let cwd = resolve_cwd(flags.initial_cwd.as_deref())?;
   let installation_dir =
     get_installer_bin_dir(&cwd, uninstall_flags.root.as_deref())?;
 
@@ -387,8 +379,8 @@ pub async fn uninstall(
   let mut removed = remove_file_if_exists(&file_path)?;
 
   if cfg!(windows) {
-    let file_path = file_path.with_extension("cmd");
-    removed |= remove_file_if_exists(&file_path)?;
+    removed |= remove_file_if_exists(&file_path.with_extension("cmd"))?;
+    removed |= remove_file_if_exists(&file_path.with_extension("exe"))?;
   }
 
   if !removed {
@@ -399,11 +391,38 @@ pub async fn uninstall(
   }
 
   // There might be some extra files to delete
-  // Note: tsconfig.json is legacy. We renamed it to deno.json.
-  // Remove cleaning it up after January 2024
+  // Note: tsconfig.json is legacy. We renamed it to deno.json in January 2023.
+  // Note: deno.json and lock.json files were removed Feb 2026 in favor of a sub directory
+  // Use the base file path (without extension) to compute related files
+  let base_file = installation_dir.join(&uninstall_flags.name);
   for ext in ["tsconfig.json", "deno.json", "lock.json"] {
-    let file_path = file_path.with_extension(ext);
-    remove_file_if_exists(&file_path)?;
+    // remove the plain extension files (e.g., name.deno.json, name.lock.json)
+    let file_path_ext = base_file.with_extension(ext);
+    remove_file_if_exists(&file_path_ext)?;
+
+    // also remove the hidden per-command copies created at install time
+    // (e.g., .name.deno.json)
+    let hidden_file = get_hidden_file_with_ext(&base_file, ext);
+    remove_file_if_exists(&hidden_file)?;
+
+    // On Windows, installs use a shim with a .cmd extension, which means the
+    // hidden files might be named like `.name.cmd.deno.json`. Attempt to remove
+    // those as well to be thorough.
+    #[cfg(windows)]
+    {
+      let base_with_cmd = base_file.with_extension("cmd");
+      let hidden_cmd_file = get_hidden_file_with_ext(&base_with_cmd, ext);
+      remove_file_if_exists(&hidden_cmd_file)?;
+    }
+  }
+
+  // remove the .<name>/ config directory if it exists
+  let config_dir = installation_dir.join(format!(".{}", uninstall_flags.name));
+  if config_dir.is_dir() {
+    fs::remove_dir_all(&config_dir).with_context(|| {
+      format!("Failed removing directory: {}", config_dir.display())
+    })?;
+    log::info!("deleted {}", config_dir.display());
   }
 
   log::info!("✅ Successfully uninstalled {}", uninstall_flags.name);
@@ -411,12 +430,13 @@ pub async fn uninstall(
 }
 
 fn remove_file_if_exists(file_path: &Path) -> Result<bool, AnyError> {
-  if !file_path.exists() {
-    return Ok(false);
+  if let Err(err) = fs::remove_file(file_path) {
+    if err.kind() == ErrorKind::NotFound {
+      return Ok(false);
+    }
+    return Err(err)
+      .with_context(|| format!("Failed removing: {}", file_path.display()));
   }
-
-  fs::remove_file(file_path)
-    .with_context(|| format!("Failed removing: {}", file_path.display()))?;
   log::info!("deleted {}", file_path.display());
   Ok(true)
 }
@@ -517,9 +537,6 @@ fn categorize_installed_npm_deps(
         ) => {
           // ignore workspace deps
         }
-        deno_package_json::PackageJsonDepValue::JsrReq(_package_req) => {
-          // ignore jsr deps
-        }
       }
     }
 
@@ -539,9 +556,6 @@ fn categorize_installed_npm_deps(
           _package_json_dep_workspace_req,
         ) => {
           // ignore workspace deps
-        }
-        deno_package_json::PackageJsonDepValue::JsrReq(_package_req) => {
-          // ignore jsr deps
         }
       }
     }
@@ -787,13 +801,13 @@ pub async fn install_command(
 ) -> Result<(), AnyError> {
   match install_flags {
     InstallFlags::Global(global_flags) => {
-      install_global(flags, global_flags).await
+      Box::pin(install_global(flags, global_flags)).await
     }
     InstallFlags::Local(local_flags) => {
       if let InstallFlagsLocal::Add(add_flags) = &local_flags {
         check_if_installs_a_single_package_globally(Some(add_flags))?;
       }
-      install_local(flags, local_flags).await
+      Box::pin(install_local(flags, local_flags)).await
     }
   }
 }
@@ -842,6 +856,11 @@ async fn install_global(
       "{} discovered config file will be ignored in the installed command. Use the --config flag if you wish to include it.",
       crate::colors::yellow("Warning")
     );
+  }
+
+  if install_flags_global.compile {
+    return Box::pin(install_global_compiled(flags, install_flags_global))
+      .await;
   }
 
   for (i, module_url) in install_flags_global.module_urls.iter().enumerate() {
@@ -893,46 +912,236 @@ async fn install_global(
       }
     }
 
-    factory
-      .main_module_graph_container()
-      .await?
-      .load_and_type_check_files(
-        std::slice::from_ref(module_url),
-        CollectSpecifiersOptions {
-          include_ignored_specified: true,
-        },
-      )
-      .await?;
+    let name_and_url = BinaryNameAndUrl::resolve(
+      &factory.bin_name_resolver()?,
+      cli_options.initial_cwd(),
+      module_url,
+      &install_flags_global,
+    )
+    .await?;
 
-    let bin_name_resolver = factory.bin_name_resolver()?;
+    // set up config dir
+    let installation_dir = get_installer_bin_dir(
+      cli_options.initial_cwd(),
+      install_flags_global.root.as_deref(),
+    )?;
+    setup_config_dir(&name_and_url, &flags, &installation_dir).await?;
+
     // create the install shim
     create_install_shim(
-      &bin_name_resolver,
+      &name_and_url,
       cli_options.initial_cwd(),
       &flags,
       &install_flags_global,
-      module_url,
-    )
-    .await?;
+    )?;
   }
   Ok(())
 }
 
-async fn create_install_shim(
-  bin_name_resolver: &BinNameResolver<'_>,
+async fn setup_config_dir(
+  bin_name_and_url: &BinaryNameAndUrl,
+  flags: &Flags,
+  installation_dir: &Path,
+) -> Result<(), AnyError> {
+  fn resolve_implicit_node_modules_dir(
+    flags: &Flags,
+    module_url: &Url,
+  ) -> Option<NodeModulesDirMode> {
+    // npm: specifier always implies manual
+    if module_url.scheme() == "npm" {
+      return Some(NodeModulesDirMode::Manual);
+    }
+
+    // --allow-scripts implies manual
+    if !matches!(flags.allow_scripts, PackagesAllowedScripts::None) {
+      return Some(NodeModulesDirMode::Manual);
+    }
+
+    None
+  }
+
+  let dir = installation_dir.join(format!(".{}", bin_name_and_url.name));
+  fs::create_dir_all(&dir)
+    .with_context(|| format!("failed creating '{}'", dir.display()))?;
+
+  let config_text = if let ConfigFlag::Path(config_path) = &flags.config_flag {
+    fs::read_to_string(config_path)
+      .with_context(|| format!("error reading {config_path}"))?
+  } else {
+    "{}\n".to_string()
+  };
+  let config =
+    jsonc_parser::cst::CstRootNode::parse(&config_text, &Default::default())?;
+  let config_obj = config.object_value_or_set();
+  // always remove the import map field because when someone specifies `--import-map` we
+  // don't want that file to be attempted to be loaded and when they don't specify that
+  // (which is just something we haven't implemented yet)
+  if let Some(prop) = config_obj.get("importMap") {
+    prop.remove();
+    if flags.import_map_path.is_none() {
+      log::warn!(
+        "{} \"importMap\" field in the specified config file we be ignored. Use the --import-map flag instead.",
+        crate::colors::yellow("Warning"),
+      );
+    }
+  }
+  if let Some(prop) = config_obj.get("workspace") {
+    prop.remove();
+    log::warn!(
+      "{} \"workspace\" field in the specified config file will be ignored.",
+      crate::colors::yellow("Warning"),
+    );
+  }
+  config_obj.append("workspace", CstInputValue::Array(Vec::new())); // stop workspace discovery
+  if config_obj.get("nodeModulesDir").is_none()
+    && let Some(mode) =
+      resolve_implicit_node_modules_dir(flags, &bin_name_and_url.module_url)
+  {
+    config_obj.append(
+      "nodeModulesDir",
+      CstInputValue::String(mode.as_str().to_string()),
+    );
+  }
+  fs::write(dir.join("deno.json"), config.to_string())?;
+
+  // write package.json for npm specifiers
+  if let Ok(pkg_ref) =
+    NpmPackageReqReference::from_specifier(&bin_name_and_url.module_url)
+  {
+    let req = pkg_ref.req();
+    fs::write(
+      dir.join("package.json"),
+      format!(
+        "{{\"dependencies\": {{\"{}\": \"{}\"}}}}",
+        req.name, req.version_req
+      ),
+    )?;
+  }
+
+  // create cloned flags to run cache_top_level_deps
+  let mut new_flags = flags.clone();
+  new_flags.initial_cwd = Some(dir.clone());
+  new_flags.node_modules_dir = flags.node_modules_dir;
+  new_flags.internal.root_node_modules_dir_override =
+    Some(dir.join("node_modules"));
+  new_flags.config_flag =
+    ConfigFlag::Path(dir.join("deno.json").to_string_lossy().into_owned());
+  let entrypoint_flags = InstallEntrypointsFlags {
+    lockfile_only: false,
+    entrypoints: vec![bin_name_and_url.module_url.to_string()],
+  };
+  new_flags.subcommand = DenoSubcommand::Install(InstallFlags::Local(
+    InstallFlagsLocal::Entrypoints(entrypoint_flags.clone()),
+  ));
+
+  crate::tools::installer::install_from_entrypoints(
+    Arc::new(new_flags),
+    entrypoint_flags,
+  )
+  .await?;
+
+  Ok(())
+}
+
+async fn install_global_compiled(
+  flags: Arc<Flags>,
+  install_flags_global: InstallFlagsGlobal,
+) -> Result<(), AnyError> {
+  let cwd = resolve_cwd(flags.initial_cwd.as_deref())?;
+  let install_dir =
+    get_installer_bin_dir(&cwd, install_flags_global.root.as_deref())?;
+
+  if let Ok(metadata) = fs::metadata(&install_dir) {
+    if !metadata.is_dir() {
+      return Err(anyhow!("Installation path is not a directory"));
+    }
+  } else {
+    fs::create_dir_all(&install_dir)?;
+  }
+
+  let source_file = install_flags_global
+    .module_urls
+    .first()
+    .ok_or_else(|| anyhow!("No module URL provided"))?
+    .clone();
+
+  // Determine the output path
+  let output = if let Some(ref name) = install_flags_global.name {
+    let mut output_path = install_dir.join(name);
+    if cfg!(windows) {
+      output_path = output_path.with_extension("exe");
+    }
+    output_path.to_string_lossy().into_owned()
+  } else {
+    format!("{}/", install_dir.to_string_lossy())
+  };
+
+  let output_path = PathBuf::from(&output);
+  if output_path.is_file() {
+    if !install_flags_global.force {
+      return Err(anyhow!(
+        "Existing installation found. Aborting (Use -f to overwrite).",
+      ));
+    }
+    // Remove the existing file so that the compile step doesn't
+    // fail its own safety check (which guards against overwriting
+    // files not produced by `deno compile`).
+    std::fs::remove_file(&output_path).with_context(|| {
+      format!(
+        concat!(
+          "Failed to remove existing installation at '{0}'.\n\n",
+          "This may be because an existing {1} process is running. Please ensure ",
+          "there are no running {1} processes (ex. run `pkill {1}` on Unix or ",
+          "`Stop-Process -Name {1}` on Windows), and ensure you have sufficient ",
+          "permission to write to the installation path."
+        ),
+        output_path.display(),
+        output_path.file_name().map(|s| s.to_string_lossy()).unwrap_or("<unknown>".into())
+      )
+    })?;
+  }
+
+  let compile_flags = CompileFlags {
+    source_file,
+    output: Some(output.clone()),
+    args: install_flags_global.args,
+    target: None,
+    no_terminal: false,
+    icon: None,
+    include: vec![],
+    exclude: vec![],
+    eszip: false,
+    self_extracting: false,
+  };
+
+  let mut new_flags = flags.as_ref().clone();
+  new_flags.subcommand = DenoSubcommand::Compile(compile_flags.clone());
+
+  crate::tools::compile::compile(new_flags, compile_flags).await?;
+
+  log::info!("Successfully installed {}", output);
+
+  if !is_in_path(&install_dir) {
+    let installation_dir_str = install_dir.to_string_lossy();
+    log::info!("Add {} to PATH", installation_dir_str);
+    if cfg!(windows) {
+      log::info!("    set PATH=%PATH%;{}", installation_dir_str);
+    } else {
+      log::info!("    export PATH=\"{}:$PATH\"", installation_dir_str);
+    }
+  }
+
+  Ok(())
+}
+
+fn create_install_shim(
+  bin_name_and_url: &BinaryNameAndUrl,
   cwd: &Path,
   flags: &Flags,
   install_flags_global: &InstallFlagsGlobal,
-  module_url: &str,
 ) -> Result<(), AnyError> {
-  let shim_data = resolve_shim_data(
-    bin_name_resolver,
-    cwd,
-    flags,
-    install_flags_global,
-    module_url,
-  )
-  .await?;
+  let shim_data =
+    resolve_shim_data(bin_name_and_url, cwd, flags, install_flags_global)?;
 
   // ensure directory exists
   if let Ok(metadata) = fs::metadata(&shim_data.installation_dir) {
@@ -950,11 +1159,8 @@ async fn create_install_shim(
   };
 
   generate_executable_file(&shim_data)?;
-  for (path, contents) in shim_data.extra_files {
-    fs::write(path, contents)?;
-  }
 
-  log::info!("✅ Successfully installed {}", shim_data.name);
+  log::info!("✅ Successfully installed {}", bin_name_and_url.name);
   log::info!("{}", shim_data.file_path.display());
   if cfg!(windows) {
     let display_path = shim_data.file_path.with_extension("");
@@ -974,51 +1180,74 @@ async fn create_install_shim(
   Ok(())
 }
 
-struct ShimData {
+struct BinaryNameAndUrl {
   name: String,
+  module_url: Url,
+}
+
+impl BinaryNameAndUrl {
+  pub async fn resolve(
+    bin_name_resolver: &BinNameResolver<'_>,
+    cwd: &Path,
+    module_url: &str,
+    install_flags_global: &InstallFlagsGlobal,
+  ) -> Result<Self, AnyError> {
+    static EXEC_NAME_RE: Lazy<Regex> = Lazy::new(|| {
+      RegexBuilder::new(r"^[a-z0-9][\w-]*$")
+        .case_insensitive(true)
+        .build()
+        .expect("invalid regex")
+    });
+
+    fn validate_name(exec_name: &str) -> Result<(), AnyError> {
+      if EXEC_NAME_RE.is_match(exec_name) {
+        Ok(())
+      } else {
+        Err(anyhow!("Invalid executable name: {exec_name}"))
+      }
+    }
+
+    let module_url = resolve_url_or_path(module_url, cwd)?;
+    let name = if install_flags_global.name.is_some() {
+      install_flags_global.name.clone()
+    } else {
+      bin_name_resolver.infer_name_from_url(&module_url).await
+    };
+    let name = match name {
+      Some(name) => name,
+      None => {
+        return Err(anyhow!(
+          "An executable name was not provided. One could not be inferred from the URL. Aborting.\n  {} {}",
+          deno_runtime::colors::cyan("hint:"),
+          "provide one with the `--name` flag"
+        ));
+      }
+    };
+    validate_name(&name)?;
+    Ok(BinaryNameAndUrl { name, module_url })
+  }
+}
+
+struct ShimData {
   installation_dir: PathBuf,
   file_path: PathBuf,
   args: Vec<String>,
-  extra_files: Vec<(PathBuf, String)>,
 }
 
-async fn resolve_shim_data(
-  bin_name_resolver: &BinNameResolver<'_>,
+fn resolve_shim_data(
+  bin_name_and_url: &BinaryNameAndUrl,
   cwd: &Path,
   flags: &Flags,
   install_flags_global: &InstallFlagsGlobal,
-  module_url: &str,
 ) -> Result<ShimData, AnyError> {
   let installation_dir =
     get_installer_bin_dir(cwd, install_flags_global.root.as_deref())?;
 
-  // Check if module_url is remote
-  let module_url = resolve_url_or_path(module_url, cwd)?;
-  let name = if install_flags_global.name.is_some() {
-    install_flags_global.name.clone()
-  } else {
-    bin_name_resolver.infer_name_from_url(&module_url).await
-  };
-
-  let name = match name {
-    Some(name) => name,
-    None => {
-      return Err(anyhow!(
-        "An executable name was not provided. One could not be inferred from the URL. Aborting.\n  {} {}",
-        deno_runtime::colors::cyan("hint:"),
-        "provide one with the `--name` flag"
-      ));
-    }
-  };
-
-  validate_name(name.as_str())?;
-  let mut file_path = installation_dir.join(&name);
+  let mut file_path = installation_dir.join(&bin_name_and_url.name);
 
   if cfg!(windows) {
     file_path = file_path.with_extension("cmd");
   }
-
-  let mut extra_files: Vec<(PathBuf, String)> = vec![];
 
   let mut executable_args = vec!["run".to_string()];
   executable_args.extend_from_slice(&flags.to_permission_args());
@@ -1099,73 +1328,30 @@ async fn resolve_shim_data(
     executable_args.push(import_map_url.to_string());
   }
 
-  if let ConfigFlag::Path(config_path) = &flags.config_flag {
-    let copy_path = get_hidden_file_with_ext(&file_path, "deno.json");
-    executable_args.push("--config".to_string());
-    executable_args.push(copy_path.to_str().unwrap().to_string());
-    let mut config_text = fs::read_to_string(config_path)
-      .with_context(|| format!("error reading {config_path}"))?;
-    // always remove the import map field because when someone specifies `--import-map` we
-    // don't want that file to be attempted to be loaded and when they don't specify that
-    // (which is just something we haven't implemented yet)
-    if let Some(new_text) = remove_import_map_field_from_text(&config_text) {
-      if flags.import_map_path.is_none() {
-        log::warn!(
-          "{} \"importMap\" field in the specified config file we be ignored. Use the --import-map flag instead.",
-          crate::colors::yellow("Warning"),
-        );
-      }
-      config_text = new_text;
-    }
+  // all config/lock files live under .<name>/ in the bin dir
+  let config_dir = installation_dir.join(format!(".{}", bin_name_and_url.name));
 
-    extra_files.push((copy_path, config_text));
-  } else {
-    executable_args.push("--no-config".to_string());
+  let deno_json_path = config_dir.join("deno.json");
+  executable_args.push("--config".to_string());
+  executable_args.push(deno_json_path.to_string_lossy().into_owned());
+
+  if let Some(node_modules_dir) = flags.node_modules_dir {
+    executable_args
+      .push(format!("--node-modules-dir={}", node_modules_dir.as_str()));
   }
 
   if flags.no_lock {
     executable_args.push("--no-lock".to_string());
-  } else if flags.lock.is_some()
-    // always use a lockfile for an npm entrypoint unless --no-lock
-    || NpmPackageReqReference::from_specifier(&module_url).is_ok()
-  {
-    let copy_path = get_hidden_file_with_ext(&file_path, "lock.json");
-    executable_args.push("--lock".to_string());
-    executable_args.push(copy_path.to_str().unwrap().to_string());
-
-    if let Some(lock_path) = &flags.lock {
-      extra_files.push((
-        copy_path,
-        fs::read_to_string(lock_path)
-          .with_context(|| format!("error reading {}", lock_path))?,
-      ));
-    } else {
-      // Provide an empty lockfile so that this overwrites any existing lockfile
-      // from a previous installation. This will get populated on first run.
-      extra_files.push((copy_path, "{}".to_string()));
-    }
   }
 
-  executable_args.push(module_url.into());
+  executable_args.push(bin_name_and_url.module_url.to_string());
   executable_args.extend_from_slice(&install_flags_global.args);
 
   Ok(ShimData {
-    name,
     installation_dir,
     file_path,
     args: executable_args,
-    extra_files,
   })
-}
-
-fn remove_import_map_field_from_text(config_text: &str) -> Option<String> {
-  let value =
-    jsonc_parser::cst::CstRootNode::parse(config_text, &Default::default())
-      .ok()?;
-  let root_value = value.object_value()?;
-  let import_map_value = root_value.get("importMap")?;
-  import_map_value.remove();
-  Some(value.to_string())
 }
 
 fn get_hidden_file_with_ext(file_path: &Path, ext: &str) -> PathBuf {
@@ -1204,46 +1390,75 @@ mod tests {
   use crate::args::PermissionFlags;
   use crate::args::UninstallFlagsGlobal;
   use crate::http_util::HttpClientProvider;
+  use crate::util::env::resolve_cwd;
   use crate::util::fs::canonicalize_path;
 
   async fn create_install_shim(
     flags: &Flags,
     install_flags_global: InstallFlagsGlobal,
   ) -> Result<(), AnyError> {
-    let cwd = std::env::current_dir().unwrap();
+    let _http_server_guard = test_util::http_server();
+    let cwd = resolve_cwd(None).unwrap();
     let http_client = HttpClientProvider::new(None, None);
     let registry_api = deno_npm::registry::TestNpmRegistryApi::default();
     let npm_version_resolver = NpmVersionResolver::default();
     let resolver =
       BinNameResolver::new(&http_client, &registry_api, &npm_version_resolver);
-    super::create_install_shim(
+    let binary_name_and_url = BinaryNameAndUrl::resolve(
       &resolver,
+      &cwd,
+      &install_flags_global.module_urls[0],
+      &install_flags_global,
+    )
+    .await?;
+    let installation_dir =
+      super::get_installer_bin_dir(&cwd, install_flags_global.root.as_deref())
+        .unwrap();
+    super::setup_config_dir(&binary_name_and_url, flags, &installation_dir)
+      .await
+      .unwrap();
+    super::create_install_shim(
+      &binary_name_and_url,
       &cwd,
       flags,
       &install_flags_global,
-      &install_flags_global.module_urls[0],
     )
-    .await
+  }
+
+  /// Returns the config directory path (e.g. `<root>/bin/.<name>/`) for a given
+  /// root and binary name.
+  fn config_dir_for(root: &str, name: &str) -> PathBuf {
+    let cwd = resolve_cwd(None).unwrap();
+    super::get_installer_bin_dir(&cwd, Some(root))
+      .unwrap()
+      .join(format!(".{name}"))
   }
 
   async fn resolve_shim_data(
     flags: &Flags,
     install_flags_global: &InstallFlagsGlobal,
-  ) -> Result<ShimData, AnyError> {
-    let cwd = std::env::current_dir().unwrap();
+  ) -> Result<(BinaryNameAndUrl, ShimData), AnyError> {
+    let _http_server_guard = test_util::http_server();
+    let cwd = resolve_cwd(None).unwrap();
     let http_client = HttpClientProvider::new(None, None);
     let registry_api = deno_npm::registry::TestNpmRegistryApi::default();
     let npm_version_resolver = NpmVersionResolver::default();
     let resolver =
       BinNameResolver::new(&http_client, &registry_api, &npm_version_resolver);
-    super::resolve_shim_data(
+    let binary_name_and_url = BinaryNameAndUrl::resolve(
       &resolver,
+      &cwd,
+      &install_flags_global.module_urls[0],
+      install_flags_global,
+    )
+    .await?;
+    let shim_data = super::resolve_shim_data(
+      &binary_name_and_url,
       &cwd,
       flags,
       install_flags_global,
-      &install_flags_global.module_urls[0],
-    )
-    .await
+    )?;
+    Ok((binary_name_and_url, shim_data))
   }
 
   #[tokio::test]
@@ -1255,11 +1470,12 @@ mod tests {
     create_install_shim(
       &Flags::default(),
       InstallFlagsGlobal {
-        module_urls: vec!["http://localhost:4545/echo_server.ts".to_string()],
+        module_urls: vec!["http://localhost:4545/echo.ts".to_string()],
         args: vec![],
         name: Some("echo_test".to_string()),
         root: Some(temp_dir.path().to_string()),
         force: false,
+        compile: false,
       },
     )
     .await
@@ -1273,66 +1489,86 @@ mod tests {
     assert!(file_path.exists());
 
     let content = fs::read_to_string(file_path).unwrap();
+    let config_path = config_dir_for(&temp_dir.path().to_string(), "echo_test")
+      .join("deno.json");
     if cfg!(windows) {
-      assert!(content.contains(
-        r#""run" "--no-config" "http://localhost:4545/echo_server.ts""#
-      ));
+      assert!(content.contains(&format!(
+        r#""run" "--config" "{}" "http://localhost:4545/echo.ts""#,
+        config_path.to_string_lossy()
+      )));
     } else {
-      assert!(
-        content.contains(
-          r#"run --no-config 'http://localhost:4545/echo_server.ts'"#
-        )
-      );
+      assert!(content.contains(&format!(
+        "run --config {} 'http://localhost:4545/echo.ts'",
+        config_path.to_string_lossy()
+      )));
     }
   }
 
   #[tokio::test]
   async fn install_inferred_name() {
-    let shim_data = resolve_shim_data(
+    let temp_dir_str = env::temp_dir().to_string_lossy().into_owned();
+    let config_path = config_dir_for(&temp_dir_str, "echo").join("deno.json");
+    let (bin_info, shim_data) = resolve_shim_data(
       &Flags::default(),
       &InstallFlagsGlobal {
-        module_urls: vec!["http://localhost:4545/echo_server.ts".to_string()],
+        module_urls: vec!["http://localhost:4545/echo.ts".to_string()],
         args: vec![],
         name: None,
-        root: Some(env::temp_dir().to_string_lossy().into_owned()),
+        root: Some(temp_dir_str),
         force: false,
+        compile: false,
       },
     )
     .await
     .unwrap();
 
-    assert_eq!(shim_data.name, "echo_server");
+    assert_eq!(bin_info.name, "echo");
     assert_eq!(
       shim_data.args,
-      vec!["run", "--no-config", "http://localhost:4545/echo_server.ts",]
+      vec![
+        "run",
+        "--config",
+        &config_path.to_string_lossy(),
+        "http://localhost:4545/echo.ts",
+      ]
     );
   }
 
   #[tokio::test]
   async fn install_unstable_legacy() {
-    let shim_data = resolve_shim_data(
+    let temp_dir_str = env::temp_dir().to_string_lossy().into_owned();
+    let config_path = config_dir_for(&temp_dir_str, "echo").join("deno.json");
+    let (bin_info, shim_data) = resolve_shim_data(
       &Default::default(),
       &InstallFlagsGlobal {
-        module_urls: vec!["http://localhost:4545/echo_server.ts".to_string()],
+        module_urls: vec!["http://localhost:4545/echo.ts".to_string()],
         args: vec![],
         name: None,
-        root: Some(env::temp_dir().to_string_lossy().into_owned()),
+        root: Some(temp_dir_str),
         force: false,
+        compile: false,
       },
     )
     .await
     .unwrap();
 
-    assert_eq!(shim_data.name, "echo_server");
+    assert_eq!(bin_info.name, "echo");
     assert_eq!(
       shim_data.args,
-      vec!["run", "--no-config", "http://localhost:4545/echo_server.ts",]
+      vec![
+        "run",
+        "--config",
+        &config_path.to_string_lossy(),
+        "http://localhost:4545/echo.ts",
+      ]
     );
   }
 
   #[tokio::test]
   async fn install_unstable_features() {
-    let shim_data = resolve_shim_data(
+    let temp_dir_str = env::temp_dir().to_string_lossy().into_owned();
+    let config_path = config_dir_for(&temp_dir_str, "echo").join("deno.json");
+    let (bin_info, shim_data) = resolve_shim_data(
       &Flags {
         unstable_config: UnstableConfig {
           features: vec!["kv".to_string(), "cron".to_string()],
@@ -1341,55 +1577,67 @@ mod tests {
         ..Default::default()
       },
       &InstallFlagsGlobal {
-        module_urls: vec!["http://localhost:4545/echo_server.ts".to_string()],
+        module_urls: vec!["http://localhost:4545/echo.ts".to_string()],
         args: vec![],
         name: None,
-        root: Some(env::temp_dir().to_string_lossy().into_owned()),
+        root: Some(temp_dir_str),
         force: false,
+        compile: false,
       },
     )
     .await
     .unwrap();
 
-    assert_eq!(shim_data.name, "echo_server");
+    assert_eq!(bin_info.name, "echo");
     assert_eq!(
       shim_data.args,
       vec![
         "run",
         "--unstable-kv",
         "--unstable-cron",
-        "--no-config",
-        "http://localhost:4545/echo_server.ts",
+        "--config",
+        &config_path.to_string_lossy(),
+        "http://localhost:4545/echo.ts",
       ]
     );
   }
 
   #[tokio::test]
   async fn install_inferred_name_from_parent() {
-    let shim_data = resolve_shim_data(
+    let temp_dir_str = env::temp_dir().to_string_lossy().into_owned();
+    let config_path = config_dir_for(&temp_dir_str, "subdir").join("deno.json");
+    let (bin_info, shim_data) = resolve_shim_data(
       &Flags::default(),
       &InstallFlagsGlobal {
         module_urls: vec!["http://localhost:4545/subdir/main.ts".to_string()],
         args: vec![],
         name: None,
-        root: Some(env::temp_dir().to_string_lossy().into_owned()),
+        root: Some(temp_dir_str),
         force: false,
+        compile: false,
       },
     )
     .await
     .unwrap();
 
-    assert_eq!(shim_data.name, "subdir");
+    assert_eq!(bin_info.name, "subdir");
     assert_eq!(
       shim_data.args,
-      vec!["run", "--no-config", "http://localhost:4545/subdir/main.ts",]
+      vec![
+        "run",
+        "--config",
+        &config_path.to_string_lossy(),
+        "http://localhost:4545/subdir/main.ts",
+      ]
     );
   }
 
   #[tokio::test]
   async fn install_inferred_name_after_redirect_for_no_path_url() {
     let _http_server_guard = test_util::http_server();
-    let shim_data = resolve_shim_data(
+    let temp_dir_str = env::temp_dir().to_string_lossy().into_owned();
+    let config_path = config_dir_for(&temp_dir_str, "a").join("deno.json");
+    let (bin_info, shim_data) = resolve_shim_data(
       &Flags::default(),
       &InstallFlagsGlobal {
         module_urls: vec![
@@ -1398,19 +1646,21 @@ mod tests {
         ],
         args: vec![],
         name: None,
-        root: Some(env::temp_dir().to_string_lossy().into_owned()),
+        root: Some(temp_dir_str),
         force: false,
+        compile: false,
       },
     )
     .await
     .unwrap();
 
-    assert_eq!(shim_data.name, "a");
+    assert_eq!(bin_info.name, "a");
     assert_eq!(
       shim_data.args,
       vec![
         "run",
-        "--no-config",
+        "--config",
+        &config_path.to_string_lossy(),
         "http://localhost:4550/?redirect_to=/subdir/redirects/a.ts",
       ]
     );
@@ -1418,29 +1668,41 @@ mod tests {
 
   #[tokio::test]
   async fn install_custom_dir_option() {
-    let shim_data = resolve_shim_data(
+    let temp_dir_str = env::temp_dir().to_string_lossy().into_owned();
+    let config_path =
+      config_dir_for(&temp_dir_str, "echo_test").join("deno.json");
+    let (bin_info, shim_data) = resolve_shim_data(
       &Flags::default(),
       &InstallFlagsGlobal {
-        module_urls: vec!["http://localhost:4545/echo_server.ts".to_string()],
+        module_urls: vec!["http://localhost:4545/echo.ts".to_string()],
         args: vec![],
         name: Some("echo_test".to_string()),
-        root: Some(env::temp_dir().to_string_lossy().into_owned()),
+        root: Some(temp_dir_str),
         force: false,
+        compile: false,
       },
     )
     .await
     .unwrap();
 
-    assert_eq!(shim_data.name, "echo_test");
+    assert_eq!(bin_info.name, "echo_test");
     assert_eq!(
       shim_data.args,
-      vec!["run", "--no-config", "http://localhost:4545/echo_server.ts",]
+      vec![
+        "run",
+        "--config",
+        &config_path.to_string_lossy(),
+        "http://localhost:4545/echo.ts",
+      ]
     );
   }
 
   #[tokio::test]
   async fn install_with_flags() {
-    let shim_data = resolve_shim_data(
+    let temp_dir_str = env::temp_dir().to_string_lossy().into_owned();
+    let config_path =
+      config_dir_for(&temp_dir_str, "echo_test").join("deno.json");
+    let (bin_info, shim_data) = resolve_shim_data(
       &Flags {
         permissions: PermissionFlags {
           allow_net: Some(vec![]),
@@ -1452,17 +1714,18 @@ mod tests {
         ..Flags::default()
       },
       &InstallFlagsGlobal {
-        module_urls: vec!["http://localhost:4545/echo_server.ts".to_string()],
+        module_urls: vec!["http://localhost:4545/echo.ts".to_string()],
         args: vec!["--foobar".to_string()],
         name: Some("echo_test".to_string()),
-        root: Some(env::temp_dir().to_string_lossy().into_owned()),
+        root: Some(temp_dir_str),
         force: false,
+        compile: false,
       },
     )
     .await
     .unwrap();
 
-    assert_eq!(shim_data.name, "echo_test");
+    assert_eq!(bin_info.name, "echo_test");
     assert_eq!(
       shim_data.args,
       vec![
@@ -1470,8 +1733,9 @@ mod tests {
         "--allow-read",
         "--allow-net",
         "--quiet",
-        "--no-config",
-        "http://localhost:4545/echo_server.ts",
+        "--config",
+        &config_path.to_string_lossy(),
+        "http://localhost:4545/echo.ts",
         "--foobar",
       ]
     );
@@ -1479,7 +1743,10 @@ mod tests {
 
   #[tokio::test]
   async fn install_prompt() {
-    let shim_data = resolve_shim_data(
+    let temp_dir_str = env::temp_dir().to_string_lossy().into_owned();
+    let config_path =
+      config_dir_for(&temp_dir_str, "echo_test").join("deno.json");
+    let (_, shim_data) = resolve_shim_data(
       &Flags {
         permissions: PermissionFlags {
           no_prompt: true,
@@ -1488,11 +1755,12 @@ mod tests {
         ..Flags::default()
       },
       &InstallFlagsGlobal {
-        module_urls: vec!["http://localhost:4545/echo_server.ts".to_string()],
+        module_urls: vec!["http://localhost:4545/echo.ts".to_string()],
         args: vec![],
         name: Some("echo_test".to_string()),
-        root: Some(env::temp_dir().to_string_lossy().into_owned()),
+        root: Some(temp_dir_str),
         force: false,
+        compile: false,
       },
     )
     .await
@@ -1503,15 +1771,19 @@ mod tests {
       vec![
         "run",
         "--no-prompt",
-        "--no-config",
-        "http://localhost:4545/echo_server.ts",
+        "--config",
+        &config_path.to_string_lossy(),
+        "http://localhost:4545/echo.ts",
       ]
     );
   }
 
   #[tokio::test]
   async fn install_allow_all() {
-    let shim_data = resolve_shim_data(
+    let temp_dir_str = env::temp_dir().to_string_lossy().into_owned();
+    let config_path =
+      config_dir_for(&temp_dir_str, "echo_test").join("deno.json");
+    let (_, shim_data) = resolve_shim_data(
       &Flags {
         permissions: PermissionFlags {
           allow_all: true,
@@ -1520,11 +1792,12 @@ mod tests {
         ..Flags::default()
       },
       &InstallFlagsGlobal {
-        module_urls: vec!["http://localhost:4545/echo_server.ts".to_string()],
+        module_urls: vec!["http://localhost:4545/echo.ts".to_string()],
         args: vec![],
         name: Some("echo_test".to_string()),
-        root: Some(env::temp_dir().to_string_lossy().into_owned()),
+        root: Some(temp_dir_str),
         force: false,
+        compile: false,
       },
     )
     .await
@@ -1535,16 +1808,18 @@ mod tests {
       vec![
         "run",
         "--allow-all",
-        "--no-config",
-        "http://localhost:4545/echo_server.ts",
+        "--config",
+        &config_path.to_string_lossy(),
+        "http://localhost:4545/echo.ts",
       ]
     );
   }
 
   #[tokio::test]
   async fn install_npm_lockfile_default() {
-    let temp_dir = canonicalize_path(&env::temp_dir()).unwrap();
-    let shim_data = resolve_shim_data(
+    let temp_dir_str = env::temp_dir().to_string_lossy().into_owned();
+    let config_path = config_dir_for(&temp_dir_str, "cowsay").join("deno.json");
+    let (_, shim_data) = resolve_shim_data(
       &Flags {
         permissions: PermissionFlags {
           allow_all: true,
@@ -1556,31 +1831,31 @@ mod tests {
         module_urls: vec!["npm:cowsay".to_string()],
         args: vec![],
         name: None,
-        root: Some(temp_dir.to_string_lossy().into_owned()),
+        root: Some(temp_dir_str),
         force: false,
+        compile: false,
       },
     )
     .await
     .unwrap();
 
-    let lock_path = temp_dir.join("bin").join(".cowsay.lock.json");
     assert_eq!(
       shim_data.args,
       vec![
         "run",
         "--allow-all",
-        "--no-config",
-        "--lock",
-        &lock_path.to_string_lossy(),
+        "--config",
+        &config_path.to_string_lossy(),
         "npm:cowsay"
       ]
     );
-    assert_eq!(shim_data.extra_files, vec![(lock_path, "{}".to_string())]);
   }
 
   #[tokio::test]
   async fn install_npm_no_lock() {
-    let shim_data = resolve_shim_data(
+    let temp_dir_str = env::temp_dir().to_string_lossy().into_owned();
+    let config_path = config_dir_for(&temp_dir_str, "cowsay").join("deno.json");
+    let (_, shim_data) = resolve_shim_data(
       &Flags {
         permissions: PermissionFlags {
           allow_all: true,
@@ -1593,8 +1868,9 @@ mod tests {
         module_urls: vec!["npm:cowsay".to_string()],
         args: vec![],
         name: None,
-        root: Some(env::temp_dir().to_string_lossy().into_owned()),
+        root: Some(temp_dir_str),
         force: false,
+        compile: false,
       },
     )
     .await
@@ -1605,12 +1881,12 @@ mod tests {
       vec![
         "run",
         "--allow-all",
-        "--no-config",
+        "--config",
+        &config_path.to_string_lossy(),
         "--no-lock",
         "npm:cowsay"
       ]
     );
-    assert_eq!(shim_data.extra_files, vec![]);
   }
 
   #[tokio::test]
@@ -1618,7 +1894,7 @@ mod tests {
     let temp_dir = TempDir::new();
     let bin_dir = temp_dir.path().join("bin");
     std::fs::create_dir(&bin_dir).unwrap();
-    let local_module = env::current_dir().unwrap().join("echo_server.ts");
+    let local_module = testdata_path().join("echo.ts");
     let local_module_url = Url::from_file_path(&local_module).unwrap();
     let local_module_str = local_module.to_string_lossy();
 
@@ -1630,6 +1906,7 @@ mod tests {
         name: Some("echo_test".to_string()),
         root: Some(temp_dir.path().to_string()),
         force: false,
+        compile: false,
       },
     )
     .await
@@ -1654,11 +1931,12 @@ mod tests {
     create_install_shim(
       &Flags::default(),
       InstallFlagsGlobal {
-        module_urls: vec!["http://localhost:4545/echo_server.ts".to_string()],
+        module_urls: vec!["http://localhost:4545/echo.ts".to_string()],
         args: vec![],
         name: Some("echo_test".to_string()),
         root: Some(temp_dir.path().to_string()),
         force: false,
+        compile: false,
       },
     )
     .await
@@ -1679,6 +1957,7 @@ mod tests {
         name: Some("echo_test".to_string()),
         root: Some(temp_dir.path().to_string()),
         force: false,
+        compile: false,
       },
     )
     .await;
@@ -1691,7 +1970,7 @@ mod tests {
     );
     // Assert not modified
     let file_content = fs::read_to_string(&file_path).unwrap();
-    assert!(file_content.contains("echo_server.ts"));
+    assert!(file_content.contains("echo.ts"));
 
     // Force. Install success.
     let force_result = create_install_shim(
@@ -1702,6 +1981,7 @@ mod tests {
         name: Some("echo_test".to_string()),
         root: Some(temp_dir.path().to_string()),
         force: true,
+        compile: false,
       },
     )
     .await;
@@ -1732,17 +2012,17 @@ mod tests {
         name: Some("echo_test".to_string()),
         root: Some(temp_dir.path().to_string()),
         force: true,
+        compile: false,
       },
     )
     .await;
     assert!(result.is_ok());
 
-    let config_file_name = ".echo_test.deno.json";
-
-    let file_path = bin_dir.join(config_file_name);
+    let file_path = bin_dir.join(".echo_test").join("deno.json");
     assert!(file_path.exists());
     let content = fs::read_to_string(file_path).unwrap();
-    assert!(content == "{}");
+    // setup_config_dir appends a workspace field to stop workspace discovery
+    assert!(content.contains("\"workspace\""));
   }
 
   // TODO: enable on Windows after fixing batch escaping
@@ -1756,11 +2036,12 @@ mod tests {
     create_install_shim(
       &Flags::default(),
       InstallFlagsGlobal {
-        module_urls: vec!["http://localhost:4545/echo_server.ts".to_string()],
+        module_urls: vec!["http://localhost:4545/echo.ts".to_string()],
         args: vec!["\"".to_string()],
         name: Some("echo_test".to_string()),
         root: Some(temp_dir.path().to_string()),
         force: false,
+        compile: false,
       },
     )
     .await
@@ -1773,12 +2054,15 @@ mod tests {
 
     assert!(file_path.exists());
     let content = fs::read_to_string(file_path).unwrap();
+    let config_path = config_dir_for(&temp_dir.path().to_string(), "echo_test")
+      .join("deno.json");
     if cfg!(windows) {
       // TODO: see comment above this test
     } else {
-      assert!(content.contains(
-        r#"run --no-config 'http://localhost:4545/echo_server.ts' '"'"#
-      ));
+      assert!(content.contains(&format!(
+        "run --config {} 'http://localhost:4545/echo.ts' '\"'",
+        config_path.to_string_lossy()
+      )));
     }
   }
 
@@ -1789,7 +2073,7 @@ mod tests {
     std::fs::create_dir(&bin_dir).unwrap();
     let unicode_dir = temp_dir.path().join("Magnús");
     std::fs::create_dir(&unicode_dir).unwrap();
-    let local_module = unicode_dir.join("echo_server.ts");
+    let local_module = unicode_dir.join("echo.ts");
     let local_module_str = local_module.to_string_lossy();
     std::fs::write(&local_module, "// Some JavaScript I guess").unwrap();
 
@@ -1801,6 +2085,7 @@ mod tests {
         name: Some("echo_test".to_string()),
         root: Some(temp_dir.path().to_string()),
         force: false,
+        compile: false,
       },
     )
     .await
@@ -1846,6 +2131,7 @@ mod tests {
         name: Some("echo_test".to_string()),
         root: Some(temp_dir.path().to_string()),
         force: true,
+        compile: false,
       },
     )
     .await;
@@ -1857,12 +2143,16 @@ mod tests {
     }
     assert!(file_path.exists());
 
+    let config_path = config_dir_for(&temp_dir.path().to_string(), "echo_test")
+      .join("deno.json");
     let mut expected_string = format!(
-      "--import-map '{import_map_url}' --no-config 'http://localhost:4545/cat.ts'"
+      "--import-map '{import_map_url}' --config {} 'http://localhost:4545/cat.ts'",
+      config_path.to_string_lossy()
     );
     if cfg!(windows) {
       expected_string = format!(
-        "\"--import-map\" \"{import_map_url}\" \"--no-config\" \"http://localhost:4545/cat.ts\""
+        "\"--import-map\" \"{import_map_url}\" \"--config\" \"{}\" \"http://localhost:4545/cat.ts\"",
+        config_path.to_string_lossy()
       );
     }
 
@@ -1875,7 +2165,8 @@ mod tests {
   async fn install_file_url() {
     let temp_dir = TempDir::new();
     let bin_dir = temp_dir.path().join("bin");
-    let module_path = fs::canonicalize(testdata_path().join("cat.ts")).unwrap();
+    let module_path =
+      canonicalize_path(testdata_path().join("cat.ts").as_path()).unwrap();
     let file_module_string =
       Url::from_file_path(module_path).unwrap().to_string();
     assert!(file_module_string.starts_with("file:///"));
@@ -1888,6 +2179,7 @@ mod tests {
         name: Some("echo_test".to_string()),
         root: Some(temp_dir.path().to_string()),
         force: true,
+        compile: false,
       },
     )
     .await;
@@ -1899,11 +2191,19 @@ mod tests {
     }
     assert!(file_path.exists());
 
-    let mut expected_string =
-      format!("run --no-config '{}'", &file_module_string);
+    let config_path = config_dir_for(&temp_dir.path().to_string(), "echo_test")
+      .join("deno.json");
+    let mut expected_string = format!(
+      "run --config {} '{}'",
+      config_path.to_string_lossy(),
+      &file_module_string
+    );
     if cfg!(windows) {
-      expected_string =
-        format!("\"run\" \"--no-config\" \"{}\"", &file_module_string);
+      expected_string = format!(
+        "\"run\" \"--config\" \"{}\" \"{}\"",
+        config_path.to_string_lossy(),
+        &file_module_string
+      );
     }
 
     let content = fs::read_to_string(file_path).unwrap();
@@ -1922,6 +2222,7 @@ mod tests {
       file_path = file_path.with_extension("cmd");
       File::create(&file_path).unwrap();
     }
+    let shim_path = file_path.clone();
 
     // create extra files
     {
@@ -1936,6 +2237,18 @@ mod tests {
     {
       let file_path = file_path.with_extension("lock.json");
       File::create(file_path).unwrap();
+    }
+
+    // create hidden per-command copies as produced by install
+    {
+      let hidden_file =
+        get_hidden_file_with_ext(shim_path.as_path(), "deno.json");
+      File::create(hidden_file).unwrap();
+    }
+    {
+      let hidden_file =
+        get_hidden_file_with_ext(shim_path.as_path(), "lock.json");
+      File::create(hidden_file).unwrap();
     }
 
     uninstall(
@@ -1955,22 +2268,17 @@ mod tests {
     assert!(!file_path.with_extension("deno.json").exists());
     assert!(!file_path.with_extension("lock.json").exists());
 
+    // hidden per-command files should also be removed
+    assert!(
+      !get_hidden_file_with_ext(shim_path.as_path(), "deno.json").exists()
+    );
+    assert!(
+      !get_hidden_file_with_ext(shim_path.as_path(), "lock.json").exists()
+    );
+
     if cfg!(windows) {
       file_path = file_path.with_extension("cmd");
       assert!(!file_path.exists());
     }
-  }
-
-  #[test]
-  fn test_remove_import_map_field_from_text() {
-    assert_eq!(
-      remove_import_map_field_from_text(
-        r#"{
-    "importMap": "./value.json"
-}"#,
-      )
-      .unwrap(),
-      "{}"
-    );
   }
 }

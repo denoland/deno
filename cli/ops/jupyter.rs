@@ -14,11 +14,11 @@ use deno_core::op2;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
 use deno_error::JsErrorBox;
-use jupyter_runtime::InputRequest;
-use jupyter_runtime::JupyterMessage;
-use jupyter_runtime::JupyterMessageContent;
+use jupyter_protocol::InputRequest;
+use jupyter_protocol::JupyterMessage;
+use jupyter_protocol::JupyterMessageContent;
+use jupyter_protocol::StreamContent;
 use jupyter_runtime::KernelIoPubConnection;
-use jupyter_runtime::StreamContent;
 use tokio::sync::mpsc;
 
 use crate::tools::jupyter::server::StdinConnectionProxy;
@@ -122,7 +122,7 @@ pub enum JupyterBroadcastError {
   ZeroMq(AnyError),
 }
 
-#[op2(async)]
+#[op2]
 pub async fn op_jupyter_broadcast(
   state: Rc<RefCell<OpState>>,
   #[string] message_type: String,
@@ -163,7 +163,7 @@ pub async fn op_jupyter_broadcast(
       .lock()
       .send(jupyter_message)
       .await
-      .map_err(JupyterBroadcastError::ZeroMq)?;
+      .map_err(|e| JupyterBroadcastError::ZeroMq(e.into()))?;
   }
 
   Ok(())
@@ -355,7 +355,6 @@ pub fn op_jupyter_create_png_from_texture(
 }
 
 #[op2]
-#[serde]
 pub fn op_jupyter_get_buffer(
   #[cppgc] buffer: &deno_runtime::deno_webgpu::buffer::GPUBuffer,
 ) -> Result<Vec<u8>, deno_runtime::deno_webgpu::error::GPUError> {

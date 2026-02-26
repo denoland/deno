@@ -19,7 +19,7 @@ jobs:
             runner: macos-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           submodules: true
       - name: Setup Rust
@@ -29,12 +29,12 @@ jobs:
         with:
           deno-version: canary
       - name: Install Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: 3.11
       - name: Authenticate with Google Cloud
         if: github.ref == 'refs/heads/main'
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@v3
         with:
           project_id: denoland
           credentials_json: '${{ secrets.GCP_SA_KEY }}'
@@ -42,7 +42,7 @@ jobs:
           create_credentials_file: true
       - name: Setup gcloud
         if: github.ref == 'refs/heads/main'
-        uses: google-github-actions/setup-gcloud@v2
+        uses: google-github-actions/setup-gcloud@v3
         with:
           project_id: denoland
       - name: Run tests
@@ -54,32 +54,38 @@ jobs:
         run: gzip tests/node_compat/report.json
       - name: Upload the report to dl.deno.land
         if: github.ref == 'refs/heads/main'
+        env:
+          AWS_ACCESS_KEY_ID: ${{ vars.S3_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.S3_SECRET_ACCESS_KEY }}
+          AWS_ENDPOINT_URL_S3: ${{ vars.S3_ENDPOINT }}
+          AWS_DEFAULT_REGION: ${{vars.S3_REGION }}
         run: |-
           gsutil -h "Cache-Control: public, max-age=3600" cp tests/node_compat/report.json.gz gs://dl.deno.land/node-compat-test/$(date +%F)/report-${{matrix.os}}.json.gz
+          aws s3 cp tests/node_compat/report.json.gz s3://dl-deno-land/node-compat-test/$(date +%F)/report-${{matrix.os}}.json.gz
   summary:
     runs-on: ubuntu-latest
     needs: test
     if: ${{ always() && github.ref == 'refs/heads/main' }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           submodules: true
       - name: Setup Deno
         uses: denoland/setup-deno@v2
       - name: Install Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: 3.11
       - name: Authenticate with Google Cloud
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@v3
         with:
           project_id: denoland
           credentials_json: '${{ secrets.GCP_SA_KEY }}'
           export_environment_variables: true
           create_credentials_file: true
       - name: Setup gcloud
-        uses: google-github-actions/setup-gcloud@v2
+        uses: google-github-actions/setup-gcloud@v3
         with:
           project_id: denoland
       - name: Add the day summary to the month summary
@@ -87,8 +93,14 @@ jobs:
       - name: Gzip the month summary
         run: gzip tests/node_compat/summary.json -k
       - name: Upload the month summary
+        env:
+          AWS_ACCESS_KEY_ID: ${{ vars.S3_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.S3_SECRET_ACCESS_KEY }}
+          AWS_ENDPOINT_URL_S3: ${{ vars.S3_ENDPOINT }}
+          AWS_DEFAULT_REGION: ${{vars.S3_REGION }}
         run: |-
           gsutil -h "Cache-Control: public, max-age=3600" cp tests/node_compat/summary.json.gz gs://dl.deno.land/node-compat-test/summary-$(date +%Y-%m).json.gz
+          aws s3 cp tests/node_compat/summary.json.gz s3://dl-deno-land/node-compat-test/summary-$(date +%Y-%m).json.gz
       - name: Post message to slack channel
         run: deno -A --config tests/config/deno.json tests/node_compat/slack.ts
         env:

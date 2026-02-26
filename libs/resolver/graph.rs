@@ -543,18 +543,48 @@ impl<
   }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EnhanceGraphErrorMode {
   ShowRange,
   HideRange,
 }
 
+#[derive(Debug, deno_error::JsError)]
+#[class(inherit)]
+pub struct EnhancedGraphError {
+  #[inherit]
+  original: ModuleGraphError,
+  message: String,
+  mode: EnhanceGraphErrorMode,
+}
+
+impl EnhancedGraphError {
+  pub fn original(&self) -> &ModuleGraphError {
+    &self.original
+  }
+}
+
+impl std::fmt::Display for EnhancedGraphError {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    f.write_str(&self.message)?;
+    if let Some(range) = self.original.maybe_range()
+      && self.mode == EnhanceGraphErrorMode::ShowRange
+      && !range.specifier.as_str().contains("/$deno$eval")
+    {
+      write!(f, "\n    at {}", format_range_with_colors(range))?;
+    }
+    Ok(())
+  }
+}
+
+impl std::error::Error for EnhancedGraphError {}
+
 pub fn enhance_graph_error(
   sys: &(impl sys_traits::FsMetadata + Clone),
-  error: &ModuleGraphError,
+  error: ModuleGraphError,
   mode: EnhanceGraphErrorMode,
-) -> String {
-  let mut message = match &error {
+) -> EnhancedGraphError {
+  let message = match &error {
     ModuleGraphError::ResolutionError(resolution_error) => {
       enhanced_resolution_error_message(resolution_error)
     }
@@ -572,14 +602,11 @@ pub fn enhance_graph_error(
     }
   };
 
-  if let Some(range) = error.maybe_range()
-    && mode == EnhanceGraphErrorMode::ShowRange
-    && !range.specifier.as_str().contains("/$deno$eval")
-  {
-    message.push_str("\n    at ");
-    message.push_str(&format_range_with_colors(range));
+  EnhancedGraphError {
+    original: error,
+    message,
+    mode,
   }
-  message
 }
 
 /// Adds more explanatory information to a resolution error.
@@ -756,20 +783,14 @@ fn get_resolution_error_bare_specifier(
   } = error
   {
     Some(specifier.as_str())
-  } else if let ResolutionError::ResolverError { error, .. } = error {
-    if let ResolveError::ImportMap(error) = (*error).as_ref() {
-      if let import_map::ImportMapErrorKind::UnmappedBareSpecifier(
-        specifier,
-        _,
-      ) = error.as_kind()
-      {
-        Some(specifier.as_str())
-      } else {
-        None
-      }
-    } else {
-      None
-    }
+  } else if let ResolutionError::ResolverError { error, .. } = error
+    && let ResolveError::Other(error) = (*error).as_ref()
+    && let Some(error) =
+      error.get_ref().downcast_ref::<import_map::ImportMapError>()
+    && let import_map::ImportMapErrorKind::UnmappedBareSpecifier(specifier, _) =
+      error.as_kind()
+  {
+    Some(specifier.as_str())
   } else {
     None
   }
@@ -808,11 +829,11 @@ fn get_import_prefix_missing_error(error: &ResolutionError) -> Option<&str> {
           other_error.get_ref().downcast_ref::<SpecifierError>()
         {
           maybe_specifier = Some(specifier);
-        }
-      }
-      ResolveError::ImportMap(import_map_err) => {
-        if let ImportMapErrorKind::UnmappedBareSpecifier(specifier, _referrer) =
-          import_map_err.as_kind()
+        } else if let Some(err) = other_error
+          .get_ref()
+          .downcast_ref::<import_map::ImportMapError>()
+          && let ImportMapErrorKind::UnmappedBareSpecifier(specifier, _referrer) =
+            err.as_kind()
         {
           maybe_specifier = Some(specifier);
         }
@@ -907,7 +928,7 @@ mod test {
       let err = import_map.resolve(input, &specifier).err().unwrap();
       let err = ResolutionError::ResolverError {
         #[allow(clippy::disallowed_types)]
-        error: std::sync::Arc::new(ResolveError::ImportMap(err)),
+        error: std::sync::Arc::new(ResolveError::from_err(err)),
         specifier: input.to_string(),
         range: Range {
           specifier,
@@ -932,7 +953,6 @@ mod test {
         },
         error: SpecifierError::ImportPrefixMissing {
           specifier: input.to_string(),
-          referrer: None,
         },
       };
       assert_eq!(get_resolution_error_bare_node_specifier(&err), output,);

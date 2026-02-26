@@ -1,0 +1,12 @@
+{
+  "tests": {
+    "json_flag": {
+      "args": "doc --json README.md",
+      "output": "json_flag.out"
+    },
+    "lint_flag": {
+      "args": "doc --lint README.md",
+      "output": "Checked 1 file\n"
+    }
+  }
+}

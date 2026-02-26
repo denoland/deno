@@ -31,6 +31,7 @@ use deno_resolver::NodeAndNpmResolvers;
 use deno_resolver::cjs::IsCjsResolutionMode;
 use deno_resolver::deno_json::CompilerOptionsResolver;
 use deno_resolver::deno_json::JsxImportSourceConfig;
+use deno_resolver::factory::npm_overrides_from_workspace;
 use deno_resolver::graph::FoundPackageJsonDepFlag;
 use deno_resolver::npm::CreateInNpmPkgCheckerOptions;
 use deno_resolver::npm::DenoInNpmPackageChecker;
@@ -202,7 +203,7 @@ impl LspScopedResolver {
       .set_snapshot(self.npm_resolution.snapshot());
     let npm_resolver = self.npm_resolver.as_ref();
     if let Some(npm_resolver) = &npm_resolver {
-      factory.set_npm_resolver(CliNpmResolver::new::<CliSys>(
+      factory.set_npm_resolver(CliNpmResolver::<CliSys>::new::<CliSys>(
         match npm_resolver {
           CliNpmResolver::Byonm(byonm_npm_resolver) => {
             CliNpmResolverCreateOptions::Byonm(
@@ -210,6 +211,7 @@ impl LspScopedResolver {
                 root_node_modules_dir: byonm_npm_resolver
                   .root_node_modules_path()
                   .map(|p| p.to_path_buf()),
+                search_stop_dir: None,
                 sys: factory.node_resolution_sys.clone(),
                 pkg_json_resolver: self.pkg_json_resolver.clone(),
               },
@@ -878,6 +880,7 @@ impl<'a> ResolverFactory<'a> {
               .map(|p| p.join("node_modules/"))
           })
         }),
+        search_stop_dir: None,
       })
     } else {
       let npmrc = self
@@ -941,10 +944,15 @@ impl<'a> ResolverFactory<'a> {
         npmrc.clone(),
         None,
       ));
+      // parse npm overrides from workspace config
+      let overrides = self
+        .config_data
+        .map(|d| npm_overrides_from_workspace(&d.member_dir.workspace))
+        .unwrap_or_default();
       let npm_version_resolver = Arc::new(NpmVersionResolver {
-        types_node_version_req: None,
         link_packages: link_packages.0.clone(),
         newest_dependency_date_options: Default::default(),
+        overrides: Arc::new(overrides),
       });
       let npm_resolution_installer = Arc::new(NpmResolutionInstaller::new(
         Default::default(),
@@ -967,6 +975,7 @@ impl<'a> ResolverFactory<'a> {
         sys.clone(),
         tarball_cache.clone(),
         deno_npm_installer::NpmInstallerOptions {
+          clean_on_install: false,
           maybe_lockfile,
           maybe_node_modules_path: maybe_node_modules_path.clone(),
           lifecycle_scripts: Arc::new(LifecycleScriptsConfig::default()),
@@ -988,7 +997,7 @@ impl<'a> ResolverFactory<'a> {
         npm_system_info: NpmSystemInfo::default(),
       })
     };
-    self.set_npm_resolver(CliNpmResolver::new(options));
+    self.set_npm_resolver(CliNpmResolver::<CliSys>::new(options));
   }
 
   pub fn set_npm_installer(&mut self, npm_installer: Arc<CliNpmInstaller>) {

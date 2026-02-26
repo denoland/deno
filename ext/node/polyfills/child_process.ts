@@ -10,6 +10,7 @@ import { internals, primordials } from "ext:core/mod.js";
 import {
   op_bootstrap_unstable_args,
   op_node_child_ipc_pipe,
+  op_node_translate_cli_args,
 } from "ext:core/ops";
 
 import {
@@ -44,6 +45,7 @@ import {
   convertToValidSignal,
   kEmptyObject,
 } from "ext:deno_node/internal/util.mjs";
+import { toPathIfFileURL } from "ext:deno_node/internal/url.ts";
 import { kNeedsNpmProcessState } from "ext:deno_process/40_process.js";
 
 const {
@@ -54,7 +56,6 @@ const {
   ObjectAssign,
   PromiseWithResolvers,
   StringPrototypeSlice,
-  StringPrototypeStartsWith,
 } = primordials;
 
 const MAX_BUFFER = 1024 * 1024;
@@ -69,10 +70,11 @@ type ForkOptions = ChildProcessOptions;
  * @returns
  */
 export function fork(
-  modulePath: string,
+  modulePath: string | URL,
   _args?: string[],
   _options?: ForkOptions,
 ) {
+  modulePath = toPathIfFileURL(modulePath) as string;
   validateString(modulePath, "modulePath");
   validateNullByteNotInArg(modulePath, "modulePath");
 
@@ -139,56 +141,42 @@ export function fork(
     }
   }
 
-  // TODO(bartlomieju): this is incomplete, currently only handling a single
-  // V8 flag to get Prisma integration running, we should fill this out with
-  // more
-  const v8Flags: string[] = [];
-  if (Array.isArray(execArgv)) {
-    let index = 0;
-    while (index < execArgv.length) {
-      const flag = execArgv[index];
-      if (flag.startsWith("--max-old-space-size")) {
-        execArgv.splice(index, 1);
-        v8Flags.push(flag);
-      } else if (flag.startsWith("--enable-source-maps")) {
-        // https://github.com/denoland/deno/issues/21750
-        execArgv.splice(index, 1);
-      } else if (flag.startsWith("-C") || flag.startsWith("--conditions")) {
-        let rm = 1;
-        if (flag.indexOf("=") === -1) {
-          // --conditions foo
-          // so remove the next argument as well.
-          rm = 2;
-        }
-        execArgv.splice(index, rm);
-      } else if (flag.startsWith("--no-warnings")) {
-        execArgv[index] = "--quiet";
-      } else if (
-        StringPrototypeStartsWith(execArgv[index], "--experimental-")
-      ) {
-        // `--experimental-*` args are ignored, because most experimental Node features
-        // are implemented in Deno, but it doens't exactly match Deno's `--unstable-*` flags.
-        execArgv.splice(index, 1);
-        index++;
-      } else {
-        index++;
-      }
-    }
+  // Combine execArgv (Node CLI flags), modulePath (script), and args (script args)
+  const nodeArgs = [...(execArgv || []), modulePath, ...args].map(String);
+
+  // Use the Rust parser to translate Node.js CLI args to Deno args
+  // The parser handles Deno-style args (e.g., from vitest) by passing them through unchanged
+  const result = op_node_translate_cli_args(nodeArgs, false, true);
+  const denoArgs = result.deno_args;
+  const bootstrapArgs = op_bootstrap_unstable_args();
+
+  // Insert bootstrap unstable args after "run" but before other args.
+  // Filter out any that the translator already added to avoid duplicates
+  // (e.g. --unstable-bare-node-builtins).
+  // denoArgs is like ["run", "-A", "--unstable-...", "script.js", ...]
+  // We need ["run", ...uniqueBootstrapArgs, "-A", "--unstable-...", "script.js", ...]
+  const denoArgSet = new Set(denoArgs);
+  const uniqueBootstrapArgs = bootstrapArgs.filter((a) => !denoArgSet.has(a));
+  if (
+    denoArgs.length > 0 && denoArgs[0] === "run" &&
+    uniqueBootstrapArgs.length > 0
+  ) {
+    args = [denoArgs[0], ...uniqueBootstrapArgs, ...denoArgs.slice(1)];
+  } else {
+    args = [...uniqueBootstrapArgs, ...denoArgs];
   }
 
-  const stringifiedV8Flags: string[] = [];
-  if (v8Flags.length > 0) {
-    stringifiedV8Flags.push("--v8-flags=" + v8Flags.join(","));
+  // Handle NODE_OPTIONS if the parser returned any
+  if (result.node_options.length > 0) {
+    const nodeOptionsStr = result.node_options.join(" ");
+    if (options.env) {
+      options.env.NODE_OPTIONS = options.env.NODE_OPTIONS
+        ? options.env.NODE_OPTIONS + " " + nodeOptionsStr
+        : nodeOptionsStr;
+    } else {
+      options.env = { ...process.env, NODE_OPTIONS: nodeOptionsStr };
+    }
   }
-  args = [
-    "run",
-    ...op_bootstrap_unstable_args(),
-    "-A",
-    ...stringifiedV8Flags,
-    ...execArgv,
-    modulePath,
-    ...args,
-  ];
 
   if (typeof options.stdio === "string") {
     options.stdio = stdioStringToArray(options.stdio, "ipc");
@@ -236,9 +224,27 @@ export function spawn(
   options = normalizeSpawnArguments(command, args, options);
 
   validateAbortSignal(options?.signal, "options.signal");
+  validateTimeout(options?.timeout);
 
   const child = new ChildProcess();
   child.spawn(options);
+
+  const timeout = options?.timeout;
+  if (timeout != null && timeout > 0) {
+    const killSignal = options?.killSignal ?? "SIGTERM";
+    let timeoutId: ReturnType<typeof setTimeout> | null = setTimeout(() => {
+      timeoutId = null;
+      child.kill(killSignal as string);
+    }, timeout);
+
+    child.once("exit", () => {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+    });
+  }
+
   return child;
 }
 

@@ -26,6 +26,7 @@ use deno_maybe_sync::MaybeSend;
 use deno_maybe_sync::MaybeSync;
 use deno_maybe_sync::new_rc;
 pub use deno_npm::NpmSystemInfo;
+use deno_npm::resolution::NpmOverrides;
 use deno_npm::resolution::NpmVersionResolver;
 use deno_path_util::fs::canonicalize_path_maybe_not_exists;
 use futures::future::FutureExt;
@@ -1067,6 +1068,7 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
               .join("node_modules"),
             },
           ),
+          search_stop_dir: None,
         })
       } else {
         NpmResolverCreateOptions::Managed(ManagedNpmResolverCreateOptions {
@@ -1090,8 +1092,12 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
     self.npm_version_resolver.get_or_try_init(|| {
       let minimum_dependency_age_config =
         self.minimum_dependency_age_config()?;
+
+      // parse npm overrides from root package.json
+      let workspace = &self.workspace_factory.workspace_directory()?.workspace;
+      let overrides = npm_overrides_from_workspace(workspace);
+
       Ok(new_rc(NpmVersionResolver {
-        types_node_version_req: None,
         newest_dependency_date_options:
           deno_npm::resolution::NewestDependencyDateOptions {
             date: minimum_dependency_age_config
@@ -1111,6 +1117,8 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
           .workspace_npm_link_packages()?
           .0
           .clone(),
+        #[allow(clippy::disallowed_types)] // allow Arc
+        overrides: std::sync::Arc::new(overrides),
       }))
     })
   }
@@ -1242,5 +1250,32 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
       self.workspace_factory.node_modules_dir_mode()?
         == NodeModulesDirMode::Manual,
     )
+  }
+}
+
+/// Parses npm overrides from a workspace's root package.json.
+///
+/// Returns `NpmOverrides::default()` if no overrides are present or if parsing fails.
+/// Logs a warning on parse failure.
+pub fn npm_overrides_from_workspace(
+  workspace: &deno_config::workspace::Workspace,
+) -> NpmOverrides {
+  let Some(overrides_json) = workspace.npm_overrides() else {
+    return NpmOverrides::default();
+  };
+  let root_deps = workspace.root_deps_for_npm_overrides();
+  match NpmOverrides::from_value(
+    serde_json::Value::Object(overrides_json.clone()),
+    &root_deps,
+  ) {
+    Ok(overrides) => overrides,
+    Err(e) => {
+      log::warn!(
+        "{} failed to parse npm overrides: {}",
+        deno_terminal::colors::yellow("Warning"),
+        e
+      );
+      NpmOverrides::default()
+    }
   }
 }

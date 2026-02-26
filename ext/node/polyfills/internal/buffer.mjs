@@ -114,10 +114,10 @@ import {
   forgivingBase64UrlEncode,
 } from "ext:deno_web/00_infra.js";
 import { atob, btoa } from "ext:deno_web/05_base64.js";
-import { Blob } from "ext:deno_web/09_file.js";
+import { Blob, File } from "ext:deno_web/09_file.js";
 import { untransferableSymbol } from "ext:deno_node/internal_binding/util.ts";
 
-export { atob, Blob, btoa };
+export { atob, Blob, btoa, File };
 
 const utf8Encoder = new TextEncoder();
 
@@ -1011,16 +1011,12 @@ Buffer.prototype.hexWrite = function hexWrite(string, offset, length) {
   );
 };
 
-Buffer.prototype.hexSlice = function hexSlice(string, offset, length) {
-  return _hexSlice(this, string, offset, length);
+Buffer.prototype.hexSlice = function hexSlice(offset, length) {
+  return _hexSlice(this, offset, length);
 };
 
-Buffer.prototype.latin1Slice = function latin1Slice(
-  string,
-  offset,
-  length,
-) {
-  return _latin1Slice(this, string, offset, length);
+Buffer.prototype.latin1Slice = function latin1Slice(offset, length) {
+  return _latin1Slice(this, offset, length);
 };
 
 Buffer.prototype.latin1Write = function latin1Write(
@@ -1192,7 +1188,12 @@ function _utf8Slice(buf, start, end) {
 
 function _latin1Slice(buf, start, end) {
   let ret = "";
-  end = MathMin(buf.length, end);
+  if (!start || start < 0) {
+    start = 0;
+  }
+  if (end === undefined || end > buf.length) {
+    end = buf.length;
+  }
   for (let i = start; i < end; ++i) {
     ret += StringFromCharCode(buf[i]);
   }
@@ -3034,6 +3035,7 @@ const mod = {
   atob,
   btoa,
   Blob,
+  File,
   Buffer,
   constants,
   isAscii,

@@ -1,5 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-import { Buffer, constants } from "node:buffer";
+import { Buffer, constants, File as BufferFile } from "node:buffer";
 import { assertEquals, assertThrows } from "@std/assert";
 import { strictEqual } from "node:assert";
 
@@ -478,6 +478,26 @@ Deno.test({
   },
 });
 
+// https://github.com/denoland/deno/issues/24908
+Deno.test({
+  name: "[node/buffer] Buffer from base64 with non-base64 characters",
+  fn() {
+    // Strings with hyphens should not throw
+    const buf1 = Buffer.from("base64-encoded-bytes-from-browser", "base64");
+    assertEquals(buf1.length, 24);
+    assertEquals(
+      buf1.toString("hex"),
+      "6dab1eeb8f9e9dca1d79df9bcad7acf9fae89be6eba30b1e",
+    );
+
+    const buf2 = Buffer.from("not-valid-base64!!!", "base64");
+    assertEquals(buf2.length, 12);
+
+    // Single character (too short for base64)
+    assertEquals(Buffer.from("A", "base64").length, 0);
+  },
+});
+
 Deno.test({
   name: "[node/buffer] Buffer to string base64",
   fn() {
@@ -701,5 +721,40 @@ Deno.test({
 
     const buf3 = Buffer.from("123😁aa", "hex");
     assertEquals(buf3, Buffer.from([0x12]));
+  },
+});
+
+Deno.test({
+  name: "[node/buffer] File is exported from node:buffer",
+  fn() {
+    assertEquals(typeof BufferFile, "function");
+    const file = new BufferFile(["hello"], "hello.txt", {
+      type: "text/plain",
+    });
+    assertEquals(file.name, "hello.txt");
+    assertEquals(file.type, "text/plain");
+    assertEquals(file.size, 5);
+    assertEquals(file instanceof Blob, true);
+  },
+});
+
+Deno.test({
+  name: "[node/buffer] latin1Slice returns correct string",
+  fn() {
+    // deno-lint-ignore no-explicit-any
+    const buf: any = Buffer.of(1, 2, 3, 0xff);
+    assertEquals(buf.latin1Slice().length, 4);
+    assertEquals(buf.latin1Slice(), "\x01\x02\x03\xff");
+    assertEquals(buf.latin1Slice(1, 3), "\x02\x03");
+  },
+});
+
+Deno.test({
+  name: "[node/buffer] hexSlice returns correct string",
+  fn() {
+    // deno-lint-ignore no-explicit-any
+    const buf: any = Buffer.of(1, 2, 3, 0xff);
+    assertEquals(buf.hexSlice(), "010203ff");
+    assertEquals(buf.hexSlice(1, 3), "0203");
   },
 });

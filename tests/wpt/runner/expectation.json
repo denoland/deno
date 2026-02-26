@@ -5329,12 +5329,8 @@
       "invalid-realm.tentative.window.html": false
     },
     "writable-streams": {
-      "aborting.any.html": [
-        "recursive abort() call from abort() aborting signal"
-      ],
-      "aborting.any.worker.html": [
-        "recursive abort() call from abort() aborting signal"
-      ],
+      "aborting.any.html": true,
+      "aborting.any.worker.html": true,
       "bad-strategies.any.html": true,
       "bad-strategies.any.worker.html": true,
       "bad-underlying-sinks.any.html": true,
@@ -5397,8 +5393,8 @@
   "user-timing": {
     "buffered-flag.any.html": false,
     "buffered-flag.any.worker.html": false,
-    "case-sensitivity.any.html": false,
-    "case-sensitivity.any.worker.html": false,
+    "case-sensitivity.any.html": true,
+    "case-sensitivity.any.worker.html": true,
     "clear_all_marks.any.html": true,
     "clear_all_marks.any.worker.html": true,
     "clear_all_measures.any.html": true,
@@ -5419,8 +5415,12 @@
     "mark-entry-constructor.any.worker.html": true,
     "mark-errors.any.html": true,
     "mark-errors.any.worker.html": true,
-    "mark-l3.any.html": false,
-    "mark-l3.any.worker.html": false,
+    "mark-l3.any.html": [
+      "mark entries' detail and startTime are customizable"
+    ],
+    "mark-l3.any.worker.html": [
+      "mark entries' detail and startTime are customizable"
+    ],
     "mark-measure-return-objects.any.html": true,
     "mark-measure-return-objects.any.worker.html": true,
     "mark.any.html": true,
@@ -5437,8 +5437,16 @@
     "measure_syntax_err.any.worker.html": true,
     "structured-serialize-detail.any.html": true,
     "structured-serialize-detail.any.worker.html": true,
-    "supported-usertiming-types.any.html": false,
-    "supported-usertiming-types.any.worker.html": false,
+    "supported-usertiming-types.any.html": [
+      "supportedEntryTypes contains 'mark' and 'measure'",
+      "'mark' entries should be observable",
+      "'measure' entries should be observable"
+    ],
+    "supported-usertiming-types.any.worker.html": [
+      "supportedEntryTypes contains 'mark' and 'measure'",
+      "'mark' entries should be observable",
+      "'measure' entries should be observable"
+    ],
     "user_timing_exists.any.html": true,
     "user_timing_exists.any.worker.html": true,
     "invoke_with_timing_attributes.worker.html": true,
@@ -5510,7 +5518,8 @@
     "measure.html": false,
     "measure_associated_with_navigation_timing.html": false,
     "measure_exception.html": [
-      "Invocation of performance.measure(\"Exception7\", \"redirectStart\") should throw INVALID_ACCESS_ERR Exception."
+      "Invocation of performance.measure(\"Exception7\", \"redirectStart\") should throw INVALID_ACCESS_ERR Exception.",
+      "Invocation of performance.measure(\"Exception8\", {\"detail\": \"non-empty\"}) should throw TypeError Exception."
     ],
     "measure_exceptions_navigation_timing.html": false,
     "measure_navigation_timing.html": false,
@@ -5524,12 +5533,8 @@
         "compile.any.worker.html": true,
         "instantiate-bad-imports.any.html": true,
         "instantiate-bad-imports.any.worker.html": true,
-        "instantiate.any.html": [
-          "Synchronous options handling: Buffer argument"
-        ],
-        "instantiate.any.worker.html": [
-          "Synchronous options handling: Buffer argument"
-        ],
+        "instantiate.any.html": true,
+        "instantiate.any.worker.html": true,
         "multi-value.any.html": true,
         "multi-value.any.worker.html": true,
         "toStringTag.any.html": true,
@@ -5551,19 +5556,11 @@
       },
       "idlharness.any.html": [
         "Module interface: existence and properties of interface object",
-        "Module interface: existence and properties of interface prototype object",
-        "Memory interface: operation toFixedLengthBuffer()",
-        "Memory interface: operation toResizableBuffer()",
-        "Memory interface: [object WebAssembly.Memory] must inherit property \"toFixedLengthBuffer()\" with the proper type",
-        "Memory interface: [object WebAssembly.Memory] must inherit property \"toResizableBuffer()\" with the proper type"
+        "Module interface: existence and properties of interface prototype object"
       ],
       "idlharness.any.worker.html": [
         "Module interface: existence and properties of interface object",
-        "Module interface: existence and properties of interface prototype object",
-        "Memory interface: operation toFixedLengthBuffer()",
-        "Memory interface: operation toResizableBuffer()",
-        "Memory interface: [object WebAssembly.Memory] must inherit property \"toFixedLengthBuffer()\" with the proper type",
-        "Memory interface: [object WebAssembly.Memory] must inherit property \"toResizableBuffer()\" with the proper type"
+        "Module interface: existence and properties of interface prototype object"
       ],
       "instance": {
         "constructor-bad-imports.any.html": true,
@@ -5594,14 +5591,26 @@
         "constructor-shared.tentative.any.worker.html": true,
         "constructor-types.tentative.any.html": false,
         "constructor-types.tentative.any.worker.html": false,
-        "to-fixed-length-buffer-shared.any.html": false,
-        "to-fixed-length-buffer-shared.any.worker.html": false,
-        "to-fixed-length-buffer.any.html": false,
-        "to-fixed-length-buffer.any.worker.html": false,
-        "to-resizable-buffer-shared.any.html": false,
-        "to-resizable-buffer-shared.any.worker.html": false,
-        "to-resizable-buffer.any.html": false,
-        "to-resizable-buffer.any.worker.html": false
+        "to-fixed-length-buffer-shared.any.html": true,
+        "to-fixed-length-buffer-shared.any.worker.html": true,
+        "to-fixed-length-buffer.any.html": [
+          "toFixedLengthBuffer caching behavior"
+        ],
+        "to-fixed-length-buffer.any.worker.html": [
+          "toFixedLengthBuffer caching behavior"
+        ],
+        "to-resizable-buffer-shared.any.html": true,
+        "to-resizable-buffer-shared.any.worker.html": true,
+        "to-resizable-buffer.any.html": [
+          "toResizableBuffer caching behavior",
+          "toResizableBuffer max size",
+          "Resizable buffers from Memory cannot be detached by JS"
+        ],
+        "to-resizable-buffer.any.worker.html": [
+          "toResizableBuffer caching behavior",
+          "toResizableBuffer max size",
+          "Resizable buffers from Memory cannot be detached by JS"
+        ]
       },
       "module": {
         "constructor.any.html": true,
@@ -11980,7 +11989,7 @@
       "Blob-constructor-dom.window.html": false,
       "Blob-bytes.any.html": true,
       "Blob-bytes.any.worker.html": true,
-      "Blob-constructor-endings.html": false
+      "Blob-constructor-endings.html": true
     },
     "file": {
       "File-constructor.any.html": true,
@@ -11994,7 +12003,7 @@
       "send-file-formdata.any.html": true,
       "send-file-formdata.any.worker.html": true,
       "Worker-read-file-constructor.worker.html": true,
-      "File-constructor-endings.html": false,
+      "File-constructor-endings.html": true,
       "send-file-form-controls.html": false,
       "send-file-form-iso-2022-jp.html": false,
       "send-file-form-punctuation.html": false,
@@ -13142,7 +13151,6 @@
             "appCodeName",
             "appName",
             "appVersion",
-            "platform",
             "product",
             "productSub",
             "userAgent value",
@@ -13155,7 +13163,6 @@
             "appCodeName",
             "appName",
             "appVersion",
-            "platform",
             "product",
             "userAgent value"
           ],
@@ -13549,7 +13556,7 @@
     "MessagePort_onmessage_start.any.html": true,
     "MessagePort_onmessage_start.any.worker.html": true,
     "postMessage_MessagePorts_xsite.sub.window.html": false,
-    "MessageEvent_onmessage_postMessage_infinite_loop.html": false,
+    "MessageEvent_onmessage_postMessage_infinite_loop.html": true,
     "messageerror.html": false,
     "multi-globals": {
       "broadcastchannel-current.sub.html": false,
@@ -15144,7 +15151,7 @@
         "navigator": {
           "002.html": false,
           "003.html": false,
-          "004.html": false,
+          "004.html": true,
           "005.html": true,
           "006.html": false,
           "007.html": true,
