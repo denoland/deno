@@ -167,6 +167,33 @@ fn generate_coverage_report(
     options.script_coverage.functions.iter().enumerate()
   {
     let block_hits = function.ranges[0].count;
+
+    // For each sub-range, find the parent count: the count of the smallest
+    // enclosing range. V8 ranges are nested (ranges[0] is the function body,
+    // inner ranges are blocks/branches/loops). The parent count is needed to
+    // correctly compute complement branches — e.g. for an if/else inside a
+    // loop, the parent is the loop body, not the function.
+    let mut parent_counts: Vec<i64> = Vec::with_capacity(function.ranges.len().saturating_sub(1));
+    for range in &function.ranges[1..] {
+      let mut parent_count = block_hits;
+      let mut parent_size = usize::MAX;
+      for candidate in &function.ranges {
+        if std::ptr::eq(candidate, range) {
+          continue;
+        }
+        if candidate.start_char_offset <= range.start_char_offset
+          && candidate.end_char_offset >= range.end_char_offset
+        {
+          let size = candidate.end_char_offset - candidate.start_char_offset;
+          if size < parent_size {
+            parent_size = size;
+            parent_count = candidate.count;
+          }
+        }
+      }
+      parent_counts.push(parent_count);
+    }
+
     // Group sub-ranges by their source line to detect branch points.
     // When multiple ranges map to the same source line, they represent
     // different arms of the same branch (e.g. if/else).
@@ -198,18 +225,17 @@ fn generate_coverage_report(
       }
 
       if ranges.len() == 1 {
-        let (_, range) = &ranges[0];
+        let (idx, range) = &ranges[0];
+        let enclosing_count = parent_counts[*idx];
 
-        // If range.count > block_hits, this range executes more often than
-        // the enclosing function — it's a loop body, not a branch arm.
-        // Skip complement generation for loops since the complement
-        // calculation (block_hits - range.count) would be negative.
-        if range.count > block_hits {
+        if range.count > enclosing_count {
+          // Range executes more often than its enclosing scope — this is a
+          // loop body, not a branch arm. Report it without a complement.
           coverage_report.branches.push(BranchCoverageItem {
             line_index: *line_index,
             block_number,
             branch_number: 0,
-            taken: if block_hits > 0 {
+            taken: if enclosing_count > 0 {
               Some(range.count)
             } else {
               None
@@ -217,16 +243,18 @@ fn generate_coverage_report(
             is_hit: range.count > 0,
           });
         } else {
-          // Single range at this line: this is one arm of a branch. The
-          // complement (e.g. the else for an if) is implicit and has count
-          // equal to the parent function count minus this range's count.
-          let taken = if block_hits > 0 {
+          // Single range at this line: one arm of a branch. The complement
+          // (e.g. the else for an if) is implicit with count equal to the
+          // enclosing range's count minus this range's count. Using the
+          // enclosing (parent) range rather than the function-level count
+          // gives correct complements for branches inside loops.
+          let taken = if enclosing_count > 0 {
             Some(range.count)
           } else {
             None
           };
-          let complement_taken = if block_hits > 0 {
-            Some(block_hits - range.count)
+          let complement_taken = if enclosing_count > 0 {
+            Some(enclosing_count - range.count)
           } else {
             None
           };
