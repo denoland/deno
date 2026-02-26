@@ -198,34 +198,53 @@ fn generate_coverage_report(
       }
 
       if ranges.len() == 1 {
-        // Single range at this line: this is one arm of a branch. The
-        // complement (e.g. the else for an if) is implicit and has count
-        // equal to the parent function count minus this range's count.
         let (_, range) = &ranges[0];
-        let taken = if block_hits > 0 {
-          Some(range.count)
+
+        // If range.count > block_hits, this range executes more often than
+        // the enclosing function — it's a loop body, not a branch arm.
+        // Skip complement generation for loops since the complement
+        // calculation (block_hits - range.count) would be negative.
+        if range.count > block_hits {
+          coverage_report.branches.push(BranchCoverageItem {
+            line_index: *line_index,
+            block_number,
+            branch_number: 0,
+            taken: if block_hits > 0 {
+              Some(range.count)
+            } else {
+              None
+            },
+            is_hit: range.count > 0,
+          });
         } else {
-          None
-        };
-        let complement_taken = if block_hits > 0 {
-          Some(block_hits - range.count)
-        } else {
-          None
-        };
-        coverage_report.branches.push(BranchCoverageItem {
-          line_index: *line_index,
-          block_number,
-          branch_number: 0,
-          taken,
-          is_hit: range.count > 0,
-        });
-        coverage_report.branches.push(BranchCoverageItem {
-          line_index: *line_index,
-          block_number,
-          branch_number: 1,
-          taken: complement_taken,
-          is_hit: complement_taken.is_some_and(|c| c > 0),
-        });
+          // Single range at this line: this is one arm of a branch. The
+          // complement (e.g. the else for an if) is implicit and has count
+          // equal to the parent function count minus this range's count.
+          let taken = if block_hits > 0 {
+            Some(range.count)
+          } else {
+            None
+          };
+          let complement_taken = if block_hits > 0 {
+            Some(block_hits - range.count)
+          } else {
+            None
+          };
+          coverage_report.branches.push(BranchCoverageItem {
+            line_index: *line_index,
+            block_number,
+            branch_number: 0,
+            taken,
+            is_hit: range.count > 0,
+          });
+          coverage_report.branches.push(BranchCoverageItem {
+            line_index: *line_index,
+            block_number,
+            branch_number: 1,
+            taken: complement_taken,
+            is_hit: complement_taken.is_some_and(|c| c > 0),
+          });
+        }
       } else {
         // Multiple ranges at the same line: these are explicit branch arms
         // (e.g. both if and else blocks reported by V8).
