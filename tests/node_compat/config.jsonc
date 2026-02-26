@@ -1499,6 +1499,7 @@
     "parallel/test-vm-codegen.js": {},
     "parallel/test-vm-context-async-script.js": {},
     "parallel/test-vm-context-property-forwarding.js": {},
+    "parallel/test-vm-context-dont-contextify.js": {},
     "parallel/test-vm-create-and-run-in-context.js": {},
     "parallel/test-vm-create-context-accessors.js": {},
     "parallel/test-vm-create-context-arg.js": {},
