@@ -10,8 +10,6 @@ use std::io::Read;
 use std::io::Seek;
 use std::io::Write;
 #[cfg(unix)]
-use std::os::fd::AsRawFd;
-#[cfg(unix)]
 use std::os::unix::io::FromRawFd;
 #[cfg(windows)]
 use std::os::windows::io::FromRawHandle;
@@ -910,7 +908,9 @@ impl crate::fs::File for StdFileResourceInner {
     {
       let owner = _uid.map(nix::unistd::Uid::from_raw);
       let group = _gid.map(nix::unistd::Gid::from_raw);
-      let res = nix::unistd::fchown(self.handle, owner, group);
+      // SAFETY: self.handle is a valid open file descriptor
+      let raw_fd = unsafe { std::os::fd::BorrowedFd::borrow_raw(self.handle) };
+      let res = nix::unistd::fchown(raw_fd, owner, group);
       if let Err(err) = res {
         Err(io::Error::from_raw_os_error(err as i32).into())
       } else {
@@ -933,7 +933,7 @@ impl crate::fs::File for StdFileResourceInner {
           use std::os::fd::AsFd;
           let owner = _uid.map(nix::unistd::Uid::from_raw);
           let group = _gid.map(nix::unistd::Gid::from_raw);
-          nix::unistd::fchown(file.as_fd().as_raw_fd(), owner, group)
+          nix::unistd::fchown(file.as_fd(), owner, group)
             .map_err(|err| io::Error::from_raw_os_error(err as i32).into())
         })
         .await
