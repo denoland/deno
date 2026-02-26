@@ -2161,21 +2161,25 @@ function formatProperty(
     return str;
   }
   if (typeof key === "symbol") {
-    name = `[${ctx.stylize(maybeQuoteSymbol(key, ctx), "symbol")}]`;
-  } else if (key === "__proto__") {
-    name = "['__proto__']";
-  } else if (desc.enumerable === false) {
+    const tmp = RegExpPrototypeSymbolReplace(
+      strEscapeSequencesReplacer,
+      SymbolPrototypeToString(key),
+      escapeFn,
+    );
+    name = ctx.stylize(tmp, "symbol");
+  } else if (keyStrRegExp.test(key)) {
+    name = key === "__proto__" ? "['__proto__']" : ctx.stylize(key, "name");
+  } else {
+    name = ctx.stylize(quoteString(key, ctx), "string");
+  }
+
+  if (desc.enumerable === false) {
     const tmp = StringPrototypeReplace(
       key,
       strEscapeSequencesReplacer,
       escapeFn,
     );
-
     name = `[${tmp}]`;
-  } else if (keyStrRegExp.test(key)) {
-    name = ctx.stylize(key, "name");
-  } else {
-    name = ctx.stylize(quoteString(key, ctx), "string");
   }
   return `${name}:${extra}${str}`;
 }
