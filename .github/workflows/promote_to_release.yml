@@ -156,6 +156,13 @@ jobs:
           rm -f ./deno
 
       - name: Upload archives to dl.deno.land
+        env:
+          AWS_ACCESS_KEY_ID: ${{ vars.S3_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.S3_SECRET_ACCESS_KEY }}
+          AWS_ENDPOINT_URL_S3: ${{ vars.S3_ENDPOINT }}
+          AWS_DEFAULT_REGION: ${{vars.S3_REGION }}
         run: |
           gsutil -h "Cache-Control: public, max-age=3600" cp ./*.zip gs://dl.deno.land/release/$(cat release-${{github.event.inputs.releaseKind}}-latest.txt)/
           gsutil -h "Cache-Control: no-cache" cp release-${{github.event.inputs.releaseKind}}-latest.txt gs://dl.deno.land/release-${{github.event.inputs.releaseKind}}-latest.txt
+          aws s3 cp ./*.zip s3://dl-deno-land/release/$(cat release-${{github.event.inputs.releaseKind}}-latest.txt)/
+          aws s3 cp release-${{github.event.inputs.releaseKind}}-latest.txt s3://dl-deno-land/release-${{github.event.inputs.releaseKind}}-latest.txt

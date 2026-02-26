@@ -676,12 +676,21 @@ jobs:
           command -v dpkg && dpkg -l || echo 'No dpkg found or bad executable'
       - name: Upload canary to dl.deno.land
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'''
+        env:
+          AWS_ACCESS_KEY_ID: '${{ vars.S3_ACCESS_KEY_ID }}'
+          AWS_SECRET_ACCESS_KEY: '${{ secrets.S3_SECRET_ACCESS_KEY }}'
+          AWS_ENDPOINT_URL_S3: '${{ vars.S3_ENDPOINT }}'
+          AWS_DEFAULT_REGION: '${{ vars.S3_REGION }}'
         run: |-
           gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/
           gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.sha256sum gs://dl.deno.land/canary/$(git rev-parse HEAD)/
           gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.symcache gs://dl.deno.land/canary/$(git rev-parse HEAD)/
+          aws s3 cp ./target/release/*.zip s3://dl-deno-land/canary/$(git rev-parse HEAD)/
+          aws s3 cp ./target/release/*.sha256sum s3://dl-deno-land/canary/$(git rev-parse HEAD)/
+          aws s3 cp ./target/release/*.symcache s3://dl-deno-land/canary/$(git rev-parse HEAD)/
           echo ${{ github.sha }} > canary-latest.txt
           gsutil -h "Cache-Control: no-cache" cp canary-latest.txt gs://dl.deno.land/canary-$(rustc -vV | sed -n "s|host: ||p")-latest.txt
+          aws s3 cp canary-latest.txt s3://dl-deno-land/canary-$(rustc -vV | sed -n "s|host: ||p")-latest.txt
           rm canary-latest.txt gha-creds-*.json
       - name: Build product size info
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
@@ -717,10 +726,18 @@ jobs:
           retention-days: 3
       - name: Upload release to dl.deno.land (unix)
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'
+        env:
+          AWS_ACCESS_KEY_ID: '${{ vars.S3_ACCESS_KEY_ID }}'
+          AWS_SECRET_ACCESS_KEY: '${{ secrets.S3_SECRET_ACCESS_KEY }}'
+          AWS_ENDPOINT_URL_S3: '${{ vars.S3_ENDPOINT }}'
+          AWS_DEFAULT_REGION: '${{ vars.S3_REGION }}'
         run: |-
           gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/
           gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.sha256sum gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/
           gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.symcache gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/
+          aws s3 cp ./target/release/*.zip s3://dl-deno-land/release/${GITHUB_REF#refs/*/}/
+          aws s3 cp ./target/release/*.sha256sum s3://dl-deno-land/release/${GITHUB_REF#refs/*/}/
+          aws s3 cp ./target/release/*.symcache s3://dl-deno-land/release/${GITHUB_REF#refs/*/}/
       - name: Create release notes
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'
         run: |-
@@ -1523,12 +1540,21 @@ jobs:
           command -v dpkg && dpkg -l || echo 'No dpkg found or bad executable'
       - name: Upload canary to dl.deno.land
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'''
+        env:
+          AWS_ACCESS_KEY_ID: '${{ vars.S3_ACCESS_KEY_ID }}'
+          AWS_SECRET_ACCESS_KEY: '${{ secrets.S3_SECRET_ACCESS_KEY }}'
+          AWS_ENDPOINT_URL_S3: '${{ vars.S3_ENDPOINT }}'
+          AWS_DEFAULT_REGION: '${{ vars.S3_REGION }}'
         run: |-
           gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/
           gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.sha256sum gs://dl.deno.land/canary/$(git rev-parse HEAD)/
           gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.symcache gs://dl.deno.land/canary/$(git rev-parse HEAD)/
+          aws s3 cp ./target/release/*.zip s3://dl-deno-land/canary/$(git rev-parse HEAD)/
+          aws s3 cp ./target/release/*.sha256sum s3://dl-deno-land/canary/$(git rev-parse HEAD)/
+          aws s3 cp ./target/release/*.symcache s3://dl-deno-land/canary/$(git rev-parse HEAD)/
           echo ${{ github.sha }} > canary-latest.txt
           gsutil -h "Cache-Control: no-cache" cp canary-latest.txt gs://dl.deno.land/canary-$(rustc -vV | sed -n "s|host: ||p")-latest.txt
+          aws s3 cp canary-latest.txt s3://dl-deno-land/canary-$(rustc -vV | sed -n "s|host: ||p")-latest.txt
           rm canary-latest.txt gha-creds-*.json
       - name: Build product size info
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
@@ -1564,10 +1590,18 @@ jobs:
           retention-days: 3
       - name: Upload release to dl.deno.land (unix)
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'
+        env:
+          AWS_ACCESS_KEY_ID: '${{ vars.S3_ACCESS_KEY_ID }}'
+          AWS_SECRET_ACCESS_KEY: '${{ secrets.S3_SECRET_ACCESS_KEY }}'
+          AWS_ENDPOINT_URL_S3: '${{ vars.S3_ENDPOINT }}'
+          AWS_DEFAULT_REGION: '${{ vars.S3_REGION }}'
         run: |-
           gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/
           gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.sha256sum gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/
           gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.symcache gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/
+          aws s3 cp ./target/release/*.zip s3://dl-deno-land/release/${GITHUB_REF#refs/*/}/
+          aws s3 cp ./target/release/*.sha256sum s3://dl-deno-land/release/${GITHUB_REF#refs/*/}/
+          aws s3 cp ./target/release/*.symcache s3://dl-deno-land/release/${GITHUB_REF#refs/*/}/
       - name: Create release notes
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'
         run: |-
@@ -2337,12 +2371,21 @@ jobs:
           project_id: denoland
       - name: Upload canary to dl.deno.land
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'''
+        env:
+          AWS_ACCESS_KEY_ID: '${{ vars.S3_ACCESS_KEY_ID }}'
+          AWS_SECRET_ACCESS_KEY: '${{ secrets.S3_SECRET_ACCESS_KEY }}'
+          AWS_ENDPOINT_URL_S3: '${{ vars.S3_ENDPOINT }}'
+          AWS_DEFAULT_REGION: '${{ vars.S3_REGION }}'
         run: |-
           gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/
           gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.sha256sum gs://dl.deno.land/canary/$(git rev-parse HEAD)/
           gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.symcache gs://dl.deno.land/canary/$(git rev-parse HEAD)/
+          aws s3 cp ./target/release/*.zip s3://dl-deno-land/canary/$(git rev-parse HEAD)/
+          aws s3 cp ./target/release/*.sha256sum s3://dl-deno-land/canary/$(git rev-parse HEAD)/
+          aws s3 cp ./target/release/*.symcache s3://dl-deno-land/canary/$(git rev-parse HEAD)/
           echo ${{ github.sha }} > canary-latest.txt
           gsutil -h "Cache-Control: no-cache" cp canary-latest.txt gs://dl.deno.land/canary-$(rustc -vV | sed -n "s|host: ||p")-latest.txt
+          aws s3 cp canary-latest.txt s3://dl-deno-land/canary-$(rustc -vV | sed -n "s|host: ||p")-latest.txt
           rm canary-latest.txt gha-creds-*.json
       - name: Build product size info
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
@@ -2379,11 +2422,18 @@ jobs:
       - name: Upload release to dl.deno.land (windows)
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'
         env:
+          AWS_ACCESS_KEY_ID: '${{ vars.S3_ACCESS_KEY_ID }}'
+          AWS_SECRET_ACCESS_KEY: '${{ secrets.S3_SECRET_ACCESS_KEY }}'
+          AWS_ENDPOINT_URL_S3: '${{ vars.S3_ENDPOINT }}'
+          AWS_DEFAULT_REGION: '${{ vars.S3_REGION }}'
           CLOUDSDK_PYTHON: '${{env.pythonLocation}}\python.exe'
         run: |-
           gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/
           gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.sha256sum gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/
           gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.symcache gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/
+          aws s3 cp ./target/release/*.zip s3://dl-deno-land/release/${GITHUB_REF#refs/*/}/
+          aws s3 cp ./target/release/*.sha256sum s3://dl-deno-land/release/${GITHUB_REF#refs/*/}/
+          aws s3 cp ./target/release/*.symcache s3://dl-deno-land/release/${GITHUB_REF#refs/*/}/
       - name: Create release notes
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'
         run: |-
@@ -3035,12 +3085,21 @@ jobs:
           project_id: denoland
       - name: Upload canary to dl.deno.land
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'''
+        env:
+          AWS_ACCESS_KEY_ID: '${{ vars.S3_ACCESS_KEY_ID }}'
+          AWS_SECRET_ACCESS_KEY: '${{ secrets.S3_SECRET_ACCESS_KEY }}'
+          AWS_ENDPOINT_URL_S3: '${{ vars.S3_ENDPOINT }}'
+          AWS_DEFAULT_REGION: '${{ vars.S3_REGION }}'
         run: |-
           gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/
           gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.sha256sum gs://dl.deno.land/canary/$(git rev-parse HEAD)/
           gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.symcache gs://dl.deno.land/canary/$(git rev-parse HEAD)/
+          aws s3 cp ./target/release/*.zip s3://dl-deno-land/canary/$(git rev-parse HEAD)/
+          aws s3 cp ./target/release/*.sha256sum s3://dl-deno-land/canary/$(git rev-parse HEAD)/
+          aws s3 cp ./target/release/*.symcache s3://dl-deno-land/canary/$(git rev-parse HEAD)/
           echo ${{ github.sha }} > canary-latest.txt
           gsutil -h "Cache-Control: no-cache" cp canary-latest.txt gs://dl.deno.land/canary-$(rustc -vV | sed -n "s|host: ||p")-latest.txt
+          aws s3 cp canary-latest.txt s3://dl-deno-land/canary-$(rustc -vV | sed -n "s|host: ||p")-latest.txt
           rm canary-latest.txt gha-creds-*.json
       - name: Build product size info
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
@@ -3077,11 +3136,18 @@ jobs:
       - name: Upload release to dl.deno.land (windows)
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'
         env:
+          AWS_ACCESS_KEY_ID: '${{ vars.S3_ACCESS_KEY_ID }}'
+          AWS_SECRET_ACCESS_KEY: '${{ secrets.S3_SECRET_ACCESS_KEY }}'
+          AWS_ENDPOINT_URL_S3: '${{ vars.S3_ENDPOINT }}'
+          AWS_DEFAULT_REGION: '${{ vars.S3_REGION }}'
           CLOUDSDK_PYTHON: '${{env.pythonLocation}}\python.exe'
         run: |-
           gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/
           gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.sha256sum gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/
           gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.symcache gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/
+          aws s3 cp ./target/release/*.zip s3://dl-deno-land/release/${GITHUB_REF#refs/*/}/
+          aws s3 cp ./target/release/*.sha256sum s3://dl-deno-land/release/${GITHUB_REF#refs/*/}/
+          aws s3 cp ./target/release/*.symcache s3://dl-deno-land/release/${GITHUB_REF#refs/*/}/
       - name: Create release notes
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'
         run: |-
@@ -3471,12 +3537,21 @@ jobs:
           command -v dpkg && dpkg -l || echo 'No dpkg found or bad executable'
       - name: Upload canary to dl.deno.land
         if: github.repository == 'denoland/deno' && github.ref == 'refs/heads/main'
+        env:
+          AWS_ACCESS_KEY_ID: '${{ vars.S3_ACCESS_KEY_ID }}'
+          AWS_SECRET_ACCESS_KEY: '${{ secrets.S3_SECRET_ACCESS_KEY }}'
+          AWS_ENDPOINT_URL_S3: '${{ vars.S3_ENDPOINT }}'
+          AWS_DEFAULT_REGION: '${{ vars.S3_REGION }}'
         run: |-
           gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/
           gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.sha256sum gs://dl.deno.land/canary/$(git rev-parse HEAD)/
           gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.symcache gs://dl.deno.land/canary/$(git rev-parse HEAD)/
+          aws s3 cp ./target/release/*.zip s3://dl-deno-land/canary/$(git rev-parse HEAD)/
+          aws s3 cp ./target/release/*.sha256sum s3://dl-deno-land/canary/$(git rev-parse HEAD)/
+          aws s3 cp ./target/release/*.symcache s3://dl-deno-land/canary/$(git rev-parse HEAD)/
           echo ${{ github.sha }} > canary-latest.txt
           gsutil -h "Cache-Control: no-cache" cp canary-latest.txt gs://dl.deno.land/canary-$(rustc -vV | sed -n "s|host: ||p")-latest.txt
+          aws s3 cp canary-latest.txt s3://dl-deno-land/canary-$(rustc -vV | sed -n "s|host: ||p")-latest.txt
           rm canary-latest.txt gha-creds-*.json
       - name: Build product size info
         if: 'github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/'')'
@@ -3510,10 +3585,18 @@ jobs:
           retention-days: 3
       - name: Upload release to dl.deno.land (unix)
         if: 'github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'
+        env:
+          AWS_ACCESS_KEY_ID: '${{ vars.S3_ACCESS_KEY_ID }}'
+          AWS_SECRET_ACCESS_KEY: '${{ secrets.S3_SECRET_ACCESS_KEY }}'
+          AWS_ENDPOINT_URL_S3: '${{ vars.S3_ENDPOINT }}'
+          AWS_DEFAULT_REGION: '${{ vars.S3_REGION }}'
         run: |-
           gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/
           gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.sha256sum gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/
           gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.symcache gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/
+          aws s3 cp ./target/release/*.zip s3://dl-deno-land/release/${GITHUB_REF#refs/*/}/
+          aws s3 cp ./target/release/*.sha256sum s3://dl-deno-land/release/${GITHUB_REF#refs/*/}/
+          aws s3 cp ./target/release/*.symcache s3://dl-deno-land/release/${GITHUB_REF#refs/*/}/
       - name: Create release notes
         if: 'github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'
         run: |-
@@ -3929,13 +4012,21 @@ jobs:
           project_id: denoland
       - name: Upload wpt results to dl.deno.land
         if: '!startsWith(github.ref, ''refs/tags/'') && github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'''
+        env:
+          AWS_ACCESS_KEY_ID: '${{ vars.S3_ACCESS_KEY_ID }}'
+          AWS_SECRET_ACCESS_KEY: '${{ secrets.S3_SECRET_ACCESS_KEY }}'
+          AWS_ENDPOINT_URL_S3: '${{ vars.S3_ENDPOINT }}'
+          AWS_DEFAULT_REGION: '${{ vars.S3_REGION }}'
         continue-on-error: true
         run: |-
           gzip ./wptreport.json
           gsutil -h "Cache-Control: public, max-age=3600" cp ./wpt.json gs://dl.deno.land/wpt/$(git rev-parse HEAD).json
           gsutil -h "Cache-Control: public, max-age=3600" cp ./wptreport.json.gz gs://dl.deno.land/wpt/$(git rev-parse HEAD)-wptreport.json.gz
+          aws s3 cp ./wpt.json s3://dl-deno-land/wpt/$(git rev-parse HEAD).json
+          aws s3 cp ./wptreport.json.gz s3://dl-deno-land/wpt/$(git rev-parse HEAD)-wptreport.json.gz
           echo $(git rev-parse HEAD) > wpt-latest.txt
           gsutil -h "Cache-Control: no-cache" cp wpt-latest.txt gs://dl.deno.land/wpt-latest.txt
+          aws s3 cp wpt-latest.txt s3://dl-deno-land/wpt-latest.txt
       - name: Upload wpt results to wpt.fyi
         if: '!startsWith(github.ref, ''refs/tags/'') && github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'''
         env:
@@ -5122,12 +5213,21 @@ jobs:
           command -v dpkg && dpkg -l || echo 'No dpkg found or bad executable'
       - name: Upload canary to dl.deno.land
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'''
+        env:
+          AWS_ACCESS_KEY_ID: '${{ vars.S3_ACCESS_KEY_ID }}'
+          AWS_SECRET_ACCESS_KEY: '${{ secrets.S3_SECRET_ACCESS_KEY }}'
+          AWS_ENDPOINT_URL_S3: '${{ vars.S3_ENDPOINT }}'
+          AWS_DEFAULT_REGION: '${{ vars.S3_REGION }}'
         run: |-
           gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/
           gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.sha256sum gs://dl.deno.land/canary/$(git rev-parse HEAD)/
           gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.symcache gs://dl.deno.land/canary/$(git rev-parse HEAD)/
+          aws s3 cp ./target/release/*.zip s3://dl-deno-land/canary/$(git rev-parse HEAD)/
+          aws s3 cp ./target/release/*.sha256sum s3://dl-deno-land/canary/$(git rev-parse HEAD)/
+          aws s3 cp ./target/release/*.symcache s3://dl-deno-land/canary/$(git rev-parse HEAD)/
           echo ${{ github.sha }} > canary-latest.txt
           gsutil -h "Cache-Control: no-cache" cp canary-latest.txt gs://dl.deno.land/canary-$(rustc -vV | sed -n "s|host: ||p")-latest.txt
+          aws s3 cp canary-latest.txt s3://dl-deno-land/canary-$(rustc -vV | sed -n "s|host: ||p")-latest.txt
           rm canary-latest.txt gha-creds-*.json
       - name: Build product size info
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
@@ -5166,10 +5266,18 @@ jobs:
           retention-days: 3
       - name: Upload release to dl.deno.land (unix)
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'
+        env:
+          AWS_ACCESS_KEY_ID: '${{ vars.S3_ACCESS_KEY_ID }}'
+          AWS_SECRET_ACCESS_KEY: '${{ secrets.S3_SECRET_ACCESS_KEY }}'
+          AWS_ENDPOINT_URL_S3: '${{ vars.S3_ENDPOINT }}'
+          AWS_DEFAULT_REGION: '${{ vars.S3_REGION }}'
         run: |-
           gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/
           gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.sha256sum gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/
           gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.symcache gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/
+          aws s3 cp ./target/release/*.zip s3://dl-deno-land/release/${GITHUB_REF#refs/*/}/
+          aws s3 cp ./target/release/*.sha256sum s3://dl-deno-land/release/${GITHUB_REF#refs/*/}/
+          aws s3 cp ./target/release/*.symcache s3://dl-deno-land/release/${GITHUB_REF#refs/*/}/
       - name: Create release notes
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'
         run: |-
@@ -5633,6 +5741,12 @@ jobs:
         with:
           project_id: denoland
       - name: Upload canary version file to dl.deno.land
+        env:
+          AWS_ACCESS_KEY_ID: '${{ vars.S3_ACCESS_KEY_ID }}'
+          AWS_SECRET_ACCESS_KEY: '${{ secrets.S3_SECRET_ACCESS_KEY }}'
+          AWS_ENDPOINT_URL_S3: '${{ vars.S3_ENDPOINT }}'
+          AWS_DEFAULT_REGION: '${{ vars.S3_REGION }}'
         run: |-
           echo ${{ github.sha }} > canary-latest.txt
           gsutil -h "Cache-Control: no-cache" cp canary-latest.txt gs://dl.deno.land/canary-latest.txt
+          aws s3 cp canary-latest.txt s3://dl-deno-land/canary-latest.txt
