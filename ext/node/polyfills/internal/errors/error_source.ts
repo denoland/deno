@@ -12,7 +12,6 @@ import Module from "node:module";
 
 type ErrSourcePosition = {
   sourceLine: string;
-  scriptResourceName: string | undefined;
   lineNumber: number;
   startColumn: number;
 };
@@ -42,7 +41,6 @@ function getErrorSourceLocation(
 
   let {
     sourceLine,
-    scriptResourceName: _,
     lineNumber,
     startColumn,
   } = pos;

@@ -26,7 +26,6 @@ pub fn op_node_get_error_source_position<'s>(
 
   v8_static_strings! {
     SOURCE_LINE = "sourceLine",
-    SCRIPT_RESOURCE_NAME = "scriptResourceName",
     LINE_NUMBER = "lineNumber",
     START_COLUMN = "startColumn"
   }
@@ -49,20 +48,14 @@ pub fn op_node_get_error_source_position<'s>(
 
   let start_column = msg.get_start_column();
 
-  let script_resource_name = msg
-    .get_script_resource_name(scope)
-    .unwrap_or_else(|| v8::undefined(scope).into());
-
   let names = &[
     SOURCE_LINE.v8_string(scope).unwrap().into(),
-    SCRIPT_RESOURCE_NAME.v8_string(scope).unwrap().into(),
     LINE_NUMBER.v8_string(scope).unwrap().into(),
     START_COLUMN.v8_string(scope).unwrap().into(),
   ];
 
   let values = &[
     source_line.into(),
-    script_resource_name,
     v8::Number::new(scope, line_number as _).into(),
     v8::Number::new(scope, start_column as _).into(),
   ];
