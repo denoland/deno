@@ -17,10 +17,10 @@ jobs:
           deno-version: v2.x
       - name: Configure S3 Credentials
         run: |
-          echo "AWS_ACCESS_KEY_ID=${{ secrets.S3_ACCESS_KEY_ID }}" >> $GITHUB_ENV
+          echo "AWS_ACCESS_KEY_ID=${{ vars.S3_ACCESS_KEY_ID }}" >> $GITHUB_ENV
           echo "AWS_SECRET_ACCESS_KEY=${{ secrets.S3_SECRET_ACCESS_KEY }}" >> $GITHUB_ENV
-          echo "AWS_ENDPOINT_URL_S3=${{ secrets.S3_ENDPOINT }}" >> $GITHUB_ENV
-          echo "AWS_DEFAULT_REGION=${{ secrets.S3_REGION }}" >> $GITHUB_ENV
+          echo "AWS_ENDPOINT_URL_S3=${{ vars.S3_ENDPOINT }}" >> $GITHUB_ENV
+          echo "AWS_DEFAULT_REGION=${{vars.S3_REGION }}" >> $GITHUB_ENV
 
       - name: Upload version file to dl.deno.land
         run: |

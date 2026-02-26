@@ -664,10 +664,10 @@ jobs:
       - name: Configure S3 Credentials
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
         run: |-
-          echo "AWS_ACCESS_KEY_ID=${{ secrets.S3_ACCESS_KEY_ID }}" >> $GITHUB_ENV
+          echo "AWS_ACCESS_KEY_ID=${{ vars.S3_ACCESS_KEY_ID }}" >> $GITHUB_ENV
           echo "AWS_SECRET_ACCESS_KEY=${{ secrets.S3_SECRET_ACCESS_KEY }}" >> $GITHUB_ENV
-          echo "AWS_ENDPOINT_URL_S3=${{ secrets.S3_ENDPOINT }}" >> $GITHUB_ENV
-          echo "AWS_DEFAULT_REGION=${{ secrets.S3_REGION }}" >> $GITHUB_ENV
+          echo "AWS_ENDPOINT_URL_S3=${{ vars.S3_ENDPOINT }}" >> $GITHUB_ENV
+          echo "AWS_DEFAULT_REGION=${{vars.S3_REGION }}" >> $GITHUB_ENV
       - name: Upload canary to dl.deno.land
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'''
         run: |-
@@ -1505,10 +1505,10 @@ jobs:
       - name: Configure S3 Credentials
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
         run: |-
-          echo "AWS_ACCESS_KEY_ID=${{ secrets.S3_ACCESS_KEY_ID }}" >> $GITHUB_ENV
+          echo "AWS_ACCESS_KEY_ID=${{ vars.S3_ACCESS_KEY_ID }}" >> $GITHUB_ENV
           echo "AWS_SECRET_ACCESS_KEY=${{ secrets.S3_SECRET_ACCESS_KEY }}" >> $GITHUB_ENV
-          echo "AWS_ENDPOINT_URL_S3=${{ secrets.S3_ENDPOINT }}" >> $GITHUB_ENV
-          echo "AWS_DEFAULT_REGION=${{ secrets.S3_REGION }}" >> $GITHUB_ENV
+          echo "AWS_ENDPOINT_URL_S3=${{ vars.S3_ENDPOINT }}" >> $GITHUB_ENV
+          echo "AWS_DEFAULT_REGION=${{vars.S3_REGION }}" >> $GITHUB_ENV
       - name: Upload canary to dl.deno.land
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'''
         run: |-
@@ -2298,10 +2298,10 @@ jobs:
       - name: Configure S3 Credentials
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
         run: |-
-          echo "AWS_ACCESS_KEY_ID=${{ secrets.S3_ACCESS_KEY_ID }}" >> $GITHUB_ENV
+          echo "AWS_ACCESS_KEY_ID=${{ vars.S3_ACCESS_KEY_ID }}" >> $GITHUB_ENV
           echo "AWS_SECRET_ACCESS_KEY=${{ secrets.S3_SECRET_ACCESS_KEY }}" >> $GITHUB_ENV
-          echo "AWS_ENDPOINT_URL_S3=${{ secrets.S3_ENDPOINT }}" >> $GITHUB_ENV
-          echo "AWS_DEFAULT_REGION=${{ secrets.S3_REGION }}" >> $GITHUB_ENV
+          echo "AWS_ENDPOINT_URL_S3=${{ vars.S3_ENDPOINT }}" >> $GITHUB_ENV
+          echo "AWS_DEFAULT_REGION=${{vars.S3_REGION }}" >> $GITHUB_ENV
       - name: Upload canary to dl.deno.land
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'''
         run: |-
@@ -2973,10 +2973,10 @@ jobs:
       - name: Configure S3 Credentials
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
         run: |-
-          echo "AWS_ACCESS_KEY_ID=${{ secrets.S3_ACCESS_KEY_ID }}" >> $GITHUB_ENV
+          echo "AWS_ACCESS_KEY_ID=${{ vars.S3_ACCESS_KEY_ID }}" >> $GITHUB_ENV
           echo "AWS_SECRET_ACCESS_KEY=${{ secrets.S3_SECRET_ACCESS_KEY }}" >> $GITHUB_ENV
-          echo "AWS_ENDPOINT_URL_S3=${{ secrets.S3_ENDPOINT }}" >> $GITHUB_ENV
-          echo "AWS_DEFAULT_REGION=${{ secrets.S3_REGION }}" >> $GITHUB_ENV
+          echo "AWS_ENDPOINT_URL_S3=${{ vars.S3_ENDPOINT }}" >> $GITHUB_ENV
+          echo "AWS_DEFAULT_REGION=${{vars.S3_REGION }}" >> $GITHUB_ENV
       - name: Upload canary to dl.deno.land
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'''
         run: |-
@@ -3400,10 +3400,10 @@ jobs:
       - name: Configure S3 Credentials
         if: 'github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
         run: |-
-          echo "AWS_ACCESS_KEY_ID=${{ secrets.S3_ACCESS_KEY_ID }}" >> $GITHUB_ENV
+          echo "AWS_ACCESS_KEY_ID=${{ vars.S3_ACCESS_KEY_ID }}" >> $GITHUB_ENV
           echo "AWS_SECRET_ACCESS_KEY=${{ secrets.S3_SECRET_ACCESS_KEY }}" >> $GITHUB_ENV
-          echo "AWS_ENDPOINT_URL_S3=${{ secrets.S3_ENDPOINT }}" >> $GITHUB_ENV
-          echo "AWS_DEFAULT_REGION=${{ secrets.S3_REGION }}" >> $GITHUB_ENV
+          echo "AWS_ENDPOINT_URL_S3=${{ vars.S3_ENDPOINT }}" >> $GITHUB_ENV
+          echo "AWS_DEFAULT_REGION=${{vars.S3_REGION }}" >> $GITHUB_ENV
       - name: Upload canary to dl.deno.land
         if: github.repository == 'denoland/deno' && github.ref == 'refs/heads/main'
         run: |-
@@ -3852,10 +3852,10 @@ jobs:
       - name: Configure S3 Credentials
         if: '!startsWith(github.ref, ''refs/tags/'') && github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'''
         run: |-
-          echo "AWS_ACCESS_KEY_ID=${{ secrets.S3_ACCESS_KEY_ID }}" >> $GITHUB_ENV
+          echo "AWS_ACCESS_KEY_ID=${{ vars.S3_ACCESS_KEY_ID }}" >> $GITHUB_ENV
           echo "AWS_SECRET_ACCESS_KEY=${{ secrets.S3_SECRET_ACCESS_KEY }}" >> $GITHUB_ENV
-          echo "AWS_ENDPOINT_URL_S3=${{ secrets.S3_ENDPOINT }}" >> $GITHUB_ENV
-          echo "AWS_DEFAULT_REGION=${{ secrets.S3_REGION }}" >> $GITHUB_ENV
+          echo "AWS_ENDPOINT_URL_S3=${{ vars.S3_ENDPOINT }}" >> $GITHUB_ENV
+          echo "AWS_DEFAULT_REGION=${{vars.S3_REGION }}" >> $GITHUB_ENV
       - name: Upload wpt results to dl.deno.land
         if: '!startsWith(github.ref, ''refs/tags/'') && github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'''
         continue-on-error: true
@@ -5039,10 +5039,10 @@ jobs:
       - name: Configure S3 Credentials
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
         run: |-
-          echo "AWS_ACCESS_KEY_ID=${{ secrets.S3_ACCESS_KEY_ID }}" >> $GITHUB_ENV
+          echo "AWS_ACCESS_KEY_ID=${{ vars.S3_ACCESS_KEY_ID }}" >> $GITHUB_ENV
           echo "AWS_SECRET_ACCESS_KEY=${{ secrets.S3_SECRET_ACCESS_KEY }}" >> $GITHUB_ENV
-          echo "AWS_ENDPOINT_URL_S3=${{ secrets.S3_ENDPOINT }}" >> $GITHUB_ENV
-          echo "AWS_DEFAULT_REGION=${{ secrets.S3_REGION }}" >> $GITHUB_ENV
+          echo "AWS_ENDPOINT_URL_S3=${{ vars.S3_ENDPOINT }}" >> $GITHUB_ENV
+          echo "AWS_DEFAULT_REGION=${{vars.S3_REGION }}" >> $GITHUB_ENV
       - name: Upload canary to dl.deno.land
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'''
         run: |-
@@ -5546,10 +5546,10 @@ jobs:
     steps:
       - name: Configure S3 Credentials
         run: |-
-          echo "AWS_ACCESS_KEY_ID=${{ secrets.S3_ACCESS_KEY_ID }}" >> $GITHUB_ENV
+          echo "AWS_ACCESS_KEY_ID=${{ vars.S3_ACCESS_KEY_ID }}" >> $GITHUB_ENV
           echo "AWS_SECRET_ACCESS_KEY=${{ secrets.S3_SECRET_ACCESS_KEY }}" >> $GITHUB_ENV
-          echo "AWS_ENDPOINT_URL_S3=${{ secrets.S3_ENDPOINT }}" >> $GITHUB_ENV
-          echo "AWS_DEFAULT_REGION=${{ secrets.S3_REGION }}" >> $GITHUB_ENV
+          echo "AWS_ENDPOINT_URL_S3=${{ vars.S3_ENDPOINT }}" >> $GITHUB_ENV
+          echo "AWS_DEFAULT_REGION=${{vars.S3_REGION }}" >> $GITHUB_ENV
       - name: Upload canary version file to dl.deno.land
         run: |-
           echo ${{ github.sha }} > canary-latest.txt
