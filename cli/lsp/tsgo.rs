@@ -23,6 +23,7 @@ use deno_core::serde_json;
 use deno_graph::source::Resolver;
 use deno_path_util::url_from_directory_path;
 use deno_resolver::deno_json::CompilerOptionsKey;
+use deno_runtime::tokio_util::create_basic_runtime;
 use indexmap::IndexSet;
 use lsp_types::Uri;
 use node_resolver::NodeResolutionKind;
@@ -618,7 +619,7 @@ impl TsGoServerInner {
     let pending_requests_clone = pending_requests.clone();
     let stdin_clone = stdin.clone();
     let snapshot_clone = snapshot.clone();
-    std::thread::spawn(move || {
+    let read_loop = move || {
       let mut reader = std::io::BufReader::new(stdout);
       loop {
         let message = match read_lsp_message(&mut reader) {
@@ -739,6 +740,11 @@ impl TsGoServerInner {
           }
         }
       }
+    };
+    // Use a runtime because `DocumentModule::test_module_fut` uses
+    // `tokio::task::spawn_blocking()`.
+    std::thread::spawn(|| {
+      create_basic_runtime().block_on(async { read_loop() })
     });
 
     let capabilities = {
