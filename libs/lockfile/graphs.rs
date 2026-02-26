@@ -276,7 +276,7 @@ impl LockfilePackageGraph {
 
   fn remove_root_pkg_by_id(&mut self, id: &LockfilePkgId) {
     // The ideal goal here is to only disassociate the package
-    // from the root so that the the current dependencies can be
+    // from the root so that the current dependencies can be
     // reused in the new dependency resolution thereby causing
     // minimal changes in the lockfile. After we let deno_npm or
     // deno_graph clean up any stragglers.
