@@ -57,8 +57,8 @@ suite ...
   test 1 ... ok ([WILDLINE])
   test 2 ... FAILED ([WILDLINE])
   sub suite 1 ...
-    nested test 2 ... FAILED ([WILDLINE])
     nested test 1 ... ok ([WILDLINE])
+    nested test 2 ... FAILED ([WILDLINE])
   sub suite 1 ... FAILED (due to 1 failed step) ([WILDLINE])
   sub suite 2 ...
     nested test 1 ... FAILED ([WILDLINE])
