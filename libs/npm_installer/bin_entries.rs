@@ -81,6 +81,10 @@ impl<'a, TSys: SetupBinEntrySys> BinEntries<'a, TSys> {
     extra: &'b NpmPackageExtraInfo,
     package_path: PathBuf,
   ) {
+    if extra.bin.is_none() {
+      // likely lockfile incorrectly said that the package has a bin
+      return;
+    }
     self.sorted = false;
     // check for a new collision, if we haven't already
     // found one
