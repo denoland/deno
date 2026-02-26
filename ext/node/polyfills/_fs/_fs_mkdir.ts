@@ -77,7 +77,17 @@ export function mkdir(
   }
   validateBoolean(recursive, "options.recursive");
 
-  const firstNonExistent = recursive ? findFirstNonExistent(path) : undefined;
+  let firstNonExistent: string | undefined;
+  try {
+    firstNonExistent = recursive ? findFirstNonExistent(path) : undefined;
+  } catch (err) {
+    if (typeof callback === "function") {
+      callback(
+        denoErrorToNodeError(err as Error, { syscall: "mkdir", path }),
+      );
+    }
+    return;
+  }
 
   Deno.mkdir(path, { recursive, mode })
     .then(() => {
