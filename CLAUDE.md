@@ -149,11 +149,34 @@ cargo test specs
 cargo test spec::test_name
 ```
 
+### Unit Tests (`tests/unit/`)
+
+JavaScript/TypeScript unit tests live in `tests/unit/` as `*_test.ts` files.
+Run them via `cargo test`:
+
+```bash
+# Run all unit tests in a specific file
+cargo test unit::webcrypto_test
+
+# Run all unit tests
+cargo test unit::
+
+# Run Node.js compatibility unit tests (tests/unit_node/)
+cargo test unit_node::crypto_test
+
+# Run all Node.js compat unit tests
+cargo test unit_node::
+```
+
+Do NOT run these directly with `./target/debug/deno test` — they depend on the
+cargo test harness for correct setup.
+
 ### Test Organization
 
 - **Spec tests** (`tests/specs/`) - Main integration tests, CLI command
   execution and output validation
-- **Unit tests** - Inline with source code in each module
+- **Unit tests** (`tests/unit/`) - JavaScript/TypeScript unit tests for runtime
+  APIs
 - **Integration tests** (`cli/tests/`) - Additional integration tests
 - **WPT** (`tests/wpt/`) - Web Platform Tests for web standards compliance
 
