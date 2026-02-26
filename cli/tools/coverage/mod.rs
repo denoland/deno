@@ -523,7 +523,7 @@ pub fn cover_files(
   };
   let get_message = |specifier: &ModuleSpecifier| -> String {
     format!(
-      "Failed to fetch \"{}\" from cache. Before generating coverage report, run `deno test --coverage` to ensure consistent state.",
+      "Source not found for \"{}\" (was it deleted after coverage was collected?). Skipping.",
       specifier,
     )
   };
@@ -540,8 +540,14 @@ pub fn cover_files(
       file_fetcher.get_cached_source_or_local(&module_specifier);
     let file = match maybe_file_result {
       Ok(Some(file)) => TextDecodedFile::decode(file)?,
-      Ok(None) => return Err(anyhow!("{}", get_message(&module_specifier))),
-      Err(err) => return Err(err).context(get_message(&module_specifier)),
+      Ok(None) => {
+        log::warn!("{}", get_message(&module_specifier),);
+        continue;
+      }
+      Err(err) => {
+        log::warn!("{}: {}", get_message(&module_specifier), err,);
+        continue;
+      }
     };
 
     let original_source = file.source.clone();
@@ -568,16 +574,22 @@ pub fn cover_files(
         let module_kind = ModuleKind::from_is_cjs(
           cjs_tracker.is_maybe_cjs(&file.specifier, file.media_type)?,
         );
-        Some(match emitter.maybe_cached_emit(&file.specifier, module_kind, &file.source)? {
-          Some(code) => code,
-          None => {
-            return Err(anyhow!(
-              "Missing transpiled source code for: \"{}\".
-              Before generating coverage report, run `deno test --coverage` to ensure consistent state.",
-              file.specifier,
-            ))
-          }
-        })
+        Some(
+          match emitter.maybe_cached_emit(
+            &file.specifier,
+            module_kind,
+            &file.source,
+          )? {
+            Some(code) => code,
+            None => {
+              log::warn!(
+                "Missing transpiled source code for: \"{}\" (was it deleted after coverage was collected?). Skipping.",
+                file.specifier,
+              );
+              continue;
+            }
+          },
+        )
       }
       MediaType::SourceMap => {
         unreachable!()

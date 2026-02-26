@@ -105,13 +105,11 @@ fn error_if_invalid_cache() {
   output.assert_exit_code(1);
   let out = output.combined_output();
 
-  // Expect error
+  // Expect warning about missing source and error about no covered files
   let error = util::strip_ansi_codes(out).to_string();
-  assert_contains!(error, "error: Missing transpiled source code");
-  assert_contains!(
-    error,
-    "Before generating coverage report, run `deno test --coverage` to ensure consistent state."
-  );
+  assert_contains!(error, "Missing transpiled source code for:");
+  assert_contains!(error, "was it deleted after coverage was collected?");
+  assert_contains!(error, "No covered files included in the report");
 }
 
 fn run_coverage_text(test_name: &str, extension: &str) {
