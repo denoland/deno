@@ -325,6 +325,17 @@ export class WriteStream extends Socket {
     this.isTTY = true;
   }
 
+  _refreshSize() {
+    const oldCols = this.columns;
+    const oldRows = this.rows;
+    const { columns, rows } = Deno.consoleSize();
+    if (oldCols !== columns || oldRows !== rows) {
+      this.columns = columns;
+      this.rows = rows;
+      this.emit("resize");
+    }
+  }
+
   /**
    * @param {number | Record<string, string>} [count]
    * @param {Record<string, string>} [env]
