@@ -150,16 +150,8 @@ import {
   validateString,
 } from "ext:deno_node/internal/validators.mjs";
 import type { Buffer } from "node:buffer";
-import {
-  op_fs_file_stat_async,
-  op_fs_open_async,
-  op_fs_seek_async,
-  op_fs_stat_async,
-} from "ext:core/ops";
-import { core, primordials } from "ext:core/mod.js";
-import { createLazyBlob } from "ext:deno_web/09_file.js";
-
-const { MathMin, Uint8Array } = primordials;
+import { op_blob_create_file_backed_part } from "ext:core/ops";
+import { createFileBackedBlob } from "ext:deno_web/09_file.js";
 
 const {
   F_OK,
@@ -183,89 +175,8 @@ const {
 } = constants;
 
 /**
- * A blob part backed by a file on disk. Reads data lazily from the file
- * only when stream()/text()/arrayBuffer() is called on the containing Blob.
- * Detects file modifications by comparing the current size against the
- * expected size recorded at blob creation time.
- */
-class FileBlobPart {
-  #path: string;
-  #start: number;
-  size: number;
-  #expectedFileSize: number;
-
-  constructor(
-    path: string,
-    expectedFileSize: number,
-    start: number,
-    length: number,
-  ) {
-    this.#path = path;
-    this.#start = start;
-    this.size = length;
-    this.#expectedFileSize = expectedFileSize;
-  }
-
-  slice(start: number, end: number): FileBlobPart {
-    return new FileBlobPart(
-      this.#path,
-      this.#expectedFileSize,
-      this.#start + start,
-      end - start,
-    );
-  }
-
-  #throwNotReadable(): never {
-    throw new DOMException(
-      "The requested file could not be read, " +
-        "typically due to permission problems that have occurred after " +
-        "a reference to a file was acquired.",
-      "NotReadableError",
-    );
-  }
-
-  async *stream(): AsyncGenerator<Uint8Array> {
-    // Check that the file hasn't been modified since the blob was created
-    const stat = await op_fs_stat_async(this.#path);
-    if (stat.size !== this.#expectedFileSize) {
-      this.#throwNotReadable();
-    }
-
-    if (this.size === 0) {
-      return;
-    }
-
-    const rid = await op_fs_open_async(this.#path, undefined);
-    try {
-      if (this.#start > 0) {
-        await op_fs_seek_async(rid, this.#start, 0); // SeekMode.Start
-      }
-
-      let remaining = this.size;
-      while (remaining > 0) {
-        const chunkSize = MathMin(remaining, 65536);
-        const buf = new Uint8Array(chunkSize);
-        const nread = await core.read(rid, buf);
-        if (nread === 0) break;
-        remaining -= nread;
-        yield nread < chunkSize ? buf.subarray(0, nread) : buf;
-
-        // Check that the file hasn't been modified during reading
-        if (remaining > 0) {
-          const currentStat = await op_fs_file_stat_async(rid);
-          if (currentStat.size !== this.#expectedFileSize) {
-            this.#throwNotReadable();
-          }
-        }
-      }
-    } finally {
-      core.close(rid);
-    }
-  }
-}
-
-/**
  * Returns a `Blob` whose data is read lazily from the given file.
+ * The blob is backed by the Rust blob store, so URL.createObjectURL works.
  */
 async function openAsBlob(
   path: string | Buffer | URL,
@@ -274,13 +185,10 @@ async function openAsBlob(
   validateObject(options, "options");
   const type = options.type || "";
   validateString(type, "options.type");
-  path = getValidatedPath(path);
+  path = getValidatedPath(path) as string;
 
-  const stat = await op_fs_stat_async(path as string);
-  const fileSize = stat.size;
-  const part = new FileBlobPart(path as string, fileSize, 0, fileSize);
-
-  return createLazyBlob([part], fileSize, type);
+  const { uuid, size } = await op_blob_create_file_backed_part(path);
+  return createFileBackedBlob(uuid, size, type);
 }
 
 const promises = {

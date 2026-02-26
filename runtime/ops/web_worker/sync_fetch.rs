@@ -71,6 +71,13 @@ pub enum SyncFetchError {
   ),
   #[class(inherit)]
   #[error(transparent)]
+  Blob(
+    #[from]
+    #[inherit]
+    deno_web::BlobError,
+  ),
+  #[class(inherit)]
+  #[error(transparent)]
   Other(#[inherit] deno_error::JsErrorBox),
 }
 
@@ -174,7 +181,7 @@ pub fn op_worker_sync_fetch(
 
                 let mime_type = mime_type_essence(&blob.media_type);
 
-                let body = blob.read_all().await;
+                let body = blob.read_all().await?;
 
                 (Bytes::from(body), Some(mime_type), script)
               }

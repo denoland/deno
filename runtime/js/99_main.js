@@ -390,6 +390,12 @@ core.registerErrorBuilder(
     return new DOMException(msg, "InvalidStateError");
   },
 );
+core.registerErrorBuilder(
+  "DOMExceptionNotReadableError",
+  function DOMExceptionNotReadableError(msg) {
+    return new DOMException(msg, "NotReadableError");
+  },
+);
 
 function runtimeStart(
   denoVersion,

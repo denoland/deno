@@ -723,18 +723,18 @@ function isBlob(obj) {
 }
 
 /**
- * Create a Blob from custom parts without going through the normal
- * constructor validation. This is used for file-backed blobs where
- * the parts implement the BlobReference interface (size, slice, stream).
+ * Create a Blob backed by a file in the Rust blob store.
+ * The blob part is identified by a UUID and participates in the
+ * blob store, so URL.createObjectURL works.
  *
- * @param {Array<{size: number, slice: function, stream: function}>} parts
+ * @param {string} uuid
  * @param {number} size
  * @param {string} type
  * @returns {Blob}
  */
-function createLazyBlob(parts, size, type) {
+function createFileBackedBlob(uuid, size, type) {
   const blob = new Blob([], { type });
-  blob[_parts] = parts;
+  blob[_parts] = [new BlobReference(uuid, size)];
   blob[_size] = size;
   return blob;
 }
@@ -743,7 +743,7 @@ export {
   Blob,
   blobFromObjectUrl,
   BlobPrototype,
-  createLazyBlob,
+  createFileBackedBlob,
   File,
   FilePrototype,
   getParts,

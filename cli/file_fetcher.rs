@@ -116,7 +116,10 @@ impl deno_cache_dir::file_fetcher::BlobStore for BlobStoreAdapter {
     };
     Ok(Some(BlobData {
       media_type: blob.media_type.clone(),
-      bytes: blob.read_all().await,
+      bytes: blob
+        .read_all()
+        .await
+        .map_err(|e| std::io::Error::other(e))?,
     }))
   }
 }
