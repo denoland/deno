@@ -1142,7 +1142,6 @@
     // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
     // "parallel/test-runner-coverage-thresholds.js": {},
     "parallel/test-runner-filter-warning.js": {},
-    "parallel/test-runner-root-after-with-refed-handles.js": {},
     // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
     // "parallel/test-runner-inspect.mjs": {},
     "parallel/test-runner-source-maps-invalid-json.js": {},
@@ -1171,7 +1170,6 @@
     },
     "parallel/test-sqlite-statement-sync-columns.js": {},
     "parallel/test-sqlite-statement-sync.js": {},
-    "parallel/test-sqlite-template-tag.js": {},
     "parallel/test-sqlite-timeout.js": {},
     "parallel/test-sqlite-transactions.js": {},
     "parallel/test-sqlite-typed-array-and-data-view.js": {},

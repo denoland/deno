@@ -21,8 +21,6 @@ const {
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import assert from "node:assert";
 
-type HookFn = () => void | Promise<void>;
-
 const methodsToCopy = [
   "deepEqual",
   "deepStrictEqual",
@@ -63,34 +61,13 @@ export function run() {
 function noop() {}
 
 const skippedSymbol = Symbol("skipped");
-const cleanupSymbol = Symbol("cleanup");
-
-const globalBeforeEachHooks: HookFn[] = [];
-const globalAfterEachHooks: HookFn[] = [];
-
-async function runHooks(hooks: HookFn[]) {
-  for (
-    const hook of new SafeArrayIterator(hooks)
-  ) {
-    await hook();
-  }
-}
-
-async function runHooksIgnoreErrors(hooks: HookFn[]) {
-  try {
-    await runHooks(hooks);
-  } catch { /* ignore */ }
-}
 
 class NodeTestContext {
   #denoContext: Deno.TestContext;
-  #afterHooks: HookFn[] = [];
-  #beforeHooks: HookFn[] = [];
-  #beforeEachHooks: HookFn[] = [];
-  #afterEachHooks: HookFn[] = [];
+  #afterHooks: (() => void)[] = [];
+  #beforeHooks: (() => void)[] = [];
   #parent: NodeTestContext | undefined;
   #skipped = false;
-  #hasBeforeHooksRan = false;
 
   constructor(t: Deno.TestContext, parent: NodeTestContext | undefined) {
     this.#denoContext = t;
@@ -139,46 +116,20 @@ class NodeTestContext {
     return null;
   }
 
-  #collectBeforeEachHooks(): HookFn[] {
-    const hooks: HookFn[] = [];
-    if (this.#parent) {
-      const parentHooks = this.#parent.#collectBeforeEachHooks();
-      for (let i = 0; i < parentHooks.length; i++) {
-        ArrayPrototypePush(hooks, parentHooks[i]);
-      }
-    }
-    for (
-      const hook of new SafeArrayIterator(this.#beforeEachHooks)
-    ) {
-      ArrayPrototypePush(hooks, hook);
-    }
-    return hooks;
-  }
-
-  #collectAfterEachHooks(): HookFn[] {
-    const hooks: HookFn[] = [];
-    for (
-      const hook of new SafeArrayIterator(this.#afterEachHooks)
-    ) {
-      ArrayPrototypePush(hooks, hook);
-    }
-    if (this.#parent) {
-      const parentHooks = this.#parent.#collectAfterEachHooks();
-      for (let i = 0; i < parentHooks.length; i++) {
-        ArrayPrototypePush(hooks, parentHooks[i]);
-      }
-    }
-    return hooks;
-  }
-
-  async [cleanupSymbol]() {
-    await runHooks(this.#afterHooks);
-  }
-
   test(name, options, fn) {
     const prepared = prepareOptions(name, options, fn, {});
     // deno-lint-ignore no-this-alias
     const parentContext = this;
+    const after = async () => {
+      for (const hook of new SafeArrayIterator(this.#afterHooks)) {
+        await hook();
+      }
+    };
+    const before = async () => {
+      for (const hook of new SafeArrayIterator(this.#beforeHooks)) {
+        await hook();
+      }
+    };
     return PromisePrototypeThen(
       this.#denoContext.step({
         name: prepared.name,
@@ -187,34 +138,18 @@ class NodeTestContext {
             denoTestContext,
             parentContext,
           );
-
-          if (!parentContext.#hasBeforeHooksRan) {
-            parentContext.#hasBeforeHooksRan = true;
-            await runHooks(parentContext.#beforeHooks);
-          }
-
-          await runHooks(globalBeforeEachHooks);
-          const beforeEachHooks = parentContext.#collectBeforeEachHooks();
-          await runHooks(beforeEachHooks);
-
           try {
+            await before();
             await prepared.fn(newNodeTextContext);
-            await newNodeTextContext[cleanupSymbol]();
+            await after();
           } catch (err) {
             if (!newNodeTextContext[skippedSymbol]) {
-              const afterEachHooks = parentContext.#collectAfterEachHooks();
-              await runHooksIgnoreErrors(afterEachHooks);
-              await runHooksIgnoreErrors(globalAfterEachHooks);
               throw err;
             }
             try {
-              await newNodeTextContext[cleanupSymbol]();
+              await after();
             } catch { /* ignore, test is already failing */ }
           }
-
-          const afterEachHooks = parentContext.#collectAfterEachHooks();
-          await runHooks(afterEachHooks);
-          await runHooks(globalAfterEachHooks);
         },
         ignore: prepared.options.todo || prepared.options.skip,
         sanitizeExit: false,
@@ -239,18 +174,12 @@ class NodeTestContext {
     ArrayPrototypePush(this.#afterHooks, fn);
   }
 
-  beforeEach(fn, _options) {
-    if (typeof fn !== "function") {
-      throw new TypeError("beforeEach() requires a function");
-    }
-    ArrayPrototypePush(this.#beforeEachHooks, fn);
+  beforeEach(_fn, _options) {
+    notImplemented("test.TestContext.beforeEach");
   }
 
-  afterEach(fn, _options) {
-    if (typeof fn !== "function") {
-      throw new TypeError("afterEach() requires a function");
-    }
-    ArrayPrototypePush(this.#afterEachHooks, fn);
+  afterEach(_fn, _options) {
+    notImplemented("test.TestContext.afterEach");
   }
 }
 
@@ -273,18 +202,12 @@ class TestSuite {
           denoTestContext,
           undefined,
         );
-
-        await runHooks(globalBeforeEachHooks);
-
         try {
-          const result = await prepared.fn(newNodeTextContext);
-          await runHooks(globalAfterEachHooks);
-          return result;
+          return await prepared.fn(newNodeTextContext);
         } catch (err) {
           if (newNodeTextContext[skippedSymbol]) {
             return undefined;
           } else {
-            await runHooksIgnoreErrors(globalAfterEachHooks);
             throw err;
           }
         }
@@ -347,8 +270,6 @@ function wrapTestFn(fn, resolve) {
   return async function (t) {
     const nodeTestContext = new NodeTestContext(t, undefined);
     try {
-      await runHooks(globalBeforeEachHooks);
-
       // Check if the test function expects a done callback (2 parameters)
       if (fn.length >= 2) {
         // Callback-style async test
@@ -370,12 +291,8 @@ function wrapTestFn(fn, resolve) {
         // Promise-style or sync test
         await fn(nodeTestContext);
       }
-
-      await runHooks(globalAfterEachHooks);
-      await nodeTestContext[cleanupSymbol]();
     } catch (err) {
       if (!nodeTestContext[skippedSymbol]) {
-        await runHooksIgnoreErrors(globalAfterEachHooks);
         throw err;
       }
     } finally {
@@ -504,42 +421,22 @@ it.only = function only(name, options, fn) {
   return test.only(name, options, fn);
 };
 
-export function before(fn, _options) {
-  if (typeof fn !== "function") {
-    fn = noop;
-  }
-
-  Deno.test.beforeAll(fn);
+export function before() {
+  notImplemented("test.before");
 }
 
-export function after(fn, _options) {
-  if (typeof fn !== "function") {
-    fn = noop;
-  }
-
-  Deno.test.afterAll(fn);
+export function after() {
+  notImplemented("test.after");
 }
 
-export function beforeEach(fn, _options) {
-  if (typeof fn !== "function") {
-    fn = noop;
-  }
-
-  ArrayPrototypePush(globalBeforeEachHooks, fn);
+export function beforeEach() {
+  notImplemented("test.beforeEach");
 }
 
-export function afterEach(fn, _options) {
-  if (typeof fn !== "function") {
-    fn = noop;
-  }
-
-  ArrayPrototypePush(globalAfterEachHooks, fn);
+export function afterEach() {
+  notImplemented("test.afterEach");
 }
 
-test.after = after;
-test.afterEach = afterEach;
-test.before = before;
-test.beforeEach = beforeEach;
 test.it = it;
 test.describe = describe;
 test.suite = suite;
