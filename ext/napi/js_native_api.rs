@@ -991,7 +991,7 @@ fn napi_create_object(
 }
 
 #[napi_sym]
-fn napi_create_object_with_properties<'s>(
+fn node_api_create_object_with_properties<'s>(
   env_ptr: *mut Env,
   prototype_or_null: napi_value<'s>,
   property_names: *const napi_value<'s>,

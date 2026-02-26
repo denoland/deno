@@ -8,9 +8,10 @@ use crate::assert_napi_ok;
 use crate::napi_get_callback_info;
 use crate::napi_new_property;
 
-// Experimental NAPI function not yet in napi-sys crate
+// Experimental NAPI function - renamed from napi_ to node_api_ prefix
+// per https://github.com/nodejs/node/pull/61319
 unsafe extern "C" {
-  fn napi_create_object_with_properties(
+  fn node_api_create_object_with_properties(
     env: napi_env,
     prototype_or_null: napi_value,
     property_names: *const napi_value,
@@ -121,7 +122,7 @@ extern "C" fn test_create_object_with_properties(
   let mut null_proto: napi_value = ptr::null_mut();
   assert_napi_ok!(napi_get_null(env, &mut null_proto));
 
-  assert_napi_ok!(napi_create_object_with_properties(
+  assert_napi_ok!(node_api_create_object_with_properties(
     env,
     null_proto,
     names.as_ptr(),
@@ -139,7 +140,7 @@ extern "C" fn test_create_object_with_properties_empty(
 ) -> napi_value {
   let mut result: napi_value = ptr::null_mut();
 
-  assert_napi_ok!(napi_create_object_with_properties(
+  assert_napi_ok!(node_api_create_object_with_properties(
     env,
     ptr::null_mut(),
     ptr::null(),
@@ -192,7 +193,7 @@ extern "C" fn test_create_object_with_custom_prototype(
   assert_napi_ok!(napi_create_int32(env, 42, &mut values[0]));
 
   let mut result: napi_value = ptr::null_mut();
-  assert_napi_ok!(napi_create_object_with_properties(
+  assert_napi_ok!(node_api_create_object_with_properties(
     env,
     prototype,
     names.as_ptr(),
