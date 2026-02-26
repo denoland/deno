@@ -1,10 +1,13 @@
 // Spawns a Deno server with DENO_COVERAGE_DIR set, waits for it to be
 // ready, sends SIGTERM, then verifies coverage files were written.
+//
+// The server script to run is passed as the first argument.
 
+const serverScript = Deno.args[0];
 const covDir = Deno.cwd() + "/cov_output";
 
 const child = new Deno.Command(Deno.execPath(), {
-  args: ["run", "--allow-net", "server.ts"],
+  args: ["run", "--allow-net", "--allow-read", serverScript],
   env: {
     DENO_COVERAGE_DIR: covDir,
   },
@@ -32,7 +35,7 @@ const status = await child.status;
 console.log("signal:", status.signal);
 
 // Check that coverage files were written.
-let covFiles: string[] = [];
+const covFiles: string[] = [];
 try {
   for await (const entry of Deno.readDir(covDir)) {
     if (entry.name.endsWith(".json")) {
