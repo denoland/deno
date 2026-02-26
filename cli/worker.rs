@@ -73,6 +73,16 @@ impl CliMainWorker {
     let mut maybe_coverage_collector = self.maybe_setup_coverage_collector();
     let mut maybe_hmr_runner = self.maybe_setup_hmr_runner();
 
+    // When coverage is enabled, listen for SIGTERM so we can flush coverage
+    // data before exiting. This is important for cases like Playwright's
+    // webServer, which sends SIGTERM to shut down the server process.
+    #[cfg(unix)]
+    let mut sigterm_stream = if maybe_coverage_collector.is_some() {
+      deno_signals::signal_stream(libc::SIGTERM).ok()
+    } else {
+      None
+    };
+
     // WARNING: Remember to update cli/lib/worker.rs to align with
     // changes made here so that they affect deno_compile as well.
 
@@ -82,6 +92,8 @@ impl CliMainWorker {
     self.worker.execute_preload_modules().await?;
     self.execute_main_module().await?;
     self.worker.dispatch_load_event()?;
+
+    let mut received_sigterm = false;
 
     loop {
       if let Some(hmr_runner) = maybe_hmr_runner.as_mut() {
@@ -108,10 +120,34 @@ impl CliMainWorker {
         }
       } else {
         // TODO(bartlomieju): this might not be needed anymore
-        self
-          .worker
-          .run_event_loop(maybe_coverage_collector.is_none())
-          .await?;
+        #[cfg(unix)]
+        if let Some(ref mut stream) = sigterm_stream {
+          let event_loop_future = self
+            .worker
+            .run_event_loop(maybe_coverage_collector.is_none())
+            .boxed_local();
+          select! {
+            result = event_loop_future => {
+              result?;
+            },
+            _ = stream.recv() => {
+              received_sigterm = true;
+              break;
+            }
+          }
+        } else {
+          self
+            .worker
+            .run_event_loop(maybe_coverage_collector.is_none())
+            .await?;
+        }
+        #[cfg(not(unix))]
+        {
+          self
+            .worker
+            .run_event_loop(maybe_coverage_collector.is_none())
+            .await?;
+        }
       }
 
       let web_continue = self.worker.dispatch_beforeunload_event()?;
@@ -123,14 +159,26 @@ impl CliMainWorker {
       }
     }
 
-    self.worker.dispatch_unload_event()?;
-    self.worker.dispatch_process_exit_event()?;
+    if !received_sigterm {
+      self.worker.dispatch_unload_event()?;
+      self.worker.dispatch_process_exit_event()?;
+    }
 
     if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
       coverage_collector.stop_collecting()?;
     }
     if let Some(hmr_runner) = maybe_hmr_runner.as_mut() {
       hmr_runner.stop();
+    }
+
+    if received_sigterm {
+      // Re-raise SIGTERM with default handler so the parent process
+      // sees the correct exit status.
+      #[cfg(unix)]
+      unsafe {
+        libc::signal(libc::SIGTERM, libc::SIG_DFL);
+        libc::raise(libc::SIGTERM);
+      }
     }
 
     Ok(self.worker.exit_code())
