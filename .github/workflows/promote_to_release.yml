@@ -164,5 +164,5 @@ jobs:
         run: |
           gsutil -h "Cache-Control: public, max-age=3600" cp ./*.zip gs://dl.deno.land/release/$(cat release-${{github.event.inputs.releaseKind}}-latest.txt)/
           gsutil -h "Cache-Control: no-cache" cp release-${{github.event.inputs.releaseKind}}-latest.txt gs://dl.deno.land/release-${{github.event.inputs.releaseKind}}-latest.txt
-          aws s3 cp ./*.zip s3://dl-deno-land/release/$(cat release-${{github.event.inputs.releaseKind}}-latest.txt)/
+          aws s3 sync ./ s3://dl-deno-land/release/$(cat release-${{github.event.inputs.releaseKind}}-latest.txt)/ --exclude "*" --include "*.zip"
           aws s3 cp release-${{github.event.inputs.releaseKind}}-latest.txt s3://dl-deno-land/release-${{github.event.inputs.releaseKind}}-latest.txt
