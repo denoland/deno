@@ -76,16 +76,16 @@ impl CliMainWorker {
     // Coverage collection requires flushing data via the V8 inspector before
     // the process exits. Normally this happens through the graceful shutdown
     // path (after the event loop ends), but when an external process manager
-    // (e.g. Playwright's webServer) sends SIGTERM, the default behavior is
-    // to terminate immediately without flushing. We intercept SIGTERM here
-    // so we can break out of the event loop and run the coverage flush.
+    // (e.g. Playwright's webServer) sends SIGTERM/SIGINT, the default behavior
+    // is to terminate immediately without flushing. We intercept termination
+    // signals here so we can break out of the event loop and run the coverage
+    // flush.
     //
     // Note: we can't use deno_signals::before_exit for this because coverage
     // collection requires sending CDP messages through the V8 inspector, which
     // must happen on the JS runtime thread — not the signal handler thread.
-    #[cfg(unix)]
-    let mut maybe_sigterm = if maybe_coverage_collector.is_some() {
-      deno_signals::sigterm_stream().ok()
+    let mut maybe_termination_signal = if maybe_coverage_collector.is_some() {
+      deno_signals::termination_signal_stream().ok()
     } else {
       None
     };
@@ -100,7 +100,7 @@ impl CliMainWorker {
     self.execute_main_module().await?;
     self.worker.dispatch_load_event()?;
 
-    let mut received_sigterm = false;
+    let mut received_signal: Option<i32> = None;
 
     loop {
       if let Some(hmr_runner) = maybe_hmr_runner.as_mut() {
@@ -127,8 +127,7 @@ impl CliMainWorker {
         }
       } else {
         // TODO(bartlomieju): this might not be needed anymore
-        #[cfg(unix)]
-        if let Some(ref mut sigterm) = maybe_sigterm {
+        if let Some(ref mut signal_stream) = maybe_termination_signal {
           let event_loop_future = self
             .worker
             .run_event_loop(maybe_coverage_collector.is_none())
@@ -137,19 +136,12 @@ impl CliMainWorker {
             result = event_loop_future => {
               result?;
             },
-            _ = sigterm.recv() => {
-              received_sigterm = true;
+            signo = signal_stream.recv() => {
+              received_signal = signo;
               break;
             }
           }
         } else {
-          self
-            .worker
-            .run_event_loop(maybe_coverage_collector.is_none())
-            .await?;
-        }
-        #[cfg(not(unix))]
-        {
           self
             .worker
             .run_event_loop(maybe_coverage_collector.is_none())
@@ -166,7 +158,7 @@ impl CliMainWorker {
       }
     }
 
-    if !received_sigterm {
+    if received_signal.is_none() {
       self.worker.dispatch_unload_event()?;
       self.worker.dispatch_process_exit_event()?;
     }
@@ -178,11 +170,10 @@ impl CliMainWorker {
       hmr_runner.stop();
     }
 
-    if received_sigterm {
-      // After flushing coverage, re-raise SIGTERM with the default handler
-      // so the parent process sees the correct signal exit status.
-      #[cfg(unix)]
-      deno_signals::raise_sigterm_default();
+    if let Some(signo) = received_signal {
+      // After flushing coverage, re-raise the signal with the default
+      // handler so the parent process sees the correct exit status.
+      deno_signals::raise_default_signal(signo);
     }
 
     Ok(self.worker.exit_code())

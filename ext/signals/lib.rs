@@ -183,6 +183,19 @@ impl SignalStream {
   }
 }
 
+/// A stream that yields when any of several signals is received,
+/// reporting which signal was caught.
+pub struct SignalStreamWithKind {
+  rx: watch::Receiver<i32>,
+}
+
+impl SignalStreamWithKind {
+  pub async fn recv(&mut self) -> Option<i32> {
+    self.rx.changed().await.ok()?;
+    Some(*self.rx.borrow_and_update())
+  }
+}
+
 pub fn signal_stream(signo: i32) -> Result<SignalStream, std::io::Error> {
   let (tx, rx) = watch::channel(());
   let cb = Box::new(move || {
@@ -200,20 +213,40 @@ pub async fn ctrl_c() -> std::io::Result<()> {
   }
 }
 
-/// Creates an async stream that yields when SIGTERM is received.
-#[cfg(unix)]
-pub fn sigterm_stream() -> std::io::Result<SignalStream> {
-  signal_stream(libc::SIGTERM)
+/// Creates an async stream that yields when a termination signal is
+/// received (SIGTERM or SIGINT on unix, SIGINT on Windows). Returns
+/// the signal number that was caught.
+pub fn termination_signal_stream(
+) -> std::io::Result<SignalStreamWithKind> {
+  let (tx, rx) = watch::channel(0i32);
+  let tx2 = tx.clone();
+  register(
+    SIGINT,
+    true,
+    Box::new(move || {
+      tx.send_replace(SIGINT);
+    }),
+  )?;
+  #[cfg(unix)]
+  register(
+    SIGTERM,
+    true,
+    Box::new(move || {
+      tx2.send_replace(SIGTERM);
+    }),
+  )?;
+  #[cfg(not(unix))]
+  drop(tx2);
+  Ok(SignalStreamWithKind { rx })
 }
 
-/// Re-raises SIGTERM with the default handler so the parent process
-/// sees the correct signal exit status.
-#[cfg(unix)]
-pub fn raise_sigterm_default() {
+/// Re-raises the given signal with the default handler so the parent
+/// process sees the correct signal exit status.
+pub fn raise_default_signal(signo: i32) {
   // SAFETY: Restoring the default signal handler and raising the signal
-  // are both well-defined POSIX operations.
+  // are well-defined operations on both POSIX and Windows.
   unsafe {
-    libc::signal(libc::SIGTERM, libc::SIG_DFL);
-    libc::raise(libc::SIGTERM);
+    libc::signal(signo, libc::SIG_DFL);
+    libc::raise(signo);
   }
 }
