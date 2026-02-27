@@ -864,6 +864,7 @@ impl CliFactory {
             self.module_info_cache()?.clone(),
             self.npm_graph_resolver().await?.clone(),
             self.npm_installer_if_managed().await?.cloned(),
+            self.npm_req_resolver().await?.clone(),
             self.npm_resolver().await?.clone(),
             self.resolver_factory()?.parsed_source_cache().clone(),
             self.text_only_progress_bar().clone(),

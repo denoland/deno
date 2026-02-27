@@ -28,10 +28,13 @@ use deno_graph::ast::EsParser;
 use deno_graph::source::NullFileSystem;
 use deno_lib::version::DENO_VERSION_INFO;
 use deno_npm_installer::graph::NpmCachingStrategy;
+use deno_semver::npm::NpmPackageReqReference;
 use doc::DocDiagnostic;
 use doc::html::ShortPath;
 use indexmap::IndexMap;
 use indexmap::IndexSet;
+use node_resolver::NodeResolutionKind;
+use node_resolver::ResolutionMode;
 
 use crate::args::DocFlags;
 use crate::args::DocHtmlFlag;
@@ -154,6 +157,25 @@ pub async fn doc(
         },
         |_| true,
       )?;
+
+      // resolve npm specifiers to the node_modules folder if byonm
+      let npm_resolver = factory.npm_resolver().await?;
+      if npm_resolver.is_byonm() {
+        let npm_req_resolver = factory.npm_req_resolver().await?;
+        for specifier in &mut module_specifiers {
+          if specifier.scheme() == "npm" {
+            let req_ref = NpmPackageReqReference::from_specifier(specifier)?;
+            let resolved = npm_req_resolver.resolve_req_reference(
+              &req_ref,
+              cli_options.start_dir.dir_url(),
+              ResolutionMode::Import,
+              NodeResolutionKind::Types,
+            )?;
+            *specifier = resolved.into_url()?;
+          }
+        }
+      }
+
       let graph = module_graph_creator
         .create_graph(
           GraphKind::TypesOnly,
@@ -161,6 +183,8 @@ pub async fn doc(
           NpmCachingStrategy::Eager,
         )
         .await?;
+      let mut module_specifiers =
+        graph.roots.iter().cloned().collect::<Vec<_>>();
 
       graph_exit_integrity_errors(&graph);
       let errors = graph_walk_errors(

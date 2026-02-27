@@ -6346,6 +6346,30 @@ fn doc_parse(
     None
   };
 
+  if flags.node_modules_dir.is_none() {
+    match &source_files {
+      DocSourceFileFlag::Builtin => {}
+      DocSourceFileFlag::Paths(items) => {
+        if items.iter().all(|i| match i.split_once(':') {
+          Some((scheme, _)) => {
+            if scheme.eq_ignore_ascii_case("npm")
+              || scheme.eq_ignore_ascii_case("jsr")
+              || scheme.eq_ignore_ascii_case("https")
+              || scheme.eq_ignore_ascii_case("http")
+            {
+              true
+            } else {
+              false
+            }
+          }
+          None => false,
+        }) {
+          flags.node_modules_dir = Some(NodeModulesDirMode::None);
+        }
+      }
+    }
+  }
+
   flags.subcommand = DenoSubcommand::Doc(DocFlags {
     source_files,
     json,

@@ -49,8 +49,9 @@ use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::SmallStackString;
 use deno_semver::jsr::JsrDepPackageReq;
-use deno_semver::package::PackageReq;
+use deno_semver::npm::NpmPackageReqReference;
 use import_map::ImportMapErrorKind;
+use node_resolver::NodeResolutionKind;
 use node_resolver::errors::NodeJsErrorCode;
 use sys_traits::FsMetadata;
 
@@ -69,6 +70,7 @@ use crate::npm::CliNpmGraphResolver;
 use crate::npm::CliNpmInstaller;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CliCjsTracker;
+use crate::resolver::CliNpmReqResolver;
 use crate::resolver::CliResolver;
 use crate::sys::CliSys;
 use crate::type_checker::CheckError;
@@ -680,6 +682,7 @@ pub struct ModuleGraphBuilder {
   module_info_cache: Arc<ModuleInfoCache>,
   npm_graph_resolver: Arc<CliNpmGraphResolver>,
   npm_installer: Option<Arc<CliNpmInstaller>>,
+  npm_req_resolver: Arc<CliNpmReqResolver>,
   npm_resolver: CliNpmResolver,
   parsed_source_cache: Arc<ParsedSourceCache>,
   progress_bar: ProgressBar,
@@ -705,6 +708,7 @@ impl ModuleGraphBuilder {
     module_info_cache: Arc<ModuleInfoCache>,
     npm_graph_resolver: Arc<CliNpmGraphResolver>,
     npm_installer: Option<Arc<CliNpmInstaller>>,
+    npm_req_resolver: Arc<CliNpmReqResolver>,
     npm_resolver: CliNpmResolver,
     parsed_source_cache: Arc<ParsedSourceCache>,
     progress_bar: ProgressBar,
@@ -727,6 +731,7 @@ impl ModuleGraphBuilder {
       module_info_cache,
       npm_graph_resolver,
       npm_installer,
+      npm_req_resolver,
       npm_resolver,
       parsed_source_cache,
       progress_bar,
@@ -837,17 +842,11 @@ impl ModuleGraphBuilder {
       )
       .await?;
 
-    eprintln!("{}", serde_json::json!(graph));
-
     if self.analyze_npm_sources() {
-      let npm_specifiers = graph
+      let has_npm_specifier = graph
         .modules()
-        .filter_map(|m| match m {
-          deno_graph::Module::Npm(module) => Some(module.specifier.clone()),
-          _ => None,
-        })
-        .collect::<Vec<_>>();
-      if !npm_specifiers.is_empty() {
+        .any(|m| matches!(m, deno_graph::Module::Npm(_)));
+      if has_npm_specifier {
         // go through the graph and resolve npm: modules to real js modules
         let cloned_graph = graph.clone();
         let graph_resolver = self.resolver.as_graph_resolver(
@@ -856,9 +855,35 @@ impl ModuleGraphBuilder {
           Some(&cloned_graph),
         );
 
+        let npm_specifier_roots = graph
+          .roots
+          .iter()
+          .filter(|r| r.scheme() == "npm")
+          .cloned()
+          .collect::<Vec<_>>();
+        graph.remove_npm_specifiers();
+        let mut new_roots = graph.roots.iter().cloned().collect::<Vec<_>>();
+        for root in npm_specifier_roots {
+          let Ok(req_ref) = NpmPackageReqReference::from_specifier(&root)
+          else {
+            continue;
+          };
+          let resolved = self
+            .npm_req_resolver
+            .resolve_req_reference(
+              &req_ref,
+              self.cli_options.start_dir.dir_url(),
+              node_resolver::ResolutionMode::Import,
+              NodeResolutionKind::Types,
+            )
+            .unwrap(); // TODO: REMOVE UNWRAPS!
+          new_roots.push(resolved.into_url().unwrap());
+        }
+
         graph
-          .reload(
-            npm_specifiers,
+          .build(
+            new_roots,
+            Vec::new(),
             loader.as_loader(),
             deno_graph::BuildOptions {
               skip_dynamic_deps: self
@@ -874,7 +899,7 @@ impl ModuleGraphBuilder {
               jsr_version_resolver: Cow::Borrowed(
                 self.jsr_version_resolver.as_ref(),
               ),
-              npm_resolver: npm_graph_resolver,
+              npm_resolver: None,
               module_analyzer: &analyzer,
               module_info_cacher: self.module_info_cache.as_ref(),
               reporter: maybe_reporter,
@@ -885,8 +910,6 @@ impl ModuleGraphBuilder {
             },
           )
           .await;
-
-        eprintln!("{}", serde_json::json!(graph));
       }
     }
 

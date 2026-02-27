@@ -507,7 +507,6 @@ impl<
     'static,
     Result<Option<TStrategy::Response>, deno_graph::source::LoadError>,
   > {
-    eprintln!("LOADING: {}", specifier);
     let file_fetcher = self.file_fetcher.clone();
     let permissions = self.permissions.clone();
     let is_statically_analyzable = !options.was_dynamic_root;
@@ -631,7 +630,6 @@ impl<
     specifier: &Url,
     options: deno_graph::source::LoadOptions,
   ) -> LoadFuture {
-    eprintln!("LOADING: {}", specifier);
     let specifier = if specifier.scheme() == "file"
       && specifier.path().contains("/node_modules/")
     {
@@ -659,10 +657,6 @@ impl<
     } else {
       Cow::Borrowed(specifier)
     };
-
-    if self.include_npm_sources && specifier.scheme() == "npm" {
-      // todo: resolve npm: specifier to source
-    }
 
     if !matches!(
       specifier.scheme(),

@@ -547,24 +547,21 @@ impl<
       });
     let node_resolution_kind =
       node_resolver::NodeResolutionKind::from_deno_graph(resolution_kind);
-    eprintln!("RESOLVING: {}", raw_specifier);
     match self.maybe_graph {
-      Some(graph) => dbg!(
-        self
-          .resolver
-          .resolve_with_graph(
-            &graph,
-            raw_specifier,
-            &referrer_range.specifier,
-            referrer_range.range.start,
-            ResolveWithGraphOptions {
-              mode: resolution_mode,
-              kind: node_resolution_kind,
-              maintain_npm_specifiers: false,
-            },
-          )
-          .map_err(|err| err.into_deno_graph_error())
-      ),
+      Some(graph) => self
+        .resolver
+        .resolve_with_graph(
+          graph,
+          raw_specifier,
+          &referrer_range.specifier,
+          referrer_range.range.start,
+          ResolveWithGraphOptions {
+            mode: resolution_mode,
+            kind: node_resolution_kind,
+            maintain_npm_specifiers: false,
+          },
+        )
+        .map_err(|err| err.into_deno_graph_error()),
       None => self
         .resolver
         .resolve(
