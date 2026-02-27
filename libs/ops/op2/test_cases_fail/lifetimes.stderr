@@ -1,5 +1,5 @@
 error[E0716]: temporary value dropped while borrowed
- --> $WORKSPACE/ops/op2/test_cases_fail/lifetimes.rs
+ --> $WORKSPACE/libs/ops/op2/test_cases_fail/lifetimes.rs
   |
   | #[op2(fast)]
   | ^^^^^^^^^^^-
@@ -11,7 +11,7 @@ error[E0716]: temporary value dropped while borrowed
   = note: this error originates in the attribute macro `op2` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0521]: borrowed data escapes outside of associated function
- --> $WORKSPACE/ops/op2/test_cases_fail/lifetimes.rs
+ --> $WORKSPACE/libs/ops/op2/test_cases_fail/lifetimes.rs
   |
   | #[op2(fast)]
   | ^^^^^^^^^^^^
@@ -24,7 +24,7 @@ error[E0521]: borrowed data escapes outside of associated function
   = note: this error originates in the attribute macro `op2` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0716]: temporary value dropped while borrowed
- --> $WORKSPACE/ops/op2/test_cases_fail/lifetimes.rs
+ --> $WORKSPACE/libs/ops/op2/test_cases_fail/lifetimes.rs
   |
   | #[op2(fast)]
   | ^^^^^^^^^^^-
