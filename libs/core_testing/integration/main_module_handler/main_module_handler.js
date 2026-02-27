@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // The handler is set up before this main module is executed
 globalThis.onmainmodule = (main) => {
   console.log(main);

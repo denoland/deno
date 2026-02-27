@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import { op_log_debug, op_log_info } from "ext:core/ops";
 import { core } from "ext:core/mod.js";

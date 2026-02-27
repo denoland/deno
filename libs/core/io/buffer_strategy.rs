@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 /// Our standard buffer size if we don't know what else to do.
 const STANDARD_BUFFER_SIZE: usize = 64 * 1024;

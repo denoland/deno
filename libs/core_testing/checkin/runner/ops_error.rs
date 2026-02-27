@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // NB(bartlomieju): this is on purpose to force async ops
 #![allow(clippy::unused_async)]

@@ -1,5 +1,5 @@
 #!/usr/bin/env deno run --allow-read --allow-write
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 const doNotModify =
   "/* DO NOT MODIFY: use rebuild_async_stubs.js to regenerate */\n";

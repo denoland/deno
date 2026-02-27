@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 import { op_current_user_call_site } from "ext:core/ops";
 
 const callSiteRetBuf = new Uint32Array(2);

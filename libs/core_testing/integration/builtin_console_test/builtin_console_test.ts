@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 console.log("Hello, world");
 console.log([1, 2, 3]);
 console.log({ "foo": "bar" });

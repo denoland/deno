@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 import bin from "./test.bin" with { type: "bytes" };
 import txt from "./test.txt" with { type: "text" };
 import json from "./test.json" with { type: "json" };

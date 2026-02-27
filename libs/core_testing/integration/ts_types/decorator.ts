@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 function logged(value, { kind, name }) {
   if (kind === "method" || kind === "getter" || kind === "setter") {
     return function (...args) {

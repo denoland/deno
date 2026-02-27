@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 import { Worker } from "checkin:worker";
 console.log("main started");
 const worker = new Worker(import.meta.url, "./worker.ts");

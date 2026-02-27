@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // NB(bartlomieju): this is fine for example code
 #![allow(clippy::print_stdout)]

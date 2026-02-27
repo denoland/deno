@@ -1,3 +1,4 @@
+// Copyright 2018-2026 the Deno authors. MIT license.
 import { sleep } from "./lib.mjs";
 export { add } from "./lib.mjs";
 

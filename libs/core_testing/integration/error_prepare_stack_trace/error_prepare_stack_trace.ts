@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 let errorCallsitePrototype;
 // deno-lint-ignore no-explicit-any
 (Error as any).prepareStackTrace = (_err, frames) => {

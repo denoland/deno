@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 //! This example shows how to use swc to transpile TypeScript and JSX/TSX
 //! modules.
 //!

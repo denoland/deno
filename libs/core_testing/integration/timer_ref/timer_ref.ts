@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 setTimeout(() => console.log("a"), 1000);
 setTimeout(() => console.log("b"), 2000);
 // Make this long enough that we'll never hit it

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 import * as async from "checkin:async";
 import * as console from "checkin:console";
 import * as error from "checkin:error";
