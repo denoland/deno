@@ -286,7 +286,7 @@ mod tests {
       .join("rebuild_async_stubs.js")
       .canonicalize()
       .unwrap();
-    eprintln!("path {:#?}", path);
+    eprintln!("path {:#?} {}", path, path.as_os_str().to_str().unwrap());
     let status = Command::new("deno")
       .args(["run", "-A", path.as_os_str().to_str().unwrap(), "--check"])
       .stderr(Stdio::null())
