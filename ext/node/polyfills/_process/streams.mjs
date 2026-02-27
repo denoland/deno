@@ -159,13 +159,10 @@ export function createWritableStdioStream(writer, name, warmup = false) {
     },
   });
 
-  // If we're warming up, create a stdout/stderr stream that assumes a terminal (the most likely case).
-  // If we're wrong at boot time, we'll recreate it.
+  // If we're warming up, add TTY-like methods so snapshot-time code works.
+  // The warmup stream is replaced at boot time with a proper tty.WriteStream
+  // (for TTY) or a fresh Writable (for non-TTY).
   if (warmup || writer?.isTerminal()) {
-    // These belong on tty.WriteStream(), but the TTY streams currently have
-    // following problems:
-    // 1. Using them here introduces a circular dependency.
-    // 2. Creating a net.Socket() from a fd is not currently supported.
     stream.cursorTo = function (x, y, callback) {
       return cursorTo(this, x, y, callback);
     };

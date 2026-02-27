@@ -19,4 +19,4 @@ libc.workspace = true
 signal-hook.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
-winapi = { workspace = true, features = ["consoleapi"] }
+winapi = { workspace = true, features = ["consoleapi", "fileapi", "handleapi", "synchapi", "wincon", "winnt"] }
