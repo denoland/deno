@@ -258,9 +258,9 @@ mod tests {
     // test line locations because that's just too brittle.
     let name = located_script_name!();
     let expected = if cfg!(windows) {
-      "[ext:core\\lib.rs:"
+      "[ext:libs\\core\\lib.rs:"
     } else {
-      "[ext:core/lib.rs:"
+      "[ext:libs/core/lib.rs:"
     };
     assert_eq!(&name[..expected.len()], expected);
   }
@@ -281,8 +281,11 @@ mod tests {
         eprintln!("Ignoring test because we couldn't find deno: {e:?}");
       }
     }
+
+    let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+      .join("rebuild_async_stubs.js");
     let status = Command::new("deno")
-      .args(["run", "-A", "rebuild_async_stubs.js", "--check"])
+      .args(["run", "-A", path, "--check"])
       .stderr(Stdio::null())
       .stdout(Stdio::null())
       .status()
