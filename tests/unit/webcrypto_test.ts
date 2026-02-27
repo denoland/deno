@@ -2174,18 +2174,22 @@ Deno.test(async function testSha3DigestAlgorithms() {
   const data = new TextEncoder().encode("Hello, Deno!");
 
   // SHA3-256 produces 32 bytes
+  // deno-lint-ignore camelcase
   const sha3_256 = await crypto.subtle.digest("SHA3-256", data);
   assertEquals(sha3_256.byteLength, 32);
 
   // SHA3-384 produces 48 bytes
+  // deno-lint-ignore camelcase
   const sha3_384 = await crypto.subtle.digest("SHA3-384", data);
   assertEquals(sha3_384.byteLength, 48);
 
   // SHA3-512 produces 64 bytes
+  // deno-lint-ignore camelcase
   const sha3_512 = await crypto.subtle.digest("SHA3-512", data);
   assertEquals(sha3_512.byteLength, 64);
 
   // Verify deterministic: same input always gives same output
+  // deno-lint-ignore camelcase
   const sha3_256_again = await crypto.subtle.digest("SHA3-256", data);
   assertEquals(toHex(sha3_256), toHex(sha3_256_again));
 });
