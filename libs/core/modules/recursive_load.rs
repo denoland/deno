@@ -1,5 +1,20 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::cell::RefCell;
+use std::collections::HashSet;
+use std::collections::VecDeque;
+use std::future::Future;
+use std::pin::Pin;
+use std::rc::Rc;
+use std::task::Context;
+use std::task::Poll;
+
+use futures::future::FutureExt;
+use futures::stream::FuturesUnordered;
+use futures::stream::Stream;
+use futures::stream::TryStreamExt;
+
+use super::loaders::ModuleLoadOptions;
 use crate::ModuleLoadResponse;
 use crate::ModuleLoader;
 use crate::ModuleSource;
@@ -20,20 +35,6 @@ use crate::modules::map::ModuleMap;
 use crate::modules::module_map_data::ModuleSourceKind;
 use crate::source_map::SourceMapApplication;
 use crate::source_map::SourceMapper;
-use futures::future::FutureExt;
-use futures::stream::FuturesUnordered;
-use futures::stream::Stream;
-use futures::stream::TryStreamExt;
-use std::cell::RefCell;
-use std::collections::HashSet;
-use std::collections::VecDeque;
-use std::future::Future;
-use std::pin::Pin;
-use std::rc::Rc;
-use std::task::Context;
-use std::task::Poll;
-
-use super::loaders::ModuleLoadOptions;
 
 type ModuleLoadFuture = dyn Future<
   Output = Result<Option<(ModuleRequest, ModuleSource)>, ModuleLoaderError>,

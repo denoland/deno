@@ -2,12 +2,13 @@
 
 use std::marker::PhantomData;
 
+use deno_error::JsErrorBox;
+use deno_error::JsErrorClass;
+
 use super::erased_future::TypeErased;
 use super::future_arena::FutureContextMapper;
 use crate::OpId;
 use crate::PromiseId;
-use deno_error::JsErrorBox;
-use deno_error::JsErrorClass;
 
 const MAX_RESULT_SIZE: usize = 32;
 

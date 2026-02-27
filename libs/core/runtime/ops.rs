@@ -1,18 +1,20 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use super::op_driver::OpDriver;
-use super::op_driver::OpScheduling;
-use super::op_driver::V8RetValMapper;
-use crate::ops::*;
-use deno_error::JsErrorClass;
-use serde::Deserialize;
-use serde_v8::V8Sliceable;
-use serde_v8::from_v8;
 use std::borrow::Cow;
 use std::ffi::c_void;
 use std::future::Future;
 use std::mem::MaybeUninit;
 use std::ptr::NonNull;
+
+use deno_error::JsErrorClass;
+use serde::Deserialize;
+use serde_v8::V8Sliceable;
+use serde_v8::from_v8;
+
+use super::op_driver::OpDriver;
+use super::op_driver::OpScheduling;
+use super::op_driver::V8RetValMapper;
+use crate::ops::*;
 
 /// The default string buffer size on the stack that prevents mallocs in some
 /// string functions. Keep in mind that Windows only offers 1MB stacks by default,
@@ -532,6 +534,19 @@ pub fn to_v8_slice_any(
 #[allow(clippy::print_stdout, clippy::print_stderr, clippy::unused_async)]
 #[cfg(all(test, not(miri)))]
 mod tests {
+  use std::borrow::Cow;
+  use std::cell::Cell;
+  use std::cell::RefCell;
+  use std::future::Future;
+  use std::rc::Rc;
+  use std::time::Duration;
+
+  use bytes::BytesMut;
+  use deno_error::JsErrorBox;
+  use serde::Deserialize;
+  use serde::Serialize;
+  use serde_v8::JsBuffer;
+
   use crate::FromV8;
   use crate::GarbageCollected;
   use crate::JsRuntime;
@@ -547,17 +562,6 @@ mod tests {
   use crate::external::ExternalPointer;
   use crate::op2;
   use crate::runtime::JsRuntimeState;
-  use bytes::BytesMut;
-  use deno_error::JsErrorBox;
-  use serde::Deserialize;
-  use serde::Serialize;
-  use serde_v8::JsBuffer;
-  use std::borrow::Cow;
-  use std::cell::Cell;
-  use std::cell::RefCell;
-  use std::future::Future;
-  use std::rc::Rc;
-  use std::time::Duration;
 
   /// Enough to get functions to JIT.
   pub const JIT_ITERATIONS: usize = 6000;

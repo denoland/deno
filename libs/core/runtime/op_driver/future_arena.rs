@@ -1,9 +1,5 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use super::erased_future::TypeErased;
-use crate::arena::ArenaBox;
-use crate::arena::ArenaUnique;
-use pin_project::pin_project;
 use std::cell::UnsafeCell;
 use std::future::Future;
 use std::marker::PhantomData;
@@ -12,6 +8,12 @@ use std::pin::Pin;
 use std::ptr::NonNull;
 use std::task::Context;
 use std::task::Poll;
+
+use pin_project::pin_project;
+
+use super::erased_future::TypeErased;
+use crate::arena::ArenaBox;
+use crate::arena::ArenaUnique;
 
 const MAX_ARENA_FUTURE_SIZE: usize = 1024;
 
@@ -231,11 +233,13 @@ impl<T, C: Clone> FutureArena<T, C> {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
-  use futures::FutureExt;
   use std::fmt::Display;
   use std::future::ready;
   use std::task::Waker;
+
+  use futures::FutureExt;
+
+  use super::*;
 
   const INFO: usize = 0;
 

@@ -1,19 +1,21 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::borrow::Cow;
+use std::marker::PhantomData;
+use std::sync::Arc;
+
+use v8::MapFnTo;
+use v8::fast_api::CFunction;
+use v8::fast_api::CFunctionInfo;
+use v8::fast_api::Int64Representation;
+use v8::fast_api::Type;
+
 use crate::FastStaticString;
 use crate::OpState;
 use crate::modules::IntoModuleCodeString;
 use crate::modules::ModuleCodeString;
 use crate::ops::OpMetadata;
 use crate::runtime::bindings;
-use std::borrow::Cow;
-use std::marker::PhantomData;
-use std::sync::Arc;
-use v8::MapFnTo;
-use v8::fast_api::CFunction;
-use v8::fast_api::CFunctionInfo;
-use v8::fast_api::Int64Representation;
-use v8::fast_api::Type;
 
 #[derive(Clone)]
 pub enum ExtensionFileSourceCode {

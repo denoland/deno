@@ -1,16 +1,18 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use crate::error::DataError;
-use crate::runtime::ops;
-use deno_error::JsErrorBox;
-use deno_error::JsErrorClass;
-use smallvec::SmallVec;
 use std::convert::Infallible;
 use std::mem::MaybeUninit;
 use std::ops::Deref;
 use std::ops::DerefMut;
+
+use deno_error::JsErrorBox;
+use deno_error::JsErrorClass;
+use smallvec::SmallVec;
 use v8::Local;
 use v8::PinScope;
+
+use crate::error::DataError;
+use crate::runtime::ops;
 
 /// A conversion from a rust value to a v8 value.
 ///
@@ -1156,15 +1158,16 @@ where
 
 #[cfg(all(test, not(miri)))]
 mod tests {
-  use super::*;
-  use std::sync::atomic::{AtomicUsize, Ordering};
+  use std::collections::HashMap;
+  use std::sync::atomic::AtomicUsize;
+  use std::sync::atomic::Ordering;
 
   use deno_error::JsErrorClass;
+  use v8::Local;
 
+  use super::*;
   use crate::JsRuntime;
   use crate::scope as scope_macro;
-  use std::collections::HashMap;
-  use v8::Local;
 
   static ID_COUNTER: AtomicUsize = AtomicUsize::new(0);
 

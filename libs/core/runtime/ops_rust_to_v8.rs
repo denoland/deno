@@ -24,11 +24,12 @@
 //! the need for explicit object handle allocation. This optimization can favorably impact performance and
 //! memory management.
 
-use bytes::BytesMut;
-use libc::c_void;
 use std::borrow::Cow;
 use std::marker::PhantomData;
 use std::rc::Rc;
+
+use bytes::BytesMut;
+use libc::c_void;
 
 /// Convert a value to a `v8::Local`, potentially allocating.
 pub trait RustToV8<'a> {

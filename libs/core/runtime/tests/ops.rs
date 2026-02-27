@@ -2,19 +2,21 @@
 
 #![allow(clippy::print_stdout, clippy::print_stderr, clippy::unused_async)]
 
-use crate::extensions::OpDecl;
-use crate::modules::StaticModuleLoader;
-use crate::runtime::tests::Mode;
-use crate::runtime::tests::setup;
-use crate::*;
-use deno_error::JsErrorBox;
-use pretty_assertions::assert_eq;
 use std::cell::RefCell;
 use std::future::Future;
 use std::rc::Rc;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
+
+use deno_error::JsErrorBox;
+use pretty_assertions::assert_eq;
 use url::Url;
+
+use crate::extensions::OpDecl;
+use crate::modules::StaticModuleLoader;
+use crate::runtime::tests::Mode;
+use crate::runtime::tests::setup;
+use crate::*;
 
 #[tokio::test]
 async fn test_async_opstate_borrow() {

@@ -8,11 +8,10 @@ use std::sync::atomic::Ordering;
 
 use parking_lot::lock_api::RawMutex;
 
-use crate::arena::raw_arena::RawArena;
-
 use super::alloc;
 use super::ptr_byte_add;
 use super::ptr_byte_sub;
+use crate::arena::raw_arena::RawArena;
 
 /// In debug mode we use a signature to ensure that raw pointers are pointing to the correct
 /// shape of arena object.
@@ -507,10 +506,11 @@ impl<T> Drop for ArenaSharedAtomic<T> {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use std::cell::RefCell;
   use std::sync::Arc;
   use std::sync::Mutex;
+
+  use super::*;
 
   #[test]
   fn test_raw() {

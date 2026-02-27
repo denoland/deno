@@ -1,13 +1,14 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use crate::OpDecl;
-use crate::OpId;
-use crate::ops::OpCtx;
-use crate::serde::Serialize;
 use std::cell::Ref;
 use std::cell::RefCell;
 use std::cell::RefMut;
 use std::rc::Rc;
+
+use crate::OpDecl;
+use crate::OpId;
+use crate::ops::OpCtx;
+use crate::serde::Serialize;
 
 /// The type of op metrics event.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]

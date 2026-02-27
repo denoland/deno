@@ -1,7 +1,5 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use serde::Deserializer;
-use serde::Serializer;
 use std::borrow::Borrow;
 use std::ffi::OsStr;
 use std::fmt::Debug;
@@ -10,6 +8,9 @@ use std::fmt::Formatter;
 use std::hash::Hash;
 use std::ops::Deref;
 use std::sync::Arc;
+
+use serde::Deserializer;
+use serde::Serializer;
 use url::Url;
 use v8::NewStringType;
 

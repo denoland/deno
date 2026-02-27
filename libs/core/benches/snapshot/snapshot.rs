@@ -1,5 +1,9 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::rc::Rc;
+use std::time::Duration;
+use std::time::Instant;
+
 use criterion::*;
 use deno_ast::MediaType;
 use deno_ast::ModuleKind;
@@ -13,9 +17,6 @@ use deno_core::ModuleName;
 use deno_core::RuntimeOptions;
 use deno_core::SourceMapData;
 use deno_error::JsErrorBox;
-use std::rc::Rc;
-use std::time::Duration;
-use std::time::Instant;
 use url::Url;
 
 macro_rules! fake_extensions {

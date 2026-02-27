@@ -1,5 +1,9 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::cell::RefCell;
+use std::iter::Chain;
+use std::rc::Rc;
+
 use crate::_ops::OpMethodDecl;
 use crate::ExtensionFileSource;
 use crate::FastString;
@@ -20,9 +24,6 @@ use crate::ops::OpCtx;
 use crate::runtime::ExtensionTranspiler;
 use crate::runtime::JsRuntimeState;
 use crate::runtime::OpDriverImpl;
-use std::cell::RefCell;
-use std::iter::Chain;
-use std::rc::Rc;
 
 /// Contribute to the `OpState` from each extension.
 pub fn setup_op_state(

@@ -1323,7 +1323,8 @@ unsafe fn std_to_sockaddr(addr: SocketAddr, out: *mut c_void, len: *mut c_int) {
 pub unsafe fn uv_tcp_init(loop_: *mut uv_loop_t, tcp: *mut uv_tcp_t) -> c_int {
   // SAFETY: Caller guarantees both pointers are valid.
   unsafe {
-    use std::ptr::{addr_of_mut, write};
+    use std::ptr::addr_of_mut;
+    use std::ptr::write;
     write(addr_of_mut!((*tcp).r#type), uv_handle_type::UV_TCP);
     write(addr_of_mut!((*tcp).loop_), loop_);
     write(addr_of_mut!((*tcp).data), std::ptr::null_mut());

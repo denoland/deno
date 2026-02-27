@@ -1,10 +1,11 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::ops::Deref;
+
 use super::buffer::JsBuffer;
 use super::transl8::FromV8;
 use crate::Error;
 use crate::magic::transl8::impl_magic;
-use std::ops::Deref;
 
 #[derive(Debug)]
 pub enum StringOrBuffer {

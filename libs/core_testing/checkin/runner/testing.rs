@@ -1,5 +1,10 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::path::Path;
+use std::path::PathBuf;
+use std::sync::Arc;
+use std::sync::OnceLock;
+
 use anyhow::bail;
 use deno_core::JsRuntime;
 use deno_core::OpState;
@@ -8,10 +13,6 @@ use deno_core::op2;
 use deno_core::url::Url;
 use deno_core::v8;
 use pretty_assertions::assert_eq;
-use std::path::Path;
-use std::path::PathBuf;
-use std::sync::Arc;
-use std::sync::OnceLock;
 use tokio::fs::File;
 use tokio::io::AsyncReadExt;
 

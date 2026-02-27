@@ -1,11 +1,12 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::iter::zip;
+
 use proc_macro2::Ident;
 use proc_macro2::Span;
 use proc_macro2::TokenStream;
 use quote::format_ident;
 use quote::quote;
-use std::iter::zip;
 use syn::FnArg;
 use syn::ItemFn;
 use syn::Lifetime;
@@ -497,11 +498,13 @@ mod kw {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
+  use std::path::PathBuf;
+
   use pretty_assertions::assert_eq;
   use quote::ToTokens;
-  use std::path::PathBuf;
   use syn::Item;
+
+  use super::*;
 
   fn to_attr_input(op2_attr: syn::Attribute) -> TokenStream {
     match op2_attr.meta {

@@ -2,6 +2,15 @@
 
 // Alias for the future `!` type.
 use core::convert::Infallible as Never;
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::net::SocketAddr;
+use std::pin::pin;
+use std::process;
+use std::rc::Rc;
+use std::task::Poll;
+use std::thread;
+
 use deno_core::InspectorMsg;
 use deno_core::InspectorSessionChannels;
 use deno_core::InspectorSessionKind;
@@ -23,14 +32,6 @@ use fastwebsockets::OpCode;
 use fastwebsockets::WebSocket;
 use hyper::body::Bytes;
 use hyper_util::rt::TokioIo;
-use std::cell::RefCell;
-use std::collections::HashMap;
-use std::net::SocketAddr;
-use std::pin::pin;
-use std::process;
-use std::rc::Rc;
-use std::task::Poll;
-use std::thread;
 use tokio::net::TcpListener;
 use tokio::sync::broadcast;
 use uuid::Uuid;

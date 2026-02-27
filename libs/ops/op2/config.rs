@@ -423,12 +423,13 @@ mod kw {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use syn::ItemFn;
   use syn::Meta;
   use syn::parse::Parser;
   use syn::punctuated::Punctuated;
   use syn::spanned::Spanned;
+
+  use super::*;
 
   fn test_parse(s: &str, expected: MacroConfig) {
     let item_fn = syn::parse_str::<ItemFn>(&format!("#[op2{s}] fn x() {{ }}"))

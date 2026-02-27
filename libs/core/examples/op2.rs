@@ -1,8 +1,9 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::rc::Rc;
+
 use anyhow::Context;
 use deno_core::*;
-use std::rc::Rc;
 
 #[op2]
 fn op_use_state(

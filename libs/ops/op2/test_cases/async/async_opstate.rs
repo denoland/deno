@@ -3,9 +3,10 @@
 #![deny(warnings)]
 deno_ops_compile_test_runner::prelude!();
 
-use deno_core::OpState;
 use std::cell::RefCell;
 use std::rc::Rc;
+
+use deno_core::OpState;
 
 #[op2]
 pub async fn op_async_opstate(

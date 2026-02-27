@@ -1,13 +1,5 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use self::ops_worker::WorkerCloseWatcher;
-use self::ops_worker::WorkerHostSide;
-use self::ops_worker::worker_create;
-use self::ts_module_loader::maybe_transpile_source;
-use deno_core::CrossIsolateStore;
-use deno_core::Extension;
-use deno_core::JsRuntime;
-use deno_core::RuntimeOptions;
 use std::any::Any;
 use std::any::TypeId;
 use std::collections::HashMap;
@@ -18,6 +10,16 @@ use std::sync::Mutex;
 use std::sync::mpsc::RecvTimeoutError;
 use std::sync::mpsc::channel;
 use std::time::Duration;
+
+use deno_core::CrossIsolateStore;
+use deno_core::Extension;
+use deno_core::JsRuntime;
+use deno_core::RuntimeOptions;
+
+use self::ops_worker::WorkerCloseWatcher;
+use self::ops_worker::WorkerHostSide;
+use self::ops_worker::worker_create;
+use self::ts_module_loader::maybe_transpile_source;
 
 mod extensions;
 mod ops;

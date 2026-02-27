@@ -11,12 +11,11 @@ use syn::Token;
 use syn::parse::ParseStream;
 use syn::spanned::Spanned;
 
+use super::signature::is_attribute_special;
 use crate::op2::MacroConfig;
 use crate::op2::Op2Error;
 use crate::op2::Op2ErrorKind;
 use crate::op2::generate_op2;
-
-use super::signature::is_attribute_special;
 
 // Object wrap for Cppgc-backed objects
 //

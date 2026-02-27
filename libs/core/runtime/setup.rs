@@ -1,13 +1,14 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use super::bindings;
-use super::snapshot;
-use super::snapshot::V8Snapshot;
 use std::borrow::Cow;
 use std::sync::Mutex;
 use std::sync::Once;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
+
+use super::bindings;
+use super::snapshot;
+use super::snapshot::V8Snapshot;
 
 fn v8_init(
   v8_platform: Option<v8::SharedRef<v8::Platform>>,

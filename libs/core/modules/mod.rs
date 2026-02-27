@@ -1,18 +1,20 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::borrow::Cow;
+use std::collections::HashMap;
+use std::future::Future;
+use std::sync::Arc;
+
+use serde::Deserialize;
+use serde::Serialize;
+use url::Url;
+
 use crate::FastStaticString;
 use crate::error::CoreError;
 use crate::error::CoreErrorKind;
 use crate::error::exception_to_err;
 use crate::fast_string::FastString;
 use crate::module_specifier::ModuleSpecifier;
-use serde::Deserialize;
-use serde::Serialize;
-use std::borrow::Cow;
-use std::collections::HashMap;
-use std::future::Future;
-use std::sync::Arc;
-use url::Url;
 
 mod loaders;
 mod map;

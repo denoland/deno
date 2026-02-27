@@ -1,12 +1,5 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use crate::reactor::Reactor;
-use crate::reactor::ReactorInstant;
-use crate::reactor::ReactorTimer;
-use cooked_waker::IntoWaker;
-use cooked_waker::ViaRawPointer;
-use cooked_waker::Wake;
-use cooked_waker::WakeRef;
 use std::cell::Cell;
 use std::cell::Ref;
 use std::cell::RefCell;
@@ -23,6 +16,15 @@ use std::task::Poll;
 use std::task::Waker;
 use std::task::ready;
 use std::time::Duration;
+
+use cooked_waker::IntoWaker;
+use cooked_waker::ViaRawPointer;
+use cooked_waker::Wake;
+use cooked_waker::WakeRef;
+
+use crate::reactor::Reactor;
+use crate::reactor::ReactorInstant;
+use crate::reactor::ReactorTimer;
 
 pub(crate) type WebTimerId = u64;
 
@@ -696,11 +698,13 @@ impl HighResTimerLock {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
-  use crate::reactor_tokio::TokioReactor;
-  use rstest::rstest;
   use std::future::Future;
   use std::future::poll_fn;
+
+  use rstest::rstest;
+
+  use super::*;
+  use crate::reactor_tokio::TokioReactor;
 
   type TestTimers = WebTimers<(), TokioReactor>;
 

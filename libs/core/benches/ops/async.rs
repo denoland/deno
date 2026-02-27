@@ -1,9 +1,10 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::ffi::c_void;
+
 use bencher::*;
 use deno_core::*;
 use deno_error::JsErrorBox;
-use std::ffi::c_void;
 use tokio::runtime::Runtime;
 
 deno_core::extension!(

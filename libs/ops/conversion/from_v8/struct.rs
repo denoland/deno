@@ -1,8 +1,5 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use super::convert_or_serde;
-use super::kw;
-use crate::conversion::kw as shared_kw;
 use proc_macro2::Ident;
 use proc_macro2::Span;
 use proc_macro2::TokenStream;
@@ -21,6 +18,10 @@ use syn::parse::Parse;
 use syn::parse::ParseStream;
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
+
+use super::convert_or_serde;
+use super::kw;
+use crate::conversion::kw as shared_kw;
 
 pub fn get_body(
   ident_string: String,

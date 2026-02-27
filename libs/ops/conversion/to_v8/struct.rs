@@ -1,7 +1,5 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use crate::conversion::kw as shared_kw;
-use crate::conversion::to_v8::convert_or_serde;
 use proc_macro2::Ident;
 use proc_macro2::Span;
 use proc_macro2::TokenStream;
@@ -18,6 +16,9 @@ use syn::parse::Parse;
 use syn::parse::ParseStream;
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
+
+use crate::conversion::kw as shared_kw;
+use crate::conversion::to_v8::convert_or_serde;
 
 pub fn get_body(span: Span, data: DataStruct) -> Result<TokenStream, Error> {
   match data.fields {

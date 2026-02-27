@@ -1,10 +1,11 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 #![allow(deprecated)]
-use bencher::*;
-use deno_core::*;
 use std::borrow::Cow;
 use std::ffi::c_void;
+
+use bencher::*;
+use deno_core::*;
 
 deno_core::extension!(
   testing,

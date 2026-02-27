@@ -1,17 +1,19 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use super::Output;
-use super::TestData;
+use std::cell::RefCell;
+use std::future::Future;
+use std::future::poll_fn;
+use std::rc::Rc;
+
 use deno_core::GarbageCollected;
 use deno_core::OpState;
 use deno_core::V8TaskSpawner;
 use deno_core::op2;
 use deno_core::v8;
 use deno_error::JsErrorBox;
-use std::cell::RefCell;
-use std::future::Future;
-use std::future::poll_fn;
-use std::rc::Rc;
+
+use super::Output;
+use super::TestData;
 
 #[op2]
 pub fn op_task_submit(

@@ -1,20 +1,5 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use super::OpDriver;
-use super::OpInflightStats;
-use super::future_arena::FutureAllocation;
-use super::future_arena::FutureArena;
-use super::op_results::*;
-use crate::OpId;
-use crate::PromiseId;
-use bit_set::BitSet;
-use deno_error::JsErrorClass;
-use deno_unsync::JoinHandle;
-use deno_unsync::UnsyncWaker;
-use deno_unsync::spawn;
-use futures::FutureExt;
-use futures::Stream;
-use futures::stream::FuturesUnordered;
 use std::cell::Cell;
 use std::cell::RefCell;
 use std::collections::VecDeque;
@@ -27,6 +12,23 @@ use std::task::Context;
 use std::task::Poll;
 use std::task::Waker;
 use std::task::ready;
+
+use bit_set::BitSet;
+use deno_error::JsErrorClass;
+use deno_unsync::JoinHandle;
+use deno_unsync::UnsyncWaker;
+use deno_unsync::spawn;
+use futures::FutureExt;
+use futures::Stream;
+use futures::stream::FuturesUnordered;
+
+use super::OpDriver;
+use super::OpInflightStats;
+use super::future_arena::FutureAllocation;
+use super::future_arena::FutureArena;
+use super::op_results::*;
+use crate::OpId;
+use crate::PromiseId;
 
 async fn poll_task<C: OpMappingContext>(
   mut results: SubmissionQueueResults<

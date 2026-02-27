@@ -4,6 +4,8 @@ use std::collections::HashMap;
 use std::mem::MaybeUninit;
 use std::os::raw::c_void;
 use std::path::PathBuf;
+
+use deno_error::JsErrorBox;
 use url::Url;
 use v8::MapFnTo;
 
@@ -36,7 +38,6 @@ use crate::modules::synthetic_module_evaluation_steps;
 use crate::ops::OpCtx;
 use crate::runtime::InitMode;
 use crate::runtime::JsRealm;
-use deno_error::JsErrorBox;
 
 pub(crate) fn create_external_references(
   ops: &[OpCtx],

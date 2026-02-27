@@ -1,7 +1,5 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use serde::Deserialize;
-use serde::Serialize;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::path::Path;
@@ -9,14 +7,16 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::Instant;
 
+use serde::Deserialize;
+use serde::Serialize;
+
+use super::ExtensionTranspiler;
 use crate::Extension;
 use crate::JsRuntimeForSnapshot;
 use crate::RuntimeOptions;
 use crate::cppgc::FunctionTemplateSnapshotData;
 use crate::error::CoreError;
 use crate::modules::ModuleMapSnapshotData;
-
-use super::ExtensionTranspiler;
 
 pub type WithRuntimeCb = dyn Fn(&mut JsRuntimeForSnapshot);
 

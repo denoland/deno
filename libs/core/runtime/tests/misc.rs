@@ -1,18 +1,5 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use crate::error::CoreErrorKind;
-use crate::modules::StaticModuleLoader;
-use crate::runtime::tests::Mode;
-use crate::runtime::tests::setup;
-use crate::*;
-use cooked_waker::IntoWaker;
-use cooked_waker::Wake;
-use cooked_waker::WakeRef;
-use deno_error::JsErrorBox;
-use parking_lot::Mutex;
-use rstest::rstest;
-use serde_json::Value;
-use serde_json::json;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -27,7 +14,22 @@ use std::task::Context;
 use std::task::Poll;
 use std::time::Duration;
 use std::time::Instant;
+
+use cooked_waker::IntoWaker;
+use cooked_waker::Wake;
+use cooked_waker::WakeRef;
+use deno_error::JsErrorBox;
+use parking_lot::Mutex;
+use rstest::rstest;
+use serde_json::Value;
+use serde_json::json;
 use url::Url;
+
+use crate::error::CoreErrorKind;
+use crate::modules::StaticModuleLoader;
+use crate::runtime::tests::Mode;
+use crate::runtime::tests::setup;
+use crate::*;
 
 #[test]
 fn icu() {

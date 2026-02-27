@@ -1,5 +1,16 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::cell::RefCell;
+use std::io::Write;
+use std::io::stderr;
+use std::io::stdout;
+use std::rc::Rc;
+
+use bytes::BytesMut;
+use deno_error::JsErrorBox;
+use futures::StreamExt;
+use serde_v8::ByteString;
+
 use crate::CancelHandle;
 use crate::JsBuffer;
 use crate::ModuleId;
@@ -21,15 +32,6 @@ use crate::ops_builtin_types;
 use crate::ops_builtin_v8;
 use crate::runtime::JsRealm;
 use crate::runtime::v8_static_strings;
-use bytes::BytesMut;
-use deno_error::JsErrorBox;
-use futures::StreamExt;
-use serde_v8::ByteString;
-use std::cell::RefCell;
-use std::io::Write;
-use std::io::stderr;
-use std::io::stdout;
-use std::rc::Rc;
 
 macro_rules! builtin_ops {
   ( $($op:ident $(:: $sub:ident)*),* ) => {

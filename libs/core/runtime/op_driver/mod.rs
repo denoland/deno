@@ -1,12 +1,14 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use crate::OpId;
-use crate::PromiseId;
-use bit_set::BitSet;
-use deno_error::JsErrorClass;
 use std::future::Future;
 use std::task::Context;
 use std::task::Poll;
+
+use bit_set::BitSet;
+use deno_error::JsErrorClass;
+
+use crate::OpId;
+use crate::PromiseId;
 
 mod erased_future;
 mod future_arena;
@@ -145,13 +147,15 @@ pub(crate) trait OpDriver<C: OpMappingContext = V8OpMappingContext>:
 
 #[cfg(test)]
 mod tests {
-  use super::op_results::*;
-  use super::*;
+  use std::future::poll_fn;
+  use std::marker::PhantomData;
+
   use bit_set::BitSet;
   use deno_error::JsErrorBox;
   use rstest::rstest;
-  use std::future::poll_fn;
-  use std::marker::PhantomData;
+
+  use super::op_results::*;
+  use super::*;
 
   struct TestMappingContext {}
   impl<'s, 'i> OpMappingContextLifetime<'s, 'i> for TestMappingContext {

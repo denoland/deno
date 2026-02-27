@@ -2,7 +2,6 @@
 
 use serde::Deserialize;
 use serde::Serialize;
-
 use serde_v8::Result;
 use serde_v8_utilities::js_exec;
 use serde_v8_utilities::v8_do;

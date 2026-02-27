@@ -1,37 +1,42 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::collections::BTreeMap;
+
+use proc_macro2::Ident;
+use proc_macro2::Span;
 use proc_macro2::TokenStream;
-use proc_macro2::{Ident, Span};
 use quote::ToTokens;
 use quote::TokenStreamExt;
 use quote::format_ident;
 use quote::quote;
-use std::collections::BTreeMap;
-use syn::parse::Parse;
-use syn::parse::ParseStream;
-
-use super::signature_retval::RetVal;
-use crate::op2::combine_err;
-use strum::{IntoEnumIterator, IntoStaticStr};
+use strum::IntoEnumIterator;
+use strum::IntoStaticStr;
 use strum_macros::EnumIter;
 use strum_macros::EnumString;
+use syn::AttrStyle;
 use syn::Attribute;
 use syn::FnArg;
+use syn::GenericArgument;
 use syn::GenericParam;
 use syn::Generics;
 use syn::Meta;
 use syn::Pat;
 use syn::Path;
+use syn::PathArguments;
 use syn::Signature;
 use syn::Token;
 use syn::Type;
 use syn::TypeParamBound;
 use syn::TypePath;
 use syn::WherePredicate;
+use syn::parse::Parse;
+use syn::parse::ParseStream;
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
-use syn::{AttrStyle, GenericArgument, PathArguments};
 use thiserror::Error;
+
+use super::signature_retval::RetVal;
+use crate::op2::combine_err;
 
 #[allow(non_camel_case_types)]
 #[derive(
@@ -1952,9 +1957,10 @@ pub(crate) fn parse_type(
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use syn::ItemFn;
   use syn::parse_str;
+
+  use super::*;
 
   // We can't test pattern args :/
   // https://github.com/rust-lang/rfcs/issues/2688

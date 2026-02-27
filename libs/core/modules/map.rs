@@ -1,9 +1,40 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::borrow::Cow;
+use std::cell::Cell;
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::future::Future;
+use std::ops::DerefMut;
+use std::pin::Pin;
+use std::rc::Rc;
+use std::task::Context;
+use std::task::Poll;
+
+use capacity_builder::StringBuilder;
+use deno_core::error::CoreError;
+use deno_error::JsErrorBox;
+use futures::StreamExt;
+use futures::future::Either;
+use futures::future::FutureExt;
+use futures::stream::FuturesUnordered;
+use futures::stream::StreamFuture;
+use futures::task::AtomicWaker;
+use indexmap::IndexMap;
+use sourcemap::DecodedMap;
+use tokio::sync::oneshot;
+use v8::Function;
+use v8::PromiseState;
+use wasm_dep_analyzer::WasmDeps;
+
+use super::CustomModuleEvaluationKind;
 use super::IntoModuleCodeString;
 use super::IntoModuleName;
+use super::LazyEsmModuleLoader;
 use super::ModuleConcreteError;
+use super::RequestedModuleType;
 use super::loaders::ModuleLoadOptions;
+use super::module_map_data::ModuleMapData;
 use super::module_map_data::ModuleMapSnapshotData;
 use super::recursive_load::SideModuleKind;
 use crate::FastStaticString;
@@ -39,36 +70,6 @@ use crate::runtime::SnapshotLoadDataStore;
 use crate::runtime::SnapshotStoreDataStore;
 use crate::runtime::exception_state::ExceptionState;
 use crate::source_map::SourceMapper;
-use capacity_builder::StringBuilder;
-use deno_error::JsErrorBox;
-use futures::StreamExt;
-use futures::future::Either;
-use futures::future::FutureExt;
-use futures::stream::FuturesUnordered;
-use futures::stream::StreamFuture;
-use futures::task::AtomicWaker;
-use indexmap::IndexMap;
-use sourcemap::DecodedMap;
-use std::future::Future;
-use v8::Function;
-use v8::PromiseState;
-use wasm_dep_analyzer::WasmDeps;
-
-use super::CustomModuleEvaluationKind;
-use super::LazyEsmModuleLoader;
-use super::RequestedModuleType;
-use super::module_map_data::ModuleMapData;
-use deno_core::error::CoreError;
-use std::borrow::Cow;
-use std::cell::Cell;
-use std::cell::RefCell;
-use std::collections::HashMap;
-use std::ops::DerefMut;
-use std::pin::Pin;
-use std::rc::Rc;
-use std::task::Context;
-use std::task::Poll;
-use tokio::sync::oneshot;
 
 const DATA_PREFIX: &str = "data:";
 

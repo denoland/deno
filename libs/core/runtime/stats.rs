@@ -1,5 +1,16 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::cell::Cell;
+use std::cell::RefCell;
+use std::collections::BTreeMap;
+use std::fmt::Display;
+use std::ops::Deref;
+use std::rc::Rc;
+
+use bit_set::BitSet;
+use serde::Serialize;
+use serde::Serializer;
+
 use super::ContextState;
 use super::op_driver::OpDriver;
 use super::op_driver::OpInflightStats;
@@ -7,15 +18,6 @@ use crate::OpId;
 use crate::OpState;
 use crate::PromiseId;
 use crate::ResourceId;
-use bit_set::BitSet;
-use serde::Serialize;
-use serde::Serializer;
-use std::cell::Cell;
-use std::cell::RefCell;
-use std::collections::BTreeMap;
-use std::fmt::Display;
-use std::ops::Deref;
-use std::rc::Rc;
 
 type ActivityId = usize;
 

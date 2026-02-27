@@ -6,19 +6,21 @@
 // resources. Resources may or may not correspond to a real operating system
 // file descriptor (hence the different name).
 
+use std::any::Any;
+use std::any::TypeId;
+use std::any::type_name;
+use std::borrow::Cow;
+use std::rc::Rc;
+
+use deno_error::JsErrorBox;
+use deno_error::JsErrorClass;
+
 use crate::ResourceHandle;
 use crate::ResourceHandleFd;
 use crate::io::AsyncResult;
 use crate::io::BufMutView;
 use crate::io::BufView;
 use crate::io::WriteOutcome;
-use deno_error::JsErrorBox;
-use deno_error::JsErrorClass;
-use std::any::Any;
-use std::any::TypeId;
-use std::any::type_name;
-use std::borrow::Cow;
-use std::rc::Rc;
 
 /// Resources are Rust objects that are attached to a [deno_core::JsRuntime].
 /// They are identified in JS by a numeric ID (the resource ID, or rid).

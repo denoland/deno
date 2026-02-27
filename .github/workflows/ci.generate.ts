@@ -1574,8 +1574,11 @@ const denoCoreTestJob = job("deno-core-test", {
     },
     {
       name: "Cargo doc test",
-      run:
-        `cargo test --doc --release ${denoCorePackageNames.filter((p) => p !== "deno_ops_compile_test_runner" && p !== "dcore").map((p) => `-p ${p}`).join(" ")}`,
+      run: `cargo test --doc --release ${
+        denoCorePackageNames.filter((p) =>
+          p !== "deno_ops_compile_test_runner" && p !== "dcore"
+        ).map((p) => `-p ${p}`).join(" ")
+      }`,
     },
     {
       // Regression test for https://github.com/denoland/deno/pull/19615.

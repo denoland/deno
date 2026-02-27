@@ -1,5 +1,12 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use proc_macro2::Ident;
+use proc_macro2::Span;
+use proc_macro2::TokenStream;
+use quote::format_ident;
+use quote::quote;
+use syn::Type;
+
 use super::V8MappingError;
 use super::V8SignatureMappingError;
 use super::config::MacroConfig;
@@ -20,12 +27,6 @@ use super::signature::RefType;
 use super::signature::Special;
 use super::signature::Strings;
 use crate::op2::dispatch_async::map_async_return_type;
-use proc_macro2::Ident;
-use proc_macro2::Span;
-use proc_macro2::TokenStream;
-use quote::format_ident;
-use quote::quote;
-use syn::Type;
 
 #[derive(Clone)]
 pub(crate) enum FastArg {

@@ -1,5 +1,15 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::cell::Cell;
+use std::cell::RefCell;
+use std::collections::HashSet;
+use std::hash::BuildHasherDefault;
+use std::hash::Hasher;
+use std::rc::Rc;
+use std::sync::Arc;
+
+use futures::stream::StreamExt;
+
 use super::exception_state::ExceptionState;
 #[cfg(test)]
 use super::op_driver::OpDriver;
@@ -28,14 +38,6 @@ use crate::stats::RuntimeActivityTraces;
 use crate::tasks::V8TaskSpawnerFactory;
 use crate::uv_compat::UvLoopInner;
 use crate::web_timeout::WebTimers;
-use futures::stream::StreamExt;
-use std::cell::Cell;
-use std::cell::RefCell;
-use std::collections::HashSet;
-use std::hash::BuildHasherDefault;
-use std::hash::Hasher;
-use std::rc::Rc;
-use std::sync::Arc;
 
 pub const CONTEXT_STATE_SLOT_INDEX: i32 = 1;
 pub const MODULE_MAP_SLOT_INDEX: i32 = 2;

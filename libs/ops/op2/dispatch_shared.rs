@@ -1,15 +1,16 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use proc_macro2::Ident;
+use proc_macro2::TokenStream;
+use quote::format_ident;
+use quote::quote;
+
 use super::V8MappingError;
 use super::signature::Arg;
 use super::signature::BufferType;
 use super::signature::NumericArg;
 use super::signature::RefType;
 use super::signature::V8Arg;
-use proc_macro2::Ident;
-use proc_macro2::TokenStream;
-use quote::format_ident;
-use quote::quote;
 
 /// Given an [`Arg`] containing a V8 value, converts this value to its final argument form.
 pub fn v8_intermediate_to_arg(i: &Ident, arg: &Arg) -> TokenStream {

@@ -3,12 +3,20 @@
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use quote::quote;
+use syn::Attribute;
+use syn::Data;
+use syn::DeriveInput;
+use syn::Error;
+use syn::Fields;
+use syn::Ident;
+use syn::Meta;
+use syn::Result;
+use syn::Token;
+use syn::Type;
+use syn::parse_macro_input;
+use syn::parse_quote;
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
-use syn::{
-  Attribute, Data, DeriveInput, Error, Fields, Ident, Meta, Result, Token,
-  Type, parse_macro_input, parse_quote,
-};
 
 pub fn derives_inherits(input: TokenStream) -> TokenStream {
   match inherits_inner(parse_macro_input!(input as DeriveInput)) {

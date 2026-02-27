@@ -1,5 +1,17 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::cell::RefCell;
+use std::collections::HashSet;
+use std::ops::Deref;
+use std::ops::DerefMut;
+use std::rc::Rc;
+use std::sync::Arc;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
+
+use futures::task::AtomicWaker;
+use v8::fast_api::CFunction;
+
 use crate::OpDecl;
 use crate::ResourceId;
 use crate::error::JsStackFrame;
@@ -9,16 +21,6 @@ use crate::ops_metrics::OpMetricsFn;
 use crate::runtime::JsRuntimeState;
 use crate::runtime::OpDriverImpl;
 use crate::runtime::UnrefedOps;
-use futures::task::AtomicWaker;
-use std::cell::RefCell;
-use std::collections::HashSet;
-use std::ops::Deref;
-use std::ops::DerefMut;
-use std::rc::Rc;
-use std::sync::Arc;
-use std::sync::atomic::AtomicUsize;
-use std::sync::atomic::Ordering;
-use v8::fast_api::CFunction;
 
 pub type PromiseId = i32;
 pub type OpId = u16;

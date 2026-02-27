@@ -3,8 +3,9 @@
 mod r#struct;
 
 use proc_macro2::TokenStream;
+use quote::ToTokens;
 use quote::quote;
-use quote::{ToTokens, quote_spanned};
+use quote::quote_spanned;
 use syn::Data;
 use syn::DeriveInput;
 use syn::Error;
@@ -65,13 +66,15 @@ fn create_impl(ident: impl ToTokens, body: TokenStream) -> TokenStream {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
-  use proc_macro2::Ident;
   use std::path::PathBuf;
+
+  use proc_macro2::Ident;
   use syn::Attribute;
   use syn::Item;
   use syn::Token;
   use syn::punctuated::Punctuated;
+
+  use super::*;
 
   fn derives_to_v8<'a>(attrs: impl IntoIterator<Item = &'a Attribute>) -> bool {
     attrs.into_iter().any(|attr| {

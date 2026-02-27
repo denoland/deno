@@ -1,11 +1,13 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::future::poll_fn;
+use std::task::Poll;
+
+use deno_error::JsErrorBox;
+
 use crate::JsRuntime;
 use crate::RuntimeOptions;
 use crate::op2;
-use deno_error::JsErrorBox;
-use std::future::poll_fn;
-use std::task::Poll;
 
 #[tokio::test]
 async fn test_error_builder() {

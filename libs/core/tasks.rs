@@ -1,6 +1,5 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use futures::task::AtomicWaker;
 use std::marker::PhantomData;
 use std::ops::DerefMut;
 use std::sync::Arc;
@@ -9,6 +8,8 @@ use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::task::Context;
 use std::task::Poll;
+
+use futures::task::AtomicWaker;
 
 type UnsendTask = Box<dyn FnOnce(&mut v8::PinScope) + 'static>;
 type SendTask = Box<dyn FnOnce(&mut v8::PinScope) + Send + 'static>;
@@ -210,9 +211,11 @@ impl V8CrossThreadTaskSpawner {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use std::future::poll_fn;
+
   use tokio::task::LocalSet;
+
+  use super::*;
 
   // https://github.com/tokio-rs/tokio/issues/6155
   #[test]

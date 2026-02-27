@@ -6,21 +6,21 @@ use std::error::Error;
 use std::fmt;
 use std::fmt::Display;
 use std::fmt::Formatter;
+use std::future::Future;
 use std::io;
 use std::pin::Pin;
 use std::rc::Rc;
+use std::task::Context;
+use std::task::Poll;
 
-use crate::RcLike;
-use crate::Resource;
 use deno_error::JsErrorClass;
 use futures::future::FusedFuture;
 use futures::future::TryFuture;
 use pin_project::pin_project;
-use std::future::Future;
-use std::task::Context;
-use std::task::Poll;
 
 use self::internal as i;
+use crate::RcLike;
+use crate::Resource;
 
 #[derive(Debug, Default)]
 pub struct CancelHandle {
@@ -270,13 +270,6 @@ impl JsErrorClass for Canceled {
 }
 
 mod internal {
-  use super::Abortable;
-  use super::CancelHandle;
-  use super::Cancelable;
-  use super::Canceled;
-  use super::TryCancelable;
-  use crate::RcRef;
-  use pin_project::pin_project;
   use std::any::Any;
   use std::cell::UnsafeCell;
   use std::future::Future;
@@ -289,6 +282,15 @@ mod internal {
   use std::task::Context;
   use std::task::Poll;
   use std::task::Waker;
+
+  use pin_project::pin_project;
+
+  use super::Abortable;
+  use super::CancelHandle;
+  use super::Cancelable;
+  use super::Canceled;
+  use super::TryCancelable;
+  use crate::RcRef;
 
   impl<F: Future> Cancelable<F> {
     pub(super) fn new(future: F, cancel_handle: RcRef<CancelHandle>) -> Self {
@@ -692,11 +694,6 @@ mod internal {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
-  use futures::future::FutureExt;
-  use futures::future::TryFutureExt;
-  use futures::pending;
-  use futures::select;
   use std::convert::Infallible as Never;
   use std::future::pending;
   use std::future::poll_fn;
@@ -705,9 +702,16 @@ mod tests {
   use std::task::Context;
   use std::task::Poll;
   use std::task::Waker;
+
+  use futures::future::FutureExt;
+  use futures::future::TryFutureExt;
+  use futures::pending;
+  use futures::select;
   use tokio::net::TcpStream;
   use tokio::spawn;
   use tokio::task::yield_now;
+
+  use super::*;
 
   fn box_fused<'a, F: FusedFuture + 'a>(
     future: F,

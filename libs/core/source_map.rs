@@ -2,15 +2,17 @@
 
 //! This mod provides functions to remap a `JsError` based on a source map.
 
-use crate::ModuleLoader;
-use crate::ModuleName;
-use crate::resolve_url;
-pub use sourcemap::SourceMap;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::str;
 use std::sync::Arc;
+
+pub use sourcemap::SourceMap;
+
+use crate::ModuleLoader;
+use crate::ModuleName;
+use crate::resolve_url;
 
 #[derive(Debug, PartialEq)]
 pub enum SourceMapApplication {

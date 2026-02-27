@@ -1,12 +1,13 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::borrow::Cow;
+use std::collections::BTreeMap;
+use std::rc::Rc;
+
 use super::Resource;
 use super::ResourceHandle;
 use super::ResourceHandleFd;
 use super::ResourceHandleSocket;
-use std::borrow::Cow;
-use std::collections::BTreeMap;
-use std::rc::Rc;
 
 /// A `ResourceId` is an integer value referencing a resource. It could be
 /// considered to be the Deno equivalent of a `file descriptor` in POSIX like

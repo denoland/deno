@@ -1,6 +1,13 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 #![allow(clippy::needless_range_loop)]
+use std::alloc::Layout;
+use std::cell::RefCell;
+use std::hint::black_box;
+use std::ptr::NonNull;
+use std::rc::Rc;
+use std::sync::Arc;
+
 use bencher::Bencher;
 use bencher::benchmark_group;
 use bencher::benchmark_main;
@@ -8,12 +15,6 @@ use deno_core::arena::ArenaShared;
 use deno_core::arena::ArenaSharedAtomic;
 use deno_core::arena::ArenaUnique;
 use deno_core::arena::RawArena;
-use std::alloc::Layout;
-use std::cell::RefCell;
-use std::hint::black_box;
-use std::ptr::NonNull;
-use std::rc::Rc;
-use std::sync::Arc;
 
 const COUNT: usize = 10_000;
 type TestType = RefCell<usize>;

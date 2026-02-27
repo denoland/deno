@@ -50,6 +50,10 @@ pub use deno_ops::FromV8;
 pub use deno_ops::ToV8;
 pub use deno_ops::WebIDL;
 pub use deno_ops::op2;
+pub use deno_path_util::normalize_path;
+pub use deno_path_util::resolve_path;
+pub use deno_path_util::resolve_url_or_path;
+pub use deno_path_util::specifier_has_uri_scheme;
 pub use deno_unsync as unsync;
 pub use futures;
 pub use parking_lot;
@@ -177,14 +181,9 @@ pub use crate::runtime::SharedArrayBufferStore;
 pub use crate::runtime::V8_WRAPPER_OBJECT_INDEX;
 pub use crate::runtime::V8_WRAPPER_TYPE_INDEX;
 pub use crate::runtime::stats;
-
 pub use crate::source_map::SourceMapData;
 pub use crate::tasks::V8CrossThreadTaskSpawner;
 pub use crate::tasks::V8TaskSpawner;
-pub use deno_path_util::normalize_path;
-pub use deno_path_util::resolve_path;
-pub use deno_path_util::resolve_url_or_path;
-pub use deno_path_util::specifier_has_uri_scheme;
 
 // Ensure we can use op2 in deno_core without any hackery.
 extern crate self as deno_core;
@@ -192,6 +191,8 @@ extern crate self as deno_core;
 /// An internal module re-exporting functions used by the #[op] (`deno_ops`) macro
 #[doc(hidden)]
 pub mod _ops {
+  pub use inventory;
+
   pub use super::cppgc::make_cppgc_object;
   pub use super::cppgc::make_cppgc_proto_object;
   pub use super::cppgc::try_unwrap_cppgc_base_object;
@@ -215,7 +216,6 @@ pub mod _ops {
   pub use super::runtime::V8_WRAPPER_TYPE_INDEX;
   pub use super::runtime::ops::*;
   pub use super::runtime::ops_rust_to_v8::*;
-  pub use inventory;
 }
 
 pub mod snapshot {

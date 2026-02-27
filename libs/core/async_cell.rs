@@ -240,9 +240,6 @@ impl<T: 'static> RcLike<T> for &Rc<T> {}
 impl<T: 'static> RcLike<T> for &RcRef<T> {}
 
 mod internal {
-  use super::AsyncRefCell;
-  use super::RcLike;
-  use super::RcRef;
   use std::borrow::Borrow;
   use std::borrow::BorrowMut;
   use std::fmt::Debug;
@@ -255,6 +252,10 @@ mod internal {
   use std::task::Poll;
   use std::task::Waker;
   use std::task::ready;
+
+  use super::AsyncRefCell;
+  use super::RcLike;
+  use super::RcRef;
 
   impl<T> AsyncRefCell<T> {
     /// Borrow the cell's contents synchronously without creating an

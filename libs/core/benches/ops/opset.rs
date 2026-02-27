@@ -1,12 +1,13 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::net::Ipv4Addr;
+use std::net::SocketAddr;
+use std::net::SocketAddrV4;
+
 use bencher::*;
 use futures::StreamExt;
 use futures::stream::FuturesOrdered;
 use futures::stream::FuturesUnordered;
-use std::net::Ipv4Addr;
-use std::net::SocketAddr;
-use std::net::SocketAddrV4;
 use tokio::net::TcpListener;
 use tokio::task::JoinSet;
 

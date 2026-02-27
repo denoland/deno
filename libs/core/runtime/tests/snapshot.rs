@@ -1,15 +1,17 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::borrow::Cow;
+use std::cell::RefCell;
+use std::rc::Rc;
+
+use deno_error::JsErrorBox;
+
 use self::runtime::CreateSnapshotOptions;
 use self::runtime::create_snapshot;
 use crate::modules::ModuleInfo;
 use crate::modules::RequestedModuleType;
 use crate::runtime::NO_OF_BUILTIN_MODULES;
 use crate::*;
-use deno_error::JsErrorBox;
-use std::borrow::Cow;
-use std::cell::RefCell;
-use std::rc::Rc;
 
 #[test]
 fn will_snapshot() {

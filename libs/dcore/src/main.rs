@@ -1,17 +1,15 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::net::SocketAddr;
+use std::sync::Arc;
+
+use anyhow::Context;
 use clap::ArgMatches;
 use clap::builder::Arg;
 use clap::builder::Command;
-use deno_core::anyhow::Error;
-
 use deno_core::RuntimeOptions;
+use deno_core::anyhow::Error;
 use deno_core_testing::create_runtime_from_snapshot;
-
-use std::net::SocketAddr;
-
-use anyhow::Context;
-use std::sync::Arc;
 
 static SNAPSHOT: &[u8] =
   include_bytes!(concat!(env!("OUT_DIR"), "/SNAPSHOT.bin"));

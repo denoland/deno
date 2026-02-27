@@ -122,11 +122,13 @@ fn create_impl(ident: impl ToTokens, body: TokenStream) -> TokenStream {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
-  use proc_macro2::Ident;
   use std::path::PathBuf;
+
+  use proc_macro2::Ident;
   use syn::Item;
   use syn::punctuated::Punctuated;
+
+  use super::*;
 
   fn derives_webidl<'a>(
     attrs: impl IntoIterator<Item = &'a Attribute>,

@@ -4,17 +4,6 @@
 //! <https://chromedevtools.github.io/devtools-protocol/>
 //! <https://web.archive.org/web/20210918052901/https://hyperandroid.com/2020/02/12/v8-inspector-from-an-embedder-standpoint/>
 
-use crate::futures::channel::mpsc;
-use crate::futures::channel::mpsc::UnboundedReceiver;
-use crate::futures::channel::mpsc::UnboundedSender;
-use crate::futures::channel::oneshot;
-use crate::futures::prelude::*;
-use crate::futures::stream::FuturesUnordered;
-use crate::futures::stream::StreamExt;
-use crate::futures::task;
-use crate::serde_json::json;
-
-use parking_lot::Mutex;
 use std::cell::Cell;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -27,6 +16,18 @@ use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
 use std::thread;
+
+use parking_lot::Mutex;
+
+use crate::futures::channel::mpsc;
+use crate::futures::channel::mpsc::UnboundedReceiver;
+use crate::futures::channel::mpsc::UnboundedSender;
+use crate::futures::channel::oneshot;
+use crate::futures::prelude::*;
+use crate::futures::stream::FuturesUnordered;
+use crate::futures::stream::StreamExt;
+use crate::futures::task;
+use crate::serde_json::json;
 
 #[derive(Debug)]
 pub enum InspectorMsgKind {

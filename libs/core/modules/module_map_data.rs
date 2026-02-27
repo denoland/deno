@@ -1,5 +1,12 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::rc::Rc;
+
+use serde::Deserialize;
+use serde::Serialize;
+
 use super::RequestedModuleType;
 use crate::ModuleCodeString;
 use crate::ModuleSource;
@@ -14,11 +21,6 @@ use crate::modules::ModuleType;
 use crate::runtime::SnapshotDataId;
 use crate::runtime::SnapshotLoadDataStore;
 use crate::runtime::SnapshotStoreDataStore;
-use serde::Deserialize;
-use serde::Serialize;
-use std::cell::RefCell;
-use std::collections::HashMap;
-use std::rc::Rc;
 
 /// A symbolic module entity.
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
@@ -435,9 +437,10 @@ impl ModuleMapData {
 
 #[cfg(test)]
 mod tests {
+  use url::Url;
+
   use super::*;
   use crate::ascii_str;
-  use url::Url;
 
   #[test]
   fn module_name_map_test() {

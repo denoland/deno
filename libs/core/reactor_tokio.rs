@@ -1,15 +1,17 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use crate::reactor::Reactor;
-use crate::reactor::ReactorInstant;
-use crate::reactor::ReactorTimer;
 use std::future::Future;
 use std::pin::Pin;
 use std::task::Context;
 use std::task::Poll;
 use std::time::Duration;
+
 use tokio::time::Instant;
 use tokio::time::Sleep;
+
+use crate::reactor::Reactor;
+use crate::reactor::ReactorInstant;
+use crate::reactor::ReactorTimer;
 
 /// Default reactor implementation backed by tokio.
 #[derive(Default)]

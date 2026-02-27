@@ -1,5 +1,8 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use proc_macro2::TokenStream;
+use quote::quote;
+
 use super::V8MappingError;
 use super::V8SignatureMappingError;
 use super::config::MacroConfig;
@@ -20,8 +23,6 @@ use super::generator_state::GeneratorState;
 use super::generator_state::gs_quote;
 use super::signature::ParsedSignature;
 use super::signature_retval::RetVal;
-use proc_macro2::TokenStream;
-use quote::quote;
 
 pub(crate) fn map_async_return_type(
   generator_state: &mut GeneratorState,

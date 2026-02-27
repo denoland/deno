@@ -1,5 +1,29 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::any::Any;
+use std::cell::Cell;
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::collections::VecDeque;
+use std::ffi::c_void;
+use std::future::Future;
+use std::future::poll_fn;
+use std::mem::ManuallyDrop;
+use std::ops::Deref;
+use std::ops::DerefMut;
+use std::pin::Pin;
+use std::rc::Rc;
+use std::sync::Arc;
+use std::sync::Mutex;
+use std::task::Context;
+use std::task::Poll;
+use std::task::Waker;
+
+use deno_error::JsErrorBox;
+use futures::FutureExt;
+use futures::task::AtomicWaker;
+use smallvec::SmallVec;
+
 use super::SnapshotStoreDataStore;
 use super::SnapshottedData;
 use super::bindings;
@@ -64,29 +88,6 @@ use crate::runtime::jsrealm;
 use crate::source_map::SourceMapData;
 use crate::source_map::SourceMapper;
 use crate::stats::RuntimeActivityType;
-use deno_error::JsErrorBox;
-use futures::FutureExt;
-use futures::task::AtomicWaker;
-use smallvec::SmallVec;
-use std::any::Any;
-use std::future::Future;
-use std::future::poll_fn;
-
-use std::cell::Cell;
-use std::cell::RefCell;
-use std::collections::HashMap;
-use std::collections::VecDeque;
-use std::ffi::c_void;
-use std::mem::ManuallyDrop;
-use std::ops::Deref;
-use std::ops::DerefMut;
-use std::pin::Pin;
-use std::rc::Rc;
-use std::sync::Arc;
-use std::sync::Mutex;
-use std::task::Context;
-use std::task::Poll;
-use std::task::Waker;
 
 pub type WaitForInspectorDisconnectCallback = Box<dyn Fn()>;
 const STATE_DATA_OFFSET: u32 = 0;

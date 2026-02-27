@@ -1,16 +1,18 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use crate::JsRuntime;
-use crate::runtime::SnapshotLoadDataStore;
-use crate::runtime::SnapshotStoreDataStore;
-use serde::Deserialize;
-use serde::Serialize;
 use std::any::TypeId;
 use std::any::type_name;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
+
+use serde::Deserialize;
+use serde::Serialize;
 pub use v8::cppgc::GarbageCollected;
 pub use v8::cppgc::GcCell;
+
+use crate::JsRuntime;
+use crate::runtime::SnapshotLoadDataStore;
+use crate::runtime::SnapshotStoreDataStore;
 
 const CPPGC_SINGLE_TAG: u16 = 1;
 
@@ -473,9 +475,12 @@ inventory::collect!(InheritanceEdge);
 
 #[cfg(test)]
 mod tests {
-  use super::*;
-  use deno_ops::{CppgcBase, CppgcInherits};
   use std::any::TypeId;
+
+  use deno_ops::CppgcBase;
+  use deno_ops::CppgcInherits;
+
+  use super::*;
 
   #[repr(C)]
   #[derive(CppgcBase)]

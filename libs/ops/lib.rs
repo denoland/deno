@@ -84,6 +84,7 @@ fn get_internalized_string(
 #[cfg(test)]
 mod infra {
   use std::path::PathBuf;
+
   use syn::File;
 
   pub fn run_macro_expansion_test<F, I>(input: PathBuf, expander: F)

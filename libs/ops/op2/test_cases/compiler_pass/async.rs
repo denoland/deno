@@ -3,12 +3,13 @@
 #![deny(warnings)]
 deno_ops_compile_test_runner::prelude!();
 
-use deno_core::JsBuffer;
-use deno_core::OpState;
-use deno_error::JsErrorBox;
 use std::cell::RefCell;
 use std::future::Future;
 use std::rc::Rc;
+
+use deno_core::JsBuffer;
+use deno_core::OpState;
+use deno_error::JsErrorBox;
 
 // Collect a few examples that we'll smoke test when not running on the CI.
 

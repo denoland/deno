@@ -1,5 +1,11 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::future::poll_fn;
+use std::rc::Rc;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
+use std::task::Poll;
+
 use crate::JsRuntime;
 use crate::JsRuntimeForSnapshot;
 use crate::RuntimeOptions;
@@ -8,11 +14,6 @@ use crate::error::ExtensionLazyInitCountMismatchError;
 use crate::error::ExtensionLazyInitOrderMismatchError;
 use crate::modules::StaticModuleLoader;
 use crate::op2;
-use std::future::poll_fn;
-use std::rc::Rc;
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::Ordering;
-use std::task::Poll;
 
 #[test]
 fn test_set_format_exception_callback_realms() {

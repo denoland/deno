@@ -1,6 +1,12 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use crate::op2::signature::AttributeModifier;
+use proc_macro2::Ident;
+use proc_macro2::Span;
+use proc_macro2::TokenStream;
+use quote::ToTokens;
+use quote::format_ident;
+use quote::quote;
+use syn::parse2;
 
 use super::V8MappingError;
 use super::V8SignatureMappingError;
@@ -27,13 +33,7 @@ use super::signature::Special;
 use super::signature::Strings;
 use super::signature::WebIDLPair;
 use super::signature_retval::RetVal;
-use proc_macro2::Ident;
-use proc_macro2::Span;
-use proc_macro2::TokenStream;
-use quote::ToTokens;
-use quote::format_ident;
-use quote::quote;
-use syn::parse2;
+use crate::op2::signature::AttributeModifier;
 
 pub(crate) fn generate_dispatch_slow_call(
   generator_state: &mut GeneratorState,

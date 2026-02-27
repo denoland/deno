@@ -1,5 +1,8 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::cell::RefCell;
+use std::rc::Rc;
+
 use deno_core::AsyncRefCell;
 use deno_core::BufView;
 use deno_core::OpState;
@@ -11,8 +14,6 @@ use deno_core::WriteOutcome;
 use deno_core::op2;
 use deno_error::JsErrorBox;
 use futures::FutureExt;
-use std::cell::RefCell;
-use std::rc::Rc;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 use tokio::io::DuplexStream;

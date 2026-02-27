@@ -1,5 +1,16 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::borrow::Cow;
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::future::Future;
+use std::pin::Pin;
+use std::rc::Rc;
+
+use deno_error::JsErrorBox;
+use futures::future::FutureExt;
+
+use super::SourceCodeCacheInfo;
 use crate::ModuleSourceCode;
 use crate::error::CoreError;
 use crate::error::CoreErrorKind;
@@ -13,17 +24,6 @@ use crate::modules::ModuleType;
 use crate::modules::RequestedModuleType;
 use crate::modules::ResolutionKind;
 use crate::resolve_import;
-use deno_error::JsErrorBox;
-
-use futures::future::FutureExt;
-use std::borrow::Cow;
-use std::cell::RefCell;
-use std::collections::HashMap;
-use std::future::Future;
-use std::pin::Pin;
-use std::rc::Rc;
-
-use super::SourceCodeCacheInfo;
 
 pub type ModuleLoaderError = JsErrorBox;
 

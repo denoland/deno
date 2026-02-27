@@ -1,10 +1,11 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use crate::error::JsError;
-use crate::error::exception_to_err_result;
 use std::cell::Cell;
 use std::cell::RefCell;
 use std::collections::VecDeque;
+
+use crate::error::JsError;
+use crate::error::exception_to_err_result;
 
 #[derive(Default)]
 pub(crate) struct ExceptionState {

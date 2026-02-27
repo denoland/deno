@@ -1,8 +1,9 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::borrow::Cow;
+
 use deno_error::JsError;
 use indexmap::IndexMap;
-use std::borrow::Cow;
 use v8::Local;
 use v8::Value;
 

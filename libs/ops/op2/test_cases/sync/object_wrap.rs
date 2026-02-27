@@ -2,10 +2,11 @@
 
 #![deny(warnings)]
 deno_ops_compile_test_runner::prelude!();
+use std::cell::Cell;
+
 use deno_core::cppgc::GarbageCollected;
 use deno_core::v8;
 use deno_error::JsErrorBox;
-use std::cell::Cell;
 
 pub struct Foo {
   x: Cell<u32>,

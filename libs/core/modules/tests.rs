@@ -2,6 +2,28 @@
 
 #![allow(clippy::print_stderr)]
 
+use std::borrow::Cow;
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::fmt;
+use std::future::Future;
+use std::future::poll_fn;
+use std::pin::Pin;
+use std::rc::Rc;
+use std::sync::Arc;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
+use std::task::Context;
+use std::task::Poll;
+
+use deno_error::JsErrorBox;
+use deno_error::JsErrorClass;
+use deno_ops::op2;
+use futures::future::FutureExt;
+use parking_lot::Mutex;
+use tokio::task::LocalSet;
+use url::Url;
+
 use crate::FastString;
 use crate::ModuleCodeString;
 use crate::ModuleSource;
@@ -10,6 +32,8 @@ use crate::ModuleType;
 use crate::ResolutionKind;
 use crate::RuntimeOptions;
 use crate::ascii_str;
+// deno_ops macros generate code assuming deno_core in scope.
+use crate::deno_core;
 use crate::error::CoreErrorKind;
 use crate::error::exception_to_err_result;
 use crate::modules::CustomModuleEvaluationKind;
@@ -30,29 +54,6 @@ use crate::resolve_import;
 use crate::resolve_url;
 use crate::runtime::JsRuntime;
 use crate::runtime::JsRuntimeForSnapshot;
-use deno_error::JsErrorBox;
-use deno_error::JsErrorClass;
-use deno_ops::op2;
-use futures::future::FutureExt;
-use parking_lot::Mutex;
-use std::borrow::Cow;
-use std::cell::RefCell;
-use std::collections::HashMap;
-use std::fmt;
-use std::future::Future;
-use std::future::poll_fn;
-use std::pin::Pin;
-use std::rc::Rc;
-use std::sync::Arc;
-use std::sync::atomic::AtomicUsize;
-use std::sync::atomic::Ordering;
-use std::task::Context;
-use std::task::Poll;
-use tokio::task::LocalSet;
-use url::Url;
-
-// deno_ops macros generate code assuming deno_core in scope.
-use crate::deno_core;
 
 #[derive(Default)]
 struct MockLoader {
