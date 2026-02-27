@@ -585,12 +585,31 @@ impl JsRuntime {
   /// Explicitly initalizes the V8 platform using the passed platform. This
   /// should only be called once per process. Further calls will be silently
   /// ignored.
+  pub fn init_platform(v8_platform: Option<v8::SharedRef<v8::Platform>>) {
+    Self::init_platform_inner(v8_platform, false);
+  }
+
+  /// Explicitly initalizes the V8 platform using the passed platform. This
+  /// should only be called once per process. Further calls will be silently
+  /// ignored.
+  ///
+  /// WARNING: This should not be used for production code as
+  /// this may expose the runtime to security vulnerabilities.
+  pub fn init_platform_with_exposed_natives_and_gc(
+    v8_platform: Option<v8::SharedRef<v8::Platform>>,
+  ) {
+    Self::init_platform_inner(v8_platform, true);
+  }
+
+  /// Explicitly initalizes the V8 platform using the passed platform. This
+  /// should only be called once per process. Further calls will be silently
+  /// ignored.
   ///
   /// The `expose_natives` flag is used to expose the v8 natives
   /// (eg: %OptimizeFunctionOnNextCall) and GC control functions (`gc()`).
   /// WARNING: This should not be used for production code as
   /// this may expose the runtime to security vulnerabilities.
-  pub fn init_platform(
+  fn init_platform_inner(
     v8_platform: Option<v8::SharedRef<v8::Platform>>,
     expose_natives: bool,
   ) {
