@@ -664,6 +664,24 @@ impl Graph {
     parent.children.insert(specifier.clone(), child_id);
   }
 
+  /// Finds a node with the given `nv` that already has `specifier` as a
+  /// child, returning the child's NodeId.
+  fn find_existing_child_for_nv(
+    &self,
+    nv: &PackageNv,
+    specifier: &StackString,
+  ) -> Option<NodeId> {
+    for (&node_id, node) in &self.nodes {
+      if let Some(&child_id) = node.children.get(specifier)
+        && let Some(resolved_id) = self.resolved_node_ids.get(node_id)
+        && *resolved_id.nv == *nv
+      {
+        return Some(child_id);
+      }
+    }
+    None
+  }
+
   pub async fn into_snapshot<TNpmRegistryApi: NpmRegistryApi>(
     self,
     api: &TNpmRegistryApi,
@@ -1011,6 +1029,9 @@ pub struct GraphDependencyResolver<'a, TNpmRegistryApi: NpmRegistryApi> {
   dep_entry_cache: DepEntryCache,
   reporter: Option<&'a dyn Reporter>,
   should_dedup: bool,
+  /// Whether the dedup pass has run. Controls peer dep resolution
+  /// strategy (registry-only before dedup, `package_name_versions` after).
+  post_dedup: bool,
   /// The initial overrides from the root package.json.
   /// Used when creating root-level GraphPaths.
   initial_overrides: Rc<NpmOverrides>,
@@ -1035,6 +1056,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
       dep_entry_cache: Default::default(),
       reporter,
       should_dedup: options.should_dedup,
+      post_dedup: false,
       initial_overrides: Rc::new((*version_resolver.overrides).clone()),
     }
   }
@@ -1214,6 +1236,43 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
         .or_default()
         .iter(),
     )?;
+    self.create_node_from_version_info(
+      pkg_req_name,
+      version_req,
+      version_resolver,
+      parent_id,
+      info,
+    )
+  }
+
+  /// Like `resolve_node_from_info` but skips `package_name_versions`,
+  /// resolving directly from the registry.
+  fn resolve_node_from_registry(
+    &mut self,
+    pkg_req_name: &str,
+    version_req: &VersionReq,
+    version_resolver: &NpmPackageVersionResolver,
+    parent_id: Option<NodeId>,
+  ) -> Result<(Rc<PackageNv>, NodeId), NpmResolutionError> {
+    let info = version_resolver
+      .resolve_best_package_version_info(version_req, std::iter::empty())?;
+    self.create_node_from_version_info(
+      pkg_req_name,
+      version_req,
+      version_resolver,
+      parent_id,
+      info,
+    )
+  }
+
+  fn create_node_from_version_info(
+    &mut self,
+    pkg_req_name: &str,
+    version_req: &VersionReq,
+    version_resolver: &NpmPackageVersionResolver,
+    parent_id: Option<NodeId>,
+    info: &NpmPackageVersionInfo,
+  ) -> Result<(Rc<PackageNv>, NodeId), NpmResolutionError> {
     let resolved_id = ResolvedId {
       nv: Rc::new(PackageNv {
         name: version_resolver.info().name.clone(),
@@ -1292,6 +1351,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
       if self.should_dedup && !did_dedup {
         self.run_dedup_pass().await?;
         did_dedup = true;
+        self.post_dedup = true;
       }
     }
 
@@ -1673,7 +1733,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
       Ok(None)
     } else {
       // We didn't find anything by searching the ancestor siblings, so we need
-      // to resolve based on the package info
+      // to resolve based on the package info.
       let parent_id = ancestor_path.node_id();
       let default_req = peer_dep
         .peer_dep_version_req
@@ -1688,15 +1748,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
         Some(req) => req,
         None => {
           let natural_version = peer_version_resolver
-            .resolve_best_package_version_info(
-              default_req,
-              self
-                .graph
-                .package_name_versions
-                .entry(peer_version_resolver.info().name.clone())
-                .or_default()
-                .iter(),
-            )
+            .resolve_best_package_version_info(default_req, std::iter::empty())
             .ok()
             .map(|info| info.version.clone());
           match natural_version.as_ref().and_then(|v| {
@@ -1709,12 +1761,48 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
           }
         }
       };
-      let (_, node_id) = self.resolve_node_from_info(
-        &peer_dep.name,
-        effective_req,
-        peer_version_resolver,
-        Some(parent_id),
-      )?;
+
+      // Reuse an existing resolution for this peer dep if one exists
+      // (e.g. from a snapshot or an earlier BFS path).
+      if !self.post_dedup
+        && let Some(existing_child_id) = self
+          .graph
+          .find_existing_child_for_nv(&ancestor_path.nv, specifier)
+      {
+        let child_resolved_id =
+          self.graph.resolved_node_ids.get(existing_child_id).unwrap();
+        if peer_version_resolver
+          .version_req_satisfies(effective_req, &child_resolved_id.nv.version)?
+        {
+          let peer_parent = GraphPathNodeOrRoot::Node(ancestor_path.clone());
+          self.set_new_peer_dep(
+            &[ancestor_path],
+            peer_parent,
+            specifier,
+            existing_child_id,
+          );
+          return Ok(Some(existing_child_id));
+        }
+      }
+
+      // After dedup, package_name_versions is trimmed to the consolidated
+      // set so we must consult it. Before dedup, we skip it because it
+      // grows during BFS and would cause order-dependent results.
+      let (_, node_id) = if self.post_dedup {
+        self.resolve_node_from_info(
+          &peer_dep.name,
+          effective_req,
+          peer_version_resolver,
+          Some(parent_id),
+        )?
+      } else {
+        self.resolve_node_from_registry(
+          &peer_dep.name,
+          effective_req,
+          peer_version_resolver,
+          Some(parent_id),
+        )?
+      };
       let peer_parent = GraphPathNodeOrRoot::Node(ancestor_path.clone());
       self.set_new_peer_dep(&[ancestor_path], peer_parent, specifier, node_id);
       Ok(Some(node_id))
@@ -2162,7 +2250,13 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
                 .or_default()
                 .entry(child_id.nv.version.clone())
                 .or_default()
-                .push(dep.version_req.clone());
+                .push(
+                  dep
+                    .peer_dep_version_req
+                    .as_ref()
+                    .unwrap_or(&dep.version_req)
+                    .clone(),
+                );
               if seen_nodes.insert(*child_node_id) {
                 pending_nodes.push_back(*child_node_id);
               }
@@ -2264,7 +2358,11 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
         else {
           continue;
         };
-        if versions.contains_key(&dep.version_req) {
+        let effective_req = dep
+          .peer_dep_version_req
+          .as_ref()
+          .unwrap_or(&dep.version_req);
+        if versions.contains_key(effective_req) {
           node.children.remove(&dep.bare_specifier);
         }
       }
@@ -7403,5 +7501,170 @@ mod test {
       parent.dependencies.get("@std/path").unwrap(),
       "@jsr/std__path@1.0.0"
     );
+  }
+
+  /// Auto-resolved peer deps must not depend on BFS traversal order.
+  ///
+  /// ```text
+  ///   package-a ──dep──→ lib ──peerDep──→ react
+  ///   package-b ──dep──→ bridge ──dep──→ react@^18.3.0
+  ///             └─dep──→ wrapper ──dep──→ lib ──peerDep──→ react
+  /// ```
+  ///
+  /// `bridge` adds react@18.3.0 to the graph at BFS depth 1. Without the
+  /// fix, `lib`'s peer dep would pick react@18.2.0 (latest) on one path
+  /// but react@18.3.0 (highest existing) on the other, creating a
+  /// duplicate `lib` entry. Both paths should resolve to the same version.
+  #[tokio::test]
+  async fn peer_dep_bfs_order_dependent_version_selection() {
+    let api = TestNpmRegistryApi::default();
+
+    api.ensure_package_version("react", "18.2.0");
+    api.ensure_package_version("react", "18.3.0");
+    api.add_dist_tag("react", "latest", "18.2.0");
+
+    api.ensure_package_version("lib", "1.0.0");
+    api.add_peer_dependency(("lib", "1.0.0"), ("react", "^18.0.0"));
+
+    api.ensure_package_version("package-a", "1.0.0");
+    api.add_dependency(("package-a", "1.0.0"), ("lib", "^1.0.0"));
+
+    api.ensure_package_version("bridge", "1.0.0");
+    api.add_dependency(("bridge", "1.0.0"), ("react", "^18.3.0"));
+
+    api.ensure_package_version("wrapper", "1.0.0");
+    api.add_dependency(("wrapper", "1.0.0"), ("lib", "^1.0.0"));
+
+    api.ensure_package_version("package-b", "1.0.0");
+    api.add_dependency(("package-b", "1.0.0"), ("bridge", "^1.0.0"));
+    api.add_dependency(("package-b", "1.0.0"), ("wrapper", "^1.0.0"));
+
+    let input_reqs = vec!["package-a@1", "package-b@1"];
+
+    for skip_dedup in [true, false] {
+      let (packages, _) = run_resolver_with_options_and_get_output(
+        api.clone(),
+        RunResolverOptions {
+          reqs: input_reqs.clone(),
+          skip_dedup,
+          ..Default::default()
+        },
+      )
+      .await;
+
+      let lib_entries: Vec<_> = packages
+        .iter()
+        .filter(|p| p.pkg_id.starts_with("lib@1.0.0"))
+        .collect();
+
+      assert_eq!(
+        lib_entries.len(),
+        1,
+        "lib should appear exactly once (skip_dedup={skip_dedup}). \
+        Packages: {:#?}",
+        packages,
+      );
+    }
+  }
+
+  /// Re-resolution with a snapshot must not create duplicate peer dep
+  /// entries when a newer version has been published.
+  ///
+  /// ```text
+  ///   framework ──dep──→ lib ──peerDep──→ react  (snapshot: react@18.2.0)
+  ///   new-package ──dep──→ bridge ──dep──→ react@^18.3.0
+  ///               └─dep──→ wrapper ──dep──→ lib ──peerDep──→ react
+  /// ```
+  ///
+  /// After react@18.3.0 is published and becomes "latest", adding
+  /// `new-package` must not create a second `lib` entry.
+  #[tokio::test]
+  async fn new_version_published_causes_peer_dep_duplicates() {
+    let api = TestNpmRegistryApi::default();
+
+    api.ensure_package_version("react", "18.2.0");
+    api.add_dist_tag("react", "latest", "18.2.0");
+
+    api.ensure_package_version("lib", "1.0.0");
+    api.add_peer_dependency(("lib", "1.0.0"), ("react", "^18.0.0"));
+
+    api.ensure_package_version("framework", "1.0.0");
+    api.add_dependency(("framework", "1.0.0"), ("lib", "^1.0.0"));
+
+    let snapshot = run_resolver_with_options_and_get_snapshot(
+      &api,
+      RunResolverOptions {
+        reqs: vec!["framework@1"],
+        ..Default::default()
+      },
+    )
+    .await
+    .unwrap();
+
+    let (initial_packages, _) = snapshot_to_packages(snapshot.clone());
+    let initial_lib = initial_packages
+      .iter()
+      .find(|p| p.pkg_id.starts_with("lib@1.0.0"))
+      .unwrap();
+    assert_eq!(
+      initial_lib.dependencies.get("react").unwrap(),
+      "react@18.2.0",
+    );
+
+    // Publish react@18.3.0 as the new latest
+    api.ensure_package_version("react", "18.3.0");
+    api.add_dist_tag("react", "latest", "18.3.0");
+
+    api.ensure_package_version("bridge", "1.0.0");
+    api.add_dependency(("bridge", "1.0.0"), ("react", "^18.3.0"));
+    api.ensure_package_version("wrapper", "1.0.0");
+    api.add_dependency(("wrapper", "1.0.0"), ("lib", "^1.0.0"));
+    api.ensure_package_version("new-package", "1.0.0");
+    api.add_dependency(("new-package", "1.0.0"), ("bridge", "^1.0.0"));
+    api.add_dependency(("new-package", "1.0.0"), ("wrapper", "^1.0.0"));
+
+    for skip_dedup in [true, false] {
+      let (packages, _) = run_resolver_with_options_and_get_output(
+        api.clone(),
+        RunResolverOptions {
+          snapshot: snapshot.clone(),
+          reqs: vec!["new-package@1"],
+          skip_dedup,
+          ..Default::default()
+        },
+      )
+      .await;
+
+      let lib_entries: Vec<_> = packages
+        .iter()
+        .filter(|p| p.pkg_id.starts_with("lib@1.0.0"))
+        .collect();
+
+      assert_eq!(
+        lib_entries.len(),
+        1,
+        "lib should appear exactly once (skip_dedup={skip_dedup}). \
+        Found {}: {:#?}\nAll packages: {:#?}",
+        lib_entries.len(),
+        lib_entries,
+        packages,
+      );
+
+      let framework_pkg = packages
+        .iter()
+        .find(|p| p.pkg_id.starts_with("framework@"))
+        .unwrap();
+      let wrapper_pkg = packages
+        .iter()
+        .find(|p| p.pkg_id.starts_with("wrapper@"))
+        .unwrap();
+      assert_eq!(
+        framework_pkg.dependencies.get("lib").unwrap(),
+        wrapper_pkg.dependencies.get("lib").unwrap(),
+        "framework and wrapper should share the same lib \
+        (skip_dedup={skip_dedup}). Packages: {:#?}",
+        packages,
+      );
+    }
   }
 }
