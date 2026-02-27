@@ -10,8 +10,7 @@ fn main() {
   // DLL can link against them.
   #[cfg(target_os = "windows")]
   {
-    let out_dir =
-      std::path::PathBuf::from(std::env::var("OUT_DIR").unwrap());
+    let out_dir = std::path::PathBuf::from(std::env::var("OUT_DIR").unwrap());
     let def_path = out_dir.join("extra_napi.def");
     std::fs::write(
       &def_path,
