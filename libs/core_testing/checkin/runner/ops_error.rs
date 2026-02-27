@@ -1,5 +1,8 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+// NB(bartlomieju): this is on purpose to force async ops
+#![allow(clippy::unused_async)]
+
 use deno_core::op2;
 use deno_error::JsErrorBox;
 

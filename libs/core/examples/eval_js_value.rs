@@ -6,6 +6,9 @@
 // Here we are deserializing to `serde_json::Value` but you can
 // deserialize to any other type that implements the `Deserialize` trait.
 
+// NB(bartlomieju): this is fine for example code
+#![allow(clippy::print_stdout)]
+
 use deno_core::JsRuntime;
 use deno_core::RuntimeOptions;
 use deno_core::v8;

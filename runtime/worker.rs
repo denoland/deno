@@ -1147,6 +1147,7 @@ fn common_runtime(opts: CommonRuntimeOptions) -> JsRuntime {
     v8_platform: None,
     custom_module_evaluation_cb: None,
     eval_context_code_cache_cbs: None,
+    unsafe_expose_natives_and_gc: false,
   });
 
   js_runtime

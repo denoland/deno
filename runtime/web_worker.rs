@@ -666,6 +666,7 @@ impl WebWorker {
       wait_for_inspector_disconnect_callback: None,
       custom_module_evaluation_cb: None,
       eval_context_code_cache_cbs: None,
+      unsafe_expose_natives_and_gc: false,
     });
 
     if let Some(op_summary_metrics) = op_summary_metrics {

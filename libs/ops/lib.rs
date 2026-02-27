@@ -2,6 +2,8 @@
 
 #![doc = include_str!("README.md")]
 #![deny(clippy::unnecessary_wraps)]
+// TODO(bartlomieju): remove println! usage from macro debugging/test code
+#![allow(clippy::print_stdout)]
 
 use proc_macro::TokenStream;
 

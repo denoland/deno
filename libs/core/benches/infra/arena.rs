@@ -1,6 +1,8 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 #![allow(clippy::needless_range_loop)]
+#![allow(clippy::undocumented_unsafe_blocks)]
+
 use std::alloc::Layout;
 use std::cell::RefCell;
 use std::hint::black_box;

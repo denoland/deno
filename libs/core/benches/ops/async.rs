@@ -1,5 +1,8 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+// NB(bartlomieju): this is on purpose to force async ops
+#![allow(clippy::unused_async)]
+
 use std::ffi::c_void;
 
 use bencher::*;
@@ -104,18 +107,11 @@ fn bench_op(
   arg_count: usize,
   call: &str,
 ) {
-  #[cfg(not(feature = "unsafe_runtime_options"))]
-  unreachable!(
-    "This benchmark must be run with --features=unsafe_runtime_options"
-  );
-
   let tokio = tokio::runtime::Builder::new_current_thread()
     .build()
     .unwrap();
   let mut runtime = JsRuntime::new(RuntimeOptions {
     extensions: vec![testing::init()],
-    // We need to feature gate this here to prevent IDE errors
-    #[cfg(feature = "unsafe_runtime_options")]
     unsafe_expose_natives_and_gc: true,
     ..Default::default()
   });

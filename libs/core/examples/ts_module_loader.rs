@@ -4,6 +4,9 @@
 //!
 //! It will only transpile, not typecheck (like Deno's `--no-check` flag).
 
+// NB(bartlomieju): this is fine for example code
+#![allow(clippy::print_stdout)]
+
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;

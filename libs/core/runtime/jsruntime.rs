@@ -506,7 +506,6 @@ pub struct RuntimeOptions {
   /// Only used when `is_main` is false. Starts at 1.
   pub worker_id: Option<u32>,
 
-  #[cfg(any(test, feature = "unsafe_runtime_options"))]
   /// Should this isolate expose the v8 natives (eg: %OptimizeFunctionOnNextCall) and
   /// GC control functions (`gc()`)? WARNING: This should not be used for production code as
   /// this may expose the runtime to security vulnerabilities.
@@ -544,18 +543,6 @@ pub struct RuntimeOptions {
   /// annotated with `stack_trace` attribute. Use wisely, as it's very expensive
   /// to collect stack traces on each op invocation.
   pub maybe_op_stack_trace_callback: Option<OpStackTraceCallback>,
-}
-
-impl RuntimeOptions {
-  #[cfg(any(test, feature = "unsafe_runtime_options"))]
-  fn unsafe_expose_natives_and_gc(&self) -> bool {
-    self.unsafe_expose_natives_and_gc
-  }
-
-  #[cfg(not(any(test, feature = "unsafe_runtime_options")))]
-  fn unsafe_expose_natives_and_gc(&self) -> bool {
-    false
-  }
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -598,20 +585,11 @@ impl JsRuntime {
   /// Explicitly initalizes the V8 platform using the passed platform. This
   /// should only be called once per process. Further calls will be silently
   /// ignored.
-  #[cfg(not(any(test, feature = "unsafe_runtime_options")))]
-  pub fn init_platform(v8_platform: Option<v8::SharedRef<v8::Platform>>) {
-    setup::init_v8(v8_platform, cfg!(test), false);
-  }
-
-  /// Explicitly initalizes the V8 platform using the passed platform. This
-  /// should only be called once per process. Further calls will be silently
-  /// ignored.
   ///
   /// The `expose_natives` flag is used to expose the v8 natives
   /// (eg: %OptimizeFunctionOnNextCall) and GC control functions (`gc()`).
   /// WARNING: This should not be used for production code as
   /// this may expose the runtime to security vulnerabilities.
-  #[cfg(any(test, feature = "unsafe_runtime_options"))]
   pub fn init_platform(
     v8_platform: Option<v8::SharedRef<v8::Platform>>,
     expose_natives: bool,
@@ -639,7 +617,7 @@ impl JsRuntime {
     setup::init_v8(
       options.v8_platform.take(),
       cfg!(test),
-      options.unsafe_expose_natives_and_gc(),
+      options.unsafe_expose_natives_and_gc,
     );
     JsRuntime::new_inner(options, false)
   }
@@ -2303,7 +2281,7 @@ impl JsRuntimeForSnapshot {
     setup::init_v8(
       options.v8_platform.take(),
       true,
-      options.unsafe_expose_natives_and_gc(),
+      options.unsafe_expose_natives_and_gc,
     );
 
     let runtime = JsRuntime::new_inner(options, true)?;

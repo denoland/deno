@@ -1,5 +1,11 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+// NB(bartlomieju): these are fine for testing
+#![allow(clippy::print_stdout)]
+#![allow(clippy::print_stderr)]
+// TODO(bartlomieju): add safety comments to unsafe blocks and remove this allow
+#![allow(clippy::undocumented_unsafe_blocks)]
+
 mod checkin;
 
 pub use checkin::runner::create_runtime_from_snapshot;

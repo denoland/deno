@@ -4,6 +4,8 @@
 #![deny(clippy::print_stdout)]
 #![deny(clippy::unused_async)]
 #![deny(clippy::unnecessary_wraps)]
+// TODO(bartlomieju): add safety comments to unsafe blocks and remove this allow
+#![allow(clippy::undocumented_unsafe_blocks)]
 
 pub mod arena;
 mod async_cancel;
