@@ -13,15 +13,11 @@
         }
       ]
     },
-    "missing_scripts": {
+    "binding_gyp_scripts": {
       "steps": [
         {
-          "args": "install npm:denotest-packagejson-missing-info@0.5.0-missingscripts",
-          "output": "missingscripts.out"
-        },
-        {
-          "args": "install --allow-scripts",
-          "output": "[WILDCARD]running 'postinstall' script\n[WILDCARD]"
+          "args": "install npm:denotest-packagejson-missing-info@0.7.0-bindinggyp",
+          "output": "bindinggyp.out"
         }
       ]
     },

@@ -1,5 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -106,14 +107,28 @@ impl NpmPackageExtraInfoProvider {
       self.fetch_from_registry(package_nv).await
     } else {
       match self.fetch_from_package_json(package_path).await {
-        Ok(extra_info) => {
+        Ok(mut extra_info) => {
           // some packages that use "directories.bin" have a "bin" entry in
           // the packument, but not in package.json (e.g. esbuild-wasm)
-          if (expected.bin && extra_info.bin.is_none())
-            || (expected.scripts && extra_info.scripts.is_empty())
-          {
+          if expected.bin && extra_info.bin.is_none() {
             self.fetch_from_registry(package_nv).await
           } else {
+            // When a package has a binding.gyp and no install/preinstall script,
+            // npm injects `"install": "node-gyp rebuild"` at publish time. This
+            // script appears in the packument but not in the tarball's package.json.
+            // Match pnpm's behavior and detect this case by checking for the file.
+            if expected.scripts
+              && extra_info.scripts.is_empty()
+              && self
+                .sys
+                .base_fs_read(&package_path.join("binding.gyp"))
+                .is_ok()
+            {
+              extra_info.scripts = HashMap::from([(
+                "install".into(),
+                "node-gyp rebuild".to_string(),
+              )]);
+            }
             Ok(extra_info)
           }
         }

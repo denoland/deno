@@ -790,7 +790,8 @@ impl Graph {
         }),
         is_deprecated: version_info.deprecated.is_some(),
         has_bin: version_info.bin.is_some(),
-        has_scripts: version_info.scripts.contains_key("preinstall")
+        has_scripts: version_info.has_install_script
+          || version_info.scripts.contains_key("preinstall")
           || version_info.scripts.contains_key("install")
           || version_info.scripts.contains_key("postinstall"),
         optional_peer_dependencies: version_info

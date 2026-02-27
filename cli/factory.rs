@@ -95,6 +95,7 @@ use crate::npm::CliNpmInstaller;
 use crate::npm::CliNpmInstallerFactory;
 use crate::npm::CliNpmResolver;
 use crate::npm::DenoTaskLifeCycleScriptsExecutor;
+use crate::npm::NpmPackumentFormat;
 use crate::resolver::CliCjsTracker;
 use crate::resolver::CliNpmReqResolver;
 use crate::resolver::CliResolver;
@@ -579,11 +580,21 @@ impl CliFactory {
     self.services.npm_installer_factory.get_or_try_init(|| {
       let cli_options = self.cli_options()?;
       let resolver_factory = self.resolver_factory()?;
+      let needs_full_packument = resolver_factory
+        .minimum_dependency_age_config()
+        .ok()
+        .and_then(|c| c.age.as_ref().and_then(|d| d.into_option()))
+        .is_some();
       Ok(CliNpmInstallerFactory::new(
         resolver_factory.clone(),
         Arc::new(CliNpmCacheHttpClient::new(
           self.http_client_provider().clone(),
           self.text_only_progress_bar().clone(),
+          if needs_full_packument {
+            NpmPackumentFormat::Full
+          } else {
+            NpmPackumentFormat::Abbreviated
+          },
         )),
         match resolver_factory.npm_resolver()?.as_managed() {
           Some(managed_npm_resolver) => {
