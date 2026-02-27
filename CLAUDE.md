@@ -151,8 +151,8 @@ cargo test spec::test_name
 
 ### Unit Tests (`tests/unit/`)
 
-JavaScript/TypeScript unit tests live in `tests/unit/` as `*_test.ts` files.
-Run them via `cargo test`:
+JavaScript/TypeScript unit tests live in `tests/unit/` as `*_test.ts` files. Run
+them via `cargo test`:
 
 ```bash
 # Run all unit tests in a specific file
