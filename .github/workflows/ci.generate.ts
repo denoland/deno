@@ -95,6 +95,16 @@ const Runners = {
   },
 } as const;
 
+const denoCorePackageDirs = [
+  "libs/core_testing",
+  "libs/core",
+  "libs/core/examples/snapshot",
+  "libs/dcore",
+  "libs/ops",
+  "libs/ops/compile_test_runner",
+  "libs/serde_v8",
+];
+
 // discover test crates first so we know which workspace members are test packages
 const { testCrates, testPackageMembers } = resolveTestCrateTests();
 // discover workspace members for the libs test job, split by type
@@ -1764,7 +1774,7 @@ function resolveWorkspaceCrates(testPackageMembers: Set<string>) {
       if (!testPackageMembers.has(member)) {
         ensureNoIntegrationTests(member, cargoToml);
       }
-    } else if (member.startsWith("libs")) {
+    } else if (denoCorePackageDirs.includes(member)) {
       // libs/* crates (merged from deno_core) have their own dedicated
       // deno-core-test CI job, so skip them here.
       continue;
