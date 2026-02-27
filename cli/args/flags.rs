@@ -160,6 +160,7 @@ pub struct CheckFlags {
   pub files: Vec<String>,
   pub doc: bool,
   pub doc_only: bool,
+  pub check_js: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -173,6 +174,7 @@ pub struct CompileFlags {
   pub include: Vec<String>,
   pub exclude: Vec<String>,
   pub eszip: bool,
+  pub self_extracting: bool,
 }
 
 impl CompileFlags {
@@ -591,6 +593,7 @@ pub struct BundleFlags {
   pub external: Vec<String>,
   pub format: BundleFormat,
   pub minify: bool,
+  pub keep_names: bool,
   pub code_splitting: bool,
   pub inline_imports: bool,
   pub packages: PackageHandling,
@@ -2536,6 +2539,12 @@ If no output file is given, the output is written to standard output:
           .action(ArgAction::SetTrue),
       )
       .arg(
+        Arg::new("keep-names")
+          .long("keep-names")
+          .help("Keep function and class names")
+          .action(ArgAction::SetTrue),
+      )
+      .arg(
         Arg::new("code-splitting")
           .long("code-splitting")
           .help("Enable code splitting")
@@ -2689,6 +2698,14 @@ Unless --reload is specified, this command will not re-download already cached d
             .conflicts_with("doc")
         )
         .arg(
+          Arg::new("check-js")
+            .long("check-js")
+            .help(
+              "Enable type-checking of JavaScript files (equivalent to `compilerOptions.checkJs: true`)",
+            )
+            .action(ArgAction::SetTrue)
+        )
+        .arg(
           Arg::new("file")
             .num_args(1..)
             .value_hint(ValueHint::FilePath),
@@ -2784,6 +2801,13 @@ On the first invocation of `deno compile`, Deno will download the relevant binar
           .long("icon")
           .help("Set the icon of the executable on Windows (.ico)")
           .value_parser(value_parser!(String))
+          .help_heading(COMPILE_HEADING),
+      )
+      .arg(
+        Arg::new("self-extracting")
+          .long("self-extracting")
+          .help("Create a self-extracting binary that extracts the embedded file system to disk on first run and then runs from there")
+          .action(ArgAction::SetTrue)
           .help_heading(COMPILE_HEADING),
       )
       .arg(executable_ext_arg())
@@ -6011,6 +6035,7 @@ fn bundle_parse(
     format: matches.remove_one::<BundleFormat>("format").unwrap(),
     packages: matches.remove_one::<PackageHandling>("packages").unwrap(),
     minify: matches.get_flag("minify"),
+    keep_names: matches.get_flag("keep-names"),
     code_splitting: matches.get_flag("code-splitting"),
     inline_imports: matches.get_flag("inline-imports"),
     platform: matches.remove_one::<BundlePlatform>("platform").unwrap(),
@@ -6052,6 +6077,7 @@ fn check_parse(
     files,
     doc: matches.get_flag("doc"),
     doc_only: matches.get_flag("doc-only"),
+    check_js: matches.get_flag("check-js"),
   });
   flags.code_cache_enabled = !matches.get_flag("no-code-cache");
   allow_and_deny_import_parse(flags, matches)?;
@@ -6082,6 +6108,19 @@ fn compile_parse(
   flags.type_check_mode = TypeCheckMode::Local;
   runtime_args_parse(flags, matches, true, false, true)?;
 
+  if let Some(initial_cwd) = flags.initial_cwd.take() {
+    // Usually we don't canonicalize because it's more sys calls, but with deno
+    // compile we want to reduce the chance of the virtual file system having a
+    // deep tree due to the initial directory being in some symlink somewhere.
+    // This is really common when compiling on GitHub Actions for example, which
+    // uses a symlinked directory for the cwd.
+    flags.initial_cwd = Some(
+      crate::util::fs::canonicalize_path(&initial_cwd)
+        .ok()
+        .unwrap_or(initial_cwd),
+    );
+  }
+
   let mut script = matches.remove_many::<String>("script_arg").unwrap();
   let source_file = script.next().unwrap();
   let args = script.collect();
@@ -6090,6 +6129,7 @@ fn compile_parse(
   let icon = matches.remove_one::<String>("icon");
   let no_terminal = matches.get_flag("no-terminal");
   let eszip = matches.get_flag("eszip-internal-do-not-use");
+  let self_extracting = matches.get_flag("self-extracting");
   let include = matches
     .remove_many::<String>("include")
     .map(|f| f.collect::<Vec<_>>())
@@ -6112,6 +6152,7 @@ fn compile_parse(
     include,
     exclude,
     eszip,
+    self_extracting,
   });
 
   Ok(())
@@ -6553,6 +6594,7 @@ fn install_parse(
   runtime_args_parse(flags, matches, true, true, false)?;
 
   let global = matches.get_flag("global");
+  allow_scripts_arg_parse(flags, matches)?;
   if global {
     let root = matches.remove_one::<String>("root");
     let force = matches.get_flag("force");
@@ -6589,7 +6631,6 @@ fn install_parse(
 
     if compile {
       flags.type_check_mode = TypeCheckMode::Local;
-      allow_scripts_arg_parse(flags, matches)?;
     }
 
     flags.subcommand =
@@ -6604,9 +6645,6 @@ fn install_parse(
 
     return Ok(());
   }
-
-  // allow scripts only applies to local install
-  allow_scripts_arg_parse(flags, matches)?;
   let lockfile_only = matches.get_flag("lockfile-only");
   if matches.get_flag("entrypoint") {
     let entrypoints = matches.remove_many::<String>("cmd").unwrap_or_default();
@@ -9334,6 +9372,7 @@ mod tests {
           files: svec!["script.ts"],
           doc: false,
           doc_only: false,
+          check_js: false,
         }),
         type_check_mode: TypeCheckMode::Local,
         code_cache_enabled: true,
@@ -9349,6 +9388,7 @@ mod tests {
           files: svec!["."],
           doc: false,
           doc_only: false,
+          check_js: false,
         }),
         type_check_mode: TypeCheckMode::Local,
         code_cache_enabled: true,
@@ -9364,6 +9404,7 @@ mod tests {
           files: svec!["script.ts"],
           doc: true,
           doc_only: false,
+          check_js: false,
         }),
         type_check_mode: TypeCheckMode::Local,
         code_cache_enabled: true,
@@ -9379,6 +9420,7 @@ mod tests {
           files: svec!["markdown.md"],
           doc: false,
           doc_only: true,
+          check_js: false,
         }),
         type_check_mode: TypeCheckMode::Local,
         code_cache_enabled: true,
@@ -9408,6 +9450,7 @@ mod tests {
             files: svec!["script.ts"],
             doc: false,
             doc_only: false,
+            check_js: false,
           }),
           type_check_mode: TypeCheckMode::All,
           code_cache_enabled: true,
@@ -9427,6 +9470,22 @@ mod tests {
         clap::error::ErrorKind::ArgumentConflict
       );
     }
+
+    let r = flags_from_vec(svec!["deno", "check", "--check-js", "script.js"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Check(CheckFlags {
+          files: svec!["script.js"],
+          doc: false,
+          doc_only: false,
+          check_js: true,
+        }),
+        type_check_mode: TypeCheckMode::Local,
+        code_cache_enabled: true,
+        ..Flags::default()
+      }
+    );
   }
 
   #[test]
@@ -12430,6 +12489,7 @@ mod tests {
           include: Default::default(),
           exclude: Default::default(),
           eszip: false,
+          self_extracting: false,
         }),
         type_check_mode: TypeCheckMode::Local,
         code_cache_enabled: true,
@@ -12455,7 +12515,8 @@ mod tests {
           icon: Some(String::from("favicon.ico")),
           include: vec!["include.txt".to_string()],
           exclude: vec!["exclude.txt".to_string()],
-          eszip: false
+          eszip: false,
+          self_extracting: false,
         }),
         import_map_path: Some("import_map.json".to_string()),
         no_remote: true,
@@ -14770,6 +14831,7 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
           include: Default::default(),
           exclude: Default::default(),
           eszip: false,
+          self_extracting: false,
         }),
         type_check_mode: TypeCheckMode::Local,
         preload: svec!["p1.js", "./p2.js"],
@@ -14886,6 +14948,7 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
           files: svec!["script.ts"],
           doc: false,
           doc_only: false,
+          check_js: false,
         }),
         type_check_mode: TypeCheckMode::Local,
         code_cache_enabled: true,

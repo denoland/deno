@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use std::io::BufRead;
 use std::io::Write;
 use std::path::Path;
+use std::path::PathBuf;
 use std::process::Child;
 use std::process::Command;
 use std::process::Stdio;
@@ -13,12 +14,14 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicI64;
 use std::sync::atomic::Ordering;
 
+use deno_ast::MediaType;
 use deno_config::deno_json::CompilerOptions;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
 use deno_graph::source::Resolver;
+use deno_path_util::url_from_directory_path;
 use deno_resolver::deno_json::CompilerOptionsKey;
 use indexmap::IndexSet;
 use lsp_types::Uri;
@@ -38,6 +41,7 @@ use crate::cache::DenoDir;
 use crate::http_util::HttpClientProvider;
 use crate::lsp::completions::CompletionItemData;
 use crate::lsp::documents::Document;
+use crate::lsp::documents::ServerDocumentKind;
 use crate::lsp::logging::lsp_log;
 use crate::lsp::logging::lsp_warn;
 use crate::lsp::resolver::SingleReferrerGraphResolver;
@@ -169,6 +173,17 @@ enum TsGoCallbackParams {
     referrer_uri: Uri,
     import_attribute_type: Option<String>,
     resolution_mode: deno_typescript_go_client_rust::types::ResolutionMode,
+    compiler_options_key: CompilerOptionsKey,
+  },
+  #[serde(rename_all = "camelCase")]
+  ResolveJsxImportSource {
+    compiler_options_key: CompilerOptionsKey,
+  },
+  #[serde(rename_all = "camelCase")]
+  GetPackageScopeForPath { directory_path: PathBuf },
+  #[serde(rename_all = "camelCase")]
+  GetImpliedNodeFormatForFile {
+    uri: Uri,
     compiler_options_key: CompilerOptionsKey,
   },
 }
@@ -603,7 +618,10 @@ impl TsGoServerInner {
     let pending_requests_clone = pending_requests.clone();
     let stdin_clone = stdin.clone();
     let snapshot_clone = snapshot.clone();
-    std::thread::spawn(move || {
+    // Use a blocking thread from the runtime instead of `std::thread::spawn()`
+    // because `DocumentModule::test_module_fut` is initialized with
+    // `tokio::task::spawn_blocking()` which can be called from here.
+    tokio::task::spawn_blocking(move || {
       let mut reader = std::io::BufReader::new(stdout);
       loop {
         let message = match read_lsp_message(&mut reader) {
@@ -726,6 +744,35 @@ impl TsGoServerInner {
       }
     });
 
+    let capabilities = {
+      let snapshot = snapshot.lock();
+      lsp::ClientCapabilities {
+        text_document: Some(lsp::TextDocumentClientCapabilities {
+          synchronization: None,
+          formatting: None,
+          range_formatting: None,
+          on_type_formatting: None,
+          publish_diagnostics: None,
+          diagnostic: Some(Default::default()),
+          ..snapshot
+            .config
+            .client_capabilities
+            .text_document
+            .clone()
+            .unwrap_or_default()
+        }),
+        workspace: Some(lsp::WorkspaceClientCapabilities {
+          symbol: snapshot
+            .config
+            .client_capabilities
+            .workspace
+            .as_ref()
+            .and_then(|w| w.symbol.clone()),
+          ..Default::default()
+        }),
+        ..Default::default()
+      }
+    };
     let initialize_request = json!({
       "jsonrpc": "2.0",
       "id": 0,
@@ -735,7 +782,7 @@ impl TsGoServerInner {
           "disablePushDiagnostics": true,
         },
         "processId": std::process::id(),
-        "capabilities": {},
+        "capabilities": capabilities,
         "rootUri": null,
         "workspaceFolders": null,
       },
@@ -805,14 +852,13 @@ impl TsGoServerInner {
       TsGoCallbackParams::ResolveModuleName {
         module_name,
         referrer_uri,
-        // TODO(nayeemrmn): Use this to redirect bytes/text imports.
-        import_attribute_type: _import_attribute_type,
+        import_attribute_type,
         resolution_mode,
         compiler_options_key,
       } => {
         let referrer_module = snapshot
           .document_modules
-          .module_for_tsgo_referrer(&referrer_uri, &compiler_options_key)
+          .module_for_tsgo_document(&referrer_uri, &compiler_options_key)
           .ok_or_else(|| anyhow!("Referrer module not found"))?;
         let Some((uri, media_type)) = snapshot
           .document_modules
@@ -830,6 +876,7 @@ impl TsGoServerInner {
               ResolutionMode::Import
             }
           },
+          import_attribute_type.as_deref(),
         ) else {
           return Ok(json!(null));
         };
@@ -837,6 +884,65 @@ impl TsGoServerInner {
           "uri": uri,
           "extension": media_type.as_ts_extension(),
         }))
+      }
+      TsGoCallbackParams::ResolveJsxImportSource {
+        compiler_options_key,
+      } => {
+        let compiler_options_data = snapshot
+          .compiler_options_resolver
+          .for_key(&compiler_options_key)
+          .unwrap();
+        let specifier = compiler_options_data
+          .jsx_import_source_config
+          .as_ref()
+          .and_then(|c| c.specifier());
+        Ok(json!(specifier))
+      }
+      TsGoCallbackParams::GetPackageScopeForPath { directory_path } => {
+        let Ok(directory_url) = url_from_directory_path(&directory_path) else {
+          return Ok(json!(null));
+        };
+        let scoped_resolver =
+          snapshot.resolver.get_scoped_resolver(Some(&directory_url));
+        let Ok(Some(package_json)) = scoped_resolver
+          .as_pkg_json_resolver()
+          .get_closest_package_json(&directory_path.join("package.json"))
+        else {
+          return Ok(json!(null));
+        };
+        Ok(json!({
+          "packageDirectoryPath": package_json.path.parent(),
+          "packageJsonText": serde_json::to_string(&package_json).unwrap(),
+        }))
+      }
+      TsGoCallbackParams::GetImpliedNodeFormatForFile {
+        uri,
+        compiler_options_key,
+      } => {
+        let referrer_module = snapshot
+          .document_modules
+          .module_for_tsgo_document(&uri, &compiler_options_key)
+          .ok_or_else(|| anyhow!("Module not found"))?;
+        let resolution_mode =
+          match (referrer_module.resolution_mode, referrer_module.media_type) {
+            (
+              _,
+              MediaType::Css
+              | MediaType::Json
+              | MediaType::Html
+              | MediaType::Sql
+              | MediaType::Wasm
+              | MediaType::SourceMap
+              | MediaType::Unknown,
+            ) => deno_typescript_go_client_rust::types::ResolutionMode::None,
+            (ResolutionMode::Import, _) => {
+              deno_typescript_go_client_rust::types::ResolutionMode::ESM
+            }
+            (ResolutionMode::Require, _) => {
+              deno_typescript_go_client_rust::types::ResolutionMode::CommonJS
+            }
+          };
+        Ok(json!(resolution_mode))
       }
     }
   }
@@ -1035,10 +1141,10 @@ impl TsGoServer {
     module: &DocumentModule,
     position: lsp::Position,
     context: lsp::ReferenceContext,
-    snapshot: Arc<StateSnapshot>,
+    snapshot: &Arc<StateSnapshot>,
     token: &CancellationToken,
   ) -> Result<Option<Vec<lsp::Location>>, AnyError> {
-    self
+    let mut references: Result<Option<Vec<lsp::Location>>, _> = self
       .request(
         TsGoRequest::LanguageServiceMethod {
           name: "ProvideReferences".to_string(),
@@ -1050,10 +1156,16 @@ impl TsGoServer {
           compiler_options_key: module.compiler_options_key.clone(),
           notebook_uri: module.notebook_uri.clone(),
         },
-        snapshot,
+        snapshot.clone(),
         token,
       )
-      .await
+      .await;
+    if let Ok(Some(locations)) = &mut references {
+      for location in locations {
+        normalize_location(location, snapshot)
+      }
+    }
+    references
   }
 
   pub async fn provide_code_lenses(
@@ -1168,10 +1280,10 @@ impl TsGoServer {
     &self,
     module: &DocumentModule,
     position: lsp::Position,
-    snapshot: Arc<StateSnapshot>,
+    snapshot: &Arc<StateSnapshot>,
     token: &CancellationToken,
   ) -> Result<Option<lsp::GotoDefinitionResponse>, AnyError> {
-    self
+    let mut response: Result<Option<lsp::GotoDefinitionResponse>, _> = self
       .request(
         TsGoRequest::LanguageServiceMethod {
           name: "ProvideDefinition".to_string(),
@@ -1179,20 +1291,27 @@ impl TsGoServer {
           compiler_options_key: module.compiler_options_key.clone(),
           notebook_uri: module.notebook_uri.clone(),
         },
-        snapshot,
+        snapshot.clone(),
         token,
       )
-      .await
+      .await;
+    if let Ok(Some(response)) = &mut response {
+      normalize_goto_definition_response(response, snapshot);
+    }
+    response
   }
 
   pub async fn provide_type_definition(
     &self,
     module: &DocumentModule,
     position: lsp::Position,
-    snapshot: Arc<StateSnapshot>,
+    snapshot: &Arc<StateSnapshot>,
     token: &CancellationToken,
   ) -> Result<Option<lsp::request::GotoTypeDefinitionResponse>, AnyError> {
-    self
+    let mut response: Result<
+      Option<lsp::request::GotoTypeDefinitionResponse>,
+      _,
+    > = self
       .request(
         TsGoRequest::LanguageServiceMethod {
           name: "ProvideTypeDefinition".to_string(),
@@ -1200,10 +1319,14 @@ impl TsGoServer {
           compiler_options_key: module.compiler_options_key.clone(),
           notebook_uri: module.notebook_uri.clone(),
         },
-        snapshot,
+        snapshot.clone(),
         token,
       )
-      .await
+      .await;
+    if let Ok(Some(response)) = &mut response {
+      normalize_goto_definition_response(response, snapshot);
+    }
+    response
   }
 
   pub async fn provide_completion(
@@ -1273,10 +1396,13 @@ impl TsGoServer {
     &self,
     module: &DocumentModule,
     position: lsp::Position,
-    snapshot: Arc<StateSnapshot>,
+    snapshot: &Arc<StateSnapshot>,
     token: &CancellationToken,
   ) -> Result<Option<lsp::request::GotoImplementationResponse>, AnyError> {
-    self
+    let mut response: Result<
+      Option<lsp::request::GotoImplementationResponse>,
+      _,
+    > = self
       .request(
         TsGoRequest::LanguageServiceMethod {
           name: "ProvideImplementations".to_string(),
@@ -1287,10 +1413,14 @@ impl TsGoServer {
           compiler_options_key: module.compiler_options_key.clone(),
           notebook_uri: module.notebook_uri.clone(),
         },
-        snapshot,
+        snapshot.clone(),
         token,
       )
-      .await
+      .await;
+    if let Ok(Some(response)) = &mut response {
+      normalize_goto_definition_response(response, snapshot);
+    }
+    response
   }
 
   pub async fn provide_folding_range(
@@ -1317,10 +1447,13 @@ impl TsGoServer {
     &self,
     module: &DocumentModule,
     item: &lsp::CallHierarchyItem,
-    snapshot: Arc<StateSnapshot>,
+    snapshot: &Arc<StateSnapshot>,
     token: &CancellationToken,
   ) -> Result<Option<Vec<lsp::CallHierarchyIncomingCall>>, AnyError> {
-    self
+    let mut incoming_calls: Result<
+      Option<Vec<lsp::CallHierarchyIncomingCall>>,
+      _,
+    > = self
       .request(
         TsGoRequest::LanguageServiceMethod {
           name: "ProvideCallHierarchyIncomingCalls".to_string(),
@@ -1328,20 +1461,29 @@ impl TsGoServer {
           compiler_options_key: module.compiler_options_key.clone(),
           notebook_uri: module.notebook_uri.clone(),
         },
-        snapshot,
+        snapshot.clone(),
         token,
       )
-      .await
+      .await;
+    if let Ok(Some(incoming_calls)) = &mut incoming_calls {
+      for incoming_call in incoming_calls {
+        normalize_call_hierarchy_incoming_call(incoming_call, snapshot);
+      }
+    }
+    incoming_calls
   }
 
   pub async fn provide_call_hierarchy_outgoing_calls(
     &self,
     module: &DocumentModule,
     item: &lsp::CallHierarchyItem,
-    snapshot: Arc<StateSnapshot>,
+    snapshot: &Arc<StateSnapshot>,
     token: &CancellationToken,
   ) -> Result<Option<Vec<lsp::CallHierarchyOutgoingCall>>, AnyError> {
-    self
+    let mut outgoing_calls: Result<
+      Option<Vec<lsp::CallHierarchyOutgoingCall>>,
+      _,
+    > = self
       .request(
         TsGoRequest::LanguageServiceMethod {
           name: "ProvideCallHierarchyOutgoingCalls".to_string(),
@@ -1349,31 +1491,44 @@ impl TsGoServer {
           compiler_options_key: module.compiler_options_key.clone(),
           notebook_uri: module.notebook_uri.clone(),
         },
-        snapshot,
+        snapshot.clone(),
         token,
       )
-      .await
+      .await;
+    if let Ok(Some(outgoing_calls)) = &mut outgoing_calls {
+      for outgoing_call in outgoing_calls {
+        normalize_call_hierarchy_outgoing_call(outgoing_call, snapshot);
+      }
+    }
+    outgoing_calls
   }
 
   pub async fn provide_prepare_call_hierarchy(
     &self,
     module: &DocumentModule,
     position: lsp::Position,
-    snapshot: Arc<StateSnapshot>,
+    snapshot: &Arc<StateSnapshot>,
     token: &CancellationToken,
   ) -> Result<Option<Vec<lsp::CallHierarchyItem>>, AnyError> {
-    self
-      .request(
-        TsGoRequest::LanguageServiceMethod {
-          name: "ProvidePrepareCallHierarchy".to_string(),
-          args: json!([&module.uri, position]),
-          compiler_options_key: module.compiler_options_key.clone(),
-          notebook_uri: module.notebook_uri.clone(),
-        },
-        snapshot,
-        token,
-      )
-      .await
+    let mut call_hierarchy: Result<Option<Vec<lsp::CallHierarchyItem>>, _> =
+      self
+        .request(
+          TsGoRequest::LanguageServiceMethod {
+            name: "ProvidePrepareCallHierarchy".to_string(),
+            args: json!([&module.uri, position]),
+            compiler_options_key: module.compiler_options_key.clone(),
+            notebook_uri: module.notebook_uri.clone(),
+          },
+          snapshot.clone(),
+          token,
+        )
+        .await;
+    if let Ok(Some(call_hierarchy_items)) = &mut call_hierarchy {
+      for call_hierarchy_item in call_hierarchy_items {
+        normalize_call_hierarchy_item(call_hierarchy_item, snapshot);
+      }
+    }
+    call_hierarchy
   }
 
   pub async fn provide_rename(
@@ -1475,17 +1630,128 @@ impl TsGoServer {
   pub async fn provide_workspace_symbol(
     &self,
     query: &str,
-    snapshot: Arc<StateSnapshot>,
+    snapshot: &Arc<StateSnapshot>,
     token: &CancellationToken,
   ) -> Result<Option<Vec<lsp::SymbolInformation>>, AnyError> {
-    self
-      .request(
-        TsGoRequest::WorkspaceSymbol {
-          query: query.to_string(),
-        },
-        snapshot,
-        token,
-      )
-      .await
+    let mut symbol_information: Result<Option<Vec<lsp::SymbolInformation>>, _> =
+      self
+        .request(
+          TsGoRequest::WorkspaceSymbol {
+            query: query.to_string(),
+          },
+          snapshot.clone(),
+          token,
+        )
+        .await;
+    if let Ok(Some(symbol_information)) = &mut symbol_information {
+      for symbol_information in symbol_information {
+        normalize_symbol_information(symbol_information, snapshot);
+      }
+    }
+    symbol_information
   }
+}
+
+fn normalize_uri_and_positions<'a>(
+  uri: &mut Uri,
+  positions: impl IntoIterator<Item = &'a mut lsp::Position>,
+  snapshot: &StateSnapshot,
+) {
+  let Some(document) = snapshot.document_modules.documents.get(uri) else {
+    return;
+  };
+  let Document::Server(server_document) = document else {
+    return;
+  };
+  let ServerDocumentKind::RawImportTypes { resource_uri, .. } =
+    &server_document.kind
+  else {
+    return;
+  };
+  *uri = resource_uri.clone();
+  for position in positions {
+    *position = Default::default();
+  }
+}
+
+fn normalize_location(location: &mut lsp::Location, snapshot: &StateSnapshot) {
+  normalize_uri_and_positions(
+    &mut location.uri,
+    [&mut location.range.start, &mut location.range.end],
+    snapshot,
+  )
+}
+
+fn normalize_location_link(
+  location_link: &mut lsp::LocationLink,
+  snapshot: &StateSnapshot,
+) {
+  normalize_uri_and_positions(
+    &mut location_link.target_uri,
+    [
+      &mut location_link.target_range.start,
+      &mut location_link.target_range.end,
+      &mut location_link.target_selection_range.start,
+      &mut location_link.target_selection_range.end,
+    ],
+    snapshot,
+  )
+}
+
+fn normalize_goto_definition_response(
+  response: &mut lsp::GotoDefinitionResponse,
+  snapshot: &StateSnapshot,
+) {
+  match response {
+    lsp::GotoDefinitionResponse::Scalar(location) => {
+      normalize_location(location, snapshot)
+    }
+    lsp::GotoDefinitionResponse::Array(locations) => {
+      for location in locations {
+        normalize_location(location, snapshot)
+      }
+    }
+    lsp::GotoDefinitionResponse::Link(location_links) => {
+      for location_link in location_links {
+        normalize_location_link(location_link, snapshot)
+      }
+    }
+  }
+}
+
+fn normalize_call_hierarchy_item(
+  call_hierarchy_item: &mut lsp::CallHierarchyItem,
+  snapshot: &StateSnapshot,
+) {
+  normalize_uri_and_positions(
+    &mut call_hierarchy_item.uri,
+    [
+      &mut call_hierarchy_item.range.start,
+      &mut call_hierarchy_item.range.end,
+      &mut call_hierarchy_item.selection_range.start,
+      &mut call_hierarchy_item.selection_range.end,
+    ],
+    snapshot,
+  )
+}
+
+fn normalize_call_hierarchy_incoming_call(
+  incoming_call: &mut lsp::CallHierarchyIncomingCall,
+  snapshot: &StateSnapshot,
+) {
+  normalize_call_hierarchy_item(&mut incoming_call.from, snapshot);
+}
+
+fn normalize_call_hierarchy_outgoing_call(
+  outgoing_call: &mut lsp::CallHierarchyOutgoingCall,
+  snapshot: &StateSnapshot,
+) {
+  normalize_call_hierarchy_item(&mut outgoing_call.to, snapshot);
+}
+
+fn normalize_symbol_information(
+  symbol_information: &mut lsp::SymbolInformation,
+  snapshot: &StateSnapshot,
+) {
+  normalize_location(&mut symbol_information.location, snapshot)
 }
