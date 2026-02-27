@@ -67,6 +67,7 @@ import {
   createWritableStdioStream,
   initStdin,
 } from "ext:deno_node/_process/streams.mjs";
+import { WriteStream as TTYWriteStream } from "ext:deno_node/internal/tty.js";
 import {
   enableNextTick,
   processTicksAndRejections,
@@ -1180,17 +1181,21 @@ internals.__bootstrapNodeProcess = function (
     core.setMacrotaskCallback(runNextTicks);
     enableNextTick();
 
-    // Replace stdout/stderr if they are not terminals
-    if (!io.stdout.isTerminal()) {
+    // Replace warmup stdout/stderr with proper streams
+    if (io.stdout.isTerminal()) {
       /** https://nodejs.org/api/process.html#process_process_stdout */
+      stdout = process.stdout = new TTYWriteStream(1);
+    } else {
       stdout = process.stdout = createWritableStdioStream(
         io.stdout,
         "stdout",
       );
     }
 
-    if (!io.stderr.isTerminal()) {
+    if (io.stderr.isTerminal()) {
       /** https://nodejs.org/api/process.html#process_process_stderr */
+      stderr = process.stderr = new TTYWriteStream(2);
+    } else {
       stderr = process.stderr = createWritableStdioStream(
         io.stderr,
         "stderr",
