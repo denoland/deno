@@ -835,109 +835,6 @@ fn check_is_complete(code: &str) -> messaging::IsCompleteReply {
   }
 }
 
-#[cfg(test)]
-mod tests {
-  use jupyter_protocol::messaging::IsCompleteReplyStatus;
-
-  use super::*;
-
-  #[test]
-  fn test_complete_simple_statement() {
-    let reply = check_is_complete("const x = 1");
-    assert_eq!(reply.status, IsCompleteReplyStatus::Complete);
-  }
-
-  #[test]
-  fn test_incomplete_open_brace() {
-    let reply = check_is_complete("const x = {");
-    assert_eq!(reply.status, IsCompleteReplyStatus::Incomplete);
-  }
-
-  #[test]
-  fn test_incomplete_open_paren() {
-    let reply = check_is_complete("function foo(");
-    assert_eq!(reply.status, IsCompleteReplyStatus::Incomplete);
-  }
-
-  #[test]
-  fn test_incomplete_open_bracket() {
-    let reply = check_is_complete("const arr = [1, 2,");
-    assert_eq!(reply.status, IsCompleteReplyStatus::Incomplete);
-  }
-
-  #[test]
-  fn test_complete_balanced_braces() {
-    let reply = check_is_complete("if (true) { console.log(1) }");
-    assert_eq!(reply.status, IsCompleteReplyStatus::Complete);
-  }
-
-  #[test]
-  fn test_complete_multiline() {
-    let reply = check_is_complete("function foo() {\n  return 1;\n}");
-    assert_eq!(reply.status, IsCompleteReplyStatus::Complete);
-  }
-
-  #[test]
-  fn test_invalid_extra_close() {
-    let reply = check_is_complete("const x = 1 }");
-    assert_eq!(reply.status, IsCompleteReplyStatus::Invalid);
-  }
-
-  #[test]
-  fn test_invalid_mismatched() {
-    let reply = check_is_complete("const x = (]");
-    assert_eq!(reply.status, IsCompleteReplyStatus::Invalid);
-  }
-
-  #[test]
-  fn test_ignores_brackets_in_strings() {
-    let reply = check_is_complete(r#"const x = "hello { world""#);
-    assert_eq!(reply.status, IsCompleteReplyStatus::Complete);
-  }
-
-  #[test]
-  fn test_ignores_brackets_in_single_line_comment() {
-    let reply = check_is_complete("const x = 1 // {");
-    assert_eq!(reply.status, IsCompleteReplyStatus::Complete);
-  }
-
-  #[test]
-  fn test_ignores_brackets_in_multiline_comment() {
-    let reply = check_is_complete("const x = 1 /* { */");
-    assert_eq!(reply.status, IsCompleteReplyStatus::Complete);
-  }
-
-  #[test]
-  fn test_incomplete_unterminated_string() {
-    let reply = check_is_complete(r#"const x = "hello"#);
-    assert_eq!(reply.status, IsCompleteReplyStatus::Incomplete);
-  }
-
-  #[test]
-  fn test_incomplete_unterminated_template_literal() {
-    let reply = check_is_complete("const x = `hello ${name}");
-    assert_eq!(reply.status, IsCompleteReplyStatus::Incomplete);
-  }
-
-  #[test]
-  fn test_incomplete_unterminated_multiline_comment() {
-    let reply = check_is_complete("/* this comment never ends");
-    assert_eq!(reply.status, IsCompleteReplyStatus::Incomplete);
-  }
-
-  #[test]
-  fn test_complete_empty() {
-    let reply = check_is_complete("");
-    assert_eq!(reply.status, IsCompleteReplyStatus::Complete);
-  }
-
-  #[test]
-  fn test_escaped_quote_in_string() {
-    let reply = check_is_complete(r#"const x = "hello \" world""#);
-    assert_eq!(reply.status, IsCompleteReplyStatus::Complete);
-  }
-}
-
 // TODO(bartlomieju): dedup with repl::editor
 fn get_expr_from_line_at_pos(line: &str, cursor_pos: usize) -> &str {
   let start = line[..cursor_pos].rfind(is_word_boundary).unwrap_or(0);
@@ -1038,5 +935,108 @@ async fn evaluate_expression(
     None
   } else {
     Some(evaluate_response)
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use jupyter_protocol::messaging::IsCompleteReplyStatus;
+
+  use super::*;
+
+  #[test]
+  fn test_complete_simple_statement() {
+    let reply = check_is_complete("const x = 1");
+    assert_eq!(reply.status, IsCompleteReplyStatus::Complete);
+  }
+
+  #[test]
+  fn test_incomplete_open_brace() {
+    let reply = check_is_complete("const x = {");
+    assert_eq!(reply.status, IsCompleteReplyStatus::Incomplete);
+  }
+
+  #[test]
+  fn test_incomplete_open_paren() {
+    let reply = check_is_complete("function foo(");
+    assert_eq!(reply.status, IsCompleteReplyStatus::Incomplete);
+  }
+
+  #[test]
+  fn test_incomplete_open_bracket() {
+    let reply = check_is_complete("const arr = [1, 2,");
+    assert_eq!(reply.status, IsCompleteReplyStatus::Incomplete);
+  }
+
+  #[test]
+  fn test_complete_balanced_braces() {
+    let reply = check_is_complete("if (true) { console.log(1) }");
+    assert_eq!(reply.status, IsCompleteReplyStatus::Complete);
+  }
+
+  #[test]
+  fn test_complete_multiline() {
+    let reply = check_is_complete("function foo() {\n  return 1;\n}");
+    assert_eq!(reply.status, IsCompleteReplyStatus::Complete);
+  }
+
+  #[test]
+  fn test_invalid_extra_close() {
+    let reply = check_is_complete("const x = 1 }");
+    assert_eq!(reply.status, IsCompleteReplyStatus::Invalid);
+  }
+
+  #[test]
+  fn test_invalid_mismatched() {
+    let reply = check_is_complete("const x = (]");
+    assert_eq!(reply.status, IsCompleteReplyStatus::Invalid);
+  }
+
+  #[test]
+  fn test_ignores_brackets_in_strings() {
+    let reply = check_is_complete(r#"const x = "hello { world""#);
+    assert_eq!(reply.status, IsCompleteReplyStatus::Complete);
+  }
+
+  #[test]
+  fn test_ignores_brackets_in_single_line_comment() {
+    let reply = check_is_complete("const x = 1 // {");
+    assert_eq!(reply.status, IsCompleteReplyStatus::Complete);
+  }
+
+  #[test]
+  fn test_ignores_brackets_in_multiline_comment() {
+    let reply = check_is_complete("const x = 1 /* { */");
+    assert_eq!(reply.status, IsCompleteReplyStatus::Complete);
+  }
+
+  #[test]
+  fn test_incomplete_unterminated_string() {
+    let reply = check_is_complete(r#"const x = "hello"#);
+    assert_eq!(reply.status, IsCompleteReplyStatus::Incomplete);
+  }
+
+  #[test]
+  fn test_incomplete_unterminated_template_literal() {
+    let reply = check_is_complete("const x = `hello ${name}");
+    assert_eq!(reply.status, IsCompleteReplyStatus::Incomplete);
+  }
+
+  #[test]
+  fn test_incomplete_unterminated_multiline_comment() {
+    let reply = check_is_complete("/* this comment never ends");
+    assert_eq!(reply.status, IsCompleteReplyStatus::Incomplete);
+  }
+
+  #[test]
+  fn test_complete_empty() {
+    let reply = check_is_complete("");
+    assert_eq!(reply.status, IsCompleteReplyStatus::Complete);
+  }
+
+  #[test]
+  fn test_escaped_quote_in_string() {
+    let reply = check_is_complete(r#"const x = "hello \" world""#);
+    assert_eq!(reply.status, IsCompleteReplyStatus::Complete);
   }
 }
