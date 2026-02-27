@@ -2,8 +2,6 @@
 
 use std::collections::BTreeMap;
 use std::collections::HashMap;
-use std::io::BufRead;
-use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::Child;
@@ -23,6 +21,7 @@ use deno_core::serde_json;
 use deno_graph::source::Resolver;
 use deno_path_util::url_from_directory_path;
 use deno_resolver::deno_json::CompilerOptionsKey;
+use deno_runtime::tokio_util::create_basic_runtime;
 use indexmap::IndexSet;
 use lsp_types::Uri;
 use node_resolver::NodeResolutionKind;
@@ -31,6 +30,8 @@ use serde::Deserialize;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use serde_json::json;
+use tokio::io::AsyncBufReadExt;
+use tokio::io::AsyncReadExt;
 use tokio::sync::oneshot;
 use tokio_util::sync::CancellationToken;
 use tower_lsp::lsp_types as lsp;
@@ -329,7 +330,7 @@ impl TsGoWorkspaceChange {
   }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 enum TsGoRequest {
   #[serde(rename_all = "camelCase")]
@@ -544,6 +545,7 @@ struct TsGoServerInner {
   next_request_id: AtomicI64,
   #[allow(dead_code)]
   child: Mutex<Child>,
+  runtime_handle: tokio::runtime::Handle,
 }
 
 impl std::fmt::Debug for TsGoServerInner {
@@ -559,6 +561,7 @@ fn write_lsp_message(
   stdin: &mut std::process::ChildStdin,
   message: &serde_json::Value,
 ) -> std::io::Result<()> {
+  use std::io::Write;
   let content = serde_json::to_string(message)?;
   write!(
     stdin,
@@ -569,13 +572,13 @@ fn write_lsp_message(
   stdin.flush()
 }
 
-fn read_lsp_message(
-  reader: &mut std::io::BufReader<std::process::ChildStdout>,
+async fn read_lsp_message(
+  reader: &mut tokio::io::BufReader<tokio::process::ChildStdout>,
 ) -> std::io::Result<serde_json::Value> {
   let mut content_length: Option<usize> = None;
   loop {
     let mut line = String::new();
-    reader.read_line(&mut line)?;
+    reader.read_line(&mut line).await?;
     let line = line.trim();
     if line.is_empty() {
       break;
@@ -593,7 +596,7 @@ fn read_lsp_message(
     )
   })?;
   let mut buf = vec![0u8; content_length];
-  std::io::Read::read_exact(reader, &mut buf)?;
+  reader.read_exact(&mut buf).await?;
   serde_json::from_slice(&buf)
     .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
 }
@@ -609,7 +612,9 @@ impl TsGoServerInner {
       .unwrap();
 
     let stdin = Arc::new(Mutex::new(child.stdin.take().unwrap()));
-    let stdout = child.stdout.take().unwrap();
+    let stdout =
+      tokio::process::ChildStdout::from_std(child.stdout.take().unwrap())
+        .unwrap();
     let snapshot = Arc::new(Mutex::new(snapshot));
 
     let pending_requests: Arc<PendingRequests> =
@@ -618,13 +623,10 @@ impl TsGoServerInner {
     let pending_requests_clone = pending_requests.clone();
     let stdin_clone = stdin.clone();
     let snapshot_clone = snapshot.clone();
-    // Use a blocking thread from the runtime instead of `std::thread::spawn()`
-    // because `DocumentModule::test_module_fut` is initialized with
-    // `tokio::task::spawn_blocking()` which can be called from here.
-    tokio::task::spawn_blocking(move || {
-      let mut reader = std::io::BufReader::new(stdout);
+    let read_loop = async move {
+      let mut reader = tokio::io::BufReader::new(stdout);
       loop {
-        let message = match read_lsp_message(&mut reader) {
+        let message = match read_lsp_message(&mut reader).await {
           Ok(msg) => msg,
           Err(e) => {
             lsp_warn!("Error reading from tsgo: {}", e);
@@ -742,7 +744,16 @@ impl TsGoServerInner {
           }
         }
       }
+    };
+
+    let (runtime_handle_tx, runtime_handle_rx) =
+      std::sync::mpsc::channel::<tokio::runtime::Handle>();
+    std::thread::spawn(move || {
+      let rt = create_basic_runtime();
+      let _ = runtime_handle_tx.send(rt.handle().clone());
+      rt.block_on(read_loop);
     });
+    let runtime_handle = runtime_handle_rx.recv().unwrap();
 
     let capabilities = {
       let snapshot = snapshot.lock();
@@ -823,6 +834,7 @@ impl TsGoServerInner {
       pending_requests,
       next_request_id: AtomicI64::new(1),
       child: Mutex::new(child),
+      runtime_handle,
     }
   }
 
@@ -950,7 +962,7 @@ impl TsGoServerInner {
   async fn request<R>(
     &self,
     request: TsGoRequest,
-    _token: &CancellationToken,
+    token: &CancellationToken,
   ) -> Result<R, AnyError>
   where
     R: DeserializeOwned,
@@ -983,9 +995,32 @@ impl TsGoServerInner {
       write_lsp_message(&mut stdin, &message)?;
     }
 
-    let result = rx
-      .await
-      .map_err(|_| anyhow!("Channel closed"))?
+    // Spawn this task on the reader thread which should be mostly idle. It's
+    // important that cancellations are passed through quickly.
+    let token_clone = token.clone();
+    let stdin = self.stdin.clone();
+    let pending_requests = self.pending_requests.clone();
+    let cancel_handle = self.runtime_handle.spawn(async move {
+      token_clone.cancelled().await;
+      let cancel_message = json!({
+        "jsonrpc": "2.0",
+        "method": "$/cancelRequest",
+        "params": { "id": request_id },
+      });
+      {
+        let mut stdin = stdin.lock();
+        let _ = write_lsp_message(&mut stdin, &cancel_message);
+      }
+      pending_requests.lock().remove(&request_id);
+    });
+
+    let result = rx.await;
+    cancel_handle.abort();
+    let result = result
+      .map_err(|_| {
+        debug_assert!(token.is_cancelled());
+        anyhow!("request cancelled")
+      })?
       .map_err(|e| anyhow!("{}", e))?;
 
     Ok(serde_json::from_value(result)?)
