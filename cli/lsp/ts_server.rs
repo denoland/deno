@@ -188,7 +188,7 @@ impl TsServer {
     module: &DocumentModule,
     position: lsp::Position,
     context: lsp::ReferenceContext,
-    snapshot: Arc<StateSnapshot>,
+    snapshot: &Arc<StateSnapshot>,
     token: &CancellationToken,
   ) -> Result<Option<Vec<lsp::Location>>, AnyError> {
     match self {
@@ -228,8 +228,7 @@ impl TsServer {
             if !context.include_declaration && reference.is_definition {
               continue;
             }
-            let Some(location) =
-              reference.entry.to_location(&module, &snapshot)
+            let Some(location) = reference.entry.to_location(&module, snapshot)
             else {
               continue;
             };
@@ -594,7 +593,7 @@ impl TsServer {
     &self,
     module: &DocumentModule,
     position: lsp::Position,
-    snapshot: Arc<StateSnapshot>,
+    snapshot: &Arc<StateSnapshot>,
     token: &CancellationToken,
   ) -> Result<Option<lsp::GotoDefinitionResponse>, AnyError> {
     match self {
@@ -610,7 +609,7 @@ impl TsServer {
         definition_info
           .map(|definition_info| {
             definition_info
-              .to_definition(module, &snapshot, token)
+              .to_definition(module, snapshot, token)
               .map_err(|err| {
                 anyhow!("Unable to convert definition info: {:#}", err)
               })
@@ -630,7 +629,7 @@ impl TsServer {
     &self,
     module: &DocumentModule,
     position: lsp::Position,
-    snapshot: Arc<StateSnapshot>,
+    snapshot: &Arc<StateSnapshot>,
     token: &CancellationToken,
   ) -> Result<Option<lsp::request::GotoTypeDefinitionResponse>, AnyError> {
     match self {
@@ -650,8 +649,7 @@ impl TsServer {
               if token.is_cancelled() {
                 return Err(anyhow!("request cancelled"));
               }
-              if let Some(link) = info.document_span.to_link(module, &snapshot)
-              {
+              if let Some(link) = info.document_span.to_link(module, snapshot) {
                 location_links.push(link);
               }
             }
@@ -796,7 +794,7 @@ impl TsServer {
     document: &Document,
     module: &DocumentModule,
     position: lsp::Position,
-    snapshot: Arc<StateSnapshot>,
+    snapshot: &Arc<StateSnapshot>,
     token: &CancellationToken,
   ) -> Result<Option<lsp::request::GotoImplementationResponse>, AnyError> {
     match self {
@@ -841,7 +839,7 @@ impl TsServer {
             if token.is_cancelled() {
               return Some(Err(anyhow!("request cancelled")));
             }
-            Some(Ok(i.to_link(module, &snapshot)?))
+            Some(Ok(i.to_link(module, snapshot)?))
           })
           .collect::<Result<Vec<_>, _>>()?;
         if links.is_empty() {
@@ -903,7 +901,7 @@ impl TsServer {
     document: &Document,
     module: &DocumentModule,
     item: &lsp::CallHierarchyItem,
-    snapshot: Arc<StateSnapshot>,
+    snapshot: &Arc<StateSnapshot>,
     token: &CancellationToken,
   ) -> Result<Option<Vec<lsp::CallHierarchyIncomingCall>>, AnyError> {
     match self {
@@ -948,7 +946,7 @@ impl TsServer {
             }
             Some(Ok(c.try_resolve_call_hierarchy_incoming_call(
               module,
-              &snapshot,
+              snapshot,
               root_path.as_deref(),
             )?))
           })
@@ -967,7 +965,7 @@ impl TsServer {
     &self,
     module: &DocumentModule,
     item: &lsp::CallHierarchyItem,
-    snapshot: Arc<StateSnapshot>,
+    snapshot: &Arc<StateSnapshot>,
     token: &CancellationToken,
   ) -> Result<Option<Vec<lsp::CallHierarchyOutgoingCall>>, AnyError> {
     match self {
@@ -992,7 +990,7 @@ impl TsServer {
             }
             Some(Ok(c.try_resolve_call_hierarchy_outgoing_call(
               module,
-              &snapshot,
+              snapshot,
               root_path.as_deref(),
             )?))
           })
@@ -1011,7 +1009,7 @@ impl TsServer {
     &self,
     module: &DocumentModule,
     position: lsp::Position,
-    snapshot: Arc<StateSnapshot>,
+    snapshot: &Arc<StateSnapshot>,
     token: &CancellationToken,
   ) -> Result<Option<Vec<lsp::CallHierarchyItem>>, AnyError> {
     match self {
@@ -1039,7 +1037,7 @@ impl TsServer {
                 }
                 let item = item.try_resolve_call_hierarchy_item(
                   module,
-                  &snapshot,
+                  snapshot,
                   root_path.as_deref(),
                 )?;
                 Some(Ok(item))
@@ -1406,7 +1404,7 @@ impl TsServer {
   pub async fn provide_workspace_symbol(
     &self,
     query: &str,
-    snapshot: Arc<StateSnapshot>,
+    snapshot: &Arc<StateSnapshot>,
     token: &CancellationToken,
   ) -> Result<Option<Vec<lsp::SymbolInformation>>, AnyError> {
     match self {
@@ -1458,7 +1456,7 @@ impl TsServer {
             Some(Ok(item.to_symbol_information(
               scope.map(|s| s.as_ref()),
               compiler_options_key,
-              &snapshot,
+              snapshot,
             )?))
           })
           .collect::<Result<Vec<_>, _>>()?;

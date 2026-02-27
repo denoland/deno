@@ -381,6 +381,101 @@ impl ContextifyContext {
     sandbox_obj.set_private(scope, private_symbol, wrapper.into());
   }
 
+  pub fn attach_vanilla<'s>(
+    scope: &mut v8::PinScope<'s, '_>,
+    allow_code_gen_strings: bool,
+    allow_code_gen_wasm: bool,
+    own_microtask_queue: bool,
+  ) -> v8::Local<'s, v8::Object> {
+    let main_context = scope.get_current_context();
+
+    let microtask_queue = if own_microtask_queue {
+      v8::MicrotaskQueue::new(scope, v8::MicrotasksPolicy::Explicit).into_raw()
+    } else {
+      std::ptr::null_mut()
+    };
+
+    // Create a vanilla V8 context without global template (no interceptors)
+    let context = {
+      let esc_scope = std::pin::pin!(v8::EscapableHandleScope::new(scope));
+      let esc_scope = &mut esc_scope.init();
+      let ctx = v8::Context::new(
+        esc_scope,
+        v8::ContextOptions {
+          microtask_queue: Some(microtask_queue),
+          ..Default::default()
+        },
+      );
+      // SAFETY: ContextifyContexts will update this to a pointer to the native object
+      unsafe {
+        ctx.set_aligned_pointer_in_embedder_data(1, std::ptr::null_mut());
+        ctx.set_aligned_pointer_in_embedder_data(2, std::ptr::null_mut());
+        ctx.set_aligned_pointer_in_embedder_data(3, std::ptr::null_mut());
+        ctx.clear_all_slots();
+      };
+      esc_scope.escape(ctx)
+    };
+
+    let context_state = main_context.get_aligned_pointer_from_embedder_data(
+      deno_core::CONTEXT_STATE_SLOT_INDEX,
+    );
+    let module_map = main_context
+      .get_aligned_pointer_from_embedder_data(deno_core::MODULE_MAP_SLOT_INDEX);
+
+    context.set_security_token(main_context.get_security_token(scope));
+    // SAFETY: set embedder data from the creation context
+    unsafe {
+      context.set_aligned_pointer_in_embedder_data(
+        deno_core::CONTEXT_STATE_SLOT_INDEX,
+        context_state,
+      );
+      context.set_aligned_pointer_in_embedder_data(
+        deno_core::MODULE_MAP_SLOT_INDEX,
+        module_map,
+      );
+    }
+
+    scope.set_allow_wasm_code_generation_callback(allow_wasm_code_gen);
+    context.set_allow_generation_from_strings(allow_code_gen_strings);
+    context.set_slot(Rc::new(AllowCodeGenWasm(allow_code_gen_wasm)));
+
+    // For vanilla contexts, the sandbox IS the global proxy
+    let sandbox_obj = context.global(scope);
+
+    let wrapper = {
+      let context = v8::TracedReference::new(scope, context);
+      let sandbox = v8::TracedReference::new(scope, sandbox_obj);
+      deno_core::cppgc::make_cppgc_object(
+        scope,
+        Self {
+          context,
+          sandbox,
+          microtask_queue,
+        },
+      )
+    };
+    let ptr =
+      deno_core::cppgc::try_unwrap_cppgc_object::<Self>(scope, wrapper.into());
+
+    // SAFETY: We are storing a pointer to the ContextifyContext
+    // in the embedder data of the v8::Context. The contextified wrapper
+    // lives longer than the execution context, so this should be safe.
+    unsafe {
+      context.set_aligned_pointer_in_embedder_data(
+        3,
+        &*ptr.unwrap() as *const ContextifyContext as _,
+      );
+    }
+
+    let private_str =
+      v8::String::new_from_onebyte_const(scope, &PRIVATE_SYMBOL_NAME);
+    let private_symbol = v8::Private::for_api(scope, private_str);
+
+    sandbox_obj.set_private(scope, private_symbol, wrapper.into());
+
+    sandbox_obj
+  }
+
   pub fn from_sandbox_obj<'a>(
     scope: &mut v8::PinScope<'a, '_>,
     sandbox_obj: v8::Local<v8::Object>,
@@ -1135,6 +1230,22 @@ pub fn op_vm_create_context(
     allow_code_gen_wasm,
     own_microtask_queue,
   );
+}
+
+#[op2]
+pub fn op_vm_create_context_without_contextify<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  allow_code_gen_strings: bool,
+  allow_code_gen_wasm: bool,
+  own_microtask_queue: bool,
+) -> v8::Local<'s, v8::Value> {
+  ContextifyContext::attach_vanilla(
+    scope,
+    allow_code_gen_strings,
+    allow_code_gen_wasm,
+    own_microtask_queue,
+  )
+  .into()
 }
 
 #[op2(fast)]
