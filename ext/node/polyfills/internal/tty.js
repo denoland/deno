@@ -122,7 +122,7 @@ let OSRelease;
  * @param {Record<string, string>} [env]
  * @returns {1 | 4 | 8 | 24}
  */
-export function getColorDepth(env) {
+export function getColorDepth(env = process.env) {
   // Use level 0-3 to support the same levels as `chalk` does.
   if (env.FORCE_COLOR !== undefined) {
     switch (env.FORCE_COLOR) {
