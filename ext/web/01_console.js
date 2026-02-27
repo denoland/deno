@@ -2174,12 +2174,7 @@ function formatProperty(
   }
 
   if (desc.enumerable === false) {
-    const tmp = StringPrototypeReplace(
-      key,
-      strEscapeSequencesReplacer,
-      escapeFn,
-    );
-    name = `[${tmp}]`;
+    name = `[${name}]`;
   }
   return `${name}:${extra}${str}`;
 }
