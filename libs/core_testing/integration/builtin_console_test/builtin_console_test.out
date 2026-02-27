@@ -1,0 +1,12 @@
+Hello, world
+[
+  1,
+  2,
+  3
+]
+{
+  "foo": "bar"
+}
+Uint8Array(3) [1, 2, 3]
+Uint8Array(1024) [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+Uint32Array(3) [1, 2, 3]

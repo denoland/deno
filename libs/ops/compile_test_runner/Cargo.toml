@@ -1,0 +1,21 @@
+# Copyright 2018-2025 the Deno authors. MIT license.
+[package]
+name = "deno_ops_compile_test_runner"
+version = "0.2.0"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+repository.workspace = true
+description = "Compile-test runner for deno_ops"
+
+[lib]
+path = "lib.rs"
+
+[dev-dependencies]
+bytes.workspace = true
+deno_core.workspace = true
+deno_error.workspace = true
+deno_ops.workspace = true
+serde.workspace = true
+trybuild = "1.0.104"

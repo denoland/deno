@@ -1,0 +1,5 @@
+error: variants with fields are not allowed for enum converters
+ --> $WORKSPACE/ops/webidl/test_cases_fail/enum_fields.rs
+  |
+  |   FooBar(u32),
+  |         ^^^^^

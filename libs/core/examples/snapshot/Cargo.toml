@@ -1,0 +1,18 @@
+# Copyright 2018-2025 the Deno authors. MIT license.
+# Note: Since Cargo "example" targets don't discover/use `build.rs` files, this
+# example is a member of the root `deno_core` workspace. That means it will
+# compile with `cargo build` in the root, so that this example/documentation
+# stays in-sync with development.
+
+[package]
+name = "build-your-own-js-snapshot"
+version = "0.1.0"
+build = "build.rs"
+edition = "2024"
+
+[dependencies]
+deno_core.workspace = true
+tokio.workspace = true
+
+[build-dependencies]
+deno_core.workspace = true

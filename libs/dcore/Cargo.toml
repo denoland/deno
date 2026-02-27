@@ -1,0 +1,34 @@
+# Copyright 2018-2025 the Deno authors. MIT license.
+
+[package]
+name = "dcore"
+version = "0.1.0"
+authors.workspace = true
+default-run = "dcore"
+edition.workspace = true
+license.workspace = true
+publish = false
+readme = "README.md"
+repository.workspace = true
+description = "A simple binary that builds on deno_core"
+
+[[bin]]
+name = "dcore"
+
+[build-dependencies]
+deno_core_testing.workspace = true
+
+# TODO(bartlomieju): dedup with workspace dependencies
+[dependencies]
+anyhow.workspace = true
+clap = "4.5.32"
+deno_core.workspace = true
+deno_core_testing.workspace = true
+fastwebsockets = { version = "0.10.0", features = ["upgrade", "unstable-split"] }
+http = { version = "1.3" }
+http-body-util = { version = "0.1.3" }
+hyper = { version = "=1.6.0", features = ["full"] }
+hyper-util = { version = "0.1.10", features = ["tokio", "server", "server-auto"] }
+serde_json = { workspace = true, features = ["preserve_order"] }
+tokio.workspace = true
+uuid = { version = "1.16.0", features = ["v4"] }

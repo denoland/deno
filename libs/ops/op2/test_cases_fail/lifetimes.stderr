@@ -1,0 +1,36 @@
+error[E0716]: temporary value dropped while borrowed
+ --> $WORKSPACE/ops/op2/test_cases_fail/lifetimes.rs
+  |
+  | #[op2(fast)]
+  | ^^^^^^^^^^^-
+  | |          |
+  | |          temporary value is freed at the end of this statement
+  | creates a temporary value which is freed while still in use
+  | argument requires that borrow lasts for `'static`
+  |
+  = note: this error originates in the attribute macro `op2` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0521]: borrowed data escapes outside of associated function
+ --> $WORKSPACE/ops/op2/test_cases_fail/lifetimes.rs
+  |
+  | #[op2(fast)]
+  | ^^^^^^^^^^^^
+  | |
+  | `fast_api_callback_options` is a reference that is only valid in the associated function body
+  | `fast_api_callback_options` escapes the associated function body here
+  | lifetime `'s` defined here
+  | argument requires that `'s` must outlive `'static`
+  |
+  = note: this error originates in the attribute macro `op2` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0716]: temporary value dropped while borrowed
+ --> $WORKSPACE/ops/op2/test_cases_fail/lifetimes.rs
+  |
+  | #[op2(fast)]
+  | ^^^^^^^^^^^-
+  | |          |
+  | |          temporary value is freed at the end of this statement
+  | creates a temporary value which is freed while still in use
+  | argument requires that borrow lasts for `'static`
+  |
+  = note: this error originates in the attribute macro `op2` (in Nightly builds, run with -Z macro-backtrace for more info)
