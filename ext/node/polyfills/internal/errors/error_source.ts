@@ -5,32 +5,16 @@
 
 import { primordials } from "ext:core/mod.js";
 import {
+  op_node_get_error_source_position,
   op_node_get_first_expression,
-  op_require_read_file,
 } from "ext:core/ops";
-import { Module } from "node:module";
+import Module from "node:module";
 
-// Type definition from https://github.com/sindresorhus/callsites/blob/v4.2.0/index.d.ts
-// MIT License, Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (https://sindresorhus.com)
-// Also see https://v8.dev/docs/stack-trace-api
-interface CallSite {
-  getThis(): unknown | undefined;
-  getTypeName(): string | null;
-  getFunction(): (...args: unknown[]) => unknown | undefined;
-  getFunctionName(): string | null;
-  getMethodName(): string | undefined;
-  getFileName(): string | null;
-  getLineNumber(): number | null;
-  getColumnNumber(): number | null;
-  getEvalOrigin(): string | undefined;
-  isToplevel(): boolean;
-  isEval(): boolean;
-  isNative(): boolean;
-  isConstructor(): boolean;
-  isAsync(): boolean;
-  isPromiseAll(): boolean;
-  getPromiseIndex(): number | null;
-}
+type ErrSourcePosition = {
+  sourceLine: string;
+  lineNumber: number;
+  startColumn: number;
+};
 
 const {
   StringPrototypeSlice,
@@ -48,57 +32,27 @@ const {
 function getErrorSourceLocation(
   error: Error,
 ): { sourceLine: string; startColumn: number } | undefined {
-  // Use Error.prepareStackTrace to get structured call site info from V8.
-  // This is the same approach used by node:util.getCallSites.
-  const original = Error.prepareStackTrace;
-  try {
-    Error.prepareStackTrace = (_, stackTraces) => stackTraces;
-    const stack = error.stack as unknown as CallSite[];
-    if (!stack || !stack.length) {
-      return;
-    }
-
-    const callSite = stack[0];
-    const fileName = callSite.getFileName();
-    const lineNumber = callSite.getLineNumber();
-    let startColumn = callSite.getColumnNumber();
-    if (!fileName || !lineNumber) {
-      return;
-    }
-
-    let sourceLine;
-    try {
-      const content: string = op_require_read_file(fileName);
-      const lines = content.split("\n");
-      if (lineNumber > lines.length) {
-        return;
-      }
-
-      // lineNumber is 1-based
-      sourceLine = lines[lineNumber - 1];
-    } catch {
-      // Ignore errors
-      return;
-    }
-
-    if (sourceLine === undefined) {
-      return;
-    }
-
-    // startColumn from V8 is 1-based, convert to 0-based
-    startColumn = typeof startColumn === "number" ? startColumn - 1 : 0;
-
-    // On commonjs modules, the code is wrapped in a function,
-    // which offsets the first line of the module.
-    // TODO(Tango992): This is a workaround, we should find a better way to get the correct source location.
-    if (lineNumber === 1 && startColumn > sourceLine.length) {
-      startColumn -= Module.wrapper[0].length;
-    }
-
-    return { sourceLine, startColumn };
-  } finally {
-    Error.prepareStackTrace = original;
+  const pos: ErrSourcePosition | undefined = op_node_get_error_source_position(
+    error,
+  );
+  if (typeof pos === "undefined") {
+    return;
   }
+
+  let {
+    sourceLine,
+    lineNumber,
+    startColumn,
+  } = pos;
+
+  // On commonjs modules, the code is wrapped in a function,
+  // which offsets the first line of the module.
+  // TODO(Tango992): This is a workaround, we should find a better way to get the correct source location.
+  if (lineNumber === 1 && startColumn > sourceLine.length) {
+    startColumn -= Module.wrapper[0].length;
+  }
+
+  return { sourceLine, startColumn };
 }
 
 /**
