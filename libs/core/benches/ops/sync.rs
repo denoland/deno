@@ -155,8 +155,15 @@ fn bench_op(
   arg_count: usize,
   call: &str,
 ) {
+  #[cfg(not(feature = "unsafe_runtime_options"))]
+  unreachable!(
+    "This benchmark must be run with --features=unsafe_runtime_options"
+  );
+
   let mut runtime = JsRuntime::new(RuntimeOptions {
     extensions: vec![testing::init()],
+    // We need to feature gate this here to prevent IDE errors
+    #[cfg(feature = "unsafe_runtime_options")]
     unsafe_expose_natives_and_gc: true,
     // Add metrics just for the metrics ops
     op_metrics_factory_fn: Some(Box::new(|_, _, op| {

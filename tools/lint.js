@@ -224,6 +224,7 @@ async function clippy() {
     const DENO_CORE_CLIPPY_FEATURES = [
       "default",
       "include_js_files_for_snapshotting",
+      "unsafe_runtime_options",
       "unsafe_use_unprotected_platform",
     ].join(",");
 

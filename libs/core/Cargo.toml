@@ -21,6 +21,7 @@ v8_use_custom_libcxx = ["v8/use_custom_libcxx"]
 v8_enable_pointer_compression = ["v8/v8_enable_pointer_compression"]
 v8_enable_v8_checks = ["v8/v8_enable_v8_checks"]
 include_js_files_for_snapshotting = []
+unsafe_runtime_options = []
 unsafe_use_unprotected_platform = []
 snapshot_flags_eager_parse = []
 uv_compat_export = []
@@ -74,11 +75,13 @@ unicycle = "0.10.2"
 name = "ops_sync"
 path = "benches/ops/sync.rs"
 harness = false
+required-features = ["unsafe_runtime_options"]
 
 [[bench]]
 name = "ops_async"
 path = "benches/ops/async.rs"
 harness = false
+required-features = ["unsafe_runtime_options"]
 
 [[bench]]
 name = "opset"
