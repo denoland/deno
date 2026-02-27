@@ -1,0 +1,13 @@
+{
+  "tempDir": true,
+  "steps": [{
+    "args": "install",
+    "output": "[WILDCARD]"
+  }, {
+    "args": "doc npm:@denotest/esm-basic",
+    "output": "doc.out"
+  }, {
+    "args": "doc npm:@denotest/add",
+    "output": "not_installed.out"
+  }]
+}
