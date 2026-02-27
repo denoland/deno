@@ -1,7 +1,0 @@
-{
-  "nodeModulesDir": "auto",
-  "tasks": {
-    "dev": "deno run --allow-net --allow-env server.ts",
-    "test": "deno run -A npm:@playwright/test test"
-  }
-}
