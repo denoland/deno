@@ -14659,17 +14659,8 @@
         "constructor.any.html?wss": false,
         "constructor.any.worker.html?wpt_flags=h2": false,
         "constructor.any.worker.html?wss": false,
-        "close.any.html?default": [
-          "incomplete closing handshake should be considered unclean close"
-        ],
-        "close.any.worker.html?default": [
-          "incomplete closing handshake should be considered unclean close"
-        ],
-        "remote-close.any.html?default": [
-          "clean close should be clean",
-          "close with unwritten data should not be considered clean",
-          "abrupt close should give an error"
-        ],
+        "close.any.html?default": false,
+        "close.any.worker.html?default": false,
         "remote-close.any.html?wpt_flags=h2": false,
         "remote-close.any.html?wss": false,
         "remote-close.any.worker.html?default": [
