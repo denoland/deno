@@ -37,10 +37,10 @@ bytes.workspace = true
 capacity_builder = "0.5.0"
 cooked-waker.workspace = true
 deno_core_icudata = { workspace = true, optional = true }
-deno_error.workspace = true
+deno_error = { workspace = true, features = ["serde_json", "serde", "url", "tokio"] }
 deno_ops.workspace = true
 deno_path_util.workspace = true
-deno_unsync.workspace = true
+deno_unsync = { workspace = true, features = ["tokio"] }
 futures.workspace = true
 indexmap.workspace = true
 inventory = "0.3.21"
