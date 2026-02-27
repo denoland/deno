@@ -364,10 +364,22 @@ class NodeWorker extends EventEmitter {
 
     if (options?.eval) {
       const code = typeof specifier === "string"
-        ? encodeURIComponent(specifier)
+        ? specifier
         // deno-lint-ignore prefer-primordials
         : specifier.toString();
-      specifier = `data:text/javascript,${code}`;
+      // Node.js evaluates worker eval code as CommonJS, so we wrap
+      // the code to provide CJS globals (require, __filename, etc.)
+      // since the data: URL will be loaded as ESM.
+      const wrapped =
+        `import { createRequire as __cjsRequire } from "node:module";\n` +
+        `import { cwd as __cjsCwd } from "node:process";\n` +
+        `const require = __cjsRequire(__cjsCwd() + "/[worker eval]");\n` +
+        `const __filename = __cjsCwd() + "/[worker eval]";\n` +
+        `const __dirname = __cjsCwd();\n` +
+        `const module = { exports: {} };\n` +
+        `const exports = module.exports;\n` +
+        code;
+      specifier = `data:text/javascript,${encodeURIComponent(wrapped)}`;
     } else if (
       !(typeof specifier === "object" && specifier.protocol === "data:")
     ) {
