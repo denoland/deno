@@ -1,0 +1,215 @@
+#[allow(non_camel_case_types)]
+const fn op_blob_read_part() -> ::deno_core::_ops::OpDecl {
+    #[allow(non_camel_case_types)]
+    struct op_blob_read_part {
+        _unconstructable: ::std::marker::PhantomData<()>,
+    }
+    impl ::deno_core::_ops::Op for op_blob_read_part {
+        const NAME: &'static str = stringify!(op_blob_read_part);
+        const DECL: ::deno_core::_ops::OpDecl = ::deno_core::_ops::OpDecl::new_internal_op2(
+            ::deno_core::__op_name_fast!(op_blob_read_part),
+            true,
+            false,
+            false,
+            1usize as u8,
+            false,
+            Self::v8_fn_ptr as _,
+            Self::v8_fn_ptr_metrics as _,
+            ::deno_core::AccessorType::None,
+            None,
+            None,
+            ::deno_core::OpMetadata {
+                sanitizer_details: Some("read from a Blob or File"),
+                sanitizer_fix: Some("awaiting the result of a Blob or File read"),
+                ..::deno_core::OpMetadata::default()
+            },
+        );
+    }
+    impl op_blob_read_part {
+        pub const fn name() -> &'static str {
+            <Self as deno_core::_ops::Op>::NAME
+        }
+        fn slow_function_impl<'s>(
+            info: &'s deno_core::v8::FunctionCallbackInfo,
+        ) -> usize {
+            #[cfg(debug_assertions)]
+            let _reentrancy_check_guard = deno_core::_ops::reentrancy_check(
+                &<Self as deno_core::_ops::Op>::DECL,
+            );
+            let mut rv = deno_core::v8::ReturnValue::from_function_callback_info(info);
+            let args = deno_core::v8::FunctionCallbackArguments::from_function_callback_info(
+                info,
+            );
+            let opctx: &'s _ = unsafe {
+                &*(deno_core::v8::Local::<
+                    deno_core::v8::External,
+                >::cast_unchecked(args.data())
+                    .value() as *const deno_core::_ops::OpCtx)
+            };
+            let result = { Self::call() };
+            let promise_id = deno_core::_ops::to_i32_option(&args.get(0))
+                .unwrap_or_default();
+            if let Some(result) = deno_core::_ops::map_async_op_infallible(
+                opctx,
+                false,
+                false,
+                promise_id,
+                result,
+                |scope, result| { Ok(deno_core::_ops::RustToV8::to_v8(result, scope)) },
+            ) {
+                deno_core::_ops::RustToV8RetVal::to_v8_rv(result, &mut rv);
+                return 0;
+            }
+            return 2;
+        }
+        extern "C" fn v8_fn_ptr<'s>(info: *const deno_core::v8::FunctionCallbackInfo) {
+            let info: &'s _ = unsafe { &*info };
+            Self::slow_function_impl(info);
+        }
+        extern "C" fn v8_fn_ptr_metrics<'s>(
+            info: *const deno_core::v8::FunctionCallbackInfo,
+        ) {
+            let info: &'s _ = unsafe { &*info };
+            let args = deno_core::v8::FunctionCallbackArguments::from_function_callback_info(
+                info,
+            );
+            let opctx: &'s _ = unsafe {
+                &*(deno_core::v8::Local::<
+                    deno_core::v8::External,
+                >::cast_unchecked(args.data())
+                    .value() as *const deno_core::_ops::OpCtx)
+            };
+            deno_core::_ops::dispatch_metrics_async(
+                opctx,
+                deno_core::_ops::OpMetricsEvent::Dispatched,
+            );
+            let res = Self::slow_function_impl(info);
+            if res == 0 {
+                deno_core::_ops::dispatch_metrics_async(
+                    opctx,
+                    deno_core::_ops::OpMetricsEvent::Completed,
+                );
+            } else if res == 1 {
+                deno_core::_ops::dispatch_metrics_async(
+                    opctx,
+                    deno_core::_ops::OpMetricsEvent::Error,
+                );
+            }
+        }
+    }
+    impl op_blob_read_part {
+        #[allow(clippy::too_many_arguments)]
+        async fn call() {
+            return;
+        }
+    }
+    <op_blob_read_part as ::deno_core::_ops::Op>::DECL
+}
+
+#[allow(non_camel_case_types)]
+const fn op_broadcast_recv() -> ::deno_core::_ops::OpDecl {
+    #[allow(non_camel_case_types)]
+    struct op_broadcast_recv {
+        _unconstructable: ::std::marker::PhantomData<()>,
+    }
+    impl ::deno_core::_ops::Op for op_broadcast_recv {
+        const NAME: &'static str = stringify!(op_broadcast_recv);
+        const DECL: ::deno_core::_ops::OpDecl = ::deno_core::_ops::OpDecl::new_internal_op2(
+            ::deno_core::__op_name_fast!(op_broadcast_recv),
+            true,
+            false,
+            false,
+            1usize as u8,
+            false,
+            Self::v8_fn_ptr as _,
+            Self::v8_fn_ptr_metrics as _,
+            ::deno_core::AccessorType::None,
+            None,
+            None,
+            ::deno_core::OpMetadata {
+                sanitizer_details: Some("receive a message from a BroadcastChannel"),
+                sanitizer_fix: Some("closing the BroadcastChannel"),
+                ..::deno_core::OpMetadata::default()
+            },
+        );
+    }
+    impl op_broadcast_recv {
+        pub const fn name() -> &'static str {
+            <Self as deno_core::_ops::Op>::NAME
+        }
+        fn slow_function_impl<'s>(
+            info: &'s deno_core::v8::FunctionCallbackInfo,
+        ) -> usize {
+            #[cfg(debug_assertions)]
+            let _reentrancy_check_guard = deno_core::_ops::reentrancy_check(
+                &<Self as deno_core::_ops::Op>::DECL,
+            );
+            let mut rv = deno_core::v8::ReturnValue::from_function_callback_info(info);
+            let args = deno_core::v8::FunctionCallbackArguments::from_function_callback_info(
+                info,
+            );
+            let opctx: &'s _ = unsafe {
+                &*(deno_core::v8::Local::<
+                    deno_core::v8::External,
+                >::cast_unchecked(args.data())
+                    .value() as *const deno_core::_ops::OpCtx)
+            };
+            let result = { Self::call() };
+            let promise_id = deno_core::_ops::to_i32_option(&args.get(0))
+                .unwrap_or_default();
+            if let Some(result) = deno_core::_ops::map_async_op_infallible(
+                opctx,
+                false,
+                false,
+                promise_id,
+                result,
+                |scope, result| { Ok(deno_core::_ops::RustToV8::to_v8(result, scope)) },
+            ) {
+                deno_core::_ops::RustToV8RetVal::to_v8_rv(result, &mut rv);
+                return 0;
+            }
+            return 2;
+        }
+        extern "C" fn v8_fn_ptr<'s>(info: *const deno_core::v8::FunctionCallbackInfo) {
+            let info: &'s _ = unsafe { &*info };
+            Self::slow_function_impl(info);
+        }
+        extern "C" fn v8_fn_ptr_metrics<'s>(
+            info: *const deno_core::v8::FunctionCallbackInfo,
+        ) {
+            let info: &'s _ = unsafe { &*info };
+            let args = deno_core::v8::FunctionCallbackArguments::from_function_callback_info(
+                info,
+            );
+            let opctx: &'s _ = unsafe {
+                &*(deno_core::v8::Local::<
+                    deno_core::v8::External,
+                >::cast_unchecked(args.data())
+                    .value() as *const deno_core::_ops::OpCtx)
+            };
+            deno_core::_ops::dispatch_metrics_async(
+                opctx,
+                deno_core::_ops::OpMetricsEvent::Dispatched,
+            );
+            let res = Self::slow_function_impl(info);
+            if res == 0 {
+                deno_core::_ops::dispatch_metrics_async(
+                    opctx,
+                    deno_core::_ops::OpMetricsEvent::Completed,
+                );
+            } else if res == 1 {
+                deno_core::_ops::dispatch_metrics_async(
+                    opctx,
+                    deno_core::_ops::OpMetricsEvent::Error,
+                );
+            }
+        }
+    }
+    impl op_broadcast_recv {
+        #[allow(clippy::too_many_arguments)]
+        async fn call() {
+            return;
+        }
+    }
+    <op_broadcast_recv as ::deno_core::_ops::Op>::DECL
+}

@@ -1,0 +1,37 @@
+impl<'a> ::deno_core::webidl::WebIdlConverter<'a> for Enumeration {
+    type Options = ();
+    fn convert<'b, 'i>(
+        __scope: &mut ::deno_core::v8::PinScope<'a, 'i>,
+        __value: ::deno_core::v8::Local<'a, ::deno_core::v8::Value>,
+        __prefix: std::borrow::Cow<'static, str>,
+        __context: ::deno_core::webidl::ContextFn<'b>,
+        __options: &Self::Options,
+    ) -> Result<Self, ::deno_core::webidl::WebIdlError> {
+        match __value.to_rust_string_lossy(__scope).as_str() {
+            "foo-bar" => Ok(Self::FooBar),
+            "baz" => Ok(Self::Baz),
+            "hello" => Ok(Self::World),
+            s => {
+                Err(
+                    ::deno_core::webidl::WebIdlError::new(
+                        __prefix,
+                        __context,
+                        ::deno_core::webidl::WebIdlErrorKind::InvalidEnumVariant {
+                            converter: "Enumeration",
+                            variant: s.to_string(),
+                        },
+                    ),
+                )
+            }
+        }
+    }
+}
+impl Enumeration {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::FooBar => "foo-bar",
+            Self::Baz => "baz",
+            Self::World => "hello",
+        }
+    }
+}

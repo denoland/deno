@@ -1,0 +1,126 @@
+#[allow(non_camel_case_types)]
+pub const fn op_async_impl_use() -> ::deno_core::_ops::OpDecl {
+    #[allow(non_camel_case_types)]
+    pub struct op_async_impl_use {
+        _unconstructable: ::std::marker::PhantomData<()>,
+    }
+    impl ::deno_core::_ops::Op for op_async_impl_use {
+        const NAME: &'static str = stringify!(op_async_impl_use);
+        const DECL: ::deno_core::_ops::OpDecl = ::deno_core::_ops::OpDecl::new_internal_op2(
+            ::deno_core::__op_name_fast!(op_async_impl_use),
+            true,
+            false,
+            false,
+            2usize as u8,
+            false,
+            Self::v8_fn_ptr as _,
+            Self::v8_fn_ptr_metrics as _,
+            ::deno_core::AccessorType::None,
+            None,
+            None,
+            ::deno_core::OpMetadata {
+                ..::deno_core::OpMetadata::default()
+            },
+        );
+    }
+    impl op_async_impl_use {
+        pub const fn name() -> &'static str {
+            <Self as deno_core::_ops::Op>::NAME
+        }
+        fn slow_function_impl<'s>(
+            info: &'s deno_core::v8::FunctionCallbackInfo,
+        ) -> usize {
+            #[cfg(debug_assertions)]
+            let _reentrancy_check_guard = deno_core::_ops::reentrancy_check(
+                &<Self as deno_core::_ops::Op>::DECL,
+            );
+            let mut rv = deno_core::v8::ReturnValue::from_function_callback_info(info);
+            let args = deno_core::v8::FunctionCallbackArguments::from_function_callback_info(
+                info,
+            );
+            let opctx: &'s _ = unsafe {
+                &*(deno_core::v8::Local::<
+                    deno_core::v8::External,
+                >::cast_unchecked(args.data())
+                    .value() as *const deno_core::_ops::OpCtx)
+            };
+            let result = {
+                let arg0 = args.get(1usize as i32);
+                let Some(arg0) = deno_core::_ops::to_i32_option(&arg0) else {
+                    deno_core::_ops::throw_error_one_byte_info(&info, "expected i32");
+                    return 1;
+                };
+                let arg0 = arg0 as _;
+                Self::call(arg0)
+            };
+            let promise_id = deno_core::_ops::to_i32_option(&args.get(0))
+                .unwrap_or_default();
+            if let Some(result) = deno_core::_ops::map_async_op_fallible(
+                opctx,
+                false,
+                false,
+                promise_id,
+                result,
+                |scope, result| { Ok(deno_core::_ops::RustToV8::to_v8(result, scope)) },
+            ) {
+                match result {
+                    Ok(result) => {
+                        deno_core::_ops::RustToV8RetVal::to_v8_rv(result, &mut rv)
+                    }
+                    Err(err) => {
+                        let scope = ::std::pin::pin!(
+                            unsafe { deno_core::v8::CallbackScope::new(info) }
+                        );
+                        let mut scope = scope.init();
+                        let exception = deno_core::error::to_v8_error(&mut scope, &err);
+                        scope.throw_exception(exception);
+                        return 1;
+                    }
+                };
+                return 0;
+            }
+            return 2;
+        }
+        extern "C" fn v8_fn_ptr<'s>(info: *const deno_core::v8::FunctionCallbackInfo) {
+            let info: &'s _ = unsafe { &*info };
+            Self::slow_function_impl(info);
+        }
+        extern "C" fn v8_fn_ptr_metrics<'s>(
+            info: *const deno_core::v8::FunctionCallbackInfo,
+        ) {
+            let info: &'s _ = unsafe { &*info };
+            let args = deno_core::v8::FunctionCallbackArguments::from_function_callback_info(
+                info,
+            );
+            let opctx: &'s _ = unsafe {
+                &*(deno_core::v8::Local::<
+                    deno_core::v8::External,
+                >::cast_unchecked(args.data())
+                    .value() as *const deno_core::_ops::OpCtx)
+            };
+            deno_core::_ops::dispatch_metrics_async(
+                opctx,
+                deno_core::_ops::OpMetricsEvent::Dispatched,
+            );
+            let res = Self::slow_function_impl(info);
+            if res == 0 {
+                deno_core::_ops::dispatch_metrics_async(
+                    opctx,
+                    deno_core::_ops::OpMetricsEvent::Completed,
+                );
+            } else if res == 1 {
+                deno_core::_ops::dispatch_metrics_async(
+                    opctx,
+                    deno_core::_ops::OpMetricsEvent::Error,
+                );
+            }
+        }
+    }
+    impl op_async_impl_use {
+        #[allow(clippy::too_many_arguments)]
+        pub fn call(x: i32) -> impl Future<Output = std::io::Result<i32>> + use<> {
+            async move { Ok(x) }
+        }
+    }
+    <op_async_impl_use as ::deno_core::_ops::Op>::DECL
+}

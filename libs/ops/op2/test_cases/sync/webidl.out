@@ -1,0 +1,131 @@
+#[allow(non_camel_case_types)]
+const fn op_webidl() -> ::deno_core::_ops::OpDecl {
+    #[allow(non_camel_case_types)]
+    struct op_webidl {
+        _unconstructable: ::std::marker::PhantomData<()>,
+    }
+    impl ::deno_core::_ops::Op for op_webidl {
+        const NAME: &'static str = stringify!(op_webidl);
+        const DECL: ::deno_core::_ops::OpDecl = ::deno_core::_ops::OpDecl::new_internal_op2(
+            ::deno_core::__op_name_fast!(op_webidl),
+            false,
+            false,
+            false,
+            2usize as u8,
+            false,
+            Self::v8_fn_ptr as _,
+            Self::v8_fn_ptr_metrics as _,
+            ::deno_core::AccessorType::None,
+            None,
+            None,
+            ::deno_core::OpMetadata {
+                ..::deno_core::OpMetadata::default()
+            },
+        );
+    }
+    impl op_webidl {
+        pub const fn name() -> &'static str {
+            <Self as deno_core::_ops::Op>::NAME
+        }
+        fn slow_function_impl<'s>(
+            info: &'s deno_core::v8::FunctionCallbackInfo,
+        ) -> usize {
+            #[cfg(debug_assertions)]
+            let _reentrancy_check_guard = deno_core::_ops::reentrancy_check(
+                &<Self as deno_core::_ops::Op>::DECL,
+            );
+            let scope = ::std::pin::pin!(
+                unsafe { deno_core::v8::CallbackScope::new(info) }
+            );
+            let mut scope = scope.init();
+            let mut rv = deno_core::v8::ReturnValue::from_function_callback_info(info);
+            let args = deno_core::v8::FunctionCallbackArguments::from_function_callback_info(
+                info,
+            );
+            let result = {
+                let arg0 = args.get(0usize as i32);
+                let arg0 = match <String as deno_core::webidl::WebIdlConverter>::convert(
+                    &mut scope,
+                    arg0,
+                    "Failed to execute 'UNINIT.call'".into(),
+                    deno_core::webidl::ContextFn::new_borrowed(
+                        &|| std::borrow::Cow::Borrowed("Argument 0"),
+                    ),
+                    &Default::default(),
+                ) {
+                    Ok(t) => t,
+                    Err(arg0_err) => {
+                        deno_core::_ops::throw_error_js_error_class(
+                            &mut scope,
+                            &arg0_err,
+                        );
+                        return 1;
+                    }
+                };
+                let arg1 = args.get(1usize as i32);
+                let arg1 = match <u32 as deno_core::webidl::WebIdlConverter>::convert(
+                    &mut scope,
+                    arg1,
+                    "Failed to execute 'UNINIT.call'".into(),
+                    deno_core::webidl::ContextFn::new_borrowed(
+                        &|| std::borrow::Cow::Borrowed("Argument 1"),
+                    ),
+                    &Default::default(),
+                ) {
+                    Ok(t) => t,
+                    Err(arg1_err) => {
+                        deno_core::_ops::throw_error_js_error_class(
+                            &mut scope,
+                            &arg1_err,
+                        );
+                        return 1;
+                    }
+                };
+                Self::call(arg0, arg1)
+            };
+            deno_core::_ops::RustToV8RetVal::to_v8_rv(result, &mut rv);
+            return 0;
+        }
+        extern "C" fn v8_fn_ptr<'s>(info: *const deno_core::v8::FunctionCallbackInfo) {
+            let info: &'s _ = unsafe { &*info };
+            Self::slow_function_impl(info);
+        }
+        extern "C" fn v8_fn_ptr_metrics<'s>(
+            info: *const deno_core::v8::FunctionCallbackInfo,
+        ) {
+            let info: &'s _ = unsafe { &*info };
+            let args = deno_core::v8::FunctionCallbackArguments::from_function_callback_info(
+                info,
+            );
+            let opctx: &'s _ = unsafe {
+                &*(deno_core::v8::Local::<
+                    deno_core::v8::External,
+                >::cast_unchecked(args.data())
+                    .value() as *const deno_core::_ops::OpCtx)
+            };
+            deno_core::_ops::dispatch_metrics_slow(
+                opctx,
+                deno_core::_ops::OpMetricsEvent::Dispatched,
+            );
+            let res = Self::slow_function_impl(info);
+            if res == 0 {
+                deno_core::_ops::dispatch_metrics_slow(
+                    opctx,
+                    deno_core::_ops::OpMetricsEvent::Completed,
+                );
+            } else {
+                deno_core::_ops::dispatch_metrics_slow(
+                    opctx,
+                    deno_core::_ops::OpMetricsEvent::Error,
+                );
+            }
+        }
+    }
+    impl op_webidl {
+        #[allow(clippy::too_many_arguments)]
+        fn call(s: String, _n: u32) -> u32 {
+            s.len() as _
+        }
+    }
+    <op_webidl as ::deno_core::_ops::Op>::DECL
+}

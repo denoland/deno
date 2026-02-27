@@ -1,0 +1,5 @@
+{
+  "a": 1
+}
+[ERR] Error: Top-level await is not allowed in synchronous evaluation
+[ERR]     at test:///integration/import_sync/import_sync.ts:8:1

@@ -1,0 +1,42 @@
+[
+  "getThis",
+  "getTypeName",
+  "getFunction",
+  "getFunctionName",
+  "getMethodName",
+  "getFileName",
+  "getLineNumber",
+  "getColumnNumber",
+  "getEvalOrigin",
+  "isToplevel",
+  "isEval",
+  "isNative",
+  "isConstructor",
+  "isAsync",
+  "isPromiseAll",
+  "getPromiseIndex",
+  "getScriptNameOrSourceURL",
+  "toString"
+]
+[]
+[
+  "test:///integration/error_prepare_stack_trace/error_prepare_stack_trace.ts:13:13"
+]
+getThis() threw an error: The receiver is not a valid callsite object.
+getTypeName() threw an error: The receiver is not a valid callsite object.
+getFunction() threw an error: The receiver is not a valid callsite object.
+getFunctionName() threw an error: The receiver is not a valid callsite object.
+getMethodName() threw an error: The receiver is not a valid callsite object.
+getFileName() threw an error: The receiver is not a valid callsite object.
+getLineNumber() threw an error: The receiver is not a valid callsite object.
+getColumnNumber() threw an error: The receiver is not a valid callsite object.
+getEvalOrigin() threw an error: The receiver is not a valid callsite object.
+isToplevel() threw an error: The receiver is not a valid callsite object.
+isEval() threw an error: The receiver is not a valid callsite object.
+isNative() threw an error: The receiver is not a valid callsite object.
+isConstructor() threw an error: The receiver is not a valid callsite object.
+isAsync() threw an error: The receiver is not a valid callsite object.
+isPromiseAll() threw an error: The receiver is not a valid callsite object.
+getPromiseIndex() threw an error: The receiver is not a valid callsite object.
+getScriptNameOrSourceURL() threw an error: The receiver is not a valid callsite object.
+toString() threw an error: The receiver is not a valid callsite object.
