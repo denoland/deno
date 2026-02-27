@@ -216,8 +216,7 @@ pub async fn ctrl_c() -> std::io::Result<()> {
 /// Creates an async stream that yields when a termination signal is
 /// received (SIGTERM or SIGINT on unix, SIGINT on Windows). Returns
 /// the signal number that was caught.
-pub fn termination_signal_stream(
-) -> std::io::Result<SignalStreamWithKind> {
+pub fn termination_signal_stream() -> std::io::Result<SignalStreamWithKind> {
   let (tx, rx) = watch::channel(0i32);
   let tx2 = tx.clone();
   register(
