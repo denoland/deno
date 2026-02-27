@@ -807,7 +807,7 @@ impl ModuleGraphBuilder {
     let mut locker = self.lockfile.as_ref().map(|l| l.as_deno_graph_locker());
     let npm_graph_resolver: Option<
       &(dyn deno_graph::source::NpmResolver + 'static),
-    > = if self.analyze_npm_sources() {
+    > = if self.npm_resolver.is_byonm() && self.analyze_npm_sources() {
       None
     } else {
       Some(self.npm_graph_resolver.as_ref())
