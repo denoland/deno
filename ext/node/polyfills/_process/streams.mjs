@@ -5,6 +5,7 @@ import { primordials } from "ext:core/mod.js";
 const {
   Uint8ArrayPrototype,
   Error,
+  FunctionPrototypeCall,
   ObjectDefineProperties,
   ObjectDefineProperty,
   TypedArrayPrototypeSlice,
@@ -180,6 +181,76 @@ export function createWritableStdioStream(writer, name, warmup = false) {
 
     stream.clearScreenDown = function (callback) {
       return clearScreenDown(this, callback);
+    };
+
+    // Lazy SIGWINCH handling: only register the signal listener when a
+    // "resize" listener is added, and unregister when none remain. This
+    // avoids creating a persistent pending op that interferes with event
+    // loop exit / TLA stall detection. Uses Deno.addSignalListener directly
+    // to avoid circular dependency with node:process.
+    let sigwinchRegistered = false;
+    const sigwinchHandler = () => stream._refreshSize();
+
+    // Track previous size explicitly. The `columns`/`rows` getters call
+    // Deno.consoleSize() dynamically, so by the time SIGWINCH fires the
+    // getter already returns the *new* size -- we'd compare new vs new and
+    // never detect a change. Snapshot the size at init and after each
+    // resize so we have a real "old" value to diff against.
+    let prevCols = writer?.isTerminal()
+      ? Deno.consoleSize?.()?.columns
+      : undefined;
+    let prevRows = writer?.isTerminal()
+      ? Deno.consoleSize?.()?.rows
+      : undefined;
+
+    stream._refreshSize = function () {
+      if (writer?.isTerminal()) {
+        const size = Deno.consoleSize?.();
+        if (size) {
+          const newCols = size.columns;
+          const newRows = size.rows;
+          if (prevCols !== newCols || prevRows !== newRows) {
+            prevCols = newCols;
+            prevRows = newRows;
+            stream.emit("resize");
+          }
+        }
+      }
+    };
+
+    const origOn = stream.on;
+    stream.on = stream.addListener = function (event, listener) {
+      FunctionPrototypeCall(origOn, this, event, listener);
+      if (event === "resize" && !sigwinchRegistered) {
+        sigwinchRegistered = true;
+        Deno.addSignalListener("SIGWINCH", sigwinchHandler);
+      }
+      return this;
+    };
+
+    const origOff = stream.removeListener;
+    stream.removeListener = stream.off = function (event, listener) {
+      FunctionPrototypeCall(origOff, this, event, listener);
+      if (
+        event === "resize" && sigwinchRegistered &&
+        this.listenerCount("resize") === 0
+      ) {
+        sigwinchRegistered = false;
+        Deno.removeSignalListener("SIGWINCH", sigwinchHandler);
+      }
+      return this;
+    };
+
+    const origRemoveAll = stream.removeAllListeners;
+    stream.removeAllListeners = function (event) {
+      FunctionPrototypeCall(origRemoveAll, this, event);
+      if (
+        (!event || event === "resize") && sigwinchRegistered
+      ) {
+        sigwinchRegistered = false;
+        Deno.removeSignalListener("SIGWINCH", sigwinchHandler);
+      }
+      return this;
     };
   }
 

@@ -1197,18 +1197,6 @@ internals.__bootstrapNodeProcess = function (
       );
     }
 
-    // Wire SIGWINCH to emit "resize" on stdout/stderr (like Node.js)
-    // On Windows, SIGWINCH is not supported as a signal, so this is a no-op
-    // (Process.prototype.on filters it out).
-    process.on("SIGWINCH", () => {
-      if (process.stdout?.isTTY) {
-        process.stdout.emit("resize");
-      }
-      if (process.stderr?.isTTY) {
-        process.stderr.emit("resize");
-      }
-    });
-
     arch = arch_();
     platform = isWindows ? "win32" : Deno.build.os;
     pid = Deno.pid;

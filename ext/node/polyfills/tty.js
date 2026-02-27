@@ -30,6 +30,11 @@ const {
   SafeMap,
   SafeMapIterator,
   SafeRegExp,
+  SafeSet,
+  SafeSetIterator,
+  SetPrototypeAdd,
+  SetPrototypeDelete,
+  SetPrototypeGetSize,
   StringPrototypeSplit,
   StringPrototypeToLowerCase,
 } = primordials;
@@ -300,6 +305,35 @@ export class ReadStream extends Socket {
 
 setReadStream(ReadStream);
 
+// Lazy SIGWINCH handling: only register the signal listener when at least one
+// WriteStream has a "resize" listener, and unregister when none do. This avoids
+// creating a persistent pending op that interferes with event loop exit / TLA
+// stall detection.
+const sigwinchStreams = new SafeSet();
+let sigwinchHandler = null;
+
+function onSigwinch() {
+  for (const stream of new SafeSetIterator(sigwinchStreams)) {
+    stream._refreshSize();
+  }
+}
+
+function addSigwinchListener(stream) {
+  SetPrototypeAdd(sigwinchStreams, stream);
+  if (!sigwinchHandler) {
+    sigwinchHandler = onSigwinch;
+    process.on("SIGWINCH", sigwinchHandler);
+  }
+}
+
+function removeSigwinchListener(stream) {
+  SetPrototypeDelete(sigwinchStreams, stream);
+  if (SetPrototypeGetSize(sigwinchStreams) === 0 && sigwinchHandler) {
+    process.off("SIGWINCH", sigwinchHandler);
+    sigwinchHandler = null;
+  }
+}
+
 export class WriteStream extends Socket {
   constructor(fd) {
     if (fd >> 0 !== fd || fd < 0) {
@@ -323,6 +357,38 @@ export class WriteStream extends Socket {
     this.columns = columns;
     this.rows = rows;
     this.isTTY = true;
+  }
+
+  on(event, listener) {
+    super.on(event, listener);
+    if (event === "resize" && this.listenerCount("resize") === 1) {
+      addSigwinchListener(this);
+    }
+    return this;
+  }
+
+  addListener(event, listener) {
+    return this.on(event, listener);
+  }
+
+  removeListener(event, listener) {
+    super.removeListener(event, listener);
+    if (event === "resize" && this.listenerCount("resize") === 0) {
+      removeSigwinchListener(this);
+    }
+    return this;
+  }
+
+  off(event, listener) {
+    return this.removeListener(event, listener);
+  }
+
+  removeAllListeners(event) {
+    super.removeAllListeners(event);
+    if (!event || event === "resize") {
+      removeSigwinchListener(this);
+    }
+    return this;
   }
 
   _refreshSize() {
