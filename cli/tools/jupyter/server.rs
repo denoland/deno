@@ -18,6 +18,7 @@ use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
+use deno_core::v8;
 use deno_lib::version::DENO_VERSION_INFO;
 use jupyter_protocol::ConnectionInfo;
 use jupyter_protocol::ExecutionCount;
@@ -61,6 +62,7 @@ impl JupyterServer {
     mut stdio_rx: mpsc::UnboundedReceiver<StreamContent>,
     repl_session_proxy: JupyterReplProxy,
     setup_tx: oneshot::Sender<StartupData>,
+    isolate_handle: v8::IsolateHandle,
   ) -> Result<(), AnyError> {
     let session_id = Uuid::new_v4().to_string();
 
@@ -146,8 +148,12 @@ impl JupyterServer {
     let control_fut = deno_core::unsync::spawn({
       let cancel_handle = cancel_handle.clone();
       async move {
-        if let Err(err) =
-          Self::handle_control(control_connection, cancel_handle).await
+        if let Err(err) = Self::handle_control(
+          control_connection,
+          cancel_handle,
+          isolate_handle,
+        )
+        .await
         {
           log::error!("Control error: {}", err);
         }
@@ -212,6 +218,7 @@ impl JupyterServer {
   async fn handle_control(
     mut connection: KernelControlConnection,
     cancel_handle: Rc<CancelHandle>,
+    isolate_handle: v8::IsolateHandle,
   ) -> Result<(), AnyError> {
     loop {
       let msg = connection.read().await?;
@@ -223,11 +230,30 @@ impl JupyterServer {
           // and it's no harm to send a kernel info reply on control
           connection.send(kernel_info().as_child_of(&msg)).await?;
         }
-        JupyterMessageContent::ShutdownRequest(_) => {
+        JupyterMessageContent::ShutdownRequest(ref req) => {
+          connection
+            .send(
+              messaging::ShutdownReply {
+                restart: req.restart,
+                status: ReplyStatus::Ok,
+                error: None,
+              }
+              .as_child_of(&msg),
+            )
+            .await?;
           cancel_handle.cancel();
         }
         JupyterMessageContent::InterruptRequest(_) => {
-          log::error!("Interrupt request currently not supported");
+          isolate_handle.terminate_execution();
+          connection
+            .send(
+              messaging::InterruptReply {
+                status: ReplyStatus::Ok,
+                error: None,
+              }
+              .as_child_of(&msg),
+            )
+            .await?;
         }
         JupyterMessageContent::DebugRequest(_) => {
           log::error!("Debug request currently not supported");
