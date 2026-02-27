@@ -82,6 +82,7 @@ async function dlint() {
     ":!:tests/unit_node/testdata/**",
     ":!:tests/wpt/runner/**",
     ":!:tests/wpt/suite/**",
+    ":!:libs/**",
   ]);
 
   if (!sourceFiles.length) {

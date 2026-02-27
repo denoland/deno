@@ -1501,16 +1501,7 @@ const publishCanaryJob = job("publish-canary", {
 // Ported from denoland/deno_core .github/workflows/ci-test/action.yml
 // Tests the merged deno_core crates (libs/*) using cargo nextest.
 
-const denoCoreLibsMembers = [
-  "libs/core",
-  "libs/core/examples/snapshot",
-  "libs/dcore",
-  "libs/ops",
-  "libs/ops/compile_test_runner",
-  "libs/serde_v8",
-  "libs/core_testing",
-];
-// Actual Cargo package names for the libs/* workspace members.
+// Cargo package names for the libs/* workspace members (merged from deno_core).
 const denoCorePackageNames = [
   "deno_core",
   "build-your-own-js-snapshot",
