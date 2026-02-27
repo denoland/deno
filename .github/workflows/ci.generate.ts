@@ -1497,6 +1497,140 @@ const publishCanaryJob = job("publish-canary", {
   })(),
 });
 
+// === deno_core test job ===
+// Ported from denoland/deno_core .github/workflows/ci-test/action.yml
+// Tests the merged deno_core crates (libs/*) using cargo nextest.
+
+const denoCoreLibsMembers = [
+  "libs/core",
+  "libs/core/examples/snapshot",
+  "libs/dcore",
+  "libs/ops",
+  "libs/ops/compile_test_runner",
+  "libs/serde_v8",
+  "libs/core_testing",
+];
+// Actual Cargo package names for the libs/* workspace members.
+const denoCorePackageNames = [
+  "deno_core",
+  "build-your-own-js-snapshot",
+  "dcore",
+  "deno_ops",
+  "deno_ops_compile_test_runner",
+  "serde_v8",
+  "deno_core_testing",
+];
+const denoCoreTestProfile = defineExprObj({
+  ...Runners.linuxX86Xl,
+  profile: "release",
+});
+const denoCoreTestCacheSteps = createCacheSteps({
+  ...denoCoreTestProfile,
+  cachePrefix: "deno-core-test",
+});
+const denoCoreTestJob = job("deno-core-test", {
+  name: `deno_core test linux-x86_64`,
+  needs: [preBuildJob],
+  if: preBuildJob.outputs.skip_build.notEquals("true"),
+  runsOn: denoCoreTestProfile.runner,
+  timeoutMinutes: 60,
+  defaults: {
+    run: {
+      shell: "bash",
+    },
+  },
+  env: {
+    CARGO_TERM_COLOR: "always",
+    RUST_BACKTRACE: "full",
+    RUST_LIB_BACKTRACE: 0,
+  },
+  steps: step.if(isNotTag)(
+    cloneRepoStep,
+    denoCoreTestCacheSteps.restoreCacheStep,
+    installRustStep,
+    step(sysRootConfig),
+    {
+      name: "Install cargo-binstall",
+      uses: "cargo-bins/cargo-binstall@main",
+    },
+    {
+      name: "Install nextest",
+      run: "cargo binstall cargo-nextest --secure --locked",
+    },
+    {
+      name: "Cargo nextest (release)",
+      run: [
+        `cargo nextest run --release`,
+        `  --features "deno_core/default deno_core/include_js_files_for_snapshotting deno_core/unsafe_runtime_options deno_core/unsafe_use_unprotected_platform"`,
+        `  --tests --examples`,
+        `  ${denoCorePackageNames.map((p) => `-p ${p}`).join(" ")}`,
+        `  --exclude deno_ops_compile_test_runner`,
+      ].join(" \\\n    "),
+    },
+    {
+      // Ported from denoland/deno_core .github/workflows/ci-test-ops/action.yml
+      name: "Cargo nextest ops compile test runner (release)",
+      run: "cargo nextest run --release -p deno_ops_compile_test_runner",
+    },
+    {
+      name: "Cargo doc test",
+      run:
+        `cargo test --doc --release ${denoCorePackageNames.filter((p) => p !== "deno_ops_compile_test_runner" && p !== "dcore").map((p) => `-p ${p}`).join(" ")}`,
+    },
+    {
+      // Regression test for https://github.com/denoland/deno/pull/19615.
+      name: "Run examples (regression tests)",
+      run: [
+        "cargo run -p deno_core --example op2",
+        "cargo run -p deno_core --example op2 --features include_js_files_for_snapshotting",
+      ],
+    },
+    denoCoreTestCacheSteps.saveCacheStep,
+  ),
+});
+
+// === deno_core miri test job ===
+// Ported from denoland/deno_core .github/workflows/ci-test-miri/action.yml
+// Runs miri tests for deno_core using a nightly Rust toolchain.
+
+const miriNightlyToolchain = "nightly-2025-11-12";
+const denoCoreMiriJob = job("deno-core-miri", {
+  name: "deno_core miri linux-x86_64",
+  needs: [preBuildJob],
+  if: preBuildJob.outputs.skip_build.notEquals("true"),
+  runsOn: Runners.linuxX86Xl.runner,
+  timeoutMinutes: 60,
+  defaults: {
+    run: {
+      shell: "bash",
+    },
+  },
+  env: {
+    CARGO_TERM_COLOR: "always",
+    RUST_BACKTRACE: "full",
+    RUST_LIB_BACKTRACE: 0,
+  },
+  steps: step.if(isNotTag)(
+    cloneRepoStep,
+    {
+      name: "Install Rust (nightly)",
+      uses: "dtolnay/rust-toolchain@master",
+      with: {
+        toolchain: miriNightlyToolchain,
+      },
+    },
+    {
+      name: "Cargo test (miri)",
+      run: [
+        "cargo clean",
+        `rustup component add --toolchain ${miriNightlyToolchain} miri`,
+        "# This somehow prints errors in CI that don't show up locally",
+        `RUSTFLAGS=-Awarnings cargo +${miriNightlyToolchain} miri test -p deno_core`,
+      ],
+    },
+  ),
+});
+
 // === lint ci status job (status check gate) ===
 
 const lintCiStatusJob = job("lint-ci-status", {
@@ -1507,6 +1641,8 @@ const lintCiStatusJob = job("lint-ci-status", {
     benchJob,
     ...buildJobs.map((j) => [j.buildJob, ...j.additionalJobs]).flat(),
     lintJob,
+    denoCoreTestJob,
+    denoCoreMiriJob,
   ],
   if: preBuildJob.outputs.skip_build.notEquals("true")
     .and(conditions.status.always()),
@@ -1556,6 +1692,8 @@ const workflow = createWorkflow({
     benchJob,
     ...buildJobs.map((j) => [j.buildJob, ...j.additionalJobs]).flat(),
     lintJob,
+    denoCoreTestJob,
+    denoCoreMiriJob,
     lintCiStatusJob,
     publishCanaryJob,
   ],
@@ -1633,6 +1771,10 @@ function resolveWorkspaceCrates(testPackageMembers: Set<string>) {
       if (!testPackageMembers.has(member)) {
         ensureNoIntegrationTests(member, cargoToml);
       }
+    } else if (member.startsWith("libs")) {
+      // libs/* crates (merged from deno_core) have their own dedicated
+      // deno-core-test CI job, so skip them here.
+      continue;
     } else if (cargoToml.bin) {
       ensureNoIntegrationTests(member, cargoToml);
       binCrates.push(cargoToml.package.name);

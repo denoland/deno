@@ -1364,7 +1364,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: cargo test --locked --lib -p deno -p denort -p node_shim -p deno_lib -p deno_snapshots -p deno_bundle_runtime -p deno_cache -p deno_cron -p deno_crypto -p deno_fetch -p deno_ffi -p deno_fs -p deno_http -p deno_image -p deno_io -p deno_kv -p deno_napi -p napi_sym -p deno_net -p deno_node -p deno_node_crypto -p deno_node_sqlite -p denort_helper -p deno_signals -p deno_telemetry -p deno_url -p deno_web -p deno_webgpu -p deno_webidl -p deno_websocket -p deno_webstorage -p deno_config -p deno_crypto_provider -p deno_dotenv -p eszip -p deno_inspector_server -p deno_lockfile -p deno_maybe_sync -p node_resolver -p deno_npm -p deno_npm_cache -p deno_npm_installer -p deno_package_json -p deno_resolver -p deno_typescript_go_client_rust -p deno_runtime -p deno_features -p deno_permissions -p deno_subprocess_windows
+        run: cargo test --locked --lib -p deno -p denort -p deno_lib -p deno_snapshots -p deno_bundle_runtime -p deno_cache -p deno_cron -p deno_crypto -p deno_fetch -p deno_ffi -p deno_fs -p deno_http -p deno_image -p deno_io -p deno_kv -p deno_napi -p napi_sym -p deno_net -p deno_node -p deno_node_crypto -p deno_node_sqlite -p denort_helper -p deno_signals -p deno_telemetry -p deno_url -p deno_web -p deno_webgpu -p deno_webidl -p deno_websocket -p deno_webstorage -p deno_runtime -p deno_features -p deno_permissions -p deno_subprocess_windows
       - name: Cache cargo home
         uses: cirruslabs/cache/save@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && github.ref == ''refs/heads/main'''
@@ -2179,7 +2179,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: cargo test --locked --lib -p deno -p denort -p node_shim -p deno_lib -p deno_snapshots -p deno_bundle_runtime -p deno_cache -p deno_cron -p deno_crypto -p deno_fetch -p deno_ffi -p deno_fs -p deno_http -p deno_image -p deno_io -p deno_kv -p deno_napi -p napi_sym -p deno_net -p deno_node -p deno_node_crypto -p deno_node_sqlite -p denort_helper -p deno_signals -p deno_telemetry -p deno_url -p deno_web -p deno_webgpu -p deno_webidl -p deno_websocket -p deno_webstorage -p deno_config -p deno_crypto_provider -p deno_dotenv -p eszip -p deno_inspector_server -p deno_lockfile -p deno_maybe_sync -p node_resolver -p deno_npm -p deno_npm_cache -p deno_npm_installer -p deno_package_json -p deno_resolver -p deno_typescript_go_client_rust -p deno_runtime -p deno_features -p deno_permissions -p deno_subprocess_windows
+        run: cargo test --locked --lib -p deno -p denort -p deno_lib -p deno_snapshots -p deno_bundle_runtime -p deno_cache -p deno_cron -p deno_crypto -p deno_fetch -p deno_ffi -p deno_fs -p deno_http -p deno_image -p deno_io -p deno_kv -p deno_napi -p napi_sym -p deno_net -p deno_node -p deno_node_crypto -p deno_node_sqlite -p denort_helper -p deno_signals -p deno_telemetry -p deno_url -p deno_web -p deno_webgpu -p deno_webidl -p deno_websocket -p deno_webstorage -p deno_runtime -p deno_features -p deno_permissions -p deno_subprocess_windows
       - name: Cache cargo home
         uses: cirruslabs/cache/save@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && github.ref == ''refs/heads/main'''
@@ -4986,7 +4986,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: cargo test --locked --lib -p deno -p denort -p node_shim -p deno_lib -p deno_snapshots -p deno_bundle_runtime -p deno_cache -p deno_cron -p deno_crypto -p deno_fetch -p deno_ffi -p deno_fs -p deno_http -p deno_image -p deno_io -p deno_kv -p deno_napi -p napi_sym -p deno_net -p deno_node -p deno_node_crypto -p deno_node_sqlite -p denort_helper -p deno_signals -p deno_telemetry -p deno_url -p deno_web -p deno_webgpu -p deno_webidl -p deno_websocket -p deno_webstorage -p deno_config -p deno_crypto_provider -p deno_dotenv -p eszip -p deno_inspector_server -p deno_lockfile -p deno_maybe_sync -p node_resolver -p deno_npm -p deno_npm_cache -p deno_npm_installer -p deno_package_json -p deno_resolver -p deno_typescript_go_client_rust -p deno_runtime -p deno_features -p deno_permissions -p deno_subprocess_windows
+        run: cargo test --locked --lib -p deno -p denort -p deno_lib -p deno_snapshots -p deno_bundle_runtime -p deno_cache -p deno_cron -p deno_crypto -p deno_fetch -p deno_ffi -p deno_fs -p deno_http -p deno_image -p deno_io -p deno_kv -p deno_napi -p napi_sym -p deno_net -p deno_node -p deno_node_crypto -p deno_node_sqlite -p denort_helper -p deno_signals -p deno_telemetry -p deno_url -p deno_web -p deno_webgpu -p deno_webidl -p deno_websocket -p deno_webstorage -p deno_runtime -p deno_features -p deno_permissions -p deno_subprocess_windows
       - name: Cache cargo home
         uses: cirruslabs/cache/save@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && github.ref == ''refs/heads/main'''
@@ -5667,6 +5667,231 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: '98-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-lint-${{ github.sha }}'
+  deno-core-test:
+    name: deno_core test linux-x86_64
+    needs:
+      - pre_build
+    if: needs.pre_build.outputs.skip_build != 'true'
+    runs-on: '${{ github.repository == ''denoland/deno'' && ''ghcr.io/cirruslabs/ubuntu-runner-amd64:24.04'' || ''ubuntu-24.04'' }}'
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    env:
+      CARGO_TERM_COLOR: always
+      RUST_BACKTRACE: full
+      RUST_LIB_BACKTRACE: 0
+    steps:
+      - name: Configure git
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: |-
+          git config --global core.symlinks true
+          git config --global fetch.parallel 32
+      - name: Clone repository
+        uses: actions/checkout@v6
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        with:
+          fetch-depth: 5
+          submodules: false
+      - name: Restore cache cargo home
+        uses: cirruslabs/cache/restore@v4
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        with:
+          path: |-
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: never_saved
+          restore-keys: 98-cargo-home-linux-x86_64-deno-core-test-
+      - name: Restore cache build output
+        uses: cirruslabs/cache/restore@v4
+        if: '!startsWith(github.ref, ''refs/tags/'') && github.ref != ''refs/heads/main'''
+        with:
+          path: |-
+            ./target
+            !./target/*/gn_out
+            !./target/*/gn_root
+            !./target/*/*.zip
+            !./target/*/*.tar.gz
+          key: never_saved
+          restore-keys: 98-cargo-target-linux-x86_64-release-deno-core-test-
+      - name: Apply and update mtime cache
+        uses: ./.github/mtime_cache
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        with:
+          cache-path: ./target
+      - uses: dsherret/rust-toolchain-file@v1
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+      - name: Set up incremental LTO and sysroot build
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: |-
+          # Setting up sysroot
+          export DEBIAN_FRONTEND=noninteractive
+          # Avoid running man-db triggers, which sometimes takes several minutes
+          # to complete.
+          sudo apt-get -qq remove --purge -y man-db > /dev/null 2> /dev/null
+          # Remove older clang before we install
+          sudo apt-get -qq remove   'clang-12*' 'clang-13*' 'clang-14*' 'clang-15*' 'clang-16*' 'clang-17*' 'clang-18*' 'clang-19*' 'llvm-12*' 'llvm-13*' 'llvm-14*' 'llvm-15*' 'llvm-16*' 'llvm-17*' 'llvm-18*' 'llvm-19*' 'lld-12*' 'lld-13*' 'lld-14*' 'lld-15*' 'lld-16*' 'lld-17*' 'lld-18*' 'lld-19*' > /dev/null 2> /dev/null
+
+          # Install clang-XXX, lld-XXX, and debootstrap.
+          echo "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-21 main" |
+            sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-noble-21.list
+          curl https://apt.llvm.org/llvm-snapshot.gpg.key |
+            gpg --dearmor                                 |
+          sudo dd of=/etc/apt/trusted.gpg.d/llvm-snapshot.gpg
+          sudo apt-get update
+          # this was unreliable sometimes, so try again if it fails
+          sudo apt-get install -y --no-install-recommends clang-21 lld-21 clang-tools-21 clang-format-21 clang-tidy-21 || (echo 'Failed. Trying again.' && sudo apt-get clean && sudo apt-get update && sudo apt-get install -y --no-install-recommends clang-21 lld-21 clang-tools-21 clang-format-21 clang-tidy-21)
+          # Fix alternatives
+          (yes '' | sudo update-alternatives --force --all) > /dev/null 2> /dev/null || true
+
+          clang-21 -c -o /tmp/memfd_create_shim.o tools/memfd_create_shim.c -fPIC
+
+          echo "Decompressing sysroot..."
+          wget -q https://github.com/denoland/deno_sysroot_build/releases/download/sysroot-20250207/sysroot-`uname -m`.tar.xz -O /tmp/sysroot.tar.xz
+          cd /
+          xzcat /tmp/sysroot.tar.xz | sudo tar -x
+          sudo mount --rbind /dev /sysroot/dev
+          sudo mount --rbind /sys /sysroot/sys
+          sudo mount --rbind /home /sysroot/home
+          sudo mount -t proc /proc /sysroot/proc
+          cd
+
+          echo "Done."
+
+          # Configure the build environment. Both Rust and Clang will produce
+          # llvm bitcode only, so we can use lld's incremental LTO support.
+
+          # Load the sysroot's env vars
+          echo "sysroot env:"
+          cat /sysroot/.env
+          . /sysroot/.env
+
+          # Important notes:
+          #   1. -ldl seems to be required to avoid a failure in FFI tests. This flag seems
+          #      to be in the Rust default flags in the smoketest, so uncertain why we need
+          #      to be explicit here.
+          #   2. RUSTFLAGS and RUSTDOCFLAGS must be specified, otherwise the doctests fail
+          #      to build because the object formats are not compatible.
+          echo "
+          CARGO_PROFILE_BENCH_INCREMENTAL=false
+          CARGO_PROFILE_RELEASE_INCREMENTAL=false
+          RUSTFLAGS<<__1
+            -C linker-plugin-lto=true
+            -C linker=clang-21
+            -C link-arg=-fuse-ld=lld-21
+            -C link-arg=-ldl
+            -C link-arg=-Wl,--allow-shlib-undefined
+            -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
+            -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
+            -C link-arg=/tmp/memfd_create_shim.o
+            --cfg tokio_unstable
+            $RUSTFLAGS
+          __1
+          RUSTDOCFLAGS<<__1
+            -C linker-plugin-lto=true
+            -C linker=clang-21
+            -C link-arg=-fuse-ld=lld-21
+            -C link-arg=-ldl
+            -C link-arg=-Wl,--allow-shlib-undefined
+            -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
+            -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
+            -C link-arg=/tmp/memfd_create_shim.o
+            --cfg tokio_unstable
+            $RUSTFLAGS
+          __1
+          CC=/usr/bin/clang-21
+          CFLAGS=$CFLAGS
+          " > $GITHUB_ENV
+      - name: Install cargo-binstall
+        uses: cargo-bins/cargo-binstall@main
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+      - name: Install nextest
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: cargo binstall cargo-nextest --secure --locked
+      - name: Cargo nextest (release)
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: |-
+          cargo nextest run --release \
+                --features "deno_core/default deno_core/include_js_files_for_snapshotting deno_core/unsafe_runtime_options deno_core/unsafe_use_unprotected_platform" \
+                --tests --examples \
+                -p deno_core -p build-your-own-js-snapshot -p dcore -p deno_ops -p deno_ops_compile_test_runner -p serde_v8 -p deno_core_testing \
+                --exclude deno_ops_compile_test_runner
+      - name: Cargo nextest ops compile test runner (release)
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: cargo nextest run --release -p deno_ops_compile_test_runner
+      - name: Cargo doc test
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: cargo test --doc --release -p deno_core -p build-your-own-js-snapshot -p deno_ops -p serde_v8 -p deno_core_testing
+      - name: Run examples (regression tests)
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: |-
+          cargo run -p deno_core --example op2
+          cargo run -p deno_core --example op2 --features include_js_files_for_snapshotting
+      - name: Cache cargo home
+        uses: cirruslabs/cache/save@v4
+        if: '!startsWith(github.ref, ''refs/tags/'') && github.ref == ''refs/heads/main'''
+        with:
+          path: |-
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: '98-cargo-home-linux-x86_64-deno-core-test-${{ github.sha }}'
+      - name: Cache build output
+        uses: cirruslabs/cache/save@v4
+        if: '!startsWith(github.ref, ''refs/tags/'') && github.ref == ''refs/heads/main'''
+        with:
+          path: |-
+            ./target
+            !./target/*/gn_out
+            !./target/*/gn_root
+            !./target/*/*.zip
+            !./target/*/*.tar.gz
+          key: '98-cargo-target-linux-x86_64-release-deno-core-test-${{ github.sha }}'
+  deno-core-miri:
+    name: deno_core miri linux-x86_64
+    needs:
+      - pre_build
+    if: needs.pre_build.outputs.skip_build != 'true'
+    runs-on: '${{ github.repository == ''denoland/deno'' && ''ghcr.io/cirruslabs/ubuntu-runner-amd64:24.04'' || ''ubuntu-24.04'' }}'
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    env:
+      CARGO_TERM_COLOR: always
+      RUST_BACKTRACE: full
+      RUST_LIB_BACKTRACE: 0
+    steps:
+      - name: Configure git
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: |-
+          git config --global core.symlinks true
+          git config --global fetch.parallel 32
+      - name: Clone repository
+        uses: actions/checkout@v6
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        with:
+          fetch-depth: 5
+          submodules: false
+      - name: Install Rust (nightly)
+        uses: dtolnay/rust-toolchain@master
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        with:
+          toolchain: nightly-2025-11-12
+      - name: Cargo test (miri)
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: |-
+          cargo clean
+          rustup component add --toolchain nightly-2025-11-12 miri
+          # This somehow prints errors in CI that don't show up locally
+          RUSTFLAGS=-Awarnings cargo +nightly-2025-11-12 miri test -p deno_core
   lint-ci-status:
     name: lint ci status
     needs:
@@ -5701,6 +5926,8 @@ jobs:
       - build-release-linux-aarch64
       - test-release-linux-aarch64
       - lint
+      - deno-core-test
+      - deno-core-miri
       - pre_build
     if: needs.pre_build.outputs.skip_build != 'true' && always()
     runs-on: ubuntu-latest
