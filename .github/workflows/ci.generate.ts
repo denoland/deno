@@ -1549,6 +1549,7 @@ const denoCoreTestJob = job("deno-core-test", {
     cloneRepoStep,
     denoCoreTestCacheSteps.restoreCacheStep,
     installRustStep,
+    installDenoStep,
     step(sysRootConfig),
     {
       name: "Install cargo-binstall",

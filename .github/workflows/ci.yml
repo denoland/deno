@@ -5725,6 +5725,11 @@ jobs:
           cache-path: ./target
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'')'
+      - name: Install Deno
+        uses: denoland/setup-deno@v2
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        with:
+          deno-version: v2.x
       - name: Set up incremental LTO and sysroot build
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: |-
