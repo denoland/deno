@@ -1,6 +1,4 @@
 {
-  // SIGWINCH is a Unix signal, not available on Windows
-  "if": "unix",
   "args": "run -A main.ts",
   "output": "resize event received\n"
 }
