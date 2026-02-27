@@ -283,7 +283,9 @@ mod tests {
     }
 
     let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-      .join("rebuild_async_stubs.js");
+      .join("rebuild_async_stubs.js")
+      .canonicalize()
+      .unwrap();
     eprintln!("path {:#?}", path);
     let status = Command::new("deno")
       .args(["run", "-A", path.as_os_str().to_str().unwrap(), "--check"])
