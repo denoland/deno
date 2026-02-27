@@ -1555,7 +1555,6 @@ const denoCoreTestJob = job("deno-core-test", {
         `  --features "deno_core/default deno_core/include_js_files_for_snapshotting deno_core/unsafe_use_unprotected_platform"`,
         `  --tests --examples`,
         `  ${denoCorePackageNames.map((p) => `-p ${p}`).join(" ")}`,
-        `  --exclude deno_ops_compile_test_runner`,
       ].join(" \\\n    "),
     },
     {
