@@ -1,0 +1,17 @@
+{
+    "ports": {
+        "http": [],
+        "https": [],
+        "ws": [],
+        "wss": []
+    },
+    "check_subdomains": false,
+    "ssl": {
+        "type": "openssl",
+        "openssl": {
+            "duration": 365,
+            "force_regenerate": true,
+            "base_path": "tools/certs"
+        }
+    }
+}
