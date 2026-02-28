@@ -1,5 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::ffi::OsString;
@@ -1539,6 +1540,8 @@ pub struct SourceFile {
 
 impl SourceFile {
   pub fn new(path: PathRef, src: String) -> Self {
+    let path =
+      PathRef::new(deno_path_util::normalize_path(Cow::Borrowed(&path)));
     path.write(&src);
     Self::new_in_mem(path, src)
   }
