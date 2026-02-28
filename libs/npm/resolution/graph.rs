@@ -178,13 +178,11 @@ impl ResolvedNodeIds {
   }
 }
 
-
 #[derive(Clone)]
 enum GraphPathNodeOrRoot {
   Node(Rc<GraphPath>),
   Root(Rc<PackageNv>),
 }
-
 
 /// Path through the graph that represents a traversal through the graph doing
 /// the dependency resolution. The graph tries to share duplicate package
@@ -572,8 +570,7 @@ impl Graph {
       let mut adj = Vec::new();
 
       for &peer_dep in &resolved_id.peer_dependencies {
-        if let Some(child_resolved_id) =
-          self.resolved_node_ids.get(peer_dep)
+        if let Some(child_resolved_id) = self.resolved_node_ids.get(peer_dep)
           && seen_nvs.insert(child_resolved_id.nv.clone())
         {
           nv_entry.insert(child_resolved_id.nv.clone());
@@ -1114,7 +1111,6 @@ impl DepEntryCache {
   }
 }
 
-
 pub struct GraphDependencyResolverOptions {
   pub should_dedup: bool,
 }
@@ -1346,11 +1342,8 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
         child_id = ancestor.node_id();
       }
 
-      let new_path = parent_path.with_id(
-        child_id,
-        entry.bare_specifier.clone(),
-        child_nv,
-      );
+      let new_path =
+        parent_path.with_id(child_id, entry.bare_specifier.clone(), child_nv);
       if let Some(ancestor) = maybe_ancestor {
         // this node is circular, so we link it to the ancestor
         self.add_linked_circular_descendant(&ancestor, new_path);
@@ -1918,12 +1911,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
           match dep.kind {
             NpmDependencyEntryKind::Peer
             | NpmDependencyEntryKind::OptionalPeer => {
-              let found = parent_pkgs
-                .get(&dep.bare_specifier)
-                .or_else(|| parent_pkgs.get(dep.name.as_str()))
-                .or_else(|| self.peer_fallbacks.get(&dep.bare_specifier))
-                .or_else(|| self.peer_fallbacks.get(dep.name.as_str()));
-              if let Some(&peer_id) = found {
+              if let Some(peer_id) = self.find_peer_node_id(dep, parent_pkgs) {
                 resolved_peers.insert(dep.bare_specifier.clone(), peer_id);
               } else if !dep.kind.is_optional_peer() {
                 let effective_req = dep
@@ -1988,14 +1976,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
           if dep.name.as_str() == nv.name.as_str() {
             continue;
           }
-          // Look up by specifier first, then by package name,
-          // then fall back to auto-installed peers
-          let found = parent_pkgs
-            .get(&dep.bare_specifier)
-            .or_else(|| parent_pkgs.get(dep.name.as_str()))
-            .or_else(|| self.peer_fallbacks.get(&dep.bare_specifier))
-            .or_else(|| self.peer_fallbacks.get(dep.name.as_str()));
-          if let Some(&peer_id) = found {
+          if let Some(peer_id) = self.find_peer_node_id(dep, parent_pkgs) {
             if let Some(peer_resolved) =
               self.graph.resolved_node_ids.get(peer_id)
             {
@@ -2335,16 +2316,27 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
     if is_pure {
       self.pure_pkgs.insert(nv);
     } else {
-      self
-        .peers_cache
-        .entry(nv)
-        .or_default()
-        .push(result.clone());
+      self.peers_cache.entry(nv).or_default().push(result.clone());
     }
 
     visiting.remove(&node_id);
 
     Ok(result)
+  }
+
+  /// Look up a peer dependency node ID from the parent scope and fallbacks.
+  /// Checks by bare specifier first, then by package name.
+  fn find_peer_node_id(
+    &self,
+    dep: &NpmDependencyEntry,
+    parent_pkgs: &BTreeMap<StackString, NodeId>,
+  ) -> Option<NodeId> {
+    parent_pkgs
+      .get(&dep.bare_specifier)
+      .or_else(|| parent_pkgs.get(dep.name.as_str()))
+      .or_else(|| self.peer_fallbacks.get(&dep.bare_specifier))
+      .or_else(|| self.peer_fallbacks.get(dep.name.as_str()))
+      .copied()
   }
 
   /// Check if a cached peer resolution matches the current parent context.
