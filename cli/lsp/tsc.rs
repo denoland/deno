@@ -50,7 +50,6 @@ use deno_runtime::deno_inspector_server::InspectPublishUid;
 use deno_runtime::deno_inspector_server::InspectorServer;
 use deno_runtime::deno_node::SUPPORTED_BUILTIN_NODE_MODULES;
 use deno_runtime::tokio_util::create_basic_runtime;
-use indexmap::IndexMap;
 use indexmap::IndexSet;
 use lazy_regex::lazy_regex;
 use lsp_types::Uri;
@@ -97,6 +96,7 @@ use crate::lsp::completions::CompletionItemData;
 use crate::lsp::documents::Document;
 use crate::lsp::logging::lsp_warn;
 use crate::lsp::resolver::SingleReferrerGraphResolver;
+use crate::lsp::urls::normalize_path;
 use crate::tsc::MISSING_DEPENDENCY_SPECIFIER;
 use crate::tsc::ResolveArgs;
 use crate::util::path::relative_specifier;
@@ -2179,14 +2179,14 @@ impl DocumentSpan {
 impl DocumentSpan {
   pub fn to_link(
     &self,
-    module: &DocumentModule,
+    origin_module: &DocumentModule,
     snapshot: &StateSnapshot,
   ) -> Option<lsp::LocationLink> {
     let target_specifier = resolve_url(&self.file_name).ok()?;
     let target_module = snapshot.document_modules.module_for_specifier(
       &target_specifier,
-      module.scope.as_deref(),
-      Some(&module.compiler_options_key),
+      origin_module.scope.as_deref(),
+      Some(&origin_module.compiler_options_key),
     )?;
     let (target_range, target_selection_range) =
       if let Some(context_span) = &self.context_span {
@@ -2202,10 +2202,10 @@ impl DocumentSpan {
       };
     let origin_selection_range =
       if let Some(original_context_span) = &self.original_context_span {
-        Some(original_context_span.to_range(module.line_index.clone()))
+        Some(original_context_span.to_range(origin_module.line_index.clone()))
       } else {
         self.original_text_span.as_ref().map(|original_text_span| {
-          original_text_span.to_range(module.line_index.clone())
+          original_text_span.to_range(origin_module.line_index.clone())
         })
       };
     let link = lsp::LocationLink {
@@ -2240,6 +2240,24 @@ impl DocumentSpan {
     )));
 
     Some(target)
+  }
+
+  pub fn collect_into_goto_definition_response<'a>(
+    document_spans: impl IntoIterator<Item = (&'a DocumentSpan, &'a DocumentModule)>,
+    snapshot: &StateSnapshot,
+    token: &CancellationToken,
+  ) -> Result<Option<lsp::GotoDefinitionResponse>, AnyError> {
+    let mut links = Vec::new();
+    for (document_span, origin_module) in document_spans {
+      if token.is_cancelled() {
+        return Err(anyhow!("request cancelled"));
+      }
+      links.extend(document_span.to_link(origin_module, snapshot));
+    }
+    if links.is_empty() {
+      return Ok(None);
+    }
+    Ok(Some(lsp::GotoDefinitionResponse::Link(links)))
   }
 }
 
@@ -2316,7 +2334,11 @@ impl NavigateToItem {
       tags,
       deprecated: None,
       location,
-      container_name: self.container_name.clone(),
+      container_name: self
+        .container_name
+        .as_ref()
+        .filter(|s| !s.is_empty())
+        .cloned(),
     })
   }
 }
@@ -2613,14 +2635,6 @@ impl ImplementationLocation {
     self.document_span.normalize(specifier_map)?;
     Ok(())
   }
-
-  pub fn to_link(
-    &self,
-    module: &DocumentModule,
-    snapshot: &StateSnapshot,
-  ) -> Option<lsp::LocationLink> {
-    self.document_span.to_link(module, snapshot)
-  }
 }
 
 #[derive(Debug, Eq, PartialEq, Hash, Deserialize)]
@@ -2651,7 +2665,7 @@ impl RenameLocation {
     language_server: &language_server::Inner,
     token: &CancellationToken,
   ) -> Result<lsp::WorkspaceEdit, AnyError> {
-    let mut text_document_edit_map = IndexMap::new();
+    let mut changes = HashMap::new();
     let mut includes_non_files = false;
     for (location, module) in locations_with_modules {
       if token.is_cancelled() {
@@ -2671,16 +2685,9 @@ impl RenameLocation {
       else {
         continue;
       };
-      let document_edit = text_document_edit_map
-        .entry(target_module.uri.clone())
-        .or_insert_with(|| lsp::TextDocumentEdit {
-          text_document: lsp::OptionalVersionedTextDocumentIdentifier {
-            uri: target_module.uri.as_ref().clone(),
-            version: target_module.open_data.as_ref().map(|d| d.version),
-          },
-          edits: Vec::<lsp::OneOf<lsp::TextEdit, lsp::AnnotatedTextEdit>>::new(
-          ),
-        });
+      let text_edits: &mut Vec<_> = changes
+        .entry(target_module.uri.as_ref().clone())
+        .or_default();
       let new_text = [
         location.prefix_text.as_deref(),
         Some(new_name),
@@ -2690,13 +2697,13 @@ impl RenameLocation {
       .flatten()
       .collect::<Vec<_>>()
       .join("");
-      document_edit.edits.push(lsp::OneOf::Left(lsp::TextEdit {
+      text_edits.push(lsp::TextEdit {
         range: location
           .document_span
           .text_span
           .to_range(target_module.line_index.clone()),
         new_text,
-      }));
+      });
     }
 
     if includes_non_files {
@@ -2705,10 +2712,8 @@ impl RenameLocation {
 
     Ok(lsp::WorkspaceEdit {
       change_annotations: None,
-      changes: None,
-      document_changes: Some(lsp::DocumentChanges::Edits(
-        text_document_edit_map.values().cloned().collect(),
-      )),
+      changes: Some(changes),
+      document_changes: None,
     })
   }
 }
@@ -2772,28 +2777,6 @@ impl DefinitionInfoAndBoundSpan {
       definition.normalize(specifier_map)?;
     }
     Ok(())
-  }
-
-  pub fn to_definition(
-    &self,
-    module: &DocumentModule,
-    snapshot: &StateSnapshot,
-    token: &CancellationToken,
-  ) -> Result<Option<lsp::GotoDefinitionResponse>, AnyError> {
-    if let Some(definitions) = &self.definitions {
-      let mut location_links = Vec::<lsp::LocationLink>::new();
-      for di in definitions {
-        if token.is_cancelled() {
-          return Err(anyhow!("request cancelled"));
-        }
-        if let Some(link) = di.document_span.to_link(module, snapshot) {
-          location_links.push(link);
-        }
-      }
-      Ok(Some(lsp::GotoDefinitionResponse::Link(location_links)))
-    } else {
-      Ok(None)
-    }
   }
 }
 
@@ -3425,10 +3408,8 @@ impl CallHierarchyItem {
     &self,
     module: &DocumentModule,
     snapshot: &StateSnapshot,
-    maybe_root_path: Option<&Path>,
   ) -> Option<lsp::CallHierarchyItem> {
-    let (item, _) =
-      self.to_call_hierarchy_item(module, snapshot, maybe_root_path)?;
+    let (item, _) = self.to_call_hierarchy_item(module, snapshot)?;
     Some(item)
   }
 
@@ -3436,7 +3417,6 @@ impl CallHierarchyItem {
     &self,
     module: &DocumentModule,
     snapshot: &StateSnapshot,
-    maybe_root_path: Option<&Path>,
   ) -> Option<(lsp::CallHierarchyItem, Arc<DocumentModule>)> {
     let target_specifier = resolve_url(&self.file).ok()?;
     let target_module = snapshot.document_modules.module_for_specifier(
@@ -3449,35 +3429,12 @@ impl CallHierarchyItem {
     let maybe_file_path = url_to_file_path(&target_module.specifier).ok();
     let name = if use_file_name {
       if let Some(file_path) = &maybe_file_path {
-        file_path
-          .file_name()
-          .unwrap()
-          .to_string_lossy()
-          .into_owned()
+        normalize_path(file_path).to_string_lossy().into_owned()
       } else {
         target_module.uri.to_string()
       }
     } else {
       self.name.clone()
-    };
-    let detail = if use_file_name {
-      if let Some(file_path) = &maybe_file_path {
-        // TODO: update this to work with multi root workspaces
-        let parent_dir = file_path.parent().unwrap();
-        if let Some(root_path) = maybe_root_path {
-          parent_dir
-            .strip_prefix(root_path)
-            .unwrap_or(parent_dir)
-            .to_string_lossy()
-            .into_owned()
-        } else {
-          parent_dir.to_string_lossy().into_owned()
-        }
-      } else {
-        String::new()
-      }
-    } else {
-      self.container_name.as_ref().cloned().unwrap_or_default()
     };
 
     let mut tags: Option<Vec<lsp::SymbolTag>> = None;
@@ -3493,7 +3450,7 @@ impl CallHierarchyItem {
         name,
         tags,
         uri: target_module.uri.as_ref().clone(),
-        detail: Some(detail),
+        detail: self.container_name.clone(),
         kind: self.kind.clone().into(),
         range: self.span.to_range(target_module.line_index.clone()),
         selection_range: self
@@ -3532,12 +3489,9 @@ impl CallHierarchyIncomingCall {
     &self,
     module: &DocumentModule,
     snapshot: &StateSnapshot,
-    maybe_root_path: Option<&Path>,
   ) -> Option<lsp::CallHierarchyIncomingCall> {
     let (from, target_module) =
-      self
-        .from
-        .to_call_hierarchy_item(module, snapshot, maybe_root_path)?;
+      self.from.to_call_hierarchy_item(module, snapshot)?;
     Some(lsp::CallHierarchyIncomingCall {
       from,
       from_ranges: self
@@ -3569,12 +3523,8 @@ impl CallHierarchyOutgoingCall {
     &self,
     module: &DocumentModule,
     snapshot: &StateSnapshot,
-    maybe_root_path: Option<&Path>,
   ) -> Option<lsp::CallHierarchyOutgoingCall> {
-    let (to, _) =
-      self
-        .to
-        .to_call_hierarchy_item(module, snapshot, maybe_root_path)?;
+    let (to, _) = self.to.to_call_hierarchy_item(module, snapshot)?;
     Some(lsp::CallHierarchyOutgoingCall {
       to,
       from_ranges: self

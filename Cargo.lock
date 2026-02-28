@@ -10066,6 +10066,7 @@ dependencies = [
  "anyhow",
  "console_static_text",
  "crossterm",
+ "deno_path_util",
  "file_test_runner",
  "fluent-uri",
  "indexmap 2.9.0",
