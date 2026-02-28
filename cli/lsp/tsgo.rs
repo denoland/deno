@@ -46,6 +46,7 @@ use crate::lsp::documents::ServerDocumentKind;
 use crate::lsp::logging::lsp_log;
 use crate::lsp::logging::lsp_warn;
 use crate::lsp::resolver::SingleReferrerGraphResolver;
+use crate::lsp::urls::normalize_uri;
 use crate::lsp::urls::uri_to_url;
 use crate::tsc::IGNORED_DIAGNOSTIC_CODES;
 
@@ -844,6 +845,7 @@ impl TsGoServerInner {
   ) -> Result<serde_json::Value, AnyError> {
     match params {
       TsGoCallbackParams::GetDocument { uri } => {
+        let uri = normalize_uri(&uri);
         let document = snapshot
           .document_modules
           .documents
@@ -868,6 +870,7 @@ impl TsGoServerInner {
         resolution_mode,
         compiler_options_key,
       } => {
+        let referrer_uri = normalize_uri(&referrer_uri);
         let referrer_module = snapshot
           .document_modules
           .module_for_tsgo_document(&referrer_uri, &compiler_options_key)
@@ -931,6 +934,7 @@ impl TsGoServerInner {
         uri,
         compiler_options_key,
       } => {
+        let uri = normalize_uri(&uri);
         let referrer_module = snapshot
           .document_modules
           .module_for_tsgo_document(&uri, &compiler_options_key)
@@ -1441,10 +1445,10 @@ impl TsGoServer {
       .request(
         TsGoRequest::LanguageServiceMethod {
           name: "ProvideImplementations".to_string(),
-          args: json!({
+          args: json!([{
             "textDocument": { "uri": &module.uri },
             "position": position,
-          }),
+          }]),
           compiler_options_key: module.compiler_options_key.clone(),
           notebook_uri: module.notebook_uri.clone(),
         },
@@ -1692,6 +1696,7 @@ fn normalize_uri_and_positions<'a>(
   positions: impl IntoIterator<Item = &'a mut lsp::Position>,
   snapshot: &StateSnapshot,
 ) {
+  *uri = normalize_uri(uri);
   let Some(document) = snapshot.document_modules.documents.get(uri) else {
     return;
   };

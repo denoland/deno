@@ -268,6 +268,18 @@ impl InitializeParamsBuilder {
               }),
               ..Default::default()
             }),
+            definition: Some(lsp::GotoCapability {
+              link_support: Some(true),
+              ..Default::default()
+            }),
+            type_definition: Some(lsp::GotoCapability {
+              link_support: Some(true),
+              ..Default::default()
+            }),
+            implementation: Some(lsp::GotoCapability {
+              link_support: Some(true),
+              ..Default::default()
+            }),
             hover: Some(HoverClientCapabilities {
               content_format: Some(vec![
                 MarkupKind::Markdown,
@@ -1569,6 +1581,10 @@ impl SourceFile {
 
   pub fn range_of_nth(&self, n: usize, text: &str) -> lsp::Range {
     range_of_nth(n, text, &self.src)
+  }
+
+  pub fn path(&self) -> &PathRef {
+    &self.path
   }
 
   pub fn url(&self) -> Url {
