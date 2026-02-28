@@ -11,6 +11,11 @@
     "fmt_check_ignore": {
       "args": "fmt --check --ignore=regular/formatted1.js regular/",
       "output": "Checked 3 files\n"
+    },
+    "fmt_check_fail_fast": {
+      "args": "fmt --check --fail-fast fail_fast/a.ts fail_fast/b.ts",
+      "output": "fail_fast_check.out",
+      "exitCode": 1
     }
   }
 }
