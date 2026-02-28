@@ -25,6 +25,7 @@ use deno_graph::ModuleGraph;
 use deno_graph::ModuleGraphError;
 use deno_graph::ModuleLoadError;
 use deno_graph::NpmResolvePkgReqsResult;
+use deno_graph::Resolution;
 use deno_graph::ResolutionError;
 use deno_graph::SpecifierError;
 use deno_graph::WorkspaceFastCheckOption;
@@ -51,6 +52,7 @@ use deno_semver::SmallStackString;
 use deno_semver::jsr::JsrDepPackageReq;
 use deno_semver::npm::NpmPackageReqReference;
 use import_map::ImportMapErrorKind;
+use indexmap::IndexSet;
 use node_resolver::NodeResolutionKind;
 use node_resolver::errors::NodeJsErrorCode;
 use sys_traits::FsMetadata;
@@ -855,15 +857,16 @@ impl ModuleGraphBuilder {
           Some(&cloned_graph),
         );
 
-        let npm_specifier_roots = graph
-          .roots
-          .iter()
-          .filter(|r| r.scheme() == "npm")
-          .cloned()
-          .collect::<Vec<_>>();
+        let npm_specifiers: Vec<(ModuleSpecifier, Option<ModuleSpecifier>)> =
+          graph
+            .roots
+            .iter()
+            .filter(|r| r.scheme() == "npm")
+            .map(|url| (url.clone(), None))
+            .collect::<Vec<_>>();
         graph.remove_npm_specifiers();
         let mut new_roots = graph.roots.iter().cloned().collect::<Vec<_>>();
-        for root in npm_specifier_roots {
+        for (root, maybe_referrer) in npm_specifiers {
           let Ok(req_ref) = NpmPackageReqReference::from_specifier(&root)
           else {
             continue;
@@ -877,13 +880,50 @@ impl ModuleGraphBuilder {
               NodeResolutionKind::Types,
             )
             .unwrap(); // TODO: REMOVE UNWRAPS!
-          new_roots.push(resolved.into_url().unwrap());
+          let resolved = resolved.into_url().unwrap();
+          if maybe_referrer.is_none() {
+            new_roots.push(resolved.clone());
+          }
+          graph.redirects.insert(root, resolved);
         }
+        for module in graph.modules_mut() {
+          let Some(deps) = module.dependencies_mut() else {
+            continue;
+          };
+          for (key, value) in deps {
+            if let Resolution::Ok(resolved) = &dep.maybe_code
+              && resolved.specifier.scheme() == "npm"
+            {
+              dep.maybe_code = re_resolve(
+                specifier_text,
+                &resolved.range,
+                ResolutionKind::Execution,
+              );
+              if let Some(s) = dep.maybe_code.maybe_specifier() {
+                new_specifiers.push(s.clone());
+              }
+            }
+            // re-resolve maybe_type
+            if let Resolution::Ok(resolved) = &dep.maybe_type
+              && resolved.specifier.scheme() == "npm"
+            {
+              let text = dep
+                .maybe_deno_types_specifier
+                .as_deref()
+                .unwrap_or(specifier_text);
+              dep.maybe_type =
+                re_resolve(text, &resolved.range, ResolutionKind::Types);
+              if let Some(s) = dep.maybe_type.maybe_specifier() {
+                new_specifiers.push(s.clone());
+              }
+            }
+          }
+        }
+        let final_roots = new_roots.iter().cloned().collect::<IndexSet<_>>();
 
         graph
           .build(
             new_roots,
-            Vec::new(),
             loader.as_loader(),
             deno_graph::BuildOptions {
               skip_dynamic_deps: self
