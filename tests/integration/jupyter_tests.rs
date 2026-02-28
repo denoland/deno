@@ -630,6 +630,129 @@ async fn jupyter_store_history_false() -> Result<()> {
 }
 
 #[test]
+async fn jupyter_shutdown_reply() -> Result<()> {
+  let (_ctx, client, process) = setup().await;
+  client
+    .send(
+      Control,
+      "shutdown_request",
+      json!({
+        "restart": false,
+      }),
+    )
+    .await?;
+  let msg = client.recv(Control).await?;
+  assert_eq!(msg.header.msg_type, "shutdown_reply");
+  assert_json_subset(
+    msg.content,
+    json!({
+      "status": "ok",
+      "restart": false,
+    }),
+  );
+
+  // The kernel should exit after the shutdown request
+  let output = process.wait_or_kill(Duration::from_secs(5)).await;
+  assert!(output.status.success());
+
+  Ok(())
+}
+
+#[test]
+async fn jupyter_shutdown_restart_reply() -> Result<()> {
+  let (_ctx, client, _process) = setup().await;
+  client
+    .send(
+      Control,
+      "shutdown_request",
+      json!({
+        "restart": true,
+      }),
+    )
+    .await?;
+  let msg = client.recv(Control).await?;
+  assert_eq!(msg.header.msg_type, "shutdown_reply");
+  assert_json_subset(
+    msg.content,
+    json!({
+      "status": "ok",
+      "restart": true,
+    }),
+  );
+
+  Ok(())
+}
+
+#[test]
+async fn jupyter_interrupt_reply() -> Result<()> {
+  let (_ctx, client, _process) = setup().await;
+  client.send(Control, "interrupt_request", json!({})).await?;
+  let msg = client.recv(Control).await?;
+  assert_eq!(msg.header.msg_type, "interrupt_reply");
+  assert_json_subset(
+    msg.content,
+    json!({
+      "status": "ok",
+    }),
+  );
+
+  Ok(())
+}
+
+#[test]
+async fn jupyter_interrupt_running_code() -> Result<()> {
+  let (_ctx, client, _process) = setup().await;
+
+  // Start an infinite loop
+  client
+    .send(
+      Shell,
+      "execute_request",
+      json!({
+        "silent": false,
+        "store_history": true,
+        "code": "while (true) {}",
+      }),
+    )
+    .await?;
+
+  // Give the code a moment to start executing
+  tokio::time::sleep(Duration::from_millis(100)).await;
+
+  // Send interrupt request on the control channel
+  client.send(Control, "interrupt_request", json!({})).await?;
+  let interrupt_reply = client.recv(Control).await?;
+  assert_eq!(interrupt_reply.header.msg_type, "interrupt_reply");
+
+  // The execute_request should complete (with an error due to interruption)
+  let reply = client.recv(Shell).await?;
+  assert_eq!(reply.header.msg_type, "execute_reply");
+
+  // Verify the kernel is still alive and can execute code after interrupt
+  client
+    .send(
+      Shell,
+      "execute_request",
+      json!({
+        "silent": false,
+        "store_history": true,
+        "code": "42",
+      }),
+    )
+    .await?;
+  let reply = client.recv(Shell).await?;
+  assert_eq!(reply.header.msg_type, "execute_reply");
+  assert_json_subset(
+    reply.content,
+    json!({
+      "status": "ok",
+    }),
+  );
+
+  Ok(())
+}
+
+#[test]
 async fn jupyter_http_server() -> Result<()> {
   let (_ctx, client, _process) = setup().await;
   client
