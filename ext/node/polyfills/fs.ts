@@ -150,10 +150,8 @@ import {
   validateString,
 } from "ext:deno_node/internal/validators.mjs";
 import type { Buffer } from "node:buffer";
-import { op_fs_read_file_async } from "ext:core/ops";
-import { primordials } from "ext:core/mod.js";
-
-const { PromisePrototypeThen } = primordials;
+import { op_blob_create_file_backed_part } from "ext:core/ops";
+import { createFileBackedBlob } from "ext:deno_web/09_file.js";
 
 const {
   F_OK,
@@ -177,20 +175,20 @@ const {
 } = constants;
 
 /**
- * Returns a `Blob` whose data is read from the given file.
+ * Returns a `Blob` whose data is read lazily from the given file.
+ * The blob is backed by the Rust blob store, so URL.createObjectURL works.
  */
-function openAsBlob(
+async function openAsBlob(
   path: string | Buffer | URL,
   options: { type?: string } = { __proto__: null },
 ): Promise<Blob> {
   validateObject(options, "options");
   const type = options.type || "";
   validateString(type, "options.type");
-  path = getValidatedPath(path);
-  return PromisePrototypeThen(
-    op_fs_read_file_async(path as string, undefined, 0),
-    (data: Uint8Array) => new Blob([data], { type }),
-  );
+  path = getValidatedPath(path) as string;
+
+  const { uuid, size } = await op_blob_create_file_backed_part(path);
+  return createFileBackedBlob(uuid, size, type);
 }
 
 const promises = {

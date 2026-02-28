@@ -3,6 +3,7 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt::Debug;
+use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -15,6 +16,8 @@ use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
 use serde::Deserialize;
 use serde::Serialize;
+use tokio::io::AsyncReadExt;
+use tokio::io::AsyncSeekExt;
 use uuid::Uuid;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -28,9 +31,15 @@ pub enum BlobError {
   #[class(type)]
   #[error("Blob URLs are not supported in this context")]
   BlobURLsNotSupported,
+  #[class("DOMExceptionNotReadableError")]
+  #[error("The blob could not be read")]
+  FileNotReadable,
   #[class(generic)]
   #[error(transparent)]
   Url(#[from] deno_core::url::ParseError),
+  #[class(generic)]
+  #[error("{0}")]
+  Io(#[from] std::io::Error),
 }
 
 use crate::Location;
@@ -110,18 +119,18 @@ pub struct Blob {
 
 impl Blob {
   // TODO(lucacsonato): this should be a stream!
-  pub async fn read_all(&self) -> Vec<u8> {
+  pub async fn read_all(&self) -> Result<Vec<u8>, BlobError> {
     let size = self.size();
     let mut bytes = Vec::with_capacity(size);
 
     for part in &self.parts {
-      let chunk = part.read().await;
+      let chunk = part.read().await?;
       bytes.extend_from_slice(chunk);
     }
 
     assert_eq!(bytes.len(), size);
 
-    bytes
+    Ok(bytes)
   }
 
   fn size(&self) -> usize {
@@ -136,7 +145,7 @@ impl Blob {
 #[async_trait]
 pub trait BlobPart: Debug {
   // TODO(lucacsonato): this should be a stream!
-  async fn read<'a>(&'a self) -> &'a [u8];
+  async fn read<'a>(&'a self) -> Result<&'a [u8], BlobError>;
   fn size(&self) -> usize;
 }
 
@@ -151,8 +160,8 @@ impl From<Vec<u8>> for InMemoryBlobPart {
 
 #[async_trait]
 impl BlobPart for InMemoryBlobPart {
-  async fn read<'a>(&'a self) -> &'a [u8] {
-    &self.0
+  async fn read<'a>(&'a self) -> Result<&'a [u8], BlobError> {
+    Ok(&self.0)
   }
 
   fn size(&self) -> usize {
@@ -169,9 +178,9 @@ pub struct SlicedBlobPart {
 
 #[async_trait]
 impl BlobPart for SlicedBlobPart {
-  async fn read<'a>(&'a self) -> &'a [u8] {
-    let original = self.part.read().await;
-    &original[self.start..self.start + self.len]
+  async fn read<'a>(&'a self) -> Result<&'a [u8], BlobError> {
+    let original = self.part.read().await?;
+    Ok(&original[self.start..self.start + self.len])
   }
 
   fn size(&self) -> usize {
@@ -233,7 +242,7 @@ pub async fn op_blob_read_part(
     blob_store.get_part(&id)
   }
   .ok_or(BlobError::BlobPartNotFound)?;
-  let buf = part.read().await;
+  let buf = part.read().await?;
   Ok(Uint8Array::from(buf.to_vec()))
 }
 
@@ -324,4 +333,68 @@ pub fn op_blob_from_object_url(
     }
     _ => Ok(None),
   }
+}
+
+#[derive(Debug)]
+pub struct FileBackedBlobPart {
+  path: PathBuf,
+  start: u64,
+  len: usize,
+  expected_size: u64,
+  data: tokio::sync::OnceCell<Vec<u8>>,
+}
+
+#[async_trait]
+impl BlobPart for FileBackedBlobPart {
+  async fn read<'a>(&'a self) -> Result<&'a [u8], BlobError> {
+    let data = self
+      .data
+      .get_or_try_init(|| async {
+        let metadata = tokio::fs::metadata(&self.path).await?;
+        if metadata.len() != self.expected_size {
+          return Err(BlobError::FileNotReadable);
+        }
+        let mut file = tokio::fs::File::open(&self.path).await?;
+        if self.start > 0 {
+          file.seek(std::io::SeekFrom::Start(self.start)).await?;
+        }
+        let mut buf = vec![0u8; self.len];
+        file.read_exact(&mut buf).await?;
+        Ok(buf)
+      })
+      .await?;
+    Ok(data.as_slice())
+  }
+
+  fn size(&self) -> usize {
+    self.len
+  }
+}
+
+#[op2]
+#[serde]
+pub async fn op_blob_create_file_backed_part(
+  state: Rc<RefCell<OpState>>,
+  #[string] path: String,
+) -> Result<ReturnBlobPart, BlobError> {
+  let file_path = PathBuf::from(&path);
+  let metadata = tokio::fs::metadata(&file_path).await?;
+  let file_size = metadata.len();
+  let len = file_size as usize;
+
+  let part = FileBackedBlobPart {
+    path: file_path,
+    start: 0,
+    len,
+    expected_size: file_size,
+    data: tokio::sync::OnceCell::new(),
+  };
+
+  let blob_store = {
+    let state = state.borrow();
+    state.borrow::<Arc<BlobStore>>().clone()
+  };
+  let uuid = blob_store.insert_part(Arc::new(part));
+
+  Ok(ReturnBlobPart { uuid, size: len })
 }
