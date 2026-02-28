@@ -167,45 +167,131 @@ fn generate_coverage_report(
     options.script_coverage.functions.iter().enumerate()
   {
     let block_hits = function.ranges[0].count;
-    for (branch_number, range) in function.ranges[1..].iter().enumerate() {
+
+    // For each sub-range, find the parent count: the count of the smallest
+    // enclosing range. V8 ranges are nested (ranges[0] is the function body,
+    // inner ranges are blocks/branches/loops). The parent count is needed to
+    // correctly compute complement branches — e.g. for an if/else inside a
+    // loop, the parent is the loop body, not the function.
+    let mut parent_counts: Vec<i64> =
+      Vec::with_capacity(function.ranges.len().saturating_sub(1));
+    for range in &function.ranges[1..] {
+      let mut parent_count = block_hits;
+      let mut parent_size = usize::MAX;
+      for candidate in &function.ranges {
+        if std::ptr::eq(candidate, range) {
+          continue;
+        }
+        if candidate.start_char_offset <= range.start_char_offset
+          && candidate.end_char_offset >= range.end_char_offset
+        {
+          let size = candidate.end_char_offset - candidate.start_char_offset;
+          if size < parent_size {
+            parent_size = size;
+            parent_count = candidate.count;
+          }
+        }
+      }
+      parent_counts.push(parent_count);
+    }
+
+    // Group sub-ranges by their source line to detect branch points.
+    // When multiple ranges map to the same source line, they represent
+    // different arms of the same branch (e.g. if/else).
+    let mut branches_by_line: std::collections::BTreeMap<
+      usize,
+      Vec<(usize, &cdp::CoverageRange)>,
+    > = std::collections::BTreeMap::new();
+    for (idx, range) in function.ranges[1..].iter().enumerate() {
       let line_index =
         range_to_src_line_index(range, &runtime_text_lines, &maybe_source_map);
+      branches_by_line
+        .entry(line_index)
+        .or_default()
+        .push((idx, range));
+    }
 
-      if line_index > 0
+    for (line_index, ranges) in &branches_by_line {
+      if *line_index > 0
         && coverage_ignore_next_directives.contains(&(line_index - 1_usize))
       {
         continue;
       }
 
       if coverage_ignore_range_directives.iter().any(|range| {
-        range.start_line_index <= line_index
-          && range.stop_line_index >= line_index
+        range.start_line_index <= *line_index
+          && range.stop_line_index >= *line_index
       }) {
         continue;
       }
 
-      // From https://manpages.debian.org/unstable/lcov/geninfo.1.en.html:
-      //
-      // Block number and branch number are gcc internal IDs for the branch. Taken is either '-'
-      // if the basic block containing the branch was never executed or a number indicating how
-      // often that branch was taken.
-      //
-      // However with the data we get from v8 coverage profiles it seems we can't actually hit
-      // this as appears it won't consider any nested branches it hasn't seen but its here for
-      // the sake of accuracy.
-      let taken = if block_hits > 0 {
-        Some(range.count)
-      } else {
-        None
-      };
+      if ranges.len() == 1 {
+        let (idx, range) = &ranges[0];
+        let enclosing_count = parent_counts[*idx];
 
-      coverage_report.branches.push(BranchCoverageItem {
-        line_index,
-        block_number,
-        branch_number,
-        taken,
-        is_hit: range.count > 0,
-      })
+        if range.count > enclosing_count {
+          // Range executes more often than its enclosing scope — this is a
+          // loop body, not a branch arm. Report it without a complement.
+          coverage_report.branches.push(BranchCoverageItem {
+            line_index: *line_index,
+            block_number,
+            branch_number: 0,
+            taken: if enclosing_count > 0 {
+              Some(range.count)
+            } else {
+              None
+            },
+            is_hit: range.count > 0,
+          });
+        } else {
+          // Single range at this line: one arm of a branch. The complement
+          // (e.g. the else for an if) is implicit with count equal to the
+          // enclosing range's count minus this range's count. Using the
+          // enclosing (parent) range rather than the function-level count
+          // gives correct complements for branches inside loops.
+          let taken = if enclosing_count > 0 {
+            Some(range.count)
+          } else {
+            None
+          };
+          let complement_taken = if enclosing_count > 0 {
+            Some(enclosing_count - range.count)
+          } else {
+            None
+          };
+          coverage_report.branches.push(BranchCoverageItem {
+            line_index: *line_index,
+            block_number,
+            branch_number: 0,
+            taken,
+            is_hit: range.count > 0,
+          });
+          coverage_report.branches.push(BranchCoverageItem {
+            line_index: *line_index,
+            block_number,
+            branch_number: 1,
+            taken: complement_taken,
+            is_hit: complement_taken.is_some_and(|c| c > 0),
+          });
+        }
+      } else {
+        // Multiple ranges at the same line: these are explicit branch arms
+        // (e.g. both if and else blocks reported by V8).
+        for (branch_number, (_, range)) in ranges.iter().enumerate() {
+          let taken = if block_hits > 0 {
+            Some(range.count)
+          } else {
+            None
+          };
+          coverage_report.branches.push(BranchCoverageItem {
+            line_index: *line_index,
+            block_number,
+            branch_number,
+            taken,
+            is_hit: range.count > 0,
+          });
+        }
+      }
     }
   }
 
@@ -231,14 +317,21 @@ fn generate_coverage_report(
     if ignore {
       count = 1;
     } else {
-      // Count the hits of ranges that include the entire line which will always be at-least one
-      // as long as the code has been evaluated.
+      // Find the count from the most specific (smallest/innermost) range that
+      // fully covers this line. V8 coverage ranges are nested: ranges[0] is the
+      // function body and ranges[1..] are inner blocks/branches. The innermost
+      // range that covers a line gives the correct execution count for that line.
+      let mut best_range_size = usize::MAX;
       for function in &options.script_coverage.functions {
         for range in &function.ranges {
           if range.start_char_offset <= line_start_char_offset
             && range.end_char_offset >= line_end_char_offset
           {
-            count += range.count;
+            let range_size = range.end_char_offset - range.start_char_offset;
+            if range_size < best_range_size {
+              best_range_size = range_size;
+              count = range.count;
+            }
           }
         }
       }
@@ -323,10 +416,14 @@ fn generate_coverage_report(
         .collect::<Vec<(usize, i64)>>();
 
       found_lines.sort_unstable_by_key(|(index, _)| *index);
-      // combine duplicated lines
+      // combine duplicated lines - when multiple compiled JS lines map to the
+      // same source line, use the maximum count rather than summing, since
+      // hitting the same source line from different compiled lines doesn't mean
+      // it was executed more times.
       for i in (1..found_lines.len()).rev() {
         if found_lines[i].0 == found_lines[i - 1].0 {
-          found_lines[i - 1].1 += found_lines[i].1;
+          found_lines[i - 1].1 =
+            std::cmp::max(found_lines[i - 1].1, found_lines[i].1);
           found_lines.remove(i);
         }
       }
