@@ -95,6 +95,8 @@ struct Node {
 }
 
 /// Result of resolving peer deps for a subtree (Phase 2).
+/// Also used as the cache entry for `peers_cache`.
+#[derive(Clone)]
 struct PeersResolution {
   /// Peers that were resolved from outside this subtree (bubble up to parent).
   resolved_peers: BTreeMap<StackString, NodeId>,
@@ -105,18 +107,6 @@ struct PeersResolution {
   /// these available, the cache entry should NOT match.
   unresolved_optional_peers: Vec<StackString>,
   /// The final NodeId for this node (may be a copy with peer deps in identity).
-  node_id: NodeId,
-}
-
-/// A cached peer resolution result for a specific (nv, parent_context).
-struct PeersCacheEntry {
-  /// Which peers were resolved from the parent scope.
-  resolved_peers: BTreeMap<StackString, NodeId>,
-  /// Which peers were missing.
-  missing_peers: BTreeMap<StackString, VersionReq>,
-  /// Optional peers that were not resolved in this context.
-  unresolved_optional_peers: Vec<StackString>,
-  /// The resulting NodeId (with peer deps in identity).
   node_id: NodeId,
 }
 
@@ -213,10 +203,6 @@ enum GraphPathNodeOrRoot {
   Root(Rc<PackageNv>),
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-enum GraphPathResolutionMode {
-  All,
-}
 
 /// Path through the graph that represents a traversal through the graph doing
 /// the dependency resolution. The graph tries to share duplicate package
@@ -232,7 +218,6 @@ struct GraphPath {
   /// Descendants in the path that circularly link to an ancestor in a child. These
   /// descendants should be kept up to date and always point to this node.
   linked_circular_descendants: RefCell<Vec<Rc<GraphPath>>>,
-  mode: GraphPathResolutionMode,
   /// The currently active override rules at this point in the tree traversal.
   active_overrides: Rc<NpmOverrides>,
 }
@@ -241,7 +226,6 @@ impl GraphPath {
   pub fn for_root(
     node_id: NodeId,
     nv: Rc<PackageNv>,
-    mode: GraphPathResolutionMode,
     active_overrides: Rc<NpmOverrides>,
   ) -> Rc<Self> {
     // scope the overrides for this root package so that any scoped
@@ -254,7 +238,6 @@ impl GraphPath {
       specifier: "".into(),
       nv,
       linked_circular_descendants: Default::default(),
-      mode,
       active_overrides: scoped,
     })
   }
@@ -276,7 +259,6 @@ impl GraphPath {
     node_id: NodeId,
     specifier: StackString,
     nv: Rc<PackageNv>,
-    mode: GraphPathResolutionMode,
   ) -> Rc<Self> {
     let active_overrides =
       self.active_overrides.for_child(&nv.name, &nv.version);
@@ -286,7 +268,6 @@ impl GraphPath {
       specifier,
       nv,
       linked_circular_descendants: Default::default(),
-      mode,
       active_overrides,
     })
   }
@@ -1206,11 +1187,11 @@ pub struct GraphDependencyResolver<'a, TNpmRegistryApi: NpmRegistryApi> {
   /// The initial overrides from the root package.json.
   /// Used when creating root-level GraphPaths.
   initial_overrides: Rc<NpmOverrides>,
-  /// Tracks (canonical_parent_node_id, canonical_child_node_id, mode) tuples
+  /// Tracks (canonical_parent_node_id, canonical_child_node_id) tuples
   /// that have already been re-queued for processing. Uses canonical node IDs
   /// (via `node_id_mappings`) so that node copies from `add_peer_deps_to_path`
   /// share the same dedup entries as their originals.
-  visited_requeue: HashSet<(NodeId, NodeId, GraphPathResolutionMode)>,
+  visited_requeue: HashSet<(NodeId, NodeId)>,
   /// Maps old NodeId → new NodeId when `add_peer_deps_to_path` creates a copy.
   /// Used to canonicalize node IDs for `visited_requeue` dedup, so that copies
   /// don't bypass the dedup check.
@@ -1223,7 +1204,7 @@ pub struct GraphDependencyResolver<'a, TNpmRegistryApi: NpmRegistryApi> {
   /// Each entry records which peers were resolved and to what NodeId.
   /// `find_peers_cache_hit` checks if the current parent context
   /// matches a cached entry.
-  peers_cache: HashMap<Rc<PackageNv>, Vec<PeersCacheEntry>>,
+  peers_cache: HashMap<Rc<PackageNv>, Vec<PeersResolution>>,
   /// Auto-installed peer deps as fallback, not in root_packages so they
   /// don't pollute the root scope. Phase 2 uses these when a required
   /// peer isn't found in scope.
@@ -1350,7 +1331,6 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
         self.pending_unresolved_nodes.push_back(GraphPath::for_root(
           node_id,
           pkg_nv.clone(),
-          GraphPathResolutionMode::All,
           self.initial_overrides.clone(),
         ));
         (pkg_nv, node_id)
@@ -1426,7 +1406,6 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
         child_id,
         entry.bare_specifier.clone(),
         child_nv,
-        GraphPathResolutionMode::All,
       );
       if let Some(ancestor) = maybe_ancestor {
         // this node is circular, so we link it to the ancestor
@@ -1653,7 +1632,6 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
           let root_path = GraphPath::for_root(
             child_id,
             child_nv,
-            GraphPathResolutionMode::All,
             self.initial_overrides.clone(),
           );
           self.pending_unresolved_nodes.push_back(root_path);
@@ -2376,31 +2354,22 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
     // copy node's children (which includes newly-added peer deps).
     let original_child_names: HashSet<&StackString> =
       children.iter().map(|(s, _)| s).collect();
+    let should_bubble = |name: &StackString| {
+      !original_child_names.contains(name) && name.as_str() != nv.name.as_str()
+    };
     let bubbling_peers: BTreeMap<StackString, NodeId> = all_resolved_peers
       .into_iter()
-      .filter(|(name, _)| {
-        !original_child_names.contains(name)
-          && name.as_str() != nv.name.as_str()
-      })
+      .filter(|(name, _)| should_bubble(name))
       .collect();
-
     let bubbling_missing: BTreeMap<StackString, VersionReq> = all_missing_peers
       .into_iter()
-      .filter(|(name, _)| {
-        !original_child_names.contains(name)
-          && name.as_str() != nv.name.as_str()
-      })
+      .filter(|(name, _)| should_bubble(name))
       .collect();
-
-    // Filter unresolved optional peers: only bubble up those not provided
-    // by own regular children, and deduplicate.
+    // Deduplicate unresolved optional peers via BTreeSet.
     let bubbling_unresolved_optional: Vec<StackString> =
       all_unresolved_optional_peers
         .into_iter()
-        .filter(|name| {
-          !original_child_names.contains(name)
-            && name.as_str() != nv.name.as_str()
-        })
+        .filter(|name| should_bubble(name))
         .collect::<std::collections::BTreeSet<_>>()
         .into_iter()
         .collect();
@@ -2412,6 +2381,13 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
     let is_pure = bubbling_peers.is_empty()
       && bubbling_missing.is_empty()
       && bubbling_unresolved_optional.is_empty();
+    let result = PeersResolution {
+      resolved_peers: bubbling_peers,
+      missing_peers: bubbling_missing,
+      unresolved_optional_peers: bubbling_unresolved_optional,
+      node_id: final_node_id,
+    };
+
     if is_pure {
       self.pure_pkgs.insert(nv);
     } else {
@@ -2419,22 +2395,12 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
         .peers_cache
         .entry(nv)
         .or_default()
-        .push(PeersCacheEntry {
-          resolved_peers: bubbling_peers.clone(),
-          missing_peers: bubbling_missing.clone(),
-          unresolved_optional_peers: bubbling_unresolved_optional.clone(),
-          node_id: final_node_id,
-        });
+        .push(result.clone());
     }
 
     visiting.remove(&node_id);
 
-    Ok(PeersResolution {
-      resolved_peers: bubbling_peers,
-      missing_peers: bubbling_missing,
-      unresolved_optional_peers: bubbling_unresolved_optional,
-      node_id: final_node_id,
-    })
+    Ok(result)
   }
 
   /// Check if a cached peer resolution matches the current parent context.
@@ -2530,12 +2496,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
 
       if all_match {
         checking.remove(nv);
-        return Some(PeersResolution {
-          resolved_peers: entry.resolved_peers.clone(),
-          missing_peers: entry.missing_peers.clone(),
-          unresolved_optional_peers: entry.unresolved_optional_peers.clone(),
-          node_id: entry.node_id,
-        });
+        return Some(entry.clone());
       }
     }
     checking.remove(nv);
@@ -2621,7 +2582,6 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
                 child_id,
                 dep.bare_specifier.clone(),
                 child_nv,
-                parent_path.mode,
               );
               if let Some(ancestor) = maybe_ancestor {
                 // when the nv appears as an ancestor, use that node
@@ -2629,11 +2589,11 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
                 self.add_linked_circular_descendant(&ancestor, child_path);
               } else if !self.graph.nodes.get(&child_id).unwrap().no_peers && {
                 // Only requeue if we haven't already queued this canonical
-                // (parent, child, mode) tuple. Using canonical IDs means
+                // (parent, child) tuple. Using canonical IDs means
                 // node copies share dedup entries with originals.
                 let cp = self.canonical_node_id(parent_id);
                 let cc = self.canonical_node_id(child_id);
-                self.visited_requeue.insert((cp, cc, parent_path.mode))
+                self.visited_requeue.insert((cp, cc))
               } {
                 self.pending_unresolved_nodes.push_back(child_path);
               }
@@ -2670,7 +2630,6 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
                   .unwrap()
                   .nv
                   .clone(),
-                parent_path.mode,
               ),
             ));
           }
@@ -3186,7 +3145,6 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
       self.pending_unresolved_nodes.push_back(GraphPath::for_root(
         *node_id,
         pkg_nv.clone(),
-        GraphPathResolutionMode::All,
         self.initial_overrides.clone(),
       ));
     }
