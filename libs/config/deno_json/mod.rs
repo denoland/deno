@@ -1066,11 +1066,42 @@ impl NodeModulesDirMode {
   }
 }
 
+/// `deploy` config representation for serde
+///
+/// fields `include` and `exclude` are expanded from [SerializedFilesConfig].
 #[derive(Clone, Debug, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
+struct SerializedDeployConfig {
+  pub org: String,
+  pub app: Option<String>,
+  #[serde(default)]
+  pub include: Option<Vec<String>>,
+  #[serde(default)]
+  pub exclude: Vec<String>,
+}
+
+impl SerializedDeployConfig {
+  pub fn into_resolved(
+    self,
+    config_file_specifier: &Url,
+  ) -> Result<DeployConfig, IntoResolvedError> {
+    let files = SerializedFilesConfig {
+      include: self.include,
+      exclude: self.exclude,
+    };
+    Ok(DeployConfig {
+      org: self.org,
+      app: self.app,
+      files: files.into_resolved(config_file_specifier)?,
+    })
+  }
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct DeployConfig {
   pub org: String,
   pub app: Option<String>,
+  pub files: FilePatterns,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -2117,14 +2148,26 @@ impl ConfigFile {
   pub fn to_deploy_config(
     &self,
   ) -> Result<Option<DeployConfig>, ToInvalidConfigError> {
-    match &self.json.deploy {
+    match self.json.deploy.clone() {
       Some(config) => {
-        Ok(Some(serde_json::from_value(config.clone()).map_err(
-          |error| ToInvalidConfigError::Parse {
+        let mut exclude_patterns = self.resolve_exclude_patterns()?;
+        let mut serialized: SerializedDeployConfig =
+          serde_json::from_value(config).map_err(|error| {
+            ToInvalidConfigError::Parse {
+              config: "deploy",
+              source: error,
+            }
+          })?;
+        // top level excludes at the start because they're lower priority
+        exclude_patterns.extend(std::mem::take(&mut serialized.exclude));
+        serialized.exclude = exclude_patterns;
+        serialized
+          .into_resolved(&self.specifier)
+          .map(Some)
+          .map_err(|error| ToInvalidConfigError::InvalidConfig {
             config: "deploy",
             source: error,
-          },
-        )?))
+          })
       }
       None => Ok(None),
     }

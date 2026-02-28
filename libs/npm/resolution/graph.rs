@@ -1853,7 +1853,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
           let new_value = (old_resolved_id.clone(), new_resolved_id.clone());
           match self.graph.moved_package_ids.entry(old_node_id) {
             indexmap::map::Entry::Occupied(occupied_entry) => {
-              // move it the the back of the index map
+              // move it to the back of the index map
               occupied_entry.shift_remove();
               self.graph.moved_package_ids.insert(old_node_id, new_value);
             }

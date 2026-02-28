@@ -14270,8 +14270,8 @@ fn lsp_jsx_import_source_package_json_automatic_cache() {
   client.shutdown();
 }
 
-#[test(timeout = 300)]
-fn lsp_jsx_import_source_byonm_preact() {
+#[test(timeout = 300, fork_with_suffix = "_tsgo")]
+fn lsp_jsx_import_source_byonm_preact(use_tsgo: bool) {
   let context = TestContextBuilder::new()
     .use_http_server()
     .use_temp_cwd()
@@ -14300,7 +14300,7 @@ fn lsp_jsx_import_source_byonm_preact() {
   );
   let file = source_file(temp_dir.path().join("file.tsx"), r#"<div></div>;"#);
   context.run_npm("install");
-  let mut client = context.new_lsp_command().build();
+  let mut client = context.new_lsp_command().set_use_tsgo(use_tsgo).build();
   client.initialize_default();
   let diagnostics = client.did_open_file(&file);
   assert_eq!(json!(diagnostics.all()), json!([]));
@@ -14316,7 +14316,11 @@ fn lsp_jsx_import_source_byonm_preact() {
     json!({
       "contents": {
         "kind": "markdown",
-        "value": "```typescript\n(property) JSXInternal.IntrinsicElements.div: JSXInternal.HTMLAttributes<HTMLDivElement>\n```",
+        "value": if use_tsgo {
+          "```tsx\n(property) JSXInternal.IntrinsicElements.div: JSXInternal.HTMLAttributes<HTMLDivElement>\n```\n"
+        } else {
+          "```typescript\n(property) JSXInternal.IntrinsicElements.div: JSXInternal.HTMLAttributes<HTMLDivElement>\n```"
+        },
       },
       "range": {
         "start": { "line": 0, "character": 1 },
@@ -15384,7 +15388,7 @@ fn lsp_data_urls_with_jsx_compiler_option() {
         "end": { "line": 1, "character": 1 }
       }
     }, {
-      "uri": "deno:/data_url/ed0224c51f7e2a845dfc0941ed6959675e5e3e3d2a39b127f0ff569c1ffda8d8.ts",
+      "uri": "deno:/data-url/cf9f10f60e24884c7fdecbcda56d3a6690d806c60fb4492c8e7473181560a7d2.ts",
       "range": {
         "start": { "line": 0, "character": 7 },
         "end": {"line": 0, "character": 14 },
@@ -19387,18 +19391,22 @@ fn lsp_import_json_module_import_attribute_variations() {
   );
 }
 
-#[test(timeout = 300)]
-fn lsp_import_raw_imports() {
+#[test(timeout = 300, fork_with_suffix = "_tsgo")]
+fn lsp_import_raw_imports(use_tsgo: bool) {
   let context = TestContextBuilder::new().use_temp_cwd().build();
-  let temp_dir = context.temp_dir().path();
-  temp_dir.join("deno.json").write_json(&json!({
-    "unstable": ["raw-imports"]
-  }));
-  temp_dir.join("data.txt").write("");
-  temp_dir
-    .join("hello.ts")
-    .write("export function hello() { return 'Hello'; }\n");
-  let text = r#"import { hello } from "./hello.ts";
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "unstable": ["raw-imports"]
+    })
+    .to_string(),
+  );
+  temp_dir.write("data.txt", "");
+  temp_dir.write("hello.ts", "export function hello() { return 'Hello'; }\n");
+  let file = temp_dir.source_file(
+    "main.ts",
+    r#"import { hello } from "./hello.ts";
 import helloBytes from "./hello.ts" with { type: "bytes" };
 import helloText from "./hello.ts" with { type: "text" };
 import dataBytes from "./data.txt" with { type: "bytes" };
@@ -19443,18 +19451,11 @@ invalid = dynamicHelloText;
 invalid = dynamicDataText;
 
 console.log(invalid, validBytes, validText);
-"#;
-  temp_dir.join("main.ts").write(text);
-  let mut client = context.new_lsp_command().build();
+"#,
+  );
+  let mut client = context.new_lsp_command().set_use_tsgo(use_tsgo).build();
   client.initialize_default();
-  let diagnostics = client.did_open(json!({
-    "textDocument": {
-      "uri": temp_dir.join("main.ts").uri_file(),
-      "languageId": "typescript",
-      "version": 1,
-      "text": text,
-    }
-  }));
+  let diagnostics = client.did_open_file(&file);
   assert_eq!(
     json!(diagnostics.all()),
     json!([
@@ -19611,19 +19612,66 @@ console.log(invalid, validBytes, validText);
     json!({
       "files": [
         {
-          "oldUri": temp_dir.join("main.ts").uri_file(),
-          "newUri": temp_dir.join("renamed.ts").uri_file(),
+          "oldUri": file.uri(),
+          "newUri": temp_dir.path().join("renamed.ts").uri_file(),
         },
       ],
     }),
   );
-  assert_eq!(
-    res,
+  assert_eq!(res, json!(null));
+  client.shutdown();
+}
+
+#[test(timeout = 300, fork_with_suffix = "_tsgo")]
+fn lsp_import_raw_imports_goto_definition(use_tsgo: bool) {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write("deno.json", json!({}).to_string());
+  let file = temp_dir.source_file(
+    "main.ts",
+    r#"
+      import text from "./data.txt" with { type: "text" };
+      console.log(text);
+    "#,
+  );
+  let text_file = temp_dir.source_file("data.txt", "Hello, world!\n");
+  let mut client = context.new_lsp_command().set_use_tsgo(use_tsgo).build();
+  client.initialize_default();
+  let res = client.write_request(
+    "textDocument/definition",
     json!({
-      "documentChanges": [],
+      "textDocument": { "uri": file.uri() },
+      "position": { "line": 2, "character": 18 },
     }),
   );
-  client.shutdown();
+  assert_eq!(
+    res,
+    if use_tsgo {
+      json!([{
+        "uri": text_file.uri(),
+        "range": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 0, "character": 0 },
+        },
+      }])
+    } else {
+      // TODO(nayeemrmn): This URI here contains an unnecessary fragment, and
+      // the ranges target the position of the exported symbol in the synthetic
+      // types file. Both of these should be masked. There's no urgency though
+      // since our tsgo integration handles it properly.
+      json!([{
+        "targetUri": format!("{}#denoRawImport=text.ts", text_file.uri().as_str()),
+        "targetRange": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 1, "character": 5 },
+        },
+        "targetSelectionRange": {
+          "start": { "line": 0, "character": 6 },
+          "end": { "line": 0, "character": 10 },
+        },
+      }])
+    },
+  );
 }
 
 /// Regression test for https://github.com/denoland/deno/issues/30380.

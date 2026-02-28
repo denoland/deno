@@ -1184,6 +1184,9 @@ impl CliOptions {
           .first()
           .and_then(|url| file_to_url(url))
           .map(|url| vec![url]),
+        DenoSubcommand::Install(InstallFlags::Local(
+          InstallFlagsLocal::Entrypoints(flags),
+        )) => Some(files_to_urls(&flags.entrypoints)),
         DenoSubcommand::Doc(DocFlags {
           source_files: DocSourceFileFlag::Paths(paths),
           ..

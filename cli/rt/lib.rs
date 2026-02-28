@@ -88,7 +88,12 @@ pub fn main() {
           Some(data.metadata.otel_config.clone()),
         );
         load_env_vars(&data.metadata.env_vars_from_env_file);
-        let sys = DenoRtSys::new(data.vfs.clone());
+        let sys = if data.metadata.self_extracting.is_some() {
+          binary::extract_vfs_to_disk(&data.vfs, &data.root_path)?;
+          DenoRtSys::new_self_extracting(data.vfs.clone())
+        } else {
+          DenoRtSys::new(data.vfs.clone())
+        };
         let exit_code = run::run(Arc::new(sys.clone()), sys, data).await?;
         deno_runtime::exit(exit_code);
       }

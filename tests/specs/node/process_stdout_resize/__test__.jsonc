@@ -1,0 +1,5 @@
+{
+  "if": "unix",
+  "args": "run -A main.ts",
+  "output": "resize event received\n"
+}
