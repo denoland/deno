@@ -1287,7 +1287,7 @@ impl AsymmetricPublicKey {
     }
   }
 
-  fn export_der(
+  pub(crate) fn export_der(
     &self,
     typ: &str,
   ) -> Result<Box<[u8]>, AsymmetricPublicKeyDerError> {
