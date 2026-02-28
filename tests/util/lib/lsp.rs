@@ -1540,8 +1540,9 @@ pub struct SourceFile {
 
 impl SourceFile {
   pub fn new(path: PathRef, src: String) -> Self {
-    let path =
-      PathRef::new(deno_path_util::normalize_path(Cow::Borrowed(&path)));
+    let path = PathRef::new(deno_path_util::normalize_path(Cow::Borrowed(
+      path.as_ref(),
+    )));
     path.write(&src);
     Self::new_in_mem(path, src)
   }
