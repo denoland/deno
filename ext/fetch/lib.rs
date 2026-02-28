@@ -864,6 +864,22 @@ pub fn op_fetch_custom_client(
           *original_path = resolved_path.to_string_lossy().into_owned();
         }
       }
+      Proxy::Socks5Unix {
+        path: original_path,
+        ..
+      } => {
+        let path = Path::new(original_path);
+        let resolved_path = permissions
+          .check_open(
+            Cow::Borrowed(path),
+            OpenAccessKind::ReadWriteNoFollow,
+            Some("Deno.createHttpClient()"),
+          )?
+          .into_path();
+        if path != resolved_path {
+          *original_path = resolved_path.to_string_lossy().into_owned();
+        }
+      }
       Proxy::Vsock { cid, port } => {
         let permissions = state.borrow_mut::<PermissionsContainer>();
         permissions.check_net_vsock(*cid, *port, "Deno.createHttpClient()")?;
@@ -1054,6 +1070,18 @@ pub fn create_http_client(
       }
       #[cfg(windows)]
       Proxy::Unix { .. } => {
+        return Err(HttpClientCreateError::UnixProxyNotSupportedOnWindows);
+      }
+      #[cfg(not(windows))]
+      Proxy::Socks5Unix { path, basic_auth } => {
+        let auth = basic_auth
+          .as_ref()
+          .map(|a| (a.username.clone(), a.password.clone()));
+        let target = proxy::Target::new_socks_unix(PathBuf::from(path), auth);
+        proxy::Intercept::all(target)
+      }
+      #[cfg(windows)]
+      Proxy::Socks5Unix { .. } => {
         return Err(HttpClientCreateError::UnixProxyNotSupportedOnWindows);
       }
       #[cfg(any(
