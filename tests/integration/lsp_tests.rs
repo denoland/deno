@@ -16635,7 +16635,7 @@ fn lsp_deno_json_scopes_rename_symbol(use_tsgo: bool) {
   );
   let mut client = context.new_lsp_command().set_use_tsgo(use_tsgo).build();
   client.initialize_default();
-  let res = client.write_request(
+  let mut res = client.write_request(
     "textDocument/rename",
     json!({
       "textDocument": file1.identifier(),
