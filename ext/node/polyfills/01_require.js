@@ -968,7 +968,7 @@ const wrapper = [
   "\n})(); })",
 ];
 
-let wrap = function (script) {
+export let wrap = function (script) {
   script = script.replace(/^#!.*?\n/, "");
   return `${wrapper[0]}${script}${wrapper[1]}`;
 };
@@ -1032,12 +1032,29 @@ function wrapSafe(
   cjsModuleInstance,
   format,
 ) {
-  const wrapper = Module.wrap(content);
-  const [f, err] = core.evalContext(
-    wrapper,
-    url.pathToFileURL(filename).toString(),
-    [format !== "module"],
-  );
+  let f;
+  let err;
+
+  if (patched) {
+    [f, err] = core.evalContext(
+      Module.wrap(content),
+      url.pathToFileURL(filename).toString(),
+      [format !== "module"],
+    );
+  } else {
+    [f, err] = core.compileFunction(
+      content,
+      url.pathToFileURL(filename).toString(),
+      [format !== "module"],
+      [
+        "exports",
+        "require",
+        "module",
+        "__filename",
+        "__dirname",
+      ],
+    );
+  }
   if (err) {
     if (process.mainModule === cjsModuleInstance) {
       enrichCJSError(err.thrown);
@@ -1379,6 +1396,5 @@ export const _preloadModules = Module._preloadModules;
 export const _resolveFilename = Module._resolveFilename;
 export const _resolveLookupPaths = Module._resolveLookupPaths;
 export const globalPaths = Module.globalPaths;
-export const wrap = Module.wrap;
 
 export default Module;

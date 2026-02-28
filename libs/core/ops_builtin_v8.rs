@@ -416,6 +416,133 @@ pub fn op_eval_context<'s, 'i>(
   }
 }
 
+#[op2(reentrant)]
+pub fn op_compile_function<'s, 'i>(
+  scope: &mut v8::PinScope<'s, 'i>,
+  source: v8::Local<'s, v8::Value>,
+  #[string] specifier: String,
+  host_defined_options: Option<v8::Local<'s, v8::Array>>,
+  params_buf: v8::Local<'s, v8::Array>,
+) -> Result<v8::Local<'s, v8::Value>, JsErrorBox> {
+  let out = v8::Array::new(scope, 2);
+  let state = JsRuntime::state_from(scope);
+  v8::tc_scope!(let tc_scope, scope);
+
+  let source = v8::Local::<v8::String>::try_from(source)
+    .map_err(|_| JsErrorBox::type_error("Invalid source"))?;
+  let specifier = resolve_url(&specifier).map_err(JsErrorBox::from_err)?;
+  let specifier_v8 = v8::String::new(tc_scope, specifier.as_str()).unwrap();
+  let host_defined_options = match host_defined_options {
+    Some(array) => {
+      let output = v8::PrimitiveArray::new(tc_scope, array.length() as _);
+      for i in 0..array.length() {
+        let value = array.get_index(tc_scope, i).unwrap();
+        let value = value
+          .try_cast::<v8::Primitive>()
+          .map_err(|e| JsErrorBox::from_err(crate::error::DataError(e)))?;
+        output.set(tc_scope, i as _, value);
+      }
+      Some(output.into())
+    }
+    None => None,
+  };
+  let origin =
+    script_origin(tc_scope, specifier_v8, false, host_defined_options);
+
+  let mut params = Vec::with_capacity(params_buf.length() as _);
+  for i in 0..params_buf.length() {
+    let ext = params_buf
+      .get_index(tc_scope, i)
+      .unwrap()
+      .try_into()
+      .unwrap();
+    params.push(ext);
+  }
+
+  let (maybe_function, maybe_code_cache_hash) = state
+    .eval_context_get_code_cache_cb
+    .borrow()
+    .as_ref()
+    .map(|cb| {
+      let code_cache = cb(&specifier, &source).unwrap();
+      if let Some(code_cache_data) = &code_cache.data {
+        let mut source = v8::script_compiler::Source::new_with_cached_data(
+          source,
+          Some(&origin),
+          v8::CachedData::new(code_cache_data),
+        );
+        let function = v8::script_compiler::compile_function(
+          tc_scope,
+          &mut source,
+          &params,
+          &[],
+          v8::script_compiler::CompileOptions::ConsumeCodeCache,
+          v8::script_compiler::NoCacheReason::NoReason,
+        );
+        // Check if the provided code cache is rejected by V8.
+        let rejected = match source.get_cached_data() {
+          Some(cached_data) => cached_data.rejected(),
+          _ => true,
+        };
+        let maybe_code_cache_hash = if rejected {
+          Some(code_cache.hash) // recreate the cache
+        } else {
+          None
+        };
+        (Some(function), maybe_code_cache_hash)
+      } else {
+        (None, Some(code_cache.hash))
+      }
+    })
+    .unwrap_or_else(|| (None, None));
+
+  let function = match maybe_function {
+    Some(f) => f,
+    None => {
+      let mut source = v8::script_compiler::Source::new(source, Some(&origin));
+      v8::script_compiler::compile_function(
+        tc_scope,
+        &mut source,
+        &params,
+        &[],
+        v8::script_compiler::CompileOptions::NoCompileOptions,
+        v8::script_compiler::NoCacheReason::NoReason,
+      )
+    }
+  };
+
+  let null = v8::null(tc_scope);
+  let function = match function {
+    Some(s) => s,
+    None => {
+      assert!(tc_scope.has_caught());
+      let exception = tc_scope.exception().unwrap();
+      let e = EvalContextError {
+        thrown: exception,
+        is_native_error: is_instance_of_error(tc_scope, exception),
+        is_compile_error: true,
+      };
+      let eval_context_error = e.to_v8(tc_scope);
+      out.set_index(tc_scope, 0, null.into());
+      out.set_index(tc_scope, 1, eval_context_error);
+      return Ok(out.into());
+    }
+  };
+
+  if let Some(code_cache_hash) = maybe_code_cache_hash
+    && let Some(cb) = state.eval_context_code_cache_ready_cb.borrow().as_ref()
+  {
+    let code_cache = function.create_code_cache().ok_or_else(|| {
+      JsErrorBox::type_error("Unable to create code cache from function")
+    })?;
+    cb(specifier, code_cache_hash, &code_cache);
+  };
+
+  out.set_index(tc_scope, 0, function.into());
+  out.set_index(tc_scope, 1, null.into());
+  Ok(out.into())
+}
+
 #[op2]
 pub fn op_encode<'s, 'i>(
   scope: &mut v8::PinScope<'s, 'i>,
