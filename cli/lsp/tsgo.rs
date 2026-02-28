@@ -1031,16 +1031,6 @@ impl TsGoServerInner {
   }
 }
 
-fn qualify_tsgo_diagnostic(diagnostic: &mut lsp::Diagnostic) {
-  diagnostic.source = Some("deno-ts".to_string());
-  if let Some(lsp::NumberOrString::Number(code)) = &diagnostic.code {
-    diagnostic.message = crate::tsc::go::maybe_rewrite_message(
-      std::mem::take(&mut diagnostic.message),
-      *code as _,
-    );
-  }
-}
-
 #[derive(Debug)]
 pub struct TsGoServer {
   deno_dir: DenoDir,
@@ -1143,7 +1133,7 @@ impl TsGoServer {
   pub async fn provide_diagnostics(
     &self,
     module: &DocumentModule,
-    snapshot: Arc<StateSnapshot>,
+    snapshot: &Arc<StateSnapshot>,
     token: &CancellationToken,
   ) -> Result<lsp::DocumentDiagnosticReport, AnyError> {
     let mut report = self
@@ -1154,7 +1144,7 @@ impl TsGoServer {
           compiler_options_key: module.compiler_options_key.clone(),
           notebook_uri: module.notebook_uri.clone(),
         },
-        snapshot,
+        snapshot.clone(),
         token,
       )
       .await?;
@@ -1169,7 +1159,7 @@ impl TsGoServer {
           !IGNORED_DIAGNOSTIC_CODES.contains(&(*code as _))
         });
       for diagnostic in &mut report.full_document_diagnostic_report.items {
-        qualify_tsgo_diagnostic(diagnostic);
+        normalize_diagnostic(diagnostic, snapshot);
       }
     }
     Ok(report)
@@ -1273,10 +1263,10 @@ impl TsGoServer {
     module: &DocumentModule,
     range: lsp::Range,
     context: &lsp::CodeActionContext,
-    snapshot: Arc<StateSnapshot>,
+    snapshot: &Arc<StateSnapshot>,
     token: &CancellationToken,
   ) -> Result<Option<lsp::CodeActionResponse>, AnyError> {
-    self
+    let mut response: Result<Option<lsp::CodeActionResponse>, _> = self
       .request(
         TsGoRequest::LanguageServiceMethod {
           name: "ProvideCodeActions".to_string(),
@@ -1288,10 +1278,14 @@ impl TsGoServer {
           compiler_options_key: module.compiler_options_key.clone(),
           notebook_uri: module.notebook_uri.clone(),
         },
-        snapshot,
+        snapshot.clone(),
         token,
       )
-      .await
+      .await;
+    if let Ok(Some(response)) = &mut response {
+      normalize_code_action_response(response, snapshot);
+    }
+    response
   }
 
   pub async fn provide_document_highlights(
@@ -1575,10 +1569,10 @@ impl TsGoServer {
     module: &DocumentModule,
     position: lsp::Position,
     new_name: &str,
-    snapshot: Arc<StateSnapshot>,
+    snapshot: &Arc<StateSnapshot>,
     token: &CancellationToken,
   ) -> Result<Option<lsp::WorkspaceEdit>, AnyError> {
-    self
+    let mut response: Result<Option<lsp::WorkspaceEdit>, _> = self
       .request(
         TsGoRequest::LanguageServiceMethod {
           name: "ProvideRename".to_string(),
@@ -1590,10 +1584,14 @@ impl TsGoServer {
           compiler_options_key: module.compiler_options_key.clone(),
           notebook_uri: module.notebook_uri.clone(),
         },
-        snapshot,
+        snapshot.clone(),
         token,
       )
-      .await
+      .await;
+    if let Ok(Some(response)) = &mut response {
+      normalize_workspace_edit(response, snapshot);
+    }
+    response
   }
 
   pub async fn provide_selection_ranges(
@@ -1646,10 +1644,10 @@ impl TsGoServer {
     &self,
     module: &DocumentModule,
     range: lsp::Range,
-    snapshot: Arc<StateSnapshot>,
+    snapshot: &Arc<StateSnapshot>,
     token: &CancellationToken,
   ) -> Result<Option<Vec<lsp::InlayHint>>, AnyError> {
-    self
+    let mut response: Result<Option<Vec<lsp::InlayHint>>, _> = self
       .request(
         TsGoRequest::LanguageServiceMethod {
           name: "ProvideInlayHint".to_string(),
@@ -1660,10 +1658,16 @@ impl TsGoServer {
           compiler_options_key: module.compiler_options_key.clone(),
           notebook_uri: module.notebook_uri.clone(),
         },
-        snapshot,
+        snapshot.clone(),
         token,
       )
-      .await
+      .await;
+    if let Ok(Some(inlay_hints)) = &mut response {
+      for inlay_hint in inlay_hints {
+        normalize_inlay_hint(inlay_hint, snapshot);
+      }
+    }
+    response
   }
 
   pub async fn provide_workspace_symbol(
@@ -1794,4 +1798,104 @@ fn normalize_symbol_information(
   snapshot: &StateSnapshot,
 ) {
   normalize_location(&mut symbol_information.location, snapshot)
+}
+
+fn normalize_diagnostic(
+  diagnostic: &mut lsp::Diagnostic,
+  snapshot: &StateSnapshot,
+) {
+  diagnostic.source = Some("deno-ts".to_string());
+  if let Some(lsp::NumberOrString::Number(code)) = &diagnostic.code {
+    diagnostic.message = crate::tsc::go::maybe_rewrite_message(
+      std::mem::take(&mut diagnostic.message),
+      *code as _,
+    );
+  }
+  if let Some(related_information) = &mut diagnostic.related_information {
+    for info in related_information {
+      normalize_location(&mut info.location, snapshot);
+    }
+  }
+}
+
+fn normalize_workspace_edit(
+  workspace_edit: &mut lsp::WorkspaceEdit,
+  _snapshot: &StateSnapshot,
+) {
+  if let Some(changes) = &mut workspace_edit.changes {
+    let changes = std::mem::take(changes);
+    *workspace_edit.changes.as_mut().unwrap() = changes
+      .into_iter()
+      .map(|(mut uri, edits)| {
+        uri = normalize_uri(&uri);
+        (uri, edits)
+      })
+      .collect();
+  }
+  if let Some(document_changes) = &mut workspace_edit.document_changes {
+    match document_changes {
+      lsp::DocumentChanges::Edits(edits) => {
+        for edit in edits {
+          edit.text_document.uri = normalize_uri(&edit.text_document.uri);
+        }
+      }
+      lsp::DocumentChanges::Operations(operations) => {
+        for operation in operations {
+          match operation {
+            lsp::DocumentChangeOperation::Edit(edit) => {
+              edit.text_document.uri = normalize_uri(&edit.text_document.uri);
+            }
+            lsp::DocumentChangeOperation::Op(op) => match op {
+              lsp::ResourceOp::Create(create) => {
+                create.uri = normalize_uri(&create.uri);
+              }
+              lsp::ResourceOp::Rename(rename) => {
+                rename.old_uri = normalize_uri(&rename.old_uri);
+                rename.new_uri = normalize_uri(&rename.new_uri);
+              }
+              lsp::ResourceOp::Delete(delete) => {
+                delete.uri = normalize_uri(&delete.uri);
+              }
+            },
+          }
+        }
+      }
+    }
+  }
+}
+
+fn normalize_code_action(
+  code_action: &mut lsp::CodeAction,
+  snapshot: &StateSnapshot,
+) {
+  if let Some(edit) = &mut code_action.edit {
+    normalize_workspace_edit(edit, snapshot);
+  }
+}
+
+fn normalize_code_action_response(
+  response: &mut lsp::CodeActionResponse,
+  snapshot: &StateSnapshot,
+) {
+  for item in response {
+    match item {
+      lsp::CodeActionOrCommand::CodeAction(code_action) => {
+        normalize_code_action(code_action, snapshot);
+      }
+      lsp::CodeActionOrCommand::Command(_) => {}
+    }
+  }
+}
+
+fn normalize_inlay_hint(
+  inlay_hint: &mut lsp::InlayHint,
+  snapshot: &StateSnapshot,
+) {
+  if let lsp::InlayHintLabel::LabelParts(parts) = &mut inlay_hint.label {
+    for part in parts {
+      if let Some(location) = &mut part.location {
+        normalize_location(location, snapshot);
+      }
+    }
+  }
 }

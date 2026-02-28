@@ -169,7 +169,7 @@ impl TsServer {
       }
       Self::Go(ts_server) => {
         let report = ts_server
-          .provide_diagnostics(module, snapshot, token)
+          .provide_diagnostics(module, &snapshot, token)
           .await?;
         let lsp::DocumentDiagnosticReport::Full(report) = report else {
           unreachable!(
@@ -541,7 +541,7 @@ impl TsServer {
       }
       Self::Go(ts_server) => {
         ts_server
-          .provide_code_actions(module, range, context, snapshot, token)
+          .provide_code_actions(module, range, context, &snapshot, token)
           .await
       }
     }
@@ -1032,7 +1032,7 @@ impl TsServer {
     position: lsp::Position,
     new_name: &str,
     language_server: &language_server::Inner,
-    snapshot: Arc<StateSnapshot>,
+    snapshot: &Arc<StateSnapshot>,
     token: &CancellationToken,
   ) -> Result<Option<lsp::WorkspaceEdit>, AnyError> {
     match self {
@@ -1325,7 +1325,7 @@ impl TsServer {
     &self,
     module: &DocumentModule,
     range: lsp::Range,
-    snapshot: Arc<StateSnapshot>,
+    snapshot: &Arc<StateSnapshot>,
     token: &CancellationToken,
   ) -> Result<Option<Vec<lsp::InlayHint>>, AnyError> {
     match self {
@@ -1356,7 +1356,7 @@ impl TsServer {
                 if token.is_cancelled() {
                   return Err(anyhow!("request cancelled"));
                 }
-                Ok(inlay_hint.to_lsp(module, &snapshot))
+                Ok(inlay_hint.to_lsp(module, snapshot))
               })
               .collect()
           })
