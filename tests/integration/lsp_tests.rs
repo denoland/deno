@@ -16643,20 +16643,28 @@ fn lsp_deno_json_scopes_rename_symbol(use_tsgo: bool) {
       "newName": "bar",
     }),
   );
+  res
+    .as_object_mut()
+    .unwrap()
+    .get("changes")
+    .unwrap()
+    .as_object_mut()
+    .unwrap()
+    .sort_keys();
   assert_eq!(
     res,
     json!({
       "changes": {
-        file2.uri().as_str(): [
-          {
-            "range": file2.range_of("foo"),
-            "newText": "bar as foo",
-          },
-        ],
         file1.uri().as_str(): [
           {
             "range": file1.range_of("foo"),
             "newText": "bar",
+          },
+        ],
+        file2.uri().as_str(): [
+          {
+            "range": file2.range_of("foo"),
+            "newText": "bar as foo",
           },
         ],
       },

@@ -96,6 +96,7 @@ use crate::lsp::completions::CompletionItemData;
 use crate::lsp::documents::Document;
 use crate::lsp::logging::lsp_warn;
 use crate::lsp::resolver::SingleReferrerGraphResolver;
+use crate::lsp::urls::normalize_path;
 use crate::tsc::MISSING_DEPENDENCY_SPECIFIER;
 use crate::tsc::ResolveArgs;
 use crate::util::path::relative_specifier;
@@ -2241,7 +2242,7 @@ impl DocumentSpan {
     Some(target)
   }
 
-  pub fn to_goto_definition_response<'a>(
+  pub fn collect_into_goto_definition_response<'a>(
     document_spans: impl IntoIterator<Item = (&'a DocumentSpan, &'a DocumentModule)>,
     snapshot: &StateSnapshot,
     token: &CancellationToken,
@@ -3428,7 +3429,7 @@ impl CallHierarchyItem {
     let maybe_file_path = url_to_file_path(&target_module.specifier).ok();
     let name = if use_file_name {
       if let Some(file_path) = &maybe_file_path {
-        file_path.to_string_lossy().into_owned()
+        normalize_path(file_path).to_string_lossy().into_owned()
       } else {
         target_module.uri.to_string()
       }

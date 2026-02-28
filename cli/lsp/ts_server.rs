@@ -605,7 +605,7 @@ impl TsServer {
             token,
           )
           .await?;
-        super::tsc::DocumentSpan::to_goto_definition_response(
+        super::tsc::DocumentSpan::collect_into_goto_definition_response(
           definition_info
             .iter()
             .flat_map(|i| &i.definitions)
@@ -641,7 +641,7 @@ impl TsServer {
             token,
           )
           .await?;
-        super::tsc::DocumentSpan::to_goto_definition_response(
+        super::tsc::DocumentSpan::collect_into_goto_definition_response(
           definition_info
             .iter()
             .flatten()
@@ -827,7 +827,7 @@ impl TsServer {
               .extend(implementations.into_iter().map(|i| (i, module.clone())))
           }
         }
-        super::tsc::DocumentSpan::to_goto_definition_response(
+        super::tsc::DocumentSpan::collect_into_goto_definition_response(
           implementations_with_modules
             .iter()
             .map(|(i, m)| (&i.document_span, m.as_ref())),
