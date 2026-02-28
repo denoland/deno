@@ -90,6 +90,8 @@ const _opened = Symbol("[[opened]]");
 const _closed = Symbol("[[closed]]");
 const _earlyClose = Symbol("[[earlyClose]]");
 const _closeSent = Symbol("[[closeSent]]");
+const _remoteCloseCode = Symbol("[[remoteCloseCode]]");
+const _remoteCloseReason = Symbol("[[remoteCloseReason]]");
 class WebSocketStream {
   [_rid];
 
@@ -388,6 +390,8 @@ class WebSocketStream {
   [_earlyClose] = false;
   [_closed] = new Deferred();
   [_closeSent] = new Deferred();
+  [_remoteCloseCode] = null;
+  [_remoteCloseReason] = null;
   get closed() {
     webidl.assertBranded(this, WebSocketStreamPrototype);
     return this[_closed].promise;
