@@ -1,0 +1,6 @@
+[ERR] Error
+[ERR]     at eval (eval at <anonymous> (eval at <anonymous> (eval at foo (test:///integration/error_eval_stack/error_eval_stack.ts:5:3))), <anonymous>:1:7)
+[ERR]     at eval (eval at <anonymous> (eval at foo (test:///integration/error_eval_stack/error_eval_stack.ts:5:3)), <anonymous>:1:1)
+[ERR]     at eval (eval at foo (test:///integration/error_eval_stack/error_eval_stack.ts:5:3), <anonymous>:1:1)
+[ERR]     at foo (test:///integration/error_eval_stack/error_eval_stack.ts:5:3)
+[ERR]     at test:///integration/error_eval_stack/error_eval_stack.ts:8:1
