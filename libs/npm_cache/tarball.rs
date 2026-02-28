@@ -238,7 +238,7 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
           };
           let dist = dist.clone();
           let package_nv = package_nv.clone();
-          spawn_blocking(move || verify_and_extract_tarball(
+          let result = spawn_blocking(move || verify_and_extract_tarball(
               &sys,
               &package_nv,
               &bytes,
@@ -246,7 +246,8 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
               &package_folder,
               extraction_mode,
             ))
-          .await.map_err(JsErrorBox::from_err)?.map_err(JsErrorBox::from_err)
+          .await.map_err(JsErrorBox::from_err)?.map_err(JsErrorBox::from_err);
+          result
         }
         None => {
           Err(JsErrorBox::generic(format!("Could not find npm package tarball at: {}", dist.tarball)))

@@ -1298,6 +1298,29 @@ impl Client {
       .map_err(|e| ClientSendError { uri, source: e })?;
     Ok(resp.map(|b| b.map_err(|e| JsErrorBox::generic(e.to_string())).boxed()))
   }
+
+  /// Sends a request bypassing the transparent decompression middleware.
+  /// The response body will contain raw bytes (potentially compressed).
+  /// The caller is responsible for checking Content-Encoding and
+  /// decompressing if needed.
+  pub async fn send_no_decompress(
+    self,
+    mut req: http::Request<ReqBody>,
+  ) -> Result<http::Response<ResBody>, ClientSendError> {
+    self.inject_common_headers(&mut req);
+
+    req.headers_mut().entry(ACCEPT).or_insert(STAR_STAR);
+
+    let uri = req.uri().clone();
+
+    let resp = self
+      .inner
+      .into_inner()
+      .oneshot(req)
+      .await
+      .map_err(|e| ClientSendError { uri, source: e })?;
+    Ok(resp.map(|b| b.map_err(|e| JsErrorBox::generic(e.to_string())).boxed()))
+  }
 }
 
 // This is a custom enum to allow the retry policy to clone the variants that could be retried.

@@ -3,6 +3,8 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
 
 use async_trait::async_trait;
 use deno_error::JsErrorBox;
@@ -25,6 +27,7 @@ use crate::NpmCacheSetting;
 use crate::NpmCacheSys;
 use crate::remote::maybe_auth_header_value_for_npm_registry;
 use crate::rt::MultiRuntimeAsyncValueCreator;
+use crate::rt::spawn;
 use crate::rt::spawn_blocking;
 
 type LoadResult = Result<FutureResult, Arc<JsErrorBox>>;
@@ -71,14 +74,22 @@ struct MemoryCache {
 
 impl MemoryCache {
   #[inline(always)]
-  pub fn clear(&mut self) {
+  pub fn clear(&mut self) -> Vec<(String, MemoryCacheItem)> {
     self.clear_id += 1;
 
-    // if the item couldn't be saved to the fs cache, then we want to continue to hold it in memory
-    // to avoid re-downloading it from the registry
-    self
-      .items
-      .retain(|_, item| matches!(item, MemoryCacheItem::MemoryCached(Ok(_))));
+    // If the item couldn't be saved to the fs cache, then we want to continue
+    // to hold it in memory to avoid re-downloading it from the registry.
+    // Returns the evicted items so the caller can drop them off-thread.
+    let old_items = std::mem::take(&mut self.items);
+    let mut evicted = Vec::new();
+    for (key, item) in old_items {
+      if matches!(&item, MemoryCacheItem::MemoryCached(Ok(_))) {
+        self.items.insert(key, item);
+      } else {
+        evicted.push((key, item));
+      }
+    }
+    evicted
   }
 
   #[inline(always)]
@@ -132,6 +143,18 @@ pub struct LoadPackageInfoError {
 #[error("{0}")]
 pub struct LoadPackageInfoInnerError(pub Arc<JsErrorBox>);
 
+/// Maximum number of concurrent speculative prefetch tasks.
+/// This limits background prefetches to avoid overwhelming the registry,
+/// while leaving the critical path (direct package_info() calls from
+/// FuturesOrdered) unlimited so resolution is never blocked by prefetches.
+///
+/// Note: Because prefetch tasks race ahead of the critical path and create
+/// Pending entries that the critical path deduplicates onto, this effectively
+/// caps total concurrent downloads for prefetched packages. The critical path
+/// only starts its own downloads for packages not yet prefetched. Setting this
+/// too low starves the critical path of pre-warmed cache entries.
+const MAX_CONCURRENT_PREFETCH_TASKS: usize = 50;
+
 #[derive(Debug)]
 struct RegistryInfoProviderInner<
   THttpClient: NpmCacheHttpClient,
@@ -143,6 +166,8 @@ struct RegistryInfoProviderInner<
   force_reload_flag: AtomicFlag,
   memory_cache: Mutex<MemoryCache>,
   previously_loaded_packages: Mutex<HashSet<String>>,
+  /// Tracks the number of in-flight prefetch tasks to limit concurrency.
+  prefetch_in_flight: AtomicUsize,
 }
 
 impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
@@ -181,7 +206,9 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
         cache_item
       };
       match cache_item {
-        MemoryCacheItem::FsCached(info) => return Ok(Some(info)),
+        MemoryCacheItem::FsCached(info) => {
+          return Ok(Some(info));
+        }
         MemoryCacheItem::MemoryCached(maybe_info) => {
           return maybe_info.map_err(LoadPackageInfoInnerError);
         }
@@ -282,7 +309,8 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
           maybe_auth_header_value,
           maybe_etag,
         )
-        .await.map_err(JsErrorBox::from_err)?;
+        .await;
+      let response = response.map_err(JsErrorBox::from_err)?;
       match response {
         NpmCacheHttpClientResponse::NotModified => {
           log::debug!("Respected etag for packument '{0}'", name); // used in the tests
@@ -294,7 +322,7 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
             move || -> Result<FutureResult, JsErrorBox> {
               let mut package_info: SerializedCachedPackageInfo = serde_json::from_slice(&response.bytes).map_err(JsErrorBox::from_err)?;
               package_info.etag = response.etag;
-              match downloader.cache.save_package_info(&name, &package_info) {
+              let result = match downloader.cache.save_package_info(&name, &package_info) {
                 Ok(()) => {
                   Ok(FutureResult::SavedFsCache(Arc::new(package_info.info)))
                 }
@@ -306,7 +334,8 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
                   );
                   Ok(FutureResult::ErroredFsCache(Arc::new(package_info.info)))
                 }
-              }
+              };
+              result
             },
           )
           .await
@@ -361,12 +390,18 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
       force_reload_flag: AtomicFlag::lowered(),
       memory_cache: Default::default(),
       previously_loaded_packages: Default::default(),
+      prefetch_in_flight: AtomicUsize::new(0),
     }))
   }
 
-  /// Clears the internal memory cache.
+  /// Clears the internal memory cache. Evicted items are dropped on a
+  /// blocking thread to avoid blocking the async event loop with large
+  /// NpmPackageInfo destructor chains.
   pub fn clear_memory_cache(&self) {
-    self.0.memory_cache.lock().clear();
+    let evicted = self.0.memory_cache.lock().clear();
+    if !evicted.is_empty() {
+      spawn_blocking(move || drop(evicted));
+    }
   }
 
   pub async fn maybe_package_info(
@@ -394,6 +429,48 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys> NpmRegistryApi
         JsErrorBox::from_err(err),
       ))),
     }
+  }
+
+  fn prefetch_package_info(&self, name: &str) {
+    // Atomically check the cache AND insert a Pending entry if absent,
+    // all under a single lock acquisition. This prevents the TOCTOU race
+    // where multiple concurrent prefetch calls for the same package name
+    // all pass the cache check (seeing no entry) before any of them
+    // creates a Pending entry, each wasting a concurrency slot.
+    {
+      let mut mem_cache = self.0.memory_cache.lock();
+      if mem_cache.get(name).is_some() {
+        return;
+      }
+
+      // Limit concurrent prefetch tasks to avoid overwhelming the registry.
+      // Check under the same lock to avoid races between check and insert.
+      let current = self.0.prefetch_in_flight.load(Ordering::Relaxed);
+      if current >= MAX_CONCURRENT_PREFETCH_TASKS {
+        return;
+      }
+      self.0.prefetch_in_flight.fetch_add(1, Ordering::Relaxed);
+
+      // Insert the Pending entry now, while we hold the lock.
+      // This ensures any subsequent prefetch_package_info or load_package_info
+      // call for the same name sees this entry and deduplicates onto it.
+      let value_creator = MultiRuntimeAsyncValueCreator::new({
+        let downloader = self.0.clone();
+        let name = name.to_string();
+        Box::new(move || downloader.create_load_future(&name))
+      });
+      mem_cache.insert(
+        name.to_string(),
+        MemoryCacheItem::Pending(Arc::new(value_creator)),
+      );
+    }
+
+    let inner = self.0.clone();
+    let name = name.to_string();
+    spawn(async move {
+      let _ = inner.load_package_info(&name).await;
+      inner.prefetch_in_flight.fetch_sub(1, Ordering::Relaxed);
+    });
   }
 
   fn mark_force_reload(&self) -> bool {

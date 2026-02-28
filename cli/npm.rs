@@ -110,25 +110,19 @@ impl deno_npm_cache::NpmCacheHttpClient for CliNpmCacheHttpClient {
         http::header::HeaderValue::try_from(etag).unwrap(),
       );
     }
-    client
-      .download_with_progress_and_retries(url, &headers, &guard)
+    // Request gzip and bypass the tower-http Decompression middleware so
+    // that gzip inflate happens on a blocking thread instead of inline on
+    // the async event loop. This prevents large packument decompression
+    // (~12% of CPU during resolution) from blocking other HTTP/2 streams.
+    headers.insert(
+      http::header::ACCEPT_ENCODING,
+      http::header::HeaderValue::from_static("gzip"),
+    );
+    let response = client
+      .download_with_progress_and_retries_no_decompress(
+        url, &headers, &guard,
+      )
       .await
-      .map(|response| match response {
-        crate::http_util::HttpClientResponse::Success { headers, body } => {
-          NpmCacheHttpClientResponse::Bytes(NpmCacheHttpClientBytesResponse {
-            etag: headers
-              .get(http::header::ETAG)
-              .and_then(|e| e.to_str().map(|t| t.to_string()).ok()),
-            bytes: body,
-          })
-        }
-        crate::http_util::HttpClientResponse::NotFound => {
-          NpmCacheHttpClientResponse::NotFound
-        }
-        crate::http_util::HttpClientResponse::NotModified => {
-          NpmCacheHttpClientResponse::NotModified
-        }
-      })
       .map_err(|err| {
         use crate::http_util::DownloadErrorKind::*;
         let status_code = match err.as_kind() {
@@ -150,8 +144,56 @@ impl deno_npm_cache::NpmCacheHttpClient for CliNpmCacheHttpClient {
           status_code,
           error: JsErrorBox::from_err(err),
         }
-      })
+      })?;
+    match response {
+      crate::http_util::HttpClientResponse::Success { headers, body } => {
+        // Decompress gzip on a blocking thread to keep the event loop free
+        let body = if headers
+          .get(http::header::CONTENT_ENCODING)
+          .and_then(|v| v.to_str().ok())
+          .is_some_and(|v| v == "gzip")
+        {
+          tokio::task::spawn_blocking(move || decompress_gzip(body))
+            .await
+            .map_err(|e| deno_npm_cache::DownloadError {
+              status_code: None,
+              error: JsErrorBox::generic(e.to_string()),
+            })?
+            .map_err(|e| deno_npm_cache::DownloadError {
+              status_code: None,
+              error: e,
+            })?
+        } else {
+          body
+        };
+        Ok(NpmCacheHttpClientResponse::Bytes(
+          NpmCacheHttpClientBytesResponse {
+            etag: headers
+              .get(http::header::ETAG)
+              .and_then(|e| e.to_str().map(|t| t.to_string()).ok()),
+            bytes: body,
+          },
+        ))
+      }
+      crate::http_util::HttpClientResponse::NotFound => {
+        Ok(NpmCacheHttpClientResponse::NotFound)
+      }
+      crate::http_util::HttpClientResponse::NotModified => {
+        Ok(NpmCacheHttpClientResponse::NotModified)
+      }
+    }
   }
+}
+
+fn decompress_gzip(compressed: Vec<u8>) -> Result<Vec<u8>, JsErrorBox> {
+  use flate2::read::GzDecoder;
+  use std::io::Read;
+  let mut decoder = GzDecoder::new(compressed.as_slice());
+  let mut decompressed = Vec::new();
+  decoder
+    .read_to_end(&mut decompressed)
+    .map_err(|e| JsErrorBox::generic(format!("gzip decompression failed: {e}")))?;
+  Ok(decompressed)
 }
 
 #[derive(Debug)]

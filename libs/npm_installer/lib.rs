@@ -295,9 +295,10 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
     #[cfg(debug_assertions)]
     self.npm_resolution_initializer.debug_assert_initialized();
 
+    let prefetch_tarballs = matches!(caching, Some(PackageCaching::All));
     let mut result = self
       .npm_resolution_installer
-      .add_package_reqs(packages)
+      .add_package_reqs(packages, prefetch_tarballs)
       .await;
 
     if result.dependencies_result.is_ok()

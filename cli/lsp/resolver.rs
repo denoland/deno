@@ -959,6 +959,7 @@ impl<'a> ResolverFactory<'a> {
         npm_version_resolver,
         registry_info_provider.clone(),
         None,
+        None,
         self.services.npm_resolution.clone(),
         maybe_lockfile.clone(),
       ));
