@@ -97,7 +97,7 @@ pub union NativeValue {
 }
 
 impl NativeValue {
-  pub unsafe fn as_arg(&self, native_type: &NativeType) -> Arg {
+  pub unsafe fn as_arg(&self, native_type: &NativeType) -> Arg<'_> {
     #[allow(clippy::undocumented_unsafe_blocks)]
     unsafe {
       match native_type {
