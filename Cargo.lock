@@ -2788,6 +2788,7 @@ name = "deno_npm_cache"
 version = "0.53.0"
 dependencies = [
  "async-trait",
+ "aws-lc-rs",
  "base64 0.22.1",
  "boxed_error",
  "deno_cache_dir",
