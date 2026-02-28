@@ -46,6 +46,7 @@ use crate::lsp::documents::ServerDocumentKind;
 use crate::lsp::logging::lsp_log;
 use crate::lsp::logging::lsp_warn;
 use crate::lsp::resolver::SingleReferrerGraphResolver;
+use crate::lsp::urls::normalize_path;
 use crate::lsp::urls::normalize_uri;
 use crate::lsp::urls::uri_to_url;
 use crate::tsc::IGNORED_DIAGNOSTIC_CODES;
@@ -1767,6 +1768,11 @@ fn normalize_call_hierarchy_item(
   call_hierarchy_item: &mut lsp::CallHierarchyItem,
   snapshot: &StateSnapshot,
 ) {
+  if call_hierarchy_item.name.contains('/') {
+    call_hierarchy_item.name = normalize_path(&call_hierarchy_item.name)
+      .to_string_lossy()
+      .into_owned();
+  }
   normalize_uri_and_positions(
     &mut call_hierarchy_item.uri,
     [
