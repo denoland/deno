@@ -223,11 +223,33 @@ impl JupyterServer {
           // and it's no harm to send a kernel info reply on control
           connection.send(kernel_info().as_child_of(&msg)).await?;
         }
-        JupyterMessageContent::ShutdownRequest(_) => {
+        JupyterMessageContent::ShutdownRequest(ref req) => {
+          connection
+            .send(
+              messaging::ShutdownReply {
+                restart: req.restart,
+                status: ReplyStatus::Ok,
+                error: None,
+              }
+              .as_child_of(&msg),
+            )
+            .await?;
           cancel_handle.cancel();
         }
         JupyterMessageContent::InterruptRequest(_) => {
-          log::error!("Interrupt request currently not supported");
+          connection
+            .send(
+              messaging::InterruptReply {
+                status: ReplyStatus::Error,
+                error: Some(Box::new(ReplyError {
+                  ename: "NotImplemented".to_string(),
+                  evalue: "Interrupt not yet supported".to_string(),
+                  traceback: vec![],
+                })),
+              }
+              .as_child_of(&msg),
+            )
+            .await?;
         }
         JupyterMessageContent::DebugRequest(_) => {
           log::error!("Debug request currently not supported");
