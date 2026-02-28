@@ -57,6 +57,7 @@ use crate::eprintln;
 use crate::jsr_registry_url;
 use crate::npm_registry_url;
 use crate::print::spawn_thread;
+use crate::tsgo_prebuilt_path;
 
 static CONTENT_TYPE_REG: Lazy<Regex> =
   lazy_regex::lazy_regex!(r"(?i)^content-length:\s+(\d+)");
@@ -593,6 +594,7 @@ impl LspClientBuilder {
       // turn on diagnostic synchronization communication
       .env("DENO_INTERNAL_DIAGNOSTIC_BATCH_NOTIFICATIONS", "1")
       .env("DENO_NO_UPDATE_CHECK", "1")
+      .env("DENO_TSGO_PATH", tsgo_prebuilt_path())
       .args(args)
       .stdin(Stdio::piped())
       .stdout(Stdio::piped());
