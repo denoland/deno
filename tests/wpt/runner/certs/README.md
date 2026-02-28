@@ -90,7 +90,7 @@ the path to the OpenSSL config file (typically this will be
     "encrypt_after_connect": false,
     "openssl": {
       "openssl_binary": "openssl",
-      "base_path: "_certs",
+      "base_path": "_certs",
       "force_regenerate": false,
       "base_conf_path": "C:\\OpenSSL-Win32\\bin\\openssl.cfg"
     },
