@@ -178,24 +178,6 @@ impl ResolvedNodeIds {
   }
 }
 
-/// A pointer to a specific node in a graph path. The underlying node id
-/// may change as peer dependencies are created.
-#[derive(Debug)]
-struct NodeIdRef(Cell<NodeId>);
-
-impl NodeIdRef {
-  pub fn new(node_id: NodeId) -> Self {
-    NodeIdRef(Cell::new(node_id))
-  }
-
-  pub fn change(&self, node_id: NodeId) {
-    self.0.set(node_id);
-  }
-
-  pub fn get(&self) -> NodeId {
-    self.0.get()
-  }
-}
 
 #[derive(Clone)]
 enum GraphPathNodeOrRoot {
@@ -210,7 +192,7 @@ enum GraphPathNodeOrRoot {
 /// are resolved.
 struct GraphPath {
   previous_node: Option<GraphPathNodeOrRoot>,
-  node_id_ref: NodeIdRef,
+  node_id_ref: Cell<NodeId>,
   specifier: StackString,
   // we could consider not storing this here and instead reference the resolved
   // nodes, but we should performance profile this code first
@@ -233,7 +215,7 @@ impl GraphPath {
     let scoped = active_overrides.for_child(&nv.name, &nv.version);
     Rc::new(Self {
       previous_node: Some(GraphPathNodeOrRoot::Root(nv.clone())),
-      node_id_ref: NodeIdRef::new(node_id),
+      node_id_ref: Cell::new(node_id),
       // use an empty specifier
       specifier: "".into(),
       nv,
@@ -251,7 +233,7 @@ impl GraphPath {
   }
 
   pub fn change_id(&self, node_id: NodeId) {
-    self.node_id_ref.change(node_id)
+    self.node_id_ref.set(node_id)
   }
 
   pub fn with_id(
@@ -264,7 +246,7 @@ impl GraphPath {
       self.active_overrides.for_child(&nv.name, &nv.version);
     Rc::new(Self {
       previous_node: Some(GraphPathNodeOrRoot::Node(self.clone())),
-      node_id_ref: NodeIdRef::new(node_id),
+      node_id_ref: Cell::new(node_id),
       specifier,
       nv,
       linked_circular_descendants: Default::default(),
@@ -424,7 +406,6 @@ pub struct Graph {
   // inform the final snapshot creation.
   packages_to_copy_index: HashMap<NpmPackageId, u8>,
   moved_package_ids: IndexMap<NodeId, (ResolvedId, ResolvedId)>,
-  unresolved_optional_peers: UnresolvedOptionalPeers,
   #[cfg(feature = "tracing")]
   traces: Vec<super::tracing::TraceGraphSnapshot>,
 }
@@ -510,13 +491,6 @@ impl Graph {
           graph.set_child_of_parent_node(node_id, name, child_node_id);
         }
       }
-      for key in &resolution.optional_peer_dependencies {
-        if resolution.dependencies.contains_key(key) {
-          graph
-            .unresolved_optional_peers
-            .mark_seen(graph_resolved_id.nv.clone(), key);
-        }
-      }
       graph.resolved_node_ids.set(node_id, graph_resolved_id);
       node_id
     }
@@ -538,7 +512,6 @@ impl Graph {
       package_name_versions: Default::default(),
       resolved_node_ids: Default::default(),
       root_packages: Default::default(),
-      unresolved_optional_peers: Default::default(),
       moved_package_ids: Default::default(),
       #[cfg(feature = "tracing")]
       traces: Default::default(),
@@ -598,14 +571,14 @@ impl Graph {
       let mut peers = Vec::new();
       let mut adj = Vec::new();
 
-      for peer_dep in &resolved_id.peer_dependencies {
-        if let Some((child_id, child_resolved_id)) =
-          self.peer_dep_to_maybe_node_id_and_resolved_id(peer_dep)
+      for &peer_dep in &resolved_id.peer_dependencies {
+        if let Some(child_resolved_id) =
+          self.resolved_node_ids.get(peer_dep)
           && seen_nvs.insert(child_resolved_id.nv.clone())
         {
           nv_entry.insert(child_resolved_id.nv.clone());
-          adj.push(child_id);
-          peers.push((child_id, child_resolved_id.nv.clone()));
+          adj.push(peer_dep);
+          peers.push((peer_dep, child_resolved_id.nv.clone()));
         }
       }
 
@@ -783,16 +756,6 @@ impl Graph {
       nv: (*resolved_id.nv).clone(),
       peer_dependencies: Default::default(),
     }
-  }
-
-  fn peer_dep_to_maybe_node_id_and_resolved_id(
-    &self,
-    peer_dep: &NodeId,
-  ) -> Option<(NodeId, &ResolvedId)> {
-    self
-      .resolved_node_ids
-      .get(*peer_dep)
-      .map(|resolved_id| (*peer_dep, resolved_id))
   }
 
   fn get_or_create_for_id(
@@ -1151,25 +1114,6 @@ impl DepEntryCache {
   }
 }
 
-#[derive(Default)]
-struct UnresolvedOptionalPeers {
-  seen: HashMap<Rc<PackageNv>, Vec<StackString>>,
-  seen_count: usize,
-}
-
-impl UnresolvedOptionalPeers {
-  pub fn mark_seen(
-    &mut self,
-    parent_nv: Rc<PackageNv>,
-    specifier: &StackString,
-  ) {
-    let entries = self.seen.entry(parent_nv).or_default();
-    if let Err(insert_index) = entries.binary_search(specifier) {
-      entries.insert(insert_index, specifier.clone());
-      self.seen_count += 1;
-    }
-  }
-}
 
 pub struct GraphDependencyResolverOptions {
   pub should_dedup: bool,
@@ -2774,10 +2718,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
     peer_deps: &[(&NodeId, Rc<PackageNv>)],
   ) -> Option<ResolvedId> {
     let mut new_resolved_id = Cow::Borrowed(id);
-    // Collect existing peer dep NVs for dedup. Extract NVs directly
-    // from the NodeIds to avoid the expensive
-    // peer_dep_to_maybe_node_id_and_resolved_id call which iterates
-    // all children of each parent node O(n_children).
+    // Collect existing peer dep NVs for dedup.
     let peer_nvs = new_resolved_id
       .peer_dependencies
       .iter()
