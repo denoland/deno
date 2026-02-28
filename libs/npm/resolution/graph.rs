@@ -620,12 +620,11 @@ impl Graph {
       for peer_dep in &resolved_id.peer_dependencies {
         if let Some((child_id, child_resolved_id)) =
           self.peer_dep_to_maybe_node_id_and_resolved_id(peer_dep)
+          && seen_nvs.insert(child_resolved_id.nv.clone())
         {
-          if seen_nvs.insert(child_resolved_id.nv.clone()) {
-            nv_entry.insert(child_resolved_id.nv.clone());
-            adj.push(child_id);
-            peers.push((child_id, child_resolved_id.nv.clone()));
-          }
+          nv_entry.insert(child_resolved_id.nv.clone());
+          adj.push(child_id);
+          peers.push((child_id, child_resolved_id.nv.clone()));
         }
       }
 
@@ -673,7 +672,7 @@ impl Graph {
         || (scc.len() == 1
           && nv_adj_for_tarjan
             .get(&scc[0])
-            .map_or(false, |adj| adj.contains(&scc[0])));
+            .is_some_and(|adj| adj.contains(&scc[0])));
       for &pseudo_node in scc {
         let nv = &all_nvs[pseudo_node.0 as usize];
         nv_scc_idx.insert(nv.as_ref(), scc_idx);
@@ -793,10 +792,10 @@ impl Graph {
     resolved_id: &ResolvedId,
     cache: &HashMap<NodeId, NpmPackageId>,
   ) -> NpmPackageId {
-    if let Some(node_id) = self.resolved_node_ids.get_node_id(resolved_id) {
-      if let Some(pkg_id) = cache.get(&node_id) {
-        return pkg_id.clone();
-      }
+    if let Some(node_id) = self.resolved_node_ids.get_node_id(resolved_id)
+      && let Some(pkg_id) = cache.get(&node_id)
+    {
+      return pkg_id.clone();
     }
     // Fallback: construct without peer dependencies
     NpmPackageId {
@@ -1777,8 +1776,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
       let mut sorted: Vec<NodeId> = node_ids.clone();
       sorted.sort_by_key(|id| self.node_deps_count(*id));
 
-      while !sorted.is_empty() {
-        let superset_candidate = sorted.pop().unwrap();
+      while let Some(superset_candidate) = sorted.pop() {
         let mut next_round = Vec::new();
 
         while let Some(subset_candidate) = sorted.pop() {
@@ -8675,12 +8673,12 @@ mod test {
     let pkg_ids: Vec<&str> =
       packages.iter().map(|p| p.pkg_id.as_str()).collect();
     assert!(
-      pkg_ids.iter().any(|id| *id == "package-peer@1.0.0"),
+      pkg_ids.contains(&"package-peer@1.0.0"),
       "should have package-peer@1.0.0. Got: {:?}",
       pkg_ids
     );
     assert!(
-      pkg_ids.iter().any(|id| *id == "package-c@1.0.0"),
+      pkg_ids.contains(&"package-c@1.0.0"),
       "should have package-c@1.0.0. Got: {:?}",
       pkg_ids
     );
@@ -8701,7 +8699,7 @@ mod test {
       .filter(|p| p.pkg_id.starts_with("package-b@"))
       .collect();
     assert!(
-      b_entries.len() >= 1,
+      !b_entries.is_empty(),
       "package-b should have at least 1 entry. Got: {:?}",
       pkg_ids
     );
