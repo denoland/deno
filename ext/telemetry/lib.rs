@@ -2556,8 +2556,11 @@ impl GcMetricData {
     // SAFETY: Isolate is valid during callback
     let isolate =
       unsafe { v8::Isolate::from_raw_isolate_ptr_unchecked(isolate) };
-    let this = isolate.get_slot::<Self>().unwrap();
-    this.0.borrow_mut().start = Instant::now();
+    if let Some(this) = isolate.get_slot::<Self>() {
+      this.0.borrow_mut().start = Instant::now();
+    }
+    // If the slot is missing, this callback was invoked during isolate
+    // cleanup or before telemetry was fully initialized. Skip the operation.
   }
 
   extern "C" fn epilogue_callback(
@@ -2569,7 +2572,11 @@ impl GcMetricData {
     // SAFETY: Isolate is valid during callback
     let isolate =
       unsafe { v8::Isolate::from_raw_isolate_ptr_unchecked(isolate) };
-    let this = isolate.get_slot::<Self>().unwrap();
+    let Some(this) = isolate.get_slot::<Self>() else {
+      // If the slot is missing, this callback was invoked during isolate
+      // cleanup or before telemetry was fully initialized. Skip the operation.
+      return;
+    };
     let this = this.0.borrow_mut();
 
     let elapsed = this.start.elapsed();
@@ -2663,7 +2670,11 @@ fn op_otel_enable_isolate_metrics(scope: &mut v8::PinScope<'_, '_>) {
 
 #[op2(fast)]
 fn op_otel_collect_isolate_metrics(scope: &mut v8::PinScope<'_, '_>) {
-  let data = scope.get_slot::<HeapMetricData>().unwrap().clone();
+  let Some(data) = scope.get_slot::<HeapMetricData>() else {
+    // HeapMetricData not initialized, skip collection
+    return;
+  };
+  let data = data.clone();
   for i in 0..scope.get_number_of_data_slots() {
     let Some(space) = scope.get_heap_space_statistics(i as _) else {
       continue;
