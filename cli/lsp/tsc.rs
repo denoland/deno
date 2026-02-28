@@ -2307,7 +2307,7 @@ impl NavigateToItem {
     }
 
     // The field `deprecated` is deprecated but SymbolInformation does not have
-    // a default, therefore we have to supply the deprecated deprecated
+    // a default, therefore we have to supply the deprecated
     // field. It is like a bad version of Inception.
     #[allow(deprecated)]
     Some(lsp::SymbolInformation {
@@ -2526,7 +2526,7 @@ impl NavigationTree {
         };
 
         // The field `deprecated` is deprecated but DocumentSymbol does not have
-        // a default, therefore we have to supply the deprecated deprecated
+        // a default, therefore we have to supply the deprecated
         // field. It is like a bad version of Inception.
         #[allow(deprecated)]
         document_symbols.push(lsp::DocumentSymbol {
