@@ -16646,7 +16646,7 @@ fn lsp_deno_json_scopes_rename_symbol(use_tsgo: bool) {
   res
     .as_object_mut()
     .unwrap()
-    .get("changes")
+    .get_mut("changes")
     .unwrap()
     .as_object_mut()
     .unwrap()
