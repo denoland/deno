@@ -41,6 +41,7 @@ const {
   Error,
   JSONParse,
   ObjectCreate,
+  ObjectDefineProperty,
   ObjectEntries,
   ObjectGetOwnPropertyDescriptor,
   ObjectGetPrototypeOf,
@@ -970,7 +971,7 @@ const wrapper = [
 
 export let wrap = function (script) {
   script = script.replace(/^#!.*?\n/, "");
-  return `${wrapper[0]}${script}${wrapper[1]}`;
+  return `${Module.wrapper[0]}${script}${Module.wrapper[1]}`;
 };
 
 let wrapperProxy = new Proxy(wrapper, {
@@ -985,7 +986,7 @@ let wrapperProxy = new Proxy(wrapper, {
   },
 });
 
-Object.defineProperty(Module, "wrap", {
+ObjectDefineProperty(Module, "wrap", {
   get() {
     return wrap;
   },
@@ -996,7 +997,7 @@ Object.defineProperty(Module, "wrap", {
   },
 });
 
-Object.defineProperty(Module, "wrapper", {
+ObjectDefineProperty(Module, "wrapper", {
   get() {
     return wrapperProxy;
   },
