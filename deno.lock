@@ -1,0 +1,45 @@
+{
+  "version": "5",
+  "specifiers": {
+    "jsr:@std/async@^1.2.0": "1.2.0",
+    "jsr:@std/bytes@^1.0.6": "1.0.6",
+    "jsr:@std/fmt@^1.0.9": "1.0.9",
+    "jsr:@std/io@~0.225.3": "0.225.3",
+    "jsr:@std/json@^1.0.2": "1.0.3",
+    "jsr:@std/jsonc@^1.0.2": "1.0.2"
+  },
+  "jsr": {
+    "@std/async@1.2.0": {
+      "integrity": "c059c6f6d95ca7cc012ae8e8d7164d1697113d54b0b679e4372b354b11c2dee5"
+    },
+    "@std/bytes@1.0.6": {
+      "integrity": "f6ac6adbd8ccd99314045f5703e23af0a68d7f7e58364b47d2c7f408aeb5820a"
+    },
+    "@std/fmt@1.0.9": {
+      "integrity": "2487343e8899fb2be5d0e3d35013e54477ada198854e52dd05ed0422eddcabe0"
+    },
+    "@std/io@0.225.3": {
+      "integrity": "27b07b591384d12d7b568f39e61dff966b8230559122df1e9fd11cc068f7ddd1",
+      "dependencies": [
+        "jsr:@std/bytes"
+      ]
+    },
+    "@std/json@1.0.3": {
+      "integrity": "97d5710996293a027b7aa5f0d1f4fa29f246f269e6b5597e08807613f37d426c"
+    },
+    "@std/jsonc@1.0.2": {
+      "integrity": "909605dae3af22bd75b1cbda8d64a32cf1fd2cf6efa3f9e224aba6d22c0f44c7",
+      "dependencies": [
+        "jsr:@std/json"
+      ]
+    }
+  },
+  "workspace": {
+    "dependencies": [
+      "jsr:@std/async@^1.2.0",
+      "jsr:@std/fmt@^1.0.9",
+      "jsr:@std/io@~0.225.3",
+      "jsr:@std/jsonc@^1.0.2"
+    ]
+  }
+}

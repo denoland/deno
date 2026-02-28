@@ -284,10 +284,18 @@ class WebSocketStream {
                 default: {
                   /* close */
                   const reason = op_ws_get_error(this[_rid]);
+
+                  // Store remote close info if we haven't seen one yet
+                  if (this[_remoteCloseCode] === null) {
+                    this[_remoteCloseCode] = kind;
+                    this[_remoteCloseReason] = reason;
+                  }
+
                   this[_closed].resolve({
                     closeCode: kind,
                     reason,
                   });
+
                   core.tryClose(this[_rid]);
                   break;
                 }

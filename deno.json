@@ -1,0 +1,8 @@
+{
+  "imports": {
+    "@std/async": "jsr:@std/async@^1.2.0",
+    "@std/fmt": "jsr:@std/fmt@^1.0.9",
+    "@std/io": "jsr:@std/io@^0.225.3",
+    "@std/jsonc": "jsr:@std/jsonc@^1.0.2"
+  }
+}
