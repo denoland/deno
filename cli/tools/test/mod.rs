@@ -129,6 +129,10 @@ pub enum TestMode {
 }
 
 impl TestMode {
+  fn union(self, other: Self) -> Self {
+    if self == other { self } else { Self::Both }
+  }
+
   /// Returns `true` if the test mode indicates that code snippet extraction is
   /// needed.
   fn needs_test_extraction(&self) -> bool {
@@ -1536,14 +1540,29 @@ async fn fetch_specifiers_with_test_mode(
   member_patterns: impl Iterator<Item = FilePatterns>,
   doc: &bool,
 ) -> Result<Vec<(ModuleSpecifier, TestMode)>, AnyError> {
-  let mut specifiers_with_mode = member_patterns
+  let mut deduped_specifiers_with_mode: IndexMap<ModuleSpecifier, TestMode> =
+    IndexMap::new();
+  for (specifier, mode) in member_patterns
     .map(|files| {
       collect_specifiers_with_test_mode(cli_options, files.clone(), doc)
     })
     .collect::<Result<Vec<_>, _>>()?
     .into_iter()
     .flatten()
-    .collect::<Vec<_>>();
+  {
+    match deduped_specifiers_with_mode.entry(specifier) {
+      indexmap::map::Entry::Occupied(mut entry) => {
+        let merged_mode = entry.get().clone().union(mode);
+        entry.insert(merged_mode);
+      }
+      indexmap::map::Entry::Vacant(entry) => {
+        entry.insert(mode);
+      }
+    }
+  }
+
+  let mut specifiers_with_mode =
+    deduped_specifiers_with_mode.into_iter().collect::<Vec<_>>();
 
   for (specifier, mode) in &mut specifiers_with_mode {
     let file = file_fetcher.fetch_bypass_permissions(specifier).await?;

@@ -119,3 +119,22 @@ fn conditionally_loads_type_graph() {
     .run();
   assert_not_contains!(output.combined_output(), "type_reference.d.ts");
 }
+
+#[test]
+fn workspace_dot_runs_test_module_once() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write("deno.jsonc", r#"{ "workspace": ["./member"] }"#);
+  temp_dir.write("member/deno.json", "{}");
+  temp_dir.write("main_test.ts", "Deno.test('test', () => {});");
+
+  let output = context.new_command().args("test .").run();
+  output.assert_exit_code(0);
+
+  let text = output.combined_output();
+  let test_file_runs = text.matches("running 1 test from").count();
+  assert_eq!(
+    test_file_runs, 1,
+    "expected test module to run once, but saw {test_file_runs} runs:\n{text}"
+  );
+}
