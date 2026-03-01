@@ -163,34 +163,66 @@ export function watchPromise(
     encoding?: string;
     signal?: AbortSignal;
   },
-): AsyncIterable<{ eventType: string; filename: string | Buffer | null }> {
+): AsyncIterable<{ eventType: string; filename: string | Buffer | null }> & {
+  close(): void;
+} {
   const watchPath = getValidatedPath(filename).toString();
 
   const watcher = Deno.watchFs(watchPath, {
     recursive: options?.recursive ?? false,
   });
 
+  let closed = false;
+
+  function close() {
+    if (!closed) {
+      closed = true;
+      try {
+        watcher.close();
+      } catch (e) {
+        if (!(e instanceof Deno.errors.BadResource)) {
+          throw e;
+        }
+      }
+    }
+  }
+
   if (options?.signal) {
-    options?.signal.addEventListener("abort", () => watcher.close());
+    if (options.signal.aborted) {
+      close();
+    } else {
+      options.signal.addEventListener("abort", () => close(), { once: true });
+    }
   }
 
   const fsIterable = watcher[Symbol.asyncIterator]();
-  const iterable = {
-    async next() {
-      const result = await fsIterable.next();
-      if (result.done) return result;
+  const result = {
+    async next(): Promise<
+      IteratorResult<{ eventType: string; filename: string | Buffer | null }>
+    > {
+      const iterResult = await fsIterable.next();
+      if (iterResult.done) return iterResult;
 
-      const eventType = convertDenoFsEventToNodeFsEvent(result.value.kind);
+      const eventType = convertDenoFsEventToNodeFsEvent(
+        iterResult.value.kind,
+      );
       return {
-        value: { eventType, filename: basename(result.value.paths[0]) },
-        done: result.done,
+        value: { eventType, filename: basename(iterResult.value.paths[0]) },
+        done: false,
       };
+    },
+    // deno-lint-ignore no-explicit-any
+    async return(value?: any): Promise<IteratorResult<any>> {
+      close();
+      return { value, done: true };
+    },
+    close,
+    [Symbol.asyncIterator]() {
+      return this;
     },
   };
 
-  return {
-    [Symbol.asyncIterator]: () => iterable,
-  };
+  return result;
 }
 
 type WatchFileListener = (curr: Stats, prev: Stats) => void;
