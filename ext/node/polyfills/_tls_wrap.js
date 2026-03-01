@@ -408,13 +408,26 @@ export class ServerImpl extends EventEmitter {
     }
   }
 
-  listen(port, callback) {
+  listen(opt, callback) {
+    let hostname, port;
+    if (typeof opt == "object") {
+      port = opt.port;
+      hostname = opt.hostname ?? "0.0.0.0";
+    } else {
+      // TODO(kt3k): The default host should be "localhost"
+      hostname = this.options.host ?? "0.0.0.0";
+      port = opt;
+    }
     const key = this.options.key?.toString();
     const cert = this.options.cert?.toString();
-    // TODO(kt3k): The default host should be "localhost"
-    const hostname = this.options.host ?? "0.0.0.0";
 
-    this.listener = Deno.listenTls({ port, hostname, cert, key });
+    this.listener = Deno.listenTls({
+      port,
+      hostname,
+      cert,
+      key,
+      alpnProtocols: this.options.ALPNProtocols,
+    });
 
     callback?.call(this);
     this.#listen(this.listener);
@@ -435,6 +448,8 @@ export class ServerImpl extends EventEmitter {
         // TODO(@satyarohith): set TLSSocket.alpnProtocol when we use TLSSocket class.
         const handle = new TCP(TCPConstants.SOCKET, await listener.accept());
         const socket = new net.Socket({ handle });
+        socket.encrypted = true;
+        socket.alpnProtocol = "h2";
         this.emit("secureConnection", socket);
       } catch (e) {
         if (e instanceof Deno.errors.BadResource) {
@@ -463,6 +478,8 @@ export class ServerImpl extends EventEmitter {
       address: addr.hostname,
     };
   }
+
+  setTimeout() {}
 }
 
 Server.prototype = ServerImpl.prototype;
