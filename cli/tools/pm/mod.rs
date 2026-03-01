@@ -1,5 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+use std::borrow::Cow;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -472,8 +473,14 @@ pub async fn add(
   let mut package_reqs = Vec::with_capacity(add_flags.packages.len());
 
   for entry_text in add_flags.packages.iter() {
+    let text =
+      if !entry_text.starts_with("npm:") && !entry_text.starts_with("jsr:") {
+        Cow::Owned(format!("npm:{}", entry_text))
+      } else {
+        Cow::Borrowed(entry_text)
+      };
     let req = AddRmPackageReq::parse(
-      entry_text,
+      &text,
       add_flags.default_registry.map(|r| r.into()),
     )
     .with_context(|| format!("Failed to parse package: {}", entry_text))?;
