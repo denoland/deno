@@ -27,7 +27,8 @@ fn v8_init(
     " --harmony-temporal",
     " --js-float16array",
     " --js-explicit-resource-management",
-    " --js-source-phase-imports"
+    " --js-source-phase-imports",
+    " --js-defer-import-eval"
   );
   let snapshot_flags = "--predictable --random-seed=42";
   let expose_natives_flags = "--expose_gc --allow_natives_syntax";

@@ -1972,7 +1972,7 @@ impl ModuleMap {
               .unwrap()
               .clone();
             match state.phase {
-              ModuleImportPhase::Defer | ModuleImportPhase::Evaluation => {
+              ModuleImportPhase::Evaluation => {
                 // The top-level module from a dynamic import has been instantiated.
                 // Load is done.
                 let module_id =
@@ -1987,6 +1987,34 @@ impl ModuleMap {
                   dyn_import_id,
                   state,
                 )?;
+              }
+              ModuleImportPhase::Defer => {
+                // For defer phase imports, the module is instantiated but NOT evaluated.
+                // V8 will handle creating the deferred namespace object that triggers
+                // evaluation on first property access.
+                // Requires V8 flag --js-defer-import-eval (enabled in runtime/setup.rs).
+                let module_id =
+                  load.root_module_id.expect("Root module should be loaded");
+                let result = self.instantiate_module(scope, module_id);
+                if let Err(exception) = result {
+                  self.dynamic_import_reject(scope, dyn_import_id, exception);
+                  continue;
+                }
+                // Resolve with the module namespace without evaluating.
+                // V8's deferred namespace will trigger evaluation on property access.
+                let module_handle =
+                  self.get_handle(module_id).expect("ModuleInfo not found");
+                let module = module_handle.open(scope);
+                let module_namespace = module.get_module_namespace();
+                let resolver_handle = self
+                  .dynamic_import_map
+                  .borrow_mut()
+                  .remove(&dyn_import_id)
+                  .expect("Invalid dynamic import id")
+                  .resolver;
+                let resolver = resolver_handle.open(scope);
+                resolver.resolve(scope, module_namespace).unwrap();
+                scope.perform_microtask_checkpoint();
               }
               ModuleImportPhase::Source => {
                 let module_reference = load.root_module_reference.as_ref().expect("Root module reference had to have been resolved to get here.");
