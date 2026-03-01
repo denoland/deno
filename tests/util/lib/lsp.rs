@@ -1,5 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::ffi::OsString;
@@ -56,6 +57,7 @@ use crate::eprintln;
 use crate::jsr_registry_url;
 use crate::npm_registry_url;
 use crate::print::spawn_thread;
+use crate::tsgo_prebuilt_path;
 
 static CONTENT_TYPE_REG: Lazy<Regex> =
   lazy_regex::lazy_regex!(r"(?i)^content-length:\s+(\d+)");
@@ -266,6 +268,18 @@ impl InitializeParamsBuilder {
                 snippet_support: Some(true),
                 ..Default::default()
               }),
+              ..Default::default()
+            }),
+            definition: Some(lsp::GotoCapability {
+              link_support: Some(true),
+              ..Default::default()
+            }),
+            type_definition: Some(lsp::GotoCapability {
+              link_support: Some(true),
+              ..Default::default()
+            }),
+            implementation: Some(lsp::GotoCapability {
+              link_support: Some(true),
               ..Default::default()
             }),
             hover: Some(HoverClientCapabilities {
@@ -580,6 +594,7 @@ impl LspClientBuilder {
       // turn on diagnostic synchronization communication
       .env("DENO_INTERNAL_DIAGNOSTIC_BATCH_NOTIFICATIONS", "1")
       .env("DENO_NO_UPDATE_CHECK", "1")
+      .env("DENO_TSGO_PATH", tsgo_prebuilt_path())
       .args(args)
       .stdin(Stdio::piped())
       .stdout(Stdio::piped());
@@ -1527,6 +1542,9 @@ pub struct SourceFile {
 
 impl SourceFile {
   pub fn new(path: PathRef, src: String) -> Self {
+    let path = PathRef::new(deno_path_util::normalize_path(Cow::Borrowed(
+      path.as_ref(),
+    )));
     path.write(&src);
     Self::new_in_mem(path, src)
   }
@@ -1569,6 +1587,10 @@ impl SourceFile {
 
   pub fn range_of_nth(&self, n: usize, text: &str) -> lsp::Range {
     range_of_nth(n, text, &self.src)
+  }
+
+  pub fn path(&self) -> &PathRef {
+    &self.path
   }
 
   pub fn url(&self) -> Url {
