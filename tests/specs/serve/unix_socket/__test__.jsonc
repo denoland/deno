@@ -1,0 +1,10 @@
+{
+  "tempDir": true,
+  "tests": {
+    "unix_socket": {
+      "if": "unix",
+      "args": "serve --check --allow-read=test.sock --allow-write=test.sock --allow-net --unix-socket test.sock main.ts",
+      "output": "main.out"
+    }
+  }
+}
