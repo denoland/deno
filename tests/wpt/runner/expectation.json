@@ -14663,11 +14663,6 @@
         "close.any.worker.html?default": false,
         "remote-close.any.html?wpt_flags=h2": false,
         "remote-close.any.html?wss": false,
-        "remote-close.any.worker.html?default": [
-          "clean close should be clean",
-          "close with unwritten data should not be considered clean",
-          "abrupt close should give an error"
-        ],
         "remote-close.any.worker.html?wpt_flags=h2": false,
         "remote-close.any.worker.html?wss": false,
         "websocket-error.any.html": true,
