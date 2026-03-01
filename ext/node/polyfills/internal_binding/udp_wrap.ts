@@ -188,15 +188,8 @@ export class UDP extends HandleWrap {
     buffer: boolean,
     ctx: Record<string, string | number>,
   ): number | undefined {
-    let err: string | undefined;
-
-    if (size > UDP_DGRAM_MAXSIZE) {
-      err = "EINVAL";
-    } else if (!this.#address) {
-      err = isWindows ? "ENOTSOCK" : "EBADF";
-    }
-
-    if (err) {
+    if (!this.#address) {
+      const err = isWindows ? "ENOTSOCK" : "EBADF";
       ctx.errno = codeMap.get(err)!;
       ctx.code = err;
       ctx.message = errorMap.get(ctx.errno)![1];

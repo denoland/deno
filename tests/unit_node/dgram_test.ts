@@ -160,3 +160,19 @@ Deno.test("[node/dgram] addSourceSpecificMembership and dropSourceSpecificMember
   });
   await promise;
 });
+
+Deno.test("[node/dgram] large recvBufferSize and sendBufferSize do not throw", async () => {
+  const { promise, resolve, reject } = Promise.withResolvers<void>();
+  const socket = createSocket({
+    type: "udp4",
+    recvBufferSize: 4194304,
+    sendBufferSize: 4194304,
+  });
+  socket.on("error", (err) => {
+    reject(err);
+  });
+  socket.bind(0, () => {
+    socket.close(() => resolve());
+  });
+  await promise;
+});
