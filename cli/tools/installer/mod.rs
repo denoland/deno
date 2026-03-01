@@ -317,10 +317,19 @@ fn get_installer_bin_dir(
     get_installer_root()?
   };
 
-  Ok(if !root.ends_with("bin") {
-    root.join("bin")
-  } else {
+  Ok(if root_flag.is_some() {
+    // User specified --root: apply bin logic
+    if !root.ends_with("bin") {
+      root.join("bin")
+    } else {
+      root
+    }
+  } else if env::var_os("DENO_INSTALL_ROOT").is_some_and(|v| !v.is_empty()) {
+    // DENO_INSTALL_ROOT is set: use directly as installation dir (no append)
     root
+  } else {
+    // Default: get_installer_root returns $HOME/.deno, append /bin
+    root.join("bin")
   })
 }
 
