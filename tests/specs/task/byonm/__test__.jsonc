@@ -11,12 +11,22 @@
         "output": "package_json_say.out"
       }, {
         "args": "task think",
+        // NB(bartlomieju):
+        // This output is actually an output of `cowsay`, but it's not possible
+        // to make it work correctly, because `cowsay` uses `yargs` to determine
+        // if `cowsay` or `cowthink` should be run. And `yargs` hardcodes a regex
+        // to decide on the script name and that regex checks for `node/iojs/electron`.
         "output": "package_json_think.out"
       }, {
         "args": "task deno-say",
         "output": "deno_json_say.out"
       }, {
         "args": "task deno-think",
+        // NB(bartlomieju):
+        // This output is actually an output of `cowsay`, but it's not possible
+        // to make it work correctly, because `cowsay` uses `yargs` to determine
+        // if `cowsay` or `cowthink` should be run. And `yargs` hardcodes a regex
+        // to decide on the script name and that regex checks for `node/iojs/electron`.
         "output": "deno_json_think.out"
       }]
     },

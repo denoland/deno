@@ -362,6 +362,8 @@ Deno.test({
     assert(Array.isArray(process.argv.slice(2)));
     assertEquals(process.argv.indexOf(Deno.execPath()), 0);
     assertEquals(process.argv.indexOf(path.fromFileUrl(Deno.mainModule)), 1);
+    // argv[0] should be the executable path (same as process.execPath), this is Node.js behavior
+    assertEquals(process.argv[0], Deno.execPath());
   },
 });
 

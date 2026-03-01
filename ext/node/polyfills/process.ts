@@ -1163,7 +1163,7 @@ internals.__bootstrapNodeProcess = function (
 ) {
   if (!warmup) {
     argv0 = argv0Val || "";
-    argv[0] = argv0;
+    argv[0] = String(execPath);
     argv[1] = Deno.mainModule?.startsWith("file:")
       ? pathFromURL(new URL(Deno.mainModule))
       : join(Deno.cwd(), "$deno$node.mjs");
