@@ -64,7 +64,7 @@ extern "C" fn test_utf8_roundtrip(
   assert_napi_ok!(napi_create_string_utf8(
     env,
     buf.as_ptr() as *const std::ffi::c_char,
-    copied,
+    copied as isize,
     &mut result
   ));
 

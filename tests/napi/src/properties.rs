@@ -34,7 +34,7 @@ pub fn init(env: napi_env, exports: napi_value) {
   assert_napi_ok!(napi_create_string_utf8(
     env,
     cstr!("key_v8_string"),
-    usize::MAX,
+    -1,
     &mut name_value,
   ));
 
@@ -44,7 +44,7 @@ pub fn init(env: napi_env, exports: napi_value) {
   assert_napi_ok!(napi_create_string_utf8(
     env,
     cstr!("key_v8_symbol"),
-    usize::MAX,
+    -1,
     &mut symbol_description,
   ));
   assert_napi_ok!(napi_create_symbol(

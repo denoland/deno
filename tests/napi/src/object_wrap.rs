@@ -268,7 +268,7 @@ pub fn init(env: napi_env, exports: napi_value) {
   assert_napi_ok!(napi_define_class(
     env,
     "NapiObject\0".as_ptr() as *mut c_char,
-    usize::MAX,
+    -1,
     Some(NapiObject::new),
     ptr::null_mut(),
     properties.len(),
@@ -287,7 +287,7 @@ pub fn init(env: napi_env, exports: napi_value) {
   assert_napi_ok!(napi_define_class(
     env,
     c"NapiObjectOwned".as_ptr(),
-    usize::MAX,
+    -1,
     Some(NapiObject::new_with_finalizer),
     ptr::null_mut(),
     properties.len(),
@@ -319,7 +319,7 @@ pub fn init(env: napi_env, exports: napi_value) {
   assert_napi_ok!(napi_define_class(
     env,
     c"NapiAccessorObject".as_ptr(),
-    usize::MAX,
+    -1,
     Some(accessor_obj_constructor),
     ptr::null_mut(),
     accessor_properties.len(),

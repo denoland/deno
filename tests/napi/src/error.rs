@@ -31,7 +31,7 @@ extern "C" fn create_error(
   assert_napi_ok!(napi_create_string_utf8(
     env,
     cstr!("error"),
-    usize::MAX,
+    -1,
     &mut message
   ));
   assert_napi_ok!(napi_create_error(
@@ -52,7 +52,7 @@ extern "C" fn create_range_error(
   assert_napi_ok!(napi_create_string_utf8(
     env,
     cstr!("range error"),
-    usize::MAX,
+    -1,
     &mut message
   ));
   assert_napi_ok!(napi_create_range_error(
@@ -73,7 +73,7 @@ extern "C" fn create_type_error(
   assert_napi_ok!(napi_create_string_utf8(
     env,
     cstr!("type error"),
-    usize::MAX,
+    -1,
     &mut message
   ));
   assert_napi_ok!(napi_create_type_error(
@@ -95,13 +95,13 @@ extern "C" fn create_error_code(
   assert_napi_ok!(napi_create_string_utf8(
     env,
     cstr!("Error [error]"),
-    usize::MAX,
+    -1,
     &mut message
   ));
   assert_napi_ok!(napi_create_string_utf8(
     env,
     cstr!("ERR_TEST_CODE"),
-    usize::MAX,
+    -1,
     &mut code
   ));
   assert_napi_ok!(napi_create_error(env, code, message, &mut result));
@@ -118,13 +118,13 @@ extern "C" fn create_range_error_code(
   assert_napi_ok!(napi_create_string_utf8(
     env,
     cstr!("RangeError [range error]"),
-    usize::MAX,
+    -1,
     &mut message
   ));
   assert_napi_ok!(napi_create_string_utf8(
     env,
     cstr!("ERR_TEST_CODE"),
-    usize::MAX,
+    -1,
     &mut code
   ));
   assert_napi_ok!(napi_create_range_error(env, code, message, &mut result));
@@ -141,13 +141,13 @@ extern "C" fn create_type_error_code(
   assert_napi_ok!(napi_create_string_utf8(
     env,
     cstr!("TypeError [type error]"),
-    usize::MAX,
+    -1,
     &mut message
   ));
   assert_napi_ok!(napi_create_string_utf8(
     env,
     cstr!("ERR_TEST_CODE"),
-    usize::MAX,
+    -1,
     &mut code
   ));
   assert_napi_ok!(napi_create_type_error(env, code, message, &mut result));
@@ -163,7 +163,7 @@ extern "C" fn throw_existing_error(
   assert_napi_ok!(napi_create_string_utf8(
     env,
     cstr!("existing error"),
-    usize::MAX,
+    -1,
     &mut message
   ));
   assert_napi_ok!(napi_create_error(
