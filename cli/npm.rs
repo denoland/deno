@@ -64,20 +64,31 @@ pub type CliNpmGraphResolver = deno_npm_installer::graph::NpmDenoGraphResolver<
   CliSys,
 >;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NpmPackumentFormat {
+  /// Request the abbreviated install manifest (smaller, but omits `time` and `scripts`).
+  Abbreviated,
+  /// Request the full packument (needed when `minimumDependencyAge` is configured).
+  Full,
+}
+
 #[derive(Debug)]
 pub struct CliNpmCacheHttpClient {
   http_client_provider: Arc<HttpClientProvider>,
   progress_bar: ProgressBar,
+  packument_format: NpmPackumentFormat,
 }
 
 impl CliNpmCacheHttpClient {
   pub fn new(
     http_client_provider: Arc<HttpClientProvider>,
     progress_bar: ProgressBar,
+    packument_format: NpmPackumentFormat,
   ) -> Self {
     Self {
       http_client_provider,
       progress_bar,
+      packument_format,
     }
   }
 }
@@ -108,6 +119,22 @@ impl deno_npm_cache::NpmCacheHttpClient for CliNpmCacheHttpClient {
       headers.append(
         http::header::IF_NONE_MATCH,
         http::header::HeaderValue::try_from(etag).unwrap(),
+      );
+    }
+    if self.packument_format == NpmPackumentFormat::Abbreviated {
+      // Request the abbreviated install manifest when possible. This is 2-5x
+      // smaller than the full packument (e.g. @types/node: 2.3 MB vs 10.9 MB).
+      // Uses content negotiation with quality factors for registry compatibility
+      // (some registries like older Artifactory don't support the abbreviated
+      // format and need the JSON fallback).
+      //
+      // Not used when minimumDependencyAge is configured, because the
+      // abbreviated format omits the `time` field needed for date filtering.
+      headers.insert(
+        http::header::ACCEPT,
+        http::header::HeaderValue::from_static(
+          "application/vnd.npm.install-v1+json; q=1.0, application/json; q=0.8, */*",
+        ),
       );
     }
     client

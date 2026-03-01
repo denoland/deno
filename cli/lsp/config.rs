@@ -69,6 +69,7 @@ use crate::file_fetcher::CliFileFetcher;
 use crate::http_util::HttpClientProvider;
 use crate::lsp::logging::lsp_warn;
 use crate::npm::CliNpmCacheHttpClient;
+use crate::npm::NpmPackumentFormat;
 use crate::sys::CliSys;
 use crate::util::fs::canonicalize_path;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
@@ -1483,6 +1484,7 @@ impl ConfigData {
           // will only happen in the tests
           .unwrap_or_else(|| Arc::new(HttpClientProvider::new(None, None))),
         pb.clone(),
+        NpmPackumentFormat::Abbreviated,
       )),
       Arc::new(NullLifecycleScriptsExecutor),
       pb,

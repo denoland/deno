@@ -229,6 +229,11 @@ pub struct NpmPackageVersionInfo {
   #[serde(default, skip_serializing_if = "HashMap::is_empty")]
   #[serde(deserialize_with = "deserializers::hashmap")]
   pub scripts: HashMap<SmallStackString, String>,
+  /// From the abbreviated install manifest format. When `true`, this version
+  /// has preinstall/install/postinstall lifecycle scripts. This field is used
+  /// when the full `scripts` map is not available (abbreviated packument).
+  #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+  pub has_install_script: bool,
   #[serde(default, skip_serializing_if = "Option::is_none")]
   #[serde(deserialize_with = "deserializers::string")]
   pub deprecated: Option<String>,
@@ -1498,6 +1503,7 @@ mod test {
       os: Default::default(),
       cpu: Default::default(),
       scripts: Default::default(),
+      has_install_script: Default::default(),
       deprecated: Default::default(),
     };
     let text = serde_json::to_string(&data).unwrap();

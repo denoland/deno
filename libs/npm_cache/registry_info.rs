@@ -140,6 +140,10 @@ struct RegistryInfoProviderInner<
   cache: Arc<NpmCache<TSys>>,
   http_client: Arc<THttpClient>,
   npmrc: Arc<ResolvedNpmRc>,
+  /// When true, cached abbreviated packuments (missing the `time` field)
+  /// will be treated as cache misses and re-fetched as full packuments.
+  /// This is needed when `minimumDependencyAge` is configured.
+  needs_full_packument: bool,
   force_reload_flag: AtomicFlag,
   memory_cache: Mutex<MemoryCache>,
   previously_loaded_packages: Mutex<HashSet<String>>,
@@ -251,7 +255,15 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
       {
         // attempt to load from the file cache
         match downloader.cache.load_package_info(&name).await.map_err(JsErrorBox::from_err)? { Some(cached_info) => {
-          return Ok(FutureResult::SavedFsCache(Arc::new(cached_info.info)));
+          if downloader.needs_full_packument && cached_info.info.time.is_empty() && !cached_info.info.versions.is_empty() {
+            // Cached data is from the abbreviated install manifest which
+            // doesn't include the `time` field. Since minimumDependencyAge
+            // is configured, we need to re-fetch the full packument.
+            // Don't use the etag since it corresponds to the abbreviated format.
+            Some(SerializedCachedPackageInfo { etag: None, ..cached_info })
+          } else {
+            return Ok(FutureResult::SavedFsCache(Arc::new(cached_info.info)));
+          }
         } _ => {
           None
         }}
@@ -353,11 +365,13 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
     cache: Arc<NpmCache<TSys>>,
     http_client: Arc<THttpClient>,
     npmrc: Arc<ResolvedNpmRc>,
+    needs_full_packument: bool,
   ) -> Self {
     Self(Arc::new(RegistryInfoProviderInner {
       cache,
       http_client,
       npmrc,
+      needs_full_packument,
       force_reload_flag: AtomicFlag::lowered(),
       memory_cache: Default::default(),
       previously_loaded_packages: Default::default(),
