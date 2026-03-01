@@ -522,6 +522,20 @@
               "default": false
             }
           }
+        },
+        "include": {
+          "type": "array",
+          "description": "List of files, directories or globs that will be included in deployments.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "exclude": {
+          "type": "array",
+          "description": "List of files, directories or globs that will not be included in deployments.",
+          "items": {
+            "type": "string"
+          }
         }
       }
     },
@@ -983,7 +997,6 @@
           "node-globals",
           "raw-imports",
           "sloppy-imports",
-          "temporal",
           "unsafe-proto",
           "webgpu",
           "worker-options"

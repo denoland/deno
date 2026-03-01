@@ -2,7 +2,7 @@
 
 // deno-lint-ignore-file no-console
 
-import EventEmitter from "node:events";
+import { EventEmitter, once } from "node:events";
 import http, {
   IncomingMessage,
   type RequestOptions,
@@ -11,7 +11,7 @@ import http, {
 import url from "node:url";
 import https from "node:https";
 import zlib from "node:zlib";
-import net, { Socket } from "node:net";
+import net, { type AddressInfo, Socket } from "node:net";
 import fs from "node:fs";
 import { text } from "node:stream/consumers";
 
@@ -439,6 +439,19 @@ Deno.test("[node/http] request with headers", async () => {
     resolve();
   });
   await promise;
+});
+
+Deno.test("[node/http] request with ipv6 host", async () => {
+  const server = http.createServer((_req, res) => res.end()).listen(0, "::1");
+  await once(server, "listening");
+  const { port } = server.address() as AddressInfo;
+  const req = http.request(`http://[::1]:${port}`).end();
+  const [res] = await once(req, "response") as [IncomingMessage];
+  assertEquals(res.statusCode, 200);
+  res.resume();
+  await once(res, "end");
+  server.close();
+  await once(server, "close");
 });
 
 Deno.test("[node/http] non-string buffer response", {
@@ -2266,6 +2279,22 @@ Deno.test("[node/http] Server.address() includes family property", async () => {
 
     await promise;
   }
+});
+
+// https://github.com/denoland/deno/issues/31758
+Deno.test("[node/http] address() returns assigned port immediately after listen()", async () => {
+  const server = http.createServer();
+  server.listen(0);
+
+  // address() should return the real port synchronously, not 0
+  const addr = server.address()!;
+  assert(typeof addr === "object");
+  assert(typeof addr.port === "number");
+  assert(addr.port > 0, `Expected port > 0, got ${addr.port}`);
+
+  const { promise, resolve } = Promise.withResolvers<void>();
+  server.close(() => resolve());
+  await promise;
 });
 
 Deno.test("[node/http] ServerResponse.writeEarlyHints", async () => {

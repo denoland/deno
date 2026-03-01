@@ -1,6 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 //
-mod go;
+pub mod go;
 mod js;
 
 use std::collections::HashMap;
@@ -578,18 +578,23 @@ pub enum LoadError {
   #[error("{0}")]
   ClosestPkgJson(#[from] node_resolver::errors::PackageJsonLoadError),
 }
+
+pub static BYTES_IMPORT_SOURCE: &str =
+  "const data: Uint8Array<ArrayBuffer>;\nexport default data;\n";
+pub static TEXT_IMPORT_SOURCE: &str =
+  "const data: string;\nexport default data;\n";
+
 pub fn load_raw_import_source(specifier: &Url) -> Option<&'static str> {
   let raw_import = get_specifier_raw_import(specifier)?;
   let source = match raw_import {
-    RawImportKind::Bytes => {
-      "const data: Uint8Array<ArrayBuffer>;\nexport default data;\n"
-    }
-    RawImportKind::Text => "export const data: string;\nexport default data;\n",
+    RawImportKind::Bytes => BYTES_IMPORT_SOURCE,
+    RawImportKind::Text => TEXT_IMPORT_SOURCE,
   };
   Some(source)
 }
 
-enum RawImportKind {
+#[derive(Debug, Copy, Clone)]
+pub enum RawImportKind {
   Bytes,
   Text,
 }

@@ -58,7 +58,6 @@ use node_resolver::NodeConditionOptions;
 use node_resolver::NodeResolverOptions;
 use node_resolver::cache::NodeResolutionThreadLocalCache;
 use once_cell::sync::OnceCell;
-use sys_traits::EnvCurrentDir;
 
 use crate::args::BundleFlags;
 use crate::args::CliLockfile;
@@ -700,14 +699,8 @@ impl CliFactory {
       let initial_cwd = match self.overrides.initial_cwd.clone() {
         Some(v) => v,
         None => {
-          if let Some(initial_cwd) = self.flags.initial_cwd.clone() {
-            initial_cwd
-          } else {
-            self
-              .sys()
-              .env_current_dir()
-              .with_context(|| "Failed getting cwd.")?
-          }
+          crate::util::env::resolve_cwd(self.flags.initial_cwd.as_deref())?
+            .into_owned()
         }
       };
       let options = new_workspace_factory_options(&initial_cwd, &self.flags);
@@ -1150,7 +1143,6 @@ impl CliFactory {
       self.npm_installer_if_managed().await?.cloned(),
       npm_resolver.clone(),
       self.text_only_progress_bar().clone(),
-      self.sys(),
       self.create_cli_main_worker_options()?,
       self.root_permissions_container()?.clone(),
     ))
@@ -1228,7 +1220,7 @@ impl CliFactory {
       create_hmr_runner,
       maybe_coverage_dir,
       default_npm_caching_strategy: cli_options.default_npm_caching_strategy(),
-      maybe_initial_cwd: Some(Arc::new(initial_cwd)),
+      initial_cwd: Arc::new(initial_cwd),
     })
   }
 
@@ -1243,6 +1235,10 @@ impl CliFactory {
         ResolverFactoryOptions {
           compiler_options_overrides: CompilerOptionsOverrides {
             no_transpile: false,
+            force_check_js: matches!(
+              &self.flags.subcommand,
+              DenoSubcommand::Check(check_flags) if check_flags.check_js
+            ),
             source_map_base: None,
             preserve_jsx: false,
           },

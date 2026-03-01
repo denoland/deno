@@ -19,6 +19,7 @@ lsp = ["dep:lsp-types", "dep:indexmap", "dep:percent-encoding"]
 anyhow.workspace = true
 console_static_text.workspace = true
 crossterm.workspace = true
+deno_path_util.workspace = true
 file_test_runner.workspace = true
 fluent-uri.workspace = true
 inventory.workspace = true
@@ -37,6 +38,7 @@ sha2.workspace = true
 tempfile.workspace = true
 termcolor.workspace = true
 test_macro.workspace = true
+twox-hash.workspace = true
 url.workspace = true
 
 # optional deps behind "lsp" feature

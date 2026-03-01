@@ -324,9 +324,11 @@ fn setup_pty(fd: i32) {
   tcsetattr(as_fd, SetArg::TCSANOW, &term).unwrap();
 
   // turn on non-blocking mode so we get timeouts
-  let flags = fcntl(fd, FcntlArg::F_GETFL).unwrap();
+  // SAFETY: fd is a valid open file descriptor for the pty
+  let borrowed_fd = unsafe { std::os::fd::BorrowedFd::borrow_raw(fd) };
+  let flags = fcntl(borrowed_fd, FcntlArg::F_GETFL).unwrap();
   let new_flags = OFlag::from_bits_truncate(flags) | OFlag::O_NONBLOCK;
-  fcntl(fd, FcntlArg::F_SETFL(new_flags)).unwrap();
+  fcntl(borrowed_fd, FcntlArg::F_SETFL(new_flags)).unwrap();
 }
 
 #[cfg(unix)]
@@ -439,9 +441,11 @@ fn run_in_pty_impl(
   use nix::fcntl::FcntlArg;
   use nix::fcntl::OFlag;
   use nix::fcntl::fcntl;
-  let flags = fcntl(fdm, FcntlArg::F_GETFL).unwrap();
+  // SAFETY: fdm is a valid open file descriptor for the pty master
+  let borrowed_fdm = unsafe { std::os::fd::BorrowedFd::borrow_raw(fdm) };
+  let flags = fcntl(borrowed_fdm, FcntlArg::F_GETFL).unwrap();
   let new_flags = OFlag::from_bits_truncate(flags) | OFlag::O_NONBLOCK;
-  fcntl(fdm, FcntlArg::F_SETFL(new_flags)).unwrap();
+  fcntl(borrowed_fdm, FcntlArg::F_SETFL(new_flags)).unwrap();
 
   let start_time = Instant::now();
   let mut output = Vec::new();

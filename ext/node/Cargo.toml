@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_node"
-version = "0.169.0"
+version = "0.172.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -24,6 +24,7 @@ bytes.workspace = true
 data-encoding.workspace = true
 deno_ast.workspace = true
 deno_core.workspace = true
+deno_dotenv.workspace = true
 deno_error.workspace = true
 deno_fetch.workspace = true
 deno_fs.workspace = true
@@ -38,7 +39,6 @@ deno_permissions.workspace = true
 deno_process.workspace = true
 deno_tls.workspace = true
 deno_whoami.workspace = true
-dotenvy.workspace = true
 h2.workspace = true
 http.workspace = true
 http-body-util.workspace = true

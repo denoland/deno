@@ -1184,6 +1184,9 @@ impl CliOptions {
           .first()
           .and_then(|url| file_to_url(url))
           .map(|url| vec![url]),
+        DenoSubcommand::Install(InstallFlags::Local(
+          InstallFlagsLocal::Entrypoints(flags),
+        )) => Some(files_to_urls(&flags.entrypoints)),
         DenoSubcommand::Doc(DocFlags {
           source_files: DocSourceFileFlag::Paths(paths),
           ..
@@ -1785,13 +1788,14 @@ mod test {
   use pretty_assertions::assert_eq;
 
   use super::*;
+  use crate::util::env::resolve_cwd;
 
   #[test]
   fn resolve_import_map_flags_take_precedence() {
     let config_text = r#"{
       "importMap": "import_map.json"
     }"#;
-    let cwd = &std::env::current_dir().unwrap();
+    let cwd = &resolve_cwd(None).unwrap();
     let config_specifier = Url::parse("file:///deno/deno.jsonc").unwrap();
     let config_file = ConfigFile::new(config_text, config_specifier).unwrap();
     let actual = resolve_import_map_specifier(
@@ -1859,7 +1863,7 @@ mod test {
 
   #[test]
   fn test_flags_to_permission_options() {
-    let base_dir = std::env::current_dir().unwrap().join("sub");
+    let base_dir = resolve_cwd(None).unwrap().join("sub");
     {
       let flags = PermissionFlags::default();
       let config = PermissionsObjectWithBase {

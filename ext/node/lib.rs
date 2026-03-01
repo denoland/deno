@@ -5,6 +5,8 @@
 #![allow(clippy::too_many_arguments)]
 
 use std::borrow::Cow;
+use std::env;
+use std::fs;
 use std::path::Path;
 
 use deno_core::FastString;
@@ -29,6 +31,7 @@ extern crate libz_sys as zlib;
 mod global;
 pub mod ops;
 
+use deno_dotenv::parse_env_content_hook;
 pub use deno_package_json::PackageJson;
 use deno_permissions::PermissionCheckError;
 pub use node_resolver::DENO_SUPPORTED_BUILTIN_NODE_MODULES as SUPPORTED_BUILTIN_NODE_MODULES;
@@ -96,9 +99,9 @@ fn op_node_build_os() -> String {
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 enum DotEnvLoadErr {
-  #[class(generic)]
-  #[error(transparent)]
-  DotEnv(#[from] dotenvy::Error),
+  #[class(inherit)]
+  #[error("{0}")]
+  Io(#[from] std::io::Error),
   #[class(inherit)]
   #[error(transparent)]
   Permission(
@@ -123,7 +126,32 @@ fn op_node_load_env_file(
     )
     .map_err(DotEnvLoadErr::Permission)?;
 
-  dotenvy::from_filename(path).map_err(DotEnvLoadErr::DotEnv)?;
+  #[allow(clippy::disallowed_methods)]
+  let contents = fs::read_to_string(path)?;
+
+  parse_env_content_hook(&contents, |key, value| {
+    // Follows Node.js behavior where null bytes are stripped from env keys and values
+    let key = if let Some(null_pos) = key.find('\0') {
+      &key[..null_pos]
+    } else {
+      key
+    };
+
+    if key.is_empty() {
+      return;
+    }
+
+    let value = if let Some(null_pos) = value.find('\0') {
+      &value[..null_pos]
+    } else {
+      value
+    };
+
+    #[allow(clippy::undocumented_unsafe_blocks)]
+    unsafe {
+      env::set_var(key, value);
+    }
+  });
 
   Ok(())
 }
@@ -145,6 +173,7 @@ deno_core::extension!(deno_node,
   deps = [ deno_io, deno_fs ],
   parameters = [TInNpmPackageChecker: InNpmPackageChecker, TNpmPackageFolderResolver: NpmPackageFolderResolver, TSys: ExtNodeSys],
   ops = [
+    ops::assert::op_node_get_error_source_position,
     ops::assert::op_node_get_first_expression,
 
     ops::blocklist::op_socket_address_parse,
@@ -206,6 +235,7 @@ deno_core::extension!(deno_node,
     ops::v8::op_v8_write_value,
     ops::vm::op_vm_create_script,
     ops::vm::op_vm_create_context,
+    ops::vm::op_vm_create_context_without_contextify,
     ops::vm::op_vm_script_run_in_context,
     ops::vm::op_vm_is_context,
     ops::vm::op_vm_compile_function,
@@ -274,6 +304,7 @@ deno_core::extension!(deno_node,
     ops::util::op_node_get_own_non_index_properties,
     ops::util::op_node_call_is_from_dependency<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys>,
     ops::util::op_node_in_npm_package<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys>,
+    ops::util::op_node_parse_env,
     ops::worker_threads::op_worker_threads_filename<TSys>,
     ops::ipc::op_node_child_ipc_pipe,
     ops::ipc::op_node_ipc_write_json,
@@ -289,7 +320,9 @@ deno_core::extension!(deno_node,
     ops::process::op_node_process_setgid,
     ops::process::op_node_process_setuid,
     ops::process::op_process_abort,
+    ops::process::op_node_process_constrained_memory<TSys>,
     ops::node_cli_parser::op_node_translate_cli_args,
+    ops::shell::op_node_parse_shell_args,
     ops::tls::op_get_root_certificates,
     ops::tls::op_set_default_ca_certificates,
     ops::tls::op_tls_peer_certificate,
@@ -485,6 +518,7 @@ deno_core::extension!(deno_node,
     "internal/streams/utils.js",
     "internal/test/binding.ts",
     "internal/timers.mjs",
+    "internal/tty.js",
     "internal/url.ts",
     "internal/util.mjs",
     "internal/util/colors.ts",

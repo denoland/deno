@@ -4,8 +4,8 @@ Immediate {
   _onImmediate: [Function: callback],
   _argv: [],
   _destroyed: false,
-  [Symbol(nodejs.util.inspect.custom)]: [Function: [nodejs.util.inspect.custom]],
-  [Symbol(refed)]: true
+  Symbol(nodejs.util.inspect.custom): [Function: [nodejs.util.inspect.custom]],
+  Symbol(refed): true
 }
 Timeout {
   _idleTimeout: 1000,
@@ -13,6 +13,6 @@ Timeout {
   _timerArgs: [],
   _isRepeat: false,
   _destroyed: false,
-  [Symbol(refed)]: true,
-  [Symbol(timerId)]: [WILDLINE]
+  Symbol(refed): true,
+  Symbol(timerId): [WILDLINE]
 }

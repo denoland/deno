@@ -1,0 +1,99 @@
+# Copyright 2018-2026 the Deno authors. MIT license.
+
+[package]
+name = "deno_core"
+version = "0.387.0"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+readme = "README.md"
+repository.workspace = true
+description = "A modern JavaScript/TypeScript runtime built with V8, Rust, and Tokio"
+
+[lib]
+path = "lib.rs"
+
+[features]
+default = ["include_icu_data", "v8_use_custom_libcxx", "reactor-tokio"]
+reactor-tokio = []
+include_icu_data = ["deno_core_icudata"]
+v8_use_custom_libcxx = ["v8/use_custom_libcxx"]
+v8_enable_pointer_compression = ["v8/v8_enable_pointer_compression"]
+v8_enable_v8_checks = ["v8/v8_enable_v8_checks"]
+include_js_files_for_snapshotting = []
+unsafe_runtime_options = []
+unsafe_use_unprotected_platform = []
+snapshot_flags_eager_parse = []
+uv_compat_export = []
+
+[dependencies]
+anyhow.workspace = true
+az = "1.2.1"
+bincode.workspace = true
+bit-set.workspace = true
+bit-vec.workspace = true
+boxed_error.workspace = true
+bytes.workspace = true
+capacity_builder = "0.5.0"
+cooked-waker.workspace = true
+deno_core_icudata = { workspace = true, optional = true }
+deno_error = { workspace = true, features = ["serde_json", "serde", "url", "tokio"] }
+deno_ops.workspace = true
+deno_path_util.workspace = true
+deno_unsync = { workspace = true, features = ["tokio"] }
+futures.workspace = true
+indexmap.workspace = true
+inventory = "0.3.21"
+libc.workspace = true
+parking_lot.workspace = true
+percent-encoding.workspace = true
+pin-project.workspace = true
+serde.workspace = true
+serde_json = { workspace = true, features = ["float_roundtrip", "preserve_order"] }
+serde_v8.workspace = true
+smallvec.workspace = true
+sourcemap.workspace = true
+static_assertions.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+url.workspace = true
+v8.workspace = true
+wasm_dep_analyzer = "0.4.0"
+
+[dev-dependencies]
+bencher.workspace = true
+criterion.workspace = true
+deno_ast.workspace = true
+fastrand.workspace = true
+paste.workspace = true
+pretty_assertions.workspace = true
+rstest.workspace = true
+twox-hash.workspace = true
+unicycle = "0.10.2"
+
+[[bench]]
+name = "ops_sync"
+path = "benches/ops/sync.rs"
+harness = false
+required-features = ["unsafe_runtime_options"]
+
+[[bench]]
+name = "ops_async"
+path = "benches/ops/async.rs"
+harness = false
+required-features = ["unsafe_runtime_options"]
+
+[[bench]]
+name = "opset"
+path = "benches/ops/opset.rs"
+harness = false
+
+[[bench]]
+name = "arena"
+path = "benches/infra/arena.rs"
+harness = false
+
+[[bench]]
+name = "snapshot"
+path = "benches/snapshot/snapshot.rs"
+harness = false
