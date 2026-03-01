@@ -2,6 +2,7 @@
 import {
   assert,
   assertEquals,
+  assertGreaterOrEqual,
   assertRejects,
   assertThrows,
   delay,
@@ -33,6 +34,21 @@ Deno.test(
   {
     permissions: { net: true },
   },
+  function netTcpListenEphermalClose() {
+    const listener = Deno.listen({ hostname: "127.0.0.1" });
+    assert(listener.addr.transport === "tcp");
+    assertEquals(listener.addr.hostname, "127.0.0.1");
+    // Ephermal port range starts at 49152 according to RFC 6335 / IANA, but
+    // many OSes use the lower number below (old OSes also started at 1024)
+    assertGreaterOrEqual(listener.addr.port, 32768);
+    listener.close();
+  },
+);
+
+Deno.test(
+  {
+    permissions: { net: true },
+  },
   function netUdpListenClose() {
     const socket = Deno.listenDatagram({
       hostname: "127.0.0.1",
@@ -42,6 +58,24 @@ Deno.test(
     assert(socket.addr.transport === "udp");
     assertEquals(socket.addr.hostname, "127.0.0.1");
     assertEquals(socket.addr.port, listenPort);
+    socket.close();
+  },
+);
+
+Deno.test(
+  {
+    permissions: { net: true },
+  },
+  function netUdpListenEphermalClose() {
+    const socket = Deno.listenDatagram({
+      hostname: "127.0.0.1",
+      transport: "udp",
+    });
+    assert(socket.addr.transport === "udp");
+    assertEquals(socket.addr.hostname, "127.0.0.1");
+    // Ephermal port range starts at 49152 according to RFC 6335 / IANA, but
+    // many OSes use the lower number below (old OSes also started at 1024)
+    assertGreaterOrEqual(socket.addr.port, 32768);
     socket.close();
   },
 );
@@ -83,6 +117,21 @@ Deno.test(
 Deno.test(
   {
     ignore: Deno.build.os === "windows",
+    permissions: { read: true, write: true },
+  },
+  function netUnixPacketAnonListenClose() {
+    const socket = Deno.listenDatagram({
+      transport: "unixpacket",
+    });
+    assert(socket.addr.transport === "unixpacket");
+    assertEquals(socket.addr.path, null);
+    socket.close();
+  },
+);
+
+Deno.test(
+  {
+    ignore: Deno.build.os === "windows",
     permissions: { read: true, write: false },
   },
   function netUnixListenWritePermission() {
@@ -115,6 +164,21 @@ Deno.test(
       assertEquals(socket.addr.path, filePath);
       socket.close();
     }, Deno.errors.NotCapable);
+  },
+);
+
+Deno.test(
+  {
+    ignore: Deno.build.os === "windows",
+    permissions: { read: true, write: false },
+  },
+  function netUnixPacketAnonListenWritePermission() {
+    const socket = Deno.listenDatagram({
+      transport: "unixpacket",
+    });
+    assert(socket.addr.transport === "unixpacket");
+    assertEquals(socket.addr.path, null);
+    socket.close();
   },
 );
 
