@@ -1150,6 +1150,7 @@
     "parallel/test-runner-subtest-after-hook.js": {},
     // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
     // "parallel/test-set-process-debug-port.js": {},
+    "parallel/test-setproctitle.js": {},
     "parallel/test-signal-handler-remove-on-exit.js": {},
     "parallel/test-signal-handler.js": {},
     // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
