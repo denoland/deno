@@ -1080,6 +1080,7 @@
     "parallel/test-process-no-deprecation.js": {},
     "parallel/test-process-ppid.js": {},
     "parallel/test-process-really-exit.js": {},
+    "parallel/test-process-title-cli.js": {},
     "parallel/test-process-release.js": {},
     "parallel/test-process-uptime.js": {},
     "parallel/test-process-warning.js": {},
@@ -1149,6 +1150,7 @@
     "parallel/test-runner-subtest-after-hook.js": {},
     // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
     // "parallel/test-set-process-debug-port.js": {},
+    "parallel/test-setproctitle.js": {},
     "parallel/test-signal-handler-remove-on-exit.js": {},
     "parallel/test-signal-handler.js": {},
     // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
@@ -1766,6 +1768,7 @@
     "sequential/test-net-GH-5504.js": {},
     "sequential/test-net-response-size.js": {},
     "sequential/test-net-server-bind.js": {},
+    "sequential/test-process-title.js": {},
     "sequential/test-require-cache-without-stat.js": {},
     "sequential/test-resolution-inspect-brk.js": {},
     // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
