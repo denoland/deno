@@ -82,3 +82,29 @@ Deno.test("[node/dgram] createSocket, reuseAddr option", async () => {
   socket0.close();
   socket1?.close();
 });
+
+Deno.test("[node/dgram] addMembership, setBroadcast, setMulticastTTL after bind", async () => {
+  const { promise, resolve, reject } = Promise.withResolvers<void>();
+
+  const socket = createSocket({ type: "udp4", reuseAddr: true });
+
+  socket.on("error", (err) => {
+    reject(err);
+  });
+
+  socket.bind(0, "0.0.0.0", () => {
+    try {
+      socket.addMembership("239.255.255.250");
+      socket.setBroadcast(true);
+      socket.setMulticastTTL(4);
+      socket.dropMembership("239.255.255.250");
+      resolve();
+    } catch (err) {
+      reject(err);
+    } finally {
+      socket.close();
+    }
+  });
+
+  await promise;
+});
