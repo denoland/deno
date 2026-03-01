@@ -243,12 +243,12 @@ pub fn op_node_udp_set_multicast_interface(
     let index = interface_address.parse::<u32>().unwrap_or(0);
     sock_ref.set_multicast_if_v6(index)?;
   } else {
-    let addr: Ipv4Addr = interface_address
-      .parse()
-      .map_err(|_| NodeUdpError::Io(std::io::Error::new(
+    let addr: Ipv4Addr = interface_address.parse().map_err(|_| {
+      NodeUdpError::Io(std::io::Error::new(
         std::io::ErrorKind::InvalidInput,
         "invalid IPv4 address",
-      )))?;
+      ))
+    })?;
     sock_ref.set_multicast_if_v4(&addr)?;
   }
   Ok(())

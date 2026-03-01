@@ -28,8 +28,10 @@ import {
   op_node_udp_bind,
   op_node_udp_join_multi_v4,
   op_node_udp_join_multi_v6,
+  op_node_udp_join_source_specific,
   op_node_udp_leave_multi_v4,
   op_node_udp_leave_multi_v6,
+  op_node_udp_leave_source_specific,
   op_node_udp_recv,
   op_node_udp_send,
   op_node_udp_set_broadcast,
@@ -37,8 +39,6 @@ import {
   op_node_udp_set_multicast_loopback,
   op_node_udp_set_multicast_ttl,
   op_node_udp_set_ttl,
-  op_node_udp_join_source_specific,
-  op_node_udp_leave_source_specific,
 } from "ext:core/ops";
 
 import {
