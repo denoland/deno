@@ -328,7 +328,7 @@ fn get_installer_bin_dir(
     get_installer_root()?
   };
 
-  Ok(if let Some(_) = root_flag {
+  Ok(if root_flag.is_some() {
     // User specified --root: apply bin logic
     if !root.ends_with("bin") {
       root.join("bin")
