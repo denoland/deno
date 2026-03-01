@@ -388,7 +388,8 @@ export class LibuvStreamWrap extends HandleWrap {
 
       if (
         ObjectPrototypeIsPrototypeOf(Deno.errors.Interrupted.prototype, e) ||
-        ObjectPrototypeIsPrototypeOf(Deno.errors.BadResource.prototype, e)
+        ObjectPrototypeIsPrototypeOf(Deno.errors.BadResource.prototype, e) ||
+        ObjectPrototypeIsPrototypeOf(Deno.errors.UnexpectedEof.prototype, e)
       ) {
         nread = MapPrototypeGet(codeMap, "EOF")!;
       } else if (
