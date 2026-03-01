@@ -1,6 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { assertEquals } from "@std/assert";
+import { assert, assertEquals } from "@std/assert";
 import { execCode } from "../unit/test_util.ts";
 import { createSocket, type Socket } from "node:dgram";
 
@@ -81,4 +81,98 @@ Deno.test("[node/dgram] createSocket, reuseAddr option", async () => {
   assertEquals(await promise, "hello");
   socket0.close();
   socket1?.close();
+});
+
+Deno.test("[node/dgram] addMembership, setBroadcast, setMulticastTTL after bind", async () => {
+  const { promise, resolve, reject } = Promise.withResolvers<void>();
+
+  const socket = createSocket({ type: "udp4", reuseAddr: true });
+
+  socket.on("error", (err) => {
+    reject(err);
+  });
+
+  socket.bind(0, "0.0.0.0", () => {
+    try {
+      socket.addMembership("239.255.255.250");
+      socket.setBroadcast(true);
+      socket.setMulticastTTL(4);
+      socket.dropMembership("239.255.255.250");
+      resolve();
+    } catch (err) {
+      reject(err);
+    } finally {
+      socket.close();
+    }
+  });
+
+  await promise;
+});
+
+Deno.test("[node/dgram] setTTL sets unicast TTL without error", async () => {
+  const { promise, resolve } = Promise.withResolvers<void>();
+  const socket = createSocket("udp4");
+  socket.bind(0, () => {
+    socket.setTTL(128);
+    socket.close(() => resolve());
+  });
+  await promise;
+});
+
+Deno.test("[node/dgram] setTTL throws on invalid TTL", async () => {
+  const { promise, resolve } = Promise.withResolvers<void>();
+  const socket = createSocket("udp4");
+  socket.bind(0, () => {
+    try {
+      socket.setTTL(0);
+      assert(false, "should have thrown");
+    } catch (e) {
+      assert(e instanceof Error);
+    }
+    try {
+      socket.setTTL(256);
+      assert(false, "should have thrown");
+    } catch (e) {
+      assert(e instanceof Error);
+    }
+    socket.close(() => resolve());
+  });
+  await promise;
+});
+
+Deno.test("[node/dgram] setMulticastInterface sets interface without error", async () => {
+  const { promise, resolve } = Promise.withResolvers<void>();
+  const socket = createSocket("udp4");
+  socket.bind(0, () => {
+    socket.setMulticastInterface("0.0.0.0");
+    socket.close(() => resolve());
+  });
+  await promise;
+});
+
+Deno.test("[node/dgram] addSourceSpecificMembership and dropSourceSpecificMembership", async () => {
+  const { promise, resolve } = Promise.withResolvers<void>();
+  const socket = createSocket("udp4");
+  socket.bind(0, () => {
+    socket.addSourceSpecificMembership("127.0.0.1", "232.1.1.1");
+    socket.dropSourceSpecificMembership("127.0.0.1", "232.1.1.1");
+    socket.close(() => resolve());
+  });
+  await promise;
+});
+
+Deno.test("[node/dgram] large recvBufferSize and sendBufferSize do not throw", async () => {
+  const { promise, resolve, reject } = Promise.withResolvers<void>();
+  const socket = createSocket({
+    type: "udp4",
+    recvBufferSize: 4194304,
+    sendBufferSize: 4194304,
+  });
+  socket.on("error", (err) => {
+    reject(err);
+  });
+  socket.bind(0, () => {
+    socket.close(() => resolve());
+  });
+  await promise;
 });
