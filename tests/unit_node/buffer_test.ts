@@ -1,5 +1,10 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-import { Buffer, constants, File as BufferFile } from "node:buffer";
+import {
+  Buffer,
+  constants,
+  File as BufferFile,
+  resolveObjectURL,
+} from "node:buffer";
 import { assertEquals, assertThrows } from "@std/assert";
 import { strictEqual } from "node:assert";
 
@@ -756,5 +761,48 @@ Deno.test({
     const buf: any = Buffer.of(1, 2, 3, 0xff);
     assertEquals(buf.hexSlice(), "010203ff");
     assertEquals(buf.hexSlice(1, 3), "0203");
+  },
+});
+
+Deno.test({
+  name: "[node/buffer] resolveObjectURL resolves blob URL",
+  async fn() {
+    const blob = new Blob(["hello"]);
+    const url = URL.createObjectURL(blob);
+    try {
+      const resolved = resolveObjectURL(url);
+      assertEquals(resolved instanceof Blob, true);
+      assertEquals(resolved!.size, 5);
+      assertEquals(
+        Buffer.from(await resolved!.arrayBuffer()).toString(),
+        "hello",
+      );
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  },
+});
+
+Deno.test({
+  name: "[node/buffer] resolveObjectURL returns undefined for revoked URL",
+  fn() {
+    const blob = new Blob(["hello"]);
+    const url = URL.createObjectURL(blob);
+    URL.revokeObjectURL(url);
+    assertEquals(resolveObjectURL(url), undefined);
+  },
+});
+
+Deno.test({
+  name: "[node/buffer] resolveObjectURL returns undefined for invalid inputs",
+  fn() {
+    assertEquals(resolveObjectURL("not a url"), undefined);
+    assertEquals(resolveObjectURL("blob:nodedata:1:wrong"), undefined);
+    // deno-lint-ignore no-explicit-any
+    assertEquals(resolveObjectURL(undefined as any), undefined);
+    // deno-lint-ignore no-explicit-any
+    assertEquals(resolveObjectURL(1 as any), undefined);
+    // deno-lint-ignore no-explicit-any
+    assertEquals(resolveObjectURL({} as any), undefined);
   },
 });
