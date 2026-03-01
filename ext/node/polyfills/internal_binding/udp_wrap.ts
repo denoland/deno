@@ -64,7 +64,7 @@ const AF_INET6 = 10;
 const UDP_DGRAM_MAXSIZE = 64 * 1024;
 
 /** Validate that the multicast and optional interface addresses are parseable IPv4 addresses. */
-function isValidMulticastAddress(
+function isValidIPv4Address(
   multicastAddress: string,
   interfaceAddress?: string,
 ): boolean {
@@ -144,7 +144,7 @@ export class UDP extends HandleWrap {
   }
 
   addMembership(multicastAddress: string, interfaceAddress?: string): number {
-    if (!isValidMulticastAddress(multicastAddress, interfaceAddress)) {
+    if (!isValidIPv4Address(multicastAddress, interfaceAddress)) {
       return codeMap.get("EINVAL")!;
     }
 
@@ -173,6 +173,13 @@ export class UDP extends HandleWrap {
     groupAddress: string,
     interfaceAddress?: string,
   ): number {
+    if (
+      !isValidIPv4Address(sourceAddress) ||
+      !isValidIPv4Address(groupAddress)
+    ) {
+      return codeMap.get("EINVAL")!;
+    }
+
     if (this.#rid === undefined) {
       return codeMap.get("EBADF")!;
     }
@@ -258,7 +265,7 @@ export class UDP extends HandleWrap {
     multicastAddress: string,
     interfaceAddress?: string,
   ): number {
-    if (!isValidMulticastAddress(multicastAddress, interfaceAddress)) {
+    if (!isValidIPv4Address(multicastAddress, interfaceAddress)) {
       return codeMap.get("EINVAL")!;
     }
 
@@ -287,6 +294,13 @@ export class UDP extends HandleWrap {
     groupAddress: string,
     interfaceAddress?: string,
   ): number {
+    if (
+      !isValidIPv4Address(sourceAddress) ||
+      !isValidIPv4Address(groupAddress)
+    ) {
+      return codeMap.get("EINVAL")!;
+    }
+
     if (this.#rid === undefined) {
       return codeMap.get("EBADF")!;
     }
