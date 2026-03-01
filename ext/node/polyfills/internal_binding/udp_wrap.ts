@@ -33,8 +33,12 @@ import {
   op_node_udp_recv,
   op_node_udp_send,
   op_node_udp_set_broadcast,
+  op_node_udp_set_multicast_interface,
   op_node_udp_set_multicast_loopback,
   op_node_udp_set_multicast_ttl,
+  op_node_udp_set_ttl,
+  op_node_udp_join_source_specific,
+  op_node_udp_leave_source_specific,
 } from "ext:core/ops";
 
 import {
@@ -138,11 +142,25 @@ export class UDP extends HandleWrap {
   }
 
   addSourceSpecificMembership(
-    _sourceAddress: string,
-    _groupAddress: string,
-    _interfaceAddress?: string,
+    sourceAddress: string,
+    groupAddress: string,
+    interfaceAddress?: string,
   ): number {
-    notImplemented("udp.UDP.prototype.addSourceSpecificMembership");
+    if (this.#rid === undefined) {
+      return codeMap.get("EBADF")!;
+    }
+
+    try {
+      op_node_udp_join_source_specific(
+        this.#rid,
+        sourceAddress,
+        groupAddress,
+        interfaceAddress ?? "0.0.0.0",
+      );
+    } catch {
+      return codeMap.get("EINVAL")!;
+    }
+    return 0;
   }
 
   /**
@@ -241,11 +259,25 @@ export class UDP extends HandleWrap {
   }
 
   dropSourceSpecificMembership(
-    _sourceAddress: string,
-    _groupAddress: string,
-    _interfaceAddress?: string,
+    sourceAddress: string,
+    groupAddress: string,
+    interfaceAddress?: string,
   ): number {
-    notImplemented("udp.UDP.prototype.dropSourceSpecificMembership");
+    if (this.#rid === undefined) {
+      return codeMap.get("EBADF")!;
+    }
+
+    try {
+      op_node_udp_leave_source_specific(
+        this.#rid,
+        sourceAddress,
+        groupAddress,
+        interfaceAddress ?? "0.0.0.0",
+      );
+    } catch {
+      return codeMap.get("EINVAL")!;
+    }
+    return 0;
   }
 
   /**
@@ -350,8 +382,21 @@ export class UDP extends HandleWrap {
     }
   }
 
-  setMulticastInterface(_interfaceAddress: string): number {
-    notImplemented("udp.UDP.prototype.setMulticastInterface");
+  setMulticastInterface(interfaceAddress: string): number {
+    if (this.#rid === undefined) {
+      return codeMap.get("EBADF")!;
+    }
+
+    try {
+      op_node_udp_set_multicast_interface(
+        this.#rid,
+        this.#family === "IPv6",
+        interfaceAddress,
+      );
+      return 0;
+    } catch {
+      return codeMap.get("EINVAL")!;
+    }
   }
 
   setMulticastLoopback(bool: 0 | 1): number {
@@ -390,8 +435,21 @@ export class UDP extends HandleWrap {
     }
   }
 
-  setTTL(_ttl: number): number {
-    notImplemented("udp.UDP.prototype.setTTL");
+  setTTL(ttl: number): number {
+    if (ttl < 1 || ttl > 255) {
+      return codeMap.get("EINVAL")!;
+    }
+
+    if (this.#rid === undefined) {
+      return codeMap.get("EBADF")!;
+    }
+
+    try {
+      op_node_udp_set_ttl(this.#rid, ttl);
+      return 0;
+    } catch {
+      return codeMap.get("EINVAL")!;
+    }
   }
 
   override unref() {

@@ -1,6 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { assertEquals } from "@std/assert";
+import { assert, assertEquals } from "@std/assert";
 import { execCode } from "../unit/test_util.ts";
 import { createSocket, type Socket } from "node:dgram";
 
@@ -106,5 +106,57 @@ Deno.test("[node/dgram] addMembership, setBroadcast, setMulticastTTL after bind"
     }
   });
 
+  await promise;
+});
+
+Deno.test("[node/dgram] setTTL sets unicast TTL without error", async () => {
+  const { promise, resolve } = Promise.withResolvers<void>();
+  const socket = createSocket("udp4");
+  socket.bind(0, () => {
+    socket.setTTL(128);
+    socket.close(() => resolve());
+  });
+  await promise;
+});
+
+Deno.test("[node/dgram] setTTL throws on invalid TTL", async () => {
+  const { promise, resolve } = Promise.withResolvers<void>();
+  const socket = createSocket("udp4");
+  socket.bind(0, () => {
+    try {
+      socket.setTTL(0);
+      assert(false, "should have thrown");
+    } catch (e) {
+      assert(e instanceof Error);
+    }
+    try {
+      socket.setTTL(256);
+      assert(false, "should have thrown");
+    } catch (e) {
+      assert(e instanceof Error);
+    }
+    socket.close(() => resolve());
+  });
+  await promise;
+});
+
+Deno.test("[node/dgram] setMulticastInterface sets interface without error", async () => {
+  const { promise, resolve } = Promise.withResolvers<void>();
+  const socket = createSocket("udp4");
+  socket.bind(0, () => {
+    socket.setMulticastInterface("0.0.0.0");
+    socket.close(() => resolve());
+  });
+  await promise;
+});
+
+Deno.test("[node/dgram] addSourceSpecificMembership and dropSourceSpecificMembership", async () => {
+  const { promise, resolve } = Promise.withResolvers<void>();
+  const socket = createSocket("udp4");
+  socket.bind(0, () => {
+    socket.addSourceSpecificMembership("127.0.0.1", "232.1.1.1");
+    socket.dropSourceSpecificMembership("127.0.0.1", "232.1.1.1");
+    socket.close(() => resolve());
+  });
   await promise;
 });

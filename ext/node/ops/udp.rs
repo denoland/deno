@@ -218,6 +218,130 @@ pub fn op_node_udp_set_multicast_ttl(
   Ok(())
 }
 
+#[op2(fast)]
+pub fn op_node_udp_set_ttl(
+  state: &mut OpState,
+  #[smi] rid: ResourceId,
+  #[smi] ttl: u32,
+) -> Result<(), NodeUdpError> {
+  let resource = state.resource_table.get::<NodeUdpSocketResource>(rid)?;
+  let sock_ref = socket2::SockRef::from(&resource.socket);
+  sock_ref.set_ttl(ttl)?;
+  Ok(())
+}
+
+#[op2(fast)]
+pub fn op_node_udp_set_multicast_interface(
+  state: &mut OpState,
+  #[smi] rid: ResourceId,
+  is_ipv6: bool,
+  #[string] interface_address: &str,
+) -> Result<(), NodeUdpError> {
+  let resource = state.resource_table.get::<NodeUdpSocketResource>(rid)?;
+  let sock_ref = socket2::SockRef::from(&resource.socket);
+  if is_ipv6 {
+    let index = interface_address.parse::<u32>().unwrap_or(0);
+    sock_ref.set_multicast_if_v6(index)?;
+  } else {
+    let addr: Ipv4Addr = interface_address
+      .parse()
+      .map_err(|_| NodeUdpError::Io(std::io::Error::new(
+        std::io::ErrorKind::InvalidInput,
+        "invalid IPv4 address",
+      )))?;
+    sock_ref.set_multicast_if_v4(&addr)?;
+  }
+  Ok(())
+}
+
+#[cfg(unix)]
+#[op2(fast)]
+pub fn op_node_udp_join_source_specific(
+  state: &mut OpState,
+  #[smi] rid: ResourceId,
+  #[string] source_address: &str,
+  #[string] group_address: &str,
+  #[string] interface_address: &str,
+) -> Result<(), NodeUdpError> {
+  let resource = state.resource_table.get::<NodeUdpSocketResource>(rid)?;
+
+  let source_addr = Ipv4Addr::from_str(source_address)?;
+  let group_addr = Ipv4Addr::from_str(group_address)?;
+  let interface_addr = Ipv4Addr::from_str(interface_address)?;
+
+  let mreq = libc::ip_mreq_source {
+    imr_multiaddr: libc::in_addr {
+      s_addr: u32::from(group_addr).to_be(),
+    },
+    imr_sourceaddr: libc::in_addr {
+      s_addr: u32::from(source_addr).to_be(),
+    },
+    imr_interface: libc::in_addr {
+      s_addr: u32::from(interface_addr).to_be(),
+    },
+  };
+
+  // SAFETY: We pass a valid socket fd, level, option, and correctly-sized struct.
+  let ret = unsafe {
+    libc::setsockopt(
+      std::os::fd::AsRawFd::as_raw_fd(&resource.socket),
+      libc::IPPROTO_IP,
+      libc::IP_ADD_SOURCE_MEMBERSHIP,
+      &mreq as *const libc::ip_mreq_source as *const libc::c_void,
+      std::mem::size_of::<libc::ip_mreq_source>() as libc::socklen_t,
+    )
+  };
+  if ret != 0 {
+    return Err(std::io::Error::last_os_error().into());
+  }
+
+  Ok(())
+}
+
+#[cfg(unix)]
+#[op2(fast)]
+pub fn op_node_udp_leave_source_specific(
+  state: &mut OpState,
+  #[smi] rid: ResourceId,
+  #[string] source_address: &str,
+  #[string] group_address: &str,
+  #[string] interface_address: &str,
+) -> Result<(), NodeUdpError> {
+  let resource = state.resource_table.get::<NodeUdpSocketResource>(rid)?;
+
+  let source_addr = Ipv4Addr::from_str(source_address)?;
+  let group_addr = Ipv4Addr::from_str(group_address)?;
+  let interface_addr = Ipv4Addr::from_str(interface_address)?;
+
+  let mreq = libc::ip_mreq_source {
+    imr_multiaddr: libc::in_addr {
+      s_addr: u32::from(group_addr).to_be(),
+    },
+    imr_sourceaddr: libc::in_addr {
+      s_addr: u32::from(source_addr).to_be(),
+    },
+    imr_interface: libc::in_addr {
+      s_addr: u32::from(interface_addr).to_be(),
+    },
+  };
+
+  // SAFETY: We pass a valid socket fd, level, option, and correctly-sized struct.
+  let ret = unsafe {
+    libc::setsockopt(
+      std::os::fd::AsRawFd::as_raw_fd(&resource.socket),
+      libc::IPPROTO_IP,
+      libc::IP_DROP_SOURCE_MEMBERSHIP,
+      &mreq as *const libc::ip_mreq_source as *const libc::c_void,
+      std::mem::size_of::<libc::ip_mreq_source>() as libc::socklen_t,
+    )
+  };
+  if ret != 0 {
+    return Err(std::io::Error::last_os_error().into());
+  }
+
+  Ok(())
+}
+
 #[op2]
 #[smi]
 pub async fn op_node_udp_send(
