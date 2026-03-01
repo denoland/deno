@@ -1081,6 +1081,8 @@
     "parallel/test-process-ppid.js": {},
     "parallel/test-process-really-exit.js": {},
     "parallel/test-process-release.js": {},
+    "parallel/test-process-umask-mask.js": {},
+    "parallel/test-process-umask.js": {},
     "parallel/test-process-uptime.js": {},
     "parallel/test-process-warning.js": {},
     "parallel/test-promise-handled-rejection-no-warning.js": {},
