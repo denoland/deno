@@ -311,7 +311,7 @@ fn source_specific_multicast(
     let ret = unsafe {
       windows_sys::Win32::Networking::WinSock::setsockopt(
         socket.as_raw_socket() as usize,
-        windows_sys::Win32::Networking::WinSock::IPPROTO_IP as i32,
+        windows_sys::Win32::Networking::WinSock::IPPROTO_IP,
         option,
         &mreq as *const IpMreqSource as *const u8,
         std::mem::size_of::<IpMreqSource>() as i32,
@@ -343,7 +343,7 @@ pub fn op_node_udp_join_source_specific(
   let option = libc::IP_ADD_SOURCE_MEMBERSHIP;
   #[cfg(windows)]
   let option =
-    windows_sys::Win32::Networking::WinSock::IP_ADD_SOURCE_MEMBERSHIP as i32;
+    windows_sys::Win32::Networking::WinSock::IP_ADD_SOURCE_MEMBERSHIP;
 
   source_specific_multicast(
     &resource.socket,
@@ -372,7 +372,7 @@ pub fn op_node_udp_leave_source_specific(
   let option = libc::IP_DROP_SOURCE_MEMBERSHIP;
   #[cfg(windows)]
   let option =
-    windows_sys::Win32::Networking::WinSock::IP_DROP_SOURCE_MEMBERSHIP as i32;
+    windows_sys::Win32::Networking::WinSock::IP_DROP_SOURCE_MEMBERSHIP;
 
   source_specific_multicast(
     &resource.socket,

@@ -63,6 +63,29 @@ const AF_INET6 = 10;
 
 const UDP_DGRAM_MAXSIZE = 64 * 1024;
 
+/** Validate that the multicast and optional interface addresses are parseable IPv4 addresses. */
+function isValidMulticastAddress(
+  multicastAddress: string,
+  interfaceAddress?: string,
+): boolean {
+  // Quick validation: each octet must be 0-255
+  const parts = multicastAddress.split(".");
+  if (parts.length !== 4) return false;
+  for (const part of parts) {
+    const n = Number(part);
+    if (!Number.isInteger(n) || n < 0 || n > 255) return false;
+  }
+  if (interfaceAddress !== undefined) {
+    const ifaceParts = interfaceAddress.split(".");
+    if (ifaceParts.length !== 4) return false;
+    for (const part of ifaceParts) {
+      const n = Number(part);
+      if (!Number.isInteger(n) || n < 0 || n > 255) return false;
+    }
+  }
+  return true;
+}
+
 export class SendWrap extends AsyncWrap {
   list!: MessageType[];
   address!: string;
@@ -121,6 +144,10 @@ export class UDP extends HandleWrap {
   }
 
   addMembership(multicastAddress: string, interfaceAddress?: string): number {
+    if (!isValidMulticastAddress(multicastAddress, interfaceAddress)) {
+      return codeMap.get("EINVAL")!;
+    }
+
     if (this.#rid === undefined) {
       return codeMap.get("EBADF")!;
     }
@@ -231,6 +258,10 @@ export class UDP extends HandleWrap {
     multicastAddress: string,
     interfaceAddress?: string,
   ): number {
+    if (!isValidMulticastAddress(multicastAddress, interfaceAddress)) {
+      return codeMap.get("EINVAL")!;
+    }
+
     if (this.#rid === undefined) {
       return codeMap.get("EBADF")!;
     }
