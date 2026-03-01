@@ -94,37 +94,20 @@ struct Node {
   pub no_peers: bool,
 }
 
+/// Result of resolving peer deps for a subtree (Phase 2).
+/// Also used as the cache entry for `peers_cache`.
 #[derive(Clone)]
-enum ResolvedIdPeerDep {
-  /// This is a reference to the parent instead of the child because we only have a
-  /// node reference to the parent, since we've traversed it, but the child node may
-  /// change from under it.
-  ParentReference {
-    parent: GraphPathNodeOrRoot,
-    child_pkg_nv: Rc<PackageNv>,
-  },
-  /// A node that was created during snapshotting and is not being used in any path.
-  SnapshotNodeId(NodeId),
-}
-
-impl ResolvedIdPeerDep {
-  pub fn current_state_hash_with_hasher(&self, hasher: &mut DefaultHasher) {
-    match self {
-      ResolvedIdPeerDep::ParentReference {
-        parent,
-        child_pkg_nv,
-      } => {
-        match parent {
-          GraphPathNodeOrRoot::Root(root) => root.hash(hasher),
-          GraphPathNodeOrRoot::Node(node) => node.node_id().hash(hasher),
-        }
-        child_pkg_nv.hash(hasher);
-      }
-      ResolvedIdPeerDep::SnapshotNodeId(node_id) => {
-        node_id.hash(hasher);
-      }
-    }
-  }
+struct PeersResolution {
+  /// Peers that were resolved from outside this subtree (bubble up to parent).
+  resolved_peers: BTreeMap<StackString, NodeId>,
+  /// Peers that couldn't be found anywhere.
+  missing_peers: BTreeMap<StackString, VersionReq>,
+  /// Optional peers that were not resolved in this context.
+  /// Tracked for cache invalidation: if a different context has one of
+  /// these available, the cache entry should NOT match.
+  unresolved_optional_peers: Vec<StackString>,
+  /// The final NodeId for this node (may be a copy with peer deps in identity).
+  node_id: NodeId,
 }
 
 /// A pending resolved identifier used in the graph. At the end of resolution, these
@@ -132,7 +115,8 @@ impl ResolvedIdPeerDep {
 #[derive(Clone)]
 struct ResolvedId {
   nv: Rc<PackageNv>,
-  peer_dependencies: Vec<ResolvedIdPeerDep>,
+  /// NodeIds of peer dependency nodes resolved during snapshotting or Phase 2.
+  peer_dependencies: Vec<NodeId>,
 }
 
 impl ResolvedId {
@@ -144,7 +128,7 @@ impl ResolvedId {
     let mut hasher = DefaultHasher::new();
     self.nv.hash(&mut hasher);
     for dep in &self.peer_dependencies {
-      dep.current_state_hash_with_hasher(&mut hasher);
+      dep.hash(&mut hasher);
     }
     hasher.finish()
   }
@@ -185,34 +169,12 @@ impl ResolvedNodeIds {
       .copied()
   }
 
-  pub fn clear_peer_deps(&mut self) {
-    self.resolved_to_node_id.clear();
-    for (node_id, (resolved_id, resolved_id_hash)) in
-      &mut self.node_to_resolved_id
+  pub fn remove(&mut self, node_id: NodeId) {
+    if let Some((_, resolved_id_hash)) =
+      self.node_to_resolved_id.remove(&node_id)
     {
-      resolved_id.peer_dependencies.clear();
-      *resolved_id_hash = resolved_id.current_state_hash();
-      self.resolved_to_node_id.insert(*resolved_id_hash, *node_id);
+      self.resolved_to_node_id.remove(&resolved_id_hash);
     }
-  }
-}
-
-/// A pointer to a specific node in a graph path. The underlying node id
-/// may change as peer dependencies are created.
-#[derive(Debug)]
-struct NodeIdRef(Cell<NodeId>);
-
-impl NodeIdRef {
-  pub fn new(node_id: NodeId) -> Self {
-    NodeIdRef(Cell::new(node_id))
-  }
-
-  pub fn change(&self, node_id: NodeId) {
-    self.0.set(node_id);
-  }
-
-  pub fn get(&self) -> NodeId {
-    self.0.get()
   }
 }
 
@@ -222,19 +184,13 @@ enum GraphPathNodeOrRoot {
   Root(Rc<PackageNv>),
 }
 
-#[derive(Debug, Copy, Clone)]
-enum GraphPathResolutionMode {
-  All,
-  OptionalPeers,
-}
-
 /// Path through the graph that represents a traversal through the graph doing
 /// the dependency resolution. The graph tries to share duplicate package
 /// information and we try to avoid traversing parts of the graph that we know
 /// are resolved.
 struct GraphPath {
   previous_node: Option<GraphPathNodeOrRoot>,
-  node_id_ref: NodeIdRef,
+  node_id_ref: Cell<NodeId>,
   specifier: StackString,
   // we could consider not storing this here and instead reference the resolved
   // nodes, but we should performance profile this code first
@@ -242,7 +198,6 @@ struct GraphPath {
   /// Descendants in the path that circularly link to an ancestor in a child. These
   /// descendants should be kept up to date and always point to this node.
   linked_circular_descendants: RefCell<Vec<Rc<GraphPath>>>,
-  mode: GraphPathResolutionMode,
   /// The currently active override rules at this point in the tree traversal.
   active_overrides: Rc<NpmOverrides>,
 }
@@ -251,7 +206,6 @@ impl GraphPath {
   pub fn for_root(
     node_id: NodeId,
     nv: Rc<PackageNv>,
-    mode: GraphPathResolutionMode,
     active_overrides: Rc<NpmOverrides>,
   ) -> Rc<Self> {
     // scope the overrides for this root package so that any scoped
@@ -259,12 +213,11 @@ impl GraphPath {
     let scoped = active_overrides.for_child(&nv.name, &nv.version);
     Rc::new(Self {
       previous_node: Some(GraphPathNodeOrRoot::Root(nv.clone())),
-      node_id_ref: NodeIdRef::new(node_id),
+      node_id_ref: Cell::new(node_id),
       // use an empty specifier
       specifier: "".into(),
       nv,
       linked_circular_descendants: Default::default(),
-      mode,
       active_overrides: scoped,
     })
   }
@@ -278,7 +231,7 @@ impl GraphPath {
   }
 
   pub fn change_id(&self, node_id: NodeId) {
-    self.node_id_ref.change(node_id)
+    self.node_id_ref.set(node_id)
   }
 
   pub fn with_id(
@@ -286,17 +239,15 @@ impl GraphPath {
     node_id: NodeId,
     specifier: StackString,
     nv: Rc<PackageNv>,
-    mode: GraphPathResolutionMode,
   ) -> Rc<Self> {
     let active_overrides =
       self.active_overrides.for_child(&nv.name, &nv.version);
     Rc::new(Self {
       previous_node: Some(GraphPathNodeOrRoot::Node(self.clone())),
-      node_id_ref: NodeIdRef::new(node_id),
+      node_id_ref: Cell::new(node_id),
       specifier,
       nv,
       linked_circular_descendants: Default::default(),
-      mode,
       active_overrides,
     })
   }
@@ -363,6 +314,82 @@ struct PackagesForSnapshot<'a> {
   traversed_ids: HashSet<&'a NpmPackageId>,
 }
 
+/// Tarjan's strongly connected components algorithm.
+///
+/// Returns SCCs in reverse topological order (leaf/sink SCCs first),
+/// which is the order we need for bottom-up ID computation.
+fn tarjan_scc(adj: &HashMap<NodeId, Vec<NodeId>>) -> Vec<Vec<NodeId>> {
+  struct TarjanState {
+    index_counter: usize,
+    stack: Vec<NodeId>,
+    on_stack: HashSet<NodeId>,
+    indices: HashMap<NodeId, usize>,
+    lowlinks: HashMap<NodeId, usize>,
+    result: Vec<Vec<NodeId>>,
+  }
+
+  fn strongconnect(
+    node: NodeId,
+    adj: &HashMap<NodeId, Vec<NodeId>>,
+    state: &mut TarjanState,
+  ) {
+    state.indices.insert(node, state.index_counter);
+    state.lowlinks.insert(node, state.index_counter);
+    state.index_counter += 1;
+    state.stack.push(node);
+    state.on_stack.insert(node);
+
+    if let Some(neighbors) = adj.get(&node) {
+      for &neighbor in neighbors {
+        if !state.indices.contains_key(&neighbor) {
+          strongconnect(neighbor, adj, state);
+          let neighbor_low = *state.lowlinks.get(&neighbor).unwrap();
+          let node_low = state.lowlinks.get_mut(&node).unwrap();
+          if neighbor_low < *node_low {
+            *node_low = neighbor_low;
+          }
+        } else if state.on_stack.contains(&neighbor) {
+          let neighbor_idx = *state.indices.get(&neighbor).unwrap();
+          let node_low = state.lowlinks.get_mut(&node).unwrap();
+          if neighbor_idx < *node_low {
+            *node_low = neighbor_idx;
+          }
+        }
+      }
+    }
+
+    if state.lowlinks.get(&node) == state.indices.get(&node) {
+      let mut scc = Vec::new();
+      loop {
+        let w = state.stack.pop().unwrap();
+        state.on_stack.remove(&w);
+        scc.push(w);
+        if w == node {
+          break;
+        }
+      }
+      state.result.push(scc);
+    }
+  }
+
+  let mut state = TarjanState {
+    index_counter: 0,
+    stack: Vec::new(),
+    on_stack: HashSet::new(),
+    indices: HashMap::new(),
+    lowlinks: HashMap::new(),
+    result: Vec::new(),
+  };
+
+  for &node in adj.keys() {
+    if !state.indices.contains_key(&node) {
+      strongconnect(node, adj, &mut state);
+    }
+  }
+
+  state.result
+}
+
 pub struct Graph {
   /// Each requirement is mapped to a specific name and version.
   package_reqs: HashMap<PackageReq, Rc<PackageNv>>,
@@ -377,7 +404,6 @@ pub struct Graph {
   // inform the final snapshot creation.
   packages_to_copy_index: HashMap<NpmPackageId, u8>,
   moved_package_ids: IndexMap<NodeId, (ResolvedId, ResolvedId)>,
-  unresolved_optional_peers: UnresolvedOptionalPeers,
   #[cfg(feature = "tracing")]
   traces: Vec<super::tracing::TraceGraphSnapshot>,
 }
@@ -403,13 +429,13 @@ impl Graph {
         .peer_dependencies
         .iter()
         .map(|peer_dep| {
-          ResolvedIdPeerDep::SnapshotNodeId(get_or_create_graph_node(
+          get_or_create_graph_node(
             graph,
             peer_dep,
             packages,
             created_package_ids,
             &ancestor_ids_with_current,
-          ))
+          )
         })
         .collect::<Vec<_>>();
       let graph_resolved_id = ResolvedId {
@@ -463,13 +489,6 @@ impl Graph {
           graph.set_child_of_parent_node(node_id, name, child_node_id);
         }
       }
-      for key in &resolution.optional_peer_dependencies {
-        if resolution.dependencies.contains_key(key) {
-          graph
-            .unresolved_optional_peers
-            .mark_seen(graph_resolved_id.nv.clone(), key);
-        }
-      }
       graph.resolved_node_ids.set(node_id, graph_resolved_id);
       node_id
     }
@@ -491,7 +510,6 @@ impl Graph {
       package_name_versions: Default::default(),
       resolved_node_ids: Default::default(),
       root_packages: Default::default(),
-      unresolved_optional_peers: Default::default(),
       moved_package_ids: Default::default(),
       #[cfg(feature = "tracing")]
       traces: Default::default(),
@@ -515,107 +533,225 @@ impl Graph {
     self.package_reqs.get(req)
   }
 
-  fn get_npm_pkg_id(&self, node_id: NodeId) -> NpmPackageId {
-    let resolved_id = self.resolved_node_ids.get(node_id).unwrap();
-    self.get_npm_pkg_id_from_resolved_id(resolved_id)
-  }
+  /// Computes NpmPackageIds for ALL nodes using SCC-based cycle detection.
+  ///
+  /// Uses SCC-based cycle detection:
+  /// 1. Build a peer dependency graph from all ResolvedId.peer_dependencies
+  /// 2. Detect strongly connected components (cycles) using Tarjan's algorithm
+  /// 3. Compute NpmPackageIds bottom-up: non-cyclic leaf nodes first, then
+  ///    parents using cached child IDs
+  /// 4. For peers within the same SCC (cycle), use flat name@version
+  ///    (no recursive nesting) to avoid infinite recursion
+  ///
+  /// Each node's ID is computed exactly ONCE, avoiding the O(n²) expansion
+  /// that occurred with the previous per-path computing HashSet approach.
+  fn compute_all_npm_pkg_ids(&self) -> HashMap<NodeId, NpmPackageId> {
+    // Step 1: Build per-node peer info and NV-level adjacency graph.
+    //
+    // We need TWO levels of analysis:
+    // - NV-level (PackageNv): for cycle detection. Multiple NodeIds can
+    //   map to the same NV. A cycle at the NV level (A peers with B,
+    //   B peers with A) means those NVs should use flat IDs for each other,
+    //   even if the specific NodeIds involved are different.
+    // - Node-level (NodeId): for computation ordering. We process nodes
+    //   in topological order so non-cyclic peers are cached before use.
+    let mut node_peers: HashMap<NodeId, Vec<(NodeId, Rc<PackageNv>)>> =
+      HashMap::new();
+    let mut nv_peer_adj: HashMap<Rc<PackageNv>, HashSet<Rc<PackageNv>>> =
+      HashMap::new();
+    let mut node_adj: HashMap<NodeId, Vec<NodeId>> = HashMap::new();
 
-  #[inline(always)]
-  fn get_npm_pkg_id_from_resolved_id(
-    &self,
-    resolved_id: &ResolvedId,
-  ) -> NpmPackageId {
-    self.get_npm_pkg_id_from_resolved_id_with_seen(
-      resolved_id,
-      HashSet::from([resolved_id.nv.clone()]),
-    )
-  }
+    for (&node_id, (resolved_id, _)) in
+      &self.resolved_node_ids.node_to_resolved_id
+    {
+      let nv_entry = nv_peer_adj.entry(resolved_id.nv.clone()).or_default();
+      let mut seen_nvs = HashSet::new();
+      let mut peers = Vec::new();
+      let mut adj = Vec::new();
 
-  fn get_npm_pkg_id_from_resolved_id_with_seen(
-    &self,
-    resolved_id: &ResolvedId,
-    seen: HashSet<Rc<PackageNv>>,
-  ) -> NpmPackageId {
-    if resolved_id.peer_dependencies.is_empty() {
-      NpmPackageId {
-        nv: (*resolved_id.nv).clone(),
-        peer_dependencies: Default::default(),
-      }
-    } else {
-      let mut npm_pkg_id = NpmPackageId {
-        nv: (*resolved_id.nv).clone(),
-        peer_dependencies: crate::NpmPackageIdPeerDependencies::with_capacity(
-          resolved_id.peer_dependencies.len(),
-        ),
-      };
-      let mut seen_children_resolved_ids =
-        HashSet::with_capacity(resolved_id.peer_dependencies.len());
-      for peer_dep in &resolved_id.peer_dependencies {
-        let maybe_node_and_resolved_id =
-          self.peer_dep_to_maybe_node_id_and_resolved_id(peer_dep);
-        // this should always be set
-        debug_assert!(maybe_node_and_resolved_id.is_some());
-        if let Some((_child_id, child_resolved_id)) = maybe_node_and_resolved_id
+      for &peer_dep in &resolved_id.peer_dependencies {
+        if let Some(child_resolved_id) = self.resolved_node_ids.get(peer_dep)
+          && seen_nvs.insert(child_resolved_id.nv.clone())
         {
-          let mut new_seen = seen.clone();
-          if new_seen.insert(child_resolved_id.nv.clone()) {
-            let child_peer = self.get_npm_pkg_id_from_resolved_id_with_seen(
-              child_resolved_id,
-              new_seen.clone(),
-            );
+          nv_entry.insert(child_resolved_id.nv.clone());
+          adj.push(peer_dep);
+          peers.push((peer_dep, child_resolved_id.nv.clone()));
+        }
+      }
 
-            if seen_children_resolved_ids.insert(child_peer.clone()) {
-              npm_pkg_id.peer_dependencies.push(child_peer);
-            }
-          } else {
+      node_adj.insert(node_id, adj);
+      node_peers.insert(node_id, peers);
+    }
+
+    // Step 2: Detect cycles at the NV level using Tarjan's algorithm.
+    //
+    // Map each unique NV to a pseudo NodeId for Tarjan's, which operates
+    // on HashMap<NodeId, Vec<NodeId>>.
+    let all_nvs: Vec<Rc<PackageNv>> = nv_peer_adj.keys().cloned().collect();
+    let nv_to_idx: HashMap<&PackageNv, usize> = all_nvs
+      .iter()
+      .enumerate()
+      .map(|(i, nv)| (nv.as_ref(), i))
+      .collect();
+
+    let nv_adj_for_tarjan: HashMap<NodeId, Vec<NodeId>> = all_nvs
+      .iter()
+      .enumerate()
+      .map(|(i, nv)| {
+        let to: Vec<NodeId> = nv_peer_adj
+          .get(nv)
+          .map(|peers| {
+            peers
+              .iter()
+              .filter_map(|p| {
+                nv_to_idx.get(p.as_ref()).map(|&j| NodeId(j as u32))
+              })
+              .collect()
+          })
+          .unwrap_or_default();
+        (NodeId(i as u32), to)
+      })
+      .collect();
+
+    let nv_sccs = tarjan_scc(&nv_adj_for_tarjan);
+
+    // Build: for each NV, which SCC index is it in? And which NVs are cyclic?
+    let mut nv_scc_idx: HashMap<&PackageNv, usize> = HashMap::new();
+    let mut cyclic_nvs: HashSet<&PackageNv> = HashSet::new();
+    for (scc_idx, scc) in nv_sccs.iter().enumerate() {
+      let is_cycle = scc.len() > 1
+        || (scc.len() == 1
+          && nv_adj_for_tarjan
+            .get(&scc[0])
+            .is_some_and(|adj| adj.contains(&scc[0])));
+      for &pseudo_node in scc {
+        let nv = &all_nvs[pseudo_node.0 as usize];
+        nv_scc_idx.insert(nv.as_ref(), scc_idx);
+        if is_cycle {
+          cyclic_nvs.insert(nv.as_ref());
+        }
+      }
+    }
+
+    // Step 3: Run Tarjan's at the node level for computation ordering.
+    // This gives us SCCs in reverse topological order (leaves first).
+    let node_sccs = tarjan_scc(&node_adj);
+
+    // Step 4: Compute NpmPackageIds in topological order.
+    // For each node's peer deps, check if the peer's NV forms a cycle
+    // with the node's own NV. If so, use flat name@version. Otherwise
+    // use the cached (already computed) full ID.
+    let mut cache: HashMap<NodeId, NpmPackageId> =
+      HashMap::with_capacity(self.nodes.len());
+
+    for scc in &node_sccs {
+      for &node_id in scc {
+        let resolved_id = match self.resolved_node_ids.get(node_id) {
+          Some(id) => id,
+          None => continue,
+        };
+
+        let peers = node_peers.get(&node_id).cloned().unwrap_or_default();
+
+        if peers.is_empty() {
+          cache.insert(
+            node_id,
+            NpmPackageId {
+              nv: (*resolved_id.nv).clone(),
+              peer_dependencies: Default::default(),
+            },
+          );
+          continue;
+        }
+
+        let my_nv_scc = nv_scc_idx.get(resolved_id.nv.as_ref()).copied();
+
+        let mut npm_pkg_id = NpmPackageId {
+          nv: (*resolved_id.nv).clone(),
+          peer_dependencies: crate::NpmPackageIdPeerDependencies::with_capacity(
+            peers.len(),
+          ),
+        };
+
+        for (child_id, child_nv) in &peers {
+          let child_nv_scc = nv_scc_idx.get(child_nv.as_ref()).copied();
+          let is_in_same_nv_cycle = my_nv_scc.is_some()
+            && child_nv_scc == my_nv_scc
+            && cyclic_nvs.contains(child_nv.as_ref());
+
+          if is_in_same_nv_cycle {
+            // Cyclic peer deps: use flat name@version (no nested peers).
             npm_pkg_id.peer_dependencies.push(NpmPackageId {
-              nv: (*child_resolved_id.nv).clone(),
+              nv: (**child_nv).clone(),
+              peer_dependencies: Default::default(),
+            });
+          } else if let Some(cached) = cache.get(child_id) {
+            // Non-cyclic, already computed: use cached full ID
+            npm_pkg_id.peer_dependencies.push(cached.clone());
+          } else {
+            // Fallback: flat name@version (shouldn't happen with correct
+            // topological ordering, but be safe)
+            npm_pkg_id.peer_dependencies.push(NpmPackageId {
+              nv: (**child_nv).clone(),
               peer_dependencies: Default::default(),
             });
           }
         }
+
+        cache.insert(node_id, npm_pkg_id);
       }
-      npm_pkg_id
     }
+
+    // Cap ID length: if any serialized ID exceeds the threshold,
+    // replace its peer dependencies with a hash-based synthetic entry.
+    const MAX_SERIALIZED_ID_LENGTH: usize = 2000;
+    for npm_pkg_id in cache.values_mut() {
+      if npm_pkg_id.peer_dependencies.0.is_empty() {
+        continue;
+      }
+      let serialized = npm_pkg_id.as_serialized();
+      if serialized.len() > MAX_SERIALIZED_ID_LENGTH {
+        // Hash the peer suffix to produce a short, deterministic ID
+        let peer_suffix = npm_pkg_id.peer_dependencies.as_serialized();
+        let mut hasher = DefaultHasher::new();
+        peer_suffix.as_str().hash(&mut hasher);
+        let hash = hasher.finish();
+
+        // Replace peer deps with a single synthetic entry using a name
+        // that starts with '.' (which is invalid in npm), ensuring no
+        // collision with real packages. The hash is encoded as a hex
+        // string in a valid semver prerelease tag.
+        npm_pkg_id.peer_dependencies =
+          crate::NpmPackageIdPeerDependencies::from([NpmPackageId {
+            nv: PackageNv {
+              name: StackString::from_static(".peerhash"),
+              version: Version::parse_from_npm(&format!("0.0.0-{:016x}", hash))
+                .unwrap(),
+            },
+            peer_dependencies: Default::default(),
+          }]);
+      }
+    }
+
+    cache
   }
 
-  fn peer_dep_to_maybe_node_id_and_resolved_id(
+  /// Resolves a `ResolvedId` to an `NpmPackageId` using the precomputed cache.
+  /// Falls back to a flat name@version if the node isn't found.
+  fn get_npm_pkg_id_from_resolved_id_using_cache(
     &self,
-    peer_dep: &ResolvedIdPeerDep,
-  ) -> Option<(NodeId, &ResolvedId)> {
-    match peer_dep {
-      ResolvedIdPeerDep::SnapshotNodeId(node_id) => self
-        .resolved_node_ids
-        .get(*node_id)
-        .map(|resolved_id| (*node_id, resolved_id)),
-      ResolvedIdPeerDep::ParentReference {
-        parent,
-        child_pkg_nv: child_nv,
-      } => match &parent {
-        GraphPathNodeOrRoot::Root(_) => {
-          self.root_packages.get(child_nv).and_then(|node_id| {
-            self
-              .resolved_node_ids
-              .get(*node_id)
-              .map(|resolved_id| (*node_id, resolved_id))
-          })
-        }
-        GraphPathNodeOrRoot::Node(parent_path) => {
-          self.nodes.get(&parent_path.node_id()).and_then(|parent| {
-            parent
-              .children
-              .values()
-              .filter_map(|child_id| {
-                let child_id = *child_id;
-                self
-                  .resolved_node_ids
-                  .get(child_id)
-                  .map(|resolved_id| (child_id, resolved_id))
-              })
-              .find(|(_, resolved_id)| resolved_id.nv == *child_nv)
-          })
-        }
-      },
+    resolved_id: &ResolvedId,
+    cache: &HashMap<NodeId, NpmPackageId>,
+  ) -> NpmPackageId {
+    if let Some(node_id) = self.resolved_node_ids.get_node_id(resolved_id)
+      && let Some(pkg_id) = cache.get(&node_id)
+    {
+      return pkg_id.clone();
+    }
+    // Fallback: construct without peer dependencies
+    NpmPackageId {
+      nv: (*resolved_id.nv).clone(),
+      peer_dependencies: Default::default(),
     }
   }
 
@@ -674,11 +810,7 @@ impl Graph {
       super::tracing::output(&self.traces);
     }
 
-    let packages_to_pkg_ids = self
-      .nodes
-      .keys()
-      .map(|node_id| (*node_id, self.get_npm_pkg_id(*node_id)))
-      .collect::<HashMap<_, _>>();
+    let packages_to_pkg_ids = self.compute_all_npm_pkg_ids();
 
     let pkgs = match self
       .resolve_packages_for_snapshot_with_maybe_restart(
@@ -825,8 +957,14 @@ impl Graph {
     // need to be updated to a new location based on an id
     // being replaced with a new id
     for (from_id, to_id) in self.moved_package_ids.values() {
-      let from_id = self.get_npm_pkg_id_from_resolved_id(from_id);
-      let to_id = self.get_npm_pkg_id_from_resolved_id(to_id);
+      let from_id = self.get_npm_pkg_id_from_resolved_id_using_cache(
+        from_id,
+        packages_to_pkg_ids,
+      );
+      let to_id = self.get_npm_pkg_id_from_resolved_id_using_cache(
+        to_id,
+        packages_to_pkg_ids,
+      );
       if !traversed_ids.contains(&from_id)
         && !self.packages_to_copy_index.contains_key(&to_id)
       {
@@ -881,20 +1019,27 @@ impl Graph {
   #[cfg(debug_assertions)]
   #[allow(unused, clippy::print_stderr)]
   fn output_path(&self, path: &Rc<GraphPath>) {
+    let pkg_ids = self.compute_all_npm_pkg_ids();
     eprintln!("-----------");
-    self.output_node(path.node_id(), false);
+    Self::output_node_with_ids(&self.nodes, &pkg_ids, path.node_id(), false);
     for path in path.ancestors() {
       match path {
         GraphPathNodeOrRoot::Node(node) => {
-          self.output_node(node.node_id(), false)
+          Self::output_node_with_ids(
+            &self.nodes,
+            &pkg_ids,
+            node.node_id(),
+            false,
+          );
         }
         GraphPathNodeOrRoot::Root(pkg_id) => {
           let node_id = self.root_packages.get(pkg_id).unwrap();
+          let id = pkg_ids.get(node_id).map(|id| id.as_serialized());
           eprintln!(
             "Root: {} ({}: {})",
             pkg_id,
             node_id.0,
-            self.get_npm_pkg_id(*node_id).as_serialized()
+            id.as_deref().unwrap_or("?")
           )
         }
       }
@@ -904,15 +1049,17 @@ impl Graph {
 
   #[cfg(debug_assertions)]
   #[allow(unused, clippy::print_stderr)]
-  fn output_node(&self, node_id: NodeId, show_children: bool) {
-    eprintln!(
-      "{:>4}: {}",
-      node_id.0,
-      self.get_npm_pkg_id(node_id).as_serialized()
-    );
+  fn output_node_with_ids(
+    nodes: &HashMap<NodeId, Node>,
+    pkg_ids: &HashMap<NodeId, NpmPackageId>,
+    node_id: NodeId,
+    show_children: bool,
+  ) {
+    let id = pkg_ids.get(&node_id).map(|id| id.as_serialized());
+    eprintln!("{:>4}: {}", node_id.0, id.as_deref().unwrap_or("?"));
 
     if show_children {
-      let node = self.nodes.get(&node_id).unwrap();
+      let node = nodes.get(&node_id).unwrap();
       eprintln!("       Children:");
       for (specifier, child_id) in &node.children {
         eprintln!("         {}: {}", specifier, child_id.0);
@@ -923,6 +1070,7 @@ impl Graph {
   #[cfg(debug_assertions)]
   #[allow(unused, clippy::print_stderr)]
   pub fn output_nodes(&self) {
+    let pkg_ids = self.compute_all_npm_pkg_ids();
     eprintln!("~~~");
     let mut node_ids = self
       .resolved_node_ids
@@ -932,7 +1080,7 @@ impl Graph {
       .collect::<Vec<_>>();
     node_ids.sort_by(|a, b| a.0.cmp(&b.0));
     for node_id in node_ids {
-      self.output_node(node_id, true);
+      Self::output_node_with_ids(&self.nodes, &pkg_ids, node_id, true);
     }
     eprintln!("~~~");
   }
@@ -963,41 +1111,6 @@ impl DepEntryCache {
   }
 }
 
-#[derive(Default)]
-struct UnresolvedOptionalPeers {
-  seen: HashMap<Rc<PackageNv>, Vec<StackString>>,
-  seen_count: usize,
-}
-
-impl UnresolvedOptionalPeers {
-  pub fn has_seen(
-    &self,
-    parent_nv: &Rc<PackageNv>,
-    specifier: &StackString,
-  ) -> bool {
-    let Some(entries) = self.seen.get(parent_nv) else {
-      return false;
-    };
-    entries.binary_search(specifier).is_ok()
-  }
-
-  pub fn mark_seen(
-    &mut self,
-    parent_nv: Rc<PackageNv>,
-    specifier: &StackString,
-  ) {
-    let entries = self.seen.entry(parent_nv).or_default();
-    if let Err(insert_index) = entries.binary_search(specifier) {
-      entries.insert(insert_index, specifier.clone());
-      self.seen_count += 1;
-    }
-  }
-
-  pub fn seen_count(&self) -> usize {
-    self.seen_count
-  }
-}
-
 pub struct GraphDependencyResolverOptions {
   pub should_dedup: bool,
 }
@@ -1014,6 +1127,28 @@ pub struct GraphDependencyResolver<'a, TNpmRegistryApi: NpmRegistryApi> {
   /// The initial overrides from the root package.json.
   /// Used when creating root-level GraphPaths.
   initial_overrides: Rc<NpmOverrides>,
+  /// Tracks (canonical_parent_node_id, canonical_child_node_id) tuples
+  /// that have already been re-queued for processing. Uses canonical node IDs
+  /// (via `node_id_mappings`) so that node copies from `add_peer_deps_to_path`
+  /// share the same dedup entries as their originals.
+  visited_requeue: HashSet<(NodeId, NodeId)>,
+  /// Maps old NodeId → new NodeId when `add_peer_deps_to_path` creates a copy.
+  /// Used to canonicalize node IDs for `visited_requeue` dedup, so that copies
+  /// don't bypass the dedup check.
+  node_id_mappings: HashMap<NodeId, NodeId>,
+  // --- Phase 2: Peer resolution with caching ---
+  /// Packages whose entire subtree has no externally resolved peer deps.
+  /// Once marked pure, subsequent encounters skip the entire subtree.
+  pure_pkgs: HashSet<Rc<PackageNv>>,
+  /// Cache of peer resolution results per package version.
+  /// Each entry records which peers were resolved and to what NodeId.
+  /// `find_peers_cache_hit` checks if the current parent context
+  /// matches a cached entry.
+  peers_cache: HashMap<Rc<PackageNv>, Vec<PeersResolution>>,
+  /// Auto-installed peer deps as fallback, not in root_packages so they
+  /// don't pollute the root scope. Phase 2 uses these when a required
+  /// peer isn't found in scope.
+  peer_fallbacks: BTreeMap<StackString, NodeId>,
 }
 
 impl<'a, TNpmRegistryApi: NpmRegistryApi>
@@ -1036,7 +1171,38 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
       reporter,
       should_dedup: options.should_dedup,
       initial_overrides: Rc::new((*version_resolver.overrides).clone()),
+      visited_requeue: HashSet::new(),
+      node_id_mappings: HashMap::new(),
+      pure_pkgs: HashSet::new(),
+      peers_cache: HashMap::new(),
+      peer_fallbacks: BTreeMap::new(),
     }
+  }
+
+  /// Follows the `node_id_mappings` chain to find the canonical (latest)
+  /// NodeId for a node that may have been copied by `add_peer_deps_to_path`.
+  /// Uses path compression so repeated lookups are O(1) amortized.
+  fn canonical_node_id(&mut self, node_id: NodeId) -> NodeId {
+    // Quick check: no mapping at all
+    if !self.node_id_mappings.contains_key(&node_id) {
+      return node_id;
+    }
+    // Follow the chain to find the root
+    let mut current = node_id;
+    while let Some(&mapped) = self.node_id_mappings.get(&current) {
+      current = mapped;
+    }
+    // Path compression: point all intermediate nodes directly to root
+    let root = current;
+    let mut compress = node_id;
+    while let Some(&mapped) = self.node_id_mappings.get(&compress) {
+      if mapped == root {
+        break;
+      }
+      self.node_id_mappings.insert(compress, root);
+      compress = mapped;
+    }
+    root
   }
 
   pub fn add_package_req(
@@ -1105,7 +1271,6 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
         self.pending_unresolved_nodes.push_back(GraphPath::for_root(
           node_id,
           pkg_nv.clone(),
-          GraphPathResolutionMode::All,
           self.initial_overrides.clone(),
         ));
         (pkg_nv, node_id)
@@ -1177,12 +1342,8 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
         child_id = ancestor.node_id();
       }
 
-      let new_path = parent_path.with_id(
-        child_id,
-        entry.bare_specifier.clone(),
-        child_nv,
-        GraphPathResolutionMode::All,
-      );
+      let new_path =
+        parent_path.with_id(child_id, entry.bare_specifier.clone(), child_nv);
       if let Some(ancestor) = maybe_ancestor {
         // this node is circular, so we link it to the ancestor
         self.add_linked_circular_descendant(&ancestor, new_path);
@@ -1214,6 +1375,43 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
         .or_default()
         .iter(),
     )?;
+    self.create_node_from_version_info(
+      pkg_req_name,
+      version_req,
+      version_resolver,
+      parent_id,
+      info,
+    )
+  }
+
+  /// Like `resolve_node_from_info` but skips `package_name_versions`,
+  /// resolving directly from the registry.
+  fn resolve_node_from_registry(
+    &mut self,
+    pkg_req_name: &str,
+    version_req: &VersionReq,
+    version_resolver: &NpmPackageVersionResolver,
+    parent_id: Option<NodeId>,
+  ) -> Result<(Rc<PackageNv>, NodeId), NpmResolutionError> {
+    let info = version_resolver
+      .resolve_best_package_version_info(version_req, std::iter::empty())?;
+    self.create_node_from_version_info(
+      pkg_req_name,
+      version_req,
+      version_resolver,
+      parent_id,
+      info,
+    )
+  }
+
+  fn create_node_from_version_info(
+    &mut self,
+    pkg_req_name: &str,
+    version_req: &VersionReq,
+    version_resolver: &NpmPackageVersionResolver,
+    parent_id: Option<NodeId>,
+    info: &NpmPackageVersionInfo,
+  ) -> Result<(Rc<PackageNv>, NodeId), NpmResolutionError> {
     let resolved_id = ResolvedId {
       nv: Rc::new(PackageNv {
         name: version_resolver.info().name.clone(),
@@ -1240,7 +1438,12 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
     debug!(
       "{} - Resolved {}@{} to {}",
       match parent_id {
-        Some(parent_id) => self.graph.get_npm_pkg_id(parent_id).as_serialized(),
+        Some(parent_id) => self
+          .graph
+          .resolved_node_ids
+          .get(parent_id)
+          .map(|r| r.nv.to_string())
+          .unwrap_or_else(|| "?".into()),
         None => "<package-req>".into(),
       },
       pkg_req_name,
@@ -1260,52 +1463,990 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
   }
 
   pub async fn resolve_pending(&mut self) -> Result<(), NpmResolutionError> {
-    let mut did_dedup = false;
-    while !self.pending_unresolved_nodes.is_empty() {
-      // go down through the dependencies by tree depth
-      let mut previous_seen_optional_peers_count = 0;
-      while !self.pending_unresolved_nodes.is_empty() {
-        while let Some(parent_path) = self.pending_unresolved_nodes.pop_front()
-        {
-          self.resolve_next_pending(parent_path).await?;
-        }
+    // Phase 1: resolve all regular (non-peer) dependencies via BFS.
+    // Peer deps are skipped here; Phase 2 handles them.
+    while let Some(parent_path) = self.pending_unresolved_nodes.pop_front() {
+      self.resolve_next_pending(parent_path).await?;
+    }
 
-        let seen_optional_peers_count =
-          self.graph.unresolved_optional_peers.seen_count();
-        if seen_optional_peers_count > previous_seen_optional_peers_count {
-          previous_seen_optional_peers_count = seen_optional_peers_count;
-          debug!(
-            "Traversing graph to ensure newly seen optional peers are set."
-          );
-          // go through the graph again resolving any optional peers
-          for (nv, node_id) in &self.graph.root_packages {
-            self.pending_unresolved_nodes.push_back(GraphPath::for_root(
-              *node_id,
-              nv.clone(),
-              GraphPathResolutionMode::OptionalPeers,
-              self.initial_overrides.clone(),
-            ));
+    // Auto-install unmet peer deps.
+    // Results go into `peer_fallbacks` (NOT root_packages) to avoid
+    // polluting the root scope. Phase 2 uses fallbacks only when a peer
+    // isn't found in the normal scope chain.
+    // Iterate because newly installed peers may themselves have peer deps.
+    for _ in 0..10 {
+      let prev_fallback_count = self.peer_fallbacks.len();
+      self.auto_install_missing_peers().await?;
+      // BFS to resolve regular deps of newly auto-installed packages
+      while let Some(parent_path) = self.pending_unresolved_nodes.pop_front() {
+        self.resolve_next_pending(parent_path).await?;
+      }
+      if self.peer_fallbacks.len() == prev_fallback_count {
+        break;
+      }
+    }
+
+    // Version dedup runs BEFORE Phase 2 so peer resolution sees the
+    // final consolidated version set and only needs to run once.
+    if self.should_dedup {
+      self.run_dedup_pass().await?;
+      // BFS for any deps queued by version consolidation
+      while let Some(parent_path) = self.pending_unresolved_nodes.pop_front() {
+        self.resolve_next_pending(parent_path).await?;
+      }
+    }
+
+    // Phase 2: resolve peer dependencies top-down with caching.
+    // Traverses the graph built by Phase 1, resolving peer deps from
+    // parent scope and creating identity copies as needed.
+    self.resolve_peers_phase()?;
+
+    // Dedup peer dependents: merge copies
+    // of the same package where one's children are a superset of another's.
+    // E.g., vite@6.2.4 (no peers) and vite@6.2.4_lightningcss@1.29.2
+    // (with optional peer) get merged to the superset version.
+    self.dedup_peer_dependents();
+
+    Ok(())
+  }
+
+  /// Scan all packages for peer deps that no existing package satisfies
+  /// and resolve them into the `peer_fallbacks` map.
+  async fn auto_install_missing_peers(
+    &mut self,
+  ) -> Result<(), NpmResolutionError> {
+    // Collect all declared peer deps across all packages
+    let mut needed: BTreeMap<StackString, VersionReq> = BTreeMap::new();
+    for (resolved_id, _) in
+      self.graph.resolved_node_ids.node_to_resolved_id.values()
+    {
+      if let Some(deps) = self.dep_entry_cache.get(&resolved_id.nv) {
+        for dep in deps.iter() {
+          if matches!(
+            dep.kind,
+            NpmDependencyEntryKind::Peer | NpmDependencyEntryKind::OptionalPeer
+          ) {
+            let effective_req = dep
+              .peer_dep_version_req
+              .as_ref()
+              .unwrap_or(&dep.version_req);
+            if !dep.kind.is_optional_peer() {
+              needed
+                .entry(StackString::from(dep.name.as_str()))
+                .or_insert_with(|| effective_req.clone());
+            }
           }
         }
       }
+    }
 
-      if self.should_dedup && !did_dedup {
-        self.run_dedup_pass().await?;
-        did_dedup = true;
+    for (name, req) in &needed {
+      // Skip if already satisfied by root_packages or fallbacks
+      let already_in_root = self.graph.root_packages.iter().any(|(nv, _)| {
+        nv.name.as_str() == name.as_str()
+          && (req.tag().is_some() || req.matches(&nv.version))
+      });
+      if already_in_root || self.peer_fallbacks.contains_key(name) {
+        continue;
+      }
+
+      // Resolve from registry and add to fallback (not root_packages)
+      let package_info = match self.api.package_info(name.as_str()).await {
+        Ok(info) => info,
+        Err(_) => continue,
+      };
+      let version_resolver =
+        self.version_resolver.get_for_package(&package_info);
+      match self.resolve_node_from_registry(
+        name.as_str(),
+        req,
+        &version_resolver,
+        None,
+      ) {
+        Ok((child_nv, child_id)) => {
+          self.peer_fallbacks.insert(name.clone(), child_id);
+          // Queue BFS to resolve the fallback package's own deps
+          let root_path = GraphPath::for_root(
+            child_id,
+            child_nv,
+            self.initial_overrides.clone(),
+          );
+          self.pending_unresolved_nodes.push_back(root_path);
+        }
+        Err(_) => continue,
       }
     }
 
     Ok(())
   }
 
+  // =========================================================================
+  // Phase 2: Recursive peer dependency resolution with caching.
+  //
+  // After Phase 1 resolves all regular deps (building the graph structure),
+  // Phase 2 traverses the graph top-down resolving peer deps:
+  //
+  // 1. Build a "scope" (parent_pkgs) of available packages at each level
+  // 2. Recursively resolve children's peers first (bottom-up results)
+  // 3. Resolve own peer deps from scope
+  // 4. Cache results per (nv, peer_context) via pure_pkgs + peers_cache
+  // 5. Create copies (new NodeIds) when peer deps change node identity
+  // =========================================================================
+
+  fn resolve_peers_phase(&mut self) -> Result<(), NpmResolutionError> {
+    self.pure_pkgs.clear();
+    self.peers_cache.clear();
+
+    // Build initial scope from root packages (package name → NodeId)
+    let root_scope: BTreeMap<StackString, NodeId> = self
+      .graph
+      .root_packages
+      .iter()
+      .map(|(nv, id)| (StackString::from(nv.name.as_str()), *id))
+      .collect();
+
+    // Resolve peers for each root package's children
+    let roots: Vec<_> = self
+      .graph
+      .root_packages
+      .iter()
+      .map(|(nv, id)| (nv.clone(), *id))
+      .collect();
+
+    for (_nv, node_id) in &roots {
+      let mut visiting = HashSet::new();
+      let result = self.resolve_peers_of_node(
+        *node_id,
+        &root_scope,
+        &mut visiting,
+        &[],
+      )?;
+      // If the root got a copy (new node_id), update root_packages
+      if result.node_id != *node_id {
+        self.graph.root_packages.insert(_nv.clone(), result.node_id);
+      }
+    }
+
+    Ok(())
+  }
+
+  /// After Phase 2 creates copies of packages with different peer dep
+  /// configurations, merge copies where one's children are a strict superset
+  /// of another's. Iterates until convergence because merging one pair can
+  /// make other pairs mergeable.
+  fn dedup_peer_dependents(&mut self) {
+    // Group NodeIds by PackageNv (name@version). Only groups with 2+
+    // entries are candidates for dedup.
+    let mut nv_to_nodes: HashMap<Rc<PackageNv>, Vec<NodeId>> = HashMap::new();
+    for (&node_id, (resolved_id, _)) in
+      &self.graph.resolved_node_ids.node_to_resolved_id
+    {
+      nv_to_nodes
+        .entry(resolved_id.nv.clone())
+        .or_default()
+        .push(node_id);
+    }
+    let mut duplicates: Vec<Vec<NodeId>> = nv_to_nodes
+      .into_values()
+      .filter(|nodes| nodes.len() > 1)
+      .collect();
+
+    if duplicates.is_empty() {
+      return;
+    }
+
+    // Iterative dedup until convergence
+    loop {
+      let (dep_paths_map, remaining) = self.dedup_dep_paths(&duplicates);
+
+      if dep_paths_map.is_empty() {
+        break;
+      }
+
+      // Apply remappings: replace subset NodeIds with superset NodeIds
+      self.apply_dedup_mappings(&dep_paths_map);
+
+      // No remaining groups or no progress → stop
+      if remaining.is_empty() || remaining.len() == duplicates.len() {
+        break;
+      }
+
+      duplicates = remaining;
+    }
+  }
+
+  /// Try to deduplicate groups of NodeIds that share the same PackageNv.
+  /// Returns a mapping of subset → superset NodeIds and remaining
+  /// unresolved groups for the next iteration.
+  fn dedup_dep_paths(
+    &self,
+    duplicates: &[Vec<NodeId>],
+  ) -> (HashMap<NodeId, NodeId>, Vec<Vec<NodeId>>) {
+    let mut dep_paths_map: HashMap<NodeId, NodeId> = HashMap::new();
+    let mut remaining: Vec<Vec<NodeId>> = Vec::new();
+
+    for node_ids in duplicates {
+      let mut unresolved: Vec<NodeId> = Vec::new();
+      // Sort by dep count (lowest first); pop from end as superset candidate
+      let mut sorted: Vec<NodeId> = node_ids.clone();
+      sorted.sort_by_key(|id| self.node_deps_count(*id));
+
+      while let Some(superset_candidate) = sorted.pop() {
+        let mut next_round = Vec::new();
+
+        while let Some(subset_candidate) = sorted.pop() {
+          if self.is_superset_node(superset_candidate, subset_candidate) {
+            dep_paths_map.insert(subset_candidate, superset_candidate);
+          } else {
+            next_round.push(subset_candidate);
+          }
+        }
+
+        if !dep_paths_map.contains_key(&superset_candidate)
+          && !next_round.is_empty()
+        {
+          unresolved.push(superset_candidate);
+        }
+
+        sorted = next_round;
+        sorted.sort_by_key(|id| self.node_deps_count(*id));
+      }
+
+      // Keep unresolved nodes for the next iteration
+      if unresolved.len() > 1 {
+        remaining.push(unresolved);
+      }
+    }
+
+    (dep_paths_map, remaining)
+  }
+
+  /// Count total dependencies of a node (children + resolved peers).
+  fn node_deps_count(&self, node_id: NodeId) -> usize {
+    let children_count = self
+      .graph
+      .nodes
+      .get(&node_id)
+      .map(|n| n.children.len())
+      .unwrap_or(0);
+    let peer_count = self
+      .graph
+      .resolved_node_ids
+      .get(node_id)
+      .map(|id| id.peer_dependencies.len())
+      .unwrap_or(0);
+    children_count + peer_count
+  }
+
+  /// Check if node `a` is a superset of node `b`:
+  /// 1. `a` has >= total deps than `b`
+  /// 2. All of `b`'s children exist in `a` (by name, with same NV)
+  /// 3. All of `b`'s resolved peer dep NVs exist in `a`'s peer deps
+  ///
+  /// Compares children by name+NV and peers by NV, NOT by exact NodeId.
+  /// This allows merging copies where children point to different copies
+  /// of the same package version.
+  fn is_superset_node(&self, a: NodeId, b: NodeId) -> bool {
+    if self.node_deps_count(a) < self.node_deps_count(b) {
+      return false;
+    }
+
+    let (Some(node_a), Some(node_b)) =
+      (self.graph.nodes.get(&a), self.graph.nodes.get(&b))
+    else {
+      return false;
+    };
+
+    // Check children containment by name+NV (not exact NodeId)
+    for (spec, b_child_id) in &node_b.children {
+      let Some(a_child_id) = node_a.children.get(spec) else {
+        return false;
+      };
+      // Same NodeId → trivially compatible
+      if a_child_id == b_child_id {
+        continue;
+      }
+      // Different NodeId → check if same NV
+      let a_nv = self.graph.resolved_node_ids.get(*a_child_id).map(|r| &r.nv);
+      let b_nv = self.graph.resolved_node_ids.get(*b_child_id).map(|r| &r.nv);
+      if a_nv != b_nv {
+        return false;
+      }
+    }
+
+    // Check peer dep containment by NV (not exact NodeId).
+    let (Some(resolved_a), Some(resolved_b)) = (
+      self.graph.resolved_node_ids.get(a),
+      self.graph.resolved_node_ids.get(b),
+    ) else {
+      return false;
+    };
+
+    // All of b's peer dep NVs must appear in a's peer dep NVs.
+    // Use linear scan since peer dep lists are typically very small (1-5 items).
+    resolved_b.peer_dependencies.iter().all(|b_id| {
+      let Some(b_nv) = self.graph.resolved_node_ids.get(*b_id).map(|r| &r.nv)
+      else {
+        return true;
+      };
+      resolved_a.peer_dependencies.iter().any(|a_id| {
+        self
+          .graph
+          .resolved_node_ids
+          .get(*a_id)
+          .map(|r| &r.nv == b_nv)
+          .unwrap_or(false)
+      })
+    })
+  }
+
+  /// Apply dedup mappings to the entire graph.
+  /// Replace all references to subset NodeIds with their superset NodeIds.
+  fn apply_dedup_mappings(&mut self, mappings: &HashMap<NodeId, NodeId>) {
+    // Update node children
+    let all_node_ids: Vec<NodeId> = self.graph.nodes.keys().copied().collect();
+    for node_id in &all_node_ids {
+      if let Some(node) = self.graph.nodes.get(node_id) {
+        let updates: Vec<(StackString, NodeId)> = node
+          .children
+          .iter()
+          .filter_map(|(spec, child_id)| {
+            mappings.get(child_id).map(|new_id| (spec.clone(), *new_id))
+          })
+          .collect();
+        for (spec, new_id) in updates {
+          self.graph.set_child_of_parent_node(*node_id, &spec, new_id);
+        }
+      }
+    }
+
+    // Update root_packages
+    for (_nv, root_node_id) in self.graph.root_packages.iter_mut() {
+      if let Some(new_id) = mappings.get(root_node_id) {
+        *root_node_id = *new_id;
+      }
+    }
+
+    // Update resolved_node_ids peer_dependencies
+    let nodes_with_peers: Vec<NodeId> = self
+      .graph
+      .resolved_node_ids
+      .node_to_resolved_id
+      .keys()
+      .copied()
+      .collect();
+    for node_id in nodes_with_peers {
+      if let Some(resolved) = self.graph.resolved_node_ids.get(node_id).cloned()
+      {
+        if resolved.peer_dependencies.is_empty() {
+          continue;
+        }
+        let mut updated = false;
+        let mut new_peers = resolved.peer_dependencies.clone();
+        for id in new_peers.iter_mut() {
+          if let Some(new_id) = mappings.get(id) {
+            *id = *new_id;
+            updated = true;
+          }
+        }
+        if updated {
+          let updated_resolved = ResolvedId {
+            nv: resolved.nv.clone(),
+            peer_dependencies: new_peers,
+          };
+          self.graph.resolved_node_ids.set(node_id, updated_resolved);
+        }
+      }
+    }
+
+    // Remove merged (subset) nodes from resolved_node_ids so they
+    // don't appear in the snapshot (compute_all_npm_pkg_ids iterates
+    // node_to_resolved_id). We keep them in graph.nodes since other
+    // code may still reference them by NodeId.
+    for subset_id in mappings.keys() {
+      self.graph.resolved_node_ids.remove(*subset_id);
+    }
+  }
+
+  /// Recursively resolve peer deps for a node and its subtree.
+  ///
+  /// Returns which peers bubble up (resolved from outside this subtree)
+  /// and the final NodeId (possibly a copy with peers in identity).
+  fn resolve_peers_of_node(
+    &mut self,
+    node_id: NodeId,
+    parent_pkgs: &BTreeMap<StackString, NodeId>,
+    visiting: &mut HashSet<NodeId>,
+    ancestors: &[PackageNv],
+  ) -> Result<PeersResolution, NpmResolutionError> {
+    let nv = self
+      .graph
+      .resolved_node_ids
+      .get(node_id)
+      .unwrap()
+      .nv
+      .clone();
+
+    // Pure check: if this package's entire subtree has no external peers,
+    // skip entirely.
+    if self.pure_pkgs.contains(&nv) {
+      return Ok(PeersResolution {
+        resolved_peers: BTreeMap::new(),
+        missing_peers: BTreeMap::new(),
+        unresolved_optional_peers: Vec::new(),
+        node_id,
+      });
+    }
+
+    // Cycle detection: if we're already resolving this node, stop.
+    // Unlike a simple empty return, we peek at the node's declared peer
+    // deps and return those that are resolvable from the current scope.
+    // This ensures transitive peer deps propagate through cycles
+    // (e.g., a→b→c→d→c where c peers with b: d needs b as transitive peer).
+    if !visiting.insert(node_id) {
+      let mut resolved_peers = BTreeMap::new();
+      let mut missing_peers = BTreeMap::new();
+      if let Some(deps) = self.dep_entry_cache.get(&nv) {
+        for dep in deps.iter() {
+          match dep.kind {
+            NpmDependencyEntryKind::Peer
+            | NpmDependencyEntryKind::OptionalPeer => {
+              if let Some(peer_id) = self.find_peer_node_id(dep, parent_pkgs) {
+                resolved_peers.insert(dep.bare_specifier.clone(), peer_id);
+              } else if !dep.kind.is_optional_peer() {
+                let effective_req = dep
+                  .peer_dep_version_req
+                  .as_ref()
+                  .unwrap_or(&dep.version_req);
+                missing_peers
+                  .insert(dep.bare_specifier.clone(), effective_req.clone());
+              }
+            }
+            _ => {}
+          }
+        }
+      }
+      return Ok(PeersResolution {
+        resolved_peers,
+        missing_peers,
+        unresolved_optional_peers: Vec::new(),
+        node_id,
+      });
+    }
+
+    // Build scope for children: parent_pkgs + this node itself + children.
+    // We add the current node to scope so children and grandchildren can
+    // find ancestor packages when resolving peer deps. Children override
+    // parent scope entries (closer scope wins).
+    let node = self.graph.nodes.get(&node_id).unwrap();
+    let mut scope = parent_pkgs.clone();
+    scope.insert(StackString::from(nv.name.as_str()), node_id);
+    for (spec, child_id) in &node.children {
+      // Use the package NAME as key (not the specifier/alias)
+      if let Some(child_resolved) = self.graph.resolved_node_ids.get(*child_id)
+      {
+        scope.insert(
+          StackString::from(child_resolved.nv.name.as_str()),
+          *child_id,
+        );
+      }
+      // Also add by specifier (alias) since peer deps may reference by alias
+      scope.insert(spec.clone(), *child_id);
+    }
+
+    // Cache check: if a previous resolution for this nv with
+    // equivalent peer context exists, reuse it.
+    if let Some(hit) = self.find_peers_cache_hit(&nv, parent_pkgs) {
+      visiting.remove(&node_id);
+      return Ok(hit);
+    }
+
+    // Step 1: Resolve this node's own peer deps from parent_pkgs FIRST,
+    // before recursing into children.
+    let deps = self.dep_entry_cache.get(&nv).cloned().unwrap_or_default();
+    let mut own_peer_deps: Vec<(StackString, NodeId)> = Vec::new();
+    let mut all_resolved_peers = BTreeMap::new();
+    let mut all_missing_peers = BTreeMap::new();
+    let mut all_unresolved_optional_peers: Vec<StackString> = Vec::new();
+
+    for dep in deps.iter() {
+      match dep.kind {
+        NpmDependencyEntryKind::Peer | NpmDependencyEntryKind::OptionalPeer => {
+          // Skip self-referencing peer deps (a package peering with itself)
+          if dep.name.as_str() == nv.name.as_str() {
+            continue;
+          }
+          if let Some(peer_id) = self.find_peer_node_id(dep, parent_pkgs) {
+            if let Some(peer_resolved) =
+              self.graph.resolved_node_ids.get(peer_id)
+            {
+              let effective_req = dep
+                .peer_dep_version_req
+                .as_ref()
+                .unwrap_or(&dep.version_req);
+              let satisfies = effective_req.tag().is_some()
+                || effective_req.matches(&peer_resolved.nv.version);
+              own_peer_deps.push((dep.bare_specifier.clone(), peer_id));
+              all_resolved_peers.insert(dep.bare_specifier.clone(), peer_id);
+              if !satisfies && !dep.kind.is_optional_peer() {
+                let mut diag_ancestors =
+                  Vec::with_capacity(ancestors.len() + 1);
+                diag_ancestors.push((*nv).clone());
+                diag_ancestors.extend_from_slice(ancestors);
+                self.unmet_peer_diagnostics.borrow_mut().insert(
+                  UnmetPeerDepDiagnostic {
+                    ancestors: diag_ancestors,
+                    dependency: PackageReq {
+                      name: dep.name.clone(),
+                      version_req: dep.version_req.clone(),
+                    },
+                    resolved: peer_resolved.nv.version.clone(),
+                  },
+                );
+              }
+            }
+          } else if !dep.kind.is_optional_peer() {
+            let effective_req = dep
+              .peer_dep_version_req
+              .as_ref()
+              .unwrap_or(&dep.version_req);
+            all_missing_peers
+              .insert(dep.bare_specifier.clone(), effective_req.clone());
+          } else {
+            // Unresolved optional peer — track for cache invalidation
+            all_unresolved_optional_peers.push(dep.bare_specifier.clone());
+          }
+        }
+        _ => {} // regular deps already resolved in Phase 1
+      }
+    }
+
+    // Step 2: Add resolved peers to scope so children can see them.
+    for (spec, peer_id) in &own_peer_deps {
+      if let Some(peer_resolved) = self.graph.resolved_node_ids.get(*peer_id) {
+        scope
+          .entry(StackString::from(peer_resolved.nv.name.as_str()))
+          .or_insert(*peer_id);
+      }
+      scope.entry(spec.clone()).or_insert(*peer_id);
+    }
+
+    // Step 3: Recurse into regular children AND resolved peer dep nodes.
+    let children: Vec<_> = self
+      .graph
+      .nodes
+      .get(&node_id)
+      .unwrap()
+      .children
+      .iter()
+      .map(|(s, id)| (s.clone(), *id))
+      .collect();
+
+    // Build the list of all deps to recurse into: regular children + peer deps
+    let mut all_deps_to_recurse: Vec<(StackString, NodeId)> = children.clone();
+    for (spec, peer_id) in &own_peer_deps {
+      // Only recurse into peer deps that aren't already regular children
+      if !children.iter().any(|(s, _)| s == spec) {
+        all_deps_to_recurse.push((spec.clone(), *peer_id));
+      }
+    }
+
+    let mut resolved_children: BTreeMap<StackString, NodeId> = BTreeMap::new();
+
+    let mut child_ancestors = Vec::with_capacity(ancestors.len() + 1);
+    child_ancestors.push((*nv).clone());
+    child_ancestors.extend_from_slice(ancestors);
+
+    for (spec, child_id) in &all_deps_to_recurse {
+      let child_result = self.resolve_peers_of_node(
+        *child_id,
+        &scope,
+        visiting,
+        &child_ancestors,
+      )?;
+      resolved_children.insert(spec.clone(), child_result.node_id);
+      for (name, id) in child_result.resolved_peers {
+        all_resolved_peers.insert(name, id);
+      }
+      for (name, req) in child_result.missing_peers {
+        all_missing_peers.insert(name, req);
+      }
+      all_unresolved_optional_peers
+        .extend(child_result.unresolved_optional_peers);
+    }
+
+    // Step 4a: Update all_resolved_peers for own peer deps to use the
+    // resolved (copy) node_ids. The initial insertion used the original
+    // peer_id, but after recursion the peer may have gotten a copy.
+    for (spec, _) in &own_peer_deps {
+      if let Some(&copy_id) = resolved_children.get(spec) {
+        all_resolved_peers.insert(spec.clone(), copy_id);
+      }
+    }
+
+    // Step 4b: Update sibling cross-references.
+    // When siblings are peers of each other, copies initially reference
+    // the ORIGINAL nodes. Update them to reference copies.
+    {
+      let original_to_copy: HashMap<NodeId, NodeId> = all_deps_to_recurse
+        .iter()
+        .filter_map(|(spec, orig_id)| {
+          let copy_id = resolved_children.get(spec)?;
+          if *copy_id != *orig_id {
+            Some((*orig_id, *copy_id))
+          } else {
+            None
+          }
+        })
+        .collect();
+
+      if !original_to_copy.is_empty() {
+        let copy_ids: Vec<NodeId> =
+          resolved_children.values().copied().collect();
+        for child_copy_id in &copy_ids {
+          if let Some(child_node) = self.graph.nodes.get(child_copy_id) {
+            let updates: Vec<_> = child_node
+              .children
+              .iter()
+              .filter_map(|(spec, id)| {
+                original_to_copy.get(id).map(|copy| (spec.clone(), *copy))
+              })
+              .collect();
+            for (spec, copy_id) in updates {
+              self.graph.set_child_of_parent_node(
+                *child_copy_id,
+                &spec,
+                copy_id,
+              );
+            }
+          }
+        }
+      }
+    }
+
+    // Determine the final NodeId. If peer deps were resolved, create a copy
+    // with the peer deps in its ResolvedId.
+    let children_changed = !resolved_children.iter().all(|(s, id)| {
+      children
+        .iter()
+        .find(|(cs, _)| cs == s)
+        .is_some_and(|(_, cid)| cid == id)
+    });
+
+    // Check if there are transitive peers that would be added to identity.
+    // These are peers from children that are NOT own children or own peers.
+    let original_child_names_set: HashSet<&StackString> =
+      children.iter().map(|(s, _)| s).collect();
+    let has_transitive_peers = all_resolved_peers.keys().any(|name| {
+      !original_child_names_set.contains(name)
+        && !own_peer_deps.iter().any(|(s, _)| s == name)
+        && name.as_str() != nv.name.as_str()
+    });
+
+    let final_node_id =
+      if own_peer_deps.is_empty() && !children_changed && !has_transitive_peers
+      {
+        // No changes needed — same node
+        node_id
+      } else {
+        // Build new ResolvedId with peer deps.
+        // Start fresh (don't clone from old) since we're computing the
+        // complete set. This ensures that when Phase 2 re-runs, updated
+        // copies (with nested peers) replace stale entries.
+        let old_resolved_id =
+          self.graph.resolved_node_ids.get(node_id).unwrap().clone();
+        let mut new_peer_deps: Vec<NodeId> = Vec::new();
+        let mut seen_nvs: HashSet<Rc<PackageNv>> = HashSet::new();
+
+        // Add own peer deps first
+        for (spec, _orig_peer_id) in &own_peer_deps {
+          let resolved_peer_id = resolved_children
+            .get(spec)
+            .copied()
+            .unwrap_or(*_orig_peer_id);
+          let peer_nv = self
+            .graph
+            .resolved_node_ids
+            .get(resolved_peer_id)
+            .unwrap()
+            .nv
+            .clone();
+          if seen_nvs.insert(peer_nv) {
+            new_peer_deps.push(resolved_peer_id);
+          }
+        }
+
+        // Add transitive peer deps from children
+        for (name, peer_id) in &all_resolved_peers {
+          if resolved_children.contains_key(name)
+            || own_peer_deps.iter().any(|(s, _)| s == name)
+            || name.as_str() == nv.name.as_str()
+          {
+            continue;
+          }
+          let peer_nv = self
+            .graph
+            .resolved_node_ids
+            .get(*peer_id)
+            .unwrap()
+            .nv
+            .clone();
+          if seen_nvs.insert(peer_nv) {
+            new_peer_deps.push(*peer_id);
+          }
+        }
+
+        let new_resolved_id = ResolvedId {
+          nv: old_resolved_id.nv.clone(),
+          peer_dependencies: new_peer_deps,
+        };
+
+        let (created, new_node_id) =
+          self.graph.get_or_create_for_id(&new_resolved_id);
+
+        // resolved_children includes both regular deps and peer dep nodes
+        // (from all_deps_to_recurse), with correct copy NodeIds.
+        for (spec, child_id) in &resolved_children {
+          self
+            .graph
+            .set_child_of_parent_node(new_node_id, spec, *child_id);
+        }
+        if created {
+          // Copy no_peers flag
+          let old_no_peers = self.graph.nodes.get(&node_id).unwrap().no_peers;
+          self.graph.borrow_node_mut(new_node_id).no_peers = old_no_peers;
+        }
+
+        // Step 5: Fix circular parent references. When children have
+        // circular peer deps back to this node (e.g., expo-plugin peers
+        // with expo), the recursion returns the ORIGINAL parent node_id
+        // because the parent is in `visiting`. Now that we have the
+        // parent's copy, update all children that reference the original
+        // parent to reference the copy instead.
+        // This updates BOTH node.children AND ResolvedId.peer_dependencies,
+        // since the NpmPackageId computation uses the latter.
+        if new_node_id != node_id {
+          for child_copy_id in resolved_children.values() {
+            // Update node children
+            if let Some(child_node) = self.graph.nodes.get(child_copy_id) {
+              let updates: Vec<_> = child_node
+                .children
+                .iter()
+                .filter(|(_, id)| **id == node_id)
+                .map(|(spec, _)| spec.clone())
+                .collect();
+              for spec in updates {
+                self.graph.set_child_of_parent_node(
+                  *child_copy_id,
+                  &spec,
+                  new_node_id,
+                );
+              }
+            }
+            // Update ResolvedId peer_dependencies that reference original
+            if let Some(child_resolved) =
+              self.graph.resolved_node_ids.get(*child_copy_id).cloned()
+            {
+              let mut updated = false;
+              let mut new_peers = child_resolved.peer_dependencies.clone();
+              for id in new_peers.iter_mut() {
+                if *id == node_id {
+                  *id = new_node_id;
+                  updated = true;
+                }
+              }
+              if updated {
+                let updated_resolved = ResolvedId {
+                  nv: child_resolved.nv.clone(),
+                  peer_dependencies: new_peers,
+                };
+                self
+                  .graph
+                  .resolved_node_ids
+                  .set(*child_copy_id, updated_resolved);
+              }
+            }
+          }
+        }
+
+        new_node_id
+      };
+
+    // Filter: only bubble up peers NOT provided by this node's regular
+    // deps (Phase 1 children). Peers that this node provides via its own
+    // regular deps are "consumed" here and don't bubble further up.
+    // We use the original `children` vec (Phase 1 regular deps), NOT the
+    // copy node's children (which includes newly-added peer deps).
+    let original_child_names: HashSet<&StackString> =
+      children.iter().map(|(s, _)| s).collect();
+    let should_bubble = |name: &StackString| {
+      !original_child_names.contains(name) && name.as_str() != nv.name.as_str()
+    };
+    let bubbling_peers: BTreeMap<StackString, NodeId> = all_resolved_peers
+      .into_iter()
+      .filter(|(name, _)| should_bubble(name))
+      .collect();
+    let bubbling_missing: BTreeMap<StackString, VersionReq> = all_missing_peers
+      .into_iter()
+      .filter(|(name, _)| should_bubble(name))
+      .collect();
+    // Deduplicate unresolved optional peers via BTreeSet.
+    let bubbling_unresolved_optional: Vec<StackString> =
+      all_unresolved_optional_peers
+        .into_iter()
+        .filter(|name| should_bubble(name))
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .collect();
+
+    // Cache the result.
+    // A package is "pure" only if nothing bubbles up AND there are no
+    // unresolved optional peers (which could be resolved in a different
+    // parent context).
+    let is_pure = bubbling_peers.is_empty()
+      && bubbling_missing.is_empty()
+      && bubbling_unresolved_optional.is_empty();
+    let result = PeersResolution {
+      resolved_peers: bubbling_peers,
+      missing_peers: bubbling_missing,
+      unresolved_optional_peers: bubbling_unresolved_optional,
+      node_id: final_node_id,
+    };
+
+    if is_pure {
+      self.pure_pkgs.insert(nv);
+    } else {
+      self.peers_cache.entry(nv).or_default().push(result.clone());
+    }
+
+    visiting.remove(&node_id);
+
+    Ok(result)
+  }
+
+  /// Look up a peer dependency node ID from the parent scope and fallbacks.
+  /// Checks by bare specifier first, then by package name.
+  fn find_peer_node_id(
+    &self,
+    dep: &NpmDependencyEntry,
+    parent_pkgs: &BTreeMap<StackString, NodeId>,
+  ) -> Option<NodeId> {
+    parent_pkgs
+      .get(&dep.bare_specifier)
+      .or_else(|| parent_pkgs.get(dep.name.as_str()))
+      .or_else(|| self.peer_fallbacks.get(&dep.bare_specifier))
+      .or_else(|| self.peer_fallbacks.get(dep.name.as_str()))
+      .copied()
+  }
+
+  /// Check if a cached peer resolution matches the current parent context.
+  fn find_peers_cache_hit(
+    &self,
+    nv: &PackageNv,
+    parent_pkgs: &BTreeMap<StackString, NodeId>,
+  ) -> Option<PeersResolution> {
+    let mut checking = HashSet::new();
+    self.find_peers_cache_hit_inner(nv, parent_pkgs, &mut checking)
+  }
+
+  fn find_peers_cache_hit_inner(
+    &self,
+    nv: &PackageNv,
+    parent_pkgs: &BTreeMap<StackString, NodeId>,
+    checking: &mut HashSet<PackageNv>,
+  ) -> Option<PeersResolution> {
+    let entries = self.peers_cache.get(nv)?;
+    if !checking.insert(nv.clone()) {
+      // Prevent infinite recursion for circular deps
+      return None;
+    }
+    for entry in entries {
+      let mut all_match = true;
+
+      // Check each resolved peer: is the same peer available in current scope?
+      for (name, cached_id) in &entry.resolved_peers {
+        match parent_pkgs.get(name) {
+          Some(current_id) if current_id == cached_id => continue,
+          Some(current_id) => {
+            // Different NodeId. Check if same package version.
+            let cached_nv =
+              self.graph.resolved_node_ids.get(*cached_id).map(|r| &r.nv);
+            let current_nv =
+              self.graph.resolved_node_ids.get(*current_id).map(|r| &r.nv);
+            if cached_nv != current_nv {
+              all_match = false;
+              break;
+            }
+            // Same version. If pure, it's equivalent.
+            if let Some(cnv) = cached_nv {
+              if self.pure_pkgs.contains(cnv) {
+                continue;
+              }
+              // Not pure. Check recursively if the non-pure
+              // package would resolve the same way in this context.
+              if self
+                .find_peers_cache_hit_inner(cnv, parent_pkgs, checking)
+                .is_some()
+              {
+                continue;
+              }
+              all_match = false;
+              break;
+            }
+          }
+          None => {
+            all_match = false;
+            break;
+          }
+        }
+      }
+
+      if !all_match {
+        continue;
+      }
+
+      // Check that previously missing peers are still missing
+      for name in entry.missing_peers.keys() {
+        if parent_pkgs.contains_key(name) {
+          all_match = false;
+          break;
+        }
+      }
+
+      if !all_match {
+        continue;
+      }
+
+      // Check that previously unresolved optional peers are still
+      // unavailable. If one is now available, this cache entry doesn't
+      // apply — the package should be re-resolved with the optional
+      // peer in scope.
+      for name in &entry.unresolved_optional_peers {
+        if parent_pkgs.contains_key(name)
+          || self.peer_fallbacks.contains_key(name)
+        {
+          all_match = false;
+          break;
+        }
+      }
+
+      if all_match {
+        checking.remove(nv);
+        return Some(entry.clone());
+      }
+    }
+    checking.remove(nv);
+    None
+  }
+
   async fn resolve_next_pending(
     &mut self,
     parent_path: Rc<GraphPath>,
   ) -> Result<(), NpmResolutionError> {
-    let (parent_nv, child_deps) = {
+    let (_parent_nv, child_deps) = {
       let node_id = parent_path.node_id();
       if self.graph.nodes.get(&node_id).unwrap().no_peers {
-        // We can skip as there's no reason to analyze this graph segment further.
+        // Skip: no reason to analyze this graph segment further
         return Ok(());
       }
 
@@ -1377,14 +2518,19 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
                 child_id,
                 dep.bare_specifier.clone(),
                 child_nv,
-                parent_path.mode,
               );
               if let Some(ancestor) = maybe_ancestor {
                 // when the nv appears as an ancestor, use that node
                 // and mark this as circular
                 self.add_linked_circular_descendant(&ancestor, child_path);
-              } else {
-                // mark the child as pending
+              } else if !self.graph.nodes.get(&child_id).unwrap().no_peers && {
+                // Only requeue if we haven't already queued this canonical
+                // (parent, child) tuple. Using canonical IDs means
+                // node copies share dedup entries with originals.
+                let cp = self.canonical_node_id(parent_id);
+                let cc = self.canonical_node_id(child_id);
+                self.visited_requeue.insert((cp, cc))
+              } {
                 self.pending_unresolved_nodes.push_back(child_path);
               }
               child_id
@@ -1420,7 +2566,6 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
                   .unwrap()
                   .nv
                   .clone(),
-                parent_path.mode,
               ),
             ));
           }
@@ -1430,54 +2575,10 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
           }
         }
         NpmDependencyEntryKind::Peer | NpmDependencyEntryKind::OptionalPeer => {
+          // Phase 1: Skip peer dep resolution entirely. Phase 2 will
+          // resolve peer deps from parent scope. The auto-install step
+          // between Phase 1 and Phase 2 handles unmet peers.
           found_peer = true;
-          let parent_id = parent_path.node_id();
-          let node = self.graph.nodes.get(&parent_id).unwrap();
-          let previous_nv = node
-            .children
-            .get(&dep.bare_specifier)
-            .and_then(|child_id| self.graph.resolved_node_ids.get(*child_id))
-            .map(|child| child.nv.clone());
-          // we need to re-evaluate peer dependencies every time and can't
-          // skip over them because they might be evaluated differently based
-          // on the current path
-          let maybe_new_id = self.resolve_peer_dep(
-            &dep.bare_specifier,
-            dep,
-            &version_resolver,
-            &parent_path,
-            previous_nv.as_ref(),
-          )?;
-
-          #[cfg(feature = "tracing")]
-          if let Some(child_id) = maybe_new_id {
-            self.graph.traces.push(build_trace_graph_snapshot(
-              self.graph,
-              &self.dep_entry_cache,
-              &parent_path.with_id(
-                child_id,
-                dep.bare_specifier.clone(),
-                self
-                  .graph
-                  .resolved_node_ids
-                  .get(child_id)
-                  .unwrap()
-                  .nv
-                  .clone(),
-                parent_path.mode,
-              ),
-            ));
-          }
-
-          if dep.kind == NpmDependencyEntryKind::OptionalPeer
-            && maybe_new_id.is_some()
-          {
-            // mark that we've seen it
-            self
-              .graph
-              .unresolved_optional_peers
-              .mark_seen(parent_nv.clone(), &dep.bare_specifier);
-          }
         }
       }
     }
@@ -1485,346 +2586,40 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
     if !found_peer {
       self.graph.borrow_node_mut(parent_path.node_id()).no_peers = true;
     }
+
     Ok(())
-  }
-
-  fn resolve_peer_dep(
-    &mut self,
-    specifier: &StackString,
-    peer_dep: &NpmDependencyEntry,
-    peer_version_resolver: &NpmPackageVersionResolver,
-    ancestor_path: &Rc<GraphPath>,
-    previous_nv: Option<&Rc<PackageNv>>,
-  ) -> Result<Option<NodeId>, NpmResolutionError> {
-    fn get_path(
-      index: usize,
-      ancestor_path: &Rc<GraphPath>,
-    ) -> Vec<&Rc<GraphPath>> {
-      let mut path = Vec::with_capacity(index + 2);
-      path.push(ancestor_path);
-      path.extend(ancestor_path.ancestors().take(index + 1).filter_map(|a| {
-        match a {
-          GraphPathNodeOrRoot::Node(graph_path) => Some(graph_path),
-          GraphPathNodeOrRoot::Root(_) => None,
-        }
-      }));
-      path
-    }
-
-    debug_assert!(matches!(
-      peer_dep.kind,
-      NpmDependencyEntryKind::Peer | NpmDependencyEntryKind::OptionalPeer
-    ));
-
-    if !peer_dep.kind.is_optional_peer()
-      && matches!(ancestor_path.mode, GraphPathResolutionMode::OptionalPeers)
-      && let Some(previous_nv) = previous_nv.cloned()
-    {
-      // don't re-resolve a peer dependency when only going through the graph
-      // resolving optional peers
-      let node = self.graph.nodes.get(&ancestor_path.node_id()).unwrap();
-      let previous_id = node.children.get(&peer_dep.bare_specifier).unwrap();
-      let new_path = ancestor_path.with_id(
-        *previous_id,
-        peer_dep.bare_specifier.clone(),
-        previous_nv,
-        GraphPathResolutionMode::OptionalPeers,
-      );
-      self.pending_unresolved_nodes.push_back(new_path);
-      return Ok(None);
-    }
-
-    // the current dependency might have had the peer dependency
-    // in another bare specifier slot... if so resolve it to that
-    {
-      let maybe_peer_dep = self.find_peer_dep_in_node(
-        ancestor_path,
-        peer_dep,
-        peer_version_resolver,
-        // exclude the current resolving specifier so that we don't find the
-        // peer dependency in the current slot, which might be out of date
-        Some(specifier),
-        ancestor_path,
-      )?;
-
-      if let Some((peer_parent, peer_dep_id)) = maybe_peer_dep {
-        // this will always have an ancestor because we're not at the root
-        self.set_new_peer_dep(
-          &[ancestor_path],
-          peer_parent,
-          specifier,
-          peer_dep_id,
-        );
-        return Ok(Some(peer_dep_id));
-      }
-    }
-
-    // Peer dependencies are resolved based on its ancestors' siblings.
-    // If not found, then it resolves based on the version requirement if non-optional.
-    let mut matching_peers_going_up = ancestor_path
-      .ancestors()
-      .enumerate()
-      .filter_map(|(i, ancestor_node)| {
-        match ancestor_node {
-          GraphPathNodeOrRoot::Node(ancestor_graph_path_node) => {
-            let maybe_peer_dep_result = self.find_peer_dep_in_node(
-              ancestor_graph_path_node,
-              peer_dep,
-              peer_version_resolver,
-              None,
-              ancestor_path,
-            );
-            match maybe_peer_dep_result {
-              Ok(maybe_peer_dep) => {
-                maybe_peer_dep.map(|(peer_parent, peer_dep_id)| {
-                  let path = get_path(i, ancestor_path);
-                  Ok((path, peer_parent, peer_dep_id))
-                })
-              }
-              Err(err) => Some(Err(err)),
-            }
-          }
-          GraphPathNodeOrRoot::Root(root_pkg_nv) => {
-            // in this case, the parent is the root so the children are all the package requirements
-            let maybe_peer_dep_result = self.find_matching_child_for_peer_dep(
-              peer_dep,
-              peer_version_resolver,
-              self.graph.root_packages.iter().map(|(nv, id)| (*id, nv)),
-              ancestor_path,
-            );
-            match maybe_peer_dep_result {
-              Ok(maybe_peer_dep) => maybe_peer_dep.map(|peer_dep_id| {
-                let path = get_path(i, ancestor_path);
-                let peer_parent =
-                  GraphPathNodeOrRoot::Root(root_pkg_nv.clone());
-                Ok((path, peer_parent, peer_dep_id))
-              }),
-              Err(err) => Some(Err(err)),
-            }
-          }
-        }
-      });
-    let mut found_result = None;
-    if let Some(previous_nv) = previous_nv {
-      // when this child previously matched to an nv, we want to
-      // see if that nv is anywhere in the ancestor peers... if so
-      // match to that instead of the closest peer as it reduces
-      // duplicate packages
-      for item in matching_peers_going_up {
-        let item = item?;
-        let id = self.graph.resolved_node_ids.get(item.2).unwrap();
-        if id.nv == *previous_nv {
-          found_result = Some(item);
-          break;
-        } else if found_result.is_none() {
-          found_result = Some(item);
-        }
-      }
-    } else if let Some(found_peer) = matching_peers_going_up.next() {
-      found_result = Some(found_peer?);
-    }
-
-    if let Some((path, peer_parent, peer_dep_id)) = found_result {
-      self.set_new_peer_dep(&path, peer_parent, specifier, peer_dep_id);
-      return Ok(Some(peer_dep_id));
-    }
-
-    if peer_dep.kind.is_optional_peer() {
-      if self
-        .graph
-        .unresolved_optional_peers
-        .has_seen(&ancestor_path.nv, specifier)
-      {
-        // for optional peer deps that haven't been found, traverse the entire
-        // graph searching for the first same nv that uses this
-        let mut seen_ids = HashSet::with_capacity(self.graph.nodes.len());
-        let mut pending_ids = VecDeque::new();
-        for id in self.graph.root_packages.values().copied() {
-          if seen_ids.insert(id) {
-            pending_ids.push_back(id);
-          }
-        }
-        while let Some(node_id) = pending_ids.pop_front() {
-          let Some(node) = self.graph.nodes.get(&node_id) else {
-            continue;
-          };
-
-          if let Some(id) = self.graph.resolved_node_ids.get(node_id)
-            && id.nv == ancestor_path.nv
-            && let Some(node_id) = node.children.get(specifier).copied()
-          {
-            let peer_parent = GraphPathNodeOrRoot::Node(ancestor_path.clone());
-            self.set_new_peer_dep(
-              &[ancestor_path],
-              peer_parent,
-              specifier,
-              node_id,
-            );
-            return Ok(Some(node_id));
-          }
-
-          for child_id in node.children.values().copied() {
-            if seen_ids.insert(child_id) {
-              pending_ids.push_back(child_id);
-            }
-          }
-        }
-      }
-      Ok(None)
-    } else {
-      // We didn't find anything by searching the ancestor siblings, so we need
-      // to resolve based on the package info
-      let parent_id = ancestor_path.node_id();
-      let default_req = peer_dep
-        .peer_dep_version_req
-        .as_ref()
-        .unwrap_or(&peer_dep.version_req);
-      // check if an override applies to this peer dependency:
-      // unconditional first, then resolve version to check selector-based
-      let effective_req = match ancestor_path
-        .active_overrides
-        .get_override_for(&peer_dep.name, None)
-      {
-        Some(req) => req,
-        None => {
-          let natural_version = peer_version_resolver
-            .resolve_best_package_version_info(
-              default_req,
-              self
-                .graph
-                .package_name_versions
-                .entry(peer_version_resolver.info().name.clone())
-                .or_default()
-                .iter(),
-            )
-            .ok()
-            .map(|info| info.version.clone());
-          match natural_version.as_ref().and_then(|v| {
-            ancestor_path
-              .active_overrides
-              .get_override_for(&peer_dep.name, Some(v))
-          }) {
-            Some(req) => req,
-            None => default_req,
-          }
-        }
-      };
-      let (_, node_id) = self.resolve_node_from_info(
-        &peer_dep.name,
-        effective_req,
-        peer_version_resolver,
-        Some(parent_id),
-      )?;
-      let peer_parent = GraphPathNodeOrRoot::Node(ancestor_path.clone());
-      self.set_new_peer_dep(&[ancestor_path], peer_parent, specifier, node_id);
-      Ok(Some(node_id))
-    }
-  }
-
-  fn find_peer_dep_in_node(
-    &self,
-    path: &Rc<GraphPath>,
-    peer_dep: &NpmDependencyEntry,
-    peer_version_resolver: &NpmPackageVersionResolver,
-    exclude_key: Option<&str>,
-    original_resolving_path: &Rc<GraphPath>,
-  ) -> Result<Option<(GraphPathNodeOrRoot, NodeId)>, NpmResolutionError> {
-    let node_id = path.node_id();
-    let resolved_node_id = self.graph.resolved_node_ids.get(node_id).unwrap();
-    // check if this node itself is a match for
-    // the peer dependency and if so use that
-    if resolved_node_id.nv.name == peer_dep.name {
-      if !peer_version_resolver.version_req_satisfies(
-        &peer_dep.version_req,
-        &resolved_node_id.nv.version,
-      )? {
-        self.add_unmet_peer_dep_diagnostic(
-          original_resolving_path,
-          peer_dep,
-          resolved_node_id.nv.version.clone(),
-        );
-      }
-      let parent = path.previous_node.as_ref().unwrap().clone();
-      Ok(Some((parent, node_id)))
-    } else {
-      let node = self.graph.nodes.get(&node_id).unwrap();
-      let children = node
-        .children
-        .iter()
-        .filter(|(key, _value)| Some(key.as_str()) != exclude_key)
-        .map(|(_specifier, child_node_id)| {
-          let child_node_id = *child_node_id;
-          (
-            child_node_id,
-            &self.graph.resolved_node_ids.get(child_node_id).unwrap().nv,
-          )
-        });
-      self
-        .find_matching_child_for_peer_dep(
-          peer_dep,
-          peer_version_resolver,
-          children,
-          original_resolving_path,
-        )
-        .map(|maybe_child_id| {
-          maybe_child_id.map(|child_id| {
-            let parent = GraphPathNodeOrRoot::Node(path.clone());
-            (parent, child_id)
-          })
-        })
-    }
-  }
-
-  fn add_unmet_peer_dep_diagnostic(
-    &self,
-    original_resolving_path: &Rc<GraphPath>,
-    peer_dep: &NpmDependencyEntry,
-    resolved_version: Version,
-  ) {
-    self
-      .unmet_peer_diagnostics
-      .borrow_mut()
-      .insert(UnmetPeerDepDiagnostic {
-        ancestors: std::iter::once(original_resolving_path)
-          .chain(original_resolving_path.ancestors().filter_map(|n| match n {
-            GraphPathNodeOrRoot::Node(path) => Some(path),
-            GraphPathNodeOrRoot::Root(_) => None,
-          }))
-          .filter_map(|node| {
-            Some(
-              self
-                .graph
-                .resolved_node_ids
-                .get(node.node_id())?
-                .nv
-                .as_ref()
-                .clone(),
-            )
-          })
-          .collect(),
-        dependency: PackageReq {
-          name: peer_dep.name.clone(),
-          version_req: peer_dep.version_req.clone(),
-        },
-        resolved: resolved_version,
-      });
   }
 
   fn add_peer_deps_to_path(
     &mut self,
     // path from the node above the resolved dep to just above the peer dep
     path: &[&Rc<GraphPath>],
-    peer_deps: &[(&ResolvedIdPeerDep, Rc<PackageNv>)],
+    peer_deps: &[(&NodeId, Rc<PackageNv>)],
   ) {
     debug_assert!(!path.is_empty());
 
     for graph_path_node in path.iter().rev() {
       let old_node_id = graph_path_node.node_id();
+
+      // Don't propagate peer deps to ancestors that already have the
+      // peer package as a direct child.
+      let filtered_peer_deps: Vec<_> = {
+        let node = self.graph.nodes.get(&old_node_id).unwrap();
+        peer_deps
+          .iter()
+          .filter(|(_, nv)| !node.children.contains_key(nv.name.as_str()))
+          .cloned()
+          .collect()
+      };
+      if filtered_peer_deps.is_empty() {
+        continue;
+      }
+
       let old_resolved_id =
         self.graph.resolved_node_ids.get(old_node_id).unwrap();
 
       let Some(new_resolved_id) =
-        self.add_peer_deps_to_id(old_resolved_id, peer_deps)
+        self.add_peer_deps_to_id(old_resolved_id, &filtered_peer_deps)
       else {
         continue; // nothing to change
       };
@@ -1833,9 +2628,16 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
       let (created, new_node_id) =
         self.graph.get_or_create_for_id(&new_resolved_id);
 
+      // Track old → new so visited_requeue canonicalization treats
+      // the copy the same as the original for dedup purposes.
+      if old_node_id != new_node_id {
+        self.node_id_mappings.insert(old_node_id, new_node_id);
+      }
+
       if created {
-        let old_children =
-          self.graph.borrow_node_mut(old_node_id).children.clone();
+        let old_node = self.graph.borrow_node_mut(old_node_id);
+        let old_children = old_node.children.clone();
+        let old_no_peers = old_node.no_peers;
         // copy over the old children to this new one
         for (specifier, child_id) in &old_children {
           self.graph.set_child_of_parent_node(
@@ -1844,6 +2646,10 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
             *child_id,
           );
         }
+        // Preserve the no_peers flag so the new node isn't unnecessarily
+        // re-processed. The peer dep being added to the ID doesn't affect
+        // the node's own deps or its children's peer status.
+        self.graph.borrow_node_mut(new_node_id).no_peers = old_no_peers;
 
         // the moved_package_ids is only used to update copy indexes
         // at the end, so only bother inserting if it's not empty
@@ -1901,17 +2707,19 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
   fn add_peer_deps_to_id(
     &self,
     id: &ResolvedId,
-    peer_deps: &[(&ResolvedIdPeerDep, Rc<PackageNv>)],
+    peer_deps: &[(&NodeId, Rc<PackageNv>)],
   ) -> Option<ResolvedId> {
     let mut new_resolved_id = Cow::Borrowed(id);
+    // Collect existing peer dep NVs for dedup.
     let peer_nvs = new_resolved_id
       .peer_dependencies
       .iter()
-      .filter_map(|p| {
+      .filter_map(|node_id| {
         self
           .graph
-          .peer_dep_to_maybe_node_id_and_resolved_id(p)
-          .map(|(_, resolved_id)| resolved_id.nv.clone())
+          .resolved_node_ids
+          .get(*node_id)
+          .map(|r| r.nv.clone())
       })
       .collect::<HashSet<_>>();
     for (peer_dep, nv) in peer_deps {
@@ -1924,11 +2732,11 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
       match &mut new_resolved_id {
         Cow::Borrowed(id) => {
           let mut new_id = (*id).clone();
-          new_id.peer_dependencies.push((*peer_dep).clone());
+          new_id.peer_dependencies.push(**peer_dep);
           new_resolved_id = Cow::Owned(new_id);
         }
         Cow::Owned(new_id) => {
-          new_id.peer_dependencies.push((*peer_dep).clone());
+          new_id.peer_dependencies.push(**peer_dep);
         }
       }
     }
@@ -1936,80 +2744,6 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
       Cow::Borrowed(_) => None,
       Cow::Owned(id) => Some(id),
     }
-  }
-
-  fn set_new_peer_dep(
-    &mut self,
-    // path from the node above the resolved dep to just above the peer dep
-    path: &[&Rc<GraphPath>],
-    peer_dep_parent: GraphPathNodeOrRoot,
-    peer_dep_specifier: &StackString,
-    peer_dep_id: NodeId,
-  ) {
-    debug_assert!(!path.is_empty());
-    let peer_dep_nv = self
-      .graph
-      .resolved_node_ids
-      .get(peer_dep_id)
-      .unwrap()
-      .nv
-      .clone();
-
-    let peer_dep = ResolvedIdPeerDep::ParentReference {
-      parent: peer_dep_parent,
-      child_pkg_nv: peer_dep_nv.clone(),
-    };
-
-    let top_node = path.last().unwrap();
-    let (maybe_circular_ancestor, path) = if top_node.nv == peer_dep_nv {
-      // it's circular, so exclude the top node
-      (Some(top_node), &path[0..path.len() - 1])
-    } else {
-      (None, path)
-    };
-
-    if path.is_empty() {
-      // the peer dep is the same as the parent, so we don't need to do anything
-      return;
-    }
-
-    self.add_peer_deps_to_path(path, &[(&peer_dep, peer_dep_nv.clone())]);
-
-    // now set the peer dependency
-    let bottom_node = path.first().unwrap();
-    self.graph.set_child_of_parent_node(
-      bottom_node.node_id(),
-      peer_dep_specifier,
-      peer_dep_id,
-    );
-
-    // queue next step
-    let new_path = bottom_node.with_id(
-      peer_dep_id,
-      peer_dep_specifier.clone(),
-      peer_dep_nv,
-      GraphPathResolutionMode::All,
-    );
-    if let Some(ancestor_node) = maybe_circular_ancestor {
-      // it's circular, so link this in step with the ancestor node
-      ancestor_node
-        .linked_circular_descendants
-        .borrow_mut()
-        .push(new_path);
-    } else {
-      // mark the peer dep as needing to be analyzed
-      self.pending_unresolved_nodes.push_back(new_path);
-    }
-
-    debug!(
-      "Resolved peer dependency for {} in {} to {}",
-      peer_dep_specifier,
-      &self
-        .graph
-        .get_npm_pkg_id(bottom_node.node_id())
-        .as_serialized(),
-      &self.graph.get_npm_pkg_id(peer_dep_id).as_serialized(),
-    );
   }
 
   fn add_linked_circular_descendant(
@@ -2033,18 +2767,13 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
       .map(|peer_dep| {
         (
           peer_dep,
-          match &peer_dep {
-            ResolvedIdPeerDep::ParentReference { child_pkg_nv, .. } => {
-              child_pkg_nv.clone()
-            }
-            ResolvedIdPeerDep::SnapshotNodeId(node_id) => self
-              .graph
-              .resolved_node_ids
-              .get(*node_id)
-              .unwrap()
-              .nv
-              .clone(),
-          },
+          self
+            .graph
+            .resolved_node_ids
+            .get(*peer_dep)
+            .unwrap()
+            .nv
+            .clone(),
         )
       })
       .collect::<Vec<_>>();
@@ -2063,30 +2792,6 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
       .linked_circular_descendants
       .borrow_mut()
       .push(descendant);
-  }
-
-  fn find_matching_child_for_peer_dep<'nv>(
-    &self,
-    peer_dep: &NpmDependencyEntry,
-    peer_version_resolver: &NpmPackageVersionResolver,
-    children: impl Iterator<Item = (NodeId, &'nv Rc<PackageNv>)>,
-    original_resolving_path: &Rc<GraphPath>,
-  ) -> Result<Option<NodeId>, NpmResolutionError> {
-    for (child_id, pkg_id) in children {
-      if pkg_id.name == peer_dep.name {
-        if !peer_version_resolver
-          .version_req_satisfies(&peer_dep.version_req, &pkg_id.version)?
-        {
-          self.add_unmet_peer_dep_diagnostic(
-            original_resolving_path,
-            peer_dep,
-            pkg_id.version.clone(),
-          );
-        }
-        return Ok(Some(child_id));
-      }
-    }
-    Ok(None)
   }
 
   pub fn take_unmet_peer_diagnostics(&self) -> Vec<UnmetPeerDepDiagnostic> {
@@ -2162,11 +2867,61 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
                 .or_default()
                 .entry(child_id.nv.version.clone())
                 .or_default()
-                .push(dep.version_req.clone());
+                .push(
+                  dep
+                    .peer_dep_version_req
+                    .as_ref()
+                    .unwrap_or(&dep.version_req)
+                    .clone(),
+                );
               if seen_nodes.insert(*child_node_id) {
                 pending_nodes.push_back(*child_node_id);
               }
             }
+          }
+        }
+      }
+    }
+
+    // Include peer-dep version requirements for auto-installed peer
+    // fallbacks. These packages are in `peer_fallbacks` but not
+    // connected as children of any node (Phase 2 hasn't run yet),
+    // so the traversal above doesn't see them. Without this,
+    // run_dedup_pass can't consolidate a version that only exists
+    // as a peer fallback.
+    for (name, &fallback_node_id) in &self.peer_fallbacks {
+      let Some(fallback_id) =
+        self.graph.resolved_node_ids.get(fallback_node_id)
+      else {
+        continue;
+      };
+      let fallback_nv = fallback_id.nv.clone();
+      // Collect peer dep version requirements from all packages
+      // that declare a peer dep on this fallback package.
+      for (resolved_id, _) in
+        self.graph.resolved_node_ids.node_to_resolved_id.values()
+      {
+        let Some(deps) = self.dep_entry_cache.get(&resolved_id.nv) else {
+          continue;
+        };
+        for dep in deps.iter() {
+          if dep.name.as_str() == name.as_str()
+            && matches!(
+              dep.kind,
+              NpmDependencyEntryKind::Peer
+                | NpmDependencyEntryKind::OptionalPeer
+            )
+          {
+            let effective_req = dep
+              .peer_dep_version_req
+              .as_ref()
+              .unwrap_or(&dep.version_req);
+            package_version_reqs_by_version
+              .entry(fallback_nv.name.clone())
+              .or_default()
+              .entry(fallback_nv.version.clone())
+              .or_default()
+              .push(effective_req.clone());
           }
         }
       }
@@ -2245,7 +3000,45 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
       }
     }
 
-    // now go through each node clearing it out
+    // Update peer_fallbacks to point to consolidated versions.
+    // Auto-installed peers may have been resolved to a version that
+    // was consolidated away (e.g., package-peer@1.2.0 → 1.1.0).
+    for (_name, node_id) in self.peer_fallbacks.iter_mut() {
+      let current_nv = {
+        let Some(resolved_id) = self.graph.resolved_node_ids.get(*node_id)
+        else {
+          continue;
+        };
+        resolved_id.nv.clone()
+      };
+      let Some(versions_by_req) = consolidated_versions.get(&current_nv.name)
+      else {
+        continue;
+      };
+      let target_versions: HashSet<&Version> =
+        versions_by_req.values().collect();
+      if target_versions.contains(&current_nv.version) {
+        continue; // already at a target version
+      }
+      // Find the target version and update the fallback entry.
+      if let Some(target_version) = target_versions.into_iter().next() {
+        let new_nv = Rc::new(PackageNv {
+          name: current_nv.name.clone(),
+          version: target_version.clone(),
+        });
+        let new_resolved_id = ResolvedId {
+          nv: new_nv,
+          peer_dependencies: Vec::new(),
+        };
+        let (_, new_node_id) =
+          self.graph.get_or_create_for_id(&new_resolved_id);
+        *node_id = new_node_id;
+      }
+    }
+
+    // Remove children that point to consolidated-away versions.
+    // Phase 1 BFS (run by the caller after this function) will
+    // re-resolve them to the target versions.
     for (node_id, node) in &mut self.graph.nodes {
       node.no_peers = false; // reset
       let Some(id) = self.graph.resolved_node_ids.get(*node_id) else {
@@ -2264,25 +3057,27 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
         else {
           continue;
         };
-        if versions.contains_key(&dep.version_req) {
+        let effective_req = dep
+          .peer_dep_version_req
+          .as_ref()
+          .unwrap_or(&dep.version_req);
+        if versions.contains_key(effective_req) {
           node.children.remove(&dep.bare_specifier);
         }
       }
     }
 
-    // reset some details
-    self.graph.unresolved_optional_peers = Default::default();
-    self.graph.resolved_node_ids.clear_peer_deps();
+    // Clean up stale state. No need to clear peer deps since
+    // run_dedup_pass now runs BEFORE Phase 2.
     self.graph.moved_package_ids.clear();
-    self.unmet_peer_diagnostics.borrow_mut().clear();
-    self.graph.packages_to_copy_index.clear(); // ok because we haven't started running code yet
+    self.graph.packages_to_copy_index.clear();
 
-    // add the pending nodes from the root
+    // Queue all root packages for Phase 1 BFS to re-resolve
+    // children that were removed above.
     for (pkg_nv, node_id) in &self.graph.root_packages {
       self.pending_unresolved_nodes.push_back(GraphPath::for_root(
         *node_id,
         pkg_nv.clone(),
-        GraphPathResolutionMode::All,
         self.initial_overrides.clone(),
       ));
     }
@@ -2382,12 +3177,20 @@ fn build_trace_graph_snapshot(
     }
   }
 
+  let all_pkg_ids = graph.compute_all_npm_pkg_ids();
+
   TraceGraphSnapshot {
     nodes: graph
       .nodes
       .iter()
       .map(|(node_id, node)| {
-        let id = graph.get_npm_pkg_id(*node_id);
+        let id = all_pkg_ids.get(node_id).cloned().unwrap_or_else(|| {
+          let resolved_id = graph.resolved_node_ids.get(*node_id).unwrap();
+          NpmPackageId {
+            nv: (*resolved_id.nv).clone(),
+            peer_dependencies: Default::default(),
+          }
+        });
         TraceNode {
           id: node_id.0,
           resolved_id: id.as_serialized().to_string(),
@@ -2645,7 +3448,7 @@ mod test {
       packages,
       vec![
         TestNpmResolutionPackage {
-          pkg_id: "package-0@1.0.0_package-peer@1.0.0".to_string(),
+          pkg_id: "package-0@1.0.0".to_string(),
           copy_index: 0,
           dependencies: BTreeMap::from([
             (
@@ -2680,10 +3483,7 @@ mod test {
     );
     assert_eq!(
       package_reqs,
-      vec![(
-        "package-0@1.0".to_string(),
-        "package-0@1.0.0_package-peer@1.0.0".to_string()
-      ),]
+      vec![("package-0@1.0".to_string(), "package-0@1.0.0".to_string()),]
     );
   }
 
@@ -2711,11 +3511,11 @@ mod test {
           copy_index: 0,
           dependencies: BTreeMap::from([(
             "package-1".to_string(),
-            "package-1@1.0.0_package-peer@1.0.0".to_string(),
+            "package-1@1.0.0".to_string(),
           )]),
         },
         TestNpmResolutionPackage {
-          pkg_id: "package-1@1.0.0_package-peer@1.0.0".to_string(),
+          pkg_id: "package-1@1.0.0".to_string(),
           copy_index: 0,
           dependencies: BTreeMap::from([
             (
@@ -2857,11 +3657,11 @@ mod test {
           copy_index: 0,
           dependencies: BTreeMap::from([(
             "package-a".to_string(),
-            "package-a@1.0.0_package-peer@4.0.0".to_string(),
+            "package-a@1.0.0".to_string(),
           )]),
         },
         TestNpmResolutionPackage {
-          pkg_id: "package-a@1.0.0_package-peer@4.0.0".to_string(),
+          pkg_id: "package-a@1.0.0".to_string(),
           copy_index: 0,
           dependencies: BTreeMap::from([
             (
@@ -2943,11 +3743,11 @@ mod test {
           copy_index: 0,
           dependencies: BTreeMap::from([(
             "package-a".to_string(),
-            "package-a@1.0.0_package-peer@4.0.0".to_string(),
+            "package-a@1.0.0".to_string(),
           )]),
         },
         TestNpmResolutionPackage {
-          pkg_id: "package-a@1.0.0_package-peer@4.0.0".to_string(),
+          pkg_id: "package-a@1.0.0".to_string(),
           copy_index: 0,
           dependencies: BTreeMap::from([
             (
@@ -3011,7 +3811,7 @@ mod test {
       packages,
       vec![
         TestNpmResolutionPackage {
-          pkg_id: "package-a@1.0.0".to_string(),
+          pkg_id: "package-a@1.0.0_package-peer@4.1.0".to_string(),
           copy_index: 0,
           dependencies: BTreeMap::from([
             (
@@ -3049,7 +3849,10 @@ mod test {
     );
     assert_eq!(
       package_reqs,
-      vec![("package-a@1".to_string(), "package-a@1.0.0".to_string())]
+      vec![(
+        "package-a@1".to_string(),
+        "package-a@1.0.0_package-peer@4.1.0".to_string()
+      )]
     );
   }
 
@@ -3213,7 +4016,7 @@ mod test {
       packages,
       vec![
         TestNpmResolutionPackage {
-          pkg_id: "package-a@1.0.0_package-peer@1.0.0".to_string(),
+          pkg_id: "package-a@1.0.0".to_string(),
           copy_index: 0,
           dependencies: BTreeMap::from([
             (
@@ -3241,10 +4044,7 @@ mod test {
     assert_eq!(
       package_reqs,
       vec![
-        (
-          "package-a@1".to_string(),
-          "package-a@1.0.0_package-peer@1.0.0".to_string()
-        ),
+        ("package-a@1".to_string(), "package-a@1.0.0".to_string()),
         (
           "package-b@1".to_string(),
           "package-b@1.0.0_package-peer@1.0.0".to_string()
@@ -3282,7 +4082,7 @@ mod test {
           )]),
         },
         TestNpmResolutionPackage {
-          pkg_id: "package-b@1.0.0_package-peer@2.0.0".to_string(),
+          pkg_id: "package-b@1.0.0".to_string(),
           copy_index: 0,
           dependencies: BTreeMap::from([
             (
@@ -3306,10 +4106,7 @@ mod test {
           "package-a@1".to_string(),
           "package-a@1.0.0_package-peer@2.0.0".to_string()
         ),
-        (
-          "package-b@1".to_string(),
-          "package-b@1.0.0_package-peer@2.0.0".to_string()
-        )
+        ("package-b@1".to_string(), "package-b@1.0.0".to_string())
       ]
     );
   }
@@ -3393,7 +4190,7 @@ mod test {
         )]),
       },
       TestNpmResolutionPackage {
-        pkg_id: "package-b@1.0.0_package-peer@2.0.0".to_string(),
+        pkg_id: "package-b@1.0.0".to_string(),
         copy_index: 0,
         dependencies: BTreeMap::from([
           ("package-peer".to_string(), "package-peer@2.0.0".to_string()),
@@ -3419,10 +4216,7 @@ mod test {
         "package-a@1".to_string(),
         "package-a@1.0.0_package-peer@1.0.0".to_string(),
       ),
-      (
-        "package-b@1".to_string(),
-        "package-b@1.0.0_package-peer@2.0.0".to_string(),
-      ),
+      ("package-b@1".to_string(), "package-b@1.0.0".to_string()),
       (
         "package-peer@1.0.0".to_string(),
         "package-peer@1.0.0".to_string(),
@@ -3520,7 +4314,7 @@ mod test {
       packages,
       vec![
         TestNpmResolutionPackage {
-          pkg_id: "package-0@1.0.0_package-peer-a@2.0.0__package-peer-b@3.0.0"
+          pkg_id: "package-0@1.0.0_package-peer-a@2.0.0__package-peer-b@3.0.0_package-peer-b@3.0.0"
             .to_string(),
           copy_index: 0,
           dependencies: BTreeMap::from([(
@@ -3547,7 +4341,7 @@ mod test {
       package_reqs,
       vec![(
         "package-0@1.0".to_string(),
-        "package-0@1.0.0_package-peer-a@2.0.0__package-peer-b@3.0.0"
+        "package-0@1.0.0_package-peer-a@2.0.0__package-peer-b@3.0.0_package-peer-b@3.0.0"
           .to_string()
       )]
     );
@@ -3575,7 +4369,8 @@ mod test {
       packages,
       vec![
         TestNpmResolutionPackage {
-          pkg_id: "package-0@1.0.0_package-peer-a@2.0.0__package-peer-b@3.0.0_package-peer-b@3.0.0".to_string(),
+          pkg_id: "package-0@1.0.0_package-peer-a@2.0.0__package-peer-b@3.0.0"
+            .to_string(),
           copy_index: 0,
           dependencies: BTreeMap::from([
             (
@@ -3587,7 +4382,6 @@ mod test {
               "package-peer-b@3.0.0".to_string(),
             )
           ]),
-
         },
         TestNpmResolutionPackage {
           pkg_id: "package-peer-a@2.0.0_package-peer-b@3.0.0".to_string(),
@@ -3601,7 +4395,6 @@ mod test {
           pkg_id: "package-peer-b@3.0.0".to_string(),
           copy_index: 0,
           dependencies: Default::default(),
-
         },
       ]
     );
@@ -3610,7 +4403,7 @@ mod test {
       vec![
         (
           "package-0@1.0".to_string(),
-          "package-0@1.0.0_package-peer-a@2.0.0__package-peer-b@3.0.0_package-peer-b@3.0.0"
+          "package-0@1.0.0_package-peer-a@2.0.0__package-peer-b@3.0.0"
             .to_string()
         ),
         (
@@ -3662,24 +4455,24 @@ mod test {
       packages,
       vec![
         TestNpmResolutionPackage {
-          pkg_id: "package-0@1.1.1".to_string(),
+          pkg_id: "package-0@1.1.1_package-peer-b@5.4.1_package-peer-c@6.2.0".to_string(),
           copy_index: 0,
           dependencies: BTreeMap::from([(
             "package-a".to_string(),
-            "package-a@1.0.0_package-peer-a@4.0.0__package-peer-b@5.4.1".to_string(),
+            "package-a@1.0.0_package-peer-b@5.4.1_package-peer-c@6.2.0".to_string(),
           )]),
         },
         TestNpmResolutionPackage {
-          pkg_id: "package-a@1.0.0_package-peer-a@4.0.0__package-peer-b@5.4.1".to_string(),
+          pkg_id: "package-a@1.0.0_package-peer-b@5.4.1_package-peer-c@6.2.0".to_string(),
           copy_index: 0,
           dependencies: BTreeMap::from([
             (
               "package-b".to_string(),
-              "package-b@2.0.0_package-peer-a@4.0.0__package-peer-b@5.4.1_package-peer-c@6.2.0".to_string(),
+              "package-b@2.0.0_package-peer-a@4.0.0__package-peer-b@5.4.1_package-peer-c@6.2.0_package-peer-b@5.4.1".to_string(),
             ),
             (
               "package-c".to_string(),
-              "package-c@3.0.0_package-peer-a@4.0.0__package-peer-b@5.4.1".to_string(),
+              "package-c@3.0.0_package-peer-a@4.0.0__package-peer-b@5.4.1_package-peer-b@5.4.1".to_string(),
             ),
             (
               "package-d".to_string(),
@@ -3693,7 +4486,7 @@ mod test {
 
         },
         TestNpmResolutionPackage {
-          pkg_id: "package-b@2.0.0_package-peer-a@4.0.0__package-peer-b@5.4.1_package-peer-c@6.2.0".to_string(),
+          pkg_id: "package-b@2.0.0_package-peer-a@4.0.0__package-peer-b@5.4.1_package-peer-c@6.2.0_package-peer-b@5.4.1".to_string(),
           copy_index: 0,
           dependencies: BTreeMap::from([
             (
@@ -3707,7 +4500,7 @@ mod test {
           ])
         },
         TestNpmResolutionPackage {
-          pkg_id: "package-c@3.0.0_package-peer-a@4.0.0__package-peer-b@5.4.1".to_string(),
+          pkg_id: "package-c@3.0.0_package-peer-a@4.0.0__package-peer-b@5.4.1_package-peer-b@5.4.1".to_string(),
           copy_index: 0,
           dependencies: BTreeMap::from([(
             "package-peer-a".to_string(),
@@ -3749,7 +4542,11 @@ mod test {
     assert_eq!(
       package_reqs,
       vec![
-        ("package-0@1.1.1".to_string(), "package-0@1.1.1".to_string()),
+        (
+          "package-0@1.1.1".to_string(),
+          "package-0@1.1.1_package-peer-b@5.4.1_package-peer-c@6.2.0"
+            .to_string()
+        ),
         ("package-e@3".to_string(), "package-e@3.6.0".to_string()),
       ]
     );
@@ -3815,7 +4612,7 @@ mod test {
         packages,
         vec![
           TestNpmResolutionPackage {
-            pkg_id: "package-a@1.0.0_package-peer@4.0.0".to_string(),
+            pkg_id: "package-a@1.0.0".to_string(),
             copy_index: 0,
             dependencies: BTreeMap::from([
               (
@@ -3826,7 +4623,7 @@ mod test {
             ]),
           },
           TestNpmResolutionPackage {
-            pkg_id: "package-b@2.0.0_package-peer@5.0.0".to_string(),
+            pkg_id: "package-b@2.0.0".to_string(),
             copy_index: 0,
             dependencies: BTreeMap::from([
               (
@@ -3867,14 +4664,8 @@ mod test {
       assert_eq!(
         package_reqs,
         vec![
-          (
-            "package-a@1".to_string(),
-            "package-a@1.0.0_package-peer@4.0.0".to_string()
-          ),
-          (
-            "package-b@2".to_string(),
-            "package-b@2.0.0_package-peer@5.0.0".to_string()
-          )
+          ("package-a@1".to_string(), "package-a@1.0.0".to_string()),
+          ("package-b@2".to_string(), "package-b@2.0.0".to_string())
         ]
       );
     }
@@ -3902,7 +4693,7 @@ mod test {
       packages,
       vec![
         TestNpmResolutionPackage {
-          pkg_id: "package-a@1.0.0_package-b@1.0.0__package-peer@1.0.0_package-peer@1.0.0"
+          pkg_id: "package-a@1.0.0_package-b@1.0.0__package-peer@1.0.0"
             .to_string(),
           copy_index: 0,
           dependencies: BTreeMap::from([
@@ -3942,7 +4733,7 @@ mod test {
       vec![
         (
           "package-a@1.0".to_string(),
-          "package-a@1.0.0_package-b@1.0.0__package-peer@1.0.0_package-peer@1.0.0".to_string()
+          "package-a@1.0.0_package-b@1.0.0__package-peer@1.0.0".to_string()
         ),
         (
           "package-b@1.0".to_string(),
@@ -3997,7 +4788,7 @@ mod test {
             )]),
           },
           TestNpmResolutionPackage {
-            pkg_id: "package-b@1.0.0_package-peer@1.1.0".to_string(),
+            pkg_id: "package-b@1.0.0".to_string(),
             copy_index: 0,
             dependencies: BTreeMap::from([
               (
@@ -4034,10 +4825,7 @@ mod test {
             "package-a@1.0".to_string(),
             "package-a@1.0.0_package-peer@1.2.0".to_string()
           ),
-          (
-            "package-b@1.0".to_string(),
-            "package-b@1.0.0_package-peer@1.1.0".to_string()
-          )
+          ("package-b@1.0".to_string(), "package-b@1.0.0".to_string())
         ]
       );
     }
@@ -4064,7 +4852,7 @@ mod test {
             )]),
           },
           TestNpmResolutionPackage {
-            pkg_id: "package-b@1.0.0_package-peer@1.1.0".to_string(),
+            pkg_id: "package-b@1.0.0".to_string(),
             copy_index: 0,
             dependencies: BTreeMap::from([
               (
@@ -4096,10 +4884,7 @@ mod test {
             "package-a@1.0".to_string(),
             "package-a@1.0.0_package-peer@1.1.0".to_string()
           ),
-          (
-            "package-b@1.0".to_string(),
-            "package-b@1.0.0_package-peer@1.1.0".to_string()
-          )
+          ("package-b@1.0".to_string(), "package-b@1.0.0".to_string())
         ]
       );
     }
@@ -4129,7 +4914,7 @@ mod test {
       packages,
       vec![
         TestNpmResolutionPackage {
-          pkg_id: "package-a@1.0.0_package-d@1.0.0".to_string(),
+          pkg_id: "package-a@1.0.0".to_string(),
           copy_index: 0,
           dependencies: BTreeMap::from([
             ("package-b".to_string(), "package-b@2.0.0".to_string(),),
@@ -4171,10 +4956,7 @@ mod test {
     );
     assert_eq!(
       package_reqs,
-      vec![(
-        "package-a@1.0".to_string(),
-        "package-a@1.0.0_package-d@1.0.0".to_string()
-      ),]
+      vec![("package-a@1.0".to_string(), "package-a@1.0.0".to_string()),]
     );
   }
 
@@ -4720,7 +5502,7 @@ mod test {
             ),
             (
               "package-d".to_string(),
-              "package-d@1.0.0_package-b@1.0.0__package-a@1.0.0_package-a@1.0.0".to_string(),
+              "package-d@1.0.0_package-b@1.0.0__package-a@1.0.0".to_string(),
             ),
             (
               "package-e".to_string(),
@@ -4730,7 +5512,7 @@ mod test {
 
         },
         TestNpmResolutionPackage {
-          pkg_id: "package-d@1.0.0_package-b@1.0.0__package-a@1.0.0_package-a@1.0.0".to_string(),
+          pkg_id: "package-d@1.0.0_package-b@1.0.0__package-a@1.0.0".to_string(),
           copy_index: 0,
           dependencies: BTreeMap::from([(
             "package-c".to_string(),
@@ -4753,7 +5535,7 @@ mod test {
             "package-a@1.0.0".to_string(),
           ), (
             "package-d".to_string(),
-            "package-d@1.0.0_package-b@1.0.0__package-a@1.0.0_package-a@1.0.0".to_string(),
+            "package-d@1.0.0_package-b@1.0.0__package-a@1.0.0".to_string(),
           )]),
         },
       ]
@@ -4858,18 +5640,18 @@ mod test {
 
     let expected_packages = vec![
       TestNpmResolutionPackage {
-        pkg_id: "package-a@1.0.0_package-c@1.0.0__package-b@1.0.0___package-c@1.0.0_package-b@1.0.0__package-c@1.0.0___package-b@1.0.0".to_string(),
+        pkg_id: "package-a@1.0.0".to_string(),
         copy_index: 0,
         dependencies: BTreeMap::from([
           (
             "package-b".to_string(),
-            "package-b@1.0.0_package-c@1.0.0__package-b@1.0.0".to_string(),
+            "package-b@1.0.0_package-c@1.0.0".to_string(),
           ),
           (
             "package-c".to_string(),
-            "package-c@1.0.0_package-b@1.0.0__package-c@1.0.0".to_string(),
-          )
-        ])
+            "package-c@1.0.0_package-b@1.0.0".to_string(),
+          ),
+        ]),
       },
       TestNpmResolutionPackage {
         // This is stored like so:
@@ -4878,19 +5660,19 @@ mod test {
         // little difficult, so when this is encountered we assume it's circular.
         // I have a feeling this is not exactly correct, but perhaps it is good enough
         // and edge cases won't be seen in the wild...
-        pkg_id: "package-b@1.0.0_package-c@1.0.0__package-b@1.0.0".to_string(),
+        pkg_id: "package-b@1.0.0_package-c@1.0.0".to_string(),
         copy_index: 0,
         dependencies: BTreeMap::from([(
           "package-c".to_string(),
-          "package-c@1.0.0_package-b@1.0.0__package-c@1.0.0".to_string(),
+          "package-c@1.0.0_package-b@1.0.0".to_string(),
         )]),
       },
       TestNpmResolutionPackage {
-        pkg_id: "package-c@1.0.0_package-b@1.0.0__package-c@1.0.0".to_string(),
+        pkg_id: "package-c@1.0.0_package-b@1.0.0".to_string(),
         copy_index: 0,
         dependencies: BTreeMap::from([(
           "package-b".to_string(),
-          "package-b@1.0.0_package-c@1.0.0__package-b@1.0.0".to_string(),
+          "package-b@1.0.0_package-c@1.0.0".to_string(),
         )]),
       },
     ];
@@ -4899,10 +5681,7 @@ mod test {
     assert_eq!(packages, expected_packages.clone());
     assert_eq!(
       package_reqs,
-      vec![(
-        "package-a@1.0.0".to_string(),
-        "package-a@1.0.0_package-c@1.0.0__package-b@1.0.0___package-c@1.0.0_package-b@1.0.0__package-c@1.0.0___package-b@1.0.0".to_string()
-      )]
+      vec![("package-a@1.0.0".to_string(), "package-a@1.0.0".to_string())]
     );
 
     // now try with b at the top level
@@ -4914,13 +5693,13 @@ mod test {
     assert_eq!(packages, expected_packages.clone());
     assert_eq!(
       package_reqs,
-      vec![(
-        "package-a@1.0.0".to_string(),
-        "package-a@1.0.0_package-c@1.0.0__package-b@1.0.0___package-c@1.0.0_package-b@1.0.0__package-c@1.0.0___package-b@1.0.0".to_string()
-      ), (
-        "package-b@1.0.0".to_string(),
-        "package-b@1.0.0_package-c@1.0.0__package-b@1.0.0".to_string()
-      )]
+      vec![
+        ("package-a@1.0.0".to_string(), "package-a@1.0.0".to_string()),
+        (
+          "package-b@1.0.0".to_string(),
+          "package-b@1.0.0_package-c@1.0.0".to_string()
+        )
+      ]
     );
   }
 
@@ -4939,7 +5718,7 @@ mod test {
       packages,
       vec![
         TestNpmResolutionPackage {
-          pkg_id: "package-a@1.0.0".to_string(),
+          pkg_id: "package-a@1.0.0_package-b@1.0.0".to_string(),
           copy_index: 0,
           dependencies: BTreeMap::from([(
             "package-c".to_string(),
@@ -4963,7 +5742,10 @@ mod test {
     );
     assert_eq!(
       package_reqs,
-      vec![("package-a@1.0.0".to_string(), "package-a@1.0.0".to_string())]
+      vec![(
+        "package-a@1.0.0".to_string(),
+        "package-a@1.0.0_package-b@1.0.0".to_string()
+      )]
     );
   }
 
@@ -5251,7 +6033,7 @@ mod test {
         )]),
       },
       TestNpmResolutionPackage {
-        pkg_id: "package-b@1.0.0_package-peer@1.0.0".to_string(),
+        pkg_id: "package-b@1.0.0".to_string(),
         copy_index: 0,
         dependencies: BTreeMap::from([
           (
@@ -5300,7 +6082,7 @@ mod test {
       },
       TestNpmResolutionPackage {
         pkg_id: "package-peer-parent@1.0.0_package-peer@1.0.0".to_string(),
-        copy_index: 0,
+        copy_index: 1,
         dependencies: BTreeMap::from([(
           "package-peer".to_string(),
           "package-peer@1.0.0".to_string(),
@@ -5323,10 +6105,7 @@ mod test {
       package_reqs,
       vec![
         ("package-a@1".to_string(), "package-a@1.0.0".to_string()),
-        (
-          "package-b@1".to_string(),
-          "package-b@1.0.0_package-peer@1.0.0".to_string(),
-        ),
+        ("package-b@1".to_string(), "package-b@1.0.0".to_string(),),
         ("package-c@1".to_string(), "package-c@1.0.0".to_string(),)
       ]
     );
@@ -5360,10 +6139,7 @@ mod test {
       package_reqs,
       vec![
         ("package-a@1".to_string(), "package-a@1.0.0".to_string()),
-        (
-          "package-b@1".to_string(),
-          "package-b@1.0.0_package-peer@1.0.0".to_string(),
-        ),
+        ("package-b@1".to_string(), "package-b@1.0.0".to_string(),),
         ("package-c@1".to_string(), "package-c@1.0.0".to_string()),
         ("package-d@1".to_string(), "package-d@1.0.0".to_string()),
       ]
@@ -5698,7 +6474,7 @@ mod test {
             )]),
           },
           TestNpmResolutionPackage {
-            pkg_id: "package-b@1.0.0_package-peer@1.1.0".to_string(),
+            pkg_id: "package-b@1.0.0".to_string(),
             copy_index: 0,
             dependencies: BTreeMap::from([
               (
@@ -5735,10 +6511,7 @@ mod test {
             "package-a@1.0".to_string(),
             "package-a@1.0.0_package-peer@1.2.0".to_string()
           ),
-          (
-            "package-b@1.0".to_string(),
-            "package-b@1.0.0_package-peer@1.1.0".to_string()
-          )
+          ("package-b@1.0".to_string(), "package-b@1.0.0".to_string())
         ]
       );
     }
@@ -5766,7 +6539,7 @@ mod test {
             )]),
           },
           TestNpmResolutionPackage {
-            pkg_id: "package-b@1.0.0_package-peer@1.1.0".to_string(),
+            pkg_id: "package-b@1.0.0".to_string(),
             copy_index: 0,
             dependencies: BTreeMap::from([
               (
@@ -5798,10 +6571,7 @@ mod test {
             "package-a@1.0".to_string(),
             "package-a@1.0.0_package-peer@1.1.0".to_string()
           ),
-          (
-            "package-b@1.0".to_string(),
-            "package-b@1.0.0_package-peer@1.1.0".to_string()
-          )
+          ("package-b@1.0".to_string(), "package-b@1.0.0".to_string())
         ]
       );
     }
@@ -5873,59 +6643,64 @@ mod test {
     .await
     .unwrap();
     let (packages, package_reqs) = snapshot_to_packages(snapshot.clone());
-    // not sure if this is exactly correct, but there are no duplicate packages
+    // After dedup_peer_dependents, the bare client-sso-oidc is merged into
+    // the superset (with client-sts peer dep), so all references now point
+    // to the superset version with nested peer dep chains.
     let expected_packages = Vec::from([
       TestNpmResolutionPackage {
-        pkg_id: "@aws-sdk/client-s3@3.679.0_@aws-sdk+client-sts@3.679.0__@aws-sdk+client-sso-oidc@3.679.0___@aws-sdk+client-sts@3.679.0".to_string(),
+        pkg_id: "@aws-sdk/client-s3@3.679.0".to_string(),
         copy_index: 0,
         dependencies: BTreeMap::from([
-            ("@aws-sdk/client-sso-oidc".to_string(), "@aws-sdk/client-sso-oidc@3.679.0_@aws-sdk+client-sts@3.679.0__@aws-sdk+client-sso-oidc@3.679.0".to_string()),
-            ("@aws-sdk/client-sts".to_string(), "@aws-sdk/client-sts@3.679.0_@aws-sdk+client-sso-oidc@3.679.0__@aws-sdk+client-sts@3.679.0".to_string())
+            ("@aws-sdk/client-sso-oidc".to_string(), "@aws-sdk/client-sso-oidc@3.679.0_@aws-sdk+client-sts@3.679.0".to_string()),
+            ("@aws-sdk/client-sts".to_string(), "@aws-sdk/client-sts@3.679.0".to_string())
         ]),
       },
       TestNpmResolutionPackage {
-          pkg_id: "@aws-sdk/client-sso-oidc@3.679.0_@aws-sdk+client-sts@3.679.0__@aws-sdk+client-sso-oidc@3.679.0".to_string(),
+          pkg_id: "@aws-sdk/client-sso-oidc@3.679.0_@aws-sdk+client-sts@3.679.0".to_string(),
           copy_index: 0,
           dependencies: BTreeMap::from([
-              ("@aws-sdk/client-sts".to_string(), "@aws-sdk/client-sts@3.679.0_@aws-sdk+client-sso-oidc@3.679.0__@aws-sdk+client-sts@3.679.0".to_string()),
+              ("@aws-sdk/client-sts".to_string(), "@aws-sdk/client-sts@3.679.0".to_string()),
           ]),
       },
       TestNpmResolutionPackage {
-          pkg_id: "@aws-sdk/client-sts@3.679.0_@aws-sdk+client-sso-oidc@3.679.0__@aws-sdk+client-sts@3.679.0".to_string(),
+          pkg_id: "@aws-sdk/client-sts@3.679.0".to_string(),
           copy_index: 0,
           dependencies: BTreeMap::from([
-              ("@aws-sdk/client-sso-oidc".to_string(), "@aws-sdk/client-sso-oidc@3.679.0_@aws-sdk+client-sts@3.679.0__@aws-sdk+client-sso-oidc@3.679.0".to_string()),
-              ("@aws-sdk/credential-provider-node".to_string(), "@aws-sdk/credential-provider-node@3.679.0_@aws-sdk+client-sts@3.679.0__@aws-sdk+client-sso-oidc@3.679.0___@aws-sdk+client-sts@3.679.0_@aws-sdk+client-sso-oidc@3.679.0__@aws-sdk+client-sts@3.679.0___@aws-sdk+client-sso-oidc@3.679.0".to_string()),
+              ("@aws-sdk/client-sso-oidc".to_string(), "@aws-sdk/client-sso-oidc@3.679.0_@aws-sdk+client-sts@3.679.0".to_string()),
+              ("@aws-sdk/credential-provider-node".to_string(), "@aws-sdk/credential-provider-node@3.679.0_@aws-sdk+client-sso-oidc@3.679.0__@aws-sdk+client-sts@3.679.0_@aws-sdk+client-sts@3.679.0".to_string()),
           ]),
       },
       TestNpmResolutionPackage {
-          pkg_id: "@aws-sdk/credential-provider-ini@3.679.0_@aws-sdk+client-sts@3.679.0__@aws-sdk+client-sso-oidc@3.679.0___@aws-sdk+client-sts@3.679.0_@aws-sdk+client-sso-oidc@3.679.0__@aws-sdk+client-sts@3.679.0___@aws-sdk+client-sso-oidc@3.679.0".to_string(),
+          pkg_id: "@aws-sdk/credential-provider-ini@3.679.0_@aws-sdk+client-sts@3.679.0_@aws-sdk+client-sso-oidc@3.679.0__@aws-sdk+client-sts@3.679.0".to_string(),
           copy_index: 0,
           dependencies: BTreeMap::from([
-              ("@aws-sdk/client-sts".to_string(), "@aws-sdk/client-sts@3.679.0_@aws-sdk+client-sso-oidc@3.679.0__@aws-sdk+client-sts@3.679.0".to_string()),
-              ("@aws-sdk/credential-provider-sso".to_string(), "@aws-sdk/credential-provider-sso@3.679.0_@aws-sdk+client-sso-oidc@3.679.0__@aws-sdk+client-sts@3.679.0___@aws-sdk+client-sso-oidc@3.679.0_@aws-sdk+client-sts@3.679.0__@aws-sdk+client-sso-oidc@3.679.0___@aws-sdk+client-sts@3.679.0".to_string()),
+              ("@aws-sdk/client-sts".to_string(), "@aws-sdk/client-sts@3.679.0".to_string()),
+              ("@aws-sdk/credential-provider-sso".to_string(), "@aws-sdk/credential-provider-sso@3.679.0_@aws-sdk+client-sso-oidc@3.679.0__@aws-sdk+client-sts@3.679.0_@aws-sdk+client-sts@3.679.0".to_string()),
           ]),
       },
       TestNpmResolutionPackage {
-          pkg_id: "@aws-sdk/credential-provider-node@3.679.0_@aws-sdk+client-sts@3.679.0__@aws-sdk+client-sso-oidc@3.679.0___@aws-sdk+client-sts@3.679.0_@aws-sdk+client-sso-oidc@3.679.0__@aws-sdk+client-sts@3.679.0___@aws-sdk+client-sso-oidc@3.679.0".to_string(),
+          pkg_id: "@aws-sdk/credential-provider-node@3.679.0_@aws-sdk+client-sso-oidc@3.679.0__@aws-sdk+client-sts@3.679.0_@aws-sdk+client-sts@3.679.0".to_string(),
           copy_index: 0,
           dependencies: BTreeMap::from([
-              ("@aws-sdk/credential-provider-ini".to_string(), "@aws-sdk/credential-provider-ini@3.679.0_@aws-sdk+client-sts@3.679.0__@aws-sdk+client-sso-oidc@3.679.0___@aws-sdk+client-sts@3.679.0_@aws-sdk+client-sso-oidc@3.679.0__@aws-sdk+client-sts@3.679.0___@aws-sdk+client-sso-oidc@3.679.0".to_string()),
+              ("@aws-sdk/credential-provider-ini".to_string(), "@aws-sdk/credential-provider-ini@3.679.0_@aws-sdk+client-sts@3.679.0_@aws-sdk+client-sso-oidc@3.679.0__@aws-sdk+client-sts@3.679.0".to_string()),
           ]),
       },
       TestNpmResolutionPackage {
-          pkg_id: "@aws-sdk/credential-provider-sso@3.679.0_@aws-sdk+client-sso-oidc@3.679.0__@aws-sdk+client-sts@3.679.0___@aws-sdk+client-sso-oidc@3.679.0_@aws-sdk+client-sts@3.679.0__@aws-sdk+client-sso-oidc@3.679.0___@aws-sdk+client-sts@3.679.0".to_string(),
+          pkg_id: "@aws-sdk/credential-provider-sso@3.679.0_@aws-sdk+client-sso-oidc@3.679.0__@aws-sdk+client-sts@3.679.0_@aws-sdk+client-sts@3.679.0".to_string(),
           copy_index: 0,
           dependencies: BTreeMap::from([
-              ("@aws-sdk/client-sso-oidc".to_string(), "@aws-sdk/client-sso-oidc@3.679.0_@aws-sdk+client-sts@3.679.0__@aws-sdk+client-sso-oidc@3.679.0".to_string()),
+              ("@aws-sdk/client-sso-oidc".to_string(), "@aws-sdk/client-sso-oidc@3.679.0_@aws-sdk+client-sts@3.679.0".to_string()),
           ]),
       }]
     );
     assert_eq!(packages, expected_packages);
-    assert_eq!(package_reqs, vec![(
-      "@aws-sdk/client-s3@3.679.0".to_string(),
-      "@aws-sdk/client-s3@3.679.0_@aws-sdk+client-sts@3.679.0__@aws-sdk+client-sso-oidc@3.679.0___@aws-sdk+client-sts@3.679.0".to_string(),
-    )]);
+    assert_eq!(
+      package_reqs,
+      vec![(
+        "@aws-sdk/client-s3@3.679.0".to_string(),
+        "@aws-sdk/client-s3@3.679.0".to_string(),
+      )]
+    );
 
     // now run again with a broad specifier
     let snapshot = run_resolver_with_options_and_get_snapshot(
@@ -5940,13 +6715,19 @@ mod test {
     .unwrap();
     let (packages, package_reqs) = snapshot_to_packages(snapshot);
     assert_eq!(packages, expected_packages);
-    assert_eq!(package_reqs, vec![(
-      "@aws-sdk/client-s3".to_string(),
-      "@aws-sdk/client-s3@3.679.0_@aws-sdk+client-sts@3.679.0__@aws-sdk+client-sso-oidc@3.679.0___@aws-sdk+client-sts@3.679.0".to_string(),
-    ), (
-      "@aws-sdk/client-s3@3.679.0".to_string(),
-      "@aws-sdk/client-s3@3.679.0_@aws-sdk+client-sts@3.679.0__@aws-sdk+client-sso-oidc@3.679.0___@aws-sdk+client-sts@3.679.0".to_string(),
-    )]);
+    assert_eq!(
+      package_reqs,
+      vec![
+        (
+          "@aws-sdk/client-s3".to_string(),
+          "@aws-sdk/client-s3@3.679.0".to_string(),
+        ),
+        (
+          "@aws-sdk/client-s3@3.679.0".to_string(),
+          "@aws-sdk/client-s3@3.679.0".to_string(),
+        )
+      ]
+    );
   }
 
   // This was an attempt at reducing duplicate dependencies. Essentially, if we previously
@@ -5979,6 +6760,10 @@ mod test {
     api.add_peer_dependency(("package-d", "1.0.0"), ("package-b", "1"));
 
     // skipping dedup
+    // The closer scope wins: when package-b's peer dep package-peer is
+    // resolved in the context of package-c (which has package-peer@1.0.1
+    // as a dep), it resolves to 1.0.1, not the ancestor's 1.0.2. This
+    // creates two copies of package-b.
     let input_reqs = vec!["package-a@1.0.0", "package-peer@1"];
     {
       let (packages, package_reqs) = run_resolver_with_options_and_get_output(
@@ -5994,17 +6779,25 @@ mod test {
         packages,
         vec![
           TestNpmResolutionPackage {
-            pkg_id: "package-a@1.0.0_package-peer@1.0.2_package-b@1.0.0__package-peer@1.0.2".to_string(),
+            pkg_id: "package-a@1.0.0_package-peer@1.0.2".to_string(),
             copy_index: 0,
             dependencies: BTreeMap::from([(
               "package-b".to_string(),
               "package-b@1.0.0_package-peer@1.0.2".to_string(),
             ), (
               "package-c".to_string(),
-              "package-c@1.0.0_package-b@1.0.0__package-peer@1.0.2_package-peer@1.0.2".to_string(),
+              "package-c@1.0.0_package-b@1.0.0__package-peer@1.0.1".to_string(),
             ), (
               "package-peer".to_string(),
               "package-peer@1.0.2".to_string()
+            )])
+          },
+          TestNpmResolutionPackage {
+            pkg_id: "package-b@1.0.0_package-peer@1.0.1".to_string(),
+            copy_index: 1,
+            dependencies: BTreeMap::from([(
+              "package-peer".to_string(),
+              "package-peer@1.0.1".to_string(),
             )])
           },
           TestNpmResolutionPackage {
@@ -6016,22 +6809,22 @@ mod test {
             )])
           },
           TestNpmResolutionPackage {
-            pkg_id: "package-c@1.0.0_package-b@1.0.0__package-peer@1.0.2_package-peer@1.0.2".to_string(),
+            pkg_id: "package-c@1.0.0_package-b@1.0.0__package-peer@1.0.1".to_string(),
             copy_index: 0,
             dependencies: BTreeMap::from([(
               "package-d".to_string(),
-              "package-d@1.0.0_package-b@1.0.0__package-peer@1.0.2_package-peer@1.0.2".to_string(),
+              "package-d@1.0.0_package-b@1.0.0__package-peer@1.0.1_package-peer@1.0.1".to_string(),
             ), (
               "package-peer".to_string(),
               "package-peer@1.0.1".to_string(),
             )]),
           },
           TestNpmResolutionPackage {
-            pkg_id: "package-d@1.0.0_package-b@1.0.0__package-peer@1.0.2_package-peer@1.0.2".to_string(),
+            pkg_id: "package-d@1.0.0_package-b@1.0.0__package-peer@1.0.1_package-peer@1.0.1".to_string(),
             copy_index: 0,
             dependencies: BTreeMap::from([(
               "package-b".to_string(),
-              "package-b@1.0.0_package-peer@1.0.2".to_string(),
+              "package-b@1.0.0_package-peer@1.0.1".to_string(),
             )])
           },
           TestNpmResolutionPackage {
@@ -6049,13 +6842,23 @@ mod test {
       assert_eq!(
         package_reqs,
         vec![
-          ("package-a@1.0.0".to_string(), "package-a@1.0.0_package-peer@1.0.2_package-b@1.0.0__package-peer@1.0.2".to_string()),
-          ("package-peer@1".to_string(), "package-peer@1.0.2".to_string()),
+          (
+            "package-a@1.0.0".to_string(),
+            "package-a@1.0.0_package-peer@1.0.2".to_string()
+          ),
+          (
+            "package-peer@1".to_string(),
+            "package-peer@1.0.2".to_string()
+          ),
         ]
       );
     }
 
-    // dedup pass should consolidate to 1.0.1
+    // dedup pass should consolidate to 1.0.1.
+    // After consolidation, package-b's two copies (one with peer@1.0.2,
+    // one with peer@1.0.1) become identical and get merged.
+    // package-d's identity includes both package-b (own peer) and
+    // package-peer (transitive from package-b).
     {
       let (packages, package_reqs) = run_resolver_with_options_and_get_output(
         api,
@@ -6070,14 +6873,14 @@ mod test {
       packages,
       vec![
         TestNpmResolutionPackage {
-          pkg_id: "package-a@1.0.0_package-peer@1.0.1_package-b@1.0.0__package-peer@1.0.1".to_string(),
+          pkg_id: "package-a@1.0.0_package-peer@1.0.1".to_string(),
           copy_index: 0,
           dependencies: BTreeMap::from([(
             "package-b".to_string(),
             "package-b@1.0.0_package-peer@1.0.1".to_string(),
           ), (
             "package-c".to_string(),
-            "package-c@1.0.0_package-b@1.0.0__package-peer@1.0.1_package-peer@1.0.1".to_string(),
+            "package-c@1.0.0_package-b@1.0.0__package-peer@1.0.1".to_string(),
           ), (
             "package-peer".to_string(),
             "package-peer@1.0.1".to_string()
@@ -6092,7 +6895,7 @@ mod test {
           )])
         },
         TestNpmResolutionPackage {
-          pkg_id: "package-c@1.0.0_package-b@1.0.0__package-peer@1.0.1_package-peer@1.0.1".to_string(),
+          pkg_id: "package-c@1.0.0_package-b@1.0.0__package-peer@1.0.1".to_string(),
           copy_index: 0,
           dependencies: BTreeMap::from([(
             "package-d".to_string(),
@@ -6118,12 +6921,18 @@ mod test {
       ]
     );
       assert_eq!(
-      package_reqs,
-      vec![
-        ("package-a@1.0.0".to_string(), "package-a@1.0.0_package-peer@1.0.1_package-b@1.0.0__package-peer@1.0.1".to_string()),
-        ("package-peer@1".to_string(), "package-peer@1.0.1".to_string()),
-      ]
-    );
+        package_reqs,
+        vec![
+          (
+            "package-a@1.0.0".to_string(),
+            "package-a@1.0.0_package-peer@1.0.1".to_string()
+          ),
+          (
+            "package-peer@1".to_string(),
+            "package-peer@1.0.1".to_string()
+          ),
+        ]
+      );
     }
   }
 
@@ -6265,16 +7074,19 @@ mod test {
           )])
         },
         TestNpmResolutionPackage {
-          pkg_id: "@tailwindcss/vite@4.0.17_vite@6.2.4__lightningcss@1.29.2_lightningcss@1.29.2"
+          pkg_id: "@tailwindcss/vite@4.0.17_vite@6.2.4__lightningcss@1.29.2"
             .to_string(),
           copy_index: 0,
-          dependencies: BTreeMap::from([(
-            "lightningcss".to_string(),
-            "lightningcss@1.29.2".to_string(),
-          ), (
-            "vite".to_string(),
-            "vite@6.2.4_lightningcss@1.29.2".to_string(),
-          )])
+          dependencies: BTreeMap::from([
+            (
+              "lightningcss".to_string(),
+              "lightningcss@1.29.2".to_string(),
+            ),
+            (
+              "vite".to_string(),
+              "vite@6.2.4_lightningcss@1.29.2".to_string(),
+            )
+          ])
         },
         TestNpmResolutionPackage {
           pkg_id: "lightningcss@1.29.2".to_string(),
@@ -6291,10 +7103,20 @@ mod test {
         },
       ]
     );
-    assert_eq!(package_reqs, vec![
-      ("@deno/vite-plugin@~1.0.4".to_string(), "@deno/vite-plugin@1.0.4_vite@6.2.4__lightningcss@1.29.2".to_string()),
-      ("@tailwindcss/vite@~4.0.17".to_string(), "@tailwindcss/vite@4.0.17_vite@6.2.4__lightningcss@1.29.2_lightningcss@1.29.2".to_string()),
-    ]);
+    assert_eq!(
+      package_reqs,
+      vec![
+        (
+          "@deno/vite-plugin@~1.0.4".to_string(),
+          "@deno/vite-plugin@1.0.4_vite@6.2.4__lightningcss@1.29.2".to_string()
+        ),
+        (
+          "@tailwindcss/vite@~4.0.17".to_string(),
+          "@tailwindcss/vite@4.0.17_vite@6.2.4__lightningcss@1.29.2"
+            .to_string()
+        ),
+      ]
+    );
   }
 
   #[tokio::test]
@@ -7403,5 +8225,605 @@ mod test {
       parent.dependencies.get("@std/path").unwrap(),
       "@jsr/std__path@1.0.0"
     );
+  }
+
+  /// Auto-resolved peer deps must not depend on BFS traversal order.
+  ///
+  /// ```text
+  ///   package-a ──dep──→ lib ──peerDep──→ react
+  ///   package-b ──dep──→ bridge ──dep──→ react@^18.3.0
+  ///             └─dep──→ wrapper ──dep──→ lib ──peerDep──→ react
+  /// ```
+  ///
+  /// `bridge` adds react@18.3.0 to the graph at BFS depth 1. Without the
+  /// fix, `lib`'s peer dep would pick react@18.2.0 (latest) on one path
+  /// but react@18.3.0 (highest existing) on the other, creating a
+  /// duplicate `lib` entry. Both paths should resolve to the same version.
+  #[tokio::test]
+  async fn peer_dep_bfs_order_dependent_version_selection() {
+    let api = TestNpmRegistryApi::default();
+
+    api.ensure_package_version("react", "18.2.0");
+    api.ensure_package_version("react", "18.3.0");
+    api.add_dist_tag("react", "latest", "18.2.0");
+
+    api.ensure_package_version("lib", "1.0.0");
+    api.add_peer_dependency(("lib", "1.0.0"), ("react", "^18.0.0"));
+
+    api.ensure_package_version("package-a", "1.0.0");
+    api.add_dependency(("package-a", "1.0.0"), ("lib", "^1.0.0"));
+
+    api.ensure_package_version("bridge", "1.0.0");
+    api.add_dependency(("bridge", "1.0.0"), ("react", "^18.3.0"));
+
+    api.ensure_package_version("wrapper", "1.0.0");
+    api.add_dependency(("wrapper", "1.0.0"), ("lib", "^1.0.0"));
+
+    api.ensure_package_version("package-b", "1.0.0");
+    api.add_dependency(("package-b", "1.0.0"), ("bridge", "^1.0.0"));
+    api.add_dependency(("package-b", "1.0.0"), ("wrapper", "^1.0.0"));
+
+    let input_reqs = vec!["package-a@1", "package-b@1"];
+
+    for skip_dedup in [true, false] {
+      let (packages, _) = run_resolver_with_options_and_get_output(
+        api.clone(),
+        RunResolverOptions {
+          reqs: input_reqs.clone(),
+          skip_dedup,
+          ..Default::default()
+        },
+      )
+      .await;
+
+      let lib_entries: Vec<_> = packages
+        .iter()
+        .filter(|p| p.pkg_id.starts_with("lib@1.0.0"))
+        .collect();
+
+      assert_eq!(
+        lib_entries.len(),
+        1,
+        "lib should appear exactly once (skip_dedup={skip_dedup}). \
+        Packages: {:#?}",
+        packages,
+      );
+    }
+  }
+
+  /// Re-resolution with a snapshot must not create duplicate peer dep
+  /// entries when a newer version has been published.
+  ///
+  /// ```text
+  ///   framework ──dep──→ lib ──peerDep──→ react  (snapshot: react@18.2.0)
+  ///   new-package ──dep──→ bridge ──dep──→ react@^18.3.0
+  ///               └─dep──→ wrapper ──dep──→ lib ──peerDep──→ react
+  /// ```
+  ///
+  /// After react@18.3.0 is published and becomes "latest", adding
+  /// `new-package` must not create a second `lib` entry.
+  #[tokio::test]
+  async fn new_version_published_causes_peer_dep_duplicates() {
+    let api = TestNpmRegistryApi::default();
+
+    api.ensure_package_version("react", "18.2.0");
+    api.add_dist_tag("react", "latest", "18.2.0");
+
+    api.ensure_package_version("lib", "1.0.0");
+    api.add_peer_dependency(("lib", "1.0.0"), ("react", "^18.0.0"));
+
+    api.ensure_package_version("framework", "1.0.0");
+    api.add_dependency(("framework", "1.0.0"), ("lib", "^1.0.0"));
+
+    let snapshot = run_resolver_with_options_and_get_snapshot(
+      &api,
+      RunResolverOptions {
+        reqs: vec!["framework@1"],
+        ..Default::default()
+      },
+    )
+    .await
+    .unwrap();
+
+    let (initial_packages, _) = snapshot_to_packages(snapshot.clone());
+    let initial_lib = initial_packages
+      .iter()
+      .find(|p| p.pkg_id.starts_with("lib@1.0.0"))
+      .unwrap();
+    assert_eq!(
+      initial_lib.dependencies.get("react").unwrap(),
+      "react@18.2.0",
+    );
+
+    // Publish react@18.3.0 as the new latest
+    api.ensure_package_version("react", "18.3.0");
+    api.add_dist_tag("react", "latest", "18.3.0");
+
+    api.ensure_package_version("bridge", "1.0.0");
+    api.add_dependency(("bridge", "1.0.0"), ("react", "^18.3.0"));
+    api.ensure_package_version("wrapper", "1.0.0");
+    api.add_dependency(("wrapper", "1.0.0"), ("lib", "^1.0.0"));
+    api.ensure_package_version("new-package", "1.0.0");
+    api.add_dependency(("new-package", "1.0.0"), ("bridge", "^1.0.0"));
+    api.add_dependency(("new-package", "1.0.0"), ("wrapper", "^1.0.0"));
+
+    for skip_dedup in [true, false] {
+      let (packages, _) = run_resolver_with_options_and_get_output(
+        api.clone(),
+        RunResolverOptions {
+          snapshot: snapshot.clone(),
+          reqs: vec!["new-package@1"],
+          skip_dedup,
+          ..Default::default()
+        },
+      )
+      .await;
+
+      let lib_entries: Vec<_> = packages
+        .iter()
+        .filter(|p| p.pkg_id.starts_with("lib@1.0.0"))
+        .collect();
+
+      assert_eq!(
+        lib_entries.len(),
+        1,
+        "lib should appear exactly once (skip_dedup={skip_dedup}). \
+        Found {}: {:#?}\nAll packages: {:#?}",
+        lib_entries.len(),
+        lib_entries,
+        packages,
+      );
+
+      let framework_pkg = packages
+        .iter()
+        .find(|p| p.pkg_id.starts_with("framework@"))
+        .unwrap();
+      let wrapper_pkg = packages
+        .iter()
+        .find(|p| p.pkg_id.starts_with("wrapper@"))
+        .unwrap();
+      assert_eq!(
+        framework_pkg.dependencies.get("lib").unwrap(),
+        wrapper_pkg.dependencies.get("lib").unwrap(),
+        "framework and wrapper should share the same lib \
+        (skip_dedup={skip_dedup}). Packages: {:#?}",
+        packages,
+      );
+    }
+  }
+
+  /// Regression test: mimics the Expo/React Native pattern where:
+  /// - "expo" depends on many expo-* packages
+  /// - Each expo-* package peer-depends on "react", "react-native", AND "expo" itself
+  /// - "react-native" peer-depends on "react" and has many regular deps
+  /// - This creates circular peer deps + transitive peer propagation
+  ///
+  /// Without fixes, the resolver re-processes the same subtrees exponentially
+  /// because peer dep additions create new ancestor node copies that lose the
+  /// no_peers optimization flag, and the queue grows unboundedly.
+  #[tokio::test]
+  async fn resolve_many_siblings_same_peer_deps() {
+    let api = TestNpmRegistryApi::default();
+
+    // === Core packages (like react, react-native, @types/react) ===
+    api.ensure_package_version("react", "1.0.0");
+    api.ensure_package_version("react-native", "1.0.0");
+    api.ensure_package_version("types-react", "1.0.0");
+
+    // react-native peers with react and types-react (like real react-native)
+    api.add_peer_dependency(("react-native", "1.0.0"), ("react", "*"));
+    api.add_peer_dependency(("react-native", "1.0.0"), ("types-react", "*"));
+
+    // react-native has many regular deps (ws, yargs, etc.)
+    for i in 0..15 {
+      let dep_name = format!("rn-dep-{}", i);
+      api.ensure_package_version(&dep_name, "1.0.0");
+      api.add_dependency(("react-native", "1.0.0"), (&dep_name, "1"));
+    }
+
+    // === "expo" package ===
+    api.ensure_package_version("expo", "1.0.0");
+
+    // expo depends on many expo-* plugins AND on cli/metro-runtime
+    api.ensure_package_version("expo-cli", "1.0.0");
+    api.ensure_package_version("expo-metro-runtime", "1.0.0");
+    api.add_dependency(("expo", "1.0.0"), ("expo-cli", "1"));
+    api.add_dependency(("expo", "1.0.0"), ("expo-metro-runtime", "1"));
+
+    // expo-cli and expo-metro-runtime peer with expo (circular!)
+    api.add_peer_dependency(("expo-cli", "1.0.0"), ("expo", "*"));
+    api.add_peer_dependency(("expo-cli", "1.0.0"), ("react", "*"));
+    api.add_peer_dependency(("expo-metro-runtime", "1.0.0"), ("expo", "*"));
+    api.add_peer_dependency(("expo-metro-runtime", "1.0.0"), ("react", "*"));
+    api.add_peer_dependency(
+      ("expo-metro-runtime", "1.0.0"),
+      ("react-native", "*"),
+    );
+
+    // expo-cli has many deps
+    for i in 0..10 {
+      let dep_name = format!("cli-dep-{}", i);
+      api.ensure_package_version(&dep_name, "1.0.0");
+      api.add_dependency(("expo-cli", "1.0.0"), (&dep_name, "1"));
+    }
+
+    // === Many expo-* plugins that all peer with react, react-native, expo ===
+    let plugin_count: usize = 100;
+    for i in 0..plugin_count {
+      let name = format!("expo-plugin-{}", i);
+      api.ensure_package_version(&name, "1.0.0");
+      api.add_dependency(("expo", "1.0.0"), (&name, "1"));
+
+      // Each plugin peers with the big three (like expo-font, expo-image, etc.)
+      api.add_peer_dependency((&name, "1.0.0"), ("react", "*"));
+      api.add_peer_dependency((&name, "1.0.0"), ("react-native", "*"));
+      api.add_peer_dependency((&name, "1.0.0"), ("expo", "*")); // circular!
+      api.add_peer_dependency((&name, "1.0.0"), ("types-react", "*"));
+
+      // Each plugin has a couple of internal deps
+      for j in 0..2 {
+        let dep_name = format!("expo-plugin-{}-dep-{}", i, j);
+        api.ensure_package_version(&dep_name, "1.0.0");
+        api.add_dependency((&name, "1.0.0"), (&dep_name, "1"));
+      }
+    }
+
+    // === "expo-router" - peers with even more things ===
+    api.ensure_package_version("expo-router", "1.0.0");
+    api.add_dependency(("expo", "1.0.0"), ("expo-router", "1"));
+    api.add_peer_dependency(("expo-router", "1.0.0"), ("react", "*"));
+    api.add_peer_dependency(("expo-router", "1.0.0"), ("react-native", "*"));
+    api.add_peer_dependency(("expo-router", "1.0.0"), ("expo", "*"));
+    api.add_peer_dependency(("expo-router", "1.0.0"), ("types-react", "*"));
+    api.add_peer_dependency(
+      ("expo-router", "1.0.0"),
+      ("expo-metro-runtime", "*"),
+    );
+    // router depends on some plugins too
+    for i in 0..3 {
+      let name = format!("expo-plugin-{}", i);
+      api.add_dependency(("expo-router", "1.0.0"), (&name, "1"));
+    }
+
+    // Root reqs: all expo-* plugins are ALSO root deps (like in real Expo
+    // package.json where expo-font, expo-image etc. are direct deps)
+    let mut root_reqs = vec![
+      "expo@1",
+      "react@1",
+      "react-native@1",
+      "types-react@1",
+      "expo-router@1",
+    ];
+    for i in 0..plugin_count {
+      // We need to leak the strings to get &'static str for the vec
+      let req: &'static str =
+        Box::leak(format!("expo-plugin-{}@1", i).into_boxed_str());
+      root_reqs.push(req);
+    }
+
+    // Use tokio timeout to catch infinite loops
+    let result = tokio::time::timeout(
+      std::time::Duration::from_secs(30),
+      run_resolver_and_get_output(api, root_reqs),
+    )
+    .await;
+
+    let (packages, _package_reqs) =
+      result.expect("Resolution timed out - likely exponential blowup");
+
+    // Verify resolution completed with reasonable package count
+    assert!(
+      packages.len() >= 20,
+      "Expected at least 20 packages, got {}",
+      packages.len()
+    );
+
+    // Verify plugins got their peer deps resolved
+    let plugin_0 = packages
+      .iter()
+      .find(|p| p.pkg_id.starts_with("expo-plugin-0@"))
+      .expect("expo-plugin-0 should exist");
+    assert!(
+      plugin_0.dependencies.contains_key("react"),
+      "expo-plugin-0 should have react as dependency, got: {:?}",
+      plugin_0.dependencies
+    );
+    assert!(
+      plugin_0.dependencies.contains_key("react-native"),
+      "expo-plugin-0 should have react-native as dependency, got: {:?}",
+      plugin_0.dependencies
+    );
+  }
+
+  /// When a package is referenced twice in the dependency graph and one of
+  /// the times it cannot resolve its peers, still try to resolve it in the
+  /// other occurrence.
+  ///
+  /// package-b -> package-a(peer:package-peer) : can't resolve peer (not in scope)
+  /// package-c -> package-b -> package-a(peer:package-peer) + package-c -> package-peer : CAN resolve
+  ///
+  /// Expected: package-a appears with peer resolved from package-c's scope.
+  /// package-b should also appear (transitive peer propagation).
+  #[tokio::test]
+  async fn package_referenced_twice_one_resolves_peer() {
+    let api = TestNpmRegistryApi::default();
+    api.ensure_package_version("package-a", "1.0.0");
+    api.ensure_package_version("package-b", "1.0.0");
+    api.ensure_package_version("package-c", "1.0.0");
+    api.ensure_package_version("package-peer", "1.0.0");
+
+    api.add_peer_dependency(("package-a", "1.0.0"), ("package-peer", "*"));
+    api.add_dependency(("package-b", "1.0.0"), ("package-a", "1"));
+    api.add_dependency(("package-c", "1.0.0"), ("package-b", "1"));
+    api.add_dependency(("package-c", "1.0.0"), ("package-peer", "1"));
+
+    let (packages, _) =
+      run_resolver_and_get_output(api, vec!["package-b@1", "package-c@1"])
+        .await;
+
+    let pkg_ids: Vec<&str> =
+      packages.iter().map(|p| p.pkg_id.as_str()).collect();
+    assert!(
+      pkg_ids.contains(&"package-peer@1.0.0"),
+      "should have package-peer@1.0.0. Got: {:?}",
+      pkg_ids
+    );
+    assert!(
+      pkg_ids.contains(&"package-c@1.0.0"),
+      "should have package-c@1.0.0. Got: {:?}",
+      pkg_ids
+    );
+
+    // package-a should appear with resolved peer
+    let a_with_peer = packages.iter().any(|p| {
+      p.pkg_id.contains("package-a@1.0.0") && p.pkg_id.contains("package-peer")
+    });
+    assert!(
+      a_with_peer,
+      "package-a should have an instance with peer resolved. Got: {:?}",
+      pkg_ids
+    );
+
+    // package-b should appear (transitive peer propagated through package-a)
+    let b_entries: Vec<_> = packages
+      .iter()
+      .filter(|p| p.pkg_id.starts_with("package-b@"))
+      .collect();
+    assert!(
+      !b_entries.is_empty(),
+      "package-b should have at least 1 entry. Got: {:?}",
+      pkg_ids
+    );
+  }
+
+  /// Resolve peer dependencies of cyclic dependencies.
+  ///
+  /// package-a(peers: package-c, package-d) -> package-b(peers: package-a, package-d) ->
+  ///   package-c(peers: package-a, package-b) -> package-d(peers: package-c) -> package-a, package-b
+  #[tokio::test]
+  async fn cyclic_peer_deps() {
+    let api = TestNpmRegistryApi::default();
+    api.ensure_package_version("package-a", "1.0.0");
+    api.ensure_package_version("package-b", "1.0.0");
+    api.ensure_package_version("package-c", "1.0.0");
+    api.ensure_package_version("package-d", "1.0.0");
+
+    // package-a has peers: package-c, package-d
+    api.add_peer_dependency(("package-a", "1.0.0"), ("package-c", "*"));
+    api.add_peer_dependency(("package-a", "1.0.0"), ("package-d", "*"));
+
+    // package-b depends on package-c, has peers: package-a, package-d
+    api.add_dependency(("package-b", "1.0.0"), ("package-c", "1"));
+    api.add_peer_dependency(("package-b", "1.0.0"), ("package-a", "*"));
+    api.add_peer_dependency(("package-b", "1.0.0"), ("package-d", "*"));
+
+    // package-c has peers: package-a, package-b
+    api.add_peer_dependency(("package-c", "1.0.0"), ("package-a", "*"));
+    api.add_peer_dependency(("package-c", "1.0.0"), ("package-b", "*"));
+
+    // package-d depends on package-a and package-b, has peer: package-c
+    api.add_dependency(("package-d", "1.0.0"), ("package-a", "1"));
+    api.add_dependency(("package-d", "1.0.0"), ("package-b", "1"));
+    api.add_peer_dependency(("package-d", "1.0.0"), ("package-c", "*"));
+
+    // package-a is the root entry that kicks off the chain
+    // package-a -> package-b -> package-c -> package-d -> package-a (cycle!)
+    api.add_dependency(("package-a", "1.0.0"), ("package-b", "1"));
+
+    let (packages, _) =
+      run_resolver_and_get_output(api, vec!["package-a@1"]).await;
+
+    // Expected at least 4 unique entries
+    let pkg_ids: Vec<&str> =
+      packages.iter().map(|p| p.pkg_id.as_str()).collect();
+    assert!(
+      pkg_ids.len() >= 4,
+      "Expected at least 4 unique package entries for cyclic peers, got {}: {:?}",
+      pkg_ids.len(),
+      pkg_ids
+    );
+
+    // All four packages should be present
+    assert!(
+      pkg_ids.iter().any(|id| id.starts_with("package-a@")),
+      "should have package-a. Got: {:?}",
+      pkg_ids
+    );
+    assert!(
+      pkg_ids.iter().any(|id| id.starts_with("package-b@")),
+      "should have package-b. Got: {:?}",
+      pkg_ids
+    );
+    assert!(
+      pkg_ids.iter().any(|id| id.starts_with("package-c@")),
+      "should have package-c. Got: {:?}",
+      pkg_ids
+    );
+    assert!(
+      pkg_ids.iter().any(|id| id.starts_with("package-d@")),
+      "should have package-d. Got: {:?}",
+      pkg_ids
+    );
+  }
+
+  /// Should ignore conflicts between missing optional peer dependencies.
+  ///
+  /// package-a has optional peer package-peer@^1, package-b has optional peer package-peer@^2.
+  /// Neither is installed. Should NOT produce any conflict diagnostics.
+  #[tokio::test]
+  async fn optional_peer_conflicts_ignored() {
+    let api = TestNpmRegistryApi::default();
+    api.ensure_package_version("package-a", "1.0.0");
+    api.ensure_package_version("package-b", "1.0.0");
+    api.ensure_package_version("package-peer", "1.0.0");
+    api.ensure_package_version("package-peer", "2.0.0");
+
+    api.add_optional_peer_dependency(
+      ("package-a", "1.0.0"),
+      ("package-peer", "^1"),
+    );
+    api.add_optional_peer_dependency(
+      ("package-b", "1.0.0"),
+      ("package-peer", "^2"),
+    );
+
+    // Don't install package-peer — both peers are optional and unresolved
+    let (packages, _) = run_resolver_with_options_and_get_output(
+      api,
+      RunResolverOptions {
+        reqs: vec!["package-a@1", "package-b@1"],
+        expected_diagnostics: vec![], // NO diagnostics expected
+        ..Default::default()
+      },
+    )
+    .await;
+
+    // package-a and package-b should be resolved without package-peer
+    let pkg_ids: Vec<&str> =
+      packages.iter().map(|p| p.pkg_id.as_str()).collect();
+    assert!(
+      pkg_ids.iter().any(|id| id.starts_with("package-a@")),
+      "should have package-a. Got: {:?}",
+      pkg_ids
+    );
+    assert!(
+      pkg_ids.iter().any(|id| id.starts_with("package-b@")),
+      "should have package-b. Got: {:?}",
+      pkg_ids
+    );
+  }
+
+  /// Should report where the bad peer dependency is resolved from.
+  ///
+  /// package-a depends on package-peer@1 and package-b. package-b has peer package-peer@^10.
+  /// package-peer@1 is found in scope but doesn't satisfy ^10 → unmet peer diag.
+  #[tokio::test]
+  async fn bad_peer_version_from_subdep() {
+    let api = TestNpmRegistryApi::default();
+    api.ensure_package_version("package-a", "1.0.0");
+    api.ensure_package_version("package-peer", "1.0.0");
+    api.ensure_package_version("package-b", "1.0.0");
+
+    api.add_dependency(("package-a", "1.0.0"), ("package-peer", "1"));
+    api.add_dependency(("package-a", "1.0.0"), ("package-b", "1"));
+    api.add_peer_dependency(("package-b", "1.0.0"), ("package-peer", "^10"));
+
+    let (packages, _) = run_resolver_with_options_and_get_output(
+      api,
+      RunResolverOptions {
+        reqs: vec!["package-a@1"],
+        expected_diagnostics: vec![
+          "package-a@1.0.0 -> package-b@1.0.0: package-peer@^10 -> 1.0.0",
+        ],
+        ..Default::default()
+      },
+    )
+    .await;
+
+    assert!(
+      packages.iter().any(|p| p.pkg_id.starts_with("package-a@")),
+      "should have package-a"
+    );
+    assert!(
+      packages
+        .iter()
+        .any(|p| p.pkg_id.starts_with("package-peer@")),
+      "should have package-peer"
+    );
+    assert!(
+      packages.iter().any(|p| p.pkg_id.starts_with("package-b@")),
+      "should have package-b"
+    );
+  }
+
+  /// Test that NpmPackageId serialization length stays bounded.
+  /// With the Expo-like pattern of many plugins with circular peer deps,
+  /// no single package ID should exceed a reasonable length.
+  /// We assert < 2000 chars as a safety margin.
+  #[tokio::test]
+  async fn peer_dep_id_length_bounded() {
+    let api = TestNpmRegistryApi::default();
+
+    // Core packages
+    api.ensure_package_version("react", "1.0.0");
+    api.ensure_package_version("react-native", "1.0.0");
+    api.ensure_package_version("types-react", "1.0.0");
+
+    // react-native peers with react and types-react
+    api.add_peer_dependency(("react-native", "1.0.0"), ("react", "*"));
+    api.add_peer_dependency(("react-native", "1.0.0"), ("types-react", "*"));
+
+    // expo package
+    api.ensure_package_version("expo", "1.0.0");
+
+    // 10 expo plugins, each peering with react, react-native, expo
+    for i in 0..10 {
+      let name = format!("expo-plugin-{}", i);
+      api.ensure_package_version(&name, "1.0.0");
+      api.add_dependency(("expo", "1.0.0"), (&name, "1"));
+      api.add_peer_dependency((&name, "1.0.0"), ("react", "*"));
+      api.add_peer_dependency((&name, "1.0.0"), ("react-native", "*"));
+      api.add_peer_dependency((&name, "1.0.0"), ("expo", "*")); // circular!
+      api.add_peer_dependency((&name, "1.0.0"), ("types-react", "*"));
+    }
+
+    // expo-router peers with expo (circular)
+    api.ensure_package_version("expo-router", "1.0.0");
+    api.add_dependency(("expo", "1.0.0"), ("expo-router", "1"));
+    api.add_peer_dependency(("expo-router", "1.0.0"), ("react", "*"));
+    api.add_peer_dependency(("expo-router", "1.0.0"), ("react-native", "*"));
+    api.add_peer_dependency(("expo-router", "1.0.0"), ("expo", "*"));
+    api.add_peer_dependency(("expo-router", "1.0.0"), ("types-react", "*"));
+
+    let mut root_reqs = vec![
+      "expo@1",
+      "react@1",
+      "react-native@1",
+      "types-react@1",
+      "expo-router@1",
+    ];
+    for i in 0..10 {
+      let req: &'static str =
+        Box::leak(format!("expo-plugin-{}@1", i).into_boxed_str());
+      root_reqs.push(req);
+    }
+
+    let result = tokio::time::timeout(
+      std::time::Duration::from_secs(30),
+      run_resolver_and_get_output(api, root_reqs),
+    )
+    .await;
+
+    let (packages, _) = result.expect("Resolution timed out");
+
+    // Assert no package ID exceeds 2000 characters
+    for pkg in &packages {
+      assert!(
+        pkg.pkg_id.len() < 2000,
+        "Package ID too long ({} chars): {}...",
+        pkg.pkg_id.len(),
+        &pkg.pkg_id[..100.min(pkg.pkg_id.len())]
+      );
+    }
   }
 }
