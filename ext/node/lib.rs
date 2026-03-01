@@ -348,9 +348,7 @@ deno_core::extension!(deno_node,
     ops::udp::op_node_udp_set_multicast_ttl,
     ops::udp::op_node_udp_set_ttl,
     ops::udp::op_node_udp_set_multicast_interface,
-    #[cfg(unix)]
     ops::udp::op_node_udp_join_source_specific,
-    #[cfg(unix)]
     ops::udp::op_node_udp_leave_source_specific,
     ops::udp::op_node_udp_send,
     ops::udp::op_node_udp_recv,

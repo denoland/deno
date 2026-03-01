@@ -254,7 +254,77 @@ pub fn op_node_udp_set_multicast_interface(
   Ok(())
 }
 
-#[cfg(unix)]
+fn source_specific_multicast(
+  socket: &UdpSocket,
+  source_addr: Ipv4Addr,
+  group_addr: Ipv4Addr,
+  interface_addr: Ipv4Addr,
+  option: i32,
+) -> Result<(), NodeUdpError> {
+  #[cfg(unix)]
+  {
+    let mreq = libc::ip_mreq_source {
+      imr_multiaddr: libc::in_addr {
+        s_addr: u32::from(group_addr).to_be(),
+      },
+      imr_sourceaddr: libc::in_addr {
+        s_addr: u32::from(source_addr).to_be(),
+      },
+      imr_interface: libc::in_addr {
+        s_addr: u32::from(interface_addr).to_be(),
+      },
+    };
+
+    // SAFETY: We pass a valid socket fd, level, option, and correctly-sized struct.
+    let ret = unsafe {
+      libc::setsockopt(
+        std::os::fd::AsRawFd::as_raw_fd(socket),
+        libc::IPPROTO_IP,
+        option,
+        &mreq as *const libc::ip_mreq_source as *const libc::c_void,
+        std::mem::size_of::<libc::ip_mreq_source>() as libc::socklen_t,
+      )
+    };
+    if ret != 0 {
+      return Err(std::io::Error::last_os_error().into());
+    }
+  }
+
+  #[cfg(windows)]
+  {
+    use std::os::windows::io::AsRawSocket;
+
+    #[repr(C)]
+    struct IpMreqSource {
+      imr_multiaddr: u32,
+      imr_sourceaddr: u32,
+      imr_interface: u32,
+    }
+
+    let mreq = IpMreqSource {
+      imr_multiaddr: u32::from(group_addr).to_be(),
+      imr_sourceaddr: u32::from(source_addr).to_be(),
+      imr_interface: u32::from(interface_addr).to_be(),
+    };
+
+    // SAFETY: We pass a valid socket, level, option, and correctly-sized struct.
+    let ret = unsafe {
+      windows_sys::Win32::Networking::WinSock::setsockopt(
+        socket.as_raw_socket() as usize,
+        windows_sys::Win32::Networking::WinSock::IPPROTO_IP as i32,
+        option,
+        &mreq as *const IpMreqSource as *const u8,
+        std::mem::size_of::<IpMreqSource>() as i32,
+      )
+    };
+    if ret != 0 {
+      return Err(std::io::Error::last_os_error().into());
+    }
+  }
+
+  Ok(())
+}
+
 #[op2(fast)]
 pub fn op_node_udp_join_source_specific(
   state: &mut OpState,
@@ -269,36 +339,21 @@ pub fn op_node_udp_join_source_specific(
   let group_addr = Ipv4Addr::from_str(group_address)?;
   let interface_addr = Ipv4Addr::from_str(interface_address)?;
 
-  let mreq = libc::ip_mreq_source {
-    imr_multiaddr: libc::in_addr {
-      s_addr: u32::from(group_addr).to_be(),
-    },
-    imr_sourceaddr: libc::in_addr {
-      s_addr: u32::from(source_addr).to_be(),
-    },
-    imr_interface: libc::in_addr {
-      s_addr: u32::from(interface_addr).to_be(),
-    },
-  };
+  #[cfg(unix)]
+  let option = libc::IP_ADD_SOURCE_MEMBERSHIP;
+  #[cfg(windows)]
+  let option =
+    windows_sys::Win32::Networking::WinSock::IP_ADD_SOURCE_MEMBERSHIP as i32;
 
-  // SAFETY: We pass a valid socket fd, level, option, and correctly-sized struct.
-  let ret = unsafe {
-    libc::setsockopt(
-      std::os::fd::AsRawFd::as_raw_fd(&resource.socket),
-      libc::IPPROTO_IP,
-      libc::IP_ADD_SOURCE_MEMBERSHIP,
-      &mreq as *const libc::ip_mreq_source as *const libc::c_void,
-      std::mem::size_of::<libc::ip_mreq_source>() as libc::socklen_t,
-    )
-  };
-  if ret != 0 {
-    return Err(std::io::Error::last_os_error().into());
-  }
-
-  Ok(())
+  source_specific_multicast(
+    &resource.socket,
+    source_addr,
+    group_addr,
+    interface_addr,
+    option,
+  )
 }
 
-#[cfg(unix)]
 #[op2(fast)]
 pub fn op_node_udp_leave_source_specific(
   state: &mut OpState,
@@ -313,33 +368,19 @@ pub fn op_node_udp_leave_source_specific(
   let group_addr = Ipv4Addr::from_str(group_address)?;
   let interface_addr = Ipv4Addr::from_str(interface_address)?;
 
-  let mreq = libc::ip_mreq_source {
-    imr_multiaddr: libc::in_addr {
-      s_addr: u32::from(group_addr).to_be(),
-    },
-    imr_sourceaddr: libc::in_addr {
-      s_addr: u32::from(source_addr).to_be(),
-    },
-    imr_interface: libc::in_addr {
-      s_addr: u32::from(interface_addr).to_be(),
-    },
-  };
+  #[cfg(unix)]
+  let option = libc::IP_DROP_SOURCE_MEMBERSHIP;
+  #[cfg(windows)]
+  let option =
+    windows_sys::Win32::Networking::WinSock::IP_DROP_SOURCE_MEMBERSHIP as i32;
 
-  // SAFETY: We pass a valid socket fd, level, option, and correctly-sized struct.
-  let ret = unsafe {
-    libc::setsockopt(
-      std::os::fd::AsRawFd::as_raw_fd(&resource.socket),
-      libc::IPPROTO_IP,
-      libc::IP_DROP_SOURCE_MEMBERSHIP,
-      &mreq as *const libc::ip_mreq_source as *const libc::c_void,
-      std::mem::size_of::<libc::ip_mreq_source>() as libc::socklen_t,
-    )
-  };
-  if ret != 0 {
-    return Err(std::io::Error::last_os_error().into());
-  }
-
-  Ok(())
+  source_specific_multicast(
+    &resource.socket,
+    source_addr,
+    group_addr,
+    interface_addr,
+    option,
+  )
 }
 
 #[op2]
