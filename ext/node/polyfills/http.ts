@@ -2180,6 +2180,12 @@ function _addAbortSignalOption(server: ServerImpl, options: ListenOptions) {
   }
 }
 
+export class DenoRequestEvent {
+  pendingResponse?: Promise<Response> | Response;
+
+  constructor(public req: Request) {}
+}
+
 export class ServerImpl extends EventEmitter {
   #addr: Deno.NetAddr | null = null;
   #hasClosed = false;
@@ -2265,6 +2271,12 @@ export class ServerImpl extends EventEmitter {
   _serve() {
     const ac = new AbortController();
     const handler = (request: Request, info: Deno.ServeHandlerInfo) => {
+      const denoEv = new DenoRequestEvent(request);
+      this.emit("deno:request", denoEv);
+      if (denoEv.pendingResponse) {
+        return denoEv.pendingResponse;
+      }
+
       const socket = new FakeSocket({
         remoteAddress: info.remoteAddr.hostname,
         remotePort: info.remoteAddr.port,
