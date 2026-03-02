@@ -8573,14 +8573,24 @@ mod test {
       pkg_ids
     );
 
-    // package-a should appear with resolved peer
-    let a_with_peer = packages.iter().any(|p| {
-      p.pkg_id.contains("package-a@1.0.0") && p.pkg_id.contains("package-peer")
-    });
+    // package-a should appear with resolved peer and that peer should
+    // actually point to package-peer@1.0.0
+    let a_with_peer = packages
+      .iter()
+      .find(|p| {
+        p.pkg_id.contains("package-a@1.0.0")
+          && p.pkg_id.contains("package-peer")
+      });
     assert!(
-      a_with_peer,
+      a_with_peer.is_some(),
       "package-a should have an instance with peer resolved. Got: {:?}",
       pkg_ids
+    );
+    assert_eq!(
+      a_with_peer.unwrap().dependencies.get("package-peer").unwrap(),
+      "package-peer@1.0.0",
+      "package-a's resolved peer should point to package-peer@1.0.0. Got: {:?}",
+      a_with_peer.unwrap().dependencies
     );
 
     // package-b should appear (transitive peer propagated through package-a)
@@ -8591,6 +8601,31 @@ mod test {
     assert!(
       !b_entries.is_empty(),
       "package-b should have at least 1 entry. Got: {:?}",
+      pkg_ids
+    );
+
+    // package-c should reference a package-b that has the resolved
+    // package-a (with peer) as its dependency
+    let c_pkg = packages
+      .iter()
+      .find(|p| p.pkg_id.starts_with("package-c@"))
+      .unwrap();
+    let c_b_dep = c_pkg.dependencies.get("package-b").unwrap();
+    let b_from_c = packages
+      .iter()
+      .find(|p| p.pkg_id == *c_b_dep)
+      .unwrap_or_else(|| {
+        panic!(
+          "package-c references package-b={}, but it wasn't found. Got: {:?}",
+          c_b_dep, pkg_ids
+        )
+      });
+    let b_a_dep = b_from_c.dependencies.get("package-a").unwrap();
+    assert!(
+      b_a_dep.contains("package-peer"),
+      "package-b (from package-c's scope) should reference package-a with \
+      resolved peer. Got package-a dep: {}. All packages: {:?}",
+      b_a_dep,
       pkg_ids
     );
   }
