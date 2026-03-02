@@ -5,17 +5,55 @@
 
 import type { CallbackWithError } from "ext:deno_node/_fs/_fs_common.ts";
 import { promisify } from "ext:deno_node/internal/util.mjs";
-import { denoErrorToNodeError } from "ext:deno_node/internal/errors.ts";
+import {
+  denoErrorToNodeError,
+  uvException,
+} from "ext:deno_node/internal/errors.ts";
 import { getValidatedPath } from "ext:deno_node/internal/fs/utils.mjs";
 import {
   parseFileMode,
   validateBoolean,
 } from "ext:deno_node/internal/validators.mjs";
+import { isWindows } from "ext:deno_node/_util/os.ts";
+import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
 import { resolve } from "node:path";
 
 type MkdirCallback =
   | ((err: Error | null, path?: string) => void)
   | CallbackWithError;
+
+/**
+ * On Windows, recursive mkdir through a file returns EEXIST instead of
+ * ENOTDIR. Check if any component of the path is a file and fix the error.
+ */
+function fixMkdirError(
+  err: Error,
+  path: string,
+): Error {
+  const nodeErr = denoErrorToNodeError(err, { syscall: "mkdir", path });
+  if (!isWindows) return nodeErr;
+  if ((nodeErr as NodeJS.ErrnoException).code !== "EEXIST") return nodeErr;
+  // Walk up the path to check if a component is a file
+  let cursor = resolve(path);
+  while (true) {
+    try {
+      const stat = Deno.statSync(cursor);
+      if (!stat.isDirectory) {
+        return uvException({
+          errno: codeMap.get("ENOTDIR")!,
+          syscall: "mkdir",
+          path,
+        });
+      }
+      break;
+    } catch {
+      const parent = resolve(cursor, "..");
+      if (parent === cursor) break;
+      cursor = parent;
+    }
+  }
+  return nodeErr;
+}
 
 /** Find the first component of `path` that does not exist. */
 function findFirstNonExistent(path: string): string | undefined {
@@ -97,7 +135,9 @@ export function mkdir(
     }, (err) => {
       if (typeof callback === "function") {
         callback(
-          denoErrorToNodeError(err as Error, { syscall: "mkdir", path }),
+          recursive
+            ? fixMkdirError(err as Error, path as string)
+            : denoErrorToNodeError(err as Error, { syscall: "mkdir", path }),
         );
       }
     });
@@ -134,7 +174,9 @@ export function mkdirSync(
     firstNonExistent = recursive ? findFirstNonExistent(path) : undefined;
     Deno.mkdirSync(path, { recursive, mode });
   } catch (err) {
-    throw denoErrorToNodeError(err as Error, { syscall: "mkdir", path });
+    throw recursive
+      ? fixMkdirError(err as Error, path)
+      : denoErrorToNodeError(err as Error, { syscall: "mkdir", path });
   }
 
   return firstNonExistent;
