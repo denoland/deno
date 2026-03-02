@@ -16,7 +16,7 @@ import {
 } from "ext:deno_node/internal/validators.mjs";
 import { isWindows } from "ext:deno_node/_util/os.ts";
 import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
-import { resolve } from "node:path";
+import { resolve, toNamespacedPath } from "node:path";
 
 type MkdirCallback =
   | ((err: Error | null, path?: string) => void)
@@ -33,8 +33,9 @@ function fixMkdirError(
   const nodeErr = denoErrorToNodeError(err, { syscall: "mkdir", path });
   if (!isWindows) return nodeErr;
   if ((nodeErr as NodeJS.ErrnoException).code !== "EEXIST") return nodeErr;
-  // Walk up the path to check if a component is a file
-  let cursor = resolve(path);
+  // Walk up parent components to check if any is a file (skip the target
+  // itself - if the target is a file, EEXIST is correct)
+  let cursor = resolve(path, "..");
   while (true) {
     try {
       const stat = Deno.statSync(cursor);
@@ -67,13 +68,13 @@ function findFirstNonExistent(path: string): string | undefined {
       const parent = resolve(cursor, "..");
       if (parent === cursor) {
         // reached filesystem root - nothing exists
-        return cursor;
+        return toNamespacedPath(cursor);
       }
       // Check if the parent exists
       try {
         Deno.statSync(parent);
         // parent exists but cursor doesn't - cursor is first non-existent
-        return cursor;
+        return toNamespacedPath(cursor);
       } catch {
         // parent also doesn't exist, keep going up
         cursor = parent;
