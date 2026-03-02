@@ -488,7 +488,9 @@ const preBuildCheckStep = step({
 const denoCoreChangesCheckStep = step({
   id: "deno_core_changes",
   run: [
-    `DENO_CORE_CHANGED=$(git diff --name-only \${{ github.event.pull_request.base.sha }}..HEAD | grep -qE '^(${denoCorePackageDirs.join("|")})/|^Cargo\\.lock$|^Cargo\\.toml$' && echo true || echo false)`,
+    `DENO_CORE_CHANGED=$(git diff --name-only \${{ github.event.pull_request.base.sha }}..HEAD | grep -qE '^(${
+      denoCorePackageDirs.join("|")
+    })/|^Cargo\\.lock$|^Cargo\\.toml$' && echo true || echo false)`,
     `echo "Deno core changed: $DENO_CORE_CHANGED"`,
     `echo "skip_deno_core_test=$([ "$DENO_CORE_CHANGED" = "false" ] && echo true || echo false)" >> $GITHUB_OUTPUT`,
   ],
