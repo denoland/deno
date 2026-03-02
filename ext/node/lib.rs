@@ -173,7 +173,6 @@ deno_core::extension!(deno_node,
   deps = [ deno_io, deno_fs ],
   parameters = [TInNpmPackageChecker: InNpmPackageChecker, TNpmPackageFolderResolver: NpmPackageFolderResolver, TSys: ExtNodeSys],
   ops = [
-    ops::assert::op_node_get_error_source_position,
     ops::assert::op_node_get_first_expression,
 
     ops::blocklist::op_socket_address_parse,

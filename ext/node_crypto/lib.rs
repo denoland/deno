@@ -33,6 +33,8 @@ use rsa::Oaep;
 use rsa::Pkcs1v15Encrypt;
 use rsa::RsaPrivateKey;
 use rsa::RsaPublicKey;
+use rsa::pkcs1::DecodeRsaPrivateKey;
+use rsa::pkcs1::DecodeRsaPublicKey;
 use rsa::pkcs8::DecodePrivateKey;
 use rsa::pkcs8::DecodePublicKey;
 
@@ -155,6 +157,15 @@ deno_core::extension!(
     x509::op_node_x509_get_serial_number,
     x509::op_node_x509_key_usage,
     x509::op_node_x509_public_key,
+    x509::op_node_x509_to_string,
+    x509::op_node_x509_get_raw,
+    x509::op_node_x509_get_subject_alt_name,
+    x509::op_node_x509_check_ip,
+    x509::op_node_x509_check_issued,
+    x509::op_node_x509_check_private_key,
+    x509::op_node_x509_verify,
+    x509::op_node_x509_get_info_access,
+    x509::op_node_x509_to_legacy_object,
   ],
   objects = [digest::Hasher,],
 );
@@ -269,9 +280,6 @@ pub enum PrivateEncryptDecryptError {
   Spki(#[from] spki::Error),
   #[class(generic)]
   #[error(transparent)]
-  Utf8(#[from] std::str::Utf8Error),
-  #[class(generic)]
-  #[error(transparent)]
   Rsa(#[from] rsa::Error),
   #[class(type)]
   #[error("Unknown padding")]
@@ -284,7 +292,14 @@ pub fn op_node_private_encrypt(
   #[serde] msg: StringOrBuffer,
   #[smi] padding: u32,
 ) -> Result<Uint8Array, PrivateEncryptDecryptError> {
-  let key = RsaPrivateKey::from_pkcs8_pem((&key).try_into()?)?;
+  let key = match std::str::from_utf8(&key) {
+    Ok(pem) => RsaPrivateKey::from_pkcs8_pem(pem)
+      .or_else(|_| rsa::pkcs1::DecodeRsaPrivateKey::from_pkcs1_pem(pem))
+      .map_err(|e| PrivateEncryptDecryptError::Pkcs8(e.into()))?,
+    Err(_) => RsaPrivateKey::from_pkcs8_der(&key).or_else(|_| {
+      RsaPrivateKey::from_pkcs1_der(&key).map_err(pkcs8::Error::from)
+    })?,
+  };
 
   let mut rng = rand::thread_rng();
   match padding {
@@ -310,7 +325,14 @@ pub fn op_node_private_decrypt(
   #[serde] msg: StringOrBuffer,
   #[smi] padding: u32,
 ) -> Result<Uint8Array, PrivateEncryptDecryptError> {
-  let key = RsaPrivateKey::from_pkcs8_pem((&key).try_into()?)?;
+  let key = match std::str::from_utf8(&key) {
+    Ok(pem) => RsaPrivateKey::from_pkcs8_pem(pem)
+      .or_else(|_| rsa::pkcs1::DecodeRsaPrivateKey::from_pkcs1_pem(pem))
+      .map_err(|e| PrivateEncryptDecryptError::Pkcs8(e.into()))?,
+    Err(_) => RsaPrivateKey::from_pkcs8_der(&key).or_else(|_| {
+      RsaPrivateKey::from_pkcs1_der(&key).map_err(pkcs8::Error::from)
+    })?,
+  };
 
   match padding {
     1 => Ok(key.decrypt(Pkcs1v15Encrypt, &msg)?.into()),
@@ -325,7 +347,14 @@ pub fn op_node_public_encrypt(
   #[serde] msg: StringOrBuffer,
   #[smi] padding: u32,
 ) -> Result<Uint8Array, PrivateEncryptDecryptError> {
-  let key = RsaPublicKey::from_public_key_pem((&key).try_into()?)?;
+  let key = match std::str::from_utf8(&key) {
+    Ok(pem) => RsaPublicKey::from_public_key_pem(pem)
+      .or_else(|_| rsa::pkcs1::DecodeRsaPublicKey::from_pkcs1_pem(pem))
+      .map_err(|e| PrivateEncryptDecryptError::Spki(e.into()))?,
+    Err(_) => RsaPublicKey::from_public_key_der(&key).or_else(|_| {
+      RsaPublicKey::from_pkcs1_der(&key).map_err(spki::Error::from)
+    })?,
+  };
 
   let mut rng = rand::thread_rng();
   match padding {
@@ -1143,6 +1172,16 @@ pub fn op_node_diffie_hellman(
         AsymmetricPrivateKey::Ec(EcPrivateKey::P384(private)),
         AsymmetricPublicKey::Ec(EcPublicKey::P384(public)),
       ) => p384::ecdh::diffie_hellman(
+        private.to_nonzero_scalar(),
+        public.as_affine(),
+      )
+      .raw_secret_bytes()
+      .to_vec()
+      .into_boxed_slice(),
+      (
+        AsymmetricPrivateKey::Ec(EcPrivateKey::Secp256k1(private)),
+        AsymmetricPublicKey::Ec(EcPublicKey::Secp256k1(public)),
+      ) => k256::ecdh::diffie_hellman(
         private.to_nonzero_scalar(),
         public.as_affine(),
       )
