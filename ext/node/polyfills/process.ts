@@ -170,6 +170,9 @@ export function umask(mask?: number | string): number {
     mask = parseFileMode(mask, "mask");
     return op_fs_umask(mask & 0o777);
   }
+  // Note: reading the umask without setting has an inherent race condition
+  // (two syscalls: set to 0 then restore). Node.js has the same issue and
+  // has deprecated process.umask() with no arguments.
   return op_fs_umask(null);
 }
 

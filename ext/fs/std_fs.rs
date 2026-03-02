@@ -43,12 +43,23 @@ impl FileSystem for RealFs {
     std::env::set_current_dir(path).map_err(Into::into)
   }
 
-  #[cfg(not(unix))]
-  fn umask(&self, _mask: Option<u32>) -> FsResult<u32> {
-    // TODO implement umask for Windows
-    // see https://github.com/nodejs/node/blob/master/src/node_process_methods.cc
-    // and https://docs.microsoft.com/fr-fr/cpp/c-runtime-library/reference/umask?view=vs-2019
-    Err(FsError::NotSupported)
+  #[cfg(windows)]
+  fn umask(&self, mask: Option<u32>) -> FsResult<u32> {
+    extern "C" {
+      fn _umask(mask: std::ffi::c_int) -> std::ffi::c_int;
+    }
+    // SAFETY: `_umask` is a Windows CRT function that sets the file mode
+    // creation mask and returns the previous value.
+    unsafe {
+      let old = if let Some(mask) = mask {
+        _umask(mask as std::ffi::c_int)
+      } else {
+        let prev = _umask(0);
+        _umask(prev);
+        prev
+      };
+      Ok(old as u32)
+    }
   }
 
   #[cfg(unix)]
