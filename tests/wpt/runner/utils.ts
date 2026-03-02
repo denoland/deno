@@ -120,8 +120,13 @@ export const EXPECTATION_PATH = join(
   "./tests/wpt/runner/expectation.json",
 );
 
+export interface TestExpectation {
+  ignore?: boolean;
+  expectedFailures?: string[];
+}
+
 export interface Expectation {
-  [key: string]: Expectation | boolean | string[] | { ignore: boolean };
+  [key: string]: Expectation | boolean | TestExpectation;
 }
 
 export function getExpectation(): Expectation {
@@ -140,14 +145,14 @@ export function saveExpectation(
 }
 
 export function getExpectFailForCase(
-  expectation: boolean | string[],
+  expectation: boolean | TestExpectation,
   caseName: string,
 ): boolean {
   if (noIgnore) return false;
   if (typeof expectation === "boolean") {
     return !expectation;
   }
-  return expectation.includes(caseName);
+  return expectation.expectedFailures?.includes(caseName) ?? false;
 }
 
 /// UTILS

@@ -19,6 +19,7 @@ import {
   checkPy3Available,
   escapeLoneSurrogates,
   Expectation,
+  TestExpectation,
   EXPECTATION_PATH,
   generateRunInfo,
   getExpectation,
@@ -189,11 +190,17 @@ async function setup() {
   console.log(green("Setup complete!"));
 }
 
+function isLeafExpectation(e: unknown): e is boolean | TestExpectation {
+  return typeof e === "boolean" ||
+    (typeof e === "object" && e !== null && !Array.isArray(e) &&
+      ("expectedFailures" in e || "ignore" in e));
+}
+
 interface TestToRun {
   path: string;
   url: URL;
   options: ManifestTestOptions;
-  expectation: boolean | string[];
+  expectation: boolean | TestExpectation;
 }
 
 function getTestTimeout(test: TestToRun) {
@@ -345,8 +352,11 @@ async function generateWptReport(
         if (!case_.passed) {
           if (typeof test.expectation === "boolean") {
             expected = test.expectation ? "PASS" : "FAIL";
-          } else if (Array.isArray(test.expectation)) {
-            expected = test.expectation.includes(case_.name) ? "FAIL" : "PASS";
+          } else if (typeof test.expectation === "object") {
+            expected =
+              test.expectation.expectedFailures?.includes(case_.name)
+                ? "FAIL"
+                : "PASS";
           } else {
             expected = "PASS";
           }
@@ -391,22 +401,19 @@ function assertAllExpectationsHaveTests(
       if (!filter.matches(path)) {
         if (
           filter.shouldKeepWalking(path) &&
-          (typeof expectation === "object" && !Array.isArray(expectation)) &&
+          !isLeafExpectation(expectation) &&
           key !== "ignore"
         ) {
-          walk(expectation, path);
+          walk(expectation as Expectation, path);
         }
         continue;
       }
-      if (
-        (typeof expectation == "boolean" || Array.isArray(expectation)) &&
-        key !== "ignore"
-      ) {
+      if (isLeafExpectation(expectation) && key !== "ignore") {
         if (!tests.has(path)) {
           missingTests.push(path);
         }
-      } else {
-        walk(expectation, path);
+      } else if (!isLeafExpectation(expectation)) {
+        walk(expectation as Expectation, path);
       }
     }
   }
@@ -516,11 +523,11 @@ function newExpectation(
 
   for (const [path, result] of Object.entries(resultTests)) {
     const { passed, failed, testSucceeded } = result;
-    let finalExpectation: boolean | string[];
+    let finalExpectation: boolean | TestExpectation;
     if (failed.length == 0 && testSucceeded) {
       finalExpectation = true;
     } else if (failed.length > 0 && passed.length > 0 && testSucceeded) {
-      finalExpectation = failed;
+      finalExpectation = { expectedFailures: failed };
     } else {
       finalExpectation = false;
     }
@@ -538,15 +545,14 @@ function newExpectation(
 function insertExpectation(
   segments: string[],
   currentExpectation: Expectation,
-  finalExpectation: boolean | string[],
+  finalExpectation: boolean | TestExpectation,
 ) {
   const segment = segments.shift();
   assert(segment, "segments array must never be empty");
   if (segments.length > 0) {
     if (
       currentExpectation[segment] === undefined ||
-      Array.isArray(currentExpectation[segment]) ||
-      typeof currentExpectation[segment] === "boolean"
+      isLeafExpectation(currentExpectation[segment])
     ) {
       currentExpectation[segment] = {};
     }
@@ -558,9 +564,8 @@ function insertExpectation(
   } else {
     if (
       currentExpectation[segment] === undefined ||
-      Array.isArray(currentExpectation[segment]) ||
       typeof currentExpectation[segment] === "boolean" ||
-      (currentExpectation[segment] as { ignore: boolean })?.ignore !== true
+      (currentExpectation[segment] as TestExpectation)?.ignore !== true
     ) {
       currentExpectation[segment] = finalExpectation;
     }
@@ -665,7 +670,7 @@ function reportFinal(
 
 function analyzeTestResult(
   result: TestResult,
-  expectation: boolean | string[],
+  expectation: boolean | TestExpectation,
 ): {
   failed: TestCaseResult[];
   failedCount: number;
@@ -700,7 +705,10 @@ function analyzeTestResult(
   };
 }
 
-function reportVariation(result: TestResult, expectation: boolean | string[]) {
+function reportVariation(
+  result: TestResult,
+  expectation: boolean | TestExpectation,
+) {
   if (result.status !== 0 || result.harnessStatus === null) {
     if (result.stderr) {
       console.log(`test stderr:\n${result.stderr}\n`);
@@ -759,7 +767,7 @@ function reportVariation(result: TestResult, expectation: boolean | string[]) {
   );
 }
 
-function createReportTestCase(expectation: boolean | string[]) {
+function createReportTestCase(expectation: boolean | TestExpectation) {
   return function reportTestCase({ name, status }: TestCaseResult) {
     const expectFail = getExpectFailForCase(expectation, name);
     let simpleMessage = `test ${name} ... `;
@@ -805,7 +813,7 @@ function createReportTestCase(expectation: boolean | string[]) {
 
 function discoverTestsToRun(
   filter: TestFilter,
-  expectation: Expectation | string[] | boolean = getExpectation(),
+  expectation: Expectation | TestExpectation | boolean = getExpectation(),
 ): TestToRun[] {
   const manifestFolder = getManifest().items.testharness;
 
@@ -813,7 +821,7 @@ function discoverTestsToRun(
 
   function walk(
     parentFolder: ManifestFolder,
-    parentExpectation: Expectation | string[] | boolean,
+    parentExpectation: Expectation | TestExpectation | boolean,
     prefix: string,
   ) {
     for (const [key, entry] of Object.entries(parentFolder)) {
@@ -857,26 +865,27 @@ function discoverTestsToRun(
           const split = finalPath.split("/");
           const finalKey = split[split.length - 1];
 
-          const expectation = Array.isArray(parentExpectation) ||
-              typeof parentExpectation == "boolean"
+          const expectation = isLeafExpectation(parentExpectation)
             ? parentExpectation
-            : parentExpectation[finalKey];
+            : (parentExpectation as Expectation)[finalKey];
 
           if (expectation === undefined) continue;
 
           if (typeof expectation === "object") {
-            if (typeof expectation.ignore !== "undefined") {
+            if (typeof (expectation as TestExpectation).ignore !== "undefined") {
               assert(
-                typeof expectation.ignore === "boolean",
+                typeof (expectation as TestExpectation).ignore === "boolean",
                 "test entry's `ignore` key must be a boolean",
               );
-              if (expectation.ignore === true && !noIgnore) continue;
+              if ((expectation as TestExpectation).ignore === true && !noIgnore) {
+                continue;
+              }
             }
           }
 
           if (!noIgnore) {
             assert(
-              Array.isArray(expectation) || typeof expectation == "boolean",
+              isLeafExpectation(expectation),
               "test entry must not have a folder expectation",
             );
           }
@@ -891,10 +900,9 @@ function discoverTestsToRun(
           });
         }
       } else {
-        const expectation = Array.isArray(parentExpectation) ||
-            typeof parentExpectation == "boolean"
+        const expectation = isLeafExpectation(parentExpectation)
           ? parentExpectation
-          : parentExpectation[key];
+          : (parentExpectation as Expectation)[key];
 
         if (expectation === undefined) continue;
 

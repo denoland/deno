@@ -100,7 +100,7 @@ Leaf values describe what is expected for each test file:
 | ----- | ------- |
 | `true` | All subtests are expected to pass |
 | `false` | The entire test file is expected to fail (crash, harness error, etc.) |
-| `["name1", "name2"]` | These specific subtests are expected to fail; all others should pass |
+| `{"expectedFailures": ["name1", "name2"]}` | These specific subtests are expected to fail; all others should pass |
 | `{"ignore": true}` | Skip this test entirely (override with `--no-ignore`) |
 
 Example:
@@ -112,10 +112,12 @@ Example:
       "basic": {
         "accept-header.any.html": true,        // all subtests pass
         "stream-response.any.html": false,      // entire file fails
-        "request-headers.any.html": [           // these 2 subtests fail
-          "Fetch with PUT with body",
-          "Fetch with POST with body"
-        ],
+        "request-headers.any.html": {           // these 2 subtests fail
+          "expectedFailures": [
+            "Fetch with PUT with body",
+            "Fetch with POST with body"
+          ]
+        },
         "mode-no-cors.sub.any.html": {          // skipped
           "ignore": true
         }
