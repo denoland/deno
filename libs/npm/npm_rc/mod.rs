@@ -127,11 +127,20 @@ impl NpmRc {
     &self,
     env_registry_url: &Url,
   ) -> Result<ResolvedNpmRc, ResolveError> {
+    self.as_resolved_with_env(env_registry_url, &|_| None)
+  }
+
+  pub fn as_resolved_with_env(
+    &self,
+    env_registry_url: &Url,
+    get_env_var: &impl Fn(&str) -> Option<String>,
+  ) -> Result<ResolvedNpmRc, ResolveError> {
     let mut scopes = HashMap::with_capacity(self.scope_registries.len());
     for scope in self.scope_registries.keys() {
       let (url, config) = self.registry_url_and_config_for_maybe_scope(
         Some(scope.as_str()),
         env_registry_url.as_str(),
+        get_env_var,
       );
       let url = Url::parse(&url).map_err(|e| ResolveError::UrlScope {
         scope: scope.clone(),
@@ -146,7 +155,7 @@ impl NpmRc {
       );
     }
     let (default_url, default_config) = self
-      .registry_url_and_config_for_maybe_scope(None, env_registry_url.as_str());
+      .registry_url_and_config_for_maybe_scope(None, env_registry_url.as_str(), get_env_var);
     let default_url = Url::parse(&default_url).map_err(ResolveError::Url)?;
     Ok(ResolvedNpmRc {
       default_config: RegistryConfigWithUrl {
@@ -162,9 +171,14 @@ impl NpmRc {
     &self,
     maybe_scope_name: Option<&str>,
     env_registry_url: &str,
+    get_env_var: &impl Fn(&str) -> Option<String>,
   ) -> (String, Arc<RegistryConfig>) {
+    // Check NPM_CONFIG_REGISTRY first (higher priority than .npmrc)
+    let env_override = get_env_var("NPM_CONFIG_REGISTRY");
+    
     let registry_url = maybe_scope_name
       .and_then(|scope| self.scope_registries.get(scope).map(|s| s.as_str()))
+      .or_else(|| env_override.as_deref())
       .or(self.registry.as_deref())
       .unwrap_or(env_registry_url);
 
@@ -779,5 +793,48 @@ registry=${VAR_FOUND}
       npm_rc.scopes.get("jsr").unwrap().registry_url.as_str(),
       "https://registry.npmjs.org/"
     );
+  }
+
+  #[test]
+  fn test_npm_config_registry_overrides_npmrc() {
+    // NPM_CONFIG_REGISTRY should override the registry in .npmrc files
+    let npm_rc = NpmRc::parse(
+      "registry=http://wrong.registry.example.com/",
+      &|_| None,
+    )
+    .unwrap();
+    
+    // Simulate NPM_CONFIG_REGISTRY being set
+    let env_vars = |name: &str| {
+      if name == "NPM_CONFIG_REGISTRY" {
+        Some("http://env.registry.example.com/".to_string())
+      } else {
+        None
+      }
+    };
+    
+    let resolved = npm_rc
+      .as_resolved_with_env(&Url::parse("https://fallback.com/").unwrap(), &env_vars)
+      .unwrap();
+    
+    // Should use the env var registry, not the .npmrc one
+    assert_eq!(resolved.default_config.registry_url.as_str(), "http://env.registry.example.com/");
+  }
+  
+  #[test]
+  fn test_npmrc_registry_used_when_no_env_var() {
+    // When NPM_CONFIG_REGISTRY is not set, should use .npmrc registry
+    let npm_rc = NpmRc::parse(
+      "registry=http://npmrc.registry.example.com/",
+      &|_| None,
+    )
+    .unwrap();
+    
+    let resolved = npm_rc
+      .as_resolved_with_env(&Url::parse("https://fallback.com/").unwrap(), &|_| None)
+      .unwrap();
+    
+    // Should use the .npmrc registry
+    assert_eq!(resolved.default_config.registry_url.as_str(), "http://npmrc.registry.example.com/");
   }
 }

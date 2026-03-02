@@ -1923,3 +1923,35 @@ async fn test_private_npm_registry() {
   let resp = client.execute(req).await.unwrap();
   assert_eq!(resp.status(), reqwest::StatusCode::OK);
 }
+
+#[test]
+fn npm_config_registry_overrides_npmrc() {
+  let _server = http_server();
+
+  let context = util::TestContextBuilder::new()
+    .use_temp_cwd()
+    .add_npm_env_vars()
+    .build();
+  let temp_dir = context.temp_dir();
+
+  temp_dir.write(
+    "package.json",
+    r#"{"name": "test", "version": "1.0.0"}"#,
+  );
+
+  // Create .npmrc with a wrong registry
+  temp_dir.write(
+    ".npmrc",
+    "registry=http://wrong.example.com/\n",
+  );
+
+  // NPM_CONFIG_REGISTRY should override the .npmrc registry
+  let output = context
+    .new_command()
+    .args("add npm:@denotest/basic --dry-run")
+    .env("NPM_CONFIG_REGISTRY", "http://localhost:4260/")
+    .run();
+
+  // Should try to fetch from the env registry (localhost:4260), not the .npmrc one
+  output.assert_matches_text("Add npm:@denotest/basic");
+}

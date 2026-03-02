@@ -184,7 +184,7 @@ fn discover_npmrc<TSys: EnvVar + EnvHomeDir + FsRead>(
 
   let resolve_npmrc = |path: PathBuf, npm_rc: NpmRc| {
     let mut resolved_npm_rc = npm_rc
-      .as_resolved(&npm_registry_url(sys))
+      .as_resolved_with_env(&npm_registry_url(sys), &|name| sys.env_var(name).ok())
       .map_err(|source| NpmRcOptionsResolveError {
         path: path.to_path_buf(),
         source,
