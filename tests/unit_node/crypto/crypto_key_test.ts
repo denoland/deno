@@ -290,7 +290,7 @@ Deno.test("createPrivateKey ec", function () {
   const key = createPrivateKey(ecPrivateKey);
   assertEquals(key.type, "private");
   assertEquals(key.asymmetricKeyType, "ec");
-  assertEquals(key.asymmetricKeyDetails?.namedCurve, "p256");
+  assertEquals(key.asymmetricKeyDetails?.namedCurve, "prime256v1");
 });
 
 const rsaPublicKey = Deno.readTextFileSync(
@@ -315,7 +315,7 @@ Deno.test("createPublicKey() EC", function () {
   const key = createPublicKey(ecPublicKey);
   assertEquals(key.type, "public");
   assertEquals(key.asymmetricKeyType, "ec");
-  assertEquals(key.asymmetricKeyDetails?.namedCurve, "p256");
+  assertEquals(key.asymmetricKeyDetails?.namedCurve, "prime256v1");
 });
 
 Deno.test("createPublicKey SPKI for DH", async function () {
@@ -861,7 +861,7 @@ Deno.test("X509Certificate publicKey for P-521 cert", function () {
   const pubkey = x509.publicKey;
   assertEquals(pubkey.type, "public");
   assertEquals(pubkey.asymmetricKeyType, "ec");
-  assertEquals(pubkey.asymmetricKeyDetails, { namedCurve: "p521" });
+  assertEquals(pubkey.asymmetricKeyDetails, { namedCurve: "secp521r1" });
 });
 
 // https://github.com/denoland/deno/issues/27972

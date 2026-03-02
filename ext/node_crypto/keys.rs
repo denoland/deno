@@ -1878,9 +1878,9 @@ pub fn op_node_get_asymmetric_key_details(
       AsymmetricPrivateKey::Ec(key) => {
         let named_curve = match key {
           EcPrivateKey::P224(_) => "p224",
-          EcPrivateKey::P256(_) => "p256",
-          EcPrivateKey::P384(_) => "p384",
-          EcPrivateKey::P521(_) => "p521",
+          EcPrivateKey::P256(_) => "prime256v1",
+          EcPrivateKey::P384(_) => "secp384r1",
+          EcPrivateKey::P521(_) => "secp521r1",
         };
         Ok(AsymmetricKeyDetails::Ec { named_curve })
       }
@@ -1932,9 +1932,9 @@ pub fn op_node_get_asymmetric_key_details(
       AsymmetricPublicKey::Ec(key) => {
         let named_curve = match key {
           EcPublicKey::P224(_) => "p224",
-          EcPublicKey::P256(_) => "p256",
-          EcPublicKey::P384(_) => "p384",
-          EcPublicKey::P521(_) => "p521",
+          EcPublicKey::P256(_) => "prime256v1",
+          EcPublicKey::P384(_) => "secp384r1",
+          EcPublicKey::P521(_) => "secp521r1",
         };
         Ok(AsymmetricKeyDetails::Ec { named_curve })
       }
