@@ -23,6 +23,7 @@ use crate::NpmCacheHttpClient;
 use crate::NpmCacheHttpClientResponse;
 use crate::NpmCacheSetting;
 use crate::NpmCacheSys;
+use crate::NpmPackumentFormat;
 use crate::remote::maybe_auth_header_value_for_npm_registry;
 use crate::rt::MultiRuntimeAsyncValueCreator;
 use crate::rt::spawn_blocking;
@@ -140,10 +141,7 @@ struct RegistryInfoProviderInner<
   cache: Arc<NpmCache<TSys>>,
   http_client: Arc<THttpClient>,
   npmrc: Arc<ResolvedNpmRc>,
-  /// When true, cached abbreviated packuments (missing the `time` field)
-  /// will be treated as cache misses and re-fetched as full packuments.
-  /// This is needed when `minimumDependencyAge` is configured.
-  needs_full_packument: bool,
+  packument_format: NpmPackumentFormat,
   force_reload_flag: AtomicFlag,
   memory_cache: Mutex<MemoryCache>,
   previously_loaded_packages: Mutex<HashSet<String>>,
@@ -255,7 +253,7 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
       {
         // attempt to load from the file cache
         match downloader.cache.load_package_info(&name).await.map_err(JsErrorBox::from_err)? { Some(cached_info) => {
-          if downloader.needs_full_packument && cached_info.info.time.is_empty() && !cached_info.info.versions.is_empty() {
+          if downloader.packument_format == NpmPackumentFormat::Full && cached_info.info.time.is_empty() && !cached_info.info.versions.is_empty() {
             // Cached data is from the abbreviated install manifest which
             // doesn't include the `time` field. Since minimumDependencyAge
             // is configured, we need to re-fetch the full packument.
@@ -365,13 +363,13 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
     cache: Arc<NpmCache<TSys>>,
     http_client: Arc<THttpClient>,
     npmrc: Arc<ResolvedNpmRc>,
-    needs_full_packument: bool,
+    packument_format: NpmPackumentFormat,
   ) -> Self {
     Self(Arc::new(RegistryInfoProviderInner {
       cache,
       http_client,
       npmrc,
-      needs_full_packument,
+      packument_format,
       force_reload_flag: AtomicFlag::lowered(),
       memory_cache: Default::default(),
       previously_loaded_packages: Default::default(),

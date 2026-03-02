@@ -64,13 +64,7 @@ pub type CliNpmGraphResolver = deno_npm_installer::graph::NpmDenoGraphResolver<
   CliSys,
 >;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum NpmPackumentFormat {
-  /// Request the abbreviated install manifest (smaller, but omits `time` and `scripts`).
-  Abbreviated,
-  /// Request the full packument (needed when `minimumDependencyAge` is configured).
-  Full,
-}
+pub use deno_npm_cache::NpmPackumentFormat;
 
 #[derive(Debug)]
 pub struct CliNpmCacheHttpClient {

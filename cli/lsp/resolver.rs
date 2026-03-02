@@ -913,7 +913,7 @@ impl<'a> ResolverFactory<'a> {
         npm_cache.clone(),
         npm_client.clone(),
         npmrc.clone(),
-        false, // LSP doesn't need full packument for time-based filtering
+        NpmPackumentFormat::Abbreviated,
       ));
       let link_packages: WorkspaceNpmLinkPackagesRc = self
         .config_data
