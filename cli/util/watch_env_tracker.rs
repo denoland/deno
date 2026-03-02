@@ -114,6 +114,20 @@ impl WatchEnvTracker {
               let key_os = OsString::from(key);
               let value_os = OsString::from(value);
 
+              // Process-level env vars should always take precedence over env files.
+              if inner.original_env.contains_key(&key_os) {
+                #[allow(clippy::print_stderr)]
+                if log_level.map(|l| l >= log::Level::Debug).unwrap_or(false) {
+                  eprintln!(
+                    "{} Variable '{}' already exists in the process environment, skipping value from '{}'",
+                    colors::yellow("Debug"),
+                    key_os.to_string_lossy(),
+                    file_path.display()
+                  );
+                }
+                continue;
+              }
+
               // Check if this variable is already loaded from a previous file
               if inner.loaded_variables.contains(&key_os) {
                 // Variable already exists from a previous file, skip it
@@ -241,9 +255,40 @@ pub fn load_env_variables_from_env_files(
     return;
   };
 
-  for env_file_name in env_file_names.iter() {
-    match deno_dotenv::from_path(env_file_name) {
-      Ok(_) => (),
+  let original_env_keys: HashSet<OsString> =
+    env::vars_os().map(|(key, _)| key).collect();
+  let mut loaded_keys = HashSet::new();
+
+  for env_file_name in env_file_names.iter().rev() {
+    match deno_dotenv::from_path_sanitized_iter(env_file_name) {
+      Ok(iter) => {
+        for item in iter {
+          match item {
+            Ok((key, value)) => {
+              let key_os = OsString::from(key);
+
+              if original_env_keys.contains(&key_os)
+                || loaded_keys.contains(&key_os)
+              {
+                continue;
+              }
+
+              // SAFETY: We're setting environment variables with sanitized key/value strings from a .env file.
+              unsafe {
+                env::set_var(&key_os, value);
+              }
+              loaded_keys.insert(key_os);
+            }
+            Err(error) => {
+              WatchEnvTracker::handle_dotenv_error(
+                error,
+                env_file_name,
+                flags_log_level,
+              );
+            }
+          }
+        }
+      }
       Err(error) => {
         WatchEnvTracker::handle_dotenv_error(
           error,
