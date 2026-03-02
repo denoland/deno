@@ -135,7 +135,7 @@ function createMessage(ecosystemReports: Record<string, EcosystemReport>) {
       },
     ];
 
-    for (const os of ["darwin", "linux", "windows"]) {
+    for (const os of ["linux", "darwin", "windows"]) {
       const report = ecosystemReports[os][program] satisfies PmResult;
 
       const text = `${
