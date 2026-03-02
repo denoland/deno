@@ -914,3 +914,34 @@ Deno.test("generateKeyPair async ec secp256k1", async () => {
   const signature = sign("sha256", data, privateKey);
   assert(verify("sha256", data, publicKey, signature));
 });
+
+// https://github.com/denoland/deno/issues/22920
+Deno.test("EC private key SEC1 round-trip for all curves", () => {
+  for (const namedCurve of ["P-224", "P-256", "P-384", "secp256k1"]) {
+    const { privateKey } = generateKeyPairSync("ec", { namedCurve });
+
+    // Export as SEC1 PEM and reimport
+    const pem = privateKey.export({ type: "sec1", format: "pem" });
+    const fromPem = createPrivateKey(pem);
+    assertEquals(fromPem.type, "private");
+    assertEquals(fromPem.asymmetricKeyType, "ec");
+
+    // Export as SEC1 DER and reimport
+    const der = privateKey.export({ type: "sec1", format: "der" });
+    const fromDer = createPrivateKey({
+      key: Buffer.from(der),
+      format: "der",
+      type: "sec1",
+    });
+    assertEquals(fromDer.type, "private");
+    assertEquals(fromDer.asymmetricKeyType, "ec");
+
+    // Verify the reimported key can sign/verify
+    const data = Buffer.from("sec1 round-trip test");
+    const sig = sign("sha256", data, fromPem);
+    assert(
+      verify("sha256", data, privateKey, sig),
+      `sign/verify failed for ${namedCurve}`,
+    );
+  }
+});

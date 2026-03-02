@@ -604,6 +604,71 @@ pub enum AsymmetricPublicKeyError {
   UnsupportedPrivateKeyOid,
 }
 
+/// Parse an EC private key from SEC1 DER bytes with an optional named curve
+/// OID. If the named curve is not provided, the curve is inferred from the
+/// private key byte length. For 32-byte keys (ambiguous between P-256 and
+/// secp256k1), P-256 is preferred.
+fn ec_private_key_from_named_curve_and_sec1_der(
+  named_curve: Option<const_oid::ObjectIdentifier>,
+  sec1_der: &[u8],
+) -> Result<AsymmetricPrivateKey, AsymmetricPrivateKeyError> {
+  let ec_key = sec1::EcPrivateKey::from_der(sec1_der)
+    .map_err(|_| AsymmetricPrivateKeyError::InvalidSec1PrivateKey)?;
+
+  if let Some(oid) = named_curve {
+    return match oid {
+      ID_SECP224R1_OID => {
+        let key = p224::SecretKey::try_from(ec_key)
+          .map_err(|_| AsymmetricPrivateKeyError::InvalidSec1PrivateKey)?;
+        Ok(AsymmetricPrivateKey::Ec(EcPrivateKey::P224(key)))
+      }
+      ID_SECP256R1_OID => {
+        let key = p256::SecretKey::try_from(ec_key)
+          .map_err(|_| AsymmetricPrivateKeyError::InvalidSec1PrivateKey)?;
+        Ok(AsymmetricPrivateKey::Ec(EcPrivateKey::P256(key)))
+      }
+      ID_SECP384R1_OID => {
+        let key = p384::SecretKey::try_from(ec_key)
+          .map_err(|_| AsymmetricPrivateKeyError::InvalidSec1PrivateKey)?;
+        Ok(AsymmetricPrivateKey::Ec(EcPrivateKey::P384(key)))
+      }
+      ID_SECP256K1_OID => {
+        let key = k256::SecretKey::try_from(ec_key)
+          .map_err(|_| AsymmetricPrivateKeyError::InvalidSec1PrivateKey)?;
+        Ok(AsymmetricPrivateKey::Ec(EcPrivateKey::Secp256k1(key)))
+      }
+      _ => Err(AsymmetricPrivateKeyError::UnsupportedEcNamedCurve),
+    };
+  }
+
+  // No named curve OID available — infer from private key byte length
+  match ec_key.private_key.len() {
+    28 => {
+      let key = p224::SecretKey::try_from(ec_key)
+        .map_err(|_| AsymmetricPrivateKeyError::InvalidSec1PrivateKey)?;
+      Ok(AsymmetricPrivateKey::Ec(EcPrivateKey::P224(key)))
+    }
+    32 => {
+      // Both P-256 and secp256k1 have 32-byte keys; prefer P-256
+      p256::SecretKey::try_from(ec_key.clone())
+        .map(|key| AsymmetricPrivateKey::Ec(EcPrivateKey::P256(key)))
+        .or_else(|_| {
+          k256::SecretKey::try_from(ec_key)
+            .map(|key| AsymmetricPrivateKey::Ec(EcPrivateKey::Secp256k1(key)))
+        })
+        .map_err(|_| AsymmetricPrivateKeyError::InvalidSec1PrivateKey)
+    }
+    48 => {
+      let key = p384::SecretKey::try_from(ec_key)
+        .map_err(|_| AsymmetricPrivateKeyError::InvalidSec1PrivateKey)?;
+      Ok(AsymmetricPrivateKey::Ec(EcPrivateKey::P384(key)))
+    }
+    _ => {
+      Err(AsymmetricPrivateKeyError::MalformedOrMissingNamedCurveInEcParameters)
+    }
+  }
+}
+
 impl KeyObjectHandle {
   pub fn new_asymmetric_private_key_from_js(
     key: &[u8],
@@ -714,40 +779,20 @@ impl KeyObjectHandle {
         AsymmetricPrivateKey::Dsa(private_key)
       }
       EC_OID => {
-        let named_curve = pk_info.algorithm.parameters_oid().map_err(|_| {
-          AsymmetricPrivateKeyError::MalformedOrMissingNamedCurveInEcParameters
-        })?;
-        match named_curve {
-          ID_SECP224R1_OID => {
-            let secret_key = p224::SecretKey::from_sec1_der(
-              pk_info.private_key,
-            )
-            .map_err(|_| AsymmetricPrivateKeyError::InvalidSec1PrivateKey)?;
-            AsymmetricPrivateKey::Ec(EcPrivateKey::P224(secret_key))
-          }
-          ID_SECP256R1_OID => {
-            let secret_key = p256::SecretKey::from_sec1_der(
-              pk_info.private_key,
-            )
-            .map_err(|_| AsymmetricPrivateKeyError::InvalidSec1PrivateKey)?;
-            AsymmetricPrivateKey::Ec(EcPrivateKey::P256(secret_key))
-          }
-          ID_SECP384R1_OID => {
-            let secret_key = p384::SecretKey::from_sec1_der(
-              pk_info.private_key,
-            )
-            .map_err(|_| AsymmetricPrivateKeyError::InvalidSec1PrivateKey)?;
-            AsymmetricPrivateKey::Ec(EcPrivateKey::P384(secret_key))
-          }
-          ID_SECP256K1_OID => {
-            let secret_key = k256::SecretKey::from_sec1_der(
-              pk_info.private_key,
-            )
-            .map_err(|_| AsymmetricPrivateKeyError::InvalidSec1PrivateKey)?;
-            AsymmetricPrivateKey::Ec(EcPrivateKey::Secp256k1(secret_key))
-          }
-          _ => return Err(AsymmetricPrivateKeyError::UnsupportedEcNamedCurve),
-        }
+        // Try to get the named curve from the PKCS#8 AlgorithmIdentifier
+        // parameters. If that fails (e.g. for SEC1 keys without parameters),
+        // fall back to extracting it from the inner SEC1 ECPrivateKey structure
+        // or inferring from the private key byte length.
+        let named_curve =
+          pk_info.algorithm.parameters_oid().ok().or_else(|| {
+            let ec_key =
+              sec1::EcPrivateKey::from_der(pk_info.private_key).ok()?;
+            ec_key.parameters.and_then(|p| p.named_curve())
+          });
+        ec_private_key_from_named_curve_and_sec1_der(
+          named_curve,
+          pk_info.private_key,
+        )?
       }
       X25519_OID => {
         let string_ref = OctetStringRef::from_der(pk_info.private_key)
@@ -1553,14 +1598,35 @@ impl AsymmetricPrivateKey {
       },
       "sec1" => match self {
         AsymmetricPrivateKey::Ec(key) => {
-          let sec1 = match key {
-            EcPrivateKey::P224(key) => key.to_sec1_der(),
-            EcPrivateKey::P256(key) => key.to_sec1_der(),
-            EcPrivateKey::P384(key) => key.to_sec1_der(),
-            EcPrivateKey::Secp256k1(key) => key.to_sec1_der(),
-          }
-          .map_err(|_| AsymmetricPrivateKeyDerError::InvalidEcPrivateKey)?;
-          Ok(sec1.to_vec().into_boxed_slice())
+          let (sec1_der, curve_oid) = match key {
+            EcPrivateKey::P224(key) => {
+              (key.to_sec1_der(), ID_SECP224R1_OID)
+            }
+            EcPrivateKey::P256(key) => {
+              (key.to_sec1_der(), ID_SECP256R1_OID)
+            }
+            EcPrivateKey::P384(key) => {
+              (key.to_sec1_der(), ID_SECP384R1_OID)
+            }
+            EcPrivateKey::Secp256k1(key) => {
+              (key.to_sec1_der(), ID_SECP256K1_OID)
+            }
+          };
+          let sec1_der = sec1_der
+            .map_err(|_| AsymmetricPrivateKeyDerError::InvalidEcPrivateKey)?;
+          // The elliptic-curve crate's to_sec1_der() omits the optional
+          // `parameters` field. Re-encode with the curve OID included to
+          // match OpenSSL/Node.js behavior.
+          let mut ec_key =
+            sec1::EcPrivateKey::from_der(&sec1_der)
+              .map_err(|_| {
+                AsymmetricPrivateKeyDerError::InvalidEcPrivateKey
+              })?;
+          ec_key.parameters = Some(curve_oid.into());
+          let der = ec_key
+            .to_der()
+            .map_err(|_| AsymmetricPrivateKeyDerError::InvalidEcPrivateKey)?;
+          Ok(der.into_boxed_slice())
         }
         _ => Err(AsymmetricPrivateKeyDerError::ExportingNonEcPrivateKeyAsSec1Unsupported),
       },
