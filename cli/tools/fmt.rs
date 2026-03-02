@@ -489,6 +489,12 @@ pub fn format_html(
             },
           )
         }
+        ext if ext.starts_with("markup-fmt-jinja-") => {
+          // Jinja/Nunjucks expressions may contain non-JS syntax (for example
+          // filters such as `|>`), so preserve the original text instead of
+          // passing it through the TypeScript formatter.
+          Ok(Cow::from(text))
+        }
         _ => {
           let mut typescript_config_builder =
             get_typescript_config_builder(fmt_options);
@@ -759,7 +765,9 @@ fn format_embedded_html(
       component_v_slot_style: None,
       default_v_slot_style: None,
       named_v_slot_style: None,
+      vue_component_case: config::VueComponentCase::Ignore,
       v_bind_same_name_short_hand: None,
+      angular_next_control_flow_same_line: true,
       strict_svelte_attr: false,
       svelte_attr_shorthand: None,
       svelte_directive_shorthand: None,
@@ -1631,7 +1639,9 @@ fn get_resolved_markup_fmt_config(
     component_v_slot_style: None,
     default_v_slot_style: None,
     named_v_slot_style: None,
+    vue_component_case: VueComponentCase::Ignore,
     v_bind_same_name_short_hand: None,
+    angular_next_control_flow_same_line: true,
     strict_svelte_attr: false,
     svelte_attr_shorthand: Some(true),
     svelte_directive_shorthand: Some(true),
