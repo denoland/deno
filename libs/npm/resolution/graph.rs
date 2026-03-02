@@ -702,37 +702,6 @@ impl Graph {
       }
     }
 
-    // Cap ID length: if any serialized ID exceeds the threshold,
-    // replace its peer dependencies with a hash-based synthetic entry.
-    const MAX_SERIALIZED_ID_LENGTH: usize = 2000;
-    for npm_pkg_id in cache.values_mut() {
-      if npm_pkg_id.peer_dependencies.0.is_empty() {
-        continue;
-      }
-      let serialized = npm_pkg_id.as_serialized();
-      if serialized.len() > MAX_SERIALIZED_ID_LENGTH {
-        // Hash the peer suffix to produce a short, deterministic ID
-        let peer_suffix = npm_pkg_id.peer_dependencies.as_serialized();
-        let mut hasher = DefaultHasher::new();
-        peer_suffix.as_str().hash(&mut hasher);
-        let hash = hasher.finish();
-
-        // Replace peer deps with a single synthetic entry using a name
-        // that starts with '.' (which is invalid in npm), ensuring no
-        // collision with real packages. The hash is encoded as a hex
-        // string in a valid semver prerelease tag.
-        npm_pkg_id.peer_dependencies =
-          crate::NpmPackageIdPeerDependencies::from([NpmPackageId {
-            nv: PackageNv {
-              name: StackString::from_static(".peerhash"),
-              version: Version::parse_from_npm(&format!("0.0.0-{:016x}", hash))
-                .unwrap(),
-            },
-            peer_dependencies: Default::default(),
-          }]);
-      }
-    }
-
     cache
   }
 
