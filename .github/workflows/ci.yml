@@ -25,24 +25,31 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       skip_build: '${{ steps.check.outputs.skip_build }}'
+      skip_deno_core_test: '${{ steps.deno_core_changes.outputs.skip_deno_core_test }}'
     steps:
       - name: Configure git
-        if: github.event.pull_request.draft == true
+        if: github.event_name == 'pull_request'
         run: |-
           git config --global core.symlinks true
           git config --global fetch.parallel 32
       - name: Clone repository
         uses: actions/checkout@v6
-        if: github.event.pull_request.draft == true
+        if: github.event_name == 'pull_request'
         with:
           fetch-depth: 5
           submodules: false
       - id: check
-        if: 'github.event.pull_request.draft == true && !contains(github.event.pull_request.labels.*.name, ''ci-draft'')'
+        if: 'github.event_name == ''pull_request'' && github.event.pull_request.draft == true && !contains(github.event.pull_request.labels.*.name, ''ci-draft'')'
         run: |-
           GIT_MESSAGE=$(git log --format=%s -n 1 ${{github.event.after}})
           echo Commit message: $GIT_MESSAGE
           echo $GIT_MESSAGE | grep '\[ci\]' || (echo 'Exiting due to draft PR. Commit with [ci] to bypass or add the ci-draft label.' ; echo 'skip_build=true' >> $GITHUB_OUTPUT)
+      - id: deno_core_changes
+        if: github.event_name == 'pull_request'
+        run: |-
+          DENO_CORE_CHANGED=$(git diff --name-only ${{ github.event.pull_request.base.sha }}..HEAD | grep -qE '^(libs/core_testing|libs/core|libs/core/examples/snapshot|libs/dcore|libs/ops|libs/ops/compile_test_runner|libs/serde_v8)/|^Cargo\.lock$|^Cargo\.toml$' && echo true || echo false)
+          echo "Deno core changed: $DENO_CORE_CHANGED"
+          echo "skip_deno_core_test=$([ "$DENO_CORE_CHANGED" = "false" ] && echo true || echo false)" >> $GITHUB_OUTPUT
   bench:
     name: bench release linux-x86_64
     needs:
@@ -5671,7 +5678,7 @@ jobs:
     name: deno_core test linux-x86_64
     needs:
       - pre_build
-    if: needs.pre_build.outputs.skip_build != 'true'
+    if: needs.pre_build.outputs.skip_build != 'true' && needs.pre_build.outputs.skip_deno_core_test != 'true'
     runs-on: '${{ github.repository == ''denoland/deno'' && ''ghcr.io/cirruslabs/ubuntu-runner-amd64:24.04'' || ''ubuntu-24.04'' }}'
     timeout-minutes: 60
     defaults:

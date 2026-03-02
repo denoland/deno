@@ -485,15 +485,27 @@ const preBuildCheckStep = step({
   outputs: ["skip_build"] as const,
 });
 
+const denoCoreChangesCheckStep = step({
+  id: "deno_core_changes",
+  run: [
+    `DENO_CORE_CHANGED=$(git diff --name-only \${{ github.event.pull_request.base.sha }}..HEAD | grep -qE '^(${denoCorePackageDirs.join("|")})/|^Cargo\\.lock$|^Cargo\\.toml$' && echo true || echo false)`,
+    `echo "Deno core changed: $DENO_CORE_CHANGED"`,
+    `echo "skip_deno_core_test=$([ "$DENO_CORE_CHANGED" = "false" ] && echo true || echo false)" >> $GITHUB_OUTPUT`,
+  ],
+  outputs: ["skip_deno_core_test"] as const,
+});
+
 const preBuildJob = job("pre_build", {
   name: "pre-build",
   runsOn: "ubuntu-latest",
-  steps: step.if(conditions.isDraftPr())(
+  steps: step.if(isPr)(
     cloneRepoStep,
-    preBuildCheckStep,
+    step.if(conditions.isDraftPr())(preBuildCheckStep),
+    denoCoreChangesCheckStep,
   ),
   outputs: {
     skip_build: preBuildCheckStep.outputs.skip_build,
+    skip_deno_core_test: denoCoreChangesCheckStep.outputs.skip_deno_core_test,
   },
 });
 
@@ -1532,7 +1544,8 @@ const denoCoreTestCacheSteps = createCacheSteps({
 const denoCoreTestJob = job("deno-core-test", {
   name: `deno_core test linux-x86_64`,
   needs: [preBuildJob],
-  if: preBuildJob.outputs.skip_build.notEquals("true"),
+  if: preBuildJob.outputs.skip_build.notEquals("true")
+    .and(preBuildJob.outputs.skip_deno_core_test.notEquals("true")),
   runsOn: denoCoreTestProfile.runner,
   timeoutMinutes: 60,
   defaults: {
