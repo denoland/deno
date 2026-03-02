@@ -475,7 +475,9 @@ export class Decipheriv extends Transform implements Cipher {
       throw new Error("Invalid final block size");
     }
 
-    buf = buf.subarray(0, 16 - buf.at(-1)); // Padded in Pkcs7 mode
+    if (this.#autoPadding) {
+      buf = buf.subarray(0, 16 - buf.at(-1)); // Padded in Pkcs7 mode
+    }
     this.#finalized = true;
     if (encoding !== "buffer") {
       return this.#decoder!.end(buf);

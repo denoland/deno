@@ -654,3 +654,49 @@ Deno.test({
     );
   },
 });
+
+Deno.test({
+  name: "aes-256-cbc setAutoPadding(false) roundtrip",
+  fn() {
+    const key = Buffer.alloc(32, 0x01);
+    const iv = Buffer.alloc(16, 0x02);
+    // 32 bytes = exactly 2 blocks, no PKCS7 padding needed
+    const plaintext = Buffer.from("a]B$y;^&5}0[e-k+D7zIn9Co*q#m!LpX");
+
+    const cipher = crypto.createCipheriv("aes-256-cbc", key, iv);
+    cipher.setAutoPadding(false);
+    const encrypted = Buffer.concat([cipher.update(plaintext), cipher.final()]);
+
+    const decipher = crypto.createDecipheriv("aes-256-cbc", key, iv);
+    decipher.setAutoPadding(false);
+    const decrypted = Buffer.concat([
+      decipher.update(encrypted),
+      decipher.final(),
+    ]);
+
+    assertEquals(decrypted, plaintext);
+  },
+});
+
+Deno.test({
+  name: "aes-128-cbc setAutoPadding(false) roundtrip",
+  fn() {
+    const key = Buffer.alloc(16, 0x03);
+    const iv = Buffer.alloc(16, 0x04);
+    // 16 bytes = exactly 1 block
+    const plaintext = Buffer.from("0123456789abcdef");
+
+    const cipher = crypto.createCipheriv("aes-128-cbc", key, iv);
+    cipher.setAutoPadding(false);
+    const encrypted = Buffer.concat([cipher.update(plaintext), cipher.final()]);
+
+    const decipher = crypto.createDecipheriv("aes-128-cbc", key, iv);
+    decipher.setAutoPadding(false);
+    const decrypted = Buffer.concat([
+      decipher.update(encrypted),
+      decipher.final(),
+    ]);
+
+    assertEquals(decrypted, plaintext);
+  },
+});
