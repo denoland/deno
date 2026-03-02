@@ -115,6 +115,7 @@ builtin_ops! {
   ops_builtin_v8::op_immediate_ref_count,
   ops_builtin_v8::op_immediate_set_has_outstanding,
   ops_builtin_v8::op_immediate_has_ref_count,
+  ops_builtin_v8::op_compile_function,
   ops_builtin_v8::op_eval_context,
   ops_builtin_v8::op_queue_microtask,
   ops_builtin_v8::op_encode,
