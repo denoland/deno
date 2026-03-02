@@ -21,15 +21,12 @@ import {
 const cacheVersion = 98;
 
 const ubuntuX86Runner = "ubuntu-24.04";
-const ubuntuX86XlRunner = "ghcr.io/cirruslabs/ubuntu-runner-amd64:24.04";
-const ubuntuARMXlRunner = "ghcr.io/cirruslabs/ubuntu-runner-arm64:24.04-plus";
 const ubuntuARMRunner = "ubuntu-24.04-arm";
 const windowsX86Runner = "windows-2022";
 const windowsX86XlRunner = "windows-2022-xl";
 const windowsArmRunner = "windows-11-arm";
 const macosX86Runner = "macos-15-intel";
 const macosArmRunner = "macos-14";
-const selfHostedMacosArmRunner = "ghcr.io/cirruslabs/macos-runner:sonoma";
 
 // shared conditions
 const isDenoland = conditions.isRepository("denoland/deno");
@@ -50,14 +47,12 @@ const Runners = {
   linuxX86Xl: {
     os: "linux",
     arch: "x86_64",
-    runner: isDenoland.then(ubuntuX86XlRunner).else(ubuntuX86Runner),
-    testRunner: ubuntuX86Runner,
+    runner: ubuntuX86Runner,
   },
   linuxArm: {
     os: "linux",
     arch: "aarch64",
-    runner: ubuntuARMXlRunner,
-    testRunner: ubuntuARMRunner,
+    runner: ubuntuARMRunner,
   },
   macosX86: {
     os: "macos",
@@ -72,10 +67,7 @@ const Runners = {
   macosArmSelfHosted: {
     os: "macos",
     arch: "aarch64",
-    // actually use self-hosted runner only in denoland/deno on `main` branch and for tags (release) builds
-    runner: isDenoland.and(isMainOrTag).then(selfHostedMacosArmRunner)
-      .else(macosArmRunner),
-    testRunner: macosArmRunner,
+    runner: macosArmRunner,
   },
   windowsX86: {
     os: "windows",
@@ -293,7 +285,7 @@ function createRestoreAndSaveCacheSteps(m: {
   const path = m.path.join("\n");
   const restoreCacheStep = step({
     name: `Restore cache ${m.name}`,
-    uses: "cirruslabs/cache/restore@v4",
+    uses: "actions/cache/restore@v4",
     with: {
       path,
       key: "never_saved",
@@ -302,7 +294,7 @@ function createRestoreAndSaveCacheSteps(m: {
   });
   const saveCacheStep = step({
     name: `Cache ${m.name}`,
-    uses: "cirruslabs/cache/save@v4",
+    uses: "actions/cache/save@v4",
     with: {
       path,
       // We force saving a new cache on every main run so that PRs can
