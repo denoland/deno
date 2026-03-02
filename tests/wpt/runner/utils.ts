@@ -117,9 +117,9 @@ export function getManifest(): Manifest {
 
 /// WPT TEST EXPECTATIONS
 
-export const EXPECTATION_PATH = join(
+export const EXPECTATIONS_DIR = join(
   ROOT_PATH,
-  "./tests/wpt/runner/expectation.json",
+  "./tests/wpt/runner/expectations",
 );
 
 export interface TestExpectation {
@@ -132,18 +132,53 @@ export interface Expectation {
 }
 
 export function getExpectation(): Expectation {
-  const expectationText = Deno.readTextFileSync(EXPECTATION_PATH);
-  return JSON.parse(expectationText);
+  const expectation: Expectation = {};
+  for (const entry of Deno.readDirSync(EXPECTATIONS_DIR)) {
+    if (!entry.isFile || !entry.name.endsWith(".json")) continue;
+    const suiteName = entry.name.slice(0, -".json".length);
+    const text = Deno.readTextFileSync(join(EXPECTATIONS_DIR, entry.name));
+    expectation[suiteName] = JSON.parse(text);
+  }
+  return expectation;
 }
 
 export function saveExpectation(
   expectation: Expectation,
-  path: string = EXPECTATION_PATH,
+  path?: string,
 ) {
-  Deno.writeTextFileSync(
-    path,
-    JSON.stringify(expectation, undefined, "  ") + "\n",
-  );
+  if (path) {
+    // Write single merged file (used for tmp diff in `run` command)
+    Deno.writeTextFileSync(
+      path,
+      JSON.stringify(expectation, undefined, "  ") + "\n",
+    );
+    return;
+  }
+
+  // Write each top-level key to its own file in the expectations directory
+  const existingFiles = new Set<string>();
+  for (const entry of Deno.readDirSync(EXPECTATIONS_DIR)) {
+    if (entry.isFile && entry.name.endsWith(".json")) {
+      existingFiles.add(entry.name);
+    }
+  }
+
+  const writtenFiles = new Set<string>();
+  for (const [key, value] of Object.entries(expectation)) {
+    const fileName = `${key}.json`;
+    writtenFiles.add(fileName);
+    Deno.writeTextFileSync(
+      join(EXPECTATIONS_DIR, fileName),
+      JSON.stringify(value, undefined, "  ") + "\n",
+    );
+  }
+
+  // Remove files for keys no longer present
+  for (const fileName of existingFiles) {
+    if (!writtenFiles.has(fileName)) {
+      Deno.removeSync(join(EXPECTATIONS_DIR, fileName));
+    }
+  }
 }
 
 export function getExpectFailForCase(

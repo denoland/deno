@@ -20,7 +20,7 @@ import {
   escapeLoneSurrogates,
   Expectation,
   TestExpectation,
-  EXPECTATION_PATH,
+  EXPECTATIONS_DIR,
   generateRunInfo,
   getExpectation,
   getExpectFailForCase,
@@ -115,10 +115,10 @@ switch (command) {
       Validate that your environment is configured correctly, or help you configure it.
 
     run
-      Run all tests like specified in \`expectation.json\`.
+      Run all tests like specified in the expectations directory.
 
     update
-      Update the \`expectation.json\` to match the current reality.
+      Update the expectations directory to match the current reality.
 
 More details at https://docs.deno.com/runtime/manual/references/contributing/web_platform_tests
 
@@ -221,7 +221,7 @@ async function run() {
   if (!hasFilters && !all) {
     console.log(`Usage: wpt.ts run [OPTIONS] [-- <filters...>]
 
-Run WPT tests and check results against expectation.json.
+Run WPT tests and check results against expectations.
 
 Either specify test filters or use --all to run the entire suite:
 
@@ -312,14 +312,20 @@ Options:
   }
 
   const newExpectations = newExpectation(results);
-  const tmp = Deno.makeTempFileSync();
-  saveExpectation(newExpectations, tmp);
+  const tmpDir = Deno.makeTempDirSync();
+  // Write each suite to its own file in the tmp directory for diffing
+  for (const [key, value] of Object.entries(newExpectations)) {
+    Deno.writeTextFileSync(
+      `${tmpDir}/${key}.json`,
+      JSON.stringify(value, undefined, "  ") + "\n",
+    );
+  }
 
   const code = reportFinal(results, endTime - startTime);
 
   // Run git diff to see what changed
-  await runGitDiff([EXPECTATION_PATH, tmp]);
-  Deno.removeSync(tmp);
+  await runGitDiff(["--no-index", EXPECTATIONS_DIR, tmpDir]);
+  Deno.removeSync(tmpDir, { recursive: true });
 
   Deno.exit(code);
 }
@@ -438,7 +444,7 @@ async function update() {
   if (!hasFilters && !all) {
     console.log(`Usage: wpt.ts update [OPTIONS] [-- <filters...>]
 
-Run WPT tests and update expectation.json to match current results.
+Run WPT tests and update expectations to match current results.
 
 Either specify test filters or use --all to update the entire suite:
 
@@ -490,7 +496,7 @@ Options:
 
   reportFinal(results, endTime - startTime);
 
-  console.log(blue("Updated expectation.json to match reality."));
+  console.log(blue("Updated expectations to match reality."));
 
   Deno.exit(0);
 }

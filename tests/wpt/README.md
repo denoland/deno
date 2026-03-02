@@ -71,7 +71,7 @@ Tests are run in parallel across CPU cores, partitioned by top-level directory.
 
 ## Updating expectations
 
-The `update` command runs tests and overwrites `expectation.json` to match
+The `update` command runs tests and overwrites the expectation files to match
 current results:
 
 ```shell
@@ -89,10 +89,10 @@ The `update` command accepts the same flags as `run` (`--release`, `--binary`,
 
 ## Expectation file format
 
-The expectation file (`./tests/wpt/runner/expectation.json`) is a nested JSON
-object that mirrors the WPT directory structure. The top-level keys are test
-suite directories (e.g., `fetch`, `dom`, `WebCryptoAPI`), and the nesting
-follows the directory tree down to individual test files.
+The expectations directory (`./tests/wpt/runner/expectations/`) contains one
+JSON file per test suite (e.g., `fetch.json`, `dom.json`, `WebCryptoAPI.json`).
+Each file is a nested JSON object that mirrors the WPT directory structure,
+following the directory tree down to individual test files.
 
 Leaf values describe what is expected for each test file:
 
@@ -128,7 +128,7 @@ Example:
 ```
 
 When the `run` command finishes, it shows a git diff between the current
-`expectation.json` and what the actual results would produce. This makes it
+expectation files and what the actual results would produce. This makes it
 easy to see regressions and improvements.
 
 ## FAQ
