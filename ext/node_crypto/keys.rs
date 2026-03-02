@@ -604,10 +604,9 @@ pub enum AsymmetricPublicKeyError {
   UnsupportedPrivateKeyOid,
 }
 
-/// Parse an EC private key from SEC1 DER bytes with an optional named curve
-/// OID. If the named curve is not provided, the curve is inferred from the
-/// private key byte length. For 32-byte keys (ambiguous between P-256 and
-/// secp256k1), P-256 is preferred.
+/// Parse an EC private key from SEC1 DER bytes using the named curve OID.
+/// The curve OID is required — inferring from key length is unreliable
+/// (e.g. P-256 and secp256k1 both use 32-byte keys).
 fn ec_private_key_from_named_curve_and_sec1_der(
   named_curve: Option<const_oid::ObjectIdentifier>,
   sec1_der: &[u8],
@@ -615,57 +614,32 @@ fn ec_private_key_from_named_curve_and_sec1_der(
   let ec_key = sec1::EcPrivateKey::from_der(sec1_der)
     .map_err(|_| AsymmetricPrivateKeyError::InvalidSec1PrivateKey)?;
 
-  if let Some(oid) = named_curve {
-    return match oid {
-      ID_SECP224R1_OID => {
-        let key = p224::SecretKey::try_from(ec_key)
-          .map_err(|_| AsymmetricPrivateKeyError::InvalidSec1PrivateKey)?;
-        Ok(AsymmetricPrivateKey::Ec(EcPrivateKey::P224(key)))
-      }
-      ID_SECP256R1_OID => {
-        let key = p256::SecretKey::try_from(ec_key)
-          .map_err(|_| AsymmetricPrivateKeyError::InvalidSec1PrivateKey)?;
-        Ok(AsymmetricPrivateKey::Ec(EcPrivateKey::P256(key)))
-      }
-      ID_SECP384R1_OID => {
-        let key = p384::SecretKey::try_from(ec_key)
-          .map_err(|_| AsymmetricPrivateKeyError::InvalidSec1PrivateKey)?;
-        Ok(AsymmetricPrivateKey::Ec(EcPrivateKey::P384(key)))
-      }
-      ID_SECP256K1_OID => {
-        let key = k256::SecretKey::try_from(ec_key)
-          .map_err(|_| AsymmetricPrivateKeyError::InvalidSec1PrivateKey)?;
-        Ok(AsymmetricPrivateKey::Ec(EcPrivateKey::Secp256k1(key)))
-      }
-      _ => Err(AsymmetricPrivateKeyError::UnsupportedEcNamedCurve),
-    };
-  }
+  let oid = named_curve.ok_or(
+    AsymmetricPrivateKeyError::MalformedOrMissingNamedCurveInEcParameters,
+  )?;
 
-  // No named curve OID available — infer from private key byte length
-  match ec_key.private_key.len() {
-    28 => {
+  match oid {
+    ID_SECP224R1_OID => {
       let key = p224::SecretKey::try_from(ec_key)
         .map_err(|_| AsymmetricPrivateKeyError::InvalidSec1PrivateKey)?;
       Ok(AsymmetricPrivateKey::Ec(EcPrivateKey::P224(key)))
     }
-    32 => {
-      // Both P-256 and secp256k1 have 32-byte keys; prefer P-256
-      p256::SecretKey::try_from(ec_key.clone())
-        .map(|key| AsymmetricPrivateKey::Ec(EcPrivateKey::P256(key)))
-        .or_else(|_| {
-          k256::SecretKey::try_from(ec_key)
-            .map(|key| AsymmetricPrivateKey::Ec(EcPrivateKey::Secp256k1(key)))
-        })
-        .map_err(|_| AsymmetricPrivateKeyError::InvalidSec1PrivateKey)
+    ID_SECP256R1_OID => {
+      let key = p256::SecretKey::try_from(ec_key)
+        .map_err(|_| AsymmetricPrivateKeyError::InvalidSec1PrivateKey)?;
+      Ok(AsymmetricPrivateKey::Ec(EcPrivateKey::P256(key)))
     }
-    48 => {
+    ID_SECP384R1_OID => {
       let key = p384::SecretKey::try_from(ec_key)
         .map_err(|_| AsymmetricPrivateKeyError::InvalidSec1PrivateKey)?;
       Ok(AsymmetricPrivateKey::Ec(EcPrivateKey::P384(key)))
     }
-    _ => {
-      Err(AsymmetricPrivateKeyError::MalformedOrMissingNamedCurveInEcParameters)
+    ID_SECP256K1_OID => {
+      let key = k256::SecretKey::try_from(ec_key)
+        .map_err(|_| AsymmetricPrivateKeyError::InvalidSec1PrivateKey)?;
+      Ok(AsymmetricPrivateKey::Ec(EcPrivateKey::Secp256k1(key)))
     }
+    _ => Err(AsymmetricPrivateKeyError::UnsupportedEcNamedCurve),
   }
 }
 
@@ -780,9 +754,8 @@ impl KeyObjectHandle {
       }
       EC_OID => {
         // Try to get the named curve from the PKCS#8 AlgorithmIdentifier
-        // parameters. If that fails (e.g. for SEC1 keys without parameters),
-        // fall back to extracting it from the inner SEC1 ECPrivateKey structure
-        // or inferring from the private key byte length.
+        // parameters. If that fails, fall back to extracting it from the
+        // inner SEC1 ECPrivateKey structure's parameters field.
         let named_curve =
           pk_info.algorithm.parameters_oid().ok().or_else(|| {
             let ec_key =
