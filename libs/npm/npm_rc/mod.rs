@@ -173,14 +173,19 @@ impl NpmRc {
     env_registry_url: &str,
     get_env_var: &impl Fn(&str) -> Option<String>,
   ) -> (String, Arc<RegistryConfig>) {
-    // Check NPM_CONFIG_REGISTRY first (higher priority than .npmrc)
-    let env_override = get_env_var("NPM_CONFIG_REGISTRY");
-    
     let registry_url = maybe_scope_name
       .and_then(|scope| self.scope_registries.get(scope).map(|s| s.as_str()))
-      .or_else(|| env_override.as_deref())
-      .or(self.registry.as_deref())
-      .unwrap_or(env_registry_url);
+      .unwrap_or_else(|| {
+        // NPM_CONFIG_REGISTRY should take priority over .npmrc registry setting.
+        // While env_registry_url already contains the NPM_CONFIG_REGISTRY value if set,
+        // we need to check if it was actually set vs being the default fallback.
+        // Only use .npmrc registry if NPM_CONFIG_REGISTRY was not explicitly set.
+        if get_env_var("NPM_CONFIG_REGISTRY").is_some() {
+          env_registry_url
+        } else {
+          self.registry.as_deref().unwrap_or(env_registry_url)
+        }
+      });
 
     let original_registry_url = if registry_url.ends_with('/') {
       Cow::Borrowed(registry_url)
@@ -813,8 +818,10 @@ registry=${VAR_FOUND}
       }
     };
     
+    // This simulates what npm_registry_url() would return when NPM_CONFIG_REGISTRY is set
+    let env_registry_url = Url::parse("http://env.registry.example.com/").unwrap();
     let resolved = npm_rc
-      .as_resolved_with_env(&Url::parse("https://fallback.com/").unwrap(), &env_vars)
+      .as_resolved_with_env(&env_registry_url, &env_vars)
       .unwrap();
     
     // Should use the env var registry, not the .npmrc one
@@ -831,7 +838,7 @@ registry=${VAR_FOUND}
     .unwrap();
     
     let resolved = npm_rc
-      .as_resolved_with_env(&Url::parse("https://fallback.com/").unwrap(), &|_| None)
+      .as_resolved_with_env(&Url::parse("https://registry.npmjs.org/").unwrap(), &|_| None)
       .unwrap();
     
     // Should use the .npmrc registry
