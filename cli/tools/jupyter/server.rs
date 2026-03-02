@@ -18,6 +18,7 @@ use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
+use deno_core::v8;
 use deno_lib::version::DENO_VERSION_INFO;
 use jupyter_protocol::ConnectionInfo;
 use jupyter_protocol::ExecutionCount;
@@ -61,6 +62,7 @@ impl JupyterServer {
     mut stdio_rx: mpsc::UnboundedReceiver<StreamContent>,
     repl_session_proxy: JupyterReplProxy,
     setup_tx: oneshot::Sender<StartupData>,
+    isolate_handle: v8::IsolateHandle,
   ) -> Result<(), AnyError> {
     let session_id = Uuid::new_v4().to_string();
 
@@ -146,8 +148,12 @@ impl JupyterServer {
     let control_fut = deno_core::unsync::spawn({
       let cancel_handle = cancel_handle.clone();
       async move {
-        if let Err(err) =
-          Self::handle_control(control_connection, cancel_handle).await
+        if let Err(err) = Self::handle_control(
+          control_connection,
+          cancel_handle,
+          isolate_handle,
+        )
+        .await
         {
           log::error!("Control error: {}", err);
         }
@@ -212,6 +218,7 @@ impl JupyterServer {
   async fn handle_control(
     mut connection: KernelControlConnection,
     cancel_handle: Rc<CancelHandle>,
+    isolate_handle: v8::IsolateHandle,
   ) -> Result<(), AnyError> {
     loop {
       let msg = connection.read().await?;
@@ -223,11 +230,30 @@ impl JupyterServer {
           // and it's no harm to send a kernel info reply on control
           connection.send(kernel_info().as_child_of(&msg)).await?;
         }
-        JupyterMessageContent::ShutdownRequest(_) => {
+        JupyterMessageContent::ShutdownRequest(ref req) => {
+          connection
+            .send(
+              messaging::ShutdownReply {
+                restart: req.restart,
+                status: ReplyStatus::Ok,
+                error: None,
+              }
+              .as_child_of(&msg),
+            )
+            .await?;
           cancel_handle.cancel();
         }
         JupyterMessageContent::InterruptRequest(_) => {
-          log::error!("Interrupt request currently not supported");
+          isolate_handle.terminate_execution();
+          connection
+            .send(
+              messaging::InterruptReply {
+                status: ReplyStatus::Ok,
+                error: None,
+              }
+              .as_child_of(&msg),
+            )
+            .await?;
         }
         JupyterMessageContent::DebugRequest(_) => {
           log::error!("Debug request currently not supported");
@@ -407,10 +433,9 @@ impl JupyterServer {
           .await?;
       }
 
-      JupyterMessageContent::IsCompleteRequest(_) => {
-        connection
-          .send(messaging::IsCompleteReply::complete().as_child_of(parent))
-          .await?;
+      JupyterMessageContent::IsCompleteRequest(req) => {
+        let reply = check_is_complete(&req.code);
+        connection.send(reply.as_child_of(parent)).await?;
       }
       JupyterMessageContent::KernelInfoRequest(_) => {
         connection.send(kernel_info().as_child_of(parent)).await?;
@@ -729,6 +754,87 @@ async fn publish_result(
   Ok(None)
 }
 
+/// Check whether code is complete (all brackets/braces/parens balanced
+/// and no trailing backslash or unterminated template literal).
+/// This is a heuristic — it ignores delimiters inside strings and comments
+/// but covers the common interactive cases.
+fn check_is_complete(code: &str) -> messaging::IsCompleteReply {
+  let mut stack: Vec<char> = Vec::new();
+  let mut chars = code.chars().peekable();
+  while let Some(ch) = chars.next() {
+    match ch {
+      // Skip single-line comments
+      '/' if chars.peek() == Some(&'/') => {
+        for c in chars.by_ref() {
+          if c == '\n' {
+            break;
+          }
+        }
+      }
+      // Skip multi-line comments
+      '/' if chars.peek() == Some(&'*') => {
+        chars.next(); // consume '*'
+        let mut closed = false;
+        while let Some(c) = chars.next() {
+          if c == '*' && chars.peek() == Some(&'/') {
+            chars.next();
+            closed = true;
+            break;
+          }
+        }
+        if !closed {
+          return messaging::IsCompleteReply::incomplete("".into());
+        }
+      }
+      // Skip string literals
+      '\'' | '"' | '`' => {
+        let quote = ch;
+        let mut escaped = false;
+        let mut closed = false;
+        for c in chars.by_ref() {
+          if escaped {
+            escaped = false;
+            continue;
+          }
+          if c == '\\' {
+            escaped = true;
+            continue;
+          }
+          if c == quote {
+            closed = true;
+            break;
+          }
+        }
+        if !closed {
+          return messaging::IsCompleteReply::incomplete("".into());
+        }
+      }
+      '(' | '[' | '{' => stack.push(ch),
+      ')' => {
+        if stack.pop() != Some('(') {
+          return messaging::IsCompleteReply::invalid();
+        }
+      }
+      ']' => {
+        if stack.pop() != Some('[') {
+          return messaging::IsCompleteReply::invalid();
+        }
+      }
+      '}' => {
+        if stack.pop() != Some('{') {
+          return messaging::IsCompleteReply::invalid();
+        }
+      }
+      _ => {}
+    }
+  }
+  if stack.is_empty() {
+    messaging::IsCompleteReply::complete()
+  } else {
+    messaging::IsCompleteReply::incomplete("  ".into())
+  }
+}
+
 // TODO(bartlomieju): dedup with repl::editor
 fn get_expr_from_line_at_pos(line: &str, cursor_pos: usize) -> &str {
   let start = line[..cursor_pos].rfind(is_word_boundary).unwrap_or(0);
@@ -829,5 +935,108 @@ async fn evaluate_expression(
     None
   } else {
     Some(evaluate_response)
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use jupyter_protocol::messaging::IsCompleteReplyStatus;
+
+  use super::*;
+
+  #[test]
+  fn test_complete_simple_statement() {
+    let reply = check_is_complete("const x = 1");
+    assert_eq!(reply.status, IsCompleteReplyStatus::Complete);
+  }
+
+  #[test]
+  fn test_incomplete_open_brace() {
+    let reply = check_is_complete("const x = {");
+    assert_eq!(reply.status, IsCompleteReplyStatus::Incomplete);
+  }
+
+  #[test]
+  fn test_incomplete_open_paren() {
+    let reply = check_is_complete("function foo(");
+    assert_eq!(reply.status, IsCompleteReplyStatus::Incomplete);
+  }
+
+  #[test]
+  fn test_incomplete_open_bracket() {
+    let reply = check_is_complete("const arr = [1, 2,");
+    assert_eq!(reply.status, IsCompleteReplyStatus::Incomplete);
+  }
+
+  #[test]
+  fn test_complete_balanced_braces() {
+    let reply = check_is_complete("if (true) { console.log(1) }");
+    assert_eq!(reply.status, IsCompleteReplyStatus::Complete);
+  }
+
+  #[test]
+  fn test_complete_multiline() {
+    let reply = check_is_complete("function foo() {\n  return 1;\n}");
+    assert_eq!(reply.status, IsCompleteReplyStatus::Complete);
+  }
+
+  #[test]
+  fn test_invalid_extra_close() {
+    let reply = check_is_complete("const x = 1 }");
+    assert_eq!(reply.status, IsCompleteReplyStatus::Invalid);
+  }
+
+  #[test]
+  fn test_invalid_mismatched() {
+    let reply = check_is_complete("const x = (]");
+    assert_eq!(reply.status, IsCompleteReplyStatus::Invalid);
+  }
+
+  #[test]
+  fn test_ignores_brackets_in_strings() {
+    let reply = check_is_complete(r#"const x = "hello { world""#);
+    assert_eq!(reply.status, IsCompleteReplyStatus::Complete);
+  }
+
+  #[test]
+  fn test_ignores_brackets_in_single_line_comment() {
+    let reply = check_is_complete("const x = 1 // {");
+    assert_eq!(reply.status, IsCompleteReplyStatus::Complete);
+  }
+
+  #[test]
+  fn test_ignores_brackets_in_multiline_comment() {
+    let reply = check_is_complete("const x = 1 /* { */");
+    assert_eq!(reply.status, IsCompleteReplyStatus::Complete);
+  }
+
+  #[test]
+  fn test_incomplete_unterminated_string() {
+    let reply = check_is_complete(r#"const x = "hello"#);
+    assert_eq!(reply.status, IsCompleteReplyStatus::Incomplete);
+  }
+
+  #[test]
+  fn test_incomplete_unterminated_template_literal() {
+    let reply = check_is_complete("const x = `hello ${name}");
+    assert_eq!(reply.status, IsCompleteReplyStatus::Incomplete);
+  }
+
+  #[test]
+  fn test_incomplete_unterminated_multiline_comment() {
+    let reply = check_is_complete("/* this comment never ends");
+    assert_eq!(reply.status, IsCompleteReplyStatus::Incomplete);
+  }
+
+  #[test]
+  fn test_complete_empty() {
+    let reply = check_is_complete("");
+    assert_eq!(reply.status, IsCompleteReplyStatus::Complete);
+  }
+
+  #[test]
+  fn test_escaped_quote_in_string() {
+    let reply = check_is_complete(r#"const x = "hello \" world""#);
+    assert_eq!(reply.status, IsCompleteReplyStatus::Complete);
   }
 }

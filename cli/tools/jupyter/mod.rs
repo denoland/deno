@@ -180,12 +180,20 @@ pub async fn kernel(
   };
   let repl_session_proxy_channels = JupyterReplProxy { tx: tx1, rx: rx2 };
 
+  let isolate_handle = repl_session_proxy
+    .repl_session
+    .worker
+    .js_runtime
+    .v8_isolate()
+    .thread_safe_handle();
+
   let join_handle = std::thread::spawn(move || {
     let fut = server::JupyterServer::start(
       spec,
       stdio_rx,
       repl_session_proxy_channels,
       startup_data_tx,
+      isolate_handle,
     )
     .boxed_local();
     deno_runtime::tokio_util::create_and_run_current_thread(fut)
@@ -522,6 +530,14 @@ impl JupyterReplSession {
     &mut self,
     line: &str,
   ) -> Result<repl::TsEvaluateResponse, AnyError> {
+    // Clear any pending termination flag from a previous interrupt request,
+    // so that the next evaluation can proceed normally.
+    self
+      .repl_session
+      .worker
+      .js_runtime
+      .v8_isolate()
+      .cancel_terminate_execution();
     self
       .repl_session
       .evaluate_line_with_object_wrapping(line)
