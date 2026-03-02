@@ -8488,19 +8488,17 @@ mod test {
 
     // Root reqs: all expo-* plugins are ALSO root deps (like in real Expo
     // package.json where expo-font, expo-image etc. are direct deps)
-    let mut root_reqs = vec![
+    let owned_reqs: Vec<String> = (0..plugin_count)
+      .map(|i| format!("expo-plugin-{}@1", i))
+      .collect();
+    let mut root_reqs: Vec<&str> = vec![
       "expo@1",
       "react@1",
       "react-native@1",
       "types-react@1",
       "expo-router@1",
     ];
-    for i in 0..plugin_count {
-      // We need to leak the strings to get &'static str for the vec
-      let req: &'static str =
-        Box::leak(format!("expo-plugin-{}@1", i).into_boxed_str());
-      root_reqs.push(req);
-    }
+    root_reqs.extend(owned_reqs.iter().map(|s| s.as_str()));
 
     // Use tokio timeout to catch infinite loops
     let result = tokio::time::timeout(
@@ -8801,18 +8799,16 @@ mod test {
     api.add_peer_dependency(("expo-router", "1.0.0"), ("expo", "*"));
     api.add_peer_dependency(("expo-router", "1.0.0"), ("types-react", "*"));
 
-    let mut root_reqs = vec![
+    let owned_reqs: Vec<String> =
+      (0..10).map(|i| format!("expo-plugin-{}@1", i)).collect();
+    let mut root_reqs: Vec<&str> = vec![
       "expo@1",
       "react@1",
       "react-native@1",
       "types-react@1",
       "expo-router@1",
     ];
-    for i in 0..10 {
-      let req: &'static str =
-        Box::leak(format!("expo-plugin-{}@1", i).into_boxed_str());
-      root_reqs.push(req);
-    }
+    root_reqs.extend(owned_reqs.iter().map(|s| s.as_str()));
 
     let result = tokio::time::timeout(
       std::time::Duration::from_secs(30),
