@@ -114,7 +114,7 @@ import {
   forgivingBase64UrlEncode,
 } from "ext:deno_web/00_infra.js";
 import { atob, btoa } from "ext:deno_web/05_base64.js";
-import { Blob, File } from "ext:deno_web/09_file.js";
+import { Blob, blobFromObjectUrl, File } from "ext:deno_web/09_file.js";
 import { untransferableSymbol } from "ext:deno_node/internal_binding/util.ts";
 
 export { atob, Blob, btoa, File };
@@ -3031,6 +3031,17 @@ export function transcode(source, fromEnco, toEnco) {
   }
 }
 
+export function resolveObjectURL(url) {
+  if (typeof url !== "string") {
+    return undefined;
+  }
+  try {
+    return blobFromObjectUrl(url) ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 const mod = {
   atob,
   btoa,
@@ -3049,6 +3060,7 @@ const mod = {
   },
   kMaxLength,
   kStringMaxLength,
+  resolveObjectURL,
   SlowBuffer,
   transcode,
 };
