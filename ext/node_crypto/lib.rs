@@ -141,6 +141,7 @@ deno_core::extension!(
     keys::op_node_get_private_key_from_pair,
     keys::op_node_get_public_key_from_pair,
     keys::op_node_get_symmetric_key_size,
+    keys::op_node_key_equals,
     keys::op_node_key_type,
     x509::op_node_x509_parse,
     x509::op_node_x509_ca,
