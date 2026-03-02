@@ -673,13 +673,22 @@ pub fn op_node_x509_get_subject_alt_name(
   get_subject_alt_name(cert)
 }
 
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum X509CheckIpError {
+  #[class(type)]
+  #[property("code" = "ERR_INVALID_ARG_VALUE")]
+  #[error("Invalid IP")]
+  InvalidIp,
+}
+
 #[op2]
 #[string]
 pub fn op_node_x509_check_ip(
   #[cppgc] cert: &Certificate,
   #[string] ip: &str,
-) -> Option<String> {
-  let target_ip: IpAddr = ip.parse().ok()?;
+) -> Result<Option<String>, X509CheckIpError> {
+  let target_ip: IpAddr =
+    ip.parse().map_err(|_| X509CheckIpError::InvalidIp)?;
 
   let cert = cert.inner.get().deref();
   let subject_alt = cert
@@ -689,7 +698,12 @@ pub fn op_node_x509_check_ip(
     .and_then(|e| match e.parsed_extension() {
       extensions::ParsedExtension::SubjectAlternativeName(s) => Some(s),
       _ => None,
-    })?;
+    });
+
+  let subject_alt = match subject_alt {
+    Some(s) => s,
+    None => return Ok(None),
+  };
 
   for name in &subject_alt.general_names {
     if let extensions::GeneralName::IPAddress(ip_bytes) = name {
@@ -711,12 +725,12 @@ pub fn op_node_x509_check_ip(
         _ => continue,
       };
       if san_ip == target_ip {
-        return Some(ip.to_string());
+        return Ok(Some(ip.to_string()));
       }
     }
   }
 
-  None
+  Ok(None)
 }
 
 #[op2(fast)]

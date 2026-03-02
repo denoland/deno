@@ -41,7 +41,11 @@ import {
   ERR_INVALID_ARG_VALUE,
 } from "ext:deno_node/internal/errors.ts";
 import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
-import { validateString } from "ext:deno_node/internal/validators.mjs";
+import {
+  validateBoolean,
+  validateObject,
+  validateString,
+} from "ext:deno_node/internal/validators.mjs";
 import type { BinaryLike } from "ext:deno_node/internal/crypto/types.ts";
 import { inspect } from "node:util";
 import { customInspectSymbol as kInspect } from "ext:deno_node/internal/util.mjs";
@@ -71,6 +75,46 @@ export interface X509CheckOptions {
    * @default false
    */
   singleLabelSubdomains: boolean;
+}
+
+// deno-lint-ignore no-explicit-any
+const kEmptyObject = Object.freeze({ __proto__: null } as any);
+
+function getFlags(options = kEmptyObject): number {
+  validateObject(options, "options");
+  const {
+    subject = "default",
+    wildcards = true,
+    partialWildcards = true,
+    multiLabelWildcards = false,
+    singleLabelSubdomains = false,
+  } = { ...options };
+  let flags = 0;
+  validateString(subject, "options.subject");
+  validateBoolean(wildcards, "options.wildcards");
+  validateBoolean(partialWildcards, "options.partialWildcards");
+  validateBoolean(multiLabelWildcards, "options.multiLabelWildcards");
+  validateBoolean(singleLabelSubdomains, "options.singleLabelSubdomains");
+  switch (subject) {
+    case "default":
+      break;
+    case "always":
+      flags |= 0x1;
+      break;
+    case "never":
+      flags |= 0x2;
+      break;
+    default:
+      throw new ERR_INVALID_ARG_VALUE("options.subject", subject);
+  }
+  // Flags are parsed for validation but not currently used
+  // as the underlying implementation doesn't use OpenSSL's
+  // X509_check_* functions.
+  if (!wildcards) flags |= 0x4;
+  if (!partialWildcards) flags |= 0x8;
+  if (multiLabelWildcards) flags |= 0x10;
+  if (singleLabelSubdomains) flags |= 0x20;
+  return flags;
 }
 
 export class X509Certificate {
@@ -127,26 +171,32 @@ export class X509Certificate {
 
   checkEmail(
     email: string,
-    _options?: Pick<X509CheckOptions, "subject">,
+    options?: Pick<X509CheckOptions, "subject">,
   ): string | undefined {
     validateString(email, "email");
+    if (email.includes("\0")) {
+      throw new ERR_INVALID_ARG_VALUE("email", email);
+    }
+    getFlags(options);
     if (op_node_x509_check_email(this.#handle, email)) {
       return email;
     }
   }
 
-  checkHost(name: string, _options?: X509CheckOptions): string | undefined {
+  checkHost(name: string, options?: X509CheckOptions): string | undefined {
     validateString(name, "name");
+    if (name.includes("\0")) {
+      throw new ERR_INVALID_ARG_VALUE("name", name);
+    }
+    getFlags(options);
     if (op_node_x509_check_host(this.#handle, name)) {
       return name;
     }
   }
 
-  checkIP(ip: string): string | undefined {
+  checkIP(ip: string, options?: unknown): string | undefined {
     validateString(ip, "ip");
-    if (ip.includes("\0")) {
-      return undefined;
-    }
+    getFlags(options);
     return op_node_x509_check_ip(this.#handle, ip) ?? undefined;
   }
 
