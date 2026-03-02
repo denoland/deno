@@ -197,6 +197,14 @@ impl KeyObjectHandle {
 
           dsa_signature(dsa_signature_encoding, signature)
         }
+        EcPrivateKey::Secp256k1(key) => {
+          let signing_key = k256::ecdsa::SigningKey::from(key);
+          let signature: k256::ecdsa::Signature = signing_key
+            .sign_prehash(digest)
+            .map_err(|_| KeyObjectHandlePrehashedSignAndVerifyError::FailedToSignDigest)?;
+
+          dsa_signature(dsa_signature_encoding, signature)
+        }
       },
       AsymmetricPrivateKey::X25519(_) => {
         Err(KeyObjectHandlePrehashedSignAndVerifyError::X25519KeyCannotBeUsedForSigning)
@@ -309,6 +317,18 @@ impl KeyObjectHandle {
             p384::ecdsa::Signature::from_der(signature)
           } else {
             p384::ecdsa::Signature::from_bytes(signature.into())
+          };
+          let Ok(signature) = signature else {
+            return Ok(false);
+          };
+          Ok(verifying_key.verify_prehash(digest, &signature).is_ok())
+        }
+        EcPublicKey::Secp256k1(key) => {
+          let verifying_key = k256::ecdsa::VerifyingKey::from(key);
+          let signature = if dsa_signature_encoding == 0 {
+            k256::ecdsa::Signature::from_der(signature)
+          } else {
+            k256::ecdsa::Signature::from_bytes(signature.into())
           };
           let Ok(signature) = signature else {
             return Ok(false);

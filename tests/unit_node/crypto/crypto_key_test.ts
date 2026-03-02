@@ -8,10 +8,13 @@ import {
   createPublicKey,
   createSecretKey,
   createSign,
+  createVerify,
   generateKeyPair,
   generateKeyPairSync,
   KeyObject,
   randomBytes,
+  sign,
+  verify,
   X509Certificate,
 } from "node:crypto";
 import { promisify } from "node:util";
@@ -290,7 +293,7 @@ Deno.test("createPrivateKey ec", function () {
   const key = createPrivateKey(ecPrivateKey);
   assertEquals(key.type, "private");
   assertEquals(key.asymmetricKeyType, "ec");
-  assertEquals(key.asymmetricKeyDetails?.namedCurve, "p256");
+  assertEquals(key.asymmetricKeyDetails?.namedCurve, "prime256v1");
 });
 
 const rsaPublicKey = Deno.readTextFileSync(
@@ -315,7 +318,7 @@ Deno.test("createPublicKey() EC", function () {
   const key = createPublicKey(ecPublicKey);
   assertEquals(key.type, "public");
   assertEquals(key.asymmetricKeyType, "ec");
-  assertEquals(key.asymmetricKeyDetails?.namedCurve, "p256");
+  assertEquals(key.asymmetricKeyDetails?.namedCurve, "prime256v1");
 });
 
 Deno.test("createPublicKey SPKI for DH", async function () {
@@ -824,4 +827,90 @@ Deno.test("curve25519 generate valid private jwk", function () {
   assert(!publicKey.d);
   // @ts-ignore @types/node broken
   assert(privateKey.d);
+});
+
+Deno.test("generateKeyPairSync ec secp256k1", () => {
+  const { publicKey, privateKey } = generateKeyPairSync("ec", {
+    namedCurve: "secp256k1",
+  });
+
+  assertEquals(publicKey.type, "public");
+  assertEquals(privateKey.type, "private");
+  assertEquals(publicKey.asymmetricKeyType, "ec");
+  assertEquals(privateKey.asymmetricKeyType, "ec");
+
+  const pubDetails = publicKey.asymmetricKeyDetails as any;
+  assertEquals(pubDetails.namedCurve, "secp256k1");
+  const privDetails = privateKey.asymmetricKeyDetails as any;
+  assertEquals(privDetails.namedCurve, "secp256k1");
+});
+
+Deno.test("ec secp256k1 sign and verify", () => {
+  const { publicKey, privateKey } = generateKeyPairSync("ec", {
+    namedCurve: "secp256k1",
+  });
+
+  const data = Buffer.from("hello secp256k1");
+
+  const signature = sign("sha256", data, privateKey);
+  assert(signature.length > 0);
+
+  const ok = verify("sha256", data, publicKey, signature);
+  assert(ok);
+
+  const bad = verify("sha256", Buffer.from("wrong data"), publicKey, signature);
+  assert(!bad);
+});
+
+Deno.test("ec secp256k1 createSign and createVerify", () => {
+  const { publicKey, privateKey } = generateKeyPairSync("ec", {
+    namedCurve: "secp256k1",
+  });
+
+  const s = createSign("SHA256");
+  s.update("hello secp256k1");
+  const signature = s.sign(privateKey);
+
+  const v = createVerify("SHA256");
+  v.update("hello secp256k1");
+  assert(v.verify(publicKey, signature));
+});
+
+Deno.test("ec secp256k1 export and import PEM", () => {
+  const { publicKey, privateKey } = generateKeyPairSync("ec", {
+    namedCurve: "secp256k1",
+  });
+
+  const pubPem = publicKey.export({ type: "spki", format: "pem" });
+  const privPem = privateKey.export({ type: "pkcs8", format: "pem" });
+
+  assert(typeof pubPem === "string");
+  assert(typeof privPem === "string");
+  assert((pubPem as string).startsWith("-----BEGIN PUBLIC KEY-----"));
+  assert((privPem as string).startsWith("-----BEGIN PRIVATE KEY-----"));
+
+  const importedPub = createPublicKey(pubPem);
+  const importedPriv = createPrivateKey(privPem);
+
+  assertEquals(importedPub.asymmetricKeyType, "ec");
+  assertEquals(importedPriv.asymmetricKeyType, "ec");
+
+  // Sign with imported private key and verify with imported public key
+  const data = Buffer.from("roundtrip test");
+  const signature = sign("sha256", data, importedPriv);
+  assert(verify("sha256", data, importedPub, signature));
+});
+
+Deno.test("generateKeyPair async ec secp256k1", async () => {
+  const { publicKey, privateKey } = await generateKeyPairAsync(
+    "ec",
+    { namedCurve: "secp256k1" },
+  );
+
+  assertEquals(publicKey.type, "public");
+  assertEquals(privateKey.type, "private");
+
+  const data = Buffer.from("async test");
+  const signature = sign("sha256", data, privateKey);
+  assert(verify("sha256", data, publicKey, signature));
 });
