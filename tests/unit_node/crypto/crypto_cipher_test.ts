@@ -926,8 +926,7 @@ Deno.test({
 });
 
 Deno.test({
-  name:
-    "createDecipheriv - invalid PKCS7 padding throws bad decrypt",
+  name: "createDecipheriv - invalid PKCS7 padding throws bad decrypt",
   fn() {
     const key = Buffer.alloc(16, 0x01);
     const iv = Buffer.alloc(16, 0x02);
