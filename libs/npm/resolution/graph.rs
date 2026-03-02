@@ -8575,19 +8575,20 @@ mod test {
 
     // package-a should appear with resolved peer and that peer should
     // actually point to package-peer@1.0.0
-    let a_with_peer = packages
-      .iter()
-      .find(|p| {
-        p.pkg_id.contains("package-a@1.0.0")
-          && p.pkg_id.contains("package-peer")
-      });
+    let a_with_peer = packages.iter().find(|p| {
+      p.pkg_id.contains("package-a@1.0.0") && p.pkg_id.contains("package-peer")
+    });
     assert!(
       a_with_peer.is_some(),
       "package-a should have an instance with peer resolved. Got: {:?}",
       pkg_ids
     );
     assert_eq!(
-      a_with_peer.unwrap().dependencies.get("package-peer").unwrap(),
+      a_with_peer
+        .unwrap()
+        .dependencies
+        .get("package-peer")
+        .unwrap(),
       "package-peer@1.0.0",
       "package-a's resolved peer should point to package-peer@1.0.0. Got: {:?}",
       a_with_peer.unwrap().dependencies
