@@ -251,7 +251,10 @@ pub fn npm_registry_url(sys: &impl EnvVar) -> NpmRegistryUrl {
     let registry_url = ensure_trailing_slash(&registry_url);
     match Url::parse(&registry_url) {
       Ok(url) => {
-        return NpmRegistryUrl { url, from_env: true };
+        return NpmRegistryUrl {
+          url,
+          from_env: true,
+        };
       }
       Err(err) => {
         log::debug!(

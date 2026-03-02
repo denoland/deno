@@ -1934,16 +1934,10 @@ fn npm_config_registry_overrides_npmrc() {
     .build();
   let temp_dir = context.temp_dir();
 
-  temp_dir.write(
-    "package.json",
-    r#"{"name": "test", "version": "1.0.0"}"#,
-  );
+  temp_dir.write("package.json", r#"{"name": "test", "version": "1.0.0"}"#);
 
   // Create .npmrc with a wrong registry
-  temp_dir.write(
-    ".npmrc",
-    "registry=http://wrong.example.com/\n",
-  );
+  temp_dir.write(".npmrc", "registry=http://wrong.example.com/\n");
 
   // NPM_CONFIG_REGISTRY should override the .npmrc registry
   let output = context

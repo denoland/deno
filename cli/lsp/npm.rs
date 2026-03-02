@@ -125,8 +125,9 @@ fn parse_npm_search_response(source: &str) -> Result<Vec<String>, AnyError> {
 
 // this is buried here because generally you want to use the ResolvedNpmRc instead of this.
 fn npm_registry_url() -> &'static Url {
-  static NPM_REGISTRY_DEFAULT_URL: Lazy<Url> =
-    Lazy::new(|| deno_resolver::npmrc::npm_registry_url(&CliSys::default()).url);
+  static NPM_REGISTRY_DEFAULT_URL: Lazy<Url> = Lazy::new(|| {
+    deno_resolver::npmrc::npm_registry_url(&CliSys::default()).url
+  });
 
   &NPM_REGISTRY_DEFAULT_URL
 }

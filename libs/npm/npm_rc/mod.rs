@@ -158,11 +158,12 @@ impl NpmRc {
         },
       );
     }
-    let (default_url, default_config) = self.registry_url_and_config_for_maybe_scope(
-      None,
-      env_registry_url.as_str(),
-      env_registry_url_from_env,
-    );
+    let (default_url, default_config) = self
+      .registry_url_and_config_for_maybe_scope(
+        None,
+        env_registry_url.as_str(),
+        env_registry_url_from_env,
+      );
     let default_url = Url::parse(&default_url).map_err(ResolveError::Url)?;
     Ok(ResolvedNpmRc {
       default_config: RegistryConfigWithUrl {
@@ -808,14 +809,13 @@ registry=${VAR_FOUND}
   #[test]
   fn test_npm_config_registry_overrides_npmrc() {
     // NPM_CONFIG_REGISTRY should override the registry in .npmrc files
-    let npm_rc = NpmRc::parse(
-      "registry=http://wrong.registry.example.com/",
-      &|_| None,
-    )
-    .unwrap();
+    let npm_rc =
+      NpmRc::parse("registry=http://wrong.registry.example.com/", &|_| None)
+        .unwrap();
 
     // This simulates what npm_registry_url() would return when NPM_CONFIG_REGISTRY is set
-    let env_registry_url = Url::parse("http://env.registry.example.com/").unwrap();
+    let env_registry_url =
+      Url::parse("http://env.registry.example.com/").unwrap();
     let resolved = npm_rc
       .as_resolved_with_options(&env_registry_url, true) // from_env = true
       .unwrap();
@@ -830,11 +830,9 @@ registry=${VAR_FOUND}
   #[test]
   fn test_npmrc_registry_used_when_no_env_var() {
     // When NPM_CONFIG_REGISTRY is not set, should use .npmrc registry
-    let npm_rc = NpmRc::parse(
-      "registry=http://npmrc.registry.example.com/",
-      &|_| None,
-    )
-    .unwrap();
+    let npm_rc =
+      NpmRc::parse("registry=http://npmrc.registry.example.com/", &|_| None)
+        .unwrap();
 
     let resolved = npm_rc
       .as_resolved_with_options(
