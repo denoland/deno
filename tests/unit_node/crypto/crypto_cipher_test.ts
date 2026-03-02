@@ -924,3 +924,36 @@ Deno.test({
     }
   },
 });
+
+Deno.test({
+  name:
+    "createDecipheriv - invalid PKCS7 padding throws bad decrypt",
+  fn() {
+    const key = Buffer.alloc(16, 0x01);
+    const iv = Buffer.alloc(16, 0x02);
+
+    // Encrypt without padding so we control the raw plaintext bytes
+    const cipher = crypto.createCipheriv("aes-128-cbc", key, iv);
+    cipher.setAutoPadding(false);
+
+    // Last byte 0x00 is invalid PKCS7 padding (valid range is 1-16)
+    const plaintext = Buffer.from(
+      "0123456789abcde\x00",
+    );
+    const encrypted = Buffer.concat([
+      cipher.update(plaintext),
+      cipher.final(),
+    ]);
+
+    // Decrypt with autoPadding=true (default) should throw
+    const decipher = crypto.createDecipheriv("aes-128-cbc", key, iv);
+    assertThrows(
+      () => {
+        decipher.update(encrypted);
+        decipher.final();
+      },
+      Error,
+      "bad decrypt",
+    );
+  },
+});

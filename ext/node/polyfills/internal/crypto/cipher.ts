@@ -476,7 +476,11 @@ export class Decipheriv extends Transform implements Cipher {
     }
 
     if (this.#autoPadding) {
-      buf = buf.subarray(0, 16 - buf.at(-1)); // Padded in Pkcs7 mode
+      const padLen = buf.at(-1);
+      if (padLen === 0 || padLen > 16) {
+        throw new Error("bad decrypt");
+      }
+      buf = buf.subarray(0, 16 - padLen); // Padded in Pkcs7 mode
     }
     this.#finalized = true;
     if (encoding !== "buffer") {
