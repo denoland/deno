@@ -2146,6 +2146,36 @@ Deno.test(async function jwkKeyOpsValidation() {
   assert(publicKey);
 });
 
+// https://github.com/denoland/deno/issues/26431
+Deno.test(async function p521ExportJwkPrivateKeyRoundTrip() {
+  const keyPair = await crypto.subtle.generateKey(
+    { name: "ECDSA", namedCurve: "P-521" },
+    true,
+    ["sign", "verify"],
+  ) as CryptoKeyPair;
+
+  const jwk = await crypto.subtle.exportKey("jwk", keyPair.privateKey);
+  assertEquals(jwk.kty, "EC");
+  assertEquals(jwk.crv, "P-521");
+  assert(jwk.x);
+  assert(jwk.y);
+  assert(jwk.d);
+
+  const imported = await crypto.subtle.importKey(
+    "jwk",
+    jwk,
+    { name: "ECDSA", namedCurve: "P-521" },
+    true,
+    ["sign"],
+  );
+  assertEquals(imported.type, "private");
+
+  const reExported = await crypto.subtle.exportKey("jwk", imported);
+  assertEquals(reExported.x, jwk.x);
+  assertEquals(reExported.y, jwk.y);
+  assertEquals(reExported.d, jwk.d);
+});
+
 Deno.test(async function x25519ExportJwk() {
   const keyPair = await crypto.subtle.generateKey(
     {
