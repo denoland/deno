@@ -471,20 +471,7 @@ function uncaughtExceptionHandler(err: any, origin: string) {
   process.emit("uncaughtException", err, origin);
 }
 
-export let execPath: string = Object.freeze({
-  __proto__: String.prototype,
-  toString() {
-    execPath = Deno.execPath();
-    return execPath;
-  },
-  get length() {
-    return this.toString().length;
-  },
-  [Symbol.for("Deno.customInspect")](inspect, options) {
-    return inspect(this.toString(), options);
-  },
-  // deno-lint-ignore no-explicit-any
-}) as any as string;
+export let execPath: string = "";
 
 // The process class needs to be an ES5 class because it can be instantiated
 // in Node without the `new` keyword. It's not a true class in Node. Popular
@@ -1206,6 +1193,7 @@ internals.__bootstrapNodeProcess = function (
     platform = isWindows ? "win32" : Deno.build.os;
     pid = Deno.pid;
     ppid = Deno.ppid;
+    execPath = Deno.execPath();
     initializeDebugEnv(nodeDebug);
 
     if (getOptionValue("--warnings")) {
