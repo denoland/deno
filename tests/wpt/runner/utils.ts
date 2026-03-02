@@ -134,7 +134,10 @@ export interface Expectation {
 export function getExpectation(): Expectation {
   const expectation: Expectation = {};
   for (const entry of Deno.readDirSync(EXPECTATIONS_DIR)) {
-    if (!entry.isFile || !entry.name.endsWith(".json")) continue;
+    if (
+      !entry.isFile || !entry.name.endsWith(".json") ||
+      entry.name === "schema.json"
+    ) continue;
     const suiteName = entry.name.slice(0, -".json".length);
     const text = Deno.readTextFileSync(join(EXPECTATIONS_DIR, entry.name));
     expectation[suiteName] = JSON.parse(text);
@@ -173,9 +176,9 @@ export function saveExpectation(
     );
   }
 
-  // Remove files for keys no longer present
+  // Remove files for keys no longer present (but never remove schema.json)
   for (const fileName of existingFiles) {
-    if (!writtenFiles.has(fileName)) {
+    if (!writtenFiles.has(fileName) && fileName !== "schema.json") {
       Deno.removeSync(join(EXPECTATIONS_DIR, fileName));
     }
   }
