@@ -825,7 +825,10 @@ registry=${VAR_FOUND}
       .unwrap();
     
     // Should use the env var registry, not the .npmrc one
-    assert_eq!(resolved.default_config.registry_url.as_str(), "http://env.registry.example.com/");
+    assert_eq!(
+      resolved.default_config.registry_url.as_str(),
+      "http://env.registry.example.com/"
+    );
   }
   
   #[test]
@@ -842,6 +845,9 @@ registry=${VAR_FOUND}
       .unwrap();
     
     // Should use the .npmrc registry
-    assert_eq!(resolved.default_config.registry_url.as_str(), "http://npmrc.registry.example.com/");
+    assert_eq!(
+      resolved.default_config.registry_url.as_str(),
+      "http://npmrc.registry.example.com/"
+    );
   }
 }
