@@ -159,6 +159,13 @@ pub fn check_ci_hash(
 
   eprintln!("ci hash took {}ms", start.elapsed().as_millis());
 
+  // On main/tag builds, always run tests but still commit on success
+  // to seed the cache for PR builds.
+  if is_main_or_tag() {
+    eprintln!("hashy: main/tag build, running tests (will commit on success)");
+    return CiHashStatus::RunThenCommit(CiHashPending { key });
+  }
+
   let url = format!("{}/hashes/{}", HASHY_URL, key);
   match std::process::Command::new("curl")
     .args(["-sf", "--max-time", "5", &url])
@@ -177,4 +184,10 @@ pub fn check_ci_hash(
       CiHashStatus::Run
     }
   }
+}
+
+fn is_main_or_tag() -> bool {
+  std::env::var("GITHUB_REF")
+    .map(|r| r == "refs/heads/main" || r.starts_with("refs/tags/"))
+    .unwrap_or(false)
 }

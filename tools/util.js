@@ -389,6 +389,27 @@ export async function checkCiHash(name, configure) {
   const elapsed = Math.round(performance.now() - start);
   console.log(`ci hash took ${elapsed}ms`);
 
+  const commitFn = async () => {
+    try {
+      await fetch(`${HASHY_URL}/hashes/${key}`, {
+        method: "PUT",
+        signal: AbortSignal.timeout(5000),
+      });
+      console.log(`hashy: committed hash ${key}`);
+    } catch {
+      console.log(`hashy: failed to commit hash ${key}`);
+    }
+  };
+
+  // On main/tag builds, always run tests but still commit on success
+  // to seed the cache for PR builds.
+  if (isMainOrTag()) {
+    console.log(
+      `hashy: main/tag build, running tests (will commit on success)`,
+    );
+    return { skip: false, commit: commitFn };
+  }
+
   try {
     const res = await fetch(`${HASHY_URL}/hashes/${key}`, {
       signal: AbortSignal.timeout(5000),
@@ -404,18 +425,10 @@ export async function checkCiHash(name, configure) {
   }
 
   console.log(`hashy: ${name} hash not found (${key}), will run tests`);
-  return {
-    skip: false,
-    commit: async () => {
-      try {
-        await fetch(`${HASHY_URL}/hashes/${key}`, {
-          method: "PUT",
-          signal: AbortSignal.timeout(5000),
-        });
-        console.log(`hashy: committed hash ${key}`);
-      } catch {
-        console.log(`hashy: failed to commit hash ${key}`);
-      }
-    },
-  };
+  return { skip: false, commit: commitFn };
+}
+
+function isMainOrTag() {
+  const ref = Deno.env.get("GITHUB_REF") ?? "";
+  return ref === "refs/heads/main" || ref.startsWith("refs/tags/");
 }
