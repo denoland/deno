@@ -27,13 +27,13 @@ You can specify the following flags:
 
 ## Running tests
 
-To run all web platform tests:
+To run all web platform tests, use the `--all` flag:
 
 ```shell
-./tests/wpt/wpt.ts run
+./tests/wpt/wpt.ts run --all
 ```
 
-Filter to specific test suites or files by specifying paths after `--`:
+To run a specific subset, specify filters after `--`:
 
 ```shell
 # Run all tests in a suite
@@ -49,6 +49,8 @@ Filter to specific test suites or files by specifying paths after `--`:
 ./tests/wpt/wpt.ts run -- hr-time fetch/api/basic
 ```
 
+Running `wpt.ts run` with neither `--all` nor filters will print usage help.
+
 Filters can start with `/` (absolute path match) or without (prefix match
 without the leading `/`).
 
@@ -56,6 +58,7 @@ Tests are run in parallel across CPU cores, partitioned by top-level directory.
 
 ### Flags
 
+- `--all` — Run all tests (required if no filters are specified)
 - `--release` — Use `./target/release/deno` instead of `./target/debug/deno`
 - `--binary=<path>` — Use a specific Deno binary (skips `cargo build`)
 - `--quiet` — Only print failing test cases
@@ -73,7 +76,7 @@ current results:
 
 ```shell
 # Update all expectations
-./tests/wpt/wpt.ts update
+./tests/wpt/wpt.ts update --all
 
 # Update expectations for specific suites
 ./tests/wpt/wpt.ts update -- hr-time fetch

@@ -10,6 +10,7 @@ import {
 } from "../../../tools/util.js";
 
 export const {
+  all,
   json,
   wptreport,
   quiet,
@@ -22,7 +23,14 @@ export const {
   binary,
 } = parseArgs(Deno.args, {
   "--": true,
-  boolean: ["quiet", "release", "no-interactive", "inspect-brk", "no-ignore"],
+  boolean: [
+    "all",
+    "quiet",
+    "release",
+    "no-interactive",
+    "inspect-brk",
+    "no-ignore",
+  ],
   string: ["json", "wptreport", "binary"],
 });
 

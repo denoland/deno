@@ -13,6 +13,7 @@ import {
 } from "./runner/runner.ts";
 import {
   assert,
+  all,
   autoConfig,
   cargoBuild,
   checkPy3Available,
@@ -209,6 +210,31 @@ function getTestTimeout(test: TestToRun) {
 
 async function run() {
   assert(Array.isArray(rest), "filter must be array");
+  const hasFilters = rest.length > 0;
+  if (!hasFilters && !all) {
+    console.log(`Usage: wpt.ts run [OPTIONS] [-- <filters...>]
+
+Run WPT tests and check results against expectation.json.
+
+Either specify test filters or use --all to run the entire suite:
+
+    wpt.ts run -- fetch/api/basic
+    wpt.ts run -- /WebCryptoAPI/getRandomValues.any.html
+    wpt.ts run --all
+
+Options:
+    --all              Run all tests
+    --quiet            Only print failing test cases
+    --release          Use the release build of Deno
+    --binary=<path>    Use a specific Deno binary
+    --json=<file>      Write test results as JSON
+    --wptreport=<file> Write results in wptreport format
+    --inspect-brk      Attach V8 inspector to each test
+    --no-ignore        Include tests marked with {"ignore": true}
+    --exit-zero        Exit with code 0 even on failures
+`);
+    Deno.exit(1);
+  }
   const startTime = Date.now();
   const expectation = getExpectation();
   const filter = new TestFilter(rest);
@@ -401,6 +427,28 @@ function assertAllExpectationsHaveTests(
 
 async function update() {
   assert(Array.isArray(rest), "filter must be array");
+  const hasFilters = rest.length > 0;
+  if (!hasFilters && !all) {
+    console.log(`Usage: wpt.ts update [OPTIONS] [-- <filters...>]
+
+Run WPT tests and update expectation.json to match current results.
+
+Either specify test filters or use --all to update the entire suite:
+
+    wpt.ts update -- fetch/api/basic
+    wpt.ts update --all
+
+Options:
+    --all              Run all tests
+    --quiet            Only print failing test cases
+    --release          Use the release build of Deno
+    --binary=<path>    Use a specific Deno binary
+    --json=<file>      Write test results as JSON
+    --inspect-brk      Attach V8 inspector to each test
+    --no-ignore        Include tests marked with {"ignore": true}
+`);
+    Deno.exit(1);
+  }
   const startTime = Date.now();
   const filter = new TestFilter(rest);
   const tests = discoverTestsToRun(filter, true);
