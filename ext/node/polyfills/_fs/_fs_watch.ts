@@ -212,9 +212,9 @@ export function watchPromise(
       };
     },
     // deno-lint-ignore no-explicit-any
-    async return(value?: any): Promise<IteratorResult<any>> {
+    return(value?: any): Promise<IteratorResult<any>> {
       close();
-      return { value, done: true };
+      return Promise.resolve({ value, done: true });
     },
     close,
     [Symbol.asyncIterator]() {
