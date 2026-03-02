@@ -216,17 +216,22 @@ impl InspectorServer {
   ) -> InspectorServerUrl {
     let session_sender = inspector.get_session_sender();
     let deregister_rx = inspector.add_deregister_handler();
+    let (ack_tx, ack_rx) = std::sync::mpsc::sync_channel(0);
     let info = InspectorInfo::new(
       self.host,
       session_sender,
       deregister_rx,
       module_url,
       wait_for_session,
+      Some(ack_tx),
     );
     let url = InspectorServerUrl(
       info.get_websocket_debugger_url(&self.host.to_string()),
     );
     self.register_inspector_tx.unbounded_send(info).unwrap();
+    // Wait for the server thread to insert this inspector into
+    // the map so that `/json/list` returns it immediately.
+    let _ = ack_rx.recv();
     url
   }
 
@@ -357,9 +362,20 @@ fn handle_json_request(
 
 fn handle_json_version_request(
   version_response: Value,
+  inspector_map: Rc<RefCell<HashMap<Uuid, InspectorInfo>>>,
+  host: Option<String>,
 ) -> http::Result<http::Response<Box<http_body_util::Full<Bytes>>>> {
+  let mut response = version_response;
+  // Include webSocketDebuggerUrl from the first registered inspector.
+  // VSCode's js-debug prefers this field over /json/list for target discovery.
+  if let Some(info) = inspector_map.borrow().values().next() {
+    let host_listen = format!("{}", info.host);
+    let h = host.as_ref().unwrap_or(&host_listen);
+    response["webSocketDebuggerUrl"] =
+      Value::String(info.get_websocket_debugger_url(h));
+  }
   let body = Box::new(http_body_util::Full::from(
-    serde_json::to_string(&version_response).unwrap(),
+    serde_json::to_string(&response).unwrap(),
   ));
 
   http::Response::builder()
@@ -571,7 +587,11 @@ async fn server(
                 handle_ws_request(req, Rc::clone(&inspector_map))
               }
               (&http::Method::GET, "/json/version") if publish_uid.http => {
-                handle_json_version_request(json_version_response.clone())
+                handle_json_version_request(
+                  json_version_response.clone(),
+                  Rc::clone(&inspector_map),
+                  host.clone(),
+                )
               }
               (&http::Method::GET, "/json") if publish_uid.http => {
                 handle_json_request(Rc::clone(&inspector_map), host)
@@ -629,7 +649,7 @@ async fn listen_for_new_inspectors(
   inspector_map: Rc<RefCell<HashMap<Uuid, InspectorInfo>>>,
   publish_uid: InspectPublishUid,
 ) {
-  while let Some(info) = register_inspector_rx.next().await {
+  while let Some(mut info) = register_inspector_rx.next().await {
     if publish_uid.console {
       log::info!(
         "Debugger listening on {}",
@@ -640,8 +660,14 @@ async fn listen_for_new_inspectors(
         log::info!("Deno is waiting for debugger to connect.");
       }
     }
+    let ack_tx = info.registered_ack_tx.take();
     if inspector_map.borrow_mut().insert(info.uuid, info).is_some() {
       panic!("Inspector UUID already in map");
+    }
+    // Signal the registering thread that the inspector is now visible
+    // to `/json/list` queries.
+    if let Some(tx) = ack_tx {
+      let _ = tx.send(());
     }
   }
 }
@@ -704,6 +730,9 @@ pub struct InspectorInfo {
   pub deregister_rx: oneshot::Receiver<()>,
   pub url: String,
   pub wait_for_session: bool,
+  /// One-shot sender used to signal back to the registering thread that
+  /// this inspector has been inserted into the inspector map.
+  registered_ack_tx: Option<std::sync::mpsc::SyncSender<()>>,
 }
 
 impl InspectorInfo {
@@ -713,6 +742,7 @@ impl InspectorInfo {
     deregister_rx: oneshot::Receiver<()>,
     url: String,
     wait_for_session: bool,
+    registered_ack_tx: Option<std::sync::mpsc::SyncSender<()>>,
   ) -> Self {
     Self {
       host,
@@ -722,6 +752,7 @@ impl InspectorInfo {
       deregister_rx,
       url,
       wait_for_session,
+      registered_ack_tx,
     }
   }
 
