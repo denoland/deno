@@ -1196,6 +1196,7 @@ export default {
   getOptions,
   getValidatedFd,
   getValidatedPath,
+  getValidatedPathToString,
   getValidMode,
   handleErrorFromBinding,
   kMaxUserId,

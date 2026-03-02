@@ -24,7 +24,7 @@ import { exists, existsSync } from "ext:deno_node/_fs/_fs_exists.ts";
 import { fchmod, fchmodSync } from "ext:deno_node/_fs/_fs_fchmod.ts";
 import { fchown, fchownSync } from "ext:deno_node/_fs/_fs_fchown.ts";
 import { fdatasync, fdatasyncSync } from "ext:deno_node/_fs/_fs_fdatasync.ts";
-import { fstat, fstatPromise, fstatSync } from "ext:deno_node/_fs/_fs_fstat.ts";
+import { fstat, fstatSync } from "ext:deno_node/_fs/_fs_fstat.ts";
 import { fsync, fsyncSync } from "ext:deno_node/_fs/_fs_fsync.ts";
 import { ftruncate, ftruncateSync } from "ext:deno_node/_fs/_fs_ftruncate.ts";
 import { futimes, futimesSync } from "ext:deno_node/_fs/_fs_futimes.ts";
@@ -141,9 +141,19 @@ import {
 } from "ext:deno_node/internal/fs/streams.mjs";
 import {
   Dirent,
+  getValidatedPath,
   toUnixTimestamp as _toUnixTimestamp,
 } from "ext:deno_node/internal/fs/utils.mjs";
 import { glob, globPromise, globSync } from "ext:deno_node/_fs/_fs_glob.ts";
+import {
+  validateObject,
+  validateString,
+} from "ext:deno_node/internal/validators.mjs";
+import type { Buffer } from "node:buffer";
+import { op_fs_read_file_async } from "ext:core/ops";
+import { primordials } from "ext:core/mod.js";
+
+const { PromisePrototypeThen } = primordials;
 
 const {
   F_OK,
@@ -166,6 +176,23 @@ const {
   O_EXCL,
 } = constants;
 
+/**
+ * Returns a `Blob` whose data is read from the given file.
+ */
+function openAsBlob(
+  path: string | Buffer | URL,
+  options: { type?: string } = { __proto__: null },
+): Promise<Blob> {
+  validateObject(options, "options");
+  const type = options.type || "";
+  validateString(type, "options.type");
+  path = getValidatedPath(path);
+  return PromisePrototypeThen(
+    op_fs_read_file_async(path as string, undefined, 0),
+    (data: Uint8Array) => new Blob([data], { type }),
+  );
+}
+
 const promises = {
   access: accessPromise,
   constants,
@@ -185,7 +212,6 @@ const promises = {
   lstat: lstatPromise,
   stat: statPromise,
   statfs: statfsPromise,
-  fstat: fstatPromise,
   link: linkPromise,
   unlink: unlinkPromise,
   chmod: chmodPromise,
@@ -270,6 +296,7 @@ export default {
   O_TRUNC,
   O_WRONLY,
   open,
+  openAsBlob,
   openSync,
   opendir,
   opendirSync,
@@ -391,6 +418,7 @@ export {
   O_TRUNC,
   O_WRONLY,
   open,
+  openAsBlob,
   opendir,
   opendirSync,
   openSync,

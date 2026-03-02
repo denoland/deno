@@ -2563,12 +2563,17 @@ console.log("---");
     .arg("--watch")
     .arg("--allow-env")
     .arg("--env-file=.env")
+    .arg("-L")
+    .arg("debug")
     .arg(&main_script)
     .env("NO_COLOR", "1")
     .piped_output()
     .spawn()
     .unwrap();
   let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+
+  // Wait for watcher to be ready
+  wait_for_watcher("main.js", &mut stderr_lines).await;
 
   // Wait for initial run
   wait_contains("FOO: simple_value", &mut stdout_lines).await;
@@ -2582,6 +2587,9 @@ console.log("---");
   // This assertion might need adjustment based on how Deno actually handles multiline env vars
   wait_contains("BAR: another_value", &mut stdout_lines).await;
   wait_contains("---", &mut stdout_lines).await;
+
+  // Ensure initial run is complete before modifying files
+  wait_contains("Process finished", &mut stderr_lines).await;
 
   // Update the multiline value
   std::fs::write(&env_file, "FOO=simple_value\nMULTILINE=\"Updated First Line\nUpdated Second Line\nThird Line\"\nBAR=another_value").unwrap();

@@ -799,12 +799,6 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       delete Object.prototype.__proto__;
     }
 
-    if (!ArrayPrototypeIncludes(unstableFeatures, unstableIds.temporal)) {
-      // Removes the `Temporal` API.
-      delete globalThis.Temporal;
-      delete globalThis.Date.prototype.toTemporalInstant;
-    }
-
     // Setup `Deno` global - we're actually overriding already existing global
     // `Deno` with `Deno` namespace from "./deno.ts".
     ObjectDefineProperty(globalThis, "Deno", core.propReadOnly(finalDenoNs));
@@ -920,12 +914,6 @@ function bootstrapWorkerRuntime(
       // Removes the `__proto__` for security reasons.
       // https://tc39.es/ecma262/#sec-get-object.prototype.__proto__
       delete Object.prototype.__proto__;
-    }
-
-    if (!ArrayPrototypeIncludes(unstableFeatures, unstableIds.temporal)) {
-      // Removes the `Temporal` API.
-      delete globalThis.Temporal;
-      delete globalThis.Date.prototype.toTemporalInstant;
     }
 
     // Setup `Deno` global - we're actually overriding already existing global

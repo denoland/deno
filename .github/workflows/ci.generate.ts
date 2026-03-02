@@ -4,19 +4,21 @@ import { parse as parseToml } from "jsr:@std/toml@1";
 import {
   Condition,
   conditions,
+  type ConfigValue,
   createWorkflow,
   defineArtifact,
   defineExprObj,
   defineMatrix,
   type ExpressionValue,
   job,
+  literal,
   step,
-} from "jsr:@david/gagen@0.2.15";
+} from "jsr:@david/gagen@0.2.18";
 
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 94;
+const cacheVersion = 98;
 
 const ubuntuX86Runner = "ubuntu-24.04";
 const ubuntuX86XlRunner = "ghcr.io/cirruslabs/ubuntu-runner-amd64:24.04";
@@ -93,18 +95,22 @@ const Runners = {
   },
 } as const;
 
-// discover workspace members for the libs test job, split by type
-const { binCrates, libCrates } = resolveWorkspaceCrates();
-const testCrates = resolveTestCrateTests();
+const denoCorePackageDirs = [
+  "libs/core_testing",
+  "libs/core",
+  "libs/core/examples/snapshot",
+  "libs/dcore",
+  "libs/ops",
+  "libs/ops/compile_test_runner",
+  "libs/serde_v8",
+];
 
-const prCachePath = [
-  // this must match for save and restore (https://github.com/actions/cache/issues/1444)
-  "./target",
-  "!./target/*/gn_out",
-  "!./target/*/gn_root",
-  "!./target/*/*.zip",
-  "!./target/*/*.tar.gz",
-].join("\n");
+// discover test crates first so we know which workspace members are test packages
+const { testCrates, testPackageMembers } = resolveTestCrateTests();
+// discover workspace members for the libs test job, split by type
+const { binCrates, libCrates } = resolveWorkspaceCrates(
+  testPackageMembers,
+);
 
 // Note that you may need to add more version to the `apt-get remove` line below if you change this
 const llvmVersion = 21;
@@ -122,8 +128,8 @@ sudo apt-get -qq remove \
   'clang-12*' 'clang-13*' 'clang-14*' 'clang-15*' 'clang-16*' 'clang-17*' 'clang-18*' 'clang-19*' 'llvm-12*' 'llvm-13*' 'llvm-14*' 'llvm-15*' 'llvm-16*' 'llvm-17*' 'llvm-18*' 'llvm-19*' 'lld-12*' 'lld-13*' 'lld-14*' 'lld-15*' 'lld-16*' 'lld-17*' 'lld-18*' 'lld-19*' > /dev/null 2> /dev/null
 
 # Install clang-XXX, lld-XXX, and debootstrap.
-echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-${llvmVersion} main" |
-  sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-jammy-${llvmVersion}.list
+echo "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-${llvmVersion} main" |
+  sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-noble-${llvmVersion}.list
 curl https://apt.llvm.org/llvm-snapshot.gpg.key |
   gpg --dearmor                                 |
 sudo dd of=/etc/apt/trusted.gpg.d/llvm-snapshot.gpg
@@ -191,6 +197,13 @@ __1
 CC=/usr/bin/clang-${llvmVersion}
 CFLAGS=$CFLAGS
 " > $GITHUB_ENV`,
+};
+
+const S3Envs: Readonly<Record<string, ConfigValue>> = {
+  AWS_ACCESS_KEY_ID: "${{ vars.S3_ACCESS_KEY_ID }}",
+  AWS_SECRET_ACCESS_KEY: "${{ secrets.S3_SECRET_ACCESS_KEY }}",
+  AWS_ENDPOINT_URL_S3: "${{ vars.S3_ENDPOINT }}",
+  AWS_DEFAULT_REGION: "${{ vars.S3_REGION }}",
 };
 
 function handleBuildItems(items: {
@@ -271,28 +284,62 @@ const installNodeStep = step({
   },
 });
 
+function createRestoreAndSaveCacheSteps(m: {
+  name: string;
+  cacheKeyPrefix: string;
+  path: string[];
+}) {
+  // this must match for save and restore (https://github.com/actions/cache/issues/1444)
+  const path = m.path.join("\n");
+  const restoreCacheStep = step({
+    name: `Restore cache ${m.name}`,
+    uses: "cirruslabs/cache/restore@v4",
+    with: {
+      path,
+      key: "never_saved",
+      "restore-keys": `${m.cacheKeyPrefix}-`,
+    },
+  });
+  const saveCacheStep = step({
+    name: `Cache ${m.name}`,
+    uses: "cirruslabs/cache/save@v4",
+    with: {
+      path,
+      // We force saving a new cache on every main run so that PRs can
+      // always be up to date with the freshest information. We do this
+      // unconditionally because we don't want caches that only need updating
+      // occassionally (like the cargo home cache) to be lost over time as
+      // other caches that need to be updated frequently (like the cargo build
+      // cache) get populated and purge old caches.
+      key: `${m.cacheKeyPrefix}-\${{ github.sha }}`,
+    },
+  });
+  return { restoreCacheStep, saveCacheStep };
+}
+
 function createCargoCacheHomeStep(m: {
   os: ExpressionValue;
   arch: ExpressionValue;
+  cachePrefix: string;
 }) {
-  return step({
-    name: "Cache Cargo home",
-    uses: "cirruslabs/cache@v4",
-    if: isNotTag,
-    with: {
-      path: [
-        "~/.cargo/.crates.toml",
-        "~/.cargo/.crates2.json",
-        "~/.cargo/bin",
-        "~/.cargo/registry/index",
-        "~/.cargo/registry/cache",
-        "~/.cargo/git/db",
-      ].join("\n"),
-      key:
-        `${cacheVersion}-cargo-home-${m.os}-${m.arch}-\${{ hashFiles('Cargo.lock') }}`,
-      "restore-keys": `${cacheVersion}-cargo-home-${m.os}-${m.arch}-`,
-    },
+  const steps = createRestoreAndSaveCacheSteps({
+    name: "cargo home",
+    path: [
+      "~/.cargo/.crates.toml",
+      "~/.cargo/.crates2.json",
+      "~/.cargo/bin",
+      "~/.cargo/registry/index",
+      "~/.cargo/registry/cache",
+      "~/.cargo/git/db",
+    ],
+    cacheKeyPrefix:
+      `${cacheVersion}-cargo-home-${m.os}-${m.arch}-${m.cachePrefix}`,
   });
+
+  return {
+    restoreCacheStep: steps.restoreCacheStep.if(isNotTag),
+    saveCacheStep: steps.saveCacheStep.if(isMainBranch.and(isNotTag)),
+  };
 }
 
 // factory for cache steps parameterized by os/arch/profile/job
@@ -301,43 +348,39 @@ function createCacheSteps(m: {
   os: ExpressionValue;
   arch: ExpressionValue;
   profile: ExpressionValue;
-  job: string;
+  cachePrefix: string;
 }) {
-  const cacheCargoHomeStep = createCargoCacheHomeStep(m);
-  const cacheKeyPrefix =
-    `${cacheVersion}-cargo-target-${m.os}-${m.arch}-${m.profile}-${m.job}-`;
-  const restoreCacheBuildOutputStep = step.if(isMainBranch.not().and(isNotTag))(
-    {
-      name: "Restore cache build output (PR)",
-      uses: "actions/cache/restore@v4",
-      with: {
-        path: prCachePath,
-        key: "never_saved",
-        "restore-keys": cacheKeyPrefix,
-      },
-    },
-    {
-      name: "Apply and update mtime cache",
-      uses: "./.github/mtime_cache",
-      with: {
-        "cache-path": "./target",
-      },
-    },
-  );
-  const saveCacheBuildOutputStep = step({
-    // in main branch, always create a fresh cache
-    name: "Save cache build output (main)",
-    uses: "actions/cache/save@v4",
-    if: isMainBranch,
+  const cargoHomeCacheSteps = createCargoCacheHomeStep(m);
+  const buildCacheSteps = createRestoreAndSaveCacheSteps({
+    name: "build output",
+    path: [
+      "./target",
+      "!./target/*/gn_out",
+      "!./target/*/gn_root",
+      "!./target/*/*.zip",
+      "!./target/*/*.tar.gz",
+    ],
+    cacheKeyPrefix:
+      `${cacheVersion}-cargo-target-${m.os}-${m.arch}-${m.profile}-${m.cachePrefix}`,
+  });
+  const mtimeCacheAndRestoreStep = step({
+    name: "Apply and update mtime cache",
+    uses: "./.github/mtime_cache",
     with: {
-      path: prCachePath,
-      key: `${cacheKeyPrefix}\${{ github.sha }}`,
+      "cache-path": "./target",
     },
   });
   return {
-    cacheCargoHomeStep,
-    restoreCacheBuildOutputStep,
-    saveCacheBuildOutputStep,
+    restoreCacheStep: step(
+      cargoHomeCacheSteps.restoreCacheStep,
+      buildCacheSteps.restoreCacheStep.if(isMainBranch.not().and(isNotTag)),
+      // this should always be done when saving OR restoring
+      mtimeCacheAndRestoreStep,
+    ),
+    saveCacheStep: step(
+      cargoHomeCacheSteps.saveCacheStep,
+      buildCacheSteps.saveCacheStep.if(isMainBranch.and(isNotTag)),
+    ),
   };
 }
 const installRustStep = step({
@@ -596,17 +639,12 @@ const buildJobs = buildItems.map((rawBuildItem) => {
       env,
       steps: (() => {
         const {
-          cacheCargoHomeStep,
-          restoreCacheBuildOutputStep,
-          saveCacheBuildOutputStep,
+          restoreCacheStep,
+          saveCacheStep,
         } = createCacheSteps({
           ...buildItem,
-          job: "build",
+          cachePrefix: "build-main",
         });
-        const cargoBuildCacheStep = step
-          .dependsOn(cacheCargoHomeStep, installRustStep)(
-            restoreCacheBuildOutputStep,
-          );
         const tarSourcePublishStep = step({
           name: "Create source tarballs (release, linux)",
           if: buildItem.os.equals("linux")
@@ -727,12 +765,17 @@ const buildJobs = buildItems.map((rawBuildItem) => {
           step.dependsOn(setupGcloudStep)({
             name: "Upload canary to dl.deno.land",
             if: isDenoland.and(isMainBranch),
+            env: S3Envs,
             run: [
               'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/',
               'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.sha256sum gs://dl.deno.land/canary/$(git rev-parse HEAD)/',
               'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.symcache gs://dl.deno.land/canary/$(git rev-parse HEAD)/',
+              'aws s3 sync ./target/release/ s3://dl-deno-land/canary/$(git rev-parse HEAD)/ --exclude "*" --include "*.zip"',
+              'aws s3 sync ./target/release/ s3://dl-deno-land/canary/$(git rev-parse HEAD)/ --exclude "*" --include "*.sha256sum"',
+              'aws s3 sync ./target/release/ s3://dl-deno-land/canary/$(git rev-parse HEAD)/ --exclude "*" --include "*.symcache"',
               "echo ${{ github.sha }} > canary-latest.txt",
               'gsutil -h "Cache-Control: no-cache" cp canary-latest.txt gs://dl.deno.land/canary-$(rustc -vV | sed -n "s|host: ||p")-latest.txt',
+              'aws s3 cp canary-latest.txt s3://dl-deno-land/canary-$(rustc -vV | sed -n "s|host: ||p")-latest.txt',
               "rm canary-latest.txt gha-creds-*.json",
             ],
           }),
@@ -745,14 +788,14 @@ const buildJobs = buildItems.map((rawBuildItem) => {
           )
           .dependsOn(
             installLldStep,
+            restoreCacheStep,
             installRustStep,
-            cacheCargoHomeStep,
-            cargoBuildCacheStep,
             sysRootStep,
           )(
             {
+              // do this on PRs as well as main so that PRs can use the cargo build cache from main
               name: "Configure canary build",
-              if: isMainBranch,
+              if: isNotTag,
               run: 'echo "DENO_CANARY=true" >> $GITHUB_ENV',
             },
             {
@@ -787,8 +830,8 @@ const buildJobs = buildItems.map((rawBuildItem) => {
         const cargoBuildStep = step
           .dependsOn(
             installLldStep,
+            restoreCacheStep,
             installRustStep,
-            cargoBuildCacheStep,
             sysRootStep,
           )
           .comesAfter(tarSourcePublishStep)(
@@ -825,19 +868,29 @@ const buildJobs = buildItems.map((rawBuildItem) => {
           step.dependsOn(setupGcloudStep)({
             name: "Upload release to dl.deno.land (unix)",
             if: isWindows.not(),
+            env: S3Envs,
             run: [
               'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/',
               'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.sha256sum gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/',
               'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.symcache gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/',
+              'aws s3 sync ./target/release/ s3://dl-deno-land/release/${GITHUB_REF#refs/*/}/ --exclude "*" --include "*.zip"',
+              'aws s3 sync ./target/release/ s3://dl-deno-land/release/${GITHUB_REF#refs/*/}/ --exclude "*" --include "*.sha256sum"',
+              'aws s3 sync ./target/release/ s3://dl-deno-land/release/${GITHUB_REF#refs/*/}/ --exclude "*" --include "*.symcache"',
             ],
           }, {
             name: "Upload release to dl.deno.land (windows)",
             if: isWindows,
-            env: { CLOUDSDK_PYTHON: "${{env.pythonLocation}}\\python.exe" },
+            env: {
+              ...S3Envs,
+              CLOUDSDK_PYTHON: "${{env.pythonLocation}}\\python.exe",
+            },
             run: [
               'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/',
               'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.sha256sum gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/',
               'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.symcache gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/',
+              'aws s3 sync ./target/release/ s3://dl-deno-land/release/${GITHUB_REF#refs/*/}/ --exclude "*" --include "*.zip"',
+              'aws s3 sync ./target/release/ s3://dl-deno-land/release/${GITHUB_REF#refs/*/}/ --exclude "*" --include "*.sha256sum"',
+              'aws s3 sync ./target/release/ s3://dl-deno-land/release/${GITHUB_REF#refs/*/}/ --exclude "*" --include "*.symcache"',
             ],
           }),
           {
@@ -928,7 +981,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
           ),
           cargoBuildStep,
           publishStep,
-          saveCacheBuildOutputStep.if(buildItem.save_cache),
+          saveCacheStep.if(buildItem.save_cache),
         );
       })(),
     },
@@ -937,39 +990,52 @@ const buildJobs = buildItems.map((rawBuildItem) => {
   const additionalJobs = [];
 
   {
+    const shardedCrates = new Set(["specs", "integration"]);
+    const shardCount = 2;
     const testMatrix = defineMatrix({
-      include: testCrates.map((tc) => ({ test_crate: tc.name })),
-    });
-    const {
-      cacheCargoHomeStep,
-      restoreCacheBuildOutputStep,
-      saveCacheBuildOutputStep,
-    } = createCacheSteps({
-      ...buildItem,
-      job: "test",
+      include: testCrates.flatMap((tc) => {
+        const total = shardedCrates.has(tc.name) ? shardCount : 1;
+        return Array.from({ length: total }, (_, i) => ({
+          test_crate: tc.name,
+          test_package: tc.package,
+          // make these strings so index isn't falsy when 0
+          shard_index: i.toString(),
+          shard_total: total.toString(),
+          shard_label: total > 1 ? `(${i + 1}/${total}) ` : "",
+        }));
+      }),
     });
     const testCrateNameExpr = testMatrix.test_crate;
+    const {
+      restoreCacheStep,
+      saveCacheStep,
+    } = createCacheSteps({
+      ...buildItem,
+      cachePrefix: `test-${testCrateNameExpr}`,
+    });
+    // shard_index > 0 jobs only run on PRs (main runs unsharded)
+    const isShardZero = testMatrix.shard_index.equals(0);
+    const shouldRunShard = isShardZero.or(isPr);
     additionalJobs.push(job(
       jobIdForJob("test"),
       {
         name:
-          `test ${testMatrix.test_crate} ${buildItem.profile} ${buildItem.os}-${buildItem.arch}`,
+          `test ${testMatrix.test_crate} ${testMatrix.shard_label}${buildItem.profile} ${buildItem.os}-${buildItem.arch}`,
         needs: [buildJob],
         runsOn: buildItem.testRunner ?? buildItem.runner,
-        timeoutMinutes: 240,
+        timeoutMinutes: 30,
         defaults,
         env,
         strategy: {
           matrix: testMatrix,
           failFast: false,
         },
-        steps: step.if(isNotTag.and(buildItem.skip.not()))(
+        steps: step.if(isNotTag.and(buildItem.skip.not()).and(shouldRunShard))(
           cloneRepoStep,
           cloneSubmodule("./tests/node_compat/runner/suite")
             .if(testCrateNameExpr.equals("node_compat")),
           cloneStdSubmoduleStep,
-          cacheCargoHomeStep,
-          restoreCacheBuildOutputStep,
+          restoreCacheStep,
           installNodeStep,
           installRustStep,
           installLldStep,
@@ -1012,10 +1078,14 @@ const buildJobs = buildItems.map((rawBuildItem) => {
           },
           {
             name: "Test (debug)",
-            // run full tests only on Linux
             if: isDebug,
-            run: `cargo test -p cli_tests --test ${testMatrix.test_crate}`,
-            env: { CARGO_PROFILE_DEV_DEBUG: 0 },
+            run:
+              `cargo test -p ${testMatrix.test_package} --test ${testMatrix.test_crate}`,
+            env: {
+              CARGO_PROFILE_DEV_DEBUG: 0,
+              CI_SHARD_INDEX: isPr.then(testMatrix.shard_index).else(""),
+              CI_SHARD_TOTAL: isPr.then(testMatrix.shard_total).else(""),
+            },
           },
           {
             name: "Test (release)",
@@ -1023,7 +1093,11 @@ const buildJobs = buildItems.map((rawBuildItem) => {
               isDenoland.or(buildItem.use_sysroot),
             ),
             run:
-              `cargo test -p cli_tests --test ${testMatrix.test_crate} --release`,
+              `cargo test -p ${testMatrix.test_package} --test ${testMatrix.test_crate} --release`,
+            env: {
+              CI_SHARD_INDEX: isPr.then(testMatrix.shard_index).else(""),
+              CI_SHARD_TOTAL: isPr.then(testMatrix.shard_total).else(""),
+            },
           },
           {
             name: "Ensure no git changes",
@@ -1039,17 +1113,21 @@ const buildJobs = buildItems.map((rawBuildItem) => {
               "fi",
             ],
           },
-          step.dependsOn(installDenoStep)({
+          {
             name: "Upload test results",
             uses: "actions/upload-artifact@v6",
             if: conditions.status.always().and(isNotTag),
             with: {
               name:
-                `test-results-${buildItem.os}-${buildItem.arch}-${buildItem.profile}-${testMatrix.test_crate}.json`,
+                `test-results-${buildItem.os}-${buildItem.arch}-${buildItem.profile}-${testMatrix.test_crate}${
+                  testMatrix.shard_total.greaterThan(1).then(
+                    literal("-shard-").concat(testMatrix.shard_index),
+                  ).else("")
+                }.json`,
               path: `target/test_results_${testMatrix.test_crate}.json`,
             },
-          }),
-          saveCacheBuildOutputStep,
+          },
+          saveCacheStep.if(buildItem.save_cache),
         ),
       },
     ));
@@ -1063,12 +1141,11 @@ const buildJobs = buildItems.map((rawBuildItem) => {
   );
   if (libsCondition.isPossiblyTrue()) {
     const {
-      cacheCargoHomeStep,
-      restoreCacheBuildOutputStep,
-      saveCacheBuildOutputStep,
+      restoreCacheStep,
+      saveCacheStep,
     } = createCacheSteps({
       ...buildItem,
-      job: "test-libs",
+      cachePrefix: "test-libs",
     });
     additionalJobs.push(job(jobIdForJob("test-libs"), {
       name: jobNameForJob("test libs"),
@@ -1077,8 +1154,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
       timeoutMinutes: 30,
       steps: step.if(isNotTag.and(buildItem.skip.not()))(
         cloneRepoStep,
-        cacheCargoHomeStep,
-        restoreCacheBuildOutputStep,
+        restoreCacheStep,
         installNodeStep,
         installRustStep,
         installLldStep,
@@ -1092,7 +1168,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
           }`,
           env: { CARGO_PROFILE_DEV_DEBUG: 0 },
         },
-        saveCacheBuildOutputStep,
+        saveCacheStep,
       ),
     }));
   }
@@ -1100,12 +1176,11 @@ const buildJobs = buildItems.map((rawBuildItem) => {
     isDebug.and(isLinux).and(buildItem.arch.equals("x86_64")).isPossiblyTrue()
   ) {
     const {
-      cacheCargoHomeStep,
-      restoreCacheBuildOutputStep,
-      saveCacheBuildOutputStep,
+      restoreCacheStep,
+      saveCacheStep,
     } = createCacheSteps({
       ...buildItem,
-      job: "build-libs",
+      cachePrefix: "build-libs",
     });
     additionalJobs.push(job(jobIdForJob("build-libs"), {
       name: jobNameForJob("build libs"),
@@ -1116,8 +1191,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
       steps: step.if(isNotTag.and(buildItem.skip.not()))(
         cloneRepoStep,
         installRustStep,
-        cacheCargoHomeStep,
-        restoreCacheBuildOutputStep,
+        restoreCacheStep,
         installWasmStep,
         // we want these crates to be Wasm compatible
         {
@@ -1141,12 +1215,21 @@ const buildJobs = buildItems.map((rawBuildItem) => {
             "cargo check -p deno --features=lsp-tracing",
           ],
         },
-        saveCacheBuildOutputStep,
+        saveCacheStep,
       ),
     }));
   }
 
   if (buildItem.wpt.isPossiblyTrue()) {
+    const buildCacheSteps = createRestoreAndSaveCacheSteps({
+      name: "wpt and autobahn test run hashes",
+      path: [
+        "./target/wpt_input_hash",
+        "./target/autobahn_input_hash",
+      ],
+      cacheKeyPrefix:
+        `${cacheVersion}-wpt-target-${buildItem.os}-${buildItem.arch}-${buildItem.profile}`,
+    });
     additionalJobs.push(job(
       jobIdForJob("wpt"),
       {
@@ -1160,6 +1243,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
           cloneRepoStep,
           cloneStdSubmoduleStep,
           cloneSubmodule("./tests/wpt/suite"),
+          buildCacheSteps.restoreCacheStep,
           installDenoStep,
           installPythonStep,
           denoArtifact.download(),
@@ -1204,12 +1288,16 @@ const buildJobs = buildItems.map((rawBuildItem) => {
             if: isRelease.and(isLinux).and(isDenoland).and(isMainBranch).and(
               isNotTag,
             ),
+            env: S3Envs,
             run: [
               "gzip ./wptreport.json",
               'gsutil -h "Cache-Control: public, max-age=3600" cp ./wpt.json gs://dl.deno.land/wpt/$(git rev-parse HEAD).json',
               'gsutil -h "Cache-Control: public, max-age=3600" cp ./wptreport.json.gz gs://dl.deno.land/wpt/$(git rev-parse HEAD)-wptreport.json.gz',
+              "aws s3 cp ./wpt.json s3://dl-deno-land/wpt/$(git rev-parse HEAD).json",
+              "aws s3 cp ./wptreport.json.gz s3://dl-deno-land/wpt/$(git rev-parse HEAD)-wptreport.json.gz",
               "echo $(git rev-parse HEAD) > wpt-latest.txt",
               'gsutil -h "Cache-Control: no-cache" cp wpt-latest.txt gs://dl.deno.land/wpt-latest.txt',
+              "aws s3 cp wpt-latest.txt s3://dl-deno-land/wpt-latest.txt",
             ],
           }),
           {
@@ -1228,6 +1316,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
               "    ./tools/upload_wptfyi.js $(git rev-parse HEAD) --ghstatus",
             ],
           },
+          buildCacheSteps.saveCacheStep.if(isMainBranch.and(isNotTag)),
         ),
       },
     ));
@@ -1242,6 +1331,10 @@ const buildJobs = buildItems.map((rawBuildItem) => {
 // === bench job ===
 
 const benchProfile = defineExprObj(Runners.linuxX86Xl);
+const benchCacheSteps = createCargoCacheHomeStep({
+  ...benchProfile,
+  cachePrefix: "bench",
+});
 const benchJob = job(
   "bench",
   {
@@ -1262,9 +1355,9 @@ const benchJob = job(
         (hasCiBenchLabel.or(isMainBranch)).and(isNotTag),
       )(
         cloneRepoStep,
+        benchCacheSteps.restoreCacheStep,
         installNodeStep,
         installRustStep,
-        createCargoCacheHomeStep(benchProfile),
         cloneSubmodule("./tests/bench/testdata/lsp_benchdata"),
         cloneStdSubmoduleStep,
         step(sysRootConfig),
@@ -1284,7 +1377,7 @@ const benchJob = job(
         },
         {
           name: "Run benchmarks",
-          run: "cargo bench -p cli_tests --bench deno_bench --locked",
+          run: "cargo bench -p bench_tests --bench deno_bench --locked",
         },
         {
           name: "Post benchmarks",
@@ -1309,6 +1402,7 @@ const benchJob = job(
           name: "Worker info",
           run: ["cat /proc/cpuinfo", "cat /proc/meminfo"],
         },
+        benchCacheSteps.saveCacheStep,
       ),
   },
 );
@@ -1347,18 +1441,16 @@ const lintJob = job("lint", {
   },
   steps: (() => {
     const {
-      cacheCargoHomeStep,
-      restoreCacheBuildOutputStep,
-      saveCacheBuildOutputStep,
+      restoreCacheStep,
+      saveCacheStep,
     } = createCacheSteps({
       ...lintMatrix,
-      job: "lint",
+      cachePrefix: "lint",
     });
     return step(
       cloneRepoStep,
       cloneStdSubmoduleStep,
-      cacheCargoHomeStep,
-      restoreCacheBuildOutputStep,
+      restoreCacheStep,
       installRustStep,
       installDenoStep,
       step.if(lintMatrix.os.equals("linux"))(
@@ -1379,7 +1471,7 @@ const lintJob = job("lint", {
         run:
           "deno run --allow-write --allow-read --allow-run --allow-net --allow-env ./tools/lint.js",
       },
-      saveCacheBuildOutputStep,
+      saveCacheStep,
     );
   })(),
 });
@@ -1404,13 +1496,143 @@ const publishCanaryJob = job("publish-canary", {
       setupGcloudStep,
       {
         name: "Upload canary version file to dl.deno.land",
+        env: S3Envs,
         run: [
           "echo ${{ github.sha }} > canary-latest.txt",
           'gsutil -h "Cache-Control: no-cache" cp canary-latest.txt gs://dl.deno.land/canary-latest.txt',
+          "aws s3 cp canary-latest.txt s3://dl-deno-land/canary-latest.txt",
         ],
       },
     );
   })(),
+});
+
+// === deno_core test job ===
+// Ported from denoland/deno_core .github/workflows/ci-test/action.yml
+// Tests the merged deno_core crates (libs/*) using cargo nextest.
+
+// Cargo package names for the libs/* workspace members (merged from deno_core).
+const denoCorePackageNames = [
+  "deno_core",
+  "build-your-own-js-snapshot",
+  "dcore",
+  "deno_ops",
+  "deno_ops_compile_test_runner",
+  "serde_v8",
+  "deno_core_testing",
+];
+const denoCoreTestProfile = defineExprObj({
+  ...Runners.linuxX86Xl,
+  profile: "release",
+});
+const denoCoreTestCacheSteps = createCacheSteps({
+  ...denoCoreTestProfile,
+  cachePrefix: "deno-core-test",
+});
+const denoCoreTestJob = job("deno-core-test", {
+  name: `deno_core test linux-x86_64`,
+  needs: [preBuildJob],
+  if: preBuildJob.outputs.skip_build.notEquals("true"),
+  runsOn: denoCoreTestProfile.runner,
+  timeoutMinutes: 60,
+  defaults: {
+    run: {
+      shell: "bash",
+    },
+  },
+  env: {
+    CARGO_TERM_COLOR: "always",
+    RUST_BACKTRACE: "full",
+    RUST_LIB_BACKTRACE: 0,
+  },
+  steps: step.if(isNotTag)(
+    cloneRepoStep,
+    denoCoreTestCacheSteps.restoreCacheStep,
+    installRustStep,
+    installDenoStep,
+    step(sysRootConfig),
+    {
+      name: "Install cargo-binstall",
+      uses: "cargo-bins/cargo-binstall@main",
+    },
+    {
+      name: "Install nextest",
+      run: "cargo binstall cargo-nextest --secure --locked",
+    },
+    {
+      name: "Cargo nextest (release)",
+      run: [
+        `cargo nextest run --release`,
+        `  --features "deno_core/default deno_core/include_js_files_for_snapshotting deno_core/unsafe_use_unprotected_platform"`,
+        `  --tests --examples`,
+        `  ${denoCorePackageNames.map((p) => `-p ${p}`).join(" ")}`,
+      ].join(" \\\n    "),
+    },
+    {
+      // Ported from denoland/deno_core .github/workflows/ci-test-ops/action.yml
+      name: "Cargo nextest ops compile test runner (release)",
+      run: "cargo nextest run --release -p deno_ops_compile_test_runner",
+    },
+    {
+      name: "Cargo doc test",
+      run: `cargo test --doc --release ${
+        denoCorePackageNames.filter((p) =>
+          p !== "deno_ops_compile_test_runner" && p !== "dcore"
+        ).map((p) => `-p ${p}`).join(" ")
+      }`,
+    },
+    {
+      // Regression test for https://github.com/denoland/deno/pull/19615.
+      name: "Run examples (regression tests)",
+      run: [
+        "cargo run -p deno_core --example op2",
+        "cargo run -p deno_core --example op2 --features include_js_files_for_snapshotting",
+      ],
+    },
+    denoCoreTestCacheSteps.saveCacheStep,
+  ),
+});
+
+// === deno_core miri test job ===
+// Ported from denoland/deno_core .github/workflows/ci-test-miri/action.yml
+// Runs miri tests for deno_core using a nightly Rust toolchain.
+
+const miriNightlyToolchain = "nightly-2025-11-12";
+const denoCoreMiriJob = job("deno-core-miri", {
+  name: "deno_core miri linux-x86_64",
+  needs: [preBuildJob],
+  if: preBuildJob.outputs.skip_build.notEquals("true"),
+  runsOn: Runners.linuxX86Xl.runner,
+  timeoutMinutes: 60,
+  defaults: {
+    run: {
+      shell: "bash",
+    },
+  },
+  env: {
+    CARGO_TERM_COLOR: "always",
+    RUST_BACKTRACE: "full",
+    RUST_LIB_BACKTRACE: 0,
+  },
+  steps: step.if(isNotTag)(
+    cloneRepoStep,
+    {
+      name: "Install Rust (nightly)",
+      uses: "dtolnay/rust-toolchain@master",
+      with: {
+        toolchain: miriNightlyToolchain,
+      },
+    },
+    {
+      name: "Cargo test (miri)",
+      run: [
+        "cargo clean",
+        `rustup component add --toolchain ${miriNightlyToolchain} miri`,
+        "# This somehow prints errors in CI that don't show up locally",
+        `RUSTFLAGS=-Awarnings cargo +${miriNightlyToolchain} miri test -p deno_core`,
+      ],
+    },
+  ),
 });
 
 // === lint ci status job (status check gate) ===
@@ -1423,8 +1645,11 @@ const lintCiStatusJob = job("lint-ci-status", {
     benchJob,
     ...buildJobs.map((j) => [j.buildJob, ...j.additionalJobs]).flat(),
     lintJob,
+    denoCoreTestJob,
+    denoCoreMiriJob,
   ],
-  if: conditions.status.always(),
+  if: preBuildJob.outputs.skip_build.notEquals("true")
+    .and(conditions.status.always()),
   runsOn: "ubuntu-latest",
   steps: step({
     name: "Ensure CI success",
@@ -1471,6 +1696,8 @@ const workflow = createWorkflow({
     benchJob,
     ...buildJobs.map((j) => [j.buildJob, ...j.additionalJobs]).flat(),
     lintJob,
+    denoCoreTestJob,
+    denoCoreMiriJob,
     lintCiStatusJob,
     publishCanaryJob,
   ],
@@ -1492,15 +1719,40 @@ if (import.meta.main) {
 }
 
 function resolveTestCrateTests() {
-  const cargoToml = parseToml(
-    Deno.readTextFileSync(
-      new URL("../../tests/Cargo.toml", import.meta.url),
-    ),
-  ) as { test?: { name: string; path: string }[] };
-  return cargoToml.test ?? [];
+  const rootCargoToml = parseToml(
+    Deno.readTextFileSync(new URL("../../Cargo.toml", import.meta.url)),
+  ) as { workspace: { members: string[] } };
+
+  const testCrates: { name: string; package: string }[] = [];
+  const testPackageMembers = new Set<string>();
+
+  for (const member of rootCargoToml.workspace.members) {
+    if (!member.startsWith("tests")) continue;
+    const cargoToml = parseToml(
+      Deno.readTextFileSync(
+        new URL(`../../${member}/Cargo.toml`, import.meta.url),
+      ),
+    ) as {
+      package: { name: string; autotests?: boolean };
+      test?: { name: string; path: string }[];
+    };
+    // only include crates that explicitly disable auto-test discovery,
+    // indicating they are intentional test packages (not helper libraries
+    // like tests/ffi or tests/util/server)
+    if (cargoToml.package.autotests !== false) continue;
+    const tests = cargoToml.test ?? [];
+    if (tests.length > 0) {
+      testPackageMembers.add(member);
+      for (const test of tests) {
+        testCrates.push({ name: test.name, package: cargoToml.package.name });
+      }
+    }
+  }
+
+  return { testCrates, testPackageMembers };
 }
 
-function resolveWorkspaceCrates() {
+function resolveWorkspaceCrates(testPackageMembers: Set<string>) {
   // discover workspace members for the libs test job, split by type
   const rootCargoToml = parseToml(
     Deno.readTextFileSync(new URL("../../Cargo.toml", import.meta.url)),
@@ -1520,9 +1772,13 @@ function resolveWorkspaceCrates() {
     };
 
     if (member.startsWith("tests")) {
-      if (!member.endsWith("tests")) {
+      if (!testPackageMembers.has(member)) {
         ensureNoIntegrationTests(member, cargoToml);
       }
+    } else if (denoCorePackageDirs.includes(member)) {
+      // libs/* crates (merged from deno_core) have their own dedicated
+      // deno-core-test CI job, so skip them here.
+      continue;
     } else if (cargoToml.bin) {
       ensureNoIntegrationTests(member, cargoToml);
       binCrates.push(cargoToml.package.name);
@@ -1560,7 +1816,7 @@ function ensureNoIntegrationTests(
       }. ` +
         `Integration tests in these crates won't run on CI because we build ` +
         `binaries on one runner then test on another. ` +
-        `Move them to spec tests, the main cli_tests crate, or use #[cfg(test)] lib tests instead.`,
+        `Move them to spec tests, the test crates in tests/, or use #[cfg(test)] lib tests instead.`,
     );
   }
 }

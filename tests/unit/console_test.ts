@@ -154,11 +154,11 @@ Deno.test(
         },
       ),
       `{
-  [Symbol("foo\\b")]: 'Symbol("foo\\n")',
-  [Symbol("bar\\n")]: 'Symbol("bar\\n")',
-  [Symbol("bar\\r")]: 'Symbol("bar\\r")',
-  [Symbol("baz\\t")]: 'Symbol("baz\\t")',
-  [Symbol("qux\\x00")]: 'Symbol("qux\\x00")'
+  Symbol(foo\\b): 'Symbol("foo\\n")',
+  Symbol(bar\\n): 'Symbol("bar\\n")',
+  Symbol(bar\\r): 'Symbol("bar\\r")',
+  Symbol(baz\\t): 'Symbol("baz\\t")',
+  Symbol(qux\\x00): 'Symbol("qux\\x00")'
 }`,
     );
     assertEquals(
@@ -362,15 +362,15 @@ Deno.test(function consoleTestStringifyCircular() {
   profileEnd: [Function: profileEnd],
   timeStamp: [Function: timeStamp],
   indentLevel: 0,
-  [Symbol(isConsoleInstance)]: true
+  Symbol(isConsoleInstance): true
 }`,
   );
   assertEquals(
     stringify({ str: 1, [Symbol.for("sym")]: 2, [Symbol.toStringTag]: "TAG" }),
     `Object [TAG] {
   str: 1,
-  [Symbol(sym)]: 2,
-  [Symbol(Symbol.toStringTag)]: "TAG"
+  Symbol(sym): 2,
+  Symbol(Symbol.toStringTag): "TAG"
 }`,
   );
   // test inspect is working the same
@@ -1853,6 +1853,56 @@ Deno.test(function consoleTable() {
 │     2 │ 2 │   │   │
 │     3 │ 3 │   │ 3 │
 └───────┴───┴───┴───┘
+`,
+    );
+  });
+  // console.table with iterators (https://github.com/denoland/deno/issues/20725)
+  mockConsole((console, out) => {
+    console.table(
+      new Map([[1, 1], [2, 2], [3, 3]]).entries(),
+    );
+    assertEquals(
+      stripAnsiCode(out.toString()),
+      `\
+┌────────────┬───┬───┐
+│ (iter idx) │ 0 │ 1 │
+├────────────┼───┼───┤
+│          0 │ 1 │ 1 │
+│          1 │ 2 │ 2 │
+│          2 │ 3 │ 3 │
+└────────────┴───┴───┘
+`,
+    );
+  });
+  mockConsole((console, out) => {
+    console.table(
+      new Map([[1, 1], [2, 2], [3, 3]]).values(),
+    );
+    assertEquals(
+      stripAnsiCode(out.toString()),
+      `\
+┌────────────┬────────┐
+│ (iter idx) │ Values │
+├────────────┼────────┤
+│          0 │      1 │
+│          1 │      2 │
+│          2 │      3 │
+└────────────┴────────┘
+`,
+    );
+  });
+  mockConsole((console, out) => {
+    console.table(new Set([1, 2, 3]).values());
+    assertEquals(
+      stripAnsiCode(out.toString()),
+      `\
+┌────────────┬────────┐
+│ (iter idx) │ Values │
+├────────────┼────────┤
+│          0 │      1 │
+│          1 │      2 │
+│          2 │      3 │
+└────────────┴────────┘
 `,
     );
   });

@@ -24,6 +24,7 @@ import { nextTick } from "ext:deno_node/_next_tick.ts";
 import { Duplex, Readable, Writable } from "node:stream";
 import * as io from "ext:deno_io/12_io.js";
 import { guessHandleType } from "ext:deno_node/internal_binding/util.ts";
+import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
 import { op_bootstrap_color_depth } from "ext:core/ops";
 import { validateInteger } from "ext:deno_node/internal/validators.mjs";
 
@@ -38,11 +39,32 @@ export function createWritableStdioStream(writer, name, warmup = false) {
         );
         return;
       }
-      writer.writeSync(
-        ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, buf)
-          ? buf
-          : Buffer.from(buf, enc),
-      );
+      // TODO(fraidev): This try/catch is a workaround. When process.stdout
+      // is a pipe (not a TTY), Node.js backs it with a real fd-based net.Socket
+      // so BrokenPipe flows naturally through stream_wrap.ts as EPIPE. Deno
+      // always uses createWritableStdioStream(io.stdout) regardless of pipe/TTY,
+      // so BrokenPipe throws synchronously here instead. Once net.Socket supports
+      // being created from a raw fd (new Socket({ fd: 1 })), process.stdout/stderr
+      // should be switched to net.Socket for non-TTY cases and this can be removed.
+      try {
+        writer.writeSync(
+          ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, buf)
+            ? buf
+            : Buffer.from(buf, enc),
+        );
+      } catch (e) {
+        if (
+          ObjectPrototypeIsPrototypeOf(Deno.errors.BrokenPipe.prototype, e)
+        ) {
+          const err = new Error("write EPIPE");
+          err.code = "EPIPE";
+          err.errno = codeMap.get("EPIPE");
+          err.syscall = "write";
+          cb(err);
+          return;
+        }
+        throw e;
+      }
       cb();
     },
     destroy(err, cb) {
@@ -137,13 +159,10 @@ export function createWritableStdioStream(writer, name, warmup = false) {
     },
   });
 
-  // If we're warming up, create a stdout/stderr stream that assumes a terminal (the most likely case).
-  // If we're wrong at boot time, we'll recreate it.
+  // If we're warming up, add TTY-like methods so snapshot-time code works.
+  // The warmup stream is replaced at boot time with a proper tty.WriteStream
+  // (for TTY) or a fresh Writable (for non-TTY).
   if (warmup || writer?.isTerminal()) {
-    // These belong on tty.WriteStream(), but the TTY streams currently have
-    // following problems:
-    // 1. Using them here introduces a circular dependency.
-    // 2. Creating a net.Socket() from a fd is not currently supported.
     stream.cursorTo = function (x, y, callback) {
       return cursorTo(this, x, y, callback);
     };
@@ -241,6 +260,28 @@ export const initStdin = (warmup = false) => {
         // Make sure the stdin can't be `.end()`-ed
         stdin._writableState.ended = true;
       }
+
+      // Provide a minimal _handle so code that checks process.stdin._handle
+      // (e.g. test-stdout-close-unref.js) works. We intentionally omit
+      // readStart/readStop/reading so the onpause handler takes the simple
+      // io.stdin UNREF path - adding those methods causes _readableState.reading
+      // to be reset, which triggers duplicate _read() calls and orphaned
+      // reffed promises that prevent process exit.
+      stdin._handle = {
+        close(cb) {
+          io.stdin?.close();
+          if (typeof cb === "function") cb();
+        },
+        ref() {
+          io.stdin?.[io.REF]();
+        },
+        unref() {
+          io.stdin?.[io.UNREF]();
+        },
+        getAsyncId() {
+          return -1;
+        },
+      };
       break;
     }
     default: {
@@ -264,7 +305,7 @@ export const initStdin = (warmup = false) => {
   }
 
   function onpause() {
-    if (!stdin._handle) {
+    if (!stdin._handle || !stdin._handle.readStop) {
       // This allows the process to exit when stdin is paused.
       io.stdin?.[io.UNREF]();
       return;

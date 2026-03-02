@@ -397,15 +397,13 @@ Deno.test("[std/node/fs] open callback isn't called twice if error is thrown", a
       await Deno.remove(tempFile);
     },
   });
+});
 
-  Deno.test({
-    name: "SYNC: open file with flag set to 0 (readonly)",
-    fn() {
-      const file = Deno.makeTempFileSync();
-      const fd = openSync(file, 0);
-      closeSync(fd);
-    },
-  });
+Deno.test("SYNC: open file with flag set to 0 (readonly)", async () => {
+  const file = Deno.makeTempFileSync();
+  const fd = openSync(file, 0);
+  closeSync(fd);
+  await Deno.remove(file);
 });
 
 Deno.test("[std/node/fs] openSync with custom flag", {

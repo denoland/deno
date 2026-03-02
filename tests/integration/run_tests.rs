@@ -2659,7 +2659,7 @@ async fn websocket_server_multi_field_connection_header() {
   assert!(child.wait().unwrap().success());
 }
 
-#[test(timeout = 60_000)]
+#[test(timeout = 300)]
 async fn websocket_server_idletimeout() {
   let script =
     util::testdata_path().join("run/websocket_server_idletimeout.ts");
@@ -2670,7 +2670,7 @@ async fn websocket_server_idletimeout() {
     .arg("--cert")
     .arg(root_ca)
     .arg("--config")
-    .arg("./config/deno.json")
+    .arg(util::tests_path().join("config/deno.json"))
     .arg(script)
     .stdout_piped()
     .spawn()

@@ -14,6 +14,8 @@ pub use dict::*;
 
 #[cfg(windows)]
 static SIGHUP: i32 = 1;
+#[cfg(windows)]
+static SIGWINCH: i32 = 28;
 
 static COUNTER: AtomicU32 = AtomicU32::new(0);
 
@@ -94,6 +96,73 @@ fn init() -> Handle {
   Handle
 }
 
+#[cfg(windows)]
+fn start_sigwinch_polling() {
+  static STARTED: OnceLock<()> = OnceLock::new();
+  STARTED.get_or_init(|| {
+    std::thread::spawn(|| {
+      // SAFETY: winapi calls to open CONOUT$ and poll console size
+      unsafe {
+        let conout_name: Vec<u16> =
+          "CONOUT$".encode_utf16().chain(Some(0)).collect();
+        let handle = winapi::um::fileapi::CreateFileW(
+          conout_name.as_ptr(),
+          winapi::um::winnt::GENERIC_READ,
+          winapi::um::winnt::FILE_SHARE_READ
+            | winapi::um::winnt::FILE_SHARE_WRITE,
+          std::ptr::null_mut(),
+          winapi::um::fileapi::OPEN_EXISTING,
+          0,
+          std::ptr::null_mut(),
+        );
+        if handle == winapi::um::handleapi::INVALID_HANDLE_VALUE {
+          return;
+        }
+
+        let mut prev_cols: i32 = 0;
+        let mut prev_rows: i32 = 0;
+
+        // Read initial size
+        let mut bufinfo: winapi::um::wincon::CONSOLE_SCREEN_BUFFER_INFO =
+          std::mem::zeroed();
+        if winapi::um::wincon::GetConsoleScreenBufferInfo(handle, &mut bufinfo)
+          != 0
+        {
+          prev_cols =
+            bufinfo.srWindow.Right as i32 - bufinfo.srWindow.Left as i32 + 1;
+          prev_rows =
+            bufinfo.srWindow.Bottom as i32 - bufinfo.srWindow.Top as i32 + 1;
+        }
+
+        loop {
+          winapi::um::synchapi::Sleep(250);
+
+          let mut bufinfo: winapi::um::wincon::CONSOLE_SCREEN_BUFFER_INFO =
+            std::mem::zeroed();
+          if winapi::um::wincon::GetConsoleScreenBufferInfo(
+            handle,
+            &mut bufinfo,
+          ) == 0
+          {
+            continue;
+          }
+
+          let cols =
+            bufinfo.srWindow.Right as i32 - bufinfo.srWindow.Left as i32 + 1;
+          let rows =
+            bufinfo.srWindow.Bottom as i32 - bufinfo.srWindow.Top as i32 + 1;
+
+          if cols != prev_cols || rows != prev_rows {
+            prev_cols = cols;
+            prev_rows = rows;
+            handle_signal(SIGWINCH);
+          }
+        }
+      }
+    });
+  });
+}
+
 pub fn register(
   signal: i32,
   prevent_default: bool,
@@ -129,6 +198,9 @@ pub fn register(
       #[cfg(windows)]
       {
         let _ = handle;
+        if signal == SIGWINCH {
+          start_sigwinch_polling();
+        }
       }
     }
   }

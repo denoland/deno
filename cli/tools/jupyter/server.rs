@@ -19,17 +19,17 @@ use deno_core::futures;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
 use deno_lib::version::DENO_VERSION_INFO;
+use jupyter_protocol::ConnectionInfo;
+use jupyter_protocol::ExecutionCount;
+use jupyter_protocol::JupyterMessage;
+use jupyter_protocol::JupyterMessageContent;
+use jupyter_protocol::ReplyError;
+use jupyter_protocol::ReplyStatus;
+use jupyter_protocol::StreamContent;
 use jupyter_protocol::messaging;
-use jupyter_runtime::ConnectionInfo;
-use jupyter_runtime::ExecutionCount;
-use jupyter_runtime::JupyterMessage;
-use jupyter_runtime::JupyterMessageContent;
 use jupyter_runtime::KernelControlConnection;
 use jupyter_runtime::KernelIoPubConnection;
 use jupyter_runtime::KernelShellConnection;
-use jupyter_runtime::ReplyError;
-use jupyter_runtime::ReplyStatus;
-use jupyter_runtime::StreamContent;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use uuid::Uuid;
@@ -138,11 +138,7 @@ impl JupyterServer {
     let hearbeat_fut = deno_core::unsync::spawn(async move {
       loop {
         if let Err(err) = heartbeat.single_heartbeat().await {
-          log::error!(
-            "Heartbeat error: {}\nBacktrace:\n{}",
-            err,
-            err.backtrace()
-          );
+          log::error!("Heartbeat error: {}", err);
         }
       }
     });
@@ -153,11 +149,7 @@ impl JupyterServer {
         if let Err(err) =
           Self::handle_control(control_connection, cancel_handle).await
         {
-          log::error!(
-            "Control error: {}\nBacktrace:\n{}",
-            err,
-            err.backtrace()
-          );
+          log::error!("Control error: {}", err);
         }
       }
     });
@@ -675,7 +667,12 @@ impl JupyterServer {
     &mut self,
     message: JupyterMessage,
   ) -> Result<(), AnyError> {
-    self.iopub_connection.lock().send(message.clone()).await
+    self
+      .iopub_connection
+      .lock()
+      .send(message.clone())
+      .await
+      .map_err(|e| e.into())
   }
 }
 
@@ -688,11 +685,11 @@ fn kernel_info() -> messaging::KernelInfoReply {
     language_info: messaging::LanguageInfo {
       name: "typescript".to_string(),
       version: DENO_VERSION_INFO.typescript.to_string(),
-      mimetype: "text/x.typescript".to_string(),
-      file_extension: ".ts".to_string(),
-      pygments_lexer: "typescript".to_string(),
-      codemirror_mode: messaging::CodeMirrorMode::typescript(),
-      nbconvert_exporter: "script".to_string(),
+      mimetype: Some("text/x.typescript".to_string()),
+      file_extension: Some(".ts".to_string()),
+      pygments_lexer: Some("typescript".to_string()),
+      codemirror_mode: Some(messaging::CodeMirrorMode::typescript()),
+      nbconvert_exporter: Some("script".to_string()),
     },
     banner: "Welcome to Deno kernel".to_string(),
     help_links: vec![messaging::HelpLink {

@@ -67,9 +67,9 @@ pub enum PackageJsonDepValueParseErrorKind {
   #[class(type)]
   #[error("Not implemented scheme '{scheme}'")]
   Unsupported { scheme: String },
-  #[class(type)]
-  #[error("JSR package name '{name}' requires a scope (ex. @scope/name)")]
-  JsrRequiresScope { name: String },
+  #[class(inherit)]
+  #[error(transparent)]
+  JsrRequiresScope(#[from] JsrDepPackageParseError),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -82,6 +82,64 @@ pub enum PackageJsonDepWorkspaceReq {
 
   /// "workspace:x.y.z", "workspace:*", "workspace:^x.y.z"
   VersionReq(VersionReq),
+}
+
+/// Error returned when a JSR specifier doesn't have a valid `@scope/name`
+/// format.
+#[derive(Debug, Clone, Error, JsError, PartialEq, Eq)]
+#[class(type)]
+#[error("JSR package name '{name}' requires a scope (e.g. @scope/name)")]
+pub struct JsrDepPackageParseError {
+  pub name: String,
+}
+
+/// Parses a JSR specifier value (the part after the `jsr:` prefix) into an
+/// npm-style package name and version string.
+///
+/// If the value starts with `@`, it's parsed as `@scope/name[@version]`.
+/// Otherwise, `fallback_name` is used as the JSR package name and the
+/// value is treated as a version string.
+pub fn parse_jsr_dep_value<'a>(
+  fallback_name: &'a str,
+  jsr_value: &'a str,
+) -> Result<(StackString, &'a str), JsrDepPackageParseError> {
+  let (jsr_name, version_str) = if jsr_value.starts_with('@') {
+    if let Some((name, version)) = jsr_value.rsplit_once('@') {
+      if name.is_empty() {
+        (jsr_value, "*")
+      } else {
+        (name, version)
+      }
+    } else {
+      (jsr_value, "*")
+    }
+  } else if let Some((name, version)) = jsr_value.split_once('@') {
+    // unscoped name with version, e.g. "test@*"
+    (name, version)
+  } else {
+    // bare version string, e.g. "^1" — derive name from key
+    (fallback_name, jsr_value)
+  };
+
+  let Some((scope, name)) = jsr_name
+    .strip_prefix('@')
+    .and_then(|rest| rest.split_once('/'))
+  else {
+    return Err(JsrDepPackageParseError {
+      name: jsr_name.to_string(),
+    });
+  };
+
+  let npm_name =
+    capacity_builder::StringBuilder::<StackString>::build(|builder| {
+      builder.append("@jsr/");
+      builder.append(scope);
+      builder.append("__");
+      builder.append(name);
+    })
+    .unwrap();
+
+  Ok((npm_name, version_str))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -114,47 +172,11 @@ impl PackageJsonDepValue {
       match scheme {
         "file" => Ok(Self::File(value.to_string())),
         "jsr" => {
-          let (name, version_req) = if value.starts_with('@') {
-            // @std/path
-            // @std/path@v1
-            if let Some((name, version)) = value.rsplit_once('@') {
-              // if empty, then there's no version
-              if name.is_empty() {
-                (value, "*")
-              } else {
-                (name, version)
-              }
-            } else {
-              (value, "*")
-            }
-          } else {
-            // ^1
-            (key, value)
-          };
-          let Some((scope, name)) =
-            name.strip_prefix('@').and_then(|name| name.split_once('/'))
-          else {
-            return Err(
-              PackageJsonDepValueParseErrorKind::JsrRequiresScope {
-                name: if let Some((name, _)) = version_req.split_once('@') {
-                  name.to_string()
-                } else {
-                  name.to_string()
-                },
-              }
-              .into_box(),
-            );
-          };
-          from_name_and_version_req(
-            capacity_builder::StringBuilder::<StackString>::build(|builder| {
-              builder.append("@jsr/");
-              builder.append(scope);
-              builder.append("__");
-              builder.append(name);
-            })
-            .unwrap(),
-            version_req,
-          )
+          let (npm_name, version_req) = parse_jsr_dep_value(key, value)
+            .map_err(|e| {
+              PackageJsonDepValueParseErrorKind::JsrRequiresScope(e).into_box()
+            })?;
+          from_name_and_version_req(npm_name, version_req)
         }
         "npm" => {
           if let Some((name, version)) = value.rsplit_once('@') {
@@ -268,6 +290,8 @@ pub struct PackageJson {
   pub workspaces: Option<Vec<String>>,
   pub os: Option<Vec<String>>,
   pub cpu: Option<Vec<String>>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub overrides: Option<Map<String, Value>>,
   #[serde(skip_serializing)]
   resolved_deps: PackageJsonDepsRcCell,
 }
@@ -339,6 +363,7 @@ impl PackageJson {
         workspaces: None,
         os: None,
         cpu: None,
+        overrides: None,
         resolved_deps: Default::default(),
       });
     }
@@ -488,6 +513,7 @@ impl PackageJson {
       .and_then(parse_string_array);
     let os = package_json.remove("os").and_then(parse_string_array);
     let cpu = package_json.remove("cpu").and_then(parse_string_array);
+    let overrides = package_json.remove("overrides").and_then(map_object);
 
     Ok(PackageJson {
       path,
@@ -513,6 +539,7 @@ impl PackageJson {
       workspaces,
       os,
       cpu,
+      overrides,
       resolved_deps: Default::default(),
     })
   }
@@ -804,15 +831,19 @@ mod test {
         ),
         (
           "no-scope".to_string(),
-          Err(PackageJsonDepValueParseErrorKind::JsrRequiresScope {
-            name: "no-scope".to_string()
-          })
+          Err(PackageJsonDepValueParseErrorKind::JsrRequiresScope(
+            JsrDepPackageParseError {
+              name: "no-scope".to_string()
+            }
+          ))
         ),
         (
           "no-scope2".to_string(),
-          Err(PackageJsonDepValueParseErrorKind::JsrRequiresScope {
-            name: "test".to_string()
-          })
+          Err(PackageJsonDepValueParseErrorKind::JsrRequiresScope(
+            JsrDepPackageParseError {
+              name: "test".to_string()
+            }
+          ))
         ),
         (
           "@denotest/tag".to_string(),

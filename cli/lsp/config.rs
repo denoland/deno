@@ -70,6 +70,7 @@ use crate::http_util::HttpClientProvider;
 use crate::lsp::logging::lsp_warn;
 use crate::npm::CliNpmCacheHttpClient;
 use crate::sys::CliSys;
+use crate::util::fs::canonicalize_path;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
@@ -1845,7 +1846,7 @@ impl ConfigTree {
     let pkg_json_cache = PackageJsonMemCache::default();
     let workspace_cache = WorkspaceMemCache::default();
     let mut scopes = BTreeMap::new();
-    let fs_root_url = std::fs::canonicalize("/")
+    let fs_root_url = canonicalize_path(Path::new("/"))
       .ok()
       .and_then(|p| Url::from_directory_path(p).ok())
       .unwrap_or_else(|| Url::parse("file:///").unwrap());

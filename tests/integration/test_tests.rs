@@ -138,3 +138,22 @@ fn workspace_dot_runs_test_module_once() {
     "expected test module to run once, but saw {test_file_runs} runs:\n{text}"
   );
 }
+
+fn nested_deno_test_registration_errors() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "nested_test.ts",
+    r#"
+Deno.test("outer", () => {
+  Deno.test("inner", () => {});
+});
+"#,
+  );
+
+  let output = context.new_command().args("test nested_test.ts").run();
+  output.assert_exit_code(1);
+  let combined = output.combined_output();
+  assert_contains!(combined, "Nested Deno.test() calls are not supported",);
+  assert_contains!(combined, "Use t.step()");
+}

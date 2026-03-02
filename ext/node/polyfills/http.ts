@@ -70,7 +70,8 @@ import {
 } from "ext:deno_node/internal/errors.ts";
 import { getTimerDuration } from "ext:deno_node/internal/timers.mjs";
 import { getIPFamily } from "ext:deno_node/internal/net.ts";
-import { serve, upgradeHttpRaw } from "ext:deno_http/00_serve.ts";
+import { serveHttpOnListener, upgradeHttpRaw } from "ext:deno_http/00_serve.ts";
+import { listen as listenDeno } from "ext:deno_net/01_net.js";
 import { headersEntries } from "ext:deno_fetch/20_headers.js";
 import { Response } from "ext:deno_fetch/23_response.js";
 import {
@@ -98,8 +99,12 @@ import { methods as METHODS } from "node:_http_common";
 import { deprecate } from "node:util";
 
 const { internalRidSymbol } = core;
-const { ArrayIsArray, StringPrototypeToLowerCase, SafeArrayIterator } =
-  primordials;
+const {
+  ArrayIsArray,
+  StringPrototypeIncludes,
+  StringPrototypeToLowerCase,
+  SafeArrayIterator,
+} = primordials;
 
 type Chunk = string | Buffer | Uint8Array;
 
@@ -572,6 +577,11 @@ class ClientRequest extends OutgoingMessage {
           this._bodyWriteRid,
           baseConnRid,
         );
+        // Save body data before flushing so it can be restored if
+        // a stale keepAlive socket fails during the response phase.
+        if (this.reusedSocket && this.outputData.length > 0) {
+          this._outputDataForRetry = [...this.outputData];
+        }
         this._flushBuffer();
 
         const infoPromise = op_node_http_await_information(
@@ -741,6 +751,31 @@ class ClientRequest extends OutgoingMessage {
             this._headerSent = false;
             this.reusedSocket = false;
             this._req = null;
+            // Reset body stream state so _writeHeader() creates a
+            // fresh TransformStream on the next attempt.
+            this._bodyWriter = null;
+            this._bodyWriteRid = null;
+            this._bodyWritable = null;
+            // Restore body data that was consumed by the failed attempt.
+            if (this._outputDataForRetry) {
+              this.outputData = this._outputDataForRetry;
+              this._outputDataForRetry = null;
+            }
+            // Restore body data from streaming writes (e.g. pipeline)
+            // that bypassed outputData and went directly to _bodyWriter.
+            if (this._bodyDataForRetry) {
+              for (const entry of this._bodyDataForRetry) {
+                this.outputData.push(entry);
+              }
+              this._bodyDataForRetry = null;
+            }
+            // If the request body was already fully sent (e.g. pipeline
+            // called end()), re-call end() to set up body writer close
+            // logic for the retry attempt.
+            if (this.finished) {
+              this.finished = false;
+              this.end();
+            }
             this.agent.addRequest(this, this._agentOptions);
             return;
           }
@@ -939,9 +974,9 @@ class ClientRequest extends OutgoingMessage {
       path = "/" + path;
     }
     const url = new URL(
-      `${protocol}//${auth ? `${auth}@` : ""}${host}${
-        port === 80 ? "" : `:${port}`
-      }${path}`,
+      `${protocol}//${auth ? `${auth}@` : ""}${
+        StringPrototypeIncludes(host, ":") ? `[${host}]` : host
+      }${port === 80 ? "" : `:${port}`}${path}`,
     );
     url.hash = hash;
     return url.href;
@@ -2151,6 +2186,7 @@ export class ServerImpl extends EventEmitter {
   #server: Deno.HttpServer;
   #unref = false;
   #ac?: AbortController;
+  #listener: Deno.Listener | null = null;
   #serveDeferred: ReturnType<typeof Promise.withResolvers<void>>;
   listening = false;
 
@@ -2200,14 +2236,30 @@ export class ServerImpl extends EventEmitter {
     if (hostname == "localhost") {
       hostname = "127.0.0.1";
     }
+
+    // Bind the port synchronously so that address() returns the actual
+    // port immediately after listen(), matching Node.js behavior.
+    try {
+      this.#listener = this._listen(hostname, port);
+    } catch (e) {
+      // Emit the error asynchronously, matching Node.js behavior.
+      this.#addr = { hostname, port } as Deno.NetAddr;
+      nextTick(() => this.emit("error", e));
+      return this;
+    }
+    const addr = this.#listener.addr as Deno.NetAddr;
     this.#addr = {
-      hostname,
-      port,
+      hostname: addr.hostname,
+      port: addr.port,
     } as Deno.NetAddr;
     this.listening = true;
     nextTick(() => this._serve());
 
     return this;
+  }
+
+  _listen(hostname: string, port: number): Deno.Listener {
+    return listenDeno({ hostname, port });
   }
 
   _serve() {
@@ -2268,18 +2320,21 @@ export class ServerImpl extends EventEmitter {
       return;
     }
     this.#ac = ac;
+    const listener = this.#listener;
+    this.#listener = null;
+    if (!listener) {
+      return;
+    }
     try {
-      this.#server = serve(
-        {
-          handler: handler as Deno.ServeHandler,
-          ...this.#addr,
-          signal: ac.signal,
-          // @ts-ignore Might be any without `--unstable` flag
-          onListen: ({ port }) => {
-            this.#addr!.port = port;
-            this.emit("listening");
-          },
-          ...this._additionalServeOptions?.(),
+      this.#server = serveHttpOnListener(
+        listener,
+        ac.signal,
+        handler,
+        (_error) => {
+          return new Response("Internal Server Error", { status: 500 });
+        },
+        () => {
+          this.emit("listening");
         },
       );
     } catch (e) {
@@ -2329,6 +2384,12 @@ export class ServerImpl extends EventEmitter {
           cb(new ERR_SERVER_NOT_RUNNING());
         });
       }
+    }
+
+    // Close pre-bound listener if _serve() hasn't consumed it yet.
+    if (this.#listener) {
+      this.#listener.close();
+      this.#listener = null;
     }
 
     if (listening && this.#ac) {
