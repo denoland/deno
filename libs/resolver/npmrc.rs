@@ -183,8 +183,9 @@ fn discover_npmrc<TSys: EnvVar + EnvHomeDir + FsRead>(
   }
 
   let resolve_npmrc = |path: PathBuf, npm_rc: NpmRc| {
+    let registry_url = npm_registry_url(sys);
     let mut resolved_npm_rc = npm_rc
-      .as_resolved_with_env(&npm_registry_url(sys), &|name| sys.env_var(name).ok())
+      .as_resolved_with_options(&registry_url.url, registry_url.from_env)
       .map_err(|source| NpmRcOptionsResolveError {
         path: path.to_path_buf(),
         source,
@@ -223,7 +224,7 @@ fn discover_npmrc<TSys: EnvVar + EnvHomeDir + FsRead>(
 pub fn create_default_npmrc(sys: &impl EnvVar) -> ResolvedNpmRc {
   ResolvedNpmRc {
     default_config: deno_npm::npm_rc::RegistryConfigWithUrl {
-      registry_url: npm_registry_url(sys),
+      registry_url: npm_registry_url(sys).url,
       config: Default::default(),
     },
     scopes: HashMap::from([(
@@ -237,8 +238,34 @@ pub fn create_default_npmrc(sys: &impl EnvVar) -> ResolvedNpmRc {
   }
 }
 
-pub fn npm_registry_url(sys: &impl EnvVar) -> Url {
-  parse_env_var_to_url(sys, "NPM_CONFIG_REGISTRY", "https://registry.npmjs.org")
+/// Represents an npm registry URL with information about its source.
+#[derive(Debug, Clone)]
+pub struct NpmRegistryUrl {
+  pub url: Url,
+  /// Whether the URL was read from an environment variable.
+  pub from_env: bool,
+}
+
+pub fn npm_registry_url(sys: &impl EnvVar) -> NpmRegistryUrl {
+  if let Ok(registry_url) = sys.env_var("NPM_CONFIG_REGISTRY") {
+    let registry_url = ensure_trailing_slash(&registry_url);
+    match Url::parse(&registry_url) {
+      Ok(url) => {
+        return NpmRegistryUrl { url, from_env: true };
+      }
+      Err(err) => {
+        log::debug!(
+          "Invalid NPM_CONFIG_REGISTRY environment variable: {:#}",
+          err,
+        );
+      }
+    }
+  }
+
+  NpmRegistryUrl {
+    url: Url::parse("https://registry.npmjs.org/").unwrap(),
+    from_env: false,
+  }
 }
 
 pub fn npm_jsr_registry_url(sys: &impl EnvVar) -> Url {

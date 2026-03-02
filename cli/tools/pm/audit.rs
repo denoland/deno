@@ -37,7 +37,7 @@ pub async fn audit(
   let snapshot = npm_resolver.resolution().snapshot();
 
   let sys = CliSys::default();
-  let npm_url = npm_registry_url(&sys);
+  let npm_url = npm_registry_url(&sys).url;
   let http_provider = HttpClientProvider::new(None, None);
   let http_client = http_provider
     .get_or_create()

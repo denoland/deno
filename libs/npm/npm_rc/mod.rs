@@ -127,20 +127,24 @@ impl NpmRc {
     &self,
     env_registry_url: &Url,
   ) -> Result<ResolvedNpmRc, ResolveError> {
-    self.as_resolved_with_env(env_registry_url, &|_| None)
+    self.as_resolved_with_options(env_registry_url, false)
   }
 
-  pub fn as_resolved_with_env(
+  /// Resolve the NpmRc with information about whether the registry URL came from an env var.
+  ///
+  /// When `env_registry_url_from_env` is true, the `env_registry_url` takes priority over
+  /// any registry setting in .npmrc. When false, .npmrc registry takes priority.
+  pub fn as_resolved_with_options(
     &self,
     env_registry_url: &Url,
-    get_env_var: &impl Fn(&str) -> Option<String>,
+    env_registry_url_from_env: bool,
   ) -> Result<ResolvedNpmRc, ResolveError> {
     let mut scopes = HashMap::with_capacity(self.scope_registries.len());
     for scope in self.scope_registries.keys() {
       let (url, config) = self.registry_url_and_config_for_maybe_scope(
         Some(scope.as_str()),
         env_registry_url.as_str(),
-        get_env_var,
+        env_registry_url_from_env,
       );
       let url = Url::parse(&url).map_err(|e| ResolveError::UrlScope {
         scope: scope.clone(),
@@ -154,8 +158,11 @@ impl NpmRc {
         },
       );
     }
-    let (default_url, default_config) = self
-      .registry_url_and_config_for_maybe_scope(None, env_registry_url.as_str(), get_env_var);
+    let (default_url, default_config) = self.registry_url_and_config_for_maybe_scope(
+      None,
+      env_registry_url.as_str(),
+      env_registry_url_from_env,
+    );
     let default_url = Url::parse(&default_url).map_err(ResolveError::Url)?;
     Ok(ResolvedNpmRc {
       default_config: RegistryConfigWithUrl {
@@ -171,16 +178,14 @@ impl NpmRc {
     &self,
     maybe_scope_name: Option<&str>,
     env_registry_url: &str,
-    get_env_var: &impl Fn(&str) -> Option<String>,
+    env_registry_url_from_env: bool,
   ) -> (String, Arc<RegistryConfig>) {
     let registry_url = maybe_scope_name
       .and_then(|scope| self.scope_registries.get(scope).map(|s| s.as_str()))
       .unwrap_or_else(|| {
-        // NPM_CONFIG_REGISTRY should take priority over .npmrc registry setting.
-        // While env_registry_url already contains the NPM_CONFIG_REGISTRY value if set,
-        // we need to check if it was actually set vs being the default fallback.
+        // NPM_CONFIG_REGISTRY env var should take priority over .npmrc registry setting.
         // Only use .npmrc registry if NPM_CONFIG_REGISTRY was not explicitly set.
-        if get_env_var("NPM_CONFIG_REGISTRY").is_some() {
+        if env_registry_url_from_env {
           env_registry_url
         } else {
           self.registry.as_deref().unwrap_or(env_registry_url)
@@ -808,29 +813,20 @@ registry=${VAR_FOUND}
       &|_| None,
     )
     .unwrap();
-    
-    // Simulate NPM_CONFIG_REGISTRY being set
-    let env_vars = |name: &str| {
-      if name == "NPM_CONFIG_REGISTRY" {
-        Some("http://env.registry.example.com/".to_string())
-      } else {
-        None
-      }
-    };
-    
+
     // This simulates what npm_registry_url() would return when NPM_CONFIG_REGISTRY is set
     let env_registry_url = Url::parse("http://env.registry.example.com/").unwrap();
     let resolved = npm_rc
-      .as_resolved_with_env(&env_registry_url, &env_vars)
+      .as_resolved_with_options(&env_registry_url, true) // from_env = true
       .unwrap();
-    
+
     // Should use the env var registry, not the .npmrc one
     assert_eq!(
       resolved.default_config.registry_url.as_str(),
       "http://env.registry.example.com/"
     );
   }
-  
+
   #[test]
   fn test_npmrc_registry_used_when_no_env_var() {
     // When NPM_CONFIG_REGISTRY is not set, should use .npmrc registry
@@ -839,11 +835,14 @@ registry=${VAR_FOUND}
       &|_| None,
     )
     .unwrap();
-    
+
     let resolved = npm_rc
-      .as_resolved_with_env(&Url::parse("https://registry.npmjs.org/").unwrap(), &|_| None)
+      .as_resolved_with_options(
+        &Url::parse("https://registry.npmjs.org/").unwrap(),
+        false, // from_env = false (default fallback)
+      )
       .unwrap();
-    
+
     // Should use the .npmrc registry
     assert_eq!(
       resolved.default_config.registry_url.as_str(),
