@@ -68,7 +68,7 @@ class TestFilter {
     return false;
   }
 
-  shouldKeepWalking(path): boolean {
+  shouldKeepWalking(path: string): boolean {
     if (this.filter === undefined || this.filter.length == 0) {
       return true;
     }

@@ -59,7 +59,8 @@ async function getWptSubmoduleHash(): Promise<string> {
 
 export function shouldSkipOnCi(): Promise<boolean> {
   const targetDir = join(ROOT_PATH, "target");
-  return shouldSkipOnCiGeneric("wpt", targetDir, async (hasher) => {
+  // deno-lint-ignore no-explicit-any
+  return shouldSkipOnCiGeneric("wpt", targetDir, async (hasher: any) => {
     const hashDenoBinaryTask = hasher.hashFile(denoBinary());
     const submoduleHash = await getWptSubmoduleHash();
     await hashDenoBinaryTask;
@@ -88,6 +89,7 @@ export type ManifestTestVariation = [
 export interface ManifestTestOptions {
   // deno-lint-ignore camelcase
   script_metadata: [string, string][];
+  timeout?: string;
 }
 
 const MANIFEST_PATH = join(ROOT_PATH, "./tests/wpt/runner/manifest.json");
@@ -158,7 +160,7 @@ export function getExpectFailForCase(
 /// UTILS
 
 class AssertionError extends Error {
-  name = "AssertionError";
+  override name = "AssertionError";
   constructor(message: string) {
     super(message);
   }
@@ -184,7 +186,7 @@ export function runPy<T extends Omit<Deno.CommandOptions, "cwd">>(
   }).spawn();
 }
 
-export async function runGitDiff(args: string[]): string {
+export async function runGitDiff(args: string[]): Promise<void> {
   await new Deno.Command("git", {
     args: ["diff", ...args],
     stdout: "inherit",
@@ -231,7 +233,7 @@ export function escapeLoneSurrogates(input: string | null): string | null {
 /// WPTREPORT
 
 export async function generateRunInfo(): Promise<unknown> {
-  const oses = {
+  const oses: Record<string, string> = {
     "windows": "win",
     "darwin": "mac",
     "linux": "linux",
