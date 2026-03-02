@@ -1,0 +1,34 @@
+{
+  "spans": [],
+  "logs": [
+    {
+      "timeUnixNano": "[WILDCARD]",
+      "observedTimeUnixNano": "[WILDCARD]",
+      "severityNumber": 9,
+      "severityText": "INFO",
+      "body": {
+        "stringValue": "starting gc callback resilience test\n"
+      },
+      "attributes": [],
+      "droppedAttributesCount": 0,
+      "flags": 0,
+      "traceId": "",
+      "spanId": ""
+    },
+    {
+      "timeUnixNano": "[WILDCARD]",
+      "observedTimeUnixNano": "[WILDCARD]",
+      "severityNumber": 9,
+      "severityText": "INFO",
+      "body": {
+        "stringValue": "gc callback resilience test completed\n"
+      },
+      "attributes": [],
+      "droppedAttributesCount": 0,
+      "flags": 0,
+      "traceId": "",
+      "spanId": ""
+    }
+  ],
+  "metrics": []
+}
