@@ -68,6 +68,14 @@ impl std::fmt::Display for DownloadError {
   }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NpmPackumentFormat {
+  /// Request the abbreviated install manifest (smaller, but omits `time` and `scripts`).
+  Abbreviated,
+  /// Request the full packument (needed when `minimumDependencyAge` is configured).
+  Full,
+}
+
 pub enum NpmCacheHttpClientResponse {
   NotFound,
   NotModified,

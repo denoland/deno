@@ -1204,6 +1204,16 @@ pub fn op_node_diffie_hellman(
       .to_vec()
       .into_boxed_slice(),
       (
+        AsymmetricPrivateKey::Ec(EcPrivateKey::Secp256k1(private)),
+        AsymmetricPublicKey::Ec(EcPublicKey::Secp256k1(public)),
+      ) => k256::ecdh::diffie_hellman(
+        private.to_nonzero_scalar(),
+        public.as_affine(),
+      )
+      .raw_secret_bytes()
+      .to_vec()
+      .into_boxed_slice(),
+      (
         AsymmetricPrivateKey::X25519(private),
         AsymmetricPublicKey::X25519(public),
       ) => private
