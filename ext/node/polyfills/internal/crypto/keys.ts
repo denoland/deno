@@ -206,7 +206,6 @@ export class KeyObject {
   }
 
   get symmetricKeySize(): number | undefined {
-    notImplemented("crypto.KeyObject.prototype.symmetricKeySize");
     return undefined;
   }
 
