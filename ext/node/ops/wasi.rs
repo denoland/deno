@@ -1,13 +1,18 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::io::Read;
 use std::io::Seek;
 use std::io::SeekFrom;
 use std::io::Write;
+use std::path::Path;
 
 use deno_core::GarbageCollected;
+use deno_core::OpState;
 use deno_core::op2;
+use deno_permissions::OpenAccessKind;
+use deno_permissions::PermissionsContainer;
 use rand::RngCore;
 
 const ERRNO_SUCCESS: i32 = 0;
@@ -149,11 +154,21 @@ impl WasiInner {
     &self,
     dirfd: i32,
     path: &str,
+    permissions: &PermissionsContainer,
+    access_kind: OpenAccessKind,
   ) -> Result<std::path::PathBuf, i32> {
     let real_root = match self.get_fd(dirfd) {
       Some(FdEntry::PreopenDir { real_path, .. }) => real_path.as_str(),
       Some(FdEntry::Dir { path: dir_path, .. }) => {
-        return Ok(dir_path.join(path));
+        let resolved = dir_path.join(path);
+        permissions
+          .check_open(
+            Cow::Owned(resolved.clone()),
+            access_kind,
+            Some("node:wasi"),
+          )
+          .map_err(|_| ERRNO_ACCES)?;
+        return Ok(resolved);
       }
       _ => return Err(ERRNO_BADF),
     };
@@ -175,6 +190,16 @@ impl WasiInner {
     if !canonical_resolved.starts_with(&canonical_base) {
       return Err(ERRNO_PERM);
     }
+
+    // Check Deno permissions on the resolved path
+    permissions
+      .check_open(
+        Cow::Owned(canonical_resolved.clone()),
+        access_kind,
+        Some("node:wasi"),
+      )
+      .map_err(|_| ERRNO_ACCES)?;
+
     Ok(canonical_resolved)
   }
 }
@@ -195,6 +220,7 @@ fn io_err_to_errno(e: &std::io::Error) -> i32 {
 
 pub struct WasiContext {
   inner: RefCell<WasiInner>,
+  permissions: PermissionsContainer,
 }
 
 unsafe impl GarbageCollected for WasiContext {
@@ -313,6 +339,9 @@ pub enum WasiError {
   #[class(type)]
   #[error("{0}")]
   Type(String),
+  #[class(inherit)]
+  #[error(transparent)]
+  Permission(#[from] deno_permissions::PermissionCheckError),
 }
 
 #[op2]
@@ -320,6 +349,7 @@ impl WasiContext {
   #[constructor]
   #[cppgc]
   fn new(
+    state: &mut OpState,
     #[serde] args: Vec<String>,
     #[serde] env_pairs: Vec<(String, String)>,
     #[serde] preopens: Vec<(String, String)>,
@@ -328,6 +358,17 @@ impl WasiContext {
     #[smi] _stderr_fd: i32,
     _return_on_exit: bool,
   ) -> Result<WasiContext, WasiError> {
+    let permissions = state.borrow_mut::<PermissionsContainer>().clone();
+
+    // Check read and write permissions for each preopened directory
+    for (_virtual_path, real_path) in &preopens {
+      permissions.check_open(
+        Cow::Borrowed(Path::new(real_path)),
+        OpenAccessKind::ReadWrite,
+        Some("node:wasi"),
+      )?;
+    }
+
     let mut fds: Vec<Option<FdEntry>> = vec![
       Some(FdEntry::Stdin),
       Some(FdEntry::Stdout),
@@ -347,6 +388,7 @@ impl WasiContext {
         env: env_pairs,
         fds,
       }),
+      permissions,
     })
   }
 
@@ -1056,16 +1098,26 @@ impl WasiContext {
       return ERRNO_FAULT;
     };
 
-    let mut inner = self.inner.borrow_mut();
-    let resolved = match inner.resolve_preopen_path(dirfd, &path_str) {
-      Ok(p) => p,
-      Err(e) => return e,
-    };
-
     let oflags = oflags as u16;
     let fdflags_u16 = fdflags as u16;
     let rights = fs_rights_base as u64;
     let wants_write = rights & RIGHTS_FD_WRITE != 0;
+    let creates = oflags & OFLAGS_CREAT != 0
+      || oflags & OFLAGS_EXCL != 0
+      || oflags & OFLAGS_TRUNC != 0;
+
+    let access_kind = if wants_write || creates {
+      OpenAccessKind::ReadWrite
+    } else {
+      OpenAccessKind::Read
+    };
+
+    let mut inner = self.inner.borrow_mut();
+    let resolved =
+      match inner.resolve_preopen_path(dirfd, &path_str, &self.permissions, access_kind) {
+        Ok(p) => p,
+        Err(e) => return e,
+      };
 
     if oflags & OFLAGS_DIRECTORY != 0 || resolved.is_dir() {
       if oflags & OFLAGS_DIRECTORY != 0 && !resolved.is_dir() {
@@ -1128,7 +1180,7 @@ impl WasiContext {
       return ERRNO_FAULT;
     };
     let inner = self.inner.borrow();
-    let resolved = match inner.resolve_preopen_path(dirfd, &path_str) {
+    let resolved = match inner.resolve_preopen_path(dirfd, &path_str, &self.permissions, OpenAccessKind::Write) {
       Ok(p) => p,
       Err(e) => return e,
     };
@@ -1150,7 +1202,7 @@ impl WasiContext {
       return ERRNO_FAULT;
     };
     let inner = self.inner.borrow();
-    let resolved = match inner.resolve_preopen_path(dirfd, &path_str) {
+    let resolved = match inner.resolve_preopen_path(dirfd, &path_str, &self.permissions, OpenAccessKind::Write) {
       Ok(p) => p,
       Err(e) => return e,
     };
@@ -1172,7 +1224,7 @@ impl WasiContext {
       return ERRNO_FAULT;
     };
     let inner = self.inner.borrow();
-    let resolved = match inner.resolve_preopen_path(dirfd, &path_str) {
+    let resolved = match inner.resolve_preopen_path(dirfd, &path_str, &self.permissions, OpenAccessKind::Write) {
       Ok(p) => p,
       Err(e) => return e,
     };
@@ -1200,11 +1252,11 @@ impl WasiContext {
       return ERRNO_FAULT;
     };
     let inner = self.inner.borrow();
-    let old_resolved = match inner.resolve_preopen_path(old_dirfd, &old_path) {
+    let old_resolved = match inner.resolve_preopen_path(old_dirfd, &old_path, &self.permissions, OpenAccessKind::ReadWrite) {
       Ok(p) => p,
       Err(e) => return e,
     };
-    let new_resolved = match inner.resolve_preopen_path(new_dirfd, &new_path) {
+    let new_resolved = match inner.resolve_preopen_path(new_dirfd, &new_path, &self.permissions, OpenAccessKind::ReadWrite) {
       Ok(p) => p,
       Err(e) => return e,
     };
@@ -1228,7 +1280,7 @@ impl WasiContext {
       return ERRNO_FAULT;
     };
     let inner = self.inner.borrow();
-    let resolved = match inner.resolve_preopen_path(dirfd, &path_str) {
+    let resolved = match inner.resolve_preopen_path(dirfd, &path_str, &self.permissions, OpenAccessKind::Read) {
       Ok(p) => p,
       Err(e) => return e,
     };
@@ -1260,7 +1312,7 @@ impl WasiContext {
       return ERRNO_FAULT;
     };
     let inner = self.inner.borrow();
-    let resolved = match inner.resolve_preopen_path(dirfd, &path_str) {
+    let resolved = match inner.resolve_preopen_path(dirfd, &path_str, &self.permissions, OpenAccessKind::Read) {
       Ok(p) => p,
       Err(e) => return e,
     };
@@ -1298,7 +1350,7 @@ impl WasiContext {
       return ERRNO_FAULT;
     };
     let inner = self.inner.borrow();
-    let new_resolved = match inner.resolve_preopen_path(dirfd, &new_path) {
+    let new_resolved = match inner.resolve_preopen_path(dirfd, &new_path, &self.permissions, OpenAccessKind::Write) {
       Ok(p) => p,
       Err(e) => return e,
     };
