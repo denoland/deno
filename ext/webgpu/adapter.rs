@@ -201,7 +201,11 @@ impl GPUAdapter {
       .error_handler
       .set_device(weak_device);
 
-    Ok(v8::Global::new(scope, device))
+    // Create a resolved Promise that contains the device
+    let promise_resolver = v8::PromiseResolver::new(scope).unwrap();
+    let promise = promise_resolver.get_promise(scope);
+    promise_resolver.resolve(scope, device);
+    Ok(v8::Global::new(scope, promise.cast::<v8::Value>()))
   }
 }
 
