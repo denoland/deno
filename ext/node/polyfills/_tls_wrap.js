@@ -334,30 +334,6 @@ class JSStreamSocket {
     this.stream.on("close", () => {
       this.close();
     });
-
-    // WORKAROUND: Detect the other side of a DuplexPair (e.g.
-    // native-duplexpair used by mssql/tedious) and listen for
-    // transport close.  When a raw socket is piped into the other
-    // side and later destroyed, neither pipe() nor DuplexPair
-    // propagate destroy/close to this.stream, so we listen on the
-    // pipe source directly.
-    //
-    // TODO(fraidev): This should be removed once Deno has proper libuv-style
-    // ref counting for resources, which would let the event loop
-    // exit naturally without needing explicit close propagation.
-    const symbols = Object.getOwnPropertySymbols(this.stream);
-    for (let i = 0; i < symbols.length; i++) {
-      const val = this.stream[symbols[i]];
-      if (
-        val != null && typeof val === "object" && val !== this.stream &&
-        typeof val.on === "function" && typeof val._read === "function"
-      ) {
-        val.on("pipe", (source) => {
-          source.on("close", () => this.close());
-        });
-        break;
-      }
-    }
   }
 
   // Called by stream_wrap's _onClose() via kStreamBaseField.close(),
