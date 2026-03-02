@@ -19,7 +19,7 @@ import {
 } from "node:crypto";
 import { promisify } from "node:util";
 import { Buffer } from "node:buffer";
-import { assert, assertEquals, assertThrows } from "@std/assert";
+import { assert, assertEquals, assertRejects, assertThrows } from "@std/assert";
 
 const RUN_SLOW_TESTS = Deno.env.get("SLOW_TESTS") === "1";
 
@@ -1066,4 +1066,31 @@ Deno.test("generateKeyPair async ec secp256k1", async () => {
   const data = Buffer.from("async test");
   const signature = sign("sha256", data, privateKey);
   assert(verify("sha256", data, publicKey, signature));
+});
+
+// Regression test for https://github.com/denoland/deno/issues/30243
+// Importing a PKCS#8 RSA key with the wrong algorithm (ECDSA) should throw, not panic.
+Deno.test("crypto.subtle.importKey PKCS#8 with wrong algorithm does not panic", async () => {
+  const rsaKey = await crypto.subtle.generateKey(
+    {
+      name: "RSASSA-PKCS1-v1_5",
+      modulusLength: 2048,
+      publicExponent: new Uint8Array([1, 0, 1]),
+      hash: "SHA-256",
+    },
+    true,
+    ["sign", "verify"],
+  );
+
+  const pkcs8 = await crypto.subtle.exportKey("pkcs8", rsaKey.privateKey);
+
+  await assertRejects(() =>
+    crypto.subtle.importKey(
+      "pkcs8",
+      pkcs8,
+      { name: "ECDSA", namedCurve: "P-256" },
+      true,
+      ["sign"],
+    )
+  );
 });
