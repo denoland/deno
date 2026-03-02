@@ -36,30 +36,38 @@ mod argv_store {
         return;
       }
       let argc = argc as usize;
-      // Calculate the contiguous buffer size from argv[0] to end of argv[argc-1]
-      let start = (*argv) as *const u8;
-      let last_arg = *argv.add(argc - 1);
-      let last_arg_len = libc::strlen(last_arg);
-      let end = last_arg.add(last_arg_len + 1) as *const u8;
-      let buf_size = end.offset_from(start) as usize;
+      // SAFETY: argv is valid and has argc entries (guaranteed by the OS loader).
+      unsafe {
+        // Calculate the contiguous buffer size from argv[0] to end of argv[argc-1]
+        let start = (*argv) as *const u8;
+        let last_arg = *argv.add(argc - 1);
+        let last_arg_len = libc::strlen(last_arg);
+        let end = last_arg.add(last_arg_len + 1) as *const u8;
+        let buf_size = end.offset_from(start) as usize;
 
-      ARGV_PTR = argv;
-      ARGV_BUF_SIZE = buf_size;
+        ARGV_PTR = argv;
+        ARGV_BUF_SIZE = buf_size;
+      }
     });
   }
 
   /// # Safety
   /// The stored argv pointer must still be valid (it always is for the process lifetime).
   pub unsafe fn overwrite(title: &str) {
-    if ARGV_PTR.is_null() || ARGV_BUF_SIZE == 0 {
-      return;
+    // SAFETY: ARGV_PTR and ARGV_BUF_SIZE are set once in save() and remain
+    // valid for the process lifetime. The buffer at *ARGV_PTR is the original
+    // argv[0] area allocated by the OS.
+    unsafe {
+      if ARGV_PTR.is_null() || ARGV_BUF_SIZE == 0 {
+        return;
+      }
+      let buf =
+        std::slice::from_raw_parts_mut(*ARGV_PTR as *mut u8, ARGV_BUF_SIZE);
+      let title_bytes = title.as_bytes();
+      let copy_len = title_bytes.len().min(ARGV_BUF_SIZE - 1);
+      buf[..copy_len].copy_from_slice(&title_bytes[..copy_len]);
+      buf[copy_len..].fill(0);
     }
-    let buf =
-      std::slice::from_raw_parts_mut(*ARGV_PTR as *mut u8, ARGV_BUF_SIZE);
-    let title_bytes = title.as_bytes();
-    let copy_len = title_bytes.len().min(ARGV_BUF_SIZE - 1);
-    buf[..copy_len].copy_from_slice(&title_bytes[..copy_len]);
-    buf[copy_len..].fill(0);
   }
 }
 

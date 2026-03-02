@@ -5,7 +5,9 @@ const {
   SafeMap,
   ArrayPrototypeForEach,
   SafeRegExp,
+  StringPrototypeSlice,
   StringPrototypeSplit,
+  StringPrototypeStartsWith,
 } = primordials;
 
 // This module ports:
@@ -28,8 +30,8 @@ export function getOptions() {
     ? StringPrototypeSplit(nodeOptions, new SafeRegExp("\\s"))
     : [];
   ArrayPrototypeForEach(args, (arg) => {
-    if (arg.startsWith("--title=")) {
-      options.set("--title", { value: arg.slice(8) });
+    if (StringPrototypeStartsWith(arg, "--title=")) {
+      options.set("--title", { value: StringPrototypeSlice(arg, 8) });
       return;
     }
     switch (arg) {
