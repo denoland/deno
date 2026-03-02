@@ -181,7 +181,7 @@ Deno.test(async function asyncLocalStoragePreservedInStreamFinished() {
 
   const { promise, resolve, reject } = Promise.withResolvers<void>();
 
-  const server = http.createServer((req, res) => {
+  const server = http.createServer((_req, res) => {
     als.run(store, () => {
       finished(res, () => {
         try {
