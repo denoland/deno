@@ -5,7 +5,6 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use async_trait::async_trait;
 use deno_config::deno_json;
 use deno_config::deno_json::CompilerOptionTypesDeserializeError;
 use deno_config::deno_json::NodeModulesDirMode;
@@ -24,8 +23,6 @@ use deno_graph::ModuleErrorKind;
 use deno_graph::ModuleGraph;
 use deno_graph::ModuleGraphError;
 use deno_graph::ModuleLoadError;
-use deno_graph::NpmResolvePkgReqsResult;
-use deno_graph::Resolution;
 use deno_graph::ResolutionError;
 use deno_graph::SpecifierError;
 use deno_graph::WorkspaceFastCheckOption;
@@ -50,10 +47,7 @@ use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::SmallStackString;
 use deno_semver::jsr::JsrDepPackageReq;
-use deno_semver::npm::NpmPackageReqReference;
 use import_map::ImportMapErrorKind;
-use indexmap::IndexSet;
-use node_resolver::NodeResolutionKind;
 use node_resolver::errors::NodeJsErrorCode;
 use sys_traits::FsMetadata;
 
@@ -72,7 +66,6 @@ use crate::npm::CliNpmGraphResolver;
 use crate::npm::CliNpmInstaller;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CliCjsTracker;
-use crate::resolver::CliNpmReqResolver;
 use crate::resolver::CliResolver;
 use crate::sys::CliSys;
 use crate::type_checker::CheckError;
@@ -684,7 +677,6 @@ pub struct ModuleGraphBuilder {
   module_info_cache: Arc<ModuleInfoCache>,
   npm_graph_resolver: Arc<CliNpmGraphResolver>,
   npm_installer: Option<Arc<CliNpmInstaller>>,
-  npm_req_resolver: Arc<CliNpmReqResolver>,
   npm_resolver: CliNpmResolver,
   parsed_source_cache: Arc<ParsedSourceCache>,
   progress_bar: ProgressBar,
@@ -710,7 +702,6 @@ impl ModuleGraphBuilder {
     module_info_cache: Arc<ModuleInfoCache>,
     npm_graph_resolver: Arc<CliNpmGraphResolver>,
     npm_installer: Option<Arc<CliNpmInstaller>>,
-    npm_req_resolver: Arc<CliNpmReqResolver>,
     npm_resolver: CliNpmResolver,
     parsed_source_cache: Arc<ParsedSourceCache>,
     progress_bar: ProgressBar,
@@ -733,7 +724,6 @@ impl ModuleGraphBuilder {
       module_info_cache,
       npm_graph_resolver,
       npm_installer,
-      npm_req_resolver,
       npm_resolver,
       parsed_source_cache,
       progress_bar,
@@ -858,7 +848,7 @@ impl ModuleGraphBuilder {
         );
 
         graph
-          .resolve_npm_specifiers(
+          .build_npm_packages(
             self.cli_options.start_dir.dir_url(),
             deno_graph::source::ResolutionKind::Types,
             loader.as_loader(),

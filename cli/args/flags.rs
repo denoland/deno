@@ -6352,15 +6352,10 @@ fn doc_parse(
       DocSourceFileFlag::Paths(items) => {
         if items.iter().all(|i| match i.split_once(':') {
           Some((scheme, _)) => {
-            if scheme.eq_ignore_ascii_case("npm")
+            scheme.eq_ignore_ascii_case("npm")
               || scheme.eq_ignore_ascii_case("jsr")
               || scheme.eq_ignore_ascii_case("https")
               || scheme.eq_ignore_ascii_case("http")
-            {
-              true
-            } else {
-              false
-            }
           }
           None => false,
         }) {
