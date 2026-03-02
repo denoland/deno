@@ -1113,11 +1113,15 @@ impl WasiContext {
     };
 
     let mut inner = self.inner.borrow_mut();
-    let resolved =
-      match inner.resolve_preopen_path(dirfd, &path_str, &self.permissions, access_kind) {
-        Ok(p) => p,
-        Err(e) => return e,
-      };
+    let resolved = match inner.resolve_preopen_path(
+      dirfd,
+      &path_str,
+      &self.permissions,
+      access_kind,
+    ) {
+      Ok(p) => p,
+      Err(e) => return e,
+    };
 
     if oflags & OFLAGS_DIRECTORY != 0 || resolved.is_dir() {
       if oflags & OFLAGS_DIRECTORY != 0 && !resolved.is_dir() {
@@ -1180,7 +1184,12 @@ impl WasiContext {
       return ERRNO_FAULT;
     };
     let inner = self.inner.borrow();
-    let resolved = match inner.resolve_preopen_path(dirfd, &path_str, &self.permissions, OpenAccessKind::Write) {
+    let resolved = match inner.resolve_preopen_path(
+      dirfd,
+      &path_str,
+      &self.permissions,
+      OpenAccessKind::Write,
+    ) {
       Ok(p) => p,
       Err(e) => return e,
     };
@@ -1202,7 +1211,12 @@ impl WasiContext {
       return ERRNO_FAULT;
     };
     let inner = self.inner.borrow();
-    let resolved = match inner.resolve_preopen_path(dirfd, &path_str, &self.permissions, OpenAccessKind::Write) {
+    let resolved = match inner.resolve_preopen_path(
+      dirfd,
+      &path_str,
+      &self.permissions,
+      OpenAccessKind::Write,
+    ) {
       Ok(p) => p,
       Err(e) => return e,
     };
@@ -1224,7 +1238,12 @@ impl WasiContext {
       return ERRNO_FAULT;
     };
     let inner = self.inner.borrow();
-    let resolved = match inner.resolve_preopen_path(dirfd, &path_str, &self.permissions, OpenAccessKind::Write) {
+    let resolved = match inner.resolve_preopen_path(
+      dirfd,
+      &path_str,
+      &self.permissions,
+      OpenAccessKind::Write,
+    ) {
       Ok(p) => p,
       Err(e) => return e,
     };
@@ -1252,11 +1271,21 @@ impl WasiContext {
       return ERRNO_FAULT;
     };
     let inner = self.inner.borrow();
-    let old_resolved = match inner.resolve_preopen_path(old_dirfd, &old_path, &self.permissions, OpenAccessKind::ReadWrite) {
+    let old_resolved = match inner.resolve_preopen_path(
+      old_dirfd,
+      &old_path,
+      &self.permissions,
+      OpenAccessKind::ReadWrite,
+    ) {
       Ok(p) => p,
       Err(e) => return e,
     };
-    let new_resolved = match inner.resolve_preopen_path(new_dirfd, &new_path, &self.permissions, OpenAccessKind::ReadWrite) {
+    let new_resolved = match inner.resolve_preopen_path(
+      new_dirfd,
+      &new_path,
+      &self.permissions,
+      OpenAccessKind::ReadWrite,
+    ) {
       Ok(p) => p,
       Err(e) => return e,
     };
@@ -1280,7 +1309,12 @@ impl WasiContext {
       return ERRNO_FAULT;
     };
     let inner = self.inner.borrow();
-    let resolved = match inner.resolve_preopen_path(dirfd, &path_str, &self.permissions, OpenAccessKind::Read) {
+    let resolved = match inner.resolve_preopen_path(
+      dirfd,
+      &path_str,
+      &self.permissions,
+      OpenAccessKind::Read,
+    ) {
       Ok(p) => p,
       Err(e) => return e,
     };
@@ -1312,7 +1346,12 @@ impl WasiContext {
       return ERRNO_FAULT;
     };
     let inner = self.inner.borrow();
-    let resolved = match inner.resolve_preopen_path(dirfd, &path_str, &self.permissions, OpenAccessKind::Read) {
+    let resolved = match inner.resolve_preopen_path(
+      dirfd,
+      &path_str,
+      &self.permissions,
+      OpenAccessKind::Read,
+    ) {
       Ok(p) => p,
       Err(e) => return e,
     };
@@ -1350,7 +1389,12 @@ impl WasiContext {
       return ERRNO_FAULT;
     };
     let inner = self.inner.borrow();
-    let new_resolved = match inner.resolve_preopen_path(dirfd, &new_path, &self.permissions, OpenAccessKind::Write) {
+    let new_resolved = match inner.resolve_preopen_path(
+      dirfd,
+      &new_path,
+      &self.permissions,
+      OpenAccessKind::Write,
+    ) {
       Ok(p) => p,
       Err(e) => return e,
     };
