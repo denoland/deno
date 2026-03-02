@@ -29,6 +29,11 @@ jobs:
           project_id: denoland
 
       - name: Upload version file to dl.deno.land
+        env:
+          AWS_ACCESS_KEY_ID: ${{ vars.S3_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.S3_SECRET_ACCESS_KEY }}
+          AWS_ENDPOINT_URL_S3: ${{ vars.S3_ENDPOINT }}
+          AWS_DEFAULT_REGION: ${{vars.S3_REGION }}
         run: |
           echo ${GITHUB_REF#refs/*/} > release-latest.txt
-          (deno run --allow-net tools/release/version_greater_latest.ts ${GITHUB_REF#refs/*/} || exit 0) && gsutil -h "Cache-Control: no-cache" cp release-latest.txt gs://dl.deno.land/release-latest.txt
+          (deno run --allow-net tools/release/version_greater_latest.ts ${GITHUB_REF#refs/*/} || exit 0) && gsutil -h "Cache-Control: no-cache" cp release-latest.txt gs://dl.deno.land/release-latest.txt && aws s3 cp release-latest.txt s3://dl-deno-land/release-latest.txt

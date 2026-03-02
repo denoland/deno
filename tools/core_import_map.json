@@ -502,7 +502,6 @@
     "@std/yaml/stringify": "../tests/util/std/yaml/stringify.ts",
     "@std/yaml/unstable-stringify": "../tests/util/std/yaml/unstable_stringify.ts",
     "ext:cli/40_lint_selector.js": "../cli/js/40_lint_selector.js",
-    "ext:core/mod.js": "../../deno_core/core/core.d.ts",
     "ext:core/ops": "./ops.d.ts",
     "ext:deno_web/01_broadcast_channel.js": "../ext/deno_web/01_broadcast_channel.js",
     "ext:deno_cache/01_cache.js": "../ext/cache/01_cache.js",
@@ -780,6 +779,16 @@
     "node:vm": "../ext/node/polyfills/vm.js",
     "node:wasi": "../ext/node/polyfills/wasi.ts",
     "node:worker_threads": "../ext/node/polyfills/worker_threads.ts",
-    "node:zlib": "../ext/node/polyfills/zlib.js"
+    "node:zlib": "../ext/node/polyfills/zlib.js",
+
+    "ext:core/mod.js": "./libs/core_testing/checkin.d.ts",
+    "checkin:async": "./libs/core_testing/runtime/async.ts",
+    "checkin:console": "./libs/core_testing/runtime/console.ts",
+    "checkin:error": "./libs/core_testing/runtime/error.ts",
+    "checkin:testing": "./libs/core_testing/runtime/testing.ts",
+    "checkin:throw": "./libs/core_testing/runtime/throw.ts",
+    "checkin:timers": "./libs/core_testing/runtime/timers.ts",
+    "checkin:worker": "./libs/core_testing/runtime/worker.ts",
+    "checkin:callsite": "./libs/core_testing/runtime/callsite.ts"
   }
 }

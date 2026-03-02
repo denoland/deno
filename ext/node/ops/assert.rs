@@ -5,6 +5,67 @@ use deno_ast::TokenOrComment;
 use deno_ast::swc::parser::token::Token;
 use deno_ast::swc::parser::token::Word;
 use deno_core::op2;
+use deno_core::v8;
+use deno_core::v8_static_strings;
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+enum AssertErr {
+  #[class(type)]
+  #[error("Argument must be an object.")]
+  InvalidArg,
+}
+
+#[op2]
+pub fn op_node_get_error_source_position<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  arg: v8::Local<v8::Value>,
+) -> Result<v8::Local<'s, v8::Value>, AssertErr> {
+  if !arg.is_object() {
+    return Err(AssertErr::InvalidArg);
+  }
+
+  v8_static_strings! {
+    SOURCE_LINE = "sourceLine",
+    LINE_NUMBER = "lineNumber",
+    START_COLUMN = "startColumn"
+  }
+
+  let msg = v8::Exception::create_message(scope, arg);
+
+  let source_line: v8::Local<'s, v8::String>;
+  if let Some(inner_source_line) = msg.get_source_line(scope) {
+    source_line = inner_source_line;
+  } else {
+    return Ok(v8::undefined(scope).into());
+  }
+
+  let line_number: usize;
+  if let Some(inner_line_number) = msg.get_line_number(scope) {
+    line_number = inner_line_number;
+  } else {
+    return Ok(v8::undefined(scope).into());
+  }
+
+  let start_column = msg.get_start_column();
+
+  let names = &[
+    SOURCE_LINE.v8_string(scope).unwrap().into(),
+    LINE_NUMBER.v8_string(scope).unwrap().into(),
+    START_COLUMN.v8_string(scope).unwrap().into(),
+  ];
+
+  let values = &[
+    source_line.into(),
+    v8::Number::new(scope, line_number as _).into(),
+    v8::Number::new(scope, start_column as _).into(),
+  ];
+
+  let null = v8::null(scope).into();
+  let result =
+    v8::Object::with_prototype_and_properties(scope, null, names, values);
+
+  Ok(result.into())
+}
 
 /// Tokens that represent member access operators: `.`, `[`, `]`.
 /// Optional chaining `?.` is handled by detecting `?` + `.` token sequence.

@@ -2161,21 +2161,20 @@ function formatProperty(
     return str;
   }
   if (typeof key === "symbol") {
-    name = `[${ctx.stylize(maybeQuoteSymbol(key, ctx), "symbol")}]`;
-  } else if (key === "__proto__") {
-    name = "['__proto__']";
-  } else if (desc.enumerable === false) {
-    const tmp = StringPrototypeReplace(
-      key,
+    const tmp = RegExpPrototypeSymbolReplace(
       strEscapeSequencesReplacer,
+      SymbolPrototypeToString(key),
       escapeFn,
     );
-
-    name = `[${tmp}]`;
+    name = ctx.stylize(tmp, "symbol");
   } else if (keyStrRegExp.test(key)) {
-    name = ctx.stylize(key, "name");
+    name = key === "__proto__" ? "['__proto__']" : ctx.stylize(key, "name");
   } else {
     name = ctx.stylize(quoteString(key, ctx), "string");
+  }
+
+  if (desc.enumerable === false) {
+    name = `[${name}]`;
   }
   return `${name}:${extra}${str}`;
 }
@@ -3742,8 +3741,12 @@ class Console {
     let resultData;
     const isSetObject = isSet(data);
     const isMapObject = isMap(data);
+    const isIteratorObject = !isSetObject && !isMapObject &&
+      !ArrayIsArray(data) && typeof data[SymbolIterator] === "function";
     const valuesKey = "Values";
-    const indexKey = isSetObject || isMapObject ? "(iter idx)" : "(idx)";
+    const indexKey = isSetObject || isMapObject || isIteratorObject
+      ? "(iter idx)"
+      : "(idx)";
 
     if (isSetObject) {
       resultData = [...new SafeSetIterator(data)];
@@ -3755,6 +3758,8 @@ class Console {
         resultData[idx] = { Key: k, Values: v };
         idx++;
       });
+    } else if (isIteratorObject) {
+      resultData = ArrayFrom(data);
     } else {
       resultData = data;
     }
