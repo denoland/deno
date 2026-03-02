@@ -411,11 +411,9 @@ impl WasiContext {
       }
       let entry = format!("{key}={value}");
       let entry_bytes = entry.as_bytes();
-      let Some(dest) = get_memory_slice_mut(
-        memory,
-        buf_offset,
-        entry_bytes.len() as i32 + 1,
-      ) else {
+      let Some(dest) =
+        get_memory_slice_mut(memory, buf_offset, entry_bytes.len() as i32 + 1)
+      else {
         return ERRNO_FAULT;
       };
       dest[..entry_bytes.len()].copy_from_slice(entry_bytes);
@@ -476,8 +474,7 @@ impl WasiContext {
   ) -> i32 {
     let time_ns: u64 = match clock_id {
       CLOCK_REALTIME => {
-        match std::time::SystemTime::now()
-          .duration_since(std::time::UNIX_EPOCH)
+        match std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)
         {
           Ok(d) => d.as_nanos() as u64,
           Err(_) => return ERRNO_IO,
@@ -722,7 +719,9 @@ impl WasiContext {
         write_u64(memory, buf + 8, *rights);
         write_u64(memory, buf + 16, RIGHTS_FILE | RIGHTS_DIR);
       }
-      Some(FdEntry::File { rights, fdflags, .. }) => {
+      Some(FdEntry::File {
+        rights, fdflags, ..
+      }) => {
         write_u8(memory, buf, FILETYPE_REGULAR_FILE);
         write_u16(memory, buf + 2, *fdflags);
         write_u64(memory, buf + 8, *rights);
@@ -733,11 +732,7 @@ impl WasiContext {
   }
 
   #[fast]
-  fn fd_fdstat_set_flags(
-    &self,
-    #[smi] _fd: i32,
-    #[smi] _flags: i32,
-  ) -> i32 {
+  fn fd_fdstat_set_flags(&self, #[smi] _fd: i32, #[smi] _flags: i32) -> i32 {
     ERRNO_SUCCESS
   }
 
@@ -753,12 +748,8 @@ impl WasiContext {
     match inner.get_fd(fd) {
       Some(FdEntry::PreopenDir { virtual_path, .. }) => {
         if write_u32(memory, prestat_ptr, 0).is_none()
-          || write_u32(
-            memory,
-            prestat_ptr + 4,
-            virtual_path.len() as u32,
-          )
-          .is_none()
+          || write_u32(memory, prestat_ptr + 4, virtual_path.len() as u32)
+            .is_none()
         {
           return ERRNO_FAULT;
         }
@@ -924,11 +915,7 @@ impl WasiContext {
   }
 
   #[fast]
-  fn fd_filestat_set_size(
-    &self,
-    #[smi] fd: i32,
-    #[number] size: i64,
-  ) -> i32 {
+  fn fd_filestat_set_size(&self, #[smi] fd: i32, #[number] size: i64) -> i32 {
     let inner = self.inner.borrow();
     match inner.get_fd(fd) {
       Some(FdEntry::File { file, .. }) => match file.set_len(size as u64) {
@@ -1206,25 +1193,21 @@ impl WasiContext {
     #[smi] new_path_len: i32,
     #[buffer] memory: &mut [u8],
   ) -> i32 {
-    let Some(old_path) = read_string(memory, old_path_ptr, old_path_len)
-    else {
+    let Some(old_path) = read_string(memory, old_path_ptr, old_path_len) else {
       return ERRNO_FAULT;
     };
-    let Some(new_path) = read_string(memory, new_path_ptr, new_path_len)
-    else {
+    let Some(new_path) = read_string(memory, new_path_ptr, new_path_len) else {
       return ERRNO_FAULT;
     };
     let inner = self.inner.borrow();
-    let old_resolved =
-      match inner.resolve_preopen_path(old_dirfd, &old_path) {
-        Ok(p) => p,
-        Err(e) => return e,
-      };
-    let new_resolved =
-      match inner.resolve_preopen_path(new_dirfd, &new_path) {
-        Ok(p) => p,
-        Err(e) => return e,
-      };
+    let old_resolved = match inner.resolve_preopen_path(old_dirfd, &old_path) {
+      Ok(p) => p,
+      Err(e) => return e,
+    };
+    let new_resolved = match inner.resolve_preopen_path(new_dirfd, &new_path) {
+      Ok(p) => p,
+      Err(e) => return e,
+    };
     match std::fs::rename(&old_resolved, &new_resolved) {
       Ok(()) => ERRNO_SUCCESS,
       Err(e) => io_err_to_errno(&e),
@@ -1285,8 +1268,7 @@ impl WasiContext {
       Ok(target) => {
         let target_bytes = target.as_os_str().as_encoded_bytes();
         let n = std::cmp::min(target_bytes.len(), buf_len as usize);
-        let Some(dest) = get_memory_slice_mut(memory, buf_ptr, n as i32)
-        else {
+        let Some(dest) = get_memory_slice_mut(memory, buf_ptr, n as i32) else {
           return ERRNO_FAULT;
         };
         dest.copy_from_slice(&target_bytes[..n]);
@@ -1309,20 +1291,17 @@ impl WasiContext {
     #[smi] new_path_len: i32,
     #[buffer] memory: &mut [u8],
   ) -> i32 {
-    let Some(old_path) = read_string(memory, old_path_ptr, old_path_len)
-    else {
+    let Some(old_path) = read_string(memory, old_path_ptr, old_path_len) else {
       return ERRNO_FAULT;
     };
-    let Some(new_path) = read_string(memory, new_path_ptr, new_path_len)
-    else {
+    let Some(new_path) = read_string(memory, new_path_ptr, new_path_len) else {
       return ERRNO_FAULT;
     };
     let inner = self.inner.borrow();
-    let new_resolved =
-      match inner.resolve_preopen_path(dirfd, &new_path) {
-        Ok(p) => p,
-        Err(e) => return e,
-      };
+    let new_resolved = match inner.resolve_preopen_path(dirfd, &new_path) {
+      Ok(p) => p,
+      Err(e) => return e,
+    };
     #[cfg(unix)]
     {
       match std::os::unix::fs::symlink(&old_path, &new_resolved) {
@@ -1400,11 +1379,7 @@ impl WasiContext {
   }
 
   #[fast]
-  fn sock_shutdown(
-    &self,
-    #[smi] _fd: i32,
-    #[smi] _how: i32,
-  ) -> i32 {
+  fn sock_shutdown(&self, #[smi] _fd: i32, #[smi] _how: i32) -> i32 {
     ERRNO_NOSYS
   }
 
