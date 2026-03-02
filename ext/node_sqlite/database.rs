@@ -1084,7 +1084,7 @@ impl DatabaseSync {
 
     struct HandlerCtx<'a, 'b, 'c> {
       scope: &'a mut v8::PinScope<'b, 'c>,
-      confict: Option<v8::Local<'b, v8::Function>>,
+      conflict: Option<v8::Local<'b, v8::Function>>,
       filter: Option<v8::Local<'b, v8::Function>>,
       has_caught: bool,
     }
@@ -1099,7 +1099,7 @@ impl DatabaseSync {
       unsafe {
         let ctx = &mut *(p_ctx as *mut HandlerCtx);
 
-        if let Some(conflict) = &mut ctx.confict {
+        if let Some(conflict) = &mut ctx.conflict {
           let recv = v8::undefined(ctx.scope).into();
           let args = [v8::Integer::new(ctx.scope, e_conflict).into()];
 
@@ -1175,7 +1175,7 @@ impl DatabaseSync {
     // called after the call to `sqlite3changeset_apply()`.
     let mut ctx = HandlerCtx {
       scope,
-      confict: None,
+      conflict: None,
       filter: None,
       has_caught: false,
     };
@@ -1192,7 +1192,7 @@ impl DatabaseSync {
         let on_conflict_cb: v8::Local<v8::Function> = on_conflict
           .try_into()
           .map_err(|_| SqliteError::InvalidCallback("onConflict"))?;
-        ctx.confict = Some(on_conflict_cb);
+        ctx.conflict = Some(on_conflict_cb);
       }
     }
 

@@ -383,6 +383,20 @@ impl TestContext {
   }
 }
 
+fn kill_process(pid: u32) {
+  #[cfg(unix)]
+  // SAFETY: We're sending SIGKILL to a process we spawned.
+  unsafe {
+    libc::kill(pid as i32, libc::SIGKILL);
+  }
+  #[cfg(not(unix))]
+  {
+    let _ = std::process::Command::new("taskkill")
+      .args(["/F", "/T", "/PID", &pid.to_string()])
+      .output();
+  }
+}
+
 fn curl_fetch(url: &str) -> Vec<u8> {
   let output = std::process::Command::new("curl")
     .args(["--fail", "--silent", "--show-error", "--location", url])
@@ -447,6 +461,7 @@ pub struct TestCommandBuilder {
   args_vec: Vec<String>,
   split_output: bool,
   show_output: bool,
+  timeout: Option<std::time::Duration>,
 }
 
 impl TestCommandBuilder {
@@ -467,6 +482,7 @@ impl TestCommandBuilder {
       args_text: "".to_string(),
       args_vec: Default::default(),
       show_output: false,
+      timeout: None,
     }
   }
 
@@ -550,6 +566,11 @@ impl TestCommandBuilder {
   #[deprecated]
   pub fn show_output(mut self) -> Self {
     self.show_output = true;
+    self
+  }
+
+  pub fn timeout(mut self, timeout: std::time::Duration) -> Self {
+    self.timeout = Some(timeout);
     self
   }
 
@@ -753,11 +774,42 @@ impl TestCommandBuilder {
     // and dropping it closes them.
     drop(command);
 
+    // Set up a watchdog thread that kills the process if it exceeds the timeout.
+    // Uses a channel: dropping the sender signals the watchdog to stop. If
+    // recv_timeout hits the deadline first, the process is killed.
+    let timeout_handle = self.timeout.map(|timeout| {
+      let (cancel_tx, cancel_rx) = std::sync::mpsc::channel::<()>();
+      let pid = process.id();
+      let handle =
+        spawn_thread(move || match cancel_rx.recv_timeout(timeout) {
+          Ok(()) | Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+            false
+          }
+          Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+            eprintln!(
+              "Test command timed out after {:?}, killing pid {}",
+              timeout, pid
+            );
+            kill_process(pid);
+            true
+          }
+        });
+      (cancel_tx, handle)
+    });
+
     let combined = combined_reader.map(|pipe| {
       sanitize_output(read_pipe_to_string(pipe, self.show_output), &args)
     });
 
     let status = process.wait().unwrap();
+    // Drop the sender to cancel the watchdog, then check if it timed out
+    if let Some((cancel_tx, handle)) = timeout_handle {
+      drop(cancel_tx);
+      let timed_out = handle.join().unwrap_or(true);
+      if timed_out {
+        panic!("Test command timed out");
+      }
+    }
     let std_out_err = std_out_err_handle.map(|(stdout, stderr)| {
       (
         sanitize_output(stdout.join().unwrap(), &args),

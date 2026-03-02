@@ -67,6 +67,7 @@ import {
   createWritableStdioStream,
   initStdin,
 } from "ext:deno_node/_process/streams.mjs";
+import { WriteStream as TTYWriteStream } from "ext:deno_node/internal/tty.js";
 import {
   enableNextTick,
   processTicksAndRejections,
@@ -514,9 +515,10 @@ Process.prototype.on = function (
     } else if (event === "SIGTERM" && Deno.build.os === "windows") {
       // Ignores SIGTERM on windows.
     } else if (
-      event !== "SIGBREAK" && event !== "SIGINT" && Deno.build.os === "windows"
+      event !== "SIGBREAK" && event !== "SIGINT" &&
+      event !== "SIGWINCH" && Deno.build.os === "windows"
     ) {
-      // TODO(#26331): Ignores all signals except SIGBREAK and SIGINT on windows.
+      // TODO(#26331): Ignores all signals except SIGBREAK, SIGINT, and SIGWINCH on windows.
     } else {
       EventEmitter.prototype.on.call(this, event, listener);
       Deno.addSignalListener(event as Deno.Signal, listener);
@@ -542,9 +544,10 @@ Process.prototype.off = function (
     if (event === "SIGBREAK" && Deno.build.os !== "windows") {
       // Ignores SIGBREAK if the platform is not windows.
     } else if (
-      event !== "SIGBREAK" && event !== "SIGINT" && Deno.build.os === "windows"
+      event !== "SIGBREAK" && event !== "SIGINT" &&
+      event !== "SIGWINCH" && Deno.build.os === "windows"
     ) {
-      // Ignores all signals except SIGBREAK and SIGINT on windows.
+      // Ignores all signals except SIGBREAK, SIGINT, and SIGWINCH on windows.
     } else {
       EventEmitter.prototype.off.call(this, event, listener);
       Deno.removeSignalListener(event as Deno.Signal, listener);
@@ -676,14 +679,24 @@ Object.defineProperty(process, "argv0", {
 process.chdir = chdir;
 
 /** https://nodejs.org/api/process.html#processconfig */
-process.config = Object.freeze({
-  target_defaults: Object.freeze({
-    default_configuration: "Release",
-  }),
-  variables: Object.freeze({
-    llvm_version: "0.0",
-    enable_lto: "false",
-  }),
+let _configCache: Record<string, unknown> | undefined;
+Object.defineProperty(process, "config", {
+  get() {
+    if (_configCache === undefined) {
+      _configCache = Object.freeze({
+        target_defaults: Object.freeze({
+          default_configuration: "Release",
+        }),
+        variables: Object.freeze({
+          llvm_version: "0.0",
+          enable_lto: "false",
+          host_arch: arch,
+        }),
+      });
+    }
+    return _configCache;
+  },
+  configurable: true,
 });
 
 process.cpuUsage = cpuUsage;
@@ -1168,17 +1181,21 @@ internals.__bootstrapNodeProcess = function (
     core.setMacrotaskCallback(runNextTicks);
     enableNextTick();
 
-    // Replace stdout/stderr if they are not terminals
-    if (!io.stdout.isTerminal()) {
+    // Replace warmup stdout/stderr with proper streams
+    if (io.stdout.isTerminal()) {
       /** https://nodejs.org/api/process.html#process_process_stdout */
+      stdout = process.stdout = new TTYWriteStream(1);
+    } else {
       stdout = process.stdout = createWritableStdioStream(
         io.stdout,
         "stdout",
       );
     }
 
-    if (!io.stderr.isTerminal()) {
+    if (io.stderr.isTerminal()) {
       /** https://nodejs.org/api/process.html#process_process_stderr */
+      stderr = process.stderr = new TTYWriteStream(2);
+    } else {
       stderr = process.stderr = createWritableStdioStream(
         io.stderr,
         "stderr",

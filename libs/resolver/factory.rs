@@ -1068,6 +1068,7 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
               .join("node_modules"),
             },
           ),
+          search_stop_dir: None,
         })
       } else {
         NpmResolverCreateOptions::Managed(ManagedNpmResolverCreateOptions {

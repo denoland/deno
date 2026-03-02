@@ -336,7 +336,12 @@ impl Highlighter for EditorHelper {
     }
   }
 
-  fn highlight_char(&self, line: &str, _: usize, _: bool) -> bool {
+  fn highlight_char(
+    &self,
+    line: &str,
+    _: usize,
+    _: rustyline::highlight::CmdKind,
+  ) -> bool {
     !line.is_empty()
   }
 
