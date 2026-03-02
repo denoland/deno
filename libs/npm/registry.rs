@@ -230,10 +230,11 @@ pub struct NpmPackageVersionInfo {
   #[serde(deserialize_with = "deserializers::hashmap")]
   pub scripts: HashMap<SmallStackString, String>,
   /// From the abbreviated install manifest format. When `true`, this version
-  /// has preinstall/install/postinstall lifecycle scripts. This field is used
-  /// when the full `scripts` map is not available (abbreviated packument).
-  #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-  pub has_install_script: bool,
+  /// has preinstall/install/postinstall lifecycle scripts. This field is only
+  /// present in abbreviated packuments where the full `scripts` map is not
+  /// available.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub has_install_script: Option<bool>,
   #[serde(default, skip_serializing_if = "Option::is_none")]
   #[serde(deserialize_with = "deserializers::string")]
   pub deprecated: Option<String>,

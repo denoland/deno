@@ -1740,7 +1740,7 @@ fn pkg_json_to_version_info(
           .collect()
       })
       .unwrap_or_default(),
-    has_install_script: false,
+    has_install_script: None,
     // not worth increasing memory for showing a deprecated
     // message for linked packages
     deprecated: None,
@@ -3234,7 +3234,7 @@ mod test {
       NpmPackageVersionInfo {
         version: Version::parse_from_npm("1.0.0").unwrap(),
         dist: None,
-        has_install_script: false,
+        has_install_script: None,
         bin: Some(deno_npm::registry::NpmPackageVersionBinEntry::String(
           "./bin.js".to_string()
         )),
