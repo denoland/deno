@@ -275,7 +275,8 @@ fn format_js_error_inner(
       && let Some(fn_name) = &frame.function_name
       && (fn_name.starts_with("__node_internal_")
         || fn_name == "eventLoopTick"
-        || fn_name == "denoErrorToNodeError")
+        || fn_name == "denoErrorToNodeError"
+        || fn_name == "__drainNextTickAndMacrotasks")
     {
       continue;
     }
