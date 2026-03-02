@@ -3174,7 +3174,7 @@ impl Inner {
         params.text_document_position.position,
         &params.new_name,
         self,
-        self.snapshot(),
+        &self.snapshot(),
         token,
       )
       .await
@@ -4336,7 +4336,7 @@ impl Inner {
     }
     let inlay_hints = self
       .ts_server
-      .provide_inlay_hint(&module, params.range, self.snapshot(), token)
+      .provide_inlay_hint(&module, params.range, &self.snapshot(), token)
       .await
       .map_err(|err| {
         if token.is_cancelled() {

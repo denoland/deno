@@ -241,7 +241,7 @@ pub fn load_env_variables_from_env_files(
     return;
   };
 
-  for env_file_name in env_file_names.iter().rev() {
+  for env_file_name in env_file_names.iter() {
     match deno_dotenv::from_path(env_file_name) {
       Ok(_) => (),
       Err(error) => {
