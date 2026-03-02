@@ -797,13 +797,6 @@ impl ModuleGraphBuilder {
     );
     let maybe_reporter = self.maybe_reporter.as_deref();
     let mut locker = self.lockfile.as_ref().map(|l| l.as_deno_graph_locker());
-    let npm_graph_resolver: Option<
-      &(dyn deno_graph::source::NpmResolver + 'static),
-    > = if self.npm_resolver.is_byonm() && self.analyze_npm_sources() {
-      None
-    } else {
-      Some(self.npm_graph_resolver.as_ref())
-    };
     self
       .build_graph_with_npm_resolution_and_build_options(
         graph,
@@ -821,7 +814,7 @@ impl ModuleGraphBuilder {
           jsr_version_resolver: Cow::Borrowed(
             self.jsr_version_resolver.as_ref(),
           ),
-          npm_resolver: npm_graph_resolver,
+          npm_resolver: Some(self.npm_graph_resolver.as_ref()),
           module_analyzer: &analyzer,
           module_info_cacher: self.module_info_cache.as_ref(),
           reporter: maybe_reporter,
@@ -837,7 +830,8 @@ impl ModuleGraphBuilder {
     if self.analyze_npm_sources() {
       let has_npm_specifier = graph
         .modules()
-        .any(|m| matches!(m, deno_graph::Module::Npm(_)));
+        .any(|m| matches!(m, deno_graph::Module::Npm(_)))
+        || graph.roots.iter().any(|r| r.scheme() == "npm");
       if has_npm_specifier {
         // go through the graph and resolve npm: modules to real js modules
         let cloned_graph = graph.clone();
