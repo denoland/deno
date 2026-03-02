@@ -241,7 +241,7 @@ impl HttpClient {
 
   pub async fn download(&self, url: Url) -> Result<Vec<u8>, DownloadError> {
     let response = self
-      .download_inner(url, &Default::default(), None, false)
+      .download_inner(url, &Default::default(), None, true)
       .await?;
     response.into_bytes()
   }
@@ -253,7 +253,7 @@ impl HttpClient {
     progress_guard: &UpdateGuard,
   ) -> Result<HttpClientResponse, DownloadError> {
     crate::util::retry::retry(
-      || self.download_inner(url.clone(), headers, Some(progress_guard), false),
+      || self.download_inner(url.clone(), headers, Some(progress_guard), true),
       |e| {
         matches!(
           e.as_kind(),
@@ -275,7 +275,7 @@ impl HttpClient {
     progress_guard: &UpdateGuard,
   ) -> Result<HttpClientResponse, DownloadError> {
     crate::util::retry::retry(
-      || self.download_inner(url.clone(), headers, Some(progress_guard), true),
+      || self.download_inner(url.clone(), headers, Some(progress_guard), false),
       |e| {
         matches!(
           e.as_kind(),
@@ -291,7 +291,7 @@ impl HttpClient {
     url: Url,
     headers: &HeaderMap<HeaderValue>,
   ) -> Result<Url, AnyError> {
-    let (_, url) = self.get_redirected_response(url, headers, false).await?;
+    let (_, url) = self.get_redirected_response(url, headers, true).await?;
     Ok(url)
   }
 
@@ -300,10 +300,10 @@ impl HttpClient {
     url: Url,
     headers: &HeaderMap<HeaderValue>,
     progress_guard: Option<&UpdateGuard>,
-    no_decompress: bool,
+    should_decompress: bool,
   ) -> Result<HttpClientResponse, DownloadError> {
     let (response, _) = self
-      .get_redirected_response(url, headers, no_decompress)
+      .get_redirected_response(url, headers, should_decompress)
       .await?;
 
     if response.status() == 404 {
@@ -334,14 +334,14 @@ impl HttpClient {
     &self,
     mut url: Url,
     headers: &HeaderMap<HeaderValue>,
-    no_decompress: bool,
+    should_decompress: bool,
   ) -> Result<(http::Response<deno_fetch::ResBody>, Url), DownloadError> {
     let mut req = self.get(url.clone())?.build();
     *req.headers_mut() = headers.clone();
-    let mut response = if no_decompress {
-      self.client.clone().send_no_decompress(req).await
-    } else {
+    let mut response = if should_decompress {
       self.client.clone().send(req).await
+    } else {
+      self.client.clone().send_no_decompress(req).await
     }
     .map_err(|e| DownloadErrorKind::Fetch(e).into_box())?;
     let status = response.status();
@@ -357,10 +357,10 @@ impl HttpClient {
         }
         *req.headers_mut() = headers;
 
-        let new_response = if no_decompress {
-          self.client.clone().send_no_decompress(req).await
-        } else {
+        let new_response = if should_decompress {
           self.client.clone().send(req).await
+        } else {
+          self.client.clone().send_no_decompress(req).await
         }
         .map_err(|e| DownloadErrorKind::Fetch(e).into_box())?;
         let status = new_response.status();
