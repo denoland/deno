@@ -96,12 +96,12 @@ following the directory tree down to individual test files.
 
 Leaf values describe what is expected for each test file:
 
-| Value | Meaning |
-| ----- | ------- |
-| `true` | All subtests are expected to pass |
-| `false` | The entire test file is expected to fail (crash, harness error, etc.) |
-| `{"expectedFailures": ["name1", "name2"]}` | These specific subtests are expected to fail; all others should pass |
-| `{"ignore": true}` | Skip this test entirely (override with `--no-ignore`) |
+| Value                                      | Meaning                                                               |
+| ------------------------------------------ | --------------------------------------------------------------------- |
+| `true`                                     | All subtests are expected to pass                                     |
+| `false`                                    | The entire test file is expected to fail (crash, harness error, etc.) |
+| `{"expectedFailures": ["name1", "name2"]}` | These specific subtests are expected to fail; all others should pass  |
+| `{"ignore": true}`                         | Skip this test entirely (override with `--no-ignore`)                 |
 
 Example:
 
@@ -110,15 +110,15 @@ Example:
   "fetch": {
     "api": {
       "basic": {
-        "accept-header.any.html": true,        // all subtests pass
-        "stream-response.any.html": false,      // entire file fails
-        "request-headers.any.html": {           // these 2 subtests fail
+        "accept-header.any.html": true, // all subtests pass
+        "stream-response.any.html": false, // entire file fails
+        "request-headers.any.html": { // these 2 subtests fail
           "expectedFailures": [
             "Fetch with PUT with body",
             "Fetch with POST with body"
           ]
         },
-        "mode-no-cors.sub.any.html": {          // skipped
+        "mode-no-cors.sub.any.html": { // skipped
           "ignore": true
         }
       }
@@ -128,8 +128,8 @@ Example:
 ```
 
 When the `run` command finishes, it shows a git diff between the current
-expectation files and what the actual results would produce. This makes it
-easy to see regressions and improvements.
+expectation files and what the actual results would produce. This makes it easy
+to see regressions and improvements.
 
 ## FAQ
 
@@ -145,6 +145,6 @@ git add ./tests/wpt/suite
 
 All contributors will need to rerun `./tests/wpt/wpt.ts setup` after this.
 
-Since upgrading WPT usually requires updating the expectations to cover
-upstream changes, it's best to do that as a separate PR rather than as part of
-a PR that implements a fix or feature.
+Since upgrading WPT usually requires updating the expectations to cover upstream
+changes, it's best to do that as a separate PR rather than as part of a PR that
+implements a fix or feature.
