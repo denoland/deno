@@ -260,42 +260,41 @@ pub fn load_env_variables_from_env_files(
   let mut loaded_keys = HashSet::new();
 
   for env_file_name in env_file_names.iter().rev() {
-    match deno_dotenv::from_path_sanitized_iter(env_file_name) {
-      Ok(iter) => {
-        for item in iter {
-          match item {
-            Ok((key, value)) => {
-              let key_os = OsString::from(key);
-
-              if original_env_keys.contains(&key_os)
-                || loaded_keys.contains(&key_os)
-              {
-                continue;
-              }
-
-              // SAFETY: We're setting environment variables with sanitized key/value strings from a .env file.
-              unsafe {
-                env::set_var(&key_os, value);
-              }
-              loaded_keys.insert(key_os);
-            }
-            Err(error) => {
-              WatchEnvTracker::handle_dotenv_error(
-                error,
-                env_file_name,
-                flags_log_level,
-              );
-            }
-          }
-        }
-      }
+    let iter = match deno_dotenv::from_path_sanitized_iter(env_file_name) {
+      Ok(iter) => iter,
       Err(error) => {
         WatchEnvTracker::handle_dotenv_error(
           error,
           env_file_name,
           flags_log_level,
         );
+        continue;
       }
+    };
+
+    for item in iter {
+      let (key, value) = match item {
+        Ok(pair) => pair,
+        Err(error) => {
+          WatchEnvTracker::handle_dotenv_error(
+            error,
+            env_file_name,
+            flags_log_level,
+          );
+          break;
+        }
+      };
+
+      let key_os = OsString::from(key);
+      if original_env_keys.contains(&key_os) || loaded_keys.contains(&key_os) {
+        continue;
+      }
+
+      // SAFETY: We're setting environment variables with sanitized key/value strings from a .env file.
+      unsafe {
+        env::set_var(&key_os, value);
+      }
+      loaded_keys.insert(key_os);
     }
   }
 }
