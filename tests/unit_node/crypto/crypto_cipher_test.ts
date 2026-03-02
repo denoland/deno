@@ -709,7 +709,7 @@ Deno.test({
   },
 });
 
-// Regression test for https://github.com/denoland/deno/issues/28703
+// Regression test for https://github.com/denoland/deno/issues/31957
 Deno.test({
   name: "createDecipheriv - setAutoPadding(false) with empty final input",
   fn() {
@@ -721,7 +721,9 @@ Deno.test({
         "",
       );
       decipher.setAutoPadding(false);
-      decipher.end(Buffer.alloc(16));
+      const output = decipher.update(Buffer.alloc(16));
+      assertEquals(output.length, 16);
+      decipher.final();
     }
 
     // Test aes-128-ecb
@@ -732,7 +734,9 @@ Deno.test({
         "",
       );
       decipher.setAutoPadding(false);
-      decipher.end(Buffer.alloc(16));
+      const output = decipher.update(Buffer.alloc(16));
+      assertEquals(output.length, 16);
+      decipher.final();
     }
 
     // Test aes-192-ecb
@@ -743,7 +747,9 @@ Deno.test({
         "",
       );
       decipher.setAutoPadding(false);
-      decipher.end(Buffer.alloc(16));
+      const output = decipher.update(Buffer.alloc(16));
+      assertEquals(output.length, 16);
+      decipher.final();
     }
 
     // Test aes-128-cbc
@@ -754,7 +760,9 @@ Deno.test({
         Buffer.alloc(16),
       );
       decipher.setAutoPadding(false);
-      decipher.end(Buffer.alloc(16));
+      const output = decipher.update(Buffer.alloc(16));
+      assertEquals(output.length, 16);
+      decipher.final();
     }
 
     // Test aes-256-cbc
@@ -765,7 +773,9 @@ Deno.test({
         Buffer.alloc(16),
       );
       decipher.setAutoPadding(false);
-      decipher.end(Buffer.alloc(16));
+      const output = decipher.update(Buffer.alloc(16));
+      assertEquals(output.length, 16);
+      decipher.final();
     }
   },
 });
