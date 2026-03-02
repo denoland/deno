@@ -179,7 +179,7 @@ fn normalize_url(url: Url) -> Url {
 
 // TODO(nayeemrmn): Change the version of this in deno_path_util to force
 // uppercase on drive letters. Then remove this.
-fn normalize_path<P: AsRef<Path>>(path: P) -> PathBuf {
+pub fn normalize_path<P: AsRef<Path>>(path: P) -> PathBuf {
   fn inner(path: &Path) -> PathBuf {
     let mut components = path.components().peekable();
     let mut ret =

@@ -154,11 +154,11 @@ Deno.test(
         },
       ),
       `{
-  [Symbol("foo\\b")]: 'Symbol("foo\\n")',
-  [Symbol("bar\\n")]: 'Symbol("bar\\n")',
-  [Symbol("bar\\r")]: 'Symbol("bar\\r")',
-  [Symbol("baz\\t")]: 'Symbol("baz\\t")',
-  [Symbol("qux\\x00")]: 'Symbol("qux\\x00")'
+  Symbol(foo\\b): 'Symbol("foo\\n")',
+  Symbol(bar\\n): 'Symbol("bar\\n")',
+  Symbol(bar\\r): 'Symbol("bar\\r")',
+  Symbol(baz\\t): 'Symbol("baz\\t")',
+  Symbol(qux\\x00): 'Symbol("qux\\x00")'
 }`,
     );
     assertEquals(
@@ -362,15 +362,15 @@ Deno.test(function consoleTestStringifyCircular() {
   profileEnd: [Function: profileEnd],
   timeStamp: [Function: timeStamp],
   indentLevel: 0,
-  [Symbol(isConsoleInstance)]: true
+  Symbol(isConsoleInstance): true
 }`,
   );
   assertEquals(
     stringify({ str: 1, [Symbol.for("sym")]: 2, [Symbol.toStringTag]: "TAG" }),
     `Object [TAG] {
   str: 1,
-  [Symbol(sym)]: 2,
-  [Symbol(Symbol.toStringTag)]: "TAG"
+  Symbol(sym): 2,
+  Symbol(Symbol.toStringTag): "TAG"
 }`,
   );
   // test inspect is working the same

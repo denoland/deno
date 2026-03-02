@@ -54,8 +54,14 @@ jobs:
         run: gzip tests/node_compat/report.json
       - name: Upload the report to dl.deno.land
         if: github.ref == 'refs/heads/main'
+        env:
+          AWS_ACCESS_KEY_ID: ${{ vars.S3_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.S3_SECRET_ACCESS_KEY }}
+          AWS_ENDPOINT_URL_S3: ${{ vars.S3_ENDPOINT }}
+          AWS_DEFAULT_REGION: ${{vars.S3_REGION }}
         run: |-
           gsutil -h "Cache-Control: public, max-age=3600" cp tests/node_compat/report.json.gz gs://dl.deno.land/node-compat-test/$(date +%F)/report-${{matrix.os}}.json.gz
+          aws s3 cp tests/node_compat/report.json.gz s3://dl-deno-land/node-compat-test/$(date +%F)/report-${{matrix.os}}.json.gz
   summary:
     runs-on: ubuntu-latest
     needs: test
@@ -87,8 +93,14 @@ jobs:
       - name: Gzip the month summary
         run: gzip tests/node_compat/summary.json -k
       - name: Upload the month summary
+        env:
+          AWS_ACCESS_KEY_ID: ${{ vars.S3_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.S3_SECRET_ACCESS_KEY }}
+          AWS_ENDPOINT_URL_S3: ${{ vars.S3_ENDPOINT }}
+          AWS_DEFAULT_REGION: ${{vars.S3_REGION }}
         run: |-
           gsutil -h "Cache-Control: public, max-age=3600" cp tests/node_compat/summary.json.gz gs://dl.deno.land/node-compat-test/summary-$(date +%Y-%m).json.gz
+          aws s3 cp tests/node_compat/summary.json.gz s3://dl-deno-land/node-compat-test/summary-$(date +%Y-%m).json.gz
       - name: Post message to slack channel
         run: deno -A --config tests/config/deno.json tests/node_compat/slack.ts
         env:

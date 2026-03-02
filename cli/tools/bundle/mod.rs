@@ -59,7 +59,6 @@ use node_resolver::ResolutionMode;
 use node_resolver::errors::PackageNotFoundError;
 use node_resolver::errors::PackageSubpathResolveError;
 pub use provider::CliBundleProvider;
-use sys_traits::EnvCurrentDir;
 
 use crate::args::BundleFlags;
 use crate::args::Flags;
@@ -76,7 +75,6 @@ use crate::node::CliNodeResolver;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CliCjsTracker;
 use crate::resolver::CliResolver;
-use crate::sys::CliSys;
 use crate::tools::bundle::externals::ExternalsMatcher;
 use crate::util::file_watcher::WatcherRestartMode;
 use crate::util::fs::canonicalize_path;
@@ -86,7 +84,6 @@ static DISABLE_HACK: LazyLock<bool> =
 
 pub async fn prepare_inputs(
   resolver: &CliResolver,
-  sys: CliSys,
   npm_resolver: &CliNpmResolver,
   node_resolver: &CliNodeResolver,
   init_cwd: &Path,
@@ -112,8 +109,12 @@ pub async fn prepare_inputs(
       .prepare_module_load(&resolved_entrypoints)
       .await?;
 
-    let roots =
-      resolve_roots(resolved_entrypoints, sys, npm_resolver, node_resolver);
+    let roots = resolve_roots(
+      resolved_entrypoints,
+      init_cwd,
+      npm_resolver,
+      node_resolver,
+    );
     plugin_handler.prepare_module_load(&roots).await?;
     let graph = plugin_handler.module_graph_container.graph();
     let mut fully_resolved_roots = IndexSet::with_capacity(graph.roots.len());
@@ -174,7 +175,7 @@ pub async fn prepare_inputs(
     // Prepare non-HTML entries too
     let _ = plugin_handler.prepare_module_load(&script_entry_urls).await;
     let roots =
-      resolve_roots(script_entry_urls, sys, npm_resolver, node_resolver);
+      resolve_roots(script_entry_urls, init_cwd, npm_resolver, node_resolver);
     let _ = plugin_handler.prepare_module_load(&roots).await;
     for url in roots {
       entries.push(("".into(), url.into()));
@@ -216,7 +217,6 @@ pub async fn bundle_init(
   let node_resolver = factory.node_resolver().await?;
   let cli_options = factory.cli_options()?;
   let module_loader = factory.resolver_factory()?.module_loader()?;
-  let sys = factory.sys();
   let init_cwd = cli_options.initial_cwd().to_path_buf();
   let module_graph_container =
     factory.main_module_graph_container().await?.clone();
@@ -249,7 +249,6 @@ pub async fn bundle_init(
 
   let input = prepare_inputs(
     &resolver,
-    sys,
     npm_resolver,
     node_resolver,
     &init_cwd,
@@ -1741,7 +1740,7 @@ fn resolve_entrypoints(
 
 fn resolve_roots(
   entrypoints: Vec<Url>,
-  sys: CliSys,
+  cwd: &Path,
   npm_resolver: &CliNpmResolver,
   node_resolver: &CliNodeResolver,
 ) -> Vec<Url> {
@@ -1750,9 +1749,7 @@ fn resolve_roots(
   for url in entrypoints {
     let root = match NpmPackageReqReference::from_specifier(&url) {
       Ok(v) => {
-        let referrer =
-          ModuleSpecifier::from_directory_path(sys.env_current_dir().unwrap())
-            .unwrap();
+        let referrer = ModuleSpecifier::from_directory_path(cwd).unwrap();
         let package_folder = npm_resolver
           .resolve_pkg_folder_from_deno_module_req(v.req(), &referrer)
           .unwrap();
