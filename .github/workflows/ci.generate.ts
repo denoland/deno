@@ -1701,7 +1701,7 @@ const workflow = createWorkflow({
     ciStatusJob,
     publishCanaryJob,
   ],
-})
+});
 
 export function generate() {
   return workflow.toYamlString({
