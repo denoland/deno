@@ -1934,18 +1934,22 @@ fn npm_config_registry_overrides_npmrc() {
     .build();
   let temp_dir = context.temp_dir();
 
-  temp_dir.write("package.json", r#"{"name": "test", "version": "1.0.0"}"#);
+  // Create .npmrc with a wrong registry that would fail if used
+  temp_dir.write(".npmrc", "registry=http://localhost:99999/\n");
 
-  // Create .npmrc with a wrong registry
-  temp_dir.write(".npmrc", "registry=http://wrong.example.com/\n");
+  // Create a simple script that imports from npm
+  temp_dir.write(
+    "main.ts",
+    "import { getValue } from 'npm:@denotest/esm-basic'; console.log(getValue());",
+  );
 
   // NPM_CONFIG_REGISTRY should override the .npmrc registry
+  // If it doesn't, this would fail trying to connect to localhost:99999
   let output = context
     .new_command()
-    .args("add npm:@denotest/basic --dry-run")
+    .args("run -A main.ts")
     .env("NPM_CONFIG_REGISTRY", "http://localhost:4260/")
     .run();
 
-  // Should try to fetch from the env registry (localhost:4260), not the .npmrc one
-  output.assert_matches_text("Add npm:@denotest/basic");
+  output.assert_matches_text("2\n");
 }
