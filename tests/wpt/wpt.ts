@@ -12,13 +12,14 @@ import {
   TestResult,
 } from "./runner/runner.ts";
 import {
-  all,
   assert,
+  all,
   autoConfig,
   cargoBuild,
   checkPy3Available,
   escapeLoneSurrogates,
   Expectation,
+  TestExpectation,
   EXPECTATIONS_DIR,
   generateRunInfo,
   getExpectation,
@@ -35,7 +36,6 @@ import {
   runGitDiff,
   runPy,
   shouldSkipOnCi,
-  TestExpectation,
   updateManifest,
   wptreport,
 } from "./runner/utils.ts";
@@ -359,9 +359,10 @@ async function generateWptReport(
           if (typeof test.expectation === "boolean") {
             expected = test.expectation ? "PASS" : "FAIL";
           } else if (typeof test.expectation === "object") {
-            expected = test.expectation.expectedFailures?.includes(case_.name)
-              ? "FAIL"
-              : "PASS";
+            expected =
+              test.expectation.expectedFailures?.includes(case_.name)
+                ? "FAIL"
+                : "PASS";
           } else {
             expected = "PASS";
           }
@@ -877,16 +878,12 @@ function discoverTestsToRun(
           if (expectation === undefined) continue;
 
           if (typeof expectation === "object") {
-            if (
-              typeof (expectation as TestExpectation).ignore !== "undefined"
-            ) {
+            if (typeof (expectation as TestExpectation).ignore !== "undefined") {
               assert(
                 typeof (expectation as TestExpectation).ignore === "boolean",
                 "test entry's `ignore` key must be a boolean",
               );
-              if (
-                (expectation as TestExpectation).ignore === true && !noIgnore
-              ) {
+              if ((expectation as TestExpectation).ignore === true && !noIgnore) {
                 continue;
               }
             }
