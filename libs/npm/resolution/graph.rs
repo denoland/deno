@@ -8712,6 +8712,11 @@ mod test {
       "should have package-b. Got: {:?}",
       pkg_ids
     );
+    assert!(
+      !pkg_ids.iter().any(|id| id.starts_with("package-peer@")),
+      "package-peer should NOT be resolved. Got: {:?}",
+      pkg_ids
+    );
   }
 
   /// Should report where the bad peer dependency is resolved from.
