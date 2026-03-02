@@ -2042,7 +2042,7 @@ pub fn format_location<F: ErrorFormat>(
   let in_extension_code = frame
     .file_name
     .as_ref()
-    .map(|f| f.starts_with("ext:"))
+    .map(|f| f.starts_with("ext:") || f.starts_with("node:"))
     .unwrap_or(false);
   if frame.is_native {
     return F::fmt_element(NativeFrame, in_extension_code, "native")
@@ -2115,7 +2115,7 @@ pub fn format_frame<F: ErrorFormat>(
   let in_extension_code = frame
     .file_name
     .as_ref()
-    .map(|f| f.starts_with("ext:"))
+    .map(|f| f.starts_with("ext:") || f.starts_with("node:"))
     .unwrap_or(false);
   let is_method_call =
     !(frame.is_top_level.unwrap_or_default() || frame.is_constructor);
