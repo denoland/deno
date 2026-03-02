@@ -163,35 +163,22 @@ export function watchPromise(
     encoding?: string;
     signal?: AbortSignal;
   },
-): AsyncIterable<{ eventType: string; filename: string | Buffer | null }> & {
-  close(): void;
-} {
+): AsyncIterable<{ eventType: string; filename: string | Buffer | null }> {
   const watchPath = getValidatedPath(filename).toString();
 
   const watcher = Deno.watchFs(watchPath, {
     recursive: options?.recursive ?? false,
   });
 
-  let closed = false;
-
-  function close() {
-    if (!closed) {
-      closed = true;
-      try {
-        watcher.close();
-      } catch (e) {
-        if (!(e instanceof Deno.errors.BadResource)) {
-          throw e;
-        }
-      }
-    }
-  }
-
   if (options?.signal) {
     if (options.signal.aborted) {
-      close();
+      watcher.close();
     } else {
-      options.signal.addEventListener("abort", () => close(), { once: true });
+      options.signal.addEventListener(
+        "abort",
+        () => watcher.close(),
+        { once: true },
+      );
     }
   }
 
@@ -213,10 +200,9 @@ export function watchPromise(
     },
     // deno-lint-ignore no-explicit-any
     return(value?: any): Promise<IteratorResult<any>> {
-      close();
+      watcher.close();
       return Promise.resolve({ value, done: true });
     },
-    close,
     [Symbol.asyncIterator]() {
       return this;
     },
