@@ -115,9 +115,9 @@ pub struct ContextState {
   /// `UvLoopInner` and `ContextState` are `!Send` -- all access is on the
   /// event loop thread.
   pub(crate) uv_loop_inner: Cell<Option<*const UvLoopInner>>,
-  /// Raw pointer to the `uv_loop_t` handle, used to set `loop_.data`
-  /// to the current `v8::Context` at the start of each event loop tick
-  /// so that libuv-style C callbacks can retrieve the context.
+  /// Raw pointer to the `uv_loop_t` handle. At registration time,
+  /// `loop_.data` is set to a `Global::into_raw()` pointer so that
+  /// libuv-style C callbacks can retrieve the context.
   ///
   /// # Safety
   /// Same lifetime requirements as `uv_loop_inner` above.
@@ -244,6 +244,25 @@ impl JsRealmInner {
     let raw_ptr = self.state().isolate.unwrap();
     // SAFETY: We know the isolate outlives the realm
     let mut isolate = unsafe { v8::Isolate::from_raw_isolate_ptr(raw_ptr) };
+
+    if let Some(loop_ptr) = state.uv_loop_ptr.get() {
+      // SAFETY: `loop_ptr` is valid for the lifetime of the runtime
+      // (guaranteed by `register_uv_loop`). `data` was set to a
+      // `Global::into_raw()` pointer during registration. We
+      // reconstruct the Global via `from_raw` so it is properly
+      // dropped. `NonNull::new_unchecked` is safe because we checked
+      // `!is_null()`. `isolate` is valid because we just obtained it
+      // from the raw isolate pointer above.
+      unsafe {
+        let data = (*loop_ptr).data;
+        if !data.is_null() {
+          let raw = std::ptr::NonNull::new_unchecked(data as *mut v8::Context);
+          let _global = v8::Global::from_raw(&mut isolate, raw);
+          (*loop_ptr).data = std::ptr::null_mut();
+        }
+      }
+    }
+
     v8::scope!(let scope, &mut isolate);
     // These globals will prevent snapshots from completing, take them
     state.exception_state.prepare_to_destroy();

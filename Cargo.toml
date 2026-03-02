@@ -418,13 +418,13 @@ x509-parser = "0.15.0"
 cranelift = "0.116"
 cranelift-native = "0.116"
 dlopen2 = "0.6.1"
-libffi = "=4.1.2"
-libffi-sys = "=3.3.3"
+libffi = "=5.1.0"
+libffi-sys = "=4.1.0"
 memmap2 = "0.9"
 
 # napi
 libloading = "0.7"
-libuv-sys-lite = "=1.48.2"
+libuv-sys-lite = { version = "=1.48.3", features = ["dyn-symbols"] }
 napi-build = "1"
 napi-sys = { version = "=2.2.2", default-features = false }
 

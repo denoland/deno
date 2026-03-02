@@ -2788,6 +2788,7 @@ name = "deno_npm_cache"
 version = "0.53.0"
 dependencies = [
  "async-trait",
+ "aws-lc-rs",
  "base64 0.22.1",
  "boxed_error",
  "deno_cache_dir",
@@ -6254,9 +6255,9 @@ dependencies = [
 
 [[package]]
 name = "libffi"
-version = "4.1.2"
+version = "5.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b0feebbe0ccd382a2790f78d380540500d7b78ed7a3498b68fcfbc1593749a94"
+checksum = "0498fe5655f857803e156523e644dcdcdc3b3c7edda42ea2afdae2e09b2db87b"
 dependencies = [
  "libc",
  "libffi-sys",
@@ -6264,9 +6265,9 @@ dependencies = [
 
 [[package]]
 name = "libffi-sys"
-version = "3.3.3"
+version = "4.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "90c6c6e17136d4bc439d43a2f3c6ccf0731cccc016d897473a29791d3c2160c3"
+checksum = "71d4f1d4ce15091955144350b75db16a96d4a63728500122706fb4d29a26afbb"
 dependencies = [
  "cc",
 ]
@@ -6335,9 +6336,9 @@ dependencies = [
 
 [[package]]
 name = "libuv-sys-lite"
-version = "1.48.2"
+version = "1.48.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ca8dfd1a173826d193e3b955e07c22765829890f62c677a59c4a410cb4f47c01"
+checksum = "10de9b449ef5865c757dc2a0c1b1dde1578adf466db4bb0074e5d83b530164f1"
 dependencies = [
  "bindgen 0.70.1",
  "libloading 0.8.5",
@@ -10066,6 +10067,7 @@ dependencies = [
  "anyhow",
  "console_static_text",
  "crossterm",
+ "deno_path_util",
  "file_test_runner",
  "fluent-uri",
  "indexmap 2.9.0",

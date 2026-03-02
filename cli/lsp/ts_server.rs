@@ -7,7 +7,6 @@ use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::futures::future::Shared;
 use deno_core::serde_json::json;
-use deno_path_util::url_to_file_path;
 use deno_resolver::deno_json::CompilerOptionsKey;
 use indexmap::IndexMap;
 use indexmap::IndexSet;
@@ -170,7 +169,7 @@ impl TsServer {
       }
       Self::Go(ts_server) => {
         let report = ts_server
-          .provide_diagnostics(module, snapshot, token)
+          .provide_diagnostics(module, &snapshot, token)
           .await?;
         let lsp::DocumentDiagnosticReport::Full(report) = report else {
           unreachable!(
@@ -542,7 +541,7 @@ impl TsServer {
       }
       Self::Go(ts_server) => {
         ts_server
-          .provide_code_actions(module, range, context, snapshot, token)
+          .provide_code_actions(module, range, context, &snapshot, token)
           .await
       }
     }
@@ -606,16 +605,16 @@ impl TsServer {
             token,
           )
           .await?;
-        definition_info
-          .map(|definition_info| {
-            definition_info
-              .to_definition(module, snapshot, token)
-              .map_err(|err| {
-                anyhow!("Unable to convert definition info: {:#}", err)
-              })
-          })
-          .transpose()
-          .map(|d| d.flatten())
+        super::tsc::DocumentSpan::collect_into_goto_definition_response(
+          definition_info
+            .iter()
+            .flat_map(|i| &i.definitions)
+            .flatten()
+            .map(|i| (&i.document_span, module)),
+          snapshot,
+          token,
+        )
+        .map_err(|err| anyhow!("Unable to convert definition info: {:#}", err))
       }
       Self::Go(ts_server) => {
         ts_server
@@ -642,22 +641,17 @@ impl TsServer {
             token,
           )
           .await?;
-        definition_info
-          .map(|definition_info| {
-            let mut location_links = Vec::new();
-            for info in definition_info {
-              if token.is_cancelled() {
-                return Err(anyhow!("request cancelled"));
-              }
-              if let Some(link) = info.document_span.to_link(module, snapshot) {
-                location_links.push(link);
-              }
-            }
-            Ok(lsp::request::GotoTypeDefinitionResponse::Link(
-              location_links,
-            ))
-          })
-          .transpose()
+        super::tsc::DocumentSpan::collect_into_goto_definition_response(
+          definition_info
+            .iter()
+            .flatten()
+            .map(|i| (&i.document_span, module)),
+          snapshot,
+          token,
+        )
+        .map_err(|err| {
+          anyhow!("Unable to convert type definition info: {:#}", err)
+        })
       }
       Self::Go(ts_server) => {
         ts_server
@@ -833,22 +827,16 @@ impl TsServer {
               .extend(implementations.into_iter().map(|i| (i, module.clone())))
           }
         }
-        let links = implementations_with_modules
-          .iter()
-          .flat_map(|(i, module)| {
-            if token.is_cancelled() {
-              return Some(Err(anyhow!("request cancelled")));
-            }
-            Some(Ok(i.to_link(module, snapshot)?))
-          })
-          .collect::<Result<Vec<_>, _>>()?;
-        if links.is_empty() {
-          Ok(None)
-        } else {
-          Ok(Some(lsp::GotoDefinitionResponse::Link(
-            links.into_iter().collect(),
-          )))
-        }
+        super::tsc::DocumentSpan::collect_into_goto_definition_response(
+          implementations_with_modules
+            .iter()
+            .map(|(i, m)| (&i.document_span, m.as_ref())),
+          snapshot,
+          token,
+        )
+        .map_err(|err| {
+          anyhow!("Unable to convert implementation info: {:#}", err)
+        })
       }
       Self::Go(ts_server) => {
         ts_server
@@ -934,21 +922,15 @@ impl TsServer {
           incoming_calls_with_modules
             .extend(incoming_calls.into_iter().map(|c| (c, module.clone())));
         }
-        let root_path = snapshot
-          .config
-          .root_url()
-          .and_then(|s| url_to_file_path(s).ok());
         let incoming_calls = incoming_calls_with_modules
           .iter()
           .flat_map(|(c, module)| {
             if token.is_cancelled() {
               return Some(Err(anyhow!("request cancelled")));
             }
-            Some(Ok(c.try_resolve_call_hierarchy_incoming_call(
-              module,
-              snapshot,
-              root_path.as_deref(),
-            )?))
+            Some(Ok(
+              c.try_resolve_call_hierarchy_incoming_call(module, snapshot)?,
+            ))
           })
           .collect::<Result<Vec<_>, _>>()?;
         Ok(Some(incoming_calls))
@@ -978,21 +960,15 @@ impl TsServer {
             token,
           )
           .await?;
-        let root_path = snapshot
-          .config
-          .root_url()
-          .and_then(|s| url_to_file_path(s).ok());
         let outgoing_calls = outgoing_calls
           .iter()
           .flat_map(|c| {
             if token.is_cancelled() {
               return Some(Err(anyhow!("request cancelled")));
             }
-            Some(Ok(c.try_resolve_call_hierarchy_outgoing_call(
-              module,
-              snapshot,
-              root_path.as_deref(),
-            )?))
+            Some(Ok(
+              c.try_resolve_call_hierarchy_outgoing_call(module, snapshot)?,
+            ))
           })
           .collect::<Result<_, _>>()?;
         Ok(Some(outgoing_calls))
@@ -1024,22 +1000,15 @@ impl TsServer {
           .await?;
         items
           .map(|items| {
-            let items = items.into_vec();
-            let root_path = snapshot
-              .config
-              .root_url()
-              .and_then(|s| url_to_file_path(s).ok());
             let items = items
+              .into_vec()
               .into_iter()
               .flat_map(|item| {
                 if token.is_cancelled() {
                   return Some(Err(anyhow!("request cancelled")));
                 }
-                let item = item.try_resolve_call_hierarchy_item(
-                  module,
-                  snapshot,
-                  root_path.as_deref(),
-                )?;
+                let item =
+                  item.try_resolve_call_hierarchy_item(module, snapshot)?;
                 Some(Ok(item))
               })
               .collect::<Result<Vec<_>, _>>()?;
@@ -1063,7 +1032,7 @@ impl TsServer {
     position: lsp::Position,
     new_name: &str,
     language_server: &language_server::Inner,
-    snapshot: Arc<StateSnapshot>,
+    snapshot: &Arc<StateSnapshot>,
     token: &CancellationToken,
   ) -> Result<Option<lsp::WorkspaceEdit>, AnyError> {
     match self {
@@ -1356,7 +1325,7 @@ impl TsServer {
     &self,
     module: &DocumentModule,
     range: lsp::Range,
-    snapshot: Arc<StateSnapshot>,
+    snapshot: &Arc<StateSnapshot>,
     token: &CancellationToken,
   ) -> Result<Option<Vec<lsp::InlayHint>>, AnyError> {
     match self {
@@ -1387,7 +1356,7 @@ impl TsServer {
                 if token.is_cancelled() {
                   return Err(anyhow!("request cancelled"));
                 }
-                Ok(inlay_hint.to_lsp(module, &snapshot))
+                Ok(inlay_hint.to_lsp(module, snapshot))
               })
               .collect()
           })
