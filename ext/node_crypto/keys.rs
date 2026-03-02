@@ -921,9 +921,11 @@ impl KeyObjectHandle {
           EcPublicKey::Secp256k1(k256::PublicKey::from_jwk(jwk)?),
         ))
       }
-      "secp256k1" => KeyObjectHandle::AsymmetricPrivate(AsymmetricPrivateKey::Ec(
-        EcPrivateKey::Secp256k1(k256::SecretKey::from_jwk(jwk)?),
-      )),
+      "secp256k1" => {
+        KeyObjectHandle::AsymmetricPrivate(AsymmetricPrivateKey::Ec(
+          EcPrivateKey::Secp256k1(k256::SecretKey::from_jwk(jwk)?),
+        ))
+      }
       _ => {
         return Err(EcJwkError::UnsupportedCurve(jwk.crv().to_string()));
       }
