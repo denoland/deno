@@ -361,51 +361,61 @@ function collectEntriesRecursive(dir, out) {
   }
 }
 
+const HASHY_URL = "https://hashy.deno.deno.net";
+
 /**
- * Check if tests can be skipped on CI by comparing input hashes.
+ * Check if tests can be skipped on CI by comparing input hashes
+ * against the hashy service.
  *
- * `name` is used for the hash file name and log messages (e.g. "wpt").
- * `targetDir` is where the hash file is stored (e.g. target/debug).
+ * `name` is used for the hash key and log messages (e.g. "wpt").
  * `configure` receives an InputHasher to add whatever files/dirs are relevant.
  *
- * Returns true if the hash is unchanged and tests should be skipped.
+ * Returns `{ skip: boolean, commit: () => Promise<void> }`.
+ * Call `commit()` after tests pass to mark the hash as known-good.
  */
-export async function shouldSkipOnCi(name, targetDir, configure) {
+export async function checkCiHash(name, configure) {
+  const noop = { skip: false, commit: async () => {} };
   if (!Deno.env.get("CI")) {
-    return false;
+    return noop;
   }
 
   const start = performance.now();
-  const hashPath = join(targetDir, `${name}_input_hash`);
 
   const hasher = InputHasher.newWithCliArgs();
   await configure(hasher);
-  const newHash = await hasher.finish();
+  const hash = await hasher.finish();
+  const key = `${name}_${hash}`;
 
   const elapsed = Math.round(performance.now() - start);
   console.log(`ci hash took ${elapsed}ms`);
 
-  let oldHash;
   try {
-    oldHash = (await Deno.readTextFile(hashPath)).trim();
+    const res = await fetch(`${HASHY_URL}/hashes/${key}`, {
+      signal: AbortSignal.timeout(5000),
+    });
+    if (res.ok) {
+      console.log(`hashy: ${name} hash found (${key}), skipping`);
+      return { skip: true, commit: async () => {} };
+    }
   } catch {
-    // file doesn't exist yet
+    // service unreachable — run tests
+    console.log(`hashy: failed to check hash, running tests`);
+    return noop;
   }
 
-  if (oldHash === newHash) {
-    console.log(`${name} input hash unchanged (${newHash}), skipping`);
-    return true;
-  }
-
-  console.log(
-    `${name} input hash changed from ${
-      oldHash ?? "none"
-    }, writing new hash (${newHash})`,
-  );
-  try {
-    await Deno.writeTextFile(hashPath, newHash);
-  } catch {
-    // ignore write errors
-  }
-  return false;
+  console.log(`hashy: ${name} hash not found (${key}), will run tests`);
+  return {
+    skip: false,
+    commit: async () => {
+      try {
+        await fetch(`${HASHY_URL}/hashes/${key}`, {
+          method: "PUT",
+          signal: AbortSignal.timeout(5000),
+        });
+        console.log(`hashy: committed hash ${key}`);
+      } catch {
+        console.log(`hashy: failed to commit hash ${key}`);
+      }
+    },
+  };
 }

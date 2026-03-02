@@ -2,12 +2,7 @@
 /// FLAGS
 
 import { parseArgs } from "@std/cli/parse-args";
-import {
-  join,
-  resolve,
-  ROOT_PATH,
-  shouldSkipOnCi as shouldSkipOnCiGeneric,
-} from "../../../tools/util.js";
+import { checkCiHash, join, resolve, ROOT_PATH } from "../../../tools/util.js";
 
 export const {
   json,
@@ -49,9 +44,8 @@ async function getWptSubmoduleHash(): Promise<string> {
   return new TextDecoder().decode(gitResult.stdout).trim();
 }
 
-export function shouldSkipOnCi(): Promise<boolean> {
-  const targetDir = join(ROOT_PATH, "target");
-  return shouldSkipOnCiGeneric("wpt", targetDir, async (hasher) => {
+export function checkWptCiHash() {
+  return checkCiHash("wpt", async (hasher) => {
     const hashDenoBinaryTask = hasher.hashFile(denoBinary());
     const submoduleHash = await getWptSubmoduleHash();
     await hashDenoBinaryTask;
