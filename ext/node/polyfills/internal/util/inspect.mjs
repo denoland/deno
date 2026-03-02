@@ -286,6 +286,8 @@ const ansiPattern = "[\\u001B\\u009B][[\\]()#;?]*" +
   "|(?:(?:\\d{1,4}(?:;\\d{0,4})*)?[\\dA-PR-TZcf-ntqry=><~]))";
 const ansi = new SafeRegExp(ansiPattern, "g");
 
+const reEmojiPresentation = new SafeRegExp("^\\p{Emoji_Presentation}$", "u");
+
 /**
  * Returns the number of columns required to display the given string.
  */
@@ -298,7 +300,10 @@ export function getStringWidth(str, removeControlChars = true) {
   str = StringPrototypeNormalize(str, "NFC");
   for (const char of new SafeStringIterator(str)) {
     const code = StringPrototypeCodePointAt(char, 0);
-    if (isFullWidthCodePoint(code)) {
+    if (
+      isFullWidthCodePoint(code) ||
+      RegExpPrototypeTest(reEmojiPresentation, char)
+    ) {
       width += 2;
     } else if (!isZeroWidthCodePoint(code)) {
       width++;
@@ -345,6 +350,14 @@ const isFullWidthCodePoint = (code) => {
     // Miscellaneous Symbols and Pictographs 0x1f300 - 0x1f5ff
     // Emoticons 0x1f600 - 0x1f64f
     (code >= 0x1f300 && code <= 0x1f64f) ||
+    // Transport and Map Symbols
+    (code >= 0x1f680 && code <= 0x1f6ff) ||
+    // Supplemental Symbols and Pictographs
+    (code >= 0x1f900 && code <= 0x1f9ff) ||
+    // Chess Symbols
+    (code >= 0x1fa00 && code <= 0x1fa6f) ||
+    // Symbols and Pictographs Extended-A
+    (code >= 0x1fa70 && code <= 0x1faff) ||
     // CJK Unified Ideographs Extension B .. Tertiary Ideographic Plane
     (code >= 0x20000 && code <= 0x3fffd)
   );

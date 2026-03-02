@@ -5,11 +5,13 @@ import { assert } from "@std/assert";
 import { isatty } from "node:tty";
 import tty from "node:tty";
 import process from "node:process";
+import fs from "node:fs";
 
 Deno.test("[node/tty isatty] returns true when fd is a tty, false otherwise", () => {
-  assert(Deno.stdin.isTerminal() === isatty((Deno as any).stdin.rid));
-  assert(Deno.stdout.isTerminal() === isatty((Deno as any).stdout.rid));
-  assert(Deno.stderr.isTerminal() === isatty((Deno as any).stderr.rid));
+  // Uses raw file descriptors: 0 = stdin, 1 = stdout, 2 = stderr
+  assert(Deno.stdin.isTerminal() === isatty(0));
+  assert(Deno.stdout.isTerminal() === isatty(1));
+  assert(Deno.stderr.isTerminal() === isatty(2));
 });
 
 Deno.test("[node/tty isatty] returns false for irrelevant values", () => {
@@ -39,13 +41,25 @@ Deno.test("[node/tty WriteStream.isTTY] returns true when fd is a tty", () => {
 });
 
 Deno.test("[node/tty WriteStream.hasColors] returns true when colors are supported", () => {
-  assert(tty.WriteStream.prototype.hasColors() === !Deno.noColor);
-  assert(tty.WriteStream.prototype.hasColors({}) === !Deno.noColor);
+  const stubEnv = Deno.noColor ? { NO_COLOR: "1" } : {};
 
-  assert(tty.WriteStream.prototype.hasColors(1));
-  assert(tty.WriteStream.prototype.hasColors(1, {}));
+  assert(tty.WriteStream.prototype.hasColors() === !Deno.noColor);
+  assert(tty.WriteStream.prototype.hasColors(stubEnv) === !Deno.noColor);
+
+  assert(tty.WriteStream.prototype.hasColors(2));
+  assert(tty.WriteStream.prototype.hasColors(2, {}));
 });
 
 Deno.test("[node/tty WriteStream.getColorDepth] returns current terminal color depth", () => {
   assert([1, 4, 8, 24].includes(tty.WriteStream.prototype.getColorDepth()));
+});
+
+Deno.test("[node/tty isatty] returns false for raw file fd", () => {
+  // Open a file and get its raw fd - files are never TTYs
+  const fd = fs.openSync("README.md", "r");
+  try {
+    assert(!isatty(fd), `fd ${fd} should not be a tty`);
+  } finally {
+    fs.closeSync(fd);
+  }
 });

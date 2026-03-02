@@ -1,35 +1,22 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { op_bootstrap_color_depth } from "ext:core/ops";
-import { core, primordials } from "ext:core/mod.js";
-const {
-  Error,
-} = primordials;
-const {
-  isTerminal,
-} = core;
+import { op_node_is_tty } from "ext:core/ops";
+import { primordials } from "ext:core/mod.js";
+const { Error } = primordials;
 
 import { ERR_INVALID_FD } from "ext:deno_node/internal/errors.ts";
 import { TTY } from "ext:deno_node/internal_binding/tty_wrap.ts";
 import { Socket } from "node:net";
 import { setReadStream } from "ext:deno_node/_process/streams.mjs";
 import * as io from "ext:deno_io/12_io.js";
+import { WriteStream } from "ext:deno_node/internal/tty.js";
 
 // Returns true when the given numeric fd is associated with a TTY and false otherwise.
 function isatty(fd) {
   if (typeof fd !== "number" || fd >> 0 !== fd || fd < 0) {
     return false;
   }
-  try {
-    /**
-     * TODO: Treat `fd` as real file descriptors. Currently, `rid` 0, 1, 2
-     * correspond to `fd` 0, 1, 2 (stdin, stdout, stderr). This may change in
-     * the future.
-     */
-    return isTerminal(fd);
-  } catch (_) {
-    return false;
-  }
+  return op_node_is_tty(fd);
 }
 
 export class ReadStream extends Socket {
@@ -64,60 +51,5 @@ export class ReadStream extends Socket {
 
 setReadStream(ReadStream);
 
-export class WriteStream extends Socket {
-  constructor(fd) {
-    if (fd >> 0 !== fd || fd < 0) {
-      throw new ERR_INVALID_FD(fd);
-    }
-
-    // We only support `stdin`, `stdout` and `stderr`.
-    if (fd > 2) throw new Error("Only fd 0, 1 and 2 are supported.");
-
-    const tty = new TTY(
-      fd === 0 ? io.stdin : fd === 1 ? io.stdout : io.stderr,
-    );
-
-    super({
-      readableHighWaterMark: 0,
-      handle: tty,
-      manualStart: true,
-    });
-
-    const { columns, rows } = Deno.consoleSize();
-    this.columns = columns;
-    this.rows = rows;
-    this.isTTY = true;
-  }
-
-  /**
-   * @param {number | Record<string, string>} [count]
-   * @param {Record<string, string>} [env]
-   * @returns {boolean}
-   */
-  hasColors(count, env) {
-    if (
-      env === undefined &&
-      (count === undefined || typeof count === "object" && count !== null)
-    ) {
-      env = count;
-      count = 16;
-    }
-
-    const depth = this.getColorDepth(env);
-    return count <= 2 ** depth;
-  }
-
-  /**
-   * @param {Record<string, string} [env]
-   * @returns {1 | 4 | 8 | 24}
-   */
-  getColorDepth(_env) {
-    // TODO(@marvinhagemeister): Ignore env parameter.
-    // Haven't seen it used anywhere, seems more done
-    // to make testing easier in Node
-    return op_bootstrap_color_depth();
-  }
-}
-
-export { isatty };
+export { isatty, WriteStream };
 export default { isatty, WriteStream, ReadStream };

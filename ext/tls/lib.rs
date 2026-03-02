@@ -28,7 +28,9 @@ use serde::Deserialize;
 pub use webpki;
 pub use webpki_roots;
 
+mod keylog;
 mod tls_key;
+pub use keylog::get_ssl_key_log;
 pub use tls_key::*;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -62,7 +64,13 @@ pub trait RootCertStoreProvider: Send + Sync {
 }
 
 // This extension has no runtime apis, it only exports some shared native functions.
-deno_core::extension!(deno_tls);
+deno_core::extension!(
+  deno_tls,
+  state = |_state| {
+    // Resolve `SSLKEYLOGFILE` before user JavaScript can mutate env vars.
+    keylog::init_ssl_key_log();
+  },
+);
 
 #[derive(Debug)]
 pub struct NoCertificateVerification {
@@ -313,6 +321,7 @@ pub fn create_client_config(
       TlsKeys::Resolver(_) => unimplemented!(),
     };
 
+    client.key_log = get_ssl_key_log();
     add_alpn(&mut client, socket_use);
     return Ok(client);
   }
@@ -346,6 +355,7 @@ pub fn create_client_config(
     TlsKeys::Resolver(_) => unimplemented!(),
   };
 
+  client.key_log = get_ssl_key_log();
   add_alpn(&mut client, socket_use);
 
   if unsafely_disable_hostname_verification {

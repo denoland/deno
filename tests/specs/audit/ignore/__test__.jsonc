@@ -1,0 +1,27 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "install",
+      "output": "install.out"
+    },
+    {
+      // Ignore a single CVE - should filter out with-vuln1, leaving only with-vuln2
+      "args": "audit --ignore=CVE-2025-0001",
+      "output": "ignore_single.out",
+      "exitCode": 1
+    },
+    {
+      // Ignore all CVEs - should report no vulnerabilities
+      "args": "audit --ignore=CVE-2025-0001 --ignore=CVE-2025-0002",
+      "output": "ignore_all.out",
+      "exitCode": 0
+    },
+    {
+      // Ignore a nonexistent CVE - should have no effect
+      "args": "audit --ignore=CVE-9999-0000",
+      "output": "ignore_nonexistent.out",
+      "exitCode": 1
+    }
+  ]
+}

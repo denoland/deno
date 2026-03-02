@@ -35,6 +35,12 @@
       },
       "output": "message_port_unref.out",
       "exitCode": 0
+    },
+    "eval_cjs_require": {
+      // Test for https://github.com/denoland/deno/issues/27181
+      "args": "run --quiet eval_cjs_require.mjs",
+      "output": "ok\n",
+      "exitCode": 0
     }
   }
 }

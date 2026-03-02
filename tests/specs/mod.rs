@@ -62,6 +62,9 @@ struct MultiTestMetaData {
   pub ignore: bool,
   #[serde(default)]
   pub variants: BTreeMap<String, JsonMap>,
+  /// Timeout in seconds for each step. Defaults to 300 (5 minutes).
+  #[serde(default)]
+  pub timeout: Option<u64>,
 }
 
 impl MultiTestMetaData {
@@ -95,6 +98,11 @@ impl MultiTestMetaData {
             envs_obj.insert(key.into(), value.clone().into());
           }
         }
+      }
+      if let Some(timeout) = multi_test_meta_data.timeout
+        && !value.contains_key("timeout")
+      {
+        value.insert("timeout".to_string(), timeout.into());
       }
       if multi_test_meta_data.ignore && !value.contains_key("ignore") {
         value.insert("ignore".to_string(), true.into());
@@ -179,6 +187,9 @@ struct MultiStepMetaData {
   pub steps: Vec<StepMetaData>,
   #[serde(default)]
   pub ignore: bool,
+  /// Timeout in seconds for each step. Defaults to 300 (5 minutes).
+  #[serde(default)]
+  pub timeout: Option<u64>,
   #[serde(default)]
   pub variants: BTreeMap<String, JsonMap>,
 }
@@ -203,6 +214,9 @@ struct SingleTestMetaData {
   #[allow(dead_code)]
   #[serde(default)]
   pub variants: BTreeMap<String, JsonMap>,
+  /// Timeout in seconds for each step. Defaults to 300 (5 minutes).
+  #[serde(default)]
+  pub timeout: Option<u64>,
 }
 
 impl SingleTestMetaData {
@@ -220,6 +234,7 @@ impl SingleTestMetaData {
       steps: vec![self.step],
       ignore: self.ignore,
       variants: self.variants,
+      timeout: self.timeout,
     }
   }
 }
@@ -246,6 +261,20 @@ struct StepMetaData {
 }
 
 pub fn main() {
+  if test_util::hash::should_skip_on_ci("specs", |hasher| {
+    let tests = test_util::tests_path();
+    hasher
+      .hash_dir(tests.join("specs"))
+      .hash_dir(tests.join("util"))
+      .hash_dir(tests.join("testdata"))
+      .hash_dir(tests.join("registry"))
+      .hash_file(test_util::deno_exe_path())
+      .hash_file(test_util::test_server_path())
+      .hash_file(test_util::denort_exe_path());
+  }) {
+    return;
+  }
+
   let root_category =
     collect_tests_or_exit::<serde_json::Value>(CollectOptions {
       base: tests_path().join("specs").to_path_buf(),
@@ -258,6 +287,13 @@ pub fn main() {
       filter_override: None,
     })
     .into_flat_category();
+
+  let root_category =
+    if let Some(shard) = test_util::test_runner::ShardConfig::from_env() {
+      test_util::test_runner::filter_to_shard(root_category, &shard)
+    } else {
+      root_category
+    };
 
   if root_category.is_empty() {
     return; // all tests filtered out
@@ -471,6 +507,9 @@ fn should_run(if_cond: Option<&str>) -> bool {
         cfg!(unix)
           && !(cfg!(target_os = "macos") && cfg!(target_arch = "x86_64"))
       }
+      "notWindowsArm" => {
+        !(cfg!(target_os = "windows") && cfg!(target_arch = "aarch64"))
+      }
       value => panic!("Unknown if condition: {}", value),
     }
   } else {
@@ -558,6 +597,10 @@ fn run_step(
         command.stdin_text(input)
       }
     }
+    None => command,
+  };
+  let command = match metadata.timeout {
+    Some(secs) => command.timeout(std::time::Duration::from_secs(secs)),
     None => command,
   };
   let output = command.run();

@@ -22,6 +22,7 @@ use tokio::sync::mpsc::WeakSender;
 use crate::CronError;
 use crate::CronHandle;
 use crate::CronHandler;
+use crate::CronNextResult;
 use crate::CronSpec;
 
 const MAX_CRONS: usize = 100;
@@ -246,6 +247,14 @@ impl CronHandler for LocalCronHandler {
   }
 }
 
+impl Drop for LocalCronHandler {
+  fn drop(&mut self) {
+    if let Some(handle) = self.cron_loop_join_handle.take() {
+      handle.abort();
+    }
+  }
+}
+
 pub struct CronExecutionHandle {
   name: String,
   runtime_state: Weak<RefCell<RuntimeState>>,
@@ -262,7 +271,10 @@ struct Inner {
 
 #[async_trait(?Send)]
 impl CronHandle for CronExecutionHandle {
-  async fn next(&self, prev_success: bool) -> Result<bool, CronError> {
+  async fn next(
+    &self,
+    prev_success: bool,
+  ) -> Result<CronNextResult, CronError> {
     self.inner.borrow_mut().permit.take();
 
     if self
@@ -271,21 +283,33 @@ impl CronHandle for CronExecutionHandle {
       .await
       .is_err()
     {
-      return Ok(false);
+      return Ok(CronNextResult {
+        active: false,
+        traceparent: None,
+      });
     };
 
     let Some(mut next_rx) = self.inner.borrow_mut().next_rx.take() else {
-      return Ok(false);
+      return Ok(CronNextResult {
+        active: false,
+        traceparent: None,
+      });
     };
     if next_rx.recv().await.is_none() {
-      return Ok(false);
+      return Ok(CronNextResult {
+        active: false,
+        traceparent: None,
+      });
     };
 
     let permit = self.concurrency_limiter.clone().acquire_owned().await?;
     let mut inner = self.inner.borrow_mut();
     inner.next_rx = Some(next_rx);
     inner.permit = Some(permit);
-    Ok(true)
+    Ok(CronNextResult {
+      active: true,
+      traceparent: None,
+    })
   }
 
   fn close(&self) {

@@ -1,0 +1,17 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "install",
+      "output": "install.out"
+    },
+    {
+      "args": "audit",
+      "output": "audit.out",
+      "envs": {
+        "NPM_CONFIG_REGISTRY": "http://localhost:4260/sub/path/"
+      },
+      "exitCode": 0
+    }
+  ]
+}

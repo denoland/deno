@@ -154,11 +154,11 @@ Deno.test(
         },
       ),
       `{
-  [Symbol("foo\\b")]: 'Symbol("foo\\n")',
-  [Symbol("bar\\n")]: 'Symbol("bar\\n")',
-  [Symbol("bar\\r")]: 'Symbol("bar\\r")',
-  [Symbol("baz\\t")]: 'Symbol("baz\\t")',
-  [Symbol("qux\\x00")]: 'Symbol("qux\\x00")'
+  Symbol(foo\\b): 'Symbol("foo\\n")',
+  Symbol(bar\\n): 'Symbol("bar\\n")',
+  Symbol(bar\\r): 'Symbol("bar\\r")',
+  Symbol(baz\\t): 'Symbol("baz\\t")',
+  Symbol(qux\\x00): 'Symbol("qux\\x00")'
 }`,
     );
     assertEquals(
@@ -362,15 +362,15 @@ Deno.test(function consoleTestStringifyCircular() {
   profileEnd: [Function: profileEnd],
   timeStamp: [Function: timeStamp],
   indentLevel: 0,
-  [Symbol(isConsoleInstance)]: true
+  Symbol(isConsoleInstance): true
 }`,
   );
   assertEquals(
     stringify({ str: 1, [Symbol.for("sym")]: 2, [Symbol.toStringTag]: "TAG" }),
     `Object [TAG] {
   str: 1,
-  [Symbol(sym)]: 2,
-  [Symbol(Symbol.toStringTag)]: "TAG"
+  Symbol(sym): 2,
+  Symbol(Symbol.toStringTag): "TAG"
 }`,
   );
   // test inspect is working the same
@@ -1856,6 +1856,56 @@ Deno.test(function consoleTable() {
 `,
     );
   });
+  // console.table with iterators (https://github.com/denoland/deno/issues/20725)
+  mockConsole((console, out) => {
+    console.table(
+      new Map([[1, 1], [2, 2], [3, 3]]).entries(),
+    );
+    assertEquals(
+      stripAnsiCode(out.toString()),
+      `\
+┌────────────┬───┬───┐
+│ (iter idx) │ 0 │ 1 │
+├────────────┼───┼───┤
+│          0 │ 1 │ 1 │
+│          1 │ 2 │ 2 │
+│          2 │ 3 │ 3 │
+└────────────┴───┴───┘
+`,
+    );
+  });
+  mockConsole((console, out) => {
+    console.table(
+      new Map([[1, 1], [2, 2], [3, 3]]).values(),
+    );
+    assertEquals(
+      stripAnsiCode(out.toString()),
+      `\
+┌────────────┬────────┐
+│ (iter idx) │ Values │
+├────────────┼────────┤
+│          0 │      1 │
+│          1 │      2 │
+│          2 │      3 │
+└────────────┴────────┘
+`,
+    );
+  });
+  mockConsole((console, out) => {
+    console.table(new Set([1, 2, 3]).values());
+    assertEquals(
+      stripAnsiCode(out.toString()),
+      `\
+┌────────────┬────────┐
+│ (iter idx) │ Values │
+├────────────┼────────┤
+│          0 │      1 │
+│          1 │      2 │
+│          2 │      3 │
+└────────────┴────────┘
+`,
+    );
+  });
 });
 
 // console.log(Error) test
@@ -1934,8 +1984,9 @@ Deno.test(function consoleLogWhenCauseIsAssignedShouldNotPrintCauseTwice() {
       .filter((line) => !line.trim().startsWith("at"))
       .join("\n");
 
-    const expectedResult =
-      "TypeError: Type incorrect\nCaused by SyntaxError: Improper syntax\n";
+    const expectedResult = "TypeError: Type incorrect\n" +
+      "    ... 3 lines matching cause stack trace ...\n" +
+      "  cause: SyntaxError: Improper syntax\n}";
     assertEquals(filteredOutput.trim(), expectedResult.trim());
   });
 });
@@ -2273,7 +2324,7 @@ Deno.test(function inspectError() {
   );
   assertStringIncludes(
     stripAnsiCode(Deno.inspect(error2)),
-    "Caused by Error: This is a cause error",
+    "[cause]: Error: This is a cause error",
   );
 });
 
@@ -2296,11 +2347,11 @@ Deno.test(function inspectErrorCircular() {
   );
   assertStringIncludes(
     stripAnsiCode(Deno.inspect(error2)),
-    "Caused by Error: This is a cause error",
+    "[cause]: Error: This is a cause error",
   );
   assertStringIncludes(
     stripAnsiCode(Deno.inspect(error2)),
-    "Caused by [Circular *1]",
+    "cause: [Circular *1]",
   );
 });
 
@@ -2316,7 +2367,7 @@ Deno.test(function inspectErrorWithCauseFormat() {
   );
   assertStringIncludes(
     stripAnsiCode(Deno.inspect(error)),
-    "Caused by { code: 100500 }",
+    "[cause]: { code: 100500 }",
   );
 });
 
@@ -2439,7 +2490,7 @@ Deno.test(async function inspectAggregateError() {
   } catch (err) {
     assertEquals(
       Deno.inspect(err).trimEnd(),
-      "AggregateError: All promises were rejected",
+      "[AggregateError: All promises were rejected] { [errors]: [] }",
     );
   }
 });

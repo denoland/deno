@@ -29,7 +29,6 @@ export async function checkCopyright() {
     "*.ts",
     "*.tsx",
     ":!:.github/mtime_cache/action.js",
-    ":!:cli/bench/testdata/**",
     ":!:cli/tools/bench/mitata.rs",
     ":!:cli/tools/doc/prism.css",
     ":!:cli/tools/doc/prism.js",
@@ -37,6 +36,7 @@ export async function checkCopyright() {
     ":!:cli/tsc/*typescript.js",
     ":!:cli/tsc/compiler.d.ts",
     ":!:cli/tsc/dts/**",
+    ":!:tests/bench/testdata/**",
     ":!:tests/node_compat/test/**",
     ":!:tests/registry/**",
     ":!:tests/specs/**",
@@ -44,6 +44,7 @@ export async function checkCopyright() {
     ":!:tests/unit_node/testdata/**",
     ":!:tests/wpt/suite/**",
     ":!:libs/config/testdata/**",
+    ":!:libs/eszip/testdata/**",
     ":!:ext/node/polyfills/deps/**",
 
     // rust
