@@ -50,6 +50,7 @@ const {
   ObjectPrototype,
   ObjectSetPrototypeOf,
   Proxy,
+  ReflectSet,
   RegExpPrototypeTest,
   SafeArrayIterator,
   SafeMap,
@@ -977,12 +978,12 @@ export let wrap = function (script) {
 let wrapperProxy = new Proxy(wrapper, {
   set(target, property, value, receiver) {
     patched = true;
-    return Reflect.set(target, property, value, receiver);
+    return ReflectSet(target, property, value, receiver);
   },
 
   defineProperty(target, property, descriptor) {
     patched = true;
-    return Object.defineProperty(target, property, descriptor);
+    return ObjectDefineProperty(target, property, descriptor);
   },
 });
 
