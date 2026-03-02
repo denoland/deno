@@ -414,6 +414,13 @@ function assertAllExpectationsHaveTests(
         continue;
       }
       if (isLeafExpectation(expectation) && key !== "ignore") {
+        // Skip ignored tests — they are intentionally excluded from testsToRun
+        if (
+          !noIgnore && typeof expectation === "object" &&
+          (expectation as TestExpectation).ignore === true
+        ) {
+          continue;
+        }
         if (!tests.has(path)) {
           missingTests.push(path);
         }
