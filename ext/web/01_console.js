@@ -3741,8 +3741,12 @@ class Console {
     let resultData;
     const isSetObject = isSet(data);
     const isMapObject = isMap(data);
+    const isIteratorObject = !isSetObject && !isMapObject &&
+      !ArrayIsArray(data) && typeof data[SymbolIterator] === "function";
     const valuesKey = "Values";
-    const indexKey = isSetObject || isMapObject ? "(iter idx)" : "(idx)";
+    const indexKey = isSetObject || isMapObject || isIteratorObject
+      ? "(iter idx)"
+      : "(idx)";
 
     if (isSetObject) {
       resultData = [...new SafeSetIterator(data)];
@@ -3754,6 +3758,8 @@ class Console {
         resultData[idx] = { Key: k, Values: v };
         idx++;
       });
+    } else if (isIteratorObject) {
+      resultData = ArrayFrom(data);
     } else {
       resultData = data;
     }
