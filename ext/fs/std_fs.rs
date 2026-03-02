@@ -45,7 +45,7 @@ impl FileSystem for RealFs {
 
   #[cfg(windows)]
   fn umask(&self, mask: Option<u32>) -> FsResult<u32> {
-    extern "C" {
+    unsafe extern "C" {
       fn _umask(mask: std::ffi::c_int) -> std::ffi::c_int;
     }
     // SAFETY: `_umask` is a Windows CRT function that sets the file mode
