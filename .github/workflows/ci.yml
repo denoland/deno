@@ -5896,8 +5896,8 @@ jobs:
           rustup component add --toolchain nightly-2025-11-12 miri
           # This somehow prints errors in CI that don't show up locally
           RUSTFLAGS=-Awarnings cargo +nightly-2025-11-12 miri test -p deno_core
-  lint-ci-status:
-    name: lint ci status
+  ci-status:
+    name: ci status
     needs:
       - bench
       - build-debug-macos-x86_64
