@@ -203,6 +203,15 @@ pub async fn op_node_http_request_with_conn(
 
       // Yield to the event loop so cancelled ops can be polled, see the
       // cancellation, and drop their Rc references to the NamedPipe.
+      //
+      // Invariant: a single yield is sufficient because:
+      // 1. cancel_pending_ops() triggers the CancelHandle, which causes
+      //    all in-flight read/write futures to resolve on their next poll.
+      // 2. The `if (!this.#reading) return;` guard in stream_wrap.ts's
+      //    #read() (after its own PromiseResolve yield) ensures the JS
+      //    read loop bails out before starting a new op_read.
+      // 3. yield_now() gives the executor one turn to poll those cancelled
+      //    futures and drop their Rc references.
       tokio::task::yield_now().await;
 
       // Now we should be the sole Rc owner
