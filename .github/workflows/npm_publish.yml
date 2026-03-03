@@ -6,15 +6,16 @@ on:
       version:
         description: 'Version'
         type: string
+      dry_run:
+        description: 'Dry run (build and test, but skip publishing to npmjs.org)'
+        type: boolean
+        default: true
   release:
     types: [published]
 
-permissions:
-  id-token: write
-
 jobs:
   build:
-    name: npm publish
+    name: npm build
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -33,11 +34,165 @@ jobs:
         uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
+
+      - name: Build npm packages
+        run: ./tools/release/npm/build.ts ${{ inputs.version || '' }} --skip-verify
+
+      - name: Upload npm dist artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: npm-dist
+          path: tools/release/npm/dist
+          retention-days: 1
+
+  test:
+    name: 'npm test (${{ matrix.runner }})'
+    needs: build
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-latest, macos-latest, windows-latest]
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Clone repository
+        uses: actions/checkout@v6
+        with:
+          submodules: false
+
+      - name: Install Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Install Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24.x'
+
+      - name: Download npm dist artifact
+        uses: actions/download-artifact@v6
+        with:
+          name: npm-dist
+          path: tools/release/npm/dist
+
+      - name: Write Verdaccio config
+        run: |
+          mkdir -p "${{ runner.temp }}/verdaccio/storage"
+          cat > "${{ runner.temp }}/verdaccio/config.yaml" << 'HEREDOC'
+          storage: ./storage
+          uplinks: {}
+          packages:
+            '@deno/*':
+              access: $all
+              publish: $all
+            'deno':
+              access: $all
+              publish: $all
+            '**':
+              access: $all
+              publish: $all
+          log: { type: stdout, format: pretty, level: warn }
+          HEREDOC
+
+      - name: Start Verdaccio
+        run: |
+          deno run -A npm:verdaccio@6.2.9 \
+            --config "${{ runner.temp }}/verdaccio/config.yaml" --listen 4873 &
+          for i in $(seq 1 30); do
+            if curl -s http://localhost:4873/-/ping > /dev/null 2>&1; then
+              echo "Verdaccio is ready"
+              break
+            fi
+            sleep 1
+          done
+
+      - name: Configure npm to use Verdaccio
+        run: |
+          npm config set registry http://localhost:4873/
+          npm config set //localhost:4873/:_authToken dummy-token
+
+      - name: Publish packages to Verdaccio
+        run: |
+          DIST_DIR="tools/release/npm/dist"
+          for pkg_dir in "$DIST_DIR"/@deno/*/; do
+            echo "Publishing $(basename "$pkg_dir") to Verdaccio..."
+            (cd "$pkg_dir" && npm publish --registry http://localhost:4873/)
+          done
+          echo "Publishing deno to Verdaccio..."
+          (cd "$DIST_DIR/deno" && npm publish --registry http://localhost:4873/)
+
+      - name: Test npm install deno
+        run: |
+          TEST_DIR="${{ runner.temp }}/npm-test"
+          mkdir -p "$TEST_DIR"
+          cd "$TEST_DIR"
+          npm init -y
+          npm install deno
+          npx deno -v
+
+      - name: Test deno via bin.cjs fallback
+        run: |
+          cd "${{ runner.temp }}/npm-test"
+          node node_modules/deno/bin.cjs eval "console.log('npm package works')"
+
+      - name: Test pnpm install deno
+        run: |
+          TEST_DIR="${{ runner.temp }}/pnpm-test"
+          mkdir -p "$TEST_DIR"
+          cd "$TEST_DIR"
+          npm init -y
+          npx pnpm install deno --registry http://localhost:4873/
+          npx pnpm exec deno -v
+
+      - name: Test deno via PowerShell
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          cd "${{ runner.temp }}/npm-test"
+          npx deno -v
+          npx deno eval "console.log('PowerShell npm package works')"
+
+  publish:
+    name: npm publish
+    needs: [build, test]
+    if: ${{ !(inputs.dry_run || false) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      id-token: write
+
+    steps:
+      - name: Configure git
+        run: |
+          git config --global core.symlinks true
+          git config --global fetch.parallel 32
+
+      - name: Clone repository
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Install Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
       - name: Install Node
         uses: actions/setup-node@v6
         with:
           node-version: '24.x'
           registry-url: 'https://registry.npmjs.org'
 
-      - name: Publish
-        run: ./tools/release/npm/build.ts ${{ github.event.inputs.version }} --publish
+      - name: Download npm dist artifact
+        uses: actions/download-artifact@v6
+        with:
+          name: npm-dist
+          path: tools/release/npm/dist
+
+      - name: Publish to npm
+        run: ./tools/release/npm/build.ts ${{ inputs.version || '' }} --publish-only
