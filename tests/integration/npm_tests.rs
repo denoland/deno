@@ -1940,7 +1940,7 @@ fn npm_config_registry_overrides_npmrc() {
   // Create a simple script that imports from npm
   temp_dir.write(
     "main.ts",
-    "import { getValue } from 'npm:@denotest/esm-basic'; console.log(getValue());",
+    "import { getValue, setValue } from 'npm:@denotest/esm-basic'; setValue(2); console.log(getValue());",
   );
 
   // NPM_CONFIG_REGISTRY should override the .npmrc registry
