@@ -637,6 +637,7 @@ impl MainWorker {
         let loop_ptr: *mut deno_core::uv_compat::UvLoop =
           &**uv_loop as *const _ as *mut _;
         drop(op_state);
+        // SAFETY: loop_ptr points to a valid initialized UvLoop stored in OpState
         unsafe {
           js_runtime.register_uv_loop(loop_ptr);
         }
@@ -1134,7 +1135,7 @@ struct EnableRawImports(Arc<AtomicBool>);
 fn common_runtime(opts: CommonRuntimeOptions) -> JsRuntime {
   let enable_raw_imports = Arc::new(AtomicBool::new(false));
 
-  let mut js_runtime = JsRuntime::new(RuntimeOptions {
+  let js_runtime = JsRuntime::new(RuntimeOptions {
     module_loader: Some(opts.module_loader),
     startup_snapshot: opts.startup_snapshot,
     create_params: opts.create_params,

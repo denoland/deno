@@ -253,10 +253,10 @@ impl Http2Stream {
   }
 
   pub fn on_trailers(&self) {
-    // SAFETY: session pointer is valid during stream lifetime
+    // SAFETY: session outlives the stream
     let session = unsafe { &*self.session };
 
-    // SAFETY: isolate pointer is valid
+    // SAFETY: isolate pointer is valid during session lifetime
     let mut isolate =
       unsafe { v8::Isolate::from_raw_isolate_ptr(session.isolate) };
     v8::scope!(let scope, &mut isolate);
@@ -276,13 +276,8 @@ impl Http2Stream {
   }
 
   fn nghttp2_session(&self) -> *mut ffi::nghttp2_session {
-    // SAFETY: session pointer is valid during stream lifetime
+    // SAFETY: session outlives the stream
     unsafe { (*self.session).session }
-  }
-
-  fn flush_session(&self) {
-    let session = unsafe { &mut *self.session };
-    session.send_pending_data();
   }
 
   /// Called when the data source read callback returns EOF.
@@ -293,8 +288,10 @@ impl Http2Stream {
       return;
     };
 
+    // SAFETY: session outlives the stream
     let session = unsafe { &*self.session };
     let mut isolate =
+      // SAFETY: isolate pointer is valid during session lifetime
       unsafe { v8::Isolate::from_raw_isolate_ptr(session.isolate) };
     v8::scope!(let scope, &mut isolate);
     let context = v8::Local::new(scope, session.context.clone());
@@ -344,7 +341,7 @@ impl Http2Stream {
       std::ptr::null_mut()
     };
 
-    // SAFETY: session pointer and headers are valid
+    // SAFETY: session pointer is valid during stream lifetime
     unsafe {
       ffi::nghttp2_submit_response(
         session_ptr,
@@ -372,7 +369,7 @@ impl Http2Stream {
       .extend_from_slice(data.as_bytes());
     *self.available_outbound_length.borrow_mut() += data.len();
 
-    // SAFETY: session pointer is valid
+    // SAFETY: session pointer is valid during stream lifetime
     unsafe {
       ffi::nghttp2_session_resume_data(session_ptr, self.id);
     }
@@ -391,7 +388,7 @@ impl Http2Stream {
     self.pending_data.borrow_mut().extend_from_slice(data);
     *self.available_outbound_length.borrow_mut() += data.len();
 
-    // SAFETY: session pointer is valid
+    // SAFETY: session pointer is valid during stream lifetime
     unsafe {
       ffi::nghttp2_session_resume_data(session_ptr, self.id);
     }
@@ -406,8 +403,10 @@ impl Http2Stream {
 
     if !is_empty {
       // Store the request so on_stream_read_callback can call oncomplete later
+      // SAFETY: session outlives the stream
       let session = unsafe { &*self.session };
       let mut isolate =
+        // SAFETY: isolate pointer is valid during session lifetime
         unsafe { v8::Isolate::from_raw_isolate_ptr(session.isolate) };
       v8::scope!(let scope, &mut isolate);
       *self.shutdown_req.borrow_mut() = Some(v8::Global::new(scope, req));
@@ -434,7 +433,7 @@ impl Http2Stream {
   fn trailers(&self, #[serde] headers: (String, usize)) -> i32 {
     let session_ptr = self.nghttp2_session();
 
-    let ret = if headers.1 == 0 {
+    if headers.1 == 0 {
       let mut data_provider = ffi::nghttp2_data_provider {
         source: ffi::nghttp2_data_source {
           ptr: std::ptr::null_mut(),
@@ -442,7 +441,7 @@ impl Http2Stream {
         read_callback: Some(on_stream_read_callback),
       };
 
-      // SAFETY: session pointer is valid
+      // SAFETY: session pointer is valid during stream lifetime
       unsafe {
         ffi::nghttp2_submit_data(
           session_ptr,
@@ -462,9 +461,7 @@ impl Http2Stream {
           http2_headers.len(),
         )
       }
-    };
-
-    ret
+    }
   }
 
   #[fast]
@@ -476,7 +473,7 @@ impl Http2Stream {
     );
     let session_ptr = self.nghttp2_session();
 
-    // SAFETY: session pointer is valid
+    // SAFETY: session pointer is valid during stream lifetime
     unsafe {
       ffi::nghttp2_submit_rst_stream(
         session_ptr,
@@ -506,7 +503,7 @@ impl Http2Stream {
     let session_ptr = self.nghttp2_session();
     let priority = Http2Priority::new(parent, weight, exclusive);
 
-    // SAFETY: session pointer is valid
+    // SAFETY: session pointer is valid during stream lifetime
     unsafe {
       if silent {
         ffi::nghttp2_session_change_stream_priority(
@@ -533,7 +530,7 @@ impl Http2Stream {
     let session_ptr = self.nghttp2_session();
     let http2_headers = Http2Headers::from(headers);
 
-    // SAFETY: session pointer and headers are valid
+    // SAFETY: session pointer is valid during stream lifetime
     unsafe {
       ffi::nghttp2_submit_push_promise(
         session_ptr,
@@ -550,7 +547,7 @@ impl Http2Stream {
     let session_ptr = self.nghttp2_session();
     let http2_headers = Http2Headers::from(headers);
 
-    // SAFETY: session pointer and headers are valid
+    // SAFETY: session pointer is valid during stream lifetime
     unsafe {
       ffi::nghttp2_submit_headers(
         session_ptr,
@@ -567,7 +564,7 @@ impl Http2Stream {
   #[fast]
   fn read_start(&self) -> i32 {
     let session_ptr = self.nghttp2_session();
-    // SAFETY: session pointer is valid
+    // SAFETY: session pointer is valid during stream lifetime
     unsafe {
       ffi::nghttp2_session_consume_stream(session_ptr, self.id, 0);
     }
@@ -598,7 +595,7 @@ impl Http2Stream {
       };
     }
 
-    // SAFETY: stream_ptr is valid
+    // SAFETY: stream_ptr is non-null, checked above
     unsafe {
       Http2StreamState {
         state: ffi::nghttp2_stream_get_state(stream_ptr) as f64,

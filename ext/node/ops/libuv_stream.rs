@@ -46,6 +46,7 @@ struct WriteReq {
 
 pub struct TCP {
   handle: RefCell<*mut UvTcp>,
+  #[allow(dead_code)]
   socket_type: Cell<SocketType>,
   provider: i32,
   async_id: i64,
@@ -57,6 +58,7 @@ pub struct TCP {
   bytes_written: Cell<u64>,
 }
 
+// SAFETY: TCP pointers are traced by cppgc
 unsafe impl GarbageCollected for TCP {
   fn trace(&self, _visitor: &mut v8::cppgc::Visitor) {}
 
@@ -68,6 +70,7 @@ unsafe impl GarbageCollected for TCP {
 impl TCP {
   fn init_handle(&self, state: &mut OpState) {
     let loop_ptr: *mut UvLoop = &mut **state.borrow_mut::<Box<UvLoop>>();
+    // SAFETY: loop_ptr and tcp are valid pointers for uv_tcp_init
     unsafe {
       let tcp = Box::into_raw(Box::new(uv_compat::new_tcp()));
       uv_compat::uv_tcp_init(loop_ptr, tcp);
@@ -93,12 +96,16 @@ impl TCP {
 unsafe fn context_from_loop(
   loop_ptr: *mut UvLoop,
 ) -> Option<v8::Local<'static, v8::Context>> {
+  // SAFETY: NonNull<v8::Context> is layout-compatible with v8::Local<v8::Context>
   unsafe {
     let ctx_ptr = (*loop_ptr).data;
     if ctx_ptr.is_null() {
       return None;
     }
-    Some(std::mem::transmute(std::ptr::NonNull::new_unchecked(
+    Some(std::mem::transmute::<
+      std::ptr::NonNull<v8::Context>,
+      v8::Local<'_, v8::Context>,
+    >(std::ptr::NonNull::new_unchecked(
       ctx_ptr as *mut v8::Context,
     )))
   }
@@ -109,6 +116,7 @@ unsafe extern "C" fn stream_alloc_cb(
   _suggested_size: usize,
   buf: *mut UvBuf,
 ) {
+  // SAFETY: pointers are valid per libuv alloc callback contract
   unsafe {
     let data = (*handle).data as *mut StreamHandleData;
     if data.is_null() {
@@ -126,6 +134,7 @@ unsafe extern "C" fn stream_read_cb(
   nread: isize,
   _buf: *const UvBuf,
 ) {
+  // SAFETY: pointers are valid per libuv read callback contract
   unsafe {
     let data = (*stream).data as *mut StreamHandleData;
     if data.is_null() {
@@ -148,31 +157,30 @@ unsafe extern "C" fn stream_read_cb(
     let key = v8::String::new(scope, "onread").unwrap();
     let onread = this.get(scope, key.into());
 
-    if let Some(onread) = onread {
-      if let Ok(func) = v8::Local::<v8::Function>::try_from(onread) {
-        let nread_val = v8::Integer::new(scope, nread as i32);
+    if let Some(Ok(func)) = onread.map(v8::Local::<v8::Function>::try_from) {
+      let nread_val = v8::Integer::new(scope, nread as i32);
 
-        if nread > 0 {
-          let len = nread as usize;
-          let store = v8::ArrayBuffer::new(scope, len);
-          let backing = store.get_backing_store();
-          let src = std::slice::from_raw_parts((*data).read_buf.as_ptr(), len);
-          let dst = &backing[..len];
-          for (i, byte) in src.iter().enumerate() {
-            dst[i].set(*byte);
-          }
-          let buf = v8::Uint8Array::new(scope, store, 0, len).unwrap();
-          func.call(scope, this.into(), &[nread_val.into(), buf.into()]);
-        } else {
-          let undefined = v8::undefined(scope);
-          func.call(scope, this.into(), &[nread_val.into(), undefined.into()]);
+      if nread > 0 {
+        let len = nread as usize;
+        let store = v8::ArrayBuffer::new(scope, len);
+        let backing = store.get_backing_store();
+        let src = std::slice::from_raw_parts((*data).read_buf.as_ptr(), len);
+        let dst = &backing[..len];
+        for (i, byte) in src.iter().enumerate() {
+          dst[i].set(*byte);
         }
+        let buf = v8::Uint8Array::new(scope, store, 0, len).unwrap();
+        func.call(scope, this.into(), &[nread_val.into(), buf.into()]);
+      } else {
+        let undefined = v8::undefined(scope);
+        func.call(scope, this.into(), &[nread_val.into(), undefined.into()]);
       }
     }
   }
 }
 
 unsafe extern "C" fn server_connection_cb(server: *mut UvStream, status: i32) {
+  // SAFETY: pointers are valid per libuv connection callback contract
   unsafe {
     let data = (*server).data as *mut StreamHandleData;
     if data.is_null() {
@@ -195,16 +203,17 @@ unsafe extern "C" fn server_connection_cb(server: *mut UvStream, status: i32) {
     let key = v8::String::new(scope, "onconnection").unwrap();
     let onconnection = this.get(scope, key.into());
 
-    if let Some(onconnection) = onconnection {
-      if let Ok(func) = v8::Local::<v8::Function>::try_from(onconnection) {
-        let status_val = v8::Integer::new(scope, status);
-        func.call(scope, this.into(), &[status_val.into()]);
-      }
+    if let Some(Ok(func)) =
+      onconnection.map(v8::Local::<v8::Function>::try_from)
+    {
+      let status_val = v8::Integer::new(scope, status);
+      func.call(scope, this.into(), &[status_val.into()]);
     }
   }
 }
 
 unsafe extern "C" fn write_cb(req: *mut UvWrite, _status: i32) {
+  // SAFETY: pointer was allocated by Box::into_raw in write_buffer
   unsafe {
     // req is the first field of WriteReq (#[repr(C)]),
     // so the pointer is the same as the WriteReq pointer.
@@ -219,6 +228,7 @@ struct ConnectReq {
 }
 
 unsafe extern "C" fn connect_cb(req: *mut UvConnect, status: i32) {
+  // SAFETY: pointers are valid per libuv connect callback contract
   unsafe {
     // The handle is the stream we connected on.
     let stream = (*req).handle as *mut UvStream;
@@ -249,22 +259,22 @@ unsafe extern "C" fn connect_cb(req: *mut UvConnect, status: i32) {
     let key = v8::String::new(scope, "onconnect").unwrap();
     let onconnect = this.get(scope, key.into());
 
-    if let Some(onconnect) = onconnect {
-      if let Ok(func) = v8::Local::<v8::Function>::try_from(onconnect) {
-        let status_val = v8::Integer::new(scope, status);
-        func.call(scope, this.into(), &[status_val.into()]);
-      }
+    if let Some(Ok(func)) = onconnect.map(v8::Local::<v8::Function>::try_from) {
+      let status_val = v8::Integer::new(scope, status);
+      func.call(scope, this.into(), &[status_val.into()]);
     }
   }
 }
 
 unsafe extern "C" fn shutdown_cb(req: *mut UvShutdown, _status: i32) {
+  // SAFETY: pointer was allocated by Box::into_raw in shutdown
   unsafe {
     let _ = Box::from_raw(req);
   }
 }
 
 unsafe extern "C" fn tcp_close_cb(handle: *mut UvHandle) {
+  // SAFETY: pointer was allocated by Box::into_raw in init_handle
   unsafe {
     // Handle has been fully removed from the loop's data structures.
     // Now safe to free the UvTcp memory.
@@ -304,6 +314,7 @@ impl TCP {
     });
     let data_ptr =
       &*handle_data as *const StreamHandleData as *mut StreamHandleData;
+    // SAFETY: handle pointer is valid and initialized by init_handle above
     unsafe {
       (*(tcp.raw() as *mut UvHandle)).data = data_ptr as *mut c_void;
     }
@@ -334,6 +345,7 @@ impl TCP {
 
   #[fast]
   fn open(&self, #[smi] fd: i32) -> i32 {
+    // SAFETY: tcp handle is valid; fd is checked before use
     unsafe {
       let tcp = self.raw();
       if tcp.is_null() {
@@ -359,6 +371,7 @@ impl TCP {
       Err(_) => return -1,
     };
 
+    // SAFETY: zeroed storage is valid for sockaddr_storage; tcp handle is valid
     unsafe {
       let tcp = self.raw();
       if tcp.is_null() {
@@ -366,7 +379,7 @@ impl TCP {
       }
       let mut storage: libc::sockaddr_storage = std::mem::zeroed();
       let (sa, sa_len) = sockaddr_to_raw(socket_addr, &mut storage);
-      uv_compat::uv_tcp_bind(tcp, sa as *const _, sa_len as u32, 0)
+      uv_compat::uv_tcp_bind(tcp, sa as *const _, sa_len, 0)
     }
   }
 
@@ -381,6 +394,7 @@ impl TCP {
       Err(_) => return -1,
     };
 
+    // SAFETY: zeroed storage is valid for sockaddr_storage; tcp handle is valid
     unsafe {
       let tcp = self.raw();
       if tcp.is_null() {
@@ -388,12 +402,13 @@ impl TCP {
       }
       let mut storage: libc::sockaddr_storage = std::mem::zeroed();
       let (sa, sa_len) = sockaddr_to_raw(socket_addr, &mut storage);
-      uv_compat::uv_tcp_bind(tcp, sa as *const _, sa_len as u32, 0)
+      uv_compat::uv_tcp_bind(tcp, sa as *const _, sa_len, 0)
     }
   }
 
   #[fast]
   fn listen(&self, #[smi] backlog: i32) -> i32 {
+    // SAFETY: stream pointer is valid and initialized
     unsafe {
       let stream = self.stream();
       if stream.is_null() {
@@ -405,6 +420,7 @@ impl TCP {
 
   #[fast]
   fn accept(&self, #[cppgc] client: &TCP) -> i32 {
+    // SAFETY: server and client stream pointers are valid and initialized
     unsafe {
       let server_stream = self.stream();
       let client_stream = client.stream();
@@ -417,6 +433,7 @@ impl TCP {
 
   #[fast]
   fn read_start(&self) -> i32 {
+    // SAFETY: stream pointer is valid and initialized
     unsafe {
       let stream = self.stream();
       if stream.is_null() {
@@ -432,6 +449,7 @@ impl TCP {
 
   #[fast]
   fn read_stop(&self) -> i32 {
+    // SAFETY: stream pointer is valid and initialized
     unsafe {
       let stream = self.stream();
       if stream.is_null() {
@@ -442,6 +460,7 @@ impl TCP {
   }
 
   fn write_buffer(&self, #[buffer] data: JsBuffer) -> i32 {
+    // SAFETY: stream pointer is valid; WriteReq is freed in write_cb
     unsafe {
       let stream = self.stream();
       if stream.is_null() {
@@ -475,6 +494,7 @@ impl TCP {
 
   #[fast]
   fn shutdown(&self) -> i32 {
+    // SAFETY: stream pointer is valid; req is freed in shutdown_cb
     unsafe {
       let stream = self.stream();
       if stream.is_null() {
@@ -491,6 +511,7 @@ impl TCP {
 
   #[fast]
   fn set_no_delay(&self, enable: bool) -> i32 {
+    // SAFETY: tcp handle pointer is valid and initialized
     unsafe {
       let tcp = self.raw();
       if tcp.is_null() {
@@ -511,6 +532,7 @@ impl TCP {
       Err(_) => return -1,
     };
 
+    // SAFETY: zeroed storage is valid; tcp handle is valid; ConnectReq freed in connect_cb
     unsafe {
       let tcp = self.raw();
       if tcp.is_null() {
@@ -539,6 +561,7 @@ impl TCP {
 
   #[serde]
   fn getpeername(&self) -> Option<SockAddr> {
+    // SAFETY: zeroed storage is valid for sockaddr_storage; tcp handle is valid
     unsafe {
       let tcp = self.raw();
       if tcp.is_null() {
@@ -560,6 +583,7 @@ impl TCP {
 
   #[serde]
   fn getsockname(&self) -> Option<SockAddr> {
+    // SAFETY: zeroed storage is valid for sockaddr_storage; tcp handle is valid
     unsafe {
       let tcp = self.raw();
       if tcp.is_null() {
@@ -607,6 +631,7 @@ impl TCP {
       return;
     }
     self.closed.set(true);
+    // SAFETY: tcp handle is valid; freed in tcp_close_cb after uv_close
     unsafe {
       let tcp = self.raw();
       if !tcp.is_null() {
@@ -627,6 +652,7 @@ impl TCP {
   #[fast]
   fn unref(&self) {
     let tcp = self.raw();
+    // SAFETY: tcp handle pointer is valid and initialized
     unsafe {
       if !tcp.is_null() {
         uv_compat::uv_unref(tcp.cast());
@@ -647,6 +673,7 @@ struct SockAddr {
 unsafe fn sockaddr_from_storage(
   storage: &libc::sockaddr_storage,
 ) -> Option<SockAddr> {
+  // SAFETY: storage is properly initialized for the address family
   unsafe {
     match storage.ss_family as i32 {
       libc::AF_INET => {
@@ -678,6 +705,7 @@ unsafe fn sockaddr_to_raw(
   addr: SocketAddr,
   storage: &mut libc::sockaddr_storage,
 ) -> (*const libc::sockaddr, libc::socklen_t) {
+  // SAFETY: storage is zeroed and properly sized for the address family
   unsafe {
     match addr {
       SocketAddr::V4(ref a) => {
