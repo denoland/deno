@@ -79,7 +79,11 @@ async fn compile_binary(
     cli_options.initial_cwd(),
   )
   .await?;
-  let (module_roots, include_paths) = get_module_roots_and_include_paths(
+  let ModuleRootsAndPaths {
+    module_roots,
+    include_paths,
+    include_as_is_paths,
+  } = get_module_roots_and_include_paths(
     entrypoint,
     &compile_flags,
     cli_options,
@@ -155,6 +159,7 @@ async fn compile_binary(
       graph: &graph,
       entrypoint,
       include_paths: &include_paths,
+      include_as_is_paths: &include_as_is_paths,
       exclude_paths: compile_flags
         .exclude
         .iter()
@@ -227,7 +232,11 @@ async fn compile_eszip(
 
   let maybe_import_map_specifier =
     cli_options.resolve_specified_import_map_specifier()?;
-  let (module_roots, _include_paths) = get_module_roots_and_include_paths(
+  let ModuleRootsAndPaths {
+    module_roots,
+    include_paths: _,
+    include_as_is_paths: _,
+  } = get_module_roots_and_include_paths(
     entrypoint,
     &compile_flags,
     cli_options,
@@ -373,11 +382,17 @@ fn validate_output_path(output_path: &Path) -> Result<(), AnyError> {
   Ok(())
 }
 
+struct ModuleRootsAndPaths {
+  module_roots: Vec<ModuleSpecifier>,
+  include_paths: Vec<ModuleSpecifier>,
+  include_as_is_paths: Vec<ModuleSpecifier>,
+}
+
 fn get_module_roots_and_include_paths(
   entrypoint: &ModuleSpecifier,
   compile_flags: &CompileFlags,
   cli_options: &Arc<CliOptions>,
-) -> Result<(Vec<ModuleSpecifier>, Vec<ModuleSpecifier>), AnyError> {
+) -> Result<ModuleRootsAndPaths, AnyError> {
   let initial_cwd = cli_options.initial_cwd();
 
   fn is_module_graph_module(url: &ModuleSpecifier) -> bool {
@@ -474,6 +489,18 @@ fn get_module_roots_and_include_paths(
     }
   }
 
+  let mut include_as_is_paths = Vec::new();
+  for as_is_path in &compile_flags.include_as_is {
+    let url = resolve_url_or_path(as_is_path, initial_cwd)?;
+    if url.scheme() != "file" {
+      bail!(
+        "--include-as-is only supports local file paths, got: {}",
+        url
+      );
+    }
+    include_as_is_paths.push(url);
+  }
+
   for preload_module in cli_options.preload_modules()? {
     module_roots.push(preload_module);
   }
@@ -482,7 +509,11 @@ fn get_module_roots_and_include_paths(
     module_roots.push(require_module);
   }
 
-  Ok((module_roots, include_paths))
+  Ok(ModuleRootsAndPaths {
+    module_roots,
+    include_paths,
+    include_as_is_paths,
+  })
 }
 
 async fn resolve_compile_executable_output_path(
@@ -572,6 +603,7 @@ mod test {
         no_terminal: false,
         icon: None,
         include: Default::default(),
+        include_as_is: Default::default(),
         exclude: Default::default(),
         eszip: true,
         self_extracting: false,
@@ -602,6 +634,7 @@ mod test {
         args: Vec::new(),
         target: Some("x86_64-pc-windows-msvc".to_string()),
         include: Default::default(),
+        include_as_is: Default::default(),
         exclude: Default::default(),
         icon: None,
         no_terminal: false,
