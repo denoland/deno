@@ -34,6 +34,7 @@ import {
   op_preview_entries,
 } from "ext:core/ops";
 import * as ops from "ext:core/ops";
+import { URLPrototype } from "ext:deno_web/00_url.js";
 const {
   AggregateError,
   AggregateErrorPrototype,
@@ -969,6 +970,13 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
         if (keys.length === 0 && protoProps === undefined) {
           return base;
         }
+      } else if (
+        isURL(value) && !(recurseTimes > ctx.depth && ctx.depth !== null)
+      ) {
+        base = value.href;
+        if (keys.length === 0 && protoProps === undefined) {
+          return base;
+        }
       } else {
         if (keys.length === 0 && protoProps === undefined) {
           // TODO(wafuwafu13): Implement
@@ -1073,6 +1081,11 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
     ctx.depth = -1;
   }
   return res;
+}
+
+function isURL(value) {
+  return typeof value.href === "string" &&
+    ObjectPrototypeIsPrototypeOf(URLPrototype, value);
 }
 
 const builtInObjectsRegExp = new SafeRegExp("^[A-Z][a-zA-Z0-9]+$");
