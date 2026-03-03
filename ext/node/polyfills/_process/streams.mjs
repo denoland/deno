@@ -47,11 +47,16 @@ export function createWritableStdioStream(writer, name, warmup = false) {
       // being created from a raw fd (new Socket({ fd: 1 })), process.stdout/stderr
       // should be switched to net.Socket for non-TTY cases and this can be removed.
       try {
-        writer.writeSync(
-          ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, buf)
-            ? buf
-            : Buffer.from(buf, enc),
-        );
+        let data = ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, buf)
+          ? buf
+          : Buffer.from(buf, enc);
+        // Handle partial writes - writeSync may not write all bytes at once
+        // (e.g., when stdout is a pipe and the pipe buffer is near capacity).
+        while (data.byteLength > 0) {
+          const nwritten = writer.writeSync(data);
+          if (nwritten >= data.byteLength) break;
+          data = TypedArrayPrototypeSlice(data, nwritten);
+        }
       } catch (e) {
         if (
           ObjectPrototypeIsPrototypeOf(Deno.errors.BrokenPipe.prototype, e)
