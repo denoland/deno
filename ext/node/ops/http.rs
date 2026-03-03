@@ -194,7 +194,7 @@ pub async fn op_node_http_request_with_conn(
         .borrow_mut()
         .resource_table
         .take::<deno_net::win_pipe::NamedPipe>(conn_rid)
-        .map_err(|e| ConnError::Resource(e))?;
+        .map_err(ConnError::Resource)?;
 
       // Cancel pending read/write operations. This triggers the CancelHandle,
       // causing in-flight ops to complete with a cancellation error and

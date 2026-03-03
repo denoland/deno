@@ -42,10 +42,7 @@ import {
   providerType,
 } from "ext:deno_node/internal_binding/async_wrap.ts";
 import { LibuvStreamWrap } from "ext:deno_node/internal_binding/stream_wrap.ts";
-import {
-  codeMap,
-  mapSysErrnoToUvErrno,
-} from "ext:deno_node/internal_binding/uv.ts";
+import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
 import { delay } from "ext:deno_node/_util/async.ts";
 import { kStreamBaseField } from "ext:deno_node/internal_binding/stream_wrap.ts";
 import {
@@ -242,6 +239,80 @@ export class Pipe extends ConnectionWrap {
   }
 
   /**
+   * Internal Windows pipe connect with retry for ERROR_PIPE_BUSY.
+   * Node.js handles this transparently via WaitNamedPipeW in libuv.
+   * We emulate this by retrying with a short delay.
+   */
+  #connectWindows(
+    req: PipeConnectWrap,
+    address: string,
+    attempt: number,
+  ) {
+    try {
+      const rid = op_pipe_connect(
+        address,
+        true,
+        true,
+        "net.createConnection()",
+      );
+      this[kStreamBaseField] = new PipeConn(rid);
+      this.#address = req.address = address;
+
+      queueMicrotask(() => {
+        try {
+          this.afterConnect(req, 0);
+        } catch {
+          // swallow callback errors.
+        }
+      });
+    } catch (e: unknown) {
+      const err = e as {
+        code?: string;
+        message?: string;
+      };
+      const msg = err.message ?? "";
+
+      // ERROR_PIPE_BUSY (231): All pipe instances are currently in use.
+      // Node.js handles this via WaitNamedPipeW(30000) in libuv which
+      // blocks until a pipe instance is available. We poll with retries.
+      // The raw OS error code is embedded in the error message by Rust's
+      // std::io::Error formatting (e.g., "... (os error 231)").
+      if (StringPrototypeIncludes(msg, "os error 231") && attempt < 50) {
+        globalThis.setTimeout(() => {
+          this.#connectWindows(req, address, attempt + 1);
+        }, 100);
+        return;
+      }
+
+      // Map other errors to UV error codes
+      let code;
+      if (err.code !== undefined) {
+        code = MapPrototypeGet(codeMap, err.code) ??
+          MapPrototypeGet(codeMap, "UNKNOWN")!;
+      } else {
+        if (StringPrototypeIncludes(msg, "ENOTSOCK")) {
+          code = MapPrototypeGet(codeMap, "ENOTSOCK")!;
+        } else if (
+          StringPrototypeIncludes(msg, "ENOENT") ||
+          StringPrototypeIncludes(msg, "NotFound")
+        ) {
+          code = MapPrototypeGet(codeMap, "ENOENT")!;
+        } else {
+          code = MapPrototypeGet(codeMap, "UNKNOWN")!;
+        }
+      }
+
+      queueMicrotask(() => {
+        try {
+          this.afterConnect(req, code);
+        } catch {
+          // swallow callback errors.
+        }
+      });
+    }
+  }
+
+  /**
    * Connect to a Unix domain or Windows named pipe.
    * @param req A PipeConnectWrap instance.
    * @param address Unix domain or Windows named pipe the server should connect to.
@@ -249,72 +320,7 @@ export class Pipe extends ConnectionWrap {
    */
   connect(req: PipeConnectWrap, address: string) {
     if (isWindows) {
-      // On Windows, use the named pipe API
-      try {
-        const rid = op_pipe_connect(
-          address,
-          true,
-          true,
-          "net.createConnection()",
-        );
-        this[kStreamBaseField] = new PipeConn(rid);
-        this.#address = req.address = address;
-
-        // Use queueMicrotask to match async behavior
-        queueMicrotask(() => {
-          try {
-            this.afterConnect(req, 0);
-          } catch {
-            // swallow callback errors.
-          }
-        });
-      } catch (e: unknown) {
-        // Handle Windows named pipe errors
-        // Map the error to UV error codes
-        let code;
-        const err = e as {
-          code?: string;
-          message?: string;
-          rawOsError?: number;
-          cause?: { rawOsError?: number };
-        };
-        if (err.code !== undefined) {
-          code = MapPrototypeGet(codeMap, err.code) ??
-            MapPrototypeGet(codeMap, "UNKNOWN")!;
-        } else {
-          // Check error message for known patterns
-          const msg = err.message ?? "";
-          if (StringPrototypeIncludes(msg, "ENOTSOCK")) {
-            code = MapPrototypeGet(codeMap, "ENOTSOCK")!;
-          } else if (
-            StringPrototypeIncludes(msg, "ENOENT") ||
-            StringPrototypeIncludes(msg, "NotFound")
-          ) {
-            code = MapPrototypeGet(codeMap, "ENOENT")!;
-          } else {
-            // Try to extract Windows error codes from the error
-            // Windows error 2 = ERROR_FILE_NOT_FOUND -> ENOENT
-            // Windows error 3 = ERROR_PATH_NOT_FOUND -> ENOENT
-            // Windows error 231 = ERROR_PIPE_BUSY -> EAGAIN
-            // Windows error 232 = ERROR_NO_DATA -> EPIPE
-            const rawOsError = err.rawOsError ?? err.cause?.rawOsError;
-            if (rawOsError !== undefined) {
-              code = mapSysErrnoToUvErrno(rawOsError);
-            } else {
-              code = MapPrototypeGet(codeMap, "UNKNOWN")!;
-            }
-          }
-        }
-
-        queueMicrotask(() => {
-          try {
-            this.afterConnect(req, code);
-          } catch {
-            // swallow callback errors.
-          }
-        });
-      }
-
+      this.#connectWindows(req, address, 0);
       return 0;
     }
 
