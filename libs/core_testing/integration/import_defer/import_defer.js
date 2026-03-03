@@ -22,4 +22,14 @@ console.log("after first access");
 // Subsequent accesses use the already-evaluated module
 console.log(`add: ${deferred.add(1, 2)}`);
 
+console.log("after first access, before dynamic import defer");
+
+// Dynamic import.defer syntax
+const deferred2 = await import.defer("./deferred2.js");
+
+console.log("after dynamic import defer, before access");
+
+// First property access triggers evaluation
+console.log(`deferred2 value: ${deferred2.value}`);
+
 console.log("done");
