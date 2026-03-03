@@ -26,6 +26,7 @@ use num_bigint_dig::BigUint;
 use p224::NistP224;
 use p256::NistP256;
 use p384::NistP384;
+use p521::NistP521;
 use rand::Rng;
 use rand::distributions::Distribution;
 use rand::distributions::Uniform;
@@ -142,6 +143,7 @@ deno_core::extension!(
     keys::op_node_get_private_key_from_pair,
     keys::op_node_get_public_key_from_pair,
     keys::op_node_get_symmetric_key_size,
+    keys::op_node_key_equals,
     keys::op_node_key_type,
     x509::op_node_x509_parse,
     x509::op_node_x509_ca,
@@ -524,12 +526,14 @@ pub fn op_node_sign(
   #[buffer] digest: &[u8],
   #[string] digest_type: &str,
   #[smi] pss_salt_length: Option<u32>,
+  #[smi] padding: Option<u32>,
   #[smi] dsa_signature_encoding: u32,
 ) -> Result<Box<[u8]>, sign::KeyObjectHandlePrehashedSignAndVerifyError> {
   handle.sign_prehashed(
     digest_type,
     digest,
     pss_salt_length,
+    padding,
     dsa_signature_encoding,
   )
 }
@@ -541,6 +545,7 @@ pub fn op_node_verify(
   #[string] digest_type: &str,
   #[buffer] signature: &[u8],
   #[smi] pss_salt_length: Option<u32>,
+  #[smi] padding: Option<u32>,
   #[smi] dsa_signature_encoding: u32,
 ) -> Result<bool, sign::KeyObjectHandlePrehashedSignAndVerifyError> {
   handle.verify_prehashed(
@@ -548,6 +553,7 @@ pub fn op_node_verify(
     digest,
     signature,
     pss_salt_length,
+    padding,
     dsa_signature_encoding,
   )
 }
@@ -926,6 +932,18 @@ pub fn op_node_ecdh_encode_pubkey(
 
       Ok(pubkey.to_encoded_point(compress).as_ref().to_vec().into())
     }
+    "secp521r1" => {
+      let Some(pubkey): Option<elliptic_curve::PublicKey<NistP521>> =
+        elliptic_curve::PublicKey::<NistP521>::from_encoded_point(
+          &elliptic_curve::sec1::EncodedPoint::<NistP521>::from_bytes(pubkey)?,
+        )
+        .into()
+      else {
+        return Err(EcdhEncodePubKey::InvalidPublicKey);
+      };
+
+      Ok(pubkey.to_encoded_point(compress).as_ref().to_vec().into())
+    }
     "secp224r1" => {
       let pubkey = elliptic_curve::PublicKey::<NistP224>::from_encoded_point(
         &elliptic_curve::sec1::EncodedPoint::<NistP224>::from_bytes(pubkey)?,
@@ -978,6 +996,14 @@ pub fn op_node_ecdh_generate_keys(
 
       Ok(())
     }
+    "secp521r1" => {
+      let privkey = elliptic_curve::SecretKey::<NistP521>::random(&mut rng);
+      let pubkey = privkey.public_key();
+      pubbuf.copy_from_slice(pubkey.to_encoded_point(compress).as_ref());
+      privbuf.copy_from_slice(privkey.to_nonzero_scalar().to_bytes().as_ref());
+
+      Ok(())
+    }
     "secp224r1" => {
       let privkey = elliptic_curve::SecretKey::<NistP224>::random(&mut rng);
       let pubkey = privkey.public_key();
@@ -999,7 +1025,7 @@ pub fn op_node_ecdh_compute_secret(
   #[buffer] this_priv: Option<JsBuffer>,
   #[buffer] their_pub: &mut [u8],
   #[buffer] secret: &mut [u8],
-) {
+) -> Result<(), JsErrorBox> {
   match curve {
     "secp256k1" => {
       let their_public_key =
@@ -1046,6 +1072,21 @@ pub fn op_node_ecdh_compute_secret(
       );
       secret.copy_from_slice(shared_secret.raw_secret_bytes());
     }
+    "secp521r1" => {
+      let their_public_key =
+        elliptic_curve::PublicKey::<NistP521>::from_sec1_bytes(their_pub)
+          .map_err(|_| JsErrorBox::type_error("bad public key"))?;
+      let this_private_key = elliptic_curve::SecretKey::<NistP521>::from_slice(
+        &this_priv
+          .ok_or_else(|| JsErrorBox::type_error("must supply private key"))?,
+      )
+      .map_err(|_| JsErrorBox::type_error("bad private key"))?;
+      let shared_secret = elliptic_curve::ecdh::diffie_hellman(
+        this_private_key.to_nonzero_scalar(),
+        their_public_key.as_affine(),
+      );
+      secret.copy_from_slice(shared_secret.raw_secret_bytes());
+    }
     "secp224r1" => {
       let their_public_key =
         elliptic_curve::PublicKey::<NistP224>::from_sec1_bytes(their_pub)
@@ -1062,6 +1103,7 @@ pub fn op_node_ecdh_compute_secret(
     }
     &_ => todo!(),
   }
+  Ok(())
 }
 
 #[op2(fast)]
@@ -1088,6 +1130,13 @@ pub fn op_node_ecdh_compute_public_key(
     "secp384r1" => {
       let this_private_key =
         elliptic_curve::SecretKey::<NistP384>::from_slice(privkey)
+          .expect("bad private key");
+      let public_key = this_private_key.public_key();
+      pubkey.copy_from_slice(public_key.to_sec1_bytes().as_ref());
+    }
+    "secp521r1" => {
+      let this_private_key =
+        elliptic_curve::SecretKey::<NistP521>::from_slice(privkey)
           .expect("bad private key");
       let public_key = this_private_key.public_key();
       pubkey.copy_from_slice(public_key.to_sec1_bytes().as_ref());
@@ -1172,6 +1221,16 @@ pub fn op_node_diffie_hellman(
         AsymmetricPrivateKey::Ec(EcPrivateKey::P384(private)),
         AsymmetricPublicKey::Ec(EcPublicKey::P384(public)),
       ) => p384::ecdh::diffie_hellman(
+        private.to_nonzero_scalar(),
+        public.as_affine(),
+      )
+      .raw_secret_bytes()
+      .to_vec()
+      .into_boxed_slice(),
+      (
+        AsymmetricPrivateKey::Ec(EcPrivateKey::P521(private)),
+        AsymmetricPublicKey::Ec(EcPublicKey::P521(public)),
+      ) => p521::ecdh::diffie_hellman(
         private.to_nonzero_scalar(),
         public.as_affine(),
       )

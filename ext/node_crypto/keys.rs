@@ -89,7 +89,7 @@ pub struct RsaPssPrivateKey {
   pub details: Option<RsaPssDetails>,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 pub struct RsaPssDetails {
   pub hash_algorithm: RsaPssHashAlgorithm,
   pub mf1_hash_algorithm: RsaPssHashAlgorithm,
@@ -136,6 +136,7 @@ pub enum EcPrivateKey {
   P224(p224::SecretKey),
   P256(p256::SecretKey),
   P384(p384::SecretKey),
+  P521(p521::SecretKey),
   Secp256k1(k256::SecretKey),
 }
 
@@ -167,6 +168,7 @@ pub enum EcPublicKey {
   P224(p224::PublicKey),
   P256(p256::PublicKey),
   P384(p384::PublicKey),
+  P521(p521::PublicKey),
   Secp256k1(k256::PublicKey),
 }
 
@@ -253,6 +255,7 @@ impl EcPublicKey {
       }
       EcPublicKey::P256(key) => Ok(key.to_jwk()),
       EcPublicKey::P384(key) => Ok(key.to_jwk()),
+      EcPublicKey::P521(key) => Ok(key.to_jwk()),
       EcPublicKey::Secp256k1(key) => Ok(key.to_jwk()),
     }
   }
@@ -265,6 +268,7 @@ impl EcPrivateKey {
       EcPrivateKey::P224(key) => EcPublicKey::P224(key.public_key()),
       EcPrivateKey::P256(key) => EcPublicKey::P256(key.public_key()),
       EcPrivateKey::P384(key) => EcPublicKey::P384(key.public_key()),
+      EcPrivateKey::P521(key) => EcPublicKey::P521(key.public_key()),
       EcPrivateKey::Secp256k1(key) => EcPublicKey::Secp256k1(key.public_key()),
     }
   }
@@ -276,7 +280,110 @@ impl EcPrivateKey {
       }
       EcPrivateKey::P256(key) => Ok(key.to_jwk()),
       EcPrivateKey::P384(key) => Ok(key.to_jwk()),
+      EcPrivateKey::P521(key) => Ok(key.to_jwk()),
       EcPrivateKey::Secp256k1(key) => Ok(key.to_jwk()),
+    }
+  }
+}
+
+impl PartialEq for EcPublicKey {
+  fn eq(&self, other: &Self) -> bool {
+    match (self, other) {
+      (EcPublicKey::P224(a), EcPublicKey::P224(b)) => a == b,
+      (EcPublicKey::P256(a), EcPublicKey::P256(b)) => a == b,
+      (EcPublicKey::P384(a), EcPublicKey::P384(b)) => a == b,
+      (EcPublicKey::P521(a), EcPublicKey::P521(b)) => a == b,
+      (EcPublicKey::Secp256k1(a), EcPublicKey::Secp256k1(b)) => a == b,
+      _ => false,
+    }
+  }
+}
+
+impl PartialEq for EcPrivateKey {
+  fn eq(&self, other: &Self) -> bool {
+    match (self, other) {
+      (EcPrivateKey::P224(a), EcPrivateKey::P224(b)) => a == b,
+      (EcPrivateKey::P256(a), EcPrivateKey::P256(b)) => a == b,
+      (EcPrivateKey::P384(a), EcPrivateKey::P384(b)) => a == b,
+      (EcPrivateKey::P521(a), EcPrivateKey::P521(b)) => a == b,
+      (EcPrivateKey::Secp256k1(a), EcPrivateKey::Secp256k1(b)) => a == b,
+      _ => false,
+    }
+  }
+}
+
+impl PartialEq for RsaPssPublicKey {
+  fn eq(&self, other: &Self) -> bool {
+    self.key == other.key && self.details == other.details
+  }
+}
+
+impl PartialEq for RsaPssPrivateKey {
+  fn eq(&self, other: &Self) -> bool {
+    self.key == other.key && self.details == other.details
+  }
+}
+
+fn dh_params_eq(a: &DhParameter, b: &DhParameter) -> bool {
+  let a_der = a.to_der().unwrap_or_default();
+  let b_der = b.to_der().unwrap_or_default();
+  a_der == b_der
+}
+
+impl PartialEq for DhPublicKey {
+  fn eq(&self, other: &Self) -> bool {
+    self.key == other.key && dh_params_eq(&self.params, &other.params)
+  }
+}
+
+impl PartialEq for DhPrivateKey {
+  fn eq(&self, other: &Self) -> bool {
+    self.key == other.key && dh_params_eq(&self.params, &other.params)
+  }
+}
+
+impl PartialEq for AsymmetricPublicKey {
+  fn eq(&self, other: &Self) -> bool {
+    match (self, other) {
+      (Self::Rsa(a), Self::Rsa(b)) => a == b,
+      (Self::RsaPss(a), Self::RsaPss(b)) => a == b,
+      (Self::Dsa(a), Self::Dsa(b)) => {
+        a.to_public_key_der().ok() == b.to_public_key_der().ok()
+      }
+      (Self::Ec(a), Self::Ec(b)) => a == b,
+      (Self::X25519(a), Self::X25519(b)) => a == b,
+      (Self::Ed25519(a), Self::Ed25519(b)) => a == b,
+      (Self::Dh(a), Self::Dh(b)) => a == b,
+      _ => false,
+    }
+  }
+}
+
+impl PartialEq for AsymmetricPrivateKey {
+  fn eq(&self, other: &Self) -> bool {
+    match (self, other) {
+      (Self::Rsa(a), Self::Rsa(b)) => a == b,
+      (Self::RsaPss(a), Self::RsaPss(b)) => a == b,
+      (Self::Dsa(a), Self::Dsa(b)) => {
+        a.to_pkcs8_der().ok().map(|d| d.to_bytes())
+          == b.to_pkcs8_der().ok().map(|d| d.to_bytes())
+      }
+      (Self::Ec(a), Self::Ec(b)) => a == b,
+      (Self::X25519(a), Self::X25519(b)) => a.to_bytes() == b.to_bytes(),
+      (Self::Ed25519(a), Self::Ed25519(b)) => a.to_bytes() == b.to_bytes(),
+      (Self::Dh(a), Self::Dh(b)) => a == b,
+      _ => false,
+    }
+  }
+}
+
+impl PartialEq for KeyObjectHandle {
+  fn eq(&self, other: &Self) -> bool {
+    match (self, other) {
+      (Self::AsymmetricPrivate(a), Self::AsymmetricPrivate(b)) => a == b,
+      (Self::AsymmetricPublic(a), Self::AsymmetricPublic(b)) => a == b,
+      (Self::Secret(a), Self::Secret(b)) => a == b,
+      _ => false,
     }
   }
 }
@@ -305,6 +412,8 @@ pub const ID_SECP256R1_OID: const_oid::ObjectIdentifier =
   const_oid::ObjectIdentifier::new_unwrap("1.2.840.10045.3.1.7");
 pub const ID_SECP384R1_OID: const_oid::ObjectIdentifier =
   const_oid::ObjectIdentifier::new_unwrap("1.3.132.0.34");
+pub const ID_SECP521R1_OID: const_oid::ObjectIdentifier =
+  const_oid::ObjectIdentifier::new_unwrap("1.3.132.0.35");
 pub const ID_SECP256K1_OID: const_oid::ObjectIdentifier =
   const_oid::ObjectIdentifier::new_unwrap("1.3.132.0.10");
 
@@ -413,6 +522,12 @@ pub enum X509PublicKeyError {
   #[class(type)]
   #[error("malformed DSS public key")]
   MalformedDssPublicKey,
+  #[class(type)]
+  #[error("invalid Ed25519 public key")]
+  InvalidEd25519Key,
+  #[class(type)]
+  #[error("invalid X25519 public key")]
+  InvalidX25519Key,
   #[class(type)]
   #[error("unsupported x509 public key type")]
   UnsupportedX509KeyType,
@@ -604,6 +719,50 @@ pub enum AsymmetricPublicKeyError {
   UnsupportedPrivateKeyOid,
 }
 
+/// Parse an EC private key from SEC1 DER bytes using the named curve OID.
+/// The curve OID is required — inferring from key length is unreliable
+/// (e.g. P-256 and secp256k1 both use 32-byte keys).
+fn ec_private_key_from_named_curve_and_sec1_der(
+  named_curve: Option<const_oid::ObjectIdentifier>,
+  sec1_der: &[u8],
+) -> Result<AsymmetricPrivateKey, AsymmetricPrivateKeyError> {
+  let ec_key = sec1::EcPrivateKey::from_der(sec1_der)
+    .map_err(|_| AsymmetricPrivateKeyError::InvalidSec1PrivateKey)?;
+
+  let oid = named_curve.ok_or(
+    AsymmetricPrivateKeyError::MalformedOrMissingNamedCurveInEcParameters,
+  )?;
+
+  match oid {
+    ID_SECP224R1_OID => {
+      let key = p224::SecretKey::try_from(ec_key)
+        .map_err(|_| AsymmetricPrivateKeyError::InvalidSec1PrivateKey)?;
+      Ok(AsymmetricPrivateKey::Ec(EcPrivateKey::P224(key)))
+    }
+    ID_SECP256R1_OID => {
+      let key = p256::SecretKey::try_from(ec_key)
+        .map_err(|_| AsymmetricPrivateKeyError::InvalidSec1PrivateKey)?;
+      Ok(AsymmetricPrivateKey::Ec(EcPrivateKey::P256(key)))
+    }
+    ID_SECP384R1_OID => {
+      let key = p384::SecretKey::try_from(ec_key)
+        .map_err(|_| AsymmetricPrivateKeyError::InvalidSec1PrivateKey)?;
+      Ok(AsymmetricPrivateKey::Ec(EcPrivateKey::P384(key)))
+    }
+    ID_SECP521R1_OID => {
+      let key = p521::SecretKey::try_from(ec_key)
+        .map_err(|_| AsymmetricPrivateKeyError::InvalidSec1PrivateKey)?;
+      Ok(AsymmetricPrivateKey::Ec(EcPrivateKey::P521(key)))
+    }
+    ID_SECP256K1_OID => {
+      let key = k256::SecretKey::try_from(ec_key)
+        .map_err(|_| AsymmetricPrivateKeyError::InvalidSec1PrivateKey)?;
+      Ok(AsymmetricPrivateKey::Ec(EcPrivateKey::Secp256k1(key)))
+    }
+    _ => Err(AsymmetricPrivateKeyError::UnsupportedEcNamedCurve),
+  }
+}
+
 impl KeyObjectHandle {
   pub fn new_asymmetric_private_key_from_js(
     key: &[u8],
@@ -714,40 +873,19 @@ impl KeyObjectHandle {
         AsymmetricPrivateKey::Dsa(private_key)
       }
       EC_OID => {
-        let named_curve = pk_info.algorithm.parameters_oid().map_err(|_| {
-          AsymmetricPrivateKeyError::MalformedOrMissingNamedCurveInEcParameters
-        })?;
-        match named_curve {
-          ID_SECP224R1_OID => {
-            let secret_key = p224::SecretKey::from_sec1_der(
-              pk_info.private_key,
-            )
-            .map_err(|_| AsymmetricPrivateKeyError::InvalidSec1PrivateKey)?;
-            AsymmetricPrivateKey::Ec(EcPrivateKey::P224(secret_key))
-          }
-          ID_SECP256R1_OID => {
-            let secret_key = p256::SecretKey::from_sec1_der(
-              pk_info.private_key,
-            )
-            .map_err(|_| AsymmetricPrivateKeyError::InvalidSec1PrivateKey)?;
-            AsymmetricPrivateKey::Ec(EcPrivateKey::P256(secret_key))
-          }
-          ID_SECP384R1_OID => {
-            let secret_key = p384::SecretKey::from_sec1_der(
-              pk_info.private_key,
-            )
-            .map_err(|_| AsymmetricPrivateKeyError::InvalidSec1PrivateKey)?;
-            AsymmetricPrivateKey::Ec(EcPrivateKey::P384(secret_key))
-          }
-          ID_SECP256K1_OID => {
-            let secret_key = k256::SecretKey::from_sec1_der(
-              pk_info.private_key,
-            )
-            .map_err(|_| AsymmetricPrivateKeyError::InvalidSec1PrivateKey)?;
-            AsymmetricPrivateKey::Ec(EcPrivateKey::Secp256k1(secret_key))
-          }
-          _ => return Err(AsymmetricPrivateKeyError::UnsupportedEcNamedCurve),
-        }
+        // Try to get the named curve from the PKCS#8 AlgorithmIdentifier
+        // parameters. If that fails, fall back to extracting it from the
+        // inner SEC1 ECPrivateKey structure's parameters field.
+        let named_curve =
+          pk_info.algorithm.parameters_oid().ok().or_else(|| {
+            let ec_key =
+              sec1::EcPrivateKey::from_der(pk_info.private_key).ok()?;
+            ec_key.parameters.and_then(|p| p.named_curve())
+          });
+        ec_private_key_from_named_curve_and_sec1_der(
+          named_curve,
+          pk_info.private_key,
+        )?
       }
       X25519_OID => {
         let string_ref = OctetStringRef::from_der(pk_info.private_key)
@@ -803,6 +941,7 @@ impl KeyObjectHandle {
           const ID_SECP224R1: &[u8] = &oid!(raw 1.3.132.0.33);
           const ID_SECP256R1: &[u8] = &oid!(raw 1.2.840.10045.3.1.7);
           const ID_SECP384R1: &[u8] = &oid!(raw 1.3.132.0.34);
+          const ID_SECP521R1: &[u8] = &oid!(raw 1.3.132.0.35);
           const ID_SECP256K1: &[u8] = &oid!(raw 1.3.132.0.10);
 
           match curve_oid.as_bytes() {
@@ -817,6 +956,10 @@ impl KeyObjectHandle {
             ID_SECP384R1 => {
               let public_key = p384::PublicKey::from_sec1_bytes(data)?;
               AsymmetricPublicKey::Ec(EcPublicKey::P384(public_key))
+            }
+            ID_SECP521R1 => {
+              let public_key = p521::PublicKey::from_sec1_bytes(data)?;
+              AsymmetricPublicKey::Ec(EcPublicKey::P521(public_key))
             }
             ID_SECP256K1 => {
               let public_key = k256::PublicKey::from_sec1_bytes(data)?;
@@ -833,7 +976,31 @@ impl KeyObjectHandle {
           .map_err(|_| X509PublicKeyError::MalformedDssPublicKey)?;
         AsymmetricPublicKey::Dsa(verifying_key)
       }
-      _ => return Err(X509PublicKeyError::UnsupportedX509KeyType),
+      _ => {
+        const ID_ED25519: &[u8] = &oid!(raw 1.3.101.112);
+        const ID_X25519: &[u8] = &oid!(raw 1.3.101.110);
+
+        match spki.algorithm.algorithm.as_bytes() {
+          ID_ED25519 => {
+            let data = spki.subject_public_key.as_ref();
+            let key_bytes: [u8; 32] = data
+              .try_into()
+              .map_err(|_| X509PublicKeyError::InvalidEd25519Key)?;
+            let verifying_key =
+              ed25519_dalek::VerifyingKey::from_bytes(&key_bytes)
+                .map_err(|_| X509PublicKeyError::InvalidEd25519Key)?;
+            AsymmetricPublicKey::Ed25519(verifying_key)
+          }
+          ID_X25519 => {
+            let data: &[u8] = spki.subject_public_key.as_ref();
+            let data: [u8; 32] = data
+              .try_into()
+              .map_err(|_| X509PublicKeyError::InvalidX25519Key)?;
+            AsymmetricPublicKey::X25519(x25519_dalek::PublicKey::from(data))
+          }
+          _ => return Err(X509PublicKeyError::UnsupportedX509KeyType),
+        }
+      }
     };
 
     Ok(KeyObjectHandle::AsymmetricPublic(key))
@@ -915,6 +1082,14 @@ impl KeyObjectHandle {
       }
       "P-384" => KeyObjectHandle::AsymmetricPrivate(AsymmetricPrivateKey::Ec(
         EcPrivateKey::P384(p384::SecretKey::from_jwk(jwk)?),
+      )),
+      "P-521" if is_public => {
+        KeyObjectHandle::AsymmetricPublic(AsymmetricPublicKey::Ec(
+          EcPublicKey::P521(p521::PublicKey::from_jwk(jwk)?),
+        ))
+      }
+      "P-521" => KeyObjectHandle::AsymmetricPrivate(AsymmetricPrivateKey::Ec(
+        EcPrivateKey::P521(p521::SecretKey::from_jwk(jwk)?),
       )),
       "secp256k1" if is_public => {
         KeyObjectHandle::AsymmetricPublic(AsymmetricPublicKey::Ec(
@@ -1095,6 +1270,10 @@ impl KeyObjectHandle {
           ID_SECP384R1_OID => {
             let public_key = p384::PublicKey::from_sec1_bytes(data)?;
             AsymmetricPublicKey::Ec(EcPublicKey::P384(public_key))
+          }
+          ID_SECP521R1_OID => {
+            let public_key = p521::PublicKey::from_sec1_bytes(data)?;
+            AsymmetricPublicKey::Ec(EcPublicKey::P521(public_key))
           }
           ID_SECP256K1_OID => {
             let public_key = k256::PublicKey::from_sec1_bytes(data)?;
@@ -1356,6 +1535,7 @@ impl AsymmetricPublicKey {
               EcPublicKey::P224(key) => (key.to_sec1_bytes(), ID_SECP224R1_OID),
               EcPublicKey::P256(key) => (key.to_sec1_bytes(), ID_SECP256R1_OID),
               EcPublicKey::P384(key) => (key.to_sec1_bytes(), ID_SECP384R1_OID),
+              EcPublicKey::P521(key) => (key.to_sec1_bytes(), ID_SECP521R1_OID),
               EcPublicKey::Secp256k1(key) => (key.to_sec1_bytes(), ID_SECP256K1_OID),
             };
 
@@ -1553,14 +1733,38 @@ impl AsymmetricPrivateKey {
       },
       "sec1" => match self {
         AsymmetricPrivateKey::Ec(key) => {
-          let sec1 = match key {
-            EcPrivateKey::P224(key) => key.to_sec1_der(),
-            EcPrivateKey::P256(key) => key.to_sec1_der(),
-            EcPrivateKey::P384(key) => key.to_sec1_der(),
-            EcPrivateKey::Secp256k1(key) => key.to_sec1_der(),
-          }
-          .map_err(|_| AsymmetricPrivateKeyDerError::InvalidEcPrivateKey)?;
-          Ok(sec1.to_vec().into_boxed_slice())
+          let (sec1_der, curve_oid) = match key {
+            EcPrivateKey::P224(key) => {
+              (key.to_sec1_der(), ID_SECP224R1_OID)
+            }
+            EcPrivateKey::P256(key) => {
+              (key.to_sec1_der(), ID_SECP256R1_OID)
+            }
+            EcPrivateKey::P384(key) => {
+              (key.to_sec1_der(), ID_SECP384R1_OID)
+            }
+            EcPrivateKey::P521(key) => {
+              (key.to_sec1_der(), ID_SECP521R1_OID)
+            }
+            EcPrivateKey::Secp256k1(key) => {
+              (key.to_sec1_der(), ID_SECP256K1_OID)
+            }
+          };
+          let sec1_der = sec1_der
+            .map_err(|_| AsymmetricPrivateKeyDerError::InvalidEcPrivateKey)?;
+          // The elliptic-curve crate's to_sec1_der() omits the optional
+          // `parameters` field. Re-encode with the curve OID included to
+          // match OpenSSL/Node.js behavior.
+          let mut ec_key =
+            sec1::EcPrivateKey::from_der(&sec1_der)
+              .map_err(|_| {
+                AsymmetricPrivateKeyDerError::InvalidEcPrivateKey
+              })?;
+          ec_key.parameters = Some(curve_oid.into());
+          let der = ec_key
+            .to_der()
+            .map_err(|_| AsymmetricPrivateKeyDerError::InvalidEcPrivateKey)?;
+          Ok(der.into_boxed_slice())
         }
         _ => Err(AsymmetricPrivateKeyDerError::ExportingNonEcPrivateKeyAsSec1Unsupported),
       },
@@ -1586,6 +1790,7 @@ impl AsymmetricPrivateKey {
               EcPrivateKey::P224(key) => key.to_pkcs8_der(),
               EcPrivateKey::P256(key) => key.to_pkcs8_der(),
               EcPrivateKey::P384(key) => key.to_pkcs8_der(),
+              EcPrivateKey::P521(key) => key.to_pkcs8_der(),
               EcPrivateKey::Secp256k1(key) => key.to_pkcs8_der(),
             }
             .map_err(|_| AsymmetricPrivateKeyDerError::InvalidEcPrivateKey)?;
@@ -1852,6 +2057,7 @@ pub fn op_node_get_asymmetric_key_details(
           EcPrivateKey::P224(_) => "secp224r1",
           EcPrivateKey::P256(_) => "prime256v1",
           EcPrivateKey::P384(_) => "secp384r1",
+          EcPrivateKey::P521(_) => "secp521r1",
           EcPrivateKey::Secp256k1(_) => "secp256k1",
         };
         Ok(AsymmetricKeyDetails::Ec { named_curve })
@@ -1906,6 +2112,7 @@ pub fn op_node_get_asymmetric_key_details(
           EcPublicKey::P224(_) => "secp224r1",
           EcPublicKey::P256(_) => "prime256v1",
           EcPublicKey::P384(_) => "secp384r1",
+          EcPublicKey::P521(_) => "secp521r1",
           EcPublicKey::Secp256k1(_) => "secp256k1",
         };
         Ok(AsymmetricKeyDetails::Ec { named_curve })
@@ -1930,7 +2137,7 @@ pub fn op_node_get_symmetric_key_size(
     | KeyObjectHandle::AsymmetricPublic(_) => Err(JsErrorBox::type_error(
       "asymmetric key is not a symmetric key",
     )),
-    KeyObjectHandle::Secret(key) => Ok(key.len() * 8),
+    KeyObjectHandle::Secret(key) => Ok(key.len()),
   }
 }
 
@@ -2206,6 +2413,10 @@ fn ec_generate(named_curve: &str) -> Result<KeyObjectHandlePair, JsErrorBox> {
     "P-384" | "prime384v1" | "secp384r1" => {
       let key = p384::SecretKey::random(&mut rng);
       AsymmetricPrivateKey::Ec(EcPrivateKey::P384(key))
+    }
+    "P-521" | "secp521r1" => {
+      let key = p521::SecretKey::random(&mut rng);
+      AsymmetricPrivateKey::Ec(EcPrivateKey::P521(key))
     }
     "secp256k1" => {
       let key = k256::SecretKey::random(&mut rng);
@@ -2603,6 +2814,14 @@ pub fn op_node_key_type(#[cppgc] handle: &KeyObjectHandle) -> &'static str {
     KeyObjectHandle::AsymmetricPublic(_) => "public",
     KeyObjectHandle::Secret(_) => "secret",
   }
+}
+
+#[op2(fast)]
+pub fn op_node_key_equals(
+  #[cppgc] handle: &KeyObjectHandle,
+  #[cppgc] other: &KeyObjectHandle,
+) -> bool {
+  handle == other
 }
 
 #[op2]

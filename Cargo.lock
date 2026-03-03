@@ -2724,6 +2724,7 @@ dependencies = [
  "p224",
  "p256",
  "p384",
+ "p521",
  "pbkdf2",
  "pkcs8",
  "rand 0.8.5",
@@ -2811,6 +2812,7 @@ dependencies = [
  "tar",
  "tempfile",
  "thiserror 2.0.12",
+ "tokio",
  "url",
 ]
 

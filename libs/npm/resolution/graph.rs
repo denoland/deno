@@ -285,31 +285,6 @@ impl GraphPath {
     debug_assert!(maybe_next_node.is_some());
     path
   }
-
-  #[cfg_attr(not(test), allow(dead_code))]
-  pub fn ancestors(&self) -> GraphPathAncestorIterator<'_> {
-    GraphPathAncestorIterator {
-      next: self.previous_node.as_ref(),
-    }
-  }
-}
-
-struct GraphPathAncestorIterator<'a> {
-  next: Option<&'a GraphPathNodeOrRoot>,
-}
-
-impl<'a> Iterator for GraphPathAncestorIterator<'a> {
-  type Item = &'a GraphPathNodeOrRoot;
-  fn next(&mut self) -> Option<Self::Item> {
-    if let Some(next) = self.next.take() {
-      if let GraphPathNodeOrRoot::Node(node) = next {
-        self.next = node.previous_node.as_ref();
-      }
-      Some(next)
-    } else {
-      None
-    }
-  }
 }
 
 struct PackagesForSnapshot<'a> {
@@ -996,7 +971,8 @@ impl Graph {
     let pkg_ids = self.compute_all_npm_pkg_ids();
     eprintln!("-----------");
     Self::output_node_with_ids(&self.nodes, &pkg_ids, path.node_id(), false);
-    for path in path.ancestors() {
+    let mut current_path = path.previous_node.as_ref();
+    while let Some(path) = current_path.take() {
       match path {
         GraphPathNodeOrRoot::Node(node) => {
           Self::output_node_with_ids(
@@ -1005,6 +981,7 @@ impl Graph {
             node.node_id(),
             false,
           );
+          current_path = node.previous_node.as_ref();
         }
         GraphPathNodeOrRoot::Root(pkg_id) => {
           let node_id = self.root_packages.get(pkg_id).unwrap();

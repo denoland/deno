@@ -817,6 +817,57 @@ Deno.test("X509Certificate validFromDate validToDate", function () {
   );
 });
 
+// https://github.com/denoland/deno/issues/27211
+Deno.test("X509Certificate publicKey for Ed25519 cert", function () {
+  const ed25519Cert = "-----BEGIN CERTIFICATE-----\n" +
+    "MIIBoTCCAVOgAwIBAgIUde5G4y+mtbb0eRISc7vnINRbSXkwBQYDK2VwMEUxCzAJ\n" +
+    "BgNVBAYTAkNaMRMwEQYDVQQIDApTb21lLVN0YXRlMSEwHwYDVQQKDBhJbnRlcm5l\n" +
+    "dCBXaWRnaXRzIFB0eSBMdGQwIBcNMjIxMDExMTIyMTUzWhgPMjEyMjA5MTcxMjIx\n" +
+    "NTNaMEUxCzAJBgNVBAYTAkNaMRMwEQYDVQQIDApTb21lLVN0YXRlMSEwHwYDVQQK\n" +
+    "DBhJbnRlcm5ldCBXaWRnaXRzIFB0eSBMdGQwKjAFBgMrZXADIQCUFn0ZKG9tAS3L\n" +
+    "Joaz7Q13hq6sfsRGrpQ4i9cZvn+1cKNTMFEwHQYDVR0OBBYEFAATzoAtBcYTcOdY\n" +
+    "jkcQqsWXipnSMB8GA1UdIwQYMBaAFAATzoAtBcYTcOdYjkcQqsWXipnSMA8GA1Ud\n" +
+    "EwEB/wQFMAMBAf8wBQYDK2VwA0EApfw+9jSO0x0IorDfdr5ZVGRBVgrfrd9XhxqQ\n" +
+    "Krphj6cA4Ls9aMYAHf5w+OW9D/t3a9p6mYm78AKIdBsPEtT1AQ==\n" +
+    "-----END CERTIFICATE-----\n";
+
+  const ed25519Spki = "-----BEGIN PUBLIC KEY-----\n" +
+    "MCowBQYDK2VwAyEAlBZ9GShvbQEtyyaGs+0Nd4aurH7ERq6UOIvXGb5/tXA=\n" +
+    "-----END PUBLIC KEY-----\n";
+
+  const x509 = new X509Certificate(ed25519Cert);
+  const pubkey = x509.publicKey;
+  assertEquals(pubkey.type, "public");
+  assertEquals(pubkey.asymmetricKeyType, "ed25519");
+
+  // Verify extracted key matches the standalone SPKI
+  const spkiKey = createPublicKey(ed25519Spki);
+  const x509Der = pubkey.export({ type: "spki", format: "der" });
+  const spkiDer = spkiKey.export({ type: "spki", format: "der" });
+  assertEquals(Buffer.compare(x509Der, spkiDer), 0);
+});
+
+// https://github.com/denoland/deno/issues/27211
+Deno.test("X509Certificate publicKey for P-521 cert", function () {
+  const p521Cert = "-----BEGIN CERTIFICATE-----\n" +
+    "MIIBkDCB8wIJALGXk5Wy5tmGMAoGCCqGSM49BAMCMA0xCzAJBgNVBAYTAkNaMB4X\n" +
+    "DTIyMTAxMTEyMjUzNFoXDTIzMTAwNjEyMjUzNFowDTELMAkGA1UEBhMCQ1owgZsw\n" +
+    "EAYHKoZIzj0CAQYFK4EEACMDgYYABAFekaDUR+XoIoPU4FOQihwn9h+l1u0ZarPy\n" +
+    "2WSp0CiQmT/9cekQcNkIMMMvFQr1Hfwv6Mb+OY1Pm6Lrbf3sHMe1qAG6LvS/oVTz\n" +
+    "JMyjaSTxr4VpwIRzS9QyrF0wLcvgZjQWTxrRMFrKHfFb9ijfMHCHO7bN3S3nUzyJ\n" +
+    "++zut1d9rfnHOTAKBggqhkjOPQQDAgOBiwAwgYcCQgCfBR/x6atEB5KAaYmNOiKm\n" +
+    "OHhQISZU62ayPDipxsXf9vh4OK5WDdI4SmC1du07kAlwa2tFVSvz7vkMXGGXVYBr\n" +
+    "PQJBSjIXjpo07m26F0Jmv0OVX2on98+GN7xP8pRCviAuQj8UWKIQvwnj3esymVWb\n" +
+    "kmEjhnWo8H38/2wddwksoxHvinU=\n" +
+    "-----END CERTIFICATE-----\n";
+
+  const x509 = new X509Certificate(p521Cert);
+  const pubkey = x509.publicKey;
+  assertEquals(pubkey.type, "public");
+  assertEquals(pubkey.asymmetricKeyType, "ec");
+  assertEquals(pubkey.asymmetricKeyDetails, { namedCurve: "secp521r1" });
+});
+
 const certPem = `-----BEGIN CERTIFICATE-----
 MIID6DCCAtCgAwIBAgIUFH02wcL3Qgben6tfIibXitsApCYwDQYJKoZIhvcNAQEL
 BQAwejELMAkGA1UEBhMCVVMxCzAJBgNVBAgMAkNBMQswCQYDVQQHDAJTRjEPMA0G
@@ -982,6 +1033,78 @@ Deno.test("curve25519 generate valid private jwk", function () {
   assert(privateKey.d);
 });
 
+Deno.test("createPublicKey from Ed25519 certificate PEM", function () {
+  const ed25519Cert = "-----BEGIN CERTIFICATE-----\n" +
+    "MIIBoTCCAVOgAwIBAgIUde5G4y+mtbb0eRISc7vnINRbSXkwBQYDK2VwMEUxCzAJ\n" +
+    "BgNVBAYTAkNaMRMwEQYDVQQIDApTb21lLVN0YXRlMSEwHwYDVQQKDBhJbnRlcm5l\n" +
+    "dCBXaWRnaXRzIFB0eSBMdGQwIBcNMjIxMDExMTIyMTUzWhgPMjEyMjA5MTcxMjIx\n" +
+    "NTNaMEUxCzAJBgNVBAYTAkNaMRMwEQYDVQQIDApTb21lLVN0YXRlMSEwHwYDVQQK\n" +
+    "DBhJbnRlcm5ldCBXaWRnaXRzIFB0eSBMdGQwKjAFBgMrZXADIQCUFn0ZKG9tAS3L\n" +
+    "Joaz7Q13hq6sfsRGrpQ4i9cZvn+1cKNTMFEwHQYDVR0OBBYEFAATzoAtBcYTcOdY\n" +
+    "jkcQqsWXipnSMB8GA1UdIwQYMBaAFAATzoAtBcYTcOdYjkcQqsWXipnSMA8GA1Ud\n" +
+    "EwEB/wQFMAMBAf8wBQYDK2VwA0EApfw+9jSO0x0IorDfdr5ZVGRBVgrfrd9XhxqQ\n" +
+    "Krphj6cA4Ls9aMYAHf5w+OW9D/t3a9p6mYm78AKIdBsPEtT1AQ==\n" +
+    "-----END CERTIFICATE-----\n";
+
+  const publicKey = createPublicKey(ed25519Cert);
+  assertEquals(publicKey.type, "public");
+  assertEquals(publicKey.asymmetricKeyType, "ed25519");
+});
+
+Deno.test("KeyObject.prototype.equals secret keys", function () {
+  const key1 = createSecretKey(Buffer.from("secret"));
+  const key2 = createSecretKey(Buffer.from("secret"));
+  const key3 = createSecretKey(Buffer.from("other"));
+
+  assert(key1.equals(key1));
+  assert(key1.equals(key2));
+  assert(!key1.equals(key3));
+});
+
+Deno.test("KeyObject.prototype.equals empty secret keys", function () {
+  const key1 = createSecretKey(Buffer.alloc(0));
+  const key2 = createSecretKey(Buffer.alloc(0));
+
+  assert(key1.equals(key2));
+});
+
+Deno.test("KeyObject.prototype.equals asymmetric keys", function () {
+  const { publicKey: pub1, privateKey: priv1 } = generateKeyPairSync(
+    "ed25519",
+  );
+  const { publicKey: pub2, privateKey: priv2 } = generateKeyPairSync(
+    "ed25519",
+  );
+
+  // Self-equality
+  assert(pub1.equals(pub1));
+  assert(priv1.equals(priv1));
+
+  // Same key type, different keys
+  assert(!pub1.equals(pub2));
+  assert(!priv1.equals(priv2));
+
+  // Cross-type: public vs private returns false
+  assert(!pub1.equals(priv1 as any));
+});
+
+Deno.test("KeyObject.prototype.equals RSA keys", function () {
+  const key1 = createPublicKey(rsaPublicKey);
+  const key2 = createPublicKey(rsaPublicKey);
+
+  assert(key1.equals(key2));
+});
+
+Deno.test("KeyObject.prototype.equals invalid arg", function () {
+  const key = createSecretKey(Buffer.from("secret"));
+
+  assertThrows(
+    () => key.equals("not a key" as any),
+    TypeError,
+    "otherKeyObject",
+  );
+});
+
 Deno.test("generateKeyPairSync ec secp256k1", () => {
   const { publicKey, privateKey } = generateKeyPairSync("ec", {
     namedCurve: "secp256k1",
@@ -1066,4 +1189,35 @@ Deno.test("generateKeyPair async ec secp256k1", async () => {
   const data = Buffer.from("async test");
   const signature = sign("sha256", data, privateKey);
   assert(verify("sha256", data, publicKey, signature));
+});
+
+// https://github.com/denoland/deno/issues/22920
+Deno.test("EC private key SEC1 round-trip for all curves", () => {
+  for (const namedCurve of ["P-224", "P-256", "P-384", "secp256k1"]) {
+    const { privateKey } = generateKeyPairSync("ec", { namedCurve });
+
+    // Export as SEC1 PEM and reimport
+    const pem = privateKey.export({ type: "sec1", format: "pem" });
+    const fromPem = createPrivateKey(pem);
+    assertEquals(fromPem.type, "private");
+    assertEquals(fromPem.asymmetricKeyType, "ec");
+
+    // Export as SEC1 DER and reimport
+    const der = privateKey.export({ type: "sec1", format: "der" });
+    const fromDer = createPrivateKey({
+      key: Buffer.from(der),
+      format: "der",
+      type: "sec1",
+    });
+    assertEquals(fromDer.type, "private");
+    assertEquals(fromDer.asymmetricKeyType, "ec");
+
+    // Verify the reimported key can sign/verify
+    const data = Buffer.from("sec1 round-trip test");
+    const sig = sign("sha256", data, fromPem);
+    assert(
+      verify("sha256", data, privateKey, sig),
+      `sign/verify failed for ${namedCurve}`,
+    );
+  }
 });
