@@ -1,8 +1,9 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { assertEquals } from "@std/assert";
+import { assertEquals, assertStrictEquals } from "@std/assert";
 import { execCode } from "../unit/test_util.ts";
 import { createSocket, type Socket } from "node:dgram";
+import { networkInterfaces } from "node:os";
 
 const listenPort = 4503;
 const listenPort2 = 4504;
@@ -81,4 +82,62 @@ Deno.test("[node/dgram] createSocket, reuseAddr option", async () => {
   assertEquals(await promise, "hello");
   socket0.close();
   socket1?.close();
+});
+
+// https://github.com/denoland/deno/issues/24694
+Deno.test({
+  name: "[node/dgram] udp6 link-local address with scope ID",
+  permissions: { net: true, sys: ["networkInterfaces"] },
+  ignore: Deno.build.os === "windows",
+  async fn() {
+    // Find a link-local IPv6 interface
+    let iface: { address: string; ifname: string } | undefined;
+    for (
+      const [ifname, entries] of Object.entries(networkInterfaces())
+    ) {
+      for (const entry of entries!) {
+        if (entry.family === "IPv6" && entry.address.startsWith("fe80:")) {
+          iface = { address: entry.address, ifname };
+          break;
+        }
+      }
+      if (iface) break;
+    }
+    if (!iface) return; // No link-local IPv6 interface available
+
+    const address = `${iface.address}%${iface.ifname}`;
+    const message = "Hello, local world!";
+
+    const { promise, resolve, reject } = Promise.withResolvers<void>();
+    const client = createSocket("udp6");
+    const server = createSocket("udp6");
+
+    const timer = setTimeout(() => {
+      reject(new Error("Timed out"));
+      server.close();
+      client.close();
+    }, 5000);
+
+    server.on("listening", () => {
+      const port = server.address().port;
+      client.send(message, 0, message.length, port, address);
+    });
+
+    server.on("message", (buf, info) => {
+      clearTimeout(timer);
+      try {
+        assertStrictEquals(buf.toString(), message);
+        // The remote address should include the scope ID
+        assertStrictEquals(info.address, address);
+        resolve();
+      } catch (e) {
+        reject(e);
+      }
+      server.close();
+      client.close();
+    });
+
+    server.bind({ address });
+    await promise;
+  },
 });

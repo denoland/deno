@@ -69,10 +69,48 @@ pub struct IpAddr {
 
 impl From<SocketAddr> for IpAddr {
   fn from(addr: SocketAddr) -> Self {
+    let hostname = match addr {
+      SocketAddr::V4(v4) => v4.ip().to_string(),
+      SocketAddr::V6(v6) => {
+        let scope_id = v6.scope_id();
+        if scope_id != 0 {
+          format!("{}%{}", v6.ip(), scope_id_to_name(scope_id),)
+        } else {
+          v6.ip().to_string()
+        }
+      }
+    };
     Self {
-      hostname: addr.ip().to_string(),
+      hostname,
       port: addr.port(),
     }
+  }
+}
+
+/// Convert a numeric IPv6 scope ID to its string representation.
+/// On Unix, this converts to an interface name (e.g. "lo0").
+/// On Windows, the numeric ID is used directly.
+fn scope_id_to_name(scope_id: u32) -> String {
+  #[cfg(unix)]
+  {
+    let mut buf = [0u8; libc::IF_NAMESIZE];
+    // SAFETY: `buf` is a valid, stack-allocated buffer of IF_NAMESIZE bytes,
+    // which is the required size for if_indextoname.
+    let ptr =
+      unsafe { libc::if_indextoname(scope_id, buf.as_mut_ptr().cast()) };
+    if !ptr.is_null() {
+      // SAFETY: if_indextoname returned a valid C string in `buf`.
+      let cstr = unsafe { std::ffi::CStr::from_ptr(ptr) };
+      if let Ok(s) = cstr.to_str() {
+        return s.to_owned();
+      }
+    }
+    // Fallback to numeric if conversion fails
+    scope_id.to_string()
+  }
+  #[cfg(not(unix))]
+  {
+    scope_id.to_string()
   }
 }
 
