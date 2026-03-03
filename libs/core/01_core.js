@@ -142,20 +142,138 @@
   let unhandledPromiseRejectionHandler = () => false;
   let timerDepth = 0;
 
-  const macrotaskCallbacks = [];
-  const nextTickCallbacks = [];
-  const immediateCallbacks = [];
-
-  function setMacrotaskCallback(cb) {
-    ArrayPrototypePush(macrotaskCallbacks, cb);
-  }
-
-  function setNextTickCallback(cb) {
-    ArrayPrototypePush(nextTickCallbacks, cb);
-  }
+  let immediateCallback = null;
 
   function setImmediateCallback(cb) {
-    ArrayPrototypePush(immediateCallbacks, cb);
+    immediateCallback = cb;
+  }
+
+  // ---------------------------------------------------------------------------
+  // NextTick queue (FixedQueue + drain loop)
+  // ---------------------------------------------------------------------------
+  const kQueueSize = 2048;
+  const kQueueMask = kQueueSize - 1;
+
+  class FixedCircularBuffer {
+    constructor() {
+      this.bottom = 0;
+      this.top = 0;
+      this.list = new Array(kQueueSize);
+      this.next = null;
+    }
+    isEmpty() {
+      return this.top === this.bottom;
+    }
+    isFull() {
+      return ((this.top + 1) & kQueueMask) === this.bottom;
+    }
+    push(data) {
+      this.list[this.top] = data;
+      this.top = (this.top + 1) & kQueueMask;
+    }
+    shift() {
+      const nextItem = this.list[this.bottom];
+      if (nextItem === undefined) return null;
+      this.list[this.bottom] = undefined;
+      this.bottom = (this.bottom + 1) & kQueueMask;
+      return nextItem;
+    }
+  }
+
+  class FixedQueue {
+    constructor() {
+      this.head = this.tail = new FixedCircularBuffer();
+    }
+    isEmpty() {
+      return this.head.isEmpty();
+    }
+    push(data) {
+      if (this.head.isFull()) {
+        this.head = this.head.next = new FixedCircularBuffer();
+      }
+      this.head.push(data);
+    }
+    shift() {
+      const tail = this.tail;
+      const next = tail.shift();
+      if (tail.isEmpty() && tail.next !== null) {
+        this.tail = tail.next;
+      }
+      return next;
+    }
+  }
+
+  const tickQueue = new FixedQueue();
+
+  // Hook for Node-specific per-tick logic (emitBefore/emitAfter/emitDestroy).
+  // Set by ext/node/ via setTickHook(). If null, no Node-specific work is done.
+  let tickHook = null;
+
+  function setTickHook(hook) {
+    tickHook = hook;
+  }
+
+  // Enqueue a tick object. The object must have { callback, args, snapshot }
+  // and may contain additional fields (e.g. asyncId for Node async hooks).
+  function queueNextTick(tickObject) {
+    if (tickQueue.isEmpty()) {
+      op_set_has_tick_scheduled(true);
+    }
+    tickQueue.push(tickObject);
+  }
+
+  function processTicksAndRejections() {
+    let tock;
+    do {
+      while ((tock = tickQueue.shift()) !== null) {
+        const oldContext = getAsyncContext();
+        try {
+          setAsyncContext(tock.snapshot);
+          if (tickHook !== null) {
+            tickHook(tock, true);
+          }
+          const callback = tock.callback;
+          const args = tock.args;
+          if (args === undefined) {
+            callback();
+          } else {
+            switch (args.length) {
+              case 1:
+                callback(args[0]);
+                break;
+              case 2:
+                callback(args[0], args[1]);
+                break;
+              case 3:
+                callback(args[0], args[1], args[2]);
+                break;
+              case 4:
+                callback(args[0], args[1], args[2], args[3]);
+                break;
+              default:
+                callback(...args);
+            }
+          }
+        } catch (e) {
+          reportError(e);
+        } finally {
+          if (tickHook !== null) {
+            tickHook(tock, false);
+          }
+          setAsyncContext(oldContext);
+        }
+      }
+      op_run_microtasks();
+    } while (!tickQueue.isEmpty());
+    op_set_has_tick_scheduled(false);
+  }
+
+  function runNextTicks() {
+    if (!op_has_tick_scheduled()) {
+      op_run_microtasks();
+      if (!op_has_tick_scheduled()) return;
+    }
+    processTicksAndRejections();
   }
 
   // Phase 2: Resolve completed async ops. Called from Rust with flat args:
@@ -169,38 +287,13 @@
     }
   }
 
-  // Phase 5: Drain nextTick queue and macrotask queue.
+  // Phase 5: Drain nextTick queue.
   // Called from Rust. hasTickScheduled indicates if nextTick was scheduled.
   function __drainNextTickAndMacrotasks(hasTickScheduled) {
-    // Drain nextTick queue if there's a tick scheduled.
     if (hasTickScheduled) {
-      for (let i = 0; i < nextTickCallbacks.length; i++) {
-        nextTickCallbacks[i]();
-      }
-    } else {
-      op_run_microtasks();
+      processTicksAndRejections();
     }
-
-    // Drain macrotask queue.
-    for (let i = 0; i < macrotaskCallbacks.length; i++) {
-      const cb = macrotaskCallbacks[i];
-      while (true) {
-        const res = cb();
-
-        // If callback returned `undefined` then it has no work to do, we don't
-        // need to perform microtask checkpoint.
-        if (res === undefined) {
-          break;
-        }
-
-        op_run_microtasks();
-        // If callback returned `true` then it has no more work to do, stop
-        // calling it then.
-        if (res === true) {
-          break;
-        }
-      }
-    }
+    op_run_microtasks();
   }
 
   // Phase 2: Handle unhandled promise rejections.
@@ -238,9 +331,9 @@
   }
 
   function runImmediateCallbacks() {
-    for (let i = 0; i < immediateCallbacks.length; i++) {
+    if (immediateCallback !== null) {
       try {
-        immediateCallbacks[i]();
+        immediateCallback();
       } catch (e) {
         reportExceptionCallback(e);
       }
@@ -710,8 +803,10 @@
     },
     getLeakTraceForPromise: (promise) =>
       op_leak_tracing_get(0, promise[promiseIdSymbol]),
-    setMacrotaskCallback,
-    setNextTickCallback,
+    queueNextTick,
+    processTicksAndRejections,
+    runNextTicks,
+    setTickHook,
     setImmediateCallback,
     runMicrotasks: () => op_run_microtasks(),
     hasTickScheduled: () => op_has_tick_scheduled(),

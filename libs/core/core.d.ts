@@ -145,22 +145,44 @@ export namespace core {
     cb: (source: any, rid: number) => void,
   ): void;
 
+  /** Tick object enqueued via queueNextTick. */
+  interface TickObject {
+    callback: (...args: any[]) => void;
+    args: any[] | undefined;
+    snapshot: any;
+    [key: string]: any;
+  }
+
   /**
-   * Set a callback that will be called after resolving ops and before resolving
-   * macrotasks.
+   * Enqueue a tick object to the nextTick queue.
+   * The object must have { callback, args, snapshot } and may contain
+   * additional fields (e.g. asyncId for Node async hooks).
    */
-  function setNextTickCallback(
-    cb: () => void,
+  function queueNextTick(tickObject: TickObject): void;
+
+  /** Drain the nextTick queue, running all enqueued tick callbacks. */
+  function processTicksAndRejections(): void;
+
+  /** Run microtasks, then drain nextTick queue if ticks are scheduled. */
+  function runNextTicks(): void;
+
+  /**
+   * Set a hook called for each tick object during drain.
+   * Called with (tock, isBefore) — isBefore=true before the callback,
+   * false in the finally block.
+   */
+  function setTickHook(
+    hook: ((tock: TickObject, isBefore: boolean) => void) | null,
   ): void;
 
   /** Check if there's a scheduled "next tick". */
-  function hasNextTickScheduled(): boolean;
+  function hasTickScheduled(): boolean;
 
   /** Set a value telling the runtime if there are "next ticks" scheduled */
-  function setHasNextTickScheduled(value: boolean): void;
+  function setHasTickScheduled(value: boolean): void;
 
-  /** Enqueue an immediate callback. Immediate callbacks always execute in
-   * the next timer phase.
+  /** Set the immediate callback. Only one callback can be set at a time.
+   * The callback executes in the next timer phase.
    */
   function setImmediateCallback(
     cb: () => void,
@@ -198,13 +220,6 @@ export namespace core {
 
   /** Gets the current timer depth. */
   function getTimerDepth(): number;
-
-  /**
-   * Set a callback that will be called after resolving ops and "next ticks".
-   */
-  function setMacrotaskCallback(
-    cb: () => boolean,
-  ): void;
 
   /**
    * Sets the unhandled promise rejection handler. The handler returns 'true' if the
