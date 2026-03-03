@@ -36,7 +36,6 @@ use super::RequestedModuleType;
 use super::loaders::ModuleLoadOptions;
 use super::module_map_data::ModuleMapData;
 use super::module_map_data::ModuleMapSnapshotData;
-use super::recursive_load::SideModuleKind;
 use crate::FastStaticString;
 use crate::JsRuntime;
 use crate::ModuleCodeBytes;
@@ -149,10 +148,7 @@ impl<F: Future + Unpin> TrackedFutures<F> {
   /// Polls the inner `FuturesUnordered`. When the result is not
   /// `Ready(Some(_))` (i.e., no more ready items), the pending flag is
   /// synced from the collection's emptiness.
-  fn poll_next_unpin(
-    &self,
-    cx: &mut Context,
-  ) -> Poll<Option<F::Output>> {
+  fn poll_next_unpin(&self, cx: &mut Context) -> Poll<Option<F::Output>> {
     let poll = self.futs.borrow_mut().poll_next_unpin(cx);
     if !matches!(poll, Poll::Ready(Some(_))) {
       self.pending.set(!self.futs.borrow().is_empty());
@@ -235,10 +231,8 @@ pub(crate) struct ModuleMap {
   pub(crate) source_mapper: Rc<RefCell<SourceMapper>>,
   exception_state: Rc<ExceptionState>,
   dynamic_import_map: RefCell<HashMap<ModuleLoadId, DynImportState>>,
-  preparing_dynamic_imports:
-    TrackedFutures<Pin<Box<PrepareLoadFuture>>>,
-  pending_dynamic_imports:
-    TrackedFutures<StreamFuture<RecursiveModuleLoad>>,
+  preparing_dynamic_imports: TrackedFutures<Pin<Box<PrepareLoadFuture>>>,
+  pending_dynamic_imports: TrackedFutures<StreamFuture<RecursiveModuleLoad>>,
   pending_dyn_mod_evaluations: TrackedVec<DynImportModEvaluate>,
   pending_tla_waiters:
     RefCell<HashMap<ModuleId, Vec<v8::Global<v8::PromiseResolver>>>>,
@@ -1281,26 +1275,6 @@ impl ModuleMap {
     self.data.borrow().info.get(id).map(|i| i.requests.clone())
   }
 
-  pub(crate) async fn load_main(
-    module_map_rc: Rc<ModuleMap>,
-    specifier: String,
-  ) -> Result<RecursiveModuleLoad, CoreError> {
-    let load = RecursiveModuleLoad::main(specifier, module_map_rc);
-    load.prepare().await?;
-    Ok(load)
-  }
-
-  pub(crate) async fn load_side(
-    module_map_rc: Rc<ModuleMap>,
-    specifier: String,
-    kind: SideModuleKind,
-    code: Option<String>,
-  ) -> Result<RecursiveModuleLoad, CoreError> {
-    let load = RecursiveModuleLoad::side(specifier, module_map_rc, kind, code);
-    load.prepare().await?;
-    Ok(load)
-  }
-
   // Initiate loading of a module graph imported using `import()`.
   #[allow(clippy::too_many_arguments)]
   pub(crate) fn load_dynamic_import(
@@ -1367,7 +1341,7 @@ impl ModuleMap {
     );
 
     self.dynamic_import_map.borrow_mut().insert(
-      load.id,
+      load.id(),
       DynImportState {
         resolver: resolver_handle,
         cped: cped_handle,
@@ -1375,10 +1349,14 @@ impl ModuleMap {
       },
     );
 
+    let load_id = load.id();
     let fut = match resolve_result {
-      Ok(_) => async move { (load.id, load.prepare().await.map(|()| load)) }
-        .boxed_local(),
-      Err(error) => async move { (load.id, Err(error)) }.boxed_local(),
+      Ok(_) => async move {
+        let mut load = load;
+        (load_id, load.prepare().await.map(|()| load))
+      }
+      .boxed_local(),
+      Err(error) => async move { (load_id, Err(error)) }.boxed_local(),
     };
 
     self.preparing_dynamic_imports.push(fut);
@@ -1728,7 +1706,9 @@ impl ModuleMap {
         promise: v8::Global::new(tc_scope, promise),
       };
 
-      self.pending_dyn_mod_evaluations.push(dyn_import_mod_evaluate);
+      self
+        .pending_dyn_mod_evaluations
+        .push(dyn_import_mod_evaluate);
     } else if tc_scope.has_terminated() || tc_scope.is_execution_terminating() {
       return Err(CoreErrorKind::EvaluateDynamicImportedModule.into_box());
     } else {
@@ -1761,11 +1741,7 @@ impl ModuleMap {
         v8::PromiseState::Rejected => {
           resolved_any = true;
           let exception = v8::Global::new(scope, promise.result(scope));
-          self.dynamic_import_reject(
-            scope,
-            eval.load_id,
-            exception.clone(),
-          );
+          self.dynamic_import_reject(scope, eval.load_id, exception.clone());
           self.reject_tla_waiters(scope, eval.module_id, exception);
         }
       }
@@ -1958,7 +1934,7 @@ impl ModuleMap {
     while let Poll::Ready(Some((maybe_result, mut load))) =
       self.pending_dynamic_imports.poll_next_unpin(cx)
     {
-      let dyn_import_id = load.id;
+      let dyn_import_id = load.id();
 
       match maybe_result {
         Some(Ok((request, info))) => {
@@ -2002,7 +1978,7 @@ impl ModuleMap {
           match state.phase {
             ModuleImportPhase::Defer | ModuleImportPhase::Evaluation => {
               let module_id =
-                load.root_module_id.expect("Root module should be loaded");
+                load.root_module_id().expect("Root module should be loaded");
               let result = self.instantiate_module(scope, module_id);
               if let Err(exception) = result {
                 self.dynamic_import_reject(scope, dyn_import_id, exception);
@@ -2015,7 +1991,9 @@ impl ModuleMap {
               )?;
             }
             ModuleImportPhase::Source => {
-              let module_reference = load.root_module_reference.as_ref().expect("Root module reference had to have been resolved to get here.");
+              let module_reference = load.root_module_reference().expect(
+                "Root module reference had to have been resolved to get here.",
+              );
               let key = ModuleSourceKey::from_reference(module_reference);
               let source = {
                 let data = self.data.borrow();
