@@ -93,6 +93,12 @@
       "windows": false,
       "reason": "testing private benchmark utility"
     },
+    "parallel/test-blob-createobjecturl.js": {
+      "darwin": false,
+      "linux": false,
+      "windows": false,
+      "reason": "URL.createObjectURL does not throw ERR_INVALID_ARG_TYPE for non-Blob arguments"
+    },
     "parallel/test-btoa-atob.js": {},
     "parallel/test-buffer-alloc.js": {},
     "parallel/test-buffer-arraybuffer.js": {},
@@ -543,6 +549,7 @@
     "parallel/test-fs-long-path.js": {},
     "parallel/test-fs-make-callback.js": {},
     "parallel/test-fs-makeStatsCallback.js": {},
+    "parallel/test-fs-mkdir.js": {},
     "parallel/test-fs-mkdtemp-prefix-check.js": {},
     "parallel/test-fs-mkdtemp.js": {},
     "parallel/test-fs-open-flags.js": {},
@@ -1081,6 +1088,8 @@
     "parallel/test-process-ppid.js": {},
     "parallel/test-process-really-exit.js": {},
     "parallel/test-process-release.js": {},
+    "parallel/test-process-umask-mask.js": {},
+    "parallel/test-process-umask.js": {},
     "parallel/test-process-uptime.js": {},
     "parallel/test-process-warning.js": {},
     "parallel/test-promise-handled-rejection-no-warning.js": {},

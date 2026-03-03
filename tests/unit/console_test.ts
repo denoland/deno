@@ -1856,6 +1856,56 @@ Deno.test(function consoleTable() {
 `,
     );
   });
+  // console.table with iterators (https://github.com/denoland/deno/issues/20725)
+  mockConsole((console, out) => {
+    console.table(
+      new Map([[1, 1], [2, 2], [3, 3]]).entries(),
+    );
+    assertEquals(
+      stripAnsiCode(out.toString()),
+      `\
+┌────────────┬───┬───┐
+│ (iter idx) │ 0 │ 1 │
+├────────────┼───┼───┤
+│          0 │ 1 │ 1 │
+│          1 │ 2 │ 2 │
+│          2 │ 3 │ 3 │
+└────────────┴───┴───┘
+`,
+    );
+  });
+  mockConsole((console, out) => {
+    console.table(
+      new Map([[1, 1], [2, 2], [3, 3]]).values(),
+    );
+    assertEquals(
+      stripAnsiCode(out.toString()),
+      `\
+┌────────────┬────────┐
+│ (iter idx) │ Values │
+├────────────┼────────┤
+│          0 │      1 │
+│          1 │      2 │
+│          2 │      3 │
+└────────────┴────────┘
+`,
+    );
+  });
+  mockConsole((console, out) => {
+    console.table(new Set([1, 2, 3]).values());
+    assertEquals(
+      stripAnsiCode(out.toString()),
+      `\
+┌────────────┬────────┐
+│ (iter idx) │ Values │
+├────────────┼────────┤
+│          0 │      1 │
+│          1 │      2 │
+│          2 │      3 │
+└────────────┴────────┘
+`,
+    );
+  });
 });
 
 // console.log(Error) test
