@@ -99,7 +99,10 @@ import {
   Pipe,
   PipeConnectWrap,
 } from "ext:deno_node/internal_binding/pipe_wrap.ts";
-import { ShutdownWrap, kUseNativeWrap } from "ext:deno_node/internal_binding/stream_wrap.ts";
+import {
+  kUseNativeWrap,
+  ShutdownWrap,
+} from "ext:deno_node/internal_binding/stream_wrap.ts";
 import assert from "node:assert";
 import { isWindows } from "ext:deno_node/_util/os.ts";
 import { ADDRCONFIG, lookup as dnsLookup } from "node:dns";
@@ -1236,8 +1239,7 @@ export function Socket(options) {
   this[kUseNativeWrap] = options[kUseNativeWrap] || false;
 
   const errorStack = new Error().stack;
-  this._needsSockInitWorkaround =
-    options.handle?.ipc !== true &&
+  this._needsSockInitWorkaround = options.handle?.ipc !== true &&
     pkgsNeedsSockInitWorkaround.some((pkg) => errorStack?.includes(pkg));
   if (this._needsSockInitWorkaround) {
     this.pause();
@@ -1473,10 +1475,9 @@ Object.defineProperty(Socket.prototype, "bytesWritten", {
     }
 
     for (const el of writableBuffer) {
-      bytes +=
-        el.chunk instanceof Buffer
-          ? el.chunk.length
-          : Buffer.byteLength(el.chunk, el.encoding);
+      bytes += el.chunk instanceof Buffer
+        ? el.chunk.length
+        : Buffer.byteLength(el.chunk, el.encoding);
     }
 
     if (Array.isArray(data)) {

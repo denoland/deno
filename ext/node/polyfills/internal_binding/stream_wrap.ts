@@ -365,8 +365,8 @@ export class LibuvStreamWrap extends HandleWrap {
     const ridBefore = this[kStreamBaseField]![internalRidSymbol];
     try {
       if (this[kStreamBaseField]![_readWithCancelHandle]) {
-        const { cancelHandle, nread: p } =
-          this[kStreamBaseField]![_readWithCancelHandle](buf);
+        const { cancelHandle, nread: p } = this[kStreamBaseField]!
+          [_readWithCancelHandle](buf);
         if (cancelHandle) {
           this.cancelHandle = cancelHandle;
         }
