@@ -1,5 +1,9 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+// WASI requires direct filesystem access for host operations.
+// The FileSystem trait doesn't provide the low-level primitives needed here.
+#![allow(clippy::disallowed_methods)]
+
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::io::Read;
@@ -835,7 +839,7 @@ impl WasiContext {
     let mut inner = self.inner.borrow_mut();
     match inner.get_fd_mut(fd) {
       Some(FdEntry::File { file, .. }) => {
-        match file.seek(SeekFrom::Current(0)) {
+        match file.stream_position() {
           Ok(pos) => {
             if write_u64(memory, offset_ptr, pos).is_none() {
               return ERRNO_FAULT;
