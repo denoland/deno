@@ -1883,8 +1883,12 @@ impl ModuleMap {
     scope.perform_microtask_checkpoint();
   }
 
-  /// Poll for progress in the module loading logic. Note that this takes a waker but
-  /// doesn't act like a normal polling method.
+  /// Drain all ready module loading work: preparing dynamic imports,
+  /// loading dynamic imports, evaluating them, and flushing code cache
+  /// futures. Loops until no more progress can be made.
+  ///
+  /// The waker from `cx` is registered so the event loop is woken when
+  /// any module future makes progress.
   pub(crate) fn poll_progress(
     &self,
     cx: &mut Context,
@@ -1916,14 +1920,9 @@ impl ModuleMap {
     while has_evaluated {
       has_evaluated = false;
       loop {
-        let poll_imports = self.poll_prepare_dyn_imports(cx, scope);
-        assert!(poll_imports.is_ready());
-
-        let poll_imports = self.poll_dyn_imports(cx, scope)?;
-        assert!(poll_imports.is_ready());
-
-        let poll_code_cache_ready = self.poll_code_cache_ready(cx)?;
-        assert!(poll_code_cache_ready.is_ready());
+        self.drain_prepare_dyn_imports(cx, scope);
+        self.drain_dyn_imports(cx, scope)?;
+        self.drain_code_cache_ready(cx);
 
         if self.evaluate_dyn_imports(scope) {
           has_evaluated = true;
@@ -1936,13 +1935,15 @@ impl ModuleMap {
     Ok(())
   }
 
-  fn poll_prepare_dyn_imports(
+  /// Drain all ready preparing-dynamic-import futures, moving successful
+  /// loads into `pending_dynamic_imports` and rejecting failures.
+  fn drain_prepare_dyn_imports(
     &self,
     cx: &mut Context,
     scope: &mut v8::PinScope,
-  ) -> Poll<()> {
+  ) {
     if !self.preparing_dynamic_imports.is_pending() {
-      return Poll::Ready(());
+      return;
     }
 
     loop {
@@ -1963,22 +1964,22 @@ impl ModuleMap {
             self.dynamic_import_reject(scope, dyn_import_id, exception);
           }
         }
-        // Continue polling for more prepared dynamic imports.
         continue;
       }
 
-      // There are no active dynamic import loads, or none are ready.
-      return Poll::Ready(());
+      return;
     }
   }
 
-  fn poll_dyn_imports(
+  /// Drain all ready pending-dynamic-import streams, registering loaded
+  /// modules and instantiating/evaluating completed imports.
+  fn drain_dyn_imports(
     &self,
     cx: &mut Context,
     scope: &mut v8::PinScope,
-  ) -> Poll<Result<(), CoreError>> {
+  ) -> Result<(), CoreError> {
     if !self.pending_dynamic_imports.is_pending() {
-      return Poll::Ready(Ok(()));
+      return Ok(());
     }
 
     loop {
@@ -2072,28 +2073,19 @@ impl ModuleMap {
         continue;
       }
 
-      // There are no active dynamic import loads, or none are ready.
-      return Poll::Ready(Ok(()));
+      return Ok(());
     }
   }
 
-  fn poll_code_cache_ready(
-    &self,
-    cx: &mut Context,
-  ) -> Poll<Result<(), CoreError>> {
+  /// Drain all ready code-cache futures.
+  fn drain_code_cache_ready(&self, cx: &mut Context) {
     if !self.code_cache_ready_futs.is_pending() {
-      return Poll::Ready(Ok(()));
+      return;
     }
 
-    loop {
-      let poll_result = self.code_cache_ready_futs.poll_next_unpin(cx);
-
-      if let Poll::Ready(Some(_)) = poll_result {
-        continue;
-      }
-
-      return Poll::Ready(Ok(()));
-    }
+    while let Poll::Ready(Some(_)) =
+      self.code_cache_ready_futs.poll_next_unpin(cx)
+    {}
   }
 
   pub(crate) fn get_module<'s, 'i>(
