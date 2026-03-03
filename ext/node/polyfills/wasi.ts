@@ -5,12 +5,17 @@
 
 import { primordials } from "ext:core/mod.js";
 import { WasiContext } from "ext:core/ops";
+import {
+  ERR_INVALID_ARG_TYPE,
+  ERR_INVALID_ARG_VALUE,
+  ERR_WASI_ALREADY_STARTED,
+  ERR_WASI_NOT_STARTED,
+} from "ext:deno_node/internal/errors.ts";
 
 const {
   ArrayIsArray,
-  Error,
+  NumberIsInteger,
   ObjectEntries,
-  TypeError,
 } = primordials;
 
 class WASIProcExit {
@@ -20,6 +25,48 @@ class WASIProcExit {
   }
 }
 
+function validateObject(
+  value: unknown,
+  name: string,
+): asserts value is object {
+  if (value === null || typeof value !== "object" || ArrayIsArray(value)) {
+    throw new ERR_INVALID_ARG_TYPE(name, "object", value);
+  }
+}
+
+function validateArray(value: unknown, name: string): asserts value is unknown[] {
+  if (!ArrayIsArray(value)) {
+    throw new ERR_INVALID_ARG_TYPE(name, "Array", value);
+  }
+}
+
+function validateBoolean(
+  value: unknown,
+  name: string,
+): asserts value is boolean {
+  if (typeof value !== "boolean") {
+    throw new ERR_INVALID_ARG_TYPE(name, "boolean", value);
+  }
+}
+
+function validateInt32(value: unknown, name: string): asserts value is number {
+  if (!NumberIsInteger(value)) {
+    throw new ERR_INVALID_ARG_TYPE(name, "int32", value);
+  }
+}
+
+function validateString(
+  value: unknown,
+  name: string,
+): asserts value is string {
+  if (typeof value !== "string") {
+    throw new ERR_INVALID_ARG_TYPE(name, "string", value);
+  }
+}
+
+// deno-lint-ignore no-explicit-any
+type WasiOptions = any;
+
 class WASI {
   #ctx;
   #version: string;
@@ -27,28 +74,37 @@ class WASI {
   #returnOnExit: boolean;
   #wasiImport;
 
-  constructor(options: {
-    args?: string[];
-    env?: Record<string, string>;
-    preopens?: Record<string, string>;
-    returnOnExit?: boolean;
-    stdin?: number;
-    stdout?: number;
-    stderr?: number;
-    version: string;
-  } = { version: "preview1" }) {
+  constructor(options?: WasiOptions) {
+    // Validate options is an object (if provided)
+    if (options === undefined) {
+      throw new ERR_INVALID_ARG_TYPE("options.version", "string", undefined);
+    }
+    validateObject(options, "options");
+
+    // Validate version
+    if (options.version === undefined) {
+      throw new ERR_INVALID_ARG_TYPE("options.version", "string", undefined);
+    }
+    validateString(options.version, "options.version");
     if (options.version !== "preview1" && options.version !== "unstable") {
-      throw new TypeError(
-        `"${options.version}" is not a valid WASI version. Supported versions: "preview1", "unstable"`,
+      throw new ERR_INVALID_ARG_VALUE(
+        "options.version",
+        options.version,
+        'must be "preview1" or "unstable"',
       );
     }
 
+    // Validate args
     const args = options.args ?? [];
-    if (!ArrayIsArray(args)) {
-      throw new TypeError("options.args must be an array");
+    if (options.args !== undefined) {
+      validateArray(options.args, "options.args");
     }
 
+    // Validate env
     const envObj = options.env ?? {};
+    if (options.env !== undefined) {
+      validateObject(options.env, "options.env");
+    }
     const envPairs: [string, string][] = [];
     for (const [key, value] of ObjectEntries(envObj)) {
       if (typeof value === "string") {
@@ -56,6 +112,10 @@ class WASI {
       }
     }
 
+    // Validate preopens
+    if (options.preopens !== undefined) {
+      validateObject(options.preopens, "options.preopens");
+    }
     const preopens: [string, string][] = [];
     if (options.preopens) {
       for (const [virtualPath, realPath] of ObjectEntries(options.preopens)) {
@@ -63,6 +123,22 @@ class WASI {
           preopens.push([virtualPath, realPath]);
         }
       }
+    }
+
+    // Validate returnOnExit
+    if (options.returnOnExit !== undefined) {
+      validateBoolean(options.returnOnExit, "options.returnOnExit");
+    }
+
+    // Validate stdin/stdout/stderr
+    if (options.stdin !== undefined) {
+      validateInt32(options.stdin, "options.stdin");
+    }
+    if (options.stdout !== undefined) {
+      validateInt32(options.stdout, "options.stdout");
+    }
+    if (options.stderr !== undefined) {
+      validateInt32(options.stderr, "options.stderr");
     }
 
     const stdinFd = options.stdin ?? 0;
@@ -493,7 +569,7 @@ class WASI {
 
   #getMemoryBuffer(): Uint8Array {
     if (!this.#memory) {
-      throw new Error("WASI instance has not been started");
+      throw new ERR_WASI_NOT_STARTED();
     }
     return new Uint8Array(this.#memory.buffer);
   }
@@ -509,22 +585,49 @@ class WASI {
     return { wasi_snapshot_preview1: this.#wasiImport };
   }
 
-  start(instance: WebAssembly.Instance): number {
+  start(instance?: WebAssembly.Instance): number {
     if (this.#started) {
-      throw new Error("WASI instance has already started");
+      throw new ERR_WASI_ALREADY_STARTED();
+    }
+
+    // Validate instance argument
+    if (instance === undefined || instance === null) {
+      throw new ERR_INVALID_ARG_TYPE("instance", "object", instance);
+    }
+    if (typeof instance !== "object") {
+      throw new ERR_INVALID_ARG_TYPE("instance", "object", instance);
     }
 
     const exports = instance.exports;
-    if (typeof exports._initialize === "function") {
-      throw new Error(
-        "This instance contains a _initialize export and should be initialized with initialize(), not start()",
+    if (exports === null || typeof exports !== "object") {
+      throw new ERR_INVALID_ARG_TYPE("instance.exports", "object", exports);
+    }
+
+    // Validate _start export
+    if (typeof exports._start !== "function") {
+      throw new ERR_INVALID_ARG_TYPE(
+        "instance.exports._start",
+        "function",
+        exports._start,
       );
     }
-    if (typeof exports._start !== "function") {
-      throw new Error("Instance does not have a _start export");
+
+    // Validate _initialize is not present
+    if (exports._initialize !== undefined) {
+      throw new ERR_INVALID_ARG_TYPE(
+        "instance.exports._initialize",
+        "undefined",
+        exports._initialize,
+      );
     }
+
+    // Validate memory export
     if (!(exports.memory instanceof WebAssembly.Memory)) {
-      throw new TypeError("Instance must export a memory named 'memory'");
+      throw new ERR_INVALID_ARG_TYPE(
+        "instance.exports.memory",
+        "WebAssembly.Memory",
+        exports.memory,
+      );
     }
 
     this.#memory = exports.memory;
@@ -542,19 +645,52 @@ class WASI {
     return 0;
   }
 
-  initialize(instance: WebAssembly.Instance): void {
+  initialize(instance?: WebAssembly.Instance): void {
     if (this.#started) {
-      throw new Error("WASI instance has already started");
+      throw new ERR_WASI_ALREADY_STARTED();
+    }
+
+    // Validate instance argument
+    if (instance === undefined || instance === null) {
+      throw new ERR_INVALID_ARG_TYPE("instance", "object", instance);
+    }
+    if (typeof instance !== "object") {
+      throw new ERR_INVALID_ARG_TYPE("instance", "object", instance);
     }
 
     const exports = instance.exports;
-    if (typeof exports._start === "function") {
-      throw new Error(
-        "This instance contains a _start export and should be started with start(), not initialize()",
+    if (exports === null || typeof exports !== "object") {
+      throw new ERR_INVALID_ARG_TYPE("instance.exports", "object", exports);
+    }
+
+    // Validate _initialize export if present
+    if (
+      exports._initialize !== undefined &&
+      typeof exports._initialize !== "function"
+    ) {
+      throw new ERR_INVALID_ARG_TYPE(
+        "instance.exports._initialize",
+        "function",
+        exports._initialize,
       );
     }
+
+    // Validate _start is not present
+    if (exports._start !== undefined) {
+      throw new ERR_INVALID_ARG_TYPE(
+        "instance.exports._start",
+        "undefined",
+        exports._start,
+      );
+    }
+
+    // Validate memory export
     if (!(exports.memory instanceof WebAssembly.Memory)) {
-      throw new TypeError("Instance must export a memory named 'memory'");
+      throw new ERR_INVALID_ARG_TYPE(
+        "instance.exports.memory",
+        "WebAssembly.Memory",
+        exports.memory,
+      );
     }
 
     this.#memory = exports.memory;
@@ -570,13 +706,15 @@ class WASI {
     options?: { memory?: WebAssembly.Memory },
   ): void {
     if (this.#started) {
-      throw new Error("WASI instance has already started");
+      throw new ERR_WASI_ALREADY_STARTED();
     }
 
     const memory = options?.memory ?? instance.exports.memory;
     if (!(memory instanceof WebAssembly.Memory)) {
-      throw new TypeError(
-        "A valid WebAssembly.Memory must be provided or exported",
+      throw new ERR_INVALID_ARG_TYPE(
+        "memory",
+        "WebAssembly.Memory",
+        memory,
       );
     }
 
