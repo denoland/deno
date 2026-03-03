@@ -292,10 +292,7 @@ impl DOMPoint {
   }
 
   #[setter]
-  fn x(
-    &self,
-    #[webidl] value: UnrestrictedDouble,
-  ) {
+  fn x(&self, #[webidl] value: UnrestrictedDouble) {
     self.base.inner.borrow_mut().x = *value
   }
 
@@ -306,10 +303,7 @@ impl DOMPoint {
   }
 
   #[setter]
-  fn y(
-    &self,
-    #[webidl] value: UnrestrictedDouble,
-  ) {
+  fn y(&self, #[webidl] value: UnrestrictedDouble) {
     self.base.inner.borrow_mut().y = *value
   }
 
@@ -320,10 +314,7 @@ impl DOMPoint {
   }
 
   #[setter]
-  fn z(
-    &self,
-    #[webidl] value: UnrestrictedDouble,
-  ) {
+  fn z(&self, #[webidl] value: UnrestrictedDouble) {
     self.base.inner.borrow_mut().z = *value
   }
 
@@ -334,10 +325,7 @@ impl DOMPoint {
   }
 
   #[setter]
-  fn w(
-    &self,
-    #[webidl] value: UnrestrictedDouble,
-  ) {
+  fn w(&self, #[webidl] value: UnrestrictedDouble) {
     self.base.inner.borrow_mut().w = *value
   }
 }
@@ -562,10 +550,7 @@ impl DOMRect {
   }
 
   #[setter]
-  fn x(
-    &self,
-    #[webidl] value: UnrestrictedDouble,
-  ) {
+  fn x(&self, #[webidl] value: UnrestrictedDouble) {
     self.base.x.set(*value)
   }
 
@@ -576,10 +561,7 @@ impl DOMRect {
   }
 
   #[setter]
-  fn y(
-    &self,
-    #[webidl] value: UnrestrictedDouble,
-  ) {
+  fn y(&self, #[webidl] value: UnrestrictedDouble) {
     self.base.y.set(*value)
   }
 
@@ -590,10 +572,7 @@ impl DOMRect {
   }
 
   #[setter]
-  fn width(
-    &self,
-    #[webidl] value: UnrestrictedDouble,
-  ) {
+  fn width(&self, #[webidl] value: UnrestrictedDouble) {
     self.base.width.set(*value)
   }
 
@@ -604,10 +583,7 @@ impl DOMRect {
   }
 
   #[setter]
-  fn height(
-    &self,
-    #[webidl] value: UnrestrictedDouble,
-  ) {
+  fn height(&self, #[webidl] value: UnrestrictedDouble) {
     self.base.height.set(*value)
   }
 }
@@ -620,7 +596,6 @@ pub struct DOMQuadInit {
   p3: DOMPointInit,
   p4: DOMPointInit,
 }
-
 
 pub struct DOMQuad {
   p1: v8::TracedReference<v8::Object>,
@@ -2207,10 +2182,7 @@ impl DOMMatrix {
   }
 
   #[setter]
-  fn a(
-    &self,
-    #[webidl] value: UnrestrictedDouble,
-  ) {
+  fn a(&self, #[webidl] value: UnrestrictedDouble) {
     self.base.inner.borrow_mut()[INDEX_A] = *value;
   }
 
@@ -2221,10 +2193,7 @@ impl DOMMatrix {
   }
 
   #[setter]
-  fn b(
-    &self,
-    #[webidl] value: UnrestrictedDouble,
-  ) {
+  fn b(&self, #[webidl] value: UnrestrictedDouble) {
     self.base.inner.borrow_mut()[INDEX_B] = *value;
   }
 
@@ -2235,10 +2204,7 @@ impl DOMMatrix {
   }
 
   #[setter]
-  fn c(
-    &self,
-    #[webidl] value: UnrestrictedDouble,
-  ) {
+  fn c(&self, #[webidl] value: UnrestrictedDouble) {
     self.base.inner.borrow_mut()[INDEX_C] = *value;
   }
 
@@ -2249,10 +2215,7 @@ impl DOMMatrix {
   }
 
   #[setter]
-  fn d(
-    &self,
-    #[webidl] value: UnrestrictedDouble,
-  ) {
+  fn d(&self, #[webidl] value: UnrestrictedDouble) {
     self.base.inner.borrow_mut()[INDEX_D] = *value;
   }
 
@@ -2263,10 +2226,7 @@ impl DOMMatrix {
   }
 
   #[setter]
-  fn e(
-    &self,
-    #[webidl] value: UnrestrictedDouble,
-  ) {
+  fn e(&self, #[webidl] value: UnrestrictedDouble) {
     self.base.inner.borrow_mut()[INDEX_E] = *value;
   }
 
@@ -2277,10 +2237,7 @@ impl DOMMatrix {
   }
 
   #[setter]
-  fn f(
-    &self,
-    #[webidl] value: UnrestrictedDouble,
-  ) {
+  fn f(&self, #[webidl] value: UnrestrictedDouble) {
     self.base.inner.borrow_mut()[INDEX_F] = *value;
   }
 
@@ -2291,10 +2248,7 @@ impl DOMMatrix {
   }
 
   #[setter]
-  fn m11(
-    &self,
-    #[webidl] value: UnrestrictedDouble,
-  ) {
+  fn m11(&self, #[webidl] value: UnrestrictedDouble) {
     self.base.inner.borrow_mut()[INDEX_M11] = *value;
   }
 
@@ -2305,10 +2259,7 @@ impl DOMMatrix {
   }
 
   #[setter]
-  fn m12(
-    &self,
-    #[webidl] value: UnrestrictedDouble,
-  ) {
+  fn m12(&self, #[webidl] value: UnrestrictedDouble) {
     self.base.inner.borrow_mut()[INDEX_M12] = *value;
   }
 
@@ -2319,10 +2270,7 @@ impl DOMMatrix {
   }
 
   #[setter]
-  fn m13(
-    &self,
-    #[webidl] value: UnrestrictedDouble,
-  ) {
+  fn m13(&self, #[webidl] value: UnrestrictedDouble) {
     let ro = &self.base;
     ro.inner.borrow_mut()[INDEX_M13] = *value;
     if *value != 0.0 {
@@ -2337,10 +2285,7 @@ impl DOMMatrix {
   }
 
   #[setter]
-  fn m14(
-    &self,
-    #[webidl] value: UnrestrictedDouble,
-  ) {
+  fn m14(&self, #[webidl] value: UnrestrictedDouble) {
     let ro = &self.base;
     ro.inner.borrow_mut()[INDEX_M14] = *value;
     if *value != 0.0 {
@@ -2355,10 +2300,7 @@ impl DOMMatrix {
   }
 
   #[setter]
-  fn m21(
-    &self,
-    #[webidl] value: UnrestrictedDouble,
-  ) {
+  fn m21(&self, #[webidl] value: UnrestrictedDouble) {
     self.base.inner.borrow_mut()[INDEX_M21] = *value;
   }
 
@@ -2369,10 +2311,7 @@ impl DOMMatrix {
   }
 
   #[setter]
-  fn m22(
-    &self,
-    #[webidl] value: UnrestrictedDouble,
-  ) {
+  fn m22(&self, #[webidl] value: UnrestrictedDouble) {
     self.base.inner.borrow_mut()[INDEX_M22] = *value;
   }
 
@@ -2383,10 +2322,7 @@ impl DOMMatrix {
   }
 
   #[setter]
-  fn m23(
-    &self,
-    #[webidl] value: UnrestrictedDouble,
-  ) {
+  fn m23(&self, #[webidl] value: UnrestrictedDouble) {
     let ro = &self.base;
     ro.inner.borrow_mut()[INDEX_M23] = *value;
     if *value != 0.0 {
@@ -2401,10 +2337,7 @@ impl DOMMatrix {
   }
 
   #[setter]
-  fn m24(
-    &self,
-    #[webidl] value: UnrestrictedDouble,
-  ) {
+  fn m24(&self, #[webidl] value: UnrestrictedDouble) {
     let ro = &self.base;
     ro.inner.borrow_mut()[INDEX_M24] = *value;
     if *value != 0.0 {
@@ -2419,10 +2352,7 @@ impl DOMMatrix {
   }
 
   #[setter]
-  fn m31(
-    &self,
-    #[webidl] value: UnrestrictedDouble,
-  ) {
+  fn m31(&self, #[webidl] value: UnrestrictedDouble) {
     let ro = &self.base;
     ro.inner.borrow_mut()[INDEX_M31] = *value;
     if *value != 0.0 {
@@ -2437,10 +2367,7 @@ impl DOMMatrix {
   }
 
   #[setter]
-  fn m32(
-    &self,
-    #[webidl] value: UnrestrictedDouble,
-  ) {
+  fn m32(&self, #[webidl] value: UnrestrictedDouble) {
     let ro = &self.base;
     ro.inner.borrow_mut()[INDEX_M32] = *value;
     if *value != 0.0 {
@@ -2455,10 +2382,7 @@ impl DOMMatrix {
   }
 
   #[setter]
-  fn m33(
-    &self,
-    #[webidl] value: UnrestrictedDouble,
-  ) {
+  fn m33(&self, #[webidl] value: UnrestrictedDouble) {
     let ro = &self.base;
     ro.inner.borrow_mut()[INDEX_M33] = *value;
     if *value != 1.0 {
@@ -2473,10 +2397,7 @@ impl DOMMatrix {
   }
 
   #[setter]
-  fn m34(
-    &self,
-    #[webidl] value: UnrestrictedDouble,
-  ) {
+  fn m34(&self, #[webidl] value: UnrestrictedDouble) {
     let ro = &self.base;
     ro.inner.borrow_mut()[INDEX_M34] = *value;
     if *value != 0.0 {
@@ -2491,10 +2412,7 @@ impl DOMMatrix {
   }
 
   #[setter]
-  fn m41(
-    &self,
-    #[webidl] value: UnrestrictedDouble,
-  ) {
+  fn m41(&self, #[webidl] value: UnrestrictedDouble) {
     self.base.inner.borrow_mut()[INDEX_M41] = *value;
   }
 
@@ -2505,10 +2423,7 @@ impl DOMMatrix {
   }
 
   #[setter]
-  fn m42(
-    &self,
-    #[webidl] value: UnrestrictedDouble,
-  ) {
+  fn m42(&self, #[webidl] value: UnrestrictedDouble) {
     self.base.inner.borrow_mut()[INDEX_M42] = *value;
   }
 
@@ -2519,10 +2434,7 @@ impl DOMMatrix {
   }
 
   #[setter]
-  fn m43(
-    &self,
-    #[webidl] value: UnrestrictedDouble,
-  ) {
+  fn m43(&self, #[webidl] value: UnrestrictedDouble) {
     let ro = &self.base;
     ro.inner.borrow_mut()[INDEX_M43] = *value;
     if *value != 0.0 {
@@ -2537,10 +2449,7 @@ impl DOMMatrix {
   }
 
   #[setter]
-  fn m44(
-    &self,
-    #[webidl] value: UnrestrictedDouble,
-  ) {
+  fn m44(&self, #[webidl] value: UnrestrictedDouble) {
     let ro = &self.base;
     ro.inner.borrow_mut()[INDEX_M44] = *value;
     if *value != 1.0 {
@@ -2583,7 +2492,9 @@ impl DOMMatrix {
     if origin_x == 0.0 && origin_y == 0.0 && origin_z == 0.0 {
       self.base.scale_without_origin_self_inner(sx, sy, sz);
     } else {
-      self.base.scale_with_origin_self_inner(sx, sy, sz, origin_x, origin_y, origin_z);
+      self
+        .base
+        .scale_with_origin_self_inner(sx, sy, sz, origin_x, origin_y, origin_z);
     }
     this
   }
@@ -2603,7 +2514,9 @@ impl DOMMatrix {
     let origin_y = *origin_y.unwrap_or(UnrestrictedDouble(0.0));
     let origin_z = *origin_z.unwrap_or(UnrestrictedDouble(0.0));
     if origin_x == 0.0 && origin_y == 0.0 && origin_z == 0.0 {
-      self.base.scale_without_origin_self_inner(scale, scale, scale);
+      self
+        .base
+        .scale_without_origin_self_inner(scale, scale, scale);
     } else {
       self.base.scale_with_origin_self_inner(
         scale, scale, scale, origin_x, origin_y, origin_z,
@@ -2665,7 +2578,9 @@ impl DOMMatrix {
     let y = *y.unwrap_or(UnrestrictedDouble(0.0));
     let z = *z.unwrap_or(UnrestrictedDouble(0.0));
     let angle_deg = *angle_deg.unwrap_or(UnrestrictedDouble(0.0));
-    self.base.rotate_axis_angle_self_inner(x, y, z, angle_deg.to_radians());
+    self
+      .base
+      .rotate_axis_angle_self_inner(x, y, z, angle_deg.to_radians());
     this
   }
 

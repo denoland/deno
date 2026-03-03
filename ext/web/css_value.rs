@@ -12,6 +12,7 @@ use cssparser::match_ignore_ascii_case;
 #[derive(Debug, Eq, PartialEq)]
 pub enum CSSValueError {
   UnexpectedToken,
+  UnsupportedUnit,
   ContainsRelativeValues,
   NumericTypeMismatch,
   InvalidDimensions,
@@ -71,13 +72,16 @@ enum AngleUnit {
 }
 
 impl Angle {
+  const TURN_TO_DEG: f32 = 360.0;
+  const TURN_TO_GRAD: f32 = 400.0;
+
   pub fn to_degrees(&self) -> f32 {
     let value = self.value;
     match self.unit {
       AngleUnit::Deg => value,
-      AngleUnit::Grad => value * (360.0 / 400.0),
+      AngleUnit::Grad => value * (Self::TURN_TO_DEG / Self::TURN_TO_GRAD),
       AngleUnit::Rad => value.to_degrees(),
-      AngleUnit::Turn => value * 360.0,
+      AngleUnit::Turn => value * Self::TURN_TO_DEG,
     }
   }
 
@@ -85,7 +89,9 @@ impl Angle {
     let value = self.value;
     match self.unit {
       AngleUnit::Deg => value.to_radians(),
-      AngleUnit::Grad => (value * (360.0 / 400.0)).to_radians(),
+      AngleUnit::Grad => {
+        (value * (Self::TURN_TO_DEG / Self::TURN_TO_GRAD)).to_radians()
+      }
       AngleUnit::Rad => value,
       AngleUnit::Turn => value * f32::consts::TAU,
     }
@@ -324,6 +330,7 @@ impl NumericValue {
       }
       Token::Dimension { value, unit, .. } => {
         match_ignore_ascii_case! { &unit,
+          // https://www.w3.org/TR/css-values-4/#absolute-lengths
           "cm" => Ok(NumericValue::Length(Length { value: *value, unit: LengthUnit::Cm}).into()),
           "mm" => Ok(NumericValue::Length(Length { value: *value, unit: LengthUnit::Mm}).into()),
           "q" => Ok(NumericValue::Length(Length { value: *value, unit: LengthUnit::Q}).into()),
@@ -331,16 +338,23 @@ impl NumericValue {
           "pc" => Ok(NumericValue::Length(Length { value: *value, unit: LengthUnit::Pc}).into()),
           "pt" => Ok(NumericValue::Length(Length { value: *value, unit: LengthUnit::Pt}).into()),
           "px" => Ok(NumericValue::Length(Length { value: *value, unit: LengthUnit::Px}).into()),
-          "deg" => Ok(NumericValue::Angle(Angle { value: *value, unit: AngleUnit::Deg }).into()),
-          "grad" => Ok(NumericValue::Angle(Angle { value: *value, unit: AngleUnit::Grad }).into()),
-          "rad" => Ok(NumericValue::Angle(Angle { value: *value, unit: AngleUnit::Rad }).into()),
-          "turn" => Ok(NumericValue::Angle(Angle { value: *value, unit: AngleUnit::Turn }).into()),
           // https://www.w3.org/TR/css-values-4/#relative-lengths
           "em" | "rem" | "ex" | "rex" | "cap" | "rcap" | "ch" | "rch" | "ic" | "ric" | "lh" | "rlh" |
           "vw" | "svw" | "lvw" | "dvw" | "vh" | "svh" | "lvh" | "dvh" | "vi" | "svi" | "lvi" | "dvi" |
           "vb" | "svb" | "lvb" | "dvb" | "vmin" | "svmin" | "lvmin" | "dvmin" | "vmax" | "svmax" | "lvmax" | "dvmax" |
           // https://www.w3.org/TR/css-contain-3/#container-lengths
           "cqw" | "cqh" | "cqi" | "cqb" | "cqmin" | "cqmax" => Err(input.new_custom_error(CSSValueError::ContainsRelativeValues)),
+          // https://www.w3.org/TR/css-values-4/#angles
+          "deg" => Ok(NumericValue::Angle(Angle { value: *value, unit: AngleUnit::Deg }).into()),
+          "grad" => Ok(NumericValue::Angle(Angle { value: *value, unit: AngleUnit::Grad }).into()),
+          "rad" => Ok(NumericValue::Angle(Angle { value: *value, unit: AngleUnit::Rad }).into()),
+          "turn" => Ok(NumericValue::Angle(Angle { value: *value, unit: AngleUnit::Turn }).into()),
+          // https://www.w3.org/TR/css-values-4/#time
+          "s" | "ms" |
+          // https://www.w3.org/TR/css-values-4/#frequency
+          "hz" | "khz" |
+          // https://www.w3.org/TR/css-values-4/#resolution
+          "dpi" | "dpcm" | "dppx" | "x" => Err(input.new_custom_error(CSSValueError::UnsupportedUnit)),
           _ => Err(input.new_custom_error(CSSValueError::UnexpectedToken))
         }
       }
@@ -372,11 +386,20 @@ impl NumericValue {
           Ok(value)
         })
       }
-      Token::Ident(_ident) => {
+      Token::Ident(ident) => {
         if state.function_depth == 0 {
           return Err(input.new_custom_error(CSSValueError::UnexpectedToken));
         }
-        todo!("parse_leaf: ident")
+        match_ignore_ascii_case! { &ident,
+          // https://www.w3.org/TR/css-values-4/#calc-constants
+          "e" => Ok(NumericValue::Number(Number(f32::consts::E)).into()),
+          "pi" => Ok(NumericValue::Number(Number(f32::consts::PI)).into()),
+          // https://www.w3.org/TR/css-values-4/#calc-error-constants
+          "infinity" => Ok(NumericValue::Number(Number(f32::INFINITY)).into()),
+          "-infinity" => Ok(NumericValue::Number(Number(f32::NEG_INFINITY)).into()),
+          "nan" => Ok(NumericValue::Number(Number(f32::NAN)).into()),
+          _ => Err(input.new_custom_error(CSSValueError::UnexpectedToken))
+        }
       }
       _ => Err(input.new_custom_error(CSSValueError::UnexpectedToken)),
     }
@@ -425,7 +448,7 @@ impl NumericValue {
       }
     }
 
-    return Ok(lhs);
+    Ok(lhs)
   }
 
   fn parse_multiplicative_expression<'i, 't>(
@@ -459,7 +482,7 @@ impl NumericValue {
       }
     }
 
-    return Ok(lhs);
+    Ok(lhs)
   }
 }
 
@@ -472,7 +495,7 @@ mod tests {
   use super::*;
 
   #[test]
-  fn basic_zero() {
+  fn zero() {
     let mut input = ParserInput::new("0.0");
     let mut parser = Parser::new(&mut input);
     let result = NumericValue::parse(&mut parser);
@@ -480,7 +503,7 @@ mod tests {
   }
 
   #[test]
-  fn basic_number() {
+  fn number() {
     let mut input = ParserInput::new("3.14");
     let mut parser = Parser::new(&mut input);
     let result = NumericValue::parse(&mut parser);
@@ -488,7 +511,7 @@ mod tests {
   }
 
   #[test]
-  fn basic_length() {
+  fn length() {
     let mut input = ParserInput::new("-1px");
     let mut parser = Parser::new(&mut input);
     let result = NumericValue::parse(&mut parser);
@@ -502,7 +525,7 @@ mod tests {
   }
 
   #[test]
-  fn basic_angle() {
+  fn angle() {
     let mut input = ParserInput::new("180deg");
     let mut parser = Parser::new(&mut input);
     let result = NumericValue::parse(&mut parser);
@@ -516,7 +539,7 @@ mod tests {
   }
 
   #[test]
-  fn basic_percent() {
+  fn percent() {
     let mut input = ParserInput::new("10%");
     let mut parser = Parser::new(&mut input);
     let result = NumericValue::parse(&mut parser);
@@ -535,6 +558,47 @@ mod tests {
         unit: LengthUnit::Px
       }))
     );
+  }
+
+  #[test]
+  fn calc_const_e() {
+    let mut input = ParserInput::new("calc(e)");
+    let mut parser = Parser::new(&mut input);
+    let result = NumericValue::parse(&mut parser);
+    assert_eq!(result, Ok(NumericValue::Number(Number(f32::consts::E))));
+  }
+
+  #[test]
+  fn calc_const_pi() {
+    let mut input = ParserInput::new("calc(pi)");
+    let mut parser = Parser::new(&mut input);
+    let result = NumericValue::parse(&mut parser);
+    assert_eq!(result, Ok(NumericValue::Number(Number(f32::consts::PI))));
+  }
+
+  #[test]
+  fn calc_const_infinity() {
+    let mut input = ParserInput::new("calc(infinity)");
+    let mut parser = Parser::new(&mut input);
+    let result = NumericValue::parse(&mut parser);
+    assert_eq!(result, Ok(NumericValue::Number(Number(f32::INFINITY))));
+  }
+
+  #[test]
+  fn calc_const_neg_infinity() {
+    let mut input = ParserInput::new("calc(-infinity)");
+    let mut parser = Parser::new(&mut input);
+    let result = NumericValue::parse(&mut parser);
+    assert_eq!(result, Ok(NumericValue::Number(Number(f32::NEG_INFINITY))));
+  }
+
+  #[test]
+  fn calc_const_nan() {
+    let mut input = ParserInput::new("calc(nan)");
+    let mut parser = Parser::new(&mut input);
+    let result = NumericValue::parse(&mut parser);
+    let Ok(NumericValue::Number(Number(value))) = result else { panic!("expect number") };
+    assert!(value.is_nan());
   }
 
   #[test]
