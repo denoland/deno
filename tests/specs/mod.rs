@@ -261,7 +261,7 @@ struct StepMetaData {
 }
 
 pub fn main() {
-  if test_util::hash::should_skip_on_ci("specs", |hasher| {
+  let ci_hash = test_util::hash::check_ci_hash("specs", |hasher| {
     let tests = test_util::tests_path();
     hasher
       .hash_dir(tests.join("specs"))
@@ -271,7 +271,8 @@ pub fn main() {
       .hash_file(test_util::deno_exe_path())
       .hash_file(test_util::test_server_path())
       .hash_file(test_util::denort_exe_path());
-  }) {
+  });
+  if matches!(ci_hash, test_util::hash::CiHashStatus::Skip) {
     return;
   }
 
@@ -313,6 +314,9 @@ pub fn main() {
     },
     move |test| run_test(test, &flaky_test_tracker, &parallelism),
   );
+  if let test_util::hash::CiHashStatus::RunThenCommit(pending) = ci_hash {
+    pending.commit();
+  }
 }
 
 fn run_test(

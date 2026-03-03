@@ -20,6 +20,9 @@ use super::keys::RsaPssHashAlgorithm;
 use crate::digest::match_fixed_digest;
 use crate::digest::match_fixed_digest_with_oid;
 
+/// OpenSSL RSA_PKCS1_PSS_PADDING constant value.
+const RSA_PKCS1_PSS_PADDING: u32 = 6;
+
 fn dsa_signature<C: elliptic_curve::PrimeCurve>(
   encoding: u32,
   signature: ecdsa::Signature<C>,
@@ -86,12 +89,36 @@ pub enum KeyObjectHandlePrehashedSignAndVerifyError {
   DhKeyCannotBeUsedForVerification,
 }
 
+/// Constructs a PSS scheme for the given digest type and optional salt length.
+/// Used by both sign and verify operations on RSA keys with PSS padding.
+fn new_pss_scheme(
+  digest_type: &str,
+  pss_salt_length: Option<u32>,
+) -> Result<rsa::pss::Pss, KeyObjectHandlePrehashedSignAndVerifyError> {
+  let pss = match_fixed_digest_with_oid!(
+    digest_type,
+    fn <D>(algorithm: Option<RsaPssHashAlgorithm>) {
+      let _: Option<RsaPssHashAlgorithm> = algorithm;
+      if let Some(salt_length) = pss_salt_length {
+        rsa::pss::Pss::new_with_salt::<D>(salt_length as usize)
+      } else {
+        rsa::pss::Pss::new::<D>()
+      }
+    },
+    _ => {
+      return Err(KeyObjectHandlePrehashedSignAndVerifyError::DigestNotAllowedForRsaPssSignature(digest_type.to_string()));
+    }
+  );
+  Ok(pss)
+}
+
 impl KeyObjectHandle {
   pub fn sign_prehashed(
     &self,
     digest_type: &str,
     digest: &[u8],
     pss_salt_length: Option<u32>,
+    padding: Option<u32>,
     dsa_signature_encoding: u32,
   ) -> Result<Box<[u8]>, KeyObjectHandlePrehashedSignAndVerifyError> {
     let private_key = self
@@ -100,6 +127,14 @@ impl KeyObjectHandle {
 
     match private_key {
       AsymmetricPrivateKey::Rsa(key) => {
+        if padding == Some(RSA_PKCS1_PSS_PADDING) {
+          let pss = new_pss_scheme(digest_type, pss_salt_length)?;
+          let signature = pss
+            .sign(Some(&mut OsRng), key, digest)
+            .map_err(|_| KeyObjectHandlePrehashedSignAndVerifyError::FailedToSignDigestWithRsaPss)?;
+          return Ok(signature.into());
+        }
+
         let signer = if digest_type == "md5-sha1" {
           rsa::pkcs1v15::Pkcs1v15Sign::new_unprefixed()
         } else {
@@ -197,6 +232,15 @@ impl KeyObjectHandle {
 
           dsa_signature(dsa_signature_encoding, signature)
         }
+        EcPrivateKey::P521(key) => {
+          let signing_key = p521::ecdsa::SigningKey::from_bytes(&key.to_bytes())
+            .map_err(|_| KeyObjectHandlePrehashedSignAndVerifyError::FailedToSignDigest)?;
+          let signature: p521::ecdsa::Signature = signing_key
+            .sign_prehash(digest)
+            .map_err(|_| KeyObjectHandlePrehashedSignAndVerifyError::FailedToSignDigest)?;
+
+          dsa_signature(dsa_signature_encoding, signature)
+        }
         EcPrivateKey::Secp256k1(key) => {
           let signing_key = k256::ecdsa::SigningKey::from(key);
           let signature: k256::ecdsa::Signature = signing_key
@@ -222,6 +266,7 @@ impl KeyObjectHandle {
     digest: &[u8],
     signature: &[u8],
     pss_salt_length: Option<u32>,
+    padding: Option<u32>,
     dsa_signature_encoding: u32,
   ) -> Result<bool, KeyObjectHandlePrehashedSignAndVerifyError> {
     let public_key = self.as_public_key().ok_or(
@@ -230,6 +275,11 @@ impl KeyObjectHandle {
 
     match &*public_key {
       AsymmetricPublicKey::Rsa(key) => {
+        if padding == Some(RSA_PKCS1_PSS_PADDING) {
+          let pss = new_pss_scheme(digest_type, pss_salt_length)?;
+          return Ok(pss.verify(key, digest, signature).is_ok());
+        }
+
         let signer = if digest_type == "md5-sha1" {
           rsa::pkcs1v15::Pkcs1v15Sign::new_unprefixed()
         } else {
@@ -317,6 +367,20 @@ impl KeyObjectHandle {
             p384::ecdsa::Signature::from_der(signature)
           } else {
             p384::ecdsa::Signature::from_bytes(signature.into())
+          };
+          let Ok(signature) = signature else {
+            return Ok(false);
+          };
+          Ok(verifying_key.verify_prehash(digest, &signature).is_ok())
+        }
+        EcPublicKey::P521(key) => {
+          let Ok(verifying_key) = p521::ecdsa::VerifyingKey::from_affine(*key.as_affine()) else {
+            return Ok(false);
+          };
+          let signature = if dsa_signature_encoding == 0 {
+            p521::ecdsa::Signature::from_der(signature)
+          } else {
+            p521::ecdsa::Signature::from_bytes(signature.into())
           };
           let Ok(signature) = signature else {
             return Ok(false);
