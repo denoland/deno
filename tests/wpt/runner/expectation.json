@@ -1,7 +1,27 @@
 {
   "WebCryptoAPI": {
-    "getRandomValues.any.html": true,
-    "getRandomValues.any.worker.html": true,
+    "getRandomValues.any.html": [
+      "Large length: Int8Array",
+      "Large length: Int16Array",
+      "Large length: Int32Array",
+      "Large length: BigInt64Array",
+      "Large length: Uint8Array",
+      "Large length: Uint8ClampedArray",
+      "Large length: Uint16Array",
+      "Large length: Uint32Array",
+      "Large length: BigUint64Array"
+    ],
+    "getRandomValues.any.worker.html": [
+      "Large length: Int8Array",
+      "Large length: Int16Array",
+      "Large length: Int32Array",
+      "Large length: BigInt64Array",
+      "Large length: Uint8Array",
+      "Large length: Uint8ClampedArray",
+      "Large length: Uint16Array",
+      "Large length: Uint32Array",
+      "Large length: BigUint64Array"
+    ],
     "derive_bits_keys": {
       "ecdh_bits.https.any.html": [
         "P-521 good parameters",
@@ -5415,12 +5435,8 @@
     "mark-entry-constructor.any.worker.html": true,
     "mark-errors.any.html": true,
     "mark-errors.any.worker.html": true,
-    "mark-l3.any.html": [
-      "mark entries' detail and startTime are customizable"
-    ],
-    "mark-l3.any.worker.html": [
-      "mark entries' detail and startTime are customizable"
-    ],
+    "mark-l3.any.html": true,
+    "mark-l3.any.worker.html": true,
     "mark-measure-return-objects.any.html": true,
     "mark-measure-return-objects.any.worker.html": true,
     "mark.any.html": true,
@@ -5437,16 +5453,8 @@
     "measure_syntax_err.any.worker.html": true,
     "structured-serialize-detail.any.html": true,
     "structured-serialize-detail.any.worker.html": true,
-    "supported-usertiming-types.any.html": [
-      "supportedEntryTypes contains 'mark' and 'measure'",
-      "'mark' entries should be observable",
-      "'measure' entries should be observable"
-    ],
-    "supported-usertiming-types.any.worker.html": [
-      "supportedEntryTypes contains 'mark' and 'measure'",
-      "'mark' entries should be observable",
-      "'measure' entries should be observable"
-    ],
+    "supported-usertiming-types.any.html": true,
+    "supported-usertiming-types.any.worker.html": true,
     "user_timing_exists.any.html": true,
     "user_timing_exists.any.worker.html": true,
     "invoke_with_timing_attributes.worker.html": true,
@@ -11722,9 +11730,9 @@
           "Fetch: /images/gre\\ten-1x1.png?img=<",
           "Fetch: /images/green-1x1.png?<\\n=block",
           "Fetch: /images/gre\\ren-1x1.png?img=<",
-          "Fetch: /images/green-1x1.png?<\\t=block",
           "Fetch: /images/gre\\nen-1x1.png?img=<",
-          "Fetch: /images/green-1x1.png?<\\r=block"
+          "Fetch: /images/green-1x1.png?<\\r=block",
+          "Fetch: /images/green-1x1.png?<\\t=block"
         ],
         "dangling-markup-mitigation.tentative.https.html": false,
         "media.html": false,
@@ -13426,9 +13434,9 @@
     "storage_key.window.html": true,
     "storage_key_empty_string.window.html": true,
     "storage_length.window.html": true,
-    "storage_local_setitem_quotaexceedederr.window.html": true,
+    "storage_local_setitem_quotaexceedederr.window.html": false,
     "storage_removeitem.window.html": true,
-    "storage_session_setitem_quotaexceedederr.window.html": true,
+    "storage_session_setitem_quotaexceedederr.window.html": false,
     "storage_set_value_enumerate.window.html": true,
     "storage_setitem.window.html": [
       "localStorage[] = \"\ud800\"",

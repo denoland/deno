@@ -1322,6 +1322,8 @@ pub static TYPES_NODE_IGNORABLE_NAMES: &[&str] = &[
   "PerformanceMeasure",
   "QueuingStrategy",
   "QueuingStrategySize",
+  "QuotaExceededError",
+  "QuotaExceededErrorOptions",
   "ReadableByteStreamController",
   "ReadableStream",
   "ReadableStreamBYOBReader",
