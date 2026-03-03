@@ -3,6 +3,7 @@
 mod collections;
 mod common;
 mod graph;
+mod overrides;
 mod snapshot;
 #[cfg(feature = "tracing")]
 mod tracing;
@@ -16,6 +17,10 @@ pub use common::NpmVersionResolver;
 pub use graph::NpmResolutionError;
 pub use graph::Reporter;
 pub use graph::UnmetPeerDepDiagnostic;
+pub use overrides::NpmOverrideRule;
+pub use overrides::NpmOverrideValue;
+pub use overrides::NpmOverrides;
+pub use overrides::NpmOverridesError;
 pub use snapshot::AddPkgReqsOptions;
 pub use snapshot::AddPkgReqsResult;
 pub use snapshot::DefaultTarballUrlProvider;

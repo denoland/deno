@@ -898,6 +898,7 @@ impl<TGraphContainer: ModuleGraphContainer>
       deno_path_util::resolve_path(referrer, &self.shared.initial_cwd)?
     } else {
       // this cwd check is slow, so try to avoid it
+      #[allow(clippy::disallowed_methods)] // ok, actually needs the current cwd
       let cwd = std::env::current_dir().map_err(UnableToGetCwdError)?;
       deno_path_util::resolve_path(referrer, &cwd)?
     })

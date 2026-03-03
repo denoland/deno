@@ -1,0 +1,212 @@
+impl<'a> ::deno_core::webidl::WebIdlConverter<'a> for Dict {
+    type Options = ();
+    fn convert<'b, 'i>(
+        __scope: &mut ::deno_core::v8::PinScope<'a, 'i>,
+        __value: ::deno_core::v8::Local<'a, ::deno_core::v8::Value>,
+        __prefix: std::borrow::Cow<'static, str>,
+        __context: ::deno_core::webidl::ContextFn<'b>,
+        __options: &Self::Options,
+    ) -> Result<Self, ::deno_core::webidl::WebIdlError> {
+        let __obj: Option<::deno_core::v8::Local<::deno_core::v8::Object>> = if __value
+            .is_undefined() || __value.is_null()
+        {
+            None
+        } else {
+            if let Ok(obj) = __value.try_into() {
+                Some(obj)
+            } else {
+                return Err(
+                    ::deno_core::webidl::WebIdlError::new(
+                        __prefix,
+                        __context.borrowed(),
+                        ::deno_core::webidl::WebIdlErrorKind::ConvertToConverterType(
+                            "dictionary",
+                        ),
+                    ),
+                );
+            }
+        };
+        let a = {
+            let __key = ::deno_core::v8::String::new_from_one_byte(
+                    __scope,
+                    "a".as_bytes(),
+                    ::deno_core::v8::NewStringType::Internalized,
+                )
+                .unwrap()
+                .into();
+            if let Some(__value) = __obj
+                .as_ref()
+                .and_then(|__obj| __obj.get(__scope, __key))
+            {
+                ::deno_core::webidl::WebIdlConverter::convert(
+                    __scope,
+                    __value,
+                    __prefix.clone(),
+                    ::deno_core::webidl::ContextFn::new_borrowed(
+                        &|| {
+                            format!("'{}' of '{}' ({})", "a", "Dict", __context.call())
+                                .into()
+                        },
+                    ),
+                    &Default::default(),
+                )?
+            } else {
+                return Err(
+                    ::deno_core::webidl::WebIdlError::new(
+                        __prefix,
+                        __context.borrowed(),
+                        ::deno_core::webidl::WebIdlErrorKind::DictionaryCannotConvertKey {
+                            converter: "Dict",
+                            key: "a",
+                        },
+                    ),
+                );
+            }
+        };
+        let b = {
+            let __key = ::deno_core::v8::String::new_from_one_byte(
+                    __scope,
+                    "b".as_bytes(),
+                    ::deno_core::v8::NewStringType::Internalized,
+                )
+                .unwrap()
+                .into();
+            if let Some(__value) = __obj
+                .as_ref()
+                .and_then(|__obj| __obj.get(__scope, __key))
+            {
+                ::deno_core::webidl::WebIdlConverter::convert(
+                    __scope,
+                    __value,
+                    __prefix.clone(),
+                    ::deno_core::webidl::ContextFn::new_borrowed(
+                        &|| {
+                            format!("'{}' of '{}' ({})", "b", "Dict", __context.call())
+                                .into()
+                        },
+                    ),
+                    &{
+                        type Alias<'a> = <Vec<
+                            u16,
+                        > as ::deno_core::webidl::WebIdlConverter<'a>>::Options;
+                        Alias {
+                            clamp: true,
+                            ..Default::default()
+                        }
+                    },
+                )?
+            } else {
+                return Err(
+                    ::deno_core::webidl::WebIdlError::new(
+                        __prefix,
+                        __context.borrowed(),
+                        ::deno_core::webidl::WebIdlErrorKind::DictionaryCannotConvertKey {
+                            converter: "Dict",
+                            key: "b",
+                        },
+                    ),
+                );
+            }
+        };
+        let c = {
+            let __key = ::deno_core::v8::String::new_from_one_byte(
+                    __scope,
+                    "c".as_bytes(),
+                    ::deno_core::v8::NewStringType::Internalized,
+                )
+                .unwrap()
+                .into();
+            if let Some(__value) = __obj
+                .as_ref()
+                .and_then(|__obj| __obj.get(__scope, __key))
+                .and_then(|__value| {
+                    if __value.is_undefined() { None } else { Some(__value) }
+                })
+            {
+                ::deno_core::webidl::WebIdlConverter::convert(
+                    __scope,
+                    __value,
+                    __prefix.clone(),
+                    ::deno_core::webidl::ContextFn::new_borrowed(
+                        &|| {
+                            format!("'{}' of '{}' ({})", "c", "Dict", __context.call())
+                                .into()
+                        },
+                    ),
+                    &Default::default(),
+                )?
+            } else {
+                Some(3)
+            }
+        };
+        let d = {
+            let __key = ::deno_core::v8::String::new_from_one_byte(
+                    __scope,
+                    "e".as_bytes(),
+                    ::deno_core::v8::NewStringType::Internalized,
+                )
+                .unwrap()
+                .into();
+            if let Some(__value) = __obj
+                .as_ref()
+                .and_then(|__obj| __obj.get(__scope, __key))
+            {
+                ::deno_core::webidl::WebIdlConverter::convert(
+                    __scope,
+                    __value,
+                    __prefix.clone(),
+                    ::deno_core::webidl::ContextFn::new_borrowed(
+                        &|| {
+                            format!("'{}' of '{}' ({})", "e", "Dict", __context.call())
+                                .into()
+                        },
+                    ),
+                    &Default::default(),
+                )?
+            } else {
+                return Err(
+                    ::deno_core::webidl::WebIdlError::new(
+                        __prefix,
+                        __context.borrowed(),
+                        ::deno_core::webidl::WebIdlErrorKind::DictionaryCannotConvertKey {
+                            converter: "Dict",
+                            key: "e",
+                        },
+                    ),
+                );
+            }
+        };
+        let f = {
+            let __key = ::deno_core::v8::String::new_from_one_byte(
+                    __scope,
+                    "f".as_bytes(),
+                    ::deno_core::v8::NewStringType::Internalized,
+                )
+                .unwrap()
+                .into();
+            if let Some(__value) = __obj
+                .as_ref()
+                .and_then(|__obj| __obj.get(__scope, __key))
+                .and_then(|__value| {
+                    if __value.is_undefined() { None } else { Some(__value) }
+                })
+            {
+                ::deno_core::webidl::WebIdlConverter::convert(
+                    __scope,
+                    __value,
+                    __prefix.clone(),
+                    ::deno_core::webidl::ContextFn::new_borrowed(
+                        &|| {
+                            format!("'{}' of '{}' ({})", "f", "Dict", __context.call())
+                                .into()
+                        },
+                    ),
+                    &Default::default(),
+                )?
+            } else {
+                None
+            }
+        };
+        Ok(Self { a, b, c, d, f })
+    }
+}

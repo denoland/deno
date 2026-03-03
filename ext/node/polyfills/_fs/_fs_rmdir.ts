@@ -1,11 +1,9 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
 import {
   emitRecursiveRmdirWarning,
-  getValidatedPath,
+  getValidatedPathToString,
+  RmOptions,
   validateRmdirOptions,
   validateRmOptions,
   validateRmOptionsSync,
@@ -16,6 +14,11 @@ import {
 } from "ext:deno_node/internal/errors.ts";
 import { Buffer } from "node:buffer";
 import { promisify } from "ext:deno_node/internal/util.mjs";
+import { op_node_rmdir, op_node_rmdir_sync } from "ext:core/ops";
+import { primordials } from "ext:core/mod.js";
+import { validateFunction } from "ext:deno_node/internal/validators.mjs";
+
+const { PromisePrototypeThen } = primordials;
 
 type rmdirOptions = {
   maxRetries?: number;
@@ -25,27 +28,46 @@ type rmdirOptions = {
 
 type rmdirCallback = (err?: Error) => void;
 
-export function rmdir(path: string | URL, callback: rmdirCallback): void;
+const rmdirRecursive =
+  (path: string, callback: rmdirCallback) =>
+  (err: Error | false | null, options?: RmOptions) => {
+    if (err === false) {
+      return callback(new ERR_FS_RMDIR_ENOTDIR(path));
+    }
+    if (err) {
+      return callback(err);
+    }
+
+    PromisePrototypeThen(
+      Deno.remove(path, { recursive: options?.recursive }),
+      (_) => callback(),
+      (err: Error) =>
+        callback(
+          denoErrorToNodeError(err, { syscall: "rmdir", path }),
+        ),
+    );
+  };
+
 export function rmdir(
-  path: string | URL,
+  path: string | Buffer | URL,
+  callback: rmdirCallback,
+): void;
+export function rmdir(
+  path: string | Buffer | URL,
   options: rmdirOptions,
   callback: rmdirCallback,
 ): void;
 export function rmdir(
-  path: string | URL,
-  optionsOrCallback: rmdirOptions | rmdirCallback,
-  maybeCallback?: rmdirCallback,
+  path: string | Buffer | URL,
+  options: rmdirOptions | rmdirCallback | undefined,
+  callback?: rmdirCallback,
 ) {
-  path = getValidatedPath(path) as string;
-
-  const callback = typeof optionsOrCallback === "function"
-    ? optionsOrCallback
-    : maybeCallback;
-  const options = typeof optionsOrCallback === "object"
-    ? optionsOrCallback
-    : undefined;
-
-  if (!callback) throw new Error("No callback function supplied");
+  if (typeof options === "function") {
+    callback = options;
+    options = undefined;
+  }
+  validateFunction(callback, "cb");
+  path = getValidatedPathToString(path);
 
   if (options?.recursive) {
     emitRecursiveRmdirWarning();
@@ -53,28 +75,18 @@ export function rmdir(
       path,
       { ...options, force: false },
       true,
-      (err: Error | null | false, options: rmdirOptions) => {
-        if (err === false) {
-          return callback(new ERR_FS_RMDIR_ENOTDIR(path.toString()));
-        }
-        if (err) {
-          return callback(err);
-        }
-
-        Deno.remove(path, { recursive: options?.recursive })
-          .then((_) => callback(), callback);
-      },
+      rmdirRecursive(path, callback),
     );
   } else {
     validateRmdirOptions(options);
-    Deno.remove(path, { recursive: options?.recursive })
-      .then((_) => callback(), (err: unknown) => {
+    PromisePrototypeThen(
+      op_node_rmdir(path),
+      (_) => callback(),
+      (err: Error) =>
         callback(
-          err instanceof Error
-            ? denoErrorToNodeError(err, { syscall: "rmdir" })
-            : err,
-        );
-      });
+          denoErrorToNodeError(err, { syscall: "rmdir", path }),
+        ),
+    );
   }
 }
 
@@ -84,28 +96,25 @@ export const rmdirPromise = promisify(rmdir) as (
 ) => Promise<void>;
 
 export function rmdirSync(path: string | Buffer | URL, options?: rmdirOptions) {
-  path = getValidatedPath(path);
+  path = getValidatedPathToString(path);
   if (options?.recursive) {
     emitRecursiveRmdirWarning();
-    const optionsOrFalse: rmdirOptions | false = validateRmOptionsSync(path, {
+    const optionsOrFalse = validateRmOptionsSync(path, {
       ...options,
       force: false,
     }, true);
     if (optionsOrFalse === false) {
-      throw new ERR_FS_RMDIR_ENOTDIR(path.toString());
+      throw new ERR_FS_RMDIR_ENOTDIR(path);
     }
-    options = optionsOrFalse;
-  } else {
-    validateRmdirOptions(options);
+    return Deno.removeSync(path, {
+      recursive: true,
+    });
   }
 
+  validateRmdirOptions(options);
   try {
-    Deno.removeSync(path as string, {
-      recursive: options?.recursive,
-    });
-  } catch (err: unknown) {
-    throw (err instanceof Error
-      ? denoErrorToNodeError(err, { syscall: "rmdir" })
-      : err);
+    op_node_rmdir_sync(path);
+  } catch (err) {
+    throw (denoErrorToNodeError(err as Error, { syscall: "rmdir", path }));
   }
 }
