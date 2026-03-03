@@ -116,7 +116,7 @@ export class TCP extends ConnectionWrap {
 
   #netPermToken?: object | undefined;
 
-  // Native libuv TCP handle
+  // deno-lint-ignore no-explicit-any -- Native libuv TCP handle
   #native: any;
 
   [kUseNativeWrap]: boolean = false;
@@ -243,13 +243,13 @@ export class TCP extends ConnectionWrap {
 
     this.#backlog = ceilPowOf2(backlog + 1);
 
+    // deno-lint-ignore no-this-alias
     const self = this;
     this.#native.onconnection = function (status: number) {
       if (status !== 0) {
         try {
           self.onconnection!(status, undefined);
-        } catch (e) {
-          console.log("error in onconnection", e);
+        } catch (_e) {
           // swallow callback errors.
         }
         return;
@@ -263,8 +263,7 @@ export class TCP extends ConnectionWrap {
 
       try {
         self.onconnection!(0, clientHandle);
-      } catch (e) {
-        console.log("error in onconnection", e);
+      } catch (_e) {
         // swallow callback errors.
       }
     };
@@ -278,6 +277,7 @@ export class TCP extends ConnectionWrap {
     }
 
     this.reading = true;
+    // deno-lint-ignore no-this-alias
     const self = this;
     this.#native.onread = function (
       nread: number,
@@ -388,7 +388,7 @@ export class TCP extends ConnectionWrap {
 
   override ref() {
     if (this[kUseNativeWrap] && this.#native) {
-      // TODO: implement uv_ref on native handle
+      // TODO(@littledivy): implement uv_ref on native handle
       return;
     }
 
@@ -403,7 +403,7 @@ export class TCP extends ConnectionWrap {
 
   override unref() {
     if (this[kUseNativeWrap] && this.#native) {
-      // TODO: implement uv_unref on native handle
+      // TODO(@littledivy): implement uv_unref on native handle
       this.#native.unref();
       return;
     }
@@ -553,6 +553,7 @@ export class TCP extends ConnectionWrap {
   }
 
   #nativeConnect(req: TCPConnectWrap, address: string, port: number) {
+    // deno-lint-ignore no-this-alias
     const self = this;
     this.#native.onconnect = function (status: number) {
       if (status === 0) {

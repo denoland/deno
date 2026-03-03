@@ -2454,6 +2454,7 @@ function _http2InvalidSettingMsg(name: string, actual: unknown) {
   return `Invalid value for setting "${name}": ${actual}`;
 }
 
+// deno-lint-ignore camelcase
 class _ERR_HTTP2_INVALID_SETTING_VALUE_TypeError extends NodeTypeError {
   actual: unknown;
   constructor(name: string, actual: unknown) {
@@ -2465,6 +2466,7 @@ class _ERR_HTTP2_INVALID_SETTING_VALUE_TypeError extends NodeTypeError {
   }
 }
 
+// deno-lint-ignore camelcase
 class _ERR_HTTP2_INVALID_SETTING_VALUE_RangeError extends NodeRangeError {
   actual: unknown;
   min?: number;

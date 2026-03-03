@@ -518,7 +518,6 @@ function _internalConnectMultipleTimeout(context, req, handle) {
 }
 
 function _checkBindError(err: number, port: number, handle: TCP) {
-  console.log("_checkBindError", err, port);
   // EADDRINUSE may not be reported until we call `listen()` or `connect()`.
   // To complicate matters, a failed `bind()` followed by `listen()` or `connect()`
   // will implicitly bind to a random port. Ergo, check that the socket is
@@ -2194,7 +2193,6 @@ function _setupListenHandle(
   const err = this._handle.listen(backlog || 511);
 
   if (err) {
-    console.log("ERR NUMBER", err);
     const ex = uvExceptionWithHostPort(err, "listen", address, port);
     this._handle.close();
     this._handle = null;
