@@ -245,19 +245,33 @@ pub fn op_node_get_own_non_index_properties<'s>(
     property_filter = property_filter | v8::PropertyFilter::SKIP_SYMBOLS;
   }
 
-  obj
-    .get_property_names(
-      scope,
-      v8::GetPropertyNamesArgs {
-        index_filter: v8::IndexFilter::SkipIndices,
-        property_filter,
-        key_conversion: v8::KeyConversionMode::NoNumbers,
-        mode: v8::KeyCollectionMode::OwnOnly,
-      },
-    )
-    .ok_or_else(|| {
-      JsErrorBox::type_error("Failed to get own non-index properties")
-    })
+  v8::tc_scope!(let tc_scope, scope);
+
+  let result = obj.get_property_names(
+    tc_scope,
+    v8::GetPropertyNamesArgs {
+      index_filter: v8::IndexFilter::SkipIndices,
+      property_filter,
+      key_conversion: v8::KeyConversionMode::NoNumbers,
+      mode: v8::KeyCollectionMode::OwnOnly,
+    },
+  );
+
+  match result {
+    Some(names) => Ok(names),
+    None => {
+      if tc_scope.has_caught() || tc_scope.has_terminated() {
+        tc_scope.rethrow();
+        // Return a dummy value; it will be discarded because the
+        // exception is being rethrown by V8.
+        Ok(v8::Array::new(tc_scope, 0))
+      } else {
+        Err(JsErrorBox::type_error(
+          "Failed to get own non-index properties",
+        ))
+      }
+    }
+  }
 }
 
 #[op2]
