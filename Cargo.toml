@@ -33,6 +33,7 @@ members = [
   "ext/webidl",
   "ext/websocket",
   "ext/webstorage",
+  "libs/cache_dir",
   "libs/config",
   "libs/core",
   "libs/core/examples/snapshot",
@@ -84,7 +85,6 @@ repository = "https://github.com/denoland/deno"
 
 [workspace.dependencies]
 deno_ast = { version = "=0.53.1", features = ["transpiling"] }
-deno_cache_dir = "=0.27.0"
 deno_core_icudata = "0.77.0"
 deno_doc = "=0.190.1"
 deno_error = "=0.7.1"
@@ -136,6 +136,7 @@ denort_helper = { version = "0.33.0", path = "./ext/rt_helper" }
 
 # workspace libraries
 deno_bench_util = { version = "0.229.0", path = "./tests/bench_util" }
+deno_cache_dir = { version = "=0.27.0", path = "./libs/cache_dir" }
 deno_config = { version = "0.85.0", features = ["workspace"], path = "./libs/config" }
 deno_core = { version = "0.388.0", path = "./libs/core" }
 deno_core_testing = { path = "./libs/core_testing" }
