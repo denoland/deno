@@ -89,7 +89,7 @@ pub struct RsaPssPrivateKey {
   pub details: Option<RsaPssDetails>,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 pub struct RsaPssDetails {
   pub hash_algorithm: RsaPssHashAlgorithm,
   pub mf1_hash_algorithm: RsaPssHashAlgorithm,
@@ -282,6 +282,108 @@ impl EcPrivateKey {
       EcPrivateKey::P384(key) => Ok(key.to_jwk()),
       EcPrivateKey::P521(key) => Ok(key.to_jwk()),
       EcPrivateKey::Secp256k1(key) => Ok(key.to_jwk()),
+    }
+  }
+}
+
+impl PartialEq for EcPublicKey {
+  fn eq(&self, other: &Self) -> bool {
+    match (self, other) {
+      (EcPublicKey::P224(a), EcPublicKey::P224(b)) => a == b,
+      (EcPublicKey::P256(a), EcPublicKey::P256(b)) => a == b,
+      (EcPublicKey::P384(a), EcPublicKey::P384(b)) => a == b,
+      (EcPublicKey::P521(a), EcPublicKey::P521(b)) => a == b,
+      (EcPublicKey::Secp256k1(a), EcPublicKey::Secp256k1(b)) => a == b,
+      _ => false,
+    }
+  }
+}
+
+impl PartialEq for EcPrivateKey {
+  fn eq(&self, other: &Self) -> bool {
+    match (self, other) {
+      (EcPrivateKey::P224(a), EcPrivateKey::P224(b)) => a == b,
+      (EcPrivateKey::P256(a), EcPrivateKey::P256(b)) => a == b,
+      (EcPrivateKey::P384(a), EcPrivateKey::P384(b)) => a == b,
+      (EcPrivateKey::P521(a), EcPrivateKey::P521(b)) => a == b,
+      (EcPrivateKey::Secp256k1(a), EcPrivateKey::Secp256k1(b)) => a == b,
+      _ => false,
+    }
+  }
+}
+
+impl PartialEq for RsaPssPublicKey {
+  fn eq(&self, other: &Self) -> bool {
+    self.key == other.key && self.details == other.details
+  }
+}
+
+impl PartialEq for RsaPssPrivateKey {
+  fn eq(&self, other: &Self) -> bool {
+    self.key == other.key && self.details == other.details
+  }
+}
+
+fn dh_params_eq(a: &DhParameter, b: &DhParameter) -> bool {
+  let a_der = a.to_der().unwrap_or_default();
+  let b_der = b.to_der().unwrap_or_default();
+  a_der == b_der
+}
+
+impl PartialEq for DhPublicKey {
+  fn eq(&self, other: &Self) -> bool {
+    self.key == other.key && dh_params_eq(&self.params, &other.params)
+  }
+}
+
+impl PartialEq for DhPrivateKey {
+  fn eq(&self, other: &Self) -> bool {
+    self.key == other.key && dh_params_eq(&self.params, &other.params)
+  }
+}
+
+impl PartialEq for AsymmetricPublicKey {
+  fn eq(&self, other: &Self) -> bool {
+    match (self, other) {
+      (Self::Rsa(a), Self::Rsa(b)) => a == b,
+      (Self::RsaPss(a), Self::RsaPss(b)) => a == b,
+      (Self::Dsa(a), Self::Dsa(b)) => {
+        a.to_public_key_der().ok() == b.to_public_key_der().ok()
+      }
+      (Self::Ec(a), Self::Ec(b)) => a == b,
+      (Self::X25519(a), Self::X25519(b)) => a == b,
+      (Self::Ed25519(a), Self::Ed25519(b)) => a == b,
+      (Self::Dh(a), Self::Dh(b)) => a == b,
+      _ => false,
+    }
+  }
+}
+
+impl PartialEq for AsymmetricPrivateKey {
+  fn eq(&self, other: &Self) -> bool {
+    match (self, other) {
+      (Self::Rsa(a), Self::Rsa(b)) => a == b,
+      (Self::RsaPss(a), Self::RsaPss(b)) => a == b,
+      (Self::Dsa(a), Self::Dsa(b)) => {
+        a.to_pkcs8_der().ok().map(|d| d.to_bytes())
+          == b.to_pkcs8_der().ok().map(|d| d.to_bytes())
+      }
+      (Self::Ec(a), Self::Ec(b)) => a == b,
+      (Self::X25519(a), Self::X25519(b)) => a.to_bytes() == b.to_bytes(),
+      (Self::Ed25519(a), Self::Ed25519(b)) => a.to_bytes() == b.to_bytes(),
+      (Self::Dh(a), Self::Dh(b)) => a == b,
+      _ => false,
+    }
+  }
+}
+
+impl PartialEq for KeyObjectHandle {
+  fn eq(&self, other: &Self) -> bool {
+    match (self, other) {
+      (Self::AsymmetricPrivate(a), Self::AsymmetricPrivate(b)) => a == b,
+      (Self::AsymmetricPublic(a), Self::AsymmetricPublic(b)) => a == b,
+      (Self::Secret(a), Self::Secret(b)) => a == b,
+      _ => false,
     }
   }
 }
@@ -2035,7 +2137,7 @@ pub fn op_node_get_symmetric_key_size(
     | KeyObjectHandle::AsymmetricPublic(_) => Err(JsErrorBox::type_error(
       "asymmetric key is not a symmetric key",
     )),
-    KeyObjectHandle::Secret(key) => Ok(key.len() * 8),
+    KeyObjectHandle::Secret(key) => Ok(key.len()),
   }
 }
 
@@ -2712,6 +2814,14 @@ pub fn op_node_key_type(#[cppgc] handle: &KeyObjectHandle) -> &'static str {
     KeyObjectHandle::AsymmetricPublic(_) => "public",
     KeyObjectHandle::Secret(_) => "secret",
   }
+}
+
+#[op2(fast)]
+pub fn op_node_key_equals(
+  #[cppgc] handle: &KeyObjectHandle,
+  #[cppgc] other: &KeyObjectHandle,
+) -> bool {
+  handle == other
 }
 
 #[op2]

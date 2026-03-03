@@ -19,7 +19,7 @@ import {
 } from "node:crypto";
 import { promisify } from "node:util";
 import { Buffer } from "node:buffer";
-import { assert, assertEquals, assertThrows } from "@std/assert";
+import { assert, assertEquals, assertRejects, assertThrows } from "@std/assert";
 
 const RUN_SLOW_TESTS = Deno.env.get("SLOW_TESTS") === "1";
 
@@ -1033,6 +1033,78 @@ Deno.test("curve25519 generate valid private jwk", function () {
   assert(privateKey.d);
 });
 
+Deno.test("createPublicKey from Ed25519 certificate PEM", function () {
+  const ed25519Cert = "-----BEGIN CERTIFICATE-----\n" +
+    "MIIBoTCCAVOgAwIBAgIUde5G4y+mtbb0eRISc7vnINRbSXkwBQYDK2VwMEUxCzAJ\n" +
+    "BgNVBAYTAkNaMRMwEQYDVQQIDApTb21lLVN0YXRlMSEwHwYDVQQKDBhJbnRlcm5l\n" +
+    "dCBXaWRnaXRzIFB0eSBMdGQwIBcNMjIxMDExMTIyMTUzWhgPMjEyMjA5MTcxMjIx\n" +
+    "NTNaMEUxCzAJBgNVBAYTAkNaMRMwEQYDVQQIDApTb21lLVN0YXRlMSEwHwYDVQQK\n" +
+    "DBhJbnRlcm5ldCBXaWRnaXRzIFB0eSBMdGQwKjAFBgMrZXADIQCUFn0ZKG9tAS3L\n" +
+    "Joaz7Q13hq6sfsRGrpQ4i9cZvn+1cKNTMFEwHQYDVR0OBBYEFAATzoAtBcYTcOdY\n" +
+    "jkcQqsWXipnSMB8GA1UdIwQYMBaAFAATzoAtBcYTcOdYjkcQqsWXipnSMA8GA1Ud\n" +
+    "EwEB/wQFMAMBAf8wBQYDK2VwA0EApfw+9jSO0x0IorDfdr5ZVGRBVgrfrd9XhxqQ\n" +
+    "Krphj6cA4Ls9aMYAHf5w+OW9D/t3a9p6mYm78AKIdBsPEtT1AQ==\n" +
+    "-----END CERTIFICATE-----\n";
+
+  const publicKey = createPublicKey(ed25519Cert);
+  assertEquals(publicKey.type, "public");
+  assertEquals(publicKey.asymmetricKeyType, "ed25519");
+});
+
+Deno.test("KeyObject.prototype.equals secret keys", function () {
+  const key1 = createSecretKey(Buffer.from("secret"));
+  const key2 = createSecretKey(Buffer.from("secret"));
+  const key3 = createSecretKey(Buffer.from("other"));
+
+  assert(key1.equals(key1));
+  assert(key1.equals(key2));
+  assert(!key1.equals(key3));
+});
+
+Deno.test("KeyObject.prototype.equals empty secret keys", function () {
+  const key1 = createSecretKey(Buffer.alloc(0));
+  const key2 = createSecretKey(Buffer.alloc(0));
+
+  assert(key1.equals(key2));
+});
+
+Deno.test("KeyObject.prototype.equals asymmetric keys", function () {
+  const { publicKey: pub1, privateKey: priv1 } = generateKeyPairSync(
+    "ed25519",
+  );
+  const { publicKey: pub2, privateKey: priv2 } = generateKeyPairSync(
+    "ed25519",
+  );
+
+  // Self-equality
+  assert(pub1.equals(pub1));
+  assert(priv1.equals(priv1));
+
+  // Same key type, different keys
+  assert(!pub1.equals(pub2));
+  assert(!priv1.equals(priv2));
+
+  // Cross-type: public vs private returns false
+  assert(!pub1.equals(priv1 as any));
+});
+
+Deno.test("KeyObject.prototype.equals RSA keys", function () {
+  const key1 = createPublicKey(rsaPublicKey);
+  const key2 = createPublicKey(rsaPublicKey);
+
+  assert(key1.equals(key2));
+});
+
+Deno.test("KeyObject.prototype.equals invalid arg", function () {
+  const key = createSecretKey(Buffer.from("secret"));
+
+  assertThrows(
+    () => key.equals("not a key" as any),
+    TypeError,
+    "otherKeyObject",
+  );
+});
+
 Deno.test("generateKeyPairSync ec secp256k1", () => {
   const { publicKey, privateKey } = generateKeyPairSync("ec", {
     namedCurve: "secp256k1",
@@ -1117,6 +1189,33 @@ Deno.test("generateKeyPair async ec secp256k1", async () => {
   const data = Buffer.from("async test");
   const signature = sign("sha256", data, privateKey);
   assert(verify("sha256", data, publicKey, signature));
+});
+
+// Regression test for https://github.com/denoland/deno/issues/30243
+// Importing a PKCS#8 RSA key with the wrong algorithm (ECDSA) should throw, not panic.
+Deno.test("crypto.subtle.importKey PKCS#8 with wrong algorithm does not panic", async () => {
+  const rsaKey = await crypto.subtle.generateKey(
+    {
+      name: "RSASSA-PKCS1-v1_5",
+      modulusLength: 2048,
+      publicExponent: new Uint8Array([1, 0, 1]),
+      hash: "SHA-256",
+    },
+    true,
+    ["sign", "verify"],
+  );
+
+  const pkcs8 = await crypto.subtle.exportKey("pkcs8", rsaKey.privateKey);
+
+  await assertRejects(() =>
+    crypto.subtle.importKey(
+      "pkcs8",
+      pkcs8,
+      { name: "ECDSA", namedCurve: "P-256" },
+      true,
+      ["sign"],
+    )
+  );
 });
 
 // https://github.com/denoland/deno/issues/22920

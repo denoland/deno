@@ -656,6 +656,29 @@ Deno.test({
 });
 
 Deno.test({
+  name: "aes-256-cbc setAutoPadding(false) roundtrip",
+  fn() {
+    const key = Buffer.alloc(32, 0x01);
+    const iv = Buffer.alloc(16, 0x02);
+    // 32 bytes = exactly 2 blocks, no PKCS7 padding needed
+    const plaintext = Buffer.from("a]B$y;^&5}0[e-k+D7zIn9Co*q#m!LpX");
+
+    const cipher = crypto.createCipheriv("aes-256-cbc", key, iv);
+    cipher.setAutoPadding(false);
+    const encrypted = Buffer.concat([cipher.update(plaintext), cipher.final()]);
+
+    const decipher = crypto.createDecipheriv("aes-256-cbc", key, iv);
+    decipher.setAutoPadding(false);
+    const decrypted = Buffer.concat([
+      decipher.update(encrypted),
+      decipher.final(),
+    ]);
+
+    assertEquals(decrypted, plaintext);
+  },
+});
+
+Deno.test({
   name: "publicEncrypt/privateDecrypt with DER keys",
   fn() {
     const pair = crypto.generateKeyPairSync("rsa", { modulusLength: 2048 });
@@ -679,6 +702,29 @@ Deno.test({
       encrypted,
     );
     assertEquals(decrypted, secret);
+  },
+});
+
+Deno.test({
+  name: "aes-128-cbc setAutoPadding(false) roundtrip",
+  fn() {
+    const key = Buffer.alloc(16, 0x03);
+    const iv = Buffer.alloc(16, 0x04);
+    // 16 bytes = exactly 1 block
+    const plaintext = Buffer.from("0123456789abcdef");
+
+    const cipher = crypto.createCipheriv("aes-128-cbc", key, iv);
+    cipher.setAutoPadding(false);
+    const encrypted = Buffer.concat([cipher.update(plaintext), cipher.final()]);
+
+    const decipher = crypto.createDecipheriv("aes-128-cbc", key, iv);
+    decipher.setAutoPadding(false);
+    const decrypted = Buffer.concat([
+      decipher.update(encrypted),
+      decipher.final(),
+    ]);
+
+    assertEquals(decrypted, plaintext);
   },
 });
 
@@ -876,5 +922,37 @@ Deno.test({
         "wrong final block length",
       );
     }
+  },
+});
+
+Deno.test({
+  name: "createDecipheriv - invalid PKCS7 padding throws bad decrypt",
+  fn() {
+    const key = Buffer.alloc(16, 0x01);
+    const iv = Buffer.alloc(16, 0x02);
+
+    // Encrypt without padding so we control the raw plaintext bytes
+    const cipher = crypto.createCipheriv("aes-128-cbc", key, iv);
+    cipher.setAutoPadding(false);
+
+    // Last byte 0x00 is invalid PKCS7 padding (valid range is 1-16)
+    const plaintext = Buffer.from(
+      "0123456789abcde\x00",
+    );
+    const encrypted = Buffer.concat([
+      cipher.update(plaintext),
+      cipher.final(),
+    ]);
+
+    // Decrypt with autoPadding=true (default) should throw
+    const decipher = crypto.createDecipheriv("aes-128-cbc", key, iv);
+    assertThrows(
+      () => {
+        decipher.update(encrypted);
+        decipher.final();
+      },
+      Error,
+      "bad decrypt",
+    );
   },
 });
