@@ -30,7 +30,9 @@ server.listen(pipeName, () => {
       res.on("end", () => {
         const parsed = JSON.parse(data);
         console.log(`status: ${parsed.status}`);
-        console.log(`pipe: ${parsed.pipe === pipeName ? "matches" : "mismatch"}`);
+        console.log(
+          `pipe: ${parsed.pipe === pipeName ? "matches" : "mismatch"}`,
+        );
         console.log(`statusCode: ${res.statusCode}`);
         server.close();
       });
@@ -44,4 +46,3 @@ server.listen(pipeName, () => {
 
   req.end();
 });
-

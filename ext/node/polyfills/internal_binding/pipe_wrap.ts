@@ -275,7 +275,7 @@ export class Pipe extends ConnectionWrap {
       // ERROR_PIPE_BUSY (231): All pipe instances are currently in use.
       // Node.js/libuv handles this via WaitNamedPipeW(30000) which blocks
       // up to 30 seconds. We emulate this by polling with retries:
-      // 300 attempts × 100ms = 30s max wait, matching libuv's timeout.
+      // 300 attempts x 100ms = 30s max wait, matching libuv's timeout.
       // Note: we match on the error message because Deno's error
       // serialization doesn't expose raw OS error codes as a property.
       // Rust's std::io::Error formats it as "... (os error 231)".
