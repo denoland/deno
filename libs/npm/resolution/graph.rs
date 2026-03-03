@@ -2407,19 +2407,17 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
         nv: Rc<PackageNv>,
         result: InfoResult,
       },
-      /// One dependency's package info (and optional alias info) arrived.
+      /// One dependency's package info arrived.
       DepInfo {
         parent_id: usize,
         dep_index: usize,
         result: InfoResult,
-        alias_result: Option<InfoResult>,
       },
     }
 
     /// Buffered fetch result for a single dependency.
     struct DepResult {
       result: InfoResult,
-      alias_result: Option<InfoResult>,
     }
 
     /// Tracks the state of one parent node being resolved.
@@ -2466,22 +2464,16 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
       api: &'a (impl NpmRegistryApi + ?Sized),
     ) {
       for (dep_index, dep) in deps.iter().enumerate() {
-        let alias_name = overrides.get_alias_for(&dep.name).cloned();
-        let name = dep.name.clone();
+        let name = overrides
+          .get_alias_for(&dep.name)
+          .cloned()
+          .unwrap_or_else(|| dep.name.clone());
         work.push(Box::pin(async move {
-          let (result, alias_result) =
-            futures::future::join(api.package_info(&name), async {
-              match &alias_name {
-                Some(n) => Some(api.package_info(n.as_str()).await),
-                None => None,
-              }
-            })
-            .await;
+          let result = api.package_info(&name).await;
           FetchEvent::DepInfo {
             parent_id,
             dep_index,
             result,
-            alias_result,
           }
         }));
       }
@@ -2594,7 +2586,6 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
           parent_id,
           dep_index,
           result,
-          alias_result,
         } => {
           let ParentState::Pending {
             ref mut results,
@@ -2604,10 +2595,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
           else {
             unreachable!();
           };
-          results[dep_index] = Some(DepResult {
-            result,
-            alias_result,
-          });
+          results[dep_index] = Some(DepResult { result });
           *remaining -= 1;
           if *remaining == 0 {
             // All dep fetches landed — transition to Ready.
@@ -2646,12 +2634,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
           let mut found_peer = false;
           for (i, dep) in deps.iter().enumerate() {
             let fetched = results[i].take().unwrap();
-            if self.process_dep(
-              &path,
-              dep,
-              fetched.result,
-              fetched.alias_result,
-            )? {
+            if self.process_dep(&path, dep, fetched.result)? {
               found_peer = true;
             }
           }
@@ -2685,9 +2668,6 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
     parent_path: &Rc<GraphPath>,
     dep: &NpmDependencyEntry,
     result: Result<Arc<NpmPackageInfo>, NpmRegistryPackageInfoLoadError>,
-    alias_result: Option<
-      Result<Arc<NpmPackageInfo>, NpmRegistryPackageInfoLoadError>,
-    >,
   ) -> Result<bool, NpmResolutionError> {
     let package_info = match result {
       Ok(info) => info,
@@ -2740,15 +2720,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
             child_id
           }
           None => {
-            // check if an alias override replaces this dependency's package
-            if let Some(alias_result) = alias_result {
-              let alias_info = alias_result?;
-              let alias_resolver =
-                self.version_resolver.get_for_package(&alias_info);
-              self.analyze_dependency(dep, &alias_resolver, parent_path)?
-            } else {
-              self.analyze_dependency(dep, &version_resolver, parent_path)?
-            }
+            self.analyze_dependency(dep, &version_resolver, parent_path)?
           }
         };
 
