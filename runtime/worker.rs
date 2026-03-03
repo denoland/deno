@@ -779,8 +779,7 @@ impl MainWorker {
     // Store the main context as a Global so the interrupt callback can use it
     // to create a ContextScope and capture the stack trace.
     let context = self.js_runtime.main_context();
-    let context_ptr =
-      Box::into_raw(Box::new(context)) as usize;
+    let context_ptr = Box::into_raw(Box::new(context)) as usize;
 
     let _ = deno_signals::register(
       libc::SIGINT,
@@ -1359,7 +1358,8 @@ unsafe extern "C" fn sigint_interrupt_callback(
   // SAFETY: V8 guarantees the isolate pointer is valid during the interrupt
   // callback and we are on the V8 thread.
   let mut raw_ptr = isolate_ptr.clone();
-  let isolate = unsafe { v8::Isolate::ref_from_raw_isolate_ptr_mut(&mut raw_ptr) };
+  let isolate =
+    unsafe { v8::Isolate::ref_from_raw_isolate_ptr_mut(&mut raw_ptr) };
   // SAFETY: data points to a Box<v8::Global<v8::Context>> that we allocated
   // in setup_sigint_trace_handler. We intentionally don't free it since we
   // exit immediately after.

@@ -17,9 +17,7 @@ use crate::NodeResolverRc;
 
 // TODO(igorzi): wire this up to `setup_sigint_trace_handler` in the runtime.
 #[op2(fast)]
-pub fn op_node_set_trace_sigint(
-  _enable: bool,
-) {
+pub fn op_node_set_trace_sigint(_enable: bool) {
   // Currently a no-op. The actual SIGINT trace handler is set up in
   // deno_runtime::worker::MainWorker::setup_sigint_trace_handler.
 }
