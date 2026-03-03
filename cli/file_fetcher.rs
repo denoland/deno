@@ -119,7 +119,7 @@ impl deno_cache_dir::file_fetcher::BlobStore for BlobStoreAdapter {
       bytes: blob
         .read_all()
         .await
-        .map_err(|e| std::io::Error::other(e))?,
+        .map_err(std::io::Error::other)?,
     }))
   }
 }
