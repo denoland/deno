@@ -1,4 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
+// deno-lint-ignore-file no-explicit-any camelcase
 import { WASI } from "node:wasi";
 import { assert, assertEquals, assertThrows } from "@std/assert";
 

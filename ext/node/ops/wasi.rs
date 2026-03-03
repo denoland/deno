@@ -227,6 +227,7 @@ pub struct WasiContext {
   permissions: PermissionsContainer,
 }
 
+// SAFETY: WasiContext contains no pointers to trace
 unsafe impl GarbageCollected for WasiContext {
   fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
 
