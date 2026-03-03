@@ -369,6 +369,12 @@ const kArrayExtrasType = 2;
 const coreModuleRegExp = new SafeRegExp(
   /^ {4}at (?:[^/\\(]+ \(|)node:(.+):\d+:\d+\)?$/,
 );
+const extModuleRegExp = new SafeRegExp(
+  /^ {4}at (?:[^/\\(]+ \(|)ext:.+:\d+:\d+\)?$/,
+);
+const filteredExtFrameRegExp = new SafeRegExp(
+  /^ {4}at (?:__node_internal_\S+|eventLoopTick|denoErrorToNodeError|__drainNextTickAndMacrotasks) /,
+);
 
 const kMinLineLength = 16;
 
@@ -1975,8 +1981,17 @@ function formatError(err, constructor, tag, ctx, keys) {
       nodeModule ??= lazyLoadModule();
       for (let i = 0; i < lines.length; i++) {
         let line = lines[i];
+        if (
+          RegExpPrototypeExec(filteredExtFrameRegExp, line) !== null &&
+          RegExpPrototypeExec(extModuleRegExp, line) !== null
+        ) {
+          continue;
+        }
         const core = RegExpPrototypeExec(coreModuleRegExp, line);
-        if (core !== null && nodeModule.isBuiltin(core[1])) {
+        if (
+          (core !== null && nodeModule.isBuiltin(core[1])) ||
+          RegExpPrototypeExec(extModuleRegExp, line) !== null
+        ) {
           newStack += `\n${ctx.stylize(line, "undefined")}`;
         } else {
           newStack += "\n";
@@ -1995,7 +2010,16 @@ function formatError(err, constructor, tag, ctx, keys) {
         }
       }
     } else {
-      newStack += `\n${ArrayPrototypeJoin(lines, "\n")}`;
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        if (
+          RegExpPrototypeExec(filteredExtFrameRegExp, line) !== null &&
+          RegExpPrototypeExec(extModuleRegExp, line) !== null
+        ) {
+          continue;
+        }
+        newStack += `\n${line}`;
+      }
     }
     stack = newStack;
   }
@@ -2161,21 +2185,20 @@ function formatProperty(
     return str;
   }
   if (typeof key === "symbol") {
-    name = `[${ctx.stylize(maybeQuoteSymbol(key, ctx), "symbol")}]`;
-  } else if (key === "__proto__") {
-    name = "['__proto__']";
-  } else if (desc.enumerable === false) {
-    const tmp = StringPrototypeReplace(
-      key,
+    const tmp = RegExpPrototypeSymbolReplace(
       strEscapeSequencesReplacer,
+      SymbolPrototypeToString(key),
       escapeFn,
     );
-
-    name = `[${tmp}]`;
+    name = ctx.stylize(tmp, "symbol");
   } else if (keyStrRegExp.test(key)) {
-    name = ctx.stylize(key, "name");
+    name = key === "__proto__" ? "['__proto__']" : ctx.stylize(key, "name");
   } else {
     name = ctx.stylize(quoteString(key, ctx), "string");
+  }
+
+  if (desc.enumerable === false) {
+    name = `[${name}]`;
   }
   return `${name}:${extra}${str}`;
 }
@@ -3742,8 +3765,12 @@ class Console {
     let resultData;
     const isSetObject = isSet(data);
     const isMapObject = isMap(data);
+    const isIteratorObject = !isSetObject && !isMapObject &&
+      !ArrayIsArray(data) && typeof data[SymbolIterator] === "function";
     const valuesKey = "Values";
-    const indexKey = isSetObject || isMapObject ? "(iter idx)" : "(idx)";
+    const indexKey = isSetObject || isMapObject || isIteratorObject
+      ? "(iter idx)"
+      : "(idx)";
 
     if (isSetObject) {
       resultData = [...new SafeSetIterator(data)];
@@ -3755,6 +3782,8 @@ class Console {
         resultData[idx] = { Key: k, Values: v };
         idx++;
       });
+    } else if (isIteratorObject) {
+      resultData = ArrayFrom(data);
     } else {
       resultData = data;
     }

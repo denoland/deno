@@ -55,11 +55,13 @@ use deno_runtime::tokio_util::create_and_run_current_thread_with_maybe_metrics;
 use deno_telemetry::OtelConfig;
 use deno_terminal::colors;
 use factory::CliFactory;
+use util::fs::canonicalize_path;
 
 const MODULE_NOT_FOUND: &str = "Module not found";
 const UNSUPPORTED_SCHEME: &str = "Unsupported scheme";
 
 use self::util::draw_thread::DrawThread;
+use self::util::env::resolve_cwd;
 use crate::args::CompletionsFlags;
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
@@ -193,9 +195,9 @@ async fn run_subcommand(
     DenoSubcommand::Fmt(fmt_flags) => spawn_subcommand(async move {
       tools::fmt::format(Arc::new(flags), fmt_flags).await
     }),
-    DenoSubcommand::Init(init_flags) => {
-      spawn_subcommand(async { tools::init::init_project(init_flags).await })
-    }
+    DenoSubcommand::Init(init_flags) => spawn_subcommand(async {
+      tools::init::init_project(flags, init_flags).await
+    }),
     DenoSubcommand::Info(info_flags) => spawn_subcommand(async {
       tools::info::info(Arc::new(flags), info_flags).await
     }),
@@ -416,7 +418,7 @@ async fn run_subcommand(
           unsafe {
             env::set_var(
               "DENO_COVERAGE_DIR",
-              PathBuf::from(coverage_dir).canonicalize()?,
+              canonicalize_path(&PathBuf::from(coverage_dir))?,
             )
           };
         }
@@ -659,15 +661,17 @@ pub fn main() {
       (None, None, None);
 
     let args = waited_args.unwrap_or(args);
-    let initial_cwd = waited_cwd.map(Some).unwrap_or_else(|| {
-      match std::env::current_dir().with_context(|| "Failed getting cwd.") {
-        Ok(cwd) => Some(cwd),
-        Err(err) => {
-          log::error!("Failed getting cwd: {err}");
-          None
-        }
-      }
-    });
+    #[allow(clippy::disallowed_methods)] // ok because initialization of cwd
+    let initial_cwd =
+      waited_cwd
+        .map(Some)
+        .unwrap_or_else(|| match std::env::current_dir() {
+          Ok(cwd) => Some(cwd),
+          Err(err) => {
+            log::error!("Failed getting cwd: {err}");
+            None
+          }
+        });
 
     // NOTE(lucacasonato): due to new PKU feature introduced in V8 11.6 we need to
     // initialize the V8 platform on a parent thread of all threads that will spawn
@@ -706,7 +710,8 @@ async fn resolve_flags_and_init(
   // this env var is used by clap to enable dynamic completions, it's set by the shell when
   // executing deno to get dynamic completions.
   if std::env::var("COMPLETE").is_ok() {
-    crate::args::handle_shell_completion()?;
+    let cwd = resolve_cwd(initial_cwd.as_deref())?;
+    crate::args::handle_shell_completion(&cwd)?;
     deno_runtime::exit(0);
   }
 

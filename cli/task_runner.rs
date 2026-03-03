@@ -24,6 +24,7 @@ use tokio_util::sync::CancellationToken;
 use crate::node::CliNodeResolver;
 use crate::npm::CliManagedNpmResolver;
 use crate::npm::CliNpmResolver;
+use crate::util::fs::canonicalize_path;
 
 pub fn get_script_with_args(script: &str, argv: &[String]) -> String {
   let additional_args = argv
@@ -246,7 +247,7 @@ impl ShellCommand for NpmCommand {
       return ExecutableCommand::new(
         "deno".to_string(),
         std::env::current_exe()
-          .and_then(|p| p.canonicalize())
+          .and_then(|p| canonicalize_path(&p))
           .unwrap(),
       )
       .execute(ShellCommandContext {
@@ -277,7 +278,7 @@ impl Default for DenoCommand {
     Self(ExecutableCommand::new(
       "deno".to_string(),
       std::env::current_exe()
-        .and_then(|p| p.canonicalize())
+        .and_then(|p| canonicalize_path(&p))
         .unwrap(),
     ))
   }
@@ -330,7 +331,7 @@ impl ShellCommand for NodeCommand {
     ExecutableCommand::new(
       "deno".to_string(),
       std::env::current_exe()
-        .and_then(|p| p.canonicalize())
+        .and_then(|p| canonicalize_path(&p))
         .unwrap(),
     )
     .execute(ShellCommandContext {
@@ -430,7 +431,7 @@ impl ShellCommand for NodeModulesFileRunCommand {
     let executable_command = deno_task_shell::ExecutableCommand::new(
       "deno".to_string(),
       std::env::current_exe()
-        .and_then(|p| p.canonicalize())
+        .and_then(|p| canonicalize_path(&p))
         .unwrap(),
     );
     // set this environment variable so that the launched process knows the npm command name

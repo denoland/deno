@@ -1284,13 +1284,15 @@ function transformDenoShellCommand(
         return a;
       })
       : result.deno_args.map((a) => {
-        // POSIX: args with shell variable refs use double quotes to
-        // preserve variable expansion. Other metacharacters use single
-        // quotes.
-        if (/\$\{[^}]+\}|\$[A-Za-z_]/.test(a)) {
-          return '"' + a.replace(/"/g, '\\"') + '"';
-        }
-        if (/[();&|<>`!\n\r\s"'\\$]/.test(a)) {
+        // POSIX shell quoting for translated args.
+        const hasShellVarRef = /\$\{[^}]+\}|\$[A-Za-z_]/.test(a);
+        const unsafeInDoubleQuotes = /`|\$\(|\\/.test(a);
+        const hasShellMetachars = /[();&|<>`!\n\r\s"'\\$]/.test(a);
+
+        if (hasShellMetachars) {
+          if (hasShellVarRef && !unsafeInDoubleQuotes) {
+            return '"' + a.replace(/"/g, '\\"') + '"';
+          }
           return "'" + a.replace(/'/g, "'\\''") + "'";
         }
         return a;
@@ -1471,13 +1473,7 @@ function _createSpawnError(
 }
 
 export interface SpawnOptions extends ChildProcessOptions {
-  /**
-   * NOTE: This option is not yet implemented.
-   */
   timeout?: number;
-  /**
-   * NOTE: This option is not yet implemented.
-   */
   killSignal?: string;
 }
 

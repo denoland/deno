@@ -118,6 +118,7 @@ use crate::tools::fmt::format_file;
 use crate::tools::fmt::format_parsed_source;
 use crate::tools::upgrade::check_for_upgrades_for_lsp;
 use crate::tools::upgrade::upgrade_check_enabled;
+use crate::util::env::resolve_cwd;
 use crate::util::fs::remove_dir_all_if_exists;
 use crate::util::path::to_percent_decoded_str;
 use crate::util::sync::AsyncFlag;
@@ -584,9 +585,7 @@ impl Inner {
       cache.deno_dir(),
       &http_client_provider,
     ));
-    let initial_cwd = std::env::current_dir().unwrap_or_else(|_| {
-      panic!("Could not resolve current working directory")
-    });
+    let initial_cwd = resolve_cwd(None).unwrap().into_owned();
 
     Self {
       ambient_modules_regex_cache: Default::default(),
@@ -2595,7 +2594,7 @@ impl Inner {
         &module,
         params.text_document_position.position,
         params.context,
-        self.snapshot(),
+        &self.snapshot(),
         token,
       )
       .await
@@ -2637,7 +2636,7 @@ impl Inner {
       .provide_definition(
         &module,
         params.text_document_position_params.position,
-        self.snapshot(),
+        &self.snapshot(),
         token,
       )
       .await
@@ -2679,7 +2678,7 @@ impl Inner {
       .provide_type_definition(
         &module,
         params.text_document_position_params.position,
-        self.snapshot(),
+        &self.snapshot(),
         token,
       )
       .await
@@ -2968,7 +2967,7 @@ impl Inner {
         &document,
         &module,
         params.text_document_position_params.position,
-        self.snapshot(),
+        &self.snapshot(),
         token,
       )
       .await
@@ -3048,7 +3047,7 @@ impl Inner {
         &document,
         &module,
         &params.item,
-        self.snapshot(),
+        &self.snapshot(),
         token,
       )
       .await
@@ -3090,7 +3089,7 @@ impl Inner {
       .provide_call_hierarchy_outgoing_calls(
         &module,
         &params.item,
-        self.snapshot(),
+        &self.snapshot(),
         token,
       )
       .await
@@ -3132,7 +3131,7 @@ impl Inner {
       .provide_prepare_call_hierarchy(
         &module,
         params.text_document_position_params.position,
-        self.snapshot(),
+        &self.snapshot(),
         token,
       )
       .await
@@ -3175,7 +3174,7 @@ impl Inner {
         params.text_document_position.position,
         &params.new_name,
         self,
-        self.snapshot(),
+        &self.snapshot(),
         token,
       )
       .await
@@ -3396,7 +3395,7 @@ impl Inner {
     let mark = self.performance.mark_with_args("lsp.symbol", &params);
     let symbol_information = self
       .ts_server
-      .provide_workspace_symbol(&params.query, self.snapshot(), token)
+      .provide_workspace_symbol(&params.query, &self.snapshot(), token)
       .await
       .map_err(|err| {
         if token.is_cancelled() {
@@ -3987,7 +3986,7 @@ struct PrepareCacheResult {
 impl Inner {
   async fn initialized(&mut self) -> Vec<Registration> {
     let mut registrations = Vec::with_capacity(2);
-    init_log_file(self.config.log_file());
+    init_log_file(self.config.log_file(), &self.initial_cwd);
     self.update_debug_flag();
     self.update_global_cache().await;
     self.refresh_workspace_files();
@@ -4337,7 +4336,7 @@ impl Inner {
     }
     let inlay_hints = self
       .ts_server
-      .provide_inlay_hint(&module, params.range, self.snapshot(), token)
+      .provide_inlay_hint(&module, params.range, &self.snapshot(), token)
       .await
       .map_err(|err| {
         if token.is_cancelled() {

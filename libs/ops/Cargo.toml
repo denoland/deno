@@ -1,0 +1,31 @@
+# Copyright 2018-2026 the Deno authors. MIT license.
+
+[package]
+name = "deno_ops"
+version = "0.263.0"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+readme = "README.md"
+repository.workspace = true
+description = "Proc macro for writing Deno Ops"
+
+[lib]
+path = "./lib.rs"
+proc-macro = true
+
+[dependencies]
+indexmap.workspace = true
+proc-macro2.workspace = true
+quote.workspace = true
+stringcase = "0.4.0"
+strum.workspace = true
+strum_macros.workspace = true
+syn.workspace = true
+syn-match = "0.3.1"
+thiserror.workspace = true
+
+[dev-dependencies]
+pretty_assertions.workspace = true
+prettyplease.workspace = true
+testing_macros.workspace = true

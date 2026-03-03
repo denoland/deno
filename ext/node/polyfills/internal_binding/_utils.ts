@@ -21,8 +21,10 @@ export function base64ToBytes(str: string) {
   try {
     return forgivingBase64Decode(str);
   } catch {
-    str = base64clean(str);
+    // Convert base64url characters to standard base64 before cleaning,
+    // so that the padding logic in base64clean works correctly.
     str = str.replaceAll("-", "+").replaceAll("_", "/");
+    str = base64clean(str);
     return forgivingBase64Decode(str);
   }
 }
@@ -42,7 +44,8 @@ function base64clean(str: string) {
     case 0:
       return str;
     case 1:
-      return `${str}===`;
+      // A single base64 char can't encode a full byte; drop it like Node does
+      return str.substring(0, length - 1);
     case 2:
       return `${str}==`;
     case 3:
