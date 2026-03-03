@@ -2925,30 +2925,24 @@ fn lsp_rename_synbol_file_scheme_edits_only() {
   assert_eq!(
     res,
     json!({
-      "documentChanges": [
-        {
-          "textDocument": {
-            "uri": url_to_uri(&temp_dir.url().join("file.ts").unwrap()).unwrap(),
-            "version": 1,
+      "changes": {
+        url_to_uri(&temp_dir.url().join("file.ts").unwrap()).unwrap().as_str(): [
+          {
+            "range": {
+              "start": { "line": 1, "character": 17 },
+              "end": { "line": 1, "character": 26 },
+            },
+            "newText": "SEPARATOR as PATH_SEPARATOR",
           },
-          "edits": [
-            {
-              "range": {
-                "start": { "line": 1, "character": 17 },
-                "end": { "line": 1, "character": 26 },
-              },
-              "newText": "SEPARATOR as PATH_SEPARATOR",
+          {
+            "range": {
+              "start": { "line": 2, "character": 20 },
+              "end": { "line": 2, "character": 29 },
             },
-            {
-              "range": {
-                "start": { "line": 2, "character": 20 },
-                "end": { "line": 2, "character": 29 },
-              },
-              "newText": "PATH_SEPARATOR",
-            },
-          ],
-        }
-      ],
+            "newText": "PATH_SEPARATOR",
+          },
+        ],
+      },
     })
   );
   client.shutdown();
@@ -3305,7 +3299,6 @@ fn lsp_call_hierarchy() {
       "from": {
         "name": "main",
         "kind": 12,
-        "detail": "",
         "uri": "file:///a/file.ts",
         "range": {
           "start": { "line": 10, "character": 0 },
@@ -3349,7 +3342,6 @@ fn lsp_call_hierarchy() {
       "to": {
         "name": "foo",
         "kind": 12,
-        "detail": "",
         "uri": "file:///a/file.ts",
         "range": {
           "start": { "line": 0, "character": 0 },
@@ -3750,37 +3742,31 @@ fn lsp_rename() {
   assert_eq!(
     res,
     json!({
-      "documentChanges": [
-        {
-          "textDocument": {
-            "uri": "file:///a/file.ts",
-            "version": 1,
+      "changes": {
+        "file:///a/file.ts": [
+          {
+            "range": {
+              "start": { "line": 1, "character": 14 },
+              "end": { "line": 1, "character": 22 },
+            },
+            "newText": "variable_modified",
           },
-          "edits": [
-            {
-              "range": {
-                "start": { "line": 1, "character": 14 },
-                "end": { "line": 1, "character": 22 },
-              },
-              "newText": "variable_modified",
+          {
+            "range": {
+              "start": { "line": 2, "character": 20 },
+              "end": { "line": 2, "character": 28 },
             },
-            {
-              "range": {
-                "start": { "line": 2, "character": 20 },
-                "end": { "line": 2, "character": 28 },
-              },
-              "newText": "variable_modified",
+            "newText": "variable_modified",
+          },
+          {
+            "range": {
+              "start": { "line": 3, "character": 11 },
+              "end": { "line": 3, "character": 19 },
             },
-            {
-              "range": {
-                "start": { "line": 3, "character": 11 },
-                "end": { "line": 3, "character": 19 },
-              },
-              "newText": "variable: variable_modified",
-            },
-          ],
-        },
-      ],
+            "newText": "variable: variable_modified",
+          },
+        ],
+      },
     }),
   );
   client.shutdown();
@@ -13627,7 +13613,6 @@ fn lsp_workspace_symbol() {
           "uri": "deno:/asset/lib.decorators.d.ts",
           "range": null,
         },
-        "containerName": ""
       },
       {
         "name": "HTTP_STATUS_REQUEST_HEADER_FIELDS_TOO_LARGE",
@@ -15388,7 +15373,7 @@ fn lsp_data_urls_with_jsx_compiler_option() {
         "end": { "line": 1, "character": 1 }
       }
     }, {
-      "uri": "deno:/data_url/ed0224c51f7e2a845dfc0941ed6959675e5e3e3d2a39b127f0ff569c1ffda8d8.ts",
+      "uri": "deno:/data-url/cf9f10f60e24884c7fdecbcda56d3a6690d806c60fb4492c8e7473181560a7d2.ts",
       "range": {
         "start": { "line": 0, "character": 7 },
         "end": {"line": 0, "character": 14 },
@@ -16395,8 +16380,8 @@ fn lsp_deno_json_scopes_declaration_files() {
   client.shutdown();
 }
 
-#[test(timeout = 300)]
-fn lsp_deno_json_scopes_find_references() {
+#[test(timeout = 300, fork_with_suffix = "_tsgo")]
+fn lsp_deno_json_scopes_find_references(use_tsgo: bool) {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
   temp_dir.write("project1/deno.json", json!({}).to_string());
@@ -16409,7 +16394,7 @@ fn lsp_deno_json_scopes_find_references() {
     temp_dir.path().join("project2/file.ts"),
     "export { foo } from \"../project1/file.ts\";\n",
   );
-  let mut client = context.new_lsp_command().build();
+  let mut client = context.new_lsp_command().set_use_tsgo(use_tsgo).build();
   client.initialize_default();
   let res = client.write_request(
     "textDocument/references",
@@ -16484,8 +16469,8 @@ fn lsp_deno_json_scopes_file_rename_import_edits() {
   client.shutdown();
 }
 
-#[test(timeout = 300)]
-fn lsp_deno_json_scopes_goto_implementations() {
+#[test(timeout = 300, fork_with_suffix = "_tsgo")]
+fn lsp_deno_json_scopes_goto_implementations(use_tsgo: bool) {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
   temp_dir.write("project1/deno.json", json!({}).to_string());
@@ -16501,7 +16486,7 @@ fn lsp_deno_json_scopes_goto_implementations() {
       export class SomeFoo implements Foo {}
     "#,
   );
-  let mut client = context.new_lsp_command().build();
+  let mut client = context.new_lsp_command().set_use_tsgo(use_tsgo).build();
   client.initialize_default();
   let res = client.write_request(
     "textDocument/implementation",
@@ -16523,8 +16508,8 @@ fn lsp_deno_json_scopes_goto_implementations() {
   client.shutdown();
 }
 
-#[test(timeout = 300)]
-fn lsp_deno_json_scopes_call_hierarchy() {
+#[test(timeout = 300, fork_with_suffix = "_tsgo")]
+fn lsp_deno_json_scopes_call_hierarchy(use_tsgo: bool) {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
   temp_dir.write("project1/deno.json", json!({}).to_string());
@@ -16552,7 +16537,7 @@ fn lsp_deno_json_scopes_call_hierarchy() {
       bar();
     "#,
   );
-  let mut client = context.new_lsp_command().build();
+  let mut client = context.new_lsp_command().set_use_tsgo(use_tsgo).build();
   client.initialize_default();
   let res = client.write_request(
     "textDocument/prepareCallHierarchy",
@@ -16567,7 +16552,6 @@ fn lsp_deno_json_scopes_call_hierarchy() {
       {
         "name": "bar",
         "kind": 12,
-        "detail": "",
         "uri": file2.uri(),
         "range": {
           "start": { "line": 2, "character": 6 },
@@ -16585,13 +16569,16 @@ fn lsp_deno_json_scopes_call_hierarchy() {
     json!([
       {
         "from": {
-          "name": "file.ts",
+          "name": file3.path(),
           "kind": 2,
-          "detail": "project3",
           "uri": file3.uri(),
           "range": {
             "start": { "line": 1, "character": 6 },
-            "end": { "line": 3, "character": 4 },
+            "end": if use_tsgo {
+              json!({ "line": 4, "character": 0 })
+            } else {
+              json!({ "line": 3, "character": 4 })
+            },
           },
           "selectionRange": {
             "start": { "line": 0, "character": 0 },
@@ -16616,7 +16603,6 @@ fn lsp_deno_json_scopes_call_hierarchy() {
         "to": {
           "name": "foo",
           "kind": 12,
-          "detail": "",
           "uri": file1.uri(),
           "range": file1.range_of("export function foo() {}"),
           "selectionRange": file1.range_of("foo"),
@@ -16633,8 +16619,8 @@ fn lsp_deno_json_scopes_call_hierarchy() {
   client.shutdown();
 }
 
-#[test(timeout = 300)]
-fn lsp_deno_json_scopes_rename_symbol() {
+#[test(timeout = 300, fork_with_suffix = "_tsgo")]
+fn lsp_deno_json_scopes_rename_symbol(use_tsgo: bool) {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
   temp_dir.write("project1/deno.json", json!({}).to_string());
@@ -16647,9 +16633,9 @@ fn lsp_deno_json_scopes_rename_symbol() {
     temp_dir.path().join("project2/file.ts"),
     "export { foo } from \"../project1/file.ts\";\n",
   );
-  let mut client = context.new_lsp_command().build();
+  let mut client = context.new_lsp_command().set_use_tsgo(use_tsgo).build();
   client.initialize_default();
-  let res = client.write_request(
+  let mut res = client.write_request(
     "textDocument/rename",
     json!({
       "textDocument": file1.identifier(),
@@ -16657,42 +16643,38 @@ fn lsp_deno_json_scopes_rename_symbol() {
       "newName": "bar",
     }),
   );
+  res
+    .as_object_mut()
+    .unwrap()
+    .get_mut("changes")
+    .unwrap()
+    .as_object_mut()
+    .unwrap()
+    .sort_keys();
   assert_eq!(
     res,
     json!({
-      "documentChanges": [
-        {
-          "textDocument": {
-            "uri": file1.uri(),
-            "version": null,
+      "changes": {
+        file1.uri().as_str(): [
+          {
+            "range": file1.range_of("foo"),
+            "newText": "bar",
           },
-          "edits": [
-            {
-              "range": file1.range_of("foo"),
-              "newText": "bar",
-            },
-          ],
-        },
-        {
-          "textDocument": {
-            "uri": file2.uri(),
-            "version": null,
+        ],
+        file2.uri().as_str(): [
+          {
+            "range": file2.range_of("foo"),
+            "newText": "bar as foo",
           },
-          "edits": [
-            {
-              "range": file2.range_of("foo"),
-              "newText": "bar as foo",
-            },
-          ],
-        },
-      ],
+        ],
+      },
     }),
   );
   client.shutdown();
 }
 
-#[test(timeout = 300)]
-fn lsp_deno_json_scopes_search_symbol() {
+#[test(timeout = 300, fork_with_suffix = "_tsgo")]
+fn lsp_deno_json_scopes_search_symbol(use_tsgo: bool) {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
   temp_dir.write("project1/deno.json", json!({}).to_string());
@@ -16705,7 +16687,7 @@ fn lsp_deno_json_scopes_search_symbol() {
     temp_dir.path().join("project2/file.ts"),
     "export const someSymbol2 = 2;\n",
   );
-  let mut client = context.new_lsp_command().build();
+  let mut client = context.new_lsp_command().set_use_tsgo(use_tsgo).build();
   client.initialize_default();
   client.did_open_file(&file1);
   let res =
@@ -16720,7 +16702,6 @@ fn lsp_deno_json_scopes_search_symbol() {
           "uri": file1.uri(),
           "range": file1.range_of("someSymbol1 = 1"),
         },
-        "containerName": "",
       },
       {
         "name": "someSymbol2",
@@ -16729,7 +16710,6 @@ fn lsp_deno_json_scopes_search_symbol() {
           "uri": file2.uri(),
           "range": file2.range_of("someSymbol2 = 2"),
         },
-        "containerName": "",
       },
     ]),
   );
@@ -19391,18 +19371,22 @@ fn lsp_import_json_module_import_attribute_variations() {
   );
 }
 
-#[test(timeout = 300)]
-fn lsp_import_raw_imports() {
+#[test(timeout = 300, fork_with_suffix = "_tsgo")]
+fn lsp_import_raw_imports(use_tsgo: bool) {
   let context = TestContextBuilder::new().use_temp_cwd().build();
-  let temp_dir = context.temp_dir().path();
-  temp_dir.join("deno.json").write_json(&json!({
-    "unstable": ["raw-imports"]
-  }));
-  temp_dir.join("data.txt").write("");
-  temp_dir
-    .join("hello.ts")
-    .write("export function hello() { return 'Hello'; }\n");
-  let text = r#"import { hello } from "./hello.ts";
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "unstable": ["raw-imports"]
+    })
+    .to_string(),
+  );
+  temp_dir.write("data.txt", "");
+  temp_dir.write("hello.ts", "export function hello() { return 'Hello'; }\n");
+  let file = temp_dir.source_file(
+    "main.ts",
+    r#"import { hello } from "./hello.ts";
 import helloBytes from "./hello.ts" with { type: "bytes" };
 import helloText from "./hello.ts" with { type: "text" };
 import dataBytes from "./data.txt" with { type: "bytes" };
@@ -19447,18 +19431,11 @@ invalid = dynamicHelloText;
 invalid = dynamicDataText;
 
 console.log(invalid, validBytes, validText);
-"#;
-  temp_dir.join("main.ts").write(text);
-  let mut client = context.new_lsp_command().build();
+"#,
+  );
+  let mut client = context.new_lsp_command().set_use_tsgo(use_tsgo).build();
   client.initialize_default();
-  let diagnostics = client.did_open(json!({
-    "textDocument": {
-      "uri": temp_dir.join("main.ts").uri_file(),
-      "languageId": "typescript",
-      "version": 1,
-      "text": text,
-    }
-  }));
+  let diagnostics = client.did_open_file(&file);
   assert_eq!(
     json!(diagnostics.all()),
     json!([
@@ -19615,19 +19592,74 @@ console.log(invalid, validBytes, validText);
     json!({
       "files": [
         {
-          "oldUri": temp_dir.join("main.ts").uri_file(),
-          "newUri": temp_dir.join("renamed.ts").uri_file(),
+          "oldUri": file.uri(),
+          "newUri": temp_dir.path().join("renamed.ts").uri_file(),
         },
       ],
     }),
   );
-  assert_eq!(
-    res,
+  assert_eq!(res, json!(null));
+  client.shutdown();
+}
+
+#[test(timeout = 300, fork_with_suffix = "_tsgo")]
+fn lsp_import_raw_imports_goto_definition(use_tsgo: bool) {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write("deno.json", json!({}).to_string());
+  let file = temp_dir.source_file(
+    "main.ts",
+    r#"
+      import text from "./data.txt" with { type: "text" };
+      console.log(text);
+    "#,
+  );
+  let text_file = temp_dir.source_file("data.txt", "Hello, world!\n");
+  let mut client = context.new_lsp_command().set_use_tsgo(use_tsgo).build();
+  client.initialize_default();
+  let res = client.write_request(
+    "textDocument/definition",
     json!({
-      "documentChanges": [],
+      "textDocument": { "uri": file.uri() },
+      "position": { "line": 2, "character": 18 },
     }),
   );
-  client.shutdown();
+  assert_eq!(
+    res,
+    if use_tsgo {
+      json!([{
+        "originSelectionRange": {
+          "start": { "line": 2, "character": 18 },
+          "end": { "line": 2, "character": 22 },
+        },
+        "targetUri": text_file.uri(),
+        "targetRange": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 0, "character": 0 },
+        },
+        "targetSelectionRange": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 0, "character": 0 },
+        },
+      }])
+    } else {
+      // TODO(nayeemrmn): This URI here contains an unnecessary fragment, and
+      // the ranges target the position of the exported symbol in the synthetic
+      // types file. Both of these should be masked. There's no urgency though
+      // since our tsgo integration handles it properly.
+      json!([{
+        "targetUri": format!("{}#denoRawImport=text.ts", text_file.uri().as_str()),
+        "targetRange": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 1, "character": 5 },
+        },
+        "targetSelectionRange": {
+          "start": { "line": 0, "character": 6 },
+          "end": { "line": 0, "character": 10 },
+        },
+      }])
+    },
+  );
 }
 
 /// Regression test for https://github.com/denoland/deno/issues/30380.

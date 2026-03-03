@@ -505,12 +505,6 @@ pub enum DecipherError {
   #[error("Failed to authenticate data")]
   DataAuthenticationFailed,
   #[class(type)]
-  #[error("setAutoPadding(false) not supported for Aes128Gcm yet")]
-  SetAutoPaddingFalseAes128GcmUnsupported,
-  #[class(type)]
-  #[error("setAutoPadding(false) not supported for Aes256Gcm yet")]
-  SetAutoPaddingFalseAes256GcmUnsupported,
-  #[class(type)]
   #[error("Unknown cipher {0}")]
   UnknownCipher(String),
 }
@@ -758,10 +752,13 @@ impl Decipher {
         Ok(())
       }
       (Aes128Cbc(mut decryptor), false) => {
-        decryptor.decrypt_block_b2b_mut(
-          GenericArray::from_slice(input),
-          GenericArray::from_mut_slice(output),
-        );
+        if !input.is_empty() {
+          assert_block_len!(input.len(), 16);
+          decryptor.decrypt_block_b2b_mut(
+            GenericArray::from_slice(input),
+            GenericArray::from_mut_slice(output),
+          );
+        }
         Ok(())
       }
       (Aes128Ecb(decryptor), true) => {
@@ -772,10 +769,13 @@ impl Decipher {
         Ok(())
       }
       (Aes128Ecb(mut decryptor), false) => {
-        decryptor.decrypt_block_b2b_mut(
-          GenericArray::from_slice(input),
-          GenericArray::from_mut_slice(output),
-        );
+        if !input.is_empty() {
+          assert_block_len!(input.len(), 16);
+          decryptor.decrypt_block_b2b_mut(
+            GenericArray::from_slice(input),
+            GenericArray::from_mut_slice(output),
+          );
+        }
         Ok(())
       }
       (Aes192Ecb(decryptor), true) => {
@@ -786,10 +786,13 @@ impl Decipher {
         Ok(())
       }
       (Aes192Ecb(mut decryptor), false) => {
-        decryptor.decrypt_block_b2b_mut(
-          GenericArray::from_slice(input),
-          GenericArray::from_mut_slice(output),
-        );
+        if !input.is_empty() {
+          assert_block_len!(input.len(), 16);
+          decryptor.decrypt_block_b2b_mut(
+            GenericArray::from_slice(input),
+            GenericArray::from_mut_slice(output),
+          );
+        }
         Ok(())
       }
       (Aes256Ecb(decryptor), true) => {
@@ -800,13 +803,16 @@ impl Decipher {
         Ok(())
       }
       (Aes256Ecb(mut decryptor), false) => {
-        decryptor.decrypt_block_b2b_mut(
-          GenericArray::from_slice(input),
-          GenericArray::from_mut_slice(output),
-        );
+        if !input.is_empty() {
+          assert_block_len!(input.len(), 16);
+          decryptor.decrypt_block_b2b_mut(
+            GenericArray::from_slice(input),
+            GenericArray::from_mut_slice(output),
+          );
+        }
         Ok(())
       }
-      (Aes128Gcm(decipher, auth_tag_length), true) => {
+      (Aes128Gcm(decipher, auth_tag_length), _) => {
         let tag = decipher.finish();
         let tag_slice = tag.as_slice();
         let truncated_tag = if let Some(len) = auth_tag_length {
@@ -820,10 +826,7 @@ impl Decipher {
           Err(DecipherError::DataAuthenticationFailed)
         }
       }
-      (Aes128Gcm(..), false) => {
-        Err(DecipherError::SetAutoPaddingFalseAes128GcmUnsupported)
-      }
-      (Aes256Gcm(decipher, auth_tag_length), true) => {
+      (Aes256Gcm(decipher, auth_tag_length), _) => {
         let tag = decipher.finish();
         let tag_slice = tag.as_slice();
         let truncated_tag = if let Some(len) = auth_tag_length {
@@ -836,9 +839,6 @@ impl Decipher {
         } else {
           Err(DecipherError::DataAuthenticationFailed)
         }
-      }
-      (Aes256Gcm(..), false) => {
-        Err(DecipherError::SetAutoPaddingFalseAes256GcmUnsupported)
       }
       (Aes256Cbc(decryptor), true) => {
         assert_block_len!(input.len(), 16);
@@ -848,10 +848,13 @@ impl Decipher {
         Ok(())
       }
       (Aes256Cbc(mut decryptor), false) => {
-        decryptor.decrypt_block_b2b_mut(
-          GenericArray::from_slice(input),
-          GenericArray::from_mut_slice(output),
-        );
+        if !input.is_empty() {
+          assert_block_len!(input.len(), 16);
+          decryptor.decrypt_block_b2b_mut(
+            GenericArray::from_slice(input),
+            GenericArray::from_mut_slice(output),
+          );
+        }
         Ok(())
       }
       (Aes256Ctr(mut decryptor), _) => {

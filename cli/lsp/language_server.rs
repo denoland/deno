@@ -2594,7 +2594,7 @@ impl Inner {
         &module,
         params.text_document_position.position,
         params.context,
-        self.snapshot(),
+        &self.snapshot(),
         token,
       )
       .await
@@ -2636,7 +2636,7 @@ impl Inner {
       .provide_definition(
         &module,
         params.text_document_position_params.position,
-        self.snapshot(),
+        &self.snapshot(),
         token,
       )
       .await
@@ -2678,7 +2678,7 @@ impl Inner {
       .provide_type_definition(
         &module,
         params.text_document_position_params.position,
-        self.snapshot(),
+        &self.snapshot(),
         token,
       )
       .await
@@ -2967,7 +2967,7 @@ impl Inner {
         &document,
         &module,
         params.text_document_position_params.position,
-        self.snapshot(),
+        &self.snapshot(),
         token,
       )
       .await
@@ -3047,7 +3047,7 @@ impl Inner {
         &document,
         &module,
         &params.item,
-        self.snapshot(),
+        &self.snapshot(),
         token,
       )
       .await
@@ -3089,7 +3089,7 @@ impl Inner {
       .provide_call_hierarchy_outgoing_calls(
         &module,
         &params.item,
-        self.snapshot(),
+        &self.snapshot(),
         token,
       )
       .await
@@ -3131,7 +3131,7 @@ impl Inner {
       .provide_prepare_call_hierarchy(
         &module,
         params.text_document_position_params.position,
-        self.snapshot(),
+        &self.snapshot(),
         token,
       )
       .await
@@ -3174,7 +3174,7 @@ impl Inner {
         params.text_document_position.position,
         &params.new_name,
         self,
-        self.snapshot(),
+        &self.snapshot(),
         token,
       )
       .await
@@ -3395,7 +3395,7 @@ impl Inner {
     let mark = self.performance.mark_with_args("lsp.symbol", &params);
     let symbol_information = self
       .ts_server
-      .provide_workspace_symbol(&params.query, self.snapshot(), token)
+      .provide_workspace_symbol(&params.query, &self.snapshot(), token)
       .await
       .map_err(|err| {
         if token.is_cancelled() {
@@ -4336,7 +4336,7 @@ impl Inner {
     }
     let inlay_hints = self
       .ts_server
-      .provide_inlay_hint(&module, params.range, self.snapshot(), token)
+      .provide_inlay_hint(&module, params.range, &self.snapshot(), token)
       .await
       .map_err(|err| {
         if token.is_cancelled() {
