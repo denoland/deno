@@ -18,6 +18,7 @@ const {
   Error,
   NumberIsInteger,
   ObjectEntries,
+  TypeError,
 } = primordials;
 
 // UVWASI error for path not found
@@ -28,6 +29,21 @@ class UVWASIError extends Error {
     this.code = code;
     this.name = "Error";
   }
+}
+
+// Custom TypeError with ERR_INVALID_ARG_TYPE code for memory validation
+// Node uses native THROW_ERR_INVALID_ARG_TYPE which bypasses the JS formatter
+function createMemoryTypeError(actual: unknown): TypeError {
+  const received = actual === undefined
+    ? "undefined"
+    : actual === null
+    ? "null"
+    : `type ${typeof actual}`;
+  const err = new TypeError(
+    `The "instance.exports.memory" property must be a WebAssembly.Memory object. Received ${received}`,
+  );
+  (err as unknown as { code: string }).code = "ERR_INVALID_ARG_TYPE";
+  return err;
 }
 
 class WASIProcExit {
@@ -647,11 +663,7 @@ class WASI {
 
     // Validate memory export
     if (!(exports.memory instanceof WebAssembly.Memory)) {
-      throw new ERR_INVALID_ARG_TYPE(
-        "instance.exports.memory",
-        "WebAssembly.Memory",
-        exports.memory,
-      );
+      throw createMemoryTypeError(exports.memory);
     }
 
     this.#memory = exports.memory;
@@ -710,11 +722,7 @@ class WASI {
 
     // Validate memory export
     if (!(exports.memory instanceof WebAssembly.Memory)) {
-      throw new ERR_INVALID_ARG_TYPE(
-        "instance.exports.memory",
-        "WebAssembly.Memory",
-        exports.memory,
-      );
+      throw createMemoryTypeError(exports.memory);
     }
 
     this.#memory = exports.memory;
