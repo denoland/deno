@@ -25,18 +25,9 @@ let nextTickEnabled = false;
 export function enableNextTick() {
   nextTickEnabled = true;
 
-  // Register the Node-specific tick hook with core.
-  // The hook is called with (tock, isBefore):
-  //   isBefore=true  → before the tick callback runs
-  //   isBefore=false → after (in finally block)
-  core.setTickHook((tock: { asyncId: number }, isBefore: boolean) => {
-    if (isBefore) {
-      emitBefore(tock.asyncId);
-    } else {
-      emitAfter(tock.asyncId);
-      emitDestroy(tock.asyncId);
-    }
-  });
+  // Register the async hook emit functions directly with core.
+  // The core drain loop calls these inline per-tick -- no indirection.
+  core.setAsyncHooksEmit(emitBefore, emitAfter, emitDestroy);
 }
 
 // Re-export from core for consumers (e.g. timers.mjs)

@@ -36,6 +36,7 @@
     __isLeakTracingEnabled,
     __initializeCoreMethods,
     __resolvePromise,
+    FixedQueue,
   } = window.__infra;
   const {
     op_abort_wasm_streaming,
@@ -149,94 +150,64 @@
   }
 
   // ---------------------------------------------------------------------------
-  // NextTick queue (FixedQueue + drain loop)
+  // NextTick queue
+  //
+  // Closely mirrors Node.js lib/internal/process/task_queues.js.
+  // The queue and drain loop live here in core; Node-specific concerns
+  // (validation, async hooks init, exit check) stay in ext/node/.
   // ---------------------------------------------------------------------------
-  const kQueueSize = 2048;
-  const kQueueMask = kQueueSize - 1;
+  const queue = new FixedQueue();
 
-  class FixedCircularBuffer {
-    constructor() {
-      this.bottom = 0;
-      this.top = 0;
-      this.list = new Array(kQueueSize);
-      this.next = null;
-    }
-    isEmpty() {
-      return this.top === this.bottom;
-    }
-    isFull() {
-      return ((this.top + 1) & kQueueMask) === this.bottom;
-    }
-    push(data) {
-      this.list[this.top] = data;
-      this.top = (this.top + 1) & kQueueMask;
-    }
-    shift() {
-      const nextItem = this.list[this.bottom];
-      if (nextItem === undefined) return null;
-      this.list[this.bottom] = undefined;
-      this.bottom = (this.bottom + 1) & kQueueMask;
-      return nextItem;
-    }
+  // Async hook emit functions. Default to no-ops; ext/node/ replaces them
+  // at bootstrap via setAsyncHooksEmit() with the real implementations
+  // from async_hooks.ts (emitBefore, emitAfter, emitDestroy).
+  let emitBefore = (_asyncId, _triggerAsyncId, _resource) => {};
+  let emitAfter = (_asyncId) => {};
+  let emitDestroy = (_asyncId) => {};
+
+  function setAsyncHooksEmit(before, after, destroy) {
+    emitBefore = before;
+    emitAfter = after;
+    emitDestroy = destroy;
   }
 
-  class FixedQueue {
-    constructor() {
-      this.head = this.tail = new FixedCircularBuffer();
-    }
-    isEmpty() {
-      return this.head.isEmpty();
-    }
-    push(data) {
-      if (this.head.isFull()) {
-        this.head = this.head.next = new FixedCircularBuffer();
-      }
-      this.head.push(data);
-    }
-    shift() {
-      const tail = this.tail;
-      const next = tail.shift();
-      if (tail.isEmpty() && tail.next !== null) {
-        this.tail = tail.next;
-      }
-      return next;
-    }
+  function hasTickScheduled() {
+    return op_has_tick_scheduled();
   }
 
-  const tickQueue = new FixedQueue();
-
-  // Hook for Node-specific per-tick logic (emitBefore/emitAfter/emitDestroy).
-  // Set by ext/node/ via setTickHook(). If null, no Node-specific work is done.
-  let tickHook = null;
-
-  function setTickHook(hook) {
-    tickHook = hook;
+  function setHasTickScheduled(value) {
+    op_set_has_tick_scheduled(value);
   }
 
-  // Enqueue a tick object. The object must have { callback, args, snapshot }
-  // and may contain additional fields (e.g. asyncId for Node async hooks).
+  // Enqueue a tick object. The object must have { callback, args } and
+  // an async context snapshot. It may contain additional fields for
+  // async hooks (asyncId, triggerAsyncId).
   function queueNextTick(tickObject) {
-    if (tickQueue.isEmpty()) {
-      op_set_has_tick_scheduled(true);
+    if (queue.isEmpty()) {
+      setHasTickScheduled(true);
     }
-    tickQueue.push(tickObject);
+    queue.push(tickObject);
   }
 
+  // Matches Node.js processTicksAndRejections() from
+  // lib/internal/process/task_queues.js
   function processTicksAndRejections() {
     let tock;
     do {
-      while ((tock = tickQueue.shift()) !== null) {
+      // deno-lint-ignore no-cond-assign
+      while ((tock = queue.shift()) !== null) {
         const oldContext = getAsyncContext();
+        setAsyncContext(tock.snapshot);
+
+        const asyncId = tock.asyncId;
+        emitBefore(asyncId, tock.triggerAsyncId, tock);
+
         try {
-          setAsyncContext(tock.snapshot);
-          if (tickHook !== null) {
-            tickHook(tock, true);
-          }
           const callback = tock.callback;
-          const args = tock.args;
-          if (args === undefined) {
+          if (tock.args === undefined) {
             callback();
           } else {
+            const args = tock.args;
             switch (args.length) {
               case 1:
                 callback(args[0]);
@@ -254,24 +225,33 @@
                 callback(...args);
             }
           }
-        } catch (e) {
-          reportError(e);
         } finally {
-          if (tickHook !== null) {
-            tickHook(tock, false);
-          }
-          setAsyncContext(oldContext);
+          emitDestroy(asyncId);
         }
+
+        emitAfter(asyncId);
+        setAsyncContext(oldContext);
       }
       op_run_microtasks();
-    } while (!tickQueue.isEmpty());
-    op_set_has_tick_scheduled(false);
+      // FIXME(bartlomieju): Deno currently doesn't handle unhandled rejections
+      // } while (!queue.isEmpty() || processPromiseRejections());
+    } while (!queue.isEmpty());
+    setHasTickScheduled(false);
+    // FIXME(bartlomieju): Deno currently doesn't handle unhandled rejections
+    // setHasRejectionToWarn(false);
   }
 
+  // Matches Node.js runNextTicks() from
+  // lib/internal/process/task_queues.js
   function runNextTicks() {
-    if (!op_has_tick_scheduled()) {
+    // FIXME(bartlomieju): Deno currently doesn't handle unhandled rejections
+    // if (!hasTickScheduled() && !hasRejectionToWarn())
+    if (!hasTickScheduled()) {
       op_run_microtasks();
-      if (!op_has_tick_scheduled()) return;
+    }
+    // if (!hasTickScheduled() && !hasRejectionToWarn())
+    if (!hasTickScheduled()) {
+      return;
     }
     processTicksAndRejections();
   }
@@ -806,11 +786,11 @@
     queueNextTick,
     processTicksAndRejections,
     runNextTicks,
-    setTickHook,
+    setAsyncHooksEmit,
     setImmediateCallback,
     runMicrotasks: () => op_run_microtasks(),
-    hasTickScheduled: () => op_has_tick_scheduled(),
-    setHasTickScheduled: (bool) => op_set_has_tick_scheduled(bool),
+    hasTickScheduled,
+    setHasTickScheduled,
     compileFunction: (
       source,
       specifier,

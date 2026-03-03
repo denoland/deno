@@ -426,6 +426,62 @@
     return fn;
   }
 
+  // ---------------------------------------------------------------------------
+  // FixedQueue: a singly-linked list of fixed-size circular buffers.
+  // Used by the nextTick queue (and available to other core subsystems).
+  // ---------------------------------------------------------------------------
+  const kQueueSize = 2048;
+  const kQueueMask = kQueueSize - 1;
+
+  class FixedCircularBuffer {
+    constructor() {
+      this.bottom = 0;
+      this.top = 0;
+      this.list = new Array(kQueueSize);
+      this.next = null;
+    }
+    isEmpty() {
+      return this.top === this.bottom;
+    }
+    isFull() {
+      return ((this.top + 1) & kQueueMask) === this.bottom;
+    }
+    push(data) {
+      this.list[this.top] = data;
+      this.top = (this.top + 1) & kQueueMask;
+    }
+    shift() {
+      const nextItem = this.list[this.bottom];
+      if (nextItem === undefined) return null;
+      this.list[this.bottom] = undefined;
+      this.bottom = (this.bottom + 1) & kQueueMask;
+      return nextItem;
+    }
+  }
+
+  class FixedQueue {
+    constructor() {
+      this.head = this.tail = new FixedCircularBuffer();
+    }
+    isEmpty() {
+      return this.head.isEmpty();
+    }
+    push(data) {
+      if (this.head.isFull()) {
+        this.head = this.head.next = new FixedCircularBuffer();
+      }
+      this.head.push(data);
+    }
+    shift() {
+      const tail = this.tail;
+      const next = tail.shift();
+      if (tail.isEmpty() && tail.next !== null) {
+        this.tail = tail.next;
+      }
+      return next;
+    }
+  }
+
   // Extra Deno.core.* exports
   const core = ObjectAssign(globalThis.Deno.core, {
     build,
@@ -443,6 +499,7 @@
     __setLeakTracingEnabled,
     __isLeakTracingEnabled,
     __initializeCoreMethods,
+    FixedQueue,
   };
 
   ObjectAssign(globalThis, { __infra: infra });

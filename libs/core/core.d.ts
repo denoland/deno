@@ -167,12 +167,17 @@ export namespace core {
   function runNextTicks(): void;
 
   /**
-   * Set a hook called for each tick object during drain.
-   * Called with (tock, isBefore) — isBefore=true before the callback,
-   * false in the finally block.
+   * Register async hook emit functions called directly in the drain loop.
+   * Defaults to no-ops; ext/node/ sets the real implementations at bootstrap.
    */
-  function setTickHook(
-    hook: ((tock: TickObject, isBefore: boolean) => void) | null,
+  function setAsyncHooksEmit(
+    emitBefore: (
+      asyncId: number,
+      triggerAsyncId: number,
+      resource: any,
+    ) => void,
+    emitAfter: (asyncId: number) => void,
+    emitDestroy: (asyncId: number) => void,
   ): void;
 
   /** Check if there's a scheduled "next tick". */
