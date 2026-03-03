@@ -797,11 +797,9 @@ impl ModuleGraphBuilder {
     );
     let maybe_reporter = self.maybe_reporter.as_deref();
     let mut locker = self.lockfile.as_ref().map(|l| l.as_deno_graph_locker());
-    self
-      .build_graph_with_npm_resolution_and_build_options(
-        graph,
-        request,
-        loader.as_loader(),
+
+    macro_rules! build_options {
+      ($npm_resolver:expr, $resolver:expr) => {
         deno_graph::BuildOptions {
           skip_dynamic_deps: self.cli_options.unstable_lazy_dynamic_imports()
             && graph.graph_kind() == GraphKind::CodeOnly,
@@ -814,15 +812,24 @@ impl ModuleGraphBuilder {
           jsr_version_resolver: Cow::Borrowed(
             self.jsr_version_resolver.as_ref(),
           ),
-          npm_resolver: Some(self.npm_graph_resolver.as_ref()),
+          npm_resolver: $npm_resolver,
           module_analyzer: &analyzer,
           module_info_cacher: self.module_info_cache.as_ref(),
           reporter: maybe_reporter,
-          resolver: Some(&graph_resolver),
+          resolver: Some($resolver),
           locker: locker.as_mut().map(|l| l as _),
           unstable_bytes_imports: self.cli_options.unstable_raw_imports(),
           unstable_text_imports: self.cli_options.unstable_raw_imports(),
-        },
+        }
+      };
+    }
+
+    self
+      .build_graph_with_npm_resolution_and_build_options(
+        graph,
+        request,
+        loader.as_loader(),
+        build_options!(Some(self.npm_graph_resolver.as_ref()), &graph_resolver),
         options.npm_caching,
       )
       .await?;
@@ -846,29 +853,7 @@ impl ModuleGraphBuilder {
             self.cli_options.start_dir.dir_url(),
             deno_graph::source::ResolutionKind::Types,
             loader.as_loader(),
-            deno_graph::BuildOptions {
-              skip_dynamic_deps: self
-                .cli_options
-                .unstable_lazy_dynamic_imports()
-                && graph.graph_kind() == GraphKind::CodeOnly,
-              is_dynamic: options.is_dynamic,
-              passthrough_jsr_specifiers: false,
-              executor: Default::default(),
-              file_system: &self.sys,
-              jsr_metadata_store: None,
-              jsr_url_provider: &CliJsrUrlProvider,
-              jsr_version_resolver: Cow::Borrowed(
-                self.jsr_version_resolver.as_ref(),
-              ),
-              npm_resolver: None,
-              module_analyzer: &analyzer,
-              module_info_cacher: self.module_info_cache.as_ref(),
-              reporter: maybe_reporter,
-              resolver: Some(&graph_resolver),
-              locker: locker.as_mut().map(|l| l as _),
-              unstable_bytes_imports: self.cli_options.unstable_raw_imports(),
-              unstable_text_imports: self.cli_options.unstable_raw_imports(),
-            },
+            build_options!(None, &graph_resolver),
           )
           .await;
       }
