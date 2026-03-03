@@ -9,6 +9,7 @@ use std::rc::Rc;
 use std::task::Context;
 use std::task::Poll;
 
+use deno_error::JsErrorBox;
 use futures::future::FutureExt;
 use futures::stream::FuturesUnordered;
 use futures::stream::Stream;
@@ -17,6 +18,7 @@ use futures::stream::TryStreamExt;
 use super::loaders::ModuleLoadOptions;
 use crate::ModuleLoadResponse;
 use crate::ModuleLoader;
+use crate::ModuleResolveResponse;
 use crate::ModuleSource;
 use crate::ModuleSourceCode;
 use crate::error::CoreError;
@@ -65,10 +67,14 @@ enum LoadInit {
 #[derive(Debug, Eq, PartialEq)]
 enum LoadState {
   Init,
+  ResolvingRoot,
   LoadingRoot,
   LoadingImports,
   Done,
 }
+
+type ModuleResolveFuture =
+  dyn Future<Output = Result<ModuleSpecifier, ModuleLoaderError>>;
 
 /// This future is used to implement parallel async module loading.
 pub(crate) struct RecursiveModuleLoad {
@@ -78,6 +84,8 @@ pub(crate) struct RecursiveModuleLoad {
   state: LoadState,
   module_map_rc: Rc<ModuleMap>,
   pending: FuturesUnordered<Pin<Box<ModuleLoadFuture>>>,
+  /// Pending async root resolution future.
+  pending_root_resolve: Option<Pin<Box<ModuleResolveFuture>>>,
   visited: HashSet<ModuleReference>,
   visited_as_alias: Rc<RefCell<HashSet<String>>>,
   pub root_module_reference: Option<ModuleReference>,
@@ -153,13 +161,15 @@ impl RecursiveModuleLoad {
       module_map_rc: module_map_rc.clone(),
       loader,
       pending: FuturesUnordered::new(),
+      pending_root_resolve: None,
       visited: HashSet::new(),
       visited_as_alias: Default::default(),
       root_module_reference: None,
     };
     // FIXME(bartlomieju): this seems fishy
     // Ignore the error here, let it be hit in `Stream::poll_next()`.
-    if let Ok(root_specifier) = load.resolve_root()
+    // Only attempt early lookup for sync resolution.
+    if let ModuleResolveResponse::Sync(Ok(root_specifier)) = load.resolve_root()
       && let Some(module_id) =
         module_map_rc.get_id(root_specifier.as_str(), requested_module_type)
     {
@@ -168,7 +178,7 @@ impl RecursiveModuleLoad {
     load
   }
 
-  pub fn resolve_root(&self) -> Result<ModuleSpecifier, CoreError> {
+  pub fn resolve_root(&self) -> ModuleResolveResponse {
     match self.init {
       LoadInit::Main(ref specifier) => {
         self
@@ -186,6 +196,15 @@ impl RecursiveModuleLoad {
     }
   }
 
+  /// Resolve the root module, handling both sync and async resolution.
+  #[allow(dead_code)]
+  pub async fn resolve_root_async(&self) -> Result<ModuleSpecifier, CoreError> {
+    match self.resolve_root() {
+      ModuleResolveResponse::Sync(result) => result.map_err(|e| e.into()),
+      ModuleResolveResponse::Async(fut) => fut.await.map_err(|e| e.into()),
+    }
+  }
+
   pub(crate) async fn prepare(&self) -> Result<(), CoreError> {
     let (
       module_specifier,
@@ -195,11 +214,10 @@ impl RecursiveModuleLoad {
       is_synchronous,
     ) = match &self.init {
       LoadInit::Main(specifier) => {
-        let spec = self.module_map_rc.resolve(
-          specifier,
-          ".",
-          ResolutionKind::MainModule,
-        )?;
+        let spec = self
+          .module_map_rc
+          .resolve_async(specifier, ".", ResolutionKind::MainModule)
+          .await?;
         (spec, None, None, RequestedModuleType::None, false)
       }
       LoadInit::Side {
@@ -207,10 +225,10 @@ impl RecursiveModuleLoad {
         kind,
         code,
       } => {
-        let spec =
-          self
-            .module_map_rc
-            .resolve(specifier, ".", ResolutionKind::Import)?;
+        let spec = self
+          .module_map_rc
+          .resolve_async(specifier, ".", ResolutionKind::Import)
+          .await?;
         (
           spec,
           None,
@@ -228,11 +246,10 @@ impl RecursiveModuleLoad {
         requested_module_type,
         _,
       ) => {
-        let spec = self.module_map_rc.resolve(
-          specifier,
-          referrer,
-          ResolutionKind::DynamicImport,
-        )?;
+        let spec = self
+          .module_map_rc
+          .resolve_async(specifier, referrer, ResolutionKind::DynamicImport)
+          .await?;
         (
           spec,
           Some(referrer.to_string()),
@@ -386,7 +403,7 @@ impl RecursiveModuleLoad {
             _ => {
               let request = module_request.clone();
               let visited_as_alias = self.visited_as_alias.clone();
-              let referrer = code.and_then(|code| {
+              let referrer_info = code.and_then(|code| {
                 let source_offset = request.referrer_source_offset?;
                 source_mapped_module_load_referrer(
                   &self.module_map_rc.source_mapper,
@@ -400,6 +417,10 @@ impl RecursiveModuleLoad {
               let is_synchronous = self.is_synchronous();
               let requested_module_type =
                 request.reference.requested_module_type.clone();
+              let needs_resolve = request.needs_resolve;
+              let raw_specifier = request.specifier_key.clone();
+              let referrer_str = referrer.to_string();
+              let module_map_rc = self.module_map_rc.clone();
               let fut = async move {
                 // `visited_as_alias` unlike `visited` is checked as late as
                 // possible because it can only be populated after completed
@@ -412,9 +433,31 @@ impl RecursiveModuleLoad {
                   return Ok(None);
                 }
 
+                // If the import needs async resolution, resolve it now.
+                let (resolved_specifier, request) = if needs_resolve {
+                  let raw = raw_specifier
+                    .as_deref()
+                    .unwrap_or(request.reference.specifier.as_str());
+                  let kind = if is_dynamic_import {
+                    ResolutionKind::DynamicImport
+                  } else {
+                    ResolutionKind::Import
+                  };
+                  let resolved = module_map_rc
+                    .resolve_async(raw, &referrer_str, kind)
+                    .await
+                    .map_err(|e| JsErrorBox::generic(e.to_string()))?;
+                  let mut resolved_request = request;
+                  resolved_request.reference.specifier = resolved.clone();
+                  resolved_request.needs_resolve = false;
+                  (resolved, resolved_request)
+                } else {
+                  (request.reference.specifier.clone(), request)
+                };
+
                 let load_response = loader.load(
-                  &request.reference.specifier,
-                  referrer.as_ref(),
+                  &resolved_specifier,
+                  referrer_info.as_ref(),
                   ModuleLoadOptions {
                     is_dynamic_import,
                     is_synchronous,
@@ -445,6 +488,77 @@ impl RecursiveModuleLoad {
   }
 }
 
+impl RecursiveModuleLoad {
+  /// Shared logic for Init and ResolvingRoot states once the root specifier
+  /// has been resolved.
+  fn init_with_resolved_root(
+    inner: &mut Self,
+    module_specifier: ModuleSpecifier,
+    cx: &mut Context,
+  ) -> Poll<Option<Result<(ModuleRequest, ModuleSource), CoreError>>> {
+    let (requested_module_type, phase) = match &inner.init {
+      LoadInit::DynamicImport(_, _, module_type, phase) => {
+        (module_type.clone(), *phase)
+      }
+      _ => (RequestedModuleType::None, ModuleImportPhase::Evaluation),
+    };
+    let module_request = ModuleRequest {
+      reference: ModuleReference {
+        specifier: module_specifier.clone(),
+        requested_module_type: requested_module_type.clone(),
+      },
+      specifier_key: None,
+      referrer_source_offset: None,
+      phase,
+      needs_resolve: false,
+    };
+    inner.root_module_reference = Some(module_request.reference.clone());
+    let load_fut = if phase == ModuleImportPhase::Evaluation
+      && let Some(module_id) = inner.root_module_id
+    {
+      // If the inner future is already in the map, we might be done (assuming there are no pending
+      // loads).
+      inner.register_and_recurse_inner(
+        module_id,
+        &module_request.reference,
+        None,
+      );
+      if inner.pending.is_empty() {
+        inner.state = LoadState::Done;
+      } else {
+        inner.state = LoadState::LoadingImports;
+      }
+      // Internally re-poll using the new state to avoid spinning the event loop again.
+      return Pin::new(inner).poll_next(cx);
+    } else {
+      let loader = inner.loader.clone();
+      let is_dynamic_import = inner.is_dynamic_import();
+      let is_synchronous = inner.is_synchronous();
+      let requested_module_type = requested_module_type.clone();
+      async move {
+        let load_response = loader.load(
+          &module_specifier,
+          None,
+          ModuleLoadOptions {
+            is_dynamic_import,
+            is_synchronous,
+            requested_module_type,
+          },
+        );
+        let result = match load_response {
+          ModuleLoadResponse::Sync(result) => result,
+          ModuleLoadResponse::Async(fut) => fut.await,
+        };
+        result.map(|s| Some((module_request, s)))
+      }
+      .boxed_local()
+    };
+    inner.pending.push(load_fut);
+    inner.state = LoadState::LoadingRoot;
+    inner.try_poll_next_unpin(cx)
+  }
+}
+
 impl Stream for RecursiveModuleLoad {
   type Item = Result<(ModuleRequest, ModuleSource), CoreError>;
 
@@ -458,70 +572,35 @@ impl Stream for RecursiveModuleLoad {
     match inner.state {
       LoadState::Init => {
         let module_specifier = match inner.resolve_root() {
-          Ok(url) => url,
-          Err(error) => {
-            return Poll::Ready(Some(Err(error)));
+          ModuleResolveResponse::Sync(Ok(url)) => url,
+          ModuleResolveResponse::Sync(Err(error)) => {
+            return Poll::Ready(Some(Err(error.into())));
+          }
+          ModuleResolveResponse::Async(fut) => {
+            // Async root resolution — store the future and transition state.
+            inner.pending_root_resolve = Some(fut);
+            inner.state = LoadState::ResolvingRoot;
+            return Self::poll_next(Pin::new(inner), cx);
           }
         };
-        let (requested_module_type, phase) = match &inner.init {
-          LoadInit::DynamicImport(_, _, module_type, phase) => {
-            (module_type.clone(), *phase)
+        Self::init_with_resolved_root(inner, module_specifier, cx)
+      }
+      LoadState::ResolvingRoot => {
+        let resolve_fut = inner
+          .pending_root_resolve
+          .as_mut()
+          .expect("ResolvingRoot state requires pending_root_resolve");
+        match resolve_fut.poll_unpin(cx) {
+          Poll::Ready(Ok(module_specifier)) => {
+            inner.pending_root_resolve = None;
+            Self::init_with_resolved_root(inner, module_specifier, cx)
           }
-          _ => (RequestedModuleType::None, ModuleImportPhase::Evaluation),
-        };
-        let module_request = ModuleRequest {
-          reference: ModuleReference {
-            specifier: module_specifier.clone(),
-            requested_module_type: requested_module_type.clone(),
-          },
-          specifier_key: None,
-          referrer_source_offset: None,
-          phase,
-        };
-        inner.root_module_reference = Some(module_request.reference.clone());
-        let load_fut = if phase == ModuleImportPhase::Evaluation
-          && let Some(module_id) = inner.root_module_id
-        {
-          // If the inner future is already in the map, we might be done (assuming there are no pending
-          // loads).
-          inner.register_and_recurse_inner(
-            module_id,
-            &module_request.reference,
-            None,
-          );
-          if inner.pending.is_empty() {
-            inner.state = LoadState::Done;
-          } else {
-            inner.state = LoadState::LoadingImports;
+          Poll::Ready(Err(error)) => {
+            inner.pending_root_resolve = None;
+            Poll::Ready(Some(Err(error.into())))
           }
-          // Internally re-poll using the new state to avoid spinning the event loop again.
-          return Self::poll_next(Pin::new(inner), cx);
-        } else {
-          let loader = inner.loader.clone();
-          let is_dynamic_import = inner.is_dynamic_import();
-          let is_synchronous = inner.is_synchronous();
-          let requested_module_type = requested_module_type.clone();
-          async move {
-            let load_response = loader.load(
-              &module_specifier,
-              None,
-              ModuleLoadOptions {
-                is_dynamic_import,
-                is_synchronous,
-                requested_module_type,
-              },
-            );
-            let result = match load_response {
-              ModuleLoadResponse::Sync(result) => result,
-              ModuleLoadResponse::Async(fut) => fut.await,
-            };
-            result.map(|s| Some((module_request, s)))
-          }
-          .boxed_local()
-        };
-        inner.pending.push(load_fut);
-        inner.state = LoadState::LoadingRoot;
-        inner.try_poll_next_unpin(cx)
+          Poll::Pending => Poll::Pending,
+        }
       }
       LoadState::LoadingRoot | LoadState::LoadingImports => {
         // Poll the futures that load the source code of the modules
