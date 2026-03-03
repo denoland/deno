@@ -205,7 +205,6 @@ export class KeyObject {
     return this[kKeyType];
   }
 
-
   static from(key: CryptoKey): KeyObject {
     if (!isCryptoKey(key)) {
       throw new ERR_INVALID_ARG_TYPE("key", "CryptoKey", key);
