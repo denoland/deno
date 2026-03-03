@@ -395,7 +395,7 @@ const checkRangesOrGetDefault = hideStackFrames(
   },
 );
 
-const linkValueRegExp = /^(?:<[^>]*>)(?:\s*;\s*[^;]*)*$/;
+const linkValueRegExp = new SafeRegExp("^(?:<[^>]*>)(?:\\s*;\\s*[^;]*)*$");
 
 const validateLinkHeaderFormat = hideStackFrames((value, name) => {
   if (

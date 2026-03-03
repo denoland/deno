@@ -7,23 +7,39 @@ const { internalRidSymbol } = core;
 const {
   ArrayFrom,
   ArrayIsArray,
+  ArrayPrototypeForEach,
+  ArrayPrototypePush,
+  ArrayPrototypeSort,
+  ArrayPrototypeUnshift,
+  ArrayBuffer,
+  ArrayBufferIsView,
+  Error,
+  FunctionPrototypeBind,
+  FunctionPrototypeCall,
   MathMin,
   Number,
   ObjectAssign,
   ObjectDefineProperty,
   ObjectEntries,
   ObjectHasOwn,
+  ObjectKeys,
+  ObjectPrototypeIsPrototypeOf,
   Promise,
   Proxy,
   ReflectApply,
   ReflectGet,
   ReflectGetPrototypeOf,
   ReflectSet,
+  SafeArrayIterator,
   SafeMap,
+  SafeRegExp,
   SafeSet,
+  StringPrototypeSlice,
+  StringPrototypeToLowerCase,
   Symbol,
   SymbolAsyncDispose,
   SymbolDispose,
+  TypedArrayPrototypeGetBuffer,
   Uint32Array,
   Uint8Array,
 } = primordials;
@@ -174,26 +190,30 @@ let debug = debuglog("http2", (fn) => {
 });
 
 function debugStream(id, sessionType, message, ...args) {
-  debug(
+  ReflectApply(debug, null, [
     "Http2Stream %s [Http2Session %s]: " + message,
     id,
     sessionName(sessionType),
-    ...args,
-  );
+    ...new SafeArrayIterator(args),
+  ]);
 }
 
 function debugStreamObj(stream, message, ...args) {
   const session = stream[kSession];
   const type = session ? session[kType] : undefined;
-  debugStream(stream[kID], type, message, ...args);
+  debugStream(stream[kID], type, message, ...new SafeArrayIterator(args));
 }
 
 function debugSession(sessionType, message, ...args) {
-  debug("Http2Session %s: " + message, sessionName(sessionType), ...args);
+  ReflectApply(debug, null, [
+    "Http2Session %s: " + message,
+    sessionName(sessionType),
+    ...new SafeArrayIterator(args),
+  ]);
 }
 
 function debugSessionObj(session, message, ...args) {
-  debugSession(session[kType], message, ...args);
+  debugSession(session[kType], message, ...new SafeArrayIterator(args));
 }
 
 function getURLOrigin(urlStr) {
@@ -314,7 +334,9 @@ const kMaxInt = (2 ** 32) - 1;
 const kMaxStreams = (2 ** 32) - 1;
 const kMaxALTSVC = (2 ** 14) - 2;
 
-const kQuotedString = /^[\x09\x20-\x5b\x5d-\x7e\x80-\xff]*$/;
+const kQuotedString = new SafeRegExp(
+  "^[\\x09\\x20-\\x5b\\x5d-\\x7e\\x80-\\xff]*$",
+);
 
 // Placeholder classes and functions - these need proper implementation
 class JSStreamSocket {}
@@ -382,7 +404,11 @@ function submitSettings(settings, callback) {
   debugSessionObj(this, "submitting settings");
   this[kUpdateTimer]();
   updateSettingsBuffer(settings);
-  if (!this[kHandle].settings(settingsCallback.bind(this, callback))) {
+  if (
+    !this[kHandle].settings(
+      FunctionPrototypeBind(settingsCallback, this, callback),
+    )
+  ) {
     this.destroy(new ERR_HTTP2_MAX_PENDING_SETTINGS_ACK());
   }
 }
@@ -434,7 +460,7 @@ const proxySocketHandler = {
       case "setTimeout":
       case "ref":
       case "unref":
-        return session[prop].bind(session);
+        return FunctionPrototypeBind(session[prop], session);
       case "destroy":
       case "emit":
       case "end":
@@ -452,7 +478,9 @@ const proxySocketHandler = {
           throw new ERR_HTTP2_SOCKET_UNBOUND();
         }
         const value = socket[prop];
-        return typeof value === "function" ? value.bind(socket) : value;
+        return typeof value === "function"
+          ? FunctionPrototypeBind(value, socket)
+          : value;
       }
     }
   },
@@ -537,6 +565,7 @@ function onStreamClose(code) {
     stream.on("end", stream[kMaybeDestroy]);
     // Push a null so the stream can end whenever the client consumes
     // it completely.
+    // deno-lint-ignore prefer-primordials
     stream.push(null);
 
     // If the user hasn't tried to consume the stream (and this is a server
@@ -831,7 +860,7 @@ const validateSettings = hideStackFrames((settings) => {
     if (entries.length > MAX_ADDITIONAL_SETTINGS) {
       throw new ERR_HTTP2_TOO_MANY_CUSTOM_SETTINGS();
     }
-    for (const { 0: key, 1: value } of entries) {
+    for (const { 0: key, 1: value } of new SafeArrayIterator(entries)) {
       assertWithinRange(
         "customSettings:id",
         Number(key),
@@ -978,7 +1007,7 @@ function callTimeout(self, session) {
 // event. If the stream is not new, emit the 'headers' event to pass
 // the block of headers on.
 function onSessionHeaders(
-  handle = {},
+  handle = { __proto__: null },
   id,
   cat,
   flags,
@@ -1027,6 +1056,7 @@ function onSessionHeaders(
         });
       }
       if (endOfStream) {
+        // deno-lint-ignore prefer-primordials
         stream.push(null);
       }
       if (obj[HTTP2_HEADER_METHOD] === HTTP2_METHOD_HEAD) {
@@ -1051,6 +1081,7 @@ function onSessionHeaders(
         });
       }
       if (endOfStream) {
+        // deno-lint-ignore prefer-primordials
         stream.push(null);
       }
       stream.end();
@@ -1114,6 +1145,7 @@ function onSessionHeaders(
     }
   }
   if (endOfStream) {
+    // deno-lint-ignore prefer-primordials
     stream.push(null);
   }
 }
@@ -1242,7 +1274,7 @@ function closeStream(stream, code, rstStreamStatus = kSubmitRstStream) {
   }
 
   if (rstStreamStatus !== kNoRstStream) {
-    const finishFn = finishCloseStream.bind(stream, code);
+    const finishFn = FunctionPrototypeBind(finishCloseStream, stream, code);
     if (
       !ending || stream.writableFinished || code !== NGHTTP2_NO_ERROR ||
       rstStreamStatus === kForceRstStream
@@ -1263,11 +1295,12 @@ function closeStream(stream, code, rstStreamStatus = kSubmitRstStream) {
 }
 
 function finishCloseStream(code) {
-  const rstStreamFn = submitRstStream.bind(this, code);
+  const rstStreamFn = FunctionPrototypeBind(submitRstStream, this, code);
   // If the handle has not yet been assigned, queue up the request to
   // ensure that the RST_STREAM frame is sent after the stream ID has
   // been determined.
   if (this.pending) {
+    // deno-lint-ignore prefer-primordials
     this.push(null);
     this.once("ready", rstStreamFn);
     return;
@@ -1347,12 +1380,15 @@ class Http2Stream extends Duplex {
     // means afterWriteDispatched won't call req.callback synchronously.
     // HTTP2 stream writes are synchronous (they buffer data), so we need
     // to call req.oncomplete(0) to signal write completion.
-    const nativeWriteUtf8String = handle.writeUtf8String.bind(handle);
-    const nativeWriteBuffer = handle.writeBuffer.bind(handle);
+    const nativeWriteUtf8String = FunctionPrototypeBind(
+      handle.writeUtf8String,
+      handle,
+    );
+    const nativeWriteBuffer = FunctionPrototypeBind(handle.writeBuffer, handle);
     function completeWrite(req, err) {
       if (err === 0 && typeof req.oncomplete === "function") {
         process.nextTick(() => {
-          req.oncomplete.call(req, 0);
+          FunctionPrototypeCall(req.oncomplete, req, 0);
         });
       }
       return err;
@@ -1369,6 +1405,7 @@ class Http2Stream extends Duplex {
     };
     handle.writev = function (req, chunks, allBuffers) {
       const count = allBuffers ? chunks.length : chunks.length >> 1;
+      // deno-lint-ignore prefer-primordials
       const buffers = new Array(count);
       if (!allBuffers) {
         for (let i = 0; i < count; i++) {
@@ -1385,6 +1422,7 @@ class Http2Stream extends Duplex {
           buffers[i] = chunks[i];
         }
       }
+      // deno-lint-ignore prefer-primordials
       return handle.writeBuffer(req, Buffer.concat(buffers));
     };
     handle.writeLatin1String = function (req, data) {
@@ -1444,7 +1482,7 @@ class Http2Stream extends Duplex {
       if (existing === undefined) {
         headersObject[key] = value;
       } else if (ArrayIsArray(existing)) {
-        existing.push(value);
+        ArrayPrototypePush(existing, value);
       } else {
         headersObject[key] = [existing, value];
       }
@@ -1538,7 +1576,14 @@ class Http2Stream extends Duplex {
     if (this.pending) {
       this.once(
         "ready",
-        this[kWriteGeneric].bind(this, writev, data, encoding, cb),
+        FunctionPrototypeBind(
+          this[kWriteGeneric],
+          this,
+          writev,
+          data,
+          encoding,
+          cb,
+        ),
       );
       return;
     }
@@ -1596,7 +1641,7 @@ class Http2Stream extends Duplex {
       ) {
         return endCheckCallback();
       }
-      shutdownWritable.call(this, endCheckCallback);
+      FunctionPrototypeCall(shutdownWritable, this, endCheckCallback);
     });
 
     try {
@@ -1631,6 +1676,7 @@ class Http2Stream extends Duplex {
 
   _read(nread) {
     if (this.destroyed) {
+      // deno-lint-ignore prefer-primordials
       this.push(null);
       return;
     }
@@ -1639,7 +1685,7 @@ class Http2Stream extends Duplex {
       this[kState].didRead = true;
     }
     if (!this.pending) {
-      streamOnResume.call(this);
+      FunctionPrototypeCall(streamOnResume, this);
     } else {
       this.once("ready", streamOnResume);
     }
@@ -1734,7 +1780,7 @@ class Http2Stream extends Duplex {
     if (err != null) {
       if (sessionCode) {
         code = sessionCode;
-      } else if (err instanceof AbortError) {
+      } else if (ObjectPrototypeIsPrototypeOf(AbortError.prototype, err)) {
         // Enables using AbortController to cancel requests with RST code 8.
         code = NGHTTP2_CANCEL;
       } else {
@@ -1746,6 +1792,7 @@ class Http2Stream extends Duplex {
     if (!this.closed) {
       closeStream(this, code, hasHandle ? kForceRstStream : kNoRstStream);
     }
+    // deno-lint-ignore prefer-primordials
     this.push(null);
 
     if (hasHandle) {
@@ -1899,7 +1946,7 @@ function prepareResponseHeadersArray(headers, options) {
   let isDateSet = false;
 
   for (let i = 0; i < headers.length; i += 2) {
-    const header = headers[i].toLowerCase();
+    const header = StringPrototypeToLowerCase(headers[i]);
     const value = headers[i + 1];
 
     if (header === HTTP2_HEADER_STATUS) {
@@ -1911,11 +1958,11 @@ function prepareResponseHeadersArray(headers, options) {
 
   if (!statusCode) {
     statusCode = HTTP_STATUS_OK;
-    headers.unshift(HTTP2_HEADER_STATUS, statusCode);
+    ArrayPrototypeUnshift(headers, HTTP2_HEADER_STATUS, statusCode);
   }
 
   if (!isDateSet && (options.sendDate == null || options.sendDate)) {
-    headers.push(HTTP2_HEADER_DATE, utcDate());
+    ArrayPrototypePush(headers, HTTP2_HEADER_DATE, utcDate());
   }
 
   validatePreparedResponseHeaders(headers, statusCode);
@@ -1975,7 +2022,7 @@ function processRespondWithFD(
   const end = length >= 0 ? offset + length : -1;
 
   function readAndWrite() {
-    const readLen = end >= 0 ? Math.min(buf.length, end - pos) : buf.length;
+    const readLen = end >= 0 ? MathMin(buf.length, end - pos) : buf.length;
     if (readLen <= 0) {
       finish();
       return;
@@ -1991,6 +2038,7 @@ function processRespondWithFD(
         return;
       }
       pos += bytesRead;
+      // deno-lint-ignore prefer-primordials
       const chunk = buf.slice(0, bytesRead);
       self.write(chunk, readAndWrite);
     });
@@ -2029,7 +2077,13 @@ function doSendFD(session, options, fd, headers, streamOptions, err, stat) {
 
   if (
     (typeof options.statCheck === "function" &&
-      options.statCheck.call(this, stat, headers, statOptions) === false) ||
+      FunctionPrototypeCall(
+          options.statCheck,
+          this,
+          stat,
+          headers,
+          statOptions,
+        ) === false) ||
     (this[kState].flags & STREAM_FLAGS_HEADERS_SENT)
   ) {
     return;
@@ -2094,7 +2148,8 @@ function doSendFileFD(session, options, fd, headers, streamOptions, err, stat) {
 
   if (
     (typeof options.statCheck === "function" &&
-      options.statCheck.call(this, stat, headers) === false) ||
+      FunctionPrototypeCall(options.statCheck, this, stat, headers) ===
+        false) ||
     (this[kState].flags & STREAM_FLAGS_HEADERS_SENT)
   ) {
     tryClose(fd);
@@ -2104,7 +2159,7 @@ function doSendFileFD(session, options, fd, headers, streamOptions, err, stat) {
   if (stat.isFile()) {
     statOptions.length = statOptions.length < 0
       ? stat.size - (+statOptions.offset)
-      : Math.min(stat.size - (+statOptions.offset), statOptions.length);
+      : MathMin(stat.size - (+statOptions.offset), statOptions.length);
 
     headers[HTTP2_HEADER_CONTENT_LENGTH] = statOptions.length;
   }
@@ -2138,7 +2193,15 @@ function afterOpen(session, options, headers, streamOptions, err, fd) {
 
   fs.fstat(
     fd,
-    doSendFileFD.bind(this, session, options, fd, headers, streamOptions),
+    FunctionPrototypeBind(
+      doSendFileFD,
+      this,
+      session,
+      options,
+      fd,
+      headers,
+      streamOptions,
+    ),
   );
 }
 
@@ -2234,6 +2297,7 @@ class ServerHttp2Stream extends Http2Stream {
     const stream = new ServerHttp2Stream(session, ret, id, options, headers);
     stream[kSentHeaders] = headers;
 
+    // deno-lint-ignore prefer-primordials
     stream.push(null);
 
     if (options.endStream) {
@@ -2369,7 +2433,7 @@ class ServerHttp2Stream extends Http2Stream {
       this[kState].flags |= STREAM_FLAGS_HAS_TRAILERS;
     }
 
-    if (fd instanceof FsFileHandle) {
+    if (ObjectPrototypeIsPrototypeOf(FsFileHandle.prototype, fd)) {
       fd = fd.fd;
     } else if (typeof fd !== "number") {
       throw new ERR_INVALID_ARG_TYPE("fd", ["number", "FileHandle"], fd);
@@ -2397,7 +2461,15 @@ class ServerHttp2Stream extends Http2Stream {
     if (options.statCheck !== undefined) {
       fs.fstat(
         fd,
-        doSendFD.bind(this, session, options, fd, headers, streamOptions),
+        FunctionPrototypeBind(
+          doSendFD,
+          this,
+          session,
+          options,
+          fd,
+          headers,
+          streamOptions,
+        ),
       );
       return;
     }
@@ -2474,7 +2546,14 @@ class ServerHttp2Stream extends Http2Stream {
     fs.open(
       path,
       "r",
-      afterOpen.bind(this, session, options, headers, streamOptions),
+      FunctionPrototypeBind(
+        afterOpen,
+        this,
+        session,
+        options,
+        headers,
+        streamOptions,
+      ),
     );
   }
 
@@ -2517,7 +2596,7 @@ class ServerHttp2Stream extends Http2Stream {
     if (!this[kInfoHeaders]) {
       this[kInfoHeaders] = [headers];
     } else {
-      this[kInfoHeaders].push(headers);
+      ArrayPrototypePush(this[kInfoHeaders], headers);
     }
 
     const ret = this[kHandle].info(headersList);
@@ -2607,7 +2686,11 @@ function setupHandle(socket, type, options) {
     debug("i/o stream consumed (socket data events)");
   }
 
-  handle.ongracefulclosecomplete = this[kMaybeDestroy].bind(this, null);
+  handle.ongracefulclosecomplete = FunctionPrototypeBind(
+    this[kMaybeDestroy],
+    this,
+    null,
+  );
 
   this[kHandle] = handle;
   if (this[kNativeFields]) {
@@ -2631,7 +2714,7 @@ function setupHandle(socket, type, options) {
 
   if (isUint32(options.maxSessionInvalidFrames)) {
     const uint32 = new Uint32Array(
-      this[kNativeFields].buffer,
+      TypedArrayPrototypeGetBuffer(this[kNativeFields]),
       kSessionMaxInvalidFrames,
       1,
     );
@@ -2640,7 +2723,7 @@ function setupHandle(socket, type, options) {
 
   if (isUint32(options.maxSessionRejectedStreams)) {
     const uint32 = new Uint32Array(
-      this[kNativeFields].buffer,
+      TypedArrayPrototypeGetBuffer(this[kNativeFields]),
       kSessionMaxRejectedStreams,
       1,
     );
@@ -2747,7 +2830,9 @@ function closeSession(session, code, error) {
   // Destroy any pending and open streams
   if (state.pendingStreams.size > 0 || state.streams.size > 0) {
     const cancel = new ERR_HTTP2_STREAM_CANCEL(error);
+    // deno-lint-ignore prefer-primordials
     state.pendingStreams.forEach((stream) => stream.destroy(cancel));
+    // deno-lint-ignore prefer-primordials
     state.streams.forEach((stream) => stream.destroy(error));
   }
 
@@ -2757,7 +2842,12 @@ function closeSession(session, code, error) {
 
   // Destroy the handle if it exists at this point.
   if (handle !== undefined) {
-    handle.ondone = finishSessionClose.bind(null, session, error);
+    handle.ondone = FunctionPrototypeBind(
+      finishSessionClose,
+      null,
+      session,
+      error,
+    );
     handle.destroy(code, socket.destroyed);
   } else {
     finishSessionClose(session, error);
@@ -2785,7 +2875,9 @@ function socketOnClose() {
     debugSessionObj(session, "socket closed");
     const err = session.connecting ? new ERR_SOCKET_CLOSED() : null;
     const state = session[kState];
+    // deno-lint-ignore prefer-primordials
     state.streams.forEach((stream) => stream.close(NGHTTP2_CANCEL));
+    // deno-lint-ignore prefer-primordials
     state.pendingStreams.forEach((stream) => stream.close(NGHTTP2_CANCEL));
     session.close();
     closeSession(session, NGHTTP2_NO_ERROR, err);
@@ -2880,11 +2972,18 @@ class Http2Session extends EventEmitter {
       socket.disableRenegotiation();
     }
 
-    const setupFn = setupHandle.bind(this, socket, type, options);
+    const setupFn = FunctionPrototypeBind(
+      setupHandle,
+      this,
+      socket,
+      type,
+      options,
+    );
     if (socket.connecting || socket.secureConnecting) {
-      const connectEvent = socket instanceof tls.TLSSocket
-        ? "secureConnect"
-        : "connect";
+      const connectEvent =
+        ObjectPrototypeIsPrototypeOf(tls.TLSSocket.prototype, socket)
+          ? "secureConnect"
+          : "connect";
       socket.once(connectEvent, () => {
         try {
           setupFn();
@@ -3125,7 +3224,12 @@ class Http2Session extends EventEmitter {
 
     this[kState].pendingAck++;
 
-    const settingsFn = submitSettings.bind(this, settings, callback);
+    const settingsFn = FunctionPrototypeBind(
+      submitSettings,
+      this,
+      settings,
+      callback,
+    );
     if (this.connecting) {
       this.once("connect", settingsFn);
       return;
@@ -3148,7 +3252,13 @@ class Http2Session extends EventEmitter {
     validateNumber(code, "code");
     validateNumber(lastStreamID, "lastStreamID");
 
-    const goawayFn = submitGoaway.bind(this, code, lastStreamID, opaqueData);
+    const goawayFn = FunctionPrototypeBind(
+      submitGoaway,
+      this,
+      code,
+      lastStreamID,
+      opaqueData,
+    );
     if (this.connecting) {
       this.once("connect", goawayFn);
       return;
@@ -3501,14 +3611,19 @@ class ClientHttp2Session extends Http2Session {
       }
     }
 
-    const onConnect = requestOnConnect.bind(stream, headersList, options);
+    const onConnect = FunctionPrototypeBind(
+      requestOnConnect,
+      stream,
+      headersList,
+      options,
+    );
     if (this.connecting) {
       if (this[kPendingRequestCalls] !== null) {
-        this[kPendingRequestCalls].push(onConnect);
+        ArrayPrototypePush(this[kPendingRequestCalls], onConnect);
       } else {
         this[kPendingRequestCalls] = [onConnect];
         this.once("connect", () => {
-          this[kPendingRequestCalls].forEach((f) => f());
+          ArrayPrototypeForEach(this[kPendingRequestCalls], (f) => f());
           this[kPendingRequestCalls] = null;
         });
       }
@@ -3569,7 +3684,7 @@ function connectionListener(socket) {
     if (options.allowHTTP1 === true) {
       socket.server[kIncomingMessage] = options.Http1IncomingMessage;
       socket.server[kServerResponse] = options.Http1ServerResponse;
-      return httpConnectionListener.call(this, socket);
+      return FunctionPrototypeCall(httpConnectionListener, this, socket);
     }
     // Let event handler deal with the socket
     debug(
@@ -3635,7 +3750,8 @@ function setupCompat(ev) {
     this.removeListener("newListener", setupCompat);
     this.on(
       "stream",
-      onServerStream.bind(
+      FunctionPrototypeBind(
+        onServerStream,
         this,
         this[kOptions].Http2ServerRequest,
         this[kOptions].Http2ServerResponse,
@@ -3652,7 +3768,7 @@ function initializeOptions(options) {
 
   if (options.remoteCustomSettings !== undefined) {
     validateArray(options.remoteCustomSettings, "options.remoteCustomSettings");
-    options.remoteCustomSettings = [...options.remoteCustomSettings];
+    options.remoteCustomSettings = ArrayFrom(options.remoteCustomSettings);
     if (options.remoteCustomSettings.length > MAX_ADDITIONAL_SETTINGS) {
       throw new ERR_HTTP2_TOO_MANY_CUSTOM_SETTINGS();
     }
@@ -3691,7 +3807,7 @@ function initializeTLSOptions(options, servername) {
   if (!options.ALPNCallback) {
     options.ALPNProtocols = ["h2"];
     if (options.allowHTTP1 === true) {
-      options.ALPNProtocols.push("http/1.1");
+      ArrayPrototypePush(options.ALPNProtocols, "http/1.1");
     }
   }
 
@@ -3714,6 +3830,7 @@ function onErrorSecureServerSession(err, socket) {
 function closeAllSessions(server) {
   const sessions = server[kSessions];
   if (sessions.size > 0) {
+    // deno-lint-ignore prefer-primordials
     for (const session of sessions) {
       session.close();
     }
@@ -3810,7 +3927,7 @@ class Http2Server extends net.Server {
   }
 
   async [SymbolAsyncDispose]() {
-    await promisify(super.close).call(this);
+    await FunctionPrototypeCall(promisify(super.close), this);
   }
 }
 
@@ -3839,7 +3956,7 @@ function connect(authority, options, listener) {
 
   assertIsArray(options.remoteCustomSettings, "options.remoteCustomSettings");
   if (options.remoteCustomSettings) {
-    options.remoteCustomSettings = [...options.remoteCustomSettings];
+    options.remoteCustomSettings = ArrayFrom(options.remoteCustomSettings);
     if (options.remoteCustomSettings.length > MAX_ADDITIONAL_SETTINGS) {
       throw new ERR_HTTP2_TOO_MANY_CUSTOM_SETTINGS();
     }
@@ -3862,7 +3979,7 @@ function connect(authority, options, listener) {
     host = authority.hostname;
 
     if (host[0] === "[") {
-      host = host.slice(1, -1);
+      host = StringPrototypeSlice(host, 1, -1);
     }
   } else if (authority.host) {
     host = authority.host;
@@ -3945,21 +4062,25 @@ function getPackedSettings(settings) {
   validateSettings(settings);
 
   const entries = [];
-  for (const [name, id] of KNOWN_SETTING_ENTRIES) {
+  for (
+    const { 0: name, 1: id } of new SafeArrayIterator(KNOWN_SETTING_ENTRIES)
+  ) {
     if (settings[name] !== undefined) {
       let value = settings[name];
       if (typeof value === "boolean") value = value ? 1 : 0;
-      entries.push([id, value]);
+      ArrayPrototypePush(entries, [id, value]);
     }
   }
   if (settings.customSettings) {
-    for (const key of Object.keys(settings.customSettings)) {
-      entries.push([Number(key), settings.customSettings[key]]);
+    for (
+      const key of new SafeArrayIterator(ObjectKeys(settings.customSettings))
+    ) {
+      ArrayPrototypePush(entries, [Number(key), settings.customSettings[key]]);
     }
   }
 
   // Sort entries by setting ID
-  entries.sort((a, b) => a[0] - b[0]);
+  ArrayPrototypeSort(entries, (a, b) => a[0] - b[0]);
 
   const buf = Buffer.alloc(entries.length * 6);
   for (let i = 0; i < entries.length; i++) {
@@ -3970,7 +4091,7 @@ function getPackedSettings(settings) {
   return buf;
 }
 
-const SETTING_ID_TO_NAME = new Map([
+const SETTING_ID_TO_NAME = new SafeMap([
   [SETTING_ID_HEADER_TABLE_SIZE, "headerTableSize"],
   [SETTING_ID_ENABLE_PUSH, "enablePush"],
   [SETTING_ID_MAX_CONCURRENT_STREAMS, "maxConcurrentStreams"],
@@ -3982,16 +4103,20 @@ const SETTING_ID_TO_NAME = new Map([
 
 function getUnpackedSettings(buf) {
   if (
-    !Buffer.isBuffer(buf) && !(buf instanceof ArrayBuffer) &&
-    !ArrayBuffer.isView(buf)
+    // deno-lint-ignore prefer-primordials
+    !Buffer.isBuffer(buf) &&
+    !ObjectPrototypeIsPrototypeOf(ArrayBuffer.prototype, buf) &&
+    !ArrayBufferIsView(buf)
   ) {
     throw new ERR_INVALID_ARG_TYPE("buf", [
       "Buffer",
       "TypedArray",
     ], buf);
   }
+  // deno-lint-ignore prefer-primordials
   if (buf.byteLength === undefined) buf = Buffer.from(buf);
   else if (!Buffer.isBuffer(buf)) {
+    // deno-lint-ignore prefer-primordials
     buf = Buffer.from(buf.buffer, buf.byteOffset, buf.byteLength);
   }
   if (buf.length % 6 !== 0) {

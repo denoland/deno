@@ -6,6 +6,10 @@
 import { primordials } from "ext:core/mod.js";
 const {
   ArrayIsArray,
+  ArrayPrototypeConcat,
+  ArrayPrototypeIncludes,
+  ArrayPrototypeMap,
+  ArrayPrototypePush,
   Error,
   MathMax,
   Number,
@@ -15,6 +19,8 @@ const {
   SafeSet,
   String,
   StringFromCharCode,
+  StringPrototypeSlice,
+  StringPrototypeToLowerCase,
   Symbol,
 } = primordials;
 
@@ -306,6 +312,7 @@ function addCustomSettingsToObj() {
   const toRet = {};
   const num = settingsBuffer[IDX_SETTINGS_FLAGS + 1];
   for (let i = 0; i < num; i++) {
+    // deno-lint-ignore prefer-primordials
     toRet[settingsBuffer[IDX_SETTINGS_FLAGS + 1 + 2 * i + 1].toString()] =
       Number(settingsBuffer[IDX_SETTINGS_FLAGS + 1 + 2 * i + 2]);
   }
@@ -613,7 +620,7 @@ function prepareRequestHeadersArray(headers, session) {
       continue;
     }
 
-    const header = headers[i].toLowerCase();
+    const header = StringPrototypeToLowerCase(headers[i]);
     const value = headers[i + 1];
 
     if (header === HTTP2_HEADER_METHOD) {
@@ -635,7 +642,7 @@ function prepareRequestHeadersArray(headers, session) {
 
   if (method === undefined) {
     method = HTTP2_METHOD_GET;
-    additionalPsuedoHeaders.push(HTTP2_HEADER_METHOD, method);
+    ArrayPrototypePush(additionalPsuedoHeaders, HTTP2_HEADER_METHOD, method);
   }
 
   const connect = method === HTTP2_METHOD_CONNECT;
@@ -643,14 +650,18 @@ function prepareRequestHeadersArray(headers, session) {
   if (!connect || protocol !== undefined) {
     if (authority === undefined && headers[HTTP2_HEADER_HOST] === undefined) {
       authority = session[kAuthority];
-      additionalPsuedoHeaders.push(HTTP2_HEADER_AUTHORITY, authority);
+      ArrayPrototypePush(
+        additionalPsuedoHeaders,
+        HTTP2_HEADER_AUTHORITY,
+        authority,
+      );
     }
     if (scheme === undefined) {
-      scheme = session[kProtocol].slice(0, -1);
-      additionalPsuedoHeaders.push(HTTP2_HEADER_SCHEME, scheme);
+      scheme = StringPrototypeSlice(session[kProtocol], 0, -1);
+      ArrayPrototypePush(additionalPsuedoHeaders, HTTP2_HEADER_SCHEME, scheme);
     }
     if (path === undefined) {
-      additionalPsuedoHeaders.push(HTTP2_HEADER_PATH, "/");
+      ArrayPrototypePush(additionalPsuedoHeaders, HTTP2_HEADER_PATH, "/");
     }
   } else {
     if (authority === undefined) {
@@ -665,7 +676,7 @@ function prepareRequestHeadersArray(headers, session) {
   }
 
   const rawHeaders = additionalPsuedoHeaders.length
-    ? additionalPsuedoHeaders.concat(headers)
+    ? ArrayPrototypeConcat(additionalPsuedoHeaders, headers)
     : headers;
 
   if (headers[kSensitiveHeaders] !== undefined) {
@@ -705,7 +716,11 @@ function prepareRequestHeadersObject(headers, session) {
       headersObject[HTTP2_HEADER_AUTHORITY] = session[kAuthority];
     }
     if (headersObject[HTTP2_HEADER_SCHEME] === undefined) {
-      headersObject[HTTP2_HEADER_SCHEME] = session[kProtocol].slice(0, -1);
+      headersObject[HTTP2_HEADER_SCHEME] = StringPrototypeSlice(
+        session[kProtocol],
+        0,
+        -1,
+      );
     }
     if (headersObject[HTTP2_HEADER_PATH] === undefined) {
       headersObject[HTTP2_HEADER_PATH] = "/";
@@ -754,10 +769,13 @@ function buildNgHeaderString(
 
   const singles = new SafeSet();
   const sensitiveHeaders = arrayOrMap[kSensitiveHeaders] || emptyArray;
-  const neverIndex = sensitiveHeaders.map((v) => v.toLowerCase());
+  const neverIndex = ArrayPrototypeMap(
+    sensitiveHeaders,
+    (v) => StringPrototypeToLowerCase(v),
+  );
 
   function processHeader(key, value) {
-    key = key.toLowerCase();
+    key = StringPrototypeToLowerCase(key);
     const isSingleValueHeader = kSingleValueHeaders.has(key);
     let isArray = ArrayIsArray(value);
     if (isArray) {
@@ -782,7 +800,9 @@ function buildNgHeaderString(
       }
       singles.add(key);
     }
-    const flags = neverIndex.includes(key) ? kNeverIndexFlag : kNoHeaderFlags;
+    const flags = ArrayPrototypeIncludes(neverIndex, key)
+      ? kNeverIndexFlag
+      : kNoHeaderFlags;
     if (key[0] === ":") {
       const err = assertValuePseudoHeader(key);
       if (err !== undefined) {
@@ -926,7 +946,7 @@ function toHeaderObject(headers, sensitiveHeaders) {
           // fields with the same name.  Since it cannot be combined into a
           // single field-value, recipients ought to handle "Set-Cookie" as a
           // special case while processing header fields."
-          existing.push(value);
+          ArrayPrototypePush(existing, value);
           break;
         default:
           // https://tools.ietf.org/html/rfc7230#section-3.2.2

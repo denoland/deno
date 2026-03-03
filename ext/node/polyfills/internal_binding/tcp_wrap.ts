@@ -365,7 +365,6 @@ export class TCP extends ConnectionWrap {
       }
     }
 
-    // deno-lint-ignore prefer-primordials
     return this.writeBuffer(req, Buffer.concat(buffers));
   }
 

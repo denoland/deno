@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
 import { core, primordials } from "ext:core/mod.js";
@@ -6,13 +6,20 @@ import { core, primordials } from "ext:core/mod.js";
 const { internalRidSymbol } = core;
 const {
   ArrayIsArray,
+  ArrayPrototypePush,
   Boolean,
+  FunctionPrototypeBind,
   ObjectAssign,
   ObjectHasOwn,
   ObjectKeys,
   Proxy,
   ReflectApply,
   ReflectGetPrototypeOf,
+  ReflectHas,
+  SafeArrayIterator,
+  StringPrototypeIncludes,
+  StringPrototypeToLowerCase,
+  StringPrototypeTrim,
   Symbol,
 } = primordials;
 
@@ -84,7 +91,7 @@ const assertValidHeader = hideStackFrames((name, value) => {
   if (
     name === "" ||
     typeof name !== "string" ||
-    name.includes(" ")
+    StringPrototypeIncludes(name, " ")
   ) {
     throw new ERR_INVALID_HTTP_TOKEN.HideStackFramesError("Header name", name);
   }
@@ -141,6 +148,7 @@ function connectionHeaderMessageWarn() {
 
 function onStreamData(chunk) {
   const request = this[kRequest];
+  // deno-lint-ignore prefer-primordials
   if (request !== undefined && !request.push(chunk)) {
     this.pause();
   }
@@ -150,7 +158,9 @@ function onStreamTrailers(trailers, flags, rawTrailers) {
   const request = this[kRequest];
   if (request !== undefined) {
     ObjectAssign(request[kTrailers], trailers);
-    request[kRawTrailers].push(...rawTrailers);
+    for (const trailer of new SafeArrayIterator(rawTrailers)) {
+      ArrayPrototypePush(request[kRawTrailers], trailer);
+    }
   }
 }
 
@@ -158,6 +168,7 @@ function onStreamEnd() {
   // Cause the request stream to end as well.
   const request = this[kRequest];
   if (request !== undefined) {
+    // deno-lint-ignore prefer-primordials
     this[kRequest].push(null);
   }
 }
@@ -204,7 +215,7 @@ function resumeStream(stream) {
 const proxySocketHandler = {
   has(stream, prop) {
     const ref = stream.session !== undefined ? stream.session[kSocket] : stream;
-    return (prop in stream) || (prop in ref);
+    return ReflectHas(stream, prop) || ReflectHas(ref, prop);
   },
 
   get(stream, prop) {
@@ -214,7 +225,7 @@ const proxySocketHandler = {
       case "end":
       case "emit":
       case "destroy":
-        return stream[prop].bind(stream);
+        return FunctionPrototypeBind(stream[prop], stream);
       case "writable":
       case "destroyed":
         return stream[prop];
@@ -228,9 +239,9 @@ const proxySocketHandler = {
       case "setTimeout": {
         const session = stream.session;
         if (session !== undefined) {
-          return session.setTimeout.bind(session);
+          return FunctionPrototypeBind(session.setTimeout, session);
         }
-        return stream.setTimeout.bind(stream);
+        return FunctionPrototypeBind(stream.setTimeout, stream);
       }
       case "write":
       case "read":
@@ -242,7 +253,9 @@ const proxySocketHandler = {
           ? stream.session[kSocket]
           : stream;
         const value = ref[prop];
-        return typeof value === "function" ? value.bind(ref) : value;
+        return typeof value === "function"
+          ? FunctionPrototypeBind(value, ref)
+          : value;
       }
     }
   },
@@ -299,6 +312,7 @@ function onStreamCloseRequest() {
   const state = req[kState];
   state.closed = true;
 
+  // deno-lint-ignore prefer-primordials
   req.push(null);
   // If the user didn't interact with incoming data and didn't pipe it,
   // dump it for compatibility with http1
@@ -422,7 +436,7 @@ class Http2ServerRequest extends Readable {
 
   set method(method) {
     validateString(method, "method");
-    if (method.trim() === "") {
+    if (StringPrototypeTrim(method) === "") {
       throw new ERR_INVALID_ARG_VALUE("method", method);
     }
 
@@ -591,7 +605,7 @@ class Http2ServerResponse extends Stream {
 
   setTrailer(name, value) {
     validateString(name, "name");
-    name = name.trim().toLowerCase();
+    name = StringPrototypeToLowerCase(StringPrototypeTrim(name));
     assertValidHeader(name, value);
     this[kTrailers][name] = value;
   }
@@ -607,7 +621,7 @@ class Http2ServerResponse extends Stream {
 
   getHeader(name) {
     validateString(name, "name");
-    name = name.trim().toLowerCase();
+    name = StringPrototypeToLowerCase(StringPrototypeTrim(name));
     return this[kHeaders][name];
   }
 
@@ -622,7 +636,7 @@ class Http2ServerResponse extends Stream {
 
   hasHeader(name) {
     validateString(name, "name");
-    name = name.trim().toLowerCase();
+    name = StringPrototypeToLowerCase(StringPrototypeTrim(name));
     return ObjectHasOwn(this[kHeaders], name);
   }
 
@@ -632,7 +646,7 @@ class Http2ServerResponse extends Stream {
       throw new ERR_HTTP2_HEADERS_SENT();
     }
 
-    name = name.trim().toLowerCase();
+    name = StringPrototypeToLowerCase(StringPrototypeTrim(name));
 
     if (name === "date") {
       this[kState].sendDate = false;
@@ -653,7 +667,7 @@ class Http2ServerResponse extends Stream {
   }
 
   [kSetHeader](name, value) {
-    name = name.trim().toLowerCase();
+    name = StringPrototypeToLowerCase(StringPrototypeTrim(name));
     assertValidHeader(name, value);
 
     if (!isConnectionHeaderAllowed(name, value)) {
@@ -679,7 +693,7 @@ class Http2ServerResponse extends Stream {
   }
 
   [kAppendHeader](name, value) {
-    name = name.trim().toLowerCase();
+    name = StringPrototypeToLowerCase(StringPrototypeTrim(name));
     assertValidHeader(name, value);
 
     if (!isConnectionHeaderAllowed(name, value)) {
@@ -705,10 +719,10 @@ class Http2ServerResponse extends Stream {
     const existingValues = headers[name];
     if (ArrayIsArray(value)) {
       for (let i = 0, length = value.length; i < length; i++) {
-        existingValues.push(value[i]);
+        ArrayPrototypePush(existingValues, value[i]);
       }
     } else {
-      existingValues.push(value);
+      ArrayPrototypePush(existingValues, value);
     }
   }
 
@@ -953,7 +967,7 @@ class Http2ServerResponse extends Stream {
 
     const linkHeaderValue = validateLinkHeaderValue(hints.link);
 
-    for (const key of ObjectKeys(hints)) {
+    for (const key of new SafeArrayIterator(ObjectKeys(hints))) {
       if (key !== "link") {
         headers[key] = hints[key];
       }
