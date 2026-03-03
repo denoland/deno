@@ -88,7 +88,7 @@ deno_cache_dir = "=0.27.0"
 deno_core_icudata = "0.77.0"
 deno_doc = "=0.190.1"
 deno_error = "=0.7.1"
-deno_graph = { version = "=0.107.0", default-features = false }
+deno_graph = { version = "=0.107.1", default-features = false }
 deno_lint = "=0.83.0"
 deno_media_type = { version = "=0.4.0", features = ["module_specifier"] }
 deno_native_certs = "0.3.0"
@@ -598,6 +598,3 @@ opt-level = 3
 opt-level = 3
 [profile.release.package.twox-hash]
 opt-level = 3
-
-[patch.crates-io]
-deno_graph = { path = "../deno_graph" }
