@@ -26,6 +26,7 @@ pub use cache::SerializedCachedUrlMetadata;
 pub use cache::url_to_filename;
 pub use common::HeadersMap;
 pub use deno_dir::DenoDirResolutionError;
+pub use deno_dir::ResolveDenoDirOptions;
 pub use deno_dir::ResolveDenoDirSys;
 pub use deno_dir::resolve_deno_dir;
 pub use global::GlobalHttpCache;
