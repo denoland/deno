@@ -24,8 +24,8 @@ use crate::args::RunFlags;
 use crate::args::WatchFlagsWithPaths;
 use crate::factory::CliFactory;
 use crate::util;
+use crate::util::env::WatchEnvTracker;
 use crate::util::file_watcher::WatcherRestartMode;
-use crate::util::watch_env_tracker::WatchEnvTracker;
 
 pub mod hmr;
 

@@ -16,6 +16,7 @@ import {
   autoConfig,
   cargoBuild,
   checkPy3Available,
+  checkWptCiHash,
   escapeLoneSurrogates,
   Expectation,
   EXPECTATION_PATH,
@@ -33,7 +34,6 @@ import {
   rest,
   runGitDiff,
   runPy,
-  shouldSkipOnCi,
   updateManifest,
   wptreport,
 } from "./runner/utils.ts";
@@ -94,12 +94,16 @@ switch (command) {
     await setup();
     break;
 
-  case "run":
+  case "run": {
     await checkPy3Available();
     await cargoBuild();
-    if (await shouldSkipOnCi()) break;
-    await run();
+    const ciHash = await checkWptCiHash();
+    if (ciHash.skip) break;
+    const exitCode = await run();
+    if (exitCode === 0) await ciHash.commit();
+    Deno.exit(exitCode);
     break;
+  }
 
   case "update":
     await cargoBuild();
@@ -288,7 +292,7 @@ async function run() {
   await runGitDiff([EXPECTATION_PATH, tmp]);
   Deno.removeSync(tmp);
 
-  Deno.exit(code);
+  return code;
 }
 
 async function generateWptReport(

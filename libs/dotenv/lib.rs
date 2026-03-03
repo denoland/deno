@@ -1,6 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
+use std::path::Path;
 
 const CHAR_NL: u8 = b'\n';
 const CHAR_CR: u8 = b'\r';
@@ -13,6 +14,38 @@ const CHAR_SQUOTE: u8 = b'\'';
 const CHAR_BQUOTE: u8 = b'`';
 const CHAR_BSLASH: u8 = b'\\';
 const CHAR_N: u8 = b'n';
+
+#[derive(Debug)]
+pub enum Error {
+  LineParse(String, usize),
+  Io(std::io::Error),
+}
+
+impl std::fmt::Display for Error {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    match self {
+      Error::LineParse(line, index) => {
+        write!(f, "Error parsing line at index {}: {}", index, line)
+      }
+      Error::Io(err) => write!(f, "{}", err),
+    }
+  }
+}
+
+impl std::error::Error for Error {
+  fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+    match self {
+      Error::Io(err) => Some(err),
+      _ => None,
+    }
+  }
+}
+
+impl From<std::io::Error> for Error {
+  fn from(err: std::io::Error) -> Self {
+    Error::Io(err)
+  }
+}
 
 /// Ported from:
 /// https://github.com/nodejs/node/blob/9cc7fcc26dece769d9ffa06c453f0171311b01f8/src/node_dotenv.cc#L138-L315
@@ -242,6 +275,37 @@ pub fn parse_env_content_hook(content: &str, mut cb: impl FnMut(&str, &str)) {
 
     text = trim_spaces_slice(text);
   }
+}
+
+type IterElement = Result<(String, String), Error>;
+
+pub fn from_path_sanitized_iter(
+  path: impl AsRef<Path>,
+) -> Result<std::vec::IntoIter<IterElement>, Error> {
+  let content = std::fs::read_to_string(path.as_ref()).map_err(Error::Io)?;
+  let mut pairs = Vec::new();
+  parse_env_content_hook(&content, |k, v| {
+    if let Some(index) = k
+      .find('\0')
+      .or_else(|| v.find('\0').map(|i| k.len() + i + 1))
+    {
+      pairs.push(Err(Error::LineParse(format!("{}={}", k, v), index)));
+    } else {
+      pairs.push(Ok((k.to_string(), v.to_string())));
+    }
+  });
+  Ok(pairs.into_iter())
+}
+
+pub fn from_path(filename: impl AsRef<Path>) -> Result<(), Error> {
+  for item in from_path_sanitized_iter(filename)? {
+    let (key, val) = item?;
+    #[allow(clippy::undocumented_unsafe_blocks)]
+    unsafe {
+      std::env::set_var(&key, &val);
+    }
+  }
+  Ok(())
 }
 
 fn trim_spaces_slice(input: &[u8]) -> &[u8] {

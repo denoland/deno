@@ -1,0 +1,9 @@
+ok 1
+caught 1
+---
+unhandled: rejected 2
+ok 2
+caught 2
+---
+handled: rejected 2
+unhandled: rejected 3

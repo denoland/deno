@@ -1,6 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::collections::BTreeMap;
+use std::path::Path;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -292,6 +293,7 @@ pub async fn doc(
     };
 
     generate_docs_directory(
+      cli_options.initial_cwd(),
       doc_nodes_by_url,
       html_options,
       deno_ns,
@@ -435,13 +437,13 @@ impl UsageComposer for DocComposer {
 }
 
 fn generate_docs_directory(
+  cwd: &Path,
   doc_nodes_by_url: IndexMap<ModuleSpecifier, Vec<doc::DocNode>>,
   html_options: &DocHtmlFlag,
   built_in_types: Option<Vec<doc::DocNode>>,
   rewrite_map: Option<IndexMap<ModuleSpecifier, String>>,
   main_entrypoint: Option<ModuleSpecifier>,
 ) -> Result<(), AnyError> {
-  let cwd = std::env::current_dir().context("Failed to get CWD")?;
   let output_dir_resolved = cwd.join(&html_options.output);
 
   let category_docs =
