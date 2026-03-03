@@ -19,6 +19,7 @@ pub mod process;
 pub mod require;
 pub mod shell;
 pub mod tls;
+pub mod udp;
 pub mod util;
 pub mod v8;
 pub mod vm;

@@ -6,6 +6,77 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 2.7.2 / 2026.03.03
+
+- feat: v8 14.6, fix require(esm), libuv compat (#32347)
+- fix(ci): fix ordering of platforms in ecosystem_compat_slack (#32393)
+- fix(cli): load multiple env files in the correct order (#32354)
+- fix(compile): store self extracting dir in hidden dir beside executable
+  (#32329)
+- fix(core): store Global<Context> ptr for libuv-compat callbacks (#32361)
+- fix(coverage): correct line and branch counts in coverage reports (#32312)
+- fix(coverage): warn instead of erroring when source files are missing (#32398)
+- fix(ext/console): support iterators in console.table (#32379)
+- fix(ext/crypto): fix P-521 EC key export for all formats (#32412)
+- fix(ext/crypto): handle wrong algorithm in subtle.importKey without panicking
+  (#32410)
+- fix(ext/node): CBC decipher setAutoPadding(false) incorrectly strips bytes
+  (#32403)
+- fix(ext/node): gracefully exit on invalid NODE_CHANNEL_FD instead of panicking
+  (#32421)
+- fix(ext/node): handle emoji width correctly in readline (#32383)
+- fix(ext/node): implement KeyObject.equals, fix createCipheriv with
+  KeyObject/null IV (#32409)
+- fix(ext/node): implement missing X509Certificate methods (#32270)
+- fix(ext/node): make `execPath` named export a real string (#32396)
+- fix(ext/node): make `setAutoPadding(false)` a no-op for GCM ciphers (#32290)
+- fix(ext/node): make fsPromises.watch() a proper AsyncIterable with close()
+  (#32378)
+- fix(ext/node): provide CJS globals in worker_threads eval mode (#32266)
+- fix(ext/node): rename conflict callback field typo (#32306)
+- fix(ext/node): return first created path from recursive "node:fs" mkdir call
+  (#32300)
+- fix(ext/node): support DER-encoded keys in publicEncrypt/privateDecrypt
+  (#32291)
+- fix(ext/node): support Ed25519, X25519, and P-521 keys in
+  X509Certificate.publicKey (#32267)
+- fix(ext/node): support RSA PSS padding option in crypto sign/verify (#32269)
+- fix(ext/node): support SEC1 EC private key import/export in `node:crypto`
+  (#32401)
+- fix(ext/node): support process.stdout resize events (#32343)
+- fix(ext/node): use internal compileFunction binding in CJS wrap (#32373)
+- fix(install): do not panic if lockfile incorrectly says package has a bin
+  (#32345)
+- fix(install): global install should not warn about using node_modules dir for
+  npm specifiers (#32341)
+- fix(jupyter): handle shutdown and interrupt requests per protocol (#32359)
+- fix(node): implement `resolveObjectURL` for `node:buffer` (#32382)
+- fix(node): implement process.umask properly (#32385)
+- fix(node): preserve AsyncLocalStorage context in stream.finished callback
+  (#32389)
+- fix(node): support ECDSA with secp256k1 in `node:crypto` (#32390)
+- fix(node/buffer): fix base64 decoding for strings with hyphens (#32298)
+- fix(node/crypto): handle empty input in decipher final with auto_pad=false
+  (#31958)
+- fix(node/vm): support vm.constants.DONT_CONTEXTIFY in createContext (#32337)
+- fix(npm): NPM_CONFIG_REGISTRY correctly overrides .npmrc (#32394)
+- fix(npm): peerDependency resolution leading to multiple versions being
+  installed + hanging (#32358)
+- fix(test): dedupe discovered workspace test modules (#32380)
+- fix: fix some stack frame dimming, and make the console log more aligned with
+  cli formatting (#32399)
+- fix: process level environment variables should take precedence over env files
+  (#32407)
+- fix: validate cron schedule when using cron socket (#32406)
+- fix:(ext/node): escape simple quotes in node:child_process (#32336)
+- perf(install): improve parallelism of fetches during npm resolution (#32416)
+- perf(install): move HTTP decompression for registry requests off the async
+  event loop (#32400)
+- perf(install): request abbreviated packuments from npm registry (#32364)
+- perf(install): split tarball extraction into decompress + write, limit write
+  concurrency (#32408)
+- perf(install): use aws-lc-rs for tarball integrity hashing (#32365)
+
 ### 2.7.1 / 2026.02.25
 
 ### 2.7.0 / 2026.02.25
