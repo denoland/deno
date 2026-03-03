@@ -3,13 +3,13 @@
 [package]
 name = "deno_cache_dir"
 version = "0.27.0"
-edition = "2024"
-license = "MIT"
-repository = "https://github.com/denoland/deno_cache_dir"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
 description = "Cache directory logic used in Deno"
 
 [lib]
-crate-type = ["cdylib", "lib"]
+path = "./lib.rs"
 
 [features]
 default = ["file_fetcher"]
