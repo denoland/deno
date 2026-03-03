@@ -13,12 +13,12 @@ for (let i = 0; i < 10; i++) {
   for (let j = 0; j < 1000; j++) {
     objects.push({ data: `test-${i}-${j}`, nested: { value: j } });
   }
-  
+
   // Force GC to trigger the callbacks
   if (globalThis.gc) {
     globalThis.gc();
   }
-  
+
   // Clear references
   objects.length = 0;
 }
