@@ -55,7 +55,7 @@ jobs:
     needs:
       - pre_build
     if: needs.pre_build.outputs.skip_build != 'true'
-    runs-on: '${{ github.repository == ''denoland/deno'' && ''ghcr.io/cirruslabs/ubuntu-runner-amd64:24.04'' || ''ubuntu-24.04'' }}'
+    runs-on: ubuntu-24.04
     timeout-minutes: 240
     defaults:
       run:
@@ -73,7 +73,7 @@ jobs:
           fetch-depth: 5
           submodules: false
       - name: Restore cache cargo home
-        uses: cirruslabs/cache/restore@v4
+        uses: actions/cache/restore@v4
         if: '(contains(github.event.pull_request.labels.*.name, ''ci-bench'') || github.ref == ''refs/heads/main'') && !startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
@@ -216,7 +216,7 @@ jobs:
           cat /proc/cpuinfo
           cat /proc/meminfo
       - name: Cache cargo home
-        uses: cirruslabs/cache/save@v4
+        uses: actions/cache/save@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && github.ref == ''refs/heads/main'''
         with:
           path: |-
@@ -262,7 +262,7 @@ jobs:
           cat /etc/hosts
           rm ~/.curlrc || true
       - name: Restore cache cargo home
-        uses: cirruslabs/cache/restore@v4
+        uses: actions/cache/restore@v4
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
@@ -275,7 +275,7 @@ jobs:
           key: never_saved
           restore-keys: 98-cargo-home-macos-x86_64-build-main-
       - name: Restore cache build output
-        uses: cirruslabs/cache/restore@v4
+        uses: actions/cache/restore@v4
         if: 'github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
@@ -332,7 +332,7 @@ jobs:
           path: target/debug/test_server
           retention-days: 3
       - name: Cache cargo home
-        uses: cirruslabs/cache/save@v4
+        uses: actions/cache/save@v4
         if: 'github.ref == ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
@@ -344,7 +344,7 @@ jobs:
             ~/.cargo/git/db
           key: '98-cargo-home-macos-x86_64-build-main-${{ github.sha }}'
       - name: Cache build output
-        uses: cirruslabs/cache/save@v4
+        uses: actions/cache/save@v4
         if: 'github.ref == ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
@@ -425,7 +425,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Restore cache cargo home
-        uses: cirruslabs/cache/restore@v4
+        uses: actions/cache/restore@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         with:
           path: |-
@@ -438,7 +438,7 @@ jobs:
           key: never_saved
           restore-keys: '98-cargo-home-macos-x86_64-test-${{ matrix.test_crate }}-'
       - name: Restore cache build output
-        uses: cirruslabs/cache/restore@v4
+        uses: actions/cache/restore@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'''
         with:
           path: |-
@@ -514,7 +514,7 @@ jobs:
           name: 'test-results-macos-x86_64-debug-${{ matrix.test_crate }}${{ matrix.shard_total > 1 && format(''-shard-{0}'', matrix.shard_index) || '''' }}.json'
           path: 'target/test_results_${{ matrix.test_crate }}.json'
       - name: Cache cargo home
-        uses: cirruslabs/cache/save@v4
+        uses: actions/cache/save@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && github.ref == ''refs/heads/main'''
         with:
           path: |-
@@ -526,7 +526,7 @@ jobs:
             ~/.cargo/git/db
           key: '98-cargo-home-macos-x86_64-test-${{ matrix.test_crate }}-${{ github.sha }}'
       - name: Cache build output
-        uses: cirruslabs/cache/save@v4
+        uses: actions/cache/save@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && github.ref == ''refs/heads/main'''
         with:
           path: |-
@@ -584,7 +584,7 @@ jobs:
         with:
           deno-version: v2.x
       - name: Restore cache cargo home
-        uses: cirruslabs/cache/restore@v4
+        uses: actions/cache/restore@v4
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && !startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
@@ -597,7 +597,7 @@ jobs:
           key: never_saved
           restore-keys: 98-cargo-home-macos-x86_64-build-main-
       - name: Restore cache build output
-        uses: cirruslabs/cache/restore@v4
+        uses: actions/cache/restore@v4
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
@@ -856,7 +856,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Restore cache cargo home
-        uses: cirruslabs/cache/restore@v4
+        uses: actions/cache/restore@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         with:
           path: |-
@@ -869,7 +869,7 @@ jobs:
           key: never_saved
           restore-keys: '98-cargo-home-macos-x86_64-test-${{ matrix.test_crate }}-'
       - name: Restore cache build output
-        uses: cirruslabs/cache/restore@v4
+        uses: actions/cache/restore@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'''
         with:
           path: |-
@@ -989,7 +989,7 @@ jobs:
           GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
         run: ./tools/install_prebuilt.js ld64.lld
       - name: Restore cache cargo home
-        uses: cirruslabs/cache/restore@v4
+        uses: actions/cache/restore@v4
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
@@ -1002,7 +1002,7 @@ jobs:
           key: never_saved
           restore-keys: 98-cargo-home-macos-aarch64-build-main-
       - name: Restore cache build output
-        uses: cirruslabs/cache/restore@v4
+        uses: actions/cache/restore@v4
         if: 'github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
@@ -1059,7 +1059,7 @@ jobs:
           path: target/debug/test_server
           retention-days: 3
       - name: Cache cargo home
-        uses: cirruslabs/cache/save@v4
+        uses: actions/cache/save@v4
         if: 'github.ref == ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
@@ -1071,7 +1071,7 @@ jobs:
             ~/.cargo/git/db
           key: '98-cargo-home-macos-aarch64-build-main-${{ github.sha }}'
       - name: Cache build output
-        uses: cirruslabs/cache/save@v4
+        uses: actions/cache/save@v4
         if: 'github.ref == ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
@@ -1152,7 +1152,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Restore cache cargo home
-        uses: cirruslabs/cache/restore@v4
+        uses: actions/cache/restore@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         with:
           path: |-
@@ -1165,7 +1165,7 @@ jobs:
           key: never_saved
           restore-keys: '98-cargo-home-macos-aarch64-test-${{ matrix.test_crate }}-'
       - name: Restore cache build output
-        uses: cirruslabs/cache/restore@v4
+        uses: actions/cache/restore@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'''
         with:
           path: |-
@@ -1255,7 +1255,7 @@ jobs:
           name: 'test-results-macos-aarch64-debug-${{ matrix.test_crate }}${{ matrix.shard_total > 1 && format(''-shard-{0}'', matrix.shard_index) || '''' }}.json'
           path: 'target/test_results_${{ matrix.test_crate }}.json'
       - name: Cache cargo home
-        uses: cirruslabs/cache/save@v4
+        uses: actions/cache/save@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && github.ref == ''refs/heads/main'''
         with:
           path: |-
@@ -1267,7 +1267,7 @@ jobs:
             ~/.cargo/git/db
           key: '98-cargo-home-macos-aarch64-test-${{ matrix.test_crate }}-${{ github.sha }}'
       - name: Cache build output
-        uses: cirruslabs/cache/save@v4
+        uses: actions/cache/save@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && github.ref == ''refs/heads/main'''
         with:
           path: |-
@@ -1296,7 +1296,7 @@ jobs:
           fetch-depth: 5
           submodules: false
       - name: Restore cache cargo home
-        uses: cirruslabs/cache/restore@v4
+        uses: actions/cache/restore@v4
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
@@ -1309,7 +1309,7 @@ jobs:
           key: never_saved
           restore-keys: 98-cargo-home-macos-aarch64-test-libs-
       - name: Restore cache build output
-        uses: cirruslabs/cache/restore@v4
+        uses: actions/cache/restore@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && github.ref != ''refs/heads/main'''
         with:
           path: |-
@@ -1373,7 +1373,7 @@ jobs:
           CARGO_PROFILE_DEV_DEBUG: 0
         run: cargo test --locked --lib -p deno -p denort -p node_shim -p deno_lib -p deno_snapshots -p deno_bundle_runtime -p deno_cache -p deno_cron -p deno_crypto -p deno_fetch -p deno_ffi -p deno_fs -p deno_http -p deno_image -p deno_io -p deno_kv -p deno_napi -p napi_sym -p deno_net -p deno_node -p deno_node_crypto -p deno_node_sqlite -p denort_helper -p deno_signals -p deno_telemetry -p deno_url -p deno_web -p deno_webgpu -p deno_webidl -p deno_websocket -p deno_webstorage -p deno_config -p deno_crypto_provider -p deno_dotenv -p eszip -p deno_inspector_server -p deno_lockfile -p deno_maybe_sync -p node_resolver -p deno_npm -p deno_npm_cache -p deno_npm_installer -p deno_package_json -p deno_resolver -p deno_typescript_go_client_rust -p deno_runtime -p deno_features -p deno_permissions -p deno_subprocess_windows
       - name: Cache cargo home
-        uses: cirruslabs/cache/save@v4
+        uses: actions/cache/save@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && github.ref == ''refs/heads/main'''
         with:
           path: |-
@@ -1385,7 +1385,7 @@ jobs:
             ~/.cargo/git/db
           key: '98-cargo-home-macos-aarch64-test-libs-${{ github.sha }}'
       - name: Cache build output
-        uses: cirruslabs/cache/save@v4
+        uses: actions/cache/save@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && github.ref == ''refs/heads/main'''
         with:
           path: |-
@@ -1400,7 +1400,7 @@ jobs:
     needs:
       - pre_build
     if: needs.pre_build.outputs.skip_build != 'true'
-    runs-on: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && ''ubuntu-24.04'' || github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/'')) && ''ghcr.io/cirruslabs/macos-runner:sonoma'' || ''macos-14'' }}'
+    runs-on: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && ''ubuntu-24.04'' || ''macos-14'' }}'
     environment:
       name: '${{ (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/'')) && ''build'' || '''' }}'
     timeout-minutes: 240
@@ -1448,7 +1448,7 @@ jobs:
           GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
         run: ./tools/install_prebuilt.js ld64.lld
       - name: Restore cache cargo home
-        uses: cirruslabs/cache/restore@v4
+        uses: actions/cache/restore@v4
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && !startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
@@ -1461,7 +1461,7 @@ jobs:
           key: never_saved
           restore-keys: 98-cargo-home-macos-aarch64-build-main-
       - name: Restore cache build output
-        uses: cirruslabs/cache/restore@v4
+        uses: actions/cache/restore@v4
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
@@ -1720,7 +1720,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Restore cache cargo home
-        uses: cirruslabs/cache/restore@v4
+        uses: actions/cache/restore@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         with:
           path: |-
@@ -1733,7 +1733,7 @@ jobs:
           key: never_saved
           restore-keys: '98-cargo-home-macos-aarch64-test-${{ matrix.test_crate }}-'
       - name: Restore cache build output
-        uses: cirruslabs/cache/restore@v4
+        uses: actions/cache/restore@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'''
         with:
           path: |-
@@ -1850,7 +1850,7 @@ jobs:
       - name: Clone submodule ./tests/util/std
         run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Restore cache cargo home
-        uses: cirruslabs/cache/restore@v4
+        uses: actions/cache/restore@v4
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
@@ -1863,7 +1863,7 @@ jobs:
           key: never_saved
           restore-keys: 98-cargo-home-windows-x86_64-build-main-
       - name: Restore cache build output
-        uses: cirruslabs/cache/restore@v4
+        uses: actions/cache/restore@v4
         if: 'github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
@@ -1920,7 +1920,7 @@ jobs:
           path: target/debug/test_server.exe
           retention-days: 3
       - name: Cache cargo home
-        uses: cirruslabs/cache/save@v4
+        uses: actions/cache/save@v4
         if: 'github.ref == ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
@@ -1932,7 +1932,7 @@ jobs:
             ~/.cargo/git/db
           key: '98-cargo-home-windows-x86_64-build-main-${{ github.sha }}'
       - name: Cache build output
-        uses: cirruslabs/cache/save@v4
+        uses: actions/cache/save@v4
         if: 'github.ref == ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
@@ -2013,7 +2013,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Restore cache cargo home
-        uses: cirruslabs/cache/restore@v4
+        uses: actions/cache/restore@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         with:
           path: |-
@@ -2026,7 +2026,7 @@ jobs:
           key: never_saved
           restore-keys: '98-cargo-home-windows-x86_64-test-${{ matrix.test_crate }}-'
       - name: Restore cache build output
-        uses: cirruslabs/cache/restore@v4
+        uses: actions/cache/restore@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'''
         with:
           path: |-
@@ -2093,7 +2093,7 @@ jobs:
           name: 'test-results-windows-x86_64-debug-${{ matrix.test_crate }}${{ matrix.shard_total > 1 && format(''-shard-{0}'', matrix.shard_index) || '''' }}.json'
           path: 'target/test_results_${{ matrix.test_crate }}.json'
       - name: Cache cargo home
-        uses: cirruslabs/cache/save@v4
+        uses: actions/cache/save@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && github.ref == ''refs/heads/main'''
         with:
           path: |-
@@ -2105,7 +2105,7 @@ jobs:
             ~/.cargo/git/db
           key: '98-cargo-home-windows-x86_64-test-${{ matrix.test_crate }}-${{ github.sha }}'
       - name: Cache build output
-        uses: cirruslabs/cache/save@v4
+        uses: actions/cache/save@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && github.ref == ''refs/heads/main'''
         with:
           path: |-
@@ -2134,7 +2134,7 @@ jobs:
           fetch-depth: 5
           submodules: false
       - name: Restore cache cargo home
-        uses: cirruslabs/cache/restore@v4
+        uses: actions/cache/restore@v4
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
@@ -2147,7 +2147,7 @@ jobs:
           key: never_saved
           restore-keys: 98-cargo-home-windows-x86_64-test-libs-
       - name: Restore cache build output
-        uses: cirruslabs/cache/restore@v4
+        uses: actions/cache/restore@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && github.ref != ''refs/heads/main'''
         with:
           path: |-
@@ -2188,7 +2188,7 @@ jobs:
           CARGO_PROFILE_DEV_DEBUG: 0
         run: cargo test --locked --lib -p deno -p denort -p node_shim -p deno_lib -p deno_snapshots -p deno_bundle_runtime -p deno_cache -p deno_cron -p deno_crypto -p deno_fetch -p deno_ffi -p deno_fs -p deno_http -p deno_image -p deno_io -p deno_kv -p deno_napi -p napi_sym -p deno_net -p deno_node -p deno_node_crypto -p deno_node_sqlite -p denort_helper -p deno_signals -p deno_telemetry -p deno_url -p deno_web -p deno_webgpu -p deno_webidl -p deno_websocket -p deno_webstorage -p deno_config -p deno_crypto_provider -p deno_dotenv -p eszip -p deno_inspector_server -p deno_lockfile -p deno_maybe_sync -p node_resolver -p deno_npm -p deno_npm_cache -p deno_npm_installer -p deno_package_json -p deno_resolver -p deno_typescript_go_client_rust -p deno_runtime -p deno_features -p deno_permissions -p deno_subprocess_windows
       - name: Cache cargo home
-        uses: cirruslabs/cache/save@v4
+        uses: actions/cache/save@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && github.ref == ''refs/heads/main'''
         with:
           path: |-
@@ -2200,7 +2200,7 @@ jobs:
             ~/.cargo/git/db
           key: '98-cargo-home-windows-x86_64-test-libs-${{ github.sha }}'
       - name: Cache build output
-        uses: cirruslabs/cache/save@v4
+        uses: actions/cache/save@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && github.ref == ''refs/heads/main'''
         with:
           path: |-
@@ -2242,7 +2242,7 @@ jobs:
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Restore cache cargo home
-        uses: cirruslabs/cache/restore@v4
+        uses: actions/cache/restore@v4
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && !startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
@@ -2255,7 +2255,7 @@ jobs:
           key: never_saved
           restore-keys: 98-cargo-home-windows-x86_64-build-main-
       - name: Restore cache build output
-        uses: cirruslabs/cache/restore@v4
+        uses: actions/cache/restore@v4
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
@@ -2552,7 +2552,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Restore cache cargo home
-        uses: cirruslabs/cache/restore@v4
+        uses: actions/cache/restore@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         with:
           path: |-
@@ -2565,7 +2565,7 @@ jobs:
           key: never_saved
           restore-keys: '98-cargo-home-windows-x86_64-test-${{ matrix.test_crate }}-'
       - name: Restore cache build output
-        uses: cirruslabs/cache/restore@v4
+        uses: actions/cache/restore@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'''
         with:
           path: |-
@@ -2659,7 +2659,7 @@ jobs:
       - name: Clone submodule ./tests/util/std
         run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Restore cache cargo home
-        uses: cirruslabs/cache/restore@v4
+        uses: actions/cache/restore@v4
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
@@ -2672,7 +2672,7 @@ jobs:
           key: never_saved
           restore-keys: 98-cargo-home-windows-aarch64-build-main-
       - name: Restore cache build output
-        uses: cirruslabs/cache/restore@v4
+        uses: actions/cache/restore@v4
         if: 'github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
@@ -2729,7 +2729,7 @@ jobs:
           path: target/debug/test_server.exe
           retention-days: 3
       - name: Cache cargo home
-        uses: cirruslabs/cache/save@v4
+        uses: actions/cache/save@v4
         if: 'github.ref == ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
@@ -2741,7 +2741,7 @@ jobs:
             ~/.cargo/git/db
           key: '98-cargo-home-windows-aarch64-build-main-${{ github.sha }}'
       - name: Cache build output
-        uses: cirruslabs/cache/save@v4
+        uses: actions/cache/save@v4
         if: 'github.ref == ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
@@ -2822,7 +2822,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Restore cache cargo home
-        uses: cirruslabs/cache/restore@v4
+        uses: actions/cache/restore@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         with:
           path: |-
@@ -2835,7 +2835,7 @@ jobs:
           key: never_saved
           restore-keys: '98-cargo-home-windows-aarch64-test-${{ matrix.test_crate }}-'
       - name: Restore cache build output
-        uses: cirruslabs/cache/restore@v4
+        uses: actions/cache/restore@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'''
         with:
           path: |-
@@ -2902,7 +2902,7 @@ jobs:
           name: 'test-results-windows-aarch64-debug-${{ matrix.test_crate }}${{ matrix.shard_total > 1 && format(''-shard-{0}'', matrix.shard_index) || '''' }}.json'
           path: 'target/test_results_${{ matrix.test_crate }}.json'
       - name: Cache cargo home
-        uses: cirruslabs/cache/save@v4
+        uses: actions/cache/save@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && github.ref == ''refs/heads/main'''
         with:
           path: |-
@@ -2914,7 +2914,7 @@ jobs:
             ~/.cargo/git/db
           key: '98-cargo-home-windows-aarch64-test-${{ matrix.test_crate }}-${{ github.sha }}'
       - name: Cache build output
-        uses: cirruslabs/cache/save@v4
+        uses: actions/cache/save@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && github.ref == ''refs/heads/main'''
         with:
           path: |-
@@ -2956,7 +2956,7 @@ jobs:
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Restore cache cargo home
-        uses: cirruslabs/cache/restore@v4
+        uses: actions/cache/restore@v4
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && !startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
@@ -2969,7 +2969,7 @@ jobs:
           key: never_saved
           restore-keys: 98-cargo-home-windows-aarch64-build-main-
       - name: Restore cache build output
-        uses: cirruslabs/cache/restore@v4
+        uses: actions/cache/restore@v4
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
@@ -3266,7 +3266,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Restore cache cargo home
-        uses: cirruslabs/cache/restore@v4
+        uses: actions/cache/restore@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         with:
           path: |-
@@ -3279,7 +3279,7 @@ jobs:
           key: never_saved
           restore-keys: '98-cargo-home-windows-aarch64-test-${{ matrix.test_crate }}-'
       - name: Restore cache build output
-        uses: cirruslabs/cache/restore@v4
+        uses: actions/cache/restore@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'''
         with:
           path: |-
@@ -3349,7 +3349,7 @@ jobs:
     needs:
       - pre_build
     if: needs.pre_build.outputs.skip_build != 'true'
-    runs-on: '${{ github.repository == ''denoland/deno'' && ''ghcr.io/cirruslabs/ubuntu-runner-amd64:24.04'' || ''ubuntu-24.04'' }}'
+    runs-on: ubuntu-24.04
     environment:
       name: '${{ (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/'')) && ''build'' || '''' }}'
     timeout-minutes: 240
@@ -3379,7 +3379,7 @@ jobs:
           tar --exclude=".git*" --exclude=target --exclude=third_party/prebuilt \
               -czvf target/release/deno_src.tar.gz -C .. deno
       - name: Restore cache cargo home
-        uses: cirruslabs/cache/restore@v4
+        uses: actions/cache/restore@v4
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
@@ -3392,7 +3392,7 @@ jobs:
           key: never_saved
           restore-keys: 98-cargo-home-linux-x86_64-build-main-
       - name: Restore cache build output
-        uses: cirruslabs/cache/restore@v4
+        uses: actions/cache/restore@v4
         if: 'github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
@@ -3645,7 +3645,7 @@ jobs:
           body_path: target/release/release-notes.md
           draft: true
       - name: Cache cargo home
-        uses: cirruslabs/cache/save@v4
+        uses: actions/cache/save@v4
         if: 'github.ref == ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
@@ -3657,7 +3657,7 @@ jobs:
             ~/.cargo/git/db
           key: '98-cargo-home-linux-x86_64-build-main-${{ github.sha }}'
       - name: Cache build output
-        uses: cirruslabs/cache/save@v4
+        uses: actions/cache/save@v4
         if: 'github.ref == ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
@@ -3738,7 +3738,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Restore cache cargo home
-        uses: cirruslabs/cache/restore@v4
+        uses: actions/cache/restore@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         with:
           path: |-
@@ -3751,7 +3751,7 @@ jobs:
           key: never_saved
           restore-keys: '98-cargo-home-linux-x86_64-test-${{ matrix.test_crate }}-'
       - name: Restore cache build output
-        uses: cirruslabs/cache/restore@v4
+        uses: actions/cache/restore@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'''
         with:
           path: |-
@@ -3907,7 +3907,7 @@ jobs:
           name: 'test-results-linux-x86_64-release-${{ matrix.test_crate }}${{ matrix.shard_total > 1 && format(''-shard-{0}'', matrix.shard_index) || '''' }}.json'
           path: 'target/test_results_${{ matrix.test_crate }}.json'
       - name: Cache cargo home
-        uses: cirruslabs/cache/save@v4
+        uses: actions/cache/save@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && github.ref == ''refs/heads/main'''
         with:
           path: |-
@@ -3919,7 +3919,7 @@ jobs:
             ~/.cargo/git/db
           key: '98-cargo-home-linux-x86_64-test-${{ matrix.test_crate }}-${{ github.sha }}'
       - name: Cache build output
-        uses: cirruslabs/cache/save@v4
+        uses: actions/cache/save@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && github.ref == ''refs/heads/main'''
         with:
           path: |-
@@ -3961,7 +3961,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/wpt/suite
       - name: Restore cache wpt and autobahn test run hashes
-        uses: cirruslabs/cache/restore@v4
+        uses: actions/cache/restore@v4
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
@@ -4045,7 +4045,7 @@ jobs:
           ./target/release/deno run --allow-all --lock=tools/deno.lock.json \
               ./tools/upload_wptfyi.js $(git rev-parse HEAD) --ghstatus
       - name: Cache wpt and autobahn test run hashes
-        uses: cirruslabs/cache/save@v4
+        uses: actions/cache/save@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && github.ref == ''refs/heads/main'''
         with:
           path: |-
@@ -4081,7 +4081,7 @@ jobs:
       - name: Clone submodule ./tests/util/std
         run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Restore cache cargo home
-        uses: cirruslabs/cache/restore@v4
+        uses: actions/cache/restore@v4
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
@@ -4094,7 +4094,7 @@ jobs:
           key: never_saved
           restore-keys: 98-cargo-home-linux-x86_64-build-main-
       - name: Restore cache build output
-        uses: cirruslabs/cache/restore@v4
+        uses: actions/cache/restore@v4
         if: 'github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
@@ -4233,7 +4233,7 @@ jobs:
           path: target/debug/test_server
           retention-days: 3
       - name: Cache cargo home
-        uses: cirruslabs/cache/save@v4
+        uses: actions/cache/save@v4
         if: 'github.ref == ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
@@ -4245,7 +4245,7 @@ jobs:
             ~/.cargo/git/db
           key: '98-cargo-home-linux-x86_64-build-main-${{ github.sha }}'
       - name: Cache build output
-        uses: cirruslabs/cache/save@v4
+        uses: actions/cache/save@v4
         if: 'github.ref == ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
@@ -4326,7 +4326,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Restore cache cargo home
-        uses: cirruslabs/cache/restore@v4
+        uses: actions/cache/restore@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         with:
           path: |-
@@ -4339,7 +4339,7 @@ jobs:
           key: never_saved
           restore-keys: '98-cargo-home-linux-x86_64-test-${{ matrix.test_crate }}-'
       - name: Restore cache build output
-        uses: cirruslabs/cache/restore@v4
+        uses: actions/cache/restore@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'''
         with:
           path: |-
@@ -4496,7 +4496,7 @@ jobs:
           name: 'test-results-linux-x86_64-debug-${{ matrix.test_crate }}${{ matrix.shard_total > 1 && format(''-shard-{0}'', matrix.shard_index) || '''' }}.json'
           path: 'target/test_results_${{ matrix.test_crate }}.json'
       - name: Cache cargo home
-        uses: cirruslabs/cache/save@v4
+        uses: actions/cache/save@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && github.ref == ''refs/heads/main'''
         with:
           path: |-
@@ -4508,7 +4508,7 @@ jobs:
             ~/.cargo/git/db
           key: '98-cargo-home-linux-x86_64-test-${{ matrix.test_crate }}-${{ github.sha }}'
       - name: Cache build output
-        uses: cirruslabs/cache/save@v4
+        uses: actions/cache/save@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && github.ref == ''refs/heads/main'''
         with:
           path: |-
@@ -4540,7 +4540,7 @@ jobs:
       - uses: dsherret/rust-toolchain-file@v1
         if: '!startsWith(github.ref, ''refs/tags/'')'
       - name: Restore cache cargo home
-        uses: cirruslabs/cache/restore@v4
+        uses: actions/cache/restore@v4
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
@@ -4553,7 +4553,7 @@ jobs:
           key: never_saved
           restore-keys: 98-cargo-home-linux-x86_64-build-libs-
       - name: Restore cache build output
-        uses: cirruslabs/cache/restore@v4
+        uses: actions/cache/restore@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && github.ref != ''refs/heads/main'''
         with:
           path: |-
@@ -4588,7 +4588,7 @@ jobs:
           cargo check --target wasm32-unknown-unknown --all-features -p deno_config
           cargo check -p deno --features=lsp-tracing
       - name: Cache cargo home
-        uses: cirruslabs/cache/save@v4
+        uses: actions/cache/save@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && github.ref == ''refs/heads/main'''
         with:
           path: |-
@@ -4600,7 +4600,7 @@ jobs:
             ~/.cargo/git/db
           key: '98-cargo-home-linux-x86_64-build-libs-${{ github.sha }}'
       - name: Cache build output
-        uses: cirruslabs/cache/save@v4
+        uses: actions/cache/save@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && github.ref == ''refs/heads/main'''
         with:
           path: |-
@@ -4615,7 +4615,7 @@ jobs:
     needs:
       - pre_build
     if: needs.pre_build.outputs.skip_build != 'true'
-    runs-on: 'ghcr.io/cirruslabs/ubuntu-runner-arm64:24.04-plus'
+    runs-on: ubuntu-24.04-arm
     environment:
       name: '${{ (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/'')) && ''build'' || '''' }}'
     timeout-minutes: 240
@@ -4639,7 +4639,7 @@ jobs:
       - name: Clone submodule ./tests/util/std
         run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Restore cache cargo home
-        uses: cirruslabs/cache/restore@v4
+        uses: actions/cache/restore@v4
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
@@ -4652,7 +4652,7 @@ jobs:
           key: never_saved
           restore-keys: 98-cargo-home-linux-aarch64-build-main-
       - name: Restore cache build output
-        uses: cirruslabs/cache/restore@v4
+        uses: actions/cache/restore@v4
         if: 'github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
@@ -4709,7 +4709,7 @@ jobs:
           path: target/debug/test_server
           retention-days: 3
       - name: Cache cargo home
-        uses: cirruslabs/cache/save@v4
+        uses: actions/cache/save@v4
         if: 'github.ref == ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
@@ -4721,7 +4721,7 @@ jobs:
             ~/.cargo/git/db
           key: '98-cargo-home-linux-aarch64-build-main-${{ github.sha }}'
       - name: Cache build output
-        uses: cirruslabs/cache/save@v4
+        uses: actions/cache/save@v4
         if: 'github.ref == ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
@@ -4802,7 +4802,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Restore cache cargo home
-        uses: cirruslabs/cache/restore@v4
+        uses: actions/cache/restore@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         with:
           path: |-
@@ -4815,7 +4815,7 @@ jobs:
           key: never_saved
           restore-keys: '98-cargo-home-linux-aarch64-test-${{ matrix.test_crate }}-'
       - name: Restore cache build output
-        uses: cirruslabs/cache/restore@v4
+        uses: actions/cache/restore@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'''
         with:
           path: |-
@@ -4894,7 +4894,7 @@ jobs:
           name: 'test-results-linux-aarch64-debug-${{ matrix.test_crate }}${{ matrix.shard_total > 1 && format(''-shard-{0}'', matrix.shard_index) || '''' }}.json'
           path: 'target/test_results_${{ matrix.test_crate }}.json'
       - name: Cache cargo home
-        uses: cirruslabs/cache/save@v4
+        uses: actions/cache/save@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && github.ref == ''refs/heads/main'''
         with:
           path: |-
@@ -4906,7 +4906,7 @@ jobs:
             ~/.cargo/git/db
           key: '98-cargo-home-linux-aarch64-test-${{ matrix.test_crate }}-${{ github.sha }}'
       - name: Cache build output
-        uses: cirruslabs/cache/save@v4
+        uses: actions/cache/save@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && github.ref == ''refs/heads/main'''
         with:
           path: |-
@@ -4935,7 +4935,7 @@ jobs:
           fetch-depth: 5
           submodules: false
       - name: Restore cache cargo home
-        uses: cirruslabs/cache/restore@v4
+        uses: actions/cache/restore@v4
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
@@ -4948,7 +4948,7 @@ jobs:
           key: never_saved
           restore-keys: 98-cargo-home-linux-aarch64-test-libs-
       - name: Restore cache build output
-        uses: cirruslabs/cache/restore@v4
+        uses: actions/cache/restore@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && github.ref != ''refs/heads/main'''
         with:
           path: |-
@@ -4995,7 +4995,7 @@ jobs:
           CARGO_PROFILE_DEV_DEBUG: 0
         run: cargo test --locked --lib -p deno -p denort -p node_shim -p deno_lib -p deno_snapshots -p deno_bundle_runtime -p deno_cache -p deno_cron -p deno_crypto -p deno_fetch -p deno_ffi -p deno_fs -p deno_http -p deno_image -p deno_io -p deno_kv -p deno_napi -p napi_sym -p deno_net -p deno_node -p deno_node_crypto -p deno_node_sqlite -p denort_helper -p deno_signals -p deno_telemetry -p deno_url -p deno_web -p deno_webgpu -p deno_webidl -p deno_websocket -p deno_webstorage -p deno_config -p deno_crypto_provider -p deno_dotenv -p eszip -p deno_inspector_server -p deno_lockfile -p deno_maybe_sync -p node_resolver -p deno_npm -p deno_npm_cache -p deno_npm_installer -p deno_package_json -p deno_resolver -p deno_typescript_go_client_rust -p deno_runtime -p deno_features -p deno_permissions -p deno_subprocess_windows
       - name: Cache cargo home
-        uses: cirruslabs/cache/save@v4
+        uses: actions/cache/save@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && github.ref == ''refs/heads/main'''
         with:
           path: |-
@@ -5007,7 +5007,7 @@ jobs:
             ~/.cargo/git/db
           key: '98-cargo-home-linux-aarch64-test-libs-${{ github.sha }}'
       - name: Cache build output
-        uses: cirruslabs/cache/save@v4
+        uses: actions/cache/save@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && github.ref == ''refs/heads/main'''
         with:
           path: |-
@@ -5022,7 +5022,7 @@ jobs:
     needs:
       - pre_build
     if: needs.pre_build.outputs.skip_build != 'true'
-    runs-on: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && ''ubuntu-24.04'' || ''ghcr.io/cirruslabs/ubuntu-runner-arm64:24.04-plus'' }}'
+    runs-on: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'' && ''ubuntu-24.04'' || ''ubuntu-24.04-arm'' }}'
     environment:
       name: '${{ (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/'')) && ''build'' || '''' }}'
     timeout-minutes: 240
@@ -5049,7 +5049,7 @@ jobs:
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Restore cache cargo home
-        uses: cirruslabs/cache/restore@v4
+        uses: actions/cache/restore@v4
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && !startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
@@ -5062,7 +5062,7 @@ jobs:
           key: never_saved
           restore-keys: 98-cargo-home-linux-aarch64-build-main-
       - name: Restore cache build output
-        uses: cirruslabs/cache/restore@v4
+        uses: actions/cache/restore@v4
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
@@ -5396,7 +5396,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Restore cache cargo home
-        uses: cirruslabs/cache/restore@v4
+        uses: actions/cache/restore@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         with:
           path: |-
@@ -5409,7 +5409,7 @@ jobs:
           key: never_saved
           restore-keys: '98-cargo-home-linux-aarch64-test-${{ matrix.test_crate }}-'
       - name: Restore cache build output
-        uses: cirruslabs/cache/restore@v4
+        uses: actions/cache/restore@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && github.ref != ''refs/heads/main'''
         with:
           path: |-
@@ -5608,7 +5608,7 @@ jobs:
       - name: Clone submodule ./tests/util/std
         run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Restore cache cargo home
-        uses: cirruslabs/cache/restore@v4
+        uses: actions/cache/restore@v4
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
@@ -5621,7 +5621,7 @@ jobs:
           key: never_saved
           restore-keys: '98-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-lint-'
       - name: Restore cache build output
-        uses: cirruslabs/cache/restore@v4
+        uses: actions/cache/restore@v4
         if: 'github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
@@ -5652,7 +5652,7 @@ jobs:
           GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
         run: deno run --allow-write --allow-read --allow-run --allow-net --allow-env ./tools/lint.js
       - name: Cache cargo home
-        uses: cirruslabs/cache/save@v4
+        uses: actions/cache/save@v4
         if: 'github.ref == ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
@@ -5664,7 +5664,7 @@ jobs:
             ~/.cargo/git/db
           key: '98-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-lint-${{ github.sha }}'
       - name: Cache build output
-        uses: cirruslabs/cache/save@v4
+        uses: actions/cache/save@v4
         if: 'github.ref == ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
@@ -5679,7 +5679,7 @@ jobs:
     needs:
       - pre_build
     if: needs.pre_build.outputs.skip_build != 'true' && needs.pre_build.outputs.skip_deno_core_test != 'true'
-    runs-on: '${{ github.repository == ''denoland/deno'' && ''ghcr.io/cirruslabs/ubuntu-runner-amd64:24.04'' || ''ubuntu-24.04'' }}'
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     defaults:
       run:
@@ -5701,7 +5701,7 @@ jobs:
           fetch-depth: 5
           submodules: false
       - name: Restore cache cargo home
-        uses: cirruslabs/cache/restore@v4
+        uses: actions/cache/restore@v4
         if: '!startsWith(github.ref, ''refs/tags/'')'
         with:
           path: |-
@@ -5714,7 +5714,7 @@ jobs:
           key: never_saved
           restore-keys: 98-cargo-home-linux-x86_64-deno-core-test-
       - name: Restore cache build output
-        uses: cirruslabs/cache/restore@v4
+        uses: actions/cache/restore@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && github.ref != ''refs/heads/main'''
         with:
           path: |-
@@ -5843,7 +5843,7 @@ jobs:
           cargo run -p deno_core --example op2
           cargo run -p deno_core --example op2 --features include_js_files_for_snapshotting
       - name: Cache cargo home
-        uses: cirruslabs/cache/save@v4
+        uses: actions/cache/save@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && github.ref == ''refs/heads/main'''
         with:
           path: |-
@@ -5855,7 +5855,7 @@ jobs:
             ~/.cargo/git/db
           key: '98-cargo-home-linux-x86_64-deno-core-test-${{ github.sha }}'
       - name: Cache build output
-        uses: cirruslabs/cache/save@v4
+        uses: actions/cache/save@v4
         if: '!startsWith(github.ref, ''refs/tags/'') && github.ref == ''refs/heads/main'''
         with:
           path: |-
@@ -5870,7 +5870,7 @@ jobs:
     needs:
       - pre_build
     if: needs.pre_build.outputs.skip_build != 'true'
-    runs-on: '${{ github.repository == ''denoland/deno'' && ''ghcr.io/cirruslabs/ubuntu-runner-amd64:24.04'' || ''ubuntu-24.04'' }}'
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     defaults:
       run:

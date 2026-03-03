@@ -6,7 +6,7 @@ use num_traits::FromPrimitive;
 
 use super::primes::Prime;
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub struct PublicKey(BigUint);
 
 impl PublicKey {
@@ -20,7 +20,7 @@ impl PublicKey {
   }
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub struct PrivateKey(BigUint);
 
 impl PrivateKey {
