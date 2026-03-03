@@ -46,7 +46,10 @@ function validateObject(
   }
 }
 
-function validateArray(value: unknown, name: string): asserts value is unknown[] {
+function validateArray(
+  value: unknown,
+  name: string,
+): asserts value is unknown[] {
   if (!ArrayIsArray(value)) {
     throw new ERR_INVALID_ARG_TYPE(name, "Array", value);
   }
@@ -646,7 +649,7 @@ class WASI {
     if (!(exports.memory instanceof WebAssembly.Memory)) {
       throw new ERR_INVALID_ARG_TYPE(
         "instance.exports.memory",
-        "a WebAssembly.Memory object",
+        "WebAssembly.Memory",
         exports.memory,
       );
     }
@@ -709,7 +712,7 @@ class WASI {
     if (!(exports.memory instanceof WebAssembly.Memory)) {
       throw new ERR_INVALID_ARG_TYPE(
         "instance.exports.memory",
-        "a WebAssembly.Memory object",
+        "WebAssembly.Memory",
         exports.memory,
       );
     }
