@@ -1,3 +1,5 @@
+// Copyright 2018-2026 the Deno authors. MIT license.
+
 use std::f32;
 use std::fmt;
 use std::ops;
@@ -95,7 +97,8 @@ pub struct Percent(pub f32);
 
 impl fmt::Debug for Percent {
   fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-    fmt.debug_tuple("Percent")
+    fmt
+      .debug_tuple("Percent")
       .field(&format_args!("{}%", self.0 * 100.0))
       .finish()
   }
@@ -144,11 +147,13 @@ struct MathValue {
 impl From<NumericValue> for MathValue {
   fn from(value: NumericValue) -> Self {
     match value {
-      NumericValue::Zero => {
-        MathValue { value: 0.0, dimensions: Default::default() }
+      NumericValue::Zero => MathValue {
+        value: 0.0,
+        dimensions: Default::default(),
       },
-      NumericValue::Number(Number(value)) => {
-        MathValue { value, dimensions: Default::default() }
+      NumericValue::Number(Number(value)) => MathValue {
+        value,
+        dimensions: Default::default(),
       },
       NumericValue::Length(length) => {
         let value = length.to_pixels();
@@ -157,10 +162,10 @@ impl From<NumericValue> for MathValue {
           dimensions: Dimensions {
             length: 1,
             angle: 0,
-            percent: 0
-          }
+            percent: 0,
+          },
         }
-      },
+      }
       NumericValue::Angle(angle) => {
         let value = angle.to_degrees();
         MathValue {
@@ -168,19 +173,17 @@ impl From<NumericValue> for MathValue {
           dimensions: Dimensions {
             length: 0,
             angle: 1,
-            percent: 0
-          }
+            percent: 0,
+          },
         }
-      },
-      NumericValue::Percent(Percent(value)) => {
-        MathValue {
-          value,
-          dimensions: Dimensions {
-            length: 0,
-            angle: 0,
-            percent: 1
-          }
-        }
+      }
+      NumericValue::Percent(Percent(value)) => MathValue {
+        value,
+        dimensions: Dimensions {
+          length: 0,
+          angle: 0,
+          percent: 1,
+        },
       },
     }
   }
@@ -192,19 +195,33 @@ impl TryFrom<MathValue> for NumericValue {
   fn try_from(accumulator: MathValue) -> Result<Self, Self::Error> {
     let value = accumulator.value;
     match accumulator.dimensions {
-      Dimensions { length: 0, angle: 0, percent: 0 } => {
-        Ok(NumericValue::Number(Number(value)))
-      },
-      Dimensions { length: 1, angle: 0, percent: 0 } => {
-        Ok(NumericValue::Length(Length { value, unit: LengthUnit::Px }))
-      },
-      Dimensions { length: 0, angle: 1, percent: 0 } => {
-        Ok(NumericValue::Angle(Angle { value, unit: AngleUnit::Deg }))
-      },
-      Dimensions { length: 0, angle: 0, percent: 1 } => {
-        Ok(NumericValue::Percent(Percent(value)))
-      }
-      _ => Err(CSSValueError::InvalidDimensions)
+      Dimensions {
+        length: 0,
+        angle: 0,
+        percent: 0,
+      } => Ok(NumericValue::Number(Number(value))),
+      Dimensions {
+        length: 1,
+        angle: 0,
+        percent: 0,
+      } => Ok(NumericValue::Length(Length {
+        value,
+        unit: LengthUnit::Px,
+      })),
+      Dimensions {
+        length: 0,
+        angle: 1,
+        percent: 0,
+      } => Ok(NumericValue::Angle(Angle {
+        value,
+        unit: AngleUnit::Deg,
+      })),
+      Dimensions {
+        length: 0,
+        angle: 0,
+        percent: 1,
+      } => Ok(NumericValue::Percent(Percent(value))),
+      _ => Err(CSSValueError::InvalidDimensions),
     }
   }
 }
@@ -284,15 +301,11 @@ impl NumericValue {
   ) -> Result<Self, ParseError<'i, CSSValueError>> {
     let result = Self::parse_inner(input, &mut ParseState::default())?;
     match result {
-      NumericAccumulator::Numeric(numeric) => {
-        Ok(numeric)
+      NumericAccumulator::Numeric(numeric) => Ok(numeric),
+      NumericAccumulator::Math(math) => match NumericValue::try_from(math) {
+        Ok(numeric) => Ok(numeric),
+        Err(error) => Err(input.new_custom_error(error)),
       },
-      NumericAccumulator::Math(math) => {
-        match NumericValue::try_from(math) {
-          Ok(numeric) => Ok(numeric),
-          Err(error) => Err(input.new_custom_error(error)),
-        }
-      }
     }
   }
 
@@ -308,7 +321,7 @@ impl NumericValue {
           return Ok(NumericValue::Zero.into());
         }
         Ok(NumericValue::Number(Number(*value)).into())
-      },
+      }
       Token::Dimension { value, unit, .. } => {
         match_ignore_ascii_case! { &unit,
           "cm" => Ok(NumericValue::Length(Length { value: *value, unit: LengthUnit::Cm}).into()),
@@ -331,7 +344,9 @@ impl NumericValue {
           _ => Err(input.new_custom_error(CSSValueError::UnexpectedToken))
         }
       }
-      Token::Percentage { unit_value, .. } => Ok(NumericValue::Percent(Percent(*unit_value)).into()),
+      Token::Percentage { unit_value, .. } => {
+        Ok(NumericValue::Percent(Percent(*unit_value)).into())
+      }
       Token::Function(name) => {
         state.function_depth += 1;
         let result = match_ignore_ascii_case! { &name,
@@ -450,9 +465,9 @@ impl NumericValue {
 
 #[cfg(test)]
 mod tests {
-  use cssparser::ParserInput;
-  use cssparser::ParseErrorKind;
   use cssparser::BasicParseErrorKind;
+  use cssparser::ParseErrorKind;
+  use cssparser::ParserInput;
 
   use super::*;
 
@@ -505,10 +520,7 @@ mod tests {
     let mut input = ParserInput::new("10%");
     let mut parser = Parser::new(&mut input);
     let result = NumericValue::parse(&mut parser);
-    assert_eq!(
-      result,
-      Ok(NumericValue::Percent(Percent(0.1)))
-    );
+    assert_eq!(result, Ok(NumericValue::Percent(Percent(0.1))));
   }
 
   #[test]
@@ -558,7 +570,10 @@ mod tests {
     let mut input = ParserInput::new("calc(1+2)");
     let mut parser = Parser::new(&mut input);
     let result = NumericValue::parse(&mut parser);
-    assert!(result.is_err_and(|error| matches!(error.kind, ParseErrorKind::Basic(BasicParseErrorKind::UnexpectedToken(_)))));
+    assert!(result.is_err_and(|error| matches!(
+      error.kind,
+      ParseErrorKind::Basic(BasicParseErrorKind::UnexpectedToken(_))
+    )));
   }
 
   #[test]
@@ -566,7 +581,8 @@ mod tests {
     let mut input = ParserInput::new("calc(1px + 2deg)");
     let mut parser = Parser::new(&mut input);
     let result = NumericValue::parse(&mut parser);
-    assert!(result.is_err_and(|error| error.kind == ParseErrorKind::Custom(CSSValueError::NumericTypeMismatch)));
+    assert!(result.is_err_and(|error| error.kind
+      == ParseErrorKind::Custom(CSSValueError::NumericTypeMismatch)));
   }
 
   #[test]
@@ -596,6 +612,7 @@ mod tests {
     let mut input = ParserInput::new("calc(1px * 1deg * 1% / 1deg)");
     let mut parser = Parser::new(&mut input);
     let result = NumericValue::parse(&mut parser);
-    assert!(result.is_err_and(|error| error.kind == ParseErrorKind::Custom(CSSValueError::InvalidDimensions)));
+    assert!(result.is_err_and(|error| error.kind
+      == ParseErrorKind::Custom(CSSValueError::InvalidDimensions)));
   }
 }

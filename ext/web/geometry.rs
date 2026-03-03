@@ -8,6 +8,8 @@ use std::cell::RefCell;
 use std::ptr;
 use std::rc::Rc;
 
+use deno_core::CppgcBase;
+use deno_core::CppgcInherits;
 use deno_core::GarbageCollected;
 use deno_core::OpState;
 use deno_core::WebIDL;
@@ -125,7 +127,8 @@ pub struct DOMPointInit {
   w: UnrestrictedDouble,
 }
 
-#[derive(Debug)]
+#[derive(CppgcBase)]
+#[repr(C)]
 pub struct DOMPointReadOnly {
   inner: RefCell<Vector4<f64>>,
 }
@@ -228,11 +231,16 @@ impl DOMPointReadOnly {
     };
     matrix_transform_point(&matrix, self, &ro);
     let obj = cppgc::make_cppgc_empty_object::<DOMPoint>(scope);
-    Ok(cppgc::wrap_object2(scope, obj, (ro, DOMPoint {})))
+    Ok(cppgc::wrap_object(scope, obj, DOMPoint { base: ro }))
   }
 }
 
-pub struct DOMPoint {}
+#[derive(CppgcInherits, CppgcBase)]
+#[cppgc_inherits_from(DOMPointReadOnly)]
+#[repr(C)]
+pub struct DOMPoint {
+  base: DOMPointReadOnly,
+}
 
 // SAFETY: we're sure `DOMPoint` can be GCed
 unsafe impl GarbageCollected for DOMPoint {
@@ -243,7 +251,7 @@ unsafe impl GarbageCollected for DOMPoint {
   }
 }
 
-#[op2(inherit = DOMPointReadOnly)]
+#[op2(base, inherit = DOMPointReadOnly)]
 impl DOMPoint {
   #[constructor]
   #[required(0)]
@@ -253,7 +261,7 @@ impl DOMPoint {
     #[webidl] y: Option<UnrestrictedDouble>,
     #[webidl] z: Option<UnrestrictedDouble>,
     #[webidl] w: Option<UnrestrictedDouble>,
-  ) -> (DOMPointReadOnly, DOMPoint) {
+  ) -> DOMPoint {
     let ro = DOMPointReadOnly {
       inner: RefCell::new(Vector4::new(
         *x.unwrap_or(UnrestrictedDouble(0.0)),
@@ -262,7 +270,7 @@ impl DOMPoint {
         *w.unwrap_or(UnrestrictedDouble(1.0)),
       )),
     };
-    (ro, DOMPoint {})
+    DOMPoint { base: ro }
   }
 
   #[reentrant]
@@ -274,67 +282,63 @@ impl DOMPoint {
   ) -> v8::Local<'a, v8::Object> {
     let ro = DOMPointReadOnly::from_point_inner(init);
     let obj = cppgc::make_cppgc_empty_object::<DOMPoint>(scope);
-    cppgc::wrap_object2(scope, obj, (ro, DOMPoint {}))
+    cppgc::wrap_object(scope, obj, DOMPoint { base: ro })
   }
 
   #[fast]
   #[getter]
-  fn x(&self, #[proto] ro: &DOMPointReadOnly) -> f64 {
-    ro.inner.borrow().x
+  fn x(&self) -> f64 {
+    self.base.inner.borrow().x
   }
 
   #[setter]
   fn x(
     &self,
     #[webidl] value: UnrestrictedDouble,
-    #[proto] ro: &DOMPointReadOnly,
   ) {
-    ro.inner.borrow_mut().x = *value
+    self.base.inner.borrow_mut().x = *value
   }
 
   #[fast]
   #[getter]
-  fn y(&self, #[proto] ro: &DOMPointReadOnly) -> f64 {
-    ro.inner.borrow().y
+  fn y(&self) -> f64 {
+    self.base.inner.borrow().y
   }
 
   #[setter]
   fn y(
     &self,
     #[webidl] value: UnrestrictedDouble,
-    #[proto] ro: &DOMPointReadOnly,
   ) {
-    ro.inner.borrow_mut().y = *value
+    self.base.inner.borrow_mut().y = *value
   }
 
   #[fast]
   #[getter]
-  fn z(&self, #[proto] ro: &DOMPointReadOnly) -> f64 {
-    ro.inner.borrow().z
+  fn z(&self) -> f64 {
+    self.base.inner.borrow().z
   }
 
   #[setter]
   fn z(
     &self,
     #[webidl] value: UnrestrictedDouble,
-    #[proto] ro: &DOMPointReadOnly,
   ) {
-    ro.inner.borrow_mut().z = *value
+    self.base.inner.borrow_mut().z = *value
   }
 
   #[fast]
   #[getter]
-  fn w(&self, #[proto] ro: &DOMPointReadOnly) -> f64 {
-    ro.inner.borrow().w
+  fn w(&self) -> f64 {
+    self.base.inner.borrow().w
   }
 
   #[setter]
   fn w(
     &self,
     #[webidl] value: UnrestrictedDouble,
-    #[proto] ro: &DOMPointReadOnly,
   ) {
-    ro.inner.borrow_mut().w = *value
+    self.base.inner.borrow_mut().w = *value
   }
 }
 
@@ -351,7 +355,8 @@ pub struct DOMRectInit {
   height: UnrestrictedDouble,
 }
 
-#[derive(Debug)]
+#[derive(CppgcBase)]
+#[repr(C)]
 pub struct DOMRectReadOnly {
   x: Cell<f64>,
   y: Cell<f64>,
@@ -502,7 +507,12 @@ impl DOMRectReadOnly {
   }
 }
 
-pub struct DOMRect {}
+#[derive(CppgcInherits, CppgcBase)]
+#[cppgc_inherits_from(DOMRectReadOnly)]
+#[repr(C)]
+pub struct DOMRect {
+  base: DOMRectReadOnly,
+}
 
 // SAFETY: we're sure `DOMRect` can be GCed
 unsafe impl GarbageCollected for DOMRect {
@@ -513,7 +523,7 @@ unsafe impl GarbageCollected for DOMRect {
   }
 }
 
-#[op2(inherit = DOMRectReadOnly)]
+#[op2(base, inherit = DOMRectReadOnly)]
 impl DOMRect {
   #[constructor]
   #[required(0)]
@@ -523,14 +533,14 @@ impl DOMRect {
     #[webidl] y: Option<UnrestrictedDouble>,
     #[webidl] width: Option<UnrestrictedDouble>,
     #[webidl] height: Option<UnrestrictedDouble>,
-  ) -> (DOMRectReadOnly, DOMRect) {
+  ) -> DOMRect {
     let ro = DOMRectReadOnly {
       x: Cell::new(*x.unwrap_or(UnrestrictedDouble(0.0))),
       y: Cell::new(*y.unwrap_or(UnrestrictedDouble(0.0))),
       width: Cell::new(*width.unwrap_or(UnrestrictedDouble(0.0))),
       height: Cell::new(*height.unwrap_or(UnrestrictedDouble(0.0))),
     };
-    (ro, DOMRect {})
+    DOMRect { base: ro }
   }
 
   #[reentrant]
@@ -542,67 +552,63 @@ impl DOMRect {
   ) -> v8::Local<'a, v8::Object> {
     let ro = DOMRectReadOnly::from_rect_inner(init);
     let obj = cppgc::make_cppgc_empty_object::<DOMRect>(scope);
-    cppgc::wrap_object2(scope, obj, (ro, DOMRect {}))
+    cppgc::wrap_object(scope, obj, DOMRect { base: ro })
   }
 
   #[fast]
   #[getter]
-  fn x(&self, #[proto] ro: &DOMRectReadOnly) -> f64 {
-    ro.x.get()
+  fn x(&self) -> f64 {
+    self.base.x.get()
   }
 
   #[setter]
   fn x(
     &self,
     #[webidl] value: UnrestrictedDouble,
-    #[proto] ro: &DOMRectReadOnly,
   ) {
-    ro.x.set(*value)
+    self.base.x.set(*value)
   }
 
   #[fast]
   #[getter]
-  fn y(&self, #[proto] ro: &DOMRectReadOnly) -> f64 {
-    ro.y.get()
+  fn y(&self) -> f64 {
+    self.base.y.get()
   }
 
   #[setter]
   fn y(
     &self,
     #[webidl] value: UnrestrictedDouble,
-    #[proto] ro: &DOMRectReadOnly,
   ) {
-    ro.y.set(*value)
+    self.base.y.set(*value)
   }
 
   #[fast]
   #[getter]
-  fn width(&self, #[proto] ro: &DOMRectReadOnly) -> f64 {
-    ro.width.get()
+  fn width(&self) -> f64 {
+    self.base.width.get()
   }
 
   #[setter]
   fn width(
     &self,
     #[webidl] value: UnrestrictedDouble,
-    #[proto] ro: &DOMRectReadOnly,
   ) {
-    ro.width.set(*value)
+    self.base.width.set(*value)
   }
 
   #[fast]
   #[getter]
-  fn height(&self, #[proto] ro: &DOMRectReadOnly) -> f64 {
-    ro.height.get()
+  fn height(&self) -> f64 {
+    self.base.height.get()
   }
 
   #[setter]
   fn height(
     &self,
     #[webidl] value: UnrestrictedDouble,
-    #[proto] ro: &DOMRectReadOnly,
   ) {
-    ro.height.set(*value)
+    self.base.height.set(*value)
   }
 }
 
@@ -614,6 +620,7 @@ pub struct DOMQuadInit {
   p3: DOMPointInit,
   p4: DOMPointInit,
 }
+
 
 pub struct DOMQuad {
   p1: v8::TracedReference<v8::Object>,
@@ -660,7 +667,7 @@ impl DOMQuad {
         )),
       };
       let obj = cppgc::make_cppgc_empty_object::<DOMPoint>(scope);
-      cppgc::wrap_object2(scope, obj, (ro, DOMPoint {}));
+      cppgc::wrap_object(scope, obj, DOMPoint { base: ro });
       v8::TracedReference::new(scope, obj)
     }
 
@@ -692,7 +699,7 @@ impl DOMQuad {
         inner: RefCell::new(Vector4::new(x, y, z, w)),
       };
       let obj = cppgc::make_cppgc_empty_object::<DOMPoint>(scope);
-      cppgc::wrap_object2(scope, obj, (ro, DOMPoint {}));
+      cppgc::wrap_object(scope, obj, DOMPoint { base: ro });
       v8::TracedReference::new(scope, obj)
     }
 
@@ -729,7 +736,7 @@ impl DOMQuad {
         )),
       };
       let obj = cppgc::make_cppgc_empty_object::<DOMPoint>(scope);
-      cppgc::wrap_object2(scope, obj, (ro, DOMPoint {}));
+      cppgc::wrap_object(scope, obj, DOMPoint { base: ro });
       v8::TracedReference::new(scope, obj)
     }
 
@@ -784,7 +791,7 @@ impl DOMQuad {
       value: &v8::TracedReference<v8::Object>,
     ) -> cppgc::UnsafePtr<DOMPointReadOnly> {
       let value = value.get(scope).unwrap();
-      cppgc::try_unwrap_cppgc_proto_object::<DOMPointReadOnly>(
+      cppgc::try_unwrap_cppgc_base_object::<DOMPointReadOnly>(
         scope,
         value.into(),
       )
@@ -810,7 +817,7 @@ impl DOMQuad {
       height: Cell::new(bottom - top),
     };
     let obj = cppgc::make_cppgc_empty_object::<DOMRect>(scope);
-    cppgc::wrap_object2(scope, obj, (ro, DOMRect {}))
+    cppgc::wrap_object(scope, obj, DOMRect { base: ro })
   }
 
   #[rename("toJSON")]
@@ -881,7 +888,8 @@ pub struct DOMMatrixInit {
   is_2d: Option<bool>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(CppgcBase, Clone)]
+#[repr(C)]
 pub struct DOMMatrixReadOnly {
   inner: RefCell<Matrix4<f64>>,
   is_2d: Cell<bool>,
@@ -1832,7 +1840,7 @@ impl DOMMatrixReadOnly {
     let out = self.clone();
     out.translate_self_inner(tx, ty, tz);
     let obj = cppgc::make_cppgc_empty_object::<DOMMatrix>(scope);
-    cppgc::wrap_object2(scope, obj, (out, DOMMatrix {}))
+    cppgc::wrap_object(scope, obj, DOMMatrix { base: out })
   }
 
   #[required(0)]
@@ -1860,7 +1868,7 @@ impl DOMMatrixReadOnly {
         .scale_with_origin_self_inner(sx, sy, sz, origin_x, origin_y, origin_z);
     }
     let obj = cppgc::make_cppgc_empty_object::<DOMMatrix>(scope);
-    cppgc::wrap_object2(scope, obj, (out, DOMMatrix {}))
+    cppgc::wrap_object(scope, obj, DOMMatrix { base: out })
   }
 
   #[required(0)]
@@ -1875,7 +1883,7 @@ impl DOMMatrixReadOnly {
     let out = self.clone();
     out.scale_without_origin_self_inner(sx, sy, 1.0);
     let obj = cppgc::make_cppgc_empty_object::<DOMMatrix>(scope);
-    cppgc::wrap_object2(scope, obj, (out, DOMMatrix {}))
+    cppgc::wrap_object(scope, obj, DOMMatrix { base: out })
   }
 
   #[rename("scale3d")]
@@ -1901,7 +1909,7 @@ impl DOMMatrixReadOnly {
       );
     }
     let obj = cppgc::make_cppgc_empty_object::<DOMMatrix>(scope);
-    cppgc::wrap_object2(scope, obj, (out, DOMMatrix {}))
+    cppgc::wrap_object(scope, obj, DOMMatrix { base: out })
   }
 
   #[required(0)]
@@ -1930,7 +1938,7 @@ impl DOMMatrixReadOnly {
       yaw_deg.to_radians(),
     );
     let obj = cppgc::make_cppgc_empty_object::<DOMMatrix>(scope);
-    cppgc::wrap_object2(scope, obj, (out, DOMMatrix {}))
+    cppgc::wrap_object(scope, obj, DOMMatrix { base: out })
   }
 
   #[required(0)]
@@ -1945,7 +1953,7 @@ impl DOMMatrixReadOnly {
     let out = self.clone();
     out.rotate_from_vector_self_inner(x, y);
     let obj = cppgc::make_cppgc_empty_object::<DOMMatrix>(scope);
-    cppgc::wrap_object2(scope, obj, (out, DOMMatrix {}))
+    cppgc::wrap_object(scope, obj, DOMMatrix { base: out })
   }
 
   #[required(0)]
@@ -1964,7 +1972,7 @@ impl DOMMatrixReadOnly {
     let out = self.clone();
     out.rotate_axis_angle_self_inner(x, y, z, angle_deg.to_radians());
     let obj = cppgc::make_cppgc_empty_object::<DOMMatrix>(scope);
-    cppgc::wrap_object2(scope, obj, (out, DOMMatrix {}))
+    cppgc::wrap_object(scope, obj, DOMMatrix { base: out })
   }
 
   #[required(0)]
@@ -1977,7 +1985,7 @@ impl DOMMatrixReadOnly {
     let out = self.clone();
     out.skew_self_inner(x_deg.to_radians(), 0.0);
     let obj = cppgc::make_cppgc_empty_object::<DOMMatrix>(scope);
-    cppgc::wrap_object2(scope, obj, (out, DOMMatrix {}))
+    cppgc::wrap_object(scope, obj, DOMMatrix { base: out })
   }
 
   #[required(0)]
@@ -1990,7 +1998,7 @@ impl DOMMatrixReadOnly {
     let out = self.clone();
     out.skew_self_inner(0.0, y_deg.to_radians());
     let obj = cppgc::make_cppgc_empty_object::<DOMMatrix>(scope);
-    cppgc::wrap_object2(scope, obj, (out, DOMMatrix {}))
+    cppgc::wrap_object(scope, obj, DOMMatrix { base: out })
   }
 
   #[required(0)]
@@ -2001,7 +2009,7 @@ impl DOMMatrixReadOnly {
   ) -> Result<v8::Local<'a, v8::Object>, GeometryError> {
     let out = self.clone();
     if let Some(other) =
-      cppgc::try_unwrap_cppgc_proto_object::<DOMMatrixReadOnly>(scope, other)
+      cppgc::try_unwrap_cppgc_base_object::<DOMMatrixReadOnly>(scope, other)
     {
       out.multiply_self_inner(self, &other);
     } else {
@@ -2016,7 +2024,7 @@ impl DOMMatrixReadOnly {
       out.multiply_self_inner(self, &other);
     }
     let obj = cppgc::make_cppgc_empty_object::<DOMMatrix>(scope);
-    Ok(cppgc::wrap_object2(scope, obj, (out, DOMMatrix {})))
+    Ok(cppgc::wrap_object(scope, obj, DOMMatrix { base: out }))
   }
 
   #[required(0)]
@@ -2027,7 +2035,7 @@ impl DOMMatrixReadOnly {
     let out = self.clone();
     out.flip_x_inner();
     let obj = cppgc::make_cppgc_empty_object::<DOMMatrix>(scope);
-    cppgc::wrap_object2(scope, obj, (out, DOMMatrix {}))
+    cppgc::wrap_object(scope, obj, DOMMatrix { base: out })
   }
 
   #[required(0)]
@@ -2038,7 +2046,7 @@ impl DOMMatrixReadOnly {
     let out = self.clone();
     out.flip_y_inner();
     let obj = cppgc::make_cppgc_empty_object::<DOMMatrix>(scope);
-    cppgc::wrap_object2(scope, obj, (out, DOMMatrix {}))
+    cppgc::wrap_object(scope, obj, DOMMatrix { base: out })
   }
 
   #[required(0)]
@@ -2049,7 +2057,7 @@ impl DOMMatrixReadOnly {
     let out = self.clone();
     out.invert_self_inner();
     let obj = cppgc::make_cppgc_empty_object::<DOMMatrix>(scope);
-    cppgc::wrap_object2(scope, obj, (out, DOMMatrix {}))
+    cppgc::wrap_object(scope, obj, DOMMatrix { base: out })
   }
 
   #[reentrant]
@@ -2063,7 +2071,7 @@ impl DOMMatrixReadOnly {
       inner: RefCell::new(Vector4::zeros()),
     };
     if let Some(point) =
-      cppgc::try_unwrap_cppgc_proto_object::<DOMPointReadOnly>(scope, point)
+      cppgc::try_unwrap_cppgc_base_object::<DOMPointReadOnly>(scope, point)
     {
       matrix_transform_point(self, &point, &out);
     } else {
@@ -2078,7 +2086,7 @@ impl DOMMatrixReadOnly {
       matrix_transform_point(self, &point, &out);
     }
     let obj = cppgc::make_cppgc_empty_object::<DOMPoint>(scope);
-    Ok(cppgc::wrap_object2(scope, obj, (out, DOMPoint {})))
+    Ok(cppgc::wrap_object(scope, obj, DOMPoint { base: out }))
   }
 
   #[rename("toJSON")]
@@ -2116,7 +2124,12 @@ impl DOMMatrixReadOnly {
   }
 }
 
-pub struct DOMMatrix {}
+#[derive(CppgcInherits, CppgcBase)]
+#[cppgc_inherits_from(DOMMatrixReadOnly)]
+#[repr(C)]
+pub struct DOMMatrix {
+  base: DOMMatrixReadOnly,
+}
 
 // SAFETY: we're sure `DOMMatrix` can be GCed
 unsafe impl GarbageCollected for DOMMatrix {
@@ -2139,7 +2152,7 @@ impl DOMMatrix {
     value: v8::Local<'a, v8::Value>,
     // TODO(petamoriken): Error when deleting next line. proc-macro bug?
     #[webidl] _: bool,
-  ) -> Result<(DOMMatrixReadOnly, DOMMatrix), GeometryError> {
+  ) -> Result<DOMMatrix, GeometryError> {
     let ro = DOMMatrixReadOnly::new(
       state,
       scope,
@@ -2147,7 +2160,7 @@ impl DOMMatrix {
       "Failed to construct 'DOMMatrix'".into(),
       ContextFn::new_borrowed(&|| Cow::Borrowed("Argument 1")),
     )?;
-    Ok((ro, DOMMatrix {}))
+    Ok(DOMMatrix { base: ro })
   }
 
   #[reentrant]
@@ -2159,7 +2172,7 @@ impl DOMMatrix {
   ) -> Result<v8::Local<'a, v8::Object>, GeometryError> {
     let ro = DOMMatrixReadOnly::from_matrix_inner(&init)?;
     let obj = cppgc::make_cppgc_empty_object::<DOMMatrix>(scope);
-    Ok(cppgc::wrap_object2(scope, obj, (ro, DOMMatrix {})))
+    Ok(cppgc::wrap_object(scope, obj, DOMMatrix { base: ro }))
   }
 
   #[rename("fromFloat32Array")]
@@ -2172,7 +2185,7 @@ impl DOMMatrix {
     let seq = seq.iter().map(|&f| f as f64).collect::<Vec<f64>>();
     let ro = DOMMatrixReadOnly::from_sequence_inner(&seq)?;
     let obj = cppgc::make_cppgc_empty_object::<DOMMatrix>(scope);
-    Ok(cppgc::wrap_object2(scope, obj, (ro, DOMMatrix {})))
+    Ok(cppgc::wrap_object(scope, obj, DOMMatrix { base: ro }))
   }
 
   #[rename("fromFloat64Array")]
@@ -2184,141 +2197,133 @@ impl DOMMatrix {
   ) -> Result<v8::Local<'a, v8::Object>, GeometryError> {
     let ro = DOMMatrixReadOnly::from_sequence_inner(seq)?;
     let obj = cppgc::make_cppgc_empty_object::<DOMMatrix>(scope);
-    Ok(cppgc::wrap_object2(scope, obj, (ro, DOMMatrix {})))
+    Ok(cppgc::wrap_object(scope, obj, DOMMatrix { base: ro }))
   }
 
   #[fast]
   #[getter]
-  fn a(&self, #[proto] ro: &DOMMatrixReadOnly) -> f64 {
-    ro.a_inner()
+  fn a(&self) -> f64 {
+    self.base.a_inner()
   }
 
   #[setter]
   fn a(
     &self,
     #[webidl] value: UnrestrictedDouble,
-    #[proto] ro: &DOMMatrixReadOnly,
   ) {
-    ro.inner.borrow_mut()[INDEX_A] = *value;
+    self.base.inner.borrow_mut()[INDEX_A] = *value;
   }
 
   #[fast]
   #[getter]
-  fn b(&self, #[proto] ro: &DOMMatrixReadOnly) -> f64 {
-    ro.b_inner()
+  fn b(&self) -> f64 {
+    self.base.b_inner()
   }
 
   #[setter]
   fn b(
     &self,
     #[webidl] value: UnrestrictedDouble,
-    #[proto] ro: &DOMMatrixReadOnly,
   ) {
-    ro.inner.borrow_mut()[INDEX_B] = *value;
+    self.base.inner.borrow_mut()[INDEX_B] = *value;
   }
 
   #[fast]
   #[getter]
-  fn c(&self, #[proto] ro: &DOMMatrixReadOnly) -> f64 {
-    ro.c_inner()
+  fn c(&self) -> f64 {
+    self.base.c_inner()
   }
 
   #[setter]
   fn c(
     &self,
     #[webidl] value: UnrestrictedDouble,
-    #[proto] ro: &DOMMatrixReadOnly,
   ) {
-    ro.inner.borrow_mut()[INDEX_C] = *value;
+    self.base.inner.borrow_mut()[INDEX_C] = *value;
   }
 
   #[fast]
   #[getter]
-  fn d(&self, #[proto] ro: &DOMMatrixReadOnly) -> f64 {
-    ro.d_inner()
+  fn d(&self) -> f64 {
+    self.base.d_inner()
   }
 
   #[setter]
   fn d(
     &self,
     #[webidl] value: UnrestrictedDouble,
-    #[proto] ro: &DOMMatrixReadOnly,
   ) {
-    ro.inner.borrow_mut()[INDEX_D] = *value;
+    self.base.inner.borrow_mut()[INDEX_D] = *value;
   }
 
   #[fast]
   #[getter]
-  fn e(&self, #[proto] ro: &DOMMatrixReadOnly) -> f64 {
-    ro.e_inner()
+  fn e(&self) -> f64 {
+    self.base.e_inner()
   }
 
   #[setter]
   fn e(
     &self,
     #[webidl] value: UnrestrictedDouble,
-    #[proto] ro: &DOMMatrixReadOnly,
   ) {
-    ro.inner.borrow_mut()[INDEX_E] = *value;
+    self.base.inner.borrow_mut()[INDEX_E] = *value;
   }
 
   #[fast]
   #[getter]
-  fn f(&self, #[proto] ro: &DOMMatrixReadOnly) -> f64 {
-    ro.f_inner()
+  fn f(&self) -> f64 {
+    self.base.f_inner()
   }
 
   #[setter]
   fn f(
     &self,
     #[webidl] value: UnrestrictedDouble,
-    #[proto] ro: &DOMMatrixReadOnly,
   ) {
-    ro.inner.borrow_mut()[INDEX_F] = *value;
+    self.base.inner.borrow_mut()[INDEX_F] = *value;
   }
 
   #[fast]
   #[getter]
-  fn m11(&self, #[proto] ro: &DOMMatrixReadOnly) -> f64 {
-    ro.m11_inner()
+  fn m11(&self) -> f64 {
+    self.base.m11_inner()
   }
 
   #[setter]
   fn m11(
     &self,
     #[webidl] value: UnrestrictedDouble,
-    #[proto] ro: &DOMMatrixReadOnly,
   ) {
-    ro.inner.borrow_mut()[INDEX_M11] = *value;
+    self.base.inner.borrow_mut()[INDEX_M11] = *value;
   }
 
   #[fast]
   #[getter]
-  fn m12(&self, #[proto] ro: &DOMMatrixReadOnly) -> f64 {
-    ro.m12_inner()
+  fn m12(&self) -> f64 {
+    self.base.m12_inner()
   }
 
   #[setter]
   fn m12(
     &self,
     #[webidl] value: UnrestrictedDouble,
-    #[proto] ro: &DOMMatrixReadOnly,
   ) {
-    ro.inner.borrow_mut()[INDEX_M12] = *value;
+    self.base.inner.borrow_mut()[INDEX_M12] = *value;
   }
 
   #[fast]
   #[getter]
-  fn m13(&self, #[proto] ro: &DOMMatrixReadOnly) -> f64 {
-    ro.m13_inner()
+  fn m13(&self) -> f64 {
+    self.base.m13_inner()
   }
 
   #[setter]
   fn m13(
     &self,
     #[webidl] value: UnrestrictedDouble,
-    #[proto] ro: &DOMMatrixReadOnly,
   ) {
+    let ro = &self.base;
     ro.inner.borrow_mut()[INDEX_M13] = *value;
     if *value != 0.0 {
       ro.is_2d.set(false);
@@ -2327,16 +2332,16 @@ impl DOMMatrix {
 
   #[fast]
   #[getter]
-  fn m14(&self, #[proto] ro: &DOMMatrixReadOnly) -> f64 {
-    ro.m14_inner()
+  fn m14(&self) -> f64 {
+    self.base.m14_inner()
   }
 
   #[setter]
   fn m14(
     &self,
     #[webidl] value: UnrestrictedDouble,
-    #[proto] ro: &DOMMatrixReadOnly,
   ) {
+    let ro = &self.base;
     ro.inner.borrow_mut()[INDEX_M14] = *value;
     if *value != 0.0 {
       ro.is_2d.set(false);
@@ -2345,46 +2350,44 @@ impl DOMMatrix {
 
   #[fast]
   #[getter]
-  fn m21(&self, #[proto] ro: &DOMMatrixReadOnly) -> f64 {
-    ro.m21_inner()
+  fn m21(&self) -> f64 {
+    self.base.m21_inner()
   }
 
   #[setter]
   fn m21(
     &self,
     #[webidl] value: UnrestrictedDouble,
-    #[proto] ro: &DOMMatrixReadOnly,
   ) {
-    ro.inner.borrow_mut()[INDEX_M21] = *value;
+    self.base.inner.borrow_mut()[INDEX_M21] = *value;
   }
 
   #[fast]
   #[getter]
-  fn m22(&self, #[proto] ro: &DOMMatrixReadOnly) -> f64 {
-    ro.m22_inner()
+  fn m22(&self) -> f64 {
+    self.base.m22_inner()
   }
 
   #[setter]
   fn m22(
     &self,
     #[webidl] value: UnrestrictedDouble,
-    #[proto] ro: &DOMMatrixReadOnly,
   ) {
-    ro.inner.borrow_mut()[INDEX_M22] = *value;
+    self.base.inner.borrow_mut()[INDEX_M22] = *value;
   }
 
   #[fast]
   #[getter]
-  fn m23(&self, #[proto] ro: &DOMMatrixReadOnly) -> f64 {
-    ro.m23_inner()
+  fn m23(&self) -> f64 {
+    self.base.m23_inner()
   }
 
   #[setter]
   fn m23(
     &self,
     #[webidl] value: UnrestrictedDouble,
-    #[proto] ro: &DOMMatrixReadOnly,
   ) {
+    let ro = &self.base;
     ro.inner.borrow_mut()[INDEX_M23] = *value;
     if *value != 0.0 {
       ro.is_2d.set(false);
@@ -2393,16 +2396,16 @@ impl DOMMatrix {
 
   #[fast]
   #[getter]
-  fn m24(&self, #[proto] ro: &DOMMatrixReadOnly) -> f64 {
-    ro.m24_inner()
+  fn m24(&self) -> f64 {
+    self.base.m24_inner()
   }
 
   #[setter]
   fn m24(
     &self,
     #[webidl] value: UnrestrictedDouble,
-    #[proto] ro: &DOMMatrixReadOnly,
   ) {
+    let ro = &self.base;
     ro.inner.borrow_mut()[INDEX_M24] = *value;
     if *value != 0.0 {
       ro.is_2d.set(false);
@@ -2411,16 +2414,16 @@ impl DOMMatrix {
 
   #[fast]
   #[getter]
-  fn m31(&self, #[proto] ro: &DOMMatrixReadOnly) -> f64 {
-    ro.m31_inner()
+  fn m31(&self) -> f64 {
+    self.base.m31_inner()
   }
 
   #[setter]
   fn m31(
     &self,
     #[webidl] value: UnrestrictedDouble,
-    #[proto] ro: &DOMMatrixReadOnly,
   ) {
+    let ro = &self.base;
     ro.inner.borrow_mut()[INDEX_M31] = *value;
     if *value != 0.0 {
       ro.is_2d.set(false);
@@ -2429,16 +2432,16 @@ impl DOMMatrix {
 
   #[fast]
   #[getter]
-  fn m32(&self, #[proto] ro: &DOMMatrixReadOnly) -> f64 {
-    ro.m32_inner()
+  fn m32(&self) -> f64 {
+    self.base.m32_inner()
   }
 
   #[setter]
   fn m32(
     &self,
     #[webidl] value: UnrestrictedDouble,
-    #[proto] ro: &DOMMatrixReadOnly,
   ) {
+    let ro = &self.base;
     ro.inner.borrow_mut()[INDEX_M32] = *value;
     if *value != 0.0 {
       ro.is_2d.set(false);
@@ -2447,16 +2450,16 @@ impl DOMMatrix {
 
   #[fast]
   #[getter]
-  fn m33(&self, #[proto] ro: &DOMMatrixReadOnly) -> f64 {
-    ro.m33_inner()
+  fn m33(&self) -> f64 {
+    self.base.m33_inner()
   }
 
   #[setter]
   fn m33(
     &self,
     #[webidl] value: UnrestrictedDouble,
-    #[proto] ro: &DOMMatrixReadOnly,
   ) {
+    let ro = &self.base;
     ro.inner.borrow_mut()[INDEX_M33] = *value;
     if *value != 1.0 {
       ro.is_2d.set(false);
@@ -2465,16 +2468,16 @@ impl DOMMatrix {
 
   #[fast]
   #[getter]
-  fn m34(&self, #[proto] ro: &DOMMatrixReadOnly) -> f64 {
-    ro.m34_inner()
+  fn m34(&self) -> f64 {
+    self.base.m34_inner()
   }
 
   #[setter]
   fn m34(
     &self,
     #[webidl] value: UnrestrictedDouble,
-    #[proto] ro: &DOMMatrixReadOnly,
   ) {
+    let ro = &self.base;
     ro.inner.borrow_mut()[INDEX_M34] = *value;
     if *value != 0.0 {
       ro.is_2d.set(false);
@@ -2483,46 +2486,44 @@ impl DOMMatrix {
 
   #[fast]
   #[getter]
-  fn m41(&self, #[proto] ro: &DOMMatrixReadOnly) -> f64 {
-    ro.m41_inner()
+  fn m41(&self) -> f64 {
+    self.base.m41_inner()
   }
 
   #[setter]
   fn m41(
     &self,
     #[webidl] value: UnrestrictedDouble,
-    #[proto] ro: &DOMMatrixReadOnly,
   ) {
-    ro.inner.borrow_mut()[INDEX_M41] = *value;
+    self.base.inner.borrow_mut()[INDEX_M41] = *value;
   }
 
   #[fast]
   #[getter]
-  fn m42(&self, #[proto] ro: &DOMMatrixReadOnly) -> f64 {
-    ro.m42_inner()
+  fn m42(&self) -> f64 {
+    self.base.m42_inner()
   }
 
   #[setter]
   fn m42(
     &self,
     #[webidl] value: UnrestrictedDouble,
-    #[proto] ro: &DOMMatrixReadOnly,
   ) {
-    ro.inner.borrow_mut()[INDEX_M42] = *value;
+    self.base.inner.borrow_mut()[INDEX_M42] = *value;
   }
 
   #[fast]
   #[getter]
-  fn m43(&self, #[proto] ro: &DOMMatrixReadOnly) -> f64 {
-    ro.m43_inner()
+  fn m43(&self) -> f64 {
+    self.base.m43_inner()
   }
 
   #[setter]
   fn m43(
     &self,
     #[webidl] value: UnrestrictedDouble,
-    #[proto] ro: &DOMMatrixReadOnly,
   ) {
+    let ro = &self.base;
     ro.inner.borrow_mut()[INDEX_M43] = *value;
     if *value != 0.0 {
       ro.is_2d.set(false);
@@ -2531,16 +2532,16 @@ impl DOMMatrix {
 
   #[fast]
   #[getter]
-  fn m44(&self, #[proto] ro: &DOMMatrixReadOnly) -> f64 {
-    ro.m44_inner()
+  fn m44(&self) -> f64 {
+    self.base.m44_inner()
   }
 
   #[setter]
   fn m44(
     &self,
     #[webidl] value: UnrestrictedDouble,
-    #[proto] ro: &DOMMatrixReadOnly,
   ) {
+    let ro = &self.base;
     ro.inner.borrow_mut()[INDEX_M44] = *value;
     if *value != 1.0 {
       ro.is_2d.set(false);
@@ -2554,12 +2555,11 @@ impl DOMMatrix {
     #[webidl] tx: Option<UnrestrictedDouble>,
     #[webidl] ty: Option<UnrestrictedDouble>,
     #[webidl] tz: Option<UnrestrictedDouble>,
-    #[proto] ro: &DOMMatrixReadOnly,
   ) -> v8::Global<v8::Object> {
     let tx = *tx.unwrap_or(UnrestrictedDouble(0.0));
     let ty = *ty.unwrap_or(UnrestrictedDouble(0.0));
     let tz = *tz.unwrap_or(UnrestrictedDouble(0.0));
-    ro.translate_self_inner(tx, ty, tz);
+    self.base.translate_self_inner(tx, ty, tz);
     this
   }
 
@@ -2573,7 +2573,6 @@ impl DOMMatrix {
     #[webidl] origin_x: Option<UnrestrictedDouble>,
     #[webidl] origin_y: Option<UnrestrictedDouble>,
     #[webidl] origin_z: Option<UnrestrictedDouble>,
-    #[proto] ro: &DOMMatrixReadOnly,
   ) -> v8::Global<v8::Object> {
     let sx = *sx.unwrap_or(UnrestrictedDouble(1.0));
     let sy = *sy.unwrap_or(UnrestrictedDouble(sx));
@@ -2582,9 +2581,9 @@ impl DOMMatrix {
     let origin_y = *origin_y.unwrap_or(UnrestrictedDouble(0.0));
     let origin_z = *origin_z.unwrap_or(UnrestrictedDouble(0.0));
     if origin_x == 0.0 && origin_y == 0.0 && origin_z == 0.0 {
-      ro.scale_without_origin_self_inner(sx, sy, sz);
+      self.base.scale_without_origin_self_inner(sx, sy, sz);
     } else {
-      ro.scale_with_origin_self_inner(sx, sy, sz, origin_x, origin_y, origin_z);
+      self.base.scale_with_origin_self_inner(sx, sy, sz, origin_x, origin_y, origin_z);
     }
     this
   }
@@ -2598,16 +2597,15 @@ impl DOMMatrix {
     #[webidl] origin_x: Option<UnrestrictedDouble>,
     #[webidl] origin_y: Option<UnrestrictedDouble>,
     #[webidl] origin_z: Option<UnrestrictedDouble>,
-    #[proto] ro: &DOMMatrixReadOnly,
   ) -> v8::Global<v8::Object> {
     let scale = *scale.unwrap_or(UnrestrictedDouble(1.0));
     let origin_x = *origin_x.unwrap_or(UnrestrictedDouble(0.0));
     let origin_y = *origin_y.unwrap_or(UnrestrictedDouble(0.0));
     let origin_z = *origin_z.unwrap_or(UnrestrictedDouble(0.0));
     if origin_x == 0.0 && origin_y == 0.0 && origin_z == 0.0 {
-      ro.scale_without_origin_self_inner(scale, scale, scale);
+      self.base.scale_without_origin_self_inner(scale, scale, scale);
     } else {
-      ro.scale_with_origin_self_inner(
+      self.base.scale_with_origin_self_inner(
         scale, scale, scale, origin_x, origin_y, origin_z,
       );
     }
@@ -2621,7 +2619,6 @@ impl DOMMatrix {
     #[webidl] rotate_x: Option<UnrestrictedDouble>,
     #[webidl] rotate_y: Option<UnrestrictedDouble>,
     #[webidl] rotate_z: Option<UnrestrictedDouble>,
-    #[proto] ro: &DOMMatrixReadOnly,
   ) -> v8::Global<v8::Object> {
     let rotate_x = *rotate_x.unwrap_or(UnrestrictedDouble(0.0));
     let (roll_deg, pitch_deg, yaw_deg) =
@@ -2634,7 +2631,7 @@ impl DOMMatrix {
           *rotate_z.unwrap_or(UnrestrictedDouble(0.0)),
         )
       };
-    ro.rotate_self_inner(
+    self.base.rotate_self_inner(
       roll_deg.to_radians(),
       pitch_deg.to_radians(),
       yaw_deg.to_radians(),
@@ -2648,11 +2645,10 @@ impl DOMMatrix {
     #[this] this: v8::Global<v8::Object>,
     #[webidl] x: Option<UnrestrictedDouble>,
     #[webidl] y: Option<UnrestrictedDouble>,
-    #[proto] ro: &DOMMatrixReadOnly,
   ) -> v8::Global<v8::Object> {
     let x = *x.unwrap_or(UnrestrictedDouble(0.0));
     let y = *y.unwrap_or(UnrestrictedDouble(0.0));
-    ro.rotate_from_vector_self_inner(x, y);
+    self.base.rotate_from_vector_self_inner(x, y);
     this
   }
 
@@ -2664,13 +2660,12 @@ impl DOMMatrix {
     #[webidl] y: Option<UnrestrictedDouble>,
     #[webidl] z: Option<UnrestrictedDouble>,
     #[webidl] angle_deg: Option<UnrestrictedDouble>,
-    #[proto] ro: &DOMMatrixReadOnly,
   ) -> v8::Global<v8::Object> {
     let x = *x.unwrap_or(UnrestrictedDouble(0.0));
     let y = *y.unwrap_or(UnrestrictedDouble(0.0));
     let z = *z.unwrap_or(UnrestrictedDouble(0.0));
     let angle_deg = *angle_deg.unwrap_or(UnrestrictedDouble(0.0));
-    ro.rotate_axis_angle_self_inner(x, y, z, angle_deg.to_radians());
+    self.base.rotate_axis_angle_self_inner(x, y, z, angle_deg.to_radians());
     this
   }
 
@@ -2679,10 +2674,9 @@ impl DOMMatrix {
     &self,
     #[this] this: v8::Global<v8::Object>,
     #[webidl] x_deg: Option<UnrestrictedDouble>,
-    #[proto] ro: &DOMMatrixReadOnly,
   ) -> v8::Global<v8::Object> {
     let x_deg = *x_deg.unwrap_or(UnrestrictedDouble(0.0));
-    ro.skew_self_inner(x_deg.to_radians(), 0.0);
+    self.base.skew_self_inner(x_deg.to_radians(), 0.0);
     this
   }
 
@@ -2691,10 +2685,9 @@ impl DOMMatrix {
     &self,
     #[this] this: v8::Global<v8::Object>,
     #[webidl] y_deg: Option<UnrestrictedDouble>,
-    #[proto] ro: &DOMMatrixReadOnly,
   ) -> v8::Global<v8::Object> {
     let y_deg = *y_deg.unwrap_or(UnrestrictedDouble(0.0));
-    ro.skew_self_inner(0.0, y_deg.to_radians());
+    self.base.skew_self_inner(0.0, y_deg.to_radians());
     this
   }
 
@@ -2704,16 +2697,15 @@ impl DOMMatrix {
     #[this] this: v8::Global<v8::Object>,
     scope: &mut v8::PinScope<'a, '_>,
     other: v8::Local<'a, v8::Value>,
-    #[proto] ro: &DOMMatrixReadOnly,
   ) -> Result<v8::Global<v8::Object>, GeometryError> {
-    let lhs = ro.clone();
+    let lhs = self.base.clone();
     if let Some(other) =
-      cppgc::try_unwrap_cppgc_proto_object::<DOMMatrixReadOnly>(scope, other)
+      cppgc::try_unwrap_cppgc_base_object::<DOMMatrixReadOnly>(scope, other)
     {
-      if ptr::eq(ro, &*other) {
-        ro.multiply_self_inner(&lhs, &other.clone());
+      if ptr::eq(&self.base, &*other) {
+        self.base.multiply_self_inner(&lhs, &other.clone());
       } else {
-        ro.multiply_self_inner(&lhs, &other);
+        self.base.multiply_self_inner(&lhs, &other);
       };
     } else {
       let other = DOMMatrixInit::convert(
@@ -2724,7 +2716,7 @@ impl DOMMatrix {
         &Default::default(),
       )?;
       let other = DOMMatrixReadOnly::from_matrix_inner(&other)?;
-      ro.multiply_self_inner(&lhs, &other);
+      self.base.multiply_self_inner(&lhs, &other);
     }
     Ok(this)
   }
@@ -2735,16 +2727,15 @@ impl DOMMatrix {
     #[this] this: v8::Global<v8::Object>,
     scope: &mut v8::PinScope<'a, '_>,
     other: v8::Local<'a, v8::Value>,
-    #[proto] ro: &DOMMatrixReadOnly,
   ) -> Result<v8::Global<v8::Object>, GeometryError> {
-    let rhs = ro.clone();
+    let rhs = self.base.clone();
     if let Some(other) =
-      cppgc::try_unwrap_cppgc_proto_object::<DOMMatrixReadOnly>(scope, other)
+      cppgc::try_unwrap_cppgc_base_object::<DOMMatrixReadOnly>(scope, other)
     {
-      if ptr::eq(ro, &*other) {
-        ro.multiply_self_inner(&other.clone(), &rhs);
+      if ptr::eq(&self.base, &*other) {
+        self.base.multiply_self_inner(&other.clone(), &rhs);
       } else {
-        ro.multiply_self_inner(&other, &rhs);
+        self.base.multiply_self_inner(&other, &rhs);
       }
     } else {
       let other = DOMMatrixInit::convert(
@@ -2755,7 +2746,7 @@ impl DOMMatrix {
         &Default::default(),
       )?;
       let other = DOMMatrixReadOnly::from_matrix_inner(&other)?;
-      ro.multiply_self_inner(&other, &rhs);
+      self.base.multiply_self_inner(&other, &rhs);
     }
     Ok(this)
   }
@@ -2764,9 +2755,8 @@ impl DOMMatrix {
   fn invert_self(
     &self,
     #[this] this: v8::Global<v8::Object>,
-    #[proto] ro: &DOMMatrixReadOnly,
   ) -> v8::Global<v8::Object> {
-    ro.invert_self_inner();
+    self.base.invert_self_inner();
     this
   }
 }
@@ -2834,7 +2824,7 @@ pub fn op_geometry_matrix_to_string<'a>(
   }
 
   let Some(matrix) =
-    cppgc::try_unwrap_cppgc_proto_object::<DOMMatrixReadOnly>(scope, matrix)
+    cppgc::try_unwrap_cppgc_base_object::<DOMMatrixReadOnly>(scope, matrix)
   else {
     return Err(GeometryError::IllegalInvocation);
   };
@@ -2871,11 +2861,11 @@ pub fn op_geometry_matrix_set_matrix_value<'a>(
   input: v8::Local<'a, v8::Value>,
   transform_list: v8::Local<'a, v8::Value>,
 ) -> Result<(), GeometryError> {
-  if cppgc::try_unwrap_cppgc_proto_object::<DOMMatrix>(scope, input).is_none() {
+  if cppgc::try_unwrap_cppgc_base_object::<DOMMatrix>(scope, input).is_none() {
     return Err(GeometryError::IllegalInvocation);
   }
   let matrix =
-    cppgc::try_unwrap_cppgc_proto_object::<DOMMatrixReadOnly>(scope, input)
+    cppgc::try_unwrap_cppgc_base_object::<DOMMatrixReadOnly>(scope, input)
       .unwrap();
   let transform_list = String::convert(
     scope,
