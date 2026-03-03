@@ -52,8 +52,10 @@ export function createWritableStdioStream(writer, name, warmup = false) {
           : Buffer.from(buf, enc);
         // Handle partial writes - writeSync may not write all bytes at once
         // (e.g., when stdout is a pipe and the pipe buffer is near capacity).
+        // deno-lint-ignore prefer-primordials
         while (data.byteLength > 0) {
           const nwritten = writer.writeSync(data);
+          // deno-lint-ignore prefer-primordials
           if (nwritten >= data.byteLength) break;
           data = TypedArrayPrototypeSlice(data, nwritten);
         }

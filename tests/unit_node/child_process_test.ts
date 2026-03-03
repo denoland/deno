@@ -371,15 +371,11 @@ Deno.test({
       "./testdata/exec_file_text_output.js",
     );
     const promise = new Promise<string | null>((resolve, reject) => {
-      child = execFile(
-        Deno.execPath(),
-        ["run", script],
-        (err: Error | null, stdout?: string | Buffer) => {
-          if (err) reject(err);
-          else if (stdout) resolve(stdout as string);
-          else resolve(null);
-        },
-      );
+      child = execFile(Deno.execPath(), ["run", script], (err, stdout) => {
+        if (err) reject(err);
+        else if (stdout) resolve(stdout as string);
+        else resolve(null);
+      });
     });
     try {
       const stdout = await promise;
@@ -414,7 +410,6 @@ Deno.test({
     });
     try {
       const stdout = await promise;
-      assert(stdout != null);
       assert(Buffer.isBuffer(stdout));
       assertEquals(stdout.toString("utf8"), "Hello World!\n");
     } finally {
@@ -436,13 +431,9 @@ Deno.test({
     const promise = new Promise<
       { err: Error | null; stderr?: string | Buffer }
     >((resolve) => {
-      child = execFile(
-        Deno.execPath(),
-        ["run", script],
-        (err: Error | null, _?: string | Buffer, stderr?: string | Buffer) => {
-          resolve({ err, stderr });
-        },
-      );
+      child = execFile(Deno.execPath(), ["run", script], (err, _, stderr) => {
+        resolve({ err, stderr });
+      });
     });
     try {
       const { err, stderr } = await promise;
@@ -474,20 +465,20 @@ Deno.test({
       child = execFile(Deno.execPath(), ["run", script], {
         encoding: "buffer",
         maxBuffer: 3,
-      }, (err: Error | null, _?: string | Buffer, stderr?: string | Buffer) => {
+      }, (err, _, stderr) => {
         resolve({ err, stderr });
       });
     });
     try {
       const { err, stderr } = await promise;
       if (child instanceof ChildProcess) {
-        assert(err != null);
+        assert(err);
         assertEquals(
           // deno-lint-ignore no-explicit-any
           (err as any).code,
           "ERR_CHILD_PROCESS_STDIO_MAXBUFFER",
         );
-        assertEquals(err!.message, "stderr maxBuffer length exceeded");
+        assertEquals(err.message, "stderr maxBuffer length exceeded");
         assertEquals((stderr as Buffer).toString("utf8"), "yik");
       } else {
         throw err;
@@ -1200,7 +1191,7 @@ Deno.test(async function sendAfterClosedThrows() {
   const child = CP.fork(file, [], {
     stdio: ["inherit", "inherit", "inherit", "ipc"],
   });
-  child.on("error", (err: Error & { code?: string }) => {
+  child.on("error", (err) => {
     assert("code" in err);
     assertEquals(err.code, "ERR_IPC_CHANNEL_CLOSED");
     timeout.resolve();
@@ -1296,22 +1287,19 @@ Deno.test(async function stdoutPipePartialWriteNotTruncated() {
   const pipeScript = await Deno.makeTempFile({ suffix: ".mjs" });
   await Deno.writeTextFile(
     pipeScript,
-    `import fs from "node:fs";
-fs.createReadStream(process.argv[2]).pipe(process.stdout);
-`,
+    `import fs from "node:fs";fs.createReadStream(process.argv[2]).pipe(process.stdout);`,
   );
-
   // Create a file >65536 bytes with multiple lines (triggers chunked reads)
   const dataFile = await Deno.makeTempFile();
   const content = "x".repeat(40000) + "\n" + "y".repeat(40000) + "\n";
   await Deno.writeTextFile(dataFile, content);
-
   try {
-    const output = execFileSync(
-      Deno.execPath(),
-      ["run", "--allow-read", pipeScript, dataFile],
-      { encoding: "utf-8", maxBuffer: 50 * 1024 * 1024 },
-    );
+    const output = execFileSync(Deno.execPath(), [
+      "run",
+      "--allow-read",
+      pipeScript,
+      dataFile,
+    ], { encoding: "utf-8", maxBuffer: 50 * 1024 * 1024 });
     assertEquals(output.length, content.length);
     assertEquals(output, content);
   } finally {
@@ -1325,19 +1313,13 @@ Deno.test(async function stdoutWriteMultipleChunksNotTruncated() {
   const script = await Deno.makeTempFile({ suffix: ".mjs" });
   await Deno.writeTextFile(
     script,
-    `const chunk1 = "A".repeat(50000);
-const chunk2 = "B".repeat(50000);
-process.stdout.write(chunk1);
-process.stdout.write(chunk2);
-`,
+    `const chunk1 = "A".repeat(50000);const chunk2 = "B".repeat(50000);process.stdout.write(chunk1);process.stdout.write(chunk2);`,
   );
-
   try {
-    const output = execFileSync(
-      Deno.execPath(),
-      ["run", script],
-      { encoding: "utf-8", maxBuffer: 50 * 1024 * 1024 },
-    );
+    const output = execFileSync(Deno.execPath(), ["run", script], {
+      encoding: "utf-8",
+      maxBuffer: 50 * 1024 * 1024,
+    });
     assertEquals(output.length, 100000);
     assertEquals(output, "A".repeat(50000) + "B".repeat(50000));
   } finally {
