@@ -10,7 +10,6 @@ use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::serde_json;
 use deno_npm::resolution::NpmResolutionSnapshot;
-use deno_resolver::npmrc::npm_registry_url;
 use eszip::v2::Url;
 use http::header::HeaderName;
 use http::header::HeaderValue;
@@ -24,7 +23,6 @@ use crate::factory::CliFactory;
 use crate::http_util;
 use crate::http_util::HttpClient;
 use crate::http_util::HttpClientProvider;
-use crate::sys::CliSys;
 
 pub async fn audit(
   flags: Arc<Flags>,
@@ -36,8 +34,7 @@ pub async fn audit(
   let npm_resolver = npm_resolver.as_managed().unwrap();
   let snapshot = npm_resolver.resolution().snapshot();
 
-  let sys = CliSys::default();
-  let npm_url = npm_registry_url(&sys).url;
+  let npm_url = &factory.npmrc()?.default_config.registry_url;
   let http_provider = HttpClientProvider::new(None, None);
   let http_client = http_provider
     .get_or_create()
@@ -231,7 +228,7 @@ mod npm {
 
   pub async fn call_audits_api(
     audit_flags: AuditFlags,
-    npm_url: Url,
+    npm_url: &Url,
     workspace: &WorkspaceResolver<CliSys>,
     npm_resolution_snapshot: &NpmResolutionSnapshot,
     client: HttpClient,

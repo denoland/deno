@@ -8,13 +8,13 @@ use std::path::PathBuf;
 use boxed_error::Boxed;
 use deno_config::workspace::Workspace;
 use deno_npm::npm_rc::NpmRc;
+use deno_npm::npm_rc::NpmRegistryUrl;
 use deno_npm::npm_rc::RegistryConfigWithUrl;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use sys_traits::EnvHomeDir;
 use sys_traits::EnvVar;
 use sys_traits::FsRead;
 use thiserror::Error;
-use url::Url;
 
 #[allow(clippy::disallowed_types)]
 pub type ResolvedNpmRcRc = deno_maybe_sync::MaybeArc<ResolvedNpmRc>;
@@ -183,18 +183,19 @@ fn discover_npmrc<TSys: EnvVar + EnvHomeDir + FsRead>(
   }
 
   let resolve_npmrc = |path: PathBuf, npm_rc: NpmRc| {
-    let registry_url = npm_registry_url(sys);
-    let mut resolved_npm_rc = npm_rc
-      .as_resolved_with_options(&registry_url.url, registry_url.from_env)
-      .map_err(|source| NpmRcOptionsResolveError {
-        path: path.to_path_buf(),
-        source,
+    let registry_url = NpmRegistryUrl::for_npm(sys);
+    let mut resolved_npm_rc =
+      npm_rc.as_resolved(&registry_url).map_err(|source| {
+        NpmRcOptionsResolveError {
+          path: path.to_path_buf(),
+          source,
+        }
       })?;
     resolved_npm_rc
       .scopes
       .entry("jsr".to_string())
       .or_insert_with(|| RegistryConfigWithUrl {
-        registry_url: npm_jsr_registry_url(sys),
+        registry_url: NpmRegistryUrl::for_jsr(sys).url,
         config: Default::default(),
       });
     Ok((resolved_npm_rc, Some(path)))
@@ -224,84 +225,16 @@ fn discover_npmrc<TSys: EnvVar + EnvHomeDir + FsRead>(
 pub fn create_default_npmrc(sys: &impl EnvVar) -> ResolvedNpmRc {
   ResolvedNpmRc {
     default_config: deno_npm::npm_rc::RegistryConfigWithUrl {
-      registry_url: npm_registry_url(sys).url,
+      registry_url: NpmRegistryUrl::for_npm(sys).url,
       config: Default::default(),
     },
     scopes: HashMap::from([(
       "jsr".to_string(),
       RegistryConfigWithUrl {
-        registry_url: npm_jsr_registry_url(sys),
+        registry_url: NpmRegistryUrl::for_jsr(sys).url,
         config: Default::default(),
       },
     )]),
     registry_configs: Default::default(),
-  }
-}
-
-/// Represents an npm registry URL with information about its source.
-#[derive(Debug, Clone)]
-pub struct NpmRegistryUrl {
-  pub url: Url,
-  /// Whether the URL was read from an environment variable.
-  pub from_env: bool,
-}
-
-pub fn npm_registry_url(sys: &impl EnvVar) -> NpmRegistryUrl {
-  if let Ok(registry_url) = sys.env_var("NPM_CONFIG_REGISTRY") {
-    let registry_url = ensure_trailing_slash(&registry_url);
-    match Url::parse(&registry_url) {
-      Ok(url) => {
-        return NpmRegistryUrl {
-          url,
-          from_env: true,
-        };
-      }
-      Err(err) => {
-        log::debug!(
-          "Invalid NPM_CONFIG_REGISTRY environment variable: {:#}",
-          err,
-        );
-      }
-    }
-  }
-
-  NpmRegistryUrl {
-    url: Url::parse("https://registry.npmjs.org/").unwrap(),
-    from_env: false,
-  }
-}
-
-pub fn npm_jsr_registry_url(sys: &impl EnvVar) -> Url {
-  // unfortunately we can't use NPM_CONFIG_JSR_REGISTRY because npm
-  // will complain about an unknown configuration value
-  parse_env_var_to_url(sys, "JSR_NPM_URL", "https://npm.jsr.io")
-}
-
-fn parse_env_var_to_url(
-  sys: &impl EnvVar,
-  env_var_name: &str,
-  fallback_url: &str,
-) -> Url {
-  if let Ok(registry_url) = sys.env_var(env_var_name) {
-    // ensure there is a trailing slash for the directory
-    let registry_url = ensure_trailing_slash(&registry_url);
-    match Url::parse(&registry_url) {
-      Ok(url) => {
-        return url;
-      }
-      Err(err) => {
-        log::debug!("Invalid {} environment variable: {:#}", env_var_name, err,);
-      }
-    }
-  }
-
-  Url::parse(fallback_url).unwrap()
-}
-
-fn ensure_trailing_slash(value: &str) -> Cow<'_, str> {
-  if value.ends_with('/') {
-    Cow::Borrowed(value)
-  } else {
-    Cow::Owned(format!("{}/", value))
   }
 }

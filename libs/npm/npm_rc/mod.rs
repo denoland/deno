@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use monch::*;
+use sys_traits::EnvVar;
 use url::Url;
 
 use self::ini::Key;
@@ -125,26 +126,13 @@ impl NpmRc {
 
   pub fn as_resolved(
     &self,
-    env_registry_url: &Url,
-  ) -> Result<ResolvedNpmRc, ResolveError> {
-    self.as_resolved_with_options(env_registry_url, false)
-  }
-
-  /// Resolve the NpmRc with information about whether the registry URL came from an env var.
-  ///
-  /// When `env_registry_url_from_env` is true, the `env_registry_url` takes priority over
-  /// any registry setting in .npmrc. When false, .npmrc registry takes priority.
-  pub fn as_resolved_with_options(
-    &self,
-    env_registry_url: &Url,
-    env_registry_url_from_env: bool,
+    registry_url: &NpmRegistryUrl,
   ) -> Result<ResolvedNpmRc, ResolveError> {
     let mut scopes = HashMap::with_capacity(self.scope_registries.len());
     for scope in self.scope_registries.keys() {
       let (url, config) = self.registry_url_and_config_for_maybe_scope(
         Some(scope.as_str()),
-        env_registry_url.as_str(),
-        env_registry_url_from_env,
+        registry_url,
       );
       let url = Url::parse(&url).map_err(|e| ResolveError::UrlScope {
         scope: scope.clone(),
@@ -158,12 +146,8 @@ impl NpmRc {
         },
       );
     }
-    let (default_url, default_config) = self
-      .registry_url_and_config_for_maybe_scope(
-        None,
-        env_registry_url.as_str(),
-        env_registry_url_from_env,
-      );
+    let (default_url, default_config) =
+      self.registry_url_and_config_for_maybe_scope(None, registry_url);
     let default_url = Url::parse(&default_url).map_err(ResolveError::Url)?;
     Ok(ResolvedNpmRc {
       default_config: RegistryConfigWithUrl {
@@ -178,18 +162,20 @@ impl NpmRc {
   fn registry_url_and_config_for_maybe_scope(
     &self,
     maybe_scope_name: Option<&str>,
-    env_registry_url: &str,
-    env_registry_url_from_env: bool,
+    registry_url: &NpmRegistryUrl,
   ) -> (String, Arc<RegistryConfig>) {
     let registry_url = maybe_scope_name
       .and_then(|scope| self.scope_registries.get(scope).map(|s| s.as_str()))
       .unwrap_or_else(|| {
         // NPM_CONFIG_REGISTRY env var should take priority over .npmrc registry setting.
         // Only use .npmrc registry if NPM_CONFIG_REGISTRY was not explicitly set.
-        if env_registry_url_from_env {
-          env_registry_url
+        if registry_url.from_env {
+          registry_url.url.as_str()
         } else {
-          self.registry.as_deref().unwrap_or(env_registry_url)
+          self
+            .registry
+            .as_deref()
+            .unwrap_or(registry_url.url.as_str())
         }
       });
 
@@ -335,6 +321,66 @@ fn expand_vars(
   results.join("")
 }
 
+#[derive(Debug, Clone)]
+pub struct NpmRegistryUrl {
+  pub url: Url,
+  /// Whether the URL was read from an environment variable.
+  pub from_env: bool,
+}
+
+impl NpmRegistryUrl {
+  /// Gets the NPM_CONFIG_REGISTRY or falls back to https://registry.npmjs.org
+  pub fn for_npm(sys: &impl EnvVar) -> Self {
+    Self::from_env(sys, "NPM_CONFIG_REGISTRY", "https://registry.npmjs.org")
+  }
+
+  /// Gets the JSR_NPM_URL or falls back to https://npm.jsr.io
+  pub fn for_jsr(sys: &impl EnvVar) -> Self {
+    // unfortunately we can't use NPM_CONFIG_JSR_REGISTRY because npm
+    // will complain about an unknown configuration value
+    Self::from_env(sys, "JSR_NPM_URL", "https://npm.jsr.io")
+  }
+
+  fn from_env(
+    sys: &impl EnvVar,
+    env_var_name: &str,
+    fallback_url: &str,
+  ) -> Self {
+    fn ensure_trailing_slash(value: &str) -> Cow<'_, str> {
+      if value.ends_with('/') {
+        Cow::Borrowed(value)
+      } else {
+        Cow::Owned(format!("{}/", value))
+      }
+    }
+
+    if let Ok(registry_url) = sys.env_var(env_var_name) {
+      // ensure there is a trailing slash for the directory
+      let registry_url = ensure_trailing_slash(&registry_url);
+      match Url::parse(&registry_url) {
+        Ok(url) => {
+          return NpmRegistryUrl {
+            url,
+            from_env: true,
+          };
+        }
+        Err(err) => {
+          log::debug!(
+            "Invalid {} environment variable: {:#}",
+            env_var_name,
+            err,
+          );
+        }
+      }
+    }
+
+    Self {
+      url: Url::parse(fallback_url).unwrap(),
+      from_env: false,
+    }
+  }
+}
+
 #[cfg(test)]
 mod test {
   use pretty_assertions::assert_eq;
@@ -436,7 +482,7 @@ registry=https://registry.npmjs.org/
     );
 
     let resolved_npm_rc = npm_rc
-      .as_resolved(&Url::parse("https://deno.land/npm/").unwrap())
+      .as_resolved(&npm_url("https://deno.land/npm/"))
       .unwrap();
     assert_eq!(
       resolved_npm_rc,
@@ -730,7 +776,7 @@ registry=${VAR_FOUND}
     )
     .unwrap();
     let npm_rc = npm_rc
-      .as_resolved(&Url::parse("https://deno.land/npm/").unwrap())
+      .as_resolved(&npm_url("https://deno.land/npm/"))
       .unwrap();
     {
       let registry_url = npm_rc.get_registry_url("@example/test");
@@ -760,7 +806,7 @@ registry=${VAR_FOUND}
     )
     .unwrap();
     let npm_rc = npm_rc
-      .as_resolved(&Url::parse("https://deno.land/npm/").unwrap())
+      .as_resolved(&npm_url("https://deno.land/npm/"))
       .unwrap();
     {
       let registry_url = npm_rc.get_registry_url("@example/test");
@@ -797,7 +843,7 @@ registry=${VAR_FOUND}
     )
     .unwrap();
     let npm_rc = npm_rc
-      .as_resolved(&Url::parse("https://registry.npmjs.org/").unwrap())
+      .as_resolved(&npm_url("https://registry.npmjs.org/"))
       .unwrap();
     assert!(npm_rc.scopes.contains_key("jsr"));
     assert_eq!(
@@ -817,7 +863,10 @@ registry=${VAR_FOUND}
     let env_registry_url =
       Url::parse("http://env.registry.example.com/").unwrap();
     let resolved = npm_rc
-      .as_resolved_with_options(&env_registry_url, true) // from_env = true
+      .as_resolved(&NpmRegistryUrl {
+        url: env_registry_url,
+        from_env: true,
+      })
       .unwrap();
 
     // Should use the env var registry, not the .npmrc one
@@ -835,10 +884,10 @@ registry=${VAR_FOUND}
         .unwrap();
 
     let resolved = npm_rc
-      .as_resolved_with_options(
-        &Url::parse("https://registry.npmjs.org/").unwrap(),
-        false, // from_env = false (default fallback)
-      )
+      .as_resolved(&NpmRegistryUrl {
+        url: Url::parse("https://registry.npmjs.org/").unwrap(),
+        from_env: false,
+      })
       .unwrap();
 
     // Should use the .npmrc registry
@@ -846,5 +895,12 @@ registry=${VAR_FOUND}
       resolved.default_config.registry_url.as_str(),
       "http://npmrc.registry.example.com/"
     );
+  }
+
+  fn npm_url(url: &str) -> NpmRegistryUrl {
+    NpmRegistryUrl {
+      url: Url::parse(url).unwrap(),
+      from_env: false,
+    }
   }
 }
