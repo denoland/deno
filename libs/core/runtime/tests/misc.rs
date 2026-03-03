@@ -815,6 +815,70 @@ async fn test_next_tick() {
   assert_eq!(3, NEXT_TICK.load(Ordering::Relaxed));
 }
 
+/// Test that promise rejection processing is interleaved with nextTick
+/// draining inside processTicksAndRejections, matching Node.js behavior.
+/// A rejection handler that queues a nextTick should have that tick
+/// drained in the same processTicksAndRejections cycle.
+#[tokio::test]
+async fn test_promise_rejection_nexttick_interleave() {
+  #[op2]
+  async fn op_async_sleep() -> Result<(), JsErrorBox> {
+    tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+    Ok(())
+  }
+
+  deno_core::extension!(test_ext, ops = [op_async_sleep]);
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    extensions: vec![test_ext::init()],
+    ..Default::default()
+  });
+
+  runtime
+    .execute_script(
+      "promise_rejection_nexttick_interleave.js",
+      r#"
+      const { op_async_sleep } = Deno.core.ops;
+      (async function () {
+        const order = [];
+
+        // Register a rejection handler that queues a nextTick
+        Deno.core.setUnhandledPromiseRejectionHandler((promise, reason) => {
+          order.push("rejection-handler");
+          Deno.core.queueNextTick({
+            callback: () => order.push("tick-from-rejection-handler"),
+            args: undefined,
+            snapshot: undefined,
+          });
+          return true; // handled
+        });
+
+        // Queue a tick that creates an unhandled rejection
+        Deno.core.queueNextTick({
+          callback: () => {
+            order.push("first-tick");
+            Promise.reject(new Error("test rejection"));
+          },
+          args: undefined,
+          snapshot: undefined,
+        });
+
+        // Wait for the event loop to process everything
+        await op_async_sleep();
+        // Give one more turn for the rejection + tick to drain
+        await op_async_sleep();
+
+        const result = order.join(",");
+        const expected = "first-tick,rejection-handler,tick-from-rejection-handler";
+        if (result !== expected) {
+          throw new Error("expected '" + expected + "' but got '" + result + "'");
+        }
+      })();
+      "#,
+    )
+    .unwrap();
+  runtime.run_event_loop(Default::default()).await.unwrap();
+}
+
 #[test]
 fn terminate_during_module_eval() {
   let mut runtime = JsRuntime::new(RuntimeOptions {

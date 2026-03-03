@@ -55,6 +55,7 @@
     op_get_promise_details,
     op_get_proxy_details,
     op_get_ext_import_meta_proto,
+    op_drain_pending_rejections,
     op_has_tick_scheduled,
     op_lazy_load_esm,
     op_memory_usage,
@@ -189,6 +190,33 @@
     queue.push(tickObject);
   }
 
+  // Drain pending promise rejections from the Rust-side queue and process
+  // them through the unhandledPromiseRejectionHandler. Returns true if any
+  // rejections were processed (matching Node.js processPromiseRejections).
+  function processPromiseRejections() {
+    const rejections = op_drain_pending_rejections();
+    if (rejections === undefined) {
+      return false;
+    }
+    for (let i = 0; i < rejections.length; i += 3) {
+      const prevContext = getAsyncContext();
+      setAsyncContext(rejections[i + 2]);
+      try {
+        const handled = unhandledPromiseRejectionHandler(
+          rejections[i],
+          rejections[i + 1],
+        );
+        if (!handled) {
+          const err = rejections[i + 1];
+          op_dispatch_exception(err, true);
+        }
+      } finally {
+        setAsyncContext(prevContext);
+      }
+    }
+    return true;
+  }
+
   // Matches Node.js processTicksAndRejections() from
   // lib/internal/process/task_queues.js
   function processTicksAndRejections() {
@@ -233,23 +261,16 @@
         setAsyncContext(oldContext);
       }
       op_run_microtasks();
-      // FIXME(bartlomieju): Deno currently doesn't handle unhandled rejections
-      // } while (!queue.isEmpty() || processPromiseRejections());
-    } while (!queue.isEmpty());
+    } while (!queue.isEmpty() || processPromiseRejections());
     setHasTickScheduled(false);
-    // FIXME(bartlomieju): Deno currently doesn't handle unhandled rejections
-    // setHasRejectionToWarn(false);
   }
 
   // Matches Node.js runNextTicks() from
   // lib/internal/process/task_queues.js
   function runNextTicks() {
-    // FIXME(bartlomieju): Deno currently doesn't handle unhandled rejections
-    // if (!hasTickScheduled() && !hasRejectionToWarn())
     if (!hasTickScheduled()) {
       op_run_microtasks();
     }
-    // if (!hasTickScheduled() && !hasRejectionToWarn())
     if (!hasTickScheduled()) {
       return;
     }

@@ -226,6 +226,35 @@ pub fn op_set_has_tick_scheduled(scope: &mut v8::PinScope, v: bool) {
     .set(v);
 }
 
+/// Drain all pending promise rejections from the Rust-side queue and return
+/// them as a flat JS array: [promise, reason, asyncContext, ...].
+/// Returns an empty array if there are no pending rejections.
+/// This allows JS-side processTicksAndRejections to interleave rejection
+/// processing with tick draining, matching Node.js behavior.
+#[op2]
+pub fn op_drain_pending_rejections<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+) -> v8::Local<'s, v8::Value> {
+  let exception_state = JsRealm::exception_state_from_scope(scope);
+  let mut pending = exception_state.pending_promise_rejections.borrow_mut();
+  if pending.is_empty() {
+    return v8::undefined(scope).into();
+  }
+  let len = pending.len();
+  let arr = v8::Array::new(scope, (len * 3) as i32);
+  let mut idx = 0u32;
+  while let Some((promise, reason, async_context)) = pending.pop_front() {
+    let p = v8::Local::new(scope, promise);
+    let r = v8::Local::new(scope, reason);
+    let c = v8::Local::new(scope, async_context);
+    arr.set_index(scope, idx, p.into());
+    arr.set_index(scope, idx + 1, r);
+    arr.set_index(scope, idx + 2, c);
+    idx += 3;
+  }
+  arr.into()
+}
+
 #[op2(fast)]
 pub fn op_immediate_count(scope: &mut v8::PinScope, increase: bool) -> u32 {
   let state = JsRealm::state_from_scope(scope);

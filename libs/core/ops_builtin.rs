@@ -111,6 +111,7 @@ builtin_ops! {
   ops_builtin_v8::op_run_microtasks,
   ops_builtin_v8::op_has_tick_scheduled,
   ops_builtin_v8::op_set_has_tick_scheduled,
+  ops_builtin_v8::op_drain_pending_rejections,
   ops_builtin_v8::op_immediate_count,
   ops_builtin_v8::op_immediate_ref_count,
   ops_builtin_v8::op_immediate_set_has_outstanding,
