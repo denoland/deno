@@ -5,6 +5,7 @@ mod blob;
 mod broadcast_channel;
 mod compression;
 mod console;
+mod css_value;
 mod geometry;
 mod message_port;
 mod stream_resource;
