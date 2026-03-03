@@ -198,14 +198,8 @@ class NodeWorker extends EventEmitter {
   // https://nodejs.org/api/worker_threads.html#workerthreadid
   threadId = this.#id;
   // https://nodejs.org/api/worker_threads.html#workerresourcelimits
-  resourceLimits: Required<
-    NonNullable<WorkerOptions["resourceLimits"]>
-  > = {
-    maxYoungGenerationSizeMb: -1,
-    maxOldGenerationSizeMb: -1,
-    codeRangeSizeMb: -1,
-    stackSizeMb: 4,
-  };
+  // deno-lint-ignore no-explicit-any
+  resourceLimits: any = {};
   // https://nodejs.org/api/worker_threads.html#workerstdin
   stdin: Writable | null = null;
   // https://nodejs.org/api/worker_threads.html#workerstdout
@@ -350,6 +344,8 @@ class NodeWorker extends EventEmitter {
       }
     }
 
+    const resourceLimits_ = options?.resourceLimits ?? undefined;
+
     const serializedWorkerMetadata = serializeJsMessageData({
       workerData: options?.workerData,
       environmentData: environmentData,
@@ -360,6 +356,7 @@ class NodeWorker extends EventEmitter {
       isEval: !!options?.eval,
       isWorkerThread: true,
       hasStdin: !!options?.stdin,
+      resourceLimits: resourceLimits_,
     }, options?.transferList ?? []);
 
     if (options?.eval) {
@@ -406,11 +403,16 @@ class NodeWorker extends EventEmitter {
         name: this.#name,
         workerType: "node",
         closeOnIdle: true,
+        resourceLimits: resourceLimits_,
       },
       serializedWorkerMetadata,
     );
     this.#id = id;
     this.threadId = id;
+
+    if (resourceLimits_) {
+      this.resourceLimits = { ...resourceLimits_ };
+    }
 
     if (options?.stdin) {
       // deno-lint-ignore no-this-alias
@@ -499,15 +501,25 @@ class NodeWorker extends EventEmitter {
           this.#status = "CLOSED";
           this.#closeStdio();
           if (this.listenerCount("error") > 0) {
-            const err = new Error(data.errorMessage ?? data.message);
-            if (data.name) {
-              err.name = data.name;
+            const errMsg = data.errorMessage ?? data.message;
+            const errName = data.name;
+            let err;
+            if (errName === "ERR_WORKER_OUT_OF_MEMORY") {
+              err = new Error(errMsg);
+              err.code = errName;
+              err.name = "Error";
+            } else {
+              err = new Error(errMsg);
+              if (errName) {
+                err.name = errName;
+              }
             }
             // Stack is unavailable from the worker context (e.g. prepareStackTrace
             // may have thrown). Match Node.js behavior of setting stack to undefined.
             err.stack = undefined;
             this.emit("error", err);
           }
+          this.resourceLimits = {};
           if (!this.#exited) {
             this.#exited = true;
             this.emit("exit", data.exitCode ?? 1);
@@ -522,6 +534,7 @@ class NodeWorker extends EventEmitter {
           debugWT(`Host got "close" message from worker: ${this.#name}`);
           this.#status = "CLOSED";
           this.#closeStdio();
+          this.resourceLimits = {};
           if (!this.#exited) {
             this.#exited = true;
             this.emit("exit", data ?? 0);
@@ -747,14 +760,11 @@ internals.__initWorkerThreads = (
   internals.__isWorkerThread = !runningOnMainThread;
 
   defaultExport.isMainThread = isMainThread;
-  // fake resourceLimits
-  resourceLimits = isMainThread ? {} : {
-    maxYoungGenerationSizeMb: 48,
-    maxOldGenerationSizeMb: 2048,
-    codeRangeSizeMb: 0,
-    stackSizeMb: 4,
-  };
-  defaultExport.resourceLimits = resourceLimits;
+
+  if (isMainThread) {
+    resourceLimits = {};
+    defaultExport.resourceLimits = resourceLimits;
+  }
 
   if (!isMainThread) {
     // TODO(bartlomieju): this is a really hacky way to provide
@@ -788,6 +798,14 @@ internals.__initWorkerThreads = (
       if (env) {
         process.env = env;
       }
+
+      // Set resourceLimits from the metadata passed by the parent.
+      if (metadata.resourceLimits) {
+        resourceLimits = { ...metadata.resourceLimits };
+      } else {
+        resourceLimits = {};
+      }
+      defaultExport.resourceLimits = resourceLimits;
 
       // Set process.argv for worker threads.
       // In Node.js, worker process.argv is [execPath, scriptPath, ...argv].

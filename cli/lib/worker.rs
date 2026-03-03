@@ -369,6 +369,22 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
         bundle_provider: shared.bundle_provider.clone(),
       };
       let maybe_initial_cwd = shared.options.maybe_initial_cwd.clone();
+      // Apply resource limits to v8::CreateParams if specified.
+      let create_params = if let Some(ref limits) = args.resource_limits {
+        let max_old = limits.max_old_generation_size_mb.unwrap_or(0);
+        let max_young = limits.max_young_generation_size_mb.unwrap_or(0);
+        if max_old > 0 || max_young > 0 {
+          Some(
+            v8::CreateParams::default()
+              .heap_limits(max_young * 1024 * 1024, max_old * 1024 * 1024),
+          )
+        } else {
+          create_isolate_create_params(&shared.sys)
+        }
+      } else {
+        create_isolate_create_params(&shared.sys)
+      };
+
       let options = WebWorkerOptions {
         name: args.name,
         main_module: args.main_module.clone(),
@@ -403,7 +419,7 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
         },
         extensions: vec![],
         startup_snapshot: shared.options.startup_snapshot,
-        create_params: create_isolate_create_params(&shared.sys),
+        create_params,
         unsafely_ignore_certificate_errors: shared
           .options
           .unsafely_ignore_certificate_errors
@@ -424,7 +440,26 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
         enable_stack_trace_arg_in_ops: has_trace_permissions_enabled(),
       };
 
-      WebWorker::bootstrap_from_options(services, options)
+      let has_resource_limits = args.resource_limits.is_some();
+      let (mut worker, handle) =
+        WebWorker::bootstrap_from_options(services, options);
+
+      // When resource limits are set, install a near-heap-limit callback
+      // that terminates the worker's isolate gracefully instead of
+      // crashing the entire process with a V8 fatal OOM.
+      if has_resource_limits {
+        let ts_handle = worker.js_runtime.v8_isolate().thread_safe_handle();
+        let oom_flag = worker.oom_triggered.clone();
+        worker.js_runtime.add_near_heap_limit_callback(
+          move |current_limit, _initial_limit| {
+            oom_flag.store(true, std::sync::atomic::Ordering::SeqCst);
+            ts_handle.terminate_execution();
+            current_limit * 2
+          },
+        );
+      }
+
+      (worker, handle)
     })
   }
 }

@@ -34,6 +34,16 @@ use crate::worker::FormatJsErrorFn;
 
 pub const UNSTABLE_FEATURE_NAME: &str = "worker-options";
 
+/// V8 resource limits for worker isolates, matching Node.js `resourceLimits`.
+#[derive(Deserialize, Default, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ResourceLimits {
+  pub max_young_generation_size_mb: Option<usize>,
+  pub max_old_generation_size_mb: Option<usize>,
+  pub code_range_size_mb: Option<usize>,
+  pub stack_size_mb: Option<usize>,
+}
+
 pub struct CreateWebWorkerArgs {
   pub name: String,
   pub worker_id: WorkerId,
@@ -43,6 +53,7 @@ pub struct CreateWebWorkerArgs {
   pub worker_type: WorkerThreadType,
   pub close_on_idle: bool,
   pub maybe_worker_metadata: Option<WorkerMetadata>,
+  pub resource_limits: Option<ResourceLimits>,
 }
 
 pub type CreateWebWorkerCb = dyn Fn(CreateWebWorkerArgs) -> (WebWorker, SendableWebWorkerHandle)
@@ -123,6 +134,7 @@ pub struct CreateWorkerArgs {
   specifier: String,
   worker_type: WorkerThreadType,
   close_on_idle: bool,
+  resource_limits: Option<ResourceLimits>,
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -230,6 +242,7 @@ fn op_create_worker(
           worker_type,
           close_on_idle: args.close_on_idle,
           maybe_worker_metadata,
+          resource_limits: args.resource_limits,
         });
 
       // Send thread safe handle from newly created worker to host thread

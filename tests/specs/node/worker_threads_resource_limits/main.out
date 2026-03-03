@@ -1,0 +1,2 @@
+resourceLimits: {"maxYoungGenerationSizeMb":4,"maxOldGenerationSizeMb":16,"codeRangeSizeMb":8,"stackSizeMb":2}
+exit: 0
