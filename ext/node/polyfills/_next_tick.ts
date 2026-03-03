@@ -25,6 +25,8 @@ let nextTickEnabled = false;
 export function enableNextTick() {
   nextTickEnabled = true;
 
+  // TODO(bartlomieju): ideally this should not be needed
+  // and async hook implementation would live in core
   // Register the async hook emit functions directly with core.
   // The core drain loop calls these inline per-tick -- no indirection.
   core.setAsyncHooksEmit(emitBefore, emitAfter, emitDestroy);
