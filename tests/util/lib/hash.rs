@@ -79,6 +79,7 @@ fn collect_entries_recursive(dir: &Path, out: &mut Vec<PathBuf>) {
   }
 }
 
+// repo at https://github.com/denoland/hashy
 const HASHY_URL: &str = "https://hashy.deno.deno.net";
 
 pub enum CiHashStatus {
