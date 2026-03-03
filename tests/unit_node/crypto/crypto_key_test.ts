@@ -19,7 +19,7 @@ import {
 } from "node:crypto";
 import { promisify } from "node:util";
 import { Buffer } from "node:buffer";
-import { assert, assertEquals, assertRejects, assertThrows } from "@std/assert";
+import { assert, assertEquals, assertThrows } from "@std/assert";
 
 const RUN_SLOW_TESTS = Deno.env.get("SLOW_TESTS") === "1";
 
@@ -1191,29 +1191,33 @@ Deno.test("generateKeyPair async ec secp256k1", async () => {
   assert(verify("sha256", data, publicKey, signature));
 });
 
-// Regression test for https://github.com/denoland/deno/issues/30243
-// Importing a PKCS#8 RSA key with the wrong algorithm (ECDSA) should throw, not panic.
-Deno.test("crypto.subtle.importKey PKCS#8 with wrong algorithm does not panic", async () => {
-  const rsaKey = await crypto.subtle.generateKey(
-    {
-      name: "RSASSA-PKCS1-v1_5",
-      modulusLength: 2048,
-      publicExponent: new Uint8Array([1, 0, 1]),
-      hash: "SHA-256",
-    },
-    true,
-    ["sign", "verify"],
-  );
+// https://github.com/denoland/deno/issues/22920
+Deno.test("EC private key SEC1 round-trip for all curves", () => {
+  for (const namedCurve of ["P-224", "P-256", "P-384", "secp256k1"]) {
+    const { privateKey } = generateKeyPairSync("ec", { namedCurve });
 
-  const pkcs8 = await crypto.subtle.exportKey("pkcs8", rsaKey.privateKey);
+    // Export as SEC1 PEM and reimport
+    const pem = privateKey.export({ type: "sec1", format: "pem" });
+    const fromPem = createPrivateKey(pem);
+    assertEquals(fromPem.type, "private");
+    assertEquals(fromPem.asymmetricKeyType, "ec");
 
-  await assertRejects(() =>
-    crypto.subtle.importKey(
-      "pkcs8",
-      pkcs8,
-      { name: "ECDSA", namedCurve: "P-256" },
-      true,
-      ["sign"],
-    )
-  );
+    // Export as SEC1 DER and reimport
+    const der = privateKey.export({ type: "sec1", format: "der" });
+    const fromDer = createPrivateKey({
+      key: Buffer.from(der),
+      format: "der",
+      type: "sec1",
+    });
+    assertEquals(fromDer.type, "private");
+    assertEquals(fromDer.asymmetricKeyType, "ec");
+
+    // Verify the reimported key can sign/verify
+    const data = Buffer.from("sec1 round-trip test");
+    const sig = sign("sha256", data, fromPem);
+    assert(
+      verify("sha256", data, privateKey, sig),
+      `sign/verify failed for ${namedCurve}`,
+    );
+  }
 });

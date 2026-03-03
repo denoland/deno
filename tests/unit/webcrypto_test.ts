@@ -2192,3 +2192,30 @@ Deno.test(async function x25519ExportJwk() {
   assert(jwk.d);
   assert(jwk.x);
 });
+
+// Regression test for https://github.com/denoland/deno/issues/30243
+// Importing a PKCS#8 RSA key with the wrong algorithm (ECDSA) should throw, not panic.
+Deno.test("crypto.subtle.importKey PKCS#8 with wrong algorithm does not panic", async () => {
+  const rsaKey = await crypto.subtle.generateKey(
+    {
+      name: "RSASSA-PKCS1-v1_5",
+      modulusLength: 2048,
+      publicExponent: new Uint8Array([1, 0, 1]),
+      hash: "SHA-256",
+    },
+    true,
+    ["sign", "verify"],
+  );
+
+  const pkcs8 = await crypto.subtle.exportKey("pkcs8", rsaKey.privateKey);
+
+  await assertRejects(() =>
+    crypto.subtle.importKey(
+      "pkcs8",
+      pkcs8,
+      { name: "ECDSA", namedCurve: "P-256" },
+      true,
+      ["sign"],
+    )
+  );
+});
