@@ -147,6 +147,17 @@ pub trait BlobPart: Debug {
   // TODO(lucacsonato): this should be a stream!
   async fn read<'a>(&'a self) -> Result<&'a [u8], BlobError>;
   fn size(&self) -> usize;
+
+  /// Try to create an efficiently sliced version of this part.
+  /// Returns `None` if the part doesn't support efficient slicing,
+  /// in which case the caller should fall back to `SlicedBlobPart`.
+  fn try_slice(
+    &self,
+    _start: usize,
+    _len: usize,
+  ) -> Option<Arc<dyn BlobPart + Send + Sync>> {
+    None
+  }
 }
 
 #[derive(Debug)]
@@ -225,8 +236,12 @@ pub fn op_blob_slice_part(
     return Err(BlobError::SizeLargerThanBlobPart);
   }
 
-  let sliced_part = SlicedBlobPart { part, start, len };
-  let id = blob_store.insert_part(Arc::new(sliced_part));
+  let sliced_part: Arc<dyn BlobPart + Send + Sync> =
+    match part.try_slice(start, len) {
+      Some(efficient) => efficient,
+      None => Arc::new(SlicedBlobPart { part, start, len }),
+    };
+  let id = blob_store.insert_part(sliced_part);
 
   Ok(id)
 }
@@ -338,9 +353,12 @@ pub fn op_blob_from_object_url(
 #[derive(Debug)]
 pub struct FileBackedBlobPart {
   path: PathBuf,
-  start: u64,
-  len: usize,
-  expected_size: u64,
+  /// Byte offset into the file where this part starts.
+  offset: u64,
+  /// Number of bytes this part represents (returned by `size()`).
+  size: usize,
+  /// Expected total file size at creation time, used to detect modifications.
+  file_size: u64,
   data: tokio::sync::OnceCell<Vec<u8>>,
 }
 
@@ -351,14 +369,14 @@ impl BlobPart for FileBackedBlobPart {
       .data
       .get_or_try_init(|| async {
         let metadata = tokio::fs::metadata(&self.path).await?;
-        if metadata.len() != self.expected_size {
+        if metadata.len() != self.file_size {
           return Err(BlobError::FileNotReadable);
         }
         let mut file = tokio::fs::File::open(&self.path).await?;
-        if self.start > 0 {
-          file.seek(std::io::SeekFrom::Start(self.start)).await?;
+        if self.offset > 0 {
+          file.seek(std::io::SeekFrom::Start(self.offset)).await?;
         }
-        let mut buf = vec![0u8; self.len];
+        let mut buf = vec![0u8; self.size];
         file.read_exact(&mut buf).await?;
         Ok(buf)
       })
@@ -367,7 +385,21 @@ impl BlobPart for FileBackedBlobPart {
   }
 
   fn size(&self) -> usize {
-    self.len
+    self.size
+  }
+
+  fn try_slice(
+    &self,
+    start: usize,
+    len: usize,
+  ) -> Option<Arc<dyn BlobPart + Send + Sync>> {
+    Some(Arc::new(FileBackedBlobPart {
+      path: self.path.clone(),
+      offset: self.offset + start as u64,
+      size: len,
+      file_size: self.file_size,
+      data: tokio::sync::OnceCell::new(),
+    }))
   }
 }
 
@@ -380,13 +412,13 @@ pub async fn op_blob_create_file_backed_part(
   let file_path = PathBuf::from(&path);
   let metadata = tokio::fs::metadata(&file_path).await?;
   let file_size = metadata.len();
-  let len = file_size as usize;
+  let size = file_size as usize;
 
   let part = FileBackedBlobPart {
     path: file_path,
-    start: 0,
-    len,
-    expected_size: file_size,
+    offset: 0,
+    size,
+    file_size,
     data: tokio::sync::OnceCell::new(),
   };
 
@@ -396,5 +428,5 @@ pub async fn op_blob_create_file_backed_part(
   };
   let uuid = blob_store.insert_part(Arc::new(part));
 
-  Ok(ReturnBlobPart { uuid, size: len })
+  Ok(ReturnBlobPart { uuid, size })
 }
