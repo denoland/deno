@@ -43,7 +43,7 @@ enum MemoryCacheItem {
 /// operations contend heavily. Limiting concurrency reduces this contention.
 /// Decompression (CPU-bound) is not gated by this limit.
 const MAX_CONCURRENT_FS_WRITES: usize =
-  if cfg!(target_os = "macos") { 4 } else { 64 };
+  if cfg!(target_os = "macos") { 4 } else { 128 };
 
 /// Coordinates caching of tarballs being loaded from
 /// the npm registry.
