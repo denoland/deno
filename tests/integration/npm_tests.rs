@@ -1951,5 +1951,5 @@ fn npm_config_registry_overrides_npmrc() {
     .env("NPM_CONFIG_REGISTRY", "http://localhost:4260/")
     .run();
 
-  output.assert_matches_text("2\n");
+  output.assert_matches_text("[WILDCARD]2\n");
 }
