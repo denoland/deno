@@ -8,9 +8,6 @@ https://github.com/denoland/deno_install
 
 ### 2.7.2 / 2026.03.03
 
-- Revert "fix(ext/node): implement `after`, `afterEach`, `before`, and …
-  (#32340)
-- feat(ext/node): implement missing X509Certificate methods (#32270)
 - feat: v8 14.6, fix require(esm), libuv compat (#32347)
 - fix(ci): fix ordering of platforms in ecosystem_compat_slack (#32393)
 - fix(cli): load multiple env files in the correct order (#32354)
@@ -30,8 +27,7 @@ https://github.com/denoland/deno_install
 - fix(ext/node): handle emoji width correctly in readline (#32383)
 - fix(ext/node): implement KeyObject.equals, fix createCipheriv with
   KeyObject/null IV (#32409)
-- fix(ext/node): implement `after`, `afterEach`, `before`, and `beforeEach` of
-  `node:test` (#32320)
+- fix(ext/node): implement missing X509Certificate methods (#32270)
 - fix(ext/node): make `execPath` named export a real string (#32396)
 - fix(ext/node): make `setAutoPadding(false)` a no-op for GCM ciphers (#32290)
 - fix(ext/node): make fsPromises.watch() a proper AsyncIterable with close()
@@ -54,9 +50,6 @@ https://github.com/denoland/deno_install
 - fix(install): global install should not warn about using node_modules dir for
   npm specifiers (#32341)
 - fix(jupyter): handle shutdown and interrupt requests per protocol (#32359)
-- fix(lsp): cross-scope requests (#32366)
-- fix(lsp): tsgo request cancellation (#32356)
-- fix(lsp): tsgo typings for bytes/text imports (#32333)
 - fix(node): implement `resolveObjectURL` for `node:buffer` (#32382)
 - fix(node): implement process.umask properly (#32385)
 - fix(node): preserve AsyncLocalStorage context in stream.finished callback
@@ -70,8 +63,6 @@ https://github.com/denoland/deno_install
 - fix(npm): peerDependency resolution leading to multiple versions being
   installed + hanging (#32358)
 - fix(test): dedupe discovered workspace test modules (#32380)
-- fix: Update libffi and libffi-sys to fix build (#32301)
-- fix: deflake run_watch_env_file_with_multiline_values (#32346)
 - fix: fix some stack frame dimming, and make the console log more aligned with
   cli formatting (#32399)
 - fix: process level environment variables should take precedence over env files
