@@ -11,12 +11,24 @@ import {
   ERR_WASI_ALREADY_STARTED,
   ERR_WASI_NOT_STARTED,
 } from "ext:deno_node/internal/errors.ts";
+import { statSync } from "ext:deno_node/_fs/_fs_stat.ts";
 
 const {
   ArrayIsArray,
+  Error,
   NumberIsInteger,
   ObjectEntries,
 } = primordials;
+
+// UVWASI error for path not found
+class UVWASIError extends Error {
+  code: string;
+  constructor(code: string, message: string) {
+    super(message);
+    this.code = code;
+    this.name = "Error";
+  }
+}
 
 class WASIProcExit {
   code: number;
@@ -120,6 +132,15 @@ class WASI {
     if (options.preopens) {
       for (const [virtualPath, realPath] of ObjectEntries(options.preopens)) {
         if (typeof realPath === "string") {
+          // Validate that the path exists
+          try {
+            statSync(realPath);
+          } catch {
+            throw new UVWASIError(
+              "UVWASI_ENOENT",
+              `uvwasi_init: failed to open preopen "${realPath}"`,
+            );
+          }
           preopens.push([virtualPath, realPath]);
         }
       }
@@ -625,7 +646,7 @@ class WASI {
     if (!(exports.memory instanceof WebAssembly.Memory)) {
       throw new ERR_INVALID_ARG_TYPE(
         "instance.exports.memory",
-        "WebAssembly.Memory",
+        "a WebAssembly.Memory object",
         exports.memory,
       );
     }
@@ -688,7 +709,7 @@ class WASI {
     if (!(exports.memory instanceof WebAssembly.Memory)) {
       throw new ERR_INVALID_ARG_TYPE(
         "instance.exports.memory",
-        "WebAssembly.Memory",
+        "a WebAssembly.Memory object",
         exports.memory,
       );
     }

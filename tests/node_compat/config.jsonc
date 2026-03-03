@@ -1789,23 +1789,8 @@
     // "sequential/test-worker-fshandles-open-close-on-termination.js": {},
     "wasm-allocation/test-wasm-allocation.js": {},
 
-    "wasi/test-wasi-options-validation.js": {
-      "darwin": false,
-      "linux": false,
-      "windows": false,
-      "reason": "Requires UVWASI_ENOENT error code from Rust layer when preopen path doesn't exist"
-    },
-    "wasi/test-wasi-start-validation.js": {
-      "darwin": false,
-      "linux": false,
-      "windows": false,
-      "reason": "Error message format mismatch: Node expects exact 'instance.exports._start' wording"
-    },
-    "wasi/test-wasi-initialize-validation.js": {
-      "darwin": false,
-      "linux": false,
-      "windows": false,
-      "reason": "Error message format mismatch: Node expects exact 'instance.exports._initialize' wording"
-    }
+    "wasi/test-wasi-options-validation.js": {},
+    "wasi/test-wasi-start-validation.js": {},
+    "wasi/test-wasi-initialize-validation.js": {}
   }
 }
