@@ -9,8 +9,13 @@ function parseSize(value) {
   }
   const n = Number.parseInt(match[1], 10);
   const unit = match[2].toLowerCase();
-  const mult =
-    unit === "k" ? 1024 : unit === "m" ? 1024 ** 2 : unit === "g" ? 1024 ** 3 : 1;
+  const mult = unit === "k"
+    ? 1024
+    : unit === "m"
+    ? 1024 ** 2
+    : unit === "g"
+    ? 1024 ** 3
+    : 1;
   return n * mult;
 }
 
@@ -84,11 +89,14 @@ function parseArgs(argv) {
     throw new Error(`Unknown argument: ${arg}`);
   }
 
-  if (!Number.isFinite(options.port) || options.port < 0 || options.port > 65535) {
+  if (
+    !Number.isFinite(options.port) || options.port < 0 || options.port > 65535
+  ) {
     throw new Error(`Invalid --port: ${options.port}`);
   }
   if (
-    !Number.isFinite(options.httpPort) || options.httpPort < 0 || options.httpPort > 65535
+    !Number.isFinite(options.httpPort) || options.httpPort < 0 ||
+    options.httpPort > 65535
   ) {
     throw new Error(`Invalid --http-port: ${options.httpPort}`);
   }
@@ -112,17 +120,31 @@ function printUsage() {
   console.log("Usage: <runtime> socket-http-benchmark.mjs [options]");
   console.log("");
   console.log("Socket benchmark options:");
-  console.log("  --host <host>                 Target host (default: 127.0.0.1)");
+  console.log(
+    "  --host <host>                 Target host (default: 127.0.0.1)",
+  );
   console.log("  --port <port>                 Target port (default: 3002)");
-  console.log("  --bytes <n[k|m|g]>            Total bytes to send (default: 256m)");
-  console.log("  --chunk <n[k|m|g]>            Write chunk size (default: 64k)");
-  console.log("  --inflight <n[k|m|g]>         Max in-flight bytes (default: 8m)");
+  console.log(
+    "  --bytes <n[k|m|g]>            Total bytes to send (default: 256m)",
+  );
+  console.log(
+    "  --chunk <n[k|m|g]>            Write chunk size (default: 64k)",
+  );
+  console.log(
+    "  --inflight <n[k|m|g]>         Max in-flight bytes (default: 8m)",
+  );
   console.log("");
   console.log("HTTP server options:");
-  console.log("  --http-bind <host>            HTTP bind host (default: 127.0.0.1)");
-  console.log("  --http-url-host <host>        HTTP host reported in URL (default: 127.0.0.1)");
+  console.log(
+    "  --http-bind <host>            HTTP bind host (default: 127.0.0.1)",
+  );
+  console.log(
+    "  --http-url-host <host>        HTTP host reported in URL (default: 127.0.0.1)",
+  );
   console.log("  --http-port <port>            HTTP port (default: 3003)");
-  console.log("  --http-response-bytes <size>  Response body bytes (default: 2)");
+  console.log(
+    "  --http-response-bytes <size>  Response body bytes (default: 2)",
+  );
 }
 
 function formatBytes(bytes) {
@@ -158,7 +180,8 @@ function runSocketBenchmark(options) {
 
       const durationSec = (performance.now() - startMs) / 1000;
       const throughputMiBPerSec = (received / (1024 ** 2)) / durationSec;
-      const throughputGibitPerSec = ((received * 8) / (1024 ** 3)) / durationSec;
+      const throughputGibitPerSec = ((received * 8) / (1024 ** 3)) /
+        durationSec;
 
       resolve({
         host: options.host,
@@ -181,8 +204,14 @@ function runSocketBenchmark(options) {
     const pumpWrites = () => {
       while (canWrite && sent < options.bytes && inFlight < options.inflight) {
         const remaining = options.bytes - sent;
-        const size = Math.min(remaining, options.chunk, options.inflight - inFlight);
-        const payload = size === options.chunk ? chunkBuffer : chunkBuffer.subarray(0, size);
+        const size = Math.min(
+          remaining,
+          options.chunk,
+          options.inflight - inFlight,
+        );
+        const payload = size === options.chunk
+          ? chunkBuffer
+          : chunkBuffer.subarray(0, size);
 
         sent += size;
         inFlight += size;
@@ -289,7 +318,9 @@ try {
   console.log(`received:   ${formatBytes(socketStats.receivedBytes)}`);
   console.log(`duration:   ${socketStats.durationSec.toFixed(3)} s`);
   console.log(
-    `throughput: ${socketStats.throughputMiBPerSec.toFixed(2)} MiB/s (${socketStats.throughputGibitPerSec.toFixed(2)} Gibit/s)`,
+    `throughput: ${socketStats.throughputMiBPerSec.toFixed(2)} MiB/s (${
+      socketStats.throughputGibitPerSec.toFixed(2)
+    } Gibit/s)`,
   );
   console.log(`SOCKET_STATS ${JSON.stringify(socketStats)}`);
 } catch (error) {

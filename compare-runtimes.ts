@@ -171,8 +171,7 @@ function printTable(rows: { name: string; medians: MedianResult }[]): void {
 
   console.log(hLine("\u250c", "\u252c", "\u2510", "\u2500"));
 
-  const header =
-    "\u2502" +
+  const header = "\u2502" +
     cols
       .map((c) => " " + padRight(c.header, c.width - 2) + " ")
       .join("\u2502") +
@@ -183,9 +182,16 @@ function printTable(rows: { name: string; medians: MedianResult }[]): void {
   for (const row of rows) {
     const cells = [
       " " + padRight(row.name, cols[0].width - 2) + " ",
-      " " + padLeft(row.medians.socketMiBPerSec.toFixed(2), cols[1].width - 2) + " ",
-      " " + padLeft(Math.round(row.medians.httpRps).toString(), cols[2].width - 2) + " ",
-      " " + padLeft(row.medians.httpLatencyAvgMs.toFixed(2) + "ms", cols[3].width - 2) + " ",
+      " " + padLeft(row.medians.socketMiBPerSec.toFixed(2), cols[1].width - 2) +
+      " ",
+      " " +
+      padLeft(Math.round(row.medians.httpRps).toString(), cols[2].width - 2) +
+      " ",
+      " " +
+      padLeft(
+        row.medians.httpLatencyAvgMs.toFixed(2) + "ms",
+        cols[3].width - 2,
+      ) + " ",
     ];
     console.log("\u2502" + cells.join("\u2502") + "\u2502");
   }
@@ -223,7 +229,9 @@ async function main() {
         // deno-lint-ignore no-explicit-any
         const summary = (result.oha as any).summary;
         console.error(
-          `    HTTP: ${summary.requestsPerSec.toFixed(0)} rps, ${(summary.average * 1000).toFixed(2)}ms avg`,
+          `    HTTP: ${summary.requestsPerSec.toFixed(0)} rps, ${
+            (summary.average * 1000).toFixed(2)
+          }ms avg`,
         );
       }
     }

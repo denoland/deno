@@ -305,8 +305,7 @@ impl Http2Stream {
     let Some(oncomplete_val) = req.get(scope, oncomplete_key.into()) else {
       return;
     };
-    let Ok(oncomplete_fn) =
-      v8::Local::<v8::Function>::try_from(oncomplete_val)
+    let Ok(oncomplete_fn) = v8::Local::<v8::Function>::try_from(oncomplete_val)
     else {
       return;
     };
@@ -486,7 +485,6 @@ impl Http2Stream {
         code,
       );
     }
-
   }
 
   #[fast]

@@ -67,7 +67,9 @@ function stdoutLines(proc: Deno.ChildProcess): ReadableStream<string> {
     .pipeThrough(new TextLineStream());
 }
 
-async function collectRemaining(lines: ReadableStream<string>): Promise<string[]> {
+async function collectRemaining(
+  lines: ReadableStream<string>,
+): Promise<string[]> {
   const result: string[] = [];
   for await (const line of lines) {
     result.push(line);
@@ -88,7 +90,10 @@ async function run() {
   const echoProc = echoCmd.spawn();
   const echoLines = stdoutLines(echoProc);
 
-  const { value: echoPort } = await waitForMarker(echoLines, "ECHO_SERVER_READY ");
+  const { value: echoPort } = await waitForMarker(
+    echoLines,
+    "ECHO_SERVER_READY ",
+  );
   console.error(`Echo server ready on port ${echoPort}`);
 
   // 2. Spawn worker
@@ -107,7 +112,9 @@ async function run() {
   );
   if (opts.chunk) workerArgs.push("--chunk", opts.chunk);
   if (opts.inflight) workerArgs.push("--inflight", opts.inflight);
-  if (opts.httpResponseBytes) workerArgs.push("--http-response-bytes", opts.httpResponseBytes);
+  if (opts.httpResponseBytes) {
+    workerArgs.push("--http-response-bytes", opts.httpResponseBytes);
+  }
 
   const workerCmd = new Deno.Command(opts.workerBinary, {
     args: workerArgs,
@@ -131,7 +138,14 @@ async function run() {
   // 4. Spawn oha
   console.error(`Running oha for ${opts.ohaDuration} against ${httpUrl}`);
   const ohaCmd = new Deno.Command("oha", {
-    args: ["-z", opts.ohaDuration, "--no-tui", "--output-format", "json", httpUrl],
+    args: [
+      "-z",
+      opts.ohaDuration,
+      "--no-tui",
+      "--output-format",
+      "json",
+      httpUrl,
+    ],
     stdin: "null",
     stdout: "piped",
     stderr: "piped",

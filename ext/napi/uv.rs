@@ -186,7 +186,10 @@ unsafe extern "C" fn _napi_uv_async_send(handle: *mut uv_async_t) -> c_int {
 
 type uv_close_cb = unsafe extern "C" fn(*mut uv_handle_t);
 
-unsafe extern "C" fn _napi_uv_close(handle: *mut uv_handle_t, close: uv_close_cb) {
+unsafe extern "C" fn _napi_uv_close(
+  handle: *mut uv_handle_t,
+  close: uv_close_cb,
+) {
   unsafe {
     if handle.is_null() {
       close(handle);

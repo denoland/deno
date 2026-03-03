@@ -3,7 +3,7 @@
 // (after I/O poll), while timers run in the timers phase of the NEXT iteration.
 // https://nodejs.org/en/learn/asynchronous-work/event-loop-timers-and-nexttick#setimmediate-vs-settimeout
 
-import { createServer, connect } from "node:net";
+import { connect, createServer } from "node:net";
 import { strictEqual } from "node:assert";
 
 // Get a free port via Deno, then release it for the Node net server.
