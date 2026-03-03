@@ -2407,73 +2407,101 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
     None
   }
 
-  /// Drains `pending_unresolved_nodes` using FuturesUnordered for maximum
-  /// network parallelism. Results are buffered and retired in FIFO order
-  /// (by tracker_id) to ensure deterministic resolution regardless of
-  /// network timing. Newly discovered nodes are enqueued immediately,
-  /// giving cross-BFS-level parallelism.
+  /// Drains `pending_unresolved_nodes` with maximum network parallelism.
+  ///
+  /// All pending parents' dep fetches are fired into a single
+  /// `FuturesUnordered` so they run concurrently. Results are buffered
+  /// per-parent and processed in insertion order for determinism.
+  /// When a parent is processed and new child nodes are discovered,
+  /// they're immediately enqueued — so child fetches overlap with
+  /// sibling parents, giving cross-BFS-level parallelism.
   async fn drain_pending_parallel(&mut self) -> Result<(), NpmResolutionError> {
-    enum ResolveEvent {
-      ParentInfoReady {
-        tracker_id: usize,
-        parent_path: Rc<GraphPath>,
-        parent_nv: Rc<PackageNv>,
-        result: Result<Arc<NpmPackageInfo>, NpmRegistryPackageInfoLoadError>,
+    type InfoResult =
+      Result<Arc<NpmPackageInfo>, NpmRegistryPackageInfoLoadError>;
+    type WorkFuture<'a> = Pin<Box<dyn Future<Output = FetchEvent> + 'a>>;
+
+    /// A fetch completion event from the `FuturesUnordered`.
+    enum FetchEvent {
+      /// The parent node's own package info arrived (needed when
+      /// its dep list wasn't in the cache yet).
+      ParentInfo {
+        id: usize,
+        path: Rc<GraphPath>,
+        nv: Rc<PackageNv>,
+        result: InfoResult,
       },
-      DepInfoReady {
-        tracker_id: usize,
+      /// One dependency's package info (and optional alias info) arrived.
+      DepInfo {
+        parent_id: usize,
         dep_index: usize,
-        result: Result<Arc<NpmPackageInfo>, NpmRegistryPackageInfoLoadError>,
-        alias_result:
-          Option<Result<Arc<NpmPackageInfo>, NpmRegistryPackageInfoLoadError>>,
+        result: InfoResult,
+        alias_result: Option<InfoResult>,
       },
     }
 
-    struct BufferedDep {
-      result: Result<Arc<NpmPackageInfo>, NpmRegistryPackageInfoLoadError>,
-      alias_result:
-        Option<Result<Arc<NpmPackageInfo>, NpmRegistryPackageInfoLoadError>>,
+    /// Buffered fetch result for a single dependency.
+    struct DepResult {
+      result: InfoResult,
+      alias_result: Option<InfoResult>,
     }
 
-    struct ParentTracker {
-      path: Rc<GraphPath>,
-      deps: Rc<Vec<NpmDependencyEntry>>,
-      dep_results: Vec<Option<BufferedDep>>,
-      remaining: usize,
-      /// Whether this tracker represents a node with no deps or no_peers.
-      skip: bool,
+    /// Tracks the state of one parent node being resolved.
+    ///
+    /// Each parent popped from `pending_unresolved_nodes` gets a tracker.
+    /// The tracker buffers dep fetch results as they arrive out of order,
+    /// and is "ready" once all dep fetches have completed (or it was
+    /// skipped). Trackers are processed in insertion order for
+    /// determinism.
+    enum ParentState {
+      /// Waiting for the parent's own package info before we know its deps.
+      AwaitingParentInfo,
+      /// All dep fetches have landed and we can process this parent.
+      Ready {
+        path: Rc<GraphPath>,
+        deps: Rc<Vec<NpmDependencyEntry>>,
+        results: Vec<Option<DepResult>>,
+      },
+      /// Dep fetches are still in flight.
+      Pending {
+        path: Rc<GraphPath>,
+        deps: Rc<Vec<NpmDependencyEntry>>,
+        results: Vec<Option<DepResult>>,
+        remaining: usize,
+      },
+      /// Nothing to do (no deps, or node already had no_peers).
+      Skip,
+      /// Already retired / processed.
+      Done,
     }
 
-    impl ParentTracker {
-      fn is_ready(&self) -> bool {
-        self.skip || self.remaining == 0
+    impl ParentState {
+      fn is_actionable(&self) -> bool {
+        matches!(self, ParentState::Ready { .. } | ParentState::Skip)
       }
     }
 
-    fn enqueue_deps<'a, TNpmRegistryApi2: NpmRegistryApi>(
-      child_deps: &[NpmDependencyEntry],
-      active_overrides: &NpmOverrides,
-      tracker_id: usize,
-      work: &mut FuturesUnordered<
-        Pin<Box<dyn Future<Output = ResolveEvent> + 'a>>,
-      >,
-      api: &'a TNpmRegistryApi2,
+    /// Fire off dep info fetches for all of a parent's dependencies.
+    fn enqueue_dep_fetches<'a>(
+      deps: &[NpmDependencyEntry],
+      overrides: &NpmOverrides,
+      parent_id: usize,
+      work: &mut FuturesUnordered<WorkFuture<'a>>,
+      api: &'a (impl NpmRegistryApi + ?Sized),
     ) {
-      for (dep_index, dep) in child_deps.iter().enumerate() {
-        let alias_name: Option<StackString> =
-          active_overrides.get_alias_for(&dep.name).cloned();
+      for (dep_index, dep) in deps.iter().enumerate() {
+        let alias_name = overrides.get_alias_for(&dep.name).cloned();
         let name = dep.name.clone();
         work.push(Box::pin(async move {
           let (result, alias_result) =
             futures::future::join(api.package_info(&name), async {
               match &alias_name {
-                Some(name) => Some(api.package_info(name.as_str()).await),
+                Some(n) => Some(api.package_info(n.as_str()).await),
                 None => None,
               }
             })
             .await;
-          ResolveEvent::DepInfoReady {
-            tracker_id,
+          FetchEvent::DepInfo {
+            parent_id,
             dep_index,
             result,
             alias_result,
@@ -2482,15 +2510,14 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
       }
     }
 
-    fn enqueue_pending<'a, TNpmRegistryApi2: NpmRegistryApi>(
+    /// Drain `pending` into the work queue, creating a tracker for each.
+    fn enqueue_parents<'a>(
       pending: &mut VecDeque<Rc<GraphPath>>,
       graph: &mut Graph,
       dep_entry_cache: &DepEntryCache,
-      work: &mut FuturesUnordered<
-        Pin<Box<dyn Future<Output = ResolveEvent> + 'a>>,
-      >,
-      trackers: &mut Vec<ParentTracker>,
-      api: &'a TNpmRegistryApi2,
+      work: &mut FuturesUnordered<WorkFuture<'a>>,
+      trackers: &mut Vec<ParentState>,
+      api: &'a (impl NpmRegistryApi + ?Sized),
     ) {
       while let Some(parent_path) = pending.pop_front() {
         let node_id = parent_path.node_id();
@@ -2498,49 +2525,38 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
           continue;
         }
         let pkg_nv = graph.resolved_node_ids.get(node_id).unwrap().nv.clone();
-        let tracker_id = trackers.len();
+        let parent_id = trackers.len();
 
         if let Some(child_deps) = dep_entry_cache.get(&pkg_nv) {
           let child_deps = child_deps.clone();
-
           if child_deps.is_empty() {
             graph.borrow_node_mut(node_id).no_peers = true;
             continue;
           }
-
           let dep_count = child_deps.len();
-          trackers.push(ParentTracker {
-            path: parent_path.clone(),
-            deps: child_deps.clone(),
-            dep_results: (0..dep_count).map(|_| None).collect(),
-            remaining: dep_count,
-            skip: false,
-          });
-
-          enqueue_deps(
+          enqueue_dep_fetches(
             &child_deps,
             &parent_path.active_overrides,
-            tracker_id,
+            parent_id,
             work,
             api,
           );
-        } else {
-          // Need to fetch parent's own package info first.
-          trackers.push(ParentTracker {
-            path: parent_path.clone(),
-            deps: Rc::new(Vec::new()), // filled on ParentInfoReady
-            dep_results: Vec::new(),
-            remaining: usize::MAX, // sentinel: not ready yet
-            skip: false,
+          trackers.push(ParentState::Pending {
+            path: parent_path,
+            deps: child_deps,
+            results: (0..dep_count).map(|_| None).collect(),
+            remaining: dep_count,
           });
-
-          let parent_nv = pkg_nv;
+        } else {
+          // Don't know this parent's deps yet — fetch its package info.
+          trackers.push(ParentState::AwaitingParentInfo);
+          let nv = pkg_nv;
           work.push(Box::pin(async move {
-            let result = api.package_info(&parent_nv.name).await;
-            ResolveEvent::ParentInfoReady {
-              tracker_id,
-              parent_path,
-              parent_nv,
+            let result = api.package_info(&nv.name).await;
+            FetchEvent::ParentInfo {
+              id: parent_id,
+              path: parent_path,
+              nv,
               result,
             }
           }));
@@ -2549,15 +2565,13 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
     }
 
     let api = self.api;
-    let mut work: FuturesUnordered<
-      Pin<Box<dyn Future<Output = ResolveEvent> + '_>>,
-    > = FuturesUnordered::new();
-    let mut trackers: Vec<ParentTracker> = Vec::new();
+    let mut work: FuturesUnordered<WorkFuture<'_>> = FuturesUnordered::new();
+    let mut trackers: Vec<ParentState> = Vec::new();
     let mut next_to_retire: usize = 0;
 
-    enqueue_pending(
+    enqueue_parents(
       &mut self.pending_unresolved_nodes,
-      &mut self.graph,
+      self.graph,
       &self.dep_entry_cache,
       &mut work,
       &mut trackers,
@@ -2566,88 +2580,114 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
 
     while let Some(event) = work.next().await {
       match event {
-        ResolveEvent::ParentInfoReady {
-          tracker_id,
-          parent_path,
-          parent_nv,
+        FetchEvent::ParentInfo {
+          id,
+          path,
+          nv,
           result,
         } => {
           let package_info = result?;
           let version_info = package_info
-            .version_info(&parent_nv, &self.version_resolver.link_packages)
+            .version_info(&nv, &self.version_resolver.link_packages)
             .map_err(NpmPackageVersionResolutionError::VersionNotFound)?;
-          let child_deps = self
-            .dep_entry_cache
-            .store(parent_nv.clone(), version_info)?;
+          let child_deps =
+            self.dep_entry_cache.store(nv.clone(), version_info)?;
 
-          let tracker = &mut trackers[tracker_id];
           if child_deps.is_empty() {
-            tracker.skip = true;
-            tracker.remaining = 0;
-            self.graph.borrow_node_mut(parent_path.node_id()).no_peers = true;
+            self.graph.borrow_node_mut(path.node_id()).no_peers = true;
+            trackers[id] = ParentState::Skip;
           } else {
             let dep_count = child_deps.len();
-            tracker.deps = child_deps.clone();
-            tracker.dep_results = (0..dep_count).map(|_| None).collect();
-            tracker.remaining = dep_count;
-
-            enqueue_deps(
+            enqueue_dep_fetches(
               &child_deps,
-              &parent_path.active_overrides,
-              tracker_id,
+              &path.active_overrides,
+              id,
               &mut work,
               api,
             );
+            trackers[id] = ParentState::Pending {
+              path,
+              deps: child_deps,
+              results: (0..dep_count).map(|_| None).collect(),
+              remaining: dep_count,
+            };
           }
         }
-        ResolveEvent::DepInfoReady {
-          tracker_id,
+        FetchEvent::DepInfo {
+          parent_id,
           dep_index,
           result,
           alias_result,
         } => {
-          let tracker = &mut trackers[tracker_id];
-          tracker.dep_results[dep_index] = Some(BufferedDep {
+          let ParentState::Pending {
+            ref mut results,
+            ref mut remaining,
+            ..
+          } = trackers[parent_id]
+          else {
+            unreachable!();
+          };
+          results[dep_index] = Some(DepResult {
             result,
             alias_result,
           });
-          tracker.remaining -= 1;
+          *remaining -= 1;
+          if *remaining == 0 {
+            // All dep fetches landed — transition to Ready.
+            let prev =
+              std::mem::replace(&mut trackers[parent_id], ParentState::Skip);
+            let ParentState::Pending {
+              path,
+              deps,
+              results,
+              ..
+            } = prev
+            else {
+              unreachable!();
+            };
+            trackers[parent_id] = ParentState::Ready {
+              path,
+              deps,
+              results,
+            };
+          }
         }
       }
 
-      // Retire completed trackers in FIFO order.
+      // Process completed trackers in insertion order for determinism.
       while next_to_retire < trackers.len()
-        && trackers[next_to_retire].is_ready()
+        && trackers[next_to_retire].is_actionable()
       {
-        let tracker = &trackers[next_to_retire];
-        if !tracker.skip {
+        let state =
+          std::mem::replace(&mut trackers[next_to_retire], ParentState::Done);
+        if let ParentState::Ready {
+          path,
+          deps,
+          mut results,
+        } = state
+        {
           let mut found_peer = false;
-          // Process deps in original dep-list order.
-          for i in 0..tracker.dep_results.len() {
-            let buffered =
-              trackers[next_to_retire].dep_results[i].take().unwrap();
-            let dep = &trackers[next_to_retire].deps[i];
-            let dep_found_peer = self.process_dep(
-              &trackers[next_to_retire].path,
+          for (i, dep) in deps.iter().enumerate() {
+            let fetched = results[i].take().unwrap();
+            if self.process_dep(
+              &path,
               dep,
-              buffered.result,
-              buffered.alias_result,
-            )?;
-            if dep_found_peer {
+              fetched.result,
+              fetched.alias_result,
+            )? {
               found_peer = true;
             }
           }
           if !found_peer {
-            self
-              .graph
-              .borrow_node_mut(trackers[next_to_retire].path.node_id())
-              .no_peers = true;
+            self.graph.borrow_node_mut(path.node_id()).no_peers = true;
           }
 
-          // Enqueue newly discovered pending nodes.
-          enqueue_pending(
+          // Newly discovered nodes from process_dep go on the pending
+          // queue — drain them into the work set immediately so their
+          // fetches overlap with remaining in-flight work.
+          enqueue_parents(
             &mut self.pending_unresolved_nodes,
-            &mut self.graph,
+            self.graph,
             &self.dep_entry_cache,
             &mut work,
             &mut trackers,
@@ -2662,7 +2702,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
   }
 
   /// Process a single dependency for a parent node.
-  /// Returns whether a peer dep was found for this dep.
+  /// Returns whether a peer dep was found.
   fn process_dep(
     &mut self,
     parent_path: &Rc<GraphPath>,
