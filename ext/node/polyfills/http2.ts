@@ -2661,6 +2661,10 @@ function setupHandle(socket, type, options) {
   const nativeHandle = tcpHandle?._nativeHandle;
 
   if (nativeHandle) {
+    // Cache socket address info before detaching the native handle,
+    // since getpeername/getsockname won't work after detach.
+    socket._getpeername();
+    socket._getsockname();
     // Stop any existing reads on the handle
     tcpHandle.readStop();
     // Consume the stream directly via libuv

@@ -216,11 +216,24 @@ unsafe extern "C" fn h2_read_cb(
   let session = unsafe { &mut *session_ptr };
 
   if nread < 0 {
-    // EOF or error - stop reading
+    // EOF or error - stop reading and notify the session so that
+    // streams are properly closed (emitting 'aborted'/'close' events).
     // SAFETY: handle is valid per libuv read callback contract
     unsafe {
       deno_core::uv_compat::uv_read_stop(handle);
     }
+    // Notify nghttp2 about the EOF by terminating the session.
+    // This causes on_stream_close_callback to fire for all open
+    // streams, triggering the JS-side close/aborted event flow.
+    unsafe {
+      ffi::nghttp2_session_terminate_session(
+        session.session,
+        ffi::NGHTTP2_CONNECT_ERROR,
+      );
+    }
+    // Run send to process the GOAWAY and stream close callbacks
+    session.send_pending_data();
+
     // Free the buffer
     // SAFETY: buf is valid per libuv read callback contract
     if !buf.is_null() && !unsafe { (*buf).base.is_null() } {
@@ -1292,6 +1305,15 @@ pub struct Session {
   pub padding_strategy: PaddingStrategy,
   pub graceful_close_initiated: bool,
   pub stream: Option<*mut deno_core::uv_compat::UvStream>,
+  /// Prevents recursive send_pending_data calls. When mem_recv fires
+  /// JS callbacks that call back into send_pending_data, the nested
+  /// mem_send can close/free streams that mem_recv still references
+  /// (double-free). Like Node.js's is_sending() guard.
+  pub is_sending: bool,
+  /// Set when destroy() is called while is_sending is true. The TCP
+  /// handle close is deferred until send_pending_data can run, allowing
+  /// GOAWAY to be sent before the connection closes.
+  pub pending_destroy: bool,
 }
 
 impl Session {
@@ -1331,6 +1353,14 @@ impl Session {
   }
 
   pub fn send_pending_data(&mut self) {
+    // Prevent recursive calls. JS callbacks from nghttp2_session_mem_recv
+    // can call back into send_pending_data via scheduleSendPending. Nested
+    // nghttp2_session_mem_send can close/free streams that mem_recv still
+    // references (double-free with no_closed_streams=1). Matches Node.js
+    // is_sending() guard in SendPendingData.
+    if self.is_sending {
+      return;
+    }
     let stream = match self.stream {
       Some(stream) => stream,
       None => return,
@@ -1345,6 +1375,7 @@ impl Session {
       return;
     }
 
+    self.is_sending = true;
     loop {
       let mut src = std::ptr::null();
       let src_len =
@@ -1382,6 +1413,7 @@ impl Session {
         break;
       }
     }
+    self.is_sending = false;
 
     if !self.outgoing_buffers.is_empty() {
       for buffer in &self.outgoing_buffers {
@@ -1415,6 +1447,13 @@ impl Session {
     if data.is_empty() {
       return;
     }
+    // Block re-entrant send_pending_data calls from JS callbacks during
+    // mem_recv. A single mem_recv can process multiple frames (e.g.
+    // END_STREAM + RST_STREAM). If a callback from frame N triggers
+    // mem_send which closes/frees a stream, frame N+1 (RST_STREAM for
+    // the same stream) would crash with a double-free. Matches Node.js
+    // behavior where sends are deferred until after mem_recv completes.
+    self.is_sending = true;
     // SAFETY: self.session is valid; data slice pointer and length are valid
     unsafe {
       ffi::nghttp2_session_mem_recv(
@@ -1423,7 +1462,24 @@ impl Session {
         data.len(),
       );
     }
+    self.is_sending = false;
     self.send_pending_data();
+
+    // Complete deferred destroy: close the TCP handle now that
+    // send_pending_data has had a chance to send GOAWAY etc.
+    if self.pending_destroy {
+      self.pending_destroy = false;
+      if let Some(stream) = self.stream.take() {
+        // SAFETY: stream is a valid libuv handle
+        unsafe {
+          deno_core::uv_compat::uv_read_stop(stream);
+          deno_core::uv_compat::uv_close(
+            stream as *mut deno_core::uv_compat::UvHandle,
+            Some(h2_stream_close_cb),
+          );
+        }
+      }
+    }
   }
 
   pub fn on_dword_aligned_padding(
@@ -1508,6 +1564,8 @@ impl Http2Session {
       padding_strategy: options.padding_strategy(),
       graceful_close_initiated: false,
       stream: None,
+      is_sending: false,
+      pending_destroy: false,
     }));
 
     // SAFETY: inner is valid (just allocated); callbacks and options are valid
@@ -1673,15 +1731,24 @@ impl Http2Session {
   ) {
     // SAFETY: self.inner was allocated by Box::into_raw and is valid
     let session = unsafe { &mut *self.inner };
-    // Close the stream handle we took ownership of via consume_stream
-    if let Some(stream) = session.stream.take() {
-      // SAFETY: stream is a valid libuv handle taken via consume_stream
-      unsafe {
-        deno_core::uv_compat::uv_read_stop(stream);
-        deno_core::uv_compat::uv_close(
-          stream as *mut deno_core::uv_compat::UvHandle,
-          Some(h2_stream_close_cb),
-        );
+
+    if session.is_sending {
+      // We're inside receive_data's mem_recv. Defer the TCP handle
+      // close so that send_pending_data (called after mem_recv) can
+      // still send pending frames (e.g. GOAWAY) before the socket
+      // closes.
+      session.pending_destroy = true;
+    } else {
+      // Close the stream handle we took ownership of via consume_stream
+      if let Some(stream) = session.stream.take() {
+        // SAFETY: stream is a valid libuv handle taken via consume_stream
+        unsafe {
+          deno_core::uv_compat::uv_read_stop(stream);
+          deno_core::uv_compat::uv_close(
+            stream as *mut deno_core::uv_compat::UvHandle,
+            Some(h2_stream_close_cb),
+          );
+        }
       }
     }
 
