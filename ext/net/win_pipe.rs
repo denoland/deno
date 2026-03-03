@@ -232,6 +232,7 @@ impl AsyncWrite for WindowsPipeStream {
 pub struct WindowsPipeListener;
 
 impl WindowsPipeListener {
+  #[allow(clippy::unused_async)]
   pub async fn accept(
     &self,
   ) -> io::Result<(WindowsPipeStream, WindowsPipeAddr)> {
