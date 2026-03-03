@@ -1061,12 +1061,11 @@ impl WasiContext {
 
       let name_write_len =
         std::cmp::min(name_bytes.len() as i32, buf_len - buf_offset);
-      if name_write_len > 0 {
-        if let Some(dest) =
+      if name_write_len > 0
+        && let Some(dest) =
           get_memory_slice_mut(memory, buf_ptr + buf_offset, name_write_len)
-        {
-          dest.copy_from_slice(&name_bytes[..name_write_len as usize]);
-        }
+      {
+        dest.copy_from_slice(&name_bytes[..name_write_len as usize]);
       }
       buf_offset += name_bytes.len() as i32;
     }
@@ -1512,7 +1511,7 @@ impl WasiContext {
 
     match inner.get_fd_mut(fd) {
       Some(FdEntry::File { file, .. }) => {
-        let cur = match file.seek(SeekFrom::Current(0)) {
+        let cur = match file.stream_position() {
           Ok(pos) => pos,
           Err(e) => return io_err_to_errno(&e),
         };
@@ -1574,7 +1573,7 @@ impl WasiContext {
 
     match inner.get_fd_mut(fd) {
       Some(FdEntry::File { file, .. }) => {
-        let cur = match file.seek(SeekFrom::Current(0)) {
+        let cur = match file.stream_position() {
           Ok(pos) => pos,
           Err(e) => return io_err_to_errno(&e),
         };
