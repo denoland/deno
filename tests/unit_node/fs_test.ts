@@ -528,3 +528,22 @@ Deno.test(
     );
   },
 );
+
+Deno.test(
+  "[node/fs openAsBlob] works with URL.createObjectURL and fetch",
+  async () => {
+    const filename = mkdtempSync(join(tmpdir(), "foo-")) + "/test.txt";
+    const data = "Hello, createObjectURL!";
+    writeFileSync(filename, data);
+
+    const blob = await openAsBlob(filename);
+    const url = URL.createObjectURL(blob);
+    try {
+      const resp = await fetch(url);
+      assertEquals(resp.ok, true);
+      assertEquals(await resp.text(), data);
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  },
+);
