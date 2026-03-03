@@ -236,21 +236,21 @@ unsafe impl GarbageCollected for WasiContext {
   }
 }
 
-fn get_memory_slice<'a>(
-  memory: &'a [u8],
+fn get_memory_slice(
+  memory: &[u8],
   offset: i32,
   len: i32,
-) -> Option<&'a [u8]> {
+) -> Option<&[u8]> {
   let start = offset as usize;
   let end = start.checked_add(len as usize)?;
   memory.get(start..end)
 }
 
-fn get_memory_slice_mut<'a>(
-  memory: &'a mut [u8],
+fn get_memory_slice_mut(
+  memory: &mut [u8],
   offset: i32,
   len: i32,
-) -> Option<&'a mut [u8]> {
+) -> Option<&mut [u8]> {
   let start = offset as usize;
   let end = start.checked_add(len as usize)?;
   memory.get_mut(start..end)
