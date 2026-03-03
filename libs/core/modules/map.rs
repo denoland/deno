@@ -217,7 +217,6 @@ struct DynImportModEvaluate {
   load_id: ModuleLoadId,
   module_id: ModuleId,
   promise: v8::Global<v8::Promise>,
-  module: v8::Global<v8::Module>,
 }
 
 #[derive(Debug, Clone)]
@@ -1723,14 +1722,10 @@ impl ModuleMap {
         // It doesn't really matter though, because they're just for waking the
         // event loop.
       }
-      let promise_global = v8::Global::new(tc_scope, promise);
-      let module_global = v8::Global::new(tc_scope, module);
-
       let dyn_import_mod_evaluate = DynImportModEvaluate {
         load_id,
         module_id: id,
-        promise: promise_global,
-        module: module_global,
+        promise: v8::Global::new(tc_scope, promise),
       };
 
       self.pending_dyn_mod_evaluations.push(dyn_import_mod_evaluate);
@@ -1752,40 +1747,26 @@ impl ModuleMap {
     let pending = self.pending_dyn_mod_evaluations.take();
     let mut resolved_any = false;
     let mut still_pending = vec![];
-    for pending_dyn_evaluate in pending {
-      let maybe_result = {
-        let module_id = pending_dyn_evaluate.module_id;
-        let promise = pending_dyn_evaluate.promise.open(scope);
-        let _module = pending_dyn_evaluate.module.open(scope);
-        let promise_state = promise.state();
-
-        match promise_state {
-          v8::PromiseState::Pending => {
-            still_pending.push(pending_dyn_evaluate);
-            None
-          }
-          v8::PromiseState::Fulfilled => {
-            Some(Ok((pending_dyn_evaluate.load_id, module_id)))
-          }
-          v8::PromiseState::Rejected => {
-            let exception = promise.result(scope);
-            let exception = v8::Global::new(scope, exception);
-            Some(Err((pending_dyn_evaluate.load_id, module_id, exception)))
-          }
+    for eval in pending {
+      let promise = eval.promise.open(scope);
+      match promise.state() {
+        v8::PromiseState::Pending => {
+          still_pending.push(eval);
         }
-      };
-
-      if let Some(result) = maybe_result {
-        resolved_any = true;
-        match result {
-          Ok((dyn_import_id, module_id)) => {
-            self.dynamic_import_resolve(scope, dyn_import_id, module_id);
-            self.resolve_tla_waiters(scope, module_id);
-          }
-          Err((dyn_import_id, module_id, exception)) => {
-            self.dynamic_import_reject(scope, dyn_import_id, exception.clone());
-            self.reject_tla_waiters(scope, module_id, exception);
-          }
+        v8::PromiseState::Fulfilled => {
+          resolved_any = true;
+          self.dynamic_import_resolve(scope, eval.load_id, eval.module_id);
+          self.resolve_tla_waiters(scope, eval.module_id);
+        }
+        v8::PromiseState::Rejected => {
+          resolved_any = true;
+          let exception = v8::Global::new(scope, promise.result(scope));
+          self.dynamic_import_reject(
+            scope,
+            eval.load_id,
+            exception.clone(),
+          );
+          self.reject_tla_waiters(scope, eval.module_id, exception);
         }
       }
     }
@@ -1946,28 +1927,20 @@ impl ModuleMap {
       return;
     }
 
-    loop {
-      let poll_result = self.preparing_dynamic_imports.poll_next_unpin(cx);
-
-      if let Poll::Ready(Some(prepare_poll)) = poll_result {
-        let dyn_import_id = prepare_poll.0;
-        let prepare_result = prepare_poll.1;
-
-        match prepare_result {
-          Ok(load) => {
-            self
-              .pending_dynamic_imports
-              .push(StreamExt::into_future(load));
-          }
-          Err(err) => {
-            let exception = err.to_v8_error(scope);
-            self.dynamic_import_reject(scope, dyn_import_id, exception);
-          }
+    while let Poll::Ready(Some((dyn_import_id, prepare_result))) =
+      self.preparing_dynamic_imports.poll_next_unpin(cx)
+    {
+      match prepare_result {
+        Ok(load) => {
+          self
+            .pending_dynamic_imports
+            .push(StreamExt::into_future(load));
         }
-        continue;
+        Err(err) => {
+          let exception = err.to_v8_error(scope);
+          self.dynamic_import_reject(scope, dyn_import_id, exception);
+        }
       }
-
-      return;
     }
   }
 
@@ -1982,99 +1955,82 @@ impl ModuleMap {
       return Ok(());
     }
 
-    loop {
-      let poll_result = self.pending_dynamic_imports.poll_next_unpin(cx);
+    while let Poll::Ready(Some((maybe_result, mut load))) =
+      self.pending_dynamic_imports.poll_next_unpin(cx)
+    {
+      let dyn_import_id = load.id;
 
-      if let Poll::Ready(Some(load_stream_poll)) = poll_result {
-        let maybe_result = load_stream_poll.0;
-        let mut load = load_stream_poll.1;
-        let dyn_import_id = load.id;
-
-        match maybe_result {
-          Some(load_stream_result) => {
-            match load_stream_result {
-              Ok((request, info)) => {
-                // A module (not necessarily the one dynamically imported) has been
-                // fetched. Create and register it, and if successful, poll for the
-                // next recursive-load event related to this dynamic import.
-                let register_result =
-                  load.register_and_recurse(scope, &request, info);
-
-                match register_result {
-                  Ok(()) => {
-                    // Keep importing until it's fully drained
-                    self
-                      .pending_dynamic_imports
-                      .push(StreamExt::into_future(load));
-                  }
-                  Err(err) => {
-                    let exception = match err {
-                      ModuleError::Exception(e) => e,
-                      ModuleError::Core(e) => e.to_v8_error(scope),
-                      ModuleError::Concrete(e) => {
-                        CoreErrorKind::Module(e).to_v8_error(scope)
-                      }
-                    };
-                    self.dynamic_import_reject(scope, dyn_import_id, exception)
-                  }
-                }
-              }
-              Err(err) => {
-                // A non-javascript error occurred; this could be due to an invalid
-                // module specifier, or a problem with the source map, or a failure
-                // to fetch the module source code.
-                let exception = err.to_v8_error(scope);
-                self.dynamic_import_reject(scope, dyn_import_id, exception);
-              }
+      match maybe_result {
+        Some(Ok((request, info))) => {
+          // A module (not necessarily the one dynamically imported) has been
+          // fetched. Create and register it, and if successful, poll for the
+          // next recursive-load event related to this dynamic import.
+          match load.register_and_recurse(scope, &request, info) {
+            Ok(()) => {
+              // Keep importing until it's fully drained
+              self
+                .pending_dynamic_imports
+                .push(StreamExt::into_future(load));
             }
-          }
-          _ => {
-            let state = self
-              .dynamic_import_map
-              .borrow()
-              .get(&dyn_import_id)
-              .unwrap()
-              .clone();
-            match state.phase {
-              ModuleImportPhase::Defer | ModuleImportPhase::Evaluation => {
-                // The top-level module from a dynamic import has been instantiated.
-                // Load is done.
-                let module_id =
-                  load.root_module_id.expect("Root module should be loaded");
-                let result = self.instantiate_module(scope, module_id);
-                if let Err(exception) = result {
-                  self.dynamic_import_reject(scope, dyn_import_id, exception);
+            Err(err) => {
+              let exception = match err {
+                ModuleError::Exception(e) => e,
+                ModuleError::Core(e) => e.to_v8_error(scope),
+                ModuleError::Concrete(e) => {
+                  CoreErrorKind::Module(e).to_v8_error(scope)
                 }
-                self.dynamic_import_module_evaluate(
-                  scope,
-                  module_id,
-                  dyn_import_id,
-                  state,
-                )?;
-              }
-              ModuleImportPhase::Source => {
-                let module_reference = load.root_module_reference.as_ref().expect("Root module reference had to have been resolved to get here.");
-                let key = ModuleSourceKey::from_reference(module_reference);
-                let source = {
-                  let data = self.data.borrow();
-                  let source = data.sources.get(&key).expect("Source had to have been inserted successfully, or recursion would error.").as_ref();
-                  v8::Local::new(scope, source).into()
-                };
-                {
-                  let resolver = state.resolver.open(scope);
-                  resolver.resolve(scope, source).unwrap();
-                }
-              }
+              };
+              self.dynamic_import_reject(scope, dyn_import_id, exception);
             }
           }
         }
-
-        // Continue polling for more ready dynamic imports.
-        continue;
+        Some(Err(err)) => {
+          // A non-javascript error occurred; this could be due to an invalid
+          // module specifier, or a problem with the source map, or a failure
+          // to fetch the module source code.
+          let exception = err.to_v8_error(scope);
+          self.dynamic_import_reject(scope, dyn_import_id, exception);
+        }
+        None => {
+          // Stream finished — the full module graph has been loaded.
+          let state = self
+            .dynamic_import_map
+            .borrow()
+            .get(&dyn_import_id)
+            .unwrap()
+            .clone();
+          match state.phase {
+            ModuleImportPhase::Defer | ModuleImportPhase::Evaluation => {
+              let module_id =
+                load.root_module_id.expect("Root module should be loaded");
+              let result = self.instantiate_module(scope, module_id);
+              if let Err(exception) = result {
+                self.dynamic_import_reject(scope, dyn_import_id, exception);
+              }
+              self.dynamic_import_module_evaluate(
+                scope,
+                module_id,
+                dyn_import_id,
+                state,
+              )?;
+            }
+            ModuleImportPhase::Source => {
+              let module_reference = load.root_module_reference.as_ref().expect("Root module reference had to have been resolved to get here.");
+              let key = ModuleSourceKey::from_reference(module_reference);
+              let source = {
+                let data = self.data.borrow();
+                let source = data.sources.get(&key).expect("Source had to have been inserted successfully, or recursion would error.").as_ref();
+                v8::Local::new(scope, source).into()
+              };
+              let resolver = state.resolver.open(scope);
+              resolver.resolve(scope, source).unwrap();
+            }
+          }
+        }
       }
-
-      return Ok(());
     }
+
+    Ok(())
   }
 
   /// Drain all ready code-cache futures.
