@@ -39,7 +39,7 @@ function runDenoExe(exePath) {
     if (!fs.existsSync(exePath)) {
       throw new Error(
         "Could not find exe at path '" + exePath +
-          "'. Maybe try running deno again.",
+          "'. Maybe try installing deno again.",
       );
     }
     throw result.error;
