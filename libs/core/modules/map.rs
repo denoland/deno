@@ -119,6 +119,100 @@ fn strip_bom(source_code: &[u8]) -> &[u8] {
   }
 }
 
+/// A `FuturesUnordered` paired with a `Cell<bool>` flag that tracks whether
+/// the collection has pending items. The flag avoids borrowing the `RefCell`
+/// just to check `is_empty()`.
+struct TrackedFutures<F> {
+  futs: RefCell<FuturesUnordered<F>>,
+  pending: Cell<bool>,
+}
+
+impl<F> Default for TrackedFutures<F> {
+  fn default() -> Self {
+    Self {
+      futs: Default::default(),
+      pending: Cell::new(false),
+    }
+  }
+}
+
+impl<F: Future + Unpin> TrackedFutures<F> {
+  fn is_pending(&self) -> bool {
+    self.pending.get()
+  }
+
+  fn push(&self, fut: F) {
+    self.futs.borrow_mut().push(fut);
+    self.pending.set(true);
+  }
+
+  /// Polls the inner `FuturesUnordered`. When the result is not
+  /// `Ready(Some(_))` (i.e., no more ready items), the pending flag is
+  /// synced from the collection's emptiness.
+  fn poll_next_unpin(
+    &self,
+    cx: &mut Context,
+  ) -> Poll<Option<F::Output>> {
+    let poll = self.futs.borrow_mut().poll_next_unpin(cx);
+    if !matches!(poll, Poll::Ready(Some(_))) {
+      self.pending.set(!self.futs.borrow().is_empty());
+    }
+    poll
+  }
+
+  fn clear(&self) {
+    self.futs.borrow_mut().clear();
+    self.pending.set(false);
+  }
+}
+
+/// A `Vec<T>` paired with a `Cell<bool>` flag that tracks whether the
+/// collection has pending items.
+struct TrackedVec<T> {
+  vec: RefCell<Vec<T>>,
+  pending: Cell<bool>,
+}
+
+impl<T> Default for TrackedVec<T> {
+  fn default() -> Self {
+    Self {
+      vec: RefCell::new(Vec::new()),
+      pending: Cell::new(false),
+    }
+  }
+}
+
+impl<T> TrackedVec<T> {
+  fn is_pending(&self) -> bool {
+    self.pending.get()
+  }
+
+  fn push(&self, item: T) {
+    self.vec.borrow_mut().push(item);
+    self.pending.set(true);
+  }
+
+  fn take(&self) -> Vec<T> {
+    let v = std::mem::take(self.vec.borrow_mut().deref_mut());
+    self.pending.set(false);
+    v
+  }
+
+  fn set(&self, items: Vec<T>) {
+    self.pending.set(!items.is_empty());
+    *self.vec.borrow_mut() = items;
+  }
+
+  fn borrow(&self) -> std::cell::Ref<'_, Vec<T>> {
+    self.vec.borrow()
+  }
+
+  fn clear(&self) {
+    self.vec.borrow_mut().clear();
+    self.pending.set(false);
+  }
+}
+
 struct DynImportModEvaluate {
   load_id: ModuleLoadId,
   module_id: ModuleId,
@@ -143,19 +237,14 @@ pub(crate) struct ModuleMap {
   exception_state: Rc<ExceptionState>,
   dynamic_import_map: RefCell<HashMap<ModuleLoadId, DynImportState>>,
   preparing_dynamic_imports:
-    RefCell<FuturesUnordered<Pin<Box<PrepareLoadFuture>>>>,
-  preparing_dynamic_imports_pending: Cell<bool>,
+    TrackedFutures<Pin<Box<PrepareLoadFuture>>>,
   pending_dynamic_imports:
-    RefCell<FuturesUnordered<StreamFuture<RecursiveModuleLoad>>>,
-  pending_dynamic_imports_pending: Cell<bool>,
-  pending_dyn_mod_evaluations: RefCell<Vec<DynImportModEvaluate>>,
-  pending_dyn_mod_evaluations_pending: Cell<bool>,
+    TrackedFutures<StreamFuture<RecursiveModuleLoad>>,
+  pending_dyn_mod_evaluations: TrackedVec<DynImportModEvaluate>,
   pending_tla_waiters:
     RefCell<HashMap<ModuleId, Vec<v8::Global<v8::PromiseResolver>>>>,
   pending_mod_evaluation: Cell<bool>,
-  code_cache_ready_futs:
-    RefCell<FuturesUnordered<Pin<Box<CodeCacheReadyFuture>>>>,
-  pending_code_cache_ready: Cell<bool>,
+  code_cache_ready_futs: TrackedFutures<Pin<Box<CodeCacheReadyFuture>>>,
   module_waker: AtomicWaker,
   data: RefCell<ModuleMapData>,
   will_snapshot: bool,
@@ -170,10 +259,11 @@ impl ModuleMap {
   /// so when destroying the module map we need to clear the pending futures.
   pub(crate) fn destroy(&self) {
     self.dynamic_import_map.borrow_mut().clear();
-    self.preparing_dynamic_imports.borrow_mut().clear();
-    self.pending_dynamic_imports.borrow_mut().clear();
+    self.preparing_dynamic_imports.clear();
+    self.pending_dynamic_imports.clear();
+    self.pending_dyn_mod_evaluations.clear();
     self.pending_tla_waiters.borrow_mut().clear();
-    self.code_cache_ready_futs.borrow_mut().clear();
+    self.code_cache_ready_futs.clear();
     std::mem::take(&mut *self.data.borrow_mut());
   }
 
@@ -233,15 +323,11 @@ impl ModuleMap {
       dyn_module_evaluate_idle_counter: Default::default(),
       dynamic_import_map: Default::default(),
       preparing_dynamic_imports: Default::default(),
-      preparing_dynamic_imports_pending: Default::default(),
       pending_dynamic_imports: Default::default(),
-      pending_dynamic_imports_pending: Default::default(),
       pending_dyn_mod_evaluations: Default::default(),
-      pending_dyn_mod_evaluations_pending: Default::default(),
       pending_tla_waiters: Default::default(),
       pending_mod_evaluation: Default::default(),
       code_cache_ready_futs: Default::default(),
-      pending_code_cache_ready: Default::default(),
       module_waker: Default::default(),
       data: Default::default(),
     }
@@ -695,8 +781,7 @@ impl ModuleMap {
       let fut =
         async move { (code_cache_info.ready_callback)(&code_cache).await }
           .boxed_local();
-      self.code_cache_ready_futs.borrow_mut().push(fut);
-      self.pending_code_cache_ready.set(true);
+      self.code_cache_ready_futs.push(fut);
     }
 
     // Extract native source map URL from V8
@@ -1297,22 +1382,21 @@ impl ModuleMap {
       Err(error) => async move { (load.id, Err(error)) }.boxed_local(),
     };
 
-    self.preparing_dynamic_imports.borrow_mut().push(fut);
-    self.preparing_dynamic_imports_pending.set(true);
+    self.preparing_dynamic_imports.push(fut);
 
     true
   }
 
   pub(crate) fn has_pending_dynamic_imports(&self) -> bool {
-    self.preparing_dynamic_imports_pending.get()
-      || self.pending_dynamic_imports_pending.get()
+    self.preparing_dynamic_imports.is_pending()
+      || self.pending_dynamic_imports.is_pending()
   }
 
   pub(crate) fn has_pending_module_evaluation(&self) -> bool {
     self.pending_mod_evaluation.get()
   }
   pub(crate) fn has_pending_dyn_module_evaluation(&self) -> bool {
-    self.pending_dyn_mod_evaluations_pending.get()
+    self.pending_dyn_mod_evaluations.is_pending()
   }
 
   /// See [`JsRuntime::mod_evaluate`].
@@ -1649,11 +1733,7 @@ impl ModuleMap {
         module: module_global,
       };
 
-      self
-        .pending_dyn_mod_evaluations
-        .borrow_mut()
-        .push(dyn_import_mod_evaluate);
-      self.pending_dyn_mod_evaluations_pending.set(true);
+      self.pending_dyn_mod_evaluations.push(dyn_import_mod_evaluate);
     } else if tc_scope.has_terminated() || tc_scope.is_execution_terminating() {
       return Err(CoreErrorKind::EvaluateDynamicImportedModule.into_box());
     } else {
@@ -1665,12 +1745,11 @@ impl ModuleMap {
 
   // Returns true if some dynamic import was resolved.
   fn evaluate_dyn_imports(&self, scope: &mut v8::PinScope) -> bool {
-    if !self.pending_dyn_mod_evaluations_pending.get() {
+    if !self.pending_dyn_mod_evaluations.is_pending() {
       return false;
     }
 
-    let pending =
-      std::mem::take(self.pending_dyn_mod_evaluations.borrow_mut().deref_mut());
+    let pending = self.pending_dyn_mod_evaluations.take();
     let mut resolved_any = false;
     let mut still_pending = vec![];
     for pending_dyn_evaluate in pending {
@@ -1710,10 +1789,7 @@ impl ModuleMap {
         }
       }
     }
-    self
-      .pending_dyn_mod_evaluations_pending
-      .set(!still_pending.is_empty());
-    *self.pending_dyn_mod_evaluations.borrow_mut() = still_pending;
+    self.pending_dyn_mod_evaluations.set(still_pending);
     resolved_any
   }
 
@@ -1865,15 +1941,12 @@ impl ModuleMap {
     cx: &mut Context,
     scope: &mut v8::PinScope,
   ) -> Poll<()> {
-    if !self.preparing_dynamic_imports_pending.get() {
+    if !self.preparing_dynamic_imports.is_pending() {
       return Poll::Ready(());
     }
 
     loop {
-      let poll_result = self
-        .preparing_dynamic_imports
-        .borrow_mut()
-        .poll_next_unpin(cx);
+      let poll_result = self.preparing_dynamic_imports.poll_next_unpin(cx);
 
       if let Poll::Ready(Some(prepare_poll)) = poll_result {
         let dyn_import_id = prepare_poll.0;
@@ -1883,9 +1956,7 @@ impl ModuleMap {
           Ok(load) => {
             self
               .pending_dynamic_imports
-              .borrow_mut()
               .push(StreamExt::into_future(load));
-            self.pending_dynamic_imports_pending.set(true);
           }
           Err(err) => {
             let exception = err.to_v8_error(scope);
@@ -1897,9 +1968,6 @@ impl ModuleMap {
       }
 
       // There are no active dynamic import loads, or none are ready.
-      self
-        .preparing_dynamic_imports_pending
-        .set(!self.preparing_dynamic_imports.borrow().is_empty());
       return Poll::Ready(());
     }
   }
@@ -1909,15 +1977,12 @@ impl ModuleMap {
     cx: &mut Context,
     scope: &mut v8::PinScope,
   ) -> Poll<Result<(), CoreError>> {
-    if !self.pending_dynamic_imports_pending.get() {
+    if !self.pending_dynamic_imports.is_pending() {
       return Poll::Ready(Ok(()));
     }
 
     loop {
-      let poll_result = self
-        .pending_dynamic_imports
-        .borrow_mut()
-        .poll_next_unpin(cx);
+      let poll_result = self.pending_dynamic_imports.poll_next_unpin(cx);
 
       if let Poll::Ready(Some(load_stream_poll)) = poll_result {
         let maybe_result = load_stream_poll.0;
@@ -1939,9 +2004,7 @@ impl ModuleMap {
                     // Keep importing until it's fully drained
                     self
                       .pending_dynamic_imports
-                      .borrow_mut()
                       .push(StreamExt::into_future(load));
-                    self.pending_dynamic_imports_pending.set(true);
                   }
                   Err(err) => {
                     let exception = match err {
@@ -2010,9 +2073,6 @@ impl ModuleMap {
       }
 
       // There are no active dynamic import loads, or none are ready.
-      self
-        .pending_dynamic_imports_pending
-        .set(!self.pending_dynamic_imports.borrow().is_empty());
       return Poll::Ready(Ok(()));
     }
   }
@@ -2021,21 +2081,17 @@ impl ModuleMap {
     &self,
     cx: &mut Context,
   ) -> Poll<Result<(), CoreError>> {
-    if !self.pending_code_cache_ready.get() {
+    if !self.code_cache_ready_futs.is_pending() {
       return Poll::Ready(Ok(()));
     }
 
     loop {
-      let poll_result =
-        self.code_cache_ready_futs.borrow_mut().poll_next_unpin(cx);
+      let poll_result = self.code_cache_ready_futs.poll_next_unpin(cx);
 
       if let Poll::Ready(Some(_)) = poll_result {
         continue;
       }
 
-      self
-        .pending_code_cache_ready
-        .set(!self.code_cache_ready_futs.borrow().is_empty());
       return Poll::Ready(Ok(()));
     }
   }
