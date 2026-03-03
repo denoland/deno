@@ -12,9 +12,9 @@ use cssparser::match_ignore_ascii_case;
 #[derive(Debug, Eq, PartialEq)]
 pub enum CSSValueError {
   UnexpectedToken,
-  UnsupportedUnit,
   ContainsRelativeValues,
-  NumericTypeMismatch,
+  UnsupportedDimension,
+  DimensionMismatch,
   InvalidDimensions,
 }
 
@@ -118,6 +118,61 @@ pub enum NumericValue {
   Length(Length),
   Angle(Angle),
   Percent(Percent),
+}
+
+impl NumericValue {
+  #[inline]
+  fn expect_number(self) -> Result<Number, CSSValueError> {
+    match self {
+      NumericValue::Zero => Ok(Number(0.0)),
+      NumericValue::Number(number) => Ok(number),
+      _ => Err(CSSValueError::DimensionMismatch),
+    }
+  }
+
+  #[inline]
+  fn expect_length(self, allow_zero: bool) -> Result<Length, CSSValueError> {
+    match self {
+      NumericValue::Zero => {
+        if allow_zero {
+          Ok(Length {
+            value: 0.0,
+            unit: LengthUnit::Px,
+          })
+        } else {
+          Err(CSSValueError::DimensionMismatch)
+        }
+      }
+      NumericValue::Length(length) => Ok(length),
+      _ => Err(CSSValueError::DimensionMismatch),
+    }
+  }
+
+  #[inline]
+  fn expect_angle(self, allow_zero: bool) -> Result<Angle, CSSValueError> {
+    match self {
+      NumericValue::Zero => {
+        if allow_zero {
+          Ok(Angle {
+            value: 0.0,
+            unit: AngleUnit::Deg,
+          })
+        } else {
+          Err(CSSValueError::DimensionMismatch)
+        }
+      }
+      NumericValue::Angle(angle) => Ok(angle),
+      _ => Err(CSSValueError::DimensionMismatch),
+    }
+  }
+
+  #[inline]
+  fn expect_percent(self) -> Result<Percent, CSSValueError> {
+    match self {
+      NumericValue::Percent(percent) => Ok(percent),
+      _ => Err(CSSValueError::DimensionMismatch),
+    }
+  }
 }
 
 // Currently, units for time, frequency, and resolution are not supported
@@ -236,7 +291,7 @@ impl MathValue {
   #[inline]
   fn try_add_assign(&mut self, other: &MathValue) -> Result<(), CSSValueError> {
     if self.dimensions != other.dimensions {
-      return Err(CSSValueError::NumericTypeMismatch);
+      return Err(CSSValueError::DimensionMismatch);
     }
     self.value += other.value;
     Ok(())
@@ -245,10 +300,59 @@ impl MathValue {
   #[inline]
   fn try_sub_assign(&mut self, other: &MathValue) -> Result<(), CSSValueError> {
     if self.dimensions != other.dimensions {
-      return Err(CSSValueError::NumericTypeMismatch);
+      return Err(CSSValueError::DimensionMismatch);
     }
     self.value -= other.value;
     Ok(())
+  }
+
+  fn expect_number(self) -> Result<Number, CSSValueError> {
+    if self.dimensions != Dimensions::default() {
+      return Err(CSSValueError::DimensionMismatch);
+    }
+    Ok(Number(self.value))
+  }
+
+  fn expect_length(self) -> Result<Length, CSSValueError> {
+    let dimensions = Dimensions {
+      length: 1,
+      angle: 0,
+      percent: 0,
+    };
+    if self.dimensions != dimensions {
+      return Err(CSSValueError::DimensionMismatch);
+    }
+    Ok(Length {
+      value: self.value,
+      unit: LengthUnit::Px,
+    })
+  }
+
+  fn expect_angle(self) -> Result<Angle, CSSValueError> {
+    let dimensions = Dimensions {
+      length: 0,
+      angle: 1,
+      percent: 0,
+    };
+    if self.dimensions != dimensions {
+      return Err(CSSValueError::DimensionMismatch);
+    }
+    Ok(Angle {
+      value: self.value,
+      unit: AngleUnit::Deg,
+    })
+  }
+
+  fn expect_percent(self) -> Result<Percent, CSSValueError> {
+    let dimensions = Dimensions {
+      length: 0,
+      angle: 0,
+      percent: 1,
+    };
+    if self.dimensions != dimensions {
+      return Err(CSSValueError::DimensionMismatch);
+    }
+    Ok(Percent(self.value))
   }
 }
 
@@ -268,6 +372,7 @@ impl ops::DivAssign<&MathValue> for MathValue {
   }
 }
 
+#[derive(Debug, PartialEq)]
 enum NumericAccumulator {
   Numeric(NumericValue),
   Math(MathValue),
@@ -288,10 +393,51 @@ impl From<MathValue> for NumericAccumulator {
 }
 
 impl NumericAccumulator {
+  #[inline]
   fn into_math(self) -> MathValue {
     match self {
       NumericAccumulator::Numeric(numeric) => MathValue::from(numeric),
       NumericAccumulator::Math(math) => math,
+    }
+  }
+
+  #[inline]
+  fn expect_numeric(self) -> Result<NumericValue, CSSValueError> {
+    match self {
+      NumericAccumulator::Numeric(numeric) => Ok(numeric),
+      NumericAccumulator::Math(math) => NumericValue::try_from(math),
+    }
+  }
+
+  #[inline]
+  fn expect_number(self) -> Result<Number, CSSValueError> {
+    match self {
+      NumericAccumulator::Numeric(numeric) => numeric.expect_number(),
+      NumericAccumulator::Math(math) => math.expect_number(),
+    }
+  }
+
+  #[inline]
+  fn expect_length(self, allow_zero: bool) -> Result<Length, CSSValueError> {
+    match self {
+      NumericAccumulator::Numeric(numeric) => numeric.expect_length(allow_zero),
+      NumericAccumulator::Math(math) => math.expect_length(),
+    }
+  }
+
+  #[inline]
+  fn expect_angle(self, allow_zero: bool) -> Result<Angle, CSSValueError> {
+    match self {
+      NumericAccumulator::Numeric(numeric) => numeric.expect_angle(allow_zero),
+      NumericAccumulator::Math(math) => math.expect_angle(),
+    }
+  }
+
+  #[inline]
+  fn expect_percent(self) -> Result<Percent, CSSValueError> {
+    match self {
+      NumericAccumulator::Numeric(numeric) => numeric.expect_percent(),
+      NumericAccumulator::Math(math) => math.expect_percent(),
     }
   }
 }
@@ -322,7 +468,7 @@ impl NumericValue {
     let token = input.next()?;
     match token {
       Token::Number { value, .. } => {
-        // Due to historical reasons, we need to allow the literal `0` for length and angle
+        // Due to historical reasons, <transform-function> must allow the literal `0` for length and angle
         if state.function_depth == 0 && *value == 0.0 {
           return Ok(NumericValue::Zero.into());
         }
@@ -343,7 +489,10 @@ impl NumericValue {
           "vw" | "svw" | "lvw" | "dvw" | "vh" | "svh" | "lvh" | "dvh" | "vi" | "svi" | "lvi" | "dvi" |
           "vb" | "svb" | "lvb" | "dvb" | "vmin" | "svmin" | "lvmin" | "dvmin" | "vmax" | "svmax" | "lvmax" | "dvmax" |
           // https://www.w3.org/TR/css-contain-3/#container-lengths
-          "cqw" | "cqh" | "cqi" | "cqb" | "cqmin" | "cqmax" => Err(input.new_custom_error(CSSValueError::ContainsRelativeValues)),
+          "cqw" | "cqh" | "cqi" | "cqb" | "cqmin" | "cqmax" |
+          // https://www.w3.org/TR/css-grid-2/#fr-unit
+          "fr"
+          => Err(input.new_custom_error(CSSValueError::ContainsRelativeValues)),
           // https://www.w3.org/TR/css-values-4/#angles
           "deg" => Ok(NumericValue::Angle(Angle { value: *value, unit: AngleUnit::Deg }).into()),
           "grad" => Ok(NumericValue::Angle(Angle { value: *value, unit: AngleUnit::Grad }).into()),
@@ -354,7 +503,7 @@ impl NumericValue {
           // https://www.w3.org/TR/css-values-4/#frequency
           "hz" | "khz" |
           // https://www.w3.org/TR/css-values-4/#resolution
-          "dpi" | "dpcm" | "dppx" | "x" => Err(input.new_custom_error(CSSValueError::UnsupportedUnit)),
+          "dpi" | "dpcm" | "dppx" | "x" => Err(input.new_custom_error(CSSValueError::UnsupportedDimension)),
           _ => Err(input.new_custom_error(CSSValueError::UnexpectedToken))
         }
       }
@@ -369,6 +518,279 @@ impl NumericValue {
               let value = Self::parse_additive_expression(arguments, state)?;
               arguments.expect_exhausted()?;
               Ok(value)
+            })
+          },
+          "min" => {
+            input.parse_nested_block(|arguments| {
+              let value = Self::parse_additive_expression(arguments, state)?;
+              let numeric = match value.expect_numeric() {
+                Ok(numeric) => numeric,
+                Err(error) => return Err(arguments.new_custom_error(error)),
+              };
+              let result: NumericAccumulator = match numeric {
+                NumericValue::Number(number) => {
+                  let mut current = number.0;
+                  while !arguments.is_exhausted() {
+                    arguments.expect_comma()?;
+                    let value = Self::parse_additive_expression(arguments, state)?;
+                    let value = match value.expect_number() {
+                      Ok(Number(value)) => value,
+                      Err(error) => return Err(arguments.new_custom_error(error)),
+                    };
+                    current = minimum(current, value);
+                  }
+                  NumericValue::Number(Number(current)).into()
+                },
+                NumericValue::Length(length) => {
+                  let mut current = length.to_pixels();
+                  while !arguments.is_exhausted() {
+                    arguments.expect_comma()?;
+                    let value = Self::parse_additive_expression(arguments, state)?;
+                    let value = match value.expect_length(false) {
+                      Ok(length) => length.to_pixels(),
+                      Err(error) => return Err(arguments.new_custom_error(error)),
+                    };
+                    current = minimum(current, value);
+                  }
+                  NumericValue::Length(Length { value: current, unit: LengthUnit::Px }).into()
+                },
+                NumericValue::Angle(angle) => {
+                  let mut current = angle.to_degrees();
+                  while !arguments.is_exhausted() {
+                    arguments.expect_comma()?;
+                    let value = Self::parse_additive_expression(arguments, state)?;
+                    let value = match value.expect_angle(false) {
+                      Ok(length) => length.to_degrees(),
+                      Err(error) => return Err(arguments.new_custom_error(error)),
+                    };
+                    current = minimum(current, value);
+                  }
+                  NumericValue::Angle(Angle { value: current, unit: AngleUnit::Deg }).into()
+                },
+                NumericValue::Percent(percent) => {
+                  let mut current = percent.0;
+                  while !arguments.is_exhausted() {
+                    arguments.expect_comma()?;
+                    let value = Self::parse_additive_expression(arguments, state)?;
+                    let value = match value.expect_percent() {
+                      Ok(length) => length.0,
+                      Err(error) => return Err(arguments.new_custom_error(error)),
+                    };
+                    current = minimum(current, value);
+                  }
+                  NumericValue::Percent(Percent(current)).into()
+                },
+                _ => unreachable!()
+              };
+              Ok(result)
+            })
+          },
+          "max" => {
+            input.parse_nested_block(|arguments| {
+              let value = Self::parse_additive_expression(arguments, state)?;
+              let numeric = match value.expect_numeric() {
+                Ok(numeric) => numeric,
+                Err(error) => return Err(arguments.new_custom_error(error)),
+              };
+              let result: NumericAccumulator = match numeric {
+                NumericValue::Number(number) => {
+                  let mut current = number.0;
+                  while !arguments.is_exhausted() {
+                    arguments.expect_comma()?;
+                    let value = Self::parse_additive_expression(arguments, state)?;
+                    let value = match value.expect_number() {
+                      Ok(Number(value)) => value,
+                      Err(error) => return Err(arguments.new_custom_error(error)),
+                    };
+                    current = maximum(current, value);
+                  }
+                  NumericValue::Number(Number(current)).into()
+                },
+                NumericValue::Length(length) => {
+                  let mut current = length.to_pixels();
+                  while !arguments.is_exhausted() {
+                    arguments.expect_comma()?;
+                    let value = Self::parse_additive_expression(arguments, state)?;
+                    let value = match value.expect_length(false) {
+                      Ok(length) => length.to_pixels(),
+                      Err(error) => return Err(arguments.new_custom_error(error)),
+                    };
+                    current = maximum(current, value);
+                  }
+                  NumericValue::Length(Length { value: current, unit: LengthUnit::Px }).into()
+                },
+                NumericValue::Angle(angle) => {
+                  let mut current = angle.to_degrees();
+                  while !arguments.is_exhausted() {
+                    arguments.expect_comma()?;
+                    let value = Self::parse_additive_expression(arguments, state)?;
+                    let value = match value.expect_angle(false) {
+                      Ok(length) => length.to_degrees(),
+                      Err(error) => return Err(arguments.new_custom_error(error)),
+                    };
+                    current = maximum(current, value);
+                  }
+                  NumericValue::Angle(Angle { value: current, unit: AngleUnit::Deg }).into()
+                },
+                NumericValue::Percent(percent) => {
+                  let mut current = percent.0;
+                  while !arguments.is_exhausted() {
+                    arguments.expect_comma()?;
+                    let value = Self::parse_additive_expression(arguments, state)?;
+                    let value = match value.expect_percent() {
+                      Ok(length) => length.0,
+                      Err(error) => return Err(arguments.new_custom_error(error)),
+                    };
+                    current = maximum(current, value);
+                  }
+                  NumericValue::Percent(Percent(current)).into()
+                },
+                _ => unreachable!()
+              };
+              Ok(result)
+            })
+          },
+          "clamp" => {
+            input.parse_nested_block(|arguments| {
+              let min: Option<NumericValue> = {
+                let start = arguments.state();
+                let token = arguments.next()?;
+                if let Token::Ident(ident) = token {
+                  match_ignore_ascii_case! { &ident,
+                    "none" => None,
+                    _ => return Err(arguments.new_custom_error(CSSValueError::UnexpectedToken)),
+                  }
+                } else {
+                  arguments.reset(&start);
+                  let value = Self::parse_additive_expression(arguments, state)?;
+                  let numeric = match value.expect_numeric() {
+                    Ok(numeric) => numeric,
+                    Err(error) => return Err(arguments.new_custom_error(error)),
+                  };
+                  Some(numeric)
+                }
+              };
+              arguments.expect_comma()?;
+              let value = Self::parse_additive_expression(arguments, state)?;
+              let value = match value.expect_numeric() {
+                Ok(numeric) => numeric,
+                Err(error) => return Err(arguments.new_custom_error(error)),
+              };
+              arguments.expect_comma()?;
+              let max: Option<NumericValue> = {
+                let start = arguments.state();
+                let token = arguments.next()?;
+                if let Token::Ident(ident) = token {
+                  match_ignore_ascii_case! { &ident,
+                    "none" => None,
+                    _ => return Err(arguments.new_custom_error(CSSValueError::UnexpectedToken)),
+                  }
+                } else {
+                  arguments.reset(&start);
+                  let value = Self::parse_additive_expression(arguments, state)?;
+                  let numeric = match value.expect_numeric() {
+                    Ok(numeric) => numeric,
+                    Err(error) => return Err(arguments.new_custom_error(error)),
+                  };
+                  Some(numeric)
+                }
+              };
+              arguments.expect_exhausted()?;
+
+              let result: NumericAccumulator = match value {
+                NumericValue::Number(Number(value)) => {
+                  let min = match min {
+                    Some(numeric) => {
+                      match numeric.expect_number() {
+                        Ok(numeric) => numeric.0,
+                        Err(error) => return Err(arguments.new_custom_error(error)),
+                      }
+                    },
+                    None => f32::NEG_INFINITY,
+                  };
+                  let max = match max {
+                    Some(numeric) => {
+                      match numeric.expect_number() {
+                        Ok(numeric) => numeric.0,
+                        Err(error) => return Err(arguments.new_custom_error(error)),
+                      }
+                    },
+                    None => f32::INFINITY,
+                  };
+                  NumericValue::Number(Number(maximum(min, minimum(value, max)))).into()
+                },
+                NumericValue::Length(value) => {
+                  let min = match min {
+                    Some(numeric) => {
+                      match numeric.expect_length(false) {
+                        Ok(length) => length.to_pixels(),
+                        Err(error) => return Err(arguments.new_custom_error(error)),
+                      }
+                    },
+                    None => f32::NEG_INFINITY,
+                  };
+                  let max = match max {
+                    Some(numeric) => {
+                      match numeric.expect_length(false) {
+                        Ok(length) => length.to_pixels(),
+                        Err(error) => return Err(arguments.new_custom_error(error)),
+                      }
+                    },
+                    None => f32::INFINITY,
+                  };
+                  NumericValue::Length(Length {
+                    value: maximum(min, minimum(value.to_pixels(), max)),
+                    unit: LengthUnit::Px,
+                  }).into()
+                },
+                NumericValue::Angle(value) => {
+                  let min = match min {
+                    Some(numeric) => {
+                      match numeric.expect_angle(false) {
+                        Ok(angle) => angle.to_degrees(),
+                        Err(error) => return Err(arguments.new_custom_error(error)),
+                      }
+                    },
+                    None => f32::NEG_INFINITY,
+                  };
+                  let max = match max {
+                    Some(numeric) => {
+                      match numeric.expect_angle(false) {
+                        Ok(angle) => angle.to_degrees(),
+                        Err(error) => return Err(arguments.new_custom_error(error)),
+                      }
+                    },
+                    None => f32::INFINITY,
+                  };
+                  NumericValue::Angle(Angle {
+                    value: maximum(min, minimum(value.to_degrees(), max)),
+                    unit: AngleUnit::Deg,
+                  }).into()
+                },
+                NumericValue::Percent(Percent(value)) => {
+                  let min = match min {
+                    Some(numeric) => {
+                      match numeric.expect_percent() {
+                        Ok(percent) => percent.0,
+                        Err(error) => return Err(arguments.new_custom_error(error)),
+                      }
+                    },
+                    None => f32::NEG_INFINITY,
+                  };
+                  let max = match max {
+                    Some(numeric) => {
+                      match numeric.expect_percent() {
+                        Ok(percent) => percent.0,
+                        Err(error) => return Err(arguments.new_custom_error(error)),
+                      }
+                    },
+                    None => f32::INFINITY,
+                  };
+                  NumericValue::Percent(Percent(maximum(min, minimum(value, max)))).into()
+                },
+                _ => unreachable!()
+              };
+              Ok(result)
             })
           },
           _ => todo!("parse_leaf: function")
@@ -486,6 +908,44 @@ impl NumericValue {
   }
 }
 
+// TODO(petamoriken) Use f32::maximum instead https://github.com/rust-lang/rust/issues/91079
+#[inline]
+fn maximum(a: f32, b: f32) -> f32 {
+  if a > b {
+    a
+  } else if b > a {
+    b
+  } else if a == b {
+    if a.is_sign_positive() && b.is_sign_negative() {
+      a
+    } else {
+      b
+    }
+  } else {
+    // At least one input is NaN. Use `+` to perform NaN propagation and quieting.
+    a + b
+  }
+}
+
+// TODO(petamoriken) Use f32::minimum instead https://github.com/rust-lang/rust/issues/91079
+#[inline]
+fn minimum(a: f32, b: f32) -> f32 {
+  if a < b {
+    a
+  } else if b < a {
+    b
+  } else if a == b {
+    if a.is_sign_negative() && b.is_sign_positive() {
+      a
+    } else {
+      b
+    }
+  } else {
+    // At least one input is NaN. Use `+` to perform NaN propagation and quieting.
+    a + b
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use cssparser::BasicParseErrorKind;
@@ -597,7 +1057,9 @@ mod tests {
     let mut input = ParserInput::new("calc(nan)");
     let mut parser = Parser::new(&mut input);
     let result = NumericValue::parse(&mut parser);
-    let Ok(NumericValue::Number(Number(value))) = result else { panic!("expect number") };
+    let Ok(NumericValue::Number(Number(value))) = result else {
+      panic!("expect number")
+    };
     assert!(value.is_nan());
   }
 
@@ -646,7 +1108,7 @@ mod tests {
     let mut parser = Parser::new(&mut input);
     let result = NumericValue::parse(&mut parser);
     assert!(result.is_err_and(|error| error.kind
-      == ParseErrorKind::Custom(CSSValueError::NumericTypeMismatch)));
+      == ParseErrorKind::Custom(CSSValueError::DimensionMismatch)));
   }
 
   #[test]
@@ -678,5 +1140,112 @@ mod tests {
     let result = NumericValue::parse(&mut parser);
     assert!(result.is_err_and(|error| error.kind
       == ParseErrorKind::Custom(CSSValueError::InvalidDimensions)));
+  }
+
+  #[test]
+  fn min() {
+    let mut input = ParserInput::new("min(-1, 1 - 3, 3)");
+    let mut parser = Parser::new(&mut input);
+    let result = NumericValue::parse(&mut parser);
+    assert_eq!(result, Ok(NumericValue::Number(Number(-2.0))));
+  }
+
+  #[test]
+  fn min_nan() {
+    let mut input = ParserInput::new("min(-1, nan, 3)");
+    let mut parser = Parser::new(&mut input);
+    let result = NumericValue::parse(&mut parser);
+    let Ok(NumericValue::Number(Number(value))) = result else {
+      panic!("expect number")
+    };
+    assert!(value.is_nan());
+  }
+
+  #[test]
+  fn min_length() {
+    let mut input = ParserInput::new("min(-1px, 1px - 3px, 3px)");
+    let mut parser = Parser::new(&mut input);
+    let result = NumericValue::parse(&mut parser);
+    assert_eq!(
+      result,
+      Ok(NumericValue::Length(Length {
+        value: -2.0,
+        unit: LengthUnit::Px
+      }))
+    );
+  }
+
+  #[test]
+  fn max() {
+    let mut input = ParserInput::new("max(-1, 1 - 3, 3)");
+    let mut parser = Parser::new(&mut input);
+    let result = NumericValue::parse(&mut parser);
+    assert_eq!(result, Ok(NumericValue::Number(Number(3.0))));
+  }
+
+  #[test]
+  fn max_nan() {
+    let mut input = ParserInput::new("max(-1, nan, 3)");
+    let mut parser = Parser::new(&mut input);
+    let result = NumericValue::parse(&mut parser);
+    let Ok(NumericValue::Number(Number(value))) = result else {
+      panic!("expect number")
+    };
+    assert!(value.is_nan());
+  }
+
+  #[test]
+  fn max_length() {
+    let mut input = ParserInput::new("max(-1px, 1px - 3px, 3px)");
+    let mut parser = Parser::new(&mut input);
+    let result = NumericValue::parse(&mut parser);
+    assert_eq!(
+      result,
+      Ok(NumericValue::Length(Length {
+        value: 3.0,
+        unit: LengthUnit::Px
+      }))
+    );
+  }
+
+  #[test]
+  fn clamp() {
+    let mut input = ParserInput::new("clamp(-1, 1 - 3, 3)");
+    let mut parser = Parser::new(&mut input);
+    let result = NumericValue::parse(&mut parser);
+    assert_eq!(result, Ok(NumericValue::Number(Number(-1.0))));
+  }
+
+  #[test]
+  fn clamp_none() {
+    let mut input = ParserInput::new("clamp(none, 1 - 3, 3)");
+    let mut parser = Parser::new(&mut input);
+    let result = NumericValue::parse(&mut parser);
+    assert_eq!(result, Ok(NumericValue::Number(Number(-2.0))));
+  }
+
+  #[test]
+  fn clamp_nan() {
+    let mut input = ParserInput::new("clamp(-1, nan, 3)");
+    let mut parser = Parser::new(&mut input);
+    let result = NumericValue::parse(&mut parser);
+    let Ok(NumericValue::Number(Number(value))) = result else {
+      panic!("expect number")
+    };
+    assert!(value.is_nan());
+  }
+
+  #[test]
+  fn clamp_length() {
+    let mut input = ParserInput::new("clamp(-1px, 1px - 3px, 3px)");
+    let mut parser = Parser::new(&mut input);
+    let result = NumericValue::parse(&mut parser);
+    assert_eq!(
+      result,
+      Ok(NumericValue::Length(Length {
+        value: -1.0,
+        unit: LengthUnit::Px
+      }))
+    );
   }
 }
