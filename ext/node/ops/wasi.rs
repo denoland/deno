@@ -838,17 +838,15 @@ impl WasiContext {
   ) -> i32 {
     let mut inner = self.inner.borrow_mut();
     match inner.get_fd_mut(fd) {
-      Some(FdEntry::File { file, .. }) => {
-        match file.stream_position() {
-          Ok(pos) => {
-            if write_u64(memory, offset_ptr, pos).is_none() {
-              return ERRNO_FAULT;
-            }
-            ERRNO_SUCCESS
+      Some(FdEntry::File { file, .. }) => match file.stream_position() {
+        Ok(pos) => {
+          if write_u64(memory, offset_ptr, pos).is_none() {
+            return ERRNO_FAULT;
           }
-          Err(e) => io_err_to_errno(&e),
+          ERRNO_SUCCESS
         }
-      }
+        Err(e) => io_err_to_errno(&e),
+      },
       _ => ERRNO_BADF,
     }
   }
