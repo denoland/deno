@@ -1975,12 +1975,10 @@ dependencies = [
 [[package]]
 name = "deno_cache_dir"
 version = "0.27.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3b557ab2ef7973b4ba4c561631a46ce75fa52734d1845100d0b9bc1b6bc535ec"
 dependencies = [
  "async-trait",
  "base32",
- "base64 0.21.7",
+ "base64 0.22.1",
  "boxed_error",
  "cache_control",
  "chrono",
@@ -1993,11 +1991,14 @@ dependencies = [
  "log",
  "once_cell",
  "parking_lot",
+ "pretty_assertions",
  "serde",
  "serde_json",
  "sha2",
  "sys_traits",
+ "tempfile",
  "thiserror 2.0.12",
+ "tokio",
  "url",
 ]
 
