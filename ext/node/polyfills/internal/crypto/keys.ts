@@ -30,6 +30,7 @@ import {
   op_node_get_asymmetric_key_details,
   op_node_get_asymmetric_key_type,
   op_node_get_symmetric_key_size,
+  op_node_key_equals,
   op_node_key_type,
 } from "ext:core/ops";
 
@@ -192,17 +193,16 @@ export class KeyObject {
       throw new ERR_INVALID_ARG_VALUE("type", type);
     }
 
+    if (typeof handle !== "object") {
+      throw new ERR_INVALID_ARG_TYPE("handle", "object", handle);
+    }
+
     this[kKeyType] = type;
     this[kHandle] = handle;
   }
 
   get type(): KeyObjectType {
     return this[kKeyType];
-  }
-
-  get symmetricKeySize(): number | undefined {
-    notImplemented("crypto.KeyObject.prototype.symmetricKeySize");
-    return undefined;
   }
 
   static from(key: CryptoKey): KeyObject {
@@ -221,7 +221,7 @@ export class KeyObject {
       );
     }
 
-    notImplemented("crypto.KeyObject.prototype.equals");
+    return op_node_key_equals(this[kHandle], otherKeyObject[kHandle]);
   }
 
   export(options: KeyExportOptions<"pem">): string | Buffer;

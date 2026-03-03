@@ -22,6 +22,7 @@ import {
   op_node_decipheriv_decrypt,
   op_node_decipheriv_final,
   op_node_decipheriv_set_aad,
+  op_node_export_secret_key,
   op_node_private_decrypt,
   op_node_private_encrypt,
   op_node_public_encrypt,
@@ -36,6 +37,7 @@ import {
   KeyObject,
 } from "ext:deno_node/internal/crypto/keys.ts";
 import { isKeyObject } from "ext:deno_node/internal/crypto/_keys.ts";
+import { kHandle } from "ext:deno_node/internal/crypto/constants.ts";
 import type { BufferEncoding } from "ext:deno_node/_global.d.ts";
 import type {
   BinaryLike,
@@ -165,7 +167,15 @@ export interface DecipherOCB extends Decipher {
   ): this;
 }
 
-function toU8(input: string | Uint8Array): Uint8Array {
+function toU8(
+  input: string | Uint8Array | KeyObject | null,
+): Uint8Array {
+  if (input == null) {
+    return new Uint8Array(0);
+  }
+  if (isKeyObject(input)) {
+    return op_node_export_secret_key(input[kHandle]);
+  }
   return typeof input === "string" ? encode(input) : input;
 }
 
