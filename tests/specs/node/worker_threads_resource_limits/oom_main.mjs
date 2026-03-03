@@ -7,7 +7,8 @@ const worker = new Worker(new URL("./oom_worker.mjs", import.meta.url), {
 });
 
 worker.on("error", (err) => {
-  console.log("got error");
+  console.log("error code:", err.code);
+  console.log("error message:", err.message);
 });
 
 worker.on("exit", (code) => {
