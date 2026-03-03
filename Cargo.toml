@@ -391,14 +391,14 @@ ed25519-dalek = "2.1.1"
 ed448-goldilocks = "0.8.3"
 elliptic-curve = { version = "0.13.4", features = ["alloc", "arithmetic", "ecdh", "std", "pem", "jwk"] }
 hkdf = "0.12.3"
-k256 = "0.13.1"
+k256 = { version = "0.13.1", features = ["ecdh", "jwk", "pem"] }
 md-5 = "0.10.5"
 md4 = "0.10.2"
 ocb3 = "0.1.0"
 p224 = { version = "0.13.0", features = ["ecdh"] }
 p256 = { version = "0.13.2", features = ["ecdh", "jwk"] }
 p384 = { version = "0.13.0", features = ["ecdh", "jwk"] }
-p521 = "0.13.3"
+p521 = { version = "0.13.3", features = ["ecdh", "jwk"] }
 pbkdf2 = "0.12.1"
 pkcs8 = "0.10.2"
 ripemd = "0.1.3"
@@ -424,7 +424,7 @@ memmap2 = "0.9"
 
 # napi
 libloading = "0.7"
-libuv-sys-lite = "=1.48.2"
+libuv-sys-lite = { version = "=1.48.3", features = ["dyn-symbols"] }
 napi-build = "1"
 napi-sys = { version = "=2.2.2", default-features = false }
 

@@ -376,31 +376,48 @@ impl<
                   Ok::<_, SyncResolutionWithFsError>(())
                 }
               });
-              let extra_fut = if (package.has_bin
+              let needs_extra_from_disk = package.extra.is_none()
+                // When using abbreviated packument format, has_scripts may
+                // be true (from hasInstallScript) while extra.scripts is
+                // empty. In that case, read from disk to get real scripts.
+                || (package.has_scripts
+                  && package
+                    .extra
+                    .as_ref()
+                    .is_some_and(|e| e.scripts.is_empty()));
+              let extra = if (package.has_bin
                 || package.has_scripts
                 || package.is_deprecated)
-                && package.extra.is_none()
+                && needs_extra_from_disk
               {
+                // Wait for extraction to complete first, since
+                // get_package_extra_info may read from the on-disk
+                // package.json which doesn't exist until extraction finishes.
+                handle
+                  .await
+                  .map_err(JsErrorBox::from_err)?
+                  .map_err(JsErrorBox::from_err)?;
                 extra_info_provider
                   .get_package_extra_info(
                     &package.id.nv,
                     &package_path,
                     ExpectedExtraInfo::from_package(package),
                   )
-                  .boxed_local()
+                  .await
+                  .map_err(JsErrorBox::from_err)?
               } else {
-                std::future::ready(Ok(
-                  package.extra.clone().unwrap_or_default(),
-                ))
-                .boxed_local()
+                let (result, extra) = futures::future::join(
+                  handle,
+                  std::future::ready(Ok::<_, JsErrorBox>(
+                    package.extra.clone().unwrap_or_default(),
+                  )),
+                )
+                .await;
+                result
+                  .map_err(JsErrorBox::from_err)?
+                  .map_err(JsErrorBox::from_err)?;
+                extra?
               };
-
-              let (result, extra) =
-                futures::future::join(handle, extra_fut).await;
-              result
-                .map_err(JsErrorBox::from_err)?
-                .map_err(JsErrorBox::from_err)?;
-              let extra = extra.map_err(JsErrorBox::from_err)?;
 
               if package.has_bin {
                 bin_entries_to_setup.borrow_mut().add(

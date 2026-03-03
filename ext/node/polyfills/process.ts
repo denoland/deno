@@ -8,6 +8,7 @@ import { core, internals, primordials } from "ext:core/mod.js";
 import { initializeDebugEnv } from "ext:deno_node/internal/util/debuglog.ts";
 import { format } from "ext:deno_node/internal/util/inspect.mjs";
 import {
+  op_fs_umask,
   op_getegid,
   op_geteuid,
   op_node_load_env_file,
@@ -26,6 +27,7 @@ import Module, { getBuiltinModule } from "node:module";
 import { report } from "ext:deno_node/internal/process/report.ts";
 import { onWarning } from "ext:deno_node/internal/process/warning.ts";
 import {
+  parseFileMode,
   validateNumber,
   validateObject,
   validateString,
@@ -37,6 +39,7 @@ import {
   ERR_INVALID_ARG_VALUE_RANGE,
   ERR_OUT_OF_RANGE,
   ERR_UNKNOWN_SIGNAL,
+  ERR_WORKER_UNSUPPORTED_OPERATION,
   errnoException,
   NodeTypeError,
 } from "ext:deno_node/internal/errors.ts";
@@ -159,13 +162,19 @@ export const exit = (code?: number | string) => {
 };
 
 /** https://nodejs.org/api/process.html#processumaskmask */
-export const umask = () => {
-  // Always return the system default umask value.
-  // We don't use Deno.umask here because it has a race
-  // condition bug.
-  // See https://github.com/denoland/deno_std/issues/1893#issuecomment-1032897779
-  return 0o22;
-};
+export function umask(mask?: number | string): number {
+  if (mask !== undefined) {
+    if (internals.__isWorkerThread) {
+      throw new ERR_WORKER_UNSUPPORTED_OPERATION("Setting process.umask()");
+    }
+    mask = parseFileMode(mask, "mask");
+    return op_fs_umask(mask & 0o777);
+  }
+  // Note: reading the umask without setting has an inherent race condition
+  // (two syscalls: set to 0 then restore). Node.js has the same issue and
+  // has deprecated process.umask() with no arguments.
+  return op_fs_umask(null);
+}
 
 export const abort = () => {
   op_process_abort();
@@ -471,20 +480,7 @@ function uncaughtExceptionHandler(err: any, origin: string) {
   process.emit("uncaughtException", err, origin);
 }
 
-export let execPath: string = Object.freeze({
-  __proto__: String.prototype,
-  toString() {
-    execPath = Deno.execPath();
-    return execPath;
-  },
-  get length() {
-    return this.toString().length;
-  },
-  [Symbol.for("Deno.customInspect")](inspect, options) {
-    return inspect(this.toString(), options);
-  },
-  // deno-lint-ignore no-explicit-any
-}) as any as string;
+export let execPath: string = "";
 
 // The process class needs to be an ES5 class because it can be instantiated
 // in Node without the `new` keyword. It's not a true class in Node. Popular
@@ -878,13 +874,7 @@ process.binding = (name: BindingName) => {
 };
 
 /** https://nodejs.org/api/process.html#processumaskmask */
-process.umask = () => {
-  // Always return the system default umask value.
-  // We don't use Deno.umask here because it has a race
-  // condition bug.
-  // See https://github.com/denoland/deno_std/issues/1893#issuecomment-1032897779
-  return 0o22;
-};
+process.umask = umask;
 
 /** This method is removed on Windows */
 process.getgid = getgid;
@@ -1206,6 +1196,7 @@ internals.__bootstrapNodeProcess = function (
     platform = isWindows ? "win32" : Deno.build.os;
     pid = Deno.pid;
     ppid = Deno.ppid;
+    execPath = Deno.execPath();
     initializeDebugEnv(nodeDebug);
 
     if (getOptionValue("--warnings")) {

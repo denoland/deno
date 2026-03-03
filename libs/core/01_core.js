@@ -40,6 +40,7 @@
   const {
     op_abort_wasm_streaming,
     op_current_user_call_site,
+    op_compile_function,
     op_decode,
     op_deserialize,
     op_destructure_error,
@@ -715,6 +716,31 @@
     runMicrotasks: () => op_run_microtasks(),
     hasTickScheduled: () => op_has_tick_scheduled(),
     setHasTickScheduled: (bool) => op_set_has_tick_scheduled(bool),
+    compileFunction: (
+      source,
+      specifier,
+      hostDefinedOptions,
+      params,
+    ) => {
+      const [result, error] = op_compile_function(
+        source,
+        specifier,
+        hostDefinedOptions,
+        params,
+      );
+      if (error) {
+        const { 0: thrown, 1: isNativeError, 2: isCompileError } = error;
+        return [
+          result,
+          {
+            thrown,
+            isNativeError,
+            isCompileError,
+          },
+        ];
+      }
+      return [result, null];
+    },
     evalContext: (
       source,
       specifier,
