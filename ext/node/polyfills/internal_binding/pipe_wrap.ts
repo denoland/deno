@@ -273,11 +273,13 @@ export class Pipe extends ConnectionWrap {
       const msg = err.message ?? "";
 
       // ERROR_PIPE_BUSY (231): All pipe instances are currently in use.
-      // Node.js handles this via WaitNamedPipeW(30000) in libuv which
-      // blocks until a pipe instance is available. We poll with retries.
-      // The raw OS error code is embedded in the error message by Rust's
-      // std::io::Error formatting (e.g., "... (os error 231)").
-      if (StringPrototypeIncludes(msg, "os error 231") && attempt < 50) {
+      // Node.js/libuv handles this via WaitNamedPipeW(30000) which blocks
+      // up to 30 seconds. We emulate this by polling with retries:
+      // 300 attempts × 100ms = 30s max wait, matching libuv's timeout.
+      // Note: we match on the error message because Deno's error
+      // serialization doesn't expose raw OS error codes as a property.
+      // Rust's std::io::Error formats it as "... (os error 231)".
+      if (StringPrototypeIncludes(msg, "os error 231") && attempt < 300) {
         globalThis.setTimeout(() => {
           this.#connectWindows(req, address, attempt + 1);
         }, 100);
