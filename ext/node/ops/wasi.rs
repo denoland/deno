@@ -236,11 +236,7 @@ unsafe impl GarbageCollected for WasiContext {
   }
 }
 
-fn get_memory_slice(
-  memory: &[u8],
-  offset: i32,
-  len: i32,
-) -> Option<&[u8]> {
+fn get_memory_slice(memory: &[u8], offset: i32, len: i32) -> Option<&[u8]> {
   let start = offset as usize;
   let end = start.checked_add(len as usize)?;
   memory.get(start..end)
