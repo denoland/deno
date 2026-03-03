@@ -72,6 +72,7 @@ const {
   DatePrototype,
   DatePrototypeGetTime,
   DatePrototypeToISOString,
+  DatePrototypeToString,
   Error,
   ErrorCaptureStackTrace,
   ErrorPrototype,
@@ -848,14 +849,16 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
         (proxyDetails === null && isDate(value)) ||
         (proxyDetails !== null && isDate(proxyDetails[0]))
       ) {
-        const date = proxyDetails?.[0] ?? value;
-        if (NumberIsNaN(DatePrototypeGetTime(date))) {
-          return ctx.stylize("Invalid Date", "date");
-        } else {
-          base = DatePrototypeToISOString(date);
-          if (keys.length === 0 && protoProps === undefined) {
-            return ctx.stylize(base, "date");
-          }
+        value = proxyDetails?.[0] ?? value;
+        base = NumberIsNaN(DatePrototypeGetTime(value))
+          ? DatePrototypeToString(value)
+          : DatePrototypeToISOString(value);
+        const prefix = getPrefix(constructor, tag, "Date");
+        if (prefix !== "Date ") {
+          base = `${prefix}${base}`;
+        }
+        if (keys.length === 0 && protoProps === undefined) {
+          return ctx.stylize(base, "date");
         }
       } else if (
         proxyDetails === null &&
