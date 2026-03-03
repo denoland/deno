@@ -205,9 +205,6 @@ export class KeyObject {
     return this[kKeyType];
   }
 
-  get symmetricKeySize(): number | undefined {
-    return undefined;
-  }
 
   static from(key: CryptoKey): KeyObject {
     if (!isCryptoKey(key)) {
