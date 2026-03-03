@@ -1109,6 +1109,7 @@ async fn install_global_compiled(
     no_terminal: false,
     icon: None,
     include: vec![],
+    include_as_is: vec![],
     exclude: vec![],
     eszip: false,
     self_extracting: false,
