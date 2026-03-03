@@ -238,7 +238,7 @@ function isBinDirForThisPackage(binDir) {
       // Verify the symlink points into our package directory
       const linkTarget = fs.readlinkSync(path.join(binDir, "deno"));
       const resolved = path.resolve(binDir, linkTarget);
-      return resolved.startsWith(__dirname);
+      return resolved.endsWith("bin.cjs");
     }
   } catch (_err) {
     return false;
