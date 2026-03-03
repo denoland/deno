@@ -10,6 +10,8 @@ use std::time::SystemTime;
 use boxed_error::Boxed;
 use data_url::DataUrl;
 use deno_error::JsError;
+use deno_maybe_sync::MaybeSend;
+use deno_maybe_sync::MaybeSync;
 use deno_media_type::MediaType;
 use deno_path_util::url_to_file_path;
 use http::header;
@@ -33,8 +35,6 @@ use crate::Checksum;
 use crate::ChecksumIntegrityError;
 use crate::cache::HttpCacheRc;
 use crate::common::HeadersMap;
-use crate::sync::MaybeSend;
-use crate::sync::MaybeSync;
 
 mod auth_tokens;
 mod http_util;
@@ -163,7 +163,7 @@ impl File {
 }
 
 #[allow(clippy::disallowed_types)]
-pub type MemoryFilesRc = crate::sync::MaybeArc<dyn MemoryFiles>;
+pub type MemoryFilesRc = deno_maybe_sync::MaybeArc<dyn MemoryFiles>;
 
 pub trait MemoryFiles: std::fmt::Debug + MaybeSend + MaybeSync {
   fn get(&self, url: &Url) -> Option<File>;

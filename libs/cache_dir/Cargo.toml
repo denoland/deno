@@ -1,3 +1,5 @@
+# Copyright 2018-2026 the Deno authors. MIT license.
+
 [package]
 name = "deno_cache_dir"
 version = "0.27.0"
@@ -24,6 +26,7 @@ cache_control = { workspace = true, optional = true }
 chrono = { workspace = true, default-features = false, features = ["std"], optional = true }
 data-url = { workspace = true, optional = true }
 deno_error = { workspace = true, features = ["url"] }
+deno_maybe_sync.workspace = true
 deno_media_type.workspace = true
 deno_path_util.workspace = true
 http = { workspace = true, optional = true }

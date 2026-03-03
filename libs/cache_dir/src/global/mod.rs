@@ -5,6 +5,8 @@ use std::time::Duration;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
+use deno_maybe_sync::MaybeSend;
+use deno_maybe_sync::MaybeSync;
 use serde::Deserialize;
 use sys_traits::FsCreateDirAll;
 use sys_traits::FsMetadata;
@@ -26,8 +28,6 @@ use crate::cache::Checksum;
 use crate::cache::SerializedCachedUrlMetadata;
 use crate::cache::url_to_filename;
 use crate::common::HeadersMap;
-use crate::sync::MaybeSend;
-use crate::sync::MaybeSync;
 
 mod cache_file;
 
@@ -50,7 +50,8 @@ pub trait GlobalHttpCacheSys:
 }
 
 #[allow(clippy::disallowed_types)]
-pub type GlobalHttpCacheRc<TSys> = crate::sync::MaybeArc<GlobalHttpCache<TSys>>;
+pub type GlobalHttpCacheRc<TSys> =
+  deno_maybe_sync::MaybeArc<GlobalHttpCache<TSys>>;
 
 #[derive(Debug)]
 pub struct GlobalHttpCache<Sys: GlobalHttpCacheSys> {

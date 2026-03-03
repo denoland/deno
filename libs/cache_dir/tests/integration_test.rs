@@ -4,7 +4,6 @@
 
 use std::collections::HashMap;
 use std::path::Path;
-use std::rc::Rc;
 
 use deno_cache_dir::CacheReadFileError;
 use deno_cache_dir::Checksum;
@@ -13,6 +12,7 @@ use deno_cache_dir::GlobalToLocalCopy;
 use deno_cache_dir::HttpCache;
 use deno_cache_dir::LocalHttpCache;
 use deno_cache_dir::LocalLspHttpCache;
+use deno_maybe_sync::new_rc;
 use serde_json::json;
 use sys_traits::impls::RealSys;
 use tempfile::TempDir;
@@ -109,7 +109,7 @@ fn test_local_global_cache() {
   let local_cache_path = temp_dir.path().join("local");
   let sys = RealSys;
   let global_cache =
-    Rc::new(GlobalHttpCache::new(sys, global_cache_path.clone()));
+    new_rc(GlobalHttpCache::new(sys, global_cache_path.clone()));
   let local_cache = LocalHttpCache::new(
     local_cache_path.clone(),
     global_cache.clone(),
@@ -538,7 +538,7 @@ fn test_lsp_local_cache() {
   let local_cache_path = temp_dir.path().join("local");
   let sys = RealSys;
   let global_cache =
-    Rc::new(GlobalHttpCache::new(sys, global_cache_path.to_path_buf()));
+    new_rc(GlobalHttpCache::new(sys, global_cache_path.to_path_buf()));
   let local_cache = LocalHttpCache::new(
     local_cache_path.to_path_buf(),
     global_cache.clone(),

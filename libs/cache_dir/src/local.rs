@@ -9,6 +9,8 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::time::SystemTime;
 
+use deno_maybe_sync::MaybeSend;
+use deno_maybe_sync::MaybeSync;
 use deno_media_type::MediaType;
 use deno_path_util::fs::atomic_write_file_with_retries;
 use once_cell::sync::Lazy;
@@ -37,8 +39,6 @@ use crate::cache::CacheEntry;
 use crate::cache::CacheReadFileError;
 use crate::cache::GlobalToLocalCopy;
 use crate::global::GlobalHttpCacheRc;
-use crate::sync::MaybeSend;
-use crate::sync::MaybeSync;
 
 #[sys_traits::auto_impl]
 pub trait LocalHttpCacheSys:
@@ -226,7 +226,8 @@ impl<TSys: LocalHttpCacheSys> HttpCache for LocalLspHttpCache<TSys> {
 }
 
 #[allow(clippy::disallowed_types)]
-pub type LocalHttpCacheRc<TSys> = crate::sync::MaybeArc<LocalHttpCache<TSys>>;
+pub type LocalHttpCacheRc<TSys> =
+  deno_maybe_sync::MaybeArc<LocalHttpCache<TSys>>;
 
 #[derive(Debug)]
 pub struct LocalHttpCache<TSys: LocalHttpCacheSys> {
@@ -1087,8 +1088,7 @@ fn url_path_segments(url: &Url) -> impl Iterator<Item = &str> {
 
 #[cfg(test)]
 mod test {
-  use std::rc::Rc;
-
+  use deno_maybe_sync::new_rc;
   use pretty_assertions::assert_eq;
   use sys_traits::impls::RealSys;
   use tempfile::TempDir;
@@ -1111,8 +1111,8 @@ mod test {
       let local_temp = temp.path().join("local");
 
       let global_cache = GlobalHttpCache::new(RealSys, global_temp);
-      let global_cache = Rc::new(global_cache);
-      let local_cache = Rc::new(LocalHttpCache::new(
+      let global_cache = new_rc(global_cache);
+      let local_cache = new_rc(LocalHttpCache::new(
         local_temp.clone(),
         global_cache.clone(),
         GlobalToLocalCopy::Allow,

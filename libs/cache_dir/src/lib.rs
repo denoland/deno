@@ -9,7 +9,6 @@ mod global;
 mod local;
 pub mod memory;
 pub mod npm;
-mod sync;
 
 /// Permissions used to save a file in the disk caches.
 pub const CACHE_PERM: u32 = 0o644;

@@ -2,7 +2,6 @@
 
 #![allow(clippy::disallowed_methods)]
 
-use std::rc::Rc;
 use std::time::SystemTime;
 
 use deno_cache_dir::file_fetcher::AuthTokens;
@@ -20,6 +19,7 @@ use deno_cache_dir::file_fetcher::NullMemoryFiles;
 use deno_cache_dir::file_fetcher::SendError;
 use deno_cache_dir::file_fetcher::SendResponse;
 use deno_cache_dir::memory::MemoryHttpCache;
+use deno_maybe_sync::new_rc;
 use http::HeaderMap;
 use sys_traits::FsCreateDirAll;
 use sys_traits::FsWrite;
@@ -164,9 +164,9 @@ fn create_file_fetcher<TClient: HttpClient>(
   FileFetcher::new(
     NullBlobStore,
     sys,
-    Rc::new(MemoryHttpCache::default()),
+    new_rc(MemoryHttpCache::default()),
     client,
-    Rc::new(NullMemoryFiles),
+    new_rc(NullMemoryFiles),
     FileFetcherOptions {
       allow_remote: true,
       cache_setting: CacheSetting::Use,

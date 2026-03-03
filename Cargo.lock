@@ -1984,6 +1984,7 @@ dependencies = [
  "chrono",
  "data-url",
  "deno_error",
+ "deno_maybe_sync",
  "deno_media_type",
  "deno_path_util",
  "http 1.4.0",

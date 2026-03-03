@@ -6,6 +6,8 @@ use std::path::PathBuf;
 use std::time::SystemTime;
 
 use deno_error::JsError;
+use deno_maybe_sync::MaybeSend;
+use deno_maybe_sync::MaybeSync;
 use serde::Deserialize;
 use serde::Serialize;
 use thiserror::Error;
@@ -18,8 +20,6 @@ use crate::common::base_url_to_filename_parts;
 use crate::common::checksum;
 use crate::global::GlobalHttpCacheSys;
 use crate::local::LocalHttpCacheSys;
-use crate::sync::MaybeSend;
-use crate::sync::MaybeSync;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum GlobalToLocalCopy {
@@ -161,7 +161,7 @@ pub struct HttpCacheItemKey<'a> {
 }
 
 #[allow(clippy::disallowed_types)]
-pub type HttpCacheRc = crate::sync::MaybeArc<dyn HttpCache>;
+pub type HttpCacheRc = deno_maybe_sync::MaybeArc<dyn HttpCache>;
 
 pub trait HttpCache: MaybeSend + MaybeSync + std::fmt::Debug {
   /// A pre-computed key for looking up items in the cache.

@@ -33,6 +33,7 @@ disallowed-methods = [
   { path = "std::path::Path::canonicalize", reason = "File system operations should be done using DenoCacheEnv trait" },
   { path = "std::path::Path::exists", reason = "File system operations should be done using DenoCacheEnv trait" },
   { path = "std::time::SystemTime::now", reason = "Getting the time should be done using DenoCacheEnv trait" },
+  { path = "sys_traits::EnvCurrentDir::env_current_dir", reason = "use crate::util::env::resolve_cwd instead and prefer passing it the initial_cwd" },
 ]
 disallowed-types = [
   { path = "std::sync::Arc", reason = "use crate::sync::MaybeArc instead" },
