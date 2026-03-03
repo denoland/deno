@@ -33,7 +33,9 @@ import {
 import { primordials } from "ext:core/mod.js";
 import assert from "node:assert";
 import { kKeyObject } from "ext:deno_node/internal/crypto/constants.ts";
+import { isError } from "ext:deno_node/internal/util.mjs";
 import { isURL } from "ext:deno_node/internal/url.ts";
+import { getCryptoKeyDataForComparison } from "ext:deno_crypto/00_crypto.js";
 
 const {
   Array,
@@ -51,7 +53,6 @@ const {
   Date,
   DatePrototypeGetTime,
   Error,
-  ErrorPrototype,
   Float32Array,
   Float64Array,
   Function,
@@ -69,7 +70,6 @@ const {
   ObjectKeys,
   ObjectPrototypeHasOwnProperty: hasOwn,
   ObjectPrototypePropertyIsEnumerable: hasEnumerable,
-  ObjectPrototypeIsPrototypeOf,
   ObjectPrototypeToString,
   Promise,
   RegExp,
@@ -419,11 +419,11 @@ function objectComparisonStart(
     ) {
       return false;
     }
-  } else if (ObjectPrototypeIsPrototypeOf(ErrorPrototype, val1)) {
+  } else if (isError(val1)) {
     // Do not compare the stack as it might differ even though the error itself
     // is otherwise identical.
     if (
-      !ObjectPrototypeIsPrototypeOf(ErrorPrototype, val2) ||
+      !isError(val2) ||
       !isEnumerableOrIdentical(val1, val2, "message", mode, memos) ||
       !isEnumerableOrIdentical(val1, val2, "name", mode, memos) ||
       !isEnumerableOrIdentical(val1, val2, "cause", mode, memos) ||
@@ -442,6 +442,33 @@ function objectComparisonStart(
     if (!isEqualBoxedPrimitive(val1, val2)) {
       return false;
     }
+  } else if (getCryptoKeyDataForComparison(val1)) {
+    const cryptoKeyData1 = getCryptoKeyDataForComparison(val1)!;
+    const cryptoKeyData2 = getCryptoKeyDataForComparison(val2);
+    if (
+      !cryptoKeyData2 ||
+      cryptoKeyData1.extractable !== cryptoKeyData2.extractable ||
+      !innerDeepEqual(
+        cryptoKeyData1.algorithm,
+        cryptoKeyData2.algorithm,
+        mode,
+        memos,
+      ) ||
+      !innerDeepEqual(
+        cryptoKeyData1.usages,
+        cryptoKeyData2.usages,
+        mode,
+        memos,
+      ) ||
+      !innerDeepEqual(
+        cryptoKeyData1.keyData,
+        cryptoKeyData2.keyData,
+        mode,
+        memos,
+      )
+    ) {
+      return false;
+    }
   } else if (
     ArrayIsArray(val2) ||
     isArrayBufferView(val2) ||
@@ -452,7 +479,8 @@ function objectComparisonStart(
     isAnyArrayBuffer(val2) ||
     isBoxedPrimitive(val2) ||
     isNativeError(val2) ||
-    ObjectPrototypeIsPrototypeOf(ErrorPrototype, val2)
+    isError(val2) ||
+    getCryptoKeyDataForComparison(val2)
   ) {
     return false;
   } else if (isURL(val1)) {

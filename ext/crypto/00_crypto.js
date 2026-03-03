@@ -434,6 +434,24 @@ function constructKey(type, extractable, usages, algorithm, handle) {
   return key;
 }
 
+/**
+ * @param {CryptoKey} key
+ */
+function getCryptoKeyDataForComparison(key) {
+  if (!ObjectPrototypeIsPrototypeOf(CryptoKeyPrototype, key)) {
+    return undefined;
+  }
+
+  const handle = key[_handle];
+  return {
+    type: key[_type],
+    extractable: key[_extractable],
+    usages: key[_usages],
+    algorithm: key[_algorithm],
+    keyData: WeakMapPrototypeGet(KEY_STORE, handle),
+  };
+}
+
 // https://w3c.github.io/webcrypto/#concept-usage-intersection
 /**
  * @param {string[]} a
@@ -5836,4 +5854,10 @@ const dictEcdhKeyDeriveParams = [
 webidl.converters.EcdhKeyDeriveParams = webidl
   .createDictionaryConverter("EcdhKeyDeriveParams", dictEcdhKeyDeriveParams);
 
-export { Crypto, crypto, CryptoKey, SubtleCrypto };
+export {
+  Crypto,
+  crypto,
+  CryptoKey,
+  getCryptoKeyDataForComparison,
+  SubtleCrypto,
+};
