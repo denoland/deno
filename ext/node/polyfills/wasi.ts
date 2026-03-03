@@ -18,6 +18,7 @@ const {
   Error,
   NumberIsInteger,
   ObjectEntries,
+  ObjectPrototypeToString,
   TypeError,
 } = primordials;
 
@@ -29,6 +30,12 @@ class UVWASIError extends Error {
     this.code = code;
     this.name = "Error";
   }
+}
+
+// Check if value is a WebAssembly.Memory, works across VM contexts
+function isWasmMemory(value: unknown): boolean {
+  // instanceof fails across VM contexts, use Object.prototype.toString
+  return ObjectPrototypeToString(value) === "[object WebAssembly.Memory]";
 }
 
 // Custom TypeError with ERR_INVALID_ARG_TYPE code for memory validation
@@ -661,12 +668,12 @@ class WASI {
       );
     }
 
-    // Validate memory export
-    if (!(exports.memory instanceof WebAssembly.Memory)) {
+    // Validate memory export (use isWasmMemory for cross-context support)
+    if (!isWasmMemory(exports.memory)) {
       throw createMemoryTypeError(exports.memory);
     }
 
-    this.#memory = exports.memory;
+    this.#memory = exports.memory as WebAssembly.Memory;
     this.#started = true;
 
     try {
@@ -720,12 +727,12 @@ class WASI {
       );
     }
 
-    // Validate memory export
-    if (!(exports.memory instanceof WebAssembly.Memory)) {
+    // Validate memory export (use isWasmMemory for cross-context support)
+    if (!isWasmMemory(exports.memory)) {
       throw createMemoryTypeError(exports.memory);
     }
 
-    this.#memory = exports.memory;
+    this.#memory = exports.memory as WebAssembly.Memory;
     this.#started = true;
 
     if (typeof exports._initialize === "function") {
