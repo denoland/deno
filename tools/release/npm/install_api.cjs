@@ -34,7 +34,7 @@ module.exports = {
     }
 
     try {
-      if (process.env.DPRINT_SIMULATED_READONLY_FILE_SYSTEM === "1") {
+      if (process.env.DENO_SIMULATED_READONLY_FILE_SYSTEM === "1") {
         console.warn("Simulating readonly file system for testing.");
         throw new Error("Throwing for testing purposes.");
       }
