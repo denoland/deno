@@ -13,6 +13,22 @@ use deno_permissions::PermissionsContainer;
 use crate::ExtNodeSys;
 use crate::NodeRequireLoaderRc;
 
+/// Default thread stack size in MB, matching Node.js default.
+pub const DEFAULT_STACK_SIZE_MB: usize = 4;
+
+/// Resolved resource limits with V8 defaults filled in for unspecified values.
+/// Stored in the worker's OpState so the JS polyfill can read actual values.
+#[derive(
+  deno_core::serde::Serialize, Clone, Debug, Default, PartialEq, Eq,
+)]
+#[serde(rename_all = "camelCase")]
+pub struct ResolvedResourceLimits {
+  pub max_young_generation_size_mb: usize,
+  pub max_old_generation_size_mb: usize,
+  pub code_range_size_mb: usize,
+  pub stack_size_mb: usize,
+}
+
 #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
 fn ensure_read_permission<'a>(
   state: &mut OpState,
@@ -99,4 +115,15 @@ pub fn op_worker_threads_filename<TSys: ExtNodeSys + 'static>(
   let _url_path = ensure_read_permission(state, Cow::Owned(url_path))
     .map_err(WorkerThreadsFilenameError::Permission)?;
   Ok(Some(url.into()))
+}
+
+/// Returns the resolved resource limits for this worker, or None if
+/// no resource limits were configured. Called from worker_threads
+/// polyfill during init to get actual V8 values (with defaults filled in).
+#[op2]
+#[serde]
+pub fn op_worker_get_resource_limits(
+  state: &mut OpState,
+) -> Option<ResolvedResourceLimits> {
+  state.try_borrow::<ResolvedResourceLimits>().cloned()
 }

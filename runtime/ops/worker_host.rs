@@ -206,8 +206,15 @@ fn op_create_worker(
   let (handle_sender, handle_receiver) =
     std::sync::mpsc::sync_channel::<SendableWebWorkerHandle>(1);
 
-  // Setup new thread
-  let thread_builder = std::thread::Builder::new().name(format!("{worker_id}"));
+  // Setup new thread. If stackSizeMb is specified in resourceLimits,
+  // set the OS thread stack size to match Node.js behavior.
+  let mut thread_builder =
+    std::thread::Builder::new().name(format!("{worker_id}"));
+  if let Some(ref limits) = args.resource_limits {
+    if let Some(stack_mb) = limits.stack_size_mb.filter(|&v| v > 0) {
+      thread_builder = thread_builder.stack_size(stack_mb * 1024 * 1024);
+    }
+  }
   let maybe_worker_metadata = if let Some(data) = maybe_worker_metadata {
     let transferables =
       deserialize_js_transferables(state, data.transferables)?;

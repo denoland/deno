@@ -10,6 +10,7 @@ import {
   op_host_recv_message,
   op_host_terminate_worker,
   op_message_port_recv_message_sync,
+  op_worker_get_resource_limits,
   op_worker_threads_filename,
 } from "ext:core/ops";
 import {
@@ -799,9 +800,11 @@ internals.__initWorkerThreads = (
         process.env = env;
       }
 
-      // Set resourceLimits from the metadata passed by the parent.
-      if (metadata.resourceLimits) {
-        resourceLimits = { ...metadata.resourceLimits };
+      // Get resolved resource limits from the Rust side (includes V8
+      // defaults for unspecified fields), matching Node.js behavior.
+      const resolvedLimits = op_worker_get_resource_limits();
+      if (resolvedLimits) {
+        resourceLimits = resolvedLimits;
       } else {
         resourceLimits = {};
       }
