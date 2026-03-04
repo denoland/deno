@@ -621,17 +621,17 @@ pub(crate) unsafe fn poll_tcp_handle(
   if let Some(ref listener) = tcp.internal_listener
     && tcp.internal_connection_cb.is_some()
   {
-    if tcp.internal_backlog.is_empty() {
-      if let Poll::Ready(Ok((stream, _))) = listener.poll_accept(cx) {
-        tcp.internal_backlog.push_back(stream);
-        any_work = true;
-      }
+    if tcp.internal_backlog.is_empty()
+      && let Poll::Ready(Ok((stream, _))) = listener.poll_accept(cx)
+    {
+      tcp.internal_backlog.push_back(stream);
+      any_work = true;
     }
-    if !tcp.internal_backlog.is_empty() {
-      if let Some(cb) = tcp.internal_connection_cb {
-        // SAFETY: tcp_ptr is valid; cb set by C caller via uv_listen.
-        unsafe { cb(tcp_ptr as *mut uv_stream_t, 0) };
-      }
+    if !tcp.internal_backlog.is_empty()
+      && let Some(cb) = tcp.internal_connection_cb
+    {
+      // SAFETY: tcp_ptr is valid; cb set by C caller via uv_listen.
+      unsafe { cb(tcp_ptr as *mut uv_stream_t, 0) };
       // If uv_accept wasn't called in the callback (backlog still
       // non-empty), don't poll again until it is consumed.
     }
