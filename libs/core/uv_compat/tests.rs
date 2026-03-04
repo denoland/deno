@@ -46,7 +46,7 @@ fn tick(runtime: &mut JsRuntime) {
 
 // ========== Loop lifecycle ==========
 
-#[tokio::test]
+#[tokio::test(flavor = "current_thread")]
 async fn loop_init_and_close() {
   let uv_loop = Box::into_raw(Box::<uv_loop_t>::new_uninit());
   unsafe {
@@ -56,7 +56,7 @@ async fn loop_init_and_close() {
   }
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "current_thread")]
 async fn uv_now_returns_nonzero_after_delay() {
   run_test(async |_runtime, uv_loop| {
     let t1 = unsafe { uv_now(uv_loop) };
@@ -69,7 +69,7 @@ async fn uv_now_returns_nonzero_after_delay() {
 
 // ========== Timer tests ==========
 
-#[tokio::test]
+#[tokio::test(flavor = "current_thread")]
 async fn timer_init_sets_fields() {
   run_test(async |_runtime, uv_loop| {
     let mut timer = std::mem::MaybeUninit::<uv_timer_t>::uninit();
@@ -85,7 +85,7 @@ async fn timer_init_sets_fields() {
   .await;
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "current_thread")]
 async fn timer_fires_callback() {
   run_test(async |runtime, uv_loop| {
     let fired = Rc::new(Cell::new(false));
@@ -120,7 +120,7 @@ async fn timer_fires_callback() {
   .await;
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "current_thread")]
 async fn timer_repeat() {
   run_test(async |runtime, uv_loop| {
     let count = Rc::new(Cell::new(0u32));
@@ -165,7 +165,7 @@ async fn timer_repeat() {
   .await;
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "current_thread")]
 async fn timer_stop_prevents_firing() {
   run_test(async |runtime, uv_loop| {
     let fired = Rc::new(Cell::new(false));
@@ -200,7 +200,7 @@ async fn timer_stop_prevents_firing() {
   .await;
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "current_thread")]
 async fn timer_again_requires_repeat() {
   run_test(async |_runtime, uv_loop| {
     unsafe extern "C" fn noop_cb(_: *mut uv_timer_t) {}
@@ -233,7 +233,7 @@ async fn timer_again_requires_repeat() {
   .await;
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "current_thread")]
 async fn timer_get_set_repeat() {
   run_test(async |_runtime, uv_loop| {
     let mut timer = std::mem::MaybeUninit::<uv_timer_t>::uninit();
@@ -250,7 +250,7 @@ async fn timer_get_set_repeat() {
 
 // ========== Idle tests ==========
 
-#[tokio::test]
+#[tokio::test(flavor = "current_thread")]
 async fn idle_fires_callback() {
   run_test(async |runtime, uv_loop| {
     let fired = Rc::new(Cell::new(false));
@@ -283,7 +283,7 @@ async fn idle_fires_callback() {
   .await;
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "current_thread")]
 async fn idle_stop_prevents_further_callbacks() {
   run_test(async |runtime, uv_loop| {
     let count = Rc::new(Cell::new(0u32));
@@ -321,7 +321,7 @@ async fn idle_stop_prevents_further_callbacks() {
 
 // ========== Prepare tests ==========
 
-#[tokio::test]
+#[tokio::test(flavor = "current_thread")]
 async fn prepare_fires_callback() {
   run_test(async |runtime, uv_loop| {
     let fired = Rc::new(Cell::new(false));
@@ -356,7 +356,7 @@ async fn prepare_fires_callback() {
 
 // ========== Check tests ==========
 
-#[tokio::test]
+#[tokio::test(flavor = "current_thread")]
 async fn check_fires_callback() {
   run_test(async |runtime, uv_loop| {
     let fired = Rc::new(Cell::new(false));
@@ -391,7 +391,7 @@ async fn check_fires_callback() {
 
 // ========== uv_close tests ==========
 
-#[tokio::test]
+#[tokio::test(flavor = "current_thread")]
 async fn close_fires_callback() {
   run_test(async |runtime, uv_loop| {
     let closed = Rc::new(Cell::new(false));
@@ -423,7 +423,7 @@ async fn close_fires_callback() {
   .await;
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "current_thread")]
 async fn close_without_callback() {
   run_test(async |runtime, uv_loop| {
     let mut idle = std::mem::MaybeUninit::<uv_idle_t>::uninit();
@@ -441,7 +441,7 @@ async fn close_without_callback() {
 
 // ========== uv_ref / uv_unref ==========
 
-#[tokio::test]
+#[tokio::test(flavor = "current_thread")]
 async fn ref_unref_toggle() {
   run_test(async |_runtime, uv_loop| {
     let mut timer = std::mem::MaybeUninit::<uv_timer_t>::uninit();
@@ -464,7 +464,7 @@ async fn ref_unref_toggle() {
 
 // ========== uv_ip4_addr ==========
 
-#[tokio::test]
+#[tokio::test(flavor = "current_thread")]
 async fn ip4_addr_parses_correctly() {
   let mut addr = std::mem::MaybeUninit::<sockaddr_in>::uninit();
   let ip = std::ffi::CString::new("127.0.0.1").unwrap();
@@ -479,7 +479,7 @@ async fn ip4_addr_parses_correctly() {
   }
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "current_thread")]
 async fn ip4_addr_invalid_string() {
   let mut addr = std::mem::MaybeUninit::<sockaddr_in>::uninit();
   let ip = std::ffi::CString::new("not-an-ip").unwrap();
@@ -491,7 +491,7 @@ async fn ip4_addr_invalid_string() {
 
 // ========== TCP init ==========
 
-#[tokio::test]
+#[tokio::test(flavor = "current_thread")]
 async fn tcp_init_sets_fields() {
   run_test(async |_runtime, uv_loop| {
     let mut tcp = std::mem::MaybeUninit::<uv_tcp_t>::uninit();
@@ -509,7 +509,7 @@ async fn tcp_init_sets_fields() {
 
 // ========== TCP bind / listen / accept ==========
 
-#[tokio::test]
+#[tokio::test(flavor = "current_thread")]
 async fn tcp_bind_and_listen() {
   run_test(async |_runtime, uv_loop| {
     let mut server = std::mem::MaybeUninit::<uv_tcp_t>::uninit();
@@ -558,7 +558,7 @@ async fn tcp_bind_and_listen() {
 
 // ========== TCP connect + I/O ==========
 
-#[tokio::test]
+#[tokio::test(flavor = "current_thread")]
 async fn tcp_connect_and_echo() {
   run_test(async |runtime, uv_loop| {
     // --- Set up a server ---
@@ -659,7 +659,7 @@ async fn tcp_connect_and_echo() {
 
 // ========== TCP nodelay ==========
 
-#[tokio::test]
+#[tokio::test(flavor = "current_thread")]
 async fn tcp_nodelay() {
   run_test(async |_runtime, uv_loop| {
     let mut tcp = std::mem::MaybeUninit::<uv_tcp_t>::uninit();
@@ -676,7 +676,7 @@ async fn tcp_nodelay() {
 
 // ========== TCP keepalive / simultaneous_accepts (no-ops) ==========
 
-#[tokio::test]
+#[tokio::test(flavor = "current_thread")]
 async fn tcp_keepalive_is_noop() {
   run_test(async |_runtime, uv_loop| {
     let mut tcp = std::mem::MaybeUninit::<uv_tcp_t>::uninit();
@@ -692,7 +692,7 @@ async fn tcp_keepalive_is_noop() {
 
 // ========== uv_read_stop ==========
 
-#[tokio::test]
+#[tokio::test(flavor = "current_thread")]
 async fn read_stop_clears_reading() {
   run_test(async |_runtime, uv_loop| {
     let mut tcp = std::mem::MaybeUninit::<uv_tcp_t>::uninit();
@@ -725,7 +725,7 @@ async fn read_stop_clears_reading() {
 
 // ========== uv_try_write without stream ==========
 
-#[tokio::test]
+#[tokio::test(flavor = "current_thread")]
 async fn try_write_no_stream_returns_ebadf() {
   run_test(async |_runtime, uv_loop| {
     let mut tcp = std::mem::MaybeUninit::<uv_tcp_t>::uninit();
@@ -776,7 +776,7 @@ fn new_shutdown_constructor() {
 
 // ========== Phase ordering ==========
 
-#[tokio::test]
+#[tokio::test(flavor = "current_thread")]
 async fn phase_ordering_idle_prepare_check() {
   run_test(async |runtime, uv_loop| {
     // Verify that idle runs before prepare, and prepare before check,
@@ -871,7 +871,7 @@ async fn phase_ordering_idle_prepare_check() {
 
 // ========== idle_start on already-active handle is no-op ==========
 
-#[tokio::test]
+#[tokio::test(flavor = "current_thread")]
 async fn idle_start_already_active_is_noop() {
   run_test(async |runtime, uv_loop| {
     let count = Rc::new(Cell::new(0u32));
@@ -921,7 +921,7 @@ async fn idle_start_already_active_is_noop() {
 
 // ========== Idle stop is idempotent ==========
 
-#[tokio::test]
+#[tokio::test(flavor = "current_thread")]
 async fn idle_stop_when_not_active_is_noop() {
   run_test(async |_runtime, uv_loop| {
     let mut idle = std::mem::MaybeUninit::<uv_idle_t>::uninit();
@@ -936,7 +936,7 @@ async fn idle_stop_when_not_active_is_noop() {
 
 // ========== Event loop keeps running with alive handles ==========
 
-#[tokio::test]
+#[tokio::test(flavor = "current_thread")]
 async fn event_loop_pending_with_active_timer() {
   run_test(async |runtime, uv_loop| {
     unsafe extern "C" fn noop_cb(_: *mut uv_timer_t) {}
@@ -966,7 +966,7 @@ async fn event_loop_pending_with_active_timer() {
 
 // ========== Close on each handle type ==========
 
-#[tokio::test]
+#[tokio::test(flavor = "current_thread")]
 async fn close_idle_handle() {
   run_test(async |runtime, uv_loop| {
     let closed = Rc::new(Cell::new(false));
@@ -999,7 +999,7 @@ async fn close_idle_handle() {
   .await;
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "current_thread")]
 async fn close_prepare_handle() {
   run_test(async |runtime, uv_loop| {
     let closed = Rc::new(Cell::new(false));
@@ -1032,7 +1032,7 @@ async fn close_prepare_handle() {
   .await;
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "current_thread")]
 async fn close_check_handle() {
   run_test(async |runtime, uv_loop| {
     let closed = Rc::new(Cell::new(false));
@@ -1065,7 +1065,7 @@ async fn close_check_handle() {
   .await;
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "current_thread")]
 async fn close_tcp_handle() {
   run_test(async |runtime, uv_loop| {
     let closed = Rc::new(Cell::new(false));
@@ -1097,7 +1097,7 @@ async fn close_tcp_handle() {
 
 // ========== TCP getsockname / getpeername edge cases ==========
 
-#[tokio::test]
+#[tokio::test(flavor = "current_thread")]
 async fn tcp_getsockname_no_bind_returns_einval() {
   run_test(async |_runtime, uv_loop| {
     let mut tcp = std::mem::MaybeUninit::<uv_tcp_t>::uninit();
@@ -1117,7 +1117,7 @@ async fn tcp_getsockname_no_bind_returns_einval() {
   .await;
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "current_thread")]
 async fn tcp_getpeername_no_stream_returns_enotconn() {
   run_test(async |_runtime, uv_loop| {
     let mut tcp = std::mem::MaybeUninit::<uv_tcp_t>::uninit();
@@ -1139,7 +1139,7 @@ async fn tcp_getpeername_no_stream_returns_enotconn() {
 
 // ========== TCP shutdown drains write queue first ==========
 
-#[tokio::test]
+#[tokio::test(flavor = "current_thread")]
 async fn tcp_shutdown_waits_for_write_queue_to_drain() {
   run_test(async |runtime, uv_loop| {
     use std::cell::RefCell;
@@ -1373,7 +1373,7 @@ async fn tcp_shutdown_waits_for_write_queue_to_drain() {
 
 // ========== TCP shutdown without stream ==========
 
-#[tokio::test]
+#[tokio::test(flavor = "current_thread")]
 async fn tcp_shutdown_no_stream() {
   run_test(async |_runtime, uv_loop| {
     let mut tcp = std::mem::MaybeUninit::<uv_tcp_t>::uninit();
