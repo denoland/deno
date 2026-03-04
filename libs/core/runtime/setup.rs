@@ -50,15 +50,25 @@ fn v8_init(
   };
   v8::V8::set_flags_from_string(&flags);
 
+  // Use a larger V8 platform thread pool to prevent thread starvation
+  // when many isolates compete for compilation threads.
+  // The default (0 = auto-detect, typically num_cpus - 1) is
+  // insufficient for highly concurrent worker scenarios.
+  let platform_thread_count = 4
+    * std::thread::available_parallelism()
+      .map(|n| n.get())
+      .unwrap_or(8) as u32;
+
   let v8_platform = v8_platform.unwrap_or_else(|| {
     if cfg!(any(test, feature = "unsafe_use_unprotected_platform")) {
       // We want to use the unprotected platform for unit tests
-      v8::new_unprotected_default_platform(0, false)
+      v8::new_unprotected_default_platform(platform_thread_count, false)
     } else {
-      v8::new_default_platform(0, false)
+      v8::new_default_platform(platform_thread_count, false)
     }
     .make_shared()
   });
+
   v8::V8::initialize_platform(v8_platform.clone());
   v8::V8::initialize();
 }
