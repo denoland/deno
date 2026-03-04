@@ -4,6 +4,9 @@ use std::future::poll_fn;
 use std::rc::Rc;
 use std::task::Poll;
 
+use libc::AF_INET;
+use libc::sockaddr_in;
+
 use crate::JsRuntime;
 use crate::PollEventLoopOptions;
 use crate::uv_compat::*;
@@ -124,8 +127,7 @@ async fn timer_repeat() {
     let count_ptr = Rc::into_raw(count.clone());
 
     unsafe extern "C" fn timer_cb(handle: *mut uv_timer_t) {
-      let count =
-        unsafe { Rc::from_raw((*handle).data as *const Cell<u32>) };
+      let count = unsafe { Rc::from_raw((*handle).data as *const Cell<u32>) };
       count.set(count.get() + 1);
       let _ = Rc::into_raw(count);
     }
@@ -282,8 +284,7 @@ async fn idle_stop_prevents_further_callbacks() {
     let count_ptr = Rc::into_raw(count.clone());
 
     unsafe extern "C" fn idle_cb(handle: *mut uv_idle_t) {
-      let count =
-        unsafe { Rc::from_raw((*handle).data as *const Cell<u32>) };
+      let count = unsafe { Rc::from_raw((*handle).data as *const Cell<u32>) };
       count.set(count.get() + 1);
       let _ = Rc::into_raw(count);
     }
@@ -391,8 +392,7 @@ async fn close_fires_callback() {
     let closed_ptr = Rc::into_raw(closed.clone());
 
     unsafe extern "C" fn close_cb(handle: *mut uv_handle_t) {
-      let closed =
-        unsafe { Rc::from_raw((*handle).data as *const Cell<bool>) };
+      let closed = unsafe { Rc::from_raw((*handle).data as *const Cell<bool>) };
       closed.set(true);
       let _ = Rc::into_raw(closed);
     }
@@ -602,8 +602,7 @@ async fn tcp_connect_and_echo() {
 
     unsafe extern "C" fn on_connect(req: *mut uv_connect_t, status: i32) {
       assert_eq!(status, 0);
-      let connected =
-        unsafe { Rc::from_raw((*req).data as *const Cell<bool>) };
+      let connected = unsafe { Rc::from_raw((*req).data as *const Cell<bool>) };
       connected.set(true);
       let _ = Rc::into_raw(connected);
     }
@@ -708,11 +707,7 @@ async fn read_stop_clears_reading() {
       ) {
       }
 
-      uv_read_start(
-        tcp_ptr as *mut uv_stream_t,
-        Some(alloc_cb),
-        Some(read_cb),
-      );
+      uv_read_start(tcp_ptr as *mut uv_stream_t, Some(alloc_cb), Some(read_cb));
       assert_eq!(uv_is_active(tcp_ptr as *const uv_handle_t), 1);
 
       uv_read_stop(tcp_ptr as *mut uv_stream_t);
@@ -952,8 +947,7 @@ async fn event_loop_pending_with_active_timer() {
 
     // With an active timer, poll_event_loop should return Pending.
     let result = poll_fn(|cx| {
-      let poll =
-        runtime.poll_event_loop(cx, PollEventLoopOptions::default());
+      let poll = runtime.poll_event_loop(cx, PollEventLoopOptions::default());
       Poll::Ready(poll)
     })
     .await;
@@ -976,8 +970,7 @@ async fn close_idle_handle() {
     let closed_ptr = Rc::into_raw(closed.clone());
 
     unsafe extern "C" fn close_cb(handle: *mut uv_handle_t) {
-      let closed =
-        unsafe { Rc::from_raw((*handle).data as *const Cell<bool>) };
+      let closed = unsafe { Rc::from_raw((*handle).data as *const Cell<bool>) };
       closed.set(true);
       let _ = Rc::into_raw(closed);
     }
@@ -1010,8 +1003,7 @@ async fn close_prepare_handle() {
     let closed_ptr = Rc::into_raw(closed.clone());
 
     unsafe extern "C" fn close_cb(handle: *mut uv_handle_t) {
-      let closed =
-        unsafe { Rc::from_raw((*handle).data as *const Cell<bool>) };
+      let closed = unsafe { Rc::from_raw((*handle).data as *const Cell<bool>) };
       closed.set(true);
       let _ = Rc::into_raw(closed);
     }
@@ -1044,8 +1036,7 @@ async fn close_check_handle() {
     let closed_ptr = Rc::into_raw(closed.clone());
 
     unsafe extern "C" fn close_cb(handle: *mut uv_handle_t) {
-      let closed =
-        unsafe { Rc::from_raw((*handle).data as *const Cell<bool>) };
+      let closed = unsafe { Rc::from_raw((*handle).data as *const Cell<bool>) };
       closed.set(true);
       let _ = Rc::into_raw(closed);
     }
@@ -1078,8 +1069,7 @@ async fn close_tcp_handle() {
     let closed_ptr = Rc::into_raw(closed.clone());
 
     unsafe extern "C" fn close_cb(handle: *mut uv_handle_t) {
-      let closed =
-        unsafe { Rc::from_raw((*handle).data as *const Cell<bool>) };
+      let closed = unsafe { Rc::from_raw((*handle).data as *const Cell<bool>) };
       closed.set(true);
       let _ = Rc::into_raw(closed);
     }
