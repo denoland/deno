@@ -64,11 +64,6 @@ jobs:
         with:
           submodules: false
 
-      - name: Install Deno
-        uses: denoland/setup-deno@v2
-        with:
-          deno-version: v2.7.1
-
       - name: Install Node
         uses: actions/setup-node@v6
         with:
@@ -121,6 +116,7 @@ jobs:
           npm config set //localhost:4873/:_authToken dummy-token
 
       - name: Publish packages to Verdaccio
+        id: publish-verdaccio
         run: |
           DIST_DIR="tools/release/npm/dist"
           for pkg_dir in "$DIST_DIR"/@deno/*/; do
@@ -129,6 +125,8 @@ jobs:
           done
           echo "Publishing deno to Verdaccio..."
           (cd "$DIST_DIR/deno" && npm publish --registry http://localhost:4873/)
+          VERSION=$(node -p "require('./$DIST_DIR/deno/package.json').version")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Test npm install deno
         run: |
@@ -136,8 +134,11 @@ jobs:
           mkdir -p "$TEST_DIR"
           cd "$TEST_DIR"
           npm init -y
-          npm install deno
-          npx deno -v
+          EXPECTED_VERSION="deno ${{ steps.publish-verdaccio.outputs.version }}"
+          npm install deno@${{ steps.publish-verdaccio.outputs.version }}
+          ACTUAL="$(npx deno -v)"
+          echo "$ACTUAL"
+          [ "$ACTUAL" = "$EXPECTED_VERSION" ] || { echo "Version mismatch: expected '$EXPECTED_VERSION', got '$ACTUAL'"; exit 1; }
 
       - name: Test deno via bin.cjs fallback
         run: |
@@ -150,14 +151,36 @@ jobs:
           rm -f node_modules/deno/deno*
           DENO_SIMULATED_READONLY_FILE_SYSTEM=1 node node_modules/deno/bin.cjs -v
 
-      - name: Test pnpm install deno
+      - name: Test npm global install deno
+        run: |
+          EXPECTED_VERSION="deno ${{ steps.publish-verdaccio.outputs.version }}"
+          npm install -g deno@${{ steps.publish-verdaccio.outputs.version }}
+          ACTUAL="$(deno -v)"
+          echo "$ACTUAL"
+          [ "$ACTUAL" = "$EXPECTED_VERSION" ] || { echo "Version mismatch: expected '$EXPECTED_VERSION', got '$ACTUAL'"; exit 1; }
+          deno eval "console.log('global npm install works')"
+
+      - name: Test pnpm local install deno
         run: |
           TEST_DIR="${{ runner.temp }}/pnpm-test"
           mkdir -p "$TEST_DIR"
           cd "$TEST_DIR"
           npm init -y
-          pnpm install deno --registry http://localhost:4873/
-          pnpm exec deno -v
+          EXPECTED_VERSION="deno ${{ steps.publish-verdaccio.outputs.version }}"
+          pnpm install deno@${{ steps.publish-verdaccio.outputs.version }} --registry http://localhost:4873/
+          ACTUAL="$(pnpm exec deno -v)"
+          echo "$ACTUAL"
+          [ "$ACTUAL" = "$EXPECTED_VERSION" ] || { echo "Version mismatch: expected '$EXPECTED_VERSION', got '$ACTUAL'"; exit 1; }
+
+      - name: Test pnpm global install deno
+        run: |
+          npm uninstall -g deno
+          EXPECTED_VERSION="deno ${{ steps.publish-verdaccio.outputs.version }}"
+          pnpm install -g deno@${{ steps.publish-verdaccio.outputs.version }} --registry http://localhost:4873/
+          ACTUAL="$(deno -v)"
+          echo "$ACTUAL"
+          [ "$ACTUAL" = "$EXPECTED_VERSION" ] || { echo "Version mismatch: expected '$EXPECTED_VERSION', got '$ACTUAL'"; exit 1; }
+          deno eval "console.log('global pnpm install works')"
 
       - name: Test deno via PowerShell
         if: runner.os == 'Windows'
