@@ -101,12 +101,14 @@ async function fetchGitHubItems(
       params.set("since", since);
     }
 
-    const url = `${GITHUB_API}/repos/${REPO_OWNER}/${REPO_NAME}/${type}?${params}`;
+    const url =
+      `${GITHUB_API}/repos/${REPO_OWNER}/${REPO_NAME}/${type}?${params}`;
     const res = await fetch(url, { headers });
 
     if (!res.ok) {
       console.error(
-        `GitHub API error (${type} page ${page}): ${res.status} ${res.statusText}`,
+        `GitHub API error (${type} page ${page}): ` +
+          `${res.status} ${res.statusText}`,
       );
       break;
     }
@@ -221,7 +223,9 @@ async function main() {
   if (!sinceDate) {
     console.error("Could not determine last run timestamp");
     await postErrorMessage(
-      "Could not determine last run timestamp. The hashy service may be down or there is no stored last-run value.",
+      "Could not determine last run timestamp. " +
+        "The hashy service may be down or " +
+        "there is no stored last-run value.",
     );
     // Still save the current timestamp so next run has a reference point
     await saveLastRunTimestamp(now);
