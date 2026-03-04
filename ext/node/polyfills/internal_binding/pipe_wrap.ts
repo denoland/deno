@@ -277,10 +277,7 @@ export class Pipe extends ConnectionWrap {
       // Node.js/libuv handles this via WaitNamedPipeW(30000) which blocks
       // up to 30 seconds. We emulate this by polling with retries:
       // 300 attempts x 100ms = 30s max wait, matching libuv's timeout.
-      // Note: we match on the error message because Deno's error
-      // serialization doesn't expose raw OS error codes as a property.
-      // Rust's std::io::Error formats it as "... (os error 231)".
-      if (StringPrototypeIncludes(msg, "os error 231") && attempt < 300) {
+      if (err.code === "EBUSY" && attempt < 300) {
         setTimeout(() => {
           this.#connectWindows(req, address, attempt + 1);
         }, 100);
