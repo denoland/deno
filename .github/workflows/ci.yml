@@ -38,6 +38,11 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Install Deno
+        uses: denoland/setup-deno@v2
+        if: github.event_name == 'pull_request'
+        with:
+          deno-version: v2.x
       - id: check
         if: 'github.event_name == ''pull_request'' && github.event.pull_request.draft == true && !contains(github.event.pull_request.labels.*.name, ''ci-draft'')'
         run: |-
@@ -47,9 +52,8 @@ jobs:
       - id: deno_core_changes
         if: github.event_name == 'pull_request'
         run: |-
-          DENO_CORE_CHANGED=$(git diff --name-only ${{ github.event.pull_request.base.sha }}..HEAD | grep -qE '^(libs/core_testing|libs/core|libs/core/examples/snapshot|libs/dcore|libs/ops|libs/ops/compile_test_runner|libs/serde_v8)/|^Cargo\.lock$|^Cargo\.toml$' && echo true || echo false)
-          echo "Deno core changed: $DENO_CORE_CHANGED"
-          echo "skip_deno_core_test=$([ "$DENO_CORE_CHANGED" = "false" ] && echo true || echo false)" >> $GITHUB_OUTPUT
+          git fetch --depth=1 origin ${{ github.event.pull_request.base.sha }}
+          deno run -A tools/check_deno_core_changes.js ${{ github.event.pull_request.base.sha }}
   bench:
     name: bench release linux-x86_64
     needs:
