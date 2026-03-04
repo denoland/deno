@@ -675,6 +675,23 @@ function reportFinal(
     }. ${finalPassedCount} passed; ${finalFailedCount} failed; ${finalExpectedFailedAndFailedCount} expected failure; total ${finalTotalCount} (${duration}ms)\n`,
   );
 
+  // Write newly passing tests to a file so CI can post a PR comment.
+  if (
+    finalExpectedFailedButPassedTests.length > 0 ||
+    finalExpectedFailedButPassedFiles.length > 0
+  ) {
+    const newlyPassing = {
+      tests: finalExpectedFailedButPassedTests.map(([path, case_]) =>
+        `${path} - ${case_.name}`
+      ),
+      files: finalExpectedFailedButPassedFiles,
+    };
+    Deno.writeTextFileSync(
+      "wpt_newly_passing.json",
+      JSON.stringify(newlyPassing, null, 2) + "\n",
+    );
+  }
+
   // We ignore the exit code of the test run because the CI job reports the
   // results to WPT.fyi, and we still want to report failure.
   if (Deno.args.includes("--exit-zero")) {

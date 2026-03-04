@@ -16,6 +16,7 @@ on:
 permissions:
   contents: write
   id-token: write
+  pull-requests: write
 concurrency:
   group: '${{ github.workflow }}-${{ !contains(github.event.pull_request.labels.*.name, ''ci-test-flaky'') && github.head_ref || github.run_id }}'
   cancel-in-progress: true
@@ -4004,6 +4005,15 @@ jobs:
       - name: Autobahn testsuite
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: target/release/deno run -A --config tests/config/deno.json ext/websocket/autobahn/fuzzingclient.js
+      - name: Comment on PR with newly passing WPT tests
+        if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
+          PR_NUMBER: '${{ github.event.pull_request.number }}'
+        run: |-
+          deno run --allow-read --allow-env --allow-net \
+              ./tools/wpt_pr_comment.ts wpt_newly_passing.json
       - name: Authenticate with Google Cloud
         uses: google-github-actions/auth@v3
         if: '!startsWith(github.ref, ''refs/tags/'') && github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'''

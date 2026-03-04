@@ -1288,6 +1288,19 @@ const buildJobs = buildItems.map((rawBuildItem) => {
             run:
               "target/release/deno run -A --config tests/config/deno.json ext/websocket/autobahn/fuzzingclient.js",
           },
+          {
+            name: "Comment on PR with newly passing WPT tests",
+            continueOnError: true,
+            if: isPr,
+            env: {
+              GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}",
+              PR_NUMBER: "${{ github.event.pull_request.number }}",
+            },
+            run: [
+              "deno run --allow-read --allow-env --allow-net \\",
+              "    ./tools/wpt_pr_comment.ts wpt_newly_passing.json",
+            ],
+          },
           step.dependsOn(setupGcloudStep)({
             name: "Upload wpt results to dl.deno.land",
             continueOnError: true,
@@ -1676,6 +1689,7 @@ const workflow = createWorkflow({
   permissions: {
     contents: "write",
     "id-token": "write", // Required for GitHub OIDC with Azure for code signing
+    "pull-requests": "write", // Required for posting WPT PR comments
   },
   on: {
     push: {
