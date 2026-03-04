@@ -227,7 +227,7 @@ pub fn op_node_get_own_non_index_properties<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   obj: v8::Local<'s, v8::Object>,
   #[smi] filter: u32,
-) -> Result<v8::Local<'s, v8::Array>, JsErrorBox> {
+) -> Result<v8::Local<'s, v8::Value>, JsErrorBox> {
   let mut property_filter = v8::PropertyFilter::ALL_PROPERTIES;
   if filter & 1 << 0 != 0 {
     property_filter = property_filter | v8::PropertyFilter::ONLY_WRITABLE;
@@ -258,13 +258,13 @@ pub fn op_node_get_own_non_index_properties<'s>(
   );
 
   match result {
-    Some(names) => Ok(names),
+    Some(names) => Ok(names.into()),
     None => {
       if tc_scope.has_caught() || tc_scope.has_terminated() {
         tc_scope.rethrow();
-        // Return a dummy value; it will be discarded because the
-        // exception is being rethrown by V8.
-        Ok(v8::Array::new(tc_scope, 0))
+        // Dummy value, this result will be discarded because an error was thrown.
+        let v = v8::undefined(tc_scope);
+        Ok(v.into())
       } else {
         Err(JsErrorBox::type_error(
           "Failed to get own non-index properties",
