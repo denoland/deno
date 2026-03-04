@@ -205,23 +205,6 @@ function findBinDir() {
     }
     dir = parent;
   }
-
-  // we might not have found a node_modules directory
-  // when testing this out because it resolved the package
-  // symlink outside the node_modules folder
-  dir = __dirname;
-  for (let i = 0; i < 64; i++) {
-    const binDir = path.join(dir, "node_modules", ".bin");
-    if (isBinDirForThisPackage(binDir)) {
-      return binDir;
-    }
-    const parent = path.dirname(dir);
-    if (parent === dir) {
-      break;
-    }
-    dir = parent;
-  }
-
   return undefined;
 }
 
