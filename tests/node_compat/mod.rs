@@ -46,6 +46,9 @@ const TEST_ARGS: &[&str] = &[
 
 /// Per-platform value: either a boolean (true = enabled, false = disabled)
 /// or an object describing an expected failure.
+///
+/// Uses `#[serde(untagged)]` so that config.jsonc can use both
+/// `"windows": false` (boolean) and `"windows": { "exitCode": 1 }` (object).
 #[derive(Debug, Clone, Deserialize)]
 #[serde(untagged)]
 enum PlatformExpectation {
@@ -826,98 +829,16 @@ fn run_test(
   let expected_failure = test_config.and_then(resolve_expected_failure);
 
   if let Some(ef) = expected_failure {
-    // Test has an expected-failure spec for this platform
-    if success {
-      // Test passed but was expected to fail
-      results.lock().unwrap().insert(
-        data.test_path.clone(),
-        CollectedResult {
-          passed: Some(false),
-          error: Some(ErrorInfo {
-            code: actual_exit_code,
-            stderr: None,
-            timeout: None,
-            message: Some("expected test to fail but it passed".to_string()),
-          }),
-          uses_node_test,
-          ignore_reason: None,
-        },
-      );
-      return TestResult::Failed {
-        duration: None,
-        output: format!(
-          "Test was expected to fail but passed\n{}",
-          debugging_command_text
-        )
-        .into_bytes(),
-      };
-    }
-
-    let exit_code_matches =
-      ef.exit_code.map_or(true, |ec| actual_exit_code == Some(ec));
-    let output_matches = ef.output.as_ref().map_or(true, |pattern| {
-      util::wildcard_match_detailed(pattern, &output_for_error).is_success()
-    });
-
-    if exit_code_matches && output_matches {
-      // Failed as expected — treat as a pass
-      results.lock().unwrap().insert(
-        data.test_path.clone(),
-        CollectedResult {
-          passed: Some(true),
-          error: None,
-          uses_node_test,
-          ignore_reason: None,
-        },
-      );
-      if *file_test_runner::NO_CAPTURE {
-        test_util::eprintln!("{}", debugging_command_text);
-      }
-      return TestResult::Passed { duration: None };
-    }
-
-    // Failed, but not in the expected way
-    let mut mismatch_details = String::new();
-    if !exit_code_matches {
-      mismatch_details.push_str(&format!(
-        "Exit code mismatch: expected {:?}, got {:?}\n",
-        ef.exit_code, actual_exit_code
-      ));
-    }
-    if !output_matches {
-      let match_result = ef.output.as_ref().map(|pattern| {
-        util::wildcard_match_detailed(pattern, &output_for_error)
-      });
-      if let Some(util::WildcardMatchResult::Fail(detail)) = match_result {
-        mismatch_details
-          .push_str(&format!("Output mismatch detail:\n{}\n", detail));
-      } else {
-        mismatch_details.push_str("Output did not match expected pattern\n");
-      }
-    }
-
-    results.lock().unwrap().insert(
-      data.test_path.clone(),
-      CollectedResult {
-        passed: Some(false),
-        error: Some(ErrorInfo {
-          code: actual_exit_code,
-          stderr: Some(truncate_output(&output_for_error, 2000)),
-          timeout: None,
-          message: Some(mismatch_details.clone()),
-        }),
-        uses_node_test,
-        ignore_reason: None,
-      },
+    return handle_expected_failure(
+      &ef,
+      success,
+      actual_exit_code,
+      uses_node_test,
+      &output_for_error,
+      &debugging_command_text,
+      &data.test_path,
+      results,
     );
-    return TestResult::Failed {
-      duration: None,
-      output: format!(
-        "Test failed but not in the expected way:\n{}\nActual output:\n{}\n{}",
-        mismatch_details, output_for_error, debugging_command_text
-      )
-      .into_bytes(),
-    };
   }
 
   results
@@ -936,6 +857,116 @@ fn run_test(
       output: format!("{}\n{}", output_for_error, debugging_command_text)
         .into_bytes(),
     }
+  }
+}
+
+/// Handle a test that has an expected-failure configuration.
+///
+/// Returns `Passed` when the test fails in the expected way (matching exit code
+/// and/or output pattern), and `Failed` otherwise.
+#[allow(clippy::too_many_arguments)]
+fn handle_expected_failure(
+  ef: &ExpectedFailure,
+  success: bool,
+  actual_exit_code: Option<i32>,
+  uses_node_test: bool,
+  output_for_error: &str,
+  debugging_command_text: &str,
+  test_path: &str,
+  results: &Arc<Mutex<HashMap<String, CollectedResult>>>,
+) -> TestResult {
+  if success {
+    // Test passed but was expected to fail
+    results.lock().unwrap().insert(
+      test_path.to_string(),
+      CollectedResult {
+        passed: Some(false),
+        error: Some(ErrorInfo {
+          code: actual_exit_code,
+          stderr: None,
+          timeout: None,
+          message: Some("expected test to fail but it passed".to_string()),
+        }),
+        uses_node_test,
+        ignore_reason: None,
+      },
+    );
+    return TestResult::Failed {
+      duration: None,
+      output: format!(
+        "Test was expected to fail but passed\n{}",
+        debugging_command_text
+      )
+      .into_bytes(),
+    };
+  }
+
+  // When exitCode/output are omitted, any value is accepted.
+  let exit_code_matches =
+    ef.exit_code.map_or(true, |ec| actual_exit_code == Some(ec));
+  let output_matches = ef.output.as_ref().map_or(true, |pattern| {
+    util::wildcard_match_detailed(pattern, output_for_error).is_success()
+  });
+
+  if exit_code_matches && output_matches {
+    // Failed as expected — treat as a pass
+    results.lock().unwrap().insert(
+      test_path.to_string(),
+      CollectedResult {
+        passed: Some(true),
+        error: None,
+        uses_node_test,
+        ignore_reason: None,
+      },
+    );
+    if *file_test_runner::NO_CAPTURE {
+      test_util::eprintln!("{}", debugging_command_text);
+    }
+    return TestResult::Passed { duration: None };
+  }
+
+  // Failed, but not in the expected way
+  let mut mismatch_details = String::new();
+  if !exit_code_matches {
+    mismatch_details.push_str(&format!(
+      "Exit code mismatch: expected {:?}, got {:?}\n",
+      ef.exit_code, actual_exit_code
+    ));
+  }
+  if !output_matches {
+    let match_result = ef
+      .output
+      .as_ref()
+      .map(|pattern| util::wildcard_match_detailed(pattern, output_for_error));
+    if let Some(util::WildcardMatchResult::Fail(detail)) = match_result {
+      mismatch_details
+        .push_str(&format!("Output mismatch detail:\n{}\n", detail));
+    } else {
+      mismatch_details.push_str("Output did not match expected pattern\n");
+    }
+  }
+
+  results.lock().unwrap().insert(
+    test_path.to_string(),
+    CollectedResult {
+      passed: Some(false),
+      error: Some(ErrorInfo {
+        code: actual_exit_code,
+        stderr: Some(truncate_output(output_for_error, 2000)),
+        timeout: None,
+        message: Some(mismatch_details.clone()),
+      }),
+      uses_node_test,
+      ignore_reason: None,
+    },
+  );
+  TestResult::Failed {
+    duration: None,
+    output: format!(
+      "Test failed but not in the expected way:\n{}\nActual output:\n{}\n{}",
+      mismatch_details, output_for_error, debugging_command_text
+    )
+    .into_bytes(),
   }
 }
 
