@@ -2130,7 +2130,13 @@ impl JsRuntime {
     // resumption) run only after all three have completed.
     dispatched_ops |= Self::dispatch_pending_ops(cx, scope, context_state)?;
 
-    // 2c. nextTick drain + macrotask drain (before microtask checkpoint)
+    // 2c. Dispatch "rejectionhandled" events before tick processing.
+    // This ensures rejectionhandled fires before unhandledrejection for
+    // later promises, since processTicksAndRejections drains unhandled
+    // rejections via processPromiseRejections.
+    Self::dispatch_handled_rejections(scope, exception_state);
+
+    // 2d. nextTick drain + macrotask drain (before microtask checkpoint)
     // Only drain if there's actual work (ops dispatched, tick scheduled, or timers fired).
     // This prevents macrotask callbacks from running on empty iterations.
     let has_tick_scheduled = context_state.has_tick_scheduled();
@@ -2879,6 +2885,13 @@ impl JsRuntime {
       // Microtask checkpoint between each timer
       scope.perform_microtask_checkpoint();
 
+      // Dispatch "rejectionhandled" events before tick drain, so that
+      // rejectionhandled fires before unhandledrejection for later promises.
+      Self::dispatch_handled_rejections(
+        scope,
+        &context_state.exception_state,
+      );
+
       // Drain nextTick between each timer callback
       {
         let drain_cb =
@@ -2994,15 +3007,15 @@ impl JsRuntime {
     Ok(true)
   }
 
-  /// Phase 2c: Handle promise rejections.
-  fn dispatch_rejections<'s, 'i>(
+  /// Dispatch "rejectionhandled" events for promises that were previously
+  /// reported as unhandled but have since had handlers attached.
+  /// This must run before unhandled rejection processing so that
+  /// rejectionhandled fires before unhandledrejection for later promises.
+  fn dispatch_handled_rejections<'s, 'i>(
     scope: &mut v8::PinScope<'s, 'i>,
-    context_state: &ContextState,
     exception_state: &ExceptionState,
-  ) -> Result<(), Box<JsError>> {
+  ) {
     let undefined: v8::Local<v8::Value> = v8::undefined(scope).into();
-
-    // First handle "handled" rejections
     while let Some((promise, result)) = exception_state
       .pending_handled_promise_rejections
       .borrow_mut()
@@ -3021,6 +3034,16 @@ impl JsRuntime {
         function.call(scope, undefined, &args);
       }
     }
+  }
+
+  /// Phase 2c: Handle promise rejections.
+  fn dispatch_rejections<'s, 'i>(
+    scope: &mut v8::PinScope<'s, 'i>,
+    context_state: &ContextState,
+    exception_state: &ExceptionState,
+  ) -> Result<(), Box<JsError>> {
+    // First handle "handled" rejections
+    Self::dispatch_handled_rejections(scope, exception_state);
 
     // Then handle unhandled rejections
     if exception_state
@@ -3050,6 +3073,7 @@ impl JsRuntime {
     let handle_rejections_cb = context_state.js_handle_rejections_cb.borrow();
     let handle_rejections_fn =
       handle_rejections_cb.as_ref().unwrap().open(tc_scope);
+    let undefined: v8::Local<v8::Value> = v8::undefined(tc_scope).into();
     handle_rejections_fn.call(tc_scope, undefined, args.as_slice());
 
     if let Some(exception) = tc_scope.exception() {
