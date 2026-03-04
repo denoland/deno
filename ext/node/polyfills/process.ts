@@ -1084,7 +1084,7 @@ function dispatchProcessBeforeExitEvent() {
     dispatchProcessExitEvent();
     Deno.exit(process.exitCode || 0);
   }
-  processTicksAndRejections();
+  core.processTicksAndRejections();
   return core.eventLoopHasMoreWork();
 }
 
