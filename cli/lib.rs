@@ -39,6 +39,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use args::TaskFlags;
+use deno_config::glob::FilePatterns;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
@@ -1034,7 +1035,10 @@ async fn initialize_tunnel(
 ) -> Result<(), deno_core::anyhow::Error> {
   let factory = CliFactory::from_flags(Arc::new(flags.clone()));
   let cli_options = factory.cli_options()?;
-  let deploy_config = cli_options.start_dir.to_deploy_config()?;
+  let start_dir = &cli_options.start_dir;
+  let deploy_config = cli_options
+    .start_dir
+    .to_deploy_config(FilePatterns::new_with_base(start_dir.dir_path()))?;
 
   let no_config = flags.config_flag == crate::args::ConfigFlag::Disabled;
 
