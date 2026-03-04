@@ -2162,8 +2162,8 @@ impl JsRuntime {
       Self::do_js_run_immediate_callbacks(scope, context_state)?;
     }
 
-    // 2e. Handle unhandled promise rejections (after nextTick/macrotask,
-    // since unhandledrejection handlers are run in macrotask callbacks).
+    // 2e. Handle promise rejections (after nextTick/macrotask, since
+    // unhandledrejection handlers are run in macrotask callbacks).
     // Note: rejections are also drained inside processTicksAndRejections
     // (via processPromiseRejections in the do-while loop). That path
     // handles rejections created by tick callbacks or their microtasks.

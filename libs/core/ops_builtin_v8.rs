@@ -212,9 +212,6 @@ pub fn op_run_microtasks(isolate: &mut v8::Isolate) {
   isolate.perform_microtask_checkpoint()
 }
 
-/// Drain pending "rejectionhandled" events and fire the JS callback for each.
-/// Must be called before processing unhandled rejections so that
-/// `onrejectionhandled` fires before any new `onunhandledrejection`.
 /// Drain pending "rejectionhandled" events and return them as a flat JS
 /// array: [promise, reason, promise, reason, ...], or undefined if empty.
 /// Called from processPromiseRejections before processing unhandled
