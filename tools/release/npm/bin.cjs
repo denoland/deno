@@ -45,5 +45,5 @@ function runDenoExe(exePath) {
     throw result.error;
   }
 
-  process.exit(result.status);
+  process.exit(result.status ?? 1);
 }
