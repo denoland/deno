@@ -1066,9 +1066,6 @@ impl NodeModulesDirMode {
   }
 }
 
-/// `deploy` config representation for serde
-///
-/// fields `include` and `exclude` are expanded from [SerializedFilesConfig].
 #[derive(Clone, Debug, Deserialize, PartialEq)]
 struct SerializedDeployConfig {
   pub org: String,
