@@ -6511,16 +6511,14 @@ mod test {
     // exist in the snapshot, from_snapshot should not panic. It should
     // create a node for the missing package with no children.
     let snapshot = snapshot_with_missing_peer_dep_nv();
-    let snapshot =
-      NpmResolutionSnapshot::new(snapshot.into_valid().unwrap());
+    let snapshot = NpmResolutionSnapshot::new(snapshot.into_valid().unwrap());
     let graph = Graph::from_snapshot(snapshot);
 
     // Should have 3 nodes: package-a, package-b, and the missing package-c
     assert_eq!(graph.nodes.len(), 3);
 
     // package-a root should exist and have package-b as a child
-    let pkg_a_nv =
-      PackageNv::from_str("package-a@1.0.0").unwrap();
+    let pkg_a_nv = PackageNv::from_str("package-a@1.0.0").unwrap();
     let &pkg_a_node_id = graph.root_packages.get(&pkg_a_nv).unwrap();
     let pkg_a_node = graph.nodes.get(&pkg_a_node_id).unwrap();
     assert_eq!(pkg_a_node.children.len(), 1);
