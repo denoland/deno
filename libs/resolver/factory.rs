@@ -293,6 +293,7 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
       new_rc(DenoDirProvider::new(
         self.sys.clone(),
         DenoDirOptions {
+          maybe_initial_cwd: Some(self.initial_cwd.clone()),
           maybe_custom_root: self.options.maybe_custom_deno_dir_root.clone(),
         },
       ))
@@ -1068,6 +1069,7 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
               .join("node_modules"),
             },
           ),
+          search_stop_dir: None,
         })
       } else {
         NpmResolverCreateOptions::Managed(ManagedNpmResolverCreateOptions {

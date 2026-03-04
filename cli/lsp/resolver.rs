@@ -81,6 +81,7 @@ use crate::npm::CliNpmInstaller;
 use crate::npm::CliNpmRegistryInfoProvider;
 use crate::npm::CliNpmResolver;
 use crate::npm::CliNpmResolverCreateOptions;
+use crate::npm::NpmPackumentFormat;
 use crate::resolver::CliIsCjsResolver;
 use crate::resolver::CliNpmReqResolver;
 use crate::resolver::CliResolver;
@@ -211,6 +212,7 @@ impl LspScopedResolver {
                 root_node_modules_dir: byonm_npm_resolver
                   .root_node_modules_path()
                   .map(|p| p.to_path_buf()),
+                search_stop_dir: None,
                 sys: factory.node_resolution_sys.clone(),
                 pkg_json_resolver: self.pkg_json_resolver.clone(),
               },
@@ -879,6 +881,7 @@ impl<'a> ResolverFactory<'a> {
               .map(|p| p.join("node_modules/"))
           })
         }),
+        search_stop_dir: None,
       })
     } else {
       let npmrc = self
@@ -904,11 +907,13 @@ impl<'a> ResolverFactory<'a> {
       let npm_client = Arc::new(CliNpmCacheHttpClient::new(
         http_client_provider.clone(),
         pb.clone(),
+        NpmPackumentFormat::Abbreviated,
       ));
       let registry_info_provider = Arc::new(CliNpmRegistryInfoProvider::new(
         npm_cache.clone(),
         npm_client.clone(),
         npmrc.clone(),
+        NpmPackumentFormat::Abbreviated,
       ));
       let link_packages: WorkspaceNpmLinkPackagesRc = self
         .config_data

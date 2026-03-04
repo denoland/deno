@@ -2,6 +2,7 @@
 
 use std::collections::HashSet;
 use std::io::ErrorKind;
+use std::io::Read;
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -11,7 +12,6 @@ use deno_npm::registry::NpmPackageVersionDistInfo;
 use deno_npm::registry::NpmPackageVersionDistInfoIntegrity;
 use deno_semver::package::PackageNv;
 use flate2::read::GzDecoder;
-use sha2::Digest;
 use sys_traits::FsCanonicalize;
 use sys_traits::FsCreateDirAll;
 use sys_traits::FsFileSetPermissions;
@@ -25,6 +25,31 @@ use sys_traits::SystemRandom;
 use sys_traits::ThreadSleep;
 use tar::Archive;
 use tar::EntryType;
+
+#[cfg(target_arch = "wasm32")]
+mod hashing {
+  use sha2::Digest;
+
+  pub fn sha1(data: &[u8]) -> impl AsRef<[u8]> {
+    sha1::Sha1::digest(data)
+  }
+
+  pub fn sha512(data: &[u8]) -> impl AsRef<[u8]> {
+    sha2::Sha512::digest(data)
+  }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+mod hashing {
+  use aws_lc_rs::digest;
+  pub fn sha1(data: &[u8]) -> impl AsRef<[u8]> {
+    digest::digest(&digest::SHA1_FOR_LEGACY_USE_ONLY, data)
+  }
+
+  pub fn sha512(data: &[u8]) -> impl AsRef<[u8]> {
+    digest::digest(&digest::SHA512, data)
+  }
+}
 
 #[derive(Debug, Copy, Clone)]
 pub enum TarballExtractionMode {
@@ -51,7 +76,26 @@ pub enum VerifyAndExtractTarballError {
   MoveFailed(std::io::Error),
 }
 
-pub fn verify_and_extract_tarball(
+/// Verifies the tarball integrity and decompresses gzip to raw tar bytes.
+/// This is CPU-bound work that can safely run in parallel.
+pub fn verify_and_decompress_tarball(
+  package_nv: &PackageNv,
+  data: &[u8],
+  dist_info: &NpmPackageVersionDistInfo,
+) -> Result<Vec<u8>, VerifyAndExtractTarballError> {
+  verify_tarball_integrity(package_nv, data, &dist_info.integrity())?;
+  let mut decoder = GzDecoder::new(data);
+  let mut decompressed = Vec::new();
+  decoder
+    .read_to_end(&mut decompressed)
+    .map_err(ExtractTarballError::from)?;
+  Ok(decompressed)
+}
+
+/// Writes already-decompressed raw tar bytes to disk.
+/// This is I/O-bound work that benefits from limited concurrency
+/// to avoid filesystem contention.
+pub fn write_extracted_tarball(
   sys: &(
      impl FsCanonicalize
      + FsCreateDirAll
@@ -63,21 +107,17 @@ pub fn verify_and_extract_tarball(
      + SystemRandom
      + ThreadSleep
    ),
-  package_nv: &PackageNv,
-  data: &[u8],
-  dist_info: &NpmPackageVersionDistInfo,
+  tar_data: &[u8],
   output_folder: &Path,
   extraction_mode: TarballExtractionMode,
 ) -> Result<(), VerifyAndExtractTarballError> {
-  verify_tarball_integrity(package_nv, data, &dist_info.integrity())?;
-
   match extraction_mode {
     TarballExtractionMode::Overwrite => {
-      extract_tarball(sys, data, output_folder).map_err(Into::into)
+      extract_tarball(sys, tar_data, output_folder).map_err(Into::into)
     }
     TarballExtractionMode::SiblingTempDir => {
       let temp_dir = deno_path_util::get_atomic_path(sys, output_folder);
-      extract_tarball(sys, data, &temp_dir)?;
+      extract_tarball(sys, tar_data, &temp_dir)?;
       rename_with_retries(sys, &temp_dir, output_folder)
         .map_err(VerifyAndExtractTarballError::MoveFailed)
     }
@@ -161,8 +201,8 @@ fn verify_tarball_integrity(
       base64_hash,
     } => {
       let tarball_checksum = match *algorithm {
-        "sha512" => BASE64_STANDARD.encode(sha2::Sha512::digest(data)),
-        "sha1" => BASE64_STANDARD.encode(sha1::Sha1::digest(data)),
+        "sha512" => BASE64_STANDARD.encode(hashing::sha512(data)),
+        "sha1" => BASE64_STANDARD.encode(hashing::sha1(data)),
         hash_kind => {
           return Err(TarballIntegrityError::NotImplementedHashFunction {
             package: Box::new(package.clone()),
@@ -173,7 +213,7 @@ fn verify_tarball_integrity(
       (tarball_checksum, base64_hash)
     }
     NpmPackageVersionDistInfoIntegrity::LegacySha1Hex(hex) => {
-      let digest = sha1::Sha1::digest(data);
+      let digest = hashing::sha1(data);
       let tarball_checksum = faster_hex::hex_string(digest.as_ref());
       (tarball_checksum, hex)
     }
@@ -242,9 +282,10 @@ pub enum ExtractTarballError {
   NotInOutputDirectory(PathBuf),
 }
 
+/// Extracts raw (already decompressed) tar bytes to the output folder.
 fn extract_tarball(
   sys: &(impl FsCanonicalize + FsCreateDirAll + FsOpen + FsRemoveFile),
-  data: &[u8],
+  tar_data: &[u8],
   output_folder: &Path,
 ) -> Result<(), ExtractTarballError> {
   sys
@@ -262,8 +303,7 @@ fn extract_tarball(
         operation: IoErrorOperation::Canonicalizing,
         source,
       })?;
-  let tar = GzDecoder::new(data);
-  let mut archive = Archive::new(tar);
+  let mut archive = Archive::new(tar_data);
   archive.set_overwrite(true);
   archive.set_preserve_permissions(true);
   let mut created_dirs = HashSet::new();

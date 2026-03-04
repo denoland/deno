@@ -1,5 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+use std::borrow::Cow;
 use std::io::IsTerminal;
 use std::io::Write;
 use std::path::Path;
@@ -25,9 +26,13 @@ use crate::args::InternalFlags;
 use crate::args::PermissionFlags;
 use crate::args::RunFlags;
 use crate::colors;
+use crate::util::env::resolve_cwd;
 use crate::util::temp::create_temp_node_modules_dir;
 
-pub async fn init_project(init_flags: InitFlags) -> Result<i32, AnyError> {
+pub async fn init_project(
+  flags: Flags,
+  init_flags: InitFlags,
+) -> Result<i32, AnyError> {
   if let Some(package) = &init_flags.package {
     if package.starts_with("jsr:") {
       return init_jsr(package, init_flags.package_args, init_flags.yes)
@@ -42,12 +47,11 @@ pub async fn init_project(init_flags: InitFlags) -> Result<i32, AnyError> {
     }
   }
 
-  let cwd =
-    std::env::current_dir().context("Can't read current working directory.")?;
+  let cwd = resolve_cwd(flags.initial_cwd.as_deref())?;
   let dir = if let Some(dir) = &init_flags.dir {
     let dir = cwd.join(dir);
     std::fs::create_dir_all(&dir)?;
-    dir
+    Cow::Owned(dir)
   } else {
     cwd
   };

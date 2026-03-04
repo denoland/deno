@@ -3121,9 +3121,12 @@ pub struct TranslateOptions {
   /// Use "deno node" as base command (for standalone CLI)
   /// When false, uses "deno run" (for child_process spawning)
   pub use_node_subcommand: bool,
-  /// Add unstable flags (--unstable-node-globals, etc.)
-  /// Typically true for standalone CLI, false for child_process
+  /// Add unstable Node.js compat flags (--unstable-node-globals,
+  /// --unstable-bare-node-builtins, --unstable-detect-cjs)
   pub add_unstable_flags: bool,
+  /// Add standalone config overrides (--node-modules-dir=manual, --no-config)
+  /// Only appropriate for the standalone node shim CLI, not for child processes
+  pub add_standalone_config: bool,
   /// Wrap eval code for Node.js compatibility (builtin modules as globals)
   pub wrap_eval_code: bool,
 }
@@ -3134,6 +3137,7 @@ impl TranslateOptions {
     Self {
       use_node_subcommand: true,
       add_unstable_flags: true,
+      add_standalone_config: true,
       wrap_eval_code: false,
     }
   }
@@ -3142,8 +3146,21 @@ impl TranslateOptions {
   pub fn for_child_process() -> Self {
     Self {
       use_node_subcommand: false,
-      add_unstable_flags: false,
+      add_unstable_flags: true,
+      add_standalone_config: false,
       wrap_eval_code: true,
+    }
+  }
+
+  /// Options for transforming commands embedded in shell strings.
+  /// Like child_process but without eval wrapping, since the shell
+  /// handles quoting and wrapping would introduce metacharacters.
+  pub fn for_shell_command() -> Self {
+    Self {
+      use_node_subcommand: false,
+      add_unstable_flags: true,
+      add_standalone_config: false,
+      wrap_eval_code: false,
     }
   }
 }
@@ -3314,6 +3331,8 @@ pub fn translate_to_deno_args(
       deno_args.push("--unstable-node-globals".to_string());
       deno_args.push("--unstable-bare-node-builtins".to_string());
       deno_args.push("--unstable-detect-cjs".to_string());
+    }
+    if options.add_standalone_config {
       deno_args.push("--node-modules-dir=manual".to_string());
       deno_args.push("--no-config".to_string());
     }
@@ -3374,6 +3393,8 @@ pub fn translate_to_deno_args(
       deno_args.push("--unstable-node-globals".to_string());
       deno_args.push("--unstable-bare-node-builtins".to_string());
       deno_args.push("--unstable-detect-cjs".to_string());
+    }
+    if options.add_standalone_config {
       deno_args.push("--node-modules-dir=manual".to_string());
       deno_args.push("--no-config".to_string());
     }
@@ -3419,6 +3440,8 @@ pub fn translate_to_deno_args(
     deno_args.push("--unstable-node-globals".to_string());
     deno_args.push("--unstable-bare-node-builtins".to_string());
     deno_args.push("--unstable-detect-cjs".to_string());
+  }
+  if options.add_standalone_config {
     deno_args.push("--node-modules-dir=manual".to_string());
     deno_args.push("--no-config".to_string());
   }

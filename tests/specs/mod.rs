@@ -62,6 +62,9 @@ struct MultiTestMetaData {
   pub ignore: bool,
   #[serde(default)]
   pub variants: BTreeMap<String, JsonMap>,
+  /// Timeout in seconds for each step. Defaults to 300 (5 minutes).
+  #[serde(default)]
+  pub timeout: Option<u64>,
 }
 
 impl MultiTestMetaData {
@@ -95,6 +98,11 @@ impl MultiTestMetaData {
             envs_obj.insert(key.into(), value.clone().into());
           }
         }
+      }
+      if let Some(timeout) = multi_test_meta_data.timeout
+        && !value.contains_key("timeout")
+      {
+        value.insert("timeout".to_string(), timeout.into());
       }
       if multi_test_meta_data.ignore && !value.contains_key("ignore") {
         value.insert("ignore".to_string(), true.into());
@@ -179,6 +187,9 @@ struct MultiStepMetaData {
   pub steps: Vec<StepMetaData>,
   #[serde(default)]
   pub ignore: bool,
+  /// Timeout in seconds for each step. Defaults to 300 (5 minutes).
+  #[serde(default)]
+  pub timeout: Option<u64>,
   #[serde(default)]
   pub variants: BTreeMap<String, JsonMap>,
 }
@@ -203,6 +214,9 @@ struct SingleTestMetaData {
   #[allow(dead_code)]
   #[serde(default)]
   pub variants: BTreeMap<String, JsonMap>,
+  /// Timeout in seconds for each step. Defaults to 300 (5 minutes).
+  #[serde(default)]
+  pub timeout: Option<u64>,
 }
 
 impl SingleTestMetaData {
@@ -220,6 +234,7 @@ impl SingleTestMetaData {
       steps: vec![self.step],
       ignore: self.ignore,
       variants: self.variants,
+      timeout: self.timeout,
     }
   }
 }
@@ -246,7 +261,7 @@ struct StepMetaData {
 }
 
 pub fn main() {
-  if test_util::hash::should_skip_on_ci("specs", |hasher| {
+  let ci_hash = test_util::hash::check_ci_hash("specs", |hasher| {
     let tests = test_util::tests_path();
     hasher
       .hash_dir(tests.join("specs"))
@@ -256,7 +271,8 @@ pub fn main() {
       .hash_file(test_util::deno_exe_path())
       .hash_file(test_util::test_server_path())
       .hash_file(test_util::denort_exe_path());
-  }) {
+  });
+  if matches!(ci_hash, test_util::hash::CiHashStatus::Skip) {
     return;
   }
 
@@ -298,6 +314,9 @@ pub fn main() {
     },
     move |test| run_test(test, &flaky_test_tracker, &parallelism),
   );
+  if let test_util::hash::CiHashStatus::RunThenCommit(pending) = ci_hash {
+    pending.commit();
+  }
 }
 
 fn run_test(
@@ -582,6 +601,10 @@ fn run_step(
         command.stdin_text(input)
       }
     }
+    None => command,
+  };
+  let command = match metadata.timeout {
+    Some(secs) => command.timeout(std::time::Duration::from_secs(secs)),
     None => command,
   };
   let output = command.run();

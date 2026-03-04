@@ -951,6 +951,7 @@ Deno.test("process.config", () => {
   assert(process.config !== undefined);
   assert(process.config.target_defaults !== undefined);
   assert(process.config.variables !== undefined);
+  assertEquals(process.config.variables.host_arch, process.arch);
 });
 
 Deno.test("process._exiting", () => {
@@ -959,6 +960,7 @@ Deno.test("process._exiting", () => {
 });
 
 Deno.test("process.execPath", () => {
+  assertEquals(typeof process.execPath, "string");
   assertEquals(process.execPath, process.argv[0]);
 });
 
@@ -1316,6 +1318,7 @@ Deno.test(function importedExecArgvTest() {
 });
 
 Deno.test(function importedExecPathTest() {
+  assertEquals(typeof importedExecPath, "string");
   assertEquals(importedExecPath, Deno.execPath());
 });
 

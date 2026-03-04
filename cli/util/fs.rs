@@ -59,6 +59,7 @@ fn add_file_context_to_err(file_path: &Path, err: Error) -> Error {
 
 /// Similar to `std::fs::canonicalize()` but strips UNC prefixes on Windows.
 pub fn canonicalize_path(path: &Path) -> Result<PathBuf, Error> {
+  #[allow(clippy::disallowed_methods)] // allow, implementation
   Ok(deno_path_util::strip_unc_prefix(path.canonicalize()?))
 }
 
