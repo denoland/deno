@@ -101,7 +101,7 @@ jobs:
 
       - name: Start Verdaccio
         run: |
-          deno run -A npm:verdaccio@6.2.9 \
+          deno run -A npm:verdaccio@8.0.0-next-8.30 \
             --config "${{ runner.temp }}/verdaccio/config.yaml" --listen 4873 &
           for i in $(seq 1 30); do
             if curl -s http://localhost:4873/-/ping > /dev/null 2>&1; then
