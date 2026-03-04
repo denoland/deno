@@ -15,7 +15,7 @@ interface Package {
 }
 
 const args = parseArgs(Deno.args, {
-  boolean: ["publish", "publish-only", "skip-verify"],
+  boolean: ["publish", "publish-only"],
 });
 const packages: Package[] = [{
   zipFileName: "deno-x86_64-pc-windows-msvc.zip",
@@ -153,45 +153,6 @@ if (!args["publish-only"]) {
     }
   }
 
-  if (!args["skip-verify"]) {
-    // verify that the package is created correctly
-    $.logStep("Verifying packages...");
-    const testPlatform = Deno.build.os == "windows"
-      ? (Deno.build.arch === "x86_64" ? "@deno/win32-x64" : "@deno/win32-arm64")
-      : Deno.build.os === "darwin"
-      ? (Deno.build.arch === "x86_64"
-        ? "@deno/darwin-x64"
-        : "@deno/darwin-arm64")
-      : "@deno/linux-x64-glibc";
-    outputDir.join("package.json").writeJsonPrettySync({
-      workspaces: [
-        "deno",
-        // There seems to be a bug with npm workspaces where this doesn't
-        // work, so for now make some assumptions and only include the package
-        // that works on the CI for the current operating system
-        // ...packages.map(p => `@deno/${getPackageNameNoScope(p)}`),
-        testPlatform,
-      ],
-    });
-
-    const denoExe = Deno.build.os === "windows" ? "deno.exe" : "deno";
-    await $`npm install`.cwd(denoDir);
-
-    // ensure the post-install script adds the executable to the deno package,
-    // which is necessary for faster caching and to ensure the vscode extension
-    // picks it up
-    if (!denoDir.join(denoExe).existsSync()) {
-      throw new Error("Deno executable did not exist after post install");
-    }
-
-    // run once after post install created deno, once with a simulated readonly file system, once creating the cache and once with
-    await $`node bin.cjs -v && rm ${denoExe} && DENO_SIMULATED_READONLY_FILE_SYSTEM=1 node bin.cjs -v && node bin.cjs -v && node bin.cjs -v`
-      .cwd(denoDir);
-
-    if (!denoDir.join(denoExe).existsSync()) {
-      throw new Error("Deno executable did not exist when lazily initialized");
-    }
-  }
 } // end if (!args["publish-only"])
 
 // publish if necessary

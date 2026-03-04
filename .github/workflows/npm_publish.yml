@@ -36,7 +36,7 @@ jobs:
           deno-version: v2.7.1
 
       - name: Build npm packages
-        run: ./tools/release/npm/build.ts ${{ inputs.version || '' }} --skip-verify
+        run: ./tools/release/npm/build.ts ${{ inputs.version || '' }}
 
       - name: Upload npm dist artifact
         uses: actions/upload-artifact@v6
@@ -143,6 +143,12 @@ jobs:
         run: |
           cd "${{ runner.temp }}/npm-test"
           node node_modules/deno/bin.cjs eval "console.log('npm package works')"
+
+      - name: Test deno via simulated readonly file system
+        run: |
+          cd "${{ runner.temp }}/npm-test"
+          rm -f node_modules/deno/deno*
+          DENO_SIMULATED_READONLY_FILE_SYSTEM=1 node node_modules/deno/bin.cjs -v
 
       - name: Test pnpm install deno
         run: |
