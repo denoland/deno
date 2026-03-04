@@ -212,20 +212,6 @@ pub fn op_run_microtasks(isolate: &mut v8::Isolate) {
   isolate.perform_microtask_checkpoint()
 }
 
-#[op2(fast)]
-pub fn op_has_tick_scheduled(scope: &mut v8::PinScope) -> bool {
-  JsRealm::state_from_scope(scope)
-    .has_next_tick_scheduled
-    .get()
-}
-
-#[op2(fast)]
-pub fn op_set_has_tick_scheduled(scope: &mut v8::PinScope, v: bool) {
-  JsRealm::state_from_scope(scope)
-    .has_next_tick_scheduled
-    .set(v);
-}
-
 /// Drain all pending promise rejections from the Rust-side queue and return
 /// them as a flat JS array: [promise, reason, asyncContext, ...].
 /// Returns an empty array if there are no pending rejections.
@@ -253,54 +239,6 @@ pub fn op_drain_pending_rejections<'s>(
     idx += 3;
   }
   arr.into()
-}
-
-#[op2(fast)]
-pub fn op_immediate_count(scope: &mut v8::PinScope, increase: bool) -> u32 {
-  let state = JsRealm::state_from_scope(scope);
-  let mut immediate_info = state.immediate_info.borrow_mut();
-
-  if increase {
-    immediate_info.count += 1;
-  } else {
-    immediate_info.count -= 1;
-  }
-
-  immediate_info.count
-}
-
-#[op2(fast)]
-pub fn op_immediate_ref_count(scope: &mut v8::PinScope, increase: bool) -> u32 {
-  let state = JsRealm::state_from_scope(scope);
-  let mut immediate_info = state.immediate_info.borrow_mut();
-
-  if increase {
-    immediate_info.ref_count += 1;
-  } else {
-    immediate_info.ref_count -= 1;
-  }
-
-  immediate_info.ref_count
-}
-
-#[op2(fast)]
-pub fn op_immediate_set_has_outstanding(
-  scope: &mut v8::PinScope,
-  has_outstanding: bool,
-) {
-  JsRealm::state_from_scope(scope)
-    .immediate_info
-    .borrow_mut()
-    .has_outstanding = has_outstanding;
-}
-
-#[op2(fast)]
-pub fn op_immediate_has_ref_count(scope: &mut v8::PinScope) -> bool {
-  JsRealm::state_from_scope(scope)
-    .immediate_info
-    .borrow()
-    .ref_count
-    > 0
 }
 
 pub struct EvalContextError<'s> {

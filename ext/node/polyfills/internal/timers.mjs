@@ -5,6 +5,7 @@ import { core, primordials } from "ext:core/mod.js";
 const {
   getAsyncContext,
   setAsyncContext,
+  immediateRefCount,
 } = core;
 const {
   FunctionPrototypeBind,
@@ -18,7 +19,6 @@ const {
   Symbol,
   SymbolToPrimitive,
 } = primordials;
-import { op_immediate_ref_count } from "ext:core/ops";
 import {
   emitInit,
   executionAsyncId,
@@ -221,7 +221,7 @@ export class Immediate {
   ref() {
     if (this._refed === false) {
       this._refed = true;
-      op_immediate_ref_count(true);
+      immediateRefCount(true);
     }
     return this;
   }
@@ -229,7 +229,7 @@ export class Immediate {
   unref() {
     if (this._refed === true) {
       this._refed = false;
-      op_immediate_ref_count(false);
+      immediateRefCount(false);
     }
     return this;
   }

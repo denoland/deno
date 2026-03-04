@@ -67,12 +67,11 @@ pub(crate) type OpDriverImpl = super::op_driver::FuturesUnorderedDriver;
 pub(crate) type UnrefedOps =
   Rc<RefCell<HashSet<i32, BuildHasherDefault<IdentityHasher>>>>;
 
-#[derive(Debug, Default)]
-pub(crate) struct ImmediateInfo {
-  pub count: u32,
-  pub ref_count: u32,
-  pub has_outstanding: bool,
-}
+/// Indices into the shared immediate_info buffer (Uint32Array).
+#[allow(dead_code)] // Documents the layout; used only from JS
+pub(crate) const IMM_IDX_COUNT: usize = 0;
+pub(crate) const IMM_IDX_REF_COUNT: usize = 1;
+pub(crate) const IMM_IDX_HAS_OUTSTANDING: usize = 2;
 
 pub struct ContextState {
   pub(crate) task_spawner_factory: Arc<V8TaskSpawnerFactory>,
@@ -98,8 +97,13 @@ pub struct ContextState {
   pub(crate) methods_ctx_offset: usize,
   pub(crate) isolate: Option<v8::UnsafeRawIsolatePtr>,
   pub(crate) exception_state: Rc<ExceptionState>,
-  pub(crate) has_next_tick_scheduled: Cell<bool>,
-  pub(crate) immediate_info: RefCell<ImmediateInfo>,
+  /// Shared tick info buffer exposed to JS as a Uint8Array.
+  /// Index 0: hasTickScheduled (1 = true, 0 = false)
+  /// Index 1: reserved for future use (e.g. hasRejectionToWarn)
+  pub(crate) tick_info: Box<[u8; 2]>,
+  /// Shared immediate info buffer exposed to JS as a Uint32Array.
+  /// Indices: IMM_IDX_COUNT, IMM_IDX_REF_COUNT, IMM_IDX_HAS_OUTSTANDING
+  pub(crate) immediate_info: Box<[u32; 3]>,
   pub(crate) external_ops_tracker: ExternalOpsTracker,
   pub(crate) ext_import_meta_proto: RefCell<Option<v8::Global<v8::Object>>>,
   /// Phase-specific state for the libuv-style event loop.
@@ -125,6 +129,10 @@ pub struct ContextState {
 }
 
 impl ContextState {
+  pub(crate) fn has_tick_scheduled(&self) -> bool {
+    self.tick_info[0] != 0
+  }
+
   pub(crate) fn new(
     op_driver: Rc<OpDriverImpl>,
     isolate_ptr: v8::UnsafeRawIsolatePtr,
@@ -137,8 +145,8 @@ impl ContextState {
     Self {
       isolate: Some(isolate_ptr),
       exception_state: Default::default(),
-      has_next_tick_scheduled: Default::default(),
-      immediate_info: Default::default(),
+      tick_info: Box::new([0u8; 2]),
+      immediate_info: Box::new([0u32; 3]),
       js_resolve_ops_cb: Default::default(),
       js_drain_next_tick_and_macrotasks_cb: Default::default(),
       js_handle_rejections_cb: Default::default(),

@@ -85,6 +85,8 @@ use crate::runtime::ContextState;
 use crate::runtime::JsRealm;
 use crate::runtime::OpDriverImpl;
 use crate::runtime::jsrealm;
+use crate::runtime::jsrealm::IMM_IDX_HAS_OUTSTANDING;
+use crate::runtime::jsrealm::IMM_IDX_REF_COUNT;
 use crate::source_map::SourceMapData;
 use crate::source_map::SourceMapper;
 use crate::stats::RuntimeActivityType;
@@ -1485,6 +1487,86 @@ impl JsRuntime {
         }
       }
 
+      // Create a shared Uint8Array backed by ContextState::tick_info and
+      // pass it to JS via __setTickInfo so JS can read/write
+      // hasTickScheduled without crossing the JS-to-Rust boundary.
+      {
+        let state_rc = realm.0.state();
+        let tick_info_ptr =
+          state_rc.tick_info.as_ptr() as *mut std::ffi::c_void;
+        // SAFETY: The Box<[u8; 2]> lives on ContextState which outlives
+        // all JS. We pass a no-op destructor since ContextState owns
+        // the memory.
+        extern "C" fn _no_op_deleter(
+          _data: *mut std::ffi::c_void,
+          _len: usize,
+          _deleter_data: *mut std::ffi::c_void,
+        ) {
+        }
+        let backing_store = unsafe {
+          v8::ArrayBuffer::new_backing_store_from_ptr(
+            tick_info_ptr,
+            2,
+            _no_op_deleter,
+            std::ptr::null_mut(),
+          )
+        };
+        let backing_store_shared = backing_store.make_shared();
+        let ab =
+          v8::ArrayBuffer::with_backing_store(scope, &backing_store_shared);
+        let tick_info_array = v8::Uint8Array::new(scope, ab, 0, 2).unwrap();
+        let set_tick_info_fn: v8::Local<v8::Function> = bindings::get(
+          scope,
+          core_obj,
+          SET_TICK_INFO,
+          "Deno.core.__setTickInfo",
+        );
+        let undefined: v8::Local<v8::Value> = v8::undefined(scope).into();
+        set_tick_info_fn.call(scope, undefined, &[tick_info_array.into()]);
+        // Clean up the init-only setter from Deno.core
+        let key = SET_TICK_INFO.v8_string(scope).unwrap();
+        core_obj.delete(scope, key.into());
+      }
+
+      // Create a shared Uint32Array backed by ContextState::immediate_info
+      // and pass it to JS via __setImmediateInfo.
+      {
+        let state_rc = realm.0.state();
+        let imm_info_ptr =
+          state_rc.immediate_info.as_ptr() as *mut std::ffi::c_void;
+        let imm_byte_len = 3 * std::mem::size_of::<u32>();
+        // SAFETY: Same as tick_info -- Box lives on ContextState,
+        // outlives all JS.
+        extern "C" fn _no_op_deleter2(
+          _data: *mut std::ffi::c_void,
+          _len: usize,
+          _deleter_data: *mut std::ffi::c_void,
+        ) {
+        }
+        let backing_store = unsafe {
+          v8::ArrayBuffer::new_backing_store_from_ptr(
+            imm_info_ptr,
+            imm_byte_len,
+            _no_op_deleter2,
+            std::ptr::null_mut(),
+          )
+        };
+        let backing_store_shared = backing_store.make_shared();
+        let ab =
+          v8::ArrayBuffer::with_backing_store(scope, &backing_store_shared);
+        let imm_info_array = v8::Uint32Array::new(scope, ab, 0, 3).unwrap();
+        let set_imm_info_fn: v8::Local<v8::Function> = bindings::get(
+          scope,
+          core_obj,
+          SET_IMMEDIATE_INFO,
+          "Deno.core.__setImmediateInfo",
+        );
+        let undefined: v8::Local<v8::Value> = v8::undefined(scope).into();
+        set_imm_info_fn.call(scope, undefined, &[imm_info_array.into()]);
+        let key = SET_IMMEDIATE_INFO.v8_string(scope).unwrap();
+        core_obj.delete(scope, key.into());
+      }
+
       (
         v8::Global::new(scope, resolve_ops_cb),
         v8::Global::new(scope, drain_next_tick_and_macrotasks_cb),
@@ -2058,7 +2140,7 @@ impl JsRuntime {
     // 2c. nextTick drain + macrotask drain (before microtask checkpoint)
     // Only drain if there's actual work (ops dispatched, tick scheduled, or timers fired).
     // This prevents macrotask callbacks from running on empty iterations.
-    let has_tick_scheduled = context_state.has_next_tick_scheduled.get();
+    let has_tick_scheduled = context_state.has_tick_scheduled();
     dispatched_ops |= has_tick_scheduled;
     if dispatched_ops || did_work || has_tick_scheduled {
       Self::drain_next_tick_and_macrotasks(scope, context_state)?;
@@ -2066,7 +2148,7 @@ impl JsRuntime {
 
     // 2d. Immediates (if ops or timers did work)
     if (did_work || dispatched_ops)
-      && context_state.immediate_info.borrow().ref_count > 0
+      && context_state.immediate_info[IMM_IDX_REF_COUNT] > 0
     {
       Self::do_js_run_immediate_callbacks(scope, context_state)?;
     }
@@ -2454,10 +2536,10 @@ impl EventLoopPendingState {
     let has_pending_refed_ops = has_pending_tasks
       || has_pending_refed_timers
       || num_pending_ops > num_unrefed_ops;
-    let (has_outstanding_immediates, has_refed_immediates) = {
-      let info = state.immediate_info.borrow();
-      (info.has_outstanding, info.ref_count)
-    };
+    let (has_outstanding_immediates, has_refed_immediates) = (
+      state.immediate_info[IMM_IDX_HAS_OUTSTANDING] != 0,
+      state.immediate_info[IMM_IDX_REF_COUNT],
+    );
     let has_uv_alive_handles =
       if let Some(uv_inner_ptr) = state.uv_loop_inner.get() {
         unsafe { (*uv_inner_ptr).has_alive_handles() }
@@ -2473,7 +2555,7 @@ impl EventLoopPendingState {
       has_pending_dyn_module_evaluation,
       has_pending_module_evaluation,
       has_pending_background_tasks: scope.has_pending_background_tasks(),
-      has_tick_scheduled: state.has_next_tick_scheduled.get(),
+      has_tick_scheduled: state.has_tick_scheduled(),
       has_pending_promise_events,
       has_pending_external_ops: state.external_ops_tracker.has_pending_ops(),
       has_outstanding_immediates,
@@ -2799,12 +2881,10 @@ impl JsRuntime {
 
       // Drain nextTick between each timer callback
       {
-        let has_tick = context_state.has_next_tick_scheduled.get();
         let drain_cb =
           context_state.js_drain_next_tick_and_macrotasks_cb.borrow();
         let drain_fn = drain_cb.as_ref().unwrap().open(scope);
-        let has_tick_val = v8::Boolean::new(scope, has_tick);
-        drain_fn.call(scope, undefined, &[has_tick_val.into()]);
+        drain_fn.call(scope, undefined, &[]);
       }
 
       scope.perform_microtask_checkpoint();
@@ -2985,14 +3065,12 @@ impl JsRuntime {
     context_state: &ContextState,
   ) -> Result<(), Box<JsError>> {
     let undefined: v8::Local<v8::Value> = v8::undefined(scope).into();
-    let has_tick_scheduled = context_state.has_next_tick_scheduled.get();
 
     v8::tc_scope!(let tc_scope, scope);
 
     let drain_cb = context_state.js_drain_next_tick_and_macrotasks_cb.borrow();
     let drain_fn = drain_cb.as_ref().unwrap().open(tc_scope);
-    let has_tick_val = v8::Boolean::new(tc_scope, has_tick_scheduled);
-    drain_fn.call(tc_scope, undefined, &[has_tick_val.into()]);
+    drain_fn.call(tc_scope, undefined, &[]);
 
     if let Some(exception) = tc_scope.exception() {
       return exception_to_err_result(tc_scope, exception, false, true);

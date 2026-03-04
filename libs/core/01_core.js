@@ -56,7 +56,6 @@
     op_get_proxy_details,
     op_get_ext_import_meta_proto,
     op_drain_pending_rejections,
-    op_has_tick_scheduled,
     op_lazy_load_esm,
     op_memory_usage,
     op_op_names,
@@ -68,7 +67,6 @@
     op_serialize,
     op_add_main_module_handler,
     op_set_handled_promise_rejection_handler,
-    op_set_has_tick_scheduled,
     op_set_promise_hooks,
     op_set_wasm_streaming_callback,
     op_str_byte_length,
@@ -83,10 +81,6 @@
     op_leak_tracing_submit,
     op_leak_tracing_get_all,
     op_leak_tracing_get,
-
-    op_immediate_count,
-    op_immediate_ref_count,
-    op_immediate_set_has_outstanding,
 
     op_is_any_array_buffer,
     op_is_arguments_object,
@@ -186,8 +180,15 @@
   const immediateQueue = new ImmediateList();
   const outstandingQueue = new ImmediateList();
 
+  // Shared buffer with Rust - avoids JS-to-Rust op calls for immediate info.
+  // Indices: 0 = count, 1 = ref_count, 2 = has_outstanding
+  const kImmCount = 0;
+  const kImmRefCount = 1;
+  const kImmHasOutstanding = 2;
+  let immediateInfo;
+
   function queueImmediate(immediate) {
-    op_immediate_count(true);
+    immediateInfo[kImmCount]++;
     immediateQueue.append(immediate);
   }
 
@@ -195,10 +196,10 @@
     if (!immediate || immediate._destroyed) {
       return;
     }
-    op_immediate_count(false);
+    immediateInfo[kImmCount]--;
     immediate._destroyed = true;
     if (immediate._refed) {
-      op_immediate_ref_count(false);
+      immediateInfo[kImmRefCount]--;
     }
     immediate._refed = null;
     immediate._onImmediate = null;
@@ -212,7 +213,7 @@
     let immediate = queue.head;
     if (queue !== outstandingQueue) {
       queue.head = queue.tail = null;
-      op_immediate_set_has_outstanding(true);
+      immediateInfo[kImmHasOutstanding] = 1;
     }
 
     let prevImmediate;
@@ -231,9 +232,9 @@
 
       immediate._destroyed = true;
 
-      op_immediate_count(false);
+      immediateInfo[kImmCount]--;
       if (immediate._refed) {
-        op_immediate_ref_count(false);
+        immediateInfo[kImmRefCount]--;
       }
       immediate._refed = null;
 
@@ -262,7 +263,7 @@
       outstandingQueue.head = null;
     }
 
-    op_immediate_set_has_outstanding(false);
+    immediateInfo[kImmHasOutstanding] = 0;
   }
 
   // ---------------------------------------------------------------------------
@@ -271,6 +272,27 @@
   // Closely mirrors Node.js lib/internal/process/task_queues.js.
   // The queue and drain loop live here in core; Node-specific concerns
   // (validation, async hooks init, exit check) stay in ext/node/.
+  //
+  // Copyright Joyent, Inc. and other Node contributors.
+  //
+  // Permission is hereby granted, free of charge, to any person obtaining a
+  // copy of this software and associated documentation files (the
+  // "Software"), to deal in the Software without restriction, including
+  // without limitation the rights to use, copy, modify, merge, publish,
+  // distribute, sublicense, and/or sell copies of the Software, and to permit
+  // persons to whom the Software is furnished to do so, subject to the
+  // following conditions:
+  //
+  // The above copyright notice and this permission notice shall be included
+  // in all copies or substantial portions of the Software.
+  //
+  // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+  // OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+  // MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN
+  // NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+  // DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+  // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
+  // USE OR OTHER DEALINGS IN THE SOFTWARE.
   // ---------------------------------------------------------------------------
   const queue = new FixedQueue();
 
@@ -287,12 +309,18 @@
     emitDestroy = destroy;
   }
 
+  // Shared buffer with Rust - avoids JS-to-Rust op calls for tick scheduling.
+  // Index 0: hasTickScheduled
+  // Set by Rust during store_js_callbacks via Deno.core.__tickInfo.
+  const kHasTickScheduled = 0;
+  let tickInfo;
+
   function hasTickScheduled() {
-    return op_has_tick_scheduled();
+    return tickInfo[kHasTickScheduled] === 1;
   }
 
   function setHasTickScheduled(value) {
-    op_set_has_tick_scheduled(value);
+    tickInfo[kHasTickScheduled] = value ? 1 : 0;
   }
 
   // Enqueue a tick object. The object must have { callback, args } and
@@ -393,6 +421,13 @@
 
   // Matches Node.js runNextTicks() from
   // lib/internal/process/task_queues.js
+  // TODO(ib): Node.js also checks `!hasRejectionToWarn()` alongside
+  // `!hasTickScheduled()` here, so that pending promise rejections
+  // are processed even when no ticks are queued. Our rejections live
+  // in Rust's pending_promise_rejections queue and get handled in the
+  // Rust event loop's dispatch_rejections phase, so this is not a
+  // correctness issue yet, but we should wire up tick_info[1] from
+  // ExceptionState for full parity.
   function runNextTicks() {
     if (!hasTickScheduled()) {
       op_run_microtasks();
@@ -415,9 +450,9 @@
   }
 
   // Phase 5: Drain nextTick queue.
-  // Called from Rust. hasTickScheduled indicates if nextTick was scheduled.
-  function __drainNextTickAndMacrotasks(hasTickScheduled) {
-    if (hasTickScheduled) {
+  // Called from Rust. Reads hasTickScheduled from shared tickInfo buffer.
+  function __drainNextTickAndMacrotasks() {
+    if (tickInfo[kHasTickScheduled] === 1) {
       processTicksAndRejections();
     }
     op_run_microtasks();
@@ -889,10 +924,23 @@
     internalFdSymbol: Symbol("Deno.internal.fd"),
     resources,
     __resolveOps,
+    __setTickInfo(buf) {
+      tickInfo = buf;
+    },
+    __setImmediateInfo(buf) {
+      immediateInfo = buf;
+    },
     __drainNextTickAndMacrotasks,
     __handleRejections,
     __setTimerDepth,
     __reportException,
+    immediateRefCount(increase) {
+      if (increase) {
+        immediateInfo[kImmRefCount]++;
+      } else {
+        immediateInfo[kImmRefCount]--;
+      }
+    },
     runImmediateCallbacks,
     BadResource,
     BadResourcePrototype,
