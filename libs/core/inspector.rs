@@ -1126,7 +1126,13 @@ impl InspectorSession {
   }
 
   pub fn break_on_next_statement(&self) {
-    let reason = v8::inspector::StringView::from(&b"debugCommand"[..]);
+    // Use reason "other" instead of "Break on start" or the default
+    // "debugCommand". VSCode's js-debug treats both "Break on start" and
+    // "debugCommand" as isInspectBrk, and when continueOnAttach is true
+    // (which is always the case with attachSimplePort), it auto-resumes.
+    // Using "other" bypasses that check, allowing the debugger to
+    // properly pause on the first statement with --inspect-brk.
+    let reason = v8::inspector::StringView::from(&b"other"[..]);
     let detail = v8::inspector::StringView::empty();
     self
       .v8_session
