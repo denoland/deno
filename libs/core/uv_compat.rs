@@ -2,6 +2,9 @@
 
 // Drop-in replacement for libuv integrated with deno_core's event loop.
 
+#[cfg(test)]
+mod tests;
+
 use std::cell::Cell;
 use std::cell::RefCell;
 use std::collections::BTreeSet;
