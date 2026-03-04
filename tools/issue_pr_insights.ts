@@ -21,7 +21,7 @@ function getEnvOrExit(name: string): string {
 
 const token = getEnvOrExit("SLACK_TOKEN");
 const channel = getEnvOrExit("SLACK_CHANNEL");
-const githubToken = Deno.env.get("GITHUB_TOKEN");
+const githubToken = getEnvOrExit("GITHUB_TOKEN");
 const hoursInput = Deno.env.get("HOURS_LOOKBACK");
 
 const client = new WebClient(token, {
@@ -30,10 +30,8 @@ const client = new WebClient(token, {
 
 const headers: Record<string, string> = {
   "Accept": "application/vnd.github+json",
+  "Authorization": `Bearer ${githubToken}`,
 };
-if (githubToken) {
-  headers["Authorization"] = `Bearer ${githubToken}`;
-}
 
 interface GitHubItem {
   number: number;
