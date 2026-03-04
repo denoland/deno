@@ -7781,29 +7781,6 @@ mod test {
     );
   }
 
-  // Regression test: after dedup consolidates a dependency deep in the
-  // tree, the BFS must fully re-traverse to re-resolve the removed child.
-  // Previously `visited_requeue` was not cleared before the post-dedup BFS,
-  // so nodes already visited during initial resolution were skipped, leaving
-  // deep children (and their transitive deps) missing from the snapshot.
-  //
-  // The scenario uses two phases:
-  //
-  // Phase 1 (builds a snapshot):
-  //   root-a ──dep──▶ mid ──dep──▶ shared@^1 (→ 1.0.0) ──dep──▶ leaf
-  //   root-b ──dep──▶ mid     (same node)
-  //
-  // Phase 2 (extends the snapshot with a new root):
-  //   root-c ──dep──▶ shared@^1.1 (→ 1.1.0, new version)
-  //
-  // In Phase 2, the existing snapshot already has mid → shared@1.0.0.
-  // Adding root-c brings shared@1.1.0. Both root-a and root-b share
-  // mid, so mid is BFS'd twice, populating visited_requeue with
-  // (mid, shared@1.0.0). Dedup then consolidates shared to 1.1.0,
-  // removing shared@1.0.0 from mid.children. Without clearing
-  // visited_requeue, the post-dedup BFS cannot re-queue mid (blocked
-  // by stale (mid, shared) entry), so shared@1.1.0 is never resolved
-  // as mid's child and its transitive dep on leaf is lost.
   #[tokio::test]
   async fn dedup_visited_requeue_cleared_for_deep_re_resolution() {
     let api = TestNpmRegistryApi::default();
