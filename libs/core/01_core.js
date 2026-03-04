@@ -185,6 +185,7 @@
   const kImmCount = 0;
   const kImmRefCount = 1;
   const kImmHasOutstanding = 2;
+  const kRefed = Symbol("refed");
   let immediateInfo;
 
   function queueImmediate(immediate) {
@@ -198,10 +199,10 @@
     }
     immediateInfo[kImmCount]--;
     immediate._destroyed = true;
-    if (immediate._refed) {
+    if (immediate[kRefed]) {
       immediateInfo[kImmRefCount]--;
     }
-    immediate._refed = null;
+    immediate[kRefed] = null;
     immediate._onImmediate = null;
     immediateQueue.remove(immediate);
   }
@@ -233,10 +234,10 @@
       immediate._destroyed = true;
 
       immediateInfo[kImmCount]--;
-      if (immediate._refed) {
+      if (immediate[kRefed]) {
         immediateInfo[kImmRefCount]--;
       }
-      immediate._refed = null;
+      immediate[kRefed] = null;
 
       prevImmediate = immediate;
 
@@ -272,27 +273,6 @@
   // Closely mirrors Node.js lib/internal/process/task_queues.js.
   // The queue and drain loop live here in core; Node-specific concerns
   // (validation, async hooks init, exit check) stay in ext/node/.
-  //
-  // Copyright Joyent, Inc. and other Node contributors.
-  //
-  // Permission is hereby granted, free of charge, to any person obtaining a
-  // copy of this software and associated documentation files (the
-  // "Software"), to deal in the Software without restriction, including
-  // without limitation the rights to use, copy, modify, merge, publish,
-  // distribute, sublicense, and/or sell copies of the Software, and to permit
-  // persons to whom the Software is furnished to do so, subject to the
-  // following conditions:
-  //
-  // The above copyright notice and this permission notice shall be included
-  // in all copies or substantial portions of the Software.
-  //
-  // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
-  // OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-  // MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN
-  // NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
-  // DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
-  // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
-  // USE OR OTHER DEALINGS IN THE SOFTWARE.
   // ---------------------------------------------------------------------------
   const queue = new FixedQueue();
 
@@ -333,9 +313,6 @@
   // an async context snapshot. It may contain additional fields for
   // async hooks (asyncId, triggerAsyncId).
   function queueNextTick(tickObject) {
-    if (queue.isEmpty()) {
-      setHasTickScheduled(true);
-    }
     queue.push(tickObject);
   }
 
@@ -984,6 +961,8 @@
     clearImmediate,
     runImmediates,
     immediateQueue,
+    immediateInfo,
+    kRefed,
     runMicrotasks: () => op_run_microtasks(),
     hasTickScheduled,
     setHasTickScheduled,

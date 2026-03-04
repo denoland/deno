@@ -43,7 +43,7 @@ export const TIMEOUT_MAX = 2 ** 31 - 1;
 export const kDestroy = Symbol("destroy");
 export const kTimerId = Symbol("timerId");
 export const kTimeout = Symbol("timeout");
-export const kRefed = Symbol("refed");
+export const kRefed = core.kRefed;
 const createTimer = Symbol("createTimer");
 
 /**
@@ -206,7 +206,7 @@ export class Immediate {
     this._onImmediate = callback;
     this._argv = args;
     this._destroyed = false;
-    this._refed = false;
+    this[kRefed] = false;
 
     const asyncId = nextAsyncId();
     const triggerAsyncId = executionAsyncId();
@@ -219,23 +219,23 @@ export class Immediate {
   }
 
   ref() {
-    if (this._refed === false) {
-      this._refed = true;
+    if (this[kRefed] === false) {
+      this[kRefed] = true;
       immediateRefCount(true);
     }
     return this;
   }
 
   unref() {
-    if (this._refed === true) {
-      this._refed = false;
+    if (this[kRefed] === true) {
+      this[kRefed] = false;
       immediateRefCount(false);
     }
     return this;
   }
 
   hasRef() {
-    return !!this._refed;
+    return !!this[kRefed];
   }
 
   [inspect.custom] = function (_, options) {

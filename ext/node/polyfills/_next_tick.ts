@@ -92,5 +92,6 @@ export function nextTick<T extends Array<unknown>>(
     args: args_,
   };
   emitInit(asyncId, "TickObject", triggerAsyncId, tickObject);
+  core.setHasTickScheduled(true);
   core.queueNextTick(tickObject);
 }

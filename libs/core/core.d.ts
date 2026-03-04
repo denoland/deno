@@ -217,6 +217,12 @@ export namespace core {
     remove(item: ImmediateHandle): void;
   };
 
+  /** Shared Uint32Array for immediate count, ref count, and has_outstanding. */
+  const immediateInfo: Uint32Array;
+
+  /** Symbol key used for the refed state on Immediate/Timeout objects. */
+  const kRefed: unique symbol;
+
   /** Enqueue a user timer at the given depth, optionally repeating. User
    * timers may generate call traces for sanitization, and may be clamped
    * depending on the depth of nesting. */

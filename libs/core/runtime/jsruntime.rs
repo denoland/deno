@@ -1487,6 +1487,16 @@ impl JsRuntime {
         }
       }
 
+      // SAFETY: The backing memory lives on ContextState which outlives
+      // all JS. We pass a no-op destructor since ContextState owns
+      // the memory.
+      extern "C" fn _no_op_deleter(
+        _data: *mut std::ffi::c_void,
+        _len: usize,
+        _deleter_data: *mut std::ffi::c_void,
+      ) {
+      }
+
       // Create a shared Uint8Array backed by ContextState::tick_info and
       // pass it to JS via __setTickInfo so JS can read/write
       // hasTickScheduled without crossing the JS-to-Rust boundary.
@@ -1494,15 +1504,6 @@ impl JsRuntime {
         let state_rc = realm.0.state();
         let tick_info_ptr =
           state_rc.tick_info.as_ptr() as *mut std::ffi::c_void;
-        // SAFETY: The Box<[u8; 2]> lives on ContextState which outlives
-        // all JS. We pass a no-op destructor since ContextState owns
-        // the memory.
-        extern "C" fn _no_op_deleter(
-          _data: *mut std::ffi::c_void,
-          _len: usize,
-          _deleter_data: *mut std::ffi::c_void,
-        ) {
-        }
         let backing_store = unsafe {
           v8::ArrayBuffer::new_backing_store_from_ptr(
             tick_info_ptr,
@@ -1535,19 +1536,11 @@ impl JsRuntime {
         let imm_info_ptr =
           state_rc.immediate_info.as_ptr() as *mut std::ffi::c_void;
         let imm_byte_len = 3 * std::mem::size_of::<u32>();
-        // SAFETY: Same as tick_info -- Box lives on ContextState,
-        // outlives all JS.
-        extern "C" fn _no_op_deleter2(
-          _data: *mut std::ffi::c_void,
-          _len: usize,
-          _deleter_data: *mut std::ffi::c_void,
-        ) {
-        }
         let backing_store = unsafe {
           v8::ArrayBuffer::new_backing_store_from_ptr(
             imm_info_ptr,
             imm_byte_len,
-            _no_op_deleter2,
+            _no_op_deleter,
             std::ptr::null_mut(),
           )
         };
