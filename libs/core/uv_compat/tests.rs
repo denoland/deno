@@ -6,7 +6,6 @@ use std::task::Poll;
 
 use super::tcp::AF_INET;
 use super::tcp::sockaddr_in;
-
 use crate::JsRuntime;
 use crate::PollEventLoopOptions;
 use crate::uv_compat::*;

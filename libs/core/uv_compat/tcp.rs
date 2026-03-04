@@ -744,7 +744,7 @@ pub(crate) unsafe fn poll_tcp_handle(
     && tcp.internal_stream.is_some()
   {
     // SAFETY: tcp_ptr is valid; complete_shutdown is safe when stream and shutdown are set.
-    unsafe { crate::uv_compat::stream::complete_shutdown(tcp_ptr) };
+    unsafe { crate::uv_compat::stream::complete_shutdown(tcp_ptr, cx) };
     any_work = true;
   }
 

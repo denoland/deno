@@ -345,48 +345,31 @@ pub unsafe fn uv_shutdown(
 /// # Safety
 /// `tcp` must be a valid pointer to an initialized `uv_tcp_t` with
 /// `internal_stream` set and `internal_shutdown` set.
-pub(crate) unsafe fn complete_shutdown(tcp: *mut uv_tcp_t) {
+pub(crate) unsafe fn complete_shutdown(
+  tcp: *mut uv_tcp_t,
+  cx: &mut std::task::Context<'_>,
+) {
+  use std::pin::Pin;
+
+  use tokio::io::AsyncWrite;
+
   // SAFETY: Caller guarantees tcp is valid.
   let pending = unsafe { (*tcp).internal_shutdown.take() };
   let Some(pending) = pending else { return };
 
-  let status = if let Some(ref stream) = unsafe { &*tcp }.internal_stream {
-    #[cfg(unix)]
-    {
-      use std::os::unix::io::AsRawFd;
-      let fd = stream.as_raw_fd();
-      // SAFETY: fd is a valid file descriptor from the TcpStream.
-      if unsafe { libc::shutdown(fd, libc::SHUT_WR) } == 0 {
-        0
-      } else {
-        UV_ENOTCONN
+  let status =
+    if let Some(ref mut stream) = unsafe { &mut *tcp }.internal_stream {
+      match Pin::new(stream).poll_shutdown(cx) {
+        std::task::Poll::Ready(Ok(())) => 0,
+        _ => UV_ENOTCONN,
       }
-    }
-    #[cfg(windows)]
-    {
-      use std::os::windows::io::AsRawSocket;
-      let sock = stream.as_raw_socket();
-      if win_sock::shutdown(sock as usize, win_sock::SD_SEND) == 0 {
-        0
-      } else {
-        UV_ENOTCONN
-      }
-    }
-  } else {
-    UV_ENOTCONN
-  };
+    } else {
+      UV_ENOTCONN
+    };
 
   if let Some(cb) = pending.cb {
     // SAFETY: req and cb set by C caller via uv_shutdown.
     unsafe { cb(pending.req, status) };
-  }
-}
-
-#[cfg(windows)]
-mod win_sock {
-  pub const SD_SEND: i32 = 1;
-  unsafe extern "system" {
-    pub fn shutdown(socket: usize, how: i32) -> i32;
   }
 }
 
