@@ -6,7 +6,7 @@
 /**
  * x.ts - Developer CLI for contributing to Deno
  *
- * Inspired by Servo's mach tool (x.py), this script provides a unified
+ * Inspired by Servo's mach tool, this script provides a unified
  * interface for common development tasks like building, testing, and more.
  *
  * Usage:
