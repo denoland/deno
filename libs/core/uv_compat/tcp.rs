@@ -46,9 +46,9 @@ use crate::uv_compat::uv_handle_t;
 use crate::uv_compat::uv_handle_type;
 use crate::uv_compat::uv_loop_t;
 use crate::uv_compat::uv_read_cb;
-use crate::uv_compat::uv_stream_t;
 use crate::uv_compat::uv_shutdown_cb;
 use crate::uv_compat::uv_shutdown_t;
+use crate::uv_compat::uv_stream_t;
 use crate::uv_compat::uv_write_cb;
 use crate::uv_compat::uv_write_t;
 #[cfg(windows)]
@@ -643,11 +643,7 @@ pub(crate) unsafe fn poll_tcp_handle(
     let read_cb = tcp.internal_read_cb;
     if let (Some(alloc_cb), Some(read_cb)) = (alloc_cb, read_cb) {
       // Register interest so tokio's reactor wakes us.
-      let _ = tcp
-        .internal_stream
-        .as_ref()
-        .unwrap()
-        .poll_read_ready(cx);
+      let _ = tcp.internal_stream.as_ref().unwrap().poll_read_ready(cx);
 
       loop {
         // Re-check after each callback: the callback may have
@@ -682,9 +678,7 @@ pub(crate) unsafe fn poll_tcp_handle(
           Ok(n) => {
             any_work = true;
             // SAFETY: read_cb set by C caller via uv_read_start; tcp_ptr and buf are valid.
-            unsafe {
-              read_cb(tcp_ptr as *mut uv_stream_t, n as isize, &buf)
-            };
+            unsafe { read_cb(tcp_ptr as *mut uv_stream_t, n as isize, &buf) };
           }
           Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
             break;

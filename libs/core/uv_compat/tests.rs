@@ -884,7 +884,9 @@ async fn idle_start_already_active_is_noop() {
     }
     unsafe extern "C" fn cb_b(_handle: *mut uv_idle_t) {
       // This should never be called -- libuv ignores the new cb.
-      panic!("cb_b should not be called; uv_idle_start on active handle is a no-op");
+      panic!(
+        "cb_b should not be called; uv_idle_start on active handle is a no-op"
+      );
     }
 
     let mut idle = std::mem::MaybeUninit::<uv_idle_t>::uninit();
@@ -1188,8 +1190,7 @@ async fn tcp_shutdown_waits_for_write_queue_to_drain() {
 
     unsafe extern "C" fn on_connect(req: *mut uv_connect_t, status: i32) {
       assert_eq!(status, 0);
-      let connected =
-        unsafe { Rc::from_raw((*req).data as *const Cell<bool>) };
+      let connected = unsafe { Rc::from_raw((*req).data as *const Cell<bool>) };
       connected.set(true);
       let _ = Rc::into_raw(connected);
     }
@@ -1259,11 +1260,7 @@ async fn tcp_shutdown_waits_for_write_queue_to_drain() {
     ) {
       unsafe {
         if !(*buf).base.is_null() && (*buf).len > 0 {
-          drop(Vec::<u8>::from_raw_parts(
-            (*buf).base.cast(),
-            0,
-            (*buf).len,
-          ));
+          drop(Vec::<u8>::from_raw_parts((*buf).base.cast(), 0, (*buf).len));
         }
       }
     }
@@ -1288,10 +1285,7 @@ async fn tcp_shutdown_waits_for_write_queue_to_drain() {
       let _ = Rc::into_raw(order);
     }
 
-    unsafe extern "C" fn shutdown_cb(
-      req: *mut uv_shutdown_t,
-      _status: i32,
-    ) {
+    unsafe extern "C" fn shutdown_cb(req: *mut uv_shutdown_t, _status: i32) {
       let order = unsafe {
         Rc::from_raw((*req).data as *const RefCell<Vec<&'static str>>)
       };
@@ -1390,8 +1384,7 @@ async fn tcp_shutdown_no_stream() {
       uv_tcp_init(uv_loop, tcp_ptr);
       // uv_shutdown returns UV_ENOTCONN when no stream is attached
       // (matching libuv which returns error code, not callback).
-      let status =
-        uv_shutdown(req_ptr, tcp_ptr as *mut uv_stream_t, None);
+      let status = uv_shutdown(req_ptr, tcp_ptr as *mut uv_stream_t, None);
       assert_eq!(status, UV_ENOTCONN);
     }
   })

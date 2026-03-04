@@ -7,9 +7,6 @@ mod tcp;
 #[cfg(test)]
 mod tests;
 
-pub use stream::*;
-pub use tcp::*;
-
 use std::cell::Cell;
 use std::cell::RefCell;
 use std::collections::BTreeSet;
@@ -20,6 +17,9 @@ use std::ffi::c_void;
 use std::task::Context;
 use std::task::Waker;
 use std::time::Instant;
+
+pub use stream::*;
+pub use tcp::*;
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

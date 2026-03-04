@@ -4,17 +4,17 @@ use std::ffi::c_char;
 use std::ffi::c_int;
 use std::ffi::c_void;
 
-use super::get_inner;
-use super::tcp::uv_tcp_t;
-use super::tcp::WritePending;
-use super::uv_handle_t;
-use super::uv_handle_type;
-use super::uv_loop_t;
-use super::UV_EBADF;
 use super::UV_EAGAIN;
+use super::UV_EBADF;
 use super::UV_ENOTCONN;
 use super::UV_EPIPE;
 use super::UV_HANDLE_ACTIVE;
+use super::get_inner;
+use super::tcp::WritePending;
+use super::tcp::uv_tcp_t;
+use super::uv_handle_t;
+use super::uv_handle_type;
+use super::uv_loop_t;
 
 #[repr(C)]
 pub struct uv_stream_t {
@@ -328,8 +328,7 @@ pub unsafe fn uv_shutdown(
 
     // Defer the actual shutdown(2) until the write queue drains,
     // matching libuv's behavior where shutdown is processed in uv__drain.
-    (*tcp).internal_shutdown =
-      Some(super::tcp::ShutdownPending { req, cb });
+    (*tcp).internal_shutdown = Some(super::tcp::ShutdownPending { req, cb });
 
     let inner = get_inner((*tcp).loop_);
     let mut handles = inner.tcp_handles.borrow_mut();
