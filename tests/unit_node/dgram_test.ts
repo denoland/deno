@@ -58,6 +58,20 @@ Deno.test("[node/dgram] udp unref", {
   assertEquals(statusCode, 0);
 });
 
+Deno.test("[node/dgram] addMembership works", async () => {
+  const { promise, resolve } = Promise.withResolvers<void>();
+  const socket = createSocket("udp4");
+  socket.bind(0, () => {
+    try {
+      socket.addMembership("224.0.0.114");
+    } finally {
+      socket.close();
+    }
+  });
+  socket.on("close", () => resolve());
+  await promise;
+});
+
 Deno.test("[node/dgram] createSocket, reuseAddr option", async () => {
   const { promise, resolve } = Promise.withResolvers<string>();
   const socket0 = createSocket({ type: "udp4", reuseAddr: true });

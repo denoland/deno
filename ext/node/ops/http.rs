@@ -176,6 +176,62 @@ pub async fn op_node_http_request_with_conn(
         .any(|part| part.trim_ascii() == b"upgrade")
   });
 
+  // Take the network stream resource for HTTP communication.
+  // On Windows, NamedPipe resources may have pending read operations
+  // (from readStart() in stream_wrap.ts) that hold extra Rc references,
+  // preventing Rc::try_unwrap(). We handle this by cancelling pending ops
+  // and yielding to let them complete before extracting the pipe.
+  #[cfg(windows)]
+  let stream = {
+    let is_pipe = state
+      .borrow()
+      .resource_table
+      .get::<deno_net::win_pipe::NamedPipe>(conn_rid)
+      .is_ok();
+    if is_pipe {
+      // Take the NamedPipe from the resource table
+      let pipe_rc = state
+        .borrow_mut()
+        .resource_table
+        .take::<deno_net::win_pipe::NamedPipe>(conn_rid)
+        .map_err(ConnError::Resource)?;
+
+      // Cancel pending read/write operations. This triggers the CancelHandle,
+      // causing in-flight ops to complete with a cancellation error and
+      // release their Rc references.
+      pipe_rc.cancel_pending_ops();
+
+      // Yield to the event loop so cancelled ops can be polled, see the
+      // cancellation, and drop their Rc references to the NamedPipe.
+      //
+      // Invariant: a single yield is sufficient because:
+      // 1. cancel_pending_ops() triggers the CancelHandle, which causes
+      //    all in-flight read/write futures to resolve on their next poll.
+      // 2. The `if (!this.#reading) return;` guard in stream_wrap.ts's
+      //    #read() (after its own PromiseResolve yield) ensures the JS
+      //    read loop bails out before starting a new op_read.
+      // 3. yield_now() gives the executor one turn to poll those cancelled
+      //    futures and drop their Rc references.
+      tokio::task::yield_now().await;
+
+      // Now we should be the sole Rc owner
+      let resource = Rc::try_unwrap(pipe_rc)
+        .map_err(|_| ConnError::Resource(ResourceError::BadResourceId))?;
+      let client = resource
+        .into_client()
+        .map_err(|_| ConnError::Resource(ResourceError::BadResourceId))?;
+      NetworkStream::WindowsPipe(deno_net::win_pipe::WindowsPipeStream::new(
+        client,
+      ))
+    } else {
+      take_network_stream_resource(
+        &mut state.borrow_mut().resource_table,
+        conn_rid,
+      )
+      .map_err(|_| ConnError::Resource(ResourceError::BadResourceId))?
+    }
+  };
+  #[cfg(not(windows))]
   let stream = take_network_stream_resource(
     &mut state.borrow_mut().resource_table,
     conn_rid,
@@ -464,6 +520,10 @@ pub async fn op_node_http_response_reclaim_conn(
       return Ok(None);
     }
     NetworkStream::Tunnel(_) => {
+      return Ok(None);
+    }
+    #[cfg(windows)]
+    NetworkStream::WindowsPipe(_) => {
       return Ok(None);
     }
   };
