@@ -2147,7 +2147,14 @@ impl JsRuntime {
     }
 
     // 2e. Handle promise rejections (after nextTick/macrotask, since
-    // unhandledrejection handlers are run in macrotask callbacks)
+    // unhandledrejection handlers are run in macrotask callbacks).
+    // Note: rejections are also drained inside processTicksAndRejections
+    // (via processPromiseRejections in the do-while loop). That path
+    // handles rejections created by tick callbacks or their microtasks.
+    // This path handles rejections from op completions or timer callbacks
+    // when no ticks were scheduled (so processTicksAndRejections didn't
+    // run). Both drain the same pending_promise_rejections queue via
+    // pop_front/drain, so there is no double-processing.
     Self::dispatch_rejections(scope, context_state, exception_state)?;
     scope.perform_microtask_checkpoint();
 

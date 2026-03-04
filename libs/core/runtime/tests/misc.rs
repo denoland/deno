@@ -887,6 +887,67 @@ async fn test_promise_rejection_nexttick_interleave() {
   runtime.run_event_loop(Default::default()).await.unwrap();
 }
 
+/// Test that when a nextTick callback throws, subsequent ticks still drain.
+/// Matches Node.js behavior where TriggerUncaughtException dispatches the
+/// error and then re-enters processTicksAndRejections.
+#[tokio::test]
+async fn test_next_tick_error_continues_drain() {
+  static TICKS_RUN: AtomicUsize = AtomicUsize::new(0);
+
+  #[allow(clippy::unnecessary_wraps)]
+  #[op2(fast)]
+  fn op_tick_count() -> Result<(), JsErrorBox> {
+    TICKS_RUN.fetch_add(1, Ordering::Relaxed);
+    Ok(())
+  }
+
+  #[op2]
+  async fn op_async_sleep() -> Result<(), JsErrorBox> {
+    tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+    Ok(())
+  }
+
+  deno_core::extension!(test_ext, ops = [op_tick_count, op_async_sleep]);
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    extensions: vec![test_ext::init()],
+    ..Default::default()
+  });
+
+  runtime
+    .execute_script(
+      "nexttick_error_continues.js",
+      r#"
+      Deno.core.setReportExceptionCallback((e) => {
+        // Swallow the error so the event loop doesn't abort
+      });
+
+      Deno.core.queueNextTick({
+        callback: () => Deno.core.ops.op_tick_count(),
+        args: undefined,
+        snapshot: undefined,
+      });
+      Deno.core.queueNextTick({
+        callback: () => { throw new Error("boom"); },
+        args: undefined,
+        snapshot: undefined,
+      });
+      Deno.core.queueNextTick({
+        callback: () => Deno.core.ops.op_tick_count(),
+        args: undefined,
+        snapshot: undefined,
+      });
+
+      (async () => { await Deno.core.ops.op_async_sleep(); })();
+      "#,
+    )
+    .unwrap();
+
+  runtime.run_event_loop(Default::default()).await.unwrap();
+  // All 3 ticks should have been attempted; the 2 non-throwing ones
+  // increment the counter.
+  assert_eq!(2, TICKS_RUN.load(Ordering::Relaxed));
+}
+
 #[test]
 fn terminate_during_module_eval() {
   let mut runtime = JsRuntime::new(RuntimeOptions {

@@ -305,6 +305,10 @@
     return tickInfo[kHasRejectionToWarn] === 1;
   }
 
+  function setHasRejectionToWarn(value) {
+    tickInfo[kHasRejectionToWarn] = value ? 1 : 0;
+  }
+
   function setHasTickScheduled(value) {
     tickInfo[kHasTickScheduled] = value ? 1 : 0;
   }
@@ -313,6 +317,9 @@
   // an async context snapshot. It may contain additional fields for
   // async hooks (asyncId, triggerAsyncId).
   function queueNextTick(tickObject) {
+    if (queue.isEmpty()) {
+      setHasTickScheduled(true);
+    }
     queue.push(tickObject);
   }
 
@@ -380,27 +387,25 @@
                 callback(...args);
             }
           }
+          emitAfter(asyncId);
         } catch (e) {
-          // TODO: move this to Rust. In Node.js, errors propagate from
-          // JS to C++ (TryCatch in node_task_queue.cc
-          // InternalCallbackScope::Close), which calls
+          // In Node.js, errors propagate from JS to C++ (TryCatch in
+          // node_task_queue.cc InternalCallbackScope::Close), which calls
           // TriggerUncaughtException and then re-enters the drain loop.
-          // We could do the same in Rust: catch the v8 exception in
-          // drain_next_tick_and_macrotasks, dispatch it via
-          // op_dispatch_exception, and re-call the JS drain function.
-          // For now, we catch here in JS and route through
-          // reportExceptionCallback which triggers uncaughtException.
+          // We approximate this by catching here and routing through
+          // reportExceptionCallback (which triggers uncaughtException),
+          // then continuing the drain loop.
           reportExceptionCallback(e);
         } finally {
           emitDestroy(asyncId);
         }
 
-        emitAfter(asyncId);
         setAsyncContext(oldContext);
       }
       op_run_microtasks();
     } while (!queue.isEmpty() || processPromiseRejections());
     setHasTickScheduled(false);
+    setHasRejectionToWarn(false);
   }
 
   // Matches Node.js runNextTicks() from
@@ -426,13 +431,17 @@
     }
   }
 
-  // Phase 5: Drain nextTick queue.
-  // Called from Rust. Reads hasTickScheduled from shared tickInfo buffer.
+  // Matches Node.js runNextTicks() from
+  // lib/internal/process/task_queues.js.
+  // Called from Rust at phase 2c of the event loop.
   function __drainNextTickAndMacrotasks() {
-    if (tickInfo[kHasTickScheduled] === 1) {
-      processTicksAndRejections();
+    if (!hasTickScheduled() && !hasRejectionToWarn()) {
+      op_run_microtasks();
     }
-    op_run_microtasks();
+    if (!hasTickScheduled() && !hasRejectionToWarn()) {
+      return;
+    }
+    processTicksAndRejections();
   }
 
   // Phase 2: Handle unhandled promise rejections.
