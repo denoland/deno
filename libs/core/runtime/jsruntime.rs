@@ -2164,7 +2164,18 @@ impl JsRuntime {
     Self::dispatch_rejections(scope, context_state, exception_state)?;
     scope.perform_microtask_checkpoint();
 
-    // ===== Phase 3: I/O =====
+    // ===== Phase 3: Idle / Prepare =====
+    // In libuv: idle runs after pending callbacks, prepare runs right
+    // before I/O polling. Both must precede I/O.
+    if let Some(uv_inner_ptr) = context_state.uv_loop_inner.get() {
+      unsafe {
+        (*uv_inner_ptr).run_idle();
+        (*uv_inner_ptr).run_prepare();
+      };
+    }
+    scope.perform_microtask_checkpoint();
+
+    // ===== Phase 4: I/O =====
     // Tight I/O loop: when run_io reads data and fires callbacks, the
     // resulting JS work (nextTick/macrotasks from HTTP2 frame processing)
     // may produce write calls. Drain those immediately and re-poll for
@@ -2185,16 +2196,8 @@ impl JsRuntime {
       }
     }
 
-    // ===== Phase 4: Idle / Prepare =====
-    if let Some(uv_inner_ptr) = context_state.uv_loop_inner.get() {
-      unsafe {
-        (*uv_inner_ptr).run_idle();
-        (*uv_inner_ptr).run_prepare();
-      };
-    }
-    scope.perform_microtask_checkpoint();
-
     // ===== Phase 5: Check =====
+    // In libuv: check runs right after I/O polling.
     if let Some(uv_inner_ptr) = context_state.uv_loop_inner.get() {
       unsafe { (*uv_inner_ptr).run_check() };
     }
