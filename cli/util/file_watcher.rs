@@ -307,7 +307,7 @@ where
   let initial_cwd_url = flags
     .initial_cwd
     .as_ref()
-    .and_then(|path| deno_path_util::url_from_directory_path(&path).ok());
+    .and_then(|path| deno_path_util::url_from_directory_path(path).ok());
   let exclude_set = flags.resolve_watch_exclude_set()?;
   let (paths_to_watch_tx, mut paths_to_watch_rx) =
     tokio::sync::mpsc::unbounded_channel();
