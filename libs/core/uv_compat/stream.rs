@@ -146,6 +146,10 @@ pub unsafe fn uv_try_write(handle: *mut uv_stream_t, data: &[u8]) -> i32 {
 /// ### Safety
 /// `req` must be valid and remain so until the write callback fires. `handle` must be an
 /// initialized `uv_tcp_t`. `bufs` must point to `nbufs` valid `uv_buf_t` entries.
+///
+/// This function avoids holding `&mut uv_tcp_t` across callback invocations
+/// to prevent aliasing violations (the callback may access the handle via
+/// `req.handle`).
 pub unsafe fn uv_write(
   req: *mut uv_write_t,
   handle: *mut uv_stream_t,
@@ -156,18 +160,16 @@ pub unsafe fn uv_write(
   // SAFETY: Caller guarantees all pointers are valid.
   unsafe {
     let tcp = handle as *mut uv_tcp_t;
-    let tcp_ref = &mut *tcp;
     (*req).handle = handle;
 
-    let stream = match tcp_ref.internal_stream.as_ref() {
-      Some(s) => s,
+    if (*tcp).internal_stream.is_none() {
       // Match libuv: return error code from uv_write, don't invoke callback.
-      None => return UV_EBADF,
-    };
+      return UV_EBADF;
+    }
 
-    if !tcp_ref.internal_write_queue.is_empty() {
+    if !(*tcp).internal_write_queue.is_empty() {
       let write_data = collect_bufs(bufs, nbufs);
-      tcp_ref.internal_write_queue.push_back(WritePending {
+      (*tcp).internal_write_queue.push_back(WritePending {
         req,
         data: write_data,
         offset: 0,
@@ -182,7 +184,13 @@ pub unsafe fn uv_write(
         let data = std::slice::from_raw_parts(buf.base as *const u8, buf.len);
         let mut offset = 0;
         loop {
-          match stream.try_write(&data[offset..]) {
+          // Short-lived borrow for try_write; dropped before any callback.
+          let result = (*tcp)
+            .internal_stream
+            .as_ref()
+            .unwrap()
+            .try_write(&data[offset..]);
+          match result {
             Ok(n) => {
               offset += n;
               if offset >= data.len() {
@@ -193,7 +201,7 @@ pub unsafe fn uv_write(
               }
             }
             Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-              tcp_ref.internal_write_queue.push_back(WritePending {
+              (*tcp).internal_write_queue.push_back(WritePending {
                 req,
                 data: data[offset..].to_vec(),
                 offset: 0,
@@ -239,7 +247,13 @@ pub unsafe fn uv_write(
       return 0;
     }
 
-    match stream.try_write_vectored(&iovecs) {
+    // Short-lived borrow for try_write_vectored; dropped before callbacks.
+    let write_result = (*tcp)
+      .internal_stream
+      .as_ref()
+      .unwrap()
+      .try_write_vectored(&iovecs);
+    match write_result {
       Ok(n) if n >= total_len => {
         if let Some(cb) = cb {
           cb(req, 0);
@@ -257,7 +271,7 @@ pub unsafe fn uv_write(
             skip = 0;
           }
         }
-        tcp_ref.internal_write_queue.push_back(WritePending {
+        (*tcp).internal_write_queue.push_back(WritePending {
           req,
           data: write_data,
           offset: 0,
@@ -266,7 +280,7 @@ pub unsafe fn uv_write(
       }
       Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
         let write_data = collect_bufs(bufs, nbufs);
-        tcp_ref.internal_write_queue.push_back(WritePending {
+        (*tcp).internal_write_queue.push_back(WritePending {
           req,
           data: write_data,
           offset: 0,
