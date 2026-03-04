@@ -40,6 +40,7 @@ interface GitHubItem {
   html_url: string;
   created_at: string;
   comments: number;
+  pull_request?: unknown;
 }
 
 async function getLastRunTimestamp(): Promise<string | null> {
@@ -237,10 +238,7 @@ async function main() {
   ]);
 
   // Filter out pull requests from the issues endpoint results
-  const newIssues = allIssueItems.filter(
-    // deno-lint-ignore no-explicit-any
-    (item: any) => !item.pull_request,
-  );
+  const newIssues = allIssueItems.filter((item) => !item.pull_request);
   const newPRs = allPRs;
 
   const noResponseIssues = newIssues.filter((i) => i.comments === 0);
