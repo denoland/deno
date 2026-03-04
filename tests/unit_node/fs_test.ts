@@ -528,3 +528,94 @@ Deno.test(
     );
   },
 );
+
+Deno.test(
+  "[node/fs openAsBlob] works with URL.createObjectURL and fetch",
+  async () => {
+    const filename = mkdtempSync(join(tmpdir(), "foo-")) + "/test.txt";
+    const data = "Hello, createObjectURL!";
+    writeFileSync(filename, data);
+
+    const blob = await openAsBlob(filename);
+    const url = URL.createObjectURL(blob);
+    try {
+      const resp = await fetch(url);
+      assertEquals(resp.ok, true);
+      assertEquals(await resp.text(), data);
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  },
+);
+
+Deno.test(
+  "[node/fs openAsBlob] reads file lazily, not at creation time",
+  async () => {
+    const filename = mkdtempSync(join(tmpdir(), "foo-")) + "/test.txt";
+    writeFileSync(filename, "original");
+
+    const blob = await openAsBlob(filename);
+    // Overwrite the file with different-length content after blob creation.
+    // If the file were read eagerly, blob.text() would return "original".
+    writeFileSync(filename, "modified content that is longer");
+
+    // Reading should fail because the file size changed since blob creation.
+    await assertRejects(
+      () => blob.text(),
+      undefined,
+      undefined,
+    );
+  },
+);
+
+Deno.test(
+  "[node/fs openAsBlob] reports correct size without reading file",
+  async () => {
+    const filename = mkdtempSync(join(tmpdir(), "foo-")) + "/test.txt";
+    const data = "Hello, size check!";
+    writeFileSync(filename, data);
+
+    const blob = await openAsBlob(filename);
+    // Size should be available immediately without reading the file
+    assertEquals(blob.size, new TextEncoder().encode(data).length);
+  },
+);
+
+Deno.test(
+  "[node/fs openAsBlob] sliced blob reads correctly",
+  async () => {
+    const filename = mkdtempSync(join(tmpdir(), "foo-")) + "/test.txt";
+    const data = "Hello, sliced blob!";
+    writeFileSync(filename, data);
+
+    const blob = await openAsBlob(filename);
+    const sliced = blob.slice(7, 13);
+    assertEquals(await sliced.text(), "sliced");
+  },
+);
+
+Deno.test(
+  "[node/fs openAsBlob] sliced blob only reads its range, not the full file",
+  async () => {
+    const filename = mkdtempSync(join(tmpdir(), "foo-")) + "/test.txt";
+    // Write 10 bytes: first half "AAAAA", second half "BBBBB"
+    writeFileSync(filename, "AAAAABBBBB");
+
+    const blob = await openAsBlob(filename);
+    const firstHalf = blob.slice(0, 5);
+    const secondHalf = blob.slice(5, 10);
+
+    // Read the first half — this should only load bytes 0..5
+    assertEquals(await firstHalf.text(), "AAAAA");
+
+    // Now mutate the second half of the file on disk (same total size,
+    // so the file-size integrity check still passes).
+    writeFileSync(filename, "AAAAACCCCC");
+
+    // Read the second half — if the full file had been cached during
+    // the first read, this would return the stale "BBBBB".
+    // Because each slice reads only its own byte range independently,
+    // we get the fresh "CCCCC" from disk.
+    assertEquals(await secondHalf.text(), "CCCCC");
+  },
+);

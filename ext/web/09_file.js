@@ -722,10 +722,28 @@ function isBlob(obj) {
   return ObjectPrototypeIsPrototypeOf(BlobPrototype, obj);
 }
 
+/**
+ * Create a Blob backed by a file in the Rust blob store.
+ * The blob part is identified by a UUID and participates in the
+ * blob store, so URL.createObjectURL works.
+ *
+ * @param {string} uuid
+ * @param {number} size
+ * @param {string} type
+ * @returns {Blob}
+ */
+function createFileBackedBlob(uuid, size, type) {
+  const blob = new Blob([], { type });
+  blob[_parts] = [new BlobReference(uuid, size)];
+  blob[_size] = size;
+  return blob;
+}
+
 export {
   Blob,
   blobFromObjectUrl,
   BlobPrototype,
+  createFileBackedBlob,
   File,
   FilePrototype,
   getParts,
