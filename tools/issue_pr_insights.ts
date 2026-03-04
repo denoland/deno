@@ -1,5 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-// deno-lint-ignore-file no-console
+
+// deno-lint-ignore-file no-console camelcase
 
 import { LogLevel, WebClient } from "npm:@slack/web-api@7.8.0";
 
@@ -161,8 +162,7 @@ function createBlocks(
     type: "section",
     text: {
       type: "mrkdwn",
-      text:
-        `*📊 Daily Issue & PR Insights*\n_Since ${sinceStr}_`,
+      text: `*📊 Daily Issue & PR Insights*\n_Since ${sinceStr}_`,
     },
   });
 
@@ -172,8 +172,7 @@ function createBlocks(
     type: "section",
     text: {
       type: "mrkdwn",
-      text:
-        `*New Issues:* ${newIssues.length}\n*New PRs:* ${newPRs.length}`,
+      text: `*New Issues:* ${newIssues.length}\n*New PRs:* ${newPRs.length}`,
     },
   });
 
@@ -187,8 +186,7 @@ function createBlocks(
     text: { type: "mrkdwn", text: noResponseText },
   });
 
-  let noResponsePRText =
-    `*PRs with no response (${noResponsePRs.length}):*\n`;
+  let noResponsePRText = `*PRs with no response (${noResponsePRs.length}):*\n`;
   noResponsePRText += formatItemList(noResponsePRs, 15);
   blocks.push({
     type: "section",
