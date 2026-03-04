@@ -961,7 +961,6 @@
     clearImmediate,
     runImmediates,
     immediateQueue,
-    immediateInfo,
     kRefed,
     runMicrotasks: () => op_run_microtasks(),
     hasTickScheduled,

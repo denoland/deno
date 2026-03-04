@@ -14,7 +14,6 @@ import {
   getActiveTimer,
   Immediate,
   kDestroy,
-  kRefed,
   setUnrefTimeout,
   Timeout,
 } from "ext:deno_node/internal/timers.mjs";
@@ -224,18 +223,7 @@ export function clearImmediate(immediate: Immediate) {
   if (!immediate?._onImmediate || immediate._destroyed) {
     return;
   }
-
-  core.immediateInfo[0]--;
-  immediate._destroyed = true;
-
-  if (immediate[kRefed]) {
-    core.immediateInfo[1]--;
-  }
-  immediate[kRefed] = null;
-
-  immediate._onImmediate = null;
-
-  core.immediateQueue.remove(immediate);
+  core.clearImmediate(immediate);
 }
 
 async function* setIntervalAsync(

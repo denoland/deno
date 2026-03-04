@@ -217,9 +217,6 @@ export namespace core {
     remove(item: ImmediateHandle): void;
   };
 
-  /** Shared Uint32Array for immediate count, ref count, and has_outstanding. */
-  const immediateInfo: Uint32Array;
-
   /** Symbol key used for the refed state on Immediate/Timeout objects. */
   const kRefed: unique symbol;
 
