@@ -96,21 +96,27 @@ const headers = {
 };
 
 // Check for an existing comment to update
-const commentsResp = await fetch(
-  `${apiBase}/issues/${prNumber}/comments?per_page=100`,
-  { headers },
-);
-if (!commentsResp.ok) {
-  console.error(
-    `Failed to fetch comments: ${commentsResp.status} ${await commentsResp
-      .text()}`,
+let existing: { id: number; body?: string } | undefined;
+let page = 1;
+while (true) {
+  const commentsResp = await fetch(
+    `${apiBase}/issues/${prNumber}/comments?per_page=100&page=${page}`,
+    { headers },
   );
-  Deno.exit(1);
+  if (!commentsResp.ok) {
+    console.error(
+      `Failed to fetch comments: ${commentsResp.status} ${await commentsResp
+        .text()}`,
+    );
+    Deno.exit(1);
+  }
+  const comments = await commentsResp.json();
+  existing = comments.find((c: { body?: string }) =>
+    c.body?.includes(COMMENT_MARKER)
+  );
+  if (existing || comments.length < 100) break;
+  page++;
 }
-const comments = await commentsResp.json();
-const existing = comments.find((c: { body?: string }) =>
-  c.body?.includes(COMMENT_MARKER)
-);
 
 if (existing) {
   console.log(`Updating existing comment ${existing.id}...`);
