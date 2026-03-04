@@ -15,9 +15,11 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      issues: read
+      pull-requests: read
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
       - name: Setup Deno
         uses: denoland/setup-deno@v2
       - name: Post insights to Slack

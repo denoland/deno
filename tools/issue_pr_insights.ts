@@ -40,6 +40,9 @@ interface GitHubItem {
   title: string;
   html_url: string;
   created_at: string;
+  /** Comment count from the GitHub API. For issues this counts all
+   * comments; for PRs this only counts issue-style comments and does
+   * NOT include review comments. */
   comments: number;
   pull_request?: unknown;
 }
@@ -47,10 +50,15 @@ interface GitHubItem {
 async function getLastRunTimestamp(): Promise<string | null> {
   if (hoursInput) {
     const hours = parseInt(hoursInput, 10);
-    if (!isNaN(hours) && hours > 0) {
-      const since = new Date(Date.now() - hours * 60 * 60 * 1000);
-      return since.toISOString();
+    if (isNaN(hours) || hours <= 0) {
+      console.error(
+        `Invalid HOURS_LOOKBACK value: "${hoursInput}". ` +
+          "Must be a positive number.",
+      );
+      Deno.exit(1);
     }
+    const since = new Date(Date.now() - hours * 60 * 60 * 1000);
+    return since.toISOString();
   }
 
   try {
@@ -133,6 +141,27 @@ async function fetchGitHubItems(
   return items;
 }
 
+async function hasReviewComments(prNumber: number): Promise<boolean> {
+  const url = `${GITHUB_API}/repos/${REPO_OWNER}/${REPO_NAME}` +
+    `/pulls/${prNumber}/reviews`;
+  const res = await fetch(url, { headers });
+  if (!res.ok) return false;
+  const reviews = await res.json() as unknown[];
+  return reviews.length > 0;
+}
+
+async function filterNoResponsePRs(
+  prs: GitHubItem[],
+): Promise<GitHubItem[]> {
+  const results: GitHubItem[] = [];
+  for (const pr of prs) {
+    if (pr.comments > 0) continue;
+    if (await hasReviewComments(pr.number)) continue;
+    results.push(pr);
+  }
+  return results;
+}
+
 function formatItemList(items: GitHubItem[], max: number): string {
   if (items.length === 0) return "_None_\n";
   let text = "";
@@ -145,8 +174,16 @@ function formatItemList(items: GitHubItem[], max: number): string {
   return text;
 }
 
-// deno-lint-ignore no-explicit-any
-type Block = { type: string; text: { type: string; text: string } } | any;
+interface SectionBlock {
+  type: "section";
+  text: { type: "mrkdwn"; text: string };
+}
+
+interface DividerBlock {
+  type: "divider";
+}
+
+type Block = SectionBlock | DividerBlock;
 
 function createBlocks(
   sinceDate: string,
@@ -244,7 +281,7 @@ async function main() {
   const newPRs = allPRs;
 
   const noResponseIssues = newIssues.filter((i) => i.comments === 0);
-  const noResponsePRs = newPRs.filter((pr) => pr.comments === 0);
+  const noResponsePRs = await filterNoResponsePRs(newPRs);
 
   console.log(`New issues: ${newIssues.length}`);
   console.log(`New PRs: ${newPRs.length}`);
