@@ -1,0 +1,16 @@
+{
+  "tests": {
+    "short_flag": {
+      "args": ["-q", "-e", "require('./say_hello')"],
+      "output": "Hello!\n"
+    },
+    "long_flag": {
+      "args": ["--quiet", "--eval", "require('./say_hello')"],
+      "output": "Hello!\n"
+    },
+    "with_ext_override": {
+      "args": ["--quiet", "--ext=mjs", "-e", "console.log('esm')"],
+      "output": "esm\n"
+    }
+  }
+}
