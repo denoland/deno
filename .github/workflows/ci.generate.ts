@@ -480,11 +480,9 @@ const preBuildCheckStep = step({
 const denoCoreChangesCheckStep = step({
   id: "deno_core_changes",
   run: [
-    `DENO_CORE_CHANGED=$(git diff --name-only \${{ github.event.pull_request.base.sha }}..HEAD | grep -qE '^(${
-      denoCorePackageDirs.join("|")
-    })/|^Cargo\\.lock$|^Cargo\\.toml$' && echo true || echo false)`,
-    `echo "Deno core changed: $DENO_CORE_CHANGED"`,
-    `echo "skip_deno_core_test=$([ "$DENO_CORE_CHANGED" = "false" ] && echo true || echo false)" >> $GITHUB_OUTPUT`,
+    // Fetch the base SHA so it's available even in shallow clones
+    `git fetch --depth=1 origin \${{ github.event.pull_request.base.sha }}`,
+    `deno run -A tools/check_deno_core_changes.js \${{ github.event.pull_request.base.sha }}`,
   ],
   outputs: ["skip_deno_core_test"] as const,
 });
@@ -494,6 +492,7 @@ const preBuildJob = job("pre_build", {
   runsOn: "ubuntu-latest",
   steps: step.if(isPr)(
     cloneRepoStep,
+    installDenoStep,
     step.if(conditions.isDraftPr())(preBuildCheckStep),
     denoCoreChangesCheckStep,
   ),
