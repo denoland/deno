@@ -733,29 +733,30 @@ async fn test_set_macrotask_callback_set_next_tick_callback() {
       const { op_async_sleep } = Deno.core.ops;
       (async function () {
         const results = [];
-        Deno.core.setMacrotaskCallback(() => {
-          results.push("macrotask");
-          return true;
+        Deno.core.queueNextTick({
+          callback: () => results.push("nextTick"),
+          args: undefined,
+          snapshot: undefined,
         });
-        Deno.core.setNextTickCallback(() => {
-          results.push("nextTick");
-          Deno.core.setHasTickScheduled(false);
-        });
-        Deno.core.setImmediateCallback(() => {
-          results.push("immediate");
-        });
-        Deno.core.setHasTickScheduled(true);
+        const imm = {
+          _idleNext: null,
+          _idlePrev: null,
+          _onImmediate: () => results.push("immediate"),
+          _argv: null,
+          _destroyed: false,
+          _refed: false,
+          ref() { this._refed = true; return this; },
+          unref() { this._refed = false; return this; },
+        };
+        Deno.core.queueImmediate(imm);
         await op_async_sleep();
         if (results[0] != "nextTick") {
           throw new Error(`expected nextTick, got: ${results[0]}`);
         }
-        if (results[1] != "macrotask") {
-          throw new Error(`expected macrotask, got: ${results[1]}`);
-        }
         // Manually trigger immediate callbacks to test they were registered
         Deno.core.runImmediateCallbacks();
-        if (results[2] != "immediate") {
-          throw new Error(`expected immediate, got: ${results[2]}`);
+        if (results[1] != "immediate") {
+          throw new Error(`expected immediate, got: ${results[1]}`);
         }
       })();
       "#,
@@ -764,19 +765,9 @@ async fn test_set_macrotask_callback_set_next_tick_callback() {
   runtime.run_event_loop(Default::default()).await.unwrap();
 }
 
-#[test]
-fn test_next_tick() {
-  use futures::task::ArcWake;
-
-  static MACROTASK: AtomicUsize = AtomicUsize::new(0);
+#[tokio::test]
+async fn test_next_tick() {
   static NEXT_TICK: AtomicUsize = AtomicUsize::new(0);
-
-  #[allow(clippy::unnecessary_wraps)]
-  #[op2(fast)]
-  fn op_macrotask() -> Result<(), JsErrorBox> {
-    MACROTASK.fetch_add(1, Ordering::Relaxed);
-    Ok(())
-  }
 
   #[allow(clippy::unnecessary_wraps)]
   #[op2(fast)]
@@ -785,7 +776,13 @@ fn test_next_tick() {
     Ok(())
   }
 
-  deno_core::extension!(test_ext, ops = [op_macrotask, op_next_tick]);
+  #[op2]
+  async fn op_async_sleep() -> Result<(), JsErrorBox> {
+    tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+    Ok(())
+  }
+
+  deno_core::extension!(test_ext, ops = [op_next_tick, op_async_sleep]);
   let mut runtime = JsRuntime::new(RuntimeOptions {
     extensions: vec![test_ext::init()],
     ..Default::default()
@@ -795,66 +792,160 @@ fn test_next_tick() {
     .execute_script(
       "has_tick_scheduled.js",
       r#"
-        Deno.core.setMacrotaskCallback(() => {
-          Deno.core.ops.op_macrotask();
-          return true; // We're done.
-        });
-        Deno.core.setNextTickCallback(() => Deno.core.ops.op_next_tick());
-        Deno.core.setHasTickScheduled(true);
+        (async function() {
+          // Queue multiple ticks and verify they all drain
+          Deno.core.queueNextTick({
+            callback: () => Deno.core.ops.op_next_tick(),
+            args: undefined,
+            snapshot: undefined,
+          });
+          Deno.core.queueNextTick({
+            callback: () => Deno.core.ops.op_next_tick(),
+            args: undefined,
+            snapshot: undefined,
+          });
+          Deno.core.queueNextTick({
+            callback: () => Deno.core.ops.op_next_tick(),
+            args: undefined,
+            snapshot: undefined,
+          });
+          // Wait for the event loop to drain the ticks
+          await Deno.core.ops.op_async_sleep();
+          if (Deno.core.ops.op_next_tick.length !== 0) {
+            // Just a no-op to ensure op is used
+          }
+        })();
         "#,
     )
     .unwrap();
 
-  struct ArcWakeImpl(Arc<AtomicUsize>);
-  impl ArcWake for ArcWakeImpl {
-    fn wake_by_ref(arc_self: &Arc<Self>) {
-      arc_self.0.fetch_add(1, Ordering::Relaxed);
-    }
+  runtime.run_event_loop(Default::default()).await.unwrap();
+  assert_eq!(3, NEXT_TICK.load(Ordering::Relaxed));
+}
+
+/// Test that promise rejection processing is interleaved with nextTick
+/// draining inside processTicksAndRejections, matching Node.js behavior.
+/// A rejection handler that queues a nextTick should have that tick
+/// drained in the same processTicksAndRejections cycle.
+#[tokio::test]
+async fn test_promise_rejection_nexttick_interleave() {
+  #[op2]
+  async fn op_async_sleep() -> Result<(), JsErrorBox> {
+    tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+    Ok(())
   }
 
-  let awoken_times = Arc::new(AtomicUsize::new(0));
-  let waker = futures::task::waker(Arc::new(ArcWakeImpl(awoken_times.clone())));
-  let cx = &mut Context::from_waker(&waker);
-
-  assert!(matches!(
-    runtime.poll_event_loop(cx, Default::default()),
-    Poll::Pending
-  ));
-  assert_eq!(1, MACROTASK.load(Ordering::Relaxed));
-  assert_eq!(1, NEXT_TICK.load(Ordering::Relaxed));
-  assert_eq!(awoken_times.swap(0, Ordering::Relaxed), 1);
-  assert!(matches!(
-    runtime.poll_event_loop(cx, Default::default()),
-    Poll::Pending
-  ));
-  assert_eq!(awoken_times.swap(0, Ordering::Relaxed), 1);
-  assert!(matches!(
-    runtime.poll_event_loop(cx, Default::default()),
-    Poll::Pending
-  ));
-  assert_eq!(awoken_times.swap(0, Ordering::Relaxed), 1);
-  assert!(matches!(
-    runtime.poll_event_loop(cx, Default::default()),
-    Poll::Pending
-  ));
-  assert_eq!(awoken_times.swap(0, Ordering::Relaxed), 1);
+  deno_core::extension!(test_ext, ops = [op_async_sleep]);
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    extensions: vec![test_ext::init()],
+    ..Default::default()
+  });
 
   runtime
-    .main_realm()
-    .0
-    .state()
-    .has_next_tick_scheduled
-    .take();
-  assert!(matches!(
-    runtime.poll_event_loop(cx, Default::default()),
-    Poll::Ready(Ok(()))
-  ));
-  assert_eq!(awoken_times.load(Ordering::Relaxed), 0);
-  assert!(matches!(
-    runtime.poll_event_loop(cx, Default::default()),
-    Poll::Ready(Ok(()))
-  ));
-  assert_eq!(awoken_times.load(Ordering::Relaxed), 0);
+    .execute_script(
+      "promise_rejection_nexttick_interleave.js",
+      r#"
+      const { op_async_sleep } = Deno.core.ops;
+      (async function () {
+        const order = [];
+
+        // Register a rejection handler that queues a nextTick
+        Deno.core.setUnhandledPromiseRejectionHandler((promise, reason) => {
+          order.push("rejection-handler");
+          Deno.core.queueNextTick({
+            callback: () => order.push("tick-from-rejection-handler"),
+            args: undefined,
+            snapshot: undefined,
+          });
+          return true; // handled
+        });
+
+        // Queue a tick that creates an unhandled rejection
+        Deno.core.queueNextTick({
+          callback: () => {
+            order.push("first-tick");
+            Promise.reject(new Error("test rejection"));
+          },
+          args: undefined,
+          snapshot: undefined,
+        });
+
+        // Wait for the event loop to process everything
+        await op_async_sleep();
+        // Give one more turn for the rejection + tick to drain
+        await op_async_sleep();
+
+        const result = order.join(",");
+        const expected = "first-tick,rejection-handler,tick-from-rejection-handler";
+        if (result !== expected) {
+          throw new Error("expected '" + expected + "' but got '" + result + "'");
+        }
+      })();
+      "#,
+    )
+    .unwrap();
+  runtime.run_event_loop(Default::default()).await.unwrap();
+}
+
+/// Test that when a nextTick callback throws, subsequent ticks still drain.
+/// Matches Node.js behavior where TriggerUncaughtException dispatches the
+/// error and then re-enters processTicksAndRejections.
+#[tokio::test]
+async fn test_next_tick_error_continues_drain() {
+  static TICKS_RUN: AtomicUsize = AtomicUsize::new(0);
+
+  #[allow(clippy::unnecessary_wraps)]
+  #[op2(fast)]
+  fn op_tick_count() -> Result<(), JsErrorBox> {
+    TICKS_RUN.fetch_add(1, Ordering::Relaxed);
+    Ok(())
+  }
+
+  #[op2]
+  async fn op_async_sleep() -> Result<(), JsErrorBox> {
+    tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+    Ok(())
+  }
+
+  deno_core::extension!(test_ext, ops = [op_tick_count, op_async_sleep]);
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    extensions: vec![test_ext::init()],
+    ..Default::default()
+  });
+
+  runtime
+    .execute_script(
+      "nexttick_error_continues.js",
+      r#"
+      Deno.core.setReportExceptionCallback((e) => {
+        // Swallow the error so the event loop doesn't abort
+      });
+
+      Deno.core.queueNextTick({
+        callback: () => Deno.core.ops.op_tick_count(),
+        args: undefined,
+        snapshot: undefined,
+      });
+      Deno.core.queueNextTick({
+        callback: () => { throw new Error("boom"); },
+        args: undefined,
+        snapshot: undefined,
+      });
+      Deno.core.queueNextTick({
+        callback: () => Deno.core.ops.op_tick_count(),
+        args: undefined,
+        snapshot: undefined,
+      });
+
+      (async () => { await Deno.core.ops.op_async_sleep(); })();
+      "#,
+    )
+    .unwrap();
+
+  runtime.run_event_loop(Default::default()).await.unwrap();
+  // All 3 ticks should have been attempted; the 2 non-throwing ones
+  // increment the counter.
+  assert_eq!(2, TICKS_RUN.load(Ordering::Relaxed));
 }
 
 #[test]
