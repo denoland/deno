@@ -82,7 +82,7 @@ pub(crate) struct RecursiveModuleLoad {
   visited: HashSet<ModuleReference>,
   visited_as_alias: Rc<RefCell<HashSet<String>>>,
   root_module_reference: Option<ModuleReference>,
-  resolved_specifier: Option<ModuleSpecifier>,
+  resolved_specifier: Option<Result<ModuleSpecifier, CoreError>>,
   // The loader is copied from `module_map_rc`, but its reference is cloned
   // ahead of time to avoid already-borrowed errors.
   loader: Rc<dyn ModuleLoader>,
@@ -154,13 +154,16 @@ impl RecursiveModuleLoad {
       LoadInit::DynamicImport(_, _, module_type, _) => module_type.clone(),
       _ => RequestedModuleType::None,
     };
-    // Resolve the root specifier eagerly to cache it. Errors are ignored here
-    // and will surface later in `prepare()` or `poll_next()`.
+    // Resolve the root specifier eagerly to cache it. Both success and error
+    // are cached to avoid resolving twice.
     let resolved_specifier =
-      Self::resolve_root_from_init(&init, &module_map_rc).ok();
-    let root_module_id = resolved_specifier.as_ref().and_then(|spec| {
-      module_map_rc.get_id(spec.as_str(), requested_module_type)
-    });
+      Some(Self::resolve_root_from_init(&init, &module_map_rc));
+    let root_module_id = resolved_specifier
+      .as_ref()
+      .and_then(|r| r.as_ref().ok())
+      .and_then(|spec| {
+        module_map_rc.get_id(spec.as_str(), requested_module_type)
+      });
     Self {
       id,
       root_module_id,
@@ -205,9 +208,14 @@ impl RecursiveModuleLoad {
   }
 
   pub(crate) async fn prepare(&mut self) -> Result<(), CoreError> {
-    let module_specifier = match self.resolved_specifier.clone() {
-      Some(spec) => spec,
-      None => Self::resolve_root_from_init(&self.init, &self.module_map_rc)?,
+    let module_specifier = match self.resolved_specifier.take() {
+      Some(Ok(spec)) => {
+        // Put it back for poll_next to use later.
+        self.resolved_specifier = Some(Ok(spec.clone()));
+        spec
+      }
+      Some(Err(err)) => return Err(err),
+      None => unreachable!("prepare() called after resolution consumed"),
     };
     let (maybe_referrer, maybe_code, requested_module_type, is_synchronous) =
       match &mut self.init {
@@ -461,18 +469,13 @@ impl Stream for RecursiveModuleLoad {
     match inner.state {
       LoadState::Init => {
         let module_specifier = match inner.resolved_specifier.take() {
-          Some(spec) => spec,
-          None => {
-            match Self::resolve_root_from_init(
-              &inner.init,
-              &inner.module_map_rc,
-            ) {
-              Ok(url) => url,
-              Err(error) => {
-                return Poll::Ready(Some(Err(error)));
-              }
-            }
+          Some(Ok(spec)) => spec,
+          Some(Err(error)) => {
+            return Poll::Ready(Some(Err(error)));
           }
+          None => unreachable!(
+            "resolved_specifier should be set in LoadState::Init"
+          ),
         };
         let (requested_module_type, phase) = match &inner.init {
           LoadInit::DynamicImport(_, _, module_type, phase) => {
