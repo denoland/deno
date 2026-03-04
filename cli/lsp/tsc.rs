@@ -1668,9 +1668,9 @@ fn get_tag_documentation(
             return label;
           }
           if doc.contains('\n') {
-            return format!("{}  \n{}", label, replace_links(doc));
+            return format!("{}  \n{}\n", label, replace_links(doc));
           } else {
-            return format!("{} - {}", label, replace_links(doc));
+            return format!("{} — {}\n", label, replace_links(doc));
           }
         }
       }
@@ -1681,9 +1681,9 @@ fn get_tag_documentation(
   let maybe_text = get_tag_body_text(tag, module, snapshot);
   if let Some(text) = maybe_text {
     if text.contains('\n') {
-      format!("{label}  \n{text}")
+      format!("{label}  \n{text}\n")
     } else {
-      format!("{label} - {text}")
+      format!("{label} — {text}\n")
     }
   } else {
     label
@@ -2010,7 +2010,19 @@ fn display_parts_to_string(
   let mut out = Vec::<String>::new();
 
   let mut current_link: Option<Link> = None;
-  for part in parts {
+  let mut parts = parts.iter().peekable();
+  while let Some(part) = parts.next() {
+    // Skip `import` lines.
+    if part.kind == "lineBreak"
+      && parts
+        .peek()
+        .is_some_and(|p| p.kind == "keyword" && p.text == "import")
+    {
+      while parts.next().is_some()
+        && parts.peek().is_none_or(|p| p.kind != "lineBreak")
+      {}
+      continue;
+    }
     match part.kind.as_str() {
       "link" => {
         if let Some(link) = current_link.as_mut() {
@@ -2117,6 +2129,7 @@ impl QuickInfo {
     module: &DocumentModule,
     snapshot: &StateSnapshot,
   ) -> lsp::Hover {
+    let mut code_part = None;
     let mut parts = Vec::new();
     if let Some(display_string) = self
       .display_parts
@@ -2124,7 +2137,7 @@ impl QuickInfo {
       .map(|p| display_parts_to_string(&p, module, snapshot))
       && !display_string.is_empty()
     {
-      parts.push(format!("```typescript\n{}\n```", display_string));
+      code_part = Some(format!("```tsx\n{}\n```\n", display_string));
     }
     if let Some(documentation) = self
       .documentation
@@ -2139,12 +2152,16 @@ impl QuickInfo {
         .iter()
         .map(|tag_info| get_tag_documentation(tag_info, module, snapshot))
         .collect::<Vec<String>>()
-        .join("  \n\n");
+        .join("\n\n");
       if !tags_preview.is_empty() {
         parts.push(tags_preview);
       }
     }
-    let value = parts.join("\n\n");
+    let value = format!(
+      "{}{}",
+      code_part.as_deref().unwrap_or(""),
+      parts.join("\n\n")
+    );
     lsp::Hover {
       contents: lsp::HoverContents::Markup(lsp::MarkupContent {
         kind: lsp::MarkupKind::Markdown,
@@ -2234,9 +2251,11 @@ impl DocumentSpan {
     let range = self.text_span.to_range(target_module.line_index.clone());
     let mut target = uri_to_url(&target_module.uri);
     target.set_fragment(Some(&format!(
-      "L{},{}",
+      "{},{}-{},{}",
       range.start.line + 1,
-      range.start.character + 1
+      range.start.character + 1,
+      range.end.line + 1,
+      range.end.character + 1,
     )));
 
     Some(target)
@@ -3723,7 +3742,7 @@ impl CompletionEntryDetails {
           .iter()
           .map(|tag_info| get_tag_documentation(tag_info, module, snapshot))
           .collect::<Vec<String>>()
-          .join("  \n\n");
+          .join("\n\n");
         if !tags_preview.is_empty() {
           value = format!("{value}\n\n{tags_preview}");
         }
@@ -4509,8 +4528,10 @@ impl SignatureHelpParameter {
     module: &DocumentModule,
     snapshot: &StateSnapshot,
   ) -> lsp::ParameterInformation {
-    let documentation =
-      display_parts_to_string(&self.documentation, module, snapshot);
+    let documentation = format!(
+      "{}\n",
+      display_parts_to_string(&self.documentation, module, snapshot)
+    );
     lsp::ParameterInformation {
       label: lsp::ParameterLabel::Simple(display_parts_to_string(
         &self.display_parts,

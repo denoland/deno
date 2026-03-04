@@ -30,10 +30,14 @@ use lsp_types::CodeActionKindLiteralSupport;
 use lsp_types::CodeActionLiteralSupport;
 use lsp_types::CompletionClientCapabilities;
 use lsp_types::CompletionItemCapability;
+use lsp_types::DiagnosticClientCapabilities;
 use lsp_types::FoldingRangeClientCapabilities;
 use lsp_types::HoverClientCapabilities;
 use lsp_types::InitializeParams;
 use lsp_types::MarkupKind;
+use lsp_types::ParameterInformationSettings;
+use lsp_types::SignatureHelpClientCapabilities;
+use lsp_types::SignatureInformationSettings;
 use lsp_types::TextDocumentClientCapabilities;
 use lsp_types::TextDocumentSyncClientCapabilities;
 use lsp_types::Uri;
@@ -266,6 +270,10 @@ impl InitializeParamsBuilder {
             completion: Some(CompletionClientCapabilities {
               completion_item: Some(CompletionItemCapability {
                 snippet_support: Some(true),
+                documentation_format: Some(vec![
+                  MarkupKind::Markdown,
+                  MarkupKind::PlainText,
+                ]),
                 ..Default::default()
               }),
               ..Default::default()
@@ -289,7 +297,24 @@ impl InitializeParamsBuilder {
               ]),
               ..Default::default()
             }),
-            diagnostic: Some(Default::default()),
+            signature_help: Some(SignatureHelpClientCapabilities {
+              signature_information: Some(SignatureInformationSettings {
+                documentation_format: Some(vec![
+                  MarkupKind::Markdown,
+                  MarkupKind::PlainText,
+                ]),
+                parameter_information: Some(ParameterInformationSettings {
+                  label_offset_support: Some(true),
+                }),
+                active_parameter_support: Some(true),
+              }),
+              context_support: Some(true),
+              ..Default::default()
+            }),
+            diagnostic: Some(DiagnosticClientCapabilities {
+              related_document_support: Some(true),
+              ..Default::default()
+            }),
             folding_range: Some(FoldingRangeClientCapabilities {
               line_folding_only: Some(true),
               ..Default::default()

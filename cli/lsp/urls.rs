@@ -144,7 +144,15 @@ pub fn uri_to_url(uri: &Uri) -> Url {
     }
     Url::parse(&s).ok().map(normalize_url)
   })()
-  .unwrap_or_else(|| normalize_url(Url::parse(uri.as_str()).unwrap()))
+  .unwrap_or_else(|| {
+    normalize_url(
+      Url::parse(uri.as_str())
+        .inspect_err(|err| {
+          lsp_warn!("Couldn't parse uri \"{}\" as url: {err}", uri.as_str());
+        })
+        .unwrap(),
+    )
+  })
 }
 
 pub fn uri_to_file_path(uri: &Uri) -> Result<PathBuf, UrlToFilePathError> {
