@@ -253,6 +253,17 @@
                 callback(...args);
             }
           }
+        } catch (e) {
+          // TODO: move this to Rust. In Node.js, errors propagate from
+          // JS to C++ (TryCatch in node_task_queue.cc
+          // InternalCallbackScope::Close), which calls
+          // TriggerUncaughtException and then re-enters the drain loop.
+          // We could do the same in Rust: catch the v8 exception in
+          // drain_next_tick_and_macrotasks, dispatch it via
+          // op_dispatch_exception, and re-call the JS drain function.
+          // For now, we catch here in JS and route through
+          // reportExceptionCallback which triggers uncaughtException.
+          reportExceptionCallback(e);
         } finally {
           emitDestroy(asyncId);
         }
