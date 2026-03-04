@@ -3225,7 +3225,9 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
           .peer_dep_version_req
           .as_ref()
           .unwrap_or(&dep.version_req);
-        if versions.contains_key(effective_req) {
+        if let Some(target_version) = versions.get(effective_req)
+          && child_id.nv.version != *target_version
+        {
           node.children.remove(&dep.bare_specifier);
         }
       }
@@ -3235,6 +3237,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
     // run_dedup_pass now runs BEFORE Phase 2.
     self.graph.moved_package_ids.clear();
     self.graph.packages_to_copy_index.clear();
+    self.visited_requeue.clear();
 
     // Queue all root packages for Phase 1 BFS to re-resolve
     // children that were removed above.
@@ -7775,6 +7778,112 @@ mod test {
           "package-b@1.0.0_package-shared@1.1.0".to_string()
         ),
       ]
+    );
+  }
+
+  // Regression test: after dedup consolidates a dependency, the BFS must
+  // fully re-traverse the graph to re-resolve removed children.
+  //
+  // Previously `visited_requeue` was not cleared before the post-dedup BFS.
+  // Within a single `resolve_pending()` call, the initial BFS populates
+  // `visited_requeue` with (parent, child) entries when a node is reached
+  // through multiple graph paths. After dedup removes children deeper in
+  // that subtree, the post-dedup BFS hits `visited_requeue.insert()`
+  // returning `false` for those stale entries, blocking re-queuing of
+  // intermediate nodes and leaving their removed children unresolved.
+  //
+  // The scenario:
+  //
+  // Phase 1 snapshot:
+  //   root-a ──dep──▶ mid ──dep──▶ shared@^1 (→ 1.0.0) ──dep──▶ leaf
+  //                       ──dep──▶ other ──dep──▶ shared@^1 (→ 1.0.0)
+  //
+  // Phase 2 (extends the snapshot):
+  //   root-c ──dep──▶ mid (same node from snapshot)
+  //          ──dep──▶ shared@^1.1 (→ 1.1.0, new version, triggers dedup)
+  //
+  // In Phase 2's initial BFS, root-c depends on mid, causing mid to be
+  // BFS'd. mid.children["shared"] and mid.children["other"] already exist
+  // from the snapshot → Some branch → visited_requeue gets (mid, other_id).
+  //
+  // Dedup consolidates shared to 1.1.0 and removes shared from both
+  // mid.children and other.children. The post-dedup BFS re-queues roots,
+  // reaches mid, and re-resolves mid → shared@1.1.0. But when it tries
+  // to re-queue `other` (whose child `shared` was also removed), it finds
+  // (mid, other_id) already in visited_requeue → not re-queued → other's
+  // dependency on shared is lost.
+  #[tokio::test]
+  async fn dedup_visited_requeue_cleared_for_deep_re_resolution() {
+    let api = TestNpmRegistryApi::default();
+
+    // shared@1.0.0 depends on leaf
+    api.ensure_package_version("shared", "1.0.0");
+    api.ensure_package_version("leaf", "1.0.0");
+    api.add_dependency(("shared", "1.0.0"), ("leaf", "^1.0.0"));
+
+    // mid depends on shared@^1 AND other
+    // other also depends on shared@^1
+    api.ensure_package_version("mid", "1.0.0");
+    api.ensure_package_version("other", "1.0.0");
+    api.add_dependency(("mid", "1.0.0"), ("shared", "^1.0.0"));
+    api.add_dependency(("mid", "1.0.0"), ("other", "^1.0.0"));
+    api.add_dependency(("other", "1.0.0"), ("shared", "^1.0.0"));
+
+    // root-a depends on mid
+    api.ensure_package_version("root-a", "1.0.0");
+    api.add_dependency(("root-a", "1.0.0"), ("mid", "^1.0.0"));
+
+    // Phase 1: resolve root-a (shared resolves to 1.0.0, only version)
+    let snapshot = run_resolver_with_options_and_get_snapshot(
+      &api,
+      RunResolverOptions {
+        reqs: Vec::from(["root-a@1"]),
+        ..Default::default()
+      },
+    )
+    .await
+    .unwrap();
+
+    // Phase 2: publish shared@1.1.0 (also depends on leaf) and root-c.
+    // root-c depends on BOTH mid (to trigger BFS through snapshot nodes,
+    // populating visited_requeue) and shared@^1.1 (to bring 1.1.0 into
+    // the graph for dedup consolidation).
+    api.ensure_package_version("shared", "1.1.0");
+    api.add_dependency(("shared", "1.1.0"), ("leaf", "^1.0.0"));
+    api.ensure_package_version("root-c", "1.0.0");
+    api.add_dependency(("root-c", "1.0.0"), ("mid", "^1.0.0"));
+    api.add_dependency(("root-c", "1.0.0"), ("shared", "^1.1.0"));
+
+    let (packages, _package_reqs) = run_resolver_with_options_and_get_output(
+      api,
+      RunResolverOptions {
+        snapshot,
+        reqs: Vec::from(["root-c@1"]),
+        ..Default::default()
+      },
+    )
+    .await;
+
+    // `other` must have shared@1.1.0 as a dependency after dedup.
+    // Without visited_requeue.clear(), other.children["shared"] was
+    // removed by dedup but never re-resolved because visited_requeue
+    // blocked mid from re-queuing other.
+    let other_pkg = packages
+      .iter()
+      .find(|p| p.pkg_id.starts_with("other@1.0.0"))
+      .expect("other@1.0.0 should be in the snapshot");
+    assert_eq!(
+      other_pkg.dependencies.get("shared"),
+      Some(&"shared@1.1.0".to_string()),
+      "other must have shared@1.1.0 as a dependency after dedup re-resolution"
+    );
+
+    // shared@1.0.0 should be consolidated away
+    assert!(
+      !packages
+        .iter()
+        .any(|p| p.pkg_id.starts_with("shared@1.0.0")),
+      "shared@1.0.0 should be consolidated away"
     );
   }
 
