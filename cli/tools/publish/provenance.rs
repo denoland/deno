@@ -166,9 +166,13 @@ impl Predicate {
       .unwrap_or_default()
       .replace(&format!("{}/", &repo), "");
 
-    let delimn = rel_ref.find('@').unwrap();
-    let (workflow_path, mut workflow_ref) = rel_ref.split_at(delimn);
-    workflow_ref = &workflow_ref[1..];
+    let (workflow_path, workflow_ref) =
+      if let Some(delimn) = rel_ref.find('@') {
+        let (path, ref_) = rel_ref.split_at(delimn);
+        (path, &ref_[1..])
+      } else {
+        (rel_ref.as_str(), "")
+      };
 
     let server_url = std::env::var("GITHUB_SERVER_URL").unwrap();
 
@@ -712,23 +716,28 @@ mod tests {
   use super::Subject;
   use super::SubjectDigest;
 
+  #[allow(clippy::undocumented_unsafe_blocks)]
+  unsafe fn setup_github_actions_env() {
+    env::set_var("CI", "true");
+    env::set_var("GITHUB_ACTIONS", "true");
+    env::set_var("ACTIONS_ID_TOKEN_REQUEST_URL", "https://example.com");
+    env::set_var("ACTIONS_ID_TOKEN_REQUEST_TOKEN", "dummy");
+    env::set_var("GITHUB_REPOSITORY", "littledivy/deno_sdl2");
+    env::set_var("GITHUB_SERVER_URL", "https://github.com");
+    env::set_var("GITHUB_REF", "refs/tags/sdl2@0.0.1");
+    env::set_var("GITHUB_SHA", "lol");
+    env::set_var("GITHUB_RUN_ID", "1");
+    env::set_var("GITHUB_RUN_ATTEMPT", "1");
+    env::set_var("RUNNER_ENVIRONMENT", "github-hosted");
+  }
+
   #[test]
   fn slsa_github_actions() {
     // Set environment variable
     if env::var("GITHUB_ACTIONS").is_err() {
       #[allow(clippy::undocumented_unsafe_blocks)]
       unsafe {
-        env::set_var("CI", "true");
-        env::set_var("GITHUB_ACTIONS", "true");
-        env::set_var("ACTIONS_ID_TOKEN_REQUEST_URL", "https://example.com");
-        env::set_var("ACTIONS_ID_TOKEN_REQUEST_TOKEN", "dummy");
-        env::set_var("GITHUB_REPOSITORY", "littledivy/deno_sdl2");
-        env::set_var("GITHUB_SERVER_URL", "https://github.com");
-        env::set_var("GITHUB_REF", "refs/tags/sdl2@0.0.1");
-        env::set_var("GITHUB_SHA", "lol");
-        env::set_var("GITHUB_RUN_ID", "1");
-        env::set_var("GITHUB_RUN_ATTEMPT", "1");
-        env::set_var("RUNNER_ENVIRONMENT", "github-hosted");
+        setup_github_actions_env();
         env::set_var(
           "GITHUB_WORKFLOW_REF",
           "littledivy/deno_sdl2@refs/tags/sdl2@0.0.1",
@@ -750,5 +759,26 @@ mod tests {
     );
     assert_eq!(slsa.subject[0].name, "jsr:@divy/sdl2@0.0.1");
     assert_eq!(slsa.subject[0].digest.sha256, "yourmom");
+  }
+
+  #[test]
+  fn slsa_github_actions_empty_workflow_ref() {
+    if env::var("GITHUB_ACTIONS").is_err() {
+      #[allow(clippy::undocumented_unsafe_blocks)]
+      unsafe {
+        setup_github_actions_env();
+        env::set_var("GITHUB_WORKFLOW_REF", "");
+      }
+    }
+
+    let subject = Subject {
+      name: "jsr:@divy/sdl2@0.0.1".to_string(),
+      digest: SubjectDigest {
+        sha256: "yourmom".to_string(),
+      },
+    };
+    // Should not panic even when GITHUB_WORKFLOW_REF is empty
+    let slsa = ProvenanceAttestation::new_github_actions(vec![subject]);
+    assert_eq!(slsa.subject[0].name, "jsr:@divy/sdl2@0.0.1");
   }
 }
