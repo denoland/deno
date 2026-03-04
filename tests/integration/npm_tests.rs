@@ -592,6 +592,8 @@ fn lock_file_missing_top_level_package() {
   "#;
   temp_dir.write("main.ts", main_contents);
 
+  // When the lockfile has a missing top-level package, the corrupt snapshot
+  // is discarded and re-resolved from scratch, so the command succeeds.
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(temp_dir.path())
     .arg("run")
@@ -605,19 +607,7 @@ fn lock_file_missing_top_level_package() {
     .spawn()
     .unwrap();
   let output = deno.wait_with_output().unwrap();
-  assert!(!output.status.success());
-
-  let stderr = String::from_utf8(output.stderr).unwrap();
-  test_util::assertions::assert_wildcard_match(
-    &stderr,
-    concat!(
-      "error: failed reading lockfile '[WILDLINE]deno.lock'\n",
-      "\n",
-      "Caused by:\n",
-      "    0: The lockfile is corrupt. Remove the lockfile to regenerate it.\n",
-      "    1: Could not find 'cowsay@1.5.0' in the list of packages.\n"
-    ),
-  );
+  assert!(output.status.success());
 }
 
 #[test]
