@@ -4,7 +4,8 @@
 
 mod stream;
 mod tcp;
-#[cfg(test)]
+
+#[cfg(all(not(miri), test))]
 mod tests;
 
 use std::cell::Cell;

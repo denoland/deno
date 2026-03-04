@@ -1,3 +1,5 @@
+// Copyright 2018-2026 the Deno authors. MIT license.
+
 use std::collections::VecDeque;
 use std::ffi::c_char;
 use std::ffi::c_int;
@@ -83,10 +85,6 @@ mod win_sock {
   pub const AF_INET: i32 = 2;
   pub const AF_INET6: i32 = 23;
   pub type sa_family_t = u16;
-  pub const SD_SEND: i32 = 1;
-  unsafe extern "system" {
-    pub fn shutdown(socket: usize, how: i32) -> i32;
-  }
 }
 #[repr(C)]
 pub struct uv_tcp_t {
