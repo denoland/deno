@@ -113,7 +113,6 @@ pub struct uv_check_t {
   cb: Option<unsafe extern "C" fn(*mut uv_check_t)>,
 }
 
-
 pub type uv_timer_cb = unsafe extern "C" fn(*mut uv_timer_t);
 pub type uv_idle_cb = unsafe extern "C" fn(*mut uv_idle_t);
 pub type uv_prepare_cb = unsafe extern "C" fn(*mut uv_prepare_t);
@@ -1098,27 +1097,3 @@ pub unsafe extern "C" fn uv_is_closing(handle: *const uv_handle_t) -> c_int {
     }
   }
 }
-
-
-pub fn new_tcp() -> UvTcp {
-  uv_tcp_t {
-    r#type: uv_handle_type::UV_TCP,
-    loop_: std::ptr::null_mut(),
-    data: std::ptr::null_mut(),
-    flags: 0,
-    internal_fd: None,
-    internal_bind_addr: None,
-    internal_stream: None,
-    internal_listener: None,
-    internal_listener_addr: None,
-    internal_nodelay: false,
-    internal_alloc_cb: None,
-    internal_read_cb: None,
-    internal_reading: false,
-    internal_connect: None,
-    internal_write_queue: VecDeque::new(),
-    internal_connection_cb: None,
-    internal_backlog: VecDeque::new(),
-  }
-}
-

@@ -506,3 +506,25 @@ pub unsafe fn uv_accept(
     }
   }
 }
+
+pub fn new_tcp() -> uv_tcp_t {
+  uv_tcp_t {
+    r#type: uv_handle_type::UV_TCP,
+    loop_: std::ptr::null_mut(),
+    data: std::ptr::null_mut(),
+    flags: 0,
+    internal_fd: None,
+    internal_bind_addr: None,
+    internal_stream: None,
+    internal_listener: None,
+    internal_listener_addr: None,
+    internal_nodelay: false,
+    internal_alloc_cb: None,
+    internal_read_cb: None,
+    internal_reading: false,
+    internal_connect: None,
+    internal_write_queue: VecDeque::new(),
+    internal_connection_cb: None,
+    internal_backlog: VecDeque::new(),
+  }
+}
