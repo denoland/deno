@@ -1,5 +1,5 @@
 {
-  "$id": "https://github.com/denoland/deno/blob/tests/node_compat/schema.json",
+  "$id": "https://github.com/denoland/deno/blob/main/tests/node_compat/schema.json",
   "$schema": "http://json-schema.org/draft-07/schema",
   "description": "Schema for the node_compat config.jsonc file that controls which Node.js compatibility tests are enabled and their expected behavior.",
   "title": "Node compat test config schema",
