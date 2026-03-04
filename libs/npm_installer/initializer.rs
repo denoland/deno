@@ -133,12 +133,23 @@ fn resolve_snapshot<TSys: LockfileSys>(
   match snapshot {
     NpmResolverManagedSnapshotOption::ResolveFromLockfile(lockfile) => {
       if !lockfile.overwrite() {
-        let snapshot = snapshot_from_lockfile(lockfile.clone(), link_packages)
-          .map_err(|source| ResolveSnapshotError {
+        match snapshot_from_lockfile(lockfile.clone(), link_packages) {
+          Ok(snapshot) => Ok(Some(snapshot)),
+          Err(SnapshotFromLockfileError::SnapshotFromLockfile(
+            deno_npm::resolution::SnapshotFromLockfileError::PackageIdNotFound(
+              _,
+            ),
+          )) => {
+            // The lockfile has a corrupt npm snapshot (e.g. a peer dep NV
+            // referenced in an NpmPackageId doesn't exist). Discard it and
+            // re-resolve from scratch so the lockfile gets regenerated.
+            Ok(None)
+          }
+          Err(source) => Err(ResolveSnapshotError {
             lockfile_path: lockfile.filename.clone(),
             source,
-          })?;
-        Ok(Some(snapshot))
+          }),
+        }
       } else {
         Ok(None)
       }
