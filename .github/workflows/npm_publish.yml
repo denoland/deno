@@ -168,6 +168,18 @@ jobs:
           echo "$ACTUAL"
           [ "$ACTUAL" = "$EXPECTED_VERSION" ] || { echo "Version mismatch: expected '$EXPECTED_VERSION', got '$ACTUAL'"; exit 1; }
           deno eval "console.log('global npm install works')"
+          # Verify the global bin entry points directly at the native binary, not bin.cjs
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            DENO_CMD="$(npm prefix -g)/deno.cmd"
+            grep -q "bin.cjs" "$DENO_CMD" && { echo "ERROR: deno.cmd still points to bin.cjs"; exit 1; }
+            echo "deno.cmd correctly points to native binary"
+          else
+            DENO_LINK="$(which deno)"
+            LINK_TARGET="$(readlink "$DENO_LINK")"
+            echo "deno symlink target: $LINK_TARGET"
+            echo "$LINK_TARGET" | grep -q "bin.cjs" && { echo "ERROR: deno symlink still points to bin.cjs"; exit 1; }
+            echo "deno symlink correctly points to native binary"
+          fi
           npm uninstall -g deno
 
       - name: Test npm global install deno (--ignore-scripts)
