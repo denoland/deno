@@ -375,7 +375,12 @@ pub(crate) unsafe fn complete_shutdown(
     if let Some(ref mut stream) = unsafe { &mut *tcp }.internal_stream {
       match Pin::new(stream).poll_shutdown(cx) {
         std::task::Poll::Ready(Ok(())) => 0,
-        _ => UV_ENOTCONN,
+        std::task::Poll::Ready(Err(_)) => UV_ENOTCONN,
+        std::task::Poll::Pending => {
+          // Not ready yet — put it back and retry next tick.
+          unsafe { (*tcp).internal_shutdown = Some(pending) };
+          return;
+        }
       }
     } else {
       UV_ENOTCONN
