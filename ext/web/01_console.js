@@ -974,7 +974,8 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
           return base;
         }
       } else if (
-        isURL(value) && !(recurseTimes > ctx.depth && ctx.depth !== null)
+        ObjectPrototypeIsPrototypeOf(URLPrototype, value) &&
+        !(recurseTimes > ctx.depth && ctx.depth !== null)
       ) {
         base = value.href;
         if (keys.length === 0 && protoProps === undefined) {
@@ -1084,11 +1085,6 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
     ctx.depth = -1;
   }
   return res;
-}
-
-function isURL(value) {
-  return typeof value.href === "string" &&
-    ObjectPrototypeIsPrototypeOf(URLPrototype, value);
 }
 
 const builtInObjectsRegExp = new SafeRegExp("^[A-Z][a-zA-Z0-9]+$");
