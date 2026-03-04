@@ -1,14 +1,51 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
+use std::collections::HashMap;
+use std::ffi::c_void;
 use std::sync::Mutex;
 use std::sync::Once;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 
+use futures::task::AtomicWaker;
+
 use super::bindings;
 use super::snapshot;
 use super::snapshot::V8Snapshot;
+
+/// Global registry mapping isolate pointers to their event loop wakers.
+/// When V8 posts a foreground task for an isolate, the C++ callback
+/// looks up the waker here and wakes the event loop.
+static ISOLATE_WAKERS: std::sync::LazyLock<
+  Mutex<HashMap<usize, std::sync::Arc<AtomicWaker>>>,
+> = std::sync::LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// Register a waker for an isolate so foreground task notifications
+/// wake the correct event loop. The key is the raw isolate pointer
+/// value (as returned by `as_raw_isolate_ptr` / passed by C++ as `void*`).
+pub fn register_isolate_waker(
+  isolate_ptr: usize,
+  waker: std::sync::Arc<AtomicWaker>,
+) {
+  let mut map = ISOLATE_WAKERS.lock().unwrap();
+  map.insert(isolate_ptr, waker);
+}
+
+/// Unregister an isolate's waker (called on isolate drop).
+pub fn unregister_isolate_waker(isolate_ptr: usize) {
+  let mut map = ISOLATE_WAKERS.lock().unwrap();
+  map.remove(&isolate_ptr);
+}
+
+/// C callback invoked by NotifyingPlatform when a foreground task is posted.
+/// This is called from ANY thread (including V8 background threads).
+unsafe extern "C" fn on_foreground_task_posted(isolate_ptr: *mut c_void) {
+  let map = ISOLATE_WAKERS.lock().unwrap();
+  if let Some(waker) = map.get(&(isolate_ptr as usize)) {
+    waker.wake();
+  }
+}
 
 fn v8_init(
   v8_platform: Option<v8::SharedRef<v8::Platform>>,
@@ -51,13 +88,12 @@ fn v8_init(
   v8::V8::set_flags_from_string(&flags);
 
   let v8_platform = v8_platform.unwrap_or_else(|| {
-    if cfg!(any(test, feature = "unsafe_use_unprotected_platform")) {
-      // We want to use the unprotected platform for unit tests
-      v8::new_unprotected_default_platform(0, false)
-    } else {
-      v8::new_default_platform(0, false)
-    }
-    .make_shared()
+    // Always use NotifyingPlatform to wake event loops when V8 background
+    // threads post foreground tasks. NotifyingPlatform already disables
+    // thread-isolated allocations (like UnprotectedDefaultPlatform), so
+    // it's safe for both tests and production.
+    v8::new_notifying_platform(0, false, on_foreground_task_posted)
+      .make_shared()
   });
   v8::V8::initialize_platform(v8_platform.clone());
   v8::V8::initialize();
