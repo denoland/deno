@@ -21,24 +21,17 @@ export function registerFd(fd: number, rid: number): void {
 export function getRid(fd: number): number {
   const rid = MapPrototypeGet(fdMap, fd);
   if (rid !== undefined) {
-    // Verify the resource still exists - it might have been closed.
-    // For fd 0, 1, 2 (stdio), the rid equals fd and they're always valid.
-    if (fd <= 2) {
-      return rid;
-    }
+    return rid;
   }
-  // The FD is not in the map. This can happen when a raw OS file descriptor
-  // is received from another thread (e.g. via worker_threads postMessage).
-  // OS file descriptors are process-wide, so we can create a local resource
-  // by dup'ing the fd. The dup'd fd is independently owned and closeable.
+  // The FD is not in this worker's map. This can happen when a raw OS file
+  // descriptor is received from another worker (e.g. via worker_threads
+  // postMessage). OS file descriptors are process-wide, so we can create a
+  // local resource by dup'ing the fd. The dup'd fd is independently owned
+  // and closeable. op_node_dup_fd validates the fd was opened via node:fs.
   if (fd >= 3) {
-    try {
-      const newRid = op_node_dup_fd(fd);
-      MapPrototypeSet(fdMap, fd, newRid);
-      return newRid;
-    } catch {
-      // Fall through - fd may not be valid
-    }
+    const newRid = op_node_dup_fd(fd);
+    MapPrototypeSet(fdMap, fd, newRid);
+    return newRid;
   }
   return fd;
 }

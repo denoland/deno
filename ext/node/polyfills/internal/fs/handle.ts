@@ -20,6 +20,7 @@ import { createInterface } from "node:readline";
 import type { Interface as ReadlineInterface } from "node:readline";
 import { core, primordials } from "ext:core/mod.js";
 import { getRid, unregisterFd } from "ext:deno_node/internal/fs/fd_map.ts";
+import { op_node_unregister_open_fd } from "ext:core/ops";
 import {
   BinaryOptionsArgument,
   FileOptionsArgument,
@@ -204,6 +205,7 @@ export class FileHandle extends EventEmitter {
     return new Promise((resolve, reject) => {
       try {
         core.close(this.#rid);
+        op_node_unregister_open_fd(this.#fd);
         unregisterFd(this.#fd);
         this.#rid = -1;
         this.#fd = -1;

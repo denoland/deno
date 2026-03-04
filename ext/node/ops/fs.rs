@@ -2,9 +2,11 @@
 
 use std::borrow::Cow;
 use std::cell::RefCell;
+use std::collections::HashSet;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
+use std::sync::Mutex;
 
 use deno_core::OpState;
 use deno_core::ResourceId;
@@ -16,7 +18,14 @@ use deno_io::fs::FileResource;
 use deno_permissions::CheckedPath;
 use deno_permissions::OpenAccessKind;
 use deno_permissions::PermissionsContainer;
+use once_cell::sync::Lazy;
 use serde::Serialize;
+
+/// Process-wide registry of file descriptors opened via node:fs.
+/// Only fds in this set can be dup'd via op_node_dup_fd, preventing
+/// access to internal Deno fds (e.g. SQLite, internal pipes).
+static NODE_FS_OPEN_FDS: Lazy<Mutex<HashSet<i32>>> =
+  Lazy::new(|| Mutex::new(HashSet::new()));
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum FsError {
@@ -608,9 +617,24 @@ pub async fn op_node_rmdir(
   Ok(())
 }
 
+/// Register a file descriptor as opened via node:fs.
+/// This allows it to be dup'd via op_node_dup_fd for cross-worker passing.
+#[op2(fast)]
+pub fn op_node_register_open_fd(#[smi] fd: i32) {
+  NODE_FS_OPEN_FDS.lock().unwrap().insert(fd);
+}
+
+/// Unregister a file descriptor when it is closed via node:fs.
+#[op2(fast)]
+pub fn op_node_unregister_open_fd(#[smi] fd: i32) {
+  NODE_FS_OPEN_FDS.lock().unwrap().remove(&fd);
+}
+
 /// Create a file resource from a raw file descriptor by dup'ing it first.
 /// This is safe for cross-worker use because the dup'd fd is independently
 /// owned and can be closed without affecting the original.
+/// Only allows dup of fds that were opened via node:fs (registered in
+/// the process-wide NODE_FS_OPEN_FDS set).
 #[cfg(unix)]
 #[op2(fast)]
 #[smi]
@@ -625,6 +649,15 @@ pub fn op_node_dup_fd(
     return Err(FsError::Io(std::io::Error::new(
       std::io::ErrorKind::InvalidInput,
       "Invalid file descriptor",
+    )));
+  }
+
+  // Only allow dup of fds that were opened via node:fs.
+  // This prevents access to internal Deno fds (e.g. SQLite DB, internal pipes).
+  if !NODE_FS_OPEN_FDS.lock().unwrap().contains(&fd) {
+    return Err(FsError::Io(std::io::Error::new(
+      std::io::ErrorKind::PermissionDenied,
+      "File descriptor was not opened via node:fs",
     )));
   }
 
@@ -671,6 +704,7 @@ pub fn op_node_dup_fd(
 /// Retrieves the OS file descriptor for a given resource ID.
 #[cfg(unix)]
 #[op2(fast)]
+#[smi]
 pub fn op_node_get_fd(
   state: &mut OpState,
   #[smi] rid: ResourceId,
@@ -693,6 +727,7 @@ pub fn op_node_get_fd(
 /// On non-Unix platforms, return the RID as-is for now.
 #[cfg(not(unix))]
 #[op2(fast)]
+#[smi]
 pub fn op_node_get_fd(
   _state: &mut OpState,
   #[smi] rid: ResourceId,

@@ -262,7 +262,7 @@ const { internalRidSymbol } = core;
 
 // Helper class to wrap a resource ID as a stream-like object.
 // Used for PTY file descriptors (fd > 2) that come from NAPI modules like node-pty.
-class TTYStream {
+export class TTYStream {
   #rid;
   #ref = true;
   #opPromise;
