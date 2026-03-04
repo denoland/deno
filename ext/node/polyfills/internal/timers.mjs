@@ -18,11 +18,12 @@ const {
   Symbol,
   SymbolToPrimitive,
 } = primordials;
+import { op_immediate_ref_count } from "ext:core/ops";
 import {
-  op_immediate_count,
-  op_immediate_ref_count,
-  op_immediate_set_has_outstanding,
-} from "ext:core/ops";
+  emitInit,
+  executionAsyncId,
+  newAsyncId as nextAsyncId,
+} from "ext:deno_node/internal/async_hooks.ts";
 import { inspect } from "ext:deno_node/internal/util/inspect.mjs";
 import {
   validateFunction,
@@ -35,7 +36,6 @@ import {
   setInterval as setInterval_,
   setTimeout as setTimeout_,
 } from "ext:deno_web/02_timers.js";
-import { runNextTicks } from "ext:deno_node/_next_tick.ts";
 
 // Timeout values > TIMEOUT_MAX are set to 1.
 export const TIMEOUT_MAX = 2 ** 31 - 1;
@@ -184,136 +184,9 @@ export function setUnrefTimeout(callback, timeout, ...args) {
   return new Timeout(callback, timeout, args, false, false);
 }
 
-// This code was forked from Node.js
-// Copyright Node.js contributors. All rights reserved.
-//
-// A linked list for storing `setImmediate()` requests
-class ImmediateList {
-  constructor() {
-    this.head = null;
-    this.tail = null;
-  }
-
-  // Appends an item to the end of the linked list, adjusting the current tail's
-  // next pointer and the item's previous pointer where applicable
-  append(item) {
-    // console.log("append", this.tail);
-    if (this.tail !== null) {
-      this.tail._idleNext = item;
-      item._idlePrev = this.tail;
-    } else {
-      this.head = item;
-    }
-    this.tail = item;
-  }
-
-  // Removes an item from the linked list, adjusting the pointers of adjacent
-  // items and the linked list's head or tail pointers as necessary
-  remove(item) {
-    if (item._idleNext) {
-      item._idleNext._idlePrev = item._idlePrev;
-    }
-
-    if (item._idlePrev) {
-      item._idlePrev._idleNext = item._idleNext;
-    }
-
-    if (item === this.head) {
-      this.head = item._idleNext;
-    }
-    if (item === this.tail) {
-      this.tail = item._idlePrev;
-    }
-
-    item._idleNext = null;
-    item._idlePrev = null;
-  }
-}
-
-// Create a single linked list instance only once at startup
-export const immediateQueue = new ImmediateList();
-// If an uncaught exception was thrown during execution of immediateQueue,
-// this queue will store all remaining Immediates that need to run upon
-// resolution of all error handling (if process is still alive).
-const outstandingQueue = new ImmediateList();
-
-export function runImmediates() {
-  const queue = outstandingQueue.head !== null
-    ? outstandingQueue
-    : immediateQueue;
-  let immediate = queue.head;
-  // Clear the linked list early in case new `setImmediate()`
-  // calls occur while immediate callbacks are executed
-  if (queue !== outstandingQueue) {
-    queue.head = queue.tail = null;
-    op_immediate_set_has_outstanding(true);
-  }
-
-  let prevImmediate;
-  let ranAtLeastOneImmediate = false;
-  while (immediate !== null) {
-    if (ranAtLeastOneImmediate) {
-      runNextTicks();
-    } else {
-      ranAtLeastOneImmediate = true;
-    }
-
-    // It's possible for this current Immediate to be cleared while executing
-    // the next tick queue above, which means we need to use the previous
-    // Immediate's _idleNext which is guaranteed to not have been cleared.
-    if (immediate._destroyed) {
-      outstandingQueue.head = immediate = prevImmediate._idleNext;
-      continue;
-    }
-
-    immediate._destroyed = true;
-
-    op_immediate_count(false);
-    if (immediate[kRefed]) {
-      op_immediate_ref_count(false);
-    }
-    immediate[kRefed] = null;
-
-    prevImmediate = immediate;
-
-    // TODO:
-    // const priorContextFrame = AsyncContextFrame.exchange(
-    // immediate[async_context_frame],
-    // );
-
-    // TODO:
-    // const asyncId = immediate[async_id_symbol];
-    // emitBefore(asyncId, immediate[trigger_async_id_symbol], immediate);
-
-    try {
-      const argv = immediate._argv;
-      if (!argv) {
-        immediate._onImmediate();
-      } else {
-        immediate._onImmediate(...new SafeArrayIterator(argv));
-      }
-    } finally {
-      immediate._onImmediate = null;
-
-      // TODO:
-      // if (destroyHooksExist()) {
-      // emitDestroy(asyncId);
-      // }
-
-      outstandingQueue.head = immediate = immediate._idleNext;
-    }
-    // emitAfter(asyncId);
-
-    // TODO:
-    // AsyncContextFrame.set(priorContextFrame);
-  }
-
-  if (queue === outstandingQueue) {
-    outstandingQueue.head = null;
-  }
-
-  op_immediate_set_has_outstanding(false);
-}
+// Re-export immediate queue and runImmediates from core for consumers
+export const immediateQueue = core.immediateQueue;
+export const runImmediates = core.runImmediates;
 
 export class Immediate {
   constructor(unboundCallback, ...args) {
@@ -333,34 +206,36 @@ export class Immediate {
     this._onImmediate = callback;
     this._argv = args;
     this._destroyed = false;
-    this[kRefed] = false;
+    this._refed = false;
 
-    // TODO:
-    // initAsyncResource(this, "Immediate");
+    const asyncId = nextAsyncId();
+    const triggerAsyncId = executionAsyncId();
+    this.asyncId = asyncId;
+    this.triggerAsyncId = triggerAsyncId;
+    emitInit(asyncId, "Immediate", triggerAsyncId, this);
 
     this.ref();
-    op_immediate_count(true);
-    immediateQueue.append(this);
+    core.queueImmediate(this);
   }
 
   ref() {
-    if (this[kRefed] === false) {
-      this[kRefed] = true;
+    if (this._refed === false) {
+      this._refed = true;
       op_immediate_ref_count(true);
     }
     return this;
   }
 
   unref() {
-    if (this[kRefed] === true) {
-      this[kRefed] = false;
+    if (this._refed === true) {
+      this._refed = false;
       op_immediate_ref_count(false);
     }
     return this;
   }
 
   hasRef() {
-    return !!this[kRefed];
+    return !!this._refed;
   }
 
   [inspect.custom] = function (_, options) {

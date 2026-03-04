@@ -84,6 +84,10 @@
     op_leak_tracing_get_all,
     op_leak_tracing_get,
 
+    op_immediate_count,
+    op_immediate_ref_count,
+    op_immediate_set_has_outstanding,
+
     op_is_any_array_buffer,
     op_is_arguments_object,
     op_is_array_buffer,
@@ -144,10 +148,121 @@
   let unhandledPromiseRejectionHandler = () => false;
   let timerDepth = 0;
 
-  let immediateCallback = null;
+  // ---------------------------------------------------------------------------
+  // Immediate queue (ImmediateList linked list + drain loop)
+  // ---------------------------------------------------------------------------
+  class ImmediateList {
+    constructor() {
+      this.head = null;
+      this.tail = null;
+    }
+    append(item) {
+      if (this.tail !== null) {
+        this.tail._idleNext = item;
+        item._idlePrev = this.tail;
+      } else {
+        this.head = item;
+      }
+      this.tail = item;
+    }
+    remove(item) {
+      if (item._idleNext) {
+        item._idleNext._idlePrev = item._idlePrev;
+      }
+      if (item._idlePrev) {
+        item._idlePrev._idleNext = item._idleNext;
+      }
+      if (item === this.head) {
+        this.head = item._idleNext;
+      }
+      if (item === this.tail) {
+        this.tail = item._idlePrev;
+      }
+      item._idleNext = null;
+      item._idlePrev = null;
+    }
+  }
 
-  function setImmediateCallback(cb) {
-    immediateCallback = cb;
+  const immediateQueue = new ImmediateList();
+  const outstandingQueue = new ImmediateList();
+
+  function queueImmediate(immediate) {
+    op_immediate_count(true);
+    immediateQueue.append(immediate);
+  }
+
+  function clearImmediate(immediate) {
+    if (!immediate || immediate._destroyed) {
+      return;
+    }
+    op_immediate_count(false);
+    immediate._destroyed = true;
+    if (immediate._refed) {
+      op_immediate_ref_count(false);
+    }
+    immediate._refed = null;
+    immediate._onImmediate = null;
+    immediateQueue.remove(immediate);
+  }
+
+  function runImmediates() {
+    const queue = outstandingQueue.head !== null
+      ? outstandingQueue
+      : immediateQueue;
+    let immediate = queue.head;
+    if (queue !== outstandingQueue) {
+      queue.head = queue.tail = null;
+      op_immediate_set_has_outstanding(true);
+    }
+
+    let prevImmediate;
+    let ranAtLeastOneImmediate = false;
+    while (immediate !== null) {
+      if (ranAtLeastOneImmediate) {
+        runNextTicks();
+      } else {
+        ranAtLeastOneImmediate = true;
+      }
+
+      if (immediate._destroyed) {
+        outstandingQueue.head = immediate = prevImmediate._idleNext;
+        continue;
+      }
+
+      immediate._destroyed = true;
+
+      op_immediate_count(false);
+      if (immediate._refed) {
+        op_immediate_ref_count(false);
+      }
+      immediate._refed = null;
+
+      prevImmediate = immediate;
+
+      const asyncId = immediate.asyncId;
+      emitBefore(asyncId, immediate.triggerAsyncId, immediate);
+
+      try {
+        const argv = immediate._argv;
+        if (!argv) {
+          immediate._onImmediate();
+        } else {
+          immediate._onImmediate(...argv);
+        }
+      } finally {
+        immediate._onImmediate = null;
+        emitDestroy(asyncId);
+        outstandingQueue.head = immediate = immediate._idleNext;
+      }
+
+      emitAfter(asyncId);
+    }
+
+    if (queue === outstandingQueue) {
+      outstandingQueue.head = null;
+    }
+
+    op_immediate_set_has_outstanding(false);
   }
 
   // ---------------------------------------------------------------------------
@@ -343,12 +458,10 @@
   }
 
   function runImmediateCallbacks() {
-    if (immediateCallback !== null) {
-      try {
-        immediateCallback();
-      } catch (e) {
-        reportExceptionCallback(e);
-      }
+    try {
+      runImmediates();
+    } catch (e) {
+      reportExceptionCallback(e);
     }
   }
 
@@ -819,7 +932,10 @@
     processTicksAndRejections,
     runNextTicks,
     setAsyncHooksEmit,
-    setImmediateCallback,
+    queueImmediate,
+    clearImmediate,
+    runImmediates,
+    immediateQueue,
     runMicrotasks: () => op_run_microtasks(),
     hasTickScheduled,
     setHasTickScheduled,

@@ -186,12 +186,36 @@ export namespace core {
   /** Set a value telling the runtime if there are "next ticks" scheduled */
   function setHasTickScheduled(value: boolean): void;
 
-  /** Set the immediate callback. Only one callback can be set at a time.
-   * The callback executes in the next timer phase.
-   */
-  function setImmediateCallback(
-    cb: () => void,
-  ): void;
+  /** Immediate handle object used with the immediate queue. */
+  interface ImmediateHandle {
+    _idleNext: ImmediateHandle | null;
+    _idlePrev: ImmediateHandle | null;
+    _onImmediate: ((...args: any[]) => any) | null;
+    _argv: any[];
+    _destroyed: boolean;
+    _refed: boolean | null;
+    asyncId: number;
+    triggerAsyncId: number;
+    ref(): ImmediateHandle;
+    unref(): ImmediateHandle;
+  }
+
+  /** Enqueue an immediate handle to the immediate queue. */
+  function queueImmediate(immediate: ImmediateHandle): void;
+
+  /** Cancel a queued immediate. */
+  function clearImmediate(immediate: ImmediateHandle): void;
+
+  /** Drain the immediate queue, running all enqueued immediate callbacks. */
+  function runImmediates(): void;
+
+  /** The immediate queue (ImmediateList linked list). */
+  const immediateQueue: {
+    head: ImmediateHandle | null;
+    tail: ImmediateHandle | null;
+    append(item: ImmediateHandle): void;
+    remove(item: ImmediateHandle): void;
+  };
 
   /** Enqueue a user timer at the given depth, optionally repeating. User
    * timers may generate call traces for sanitization, and may be clamped

@@ -738,9 +738,17 @@ async fn test_set_macrotask_callback_set_next_tick_callback() {
           args: undefined,
           snapshot: undefined,
         });
-        Deno.core.setImmediateCallback(() => {
-          results.push("immediate");
-        });
+        const imm = {
+          _idleNext: null,
+          _idlePrev: null,
+          _onImmediate: () => results.push("immediate"),
+          _argv: null,
+          _destroyed: false,
+          _refed: false,
+          ref() { this._refed = true; return this; },
+          unref() { this._refed = false; return this; },
+        };
+        Deno.core.queueImmediate(imm);
         await op_async_sleep();
         if (results[0] != "nextTick") {
           throw new Error(`expected nextTick, got: ${results[0]}`);
