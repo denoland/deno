@@ -1481,7 +1481,9 @@ impl ModuleMap {
         }
       }
 
-      tc_scope.perform_microtask_checkpoint();
+      // NOTE: No microtask checkpoint here. With explicit microtask policy,
+      // the event loop controls when microtasks run, allowing nextTick
+      // callbacks to drain first (matching Node.js behavior).
     }
 
     Either::Right(receiver)

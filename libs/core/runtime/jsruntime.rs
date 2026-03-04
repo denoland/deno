@@ -833,6 +833,13 @@ impl JsRuntime {
       external_references.into(),
     );
 
+    if !will_snapshot {
+      // Use explicit microtask policy so we control when microtasks run.
+      // This matches Node.js and allows nextTick callbacks to drain before
+      // promise microtasks when ticks are scheduled.
+      isolate.set_microtasks_policy(v8::MicrotasksPolicy::Explicit);
+    }
+
     let isolate_ptr = unsafe { isolate.as_raw_isolate_ptr() };
     // ...isolate is fully set up, we can forward its pointer to the ops to finish
     // their' setup...
@@ -1875,7 +1882,12 @@ impl JsRuntime {
 
     v8::tc_scope!(let tc_scope, scope);
 
-    tc_scope.perform_microtask_checkpoint();
+    // Skip microtask checkpoint if nextTick callbacks are scheduled;
+    // processTicksAndRejections will drain both nextTick and microtasks
+    // in the correct order (matching Node.js InternalCallbackScope::Close).
+    if !self.inner.main_realm.0.context_state.has_tick_scheduled() {
+      tc_scope.perform_microtask_checkpoint();
+    }
     match tc_scope.exception() {
       None => Ok(()),
       Some(exception) => {
@@ -2113,7 +2125,11 @@ impl JsRuntime {
     }
     // 1b. Fire expired JS timers (direct v8::Function::call per timer)
     did_work |= Self::dispatch_timers(cx, scope, context_state);
-    scope.perform_microtask_checkpoint();
+    // Skip microtask checkpoint if nextTick is scheduled — nextTick
+    // callbacks must drain before promise microtasks (Node.js compat).
+    if !context_state.has_tick_scheduled() {
+      scope.perform_microtask_checkpoint();
+    }
 
     // ===== Phase 2: Pending work =====
     // Module progress polling (before ops, matching original ordering)

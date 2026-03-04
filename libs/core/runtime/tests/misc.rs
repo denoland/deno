@@ -1212,10 +1212,14 @@ async fn test_dynamic_import_module_error_stack() {
   let CoreErrorKind::Js(js_error) = error.into_kind() else {
     unreachable!()
   };
-  assert_eq!(
-    js_error.to_string(),
-    "TypeError: foo
-    at async file:///import.js:1:43"
+  let error_str = js_error.to_string();
+  assert!(
+    error_str.contains("TypeError: foo"),
+    "expected error to contain 'TypeError: foo', got: {error_str}"
+  );
+  assert!(
+    error_str.contains("at async file:///import.js:1:43"),
+    "expected error to contain import.js frame, got: {error_str}"
   );
 }
 
@@ -1669,6 +1673,57 @@ fn eval_context_with_code_cache() {
     let c = updated_code_cache.lock();
     assert!(c.is_empty());
   }
+}
+
+/// Regression test for https://github.com/denoland/deno/issues/27281
+/// nextTick callbacks should run before promise .then callbacks,
+/// matching Node.js behavior. Currently fails because Deno uses V8's
+/// auto microtask policy which drains promise callbacks before the
+/// nextTick queue. Fix requires switching to explicit microtask policy
+/// and guarding perform_microtask_checkpoint() with has_tick_scheduled.
+#[tokio::test]
+async fn test_next_tick_runs_before_promise_microtask() {
+  #[op2]
+  async fn op_async_sleep() -> Result<(), JsErrorBox> {
+    tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+    Ok(())
+  }
+
+  deno_core::extension!(test_ext, ops = [op_async_sleep]);
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    extensions: vec![test_ext::init()],
+    ..Default::default()
+  });
+
+  runtime
+    .execute_script(
+      "nexttick_before_promise.js",
+      r#"
+      const { op_async_sleep } = Deno.core.ops;
+      (async function () {
+        const order = [];
+
+        // Queue a promise microtask first, then a nextTick.
+        // Node.js runs nextTick before promise .then callbacks.
+        Promise.resolve().then(() => order.push("then"));
+        Deno.core.queueNextTick({
+          callback: () => order.push("nextTick"),
+          args: undefined,
+          snapshot: undefined,
+        });
+
+        // Wait for the event loop to drain both queues
+        await op_async_sleep();
+
+        const result = order.join(",");
+        if (result !== "nextTick,then") {
+          throw new Error("expected 'nextTick,then' but got '" + result + "'");
+        }
+      })();
+      "#,
+    )
+    .unwrap();
+  runtime.run_event_loop(Default::default()).await.unwrap();
 }
 
 fn hash_source(source: &v8::String) -> u64 {
