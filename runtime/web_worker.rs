@@ -485,7 +485,7 @@ impl WebWorker {
     (worker, handle)
   }
 
-  fn from_options<
+  pub fn from_options<
     TInNpmPackageChecker: InNpmPackageChecker + 'static,
     TNpmPackageFolderResolver: NpmPackageFolderResolver + 'static,
     TExtNodeSys: ExtNodeSys + 'static,

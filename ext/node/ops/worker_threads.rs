@@ -18,9 +18,7 @@ pub const DEFAULT_STACK_SIZE_MB: usize = 4;
 
 /// Resolved resource limits with V8 defaults filled in for unspecified values.
 /// Stored in the worker's OpState so the JS polyfill can read actual values.
-#[derive(
-  deno_core::serde::Serialize, Clone, Debug, Default, PartialEq, Eq,
-)]
+#[derive(deno_core::serde::Serialize, Clone, Debug, Default, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct ResolvedResourceLimits {
   pub max_young_generation_size_mb: usize,

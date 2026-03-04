@@ -372,51 +372,48 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
       // Apply resource limits to v8::CreateParams if specified.
       // Uses individual V8 ResourceConstraints setters to match Node.js
       // behavior (node_worker.cc UpdateResourceConstraints).
-      let (create_params, resolved_limits) =
-        if let Some(ref limits) = args.resource_limits {
-          let mut params = create_isolate_create_params(&shared.sys)
-            .unwrap_or_default();
+      let (create_params, resolved_limits) = if let Some(ref limits) =
+        args.resource_limits
+      {
+        let mut params =
+          create_isolate_create_params(&shared.sys).unwrap_or_default();
 
-          if let Some(max_old) =
-            limits.max_old_generation_size_mb.filter(|&v| v > 0)
-          {
-            params = params
-              .set_max_old_generation_size_in_bytes(max_old * 1024 * 1024);
-          }
-          if let Some(max_young) =
-            limits.max_young_generation_size_mb.filter(|&v| v > 0)
-          {
-            params = params
-              .set_max_young_generation_size_in_bytes(max_young * 1024 * 1024);
-          }
-          if let Some(code_range) =
-            limits.code_range_size_mb.filter(|&v| v > 0)
-          {
-            params =
-              params.set_code_range_size_in_bytes(code_range * 1024 * 1024);
-          }
+        if let Some(max_old) =
+          limits.max_old_generation_size_mb.filter(|&v| v > 0)
+        {
+          params =
+            params.set_max_old_generation_size_in_bytes(max_old * 1024 * 1024);
+        }
+        if let Some(max_young) =
+          limits.max_young_generation_size_mb.filter(|&v| v > 0)
+        {
+          params = params
+            .set_max_young_generation_size_in_bytes(max_young * 1024 * 1024);
+        }
+        if let Some(code_range) = limits.code_range_size_mb.filter(|&v| v > 0) {
+          params =
+            params.set_code_range_size_in_bytes(code_range * 1024 * 1024);
+        }
 
-          let mb = 1024 * 1024;
-          // Read back resolved values (including V8 defaults for
-          // unspecified fields), matching Node.js behavior.
-          let resolved =
-            deno_node::ops::worker_threads::ResolvedResourceLimits {
-              max_young_generation_size_mb: params
-                .max_young_generation_size_in_bytes()
-                / mb,
-              max_old_generation_size_mb: params
-                .max_old_generation_size_in_bytes()
-                / mb,
-              code_range_size_mb: params.code_range_size_in_bytes() / mb,
-              stack_size_mb: limits.stack_size_mb.unwrap_or(
-                deno_node::ops::worker_threads::DEFAULT_STACK_SIZE_MB,
-              ),
-            };
-
-          (Some(params), Some(resolved))
-        } else {
-          (create_isolate_create_params(&shared.sys), None)
+        let mb = 1024 * 1024;
+        // Read back resolved values (including V8 defaults for
+        // unspecified fields), matching Node.js behavior.
+        let resolved = deno_node::ops::worker_threads::ResolvedResourceLimits {
+          max_young_generation_size_mb: params
+            .max_young_generation_size_in_bytes()
+            / mb,
+          max_old_generation_size_mb: params.max_old_generation_size_in_bytes()
+            / mb,
+          code_range_size_mb: params.code_range_size_in_bytes() / mb,
+          stack_size_mb: limits
+            .stack_size_mb
+            .unwrap_or(deno_node::ops::worker_threads::DEFAULT_STACK_SIZE_MB),
         };
+
+        (Some(params), Some(resolved))
+      } else {
+        (create_isolate_create_params(&shared.sys), None)
+      };
 
       let options = WebWorkerOptions {
         name: args.name,
@@ -474,18 +471,17 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
       };
 
       let has_resource_limits = args.resource_limits.is_some();
-      let (mut worker, handle) =
-        WebWorker::bootstrap_from_options(services, options);
+      let (mut worker, handle, bootstrap_options) =
+        WebWorker::from_options(services, options);
 
-      // Store resolved resource limits in the worker's op state so the
-      // worker_threads polyfill can read them via op.
+      // Store resolved resource limits in the worker's op state BEFORE
+      // bootstrapping, so the worker_threads polyfill can read them
+      // via op during init.
       if let Some(resolved) = resolved_limits {
-        worker
-          .js_runtime
-          .op_state()
-          .borrow_mut()
-          .put(resolved);
+        worker.js_runtime.op_state().borrow_mut().put(resolved);
       }
+
+      worker.bootstrap(&bootstrap_options);
 
       // When resource limits are set, install a near-heap-limit callback
       // that terminates the worker's isolate gracefully instead of
