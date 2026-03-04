@@ -21,6 +21,7 @@ use deno_core::uv_compat::UvStream;
 use deno_core::uv_compat::UvTcp;
 use deno_core::uv_compat::UvWrite;
 use deno_core::v8;
+use socket2::SockAddr as Socket2SockAddr;
 
 use super::handle_wrap::AsyncId;
 
@@ -351,9 +352,20 @@ impl TCP {
       if tcp.is_null() {
         return -1;
       }
-      let flags = libc::fcntl(fd, libc::F_GETFL);
-      if flags != -1 {
-        libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK);
+      // Set non-blocking mode on the socket
+      #[cfg(unix)]
+      {
+        let flags = libc::fcntl(fd, libc::F_GETFL);
+        if flags != -1 {
+          libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK);
+        }
+      }
+      #[cfg(windows)]
+      {
+        use windows_sys::Win32::Networking::WinSock::ioctlsocket;
+        use windows_sys::Win32::Networking::WinSock::FIONBIO;
+        let mut nonblocking: u32 = 1;
+        ioctlsocket(fd as usize, FIONBIO as i32, &mut nonblocking);
       }
       // For C libuv, use uv_tcp_open to assign an existing fd
       uv_compat::uv_tcp_open(tcp, fd)
@@ -371,15 +383,14 @@ impl TCP {
       Err(_) => return -1,
     };
 
-    // SAFETY: zeroed storage is valid for sockaddr_storage; tcp handle is valid
+    // SAFETY: tcp handle is valid; socket2 SockAddr is properly initialized
     unsafe {
       let tcp = self.raw();
       if tcp.is_null() {
         return -1;
       }
-      let mut storage: libc::sockaddr_storage = std::mem::zeroed();
-      let (sa, sa_len) = sockaddr_to_raw(socket_addr, &mut storage);
-      uv_compat::uv_tcp_bind(tcp, sa as *const _, sa_len, 0)
+      let sock_addr = Socket2SockAddr::from(socket_addr);
+      uv_compat::uv_tcp_bind(tcp, sock_addr.as_ptr() as *const _, sock_addr.len() as u32, 0)
     }
   }
 
@@ -394,15 +405,14 @@ impl TCP {
       Err(_) => return -1,
     };
 
-    // SAFETY: zeroed storage is valid for sockaddr_storage; tcp handle is valid
+    // SAFETY: tcp handle is valid; socket2 SockAddr is properly initialized
     unsafe {
       let tcp = self.raw();
       if tcp.is_null() {
         return -1;
       }
-      let mut storage: libc::sockaddr_storage = std::mem::zeroed();
-      let (sa, sa_len) = sockaddr_to_raw(socket_addr, &mut storage);
-      uv_compat::uv_tcp_bind(tcp, sa as *const _, sa_len, 0)
+      let sock_addr = Socket2SockAddr::from(socket_addr);
+      uv_compat::uv_tcp_bind(tcp, sock_addr.as_ptr() as *const _, sock_addr.len() as u32, 0)
     }
   }
 
@@ -532,14 +542,13 @@ impl TCP {
       Err(_) => return -1,
     };
 
-    // SAFETY: zeroed storage is valid; tcp handle is valid; ConnectReq freed in connect_cb
+    // SAFETY: tcp handle is valid; ConnectReq freed in connect_cb
     unsafe {
       let tcp = self.raw();
       if tcp.is_null() {
         return -1;
       }
-      let mut storage: libc::sockaddr_storage = std::mem::zeroed();
-      let (sa, _sa_len) = sockaddr_to_raw(socket_addr, &mut storage);
+      let sock_addr = Socket2SockAddr::from(socket_addr);
       let mut connect_req = Box::new(ConnectReq {
         uv_req: uv_compat::new_connect(),
       });
@@ -548,7 +557,7 @@ impl TCP {
       let ret = uv_compat::uv_tcp_connect(
         req_ptr,
         tcp,
-        sa as *const _,
+        sock_addr.as_ptr() as *const _,
         Some(connect_cb),
       );
       if ret != 0 {
@@ -560,46 +569,46 @@ impl TCP {
   }
 
   #[serde]
-  fn getpeername(&self) -> Option<SockAddr> {
-    // SAFETY: zeroed storage is valid for sockaddr_storage; tcp handle is valid
+  fn getpeername(&self) -> Option<SockAddrInfo> {
+    // SAFETY: tcp handle is valid; storage is properly sized
     unsafe {
       let tcp = self.raw();
       if tcp.is_null() {
         return None;
       }
-      let mut storage: libc::sockaddr_storage = std::mem::zeroed();
-      let mut len = std::mem::size_of::<libc::sockaddr_storage>() as i32;
+      let mut storage = std::mem::MaybeUninit::<socket2::SockAddr>::uninit();
+      let mut len = std::mem::size_of::<socket2::SockAddr>() as i32;
       let ret = uv_compat::uv_tcp_getpeername(
         tcp,
-        &mut storage as *mut _ as *mut _,
+        storage.as_mut_ptr() as *mut _,
         &mut len,
       );
       if ret != 0 {
         return None;
       }
-      sockaddr_from_storage(&storage)
+      sockaddr_from_socket2(&storage.assume_init())
     }
   }
 
   #[serde]
-  fn getsockname(&self) -> Option<SockAddr> {
-    // SAFETY: zeroed storage is valid for sockaddr_storage; tcp handle is valid
+  fn getsockname(&self) -> Option<SockAddrInfo> {
+    // SAFETY: tcp handle is valid; storage is properly sized
     unsafe {
       let tcp = self.raw();
       if tcp.is_null() {
         return None;
       }
-      let mut storage: libc::sockaddr_storage = std::mem::zeroed();
-      let mut len = std::mem::size_of::<libc::sockaddr_storage>() as i32;
+      let mut storage = std::mem::MaybeUninit::<socket2::SockAddr>::uninit();
+      let mut len = std::mem::size_of::<socket2::SockAddr>() as i32;
       let ret = uv_compat::uv_tcp_getsockname(
         tcp,
-        &mut storage as *mut _ as *mut _,
+        storage.as_mut_ptr() as *mut _,
         &mut len,
       );
       if ret != 0 {
         return None;
       }
-      sockaddr_from_storage(&storage)
+      sockaddr_from_socket2(&storage.assume_init())
     }
   }
 
@@ -664,72 +673,26 @@ impl TCP {
 // -- helpers --
 
 #[derive(serde::Serialize)]
-struct SockAddr {
+struct SockAddrInfo {
   address: String,
   port: u16,
   family: String,
 }
 
-unsafe fn sockaddr_from_storage(
-  storage: &libc::sockaddr_storage,
-) -> Option<SockAddr> {
-  // SAFETY: storage is properly initialized for the address family
-  unsafe {
-    match storage.ss_family as i32 {
-      libc::AF_INET => {
-        let sin = storage as *const _ as *const libc::sockaddr_in;
-        let ip = std::net::Ipv4Addr::from(u32::from_be((*sin).sin_addr.s_addr));
-        let port = u16::from_be((*sin).sin_port);
-        Some(SockAddr {
-          address: ip.to_string(),
-          port,
-          family: "IPv4".to_string(),
-        })
-      }
-      libc::AF_INET6 => {
-        let sin6 = storage as *const _ as *const libc::sockaddr_in6;
-        let ip = std::net::Ipv6Addr::from((*sin6).sin6_addr.s6_addr);
-        let port = u16::from_be((*sin6).sin6_port);
-        Some(SockAddr {
-          address: ip.to_string(),
-          port,
-          family: "IPv6".to_string(),
-        })
-      }
-      _ => None,
-    }
-  }
-}
-
-unsafe fn sockaddr_to_raw(
-  addr: SocketAddr,
-  storage: &mut libc::sockaddr_storage,
-) -> (*const libc::sockaddr, libc::socklen_t) {
-  // SAFETY: storage is zeroed and properly sized for the address family
-  unsafe {
-    match addr {
-      SocketAddr::V4(ref a) => {
-        let sin = storage as *mut _ as *mut libc::sockaddr_in;
-        (*sin).sin_family = libc::AF_INET as libc::sa_family_t;
-        (*sin).sin_port = a.port().to_be();
-        (*sin).sin_addr.s_addr = u32::from_ne_bytes(a.ip().octets());
-        (
-          storage as *const _ as *const libc::sockaddr,
-          std::mem::size_of::<libc::sockaddr_in>() as libc::socklen_t,
-        )
-      }
-      SocketAddr::V6(ref a) => {
-        let sin6 = storage as *mut _ as *mut libc::sockaddr_in6;
-        (*sin6).sin6_family = libc::AF_INET6 as libc::sa_family_t;
-        (*sin6).sin6_port = a.port().to_be();
-        (*sin6).sin6_addr.s6_addr = a.ip().octets();
-        (*sin6).sin6_flowinfo = a.flowinfo();
-        (*sin6).sin6_scope_id = a.scope_id();
-        (
-          storage as *const _ as *const libc::sockaddr,
-          std::mem::size_of::<libc::sockaddr_in6>() as libc::socklen_t,
-        )
-      }
-    }
+fn sockaddr_from_socket2(sock_addr: &socket2::SockAddr) -> Option<SockAddrInfo> {
+  if let Some(addr) = sock_addr.as_socket_ipv4() {
+    Some(SockAddrInfo {
+      address: addr.ip().to_string(),
+      port: addr.port(),
+      family: "IPv4".to_string(),
+    })
+  } else if let Some(addr) = sock_addr.as_socket_ipv6() {
+    Some(SockAddrInfo {
+      address: addr.ip().to_string(),
+      port: addr.port(),
+      family: "IPv6".to_string(),
+    })
+  } else {
+    None
   }
 }
