@@ -152,8 +152,7 @@ if (!args["publish-only"]) {
       });
     }
   }
-
-} // end if (!args["publish-only"])
+}
 
 // publish if necessary
 if (args.publish || args["publish-only"]) {
