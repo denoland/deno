@@ -2896,6 +2896,10 @@ impl JsRuntime {
       // rejectionhandled fires before unhandledrejection for later promises.
       Self::dispatch_handled_rejections(scope, &context_state.exception_state);
 
+      // Dispatch "rejectionhandled" events before tick drain, so that
+      // rejectionhandled fires before unhandledrejection for later promises.
+      Self::dispatch_handled_rejections(scope, &context_state.exception_state);
+
       // Drain nextTick between each timer callback
       {
         let drain_cb =
