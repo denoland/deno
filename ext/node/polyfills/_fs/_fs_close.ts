@@ -6,8 +6,8 @@ import {
 } from "ext:deno_node/_fs/_fs_common.ts";
 import { getValidatedFd } from "ext:deno_node/internal/fs/utils.mjs";
 import { getRid, unregisterFd } from "ext:deno_node/internal/fs/fd_map.ts";
-import { op_node_unregister_open_fd } from "ext:core/ops";
-import { core, primordials } from "ext:core/mod.js";
+import { op_node_close_fd } from "ext:core/ops";
+import { primordials } from "ext:core/mod.js";
 
 const {
   Error,
@@ -32,16 +32,11 @@ export function close(
     let error = null;
     try {
       const rid = getRid(fd);
-      core.close(rid);
+      op_node_close_fd(rid, fd);
     } catch (err) {
       error = ObjectPrototypeIsPrototypeOf(ErrorPrototype, err)
         ? err as Error
         : new Error("[non-error thrown]");
-    }
-    try {
-      op_node_unregister_open_fd(fd);
-    } catch {
-      // fd may have already been unregistered
     }
     unregisterFd(fd);
     callback(error);
@@ -51,11 +46,6 @@ export function close(
 export function closeSync(fd: number) {
   fd = getValidatedFd(fd);
   const rid = getRid(fd);
-  core.close(rid);
-  try {
-    op_node_unregister_open_fd(fd);
-  } catch {
-    // fd may have already been unregistered
-  }
+  op_node_close_fd(rid, fd);
   unregisterFd(fd);
 }

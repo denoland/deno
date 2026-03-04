@@ -104,14 +104,47 @@ fn open_options_to_access_kind(open_options: &OpenOptions) -> OpenAccessKind {
   }
 }
 
-#[op2(fast, stack_trace)]
-#[smi]
+#[derive(Debug, Serialize)]
+pub struct OpenResult {
+  pub rid: ResourceId,
+  pub fd: i32,
+}
+
+/// Extract the OS file descriptor from a resource ID.
+fn get_fd_from_rid(
+  state: &mut OpState,
+  rid: ResourceId,
+) -> Result<i32, FsError> {
+  #[cfg(unix)]
+  {
+    use deno_core::ResourceHandle;
+    let handle = state.resource_table.get_handle(rid).map_err(|_| {
+      FsError::Io(std::io::Error::new(
+        std::io::ErrorKind::NotFound,
+        "Bad resource ID",
+      ))
+    })?;
+    match handle {
+      ResourceHandle::Fd(fd) => Ok(fd),
+      _ => Err(FsError::Io(std::io::Error::other(
+        "Resource is not a file descriptor",
+      ))),
+    }
+  }
+  #[cfg(not(unix))]
+  {
+    Ok(rid as i32)
+  }
+}
+
+#[op2(stack_trace)]
+#[serde]
 pub fn op_node_open_sync(
   state: &mut OpState,
   #[string] path: &str,
   #[smi] flags: i32,
   #[smi] mode: u32,
-) -> Result<ResourceId, FsError> {
+) -> Result<OpenResult, FsError> {
   let path = Path::new(path);
   let options = get_open_options(flags, Some(mode));
 
@@ -125,17 +158,22 @@ pub fn op_node_open_sync(
   let rid = state
     .resource_table
     .add(FileResource::new(file, "fsFile".to_string()));
-  Ok(rid)
+  let fd = get_fd_from_rid(state, rid)?;
+  NODE_FS_OPEN_FDS
+    .lock()
+    .unwrap_or_else(|e| e.into_inner())
+    .insert(fd);
+  Ok(OpenResult { rid, fd })
 }
 
 #[op2(stack_trace)]
-#[smi]
+#[serde]
 pub async fn op_node_open(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
   #[smi] flags: i32,
   #[smi] mode: u32,
-) -> Result<ResourceId, FsError> {
+) -> Result<OpenResult, FsError> {
   let path = PathBuf::from(path);
   let options = get_open_options(flags, Some(mode));
 
@@ -152,11 +190,16 @@ pub async fn op_node_open(
   };
   let file = fs.open_async(path.as_owned(), options).await?;
 
+  let mut state = state.borrow_mut();
   let rid = state
-    .borrow_mut()
     .resource_table
     .add(FileResource::new(file, "fsFile".to_string()));
-  Ok(rid)
+  let fd = get_fd_from_rid(&mut state, rid)?;
+  NODE_FS_OPEN_FDS
+    .lock()
+    .unwrap_or_else(|e| e.into_inner())
+    .insert(fd);
+  Ok(OpenResult { rid, fd })
 }
 #[derive(Debug, Serialize)]
 pub struct StatFs {
@@ -617,17 +660,27 @@ pub async fn op_node_rmdir(
   Ok(())
 }
 
-/// Register a file descriptor as opened via node:fs.
-/// This allows it to be dup'd via op_node_dup_fd for cross-worker passing.
+/// Close a file resource by RID and unregister its fd from the open set.
+/// This combines resource closing and fd unregistration into a single
+/// Rust op, preventing JS code from manipulating the fd registry directly.
 #[op2(fast)]
-pub fn op_node_register_open_fd(#[smi] fd: i32) {
-  NODE_FS_OPEN_FDS.lock().unwrap().insert(fd);
-}
-
-/// Unregister a file descriptor when it is closed via node:fs.
-#[op2(fast)]
-pub fn op_node_unregister_open_fd(#[smi] fd: i32) {
-  NODE_FS_OPEN_FDS.lock().unwrap().remove(&fd);
+pub fn op_node_close_fd(
+  state: &mut OpState,
+  #[smi] rid: ResourceId,
+  #[smi] fd: i32,
+) -> Result<(), FsError> {
+  let resource = state.resource_table.take_any(rid).map_err(|_| {
+    FsError::Io(std::io::Error::new(
+      std::io::ErrorKind::NotFound,
+      "Bad resource ID",
+    ))
+  })?;
+  resource.close();
+  NODE_FS_OPEN_FDS
+    .lock()
+    .unwrap_or_else(|e| e.into_inner())
+    .remove(&fd);
+  Ok(())
 }
 
 /// Create a file resource from a raw file descriptor by dup'ing it first.
@@ -654,7 +707,11 @@ pub fn op_node_dup_fd(
 
   // Only allow dup of fds that were opened via node:fs.
   // This prevents access to internal Deno fds (e.g. SQLite DB, internal pipes).
-  if !NODE_FS_OPEN_FDS.lock().unwrap().contains(&fd) {
+  if !NODE_FS_OPEN_FDS
+    .lock()
+    .unwrap_or_else(|e| e.into_inner())
+    .contains(&fd)
+  {
     return Err(FsError::Io(std::io::Error::new(
       std::io::ErrorKind::PermissionDenied,
       "File descriptor was not opened via node:fs",

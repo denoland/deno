@@ -18,9 +18,9 @@ import {
 } from "node:fs";
 import { createInterface } from "node:readline";
 import type { Interface as ReadlineInterface } from "node:readline";
-import { core, primordials } from "ext:core/mod.js";
+import { primordials } from "ext:core/mod.js";
 import { getRid, unregisterFd } from "ext:deno_node/internal/fs/fd_map.ts";
-import { op_node_unregister_open_fd } from "ext:core/ops";
+import { op_node_close_fd } from "ext:core/ops";
 import {
   BinaryOptionsArgument,
   FileOptionsArgument,
@@ -204,15 +204,10 @@ export class FileHandle extends EventEmitter {
   #close(): Promise<void> {
     return new Promise((resolve, reject) => {
       try {
-        core.close(this.#rid);
+        op_node_close_fd(this.#rid, this.#fd);
       } catch (err) {
         reject(denoErrorToNodeError(err as Error, { syscall: "close" }));
         return;
-      }
-      try {
-        op_node_unregister_open_fd(this.#fd);
-      } catch {
-        // fd may have already been unregistered by closeSync
       }
       unregisterFd(this.#fd);
       this.#rid = -1;
