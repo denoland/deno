@@ -212,6 +212,37 @@ pub fn op_run_microtasks(isolate: &mut v8::Isolate) {
   isolate.perform_microtask_checkpoint()
 }
 
+/// Drain pending "rejectionhandled" events and fire the JS callback for each.
+/// Must be called before processing unhandled rejections so that
+/// `onrejectionhandled` fires before any new `onunhandledrejection`.
+/// Drain pending "rejectionhandled" events and return them as a flat JS
+/// array: [promise, reason, promise, reason, ...], or undefined if empty.
+/// Called from processPromiseRejections before processing unhandled
+/// rejections so that `onrejectionhandled` fires first.
+#[op2]
+pub fn op_drain_handled_rejections<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+) -> v8::Local<'s, v8::Value> {
+  let exception_state = JsRealm::exception_state_from_scope(scope);
+  let mut pending = exception_state
+    .pending_handled_promise_rejections
+    .borrow_mut();
+  if pending.is_empty() {
+    return v8::undefined(scope).into();
+  }
+  let len = pending.len();
+  let arr = v8::Array::new(scope, (len * 2) as i32);
+  let mut idx = 0u32;
+  while let Some((promise, result)) = pending.pop_front() {
+    let p = v8::Local::new(scope, promise);
+    let r = v8::Local::new(scope, result);
+    arr.set_index(scope, idx, p.into());
+    arr.set_index(scope, idx + 1, r);
+    idx += 2;
+  }
+  arr.into()
+}
+
 /// Drain all pending promise rejections from the Rust-side queue and return
 /// them as a flat JS array: [promise, reason, asyncContext, ...].
 /// Returns an empty array if there are no pending rejections.

@@ -55,6 +55,7 @@
     op_get_promise_details,
     op_get_proxy_details,
     op_get_ext_import_meta_proto,
+    op_drain_handled_rejections,
     op_drain_pending_rejections,
     op_lazy_load_esm,
     op_memory_usage,
@@ -326,7 +327,19 @@
   // Drain pending promise rejections from the Rust-side queue and process
   // them through the unhandledPromiseRejectionHandler. Returns true if any
   // rejections were processed (matching Node.js processPromiseRejections).
+  let handledPromiseRejectionHandler;
+
   function processPromiseRejections() {
+    // Dispatch "rejectionhandled" events first so onrejectionhandled fires
+    // before any new onunhandledrejection in the same tick.
+    if (handledPromiseRejectionHandler) {
+      const handled = op_drain_handled_rejections();
+      if (handled !== undefined) {
+        for (let i = 0; i < handled.length; i += 2) {
+          handledPromiseRejectionHandler(handled[i], handled[i + 1]);
+        }
+      }
+    }
     tickInfo[kHasRejectionToWarn] = 0;
     const rejections = op_drain_pending_rejections();
     if (rejections === undefined) {
@@ -1093,8 +1106,10 @@
     eventLoopHasMoreWork: () => op_event_loop_has_more_work(),
     byteLength: (str) => op_str_byte_length(str),
     addMainModuleHandler: (handler) => op_add_main_module_handler(handler),
-    setHandledPromiseRejectionHandler: (handler) =>
-      op_set_handled_promise_rejection_handler(handler),
+    setHandledPromiseRejectionHandler: (handler) => {
+      handledPromiseRejectionHandler = handler;
+      op_set_handled_promise_rejection_handler(handler);
+    },
     setUnhandledPromiseRejectionHandler: (handler) =>
       unhandledPromiseRejectionHandler = handler,
     reportUnhandledException: (e) => op_dispatch_exception(e, false),

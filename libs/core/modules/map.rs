@@ -1481,9 +1481,11 @@ impl ModuleMap {
         }
       }
 
-      // NOTE: No microtask checkpoint here. With explicit microtask policy,
-      // the event loop controls when microtasks run, allowing nextTick
-      // callbacks to drain first (matching Node.js behavior).
+      // Checkpoint after module evaluation so that side effects (e.g.
+      // promise rejections from top-level code) are processed before
+      // the event loop starts. Without this, the test runner and other
+      // post-evaluation logic may not see the module's immediate effects.
+      tc_scope.perform_microtask_checkpoint();
     }
 
     Either::Right(receiver)

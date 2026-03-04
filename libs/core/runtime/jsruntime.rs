@@ -2162,8 +2162,8 @@ impl JsRuntime {
       Self::do_js_run_immediate_callbacks(scope, context_state)?;
     }
 
-    // 2e. Handle promise rejections (after nextTick/macrotask, since
-    // unhandledrejection handlers are run in macrotask callbacks).
+    // 2e. Handle unhandled promise rejections (after nextTick/macrotask,
+    // since unhandledrejection handlers are run in macrotask callbacks).
     // Note: rejections are also drained inside processTicksAndRejections
     // (via processPromiseRejections in the do-while loop). That path
     // handles rejections created by tick callbacks or their microtasks.
@@ -3010,7 +3010,7 @@ impl JsRuntime {
     Ok(true)
   }
 
-  /// Phase 2c: Handle promise rejections.
+  /// Phase 2e: Handle promise rejections.
   fn dispatch_rejections<'s, 'i>(
     scope: &mut v8::PinScope<'s, 'i>,
     context_state: &ContextState,
@@ -3018,7 +3018,7 @@ impl JsRuntime {
   ) -> Result<(), Box<JsError>> {
     let undefined: v8::Local<v8::Value> = v8::undefined(scope).into();
 
-    // First handle "handled" rejections
+    // First handle "handled" rejections (rejectionhandled events)
     while let Some((promise, result)) = exception_state
       .pending_handled_promise_rejections
       .borrow_mut()
