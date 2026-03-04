@@ -473,9 +473,9 @@ impl Stream for RecursiveModuleLoad {
           Some(Err(error)) => {
             return Poll::Ready(Some(Err(error)));
           }
-          None => unreachable!(
-            "resolved_specifier should be set in LoadState::Init"
-          ),
+          None => {
+            unreachable!("resolved_specifier should be set in LoadState::Init")
+          }
         };
         let (requested_module_type, phase) = match &inner.init {
           LoadInit::DynamicImport(_, _, module_type, phase) => {
