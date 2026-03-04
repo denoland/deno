@@ -9,6 +9,12 @@ import { $, getCratesPublishOrder } from "./deps.ts";
 $.logStep(`Running cargo publish...`);
 
 const workspace = await DenoWorkspace.load();
+
+if (Deno.args.length > 0) {
+  await workspace.getCrate(Deno.args[0]).publish();
+  Deno.exit(0);
+}
+
 const cliCrate = workspace.getCliCrate();
 
 const dependencyCrates = getCratesPublishOrder(

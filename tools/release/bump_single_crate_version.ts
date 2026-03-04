@@ -8,12 +8,16 @@ const crateName = Deno.args[0];
 const bumpKind = Deno.args[1];
 
 if (!crateName || !bumpKind) {
-  $.logError("Usage: bump_single_crate_version.ts <crate_name> <patch|minor|major>");
+  $.logError(
+    "Usage: bump_single_crate_version.ts <crate_name> <patch|minor|major>",
+  );
   Deno.exit(1);
 }
 
 if (!["patch", "minor", "major"].includes(bumpKind)) {
-  $.logError(`Invalid bump kind: ${bumpKind}. Must be one of: patch, minor, major`);
+  $.logError(
+    `Invalid bump kind: ${bumpKind}. Must be one of: patch, minor, major`,
+  );
   Deno.exit(1);
 }
 

@@ -270,10 +270,12 @@ async function ensureCiYmlUpToDate() {
 
 async function ensureBumpCrateVersionYmlUpToDate() {
   const expectedFileText = bumpCrateVersionFile.generate();
-  const actualFileText = await Deno.readTextFile(bumpCrateVersionFile.CI_YML_URL);
+  const actualFileText = await Deno.readTextFile(
+    bumpCrateVersionFile.CI_YML_URL,
+  );
   if (expectedFileText !== actualFileText) {
     throw new Error(
-      "./.github/workflows/bump_crate_version.yml is out of date. Run: ./.github/workflows/bump_crate_version.generate.ts",
+      "./.github/workflows/cargo_publish.yml is out of date. Run: ./.github/workflows/bump_crate_version.generate.ts",
     );
   }
 }
