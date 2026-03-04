@@ -40,7 +40,8 @@ if (code !== 0) {
   Deno.exit(0);
 }
 
-const changedFiles = stdout.trim().split("\n").filter(Boolean);
+const stdoutText = new TextDecoder().decode(stdout);
+const changedFiles = stdoutText.trim().split("\n").filter(Boolean);
 
 const denoCoreChanged = changedFiles.some((file) =>
   DENO_CORE_PACKAGE_DIRS.some((dir) => file.startsWith(dir + "/")) ||
