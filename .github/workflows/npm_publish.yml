@@ -33,7 +33,7 @@ jobs:
       - name: Install Deno
         uses: denoland/setup-deno@v2
         with:
-          deno-version: v2.x
+          deno-version: v2.7.1
 
       - name: Build npm packages
         run: ./tools/release/npm/build.ts ${{ inputs.version || '' }} --skip-verify
@@ -67,7 +67,7 @@ jobs:
       - name: Install Deno
         uses: denoland/setup-deno@v2
         with:
-          deno-version: v2.x
+          deno-version: v2.7.1
 
       - name: Install Node
         uses: actions/setup-node@v6
@@ -180,7 +180,7 @@ jobs:
       - name: Install Deno
         uses: denoland/setup-deno@v2
         with:
-          deno-version: v2.x
+          deno-version: v2.7.1
 
       - name: Install Node
         uses: actions/setup-node@v6
