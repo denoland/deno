@@ -112,6 +112,9 @@ jobs:
             sleep 1
           done
 
+      - name: Install pnpm
+        run: npm install -g pnpm
+
       - name: Configure npm to use Verdaccio
         run: |
           npm config set registry http://localhost:4873/
@@ -147,8 +150,8 @@ jobs:
           mkdir -p "$TEST_DIR"
           cd "$TEST_DIR"
           npm init -y
-          npx pnpm install deno --registry http://localhost:4873/
-          npx pnpm exec deno -v
+          pnpm install deno --registry http://localhost:4873/
+          pnpm exec deno -v
 
       - name: Test deno via PowerShell
         if: runner.os == 'Windows'
