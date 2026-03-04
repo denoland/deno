@@ -205,14 +205,19 @@ export class FileHandle extends EventEmitter {
     return new Promise((resolve, reject) => {
       try {
         core.close(this.#rid);
-        op_node_unregister_open_fd(this.#fd);
-        unregisterFd(this.#fd);
-        this.#rid = -1;
-        this.#fd = -1;
-        resolve();
       } catch (err) {
         reject(denoErrorToNodeError(err as Error, { syscall: "close" }));
+        return;
       }
+      try {
+        op_node_unregister_open_fd(this.#fd);
+      } catch {
+        // fd may have already been unregistered by closeSync
+      }
+      unregisterFd(this.#fd);
+      this.#rid = -1;
+      this.#fd = -1;
+      resolve();
     });
   }
 

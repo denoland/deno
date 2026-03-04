@@ -33,13 +33,17 @@ export function close(
     try {
       const rid = getRid(fd);
       core.close(rid);
-      op_node_unregister_open_fd(fd);
-      unregisterFd(fd);
     } catch (err) {
       error = ObjectPrototypeIsPrototypeOf(ErrorPrototype, err)
         ? err as Error
         : new Error("[non-error thrown]");
     }
+    try {
+      op_node_unregister_open_fd(fd);
+    } catch {
+      // fd may have already been unregistered
+    }
+    unregisterFd(fd);
     callback(error);
   }, 0);
 }
@@ -48,6 +52,10 @@ export function closeSync(fd: number) {
   fd = getValidatedFd(fd);
   const rid = getRid(fd);
   core.close(rid);
-  op_node_unregister_open_fd(fd);
+  try {
+    op_node_unregister_open_fd(fd);
+  } catch {
+    // fd may have already been unregistered
+  }
   unregisterFd(fd);
 }

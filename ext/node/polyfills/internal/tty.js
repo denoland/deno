@@ -7,7 +7,6 @@
 import { core, primordials } from "ext:core/mod.js";
 const {
   ArrayPrototypeSome,
-  Error,
   ObjectEntries,
   ObjectPrototypeHasOwnProperty,
   ObjectValues,
