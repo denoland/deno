@@ -9,21 +9,21 @@ use std::task::Context;
 use std::task::Poll;
 
 #[cfg(unix)]
-use libc::AF_INET;
+pub(crate) use libc::AF_INET;
 #[cfg(unix)]
 use libc::AF_INET6;
 #[cfg(unix)]
-use libc::sockaddr_in;
+pub(crate) use libc::sockaddr_in;
 #[cfg(unix)]
 use libc::sockaddr_in6;
 #[cfg(unix)]
 type sa_family_t = libc::sa_family_t;
 #[cfg(windows)]
-use win_sock::AF_INET;
+pub(crate) use win_sock::AF_INET;
 #[cfg(windows)]
 use win_sock::AF_INET6;
 #[cfg(windows)]
-use win_sock::sockaddr_in;
+pub(crate) use win_sock::sockaddr_in;
 #[cfg(windows)]
 use win_sock::sockaddr_in6;
 

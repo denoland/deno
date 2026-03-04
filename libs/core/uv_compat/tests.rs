@@ -4,8 +4,8 @@ use std::future::poll_fn;
 use std::rc::Rc;
 use std::task::Poll;
 
-use libc::AF_INET;
-use libc::sockaddr_in;
+use super::tcp::AF_INET;
+use super::tcp::sockaddr_in;
 
 use crate::JsRuntime;
 use crate::PollEventLoopOptions;
