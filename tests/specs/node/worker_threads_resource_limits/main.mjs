@@ -2,10 +2,10 @@ import { Worker } from "node:worker_threads";
 
 const worker = new Worker(new URL("./worker.mjs", import.meta.url), {
   resourceLimits: {
-    maxOldGenerationSizeMb: 16,
-    maxYoungGenerationSizeMb: 4,
-    codeRangeSizeMb: 8,
-    stackSizeMb: 2,
+    maxOldGenerationSizeMb: 128,
+    maxYoungGenerationSizeMb: 16,
+    codeRangeSizeMb: 64,
+    stackSizeMb: 4,
   },
 });
 

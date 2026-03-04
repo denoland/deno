@@ -210,10 +210,10 @@ fn op_create_worker(
   // set the OS thread stack size to match Node.js behavior.
   let mut thread_builder =
     std::thread::Builder::new().name(format!("{worker_id}"));
-  if let Some(ref limits) = args.resource_limits {
-    if let Some(stack_mb) = limits.stack_size_mb.filter(|&v| v > 0) {
-      thread_builder = thread_builder.stack_size(stack_mb * 1024 * 1024);
-    }
+  if let Some(ref limits) = args.resource_limits
+    && let Some(stack_mb) = limits.stack_size_mb.filter(|&v| v > 0)
+  {
+    thread_builder = thread_builder.stack_size(stack_mb * 1024 * 1024);
   }
   let maybe_worker_metadata = if let Some(data) = maybe_worker_metadata {
     let transferables =
