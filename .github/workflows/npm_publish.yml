@@ -108,7 +108,7 @@ jobs:
           done
 
       - name: Install pnpm
-        run: npm install -g pnpm
+        run: npm install -g pnpm && pnpm setup
 
       - name: Configure npm to use Verdaccio
         run: |
