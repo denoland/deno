@@ -8,9 +8,12 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::collections::hash_map::DefaultHasher;
+use std::future::Future;
 use std::hash::Hash;
 use std::hash::Hasher;
+use std::pin::Pin;
 use std::rc::Rc;
+use std::sync::Arc;
 
 use deno_semver::StackString;
 use deno_semver::Version;
@@ -281,30 +284,6 @@ impl GraphPath {
     }
     debug_assert!(maybe_next_node.is_some());
     path
-  }
-
-  pub fn ancestors(&self) -> GraphPathAncestorIterator<'_> {
-    GraphPathAncestorIterator {
-      next: self.previous_node.as_ref(),
-    }
-  }
-}
-
-struct GraphPathAncestorIterator<'a> {
-  next: Option<&'a GraphPathNodeOrRoot>,
-}
-
-impl<'a> Iterator for GraphPathAncestorIterator<'a> {
-  type Item = &'a GraphPathNodeOrRoot;
-  fn next(&mut self) -> Option<Self::Item> {
-    if let Some(next) = self.next.take() {
-      if let GraphPathNodeOrRoot::Node(node) = next {
-        self.next = node.previous_node.as_ref();
-      }
-      Some(next)
-    } else {
-      None
-    }
   }
 }
 
@@ -992,7 +971,8 @@ impl Graph {
     let pkg_ids = self.compute_all_npm_pkg_ids();
     eprintln!("-----------");
     Self::output_node_with_ids(&self.nodes, &pkg_ids, path.node_id(), false);
-    for path in path.ancestors() {
+    let mut current_path = path.previous_node.as_ref();
+    while let Some(path) = current_path.take() {
       match path {
         GraphPathNodeOrRoot::Node(node) => {
           Self::output_node_with_ids(
@@ -1001,6 +981,7 @@ impl Graph {
             node.node_id(),
             false,
           );
+          current_path = node.previous_node.as_ref();
         }
         GraphPathNodeOrRoot::Root(pkg_id) => {
           let node_id = self.root_packages.get(pkg_id).unwrap();
@@ -1435,9 +1416,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
   pub async fn resolve_pending(&mut self) -> Result<(), NpmResolutionError> {
     // Phase 1: resolve all regular (non-peer) dependencies via BFS.
     // Peer deps are skipped here; Phase 2 handles them.
-    while let Some(parent_path) = self.pending_unresolved_nodes.pop_front() {
-      self.resolve_next_pending(parent_path).await?;
-    }
+    self.drain_pending_parallel().await?;
 
     // Auto-install unmet peer deps.
     // Results go into `peer_fallbacks` (NOT root_packages) to avoid
@@ -1448,9 +1427,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
       let prev_fallback_count = self.peer_fallbacks.len();
       self.auto_install_missing_peers().await?;
       // BFS to resolve regular deps of newly auto-installed packages
-      while let Some(parent_path) = self.pending_unresolved_nodes.pop_front() {
-        self.resolve_next_pending(parent_path).await?;
-      }
+      self.drain_pending_parallel().await?;
       if self.peer_fallbacks.len() == prev_fallback_count {
         break;
       }
@@ -1461,9 +1438,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
     if self.should_dedup {
       self.run_dedup_pass().await?;
       // BFS for any deps queued by version consolidation
-      while let Some(parent_path) = self.pending_unresolved_nodes.pop_front() {
-        self.resolve_next_pending(parent_path).await?;
-      }
+      self.drain_pending_parallel().await?;
     }
 
     // Phase 2: resolve peer dependencies top-down with caching.
@@ -2409,155 +2384,374 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
     None
   }
 
-  async fn resolve_next_pending(
-    &mut self,
-    parent_path: Rc<GraphPath>,
-  ) -> Result<(), NpmResolutionError> {
-    let (_parent_nv, child_deps) = {
-      let node_id = parent_path.node_id();
-      if self.graph.nodes.get(&node_id).unwrap().no_peers {
-        // Skip: no reason to analyze this graph segment further
-        return Ok(());
+  /// Drains `pending_unresolved_nodes` with maximum network parallelism.
+  ///
+  /// All pending parents' dep fetches are fired into a single
+  /// `FuturesUnordered` so they run concurrently. Results are buffered
+  /// per-parent and processed in insertion order for determinism.
+  /// When a parent is processed and new child nodes are discovered,
+  /// they're immediately enqueued — so child fetches overlap with
+  /// sibling parents, giving cross-BFS-level parallelism.
+  async fn drain_pending_parallel(&mut self) -> Result<(), NpmResolutionError> {
+    type InfoResult =
+      Result<Arc<NpmPackageInfo>, NpmRegistryPackageInfoLoadError>;
+    type WorkFuture<'a> = Pin<Box<dyn Future<Output = FetchEvent> + 'a>>;
+
+    /// A fetch completion event from the `FuturesUnordered`.
+    enum FetchEvent {
+      /// The parent node's own package info arrived (needed when
+      /// its dep list wasn't in the cache yet).
+      ParentInfo {
+        id: usize,
+        path: Rc<GraphPath>,
+        nv: Rc<PackageNv>,
+        result: InfoResult,
+      },
+      /// One dependency's package info arrived.
+      DepInfo {
+        parent_id: usize,
+        dep_index: usize,
+        result: InfoResult,
+      },
+    }
+
+    /// Buffered fetch result for a single dependency.
+    struct DepResult {
+      result: InfoResult,
+    }
+
+    /// Tracks the state of one parent node being resolved.
+    ///
+    /// Each parent popped from `pending_unresolved_nodes` gets a tracker.
+    /// The tracker buffers dep fetch results as they arrive out of order,
+    /// and is "ready" once all dep fetches have completed (or it was
+    /// skipped). Trackers are processed in insertion order for
+    /// determinism.
+    enum ParentState {
+      /// Waiting for the parent's own package info before we know its deps.
+      AwaitingParentInfo,
+      /// All dep fetches have landed and we can process this parent.
+      Ready {
+        path: Rc<GraphPath>,
+        deps: Rc<Vec<NpmDependencyEntry>>,
+        results: Vec<Option<DepResult>>,
+      },
+      /// Dep fetches are still in flight.
+      Pending {
+        path: Rc<GraphPath>,
+        deps: Rc<Vec<NpmDependencyEntry>>,
+        results: Vec<Option<DepResult>>,
+        remaining: usize,
+      },
+      /// Nothing to do (no deps, or node already had no_peers).
+      Skip,
+      /// Already retired / processed.
+      Done,
+    }
+
+    impl ParentState {
+      fn is_actionable(&self) -> bool {
+        matches!(self, ParentState::Ready { .. } | ParentState::Skip)
       }
+    }
 
-      let pkg_nv = self
-        .graph
-        .resolved_node_ids
-        .get(node_id)
-        .unwrap()
-        .nv
-        .clone();
-      let deps = if let Some(deps) = self.dep_entry_cache.get(&pkg_nv) {
-        deps.clone()
-      } else {
-        // the api is expected to have cached this at this point, so no
-        // need to parallelize
-        let package_info = self.api.package_info(&pkg_nv.name).await?;
-        let version_info = package_info
-          .version_info(&pkg_nv, &self.version_resolver.link_packages)
-          .map_err(NpmPackageVersionResolutionError::VersionNotFound)?;
-        self.dep_entry_cache.store(pkg_nv.clone(), version_info)?
-      };
+    /// Fire off dep info fetches for all of a parent's dependencies.
+    fn enqueue_dep_fetches<'a>(
+      deps: &[NpmDependencyEntry],
+      overrides: &NpmOverrides,
+      parent_id: usize,
+      work: &mut FuturesUnordered<WorkFuture<'a>>,
+      api: &'a (impl NpmRegistryApi + ?Sized),
+    ) {
+      for (dep_index, dep) in deps.iter().enumerate() {
+        let name = overrides
+          .get_alias_for(&dep.name)
+          .cloned()
+          .unwrap_or_else(|| dep.name.clone());
+        work.push(Box::pin(async move {
+          let result = api.package_info(&name).await;
+          FetchEvent::DepInfo {
+            parent_id,
+            dep_index,
+            result,
+          }
+        }));
+      }
+    }
 
-      (pkg_nv, deps)
-    };
-
-    // resolve the dependencies
-    let mut found_peer = false;
-
-    let mut infos = futures::stream::FuturesOrdered::from_iter(
-      child_deps
-        .iter()
-        .map(|dep| self.api.package_info(&dep.name)),
-    );
-
-    let mut child_deps_iter = child_deps.iter();
-    while let Some(package_info) = infos.next().await {
-      let dep = child_deps_iter.next().unwrap();
-      let package_info = match package_info {
-        Ok(info) => info,
-        // npm doesn't fail on non-existent optional peer dependencies
-        Err(NpmRegistryPackageInfoLoadError::PackageNotExists { .. })
-          if matches!(dep.kind, NpmDependencyEntryKind::OptionalPeer) =>
-        {
+    /// Drain `pending` into the work queue, creating a tracker for each.
+    fn enqueue_parents<'a>(
+      pending: &mut VecDeque<Rc<GraphPath>>,
+      graph: &mut Graph,
+      dep_entry_cache: &DepEntryCache,
+      work: &mut FuturesUnordered<WorkFuture<'a>>,
+      trackers: &mut Vec<ParentState>,
+      api: &'a (impl NpmRegistryApi + ?Sized),
+    ) {
+      while let Some(parent_path) = pending.pop_front() {
+        let node_id = parent_path.node_id();
+        if graph.nodes.get(&node_id).unwrap().no_peers {
           continue;
         }
-        Err(e) => return Err(e.into()),
-      };
-      let version_resolver =
-        self.version_resolver.get_for_package(&package_info);
+        let pkg_nv = graph.resolved_node_ids.get(node_id).unwrap().nv.clone();
+        let parent_id = trackers.len();
 
-      match dep.kind {
-        NpmDependencyEntryKind::Dep => {
-          let parent_id = parent_path.node_id();
-          let node = self.graph.nodes.get(&parent_id).unwrap();
-          let child_id = match node.children.get(&dep.bare_specifier) {
-            Some(child_id) => {
-              // this dependency was previously analyzed by another path
-              // so we don't attempt to resolve the version again
-              let child_id = *child_id;
-              let child_nv = self
+        if let Some(child_deps) = dep_entry_cache.get(&pkg_nv) {
+          let child_deps = child_deps.clone();
+          if child_deps.is_empty() {
+            graph.borrow_node_mut(node_id).no_peers = true;
+            continue;
+          }
+          let dep_count = child_deps.len();
+          enqueue_dep_fetches(
+            &child_deps,
+            &parent_path.active_overrides,
+            parent_id,
+            work,
+            api,
+          );
+          trackers.push(ParentState::Pending {
+            path: parent_path,
+            deps: child_deps,
+            results: (0..dep_count).map(|_| None).collect(),
+            remaining: dep_count,
+          });
+        } else {
+          // Don't know this parent's deps yet — fetch its package info.
+          trackers.push(ParentState::AwaitingParentInfo);
+          let nv = pkg_nv;
+          work.push(Box::pin(async move {
+            let result = api.package_info(&nv.name).await;
+            FetchEvent::ParentInfo {
+              id: parent_id,
+              path: parent_path,
+              nv,
+              result,
+            }
+          }));
+        }
+      }
+    }
+
+    let api = self.api;
+    let mut work: FuturesUnordered<WorkFuture<'_>> = FuturesUnordered::new();
+    let mut trackers: Vec<ParentState> = Vec::new();
+    let mut next_to_retire: usize = 0;
+
+    enqueue_parents(
+      &mut self.pending_unresolved_nodes,
+      self.graph,
+      &self.dep_entry_cache,
+      &mut work,
+      &mut trackers,
+      api,
+    );
+
+    while let Some(event) = work.next().await {
+      match event {
+        FetchEvent::ParentInfo {
+          id,
+          path,
+          nv,
+          result,
+        } => {
+          let package_info = result?;
+          let version_info = package_info
+            .version_info(&nv, &self.version_resolver.link_packages)
+            .map_err(NpmPackageVersionResolutionError::VersionNotFound)?;
+          let child_deps =
+            self.dep_entry_cache.store(nv.clone(), version_info)?;
+
+          if child_deps.is_empty() {
+            self.graph.borrow_node_mut(path.node_id()).no_peers = true;
+            trackers[id] = ParentState::Skip;
+          } else {
+            let dep_count = child_deps.len();
+            enqueue_dep_fetches(
+              &child_deps,
+              &path.active_overrides,
+              id,
+              &mut work,
+              api,
+            );
+            trackers[id] = ParentState::Pending {
+              path,
+              deps: child_deps,
+              results: (0..dep_count).map(|_| None).collect(),
+              remaining: dep_count,
+            };
+          }
+        }
+        FetchEvent::DepInfo {
+          parent_id,
+          dep_index,
+          result,
+        } => {
+          let ParentState::Pending {
+            ref mut results,
+            ref mut remaining,
+            ..
+          } = trackers[parent_id]
+          else {
+            unreachable!();
+          };
+          results[dep_index] = Some(DepResult { result });
+          *remaining -= 1;
+          if *remaining == 0 {
+            // All dep fetches landed — transition to Ready.
+            let prev =
+              std::mem::replace(&mut trackers[parent_id], ParentState::Skip);
+            let ParentState::Pending {
+              path,
+              deps,
+              results,
+              ..
+            } = prev
+            else {
+              unreachable!();
+            };
+            trackers[parent_id] = ParentState::Ready {
+              path,
+              deps,
+              results,
+            };
+          }
+        }
+      }
+
+      // Process completed trackers in insertion order for determinism.
+      while next_to_retire < trackers.len()
+        && trackers[next_to_retire].is_actionable()
+      {
+        let state =
+          std::mem::replace(&mut trackers[next_to_retire], ParentState::Done);
+        if let ParentState::Ready {
+          path,
+          deps,
+          mut results,
+        } = state
+        {
+          let mut found_peer = false;
+          for (i, dep) in deps.iter().enumerate() {
+            let fetched = results[i].take().unwrap();
+            if self.process_dep(&path, dep, fetched.result)? {
+              found_peer = true;
+            }
+          }
+          if !found_peer {
+            self.graph.borrow_node_mut(path.node_id()).no_peers = true;
+          }
+
+          // Newly discovered nodes from process_dep go on the pending
+          // queue — drain them into the work set immediately so their
+          // fetches overlap with remaining in-flight work.
+          enqueue_parents(
+            &mut self.pending_unresolved_nodes,
+            self.graph,
+            &self.dep_entry_cache,
+            &mut work,
+            &mut trackers,
+            api,
+          );
+        }
+        next_to_retire += 1;
+      }
+    }
+
+    Ok(())
+  }
+
+  /// Process a single dependency for a parent node.
+  /// Returns whether a peer dep was found.
+  fn process_dep(
+    &mut self,
+    parent_path: &Rc<GraphPath>,
+    dep: &NpmDependencyEntry,
+    result: Result<Arc<NpmPackageInfo>, NpmRegistryPackageInfoLoadError>,
+  ) -> Result<bool, NpmResolutionError> {
+    let package_info = match result {
+      Ok(info) => info,
+      // npm doesn't fail on non-existent optional peer dependencies
+      Err(NpmRegistryPackageInfoLoadError::PackageNotExists { .. })
+        if matches!(dep.kind, NpmDependencyEntryKind::OptionalPeer) =>
+      {
+        return Ok(false);
+      }
+      Err(e) => return Err(e.into()),
+    };
+    let version_resolver = self.version_resolver.get_for_package(&package_info);
+
+    match dep.kind {
+      NpmDependencyEntryKind::Dep => {
+        let parent_id = parent_path.node_id();
+        let node = self.graph.nodes.get(&parent_id).unwrap();
+        let child_id = match node.children.get(&dep.bare_specifier) {
+          Some(child_id) => {
+            // this dependency was previously analyzed by another path
+            // so we don't attempt to resolve the version again
+            let child_id = *child_id;
+            let child_nv = self
+              .graph
+              .resolved_node_ids
+              .get(child_id)
+              .unwrap()
+              .nv
+              .clone();
+            let maybe_ancestor = parent_path.find_ancestor(&child_nv);
+            let child_path = parent_path.with_id(
+              child_id,
+              dep.bare_specifier.clone(),
+              child_nv,
+            );
+            if let Some(ancestor) = maybe_ancestor {
+              // when the nv appears as an ancestor, use that node
+              // and mark this as circular
+              self.add_linked_circular_descendant(&ancestor, child_path);
+            } else if !self.graph.nodes.get(&child_id).unwrap().no_peers && {
+              // Only requeue if we haven't already queued this canonical
+              // (parent, child) tuple. Using canonical IDs means
+              // node copies share dedup entries with originals.
+              let cp = self.canonical_node_id(parent_id);
+              let cc = self.canonical_node_id(child_id);
+              self.visited_requeue.insert((cp, cc))
+            } {
+              self.pending_unresolved_nodes.push_back(child_path);
+            }
+            child_id
+          }
+          None => {
+            self.analyze_dependency(dep, &version_resolver, parent_path)?
+          }
+        };
+
+        #[cfg(feature = "tracing")]
+        {
+          self.graph.traces.push(build_trace_graph_snapshot(
+            self.graph,
+            &self.dep_entry_cache,
+            &parent_path.with_id(
+              child_id,
+              dep.bare_specifier.clone(),
+              self
                 .graph
                 .resolved_node_ids
                 .get(child_id)
                 .unwrap()
                 .nv
-                .clone();
-              let maybe_ancestor = parent_path.find_ancestor(&child_nv);
-              let child_path = parent_path.with_id(
-                child_id,
-                dep.bare_specifier.clone(),
-                child_nv,
-              );
-              if let Some(ancestor) = maybe_ancestor {
-                // when the nv appears as an ancestor, use that node
-                // and mark this as circular
-                self.add_linked_circular_descendant(&ancestor, child_path);
-              } else if !self.graph.nodes.get(&child_id).unwrap().no_peers && {
-                // Only requeue if we haven't already queued this canonical
-                // (parent, child) tuple. Using canonical IDs means
-                // node copies share dedup entries with originals.
-                let cp = self.canonical_node_id(parent_id);
-                let cc = self.canonical_node_id(child_id);
-                self.visited_requeue.insert((cp, cc))
-              } {
-                self.pending_unresolved_nodes.push_back(child_path);
-              }
-              child_id
-            }
-            None => {
-              // check if an alias override replaces this dependency's package
-              if let Some(alias_name) =
-                parent_path.active_overrides.get_alias_for(&dep.name)
-              {
-                let alias_info =
-                  self.api.package_info(alias_name.as_str()).await?;
-                let alias_resolver =
-                  self.version_resolver.get_for_package(&alias_info);
-                self.analyze_dependency(dep, &alias_resolver, &parent_path)?
-              } else {
-                self.analyze_dependency(dep, &version_resolver, &parent_path)?
-              }
-            }
-          };
-
-          #[cfg(feature = "tracing")]
-          {
-            self.graph.traces.push(build_trace_graph_snapshot(
-              self.graph,
-              &self.dep_entry_cache,
-              &parent_path.with_id(
-                child_id,
-                dep.bare_specifier.clone(),
-                self
-                  .graph
-                  .resolved_node_ids
-                  .get(child_id)
-                  .unwrap()
-                  .nv
-                  .clone(),
-              ),
-            ));
-          }
-
-          if !found_peer {
-            found_peer = !self.graph.borrow_node_mut(child_id).no_peers;
-          }
+                .clone(),
+            ),
+          ));
         }
-        NpmDependencyEntryKind::Peer | NpmDependencyEntryKind::OptionalPeer => {
-          // Phase 1: Skip peer dep resolution entirely. Phase 2 will
-          // resolve peer deps from parent scope. The auto-install step
-          // between Phase 1 and Phase 2 handles unmet peers.
-          found_peer = true;
-        }
+
+        Ok(!self.graph.borrow_node_mut(child_id).no_peers)
+      }
+      NpmDependencyEntryKind::Peer | NpmDependencyEntryKind::OptionalPeer => {
+        // Phase 1: Skip peer dep resolution entirely. Phase 2 will
+        // resolve peer deps from parent scope. The auto-install step
+        // between Phase 1 and Phase 2 handles unmet peers.
+        Ok(true)
       }
     }
-
-    if !found_peer {
-      self.graph.borrow_node_mut(parent_path.node_id()).no_peers = true;
-    }
-
-    Ok(())
   }
 
   fn add_peer_deps_to_path(
