@@ -1,4 +1,5 @@
 {
+  "$schema": "./schema.json",
   "tests": {
     "abort/test-addon-register-signal-handler.js": {},
     "abort/test-addon-uv-handle-leak.js": {},
