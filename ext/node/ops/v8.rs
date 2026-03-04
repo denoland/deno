@@ -81,25 +81,17 @@ pub fn op_v8_take_heap_snapshot(scope: &mut v8::PinScope<'_, '_>) -> Vec<u8> {
   buf
 }
 
-// TODO(denoland): enable once rusty_v8 PR #1921 lands
-// #[op2(fast)]
-// pub fn op_v8_get_heap_code_statistics(
-//   scope: &mut v8::PinScope<'_, '_>,
-//   #[buffer] buffer: &mut [f64],
-// ) {
-//   if let Some(stats) = scope.get_heap_code_and_metadata_statistics() {
-//     buffer[0] = stats.code_and_metadata_size() as f64;
-//     buffer[1] = stats.bytecode_and_metadata_size() as f64;
-//     buffer[2] = stats.external_script_source_size() as f64;
-//     buffer[3] = stats.cpu_profiler_metadata_size() as f64;
-//   }
-// }
 #[op2(fast)]
 pub fn op_v8_get_heap_code_statistics(
-  _scope: &mut v8::PinScope<'_, '_>,
-  #[buffer] _buffer: &mut [f64],
+  scope: &mut v8::PinScope<'_, '_>,
+  #[buffer] buffer: &mut [f64],
 ) {
-  // Stub until rusty_v8 PR #1921 lands
+  if let Some(stats) = scope.get_heap_code_and_metadata_statistics() {
+    buffer[0] = stats.code_and_metadata_size() as f64;
+    buffer[1] = stats.bytecode_and_metadata_size() as f64;
+    buffer[2] = stats.external_script_source_size() as f64;
+    buffer[3] = stats.cpu_profiler_metadata_size() as f64;
+  }
 }
 
 /// Persistent coverage connection that stores an inspector session,
