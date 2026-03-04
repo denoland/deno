@@ -212,33 +212,66 @@ pub fn op_run_microtasks(isolate: &mut v8::Isolate) {
   isolate.perform_microtask_checkpoint()
 }
 
-/// Drain all pending promise rejections from the Rust-side queue and return
-/// them as a flat JS array: [promise, reason, asyncContext, ...].
-/// Returns an empty array if there are no pending rejections.
-/// This allows JS-side processTicksAndRejections to interleave rejection
-/// processing with tick draining, matching Node.js behavior.
-#[op2]
-pub fn op_drain_pending_rejections<'s>(
-  scope: &mut v8::PinScope<'s, '_>,
-) -> v8::Local<'s, v8::Value> {
-  let exception_state = JsRealm::exception_state_from_scope(scope);
-  let mut pending = exception_state.pending_promise_rejections.borrow_mut();
-  if pending.is_empty() {
-    return v8::undefined(scope).into();
+#[op2(fast)]
+pub fn op_has_tick_scheduled(scope: &mut v8::PinScope) -> bool {
+  JsRealm::state_from_scope(scope)
+    .has_next_tick_scheduled
+    .get()
+}
+
+#[op2(fast)]
+pub fn op_set_has_tick_scheduled(scope: &mut v8::PinScope, v: bool) {
+  JsRealm::state_from_scope(scope)
+    .has_next_tick_scheduled
+    .set(v);
+}
+
+#[op2(fast)]
+pub fn op_immediate_count(scope: &mut v8::PinScope, increase: bool) -> u32 {
+  let state = JsRealm::state_from_scope(scope);
+  let mut immediate_info = state.immediate_info.borrow_mut();
+
+  if increase {
+    immediate_info.count += 1;
+  } else {
+    immediate_info.count -= 1;
   }
-  let len = pending.len();
-  let arr = v8::Array::new(scope, (len * 3) as i32);
-  let mut idx = 0u32;
-  while let Some((promise, reason, async_context)) = pending.pop_front() {
-    let p = v8::Local::new(scope, promise);
-    let r = v8::Local::new(scope, reason);
-    let c = v8::Local::new(scope, async_context);
-    arr.set_index(scope, idx, p.into());
-    arr.set_index(scope, idx + 1, r);
-    arr.set_index(scope, idx + 2, c);
-    idx += 3;
+
+  immediate_info.count
+}
+
+#[op2(fast)]
+pub fn op_immediate_ref_count(scope: &mut v8::PinScope, increase: bool) -> u32 {
+  let state = JsRealm::state_from_scope(scope);
+  let mut immediate_info = state.immediate_info.borrow_mut();
+
+  if increase {
+    immediate_info.ref_count += 1;
+  } else {
+    immediate_info.ref_count -= 1;
   }
-  arr.into()
+
+  immediate_info.ref_count
+}
+
+#[op2(fast)]
+pub fn op_immediate_set_has_outstanding(
+  scope: &mut v8::PinScope,
+  has_outstanding: bool,
+) {
+  JsRealm::state_from_scope(scope)
+    .immediate_info
+    .borrow_mut()
+    .has_outstanding = has_outstanding;
+}
+
+#[op2(fast)]
+pub fn op_immediate_has_ref_count(scope: &mut v8::PinScope) -> bool {
+  JsRealm::state_from_scope(scope)
+    .immediate_info
+    .borrow()
+    .ref_count
+    > 0
 }
 
 pub struct EvalContextError<'s> {

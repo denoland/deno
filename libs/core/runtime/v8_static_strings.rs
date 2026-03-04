@@ -30,8 +30,6 @@ v8_static_strings!(
   HANDLE_REJECTIONS = "__handleRejections",
   SET_TIMER_DEPTH = "__setTimerDepth",
   REPORT_EXCEPTION = "__reportException",
-  SET_TICK_INFO = "__setTickInfo",
-  SET_IMMEDIATE_INFO = "__setImmediateInfo",
   RUN_IMMEDIATE_CALLBACKS = "runImmediateCallbacks",
   FILENAME = "filename",
   INSTANCE = "Instance",
