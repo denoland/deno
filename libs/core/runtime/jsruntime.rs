@@ -430,6 +430,12 @@ pub struct JsRuntimeState {
   pub(crate) function_templates: Rc<RefCell<FunctionTemplateData>>,
   pub(crate) callsite_prototype: RefCell<Option<v8::Global<v8::Object>>>,
   waker: Arc<AtomicWaker>,
+  /// Tracks whether V8 had pending background tasks on the previous
+  /// event loop iteration. Used to detect the transition from
+  /// has_pending_background_tasks=true to false, which is when a
+  /// background compilation may have just posted a foreground callback
+  /// that needs an extra pump_message_loop call to process.
+  had_pending_background_tasks: Cell<bool>,
   /// Accessed through [`JsRuntimeState::with_inspector`].
   inspector: RefCell<Option<Rc<JsRuntimeInspector>>>,
   has_inspector: Cell<bool>,
@@ -757,6 +763,7 @@ impl JsRuntime {
         eval_context_set_code_cache_cb,
       ),
       waker,
+      had_pending_background_tasks: false.into(),
       // Some fields are initialized later after isolate is created
       inspector: None.into(),
       has_inspector: false.into(),
@@ -1786,23 +1793,27 @@ impl JsRuntime {
     }
   }
 
+  /// Pump V8's foreground message loop, processing tasks posted by
+  /// background threads (e.g. module compilation callbacks).
+  /// Returns `true` if any tasks were processed.
   fn pump_v8_message_loop(
     &self,
     scope: &mut v8::PinScope,
-  ) -> Result<(), Box<JsError>> {
+  ) -> Result<bool, Box<JsError>> {
+    let mut did_work = false;
     while v8::Platform::pump_message_loop(
       &v8::V8::get_current_platform(),
       scope,
       false, // don't block if there are no tasks
     ) {
-      // do nothing
+      did_work = true;
     }
 
     v8::tc_scope!(let tc_scope, scope);
 
     tc_scope.perform_microtask_checkpoint();
     match tc_scope.exception() {
-      None => Ok(()),
+      None => Ok(did_work),
       Some(exception) => {
         exception_to_err_result(tc_scope, exception, false, true)
       }
@@ -2015,8 +2026,9 @@ impl JsRuntime {
     if has_inspector {
       self.inspector().poll_sessions_from_event_loop(cx);
     }
+    let mut v8_tasks_processed = false;
     if poll_options.pump_v8_message_loop {
-      self.pump_v8_message_loop(scope)?;
+      v8_tasks_processed = self.pump_v8_message_loop(scope)?;
     }
 
     let realm = &self.inner.main_realm;
@@ -2127,6 +2139,24 @@ impl JsRuntime {
     let pending_state =
       EventLoopPendingState::new(scope, context_state, modules);
 
+    // Second V8 message pump: only needed on the transition from
+    // had_pending_background_tasks=true to false. This is the exact
+    // moment a background compilation thread may have just posted a
+    // foreground callback that the first pump (pre-phase) missed.
+    // Avoids pumping on every iteration during module loading.
+    let had_bg_tasks = self.inner.state.had_pending_background_tasks.get();
+    self
+      .inner
+      .state
+      .had_pending_background_tasks
+      .set(pending_state.has_pending_background_tasks);
+    if poll_options.pump_v8_message_loop
+      && had_bg_tasks
+      && !pending_state.has_pending_background_tasks
+    {
+      v8_tasks_processed |= self.pump_v8_message_loop(scope)?;
+    }
+
     if !pending_state.is_pending() {
       if has_inspector {
         let inspector = self.inspector();
@@ -2164,6 +2194,7 @@ impl JsRuntime {
         || pending_state.has_refed_immediates > 0
         || pending_state.has_pending_promise_events
         || uv_did_io
+        || v8_tasks_processed
       {
         self.inner.state.waker.wake();
       } else
