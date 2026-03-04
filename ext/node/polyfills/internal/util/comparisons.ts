@@ -15,7 +15,6 @@ import {
   isFloat64Array,
   isKeyObject,
   isMap,
-  isNativeError,
   isNumberObject,
   isRegExp,
   isSet,
@@ -450,7 +449,6 @@ function objectComparisonStart(
     isRegExp(val2) ||
     isAnyArrayBuffer(val2) ||
     isBoxedPrimitive(val2) ||
-    isNativeError(val2) ||
     isError(val2)
   ) {
     return false;
