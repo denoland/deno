@@ -108,7 +108,12 @@ jobs:
           done
 
       - name: Install pnpm
-        run: npm install -g pnpm
+        run: |
+          npm install -g pnpm
+          PNPM_HOME="${{ runner.temp }}/pnpm-global"
+          mkdir -p "$PNPM_HOME"
+          echo "PNPM_HOME=$PNPM_HOME" >> "$GITHUB_ENV"
+          echo "$PNPM_HOME" >> "$GITHUB_PATH"
 
       - name: Configure npm to use Verdaccio
         run: |
@@ -189,10 +194,6 @@ jobs:
 
       - name: Test pnpm global install deno (without postinstall)
         run: |
-          PNPM_HOME="${{ runner.temp }}/pnpm-global-no-scripts"
-          mkdir -p "$PNPM_HOME"
-          export PNPM_HOME
-          export PATH="$PNPM_HOME:$PATH"
           EXPECTED_VERSION="deno ${{ steps.publish-verdaccio.outputs.version }}"
           pnpm install -g deno@${{ steps.publish-verdaccio.outputs.version }} --registry http://localhost:4873/
           ACTUAL="$(node "$PNPM_HOME/global/5/node_modules/deno/bin.cjs" -v)"
@@ -217,11 +218,6 @@ jobs:
 
       - name: Test pnpm global install deno (with postinstall)
         run: |
-          npm uninstall -g deno
-          PNPM_HOME="${{ runner.temp }}/pnpm-global"
-          mkdir -p "$PNPM_HOME"
-          export PNPM_HOME
-          export PATH="$PNPM_HOME:$PATH"
           EXPECTED_VERSION="deno ${{ steps.publish-verdaccio.outputs.version }}"
           pnpm install -g deno@${{ steps.publish-verdaccio.outputs.version }} --registry http://localhost:4873/
           ACTUAL="$(deno -v)"
@@ -230,13 +226,39 @@ jobs:
           deno eval "console.log('global pnpm install works')"
           pnpm uninstall -g deno
 
-      - name: Test deno via PowerShell
+      - name: Test npm local install deno (PowerShell)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
           cd "${{ runner.temp }}/npm-test"
           npx deno -v
-          npx deno eval "console.log('PowerShell npm package works')"
+          npx deno eval "console.log('PowerShell npm local install works')"
+
+      - name: Test npm global install deno (PowerShell)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          npm install -g deno@${{ steps.publish-verdaccio.outputs.version }}
+          deno -v
+          deno eval "console.log('PowerShell npm global install works')"
+          npm uninstall -g deno
+
+      - name: Test npm local install deno (cmd)
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: |
+          cd "${{ runner.temp }}/npm-test"
+          npx deno -v
+          npx deno eval "console.log('cmd npm local install works')"
+
+      - name: Test npm global install deno (cmd)
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: |
+          npm install -g deno@${{ steps.publish-verdaccio.outputs.version }}
+          deno -v
+          deno eval "console.log('cmd npm global install works')"
+          npm uninstall -g deno
 
   publish:
     name: npm publish
