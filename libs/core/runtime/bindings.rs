@@ -1012,6 +1012,21 @@ pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
     message.get_event(),
     message.get_value(),
   );
+
+  // Set hasRejectionToWarn in the shared tick_info buffer so that JS
+  // runNextTicks() enters processTicksAndRejections() even when no
+  // ticks are queued (matching Node.js behavior).
+  if message.get_event() == v8::PromiseRejectEvent::PromiseRejectWithNoHandler {
+    let context_state = JsRealm::state_from_scope(scope);
+    // SAFETY: tick_info is a Box<[u8; 2]> that lives on ContextState and
+    // is shared with JS via an ArrayBuffer backing store. Writing through
+    // the raw pointer is safe because we're on the event loop thread and
+    // there are no concurrent readers at this point (V8 callback).
+    unsafe {
+      let ptr = context_state.tick_info.as_ptr() as *mut u8;
+      *ptr.add(1) = 1;
+    }
+  }
 }
 
 /// This binding should be used if there's a custom console implementation

@@ -99,7 +99,7 @@ pub struct ContextState {
   pub(crate) exception_state: Rc<ExceptionState>,
   /// Shared tick info buffer exposed to JS as a Uint8Array.
   /// Index 0: hasTickScheduled (1 = true, 0 = false)
-  /// Index 1: reserved for future use (e.g. hasRejectionToWarn)
+  /// Index 1: hasRejectionToWarn (set by Rust in promise_reject_callback)
   pub(crate) tick_info: Box<[u8; 2]>,
   /// Shared immediate info buffer exposed to JS as a Uint32Array.
   /// Indices: IMM_IDX_COUNT, IMM_IDX_REF_COUNT, IMM_IDX_HAS_OUTSTANDING

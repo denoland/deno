@@ -311,12 +311,18 @@
 
   // Shared buffer with Rust - avoids JS-to-Rust op calls for tick scheduling.
   // Index 0: hasTickScheduled
+  // Index 1: hasRejectionToWarn (set by Rust in promise_reject_callback)
   // Set by Rust during store_js_callbacks via Deno.core.__tickInfo.
   const kHasTickScheduled = 0;
+  const kHasRejectionToWarn = 1;
   let tickInfo;
 
   function hasTickScheduled() {
     return tickInfo[kHasTickScheduled] === 1;
+  }
+
+  function hasRejectionToWarn() {
+    return tickInfo[kHasRejectionToWarn] === 1;
   }
 
   function setHasTickScheduled(value) {
@@ -337,6 +343,7 @@
   // them through the unhandledPromiseRejectionHandler. Returns true if any
   // rejections were processed (matching Node.js processPromiseRejections).
   function processPromiseRejections() {
+    tickInfo[kHasRejectionToWarn] = 0;
     const rejections = op_drain_pending_rejections();
     if (rejections === undefined) {
       return false;
@@ -421,18 +428,11 @@
 
   // Matches Node.js runNextTicks() from
   // lib/internal/process/task_queues.js
-  // TODO(ib): Node.js also checks `!hasRejectionToWarn()` alongside
-  // `!hasTickScheduled()` here, so that pending promise rejections
-  // are processed even when no ticks are queued. Our rejections live
-  // in Rust's pending_promise_rejections queue and get handled in the
-  // Rust event loop's dispatch_rejections phase, so this is not a
-  // correctness issue yet, but we should wire up tick_info[1] from
-  // ExceptionState for full parity.
   function runNextTicks() {
-    if (!hasTickScheduled()) {
+    if (!hasTickScheduled() && !hasRejectionToWarn()) {
       op_run_microtasks();
     }
-    if (!hasTickScheduled()) {
+    if (!hasTickScheduled() && !hasRejectionToWarn()) {
       return;
     }
     processTicksAndRejections();
