@@ -48,6 +48,7 @@ use crate::tools::test::TestFilter;
 use crate::tools::test::format_test_error;
 use crate::util::file_watcher;
 use crate::util::fs::CollectSpecifiersOptions;
+use crate::util::fs::canonicalize_path;
 use crate::util::fs::collect_specifiers;
 use crate::util::path::is_script_ext;
 use crate::util::path::matches_pattern_or_exact_path;
@@ -609,6 +610,7 @@ pub async fn run_benchmarks_with_watch(
           // bench could depend on environment variables.
           let env_file_changed = cli_options
             .env_file_paths()
+            .filter_map(|path| canonicalize_path(&path).ok())
             .any(|path| changed_paths.contains(&path));
           if env_file_changed {
             bench_modules.clone()
