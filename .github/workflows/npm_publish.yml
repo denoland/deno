@@ -96,6 +96,7 @@ jobs:
             '**':
               access: $all
               publish: $all
+          max_body_size: 200mb
           log: { type: stdout, format: pretty, level: warn }
           HEREDOC
 
