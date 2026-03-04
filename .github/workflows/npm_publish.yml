@@ -108,7 +108,7 @@ jobs:
           done
 
       - name: Install pnpm
-        run: npm install -g pnpm && pnpm setup
+        run: npm install -g pnpm
 
       - name: Configure npm to use Verdaccio
         run: |
@@ -179,6 +179,10 @@ jobs:
       - name: Test pnpm global install deno
         run: |
           npm uninstall -g deno
+          PNPM_HOME="${{ runner.temp }}/pnpm-global"
+          mkdir -p "$PNPM_HOME"
+          export PNPM_HOME
+          export PATH="$PNPM_HOME:$PATH"
           EXPECTED_VERSION="deno ${{ steps.publish-verdaccio.outputs.version }}"
           pnpm install -g deno@${{ steps.publish-verdaccio.outputs.version }} --registry http://localhost:4873/
           ACTUAL="$(deno -v)"
