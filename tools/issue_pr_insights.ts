@@ -10,19 +10,19 @@ const GITHUB_API = "https://api.github.com";
 const REPO_OWNER = "denoland";
 const REPO_NAME = "deno";
 
-const token = Deno.env.get("SLACK_TOKEN");
-const channel = Deno.env.get("SLACK_CHANNEL");
+function getEnvOrExit(name: string): string {
+  const value = Deno.env.get(name);
+  if (!value) {
+    console.error(`${name} is required`);
+    Deno.exit(1);
+  }
+  return value;
+}
+
+const token = getEnvOrExit("SLACK_TOKEN");
+const channel = getEnvOrExit("SLACK_CHANNEL");
 const githubToken = Deno.env.get("GITHUB_TOKEN");
 const hoursInput = Deno.env.get("HOURS_LOOKBACK");
-
-if (!token) {
-  console.error("SLACK_TOKEN is required");
-  Deno.exit(1);
-}
-if (!channel) {
-  console.error("SLACK_CHANNEL is required");
-  Deno.exit(1);
-}
 
 const client = new WebClient(token, {
   logLevel: LogLevel.DEBUG,
