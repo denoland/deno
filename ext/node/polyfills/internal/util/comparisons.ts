@@ -35,7 +35,6 @@ import assert from "node:assert";
 import { kKeyObject } from "ext:deno_node/internal/crypto/constants.ts";
 import { isError } from "ext:deno_node/internal/util.mjs";
 import { isURL } from "ext:deno_node/internal/url.ts";
-import { getCryptoKeyDataForComparison } from "ext:deno_crypto/00_crypto.js";
 
 const {
   Array,
@@ -442,33 +441,6 @@ function objectComparisonStart(
     if (!isEqualBoxedPrimitive(val1, val2)) {
       return false;
     }
-  } else if (getCryptoKeyDataForComparison(val1)) {
-    const cryptoKeyData1 = getCryptoKeyDataForComparison(val1)!;
-    const cryptoKeyData2 = getCryptoKeyDataForComparison(val2);
-    if (
-      !cryptoKeyData2 ||
-      cryptoKeyData1.extractable !== cryptoKeyData2.extractable ||
-      !innerDeepEqual(
-        cryptoKeyData1.algorithm,
-        cryptoKeyData2.algorithm,
-        mode,
-        memos,
-      ) ||
-      !innerDeepEqual(
-        cryptoKeyData1.usages,
-        cryptoKeyData2.usages,
-        mode,
-        memos,
-      ) ||
-      !innerDeepEqual(
-        cryptoKeyData1.keyData,
-        cryptoKeyData2.keyData,
-        mode,
-        memos,
-      )
-    ) {
-      return false;
-    }
   } else if (
     ArrayIsArray(val2) ||
     isArrayBufferView(val2) ||
@@ -479,8 +451,7 @@ function objectComparisonStart(
     isAnyArrayBuffer(val2) ||
     isBoxedPrimitive(val2) ||
     isNativeError(val2) ||
-    isError(val2) ||
-    getCryptoKeyDataForComparison(val2)
+    isError(val2)
   ) {
     return false;
   } else if (isURL(val1)) {

@@ -90,6 +90,7 @@ const {
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { createFilteredInspectProxy } from "ext:deno_web/01_console.js";
 import { DOMException } from "ext:deno_web/01_dom_exception.js";
+import { kKeyObject } from "ext:deno_node/internal/crypto/constants.ts";
 
 const supportedNamedCurves = ["P-256", "P-384", "P-521"];
 const recognisedUsages = [
@@ -365,6 +366,8 @@ class CryptoKey {
   [_usages];
   /** @type {object} */
   [_handle];
+  /** @type {object} */
+  [kKeyObject];
 
   constructor() {
     webidl.illegalConstructor();
@@ -431,25 +434,8 @@ function constructKey(type, extractable, usages, algorithm, handle) {
   key[_usages] = usages;
   key[_algorithm] = algorithm;
   key[_handle] = handle;
+  key[kKeyObject] = WeakMapPrototypeGet(KEY_STORE, handle);
   return key;
-}
-
-/**
- * @param {CryptoKey} key
- */
-function getCryptoKeyDataForComparison(key) {
-  if (!ObjectPrototypeIsPrototypeOf(CryptoKeyPrototype, key)) {
-    return undefined;
-  }
-
-  const handle = key[_handle];
-  return {
-    type: key[_type],
-    extractable: key[_extractable],
-    usages: key[_usages],
-    algorithm: key[_algorithm],
-    keyData: WeakMapPrototypeGet(KEY_STORE, handle),
-  };
 }
 
 // https://w3c.github.io/webcrypto/#concept-usage-intersection
@@ -5854,10 +5840,4 @@ const dictEcdhKeyDeriveParams = [
 webidl.converters.EcdhKeyDeriveParams = webidl
   .createDictionaryConverter("EcdhKeyDeriveParams", dictEcdhKeyDeriveParams);
 
-export {
-  Crypto,
-  crypto,
-  CryptoKey,
-  getCryptoKeyDataForComparison,
-  SubtleCrypto,
-};
+export { Crypto, crypto, CryptoKey, SubtleCrypto };
