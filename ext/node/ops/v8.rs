@@ -1,11 +1,21 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+use std::cell::RefCell;
+use std::io::BufWriter;
+use std::io::Write;
 use std::ptr::NonNull;
+use std::rc::Rc;
 
 use deno_core::FastString;
 use deno_core::GarbageCollected;
+use deno_core::InspectorMsg;
+use deno_core::InspectorMsgKind;
+use deno_core::InspectorSessionKind;
+use deno_core::JsRuntimeInspector;
+use deno_core::OpState;
 use deno_core::convert::Uint8Array;
 use deno_core::op2;
+use deno_core::serde_json;
 use deno_core::v8;
 use deno_error::JsErrorBox;
 use v8::ValueDeserializerHelper;
@@ -90,6 +100,184 @@ pub fn op_v8_get_heap_code_statistics(
   #[buffer] _buffer: &mut [f64],
 ) {
   // Stub until rusty_v8 PR #1921 lands
+}
+
+/// Persistent coverage connection that stores an inspector session,
+/// similar to Node.js's V8CoverageConnection.
+pub struct V8CoverageConnection {
+  session: deno_core::LocalInspectorSession,
+  next_id: std::cell::Cell<i32>,
+  coverage_dir: std::path::PathBuf,
+  response: Rc<RefCell<Option<String>>>,
+}
+
+impl V8CoverageConnection {
+  pub fn new(
+    inspector: Rc<JsRuntimeInspector>,
+    coverage_dir: std::path::PathBuf,
+  ) -> Self {
+    let response: Rc<RefCell<Option<String>>> = Rc::new(RefCell::new(None));
+    let response_clone = response.clone();
+
+    let callback: Box<dyn Fn(InspectorMsg)> =
+      Box::new(move |msg: InspectorMsg| {
+        if let InspectorMsgKind::Message(_id) = msg.kind {
+          *response_clone.borrow_mut() = Some(msg.content);
+        }
+      });
+
+    let session = JsRuntimeInspector::create_local_session(
+      inspector,
+      callback,
+      InspectorSessionKind::NonBlocking {
+        wait_for_disconnect: false,
+      },
+    );
+
+    Self {
+      session,
+      next_id: std::cell::Cell::new(1),
+      coverage_dir,
+      response,
+    }
+  }
+
+  fn next_id(&self) -> i32 {
+    let id = self.next_id.get();
+    self.next_id.set(id + 1);
+    id
+  }
+
+  pub fn start(&mut self) {
+    self
+      .session
+      .post_message::<()>(self.next_id(), "Profiler.enable", None);
+    self.session.post_message(
+      self.next_id(),
+      "Profiler.startPreciseCoverage",
+      Some(serde_json::json!({
+        "callCount": true,
+        "detailed": true,
+      })),
+    );
+  }
+
+  pub fn take_coverage(&mut self) {
+    self.session.post_message::<()>(
+      self.next_id(),
+      "Profiler.takePreciseCoverage",
+      None,
+    );
+
+    if let Some(response) = self.response.borrow_mut().take() {
+      self.write_coverage(&response);
+    }
+  }
+
+  pub fn stop_coverage(&mut self) {
+    self.session.post_message::<()>(
+      self.next_id(),
+      "Profiler.stopPreciseCoverage",
+      None,
+    );
+    self
+      .session
+      .post_message::<()>(self.next_id(), "Profiler.disable", None);
+  }
+
+  fn write_coverage(&self, response: &str) {
+    let Ok(message) = serde_json::from_str::<serde_json::Value>(response)
+    else {
+      return;
+    };
+    let Some(coverages) = message.get("result").and_then(|r| r.get("result"))
+    else {
+      return;
+    };
+    let Ok(script_coverages) =
+      serde_json::from_value::<Vec<serde_json::Value>>(coverages.clone())
+    else {
+      return;
+    };
+
+    if let Err(e) = std::fs::create_dir_all(&self.coverage_dir) {
+      log::error!(
+        "Failed to create coverage dir {:?}: {:?}",
+        self.coverage_dir,
+        e
+      );
+      return;
+    }
+
+    for coverage in script_coverages {
+      let url = coverage.get("url").and_then(|u| u.as_str()).unwrap_or("");
+      if url.is_empty()
+        || url.starts_with("ext:")
+        || url.starts_with("[ext:")
+        || url.starts_with("node:")
+      {
+        continue;
+      }
+      static COVERAGE_FILE_COUNTER: std::sync::atomic::AtomicU32 =
+        std::sync::atomic::AtomicU32::new(0);
+      let seq = COVERAGE_FILE_COUNTER
+        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+      let pid = std::process::id();
+      let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis();
+      let filename = format!("coverage-{}-{}-{:08}.json", pid, now, seq);
+      let filepath = self.coverage_dir.join(&filename);
+      let file = match std::fs::File::create(&filepath) {
+        Ok(f) => f,
+        Err(e) => {
+          log::error!("Failed to create coverage file {:?}: {:?}", filepath, e);
+          continue;
+        }
+      };
+      let mut out = BufWriter::new(file);
+      let json = serde_json::to_string_pretty(&coverage).unwrap();
+      if let Err(e) = out.write_all(json.as_bytes()) {
+        log::error!("Failed to write coverage file {:?}: {:?}", filepath, e);
+      }
+      let _ = out.flush();
+    }
+  }
+}
+
+/// Called during bootstrap to start coverage collection
+/// if NODE_V8_COVERAGE env var is set.
+#[op2(fast)]
+pub fn op_v8_start_coverage(state: &mut OpState) {
+  if state.has::<V8CoverageConnection>() {
+    return;
+  }
+  let coverage_dir = match std::env::var("NODE_V8_COVERAGE") {
+    Ok(dir) if !dir.is_empty() => std::path::PathBuf::from(dir),
+    _ => return,
+  };
+  let Some(inspector) = state.try_borrow::<Rc<JsRuntimeInspector>>() else {
+    return;
+  };
+  let inspector = inspector.clone();
+  let mut connection = V8CoverageConnection::new(inspector, coverage_dir);
+  connection.start();
+  state.put(connection);
+}
+
+#[op2(fast)]
+pub fn op_v8_take_coverage(state: &mut OpState) {
+  if let Some(connection) = state.try_borrow_mut::<V8CoverageConnection>() {
+    connection.take_coverage();
+  }
+}
+
+#[op2(fast)]
+pub fn op_v8_stop_coverage(state: &mut OpState) {
+  if let Some(connection) = state.try_borrow_mut::<V8CoverageConnection>() {
+    connection.stop_coverage();
+  }
 }
 
 pub struct Serializer<'a> {

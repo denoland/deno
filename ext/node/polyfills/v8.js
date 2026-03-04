@@ -24,6 +24,8 @@ import {
   op_v8_read_value,
   op_v8_release_buffer,
   op_v8_set_treat_array_buffer_views_as_host_objects,
+  op_v8_stop_coverage,
+  op_v8_take_coverage,
   op_v8_take_heap_snapshot,
   op_v8_transfer_array_buffer,
   op_v8_transfer_array_buffer_de,
@@ -121,10 +123,10 @@ export function setFlagsFromString() {
   // this function will just be a no-op.
 }
 export function stopCoverage() {
-  notImplemented("v8.stopCoverage");
+  op_v8_stop_coverage();
 }
 export function takeCoverage() {
-  notImplemented("v8.takeCoverage");
+  op_v8_take_coverage();
 }
 
 let heapSnapshotCounter = 0;
