@@ -163,8 +163,47 @@ jobs:
           echo "$ACTUAL"
           [ "$ACTUAL" = "$EXPECTED_VERSION" ] || { echo "Version mismatch: expected '$EXPECTED_VERSION', got '$ACTUAL'"; exit 1; }
           deno eval "console.log('global npm install works')"
+          npm uninstall -g deno
 
-      - name: Test pnpm local install deno
+      - name: Test npm global install deno (--ignore-scripts)
+        run: |
+          EXPECTED_VERSION="deno ${{ steps.publish-verdaccio.outputs.version }}"
+          npm install -g --ignore-scripts deno@${{ steps.publish-verdaccio.outputs.version }}
+          ACTUAL="$(deno -v)"
+          echo "$ACTUAL"
+          [ "$ACTUAL" = "$EXPECTED_VERSION" ] || { echo "Version mismatch: expected '$EXPECTED_VERSION', got '$ACTUAL'"; exit 1; }
+          deno eval "console.log('global npm install works')"
+          npm uninstall -g deno
+
+      - name: Test pnpm local install deno (without postinstall)
+        run: |
+          TEST_DIR="${{ runner.temp }}/pnpm-test-no-scripts"
+          mkdir -p "$TEST_DIR"
+          cd "$TEST_DIR"
+          npm init -y
+          EXPECTED_VERSION="deno ${{ steps.publish-verdaccio.outputs.version }}"
+          pnpm install deno@${{ steps.publish-verdaccio.outputs.version }} --registry http://localhost:4873/
+          ACTUAL="$(node node_modules/deno/bin.cjs -v)"
+          echo "$ACTUAL"
+          [ "$ACTUAL" = "$EXPECTED_VERSION" ] || { echo "Version mismatch: expected '$EXPECTED_VERSION', got '$ACTUAL'"; exit 1; }
+
+      - name: Test pnpm global install deno (without postinstall)
+        run: |
+          PNPM_HOME="${{ runner.temp }}/pnpm-global-no-scripts"
+          mkdir -p "$PNPM_HOME"
+          export PNPM_HOME
+          export PATH="$PNPM_HOME:$PATH"
+          EXPECTED_VERSION="deno ${{ steps.publish-verdaccio.outputs.version }}"
+          pnpm install -g deno@${{ steps.publish-verdaccio.outputs.version }} --registry http://localhost:4873/
+          ACTUAL="$(node "$PNPM_HOME/global/5/node_modules/deno/bin.cjs" -v)"
+          echo "$ACTUAL"
+          [ "$ACTUAL" = "$EXPECTED_VERSION" ] || { echo "Version mismatch: expected '$EXPECTED_VERSION', got '$ACTUAL'"; exit 1; }
+          pnpm uninstall -g deno
+
+      - name: Allow pnpm build scripts
+        run: pnpm config set --global onlyBuiltDependencies '["*"]'
+
+      - name: Test pnpm local install deno (with postinstall)
         run: |
           TEST_DIR="${{ runner.temp }}/pnpm-test"
           mkdir -p "$TEST_DIR"
@@ -176,7 +215,7 @@ jobs:
           echo "$ACTUAL"
           [ "$ACTUAL" = "$EXPECTED_VERSION" ] || { echo "Version mismatch: expected '$EXPECTED_VERSION', got '$ACTUAL'"; exit 1; }
 
-      - name: Test pnpm global install deno
+      - name: Test pnpm global install deno (with postinstall)
         run: |
           npm uninstall -g deno
           PNPM_HOME="${{ runner.temp }}/pnpm-global"
@@ -189,6 +228,7 @@ jobs:
           echo "$ACTUAL"
           [ "$ACTUAL" = "$EXPECTED_VERSION" ] || { echo "Version mismatch: expected '$EXPECTED_VERSION', got '$ACTUAL'"; exit 1; }
           deno eval "console.log('global pnpm install works')"
+          pnpm uninstall -g deno
 
       - name: Test deno via PowerShell
         if: runner.os == 'Windows'
