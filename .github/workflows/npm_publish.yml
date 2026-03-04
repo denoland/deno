@@ -147,7 +147,11 @@ jobs:
 
       - name: Test deno via simulated readonly file system
         run: |
-          cd "${{ runner.temp }}/npm-test"
+          TEST_DIR="${{ runner.temp }}/readonly-test"
+          mkdir -p "$TEST_DIR"
+          cd "$TEST_DIR"
+          npm init -y
+          npm install deno@${{ steps.publish-verdaccio.outputs.version }}
           rm -f node_modules/deno/deno*
           DENO_SIMULATED_READONLY_FILE_SYSTEM=1 node node_modules/deno/bin.cjs -v
 
