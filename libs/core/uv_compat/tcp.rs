@@ -5,6 +5,8 @@ use std::ffi::c_uint;
 use std::ffi::c_void;
 use std::net::SocketAddr;
 use std::pin::Pin;
+use std::task::Context;
+use std::task::Poll;
 
 #[cfg(unix)]
 use libc::AF_INET;
@@ -27,15 +29,20 @@ use win_sock::sockaddr_in6;
 
 use crate::uv_compat::UV_EADDRINUSE;
 use crate::uv_compat::UV_EAGAIN;
+use crate::uv_compat::UV_ECONNREFUSED;
 use crate::uv_compat::UV_EINVAL;
 use crate::uv_compat::UV_ENOTCONN;
+use crate::uv_compat::UV_EOF;
+use crate::uv_compat::UV_EPIPE;
 use crate::uv_compat::UV_HANDLE_ACTIVE;
 use crate::uv_compat::UV_HANDLE_REF;
 use crate::uv_compat::get_inner;
 use crate::uv_compat::uv_alloc_cb;
+use crate::uv_compat::uv_buf_t;
 use crate::uv_compat::uv_connect_cb;
 use crate::uv_compat::uv_connect_t;
 use crate::uv_compat::uv_connection_cb;
+use crate::uv_compat::uv_handle_t;
 use crate::uv_compat::uv_handle_type;
 use crate::uv_compat::uv_loop_t;
 use crate::uv_compat::uv_read_cb;
@@ -527,4 +534,175 @@ pub fn new_tcp() -> uv_tcp_t {
     internal_connection_cb: None,
     internal_backlog: VecDeque::new(),
   }
+}
+
+/// Poll a single TCP handle for I/O readiness and fire callbacks.
+/// Returns `true` if any work was completed.
+///
+/// # Safety
+/// `tcp_ptr` must be a valid pointer to an initialized `uv_tcp_t`.
+pub(crate) unsafe fn poll_tcp_handle(
+  tcp_ptr: *mut uv_tcp_t,
+  cx: &mut Context<'_>,
+) -> bool {
+  let mut any_work = false;
+  // SAFETY: Caller guarantees tcp_ptr is valid.
+  let tcp = unsafe { &mut *tcp_ptr };
+
+  // 1. Poll pending connect
+  if let Some(ref mut pending) = tcp.internal_connect
+    && let Poll::Ready(result) = pending.future.as_mut().poll(cx)
+  {
+    let req = pending.req;
+    let cb = pending.cb;
+    let status = match result {
+      Ok(stream) => {
+        if tcp.internal_nodelay {
+          stream.set_nodelay(true).ok();
+        }
+        tcp.internal_stream = Some(stream);
+        0
+      }
+      Err(_) => UV_ECONNREFUSED,
+    };
+    tcp.internal_connect = None;
+    // SAFETY: req pointer was provided by the C caller and remains valid until callback.
+    unsafe {
+      (*req).handle = tcp_ptr as *mut uv_stream_t;
+    }
+    if let Some(cb) = cb {
+      // SAFETY: Callback and req pointer validated above; set by C caller via uv_tcp_connect.
+      unsafe { cb(req, status) };
+    }
+  }
+
+  // 2. Poll listener for new connections
+  if let Some(ref listener) = tcp.internal_listener
+    && tcp.internal_connection_cb.is_some()
+  {
+    while let Poll::Ready(Ok((stream, _))) = listener.poll_accept(cx) {
+      tcp.internal_backlog.push_back(stream);
+      any_work = true;
+    }
+    while !tcp.internal_backlog.is_empty() {
+      if let Some(cb) = tcp.internal_connection_cb {
+        // SAFETY: tcp_ptr is valid; cb set by C caller via uv_listen.
+        unsafe { cb(tcp_ptr as *mut uv_stream_t, 0) };
+      }
+      // If uv_accept wasn't called in the callback, stop
+      // to avoid an infinite loop.
+      if !tcp.internal_backlog.is_empty() {
+        break;
+      }
+    }
+  }
+
+  // 3. Poll readable stream
+  if tcp.internal_reading && tcp.internal_stream.is_some() {
+    let alloc_cb = tcp.internal_alloc_cb;
+    let read_cb = tcp.internal_read_cb;
+    if let (Some(alloc_cb), Some(read_cb)) = (alloc_cb, read_cb) {
+      // Register interest so tokio's reactor wakes us.
+      let _ = tcp
+        .internal_stream
+        .as_ref()
+        .unwrap()
+        .poll_read_ready(cx);
+
+      loop {
+        // Re-check after each callback: the callback may have
+        // called uv_close or uv_read_stop.
+        if !tcp.internal_reading || tcp.internal_stream.is_none() {
+          break;
+        }
+        let mut buf = uv_buf_t {
+          base: std::ptr::null_mut(),
+          len: 0,
+        };
+        // SAFETY: alloc_cb set by C caller via uv_read_start; tcp_ptr is valid.
+        unsafe {
+          alloc_cb(tcp_ptr as *mut uv_handle_t, 65536, &mut buf);
+        }
+        if buf.base.is_null() || buf.len == 0 {
+          break;
+        }
+        // SAFETY: alloc_cb guarantees buf.base is valid for buf.len bytes.
+        let slice = unsafe {
+          std::slice::from_raw_parts_mut(buf.base.cast::<u8>(), buf.len)
+        };
+        match tcp.internal_stream.as_ref().unwrap().try_read(slice) {
+          Ok(0) => {
+            // SAFETY: read_cb set by C caller via uv_read_start; tcp_ptr and buf are valid.
+            unsafe {
+              read_cb(tcp_ptr as *mut uv_stream_t, UV_EOF as isize, &buf)
+            };
+            tcp.internal_reading = false;
+            break;
+          }
+          Ok(n) => {
+            any_work = true;
+            // SAFETY: read_cb set by C caller via uv_read_start; tcp_ptr and buf are valid.
+            unsafe {
+              read_cb(tcp_ptr as *mut uv_stream_t, n as isize, &buf)
+            };
+          }
+          Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+            break;
+          }
+          Err(_) => {
+            // SAFETY: read_cb set by C caller via uv_read_start; tcp_ptr and buf are valid.
+            unsafe {
+              read_cb(tcp_ptr as *mut uv_stream_t, UV_EOF as isize, &buf)
+            };
+            tcp.internal_reading = false;
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  // 4. Drain write queue in order
+  if !tcp.internal_write_queue.is_empty() && tcp.internal_stream.is_some() {
+    let stream = tcp.internal_stream.as_ref().unwrap();
+    let _ = stream.poll_write_ready(cx);
+
+    while let Some(pw) = tcp.internal_write_queue.front_mut() {
+      let mut done = false;
+      let mut error = false;
+      loop {
+        if pw.offset >= pw.data.len() {
+          done = true;
+          break;
+        }
+        match stream.try_write(&pw.data[pw.offset..]) {
+          Ok(n) => pw.offset += n,
+          Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+            break;
+          }
+          Err(_) => {
+            error = true;
+            break;
+          }
+        }
+      }
+      if done {
+        let pw = tcp.internal_write_queue.pop_front().unwrap();
+        if let Some(cb) = pw.cb {
+          // SAFETY: Write cb and req set by C caller via uv_write; req is valid until callback.
+          unsafe { cb(pw.req, 0) };
+        }
+      } else if error {
+        let pw = tcp.internal_write_queue.pop_front().unwrap();
+        if let Some(cb) = pw.cb {
+          // SAFETY: Write cb and req set by C caller via uv_write; req is valid until callback.
+          unsafe { cb(pw.req, UV_EPIPE) };
+        }
+      } else {
+        break; // WouldBlock -- retry next tick
+      }
+    }
+  }
+
+  any_work
 }
