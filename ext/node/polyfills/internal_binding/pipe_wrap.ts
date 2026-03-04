@@ -33,6 +33,7 @@ import {
   op_pipe_windows_wait,
 } from "ext:core/ops";
 import { PipeConn, UnixConn } from "ext:deno_net/01_net.js";
+import { setTimeout } from "ext:deno_web/02_timers.js";
 
 const { internalRidSymbol } = core;
 import { notImplemented } from "ext:deno_node/_utils.ts";
@@ -280,7 +281,7 @@ export class Pipe extends ConnectionWrap {
       // serialization doesn't expose raw OS error codes as a property.
       // Rust's std::io::Error formats it as "... (os error 231)".
       if (StringPrototypeIncludes(msg, "os error 231") && attempt < 300) {
-        globalThis.setTimeout(() => {
+        setTimeout(() => {
           this.#connectWindows(req, address, attempt + 1);
         }, 100);
         return;
