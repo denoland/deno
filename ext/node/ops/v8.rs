@@ -39,6 +39,59 @@ pub fn op_v8_get_heap_statistics(
   buffer[13] = stats.external_memory() as f64;
 }
 
+#[op2(fast)]
+#[smi]
+pub fn op_v8_number_of_heap_spaces(scope: &mut v8::PinScope<'_, '_>) -> u32 {
+  scope.number_of_heap_spaces() as u32
+}
+
+#[op2]
+#[string]
+pub fn op_v8_update_heap_space_statistics(
+  scope: &mut v8::PinScope<'_, '_>,
+  #[buffer] buffer: &mut [f64],
+  #[smi] space_index: u32,
+) -> Option<String> {
+  let stats = scope.get_heap_space_statistics(space_index as usize)?;
+  buffer[0] = stats.space_size() as f64;
+  buffer[1] = stats.space_used_size() as f64;
+  buffer[2] = stats.space_available_size() as f64;
+  buffer[3] = stats.physical_space_size() as f64;
+  Some(stats.space_name().to_string_lossy().into_owned())
+}
+
+#[op2]
+#[buffer]
+pub fn op_v8_take_heap_snapshot(scope: &mut v8::PinScope<'_, '_>) -> Vec<u8> {
+  let mut buf = Vec::new();
+  scope.take_heap_snapshot(|chunk| {
+    buf.extend_from_slice(chunk);
+    true
+  });
+  buf
+}
+
+// TODO(denoland): enable once rusty_v8 PR #1921 lands
+// #[op2(fast)]
+// pub fn op_v8_get_heap_code_statistics(
+//   scope: &mut v8::PinScope<'_, '_>,
+//   #[buffer] buffer: &mut [f64],
+// ) {
+//   if let Some(stats) = scope.get_heap_code_and_metadata_statistics() {
+//     buffer[0] = stats.code_and_metadata_size() as f64;
+//     buffer[1] = stats.bytecode_and_metadata_size() as f64;
+//     buffer[2] = stats.external_script_source_size() as f64;
+//     buffer[3] = stats.cpu_profiler_metadata_size() as f64;
+//   }
+// }
+#[op2(fast)]
+pub fn op_v8_get_heap_code_statistics(
+  _scope: &mut v8::PinScope<'_, '_>,
+  #[buffer] _buffer: &mut [f64],
+) {
+  // Stub until rusty_v8 PR #1921 lands
+}
+
 pub struct Serializer<'a> {
   inner: v8::ValueSerializer<'a>,
 }
