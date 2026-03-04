@@ -178,6 +178,12 @@ impl InnerIsolateState {
   pub fn cleanup(&mut self) {
     self.prepare_for_cleanup();
 
+    // Unregister isolate waker before dropping the isolate
+    let isolate_ptr = unsafe { self.v8_isolate.as_raw_isolate_ptr() };
+    setup::unregister_isolate_waker(
+      unsafe { std::mem::transmute::<_, usize>(isolate_ptr) },
+    );
+
     let state_ptr = self.v8_isolate.get_data(STATE_DATA_OFFSET);
     // SAFETY: We are sure that it's a valid pointer for whole lifetime of
     // the runtime.
@@ -432,10 +438,6 @@ pub struct JsRuntimeState {
   pub(crate) function_templates: Rc<RefCell<FunctionTemplateData>>,
   pub(crate) callsite_prototype: RefCell<Option<v8::Global<v8::Object>>>,
   waker: Arc<AtomicWaker>,
-  /// Tracks whether background tasks were active in a recent event loop
-  /// iteration. Used to trigger a post-phase V8 message pump when
-  /// background tasks complete, catching foreground callbacks they post.
-  had_pending_bg_tasks: Cell<bool>,
   /// Accessed through [`JsRuntimeState::with_inspector`].
   inspector: RefCell<Option<Rc<JsRuntimeInspector>>>,
   has_inspector: Cell<bool>,
@@ -762,8 +764,7 @@ impl JsRuntime {
       eval_context_code_cache_ready_cb: RefCell::new(
         eval_context_set_code_cache_cb,
       ),
-      waker,
-      had_pending_bg_tasks: Cell::new(false),
+      waker: waker.clone(),
       // Some fields are initialized later after isolate is created
       inspector: None.into(),
       has_inspector: false.into(),
@@ -839,6 +840,16 @@ impl JsRuntime {
     );
 
     let isolate_ptr = unsafe { isolate.as_raw_isolate_ptr() };
+
+    // Register this isolate's waker so the NotifyingPlatform can wake
+    // the event loop when V8 posts foreground tasks from background threads.
+    // UnsafeRawIsolatePtr is repr(transparent) over *mut RealIsolate —
+    // same pointer value the C++ callback receives as void*.
+    setup::register_isolate_waker(
+      unsafe { std::mem::transmute::<_, usize>(isolate_ptr) },
+      waker.clone(),
+    );
+
     // ...isolate is fully set up, we can forward its pointer to the ops to finish
     // their' setup...
     for op_ctx in op_ctxs.iter_mut() {
@@ -2227,31 +2238,6 @@ impl JsRuntime {
     // Evaluate pending state
     let pending_state =
       EventLoopPendingState::new(scope, context_state, modules);
-
-    // Post-phase V8 message pump: V8 background threads (e.g. module
-    // compilation) may have posted foreground callbacks during this
-    // event loop iteration. A second pump catches these without
-    // waiting for the next iteration.
-    if poll_options.pump_v8_message_loop
-      && !pending_state.has_pending_background_tasks
-      && self.inner.state.had_pending_bg_tasks.get()
-    {
-      self.inner.state.had_pending_bg_tasks.set(false);
-      v8_tasks_processed |= self.pump_v8_message_loop(scope)?;
-      // Schedule a delayed wake to catch foreground callbacks that
-      // V8 background threads post after this pump but before we
-      // sleep. The 1ms delay is cheap and eliminates the race
-      // between background task completion and foreground callback
-      // posting.
-      let waker = cx.waker().clone();
-      std::thread::spawn(move || {
-        std::thread::sleep(std::time::Duration::from_millis(1));
-        waker.wake_by_ref();
-      });
-    }
-    if pending_state.has_pending_background_tasks {
-      self.inner.state.had_pending_bg_tasks.set(true);
-    }
 
     if !pending_state.is_pending() {
       if has_inspector {
