@@ -430,12 +430,10 @@ pub struct JsRuntimeState {
   pub(crate) function_templates: Rc<RefCell<FunctionTemplateData>>,
   pub(crate) callsite_prototype: RefCell<Option<v8::Global<v8::Object>>>,
   waker: Arc<AtomicWaker>,
-  /// Tracks whether V8 had pending background tasks on the previous
-  /// event loop iteration. Used to detect the transition from
-  /// has_pending_background_tasks=true to false, which is when a
-  /// background compilation may have just posted a foreground callback
-  /// that needs an extra pump_message_loop call to process.
-  had_pending_background_tasks: Cell<bool>,
+  /// Tracks whether background tasks were active in a recent event loop
+  /// iteration. Used to trigger a post-phase V8 message pump when
+  /// background tasks complete, catching foreground callbacks they post.
+  had_pending_bg_tasks: Cell<bool>,
   /// Accessed through [`JsRuntimeState::with_inspector`].
   inspector: RefCell<Option<Rc<JsRuntimeInspector>>>,
   has_inspector: Cell<bool>,
@@ -763,7 +761,7 @@ impl JsRuntime {
         eval_context_set_code_cache_cb,
       ),
       waker,
-      had_pending_background_tasks: false.into(),
+      had_pending_bg_tasks: Cell::new(false),
       // Some fields are initialized later after isolate is created
       inspector: None.into(),
       has_inspector: false.into(),
@@ -2139,22 +2137,29 @@ impl JsRuntime {
     let pending_state =
       EventLoopPendingState::new(scope, context_state, modules);
 
-    // Second V8 message pump: only needed on the transition from
-    // had_pending_background_tasks=true to false. This is the exact
-    // moment a background compilation thread may have just posted a
-    // foreground callback that the first pump (pre-phase) missed.
-    // Avoids pumping on every iteration during module loading.
-    let had_bg_tasks = self.inner.state.had_pending_background_tasks.get();
-    self
-      .inner
-      .state
-      .had_pending_background_tasks
-      .set(pending_state.has_pending_background_tasks);
+    // Post-phase V8 message pump: V8 background threads (e.g. module
+    // compilation) may have posted foreground callbacks during this
+    // event loop iteration. A second pump catches these without
+    // waiting for the next iteration.
     if poll_options.pump_v8_message_loop
-      && had_bg_tasks
       && !pending_state.has_pending_background_tasks
+      && self.inner.state.had_pending_bg_tasks.get()
     {
+      self.inner.state.had_pending_bg_tasks.set(false);
       v8_tasks_processed |= self.pump_v8_message_loop(scope)?;
+      // Schedule a delayed wake to catch foreground callbacks that
+      // V8 background threads post after this pump but before we
+      // sleep. The 1ms delay is cheap and eliminates the race
+      // between background task completion and foreground callback
+      // posting.
+      let waker = cx.waker().clone();
+      std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(1));
+        waker.wake_by_ref();
+      });
+    }
+    if pending_state.has_pending_background_tasks {
+      self.inner.state.had_pending_bg_tasks.set(true);
     }
 
     if !pending_state.is_pending() {
