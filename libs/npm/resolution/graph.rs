@@ -3225,10 +3225,10 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
           .peer_dep_version_req
           .as_ref()
           .unwrap_or(&dep.version_req);
-        if let Some(target_version) = versions.get(effective_req) {
-          if child_id.nv.version != *target_version {
-            node.children.remove(&dep.bare_specifier);
-          }
+        if let Some(target_version) = versions.get(effective_req)
+          && child_id.nv.version != *target_version
+        {
+          node.children.remove(&dep.bare_specifier);
         }
       }
     }
