@@ -209,13 +209,19 @@ async fn timer_again_requires_repeat() {
     let timer_ptr = timer.as_mut_ptr();
     unsafe {
       uv_timer_init(uv_loop, timer_ptr);
-      // Start with repeat = 0
-      uv_timer_start(timer_ptr, noop_cb, 100, 0);
-      // uv_timer_again should return UV_EINVAL when repeat is 0
+
+      // uv_timer_again on a never-started timer returns UV_EINVAL
+      // (because cb is None).
       let status = uv_timer_again(timer_ptr);
       assert_eq!(status, UV_EINVAL);
 
-      // Set repeat, then again should succeed
+      // Start with repeat = 0
+      uv_timer_start(timer_ptr, noop_cb, 100, 0);
+      // uv_timer_again with repeat=0 is a no-op (returns 0), matching libuv.
+      let status = uv_timer_again(timer_ptr);
+      assert_ok(status);
+
+      // Set repeat, then again should succeed and restart the timer
       uv_timer_set_repeat(timer_ptr, 50);
       assert_eq!(uv_timer_get_repeat(timer_ptr), 50);
       let status = uv_timer_again(timer_ptr);
@@ -826,8 +832,8 @@ async fn phase_ordering_idle_prepare_check() {
     tick(runtime);
 
     let phases = order.borrow();
-    // The runtime runs: timers -> I/O -> idle -> prepare -> check -> close
-    // So within a single tick: idle, prepare, check
+    // The runtime runs: timers -> idle -> prepare -> I/O -> check -> close
+    // (matching libuv's phase ordering)
     assert!(
       phases.len() >= 3,
       "Expected at least 3 phases, got {:?}",
@@ -863,54 +869,49 @@ async fn phase_ordering_idle_prepare_check() {
   .await;
 }
 
-// ========== Restart a handle after close + re-init ==========
+// ========== idle_start on already-active handle is no-op ==========
 
 #[tokio::test]
-async fn idle_start_already_active_updates_cb() {
+async fn idle_start_already_active_is_noop() {
   run_test(async |runtime, uv_loop| {
-    let count_a = Rc::new(Cell::new(0u32));
-    let count_b = Rc::new(Cell::new(0u32));
-    let count_a_ptr = Rc::into_raw(count_a.clone());
-    let count_b_ptr = Rc::into_raw(count_b.clone());
+    let count = Rc::new(Cell::new(0u32));
+    let count_ptr = Rc::into_raw(count.clone());
 
     unsafe extern "C" fn cb_a(handle: *mut uv_idle_t) {
       let c = unsafe { Rc::from_raw((*handle).data as *const Cell<u32>) };
       c.set(c.get() + 1);
       let _ = Rc::into_raw(c);
     }
-    unsafe extern "C" fn cb_b(handle: *mut uv_idle_t) {
-      let c = unsafe { Rc::from_raw((*handle).data as *const Cell<u32>) };
-      c.set(c.get() + 1);
-      let _ = Rc::into_raw(c);
+    unsafe extern "C" fn cb_b(_handle: *mut uv_idle_t) {
+      // This should never be called -- libuv ignores the new cb.
+      panic!("cb_b should not be called; uv_idle_start on active handle is a no-op");
     }
 
     let mut idle = std::mem::MaybeUninit::<uv_idle_t>::uninit();
     let idle_ptr = idle.as_mut_ptr();
     unsafe {
       uv_idle_init(uv_loop, idle_ptr);
-      (*idle_ptr).data = count_a_ptr as *mut c_void;
+      (*idle_ptr).data = count_ptr as *mut c_void;
       uv_idle_start(idle_ptr, cb_a);
     }
 
     tick(runtime);
-    assert!(count_a.get() >= 1);
+    assert!(count.get() >= 1);
 
-    // Replace callback while active -- should update cb, not double-register.
+    // Calling uv_idle_start on an already-active handle is a no-op in libuv.
+    // The original callback (cb_a) should keep firing, NOT cb_b.
+    let before = count.get();
     unsafe {
-      (*idle_ptr).data = count_b_ptr as *mut c_void;
       uv_idle_start(idle_ptr, cb_b);
     }
 
-    let a_before = count_a.get();
     tick(runtime);
-
-    assert_eq!(count_a.get(), a_before, "old callback should not fire");
-    assert!(count_b.get() >= 1, "new callback should fire");
+    // cb_a should still be firing (if cb_b fired, it would panic).
+    assert!(count.get() > before, "original callback should keep firing");
 
     unsafe {
       uv_idle_stop(idle_ptr);
-      Rc::from_raw(count_a_ptr);
-      Rc::from_raw(count_b_ptr);
+      Rc::from_raw(count_ptr);
     }
   })
   .await;
@@ -1134,34 +1135,264 @@ async fn tcp_getpeername_no_stream_returns_enotconn() {
   .await;
 }
 
+// ========== TCP shutdown drains write queue first ==========
+
+#[tokio::test]
+async fn tcp_shutdown_waits_for_write_queue_to_drain() {
+  run_test(async |runtime, uv_loop| {
+    use std::cell::RefCell;
+
+    // Track ordering of callbacks.
+    let order = Rc::new(RefCell::new(Vec::<&'static str>::new()));
+
+    // --- Server: bind + listen ---
+    let mut server = std::mem::MaybeUninit::<uv_tcp_t>::uninit();
+    let server_ptr = server.as_mut_ptr();
+
+    unsafe extern "C" fn on_connection(_: *mut uv_stream_t, _: i32) {}
+
+    let server_port: u16;
+    unsafe {
+      uv_tcp_init(uv_loop, server_ptr);
+
+      let mut addr = std::mem::MaybeUninit::<sockaddr_in>::uninit();
+      let ip = std::ffi::CString::new("127.0.0.1").unwrap();
+      uv_ip4_addr(ip.as_ptr(), 0, addr.as_mut_ptr());
+
+      assert_ok(uv_tcp_bind(
+        server_ptr,
+        addr.as_ptr() as *const c_void,
+        0,
+        0,
+      ));
+
+      assert_ok(uv_listen(
+        server_ptr as *mut uv_stream_t,
+        128,
+        Some(on_connection),
+      ));
+
+      let mut name = std::mem::MaybeUninit::<sockaddr_in>::zeroed();
+      let mut namelen = std::mem::size_of::<sockaddr_in>() as i32;
+      uv_tcp_getsockname(
+        server_ptr,
+        name.as_mut_ptr() as *mut c_void,
+        &mut namelen,
+      );
+      server_port = u16::from_be(name.assume_init_ref().sin_port);
+    }
+
+    // --- Client: connect ---
+    let connected = Rc::new(Cell::new(false));
+    let connected_ptr = Rc::into_raw(connected.clone());
+
+    unsafe extern "C" fn on_connect(req: *mut uv_connect_t, status: i32) {
+      assert_eq!(status, 0);
+      let connected =
+        unsafe { Rc::from_raw((*req).data as *const Cell<bool>) };
+      connected.set(true);
+      let _ = Rc::into_raw(connected);
+    }
+
+    let mut client = std::mem::MaybeUninit::<uv_tcp_t>::uninit();
+    let client_ptr = client.as_mut_ptr();
+    let mut connect_req = std::mem::MaybeUninit::<uv_connect_t>::uninit();
+    let connect_req_ptr = connect_req.as_mut_ptr();
+
+    unsafe {
+      uv_tcp_init(uv_loop, client_ptr);
+      (*connect_req_ptr).data = connected_ptr as *mut c_void;
+
+      let mut addr = std::mem::MaybeUninit::<sockaddr_in>::uninit();
+      let ip = std::ffi::CString::new("127.0.0.1").unwrap();
+      uv_ip4_addr(ip.as_ptr(), server_port as i32, addr.as_mut_ptr());
+
+      assert_ok(uv_tcp_connect(
+        connect_req_ptr,
+        client_ptr,
+        addr.as_ptr() as *const c_void,
+        Some(on_connect),
+      ));
+    }
+
+    // Poll until connected.
+    for _ in 0..100 {
+      tick(runtime);
+      if connected.get() {
+        break;
+      }
+      tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+    }
+    assert!(connected.get(), "Client should have connected");
+
+    // --- Accept on server side ---
+    let mut accepted = std::mem::MaybeUninit::<uv_tcp_t>::uninit();
+    let accepted_ptr = accepted.as_mut_ptr();
+    unsafe {
+      uv_tcp_init(uv_loop, accepted_ptr);
+    }
+    tick(runtime);
+    unsafe {
+      assert_ok(uv_accept(
+        server_ptr as *mut uv_stream_t,
+        accepted_ptr as *mut uv_stream_t,
+      ));
+    }
+
+    // Start reading on accepted socket so the client's writes can drain.
+    unsafe extern "C" fn alloc_cb(
+      _: *mut uv_handle_t,
+      size: usize,
+      buf: *mut uv_buf_t,
+    ) {
+      let mut v = Vec::<u8>::with_capacity(size);
+      unsafe {
+        (*buf).base = v.as_mut_ptr().cast();
+        (*buf).len = size;
+      }
+      std::mem::forget(v);
+    }
+    unsafe extern "C" fn drain_read_cb(
+      _: *mut uv_stream_t,
+      _nread: isize,
+      buf: *const uv_buf_t,
+    ) {
+      unsafe {
+        if !(*buf).base.is_null() && (*buf).len > 0 {
+          drop(Vec::<u8>::from_raw_parts(
+            (*buf).base.cast(),
+            0,
+            (*buf).len,
+          ));
+        }
+      }
+    }
+    unsafe {
+      uv_read_start(
+        accepted_ptr as *mut uv_stream_t,
+        Some(alloc_cb),
+        Some(drain_read_cb),
+      );
+    }
+
+    // --- Write large buffer + immediate shutdown ---
+    let order_write = Rc::into_raw(order.clone());
+    let order_shutdown = Rc::into_raw(order.clone());
+
+    unsafe extern "C" fn write_cb(req: *mut uv_write_t, status: i32) {
+      assert_eq!(status, 0);
+      let order = unsafe {
+        Rc::from_raw((*req).data as *const RefCell<Vec<&'static str>>)
+      };
+      order.borrow_mut().push("write");
+      let _ = Rc::into_raw(order);
+    }
+
+    unsafe extern "C" fn shutdown_cb(
+      req: *mut uv_shutdown_t,
+      _status: i32,
+    ) {
+      let order = unsafe {
+        Rc::from_raw((*req).data as *const RefCell<Vec<&'static str>>)
+      };
+      order.borrow_mut().push("shutdown");
+      let _ = Rc::into_raw(order);
+    }
+
+    // 2 MB – large enough to exceed kernel TCP buffers, ensuring
+    // the write is partially queued when uv_shutdown is called.
+    let write_data = vec![0x42u8; 2 * 1024 * 1024];
+    let mut write_req = std::mem::MaybeUninit::<uv_write_t>::uninit();
+    let write_req_ptr = write_req.as_mut_ptr();
+    let mut shutdown_req = std::mem::MaybeUninit::<uv_shutdown_t>::uninit();
+    let shutdown_req_ptr = shutdown_req.as_mut_ptr();
+
+    unsafe {
+      (*write_req_ptr).data = order_write as *mut c_void;
+      (*shutdown_req_ptr).data = order_shutdown as *mut c_void;
+
+      let buf = uv_buf_t {
+        base: write_data.as_ptr() as *mut _,
+        len: write_data.len(),
+      };
+
+      assert_ok(uv_write(
+        write_req_ptr,
+        client_ptr as *mut uv_stream_t,
+        &buf,
+        1,
+        Some(write_cb),
+      ));
+
+      // Shutdown while writes are (likely) still queued.
+      assert_ok(uv_shutdown(
+        shutdown_req_ptr,
+        client_ptr as *mut uv_stream_t,
+        Some(shutdown_cb),
+      ));
+    }
+
+    // Tick until both callbacks fire.
+    for _ in 0..2000 {
+      tick(runtime);
+      if order.borrow().len() >= 2 {
+        break;
+      }
+      tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+    }
+
+    let phases = order.borrow();
+    assert!(
+      phases.len() >= 2,
+      "Expected both write and shutdown callbacks, got {:?}",
+      *phases
+    );
+
+    let write_idx = phases
+      .iter()
+      .position(|&s| s == "write")
+      .expect("write cb should have fired");
+    let shutdown_idx = phases
+      .iter()
+      .position(|&s| s == "shutdown")
+      .expect("shutdown cb should have fired");
+    assert!(
+      write_idx < shutdown_idx,
+      "write should complete before shutdown: {:?}",
+      *phases
+    );
+    drop(phases);
+
+    // Clean up.
+    unsafe {
+      uv_close(client_ptr as *mut uv_handle_t, None);
+      uv_close(server_ptr as *mut uv_handle_t, None);
+      uv_close(accepted_ptr as *mut uv_handle_t, None);
+      Rc::from_raw(connected_ptr);
+      Rc::from_raw(order_write);
+      Rc::from_raw(order_shutdown);
+    }
+    tick(runtime);
+  })
+  .await;
+}
+
 // ========== TCP shutdown without stream ==========
 
 #[tokio::test]
 async fn tcp_shutdown_no_stream() {
   run_test(async |_runtime, uv_loop| {
-    let status_cell = Rc::new(Cell::new(0i32));
-    let status_ptr = Rc::into_raw(status_cell.clone());
-
-    unsafe extern "C" fn shutdown_cb(req: *mut uv_shutdown_t, status: i32) {
-      let cell = unsafe { Rc::from_raw((*req).data as *const Cell<i32>) };
-      cell.set(status);
-      let _ = Rc::into_raw(cell);
-    }
-
     let mut tcp = std::mem::MaybeUninit::<uv_tcp_t>::uninit();
     let tcp_ptr = tcp.as_mut_ptr();
     let mut req = std::mem::MaybeUninit::<uv_shutdown_t>::uninit();
     let req_ptr = req.as_mut_ptr();
     unsafe {
       uv_tcp_init(uv_loop, tcp_ptr);
-      (*req_ptr).data = status_ptr as *mut c_void;
-      uv_shutdown(req_ptr, tcp_ptr as *mut uv_stream_t, Some(shutdown_cb));
-    }
-
-    assert_eq!(status_cell.get(), UV_ENOTCONN);
-
-    unsafe {
-      Rc::from_raw(status_ptr);
+      // uv_shutdown returns UV_ENOTCONN when no stream is attached
+      // (matching libuv which returns error code, not callback).
+      let status =
+        uv_shutdown(req_ptr, tcp_ptr as *mut uv_stream_t, None);
+      assert_eq!(status, UV_ENOTCONN);
     }
   })
   .await;

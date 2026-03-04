@@ -47,11 +47,11 @@ pub struct uv_shutdown_t {
 
 /// I/O buffer descriptor matching libuv's `uv_buf_t`.
 ///
-/// Field order is `{base, len}` which matches the macOS/Windows layout.
-/// On Linux, real libuv uses `{len, base}` (matching `struct iovec`).
-/// This is fine as long as the struct is only constructed/consumed in Rust;
-/// if it ever needs to cross an FFI boundary to real C code on Linux,
-/// the field order must be made platform-conditional.
+/// Field order is `{base, len}` which matches the Unix layout (all platforms,
+/// including Linux -- `struct iovec` is `{iov_base, iov_len}` everywhere).
+/// On Windows, real libuv uses `{len, base}` (matching `WSABUF`) with `len`
+/// as `ULONG` (32-bit). If this struct ever needs to cross an FFI boundary
+/// on Windows, the field order and `len` type must be made platform-conditional.
 #[repr(C)]
 pub struct uv_buf_t {
   pub base: *mut c_char,
@@ -124,7 +124,10 @@ pub unsafe fn uv_try_write(handle: *mut uv_stream_t, data: &[u8]) -> i32 {
   // SAFETY: Caller guarantees handle is a valid, initialized uv_tcp_t.
   let tcp_ref = unsafe { &mut *(handle as *mut uv_tcp_t) };
 
-  if !tcp_ref.internal_write_queue.is_empty() {
+  // Match libuv: return UV_EAGAIN if a connect is in progress or writes are queued.
+  if tcp_ref.internal_connect.is_some()
+    || !tcp_ref.internal_write_queue.is_empty()
+  {
     return UV_EAGAIN;
   }
 
@@ -158,12 +161,8 @@ pub unsafe fn uv_write(
 
     let stream = match tcp_ref.internal_stream.as_ref() {
       Some(s) => s,
-      None => {
-        if let Some(cb) = cb {
-          cb(req, UV_ENOTCONN);
-        }
-        return 0;
-      }
+      // Match libuv: return error code from uv_write, don't invoke callback.
+      None => return UV_EBADF,
     };
 
     if !tcp_ref.internal_write_queue.is_empty() {
@@ -323,36 +322,65 @@ pub unsafe fn uv_shutdown(
     let tcp = stream as *mut uv_tcp_t;
     (*req).handle = stream;
 
-    let status = if let Some(ref stream) = (*tcp).internal_stream {
-      #[cfg(unix)]
-      {
-        use std::os::unix::io::AsRawFd;
-        let fd = stream.as_raw_fd();
-        if libc::shutdown(fd, libc::SHUT_WR) == 0 {
-          0
-        } else {
-          UV_ENOTCONN
-        }
-      }
-      #[cfg(windows)]
-      {
-        use std::os::windows::io::AsRawSocket;
-        let sock = stream.as_raw_socket();
-        if win_sock::shutdown(sock as usize, win_sock::SD_SEND) == 0 {
-          0
-        } else {
-          UV_ENOTCONN
-        }
-      }
-    } else {
-      UV_ENOTCONN
-    };
-
-    if let Some(cb) = cb {
-      cb(req, status);
+    if (*tcp).internal_stream.is_none() {
+      return UV_ENOTCONN;
     }
+
+    // Defer the actual shutdown(2) until the write queue drains,
+    // matching libuv's behavior where shutdown is processed in uv__drain.
+    (*tcp).internal_shutdown =
+      Some(super::tcp::ShutdownPending { req, cb });
+
+    let inner = get_inner((*tcp).loop_);
+    let mut handles = inner.tcp_handles.borrow_mut();
+    if !handles.iter().any(|&h| std::ptr::eq(h, tcp)) {
+      handles.push(tcp);
+    }
+    (*tcp).flags |= UV_HANDLE_ACTIVE;
   }
   0
+}
+
+/// Perform the deferred shutdown(2) syscall and fire the callback.
+///
+/// # Safety
+/// `tcp` must be a valid pointer to an initialized `uv_tcp_t` with
+/// `internal_stream` set and `internal_shutdown` set.
+pub(crate) unsafe fn complete_shutdown(tcp: *mut uv_tcp_t) {
+  // SAFETY: Caller guarantees tcp is valid.
+  let pending = unsafe { (*tcp).internal_shutdown.take() };
+  let Some(pending) = pending else { return };
+
+  let status = if let Some(ref stream) = unsafe { &*tcp }.internal_stream {
+    #[cfg(unix)]
+    {
+      use std::os::unix::io::AsRawFd;
+      let fd = stream.as_raw_fd();
+      // SAFETY: fd is a valid file descriptor from the TcpStream.
+      if unsafe { libc::shutdown(fd, libc::SHUT_WR) } == 0 {
+        0
+      } else {
+        UV_ENOTCONN
+      }
+    }
+    #[cfg(windows)]
+    {
+      use std::os::windows::io::AsRawSocket;
+      let sock = stream.as_raw_socket();
+      if win_sock::shutdown(sock as usize, win_sock::SD_SEND) == 0 {
+        0
+      } else {
+        UV_ENOTCONN
+      }
+    }
+  } else {
+    UV_ENOTCONN
+  };
+
+  if let Some(cb) = pending.cb {
+    // SAFETY: req and cb set by C caller via uv_shutdown.
+    unsafe { cb(pending.req, status) };
+  }
 }
 
 #[cfg(windows)]

@@ -483,6 +483,7 @@ impl UvLoopInner {
       tcp.internal_stream = None;
       tcp.internal_listener = None;
       tcp.internal_backlog.clear();
+      tcp.internal_shutdown = None;
       tcp.flags &= !UV_HANDLE_ACTIVE;
     }
   }
@@ -581,6 +582,9 @@ pub unsafe extern "C" fn uv_timer_start(
 ) -> c_int {
   // SAFETY: Caller guarantees handle was initialized by uv_timer_init.
   unsafe {
+    if (*handle).flags & UV_HANDLE_CLOSING != 0 {
+      return UV_EINVAL;
+    }
     let loop_ = (*handle).loop_;
     let inner = get_inner(loop_);
 
@@ -589,7 +593,8 @@ pub unsafe extern "C" fn uv_timer_start(
     }
 
     let id = inner.alloc_timer_id();
-    let deadline = inner.now_ms() + timeout;
+    let now = inner.now_ms();
+    let deadline = now.saturating_add(timeout);
 
     (*handle).cb = Some(cb);
     (*handle).timeout = timeout;
@@ -631,9 +636,14 @@ pub unsafe extern "C" fn uv_timer_stop(handle: *mut uv_timer_t) -> c_int {
 pub unsafe extern "C" fn uv_timer_again(handle: *mut uv_timer_t) -> c_int {
   // SAFETY: Caller guarantees handle was initialized by uv_timer_init.
   unsafe {
-    let repeat = (*handle).repeat;
-    if repeat == 0 {
+    // Real libuv returns UV_EINVAL if the timer was never started (cb is NULL).
+    if (*handle).cb.is_none() {
       return UV_EINVAL;
+    }
+    let repeat = (*handle).repeat;
+    // When repeat is 0, uv_timer_again is a no-op (returns 0).
+    if repeat == 0 {
+      return 0;
     }
     let loop_ = (*handle).loop_;
     let inner = get_inner(loop_);
@@ -641,7 +651,8 @@ pub unsafe extern "C" fn uv_timer_again(handle: *mut uv_timer_t) -> c_int {
     inner.stop_timer(handle);
 
     let id = inner.alloc_timer_id();
-    let deadline = inner.now_ms() + repeat;
+    let now = inner.now_ms();
+    let deadline = now.saturating_add(repeat);
 
     (*handle).internal_id = id;
     (*handle).internal_deadline = deadline;
@@ -705,8 +716,8 @@ pub unsafe extern "C" fn uv_idle_start(
 ) -> c_int {
   // SAFETY: Caller guarantees handle was initialized by uv_idle_init.
   unsafe {
+    // Match libuv: no-op if already active.
     if (*handle).flags & UV_HANDLE_ACTIVE != 0 {
-      (*handle).cb = Some(cb);
       return 0;
     }
     (*handle).cb = Some(cb);
@@ -763,8 +774,8 @@ pub unsafe extern "C" fn uv_prepare_start(
 ) -> c_int {
   // SAFETY: Caller guarantees handle was initialized by uv_prepare_init.
   unsafe {
+    // Match libuv: no-op if already active.
     if (*handle).flags & UV_HANDLE_ACTIVE != 0 {
-      (*handle).cb = Some(cb);
       return 0;
     }
     (*handle).cb = Some(cb);
@@ -821,8 +832,8 @@ pub unsafe extern "C" fn uv_check_start(
 ) -> c_int {
   // SAFETY: Caller guarantees handle was initialized by uv_check_init.
   unsafe {
+    // Match libuv: no-op if already active.
     if (*handle).flags & UV_HANDLE_ACTIVE != 0 {
-      (*handle).cb = Some(cb);
       return 0;
     }
     (*handle).cb = Some(cb);

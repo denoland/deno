@@ -47,6 +47,8 @@ use crate::uv_compat::uv_handle_type;
 use crate::uv_compat::uv_loop_t;
 use crate::uv_compat::uv_read_cb;
 use crate::uv_compat::uv_stream_t;
+use crate::uv_compat::uv_shutdown_cb;
+use crate::uv_compat::uv_shutdown_t;
 use crate::uv_compat::uv_write_cb;
 use crate::uv_compat::uv_write_t;
 #[cfg(windows)]
@@ -108,6 +110,7 @@ pub struct uv_tcp_t {
   pub(crate) internal_write_queue: VecDeque<WritePending>,
   pub(crate) internal_connection_cb: Option<uv_connection_cb>,
   pub(crate) internal_backlog: VecDeque<tokio::net::TcpStream>,
+  pub(crate) internal_shutdown: Option<ShutdownPending>,
 }
 
 /// In-flight TCP connect operation.
@@ -135,6 +138,38 @@ pub(crate) struct WritePending {
   pub(crate) data: Vec<u8>,
   pub(crate) offset: usize,
   pub(crate) cb: Option<uv_write_cb>,
+}
+
+/// Pending shutdown request, deferred until the write queue drains.
+///
+/// # Safety
+/// `req` is a raw pointer to a caller-owned `uv_shutdown_t`. The caller must
+/// ensure it remains valid until the shutdown callback fires.
+pub(crate) struct ShutdownPending {
+  pub(crate) req: *mut uv_shutdown_t,
+  pub(crate) cb: Option<uv_shutdown_cb>,
+}
+
+/// Map a `std::io::Error` to the closest libuv error code.
+fn io_error_to_uv(err: &std::io::Error) -> c_int {
+  use std::io::ErrorKind;
+  match err.kind() {
+    ErrorKind::AddrInUse => UV_EADDRINUSE,
+    ErrorKind::AddrNotAvailable => UV_EINVAL,
+    ErrorKind::ConnectionRefused => UV_ECONNREFUSED,
+    ErrorKind::NotConnected => UV_ENOTCONN,
+    ErrorKind::BrokenPipe => UV_EPIPE,
+    ErrorKind::InvalidInput => UV_EINVAL,
+    ErrorKind::WouldBlock => UV_EAGAIN,
+    _ => {
+      // On Unix, try to use the raw OS error for a more accurate mapping.
+      #[cfg(unix)]
+      if let Some(code) = err.raw_os_error() {
+        return -code;
+      }
+      UV_EINVAL
+    }
+  }
 }
 
 /// ### Safety
@@ -223,6 +258,7 @@ pub unsafe fn uv_tcp_init(loop_: *mut uv_loop_t, tcp: *mut uv_tcp_t) -> c_int {
     write(addr_of_mut!((*tcp).internal_write_queue), VecDeque::new());
     write(addr_of_mut!((*tcp).internal_connection_cb), None);
     write(addr_of_mut!((*tcp).internal_backlog), VecDeque::new());
+    write(addr_of_mut!((*tcp).internal_shutdown), None);
   }
   0
 }
@@ -467,7 +503,7 @@ pub unsafe fn uv_listen(
 
     let std_listener = match std::net::TcpListener::bind(bind_addr) {
       Ok(l) => l,
-      Err(_) => return UV_EADDRINUSE,
+      Err(ref e) => return io_error_to_uv(e),
     };
     std_listener.set_nonblocking(true).ok();
     let listener_addr = std_listener.local_addr().ok();
@@ -533,6 +569,7 @@ pub fn new_tcp() -> uv_tcp_t {
     internal_write_queue: VecDeque::new(),
     internal_connection_cb: None,
     internal_backlog: VecDeque::new(),
+    internal_shutdown: None,
   }
 }
 
@@ -563,7 +600,7 @@ pub(crate) unsafe fn poll_tcp_handle(
         tcp.internal_stream = Some(stream);
         0
       }
-      Err(_) => UV_ECONNREFUSED,
+      Err(ref e) => io_error_to_uv(e),
     };
     tcp.internal_connect = None;
     // SAFETY: req pointer was provided by the C caller and remains valid until callback.
@@ -576,24 +613,27 @@ pub(crate) unsafe fn poll_tcp_handle(
     }
   }
 
-  // 2. Poll listener for new connections
+  // 2. Poll listener for new connections.
+  // Match libuv: accept one connection at a time. Only poll for a new
+  // connection when the backlog is empty (i.e., the previous connection
+  // was consumed via uv_accept). If the user doesn't call uv_accept in
+  // the callback, we stop polling to avoid spinning.
   if let Some(ref listener) = tcp.internal_listener
     && tcp.internal_connection_cb.is_some()
   {
-    while let Poll::Ready(Ok((stream, _))) = listener.poll_accept(cx) {
-      tcp.internal_backlog.push_back(stream);
-      any_work = true;
+    if tcp.internal_backlog.is_empty() {
+      if let Poll::Ready(Ok((stream, _))) = listener.poll_accept(cx) {
+        tcp.internal_backlog.push_back(stream);
+        any_work = true;
+      }
     }
-    while !tcp.internal_backlog.is_empty() {
+    if !tcp.internal_backlog.is_empty() {
       if let Some(cb) = tcp.internal_connection_cb {
         // SAFETY: tcp_ptr is valid; cb set by C caller via uv_listen.
         unsafe { cb(tcp_ptr as *mut uv_stream_t, 0) };
       }
-      // If uv_accept wasn't called in the callback, stop
-      // to avoid an infinite loop.
-      if !tcp.internal_backlog.is_empty() {
-        break;
-      }
+      // If uv_accept wasn't called in the callback (backlog still
+      // non-empty), don't poll again until it is consumed.
     }
   }
 
@@ -702,6 +742,16 @@ pub(crate) unsafe fn poll_tcp_handle(
         break; // WouldBlock -- retry next tick
       }
     }
+  }
+
+  // 5. Complete deferred shutdown once write queue is drained
+  if tcp.internal_write_queue.is_empty()
+    && tcp.internal_shutdown.is_some()
+    && tcp.internal_stream.is_some()
+  {
+    // SAFETY: tcp_ptr is valid; complete_shutdown is safe when stream and shutdown are set.
+    unsafe { crate::uv_compat::stream::complete_shutdown(tcp_ptr) };
+    any_work = true;
   }
 
   any_work
