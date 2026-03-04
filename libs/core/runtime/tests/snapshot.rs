@@ -76,10 +76,8 @@ fn test_snapshot_callbacks() {
       .execute_script(
         "a.js",
         r#"
-        Deno.core.queueNextTick({
-          callback: () => {},
-          args: undefined,
-          snapshot: undefined,
+        Deno.core.setMacrotaskCallback(() => {
+          return true;
         });
         Deno.core.ops.op_set_format_exception_callback(()=> {
           return null;

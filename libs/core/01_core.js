@@ -36,7 +36,6 @@
     __isLeakTracingEnabled,
     __initializeCoreMethods,
     __resolvePromise,
-    FixedQueue,
   } = window.__infra;
   const {
     op_abort_wasm_streaming,
@@ -55,7 +54,7 @@
     op_get_promise_details,
     op_get_proxy_details,
     op_get_ext_import_meta_proto,
-    op_drain_pending_rejections,
+    op_has_tick_scheduled,
     op_lazy_load_esm,
     op_memory_usage,
     op_op_names,
@@ -67,6 +66,7 @@
     op_serialize,
     op_add_main_module_handler,
     op_set_handled_promise_rejection_handler,
+    op_set_has_tick_scheduled,
     op_set_promise_hooks,
     op_set_wasm_streaming_callback,
     op_str_byte_length,
@@ -142,282 +142,20 @@
   let unhandledPromiseRejectionHandler = () => false;
   let timerDepth = 0;
 
-  // ---------------------------------------------------------------------------
-  // Immediate queue (ImmediateList linked list + drain loop)
-  // ---------------------------------------------------------------------------
-  class ImmediateList {
-    constructor() {
-      this.head = null;
-      this.tail = null;
-    }
-    append(item) {
-      if (this.tail !== null) {
-        this.tail._idleNext = item;
-        item._idlePrev = this.tail;
-      } else {
-        this.head = item;
-      }
-      this.tail = item;
-    }
-    remove(item) {
-      if (item._idleNext) {
-        item._idleNext._idlePrev = item._idlePrev;
-      }
-      if (item._idlePrev) {
-        item._idlePrev._idleNext = item._idleNext;
-      }
-      if (item === this.head) {
-        this.head = item._idleNext;
-      }
-      if (item === this.tail) {
-        this.tail = item._idlePrev;
-      }
-      item._idleNext = null;
-      item._idlePrev = null;
-    }
+  const macrotaskCallbacks = [];
+  const nextTickCallbacks = [];
+  const immediateCallbacks = [];
+
+  function setMacrotaskCallback(cb) {
+    ArrayPrototypePush(macrotaskCallbacks, cb);
   }
 
-  const immediateQueue = new ImmediateList();
-  const outstandingQueue = new ImmediateList();
-
-  // Shared buffer with Rust - avoids JS-to-Rust op calls for immediate info.
-  // Indices: 0 = count, 1 = ref_count, 2 = has_outstanding
-  const kImmCount = 0;
-  const kImmRefCount = 1;
-  const kImmHasOutstanding = 2;
-  const kRefed = Symbol("refed");
-  let immediateInfo;
-
-  function queueImmediate(immediate) {
-    immediateInfo[kImmCount]++;
-    immediateQueue.append(immediate);
+  function setNextTickCallback(cb) {
+    ArrayPrototypePush(nextTickCallbacks, cb);
   }
 
-  function clearImmediate(immediate) {
-    if (!immediate || immediate._destroyed) {
-      return;
-    }
-    immediateInfo[kImmCount]--;
-    immediate._destroyed = true;
-    if (immediate[kRefed]) {
-      immediateInfo[kImmRefCount]--;
-    }
-    immediate[kRefed] = null;
-    immediate._onImmediate = null;
-    immediateQueue.remove(immediate);
-  }
-
-  function runImmediates() {
-    const queue = outstandingQueue.head !== null
-      ? outstandingQueue
-      : immediateQueue;
-    let immediate = queue.head;
-    if (queue !== outstandingQueue) {
-      queue.head = queue.tail = null;
-      immediateInfo[kImmHasOutstanding] = 1;
-    }
-
-    let prevImmediate;
-    let ranAtLeastOneImmediate = false;
-    while (immediate !== null) {
-      if (ranAtLeastOneImmediate) {
-        runNextTicks();
-      } else {
-        ranAtLeastOneImmediate = true;
-      }
-
-      if (immediate._destroyed) {
-        outstandingQueue.head = immediate = prevImmediate._idleNext;
-        continue;
-      }
-
-      immediate._destroyed = true;
-
-      immediateInfo[kImmCount]--;
-      if (immediate[kRefed]) {
-        immediateInfo[kImmRefCount]--;
-      }
-      immediate[kRefed] = null;
-
-      prevImmediate = immediate;
-
-      const asyncId = immediate.asyncId;
-      emitBefore(asyncId, immediate.triggerAsyncId, immediate);
-
-      try {
-        const argv = immediate._argv;
-        if (!argv) {
-          immediate._onImmediate();
-        } else {
-          immediate._onImmediate(...argv);
-        }
-      } finally {
-        immediate._onImmediate = null;
-        emitDestroy(asyncId);
-        outstandingQueue.head = immediate = immediate._idleNext;
-      }
-
-      emitAfter(asyncId);
-    }
-
-    if (queue === outstandingQueue) {
-      outstandingQueue.head = null;
-    }
-
-    immediateInfo[kImmHasOutstanding] = 0;
-  }
-
-  // ---------------------------------------------------------------------------
-  // NextTick queue
-  //
-  // Closely mirrors Node.js lib/internal/process/task_queues.js.
-  // The queue and drain loop live here in core; Node-specific concerns
-  // (validation, async hooks init, exit check) stay in ext/node/.
-  // ---------------------------------------------------------------------------
-  const queue = new FixedQueue();
-
-  // Async hook emit functions. Default to no-ops; ext/node/ replaces them
-  // at bootstrap via setAsyncHooksEmit() with the real implementations
-  // from async_hooks.ts (emitBefore, emitAfter, emitDestroy).
-  let emitBefore = (_asyncId, _triggerAsyncId, _resource) => {};
-  let emitAfter = (_asyncId) => {};
-  let emitDestroy = (_asyncId) => {};
-
-  function setAsyncHooksEmit(before, after, destroy) {
-    emitBefore = before;
-    emitAfter = after;
-    emitDestroy = destroy;
-  }
-
-  // Shared buffer with Rust - avoids JS-to-Rust op calls for tick scheduling.
-  // Index 0: hasTickScheduled
-  // Index 1: hasRejectionToWarn (set by Rust in promise_reject_callback)
-  // Set by Rust during store_js_callbacks via Deno.core.__tickInfo.
-  const kHasTickScheduled = 0;
-  const kHasRejectionToWarn = 1;
-  let tickInfo;
-
-  function hasTickScheduled() {
-    return tickInfo[kHasTickScheduled] === 1;
-  }
-
-  function hasRejectionToWarn() {
-    return tickInfo[kHasRejectionToWarn] === 1;
-  }
-
-  function setHasRejectionToWarn(value) {
-    tickInfo[kHasRejectionToWarn] = value ? 1 : 0;
-  }
-
-  function setHasTickScheduled(value) {
-    tickInfo[kHasTickScheduled] = value ? 1 : 0;
-  }
-
-  // Enqueue a tick object. The object must have { callback, args } and
-  // an async context snapshot. It may contain additional fields for
-  // async hooks (asyncId, triggerAsyncId).
-  function queueNextTick(tickObject) {
-    if (queue.isEmpty()) {
-      setHasTickScheduled(true);
-    }
-    queue.push(tickObject);
-  }
-
-  // Drain pending promise rejections from the Rust-side queue and process
-  // them through the unhandledPromiseRejectionHandler. Returns true if any
-  // rejections were processed (matching Node.js processPromiseRejections).
-  function processPromiseRejections() {
-    tickInfo[kHasRejectionToWarn] = 0;
-    const rejections = op_drain_pending_rejections();
-    if (rejections === undefined) {
-      return false;
-    }
-    for (let i = 0; i < rejections.length; i += 3) {
-      const prevContext = getAsyncContext();
-      setAsyncContext(rejections[i + 2]);
-      try {
-        const handled = unhandledPromiseRejectionHandler(
-          rejections[i],
-          rejections[i + 1],
-        );
-        if (!handled) {
-          const err = rejections[i + 1];
-          op_dispatch_exception(err, true);
-        }
-      } finally {
-        setAsyncContext(prevContext);
-      }
-    }
-    return true;
-  }
-
-  // Matches Node.js processTicksAndRejections() from
-  // lib/internal/process/task_queues.js
-  function processTicksAndRejections() {
-    let tock;
-    do {
-      // deno-lint-ignore no-cond-assign
-      while ((tock = queue.shift()) !== null) {
-        const oldContext = getAsyncContext();
-        setAsyncContext(tock.snapshot);
-
-        const asyncId = tock.asyncId;
-        emitBefore(asyncId, tock.triggerAsyncId, tock);
-
-        try {
-          const callback = tock.callback;
-          if (tock.args === undefined) {
-            callback();
-          } else {
-            const args = tock.args;
-            switch (args.length) {
-              case 1:
-                callback(args[0]);
-                break;
-              case 2:
-                callback(args[0], args[1]);
-                break;
-              case 3:
-                callback(args[0], args[1], args[2]);
-                break;
-              case 4:
-                callback(args[0], args[1], args[2], args[3]);
-                break;
-              default:
-                callback(...args);
-            }
-          }
-          emitAfter(asyncId);
-        } catch (e) {
-          // In Node.js, errors propagate from JS to C++ (TryCatch in
-          // node_task_queue.cc InternalCallbackScope::Close), which calls
-          // TriggerUncaughtException and then re-enters the drain loop.
-          // We approximate this by catching here and routing through
-          // reportExceptionCallback (which triggers uncaughtException),
-          // then continuing the drain loop.
-          reportExceptionCallback(e);
-        } finally {
-          emitDestroy(asyncId);
-        }
-
-        setAsyncContext(oldContext);
-      }
-      op_run_microtasks();
-    } while (!queue.isEmpty() || processPromiseRejections());
-    setHasTickScheduled(false);
-    setHasRejectionToWarn(false);
-  }
-
-  // Matches Node.js runNextTicks() from
-  // lib/internal/process/task_queues.js
-  function runNextTicks() {
-    if (!hasTickScheduled() && !hasRejectionToWarn()) {
-      op_run_microtasks();
-    }
-    if (!hasTickScheduled() && !hasRejectionToWarn()) {
-      return;
-    }
-    processTicksAndRejections();
+  function setImmediateCallback(cb) {
+    ArrayPrototypePush(immediateCallbacks, cb);
   }
 
   // Phase 2: Resolve completed async ops. Called from Rust with flat args:
@@ -431,17 +169,38 @@
     }
   }
 
-  // Matches Node.js runNextTicks() from
-  // lib/internal/process/task_queues.js.
-  // Called from Rust at phase 2c of the event loop.
-  function __drainNextTickAndMacrotasks() {
-    if (!hasTickScheduled() && !hasRejectionToWarn()) {
+  // Phase 5: Drain nextTick queue and macrotask queue.
+  // Called from Rust. hasTickScheduled indicates if nextTick was scheduled.
+  function __drainNextTickAndMacrotasks(hasTickScheduled) {
+    // Drain nextTick queue if there's a tick scheduled.
+    if (hasTickScheduled) {
+      for (let i = 0; i < nextTickCallbacks.length; i++) {
+        nextTickCallbacks[i]();
+      }
+    } else {
       op_run_microtasks();
     }
-    if (!hasTickScheduled() && !hasRejectionToWarn()) {
-      return;
+
+    // Drain macrotask queue.
+    for (let i = 0; i < macrotaskCallbacks.length; i++) {
+      const cb = macrotaskCallbacks[i];
+      while (true) {
+        const res = cb();
+
+        // If callback returned `undefined` then it has no work to do, we don't
+        // need to perform microtask checkpoint.
+        if (res === undefined) {
+          break;
+        }
+
+        op_run_microtasks();
+        // If callback returned `true` then it has no more work to do, stop
+        // calling it then.
+        if (res === true) {
+          break;
+        }
+      }
     }
-    processTicksAndRejections();
   }
 
   // Phase 2: Handle unhandled promise rejections.
@@ -479,10 +238,12 @@
   }
 
   function runImmediateCallbacks() {
-    try {
-      runImmediates();
-    } catch (e) {
-      reportExceptionCallback(e);
+    for (let i = 0; i < immediateCallbacks.length; i++) {
+      try {
+        immediateCallbacks[i]();
+      } catch (e) {
+        reportExceptionCallback(e);
+      }
     }
   }
 
@@ -910,23 +671,10 @@
     internalFdSymbol: Symbol("Deno.internal.fd"),
     resources,
     __resolveOps,
-    __setTickInfo(buf) {
-      tickInfo = buf;
-    },
-    __setImmediateInfo(buf) {
-      immediateInfo = buf;
-    },
     __drainNextTickAndMacrotasks,
     __handleRejections,
     __setTimerDepth,
     __reportException,
-    immediateRefCount(increase) {
-      if (increase) {
-        immediateInfo[kImmRefCount]++;
-      } else {
-        immediateInfo[kImmRefCount]--;
-      }
-    },
     runImmediateCallbacks,
     BadResource,
     BadResourcePrototype,
@@ -962,18 +710,12 @@
     },
     getLeakTraceForPromise: (promise) =>
       op_leak_tracing_get(0, promise[promiseIdSymbol]),
-    queueNextTick,
-    processTicksAndRejections,
-    runNextTicks,
-    setAsyncHooksEmit,
-    queueImmediate,
-    clearImmediate,
-    runImmediates,
-    immediateQueue,
-    kRefed,
+    setMacrotaskCallback,
+    setNextTickCallback,
+    setImmediateCallback,
     runMicrotasks: () => op_run_microtasks(),
-    hasTickScheduled,
-    setHasTickScheduled,
+    hasTickScheduled: () => op_has_tick_scheduled(),
+    setHasTickScheduled: (bool) => op_set_has_tick_scheduled(bool),
     compileFunction: (
       source,
       specifier,
