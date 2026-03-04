@@ -18996,7 +18996,7 @@ fn compiler_options_types(use_tsgo: bool) {
 
     let diagnostics = client.did_open_file(&source);
     eprintln!("{:#?}", diagnostics.all());
-    assert_eq!(diagnostics.all().len(), 0);
+    assert_eq!(json!(diagnostics.all()), json!([]));
     client.did_close_file(&source);
   }
 }
@@ -19069,7 +19069,7 @@ fn type_reference_import_meta(use_tsgo: bool) {
     client.read_diagnostics();
 
     let diagnostics = client.did_open_file(&source);
-    assert_eq!(diagnostics.all().len(), 0);
+    assert_eq!(json!(diagnostics.all()), json!([]));
     client.did_close_file(&source);
   }
 }
