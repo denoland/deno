@@ -19,6 +19,7 @@ use deno_lint::diagnostic::LintDocsUrl;
 use crate::util::fs::specifier_from_file_path;
 
 pub const OXLINT_VERSION: &str = "1.51.0";
+pub const TSGOLINT_VERSION: &str = "0.16.0";
 
 // oxlint JSON output format
 #[derive(Deserialize)]
@@ -84,6 +85,40 @@ pub fn run_oxlint(
   // Enable plugins for broader rule coverage
   cmd.arg("--react-plugin");
   cmd.arg("--jsx-a11y-plugin");
+
+  // Enable type-aware rules if tsconfig.json is found and tsgolint is available
+  let tsconfig = find_config_file(cwd, "tsconfig.json").or_else(|| {
+    files
+      .first()
+      .and_then(|f| f.parent())
+      .and_then(|dir| find_config_file(dir, "tsconfig.json"))
+  });
+  if tsconfig.is_some() {
+    // Resolve the tsgolint binary path by asking deno to locate the npm bin
+    let tsgolint_resolve = Command::new(&deno_bin)
+      .arg("eval")
+      .arg("--no-config")
+      .arg(format!(
+        "import 'npm:oxlint-tsgolint@{}'; \
+         // just triggers the download/cache",
+        TSGOLINT_VERSION
+      ))
+      .output();
+
+    // Find the tsgolint binary in the npm cache and add to PATH
+    if let Ok(tsgolint_bin) = resolve_tsgolint_bin(&deno_bin) {
+      if let Some(bin_dir) = tsgolint_bin.parent() {
+        let current_path =
+          std::env::var("PATH").unwrap_or_default();
+        let new_path =
+          format!("{}:{}", bin_dir.display(), current_path);
+        cmd.env("PATH", new_path);
+      }
+      // Suppress the "not found" warning even if it ends up missing
+      let _ = tsgolint_resolve;
+      cmd.arg("--type-aware");
+    }
+  }
 
   cmd.args(files);
 
@@ -189,6 +224,81 @@ fn map_to_lint_diagnostic(
       info: vec![],
     },
   })
+}
+
+/// Resolve the tsgolint native binary from the Deno npm cache.
+/// First ensures the package is cached, then locates the platform binary.
+fn resolve_tsgolint_bin(deno_bin: &Path) -> Result<PathBuf, AnyError> {
+  // Ensure tsgolint is cached by running `deno cache`
+  let _ = Command::new(deno_bin)
+    .arg("cache")
+    .arg("--no-config")
+    .arg(format!("npm:oxlint-tsgolint@{}", TSGOLINT_VERSION))
+    .output();
+
+  // Get npm cache location from `deno info --json`
+  let info_output = Command::new(deno_bin)
+    .arg("info")
+    .arg("--no-config")
+    .arg("--json")
+    .output()
+    .context("failed to run deno info")?;
+
+  #[derive(Deserialize)]
+  struct DenoInfo {
+    #[serde(rename = "npmCache")]
+    npm_cache: Option<String>,
+  }
+
+  let info: DenoInfo =
+    deno_core::serde_json::from_slice(&info_output.stdout)
+      .context("failed to parse deno info output")?;
+
+  let npm_cache = info
+    .npm_cache
+    .ok_or_else(|| deno_core::anyhow::anyhow!("npmCache not found in deno info"))?;
+
+  let platform_pkg = tsgolint_platform_package_short();
+  let bin_name = if cfg!(target_os = "windows") {
+    "tsgolint.exe"
+  } else {
+    "tsgolint"
+  };
+
+  let candidate = PathBuf::from(&npm_cache)
+    .join("registry.npmjs.org")
+    .join(&platform_pkg)
+    .join(TSGOLINT_VERSION)
+    .join(bin_name);
+
+  if candidate.exists() {
+    Ok(candidate)
+  } else {
+    Err(deno_core::anyhow::anyhow!(
+      "tsgolint binary not found at {}",
+      candidate.display()
+    ))
+  }
+}
+
+fn tsgolint_platform_package_short() -> String {
+  let os = if cfg!(target_os = "macos") {
+    "darwin"
+  } else if cfg!(target_os = "linux") {
+    "linux"
+  } else if cfg!(target_os = "windows") {
+    "win32"
+  } else {
+    "unknown"
+  };
+  let arch = if cfg!(target_arch = "aarch64") {
+    "arm64"
+  } else if cfg!(target_arch = "x86_64") {
+    "x64"
+  } else {
+    "unknown"
+  };
+  format!("@oxlint-tsgolint/{}-{}", os, arch)
 }
 
 /// Walk up from `start` looking for a file named `name`.

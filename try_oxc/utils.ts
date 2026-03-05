@@ -38,3 +38,17 @@ export function groupBy<T>(items: T[], key: keyof T): Record<string, T[]> {
 
 export const ROLES = ["admin", "user", "guest"] as const;
 export type Role = (typeof ROLES)[number];
+
+// --- Type-aware lint demos ---
+// These trigger rules that require TypeScript type information.
+
+// no-floating-promises: Promise result is ignored (should be awaited or handled)
+export function loadUsers() {
+  fetchJSON("/api/users");
+}
+
+// await-thenable: Awaiting a non-Promise value is pointless
+export async function getRole(): Promise<Role> {
+  const role: Role = "admin";
+  return await role;
+}
