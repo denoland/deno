@@ -1,0 +1,202 @@
+#!/usr/bin/env -S deno run --allow-all
+// Copyright 2018-2026 the Deno authors. MIT license.
+
+// deno-lint-ignore-file no-console
+
+/**
+ * ez.ts - Developer CLI for contributing to Deno
+ *
+ * Inspired by Servo's mach tool, this script provides a unified
+ * interface for common development tasks like building, testing, and more.
+ *
+ * Usage:
+ *   ./ez.ts <command> [options]
+ *
+ * Run `./ez.ts --help` for more information.
+ */
+
+import $ from "jsr:@david/dax@^0.42.0";
+
+const root = $.path(import.meta.dirname!);
+
+// ---------------------------------------------------------------------------
+// Commands
+// ---------------------------------------------------------------------------
+
+async function setup() {
+  $.logStep("Setting up development environment...");
+  $.logStep("Building test_server...");
+  await $`cargo build --bin test_server`.cwd(root);
+  $.logStep("Setup complete.");
+}
+
+async function build() {
+  $.logStep("Building Deno...");
+  await $`cargo build --bin deno`.cwd(root);
+  $.logStep("Build complete.");
+}
+
+async function testUnit() {
+  $.logStep("Running unit tests...");
+  await $`cargo test -p unit_tests --test unit`.cwd(root);
+  $.logStep("Unit tests complete.");
+}
+
+async function testNodeUnit() {
+  $.logStep("Running Node.js unit tests...");
+  await $`cargo test -p unit_node_tests --test unit_node`.cwd(root);
+  $.logStep("Node.js unit tests complete.");
+}
+
+async function testNodeCompat() {
+  $.logStep("Running Node.js compatibility tests...");
+  await $`deno task --cwd tests/node_compat/runner test`.cwd(root);
+  $.logStep("Node.js compatibility tests complete.");
+}
+
+async function testSpec() {
+  $.logStep("Running spec tests...");
+  await $`cargo test -p specs_tests --test specs`.cwd(root);
+  $.logStep("Spec tests complete.");
+}
+
+async function fmt() {
+  $.logStep("Formatting code...");
+  await $`deno run -A tools/format.js`.cwd(root);
+  $.logStep("Formatting complete.");
+}
+
+async function lint() {
+  $.logStep("Linting code...");
+  await $`deno run -A tools/lint.js`.cwd(root);
+  $.logStep("Linting complete.");
+}
+
+async function lintJs() {
+  $.logStep("Linting JavaScript/TypeScript...");
+  await $`deno run -A tools/lint.js --js`.cwd(root);
+  $.logStep("JS lint complete.");
+}
+
+async function aiVerify() {
+  $.logStep("Running AI agents verification (pre-commit)...");
+  await fmt();
+  await lintJs();
+  $.logStep("AI agents verification complete.");
+}
+
+// ---------------------------------------------------------------------------
+// Command registry
+// ---------------------------------------------------------------------------
+
+const COMMANDS: Record<
+  string,
+  { description: string; fn: () => Promise<void> }
+> = {
+  "setup": {
+    description: "Initial setup: build deno, denort, and test_server",
+    fn: setup,
+  },
+  "build": {
+    description: "Build deno and denort binaries",
+    fn: build,
+  },
+  "test-unit": {
+    description: "Run unit tests (cargo test -p unit_tests)",
+    fn: testUnit,
+  },
+  "test-node": {
+    description: "Run Node.js unit tests",
+    fn: testNodeUnit,
+  },
+  "test-compat": {
+    description: "Run Node.js compatibility tests",
+    fn: testNodeCompat,
+  },
+  "test-spec": {
+    description: "Run spec (integration) tests",
+    fn: testSpec,
+  },
+  "fmt": {
+    description: "Format the code (dprint)",
+    fn: fmt,
+  },
+  "lint": {
+    description: "Lint code (JS + Rust)",
+    fn: lint,
+  },
+  "lint-js": {
+    description: "Lint JavaScript/TypeScript only",
+    fn: lintJs,
+  },
+  "ai-verify": {
+    description: "Pre-commit checks for AI agents (fmt + lint-js)",
+    fn: aiVerify,
+  },
+};
+
+// ---------------------------------------------------------------------------
+// CLI
+// ---------------------------------------------------------------------------
+
+const BOLD = "\x1b[1m";
+const RESET = "\x1b[0m";
+const GREEN = "\x1b[32m";
+const CYAN = "\x1b[36m";
+const DIM = "\x1b[2m";
+const YELLOW = "\x1b[33m";
+
+function printHelp() {
+  console.log();
+  console.log(
+    `  ${BOLD}${CYAN}ez.ts${RESET} ${DIM}-${RESET} Developer CLI for contributing to Deno`,
+  );
+  console.log();
+  console.log(`  ${BOLD}USAGE${RESET}`);
+  console.log(
+    `    ${DIM}$${RESET} ./ez.ts ${GREEN}build${RESET}          ${DIM}# build the deno binary${RESET}`,
+  );
+  console.log(
+    `    ${DIM}$${RESET} ./ez.ts ${GREEN}test-spec${RESET}      ${DIM}# run spec integration tests${RESET}`,
+  );
+  console.log(
+    `    ${DIM}$${RESET} ./ez.ts ${GREEN}fmt${RESET}            ${DIM}# format the codebase${RESET}`,
+  );
+  console.log();
+  console.log(`  ${BOLD}COMMANDS${RESET}`);
+  for (const [name, cmd] of Object.entries(COMMANDS)) {
+    console.log(`    ${GREEN}${name.padEnd(20)}${RESET} ${cmd.description}`);
+  }
+  console.log();
+  console.log(`  ${BOLD}OPTIONS${RESET}`);
+  console.log(
+    `    ${YELLOW}--help, -h${RESET}           Show this help message`,
+  );
+  console.log();
+}
+
+async function main() {
+  const args = Deno.args;
+
+  if (
+    args.length === 0 || args[0] === "--help" || args[0] === "-h" ||
+    args[0] === "help"
+  ) {
+    printHelp();
+    return;
+  }
+
+  const subcommand = args[0];
+  const cmd = COMMANDS[subcommand];
+
+  if (!cmd) {
+    $.logError(`Unknown command '${subcommand}'.`);
+    console.log();
+    printHelp();
+    Deno.exit(1);
+  }
+
+  await cmd.fn();
+}
+
+await main();
