@@ -1880,8 +1880,9 @@ impl ConfigTree {
     file_fetcher: &Arc<CliFileFetcher>,
     http_client_provider: &Arc<HttpClientProvider>,
     deno_dir: &DenoDir,
+    reason: &str,
   ) {
-    lsp_log!("Refreshing configuration tree...");
+    lsp_log!("Refreshing configuration tree ({reason})...");
     // since we're resolving a workspace multiple times in different
     // folders, we want to cache all the lookups and config files across
     // ConfigData::load calls
