@@ -38,12 +38,36 @@ pub fn unregister_isolate_waker(isolate_ptr: usize) {
   map.remove(&isolate_ptr);
 }
 
-/// C callback invoked by NotifyingPlatform when a foreground task is posted.
+/// Callback invoked by NotifyingPlatform when a foreground task is posted.
 /// This is called from ANY thread (including V8 background threads).
-unsafe extern "C" fn on_foreground_task_posted(isolate_ptr: *mut c_void) {
-  let map = ISOLATE_WAKERS.lock().unwrap();
-  if let Some(waker) = map.get(&(isolate_ptr as usize)) {
-    waker.wake();
+/// For delayed tasks, spawns a thread to wake after the delay expires.
+struct DenoForegroundTaskCallback;
+
+impl v8::ForegroundTaskCallback for DenoForegroundTaskCallback {
+  fn on_foreground_task_posted(
+    &self,
+    isolate_ptr: *mut c_void,
+    delay_in_seconds: f64,
+  ) {
+    if delay_in_seconds <= 0.0 {
+      // Immediate task — wake the event loop now.
+      let map = ISOLATE_WAKERS.lock().unwrap();
+      if let Some(waker) = map.get(&(isolate_ptr as usize)) {
+        waker.wake();
+      }
+    } else {
+      // Delayed task — schedule a wake-up after the delay expires.
+      let key = isolate_ptr as usize;
+      std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_secs_f64(
+          delay_in_seconds,
+        ));
+        let map = ISOLATE_WAKERS.lock().unwrap();
+        if let Some(waker) = map.get(&key) {
+          waker.wake();
+        }
+      });
+    }
   }
 }
 
@@ -92,7 +116,7 @@ fn v8_init(
     // threads post foreground tasks. NotifyingPlatform already disables
     // thread-isolated allocations (like UnprotectedDefaultPlatform), so
     // it's safe for both tests and production.
-    v8::new_notifying_platform(0, false, on_foreground_task_posted)
+    v8::new_notifying_platform(0, false, DenoForegroundTaskCallback)
       .make_shared()
   });
   v8::V8::initialize_platform(v8_platform.clone());

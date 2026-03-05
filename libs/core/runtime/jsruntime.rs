@@ -180,7 +180,10 @@ impl InnerIsolateState {
 
     // Unregister isolate waker before dropping the isolate
     let isolate_ptr = unsafe { self.v8_isolate.as_raw_isolate_ptr() };
-    setup::unregister_isolate_waker(isolate_ptr as *const _ as usize);
+    // SAFETY: UnsafeRawIsolatePtr is a newtype over *mut RealIsolate.
+    setup::unregister_isolate_waker(unsafe {
+      std::mem::transmute::<_, usize>(isolate_ptr)
+    });
 
     let state_ptr = self.v8_isolate.get_data(STATE_DATA_OFFSET);
     // SAFETY: We are sure that it's a valid pointer for whole lifetime of
@@ -841,10 +844,10 @@ impl JsRuntime {
 
     // Register this isolate's waker so the NotifyingPlatform can wake
     // the event loop when V8 posts foreground tasks from background threads.
-    // UnsafeRawIsolatePtr is repr(transparent) over *mut RealIsolate —
+    // SAFETY: UnsafeRawIsolatePtr is a newtype over *mut RealIsolate —
     // same pointer value the C++ callback receives as void*.
     setup::register_isolate_waker(
-      isolate_ptr as *const _ as usize,
+      unsafe { std::mem::transmute::<_, usize>(isolate_ptr) },
       waker.clone(),
     );
 
