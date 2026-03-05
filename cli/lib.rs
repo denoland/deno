@@ -791,12 +791,20 @@ async fn resolve_flags_and_init(
     );
   }
 
-  if let Ok(audit_path) = std::env::var("DENO_AUDIT_PERMISSIONS") {
-    let audit_file = deno_runtime::deno_permissions::AUDIT_FILE.set(
-      deno_core::parking_lot::Mutex::new(std::fs::File::create(audit_path)?),
-    );
-    if audit_file.is_err() {
-      log::warn!("⚠️  {}", colors::yellow("Audit file is already set"));
+  if let Ok(audit_target) = std::env::var("DENO_AUDIT_PERMISSIONS") {
+    use deno_runtime::deno_permissions::AuditSink;
+
+    let sink = if audit_target == "otel" {
+      AuditSink::Otel(deno_telemetry::report_permission_audit)
+    } else {
+      AuditSink::File(deno_core::parking_lot::Mutex::new(
+        std::fs::File::create(audit_target)?,
+      ))
+    };
+
+    let result = deno_runtime::deno_permissions::AUDIT_SINK.set(sink);
+    if result.is_err() {
+      log::warn!("⚠️  {}", colors::yellow("Audit sink is already set"));
     }
   }
 

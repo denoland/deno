@@ -55,7 +55,15 @@ pub enum BrokerResponse {
 use self::broker::has_broker;
 use self::broker::maybe_check_with_broker;
 
-pub static AUDIT_FILE: OnceLock<Mutex<std::fs::File>> = OnceLock::new();
+pub type OtelAuditFn =
+  fn(permission: &str, value: &str, outcome: &str, stack: Option<&[String]>);
+
+pub enum AuditSink {
+  File(Mutex<std::fs::File>),
+  Otel(OtelAuditFn),
+}
+
+pub static AUDIT_SINK: OnceLock<AuditSink> = OnceLock::new();
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 #[error("{}", custom_message.as_ref().cloned().unwrap_or_else(|| format!("Requires {access}, {}", format_permission_error(.name))))]
@@ -77,45 +85,68 @@ fn format_permission_error(name: &'static str) -> String {
   }
 }
 
-fn write_audit<T>(flag_name: &str, value: T)
+fn write_audit<T>(flag_name: &str, value: T, outcome: &str)
 where
   T: Serialize,
 {
-  let Some(file) = AUDIT_FILE.get() else {
+  let Some(sink) = AUDIT_SINK.get() else {
     return;
   };
 
-  let mut file = file.lock();
-
-  let mut map = serde_json::Map::with_capacity(5);
-  let _ = map.insert("v".into(), serde_json::Value::Number(1.into()));
-  let _ = map.insert(
-    "datetime".into(),
-    serde_json::Value::String(
-      chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
-    ),
-  );
-  let _ = map.insert(
-    "permission".into(),
-    serde_json::to_value(flag_name).unwrap(),
-  );
-  let _ = map.insert("value".into(), serde_json::to_value(value).unwrap());
-
   let get_stack = MAYBE_CURRENT_STACKTRACE.lock();
-  if let Some(stack) = get_stack.as_ref().map(|s| s()) {
-    let _ = map.insert("stack".into(), serde_json::to_value(&stack).unwrap());
-  }
+  let stack = get_stack.as_ref().map(|s| s());
 
-  let _ = file.write_all(
-    format!("{}\n", serde_json::to_string(&map).unwrap()).as_bytes(),
-  );
+  match sink {
+    AuditSink::File(file) => {
+      let mut file = file.lock();
+
+      let mut map = serde_json::Map::with_capacity(6);
+      let _ = map.insert("v".into(), serde_json::Value::Number(1.into()));
+      let _ = map.insert(
+        "datetime".into(),
+        serde_json::Value::String(
+          chrono::Utc::now()
+            .to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+        ),
+      );
+      let _ = map.insert(
+        "permission".into(),
+        serde_json::to_value(flag_name).unwrap(),
+      );
+      let _ =
+        map.insert("value".into(), serde_json::to_value(&value).unwrap());
+      let _ = map.insert(
+        "outcome".into(),
+        serde_json::Value::String(outcome.to_string()),
+      );
+
+      if let Some(ref stack) = stack {
+        let _ =
+          map.insert("stack".into(), serde_json::to_value(stack).unwrap());
+      }
+
+      let _ = file.write_all(
+        format!("{}\n", serde_json::to_string(&map).unwrap()).as_bytes(),
+      );
+    }
+    AuditSink::Otel(report_fn) => {
+      let value_str = serde_json::to_value(&value)
+        .map(|v| match v {
+          serde_json::Value::String(s) => s,
+          other => other.to_string(),
+        })
+        .unwrap_or_default();
+
+      report_fn(flag_name, &value_str, outcome, stack.as_deref());
+    }
+  }
 }
 
 /// Fast exit from permission check routines if this permission
 /// is in the "fully-granted" state.
 macro_rules! audit_and_skip_check_if_is_permission_fully_granted {
   ($this:expr, $flag_name:expr, $value:expr) => {
-    write_audit($flag_name, $value);
+    write_audit($flag_name, $value, "allowed");
 
     if $this.is_allow_all() {
       return Ok(());
@@ -991,6 +1022,13 @@ impl<
       } else {
         self.insert_prompt_denied(desc.map(|d| d.as_deny()));
       }
+    }
+    if result.is_err() {
+      write_audit(
+        TAllowDesc::QueryDesc::flag_name(),
+        desc.map(|d| d.display_name().to_string()),
+        "denied",
+      );
     }
     result
   }
@@ -3890,7 +3928,7 @@ impl PermissionsContainer {
       "file" => {
         if inner.read.is_allow_all() {
           if kind != CheckSpecifierKind::Static {
-            write_audit(ReadQueryDescriptor::flag_name(), specifier);
+            write_audit(ReadQueryDescriptor::flag_name(), specifier, "allowed");
           }
 
           return Ok(());
@@ -3918,7 +3956,7 @@ impl PermissionsContainer {
       "blob" => Ok(()),
       _ => {
         if inner.import.is_allow_all() {
-          write_audit(ImportDescriptor::flag_name(), specifier);
+          write_audit(ImportDescriptor::flag_name(), specifier, "allowed");
 
           return Ok(()); // avoid allocation below
         }
@@ -3968,8 +4006,8 @@ impl PermissionsContainer {
     let path = {
       let mut inner = self.inner.lock();
       if inner.all_granted() {
-        write_audit(ReadQueryDescriptor::flag_name(), &path);
-        write_audit(WriteQueryDescriptor::flag_name(), &path);
+        write_audit(ReadQueryDescriptor::flag_name(), &path, "allowed");
+        write_audit(WriteQueryDescriptor::flag_name(), &path, "allowed");
         return Ok(CheckedPath {
           path: PathWithRequested {
             path,
@@ -3991,8 +4029,8 @@ impl PermissionsContainer {
         None => path_descriptor,
       };
       if !should_check_read && !should_check_write {
-        write_audit(ReadQueryDescriptor::flag_name(), &path);
-        write_audit(WriteQueryDescriptor::flag_name(), &path);
+        write_audit(ReadQueryDescriptor::flag_name(), &path, "allowed");
+        write_audit(WriteQueryDescriptor::flag_name(), &path, "allowed");
         drop(inner);
         path_descriptor
       } else {
@@ -4065,7 +4103,7 @@ impl PermissionsContainer {
     let mut inner = self.inner.lock();
     let inner = &mut inner.write;
     if inner.is_allow_all() {
-      write_audit(WriteQueryDescriptor::flag_name(), &path);
+      write_audit(WriteQueryDescriptor::flag_name(), &path, "allowed");
       Ok(CheckedPath {
         path: PathWithRequested {
           path,
@@ -4390,7 +4428,7 @@ impl PermissionsContainer {
     let mut inner = self.inner.lock();
     let inner = &mut inner.ffi;
     if inner.is_allow_all() {
-      write_audit(FfiQueryDescriptor::flag_name(), &path);
+      write_audit(FfiQueryDescriptor::flag_name(), &path, "allowed");
       Ok(path)
     } else {
       let desc = self.descriptor_parser.parse_path_query(path)?.into_ffi();
@@ -4409,7 +4447,7 @@ impl PermissionsContainer {
     if !inner.is_allow_all() {
       inner.check_partial(None)?;
     } else {
-      write_audit(FfiQueryDescriptor::flag_name(), ());
+      write_audit(FfiQueryDescriptor::flag_name(), (), "allowed");
     }
     Ok(())
   }
@@ -4423,7 +4461,7 @@ impl PermissionsContainer {
     let mut inner = self.inner.lock();
     let inner = &mut inner.ffi;
     if inner.is_allow_all() {
-      write_audit(FfiQueryDescriptor::flag_name(), &path);
+      write_audit(FfiQueryDescriptor::flag_name(), &path, "allowed");
       Ok(path)
     } else {
       let desc = self.descriptor_parser.parse_path_query(path)?.into_ffi();

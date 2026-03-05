@@ -1387,6 +1387,64 @@ pub fn report_event(name: &'static str, data: impl std::fmt::Display) {
   log_processor.emit(&mut log_record, builtin_instrumentation_scope);
 }
 
+pub fn report_permission_audit(
+  permission: &str,
+  value: &str,
+  outcome: &str,
+  stack: Option<&[String]>,
+) {
+  let Some(OtelGlobals {
+    log_processor,
+    builtin_instrumentation_scope,
+    ..
+  }) = OTEL_GLOBALS.get()
+  else {
+    return;
+  };
+
+  let mut log_record = LogRecord::default();
+
+  log_record.set_observed_timestamp(SystemTime::now());
+  log_record.set_event_name("deno.permission.access");
+  let severity = if outcome == "denied" {
+    Severity::Warn
+  } else {
+    Severity::Info
+  };
+  log_record.set_severity_number(severity);
+  log_record.set_severity_text(severity.name());
+  log_record.set_body(AnyValue::String(
+    format!("{outcome} {permission}: {value}").into(),
+  ));
+
+  log_record.add_attribute(
+    Key::from_static_str("deno.permission.type"),
+    AnyValue::String(permission.to_string().into()),
+  );
+  log_record.add_attribute(
+    Key::from_static_str("deno.permission.value"),
+    AnyValue::String(value.to_string().into()),
+  );
+  log_record.add_attribute(
+    Key::from_static_str("deno.permission.outcome"),
+    AnyValue::String(outcome.to_string().into()),
+  );
+
+  if let Some(stack) = stack {
+    log_record.add_attribute(
+      Key::from_static_str("deno.permission.stack"),
+      AnyValue::ListAny(Box::new(
+        stack
+          .iter()
+          .map(|s| AnyValue::String(s.clone().into()))
+          .collect::<Vec<_>>(),
+      )),
+    );
+  }
+
+  log_processor.emit(&mut log_record, builtin_instrumentation_scope);
+}
+
 fn owned_string<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   string: v8::Local<'s, v8::String>,
