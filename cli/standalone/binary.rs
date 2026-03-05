@@ -711,22 +711,19 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       }),
     };
 
-    let env_vars_from_env_file = match self.cli_options.env_file_name() {
-      Some(env_filenames) => {
-        let mut aggregated_env_vars = IndexMap::new();
-        for env_filename in env_filenames.iter().rev() {
-          log::info!(
-            "{} Environment variables from the file \"{}\" were embedded in the generated executable file",
-            crate::colors::yellow("Warning"),
-            env_filename
-          );
+    let env_vars_from_env_file = {
+      let mut aggregated_env_vars = IndexMap::new();
+      for env_filename in self.cli_options.env_file_paths().rev() {
+        log::info!(
+          "{} Environment variables from the file \"{}\" were embedded in the generated executable file",
+          crate::colors::yellow("Warning"),
+          env_filename.display()
+        );
 
-          let env_vars = get_file_env_vars(env_filename.to_string())?;
-          aggregated_env_vars.extend(env_vars);
-        }
-        aggregated_env_vars
+        let env_vars = get_file_env_vars(&env_filename)?;
+        aggregated_env_vars.extend(env_vars);
       }
-      None => Default::default(),
+      aggregated_env_vars
     };
 
     output_vfs(&vfs, display_output_filename);
@@ -1266,10 +1263,10 @@ fn get_dev_binary_path() -> Option<OsString> {
 /// This function returns the environment variables specified
 /// in the passed environment file.
 fn get_file_env_vars(
-  filename: String,
+  file_path: &Path,
 ) -> Result<IndexMap<String, String>, deno_dotenv::Error> {
   let mut file_env_vars = IndexMap::new();
-  for item in deno_dotenv::from_path_sanitized_iter_with_substitution(filename)?
+  for item in deno_dotenv::from_path_sanitized_iter_with_substitution(file_path)?
   {
     let Ok((key, val)) = item else {
       continue; // this failure will be warned about on load
