@@ -178,6 +178,10 @@ impl InnerIsolateState {
   pub fn cleanup(&mut self) {
     self.prepare_for_cleanup();
 
+    // Unregister isolate waker before dropping the isolate
+    let isolate_ptr = unsafe { self.v8_isolate.as_raw_isolate_ptr() };
+    setup::unregister_isolate_waker(setup::isolate_ptr_to_key(isolate_ptr));
+
     let state_ptr = self.v8_isolate.get_data(STATE_DATA_OFFSET);
     // SAFETY: We are sure that it's a valid pointer for whole lifetime of
     // the runtime.
