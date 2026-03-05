@@ -839,12 +839,12 @@ u4QuUoobAgMBAAE=
     let key = "DENO_DOTENV_TEST_KEY11";
     let original = std::env::var_os(key);
     unsafe {
-      std::env::set_var(key, "test_user_env");
+      std::env::set_var(key, "overriden from process env");
     }
 
     assert_parsed_eq_with_substitution(
       r#"KEY=">${DENO_DOTENV_TEST_KEY11}<""#,
-      &[("KEY", ">test_user_env<")],
+      &[("KEY", ">overriden from process env<")],
     );
 
     match original {
@@ -862,7 +862,7 @@ u4QuUoobAgMBAAE=
     let key = "DENO_DOTENV_TEST_KEY11";
     let original = std::env::var_os(key);
     unsafe {
-      std::env::set_var(key, "test_user_env");
+      std::env::set_var(key, "overriden from process env");
     }
 
     assert_parsed_eq_with_substitution(
@@ -872,7 +872,7 @@ u4QuUoobAgMBAAE=
       "#,
       &[
         ("DENO_DOTENV_TEST_KEY11", "test_user"),
-        ("KEY", ">test_user_env<"),
+        ("KEY", ">overriden from process env<"),
       ],
     );
 
