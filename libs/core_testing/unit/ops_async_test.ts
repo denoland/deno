@@ -27,6 +27,8 @@ test(async function testAsyncThrow() {
     assertStackTraceEquals(
       e.stack,
       `TypeError: Error
+        at processTicksAndRejections (ext:core/01_core.js:line:col)
+        at __drainNextTickAndMacrotasks (ext:core/01_core.js:line:col)
         at async asyncThrow (checkin:error:line:col)
         at async testAsyncThrow (test:///unit/ops_async_test.ts:line:col)
       `,
@@ -38,6 +40,8 @@ test(async function testAsyncThrow() {
     assertStackTraceEquals(
       e.stack,
       `TypeError: Error
+        at processTicksAndRejections (ext:core/01_core.js:line:col)
+        at __drainNextTickAndMacrotasks (ext:core/01_core.js:line:col)
         at async asyncThrow (checkin:error:line:col)
         at async testAsyncThrow (test:///unit/ops_async_test.ts:line:col)`,
     );
