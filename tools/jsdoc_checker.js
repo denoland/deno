@@ -21,15 +21,10 @@ const libs = [
   join(ROOT_PATH, "cli/tsc/dts/lib.deno_broadcast_channel.d.ts"),
 ];
 
-const unstableLibs = [
-  join(ROOT_PATH, "cli/tsc/dts/lib.deno.unstable.d.ts"),
-];
-
 const errors = [];
 
 const project = new Project();
 project.addSourceFilesAtPaths(libs);
-const unstableFiles = project.addSourceFilesAtPaths(unstableLibs);
 
 for (const file of project.getSourceFiles()) {
   for (
@@ -73,12 +68,6 @@ for (const file of project.getSourceFiles()) {
     if (!tags.find((tag) => tag.getTagName() === "category")) {
       errors.push(getMissingErrorPrefix(node) + "JSDoc @category tag");
       continue;
-    }
-
-    if (unstableFiles.includes(file)) {
-      if (!tags.find((tag) => tag.getTagName() === "experimental")) {
-        errors.push(getMissingErrorPrefix(node) + "JSDoc @experimental tag");
-      }
     }
   }
 }

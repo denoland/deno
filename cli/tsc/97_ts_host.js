@@ -44,9 +44,9 @@ const unstableDenoProps = new Set([
   "QuicSendStream",
 ]);
 const unstableMsgSuggestion =
-  "If not, try changing the 'lib' compiler option to include 'deno.unstable' " +
+  "If not, try changing the 'lib' compiler option to include 'deno.ns' " +
   "or add a triple-slash directive to the top of your entrypoint (main file): " +
-  '/// <reference lib="deno.unstable" />';
+  '/// <reference lib="deno.ns" />';
 
 /**
  * @param {unknown} value
