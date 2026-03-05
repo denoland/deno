@@ -1292,7 +1292,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
             continueOnError: true,
             if: isPr,
             env: {
-              GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}",
+              GITHUB_TOKEN: "${{ secrets.DENOBOT_PAT }}",
               PR_NUMBER: "${{ github.event.pull_request.number }}",
             },
             run: [
