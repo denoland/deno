@@ -959,6 +959,7 @@ const features = {
   // deno-lint-ignore camelcase
   tls_ocsp: true,
   tls: true,
+  // Deno uses aws-lc, which is BoringSSL-based.
   // deno-lint-ignore camelcase
   openssl_is_boringssl: true,
   // deno-lint-ignore camelcase
