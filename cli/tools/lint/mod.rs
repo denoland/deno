@@ -4,7 +4,6 @@
 //! [`deno_lint`](https://github.com/denoland/deno_lint).
 
 use std::collections::HashSet;
-use std::fs;
 use std::io::Read;
 use std::io::stdin;
 use std::path::PathBuf;
@@ -19,7 +18,6 @@ use deno_config::glob::FilePatterns;
 use deno_config::workspace::WorkspaceDirectory;
 use deno_config::workspace::WorkspaceDirectoryRc;
 use deno_core::anyhow::anyhow;
-use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::futures::future::LocalBoxFuture;
@@ -28,7 +26,6 @@ use deno_core::serde_json;
 use deno_core::unsync::future::LocalFutureExt;
 use deno_core::unsync::future::SharedLocal;
 use deno_graph::ModuleGraph;
-use deno_lib::util::hash::FastInsecureHasher;
 use deno_lint::diagnostic::LintDiagnostic;
 use deno_resolver::deno_json::CompilerOptionsResolver;
 use log::debug;
@@ -40,15 +37,12 @@ use crate::args::Flags;
 use crate::args::LintFlags;
 use crate::args::LintOptions;
 use crate::args::WorkspaceLintOptions;
-use crate::cache::CacheDBHash;
 use crate::cache::Caches;
-use crate::cache::IncrementalCache;
 use crate::colors;
 use crate::factory::CliFactory;
 use crate::graph_util::CreatePublishGraphOptions;
 use crate::graph_util::ModuleGraphCreator;
 use crate::sys::CliSys;
-use crate::tools::fmt::run_parallelized;
 use crate::util::display;
 use crate::util::file_watcher;
 use crate::util::file_watcher::WatcherCommunicator;
@@ -58,6 +52,7 @@ use crate::util::sync::AtomicFlag;
 
 mod ast_buffer;
 mod linter;
+mod oxc;
 mod plugins;
 mod reporters;
 mod rules;
@@ -105,6 +100,9 @@ pub async fn lint(
       compiler_options_resolver,
     )?
   } else {
+    // Resolve the oxlint binary (download if needed)
+    let oxlint_bin = ensure_oxlint_downloaded(&factory).await?;
+
     let mut linter = WorkspaceLinter::new(
       factory.caches()?.clone(),
       lint_rule_provider,
@@ -112,6 +110,7 @@ pub async fn lint(
       compiler_options_resolver.clone(),
       cli_options.start_dir.clone(),
       &workspace_lint_options,
+      oxlint_bin,
     );
     let paths_with_options_batches =
       resolve_paths_with_options_batches(cli_options, &lint_flags)?;
@@ -132,6 +131,28 @@ pub async fn lint(
   }
 
   Ok(())
+}
+
+async fn ensure_oxlint_downloaded(
+  factory: &CliFactory,
+) -> Result<PathBuf, AnyError> {
+  let installer_factory = factory.npm_installer_factory()?;
+  let deno_dir = factory.deno_dir()?;
+  let npmrc = factory.npmrc()?;
+  let npm_registry_info = installer_factory.registry_info_provider()?;
+  let resolver_factory = factory.resolver_factory()?;
+  let workspace_factory = resolver_factory.workspace_factory();
+
+  let oxlint_path = oxc::ensure_oxlint(
+    deno_dir,
+    npmrc,
+    npm_registry_info,
+    workspace_factory.workspace_npm_link_packages()?,
+    installer_factory.tarball_cache()?,
+    factory.npm_cache()?,
+  )
+  .await?;
+  Ok(oxlint_path)
 }
 
 async fn lint_with_watch_inner(
@@ -164,6 +185,8 @@ async fn lint_with_watch_inner(
     };
   }
 
+  let oxlint_bin = ensure_oxlint_downloaded(&factory).await?;
+
   let mut linter = WorkspaceLinter::new(
     factory.caches()?.clone(),
     factory.lint_rule_provider().await?,
@@ -171,6 +194,7 @@ async fn lint_with_watch_inner(
     factory.compiler_options_resolver()?.clone(),
     cli_options.start_dir.clone(),
     &cli_options.resolve_workspace_lint_options(&lint_flags)?,
+    oxlint_bin,
   );
   for paths_with_options in paths_with_options_batches {
     linter
@@ -254,6 +278,7 @@ struct WorkspaceLinter {
   workspace_module_graph: Option<WorkspaceModuleGraphFuture>,
   has_error: Arc<AtomicFlag>,
   file_count: usize,
+  oxlint_bin: PathBuf,
 }
 
 impl WorkspaceLinter {
@@ -264,6 +289,7 @@ impl WorkspaceLinter {
     compiler_options_resolver: Arc<CompilerOptionsResolver>,
     workspace_dir: Arc<WorkspaceDirectory>,
     workspace_options: &WorkspaceLintOptions,
+    oxlint_bin: PathBuf,
   ) -> Self {
     let reporter_lock =
       Arc::new(Mutex::new(create_reporter(workspace_options.reporter_kind)));
@@ -277,67 +303,22 @@ impl WorkspaceLinter {
       workspace_module_graph: None,
       has_error: Default::default(),
       file_count: 0,
+      oxlint_bin,
     }
   }
 
   pub async fn lint_files(
     &mut self,
-    cli_options: &Arc<CliOptions>,
+    _cli_options: &Arc<CliOptions>,
     lint_options: LintOptions,
     member_dir: WorkspaceDirectoryRc,
     paths: Vec<PathBuf>,
   ) -> Result<(), AnyError> {
     self.file_count += paths.len();
 
-    let exclude = lint_options.rules.exclude.clone();
-
-    let plugin_specifiers = lint_options.plugins.clone();
     let lint_rules = self
       .lint_rule_provider
       .resolve_lint_rules(lint_options.rules, Some(&member_dir));
-
-    let mut maybe_incremental_cache = None;
-
-    // TODO(bartlomieju): for now we don't support incremental caching if plugins are being used.
-    // https://github.com/denoland/deno/issues/28025
-    if lint_rules.supports_incremental_cache() && plugin_specifiers.is_empty() {
-      let mut hasher = FastInsecureHasher::new_deno_versioned();
-      hasher.write_hashable(lint_rules.incremental_cache_state());
-      if !plugin_specifiers.is_empty() {
-        hasher.write_hashable(&plugin_specifiers);
-      }
-      let state_hash = hasher.finish();
-
-      maybe_incremental_cache = Some(Arc::new(IncrementalCache::new(
-        self.caches.lint_incremental_cache_db(),
-        CacheDBHash::new(state_hash),
-        &paths,
-      )));
-    }
-
-    #[allow(clippy::print_stdout)]
-    #[allow(clippy::print_stderr)]
-    fn logger_printer(msg: &str, is_err: bool) {
-      if is_err {
-        eprint!("{}", msg);
-      } else {
-        print!("{}", msg);
-      }
-    }
-
-    let mut plugin_runner = None;
-    if !plugin_specifiers.is_empty() {
-      let logger = plugins::PluginLogger::new(logger_printer);
-      let runner = plugins::create_runner_and_load_plugins(
-        plugin_specifiers,
-        logger,
-        exclude,
-      )
-      .await?;
-      plugin_runner = Some(Arc::new(runner));
-    } else if lint_rules.rules.is_empty() {
-      bail!("No rules have been configured")
-    }
 
     let linter = Arc::new(CliLinter::new(CliLinterOptions {
       configured_rules: lint_rules,
@@ -346,80 +327,40 @@ impl WorkspaceLinter {
         &self.compiler_options_resolver,
         member_dir.dir_url(),
       )?,
-      maybe_plugin_runner: plugin_runner,
+      maybe_plugin_runner: None,
     }));
 
     let has_error = self.has_error.clone();
     let reporter_lock = self.reporter_lock.clone();
+    let oxlint_bin = self.oxlint_bin.clone();
 
     let mut futures = Vec::with_capacity(2);
+    // Keep package rules (no-slow-types, etc.) — these don't use deno_lint
     if linter.has_package_rules()
       && let Some(fut) = self.run_package_rules(&linter, &member_dir, &paths)
     {
       futures.push(fut);
     }
-
-    let maybe_incremental_cache_ = maybe_incremental_cache.clone();
-    let linter = linter.clone();
-    let cli_options = cli_options.clone();
     let fut = async move {
-      let operation = move |file_path: PathBuf| {
-        let file_text = deno_ast::strip_bom(fs::read_to_string(&file_path)?);
+      let diagnostics_map =
+        oxc::run_oxlint(&oxlint_bin, &paths)?;
 
-        // don't bother rechecking this file if it didn't have any diagnostics before
-        if let Some(incremental_cache) = &maybe_incremental_cache_
-          && incremental_cache.is_file_same(&file_path, &file_text)
-        {
-          return Ok(());
-        }
-
-        let r = linter.lint_file(
-          &file_path,
-          file_text,
-          cli_options.ext_flag().as_deref(),
-        );
-        if let Ok((file_source, file_diagnostics)) = &r
-          && let Some(incremental_cache) = &maybe_incremental_cache_
-          && file_diagnostics.is_empty()
-        {
-          // update the incremental cache if there were no diagnostics
-          incremental_cache.update_file(
-            &file_path,
-            // ensure the returned text is used here as it may have been modified via --fix
-            file_source.text(),
-          )
-        }
-
-        let success = handle_lint_result(
-          &file_path.to_string_lossy(),
-          r,
-          reporter_lock.clone(),
-        );
-        if !success {
+      for path in &paths {
+        if let Some(diagnostics) = diagnostics_map.get(path) {
+          let mut reporter = reporter_lock.lock();
+          for d in diagnostics {
+            reporter.visit_diagnostic(d);
+          }
           has_error.raise();
         }
+      }
 
-        Ok(())
-      };
-      run_parallelized(paths, operation).await
+      Ok(())
     }
     .boxed_local();
     futures.push(fut);
 
-    if lint_options.fix {
-      // run sequentially when using `--fix` to lower the chances of weird
-      // bugs where a file level fix affects a package level diagnostic though
-      // it probably will happen anyway
-      for future in futures {
-        future.await?;
-      }
-    } else {
-      deno_core::futures::future::try_join_all(futures).await?;
-    }
-
-    if let Some(incremental_cache) = &maybe_incremental_cache {
-      incremental_cache.wait_completion().await;
-    }
+    deno_core::futures::future::try_join_all(futures).await?;
 
     Ok(())
   }
