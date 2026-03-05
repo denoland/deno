@@ -2,7 +2,6 @@
 // Adapted from Node.js. Copyright Joyent, Inc. and other Node contributors.
 
 import { dirname, isAbsolute, join, parse, resolve } from "node:path";
-import { chmodSync } from "ext:deno_node/_fs/_fs_chmod.ts";
 import { copyFileSync } from "ext:deno_node/_fs/_fs_copy.ts";
 import { existsSync } from "ext:deno_node/_fs/_fs_exists.ts";
 import { mkdirSync } from "ext:deno_node/_fs/_fs_mkdir.ts";
@@ -316,7 +315,7 @@ function makeFileWritable(dest: string, srcMode: number | null): void {
 }
 
 function setDestMode(dest: string, srcMode: number | null): void {
-  return chmodSync(dest, srcMode!);
+  Deno.chmodSync(dest, srcMode!);
 }
 
 function setDestTimestamps(src: string, dest: string): void {
