@@ -838,7 +838,9 @@ function normalizeEventHandlerOptions(
       capture: Boolean(options),
     };
   } else {
-    return options;
+    return {
+      capture: Boolean(options.capture),
+    };
   }
 }
 
