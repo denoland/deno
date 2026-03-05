@@ -241,14 +241,13 @@
           "description": "Specify a set of bundled library declaration files that describe the target runtime environment.",
           "type": "array",
           "uniqueItems": true,
-          "default": ["deno.window", "deno.unstable", "node"],
+          "default": ["deno.window", "node"],
           "items": {
             "type": "string",
             "examples": [
               "deno.ns",
               "deno.window",
               "deno.worker",
-              "deno.unstable",
               "dom",
               "dom.iterable",
               "dom.asynciterable",

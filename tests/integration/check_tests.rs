@@ -95,24 +95,6 @@ fn typecheck_declarations_ns() {
 }
 
 #[test]
-fn typecheck_declarations_unstable() {
-  let context = TestContext::default();
-  let args = vec![
-    "check".to_string(),
-    "--doc-only".to_string(),
-    util::root_path()
-      .join("cli/tsc/dts/lib.deno.unstable.d.ts")
-      .to_string_lossy()
-      .into_owned(),
-  ];
-  let output = context.new_command().args_vec(args).split_output().run();
-
-  println!("stdout: {}", output.stdout());
-  println!("stderr: {}", output.stderr());
-  output.assert_exit_code(0);
-}
-
-#[test]
 fn ts_no_recheck_on_redirect() {
   let test_context = TestContext::default();
   let check_command = test_context.new_command().args_vec([

@@ -74,7 +74,6 @@ pub fn get_types_declaration_file_text() -> String {
     "deno.shared_globals",
     "deno.cache",
     "deno.window",
-    "deno.unstable",
   ];
 
   lib_names
@@ -210,7 +209,6 @@ pub static LAZILY_LOADED_STATIC_ASSETS: Lazy<
     maybe_compressed_lib!("lib.deno.worker.d.ts"),
     maybe_compressed_lib!("lib.deno.shared_globals.d.ts"),
     maybe_compressed_lib!("lib.deno.ns.d.ts"),
-    maybe_compressed_lib!("lib.deno.unstable.d.ts"),
     maybe_compressed_lib!("lib.decorators.d.ts"),
     maybe_compressed_lib!("lib.decorators.legacy.d.ts"),
     maybe_compressed_lib!("lib.dom.asynciterable.d.ts"),

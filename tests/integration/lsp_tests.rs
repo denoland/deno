@@ -39,7 +39,7 @@ fn lsp_config_setting() {
     "lib.tsconfig.json",
     r#"{
   "compilerOptions": {
-    "lib": ["deno.ns", "deno.unstable", "dom"]
+    "lib": ["deno.ns", "dom"]
   }
 }"#,
   );

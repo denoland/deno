@@ -183,7 +183,7 @@ pub fn maybe_rewrite_message(message: String, code: u64) -> String {
     let captures = regex.captures(&message).unwrap();
     let name = captures.get(1).unwrap().as_str();
     format!(
-      "Property '{name}' does not exist on type 'typeof Deno'. 'Deno.{name}' is an unstable API. If not, try changing the 'lib' compiler option to include 'deno.unstable' or add a triple-slash directive to the top of your entrypoint (main file): /// <reference lib=\"deno.unstable\" />",
+      "Property '{name}' does not exist on type 'typeof Deno'. 'Deno.{name}' may be an unstable API. Try changing the 'lib' compiler option to include 'deno.ns' or add a triple-slash directive to the top of your entrypoint (main file): /// <reference lib=\"deno.ns\" />",
     )
   } else {
     message
