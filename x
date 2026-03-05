@@ -1,18 +1,18 @@
-#!/usr/bin/env -S deno run --allow-all
+#!/usr/bin/env -S deno run --allow-all --ext=ts
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 // deno-lint-ignore-file no-console
 
 /**
- * ez.ts - Developer CLI for contributing to Deno
+ * x - Developer CLI for contributing to Deno
  *
  * Inspired by Servo's mach tool, this script provides a unified
  * interface for common development tasks like building, testing, and more.
  *
  * Usage:
- *   ./ez.ts <command> [options]
+ *   ./x <command> [options]
  *
- * Run `./ez.ts --help` for more information.
+ * Run `./x --help` for more information.
  */
 
 import $ from "jsr:@david/dax@^0.42.0";
@@ -149,18 +149,18 @@ const YELLOW = "\x1b[33m";
 function printHelp() {
   console.log();
   console.log(
-    `  ${BOLD}${CYAN}ez.ts${RESET} ${DIM}-${RESET} Developer CLI for contributing to Deno`,
+    `  ${BOLD}${CYAN}x${RESET} ${DIM}-${RESET} Developer CLI for contributing to Deno`,
   );
   console.log();
   console.log(`  ${BOLD}USAGE${RESET}`);
   console.log(
-    `    ${DIM}$${RESET} ./ez.ts ${GREEN}build${RESET}          ${DIM}# build the deno binary${RESET}`,
+    `    ${DIM}$${RESET} ./x ${GREEN}build${RESET}          ${DIM}# build the deno binary${RESET}`,
   );
   console.log(
-    `    ${DIM}$${RESET} ./ez.ts ${GREEN}test-spec${RESET}      ${DIM}# run spec integration tests${RESET}`,
+    `    ${DIM}$${RESET} ./x ${GREEN}test-spec${RESET}      ${DIM}# run spec integration tests${RESET}`,
   );
   console.log(
-    `    ${DIM}$${RESET} ./ez.ts ${GREEN}fmt${RESET}            ${DIM}# format the codebase${RESET}`,
+    `    ${DIM}$${RESET} ./x ${GREEN}fmt${RESET}            ${DIM}# format the codebase${RESET}`,
   );
   console.log();
   console.log(`  ${BOLD}COMMANDS${RESET}`);
