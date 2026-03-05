@@ -96,6 +96,10 @@
     "cron_error": {
       "args": "run -A main.ts cron_error.ts",
       "output": "cron_error.out"
+    },
+    "gc_callback_resilience": {
+      "args": "run -A --v8-flags=--expose-gc main.ts gc_callback_resilience.ts",
+      "output": "gc_callback_resilience.out"
     }
   }
 }
