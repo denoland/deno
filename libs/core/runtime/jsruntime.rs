@@ -178,6 +178,13 @@ impl InnerIsolateState {
   pub fn cleanup(&mut self) {
     self.prepare_for_cleanup();
 
+    // Unregister isolate waker before dropping the isolate
+    let isolate_ptr = unsafe { self.v8_isolate.as_raw_isolate_ptr() };
+    // SAFETY: UnsafeRawIsolatePtr is a newtype over *mut RealIsolate.
+    setup::unregister_isolate_waker(unsafe {
+      std::mem::transmute::<_, usize>(isolate_ptr)
+    });
+
     let state_ptr = self.v8_isolate.get_data(STATE_DATA_OFFSET);
     // SAFETY: We are sure that it's a valid pointer for whole lifetime of
     // the runtime.
@@ -758,7 +765,7 @@ impl JsRuntime {
       eval_context_code_cache_ready_cb: RefCell::new(
         eval_context_set_code_cache_cb,
       ),
-      waker,
+      waker: waker.clone(),
       // Some fields are initialized later after isolate is created
       inspector: None.into(),
       has_inspector: false.into(),
@@ -834,6 +841,16 @@ impl JsRuntime {
     );
 
     let isolate_ptr = unsafe { isolate.as_raw_isolate_ptr() };
+
+    // Register this isolate's waker so the NotifyingPlatform can wake
+    // the event loop when V8 posts foreground tasks from background threads.
+    // SAFETY: UnsafeRawIsolatePtr is a newtype over *mut RealIsolate —
+    // same pointer value the C++ callback receives as void*.
+    setup::register_isolate_waker(
+      unsafe { std::mem::transmute::<_, usize>(isolate_ptr) },
+      waker.clone(),
+    );
+
     // ...isolate is fully set up, we can forward its pointer to the ops to finish
     // their' setup...
     for op_ctx in op_ctxs.iter_mut() {
@@ -1861,6 +1878,8 @@ impl JsRuntime {
     }
   }
 
+  /// Pump V8's foreground message loop, processing tasks posted by
+  /// background threads (e.g. module compilation callbacks).
   fn pump_v8_message_loop(
     &self,
     scope: &mut v8::PinScope,
@@ -1869,9 +1888,7 @@ impl JsRuntime {
       &v8::V8::get_current_platform(),
       scope,
       false, // don't block if there are no tasks
-    ) {
-      // do nothing
-    }
+    ) {}
 
     v8::tc_scope!(let tc_scope, scope);
 
@@ -2246,11 +2263,21 @@ impl JsRuntime {
       scope.perform_microtask_checkpoint();
     }
 
+    // Safety net: if V8 has pending background tasks (e.g. module compilation),
+    // schedule a delayed wake to pump the message loop in case the
+    // NotifyingPlatform callback was missed due to a race condition.
+    if pending_state.has_pending_background_tasks {
+      let waker = cx.waker().clone();
+      std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        waker.wake_by_ref();
+      });
+    }
+
     // Re-wake logic for next iteration
     #[allow(clippy::suspicious_else_formatting, clippy::if_same_then_else)]
     {
-      if pending_state.has_pending_background_tasks
-        || pending_state.has_tick_scheduled
+      if pending_state.has_tick_scheduled
         || pending_state.has_outstanding_immediates
         || pending_state.has_refed_immediates > 0
         || pending_state.has_pending_promise_events
