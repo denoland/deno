@@ -370,35 +370,39 @@ class NodeWorker extends EventEmitter {
         ? specifier
         // deno-lint-ignore prefer-primordials
         : specifier.toString();
-      // Node.js evaluates worker eval code as CommonJS (sloppy mode),
-      // so we pass it as source code to be executed via `execute_script`
-      // rather than wrapping it in a data: URL which would be loaded as
-      // ESM (strict mode). Strict mode would break libraries like fflate
-      // that use bare variable assignments (e.g. `u8 = Uint8Array`).
+      // Node.js auto-detects module syntax: if the code contains
+      // import/export declarations it runs as ESM (strict mode),
+      // otherwise as CJS (sloppy mode). We replicate this behavior.
       // See: https://github.com/denoland/deno/issues/26739
-      //
-      // `require` is already available on globalThis from the Node worker
-      // bootstrap, so we just provide the remaining CJS-like globals.
-      //
-      // TODO(26739): there may be additional issues with transferred data
-      // not being received correctly by workers using the fflate pattern
-      // (`self[k] = e.data[k]` in onmessage). This fix addresses the
-      // strict mode / sloppy mode mismatch but further investigation
-      // may be needed for the data transfer path.
-      sourceCode =
-        `var __filename = ${
+      // deno-lint-ignore prefer-primordials
+      const hasModuleSyntax = /\b(import\s|export\s)/.test(code);
+      if (hasModuleSyntax) {
+        // ESM path: wrap with CJS globals and load as data: URL
+        const wrapped =
+          `import { createRequire as __cjsRequire } from "node:module";\n` +
+          `import { cwd as __cjsCwd } from "node:process";\n` +
+          `const require = __cjsRequire(__cjsCwd() + "/[worker eval]");\n` +
+          `const __filename = __cjsCwd() + "/[worker eval]";\n` +
+          `const __dirname = __cjsCwd();\n` +
+          `const module = { exports: {} };\n` +
+          `const exports = module.exports;\n` +
+          code;
+        specifier = `data:text/javascript,${encodeURIComponent(wrapped)}`;
+      } else {
+        // CJS path: pass as source code for execute_script (sloppy mode).
+        // `require` is already available from the Node worker bootstrap.
+        sourceCode = `var __filename = ${
           // deno-lint-ignore prefer-primordials
-          JSON.stringify(process.cwd() + "/[worker eval]")
-        };\n` +
-        `var __dirname = ${
-          // deno-lint-ignore prefer-primordials
-          JSON.stringify(process.cwd())
-        };\n` +
-        `var module = { exports: {} };\n` +
-        `var exports = module.exports;\n` +
-        code;
-      hasSourceCode = true;
-      specifier = `data:text/javascript,`;
+          JSON.stringify(process.cwd() + "/[worker eval]")};\n` +
+          `var __dirname = ${
+            // deno-lint-ignore prefer-primordials
+            JSON.stringify(process.cwd())};\n` +
+          `var module = { exports: {} };\n` +
+          `var exports = module.exports;\n` +
+          code;
+        hasSourceCode = true;
+        specifier = `data:text/javascript,`;
+      }
     } else if (
       !(typeof specifier === "object" && specifier.protocol === "data:")
     ) {
