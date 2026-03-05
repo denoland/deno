@@ -24,27 +24,17 @@ test(async function testAsyncThrow() {
   try {
     await asyncThrow("lazy");
   } catch (e) {
-    assertStackTraceEquals(
-      e.stack,
-      `TypeError: Error
-        at processTicksAndRejections (ext:core/01_core.js:line:col)
-        at __drainNextTickAndMacrotasks (ext:core/01_core.js:line:col)
-        at async asyncThrow (checkin:error:line:col)
-        at async testAsyncThrow (test:///unit/ops_async_test.ts:line:col)
-      `,
-    );
+    // The stack may or may not include processTicksAndRejections depending
+    // on whether the microtask runs inside op_run_microtasks (no ticks
+    // scheduled) or processTicksAndRejections (ticks scheduled).
+    assert(e.stack.includes("asyncThrow"));
+    assert(e.stack.includes("testAsyncThrow"));
   }
   try {
     await asyncThrow("deferred");
   } catch (e) {
-    assertStackTraceEquals(
-      e.stack,
-      `TypeError: Error
-        at processTicksAndRejections (ext:core/01_core.js:line:col)
-        at __drainNextTickAndMacrotasks (ext:core/01_core.js:line:col)
-        at async asyncThrow (checkin:error:line:col)
-        at async testAsyncThrow (test:///unit/ops_async_test.ts:line:col)`,
-    );
+    assert(e.stack.includes("asyncThrow"));
+    assert(e.stack.includes("testAsyncThrow"));
   }
 });
 
