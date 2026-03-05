@@ -338,7 +338,7 @@ pub fn cpu_info() -> Option<Vec<CpuInfo>> {
       std::ptr::null_mut(),
       0,
     );
-    // If res == 0, the sysctl call was succesful and
+    // If res == 0, the sysctl call was successful and
     // ncpuonline contains the number of online CPUs.
     if res != 0 {
       return None;
