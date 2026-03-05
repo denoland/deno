@@ -2263,11 +2263,21 @@ impl JsRuntime {
       scope.perform_microtask_checkpoint();
     }
 
+    // Safety net: if V8 has pending background tasks (e.g. module compilation),
+    // schedule a delayed wake to pump the message loop in case the
+    // NotifyingPlatform callback was missed due to a race condition.
+    if pending_state.has_pending_background_tasks {
+      let waker = cx.waker().clone();
+      std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        waker.wake_by_ref();
+      });
+    }
+
     // Re-wake logic for next iteration
     #[allow(clippy::suspicious_else_formatting, clippy::if_same_then_else)]
     {
-      if pending_state.has_pending_background_tasks
-        || pending_state.has_tick_scheduled
+      if pending_state.has_tick_scheduled
         || pending_state.has_outstanding_immediates
         || pending_state.has_refed_immediates > 0
         || pending_state.has_pending_promise_events
