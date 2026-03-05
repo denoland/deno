@@ -838,6 +838,7 @@ u4QuUoobAgMBAAE=
   fn test_substitute_variable_from_env_variable() {
     let key = "DENO_DOTENV_TEST_KEY11";
     let original = std::env::var_os(key);
+    #[allow(clippy::undocumented_unsafe_blocks)]
     unsafe {
       std::env::set_var(key, "overriden from process env");
     }
@@ -848,9 +849,11 @@ u4QuUoobAgMBAAE=
     );
 
     match original {
+      #[allow(clippy::undocumented_unsafe_blocks)]
       Some(value) => unsafe {
         std::env::set_var(key, value);
       },
+      #[allow(clippy::undocumented_unsafe_blocks)]
       None => unsafe {
         std::env::remove_var(key);
       },
@@ -861,6 +864,7 @@ u4QuUoobAgMBAAE=
   fn test_substitute_variable_env_variable_overrides_dotenv_in_substitution() {
     let key = "DENO_DOTENV_TEST_KEY11";
     let original = std::env::var_os(key);
+    #[allow(clippy::undocumented_unsafe_blocks)]
     unsafe {
       std::env::set_var(key, "overriden from process env");
     }
@@ -877,9 +881,11 @@ u4QuUoobAgMBAAE=
     );
 
     match original {
+      #[allow(clippy::undocumented_unsafe_blocks)]
       Some(value) => unsafe {
         std::env::set_var(key, value);
       },
+      #[allow(clippy::undocumented_unsafe_blocks)]
       None => unsafe {
         std::env::remove_var(key);
       },
