@@ -304,7 +304,7 @@ where
   let initial_cwd = std::env::current_dir()
     .ok()
     .and_then(|path| deno_path_util::url_from_directory_path(&path).ok());
-  let exclude_set = flags.resolve_watch_exclude_set()?;
+  let exclude_set = Arc::new(flags.resolve_watch_exclude_set()?);
   let (paths_to_watch_tx, mut paths_to_watch_rx) =
     tokio::sync::mpsc::unbounded_channel();
   let (restart_tx, mut restart_rx) = tokio::sync::mpsc::unbounded_channel();
@@ -355,7 +355,7 @@ where
       tokio::task::yield_now().await;
     }
 
-    let mut watcher = new_watcher(watcher_sender.clone())?;
+    let mut watcher = new_watcher(watcher_sender.clone(), exclude_set.clone())?;
     consume_paths_to_watch(&mut watcher, &mut paths_to_watch_rx, &exclude_set);
 
     let receiver_future = async {
@@ -434,6 +434,7 @@ where
 
 fn new_watcher(
   sender: Arc<mpsc::UnboundedSender<Vec<PathBuf>>>,
+  exclude_set: Arc<PathOrPatternSet>,
 ) -> Result<RecommendedWatcher, AnyError> {
   Ok(Watcher::new(
     move |res: Result<NotifyEvent, NotifyError>| {
@@ -448,10 +449,25 @@ fn new_watcher(
         return;
       }
 
-      let paths = event
+      // Check if all event paths are excluded before canonicalization,
+      // so we can distinguish "empty because excluded" from "empty
+      // because file was removed and canonicalize_path failed".
+      let all_excluded = event.paths.iter().all(|path| {
+        exclude_set.matches_path(path)
+          || canonicalize_path(path)
+            .map(|p| exclude_set.matches_path(&p))
+            .unwrap_or(false)
+      });
+
+      if all_excluded {
+        return;
+      }
+
+      let paths: Vec<PathBuf> = event
         .paths
         .iter()
         .filter_map(|path| canonicalize_path(path).ok())
+        .filter(|path| !exclude_set.matches_path(path))
         .collect();
 
       sender.send(paths).unwrap();
