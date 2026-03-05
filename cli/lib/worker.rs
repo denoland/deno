@@ -398,6 +398,8 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
         let mb = 1024 * 1024;
         // Read back resolved values (including V8 defaults for
         // unspecified fields), matching Node.js behavior.
+        // Note: integer division truncates sub-MB fractions, which is fine
+        // since V8 and Node.js both work in whole-MB granularity here.
         let resolved = deno_node::ops::worker_threads::ResolvedResourceLimits {
           max_young_generation_size_mb: params
             .max_young_generation_size_in_bytes()

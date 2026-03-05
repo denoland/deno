@@ -199,8 +199,7 @@ class NodeWorker extends EventEmitter {
   // https://nodejs.org/api/worker_threads.html#workerthreadid
   threadId = this.#id;
   // https://nodejs.org/api/worker_threads.html#workerresourcelimits
-  // deno-lint-ignore no-explicit-any
-  resourceLimits: any = {};
+  resourceLimits: WorkerOptions["resourceLimits"] = {};
   // https://nodejs.org/api/worker_threads.html#workerstdin
   stdin: Writable | null = null;
   // https://nodejs.org/api/worker_threads.html#workerstdout
