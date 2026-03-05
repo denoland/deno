@@ -341,9 +341,10 @@ impl WorkspaceLinter {
     {
       futures.push(fut);
     }
+    let member_dir_path = member_dir.dir_path().to_path_buf();
     let fut = async move {
       let diagnostics_map =
-        oxc::run_oxlint(&oxlint_bin, &paths)?;
+        oxc::run_oxlint(&oxlint_bin, &paths, &member_dir_path)?;
 
       for path in &paths {
         if let Some(diagnostics) = diagnostics_map.get(path) {

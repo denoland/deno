@@ -180,19 +180,32 @@ struct OxlintSpan {
 pub fn run_oxlint(
   oxlint_bin: &Path,
   files: &[PathBuf],
+  cwd: &Path,
 ) -> Result<HashMap<PathBuf, Vec<LintDiagnostic>>, AnyError> {
   if files.is_empty() {
     return Ok(HashMap::new());
   }
 
-  let output = Command::new(oxlint_bin)
-    .arg("--format")
-    .arg("json")
-    .args(files)
-    .output()
-    .with_context(|| {
-      format!("failed to execute oxlint at {}", oxlint_bin.display())
-    })?;
+  let mut cmd = Command::new(oxlint_bin);
+  cmd.arg("--format").arg("json");
+
+  // Auto-detect oxlint config file by walking up from cwd, then from
+  // the first file's directory (covers subdirectory invocations)
+  let config = find_config_file(cwd, "oxlintrc.json").or_else(|| {
+    files
+      .first()
+      .and_then(|f| f.parent())
+      .and_then(|dir| find_config_file(dir, "oxlintrc.json"))
+  });
+  if let Some(config_path) = config {
+    cmd.arg("-c").arg(&config_path);
+  }
+
+  cmd.args(files);
+
+  let output = cmd.output().with_context(|| {
+    format!("failed to execute oxlint at {}", oxlint_bin.display())
+  })?;
 
   // oxlint exits with non-zero when it finds lint errors, which is expected.
   // We only care about parsing the JSON stdout.
@@ -212,7 +225,15 @@ pub fn run_oxlint(
   let mut map: HashMap<PathBuf, Vec<LintDiagnostic>> = HashMap::new();
 
   for diag in result.diagnostics {
-    let path = PathBuf::from(&diag.filename);
+    let raw_path = PathBuf::from(&diag.filename);
+    // oxlint may return relative paths; canonicalize for HashMap lookup
+    let path = if raw_path.is_absolute() {
+      raw_path
+    } else {
+      std::env::current_dir()
+        .map(|cwd| cwd.join(&raw_path))
+        .unwrap_or(raw_path)
+    };
 
     let entry = if let Some(entry) = source_cache.get(&path) {
       entry
@@ -286,4 +307,19 @@ fn map_to_lint_diagnostic(
       info: vec![],
     },
   })
+}
+
+/// Walk up from `start` looking for a file named `name`.
+fn find_config_file(start: &Path, name: &str) -> Option<PathBuf> {
+  let mut dir = start;
+  loop {
+    let candidate = dir.join(name);
+    if candidate.exists() {
+      return Some(candidate);
+    }
+    match dir.parent() {
+      Some(parent) => dir = parent,
+      None => return None,
+    }
+  }
 }

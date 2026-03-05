@@ -245,12 +245,23 @@ async fn format_files(
     return Ok(());
   }
 
+  // Determine working directory from first batch (for config file detection)
+  let cwd = paths_with_options_batches
+    .first()
+    .map(|p| p.base.clone())
+    .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
+
   let mut cmd = std::process::Command::new(&deno_bin);
   cmd
     .arg("run")
     .arg("-A")
     .arg("--no-config")
     .arg(format!("npm:oxfmt@{}", OXFMT_VERSION));
+
+  // Auto-detect oxfmt config file by walking up from cwd
+  if let Some(config_path) = find_oxfmt_config(&cwd) {
+    cmd.arg("-c").arg(&config_path);
+  }
 
   if fmt_flags.check {
     cmd.arg("--check");
@@ -268,6 +279,21 @@ async fn format_files(
   }
 
   Ok(())
+}
+
+/// Walk up from `start` looking for `.oxfmtrc.json`.
+fn find_oxfmt_config(start: &Path) -> Option<PathBuf> {
+  let mut dir = start;
+  loop {
+    let candidate = dir.join(".oxfmtrc.json");
+    if candidate.exists() {
+      return Some(candidate);
+    }
+    match dir.parent() {
+      Some(parent) => dir = parent,
+      None => return None,
+    }
+  }
 }
 
 fn collect_fmt_files(
