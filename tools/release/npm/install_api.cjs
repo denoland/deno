@@ -191,6 +191,22 @@ function replaceBinEntry(exePath) {
 }
 
 function findBinDir() {
+  // For global installs, npm sets npm_config_global=true and npm_config_prefix
+  // to the install prefix. The bin dir is {prefix}/bin on Linux/Mac or
+  // {prefix} on Windows (e.g. %APPDATA%\npm).
+  if (process.env.npm_config_global === "true") {
+    const prefix = process.env.npm_config_prefix;
+    if (prefix) {
+      const binDir = os.platform() === "win32"
+        ? prefix
+        : path.join(prefix, "bin");
+      if (isBinDirForThisPackage(binDir)) {
+        return binDir;
+      }
+    }
+  }
+
+  // For local installs, walk up looking for node_modules/.bin
   let dir = __dirname;
   for (let i = 0; i < 64; i++) {
     const parent = path.dirname(dir);

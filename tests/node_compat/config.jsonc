@@ -1503,7 +1503,9 @@
     "parallel/test-uv-binding-constant.js": {},
     "parallel/test-v8-deserialize-buffer.js": {},
     "parallel/test-v8-flag-pool-size-0.js": {},
+    "parallel/test-v8-getheapsnapshot-twice.js": {},
     "parallel/test-v8-global-setter.js": {},
+    "parallel/test-v8-stats.js": {},
     "parallel/test-vm-access-process-env.js": {},
     "parallel/test-vm-api-handles-getter-errors.js": {},
     "parallel/test-vm-attributes-property-not-on-sandbox.js": {},
@@ -1774,6 +1776,9 @@
     // "sequential/test-diagnostic-dir-heap-prof.js": {},
     "sequential/test-fs-readdir-recursive.js": {},
     "sequential/test-fs-stat-sync-overflow.js": {},
+    "sequential/test-heapdump.js": {
+      "windows": false
+    },
     "sequential/test-http-server-keep-alive-timeout-slow-server.js": {},
     // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
     // "sequential/test-inspector-open-dispose.mjs": {},
