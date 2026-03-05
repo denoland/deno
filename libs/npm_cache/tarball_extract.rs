@@ -121,18 +121,6 @@ fn decompress_gzip(
   decompress_gzip_streaming(data)
 }
 
-/// Read the uncompressed size hint from the gzip trailer (last 4 bytes).
-/// This is the original size mod 2^32, so it's exact for data < 4GB
-/// (which covers virtually all npm packages).
-fn gzip_decompressed_size_hint(data: &[u8]) -> usize {
-  if data.len() >= 4 {
-    let last4 = &data[data.len() - 4..];
-    u32::from_le_bytes([last4[0], last4[1], last4[2], last4[3]]) as usize
-  } else {
-    data.len().saturating_mul(4)
-  }
-}
-
 fn decompress_gzip_streaming(
   data: &[u8],
 ) -> Result<Vec<u8>, VerifyAndExtractTarballError> {
@@ -143,6 +131,18 @@ fn decompress_gzip_streaming(
     .read_to_end(&mut decompressed)
     .map_err(ExtractTarballError::from)?;
   Ok(decompressed)
+}
+
+/// Read the uncompressed size hint from the gzip trailer (last 4 bytes).
+/// This is the original size mod 2^32, so it's exact for data < 4GB
+/// (which covers virtually all npm packages).
+fn gzip_decompressed_size_hint(data: &[u8]) -> usize {
+  if data.len() >= 4 {
+    let last4 = &data[data.len() - 4..];
+    u32::from_le_bytes([last4[0], last4[1], last4[2], last4[3]]) as usize
+  } else {
+    data.len().saturating_mul(4)
+  }
 }
 
 /// Writes already-decompressed raw tar bytes to disk.
