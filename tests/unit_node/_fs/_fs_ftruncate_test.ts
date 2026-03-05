@@ -1,6 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 import { assertEquals, assertThrows, fail } from "@std/assert";
-import { ftruncate, ftruncateSync } from "node:fs";
+import { closeSync, ftruncate, ftruncateSync, openSync } from "node:fs";
 
 Deno.test({
   name: "ASYNC: no callback function results in Error",
@@ -18,21 +18,13 @@ Deno.test({
 
 Deno.test({
   name: "ASYNC: truncate entire file contents",
-  // TODO(bartlomieju): this test is broken in Deno 2, because `file.rid` is undefined.
-  // The fs APIs should be rewritten to use actual FDs, not RIDs
-  ignore: true,
   async fn() {
     const filePath = Deno.makeTempFileSync();
     await Deno.writeTextFile(filePath, "hello world");
-    using file = await Deno.open(filePath, {
-      read: true,
-      write: true,
-      create: true,
-    });
+    const fd = openSync(filePath, "r+");
 
     await new Promise<void>((resolve, reject) => {
-      // @ts-ignore (iuioiua) `file.rid` should no longer be needed once FDs are used
-      ftruncate(file.rid, (err: Error | null) => {
+      ftruncate(fd, (err: Error | null) => {
         if (err !== null) reject();
         else resolve();
       });
@@ -47,6 +39,7 @@ Deno.test({
         },
       )
       .finally(() => {
+        closeSync(fd);
         Deno.removeSync(filePath);
       });
   },
@@ -54,21 +47,13 @@ Deno.test({
 
 Deno.test({
   name: "ASYNC: truncate file to a size of precisely len bytes",
-  // TODO(bartlomieju): this test is broken in Deno 2, because `file.rid` is undefined.
-  // The fs APIs should be rewritten to use actual FDs, not RIDs
-  ignore: true,
   async fn() {
     const filePath = Deno.makeTempFileSync();
     await Deno.writeTextFile(filePath, "hello world");
-    using file = await Deno.open(filePath, {
-      read: true,
-      write: true,
-      create: true,
-    });
+    const fd = openSync(filePath, "r+");
 
     await new Promise<void>((resolve, reject) => {
-      // @ts-ignore (iuioiua) `file.rid` should no longer be needed once FDs are used
-      ftruncate(file.rid, 3, (err: Error | null) => {
+      ftruncate(fd, 3, (err: Error | null) => {
         if (err !== null) reject();
         else resolve();
       });
@@ -83,6 +68,7 @@ Deno.test({
         },
       )
       .finally(() => {
+        closeSync(fd);
         Deno.removeSync(filePath);
       });
   },
@@ -90,24 +76,17 @@ Deno.test({
 
 Deno.test({
   name: "SYNC: truncate entire file contents",
-  // TODO(bartlomieju): this test is broken in Deno 2, because `file.rid` is undefined.
-  // The fs APIs should be rewritten to use actual FDs, not RIDs
-  ignore: true,
   fn() {
     const filePath = Deno.makeTempFileSync();
     Deno.writeFileSync(filePath, new TextEncoder().encode("hello world"));
-    using file = Deno.openSync(filePath, {
-      read: true,
-      write: true,
-      create: true,
-    });
+    const fd = openSync(filePath, "r+");
 
     try {
-      // @ts-ignore (iuioiua) `file.rid` should no longer be needed once FDs are used
-      ftruncateSync(file.rid);
+      ftruncateSync(fd);
       const fileInfo: Deno.FileInfo = Deno.lstatSync(filePath);
       assertEquals(fileInfo.size, 0);
     } finally {
+      closeSync(fd);
       Deno.removeSync(filePath);
     }
   },
@@ -115,24 +94,17 @@ Deno.test({
 
 Deno.test({
   name: "SYNC: truncate file to a size of precisely len bytes",
-  // TODO(bartlomieju): this test is broken in Deno 2, because `file.rid` is undefined.
-  // The fs APIs should be rewritten to use actual FDs, not RIDs
-  ignore: true,
   fn() {
     const filePath = Deno.makeTempFileSync();
     Deno.writeFileSync(filePath, new TextEncoder().encode("hello world"));
-    using file = Deno.openSync(filePath, {
-      read: true,
-      write: true,
-      create: true,
-    });
+    const fd = openSync(filePath, "r+");
 
     try {
-      // @ts-ignore (iuioiua) `file.rid` should no longer be needed once FDs are used
-      ftruncateSync(file.rid, 3);
+      ftruncateSync(fd, 3);
       const fileInfo: Deno.FileInfo = Deno.lstatSync(filePath);
       assertEquals(fileInfo.size, 3);
     } finally {
+      closeSync(fd);
       Deno.removeSync(filePath);
     }
   },

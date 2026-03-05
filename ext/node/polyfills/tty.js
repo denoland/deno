@@ -1,15 +1,14 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 import { op_node_is_tty } from "ext:core/ops";
-import { primordials } from "ext:core/mod.js";
-const { Error } = primordials;
 
 import { ERR_INVALID_FD } from "ext:deno_node/internal/errors.ts";
 import { TTY } from "ext:deno_node/internal_binding/tty_wrap.ts";
 import { Socket } from "node:net";
 import { setReadStream } from "ext:deno_node/_process/streams.mjs";
 import * as io from "ext:deno_io/12_io.js";
-import { WriteStream } from "ext:deno_node/internal/tty.js";
+import { TTYStream, WriteStream } from "ext:deno_node/internal/tty.js";
+import { getRid } from "ext:deno_node/internal/fs/fd_map.ts";
 
 // Returns true when the given numeric fd is associated with a TTY and false otherwise.
 function isatty(fd) {
@@ -25,14 +24,30 @@ export class ReadStream extends Socket {
       throw new ERR_INVALID_FD(fd);
     }
 
-    // We only support `stdin`.
-    if (fd != 0) throw new Error("Only fd 0 is supported.");
-
-    const tty = new TTY(io.stdin);
+    let handle;
+    // For fd > 2 (PTY from NAPI modules like node-pty), create a TTYStream wrapper
+    const isPty = fd > 2;
+    if (isPty) {
+      // Security: Only allow TTY file descriptors. This prevents access to
+      // arbitrary fds (sockets, files, etc.) via tty.ReadStream/WriteStream.
+      // PTY devices from node-pty are real TTYs so isatty() returns true.
+      if (!op_node_is_tty(fd)) {
+        throw new ERR_INVALID_FD(fd);
+      }
+      // Get the rid from the fd map (will dup and create resource if needed)
+      const rid = getRid(fd);
+      const stream = new TTYStream(rid);
+      handle = new TTY(stream);
+    } else {
+      // For stdin/stdout/stderr, use the built-in handles
+      handle = new TTY(
+        fd === 0 ? io.stdin : fd === 1 ? io.stdout : io.stderr,
+      );
+    }
     super({
       readableHighWaterMark: 0,
-      handle: tty,
-      manualStart: true,
+      handle,
+      manualStart: !isPty, // PTY streams should auto-start reading
       ...options,
     });
 

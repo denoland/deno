@@ -5,7 +5,9 @@ import {
   makeCallback,
 } from "ext:deno_node/_fs/_fs_common.ts";
 import { getValidatedFd } from "ext:deno_node/internal/fs/utils.mjs";
-import { core, primordials } from "ext:core/mod.js";
+import { getRid, unregisterFd } from "ext:deno_node/internal/fs/fd_map.ts";
+import { op_node_close_fd } from "ext:core/ops";
+import { primordials } from "ext:core/mod.js";
 
 const {
   Error,
@@ -29,21 +31,21 @@ export function close(
   setTimeout(() => {
     let error = null;
     try {
-      // TODO(@littledivy): Treat `fd` as real file descriptor. `rid` is an
-      // implementation detail and may change.
-      core.close(fd);
+      const rid = getRid(fd);
+      op_node_close_fd(rid, fd);
     } catch (err) {
       error = ObjectPrototypeIsPrototypeOf(ErrorPrototype, err)
         ? err as Error
         : new Error("[non-error thrown]");
     }
+    unregisterFd(fd);
     callback(error);
   }, 0);
 }
 
 export function closeSync(fd: number) {
   fd = getValidatedFd(fd);
-  // TODO(@littledivy): Treat `fd` as real file descriptor. `rid` is an
-  // implementation detail and may change.
-  core.close(fd);
+  const rid = getRid(fd);
+  op_node_close_fd(rid, fd);
+  unregisterFd(fd);
 }
