@@ -362,8 +362,8 @@ impl TCP {
       }
       #[cfg(windows)]
       {
-        use windows_sys::Win32::Networking::WinSock::ioctlsocket;
         use windows_sys::Win32::Networking::WinSock::FIONBIO;
+        use windows_sys::Win32::Networking::WinSock::ioctlsocket;
         let mut nonblocking: u32 = 1;
         ioctlsocket(fd as usize, FIONBIO as i32, &mut nonblocking);
       }
@@ -390,7 +390,12 @@ impl TCP {
         return -1;
       }
       let sock_addr = Socket2SockAddr::from(socket_addr);
-      uv_compat::uv_tcp_bind(tcp, sock_addr.as_ptr() as *const _, sock_addr.len() as u32, 0)
+      uv_compat::uv_tcp_bind(
+        tcp,
+        sock_addr.as_ptr() as *const _,
+        sock_addr.len() as u32,
+        0,
+      )
     }
   }
 
@@ -412,7 +417,12 @@ impl TCP {
         return -1;
       }
       let sock_addr = Socket2SockAddr::from(socket_addr);
-      uv_compat::uv_tcp_bind(tcp, sock_addr.as_ptr() as *const _, sock_addr.len() as u32, 0)
+      uv_compat::uv_tcp_bind(
+        tcp,
+        sock_addr.as_ptr() as *const _,
+        sock_addr.len() as u32,
+        0,
+      )
     }
   }
 
@@ -679,7 +689,9 @@ struct SockAddrInfo {
   family: String,
 }
 
-fn sockaddr_from_socket2(sock_addr: &socket2::SockAddr) -> Option<SockAddrInfo> {
+fn sockaddr_from_socket2(
+  sock_addr: &socket2::SockAddr,
+) -> Option<SockAddrInfo> {
   if let Some(addr) = sock_addr.as_socket_ipv4() {
     Some(SockAddrInfo {
       address: addr.ip().to_string(),
