@@ -25,8 +25,8 @@ const root = $.path(import.meta.dirname!);
 
 async function setup() {
   $.logStep("Setting up development environment...");
-  $.logStep("Building test_server...");
-  await $`cargo build --bin test_server`.cwd(root);
+  $.logStep("Building deno and test_server...");
+  await $`cargo build --bin deno --bin test_server`.cwd(root);
   $.logStep("Setup complete.");
 }
 
@@ -34,6 +34,12 @@ async function build() {
   $.logStep("Building Deno...");
   await $`cargo build --bin deno`.cwd(root);
   $.logStep("Build complete.");
+}
+
+async function check() {
+  $.logStep("Checking (no linking)...");
+  await $`cargo check`.cwd(root);
+  $.logStep("Check complete.");
 }
 
 async function testUnit() {
@@ -78,11 +84,11 @@ async function lintJs() {
   $.logStep("JS lint complete.");
 }
 
-async function aiVerify() {
-  $.logStep("Running AI agents verification (pre-commit)...");
+async function verify() {
+  $.logStep("Running pre-commit verification...");
   await fmt();
   await lintJs();
-  $.logStep("AI agents verification complete.");
+  $.logStep("Verification complete.");
 }
 
 // ---------------------------------------------------------------------------
@@ -94,12 +100,16 @@ const COMMANDS: Record<
   { description: string; fn: () => Promise<void> }
 > = {
   "setup": {
-    description: "Initial setup: build deno, denort, and test_server",
+    description: "Initial setup: build deno and test_server",
     fn: setup,
   },
   "build": {
-    description: "Build deno and denort binaries",
+    description: "Build the deno binary",
     fn: build,
+  },
+  "check": {
+    description: "Fast compile check (no linking)",
+    fn: check,
   },
   "test-unit": {
     description: "Run unit tests (cargo test -p unit_tests)",
@@ -129,9 +139,9 @@ const COMMANDS: Record<
     description: "Lint JavaScript/TypeScript only",
     fn: lintJs,
   },
-  "ai-verify": {
-    description: "Pre-commit checks for AI agents (fmt + lint-js)",
-    fn: aiVerify,
+  "verify": {
+    description: "Pre-commit verification (fmt + lint-js)",
+    fn: verify,
   },
 };
 
