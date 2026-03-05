@@ -59,7 +59,7 @@ export function getHeapCodeStatistics() {
     cpu_profiler_metadata_size: heapCodeStatisticsBuffer[3],
   };
 }
-export function getHeapSnapshot(options) {
+export function getHeapSnapshot(options?: Record<string, unknown>) {
   if (options !== undefined) {
     validateObject(options, "options");
   }
@@ -129,9 +129,12 @@ export function takeCoverage() {
 
 let heapSnapshotCounter = 0;
 
-export function writeHeapSnapshot(filename, options) {
+export function writeHeapSnapshot(
+  filename?: string,
+  options?: Record<string, unknown>,
+) {
   if (filename !== undefined) {
-    filename = getValidatedPath(filename);
+    filename = getValidatedPath(filename) as string;
   } else {
     const now = new Date();
     const year = now.getFullYear();
@@ -156,13 +159,14 @@ export function writeHeapSnapshot(filename, options) {
   return filename;
 }
 
-export function serialize(value) {
+// deno-lint-ignore no-explicit-any
+export function serialize(value: any) {
   const ser = new DefaultSerializer();
   ser.writeHeader();
   ser.writeValue(value);
   return ser.releaseBuffer();
 }
-export function deserialize(buffer) {
+export function deserialize(buffer: Buffer | ArrayBufferView | DataView) {
   if (!isArrayBufferView(buffer)) {
     throw new TypeError(
       "buffer must be a TypedArray or a DataView",
@@ -176,31 +180,32 @@ export function deserialize(buffer) {
 const kHandle = Symbol("kHandle");
 
 export class Serializer {
+  [kHandle]: object;
   constructor() {
     this[kHandle] = op_v8_new_serializer(this);
   }
 
-  _setTreatArrayBufferViewsAsHostObjects(value) {
+  _setTreatArrayBufferViewsAsHostObjects(value: boolean): void {
     op_v8_set_treat_array_buffer_views_as_host_objects(this[kHandle], value);
   }
 
-  releaseBuffer() {
+  releaseBuffer(): Buffer {
     return Buffer.from(op_v8_release_buffer(this[kHandle]));
   }
 
-  transferArrayBuffer(_id, _arrayBuffer) {
+  transferArrayBuffer(_id: number, _arrayBuffer: ArrayBuffer): void {
     op_v8_transfer_array_buffer(this[kHandle], _id, _arrayBuffer);
   }
 
-  writeDouble(value) {
+  writeDouble(value: number): void {
     op_v8_write_double(this[kHandle], value);
   }
 
-  writeHeader() {
+  writeHeader(): void {
     op_v8_write_header(this[kHandle]);
   }
 
-  writeRawBytes(source) {
+  writeRawBytes(source: ArrayBufferView): void {
     if (!isArrayBufferView(source)) {
       throw new TypeError(
         "source must be a TypedArray or a DataView",
@@ -209,15 +214,16 @@ export class Serializer {
     op_v8_write_raw_bytes(this[kHandle], source);
   }
 
-  writeUint32(value) {
+  writeUint32(value: number): void {
     op_v8_write_uint32(this[kHandle], value);
   }
 
-  writeUint64(hi, lo) {
+  writeUint64(hi: number, lo: number): void {
     op_v8_write_uint64(this[kHandle], hi, lo);
   }
 
-  writeValue(value) {
+  // deno-lint-ignore no-explicit-any
+  writeValue(value: any): void {
     op_v8_write_value(this[kHandle], value);
   }
 
@@ -225,7 +231,9 @@ export class Serializer {
 }
 
 export class Deserializer {
-  constructor(buffer) {
+  buffer: ArrayBufferView;
+  [kHandle]: object;
+  constructor(buffer: ArrayBufferView) {
     if (!isArrayBufferView(buffer)) {
       throw new TypeError(
         "buffer must be a TypedArray or a DataView",
@@ -234,7 +242,7 @@ export class Deserializer {
     this.buffer = buffer;
     this[kHandle] = op_v8_new_deserializer(this, buffer);
   }
-  readRawBytes(length) {
+  readRawBytes(length: number): Buffer {
     const offset = this._readRawBytes(length);
     return Buffer.from(
       this.buffer.buffer,
@@ -242,33 +250,36 @@ export class Deserializer {
       length,
     );
   }
-  _readRawBytes(length) {
+  _readRawBytes(length: number): number {
     return op_v8_read_raw_bytes(this[kHandle], length);
   }
-  getWireFormatVersion() {
+  getWireFormatVersion(): number {
     return op_v8_get_wire_format_version(this[kHandle]);
   }
-  readDouble() {
+  readDouble(): number {
     return op_v8_read_double(this[kHandle]);
   }
-  readHeader() {
+  readHeader(): boolean {
     return op_v8_read_header(this[kHandle]);
   }
 
-  readUint32() {
+  readUint32(): number {
     return op_v8_read_uint32(this[kHandle]);
   }
-  readUint64() {
+  readUint64(): [hi: number, lo: number] {
     return op_v8_read_uint64(this[kHandle]);
   }
-  readValue() {
+  readValue(): unknown {
     return op_v8_read_value(this[kHandle]);
   }
-  transferArrayBuffer(id, arrayBuffer) {
+  transferArrayBuffer(
+    id: number,
+    arrayBuffer: ArrayBuffer | SharedArrayBuffer,
+  ): void {
     return op_v8_transfer_array_buffer_de(this[kHandle], id, arrayBuffer);
   }
 }
-function arrayBufferViewTypeToIndex(abView) {
+function arrayBufferViewTypeToIndex(abView: ArrayBufferView) {
   const type = ObjectPrototypeToString(abView);
   if (type === "[object Int8Array]") return 0;
   if (type === "[object Uint8Array]") return 1;
@@ -292,7 +303,8 @@ export class DefaultSerializer extends Serializer {
     this._setTreatArrayBufferViewsAsHostObjects(true);
   }
 
-  _writeHostObject(abView) {
+  // deno-lint-ignore no-explicit-any
+  _writeHostObject(abView: any) {
     // Keep track of how to handle different ArrayBufferViews. The default
     // Serializer for Node does not use the V8 methods for serializing those
     // objects because Node's `Buffer` objects use pooled allocation in many
@@ -317,7 +329,8 @@ export class DefaultSerializer extends Serializer {
   }
 }
 
-function arrayBufferViewIndexToType(index) {
+// deno-lint-ignore no-explicit-any
+function arrayBufferViewIndexToType(index: number): any {
   if (index === 0) return Int8Array;
   if (index === 1) return Uint8Array;
   if (index === 2) return Uint8ClampedArray;
@@ -336,7 +349,7 @@ function arrayBufferViewIndexToType(index) {
 }
 
 export class DefaultDeserializer extends Deserializer {
-  constructor(buffer) {
+  constructor(buffer: ArrayBufferView) {
     super(buffer);
   }
 

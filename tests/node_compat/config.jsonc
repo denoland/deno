@@ -1770,7 +1770,9 @@
     // "sequential/test-diagnostic-dir-heap-prof.js": {},
     "sequential/test-fs-readdir-recursive.js": {},
     "sequential/test-fs-stat-sync-overflow.js": {},
-    "sequential/test-heapdump.js": {},
+    "sequential/test-heapdump.js": {
+      "windows": false
+    },
     "sequential/test-http-server-keep-alive-timeout-slow-server.js": {},
     // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
     // "sequential/test-inspector-open-dispose.mjs": {},
