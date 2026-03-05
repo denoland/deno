@@ -881,8 +881,6 @@ fn handle_expected_failure(
 
 #[cfg(test)]
 mod tests {
-  use super::*;
-
   #[test]
   fn test_deserialize_legacy_bool_platform() {
     let json = r#"{ "windows": false, "reason": "disabled on windows" }"#;
