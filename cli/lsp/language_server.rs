@@ -1198,38 +1198,46 @@ impl Inner {
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   fn dispatch_cache_jsx_import_sources(&self) {
-    for specifier_config in self
+    let configs: HashSet<_> = self
       .compiler_options_resolver
       .entries()
       .filter_map(|(_, d)| d.jsx_import_source_config.as_ref())
       .flat_map(|c| c.import_source.iter().chain(c.import_source_types.iter()))
-    {
-      let referrer = specifier_config.base.clone();
-      let specifier = format!("{}/jsx-runtime", &specifier_config.specifier);
-      self.task_queue.queue_task(Box::new(|ls: LanguageServer| {
-        spawn(async move {
-          let specifier = {
-            let inner = ls.inner.read().await;
+      .map(|c| (c.base.clone(), format!("{}/jsx-runtime", &c.specifier)))
+      .collect();
+    if configs.is_empty() {
+      return;
+    }
+    self.task_queue.queue_task(Box::new(|ls: LanguageServer| {
+      spawn(async move {
+        let (specifiers, referrer) = {
+          let inner = ls.inner.read().await;
+          let mut resolved = Vec::new();
+          let mut referrer = None;
+          for (base, specifier) in &configs {
             let scoped_resolver =
-              inner.resolver.get_scoped_resolver(Some(&referrer));
+              inner.resolver.get_scoped_resolver(Some(base));
             let resolver = scoped_resolver.as_cli_resolver();
-            let Ok(specifier) = resolver.resolve(
-              &specifier,
-              &referrer,
+            if let Ok(resolved_specifier) = resolver.resolve(
+              specifier,
+              base,
               deno_graph::Position::zeroed(),
               ResolutionMode::Import,
               NodeResolutionKind::Types,
-            ) else {
-              return;
-            };
-            specifier
-          };
-          if let Err(err) = ls.cache(vec![specifier], referrer, false).await {
-            lsp_warn!("{:#}", err);
+            ) {
+              resolved.push(resolved_specifier);
+              referrer.get_or_insert_with(|| base.clone());
+            }
           }
-        });
-      }));
-    }
+          (resolved, referrer)
+        };
+        if let Some(referrer) = referrer
+          && let Err(err) = ls.cache(specifiers, referrer, false).await
+        {
+          lsp_warn!("{:#}", err);
+        }
+      });
+    }));
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
