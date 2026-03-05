@@ -21,6 +21,7 @@ use deno_core::error::AnyError;
 use deno_core::url::Url;
 use deno_npm_installer::PackagesAllowedScripts;
 use deno_path_util::resolve_url_or_path;
+use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
 use jsonc_parser::cst::CstInputValue;
 use log::Level;
@@ -42,6 +43,7 @@ use crate::args::UninstallFlags;
 use crate::args::UninstallKind;
 use crate::args::resolve_no_prompt;
 use crate::factory::CliFactory;
+use crate::file_fetcher::CliFileFetcher;
 use crate::file_fetcher::CreateCliFileFetcherOptions;
 use crate::file_fetcher::create_cli_file_fetcher;
 use crate::jsr::JsrFetchResolver;
@@ -162,7 +164,14 @@ pub async fn install_global(
       cli_options.initial_cwd(),
       install_flags_global.root.as_deref(),
     )?;
-    setup_config_dir(&name_and_url, &flags, &installation_dir).await?;
+    setup_config_dir(
+      &name_and_url,
+      &flags,
+      &installation_dir,
+      Some(&jsr_resolver),
+      Some(&deps_file_fetcher),
+    )
+    .await?;
 
     // create the install shim
     create_install_shim(
@@ -347,6 +356,8 @@ async fn setup_config_dir(
   bin_name_and_url: &BinaryNameAndUrl,
   flags: &Flags,
   installation_dir: &Path,
+  jsr_resolver: Option<&Arc<JsrFetchResolver>>,
+  deps_file_fetcher: Option<&Arc<CliFileFetcher>>,
 ) -> Result<(), AnyError> {
   fn resolve_implicit_node_modules_dir(
     flags: &Flags,
@@ -421,6 +432,44 @@ async fn setup_config_dir(
         req.name, req.version_req
       ),
     )?;
+  }
+
+  // fetch deno.lock from JSR if this is a JSR package
+  if !flags.no_lock
+    && bin_name_and_url.module_url.scheme() == "jsr"
+    && let Some(jsr_resolver) = jsr_resolver
+    && let Some(deps_file_fetcher) = deps_file_fetcher
+    && let Ok(pkg_ref) =
+      JsrPackageReqReference::from_specifier(&bin_name_and_url.module_url)
+  {
+    let req = pkg_ref.req().clone();
+    if let Ok(Some(nv)) = jsr_resolver.req_to_nv(&req).await {
+      let lockfile_url = crate::args::jsr_url()
+        .join(&format!("{}/{}/deno.lock", &nv.name, &nv.version));
+      if let Ok(lockfile_url) = lockfile_url {
+        match deps_file_fetcher
+          .fetch_bypass_permissions(&lockfile_url)
+          .await
+        {
+          Ok(file) => {
+            fs::write(dir.join("deno.lock"), &*file.source)?;
+            log::debug!(
+              "Using lockfile from JSR package {}@{}",
+              nv.name,
+              nv.version
+            );
+          }
+          Err(_) => {
+            // No lockfile published for this package, continue without one
+            log::debug!(
+              "No deno.lock found for JSR package {}@{}",
+              nv.name,
+              nv.version
+            );
+          }
+        }
+      }
+    }
   }
 
   // create cloned flags to run cache_top_level_deps
@@ -842,9 +891,15 @@ mod tests {
     let installation_dir =
       super::get_installer_bin_dir(&cwd, install_flags_global.root.as_deref())
         .unwrap();
-    super::setup_config_dir(&binary_name_and_url, flags, &installation_dir)
-      .await
-      .unwrap();
+    super::setup_config_dir(
+      &binary_name_and_url,
+      flags,
+      &installation_dir,
+      None,
+      None,
+    )
+    .await
+    .unwrap();
     super::create_install_shim(
       &binary_name_and_url,
       &cwd,
