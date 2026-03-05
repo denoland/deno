@@ -8,7 +8,9 @@ import {
   assertThrows,
   fail,
 } from "@std/assert";
+import { Buffer } from "node:buffer";
 import { join } from "node:path";
+import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 import {
@@ -29,6 +31,12 @@ import {
   fchmodSync,
   fchown,
   fchownSync,
+  fdatasync,
+  fdatasyncSync,
+  fsync,
+  fsyncSync,
+  link,
+  linkSync,
   lstatSync,
   mkdtempSync,
   openAsBlob,
@@ -39,6 +47,8 @@ import {
   readSync,
   Stats,
   statSync,
+  unlink,
+  unlinkSync,
   writeFileSync,
 } from "node:fs";
 import { readFile } from "node:fs/promises";
@@ -1129,4 +1139,348 @@ Deno.test({
     closeSync(rid), Deno.errors.BadResource;
   });
   await Deno.remove(tempFile);
+});
+
+// ==========
+// fsync tests (from _fs_fsync_test.ts)
+// ==========
+
+Deno.test({
+  name:
+    "[node/fs.fsync] ASYNC: flush any pending data of the given file stream to disk",
+  // TODO(bartlomieju): this test is broken in Deno 2, because `file.rid` is undefined.
+  // The fs APIs should be rewritten to use actual FDs, not RIDs
+  ignore: true,
+  async fn() {
+    const filePath = await Deno.makeTempFile();
+    using file = await Deno.open(filePath, {
+      read: true,
+      write: true,
+      create: true,
+    });
+    const size = 64;
+    await file.truncate(size);
+
+    await new Promise<void>((resolve, reject) => {
+      // @ts-ignore (iuioiua) `file.rid` should no longer be needed once FDs are used
+      fsync(file.rid, (err: Error | null) => {
+        if (err !== null) reject();
+        else resolve();
+      });
+    })
+      .then(
+        async () => {
+          assertEquals((await Deno.stat(filePath)).size, size);
+        },
+        () => {
+          fail("No error expected");
+        },
+      )
+      .finally(async () => {
+        await Deno.remove(filePath);
+      });
+  },
+});
+
+Deno.test({
+  name:
+    "[node/fs.fsyncSync] SYNC: flush any pending data the given file stream to disk",
+  // TODO(bartlomieju): this test is broken in Deno 2, because `file.rid` is undefined.
+  // The fs APIs should be rewritten to use actual FDs, not RIDs
+  ignore: true,
+  fn() {
+    const filePath = Deno.makeTempFileSync();
+    using file = Deno.openSync(filePath, {
+      read: true,
+      write: true,
+      create: true,
+    });
+    const size = 64;
+    file.truncateSync(size);
+
+    try {
+      // @ts-ignore (iuioiua) `file.rid` should no longer be needed once FDs are used
+      fsyncSync(file.rid);
+      assertEquals(Deno.statSync(filePath).size, size);
+    } finally {
+      Deno.removeSync(filePath);
+    }
+  },
+});
+
+// ==========
+// fdatasync tests (from _fs_fdatasync_test.ts)
+// ==========
+
+Deno.test({
+  name:
+    "[node/fs.fdatasync] ASYNC: flush any pending data operations of the given file stream to disk",
+  // TODO(bartlomieju): this test is broken in Deno 2, because `file.rid` is undefined.
+  // The fs APIs should be rewritten to use actual FDs, not RIDs
+  ignore: true,
+  async fn() {
+    const filePath = await Deno.makeTempFile();
+    using file = await Deno.open(filePath, {
+      read: true,
+      write: true,
+      create: true,
+    });
+    const data = new Uint8Array(64);
+    await file.write(data);
+
+    await new Promise<void>((resolve, reject) => {
+      // @ts-ignore (iuioiua) `file.rid` should no longer be needed once FDs are used
+      fdatasync(file.rid, (err: Error | null) => {
+        if (err !== null) reject();
+        else resolve();
+      });
+    })
+      .then(
+        async () => {
+          assertEquals(await Deno.readFile(filePath), data);
+        },
+        () => {
+          fail("No error expected");
+        },
+      )
+      .finally(async () => {
+        await Deno.remove(filePath);
+      });
+  },
+});
+
+Deno.test({
+  name:
+    "[node/fs.fdatasyncSync] SYNC: flush any pending data operations of the given file stream to disk.",
+  // TODO(bartlomieju): this test is broken in Deno 2, because `file.rid` is undefined.
+  // The fs APIs should be rewritten to use actual FDs, not RIDs
+  ignore: true,
+  fn() {
+    const filePath = Deno.makeTempFileSync();
+    using file = Deno.openSync(filePath, {
+      read: true,
+      write: true,
+      create: true,
+    });
+    const data = new Uint8Array(64);
+    file.writeSync(data);
+
+    try {
+      // @ts-ignore (iuioiua) `file.rid` should no longer be needed once FDs are used
+      fdatasyncSync(file.rid);
+      assertEquals(Deno.readFileSync(filePath), data);
+    } finally {
+      Deno.removeSync(filePath);
+    }
+  },
+});
+
+// ==========
+// link tests (from _fs_link_test.ts)
+// ==========
+
+Deno.test({
+  name: "[node/fs.link] ASYNC: hard linking files works as expected",
+  async fn() {
+    const tempFile: string = await Deno.makeTempFile();
+    const linkedFile: string = tempFile + ".link";
+    await new Promise<void>((res, rej) => {
+      link(tempFile, linkedFile, (err) => {
+        if (err) rej(err);
+        else res();
+      });
+    })
+      .then(() => {
+        assertEquals(Deno.statSync(tempFile), Deno.statSync(linkedFile));
+      }, () => {
+        fail("Expected to succeed");
+      })
+      .finally(() => {
+        Deno.removeSync(tempFile);
+        Deno.removeSync(linkedFile);
+      });
+  },
+});
+
+Deno.test({
+  name: "[node/fs.link] ASYNC: hard linking files passes error to callback",
+  async fn() {
+    let failed = false;
+    await new Promise<void>((res, rej) => {
+      link("no-such-file", "no-such-file", (err) => {
+        if (err) rej(err);
+        else res();
+      });
+    })
+      .then(() => {
+        fail("Expected to succeed");
+      }, (err) => {
+        assert(err);
+        failed = true;
+      });
+    assert(failed);
+  },
+});
+
+Deno.test({
+  name: "[node/fs.linkSync] SYNC: hard linking files works as expected",
+  fn() {
+    const tempFile: string = Deno.makeTempFileSync();
+    const linkedFile: string = tempFile + ".link";
+    linkSync(tempFile, linkedFile);
+
+    assertEquals(Deno.statSync(tempFile), Deno.statSync(linkedFile));
+    Deno.removeSync(tempFile);
+    Deno.removeSync(linkedFile);
+  },
+});
+
+Deno.test("[node/fs.link] link callback isn't called twice if error is thrown", async () => {
+  const tempDir = await Deno.makeTempDir();
+  const tempFile = path.join(tempDir, "file.txt");
+  const linkFile = path.join(tempDir, "link.txt");
+  await Deno.writeTextFile(tempFile, "hello world");
+  const importUrl = new URL("node:fs", import.meta.url);
+  await assertCallbackErrorUncaught({
+    prelude: `import { link } from ${JSON.stringify(importUrl)}`,
+    invocation: `link(${JSON.stringify(tempFile)},
+                      ${JSON.stringify(linkFile)}, `,
+    async cleanup() {
+      await Deno.remove(tempDir, { recursive: true });
+    },
+  });
+});
+
+Deno.test("[node/fs.link] link accepts Buffer", async () => {
+  const tempDir = await Deno.makeTempDir();
+  const tempFile = path.join(tempDir, "file.txt");
+  const linkedFile = path.join(tempDir, "file.link");
+  const tempFileBuffer = Buffer.from(tempFile, "utf8");
+  const linkedFileBuffer = Buffer.from(linkedFile, "utf8");
+  await Deno.writeTextFile(tempFile, "hello world");
+
+  await new Promise<void>((resolve, reject) => {
+    link(tempFileBuffer, linkedFileBuffer, (err) => {
+      if (err) reject(err);
+      else resolve();
+    });
+  })
+    .then(() => {
+      assertEquals(Deno.statSync(tempFile), Deno.statSync(linkedFile));
+    }, () => {
+      fail("Expected to succeed");
+    })
+    .finally(() => {
+      Deno.removeSync(tempFile);
+      Deno.removeSync(linkedFile);
+      Deno.removeSync(tempDir);
+    });
+});
+
+Deno.test("[node/fs.linkSync] linkSync accepts Buffer", () => {
+  const tempDir = Deno.makeTempDirSync();
+  const tempFile = path.join(tempDir, "file.txt");
+  const linkedFile = path.join(tempDir, "file.link");
+  const tempFileBuffer = Buffer.from(tempFile, "utf8");
+  const linkedFileBuffer = Buffer.from(linkedFile, "utf8");
+  Deno.writeTextFileSync(tempFile, "hello world");
+
+  linkSync(tempFileBuffer, linkedFileBuffer);
+  assertEquals(Deno.statSync(tempFile), Deno.statSync(linkedFile));
+
+  Deno.removeSync(linkedFile);
+  Deno.removeSync(tempFile);
+  Deno.removeSync(tempDir);
+});
+
+// ==========
+// unlink tests (from _fs_unlink_test.ts)
+// ==========
+
+Deno.test({
+  name: "[node/fs.unlink] ASYNC: deleting a file",
+  async fn() {
+    const file = Deno.makeTempFileSync();
+    await new Promise<void>((resolve, reject) => {
+      unlink(file, (err) => {
+        if (err) reject(err);
+        resolve();
+      });
+    })
+      .then(() => assertEquals(existsSync(file), false), () => fail())
+      .finally(() => {
+        if (existsSync(file)) Deno.removeSync(file);
+      });
+  },
+});
+
+Deno.test({
+  name: "[node/fs.unlinkSync] SYNC: Test deleting a file",
+  fn() {
+    const file = Deno.makeTempFileSync();
+    unlinkSync(file);
+    assertEquals(existsSync(file), false);
+  },
+});
+
+Deno.test("[node/fs.unlink] unlink callback isn't called twice if error is thrown", async () => {
+  const tempFile = await Deno.makeTempFile();
+  const importUrl = new URL("node:fs", import.meta.url);
+  await assertCallbackErrorUncaught({
+    prelude: `import { unlink } from ${JSON.stringify(importUrl)}`,
+    invocation: `unlink(${JSON.stringify(tempFile)}, `,
+  });
+});
+
+Deno.test("[node/fs.unlink] unlink accepts Buffer path", async () => {
+  const file = Deno.makeTempFileSync();
+  const bufferPath = Buffer.from(file, "utf-8");
+  await new Promise<void>((resolve, reject) => {
+    unlink(bufferPath, (err) => {
+      if (err) reject(err);
+      resolve();
+    });
+  })
+    .then(() => assertEquals(existsSync(file), false), () => fail());
+});
+
+Deno.test("[node/fs.unlinkSync] unlinkSync accepts Buffer path", () => {
+  const file = Deno.makeTempFileSync();
+  const bufferPath = Buffer.from(file, "utf-8");
+  unlinkSync(bufferPath);
+  assertEquals(existsSync(file), false);
+});
+
+Deno.test("[node/fs.unlink] unlink: convert Deno error to Node.js error", async () => {
+  const dir = Deno.makeTempDirSync();
+  const unlinkPath = join(dir, "non_existent_file");
+
+  await new Promise<void>((resolve, reject) => {
+    unlink(unlinkPath, (err) => {
+      if (err) reject(err);
+      resolve();
+    });
+  })
+    .then(() => fail(), (err) => {
+      assertEquals(err.code, "ENOENT");
+      assertEquals(err.syscall, "unlink");
+      assertEquals(err.path, unlinkPath);
+    });
+});
+
+Deno.test("[node/fs.unlinkSync] unlinkSync: convert Deno error to Node.js error", () => {
+  const dir = Deno.makeTempDirSync();
+  const unlinkPath = join(dir, "non_existent_file");
+
+  try {
+    unlinkSync(unlinkPath);
+    fail();
+  } catch (err) {
+    // deno-lint-ignore no-explicit-any
+    assertEquals((err as any).code, "ENOENT");
+    // deno-lint-ignore no-explicit-any
+    assertEquals((err as any).syscall, "unlink");
+    // deno-lint-ignore no-explicit-any
+    assertEquals((err as any).path, unlinkPath);
+  }
 });
