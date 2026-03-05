@@ -1,0 +1,5 @@
+{
+  "args": "run --allow-all main.ts",
+  "output": "Error: SIGINT\n[WILDCARD]innerWork[WILDCARD]main.ts[WILDCARD]\n[WILDCARD]",
+  "exitCode": 130
+}
