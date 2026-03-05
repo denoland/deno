@@ -29,7 +29,7 @@ import { open as fsOpen } from "ext:deno_node/_fs/_fs_open.ts";
 import { read as fsRead } from "ext:deno_node/_fs/_fs_read.ts";
 import { write as fsWrite } from "ext:deno_node/_fs/_fs_write.ts";
 import { writev as fsWritev } from "ext:deno_node/_fs/_fs_writev.ts";
-import { close as fsClose } from "ext:deno_node/_fs/_fs_close.ts";
+import { close as fsClose } from "node:fs";
 import { Buffer } from "node:buffer";
 import {
   copyObject,

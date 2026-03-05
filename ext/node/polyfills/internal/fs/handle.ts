@@ -7,6 +7,12 @@ import { EventEmitter } from "node:events";
 import { Buffer } from "node:buffer";
 import {
   type BigIntStats,
+  fchmodPromise,
+  fchownPromise,
+  fdatasyncPromise,
+  fsyncPromise,
+  ftruncatePromise,
+  futimesPromise,
   Mode,
   promises,
   read as readAsync,
@@ -24,15 +30,9 @@ import {
   FileOptionsArgument,
   TextOptionsArgument,
 } from "ext:deno_node/_fs/_fs_common.ts";
-import { ftruncatePromise } from "ext:deno_node/_fs/_fs_ftruncate.ts";
 import { writevPromise, WriteVResult } from "ext:deno_node/_fs/_fs_writev.ts";
 import { readvPromise, ReadVResult } from "ext:deno_node/_fs/_fs_readv.ts";
-import { fchmodPromise } from "ext:deno_node/_fs/_fs_fchmod.ts";
-import { fchownPromise } from "ext:deno_node/_fs/_fs_fchown.ts";
-import { fdatasyncPromise } from "ext:deno_node/_fs/_fs_fdatasync.ts";
 import { fstatPromise } from "ext:deno_node/_fs/_fs_fstat.ts";
-import { fsyncPromise } from "ext:deno_node/_fs/_fs_fsync.ts";
-import { futimesPromise } from "ext:deno_node/_fs/_fs_futimes.ts";
 import {
   CreateReadStreamOptions,
   CreateWriteStreamOptions,

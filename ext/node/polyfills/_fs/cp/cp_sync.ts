@@ -2,15 +2,17 @@
 // Adapted from Node.js. Copyright Joyent, Inc. and other Node contributors.
 
 import { dirname, isAbsolute, join, parse, resolve } from "node:path";
-import { chmodSync } from "ext:deno_node/_fs/_fs_chmod.ts";
-import { copyFileSync } from "ext:deno_node/_fs/_fs_copy.ts";
-import { existsSync } from "ext:deno_node/_fs/_fs_exists.ts";
-import { mkdirSync } from "ext:deno_node/_fs/_fs_mkdir.ts";
+import {
+  chmodSync,
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readlinkSync,
+  symlinkSync,
+  unlinkSync,
+  utimesSync,
+} from "node:fs";
 import { opendirSync } from "ext:deno_node/_fs/_fs_opendir.ts";
-import { readlinkSync } from "ext:deno_node/_fs/_fs_readlink.ts";
-import { symlinkSync } from "ext:deno_node/_fs/_fs_symlink.ts";
-import { unlinkSync } from "ext:deno_node/_fs/_fs_unlink.ts";
-import { utimesSync } from "ext:deno_node/_fs/_fs_utimes.ts";
 import {
   ERR_FS_CP_DIR_TO_NON_DIR,
   ERR_FS_CP_EEXIST,
