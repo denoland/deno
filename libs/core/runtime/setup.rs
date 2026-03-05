@@ -83,31 +83,60 @@ fn wake_isolate(key: usize) {
   }
 }
 
-/// Callback invoked by NotifyingPlatform when a foreground task is posted.
-/// This is called from ANY thread (including V8 background threads).
-/// For delayed tasks, spawns a thread to wake after the delay expires.
-struct DenoForegroundTaskCallback;
+/// Custom V8 platform implementation that wakes isolate event loops
+/// when foreground tasks are posted from any thread (including V8
+/// background compilation threads).
+struct DenoPlatformImpl;
 
-impl v8::ForegroundTaskCallback for DenoForegroundTaskCallback {
-  fn on_foreground_task_posted(
+impl DenoPlatformImpl {
+  fn wake_immediate(&self, isolate_ptr: *mut c_void) {
+    wake_isolate(isolate_ptr as usize);
+  }
+
+  fn wake_delayed(&self, isolate_ptr: *mut c_void, delay_in_seconds: f64) {
+    let key = isolate_ptr as usize;
+    // Spawns an OS thread per delayed task; this is acceptable because
+    // delayed foreground tasks are rare (e.g. Atomics.waitAsync timeouts).
+    std::thread::spawn(move || {
+      std::thread::sleep(std::time::Duration::from_secs_f64(
+        delay_in_seconds,
+      ));
+      wake_isolate(key);
+    });
+  }
+}
+
+impl v8::PlatformImpl for DenoPlatformImpl {
+  fn post_task(&self, isolate_ptr: *mut c_void) {
+    self.wake_immediate(isolate_ptr);
+  }
+
+  fn post_non_nestable_task(&self, isolate_ptr: *mut c_void) {
+    self.wake_immediate(isolate_ptr);
+  }
+
+  fn post_delayed_task(
     &self,
     isolate_ptr: *mut c_void,
     delay_in_seconds: f64,
   ) {
-    let key = isolate_ptr as usize;
-    if delay_in_seconds <= 0.0 {
-      wake_isolate(key);
-    } else {
-      // Delayed task — schedule a wake-up after the delay expires.
-      // Spawns an OS thread per delayed task; this is acceptable because
-      // delayed foreground tasks are rare (e.g. Atomics.waitAsync timeouts).
-      std::thread::spawn(move || {
-        std::thread::sleep(std::time::Duration::from_secs_f64(
-          delay_in_seconds,
-        ));
-        wake_isolate(key);
-      });
-    }
+    self.wake_delayed(isolate_ptr, delay_in_seconds);
+  }
+
+  fn post_non_nestable_delayed_task(
+    &self,
+    isolate_ptr: *mut c_void,
+    delay_in_seconds: f64,
+  ) {
+    self.wake_delayed(isolate_ptr, delay_in_seconds);
+  }
+
+  fn post_idle_task(&self, isolate_ptr: *mut c_void) {
+    self.wake_immediate(isolate_ptr);
+  }
+
+  fn notify_isolate_shutdown(&self, isolate_ptr: *mut c_void) {
+    unregister_isolate_waker(isolate_ptr as usize);
   }
 }
 
@@ -152,12 +181,11 @@ fn v8_init(
   v8::V8::set_flags_from_string(&flags);
 
   let v8_platform = v8_platform.unwrap_or_else(|| {
-    // Always use NotifyingPlatform to wake event loops when V8 background
-    // threads post foreground tasks. NotifyingPlatform already disables
-    // thread-isolated allocations (like UnprotectedDefaultPlatform), so
-    // it's safe for both tests and production.
-    v8::new_notifying_platform(0, false, DenoForegroundTaskCallback)
-      .make_shared()
+    // Use a custom platform that notifies isolate event loops when V8
+    // background threads post foreground tasks. Thread-isolated allocations
+    // are disabled (like UnprotectedDefaultPlatform), safe for tests and
+    // production.
+    v8::new_custom_platform(0, false, DenoPlatformImpl).make_shared()
   });
   v8::V8::initialize_platform(v8_platform.clone());
   v8::V8::initialize();

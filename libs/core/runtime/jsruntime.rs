@@ -2284,7 +2284,8 @@ impl JsRuntime {
     // Re-wake logic for next iteration
     #[allow(clippy::suspicious_else_formatting, clippy::if_same_then_else)]
     {
-      if pending_state.has_tick_scheduled
+      if pending_state.has_pending_background_tasks
+        || pending_state.has_tick_scheduled
         || pending_state.has_outstanding_immediates
         || pending_state.has_refed_immediates > 0
         || pending_state.has_pending_promise_events
