@@ -105,16 +105,12 @@ use crate::util::v8::convert;
 
 static BRACKET_ACCESSOR_RE: Lazy<Regex> =
   lazy_regex!(r#"^\[['"](.+)[\['"]\]$"#);
-static CAPTION_RE: Lazy<Regex> =
-  lazy_regex!(r"<caption>(.*?)</caption>\s*\r?\n((?:\s|\S)*)");
 static CODEBLOCK_RE: Lazy<Regex> = lazy_regex!(r"^\s*[~`]{3}"m);
-static EMAIL_MATCH_RE: Lazy<Regex> = lazy_regex!(r"(.+)\s<([-.\w]+@[-.\w]+)>");
 static HTTP_RE: Lazy<Regex> = lazy_regex!(r#"(?i)^https?:"#);
 static JSDOC_LINKS_RE: Lazy<Regex> = lazy_regex!(
   r"(?i)\{@(link|linkplain|linkcode) (https?://[^ |}]+?)(?:[| ]([^{}\n]+?))?\}"
 );
 static PART_KIND_MODIFIER_RE: Lazy<Regex> = lazy_regex!(r",|\s+");
-static PART_RE: Lazy<Regex> = lazy_regex!(r"^(\S+)\s*-?\s*");
 static SCOPE_RE: Lazy<Regex> = lazy_regex!(r"scope_(\d)");
 
 const FILE_EXTENSION_KIND_MODIFIERS: &[&str] =
@@ -1618,101 +1614,83 @@ impl TsJsServer {
   }
 }
 
-fn get_tag_body_text(
-  tag: &JsDocTagInfo,
-  module: &DocumentModule,
-  snapshot: &StateSnapshot,
-) -> Option<String> {
-  tag.text.as_ref().map(|display_parts| {
-    // TODO(@kitsonk) check logic in vscode about handling this API change in
-    // tsserver
-    let text = display_parts_to_string(display_parts, module, snapshot);
-    match tag.name.as_str() {
-      "example" => {
-        if CAPTION_RE.is_match(&text) {
-          CAPTION_RE
-            .replace(&text, |c: &Captures| {
-              format!("{}\n\n{}", &c[1], make_codeblock(&c[2]))
-            })
-            .to_string()
-        } else {
-          make_codeblock(&text)
-        }
-      }
-      "author" => EMAIL_MATCH_RE
-        .replace(&text, |c: &Captures| format!("{} {}", &c[1], &c[2]))
-        .to_string(),
-      "default" => make_codeblock(&text),
-      _ => replace_links(&text),
-    }
-  })
-}
-
 fn get_tag_documentation(
   tag: &JsDocTagInfo,
   module: &DocumentModule,
   snapshot: &StateSnapshot,
 ) -> String {
-  let mut label_and_text = None;
-  let mut always_inline = false;
+  let mut result = format!("*@{}*", tag.name);
+  let Some(display_parts) = &tag.text else {
+    return result;
+  };
   match tag.name.as_str() {
     "param" => {
-      if let Some(display_parts) = &tag.text {
-        let mut display_parts = display_parts.iter().peekable();
-        if display_parts
-          .peek()
-          .is_some_and(|p| p.kind == "parameterName")
-        {
-          let parameter_name = &display_parts.next().unwrap().text;
-          if display_parts.peek().is_some_and(|p| p.kind == "space") {
-            display_parts.next();
-          }
-          label_and_text = Some((
-            format!("*@param* `{parameter_name}`"),
-            display_parts_to_string(display_parts, module, snapshot),
-          ));
-          always_inline = true;
+      let mut display_parts = display_parts.iter().peekable();
+      if display_parts
+        .peek()
+        .is_some_and(|p| p.kind == "parameterName")
+      {
+        let parameter_name = &display_parts.next().unwrap().text;
+        result.push_str(" `");
+        result.push_str(parameter_name);
+        result.push('`');
+        if display_parts.peek().is_some_and(|p| p.kind == "space") {
+          display_parts.next();
+        }
+      }
+      let doc =
+        replace_links(display_parts_to_string(display_parts, module, snapshot));
+      if !doc.is_empty() {
+        if doc.starts_with('-') {
+          result.push(' ');
+          result.push_str(&doc);
+        } else {
+          result.push_str(" — ");
+          result.push_str(&doc);
         }
       }
     }
-    "augments" | "extends" | "template" => {
-      if let Some(display_parts) = &tag.text {
-        // TODO(@kitsonk) check logic in vscode about handling this API change
-        // in tsserver
-        let text = display_parts_to_string(display_parts, module, snapshot);
-        let body: Vec<&str> = PART_RE.split(&text).collect();
-        if body.len() == 3 {
-          let param = body[1];
-          let doc = body[2];
-          label_and_text =
-            Some((format!("*@{}* `{}`", tag.name, param), doc.to_string()));
+    "example" => {
+      let text = display_parts_to_string(display_parts, module, snapshot);
+      let code = if let Some(suffix_for_caption) =
+        text.strip_prefix("<caption>")
+        && let Some((caption, code)) =
+          suffix_for_caption.split_once("</caption>")
+      {
+        result.push_str(" — ");
+        result.push_str(&replace_links(caption));
+        code.trim_start()
+      } else {
+        text.as_str()
+      };
+      if !code.is_empty() {
+        result.push('\n');
+        result.push_str(&make_codeblock(code));
+      }
+    }
+    _ => {
+      let doc =
+        replace_links(display_parts_to_string(display_parts, module, snapshot));
+      if !doc.is_empty() {
+        if doc.starts_with('-') {
+          result.push(' ');
+          result.push_str(&doc);
+        } else {
+          result.push_str(" — ");
+          result.push_str(&doc);
         }
       }
     }
-    _ => (),
   }
-  let (label, text) = label_and_text.unwrap_or_else(|| {
-    (
-      format!("*@{}*", tag.name),
-      get_tag_body_text(tag, module, snapshot).unwrap_or_default(),
-    )
-  });
-  if text.is_empty() {
-    label
-  } else if !always_inline && text.contains('\n') {
-    format!("{label}\n{text}\n")
-  } else if text.starts_with('-') {
-    format!("{label} {text}\n")
-  } else {
-    format!("{label} — {text}\n")
-  }
+  result.push('\n');
+  result
 }
 
 fn make_codeblock(text: &str) -> String {
   if CODEBLOCK_RE.is_match(text) {
     text.to_string()
   } else {
-    format!("```\n{text}\n```")
+    format!("```tsx\n{text}\n```")
   }
 }
 

@@ -3134,6 +3134,56 @@ fn lsp_hover_jsdoc_symbol_link(use_tsgo: bool) {
 }
 
 #[test(timeout = 300, fork_with_suffix = "_tsgo")]
+fn lsp_hover_jsdoc_tags(use_tsgo: bool) {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  let file = temp_dir.source_file(
+    "file.ts",
+    r#"
+      /**
+       * @author myname <myname@email.com>
+       * @param foo Documentation for `foo`.
+       * @param {number} bar  Documentation for `bar`.
+       * @param {string} baz Multiline documentation for `baz`.
+       * Second line.
+       * @example
+       * someFunction(a, b, c);
+       * @example <caption>Example caption</caption>
+       * someFunction(a, b, c);
+       * @example <caption>
+       *   Multiline example caption.
+       *   Second line.
+       * </caption>
+       * someFunction(a, b, c);
+       * @example <caption>Caption with empty example</caption>
+       */
+      function someFunction(foo, bar, baz) {}
+    "#,
+  );
+  let mut client = context.new_lsp_command().set_use_tsgo(use_tsgo).build();
+  client.initialize_default();
+  client.did_open_file(&file);
+  let res = client.write_request(
+    "textDocument/hover",
+    json!({
+      "textDocument": { "uri": file.uri() },
+      "position": file.range_of_nth(3, "someFunction").start,
+    }),
+  );
+  assert_eq!(
+    res,
+    json!({
+      "contents": {
+        "kind": "markdown",
+        "value": "```tsx\nfunction someFunction(foo: any, bar: any, baz: any): void\n```\n\n\n*@author* — myname <myname@email.com>\n\n\n*@param* `foo` — Documentation for `foo`.\n\n\n*@param* `bar` — Documentation for `bar`.\n\n\n*@param* `baz` — Multiline documentation for `baz`.\nSecond line.\n\n\n*@example*\n```tsx\nsomeFunction(a, b, c);\n```\n\n\n*@example* — Example caption\n```tsx\nsomeFunction(a, b, c);\n```\n\n\n*@example* — \nMultiline example caption.\nSecond line.\n\n```tsx\nsomeFunction(a, b, c);\n```\n\n\n*@example* — Caption with empty example\n",
+      },
+      "range": file.range_of_nth(3, "someFunction"),
+    }),
+  );
+  client.shutdown();
+}
+
+#[test(timeout = 300, fork_with_suffix = "_tsgo")]
 fn lsp_goto_type_definition(use_tsgo: bool) {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().set_use_tsgo(use_tsgo).build();
