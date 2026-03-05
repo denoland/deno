@@ -17,7 +17,7 @@ cargo build --bin deno
 Then try it on this demo project:
 
 ```sh
-# Format all files (TS, CSS, JSON)
+# Format all files (TS, TSX, CSS, JSON, HTML)
 ./target/debug/deno fmt try_oxc/
 
 # Check formatting without writing
@@ -42,17 +42,36 @@ echo 'const x = {a:1,b:2}' | ./target/debug/deno fmt --ext=ts -
 |------|---------|
 | `App.tsx` | React component with intentional lint issues |
 | `utils.ts` | Utility functions with messy formatting |
-| `styles.css` | CSS with minified formatting |
-| `data.json` | JSON on a single line |
+| `styles.css` | CSS file (formatted by oxfmt) |
+| `index.html` | HTML file (formatted by oxfmt) |
+| `data.json` | JSON on a single line (formatted by oxfmt) |
 | `oxlintrc.json` | oxlint configuration |
 | `.oxfmtrc.json` | oxfmt configuration |
 
 ### Intentional lint issues in `App.tsx`
 
+**Core ESLint rules:**
 - `debugger` statement (line 18) — caught by `no-debugger`
 - `confirm()` call (line 19) — caught by `no-alert`
-- `var` usage (line 47) — caught by `no-var`
-- Unused variable (line 47) — caught by `no-unused-vars`
+- `var` usage (line 58) — caught by `no-var`
+- Unused variable (line 58) — caught by `no-unused-vars`
+
+**React plugin rules** (`--react-plugin`):
+- Missing `key` prop in `.map()` — caught by `react/jsx-key` (if applicable)
+
+**JSX-A11y plugin rules** (`--jsx-a11y-plugin`):
+- `<img>` without `alt` attribute (line 27) — caught by `jsx-a11y/alt-text`
+
+## Plugins
+
+oxlint supports several plugins that are enabled automatically:
+
+- **React plugin** — catches React-specific issues (`jsx-key`, `jsx-no-duplicate-props`, etc.)
+- **JSX-A11y plugin** — catches accessibility issues in JSX (`alt-text`, `anchor-has-content`, etc.)
+
+These are enabled via `--react-plugin` and `--jsx-a11y-plugin` flags in the
+subprocess invocation. Rules from these plugins can be configured in
+`oxlintrc.json` just like core rules.
 
 ## Native Config Files
 
@@ -72,7 +91,9 @@ oxlint uses an ESLint v8-compatible configuration format. Place an
     "no-var": "error",
     "no-unused-vars": "warn",
     "eqeqeq": "warn",
-    "no-alert": "warn"
+    "no-alert": "warn",
+    "react/jsx-no-duplicate-props": "error",
+    "jsx-a11y/alt-text": "warn"
   }
 }
 ```
@@ -87,15 +108,6 @@ ESLint. You can also use the array form for rules with options:
   }
 }
 ```
-
-Additional oxlint features available via config:
-
-- **Plugins**: `--react-plugin`, `--jsdoc-plugin`, `--jsx-a11y-plugin` etc.
-  can be enabled to get framework-specific rules
-- **TypeScript-aware rules**: Use `--tsconfig=./tsconfig.json` for
-  import resolution and type-aware linting
-- **Nested configs**: oxlint can load configs from subdirectories
-  (disable with `--disable-nested-config`)
 
 See the full config schema:
 https://oxc.rs/docs/guide/usage/linter/config.html
@@ -134,9 +146,8 @@ https://oxc.rs/docs/guide/usage/formatter.html
 
 ### Linting (`deno lint`)
 
-1. On first run, the oxlint binary is auto-downloaded from npm
-   (`@oxlint/<platform>`) and cached in `$DENO_DIR/dl/`
-2. All files are passed to `oxlint --format json` in a single batch call
+1. All files are passed to `oxlint --format json` via `deno run npm:oxlint@<version>`
+2. Plugins are enabled: `--react-plugin`, `--jsx-a11y-plugin`
 3. JSON diagnostics are parsed and mapped to Deno's `LintDiagnostic` type
 4. Existing reporters (pretty, compact, JSON) render the output
 

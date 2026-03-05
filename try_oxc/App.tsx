@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 
 interface User {
   id: number;
@@ -25,6 +25,7 @@ function UserCard({ user, onDelete, isSelected }: UserCardProps) {
     <div className={`card ${isSelected ? "selected" : ""}`}>
       <h3>{user.name}</h3>
       <p className="email">{user.email}</p>
+      <img src={`/avatars/${user.id}.png`} />
       <span className={`badge badge-${user.role}`}>{user.role}</span>
       <button onClick={handleDelete}>Delete</button>
     </div>

@@ -100,9 +100,6 @@ pub async fn lint(
       compiler_options_resolver,
     )?
   } else {
-    // Resolve the oxlint binary (download if needed)
-    let oxlint_bin = ensure_oxlint_downloaded(&factory).await?;
-
     let mut linter = WorkspaceLinter::new(
       factory.caches()?.clone(),
       lint_rule_provider,
@@ -110,7 +107,6 @@ pub async fn lint(
       compiler_options_resolver.clone(),
       cli_options.start_dir.clone(),
       &workspace_lint_options,
-      oxlint_bin,
     );
     let paths_with_options_batches =
       resolve_paths_with_options_batches(cli_options, &lint_flags)?;
@@ -131,28 +127,6 @@ pub async fn lint(
   }
 
   Ok(())
-}
-
-async fn ensure_oxlint_downloaded(
-  factory: &CliFactory,
-) -> Result<PathBuf, AnyError> {
-  let installer_factory = factory.npm_installer_factory()?;
-  let deno_dir = factory.deno_dir()?;
-  let npmrc = factory.npmrc()?;
-  let npm_registry_info = installer_factory.registry_info_provider()?;
-  let resolver_factory = factory.resolver_factory()?;
-  let workspace_factory = resolver_factory.workspace_factory();
-
-  let oxlint_path = oxc::ensure_oxlint(
-    deno_dir,
-    npmrc,
-    npm_registry_info,
-    workspace_factory.workspace_npm_link_packages()?,
-    installer_factory.tarball_cache()?,
-    factory.npm_cache()?,
-  )
-  .await?;
-  Ok(oxlint_path)
 }
 
 async fn lint_with_watch_inner(
@@ -185,8 +159,6 @@ async fn lint_with_watch_inner(
     };
   }
 
-  let oxlint_bin = ensure_oxlint_downloaded(&factory).await?;
-
   let mut linter = WorkspaceLinter::new(
     factory.caches()?.clone(),
     factory.lint_rule_provider().await?,
@@ -194,7 +166,6 @@ async fn lint_with_watch_inner(
     factory.compiler_options_resolver()?.clone(),
     cli_options.start_dir.clone(),
     &cli_options.resolve_workspace_lint_options(&lint_flags)?,
-    oxlint_bin,
   );
   for paths_with_options in paths_with_options_batches {
     linter
@@ -278,7 +249,6 @@ struct WorkspaceLinter {
   workspace_module_graph: Option<WorkspaceModuleGraphFuture>,
   has_error: Arc<AtomicFlag>,
   file_count: usize,
-  oxlint_bin: PathBuf,
 }
 
 impl WorkspaceLinter {
@@ -289,7 +259,6 @@ impl WorkspaceLinter {
     compiler_options_resolver: Arc<CompilerOptionsResolver>,
     workspace_dir: Arc<WorkspaceDirectory>,
     workspace_options: &WorkspaceLintOptions,
-    oxlint_bin: PathBuf,
   ) -> Self {
     let reporter_lock =
       Arc::new(Mutex::new(create_reporter(workspace_options.reporter_kind)));
@@ -303,7 +272,6 @@ impl WorkspaceLinter {
       workspace_module_graph: None,
       has_error: Default::default(),
       file_count: 0,
-      oxlint_bin,
     }
   }
 
@@ -332,7 +300,6 @@ impl WorkspaceLinter {
 
     let has_error = self.has_error.clone();
     let reporter_lock = self.reporter_lock.clone();
-    let oxlint_bin = self.oxlint_bin.clone();
 
     let mut futures = Vec::with_capacity(2);
     // Keep package rules (no-slow-types, etc.) — these don't use deno_lint
@@ -344,7 +311,7 @@ impl WorkspaceLinter {
     let member_dir_path = member_dir.dir_path().to_path_buf();
     let fut = async move {
       let diagnostics_map =
-        oxc::run_oxlint(&oxlint_bin, &paths, &member_dir_path)?;
+        oxc::run_oxlint(&paths, &member_dir_path)?;
 
       for path in &paths {
         if let Some(diagnostics) = diagnostics_map.get(path) {

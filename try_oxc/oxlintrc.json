@@ -5,6 +5,9 @@
     "no-var": "error",
     "no-unused-vars": "warn",
     "eqeqeq": "warn",
-    "no-alert": "warn"
+    "no-alert": "warn",
+    "react/jsx-no-duplicate-props": "error",
+    "react/jsx-key": "warn",
+    "jsx-a11y/alt-text": "warn"
   }
 }
