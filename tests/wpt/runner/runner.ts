@@ -157,7 +157,7 @@ export async function runSingleTest(
         proc.kill("SIGINT");
       }
     }, 1000);
-    for await (const line of lines) {
+    for await (const line of lines as AsyncIterable<string>) {
       if (line.startsWith("{")) {
         const data = JSON.parse(line);
         const result = { ...data, passed: data.status == 0 };

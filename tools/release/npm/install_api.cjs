@@ -9,6 +9,7 @@ const path = require("path");
 let cachedIsMusl = undefined;
 
 module.exports = {
+  replaceBinEntry,
   runInstall() {
     const denoFileName = os.platform() === "win32" ? "deno.exe" : "deno";
     const targetExecutablePath = path.join(
@@ -34,7 +35,7 @@ module.exports = {
     }
 
     try {
-      if (process.env.DPRINT_SIMULATED_READONLY_FILE_SYSTEM === "1") {
+      if (process.env.DENO_SIMULATED_READONLY_FILE_SYSTEM === "1") {
         console.warn("Simulating readonly file system for testing.");
         throw new Error("Throwing for testing purposes.");
       }
@@ -157,6 +158,73 @@ function getLinuxFamily() {
         return "";
       }
     }
+  }
+}
+
+/**
+ * Replaces the bin entry in node_modules/.bin to point directly at the
+ * native binary, avoiding Node.js startup overhead on each invocation.
+ * @param exePath {string}
+ */
+function replaceBinEntry(exePath) {
+  const binDir = findBinDir();
+  if (binDir === undefined) return;
+
+  const relative = path.relative(binDir, exePath);
+  if (os.platform() === "win32") {
+    // Rewrite .cmd and .ps1 wrappers to invoke the native binary directly
+    fs.writeFileSync(
+      path.join(binDir, "deno.cmd"),
+      '@"%~dp0' + relative + '" %*\r\n',
+    );
+    fs.writeFileSync(
+      path.join(binDir, "deno.ps1"),
+      '& "$PSScriptRoot/' + relative.replace(/\\/g, "/") +
+        '" $args\r\nexit $LASTEXITCODE\r\n',
+    );
+  } else {
+    // Replace symlink to point directly at the native binary
+    const binDeno = path.join(binDir, "deno");
+    fs.unlinkSync(binDeno);
+    fs.symlinkSync(relative, binDeno);
+  }
+}
+
+function findBinDir() {
+  let dir = __dirname;
+  for (let i = 0; i < 64; i++) {
+    const parent = path.dirname(dir);
+    if (parent === dir) {
+      break;
+    }
+    if (path.basename(parent) === "node_modules") {
+      const binDir = path.join(parent, ".bin");
+      if (isBinDirForThisPackage(binDir)) {
+        return binDir;
+      }
+    }
+    dir = parent;
+  }
+  return undefined;
+}
+
+function isBinDirForThisPackage(binDir) {
+  try {
+    if (os.platform() === "win32") {
+      // Verify the .cmd wrapper references our bin.cjs
+      const content = fs.readFileSync(
+        path.join(binDir, "deno.cmd"),
+        "utf8",
+      );
+      return content.includes("bin.cjs");
+    } else {
+      // Verify the symlink points into our package directory
+      const linkTarget = fs.readlinkSync(path.join(binDir, "deno"));
+      const resolved = path.resolve(binDir, linkTarget);
+      return resolved.endsWith("bin.cjs");
+    }
+  } catch (_err) {
+    return false;
   }
 }
 

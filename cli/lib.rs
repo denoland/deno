@@ -39,6 +39,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use args::TaskFlags;
+use deno_config::glob::FilePatterns;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
@@ -68,10 +69,10 @@ use crate::args::Flags;
 use crate::args::flags_from_vec_with_initial_cwd;
 use crate::args::get_default_v8_flags;
 use crate::util::display;
+use crate::util::env::WatchEnvTracker;
+use crate::util::env::load_env_variables_from_env_files;
 use crate::util::v8::get_v8_flags_from_env;
 use crate::util::v8::init_v8_flags;
-use crate::util::watch_env_tracker::WatchEnvTracker;
-use crate::util::watch_env_tracker::load_env_variables_from_env_files;
 
 #[cfg(feature = "dhat-heap")]
 #[global_allocator]
@@ -1034,7 +1035,10 @@ async fn initialize_tunnel(
 ) -> Result<(), deno_core::anyhow::Error> {
   let factory = CliFactory::from_flags(Arc::new(flags.clone()));
   let cli_options = factory.cli_options()?;
-  let deploy_config = cli_options.start_dir.to_deploy_config()?;
+  let start_dir = &cli_options.start_dir;
+  let deploy_config = cli_options
+    .start_dir
+    .to_deploy_config(FilePatterns::new_with_base(start_dir.dir_path()))?;
 
   let no_config = flags.config_flag == crate::args::ConfigFlag::Disabled;
 
