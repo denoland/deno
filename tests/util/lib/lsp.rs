@@ -30,18 +30,29 @@ use lsp_types::CodeActionKindLiteralSupport;
 use lsp_types::CodeActionLiteralSupport;
 use lsp_types::CompletionClientCapabilities;
 use lsp_types::CompletionItemCapability;
+use lsp_types::CompletionItemCapabilityResolveSupport;
+use lsp_types::CompletionItemKindCapability;
+use lsp_types::CompletionItemTag;
+use lsp_types::CompletionListCapability;
 use lsp_types::DiagnosticClientCapabilities;
 use lsp_types::FoldingRangeClientCapabilities;
 use lsp_types::HoverClientCapabilities;
 use lsp_types::InitializeParams;
+use lsp_types::InsertTextMode;
+use lsp_types::InsertTextModeSupport;
 use lsp_types::MarkupKind;
 use lsp_types::ParameterInformationSettings;
 use lsp_types::SignatureHelpClientCapabilities;
 use lsp_types::SignatureInformationSettings;
+use lsp_types::SymbolKindCapability;
+use lsp_types::SymbolTag;
+use lsp_types::TagSupport;
 use lsp_types::TextDocumentClientCapabilities;
 use lsp_types::TextDocumentSyncClientCapabilities;
 use lsp_types::Uri;
 use lsp_types::WorkspaceClientCapabilities;
+use lsp_types::WorkspaceSymbolClientCapabilities;
+use lsp_types::WorkspaceSymbolResolveSupportCapability;
 use once_cell::sync::Lazy;
 use parking_lot::Condvar;
 use parking_lot::Mutex;
@@ -270,11 +281,49 @@ impl InitializeParamsBuilder {
             completion: Some(CompletionClientCapabilities {
               completion_item: Some(CompletionItemCapability {
                 snippet_support: Some(true),
+                commit_characters_support: Some(true),
                 documentation_format: Some(vec![
                   MarkupKind::Markdown,
                   MarkupKind::PlainText,
                 ]),
-                ..Default::default()
+                deprecated_support: Some(true),
+                preselect_support: Some(true),
+                tag_support: Some(TagSupport {
+                  value_set: vec![CompletionItemTag::DEPRECATED],
+                }),
+                insert_replace_support: Some(true),
+                resolve_support: Some(CompletionItemCapabilityResolveSupport {
+                  properties: vec![
+                    "documentation".to_string(),
+                    "detail".to_string(),
+                    "additionalTextEdits".to_string(),
+                  ],
+                }),
+                insert_text_mode_support: Some(InsertTextModeSupport {
+                  value_set: vec![
+                    InsertTextMode::AS_IS,
+                    InsertTextMode::ADJUST_INDENTATION,
+                  ],
+                }),
+                label_details_support: Some(true),
+              }),
+              completion_item_kind: Some(CompletionItemKindCapability {
+                value_set: Some(
+                  (1..=25)
+                    .map(|n| serde_json::from_value(json!(n)).unwrap())
+                    .collect(),
+                ),
+              }),
+              context_support: Some(true),
+              insert_text_mode: Some(InsertTextMode::ADJUST_INDENTATION),
+              completion_list: Some(CompletionListCapability {
+                item_defaults: Some(vec![
+                  "commitCharacters".to_string(),
+                  "editRange".to_string(),
+                  "insertTextFormat".to_string(),
+                  "insertTextMode".to_string(),
+                  "data".to_string(),
+                ]),
               }),
               ..Default::default()
             }),
@@ -328,6 +377,22 @@ impl InitializeParamsBuilder {
             ..Default::default()
           }),
           workspace: Some(WorkspaceClientCapabilities {
+            symbol: Some(WorkspaceSymbolClientCapabilities {
+              symbol_kind: Some(SymbolKindCapability {
+                value_set: Some(
+                  (1..=26)
+                    .map(|n| serde_json::from_value(json!(n)).unwrap())
+                    .collect(),
+                ),
+              }),
+              tag_support: Some(TagSupport {
+                value_set: vec![SymbolTag::DEPRECATED],
+              }),
+              resolve_support: Some(WorkspaceSymbolResolveSupportCapability {
+                properties: vec!["location.range".to_string()],
+              }),
+              ..Default::default()
+            }),
             configuration: Some(true),
             diagnostics: Some(lsp::DiagnosticWorkspaceClientCapabilities {
               refresh_support: Some(true),

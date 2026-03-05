@@ -877,7 +877,7 @@ impl TsGoServerInner {
         }),
         ..Default::default()
       });
-      // TODO(nayeemrmn): Remove when missing fields are added:
+      // TODO(nayeemrmn): Remove these when missing fields are added:
       // https://github.com/tower-lsp-community/ls-types/issues/31
       value
         .as_object_mut()
@@ -891,6 +891,23 @@ impl TsGoServerInner {
         .as_object_mut()
         .unwrap()
         .insert("relatedInformation".to_string(), json!(true));
+      value
+        .as_object_mut()
+        .unwrap()
+        .get_mut("textDocument")
+        .unwrap()
+        .as_object_mut()
+        .unwrap()
+        .get_mut("diagnostic")
+        .unwrap()
+        .as_object_mut()
+        .unwrap()
+        .insert(
+          "tagSupport".to_string(),
+          json!({
+            "valueSet": [1, 2],
+          }),
+        );
       value
     };
     let initialize_request = json!({

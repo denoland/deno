@@ -1653,8 +1653,29 @@ fn get_tag_documentation(
   module: &DocumentModule,
   snapshot: &StateSnapshot,
 ) -> String {
+  let mut label_and_text = None;
+  let mut always_inline = false;
   match tag.name.as_str() {
-    "augments" | "extends" | "param" | "template" => {
+    "param" => {
+      if let Some(display_parts) = &tag.text {
+        let mut display_parts = display_parts.iter().peekable();
+        if display_parts
+          .peek()
+          .is_some_and(|p| p.kind == "parameterName")
+        {
+          let parameter_name = &display_parts.next().unwrap().text;
+          if display_parts.peek().is_some_and(|p| p.kind == "space") {
+            display_parts.next();
+          }
+          label_and_text = Some((
+            format!("*@param* `{parameter_name}`"),
+            display_parts_to_string(display_parts, module, snapshot),
+          ));
+          always_inline = true;
+        }
+      }
+    }
+    "augments" | "extends" | "template" => {
       if let Some(display_parts) = &tag.text {
         // TODO(@kitsonk) check logic in vscode about handling this API change
         // in tsserver
@@ -1663,30 +1684,27 @@ fn get_tag_documentation(
         if body.len() == 3 {
           let param = body[1];
           let doc = body[2];
-          let label = format!("*@{}* `{}`", tag.name, param);
-          if doc.is_empty() {
-            return label;
-          }
-          if doc.contains('\n') {
-            return format!("{}  \n{}\n", label, replace_links(doc));
-          } else {
-            return format!("{} — {}\n", label, replace_links(doc));
-          }
+          label_and_text =
+            Some((format!("*@{}* `{}`", tag.name, param), doc.to_string()));
         }
       }
     }
     _ => (),
   }
-  let label = format!("*@{}*", tag.name);
-  let maybe_text = get_tag_body_text(tag, module, snapshot);
-  if let Some(text) = maybe_text {
-    if text.contains('\n') {
-      format!("{label}  \n{text}\n")
-    } else {
-      format!("{label} — {text}\n")
-    }
-  } else {
+  let (label, text) = label_and_text.unwrap_or_else(|| {
+    (
+      format!("*@{}*", tag.name),
+      get_tag_body_text(tag, module, snapshot).unwrap_or_default(),
+    )
+  });
+  if text.is_empty() {
     label
+  } else if !always_inline && text.contains('\n') {
+    format!("{label}\n{text}\n")
+  } else if text.starts_with('-') {
+    format!("{label} {text}\n")
+  } else {
+    format!("{label} — {text}\n")
   }
 }
 
@@ -2002,15 +2020,15 @@ struct Link {
 /// Takes `SymbolDisplayPart` items and converts them into a string, handling
 /// any `{@link Symbol}` and `{@linkcode Symbol}` JSDoc tags and linking them
 /// to the their source location.
-fn display_parts_to_string(
-  parts: &[SymbolDisplayPart],
+fn display_parts_to_string<'a>(
+  parts: impl IntoIterator<Item = &'a SymbolDisplayPart>,
   module: &DocumentModule,
   snapshot: &StateSnapshot,
 ) -> String {
   let mut out = Vec::<String>::new();
 
   let mut current_link: Option<Link> = None;
-  let mut parts = parts.iter().peekable();
+  let mut parts = parts.into_iter().peekable();
   while let Some(part) = parts.next() {
     // Skip `import` lines.
     if part.kind == "lineBreak"
@@ -2129,39 +2147,30 @@ impl QuickInfo {
     module: &DocumentModule,
     snapshot: &StateSnapshot,
   ) -> lsp::Hover {
-    let mut code_part = None;
-    let mut parts = Vec::new();
+    let mut value = String::new();
     if let Some(display_string) = self
       .display_parts
       .clone()
       .map(|p| display_parts_to_string(&p, module, snapshot))
       && !display_string.is_empty()
     {
-      code_part = Some(format!("```tsx\n{}\n```\n", display_string));
+      value.push_str("```tsx\n");
+      value.push_str(&display_string);
+      value.push_str("\n```\n");
     }
     if let Some(documentation) = self
       .documentation
       .clone()
       .map(|p| display_parts_to_string(&p, module, snapshot))
-      && !documentation.is_empty()
     {
-      parts.push(documentation);
+      value.push_str(&documentation);
     }
     if let Some(tags) = &self.tags {
-      let tags_preview = tags
-        .iter()
-        .map(|tag_info| get_tag_documentation(tag_info, module, snapshot))
-        .collect::<Vec<String>>()
-        .join("\n\n");
-      if !tags_preview.is_empty() {
-        parts.push(tags_preview);
+      for tag_info in tags {
+        value.push_str("\n\n");
+        value.push_str(&get_tag_documentation(tag_info, module, snapshot));
       }
     }
-    let value = format!(
-      "{}{}",
-      code_part.as_deref().unwrap_or(""),
-      parts.join("\n\n")
-    );
     lsp::Hover {
       contents: lsp::HoverContents::Markup(lsp::MarkupContent {
         kind: lsp::MarkupKind::Markdown,
@@ -2875,11 +2884,11 @@ impl FileTextChanges {
     Ok(())
   }
 
-  pub fn to_text_document_edit(
+  pub fn to_text_edits(
     &self,
     module: &DocumentModule,
     language_server: &language_server::Inner,
-  ) -> Option<lsp::TextDocumentEdit> {
+  ) -> Option<(Uri, Vec<lsp::TextEdit>)> {
     let is_new_file = self.is_new_file.unwrap_or(false);
     let target_specifier = resolve_url(&self.file_name).ok()?;
     let target_module = if is_new_file {
@@ -2902,18 +2911,9 @@ impl FileTextChanges {
     let edits = self
       .text_changes
       .iter()
-      .map(|tc| tc.as_text_or_annotated_text_edit(line_index.clone()))
+      .map(|tc| tc.as_text_edit(line_index.clone()))
       .collect();
-    Some(lsp::TextDocumentEdit {
-      text_document: lsp::OptionalVersionedTextDocumentIdentifier {
-        uri: target_uri.as_ref().clone(),
-        version: target_module
-          .as_ref()
-          .and_then(|m| m.open_data.as_ref())
-          .map(|d| d.version),
-      },
-      edits,
-    })
+    Some((target_uri.as_ref().clone(), edits))
   }
 
   pub fn to_text_document_change_ops(
@@ -3747,10 +3747,14 @@ impl CompletionEntryDetails {
           value = format!("{value}\n\n{tags_preview}");
         }
       }
-      Some(lsp::Documentation::MarkupContent(lsp::MarkupContent {
-        kind: lsp::MarkupKind::Markdown,
-        value,
-      }))
+      if value.is_empty() {
+        None
+      } else {
+        Some(lsp::Documentation::MarkupContent(lsp::MarkupContent {
+          kind: lsp::MarkupKind::Markdown,
+          value,
+        }))
+      }
     } else {
       None
     };
@@ -4443,7 +4447,7 @@ impl SignatureHelpItems {
     snapshot: &StateSnapshot,
     token: &CancellationToken,
   ) -> Result<lsp::SignatureHelp, AnyError> {
-    let signatures = self
+    let mut signatures = self
       .items
       .into_iter()
       .map(|item| {
@@ -4452,12 +4456,23 @@ impl SignatureHelpItems {
         }
         Ok(item.into_signature_information(module, snapshot))
       })
-      .collect::<Result<_, _>>()?;
-    Ok(lsp::SignatureHelp {
-      signatures,
-      active_parameter: Some(self.argument_index),
-      active_signature: Some(self.selected_item_index),
-    })
+      .collect::<Result<Vec<_>, _>>()?;
+    if let Some(active_signature) =
+      signatures.get_mut(self.selected_item_index as usize)
+    {
+      active_signature.active_parameter = Some(self.argument_index);
+      Ok(lsp::SignatureHelp {
+        signatures,
+        active_parameter: None,
+        active_signature: Some(self.selected_item_index),
+      })
+    } else {
+      Ok(lsp::SignatureHelp {
+        signatures,
+        active_parameter: Some(self.argument_index),
+        active_signature: Some(self.selected_item_index),
+      })
+    }
   }
 }
 

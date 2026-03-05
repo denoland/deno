@@ -1974,11 +1974,11 @@ fn lsp_inlay_hints_not_enabled(use_tsgo: bool) {
   client.shutdown();
 }
 
-#[test(timeout = 300)]
-fn lsp_suggestion_actions_disabled() {
+#[test(timeout = 300, fork_with_suffix = "_tsgo")]
+fn lsp_suggestion_actions_disabled(use_tsgo: bool) {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
-  let mut client = context.new_lsp_command().build();
+  let mut client = context.new_lsp_command().set_use_tsgo(use_tsgo).build();
   client.initialize_default();
   client.change_configuration(json!({
     "deno": {
@@ -3133,10 +3133,10 @@ fn lsp_hover_jsdoc_symbol_link(use_tsgo: bool) {
   client.shutdown();
 }
 
-#[test(timeout = 300)]
-fn lsp_goto_type_definition() {
+#[test(timeout = 300, fork_with_suffix = "_tsgo")]
+fn lsp_goto_type_definition(use_tsgo: bool) {
   let context = TestContextBuilder::new().use_temp_cwd().build();
-  let mut client = context.new_lsp_command().build();
+  let mut client = context.new_lsp_command().set_use_tsgo(use_tsgo).build();
   client.initialize_default();
   client.did_open(
     json!({
@@ -3159,8 +3159,12 @@ fn lsp_goto_type_definition() {
   );
   assert_eq!(
     res,
-    json!([
-      {
+    if use_tsgo {
+      json!([{
+        "originSelectionRange": {
+          "start": { "line": 12, "character": 0 },
+          "end": { "line": 12, "character": 1 },
+        },
         "targetUri": "file:///a/file.ts",
         "targetRange": {
           "start": { "line": 4, "character": 0 },
@@ -3170,8 +3174,20 @@ fn lsp_goto_type_definition() {
           "start": { "line": 4, "character": 13 },
           "end": { "line": 4, "character": 14 }
         }
-      }
-    ])
+      }])
+    } else {
+      json!([{
+        "targetUri": "file:///a/file.ts",
+        "targetRange": {
+          "start": { "line": 4, "character": 0 },
+          "end": { "line": 9, "character": 1 }
+        },
+        "targetSelectionRange": {
+          "start": { "line": 4, "character": 13 },
+          "end": { "line": 4, "character": 14 }
+        }
+      }])
+    },
   );
   client.shutdown();
 }
@@ -3444,10 +3460,10 @@ fn lsp_large_doc_changes(use_tsgo: bool) {
   assert!(client.duration().as_millis() <= 15000);
 }
 
-#[test(timeout = 300)]
-fn lsp_document_symbol() {
+#[test(timeout = 300, fork_with_suffix = "_tsgo")]
+fn lsp_document_symbol(use_tsgo: bool) {
   let context = TestContextBuilder::new().use_temp_cwd().build();
-  let mut client = context.new_lsp_command().build();
+  let mut client = context.new_lsp_command().set_use_tsgo(use_tsgo).build();
   client.initialize_default();
   client.did_open(
     json!({
@@ -3469,185 +3485,384 @@ fn lsp_document_symbol() {
   );
   assert_eq!(
     res,
-    json!([{
-      "name": "bar",
-      "kind": 13,
-      "range": {
-        "start": { "line": 17, "character": 4 },
-        "end": { "line": 17, "character": 26 }
-      },
-      "selectionRange": {
-        "start": { "line": 17, "character": 4 },
-        "end": { "line": 17, "character": 7 }
-      }
-    }, {
-      "name": "Bar",
-      "kind": 5,
-      "range": {
-        "start": { "line": 4, "character": 0 },
-        "end": { "line": 13, "character": 1 }
-      },
-      "selectionRange": {
-        "start": { "line": 4, "character": 6 },
-        "end": { "line": 4, "character": 9 }
-      },
-      "children": [{
-        "name": "constructor",
-        "kind": 9,
-        "range": {
-          "start": { "line": 5, "character": 2 },
-          "end": { "line": 5, "character": 35 }
+    if use_tsgo {
+      json!([
+        {
+          "name": "IFoo",
+          "kind": 11,
+          "location": {
+            "uri": "file:///a/file.ts",
+            "range": {
+              "start": { "line": 0, "character": 0 },
+              "end": { "line": 2, "character": 1 },
+            },
+          },
         },
-        "selectionRange": {
-          "start": { "line": 5, "character": 2 },
-          "end": { "line": 5, "character": 35 }
-        }
-      }, {
-        "name": "baz",
-        "kind": 6,
-        "tags": [1],
-        "range": {
-          "start": { "line": 8, "character": 2 },
-          "end": { "line": 8, "character": 25 }
+        {
+          "name": "foo",
+          "kind": 6,
+          "location": {
+            "uri": "file:///a/file.ts",
+            "range": {
+              "start": { "line": 1, "character": 2 },
+              "end": { "line": 1, "character": 17 },
+            },
+          },
+          "containerName": "IFoo"
         },
-        "selectionRange": {
-          "start": { "line": 8, "character": 2 },
-          "end": { "line": 8, "character": 5 }
-        }
-      }, {
-        "name": "foo",
-        "kind": 6,
-        "range": {
-          "start": { "line": 6, "character": 2 },
-          "end": { "line": 6, "character": 24 }
+        {
+          "name": "Bar",
+          "kind": 5,
+          "location": {
+            "uri": "file:///a/file.ts",
+            "range": {
+              "start": { "line": 4, "character": 0 },
+              "end": { "line": 13, "character": 1 },
+            },
+          },
         },
-        "selectionRange": {
-          "start": { "line": 6, "character": 2 },
-          "end": { "line": 6, "character": 5 }
-        }
-      }, {
-        "name": "getStaticBar",
-        "kind": 6,
-        "range": {
-          "start": { "line": 12, "character": 2 },
-          "end": { "line": 12, "character": 57 }
+        {
+          "name": "constructor",
+          "kind": 9,
+          "location": {
+            "uri": "file:///a/file.ts",
+            "range": {
+              "start": { "line": 5, "character": 2 },
+              "end": { "line": 5, "character": 35 },
+            },
+          },
+          "containerName": "Bar"
         },
-        "selectionRange": {
-          "start": { "line": 12, "character": 17 },
-          "end": { "line": 12, "character": 29 }
-        }
-      }, {
-        "name": "staticBar",
-        "kind": 8,
-        "range": {
-          "start": { "line": 11, "character": 2 },
-          "end": { "line": 11, "character": 32 }
+        {
+          "name": "x",
+          "kind": 7,
+          "location": {
+            "uri": "file:///a/file.ts",
+            "range": {
+              "start": { "line": 5, "character": 14 },
+              "end": { "line": 5, "character": 30 },
+            },
+          },
+          "containerName": "Bar"
         },
-        "selectionRange": {
-          "start": { "line": 11, "character": 9 },
-          "end": { "line": 11, "character": 18 }
-        }
-      }, {
-        "name": "(get) value",
-        "kind": 8,
-        "range": {
-          "start": { "line": 9, "character": 2 },
-          "end": { "line": 9, "character": 35 }
+        {
+          "name": "foo",
+          "kind": 6,
+          "location": {
+            "uri": "file:///a/file.ts",
+            "range": {
+              "start": { "line": 6, "character": 2 },
+              "end": { "line": 6, "character": 24 },
+            },
+          },
+          "containerName": "Bar"
         },
-        "selectionRange": {
-          "start": { "line": 9, "character": 6 },
-          "end": { "line": 9, "character": 11 }
-        }
-      }, {
-        "name": "(set) value",
-        "kind": 8,
-        "range": {
-          "start": { "line": 10, "character": 2 },
-          "end": { "line": 10, "character": 42 }
+        {
+          "name": "baz",
+          "kind": 6,
+          "location": {
+            "uri": "file:///a/file.ts",
+            "range": {
+              "start": { "line": 8, "character": 2 },
+              "end": { "line": 8, "character": 25 },
+            },
+          },
+          "containerName": "Bar"
         },
-        "selectionRange": {
-          "start": { "line": 10, "character": 6 },
-          "end": { "line": 10, "character": 11 }
-        }
-      }, {
-        "name": "x",
-        "kind": 8,
-        "range": {
-          "start": { "line": 5, "character": 14 },
-          "end": { "line": 5, "character": 30 }
+        {
+          "name": "value",
+          "kind": 7,
+          "location": {
+            "uri": "file:///a/file.ts",
+            "range": {
+              "start": { "line": 9, "character": 2 },
+              "end": { "line": 9, "character": 35 },
+            },
+          },
+          "containerName": "Bar",
         },
-        "selectionRange": {
-          "start": { "line": 5, "character": 21 },
-          "end": { "line": 5, "character": 22 }
-        }
-      }]
-    }, {
-      "name": "IFoo",
-      "kind": 11,
-      "range": {
-        "start": { "line": 0, "character": 0 },
-        "end": { "line": 2, "character": 1 }
-      },
-      "selectionRange": {
-        "start": { "line": 0, "character": 10 },
-        "end": { "line": 0, "character": 14 }
-      },
-      "children": [{
-        "name": "foo",
-        "kind": 6,
-        "range": {
-          "start": { "line": 1, "character": 2 },
-          "end": { "line": 1, "character": 17 }
+        {
+          "name": "value",
+          "kind": 7,
+          "location": {
+            "uri": "file:///a/file.ts",
+            "range": {
+              "start": { "line": 10, "character": 2 },
+              "end": { "line": 10, "character": 42 },
+            },
+          },
+          "containerName": "Bar"
         },
-        "selectionRange": {
-          "start": { "line": 1, "character": 2 },
-          "end": { "line": 1, "character": 5 }
-        }
-      }]
-    }, {
-      "name": "Values",
-      "kind": 10,
-      "range": {
-        "start": { "line": 15, "character": 0 },
-        "end": { "line": 15, "character": 30 }
-      },
-      "selectionRange": {
-        "start": { "line": 15, "character": 5 },
-        "end": { "line": 15, "character": 11 }
-      },
-      "children": [{
-        "name": "value1",
-        "kind": 22,
-        "range": {
-          "start": { "line": 15, "character": 14 },
-          "end": { "line": 15, "character": 20 }
+        {
+          "name": "staticBar",
+          "kind": 7,
+          "location": {
+            "uri": "file:///a/file.ts",
+            "range": {
+              "start": { "line": 11, "character": 2 },
+              "end": { "line": 11, "character": 32 },
+            },
+          },
+          "containerName": "Bar",
         },
-        "selectionRange": {
-          "start": { "line": 15, "character": 14 },
-          "end": { "line": 15, "character": 20 }
-        }
-      }, {
-        "name": "value2",
-        "kind": 22,
-        "range": {
-          "start": { "line": 15, "character": 22 },
-          "end": { "line": 15, "character": 28 }
+        {
+          "name": "getStaticBar",
+          "kind": 6,
+          "location": {
+            "uri": "file:///a/file.ts",
+            "range": {
+              "start": { "line": 12, "character": 2 },
+              "end": { "line": 12, "character": 57 },
+            },
+          },
+          "containerName": "Bar",
         },
-        "selectionRange": {
-          "start": { "line": 15, "character": 22 },
-          "end": { "line": 15, "character": 28 }
-        }
-      }]
-    }]
-    )
+        {
+          "name": "Values",
+          "kind": 10,
+          "location": {
+            "uri": "file:///a/file.ts",
+            "range": {
+              "start": { "line": 15, "character": 0 },
+              "end": { "line": 15, "character": 30 },
+            },
+          },
+        },
+        {
+          "name": "value1",
+          "kind": 22,
+          "location": {
+            "uri": "file:///a/file.ts",
+            "range": {
+              "start": { "line": 15, "character": 14 },
+              "end": { "line": 15, "character": 20 },
+            },
+          },
+          "containerName": "Values"
+        },
+        {
+          "name": "value2",
+          "kind": 22,
+          "location": {
+            "uri": "file:///a/file.ts",
+            "range": {
+              "start": { "line": 15, "character": 22 },
+              "end": { "line": 15, "character": 28 },
+            },
+          },
+          "containerName": "Values",
+        },
+        {
+          "name": "bar",
+          "kind": 13,
+          "location": {
+            "uri": "file:///a/file.ts",
+            "range": {
+              "start": { "line": 17, "character": 4 },
+              "end": { "line": 17, "character": 26 },
+            },
+          },
+        },
+      ])
+    } else {
+      json!([
+        {
+          "name": "bar",
+          "kind": 13,
+          "range": {
+            "start": { "line": 17, "character": 4 },
+            "end": { "line": 17, "character": 26 },
+          },
+          "selectionRange": {
+            "start": { "line": 17, "character": 4 },
+            "end": { "line": 17, "character": 7 },
+          },
+        },
+        {
+          "name": "Bar",
+          "kind": 5,
+          "range": {
+            "start": { "line": 4, "character": 0 },
+            "end": { "line": 13, "character": 1 },
+          },
+          "selectionRange": {
+            "start": { "line": 4, "character": 6 },
+            "end": { "line": 4, "character": 9 },
+          },
+          "children": [
+            {
+              "name": "constructor",
+              "kind": 9,
+              "range": {
+                "start": { "line": 5, "character": 2 },
+                "end": { "line": 5, "character": 35 },
+              },
+              "selectionRange": {
+                "start": { "line": 5, "character": 2 },
+                "end": { "line": 5, "character": 35 },
+              },
+            },
+            {
+              "name": "baz",
+              "kind": 6,
+              "tags": [1],
+              "range": {
+                "start": { "line": 8, "character": 2 },
+                "end": { "line": 8, "character": 25 },
+              },
+              "selectionRange": {
+                "start": { "line": 8, "character": 2 },
+                "end": { "line": 8, "character": 5 },
+              },
+            },
+            {
+              "name": "foo",
+              "kind": 6,
+              "range": {
+                "start": { "line": 6, "character": 2 },
+                "end": { "line": 6, "character": 24 },
+              },
+              "selectionRange": {
+                "start": { "line": 6, "character": 2 },
+                "end": { "line": 6, "character": 5 },
+              },
+            },
+            {
+              "name": "getStaticBar",
+              "kind": 6,
+              "range": {
+                "start": { "line": 12, "character": 2 },
+                "end": { "line": 12, "character": 57 },
+              },
+              "selectionRange": {
+                "start": { "line": 12, "character": 17 },
+                "end": { "line": 12, "character": 29 },
+              },
+            },
+            {
+              "name": "staticBar",
+              "kind": 8,
+              "range": {
+                "start": { "line": 11, "character": 2 },
+                "end": { "line": 11, "character": 32 },
+              },
+              "selectionRange": {
+                "start": { "line": 11, "character": 9 },
+                "end": { "line": 11, "character": 18 },
+              },
+            },
+            {
+              "name": "(get) value",
+              "kind": 8,
+              "range": {
+                "start": { "line": 9, "character": 2 },
+                "end": { "line": 9, "character": 35 },
+              },
+              "selectionRange": {
+                "start": { "line": 9, "character": 6 },
+                "end": { "line": 9, "character": 11 },
+              },
+            },
+            {
+              "name": "(set) value",
+              "kind": 8,
+              "range": {
+                "start": { "line": 10, "character": 2 },
+                "end": { "line": 10, "character": 42 },
+              },
+              "selectionRange": {
+                "start": { "line": 10, "character": 6 },
+                "end": { "line": 10, "character": 11 },
+              },
+            },
+            {
+              "name": "x",
+              "kind": 8,
+              "range": {
+                "start": { "line": 5, "character": 14 },
+                "end": { "line": 5, "character": 30 },
+              },
+              "selectionRange": {
+                "start": { "line": 5, "character": 21 },
+                "end": { "line": 5, "character": 22 },
+              },
+            },
+          ],
+        },
+        {
+          "name": "IFoo",
+          "kind": 11,
+          "range": {
+            "start": { "line": 0, "character": 0 },
+            "end": { "line": 2, "character": 1 },
+          },
+          "selectionRange": {
+            "start": { "line": 0, "character": 10 },
+            "end": { "line": 0, "character": 14 },
+          },
+          "children": [
+            {
+              "name": "foo",
+              "kind": 6,
+              "range": {
+                "start": { "line": 1, "character": 2 },
+                "end": { "line": 1, "character": 17 },
+              },
+              "selectionRange": {
+                "start": { "line": 1, "character": 2 },
+                "end": { "line": 1, "character": 5 },
+              },
+            },
+          ],
+        },
+        {
+          "name": "Values",
+          "kind": 10,
+          "range": {
+            "start": { "line": 15, "character": 0 },
+            "end": { "line": 15, "character": 30 },
+          },
+          "selectionRange": {
+            "start": { "line": 15, "character": 5 },
+            "end": { "line": 15, "character": 11 },
+          },
+          "children": [
+            {
+              "name": "value1",
+              "kind": 22,
+              "range": {
+                "start": { "line": 15, "character": 14 },
+                "end": { "line": 15, "character": 20 },
+              },
+              "selectionRange": {
+                "start": { "line": 15, "character": 14 },
+                "end": { "line": 15, "character": 20 },
+              },
+            },
+            {
+              "name": "value2",
+              "kind": 22,
+              "range": {
+                "start": { "line": 15, "character": 22 },
+                "end": { "line": 15, "character": 28 },
+              },
+              "selectionRange": {
+                "start": { "line": 15, "character": 22 },
+                "end": { "line": 15, "character": 28 },
+              },
+            },
+          ],
+        },
+      ])
+    },
   );
   client.shutdown();
 }
 
-#[test(timeout = 300)]
-fn lsp_folding_range() {
+#[test(timeout = 300, fork_with_suffix = "_tsgo")]
+fn lsp_folding_range(use_tsgo: bool) {
   let context = TestContextBuilder::new().use_temp_cwd().build();
-  let mut client = context.new_lsp_command().build();
+  let mut client = context.new_lsp_command().set_use_tsgo(use_tsgo).build();
   client.initialize_default();
   client.did_open(
     json!({
@@ -3669,24 +3884,55 @@ fn lsp_folding_range() {
   );
   assert_eq!(
     res,
-    json!([{
-      "startLine": 0,
-      "endLine": 12,
-      "kind": "region"
-    }, {
-      "startLine": 1,
-      "endLine": 3,
-      "kind": "comment"
-    }, {
-      "startLine": 4,
-      "endLine": 10
-    }, {
-      "startLine": 5,
-      "endLine": 9
-    }, {
-      "startLine": 6,
-      "endLine": 7
-    }])
+    if use_tsgo {
+      json!([{
+        "startLine": 0,
+        "startCharacter": 0,
+        "endLine": 13,
+        "endCharacter": 0,
+        "kind": "region",
+      }, {
+        "startLine": 1,
+        "startCharacter": 0,
+        "endLine": 3,
+        "endCharacter": 3,
+        "kind": "comment",
+      }, {
+        "startLine": 4,
+        "startCharacter": 9,
+        "endLine": 11,
+        "endCharacter": 1,
+      }, {
+        "startLine": 5,
+        "startCharacter": 11,
+        "endLine": 10,
+        "endCharacter": 3,
+      }, {
+        "startLine": 6,
+        "startCharacter": 16,
+        "endLine": 8,
+        "endCharacter": 5,
+      }])
+    } else {
+      json!([{
+        "startLine": 0,
+        "endLine": 12,
+        "kind": "region",
+      }, {
+        "startLine": 1,
+        "endLine": 3,
+        "kind": "comment",
+      }, {
+        "startLine": 4,
+        "endLine": 10,
+      }, {
+        "startLine": 5,
+        "endLine": 9,
+      }, {
+        "startLine": 6,
+        "endLine": 7,
+      }])
+    },
   );
   client.shutdown();
 }
@@ -3753,10 +3999,10 @@ fn lsp_rename(use_tsgo: bool) {
   client.shutdown();
 }
 
-#[test(timeout = 300)]
-fn lsp_selection_range() {
+#[test(timeout = 300, fork_with_suffix = "_tsgo")]
+fn lsp_selection_range(use_tsgo: bool) {
   let context = TestContextBuilder::new().use_temp_cwd().build();
-  let mut client = context.new_lsp_command().build();
+  let mut client = context.new_lsp_command().set_use_tsgo(use_tsgo).build();
   client.initialize_default();
   client.did_open(
     json!({
@@ -3795,9 +4041,16 @@ fn lsp_selection_range() {
             "end": { "line": 4, "character": 5 }
           },
           "parent": {
-            "range": {
-              "start": { "line": 1, "character": 13 },
-              "end": { "line": 6, "character": 2 }
+            "range": if use_tsgo {
+              json!({
+                "start": { "line": 2, "character": 4 },
+                "end": { "line": 5, "character": 17 },
+              })
+            } else {
+              json!({
+                "start": { "line": 1, "character": 13 },
+                "end": { "line": 6, "character": 2 },
+              })
             },
             "parent": {
               "range": {
@@ -3809,17 +4062,26 @@ fn lsp_selection_range() {
                   "start": { "line": 1, "character": 2 },
                   "end": { "line": 6, "character": 3 }
                 },
-                "parent": {
-                  "range": {
-                    "start": { "line": 0, "character": 11 },
-                    "end": { "line": 7, "character": 0 }
-                  },
-                  "parent": {
+                "parent": if use_tsgo {
+                  json!({
                     "range": {
                       "start": { "line": 0, "character": 0 },
-                      "end": { "line": 7, "character": 1 }
-                    }
-                  }
+                      "end": { "line": 8, "character": 0 },
+                    },
+                  })
+                } else {
+                  json!({
+                    "range": {
+                      "start": { "line": 0, "character": 11 },
+                      "end": { "line": 7, "character": 0 },
+                    },
+                    "parent": {
+                      "range": {
+                        "start": { "line": 0, "character": 0 },
+                        "end": { "line": 7, "character": 1 },
+                      },
+                    },
+                  })
                 }
               }
             }
@@ -3831,6 +4093,8 @@ fn lsp_selection_range() {
   client.shutdown();
 }
 
+// TODO(nayeemrmn): Enable for tsgo when implemented upstream:
+// https://github.com/microsoft/typescript-go/pull/1990
 #[test(timeout = 300)]
 fn lsp_semantic_tokens() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
@@ -4814,10 +5078,10 @@ fn lsp_nav_tree_updates() {
   client.shutdown();
 }
 
-#[test(timeout = 300)]
-fn lsp_find_references() {
+#[test(timeout = 300, fork_with_suffix = "_tsgo")]
+fn lsp_find_references(use_tsgo: bool) {
   let context = TestContextBuilder::new().use_temp_cwd().build();
-  let mut client = context.new_lsp_command().build();
+  let mut client = context.new_lsp_command().set_use_tsgo(use_tsgo).build();
   client.initialize_default();
   client.did_open(json!({
     "textDocument": {
@@ -4852,19 +5116,34 @@ fn lsp_find_references() {
 
   assert_eq!(
     res,
-    json!([{
-      "uri": "file:///a/mod.test.ts",
-      "range": {
-        "start": { "line": 0, "character": 9 },
-        "end": { "line": 0, "character": 10 }
-      }
-    }, {
-      "uri": "file:///a/mod.test.ts",
-      "range": {
-        "start": { "line": 0, "character": 42 },
-        "end": { "line": 0, "character": 43 }
-      }
-    }])
+    if use_tsgo {
+      json!([
+        {
+          "uri": "file:///a/mod.test.ts",
+          "range": {
+            "start": { "line": 0, "character": 42 },
+            "end": { "line": 0, "character": 43 },
+          },
+        },
+      ])
+    } else {
+      json!([
+        {
+          "uri": "file:///a/mod.test.ts",
+          "range": {
+            "start": { "line": 0, "character": 9 },
+            "end": { "line": 0, "character": 10 },
+          },
+        },
+        {
+          "uri": "file:///a/mod.test.ts",
+          "range": {
+            "start": { "line": 0, "character": 42 },
+            "end": { "line": 0, "character": 43 },
+          },
+        },
+      ])
+    },
   );
 
   // test with including the declaration
@@ -4918,15 +5197,15 @@ fn lsp_find_references() {
     }),
   );
 
-  assert_eq!(res, json!(null)); // seems it always returns null for this, which is ok
+  assert_eq!(res, json!([])); // seems it always returns empty for this, which is ok
 
   client.shutdown();
 }
 
-#[test(timeout = 300)]
-fn lsp_signature_help() {
+#[test(timeout = 300, fork_with_suffix = "_tsgo")]
+fn lsp_signature_help(use_tsgo: bool) {
   let context = TestContextBuilder::new().use_temp_cwd().build();
-  let mut client = context.new_lsp_command().build();
+  let mut client = context.new_lsp_command().set_use_tsgo(use_tsgo).build();
   client.initialize_default();
   client.did_open(
     json!({
@@ -4975,12 +5254,12 @@ fn lsp_signature_help() {
                 "kind": "markdown",
                 "value": "This is a second number.\n"
               }
-            }
-          ]
-        }
+            },
+          ],
+          "activeParameter": 0,
+        },
       ],
-      "activeSignature": 0,
-      "activeParameter": 0
+      "activeSignature": 0
     })
   );
   client.write_notification(
@@ -5034,11 +5313,11 @@ fn lsp_signature_help() {
                 "value": "This is a second number.\n"
               }
             }
-          ]
+          ],
+          "activeParameter": 1,
         }
       ],
       "activeSignature": 0,
-      "activeParameter": 1
     })
   );
   client.shutdown();
@@ -5103,26 +5382,25 @@ fn lsp_code_actions() {
         "relatedInformation": []
       }],
       "edit": {
-        "documentChanges": [{
-          "textDocument": {
-            "uri": "file:///a/file.ts",
-            "version": 1
-          },
-          "edits": [{
-            "range": {
-              "start": { "line": 0, "character": 7 },
-              "end": { "line": 0, "character": 7 }
+        "changes": {
+          "file:///a/file.ts": [
+            {
+              "range": {
+                "start": { "line": 0, "character": 7 },
+                "end": { "line": 0, "character": 7 },
+              },
+              "newText": "async ",
             },
-            "newText": "async "
-          }, {
-            "range": {
-              "start": { "line": 0, "character": 21 },
-              "end": { "line": 0, "character": 25 }
+            {
+              "range": {
+                "start": { "line": 0, "character": 21 },
+                "end": { "line": 0, "character": 25 },
+              },
+              "newText": "Promise<void>",
             },
-            "newText": "Promise<void>"
-          }]
-        }]
-      }
+          ],
+        },
+      },
     }, {
       "title": "Add all missing 'async' modifiers",
       "kind": "quickfix",
@@ -5191,37 +5469,38 @@ fn lsp_code_actions() {
         }
       ],
       "edit": {
-        "documentChanges": [{
-          "textDocument": {
-            "uri": "file:///a/file.ts",
-            "version": 1
-          },
-          "edits": [{
-            "range": {
-              "start": { "line": 0, "character": 7 },
-              "end": { "line": 0, "character": 7 }
+        "changes": {
+          "file:///a/file.ts": [
+            {
+              "range": {
+                "start": { "line": 0, "character": 7 },
+                "end": { "line": 0, "character": 7 },
+              },
+              "newText": "async ",
             },
-            "newText": "async "
-          }, {
-            "range": {
-              "start": { "line": 0, "character": 21 },
-              "end": { "line": 0, "character": 25 }
+            {
+              "range": {
+                "start": { "line": 0, "character": 21 },
+                "end": { "line": 0, "character": 25 },
+              },
+              "newText": "Promise<void>",
             },
-            "newText": "Promise<void>"
-          }, {
-            "range": {
-              "start": { "line": 4, "character": 7 },
-              "end": { "line": 4, "character": 7 }
+            {
+              "range": {
+                "start": { "line": 4, "character": 7 },
+                "end": { "line": 4, "character": 7 },
+              },
+              "newText": "async ",
             },
-            "newText": "async "
-          }, {
-            "range": {
-              "start": { "line": 4, "character": 21 },
-              "end": { "line": 4, "character": 25 }
+            {
+              "range": {
+                "start": { "line": 4, "character": 21 },
+                "end": { "line": 4, "character": 25 },
+              },
+              "newText": "Promise<void>",
             },
-            "newText": "Promise<void>"
-          }]
-        }]
+          ],
+        },
       },
       "data": {
         "uri": "file:///a/file.ts",
@@ -5628,7 +5907,6 @@ fn lsp_jsr_auto_import_completion() {
   );
   assert!(!list.is_incomplete);
   let item = list.items.iter().find(|i| i.label == "add").unwrap();
-  assert_eq!(&item.label, "add");
   assert_eq!(
     json!(&item.label_details),
     json!({ "description": "jsr:@denotest/add@1" })
@@ -5642,7 +5920,6 @@ fn lsp_jsr_auto_import_completion() {
       "labelDetails": { "description": "jsr:@denotest/add@1" },
       "kind": 3,
       "detail": "Add import from \"jsr:@denotest/add@1\"\n\nfunction add(a: number, b: number): number",
-      "documentation": { "kind": "markdown", "value": "" },
       "sortText": "\u{ffff}16_1",
       "additionalTextEdits": [
         {
@@ -5712,7 +5989,6 @@ fn lsp_jsr_auto_import_completion_import_map() {
       "labelDetails": { "description": "add" },
       "kind": 3,
       "detail": "Add import from \"add\"\n\nfunction add(a: number, b: number): number",
-      "documentation": { "kind": "markdown", "value": "" },
       "sortText": "\u{ffff}16_0",
       "additionalTextEdits": [
         {
@@ -5780,7 +6056,7 @@ fn lsp_jsr_auto_import_completion_import_map_sub_path() {
       "labelDetails": { "description": "@std/path/posix/normalize" },
       "kind": 3,
       "detail": "Add import from \"@std/path/posix/normalize\"\n\nfunction normalize(path: string): string",
-      "documentation": { "kind": "markdown", "value": "Normalize the `path`, resolving `'..'` and `'.'` segments.\nNote that resolving these segments does not necessarily mean that all will be eliminated.\nA `'..'` at the top-level will be preserved, and an empty path is canonically `'.'`.\n\n*@param* — path to be normalized\n" },
+      "documentation": { "kind": "markdown", "value": "Normalize the `path`, resolving `'..'` and `'.'` segments.\nNote that resolving these segments does not necessarily mean that all will be eliminated.\nA `'..'` at the top-level will be preserved, and an empty path is canonically `'.'`.\n\n*@param* `path` — to be normalized\n" },
       "sortText": "\u{ffff}16_0",
       "additionalTextEdits": [
         {
@@ -5843,7 +6119,6 @@ fn lsp_jsr_auto_import_completion_workspace_member() {
         "labelDetails": { "description": "@org/package" },
         "kind": 6,
         "detail": "Add import from \"@org/package\"\n\nconst someValue: 1",
-        "documentation": { "kind": "markdown", "value": "" },
         "sortText": "\u{ffff}16_0",
         "additionalTextEdits": [
           {
@@ -5910,7 +6185,6 @@ fn lsp_jsr_auto_import_completion_patch() {
         "labelDetails": { "description": "@org/package" },
         "kind": 6,
         "detail": "Add import from \"@org/package\"\n\nconst someValue: 1",
-        "documentation": { "kind": "markdown", "value": "" },
         "sortText": "\u{ffff}16_0",
         "additionalTextEdits": [
           {
@@ -6000,42 +6274,24 @@ fn lsp_jsr_code_action_missing_declaration() {
           },
         ],
         "edit": {
-          "documentChanges": [
-            {
-              "textDocument": {
-                "uri": file.uri(),
-                "version": 1,
+          "changes": {
+            file.uri().as_str(): [
+              {
+                "range": {
+                  "start": { "line": 1, "character": 6 },
+                  "end": { "line": 1, "character": 6 },
+                },
+                "newText": "import { ReturnType } from \"jsr:@denotest/types-file/types\";\n",
               },
-              "edits": [
-                {
-                  "range": {
-                    "start": {
-                      "line": 1,
-                      "character": 6,
-                    },
-                    "end": {
-                      "line": 1,
-                      "character": 6,
-                    },
-                  },
-                  "newText": "import { ReturnType } from \"jsr:@denotest/types-file/types\";\n",
+              {
+                "range": {
+                  "start": { "line": 3, "character": 0 },
+                  "end": { "line": 3, "character": 0 },
                 },
-                {
-                  "range": {
-                    "start": {
-                      "line": 3,
-                      "character": 0,
-                    },
-                    "end": {
-                      "line": 3,
-                      "character": 0,
-                    },
-                  },
-                  "newText": "\n      function assertReturnType(arg0: ReturnType) {\n        throw new Error(\"Function not implemented.\");\n      }\n",
-                },
-              ],
-            },
-          ],
+                "newText": "\n      function assertReturnType(arg0: ReturnType) {\n        throw new Error(\"Function not implemented.\");\n      }\n",
+              },
+            ],
+          },
         },
       },
     ])
@@ -6555,14 +6811,14 @@ fn lsp_asset_document_dom_code_action(use_tsgo: bool) {
 }
 
 // Regression test for https://github.com/denoland/deno/issues/22122.
-#[test(timeout = 300)]
-fn lsp_cache_then_definition() {
+#[test(timeout = 300, fork_with_suffix = "_tsgo")]
+fn lsp_cache_then_definition(use_tsgo: bool) {
   let context = TestContextBuilder::new()
     .use_http_server()
     .use_temp_cwd()
     .build();
   let temp_dir = context.temp_dir();
-  let mut client = context.new_lsp_command().build();
+  let mut client = context.new_lsp_command().set_use_tsgo(use_tsgo).build();
   client.initialize_default();
   client.did_open(json!({
     "textDocument": {
@@ -6590,29 +6846,35 @@ fn lsp_cache_then_definition() {
   );
   assert_eq!(
     res,
-    json!([{
-      "targetUri": "deno:/http/localhost:4545/run/002_hello.ts",
-      "targetRange": {
-        "start": {
-          "line": 0,
-          "character": 0,
+    if use_tsgo {
+      json!([{
+        "originSelectionRange": {
+          "start": { "line": 0, "character": 7 },
+          "end": { "line": 0, "character": 47 },
         },
-        "end": {
-          "line": 1,
-          "character": 0,
+        "targetUri": "deno:/http/localhost:4545/run/002_hello.ts",
+        "targetRange": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 1, "character": 0 },
         },
-      },
-      "targetSelectionRange": {
-        "start": {
-          "line": 0,
-          "character": 0,
+        "targetSelectionRange": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 1, "character": 0 },
         },
-        "end": {
-          "line": 1,
-          "character": 0,
+      }])
+    } else {
+      json!([{
+        "targetUri": "deno:/http/localhost:4545/run/002_hello.ts",
+        "targetRange": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 1, "character": 0 },
         },
-      },
-    }]),
+        "targetSelectionRange": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 1, "character": 0 },
+        },
+      }])
+    },
   );
   client.shutdown();
 }
@@ -6728,20 +6990,18 @@ export class DuckConfig {
         "message": "Cannot find name 'DuckConfigOptions'."
       }],
       "edit": {
-        "documentChanges": [{
-          "textDocument": {
-            "uri": "file:///a/file00.ts",
-            "version": 1
-          },
-          "edits": [{
-            "range": {
-              "start": { "line": 0, "character": 0 },
-              "end": { "line": 0, "character": 0 }
+        "changes": {
+          "file:///a/file00.ts": [
+            {
+              "range": {
+                "start": { "line": 0, "character": 0 },
+                "end": { "line": 0, "character": 0 },
+              },
+              "newText": "import type { DuckConfigOptions } from \"./file02.ts\";\n\n",
             },
-            "newText": "import type { DuckConfigOptions } from \"./file02.ts\";\n\n"
-          }]
-        }]
-      }
+          ],
+        },
+      },
     }, {
       "title": "Add all missing imports",
       "kind": "quickfix",
@@ -6773,21 +7033,19 @@ export class DuckConfig {
         "message": "Cannot find name 'DuckConfig'."
       }],
       "edit": {
-        "documentChanges": [{
-          "textDocument": {
-            "uri": "file:///a/file00.ts",
-            "version": 1
-          },
-          "edits": [{
-            "range": {
-              "start": { "line": 0, "character": 0 },
-              "end": { "line": 0, "character": 0 }
+        "changes": {
+          "file:///a/file00.ts": [
+            {
+              "range": {
+                "start": { "line": 0, "character": 0 },
+                "end": { "line": 0, "character": 0 },
+              },
+              "newText": "import { DuckConfig } from \"./file01.ts\";\n\n",
             },
-            "newText": "import { DuckConfig } from \"./file01.ts\";\n\n"
-          }]
-        }]
-      }
-    }])
+          ],
+        },
+      },
+    }]),
   );
   let res = client.write_request(
     "codeAction/resolve",
@@ -6844,19 +7102,17 @@ export class DuckConfig {
         "message": "Cannot find name 'DuckConfig'."
       }],
       "edit": {
-        "documentChanges": [{
-          "textDocument": {
-            "uri": "file:///a/file00.ts",
-            "version": 1
-          },
-          "edits": [{
-            "range": {
-              "start": { "line": 0, "character": 0 },
-              "end": { "line": 0, "character": 0 }
+        "changes": {
+          "file:///a/file00.ts": [
+            {
+              "range": {
+                "start": { "line": 0, "character": 0 },
+                "end": { "line": 0, "character": 0 },
+              },
+              "newText": "import { DuckConfig } from \"./file01.ts\";\nimport type { DuckConfigOptions } from \"./file02.ts\";\n\n",
             },
-            "newText": "import { DuckConfig } from \"./file01.ts\";\nimport type { DuckConfigOptions } from \"./file02.ts\";\n\n"
-          }]
-        }]
+          ],
+        },
       },
       "data": {
         "uri": "file:///a/file00.ts",
@@ -6868,15 +7124,15 @@ export class DuckConfig {
   client.shutdown();
 }
 
-#[test(timeout = 300)]
-fn lsp_code_actions_imports_dts() {
+#[test(timeout = 300, fork_with_suffix = "_tsgo")]
+fn lsp_code_actions_imports_dts(use_tsgo: bool) {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
   source_file(
     temp_dir.path().join("decl.d.ts"),
     "export type SomeType = 1;\n",
   );
-  let mut client = context.new_lsp_command().build();
+  let mut client = context.new_lsp_command().set_use_tsgo(use_tsgo).build();
   client.initialize_default();
   let diagnostics = client.did_open(json!({
     "textDocument": {
@@ -6921,19 +7177,17 @@ fn lsp_code_actions_imports_dts() {
         "message": "Cannot find name 'SomeType'.",
       }],
       "edit": {
-        "documentChanges": [{
-          "textDocument": {
-            "uri": url_to_uri(&temp_dir.url().join("file.ts").unwrap()).unwrap(),
-            "version": 1,
-          },
-          "edits": [{
-            "range": {
-              "start": { "line": 0, "character": 0 },
-              "end": { "line": 0, "character": 0 },
+        "changes": {
+          url_to_uri(&temp_dir.url().join("file.ts").unwrap()).unwrap().as_str(): [
+            {
+              "range": {
+                "start": { "line": 0, "character": 0 },
+                "end": { "line": 0, "character": 0 },
+              },
+              "newText": "import { SomeType } from \"./decl.d.ts\";\n",
             },
-            "newText": "import { SomeType } from \"./decl.d.ts\";\n",
-          }],
-        }],
+          ],
+        },
       },
     }])
   );
@@ -7352,19 +7606,17 @@ fn lsp_code_actions_imports_respects_fmt_config() {
         "message": "Cannot find name 'DuckConfigOptions'."
       }],
       "edit": {
-        "documentChanges": [{
-          "textDocument": {
-            "uri": url_to_uri(&temp_dir.url().join("file00.ts").unwrap()).unwrap(),
-            "version": 1
-          },
-          "edits": [{
-            "range": {
-              "start": { "line": 0, "character": 0 },
-              "end": { "line": 0, "character": 0 }
+        "changes": {
+          url_to_uri(&temp_dir.url().join("file00.ts").unwrap()).unwrap().as_str(): [
+            {
+              "range": {
+                "start": { "line": 0, "character": 0 },
+                "end": { "line": 0, "character": 0 },
+              },
+              "newText": "import { DuckConfigOptions } from './file01.ts'\n",
             },
-            "newText": "import { DuckConfigOptions } from './file01.ts'\n"
-          }]
-        }]
+          ],
+        },
       }
     }])
   );
@@ -7405,19 +7657,17 @@ fn lsp_code_actions_imports_respects_fmt_config() {
         "message": "Cannot find name 'DuckConfigOptions'."
       }],
       "edit": {
-        "documentChanges": [{
-          "textDocument": {
-            "uri": url_to_uri(&temp_dir.url().join("file00.ts").unwrap()).unwrap(),
-            "version": 1
-          },
-          "edits": [{
-            "range": {
-              "start": { "line": 0, "character": 0 },
-              "end": { "line": 0, "character": 0 }
+        "changes": {
+          url_to_uri(&temp_dir.url().join("file00.ts").unwrap()).unwrap().as_str(): [
+            {
+              "range": {
+                "start": { "line": 0, "character": 0 },
+                "end": { "line": 0, "character": 0 },
+              },
+              "newText": "import { DuckConfigOptions } from './file01.ts'\n",
             },
-            "newText": "import { DuckConfigOptions } from './file01.ts'\n"
-          }]
-        }]
+          ],
+        },
       },
       "data": {
         "uri": url_to_uri(&temp_dir.url().join("file00.ts").unwrap()).unwrap(),
@@ -7505,19 +7755,17 @@ fn lsp_quote_style_from_workspace_settings() {
         "message": "Cannot find name 'DuckConfigOptions'.",
       }],
       "edit": {
-        "documentChanges": [{
-          "textDocument": {
-            "uri": url_to_uri(&temp_dir.url().join("file00.ts").unwrap()).unwrap(),
-            "version": null,
-          },
-          "edits": [{
-            "range": {
-              "start": { "line": 0, "character": 0 },
-              "end": { "line": 0, "character": 0 },
+        "changes": {
+          url_to_uri(&temp_dir.url().join("file00.ts").unwrap()).unwrap().as_str(): [
+            {
+              "range": {
+                "start": { "line": 0, "character": 0 },
+                "end": { "line": 0, "character": 0 },
+              },
+              "newText": "import { DuckConfigOptions } from './file01.ts';\n",
             },
-            "newText": "import { DuckConfigOptions } from './file01.ts';\n",
-          }],
-        }],
+          ],
+        },
       },
     }]),
   );
@@ -7550,25 +7798,25 @@ fn lsp_quote_style_from_workspace_settings() {
         "message": "Cannot find name 'DuckConfigOptions'.",
       }],
       "edit": {
-        "documentChanges": [{
-          "textDocument": {
-            "uri": url_to_uri(&temp_dir.url().join("file00.ts").unwrap()).unwrap(),
-            "version": null,
-          },
-          "edits": [{
-            "range": {
-              "start": { "line": 0, "character": 0 },
-              "end": { "line": 0, "character": 0 },
+        "changes": {
+          url_to_uri(&temp_dir.url().join("file00.ts").unwrap()).unwrap().as_str(): [
+            {
+              "range": {
+                "start": { "line": 0, "character": 0 },
+                "end": { "line": 0, "character": 0 },
+              },
+              "newText": "import { DuckConfigOptions } from \"./file01.ts\";\n",
             },
-            "newText": "import { DuckConfigOptions } from \"./file01.ts\";\n",
-          }],
-        }],
+          ],
+        },
       },
     }]),
   );
   client.shutdown();
 }
 
+// TODO(nayeemrmn): Enable for tsgo when the upstream commit lands in our fork:
+// https://github.com/microsoft/typescript-go/commit/ffa96d57ad5af333fe66f7cb1b7a4f3041000d8e
 #[test(timeout = 300)]
 fn lsp_code_actions_organize_imports() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
@@ -7703,6 +7951,8 @@ console.log(a, b, c);
   client.shutdown();
 }
 
+// TODO(nayeemrmn): Enable for tsgo when the upstream commit lands in our fork:
+// https://github.com/microsoft/typescript-go/commit/ffa96d57ad5af333fe66f7cb1b7a4f3041000d8e
 #[test(timeout = 300)]
 fn lsp_code_actions_organize_imports_with_diagnostics() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
@@ -7801,6 +8051,8 @@ console.log(undeclaredVariable);
   client.shutdown();
 }
 
+// TODO(nayeemrmn): Enable for tsgo when the upstream commit lands in our fork:
+// https://github.com/microsoft/typescript-go/commit/ffa96d57ad5af333fe66f7cb1b7a4f3041000d8e
 #[test(timeout = 300)]
 fn lsp_code_actions_organize_imports_in_a_workspace() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
@@ -8142,10 +8394,10 @@ fn lsp_code_actions_deadlock(use_tsgo: bool) {
   client.shutdown();
 }
 
-#[test(timeout = 300)]
-fn lsp_completions() {
+#[test(timeout = 300, fork_with_suffix = "_tsgo")]
+fn lsp_completions(use_tsgo: bool) {
   let context = TestContextBuilder::new().use_temp_cwd().build();
-  let mut client = context.new_lsp_command().build();
+  let mut client = context.new_lsp_command().set_use_tsgo(use_tsgo).build();
   client.initialize_default();
   client.did_open(json!({
     "textDocument": {
@@ -8165,37 +8417,24 @@ fn lsp_completions() {
     }),
   );
   assert!(!list.is_incomplete);
-  assert!(list.items.len() > 90);
+  let item = list.items.iter().find(|i| i.label == "build").unwrap();
 
-  let res = client.write_request(
-    "completionItem/resolve",
-    json!({
-      "label": "build",
-      "kind": 6,
-      "sortText": "1",
-      "insertTextFormat": 1,
-      "data": {
-        "tsJs": {
-          "uri": "file:///a/file.ts",
-          "position": 5,
-          "name": "build",
-          "useCodeSnippet": false
-        }
-      }
-    }),
-  );
+  let res = client.write_request("completionItem/resolve", json!(item));
   assert_eq!(
     res,
     json!({
       "label": "build",
       "kind": 6,
-      "detail": "const Deno.build: {\n    target: string;\n    arch: \"x86_64\" | \"aarch64\";\n    os: \"darwin\" | \"linux\" | \"android\" | \"windows\" | \"freebsd\" | \"netbsd\" | \"aix\" | \"solaris\" | \"illumos\";\n    standalone: boolean;\n    vendor: string;\n    env?: string;\n}",
+      "detail": if use_tsgo {
+        "const Deno.build: { target: string; arch: \"aarch64\" | \"x86_64\"; os: \"aix\" | \"android\" | \"darwin\" | \"freebsd\" | \"illumos\" | \"linux\" | \"netbsd\" | \"solaris\" | \"windows\"; standalone: boolean; vendor: string; env?: string | undefined; }"
+      } else {
+        "const Deno.build: {\n    target: string;\n    arch: \"x86_64\" | \"aarch64\";\n    os: \"darwin\" | \"linux\" | \"android\" | \"windows\" | \"freebsd\" | \"netbsd\" | \"aix\" | \"solaris\" | \"illumos\";\n    standalone: boolean;\n    vendor: string;\n    env?: string;\n}"
+      },
       "documentation": {
         "kind": "markdown",
         "value": "Information related to the build of the current Deno runtime.\n\nUsers are discouraged from code branching based on this information, as\nassumptions about what is available in what build environment might change\nover time. Developers should specifically sniff out the features they\nintend to use.\n\nThe intended use for the information is for logging and debugging purposes.\n\n*@category* — Runtime\n"
       },
-      "sortText": "1",
-      "insertTextFormat": 1
+      "sortText": "11",
     })
   );
   client.shutdown();
@@ -8226,10 +8465,10 @@ fn lsp_completions_private_fields(use_tsgo: bool) {
   client.shutdown();
 }
 
-#[test(timeout = 300)]
-fn lsp_completions_optional() {
+#[test(timeout = 300, fork_with_suffix = "_tsgo")]
+fn lsp_completions_optional(use_tsgo: bool) {
   let context = TestContextBuilder::new().use_temp_cwd().build();
-  let mut client = context.new_lsp_command().build();
+  let mut client = context.new_lsp_command().set_use_tsgo(use_tsgo).build();
   client.initialize_default();
   client.did_open(
     json!({
@@ -8241,7 +8480,7 @@ fn lsp_completions_optional() {
       }
     }),
   );
-  let res = client.get_completion(
+  let list = client.get_completion_list(
     "file:///a/file.ts",
     (8, 4),
     json!({
@@ -8249,59 +8488,20 @@ fn lsp_completions_optional() {
       "triggerCharacter": "."
     }),
   );
-  assert_eq!(
-    json!(res),
-    json!({
-      "isIncomplete": false,
-      "items": [
-        {
-          "label": "b?",
-          "kind": 5,
-          "sortText": "11",
-          "filterText": "b",
-          "insertText": "b",
-          "commitCharacters": [".", ",", ";", "("],
-          "data": {
-            "tsJs": {
-              "uri": "file:///a/file.ts",
-              "position": 79,
-              "name": "b",
-              "useCodeSnippet": false
-            }
-          }
-        }
-      ]
-    })
-  );
-  let res = client.write_request(
-    "completionItem/resolve",
-    json!({
-      "label": "b?",
-      "kind": 5,
-      "sortText": "1",
-      "filterText": "b",
-      "insertText": "b",
-      "data": {
-        "tsJs": {
-          "uri": "file:///a/file.ts",
-          "position": 79,
-          "name": "b",
-          "useCodeSnippet": false
-        }
-      }
-    }),
-  );
+  assert!(!list.is_incomplete);
+  let item = list.items.iter().find(|item| item.label == "b?").unwrap();
+  let res = client.write_request("completionItem/resolve", json!(item));
   assert_eq!(
     res,
     json!({
       "label": "b?",
       "kind": 5,
-      "detail": "(property) A.b?: string | undefined",
-      "documentation": {
-        "kind": "markdown",
-        "value": ""
+      "detail": if use_tsgo {
+        "(property) A.b: string | undefined"
+      } else {
+        "(property) A.b?: string | undefined"
       },
-      "sortText": "1",
+      "sortText": "11",
       "filterText": "b",
       "insertText": "b"
     })
@@ -8352,7 +8552,7 @@ fn lsp_completions_auto_import() {
       "detail": "Add import from \"./🦕.ts\"\n\nfunction add(a: number, b: number): number",
       "documentation": {
         "kind": "markdown",
-        "value": "\n\n*@example*  \n```ts\nconst result = add(1, 2);\nconsole.log(result); // 3\n```\n\n\n*@param* — a - The first number\n\n\n*@param* — b - The second number\n"
+        "value": "\n\n*@example*\n```ts\nconst result = add(1, 2);\nconsole.log(result); // 3\n```\n\n\n*@param* `a` - The first number\n\n\n*@param* `b` - The second number\n"
       },
       "sortText": "￿16_0",
       "additionalTextEdits": [
@@ -8416,7 +8616,7 @@ fn lsp_completions_auto_import_node_builtin() {
       "detail": "Add import from \"node:url\"\n\nfunction pathToFileURL(path: string, options?: PathToFileUrlOptions): URL",
       "documentation": {
         "kind": "markdown",
-        "value": "This function ensures that `path` is resolved absolutely, and that the URL\ncontrol characters are correctly encoded when converting into a File URL.\n\n```js\nimport { pathToFileURL } from 'node:url';\n\nnew URL('/foo#1', 'file:');           // Incorrect: file:///foo#1\npathToFileURL('/foo#1');              // Correct:   file:///foo#1 (POSIX)\n\nnew URL('/some/path%.c', 'file:');    // Incorrect: file:///some/path%.c\npathToFileURL('/some/path%.c');       // Correct:   file:///some/path%.c (POSIX)\n```\n\n*@since* — v10.12.0\n\n\n*@param* — path The path to convert to a File URL.\n\n\n*@return* — The file URL object.\n",
+        "value": "This function ensures that `path` is resolved absolutely, and that the URL\ncontrol characters are correctly encoded when converting into a File URL.\n\n```js\nimport { pathToFileURL } from 'node:url';\n\nnew URL('/foo#1', 'file:');           // Incorrect: file:///foo#1\npathToFileURL('/foo#1');              // Correct:   file:///foo#1 (POSIX)\n\nnew URL('/some/path%.c', 'file:');    // Incorrect: file:///some/path%.c\npathToFileURL('/some/path%.c');       // Correct:   file:///some/path%.c (POSIX)\n```\n\n*@since* — v10.12.0\n\n\n*@param* `path` — The path to convert to a File URL.\n\n\n*@return* — The file URL object.\n",
       },
       "sortText": "￿16_1",
       "additionalTextEdits": [
@@ -8491,10 +8691,6 @@ fn lsp_npm_completions_auto_import_and_quick_fix_no_import_map() {
       },
       "kind": 3,
       "detail": "Add import from \"npm:@denotest/types-exports-subpaths@1/client\"\n\nfunction getClient(): 5",
-      "documentation": {
-        "kind": "markdown",
-        "value": ""
-      },
       "sortText": "￿16_1",
       "additionalTextEdits": [
         {
@@ -8554,21 +8750,19 @@ fn lsp_npm_completions_auto_import_and_quick_fix_no_import_map() {
         }
       ],
       "edit": {
-        "documentChanges": [{
-            "textDocument": {
-              "uri": "file:///a/b.ts",
-              "version": 1,
-            },
-            "edits": [{
+        "changes": {
+          "file:///a/b.ts": [
+            {
               "range": {
                 "start": { "line": 0, "character": 0 },
-                "end": { "line": 0, "character": 0 }
+                "end": { "line": 0, "character": 0 },
               },
-              "newText": "import { getClient } from \"npm:@denotest/types-exports-subpaths@1/client\";\n\n"
-            }]
-        }]
-      }
-    }])
+              "newText": "import { getClient } from \"npm:@denotest/types-exports-subpaths@1/client\";\n\n",
+            },
+          ],
+        },
+      },
+    }]),
   );
 
   // try auto-import without path
@@ -8664,21 +8858,19 @@ fn lsp_npm_completions_auto_import_and_quick_fix_no_import_map() {
         }
       ],
       "edit": {
-        "documentChanges": [{
-            "textDocument": {
-              "uri": "file:///a/d.ts",
-              "version": 1,
-            },
-            "edits": [{
+        "changes": {
+          "file:///a/d.ts": [
+            {
               "range": {
                 "start": { "line": 0, "character": 0 },
-                "end": { "line": 0, "character": 0 }
+                "end": { "line": 0, "character": 0 },
               },
-              "newText": "import chalk from \"npm:chalk@5.0\";\n\n"
-            }]
-        }]
-      }
-    }])
+              "newText": "import chalk from \"npm:chalk@5.0\";\n\n",
+            },
+          ],
+        },
+      },
+    }]),
   );
   client.shutdown();
 }
@@ -8742,7 +8934,7 @@ fn lsp_npm_auto_import_and_quick_fix_byonm() {
       "detail": "Add import from \"cowsay\"\n\nfunction think(options: IOptions): string",
       "documentation": {
         "kind": "markdown",
-        "value": "\n\n*@param*  \noptions ## Face :\nEither choose a mode (set the value as true) **_or_**\nset your own defined eyes and tongue to `e` and `T`.\n- ### `e` : eyes\n- ### `T` : tongue\n\n## Cow :\nEither specify a cow name (e.g. \"fox\") **_or_**\nset the value of `r` to true which selects a random cow.\n- ### `r` : random selection\n- ### `f` : cow name - from `cows` folder\n\n## Modes :\nModes are just ready-to-use faces, here's their list:\n- #### `b` : borg\n- #### `d` : dead      \n- #### `g` : greedy\n- #### `p` : paranoia\n- #### `s` : stoned\n- #### `t` : tired\n- #### `w` : youthful\n- #### `y` : wired\n\n\n*@example*  \n```\n// custom cow and face\ncowsay.think({\n    text: 'Hello world!',\n    e: '^^', // eyes\n    T: 'U ', // tongue\n    f: 'USA' // name of the cow from `cows` folder\n})\n\n// using a random cow\ncowsay.think({\n    text: 'Hello world!',\n    e: 'xx', // eyes\n    r: true, // random mode - use a random cow.\n})\n\n// using a mode\ncowsay.think({\n    text: 'Hello world!',\n    y: true, // using y mode - youthful mode\n})\n```\n",
+        "value": "\n\n*@param* `options` — ## Face :\nEither choose a mode (set the value as true) **_or_**\nset your own defined eyes and tongue to `e` and `T`.\n- ### `e` : eyes\n- ### `T` : tongue\n\n## Cow :\nEither specify a cow name (e.g. \"fox\") **_or_**\nset the value of `r` to true which selects a random cow.\n- ### `r` : random selection\n- ### `f` : cow name - from `cows` folder\n\n## Modes :\nModes are just ready-to-use faces, here's their list:\n- #### `b` : borg\n- #### `d` : dead      \n- #### `g` : greedy\n- #### `p` : paranoia\n- #### `s` : stoned\n- #### `t` : tired\n- #### `w` : youthful\n- #### `y` : wired\n\n\n*@example*\n```\n// custom cow and face\ncowsay.think({\n    text: 'Hello world!',\n    e: '^^', // eyes\n    T: 'U ', // tongue\n    f: 'USA' // name of the cow from `cows` folder\n})\n\n// using a random cow\ncowsay.think({\n    text: 'Hello world!',\n    e: 'xx', // eyes\n    r: true, // random mode - use a random cow.\n})\n\n// using a mode\ncowsay.think({\n    text: 'Hello world!',\n    y: true, // using y mode - youthful mode\n})\n```\n",
       },
       "sortText": "￿16_0",
       "additionalTextEdits": [
@@ -8788,19 +8980,17 @@ fn lsp_npm_auto_import_and_quick_fix_byonm() {
         "kind": "quickfix",
         "diagnostics": &diagnostics,
         "edit": {
-          "documentChanges": [{
-            "textDocument": {
-              "uri": url_to_uri(&temp_dir.url().join("file.ts").unwrap()).unwrap(),
-              "version": 1,
-            },
-            "edits": [{
-              "range": {
-                "start": { "line": 0, "character": 0 },
-                "end": { "line": 0, "character": 0 },
+          "changes": {
+            url_to_uri(&temp_dir.url().join("file.ts").unwrap()).unwrap().as_str(): [
+              {
+                "range": {
+                  "start": { "line": 0, "character": 0 },
+                  "end": { "line": 0, "character": 0 },
+                },
+                "newText": "import { think } from \"cowsay\";\n\n",
               },
-              "newText": "import { think } from \"cowsay\";\n\n",
-            }],
-          }],
+            ],
+          },
         },
       },
       {
@@ -8808,23 +8998,17 @@ fn lsp_npm_auto_import_and_quick_fix_byonm() {
         "kind": "quickfix",
         "diagnostics": &diagnostics,
         "edit": {
-          "documentChanges": [
-            {
-              "textDocument": {
-                "uri": url_to_uri(&temp_dir.url().join("file.ts").unwrap()).unwrap(),
-                "version": 1,
-              },
-              "edits": [
-                {
-                  "range": {
-                    "start": { "line": 1, "character": 0 },
-                    "end": { "line": 1, "character": 0 },
-                  },
-                  "newText": "\nfunction think(arg0: { text: string; }) {\n  throw new Error(\"Function not implemented.\");\n}\n",
+          "changes": {
+            url_to_uri(&temp_dir.url().join("file.ts").unwrap()).unwrap().as_str(): [
+              {
+                "range": {
+                  "start": { "line": 1, "character": 0 },
+                  "end": { "line": 1, "character": 0 },
                 },
-              ],
-            },
-          ],
+                "newText": "\nfunction think(arg0: { text: string; }) {\n  throw new Error(\"Function not implemented.\");\n}\n",
+              },
+            ],
+          },
         },
       },
     ]),
@@ -8908,7 +9092,7 @@ fn lsp_npm_auto_import_with_deno_types() {
       "detail": "Add import from \"lz-string\"\n\n(method) LZString.LZStringStatic.compressToBase64(uncompressed: string): string",
       "documentation": {
         "kind": "markdown",
-        "value": "Compresses input string producing an instance of a ASCII UTF-16 string,\nwhich represents the original string encoded in Base64.\nThe result can be safely transported outside the browser with a\nguarantee that none of the characters produced need to be URL-encoded.\n\n*@param* — uncompressed A string which should be compressed.\n",
+        "value": "Compresses input string producing an instance of a ASCII UTF-16 string,\nwhich represents the original string encoded in Base64.\nThe result can be safely transported outside the browser with a\nguarantee that none of the characters produced need to be URL-encoded.\n\n*@param* `uncompressed` — A string which should be compressed.\n",
       },
       "sortText": "￿16_0",
       "additionalTextEdits": [
@@ -8944,7 +9128,6 @@ fn lsp_npm_auto_import_with_deno_types() {
       },
       "kind": 3,
       "detail": "Add import from \"react\"\n\nfunction React.createRef<T>(): React.RefObject<T>",
-      "documentation": { "kind": "markdown", "value": "" },
       "sortText": "￿16_0",
       "additionalTextEdits": [
         {
@@ -9310,19 +9493,17 @@ fn lsp_npm_reexport_from_non_export_add_import_quick_fix() {
         "kind": "quickfix",
         "diagnostics": diagnostics.all(),
         "edit": {
-          "documentChanges": [{
-            "textDocument": {
-              "uri": file.uri(),
-              "version": 1,
-            },
-            "edits": [{
-              "range": {
-                "start": { "line": 0, "character": 0 },
-                "end": { "line": 0, "character": 0 },
+          "changes": {
+            file.uri().as_str(): [
+              {
+                "range": {
+                  "start": { "line": 0, "character": 0 },
+                  "end": { "line": 0, "character": 0 },
+                },
+                "newText": "import { getValue } from \"@denotest/reexport-from-non-export\";\n\n",
               },
-              "newText": "import { getValue } from \"@denotest/reexport-from-non-export\";\n\n",
-            }],
-          }],
+            ],
+          },
         },
       },
     ]),
@@ -9384,7 +9565,6 @@ fn lsp_npm_managed_import_map_no_duplicate_completions() {
         "labelDetails": { "description": "chalk" },
         "kind": 6,
         "detail": "Update import from \"chalk\"\n\n(alias) type ColorInfo = false | ColorSupport\nexport ColorInfo",
-        "documentation": { "kind": "markdown", "value": "" },
         "sortText": "\u{ffff}16_0",
         "additionalTextEdits": [
           {
@@ -9499,6 +9679,8 @@ fn lsp_npm_always_caches(use_tsgo: bool) {
   client.shutdown();
 }
 
+// TODO(nayeemrmn): Enable for tsgo when implemented upstream:
+// https://github.com/microsoft/typescript-go/pull/1990
 #[test(timeout = 300)]
 fn lsp_semantic_tokens_for_disabled_module() {
   let context = TestContextBuilder::new()
@@ -9623,10 +9805,6 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
       },
       "kind": 3,
       "detail": "Add import from \"types-exports-subpaths/client\"\n\nfunction getClient(): 5",
-      "documentation": {
-        "kind": "markdown",
-        "value": ""
-      },
       "sortText": "￿16_0",
       "additionalTextEdits": [
         {
@@ -9691,19 +9869,17 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
         }
       ],
       "edit": {
-        "documentChanges": [{
-            "textDocument": {
-              "uri": url_to_uri(&temp_dir.url().join("b.ts").unwrap()).unwrap(),
-              "version": 1,
-            },
-            "edits": [{
+        "changes": {
+          url_to_uri(&temp_dir.url().join("b.ts").unwrap()).unwrap().as_str(): [
+            {
               "range": {
                 "start": { "line": 0, "character": 0 },
-                "end": { "line": 0, "character": 0 }
+                "end": { "line": 0, "character": 0 },
               },
-              "newText": "import { getClient } from \"types-exports-subpaths/client\";\n\n"
-            }]
-        }]
+              "newText": "import { getClient } from \"types-exports-subpaths/client\";\n\n",
+            },
+          ],
+        },
       }
     }])
   );
@@ -9808,19 +9984,17 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
         }
       ],
       "edit": {
-        "documentChanges": [{
-            "textDocument": {
-              "uri": url_to_uri(&temp_dir.url().join("d.ts").unwrap()).unwrap(),
-              "version": 1,
-            },
-            "edits": [{
+        "changes": {
+          url_to_uri(&temp_dir.url().join("d.ts").unwrap()).unwrap().as_str(): [
+            {
               "range": {
                 "start": { "line": 0, "character": 0 },
-                "end": { "line": 0, "character": 0 }
+                "end": { "line": 0, "character": 0 },
               },
-              "newText": "import chalk from \"chalk\";\n\n"
-            }]
-        }]
+              "newText": "import chalk from \"chalk\";\n\n",
+            },
+          ],
+        },
       }
     }])
   );
@@ -9925,19 +10099,17 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
         }
       ],
       "edit": {
-        "documentChanges": [{
-            "textDocument": {
-              "uri": url_to_uri(&temp_dir.url().join("f.ts").unwrap()).unwrap(),
-              "version": 1,
-            },
-            "edits": [{
+        "changes": {
+          url_to_uri(&temp_dir.url().join("f.ts").unwrap()).unwrap().as_str(): [
+            {
               "range": {
                 "start": { "line": 0, "character": 0 },
-                "end": { "line": 0, "character": 0 }
+                "end": { "line": 0, "character": 0 },
               },
-              "newText": "import { printHello } from \"print_hello\";\n\n"
-            }]
-        }]
+              "newText": "import { printHello } from \"print_hello\";\n\n",
+            },
+          ],
+        },
       }
     }])
   );
@@ -9975,10 +10147,6 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
       },
       "kind": 3,
       "detail": "Add import from \"nested/entry-b\"\n\nfunction entryB(): \"b\"",
-      "documentation": {
-        "kind": "markdown",
-        "value": ""
-      },
       "sortText": "￿16_0",
       "additionalTextEdits": [
         {
@@ -10033,7 +10201,6 @@ fn lsp_auto_import_import_map_prefer_relative() {
         "labelDetails": { "description": "./other.ts" },
         "kind": 6,
         "detail": "Add import from \"./other.ts\"\n\nconst someValue: 1",
-        "documentation": { "kind": "markdown", "value": "" },
         "sortText": "\u{ffff}16_0",
         "additionalTextEdits": [
           {
@@ -10139,89 +10306,40 @@ fn lsp_completions_snippet() {
     (5, 13),
     json!({ "triggerKind": 1 }),
   );
-  assert_eq!(
-    json!(list),
-    json!({
-      "isIncomplete": false,
-      "items": [
-        {
-          "label": "type",
-          "kind": 5,
-          "sortText": "11",
-          "filterText": "type=\"$1\"",
-          "insertText": "type=\"$1\"",
-          "insertTextFormat": 2,
-          "commitCharacters": [
-            ".",
-            ",",
-            ";",
-            "("
-          ],
-          "data": {
-            "tsJs": {
-              "uri": "file:///a/a.tsx",
-              "position": 87,
-              "name": "type",
-              "useCodeSnippet": false
-            }
-          }
-        }
-      ]
-    })
-  );
-
-  let res = client.write_request(
-    "completionItem/resolve",
-    json!({
-      "label": "type",
-      "kind": 5,
-      "sortText": "11",
-      "filterText": "type=\"$1\"",
-      "insertText": "type=\"$1\"",
-      "insertTextFormat": 2,
-      "commitCharacters": [
-        ".",
-        ",",
-        ";",
-        "("
-      ],
-      "data": {
-        "tsJs": {
-          "uri": "file:///a/a.tsx",
-          "position": 87,
-          "name": "type",
-          "useCodeSnippet": false
-        }
-      }
-    }),
-  );
+  assert!(!list.is_incomplete);
+  let item = list.items.iter().find(|item| item.label == "type");
+  let res = client.write_request("completionItem/resolve", json!(item));
   assert_eq!(
     res,
     json!({
       "label": "type",
       "kind": 5,
       "detail": "(property) type: string",
-      "documentation": {
-        "kind": "markdown",
-        "value": ""
-      },
       "sortText": "11",
       "filterText": "type=\"$1\"",
       "insertText": "type=\"$1\"",
-      "insertTextFormat": 2
-    })
+      "insertTextFormat": 2,
+    }),
   );
   client.shutdown();
 }
 
-#[test(timeout = 300)]
-fn lsp_completions_no_snippet() {
+#[test(timeout = 300, fork_with_suffix = "_tsgo")]
+fn lsp_completions_no_snippet(use_tsgo: bool) {
   let context = TestContextBuilder::new().use_temp_cwd().build();
-  let mut client = context.new_lsp_command().build();
+  let mut client = context.new_lsp_command().set_use_tsgo(use_tsgo).build();
   client.initialize(|builder| {
     builder.with_capabilities(|c| {
-      let doc = c.text_document.as_mut().unwrap();
-      doc.completion = None;
+      c.text_document
+        .as_mut()
+        .unwrap()
+        .completion
+        .as_mut()
+        .unwrap()
+        .completion_item
+        .as_mut()
+        .unwrap()
+        .snippet_support = None;
     });
   });
   client.did_open(
@@ -10240,43 +10358,27 @@ fn lsp_completions_no_snippet() {
     json!({ "triggerKind": 1 }),
   );
   assert!(!list.is_incomplete);
+  let item = list.items.iter().find(|item| item.label == "type");
+  let res = client.write_request("completionItem/resolve", json!(item));
   assert_eq!(
-    json!(list),
+    res,
     json!({
-      "isIncomplete": false,
-      "items": [
-        {
-          "label": "type",
-          "kind": 5,
-          "sortText": "11",
-          "commitCharacters": [
-            ".",
-            ",",
-            ";",
-            "("
-          ],
-          "data": {
-            "tsJs": {
-              "uri": "file:///a/a.tsx",
-              "position": 87,
-              "name": "type",
-              "useCodeSnippet": false
-            }
-          }
-        }
-      ]
-    })
+      "label": "type",
+      "kind": 5,
+      "sortText": "11",
+      "detail": "(property) type: string",
+    }),
   );
   client.shutdown();
 }
 
-#[test(timeout = 300)]
-fn lsp_completions_npm() {
+#[test(timeout = 300, fork_with_suffix = "_tsgo")]
+fn lsp_completions_npm(use_tsgo: bool) {
   let context = TestContextBuilder::new()
     .use_http_server()
     .use_temp_cwd()
     .build();
-  let mut client = context.new_lsp_command().build();
+  let mut client = context.new_lsp_command().set_use_tsgo(use_tsgo).build();
   client.initialize_default();
   client.did_open(
     json!({
@@ -10314,16 +10416,18 @@ fn lsp_completions_npm() {
     }),
   );
   let diagnostics = client.read_diagnostics();
+  let mut messages = diagnostics
+    .all()
+    .into_iter()
+    .map(|d| d.message.to_string())
+    .collect::<Vec<_>>();
+  messages.sort();
   assert_eq!(
-    diagnostics
-      .all()
-      .iter()
-      .map(|d| d.message.as_str())
-      .collect::<Vec<_>>(),
+    messages,
     vec![
       "'chalk' is declared but its value is never read.",
-      "Identifier expected."
-    ]
+      "Identifier expected.",
+    ],
   );
 
   let list = client.get_completion_list(
@@ -10335,14 +10439,13 @@ fn lsp_completions_npm() {
     }),
   );
   assert!(!list.is_incomplete);
-  assert_eq!(
-    list
-      .items
-      .iter()
-      .map(|i| i.label.as_str())
-      .collect::<Vec<_>>(),
-    vec!["default", "MyClass", "named"]
-  );
+  let mut labels = list
+    .items
+    .iter()
+    .map(|i| i.label.as_str())
+    .collect::<Vec<_>>();
+  labels.sort();
+  assert_eq!(labels, vec!["MyClass", "default", "named"]);
 
   let res = client.write_request(
     "completionItem/resolve",
@@ -10719,10 +10822,6 @@ fn lsp_auto_imports_remote_dts() {
       },
       "kind": 8,
       "detail": "Add import from \"http://localhost:4545/subdir/imports_declaration/interface.d.ts\"\n\ninterface SomeInterface",
-      "documentation": {
-        "kind": "markdown",
-        "value": "",
-      },
       "sortText": "￿16_1",
       "additionalTextEdits": [
         {
@@ -11366,8 +11465,8 @@ fn lsp_npmrc(use_tsgo: bool) {
   client.shutdown();
 }
 
-#[test(timeout = 300)]
-fn lsp_lockfile_redirect_resolution() {
+#[test(timeout = 300, fork_with_suffix = "_tsgo")]
+fn lsp_lockfile_redirect_resolution(use_tsgo: bool) {
   let context = TestContextBuilder::new()
     .use_http_server()
     .use_temp_cwd()
@@ -11381,7 +11480,7 @@ fn lsp_lockfile_redirect_resolution() {
     },
     "remote": {},
   }).to_string());
-  let mut client = context.new_lsp_command().build();
+  let mut client = context.new_lsp_command().set_use_tsgo(use_tsgo).build();
   client.initialize_default();
   client.did_open(json!({
     "textDocument": {
@@ -11402,33 +11501,51 @@ fn lsp_lockfile_redirect_resolution() {
   );
   assert_eq!(
     res,
-    json!([{
-      "targetUri": "deno:/http/localhost:4545/subdir/mod2.ts",
-      "targetRange": {
-        "start": { "line": 0, "character": 0 },
-        "end": { "line": 1, "character": 0 },
-      },
-      "targetSelectionRange": {
-        "start": { "line": 0, "character": 0 },
-        "end": { "line": 1, "character": 0 },
-      },
-    }]),
+    if use_tsgo {
+      json!([{
+        "originSelectionRange": {
+          "start": { "line": 0, "character": 7 },
+          "end": { "line": 0, "character": 45 },
+        },
+        "targetUri": "deno:/http/localhost:4545/subdir/mod2.ts",
+        "targetRange": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 1, "character": 0 },
+        },
+        "targetSelectionRange": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 1, "character": 0 },
+        },
+      }])
+    } else {
+      json!([{
+        "targetUri": "deno:/http/localhost:4545/subdir/mod2.ts",
+        "targetRange": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 1, "character": 0 },
+        },
+        "targetSelectionRange": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 1, "character": 0 },
+        },
+      }])
+    },
   );
   client.shutdown();
 }
 
 // Regression test for https://github.com/denoland/vscode_deno/issues/1157.
-#[test(timeout = 300)]
-fn lsp_diagnostics_brackets_in_file_name() {
+#[test(timeout = 300, fork_with_suffix = "_tsgo")]
+fn lsp_diagnostics_brackets_in_file_name(use_tsgo: bool) {
   let context = TestContextBuilder::new().use_temp_cwd().build();
-  let mut client = context.new_lsp_command().build();
+  let mut client = context.new_lsp_command().set_use_tsgo(use_tsgo).build();
   client.initialize_default();
   let diagnostics = client.did_open(json!({
     "textDocument": {
       "uri": "file:///a/%5Bfile%5D.ts",
       "languageId": "typescript",
       "version": 1,
-      "text": "/** @deprecated */\nexport const a = \"a\";\n\na;\n",
+      "text": "/** @deprecated */\nexport function a() {}\n\na;\n",
     },
   }));
   assert_eq!(
@@ -11462,17 +11579,17 @@ fn lsp_diagnostics_brackets_in_file_name() {
   client.shutdown();
 }
 
-#[test(timeout = 300)]
-fn lsp_diagnostics_deprecated() {
+#[test(timeout = 300, fork_with_suffix = "_tsgo")]
+fn lsp_diagnostics_deprecated(use_tsgo: bool) {
   let context = TestContextBuilder::new().use_temp_cwd().build();
-  let mut client = context.new_lsp_command().build();
+  let mut client = context.new_lsp_command().set_use_tsgo(use_tsgo).build();
   client.initialize_default();
   let diagnostics = client.did_open(json!({
     "textDocument": {
       "uri": "file:///a/file.ts",
       "languageId": "typescript",
       "version": 1,
-      "text": "/** @deprecated */\nexport const a = \"a\";\n\na;\n",
+      "text": "/** @deprecated */\nexport function a() {}\n\na;\n",
     },
   }));
   assert_eq!(
@@ -11866,13 +11983,13 @@ fn lsp_jupyter_import_map_and_diagnostics(use_tsgo: bool) {
   client.shutdown();
 }
 
-#[test(timeout = 300)]
-fn lsp_jupyter_completions() {
+#[test(timeout = 300, fork_with_suffix = "_tsgo")]
+fn lsp_jupyter_completions(use_tsgo: bool) {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
   temp_dir.write("deno.json", json!({}).to_string());
   temp_dir.write("./other.ts", "");
-  let mut client = context.new_lsp_command().build();
+  let mut client = context.new_lsp_command().set_use_tsgo(use_tsgo).build();
   client.initialize_default();
   client.notebook_did_open(
     url_to_uri(&temp_dir.url().join("file.ipynb").unwrap()).unwrap(),
@@ -11939,7 +12056,11 @@ fn lsp_jupyter_completions() {
     json!({
       "label": "readTextFile",
       "kind": 3,
-      "detail": "function Deno.readTextFile(path: string | URL, options?: Deno.ReadFileOptions): Promise<string>",
+      "detail": if use_tsgo {
+        "function Deno.readTextFile(path: string | URL, options?: Deno.ReadFileOptions | undefined): Promise<string>"
+      } else {
+        "function Deno.readTextFile(path: string | URL, options?: Deno.ReadFileOptions): Promise<string>"
+      },
       "documentation": {
         "kind": "markdown",
         "value": "Asynchronously reads and returns the entire contents of a file as an UTF-8\ndecoded string. Reading a directory throws an error.\n\n```ts\nconst data = await Deno.readTextFile(\"hello.txt\");\nconsole.log(data);\n```\n\nRequires `allow-read` permission.\n\n*@tags* — allow-read\n\n\n*@category* — File System\n",
@@ -12110,75 +12231,6 @@ fn lsp_non_normalized_uri_diagnostics_and_completions(use_tsgo: bool) {
         })
       },
     }),
-  );
-  client.shutdown();
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PerformanceAverage {
-  pub name: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct PerformanceAverages {
-  averages: Vec<PerformanceAverage>,
-}
-
-#[test(timeout = 300)]
-fn lsp_performance() {
-  let context = TestContextBuilder::new().use_temp_cwd().build();
-  let mut client = context.new_lsp_command().build();
-  client.initialize_default();
-  client.did_open(json!({
-    "textDocument": {
-      "uri": "file:///a/file.ts",
-      "languageId": "typescript",
-      "version": 1,
-      "text": "console.log(Deno.args);\n"
-    }
-  }));
-  client.write_request(
-    "textDocument/hover",
-    json!({
-      "textDocument": {
-        "uri": "file:///a/file.ts"
-      },
-      "position": { "line": 0, "character": 19 }
-    }),
-  );
-  let res = client.write_request_with_res_as::<PerformanceAverages>(
-    "deno/performance",
-    json!(null),
-  );
-  let mut averages = res
-    .averages
-    .iter()
-    .map(|a| a.name.as_str())
-    .collect::<Vec<_>>();
-  averages.sort();
-  assert_eq!(
-    averages,
-    vec![
-      "lsp.diagnostic",
-      "lsp.did_open",
-      "lsp.hover",
-      "lsp.initialize",
-      "lsp.testing_update",
-      "lsp.update_cache",
-      "lsp.update_global_cache",
-      "tsc.host.$getAmbientModules",
-      "tsc.host.$getDiagnostics",
-      "tsc.host.getQuickInfoAtPosition",
-      "tsc.op.op_is_node_file",
-      "tsc.op.op_load",
-      "tsc.op.op_resolve",
-      "tsc.op.op_script_names",
-      "tsc.request.$getAmbientModules",
-      "tsc.request.$getDiagnostics",
-      "tsc.request.getQuickInfoAtPosition",
-    ]
   );
   client.shutdown();
 }
@@ -13357,24 +13409,8 @@ fn lsp_completions_complete_function_calls() {
     }),
   );
   assert!(!list.is_incomplete);
-
-  let res = client.write_request(
-    "completionItem/resolve",
-    json!({
-      "label": "map",
-      "kind": 2,
-      "sortText": "1",
-      "insertTextFormat": 1,
-      "data": {
-        "tsJs": {
-          "uri": "file:///a/file.ts",
-          "position": 3,
-          "name": "map",
-          "useCodeSnippet": true
-        }
-      }
-    }),
-  );
+  let item = list.items.iter().find(|i| i.label == "map").unwrap();
+  let res = client.write_request("completionItem/resolve", json!(item));
   assert_eq!(
     res,
     json!({
@@ -13383,9 +13419,9 @@ fn lsp_completions_complete_function_calls() {
       "detail": "(method) Array<never>.map<U>(callbackfn: (value: never, index: number, array: never[]) => U, thisArg?: any): U[]",
       "documentation": {
         "kind": "markdown",
-        "value": "Calls a defined callback function on each element of an array, and returns an array that contains the results.\n\n*@param* — callbackfn A function that accepts up to three arguments. The map method calls the callbackfn function one time for each element in the array.\n\n\n*@param* — thisArg An object to which the this keyword can refer in the callbackfn function. If thisArg is omitted, undefined is used as the this value.\n"
+        "value": "Calls a defined callback function on each element of an array, and returns an array that contains the results.\n\n*@param* `callbackfn` — A function that accepts up to three arguments. The map method calls the callbackfn function one time for each element in the array.\n\n\n*@param* `thisArg` — An object to which the this keyword can refer in the callbackfn function. If thisArg is omitted, undefined is used as the this value.\n"
       },
-      "sortText": "1",
+      "sortText": "11",
       "insertText": "map(${1:callbackfn})",
       "insertTextFormat": 2,
     })
@@ -13394,13 +13430,13 @@ fn lsp_completions_complete_function_calls() {
 }
 
 // Regression test for https://github.com/denoland/vscode_deno/issues/1276.
-#[test(timeout = 300)]
-fn lsp_completions_private_class_fields() {
+#[test(timeout = 300, fork_with_suffix = "_tsgo")]
+fn lsp_completions_private_class_fields(use_tsgo: bool) {
   let context = TestContextBuilder::new()
     .use_http_server()
     .use_temp_cwd()
     .build();
-  let mut client = context.new_lsp_command().build();
+  let mut client = context.new_lsp_command().set_use_tsgo(use_tsgo).build();
   client.initialize_default();
   client.did_open(json!({
     "textDocument": {
@@ -13429,30 +13465,38 @@ fn lsp_completions_private_class_fields() {
   );
   assert!(!list.is_incomplete);
   let item = list.items.iter().find(|i| i.label == "#prop").unwrap();
+  let res = client.write_request("completionItem/resolve", json!(item));
   assert_eq!(
-    json!(item),
-    json!({
-      "label": "#prop",
-      "kind": 5,
-      "sortText": "14",
-      "filterText": "prop",
-      "insertText": "this.#prop",
-      "commitCharacters": [
-        ".",
-        ",",
-        ";",
-        "("
-      ],
-      "data": {
-        "tsJs": {
-          "uri": "file:///a/file.ts",
-          "position": 88,
-          "name": "#prop",
-          "source": "ThisProperty/",
-          "useCodeSnippet": false,
+    res,
+    if use_tsgo {
+      json!({
+        "label": "#prop",
+        "kind": 5,
+        "detail": "(property) SomeClass.#prop: number",
+        "sortText": "14",
+        "filterText": "prop",
+        "textEdit": {
+          "newText": "this.#prop",
+          "insert": {
+            "start": { "line": 4, "character": 12 },
+            "end": { "line": 4, "character": 15 },
+          },
+          "replace": {
+            "start": { "line": 4, "character": 12 },
+            "end": { "line": 4, "character": 15 },
+          },
         },
-      },
-    }),
+      })
+    } else {
+      json!({
+        "label": "#prop",
+        "kind": 5,
+        "detail": "(property) SomeClass.#prop: number",
+        "sortText": "14",
+        "filterText": "prop",
+        "insertText": "this.#prop",
+      })
+    },
   );
 
   let list = client.get_completion_list(
@@ -13465,38 +13509,45 @@ fn lsp_completions_private_class_fields() {
   );
   assert!(!list.is_incomplete);
   let item = list.items.iter().find(|i| i.label == "#prop").unwrap();
+  let res = client.write_request("completionItem/resolve", json!(item));
   assert_eq!(
-    json!(item),
-    json!({
-      "label": "#prop",
-      "kind": 5,
-      "sortText": "14",
-      "filterText": "this.#prop",
-      "insertText": "this.#prop",
-      "commitCharacters": [
-        ".",
-        ",",
-        ";",
-        "("
-      ],
-      "data": {
-        "tsJs": {
-          "uri": "file:///a/file.ts",
-          "position": 106,
-          "name": "#prop",
-          "source": "ThisProperty/",
-          "useCodeSnippet": false,
+    res,
+    if use_tsgo {
+      json!({
+        "label": "#prop",
+        "kind": 5,
+        "detail": "(property) SomeClass.#prop: number",
+        "sortText": "14",
+        "textEdit": {
+          "newText": "this.#prop",
+          "insert": {
+            "start": { "line": 5, "character": 12 },
+            "end": { "line": 5, "character": 16 },
+          },
+          "replace": {
+            "start": { "line": 5, "character": 12 },
+            "end": { "line": 5, "character": 16 },
+          },
         },
-      },
-    }),
+      })
+    } else {
+      json!({
+        "label": "#prop",
+        "kind": 5,
+        "detail": "(property) SomeClass.#prop: number",
+        "sortText": "14",
+        "filterText": "this.#prop",
+        "insertText": "this.#prop",
+      })
+    },
   );
   client.shutdown();
 }
 
-#[test(timeout = 300)]
-fn lsp_workspace_symbol() {
+#[test(timeout = 300, fork_with_suffix = "_tsgo")]
+fn lsp_workspace_symbol(use_tsgo: bool) {
   let context = TestContextBuilder::new().use_temp_cwd().build();
-  let mut client = context.new_lsp_command().build();
+  let mut client = context.new_lsp_command().set_use_tsgo(use_tsgo).build();
   client.initialize_default();
   client.did_open(json!({
     "textDocument": {
@@ -13514,94 +13565,143 @@ fn lsp_workspace_symbol() {
       "text": "export class B {\n  fieldC: string;\n  fieldD: string;\n}\n",
     }
   }));
-  let mut res = client.write_request(
-    "workspace/symbol",
-    json!({
-      "query": "field"
-    }),
-  );
-
-  // Replace `range` fields with `null` values. These are not important
-  // for assertion and require to be updated if we change unstable APIs.
-  for obj in res.as_array_mut().unwrap().iter_mut() {
-    *obj
-      .as_object_mut()
-      .unwrap()
-      .get_mut("location")
-      .unwrap()
-      .as_object_mut()
-      .unwrap()
-      .get_mut("range")
-      .unwrap() = Value::Null;
+  let res = client
+    .write_request_with_res_as::<Option<Vec<lsp::SymbolInformation>>>(
+      "workspace/symbol",
+      json!({
+        "query": "field"
+      }),
+    );
+  let mut res = res.unwrap();
+  res.sort_by_key(|s| s.name.clone());
+  for symbol_information in &mut res {
+    if symbol_information
+      .location
+      .uri
+      .as_str()
+      .starts_with("deno:/asset/")
+    {
+      symbol_information.location.range = Default::default();
+    }
   }
-
-  assert_eq!(
-    res,
-    json!([
-      {
-        "name": "fieldA",
-        "kind": 8,
-        "location": {
-          "uri": "file:///a/file.ts",
-          "range": null,
-        },
-        "containerName": "A"
-      },
-      {
-        "name": "fieldB",
-        "kind": 8,
-        "location": {
-          "uri": "file:///a/file.ts",
-          "range": null,
-        },
-        "containerName": "A"
-      },
-      {
-        "name": "fieldC",
-        "kind": 8,
-        "location": {
-          "uri": "file:///a/file_01.ts",
-          "range": null,
-        },
-        "containerName": "B"
-      },
-      {
-        "name": "fieldD",
-        "kind": 8,
-        "location": {
-          "uri": "file:///a/file_01.ts",
-          "range": null,
-        },
-        "containerName": "B"
-      },
-      {
-        "name": "ClassFieldDecoratorContext",
-        "kind": 11,
-        "location": {
-          "uri": "deno:/asset/lib.decorators.d.ts",
-          "range": null,
+  let mut expected = vec![
+    json!({
+      "name": "ClassFieldDecoratorContext",
+      "kind": 11,
+      "location": {
+        "uri": "deno:/asset/lib.decorators.d.ts",
+        "range": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 0, "character": 0 },
         },
       },
-      {
-        "name": "HTTP_STATUS_REQUEST_HEADER_FIELDS_TOO_LARGE",
-        "kind": 13,
-        "location": {
-            "uri": "deno:/asset/node/http2.d.cts",
-            "range": null,
+    }),
+    json!({
+      "name": "HTTP_STATUS_REQUEST_HEADER_FIELDS_TOO_LARGE",
+      "kind": 13,
+      "location": {
+        "uri": "deno:/asset/node/http2.d.cts",
+        "range": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 0, "character": 0 },
         },
-        "containerName": "constants",
       },
-      {
-        "name": "strictFieldWhitespaceValidation",
-        "kind": 8,
-        "location": {
-            "uri": "deno:/asset/node/http2.d.cts",
-            "range": null,
+      "containerName": "constants",
+    }),
+    json!({
+      "name": "fieldA",
+      "kind": if use_tsgo { 7 } else { 8 },
+      "location": {
+        "uri": "file:///a/file.ts",
+        "range": {
+          "start": { "line": 1, "character": 2 },
+          "end": { "line": 1, "character": 17 },
         },
-        "containerName": "SessionOptions",
-      }
-    ])
-  );
+      },
+      "containerName": "A",
+    }),
+    json!({
+      "name": "fieldB",
+      "kind": if use_tsgo { 7 } else { 8 },
+      "location": {
+        "uri": "file:///a/file.ts",
+        "range": {
+          "start": { "line": 2, "character": 2 },
+          "end": { "line": 2, "character": 17 },
+        },
+      },
+      "containerName": "A",
+    }),
+    json!({
+      "name": "fieldC",
+      "kind": if use_tsgo { 7 } else { 8 },
+      "location": {
+        "uri": "file:///a/file_01.ts",
+        "range": {
+          "start": { "line": 1, "character": 2 },
+          "end": { "line": 1, "character": 17 },
+        },
+      },
+      "containerName": "B",
+    }),
+    json!({
+      "name": "fieldD",
+      "kind": if use_tsgo { 7 } else { 8 },
+      "location": {
+        "uri": "file:///a/file_01.ts",
+        "range": {
+          "start": { "line": 2, "character": 2 },
+          "end": { "line": 2, "character": 17 },
+        },
+      },
+      "containerName": "B"
+    }),
+    json!({
+      "name": "strictFieldWhitespaceValidation",
+      "kind": if use_tsgo { 7 } else { 8 },
+      "location": {
+        "uri": "deno:/asset/node/http2.d.cts",
+        "range": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 0, "character": 0 },
+        },
+      },
+      "containerName": "SessionOptions",
+    }),
+  ];
+  if use_tsgo {
+    expected.insert(
+      2,
+      json!({
+        "name": "effectiveLocalWindowSize",
+        "kind": 7,
+        "location": {
+          "uri": "deno:/asset/node/http2.d.cts",
+          "range": {
+            "start": { "line": 0, "character": 0 },
+            "end": { "line": 0, "character": 0 },
+          },
+        },
+        "containerName": "SessionState",
+      }),
+    );
+    expected.insert(
+      7,
+      json!({
+        "name": "onHistoryFileLoaded",
+        "kind": 7,
+        "location": {
+          "uri": "deno:/asset/node/repl.d.cts",
+          "range": {
+            "start": { "line": 0, "character": 0 },
+            "end": { "line": 0, "character": 0 },
+          },
+        },
+        "containerName": "REPLServerSetupHistoryOptions",
+      }),
+    );
+  }
+  assert_eq!(json!(res), json!(expected));
   client.shutdown();
 }
 
@@ -15138,8 +15238,8 @@ fn lsp_testing_api_describe_it(use_tsgo: bool) {
   client.shutdown();
 }
 
-#[test(timeout = 300)]
-fn lsp_closed_file_find_references() {
+#[test(timeout = 300, fork_with_suffix = "_tsgo")]
+fn lsp_closed_file_find_references(use_tsgo: bool) {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
   temp_dir.write("./mod.ts", "export const a = 5;");
@@ -15147,7 +15247,7 @@ fn lsp_closed_file_find_references() {
     "./mod.test.ts",
     "import { a } from './mod.ts'; console.log(a);",
   );
-  let mut client = context.new_lsp_command().build();
+  let mut client = context.new_lsp_command().set_use_tsgo(use_tsgo).build();
   client.initialize_default();
   client.did_open(json!({
     "textDocument": {
@@ -15172,26 +15272,41 @@ fn lsp_closed_file_find_references() {
 
   assert_eq!(
     res,
-    json!([{
-      "uri": url_to_uri(&temp_dir.url().join("mod.test.ts").unwrap()).unwrap(),
-      "range": {
-        "start": { "line": 0, "character": 9 },
-        "end": { "line": 0, "character": 10 }
-      }
-    }, {
-      "uri": url_to_uri(&temp_dir.url().join("mod.test.ts").unwrap()).unwrap(),
-      "range": {
-        "start": { "line": 0, "character": 42 },
-        "end": { "line": 0, "character": 43 }
-      }
-    }])
+    if use_tsgo {
+      json!([
+        {
+          "uri": url_to_uri(&temp_dir.url().join("mod.test.ts").unwrap()).unwrap(),
+          "range": {
+            "start": { "line": 0, "character": 42 },
+            "end": { "line": 0, "character": 43 },
+          },
+        },
+      ])
+    } else {
+      json!([
+        {
+          "uri": url_to_uri(&temp_dir.url().join("mod.test.ts").unwrap()).unwrap(),
+          "range": {
+            "start": { "line": 0, "character": 9 },
+            "end": { "line": 0, "character": 10 },
+          },
+        },
+        {
+          "uri": url_to_uri(&temp_dir.url().join("mod.test.ts").unwrap()).unwrap(),
+          "range": {
+            "start": { "line": 0, "character": 42 },
+            "end": { "line": 0, "character": 43 },
+          },
+        },
+      ])
+    },
   );
 
   client.shutdown();
 }
 
-#[test(timeout = 300)]
-fn lsp_closed_file_find_references_low_document_pre_load() {
+#[test(timeout = 300, fork_with_suffix = "_tsgo")]
+fn lsp_closed_file_find_references_low_document_pre_load(use_tsgo: bool) {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
   temp_dir.write("./other_file.ts", "export const b = 5;");
@@ -15200,7 +15315,7 @@ fn lsp_closed_file_find_references_low_document_pre_load() {
     "./sub_dir/mod.test.ts",
     "import { a } from './mod.ts'; console.log(a);",
   );
-  let mut client = context.new_lsp_command().build();
+  let mut client = context.new_lsp_command().set_use_tsgo(use_tsgo).build();
   client.initialize(|builder| {
     builder.set_preload_limit(1);
   });
@@ -15226,13 +15341,13 @@ fn lsp_closed_file_find_references_low_document_pre_load() {
   );
 
   // won't have results because the document won't be pre-loaded
-  assert_eq!(res, json!(null));
+  assert_eq!(res, json!([]));
 
   client.shutdown();
 }
 
-#[test(timeout = 300)]
-fn lsp_closed_file_find_references_excluded_path() {
+#[test(timeout = 300, fork_with_suffix = "_tsgo")]
+fn lsp_closed_file_find_references_excluded_path(use_tsgo: bool) {
   // we exclude any files or folders in the "exclude" part of
   // the config file from being pre-loaded
   let context = TestContextBuilder::new().use_temp_cwd().build();
@@ -15255,7 +15370,7 @@ fn lsp_closed_file_find_references_excluded_path() {
   ]
 }"#,
   );
-  let mut client = context.new_lsp_command().build();
+  let mut client = context.new_lsp_command().set_use_tsgo(use_tsgo).build();
   client.initialize_default();
   client.did_open(json!({
     "textDocument": {
@@ -15279,13 +15394,13 @@ fn lsp_closed_file_find_references_excluded_path() {
   );
 
   // won't have results because the documents won't be pre-loaded
-  assert_eq!(res, json!(null));
+  assert_eq!(res, json!([]));
 
   client.shutdown();
 }
 
-#[test(timeout = 300)]
-fn lsp_data_urls_with_jsx_compiler_option() {
+#[test(timeout = 300, fork_with_suffix = "_tsgo")]
+fn lsp_data_urls_with_jsx_compiler_option(use_tsgo: bool) {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
   temp_dir.write(
@@ -15293,7 +15408,7 @@ fn lsp_data_urls_with_jsx_compiler_option() {
     r#"{ "compilerOptions": { "jsx": "react-jsx" } }"#,
   );
 
-  let mut client = context.new_lsp_command().build();
+  let mut client = context.new_lsp_command().set_use_tsgo(use_tsgo).build();
   client.initialize_default();
 
   let uri = url_to_uri(&temp_dir.url().join("main.ts").unwrap()).unwrap();
@@ -15317,7 +15432,7 @@ fn lsp_data_urls_with_jsx_compiler_option() {
       },
       "position": { "line": 1, "character": 1 },
       "context": {
-        "includeDeclaration": false
+        "includeDeclaration": true
       }
     }),
   );
@@ -15666,8 +15781,8 @@ fn lsp_vendor_dir() {
   client.shutdown();
 }
 
-#[test(timeout = 300)]
-fn lsp_npm_global_cache_hover() {
+#[test(timeout = 300, fork_with_suffix = "_tsgo")]
+fn lsp_npm_global_cache_hover(use_tsgo: bool) {
   let context = TestContextBuilder::new()
     .use_http_server()
     .use_temp_cwd()
@@ -15676,7 +15791,7 @@ fn lsp_npm_global_cache_hover() {
   let temp_dir = context.temp_dir();
   let file = temp_dir.source_file("main.ts", "import \"npm:chalk@5.0.1\";\n");
   context.run_deno("check main.ts");
-  let mut client = context.new_lsp_command().build();
+  let mut client = context.new_lsp_command().set_use_tsgo(use_tsgo).build();
   client.initialize_default();
   client.did_open_file(&file);
   let res = client.write_request(
@@ -15693,17 +15808,35 @@ fn lsp_npm_global_cache_hover() {
     .join("npm/localhost_4260/chalk/5.0.1/source/index.d.ts");
   assert_eq!(
     res,
-    json!([{
-      "targetUri": npm_cache_file_path.uri_file(),
-      "targetRange": {
-        "start": { "line": 2, "character": 0 },
-        "end": { "line": 318, "character": 0 },
-      },
-      "targetSelectionRange": {
-        "start": { "line": 2, "character": 0 },
-        "end": { "line": 318, "character": 0 },
-      },
-    }]),
+    if use_tsgo {
+      json!([{
+        "originSelectionRange": {
+          "start": { "line": 0, "character": 7 },
+          "end": { "line": 0, "character": 24 },
+        },
+        "targetUri": npm_cache_file_path.uri_file(),
+        "targetRange": {
+          "start": { "line": 2, "character": 0 },
+          "end": { "line": 318, "character": 0 },
+        },
+        "targetSelectionRange": {
+          "start": { "line": 2, "character": 0 },
+          "end": { "line": 318, "character": 0 },
+        },
+      }])
+    } else {
+      json!([{
+        "targetUri": npm_cache_file_path.uri_file(),
+        "targetRange": {
+          "start": { "line": 2, "character": 0 },
+          "end": { "line": 318, "character": 0 },
+        },
+        "targetSelectionRange": {
+          "start": { "line": 2, "character": 0 },
+          "end": { "line": 318, "character": 0 },
+        },
+      }])
+    },
   );
   client.did_open(json!({
     "textDocument": {
@@ -15865,8 +15998,8 @@ fn lsp_deno_json_scopes_import_map(use_tsgo: bool) {
   client.shutdown();
 }
 
-#[test(timeout = 300)]
-fn lsp_deno_json_scopes_vendor_dir() {
+#[test(timeout = 300, fork_with_suffix = "_tsgo")]
+fn lsp_deno_json_scopes_vendor_dir(use_tsgo: bool) {
   let context = TestContextBuilder::new()
     .use_http_server()
     .use_temp_cwd()
@@ -15893,7 +16026,7 @@ fn lsp_deno_json_scopes_vendor_dir() {
     })
     .to_string(),
   );
-  let mut client = context.new_lsp_command().build();
+  let mut client = context.new_lsp_command().set_use_tsgo(use_tsgo).build();
   client.initialize_default();
   client.did_open(json!({
     "textDocument": {
@@ -15916,29 +16049,35 @@ fn lsp_deno_json_scopes_vendor_dir() {
   );
   assert_eq!(
     res,
-    json!([{
-      "targetUri": url_to_uri(&temp_dir.url().join("project1/vendor/http_localhost_4545/subdir/mod1.ts").unwrap()).unwrap(),
-      "targetRange": {
-        "start": {
-          "line": 0,
-          "character": 0,
+    if use_tsgo {
+      json!([{
+        "originSelectionRange": {
+          "start": { "line": 0, "character": 7 },
+          "end": { "line": 0, "character": 45 },
         },
-        "end": {
-          "line": 17,
-          "character": 0,
+        "targetUri": url_to_uri(&temp_dir.url().join("project1/vendor/http_localhost_4545/subdir/mod1.ts").unwrap()).unwrap(),
+        "targetRange": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 17, "character": 0 },
         },
-      },
-      "targetSelectionRange": {
-        "start": {
-          "line": 0,
-          "character": 0,
+        "targetSelectionRange": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 17, "character": 0 },
         },
-        "end": {
-          "line": 17,
-          "character": 0,
+      }])
+    } else {
+      json!([{
+        "targetUri": url_to_uri(&temp_dir.url().join("project1/vendor/http_localhost_4545/subdir/mod1.ts").unwrap()).unwrap(),
+        "targetRange": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 17, "character": 0 },
         },
-      },
-    }]),
+        "targetSelectionRange": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 17, "character": 0 },
+        },
+      }])
+    },
   );
   client.did_open(json!({
     "textDocument": {
@@ -15961,29 +16100,35 @@ fn lsp_deno_json_scopes_vendor_dir() {
   );
   assert_eq!(
     res,
-    json!([{
-      "targetUri": url_to_uri(&temp_dir.url().join("project2/vendor/http_localhost_4545/subdir/mod2.ts").unwrap()).unwrap(),
-      "targetRange": {
-        "start": {
-          "line": 0,
-          "character": 0,
+    if use_tsgo {
+      json!([{
+        "originSelectionRange": {
+          "start": { "line": 0, "character": 7 },
+          "end": { "line": 0, "character": 45 },
         },
-        "end": {
-          "line": 1,
-          "character": 0,
+        "targetUri": url_to_uri(&temp_dir.url().join("project2/vendor/http_localhost_4545/subdir/mod2.ts").unwrap()).unwrap(),
+        "targetRange": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 1, "character": 0 },
         },
-      },
-      "targetSelectionRange": {
-        "start": {
-          "line": 0,
-          "character": 0,
+        "targetSelectionRange": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 1, "character": 0 },
         },
-        "end": {
-          "line": 1,
-          "character": 0,
+      }])
+    } else {
+      json!([{
+        "targetUri": url_to_uri(&temp_dir.url().join("project2/vendor/http_localhost_4545/subdir/mod2.ts").unwrap()).unwrap(),
+        "targetRange": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 1, "character": 0 },
         },
-      },
-    }]),
+        "targetSelectionRange": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 1, "character": 0 },
+        },
+      }])
+    },
   );
   client.did_open(json!({
     "textDocument": {
@@ -16007,29 +16152,35 @@ fn lsp_deno_json_scopes_vendor_dir() {
   );
   assert_eq!(
     res,
-    json!([{
-      "targetUri": url_to_uri(&temp_dir.url().join("project2/project3/vendor/http_localhost_4545/subdir/mod3.js").unwrap()).unwrap(),
-      "targetRange": {
-        "start": {
-          "line": 0,
-          "character": 0,
+    if use_tsgo {
+      json!([{
+        "originSelectionRange": {
+          "start": { "line": 0, "character": 7 },
+          "end": { "line": 0, "character": 45 },
         },
-        "end": {
-          "line": 1,
-          "character": 0,
+        "targetUri": url_to_uri(&temp_dir.url().join("project2/project3/vendor/http_localhost_4545/subdir/mod3.js").unwrap()).unwrap(),
+        "targetRange": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 1, "character": 0 },
         },
-      },
-      "targetSelectionRange": {
-        "start": {
-          "line": 0,
-          "character": 0,
+        "targetSelectionRange": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 1, "character": 0 },
         },
-        "end": {
-          "line": 1,
-          "character": 0,
+      }])
+    } else {
+      json!([{
+        "targetUri": url_to_uri(&temp_dir.url().join("project2/project3/vendor/http_localhost_4545/subdir/mod3.js").unwrap()).unwrap(),
+        "targetRange": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 1, "character": 0 },
         },
-      },
-    }]),
+        "targetSelectionRange": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 1, "character": 0 },
+        },
+      }])
+    },
   );
   client.shutdown();
 }
@@ -16091,24 +16242,12 @@ fn lsp_deno_json_scopes_node_modules_dir() {
     json!([{
       "targetUri": url_to_uri(&canon_temp_dir.join("project1/node_modules/.deno/@denotest+add@1.0.0/node_modules/@denotest/add/index.d.ts").unwrap()).unwrap(),
       "targetRange": {
-        "start": {
-          "line": 0,
-          "character": 0,
-        },
-        "end": {
-          "line": 1,
-          "character": 0,
-        },
+        "start": { "line": 0, "character": 0 },
+        "end": { "line": 1, "character": 0 },
       },
       "targetSelectionRange": {
-        "start": {
-          "line": 0,
-          "character": 0,
-        },
-        "end": {
-          "line": 1,
-          "character": 0,
-        },
+        "start": { "line": 0, "character": 0 },
+        "end": { "line": 1, "character": 0 },
       },
     }]),
   );
@@ -16136,24 +16275,12 @@ fn lsp_deno_json_scopes_node_modules_dir() {
     json!([{
       "targetUri": url_to_uri(&canon_temp_dir.join("project2/node_modules/.deno/%40denotest%2Badd%401.0.0/node_modules/%40denotest/add/index.d.ts").unwrap()).unwrap(),
       "targetRange": {
-        "start": {
-          "line": 0,
-          "character": 0,
-        },
-        "end": {
-          "line": 1,
-          "character": 0,
-        },
+        "start": { "line": 0, "character": 0 },
+        "end": { "line": 1, "character": 0 },
       },
       "targetSelectionRange": {
-        "start": {
-          "line": 0,
-          "character": 0,
-        },
-        "end": {
-          "line": 1,
-          "character": 0,
-        },
+        "start": { "line": 0, "character": 0 },
+        "end": { "line": 1, "character": 0 },
       },
     }]),
   );
@@ -16182,24 +16309,12 @@ fn lsp_deno_json_scopes_node_modules_dir() {
     json!([{
       "targetUri": url_to_uri(&canon_temp_dir.join("project2/project3/node_modules/.deno/%40denotest%2Badd%401.0.0/node_modules/%40denotest/add/index.d.ts").unwrap()).unwrap(),
       "targetRange": {
-        "start": {
-          "line": 0,
-          "character": 0,
-        },
-        "end": {
-          "line": 1,
-          "character": 0,
-        },
+        "start": { "line": 0, "character": 0 },
+        "end": { "line": 1, "character": 0 },
       },
       "targetSelectionRange": {
-        "start": {
-          "line": 0,
-          "character": 0,
-        },
-        "end": {
-          "line": 1,
-          "character": 0,
-        },
+        "start": { "line": 0, "character": 0 },
+        "end": { "line": 1, "character": 0 },
       },
     }]),
   );
@@ -16386,6 +16501,8 @@ fn lsp_deno_json_scopes_find_references(use_tsgo: bool) {
   client.shutdown();
 }
 
+// TODO(nayeemrmn): Enable for tsgo when implemented upstream:
+// https://github.com/microsoft/typescript-go/issues/2244
 #[test(timeout = 300)]
 fn lsp_deno_json_scopes_file_rename_import_edits() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
@@ -17047,8 +17164,8 @@ fn lsp_deno_json_workspace_import_map(use_tsgo: bool) {
   client.shutdown();
 }
 
-#[test(timeout = 300)]
-fn lsp_workspace_lockfile() {
+#[test(timeout = 300, fork_with_suffix = "_tsgo")]
+fn lsp_workspace_lockfile(use_tsgo: bool) {
   let context = TestContextBuilder::new()
     .use_http_server()
     .use_temp_cwd()
@@ -17069,7 +17186,7 @@ fn lsp_workspace_lockfile() {
     "remote": {},
   }).to_string());
   temp_dir.write("project1/project2/deno.json", json!({}).to_string());
-  let mut client = context.new_lsp_command().build();
+  let mut client = context.new_lsp_command().set_use_tsgo(use_tsgo).build();
   client.initialize_default();
   client.did_open(json!({
     "textDocument": {
@@ -17091,23 +17208,41 @@ fn lsp_workspace_lockfile() {
   );
   assert_eq!(
     res,
-    json!([{
-      "targetUri": "deno:/http/localhost:4545/subdir/mod2.ts",
-      "targetRange": {
-        "start": { "line": 0, "character": 0 },
-        "end": { "line": 1, "character": 0 },
-      },
-      "targetSelectionRange": {
-        "start": { "line": 0, "character": 0 },
-        "end": { "line": 1, "character": 0 },
-      },
-    }]),
+    if use_tsgo {
+      json!([{
+        "originSelectionRange": {
+          "start": { "line": 0, "character": 7 },
+          "end": { "line": 0, "character": 45 },
+        },
+        "targetUri": "deno:/http/localhost:4545/subdir/mod2.ts",
+        "targetRange": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 1, "character": 0 },
+        },
+        "targetSelectionRange": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 1, "character": 0 },
+        },
+      }])
+    } else {
+      json!([{
+        "targetUri": "deno:/http/localhost:4545/subdir/mod2.ts",
+        "targetRange": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 1, "character": 0 },
+        },
+        "targetSelectionRange": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 1, "character": 0 },
+        },
+      }])
+    },
   );
   client.shutdown();
 }
 
-#[test(timeout = 300)]
-fn lsp_deno_json_workspace_vendor_dir() {
+#[test(timeout = 300, fork_with_suffix = "_tsgo")]
+fn lsp_deno_json_workspace_vendor_dir(use_tsgo: bool) {
   let context = TestContextBuilder::new()
     .use_http_server()
     .use_temp_cwd()
@@ -17122,7 +17257,7 @@ fn lsp_deno_json_workspace_vendor_dir() {
     .to_string(),
   );
   temp_dir.write("project1/project2/deno.json", json!({}).to_string());
-  let mut client = context.new_lsp_command().build();
+  let mut client = context.new_lsp_command().set_use_tsgo(use_tsgo).build();
   client.initialize_default();
   client.did_open(json!({
     "textDocument": {
@@ -17146,35 +17281,41 @@ fn lsp_deno_json_workspace_vendor_dir() {
   );
   assert_eq!(
     res,
-    json!([{
-      "targetUri": url_to_uri(&temp_dir.url().join("project1/vendor/http_localhost_4545/subdir/mod1.ts").unwrap()).unwrap(),
-      "targetRange": {
-        "start": {
-          "line": 0,
-          "character": 0,
+    if use_tsgo {
+      json!([{
+        "originSelectionRange": {
+          "start": { "line": 0, "character": 7 },
+          "end": { "line": 0, "character": 45 },
         },
-        "end": {
-          "line": 17,
-          "character": 0,
+        "targetUri": url_to_uri(&temp_dir.url().join("project1/vendor/http_localhost_4545/subdir/mod1.ts").unwrap()).unwrap(),
+        "targetRange": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 17, "character": 0 },
         },
-      },
-      "targetSelectionRange": {
-        "start": {
-          "line": 0,
-          "character": 0,
+        "targetSelectionRange": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 17, "character": 0 },
         },
-        "end": {
-          "line": 17,
-          "character": 0,
+      }])
+    } else {
+      json!([{
+        "targetUri": url_to_uri(&temp_dir.url().join("project1/vendor/http_localhost_4545/subdir/mod1.ts").unwrap()).unwrap(),
+        "targetRange": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 17, "character": 0 },
         },
-      },
-    }]),
+        "targetSelectionRange": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 17, "character": 0 },
+        },
+      }])
+    },
   );
   client.shutdown();
 }
 
-#[test(timeout = 300)]
-fn lsp_deno_json_workspace_node_modules_dir() {
+#[test(timeout = 300, fork_with_suffix = "_tsgo")]
+fn lsp_deno_json_workspace_node_modules_dir(use_tsgo: bool) {
   let context = TestContextBuilder::new()
     .use_http_server()
     .use_temp_cwd()
@@ -17189,7 +17330,7 @@ fn lsp_deno_json_workspace_node_modules_dir() {
     .to_string(),
   );
   temp_dir.write("project1/project2/deno.json", json!({}).to_string());
-  let mut client = context.new_lsp_command().build();
+  let mut client = context.new_lsp_command().set_use_tsgo(use_tsgo).build();
   client.initialize_default();
   client.did_open(json!({
     "textDocument": {
@@ -17216,29 +17357,35 @@ fn lsp_deno_json_workspace_node_modules_dir() {
     Url::from_directory_path(temp_dir.path().canonicalize()).unwrap();
   assert_eq!(
     res,
-    json!([{
-      "targetUri": url_to_uri(&canon_temp_dir.join("project1/node_modules/.deno/@denotest+add@1.0.0/node_modules/@denotest/add/index.d.ts").unwrap()).unwrap(),
-      "targetRange": {
-        "start": {
-          "line": 0,
-          "character": 0,
+    if use_tsgo {
+      json!([{
+        "originSelectionRange": {
+          "start": { "line": 0, "character": 7 },
+          "end": { "line": 0, "character": 28 },
         },
-        "end": {
-          "line": 1,
-          "character": 0,
+        "targetUri": url_to_uri(&canon_temp_dir.join("project1/node_modules/.deno/@denotest+add@1.0.0/node_modules/@denotest/add/index.d.ts").unwrap()).unwrap(),
+        "targetRange": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 1, "character": 0 },
         },
-      },
-      "targetSelectionRange": {
-        "start": {
-          "line": 0,
-          "character": 0,
+        "targetSelectionRange": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 1, "character": 0 },
         },
-        "end": {
-          "line": 1,
-          "character": 0,
+      }])
+    } else {
+      json!([{
+        "targetUri": url_to_uri(&canon_temp_dir.join("project1/node_modules/.deno/@denotest+add@1.0.0/node_modules/@denotest/add/index.d.ts").unwrap()).unwrap(),
+        "targetRange": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 1, "character": 0 },
         },
-      },
-    }]),
+        "targetSelectionRange": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 1, "character": 0 },
+        },
+      }])
+    },
   );
   client.shutdown();
 }
@@ -17685,8 +17832,8 @@ fn lsp_tsconfig_watched(use_tsgo: bool) {
   client.shutdown();
 }
 
-#[test(timeout = 300)]
-fn lsp_npm_workspace() {
+#[test(timeout = 300, fork_with_suffix = "_tsgo")]
+fn lsp_npm_workspace(use_tsgo: bool) {
   let context = TestContextBuilder::new()
     .use_http_server()
     .use_temp_cwd()
@@ -17737,7 +17884,7 @@ fn lsp_npm_workspace() {
       .to_string(),
     );
   }
-  let mut client = context.new_lsp_command().build();
+  let mut client = context.new_lsp_command().set_use_tsgo(use_tsgo).build();
   client.initialize_default();
   let diagnostics = client.did_open(json!({
     "textDocument": {
@@ -17760,29 +17907,35 @@ fn lsp_npm_workspace() {
   // The temp dir is symlinked on the CI
   assert_eq!(
     res,
-    json!([{
-      "targetUri": url_to_uri(&temp_dir.url().join("packages/add/index.ts").unwrap()).unwrap(),
-      "targetRange": {
-        "start": {
-          "line": 0,
-          "character": 0,
+    if use_tsgo {
+      json!([{
+        "originSelectionRange": {
+          "start": { "line": 0, "character": 9 },
+          "end": { "line": 0, "character": 12 },
         },
-        "end": {
-          "line": 0,
-          "character": 67,
+        "targetUri": url_to_uri(&temp_dir.url().join("packages/add/index.ts").unwrap()).unwrap(),
+        "targetRange": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 1, "character": 0 },
         },
-      },
-      "targetSelectionRange": {
-        "start": {
-          "line": 0,
-          "character": 16,
+        "targetSelectionRange": {
+          "start": { "line": 0, "character": 16 },
+          "end": { "line": 0, "character": 19 },
         },
-        "end": {
-          "line": 0,
-          "character": 19,
+      }])
+    } else {
+      json!([{
+        "targetUri": url_to_uri(&temp_dir.url().join("packages/add/index.ts").unwrap()).unwrap(),
+        "targetRange": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 0, "character": 67 },
         },
-      },
-    }]),
+        "targetSelectionRange": {
+          "start": { "line": 0, "character": 16 },
+          "end": { "line": 0, "character": 19 },
+        },
+      }])
+    },
   );
   client.shutdown();
 }
@@ -18148,8 +18301,8 @@ fn lsp_sloppy_imports(use_tsgo: bool) {
   client.shutdown();
 }
 
-#[test(timeout = 300)]
-fn lsp_sloppy_imports_prefers_dts() {
+#[test(timeout = 300, fork_with_suffix = "_tsgo")]
+fn lsp_sloppy_imports_prefers_dts(use_tsgo: bool) {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
   temp_dir.write("deno.json", json!({}).to_string());
@@ -18160,7 +18313,7 @@ fn lsp_sloppy_imports_prefers_dts() {
     temp_dir.path().join("file.ts"),
     "import { foo } from './a.js';\nconsole.log(foo);",
   );
-  let mut client: LspClient = context.new_lsp_command().build();
+  let mut client = context.new_lsp_command().set_use_tsgo(use_tsgo).build();
   client.initialize_default();
   client.change_configuration(json!({
     "deno": {
@@ -18208,20 +18361,30 @@ fn lsp_sloppy_imports_prefers_dts() {
       }
     }),
   );
-  assert_json_subset(
+  assert_eq!(
     response,
-    json!([
-      {
-        "uri": file.uri(),
-        // the import
-        "range": file.range_of("foo"),
-      },
-      {
-        "uri": file.uri(),
-        // the usage
-        "range": file.range_of_nth(1, "foo"),
-      }
-    ]),
+    if use_tsgo {
+      json!([
+        {
+          "uri": file.uri(),
+          // the usage
+          "range": file.range_of_nth(1, "foo"),
+        },
+      ])
+    } else {
+      json!([
+        {
+          "uri": file.uri(),
+          // the import
+          "range": file.range_of("foo"),
+        },
+        {
+          "uri": file.uri(),
+          // the usage
+          "range": file.range_of_nth(1, "foo"),
+        },
+      ])
+    },
   );
 }
 
@@ -18836,13 +18999,14 @@ fn lsp_semantic_token_caching() {
   assert_eq!(res, res_cached);
 }
 
-#[test(timeout = 300)]
-fn lsp_jsdoc_named_example() {
+#[test(timeout = 300, fork_with_suffix = "_tsgo")]
+fn lsp_jsdoc_named_example(use_tsgo: bool) {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir().path();
   let mut client = context
     .new_lsp_command()
     .set_root_dir(temp_dir.clone())
+    .set_use_tsgo(use_tsgo)
     .build();
   client.initialize_default();
 
@@ -18850,7 +19014,7 @@ fn lsp_jsdoc_named_example() {
     temp_dir.join("main.ts"),
     r#"
     /**
-     * @example Example1
+     * @example
      * ```ts
      * foo();
      * ```
@@ -18877,7 +19041,7 @@ fn lsp_jsdoc_named_example() {
     json!({
       "contents": {
         "kind": "markdown",
-        "value": "```tsx\nfunction foo(): number\n```\n*@example*  \nExample1\n```ts\nfoo();\n```\n",
+        "value": "```tsx\nfunction foo(): number\n```\n\n\n*@example*\n```ts\nfoo();\n```\n",
       },
     }),
   );
@@ -18995,7 +19159,6 @@ fn compiler_options_types(use_tsgo: bool) {
     client.read_diagnostics();
 
     let diagnostics = client.did_open_file(&source);
-    eprintln!("{:#?}", diagnostics.all());
     assert_eq!(json!(diagnostics.all()), json!([]));
     client.did_close_file(&source);
   }
@@ -19245,7 +19408,6 @@ fn do_not_auto_import_from_definitely_typed() {
           },
           "kind": 3,
           "detail": "Update import from \"@denotest/index-export-no-types\"\n\nfunction foo(a: number, b: number): number",
-          "documentation": { "kind": "markdown", "value": "" },
           "sortText": "\u{ffff}16_0",
           "additionalTextEdits": [
             {
@@ -19631,6 +19793,8 @@ fn lsp_import_raw_imports_goto_definition(use_tsgo: bool) {
 }
 
 /// Regression test for https://github.com/denoland/deno/issues/30380.
+// TODO(nayeemrmn): Enable for tsgo when implemented upstream:
+// https://github.com/microsoft/typescript-go/issues/2244
 #[test(timeout = 300)]
 fn lsp_will_rename_files_js_to_ts() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
@@ -19675,6 +19839,8 @@ fn lsp_will_rename_files_js_to_ts() {
 }
 
 /// Regression test for https://github.com/denoland/deno/issues/30627.
+// TODO(nayeemrmn): Enable for tsgo when implemented upstream:
+// https://github.com/microsoft/typescript-go/issues/2244
 #[test(timeout = 300)]
 fn lsp_will_rename_files_move_to_different_dir() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
@@ -19927,7 +20093,7 @@ fn lsp_isolated_declarations() {
 }
 "#,
   );
-  let mut client: LspClient = context.new_lsp_command().build();
+  let mut client = context.new_lsp_command().build();
   client.initialize_default();
   client.change_configuration(json!({ "deno": { "enable": true }}));
 
