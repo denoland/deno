@@ -725,17 +725,17 @@ fn run_test(
     setup.run_piped()
   };
 
-  // Check for expected failure configuration
-  let expected_failure = test_config.and_then(resolve_expected_failure);
+  let debugging_command_text = setup.debugging_command_text();
 
-  if let Some(ef) = expected_failure {
+  // Check for expected failure configuration
+  if let Some(ef) = test_config.and_then(resolve_expected_failure) {
     return handle_expected_failure(
       &ef,
       success,
       exit_code,
       setup.uses_node_test,
       &output_text,
-      &setup.debugging_command_text(),
+      &debugging_command_text,
       &data.test_path,
       results,
     );
@@ -755,7 +755,6 @@ fn run_test(
     .unwrap()
     .insert(data.test_path.clone(), collected);
 
-  let debugging_command_text = setup.debugging_command_text();
   if success {
     if *file_test_runner::NO_CAPTURE {
       test_util::eprintln!("{}", debugging_command_text);
@@ -813,8 +812,8 @@ fn handle_expected_failure(
 
   // When exitCode/output are omitted, any value is accepted.
   let exit_code_matches =
-    ef.exit_code.map_or(true, |ec| actual_exit_code == Some(ec));
-  let output_matches = ef.output.as_ref().map_or(true, |pattern| {
+    ef.exit_code.is_none_or(|ec| actual_exit_code == Some(ec));
+  let output_matches = ef.output.as_ref().is_none_or(|pattern| {
     util::wildcard_match_detailed(pattern, output_text).is_success()
   });
 
