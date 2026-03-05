@@ -15,7 +15,7 @@ import * as process from "node:process";
 import { fstat, fstatSync } from "ext:deno_node/_fs/_fs_fstat.ts";
 import { FsFile } from "ext:deno_fs/30_fs.js";
 import { lstat, lstatPromise, lstatSync } from "ext:deno_node/_fs/_fs_lstat.ts";
-import { open, openPromise, openSync } from "ext:deno_node/_fs/_fs_open.ts";
+import { FileHandle } from "ext:deno_node/internal/fs/handle.ts";
 import {
   opendir,
   opendirPromise,
@@ -75,6 +75,7 @@ import {
   getValidatedPathToString,
   getValidMode,
   kMaxUserId,
+  stringToFlags,
   type RmOptions,
   toUnixTimestamp as _toUnixTimestamp,
   validateCpOptions,
@@ -121,6 +122,8 @@ import {
   op_fs_fchown_async,
   op_fs_fchown_sync,
   op_fs_read_file_async,
+  op_node_open,
+  op_node_open_sync,
   op_node_lchmod,
   op_node_lchmod_sync,
   op_node_lchown,
@@ -169,6 +172,107 @@ const {
   O_CREAT,
   O_EXCL,
 } = constants;
+
+type OpenFlags =
+  | "a"
+  | "ax"
+  | "a+"
+  | "ax+"
+  | "as"
+  | "as+"
+  | "r"
+  | "r+"
+  | "rs"
+  | "rs+"
+  | "w"
+  | "wx"
+  | "w+"
+  | "wx+"
+  | number
+  | string;
+
+type OpenCallback = (err: Error | null, fd?: number) => void;
+
+function open(path: string | Buffer | URL, callback: OpenCallback): void;
+function open(
+  path: string | Buffer | URL,
+  flags: OpenFlags,
+  callback: OpenCallback,
+): void;
+function open(
+  path: string | Buffer | URL,
+  flags: OpenFlags,
+  mode: number,
+  callback: OpenCallback,
+): void;
+function open(
+  path: string | Buffer | URL,
+  flags: OpenCallback | OpenFlags,
+  mode?: OpenCallback | number,
+  callback?: OpenCallback,
+) {
+  path = getValidatedPathToString(path);
+  if (arguments.length < 3) {
+    // deno-lint-ignore no-explicit-any
+    callback = flags as any;
+    flags = "r";
+    mode = 0o666;
+  } else if (typeof mode === "function") {
+    callback = mode;
+    mode = 0o666;
+  } else {
+    mode = parseFileMode(mode, "mode", 0o666);
+  }
+  flags = stringToFlags(flags);
+  callback = makeCallback(callback);
+
+  PromisePrototypeThen(
+    op_node_open(path, flags, mode),
+    (rid: number) => callback(null, rid),
+    (err: Error) =>
+      callback(denoErrorToNodeError(err, { syscall: "open", path })),
+  );
+}
+
+function openPromise(
+  path: string | Buffer | URL,
+  flags: OpenFlags = "r",
+  mode = 0o666,
+): Promise<FileHandle> {
+  return new PrimPromise((resolve, reject) => {
+    open(path, flags, mode, (err, fd) => {
+      if (err) reject(err);
+      else resolve(new FileHandle(fd as number));
+    });
+  });
+}
+
+function openSync(path: string | Buffer | URL): number;
+function openSync(
+  path: string | Buffer | URL,
+  flags?: OpenFlags,
+): number;
+function openSync(path: string | Buffer | URL, mode?: number): number;
+function openSync(
+  path: string | Buffer | URL,
+  flags?: OpenFlags,
+  mode?: number,
+): number;
+function openSync(
+  path: string | Buffer | URL,
+  flags: OpenFlags = "r",
+  maybeMode?: number,
+) {
+  path = getValidatedPathToString(path);
+  flags = stringToFlags(flags);
+  const mode = parseFileMode(maybeMode, "mode", 0o666);
+
+  try {
+    return op_node_open_sync(path, flags, mode);
+  } catch (err) {
+    throw denoErrorToNodeError(err as Error, { syscall: "open", path });
+  }
+}
 
 function link(
   existingPath: string | Buffer | URL,
@@ -2105,6 +2209,7 @@ export default {
   O_WRONLY,
   open,
   openAsBlob,
+  openPromise,
   openSync,
   opendir,
   opendirSync,
@@ -2240,6 +2345,7 @@ export {
   O_WRONLY,
   open,
   openAsBlob,
+  openPromise,
   opendir,
   opendirSync,
   openSync,

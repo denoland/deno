@@ -23,7 +23,7 @@ import {
 import { promisify } from "ext:deno_node/internal/util.mjs";
 import { FileHandle } from "ext:deno_node/internal/fs/handle.ts";
 import { FsFile } from "ext:deno_fs/30_fs.js";
-import { openPromise, openSync } from "ext:deno_node/_fs/_fs_open.ts";
+import { openPromise, openSync } from "node:fs";
 import { isIterable } from "ext:deno_node/internal/streams/utils.js";
 import { primordials } from "ext:core/mod.js";
 import type { BufferEncoding } from "ext:deno_node/_global.d.ts";
