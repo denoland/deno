@@ -10,14 +10,10 @@ import {
 } from "ext:deno_node/_fs/_fs_common.ts";
 import type { Encodings } from "ext:deno_node/_utils.ts";
 import { denoErrorToNodeError } from "ext:deno_node/internal/errors.ts";
-import { promisify } from "ext:deno_node/internal/util.mjs";
 import * as constants from "ext:deno_node/_fs/_fs_constants.ts";
-import {
-  copyFile,
-  copyFilePromise,
-  copyFileSync,
-} from "ext:deno_node/_fs/_fs_copy.ts";
-import { cp, cpPromise, cpSync } from "ext:deno_node/_fs/_fs_cp.ts";
+
+import { copyFile, copyFileSync } from "ext:deno_node/_fs/_fs_copy.ts";
+import { cp, cpSync } from "ext:deno_node/_fs/_fs_cp.ts";
 import Dir from "ext:deno_node/_fs/_fs_dir.ts";
 import { exists, existsSync } from "ext:deno_node/_fs/_fs_exists.ts";
 import { fchmod, fchmodSync } from "ext:deno_node/_fs/_fs_fchmod.ts";
@@ -27,110 +23,41 @@ import { fstat, fstatSync } from "ext:deno_node/_fs/_fs_fstat.ts";
 import { fsync, fsyncSync } from "ext:deno_node/_fs/_fs_fsync.ts";
 import { ftruncate, ftruncateSync } from "ext:deno_node/_fs/_fs_ftruncate.ts";
 import { futimes, futimesSync } from "ext:deno_node/_fs/_fs_futimes.ts";
-import {
-  lchmod,
-  lchmodPromise,
-  lchmodSync,
-} from "ext:deno_node/_fs/_fs_lchmod.ts";
-import {
-  lchown,
-  lchownPromise,
-  lchownSync,
-} from "ext:deno_node/_fs/_fs_lchown.ts";
-import { link, linkPromise, linkSync } from "ext:deno_node/_fs/_fs_link.ts";
-import { lstat, lstatPromise, lstatSync } from "ext:deno_node/_fs/_fs_lstat.ts";
-import {
-  lutimes,
-  lutimesPromise,
-  lutimesSync,
-} from "ext:deno_node/_fs/_fs_lutimes.ts";
-import { mkdir, mkdirPromise, mkdirSync } from "ext:deno_node/_fs/_fs_mkdir.ts";
-import {
-  mkdtemp,
-  mkdtempPromise,
-  mkdtempSync,
-} from "ext:deno_node/_fs/_fs_mkdtemp.ts";
-import { open, openPromise, openSync } from "ext:deno_node/_fs/_fs_open.ts";
-import {
-  opendir,
-  opendirPromise,
-  opendirSync,
-} from "ext:deno_node/_fs/_fs_opendir.ts";
+import { lchmod, lchmodSync } from "ext:deno_node/_fs/_fs_lchmod.ts";
+import { lchown, lchownSync } from "ext:deno_node/_fs/_fs_lchown.ts";
+import { link, linkSync } from "ext:deno_node/_fs/_fs_link.ts";
+import { lstat, lstatSync } from "ext:deno_node/_fs/_fs_lstat.ts";
+import { lutimes, lutimesSync } from "ext:deno_node/_fs/_fs_lutimes.ts";
+import { mkdir, mkdirSync } from "ext:deno_node/_fs/_fs_mkdir.ts";
+import { mkdtemp, mkdtempSync } from "ext:deno_node/_fs/_fs_mkdtemp.ts";
+import { open, openSync } from "ext:deno_node/_fs/_fs_open.ts";
+import { opendir, opendirSync } from "ext:deno_node/_fs/_fs_opendir.ts";
 import { read, readSync } from "ext:deno_node/_fs/_fs_read.ts";
-import {
-  readdir,
-  readdirPromise,
-  readdirSync,
-} from "ext:deno_node/_fs/_fs_readdir.ts";
-import {
-  readFile,
-  readFilePromise,
-  readFileSync,
-} from "ext:deno_node/_fs/_fs_readFile.ts";
-import {
-  readlink,
-  readlinkPromise,
-  readlinkSync,
-} from "ext:deno_node/_fs/_fs_readlink.ts";
-import {
-  realpath,
-  realpathPromise,
-  realpathSync,
-} from "ext:deno_node/_fs/_fs_realpath.ts";
-import {
-  rename,
-  renamePromise,
-  renameSync,
-} from "ext:deno_node/_fs/_fs_rename.ts";
-import { rmdir, rmdirPromise, rmdirSync } from "ext:deno_node/_fs/_fs_rmdir.ts";
-import { rm, rmPromise, rmSync } from "ext:deno_node/_fs/_fs_rm.ts";
-import {
-  stat,
-  statPromise,
-  Stats,
-  statSync,
-} from "ext:deno_node/_fs/_fs_stat.ts";
-import {
-  statfs,
-  statfsPromise,
-  statfsSync,
-} from "ext:deno_node/_fs/_fs_statfs.ts";
-import {
-  symlink,
-  symlinkPromise,
-  symlinkSync,
-} from "ext:deno_node/_fs/_fs_symlink.ts";
-import {
-  truncate,
-  truncatePromise,
-  truncateSync,
-} from "ext:deno_node/_fs/_fs_truncate.ts";
-import {
-  unlink,
-  unlinkPromise,
-  unlinkSync,
-} from "ext:deno_node/_fs/_fs_unlink.ts";
-import {
-  utimes,
-  utimesPromise,
-  utimesSync,
-} from "ext:deno_node/_fs/_fs_utimes.ts";
+import { readdir, readdirSync } from "ext:deno_node/_fs/_fs_readdir.ts";
+import { readFile, readFileSync } from "ext:deno_node/_fs/_fs_readFile.ts";
+import { readlink, readlinkSync } from "ext:deno_node/_fs/_fs_readlink.ts";
+import { realpath, realpathSync } from "ext:deno_node/_fs/_fs_realpath.ts";
+import { rename, renameSync } from "ext:deno_node/_fs/_fs_rename.ts";
+import { rmdir, rmdirSync } from "ext:deno_node/_fs/_fs_rmdir.ts";
+import { rm, rmSync } from "ext:deno_node/_fs/_fs_rm.ts";
+import { stat, Stats, statSync } from "ext:deno_node/_fs/_fs_stat.ts";
+import { statfs, statfsSync } from "ext:deno_node/_fs/_fs_statfs.ts";
+import { symlink, symlinkSync } from "ext:deno_node/_fs/_fs_symlink.ts";
+import { truncate, truncateSync } from "ext:deno_node/_fs/_fs_truncate.ts";
+import { unlink, unlinkSync } from "ext:deno_node/_fs/_fs_unlink.ts";
+import { utimes, utimesSync } from "ext:deno_node/_fs/_fs_utimes.ts";
 import {
   unwatchFile,
   watch,
   watchFile,
-  watchPromise,
 } from "ext:deno_node/_fs/_fs_watch.ts";
 // @deno-types="./_fs/_fs_write.d.ts"
 import { write, writeSync } from "ext:deno_node/_fs/_fs_write.ts";
 // @deno-types="./_fs/_fs_writev.d.ts"
 import { writev, writevSync } from "ext:deno_node/_fs/_fs_writev.ts";
 import { readv, readvSync } from "ext:deno_node/_fs/_fs_readv.ts";
-import {
-  writeFile,
-  writeFilePromise,
-  writeFileSync,
-} from "ext:deno_node/_fs/_fs_writeFile.ts";
+import { writeFile, writeFileSync } from "ext:deno_node/_fs/_fs_writeFile.ts";
+import promises from "ext:deno_node/internal/fs/promises.ts";
 // @deno-types="./internal/fs/streams.d.ts"
 import {
   createReadStream,
@@ -149,7 +76,7 @@ import {
   kMaxUserId,
   toUnixTimestamp as _toUnixTimestamp,
 } from "ext:deno_node/internal/fs/utils.mjs";
-import { glob, globPromise, globSync } from "ext:deno_node/_fs/_fs_glob.ts";
+import { glob, globSync } from "ext:deno_node/_fs/_fs_glob.ts";
 import {
   parseFileMode,
   validateInteger,
@@ -436,28 +363,6 @@ function closeSync(fd: number) {
   core.close(fd);
 }
 
-const accessPromise = promisify(access) as (
-  path: string | Buffer | URL,
-  mode?: number,
-) => Promise<void>;
-
-const appendFilePromise = promisify(appendFile) as (
-  path: string | number | URL,
-  data: string | Uint8Array,
-  options?: Encodings | WriteFileOptions,
-) => Promise<void>;
-
-const chmodPromise = promisify(chmod) as (
-  path: string | Buffer | URL,
-  mode: string | number,
-) => Promise<void>;
-
-const chownPromise = promisify(chown) as (
-  path: string | Buffer | URL,
-  uid: number,
-  gid: number,
-) => Promise<void>;
-
 /**
  * Returns a `Blob` whose data is read from the given file.
  */
@@ -474,41 +379,6 @@ function openAsBlob(
     (data: Uint8Array) => new Blob([data], { type }),
   );
 }
-
-const promises = {
-  access: accessPromise,
-  constants,
-  copyFile: copyFilePromise,
-  cp: cpPromise,
-  glob: globPromise,
-  open: openPromise,
-  opendir: opendirPromise,
-  rename: renamePromise,
-  truncate: truncatePromise,
-  rm: rmPromise,
-  rmdir: rmdirPromise,
-  mkdir: mkdirPromise,
-  readdir: readdirPromise,
-  readlink: readlinkPromise,
-  symlink: symlinkPromise,
-  lstat: lstatPromise,
-  stat: statPromise,
-  statfs: statfsPromise,
-  link: linkPromise,
-  unlink: unlinkPromise,
-  chmod: chmodPromise,
-  lchmod: lchmodPromise,
-  lchown: lchownPromise,
-  chown: chownPromise,
-  utimes: utimesPromise,
-  lutimes: lutimesPromise,
-  realpath: realpathPromise,
-  mkdtemp: mkdtempPromise,
-  writeFile: writeFilePromise,
-  appendFile: appendFilePromise,
-  readFile: readFilePromise,
-  watch: watchPromise,
-};
 
 export default {
   access,
