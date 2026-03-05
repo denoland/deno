@@ -960,7 +960,7 @@ const features = {
   tls_ocsp: true,
   tls: true,
   // deno-lint-ignore camelcase
-  openssl_is_boringssl: false,
+  openssl_is_boringssl: true,
   // deno-lint-ignore camelcase
   cached_builtins: true,
   // deno-lint-ignore camelcase
