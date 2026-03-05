@@ -6,6 +6,20 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 2.7.4 / 2026.03.05
+
+- Reland refactor(core): move nextTick/immediate queues into core, replace ops
+  with shared buffers (#32440) (#32465)
+- Revert "refactor(core): move nextTick/immediate queues into core, replace ops
+  with shared buffers (#32440) (#32462)
+- fix(core): uv_compat cleanup and fixes (#32458)
+- fix(deploy): correctly handle version lookup (#32489)
+- fix(ext/node): deep `assert` compatibility (#32434)
+- fix(ext/node): use sync writes for TTY stdout/stderr WriteStream (#32488)
+- fix(test): restart all tests on env file change (#32461)
+- perf(npm): actually improve `npm install -g deno` binary startup performance
+  (#32467)
+
 ### 2.7.3 / 2026.03.04
 
 - fix(deploy): dont use jsr api for deploy subcommand (#32441)
