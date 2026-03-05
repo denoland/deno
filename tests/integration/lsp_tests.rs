@@ -15808,35 +15808,17 @@ fn lsp_npm_global_cache_hover() {
     .join("npm/localhost_4260/chalk/5.0.1/source/index.d.ts");
   assert_eq!(
     res,
-    if use_tsgo {
-      json!([{
-        "originSelectionRange": {
-          "start": { "line": 0, "character": 7 },
-          "end": { "line": 0, "character": 24 },
-        },
-        "targetUri": npm_cache_file_path.uri_file(),
-        "targetRange": {
-          "start": { "line": 2, "character": 0 },
-          "end": { "line": 318, "character": 0 },
-        },
-        "targetSelectionRange": {
-          "start": { "line": 2, "character": 0 },
-          "end": { "line": 318, "character": 0 },
-        },
-      }])
-    } else {
-      json!([{
-        "targetUri": npm_cache_file_path.uri_file(),
-        "targetRange": {
-          "start": { "line": 2, "character": 0 },
-          "end": { "line": 318, "character": 0 },
-        },
-        "targetSelectionRange": {
-          "start": { "line": 2, "character": 0 },
-          "end": { "line": 318, "character": 0 },
-        },
-      }])
-    },
+    json!([{
+      "targetUri": npm_cache_file_path.uri_file(),
+      "targetRange": {
+        "start": { "line": 2, "character": 0 },
+        "end": { "line": 318, "character": 0 },
+      },
+      "targetSelectionRange": {
+        "start": { "line": 2, "character": 0 },
+        "end": { "line": 318, "character": 0 },
+      },
+    }]),
   );
   client.did_open(json!({
     "textDocument": {
