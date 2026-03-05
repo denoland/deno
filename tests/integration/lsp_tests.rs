@@ -13955,13 +13955,13 @@ console.log(snake_case);
   client.shutdown();
 }
 
-#[test(timeout = 300, fork_with_suffix = "_tsgo")]
-fn lsp_code_actions_lint_fixes(use_tsgo: bool) {
+#[test(timeout = 300)]
+fn lsp_code_actions_lint_fixes() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
   let file = temp_dir
     .source_file("file.ts", "// Copyright x-y. MIT licence.\nwindow;\n");
-  let mut client = context.new_lsp_command().set_use_tsgo(use_tsgo).build();
+  let mut client = context.new_lsp_command().build();
   client.initialize_default();
   let diagnostics = client.did_open_file(&file);
   let diagnostics = diagnostics.all();
@@ -15781,8 +15781,8 @@ fn lsp_vendor_dir() {
   client.shutdown();
 }
 
-#[test(timeout = 300, fork_with_suffix = "_tsgo")]
-fn lsp_npm_global_cache_hover(use_tsgo: bool) {
+#[test(timeout = 300)]
+fn lsp_npm_global_cache_hover() {
   let context = TestContextBuilder::new()
     .use_http_server()
     .use_temp_cwd()
@@ -15791,7 +15791,7 @@ fn lsp_npm_global_cache_hover(use_tsgo: bool) {
   let temp_dir = context.temp_dir();
   let file = temp_dir.source_file("main.ts", "import \"npm:chalk@5.0.1\";\n");
   context.run_deno("check main.ts");
-  let mut client = context.new_lsp_command().set_use_tsgo(use_tsgo).build();
+  let mut client = context.new_lsp_command().build();
   client.initialize_default();
   client.did_open_file(&file);
   let res = client.write_request(
@@ -19120,10 +19120,10 @@ fn wildcard_augment(use_tsgo: bool) {
   assert_eq!(diagnostics.all().len(), 0);
 }
 
-#[test(timeout = 300, fork_with_suffix = "_tsgo")]
-fn compiler_options_types(use_tsgo: bool) {
+#[test(timeout = 300)]
+fn compiler_options_types() {
   let context = TestContextBuilder::for_npm().use_temp_cwd().build();
-  let mut client = context.new_lsp_command().set_use_tsgo(use_tsgo).build();
+  let mut client = context.new_lsp_command().build();
   let temp = context.temp_dir();
   let temp_dir = temp.path();
   let source = source_file(
