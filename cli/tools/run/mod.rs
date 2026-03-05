@@ -233,10 +233,30 @@ async fn run_with_watch(
 }
 
 pub async fn eval_command(
-  flags: Arc<Flags>,
+  mut flags: Flags,
   eval_flags: EvalFlags,
 ) -> Result<i32, AnyError> {
-  let factory = CliFactory::from_flags(flags);
+  // Auto-detect CJS vs ESM if --ext was not explicitly provided.
+  if flags.ext.is_none() {
+    let source_code = if eval_flags.print {
+      format!("console.log({})", &eval_flags.code)
+    } else {
+      eval_flags.code.clone()
+    };
+    let specifier = deno_core::url::Url::parse("file:///eval.js").unwrap();
+    let is_script = deno_ast::parse_program(deno_ast::ParseParams {
+      specifier,
+      text: source_code.into(),
+      media_type: deno_ast::MediaType::JavaScript,
+      capture_tokens: false,
+      scope_analysis: false,
+      maybe_syntax: None,
+    })
+    .map(|parsed| parsed.compute_is_script())
+    .unwrap_or(true);
+    flags.ext = Some(if is_script { "cjs" } else { "mjs" }.to_string());
+  }
+  let factory = CliFactory::from_flags(Arc::new(flags));
   let cli_options = factory.cli_options()?;
   let file_fetcher = factory.file_fetcher()?;
   let main_module = cli_options.resolve_main_module()?;

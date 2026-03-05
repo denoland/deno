@@ -1923,9 +1923,6 @@ pub fn flags_from_vec_with_initial_cwd(
         flags.allow_all();
 
         ext_arg_parse(&mut flags, &mut matches);
-        if flags.ext.is_none() {
-          flags.ext = Some("cjs".to_string());
-        }
 
         flags.subcommand =
           DenoSubcommand::Eval(EvalFlags { print: false, code });
@@ -2146,7 +2143,7 @@ pub fn clap_root() -> Command {
       Arg::new("eval")
         .short('e')
         .long("eval")
-        .help("Evaluate the given code (defaults to CommonJS)")
+        .help("Evaluate the given code (auto-detects CommonJS vs ESM)")
         .value_name("CODE"),
     )
     .subcommand(run_subcommand())
@@ -9743,11 +9740,7 @@ mod tests {
 
   #[test]
   fn eval_short_flag() {
-    let r = flags_from_vec(svec![
-      "deno",
-      "-e",
-      "console.log('hello')"
-    ]);
+    let r = flags_from_vec(svec!["deno", "-e", "console.log('hello')"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -9759,7 +9752,6 @@ mod tests {
           allow_all: true,
           ..Default::default()
         },
-        ext: Some("cjs".to_string()),
         ..Flags::default()
       }
     );
@@ -9767,11 +9759,7 @@ mod tests {
 
   #[test]
   fn eval_long_flag() {
-    let r = flags_from_vec(svec![
-      "deno",
-      "--eval",
-      "require('fs')"
-    ]);
+    let r = flags_from_vec(svec!["deno", "--eval", "require('fs')"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -9783,7 +9771,6 @@ mod tests {
           allow_all: true,
           ..Default::default()
         },
-        ext: Some("cjs".to_string()),
         ..Flags::default()
       }
     );
@@ -9791,12 +9778,7 @@ mod tests {
 
   #[test]
   fn eval_short_flag_with_ext() {
-    let r = flags_from_vec(svec![
-      "deno",
-      "--ext=mjs",
-      "-e",
-      "import('fs')"
-    ]);
+    let r = flags_from_vec(svec!["deno", "--ext=mjs", "-e", "import('fs')"]);
     assert_eq!(
       r.unwrap(),
       Flags {
