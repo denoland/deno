@@ -1,0 +1,12 @@
+{
+  "tests": {
+    "static_defer": {
+      "args": "run main.js",
+      "output": "main.out"
+    },
+    "dynamic_defer": {
+      "args": "run dynamic.js",
+      "output": "dynamic.out"
+    }
+  }
+}
