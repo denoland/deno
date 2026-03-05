@@ -73,7 +73,7 @@ use crate::glob::PathOrPatternSet;
 mod discovery;
 
 #[allow(clippy::disallowed_types)]
-type UrlRc = deno_maybe_sync::MaybeArc<Url>;
+pub type UrlRc = deno_maybe_sync::MaybeArc<Url>;
 #[allow(clippy::disallowed_types)]
 pub type WorkspaceRc = deno_maybe_sync::MaybeArc<Workspace>;
 #[allow(clippy::disallowed_types)]
