@@ -180,9 +180,7 @@ impl InnerIsolateState {
 
     // Unregister isolate waker before dropping the isolate
     let isolate_ptr = unsafe { self.v8_isolate.as_raw_isolate_ptr() };
-    setup::unregister_isolate_waker(
-      unsafe { std::mem::transmute::<_, usize>(isolate_ptr) },
-    );
+    setup::unregister_isolate_waker(isolate_ptr as *const _ as usize);
 
     let state_ptr = self.v8_isolate.get_data(STATE_DATA_OFFSET);
     // SAFETY: We are sure that it's a valid pointer for whole lifetime of
@@ -846,7 +844,7 @@ impl JsRuntime {
     // UnsafeRawIsolatePtr is repr(transparent) over *mut RealIsolate —
     // same pointer value the C++ callback receives as void*.
     setup::register_isolate_waker(
-      unsafe { std::mem::transmute::<_, usize>(isolate_ptr) },
+      isolate_ptr as *const _ as usize,
       waker.clone(),
     );
 
@@ -1879,7 +1877,6 @@ impl JsRuntime {
 
   /// Pump V8's foreground message loop, processing tasks posted by
   /// background threads (e.g. module compilation callbacks).
-  /// Returns `true` if any tasks were processed.
   fn pump_v8_message_loop(
     &self,
     scope: &mut v8::PinScope,
