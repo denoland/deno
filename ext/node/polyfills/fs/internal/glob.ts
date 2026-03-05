@@ -14,13 +14,11 @@ import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
 import process from "node:process";
 
 import {
-  readdirPromise as readdir,
-  readdirSync,
-} from "ext:deno_node/_fs/_fs_readdir.ts";
-import {
   lstatPromise as lstat,
   lstatSync,
-} from "ext:deno_node/_fs/_fs_lstat.ts";
+  readdirPromise as readdir,
+  readdirSync,
+} from "node:fs";
 
 import {
   basename,

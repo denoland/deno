@@ -19,10 +19,10 @@ import { core, primordials } from "ext:core/mod.js";
 import { validateString } from "ext:deno_node/internal/validators.mjs";
 import { isWindows } from "ext:deno_node/_util/os.ts";
 import process from "node:process";
-import type * as fsGlob from "ext:deno_node/_fs/_fs_glob.ts";
+import type * as fsGlob from "ext:deno_node/fs/internal/glob.ts";
 
 const lazyLoadGlob = core.createLazyLoader<typeof fsGlob>(
-  "ext:deno_node/_fs/_fs_glob.ts",
+  "ext:deno_node/fs/internal/glob.ts",
 );
 
 const {

@@ -83,7 +83,7 @@ import {
   validateRmOptionsSync,
   warnOnNonPortableTemplate,
 } from "ext:deno_node/internal/fs/utils.mjs";
-import { glob, globPromise, globSync } from "ext:deno_node/_fs/_fs_glob.ts";
+import { glob, globPromise, globSync } from "ext:deno_node/fs/internal/glob.ts";
 import {
   parseFileMode,
   validateBoolean,
