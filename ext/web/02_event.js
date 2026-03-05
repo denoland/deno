@@ -830,6 +830,7 @@ function invokeEventListeners(tuple, eventImpl) {
   }
 }
 
+// https://dom.spec.whatwg.org/#dom-eventtarget-removeeventlistener
 function normalizeEventHandlerOptions(
   options,
 ) {
