@@ -2146,9 +2146,8 @@ pub fn clap_root() -> Command {
       Arg::new("eval")
         .short('e')
         .long("eval")
-        .help("Evaluate the given code as CommonJS")
-        .value_name("CODE")
-        .hide(true),
+        .help("Evaluate the given code (defaults to CommonJS)")
+        .value_name("CODE"),
     )
     .subcommand(run_subcommand())
     .subcommand(serve_subcommand())
