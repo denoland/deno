@@ -12,6 +12,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 import {
+  accessSync,
   closeSync,
   constants,
   copyFileSync,
@@ -526,5 +527,73 @@ Deno.test(
     await assertRejects(
       () => openAsBlob("/non/existent/file.txt"),
     );
+  },
+);
+
+Deno.test(
+  "[node/fs.access] Uses the owner permission when the user is the owner",
+  { ignore: Deno.build.os === "windows" },
+  async () => {
+    const file = await Deno.makeTempFile();
+    try {
+      await Deno.chmod(file, 0o600);
+      await promises.access(file, constants.R_OK);
+      await promises.access(file, constants.W_OK);
+      await assertRejects(async () => {
+        await promises.access(file, constants.X_OK);
+      });
+    } finally {
+      await Deno.remove(file);
+    }
+  },
+);
+
+Deno.test(
+  "[node/fs.access] doesn't reject on windows",
+  { ignore: Deno.build.os !== "windows" },
+  async () => {
+    const file = await Deno.makeTempFile();
+    try {
+      await promises.access(file, constants.R_OK);
+      await promises.access(file, constants.W_OK);
+      await promises.access(file, constants.X_OK);
+      await promises.access(file, constants.F_OK);
+    } finally {
+      await Deno.remove(file);
+    }
+  },
+);
+
+Deno.test(
+  "[node/fs.accessSync] Uses the owner permission when the user is the owner",
+  { ignore: Deno.build.os === "windows" },
+  () => {
+    const file = Deno.makeTempFileSync();
+    try {
+      Deno.chmodSync(file, 0o600);
+      accessSync(file, constants.R_OK);
+      accessSync(file, constants.W_OK);
+      assertThrows(() => {
+        accessSync(file, constants.X_OK);
+      });
+    } finally {
+      Deno.removeSync(file);
+    }
+  },
+);
+
+Deno.test(
+  "[node/fs.accessSync] doesn't throw on windows",
+  { ignore: Deno.build.os !== "windows" },
+  () => {
+    const file = Deno.makeTempFileSync();
+    try {
+      accessSync(file, constants.R_OK);
+      accessSync(file, constants.W_OK);
+      accessSync(file, constants.X_OK);
+      accessSync(file, constants.F_OK);
+    } finally {
+      Deno.removeSync(file);
+    }
   },
 );
