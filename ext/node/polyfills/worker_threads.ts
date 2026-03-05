@@ -50,7 +50,6 @@ import { createRequire } from "node:module";
 
 const {
   ArrayIsArray,
-  encodeURIComponent,
   Error,
   FunctionPrototypeCall,
   NumberIsFinite,
