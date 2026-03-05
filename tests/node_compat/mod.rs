@@ -1,7 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-mod report;
-
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -24,6 +22,8 @@ use test_util::test_runner::FlakyTestTracker;
 use test_util::test_runner::Parallelism;
 use test_util::test_runner::run_maybe_flaky_test;
 use util::tests_path;
+
+mod report;
 
 /// Global counter for generating unique test serial IDs
 static TEST_SERIAL_ID: AtomicUsize = AtomicUsize::new(0);
