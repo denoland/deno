@@ -34,6 +34,7 @@ to JavaScript — for instance filesystem operations and networking.
 - `cli/` — User-facing CLI implementation, subcommands, and tools
 - `runtime/` — JavaScript runtime assembly and integration
 - `ext/` — Extensions providing native functionality to JS (fs, net, etc.)
+- `libs/` — Shared Rust crates (core, resolver, npm, node_resolver, serde_v8, etc.)
 - `tests/specs/` — Integration tests (spec tests)
 - `tests/unit/` — Unit tests
 - `tests/testdata/` — Test fixtures and data files
