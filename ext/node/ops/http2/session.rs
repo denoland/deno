@@ -225,6 +225,7 @@ unsafe extern "C" fn h2_read_cb(
     // Notify nghttp2 about the EOF by terminating the session.
     // This causes on_stream_close_callback to fire for all open
     // streams, triggering the JS-side close/aborted event flow.
+    // SAFETY: session.session is a valid nghttp2_session pointer
     unsafe {
       ffi::nghttp2_session_terminate_session(
         session.session,
