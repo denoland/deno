@@ -164,12 +164,15 @@ pub async fn install_global(
       cli_options.initial_cwd(),
       install_flags_global.root.as_deref(),
     )?;
+    let jsr_lockfile_fetcher = JsrLockfileFetcher {
+      jsr_resolver: jsr_resolver.clone(),
+      file_fetcher: deps_file_fetcher.clone(),
+    };
     setup_config_dir(
       &name_and_url,
       &flags,
       &installation_dir,
-      Some(&jsr_resolver),
-      Some(&deps_file_fetcher),
+      Some(&jsr_lockfile_fetcher),
     )
     .await?;
 
@@ -356,8 +359,7 @@ async fn setup_config_dir(
   bin_name_and_url: &BinaryNameAndUrl,
   flags: &Flags,
   installation_dir: &Path,
-  jsr_resolver: Option<&Arc<JsrFetchResolver>>,
-  deps_file_fetcher: Option<&Arc<CliFileFetcher>>,
+  jsr_lockfile_fetcher: Option<&JsrLockfileFetcher>,
 ) -> Result<(), AnyError> {
   fn resolve_implicit_node_modules_dir(
     flags: &Flags,
@@ -436,40 +438,11 @@ async fn setup_config_dir(
 
   // fetch deno.lock from JSR if this is a JSR package
   if !flags.no_lock
-    && bin_name_and_url.module_url.scheme() == "jsr"
-    && let Some(jsr_resolver) = jsr_resolver
-    && let Some(deps_file_fetcher) = deps_file_fetcher
-    && let Ok(pkg_ref) =
-      JsrPackageReqReference::from_specifier(&bin_name_and_url.module_url)
+    && let Some(fetcher) = jsr_lockfile_fetcher
+    && let Some(lockfile_bytes) =
+      fetcher.fetch_lockfile(&bin_name_and_url.module_url).await
   {
-    let req = pkg_ref.req().clone();
-    if let Ok(Some(nv)) = jsr_resolver.req_to_nv(&req).await {
-      let lockfile_url = crate::args::jsr_url()
-        .join(&format!("{}/{}/deno.lock", &nv.name, &nv.version));
-      if let Ok(lockfile_url) = lockfile_url {
-        match deps_file_fetcher
-          .fetch_bypass_permissions(&lockfile_url)
-          .await
-        {
-          Ok(file) => {
-            fs::write(dir.join("deno.lock"), &*file.source)?;
-            log::debug!(
-              "Using lockfile from JSR package {}@{}",
-              nv.name,
-              nv.version
-            );
-          }
-          Err(_) => {
-            // No lockfile published for this package, continue without one
-            log::debug!(
-              "No deno.lock found for JSR package {}@{}",
-              nv.name,
-              nv.version
-            );
-          }
-        }
-      }
-    }
+    fs::write(dir.join("deno.lock"), lockfile_bytes)?;
   }
 
   // create cloned flags to run cache_top_level_deps
@@ -853,6 +826,36 @@ fn is_in_path(dir: &Path) -> bool {
   false
 }
 
+struct JsrLockfileFetcher {
+  jsr_resolver: Arc<JsrFetchResolver>,
+  file_fetcher: Arc<CliFileFetcher>,
+}
+
+impl JsrLockfileFetcher {
+  async fn fetch_lockfile(&self, module_url: &Url) -> Option<Arc<[u8]>> {
+    let pkg_ref = JsrPackageReqReference::from_specifier(module_url).ok()?;
+    let req = pkg_ref.req();
+    let nv = self.jsr_resolver.req_to_nv(&req).await.ok().flatten()?;
+    let lockfile_url = crate::args::jsr_url()
+      .join(&format!("{}/{}/deno.lock", &nv.name, &nv.version))
+      .ok()?;
+    match self
+      .file_fetcher
+      .fetch_bypass_permissions(&lockfile_url)
+      .await
+    {
+      Ok(file) => {
+        log::debug!("Using lockfile from JSR package {}", nv);
+        Some(file.source)
+      }
+      Err(err) => {
+        log::debug!("Not using lockfile for JSR package {}: {}", nv, err);
+        None
+      }
+    }
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use std::process::Command;
@@ -895,7 +898,6 @@ mod tests {
       &binary_name_and_url,
       flags,
       &installation_dir,
-      None,
       None,
     )
     .await
