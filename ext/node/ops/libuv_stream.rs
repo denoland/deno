@@ -3,7 +3,6 @@
 use std::cell::Cell;
 use std::cell::RefCell;
 use std::ffi::c_void;
-use std::net::SocketAddr;
 use std::net::ToSocketAddrs;
 use std::ptr;
 
