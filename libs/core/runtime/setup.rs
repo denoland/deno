@@ -83,12 +83,12 @@ fn wake_isolate(key: usize) {
   }
 }
 
-/// Callback invoked by NotifyingPlatform when a foreground task is posted.
+/// Custom V8 platform implementation that wakes event loops when V8
+/// background threads post foreground tasks.
 /// This is called from ANY thread (including V8 background threads).
-/// For delayed tasks, spawns a thread to wake after the delay expires.
-struct DenoForegroundTaskCallback;
+struct DenoPlatformImpl;
 
-impl v8::ForegroundTaskCallback for DenoForegroundTaskCallback {
+impl v8::PlatformImpl for DenoPlatformImpl {
   fn on_foreground_task_posted(
     &self,
     isolate_ptr: *mut c_void,
@@ -108,6 +108,10 @@ impl v8::ForegroundTaskCallback for DenoForegroundTaskCallback {
         wake_isolate(key);
       });
     }
+  }
+
+  fn on_isolate_shutdown(&self, isolate_ptr: *mut c_void) {
+    unregister_isolate_waker(isolate_ptr as usize);
   }
 }
 
@@ -152,12 +156,11 @@ fn v8_init(
   v8::V8::set_flags_from_string(&flags);
 
   let v8_platform = v8_platform.unwrap_or_else(|| {
-    // Always use NotifyingPlatform to wake event loops when V8 background
-    // threads post foreground tasks. NotifyingPlatform already disables
+    // Use a custom platform to wake event loops when V8 background
+    // threads post foreground tasks. The custom platform disables
     // thread-isolated allocations (like UnprotectedDefaultPlatform), so
     // it's safe for both tests and production.
-    v8::new_notifying_platform(0, false, DenoForegroundTaskCallback)
-      .make_shared()
+    v8::new_custom_platform(0, false, DenoPlatformImpl).make_shared()
   });
   v8::V8::initialize_platform(v8_platform.clone());
   v8::V8::initialize();
