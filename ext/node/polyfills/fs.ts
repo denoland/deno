@@ -3,17 +3,14 @@ import { fs as fsConstants } from "ext:deno_node/internal_binding/constants.ts";
 import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
 import {
   type CallbackWithError,
+  isFd,
   makeCallback,
+  maybeCallback,
+  type WriteFileOptions,
 } from "ext:deno_node/_fs/_fs_common.ts";
-import { accessPromise } from "ext:deno_node/fs/internal/promises.ts";
-import {
-  appendFile,
-  appendFilePromise,
-  appendFileSync,
-} from "ext:deno_node/_fs/_fs_appendFile.ts";
-import { chmod, chmodPromise, chmodSync } from "ext:deno_node/_fs/_fs_chmod.ts";
-import { chown, chownPromise, chownSync } from "ext:deno_node/_fs/_fs_chown.ts";
-import { close, closeSync } from "ext:deno_node/_fs/_fs_close.ts";
+import type { Encodings } from "ext:deno_node/_utils.ts";
+import { denoErrorToNodeError } from "ext:deno_node/internal/errors.ts";
+import { promisify } from "ext:deno_node/internal/util.mjs";
 import * as constants from "ext:deno_node/_fs/_fs_constants.ts";
 import {
   copyFile,
@@ -142,21 +139,33 @@ import {
   WriteStream,
 } from "ext:deno_node/internal/fs/streams.mjs";
 import {
+  copyObject,
   Dirent,
+  getOptions,
+  getValidatedFd,
   getValidatedPath,
+  getValidatedPathToString,
   getValidMode,
+  kMaxUserId,
   toUnixTimestamp as _toUnixTimestamp,
 } from "ext:deno_node/internal/fs/utils.mjs";
 import { glob, globPromise, globSync } from "ext:deno_node/_fs/_fs_glob.ts";
 import {
+  parseFileMode,
+  validateInteger,
   validateObject,
   validateString,
 } from "ext:deno_node/internal/validators.mjs";
 import type { Buffer } from "node:buffer";
 import { op_fs_read_file_async } from "ext:core/ops";
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 
-const { PromisePrototypeThen } = primordials;
+const {
+  Error,
+  ErrorPrototype,
+  ObjectPrototypeIsPrototypeOf,
+  PromisePrototypeThen,
+} = primordials;
 
 const {
   F_OK,
@@ -213,7 +222,7 @@ function access(
       if ((m & fileMode) === m) {
         cb(null);
       } else {
-        // deno-lint-ignore no-explicit-any prefer-primordials
+        // deno-lint-ignore no-explicit-any
         const e: any = new Error(`EACCES: permission denied, access '${path}'`);
         e.path = path;
         e.syscall = "access";
@@ -225,7 +234,7 @@ function access(
     (err) => {
       // deno-lint-ignore prefer-primordials
       if (err instanceof Deno.errors.NotFound) {
-        // deno-lint-ignore no-explicit-any prefer-primordials
+        // deno-lint-ignore no-explicit-any
         const e: any = new Error(
           `ENOENT: no such file or directory, access '${path}'`,
         );
@@ -261,7 +270,7 @@ function accessSync(path: string | Buffer | URL, mode?: number) {
     if ((m & fileMode) === m) {
       // all required flags exist
     } else {
-      // deno-lint-ignore no-explicit-any prefer-primordials
+      // deno-lint-ignore no-explicit-any
       const e: any = new Error(`EACCES: permission denied, access '${path}'`);
       e.path = path;
       e.syscall = "access";
@@ -272,7 +281,7 @@ function accessSync(path: string | Buffer | URL, mode?: number) {
   } catch (err) {
     // deno-lint-ignore prefer-primordials
     if (err instanceof Deno.errors.NotFound) {
-      // deno-lint-ignore no-explicit-any prefer-primordials
+      // deno-lint-ignore no-explicit-any
       const e: any = new Error(
         `ENOENT: no such file or directory, access '${path}'`,
       );
@@ -286,6 +295,168 @@ function accessSync(path: string | Buffer | URL, mode?: number) {
     }
   }
 }
+
+/**
+ * TODO: Also accept 'data' parameter as a Node polyfill Buffer type once these
+ * are implemented. See https://github.com/denoland/deno/issues/3403
+ */
+function appendFile(
+  path: string | number | URL,
+  data: string | Uint8Array,
+  options: Encodings | WriteFileOptions | CallbackWithError,
+  callback?: CallbackWithError,
+) {
+  callback = maybeCallback(callback || options);
+  options = getOptions(options, { encoding: "utf8", mode: 0o666, flag: "a" });
+
+  // Don't make changes directly on options object
+  options = copyObject(options);
+
+  // Force append behavior when using a supplied file descriptor
+  if (!options.flag || isFd(path)) {
+    options.flag = "a";
+  }
+
+  writeFile(path, data, options, callback);
+}
+
+/**
+ * TODO: Also accept 'data' parameter as a Node polyfill Buffer type once these
+ * are implemented. See https://github.com/denoland/deno/issues/3403
+ */
+function appendFileSync(
+  path: string | number | URL,
+  data: string | Uint8Array,
+  options?: Encodings | WriteFileOptions,
+) {
+  options = getOptions(options, { encoding: "utf8", mode: 0o666, flag: "a" });
+
+  // Don't make changes directly on options object
+  options = copyObject(options);
+
+  // Force append behavior when using a supplied file descriptor
+  if (!options.flag || isFd(path)) {
+    options.flag = "a";
+  }
+
+  writeFileSync(path, data, options);
+}
+
+function chmod(
+  path: string | Buffer | URL,
+  mode: string | number,
+  callback: CallbackWithError,
+) {
+  path = getValidatedPathToString(path);
+  mode = parseFileMode(mode, "mode");
+
+  PromisePrototypeThen(
+    Deno.chmod(path, mode),
+    () => callback(null),
+    (err: Error) =>
+      callback(denoErrorToNodeError(err, { syscall: "chmod", path })),
+  );
+}
+
+function chmodSync(path: string | Buffer | URL, mode: string | number) {
+  path = getValidatedPathToString(path);
+  mode = parseFileMode(mode, "mode");
+
+  try {
+    Deno.chmodSync(path, mode);
+  } catch (error) {
+    throw denoErrorToNodeError(error as Error, { syscall: "chmod", path });
+  }
+}
+
+function chown(
+  path: string | Buffer | URL,
+  uid: number,
+  gid: number,
+  callback: CallbackWithError,
+) {
+  callback = makeCallback(callback);
+  // deno-lint-ignore prefer-primordials
+  path = getValidatedPath(path).toString();
+  validateInteger(uid, "uid", -1, kMaxUserId);
+  validateInteger(gid, "gid", -1, kMaxUserId);
+
+  // deno-lint-ignore prefer-primordials
+  Deno.chown(path, uid, gid).then(
+    () => callback(null),
+    callback,
+  );
+}
+
+function chownSync(
+  path: string | Buffer | URL,
+  uid: number,
+  gid: number,
+) {
+  // deno-lint-ignore prefer-primordials
+  path = getValidatedPath(path).toString();
+  validateInteger(uid, "uid", -1, kMaxUserId);
+  validateInteger(gid, "gid", -1, kMaxUserId);
+
+  Deno.chownSync(path, uid, gid);
+}
+
+function defaultCloseCallback(err: Error | null) {
+  if (err !== null) throw err;
+}
+
+function close(
+  fd: number,
+  callback: CallbackWithError = defaultCloseCallback,
+) {
+  fd = getValidatedFd(fd);
+  if (callback !== defaultCloseCallback) {
+    callback = makeCallback(callback);
+  }
+
+  setTimeout(() => {
+    let error = null;
+    try {
+      // TODO(@littledivy): Treat `fd` as real file descriptor. `rid` is an
+      // implementation detail and may change.
+      core.close(fd);
+    } catch (err) {
+      error = ObjectPrototypeIsPrototypeOf(ErrorPrototype, err)
+        ? err as Error
+        : new Error("[non-error thrown]");
+    }
+    callback(error);
+  }, 0);
+}
+
+function closeSync(fd: number) {
+  fd = getValidatedFd(fd);
+  // TODO(@littledivy): Treat `fd` as real file descriptor. `rid` is an
+  // implementation detail and may change.
+  core.close(fd);
+}
+
+const accessPromise = promisify(access) as (
+  path: string | Buffer | URL,
+  mode?: number,
+) => Promise<void>;
+
+const appendFilePromise = promisify(appendFile) as (
+  path: string | number | URL,
+  data: string | Uint8Array,
+  options?: Encodings | WriteFileOptions,
+) => Promise<void>;
+
+const chmodPromise = promisify(chmod) as (
+  path: string | Buffer | URL,
+  mode: string | number,
+) => Promise<void>;
+
+const chownPromise = promisify(chown) as (
+  path: string | Buffer | URL,
+  uid: number,
+  gid: number,
+) => Promise<void>;
 
 /**
  * Returns a `Blob` whose data is read from the given file.
