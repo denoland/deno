@@ -71,12 +71,7 @@ import {
   initStdin,
 } from "ext:deno_node/_process/streams.mjs";
 import { WriteStream as TTYWriteStream } from "ext:deno_node/internal/tty.js";
-import {
-  enableNextTick,
-  processTicksAndRejections,
-  runNextTicks,
-} from "ext:deno_node/_next_tick.ts";
-import { runImmediates } from "ext:deno_node/internal/timers.mjs";
+import { enableNextTick } from "ext:deno_node/_next_tick.ts";
 import { isAndroid, isWindows } from "ext:deno_node/_util/os.ts";
 import * as io from "ext:deno_io/12_io.js";
 import * as denoOs from "ext:deno_os/30_os.js";
@@ -1088,7 +1083,7 @@ function dispatchProcessBeforeExitEvent() {
     dispatchProcessExitEvent();
     Deno.exit(process.exitCode || 0);
   }
-  processTicksAndRejections();
+  core.processTicksAndRejections();
   return core.eventLoopHasMoreWork();
 }
 
@@ -1166,9 +1161,6 @@ internals.__bootstrapNodeProcess = function (
       versions[key] = value;
     }
 
-    core.setNextTickCallback(processTicksAndRejections);
-    core.setImmediateCallback(runImmediates);
-    core.setMacrotaskCallback(runNextTicks);
     enableNextTick();
 
     // Replace warmup stdout/stderr with proper streams

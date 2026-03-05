@@ -1,6 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 const {
   FunctionPrototypeBind,
   ObjectDefineProperty,
@@ -10,13 +10,10 @@ const {
   SafeArrayIterator,
   SafePromisePrototypeFinally,
 } = primordials;
-import { op_immediate_count, op_immediate_ref_count } from "ext:core/ops";
 import {
   getActiveTimer,
   Immediate,
-  immediateQueue,
   kDestroy,
-  kRefed,
   setUnrefTimeout,
   Timeout,
 } from "ext:deno_node/internal/timers.mjs";
@@ -226,18 +223,7 @@ export function clearImmediate(immediate: Immediate) {
   if (!immediate?._onImmediate || immediate._destroyed) {
     return;
   }
-
-  op_immediate_count(false);
-  immediate._destroyed = true;
-
-  if (immediate[kRefed]) {
-    op_immediate_ref_count(false);
-  }
-  immediate[kRefed] = null;
-
-  immediate._onImmediate = null;
-
-  immediateQueue.remove(immediate);
+  core.clearImmediate(immediate);
 }
 
 async function* setIntervalAsync(
