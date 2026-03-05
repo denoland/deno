@@ -49,14 +49,6 @@
       "args": "run --quiet eval_sloppy_mode.mjs",
       "output": "sloppy mode works, myGlobal=42\n",
       "exitCode": 0
-    },
-    "eval_esm_detection": {
-      // Test for https://github.com/denoland/deno/issues/26739
-      // Verifies auto-detection: import/export → ESM (strict),
-      // no module syntax → CJS (sloppy).
-      "args": "run --quiet eval_esm_detection.mjs",
-      "output": "ok\n",
-      "exitCode": 0
     }
   }
 }

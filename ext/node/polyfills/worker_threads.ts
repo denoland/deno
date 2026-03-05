@@ -370,39 +370,21 @@ class NodeWorker extends EventEmitter {
         ? specifier
         // deno-lint-ignore prefer-primordials
         : specifier.toString();
-      // Node.js auto-detects module syntax: if the code contains
-      // import/export declarations it runs as ESM (strict mode),
-      // otherwise as CJS (sloppy mode). We replicate this behavior.
+      // Node.js runs eval workers as CJS (sloppy mode).
+      // Pass as source code for execute_script (sloppy mode).
+      // `require` is already available from the Node worker bootstrap.
       // See: https://github.com/denoland/deno/issues/26739
-      // deno-lint-ignore prefer-primordials
-      const hasModuleSyntax = /\b(import\s|export\s)/.test(code);
-      if (hasModuleSyntax) {
-        // ESM path: wrap with CJS globals and load as data: URL
-        const wrapped =
-          `import { createRequire as __cjsRequire } from "node:module";\n` +
-          `import { cwd as __cjsCwd } from "node:process";\n` +
-          `const require = __cjsRequire(__cjsCwd() + "/[worker eval]");\n` +
-          `const __filename = __cjsCwd() + "/[worker eval]";\n` +
-          `const __dirname = __cjsCwd();\n` +
-          `const module = { exports: {} };\n` +
-          `const exports = module.exports;\n` +
-          code;
-        specifier = `data:text/javascript,${encodeURIComponent(wrapped)}`;
-      } else {
-        // CJS path: pass as source code for execute_script (sloppy mode).
-        // `require` is already available from the Node worker bootstrap.
-        sourceCode = `var __filename = ${
+      sourceCode = `var __filename = ${
+        // deno-lint-ignore prefer-primordials
+        JSON.stringify(process.cwd() + "/[worker eval]")};\n` +
+        `var __dirname = ${
           // deno-lint-ignore prefer-primordials
-          JSON.stringify(process.cwd() + "/[worker eval]")};\n` +
-          `var __dirname = ${
-            // deno-lint-ignore prefer-primordials
-            JSON.stringify(process.cwd())};\n` +
-          `var module = { exports: {} };\n` +
-          `var exports = module.exports;\n` +
-          code;
-        hasSourceCode = true;
-        specifier = `data:text/javascript,`;
-      }
+          JSON.stringify(process.cwd())};\n` +
+        `var module = { exports: {} };\n` +
+        `var exports = module.exports;\n` +
+        code;
+      hasSourceCode = true;
+      specifier = `data:text/javascript,`;
     } else if (
       !(typeof specifier === "object" && specifier.protocol === "data:")
     ) {
