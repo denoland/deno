@@ -53,6 +53,7 @@ const {
   encodeURIComponent,
   Error,
   FunctionPrototypeCall,
+  ObjectDefineProperty,
   NumberIsFinite,
   ObjectHasOwn,
   ObjectKeys,
@@ -774,8 +775,53 @@ internals.__initWorkerThreads = (
       // deno-lint-ignore no-explicit-any
       (ev: any) => any
     >();
+    let messageListenerCount = 0;
 
     parentPort = globalThis as ParentPort;
+    // Since parentPort === globalThis, user code that assigns
+    // `postMessage = ...` or `onmessage = ...` in sloppy mode would
+    // overwrite the web worker's built-in methods. This causes issues:
+    // - postMessage override: infinite recursion when calling
+    //   parentPort.postMessage (e.g. fflate's workerAdd shim)
+    // - onmessage override: double message delivery (once via
+    //   parentPort.on('message') and once via the web onmessage handler)
+    //
+    // Fix: capture the original postMessage so it can't be clobbered,
+    // and remove the onmessage event handler getter/setter so that
+    // assigning `onmessage` just sets a plain property (matching Node.js
+    // behavior where globalThis.onmessage doesn't exist).
+    const webWorkerPostMessage = FunctionPrototypeBind(
+      parentPort.postMessage,
+      parentPort,
+    );
+    ObjectDefineProperty(parentPort, "postMessage", {
+      // deno-lint-ignore prefer-primordials
+      value: function postMessage(message, transferOrOptions?) {
+        return webWorkerPostMessage(message, transferOrOptions);
+      },
+      writable: false,
+      enumerable: true,
+      configurable: true,
+    });
+    // Replace the web worker onmessage/onmessageerror event handler
+    // getter/setter with a plain value property. The web event handler
+    // API auto-registers a listener via dispatchEvent, which causes
+    // double message delivery when parentPort.on('message') is also
+    // used (both register via addEventListener independently).
+    // A plain property avoids this: it's just a stored function ref
+    // that can be read/written without side effects.
+    ObjectDefineProperty(parentPort, "onmessage", {
+      value: null,
+      writable: true,
+      enumerable: true,
+      configurable: true,
+    });
+    ObjectDefineProperty(parentPort, "onmessageerror", {
+      value: null,
+      writable: true,
+      enumerable: true,
+      configurable: true,
+    });
     threadId = workerId;
     let isWorkerThread = false;
     if (maybeWorkerMetadata) {
@@ -900,6 +946,7 @@ internals.__initWorkerThreads = (
     ) {
       this.removeEventListener(name, listeners.get(listener)!);
       listeners.delete(listener);
+      if (name === "message") messageListenerCount--;
       return this;
     };
     parentPort.on = parentPort.addListener = function (
@@ -915,6 +962,7 @@ internals.__initWorkerThreads = (
       };
       listeners.set(listener, _listener);
       this.addEventListener(name, _listener);
+      if (name === "message") messageListenerCount++;
       return this;
     };
 
@@ -922,12 +970,14 @@ internals.__initWorkerThreads = (
       // deno-lint-ignore no-explicit-any
       const _listener = (ev: any) => {
         listeners.delete(listener);
+        if (name === "message") messageListenerCount--;
         const message = ev.data;
         patchMessagePortIfFound(message);
         return listener(message);
       };
       listeners.set(listener, _listener);
       this.addEventListener(name, _listener, { once: true });
+      if (name === "message") messageListenerCount++;
       return this;
     };
 
@@ -940,6 +990,21 @@ internals.__initWorkerThreads = (
     parentPort.emit = () => notImplemented("parentPort.emit");
     parentPort.removeAllListeners = () =>
       notImplemented("parentPort.removeAllListeners");
+
+    // Dispatch to parentPort.onmessage if set AND no parentPort.on()
+    // message listeners are registered. Since we replaced the web event
+    // handler getter/setter with a plain property, we manually call it
+    // when messages arrive. However, if there are on('message') listeners
+    // we skip this -- those listeners handle dispatch themselves (e.g.
+    // fflate's workerAdd shim calls `onmessage({data:m})` from its own
+    // parentPort.on handler).
+    parentPort.addEventListener("message", (ev: Event) => {
+      if (messageListenerCount > 0) return;
+      const handler = parentPort.onmessage;
+      if (typeof handler === "function") {
+        handler(ev);
+      }
+    });
 
     parentPort.addEventListener("offline", () => {
       parentPort.emit("close");
