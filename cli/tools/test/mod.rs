@@ -81,6 +81,7 @@ use crate::sys::CliSys;
 use crate::util::extract::extract_doc_tests;
 use crate::util::file_watcher;
 use crate::util::fs::CollectSpecifiersOptions;
+use crate::util::fs::canonicalize_path;
 use crate::util::fs::collect_specifiers;
 use crate::util::path::get_extension;
 use crate::util::path::is_script_ext;
@@ -1816,18 +1817,28 @@ pub async fn run_tests_with_watch(
 
         let test_modules_to_reload = if let Some(changed_paths) = changed_paths
         {
-          let mut result = IndexSet::with_capacity(test_modules.len());
           let changed_paths = changed_paths.into_iter().collect::<HashSet<_>>();
-          for test_module_specifier in test_modules {
-            if has_graph_root_local_dependent_changed(
-              &graph,
-              test_module_specifier,
-              &changed_paths,
-            ) {
-              result.insert(test_module_specifier.clone());
+          // If an env file changed, reload all test modules since any
+          // test could depend on environment variables.
+          let env_file_changed = cli_options
+            .env_file_paths()
+            .filter_map(|path| canonicalize_path(&path).ok())
+            .any(|path| changed_paths.contains(&path));
+          if env_file_changed {
+            test_modules.clone()
+          } else {
+            let mut result = IndexSet::with_capacity(test_modules.len());
+            for test_module_specifier in test_modules {
+              if has_graph_root_local_dependent_changed(
+                &graph,
+                test_module_specifier,
+                &changed_paths,
+              ) {
+                result.insert(test_module_specifier.clone());
+              }
             }
+            result
           }
-          result
         } else {
           test_modules.clone()
         };

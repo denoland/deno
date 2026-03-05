@@ -123,6 +123,7 @@ pub fn create_isolate(
     }
   };
 
+  isolate.set_microtasks_policy(v8::MicrotasksPolicy::Explicit);
   isolate.set_capture_stack_trace_for_uncaught_exceptions(true, 10);
   isolate.set_promise_reject_callback(bindings::promise_reject_callback);
   isolate.set_prepare_stack_trace_callback(
