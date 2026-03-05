@@ -180,10 +180,7 @@ impl InnerIsolateState {
 
     // Unregister isolate waker before dropping the isolate
     let isolate_ptr = unsafe { self.v8_isolate.as_raw_isolate_ptr() };
-    // SAFETY: UnsafeRawIsolatePtr is a newtype over *mut RealIsolate.
-    setup::unregister_isolate_waker(unsafe {
-      std::mem::transmute::<_, usize>(isolate_ptr)
-    });
+    setup::unregister_isolate_waker(setup::isolate_ptr_to_key(isolate_ptr));
 
     let state_ptr = self.v8_isolate.get_data(STATE_DATA_OFFSET);
     // SAFETY: We are sure that it's a valid pointer for whole lifetime of
@@ -439,6 +436,8 @@ pub struct JsRuntimeState {
   pub(crate) function_templates: Rc<RefCell<FunctionTemplateData>>,
   pub(crate) callsite_prototype: RefCell<Option<v8::Global<v8::Object>>>,
   waker: Arc<AtomicWaker>,
+  /// Guards the 100ms safety-net timer so at most one is active at a time.
+  safety_net_active: Arc<std::sync::atomic::AtomicBool>,
   /// Accessed through [`JsRuntimeState::with_inspector`].
   inspector: RefCell<Option<Rc<JsRuntimeInspector>>>,
   has_inspector: Cell<bool>,
@@ -766,6 +765,7 @@ impl JsRuntime {
         eval_context_set_code_cache_cb,
       ),
       waker: waker.clone(),
+      safety_net_active: Arc::new(std::sync::atomic::AtomicBool::new(false)),
       // Some fields are initialized later after isolate is created
       inspector: None.into(),
       has_inspector: false.into(),
@@ -844,10 +844,8 @@ impl JsRuntime {
 
     // Register this isolate's waker so the NotifyingPlatform can wake
     // the event loop when V8 posts foreground tasks from background threads.
-    // SAFETY: UnsafeRawIsolatePtr is a newtype over *mut RealIsolate —
-    // same pointer value the C++ callback receives as void*.
     setup::register_isolate_waker(
-      unsafe { std::mem::transmute::<_, usize>(isolate_ptr) },
+      setup::isolate_ptr_to_key(isolate_ptr),
       waker.clone(),
     );
 
@@ -1878,8 +1876,6 @@ impl JsRuntime {
     }
   }
 
-  /// Pump V8's foreground message loop, processing tasks posted by
-  /// background threads (e.g. module compilation callbacks).
   fn pump_v8_message_loop(
     &self,
     scope: &mut v8::PinScope,
@@ -1888,7 +1884,9 @@ impl JsRuntime {
       &v8::V8::get_current_platform(),
       scope,
       false, // don't block if there are no tasks
-    ) {}
+    ) {
+      // do nothing
+    }
 
     v8::tc_scope!(let tc_scope, scope);
 
@@ -2266,10 +2264,19 @@ impl JsRuntime {
     // Safety net: if V8 has pending background tasks (e.g. module compilation),
     // schedule a delayed wake to pump the message loop in case the
     // NotifyingPlatform callback was missed due to a race condition.
-    if pending_state.has_pending_background_tasks {
+    // The AtomicBool guard ensures at most one safety-net timer thread exists.
+    if pending_state.has_pending_background_tasks
+      && !self
+        .inner
+        .state
+        .safety_net_active
+        .swap(true, std::sync::atomic::Ordering::SeqCst)
+    {
       let waker = cx.waker().clone();
+      let flag = self.inner.state.safety_net_active.clone();
       std::thread::spawn(move || {
         std::thread::sleep(std::time::Duration::from_millis(100));
+        flag.store(false, std::sync::atomic::Ordering::SeqCst);
         waker.wake_by_ref();
       });
     }

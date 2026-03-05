@@ -14,6 +14,25 @@ use super::bindings;
 use super::snapshot;
 use super::snapshot::V8Snapshot;
 
+/// Extract the raw isolate address from an `UnsafeRawIsolatePtr`.
+///
+/// `UnsafeRawIsolatePtr` is `#[repr(transparent)]` over `*mut RealIsolate`,
+/// so its bit-pattern is a single pointer-sized value. We use transmute
+/// because the inner field is private.
+///
+/// The compile-time assert below guarantees the layout assumption holds.
+const _: () = assert!(
+  std::mem::size_of::<v8::UnsafeRawIsolatePtr>() == std::mem::size_of::<usize>()
+);
+
+pub(crate) fn isolate_ptr_to_key(
+  ptr: v8::UnsafeRawIsolatePtr,
+) -> usize {
+  // SAFETY: UnsafeRawIsolatePtr is #[repr(transparent)] over *mut RealIsolate,
+  // which is pointer-sized. The compile-time assert above guarantees this.
+  unsafe { std::mem::transmute::<v8::UnsafeRawIsolatePtr, usize>(ptr) }
+}
+
 /// Global registry mapping isolate pointers to their event loop wakers.
 /// When V8 posts a foreground task for an isolate, the callback looks up
 /// the waker here and wakes the event loop. Isolates that received a
@@ -80,6 +99,8 @@ impl v8::ForegroundTaskCallback for DenoForegroundTaskCallback {
       wake_isolate(key);
     } else {
       // Delayed task — schedule a wake-up after the delay expires.
+      // Spawns an OS thread per delayed task; this is acceptable because
+      // delayed foreground tasks are rare (e.g. Atomics.waitAsync timeouts).
       std::thread::spawn(move || {
         std::thread::sleep(std::time::Duration::from_secs_f64(
           delay_in_seconds,
