@@ -1,9 +1,11 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
+import { fs as fsConstants } from "ext:deno_node/internal_binding/constants.ts";
+import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
 import {
-  access,
-  accessPromise,
-  accessSync,
-} from "ext:deno_node/_fs/_fs_access.ts";
+  type CallbackWithError,
+  makeCallback,
+} from "ext:deno_node/_fs/_fs_common.ts";
+import { accessPromise } from "ext:deno_node/fs/internal/promises.ts";
 import {
   appendFile,
   appendFilePromise,
@@ -142,6 +144,7 @@ import {
 import {
   Dirent,
   getValidatedPath,
+  getValidMode,
   toUnixTimestamp as _toUnixTimestamp,
 } from "ext:deno_node/internal/fs/utils.mjs";
 import { glob, globPromise, globSync } from "ext:deno_node/_fs/_fs_glob.ts";
@@ -175,6 +178,114 @@ const {
   O_CREAT,
   O_EXCL,
 } = constants;
+
+function access(
+  path: string | Buffer | URL,
+  mode: number | CallbackWithError,
+  callback?: CallbackWithError,
+) {
+  if (typeof mode === "function") {
+    callback = mode;
+    mode = fsConstants.F_OK;
+  }
+
+  // deno-lint-ignore prefer-primordials
+  path = getValidatedPath(path).toString();
+  mode = getValidMode(mode, "access");
+  const cb = makeCallback(callback);
+
+  // deno-lint-ignore prefer-primordials
+  Deno.lstat(path).then(
+    (info) => {
+      if (info.mode === null) {
+        cb(null);
+        return;
+      }
+      let m = +mode || 0;
+      let fileMode = +info.mode || 0;
+
+      if (Deno.build.os === "windows") {
+        m &= ~fsConstants.X_OK;
+      } else if (info.uid === Deno.uid()) {
+        fileMode >>= 6;
+      }
+
+      if ((m & fileMode) === m) {
+        cb(null);
+      } else {
+        // deno-lint-ignore no-explicit-any prefer-primordials
+        const e: any = new Error(`EACCES: permission denied, access '${path}'`);
+        e.path = path;
+        e.syscall = "access";
+        e.errno = codeMap.get("EACCES");
+        e.code = "EACCES";
+        cb(e);
+      }
+    },
+    (err) => {
+      // deno-lint-ignore prefer-primordials
+      if (err instanceof Deno.errors.NotFound) {
+        // deno-lint-ignore no-explicit-any prefer-primordials
+        const e: any = new Error(
+          `ENOENT: no such file or directory, access '${path}'`,
+        );
+        e.path = path;
+        e.syscall = "access";
+        e.errno = codeMap.get("ENOENT");
+        e.code = "ENOENT";
+        cb(e);
+      } else {
+        cb(err);
+      }
+    },
+  );
+}
+
+function accessSync(path: string | Buffer | URL, mode?: number) {
+  // deno-lint-ignore prefer-primordials
+  path = getValidatedPath(path).toString();
+  mode = getValidMode(mode, "access");
+  try {
+    // deno-lint-ignore prefer-primordials
+    const info = Deno.lstatSync(path.toString());
+    if (info.mode === null) {
+      return;
+    }
+    let m = +mode! || 0;
+    let fileMode = +info.mode! || 0;
+    if (Deno.build.os === "windows") {
+      m &= ~fsConstants.X_OK;
+    } else if (info.uid === Deno.uid()) {
+      fileMode >>= 6;
+    }
+    if ((m & fileMode) === m) {
+      // all required flags exist
+    } else {
+      // deno-lint-ignore no-explicit-any prefer-primordials
+      const e: any = new Error(`EACCES: permission denied, access '${path}'`);
+      e.path = path;
+      e.syscall = "access";
+      e.errno = codeMap.get("EACCES");
+      e.code = "EACCES";
+      throw e;
+    }
+  } catch (err) {
+    // deno-lint-ignore prefer-primordials
+    if (err instanceof Deno.errors.NotFound) {
+      // deno-lint-ignore no-explicit-any prefer-primordials
+      const e: any = new Error(
+        `ENOENT: no such file or directory, access '${path}'`,
+      );
+      e.path = path;
+      e.syscall = "access";
+      e.errno = codeMap.get("ENOENT");
+      e.code = "ENOENT";
+      throw e;
+    } else {
+      throw err;
+    }
+  }
+}
 
 /**
  * Returns a `Blob` whose data is read from the given file.
