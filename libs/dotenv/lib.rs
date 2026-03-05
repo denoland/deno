@@ -385,24 +385,6 @@ fn apply_value_substitution(
 
 type IterElement = Result<(String, String), Error>;
 
-pub fn from_path_sanitized_iter(
-  path: impl AsRef<Path>,
-) -> Result<std::vec::IntoIter<IterElement>, Error> {
-  let content = std::fs::read_to_string(path.as_ref()).map_err(Error::Io)?;
-  let mut pairs = Vec::new();
-  parse_env_content_hook(&content, |k, v| {
-    if let Some(index) = k
-      .find('\0')
-      .or_else(|| v.find('\0').map(|i| k.len() + i + 1))
-    {
-      pairs.push(Err(Error::LineParse(format!("{}={}", k, v), index)));
-    } else {
-      pairs.push(Ok((k.to_string(), v.to_string())));
-    }
-  });
-  Ok(pairs.into_iter())
-}
-
 pub fn from_path_sanitized_iter_with_substitution(
   path: impl AsRef<Path>,
 ) -> Result<std::vec::IntoIter<IterElement>, Error> {
@@ -419,17 +401,6 @@ pub fn from_path_sanitized_iter_with_substitution(
     }
   });
   Ok(pairs.into_iter())
-}
-
-pub fn from_path(filename: impl AsRef<Path>) -> Result<(), Error> {
-  for item in from_path_sanitized_iter(filename)? {
-    let (key, val) = item?;
-    #[allow(clippy::undocumented_unsafe_blocks)]
-    unsafe {
-      std::env::set_var(&key, &val);
-    }
-  }
-  Ok(())
 }
 
 fn trim_spaces_slice(input: &[u8]) -> &[u8] {
