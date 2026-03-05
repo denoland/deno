@@ -1,6 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
+use std::collections::HashMap;
 use std::path::Path;
 
 const CHAR_NL: u8 = b'\n';
@@ -14,6 +15,8 @@ const CHAR_SQUOTE: u8 = b'\'';
 const CHAR_BQUOTE: u8 = b'`';
 const CHAR_BSLASH: u8 = b'\\';
 const CHAR_N: u8 = b'n';
+const CHAR_DOLLAR: u8 = b'$';
+const CHAR_LBRACE: u8 = b'{';
 
 #[derive(Debug)]
 pub enum Error {
@@ -50,6 +53,22 @@ impl From<std::io::Error> for Error {
 /// Ported from:
 /// https://github.com/nodejs/node/blob/9cc7fcc26dece769d9ffa06c453f0171311b01f8/src/node_dotenv.cc#L138-L315
 pub fn parse_env_content_hook(content: &str, mut cb: impl FnMut(&str, &str)) {
+  parse_env_content_hook_impl(content, None, &mut cb);
+}
+
+pub fn parse_env_content_with_substitution_hook(
+  content: &str,
+  mut cb: impl FnMut(&str, &str),
+) {
+  let mut substitution_map = HashMap::new();
+  parse_env_content_hook_impl(content, Some(&mut substitution_map), &mut cb);
+}
+
+fn parse_env_content_hook_impl(
+  content: &str,
+  mut substitution_map: Option<&mut HashMap<String, String>>,
+  cb: &mut impl FnMut(&str, &str),
+) {
   let raw = content.as_bytes();
   let mut filtered = Vec::new();
   let mut saw_cr = false;
@@ -77,6 +96,20 @@ pub fn parse_env_content_hook(content: &str, mut cb: impl FnMut(&str, &str)) {
       trim_spaces_slice(&filtered)
     } else {
       trim_spaces_slice(raw)
+    }
+  };
+
+  let mut emit_value = |key: &str, value: &str, can_substitute: bool| {
+    if let Some(substitution_map) = substitution_map.as_deref_mut() {
+      let emitted_value = if can_substitute {
+        apply_value_substitution(value, substitution_map)
+      } else {
+        value.to_string()
+      };
+      substitution_map.insert(key.to_string(), emitted_value.clone());
+      cb(key, &emitted_value);
+    } else {
+      cb(key, value);
     }
   };
 
@@ -130,7 +163,7 @@ pub fn parse_env_content_hook(content: &str, mut cb: impl FnMut(&str, &str)) {
     // If the value is not present (e.g. KEY=) set it to an empty string
     if text.is_empty() || text[0] == CHAR_NL {
       let key_str = std::str::from_utf8(key).unwrap();
-      cb(key_str, "");
+      emit_value(key_str, "", false);
       continue;
     }
 
@@ -166,7 +199,7 @@ pub fn parse_env_content_hook(content: &str, mut cb: impl FnMut(&str, &str)) {
     // In case the last line is a single key without value
     // Example: KEY= (without a newline at the EOF)
     if text.is_empty() {
-      cb(key_str, "");
+      emit_value(key_str, "", false);
       break;
     }
 
@@ -203,7 +236,7 @@ pub fn parse_env_content_hook(content: &str, mut cb: impl FnMut(&str, &str)) {
         }
         Cow::Owned(String::from_utf8(out).unwrap())
       };
-      cb(key_str, &value_str);
+      emit_value(key_str, &value_str, true);
 
       if let Some(newline) = find_char(text, CHAR_NL, closing + 1) {
         text = &text[newline + 1..];
@@ -222,7 +255,11 @@ pub fn parse_env_content_hook(content: &str, mut cb: impl FnMut(&str, &str)) {
       if let Some(closing) = find_char(text, quote, 1) {
         // Found closing quote - take content between quotes
         let value = &text[1..closing];
-        cb(key_str, std::str::from_utf8(value).unwrap());
+        emit_value(
+          key_str,
+          std::str::from_utf8(value).unwrap(),
+          quote == CHAR_DQUOTE,
+        );
 
         if let Some(newline) = find_char(text, CHAR_NL, closing + 1) {
           text = &text[newline + 1..];
@@ -239,11 +276,11 @@ pub fn parse_env_content_hook(content: &str, mut cb: impl FnMut(&str, &str)) {
         // The value pair should be `"value`
         if let Some(newline) = find_char(text, CHAR_NL, 0) {
           let value = &text[..newline];
-          cb(key_str, std::str::from_utf8(value).unwrap());
+          emit_value(key_str, std::str::from_utf8(value).unwrap(), false);
           text = &text[newline + 1..];
         } else {
           // No newline - take rest of content
-          cb(key_str, std::str::from_utf8(text).unwrap());
+          emit_value(key_str, std::str::from_utf8(text).unwrap(), false);
           break;
         }
       }
@@ -259,7 +296,7 @@ pub fn parse_env_content_hook(content: &str, mut cb: impl FnMut(&str, &str)) {
           value = &value[..hash];
         }
         let value = trim_spaces_slice(value);
-        cb(key_str, std::str::from_utf8(value).unwrap());
+        emit_value(key_str, std::str::from_utf8(value).unwrap(), true);
         text = &text[newline + 1..];
       } else {
         // Last line without newline
@@ -268,13 +305,82 @@ pub fn parse_env_content_hook(content: &str, mut cb: impl FnMut(&str, &str)) {
           value = &value[..hash];
         }
         let value = trim_spaces_slice(value);
-        cb(key_str, std::str::from_utf8(value).unwrap());
+        emit_value(key_str, std::str::from_utf8(value).unwrap(), true);
         text = &[];
       }
     }
 
     text = trim_spaces_slice(text);
   }
+}
+
+fn lookup_substitution(
+  substitution_name: &str,
+  substitution_map: &HashMap<String, String>,
+  output: &mut String,
+) {
+  if let Ok(environment_value) = std::env::var(substitution_name) {
+    output.push_str(&environment_value);
+  } else if let Some(stored_value) = substitution_map.get(substitution_name) {
+    output.push_str(stored_value);
+  }
+}
+
+fn apply_value_substitution(
+  value: &str,
+  substitution_map: &HashMap<String, String>,
+) -> String {
+  if !value.as_bytes().contains(&CHAR_DOLLAR) {
+    return value.to_string();
+  }
+
+  let mut output = String::with_capacity(value.len());
+  let mut i = 0;
+
+  while i < value.len() {
+    let remaining = &value[i..];
+
+    if remaining.as_bytes().starts_with(b"\\$") {
+      output.push('$');
+      i += 2;
+      continue;
+    }
+
+    if remaining.as_bytes().starts_with(b"$") {
+      if remaining.as_bytes().get(1) == Some(&CHAR_LBRACE) {
+        let mut end = value.len();
+        for (offset, ch) in value[i + 2..].char_indices() {
+          if ch == '}' {
+            end = i + 2 + offset;
+            break;
+          }
+        }
+        let substitution_name = &value[i + 2..end];
+        lookup_substitution(substitution_name, substitution_map, &mut output);
+        i = if end < value.len() { end + 1 } else { end };
+        continue;
+      }
+
+      let mut end = i + 1;
+      for (offset, ch) in value[i + 1..].char_indices() {
+        if ch.is_ascii_alphanumeric() {
+          end = i + 1 + offset + ch.len_utf8();
+        } else {
+          break;
+        }
+      }
+      let substitution_name = &value[i + 1..end];
+      lookup_substitution(substitution_name, substitution_map, &mut output);
+      i = end;
+      continue;
+    }
+
+    let ch = remaining.chars().next().unwrap();
+    output.push(ch);
+    i += ch.len_utf8();
+  }
+
+  output
 }
 
 type IterElement = Result<(String, String), Error>;
@@ -285,6 +391,24 @@ pub fn from_path_sanitized_iter(
   let content = std::fs::read_to_string(path.as_ref()).map_err(Error::Io)?;
   let mut pairs = Vec::new();
   parse_env_content_hook(&content, |k, v| {
+    if let Some(index) = k
+      .find('\0')
+      .or_else(|| v.find('\0').map(|i| k.len() + i + 1))
+    {
+      pairs.push(Err(Error::LineParse(format!("{}={}", k, v), index)));
+    } else {
+      pairs.push(Ok((k.to_string(), v.to_string())));
+    }
+  });
+  Ok(pairs.into_iter())
+}
+
+pub fn from_path_sanitized_iter_with_substitution(
+  path: impl AsRef<Path>,
+) -> Result<std::vec::IntoIter<IterElement>, Error> {
+  let content = std::fs::read_to_string(path.as_ref()).map_err(Error::Io)?;
+  let mut pairs = Vec::new();
+  parse_env_content_with_substitution_hook(&content, |k, v| {
     if let Some(index) = k
       .find('\0')
       .or_else(|| v.find('\0').map(|i| k.len() + i + 1))
@@ -363,6 +487,28 @@ mod tests {
 
   fn assert_parsed_eq(content: &str, expected: &[(&str, &str)]) {
     let actual = parse_map(content).into_iter().collect::<BTreeMap<_, _>>();
+    let expected = expected
+      .iter()
+      .map(|(k, v)| ((*k).to_string(), (*v).to_string()))
+      .collect::<BTreeMap<_, _>>();
+    assert_eq!(actual, expected);
+  }
+
+  fn parse_map_with_substitution(content: &str) -> HashMap<String, String> {
+    let mut map = HashMap::new();
+    parse_env_content_with_substitution_hook(content, |key, value| {
+      map.insert(key.to_string(), value.to_string());
+    });
+    map
+  }
+
+  fn assert_parsed_eq_with_substitution(
+    content: &str,
+    expected: &[(&str, &str)],
+  ) {
+    let actual = parse_map_with_substitution(content)
+      .into_iter()
+      .collect::<BTreeMap<_, _>>();
     let expected = expected
       .iter()
       .map(|(k, v)| ((*k).to_string(), (*v).to_string()))
@@ -653,5 +799,146 @@ u4QuUoobAgMBAAE=
   fn test_no_newline_at_eof_with_single_quote() {
     let content = "KEY='value'";
     assert_parsed_eq(content, &[("KEY", "value")]);
+  }
+
+  #[test]
+  fn test_variable_in_parenthesis_surrounded_by_quotes() {
+    assert_parsed_eq_with_substitution(
+      r#"
+      KEY=test
+      KEY1="${KEY}"
+      "#,
+      &[("KEY", "test"), ("KEY1", "test")],
+    );
+  }
+
+  #[test]
+  fn test_substitute_undefined_variables_to_empty_string() {
+    assert_parsed_eq_with_substitution(
+      r#"KEY=">$KEY1<>${KEY2}<""#,
+      &[("KEY", "><><")],
+    );
+  }
+
+  #[test]
+  fn test_do_not_substitute_variables_with_dollar_escaped() {
+    assert_parsed_eq_with_substitution(
+      r#"KEY=>\$KEY1<>\${KEY2}<"#,
+      &[("KEY", ">$KEY1<>${KEY2}<")],
+    );
+  }
+
+  #[test]
+  fn test_do_not_substitute_variables_in_strong_quotes() {
+    assert_parsed_eq_with_substitution(
+      "KEY='>${KEY1}<>$KEY2<'",
+      &[("KEY", ">${KEY1}<>$KEY2<")],
+    );
+  }
+
+  #[test]
+  fn test_same_variable_reused() {
+    assert_parsed_eq_with_substitution(
+      r#"
+      KEY=VALUE
+      KEY1=$KEY$KEY
+      "#,
+      &[("KEY", "VALUE"), ("KEY1", "VALUEVALUE")],
+    );
+  }
+
+  #[test]
+  fn test_variable_without_parenthesis_is_substituted_before_separators() {
+    assert_parsed_eq_with_substitution(
+      r#"
+      KEY1=test_user
+      KEY1_1=test_user_with_separator
+      KEY=">$KEY1_1<>$KEY1}<>$KEY1{<"
+      "#,
+      &[
+        ("KEY1", "test_user"),
+        ("KEY1_1", "test_user_with_separator"),
+        ("KEY", ">test_user_1<>test_user}<>test_user{<"),
+      ],
+    );
+  }
+
+  #[test]
+  fn test_substitute_variable_from_env_variable() {
+    let key = "DENO_DOTENV_TEST_KEY11";
+    let original = std::env::var_os(key);
+    unsafe {
+      std::env::set_var(key, "test_user_env");
+    }
+
+    assert_parsed_eq_with_substitution(
+      r#"KEY=">${DENO_DOTENV_TEST_KEY11}<""#,
+      &[("KEY", ">test_user_env<")],
+    );
+
+    match original {
+      Some(value) => unsafe {
+        std::env::set_var(key, value);
+      },
+      None => unsafe {
+        std::env::remove_var(key);
+      },
+    }
+  }
+
+  #[test]
+  fn test_substitute_variable_env_variable_overrides_dotenv_in_substitution() {
+    let key = "DENO_DOTENV_TEST_KEY11";
+    let original = std::env::var_os(key);
+    unsafe {
+      std::env::set_var(key, "test_user_env");
+    }
+
+    assert_parsed_eq_with_substitution(
+      r#"
+      DENO_DOTENV_TEST_KEY11=test_user
+      KEY=">${DENO_DOTENV_TEST_KEY11}<"
+      "#,
+      &[
+        ("DENO_DOTENV_TEST_KEY11", "test_user"),
+        ("KEY", ">test_user_env<"),
+      ],
+    );
+
+    match original {
+      Some(value) => unsafe {
+        std::env::set_var(key, value);
+      },
+      None => unsafe {
+        std::env::remove_var(key);
+      },
+    }
+  }
+
+  #[test]
+  fn test_consequent_substitutions() {
+    assert_parsed_eq_with_substitution(
+      r#"
+      KEY1=test_user
+      KEY2=$KEY1_2
+      KEY=>${KEY1}<>${KEY2}<
+      "#,
+      &[
+        ("KEY1", "test_user"),
+        ("KEY2", "test_user_2"),
+        ("KEY", ">test_user<>test_user_2<"),
+      ],
+    );
+  }
+
+  #[test]
+  fn test_consequent_substitutions_with_one_missing() {
+    assert_parsed_eq_with_substitution(
+      r#"
+      KEY2=$KEY1_2
+      KEY=>${KEY1}<>${KEY2}<
+      "#,
+      &[("KEY2", "_2"), ("KEY", "><>_2<")],
+    );
   }
 }
