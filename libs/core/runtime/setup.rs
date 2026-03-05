@@ -15,27 +15,53 @@ use super::snapshot;
 use super::snapshot::V8Snapshot;
 
 /// Global registry mapping isolate pointers to their event loop wakers.
-/// When V8 posts a foreground task for an isolate, the C++ callback
-/// looks up the waker here and wakes the event loop.
-static ISOLATE_WAKERS: std::sync::LazyLock<
-  Mutex<HashMap<usize, std::sync::Arc<AtomicWaker>>>,
-> = std::sync::LazyLock::new(|| Mutex::new(HashMap::new()));
+/// When V8 posts a foreground task for an isolate, the callback looks up
+/// the waker here and wakes the event loop. Isolates that received a
+/// notification before their waker was registered are tracked in
+/// `pending_wakes` so `register_isolate_waker` can wake them immediately.
+struct IsolateWakerRegistry {
+  wakers: HashMap<usize, std::sync::Arc<AtomicWaker>>,
+  pending_wakes: std::collections::HashSet<usize>,
+}
+
+static ISOLATE_WAKERS: std::sync::LazyLock<Mutex<IsolateWakerRegistry>> =
+  std::sync::LazyLock::new(|| {
+    Mutex::new(IsolateWakerRegistry {
+      wakers: HashMap::new(),
+      pending_wakes: std::collections::HashSet::new(),
+    })
+  });
 
 /// Register a waker for an isolate so foreground task notifications
-/// wake the correct event loop. The key is the raw isolate pointer
-/// value (as returned by `as_raw_isolate_ptr` / passed by C++ as `void*`).
+/// wake the correct event loop. If a notification arrived before
+/// registration, the waker is triggered immediately.
 pub fn register_isolate_waker(
   isolate_ptr: usize,
   waker: std::sync::Arc<AtomicWaker>,
 ) {
-  let mut map = ISOLATE_WAKERS.lock().unwrap();
-  map.insert(isolate_ptr, waker);
+  let mut reg = ISOLATE_WAKERS.lock().unwrap();
+  if reg.pending_wakes.remove(&isolate_ptr) {
+    waker.wake();
+  }
+  reg.wakers.insert(isolate_ptr, waker);
 }
 
 /// Unregister an isolate's waker (called on isolate drop).
 pub fn unregister_isolate_waker(isolate_ptr: usize) {
-  let mut map = ISOLATE_WAKERS.lock().unwrap();
-  map.remove(&isolate_ptr);
+  let mut reg = ISOLATE_WAKERS.lock().unwrap();
+  reg.wakers.remove(&isolate_ptr);
+  reg.pending_wakes.remove(&isolate_ptr);
+}
+
+/// Wake the event loop for a given isolate. If the isolate's waker
+/// is not yet registered, marks it as pending so registration wakes it.
+fn wake_isolate(key: usize) {
+  let mut reg = ISOLATE_WAKERS.lock().unwrap();
+  if let Some(waker) = reg.wakers.get(&key) {
+    waker.wake();
+  } else {
+    reg.pending_wakes.insert(key);
+  }
 }
 
 /// Callback invoked by NotifyingPlatform when a foreground task is posted.
@@ -49,23 +75,16 @@ impl v8::ForegroundTaskCallback for DenoForegroundTaskCallback {
     isolate_ptr: *mut c_void,
     delay_in_seconds: f64,
   ) {
+    let key = isolate_ptr as usize;
     if delay_in_seconds <= 0.0 {
-      // Immediate task — wake the event loop now.
-      let map = ISOLATE_WAKERS.lock().unwrap();
-      if let Some(waker) = map.get(&(isolate_ptr as usize)) {
-        waker.wake();
-      }
+      wake_isolate(key);
     } else {
       // Delayed task — schedule a wake-up after the delay expires.
-      let key = isolate_ptr as usize;
       std::thread::spawn(move || {
         std::thread::sleep(std::time::Duration::from_secs_f64(
           delay_in_seconds,
         ));
-        let map = ISOLATE_WAKERS.lock().unwrap();
-        if let Some(waker) = map.get(&key) {
-          waker.wake();
-        }
+        wake_isolate(key);
       });
     }
   }
