@@ -171,12 +171,12 @@ with one of these prefixes:
 - `build:` — build system changes
 - `refactor:` — refactoring
 - `test:` — test changes
-- `Revert ` — reverting a previous commit
-- `Reland ` — relanding a reverted commit
+- `Revert` — reverting a previous commit
+- `Reland` — relanding a reverted commit
 - `BREAKING` — breaking changes
 
-Additionally, deno_core/v8 upgrades must NOT use `chore:` — use `feat:`,
-`fix:`, or `refactor:` instead, with a title describing the actual change.
+Additionally, deno_core/v8 upgrades must NOT use `chore:` — use `feat:`, `fix:`,
+or `refactor:` instead, with a title describing the actual change.
 
 Release PRs (titles matching `X.Y.Z`) are also valid.
 
