@@ -1875,7 +1875,10 @@ impl JsRuntime {
 
     v8::tc_scope!(let tc_scope, scope);
 
-    tc_scope.perform_microtask_checkpoint();
+    let context_state = JsRealm::state_from_scope(tc_scope);
+    if !context_state.has_tick_scheduled() {
+      tc_scope.perform_microtask_checkpoint();
+    }
     match tc_scope.exception() {
       None => Ok(()),
       Some(exception) => {
@@ -2113,7 +2116,9 @@ impl JsRuntime {
     }
     // 1b. Fire expired JS timers (direct v8::Function::call per timer)
     did_work |= Self::dispatch_timers(cx, scope, context_state);
-    scope.perform_microtask_checkpoint();
+    if !context_state.has_tick_scheduled() {
+      scope.perform_microtask_checkpoint();
+    }
 
     // ===== Phase 2: Pending work =====
     // Module progress polling (before ops, matching original ordering)
@@ -2123,11 +2128,10 @@ impl JsRuntime {
     dispatched_ops |= Self::dispatch_task_spawner(cx, scope, context_state);
 
     // 2b. Poll and resolve completed async ops
-    // NOTE: No microtask checkpoint between ops and nextTick/macrotask!
-    // This matches the old eventLoopTick behavior where ops resolve,
-    // nextTick drains, and macrotasks run all within the same JS call
-    // before any microtask checkpoint. Promise continuations (like await
-    // resumption) run only after all three have completed.
+    // NOTE: No microtask checkpoint here. Under Explicit microtask policy,
+    // microtasks from op completions (including await continuations) are
+    // deferred to __drainNextTickAndMacrotasks which correctly interleaves
+    // nextTick callbacks before promise microtasks.
     dispatched_ops |= Self::dispatch_pending_ops(cx, scope, context_state)?;
 
     // 2c. Dispatch "rejectionhandled" events before tick processing.
@@ -2885,8 +2889,15 @@ impl JsRuntime {
         }
       }
 
-      // Microtask checkpoint between each timer
-      scope.perform_microtask_checkpoint();
+      // Microtask checkpoint between each timer (skipped when ticks are
+      // scheduled so processTicksAndRejections drains them in the right order)
+      if !context_state.has_tick_scheduled() {
+        scope.perform_microtask_checkpoint();
+      }
+
+      // Dispatch "rejectionhandled" events before tick drain, so that
+      // rejectionhandled fires before unhandledrejection for later promises.
+      Self::dispatch_handled_rejections(scope, &context_state.exception_state);
 
       // Dispatch "rejectionhandled" events before tick drain, so that
       // rejectionhandled fires before unhandledrejection for later promises.
@@ -2929,7 +2940,9 @@ impl JsRuntime {
       for task in tasks {
         task(scope);
       }
-      scope.perform_microtask_checkpoint();
+      if !context_state.has_tick_scheduled() {
+        scope.perform_microtask_checkpoint();
+      }
 
       retries -= 1;
       if retries == 0 {

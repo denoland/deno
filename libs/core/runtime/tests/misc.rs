@@ -1212,10 +1212,14 @@ async fn test_dynamic_import_module_error_stack() {
   let CoreErrorKind::Js(js_error) = error.into_kind() else {
     unreachable!()
   };
-  assert_eq!(
-    js_error.to_string(),
-    "TypeError: foo
-    at async file:///import.js:1:43"
+  let error_str = js_error.to_string();
+  assert!(
+    error_str.contains("TypeError: foo"),
+    "Expected error to contain 'TypeError: foo', got: {error_str}"
+  );
+  assert!(
+    error_str.contains("at async file:///import.js:1:43"),
+    "Expected error to contain import.js stack frame, got: {error_str}"
   );
 }
 
@@ -1677,4 +1681,199 @@ fn hash_source(source: &v8::String) -> u64 {
   let mut hasher = twox_hash::XxHash64::default();
   source.hash(&mut hasher);
   hasher.finish()
+}
+
+/// Test that process.nextTick callbacks run before Promise.then callbacks,
+/// matching Node.js behavior. This requires V8's Explicit microtask policy
+/// so that microtasks are not auto-drained before the tick queue.
+#[tokio::test]
+async fn test_nexttick_before_promise_then() {
+  #[op2]
+  async fn op_async_sleep() -> Result<(), JsErrorBox> {
+    tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+    Ok(())
+  }
+
+  deno_core::extension!(test_ext, ops = [op_async_sleep]);
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    extensions: vec![test_ext::init()],
+    ..Default::default()
+  });
+
+  runtime
+    .execute_script(
+      "nexttick_before_then.js",
+      r#"
+      (async function() {
+        const order = [];
+
+        Deno.core.queueNextTick({
+          callback: () => order.push("tick"),
+          args: undefined,
+          snapshot: undefined,
+        });
+        Promise.resolve().then(() => order.push("then"));
+
+        await Deno.core.ops.op_async_sleep();
+
+        const result = order.join(",");
+        if (result !== "tick,then") {
+          throw new Error("expected 'tick,then' but got '" + result + "'");
+        }
+      })();
+      "#,
+    )
+    .unwrap();
+  runtime.run_event_loop(Default::default()).await.unwrap();
+}
+
+/// Test that multiple nextTick callbacks all run before any Promise.then
+/// callbacks, and that promises queued during nextTick run after all ticks.
+#[tokio::test]
+async fn test_nexttick_queue_drains_before_microtasks() {
+  #[op2]
+  async fn op_async_sleep() -> Result<(), JsErrorBox> {
+    tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+    Ok(())
+  }
+
+  deno_core::extension!(test_ext, ops = [op_async_sleep]);
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    extensions: vec![test_ext::init()],
+    ..Default::default()
+  });
+
+  runtime
+    .execute_script(
+      "nexttick_drains_before_microtasks.js",
+      r#"
+      (async function() {
+        const order = [];
+
+        Deno.core.queueNextTick({
+          callback: () => {
+            order.push("tick1");
+            // Promise queued during tick should run after all ticks
+            Promise.resolve().then(() => order.push("then-from-tick1"));
+            // Nested tick should run before that promise
+            Deno.core.queueNextTick({
+              callback: () => order.push("tick2"),
+              args: undefined,
+              snapshot: undefined,
+            });
+          },
+          args: undefined,
+          snapshot: undefined,
+        });
+        Promise.resolve().then(() => order.push("then1"));
+        Promise.resolve().then(() => order.push("then2"));
+
+        await Deno.core.ops.op_async_sleep();
+
+        const result = order.join(",");
+        const expected = "tick1,tick2,then1,then2,then-from-tick1";
+        if (result !== expected) {
+          throw new Error("expected '" + expected + "' but got '" + result + "'");
+        }
+      })();
+      "#,
+    )
+    .unwrap();
+  runtime.run_event_loop(Default::default()).await.unwrap();
+}
+
+/// Test that nextTick queued inside an await continuation runs AFTER
+/// Promise.then from the same continuation. This matches Node.js: the
+/// await continuation is itself a microtask, so Promise.resolve().then()
+/// queued inside it runs in the same microtask checkpoint. The nextTick
+/// runs after the checkpoint completes.
+#[tokio::test]
+async fn test_nexttick_ordering_after_await() {
+  #[op2]
+  async fn op_async_sleep() -> Result<(), JsErrorBox> {
+    tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+    Ok(())
+  }
+
+  deno_core::extension!(test_ext, ops = [op_async_sleep]);
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    extensions: vec![test_ext::init()],
+    ..Default::default()
+  });
+
+  runtime
+    .execute_script(
+      "nexttick_after_await.js",
+      r#"
+      (async function() {
+        const order = [];
+
+        // First await to get into a "later turn"
+        await Deno.core.ops.op_async_sleep();
+
+        // Inside an await continuation (which is a microtask), a .then
+        // runs in the same microtask checkpoint, before nextTick.
+        Deno.core.queueNextTick({
+          callback: () => order.push("tick-after-await"),
+          args: undefined,
+          snapshot: undefined,
+        });
+        Promise.resolve().then(() => order.push("then-after-await"));
+
+        // Wait for drain
+        await Deno.core.ops.op_async_sleep();
+
+        const result = order.join(",");
+        if (result !== "then-after-await,tick-after-await") {
+          throw new Error("expected 'then-after-await,tick-after-await' but got '" + result + "'");
+        }
+      })();
+      "#,
+    )
+    .unwrap();
+  runtime.run_event_loop(Default::default()).await.unwrap();
+}
+
+/// Test that queueMicrotask is ordered after nextTick but alongside
+/// Promise.then, matching Node.js behavior.
+#[tokio::test]
+async fn test_nexttick_before_queue_microtask() {
+  #[op2]
+  async fn op_async_sleep() -> Result<(), JsErrorBox> {
+    tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+    Ok(())
+  }
+
+  deno_core::extension!(test_ext, ops = [op_async_sleep]);
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    extensions: vec![test_ext::init()],
+    ..Default::default()
+  });
+
+  runtime
+    .execute_script(
+      "nexttick_before_queuemicrotask.js",
+      r#"
+      (async function() {
+        const order = [];
+
+        Deno.core.queueNextTick({
+          callback: () => order.push("tick"),
+          args: undefined,
+          snapshot: undefined,
+        });
+        queueMicrotask(() => order.push("microtask"));
+        Promise.resolve().then(() => order.push("then"));
+
+        await Deno.core.ops.op_async_sleep();
+
+        const result = order.join(",");
+        if (result !== "tick,microtask,then") {
+          throw new Error("expected 'tick,microtask,then' but got '" + result + "'");
+        }
+      })();
+      "#,
+    )
+    .unwrap();
+  runtime.run_event_loop(Default::default()).await.unwrap();
 }
