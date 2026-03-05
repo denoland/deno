@@ -1808,21 +1808,18 @@ impl JsRuntime {
   fn pump_v8_message_loop(
     &self,
     scope: &mut v8::PinScope,
-  ) -> Result<bool, Box<JsError>> {
-    let mut did_work = false;
+  ) -> Result<(), Box<JsError>> {
     while v8::Platform::pump_message_loop(
       &v8::V8::get_current_platform(),
       scope,
       false, // don't block if there are no tasks
-    ) {
-      did_work = true;
-    }
+    ) {}
 
     v8::tc_scope!(let tc_scope, scope);
 
     tc_scope.perform_microtask_checkpoint();
     match tc_scope.exception() {
-      None => Ok(did_work),
+      None => Ok(()),
       Some(exception) => {
         exception_to_err_result(tc_scope, exception, false, true)
       }
@@ -2035,9 +2032,8 @@ impl JsRuntime {
     if has_inspector {
       self.inspector().poll_sessions_from_event_loop(cx);
     }
-    let mut v8_tasks_processed = false;
     if poll_options.pump_v8_message_loop {
-      v8_tasks_processed = self.pump_v8_message_loop(scope)?;
+      self.pump_v8_message_loop(scope)?;
     }
 
     let realm = &self.inner.main_realm;
@@ -2185,7 +2181,6 @@ impl JsRuntime {
         || pending_state.has_refed_immediates > 0
         || pending_state.has_pending_promise_events
         || uv_did_io
-        || v8_tasks_processed
       {
         self.inner.state.waker.wake();
       } else
