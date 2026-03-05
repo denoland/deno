@@ -1,7 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-mod report;
-
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -20,10 +18,13 @@ use report::ErrorInfo;
 use serde::Deserialize;
 use test_util as util;
 use test_util::IS_CI;
+use test_util::PathRef;
 use test_util::test_runner::FlakyTestTracker;
 use test_util::test_runner::Parallelism;
 use test_util::test_runner::run_maybe_flaky_test;
 use util::tests_path;
+
+mod report;
 
 /// Global counter for generating unique test serial IDs
 static TEST_SERIAL_ID: AtomicUsize = AtomicUsize::new(0);
@@ -436,7 +437,7 @@ fn truncate_output(output: &str, max_len: usize) -> String {
 
 /// Common setup for running a node compat test (shared between PTY and piped paths).
 struct TestSetup {
-  test_suite_path: std::path::PathBuf,
+  test_suite_path: PathRef,
   uses_node_test: bool,
   args: Vec<String>,
   env_vars: HashMap<String, String>,
@@ -445,12 +446,11 @@ struct TestSetup {
 
 impl TestSetup {
   fn new(cli_args: &CliArgs, data: &NodeCompatTestData) -> Self {
-    let test_suite_path =
-      tests_path().join("node_compat/runner/suite").to_path_buf();
+    let test_suite_path = tests_path().join("node_compat/runner/suite");
     let test_path = format!("test/{}", data.test_path);
     let full_test_path = test_suite_path.join(&test_path);
 
-    let source = std::fs::read_to_string(&full_test_path).unwrap_or_default();
+    let source = full_test_path.read_to_string();
     let uses_node_test = uses_node_test_module(&source);
     let (v8_flags, node_options) = parse_flags(&source);
 

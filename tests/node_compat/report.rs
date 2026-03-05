@@ -116,7 +116,7 @@ pub fn generate_report(results: &HashMap<String, CollectedResult>) {
 
   let report_path = tests_path().join("node_compat").join("report.json");
   let json = serde_json::to_string(&report).unwrap();
-  std::fs::write(&report_path, json).unwrap();
+  report_path.write(json);
 }
 
 fn get_deno_version() -> String {
@@ -138,7 +138,7 @@ fn read_node_version() -> String {
   // Read from tests/node_compat/runner/suite/node_version.ts
   let version_file =
     tests_path().join("node_compat/runner/suite/node_version.ts");
-  let content = std::fs::read_to_string(&version_file).unwrap_or_default();
+  let content = version_file.read_to_string();
 
   // Parse: export const version = "24.2.0";
   let re = Regex::new(r#"export const version = "([^"]+)"#).unwrap();
