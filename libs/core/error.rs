@@ -996,10 +996,14 @@ impl JsError {
         let mut out = Vec::with_capacity(arr.length() as usize);
 
         for i in 0..arr.length() {
-          let key = arr.get_index(scope, i).unwrap();
+          let Some(key) = arr.get_index(scope, i) else {
+            continue;
+          };
           let key_name = key.to_rust_string_lossy(scope);
 
-          let val = exception.get(scope, key).unwrap();
+          let Some(val) = exception.get(scope, key) else {
+            continue;
+          };
           let val_str = val.to_rust_string_lossy(scope);
           out.push((key_name, val_str));
         }
