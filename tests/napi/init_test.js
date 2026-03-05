@@ -26,9 +26,9 @@ Deno.test("ctr initialization by multiple threads (napi_module_register)", {
 
   const worker = new Worker(
     `
-    import { Buffer } from "node:buffer";
-    import { parentPort } from "node:worker_threads";
-    import { assert } from "${common}";
+    const { Buffer } = require("node:buffer");
+    const { parentPort } = require("node:worker_threads");
+    const { assert } = require("${common}");
 
     const ops = Deno[Deno.internal].core.ops;
     const obj = ops.op_napi_open("${path}", {}, Buffer.from, reportError);
