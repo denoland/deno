@@ -495,7 +495,7 @@ impl TestSetup {
     }
   }
 
-  fn run_piped(&self) -> (bool, String) {
+  fn run_piped(&self) -> (bool, String, Option<i32>) {
     let mut cmd = util::deno_cmd().disable_diagnostic_logging();
     cmd = cmd.current_dir(&self.test_suite_path);
     for arg in &self.args {
@@ -509,20 +509,21 @@ impl TestSetup {
     match child.wait_with_output_and_timeout(self.timeout) {
       Ok(output) => {
         let success = output.status.success();
+        let exit_code = output.status.code();
         let stderr = String::from_utf8_lossy(&output.stderr);
         let stdout = String::from_utf8_lossy(&output.stdout);
         let output_str = format!("{}\n{}", stdout, stderr);
-        (success, output_str)
+        (success, output_str, exit_code)
       }
       Err(_) => {
         let output_str =
           format!("Test timed out after {}ms", self.timeout.as_millis());
-        (false, output_str)
+        (false, output_str, None)
       }
     }
   }
 
-  fn run_pty(&self) -> (bool, String) {
+  fn run_pty(&self) -> (bool, String, Option<i32>) {
     let deno_exe = util::deno_exe_path();
     let args: Vec<&str> = self.args.iter().map(|s| s.as_str()).collect();
 
@@ -542,7 +543,7 @@ impl TestSetup {
 
     let output_text = String::from_utf8_lossy(&pty_output.output).to_string();
     let success = pty_output.exit_code == Some(0);
-    (success, output_text)
+    (success, output_text, pty_output.exit_code)
   }
 
   fn debugging_command_text(&self) -> String {
@@ -651,7 +652,7 @@ fn run_test(
 
   let setup = TestSetup::new(cli_args, data);
 
-  let (success, output_text) = if is_pseudo_tty_test {
+  let (success, output_text, exit_code) = if is_pseudo_tty_test {
     setup.run_pty()
   } else {
     setup.run_piped()
@@ -663,7 +664,7 @@ fn run_test(
     setup.uses_node_test,
     setup.timeout,
     !success && output_text.starts_with("Test timed out"),
-    None, // exit code not easily available in unified path
+    exit_code,
   );
 
   results
