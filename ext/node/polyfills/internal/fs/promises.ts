@@ -15,63 +15,29 @@ import { promisify } from "ext:deno_node/internal/util.mjs";
 import * as constants from "ext:deno_node/_fs/_fs_constants.ts";
 import { copyFilePromise } from "ext:deno_node/_fs/_fs_copy.ts";
 import { cpPromise } from "ext:deno_node/_fs/_fs_cp.ts";
-import {
-  lchmodPromise,
-} from "ext:deno_node/_fs/_fs_lchmod.ts";
-import {
-  lchownPromise,
-} from "ext:deno_node/_fs/_fs_lchown.ts";
+import { lchmodPromise } from "ext:deno_node/_fs/_fs_lchmod.ts";
+import { lchownPromise } from "ext:deno_node/_fs/_fs_lchown.ts";
 import { linkPromise } from "ext:deno_node/_fs/_fs_link.ts";
 import { lstatPromise } from "ext:deno_node/_fs/_fs_lstat.ts";
-import {
-  lutimesPromise,
-} from "ext:deno_node/_fs/_fs_lutimes.ts";
+import { lutimesPromise } from "ext:deno_node/_fs/_fs_lutimes.ts";
 import { mkdirPromise } from "ext:deno_node/_fs/_fs_mkdir.ts";
-import {
-  mkdtempPromise,
-} from "ext:deno_node/_fs/_fs_mkdtemp.ts";
+import { mkdtempPromise } from "ext:deno_node/_fs/_fs_mkdtemp.ts";
 import { openPromise } from "ext:deno_node/_fs/_fs_open.ts";
-import {
-  opendirPromise,
-} from "ext:deno_node/_fs/_fs_opendir.ts";
-import {
-  readdirPromise,
-} from "ext:deno_node/_fs/_fs_readdir.ts";
-import {
-  readFilePromise,
-} from "ext:deno_node/_fs/_fs_readFile.ts";
-import {
-  readlinkPromise,
-} from "ext:deno_node/_fs/_fs_readlink.ts";
-import {
-  realpathPromise,
-} from "ext:deno_node/_fs/_fs_realpath.ts";
-import {
-  renamePromise,
-} from "ext:deno_node/_fs/_fs_rename.ts";
+import { opendirPromise } from "ext:deno_node/_fs/_fs_opendir.ts";
+import { readdirPromise } from "ext:deno_node/_fs/_fs_readdir.ts";
+import { readFilePromise } from "ext:deno_node/_fs/_fs_readFile.ts";
+import { readlinkPromise } from "ext:deno_node/_fs/_fs_readlink.ts";
+import { realpathPromise } from "ext:deno_node/_fs/_fs_realpath.ts";
+import { renamePromise } from "ext:deno_node/_fs/_fs_rename.ts";
 import { rmdirPromise } from "ext:deno_node/_fs/_fs_rmdir.ts";
 import { rmPromise } from "ext:deno_node/_fs/_fs_rm.ts";
-import {
-  statPromise,
-} from "ext:deno_node/_fs/_fs_stat.ts";
-import {
-  statfsPromise,
-} from "ext:deno_node/_fs/_fs_statfs.ts";
-import {
-  symlinkPromise,
-} from "ext:deno_node/_fs/_fs_symlink.ts";
-import {
-  truncatePromise,
-} from "ext:deno_node/_fs/_fs_truncate.ts";
-import {
-  unlinkPromise,
-} from "ext:deno_node/_fs/_fs_unlink.ts";
-import {
-  utimesPromise,
-} from "ext:deno_node/_fs/_fs_utimes.ts";
-import {
-  watchPromise,
-} from "ext:deno_node/_fs/_fs_watch.ts";
+import { statPromise } from "ext:deno_node/_fs/_fs_stat.ts";
+import { statfsPromise } from "ext:deno_node/_fs/_fs_statfs.ts";
+import { symlinkPromise } from "ext:deno_node/_fs/_fs_symlink.ts";
+import { truncatePromise } from "ext:deno_node/_fs/_fs_truncate.ts";
+import { unlinkPromise } from "ext:deno_node/_fs/_fs_unlink.ts";
+import { utimesPromise } from "ext:deno_node/_fs/_fs_utimes.ts";
+import { watchPromise } from "ext:deno_node/_fs/_fs_watch.ts";
 import {
   writeFile,
   writeFilePromise,

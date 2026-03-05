@@ -46,11 +46,7 @@ import { symlink, symlinkSync } from "ext:deno_node/_fs/_fs_symlink.ts";
 import { truncate, truncateSync } from "ext:deno_node/_fs/_fs_truncate.ts";
 import { unlink, unlinkSync } from "ext:deno_node/_fs/_fs_unlink.ts";
 import { utimes, utimesSync } from "ext:deno_node/_fs/_fs_utimes.ts";
-import {
-  unwatchFile,
-  watch,
-  watchFile,
-} from "ext:deno_node/_fs/_fs_watch.ts";
+import { unwatchFile, watch, watchFile } from "ext:deno_node/_fs/_fs_watch.ts";
 // @deno-types="./_fs/_fs_write.d.ts"
 import { write, writeSync } from "ext:deno_node/_fs/_fs_write.ts";
 // @deno-types="./_fs/_fs_writev.d.ts"
