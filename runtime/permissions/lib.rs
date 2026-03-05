@@ -105,16 +105,14 @@ where
       let _ = map.insert(
         "datetime".into(),
         serde_json::Value::String(
-          chrono::Utc::now()
-            .to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+          chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
         ),
       );
       let _ = map.insert(
         "permission".into(),
         serde_json::to_value(flag_name).unwrap(),
       );
-      let _ =
-        map.insert("value".into(), serde_json::to_value(&value).unwrap());
+      let _ = map.insert("value".into(), serde_json::to_value(&value).unwrap());
       let _ = map.insert(
         "outcome".into(),
         serde_json::Value::String(outcome.to_string()),
