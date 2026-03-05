@@ -4,6 +4,7 @@
 
 mod stream;
 mod tcp;
+mod tty;
 
 #[cfg(all(not(miri), test))]
 mod tests;
@@ -21,6 +22,7 @@ use std::time::Instant;
 
 pub use stream::*;
 pub use tcp::*;
+pub use tty::*;
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -30,7 +32,11 @@ pub enum uv_handle_type {
   UV_IDLE = 2,
   UV_PREPARE = 3,
   UV_CHECK = 4,
+  UV_NAMED_PIPE = 7,
   UV_TCP = 12,
+  UV_TTY = 13,
+  UV_UDP = 15,
+  UV_FILE = 17,
 }
 
 const UV_HANDLE_ACTIVE: u32 = 1 << 0;
@@ -56,7 +62,32 @@ uv_errno!(UV_EINVAL, libc::EINVAL, -4071);
 uv_errno!(UV_ENOTCONN, libc::ENOTCONN, -4053);
 uv_errno!(UV_ECANCELED, libc::ECANCELED, -4081);
 uv_errno!(UV_EPIPE, libc::EPIPE, -4047);
+uv_errno!(UV_EBUSY, libc::EBUSY, -4082);
+uv_errno!(UV_ENOBUFS, libc::ENOBUFS, -4060);
+uv_errno!(UV_ENOTSUP, libc::ENOTSUP, -4049);
 pub const UV_EOF: i32 = -4095;
+
+/// Map a `std::io::Error` to the closest libuv error code.
+pub(crate) fn io_error_to_uv(err: &std::io::Error) -> c_int {
+  use std::io::ErrorKind;
+  match err.kind() {
+    ErrorKind::AddrInUse => UV_EADDRINUSE,
+    ErrorKind::AddrNotAvailable => UV_EINVAL,
+    ErrorKind::ConnectionRefused => UV_ECONNREFUSED,
+    ErrorKind::NotConnected => UV_ENOTCONN,
+    ErrorKind::BrokenPipe => UV_EPIPE,
+    ErrorKind::InvalidInput => UV_EINVAL,
+    ErrorKind::WouldBlock => UV_EAGAIN,
+    _ => {
+      // On Unix, try to use the raw OS error for a more accurate mapping.
+      #[cfg(unix)]
+      if let Some(code) = err.raw_os_error() {
+        return -code;
+      }
+      UV_EINVAL
+    }
+  }
+}
 
 #[repr(C)]
 pub struct uv_loop_t {
@@ -121,7 +152,6 @@ pub type uv_close_cb = unsafe extern "C" fn(*mut uv_handle_t);
 
 pub type UvHandle = uv_handle_t;
 pub type UvLoop = uv_loop_t;
-pub type UvTcp = uv_tcp_t;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 struct TimerKey {
@@ -137,6 +167,7 @@ pub(crate) struct UvLoopInner {
   prepare_handles: RefCell<Vec<*mut uv_prepare_t>>,
   check_handles: RefCell<Vec<*mut uv_check_t>>,
   tcp_handles: RefCell<Vec<*mut uv_tcp_t>>,
+  tty_handles: RefCell<Vec<*mut uv_tty_t>>,
   waker: RefCell<Option<Waker>>,
   closing_handles: RefCell<VecDeque<(*mut uv_handle_t, Option<uv_close_cb>)>>,
   time_origin: Instant,
@@ -152,6 +183,7 @@ impl UvLoopInner {
       prepare_handles: RefCell::new(Vec::with_capacity(8)),
       check_handles: RefCell::new(Vec::with_capacity(8)),
       tcp_handles: RefCell::new(Vec::with_capacity(8)),
+      tty_handles: RefCell::new(Vec::with_capacity(4)),
       waker: RefCell::new(None),
       closing_handles: RefCell::new(VecDeque::with_capacity(16)),
       time_origin: Instant::now(),
@@ -217,6 +249,15 @@ impl UvLoopInner {
     }
     for handle_ptr in self.tcp_handles.borrow().iter() {
       // SAFETY: Handle pointers in tcp_handles are kept valid by the C caller until uv_close.
+      let handle = unsafe { &**handle_ptr };
+      if handle.flags & UV_HANDLE_ACTIVE != 0
+        && handle.flags & UV_HANDLE_REF != 0
+      {
+        return true;
+      }
+    }
+    for handle_ptr in self.tty_handles.borrow().iter() {
+      // SAFETY: Handle pointers in tty_handles are kept valid by the C caller until uv_close.
       let handle = unsafe { &**handle_ptr };
       if handle.flags & UV_HANDLE_ACTIVE != 0
         && handle.flags & UV_HANDLE_REF != 0
@@ -406,7 +447,26 @@ impl UvLoopInner {
 
         // SAFETY: tcp_ptr is valid; checked above.
         any_work |= unsafe { tcp::poll_tcp_handle(tcp_ptr, &mut cx) };
-      } // end per-handle loop
+      } // end per-tcp-handle loop
+
+      let mut j = 0;
+      loop {
+        let tty_ptr = {
+          let handles = self.tty_handles.borrow();
+          if j >= handles.len() {
+            break;
+          }
+          handles[j]
+        };
+        j += 1;
+        // SAFETY: tty_ptr comes from tty_handles; caller guarantees validity.
+        if unsafe { (*tty_ptr).flags } & UV_HANDLE_ACTIVE == 0 {
+          continue;
+        }
+
+        // SAFETY: tty_ptr is valid; checked above.
+        any_work |= unsafe { tty::poll_tty_handle(tty_ptr, &mut cx) };
+      } // end per-tty-handle loop
 
       if !any_work {
         break;
@@ -464,6 +524,58 @@ impl UvLoopInner {
     // SAFETY: Caller guarantees handle is valid and initialized.
     unsafe {
       (*handle).flags &= !UV_HANDLE_ACTIVE;
+    }
+  }
+
+  fn stop_tty(&self, handle: *mut uv_tty_t) {
+    self
+      .tty_handles
+      .borrow_mut()
+      .retain(|&h| !std::ptr::eq(h, handle));
+    // SAFETY: Caller guarantees handle is valid and initialized.
+    unsafe {
+      let tty = &mut *handle;
+
+      // Always check if this fd is the globally tracked one, matching
+      // libuv's unconditional check in uv__tty_close.
+      #[cfg(unix)]
+      {
+        tty::restore_termios_on_close(tty.internal_fd);
+      }
+
+      tty.internal_reading = false;
+      tty.internal_alloc_cb = None;
+      tty.internal_read_cb = None;
+      tty.internal_write_queue.clear();
+      tty.internal_shutdown = None;
+
+      // Drop the AsyncFd to deregister from the reactor, then close the fd.
+      #[cfg(unix)]
+      {
+        tty.internal_async_fd = None;
+        if tty.internal_fd >= 0 {
+          libc::close(tty.internal_fd);
+          tty.internal_fd = -1;
+        }
+      }
+
+      // Close the handle on Windows.
+      #[cfg(windows)]
+      {
+        if !tty.internal_handle.is_null() {
+          if tty.internal_handle_owned {
+            // We duplicated this handle in init — close it directly.
+            tty::win_console::CloseHandle(tty.internal_handle);
+          } else if tty.internal_fd >= 0 {
+            // Non-duplicated: close through the CRT to free the fd slot.
+            tty::win_console::_close(tty.internal_fd);
+          }
+          tty.internal_handle = std::ptr::null_mut();
+          tty.internal_fd = -1;
+        }
+      }
+
+      tty.flags &= !UV_HANDLE_ACTIVE;
     }
   }
 
@@ -895,6 +1007,9 @@ pub unsafe extern "C" fn uv_close(
       }
       uv_handle_type::UV_TCP => {
         inner.stop_tcp(handle as *mut uv_tcp_t);
+      }
+      uv_handle_type::UV_TTY => {
+        inner.stop_tty(handle as *mut uv_tty_t);
       }
       _ => {}
     }

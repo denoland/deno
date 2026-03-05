@@ -12,6 +12,7 @@ use super::UV_HANDLE_ACTIVE;
 use super::get_inner;
 use super::tcp::WritePending;
 use super::tcp::uv_tcp_t;
+use super::tty::uv_tty_t;
 use super::uv_handle_t;
 use super::uv_handle_type;
 use super::uv_loop_t;
@@ -74,14 +75,22 @@ pub type UvConnect = uv_connect_t;
 pub type UvShutdown = uv_shutdown_t;
 
 /// ### Safety
-/// `stream` must be a valid pointer to an initialized `uv_tcp_t` (cast as `uv_stream_t`).
+/// `stream` must be a valid pointer to an initialized stream handle
+/// (`uv_tcp_t` or `uv_tty_t`, cast as `uv_stream_t`).
 pub unsafe fn uv_read_start(
   stream: *mut uv_stream_t,
   alloc_cb: Option<uv_alloc_cb>,
   read_cb: Option<uv_read_cb>,
 ) -> c_int {
-  // SAFETY: Caller guarantees stream is a valid, initialized uv_tcp_t.
   unsafe {
+    if (*stream).r#type == uv_handle_type::UV_TTY {
+      return super::tty::read_start_tty(
+        stream as *mut uv_tty_t,
+        alloc_cb,
+        read_cb,
+      );
+    }
+    // SAFETY: Caller guarantees stream is a valid, initialized uv_tcp_t.
     let tcp = stream as *mut uv_tcp_t;
     let tcp_ref = &mut *tcp;
     tcp_ref.internal_alloc_cb = alloc_cb;
@@ -99,10 +108,14 @@ pub unsafe fn uv_read_start(
 }
 
 /// ### Safety
-/// `stream` must be a valid pointer to an initialized `uv_tcp_t` (cast as `uv_stream_t`).
+/// `stream` must be a valid pointer to an initialized stream handle
+/// (`uv_tcp_t` or `uv_tty_t`, cast as `uv_stream_t`).
 pub unsafe fn uv_read_stop(stream: *mut uv_stream_t) -> c_int {
-  // SAFETY: Caller guarantees stream is a valid, initialized uv_tcp_t.
   unsafe {
+    if (*stream).r#type == uv_handle_type::UV_TTY {
+      return super::tty::read_stop_tty(stream as *mut uv_tty_t);
+    }
+    // SAFETY: Caller guarantees stream is a valid, initialized uv_tcp_t.
     let tcp = stream as *mut uv_tcp_t;
     let tcp_ref = &mut *tcp;
     tcp_ref.internal_reading = false;
@@ -119,8 +132,14 @@ pub unsafe fn uv_read_stop(stream: *mut uv_stream_t) -> c_int {
 }
 
 /// ### Safety
-/// `handle` must be a valid pointer to an initialized `uv_tcp_t` (cast as `uv_stream_t`).
+/// `handle` must be a valid pointer to an initialized stream handle
+/// (`uv_tcp_t` or `uv_tty_t`, cast as `uv_stream_t`).
 pub unsafe fn uv_try_write(handle: *mut uv_stream_t, data: &[u8]) -> i32 {
+  unsafe {
+    if (*handle).r#type == uv_handle_type::UV_TTY {
+      return super::tty::try_write_tty(handle, data);
+    }
+  }
   // SAFETY: Caller guarantees handle is a valid, initialized uv_tcp_t.
   let tcp_ref = unsafe { &mut *(handle as *mut uv_tcp_t) };
 
@@ -144,8 +163,9 @@ pub unsafe fn uv_try_write(handle: *mut uv_stream_t, data: &[u8]) -> i32 {
 }
 
 /// ### Safety
-/// `req` must be valid and remain so until the write callback fires. `handle` must be an
-/// initialized `uv_tcp_t`. `bufs` must point to `nbufs` valid `uv_buf_t` entries.
+/// `req` must be valid and remain so until the write callback fires. `handle`
+/// must be an initialized stream handle (`uv_tcp_t` or `uv_tty_t`). `bufs`
+/// must point to `nbufs` valid `uv_buf_t` entries.
 ///
 /// This function avoids holding `&mut uv_tcp_t` across callback invocations
 /// to prevent aliasing violations (the callback may access the handle via
@@ -159,6 +179,9 @@ pub unsafe fn uv_write(
 ) -> c_int {
   // SAFETY: Caller guarantees all pointers are valid.
   unsafe {
+    if (*handle).r#type == uv_handle_type::UV_TTY {
+      return super::tty::write_tty(req, handle, bufs, nbufs, cb);
+    }
     let tcp = handle as *mut uv_tcp_t;
     (*req).handle = handle;
 
@@ -324,8 +347,9 @@ unsafe fn collect_bufs(bufs: *const uv_buf_t, nbufs: u32) -> Vec<u8> {
 }
 
 /// ### Safety
-/// `req` must be a valid, writable pointer. `stream` must be an initialized `uv_tcp_t`.
-/// `req` must remain valid until the shutdown callback fires.
+/// `req` must be a valid, writable pointer. `stream` must be an initialized
+/// stream handle (`uv_tcp_t` or `uv_tty_t`). `req` must remain valid until
+/// the shutdown callback fires.
 pub unsafe fn uv_shutdown(
   req: *mut uv_shutdown_t,
   stream: *mut uv_stream_t,
@@ -333,6 +357,9 @@ pub unsafe fn uv_shutdown(
 ) -> c_int {
   // SAFETY: Caller guarantees all pointers are valid.
   unsafe {
+    if (*stream).r#type == uv_handle_type::UV_TTY {
+      return super::tty::shutdown_tty(req, stream, cb);
+    }
     let tcp = stream as *mut uv_tcp_t;
     (*req).handle = stream;
 
