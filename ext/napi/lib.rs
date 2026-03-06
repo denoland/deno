@@ -350,15 +350,15 @@ impl Drop for NapiState {
       // SAFETY: env_shared_ptr was created via Box::into_raw in op_napi_open
       // and the native module library is kept alive (via std::mem::forget).
       let env_shared = unsafe { &mut **env_shared_ptr };
-      if let Some(instance_data) = env_shared.instance_data.take() {
-        if let Some(cb) = instance_data.finalize_cb {
-          unsafe {
-            cb(
-              std::ptr::null_mut(),
-              instance_data.data,
-              instance_data.finalize_hint,
-            );
-          }
+      if let Some(instance_data) = env_shared.instance_data.take()
+        && let Some(cb) = instance_data.finalize_cb
+      {
+        unsafe {
+          cb(
+            std::ptr::null_mut(),
+            instance_data.data,
+            instance_data.finalize_hint,
+          );
         }
       }
     }
