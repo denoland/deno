@@ -1,5 +1,11 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+// On Windows MSVC, bindgen generates nghttp2 enum constants as i32 (C `int`),
+// while on Unix they are u32. Explicit `as` casts are needed for cross-platform
+// compatibility but trigger unnecessary_cast on the platform where the type
+// already matches.
+#![allow(clippy::unnecessary_cast)]
+
 use std::cell::RefCell;
 use std::cell::UnsafeCell;
 use std::collections::HashMap;
@@ -238,7 +244,7 @@ unsafe extern "C" fn h2_read_cb(
     unsafe {
       ffi::nghttp2_session_terminate_session(
         session.session,
-        ffi::NGHTTP2_CONNECT_ERROR,
+        ffi::NGHTTP2_CONNECT_ERROR as u32,
       );
     }
     // Run send to process the GOAWAY and stream close callbacks
@@ -522,7 +528,7 @@ fn frame_id(frame: *const ffi::nghttp2_frame) -> i32 {
   // SAFETY: frame is valid per nghttp2 callback contract
   unsafe {
     let frame = &*frame;
-    if frame.hd.type_ as u32 == ffi::NGHTTP2_PUSH_PROMISE {
+    if frame.hd.type_ as u32 == ffi::NGHTTP2_PUSH_PROMISE as u32 {
       frame.push_promise.promised_stream_id
     } else {
       frame.hd.stream_id
@@ -579,10 +585,10 @@ unsafe extern "C" fn on_begin_headers_callbacks(
             ng_session,
             ffi::NGHTTP2_FLAG_NONE as u8,
             id,
-            ffi::NGHTTP2_REFUSED_STREAM,
+            ffi::NGHTTP2_REFUSED_STREAM as u32,
           );
         }
-        return ffi::NGHTTP2_ERR_TEMPORAL_CALLBACK_FAILURE;
+        return ffi::NGHTTP2_ERR_TEMPORAL_CALLBACK_FAILURE as i32;
       }
       let (obj, stream) = Http2Stream::new(session, id, cat);
       stream.start_headers(cat);
@@ -619,10 +625,10 @@ unsafe extern "C" fn on_header_callback(
           session.session,
           ffi::NGHTTP2_FLAG_NONE as u8,
           id,
-          ffi::NGHTTP2_ENHANCE_YOUR_CALM,
+          ffi::NGHTTP2_ENHANCE_YOUR_CALM as u32,
         );
       }
-      return ffi::NGHTTP2_ERR_TEMPORAL_CALLBACK_FAILURE;
+      return ffi::NGHTTP2_ERR_TEMPORAL_CALLBACK_FAILURE as i32;
     }
   }
 
@@ -637,43 +643,36 @@ unsafe extern "C" fn on_frame_recv_callback(
   // SAFETY: data is the user_data pointer set during session creation
   let session = unsafe { Session::from_user_data(data) };
 
-  let ft = frame_type(frame);
+  let ft = frame_type(frame) as u32;
   let ff = frame_flags(frame);
-  match ft as u32 {
-    ffi::NGHTTP2_DATA => {
-      if ff & ffi::NGHTTP2_FLAG_END_STREAM as u8 != 0 {
-        handle_data_end_stream(session, frame);
-      }
+  #[allow(clippy::unnecessary_cast)]
+  if ft == ffi::NGHTTP2_DATA as u32 {
+    if ff & ffi::NGHTTP2_FLAG_END_STREAM as u8 != 0 {
+      handle_data_end_stream(session, frame);
     }
-    ffi::NGHTTP2_PUSH_PROMISE | ffi::NGHTTP2_HEADERS => {
-      handle_headers_frame(session, frame);
-      if ff & ffi::NGHTTP2_FLAG_END_STREAM as u8 != 0 {
-        handle_data_end_stream(session, frame);
-      }
+  } else if ft == ffi::NGHTTP2_PUSH_PROMISE as u32
+    || ft == ffi::NGHTTP2_HEADERS as u32
+  {
+    handle_headers_frame(session, frame);
+    if ff & ffi::NGHTTP2_FLAG_END_STREAM as u8 != 0 {
+      handle_data_end_stream(session, frame);
     }
-    ffi::NGHTTP2_SETTINGS => {
-      // Only fire for non-ACK SETTINGS frames (the peer's actual settings).
-      // ACK frames are acknowledgments of our own settings.
-      if ff & ffi::NGHTTP2_FLAG_ACK as u8 == 0 {
-        handle_settings_frame(session);
-      }
+  } else if ft == ffi::NGHTTP2_SETTINGS as u32 {
+    // Only fire for non-ACK SETTINGS frames (the peer's actual settings).
+    // ACK frames are acknowledgments of our own settings.
+    if ff & ffi::NGHTTP2_FLAG_ACK as u8 == 0 {
+      handle_settings_frame(session);
     }
-    ffi::NGHTTP2_PRIORITY => {
-      handle_priority_frame(session, frame);
-    }
-    ffi::NGHTTP2_GOAWAY => {
-      handle_goaway_frame(session, frame);
-    }
-    ffi::NGHTTP2_PING => {
-      handle_ping_frame(session);
-    }
-    ffi::NGHTTP2_ALTSVC => {
-      handle_alt_svc_frame(session, frame);
-    }
-    ffi::NGHTTP2_ORIGIN => {
-      handle_origin_frame(session, frame);
-    }
-    _ => {}
+  } else if ft == ffi::NGHTTP2_PRIORITY as u32 {
+    handle_priority_frame(session, frame);
+  } else if ft == ffi::NGHTTP2_GOAWAY as u32 {
+    handle_goaway_frame(session, frame);
+  } else if ft == ffi::NGHTTP2_PING as u32 {
+    handle_ping_frame(session);
+  } else if ft == ffi::NGHTTP2_ALTSVC as u32 {
+    handle_alt_svc_frame(session, frame);
+  } else if ft == ffi::NGHTTP2_ORIGIN as u32 {
+    handle_origin_frame(session, frame);
   }
 
   0
@@ -1097,10 +1096,12 @@ pub unsafe extern "C" fn on_stream_read_callback(
 
         if pending_data.is_empty() && *stream.writable_ended.borrow() {
           // SAFETY: data_flags is a valid out-pointer per nghttp2 contract
-          unsafe { *data_flags |= ffi::NGHTTP2_DATA_FLAG_EOF };
+          unsafe { *data_flags |= ffi::NGHTTP2_DATA_FLAG_EOF as u32 };
           if stream.has_trailers() {
             // SAFETY: data_flags is a valid out-pointer per nghttp2 contract
-            unsafe { *data_flags |= ffi::NGHTTP2_DATA_FLAG_NO_END_STREAM };
+            unsafe {
+              *data_flags |= ffi::NGHTTP2_DATA_FLAG_NO_END_STREAM as u32
+            };
             stream.on_trailers();
           }
           stream.complete_shutdown();
@@ -1112,10 +1113,10 @@ pub unsafe extern "C" fn on_stream_read_callback(
     if pending_data.is_empty() {
       if *stream.writable_ended.borrow() {
         // SAFETY: data_flags is a valid out-pointer per nghttp2 contract
-        unsafe { *data_flags |= ffi::NGHTTP2_DATA_FLAG_EOF };
+        unsafe { *data_flags |= ffi::NGHTTP2_DATA_FLAG_EOF as u32 };
         if stream.has_trailers() {
           // SAFETY: data_flags is a valid out-pointer per nghttp2 contract
-          unsafe { *data_flags |= ffi::NGHTTP2_DATA_FLAG_NO_END_STREAM };
+          unsafe { *data_flags |= ffi::NGHTTP2_DATA_FLAG_NO_END_STREAM as u32 };
           stream.on_trailers();
         }
         stream.complete_shutdown();
