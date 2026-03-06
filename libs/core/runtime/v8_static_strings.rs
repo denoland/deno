@@ -33,6 +33,8 @@ v8_static_strings!(
   SET_TICK_INFO = "__setTickInfo",
   SET_IMMEDIATE_INFO = "__setImmediateInfo",
   RUN_IMMEDIATE_CALLBACKS = "runImmediateCallbacks",
+  PROCESS_TIMERS = "__processTimers",
+  SET_TIMER_INFO = "__setTimerInfo",
   FILENAME = "filename",
   INSTANCE = "Instance",
   MAIN = "main",

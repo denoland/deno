@@ -186,6 +186,32 @@ pub fn op_timer_unref(scope: &mut v8::PinScope, id: f64) {
   context_state.timers.unref_timer(id as _);
 }
 
+/// Schedule the user-timer wake-up.
+///
+/// - `delay_ms >= 0`: schedule a wakeup in `delay_ms` milliseconds
+/// - `delay_ms == -1`: ref the timer handle (keep event loop alive)
+/// - `delay_ms == -2`: unref the timer handle (allow event loop to exit)
+#[op2(fast)]
+pub fn op_timer_schedule(scope: &mut v8::PinScope, delay_ms: f64) {
+  let context_state = JsRealm::state_from_scope(scope);
+  if delay_ms == -1.0 {
+    context_state.user_timer.ref_timer();
+  } else if delay_ms == -2.0 {
+    context_state.user_timer.unref_timer();
+  } else {
+    context_state
+      .user_timer
+      .schedule(std::time::Duration::from_millis(delay_ms as u64));
+  }
+}
+
+/// Get the current monotonic time in milliseconds (relative to process start).
+#[op2(fast)]
+pub fn op_timer_now(scope: &mut v8::PinScope) -> f64 {
+  let context_state = JsRealm::state_from_scope(scope);
+  context_state.user_timer.now()
+}
+
 #[op2(reentrant)]
 pub fn op_lazy_load_esm(
   scope: &mut v8::PinScope,

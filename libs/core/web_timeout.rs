@@ -696,6 +696,74 @@ impl HighResTimerLock {
   }
 }
 
+/// A single-deadline timer for JS-managed user timers.
+///
+/// Unlike [`WebTimers`] which stores ALL timers in a Rust BTreeSet,
+/// `UserTimer` is a simple "wake me at time T" mechanism. The JS side
+/// manages timer bucketing, linked lists, and priority queues (matching
+/// Node.js's architecture). Rust just needs to know when to wake up.
+pub(crate) struct UserTimer<R: Reactor> {
+  reactor: R,
+  sleep: OwnedPtr<MutableSleep<R::Timer>>,
+  base_instant: R::Instant,
+  /// Whether the timer handle is "ref'd" (keeps event loop alive).
+  refed: Cell<bool>,
+}
+
+impl<R: Reactor + Default> Default for UserTimer<R> {
+  fn default() -> Self {
+    Self::new(R::default())
+  }
+}
+
+impl<R: Reactor> UserTimer<R> {
+  pub fn new(reactor: R) -> Self {
+    Self {
+      base_instant: reactor.now(),
+      sleep: MutableSleep::new(),
+      reactor,
+      refed: Cell::new(false),
+    }
+  }
+
+  /// Schedule a wakeup after `delay` from now.
+  pub fn schedule(&self, delay: Duration) {
+    let deadline = self.reactor.now().checked_add(delay).unwrap();
+    self.sleep.change(self.reactor.timer(deadline));
+  }
+
+  /// Cancel any pending wakeup.
+  pub fn clear(&self) {
+    self.sleep.clear();
+  }
+
+  /// Poll for the scheduled wakeup.
+  pub fn poll_ready(&self, cx: &mut Context) -> Poll<()> {
+    self.sleep.poll_ready(cx)
+  }
+
+  /// Get the current monotonic time in milliseconds since this timer
+  /// was created (process start).
+  pub fn now(&self) -> f64 {
+    self.base_instant.elapsed().as_secs_f64() * 1000.0
+  }
+
+  /// Mark the timer handle as ref'd (keeps event loop alive).
+  pub fn ref_timer(&self) {
+    self.refed.set(true);
+  }
+
+  /// Mark the timer handle as unref'd (allows event loop to exit).
+  pub fn unref_timer(&self) {
+    self.refed.set(false);
+  }
+
+  /// Whether the timer handle is ref'd.
+  pub fn is_refed(&self) -> bool {
+    self.refed.get()
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use std::future::Future;

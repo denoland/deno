@@ -38,6 +38,8 @@
     __resolvePromise,
     FixedQueue,
   } = window.__infra;
+  const __timers = window.__timers;
+  delete window.__timers;
   const {
     op_abort_wasm_streaming,
     op_current_user_call_site,
@@ -418,6 +420,15 @@
       return;
     }
     processTicksAndRejections();
+  }
+
+  // Wire runNextTicks into the timer module so processTimers can
+  // interleave nextTick drains between timer callbacks.
+  __timers.setRunNextTicks(runNextTicks);
+
+  // Called from Rust at phase 1c of the event loop when the user timer fires.
+  function __processTimers(now) {
+    return __timers.processTimers(now);
   }
 
   // Phase 2: Resolve completed async ops. Called from Rust with flat args:
@@ -920,6 +931,8 @@
     __handleRejections,
     __setTimerDepth,
     __reportException,
+    __processTimers,
+    __setTimerInfo: __timers.__setTimerInfo,
     immediateRefCount(increase) {
       if (increase) {
         immediateInfo[kImmRefCount]++;
@@ -1115,6 +1128,17 @@
     refTimer: (id) => op_timer_ref(id),
     unrefTimer: (id) => op_timer_unref(id),
     getTimerDepth: () => timerDepth,
+    // New JS-managed timer API
+    createTimer: __timers.createTimer,
+    cancelTimer2: __timers.cancelTimer,
+    refreshTimer: __timers.refreshTimer,
+    refTimer2: __timers.refTimer,
+    unrefTimer2: __timers.unrefTimer,
+    timerInsert: __timers.insert,
+    timerIncRefCount: __timers.incRefCount,
+    timerDecRefCount: __timers.decRefCount,
+    timerKRefed: __timers.kRefed,
+    TIMEOUT_MAX: __timers.TIMEOUT_MAX,
     currentUserCallSite,
     wrapConsole,
     v8Console,

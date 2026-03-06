@@ -37,6 +37,7 @@ use crate::reactor::DefaultReactor;
 use crate::stats::RuntimeActivityTraces;
 use crate::tasks::V8TaskSpawnerFactory;
 use crate::uv_compat::UvLoopInner;
+use crate::web_timeout::UserTimer;
 use crate::web_timeout::WebTimers;
 
 pub const CONTEXT_STATE_SLOT_INDEX: i32 = 1;
@@ -76,6 +77,7 @@ pub(crate) const IMM_IDX_HAS_OUTSTANDING: usize = 2;
 pub struct ContextState {
   pub(crate) task_spawner_factory: Arc<V8TaskSpawnerFactory>,
   pub(crate) timers: WebTimers<(v8::Global<v8::Function>, u32), DefaultReactor>,
+  pub(crate) user_timer: UserTimer<DefaultReactor>,
   // Per-phase JS callbacks (replacing monolithic eventLoopTick)
   pub(crate) js_resolve_ops_cb: RefCell<Option<v8::Global<v8::Function>>>,
   pub(crate) js_drain_next_tick_and_macrotasks_cb:
@@ -85,6 +87,7 @@ pub struct ContextState {
   pub(crate) js_report_exception_cb: RefCell<Option<v8::Global<v8::Function>>>,
   pub(crate) run_immediate_callbacks_cb:
     RefCell<Option<v8::Global<v8::Function>>>,
+  pub(crate) js_process_timers_cb: RefCell<Option<v8::Global<v8::Function>>>,
   pub(crate) js_wasm_streaming_cb: RefCell<Option<v8::Global<v8::Function>>>,
   pub(crate) wasm_instance_fn: RefCell<Option<v8::Global<v8::Function>>>,
   pub(crate) unrefed_ops: UnrefedOps,
@@ -104,6 +107,9 @@ pub struct ContextState {
   /// Shared immediate info buffer exposed to JS as a Uint32Array.
   /// Indices: IMM_IDX_COUNT, IMM_IDX_REF_COUNT, IMM_IDX_HAS_OUTSTANDING
   pub(crate) immediate_info: Box<[u32; 3]>,
+  /// Shared timer info buffer exposed to JS as an Int32Array.
+  /// Index 0: refed timer count (managed by JS)
+  pub(crate) timer_info: Box<[i32; 1]>,
   pub(crate) external_ops_tracker: ExternalOpsTracker,
   pub(crate) ext_import_meta_proto: RefCell<Option<v8::Global<v8::Object>>>,
   /// Phase-specific state for the libuv-style event loop.
@@ -153,6 +159,7 @@ impl ContextState {
       js_set_timer_depth_cb: Default::default(),
       js_report_exception_cb: Default::default(),
       run_immediate_callbacks_cb: Default::default(),
+      js_process_timers_cb: Default::default(),
       js_wasm_streaming_cb: Default::default(),
       wasm_instance_fn: Default::default(),
       activity_traces: Default::default(),
@@ -162,6 +169,8 @@ impl ContextState {
       pending_ops: op_driver,
       task_spawner_factory: Default::default(),
       timers: Default::default(),
+      user_timer: Default::default(),
+      timer_info: Box::new([0i32; 1]),
       unrefed_ops,
       external_ops_tracker,
       ext_import_meta_proto: Default::default(),
