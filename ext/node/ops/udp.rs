@@ -299,7 +299,18 @@ fn ipv6_interface_index(interface_address: &str) -> Result<u32, NodeUdpError> {
       // acceptable as "default selection" (matches libuv behavior)
       return Ok(index);
     }
-    #[cfg(not(unix))]
+    #[cfg(windows)]
+    {
+      let name = std::ffi::CString::new(scope_id).map_err(|_| einval())?;
+      // SAFETY: name is a valid CString
+      let index = unsafe {
+        windows_sys::Win32::NetworkManagement::IpHelper::if_nametoindex(
+          name.as_ptr() as *const u8,
+        )
+      };
+      return Ok(index);
+    }
+    #[cfg(not(any(unix, windows)))]
     return Ok(0);
   }
 
