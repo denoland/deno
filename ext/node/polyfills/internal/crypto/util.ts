@@ -72,23 +72,8 @@ export const ellipticCurves: Array<EllipticCurve> = [
   }, // NIST P-224 EC
 ];
 
-const supportedCiphers = [
-  "aes-128-ecb",
-  "aes-192-ecb",
-  "aes-256-ecb",
-  "aes-128-cbc",
-  "aes-256-cbc",
-  "aes128",
-  "aes256",
-  "aes-128-gcm",
-  "aes-256-gcm",
-  "aes-128-ctr",
-  "aes-192-ctr",
-  "aes-256-ctr",
-];
-
-// OpenSSL NID values and cipher metadata
-// NIDs from OpenSSL's obj_mac.h
+// OpenSSL NID values and cipher metadata.
+// NID values sourced from OpenSSL's include/openssl/obj_mac.h.
 interface CipherInfoResult {
   name: string;
   nid: number;
@@ -156,6 +141,14 @@ const cipherInfoTable: CipherInfoResult[] = [
     mode: "gcm",
   },
   {
+    name: "aes-192-gcm",
+    nid: 898,
+    blockSize: 1,
+    ivLength: 12,
+    keyLength: 24,
+    mode: "gcm",
+  },
+  {
     name: "aes-256-gcm",
     nid: 901,
     blockSize: 1,
@@ -203,7 +196,7 @@ cipherInfoByName.set("aes192", cipherInfoByName.get("aes-192-cbc")!);
 cipherInfoByName.set("aes256", cipherInfoByName.get("aes-256-cbc")!);
 
 export function getCiphers(): string[] {
-  return supportedCiphers;
+  return [...cipherInfoByName.keys()];
 }
 
 const hashBlockSizes: Record<string, number> = {

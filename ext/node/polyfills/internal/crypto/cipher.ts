@@ -223,7 +223,8 @@ export class Cipheriv extends Transform implements Cipher {
       authTagLength,
     );
     this.#needsBlockCache =
-      !(cipher == "aes-128-gcm" || cipher == "aes-256-gcm" ||
+      !(cipher == "aes-128-gcm" || cipher == "aes-192-gcm" ||
+        cipher == "aes-256-gcm" ||
         cipher == "aes-128-ctr" || cipher == "aes-192-ctr" ||
         cipher == "aes-256-ctr");
     if (this.#context == 0) {
@@ -453,7 +454,8 @@ export class Decipheriv extends Transform implements Cipher {
       authTagLength,
     );
     this.#needsBlockCache =
-      !(cipher == "aes-128-gcm" || cipher == "aes-256-gcm" ||
+      !(cipher == "aes-128-gcm" || cipher == "aes-192-gcm" ||
+        cipher == "aes-256-gcm" ||
         cipher == "aes-128-ctr" || cipher == "aes-192-ctr" ||
         cipher == "aes-256-ctr");
     if (this.#context == 0) {

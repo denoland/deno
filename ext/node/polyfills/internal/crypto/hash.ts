@@ -262,12 +262,15 @@ class HmacImpl extends Transform {
     let result;
     try {
       result = this.#hash.digest();
-    } catch {
-      // Already finalized - return empty like Node.js
-      if (encoding && encoding !== "buffer") {
-        return "";
+    } catch (err) {
+      if (err instanceof ERR_CRYPTO_HASH_FINALIZED) {
+        // Already finalized - return empty like Node.js
+        if (encoding && encoding !== "buffer") {
+          return "";
+        }
+        return Buffer.alloc(0);
       }
-      return Buffer.alloc(0);
+      throw err;
     }
 
     return new Hash(this.#algorithm).update(this.#opad).update(result)
