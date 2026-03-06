@@ -369,6 +369,54 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
         bundle_provider: shared.bundle_provider.clone(),
       };
       let maybe_initial_cwd = shared.options.maybe_initial_cwd.clone();
+      // Apply resource limits to v8::CreateParams if specified.
+      // Uses individual V8 ResourceConstraints setters to match Node.js
+      // behavior (node_worker.cc UpdateResourceConstraints).
+      let (create_params, resolved_limits) = if let Some(ref limits) =
+        args.resource_limits
+      {
+        let mut params =
+          create_isolate_create_params(&shared.sys).unwrap_or_default();
+
+        if let Some(max_old) =
+          limits.max_old_generation_size_mb.filter(|&v| v > 0)
+        {
+          params =
+            params.set_max_old_generation_size_in_bytes(max_old * 1024 * 1024);
+        }
+        if let Some(max_young) =
+          limits.max_young_generation_size_mb.filter(|&v| v > 0)
+        {
+          params = params
+            .set_max_young_generation_size_in_bytes(max_young * 1024 * 1024);
+        }
+        if let Some(code_range) = limits.code_range_size_mb.filter(|&v| v > 0) {
+          params =
+            params.set_code_range_size_in_bytes(code_range * 1024 * 1024);
+        }
+
+        let mb = 1024 * 1024;
+        // Read back resolved values (including V8 defaults for
+        // unspecified fields), matching Node.js behavior.
+        // Note: integer division truncates sub-MB fractions, which is fine
+        // since V8 and Node.js both work in whole-MB granularity here.
+        let resolved = deno_node::ops::worker_threads::ResolvedResourceLimits {
+          max_young_generation_size_mb: params
+            .max_young_generation_size_in_bytes()
+            / mb,
+          max_old_generation_size_mb: params.max_old_generation_size_in_bytes()
+            / mb,
+          code_range_size_mb: params.code_range_size_in_bytes() / mb,
+          stack_size_mb: limits
+            .stack_size_mb
+            .unwrap_or(deno_node::ops::worker_threads::DEFAULT_STACK_SIZE_MB),
+        };
+
+        (Some(params), Some(resolved))
+      } else {
+        (create_isolate_create_params(&shared.sys), None)
+      };
+
       let options = WebWorkerOptions {
         name: args.name,
         main_module: args.main_module.clone(),
@@ -403,7 +451,7 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
         },
         extensions: vec![],
         startup_snapshot: shared.options.startup_snapshot,
-        create_params: create_isolate_create_params(&shared.sys),
+        create_params,
         unsafely_ignore_certificate_errors: shared
           .options
           .unsafely_ignore_certificate_errors
@@ -424,7 +472,35 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
         enable_stack_trace_arg_in_ops: has_trace_permissions_enabled(),
       };
 
-      WebWorker::bootstrap_from_options(services, options)
+      let has_resource_limits = args.resource_limits.is_some();
+      let (mut worker, handle, bootstrap_options) =
+        WebWorker::from_options(services, options);
+
+      // Store resolved resource limits in the worker's op state BEFORE
+      // bootstrapping, so the worker_threads polyfill can read them
+      // via op during init.
+      if let Some(resolved) = resolved_limits {
+        worker.js_runtime.op_state().borrow_mut().put(resolved);
+      }
+
+      worker.bootstrap(&bootstrap_options);
+
+      // When resource limits are set, install a near-heap-limit callback
+      // that terminates the worker's isolate gracefully instead of
+      // crashing the entire process with a V8 fatal OOM.
+      if has_resource_limits {
+        let ts_handle = worker.js_runtime.v8_isolate().thread_safe_handle();
+        let oom_flag = worker.oom_triggered.clone();
+        worker.js_runtime.add_near_heap_limit_callback(
+          move |current_limit, _initial_limit| {
+            oom_flag.store(true, std::sync::atomic::Ordering::SeqCst);
+            ts_handle.terminate_execution();
+            current_limit * 2
+          },
+        );
+      }
+
+      (worker, handle)
     })
   }
 }
