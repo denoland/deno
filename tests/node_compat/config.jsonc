@@ -911,7 +911,6 @@
     "parallel/test-http2-zero-length-write.js": {},
     "parallel/test-https-connecting-to-http.js": {},
     "parallel/test-https-foafssl.js": {},
-    "parallel/test-https-localaddress-bind-error.js": {},
     "parallel/test-https-selfsigned-no-keycertsign-no-crash.js": {},
     "parallel/test-icu-data-dir.js": {},
     "parallel/test-icu-stringwidth.js": {},
