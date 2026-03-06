@@ -250,6 +250,11 @@
     "parallel/test-console-sync-write-error.js": {},
     "parallel/test-console-table.js": {},
     "parallel/test-console-with-frozen-intrinsics.js": {},
+    "parallel/test-crypto-cipheriv-decipheriv.js": {
+      "exitCode": 1,
+      "output": "[WILDCARD]Missing expected exception.\n  assert.throws(\n[WILDCARD]test-crypto-cipheriv-decipheriv.js:169[WILDCARD]"
+    },
+    "parallel/test-crypto-classes.js": {},
     "parallel/test-crypto-dh-constructor.js": {},
     "parallel/test-crypto-dh-leak.js": {},
     "parallel/test-crypto-dh-odd-key.js": {},
