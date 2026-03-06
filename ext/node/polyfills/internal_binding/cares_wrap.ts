@@ -221,8 +221,38 @@ function fqdnToHostname(fqdn: string): string {
   return fqdn.replace(/\.$/, "");
 }
 
+let systemDnsServers: [string, number][] | null = null;
+
+function getSystemDnsServers(): [string, number][] {
+  if (systemDnsServers !== null) {
+    return systemDnsServers;
+  }
+
+  systemDnsServers = [];
+
+  try {
+    const resolvConf = Deno.readTextFileSync("/etc/resolv.conf");
+    for (const line of resolvConf.split("\n")) {
+      const trimmed = line.trim();
+      if (trimmed.startsWith("#") || trimmed.startsWith(";")) continue;
+      const match = trimmed.match(/^nameserver\s+(.+)$/);
+      if (match) {
+        const addr = match[1].trim();
+        if (addr) {
+          systemDnsServers.push([addr, 53]);
+        }
+      }
+    }
+  } catch {
+    // If we can't read resolv.conf (e.g., Windows or permission denied),
+    // return empty.
+  }
+
+  return systemDnsServers;
+}
+
 export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
-  #servers: [string, number][] = [];
+  #servers: [string, number][] | null = null;
   #timeout: number;
   #tries: number;
 
@@ -237,7 +267,7 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
     let code: number;
     let ret: Awaited<ReturnType<typeof Deno.resolveDns>>;
 
-    if (this.#servers.length) {
+    if (this.#servers !== null && this.#servers.length) {
       for (const [ipAddr, port] of this.#servers) {
         const resolveOptions = {
           nameServer: {
@@ -311,11 +341,13 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
 
       await Promise.allSettled([
         this.#query(name, "A").then(({ ret }) => {
-          ret.forEach((record) => records.push({ type: "A", address: record }));
+          ret.forEach((record) =>
+            records.push({ type: "A", address: record, ttl: 0 })
+          );
         }),
         this.#query(name, "AAAA").then(({ ret }) => {
           (ret as string[]).forEach((record) =>
-            records.push({ type: "AAAA", address: record })
+            records.push({ type: "AAAA", address: record, ttl: 0 })
           );
         }),
         this.#query(name, "CAA").then(({ ret }) => {
@@ -572,6 +604,9 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
   }
 
   getServers(): [string, number][] {
+    if (this.#servers === null) {
+      return getSystemDnsServers();
+    }
     return this.#servers;
   }
 
