@@ -14,6 +14,7 @@ use deno_fs::FileSystemRc;
 use deno_fs::OpenOptions;
 use deno_io::fs::FileResource;
 use deno_permissions::CheckedPath;
+use deno_permissions::CheckedPathBuf;
 use deno_permissions::OpenAccessKind;
 use deno_permissions::PermissionsContainer;
 use serde::Serialize;
@@ -606,4 +607,651 @@ pub async fn op_node_rmdir(
   };
   fs.rmdir_async(path.into_owned()).await?;
   Ok(())
+}
+
+#[derive(Debug, Serialize)]
+#[serde(tag = "kind")]
+pub enum CpErrorKind {
+  /// Maps to ERR_FS_CP_EINVAL on JS side
+  EInval { message: String, path: String },
+  /// Maps to ERR_FS_CP_DIR_TO_NON_DIR on JS side
+  DirToNonDir { message: String, path: String },
+  /// Maps to ERR_FS_CP_NON_DIR_TO_DIR on JS side
+  NonDirToDir { message: String, path: String },
+  /// Maps to ERR_FS_CP_EEXIST on JS side
+  EExist { message: String, path: String },
+  /// Maps to ERR_FS_CP_SYMLINK_TO_SUBDIRECTORY on JS side
+  SymlinkToSubdirectory { message: String, path: String },
+}
+
+#[derive(Debug, Serialize)]
+pub struct CpCheckPathsResult {
+  pub src_dev: u64,
+  pub src_ino: u64,
+  pub dest_exists: bool,
+  pub error: Option<CpErrorKind>,
+}
+
+/// Check if two stat results refer to the same file (same dev + ino).
+fn are_identical_stat(
+  src_stat: &deno_io::fs::FsStat,
+  dest_stat: &deno_io::fs::FsStat,
+) -> bool {
+  match (dest_stat.ino, src_stat.ino) {
+    (Some(dest_ino), Some(src_ino)) if dest_ino > 0 && dest_stat.dev > 0 => {
+      dest_ino == src_ino && dest_stat.dev == src_stat.dev
+    }
+    _ => false,
+  }
+}
+
+/// Return true if dest is a subdir of src, otherwise false.
+/// It only checks the path strings.
+fn is_src_subdir(src: &str, dest: &str) -> bool {
+  let src_resolved =
+    std::path::absolute(src).unwrap_or_else(|_| PathBuf::from(src));
+  let dest_resolved =
+    std::path::absolute(dest).unwrap_or_else(|_| PathBuf::from(dest));
+
+  let src_components = src_resolved.components().collect::<Vec<_>>();
+  let dest_components = dest_resolved.components().collect::<Vec<_>>();
+
+  src_components
+    .iter()
+    .enumerate()
+    .all(|(i, c)| dest_components.get(i).map_or(false, |d| d == c))
+}
+
+/// Check read permission for a path in a cp operation.
+fn check_cp_read(
+  state: &Rc<RefCell<OpState>>,
+  path: &str,
+) -> Result<CheckedPathBuf, FsError> {
+  let mut state = state.borrow_mut();
+  Ok(
+    state
+      .borrow_mut::<PermissionsContainer>()
+      .check_open(
+        Cow::Owned(PathBuf::from(path)),
+        OpenAccessKind::Read,
+        Some("node:fs.cp"),
+      )?
+      .into_owned(),
+  )
+}
+
+/// Check write permission for a path in a cp operation.
+fn check_cp_write(
+  state: &Rc<RefCell<OpState>>,
+  path: &str,
+) -> Result<CheckedPathBuf, FsError> {
+  let mut state = state.borrow_mut();
+  Ok(
+    state
+      .borrow_mut::<PermissionsContainer>()
+      .check_open(
+        Cow::Owned(PathBuf::from(path)),
+        OpenAccessKind::Write,
+        Some("node:fs.cp"),
+      )?
+      .into_owned(),
+  )
+}
+
+/// Validates src and dest paths for a cp operation.
+/// Checks identity, directory type conflicts, and subdirectory relationships.
+async fn check_paths_impl(
+  state: &Rc<RefCell<OpState>>,
+  fs: &FileSystemRc,
+  src: &str,
+  dest: &str,
+  dereference: bool,
+  skip_permission_check: bool,
+) -> Result<CpCheckPathsResult, FsError> {
+  let src_stat = if skip_permission_check {
+    // When recursing, permissions already checked on parent
+    let src_path = CheckedPathBuf::unsafe_new(PathBuf::from(src));
+    if dereference {
+      fs.stat_async(src_path).await?
+    } else {
+      fs.lstat_async(src_path).await?
+    }
+  } else {
+    // Check permissions and stat
+    let src_path = check_cp_read(state, src)?;
+    if dereference {
+      fs.stat_async(src_path).await?
+    } else {
+      fs.lstat_async(src_path).await?
+    }
+  };
+
+  let dest_result = if skip_permission_check {
+    // When recursing, permissions already checked on parent
+    let dest_path = CheckedPathBuf::unsafe_new(PathBuf::from(dest));
+    if dereference {
+      fs.stat_async(dest_path).await
+    } else {
+      fs.lstat_async(dest_path).await
+    }
+  } else {
+    // Check permissions and stat
+    let dest_path = check_cp_read(state, dest)?;
+    if dereference {
+      fs.stat_async(dest_path).await
+    } else {
+      fs.lstat_async(dest_path).await
+    }
+  };
+
+  let dest_stat = match dest_result {
+    Ok(stat) => Some(stat),
+    Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+    Err(e) => return Err(FsError::Fs(e)),
+  };
+
+  let src_dev = src_stat.dev;
+  let src_ino = src_stat.ino.unwrap_or(0);
+
+  if let Some(ref dest_stat) = dest_stat {
+    if are_identical_stat(&src_stat, dest_stat) {
+      return Ok(CpCheckPathsResult {
+        src_dev,
+        src_ino,
+        dest_exists: true,
+        error: Some(CpErrorKind::EInval {
+          message: "src and dest cannot be the same".to_string(),
+          path: dest.to_string(),
+        }),
+      });
+    }
+    if src_stat.is_directory && !dest_stat.is_directory {
+      return Ok(CpCheckPathsResult {
+        src_dev,
+        src_ino,
+        dest_exists: true,
+        error: Some(CpErrorKind::DirToNonDir {
+          message: format!(
+            "cannot overwrite non-directory {} with directory {}",
+            dest, src
+          ),
+          path: dest.to_string(),
+        }),
+      });
+    }
+    if !src_stat.is_directory && dest_stat.is_directory {
+      return Ok(CpCheckPathsResult {
+        src_dev,
+        src_ino,
+        dest_exists: true,
+        error: Some(CpErrorKind::NonDirToDir {
+          message: format!(
+            "cannot overwrite directory {} with non-directory {}",
+            dest, src
+          ),
+          path: dest.to_string(),
+        }),
+      });
+    }
+  }
+
+  if src_stat.is_directory && is_src_subdir(src, dest) {
+    return Ok(CpCheckPathsResult {
+      src_dev,
+      src_ino,
+      dest_exists: dest_stat.is_some(),
+      error: Some(CpErrorKind::EInval {
+        message: format!(
+          "cannot copy {} to a subdirectory of self {}",
+          src, dest
+        ),
+        path: dest.to_string(),
+      }),
+    });
+  }
+
+  Ok(CpCheckPathsResult {
+    src_dev,
+    src_ino,
+    dest_exists: dest_stat.is_some(),
+    error: None,
+  })
+}
+
+/// Async op: validates src and dest paths for a cp operation.
+/// Returns a result with src stat info, dest existence, and optional error.
+#[op2(stack_trace)]
+#[serde]
+pub async fn op_node_cp_check_paths(
+  state: Rc<RefCell<OpState>>,
+  #[string] src: String,
+  #[string] dest: String,
+  dereference: bool,
+) -> Result<CpCheckPathsResult, FsError> {
+  let fs = {
+    let state = state.borrow();
+    state.borrow::<FileSystemRc>().clone()
+  };
+
+  check_paths_impl(&state, &fs, &src, &dest, dereference, false).await
+}
+
+/// Async op: validates src and dest paths for recursive cp operations.
+/// Skips permission checks since parent directories are already validated.
+/// Returns a result with src stat info, dest existence, and optional error.
+#[op2(stack_trace)]
+#[serde]
+pub async fn op_node_cp_check_paths_recursive(
+  state: Rc<RefCell<OpState>>,
+  #[string] src: String,
+  #[string] dest: String,
+  dereference: bool,
+) -> Result<CpCheckPathsResult, FsError> {
+  let fs = {
+    let state = state.borrow();
+    state.borrow::<FileSystemRc>().clone()
+  };
+
+  check_paths_impl(&state, &fs, &src, &dest, dereference, true).await
+}
+
+/// Async op: validates src and dest paths, checks parent paths, and ensures
+/// parent directory exists - all in a single operation for better performance.
+/// Returns a result with src stat info, dest existence, and optional error.
+#[op2(stack_trace)]
+#[serde]
+pub async fn op_node_cp_validate_and_prepare(
+  state: Rc<RefCell<OpState>>,
+  #[string] src: String,
+  #[string] dest: String,
+  dereference: bool,
+) -> Result<CpCheckPathsResult, FsError> {
+  let fs = {
+    let state = state.borrow();
+    state.borrow::<FileSystemRc>().clone()
+  };
+
+  // First check paths
+  let check_result =
+    check_paths_impl(&state, &fs, &src, &dest, dereference, false).await?;
+
+  // If there's an error from check_paths, return early
+  if check_result.error.is_some() {
+    return Ok(check_result);
+  }
+
+  // Check parent paths
+  let parent_error = check_parent_paths_impl(
+    &state,
+    &fs,
+    &src,
+    check_result.src_dev,
+    check_result.src_ino,
+    &dest,
+  )
+  .await?;
+
+  // If there's an error from check_parent_paths, return it
+  if let Some(error) = parent_error {
+    return Ok(CpCheckPathsResult {
+      src_dev: check_result.src_dev,
+      src_ino: check_result.src_ino,
+      dest_exists: check_result.dest_exists,
+      error: Some(error),
+    });
+  }
+
+  // Ensure parent dir exists
+  ensure_parent_dir_impl(&state, &fs, &dest).await?;
+
+  // Return success result
+  Ok(check_result)
+}
+
+/// Recursively check if dest parent is a subdirectory of src.
+/// It works for all file types including symlinks since it
+/// checks the src and dest inodes. It starts from the deepest
+/// parent and stops once it reaches the src parent or the root path.
+async fn check_parent_paths_impl(
+  state: &Rc<RefCell<OpState>>,
+  fs: &FileSystemRc,
+  src: &str,
+  src_dev: u64,
+  src_ino: u64,
+  dest: &str,
+) -> Result<Option<CpErrorKind>, FsError> {
+  let src_parent = Path::new(src)
+    .parent()
+    .map(|p| p.to_path_buf())
+    .unwrap_or_default();
+  let src_parent = std::fs::canonicalize(&src_parent)
+    .unwrap_or_else(|_| std::path::absolute(&src_parent).unwrap_or(src_parent));
+
+  let mut current = Path::new(dest)
+    .parent()
+    .map(|p| p.to_path_buf())
+    .unwrap_or_default();
+  current = std::fs::canonicalize(&current)
+    .unwrap_or_else(|_| std::path::absolute(&current).unwrap_or(current));
+
+  loop {
+    if current == src_parent {
+      return Ok(None);
+    }
+
+    // Check if current is the root
+    if current.parent().is_none() || current.parent() == Some(&current) {
+      return Ok(None);
+    }
+
+    let current_str = current.to_str().unwrap_or_default();
+    let checked_path = check_cp_read(state, current_str)?;
+    let stat_result = fs.stat_async(checked_path).await;
+    match stat_result {
+      Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+      Err(e) => return Err(FsError::Fs(e)),
+      Ok(dest_stat) => {
+        // Check if src and current parent are identical (same dev + ino)
+        if let Some(dest_ino) = dest_stat.ino {
+          if dest_ino == src_ino && dest_stat.dev == src_dev {
+            return Ok(Some(CpErrorKind::EInval {
+              message: format!(
+                "cannot copy {} to a subdirectory of self {}",
+                src, dest
+              ),
+              path: dest.to_string(),
+            }));
+          }
+        }
+      }
+    }
+
+    current = match current.parent() {
+      Some(p) => p.to_path_buf(),
+      None => return Ok(None),
+    };
+  }
+}
+
+/// Async op: checks that dest is not a subdirectory of src.
+/// Returns null if OK, or a CpErrorKind object if the check fails.
+#[op2(stack_trace)]
+#[serde]
+pub async fn op_node_cp_check_parent_paths(
+  state: Rc<RefCell<OpState>>,
+  #[string] src: String,
+  #[string] dest: String,
+  #[number] src_dev: u64,
+  #[number] src_ino: u64,
+) -> Result<Option<CpErrorKind>, FsError> {
+  let fs = {
+    let state = state.borrow();
+    state.borrow::<FileSystemRc>().clone()
+  };
+
+  check_parent_paths_impl(&state, &fs, &src, src_dev, src_ino, &dest).await
+}
+
+/// Ensures the parent directory of `dest` exists, creating it recursively
+/// if needed.
+async fn ensure_parent_dir_impl(
+  state: &Rc<RefCell<OpState>>,
+  fs: &FileSystemRc,
+  dest: &str,
+) -> Result<(), FsError> {
+  let dest_parent = Path::new(dest)
+    .parent()
+    .map(|p| p.to_path_buf())
+    .unwrap_or_default();
+
+  let parent_str = dest_parent.to_str().unwrap_or_default();
+  let checked_parent = check_cp_read(state, parent_str)?;
+  let exists = fs.exists_async(checked_parent).await?;
+  if !exists {
+    let checked_parent = check_cp_write(state, parent_str)?;
+    fs.mkdir_async(checked_parent, true, None).await?;
+  }
+  Ok(())
+}
+
+/// Async op: ensures the parent directory of dest exists.
+#[op2(stack_trace)]
+pub async fn op_node_cp_ensure_parent_dir(
+  state: Rc<RefCell<OpState>>,
+  #[string] dest: String,
+) -> Result<(), FsError> {
+  let fs = {
+    let state = state.borrow();
+    state.borrow::<FileSystemRc>().clone()
+  };
+
+  ensure_parent_dir_impl(&state, &fs, &dest).await
+}
+
+async fn handle_timestamps_and_mode(
+  state: &Rc<RefCell<OpState>>,
+  fs: &FileSystemRc,
+  src: &str,
+  dest: &str,
+  src_mode: u32,
+) -> Result<(), FsError> {
+  // Make sure the file is writable before setting the timestamp
+  // otherwise open fails with EPERM when invoked with 'r+'
+  if file_is_not_writable(src_mode) {
+    set_dest_mode(state, fs, dest, src_mode | 0o200).await?;
+  }
+  // Set timestamps from a fresh stat of src (atime is modified by read)
+  set_dest_timestamps(state, fs, src, dest).await?;
+  set_dest_mode(state, fs, dest, src_mode).await
+}
+
+fn file_is_not_writable(mode: u32) -> bool {
+  (mode & 0o200) == 0
+}
+
+async fn set_dest_mode(
+  state: &Rc<RefCell<OpState>>,
+  fs: &FileSystemRc,
+  dest: &str,
+  mode: u32,
+) -> Result<(), FsError> {
+  if mode == 0 {
+    return Ok(());
+  }
+  let dest_path = check_cp_write(state, dest)?;
+  #[cfg(unix)]
+  fs.chmod_async(dest_path, mode).await?;
+  #[cfg(not(unix))]
+  fs.chmod_async(dest_path, mode as i32).await?;
+  Ok(())
+}
+
+async fn set_dest_timestamps(
+  state: &Rc<RefCell<OpState>>,
+  fs: &FileSystemRc,
+  src: &str,
+  dest: &str,
+) -> Result<(), FsError> {
+  // Re-stat src to get fresh atime/mtime
+  let src_path = check_cp_read(state, src)?;
+  let src_stat = fs.stat_async(src_path).await?;
+
+  if let (Some(atime), Some(mtime)) = (src_stat.atime, src_stat.mtime) {
+    // FsStat stores times as milliseconds since the Unix epoch.
+    // utime_async expects split values: whole seconds + nanoseconds remainder.
+    let atime_secs = (atime / 1000) as i64;
+    // Remaining milliseconds are converted to nanoseconds.
+    let atime_nanos = ((atime % 1000) * 1_000_000) as u32;
+    let mtime_secs = (mtime / 1000) as i64;
+    // Same conversion for mtime: ms remainder -> ns.
+    let mtime_nanos = ((mtime % 1000) * 1_000_000) as u32;
+    let dest_path = check_cp_write(state, dest)?;
+    fs.utime_async(dest_path, atime_secs, atime_nanos, mtime_secs, mtime_nanos)
+      .await?;
+  }
+  Ok(())
+}
+
+/// Handle copying a single file.
+///
+/// If dest does not exist, copies src to dest directly.
+/// If dest exists and force is true, removes dest and copies.
+/// If dest exists and error_on_exist is true, returns an EExist error.
+/// Otherwise does nothing.
+///
+/// When preserve_timestamps is true, copies the timestamps from src to dest
+/// and ensures the file is writable before doing so.
+#[op2(stack_trace)]
+#[serde]
+pub async fn op_node_cp_on_file(
+  state: Rc<RefCell<OpState>>,
+  #[string] src: String,
+  #[string] dest: String,
+  #[smi] src_mode: u32,
+  dest_exists: bool,
+  force: bool,
+  error_on_exist: bool,
+  preserve_timestamps: bool,
+) -> Result<Option<CpErrorKind>, FsError> {
+  let fs = {
+    let state = state.borrow();
+    state.borrow::<FileSystemRc>().clone()
+  };
+
+  if dest_exists {
+    if force {
+      // Remove dest, then copy
+      let dest_path = check_cp_write(&state, &dest)?;
+      fs.remove_async(dest_path, false).await?;
+    } else if error_on_exist {
+      return Ok(Some(CpErrorKind::EExist {
+        message: format!("{} already exists", dest),
+        path: dest.to_string(),
+      }));
+    } else {
+      // Neither force nor errorOnExist: do nothing
+      return Ok(None);
+    }
+  }
+
+  // Copy file: read from src, write to dest
+  let src_path = check_cp_read(&state, &src)?;
+  let dest_path = check_cp_write(&state, &dest)?;
+  fs.copy_file_async(src_path, dest_path).await?;
+
+  if preserve_timestamps {
+    handle_timestamps_and_mode(&state, &fs, &src, &dest, src_mode).await?;
+  } else {
+    set_dest_mode(&state, &fs, &dest, src_mode).await?;
+  }
+
+  Ok(None)
+}
+
+/// Async op: handles copying a symlink (onLink + copyLink).
+/// Returns null on success, or a CpErrorKind on error.
+#[op2(stack_trace)]
+#[serde]
+pub async fn op_node_cp_on_link(
+  state: Rc<RefCell<OpState>>,
+  #[string] src: String,
+  #[string] dest: String,
+  dest_exists: bool,
+  verbatim_symlinks: bool,
+) -> Result<Option<CpErrorKind>, FsError> {
+  let fs = {
+    let state = state.borrow();
+    state.borrow::<FileSystemRc>().clone()
+  };
+
+  // Read symlink target
+  let src_path = check_cp_read(&state, &src)?;
+  let resolved_src_buf = fs.read_link_async(src_path).await?;
+  let mut resolved_src =
+    resolved_src_buf.to_str().unwrap_or_default().to_string();
+
+  // Resolve relative symlink targets
+  if !verbatim_symlinks && !Path::new(&resolved_src).is_absolute() {
+    if let Some(parent) = Path::new(&src).parent() {
+      resolved_src = parent
+        .join(&resolved_src)
+        .to_str()
+        .unwrap_or_default()
+        .to_string();
+    }
+  }
+
+  if !dest_exists {
+    let src_p = check_cp_read(&state, &resolved_src)?;
+    let dest_p = check_cp_write(&state, &dest)?;
+    fs.symlink_async(src_p, dest_p, None).await?;
+    return Ok(None);
+  }
+
+  // Dest exists — try to read it as a symlink
+  let dest_path = check_cp_read(&state, &dest)?;
+  let resolved_dest_result = fs.read_link_async(dest_path).await;
+  let resolved_dest = match resolved_dest_result {
+    Ok(p) => {
+      let s = p.to_str().unwrap_or_default().to_string();
+      // If relative, resolve against dirname(dest)
+      if !Path::new(&s).is_absolute() {
+        if let Some(parent) = Path::new(&dest).parent() {
+          parent.join(&s).to_str().unwrap_or_default().to_string()
+        } else {
+          s
+        }
+      } else {
+        s
+      }
+    }
+    Err(e) => {
+      let kind = e.kind();
+      // EINVAL or UNKNOWN means dest is a regular file/directory, not a symlink
+      if kind == std::io::ErrorKind::InvalidInput
+        || kind == std::io::ErrorKind::Other
+      {
+        let src_p = check_cp_read(&state, &resolved_src)?;
+        let dest_p = check_cp_write(&state, &dest)?;
+        fs.symlink_async(src_p, dest_p, None).await?;
+        return Ok(None);
+      }
+      return Err(FsError::Fs(e));
+    }
+  };
+
+  // Check subdirectory relationships
+  let src_path = check_cp_read(&state, &src)?;
+  let src_stat = fs.stat_async(src_path).await?;
+  let src_is_dir = src_stat.is_directory;
+
+  if src_is_dir && is_src_subdir(&resolved_src, &resolved_dest) {
+    return Ok(Some(CpErrorKind::EInval {
+      message: format!(
+        "cannot copy {} to a subdirectory of self {}",
+        resolved_src, resolved_dest
+      ),
+      path: dest.to_string(),
+    }));
+  }
+
+  // Do not copy if src is a subdir of dest since unlinking
+  // dest would remove src contents and create a broken symlink.
+  if src_is_dir && is_src_subdir(&resolved_dest, &resolved_src) {
+    return Ok(Some(CpErrorKind::SymlinkToSubdirectory {
+      message: format!(
+        "cannot overwrite {} with {}",
+        resolved_dest, resolved_src
+      ),
+      path: dest.to_string(),
+    }));
+  }
+
+  // Unlink dest and create new symlink
+  let dest_p = check_cp_write(&state, &dest)?;
+  fs.remove_async(dest_p, false).await?;
+  let src_p = check_cp_read(&state, &resolved_src)?;
+  let dest_p = check_cp_write(&state, &dest)?;
+  fs.symlink_async(src_p, dest_p, None).await?;
+  Ok(None)
 }
