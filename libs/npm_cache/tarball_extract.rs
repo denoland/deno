@@ -102,7 +102,9 @@ fn decompress_gzip(
   if decompressed.try_reserve(size_hint).is_err() {
     return decompress_gzip_streaming(data);
   }
-  decompressed.resize(size_hint, 0);
+  // SAFETY: we reserved `size_hint` bytes above and libdeflate will
+  // write into this buffer, then we truncate to the actual size.
+  unsafe { decompressed.set_len(size_hint) };
   match decompressor.gzip_decompress(data, &mut decompressed) {
     Ok(actual_size) => {
       decompressed.truncate(actual_size);
