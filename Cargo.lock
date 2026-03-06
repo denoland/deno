@@ -2685,6 +2685,7 @@ dependencies = [
  "deno_crypto_provider",
  "deno_error",
  "der",
+ "des",
  "digest",
  "dsa",
  "ecb",
@@ -3642,6 +3643,15 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.117",
+]
+
+[[package]]
+name = "des"
+version = "0.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ffdd80ce8ce993de27e9f063a444a4d53ce8e8db4c1f00cc03af5ad5a9867a1e"
+dependencies = [
+ "cipher",
 ]
 
 [[package]]
