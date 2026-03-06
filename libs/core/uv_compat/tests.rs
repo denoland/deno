@@ -1424,6 +1424,30 @@ impl Drop for FdGuard {
 }
 
 #[cfg(unix)]
+unsafe fn set_errno(val: i32) {
+  #[cfg(target_os = "macos")]
+  unsafe {
+    *libc::__error() = val;
+  }
+  #[cfg(target_os = "linux")]
+  unsafe {
+    *libc::__errno_location() = val;
+  }
+}
+
+#[cfg(unix)]
+fn get_errno() -> i32 {
+  #[cfg(target_os = "macos")]
+  unsafe {
+    *libc::__error()
+  }
+  #[cfg(target_os = "linux")]
+  unsafe {
+    *libc::__errno_location()
+  }
+}
+
+#[cfg(unix)]
 #[tokio::test(flavor = "current_thread")]
 async fn tty_init_sets_fields() {
   run_test(async |_runtime, uv_loop| {
@@ -1483,7 +1507,7 @@ async fn tty_get_winsize() {
         ws_xpixel: 0,
         ws_ypixel: 0,
       };
-      libc::ioctl(fdm, libc::TIOCSWINSZ, &ws);
+      assert_eq!(libc::ioctl(fdm, libc::TIOCSWINSZ, &ws), 0);
     }
 
     let mut tty = std::mem::MaybeUninit::<uv_tty_t>::uninit();
@@ -1706,7 +1730,11 @@ async fn tty_read_from_pty() {
 
     unsafe {
       (*tty_ptr).data = received_ptr as *mut c_void;
-      uv_read_start(tty_ptr as *mut uv_stream_t, Some(alloc_cb), Some(read_cb));
+      assert_ok(uv_read_start(
+        tty_ptr as *mut uv_stream_t,
+        Some(alloc_cb),
+        Some(read_cb),
+      ));
     }
 
     // Write to the master fd — it should arrive at the slave's read callback.
@@ -1867,4 +1895,166 @@ fn new_tty_constructor() {
 fn tty_reset_mode_when_no_tty_modified() {
   // Should succeed (no-op) when no TTY has entered raw mode.
   assert_ok(uv_tty_reset_mode());
+}
+
+#[cfg(unix)]
+#[tokio::test(flavor = "current_thread")]
+async fn tty_reset_mode_restores_termios() {
+  run_test(async |runtime, uv_loop| {
+    let (fdm, fds) = unsafe { open_pty_pair() };
+    let _fdm_guard = FdGuard(fdm);
+
+    // Capture the original termios before any mode changes.
+    let mut orig_termios: libc::termios = unsafe { std::mem::zeroed() };
+    assert_eq!(unsafe { libc::tcgetattr(fds, &mut orig_termios) }, 0);
+
+    let mut tty = std::mem::MaybeUninit::<uv_tty_t>::uninit();
+    let tty_ptr = tty.as_mut_ptr();
+    unsafe {
+      assert_ok(uv_tty_init(uv_loop, tty_ptr, fds, 0));
+
+      // Enter raw mode — this should save original termios globally.
+      assert_ok(uv_tty_set_mode(tty_ptr, uv_tty_mode_t::UV_TTY_MODE_RAW));
+
+      // Verify terminal is actually in raw mode (ECHO should be off).
+      let mut raw_termios: libc::termios = std::mem::zeroed();
+      assert_eq!(libc::tcgetattr(fds, &mut raw_termios), 0);
+      assert_eq!(
+        raw_termios.c_lflag & libc::ECHO,
+        0,
+        "ECHO should be off in raw mode"
+      );
+
+      // Reset via the global reset function.
+      assert_ok(uv_tty_reset_mode());
+
+      // Verify termios is restored to original.
+      let mut after_termios: libc::termios = std::mem::zeroed();
+      assert_eq!(libc::tcgetattr(fds, &mut after_termios), 0);
+      assert_eq!(
+        after_termios.c_lflag & libc::ECHO,
+        orig_termios.c_lflag & libc::ECHO,
+        "ECHO flag should be restored after reset_mode"
+      );
+      assert_eq!(
+        after_termios.c_lflag & libc::ICANON,
+        orig_termios.c_lflag & libc::ICANON,
+        "ICANON flag should be restored after reset_mode"
+      );
+
+      uv_close(tty_ptr as *mut uv_handle_t, None);
+    }
+    tick(runtime).await;
+  })
+  .await;
+}
+
+#[cfg(unix)]
+#[tokio::test(flavor = "current_thread")]
+async fn tty_reset_mode_preserves_errno() {
+  run_test(async |runtime, uv_loop| {
+    let (fdm, fds) = unsafe { open_pty_pair() };
+    let _fdm_guard = FdGuard(fdm);
+
+    let mut tty = std::mem::MaybeUninit::<uv_tty_t>::uninit();
+    let tty_ptr = tty.as_mut_ptr();
+    unsafe {
+      assert_ok(uv_tty_init(uv_loop, tty_ptr, fds, 0));
+      assert_ok(uv_tty_set_mode(tty_ptr, uv_tty_mode_t::UV_TTY_MODE_RAW));
+
+      // Set errno to a known sentinel value.
+      set_errno(42);
+
+      // reset_mode should preserve errno.
+      assert_ok(uv_tty_reset_mode());
+
+      assert_eq!(get_errno(), 42, "uv_tty_reset_mode should preserve errno");
+
+      // Clean up errno.
+      set_errno(0);
+
+      uv_close(tty_ptr as *mut uv_handle_t, None);
+    }
+    tick(runtime).await;
+  })
+  .await;
+}
+
+#[cfg(unix)]
+#[test]
+fn tty_guess_handle_negative_fd() {
+  assert_eq!(uv_guess_handle(-1), uv_handle_type::UV_UNKNOWN_HANDLE);
+}
+
+#[cfg(unix)]
+#[tokio::test(flavor = "current_thread")]
+async fn tty_read_stop() {
+  run_test(async |runtime, uv_loop| {
+    let (fdm, fds) = unsafe { open_pty_pair() };
+
+    // Put slave in raw mode.
+    unsafe {
+      let mut term: libc::termios = std::mem::zeroed();
+      libc::tcgetattr(fds, &mut term);
+      libc::cfmakeraw(&mut term);
+      libc::tcsetattr(fds, libc::TCSANOW, &term);
+    }
+
+    let mut tty = std::mem::MaybeUninit::<uv_tty_t>::uninit();
+    let tty_ptr = tty.as_mut_ptr();
+    unsafe {
+      assert_ok(uv_tty_init(uv_loop, tty_ptr, fds, 0));
+    }
+
+    unsafe extern "C" fn alloc_cb(
+      _: *mut uv_handle_t,
+      size: usize,
+      buf: *mut uv_buf_t,
+    ) {
+      let mut v = Vec::<u8>::with_capacity(size);
+      unsafe {
+        (*buf).base = v.as_mut_ptr().cast();
+        (*buf).len = size;
+      }
+      std::mem::forget(v);
+    }
+
+    unsafe extern "C" fn read_cb(
+      _handle: *mut uv_stream_t,
+      _nread: isize,
+      buf: *const uv_buf_t,
+    ) {
+      unsafe {
+        if !(*buf).base.is_null() && (*buf).len > 0 {
+          drop(Vec::<u8>::from_raw_parts((*buf).base.cast(), 0, (*buf).len));
+        }
+      }
+    }
+
+    // Start then immediately stop reads.
+    unsafe {
+      assert_ok(uv_read_start(
+        tty_ptr as *mut uv_stream_t,
+        Some(alloc_cb),
+        Some(read_cb),
+      ));
+      assert!((*tty_ptr).internal_reading);
+
+      assert_ok(uv_read_stop(tty_ptr as *mut uv_stream_t));
+      assert!(!(*tty_ptr).internal_reading);
+    }
+
+    // Write to master — should NOT trigger read callback since reads are stopped.
+    unsafe {
+      libc::write(fdm, b"nope".as_ptr() as *const _, 4);
+    }
+    tick(runtime).await;
+
+    unsafe {
+      uv_close(tty_ptr as *mut uv_handle_t, None);
+      libc::close(fdm);
+    }
+    tick(runtime).await;
+  })
+  .await;
 }
