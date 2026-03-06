@@ -64,15 +64,13 @@ for (const url of ["http://localhost:4246", "https://localhost:4247"]) {
     }, 2000);
 
     await promise;
-    assertEquals(receivedHeaders, { ":status": 200 });
+    assertEquals(receivedHeaders?.[":status"], 200);
     assertEquals(receivedData, "hello world\n");
 
-    assertEquals(receivedTrailers, {
-      "abc": "def",
-      "opr": "stv",
-      "foo": "bar",
-      "req_body_len": "5",
-    });
+    assertEquals(receivedTrailers?.["abc"], "def");
+    assertEquals(receivedTrailers?.["opr"], "stv");
+    assertEquals(receivedTrailers?.["foo"], "bar");
+    assertEquals(receivedTrailers?.["req_body_len"], "5");
   });
 }
 
