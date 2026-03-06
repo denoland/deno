@@ -11,7 +11,63 @@ use deno_core::OpState;
 use deno_core::ResourceId;
 use deno_core::error::ResourceError;
 use deno_core::op2;
+use deno_core::uv_compat;
+use deno_core::uv_compat::uv_handle_t;
 use deno_core::v8;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(i32)]
+pub enum ProviderType {
+  None = 0,
+  DirHandle,
+  DnsChannel,
+  EldHistogram,
+  FileHandle,
+  FileHandleCloseReq,
+  FixedSizeBlobCopy,
+  FsEventWrap,
+  FsReqCallback,
+  FsReqPromise,
+  GetAddrInfoReqWrap,
+  GetNameInfoReqWrap,
+  HeapSnapshot,
+  Http2Session,
+  Http2Stream,
+  Http2Ping,
+  Http2Settings,
+  HttpIncomingMessage,
+  HttpClientRequest,
+  JsStream,
+  JsUdpWrap,
+  MessagePort,
+  PipeConnectWrap,
+  PipeServerWrap,
+  PipeWrap,
+  ProcessWrap,
+  Promise,
+  QueryWrap,
+  ShutdownWrap,
+  SignalWrap,
+  StatWatcher,
+  StreamPipe,
+  TcpConnectWrap,
+  TcpServerWrap,
+  TcpWrap,
+  TtyWrap,
+  UdpSendWrap,
+  UdpWrap,
+  SigIntWatchdog,
+  Worker,
+  WorkerHeapSnapshot,
+  WriteWrap,
+  Zlib,
+}
+
+impl From<ProviderType> for i32 {
+  fn from(provider: ProviderType) -> Self {
+    provider as i32
+  }
+}
 
 pub struct AsyncId(i64);
 
@@ -91,12 +147,18 @@ enum State {
   Closed,
 }
 
+#[derive(Copy, Clone, PartialEq, Eq)]
+pub enum Handle {
+  Old(ResourceId),
+  New(*const uv_handle_t),
+}
+
 #[derive(CppgcBase, CppgcInherits)]
 #[cppgc_inherits_from(AsyncWrap)]
 #[repr(C)]
 pub struct HandleWrap {
   base: AsyncWrap,
-  handle: Option<ResourceId>,
+  handle: Option<Handle>,
   state: Rc<Cell<State>>,
 }
 
@@ -110,7 +172,7 @@ unsafe impl GarbageCollected for HandleWrap {
 }
 
 impl HandleWrap {
-  pub(crate) fn create(base: AsyncWrap, handle: Option<ResourceId>) -> Self {
+  pub(crate) fn create(base: AsyncWrap, handle: Option<Handle>) -> Self {
     Self {
       base,
       handle,
@@ -135,7 +197,10 @@ impl HandleWrap {
     #[smi] provider: i32,
     #[smi] handle: Option<ResourceId>,
   ) -> HandleWrap {
-    HandleWrap::create(AsyncWrap::create(state, provider), handle)
+    HandleWrap::create(
+      AsyncWrap::create(state, provider),
+      handle.map(Handle::Old),
+    )
   }
 
   // Ported from Node.js
@@ -185,7 +250,10 @@ impl HandleWrap {
   #[fast]
   fn has_ref(&self, state: &mut OpState) -> bool {
     if let Some(handle) = self.handle {
-      return state.has_ref(handle);
+      return match handle {
+        Handle::Old(resource_id) => state.has_ref(resource_id),
+        Handle::New(handle) => unsafe { uv_compat::uv_has_ref(handle) != 0 },
+      };
     }
 
     true
@@ -200,7 +268,10 @@ impl HandleWrap {
     if self.is_alive()
       && let Some(handle) = self.handle
     {
-      state.uv_ref(handle);
+      match handle {
+        Handle::Old(resource_id) => state.uv_ref(resource_id),
+        Handle::New(handle) => unsafe { uv_compat::uv_ref(handle.cast_mut()) },
+      }
     }
   }
 
@@ -212,7 +283,12 @@ impl HandleWrap {
     if self.is_alive()
       && let Some(handle) = self.handle
     {
-      state.uv_unref(handle);
+      match handle {
+        Handle::Old(resource_id) => state.uv_unref(resource_id),
+        Handle::New(handle) => unsafe {
+          uv_compat::uv_unref(handle.cast_mut())
+        },
+      }
     }
   }
 }

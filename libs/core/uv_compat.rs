@@ -1147,6 +1147,19 @@ pub unsafe extern "C" fn uv_unref(handle: *mut uv_handle_t) {
 /// ### Safety
 /// `handle` must be a valid pointer to an initialized uv handle.
 #[cfg_attr(feature = "uv_compat_export", unsafe(no_mangle))]
+pub unsafe extern "C" fn uv_has_ref(handle: *const uv_handle_t) -> c_int {
+  // SAFETY: Caller guarantees handle is valid and initialized.
+  unsafe {
+    if (*handle).flags & UV_HANDLE_REF != 0 {
+      1
+    } else {
+      0
+    }
+  }
+}
+/// ### Safety
+/// `handle` must be a valid pointer to an initialized uv handle.
+#[cfg_attr(feature = "uv_compat_export", unsafe(no_mangle))]
 pub unsafe extern "C" fn uv_is_active(handle: *const uv_handle_t) -> c_int {
   // SAFETY: Caller guarantees handle is valid and initialized.
   unsafe {
