@@ -795,24 +795,18 @@ async fn resolve_flags_and_init(
     use deno_runtime::deno_permissions::AuditSink;
 
     let sink = if audit_target == "otel" {
-      AuditSink::Otel(|permission, value, outcome, stack| {
+      AuditSink::Otel(|permission, value, stack| {
         let stack = stack.unwrap_or_default().join("\n");
         let kvs = HashMap::from([
           ("deno.permission.type", permission),
           ("deno.permission.value", value),
-          ("deno.permission.outcome", outcome),
           ("deno.permission.stack", stack.as_str()),
         ]);
-        let level = if outcome == "denied" {
-          log::Level::Warn
-        } else {
-          log::Level::Info
-        };
         deno_telemetry::handle_log(
           &log::Record::builder()
-            .level(level)
+            .level(log::Level::Info)
             .target("deno.permission.access")
-            .args(format_args!("{outcome} {permission}: {value}"))
+            .args(format_args!("{permission}: {value}"))
             .key_values(&kvs)
             .build(),
         );
