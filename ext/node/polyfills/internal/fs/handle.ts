@@ -35,7 +35,7 @@ import {
   ftruncate as ftruncateCb,
   futimes as futimesCb,
 } from "node:fs";
-import { promisify } from "ext:deno_node/internal/util.mjs";
+import { kEmptyObject, promisify } from "ext:deno_node/internal/util.mjs";
 
 import {
   CreateReadStreamOptions,
@@ -51,7 +51,6 @@ import {
   validateBoolean,
   validateObject,
 } from "ext:deno_node/internal/validators.mjs";
-import { kEmptyObject, promisify } from "ext:deno_node/internal/util.mjs";
 import process from "node:process";
 
 const fchmodPromise = promisify(fchmod) as (
