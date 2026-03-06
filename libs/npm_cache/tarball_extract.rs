@@ -1,5 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+use std::borrow::Cow;
 use std::collections::HashSet;
 use std::io::ErrorKind;
 use std::io::Read;
@@ -21,6 +22,7 @@ use sys_traits::FsRemoveDirAll;
 use sys_traits::FsRemoveFile;
 use sys_traits::FsRename;
 use sys_traits::OpenOptions;
+use sys_traits::PathsInErrorsExt;
 use sys_traits::SystemRandom;
 use sys_traits::ThreadSleep;
 use tar::Archive;
@@ -291,43 +293,11 @@ fn verify_tarball_integrity(
   Ok(())
 }
 
-#[derive(Debug, Copy, Clone)]
-pub enum IoErrorOperation {
-  Creating,
-  Canonicalizing,
-  Opening,
-  Writing,
-}
-
-impl std::fmt::Display for IoErrorOperation {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    match self {
-      IoErrorOperation::Creating => write!(f, "creating"),
-      IoErrorOperation::Canonicalizing => write!(f, "canonicalizing"),
-      IoErrorOperation::Opening => write!(f, "opening"),
-      IoErrorOperation::Writing => write!(f, "writing"),
-    }
-  }
-}
-
-#[derive(Debug, thiserror::Error, deno_error::JsError)]
-#[class(generic)]
-#[error("Failed {} '{}'", operation, path.display())]
-pub struct IoWithPathError {
-  pub path: PathBuf,
-  pub operation: IoErrorOperation,
-  #[source]
-  pub source: std::io::Error,
-}
-
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum ExtractTarballError {
   #[class(inherit)]
   #[error(transparent)]
   Io(#[from] std::io::Error),
-  #[class(inherit)]
-  #[error(transparent)]
-  IoWithPath(#[from] IoWithPathError),
   #[class(generic)]
   #[error(
     "Extracted directory '{0}' of npm tarball was not in output directory."
@@ -341,21 +311,8 @@ fn extract_tarball(
   tar_data: &[u8],
   output_folder: &Path,
 ) -> Result<(), ExtractTarballError> {
-  sys
-    .fs_create_dir_all(output_folder)
-    .map_err(|source| IoWithPathError {
-      path: output_folder.to_path_buf(),
-      operation: IoErrorOperation::Creating,
-      source,
-    })?;
-  let output_folder =
-    sys
-      .fs_canonicalize(output_folder)
-      .map_err(|source| IoWithPathError {
-        path: output_folder.to_path_buf(),
-        operation: IoErrorOperation::Canonicalizing,
-        source,
-      })?;
+  let sys = sys.with_paths_in_errors();
+  sys.fs_create_dir_all(output_folder)?;
   let mut archive = Archive::new(tar_data);
   archive.set_overwrite(true);
   archive.set_preserve_permissions(true);
@@ -381,24 +338,11 @@ fn extract_tarball(
       absolute_path.parent().unwrap()
     };
     if created_dirs.insert(dir_path.to_path_buf()) {
-      sys
-        .fs_create_dir_all(dir_path)
-        .map_err(|source| IoWithPathError {
-          path: output_folder.to_path_buf(),
-          operation: IoErrorOperation::Creating,
-          source,
-        })?;
-      let canonicalized_dir =
-        sys
-          .fs_canonicalize(dir_path)
-          .map_err(|source| IoWithPathError {
-            path: output_folder.to_path_buf(),
-            operation: IoErrorOperation::Canonicalizing,
-            source,
-          })?;
-      if !canonicalized_dir.starts_with(&output_folder) {
+      sys.fs_create_dir_all(dir_path)?;
+      let dir_path = deno_path_util::normalize_path(Cow::Borrowed(dir_path));
+      if !dir_path.starts_with(output_folder) {
         return Err(ExtractTarballError::NotInOutputDirectory(
-          canonicalized_dir.to_path_buf(),
+          dir_path.to_path_buf(),
         ));
       }
     }
@@ -407,20 +351,12 @@ fn extract_tarball(
     match entry_type {
       EntryType::Regular => {
         let open_options = OpenOptions::new_write();
-        let mut f =
-          sys
-            .fs_open(&absolute_path, &open_options)
-            .map_err(|source| IoWithPathError {
-              path: absolute_path.to_path_buf(),
-              operation: IoErrorOperation::Opening,
-              source,
-            })?;
+        let mut f = sys.fs_open(&absolute_path, &open_options)?;
         std::io::copy(&mut entry, &mut f).map_err(|source| {
-          IoWithPathError {
-            path: absolute_path,
-            operation: IoErrorOperation::Writing,
-            source,
-          }
+          std::io::Error::new(
+            source.kind(),
+            format!("writing '{}': {}", absolute_path.display(), source),
+          )
         })?;
         if !sys_traits::impls::is_windows() {
           let mode = entry.header().mode()?;

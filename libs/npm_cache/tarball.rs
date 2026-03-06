@@ -249,8 +249,6 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
             // renaming. So we settle for overwriting.
             TarballExtractionMode::Overwrite
           };
-          let dist = dist.clone();
-          let package_nv = package_nv.clone();
           // Phase 1: verify integrity + decompress (CPU-bound, no concurrency limit)
           let tar_data = spawn_blocking(move || {
             verify_and_decompress_tarball(&package_nv, &bytes, &dist)
