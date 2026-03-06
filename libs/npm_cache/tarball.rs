@@ -57,7 +57,7 @@ pub struct TarballCache<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys> {
   npmrc: Arc<ResolvedNpmRc>,
   memory_cache: Mutex<HashMap<PackageNv, MemoryCacheItem>>,
   #[cfg(not(target_arch = "wasm32"))]
-  fs_write_semaphore: tokio::sync::Semaphore,
+  fs_write_semaphore: Arc<tokio::sync::Semaphore>,
 
   reporter: Option<Arc<dyn TarballCacheReporter>>,
 }
@@ -94,7 +94,9 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
       npmrc,
       memory_cache: Default::default(),
       #[cfg(not(target_arch = "wasm32"))]
-      fs_write_semaphore: tokio::sync::Semaphore::new(MAX_CONCURRENT_FS_WRITES),
+      fs_write_semaphore: Arc::new(tokio::sync::Semaphore::new(
+        MAX_CONCURRENT_FS_WRITES,
+      )),
       reporter,
     }
   }
@@ -259,19 +261,22 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
           // Phase 2: write to disk (I/O-bound, limited concurrency to
           // avoid filesystem contention — especially on macOS APFS)
           #[cfg(not(target_arch = "wasm32"))]
-          let _permit = tarball_cache
-            .fs_write_semaphore
-            .acquire()
+          let permit = tarball_cache
+            .fs_write_semaphore.clone()
+            .acquire_owned()
             .await
             .map_err(|e| JsErrorBox::generic(e.to_string()))?;
 
           spawn_blocking(move || {
-            write_extracted_tarball(
+            let result = write_extracted_tarball(
               &sys,
               &tar_data,
               &package_folder,
               extraction_mode,
-            )
+            );
+            #[cfg(not(target_arch = "wasm32"))]
+            drop(permit);
+            result
           })
           .await
           .map_err(JsErrorBox::from_err)?
