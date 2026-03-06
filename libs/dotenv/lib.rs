@@ -4,7 +4,7 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::path::Path;
 
-use sys_traits::EnvVar;
+use sys_traits::BaseEnvVar;
 
 const CHAR_NL: u8 = b'\n';
 const CHAR_CR: u8 = b'\r';
@@ -55,7 +55,7 @@ impl From<std::io::Error> for Error {
 /// Ported from:
 /// https://github.com/nodejs/node/blob/9cc7fcc26dece769d9ffa06c453f0171311b01f8/src/node_dotenv.cc#L138-L315
 pub fn parse_env_content_hook(
-  sys: &impl EnvVar,
+  sys: &dyn BaseEnvVar,
   content: &str,
   mut cb: impl FnMut(&str, &str),
 ) {
@@ -63,7 +63,7 @@ pub fn parse_env_content_hook(
 }
 
 pub fn parse_env_content_with_substitution_hook(
-  sys: &impl EnvVar,
+  sys: &dyn BaseEnvVar,
   content: &str,
   mut cb: impl FnMut(&str, &str),
 ) {
@@ -77,7 +77,7 @@ pub fn parse_env_content_with_substitution_hook(
 }
 
 fn parse_env_content_hook_impl(
-  sys: &impl EnvVar,
+  sys: &dyn BaseEnvVar,
   content: &str,
   mut substitution_map: Option<&mut HashMap<String, String>>,
   cb: &mut impl FnMut(&str, &str),
@@ -328,12 +328,15 @@ fn parse_env_content_hook_impl(
 }
 
 fn lookup_substitution(
-  sys: &impl EnvVar,
+  sys: &dyn BaseEnvVar,
   substitution_name: &str,
   substitution_map: &HashMap<String, String>,
   output: &mut String,
 ) {
-  if let Ok(environment_value) = sys.env_var(substitution_name) {
+  if let Some(environment_value) = sys
+    .base_env_var_os(substitution_name.as_ref())
+    .and_then(|n| n.into_string().ok())
+  {
     output.push_str(&environment_value);
   } else if let Some(stored_value) = substitution_map.get(substitution_name) {
     output.push_str(stored_value);
@@ -341,7 +344,7 @@ fn lookup_substitution(
 }
 
 fn apply_value_substitution(
-  sys: &impl EnvVar,
+  sys: &dyn BaseEnvVar,
   value: &str,
   substitution_map: &HashMap<String, String>,
 ) -> String {
@@ -411,7 +414,7 @@ fn apply_value_substitution(
 type IterElement = Result<(String, String), Error>;
 
 pub fn from_path_sanitized_iter_with_substitution(
-  sys: &impl EnvVar,
+  sys: &dyn BaseEnvVar,
   path: impl AsRef<Path>,
 ) -> Result<std::vec::IntoIter<IterElement>, Error> {
   let content = std::fs::read_to_string(path.as_ref()).map_err(Error::Io)?;
@@ -495,7 +498,7 @@ mod tests {
   }
 
   fn parse_map_with_substitution(
-    sys: &impl EnvVar,
+    sys: &dyn BaseEnvVar,
     content: &str,
   ) -> HashMap<String, String> {
     let mut map = HashMap::new();
@@ -506,7 +509,7 @@ mod tests {
   }
 
   fn assert_parsed_eq_with_substitution(
-    sys: &impl EnvVar,
+    sys: &dyn BaseEnvVar,
     content: &str,
     expected: &[(&str, &str)],
   ) {
