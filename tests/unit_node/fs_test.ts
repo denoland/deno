@@ -29,6 +29,10 @@ import {
   fchmodSync,
   fchown,
   fchownSync,
+  ftruncate,
+  ftruncateSync,
+  futimes,
+  futimesSync,
   lstatSync,
   mkdtempSync,
   openAsBlob,
@@ -1129,4 +1133,254 @@ Deno.test({
     closeSync(rid), Deno.errors.BadResource;
   });
   await Deno.remove(tempFile);
+});
+
+// -- ftruncate --
+
+Deno.test({
+  name: "[node/fs ftruncate] no callback function results in Error",
+  fn() {
+    assertThrows(
+      () => {
+        // @ts-expect-error Argument of type 'number' is not assignable to parameter of type 'NoParamCallback'
+        ftruncate(123, 0);
+      },
+      Error,
+      "No callback function supplied",
+    );
+  },
+});
+
+Deno.test({
+  name: "[node/fs ftruncate] truncate entire file contents",
+  // TODO(bartlomieju): this test is broken in Deno 2, because `file.rid` is undefined.
+  // The fs APIs should be rewritten to use actual FDs, not RIDs
+  ignore: true,
+  async fn() {
+    const filePath = Deno.makeTempFileSync();
+    await Deno.writeTextFile(filePath, "hello world");
+    using file = await Deno.open(filePath, {
+      read: true,
+      write: true,
+      create: true,
+    });
+
+    await new Promise<void>((resolve, reject) => {
+      // @ts-ignore (iuioiua) `file.rid` should no longer be needed once FDs are used
+      ftruncate(file.rid, (err: Error | null) => {
+        if (err !== null) reject();
+        else resolve();
+      });
+    })
+      .then(
+        () => {
+          const fileInfo: Deno.FileInfo = Deno.lstatSync(filePath);
+          assertEquals(fileInfo.size, 0);
+        },
+        () => {
+          fail("No error expected");
+        },
+      )
+      .finally(() => {
+        Deno.removeSync(filePath);
+      });
+  },
+});
+
+Deno.test({
+  name: "[node/fs ftruncate] truncate file to a size of precisely len bytes",
+  // TODO(bartlomieju): this test is broken in Deno 2, because `file.rid` is undefined.
+  // The fs APIs should be rewritten to use actual FDs, not RIDs
+  ignore: true,
+  async fn() {
+    const filePath = Deno.makeTempFileSync();
+    await Deno.writeTextFile(filePath, "hello world");
+    using file = await Deno.open(filePath, {
+      read: true,
+      write: true,
+      create: true,
+    });
+
+    await new Promise<void>((resolve, reject) => {
+      // @ts-ignore (iuioiua) `file.rid` should no longer be needed once FDs are used
+      ftruncate(file.rid, 3, (err: Error | null) => {
+        if (err !== null) reject();
+        else resolve();
+      });
+    })
+      .then(
+        () => {
+          const fileInfo: Deno.FileInfo = Deno.lstatSync(filePath);
+          assertEquals(fileInfo.size, 3);
+        },
+        () => {
+          fail("No error expected");
+        },
+      )
+      .finally(() => {
+        Deno.removeSync(filePath);
+      });
+  },
+});
+
+Deno.test({
+  name: "[node/fs ftruncateSync] truncate entire file contents",
+  // TODO(bartlomieju): this test is broken in Deno 2, because `file.rid` is undefined.
+  // The fs APIs should be rewritten to use actual FDs, not RIDs
+  ignore: true,
+  fn() {
+    const filePath = Deno.makeTempFileSync();
+    Deno.writeFileSync(filePath, new TextEncoder().encode("hello world"));
+    using file = Deno.openSync(filePath, {
+      read: true,
+      write: true,
+      create: true,
+    });
+
+    try {
+      // @ts-ignore (iuioiua) `file.rid` should no longer be needed once FDs are used
+      ftruncateSync(file.rid);
+      const fileInfo: Deno.FileInfo = Deno.lstatSync(filePath);
+      assertEquals(fileInfo.size, 0);
+    } finally {
+      Deno.removeSync(filePath);
+    }
+  },
+});
+
+Deno.test({
+  name:
+    "[node/fs ftruncateSync] truncate file to a size of precisely len bytes",
+  // TODO(bartlomieju): this test is broken in Deno 2, because `file.rid` is undefined.
+  // The fs APIs should be rewritten to use actual FDs, not RIDs
+  ignore: true,
+  fn() {
+    const filePath = Deno.makeTempFileSync();
+    Deno.writeFileSync(filePath, new TextEncoder().encode("hello world"));
+    using file = Deno.openSync(filePath, {
+      read: true,
+      write: true,
+      create: true,
+    });
+
+    try {
+      // @ts-ignore (iuioiua) `file.rid` should no longer be needed once FDs are used
+      ftruncateSync(file.rid, 3);
+      const fileInfo: Deno.FileInfo = Deno.lstatSync(filePath);
+      assertEquals(fileInfo.size, 3);
+    } finally {
+      Deno.removeSync(filePath);
+    }
+  },
+});
+
+// -- futimes --
+
+const _randomDate = new Date(Date.now() + 1000);
+
+Deno.test({
+  name: "[node/fs futimes] change file timestamps",
+  // TODO(bartlomieju): this test is broken in Deno 2, because `file.rid` is undefined.
+  // The fs APIs should be rewritten to use actual FDs, not RIDs
+  ignore: true,
+  async fn() {
+    const filePath = Deno.makeTempFileSync();
+    using file = await Deno.open(filePath, { create: true, write: true });
+
+    await new Promise<void>((resolve, reject) => {
+      // @ts-ignore (iuioiua) `file.rid` should no longer be needed once FDs are used
+      futimes(file.rid, _randomDate, _randomDate, (err: Error | null) => {
+        if (err !== null) reject();
+        else resolve();
+      });
+    })
+      .then(
+        () => {
+          const fileInfo: Deno.FileInfo = Deno.lstatSync(filePath);
+          assertEquals(fileInfo.mtime, _randomDate);
+          assertEquals(fileInfo.atime, _randomDate);
+        },
+        () => {
+          fail("No error expected");
+        },
+      )
+      .finally(() => {
+        Deno.removeSync(filePath);
+      });
+  },
+});
+
+Deno.test({
+  name: "[node/fs futimes] should throw error if atime is infinity",
+  fn() {
+    assertThrows(
+      () => {
+        futimes(123, Infinity, 0, (_err: Error | null) => {});
+      },
+      Error,
+      "invalid atime, must not be infinity or NaN",
+    );
+  },
+});
+
+Deno.test({
+  name: "[node/fs futimes] should throw error if atime is NaN",
+  fn() {
+    assertThrows(
+      () => {
+        futimes(123, "some string", 0, (_err: Error | null) => {});
+      },
+      Error,
+      "invalid atime, must not be infinity or NaN",
+    );
+  },
+});
+
+Deno.test({
+  name: "[node/fs futimesSync] change file timestamps",
+  // TODO(bartlomieju): this test is broken in Deno 2, because `file.rid` is undefined.
+  // The fs APIs should be rewritten to use actual FDs, not RIDs
+  ignore: true,
+  fn() {
+    const filePath = Deno.makeTempFileSync();
+    using file = Deno.openSync(filePath, { create: true, write: true });
+
+    try {
+      // @ts-ignore (iuioiua) `file.rid` should no longer be needed once FDs are used
+      futimesSync(file.rid, _randomDate, _randomDate);
+
+      const fileInfo: Deno.FileInfo = Deno.lstatSync(filePath);
+
+      assertEquals(fileInfo.mtime, _randomDate);
+      assertEquals(fileInfo.atime, _randomDate);
+    } finally {
+      Deno.removeSync(filePath);
+    }
+  },
+});
+
+Deno.test({
+  name: "[node/fs futimesSync] should throw error if atime is NaN",
+  fn() {
+    assertThrows(
+      () => {
+        futimesSync(123, "some string", 0);
+      },
+      Error,
+      "invalid atime, must not be infinity or NaN",
+    );
+  },
+});
+
+Deno.test({
+  name: "[node/fs futimesSync] should throw error if atime is Infinity",
+  fn() {
+    assertThrows(
+      () => {
+        futimesSync(123, Infinity, 0);
+      },
+      Error,
+      "invalid atime, must not be infinity or NaN",
+    );
+  },
 });

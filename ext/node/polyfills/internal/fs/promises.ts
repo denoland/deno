@@ -15,8 +15,6 @@ import { promisify } from "ext:deno_node/internal/util.mjs";
 import * as constants from "ext:deno_node/_fs/_fs_constants.ts";
 import { copyFilePromise } from "ext:deno_node/_fs/_fs_copy.ts";
 import { cpPromise } from "ext:deno_node/_fs/_fs_cp.ts";
-import { lchmodPromise } from "ext:deno_node/_fs/_fs_lchmod.ts";
-import { lchownPromise } from "ext:deno_node/_fs/_fs_lchown.ts";
 import { linkPromise } from "ext:deno_node/_fs/_fs_link.ts";
 import { lstatPromise } from "ext:deno_node/_fs/_fs_lstat.ts";
 import { lutimesPromise } from "ext:deno_node/_fs/_fs_lutimes.ts";
@@ -57,8 +55,11 @@ import {
 } from "ext:deno_node/internal/validators.mjs";
 import type { Buffer } from "node:buffer";
 import { primordials } from "ext:core/mod.js";
+import { op_node_lchmod, op_node_lchown } from "ext:core/ops";
+import { isMacOS } from "ext:deno_node/_util/os.ts";
+import { ERR_METHOD_NOT_IMPLEMENTED } from "ext:deno_node/internal/errors.ts";
 
-const { Error, PromisePrototypeThen } = primordials;
+const { Error, PromisePrototypeThen, PromiseReject } = primordials;
 
 // -- access --
 
@@ -202,6 +203,45 @@ function chown(
 }
 
 const chownPromise = promisify(chown) as (
+  path: string | Buffer | URL,
+  uid: number,
+  gid: number,
+) => Promise<void>;
+
+// -- lchmod --
+
+const lchmodPromise: (
+  path: string | Buffer | URL,
+  mode: number,
+) => Promise<void> = !isMacOS
+  ? () => PromiseReject(new ERR_METHOD_NOT_IMPLEMENTED("lchmod()"))
+  : (path: string | Buffer | URL, mode: number) => {
+    path = getValidatedPathToString(path);
+    mode = parseFileMode(mode, "mode");
+    return op_node_lchmod(path, mode);
+  };
+
+// -- lchown --
+
+function lchown(
+  path: string | Buffer | URL,
+  uid: number,
+  gid: number,
+  callback: CallbackWithError,
+) {
+  callback = makeCallback(callback);
+  path = getValidatedPathToString(path);
+  validateInteger(uid, "uid", -1, kMaxUserId);
+  validateInteger(gid, "gid", -1, kMaxUserId);
+
+  PromisePrototypeThen(
+    op_node_lchown(path, uid, gid),
+    () => callback(null),
+    callback,
+  );
+}
+
+const lchownPromise = promisify(lchown) as (
   path: string | Buffer | URL,
   uid: number,
   gid: number,
