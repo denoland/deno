@@ -6929,6 +6929,48 @@ fn lsp_cache_then_definition(use_tsgo: bool) {
   client.shutdown();
 }
 
+// Regression test for https://github.com/denoland/deno/issues/32425.
+#[test(timeout = 300, fork_with_suffix = "_tsgo")]
+fn lsp_virtual_text_document_non_normalized_uri(use_tsgo: bool) {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .add_jsr_env_vars()
+    .build();
+  let temp_dir = context.temp_dir();
+  let file = temp_dir.source_file("file.ts", "import \"jsr:@denotest/add@1\";");
+  context.run_deno("cache file.ts");
+  let mut client = context.new_lsp_command().set_use_tsgo(use_tsgo).build();
+  client.initialize_default();
+  client.did_open_file(&file);
+  let definitions = client.write_request(
+    "textDocument/definition",
+    json!({
+      "textDocument": { "uri": file.uri() },
+      "position": { "line": 0, "character": 7 },
+    }),
+  );
+  let target_uri = definitions.as_array().unwrap()[0]["targetUri"]
+    .as_str()
+    .unwrap();
+  assert_eq!(
+    target_uri,
+    "deno:/http/127.0.0.1:4250/@denotest/add/1.0.0/mod.ts"
+  );
+  let res = client.write_request(
+    "deno/virtualTextDocument",
+    json!({
+      "textDocument": {
+        // The client encodes `@` to `%40`, but we should normalize it back.
+        "uri": "deno:/http/127.0.0.1:4250/%40denotest/add/1.0.0/mod.ts"
+      }
+    }),
+  );
+  let content = res.as_str().unwrap();
+  assert!(content.contains("export function add"), "{content}");
+  client.shutdown();
+}
+
 #[test(timeout = 300)]
 fn lsp_code_actions_imports() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
