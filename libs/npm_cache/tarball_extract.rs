@@ -360,9 +360,19 @@ fn extract_tarball(
         let mut f = sys.fs_open(&absolute_path, &open_options)?;
         let data_offset = entry.raw_file_position() as usize;
         let size = entry.header().size()? as usize;
-        let entry_data = tar_data
-          .get(data_offset..data_offset.saturating_add(size))
-          .ok_or_else(|| {
+        let end = data_offset.checked_add(size).ok_or_else(|| {
+          std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!(
+              "tar entry '{}' has invalid offset/size (offset={}, size={})",
+              absolute_path.display(),
+              data_offset,
+              size,
+            ),
+          )
+        })?;
+        let entry_data =
+          tar_data.get(data_offset..end).ok_or_else(|| {
             std::io::Error::new(
               std::io::ErrorKind::UnexpectedEof,
               format!(
