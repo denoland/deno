@@ -14,6 +14,15 @@ use deno_core::v8;
 use libnghttp2 as ffi;
 use serde::Serialize;
 
+/// Type alias matching the C `ssize_t` type used by nghttp2 callbacks.
+/// On Unix, `ssize_t` equals `isize`. On 64-bit Windows MSVC, `ssize_t`
+/// is defined as `long long` (`i64`), which bindgen emits as `i64`
+/// rather than `isize`.
+#[cfg(not(windows))]
+type CSsizeT = isize;
+#[cfg(windows)]
+type CSsizeT = i64;
+
 use super::stream::Http2Headers;
 use super::stream::Http2Priority;
 use super::stream::Http2Stream;
@@ -1070,7 +1079,7 @@ pub unsafe extern "C" fn on_stream_read_callback(
   data_flags: *mut u32,
   _source: *mut ffi::nghttp2_data_source,
   user_data: *mut c_void,
-) -> isize {
+) -> CSsizeT {
   // SAFETY: user_data is the user_data pointer set during session creation
   let session = unsafe { Session::from_user_data(user_data) };
 
@@ -1096,7 +1105,7 @@ pub unsafe extern "C" fn on_stream_read_callback(
           }
           stream.complete_shutdown();
         }
-        return amount as isize;
+        return amount as CSsizeT;
       }
     }
 
@@ -1124,7 +1133,7 @@ unsafe extern "C" fn on_select_padding(
   frame: *const ffi::nghttp2_frame,
   max_payload_len: usize,
   user_data: *mut c_void,
-) -> isize {
+) -> CSsizeT {
   // SAFETY: user_data is the user_data pointer set during session creation
   let session = unsafe { Session::from_user_data(user_data) };
   let padding = frame_header_length(frame);
@@ -1139,7 +1148,7 @@ unsafe extern "C" fn on_select_padding(
     }
   };
 
-  result as isize
+  result as CSsizeT
 }
 
 unsafe extern "C" fn on_frame_not_send_callback(
