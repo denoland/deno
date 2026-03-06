@@ -4,6 +4,8 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::path::Path;
 
+use sys_traits::EnvVar;
+
 const CHAR_NL: u8 = b'\n';
 const CHAR_CR: u8 = b'\r';
 const CHAR_TAB: u8 = b'\t';
@@ -52,19 +54,30 @@ impl From<std::io::Error> for Error {
 
 /// Ported from:
 /// https://github.com/nodejs/node/blob/9cc7fcc26dece769d9ffa06c453f0171311b01f8/src/node_dotenv.cc#L138-L315
-pub fn parse_env_content_hook(content: &str, mut cb: impl FnMut(&str, &str)) {
-  parse_env_content_hook_impl(content, None, &mut cb);
+pub fn parse_env_content_hook(
+  sys: &impl EnvVar,
+  content: &str,
+  mut cb: impl FnMut(&str, &str),
+) {
+  parse_env_content_hook_impl(sys, content, None, &mut cb);
 }
 
 pub fn parse_env_content_with_substitution_hook(
+  sys: &impl EnvVar,
   content: &str,
   mut cb: impl FnMut(&str, &str),
 ) {
   let mut substitution_map = HashMap::new();
-  parse_env_content_hook_impl(content, Some(&mut substitution_map), &mut cb);
+  parse_env_content_hook_impl(
+    sys,
+    content,
+    Some(&mut substitution_map),
+    &mut cb,
+  );
 }
 
 fn parse_env_content_hook_impl(
+  sys: &impl EnvVar,
   content: &str,
   mut substitution_map: Option<&mut HashMap<String, String>>,
   cb: &mut impl FnMut(&str, &str),
@@ -102,7 +115,7 @@ fn parse_env_content_hook_impl(
   let mut emit_value = |key: &str, value: &str, can_substitute: bool| {
     if let Some(substitution_map) = substitution_map.as_deref_mut() {
       let emitted_value = if can_substitute {
-        apply_value_substitution(value, substitution_map)
+        apply_value_substitution(sys, value, substitution_map)
       } else {
         value.to_string()
       };
@@ -315,11 +328,12 @@ fn parse_env_content_hook_impl(
 }
 
 fn lookup_substitution(
+  sys: &impl EnvVar,
   substitution_name: &str,
   substitution_map: &HashMap<String, String>,
   output: &mut String,
 ) {
-  if let Ok(environment_value) = std::env::var(substitution_name) {
+  if let Ok(environment_value) = sys.env_var(substitution_name) {
     output.push_str(&environment_value);
   } else if let Some(stored_value) = substitution_map.get(substitution_name) {
     output.push_str(stored_value);
@@ -327,6 +341,7 @@ fn lookup_substitution(
 }
 
 fn apply_value_substitution(
+  sys: &impl EnvVar,
   value: &str,
   substitution_map: &HashMap<String, String>,
 ) -> String {
@@ -356,7 +371,12 @@ fn apply_value_substitution(
           }
         }
         let substitution_name = &value[i + 2..end];
-        lookup_substitution(substitution_name, substitution_map, &mut output);
+        lookup_substitution(
+          sys,
+          substitution_name,
+          substitution_map,
+          &mut output,
+        );
         i = if end < value.len() { end + 1 } else { end };
         continue;
       }
@@ -370,7 +390,12 @@ fn apply_value_substitution(
         }
       }
       let substitution_name = &value[i + 1..end];
-      lookup_substitution(substitution_name, substitution_map, &mut output);
+      lookup_substitution(
+        sys,
+        substitution_name,
+        substitution_map,
+        &mut output,
+      );
       i = end;
       continue;
     }
@@ -386,11 +411,12 @@ fn apply_value_substitution(
 type IterElement = Result<(String, String), Error>;
 
 pub fn from_path_sanitized_iter_with_substitution(
+  sys: &impl EnvVar,
   path: impl AsRef<Path>,
 ) -> Result<std::vec::IntoIter<IterElement>, Error> {
   let content = std::fs::read_to_string(path.as_ref()).map_err(Error::Io)?;
   let mut pairs = Vec::new();
-  parse_env_content_with_substitution_hook(&content, |k, v| {
+  parse_env_content_with_substitution_hook(sys, &content, |k, v| {
     if let Some(index) = k
       .find('\0')
       .or_else(|| v.find('\0').map(|i| k.len() + i + 1))
@@ -445,12 +471,15 @@ mod tests {
   use std::collections::BTreeMap;
   use std::collections::HashMap;
 
+  use sys_traits::EnvSetVar;
+
   use super::*;
 
   /// Helper: parse content and return a HashMap for easy assertion
   fn parse_map(content: &str) -> HashMap<String, String> {
+    let sys = sys_traits::impls::InMemorySys::default();
     let mut map = HashMap::new();
-    parse_env_content_hook(content, |key, value| {
+    parse_env_content_hook(&sys, content, |key, value| {
       map.insert(key.to_string(), value.to_string());
     });
     map
@@ -465,19 +494,23 @@ mod tests {
     assert_eq!(actual, expected);
   }
 
-  fn parse_map_with_substitution(content: &str) -> HashMap<String, String> {
+  fn parse_map_with_substitution(
+    sys: &impl EnvVar,
+    content: &str,
+  ) -> HashMap<String, String> {
     let mut map = HashMap::new();
-    parse_env_content_with_substitution_hook(content, |key, value| {
+    parse_env_content_with_substitution_hook(sys, content, |key, value| {
       map.insert(key.to_string(), value.to_string());
     });
     map
   }
 
   fn assert_parsed_eq_with_substitution(
+    sys: &impl EnvVar,
     content: &str,
     expected: &[(&str, &str)],
   ) {
-    let actual = parse_map_with_substitution(content)
+    let actual = parse_map_with_substitution(sys, content)
       .into_iter()
       .collect::<BTreeMap<_, _>>();
     let expected = expected
@@ -732,9 +765,10 @@ u4QuUoobAgMBAAE=
 
   #[test]
   fn test_callback_order() {
+    let sys = sys_traits::impls::InMemorySys::default();
     let content = "A=1\nB=2\nC=3\n";
     let mut entries = Vec::new();
-    parse_env_content_hook(content, |key, value| {
+    parse_env_content_hook(&sys, content, |key, value| {
       entries.push((key.to_string(), value.to_string()));
     });
     assert_eq!(
@@ -774,7 +808,9 @@ u4QuUoobAgMBAAE=
 
   #[test]
   fn test_variable_in_parenthesis_surrounded_by_quotes() {
+    let sys = sys_traits::impls::InMemorySys::default();
     assert_parsed_eq_with_substitution(
+      &sys,
       r#"
       KEY=test
       KEY1="${KEY}"
@@ -785,7 +821,9 @@ u4QuUoobAgMBAAE=
 
   #[test]
   fn test_substitute_undefined_variables_to_empty_string() {
+    let sys = sys_traits::impls::InMemorySys::default();
     assert_parsed_eq_with_substitution(
+      &sys,
       r#"KEY=">$KEY1<>${KEY2}<""#,
       &[("KEY", "><><")],
     );
@@ -793,7 +831,9 @@ u4QuUoobAgMBAAE=
 
   #[test]
   fn test_do_not_substitute_variables_with_dollar_escaped() {
+    let sys = sys_traits::impls::InMemorySys::default();
     assert_parsed_eq_with_substitution(
+      &sys,
       r#"KEY=>\$KEY1<>\${KEY2}<"#,
       &[("KEY", ">$KEY1<>${KEY2}<")],
     );
@@ -801,7 +841,9 @@ u4QuUoobAgMBAAE=
 
   #[test]
   fn test_do_not_substitute_variables_in_strong_quotes() {
+    let sys = sys_traits::impls::InMemorySys::default();
     assert_parsed_eq_with_substitution(
+      &sys,
       "KEY='>${KEY1}<>$KEY2<'",
       &[("KEY", ">${KEY1}<>$KEY2<")],
     );
@@ -809,7 +851,9 @@ u4QuUoobAgMBAAE=
 
   #[test]
   fn test_same_variable_reused() {
+    let sys = sys_traits::impls::InMemorySys::default();
     assert_parsed_eq_with_substitution(
+      &sys,
       r#"
       KEY=VALUE
       KEY1=$KEY$KEY
@@ -820,7 +864,9 @@ u4QuUoobAgMBAAE=
 
   #[test]
   fn test_variable_without_parenthesis_is_substituted_before_separators() {
+    let sys = sys_traits::impls::InMemorySys::default();
     assert_parsed_eq_with_substitution(
+      &sys,
       r#"
       KEY1=test_user
       KEY1_1=test_user_with_separator
@@ -836,40 +882,23 @@ u4QuUoobAgMBAAE=
 
   #[test]
   fn test_substitute_variable_from_env_variable() {
-    let key = "DENO_DOTENV_TEST_KEY11";
-    let original = std::env::var_os(key);
-    #[allow(clippy::undocumented_unsafe_blocks)]
-    unsafe {
-      std::env::set_var(key, "overriden from process env");
-    }
+    let sys = sys_traits::impls::InMemorySys::default();
+    sys.env_set_var("DENO_DOTENV_TEST_KEY11", "overriden from process env");
 
     assert_parsed_eq_with_substitution(
+      &sys,
       r#"KEY=">${DENO_DOTENV_TEST_KEY11}<""#,
       &[("KEY", ">overriden from process env<")],
     );
-
-    match original {
-      #[allow(clippy::undocumented_unsafe_blocks)]
-      Some(value) => unsafe {
-        std::env::set_var(key, value);
-      },
-      #[allow(clippy::undocumented_unsafe_blocks)]
-      None => unsafe {
-        std::env::remove_var(key);
-      },
-    }
   }
 
   #[test]
   fn test_substitute_variable_env_variable_overrides_dotenv_in_substitution() {
-    let key = "DENO_DOTENV_TEST_KEY11";
-    let original = std::env::var_os(key);
-    #[allow(clippy::undocumented_unsafe_blocks)]
-    unsafe {
-      std::env::set_var(key, "overriden from process env");
-    }
+    let sys = sys_traits::impls::InMemorySys::default();
+    sys.env_set_var("DENO_DOTENV_TEST_KEY11", "overriden from process env");
 
     assert_parsed_eq_with_substitution(
+      &sys,
       r#"
       DENO_DOTENV_TEST_KEY11=test_user
       KEY=">${DENO_DOTENV_TEST_KEY11}<"
@@ -879,22 +908,13 @@ u4QuUoobAgMBAAE=
         ("KEY", ">overriden from process env<"),
       ],
     );
-
-    match original {
-      #[allow(clippy::undocumented_unsafe_blocks)]
-      Some(value) => unsafe {
-        std::env::set_var(key, value);
-      },
-      #[allow(clippy::undocumented_unsafe_blocks)]
-      None => unsafe {
-        std::env::remove_var(key);
-      },
-    }
   }
 
   #[test]
   fn test_consequent_substitutions() {
+    let sys = sys_traits::impls::InMemorySys::default();
     assert_parsed_eq_with_substitution(
+      &sys,
       r#"
       KEY1=test_user
       KEY2=$KEY1_2
@@ -910,7 +930,9 @@ u4QuUoobAgMBAAE=
 
   #[test]
   fn test_consequent_substitutions_with_one_missing() {
+    let sys = sys_traits::impls::InMemorySys::default();
     assert_parsed_eq_with_substitution(
+      &sys,
       r#"
       KEY2=$KEY1_2
       KEY=>${KEY1}<>${KEY2}<
