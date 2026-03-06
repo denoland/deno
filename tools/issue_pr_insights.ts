@@ -43,6 +43,7 @@ interface GitHubItem {
    * NOT include review comments. */
   comments: number;
   pull_request?: unknown;
+  state: "open" | "closed";
 }
 
 interface GitHubComment {
@@ -294,13 +295,12 @@ interface InsightsData {
   newPRs: GitHubItem[];
   noResponseIssues: GitHubItem[];
   readyPRs: GitHubItem[];
-  wipPRs: GitHubItem[];
   hotIssues: HotIssue[];
 }
 
 function totalItems(data: InsightsData): number {
   return data.hotIssues.length + data.noResponseIssues.length +
-    data.readyPRs.length + data.wipPRs.length;
+    data.readyPRs.length;
 }
 
 const MAX_ITEMS_MAIN = 20;
@@ -328,13 +328,6 @@ function buildSectionBlocks(data: InsightsData, max: number): Block[] {
     blocks.push({ type: "divider" });
     let text = `*:eyes: PRs needing review (${data.readyPRs.length}):*\n`;
     text += formatItemList(data.readyPRs, max);
-    blocks.push({ type: "section", text: { type: "mrkdwn", text } });
-  }
-
-  if (data.wipPRs.length > 0) {
-    blocks.push({ type: "divider" });
-    let text = `*:construction: WIP PRs (${data.wipPRs.length}):*\n`;
-    text += formatItemList(data.wipPRs, max);
     blocks.push({ type: "section", text: { type: "mrkdwn", text } });
   }
 
@@ -398,7 +391,10 @@ async function main() {
 
   // Filter out pull requests from the issues endpoint results
   const newIssues = allIssueItems.filter((item) => !item.pull_request);
-  const newPRs = allPRs;
+  // Only count open PRs and exclude WIP PRs
+  const newPRs = allPRs.filter((pr) =>
+    pr.state === "open" && !/^\[?wip\]?/i.test(pr.title.trim())
+  );
 
   const noResponseIssues = newIssues.filter((i) => i.comments === 0);
   const [allNoResponsePRs, hotIssues] = await Promise.all([
@@ -406,9 +402,7 @@ async function main() {
     findHotIssues(sinceDate),
   ]);
 
-  const wipPRs = allNoResponsePRs.filter((pr) =>
-    /^\[?wip\]?/i.test(pr.title.trim())
-  );
+  // Exclude WIP PRs entirely - they're not ready for review
   const readyPRs = allNoResponsePRs.filter(
     (pr) => !/^\[?wip\]?/i.test(pr.title.trim()),
   );
@@ -425,7 +419,6 @@ async function main() {
     newPRs,
     noResponseIssues,
     readyPRs,
-    wipPRs,
     hotIssues,
   };
 
@@ -447,9 +440,6 @@ async function main() {
       }
       if (readyPRs.length > 0) {
         summary.push(`:eyes: ${readyPRs.length} PRs need review`);
-      }
-      if (wipPRs.length > 0) {
-        summary.push(`:construction: ${wipPRs.length} WIP PRs`);
       }
       mainBlocks.push({ type: "divider" });
       mainBlocks.push({
