@@ -842,7 +842,7 @@ impl JsRuntime {
 
     let isolate_ptr = unsafe { isolate.as_raw_isolate_ptr() };
 
-    // Register this isolate's waker so the NotifyingPlatform can wake
+    // Register this isolate's waker so the custom platform can wake
     // the event loop when V8 posts foreground tasks from background threads.
     setup::register_isolate_waker(
       setup::isolate_ptr_to_key(isolate_ptr),
@@ -2262,21 +2262,22 @@ impl JsRuntime {
     }
 
     // Safety net: if V8 has pending background tasks (e.g. module compilation),
-    // schedule a delayed wake to pump the message loop in case the
-    // NotifyingPlatform callback was missed due to a race condition.
-    // The AtomicBool guard ensures at most one safety-net timer thread exists.
+    // schedule a delayed wake to pump the message loop in case the platform
+    // callback was missed due to a race condition. Uses an OS thread (not
+    // tokio) to avoid depending on the async runtime being cooperative.
+    // The AtomicBool guard ensures at most one safety-net timer is active.
     if pending_state.has_pending_background_tasks
       && !self
         .inner
         .state
         .safety_net_active
-        .swap(true, std::sync::atomic::Ordering::SeqCst)
+        .swap(true, std::sync::atomic::Ordering::Relaxed)
     {
       let waker = cx.waker().clone();
       let flag = self.inner.state.safety_net_active.clone();
       std::thread::spawn(move || {
         std::thread::sleep(std::time::Duration::from_millis(100));
-        flag.store(false, std::sync::atomic::Ordering::SeqCst);
+        flag.store(false, std::sync::atomic::Ordering::Relaxed);
         waker.wake_by_ref();
       });
     }
