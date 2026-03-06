@@ -195,8 +195,24 @@ cipherInfoByName.set("aes128", cipherInfoByName.get("aes-128-cbc")!);
 cipherInfoByName.set("aes192", cipherInfoByName.get("aes-192-cbc")!);
 cipherInfoByName.set("aes256", cipherInfoByName.get("aes-256-cbc")!);
 
+// Ciphers actually supported by the runtime (subset of cipherInfoTable).
+const supportedCiphers = [
+  "aes-128-ecb",
+  "aes-128-cbc",
+  "aes-192-ecb",
+  "aes-256-ecb",
+  "aes-256-cbc",
+  "aes-128-gcm",
+  "aes-256-gcm",
+  "aes-128-ctr",
+  "aes-192-ctr",
+  "aes-256-ctr",
+  "aes128",
+  "aes256",
+];
+
 export function getCiphers(): string[] {
-  return [...cipherInfoByName.keys()];
+  return supportedCiphers;
 }
 
 const hashBlockSizes: Record<string, number> = {
