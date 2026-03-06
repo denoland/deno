@@ -2,7 +2,6 @@
 // Adapted from Node.js. Copyright Joyent, Inc. and other Node contributors.
 
 import { dirname, isAbsolute, join, parse, resolve, sep } from "node:path";
-import { chmodPromise } from "ext:deno_node/_fs/_fs_chmod.ts";
 import { copyFilePromise } from "ext:deno_node/_fs/_fs_copy.ts";
 import { mkdirPromise } from "ext:deno_node/_fs/_fs_mkdir.ts";
 import { opendirPromise } from "ext:deno_node/_fs/_fs_opendir.ts";
@@ -344,7 +343,7 @@ async function setDestTimestampsAndMode(
 
 function setDestMode(dest: string, srcMode: number | null): Promise<void> {
   if (!srcMode) return PromiseResolve();
-  return chmodPromise(dest, srcMode);
+  return Deno.chmod(dest, srcMode);
 }
 
 async function setDestTimestamps(src: string, dest: string): Promise<void> {

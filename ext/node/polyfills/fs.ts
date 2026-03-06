@@ -1,24 +1,19 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
+import { fs as fsConstants } from "ext:deno_node/internal_binding/constants.ts";
+import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
 import {
-  access,
-  accessPromise,
-  accessSync,
-} from "ext:deno_node/_fs/_fs_access.ts";
-import {
-  appendFile,
-  appendFilePromise,
-  appendFileSync,
-} from "ext:deno_node/_fs/_fs_appendFile.ts";
-import { chmod, chmodPromise, chmodSync } from "ext:deno_node/_fs/_fs_chmod.ts";
-import { chown, chownPromise, chownSync } from "ext:deno_node/_fs/_fs_chown.ts";
-import { close, closeSync } from "ext:deno_node/_fs/_fs_close.ts";
+  type CallbackWithError,
+  isFd,
+  makeCallback,
+  maybeCallback,
+  type WriteFileOptions,
+} from "ext:deno_node/_fs/_fs_common.ts";
+import type { Encodings } from "ext:deno_node/_utils.ts";
+import { denoErrorToNodeError } from "ext:deno_node/internal/errors.ts";
 import * as constants from "ext:deno_node/_fs/_fs_constants.ts";
-import {
-  copyFile,
-  copyFilePromise,
-  copyFileSync,
-} from "ext:deno_node/_fs/_fs_copy.ts";
-import { cp, cpPromise, cpSync } from "ext:deno_node/_fs/_fs_cp.ts";
+
+import { copyFile, copyFileSync } from "ext:deno_node/_fs/_fs_copy.ts";
+import { cp, cpSync } from "ext:deno_node/_fs/_fs_cp.ts";
 import Dir from "ext:deno_node/_fs/_fs_dir.ts";
 import { exists, existsSync } from "ext:deno_node/_fs/_fs_exists.ts";
 import { fchmod, fchmodSync } from "ext:deno_node/_fs/_fs_fchmod.ts";
@@ -28,110 +23,37 @@ import { fstat, fstatSync } from "ext:deno_node/_fs/_fs_fstat.ts";
 import { fsync, fsyncSync } from "ext:deno_node/_fs/_fs_fsync.ts";
 import { ftruncate, ftruncateSync } from "ext:deno_node/_fs/_fs_ftruncate.ts";
 import { futimes, futimesSync } from "ext:deno_node/_fs/_fs_futimes.ts";
-import {
-  lchmod,
-  lchmodPromise,
-  lchmodSync,
-} from "ext:deno_node/_fs/_fs_lchmod.ts";
-import {
-  lchown,
-  lchownPromise,
-  lchownSync,
-} from "ext:deno_node/_fs/_fs_lchown.ts";
-import { link, linkPromise, linkSync } from "ext:deno_node/_fs/_fs_link.ts";
-import { lstat, lstatPromise, lstatSync } from "ext:deno_node/_fs/_fs_lstat.ts";
-import {
-  lutimes,
-  lutimesPromise,
-  lutimesSync,
-} from "ext:deno_node/_fs/_fs_lutimes.ts";
-import { mkdir, mkdirPromise, mkdirSync } from "ext:deno_node/_fs/_fs_mkdir.ts";
-import {
-  mkdtemp,
-  mkdtempPromise,
-  mkdtempSync,
-} from "ext:deno_node/_fs/_fs_mkdtemp.ts";
-import { open, openPromise, openSync } from "ext:deno_node/_fs/_fs_open.ts";
-import {
-  opendir,
-  opendirPromise,
-  opendirSync,
-} from "ext:deno_node/_fs/_fs_opendir.ts";
+import { lchmod, lchmodSync } from "ext:deno_node/_fs/_fs_lchmod.ts";
+import { lchown, lchownSync } from "ext:deno_node/_fs/_fs_lchown.ts";
+import { link, linkSync } from "ext:deno_node/_fs/_fs_link.ts";
+import { lstat, lstatSync } from "ext:deno_node/_fs/_fs_lstat.ts";
+import { lutimes, lutimesSync } from "ext:deno_node/_fs/_fs_lutimes.ts";
+import { mkdir, mkdirSync } from "ext:deno_node/_fs/_fs_mkdir.ts";
+import { mkdtemp, mkdtempSync } from "ext:deno_node/_fs/_fs_mkdtemp.ts";
+import { open, openSync } from "ext:deno_node/_fs/_fs_open.ts";
+import { opendir, opendirSync } from "ext:deno_node/_fs/_fs_opendir.ts";
 import { read, readSync } from "ext:deno_node/_fs/_fs_read.ts";
-import {
-  readdir,
-  readdirPromise,
-  readdirSync,
-} from "ext:deno_node/_fs/_fs_readdir.ts";
-import {
-  readFile,
-  readFilePromise,
-  readFileSync,
-} from "ext:deno_node/_fs/_fs_readFile.ts";
-import {
-  readlink,
-  readlinkPromise,
-  readlinkSync,
-} from "ext:deno_node/_fs/_fs_readlink.ts";
-import {
-  realpath,
-  realpathPromise,
-  realpathSync,
-} from "ext:deno_node/_fs/_fs_realpath.ts";
-import {
-  rename,
-  renamePromise,
-  renameSync,
-} from "ext:deno_node/_fs/_fs_rename.ts";
-import { rmdir, rmdirPromise, rmdirSync } from "ext:deno_node/_fs/_fs_rmdir.ts";
-import { rm, rmPromise, rmSync } from "ext:deno_node/_fs/_fs_rm.ts";
-import {
-  stat,
-  statPromise,
-  Stats,
-  statSync,
-} from "ext:deno_node/_fs/_fs_stat.ts";
-import {
-  statfs,
-  statfsPromise,
-  statfsSync,
-} from "ext:deno_node/_fs/_fs_statfs.ts";
-import {
-  symlink,
-  symlinkPromise,
-  symlinkSync,
-} from "ext:deno_node/_fs/_fs_symlink.ts";
-import {
-  truncate,
-  truncatePromise,
-  truncateSync,
-} from "ext:deno_node/_fs/_fs_truncate.ts";
-import {
-  unlink,
-  unlinkPromise,
-  unlinkSync,
-} from "ext:deno_node/_fs/_fs_unlink.ts";
-import {
-  utimes,
-  utimesPromise,
-  utimesSync,
-} from "ext:deno_node/_fs/_fs_utimes.ts";
-import {
-  unwatchFile,
-  watch,
-  watchFile,
-  watchPromise,
-} from "ext:deno_node/_fs/_fs_watch.ts";
+import { readdir, readdirSync } from "ext:deno_node/_fs/_fs_readdir.ts";
+import { readFile, readFileSync } from "ext:deno_node/_fs/_fs_readFile.ts";
+import { readlink, readlinkSync } from "ext:deno_node/_fs/_fs_readlink.ts";
+import { realpath, realpathSync } from "ext:deno_node/_fs/_fs_realpath.ts";
+import { rename, renameSync } from "ext:deno_node/_fs/_fs_rename.ts";
+import { rmdir, rmdirSync } from "ext:deno_node/_fs/_fs_rmdir.ts";
+import { rm, rmSync } from "ext:deno_node/_fs/_fs_rm.ts";
+import { stat, Stats, statSync } from "ext:deno_node/_fs/_fs_stat.ts";
+import { statfs, statfsSync } from "ext:deno_node/_fs/_fs_statfs.ts";
+import { symlink, symlinkSync } from "ext:deno_node/_fs/_fs_symlink.ts";
+import { truncate, truncateSync } from "ext:deno_node/_fs/_fs_truncate.ts";
+import { unlink, unlinkSync } from "ext:deno_node/_fs/_fs_unlink.ts";
+import { utimes, utimesSync } from "ext:deno_node/_fs/_fs_utimes.ts";
+import { unwatchFile, watch, watchFile } from "ext:deno_node/_fs/_fs_watch.ts";
 // @deno-types="./_fs/_fs_write.d.ts"
 import { write, writeSync } from "ext:deno_node/_fs/_fs_write.ts";
 // @deno-types="./_fs/_fs_writev.d.ts"
 import { writev, writevSync } from "ext:deno_node/_fs/_fs_writev.ts";
 import { readv, readvSync } from "ext:deno_node/_fs/_fs_readv.ts";
-import {
-  writeFile,
-  writeFilePromise,
-  writeFileSync,
-} from "ext:deno_node/_fs/_fs_writeFile.ts";
+import { writeFile, writeFileSync } from "ext:deno_node/_fs/_fs_writeFile.ts";
+import promises from "ext:deno_node/internal/fs/promises.ts";
 // @deno-types="./internal/fs/streams.d.ts"
 import {
   createReadStream,
@@ -140,20 +62,33 @@ import {
   WriteStream,
 } from "ext:deno_node/internal/fs/streams.mjs";
 import {
+  copyObject,
   Dirent,
+  getOptions,
+  getValidatedFd,
   getValidatedPath,
+  getValidatedPathToString,
+  getValidMode,
+  kMaxUserId,
   toUnixTimestamp as _toUnixTimestamp,
 } from "ext:deno_node/internal/fs/utils.mjs";
-import { glob, globPromise, globSync } from "ext:deno_node/_fs/_fs_glob.ts";
+import { glob, globSync } from "ext:deno_node/_fs/_fs_glob.ts";
 import {
+  parseFileMode,
+  validateInteger,
   validateObject,
   validateString,
 } from "ext:deno_node/internal/validators.mjs";
 import type { Buffer } from "node:buffer";
 import { op_fs_read_file_async } from "ext:core/ops";
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 
-const { PromisePrototypeThen } = primordials;
+const {
+  Error,
+  ErrorPrototype,
+  ObjectPrototypeIsPrototypeOf,
+  PromisePrototypeThen,
+} = primordials;
 
 const {
   F_OK,
@@ -176,6 +111,254 @@ const {
   O_EXCL,
 } = constants;
 
+function access(
+  path: string | Buffer | URL,
+  mode: number | CallbackWithError,
+  callback?: CallbackWithError,
+) {
+  if (typeof mode === "function") {
+    callback = mode;
+    mode = fsConstants.F_OK;
+  }
+
+  // deno-lint-ignore prefer-primordials
+  path = getValidatedPath(path).toString();
+  mode = getValidMode(mode, "access");
+  const cb = makeCallback(callback);
+
+  // deno-lint-ignore prefer-primordials
+  Deno.lstat(path).then(
+    (info) => {
+      if (info.mode === null) {
+        cb(null);
+        return;
+      }
+      let m = +mode || 0;
+      let fileMode = +info.mode || 0;
+
+      if (Deno.build.os === "windows") {
+        m &= ~fsConstants.X_OK;
+      } else if (info.uid === Deno.uid()) {
+        fileMode >>= 6;
+      }
+
+      if ((m & fileMode) === m) {
+        cb(null);
+      } else {
+        // deno-lint-ignore no-explicit-any
+        const e: any = new Error(`EACCES: permission denied, access '${path}'`);
+        e.path = path;
+        e.syscall = "access";
+        e.errno = codeMap.get("EACCES");
+        e.code = "EACCES";
+        cb(e);
+      }
+    },
+    (err) => {
+      // deno-lint-ignore prefer-primordials
+      if (err instanceof Deno.errors.NotFound) {
+        // deno-lint-ignore no-explicit-any
+        const e: any = new Error(
+          `ENOENT: no such file or directory, access '${path}'`,
+        );
+        e.path = path;
+        e.syscall = "access";
+        e.errno = codeMap.get("ENOENT");
+        e.code = "ENOENT";
+        cb(e);
+      } else {
+        cb(err);
+      }
+    },
+  );
+}
+
+function accessSync(path: string | Buffer | URL, mode?: number) {
+  // deno-lint-ignore prefer-primordials
+  path = getValidatedPath(path).toString();
+  mode = getValidMode(mode, "access");
+  try {
+    // deno-lint-ignore prefer-primordials
+    const info = Deno.lstatSync(path.toString());
+    if (info.mode === null) {
+      return;
+    }
+    let m = +mode! || 0;
+    let fileMode = +info.mode! || 0;
+    if (Deno.build.os === "windows") {
+      m &= ~fsConstants.X_OK;
+    } else if (info.uid === Deno.uid()) {
+      fileMode >>= 6;
+    }
+    if ((m & fileMode) === m) {
+      // all required flags exist
+    } else {
+      // deno-lint-ignore no-explicit-any
+      const e: any = new Error(`EACCES: permission denied, access '${path}'`);
+      e.path = path;
+      e.syscall = "access";
+      e.errno = codeMap.get("EACCES");
+      e.code = "EACCES";
+      throw e;
+    }
+  } catch (err) {
+    // deno-lint-ignore prefer-primordials
+    if (err instanceof Deno.errors.NotFound) {
+      // deno-lint-ignore no-explicit-any
+      const e: any = new Error(
+        `ENOENT: no such file or directory, access '${path}'`,
+      );
+      e.path = path;
+      e.syscall = "access";
+      e.errno = codeMap.get("ENOENT");
+      e.code = "ENOENT";
+      throw e;
+    } else {
+      throw err;
+    }
+  }
+}
+
+/**
+ * TODO: Also accept 'data' parameter as a Node polyfill Buffer type once these
+ * are implemented. See https://github.com/denoland/deno/issues/3403
+ */
+function appendFile(
+  path: string | number | URL,
+  data: string | Uint8Array,
+  options: Encodings | WriteFileOptions | CallbackWithError,
+  callback?: CallbackWithError,
+) {
+  callback = maybeCallback(callback || options);
+  options = getOptions(options, { encoding: "utf8", mode: 0o666, flag: "a" });
+
+  // Don't make changes directly on options object
+  options = copyObject(options);
+
+  // Force append behavior when using a supplied file descriptor
+  if (!options.flag || isFd(path)) {
+    options.flag = "a";
+  }
+
+  writeFile(path, data, options, callback);
+}
+
+/**
+ * TODO: Also accept 'data' parameter as a Node polyfill Buffer type once these
+ * are implemented. See https://github.com/denoland/deno/issues/3403
+ */
+function appendFileSync(
+  path: string | number | URL,
+  data: string | Uint8Array,
+  options?: Encodings | WriteFileOptions,
+) {
+  options = getOptions(options, { encoding: "utf8", mode: 0o666, flag: "a" });
+
+  // Don't make changes directly on options object
+  options = copyObject(options);
+
+  // Force append behavior when using a supplied file descriptor
+  if (!options.flag || isFd(path)) {
+    options.flag = "a";
+  }
+
+  writeFileSync(path, data, options);
+}
+
+function chmod(
+  path: string | Buffer | URL,
+  mode: string | number,
+  callback: CallbackWithError,
+) {
+  path = getValidatedPathToString(path);
+  mode = parseFileMode(mode, "mode");
+
+  PromisePrototypeThen(
+    Deno.chmod(path, mode),
+    () => callback(null),
+    (err: Error) =>
+      callback(denoErrorToNodeError(err, { syscall: "chmod", path })),
+  );
+}
+
+function chmodSync(path: string | Buffer | URL, mode: string | number) {
+  path = getValidatedPathToString(path);
+  mode = parseFileMode(mode, "mode");
+
+  try {
+    Deno.chmodSync(path, mode);
+  } catch (error) {
+    throw denoErrorToNodeError(error as Error, { syscall: "chmod", path });
+  }
+}
+
+function chown(
+  path: string | Buffer | URL,
+  uid: number,
+  gid: number,
+  callback: CallbackWithError,
+) {
+  callback = makeCallback(callback);
+  // deno-lint-ignore prefer-primordials
+  path = getValidatedPath(path).toString();
+  validateInteger(uid, "uid", -1, kMaxUserId);
+  validateInteger(gid, "gid", -1, kMaxUserId);
+
+  // deno-lint-ignore prefer-primordials
+  Deno.chown(path, uid, gid).then(
+    () => callback(null),
+    callback,
+  );
+}
+
+function chownSync(
+  path: string | Buffer | URL,
+  uid: number,
+  gid: number,
+) {
+  // deno-lint-ignore prefer-primordials
+  path = getValidatedPath(path).toString();
+  validateInteger(uid, "uid", -1, kMaxUserId);
+  validateInteger(gid, "gid", -1, kMaxUserId);
+
+  Deno.chownSync(path, uid, gid);
+}
+
+function defaultCloseCallback(err: Error | null) {
+  if (err !== null) throw err;
+}
+
+function close(
+  fd: number,
+  callback: CallbackWithError = defaultCloseCallback,
+) {
+  fd = getValidatedFd(fd);
+  if (callback !== defaultCloseCallback) {
+    callback = makeCallback(callback);
+  }
+
+  setTimeout(() => {
+    let error = null;
+    try {
+      // TODO(@littledivy): Treat `fd` as real file descriptor. `rid` is an
+      // implementation detail and may change.
+      core.close(fd);
+    } catch (err) {
+      error = ObjectPrototypeIsPrototypeOf(ErrorPrototype, err)
+        ? err as Error
+        : new Error("[non-error thrown]");
+    }
+    callback(error);
+  }, 0);
+}
+
+function closeSync(fd: number) {
+  fd = getValidatedFd(fd);
+  // TODO(@littledivy): Treat `fd` as real file descriptor. `rid` is an
+  // implementation detail and may change.
+  core.close(fd);
+}
+
 /**
  * Returns a `Blob` whose data is read from the given file.
  */
@@ -192,41 +375,6 @@ function openAsBlob(
     (data: Uint8Array) => new Blob([data], { type }),
   );
 }
-
-const promises = {
-  access: accessPromise,
-  constants,
-  copyFile: copyFilePromise,
-  cp: cpPromise,
-  glob: globPromise,
-  open: openPromise,
-  opendir: opendirPromise,
-  rename: renamePromise,
-  truncate: truncatePromise,
-  rm: rmPromise,
-  rmdir: rmdirPromise,
-  mkdir: mkdirPromise,
-  readdir: readdirPromise,
-  readlink: readlinkPromise,
-  symlink: symlinkPromise,
-  lstat: lstatPromise,
-  stat: statPromise,
-  statfs: statfsPromise,
-  link: linkPromise,
-  unlink: unlinkPromise,
-  chmod: chmodPromise,
-  lchmod: lchmodPromise,
-  lchown: lchownPromise,
-  chown: chownPromise,
-  utimes: utimesPromise,
-  lutimes: lutimesPromise,
-  realpath: realpathPromise,
-  mkdtemp: mkdtempPromise,
-  writeFile: writeFilePromise,
-  appendFile: appendFilePromise,
-  readFile: readFilePromise,
-  watch: watchPromise,
-};
 
 export default {
   access,
