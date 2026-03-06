@@ -364,7 +364,7 @@ impl TCP {
         use windows_sys::Win32::Networking::WinSock::FIONBIO;
         use windows_sys::Win32::Networking::WinSock::ioctlsocket;
         let mut nonblocking: u32 = 1;
-        ioctlsocket(fd as usize, FIONBIO as i32, &mut nonblocking);
+        ioctlsocket(fd as usize, FIONBIO, &mut nonblocking);
       }
       // For C libuv, use uv_tcp_open to assign an existing fd
       uv_compat::uv_tcp_open(tcp, fd)
