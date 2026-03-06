@@ -89,7 +89,7 @@ impl WatchEnvTracker {
       return;
     }
 
-    match deno_dotenv::from_path_sanitized_iter(&file_path) {
+    match deno_dotenv::from_path_sanitized_iter_with_substitution(&file_path) {
       Ok(iter) => {
         for item in iter {
           match item {
@@ -244,7 +244,9 @@ pub fn load_env_variables_from_env_files(
   let mut loaded_keys = HashSet::new();
 
   for env_file_name in env_file_names.iter().rev() {
-    let iter = match deno_dotenv::from_path_sanitized_iter(env_file_name) {
+    let iter = match deno_dotenv::from_path_sanitized_iter_with_substitution(
+      env_file_name,
+    ) {
       Ok(iter) => iter,
       Err(error) => {
         handle_dotenv_error(error, env_file_name, flags_log_level);
