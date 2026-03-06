@@ -1337,27 +1337,28 @@ async fn tcp_shutdown_waits_for_write_queue_to_drain() {
       tokio::time::sleep(std::time::Duration::from_millis(1)).await;
     }
 
-    let phases = order.borrow();
-    assert!(
-      phases.len() >= 2,
-      "Expected both write and shutdown callbacks, got {:?}",
-      *phases
-    );
+    {
+      let phases = order.borrow();
+      assert!(
+        phases.len() >= 2,
+        "Expected both write and shutdown callbacks, got {:?}",
+        *phases
+      );
 
-    let write_idx = phases
-      .iter()
-      .position(|&s| s == "write")
-      .expect("write cb should have fired");
-    let shutdown_idx = phases
-      .iter()
-      .position(|&s| s == "shutdown")
-      .expect("shutdown cb should have fired");
-    assert!(
-      write_idx < shutdown_idx,
-      "write should complete before shutdown: {:?}",
-      *phases
-    );
-    drop(phases);
+      let write_idx = phases
+        .iter()
+        .position(|&s| s == "write")
+        .expect("write cb should have fired");
+      let shutdown_idx = phases
+        .iter()
+        .position(|&s| s == "shutdown")
+        .expect("shutdown cb should have fired");
+      assert!(
+        write_idx < shutdown_idx,
+        "write should complete before shutdown: {:?}",
+        *phases
+      );
+    }
 
     // Clean up.
     unsafe {

@@ -687,7 +687,7 @@ pub fn uv_guess_handle(fd: c_int) -> uv_handle_type {
       }
     }
 
-    return uv_handle_type::UV_UNKNOWN_HANDLE;
+    uv_handle_type::UV_UNKNOWN_HANDLE
   }
 
   #[cfg(windows)]

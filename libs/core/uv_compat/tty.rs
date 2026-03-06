@@ -577,23 +577,21 @@ pub unsafe fn uv_tty_init(
       // So we only reopen slave devices.
       let mut actual_fd = fd;
       let mut reopened = false;
-      if handle_type == uv_handle_type::UV_TTY {
-        if tty_is_slave(fd) {
-          let mut path = [0u8; 256];
-          if libc::ttyname_r(fd, path.as_mut_ptr().cast(), path.len()) == 0 {
-            let new_fd =
-              open_cloexec(path.as_ptr().cast(), mode | libc::O_NOCTTY);
-            if new_fd >= 0 {
-              let r = dup2_cloexec(new_fd, fd);
-              if r < 0 && r != UV_EINVAL {
-                libc::close(new_fd);
-                return r;
-              }
-              actual_fd = fd;
-              reopened = true;
-              if new_fd != fd {
-                libc::close(new_fd);
-              }
+      if handle_type == uv_handle_type::UV_TTY && tty_is_slave(fd) {
+        let mut path = [0u8; 256];
+        if libc::ttyname_r(fd, path.as_mut_ptr().cast(), path.len()) == 0 {
+          let new_fd =
+            open_cloexec(path.as_ptr().cast(), mode | libc::O_NOCTTY);
+          if new_fd >= 0 {
+            let r = dup2_cloexec(new_fd, fd);
+            if r < 0 && r != UV_EINVAL {
+              libc::close(new_fd);
+              return r;
+            }
+            actual_fd = fd;
+            reopened = true;
+            if new_fd != fd {
+              libc::close(new_fd);
             }
           }
         }
