@@ -254,7 +254,7 @@
     "parallel/test-crypto-certificate.js": {},
     "parallel/test-crypto-cipheriv-decipheriv.js": {
       "exitCode": 1,
-      "output": "[WILDCARD]Missing expected exception.\n  assert.throws(\n[WILDCARD]test-crypto-cipheriv-decipheriv.js:169[WILDCARD]"
+      "output": "[WILDCARD]Unknown cipher id-aes128-wrap[WILDCARD]"
     },
     "parallel/test-crypto-dh-constructor.js": {},
     "parallel/test-crypto-dh-leak.js": {},
