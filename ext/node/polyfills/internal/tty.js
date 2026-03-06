@@ -338,6 +338,28 @@ export class WriteStream extends Socket {
         }
         cb();
       };
+
+      // Prevent actually closing stdout/stderr. Libraries like mute-stream
+      // (used by @inquirer/prompts) call destroy()/end() on the stream,
+      // which would close the underlying resource and break subsequent
+      // console.log calls (BadResource error). Match Node.js behavior
+      // where stdio streams are indestructible.
+      //
+      // Override _destroy to prevent Socket._destroy from calling
+      // this._handle.close(), which would close the Deno resource.
+      this._destroy = function (err, cb) {
+        cb(err);
+        this._undestroy();
+      };
+
+      // Also prevent the handle's _onClose from closing the underlying
+      // io.stdout/io.stderr resource. This handles the end() path:
+      // end() -> _final -> shutdown -> _onClose -> io.stdout.close().
+      // Without this, the Deno resource (rid 1/2) is removed from the
+      // resource table and op_print (used by console.log) fails.
+      this._handle._onClose = function () {
+        return 0;
+      };
     }
   }
 
