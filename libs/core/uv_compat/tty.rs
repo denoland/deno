@@ -3,12 +3,12 @@
 use std::collections::VecDeque;
 use std::ffi::c_int;
 use std::ffi::c_void;
-use std::task::Context;
-
 #[cfg(unix)]
 use std::os::unix::io::AsRawFd;
 #[cfg(unix)]
 use std::os::unix::io::RawFd;
+use std::task::Context;
+
 #[cfg(unix)]
 use tokio::io::unix::AsyncFd;
 
@@ -393,8 +393,15 @@ mod global_console {
   pub(super) fn save_if_first() {
     INIT.call_once(|| {
       // "CONIN$\0" as UTF-16
-      let conin: [u16; 7] =
-        [b'C' as u16, b'O' as u16, b'N' as u16, b'I' as u16, b'N' as u16, b'$' as u16, 0];
+      let conin: [u16; 7] = [
+        b'C' as u16,
+        b'O' as u16,
+        b'N' as u16,
+        b'I' as u16,
+        b'N' as u16,
+        b'$' as u16,
+        0,
+      ];
       let handle = unsafe {
         win_console::CreateFileW(
           conin.as_ptr(),
@@ -540,7 +547,7 @@ pub unsafe fn uv_tty_init(
 
     #[cfg(unix)]
     let (actual_fd, async_fd) = {
-      let handle_type = uv_guess_handle(fd);
+      let handle_type = super::uv_guess_handle(fd);
       if handle_type == uv_handle_type::UV_FILE
         || handle_type == uv_handle_type::UV_UNKNOWN_HANDLE
       {
@@ -573,16 +580,9 @@ pub unsafe fn uv_tty_init(
       if handle_type == uv_handle_type::UV_TTY {
         if tty_is_slave(fd) {
           let mut path = [0u8; 256];
-          if libc::ttyname_r(
-            fd,
-            path.as_mut_ptr().cast(),
-            path.len(),
-          ) == 0
-          {
-            let new_fd = open_cloexec(
-              path.as_ptr().cast(),
-              mode | libc::O_NOCTTY,
-            );
+          if libc::ttyname_r(fd, path.as_mut_ptr().cast(), path.len()) == 0 {
+            let new_fd =
+              open_cloexec(path.as_ptr().cast(), mode | libc::O_NOCTTY);
             if new_fd >= 0 {
               let r = dup2_cloexec(new_fd, fd);
               if r < 0 && r != UV_EINVAL {
@@ -607,11 +607,8 @@ pub unsafe fn uv_tty_init(
           .unwrap_or(libc::EINVAL);
       }
       if cur_flags & libc::O_NONBLOCK == 0
-        && libc::fcntl(
-          actual_fd,
-          libc::F_SETFL,
-          cur_flags | libc::O_NONBLOCK,
-        ) == -1
+        && libc::fcntl(actual_fd, libc::F_SETFL, cur_flags | libc::O_NONBLOCK)
+          == -1
       {
         if reopened {
           libc::fcntl(fd, libc::F_SETFL, saved_flags);
@@ -949,111 +946,6 @@ pub fn uv_tty_get_vterm_state(_state: *mut uv_tty_vtermstate_t) -> c_int {
   }
 }
 
-/// Determine the handle type for a given file descriptor.
-///
-/// Matches libuv's `uv_guess_handle`: detects TTYs, regular files,
-/// character devices, pipes (FIFOs), TCP/UDP sockets, and Unix domain
-/// sockets (named pipes).
-pub fn uv_guess_handle(fd: c_int) -> uv_handle_type {
-  if fd < 0 {
-    return uv_handle_type::UV_UNKNOWN_HANDLE;
-  }
-
-  #[cfg(unix)]
-  {
-    if unsafe { libc::isatty(fd) } != 0 {
-      return uv_handle_type::UV_TTY;
-    }
-
-    let mut s: libc::stat = unsafe { std::mem::zeroed() };
-    if unsafe { libc::fstat(fd, &mut s) } != 0 {
-      return uv_handle_type::UV_UNKNOWN_HANDLE;
-    }
-
-    let ft = s.st_mode & libc::S_IFMT;
-    if ft == libc::S_IFREG || ft == libc::S_IFCHR {
-      return uv_handle_type::UV_FILE;
-    }
-
-    if ft == libc::S_IFIFO {
-      return uv_handle_type::UV_NAMED_PIPE;
-    }
-
-    if ft != libc::S_IFSOCK {
-      return uv_handle_type::UV_UNKNOWN_HANDLE;
-    }
-
-    // It's a socket — determine type.
-    let mut ss: libc::sockaddr_storage = unsafe { std::mem::zeroed() };
-    let mut len: libc::socklen_t =
-      std::mem::size_of::<libc::sockaddr_storage>() as libc::socklen_t;
-    if unsafe {
-      libc::getsockname(fd, &mut ss as *mut _ as *mut libc::sockaddr, &mut len)
-    } != 0
-    {
-      return uv_handle_type::UV_UNKNOWN_HANDLE;
-    }
-
-    let mut sock_type: c_int = 0;
-    let mut type_len: libc::socklen_t =
-      std::mem::size_of::<c_int>() as libc::socklen_t;
-    if unsafe {
-      libc::getsockopt(
-        fd,
-        libc::SOL_SOCKET,
-        libc::SO_TYPE,
-        &mut sock_type as *mut _ as *mut c_void,
-        &mut type_len,
-      )
-    } != 0
-    {
-      return uv_handle_type::UV_UNKNOWN_HANDLE;
-    }
-
-    if sock_type == libc::SOCK_DGRAM
-      && (ss.ss_family == libc::AF_INET as libc::sa_family_t
-        || ss.ss_family == libc::AF_INET6 as libc::sa_family_t)
-    {
-      return uv_handle_type::UV_UDP;
-    }
-
-    if sock_type == libc::SOCK_STREAM {
-      if ss.ss_family == libc::AF_INET as libc::sa_family_t
-        || ss.ss_family == libc::AF_INET6 as libc::sa_family_t
-      {
-        return uv_handle_type::UV_TCP;
-      }
-      if ss.ss_family == libc::AF_UNIX as libc::sa_family_t {
-        return uv_handle_type::UV_NAMED_PIPE;
-      }
-    }
-
-    return uv_handle_type::UV_UNKNOWN_HANDLE;
-  }
-
-  #[cfg(windows)]
-  {
-    let handle = unsafe { win_console::_get_osfhandle(fd) };
-    if handle == -1 {
-      return uv_handle_type::UV_UNKNOWN_HANDLE;
-    }
-    let h = handle as *mut c_void;
-    match unsafe { win_console::GetFileType(h) } {
-      win_console::FILE_TYPE_CHAR => {
-        let mut mode: u32 = 0;
-        if unsafe { win_console::GetConsoleMode(h, &mut mode) } != 0 {
-          uv_handle_type::UV_TTY
-        } else {
-          uv_handle_type::UV_FILE
-        }
-      }
-      win_console::FILE_TYPE_PIPE => uv_handle_type::UV_NAMED_PIPE,
-      win_console::FILE_TYPE_DISK => uv_handle_type::UV_FILE,
-      _ => uv_handle_type::UV_UNKNOWN_HANDLE,
-    }
-  }
-}
-
 // ---- Stream operation entry points (called from stream.rs dispatch) ----
 
 /// ### Safety
@@ -1337,21 +1229,13 @@ pub(crate) unsafe fn poll_tty_handle(
                     }
                     Ok(n) => {
                       any_work = true;
-                      read_cb(
-                        tty_ptr as *mut uv_stream_t,
-                        n as isize,
-                        &buf,
-                      );
+                      read_cb(tty_ptr as *mut uv_stream_t, n as isize, &buf);
                     }
                     Err(ref e)
                       if e.kind() == std::io::ErrorKind::WouldBlock =>
                     {
                       // Signal the caller to free the buffer (nread=0).
-                      read_cb(
-                        tty_ptr as *mut uv_stream_t,
-                        0,
-                        &buf,
-                      );
+                      read_cb(tty_ptr as *mut uv_stream_t, 0, &buf);
                       // Tell tokio we didn't actually read — need to
                       // re-poll for readiness.
                       guard.clear_ready();
@@ -1408,24 +1292,14 @@ pub(crate) unsafe fn poll_tty_handle(
             };
             alloc_cb(tty_ptr as *mut uv_handle_t, 65536, &mut buf);
             if buf.base.is_null() || buf.len == 0 {
-              read_cb(
-                tty_ptr as *mut uv_stream_t,
-                UV_ENOBUFS as isize,
-                &buf,
-              );
+              read_cb(tty_ptr as *mut uv_stream_t, UV_ENOBUFS as isize, &buf);
               break;
             }
-            let slice = std::slice::from_raw_parts_mut(
-              buf.base.cast::<u8>(),
-              buf.len,
-            );
+            let slice =
+              std::slice::from_raw_parts_mut(buf.base.cast::<u8>(), buf.len);
             match tty_try_read(tty_ptr, slice) {
               Ok(0) => {
-                read_cb(
-                  tty_ptr as *mut uv_stream_t,
-                  UV_EOF as isize,
-                  &buf,
-                );
+                read_cb(tty_ptr as *mut uv_stream_t, UV_EOF as isize, &buf);
                 (*tty_ptr).internal_reading = false;
                 break;
               }
@@ -1433,19 +1307,13 @@ pub(crate) unsafe fn poll_tty_handle(
                 any_work = true;
                 read_cb(tty_ptr as *mut uv_stream_t, n as isize, &buf);
               }
-              Err(ref e)
-                if e.kind() == std::io::ErrorKind::WouldBlock =>
-              {
+              Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                 // Signal the caller to free the buffer (nread=0).
                 read_cb(tty_ptr as *mut uv_stream_t, 0, &buf);
                 break;
               }
               Err(_) => {
-                read_cb(
-                  tty_ptr as *mut uv_stream_t,
-                  UV_EOF as isize,
-                  &buf,
-                );
+                read_cb(tty_ptr as *mut uv_stream_t, UV_EOF as isize, &buf);
                 (*tty_ptr).internal_reading = false;
                 break;
               }
@@ -1614,7 +1482,8 @@ unsafe fn dup2_cloexec(new_fd: c_int, old_fd: c_int) -> c_int {
   // Use dup3 on Linux for atomicity; fall back to dup2 + fcntl elsewhere.
   #[cfg(target_os = "linux")]
   {
-    let r = unsafe { libc::syscall(libc::SYS_dup3, new_fd, old_fd, libc::O_CLOEXEC) };
+    let r =
+      unsafe { libc::syscall(libc::SYS_dup3, new_fd, old_fd, libc::O_CLOEXEC) };
     if r == -1 {
       return -std::io::Error::last_os_error()
         .raw_os_error()

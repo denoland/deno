@@ -610,6 +610,109 @@ unsafe fn get_inner(loop_: *mut uv_loop_t) -> &'static UvLoopInner {
   unsafe { &*((*loop_).internal as *const UvLoopInner) }
 }
 
+/// Matches libuv's `uv_guess_handle`: detects TTYs, regular files,
+/// character devices, pipes (FIFOs), TCP/UDP sockets, and Unix domain
+/// sockets (named pipes).
+pub fn uv_guess_handle(fd: c_int) -> uv_handle_type {
+  if fd < 0 {
+    return uv_handle_type::UV_UNKNOWN_HANDLE;
+  }
+
+  #[cfg(unix)]
+  {
+    if unsafe { libc::isatty(fd) } != 0 {
+      return uv_handle_type::UV_TTY;
+    }
+
+    let mut s: libc::stat = unsafe { std::mem::zeroed() };
+    if unsafe { libc::fstat(fd, &mut s) } != 0 {
+      return uv_handle_type::UV_UNKNOWN_HANDLE;
+    }
+
+    let ft = s.st_mode & libc::S_IFMT;
+    if ft == libc::S_IFREG || ft == libc::S_IFCHR {
+      return uv_handle_type::UV_FILE;
+    }
+
+    if ft == libc::S_IFIFO {
+      return uv_handle_type::UV_NAMED_PIPE;
+    }
+
+    if ft != libc::S_IFSOCK {
+      return uv_handle_type::UV_UNKNOWN_HANDLE;
+    }
+
+    // It's a socket — determine type.
+    let mut ss: libc::sockaddr_storage = unsafe { std::mem::zeroed() };
+    let mut len: libc::socklen_t =
+      std::mem::size_of::<libc::sockaddr_storage>() as libc::socklen_t;
+    if unsafe {
+      libc::getsockname(fd, &mut ss as *mut _ as *mut libc::sockaddr, &mut len)
+    } != 0
+    {
+      return uv_handle_type::UV_UNKNOWN_HANDLE;
+    }
+
+    let mut sock_type: c_int = 0;
+    let mut type_len: libc::socklen_t =
+      std::mem::size_of::<c_int>() as libc::socklen_t;
+    if unsafe {
+      libc::getsockopt(
+        fd,
+        libc::SOL_SOCKET,
+        libc::SO_TYPE,
+        &mut sock_type as *mut _ as *mut c_void,
+        &mut type_len,
+      )
+    } != 0
+    {
+      return uv_handle_type::UV_UNKNOWN_HANDLE;
+    }
+
+    if sock_type == libc::SOCK_DGRAM
+      && (ss.ss_family == libc::AF_INET as libc::sa_family_t
+        || ss.ss_family == libc::AF_INET6 as libc::sa_family_t)
+    {
+      return uv_handle_type::UV_UDP;
+    }
+
+    if sock_type == libc::SOCK_STREAM {
+      if ss.ss_family == libc::AF_INET as libc::sa_family_t
+        || ss.ss_family == libc::AF_INET6 as libc::sa_family_t
+      {
+        return uv_handle_type::UV_TCP;
+      }
+      if ss.ss_family == libc::AF_UNIX as libc::sa_family_t {
+        return uv_handle_type::UV_NAMED_PIPE;
+      }
+    }
+
+    return uv_handle_type::UV_UNKNOWN_HANDLE;
+  }
+
+  #[cfg(windows)]
+  {
+    let handle = unsafe { tty::win_console::_get_osfhandle(fd) };
+    if handle == -1 {
+      return uv_handle_type::UV_UNKNOWN_HANDLE;
+    }
+    let h = handle as *mut c_void;
+    match unsafe { tty::win_console::GetFileType(h) } {
+      tty::win_console::FILE_TYPE_CHAR => {
+        let mut mode: u32 = 0;
+        if unsafe { tty::win_console::GetConsoleMode(h, &mut mode) } != 0 {
+          uv_handle_type::UV_TTY
+        } else {
+          uv_handle_type::UV_FILE
+        }
+      }
+      tty::win_console::FILE_TYPE_PIPE => uv_handle_type::UV_NAMED_PIPE,
+      tty::win_console::FILE_TYPE_DISK => uv_handle_type::UV_FILE,
+      _ => uv_handle_type::UV_UNKNOWN_HANDLE,
+    }
+  }
+}
+
 /// ### Safety
 /// `loop_` must be a valid pointer to a `uv_loop_t` previously initialized by `uv_loop_init`.
 pub unsafe fn uv_loop_get_inner_ptr(

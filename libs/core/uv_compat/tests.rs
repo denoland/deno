@@ -1523,10 +1523,7 @@ async fn tty_set_mode_raw_and_back() {
       assert_ok(uv_tty_set_mode(tty_ptr, uv_tty_mode_t::UV_TTY_MODE_RAW));
 
       // Back to normal.
-      assert_ok(uv_tty_set_mode(
-        tty_ptr,
-        uv_tty_mode_t::UV_TTY_MODE_NORMAL,
-      ));
+      assert_ok(uv_tty_set_mode(tty_ptr, uv_tty_mode_t::UV_TTY_MODE_NORMAL));
       assert_eq!((*tty_ptr).mode, uv_tty_mode_t::UV_TTY_MODE_NORMAL);
 
       uv_close(tty_ptr as *mut uv_handle_t, None);
@@ -1552,10 +1549,7 @@ async fn tty_set_mode_io() {
       assert_eq!((*tty_ptr).mode, uv_tty_mode_t::UV_TTY_MODE_IO);
 
       // Back to normal.
-      assert_ok(uv_tty_set_mode(
-        tty_ptr,
-        uv_tty_mode_t::UV_TTY_MODE_NORMAL,
-      ));
+      assert_ok(uv_tty_set_mode(tty_ptr, uv_tty_mode_t::UV_TTY_MODE_NORMAL));
 
       uv_close(tty_ptr as *mut uv_handle_t, None);
     }
@@ -1597,8 +1591,7 @@ async fn tty_write_and_read_through_pty() {
 
     unsafe extern "C" fn write_cb(req: *mut uv_write_t, status: i32) {
       assert_eq!(status, 0);
-      let done =
-        unsafe { Rc::from_raw((*req).data as *const Cell<bool>) };
+      let done = unsafe { Rc::from_raw((*req).data as *const Cell<bool>) };
       done.set(true);
       let _ = Rc::into_raw(done);
     }
@@ -1691,8 +1684,7 @@ async fn tty_read_from_pty() {
     ) {
       unsafe {
         let tty = handle as *const uv_tty_t;
-        let received =
-          Rc::from_raw((*tty).data as *const Cell<Vec<u8>>);
+        let received = Rc::from_raw((*tty).data as *const Cell<Vec<u8>>);
         if nread > 0 {
           let data = std::slice::from_raw_parts(
             (*buf).base as *const u8,
@@ -1706,22 +1698,14 @@ async fn tty_read_from_pty() {
 
         // Free the alloc'd buffer.
         if !(*buf).base.is_null() && (*buf).len > 0 {
-          drop(Vec::<u8>::from_raw_parts(
-            (*buf).base.cast(),
-            0,
-            (*buf).len,
-          ));
+          drop(Vec::<u8>::from_raw_parts((*buf).base.cast(), 0, (*buf).len));
         }
       }
     }
 
     unsafe {
       (*tty_ptr).data = received_ptr as *mut c_void;
-      uv_read_start(
-        tty_ptr as *mut uv_stream_t,
-        Some(alloc_cb),
-        Some(read_cb),
-      );
+      uv_read_start(tty_ptr as *mut uv_stream_t, Some(alloc_cb), Some(read_cb));
     }
 
     // Write to the master fd — it should arrive at the slave's read callback.
@@ -1748,7 +1732,10 @@ async fn tty_read_from_pty() {
     );
     // The data might include terminal processing, but should contain "world".
     let s = String::from_utf8_lossy(&data);
-    assert!(s.contains("world"), "Expected 'world' in received data, got: {s:?}");
+    assert!(
+      s.contains("world"),
+      "Expected 'world' in received data, got: {s:?}"
+    );
 
     // Clean up.
     unsafe {
@@ -1772,8 +1759,7 @@ async fn tty_close_fires_callback() {
     let closed_ptr = Rc::into_raw(closed.clone());
 
     unsafe extern "C" fn close_cb(handle: *mut uv_handle_t) {
-      let closed =
-        unsafe { Rc::from_raw((*handle).data as *const Cell<bool>) };
+      let closed = unsafe { Rc::from_raw((*handle).data as *const Cell<bool>) };
       closed.set(true);
       let _ = Rc::into_raw(closed);
     }
@@ -1806,13 +1792,9 @@ async fn tty_shutdown_fires_callback() {
     let shutdown_done = Rc::new(Cell::new(false));
     let shutdown_done_ptr = Rc::into_raw(shutdown_done.clone());
 
-    unsafe extern "C" fn shutdown_cb(
-      req: *mut uv_shutdown_t,
-      status: i32,
-    ) {
+    unsafe extern "C" fn shutdown_cb(req: *mut uv_shutdown_t, status: i32) {
       assert_eq!(status, 0);
-      let done =
-        unsafe { Rc::from_raw((*req).data as *const Cell<bool>) };
+      let done = unsafe { Rc::from_raw((*req).data as *const Cell<bool>) };
       done.set(true);
       let _ = Rc::into_raw(done);
     }
@@ -1862,10 +1844,7 @@ fn tty_guess_handle_detects_pty() {
   unsafe { libc::pipe(pipe_fds.as_mut_ptr()) };
   let _r = FdGuard(pipe_fds[0]);
   let _w = FdGuard(pipe_fds[1]);
-  assert_eq!(
-    uv_guess_handle(pipe_fds[0]),
-    uv_handle_type::UV_NAMED_PIPE
-  );
+  assert_eq!(uv_guess_handle(pipe_fds[0]), uv_handle_type::UV_NAMED_PIPE);
   // A regular file should be UV_FILE.
   let file_fd = unsafe { libc::open(c"/dev/null".as_ptr(), libc::O_RDONLY) };
   assert!(file_fd >= 0);
