@@ -1262,9 +1262,18 @@ pub fn op_node_diffie_hellman(
         .into_iter()
         .collect(),
       (AsymmetricPrivateKey::Dh(private), AsymmetricPublicKey::Dh(public)) => {
-        if private.params.prime != public.params.prime
-          || private.params.base != public.params.base
-        {
+        // Compare DH parameters by integer value, not byte encoding,
+        // since different generation paths may produce different ASN.1
+        // encodings of the same integer (e.g. with/without leading 0x00).
+        let priv_prime =
+          BigUint::from_bytes_be(private.params.prime.as_bytes());
+        let pub_prime =
+          BigUint::from_bytes_be(public.params.prime.as_bytes());
+        let priv_base =
+          BigUint::from_bytes_be(private.params.base.as_bytes());
+        let pub_base =
+          BigUint::from_bytes_be(public.params.base.as_bytes());
+        if priv_prime != pub_prime || priv_base != pub_base {
           return Err(DiffieHellmanError::DhParametersMismatch);
         }
 
@@ -1273,10 +1282,9 @@ pub fn op_node_diffie_hellman(
         let pubkey = BigUint::from_bytes_be(&public_key);
 
         // Exponentiation (z = y^x mod p)
-        let prime = BigUint::from_bytes_be(private.params.prime.as_bytes());
         let private_key = private.key.clone().into_vec();
         let private_key = BigUint::from_bytes_be(&private_key);
-        let shared_secret = pubkey.modpow(&private_key, &prime);
+        let shared_secret = pubkey.modpow(&private_key, &priv_prime);
 
         shared_secret.to_bytes_be().into()
       }
