@@ -16,11 +16,6 @@ import { copyFile, copyFileSync } from "ext:deno_node/_fs/_fs_copy.ts";
 import { cp, cpSync } from "ext:deno_node/_fs/_fs_cp.ts";
 import Dir from "ext:deno_node/_fs/_fs_dir.ts";
 import { exists, existsSync } from "ext:deno_node/_fs/_fs_exists.ts";
-import { fchmod, fchmodSync } from "ext:deno_node/_fs/_fs_fchmod.ts";
-import { fdatasync, fdatasyncSync } from "ext:deno_node/_fs/_fs_fdatasync.ts";
-import { fstat, fstatSync } from "ext:deno_node/_fs/_fs_fstat.ts";
-import { fsync, fsyncSync } from "ext:deno_node/_fs/_fs_fsync.ts";
-import { link, linkSync } from "ext:deno_node/_fs/_fs_link.ts";
 import { lstat, lstatSync } from "ext:deno_node/_fs/_fs_lstat.ts";
 import { lutimes, lutimesSync } from "ext:deno_node/_fs/_fs_lutimes.ts";
 import { mkdir, mkdirSync } from "ext:deno_node/_fs/_fs_mkdir.ts";
@@ -39,7 +34,6 @@ import { stat, Stats, statSync } from "ext:deno_node/_fs/_fs_stat.ts";
 import { statfs, statfsSync } from "ext:deno_node/_fs/_fs_statfs.ts";
 import { symlink, symlinkSync } from "ext:deno_node/_fs/_fs_symlink.ts";
 import { truncate, truncateSync } from "ext:deno_node/_fs/_fs_truncate.ts";
-import { unlink, unlinkSync } from "ext:deno_node/_fs/_fs_unlink.ts";
 import { utimes, utimesSync } from "ext:deno_node/_fs/_fs_utimes.ts";
 import { unwatchFile, watch, watchFile } from "ext:deno_node/_fs/_fs_watch.ts";
 // @deno-types="./_fs/_fs_write.d.ts"
@@ -70,12 +64,16 @@ import {
 import { glob, globSync } from "ext:deno_node/_fs/_fs_glob.ts";
 import {
   parseFileMode,
+  validateFunction,
+  validateInt32,
   validateInteger,
   validateObject,
   validateString,
 } from "ext:deno_node/internal/validators.mjs";
 import type { Buffer } from "node:buffer";
 import {
+  op_fs_fchmod_async,
+  op_fs_fchmod_sync,
   op_fs_fchown_async,
   op_fs_fchown_sync,
   op_fs_read_file_async,
@@ -370,8 +368,6 @@ function closeSync(fd: number) {
   core.close(fd);
 }
 
-// -- fchown --
-
 function fchown(
   fd: number,
   uid: number,
@@ -390,6 +386,22 @@ function fchown(
   );
 }
 
+function fchmod(
+  fd: number,
+  mode: string | number,
+  callback: CallbackWithError,
+) {
+  validateInteger(fd, "fd", 0, 2147483647);
+  mode = parseFileMode(mode, "mode");
+  callback = makeCallback(callback);
+
+  PromisePrototypeThen(
+    op_fs_fchmod_async(fd, mode),
+    () => callback(null),
+    callback,
+  );
+}
+
 function fchownSync(
   fd: number,
   uid: number,
@@ -401,8 +413,6 @@ function fchownSync(
 
   op_fs_fchown_sync(fd, uid, gid);
 }
-
-// -- ftruncate --
 
 function ftruncate(
   fd: number,
@@ -428,8 +438,6 @@ function ftruncate(
 function ftruncateSync(fd: number, len?: number) {
   new FsFile(fd, SymbolFor("Deno.internal.FsFile")).truncateSync(len);
 }
-
-// -- futimes --
 
 function _getValidTime(
   time: number | string | Date,
@@ -476,6 +484,24 @@ function futimes(
   );
 }
 
+function fchmodSync(fd: number, mode: string | number) {
+  validateInteger(fd, "fd", 0, 2147483647);
+
+  op_fs_fchmod_sync(fd, parseFileMode(mode, "mode"));
+}
+
+function fdatasync(
+  fd: number,
+  callback: CallbackWithError,
+) {
+  validateInt32(fd, "fd", 0);
+  PromisePrototypeThen(
+    new FsFile(fd, SymbolFor("Deno.internal.FsFile")).syncData(),
+    () => callback(null),
+    callback,
+  );
+}
+
 function futimesSync(
   fd: number,
   atime: number | string | Date,
@@ -492,8 +518,6 @@ function futimesSync(
 
   new FsFile(fd, SymbolFor("Deno.internal.FsFile")).utimeSync(atime, mtime);
 }
-
-// -- lchmod --
 
 const lchmod:
   | ((
@@ -530,8 +554,6 @@ const lchmodSync:
       return op_node_lchmod_sync(path, mode);
     };
 
-// -- lchown --
-
 function lchown(
   path: string | Buffer | URL,
   uid: number,
@@ -550,6 +572,23 @@ function lchown(
   );
 }
 
+function fdatasyncSync(fd: number) {
+  validateInt32(fd, "fd", 0);
+  new FsFile(fd, SymbolFor("Deno.internal.FsFile")).syncDataSync();
+}
+
+function fsync(
+  fd: number,
+  callback: CallbackWithError,
+) {
+  validateInt32(fd, "fd", 0);
+  PromisePrototypeThen(
+    new FsFile(fd, SymbolFor("Deno.internal.FsFile")).sync(),
+    () => callback(null),
+    callback,
+  );
+}
+
 function lchownSync(
   path: string | Buffer | URL,
   uid: number,
@@ -560,6 +599,60 @@ function lchownSync(
   validateInteger(gid, "gid", -1, kMaxUserId);
 
   op_node_lchown_sync(path, uid, gid);
+}
+
+function fsyncSync(fd: number) {
+  validateInt32(fd, "fd", 0);
+  new FsFile(fd, SymbolFor("Deno.internal.FsFile")).syncSync();
+}
+
+function link(
+  existingPath: string | Buffer | URL,
+  newPath: string | Buffer | URL,
+  callback: CallbackWithError,
+) {
+  existingPath = getValidatedPathToString(existingPath);
+  newPath = getValidatedPathToString(newPath);
+
+  PromisePrototypeThen(
+    Deno.link(existingPath, newPath),
+    () => callback(null),
+    callback,
+  );
+}
+
+function linkSync(
+  existingPath: string | Buffer | URL,
+  newPath: string | Buffer | URL,
+) {
+  existingPath = getValidatedPathToString(existingPath);
+  newPath = getValidatedPathToString(newPath);
+
+  Deno.linkSync(existingPath, newPath);
+}
+
+function unlink(
+  path: string | Buffer | URL,
+  callback: (err?: Error) => void,
+): void {
+  path = getValidatedPathToString(path);
+  validateFunction(callback, "callback");
+
+  PromisePrototypeThen(
+    Deno.remove(path),
+    () => callback(),
+    (err: Error) =>
+      callback(denoErrorToNodeError(err, { syscall: "unlink", path })),
+  );
+}
+
+function unlinkSync(path: string | Buffer | URL): void {
+  path = getValidatedPathToString(path);
+  try {
+    Deno.removeSync(path);
+  } catch (err) {
+    throw denoErrorToNodeError(err as Error, { syscall: "unlink", path });
+  }
 }
 
 /**

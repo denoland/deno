@@ -7,6 +7,9 @@ import { EventEmitter } from "node:events";
 import { Buffer } from "node:buffer";
 import {
   type BigIntStats,
+  fchmod,
+  fdatasync,
+  fsync,
   Mode,
   promises,
   read as readAsync,
@@ -26,16 +29,14 @@ import {
 } from "ext:deno_node/_fs/_fs_common.ts";
 import { writevPromise, WriteVResult } from "ext:deno_node/_fs/_fs_writev.ts";
 import { readvPromise, ReadVResult } from "ext:deno_node/_fs/_fs_readv.ts";
-import { fchmodPromise } from "ext:deno_node/_fs/_fs_fchmod.ts";
-import { fdatasyncPromise } from "ext:deno_node/_fs/_fs_fdatasync.ts";
 import { fstatPromise } from "ext:deno_node/_fs/_fs_fstat.ts";
-import { fsyncPromise } from "ext:deno_node/_fs/_fs_fsync.ts";
 import {
   fchown as fchownCb,
   ftruncate as ftruncateCb,
   futimes as futimesCb,
 } from "node:fs";
 import { promisify } from "ext:deno_node/internal/util.mjs";
+
 import {
   CreateReadStreamOptions,
   CreateWriteStreamOptions,
@@ -50,8 +51,17 @@ import {
   validateBoolean,
   validateObject,
 } from "ext:deno_node/internal/validators.mjs";
-import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
+import { kEmptyObject, promisify } from "ext:deno_node/internal/util.mjs";
 import process from "node:process";
+
+const fchmodPromise = promisify(fchmod) as (
+  fd: number,
+  mode: string | number,
+) => Promise<void>;
+const fdatasyncPromise = promisify(fdatasync) as (
+  fd: number,
+) => Promise<void>;
+const fsyncPromise = promisify(fsync) as (fd: number) => Promise<void>;
 
 const {
   Error,

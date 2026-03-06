@@ -15,7 +15,6 @@ import { promisify } from "ext:deno_node/internal/util.mjs";
 import * as constants from "ext:deno_node/_fs/_fs_constants.ts";
 import { copyFilePromise } from "ext:deno_node/_fs/_fs_copy.ts";
 import { cpPromise } from "ext:deno_node/_fs/_fs_cp.ts";
-import { linkPromise } from "ext:deno_node/_fs/_fs_link.ts";
 import { lstatPromise } from "ext:deno_node/_fs/_fs_lstat.ts";
 import { lutimesPromise } from "ext:deno_node/_fs/_fs_lutimes.ts";
 import { mkdirPromise } from "ext:deno_node/_fs/_fs_mkdir.ts";
@@ -33,7 +32,6 @@ import { statPromise } from "ext:deno_node/_fs/_fs_stat.ts";
 import { statfsPromise } from "ext:deno_node/_fs/_fs_statfs.ts";
 import { symlinkPromise } from "ext:deno_node/_fs/_fs_symlink.ts";
 import { truncatePromise } from "ext:deno_node/_fs/_fs_truncate.ts";
-import { unlinkPromise } from "ext:deno_node/_fs/_fs_unlink.ts";
 import { utimesPromise } from "ext:deno_node/_fs/_fs_utimes.ts";
 import { watchPromise } from "ext:deno_node/_fs/_fs_watch.ts";
 import {
@@ -208,8 +206,6 @@ const chownPromise = promisify(chown) as (
   gid: number,
 ) => Promise<void>;
 
-// -- lchmod --
-
 const lchmodPromise: (
   path: string | Buffer | URL,
   mode: number,
@@ -220,8 +216,6 @@ const lchmodPromise: (
     mode = parseFileMode(mode, "mode");
     return op_node_lchmod(path, mode);
   };
-
-// -- lchown --
 
 function lchown(
   path: string | Buffer | URL,
@@ -241,10 +235,48 @@ function lchown(
   );
 }
 
+function link(
+  existingPath: string | Buffer | URL,
+  newPath: string | Buffer | URL,
+  callback: CallbackWithError,
+) {
+  existingPath = getValidatedPathToString(existingPath);
+  newPath = getValidatedPathToString(newPath);
+
+  PromisePrototypeThen(
+    Deno.link(existingPath, newPath),
+    () => callback(null),
+    callback,
+  );
+}
+
 const lchownPromise = promisify(lchown) as (
   path: string | Buffer | URL,
   uid: number,
   gid: number,
+) => Promise<void>;
+
+const linkPromise = promisify(link) as (
+  existingPath: string | Buffer | URL,
+  newPath: string | Buffer | URL,
+) => Promise<void>;
+
+function unlink(
+  path: string | Buffer | URL,
+  callback: (err?: Error) => void,
+): void {
+  path = getValidatedPathToString(path);
+
+  PromisePrototypeThen(
+    Deno.remove(path),
+    () => callback(),
+    (err: Error) =>
+      callback(denoErrorToNodeError(err, { syscall: "unlink", path })),
+  );
+}
+
+const unlinkPromise = promisify(unlink) as (
+  path: string | Buffer | URL,
 ) => Promise<void>;
 
 // -- promises object --
