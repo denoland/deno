@@ -3483,3 +3483,20 @@ fn test_permission_broker() {
 [WILDCARD]"#,
   );
 }
+
+// Regression test for https://github.com/denoland/deno/issues/32473
+// Verifies that process.stdout.write() and console.log() produce output
+// in the correct order when stdout is a TTY (uses PTY).
+#[test]
+fn process_stdout_write_order_pty() {
+  TestContext::default()
+    .new_command()
+    .args_vec(["run", "run/process_stdout_write_order.ts"])
+    .with_pty(|mut console| {
+      console.expect("A");
+      console.expect("B");
+      console.expect("C");
+      console.expect("D");
+      console.expect("E");
+    });
+}
