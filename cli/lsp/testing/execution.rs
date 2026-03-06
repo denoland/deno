@@ -3,6 +3,8 @@
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::fs;
+use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
@@ -15,6 +17,8 @@ use deno_core::futures::StreamExt;
 use deno_core::futures::future;
 use deno_core::futures::stream;
 use deno_core::parking_lot::RwLock;
+use deno_core::serde_json;
+use crate::cdp;
 use deno_core::unsync::spawn;
 use deno_core::unsync::spawn_blocking;
 use deno_runtime::deno_permissions::Permissions;
@@ -468,6 +472,30 @@ impl TestRun {
 
     result??;
 
+    // When coverage mode is active: collect V8 coverage data, send it to the
+    // LSP client as a deno/testCoverage notification, then clean up the
+    // temporary directory.
+    if let Some(coverage_dir) = self.coverage_dir() {
+      match collect_coverage_from_dir(&coverage_dir) {
+        Ok(files) => {
+          if !files.is_empty() {
+            client.send_test_notification(TestingNotification::Coverage(
+              lsp_custom::CoverageNotificationParams {
+                id: self.id,
+                files,
+              },
+            ));
+          }
+        }
+        Err(err) => {
+          lsp_log!("Failed to collect LSP coverage data: {}", err);
+        }
+      }
+      if let Err(err) = fs::remove_dir_all(&coverage_dir) {
+        lsp_log!("Failed to remove LSP coverage directory: {}", err);
+      }
+    }
+
     Ok(())
   }
 
@@ -507,7 +535,26 @@ impl TestRun {
     {
       args.push(Cow::Borrowed("--inspect"));
     }
+    if self.kind == lsp_custom::TestRunKind::Coverage
+      && let Some(coverage_dir) = self.coverage_dir()
+    {
+      args.push(Cow::Owned(format!("--coverage={}", coverage_dir.display())));
+    }
     args
+  }
+
+  /// Returns the temporary coverage directory path for coverage-mode test runs.
+  /// The directory is created under the system temp folder and cleaned up after
+  /// coverage data is collected and sent to the LSP client.
+  pub fn coverage_dir(&self) -> Option<std::path::PathBuf> {
+    if self.kind == lsp_custom::TestRunKind::Coverage {
+      Some(
+        std::env::temp_dir()
+          .join(format!("deno_lsp_coverage_{}", self.id)),
+      )
+    } else {
+      None
+    }
   }
 }
 
@@ -925,5 +972,189 @@ mod tests {
           .to_string()
       ]
     );
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use std::io::Write;
+  use std::path::Path;
+
+  use super::*;
+
+  // ── char_offset_to_line ────────────────────────────────────────────────────
+
+  #[test]
+  fn test_char_offset_to_line_start_of_file() {
+    let src = "hello\nworld\nfoo";
+    assert_eq!(char_offset_to_line(src, 0), 1, "offset 0 should be line 1");
+    assert_eq!(char_offset_to_line(src, 4), 1, "offset 4 ('o') should be line 1");
+  }
+
+  #[test]
+  fn test_char_offset_to_line_at_newline_char() {
+    let src = "hello\nworld";
+    // offset 5 is '\n' — still on line 1
+    assert_eq!(char_offset_to_line(src, 5), 1);
+  }
+
+  #[test]
+  fn test_char_offset_to_line_second_line() {
+    let src = "hello\nworld\nfoo";
+    assert_eq!(char_offset_to_line(src, 6), 2, "offset 6 ('w') should be line 2");
+    assert_eq!(char_offset_to_line(src, 10), 2, "offset 10 ('d') should be line 2");
+  }
+
+  #[test]
+  fn test_char_offset_to_line_third_line() {
+    let src = "hello\nworld\nfoo";
+    assert_eq!(char_offset_to_line(src, 12), 3, "offset 12 ('f') should be line 3");
+    assert_eq!(char_offset_to_line(src, 14), 3, "offset 14 ('o') should be line 3");
+  }
+
+  #[test]
+  fn test_char_offset_to_line_empty_source() {
+    // Should not panic on empty source
+    assert_eq!(char_offset_to_line("", 0), 1);
+  }
+
+  #[test]
+  fn test_char_offset_to_line_beyond_end() {
+    let src = "ab";
+    // Offset beyond end of string — should return last line number
+    assert_eq!(char_offset_to_line(src, 999), 1);
+  }
+
+  #[test]
+  fn test_char_offset_to_line_multiple_newlines() {
+    let src = "a\nb\nc\nd";
+    assert_eq!(char_offset_to_line(src, 0), 1); // 'a'
+    assert_eq!(char_offset_to_line(src, 2), 2); // 'b'
+    assert_eq!(char_offset_to_line(src, 4), 3); // 'c'
+    assert_eq!(char_offset_to_line(src, 6), 4); // 'd'
+  }
+
+  // ── collect_coverage_from_dir ─────────────────────────────────────────────
+
+  #[test]
+  fn test_collect_coverage_nonexistent_dir() {
+    let result =
+      collect_coverage_from_dir(Path::new("/nonexistent/deno/lsp/coverage"))
+        .unwrap();
+    assert!(result.is_empty(), "nonexistent dir should return empty vec");
+  }
+
+  #[test]
+  fn test_collect_coverage_empty_dir() {
+    let dir = tempfile::tempdir().unwrap();
+    let result = collect_coverage_from_dir(dir.path()).unwrap();
+    assert!(result.is_empty(), "empty dir should return empty vec");
+  }
+
+  #[test]
+  fn test_collect_coverage_skips_non_json_files() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("coverage.txt"), "not json").unwrap();
+    std::fs::write(dir.path().join("README.md"), "# readme").unwrap();
+    let result = collect_coverage_from_dir(dir.path()).unwrap();
+    assert!(result.is_empty(), "non-JSON files should be ignored");
+  }
+
+  #[test]
+  fn test_collect_coverage_skips_invalid_json() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("bad.json"), "{ invalid json }").unwrap();
+    // Should not error — just skip the file
+    let result = collect_coverage_from_dir(dir.path()).unwrap();
+    assert!(result.is_empty());
+  }
+
+  #[test]
+  fn test_collect_coverage_skips_ext_urls() {
+    let dir = tempfile::tempdir().unwrap();
+    let json = r#"{"scriptId":"1","url":"ext:core/mod.ts","functions":[]}"#;
+    std::fs::write(dir.path().join("ext.json"), json).unwrap();
+    let result = collect_coverage_from_dir(dir.path()).unwrap();
+    assert!(result.is_empty(), "ext: URLs should be filtered out");
+  }
+
+  #[test]
+  fn test_collect_coverage_skips_data_urls() {
+    let dir = tempfile::tempdir().unwrap();
+    let json =
+      r#"{"scriptId":"1","url":"data:text/javascript,test","functions":[]}"#;
+    std::fs::write(dir.path().join("data.json"), json).unwrap();
+    let result = collect_coverage_from_dir(dir.path()).unwrap();
+    assert!(result.is_empty(), "data: URLs should be filtered out");
+  }
+
+  #[test]
+  fn test_collect_coverage_skips_anonymous_scripts() {
+    let dir = tempfile::tempdir().unwrap();
+    let json =
+      r#"{"scriptId":"1","url":"file:///tmp/__anonymous__","functions":[]}"#;
+    std::fs::write(dir.path().join("anon.json"), json).unwrap();
+    let result = collect_coverage_from_dir(dir.path()).unwrap();
+    assert!(result.is_empty(), "__anonymous__ scripts should be filtered");
+  }
+
+  #[test]
+  fn test_collect_coverage_skips_deno_test_runner() {
+    let dir = tempfile::tempdir().unwrap();
+    let json =
+      r#"{"scriptId":"1","url":"file:///$deno$test.mjs","functions":[]}"#;
+    std::fs::write(dir.path().join("runner.json"), json).unwrap();
+    let result = collect_coverage_from_dir(dir.path()).unwrap();
+    assert!(result.is_empty(), "$deno$test.mjs should be filtered");
+  }
+
+  #[test]
+  fn test_collect_coverage_computes_coverage_percent() {
+    let dir = tempfile::tempdir().unwrap();
+    // 1 covered range (count=1) and 1 uncovered range (count=0)
+    let json = r#"{
+      "scriptId": "42",
+      "url": "file:///nonexistent_file_for_test.ts",
+      "functions": [
+        {
+          "functionName": "myFunc",
+          "ranges": [
+            { "startOffset": 0, "endOffset": 79, "count": 1 },
+            { "startOffset": 80, "endOffset": 159, "count": 0 }
+          ],
+          "isBlockCoverage": true
+        }
+      ]
+    }"#;
+    std::fs::write(dir.path().join("cov.json"), json).unwrap();
+    let result = collect_coverage_from_dir(dir.path()).unwrap();
+    assert_eq!(result.len(), 1);
+    // 1 covered line, 1 uncovered line → 50%
+    assert_eq!(result[0].coverage_percent, 50.0_f64);
+  }
+
+  #[test]
+  fn test_collect_coverage_fully_covered() {
+    let dir = tempfile::tempdir().unwrap();
+    let json = r#"{
+      "scriptId": "1",
+      "url": "file:///fully_covered.ts",
+      "functions": [
+        {
+          "functionName": "f",
+          "ranges": [
+            { "startOffset": 0, "endOffset": 79, "count": 3 },
+            { "startOffset": 80, "endOffset": 159, "count": 1 }
+          ],
+          "isBlockCoverage": true
+        }
+      ]
+    }"#;
+    std::fs::write(dir.path().join("full.json"), json).unwrap();
+    let result = collect_coverage_from_dir(dir.path()).unwrap();
+    assert_eq!(result.len(), 1);
+    // All ranges have count > 0 → 100%
+    assert_eq!(result[0].coverage_percent, 100.0_f64);
+    assert!(result[0].uncovered_lines.is_empty());
   }
 }
