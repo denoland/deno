@@ -43,6 +43,7 @@ interface GitHubItem {
    * NOT include review comments. */
   comments: number;
   pull_request?: unknown;
+  state: "open" | "closed";
 }
 
 interface GitHubComment {
@@ -401,8 +402,10 @@ async function main() {
   const newPRs = allPRs;
 
   const noResponseIssues = newIssues.filter((i) => i.comments === 0);
+  // Only consider open PRs for review/WIP lists
+  const openPRs = newPRs.filter((pr) => pr.state === "open");
   const [allNoResponsePRs, hotIssues] = await Promise.all([
-    filterNoResponsePRs(newPRs),
+    filterNoResponsePRs(openPRs),
     findHotIssues(sinceDate),
   ]);
 
