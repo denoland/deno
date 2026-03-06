@@ -1,4 +1,5 @@
 {
+  "$schema": "./schema.json",
   "tests": {
     "abort/test-addon-register-signal-handler.js": {},
     "abort/test-addon-uv-handle-leak.js": {},
@@ -1646,10 +1647,9 @@
     "parallel/test-zlib-brotli-from-brotli.js": {},
     "parallel/test-zlib-brotli-from-string.js": {},
     "parallel/test-zlib-brotli-kmaxlength-rangeerror.js": {
-      "darwin": false,
-      "linux": false,
-      "windows": false,
-      "reason": "Deno pre-loads polyfills as ESM, so kMaxLength is a live binding that can't be snapshotted like Node.js CJS require"
+      "exitCode": 1,
+      "output": "[WILDCARD]assert.ok(err instanceof RangeError)[WILDCARD]",
+      "reason": "Deno's zlib error is not a RangeError instance (kMaxLength binding differs from Node.js CJS require)"
     },
     "parallel/test-zlib-brotli.js": {},
     "parallel/test-zlib-close-after-error.js": {},
