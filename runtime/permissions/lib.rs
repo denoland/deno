@@ -1017,12 +1017,6 @@ impl<
         self.insert_prompt_denied(desc.map(|d| d.as_deny()));
       }
     }
-    if result.is_err() {
-      write_audit(
-        TAllowDesc::QueryDesc::flag_name(),
-        desc.map(|d| d.display_name().to_string()),
-      );
-    }
     result
   }
 
