@@ -84,12 +84,65 @@ pub fn verify_and_decompress_tarball(
   dist_info: &NpmPackageVersionDistInfo,
 ) -> Result<Vec<u8>, VerifyAndExtractTarballError> {
   verify_tarball_integrity(package_nv, data, &dist_info.integrity())?;
+  decompress_gzip(data)
+}
+
+/// Uses libdeflater for faster gzip decompression with preallocated buffers.
+#[cfg(not(target_arch = "wasm32"))]
+fn decompress_gzip(
+  data: &[u8],
+) -> Result<Vec<u8>, VerifyAndExtractTarballError> {
+  use libdeflater::Decompressor;
+
+  let mut decompressor = Decompressor::new();
+  let size_hint = gzip_decompressed_size_hint(data);
+  let mut decompressed = Vec::new();
+  if decompressed.try_reserve(size_hint).is_err() {
+    return decompress_gzip_streaming(data);
+  }
+  decompressed.resize(size_hint, 0);
+  match decompressor.gzip_decompress(data, &mut decompressed) {
+    Ok(actual_size) => {
+      decompressed.truncate(actual_size);
+      Ok(decompressed)
+    }
+    Err(_) => {
+      // Bad data or insufficient space — fall back
+      // to flate2 for a proper io::Error.
+      decompress_gzip_streaming(data)
+    }
+  }
+}
+
+#[cfg(target_arch = "wasm32")]
+fn decompress_gzip(
+  data: &[u8],
+) -> Result<Vec<u8>, VerifyAndExtractTarballError> {
+  decompress_gzip_streaming(data)
+}
+
+fn decompress_gzip_streaming(
+  data: &[u8],
+) -> Result<Vec<u8>, VerifyAndExtractTarballError> {
   let mut decoder = GzDecoder::new(data);
   let mut decompressed = Vec::new();
+  let _ = decompressed.try_reserve(gzip_decompressed_size_hint(data));
   decoder
     .read_to_end(&mut decompressed)
     .map_err(ExtractTarballError::from)?;
   Ok(decompressed)
+}
+
+/// Read the uncompressed size hint from the gzip trailer (last 4 bytes).
+/// This is the original size mod 2^32, so it's exact for data < 4GB
+/// (which covers virtually all npm packages).
+fn gzip_decompressed_size_hint(data: &[u8]) -> usize {
+  if data.len() >= 4 {
+    let last4 = &data[data.len() - 4..];
+    u32::from_le_bytes([last4[0], last4[1], last4[2], last4[3]]) as usize
+  } else {
+    data.len().saturating_mul(4)
+  }
 }
 
 /// Writes already-decompressed raw tar bytes to disk.

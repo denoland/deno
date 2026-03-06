@@ -400,11 +400,15 @@ Deno.test({
     assertEquals(crypto.getCiphers().includes("aes-128-cbc"), true);
     assertEquals(crypto.getCiphers().includes("aes-256-ctr"), true);
 
-    const getZeroKey = (cipher: string) => zeros(+cipher.match(/\d+/)![0] / 8);
+    const getZeroKey = (cipher: string) => {
+      if (cipher === "des-ede3-cbc") return zeros(24);
+      return zeros(+cipher.match(/\d+/)![0] / 8);
+    };
     const getZeroIv = (cipher: string) => {
       if (cipher.includes("gcm") || cipher.includes("ecb")) {
         return zeros(12);
       }
+      if (cipher.includes("des")) return zeros(8);
       return zeros(16);
     };
 

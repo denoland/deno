@@ -47,15 +47,49 @@ const TEST_ARGS: &[&str] = &[
   "--unstable-detect-cjs",
 ];
 
-/// Configuration for a single test from config.json
+/// Per-platform value: either a boolean (true = enabled, false = disabled)
+/// or an object describing an expected failure.
+///
+/// Uses `#[serde(untagged)]` so that config.jsonc can use both
+/// `"windows": false` (boolean) and `"windows": { "exitCode": 1 }` (object).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+enum PlatformExpectation {
+  Enabled(bool),
+  ExpectedFailure(ExpectedFailure),
+}
+
+/// Describes an expected test failure: the exit code and/or output pattern.
+#[derive(Debug, Clone, Default, Deserialize)]
+struct ExpectedFailure {
+  #[serde(rename = "exitCode")]
+  exit_code: Option<i32>,
+  output: Option<String>,
+}
+
+/// Configuration for a single test from config.jsonc
+///
+/// Platform fields (`windows`, `darwin`, `linux`) accept:
+///   - `false` — skip the test on that OS
+///   - `true` (or omit) — run normally; expected to pass
+///   - `{ "exitCode": N, "output": "pattern with [WILDCARD]" }` — run the test
+///     but expect it to fail with the given exit code / output
+///
+/// Top-level `exitCode` and `output` apply to **all** platforms unless a
+/// platform-specific entry overrides them.
 #[derive(Debug, Clone, Default, Deserialize)]
 struct TestConfig {
   #[serde(default)]
   flaky: bool,
-  windows: Option<bool>,
-  darwin: Option<bool>,
-  linux: Option<bool>,
+  windows: Option<PlatformExpectation>,
+  darwin: Option<PlatformExpectation>,
+  linux: Option<PlatformExpectation>,
   reason: Option<String>,
+  /// Expected exit code for all platforms (overridden by per-platform config)
+  #[serde(rename = "exitCode")]
+  exit_code: Option<i32>,
+  /// Expected output pattern (with [WILDCARD] support) for all platforms
+  output: Option<String>,
 }
 
 /// The full config.json structure
@@ -369,20 +403,53 @@ fn wrap_in_category(
   }
 }
 
-fn should_ignore(config: &TestConfig) -> Option<&str> {
+fn platform_expectation(config: &TestConfig) -> Option<&PlatformExpectation> {
   let os = std::env::consts::OS;
   match os {
-    "windows" if config.windows == Some(false) => {
-      Some(config.reason.as_deref().unwrap_or("disabled on windows"))
-    }
-    "linux" if config.linux == Some(false) => {
-      Some(config.reason.as_deref().unwrap_or("disabled on linux"))
-    }
-    "macos" if config.darwin == Some(false) => {
-      Some(config.reason.as_deref().unwrap_or("disabled on macos"))
-    }
+    "windows" => config.windows.as_ref(),
+    "linux" => config.linux.as_ref(),
+    "macos" => config.darwin.as_ref(),
     _ => None,
   }
+}
+
+fn should_ignore(config: &TestConfig) -> Option<&str> {
+  if let Some(PlatformExpectation::Enabled(false)) =
+    platform_expectation(config)
+  {
+    let os = std::env::consts::OS;
+    return Some(config.reason.as_deref().unwrap_or(match os {
+      "windows" => "disabled on windows",
+      "linux" => "disabled on linux",
+      "macos" => "disabled on macos",
+      _ => "disabled on this platform",
+    }));
+  }
+  None
+}
+
+/// Resolve the expected-failure expectation for the current platform.
+///
+/// Returns `Some(ExpectedFailure)` if the test is expected to fail
+/// (either from a platform-specific object or from top-level fields),
+/// or `None` if the test is expected to pass.
+fn resolve_expected_failure(config: &TestConfig) -> Option<ExpectedFailure> {
+  // 1. Platform-specific object takes precedence
+  if let Some(PlatformExpectation::ExpectedFailure(ef)) =
+    platform_expectation(config)
+  {
+    return Some(ef.clone());
+  }
+
+  // 2. Fall back to top-level exitCode / output
+  if config.exit_code.is_some() || config.output.is_some() {
+    return Some(ExpectedFailure {
+      exit_code: config.exit_code,
+      output: config.output.clone(),
+    });
+  }
+
+  None
 }
 
 fn uses_node_test_module(source: &str) -> bool {
@@ -658,6 +725,22 @@ fn run_test(
     setup.run_piped()
   };
 
+  let debugging_command_text = setup.debugging_command_text();
+
+  // Check for expected failure configuration
+  if let Some(ef) = test_config.and_then(resolve_expected_failure) {
+    return handle_expected_failure(
+      &ef,
+      success,
+      exit_code,
+      setup.uses_node_test,
+      &output_text,
+      &debugging_command_text,
+      &data.test_path,
+      results,
+    );
+  }
+
   let collected = make_collected_result(
     success,
     &output_text,
@@ -672,7 +755,6 @@ fn run_test(
     .unwrap()
     .insert(data.test_path.clone(), collected);
 
-  let debugging_command_text = setup.debugging_command_text();
   if success {
     if *file_test_runner::NO_CAPTURE {
       test_util::eprintln!("{}", debugging_command_text);
@@ -684,5 +766,394 @@ fn run_test(
       output: format!("{}\n{}", output_text, debugging_command_text)
         .into_bytes(),
     }
+  }
+}
+
+/// Handle a test that has an expected-failure configuration.
+///
+/// Returns `Passed` when the test fails in the expected way (matching exit code
+/// and/or output pattern), and `Failed` otherwise.
+#[allow(clippy::too_many_arguments)]
+fn handle_expected_failure(
+  ef: &ExpectedFailure,
+  success: bool,
+  actual_exit_code: Option<i32>,
+  uses_node_test: bool,
+  output_text: &str,
+  debugging_command_text: &str,
+  test_path: &str,
+  results: &Arc<Mutex<HashMap<String, CollectedResult>>>,
+) -> TestResult {
+  if success {
+    // Test passed but was expected to fail
+    results.lock().unwrap().insert(
+      test_path.to_string(),
+      CollectedResult {
+        passed: Some(false),
+        error: Some(ErrorInfo {
+          code: actual_exit_code,
+          stderr: None,
+          timeout: None,
+          message: Some("expected test to fail but it passed".to_string()),
+        }),
+        uses_node_test,
+        ignore_reason: None,
+      },
+    );
+    return TestResult::Failed {
+      duration: None,
+      output: format!(
+        "Test was expected to fail but passed\n{}",
+        debugging_command_text
+      )
+      .into_bytes(),
+    };
+  }
+
+  // When exitCode/output are omitted, any value is accepted.
+  let exit_code_matches =
+    ef.exit_code.is_none_or(|ec| actual_exit_code == Some(ec));
+  let output_matches = ef.output.as_ref().is_none_or(|pattern| {
+    util::wildcard_match_detailed(pattern, output_text).is_success()
+  });
+
+  if exit_code_matches && output_matches {
+    // Failed as expected — treat as a pass
+    results.lock().unwrap().insert(
+      test_path.to_string(),
+      CollectedResult {
+        passed: Some(true),
+        error: None,
+        uses_node_test,
+        ignore_reason: None,
+      },
+    );
+    if *file_test_runner::NO_CAPTURE {
+      test_util::eprintln!("{}", debugging_command_text);
+    }
+    return TestResult::Passed { duration: None };
+  }
+
+  // Failed, but not in the expected way
+  let mut mismatch_details = String::new();
+  if !exit_code_matches {
+    mismatch_details.push_str(&format!(
+      "Exit code mismatch: expected {:?}, got {:?}\n",
+      ef.exit_code, actual_exit_code
+    ));
+  }
+  if !output_matches {
+    let match_result = ef
+      .output
+      .as_ref()
+      .map(|pattern| util::wildcard_match_detailed(pattern, output_text));
+    if let Some(util::WildcardMatchResult::Fail(detail)) = match_result {
+      mismatch_details
+        .push_str(&format!("Output mismatch detail:\n{}\n", detail));
+    } else {
+      mismatch_details.push_str("Output did not match expected pattern\n");
+    }
+  }
+
+  results.lock().unwrap().insert(
+    test_path.to_string(),
+    CollectedResult {
+      passed: Some(false),
+      error: Some(ErrorInfo {
+        code: actual_exit_code,
+        stderr: Some(truncate_output(output_text, 2000)),
+        timeout: None,
+        message: Some(mismatch_details.clone()),
+      }),
+      uses_node_test,
+      ignore_reason: None,
+    },
+  );
+  TestResult::Failed {
+    duration: None,
+    output: format!(
+      "Test failed but not in the expected way:\n{}\nActual output:\n{}\n{}",
+      mismatch_details, output_text, debugging_command_text
+    )
+    .into_bytes(),
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  #[test]
+  fn test_deserialize_legacy_bool_platform() {
+    let json = r#"{ "windows": false, "reason": "disabled on windows" }"#;
+    let config: TestConfig = serde_json::from_str(json).unwrap();
+    assert!(matches!(
+      config.windows,
+      Some(PlatformExpectation::Enabled(false))
+    ));
+    assert!(config.darwin.is_none());
+  }
+
+  #[test]
+  fn test_deserialize_platform_expected_failure() {
+    let json =
+      r#"{ "windows": { "exitCode": 1, "output": "boom [WILDCARD]" } }"#;
+    let config: TestConfig = serde_json::from_str(json).unwrap();
+    match &config.windows {
+      Some(PlatformExpectation::ExpectedFailure(ef)) => {
+        assert_eq!(ef.exit_code, Some(1));
+        assert_eq!(ef.output.as_deref(), Some("boom [WILDCARD]"));
+      }
+      other => panic!("unexpected: {:?}", other),
+    }
+  }
+
+  #[test]
+  fn test_deserialize_top_level_expected_failure() {
+    let json = r#"{ "exitCode": 2, "output": "error [WILDCARD]" }"#;
+    let config: TestConfig = serde_json::from_str(json).unwrap();
+    assert_eq!(config.exit_code, Some(2));
+    assert_eq!(config.output.as_deref(), Some("error [WILDCARD]"));
+    assert!(config.windows.is_none());
+  }
+
+  #[test]
+  fn test_deserialize_mixed_platforms() {
+    let json = r#"{
+      "linux": true,
+      "darwin": true,
+      "windows": { "exitCode": 1, "output": "Failed to create file at [WILDCARD]" }
+    }"#;
+    let config: TestConfig = serde_json::from_str(json).unwrap();
+    assert!(matches!(
+      config.linux,
+      Some(PlatformExpectation::Enabled(true))
+    ));
+    assert!(matches!(
+      config.darwin,
+      Some(PlatformExpectation::Enabled(true))
+    ));
+    match &config.windows {
+      Some(PlatformExpectation::ExpectedFailure(ef)) => {
+        assert_eq!(ef.exit_code, Some(1));
+        assert!(ef.output.as_deref().unwrap().contains("[WILDCARD]"));
+      }
+      other => panic!("unexpected: {:?}", other),
+    }
+  }
+
+  #[test]
+  fn test_deserialize_empty_config() {
+    let json = r#"{}"#;
+    let config: TestConfig = serde_json::from_str(json).unwrap();
+    assert!(config.windows.is_none());
+    assert!(config.darwin.is_none());
+    assert!(config.linux.is_none());
+    assert!(!config.flaky);
+    assert!(config.exit_code.is_none());
+    assert!(config.output.is_none());
+  }
+
+  #[test]
+  fn test_should_ignore_disabled_platform() {
+    let config = TestConfig {
+      windows: Some(PlatformExpectation::Enabled(false)),
+      reason: Some("broken on windows".to_string()),
+      ..Default::default()
+    };
+    let os = std::env::consts::OS;
+    if os == "windows" {
+      assert!(should_ignore(&config).is_some());
+    } else {
+      assert!(should_ignore(&config).is_none());
+    }
+  }
+
+  #[test]
+  fn test_should_ignore_expected_failure_is_not_ignored() {
+    // A platform with an ExpectedFailure should NOT be ignored - it should run
+    let config = TestConfig {
+      windows: Some(PlatformExpectation::ExpectedFailure(ExpectedFailure {
+        exit_code: Some(1),
+        output: None,
+      })),
+      ..Default::default()
+    };
+    // Even on Windows, should_ignore should return None because this is
+    // an expected-failure, not a disabled test
+    assert!(should_ignore(&config).is_none());
+  }
+
+  #[test]
+  fn test_resolve_expected_failure_platform_specific() {
+    let config = TestConfig {
+      windows: Some(PlatformExpectation::ExpectedFailure(ExpectedFailure {
+        exit_code: Some(1),
+        output: Some("error [WILDCARD]".to_string()),
+      })),
+      ..Default::default()
+    };
+    let ef = resolve_expected_failure(&config);
+    let os = std::env::consts::OS;
+    if os == "windows" {
+      let ef = ef.unwrap();
+      assert_eq!(ef.exit_code, Some(1));
+      assert_eq!(ef.output.as_deref(), Some("error [WILDCARD]"));
+    } else {
+      assert!(ef.is_none());
+    }
+  }
+
+  #[test]
+  fn test_resolve_expected_failure_top_level() {
+    let config = TestConfig {
+      exit_code: Some(2),
+      output: Some("fail".to_string()),
+      ..Default::default()
+    };
+    let ef = resolve_expected_failure(&config).unwrap();
+    assert_eq!(ef.exit_code, Some(2));
+    assert_eq!(ef.output.as_deref(), Some("fail"));
+  }
+
+  #[test]
+  fn test_resolve_expected_failure_platform_overrides_top_level() {
+    // On the current OS, platform config should override top-level
+    let os = std::env::consts::OS;
+    let platform_ef = ExpectedFailure {
+      exit_code: Some(42),
+      output: Some("platform specific".to_string()),
+    };
+    let mut config = TestConfig {
+      exit_code: Some(1),
+      output: Some("global".to_string()),
+      ..Default::default()
+    };
+    match os {
+      "windows" => {
+        config.windows = Some(PlatformExpectation::ExpectedFailure(platform_ef))
+      }
+      "linux" => {
+        config.linux = Some(PlatformExpectation::ExpectedFailure(platform_ef))
+      }
+      "macos" => {
+        config.darwin = Some(PlatformExpectation::ExpectedFailure(platform_ef))
+      }
+      _ => {}
+    }
+
+    let ef = resolve_expected_failure(&config).unwrap();
+    assert_eq!(ef.exit_code, Some(42));
+    assert_eq!(ef.output.as_deref(), Some("platform specific"));
+  }
+
+  #[test]
+  fn test_resolve_expected_failure_platform_true_uses_top_level() {
+    // If platform is simply `true`, fall back to top-level
+    let os = std::env::consts::OS;
+    let mut config = TestConfig {
+      exit_code: Some(1),
+      output: Some("global".to_string()),
+      ..Default::default()
+    };
+    match os {
+      "windows" => config.windows = Some(PlatformExpectation::Enabled(true)),
+      "linux" => config.linux = Some(PlatformExpectation::Enabled(true)),
+      "macos" => config.darwin = Some(PlatformExpectation::Enabled(true)),
+      _ => {}
+    }
+
+    let ef = resolve_expected_failure(&config).unwrap();
+    assert_eq!(ef.exit_code, Some(1));
+    assert_eq!(ef.output.as_deref(), Some("global"));
+  }
+
+  #[test]
+  fn test_resolve_no_expected_failure() {
+    let config = TestConfig::default();
+    assert!(resolve_expected_failure(&config).is_none());
+  }
+
+  #[test]
+  fn test_full_config_deserialization() {
+    let json = r#"{
+      "tests": {
+        "test-pass.js": {},
+        "test-disabled.js": {
+          "windows": false,
+          "reason": "broken"
+        },
+        "test-flaky.js": {
+          "flaky": true
+        },
+        "test-expected-fail-all.js": {
+          "exitCode": 1,
+          "output": "error [WILDCARD]"
+        },
+        "test-expected-fail-windows.js": {
+          "windows": {
+            "exitCode": 1,
+            "output": "Failed to create file at [WILDCARD]"
+          }
+        },
+        "test-mixed.js": {
+          "linux": true,
+          "darwin": true,
+          "windows": {
+            "exitCode": 1,
+            "output": "Failed [WILDCARD]"
+          },
+          "flaky": true
+        }
+      }
+    }"#;
+    let config: NodeCompatConfig = serde_json::from_str(json).unwrap();
+    assert_eq!(config.tests.len(), 6);
+
+    // Empty config
+    let tc = &config.tests["test-pass.js"];
+    assert!(tc.windows.is_none());
+
+    // Disabled
+    let tc = &config.tests["test-disabled.js"];
+    assert!(matches!(
+      tc.windows,
+      Some(PlatformExpectation::Enabled(false))
+    ));
+
+    // Top-level expected failure
+    let tc = &config.tests["test-expected-fail-all.js"];
+    assert_eq!(tc.exit_code, Some(1));
+
+    // Platform-specific expected failure
+    let tc = &config.tests["test-expected-fail-windows.js"];
+    match &tc.windows {
+      Some(PlatformExpectation::ExpectedFailure(ef)) => {
+        assert_eq!(ef.exit_code, Some(1));
+      }
+      other => panic!("unexpected: {:?}", other),
+    }
+  }
+
+  #[test]
+  fn test_expected_failure_exit_code_only() {
+    let json = r#"{ "windows": { "exitCode": 3 } }"#;
+    let config: TestConfig = serde_json::from_str(json).unwrap();
+    match &config.windows {
+      Some(PlatformExpectation::ExpectedFailure(ef)) => {
+        assert_eq!(ef.exit_code, Some(3));
+        assert!(ef.output.is_none());
+      }
+      other => panic!("unexpected: {:?}", other),
+    }
+  }
+
+  #[test]
+  fn test_expected_failure_output_only() {
+    let json = r#"{ "exitCode": null, "output": "some error" }"#;
+    let config: TestConfig = serde_json::from_str(json).unwrap();
+    assert!(config.exit_code.is_none());
+    assert_eq!(config.output.as_deref(), Some("some error"));
+    let ef = resolve_expected_failure(&config).unwrap();
+    assert!(ef.exit_code.is_none());
+    assert_eq!(ef.output.as_deref(), Some("some error"));
   }
 }

@@ -1,4 +1,5 @@
 {
+  "$schema": "./schema.json",
   "tests": {
     "abort/test-addon-register-signal-handler.js": {},
     "abort/test-addon-uv-handle-leak.js": {},
@@ -249,6 +250,12 @@
     "parallel/test-console-sync-write-error.js": {},
     "parallel/test-console-table.js": {},
     "parallel/test-console-with-frozen-intrinsics.js": {},
+    "parallel/test-crypto-classes.js": {},
+    "parallel/test-crypto-certificate.js": {},
+    "parallel/test-crypto-cipheriv-decipheriv.js": {
+      "exitCode": 1,
+      "output": "[WILDCARD]Unknown cipher id-aes128-wrap[WILDCARD]"
+    },
     "parallel/test-crypto-dh-constructor.js": {},
     "parallel/test-crypto-dh-leak.js": {},
     "parallel/test-crypto-dh-odd-key.js": {},
@@ -1740,6 +1747,12 @@
     "parallel/test-worker-ref-onexit.js": {},
     "parallel/test-worker-relative-path-double-dot.js": {},
     "parallel/test-worker-relative-path.js": {},
+    "parallel/test-worker-resource-limits.js": {
+      "darwin": false,
+      "linux": false,
+      "windows": false,
+      "reason": "Depends on v8.getHeapSpaceStatistics() which is not yet implemented in Deno"
+    },
     "parallel/test-worker-stdio-flush-inflight.js": {},
     "parallel/test-worker-stdio-flush.js": {},
     "parallel/test-worker-stdio.js": {},
@@ -1757,10 +1770,9 @@
     "parallel/test-zlib-brotli-from-brotli.js": {},
     "parallel/test-zlib-brotli-from-string.js": {},
     "parallel/test-zlib-brotli-kmaxlength-rangeerror.js": {
-      "darwin": false,
-      "linux": false,
-      "windows": false,
-      "reason": "Deno pre-loads polyfills as ESM, so kMaxLength is a live binding that can't be snapshotted like Node.js CJS require"
+      "exitCode": 1,
+      "output": "[WILDCARD]assert.ok(err instanceof RangeError)[WILDCARD]",
+      "reason": "Deno's zlib error is not a RangeError instance (kMaxLength binding differs from Node.js CJS require)"
     },
     "parallel/test-zlib-brotli.js": {},
     "parallel/test-zlib-close-after-error.js": {},
