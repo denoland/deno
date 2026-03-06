@@ -25,11 +25,7 @@ import {
   validateInteger,
 } from "ext:deno_node/internal/validators.mjs";
 import { errorOrDestroy } from "ext:deno_node/internal/streams/destroy.js";
-import { open as fsOpen } from "ext:deno_node/_fs/_fs_open.ts";
-import { read as fsRead } from "ext:deno_node/_fs/_fs_read.ts";
-import { write as fsWrite } from "ext:deno_node/_fs/_fs_write.ts";
-import { writev as fsWritev } from "ext:deno_node/_fs/_fs_writev.ts";
-import { close as fsClose } from "ext:deno_node/_fs/_fs_close.ts";
+import * as fs from "node:fs";
 import { Buffer } from "node:buffer";
 import {
   copyObject,
@@ -103,6 +99,7 @@ function close(stream, err, cb) {
   }
 }
 
+// TODO(bartlomieju): looks like this impl is completely out of sync with Node.js...
 function importFd(stream, options) {
   if (typeof options.fd === "number") {
     // When fd is a raw descriptor, we must keep our fingers crossed
@@ -110,11 +107,10 @@ function importFd(stream, options) {
     // another one
     // https://github.com/nodejs/node/issues/35862
     if (ObjectPrototypeIsPrototypeOf(ReadStream.prototype, stream)) {
-      stream[kFs] = options.fs || { read: fsRead, close: fsClose };
+      stream[kFs] = options.fs || fs;
     }
     if (ObjectPrototypeIsPrototypeOf(WriteStream.prototype, stream)) {
-      stream[kFs] = options.fs ||
-        { write: fsWrite, writev: fsWritev, close: fsClose };
+      stream[kFs] = options.fs || fs;
     }
     return options.fd;
   }
@@ -139,7 +135,7 @@ export function ReadStream(path, options) {
 
   if (options.fd == null) {
     this.fd = null;
-    this[kFs] = options.fs || { open: fsOpen, read: fsRead, close: fsClose };
+    this[kFs] = options.fs || fs;
     validateFunction(this[kFs].open, "options.fs.open");
 
     // Path will be ignored when fd is specified, so it can be falsy
@@ -328,8 +324,7 @@ export function WriteStream(path, options) {
 
   if (options.fd == null) {
     this.fd = null;
-    this[kFs] = options.fs ||
-      { open: fsOpen, write: fsWrite, writev: fsWritev, close: fsClose };
+    this[kFs] = options.fs || fs;
     validateFunction(this[kFs].open, "options.fs.open");
 
     // Path will be ignored when fd is specified, so it can be falsy
