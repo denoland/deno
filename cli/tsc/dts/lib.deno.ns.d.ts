@@ -1577,6 +1577,24 @@ declare namespace Deno {
   /** An interface containing methods to interact with the process environment
    * variables.
    *
+   * Environment variables can also be loaded from a `.env` file by using the
+   * `--env-file` flag when running a Deno program:
+   *
+   * ```sh
+   * deno run --env-file=.env --allow-env main.ts
+   * ```
+   *
+   * If `--env-file` is specified without a value, it defaults to loading `.env`
+   * from the current working directory:
+   *
+   * ```sh
+   * deno run --env-file --allow-env main.ts
+   * ```
+   *
+   * Note that environment variables from `.env` files do not override existing
+   * environment variables. If a variable is defined both in the environment and
+   * in the `.env` file, the value from the environment is used.
+   *
    * @tags allow-env
    * @category Runtime
    */
