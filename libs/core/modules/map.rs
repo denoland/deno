@@ -1542,7 +1542,12 @@ impl ModuleMap {
         }
       }
 
-      tc_scope.perform_microtask_checkpoint();
+      // Under Explicit microtask policy, guard this checkpoint so that
+      // nextTick callbacks can run before promise microtasks queued during
+      // module evaluation (e.g., Promise.resolve().then(...)).
+      if !JsRealm::state_from_scope(tc_scope).has_tick_scheduled() {
+        tc_scope.perform_microtask_checkpoint();
+      }
     }
 
     Either::Right(receiver)
@@ -1589,6 +1594,11 @@ impl ModuleMap {
           .into_box(),
       );
     };
+
+    // Under Explicit microtask policy, V8 won't drain microtasks after
+    // module.evaluate(). We must do it ourselves so that the module
+    // evaluation promise resolves for synchronous modules.
+    tc_scope.perform_microtask_checkpoint();
 
     if let Some(exception) = tc_scope.exception() {
       return Err(
@@ -1766,7 +1776,9 @@ impl ModuleMap {
         let resolver = resolver_handle.open(scope);
         resolver.resolve(scope, module_namespace).unwrap();
       }
-      scope.perform_microtask_checkpoint();
+      if !JsRealm::state_from_scope(scope).has_tick_scheduled() {
+        scope.perform_microtask_checkpoint();
+      }
     }
   }
 
@@ -1784,7 +1796,9 @@ impl ModuleMap {
         let resolver = resolver_handle.open(scope);
         resolver.reject(scope, exception).unwrap();
       }
-      scope.perform_microtask_checkpoint();
+      if !JsRealm::state_from_scope(scope).has_tick_scheduled() {
+        scope.perform_microtask_checkpoint();
+      }
     }
   }
 
@@ -1804,7 +1818,9 @@ impl ModuleMap {
 
     let exception = v8::Local::new(scope, exception);
     resolver.reject(scope, exception).unwrap();
-    scope.perform_microtask_checkpoint();
+    if !JsRealm::state_from_scope(scope).has_tick_scheduled() {
+      scope.perform_microtask_checkpoint();
+    }
   }
 
   pub(crate) fn dynamic_import_resolve(
@@ -1837,7 +1853,9 @@ impl ModuleMap {
     let module_namespace = module.get_module_namespace();
     resolver.resolve(scope, module_namespace).unwrap();
     self.dyn_module_evaluate_idle_counter.set(0);
-    scope.perform_microtask_checkpoint();
+    if !JsRealm::state_from_scope(scope).has_tick_scheduled() {
+      scope.perform_microtask_checkpoint();
+    }
   }
 
   /// Drain all ready module loading work: preparing dynamic imports,
@@ -2164,6 +2182,9 @@ impl ModuleMap {
     assert_eq!(status, v8::ModuleStatus::Instantiated);
 
     let value = module_local.evaluate(scope).unwrap();
+    // Under Explicit microtask policy, drain microtasks so the module
+    // evaluation promise resolves for synchronous modules.
+    scope.perform_microtask_checkpoint();
     let promise = v8::Local::<v8::Promise>::try_from(value).unwrap();
     let result = promise.result(scope);
     if !result.is_undefined() {
