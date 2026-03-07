@@ -346,6 +346,14 @@ impl Drop for NapiState {
     }
 
     // Call instance data finalize callbacks for all registered EnvShared instances.
+    // Each entry should be unique since each op_napi_open creates a fresh EnvShared.
+    debug_assert!(
+      {
+        let mut seen = std::collections::HashSet::new();
+        self.env_shared_ptrs.iter().all(|p| seen.insert(*p))
+      },
+      "env_shared_ptrs contains duplicate entries"
+    );
     for env_shared_ptr in &self.env_shared_ptrs {
       // SAFETY: env_shared_ptr was created via Box::into_raw in op_napi_open
       // and the native module library is kept alive (via std::mem::forget).
@@ -614,7 +622,8 @@ fn op_napi_open<'scope>(
   );
   env.shared = Box::into_raw(Box::new(env_shared));
   // Track the EnvShared pointer so we can call instance data finalize
-  // callbacks when the runtime exits.
+  // callbacks when the runtime exits. Each op_napi_open call creates a
+  // fresh EnvShared, so entries are always unique.
   op_state
     .borrow_mut()
     .borrow_mut::<NapiState>()
