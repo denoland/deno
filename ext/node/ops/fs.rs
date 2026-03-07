@@ -682,8 +682,6 @@ fn are_identical_stat(
   }
 }
 
-/// Return true if dest is a subdir of src, otherwise false.
-/// It only checks the path strings.
 fn is_src_subdir(src: &str, dest: &str) -> bool {
   let src_resolved =
     std::path::absolute(src).unwrap_or_else(|_| PathBuf::from(src));
@@ -699,10 +697,10 @@ fn is_src_subdir(src: &str, dest: &str) -> bool {
     .all(|(i, c)| dest_components.get(i).map_or(false, |d| d == c))
 }
 
-/// Check read permission for a path in a cp operation.
-fn check_cp_read(
+fn check_cp_path(
   state: &Rc<RefCell<OpState>>,
   path: &str,
+  access_kind: OpenAccessKind,
 ) -> Result<CheckedPathBuf, FsError> {
   let mut state = state.borrow_mut();
   Ok(
@@ -710,25 +708,7 @@ fn check_cp_read(
       .borrow_mut::<PermissionsContainer>()
       .check_open(
         Cow::Owned(PathBuf::from(path)),
-        OpenAccessKind::Read,
-        Some("node:fs.cp"),
-      )?
-      .into_owned(),
-  )
-}
-
-/// Check write permission for a path in a cp operation.
-fn check_cp_write(
-  state: &Rc<RefCell<OpState>>,
-  path: &str,
-) -> Result<CheckedPathBuf, FsError> {
-  let mut state = state.borrow_mut();
-  Ok(
-    state
-      .borrow_mut::<PermissionsContainer>()
-      .check_open(
-        Cow::Owned(PathBuf::from(path)),
-        OpenAccessKind::Write,
+        access_kind,
         Some("node:fs.cp"),
       )?
       .into_owned(),
@@ -745,39 +725,33 @@ async fn check_paths_impl(
   dereference: bool,
   skip_permission_check: bool,
 ) -> Result<CpCheckPathsResult, FsError> {
-  let src_stat = if skip_permission_check {
-    // When recursing, permissions already checked on parent
+  let (src_stat, dest_result) = if skip_permission_check {
     let src_path = CheckedPathBuf::unsafe_new(PathBuf::from(src));
-    if dereference {
-      fs.stat_async(src_path).await?
-    } else {
-      fs.lstat_async(src_path).await?
-    }
-  } else {
-    // Check permissions and stat
-    let src_path = check_cp_read(state, src)?;
-    if dereference {
-      fs.stat_async(src_path).await?
-    } else {
-      fs.lstat_async(src_path).await?
-    }
-  };
-
-  let dest_result = if skip_permission_check {
-    // When recursing, permissions already checked on parent
     let dest_path = CheckedPathBuf::unsafe_new(PathBuf::from(dest));
     if dereference {
-      fs.stat_async(dest_path).await
+      (
+        fs.stat_async(src_path).await?,
+        fs.stat_async(dest_path).await,
+      )
     } else {
-      fs.lstat_async(dest_path).await
+      (
+        fs.lstat_async(src_path).await?,
+        fs.lstat_async(dest_path).await,
+      )
     }
   } else {
-    // Check permissions and stat
-    let dest_path = check_cp_read(state, dest)?;
+    let src_path = check_cp_path(state, src, OpenAccessKind::Read)?;
+    let dest_path = check_cp_path(state, dest, OpenAccessKind::Read)?;
     if dereference {
-      fs.stat_async(dest_path).await
+      (
+        fs.stat_async(src_path).await?,
+        fs.stat_async(dest_path).await,
+      )
     } else {
-      fs.lstat_async(dest_path).await
+      (
+        fs.lstat_async(src_path).await?,
+        fs.lstat_async(dest_path).await,
+      )
     }
   };
 
@@ -865,7 +839,6 @@ pub async fn op_node_cp_check_paths(
 }
 
 /// Async op: validates src and dest paths for recursive cp operations.
-/// Skips permission checks since parent directories are already validated.
 /// Returns a result with src stat info, dest existence, and optional error.
 #[op2(stack_trace)]
 #[serde]
@@ -880,6 +853,7 @@ pub async fn op_node_cp_check_paths_recursive(
     state.borrow::<FileSystemRc>().clone()
   };
 
+  // skips permission checks since parent directories are already validated.
   check_paths_impl(&state, &fs, &src, &dest, dereference, true).await
 }
 
@@ -899,7 +873,6 @@ pub async fn op_node_cp_validate_and_prepare(
     state.borrow::<FileSystemRc>().clone()
   };
 
-  // First check paths
   let check_result =
     check_paths_impl(&state, &fs, &src, &dest, dereference, false).await?;
 
@@ -913,10 +886,8 @@ pub async fn op_node_cp_validate_and_prepare(
   )
   .await?;
 
-  // Ensure parent dir exists
   ensure_parent_dir_impl(&state, &fs, &dest).await?;
 
-  // Return success result
   Ok(check_result)
 }
 
@@ -957,7 +928,7 @@ async fn check_parent_paths_impl(
     }
 
     let current_str = current.to_str().unwrap_or_default();
-    let checked_path = check_cp_read(state, current_str)?;
+    let checked_path = check_cp_path(state, current_str, OpenAccessKind::Read)?;
     let stat_result = fs.stat_async(checked_path).await;
     match stat_result {
       Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
@@ -1019,10 +990,11 @@ async fn ensure_parent_dir_impl(
     .unwrap_or_default();
 
   let parent_str = dest_parent.to_str().unwrap_or_default();
-  let checked_parent = check_cp_read(state, parent_str)?;
+  let checked_parent = check_cp_path(state, parent_str, OpenAccessKind::Read)?;
   let exists = fs.exists_async(checked_parent).await?;
   if !exists {
-    let checked_parent = check_cp_write(state, parent_str)?;
+    let checked_parent =
+      check_cp_path(state, parent_str, OpenAccessKind::Write)?;
     fs.mkdir_async(checked_parent, true, None).await?;
   }
   Ok(())
@@ -1072,7 +1044,7 @@ async fn set_dest_mode(
   if mode == 0 {
     return Ok(());
   }
-  let dest_path = check_cp_write(state, dest)?;
+  let dest_path = check_cp_path(state, dest, OpenAccessKind::Write)?;
   #[cfg(unix)]
   fs.chmod_async(dest_path, mode).await?;
   #[cfg(not(unix))]
@@ -1087,7 +1059,7 @@ async fn set_dest_timestamps(
   dest: &str,
 ) -> Result<(), FsError> {
   // Re-stat src to get fresh atime/mtime
-  let src_path = check_cp_read(state, src)?;
+  let src_path = check_cp_path(state, src, OpenAccessKind::Read)?;
   let src_stat = fs.stat_async(src_path).await?;
 
   if let (Some(atime), Some(mtime)) = (src_stat.atime, src_stat.mtime) {
@@ -1099,7 +1071,7 @@ async fn set_dest_timestamps(
     let mtime_secs = (mtime / 1000) as i64;
     // Same conversion for mtime: ms remainder -> ns.
     let mtime_nanos = ((mtime % 1000) * 1_000_000) as u32;
-    let dest_path = check_cp_write(state, dest)?;
+    let dest_path = check_cp_path(state, dest, OpenAccessKind::Write)?;
     fs.utime_async(dest_path, atime_secs, atime_nanos, mtime_secs, mtime_nanos)
       .await?;
   }
@@ -1134,7 +1106,7 @@ pub async fn op_node_cp_on_file(
   if dest_exists {
     if force {
       // Remove dest, then copy
-      let dest_path = check_cp_write(&state, &dest)?;
+      let dest_path = check_cp_path(&state, &dest, OpenAccessKind::Write)?;
       fs.remove_async(dest_path, false).await?;
     } else if error_on_exist {
       return Err(
@@ -1151,8 +1123,8 @@ pub async fn op_node_cp_on_file(
   }
 
   // Copy file: read from src, write to dest
-  let src_path = check_cp_read(&state, &src)?;
-  let dest_path = check_cp_write(&state, &dest)?;
+  let src_path = check_cp_path(&state, &src, OpenAccessKind::Read)?;
+  let dest_path = check_cp_path(&state, &dest, OpenAccessKind::Write)?;
   fs.copy_file_async(src_path, dest_path).await?;
 
   if preserve_timestamps {
@@ -1180,7 +1152,7 @@ pub async fn op_node_cp_on_link(
   };
 
   // Read symlink target
-  let src_path = check_cp_read(&state, &src)?;
+  let src_path = check_cp_path(&state, &src, OpenAccessKind::ReadNoFollow)?;
   let resolved_src_buf = fs.read_link_async(src_path).await?;
   let mut resolved_src =
     resolved_src_buf.to_str().unwrap_or_default().to_string();
@@ -1197,14 +1169,14 @@ pub async fn op_node_cp_on_link(
   }
 
   if !dest_exists {
-    let src_p = check_cp_read(&state, &resolved_src)?;
-    let dest_p = check_cp_write(&state, &dest)?;
+    let src_p = check_cp_path(&state, &resolved_src, OpenAccessKind::Read)?;
+    let dest_p = check_cp_path(&state, &dest, OpenAccessKind::Write)?;
     fs.symlink_async(src_p, dest_p, None).await?;
     return Ok(());
   }
 
   // Dest exists — try to read it as a symlink
-  let dest_path = check_cp_read(&state, &dest)?;
+  let dest_path = check_cp_path(&state, &dest, OpenAccessKind::Read)?;
   let resolved_dest_result = fs.read_link_async(dest_path).await;
   let resolved_dest = match resolved_dest_result {
     Ok(p) => {
@@ -1226,8 +1198,8 @@ pub async fn op_node_cp_on_link(
       if kind == std::io::ErrorKind::InvalidInput
         || kind == std::io::ErrorKind::Other
       {
-        let src_p = check_cp_read(&state, &resolved_src)?;
-        let dest_p = check_cp_write(&state, &dest)?;
+        let src_p = check_cp_path(&state, &resolved_src, OpenAccessKind::Read)?;
+        let dest_p = check_cp_path(&state, &dest, OpenAccessKind::Write)?;
         fs.symlink_async(src_p, dest_p, None).await?;
         return Ok(());
       }
@@ -1236,7 +1208,7 @@ pub async fn op_node_cp_on_link(
   };
 
   // Check subdirectory relationships
-  let src_path = check_cp_read(&state, &src)?;
+  let src_path = check_cp_path(&state, &src, OpenAccessKind::Read)?;
   let src_stat = fs.stat_async(src_path).await?;
   let src_is_dir = src_stat.is_directory;
 
@@ -1269,10 +1241,9 @@ pub async fn op_node_cp_on_link(
   }
 
   // Unlink dest and create new symlink
-  let dest_p = check_cp_write(&state, &dest)?;
-  fs.remove_async(dest_p, false).await?;
-  let src_p = check_cp_read(&state, &resolved_src)?;
-  let dest_p = check_cp_write(&state, &dest)?;
+  let dest_p = check_cp_path(&state, &dest, OpenAccessKind::Write)?;
+  fs.remove_async(dest_p.clone(), false).await?;
+  let src_p = check_cp_path(&state, &resolved_src, OpenAccessKind::Read)?;
   fs.symlink_async(src_p, dest_p, None).await?;
   Ok(())
 }
