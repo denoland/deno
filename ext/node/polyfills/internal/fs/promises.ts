@@ -15,9 +15,6 @@ import { promisify } from "ext:deno_node/internal/util.mjs";
 import * as constants from "ext:deno_node/_fs/_fs_constants.ts";
 import { copyFilePromise } from "ext:deno_node/_fs/_fs_copy.ts";
 import { cpPromise } from "ext:deno_node/_fs/_fs_cp.ts";
-import { lchmodPromise } from "ext:deno_node/_fs/_fs_lchmod.ts";
-import { lchownPromise } from "ext:deno_node/_fs/_fs_lchown.ts";
-import { linkPromise } from "ext:deno_node/_fs/_fs_link.ts";
 import { lstatPromise } from "ext:deno_node/_fs/_fs_lstat.ts";
 import { lutimesPromise } from "ext:deno_node/_fs/_fs_lutimes.ts";
 import { mkdirPromise } from "ext:deno_node/_fs/_fs_mkdir.ts";
@@ -35,7 +32,6 @@ import { statPromise } from "ext:deno_node/_fs/_fs_stat.ts";
 import { statfsPromise } from "ext:deno_node/_fs/_fs_statfs.ts";
 import { symlinkPromise } from "ext:deno_node/_fs/_fs_symlink.ts";
 import { truncatePromise } from "ext:deno_node/_fs/_fs_truncate.ts";
-import { unlinkPromise } from "ext:deno_node/_fs/_fs_unlink.ts";
 import { utimesPromise } from "ext:deno_node/_fs/_fs_utimes.ts";
 import { watchPromise } from "ext:deno_node/_fs/_fs_watch.ts";
 import {
@@ -57,8 +53,11 @@ import {
 } from "ext:deno_node/internal/validators.mjs";
 import type { Buffer } from "node:buffer";
 import { primordials } from "ext:core/mod.js";
+import { op_node_lchmod, op_node_lchown } from "ext:core/ops";
+import { isMacOS } from "ext:deno_node/_util/os.ts";
+import { ERR_METHOD_NOT_IMPLEMENTED } from "ext:deno_node/internal/errors.ts";
 
-const { Error, PromisePrototypeThen } = primordials;
+const { Error, PromisePrototypeThen, PromiseReject } = primordials;
 
 // -- access --
 
@@ -205,6 +204,79 @@ const chownPromise = promisify(chown) as (
   path: string | Buffer | URL,
   uid: number,
   gid: number,
+) => Promise<void>;
+
+const lchmodPromise: (
+  path: string | Buffer | URL,
+  mode: number,
+) => Promise<void> = !isMacOS
+  ? () => PromiseReject(new ERR_METHOD_NOT_IMPLEMENTED("lchmod()"))
+  : (path: string | Buffer | URL, mode: number) => {
+    path = getValidatedPathToString(path);
+    mode = parseFileMode(mode, "mode");
+    return op_node_lchmod(path, mode);
+  };
+
+function lchown(
+  path: string | Buffer | URL,
+  uid: number,
+  gid: number,
+  callback: CallbackWithError,
+) {
+  callback = makeCallback(callback);
+  path = getValidatedPathToString(path);
+  validateInteger(uid, "uid", -1, kMaxUserId);
+  validateInteger(gid, "gid", -1, kMaxUserId);
+
+  PromisePrototypeThen(
+    op_node_lchown(path, uid, gid),
+    () => callback(null),
+    callback,
+  );
+}
+
+function link(
+  existingPath: string | Buffer | URL,
+  newPath: string | Buffer | URL,
+  callback: CallbackWithError,
+) {
+  existingPath = getValidatedPathToString(existingPath);
+  newPath = getValidatedPathToString(newPath);
+
+  PromisePrototypeThen(
+    Deno.link(existingPath, newPath),
+    () => callback(null),
+    callback,
+  );
+}
+
+const lchownPromise = promisify(lchown) as (
+  path: string | Buffer | URL,
+  uid: number,
+  gid: number,
+) => Promise<void>;
+
+const linkPromise = promisify(link) as (
+  existingPath: string | Buffer | URL,
+  newPath: string | Buffer | URL,
+) => Promise<void>;
+
+function unlink(
+  path: string | Buffer | URL,
+  callback: (err?: Error) => void,
+): void {
+  path = getValidatedPathToString(path);
+
+  PromisePrototypeThen(
+    Deno.remove(path),
+    () => callback(),
+    (err: Error) =>
+      callback(denoErrorToNodeError(err, { syscall: "unlink", path })),
+  );
+}
+
+const unlinkPromise = promisify(unlink) as (
+  path: string | Buffer | URL,
 ) => Promise<void>;
 
 // -- promises object --

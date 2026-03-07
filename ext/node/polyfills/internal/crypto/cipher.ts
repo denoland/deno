@@ -2,7 +2,7 @@
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
+// deno-lint-ignore-file prefer-primordials no-explicit-any
 
 import { core, primordials } from "ext:core/mod.js";
 const {
@@ -179,180 +179,179 @@ function toU8(
   return typeof input === "string" ? encode(input) : input;
 }
 
-export class Cipheriv extends Transform implements Cipher {
-  /** CipherContext resource id */
-  #context: number;
-
-  /** plaintext data cache */
-  #cache: BlockModeCache;
-
-  #decoder?: StringDecoder;
-
-  #needsBlockCache: boolean;
-
-  #authTag?: Buffer;
-
-  #autoPadding = true;
-
-  #finalized = false;
-
-  constructor(
-    cipher: string,
-    key: CipherKey,
-    iv: BinaryLike | null,
-    options?: TransformOptions,
-  ) {
-    const authTagLength = getUIntOption(options, "authTagLength");
-
-    super({
-      transform(chunk, encoding, cb) {
-        this.push(this.update(chunk, encoding));
-        cb();
-      },
-      final(cb) {
-        this.push(this.final());
-        cb();
-      },
-      ...options,
-    });
-    this.#cache = new BlockModeCache(false);
-    this.#context = op_node_create_cipheriv(
-      cipher,
-      toU8(key),
-      toU8(iv),
-      authTagLength,
-    );
-    this.#needsBlockCache =
-      !(cipher == "aes-128-gcm" || cipher == "aes-256-gcm" ||
-        cipher == "aes-128-ctr" || cipher == "aes-192-ctr" ||
-        cipher == "aes-256-ctr");
-    if (this.#context == 0) {
-      throw new TypeError("Unknown cipher");
-    }
+export function Cipheriv(
+  cipher: string,
+  key: CipherKey,
+  iv: BinaryLike | null,
+  options?: TransformOptions,
+) {
+  if (!(this instanceof Cipheriv)) {
+    return new Cipheriv(cipher, key, iv, options);
   }
 
-  final(encoding: string = getDefaultEncoding()): Buffer | string {
-    if (this.#finalized) {
-      throw new ERR_CRYPTO_INVALID_STATE("final");
-    }
+  const authTagLength = getUIntOption(options, "authTagLength");
 
-    this.#lazyInitDecoder(encoding);
-
-    const buf = new FastBuffer(16);
-    const hasNoBufferedData = this.#cache.cache.byteLength === 0;
-    const shouldPadEmptyBlock = this.#needsBlockCache && this.#autoPadding;
-
-    if (hasNoBufferedData && !shouldPadEmptyBlock) {
-      const maybeTag = op_node_cipheriv_take(this.#context);
-      if (maybeTag) this.#authTag = Buffer.from(maybeTag);
-      this.#finalized = true;
-      return encoding === "buffer" ? Buffer.from([]) : "";
-    }
-
-    if (!this.#autoPadding && this.#cache.cache.byteLength != 16) {
-      throw new Error("Invalid final block size");
-    }
-    const maybeTag = op_node_cipheriv_final(
-      this.#context,
-      this.#autoPadding,
-      this.#cache.cache,
-      buf,
-    );
-    if (maybeTag) {
-      this.#authTag = Buffer.from(maybeTag);
-      this.#finalized = true;
-      return encoding === "buffer" ? Buffer.from([]) : "";
-    }
-
-    this.#finalized = true;
-    if (encoding !== "buffer") {
-      return this.#decoder!.end(buf);
-    }
-
-    return buf;
-  }
-
-  getAuthTag(): Buffer {
-    if (!this.#authTag) {
-      throw new ERR_CRYPTO_INVALID_STATE("getAuthTag");
-    }
-    return this.#authTag;
-  }
-
-  setAAD(
-    buffer: ArrayBufferView,
-    _options?: {
-      plaintextLength: number;
+  Transform.call(this, {
+    transform(chunk, encoding, cb) {
+      this.push(this.update(chunk, encoding));
+      cb();
     },
-  ): this {
-    op_node_cipheriv_set_aad(this.#context, buffer);
-    return this;
+    final(cb) {
+      this.push(this.final());
+      cb();
+    },
+    ...options,
+  });
+
+  this._blockSize = getBlockSize(cipher);
+  this._cache = new BlockModeCache(false, this._blockSize);
+  this._context = op_node_create_cipheriv(
+    cipher,
+    toU8(key),
+    toU8(iv),
+    authTagLength,
+  );
+  this._needsBlockCache =
+    !(cipher == "aes-128-gcm" || cipher == "aes-256-gcm" ||
+      cipher == "aes-128-ctr" || cipher == "aes-192-ctr" ||
+      cipher == "aes-256-ctr");
+  this._authTag = undefined;
+  this._autoPadding = true;
+  this._finalized = false;
+  this._decoder = undefined;
+
+  if (this._context == 0) {
+    throw new TypeError("Unknown cipher");
+  }
+}
+
+Object.setPrototypeOf(Cipheriv.prototype, Transform.prototype);
+Object.setPrototypeOf(Cipheriv, Transform);
+
+Cipheriv.prototype.final = function (
+  encoding: string = getDefaultEncoding(),
+): Buffer | string {
+  if (this._finalized) {
+    throw new ERR_CRYPTO_INVALID_STATE("final");
   }
 
-  setAutoPadding(autoPadding?: boolean): this {
-    this.#autoPadding = !!autoPadding;
-    return this;
+  _lazyInitCipherDecoder(this, encoding);
+
+  const bs = this._blockSize;
+  const buf = new FastBuffer(bs);
+  const hasNoBufferedData = this._cache.cache.byteLength === 0;
+  const shouldPadEmptyBlock = this._needsBlockCache && this._autoPadding;
+
+  if (hasNoBufferedData && !shouldPadEmptyBlock) {
+    const maybeTag = op_node_cipheriv_take(this._context);
+    if (maybeTag) this._authTag = Buffer.from(maybeTag);
+    this._finalized = true;
+    return encoding === "buffer" ? Buffer.from([]) : "";
   }
 
-  update(
-    data: string | Buffer | ArrayBufferView,
-    inputEncoding?: Encoding,
-    outputEncoding: Encoding = getDefaultEncoding(),
-  ): Buffer | string {
-    if (this.#finalized) {
-      throw new ERR_CRYPTO_INVALID_STATE("update");
-    }
+  if (!this._autoPadding && this._cache.cache.byteLength != bs) {
+    throw new Error("Invalid final block size");
+  }
+  const maybeTag = op_node_cipheriv_final(
+    this._context,
+    this._autoPadding,
+    this._cache.cache,
+    buf,
+  );
+  if (maybeTag) {
+    this._authTag = Buffer.from(maybeTag);
+    this._finalized = true;
+    return encoding === "buffer" ? Buffer.from([]) : "";
+  }
 
-    // TODO(kt3k): throw ERR_INVALID_ARG_TYPE if data is not string, Buffer, or ArrayBufferView
-    let buf = data;
-    if (typeof data === "string") {
-      buf = Buffer.from(data, inputEncoding);
-    }
-    this.#lazyInitDecoder(outputEncoding);
+  this._finalized = true;
+  if (encoding !== "buffer") {
+    return this._decoder!.end(buf);
+  }
 
-    let output: Buffer;
-    if (!this.#needsBlockCache) {
-      output = Buffer.allocUnsafe(buf.length);
-      op_node_cipheriv_encrypt(this.#context, buf, output);
+  return buf;
+};
 
-      if (outputEncoding !== "buffer") {
-        return this.#decoder!.write(output);
-      }
+Cipheriv.prototype.getAuthTag = function (): Buffer {
+  if (!this._authTag) {
+    throw new ERR_CRYPTO_INVALID_STATE("getAuthTag");
+  }
+  return this._authTag;
+};
 
-      return output;
-    }
+Cipheriv.prototype.setAAD = function (
+  buffer: ArrayBufferView,
+  _options?: {
+    plaintextLength: number;
+  },
+) {
+  op_node_cipheriv_set_aad(this._context, buffer);
+  return this;
+};
 
-    this.#cache.add(buf);
-    const input = this.#cache.get();
+Cipheriv.prototype.setAutoPadding = function (autoPadding?: boolean) {
+  this._autoPadding = !!autoPadding;
+  return this;
+};
 
-    if (input === null) {
-      output = Buffer.alloc(0);
-    } else {
-      output = Buffer.allocUnsafe(input.length);
-      op_node_cipheriv_encrypt(this.#context, input, output);
-    }
+Cipheriv.prototype.update = function (
+  data: string | Buffer | ArrayBufferView,
+  inputEncoding?: Encoding,
+  outputEncoding: Encoding = getDefaultEncoding(),
+): Buffer | string {
+  if (this._finalized) {
+    throw new ERR_CRYPTO_INVALID_STATE("update");
+  }
+
+  // TODO(kt3k): throw ERR_INVALID_ARG_TYPE if data is not string, Buffer, or ArrayBufferView
+  let buf = data;
+  if (typeof data === "string") {
+    buf = Buffer.from(data, inputEncoding);
+  }
+  _lazyInitCipherDecoder(this, outputEncoding);
+
+  let output: Buffer;
+  if (!this._needsBlockCache) {
+    output = Buffer.allocUnsafe(buf.length);
+    op_node_cipheriv_encrypt(this._context, buf, output);
 
     if (outputEncoding !== "buffer") {
-      return this.#decoder!.write(output);
+      return this._decoder!.write(output);
     }
 
     return output;
   }
 
-  #lazyInitDecoder(encoding: string) {
-    if (encoding === "buffer") {
-      return;
-    }
+  this._cache.add(buf);
+  const input = this._cache.get();
 
-    const normalizedEncoding = normalizeEncoding(encoding);
-    this.#decoder ||= new StringDecoder(normalizedEncoding);
+  if (input === null) {
+    output = Buffer.alloc(0);
+  } else {
+    output = Buffer.allocUnsafe(input.length);
+    op_node_cipheriv_encrypt(this._context, input, output);
+  }
 
-    if (this.#decoder.encoding !== normalizedEncoding) {
-      if (normalizedEncoding === undefined) {
-        throw new ERR_UNKNOWN_ENCODING(encoding);
-      }
-      assert(false, "Cannot change encoding");
+  if (outputEncoding !== "buffer") {
+    return this._decoder!.write(output);
+  }
+
+  return output;
+};
+
+function _lazyInitCipherDecoder(self: any, encoding: string) {
+  if (encoding === "buffer") {
+    return;
+  }
+
+  const normalizedEncoding = normalizeEncoding(encoding);
+  self._decoder ||= new StringDecoder(normalizedEncoding);
+
+  if (self._decoder.encoding !== normalizedEncoding) {
+    if (normalizedEncoding === undefined) {
+      throw new ERR_UNKNOWN_ENCODING(encoding);
     }
+    assert(false, "Cannot change encoding");
   }
 }
 
@@ -360,11 +359,13 @@ export class Cipheriv extends Transform implements Cipher {
  * Used by CBC, ECB modes of block ciphers */
 class BlockModeCache {
   cache: Uint8Array;
+  blockSize: number;
   // The last chunk can be padded when decrypting.
   #lastChunkIsNonZero: boolean;
 
-  constructor(lastChunkIsNotZero = false) {
+  constructor(lastChunkIsNotZero = false, blockSize = 16) {
     this.cache = new Uint8Array(0);
+    this.blockSize = blockSize;
     this.#lastChunkIsNonZero = lastChunkIsNotZero;
   }
 
@@ -375,19 +376,20 @@ class BlockModeCache {
     this.cache.set(data, cache.length);
   }
 
-  /** Gets the chunk of the length of largest multiple of 16.
+  /** Gets the chunk of the length of largest multiple of blockSize.
    * Used for preparing data for encryption/decryption */
   get(): Uint8Array | null {
+    const bs = this.blockSize;
     let len = this.cache.length;
     if (this.#lastChunkIsNonZero) {
       // Reduces the available chunk length by 1 to keep the last chunk
       len -= 1;
     }
-    if (len < 16) {
+    if (len < bs) {
       return null;
     }
 
-    len = Math.floor(len / 16) * 16;
+    len = Math.floor(len / bs) * bs;
     const out = this.cache.subarray(0, len);
     this.cache = this.cache.subarray(len);
     return out;
@@ -396,6 +398,13 @@ class BlockModeCache {
   set lastChunkIsNonZero(value: boolean) {
     this.#lastChunkIsNonZero = value;
   }
+}
+
+function getBlockSize(cipher: string): number {
+  if (cipher.startsWith("des")) {
+    return 8;
+  }
+  return 16;
 }
 
 function getUIntOption(options, key) {
@@ -409,177 +418,179 @@ function getUIntOption(options, key) {
   return -1;
 }
 
-export class Decipheriv extends Transform implements Cipher {
-  /** DecipherContext resource id */
-  #context: number;
-
-  #autoPadding = true;
-
-  /** ciphertext data cache */
-  #cache: BlockModeCache;
-
-  #decoder?: StringDecoder;
-
-  #needsBlockCache: boolean;
-
-  #authTag?: BinaryLike;
-
-  #finalized = false;
-
-  constructor(
-    cipher: string,
-    key: CipherKey,
-    iv: BinaryLike | null,
-    options?: TransformOptions,
-  ) {
-    const authTagLength = getUIntOption(options, "authTagLength");
-
-    super({
-      transform(chunk, encoding, cb) {
-        this.push(this.update(chunk, encoding));
-        cb();
-      },
-      final(cb) {
-        this.push(this.final());
-        cb();
-      },
-      ...options,
-    });
-    this.#cache = new BlockModeCache(this.#autoPadding);
-    this.#context = op_node_create_decipheriv(
-      cipher,
-      toU8(key),
-      toU8(iv),
-      authTagLength,
-    );
-    this.#needsBlockCache =
-      !(cipher == "aes-128-gcm" || cipher == "aes-256-gcm" ||
-        cipher == "aes-128-ctr" || cipher == "aes-192-ctr" ||
-        cipher == "aes-256-ctr");
-    if (this.#context == 0) {
-      throw new TypeError("Unknown cipher");
-    }
+export function Decipheriv(
+  cipher: string,
+  key: CipherKey,
+  iv: BinaryLike | null,
+  options?: TransformOptions,
+) {
+  if (!(this instanceof Decipheriv)) {
+    return new Decipheriv(cipher, key, iv, options);
   }
 
-  final(encoding: string = getDefaultEncoding()): Buffer | string {
-    if (this.#finalized) {
-      throw new ERR_CRYPTO_INVALID_STATE("final");
-    }
+  const authTagLength = getUIntOption(options, "authTagLength");
 
-    this.#lazyInitDecoder(encoding);
-
-    let buf = new FastBuffer(16);
-    op_node_decipheriv_final(
-      this.#context,
-      this.#autoPadding,
-      this.#cache.cache,
-      buf,
-      this.#authTag || NO_TAG,
-    );
-
-    if (!this.#needsBlockCache || this.#cache.cache.byteLength === 0) {
-      this.#finalized = true;
-      return encoding === "buffer" ? Buffer.from([]) : "";
-    }
-    if (this.#cache.cache.byteLength != 16) {
-      throw new Error("Invalid final block size");
-    }
-
-    if (this.#autoPadding) {
-      const padLen = buf.at(-1);
-      if (padLen === 0 || padLen > 16) {
-        throw new Error("bad decrypt");
-      }
-      buf = buf.subarray(0, 16 - padLen); // Padded in Pkcs7 mode
-    }
-    this.#finalized = true;
-    if (encoding !== "buffer") {
-      return this.#decoder!.end(buf);
-    }
-
-    return buf;
-  }
-
-  setAAD(
-    buffer: ArrayBufferView,
-    _options?: {
-      plaintextLength: number;
+  Transform.call(this, {
+    transform(chunk, encoding, cb) {
+      this.push(this.update(chunk, encoding));
+      cb();
     },
-  ): this {
-    op_node_decipheriv_set_aad(this.#context, buffer);
-    return this;
+    final(cb) {
+      this.push(this.final());
+      cb();
+    },
+    ...options,
+  });
+
+  this._autoPadding = true;
+  this._blockSize = getBlockSize(cipher);
+  this._cache = new BlockModeCache(this._autoPadding, this._blockSize);
+  this._context = op_node_create_decipheriv(
+    cipher,
+    toU8(key),
+    toU8(iv),
+    authTagLength,
+  );
+  this._needsBlockCache =
+    !(cipher == "aes-128-gcm" || cipher == "aes-256-gcm" ||
+      cipher == "aes-128-ctr" || cipher == "aes-192-ctr" ||
+      cipher == "aes-256-ctr");
+  this._authTag = undefined;
+  this._finalized = false;
+  this._decoder = undefined;
+
+  if (this._context == 0) {
+    throw new TypeError("Unknown cipher");
+  }
+}
+
+Object.setPrototypeOf(Decipheriv.prototype, Transform.prototype);
+Object.setPrototypeOf(Decipheriv, Transform);
+
+Decipheriv.prototype.final = function (
+  encoding: string = getDefaultEncoding(),
+): Buffer | string {
+  if (this._finalized) {
+    throw new ERR_CRYPTO_INVALID_STATE("final");
   }
 
-  setAuthTag(buffer: BinaryLike, _encoding?: string): this {
-    op_node_decipheriv_auth_tag(this.#context, buffer.byteLength);
-    this.#authTag = buffer;
-    return this;
+  _lazyInitDecipherDecoder(this, encoding);
+
+  const bs = this._blockSize;
+  let buf = new FastBuffer(bs);
+  op_node_decipheriv_final(
+    this._context,
+    this._autoPadding,
+    this._cache.cache,
+    buf,
+    this._authTag || NO_TAG,
+  );
+
+  if (!this._needsBlockCache || this._cache.cache.byteLength === 0) {
+    this._finalized = true;
+    return encoding === "buffer" ? Buffer.from([]) : "";
+  }
+  if (this._cache.cache.byteLength != bs) {
+    throw new Error("Invalid final block size");
   }
 
-  setAutoPadding(autoPadding?: boolean): this {
-    this.#autoPadding = Boolean(autoPadding);
-    this.#cache.lastChunkIsNonZero = this.#autoPadding;
-    return this;
+  if (this._autoPadding) {
+    const padLen = buf.at(-1);
+    if (padLen === 0 || padLen > bs) {
+      throw new Error("bad decrypt");
+    }
+    buf = buf.subarray(0, bs - padLen); // Padded in Pkcs7 mode
+  }
+  this._finalized = true;
+  if (encoding !== "buffer") {
+    return this._decoder!.end(buf);
   }
 
-  update(
-    data: string | Buffer | ArrayBufferView,
-    inputEncoding?: Encoding,
-    outputEncoding: Encoding = getDefaultEncoding(),
-  ): Buffer | string {
-    if (this.#finalized) {
-      throw new ERR_CRYPTO_INVALID_STATE("update");
-    }
+  return buf;
+};
 
-    // TODO(kt3k): throw ERR_INVALID_ARG_TYPE if data is not string, Buffer, or ArrayBufferView
-    let buf = data;
-    if (typeof data === "string") {
-      buf = Buffer.from(data, inputEncoding);
-    }
-    this.#lazyInitDecoder(outputEncoding);
+Decipheriv.prototype.setAAD = function (
+  buffer: ArrayBufferView,
+  _options?: {
+    plaintextLength: number;
+  },
+) {
+  op_node_decipheriv_set_aad(this._context, buffer);
+  return this;
+};
 
-    let output;
-    if (!this.#needsBlockCache) {
-      output = Buffer.allocUnsafe(buf.length);
-      op_node_decipheriv_decrypt(this.#context, buf, output);
+Decipheriv.prototype.setAuthTag = function (
+  buffer: BinaryLike,
+  _encoding?: string,
+) {
+  op_node_decipheriv_auth_tag(this._context, buffer.byteLength);
+  this._authTag = buffer;
+  return this;
+};
 
-      if (outputEncoding !== "buffer") {
-        return this.#decoder!.write(output);
-      }
+Decipheriv.prototype.setAutoPadding = function (autoPadding?: boolean) {
+  this._autoPadding = Boolean(autoPadding);
+  this._cache.lastChunkIsNonZero = this._autoPadding;
+  return this;
+};
 
-      return output;
-    }
+Decipheriv.prototype.update = function (
+  data: string | Buffer | ArrayBufferView,
+  inputEncoding?: Encoding,
+  outputEncoding: Encoding = getDefaultEncoding(),
+): Buffer | string {
+  if (this._finalized) {
+    throw new ERR_CRYPTO_INVALID_STATE("update");
+  }
 
-    this.#cache.add(buf);
-    const input = this.#cache.get();
-    if (input === null) {
-      output = Buffer.alloc(0);
-    } else {
-      output = new FastBuffer(input.length);
-      op_node_decipheriv_decrypt(this.#context, input, output);
-    }
+  // TODO(kt3k): throw ERR_INVALID_ARG_TYPE if data is not string, Buffer, or ArrayBufferView
+  let buf = data;
+  if (typeof data === "string") {
+    buf = Buffer.from(data, inputEncoding);
+  }
+  _lazyInitDecipherDecoder(this, outputEncoding);
+
+  let output;
+  if (!this._needsBlockCache) {
+    output = Buffer.allocUnsafe(buf.length);
+    op_node_decipheriv_decrypt(this._context, buf, output);
 
     if (outputEncoding !== "buffer") {
-      return this.#decoder!.write(output);
+      return this._decoder!.write(output);
     }
 
     return output;
   }
 
-  #lazyInitDecoder(encoding: string) {
-    if (encoding === "buffer") {
-      return;
-    }
+  this._cache.add(buf);
+  const input = this._cache.get();
+  if (input === null) {
+    output = Buffer.alloc(0);
+  } else {
+    output = new FastBuffer(input.length);
+    op_node_decipheriv_decrypt(this._context, input, output);
+  }
 
-    const normalizedEncoding = normalizeEncoding(encoding);
-    this.#decoder ||= new StringDecoder(normalizedEncoding);
+  if (outputEncoding !== "buffer") {
+    return this._decoder!.write(output);
+  }
 
-    if (this.#decoder.encoding !== normalizedEncoding) {
-      if (normalizedEncoding === undefined) {
-        throw new ERR_UNKNOWN_ENCODING(encoding);
-      }
-      assert(false, "Cannot change encoding");
+  return output;
+};
+
+function _lazyInitDecipherDecoder(self: any, encoding: string) {
+  if (encoding === "buffer") {
+    return;
+  }
+
+  const normalizedEncoding = normalizeEncoding(encoding);
+  self._decoder ||= new StringDecoder(normalizedEncoding);
+
+  if (self._decoder.encoding !== normalizedEncoding) {
+    if (normalizedEncoding === undefined) {
+      throw new ERR_UNKNOWN_ENCODING(encoding);
     }
+    assert(false, "Cannot change encoding");
   }
 }
 
