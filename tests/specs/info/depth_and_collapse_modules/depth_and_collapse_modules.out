@@ -1,0 +1,9 @@
+local: [WILDLINE]mod.ts
+type: TypeScript
+dependencies: 4 unique
+size: [WILDLINE]
+
+file:///[WILDLINE]/mod.ts ([WILDLINE])
+├─┬ file:///[WILDLINE]/lib.ts ([WILDLINE])
+│ └── ... (+ 1 file, [WILDLINE])
+└── jsr:@denotest/module-graph[WILDCARD] (+ 2 files, [WILDLINE])
