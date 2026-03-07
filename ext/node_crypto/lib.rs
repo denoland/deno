@@ -99,8 +99,10 @@ deno_core::extension!(
     op_node_scrypt_sync,
     op_node_sign,
     op_node_sign_ed25519,
+    op_node_sign_ed448,
     op_node_verify,
     op_node_verify_ed25519,
+    op_node_verify_ed448,
     op_node_verify_spkac,
     op_node_cert_export_public_key,
     op_node_cert_export_challenge,
@@ -130,6 +132,10 @@ deno_core::extension!(
     keys::op_node_generate_ec_key,
     keys::op_node_generate_ed25519_key_async,
     keys::op_node_generate_ed25519_key,
+    keys::op_node_generate_x448_key_async,
+    keys::op_node_generate_x448_key,
+    keys::op_node_generate_ed448_key_async,
+    keys::op_node_generate_ed448_key,
     keys::op_node_generate_rsa_key_async,
     keys::op_node_generate_rsa_key,
     keys::op_node_generate_rsa_pss_key,
@@ -1347,6 +1353,68 @@ pub fn op_node_verify_ed25519(
   .is_ok();
 
   Ok(verified)
+}
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+#[class(type)]
+pub enum SignEd448Error {
+  #[error("Expected private key")]
+  ExpectedPrivateKey,
+  #[error("Expected Ed448 private key")]
+  ExpectedEd448PrivateKey,
+}
+
+#[op2(fast)]
+pub fn op_node_sign_ed448(
+  #[cppgc] key: &KeyObjectHandle,
+  #[buffer] data: &[u8],
+  #[buffer] signature: &mut [u8],
+) -> Result<(), SignEd448Error> {
+  let private = key
+    .as_private_key()
+    .ok_or(SignEd448Error::ExpectedPrivateKey)?;
+
+  let ed448 = match private {
+    AsymmetricPrivateKey::Ed448(private) => private,
+    _ => return Err(SignEd448Error::ExpectedEd448PrivateKey),
+  };
+
+  let sig = ed448.sign_raw(data);
+  signature.copy_from_slice(&sig.to_bytes());
+
+  Ok(())
+}
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+#[class(type)]
+pub enum VerifyEd448Error {
+  #[error("Expected public key")]
+  ExpectedPublicKey,
+  #[error("Expected Ed448 public key")]
+  ExpectedEd448PublicKey,
+}
+
+#[op2(fast)]
+pub fn op_node_verify_ed448(
+  #[cppgc] key: &KeyObjectHandle,
+  #[buffer] data: &[u8],
+  #[buffer] signature: &[u8],
+) -> Result<bool, VerifyEd448Error> {
+  let public = key
+    .as_public_key()
+    .ok_or(VerifyEd448Error::ExpectedPublicKey)?;
+
+  let ed448 = match &*public {
+    AsymmetricPublicKey::Ed448(public) => public,
+    _ => return Err(VerifyEd448Error::ExpectedEd448PublicKey),
+  };
+
+  let sig = match ed448_goldilocks::Signature::from_slice(signature) {
+    Ok(sig) => sig,
+    Err(_) => return Ok(false),
+  };
+
+  Ok(ed448.verify_raw(&sig, data).is_ok())
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
