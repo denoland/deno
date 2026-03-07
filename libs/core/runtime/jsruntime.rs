@@ -316,8 +316,10 @@ pub(crate) static CONTEXT_SETUP_SOURCES: [InternalSourceFile; 2] = [
 
 /// These files are executed when we start setting up extensions. They rely
 /// on ops being already fully set up.
-pub(crate) static BUILTIN_SOURCES: [InternalSourceFile; 1] =
-  [internal_source_file!("01_core.js")];
+pub(crate) static BUILTIN_SOURCES: [InternalSourceFile; 2] = [
+  internal_source_file!("02_timers.js"),
+  internal_source_file!("01_core.js"),
+];
 
 /// Executed after `BUILTIN_SOURCES` are executed. Provides a thin ES module
 /// that exports `core`, `internals` and `primordials` objects.
@@ -1419,6 +1421,7 @@ impl JsRuntime {
       report_exception_cb,
       build_custom_error_cb,
       run_immediate_callbacks_cb,
+      process_timers_cb,
       wasm_instance_fn,
     ) = {
       scope!(scope, self);
@@ -1468,6 +1471,12 @@ impl JsRuntime {
         core_obj,
         RUN_IMMEDIATE_CALLBACKS,
         "Deno.core.runImmediateCallbacks",
+      );
+      let process_timers_cb: v8::Local<v8::Function> = bindings::get(
+        scope,
+        core_obj,
+        PROCESS_TIMERS,
+        "Deno.core.__processTimers",
       );
 
       let mut wasm_instance_fn = None;
@@ -1560,6 +1569,37 @@ impl JsRuntime {
         core_obj.delete(scope, key.into());
       }
 
+      // Create a shared Int32Array backed by ContextState::timer_info
+      // and pass it to JS via __setTimerInfo.
+      {
+        let state_rc = realm.0.state();
+        let timer_info_ptr =
+          state_rc.timer_info.as_ptr() as *mut std::ffi::c_void;
+        let timer_byte_len = std::mem::size_of::<i32>();
+        let backing_store = unsafe {
+          v8::ArrayBuffer::new_backing_store_from_ptr(
+            timer_info_ptr,
+            timer_byte_len,
+            _no_op_deleter,
+            std::ptr::null_mut(),
+          )
+        };
+        let backing_store_shared = backing_store.make_shared();
+        let ab =
+          v8::ArrayBuffer::with_backing_store(scope, &backing_store_shared);
+        let timer_info_array = v8::Int32Array::new(scope, ab, 0, 1).unwrap();
+        let set_timer_info_fn: v8::Local<v8::Function> = bindings::get(
+          scope,
+          core_obj,
+          SET_TIMER_INFO,
+          "Deno.core.__setTimerInfo",
+        );
+        let undefined: v8::Local<v8::Value> = v8::undefined(scope).into();
+        set_timer_info_fn.call(scope, undefined, &[timer_info_array.into()]);
+        let key = SET_TIMER_INFO.v8_string(scope).unwrap();
+        core_obj.delete(scope, key.into());
+      }
+
       (
         v8::Global::new(scope, resolve_ops_cb),
         v8::Global::new(scope, drain_next_tick_and_macrotasks_cb),
@@ -1568,6 +1608,7 @@ impl JsRuntime {
         v8::Global::new(scope, report_exception_cb),
         v8::Global::new(scope, build_custom_error_cb),
         v8::Global::new(scope, run_immediate_callbacks_cb),
+        v8::Global::new(scope, process_timers_cb),
         wasm_instance_fn.map(|f| v8::Global::new(scope, f)),
       )
     };
@@ -1603,6 +1644,10 @@ impl JsRuntime {
       .run_immediate_callbacks_cb
       .borrow_mut()
       .replace(run_immediate_callbacks_cb);
+    state_rc
+      .js_process_timers_cb
+      .borrow_mut()
+      .replace(process_timers_cb);
     if let Some(wasm_instance_fn) = wasm_instance_fn {
       state_rc
         .wasm_instance_fn
@@ -2114,8 +2159,10 @@ impl JsRuntime {
     if let Some(uv_inner_ptr) = context_state.uv_loop_inner.get() {
       unsafe { (*uv_inner_ptr).run_timers() };
     }
-    // 1b. Fire expired JS timers (direct v8::Function::call per timer)
+    // 1b. Fire expired system timers (direct v8::Function::call per timer)
     did_work |= Self::dispatch_timers(cx, scope, context_state);
+    // 1c. Fire expired user timers via JS-side processTimers
+    did_work |= Self::dispatch_user_timers(cx, scope, context_state);
     if !context_state.has_tick_scheduled() {
       scope.perform_microtask_checkpoint();
     }
@@ -2532,6 +2579,9 @@ impl EventLoopPendingState {
     let has_pending_tasks = state.task_spawner_factory.has_pending_tasks();
     let has_pending_timers = !state.timers.is_empty();
     let has_pending_refed_timers = state.timers.has_pending_timers();
+    // User timers: JS manages these; the timer handle is refed when
+    // there are refed timers (timer_info[0] > 0).
+    let has_pending_refed_user_timers = state.user_timer.is_refed();
     let has_pending_dyn_imports = modules.has_pending_dynamic_imports();
     let has_pending_dyn_module_evaluation =
       modules.has_pending_dyn_module_evaluation();
@@ -2548,6 +2598,7 @@ impl EventLoopPendingState {
         .is_empty();
     let has_pending_refed_ops = has_pending_tasks
       || has_pending_refed_timers
+      || has_pending_refed_user_timers
       || num_pending_ops > num_unrefed_ops;
     let (has_outstanding_immediates, has_refed_immediates) = (
       state.immediate_info[IMM_IDX_HAS_OUTSTANDING] != 0,
@@ -2920,6 +2971,71 @@ impl JsRuntime {
       let set_timer_depth_fn = set_timer_depth_cb.as_ref().unwrap().open(scope);
       let zero = v8::Integer::new(scope, 0);
       set_timer_depth_fn.call(scope, undefined, &[zero.into()]);
+    }
+
+    true
+  }
+
+  /// Phase 1c: Poll the user timer and call JS processTimers(now).
+  ///
+  /// The JS side manages all user timer state (linked lists, priority queue).
+  /// Rust just provides a single-deadline wake mechanism. When the deadline
+  /// arrives, we call `__processTimers(now)` which returns the next expiry:
+  ///   - positive: next expiry time (has refed timers)
+  ///   - negative: next expiry time negated (only unrefed timers)
+  ///   - 0: no more timers
+  fn dispatch_user_timers(
+    cx: &mut Context,
+    scope: &mut v8::PinScope,
+    context_state: &ContextState,
+  ) -> bool {
+    if context_state.user_timer.poll_ready(cx).is_pending() {
+      return false;
+    }
+
+    let process_timers_cb = context_state.js_process_timers_cb.borrow();
+    let Some(process_timers_fn_global) = process_timers_cb.as_ref() else {
+      return false;
+    };
+    let process_timers_fn = process_timers_fn_global.open(scope);
+
+    let now = context_state.user_timer.now();
+    let now_val = v8::Number::new(scope, now);
+    let undefined: v8::Local<v8::Value> = v8::undefined(scope).into();
+
+    let result = process_timers_fn.call(scope, undefined, &[now_val.into()]);
+
+    if let Some(result) = result {
+      let expiry_ms = result.number_value(scope).unwrap_or(0.0);
+
+      if expiry_ms != 0.0 {
+        // Calculate delay from current time to next expiry
+        let next_expiry = expiry_ms.abs();
+        let current_now = context_state.user_timer.now();
+        let delay_ms = if next_expiry > current_now {
+          (next_expiry - current_now) as u64
+        } else {
+          0
+        };
+        context_state
+          .user_timer
+          .schedule(std::time::Duration::from_millis(if delay_ms > 0 {
+            delay_ms
+          } else {
+            1
+          }));
+
+        // Update ref state based on sign
+        if expiry_ms > 0.0 {
+          context_state.user_timer.ref_timer();
+        } else {
+          context_state.user_timer.unref_timer();
+        }
+      } else {
+        // No more timers
+        context_state.user_timer.clear();
+        context_state.user_timer.unref_timer();
+      }
     }
 
     true
