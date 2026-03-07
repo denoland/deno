@@ -39,6 +39,7 @@ import { notImplemented } from "ext:deno_node/_utils.ts";
 import {
   op_dns_resolve,
   op_net_get_ips_from_perm_token,
+  op_net_get_system_dns_servers,
   op_node_getaddrinfo,
   op_node_getnameinfo,
 } from "ext:core/ops";
@@ -228,26 +229,7 @@ function getSystemDnsServers(): [string, number][] {
     return systemDnsServers;
   }
 
-  systemDnsServers = [];
-
-  try {
-    const resolvConf = Deno.readTextFileSync("/etc/resolv.conf");
-    for (const line of resolvConf.split("\n")) {
-      const trimmed = line.trim();
-      if (trimmed.startsWith("#") || trimmed.startsWith(";")) continue;
-      const match = trimmed.match(/^nameserver\s+(.+)$/);
-      if (match) {
-        const addr = match[1].trim();
-        if (addr) {
-          systemDnsServers.push([addr, 53]);
-        }
-      }
-    }
-  } catch {
-    // If we can't read resolv.conf (e.g., Windows or permission denied),
-    // return empty.
-  }
-
+  systemDnsServers = op_net_get_system_dns_servers();
   return systemDnsServers;
 }
 
