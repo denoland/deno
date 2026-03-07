@@ -16,12 +16,7 @@ import { copyFile, copyFileSync } from "ext:deno_node/_fs/_fs_copy.ts";
 import { cp, cpSync } from "ext:deno_node/_fs/_fs_cp.ts";
 import Dir from "ext:deno_node/_fs/_fs_dir.ts";
 import { exists, existsSync } from "ext:deno_node/_fs/_fs_exists.ts";
-import { fchown, fchownSync } from "ext:deno_node/_fs/_fs_fchown.ts";
 import { fstat, fstatSync } from "ext:deno_node/_fs/_fs_fstat.ts";
-import { ftruncate, ftruncateSync } from "ext:deno_node/_fs/_fs_ftruncate.ts";
-import { futimes, futimesSync } from "ext:deno_node/_fs/_fs_futimes.ts";
-import { lchmod, lchmodSync } from "ext:deno_node/_fs/_fs_lchmod.ts";
-import { lchown, lchownSync } from "ext:deno_node/_fs/_fs_lchown.ts";
 import { lstat, lstatSync } from "ext:deno_node/_fs/_fs_lstat.ts";
 import { lutimes, lutimesSync } from "ext:deno_node/_fs/_fs_lutimes.ts";
 import { mkdir, mkdirSync } from "ext:deno_node/_fs/_fs_mkdir.ts";
@@ -77,17 +72,29 @@ import {
   validateString,
 } from "ext:deno_node/internal/validators.mjs";
 import type { Buffer } from "node:buffer";
-import { FsFile } from "ext:deno_fs/30_fs.js";
 import {
   op_fs_fchmod_async,
   op_fs_fchmod_sync,
+  op_fs_fchown_async,
+  op_fs_fchown_sync,
   op_fs_read_file_async,
+  op_node_lchmod,
+  op_node_lchmod_sync,
+  op_node_lchown,
+  op_node_lchown_sync,
 } from "ext:core/ops";
+import { FsFile } from "ext:deno_fs/30_fs.js";
+import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
+import { toUnixTimestamp } from "ext:deno_node/internal/fs/utils.mjs";
+import { isMacOS } from "ext:deno_node/_util/os.ts";
 import { core, primordials } from "ext:core/mod.js";
 
 const {
   Error,
   ErrorPrototype,
+  Number,
+  NumberIsFinite,
+  NumberIsNaN,
   ObjectPrototypeIsPrototypeOf,
   PromisePrototypeThen,
   SymbolFor,
@@ -362,6 +369,24 @@ function closeSync(fd: number) {
   core.close(fd);
 }
 
+function fchown(
+  fd: number,
+  uid: number,
+  gid: number,
+  callback: CallbackWithError,
+) {
+  validateInteger(fd, "fd", 0, 2147483647);
+  validateInteger(uid, "uid", -1, kMaxUserId);
+  validateInteger(gid, "gid", -1, kMaxUserId);
+  callback = makeCallback(callback);
+
+  PromisePrototypeThen(
+    op_fs_fchown_async(fd, uid, gid),
+    () => callback(null),
+    callback,
+  );
+}
+
 function fchmod(
   fd: number,
   mode: string | number,
@@ -373,6 +398,88 @@ function fchmod(
 
   PromisePrototypeThen(
     op_fs_fchmod_async(fd, mode),
+    () => callback(null),
+    callback,
+  );
+}
+
+function fchownSync(
+  fd: number,
+  uid: number,
+  gid: number,
+) {
+  validateInteger(fd, "fd", 0, 2147483647);
+  validateInteger(uid, "uid", -1, kMaxUserId);
+  validateInteger(gid, "gid", -1, kMaxUserId);
+
+  op_fs_fchown_sync(fd, uid, gid);
+}
+
+function ftruncate(
+  fd: number,
+  lenOrCallback: number | CallbackWithError,
+  maybeCallback?: CallbackWithError,
+) {
+  const len: number | undefined = typeof lenOrCallback === "number"
+    ? lenOrCallback
+    : undefined;
+  const callback: CallbackWithError = typeof lenOrCallback === "function"
+    ? lenOrCallback
+    : (maybeCallback as CallbackWithError);
+
+  if (!callback) throw new Error("No callback function supplied");
+
+  PromisePrototypeThen(
+    new FsFile(fd, SymbolFor("Deno.internal.FsFile")).truncate(len),
+    () => callback(null),
+    callback,
+  );
+}
+
+function ftruncateSync(fd: number, len?: number) {
+  new FsFile(fd, SymbolFor("Deno.internal.FsFile")).truncateSync(len);
+}
+
+function _getValidTime(
+  time: number | string | Date,
+  name: string,
+): number | Date {
+  if (typeof time === "string") {
+    time = Number(time);
+  }
+
+  if (
+    typeof time === "number" &&
+    (NumberIsNaN(time) || !NumberIsFinite(time))
+  ) {
+    throw new Deno.errors.InvalidData(
+      `invalid ${name}, must not be infinity or NaN`,
+    );
+  }
+
+  return toUnixTimestamp(time);
+}
+
+function futimes(
+  fd: number,
+  atime: number | string | Date,
+  mtime: number | string | Date,
+  callback: CallbackWithError,
+) {
+  if (!callback) {
+    throw new Deno.errors.InvalidData("No callback function supplied");
+  }
+  if (typeof fd !== "number") {
+    throw new ERR_INVALID_ARG_TYPE("fd", "number", fd);
+  }
+
+  validateInteger(fd, "fd", 0, 2147483647);
+
+  atime = _getValidTime(atime, "atime");
+  mtime = _getValidTime(mtime, "mtime");
+
+  PromisePrototypeThen(
+    new FsFile(fd, SymbolFor("Deno.internal.FsFile")).utime(atime, mtime),
     () => callback(null),
     callback,
   );
@@ -396,6 +503,76 @@ function fdatasync(
   );
 }
 
+function futimesSync(
+  fd: number,
+  atime: number | string | Date,
+  mtime: number | string | Date,
+) {
+  if (typeof fd !== "number") {
+    throw new ERR_INVALID_ARG_TYPE("fd", "number", fd);
+  }
+
+  validateInteger(fd, "fd", 0, 2147483647);
+
+  atime = _getValidTime(atime, "atime");
+  mtime = _getValidTime(mtime, "mtime");
+
+  new FsFile(fd, SymbolFor("Deno.internal.FsFile")).utimeSync(atime, mtime);
+}
+
+const lchmod:
+  | ((
+    path: string | Buffer | URL,
+    mode: number,
+    callback: CallbackWithError,
+  ) => void)
+  | undefined = !isMacOS ? undefined : (
+    path: string | Buffer | URL,
+    mode: number,
+    callback: CallbackWithError,
+  ) => {
+    path = getValidatedPathToString(path);
+    mode = parseFileMode(mode, "mode");
+    callback = makeCallback(callback);
+
+    PromisePrototypeThen(
+      op_node_lchmod(path, mode),
+      () => callback(null),
+      (err: Error) => callback(err),
+    );
+  };
+
+const lchmodSync:
+  | ((
+    path: string | Buffer | URL,
+    mode: number,
+  ) => void)
+  | undefined = !isMacOS
+    ? undefined
+    : (path: string | Buffer | URL, mode: number) => {
+      path = getValidatedPathToString(path);
+      mode = parseFileMode(mode, "mode");
+      return op_node_lchmod_sync(path, mode);
+    };
+
+function lchown(
+  path: string | Buffer | URL,
+  uid: number,
+  gid: number,
+  callback: CallbackWithError,
+) {
+  callback = makeCallback(callback);
+  path = getValidatedPathToString(path);
+  validateInteger(uid, "uid", -1, kMaxUserId);
+  validateInteger(gid, "gid", -1, kMaxUserId);
+
+  PromisePrototypeThen(
+    op_node_lchown(path, uid, gid),
+    () => callback(null),
+    callback,
+  );
+}
+
 function fdatasyncSync(fd: number) {
   validateInt32(fd, "fd", 0);
   new FsFile(fd, SymbolFor("Deno.internal.FsFile")).syncDataSync();
@@ -411,6 +588,18 @@ function fsync(
     () => callback(null),
     callback,
   );
+}
+
+function lchownSync(
+  path: string | Buffer | URL,
+  uid: number,
+  gid: number,
+) {
+  path = getValidatedPathToString(path);
+  validateInteger(uid, "uid", -1, kMaxUserId);
+  validateInteger(gid, "gid", -1, kMaxUserId);
+
+  op_node_lchown_sync(path, uid, gid);
 }
 
 function fsyncSync(fd: number) {
@@ -649,6 +838,8 @@ export {
   globSync,
   lchmod,
   lchmodSync,
+  lchown,
+  lchownSync,
   link,
   linkSync,
   lstat,
