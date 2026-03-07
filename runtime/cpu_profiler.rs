@@ -790,7 +790,7 @@ fn generate_flamegraph_svg(
   svg.push_str(&format!(
     r##"<?xml version="1.0" standalone="no"?>
 <!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
-<svg version="1.1" width="{image_width}" height="{image_height}" onload="init(evt)" viewBox="0 0 {image_width} {image_height}" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:fg="http://github.com/nicholasgasior/gofern">
+<svg version="1.1" width="100%" height="{image_height}" onload="init(evt)" viewBox="0 0 {image_width} {image_height}" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:fg="http://github.com/nicholasgasior/gofern" style="min-height:100vh">
 <defs>
   <linearGradient id="background" y1="0" y2="1">
     <stop stop-color="#eeeeee" offset="5%"/>
@@ -930,27 +930,49 @@ fn generate_flamegraph_svg(
 // Supports: click-to-zoom, reset zoom, Ctrl+F search with highlight, hover details.
 const FLAMEGRAPH_JS: &str = r##"
   var details, searchbtn, unzoombtn, matchedtxt, svg, searching, frames, total_samples, known_font_width;
+  var orig_height, detailsEl, matchedEl;
   function init(evt) {
-    details = document.getElementById("details").firstChild;
+    detailsEl = document.getElementById("details");
+    details = detailsEl.firstChild;
     searchbtn = document.getElementById("search");
     unzoombtn = document.getElementById("unzoom");
-    matchedtxt = document.getElementById("matched");
+    matchedEl = document.getElementById("matched");
+    matchedtxt = matchedEl;
     svg = document.getElementsByTagName("svg")[0];
     frames = document.getElementById("frames");
     total_samples = parseInt(frames.attributes.total_samples.value);
     known_font_width = get_monospace_width(frames);
     searching = 0;
-    // Make width fluid
+    orig_height = parseFloat(svg.attributes.height.value);
+    // Fluid: fill viewport width and height
     svg.removeAttribute("width");
-    var update_for_width_change = function() {
+    var update_for_resize = function() {
+      // Width
       frames.attributes.width.value = svg.width.baseVal.value - xpad * 2;
-      update_text_for_elements(frames.children);
       var svgWidth = svg.width.baseVal.value;
       searchbtn.attributes.x.value = svgWidth - xpad;
-      matchedtxt.attributes.x.value = svgWidth - xpad;
+      matchedEl.attributes.x.value = svgWidth - xpad;
+      // Height: use viewport height if larger than content
+      var vh = window.innerHeight;
+      var h = Math.max(orig_height, vh);
+      svg.setAttribute("height", h);
+      svg.setAttribute("viewBox", "0 0 " + svgWidth + " " + h);
+      // Shift frames down so they sit at the bottom of the viewport
+      var extraSpace = h - orig_height;
+      if (extraSpace > 0) {
+        frames.setAttribute("transform", "translate(0," + extraSpace + ")");
+      } else {
+        frames.removeAttribute("transform");
+      }
+      // Reposition details/matched bar at bottom
+      var detailsY = h - 15;
+      detailsEl.attributes.y.value = detailsY;
+      matchedEl.attributes.y.value = detailsY;
+      // Update text
+      update_text_for_elements(frames.children);
     };
-    window.addEventListener("resize", update_for_width_change);
-    setTimeout(function() { unzoom(); update_for_width_change(); }, 0);
+    window.addEventListener("resize", update_for_resize);
+    setTimeout(function() { unzoom(); update_for_resize(); }, 0);
   }
   window.addEventListener("click", function(e) {
     var target = find_group(e.target);
