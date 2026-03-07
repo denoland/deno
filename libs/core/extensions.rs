@@ -204,14 +204,10 @@ pub struct OpDecl {
   pub accessor_type: AccessorType,
   pub arg_count: u8,
   pub no_side_effects: bool,
-  /// The slow dispatch call. If metrics are disabled, the `v8::Function` is created with this callback.
+  /// The slow dispatch call.
   pub(crate) slow_fn: OpFnRef,
-  /// The slow dispatch call with metrics enabled. If metrics are enabled, the `v8::Function` is created with this callback.
-  pub(crate) slow_fn_with_metrics: OpFnRef,
-  /// The fast dispatch call. If metrics are disabled, the `v8::Function`'s fastcall is created with this callback.
+  /// The fast dispatch call.
   pub(crate) fast_fn: Option<CFunction>,
-  /// The fast dispatch call with metrics enabled. If metrics are enabled, the `v8::Function`'s fastcall is created with this callback.
-  pub(crate) fast_fn_with_metrics: Option<CFunction>,
   /// Any metadata associated with this op.
   pub metadata: OpMetadata,
 }
@@ -228,10 +224,8 @@ impl OpDecl {
     arg_count: u8,
     no_side_effects: bool,
     slow_fn: OpFnRef,
-    slow_fn_with_metrics: OpFnRef,
     accessor_type: AccessorType,
     fast_fn: Option<CFunction>,
-    fast_fn_with_metrics: Option<CFunction>,
     metadata: OpMetadata,
   ) -> Self {
     #[allow(deprecated)]
@@ -244,10 +238,8 @@ impl OpDecl {
       arg_count,
       no_side_effects,
       slow_fn,
-      slow_fn_with_metrics,
       accessor_type,
       fast_fn,
-      fast_fn_with_metrics,
       metadata,
     }
   }
@@ -261,13 +253,11 @@ impl OpDecl {
   pub fn disable(self) -> Self {
     Self {
       slow_fn: bindings::op_disabled_fn.map_fn_to(),
-      slow_fn_with_metrics: bindings::op_disabled_fn.map_fn_to(),
       // TODO(bartlomieju): Currently this fast fn won't throw like `op_disabled_fn`;
       // ideally we would add a fallback that would throw, but it's unclear
       // if disabled op (that throws in JS) would ever get optimized to become
       // a fast function.
       fast_fn: self.fast_fn.map(|_| NOOP_FN),
-      fast_fn_with_metrics: self.fast_fn_with_metrics.map(|_| NOOP_FN),
       ..self
     }
   }
@@ -276,9 +266,7 @@ impl OpDecl {
   /// `OpDecl`.
   pub const fn with_implementation_from(mut self, from: &Self) -> Self {
     self.slow_fn = from.slow_fn;
-    self.slow_fn_with_metrics = from.slow_fn_with_metrics;
     self.fast_fn = from.fast_fn;
-    self.fast_fn_with_metrics = from.fast_fn_with_metrics;
     self
   }
 
@@ -290,13 +278,6 @@ impl OpDecl {
     f
   }
 
-  #[doc(hidden)]
-  pub const fn fast_fn_with_metrics(&self) -> CFunction {
-    let Some(f) = self.fast_fn_with_metrics else {
-      panic!("Not a fast function");
-    };
-    f
-  }
 }
 
 /// Declares a block of Deno `#[op]`s. The first parameter determines the name of the

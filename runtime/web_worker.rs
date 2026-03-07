@@ -641,10 +641,11 @@ impl WebWorker {
     options.startup_snapshot.as_ref().expect("A user snapshot was not provided, even though 'only_snapshotted_js_sources' is used.");
 
     // Get our op metrics
-    let (op_summary_metrics, op_metrics_factory_fn) = create_op_metrics(
-      options.bootstrap.enable_op_summary_metrics,
-      options.trace_ops,
-    );
+    let (op_summary_metrics, op_metrics_cells_factory_fn, op_metrics_factory_fn) =
+      create_op_metrics(
+        options.bootstrap.enable_op_summary_metrics,
+        options.trace_ops,
+      );
 
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(services.module_loader),
@@ -660,6 +661,7 @@ impl WebWorker {
       #[cfg(not(feature = "transpile"))]
       extension_transpiler: None,
       inspector: true,
+      op_metrics_cells_factory_fn,
       op_metrics_factory_fn,
       validate_import_attributes_cb: Some(
         create_validate_import_attributes_callback(Arc::new(AtomicBool::new(

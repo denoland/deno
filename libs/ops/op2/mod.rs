@@ -265,11 +265,7 @@ pub(crate) fn generate_op2(
   let js_runtime_state = Ident::new("js_runtime_state", Span::call_site());
   let promise_id = Ident::new("promise_id", Span::call_site());
   let slow_function = Ident::new("v8_fn_ptr", Span::call_site());
-  let slow_function_metrics =
-    Ident::new("v8_fn_ptr_metrics", Span::call_site());
   let fast_function = Ident::new("v8_fn_ptr_fast", Span::call_site());
-  let fast_function_metrics =
-    Ident::new("v8_fn_ptr_fast_metrics", Span::call_site());
   let fast_api_callback_options =
     Ident::new("fast_api_callback_options", Span::call_site());
   let self_ty = if let Some(ref ty) = config.self_name {
@@ -292,9 +288,7 @@ pub(crate) fn generate_op2(
     retval,
     needs_args,
     slow_function: slow_function.clone(),
-    slow_function_metrics: slow_function_metrics.clone(),
     fast_function,
-    fast_function_metrics,
     promise_id,
     self_ty,
     moves: vec![],
@@ -340,11 +334,11 @@ pub(crate) fn generate_op2(
 
   let mut fast_generator_state = base_generator_state.clone();
 
-  let (fast_definition, fast_definition_metrics, fast_fn) =
+  let (fast_definition, fast_fn) =
     match generate_dispatch_fast(&config, &mut fast_generator_state, &signature)
       .map_err(|e| Op2Error::from(e).with_default_span(sig_span))?
     {
-      Some((fast_definition, fast_metrics_definition, fast_fn)) => {
+      Some((fast_definition, fast_fn)) => {
         if !config.fast
           && !config.nofast
           && config.fast_alternative.is_none()
@@ -359,11 +353,10 @@ pub(crate) fn generate_op2(
         }
         // nofast requires the function to be valid for fast
         if config.nofast || config.getter || config.setter {
-          (quote!(None), quote!(None), quote!())
+          (quote!(None), quote!())
         } else {
           (
             quote!(Some({#fast_definition})),
-            quote!(Some({#fast_metrics_definition})),
             fast_fn,
           )
         }
@@ -381,7 +374,7 @@ pub(crate) fn generate_op2(
             Op2ErrorKind::ShouldNotBeFast("nofast"),
           ));
         }
-        (quote!(None), quote!(None), quote!())
+        (quote!(None), quote!())
       }
     };
 
@@ -458,10 +451,8 @@ pub(crate) fn generate_op2(
           /*arg_count*/ #arg_count as u8,
           /*no_side_effect*/ #no_side_effect,
           /*slow_fn*/ Self::#slow_function as _,
-          /*slow_fn_metrics*/ Self::#slow_function_metrics as _,
           /*accessor_type*/ #accessor_type,
           /*fast_fn*/ #fast_definition,
-          /*fast_fn_metrics*/ #fast_definition_metrics,
           /*metadata*/ ::deno_core::OpMetadata {
             #(#meta_key: Some(#meta_value),)*
             ..::deno_core::OpMetadata::default()

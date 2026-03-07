@@ -17,6 +17,7 @@ use crate::ResourceId;
 use crate::error::JsStackFrame;
 use crate::gotham_state::GothamState;
 use crate::io::ResourceTable;
+use crate::ops_metrics::OpMetricsCells;
 use crate::ops_metrics::OpMetricsFn;
 use crate::runtime::JsRuntimeState;
 use crate::runtime::OpDriverImpl;
@@ -95,7 +96,10 @@ pub struct OpCtx {
 
   pub(crate) decl: OpDecl,
   pub(crate) fast_fn_info: Option<CFunction>,
-  pub(crate) metrics_fn: Option<OpMetricsFn>,
+  /// Direct counters for summary metrics (no vtable dispatch).
+  pub(crate) metrics_cells: Option<Rc<OpMetricsCells>>,
+  /// Optional callback for trace_ops (--trace-ops). Rare.
+  pub(crate) trace_ops_fn: Option<OpMetricsFn>,
 
   op_driver: Rc<OpDriverImpl>,
   runtime_state: *const JsRuntimeState,
@@ -110,18 +114,11 @@ impl OpCtx {
     decl: OpDecl,
     state: Rc<RefCell<OpState>>,
     runtime_state: *const JsRuntimeState,
-    metrics_fn: Option<OpMetricsFn>,
+    metrics_cells: Option<Rc<OpMetricsCells>>,
+    trace_ops_fn: Option<OpMetricsFn>,
     enable_stack_trace: bool,
   ) -> Self {
-    // If we want metrics for this function, create the fastcall `CFunctionInfo` from the metrics
-    // `CFunction`. For some extremely fast ops, the parameter list may change for the metrics
-    // version and require a slightly different set of arguments (for example, it may need the fastcall
-    // callback information to get the `OpCtx`).
-    let fast_fn_info = if metrics_fn.is_some() {
-      decl.fast_fn_with_metrics
-    } else {
-      decl.fast_fn
-    };
+    let fast_fn_info = decl.fast_fn;
 
     Self {
       id,
@@ -131,7 +128,8 @@ impl OpCtx {
       op_driver,
       fast_fn_info,
       isolate,
-      metrics_fn,
+      metrics_cells,
+      trace_ops_fn,
       enable_stack_trace,
     }
   }
@@ -142,8 +140,8 @@ impl OpCtx {
   }
 
   #[inline(always)]
-  pub const fn metrics_enabled(&self) -> bool {
-    self.metrics_fn.is_some()
+  pub fn metrics_enabled(&self) -> bool {
+    self.metrics_cells.is_some() || self.trace_ops_fn.is_some()
   }
 
   /// Generates four external references for each op. If an op does not have a fastcall, it generates
@@ -158,40 +156,21 @@ impl OpCtx {
       pointer: placeholder as _,
     };
 
-    if self.metrics_enabled() {
-      let slow_fn = v8::ExternalReference {
-        function: self.decl.slow_fn_with_metrics,
+    let slow_fn = v8::ExternalReference {
+      function: self.decl.slow_fn,
+    };
+    if let (Some(fast_fn), Some(fast_fn_info)) =
+      (self.decl.fast_fn, self.fast_fn_info)
+    {
+      let fast_fn = v8::ExternalReference {
+        pointer: fast_fn.address() as _,
       };
-      if let (Some(fast_fn), Some(fast_fn_info)) =
-        (self.decl.fast_fn_with_metrics, self.fast_fn_info)
-      {
-        let fast_fn = v8::ExternalReference {
-          pointer: fast_fn.address() as _,
-        };
-        let fast_info = v8::ExternalReference {
-          type_info: fast_fn_info.type_info(),
-        };
-        [ctx_ptr, slow_fn, fast_fn, fast_info]
-      } else {
-        [ctx_ptr, slow_fn, null, null]
-      }
+      let fast_info = v8::ExternalReference {
+        type_info: fast_fn_info.type_info(),
+      };
+      [ctx_ptr, slow_fn, fast_fn, fast_info]
     } else {
-      let slow_fn = v8::ExternalReference {
-        function: self.decl.slow_fn,
-      };
-      if let (Some(fast_fn), Some(fast_fn_info)) =
-        (self.decl.fast_fn, self.fast_fn_info)
-      {
-        let fast_fn = v8::ExternalReference {
-          pointer: fast_fn.address() as _,
-        };
-        let fast_info = v8::ExternalReference {
-          type_info: fast_fn_info.type_info(),
-        };
-        [ctx_ptr, slow_fn, fast_fn, fast_info]
-      } else {
-        [ctx_ptr, slow_fn, null, null]
-      }
+      [ctx_ptr, slow_fn, null, null]
     }
   }
 

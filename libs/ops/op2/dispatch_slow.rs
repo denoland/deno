@@ -78,6 +78,7 @@ pub(crate) fn generate_dispatch_slow(
   generator_state: &mut GeneratorState,
   signature: &ParsedSignature,
 ) -> Result<TokenStream, V8SignatureMappingError> {
+  let no_metrics = config.no_metrics;
   let mut output = TokenStream::new();
 
   let args = generate_dispatch_slow_call(generator_state, signature, 0)?;
@@ -176,8 +177,39 @@ pub(crate) fn generate_dispatch_slow(
     quote!()
   };
 
+  let wrapper_fn = if no_metrics {
+    gs_quote!(generator_state(info, slow_function) => {
+      extern "C" fn #slow_function<'s>(#info: *const deno_core::v8::FunctionCallbackInfo) {
+        let info: &'s _ = unsafe { &*#info };
+        Self::slow_function_impl(info);
+      }
+    })
+  } else {
+    gs_quote!(generator_state(info, slow_function, opctx) => {
+      extern "C" fn #slow_function<'s>(#info: *const deno_core::v8::FunctionCallbackInfo) {
+        let info: &'s _ = unsafe { &*#info };
+        let args = deno_core::v8::FunctionCallbackArguments::from_function_callback_info(info);
+        let #opctx: &'s _ = unsafe {
+          &*(deno_core::v8::Local::<deno_core::v8::External>::cast_unchecked(args.data()).value()
+              as *const deno_core::_ops::OpCtx)
+        };
+        if #opctx.metrics_enabled() {
+          deno_core::_ops::dispatch_metrics_slow(#opctx, deno_core::_ops::OpMetricsEvent::Dispatched);
+        }
+        let res = Self::slow_function_impl(info);
+        if #opctx.metrics_enabled() {
+          if res == 0 {
+            deno_core::_ops::dispatch_metrics_slow(#opctx, deno_core::_ops::OpMetricsEvent::Completed);
+          } else {
+            deno_core::_ops::dispatch_metrics_slow(#opctx, deno_core::_ops::OpMetricsEvent::Error);
+          }
+        }
+      }
+    })
+  };
+
   Ok(
-    gs_quote!(generator_state(opctx, info, slow_function, slow_function_metrics) => {
+    gs_quote!(generator_state(info) => {
       fn slow_function_impl<'s>(#info: &'s deno_core::v8::FunctionCallbackInfo) -> usize {
         #[cfg(debug_assertions)]
         let _reentrancy_check_guard = deno_core::_ops::reentrancy_check(&<Self as deno_core::_ops::Op>::DECL);
@@ -198,28 +230,7 @@ pub(crate) fn generate_dispatch_slow(
         return 0;
       }
 
-      extern "C" fn #slow_function<'s>(#info: *const deno_core::v8::FunctionCallbackInfo) {
-        let info: &'s _ = unsafe { &*#info };
-        Self::slow_function_impl(info);
-      }
-
-      extern "C" fn #slow_function_metrics<'s>(#info: *const deno_core::v8::FunctionCallbackInfo) {
-        let info: &'s _ = unsafe { &*#info };
-        let args = deno_core::v8::FunctionCallbackArguments::from_function_callback_info(info);
-
-        let #opctx: &'s _ = unsafe {
-          &*(deno_core::v8::Local::<deno_core::v8::External>::cast_unchecked(args.data()).value()
-              as *const deno_core::_ops::OpCtx)
-        };
-
-        deno_core::_ops::dispatch_metrics_slow(#opctx, deno_core::_ops::OpMetricsEvent::Dispatched);
-        let res = Self::slow_function_impl(info);
-        if res == 0 {
-          deno_core::_ops::dispatch_metrics_slow(#opctx, deno_core::_ops::OpMetricsEvent::Completed);
-        } else {
-          deno_core::_ops::dispatch_metrics_slow(#opctx, deno_core::_ops::OpMetricsEvent::Error);
-        }
-      }
+      #wrapper_fn
     }),
   )
 }

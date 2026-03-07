@@ -79,6 +79,7 @@ use crate::modules::ModuleName;
 use crate::modules::RequestedModuleType;
 use crate::modules::ValidateImportAttributesCb;
 use crate::modules::script_origin;
+use crate::ops_metrics::OpMetricsCellsFactoryFn;
 use crate::ops_metrics::OpMetricsFactoryFn;
 use crate::ops_metrics::dispatch_metrics_async;
 use crate::runtime::ContextState;
@@ -453,8 +454,12 @@ pub struct RuntimeOptions {
   /// If specified, transpiles extensions before loading.
   pub extension_transpiler: Option<Rc<ExtensionTranspiler>>,
 
-  /// Provide a function that may optionally provide a metrics collector
-  /// for a given op.
+  /// Provide a function that creates direct metrics counters for ops.
+  /// Used by `OpMetricsSummaryTracker` for efficient summary counting.
+  pub op_metrics_cells_factory_fn: Option<OpMetricsCellsFactoryFn>,
+
+  /// Provide a function that may optionally provide a metrics callback
+  /// for a given op. Used for trace_ops (--trace-ops) and custom hooks.
   pub op_metrics_factory_fn: Option<OpMetricsFactoryFn>,
 
   /// JsRuntime extensions, not to be confused with ES modules.
@@ -774,11 +779,14 @@ impl JsRuntime {
       extension_set::init_ops(crate::ops_builtin::BUILTIN_OPS, &mut extensions);
 
     let op_driver = Rc::new(OpDriverImpl::default());
+    let op_metrics_cells_factory_fn =
+      options.op_metrics_cells_factory_fn.take();
     let op_metrics_factory_fn = options.op_metrics_factory_fn.take();
 
     let (mut op_ctxs, methods_ctx_offset) = extension_set::create_op_ctxs(
       op_decls,
       &mut op_method_decls,
+      op_metrics_cells_factory_fn,
       op_metrics_factory_fn,
       op_driver.clone(),
       op_state.clone(),

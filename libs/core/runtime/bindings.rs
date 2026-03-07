@@ -521,13 +521,7 @@ fn op_ctx_template_or_accessor<'s, 'i>(
     accessor_store.get(op_ctx.decl.name)
   {
     let getter_fn = if let Some(getter) = named_getter {
-      let getter_raw = if getter.metrics_enabled() {
-        getter.decl.slow_fn_with_metrics
-      } else {
-        getter.decl.slow_fn
-      };
-
-      let tmpl = v8::FunctionTemplate::builder_raw(getter_raw)
+      let tmpl = v8::FunctionTemplate::builder_raw(getter.decl.slow_fn)
         .data(external.into())
         .build(scope);
       let op_fn = tmpl.get_function(scope).unwrap();
@@ -541,13 +535,7 @@ fn op_ctx_template_or_accessor<'s, 'i>(
     };
 
     let setter_fn = if let Some(setter) = named_setter {
-      let setter_raw = if setter.metrics_enabled() {
-        setter.decl.slow_fn_with_metrics
-      } else {
-        setter.decl.slow_fn
-      };
-
-      let tmpl = v8::FunctionTemplate::builder_raw(setter_raw)
+      let tmpl = v8::FunctionTemplate::builder_raw(setter.decl.slow_fn)
         .data(external.into())
         .length(1)
         .build(scope);
@@ -579,14 +567,8 @@ pub(crate) fn op_ctx_template<'s, 'i>(
   let op_ctx_ptr = op_ctx as *const OpCtx as *const c_void;
   let external = v8::External::new(scope, op_ctx_ptr as *mut c_void);
 
-  let (slow_fn, fast_fn) = if op_ctx.metrics_enabled() {
-    (
-      op_ctx.decl.slow_fn_with_metrics,
-      op_ctx.decl.fast_fn_with_metrics,
-    )
-  } else {
-    (op_ctx.decl.slow_fn, op_ctx.decl.fast_fn)
-  };
+  let slow_fn = op_ctx.decl.slow_fn;
+  let fast_fn = op_ctx.decl.fast_fn;
 
   let builder: v8::FunctionBuilder<v8::FunctionTemplate> =
     v8::FunctionTemplate::builder_raw(slow_fn)

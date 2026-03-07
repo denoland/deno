@@ -14,9 +14,7 @@ const fn op_make_cppgc_object() -> ::deno_core::_ops::OpDecl {
             1usize as u8,
             false,
             Self::v8_fn_ptr as _,
-            Self::v8_fn_ptr_metrics as _,
             ::deno_core::AccessorType::None,
-            None,
             None,
             ::deno_core::OpMetadata {
                 ..::deno_core::OpMetadata::default()
@@ -84,12 +82,6 @@ const fn op_make_cppgc_object() -> ::deno_core::_ops::OpDecl {
         }
         extern "C" fn v8_fn_ptr<'s>(info: *const deno_core::v8::FunctionCallbackInfo) {
             let info: &'s _ = unsafe { &*info };
-            Self::slow_function_impl(info);
-        }
-        extern "C" fn v8_fn_ptr_metrics<'s>(
-            info: *const deno_core::v8::FunctionCallbackInfo,
-        ) {
-            let info: &'s _ = unsafe { &*info };
             let args = deno_core::v8::FunctionCallbackArguments::from_function_callback_info(
                 info,
             );
@@ -99,21 +91,25 @@ const fn op_make_cppgc_object() -> ::deno_core::_ops::OpDecl {
                 >::cast_unchecked(args.data())
                     .value() as *const deno_core::_ops::OpCtx)
             };
-            deno_core::_ops::dispatch_metrics_async(
-                opctx,
-                deno_core::_ops::OpMetricsEvent::Dispatched,
-            );
+            if opctx.metrics_enabled() {
+                deno_core::_ops::dispatch_metrics_async(
+                    opctx,
+                    deno_core::_ops::OpMetricsEvent::Dispatched,
+                );
+            }
             let res = Self::slow_function_impl(info);
-            if res == 0 {
-                deno_core::_ops::dispatch_metrics_async(
-                    opctx,
-                    deno_core::_ops::OpMetricsEvent::Completed,
-                );
-            } else if res == 1 {
-                deno_core::_ops::dispatch_metrics_async(
-                    opctx,
-                    deno_core::_ops::OpMetricsEvent::Error,
-                );
+            if opctx.metrics_enabled() {
+                if res == 0 {
+                    deno_core::_ops::dispatch_metrics_async(
+                        opctx,
+                        deno_core::_ops::OpMetricsEvent::Completed,
+                    );
+                } else if res == 1 {
+                    deno_core::_ops::dispatch_metrics_async(
+                        opctx,
+                        deno_core::_ops::OpMetricsEvent::Error,
+                    );
+                }
             }
         }
     }
@@ -142,9 +138,7 @@ const fn op_use_cppgc_object() -> ::deno_core::_ops::OpDecl {
             2usize as u8,
             false,
             Self::v8_fn_ptr as _,
-            Self::v8_fn_ptr_metrics as _,
             ::deno_core::AccessorType::None,
-            None,
             None,
             ::deno_core::OpMetadata {
                 ..::deno_core::OpMetadata::default()
@@ -207,12 +201,6 @@ const fn op_use_cppgc_object() -> ::deno_core::_ops::OpDecl {
         }
         extern "C" fn v8_fn_ptr<'s>(info: *const deno_core::v8::FunctionCallbackInfo) {
             let info: &'s _ = unsafe { &*info };
-            Self::slow_function_impl(info);
-        }
-        extern "C" fn v8_fn_ptr_metrics<'s>(
-            info: *const deno_core::v8::FunctionCallbackInfo,
-        ) {
-            let info: &'s _ = unsafe { &*info };
             let args = deno_core::v8::FunctionCallbackArguments::from_function_callback_info(
                 info,
             );
@@ -222,21 +210,25 @@ const fn op_use_cppgc_object() -> ::deno_core::_ops::OpDecl {
                 >::cast_unchecked(args.data())
                     .value() as *const deno_core::_ops::OpCtx)
             };
-            deno_core::_ops::dispatch_metrics_async(
-                opctx,
-                deno_core::_ops::OpMetricsEvent::Dispatched,
-            );
+            if opctx.metrics_enabled() {
+                deno_core::_ops::dispatch_metrics_async(
+                    opctx,
+                    deno_core::_ops::OpMetricsEvent::Dispatched,
+                );
+            }
             let res = Self::slow_function_impl(info);
-            if res == 0 {
-                deno_core::_ops::dispatch_metrics_async(
-                    opctx,
-                    deno_core::_ops::OpMetricsEvent::Completed,
-                );
-            } else if res == 1 {
-                deno_core::_ops::dispatch_metrics_async(
-                    opctx,
-                    deno_core::_ops::OpMetricsEvent::Error,
-                );
+            if opctx.metrics_enabled() {
+                if res == 0 {
+                    deno_core::_ops::dispatch_metrics_async(
+                        opctx,
+                        deno_core::_ops::OpMetricsEvent::Completed,
+                    );
+                } else if res == 1 {
+                    deno_core::_ops::dispatch_metrics_async(
+                        opctx,
+                        deno_core::_ops::OpMetricsEvent::Error,
+                    );
+                }
             }
         }
     }
@@ -263,9 +255,7 @@ const fn op_use_optional_cppgc_object() -> ::deno_core::_ops::OpDecl {
             2usize as u8,
             false,
             Self::v8_fn_ptr as _,
-            Self::v8_fn_ptr_metrics as _,
             ::deno_core::AccessorType::None,
-            None,
             None,
             ::deno_core::OpMetadata {
                 ..::deno_core::OpMetadata::default()
@@ -332,12 +322,6 @@ const fn op_use_optional_cppgc_object() -> ::deno_core::_ops::OpDecl {
         }
         extern "C" fn v8_fn_ptr<'s>(info: *const deno_core::v8::FunctionCallbackInfo) {
             let info: &'s _ = unsafe { &*info };
-            Self::slow_function_impl(info);
-        }
-        extern "C" fn v8_fn_ptr_metrics<'s>(
-            info: *const deno_core::v8::FunctionCallbackInfo,
-        ) {
-            let info: &'s _ = unsafe { &*info };
             let args = deno_core::v8::FunctionCallbackArguments::from_function_callback_info(
                 info,
             );
@@ -347,21 +331,25 @@ const fn op_use_optional_cppgc_object() -> ::deno_core::_ops::OpDecl {
                 >::cast_unchecked(args.data())
                     .value() as *const deno_core::_ops::OpCtx)
             };
-            deno_core::_ops::dispatch_metrics_async(
-                opctx,
-                deno_core::_ops::OpMetricsEvent::Dispatched,
-            );
+            if opctx.metrics_enabled() {
+                deno_core::_ops::dispatch_metrics_async(
+                    opctx,
+                    deno_core::_ops::OpMetricsEvent::Dispatched,
+                );
+            }
             let res = Self::slow_function_impl(info);
-            if res == 0 {
-                deno_core::_ops::dispatch_metrics_async(
-                    opctx,
-                    deno_core::_ops::OpMetricsEvent::Completed,
-                );
-            } else if res == 1 {
-                deno_core::_ops::dispatch_metrics_async(
-                    opctx,
-                    deno_core::_ops::OpMetricsEvent::Error,
-                );
+            if opctx.metrics_enabled() {
+                if res == 0 {
+                    deno_core::_ops::dispatch_metrics_async(
+                        opctx,
+                        deno_core::_ops::OpMetricsEvent::Completed,
+                    );
+                } else if res == 1 {
+                    deno_core::_ops::dispatch_metrics_async(
+                        opctx,
+                        deno_core::_ops::OpMetricsEvent::Error,
+                    );
+                }
             }
         }
     }

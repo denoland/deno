@@ -1,8 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-use std::cell::Ref;
+use std::cell::Cell;
 use std::cell::RefCell;
-use std::cell::RefMut;
 use std::rc::Rc;
 
 use crate::OpDecl;
@@ -34,7 +33,7 @@ pub enum OpMetricsSource {
   Async,
 }
 
-/// A callback to receieve an [`OpMetricsEvent`].
+/// A callback to receive an [`OpMetricsEvent`].
 pub type OpMetricsFn = Rc<dyn Fn(&OpCtx, OpMetricsEvent, OpMetricsSource)>;
 
 // TODO(mmastrac): this would be better as a trait
@@ -42,59 +41,82 @@ pub type OpMetricsFn = Rc<dyn Fn(&OpCtx, OpMetricsEvent, OpMetricsSource)>;
 pub type OpMetricsFactoryFn =
   Box<dyn Fn(OpId, usize, &OpDecl) -> Option<OpMetricsFn>>;
 
-/// Given two [`OpMetricsFactoryFn`] implementations, merges them so that op metric events are
-/// called on both.
-pub fn merge_op_metrics(
-  fn1: impl Fn(OpId, usize, &OpDecl) -> Option<OpMetricsFn> + 'static,
-  fn2: impl Fn(OpId, usize, &OpDecl) -> Option<OpMetricsFn> + 'static,
-) -> OpMetricsFactoryFn {
-  Box::new(move |op, count, decl| {
-    match (fn1(op, count, decl), fn2(op, count, decl)) {
-      (None, None) => None,
-      (Some(a), None) => Some(a),
-      (None, Some(b)) => Some(b),
-      (Some(a), Some(b)) => Some(Rc::new(move |ctx, event, source| {
-        a(ctx, event, source);
-        b(ctx, event, source);
-      })),
+/// Per-op metrics counters using `Cell` for interior mutability without
+/// `RefCell` overhead. These are directly incremented from generated op
+/// dispatch code, avoiding `Rc<dyn Fn>` vtable dispatch.
+#[derive(Debug, Default)]
+pub struct OpMetricsCells {
+  pub ops_dispatched_sync: Cell<u64>,
+  pub ops_dispatched_async: Cell<u64>,
+  pub ops_dispatched_fast: Cell<u64>,
+  pub ops_completed_async: Cell<u64>,
+}
+
+impl OpMetricsCells {
+  #[inline(always)]
+  fn increment(&self, cell: &Cell<u64>) {
+    cell.set(cell.get() + 1);
+  }
+
+  pub fn to_summary(&self) -> OpMetricsSummary {
+    OpMetricsSummary {
+      ops_dispatched_sync: self.ops_dispatched_sync.get(),
+      ops_dispatched_async: self.ops_dispatched_async.get(),
+      ops_dispatched_fast: self.ops_dispatched_fast.get(),
+      ops_completed_async: self.ops_completed_async.get(),
     }
-  })
+  }
+}
+
+#[doc(hidden)]
+#[inline(always)]
+fn dispatch_metrics_common(
+  opctx: &OpCtx,
+  event: OpMetricsEvent,
+  source: OpMetricsSource,
+) {
+  // Direct counter update (no vtable, no RefCell)
+  if let Some(cells) = &opctx.metrics_cells {
+    match event {
+      OpMetricsEvent::Dispatched => {
+        if source == OpMetricsSource::Fast {
+          cells.increment(&cells.ops_dispatched_fast);
+        }
+        if opctx.decl.is_async {
+          cells.increment(&cells.ops_dispatched_async);
+        } else {
+          cells.increment(&cells.ops_dispatched_sync);
+        }
+      }
+      OpMetricsEvent::Completed
+      | OpMetricsEvent::Error
+      | OpMetricsEvent::CompletedAsync
+      | OpMetricsEvent::ErrorAsync => {
+        if opctx.decl.is_async {
+          cells.increment(&cells.ops_completed_async);
+        }
+      }
+    }
+  }
+  // Optional trace callback (rare, for --trace-ops)
+  if let Some(f) = &opctx.trace_ops_fn {
+    f(opctx, event, source);
+  }
 }
 
 #[doc(hidden)]
 pub fn dispatch_metrics_fast(opctx: &OpCtx, metrics: OpMetricsEvent) {
-  // SAFETY: this should only be called from ops where we know the function is Some
-  unsafe {
-    (opctx.metrics_fn.as_ref().unwrap_unchecked())(
-      opctx,
-      metrics,
-      OpMetricsSource::Fast,
-    )
-  }
+  dispatch_metrics_common(opctx, metrics, OpMetricsSource::Fast);
 }
 
 #[doc(hidden)]
 pub fn dispatch_metrics_slow(opctx: &OpCtx, metrics: OpMetricsEvent) {
-  // SAFETY: this should only be called from ops where we know the function is Some
-  unsafe {
-    (opctx.metrics_fn.as_ref().unwrap_unchecked())(
-      opctx,
-      metrics,
-      OpMetricsSource::Slow,
-    )
-  }
+  dispatch_metrics_common(opctx, metrics, OpMetricsSource::Slow);
 }
 
 #[doc(hidden)]
 pub fn dispatch_metrics_async(opctx: &OpCtx, metrics: OpMetricsEvent) {
-  // SAFETY: this should only be called from ops where we know the function is Some
-  unsafe {
-    (opctx.metrics_fn.as_ref().unwrap_unchecked())(
-      opctx,
-      metrics,
-      OpMetricsSource::Async,
-    )
-  }
+  dispatch_metrics_common(opctx, metrics, OpMetricsSource::Async);
 }
 
 /// Used for both aggregate and per-op metrics.
@@ -120,73 +142,42 @@ impl OpMetricsSummary {
 
 #[derive(Default, Debug)]
 pub struct OpMetricsSummaryTracker {
-  ops: RefCell<Vec<OpMetricsSummary>>,
+  ops: RefCell<Vec<Rc<OpMetricsCells>>>,
 }
 
 impl OpMetricsSummaryTracker {
-  pub fn per_op(&self) -> Ref<'_, Vec<OpMetricsSummary>> {
-    self.ops.borrow()
+  pub fn per_op(&self) -> Vec<OpMetricsSummary> {
+    self.ops.borrow().iter().map(|c| c.to_summary()).collect()
   }
 
   pub fn aggregate(&self) -> OpMetricsSummary {
     let mut sum = OpMetricsSummary::default();
-
-    for metrics in self.ops.borrow().iter() {
-      sum.ops_dispatched_sync += metrics.ops_dispatched_sync;
-      sum.ops_dispatched_fast += metrics.ops_dispatched_fast;
-      sum.ops_dispatched_async += metrics.ops_dispatched_async;
-      sum.ops_completed_async += metrics.ops_completed_async;
+    for cells in self.ops.borrow().iter() {
+      let s = cells.to_summary();
+      sum.ops_dispatched_sync += s.ops_dispatched_sync;
+      sum.ops_dispatched_fast += s.ops_dispatched_fast;
+      sum.ops_dispatched_async += s.ops_dispatched_async;
+      sum.ops_completed_async += s.ops_completed_async;
     }
-
     sum
   }
 
-  #[inline]
-  fn metrics_mut(&self, id: OpId) -> RefMut<'_, OpMetricsSummary> {
-    RefMut::map(self.ops.borrow_mut(), |ops| &mut ops[id as usize])
-  }
-
-  /// Returns a [`OpMetricsFn`] for this tracker.
-  fn op_metrics_fn(self: Rc<Self>) -> OpMetricsFn {
-    Rc::new(move |ctx, event, source| match event {
-      OpMetricsEvent::Dispatched => {
-        let mut m = self.metrics_mut(ctx.id);
-        if source == OpMetricsSource::Fast {
-          m.ops_dispatched_fast += 1;
-        }
-        if ctx.decl.is_async {
-          m.ops_dispatched_async += 1;
-        } else {
-          m.ops_dispatched_sync += 1;
-        }
-      }
-      OpMetricsEvent::Completed
-      | OpMetricsEvent::Error
-      | OpMetricsEvent::CompletedAsync
-      | OpMetricsEvent::ErrorAsync => {
-        if ctx.decl.is_async {
-          self.metrics_mut(ctx.id).ops_completed_async += 1;
-        }
-      }
-    })
-  }
-
-  /// Retrieves the metrics factory function for this tracker.
-  pub fn op_metrics_factory_fn(
-    self: Rc<Self>,
+  /// Creates an [`Rc<OpMetricsCells>`] for the given op and registers
+  /// it with this tracker. Returns `None` if the op is not enabled.
+  pub fn op_metrics_cells_fn(
+    self: &Rc<Self>,
     op_enabled: impl Fn(&OpDecl) -> bool + 'static,
-  ) -> OpMetricsFactoryFn {
-    Box::new(move |_, total, op| {
-      let mut ops = self.ops.borrow_mut();
-      if ops.capacity() == 0 {
-        ops.reserve_exact(total);
-      }
-      ops.push(OpMetricsSummary::default());
-      if op_enabled(op) {
-        Some(self.clone().op_metrics_fn())
-      } else {
-        None
-      }
+  ) -> OpMetricsCellsFactoryFn {
+    let this = self.clone();
+    Box::new(move |_, _, op| {
+      let cells = Rc::new(OpMetricsCells::default());
+      this.ops.borrow_mut().push(cells.clone());
+      if op_enabled(op) { Some(cells) } else { None }
     })
   }
 }
+
+/// Factory function that creates per-op metrics cells.
+pub type OpMetricsCellsFactoryFn =
+  Box<dyn Fn(OpId, usize, &OpDecl) -> Option<Rc<OpMetricsCells>>>;
+

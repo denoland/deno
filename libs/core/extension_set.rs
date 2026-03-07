@@ -9,7 +9,8 @@ use crate::ExtensionFileSource;
 use crate::FastString;
 use crate::ModuleCodeString;
 use crate::OpDecl;
-use crate::OpMetricsFactoryFn;
+use crate::ops_metrics::OpMetricsCellsFactoryFn;
+use crate::ops_metrics::OpMetricsFactoryFn;
 use crate::OpState;
 use crate::SourceMapData;
 use crate::error::CoreError;
@@ -144,6 +145,7 @@ fn check_no_duplicate_op_names(ops: &[OpDecl]) {
 pub fn create_op_ctxs(
   op_decls: Vec<OpDecl>,
   op_method_decls: &mut [OpMethodDecl],
+  op_metrics_cells_factory_fn: Option<OpMetricsCellsFactoryFn>,
   op_metrics_factory_fn: Option<OpMetricsFactoryFn>,
   op_driver: Rc<OpDriverImpl>,
   op_state: Rc<RefCell<OpState>>,
@@ -154,8 +156,11 @@ pub fn create_op_ctxs(
   let mut op_ctxs = Vec::with_capacity(op_count);
 
   let runtime_state_ptr = runtime_state.as_ref() as *const _;
-  let create_ctx = |index, decl| {
-    let metrics_fn = op_metrics_factory_fn
+  let create_ctx = |index, decl: OpDecl| {
+    let metrics_cells = op_metrics_cells_factory_fn
+      .as_ref()
+      .and_then(|f| (f)(index as _, op_count, &decl));
+    let trace_ops_fn = op_metrics_factory_fn
       .as_ref()
       .and_then(|f| (f)(index as _, op_count, &decl));
 
@@ -166,7 +171,8 @@ pub fn create_op_ctxs(
       decl,
       op_state.clone(),
       runtime_state_ptr,
-      metrics_fn,
+      metrics_cells,
+      trace_ops_fn,
       enable_stack_trace_in_ops,
     )
   };

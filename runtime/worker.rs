@@ -25,6 +25,7 @@ use deno_core::ModuleLoadOptions;
 use deno_core::ModuleLoadReferrer;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
+use deno_core::OpMetricsCellsFactoryFn;
 use deno_core::OpMetricsFactoryFn;
 use deno_core::OpMetricsSummaryTracker;
 use deno_core::PollEventLoopOptions;
@@ -33,7 +34,6 @@ use deno_core::SharedArrayBufferStore;
 use deno_core::SourceCodeCacheInfo;
 use deno_core::error::CoreError;
 use deno_core::error::JsError;
-use deno_core::merge_op_metrics;
 use deno_core::v8;
 use deno_cron::CronHandlerImpl;
 use deno_fs::FileSystem;
@@ -295,9 +295,11 @@ pub fn create_op_metrics(
   trace_ops: Option<Vec<String>>,
 ) -> (
   Option<Rc<OpMetricsSummaryTracker>>,
+  Option<OpMetricsCellsFactoryFn>,
   Option<OpMetricsFactoryFn>,
 ) {
   let mut op_summary_metrics = None;
+  let mut op_metrics_cells_factory_fn: Option<OpMetricsCellsFactoryFn> = None;
   let mut op_metrics_factory_fn: Option<OpMetricsFactoryFn> = None;
   let now = Instant::now();
   let max_len: Rc<std::cell::Cell<usize>> = Default::default();
@@ -345,15 +347,12 @@ pub fn create_op_metrics(
 
   if enable_op_summary_metrics {
     let summary = Rc::new(OpMetricsSummaryTracker::default());
-    let summary_metrics = summary.clone().op_metrics_factory_fn(|_| true);
-    op_metrics_factory_fn = Some(match op_metrics_factory_fn {
-      Some(f) => merge_op_metrics(f, summary_metrics),
-      None => summary_metrics,
-    });
+    op_metrics_cells_factory_fn =
+      Some(summary.op_metrics_cells_fn(|_| true));
     op_summary_metrics = Some(summary);
   }
 
-  (op_summary_metrics, op_metrics_factory_fn)
+  (op_summary_metrics, op_metrics_cells_factory_fn, op_metrics_factory_fn)
 }
 
 impl MainWorker {
@@ -424,10 +423,11 @@ impl MainWorker {
     let create_cache = create_cache_inner(&options);
 
     // Get our op metrics
-    let (op_summary_metrics, op_metrics_factory_fn) = create_op_metrics(
-      options.bootstrap.enable_op_summary_metrics,
-      options.trace_ops,
-    );
+    let (op_summary_metrics, op_metrics_cells_factory_fn, op_metrics_factory_fn) =
+      create_op_metrics(
+        options.bootstrap.enable_op_summary_metrics,
+        options.trace_ops,
+      );
 
     // Permissions: many ops depend on this
     let enable_testing_features = options.bootstrap.enable_testing_features;
@@ -436,6 +436,7 @@ impl MainWorker {
     // check options that require configuring a new jsruntime
     if options.unconfigured_runtime.is_some()
       && (options.enable_stack_trace_arg_in_ops
+        || op_metrics_cells_factory_fn.is_some()
         || op_metrics_factory_fn.is_some())
     {
       options.unconfigured_runtime = None;
@@ -480,6 +481,7 @@ impl MainWorker {
         shared_array_buffer_store: services.shared_array_buffer_store,
         compiled_wasm_module_store: services.compiled_wasm_module_store,
         extensions,
+        op_metrics_cells_factory_fn,
         op_metrics_factory_fn,
         enable_stack_trace_arg_in_ops: options.enable_stack_trace_arg_in_ops,
       })
@@ -1106,6 +1108,7 @@ struct CommonRuntimeOptions {
   shared_array_buffer_store: Option<SharedArrayBufferStore>,
   compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
   extensions: Vec<Extension>,
+  op_metrics_cells_factory_fn: Option<OpMetricsCellsFactoryFn>,
   op_metrics_factory_fn: Option<OpMetricsFactoryFn>,
   enable_stack_trace_arg_in_ops: bool,
 }
@@ -1133,6 +1136,7 @@ fn common_runtime(opts: CommonRuntimeOptions) -> JsRuntime {
     inspector: true,
     is_main: true,
     worker_id: None,
+    op_metrics_cells_factory_fn: opts.op_metrics_cells_factory_fn,
     op_metrics_factory_fn: opts.op_metrics_factory_fn,
     wait_for_inspector_disconnect_callback: Some(
       make_wait_for_inspector_disconnect_callback(),
@@ -1213,6 +1217,7 @@ impl UnconfiguredRuntime {
       shared_array_buffer_store: options.shared_array_buffer_store,
       compiled_wasm_module_store: options.compiled_wasm_module_store,
       extensions,
+      op_metrics_cells_factory_fn: None,
       op_metrics_factory_fn: None,
       enable_stack_trace_arg_in_ops: false,
     });

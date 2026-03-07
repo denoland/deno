@@ -706,8 +706,8 @@ pub async fn test_op_metrics_summary_tracker() {
   };
   let mut runtime = JsRuntime::new(RuntimeOptions {
     extensions: vec![test_ext::init()],
-    op_metrics_factory_fn: Some(
-      tracker.clone().op_metrics_factory_fn(op_enabled),
+    op_metrics_cells_factory_fn: Some(
+      tracker.op_metrics_cells_fn(op_enabled),
     ),
     ..Default::default()
   });
