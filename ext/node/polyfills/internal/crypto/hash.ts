@@ -43,6 +43,7 @@ import {
   NodeError,
 } from "ext:deno_node/internal/errors.ts";
 import LazyTransform from "ext:deno_node/internal/streams/lazy_transform.js";
+import process from "node:process";
 import {
   getDefaultEncoding,
   getHashBlockSize,
@@ -78,6 +79,18 @@ export function Hash(
     : undefined;
   if (xofLen !== undefined) {
     validateUint32(xofLen, "options.outputLength");
+  }
+
+  if (
+    !isCopy && xofLen === undefined &&
+    (algorithm.toLowerCase() === "shake128" ||
+      algorithm.toLowerCase() === "shake256")
+  ) {
+    process.emitWarning(
+      "Creating SHAKE128/256 digests without an explicit options.outputLength is deprecated.",
+      "DeprecationWarning",
+      "DEP0198",
+    );
   }
 
   try {

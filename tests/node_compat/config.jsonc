@@ -256,6 +256,8 @@
       "exitCode": 1,
       "output": "[WILDCARD]Unknown cipher id-aes128-wrap[WILDCARD]"
     },
+    "parallel/test-crypto-default-shake-lengths.js": {},
+    "parallel/test-crypto-default-shake-lengths-oneshot.js": {},
     "parallel/test-crypto-dh-constructor.js": {},
     "parallel/test-crypto-dh-leak.js": {},
     "parallel/test-crypto-dh-odd-key.js": {},
