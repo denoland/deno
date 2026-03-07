@@ -1591,9 +1591,7 @@ declare namespace Deno {
    * deno run --env-file --allow-env main.ts
    * ```
    *
-   * Note that environment variables from `.env` files do not override existing
-   * environment variables. If a variable is defined both in the environment and
-   * in the `.env` file, the value from the environment is used.
+   * Learn more at [the Deno docs](https://docs.deno.com/runtime/reference/env_variables/).
    *
    * @tags allow-env
    * @category Runtime
