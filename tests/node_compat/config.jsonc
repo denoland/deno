@@ -394,117 +394,40 @@
     "parallel/test-crypto-verify-failure.js": {},
     "parallel/test-crypto-webcrypto-aes-decrypt-tag-too-small.js": {},
     "parallel/test-datetime-change-notify.js": {},
-    "parallel/test-debugger-address.mjs": {
-      "ignore": true,
-      "reason": "Node.js built-in debugger (node inspect) is not implemented in Deno"
-    },
-    "parallel/test-debugger-auto-resume.mjs": {
-      "ignore": true,
-      "reason": "Node.js built-in debugger (node inspect) is not implemented in Deno"
-    },
+    // "parallel/test-debugger-address.mjs": {},
+    // "parallel/test-debugger-auto-resume.mjs": {},
     "parallel/test-debugger-backtrace.js": {},
-    "parallel/test-debugger-break.js": {
-      "ignore": true,
-      "reason": "Node.js built-in debugger (node inspect) is not implemented in Deno"
-    },
-    "parallel/test-debugger-breakpoint-exists.js": {
-      "ignore": true,
-      "reason": "Node.js built-in debugger (node inspect) is not implemented in Deno"
-    },
-    "parallel/test-debugger-clear-breakpoints.js": {
-      "ignore": true,
-      "reason": "Node.js built-in debugger (node inspect) is not implemented in Deno"
-    },
-    "parallel/test-debugger-exceptions.js": {
-      "ignore": true,
-      "reason": "Node.js built-in debugger (node inspect) is not implemented in Deno"
-    },
-    "parallel/test-debugger-exec-scope.mjs": {
-      "ignore": true,
-      "reason": "Node.js built-in debugger (node inspect) is not implemented in Deno"
-    },
+    // "parallel/test-debugger-break.js": {},
+    // "parallel/test-debugger-breakpoint-exists.js": {},
+    // "parallel/test-debugger-clear-breakpoints.js": {},
+    // "parallel/test-debugger-exceptions.js": {},
+    // "parallel/test-debugger-exec-scope.mjs": {},
     "parallel/test-debugger-exec.js": {},
-    "parallel/test-debugger-extract-function-name.mjs": {
-      "ignore": true,
-      "reason": "Node.js built-in debugger (node inspect) is not implemented in Deno"
-    },
-    "parallel/test-debugger-heap-profiler.js": {
-      "ignore": true,
-      "reason": "Node.js built-in debugger (node inspect) is not implemented in Deno"
-    },
-    "parallel/test-debugger-help.mjs": {
-      "ignore": true,
-      "reason": "Node.js built-in debugger (node inspect) is not implemented in Deno"
-    },
+    // "parallel/test-debugger-extract-function-name.mjs": {},
+    // "parallel/test-debugger-heap-profiler.js": {},
+    // "parallel/test-debugger-help.mjs": {},
     "parallel/test-debugger-invalid-json.mjs": {},
-    "parallel/test-debugger-list.js": {
-      "ignore": true,
-      "reason": "Node.js built-in debugger (node inspect) is not implemented in Deno"
-    },
+    // "parallel/test-debugger-list.js": {},
     "parallel/test-debugger-low-level.js": {},
-    "parallel/test-debugger-object-type-remote-object.js": {
-      "ignore": true,
-      "reason": "Node.js built-in debugger (node inspect) is not implemented in Deno"
-    },
-    "parallel/test-debugger-pid.js": {
-      "ignore": true,
-      "reason": "Node.js built-in debugger (node inspect) is not implemented in Deno"
-    },
+    // "parallel/test-debugger-object-type-remote-object.js": {},
+    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
+    // "parallel/test-debugger-pid.js": {},
     "parallel/test-debugger-preserve-breaks.js": {},
-    "parallel/test-debugger-profile-command.js": {
-      "ignore": true,
-      "reason": "Node.js built-in debugger (node inspect) is not implemented in Deno"
-    },
-    "parallel/test-debugger-profile.js": {
-      "ignore": true,
-      "reason": "Node.js built-in debugger (node inspect) is not implemented in Deno"
-    },
-    "parallel/test-debugger-random-port-with-inspect-port.js": {
-      "ignore": true,
-      "reason": "Node.js built-in debugger (node inspect) is not implemented in Deno"
-    },
-    "parallel/test-debugger-random-port.js": {
-      "ignore": true,
-      "reason": "Node.js built-in debugger (node inspect) is not implemented in Deno"
-    },
+    // "parallel/test-debugger-profile-command.js": {},
+    // "parallel/test-debugger-profile.js": {},
+    // "parallel/test-debugger-random-port-with-inspect-port.js": {},
+    // "parallel/test-debugger-random-port.js": {},
     "parallel/test-debugger-repeat-last.js": {},
     "parallel/test-debugger-restart-message.js": {},
-    "parallel/test-debugger-run-after-quit-restart.js": {
-      "ignore": true,
-      "reason": "Node.js built-in debugger (node inspect) is not implemented in Deno"
-    },
-    "parallel/test-debugger-sb-before-load.js": {
-      "ignore": true,
-      "reason": "Node.js built-in debugger (node inspect) is not implemented in Deno"
-    },
-    "parallel/test-debugger-scripts.js": {
-      "ignore": true,
-      "reason": "Node.js built-in debugger (node inspect) is not implemented in Deno"
-    },
-    "parallel/test-debugger-set-context-line-number.mjs": {
-      "ignore": true,
-      "reason": "Node.js built-in debugger (node inspect) is not implemented in Deno"
-    },
-    "parallel/test-debugger-unavailable-port.js": {
-      "ignore": true,
-      "reason": "Node.js built-in debugger (node inspect) is not implemented in Deno"
-    },
-    "parallel/test-debugger-use-strict.js": {
-      "ignore": true,
-      "reason": "Node.js built-in debugger (node inspect) is not implemented in Deno"
-    },
-    "parallel/test-debugger-watch-validation.js": {
-      "ignore": true,
-      "reason": "Node.js built-in debugger (node inspect) is not implemented in Deno"
-    },
-    "parallel/test-debugger-watchers.mjs": {
-      "ignore": true,
-      "reason": "Node.js built-in debugger (node inspect) is not implemented in Deno"
-    },
-    "parallel/test-debugger-websocket-secret-mismatch.js": {
-      "ignore": true,
-      "reason": "Node.js built-in debugger (node inspect) is not implemented in Deno"
-    },
+    // "parallel/test-debugger-run-after-quit-restart.js": {},
+    // "parallel/test-debugger-sb-before-load.js": {},
+    // "parallel/test-debugger-scripts.js": {},
+    // "parallel/test-debugger-set-context-line-number.mjs": {},
+    // "parallel/test-debugger-unavailable-port.js": {},
+    // "parallel/test-debugger-use-strict.js": {},
+    // "parallel/test-debugger-watch-validation.js": {},
+    // "parallel/test-debugger-watchers.mjs": {},
+    // "parallel/test-debugger-websocket-secret-mismatch.js": {},
     "parallel/test-delayed-require.js": {},
     "parallel/test-destroy-socket-in-lookup.js": {},
     "parallel/test-dgram-address.js": {},
@@ -807,50 +730,17 @@
       "ignore": true,
       "reason": "Node.js snapshot/heap profiling features (--build-snapshot, --heap-prof, --heapsnapshot-near-heap-limit) are not implemented in Deno"
     },
-    "parallel/test-heap-prof-basic.js": {
-      "ignore": true,
-      "reason": "Node.js snapshot/heap profiling features (--build-snapshot, --heap-prof, --heapsnapshot-near-heap-limit) are not implemented in Deno"
-    },
-    "parallel/test-heap-prof-dir-absolute.js": {
-      "ignore": true,
-      "reason": "Node.js snapshot/heap profiling features (--build-snapshot, --heap-prof, --heapsnapshot-near-heap-limit) are not implemented in Deno"
-    },
-    "parallel/test-heap-prof-dir-name.js": {
-      "ignore": true,
-      "reason": "Node.js snapshot/heap profiling features (--build-snapshot, --heap-prof, --heapsnapshot-near-heap-limit) are not implemented in Deno"
-    },
-    "parallel/test-heap-prof-dir-relative.js": {
-      "ignore": true,
-      "reason": "Node.js snapshot/heap profiling features (--build-snapshot, --heap-prof, --heapsnapshot-near-heap-limit) are not implemented in Deno"
-    },
-    "parallel/test-heap-prof-exec-argv.js": {
-      "ignore": true,
-      "reason": "Node.js snapshot/heap profiling features (--build-snapshot, --heap-prof, --heapsnapshot-near-heap-limit) are not implemented in Deno"
-    },
-    "parallel/test-heap-prof-exit.js": {
-      "ignore": true,
-      "reason": "Node.js snapshot/heap profiling features (--build-snapshot, --heap-prof, --heapsnapshot-near-heap-limit) are not implemented in Deno"
-    },
-    "parallel/test-heap-prof-interval.js": {
-      "ignore": true,
-      "reason": "Node.js snapshot/heap profiling features (--build-snapshot, --heap-prof, --heapsnapshot-near-heap-limit) are not implemented in Deno"
-    },
-    "parallel/test-heap-prof-invalid-args.js": {
-      "ignore": true,
-      "reason": "Node.js snapshot/heap profiling features (--build-snapshot, --heap-prof, --heapsnapshot-near-heap-limit) are not implemented in Deno"
-    },
-    "parallel/test-heap-prof-loop-drained.js": {
-      "ignore": true,
-      "reason": "Node.js snapshot/heap profiling features (--build-snapshot, --heap-prof, --heapsnapshot-near-heap-limit) are not implemented in Deno"
-    },
-    "parallel/test-heap-prof-name.js": {
-      "ignore": true,
-      "reason": "Node.js snapshot/heap profiling features (--build-snapshot, --heap-prof, --heapsnapshot-near-heap-limit) are not implemented in Deno"
-    },
-    "parallel/test-heap-prof-sigint.js": {
-      "ignore": true,
-      "reason": "Node.js snapshot/heap profiling features (--build-snapshot, --heap-prof, --heapsnapshot-near-heap-limit) are not implemented in Deno"
-    },
+    // "parallel/test-heap-prof-basic.js": {},
+    // "parallel/test-heap-prof-dir-absolute.js": {},
+    // "parallel/test-heap-prof-dir-name.js": {},
+    // "parallel/test-heap-prof-dir-relative.js": {},
+    // "parallel/test-heap-prof-exec-argv.js": {},
+    // "parallel/test-heap-prof-exit.js": {},
+    // "parallel/test-heap-prof-interval.js": {},
+    // "parallel/test-heap-prof-invalid-args.js": {},
+    // "parallel/test-heap-prof-loop-drained.js": {},
+    // "parallel/test-heap-prof-name.js": {},
+    // "parallel/test-heap-prof-sigint.js": {},
     "parallel/test-http-abort-before-end.js": {},
     "parallel/test-http-addrequest-localaddress.js": {},
     "parallel/test-http-agent-close.js": {},
@@ -1078,10 +968,7 @@
 
     // TODO(bartlomieju): requires `cluster.fork` module
     // "parallel/test-inspector-port-zero-cluster.js": {},
-    "parallel/test-inspect-support-for-node_options.js": {
-      "ignore": true,
-      "reason": "Tests Node.js-specific CLI flags/options that are not supported in Deno"
-    },
+    // "parallel/test-inspect-support-for-node_options.js": {},
 
     // TODO(bartlomieju):: easy, `--inspect` flag doesn't support `localhost`
     // "parallel/test-inspector-port-zero.js": {},
@@ -1449,14 +1336,8 @@
       "ignore": true,
       "reason": "Node.js permission model (--experimental-permission) is not implemented in Deno"
     },
-    "parallel/test-permission-inspector-brk.js": {
-      "ignore": true,
-      "reason": "Node.js permission model (--experimental-permission) is not implemented in Deno"
-    },
-    "parallel/test-permission-inspector.js": {
-      "ignore": true,
-      "reason": "Node.js permission model (--experimental-permission) is not implemented in Deno"
-    },
+    // "parallel/test-permission-inspector-brk.js": {},
+    // "parallel/test-permission-inspector.js": {},
     "parallel/test-permission-no-addons.js": {},
     "parallel/test-permission-processbinding.js": {
       "ignore": true,
@@ -1713,14 +1594,8 @@
       "ignore": true,
       "reason": "Node.js snapshot/heap profiling features (--build-snapshot, --heap-prof, --heapsnapshot-near-heap-limit) are not implemented in Deno"
     },
-    "parallel/test-snapshot-console.js": {
-      "ignore": true,
-      "reason": "Node.js snapshot/heap profiling features (--build-snapshot, --heap-prof, --heapsnapshot-near-heap-limit) are not implemented in Deno"
-    },
-    "parallel/test-snapshot-coverage.js": {
-      "ignore": true,
-      "reason": "Node.js snapshot/heap profiling features (--build-snapshot, --heap-prof, --heapsnapshot-near-heap-limit) are not implemented in Deno"
-    },
+    // "parallel/test-snapshot-console.js": {},
+    // "parallel/test-snapshot-coverage.js": {},
     "parallel/test-socket-address.js": {},
     "parallel/test-socket-write-after-fin-error.js": {},
     // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
@@ -2340,10 +2215,7 @@
       "ignore": true,
       "reason": "Node.js snapshot/heap profiling features (--build-snapshot, --heap-prof, --heapsnapshot-near-heap-limit) are not implemented in Deno"
     },
-    "pummel/test-heapdump-inspector.js": {
-      "ignore": true,
-      "reason": "Node.js snapshot/heap profiling features (--build-snapshot, --heap-prof, --heapsnapshot-near-heap-limit) are not implemented in Deno"
-    },
+    // "pummel/test-heapdump-inspector.js": {},
     "pummel/test-string-decoder-large-buffer.js": {},
     "sequential/test-buffer-creation-regression.js": {},
     "sequential/test-child-process-exit.js": {},
@@ -2385,26 +2257,11 @@
     // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
     // "sequential/test-cpu-prof-worker-argv.js": {},
     "sequential/test-debug-prompt.js": {},
-    "sequential/test-debugger-custom-port.js": {
-      "ignore": true,
-      "reason": "Node.js built-in debugger (node inspect) is not implemented in Deno"
-    },
-    "sequential/test-debugger-debug-brk.js": {
-      "ignore": true,
-      "reason": "Node.js built-in debugger (node inspect) is not implemented in Deno"
-    },
-    "sequential/test-debugger-invalid-args.js": {
-      "ignore": true,
-      "reason": "Node.js built-in debugger (node inspect) is not implemented in Deno"
-    },
-    "sequential/test-debugger-launch.mjs": {
-      "ignore": true,
-      "reason": "Node.js built-in debugger (node inspect) is not implemented in Deno"
-    },
-    "sequential/test-debugger-pid.js": {
-      "ignore": true,
-      "reason": "Node.js built-in debugger (node inspect) is not implemented in Deno"
-    },
+    // "sequential/test-debugger-custom-port.js": {},
+    // "sequential/test-debugger-debug-brk.js": {},
+    // "sequential/test-debugger-invalid-args.js": {},
+    // "sequential/test-debugger-launch.mjs": {},
+    // "sequential/test-debugger-pid.js": {},
     // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
     // "sequential/test-diagnostic-dir-cpu-prof.js": {},
     // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
