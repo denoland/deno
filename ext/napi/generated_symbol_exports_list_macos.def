@@ -145,6 +145,8 @@ _napi_create_type_error
 _napi_fatal_exception
 _napi_create_async_work
 _napi_async_init
+_node_api_create_property_key_latin1
+_node_api_create_property_key_utf8
 _node_api_create_property_key_utf16
 _napi_type_tag_object
 _napi_check_object_type_tag
