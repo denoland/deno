@@ -1,23 +1,23 @@
 running 69 tests from ./test.js
-sync pass todo ... ok ([WILDLINE])
-sync pass todo with message ... ok ([WILDLINE])
-sync fail todo ... ok ([WILDLINE])
+sync pass todo ... ignored ([WILDLINE])
+sync pass todo with message ... ignored ([WILDLINE])
+sync fail todo ... ignored ([WILDLINE])
 todo thrown sub test ...
   test ... ok ([WILDLINE])
-todo thrown sub test ... ok ([WILDLINE])
-sync fail todo with message ... ok ([WILDLINE])
-sync skip pass ... ok ([WILDLINE])
-sync skip pass with message ... ok ([WILDLINE])
+todo thrown sub test ... ignored ([WILDLINE])
+sync fail todo with message ... ignored ([WILDLINE])
+sync skip pass ... ignored ([WILDLINE])
+sync skip pass with message ... ignored ([WILDLINE])
 skip thrown sub test ...
   test ... ok ([WILDLINE])
-skip thrown sub test ... ok ([WILDLINE])
+skip thrown sub test ... ignored ([WILDLINE])
 sync pass ...
 ------- output -------
 DIAGNOSTIC: this test should pass
 ----- output end -----
 sync pass ... ok ([WILDLINE])
 sync throw fail ... FAILED ([WILDLINE])
-async skip pass ... ok ([WILDLINE])
+async skip pass ... ignored ([WILDLINE])
 async pass ... ok ([WILDLINE])
 async throw fail ... FAILED ([WILDLINE])
 nested test ...
@@ -25,7 +25,7 @@ nested test ...
     nested 2 ... ok ([WILDLINE])
   nested 1 ... ok ([WILDLINE])
 nested test ... ok ([WILDLINE])
-async skip fail ... ok ([WILDLINE])
+async skip fail ... ignored ([WILDLINE])
 async assertion fail ... FAILED ([WILDLINE])
 resolve pass ... ok ([WILDLINE])
 reject fail ... FAILED ([WILDLINE])
@@ -57,8 +57,8 @@ suite ...
   test 1 ... ok ([WILDLINE])
   test 2 ... FAILED ([WILDLINE])
   sub suite 1 ...
-    nested test 2 ... FAILED ([WILDLINE])
     nested test 1 ... ok ([WILDLINE])
+    nested test 2 ... FAILED ([WILDLINE])
   sub suite 1 ... FAILED (due to 1 failed step) ([WILDLINE])
   sub suite 2 ...
     nested test 1 ... FAILED ([WILDLINE])
@@ -182,6 +182,6 @@ suite ... sub suite 1 ... nested test 2 => [WILDLINE]
 suite ... sub suite 2 ... nested test 1 => [WILDLINE]
 ./test.js (uncaught error)
 
-FAILED | 17 passed (23 steps) | 49 failed (5 steps) | 4 ignored ([WILDLINE])
+FAILED | 7 passed (23 steps) | 49 failed (5 steps) | 14 ignored ([WILDLINE])
 
 error: Test failed
