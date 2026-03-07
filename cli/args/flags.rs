@@ -263,10 +263,15 @@ pub struct DocFlags {
   pub filter: Option<String>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Default, Debug, Eq, PartialEq)]
 pub struct EvalFlags {
   pub print: bool,
   pub code: String,
+  pub cpu_prof: bool,
+  pub cpu_prof_dir: Option<String>,
+  pub cpu_prof_name: Option<String>,
+  pub cpu_prof_interval: Option<i32>,
+  pub cpu_prof_md: bool,
 }
 
 #[derive(Clone, Default, Debug, Eq, PartialEq)]
@@ -3142,6 +3147,11 @@ This command has implicit access to all permissions.
           .required_unless_present("help"),
       )
       .arg(env_file_arg())
+      .arg(cpu_prof_arg())
+      .arg(cpu_prof_dir_arg())
+      .arg(cpu_prof_name_arg())
+      .arg(cpu_prof_interval_arg())
+      .arg(cpu_prof_md_arg())
   })
 }
 
@@ -6432,7 +6442,21 @@ fn eval_parse(
   let code = code_args.next().unwrap();
   flags.argv.extend(code_args);
 
-  flags.subcommand = DenoSubcommand::Eval(EvalFlags { print, code });
+  let cpu_prof = matches.get_flag("cpu-prof");
+  let cpu_prof_dir = matches.remove_one::<String>("cpu-prof-dir");
+  let cpu_prof_name = matches.remove_one::<String>("cpu-prof-name");
+  let cpu_prof_interval = matches.remove_one::<i32>("cpu-prof-interval");
+  let cpu_prof_md = matches.get_flag("cpu-prof-md");
+
+  flags.subcommand = DenoSubcommand::Eval(EvalFlags {
+    print,
+    code,
+    cpu_prof,
+    cpu_prof_dir,
+    cpu_prof_name,
+    cpu_prof_interval,
+    cpu_prof_md,
+  });
   Ok(())
 }
 
@@ -9740,6 +9764,7 @@ mod tests {
         subcommand: DenoSubcommand::Eval(EvalFlags {
           print: false,
           code: "'console.log(\"hello\")'".to_string(),
+          ..Default::default()
         }),
         permissions: PermissionFlags {
           allow_all: true,
@@ -9759,6 +9784,7 @@ mod tests {
         subcommand: DenoSubcommand::Eval(EvalFlags {
           print: true,
           code: "1+2".to_string(),
+          ..Default::default()
         }),
         permissions: PermissionFlags {
           allow_all: true,
@@ -9783,6 +9809,7 @@ mod tests {
         subcommand: DenoSubcommand::Eval(EvalFlags {
           print: false,
           code: "'console.log(\"hello\")'".to_string(),
+          ..Default::default()
         }),
         permissions: PermissionFlags {
           allow_all: true,
@@ -9804,6 +9831,7 @@ mod tests {
         subcommand: DenoSubcommand::Eval(EvalFlags {
           print: false,
           code: "42".to_string(),
+          ..Default::default()
         }),
         import_map_path: Some("import_map.json".to_string()),
         no_remote: true,
@@ -9842,6 +9870,7 @@ mod tests {
         subcommand: DenoSubcommand::Eval(EvalFlags {
           print: false,
           code: "console.log(Deno.args)".to_string(),
+          ..Default::default()
         }),
         argv: svec!["arg1", "arg2"],
         permissions: PermissionFlags {

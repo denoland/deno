@@ -307,42 +307,72 @@ fn generate_markdown_report(
   // Calculate self and total times for each function
   let mut function_stats: HashMap<String, FunctionStats> = HashMap::new();
 
-  // Calculate self time from samples
-  let interval_us = interval as i64;
-  for &sample_id in &profile.samples {
-    if let Some(node) = node_map.get(&sample_id) {
-      let key = format!(
-        "{}:{}:{}",
-        node.call_frame.function_name,
-        node.call_frame.url,
-        node.call_frame.line_number
-      );
-      let entry = function_stats.entry(key).or_insert_with(|| FunctionStats {
-        function_name: node.call_frame.function_name.clone(),
-        url: node.call_frame.url.clone(),
-        line_number: node.call_frame.line_number,
-        self_time: 0,
-        total_time: 0,
-        self_samples: 0,
-        total_samples: 0,
-      });
-      entry.self_time += interval_us;
-      entry.self_samples += 1;
+  // Build parent map for walking up the call tree
+  let mut parent_map: HashMap<i32, i32> = HashMap::new();
+  for node in &profile.nodes {
+    for &child_id in &node.children {
+      parent_map.insert(child_id, node.id);
     }
   }
 
-  // Calculate total time (self time + time in children)
-  // This is a simplified calculation - for accurate total time we'd need to walk the call tree
-  for node in &profile.nodes {
-    let key = format!(
+  let interval_us = interval as i64;
+
+  fn make_key(node: &ProfileNode) -> String {
+    format!(
       "{}:{}:{}",
       node.call_frame.function_name,
       node.call_frame.url,
       node.call_frame.line_number
-    );
-    if let Some(stats) = function_stats.get_mut(&key) {
-      stats.total_time = stats.self_time;
-      stats.total_samples = stats.self_samples;
+    )
+  }
+
+  fn ensure_stats<'a>(
+    stats: &'a mut HashMap<String, FunctionStats>,
+    key: String,
+    node: &ProfileNode,
+  ) -> &'a mut FunctionStats {
+    stats.entry(key).or_insert_with(|| FunctionStats {
+      function_name: node.call_frame.function_name.clone(),
+      url: node.call_frame.url.clone(),
+      line_number: node.call_frame.line_number,
+      self_time: 0,
+      total_time: 0,
+      self_samples: 0,
+      total_samples: 0,
+    })
+  }
+
+  // For each sample, credit self time to the sampled node,
+  // and total time to every ancestor in the call stack.
+  for &sample_id in &profile.samples {
+    if let Some(node) = node_map.get(&sample_id) {
+      // Self time: only the leaf node
+      let key = make_key(node);
+      let entry = ensure_stats(&mut function_stats, key, node);
+      entry.self_time += interval_us;
+      entry.self_samples += 1;
+
+      // Total time: walk from the sampled node up to root
+      let mut current_id = sample_id;
+      // Use a set to avoid double-counting when the same function
+      // appears multiple times in one stack (e.g. recursion)
+      let mut visited_keys: std::collections::HashSet<String> =
+        std::collections::HashSet::new();
+      loop {
+        if let Some(n) = node_map.get(&current_id) {
+          let k = make_key(n);
+          if visited_keys.insert(k.clone()) {
+            let entry = ensure_stats(&mut function_stats, k, n);
+            entry.total_time += interval_us;
+            entry.total_samples += 1;
+          }
+        }
+        if let Some(&parent_id) = parent_map.get(&current_id) {
+          current_id = parent_id;
+        } else {
+          break;
+        }
+      }
     }
   }
 
@@ -402,7 +432,11 @@ fn generate_markdown_report(
     } else {
       0.0
     };
-    let total_pct = self_pct; // Simplified - same as self for now
+    let total_pct = if total_self_time > 0 {
+      (stats.total_time as f64 / total_self_time as f64) * 100.0
+    } else {
+      0.0
+    };
     let self_time_ms = stats.self_time as f64 / 1000.0;
     let total_time_ms = stats.total_time as f64 / 1000.0;
 
@@ -430,11 +464,44 @@ fn generate_markdown_report(
     }
   }
 
+  // Compute total time per node (self + all descendants) by walking the tree
+  fn compute_node_total_time(
+    node_id: i32,
+    node_map: &HashMap<i32, &ProfileNode>,
+    interval_us: i64,
+    cache: &mut HashMap<i32, i64>,
+  ) -> i64 {
+    if let Some(&cached) = cache.get(&node_id) {
+      return cached;
+    }
+    let Some(node) = node_map.get(&node_id) else {
+      return 0;
+    };
+    let mut total = node.hit_count as i64 * interval_us;
+    for &child_id in &node.children {
+      total +=
+        compute_node_total_time(child_id, node_map, interval_us, cache);
+    }
+    cache.insert(node_id, total);
+    total
+  }
+
+  let mut total_time_cache: HashMap<i32, i64> = HashMap::new();
+  for node in &profile.nodes {
+    compute_node_total_time(
+      node.id,
+      &node_map,
+      interval_us,
+      &mut total_time_cache,
+    );
+  }
+
   // Print call tree starting from root
   fn print_call_tree(
     md: &mut String,
     node_id: i32,
     node_map: &HashMap<i32, &ProfileNode>,
+    node_total_times: &HashMap<i32, i64>,
     depth: usize,
     total_self_time: i64,
     interval_us: i64,
@@ -458,6 +525,7 @@ fn generate_markdown_report(
           md,
           child_id,
           node_map,
+          node_total_times,
           depth,
           total_self_time,
           interval_us,
@@ -468,16 +536,20 @@ fn generate_markdown_report(
     }
 
     let self_time = node.hit_count as i64 * interval_us;
+    let node_total_time =
+      node_total_times.get(&node.id).copied().unwrap_or(self_time);
     let self_pct = if total_self_time > 0 {
       (self_time as f64 / total_self_time as f64) * 100.0
     } else {
       0.0
     };
     let self_time_ms = self_time as f64 / 1000.0;
-
-    // For total time, we'd need to sum all descendants - simplified here
-    let total_pct = self_pct;
-    let total_time_ms = self_time_ms;
+    let total_pct = if total_self_time > 0 {
+      (node_total_time as f64 / total_self_time as f64) * 100.0
+    } else {
+      0.0
+    };
+    let total_time_ms = node_total_time as f64 / 1000.0;
 
     let indent = "  ".repeat(depth);
     let location =
@@ -500,6 +572,7 @@ fn generate_markdown_report(
         md,
         child_id,
         node_map,
+        node_total_times,
         depth + 1,
         total_self_time,
         interval_us,
@@ -515,6 +588,7 @@ fn generate_markdown_report(
         &mut md,
         node.id,
         &node_map,
+        &total_time_cache,
         0,
         total_self_time,
         interval_us,
@@ -533,7 +607,13 @@ fn generate_markdown_report(
     } else {
       0.0
     };
+    let total_pct = if total_self_time > 0 {
+      (stats.total_time as f64 / total_self_time as f64) * 100.0
+    } else {
+      0.0
+    };
     let self_time_ms = stats.self_time as f64 / 1000.0;
+    let total_time_ms = stats.total_time as f64 / 1000.0;
     let location = format_location(&stats.url, stats.line_number);
 
     md.push_str(&format!(
@@ -545,9 +625,9 @@ fn generate_markdown_report(
       location,
       self_pct,
       self_time_ms,
-      self_pct,
-      self_time_ms,
-      stats.self_samples
+      total_pct,
+      total_time_ms,
+      stats.total_samples
     ));
   }
 

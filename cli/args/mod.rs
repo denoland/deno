@@ -978,24 +978,24 @@ impl CliOptions {
   }
 
   pub fn cpu_prof_dir(&self) -> Option<PathBuf> {
-    match &self.flags.subcommand {
-      DenoSubcommand::Run(flags) => {
-        if let Some(dir) = &flags.cpu_prof_dir {
-          Some(self.initial_cwd.join(dir))
-        } else if flags.cpu_prof {
-          // --cpu-prof without --cpu-prof-dir uses current directory
-          Some(self.initial_cwd.clone())
-        } else {
-          None
-        }
-      }
-      _ => None,
+    let (cpu_prof, cpu_prof_dir) = match &self.flags.subcommand {
+      DenoSubcommand::Run(flags) => (flags.cpu_prof, flags.cpu_prof_dir.as_deref()),
+      DenoSubcommand::Eval(flags) => (flags.cpu_prof, flags.cpu_prof_dir.as_deref()),
+      _ => return None,
+    };
+    if let Some(dir) = cpu_prof_dir {
+      Some(self.initial_cwd.join(dir))
+    } else if cpu_prof {
+      Some(self.initial_cwd.clone())
+    } else {
+      None
     }
   }
 
   pub fn cpu_prof_name(&self) -> Option<String> {
     match &self.flags.subcommand {
       DenoSubcommand::Run(flags) => flags.cpu_prof_name.clone(),
+      DenoSubcommand::Eval(flags) => flags.cpu_prof_name.clone(),
       _ => None,
     }
   }
@@ -1003,6 +1003,7 @@ impl CliOptions {
   pub fn cpu_prof_interval(&self) -> i32 {
     match &self.flags.subcommand {
       DenoSubcommand::Run(flags) => flags.cpu_prof_interval.unwrap_or(1000),
+      DenoSubcommand::Eval(flags) => flags.cpu_prof_interval.unwrap_or(1000),
       _ => 1000,
     }
   }
@@ -1010,6 +1011,7 @@ impl CliOptions {
   pub fn cpu_prof_md(&self) -> bool {
     match &self.flags.subcommand {
       DenoSubcommand::Run(flags) => flags.cpu_prof_md,
+      DenoSubcommand::Eval(flags) => flags.cpu_prof_md,
       _ => false,
     }
   }
