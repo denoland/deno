@@ -186,3 +186,42 @@ impl lsp::notification::Notification for TestRunProgressNotification {
 
   const METHOD: &'static str = "deno/testRunProgress";
 }
+
+
+pub const COVERAGE_NOTIFICATION: &str = "deno/testCoverage";
+
+/// Coverage data for a single source file, sent from the LSP to the client
+/// after a coverage-mode test run completes.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileCoverage {
+  /// The URI of the source file.
+  pub uri: lsp::Uri,
+  /// Line numbers (1-indexed) that were executed during the test run.
+  pub covered_lines: Vec<u32>,
+  /// Line numbers (1-indexed) that were not executed during the test run.
+  pub uncovered_lines: Vec<u32>,
+  /// The percentage of lines covered (0.0–100.0).
+  pub coverage_percent: f64,
+}
+
+/// Parameters for the `deno/testCoverage` notification.
+///
+/// Sent by the server after a [`TestRunKind::Coverage`] test run completes,
+/// so the editor can render inline coverage decorations.
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CoverageNotificationParams {
+  /// The test run ID this coverage data belongs to.
+  pub id: u32,
+  /// Per-file coverage data for all workspace source files touched by the run.
+  pub files: Vec<FileCoverage>,
+}
+
+pub enum CoverageNotification {}
+
+impl lsp::notification::Notification for CoverageNotification {
+  type Params = CoverageNotificationParams;
+
+  const METHOD: &'static str = COVERAGE_NOTIFICATION;
+}
