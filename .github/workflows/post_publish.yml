@@ -1,39 +1,50 @@
 name: post_publish
 
-on:
-  release:
-    types: [published]
+on: workflow_dispatch
+
+# Ensures only one publish is running at a time
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
 
 jobs:
-  update-dl-version:
-    name: update dl.deno.land version
-    runs-on: ubuntu-latest
-    if: github.repository == 'denoland/deno'
+  build:
+    name: post publish
+    runs-on: ubuntu-24.04-xl
+    timeout-minutes: 90
+
+    env:
+      CARGO_TERM_COLOR: always
+      RUST_BACKTRACE: full
+      RUSTC_FORCE_INCREMENTAL: 1
+
     steps:
+      - name: Configure git
+        run: |
+          git config --global core.symlinks true
+          git config --global fetch.parallel 32
+
       - name: Clone repository
         uses: actions/checkout@v6
-      - uses: denoland/setup-deno@v2
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.DENOBOT_PAT }}
+          submodules: recursive
+
+      - uses: dsherret/rust-toolchain-file@v1
+
+      - name: Install deno
+        uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
-      - name: Authenticate with Google Cloud
-        uses: google-github-actions/auth@v3
-        with:
-          project_id: denoland
-          credentials_json: ${{ secrets.GCP_SA_KEY }}
-          export_environment_variables: true
-          create_credentials_file: true
 
-      - name: Setup gcloud
-        uses: google-github-actions/setup-gcloud@v3
-        with:
-          project_id: denoland
-
-      - name: Upload version file to dl.deno.land
+      - name: Create release tag and check forward commit to main
         env:
-          AWS_ACCESS_KEY_ID: ${{ vars.S3_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.S3_SECRET_ACCESS_KEY }}
-          AWS_ENDPOINT_URL_S3: ${{ vars.S3_ENDPOINT }}
-          AWS_DEFAULT_REGION: ${{vars.S3_REGION }}
+          # the default secrets.GITHUB_TOKEN won't trigger a workflow run
+          # when tagging, but it will if we provide a custom PAT
+          GITHUB_TOKEN: ${{ secrets.DENOBOT_PAT }}
+          GH_WORKFLOW_ACTOR: ${{ github.actor }}
         run: |
-          echo ${GITHUB_REF#refs/*/} > release-latest.txt
-          (deno run --allow-net tools/release/version_greater_latest.ts ${GITHUB_REF#refs/*/} || exit 0) && gsutil -h "Cache-Control: no-cache" cp release-latest.txt gs://dl.deno.land/release-latest.txt && aws s3 cp release-latest.txt s3://dl-deno-land/release-latest.txt
+          git config user.email "${{ github.actor }}@users.noreply.github.com"
+          git config user.name "${{ github.actor }}"
+          ./tools/release/04_post_publish.ts
