@@ -19,6 +19,7 @@ pub mod date;
 pub mod env;
 pub mod error;
 pub mod finalizer;
+pub mod instance_data;
 pub mod make_callback;
 pub mod mem;
 pub mod numbers;
@@ -180,6 +181,8 @@ unsafe extern "C" fn napi_register_module_v1(
   make_callback::init(env, exports);
   object::init(env, exports);
   uv::init(env, exports);
+
+  instance_data::init(env, exports);
 
   init_cleanup_hook(env, exports);
 
