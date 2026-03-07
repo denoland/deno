@@ -479,8 +479,7 @@ fn generate_markdown_report(
     };
     let mut total = node.hit_count as i64 * interval_us;
     for &child_id in &node.children {
-      total +=
-        compute_node_total_time(child_id, node_map, interval_us, cache);
+      total += compute_node_total_time(child_id, node_map, interval_us, cache);
     }
     cache.insert(node_id, total);
     total
@@ -497,6 +496,7 @@ fn generate_markdown_report(
   }
 
   // Print call tree starting from root
+  #[allow(clippy::too_many_arguments)]
   fn print_call_tree(
     md: &mut String,
     node_id: i32,

@@ -979,8 +979,12 @@ impl CliOptions {
 
   pub fn cpu_prof_dir(&self) -> Option<PathBuf> {
     let (cpu_prof, cpu_prof_dir) = match &self.flags.subcommand {
-      DenoSubcommand::Run(flags) => (flags.cpu_prof, flags.cpu_prof_dir.as_deref()),
-      DenoSubcommand::Eval(flags) => (flags.cpu_prof, flags.cpu_prof_dir.as_deref()),
+      DenoSubcommand::Run(flags) => {
+        (flags.cpu_prof, flags.cpu_prof_dir.as_deref())
+      }
+      DenoSubcommand::Eval(flags) => {
+        (flags.cpu_prof, flags.cpu_prof_dir.as_deref())
+      }
       _ => return None,
     };
     if let Some(dir) = cpu_prof_dir {
