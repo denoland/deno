@@ -4,10 +4,16 @@
     "abort/test-addon-register-signal-handler.js": {},
     "abort/test-addon-uv-handle-leak.js": {},
     "abort/test-zlib-invalid-internals-usage.js": {
-      "darwin": false,
-      "linux": false,
-      "windows": false,
+      "ignore": true,
       "reason": "Tests Node.js internal C++ binding (internalBinding('zlib').Zlib) which is not implemented in Deno"
+    },
+    "client-proxy/test-use-env-proxy-cli-http.mjs": {
+      "ignore": true,
+      "reason": "Tests Node.js-specific CLI flags/options that are not supported in Deno"
+    },
+    "client-proxy/test-use-env-proxy-cli-https.mjs": {
+      "ignore": true,
+      "reason": "Tests Node.js-specific CLI flags/options that are not supported in Deno"
     },
     "es-module/test-cjs-prototype-pollution.js": {},
     "es-module/test-esm-assert-strict.mjs": {},
@@ -58,6 +64,18 @@
     "es-module/test-vm-compile-function-lineoffset.js": {},
     "es-module/test-wasm-memory-out-of-bound.js": {},
     "es-module/test-wasm-simple.js": {},
+    "internet/test-snapshot-dns-lookup.js": {
+      "ignore": true,
+      "reason": "Node.js snapshot/heap profiling features (--build-snapshot, --heap-prof, --heapsnapshot-near-heap-limit) are not implemented in Deno"
+    },
+    "internet/test-snapshot-dns-resolve.js": {
+      "ignore": true,
+      "reason": "Node.js snapshot/heap profiling features (--build-snapshot, --heap-prof, --heapsnapshot-near-heap-limit) are not implemented in Deno"
+    },
+    "parallel/test-abortcontroller-internal.js": {
+      "ignore": true,
+      "reason": "Tests Node.js internal modules (require('internal/...')) which are not exposed in Deno"
+    },
     "parallel/test-arm-math-illegal-instruction.js": {},
     "parallel/test-assert-async.js": {},
     "parallel/test-assert-calltracker-calls.js": {},
@@ -232,12 +250,92 @@
     "parallel/test-child-process-stdout-flush-exit.js": {},
     "parallel/test-child-process-stdout-flush.js": {},
     "parallel/test-child-process-validate-stdio.js": {},
+    "parallel/test-cli-bad-options.js": {
+      "ignore": true,
+      "reason": "Tests Node.js-specific CLI flags/options that are not supported in Deno"
+    },
+    "parallel/test-cli-eval.js": {
+      "ignore": true,
+      "reason": "Tests Node.js-specific CLI flags/options that are not supported in Deno"
+    },
+    "parallel/test-cli-node-cli-manpage-env-vars.mjs": {
+      "ignore": true,
+      "reason": "Tests Node.js-specific CLI flags/options that are not supported in Deno"
+    },
+    "parallel/test-cli-node-cli-manpage-options.mjs": {
+      "ignore": true,
+      "reason": "Tests Node.js-specific CLI flags/options that are not supported in Deno"
+    },
+    "parallel/test-cli-node-options-disallowed.js": {
+      "ignore": true,
+      "reason": "Tests Node.js-specific CLI flags/options that are not supported in Deno"
+    },
+    "parallel/test-cli-node-options-docs.js": {
+      "ignore": true,
+      "reason": "Tests Node.js-specific CLI flags/options that are not supported in Deno"
+    },
+    "parallel/test-cli-node-options.js": {
+      "ignore": true,
+      "reason": "Tests Node.js-specific CLI flags/options that are not supported in Deno"
+    },
+    "parallel/test-cli-node-print-help.js": {
+      "ignore": true,
+      "reason": "Tests Node.js-specific CLI flags/options that are not supported in Deno"
+    },
+    "parallel/test-cli-options-as-flags.js": {
+      "ignore": true,
+      "reason": "Tests Node.js-specific CLI flags/options that are not supported in Deno"
+    },
+    "parallel/test-cli-options-negation.js": {
+      "ignore": true,
+      "reason": "Tests Node.js-specific CLI flags/options that are not supported in Deno"
+    },
+    "parallel/test-cli-options-precedence.js": {
+      "ignore": true,
+      "reason": "Tests Node.js-specific CLI flags/options that are not supported in Deno"
+    },
+    "parallel/test-cli-permission-deny-fs.js": {
+      "ignore": true,
+      "reason": "Node.js permission model (--experimental-permission) is not implemented in Deno"
+    },
+    "parallel/test-cli-permission-multiple-allow.js": {
+      "ignore": true,
+      "reason": "Node.js permission model (--experimental-permission) is not implemented in Deno"
+    },
+    "parallel/test-cli-print-promise.mjs": {
+      "ignore": true,
+      "reason": "Tests Node.js-specific CLI flags/options that are not supported in Deno"
+    },
+    "parallel/test-cli-syntax-eval.js": {
+      "ignore": true,
+      "reason": "Tests Node.js-specific CLI flags/options that are not supported in Deno"
+    },
+    "parallel/test-cli-syntax-piped-bad.js": {
+      "ignore": true,
+      "reason": "Tests Node.js-specific CLI flags/options that are not supported in Deno"
+    },
+    "parallel/test-cli-syntax-piped-good.js": {
+      "ignore": true,
+      "reason": "Tests Node.js-specific CLI flags/options that are not supported in Deno"
+    },
     "parallel/test-client-request-destroy.js": {},
     "parallel/test-cluster-eaddrinuse.js": {},
     "parallel/test-cluster-uncaught-exception.js": {},
     "parallel/test-common-countdown.js": {},
     "parallel/test-common-expect-warning.js": {},
     "parallel/test-common-must-not-mutate-object-deep.mjs": {},
+    "parallel/test-compile-cache-api-permission.js": {
+      "ignore": true,
+      "reason": "Node.js permission model (--experimental-permission) is not implemented in Deno"
+    },
+    "parallel/test-compile-cache-permission-allowed.js": {
+      "ignore": true,
+      "reason": "Node.js permission model (--experimental-permission) is not implemented in Deno"
+    },
+    "parallel/test-compile-cache-permission-disallowed.js": {
+      "ignore": true,
+      "reason": "Node.js permission model (--experimental-permission) is not implemented in Deno"
+    },
     "parallel/test-console-assign-undefined.js": {},
     "parallel/test-console-async-write-error.js": {},
     "parallel/test-console-group.js": {},
@@ -256,6 +354,8 @@
       "exitCode": 1,
       "output": "[WILDCARD]Unknown cipher id-aes128-wrap[WILDCARD]"
     },
+    "parallel/test-crypto-default-shake-lengths.js": {},
+    "parallel/test-crypto-default-shake-lengths-oneshot.js": {},
     "parallel/test-crypto-dh-constructor.js": {},
     "parallel/test-crypto-dh-leak.js": {},
     "parallel/test-crypto-dh-odd-key.js": {},
@@ -294,64 +394,39 @@
     "parallel/test-crypto-verify-failure.js": {},
     "parallel/test-crypto-webcrypto-aes-decrypt-tag-too-small.js": {},
     "parallel/test-datetime-change-notify.js": {},
-    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
     // "parallel/test-debugger-address.mjs": {},
-    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
     // "parallel/test-debugger-auto-resume.mjs": {},
     "parallel/test-debugger-backtrace.js": {},
-    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
     // "parallel/test-debugger-break.js": {},
-    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
     // "parallel/test-debugger-breakpoint-exists.js": {},
-    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
     // "parallel/test-debugger-clear-breakpoints.js": {},
-    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
     // "parallel/test-debugger-exceptions.js": {},
-    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
     // "parallel/test-debugger-exec-scope.mjs": {},
     "parallel/test-debugger-exec.js": {},
-    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
     // "parallel/test-debugger-extract-function-name.mjs": {},
-    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
     // "parallel/test-debugger-heap-profiler.js": {},
-    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
     // "parallel/test-debugger-help.mjs": {},
     "parallel/test-debugger-invalid-json.mjs": {},
-    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
     // "parallel/test-debugger-list.js": {},
     "parallel/test-debugger-low-level.js": {},
-    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
     // "parallel/test-debugger-object-type-remote-object.js": {},
     // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
     // "parallel/test-debugger-pid.js": {},
     "parallel/test-debugger-preserve-breaks.js": {},
-    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
     // "parallel/test-debugger-profile-command.js": {},
-    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
     // "parallel/test-debugger-profile.js": {},
-    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
     // "parallel/test-debugger-random-port-with-inspect-port.js": {},
-    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
     // "parallel/test-debugger-random-port.js": {},
     "parallel/test-debugger-repeat-last.js": {},
     "parallel/test-debugger-restart-message.js": {},
-    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
     // "parallel/test-debugger-run-after-quit-restart.js": {},
-    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
     // "parallel/test-debugger-sb-before-load.js": {},
-    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
     // "parallel/test-debugger-scripts.js": {},
-    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
     // "parallel/test-debugger-set-context-line-number.mjs": {},
-    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
     // "parallel/test-debugger-unavailable-port.js": {},
-    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
     // "parallel/test-debugger-use-strict.js": {},
-    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
     // "parallel/test-debugger-watch-validation.js": {},
-    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
     // "parallel/test-debugger-watchers.mjs": {},
-    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
     // "parallel/test-debugger-websocket-secret-mismatch.js": {},
     "parallel/test-delayed-require.js": {},
     "parallel/test-destroy-socket-in-lookup.js": {},
@@ -453,6 +528,14 @@
     "parallel/test-domain-stack.js": {},
     "parallel/test-domain-top-level-error-handler-clears-stack.js": {},
     "parallel/test-domexception-cause.js": {},
+    "parallel/test-dotenv-node-options.js": {
+      "ignore": true,
+      "reason": "Tests Node.js-specific CLI flags/options that are not supported in Deno"
+    },
+    "parallel/test-double-tls-client.js": {
+      "ignore": true,
+      "reason": "Tests Node.js-specific CLI flags/options that are not supported in Deno"
+    },
     "parallel/test-dsa-fips-invalid-key.js": {},
     "parallel/test-env-newprotomethod-remove-unnecessary-prototypes.js": {},
     "parallel/test-error-format-list.js": {},
@@ -634,28 +717,29 @@
     "parallel/test-global-encoder.js": {},
     "parallel/test-global-webcrypto.js": {},
     "parallel/test-global-webstreams.js": {},
+    "parallel/test-h2-large-header-cause-client-to-hangup.js": {
+      "ignore": true,
+      "reason": "Tests Node.js-specific CLI flags/options that are not supported in Deno"
+    },
     "parallel/test-handle-wrap-close-abort.js": {},
-    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
+    "parallel/test-heapsnapshot-near-heap-limit-by-api-in-worker.js": {
+      "ignore": true,
+      "reason": "Node.js snapshot/heap profiling features (--build-snapshot, --heap-prof, --heapsnapshot-near-heap-limit) are not implemented in Deno"
+    },
+    "parallel/test-heapsnapshot-near-heap-limit-worker.js": {
+      "ignore": true,
+      "reason": "Node.js snapshot/heap profiling features (--build-snapshot, --heap-prof, --heapsnapshot-near-heap-limit) are not implemented in Deno"
+    },
     // "parallel/test-heap-prof-basic.js": {},
-    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
     // "parallel/test-heap-prof-dir-absolute.js": {},
-    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
     // "parallel/test-heap-prof-dir-name.js": {},
-    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
     // "parallel/test-heap-prof-dir-relative.js": {},
-    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
     // "parallel/test-heap-prof-exec-argv.js": {},
-    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
     // "parallel/test-heap-prof-exit.js": {},
-    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
     // "parallel/test-heap-prof-interval.js": {},
-    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
     // "parallel/test-heap-prof-invalid-args.js": {},
-    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
     // "parallel/test-heap-prof-loop-drained.js": {},
-    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
     // "parallel/test-heap-prof-name.js": {},
-    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
     // "parallel/test-heap-prof-sigint.js": {},
     "parallel/test-http-abort-before-end.js": {},
     "parallel/test-http-addrequest-localaddress.js": {},
@@ -903,11 +987,115 @@
 
     "parallel/test-inspector-workers-flat-list.js": {},
     "parallel/test-instanceof.js": {},
+    "parallel/test-internal-assert.js": {
+      "ignore": true,
+      "reason": "Tests Node.js internal modules (require('internal/...')) which are not exposed in Deno"
+    },
+    "parallel/test-internal-async-context-frame-disable.js": {
+      "ignore": true,
+      "reason": "Tests Node.js internal modules (require('internal/...')) which are not exposed in Deno"
+    },
+    "parallel/test-internal-async-context-frame-enabled.js": {
+      "ignore": true,
+      "reason": "Tests Node.js internal modules (require('internal/...')) which are not exposed in Deno"
+    },
+    "parallel/test-internal-encoding-binding.js": {
+      "ignore": true,
+      "reason": "Tests Node.js internal modules (require('internal/...')) which are not exposed in Deno"
+    },
+    "parallel/test-internal-error-original-names.js": {
+      "ignore": true,
+      "reason": "Tests Node.js internal modules (require('internal/...')) which are not exposed in Deno"
+    },
+    "parallel/test-internal-errors.js": {
+      "ignore": true,
+      "reason": "Tests Node.js internal modules (require('internal/...')) which are not exposed in Deno"
+    },
+    "parallel/test-internal-fs-syncwritestream.js": {
+      "ignore": true,
+      "reason": "Tests Node.js internal modules (require('internal/...')) which are not exposed in Deno"
+    },
     "parallel/test-internal-fs.js": {},
+    "parallel/test-internal-module-require.js": {
+      "ignore": true,
+      "reason": "Tests Node.js internal modules (require('internal/...')) which are not exposed in Deno"
+    },
+    "parallel/test-internal-module-wrap.js": {
+      "ignore": true,
+      "reason": "Tests Node.js internal modules (require('internal/...')) which are not exposed in Deno"
+    },
     "parallel/test-internal-modules.js": {},
+    "parallel/test-internal-net-isLoopback.js": {
+      "ignore": true,
+      "reason": "Tests Node.js internal modules (require('internal/...')) which are not exposed in Deno"
+    },
+    "parallel/test-internal-only-binding.js": {
+      "ignore": true,
+      "reason": "Tests Node.js internal modules (require('internal/...')) which are not exposed in Deno"
+    },
+    "parallel/test-internal-process-binding.js": {
+      "ignore": true,
+      "reason": "Tests Node.js internal modules (require('internal/...')) which are not exposed in Deno"
+    },
+    "parallel/test-internal-socket-list-receive.js": {
+      "ignore": true,
+      "reason": "Tests Node.js internal modules (require('internal/...')) which are not exposed in Deno"
+    },
+    "parallel/test-internal-socket-list-send.js": {
+      "ignore": true,
+      "reason": "Tests Node.js internal modules (require('internal/...')) which are not exposed in Deno"
+    },
+    "parallel/test-internal-util-assertCrypto.js": {
+      "ignore": true,
+      "reason": "Tests Node.js internal modules (require('internal/...')) which are not exposed in Deno"
+    },
+    "parallel/test-internal-util-classwrapper.js": {
+      "ignore": true,
+      "reason": "Tests Node.js internal modules (require('internal/...')) which are not exposed in Deno"
+    },
+    "parallel/test-internal-util-construct-sab.js": {
+      "ignore": true,
+      "reason": "Tests Node.js internal modules (require('internal/...')) which are not exposed in Deno"
+    },
+    "parallel/test-internal-util-decorate-error-stack.js": {
+      "ignore": true,
+      "reason": "Tests Node.js internal modules (require('internal/...')) which are not exposed in Deno"
+    },
+    "parallel/test-internal-util-getCIDR.js": {
+      "ignore": true,
+      "reason": "Tests Node.js internal modules (require('internal/...')) which are not exposed in Deno"
+    },
+    "parallel/test-internal-util-helpers.js": {
+      "ignore": true,
+      "reason": "Tests Node.js internal modules (require('internal/...')) which are not exposed in Deno"
+    },
     "parallel/test-internal-util-normalizeencoding.js": {},
+    "parallel/test-internal-util-objects.js": {
+      "ignore": true,
+      "reason": "Tests Node.js internal modules (require('internal/...')) which are not exposed in Deno"
+    },
+    "parallel/test-internal-util-weakreference.js": {
+      "ignore": true,
+      "reason": "Tests Node.js internal modules (require('internal/...')) which are not exposed in Deno"
+    },
+    "parallel/test-internal-validators-validateoneof.js": {
+      "ignore": true,
+      "reason": "Tests Node.js internal modules (require('internal/...')) which are not exposed in Deno"
+    },
+    "parallel/test-internal-validators-validateport.js": {
+      "ignore": true,
+      "reason": "Tests Node.js internal modules (require('internal/...')) which are not exposed in Deno"
+    },
+    "parallel/test-internal-webidl-converttoint.js": {
+      "ignore": true,
+      "reason": "Tests Node.js internal modules (require('internal/...')) which are not exposed in Deno"
+    },
     "parallel/test-intl-v8BreakIterator.js": {},
     "parallel/test-intl.js": {},
+    "parallel/test-is-internal-thread.mjs": {
+      "ignore": true,
+      "reason": "Tests Node.js internal modules (require('internal/...')) which are not exposed in Deno"
+    },
     "parallel/test-kill-segfault-freebsd.js": {},
     "parallel/test-listen-fd-detached-inherit.js": {},
     "parallel/test-listen-fd-detached.js": {},
@@ -1052,14 +1240,140 @@
     "parallel/test-performanceobserver-gc.js": {},
     "parallel/test-performanceobserver.js": {},
     "parallel/test-performance-measure-detail.js": {},
-    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    "parallel/test-permission-allow-addons-cli.js": {
+      "ignore": true,
+      "reason": "Node.js permission model (--experimental-permission) is not implemented in Deno"
+    },
+    "parallel/test-permission-allow-child-process-cli.js": {
+      "ignore": true,
+      "reason": "Node.js permission model (--experimental-permission) is not implemented in Deno"
+    },
+    "parallel/test-permission-allow-inspector.js": {
+      "ignore": true,
+      "reason": "Node.js permission model (--experimental-permission) is not implemented in Deno"
+    },
+    "parallel/test-permission-allow-wasi-cli.js": {
+      "ignore": true,
+      "reason": "Node.js permission model (--experimental-permission) is not implemented in Deno"
+    },
+    "parallel/test-permission-allow-worker-cli.js": {
+      "ignore": true,
+      "reason": "Node.js permission model (--experimental-permission) is not implemented in Deno"
+    },
+    "parallel/test-permission-child-process-cli.js": {
+      "ignore": true,
+      "reason": "Node.js permission model (--experimental-permission) is not implemented in Deno"
+    },
+    "parallel/test-permission-child-process-inherit-flags.js": {
+      "ignore": true,
+      "reason": "Node.js permission model (--experimental-permission) is not implemented in Deno"
+    },
+    "parallel/test-permission-fs-absolute-path.js": {
+      "ignore": true,
+      "reason": "Node.js permission model (--experimental-permission) is not implemented in Deno"
+    },
+    "parallel/test-permission-fs-internal-module-stat.js": {
+      "ignore": true,
+      "reason": "Node.js permission model (--experimental-permission) is not implemented in Deno"
+    },
+    "parallel/test-permission-fs-read-entrypoint.js": {
+      "ignore": true,
+      "reason": "Node.js permission model (--experimental-permission) is not implemented in Deno"
+    },
+    "parallel/test-permission-fs-read.js": {
+      "ignore": true,
+      "reason": "Node.js permission model (--experimental-permission) is not implemented in Deno"
+    },
+    "parallel/test-permission-fs-relative-path.js": {
+      "ignore": true,
+      "reason": "Node.js permission model (--experimental-permission) is not implemented in Deno"
+    },
+    "parallel/test-permission-fs-repeat-path.js": {
+      "ignore": true,
+      "reason": "Node.js permission model (--experimental-permission) is not implemented in Deno"
+    },
+    "parallel/test-permission-fs-require.js": {
+      "ignore": true,
+      "reason": "Node.js permission model (--experimental-permission) is not implemented in Deno"
+    },
+    "parallel/test-permission-fs-supported.js": {
+      "ignore": true,
+      "reason": "Node.js permission model (--experimental-permission) is not implemented in Deno"
+    },
+    "parallel/test-permission-fs-symlink-relative.js": {
+      "ignore": true,
+      "reason": "Node.js permission model (--experimental-permission) is not implemented in Deno"
+    },
+    "parallel/test-permission-fs-symlink-target-write.js": {
+      "ignore": true,
+      "reason": "Node.js permission model (--experimental-permission) is not implemented in Deno"
+    },
+    "parallel/test-permission-fs-symlink.js": {
+      "ignore": true,
+      "reason": "Node.js permission model (--experimental-permission) is not implemented in Deno"
+    },
+    "parallel/test-permission-fs-traversal-path.js": {
+      "ignore": true,
+      "reason": "Node.js permission model (--experimental-permission) is not implemented in Deno"
+    },
+    "parallel/test-permission-fs-wildcard.js": {
+      "ignore": true,
+      "reason": "Node.js permission model (--experimental-permission) is not implemented in Deno"
+    },
+    "parallel/test-permission-fs-write-report.js": {
+      "ignore": true,
+      "reason": "Node.js permission model (--experimental-permission) is not implemented in Deno"
+    },
+    "parallel/test-permission-fs-write-v8.js": {
+      "ignore": true,
+      "reason": "Node.js permission model (--experimental-permission) is not implemented in Deno"
+    },
+    "parallel/test-permission-fs-write.js": {
+      "ignore": true,
+      "reason": "Node.js permission model (--experimental-permission) is not implemented in Deno"
+    },
+    "parallel/test-permission-has.js": {
+      "ignore": true,
+      "reason": "Node.js permission model (--experimental-permission) is not implemented in Deno"
+    },
     // "parallel/test-permission-inspector-brk.js": {},
-    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
     // "parallel/test-permission-inspector.js": {},
     "parallel/test-permission-no-addons.js": {},
+    "parallel/test-permission-processbinding.js": {
+      "ignore": true,
+      "reason": "Node.js permission model (--experimental-permission) is not implemented in Deno"
+    },
+    "parallel/test-permission-sqlite-load-extension.js": {
+      "ignore": true,
+      "reason": "Node.js permission model (--experimental-permission) is not implemented in Deno"
+    },
+    "parallel/test-permission-warning-flags.js": {
+      "ignore": true,
+      "reason": "Node.js permission model (--experimental-permission) is not implemented in Deno"
+    },
+    "parallel/test-permission-wasi.js": {
+      "ignore": true,
+      "reason": "Node.js permission model (--experimental-permission) is not implemented in Deno"
+    },
+    "parallel/test-permission-worker-threads-cli.js": {
+      "ignore": true,
+      "reason": "Node.js permission model (--experimental-permission) is not implemented in Deno"
+    },
     "parallel/test-pipe-head.js": {},
     "parallel/test-pipe-return-val.js": {},
     "parallel/test-preload-worker.js": {},
+    "parallel/test-primordials-apply.js": {
+      "ignore": true,
+      "reason": "Tests Node.js internal modules (require('internal/...')) which are not exposed in Deno"
+    },
+    "parallel/test-primordials-promise.js": {
+      "ignore": true,
+      "reason": "Tests Node.js internal modules (require('internal/...')) which are not exposed in Deno"
+    },
+    "parallel/test-primordials-regexp.js": {
+      "ignore": true,
+      "reason": "Tests Node.js internal modules (require('internal/...')) which are not exposed in Deno"
+    },
     "parallel/test-process-abort.js": {},
     "parallel/test-process-argv-0.js": {},
     "parallel/test-process-available-memory.js": {},
@@ -1155,11 +1469,31 @@
     "parallel/test-require-long-path.js": {},
     "parallel/test-require-nul.js": {},
     "parallel/test-require-process.js": {},
+    "parallel/test-runner-cli-concurrency.js": {
+      "ignore": true,
+      "reason": "Tests Node.js-specific CLI flags/options that are not supported in Deno"
+    },
+    "parallel/test-runner-cli-timeout.js": {
+      "ignore": true,
+      "reason": "Tests Node.js-specific CLI flags/options that are not supported in Deno"
+    },
+    "parallel/test-runner-cli.js": {
+      "ignore": true,
+      "reason": "Tests Node.js-specific CLI flags/options that are not supported in Deno"
+    },
     // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
     // "parallel/test-runner-coverage-source-map.js": {},
     // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
     // "parallel/test-runner-coverage-thresholds.js": {},
     "parallel/test-runner-filter-warning.js": {},
+    "parallel/test-runner-snapshot-file-tests.js": {
+      "ignore": true,
+      "reason": "Node.js snapshot/heap profiling features (--build-snapshot, --heap-prof, --heapsnapshot-near-heap-limit) are not implemented in Deno"
+    },
+    "parallel/test-runner-snapshot-tests.js": {
+      "ignore": true,
+      "reason": "Node.js snapshot/heap profiling features (--build-snapshot, --heap-prof, --heapsnapshot-near-heap-limit) are not implemented in Deno"
+    },
     // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
     // "parallel/test-runner-inspect.mjs": {},
     "parallel/test-runner-source-maps-invalid-json.js": {},
@@ -1168,9 +1502,99 @@
     // "parallel/test-set-process-debug-port.js": {},
     "parallel/test-signal-handler-remove-on-exit.js": {},
     "parallel/test-signal-handler.js": {},
-    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    "parallel/test-snapshot-api.js": {
+      "ignore": true,
+      "reason": "Node.js snapshot/heap profiling features (--build-snapshot, --heap-prof, --heapsnapshot-near-heap-limit) are not implemented in Deno"
+    },
+    "parallel/test-snapshot-argv1.js": {
+      "ignore": true,
+      "reason": "Node.js snapshot/heap profiling features (--build-snapshot, --heap-prof, --heapsnapshot-near-heap-limit) are not implemented in Deno"
+    },
+    "parallel/test-snapshot-basic.js": {
+      "ignore": true,
+      "reason": "Node.js snapshot/heap profiling features (--build-snapshot, --heap-prof, --heapsnapshot-near-heap-limit) are not implemented in Deno"
+    },
+    "parallel/test-snapshot-child-process-sync.js": {
+      "ignore": true,
+      "reason": "Node.js snapshot/heap profiling features (--build-snapshot, --heap-prof, --heapsnapshot-near-heap-limit) are not implemented in Deno"
+    },
+    "parallel/test-snapshot-cjs-main.js": {
+      "ignore": true,
+      "reason": "Node.js snapshot/heap profiling features (--build-snapshot, --heap-prof, --heapsnapshot-near-heap-limit) are not implemented in Deno"
+    },
+    "parallel/test-snapshot-config.js": {
+      "ignore": true,
+      "reason": "Node.js snapshot/heap profiling features (--build-snapshot, --heap-prof, --heapsnapshot-near-heap-limit) are not implemented in Deno"
+    },
+    "parallel/test-snapshot-cwd.js": {
+      "ignore": true,
+      "reason": "Node.js snapshot/heap profiling features (--build-snapshot, --heap-prof, --heapsnapshot-near-heap-limit) are not implemented in Deno"
+    },
+    "parallel/test-snapshot-dns-lookup-localhost-promise.js": {
+      "ignore": true,
+      "reason": "Node.js snapshot/heap profiling features (--build-snapshot, --heap-prof, --heapsnapshot-near-heap-limit) are not implemented in Deno"
+    },
+    "parallel/test-snapshot-dns-lookup-localhost.js": {
+      "ignore": true,
+      "reason": "Node.js snapshot/heap profiling features (--build-snapshot, --heap-prof, --heapsnapshot-near-heap-limit) are not implemented in Deno"
+    },
+    "parallel/test-snapshot-dns-resolve-localhost-promise.js": {
+      "ignore": true,
+      "reason": "Node.js snapshot/heap profiling features (--build-snapshot, --heap-prof, --heapsnapshot-near-heap-limit) are not implemented in Deno"
+    },
+    "parallel/test-snapshot-dns-resolve-localhost.js": {
+      "ignore": true,
+      "reason": "Node.js snapshot/heap profiling features (--build-snapshot, --heap-prof, --heapsnapshot-near-heap-limit) are not implemented in Deno"
+    },
+    "parallel/test-snapshot-error.js": {
+      "ignore": true,
+      "reason": "Node.js snapshot/heap profiling features (--build-snapshot, --heap-prof, --heapsnapshot-near-heap-limit) are not implemented in Deno"
+    },
+    "parallel/test-snapshot-eval.js": {
+      "ignore": true,
+      "reason": "Node.js snapshot/heap profiling features (--build-snapshot, --heap-prof, --heapsnapshot-near-heap-limit) are not implemented in Deno"
+    },
+    "parallel/test-snapshot-gzip.js": {
+      "ignore": true,
+      "reason": "Node.js snapshot/heap profiling features (--build-snapshot, --heap-prof, --heapsnapshot-near-heap-limit) are not implemented in Deno"
+    },
+    "parallel/test-snapshot-incompatible.js": {
+      "ignore": true,
+      "reason": "Node.js snapshot/heap profiling features (--build-snapshot, --heap-prof, --heapsnapshot-near-heap-limit) are not implemented in Deno"
+    },
+    "parallel/test-snapshot-namespaced-builtin.js": {
+      "ignore": true,
+      "reason": "Node.js snapshot/heap profiling features (--build-snapshot, --heap-prof, --heapsnapshot-near-heap-limit) are not implemented in Deno"
+    },
+    "parallel/test-snapshot-net.js": {
+      "ignore": true,
+      "reason": "Node.js snapshot/heap profiling features (--build-snapshot, --heap-prof, --heapsnapshot-near-heap-limit) are not implemented in Deno"
+    },
+    "parallel/test-snapshot-reproducible.js": {
+      "ignore": true,
+      "reason": "Node.js snapshot/heap profiling features (--build-snapshot, --heap-prof, --heapsnapshot-near-heap-limit) are not implemented in Deno"
+    },
+    "parallel/test-snapshot-typescript.js": {
+      "ignore": true,
+      "reason": "Node.js snapshot/heap profiling features (--build-snapshot, --heap-prof, --heapsnapshot-near-heap-limit) are not implemented in Deno"
+    },
+    "parallel/test-snapshot-umd.js": {
+      "ignore": true,
+      "reason": "Node.js snapshot/heap profiling features (--build-snapshot, --heap-prof, --heapsnapshot-near-heap-limit) are not implemented in Deno"
+    },
+    "parallel/test-snapshot-warning.js": {
+      "ignore": true,
+      "reason": "Node.js snapshot/heap profiling features (--build-snapshot, --heap-prof, --heapsnapshot-near-heap-limit) are not implemented in Deno"
+    },
+    "parallel/test-snapshot-weak-reference.js": {
+      "ignore": true,
+      "reason": "Node.js snapshot/heap profiling features (--build-snapshot, --heap-prof, --heapsnapshot-near-heap-limit) are not implemented in Deno"
+    },
+    "parallel/test-snapshot-worker.js": {
+      "ignore": true,
+      "reason": "Node.js snapshot/heap profiling features (--build-snapshot, --heap-prof, --heapsnapshot-near-heap-limit) are not implemented in Deno"
+    },
     // "parallel/test-snapshot-console.js": {},
-    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
     // "parallel/test-snapshot-coverage.js": {},
     "parallel/test-socket-address.js": {},
     "parallel/test-socket-write-after-fin-error.js": {},
@@ -1488,6 +1912,10 @@
     "parallel/test-ttywrap-stack.js": {},
     "parallel/test-tz-version.js": {},
     "parallel/test-unhandled-exception-with-worker-inuse.js": {},
+    "parallel/test-unicode-node-options.js": {
+      "ignore": true,
+      "reason": "Tests Node.js-specific CLI flags/options that are not supported in Deno"
+    },
     "parallel/test-url-domain-ascii-unicode.js": {},
     "parallel/test-url-fileurltopath.js": {},
     "parallel/test-url-format-invalid-input.js": {},
@@ -1735,12 +2163,75 @@
     "pummel/test-buffer-large-size-buffer-alloc-unsafe.js": {},
     "pummel/test-dh-regr.js": {},
     "pummel/test-fs-watch-system-limit.js": {},
-    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    "pummel/test-heapdump-dns.js": {
+      "ignore": true,
+      "reason": "Node.js snapshot/heap profiling features (--build-snapshot, --heap-prof, --heapsnapshot-near-heap-limit) are not implemented in Deno"
+    },
+    "pummel/test-heapdump-env.js": {
+      "ignore": true,
+      "reason": "Node.js snapshot/heap profiling features (--build-snapshot, --heap-prof, --heapsnapshot-near-heap-limit) are not implemented in Deno"
+    },
+    "pummel/test-heapdump-fs-promise.js": {
+      "ignore": true,
+      "reason": "Node.js snapshot/heap profiling features (--build-snapshot, --heap-prof, --heapsnapshot-near-heap-limit) are not implemented in Deno"
+    },
+    "pummel/test-heapdump-http2.js": {
+      "ignore": true,
+      "reason": "Node.js snapshot/heap profiling features (--build-snapshot, --heap-prof, --heapsnapshot-near-heap-limit) are not implemented in Deno"
+    },
+    "pummel/test-heapdump-shadow-realm.js": {
+      "ignore": true,
+      "reason": "Node.js snapshot/heap profiling features (--build-snapshot, --heap-prof, --heapsnapshot-near-heap-limit) are not implemented in Deno"
+    },
+    "pummel/test-heapdump-tls.js": {
+      "ignore": true,
+      "reason": "Node.js snapshot/heap profiling features (--build-snapshot, --heap-prof, --heapsnapshot-near-heap-limit) are not implemented in Deno"
+    },
+    "pummel/test-heapdump-urlpattern.js": {
+      "ignore": true,
+      "reason": "Node.js snapshot/heap profiling features (--build-snapshot, --heap-prof, --heapsnapshot-near-heap-limit) are not implemented in Deno"
+    },
+    "pummel/test-heapdump-vm-script.js": {
+      "ignore": true,
+      "reason": "Node.js snapshot/heap profiling features (--build-snapshot, --heap-prof, --heapsnapshot-near-heap-limit) are not implemented in Deno"
+    },
+    "pummel/test-heapdump-worker.js": {
+      "ignore": true,
+      "reason": "Node.js snapshot/heap profiling features (--build-snapshot, --heap-prof, --heapsnapshot-near-heap-limit) are not implemented in Deno"
+    },
+    "pummel/test-heapdump-zlib.js": {
+      "ignore": true,
+      "reason": "Node.js snapshot/heap profiling features (--build-snapshot, --heap-prof, --heapsnapshot-near-heap-limit) are not implemented in Deno"
+    },
+    "pummel/test-heapsnapshot-near-heap-limit-big.js": {
+      "ignore": true,
+      "reason": "Node.js snapshot/heap profiling features (--build-snapshot, --heap-prof, --heapsnapshot-near-heap-limit) are not implemented in Deno"
+    },
+    "pummel/test-heapsnapshot-near-heap-limit-by-api.js": {
+      "ignore": true,
+      "reason": "Node.js snapshot/heap profiling features (--build-snapshot, --heap-prof, --heapsnapshot-near-heap-limit) are not implemented in Deno"
+    },
+    "pummel/test-heapsnapshot-near-heap-limit.js": {
+      "ignore": true,
+      "reason": "Node.js snapshot/heap profiling features (--build-snapshot, --heap-prof, --heapsnapshot-near-heap-limit) are not implemented in Deno"
+    },
     // "pummel/test-heapdump-inspector.js": {},
     "pummel/test-string-decoder-large-buffer.js": {},
     "sequential/test-buffer-creation-regression.js": {},
     "sequential/test-child-process-exit.js": {},
     "sequential/test-cli-syntax-bad.js": {},
+    "sequential/test-cli-syntax-file-not-found.js": {
+      "ignore": true,
+      "reason": "Tests Node.js-specific CLI flags/options that are not supported in Deno"
+    },
+    "sequential/test-cli-syntax-good.js": {
+      "ignore": true,
+      "reason": "Tests Node.js-specific CLI flags/options that are not supported in Deno"
+    },
+    "sequential/test-cli-syntax-require.js": {
+      "ignore": true,
+      "reason": "Tests Node.js-specific CLI flags/options that are not supported in Deno"
+    },
     // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
     // "sequential/test-cluster-inspect-brk.js": {},
     // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
@@ -1766,15 +2257,10 @@
     // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
     // "sequential/test-cpu-prof-worker-argv.js": {},
     "sequential/test-debug-prompt.js": {},
-    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
     // "sequential/test-debugger-custom-port.js": {},
-    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
     // "sequential/test-debugger-debug-brk.js": {},
-    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
     // "sequential/test-debugger-invalid-args.js": {},
-    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
     // "sequential/test-debugger-launch.mjs": {},
-    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
     // "sequential/test-debugger-pid.js": {},
     // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
     // "sequential/test-diagnostic-dir-cpu-prof.js": {},
@@ -1782,6 +2268,18 @@
     // "sequential/test-diagnostic-dir-heap-prof.js": {},
     "sequential/test-fs-readdir-recursive.js": {},
     "sequential/test-fs-stat-sync-overflow.js": {},
+    "sequential/test-get-heapsnapshot-options.js": {
+      "ignore": true,
+      "reason": "Node.js snapshot/heap profiling features (--build-snapshot, --heap-prof, --heapsnapshot-near-heap-limit) are not implemented in Deno"
+    },
+    "sequential/test-heapdump-flag-custom-dir.js": {
+      "ignore": true,
+      "reason": "Node.js snapshot/heap profiling features (--build-snapshot, --heap-prof, --heapsnapshot-near-heap-limit) are not implemented in Deno"
+    },
+    "sequential/test-heapdump-flag.js": {
+      "ignore": true,
+      "reason": "Node.js snapshot/heap profiling features (--build-snapshot, --heap-prof, --heapsnapshot-near-heap-limit) are not implemented in Deno"
+    },
     "sequential/test-heapdump.js": {
       "windows": false
     },
@@ -1801,6 +2299,42 @@
     "sequential/test-tls-lookup.js": {},
     "sequential/test-tls-psk-client.js": {},
     "sequential/test-vm-timeout-rethrow.js": {},
+    "sequential/test-write-heapsnapshot-options.js": {
+      "ignore": true,
+      "reason": "Node.js snapshot/heap profiling features (--build-snapshot, --heap-prof, --heapsnapshot-near-heap-limit) are not implemented in Deno"
+    },
+    "system-ca/test-native-intermediate-certs.mjs": {
+      "ignore": true,
+      "reason": "Node.js system CA certificate handling is not implemented in Deno"
+    },
+    "system-ca/test-native-root-certs-env.mjs": {
+      "ignore": true,
+      "reason": "Node.js system CA certificate handling is not implemented in Deno"
+    },
+    "system-ca/test-native-root-certs.mjs": {
+      "ignore": true,
+      "reason": "Node.js system CA certificate handling is not implemented in Deno"
+    },
+    "system-ca/test-set-default-ca-certificates-append-system-ca.mjs": {
+      "ignore": true,
+      "reason": "Node.js system CA certificate handling is not implemented in Deno"
+    },
+    "system-ca/test-set-default-ca-certificates-override-system.mjs": {
+      "ignore": true,
+      "reason": "Node.js system CA certificate handling is not implemented in Deno"
+    },
+    "system-ca/test-set-default-ca-certificates-system-combinations.js": {
+      "ignore": true,
+      "reason": "Node.js system CA certificate handling is not implemented in Deno"
+    },
+    "test-runner/test-output-output-cli.mjs": {
+      "ignore": true,
+      "reason": "Tests Node.js-specific CLI flags/options that are not supported in Deno"
+    },
+    "test-runner/test-output-spec-reporter-cli.mjs": {
+      "ignore": true,
+      "reason": "Tests Node.js-specific CLI flags/options that are not supported in Deno"
+    },
     // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
     // "sequential/test-watch-mode-inspect.mjs": {},
     // TODO(bartlomieju): this test is very flaky on CI, especially on Windows ARM
