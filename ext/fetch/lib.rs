@@ -1508,6 +1508,24 @@ fn is_error_retryable(err: &(dyn std::error::Error + 'static)) -> bool {
     }
   }
 
+  // HTTP/1.1: The connection was closed before the message completed.
+  // This happens when a pooled keep-alive connection is stale (e.g. the
+  // server shut down between requests). Safe to retry because the server
+  // never received/processed the request on this connection.
+  if let Some(err) = find_source::<hyper::Error>(err) {
+    if err.is_incomplete_message() {
+      return true;
+    }
+  }
+
+  // Connection reset by the server before we could send the request.
+  // This is another manifestation of stale pooled connections.
+  if let Some(err) = find_source::<std::io::Error>(err) {
+    if err.kind() == std::io::ErrorKind::ConnectionReset {
+      return true;
+    }
+  }
+
   false
 }
 
