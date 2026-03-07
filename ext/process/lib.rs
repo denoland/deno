@@ -1105,6 +1105,97 @@ enum SignalArg {
   Int(i32),
 }
 
+/// Walk the process tree to find all descendant PIDs of `root_pid`.
+/// Returns a flat list in BFS order (parents before children).
+#[cfg(target_os = "linux")]
+fn find_descendant_pids(root_pid: i32) -> Vec<i32> {
+  let mut result = Vec::new();
+  let mut queue = std::collections::VecDeque::new();
+  queue.push_back(root_pid);
+
+  // Build a map of ppid -> [child_pids] once, then walk it.
+  let children_map = build_ppid_map();
+
+  while let Some(pid) = queue.pop_front() {
+    if let Some(children) = children_map.get(&pid) {
+      for &child in children {
+        result.push(child);
+        queue.push_back(child);
+      }
+    }
+  }
+  result
+}
+
+/// Build a map from parent PID to list of child PIDs by walking /proc.
+#[cfg(target_os = "linux")]
+fn build_ppid_map() -> HashMap<i32, Vec<i32>> {
+  let mut map: HashMap<i32, Vec<i32>> = HashMap::new();
+  let Ok(entries) = std::fs::read_dir("/proc") else {
+    return map;
+  };
+  for entry in entries.flatten() {
+    let name = entry.file_name();
+    let Some(name) = name.to_str() else { continue };
+    let Ok(pid) = name.parse::<i32>() else {
+      continue;
+    };
+    let Ok(status) = std::fs::read_to_string(format!("/proc/{pid}/status"))
+    else {
+      continue;
+    };
+    for line in status.lines() {
+      if let Some(ppid_str) = line.strip_prefix("PPid:\t") {
+        if let Ok(ppid) = ppid_str.trim().parse::<i32>() {
+          map.entry(ppid).or_default().push(pid);
+        }
+        break;
+      }
+    }
+  }
+  map
+}
+
+/// Walk the process tree to find all descendant PIDs using
+/// `proc_listchildpids`.
+#[cfg(target_os = "macos")]
+fn find_descendant_pids(root_pid: i32) -> Vec<i32> {
+  let mut result = Vec::new();
+  let mut queue = std::collections::VecDeque::new();
+  queue.push_back(root_pid);
+
+  while let Some(pid) = queue.pop_front() {
+    let children = list_child_pids(pid);
+    for child in children {
+      result.push(child);
+      queue.push_back(child);
+    }
+  }
+  result
+}
+
+#[cfg(target_os = "macos")]
+fn list_child_pids(pid: i32) -> Vec<i32> {
+  // Allocate a generous buffer. proc_listchildpids returns the number
+  // of PIDs written (as a count, not bytes).
+  let mut buf: Vec<libc::pid_t> = vec![0; 256];
+
+  // SAFETY: buf is a valid buffer of pid_t values.
+  let count = unsafe {
+    libc::proc_listchildpids(
+      pid,
+      buf.as_mut_ptr().cast(),
+      (buf.len() * std::mem::size_of::<libc::pid_t>()) as libc::c_int,
+    )
+  };
+  if count <= 0 {
+    return Vec::new();
+  }
+
+  buf.truncate(count as usize);
+  buf
+}
+
 #[op2(stack_trace)]
 fn op_spawn_kill(
   state: &mut OpState,
@@ -1112,7 +1203,18 @@ fn op_spawn_kill(
   #[serde] signal: SignalArg,
 ) -> Result<(), ProcessError> {
   if let Ok(child_resource) = state.resource_table.get::<ChildResource>(rid) {
-    deprecated::kill(child_resource.1 as i32, &signal)?;
+    let pid = child_resource.1 as i32;
+    // Kill descendant processes first so they don't become orphans.
+    // This is best-effort; ignore errors from descendants that may
+    // have already exited.
+    #[cfg(unix)]
+    {
+      let descendants = find_descendant_pids(pid);
+      for &desc in descendants.iter().rev() {
+        let _ = deprecated::kill(desc, &signal);
+      }
+    }
+    deprecated::kill(pid, &signal)?;
     return Ok(());
   }
   Err(ProcessError::ChildProcessAlreadyTerminated)
