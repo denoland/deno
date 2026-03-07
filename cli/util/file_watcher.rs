@@ -38,6 +38,7 @@ use crate::util::fs::canonicalize_path;
 
 const CLEAR_SCREEN: &str = "\x1B[H\x1B[2J\x1B[3J";
 const DEBOUNCE_INTERVAL: Duration = Duration::from_millis(200);
+const GRACEFUL_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(10);
 
 struct DebouncedReceiver {
   // The `recv()` call could be used in a tokio `select!` macro,
@@ -399,17 +400,47 @@ where
       });
     }
 
+    tokio::pin!(operation_future);
+
     select! {
       _ = receiver_future => {},
       _ = deno_signals::ctrl_c() => {
+        // Dispatch SIGTERM to give JS code a chance for async cleanup.
+        // If handlers are registered (raise returns true), wait for the
+        // operation to finish gracefully before exiting.
+        if deno_signals::raise(deno_signals::SIGTERM) {
+          info!(
+            "{} Waiting for graceful termination...",
+            colors::intense_blue(banner),
+          );
+          let _ = tokio::time::timeout(
+            GRACEFUL_SHUTDOWN_TIMEOUT,
+            &mut operation_future,
+          )
+          .await;
+        }
         return Ok(());
       },
       _ = restart_rx.recv() => {
+        // Dispatch SIGTERM to give JS code a chance for async cleanup
+        // before restarting. If handlers are registered, wait for the
+        // operation to finish gracefully before restarting.
+        if deno_signals::raise(deno_signals::SIGTERM) {
+          info!(
+            "{} Waiting for graceful termination...",
+            colors::intense_blue(banner),
+          );
+          let _ = tokio::time::timeout(
+            GRACEFUL_SHUTDOWN_TIMEOUT,
+            &mut operation_future,
+          )
+          .await;
+        }
         deno_runtime::deno_inspector_server::notify_restart();
         print_after_restart();
         continue;
       },
-      success = operation_future => {
+      success = &mut operation_future => {
         consume_paths_to_watch(&mut watcher, &mut paths_to_watch_rx, &exclude_set);
         if print_finished {
           // TODO(bartlomieju): print exit code here?
