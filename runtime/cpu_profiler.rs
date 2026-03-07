@@ -826,11 +826,17 @@ fn generate_flamegraph_svg(
 <text id="unzoom" class="hide" x="{x_pad}.0" y="24">Reset Zoom</text>
 <text id="search" x="{search_x}.0" y="24">Search</text>
 <text id="matched" class="hide" x="{search_x}.0" y="{details_y}">&nbsp;</text>
-<g id="frames" total_samples="{total_samples}" width="{frames_width}">
+<foreignObject x="{invert_x}" y="6" width="80" height="30">
+<body xmlns="http://www.w3.org/1999/xhtml">
+<label style="font-family:Verdana,sans-serif;font-size:12px;cursor:pointer"><input type="checkbox" id="invert_cb" style="cursor:pointer"/> Invert</label>
+</body>
+</foreignObject>
+<g id="frames" total_samples="{total_samples}" width="{frames_width}" fg:max_depth="{max_depth}" fg:frame_height="{frame_height}" fg:y_pad_top="{y_pad_top}">
 "##,
     flamegraph_js = FLAMEGRAPH_JS,
     details_y = image_height - y_pad_bottom + 21,
     search_x = image_width - x_pad,
+    invert_x = image_width / 2 + 80,
     frames_width = image_width - 2 * x_pad,
   ));
 
@@ -864,7 +870,7 @@ fn generate_flamegraph_svg(
       let pct = (node.total as f64 / layout.total_samples as f64) * 100.0;
 
       svg.push_str(&format!(
-        r#"<g><title>{name} ({samples} samples, {pct:.2}%)</title><rect x="{x_pct:.4}%" y="{y}" width="{w_pct:.4}%" height="{h}" fill="rgb({r},{g},{b})" fg:x="{x_samples}" fg:w="{w_samples}"/>"#,
+        r#"<g><title>{name} ({samples} samples, {pct:.2}%)</title><rect x="{x_pct:.4}%" y="{y}" width="{w_pct:.4}%" height="{h}" fill="rgb({r},{g},{b})" fg:x="{x_samples}" fg:w="{w_samples}" fg:y="{y}"/>"#,
         name = escape_xml(&node.name),
         samples = node.total,
         h = layout.frame_height - 1,
@@ -930,7 +936,7 @@ fn generate_flamegraph_svg(
 // Supports: click-to-zoom, reset zoom, Ctrl+F search with highlight, hover details.
 const FLAMEGRAPH_JS: &str = r##"
   var details, searchbtn, unzoombtn, matchedtxt, svg, searching, frames, total_samples, known_font_width;
-  var orig_height, detailsEl, matchedEl;
+  var orig_height, detailsEl, matchedEl, update_for_resize;
   function init(evt) {
     detailsEl = document.getElementById("details");
     details = detailsEl.firstChild;
@@ -943,10 +949,13 @@ const FLAMEGRAPH_JS: &str = r##"
     total_samples = parseInt(frames.attributes.total_samples.value);
     known_font_width = get_monospace_width(frames);
     searching = 0;
+    inverted = false;
+    var cb = document.getElementById("invert_cb");
+    if (cb) cb.addEventListener("change", function() { toggle_invert(); });
     orig_height = parseFloat(svg.attributes.height.value);
     // Fluid: fill viewport width and height
     svg.removeAttribute("width");
-    var update_for_resize = function() {
+    update_for_resize = function() {
       // Width
       frames.attributes.width.value = svg.width.baseVal.value - xpad * 2;
       var svgWidth = svg.width.baseVal.value;
@@ -957,9 +966,9 @@ const FLAMEGRAPH_JS: &str = r##"
       var h = Math.max(orig_height, vh);
       svg.setAttribute("height", h);
       svg.setAttribute("viewBox", "0 0 " + svgWidth + " " + h);
-      // Shift frames down so they sit at the bottom of the viewport
+      // Shift frames down so they sit at the bottom (normal) or top (inverted)
       var extraSpace = h - orig_height;
-      if (extraSpace > 0) {
+      if (extraSpace > 0 && !inverted) {
         frames.setAttribute("transform", "translate(0," + extraSpace + ")");
       } else {
         frames.removeAttribute("transform");
@@ -1111,7 +1120,7 @@ const FLAMEGRAPH_JS: &str = r##"
       var a = find_child(e, "rect").attributes;
       var ex = parseInt(a["fg:x"].value);
       var ew = parseInt(a["fg:w"].value);
-      var upstack = parseFloat(a.y.value) > ymin;
+      var upstack = inverted ? parseFloat(a.y.value) < ymin : parseFloat(a.y.value) > ymin;
       if (upstack) {
         if (ex <= xmin && (ex + ew) >= xmax) { e.classList.add("parent"); zoom_parent(e); to_update.push(e); }
         else e.classList.add("hide");
@@ -1184,6 +1193,25 @@ const FLAMEGRAPH_JS: &str = r##"
     var pct = 100 * count / maxwidth;
     if (pct != 100) pct = pct.toFixed(1);
     matchedtxt.firstChild.nodeValue = "Matched: " + pct + "%";
+  }
+  function toggle_invert() {
+    inverted = !inverted;
+    unzoom();
+    var md = parseInt(frames.attributes["fg:max_depth"].value);
+    var fh = parseInt(frames.attributes["fg:frame_height"].value);
+    var ypt = parseInt(frames.attributes["fg:y_pad_top"].value);
+    var el = frames.children;
+    for (var i = 0; i < el.length; i++) {
+      var r = find_child(el[i], "rect");
+      var t = find_child(el[i], "text");
+      if (!r) continue;
+      var oy = parseInt(r.attributes["fg:y"].value);
+      // fg:y stores the normal (non-inverted) Y; flip only when inverted
+      var ny = inverted ? ypt + md * fh - (oy - ypt) : oy;
+      r.attributes.y.value = ny;
+      if (t) t.attributes.y.value = ny + fh - 4;
+    }
+    update_for_resize();
   }
   function format_percent(n) { return n.toFixed(4) + "%"; }
 "##;
