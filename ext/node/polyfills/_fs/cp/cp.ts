@@ -49,7 +49,7 @@ export type CheckPathsResult = {
 // deno-lint-ignore no-explicit-any
 function throwCpError(err: any): never {
   switch (err.kind) {
-    case "EInval":
+    case "EINVAL":
       throw new ERR_FS_CP_EINVAL({
         message: err.message,
         path: err.path,
@@ -57,7 +57,7 @@ function throwCpError(err: any): never {
         errno: EINVAL,
         code: "EINVAL",
       });
-    case "DirToNonDir":
+    case "DIR_TO_NON_DIR":
       throw new ERR_FS_CP_DIR_TO_NON_DIR({
         message: err.message,
         path: err.path,
@@ -65,7 +65,7 @@ function throwCpError(err: any): never {
         errno: EISDIR,
         code: "EISDIR",
       });
-    case "NonDirToDir":
+    case "NON_DIR_TO_DIR":
       throw new ERR_FS_CP_NON_DIR_TO_DIR({
         message: err.message,
         path: err.path,
@@ -73,7 +73,7 @@ function throwCpError(err: any): never {
         errno: ENOTDIR,
         code: "ENOTDIR",
       });
-    case "EExist":
+    case "EEXIST":
       throw new ERR_FS_CP_EEXIST({
         message: err.message,
         path: err.path,
@@ -81,7 +81,7 @@ function throwCpError(err: any): never {
         errno: EEXIST,
         code: "EEXIST",
       });
-    case "SymlinkToSubdirectory":
+    case "SYMLINK_TO_SUBDIRECTORY":
       throw new ERR_FS_CP_SYMLINK_TO_SUBDIRECTORY({
         message: err.message,
         path: err.path,
@@ -99,16 +99,18 @@ export async function cpFn(
   dest: string,
   opts: CopyOptions,
 ): Promise<void> {
-  // deno-lint-ignore prefer-primordials
-  if (opts.filter && !(await opts.filter(src, dest))) return;
-  // Validate paths, check parent paths, and ensure parent dir exists - all in one op
-  const result = await op_node_cp_validate_and_prepare(
-    src,
-    dest,
-    opts.dereference ?? false,
-  );
-  if (result.error) throwCpError(result.error);
-  return getStatsForCopy(result.dest_exists, src, dest, opts);
+  try {
+    // deno-lint-ignore prefer-primordials
+    if (opts.filter && !(await opts.filter(src, dest))) return;
+    const result = await op_node_cp_validate_and_prepare(
+      src,
+      dest,
+      opts.dereference ?? false,
+    );
+    return await getStatsForCopy(result.dest_exists, src, dest, opts);
+  } catch (err) {
+    throwCpError(err);
+  }
 }
 
 export function areIdentical(
@@ -189,7 +191,7 @@ async function onFile(
   dest: string,
   opts: CopyOptions,
 ) {
-  const err = await op_node_cp_on_file(
+  await op_node_cp_on_file(
     src,
     dest,
     srcStat.mode ?? 0,
@@ -198,7 +200,6 @@ async function onFile(
     opts.errorOnExist ?? false,
     opts.preserveTimestamps ?? false,
   );
-  if (err) throwCpError(err);
 }
 
 function setDestMode(dest: string, srcMode: number | null): Promise<void> {
@@ -245,7 +246,6 @@ async function copyDir(
       destItem,
       opts.dereference ?? false,
     );
-    if (result.error) throwCpError(result.error);
     await getStatsForCopy(result.dest_exists, srcItem, destItem, opts);
   }
 }
@@ -256,11 +256,10 @@ async function onLink(
   dest: string,
   opts: CopyOptions,
 ): Promise<void> {
-  const err = await op_node_cp_on_link(
+  await op_node_cp_on_link(
     src,
     dest,
     destExists,
     opts.verbatimSymlinks ?? false,
   );
-  if (err) throwCpError(err);
 }

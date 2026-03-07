@@ -46,6 +46,59 @@ pub enum FsError {
     #[inherit]
     deno_io::fs::FsError,
   ),
+  #[class(inherit)]
+  #[error(transparent)]
+  CpError(
+    #[from]
+    #[inherit]
+    CpErrorKind,
+  ),
+}
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+#[class(generic)]
+#[error("{message}")]
+#[property("kind" = self.kind())]
+#[property("message" = self.message())]
+#[property("path" = self.path())]
+pub enum CpErrorKind {
+  EInval { message: String, path: String },
+  DirToNonDir { message: String, path: String },
+  NonDirToDir { message: String, path: String },
+  EExist { message: String, path: String },
+  SymlinkToSubdirectory { message: String, path: String },
+}
+
+impl CpErrorKind {
+  fn kind(&self) -> &'static str {
+    match self {
+      CpErrorKind::EInval { .. } => "EINVAL",
+      CpErrorKind::DirToNonDir { .. } => "DIR_TO_NON_DIR",
+      CpErrorKind::NonDirToDir { .. } => "NON_DIR_TO_DIR",
+      CpErrorKind::EExist { .. } => "EEXIST",
+      CpErrorKind::SymlinkToSubdirectory { .. } => "SYMLINK_TO_SUBDIRECTORY",
+    }
+  }
+
+  fn message(&self) -> String {
+    match self {
+      CpErrorKind::EInval { message, .. } => message.clone(),
+      CpErrorKind::DirToNonDir { message, .. } => message.clone(),
+      CpErrorKind::NonDirToDir { message, .. } => message.clone(),
+      CpErrorKind::EExist { message, .. } => message.clone(),
+      CpErrorKind::SymlinkToSubdirectory { message, .. } => message.clone(),
+    }
+  }
+
+  fn path(&self) -> String {
+    match self {
+      CpErrorKind::EInval { path, .. } => path.clone(),
+      CpErrorKind::DirToNonDir { path, .. } => path.clone(),
+      CpErrorKind::NonDirToDir { path, .. } => path.clone(),
+      CpErrorKind::EExist { path, .. } => path.clone(),
+      CpErrorKind::SymlinkToSubdirectory { path, .. } => path.clone(),
+    }
+  }
 }
 
 #[op2(fast, stack_trace)]
@@ -610,26 +663,10 @@ pub async fn op_node_rmdir(
 }
 
 #[derive(Debug, Serialize)]
-#[serde(tag = "kind")]
-pub enum CpErrorKind {
-  /// Maps to ERR_FS_CP_EINVAL on JS side
-  EInval { message: String, path: String },
-  /// Maps to ERR_FS_CP_DIR_TO_NON_DIR on JS side
-  DirToNonDir { message: String, path: String },
-  /// Maps to ERR_FS_CP_NON_DIR_TO_DIR on JS side
-  NonDirToDir { message: String, path: String },
-  /// Maps to ERR_FS_CP_EEXIST on JS side
-  EExist { message: String, path: String },
-  /// Maps to ERR_FS_CP_SYMLINK_TO_SUBDIRECTORY on JS side
-  SymlinkToSubdirectory { message: String, path: String },
-}
-
-#[derive(Debug, Serialize)]
-pub struct CpCheckPathsResult {
-  pub src_dev: u64,
-  pub src_ino: u64,
-  pub dest_exists: bool,
-  pub error: Option<CpErrorKind>,
+struct CpCheckPathsResult {
+  src_dev: u64,
+  src_ino: u64,
+  dest_exists: bool,
 }
 
 /// Check if two stat results refer to the same file (same dev + ino).
@@ -755,66 +792,57 @@ async fn check_paths_impl(
 
   if let Some(ref dest_stat) = dest_stat {
     if are_identical_stat(&src_stat, dest_stat) {
-      return Ok(CpCheckPathsResult {
-        src_dev,
-        src_ino,
-        dest_exists: true,
-        error: Some(CpErrorKind::EInval {
+      return Err(
+        CpErrorKind::EInval {
           message: "src and dest cannot be the same".to_string(),
           path: dest.to_string(),
-        }),
-      });
+        }
+        .into(),
+      );
     }
     if src_stat.is_directory && !dest_stat.is_directory {
-      return Ok(CpCheckPathsResult {
-        src_dev,
-        src_ino,
-        dest_exists: true,
-        error: Some(CpErrorKind::DirToNonDir {
+      return Err(
+        CpErrorKind::DirToNonDir {
           message: format!(
             "cannot overwrite non-directory {} with directory {}",
             dest, src
           ),
           path: dest.to_string(),
-        }),
-      });
+        }
+        .into(),
+      );
     }
     if !src_stat.is_directory && dest_stat.is_directory {
-      return Ok(CpCheckPathsResult {
-        src_dev,
-        src_ino,
-        dest_exists: true,
-        error: Some(CpErrorKind::NonDirToDir {
+      return Err(
+        CpErrorKind::NonDirToDir {
           message: format!(
             "cannot overwrite directory {} with non-directory {}",
             dest, src
           ),
           path: dest.to_string(),
-        }),
-      });
+        }
+        .into(),
+      );
     }
   }
 
   if src_stat.is_directory && is_src_subdir(src, dest) {
-    return Ok(CpCheckPathsResult {
-      src_dev,
-      src_ino,
-      dest_exists: dest_stat.is_some(),
-      error: Some(CpErrorKind::EInval {
+    return Err(
+      CpErrorKind::EInval {
         message: format!(
           "cannot copy {} to a subdirectory of self {}",
           src, dest
         ),
         path: dest.to_string(),
-      }),
-    });
+      }
+      .into(),
+    );
   }
 
   Ok(CpCheckPathsResult {
     src_dev,
     src_ino,
     dest_exists: dest_stat.is_some(),
-    error: None,
   })
 }
 
@@ -875,13 +903,7 @@ pub async fn op_node_cp_validate_and_prepare(
   let check_result =
     check_paths_impl(&state, &fs, &src, &dest, dereference, false).await?;
 
-  // If there's an error from check_paths, return early
-  if check_result.error.is_some() {
-    return Ok(check_result);
-  }
-
-  // Check parent paths
-  let parent_error = check_parent_paths_impl(
+  check_parent_paths_impl(
     &state,
     &fs,
     &src,
@@ -890,16 +912,6 @@ pub async fn op_node_cp_validate_and_prepare(
     &dest,
   )
   .await?;
-
-  // If there's an error from check_parent_paths, return it
-  if let Some(error) = parent_error {
-    return Ok(CpCheckPathsResult {
-      src_dev: check_result.src_dev,
-      src_ino: check_result.src_ino,
-      dest_exists: check_result.dest_exists,
-      error: Some(error),
-    });
-  }
 
   // Ensure parent dir exists
   ensure_parent_dir_impl(&state, &fs, &dest).await?;
@@ -919,7 +931,7 @@ async fn check_parent_paths_impl(
   src_dev: u64,
   src_ino: u64,
   dest: &str,
-) -> Result<Option<CpErrorKind>, FsError> {
+) -> Result<(), FsError> {
   let src_parent = Path::new(src)
     .parent()
     .map(|p| p.to_path_buf())
@@ -936,31 +948,34 @@ async fn check_parent_paths_impl(
 
   loop {
     if current == src_parent {
-      return Ok(None);
+      return Ok(());
     }
 
     // Check if current is the root
     if current.parent().is_none() || current.parent() == Some(&current) {
-      return Ok(None);
+      return Ok(());
     }
 
     let current_str = current.to_str().unwrap_or_default();
     let checked_path = check_cp_read(state, current_str)?;
     let stat_result = fs.stat_async(checked_path).await;
     match stat_result {
-      Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+      Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
       Err(e) => return Err(FsError::Fs(e)),
       Ok(dest_stat) => {
         // Check if src and current parent are identical (same dev + ino)
         if let Some(dest_ino) = dest_stat.ino {
           if dest_ino == src_ino && dest_stat.dev == src_dev {
-            return Ok(Some(CpErrorKind::EInval {
-              message: format!(
-                "cannot copy {} to a subdirectory of self {}",
-                src, dest
-              ),
-              path: dest.to_string(),
-            }));
+            return Err(
+              CpErrorKind::EInval {
+                message: format!(
+                  "cannot copy {} to a subdirectory of self {}",
+                  src, dest
+                ),
+                path: dest.to_string(),
+              }
+              .into(),
+            );
           }
         }
       }
@@ -968,7 +983,7 @@ async fn check_parent_paths_impl(
 
     current = match current.parent() {
       Some(p) => p.to_path_buf(),
-      None => return Ok(None),
+      None => return Ok(()),
     };
   }
 }
@@ -976,14 +991,13 @@ async fn check_parent_paths_impl(
 /// Async op: checks that dest is not a subdirectory of src.
 /// Returns null if OK, or a CpErrorKind object if the check fails.
 #[op2(stack_trace)]
-#[serde]
 pub async fn op_node_cp_check_parent_paths(
   state: Rc<RefCell<OpState>>,
   #[string] src: String,
   #[string] dest: String,
   #[number] src_dev: u64,
   #[number] src_ino: u64,
-) -> Result<Option<CpErrorKind>, FsError> {
+) -> Result<(), FsError> {
   let fs = {
     let state = state.borrow();
     state.borrow::<FileSystemRc>().clone()
@@ -1102,7 +1116,6 @@ async fn set_dest_timestamps(
 /// When preserve_timestamps is true, copies the timestamps from src to dest
 /// and ensures the file is writable before doing so.
 #[op2(stack_trace)]
-#[serde]
 pub async fn op_node_cp_on_file(
   state: Rc<RefCell<OpState>>,
   #[string] src: String,
@@ -1112,7 +1125,7 @@ pub async fn op_node_cp_on_file(
   force: bool,
   error_on_exist: bool,
   preserve_timestamps: bool,
-) -> Result<Option<CpErrorKind>, FsError> {
+) -> Result<(), FsError> {
   let fs = {
     let state = state.borrow();
     state.borrow::<FileSystemRc>().clone()
@@ -1124,13 +1137,16 @@ pub async fn op_node_cp_on_file(
       let dest_path = check_cp_write(&state, &dest)?;
       fs.remove_async(dest_path, false).await?;
     } else if error_on_exist {
-      return Ok(Some(CpErrorKind::EExist {
-        message: format!("{} already exists", dest),
-        path: dest.to_string(),
-      }));
+      return Err(
+        CpErrorKind::EExist {
+          message: format!("{} already exists", dest),
+          path: dest.to_string(),
+        }
+        .into(),
+      );
     } else {
       // Neither force nor errorOnExist: do nothing
-      return Ok(None);
+      return Ok(());
     }
   }
 
@@ -1145,20 +1161,19 @@ pub async fn op_node_cp_on_file(
     set_dest_mode(&state, &fs, &dest, src_mode).await?;
   }
 
-  Ok(None)
+  Ok(())
 }
 
 /// Async op: handles copying a symlink (onLink + copyLink).
 /// Returns null on success, or a CpErrorKind on error.
 #[op2(stack_trace)]
-#[serde]
 pub async fn op_node_cp_on_link(
   state: Rc<RefCell<OpState>>,
   #[string] src: String,
   #[string] dest: String,
   dest_exists: bool,
   verbatim_symlinks: bool,
-) -> Result<Option<CpErrorKind>, FsError> {
+) -> Result<(), FsError> {
   let fs = {
     let state = state.borrow();
     state.borrow::<FileSystemRc>().clone()
@@ -1185,7 +1200,7 @@ pub async fn op_node_cp_on_link(
     let src_p = check_cp_read(&state, &resolved_src)?;
     let dest_p = check_cp_write(&state, &dest)?;
     fs.symlink_async(src_p, dest_p, None).await?;
-    return Ok(None);
+    return Ok(());
   }
 
   // Dest exists — try to read it as a symlink
@@ -1214,7 +1229,7 @@ pub async fn op_node_cp_on_link(
         let src_p = check_cp_read(&state, &resolved_src)?;
         let dest_p = check_cp_write(&state, &dest)?;
         fs.symlink_async(src_p, dest_p, None).await?;
-        return Ok(None);
+        return Ok(());
       }
       return Err(FsError::Fs(e));
     }
@@ -1226,25 +1241,31 @@ pub async fn op_node_cp_on_link(
   let src_is_dir = src_stat.is_directory;
 
   if src_is_dir && is_src_subdir(&resolved_src, &resolved_dest) {
-    return Ok(Some(CpErrorKind::EInval {
-      message: format!(
-        "cannot copy {} to a subdirectory of self {}",
-        resolved_src, resolved_dest
-      ),
-      path: dest.to_string(),
-    }));
+    return Err(
+      CpErrorKind::EInval {
+        message: format!(
+          "cannot copy {} to a subdirectory of self {}",
+          resolved_src, resolved_dest
+        ),
+        path: dest.to_string(),
+      }
+      .into(),
+    );
   }
 
   // Do not copy if src is a subdir of dest since unlinking
   // dest would remove src contents and create a broken symlink.
   if src_is_dir && is_src_subdir(&resolved_dest, &resolved_src) {
-    return Ok(Some(CpErrorKind::SymlinkToSubdirectory {
-      message: format!(
-        "cannot overwrite {} with {}",
-        resolved_dest, resolved_src
-      ),
-      path: dest.to_string(),
-    }));
+    return Err(
+      CpErrorKind::SymlinkToSubdirectory {
+        message: format!(
+          "cannot overwrite {} with {}",
+          resolved_dest, resolved_src
+        ),
+        path: dest.to_string(),
+      }
+      .into(),
+    );
   }
 
   // Unlink dest and create new symlink
@@ -1253,5 +1274,5 @@ pub async fn op_node_cp_on_link(
   let src_p = check_cp_read(&state, &resolved_src)?;
   let dest_p = check_cp_write(&state, &dest)?;
   fs.symlink_async(src_p, dest_p, None).await?;
-  Ok(None)
+  Ok(())
 }
