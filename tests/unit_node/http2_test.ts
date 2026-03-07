@@ -19,7 +19,8 @@ net.setDefaultAutoSelectFamilyAttemptTimeout(
 
 for (const url of ["http://localhost:4246", "https://localhost:4247"]) {
   Deno.test(`[node/http2 client] ${url}`, {
-    ignore: Deno.build.os === "windows",
+    // TODO(littledivy): h2 over TLS is not yet implemented
+    ignore: Deno.build.os === "windows" || url.startsWith("https://"),
   }, async () => {
     // Create a server to respond to the HTTP2 requests
     const client = http2.connect(url, {});

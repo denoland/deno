@@ -298,6 +298,12 @@ export class TLSSocket extends net.Socket {
   getCipher() {
     return "";
   }
+
+  // TLSSocket is always encrypted - this property returns true
+  // to indicate that the connection is secured via TLS.
+  get encrypted() {
+    return true;
+  }
 }
 
 class JSStreamSocket {
