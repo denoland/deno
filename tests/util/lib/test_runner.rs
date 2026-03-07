@@ -586,6 +586,28 @@ pub trait ReporterData {
   fn times_flaky() -> usize;
 }
 
+/// Checks if `--list` was passed in CLI args. If so, prints all test names
+/// in libtest format and returns `true` (caller should exit early).
+pub fn print_tests_if_list_flag<TData>(
+  category: &CollectedTestCategory<TData>,
+) -> bool {
+  if !std::env::args().any(|arg| arg == "--list") {
+    return false;
+  }
+  fn print_tests_recursive<T>(category: &CollectedTestCategory<T>) {
+    for child in &category.children {
+      match child {
+        CollectedCategoryOrTest::Category(c) => print_tests_recursive(c),
+        CollectedCategoryOrTest::Test(t) => {
+          println!("{}: test", t.name);
+        }
+      }
+    }
+  }
+  print_tests_recursive(category);
+  true
+}
+
 pub fn get_test_reporter<TData: 'static>(
   test_module_name: &str,
   flaky_test_tracker: Arc<FlakyTestTracker>,
