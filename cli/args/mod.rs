@@ -1020,6 +1020,14 @@ impl CliOptions {
     }
   }
 
+  pub fn cpu_prof_flamegraph(&self) -> bool {
+    match &self.flags.subcommand {
+      DenoSubcommand::Run(flags) => flags.cpu_prof_flamegraph,
+      DenoSubcommand::Eval(flags) => flags.cpu_prof_flamegraph,
+      _ => false,
+    }
+  }
+
   pub fn enable_op_summary_metrics(&self) -> bool {
     self.flags.enable_op_summary_metrics
       || matches!(

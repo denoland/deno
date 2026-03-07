@@ -272,6 +272,7 @@ pub struct EvalFlags {
   pub cpu_prof_name: Option<String>,
   pub cpu_prof_interval: Option<i32>,
   pub cpu_prof_md: bool,
+  pub cpu_prof_flamegraph: bool,
 }
 
 #[derive(Clone, Default, Debug, Eq, PartialEq)]
@@ -421,6 +422,7 @@ pub struct RunFlags {
   pub cpu_prof_name: Option<String>,
   pub cpu_prof_interval: Option<i32>,
   pub cpu_prof_md: bool,
+  pub cpu_prof_flamegraph: bool,
   pub print_task_list: bool,
 }
 
@@ -437,6 +439,7 @@ impl RunFlags {
       cpu_prof_name: None,
       cpu_prof_interval: None,
       cpu_prof_md: false,
+      cpu_prof_flamegraph: false,
       print_task_list: false,
     }
   }
@@ -3152,6 +3155,7 @@ This command has implicit access to all permissions.
       .arg(cpu_prof_name_arg())
       .arg(cpu_prof_interval_arg())
       .arg(cpu_prof_md_arg())
+      .arg(cpu_prof_flamegraph_arg())
   })
 }
 
@@ -4068,6 +4072,7 @@ fn run_args(command: Command, top_level: bool) -> Command {
     .arg(cpu_prof_name_arg())
     .arg(cpu_prof_interval_arg())
     .arg(cpu_prof_md_arg())
+    .arg(cpu_prof_flamegraph_arg())
     .arg(tunnel_arg())
 }
 
@@ -5591,6 +5596,13 @@ fn cpu_prof_md_arg() -> Arg {
     .action(ArgAction::SetTrue)
 }
 
+fn cpu_prof_flamegraph_arg() -> Arg {
+  Arg::new("cpu-prof-flamegraph")
+    .long("cpu-prof-flamegraph")
+    .help("Generate an SVG flamegraph alongside the CPU profile")
+    .action(ArgAction::SetTrue)
+}
+
 fn permit_no_files_arg() -> Arg {
   Arg::new("permit-no-files")
     .long("permit-no-files")
@@ -6447,6 +6459,7 @@ fn eval_parse(
   let cpu_prof_name = matches.remove_one::<String>("cpu-prof-name");
   let cpu_prof_interval = matches.remove_one::<i32>("cpu-prof-interval");
   let cpu_prof_md = matches.get_flag("cpu-prof-md");
+  let cpu_prof_flamegraph = matches.get_flag("cpu-prof-flamegraph");
 
   flags.subcommand = DenoSubcommand::Eval(EvalFlags {
     print,
@@ -6456,6 +6469,7 @@ fn eval_parse(
     cpu_prof_name,
     cpu_prof_interval,
     cpu_prof_md,
+    cpu_prof_flamegraph,
   });
   Ok(())
 }
@@ -7013,6 +7027,7 @@ fn run_parse(
   let cpu_prof_name = matches.remove_one::<String>("cpu-prof-name");
   let cpu_prof_interval = matches.remove_one::<i32>("cpu-prof-interval");
   let cpu_prof_md = matches.get_flag("cpu-prof-md");
+  let cpu_prof_flamegraph = matches.get_flag("cpu-prof-flamegraph");
 
   match matches.remove_many::<String>("script_arg") {
     Some(mut script_arg) => {
@@ -7028,6 +7043,7 @@ fn run_parse(
         cpu_prof_name,
         cpu_prof_interval,
         cpu_prof_md,
+        cpu_prof_flamegraph,
         print_task_list: false,
       });
     }
@@ -7049,6 +7065,7 @@ fn run_parse(
           cpu_prof_name: None,
           cpu_prof_interval: None,
           cpu_prof_md: false,
+          cpu_prof_flamegraph: false,
           print_task_list: true,
         });
       }
@@ -8174,6 +8191,7 @@ mod tests {
           cpu_prof_name: None,
           cpu_prof_interval: None,
           cpu_prof_md: false,
+          cpu_prof_flamegraph: false,
           print_task_list: false,
         }),
         code_cache_enabled: true,
@@ -8206,6 +8224,7 @@ mod tests {
           cpu_prof_name: None,
           cpu_prof_interval: None,
           cpu_prof_md: false,
+          cpu_prof_flamegraph: false,
           print_task_list: false,
         }),
         code_cache_enabled: true,
@@ -8239,6 +8258,7 @@ mod tests {
           cpu_prof_name: None,
           cpu_prof_interval: None,
           cpu_prof_md: false,
+          cpu_prof_flamegraph: false,
           print_task_list: false,
         }),
         code_cache_enabled: true,
@@ -8272,6 +8292,7 @@ mod tests {
           cpu_prof_name: None,
           cpu_prof_interval: None,
           cpu_prof_md: false,
+          cpu_prof_flamegraph: false,
           print_task_list: false,
         }),
         code_cache_enabled: true,
@@ -8305,6 +8326,7 @@ mod tests {
           cpu_prof_name: None,
           cpu_prof_interval: None,
           cpu_prof_md: false,
+          cpu_prof_flamegraph: false,
           print_task_list: false,
         }),
         code_cache_enabled: true,
@@ -8339,6 +8361,7 @@ mod tests {
           cpu_prof_name: None,
           cpu_prof_interval: None,
           cpu_prof_md: false,
+          cpu_prof_flamegraph: false,
           print_task_list: false,
         }),
         code_cache_enabled: true,
@@ -8376,6 +8399,7 @@ mod tests {
           cpu_prof_name: None,
           cpu_prof_interval: None,
           cpu_prof_md: false,
+          cpu_prof_flamegraph: false,
           print_task_list: false,
         }),
         code_cache_enabled: true,
@@ -8412,6 +8436,7 @@ mod tests {
           cpu_prof_name: None,
           cpu_prof_interval: None,
           cpu_prof_md: false,
+          cpu_prof_flamegraph: false,
           print_task_list: false,
         }),
         code_cache_enabled: true,
@@ -8445,6 +8470,7 @@ mod tests {
           cpu_prof_name: None,
           cpu_prof_interval: None,
           cpu_prof_md: false,
+          cpu_prof_flamegraph: false,
           print_task_list: false,
         }),
         code_cache_enabled: true,
@@ -8479,6 +8505,7 @@ mod tests {
           cpu_prof_name: None,
           cpu_prof_interval: None,
           cpu_prof_md: false,
+          cpu_prof_flamegraph: false,
           print_task_list: false,
         }),
         code_cache_enabled: true,
@@ -8512,6 +8539,7 @@ mod tests {
           cpu_prof_name: None,
           cpu_prof_interval: None,
           cpu_prof_md: false,
+          cpu_prof_flamegraph: false,
           print_task_list: false,
         }),
         code_cache_enabled: true,
@@ -8557,6 +8585,7 @@ mod tests {
           cpu_prof_name: None,
           cpu_prof_interval: None,
           cpu_prof_md: false,
+          cpu_prof_flamegraph: false,
           print_task_list: false,
         }),
         code_cache_enabled: true,
@@ -8815,6 +8844,7 @@ mod tests {
           cpu_prof_name: None,
           cpu_prof_interval: None,
           cpu_prof_md: false,
+          cpu_prof_flamegraph: false,
           print_task_list: false,
         }),
         permissions: PermissionFlags {
@@ -10235,6 +10265,7 @@ mod tests {
           cpu_prof_name: None,
           cpu_prof_interval: None,
           cpu_prof_md: false,
+          cpu_prof_flamegraph: false,
           print_task_list: false,
         }),
         permissions: PermissionFlags {
@@ -10473,6 +10504,7 @@ mod tests {
           cpu_prof_name: None,
           cpu_prof_interval: None,
           cpu_prof_md: false,
+          cpu_prof_flamegraph: false,
           print_task_list: false,
         }),
         permissions: PermissionFlags {
@@ -10779,6 +10811,7 @@ mod tests {
           cpu_prof_name: None,
           cpu_prof_interval: None,
           cpu_prof_md: false,
+          cpu_prof_flamegraph: false,
           print_task_list: false,
         }),
         ..Flags::default()
@@ -11108,6 +11141,7 @@ mod tests {
           cpu_prof_name: None,
           cpu_prof_interval: None,
           cpu_prof_md: false,
+          cpu_prof_flamegraph: false,
           print_task_list: false,
         }),
         log_level: Some(Level::Error),
@@ -11235,6 +11269,7 @@ mod tests {
           cpu_prof_name: None,
           cpu_prof_interval: None,
           cpu_prof_md: false,
+          cpu_prof_flamegraph: false,
           print_task_list: false,
         }),
         type_check_mode: TypeCheckMode::None,
@@ -11413,6 +11448,7 @@ mod tests {
           cpu_prof_name: None,
           cpu_prof_interval: None,
           cpu_prof_md: false,
+          cpu_prof_flamegraph: false,
           print_task_list: false,
         }),
         node_modules_dir: Some(NodeModulesDirMode::Auto),
@@ -12645,6 +12681,7 @@ mod tests {
           cpu_prof_name: None,
           cpu_prof_interval: None,
           cpu_prof_md: false,
+          cpu_prof_flamegraph: false,
           print_task_list: false,
         }),
         inspect_wait: Some("127.0.0.1:9229".parse().unwrap()),
@@ -13357,6 +13394,7 @@ mod tests {
           cpu_prof_name: None,
           cpu_prof_interval: None,
           cpu_prof_md: false,
+          cpu_prof_flamegraph: false,
           print_task_list: false,
         }),
         type_check_mode: TypeCheckMode::None,
@@ -14273,6 +14311,7 @@ mod tests {
           cpu_prof_name: None,
           cpu_prof_interval: None,
           cpu_prof_md: false,
+          cpu_prof_flamegraph: false,
           print_task_list: false,
         }),
         config_flag: ConfigFlag::Disabled,

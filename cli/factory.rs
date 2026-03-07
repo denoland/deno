@@ -1130,6 +1130,7 @@ impl CliFactory {
         name: cli_options.cpu_prof_name(),
         interval: cli_options.cpu_prof_interval(),
         md: cli_options.cpu_prof_md(),
+        flamegraph: cli_options.cpu_prof_flamegraph(),
       });
 
     let lib_main_worker_factory = LibMainWorkerFactory::new(
@@ -1239,6 +1240,7 @@ impl CliFactory {
         name: cli_options.cpu_prof_name(),
         interval: cli_options.cpu_prof_interval(),
         md: cli_options.cpu_prof_md(),
+        flamegraph: cli_options.cpu_prof_flamegraph(),
       });
 
     let initial_cwd =

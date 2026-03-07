@@ -16,6 +16,7 @@ pub struct CpuProfilerConfig {
   pub name: Option<String>,
   pub interval: i32,
   pub md: bool,
+  pub flamegraph: bool,
 }
 
 use deno_core::InspectorSessionKind;
@@ -39,6 +40,7 @@ pub struct CpuProfilerInner {
   filename: String,
   interval: i32,
   generate_md: bool,
+  generate_flamegraph: bool,
   profile_msg_id: Option<i32>,
 }
 
@@ -51,12 +53,14 @@ impl CpuProfilerState {
     filename: String,
     interval: i32,
     generate_md: bool,
+    generate_flamegraph: bool,
   ) -> Self {
     Self(Arc::new(Mutex::new(CpuProfilerInner {
       dir,
       filename,
       interval,
       generate_md,
+      generate_flamegraph,
       profile_msg_id: None,
     })))
   }
@@ -148,6 +152,19 @@ impl CpuProfilerState {
         );
       }
     }
+
+    // Generate flamegraph SVG if requested
+    if inner.generate_flamegraph {
+      let svg_filename = inner.filename.replace(".cpuprofile", ".svg");
+      let svg_filepath = inner.dir.join(&svg_filename);
+      if let Err(err) = generate_flamegraph_svg(profile, &svg_filepath) {
+        log::error!(
+          "Failed to generate flamegraph at {:?}, reason: {:?}",
+          svg_filepath,
+          err
+        );
+      }
+    }
   }
 }
 
@@ -164,9 +181,15 @@ impl CpuProfiler {
     filename: String,
     interval: i32,
     generate_md: bool,
+    generate_flamegraph: bool,
   ) -> Self {
-    let state =
-      CpuProfilerState::new(cpu_prof_dir, filename, interval, generate_md);
+    let state = CpuProfilerState::new(
+      cpu_prof_dir,
+      filename,
+      interval,
+      generate_md,
+      generate_flamegraph,
+    );
 
     js_runtime.maybe_init_inspector();
     let insp = js_runtime.inspector();
@@ -656,6 +679,330 @@ fn format_location(url: &str, line_number: i32) -> String {
       short_url.to_string()
     }
   }
+}
+
+fn generate_flamegraph_svg(
+  profile: &serde_json::Value,
+  filepath: &PathBuf,
+) -> std::io::Result<()> {
+  let profile: CpuProfile = match serde_json::from_value(profile.clone()) {
+    Ok(p) => p,
+    Err(err) => {
+      return Err(std::io::Error::new(
+        std::io::ErrorKind::InvalidData,
+        format!("Failed to parse profile: {}", err),
+      ));
+    }
+  };
+
+  let node_map: HashMap<i32, &ProfileNode> =
+    profile.nodes.iter().map(|n| (n.id, n)).collect();
+
+  // Build parent map
+  let mut parent_map: HashMap<i32, i32> = HashMap::new();
+  for node in &profile.nodes {
+    for &child_id in &node.children {
+      parent_map.insert(child_id, node.id);
+    }
+  }
+
+  // Build folded stacks from samples
+  let mut stacks: HashMap<String, i32> = HashMap::new();
+  for &sample_id in &profile.samples {
+    // Walk from sample node to root to build the stack
+    let mut frames = Vec::new();
+    let mut current_id = sample_id;
+    loop {
+      if let Some(node) = node_map.get(&current_id) {
+        let name = &node.call_frame.function_name;
+        // Skip idle/root/program frames
+        if !name.is_empty()
+          && name != "(idle)"
+          && name != "(root)"
+          && name != "(program)"
+        {
+          let location = if node.call_frame.url.is_empty() {
+            name.clone()
+          } else {
+            let short_url = node
+              .call_frame
+              .url
+              .rsplit('/')
+              .next()
+              .unwrap_or(&node.call_frame.url);
+            if node.call_frame.line_number >= 0 {
+              format!(
+                "{} ({}:{})",
+                name,
+                short_url,
+                node.call_frame.line_number + 1
+              )
+            } else {
+              format!("{} ({})", name, short_url)
+            }
+          };
+          frames.push(location);
+        }
+      }
+      if let Some(&parent_id) = parent_map.get(&current_id) {
+        current_id = parent_id;
+      } else {
+        break;
+      }
+    }
+    if frames.is_empty() {
+      continue;
+    }
+    // Reverse so root is first
+    frames.reverse();
+    let stack = frames.join(";");
+    *stacks.entry(stack).or_insert(0) += 1;
+  }
+
+  if stacks.is_empty() {
+    return Ok(());
+  }
+
+  // Build a tree from the folded stacks for rendering
+  let mut root = FlameNode::new("root".to_string());
+  for (stack, count) in &stacks {
+    let frames: Vec<&str> = stack.split(';').collect();
+    root.insert(&frames, *count);
+  }
+  root.compute_total();
+
+  let total_samples = root.total;
+  if total_samples == 0 {
+    return Ok(());
+  }
+
+  // SVG parameters
+  let frame_height = 18;
+  let font_size = 11;
+  let x_pad = 10;
+  let y_pad_top = 50;
+  let y_pad_bottom = 10;
+  let max_depth = root.max_depth();
+  let svg_width = 1200;
+  let svg_height = y_pad_top + (max_depth + 1) * frame_height + y_pad_bottom;
+  let chart_width = svg_width - 2 * x_pad;
+
+  let mut svg = String::new();
+
+  // SVG header
+  svg.push_str(&format!(
+    r#"<?xml version="1.0" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg version="1.1" width="{}" height="{}" xmlns="http://www.w3.org/2000/svg">
+<style>
+  .frame rect {{ stroke: #d0d0d0; stroke-width: 0.5; }}
+  .frame text {{ font-family: monospace; font-size: {}px; fill: #333; }}
+  .frame rect:hover {{ stroke: #333; stroke-width: 1; cursor: pointer; }}
+  .title {{ font-family: sans-serif; font-size: 16px; font-weight: bold; fill: #333; }}
+  .subtitle {{ font-family: sans-serif; font-size: 11px; fill: #888; }}
+</style>
+<rect width="100%" height="100%" fill="white" />
+<text x="{}" y="20" class="title">CPU Flamegraph</text>
+<text x="{}" y="36" class="subtitle">{} samples</text>
+"#,
+    svg_width, svg_height, font_size, x_pad, x_pad, total_samples
+  ));
+
+  // Render frames (bottom-up: root at bottom)
+  #[allow(clippy::too_many_arguments)]
+  fn render_node(
+    svg: &mut String,
+    node: &FlameNode,
+    x: f64,
+    width: f64,
+    depth: usize,
+    max_depth: usize,
+    frame_height: usize,
+    y_pad_top: usize,
+    total_samples: i32,
+    font_size: usize,
+  ) {
+    if node.name == "root" {
+      // Don't render root, just its children
+      let mut child_x = x;
+      for child in &node.children {
+        let child_width = (child.total as f64 / total_samples as f64) * width;
+        if child_width >= 0.5 {
+          render_node(
+            svg,
+            child,
+            child_x,
+            child_width,
+            depth,
+            max_depth,
+            frame_height,
+            y_pad_top,
+            total_samples,
+            font_size,
+          );
+          child_x += child_width;
+        }
+      }
+      return;
+    }
+
+    // Flamegraph: root at bottom, leaves at top
+    let y = y_pad_top + (max_depth - depth) * frame_height;
+
+    let (r, g, b) = flame_color(&node.name);
+
+    svg.push_str(&format!(
+      r#"<g class="frame"><title>{} ({} samples, {:.1}%)</title><rect x="{:.1}" y="{}" width="{:.1}" height="{}" fill="rgb({},{},{})" />"#,
+      escape_xml(&node.name),
+      node.total,
+      (node.total as f64 / total_samples as f64) * 100.0,
+      x,
+      y,
+      width,
+      frame_height - 1,
+      r,
+      g,
+      b,
+    ));
+
+    // Only show text if there's enough room
+    if width > 30.0 {
+      let max_chars = (width as usize - 6) / (font_size * 6 / 10);
+      let label = if node.name.len() > max_chars && max_chars > 3 {
+        format!("{}..", &node.name[..max_chars - 2])
+      } else {
+        node.name.clone()
+      };
+      svg.push_str(&format!(
+        r#"<text x="{:.1}" y="{}">{}</text>"#,
+        x + 3.0,
+        y + frame_height - 5,
+        escape_xml(&label),
+      ));
+    }
+
+    svg.push_str("</g>\n");
+
+    // Render children
+    let mut child_x = x;
+    for child in &node.children {
+      let child_width = (child.total as f64 / node.total as f64) * width;
+      if child_width >= 0.5 {
+        render_node(
+          svg,
+          child,
+          child_x,
+          child_width,
+          depth + 1,
+          max_depth,
+          frame_height,
+          y_pad_top,
+          total_samples,
+          font_size,
+        );
+        child_x += child_width;
+      }
+    }
+  }
+
+  render_node(
+    &mut svg,
+    &root,
+    x_pad as f64,
+    chart_width as f64,
+    0,
+    max_depth,
+    frame_height,
+    y_pad_top,
+    total_samples,
+    font_size,
+  );
+
+  svg.push_str("</svg>\n");
+
+  let file = File::create(filepath)?;
+  let mut out = BufWriter::new(file);
+  out.write_all(svg.as_bytes())?;
+  out.flush()?;
+
+  Ok(())
+}
+
+#[derive(Debug)]
+struct FlameNode {
+  name: String,
+  self_count: i32,
+  total: i32,
+  children: Vec<FlameNode>,
+}
+
+impl FlameNode {
+  fn new(name: String) -> Self {
+    Self {
+      name,
+      self_count: 0,
+      total: 0,
+      children: Vec::new(),
+    }
+  }
+
+  fn insert(&mut self, frames: &[&str], count: i32) {
+    if frames.is_empty() {
+      self.self_count += count;
+      return;
+    }
+    let child = self.children.iter_mut().find(|c| c.name == frames[0]);
+    if let Some(child) = child {
+      child.insert(&frames[1..], count);
+    } else {
+      let mut child = FlameNode::new(frames[0].to_string());
+      child.insert(&frames[1..], count);
+      self.children.push(child);
+    }
+  }
+
+  fn compute_total(&mut self) -> i32 {
+    let mut total = self.self_count;
+    for child in &mut self.children {
+      total += child.compute_total();
+    }
+    self.total = total;
+    total
+  }
+
+  fn max_depth(&self) -> usize {
+    if self.children.is_empty() {
+      0
+    } else {
+      1 + self
+        .children
+        .iter()
+        .map(|c| c.max_depth())
+        .max()
+        .unwrap_or(0)
+    }
+  }
+}
+
+/// Generate a warm color for flamegraph frames.
+/// Uses a hash of the function name to vary hue slightly.
+fn flame_color(name: &str) -> (u8, u8, u8) {
+  let mut hash: u32 = 0;
+  for b in name.bytes() {
+    hash = hash.wrapping_mul(31).wrapping_add(b as u32);
+  }
+  // Warm colors: red-orange-yellow range
+  let r = 200 + (hash % 55) as u8;
+  let g = 80 + (hash.wrapping_shr(8) % 110) as u8;
+  let b = 20 + (hash.wrapping_shr(16) % 40) as u8;
+  (r, g, b)
+}
+
+fn escape_xml(s: &str) -> String {
+  s.replace('&', "&amp;")
+    .replace('<', "&lt;")
+    .replace('>', "&gt;")
+    .replace('"', "&quot;")
 }
 
 mod cdp {

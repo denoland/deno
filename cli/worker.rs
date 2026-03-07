@@ -44,6 +44,7 @@ pub struct CpuProfConfig {
   pub name: Option<String>,
   pub interval: i32,
   pub md: bool,
+  pub flamegraph: bool,
 }
 
 pub struct CliMainWorkerOptions {
@@ -274,6 +275,7 @@ impl CliMainWorker {
       filename,
       cpu_prof_config.interval,
       cpu_prof_config.md,
+      cpu_prof_config.flamegraph,
     );
     cpu_profiler.start_profiling();
 
