@@ -7,8 +7,10 @@ on:
       - edited
       - synchronize
 
-# WARNING: This workflow runs in the context of the base repository so the
-# GITHUB_TOKEN it has access to has full write permissions to the repository.
+permissions: {}
+
+# This workflow runs in the context of the base repository. Keep the default
+# token permissions empty because the job does not require GitHub API access.
 jobs:
   main:
     name: lint title
