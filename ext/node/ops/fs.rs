@@ -13,11 +13,13 @@ use deno_core::unsync::spawn_blocking;
 use deno_fs::FileSystemRc;
 use deno_fs::OpenOptions;
 use deno_io::fs::FileResource;
+use deno_io::fs::FsResult;
 use deno_permissions::CheckedPath;
 use deno_permissions::CheckedPathBuf;
 use deno_permissions::OpenAccessKind;
 use deno_permissions::PermissionsContainer;
 use serde::Serialize;
+use tokio::task::JoinError;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum FsError {
@@ -53,6 +55,18 @@ pub enum FsError {
     #[inherit]
     CpErrorKind,
   ),
+}
+
+impl From<JoinError> for FsError {
+  fn from(err: JoinError) -> Self {
+    if err.is_cancelled() {
+      todo!("async tasks must not be cancelled")
+    }
+    if err.is_panic() {
+      std::panic::resume_unwind(err.into_panic()); // resume the panic on the main thread
+    }
+    unreachable!()
+  }
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -725,35 +739,29 @@ async fn check_paths_impl(
   dereference: bool,
   skip_permission_check: bool,
 ) -> Result<CpCheckPathsResult, FsError> {
-  let (src_stat, dest_result) = if skip_permission_check {
+  let (src_path, dest_path) = if skip_permission_check {
     let src_path = CheckedPathBuf::unsafe_new(PathBuf::from(src));
     let dest_path = CheckedPathBuf::unsafe_new(PathBuf::from(dest));
-    if dereference {
-      (
-        fs.stat_async(src_path).await?,
-        fs.stat_async(dest_path).await,
-      )
-    } else {
-      (
-        fs.lstat_async(src_path).await?,
-        fs.lstat_async(dest_path).await,
-      )
-    }
+    (src_path, dest_path)
   } else {
     let src_path = check_cp_path(state, src, OpenAccessKind::Read)?;
     let dest_path = check_cp_path(state, dest, OpenAccessKind::Read)?;
-    if dereference {
-      (
-        fs.stat_async(src_path).await?,
-        fs.stat_async(dest_path).await,
-      )
-    } else {
-      (
-        fs.lstat_async(src_path).await?,
-        fs.lstat_async(dest_path).await,
-      )
-    }
+    (src_path, dest_path)
   };
+
+  let fs = fs.clone();
+  let (src_stat_result, dest_result) =
+    spawn_blocking(move || -> (FsResult<_>, FsResult<_>) {
+      let src_path = src_path.as_checked_path();
+      let dest_path = dest_path.as_checked_path();
+      if dereference {
+        (fs.stat_sync(&src_path), fs.stat_sync(&dest_path))
+      } else {
+        (fs.lstat_sync(&src_path), fs.lstat_sync(&dest_path))
+      }
+    })
+    .await?;
+  let src_stat = src_stat_result?;
 
   let dest_stat = match dest_result {
     Ok(stat) => Some(stat),
@@ -1014,53 +1022,50 @@ pub async fn op_node_cp_ensure_parent_dir(
   ensure_parent_dir_impl(&state, &fs, &dest).await
 }
 
-async fn handle_timestamps_and_mode(
-  state: &Rc<RefCell<OpState>>,
+fn handle_timestamps_and_mode_sync(
   fs: &FileSystemRc,
-  src: &str,
-  dest: &str,
-  src_mode: u32,
-) -> Result<(), FsError> {
+  src_path: &CheckedPath,
+  dest_path: &CheckedPath,
+  mut src_mode: u32,
+) -> deno_io::fs::FsResult<()> {
   // Make sure the file is writable before setting the timestamp
   // otherwise open fails with EPERM when invoked with 'r+'
   if file_is_not_writable(src_mode) {
-    set_dest_mode(state, fs, dest, src_mode | 0o200).await?;
+    src_mode = src_mode | 0o200;
   }
-  // Set timestamps from a fresh stat of src (atime is modified by read)
-  set_dest_timestamps(state, fs, src, dest).await?;
-  set_dest_mode(state, fs, dest, src_mode).await
+
+  // Set timestamps from a fresh stat of src (atime is modified by read).
+  set_dest_timestamps_sync(&fs, &src_path, &dest_path)?;
+  set_dest_mode_sync(&fs, &dest_path, src_mode)?;
+  Ok(())
 }
 
 fn file_is_not_writable(mode: u32) -> bool {
   (mode & 0o200) == 0
 }
 
-async fn set_dest_mode(
-  state: &Rc<RefCell<OpState>>,
+fn set_dest_mode_sync(
   fs: &FileSystemRc,
-  dest: &str,
+  dest_path: &CheckedPath,
   mode: u32,
-) -> Result<(), FsError> {
+) -> deno_io::fs::FsResult<()> {
   if mode == 0 {
     return Ok(());
   }
-  let dest_path = check_cp_path(state, dest, OpenAccessKind::Write)?;
   #[cfg(unix)]
-  fs.chmod_async(dest_path, mode).await?;
+  fs.chmod_sync(dest_path, mode)?;
   #[cfg(not(unix))]
-  fs.chmod_async(dest_path, mode as i32).await?;
+  fs.chmod_sync(dest_path, mode as i32)?;
   Ok(())
 }
 
-async fn set_dest_timestamps(
-  state: &Rc<RefCell<OpState>>,
+fn set_dest_timestamps_sync(
   fs: &FileSystemRc,
-  src: &str,
-  dest: &str,
-) -> Result<(), FsError> {
+  src_path: &CheckedPath,
+  dest_path: &CheckedPath,
+) -> deno_io::fs::FsResult<()> {
   // Re-stat src to get fresh atime/mtime
-  let src_path = check_cp_path(state, src, OpenAccessKind::Read)?;
-  let src_stat = fs.stat_async(src_path).await?;
+  let src_stat = fs.stat_sync(&src_path)?;
 
   if let (Some(atime), Some(mtime)) = (src_stat.atime, src_stat.mtime) {
     // FsStat stores times as milliseconds since the Unix epoch.
@@ -1071,9 +1076,13 @@ async fn set_dest_timestamps(
     let mtime_secs = (mtime / 1000) as i64;
     // Same conversion for mtime: ms remainder -> ns.
     let mtime_nanos = ((mtime % 1000) * 1_000_000) as u32;
-    let dest_path = check_cp_path(state, dest, OpenAccessKind::Write)?;
-    fs.utime_async(dest_path, atime_secs, atime_nanos, mtime_secs, mtime_nanos)
-      .await?;
+    fs.utime_sync(
+      &dest_path,
+      atime_secs,
+      atime_nanos,
+      mtime_secs,
+      mtime_nanos,
+    )?;
   }
   Ok(())
 }
@@ -1123,17 +1132,33 @@ pub async fn op_node_cp_on_file(
   }
 
   // Copy file: read from src, write to dest
-  let src_path = check_cp_path(&state, &src, OpenAccessKind::Read)?;
-  let dest_path = check_cp_path(&state, &dest, OpenAccessKind::Write)?;
-  fs.copy_file_async(src_path, dest_path).await?;
+  let (src_path, dest_path) = {
+    let mut state = state.borrow_mut();
+    (
+      state.borrow_mut::<PermissionsContainer>().check_open(
+        Cow::Owned(PathBuf::from(src)),
+        OpenAccessKind::Read,
+        Some("node:fs.cp"),
+      )?,
+      state.borrow_mut::<PermissionsContainer>().check_open(
+        Cow::Owned(PathBuf::from(dest)),
+        OpenAccessKind::Write,
+        Some("node:fs.cp"),
+      )?,
+    )
+  };
 
-  if preserve_timestamps {
-    handle_timestamps_and_mode(&state, &fs, &src, &dest, src_mode).await?;
-  } else {
-    set_dest_mode(&state, &fs, &dest, src_mode).await?;
-  }
-
-  Ok(())
+  spawn_blocking(move || -> FsResult<()> {
+    fs.copy_file_sync(&src_path, &dest_path)?;
+    if preserve_timestamps {
+      handle_timestamps_and_mode_sync(&fs, &src_path, &dest_path, src_mode)?;
+    } else {
+      set_dest_mode_sync(&fs, &dest_path, src_mode)?;
+    }
+    Ok(())
+  })
+  .await?
+  .map_err(|err| err.into())
 }
 
 /// Async op: handles copying a symlink (onLink + copyLink).
@@ -1151,9 +1176,8 @@ pub async fn op_node_cp_on_link(
     state.borrow::<FileSystemRc>().clone()
   };
 
-  // Read symlink target
   let src_path = check_cp_path(&state, &src, OpenAccessKind::ReadNoFollow)?;
-  let resolved_src_buf = fs.read_link_async(src_path).await?;
+  let resolved_src_buf = fs.read_link_async(src_path.clone()).await?;
   let mut resolved_src =
     resolved_src_buf.to_str().unwrap_or_default().to_string();
 
@@ -1169,14 +1193,21 @@ pub async fn op_node_cp_on_link(
   }
 
   if !dest_exists {
-    let src_p = check_cp_path(&state, &resolved_src, OpenAccessKind::Read)?;
-    let dest_p = check_cp_path(&state, &dest, OpenAccessKind::Write)?;
-    fs.symlink_async(src_p, dest_p, None).await?;
+    {
+      let mut state = state.borrow_mut();
+      let permissions = state.borrow_mut::<PermissionsContainer>();
+      permissions.check_write_all("node:fs.symlink")?;
+      permissions.check_read_all("node:fs.symlink")?;
+    }
+    // PERMISSIONS: ok because we verified --allow-write and --allow-read above
+    let oldpath = CheckedPathBuf::unsafe_new(PathBuf::from(&resolved_src));
+    let newpath = CheckedPathBuf::unsafe_new(PathBuf::from(&dest));
+    fs.symlink_async(oldpath, newpath, None).await?;
     return Ok(());
   }
 
   // Dest exists — try to read it as a symlink
-  let dest_path = check_cp_path(&state, &dest, OpenAccessKind::Read)?;
+  let dest_path = check_cp_path(&state, &dest, OpenAccessKind::ReadNoFollow)?;
   let resolved_dest_result = fs.read_link_async(dest_path).await;
   let resolved_dest = match resolved_dest_result {
     Ok(p) => {
@@ -1198,9 +1229,16 @@ pub async fn op_node_cp_on_link(
       if kind == std::io::ErrorKind::InvalidInput
         || kind == std::io::ErrorKind::Other
       {
-        let src_p = check_cp_path(&state, &resolved_src, OpenAccessKind::Read)?;
-        let dest_p = check_cp_path(&state, &dest, OpenAccessKind::Write)?;
-        fs.symlink_async(src_p, dest_p, None).await?;
+        {
+          let mut state = state.borrow_mut();
+          let permissions = state.borrow_mut::<PermissionsContainer>();
+          permissions.check_write_all("node:fs.symlink")?;
+          permissions.check_read_all("node:fs.symlink")?;
+        }
+        // PERMISSIONS: ok because we verified --allow-write and --allow-read above
+        let oldpath = CheckedPathBuf::unsafe_new(PathBuf::from(&resolved_src));
+        let newpath = CheckedPathBuf::unsafe_new(PathBuf::from(&dest));
+        fs.symlink_async(oldpath, newpath, None).await?;
         return Ok(());
       }
       return Err(FsError::Fs(e));
@@ -1240,10 +1278,28 @@ pub async fn op_node_cp_on_link(
     );
   }
 
+  let (src_path, dest_path) = {
+    let mut state = state.borrow_mut();
+    (
+      state.borrow_mut::<PermissionsContainer>().check_open(
+        Cow::Owned(PathBuf::from(resolved_src)),
+        OpenAccessKind::Read,
+        Some("node:fs.cp"),
+      )?,
+      state.borrow_mut::<PermissionsContainer>().check_open(
+        Cow::Owned(PathBuf::from(dest)),
+        OpenAccessKind::Write,
+        Some("node:fs.cp"),
+      )?,
+    )
+  };
+
   // Unlink dest and create new symlink
-  let dest_p = check_cp_path(&state, &dest, OpenAccessKind::Write)?;
-  fs.remove_async(dest_p.clone(), false).await?;
-  let src_p = check_cp_path(&state, &resolved_src, OpenAccessKind::Read)?;
-  fs.symlink_async(src_p, dest_p, None).await?;
-  Ok(())
+  spawn_blocking(move || -> FsResult<()> {
+    fs.remove_sync(&dest_path, false)?;
+    fs.symlink_sync(&src_path, &dest_path, None)?;
+    Ok(())
+  })
+  .await?
+  .map_err(|err| err.into())
 }
