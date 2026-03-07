@@ -599,7 +599,10 @@ pub fn print_tests_if_list_flag<TData>(
       match child {
         CollectedCategoryOrTest::Category(c) => print_tests_recursive(c),
         CollectedCategoryOrTest::Test(t) => {
-          println!("{}: test", t.name);
+          #[allow(clippy::print_stdout)]
+          {
+            println!("{}: test", t.name);
+          }
         }
       }
     }
