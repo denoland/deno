@@ -11,7 +11,6 @@ import {
   PublicKeyObject,
   SecretKeyObject,
 } from "ext:deno_node/internal/crypto/keys.ts";
-import { notImplemented } from "ext:deno_node/_utils.ts";
 import {
   ERR_INCOMPATIBLE_OPTION_PAIR,
   ERR_INVALID_ARG_VALUE,
