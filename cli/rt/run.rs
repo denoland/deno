@@ -1070,7 +1070,8 @@ pub async fn run(
     sys.maybe_native_addon_loader(),
     feature_checker,
     fs,
-    None,
+    None, // maybe_coverage_dir
+    None, // maybe_cpu_prof_config
     Box::new(module_loader_factory),
     node_resolver.clone(),
     create_npm_process_state_provider(&npm_resolver),
