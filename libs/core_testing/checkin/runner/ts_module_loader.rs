@@ -29,6 +29,9 @@ use deno_core::error::ModuleLoaderError;
 use deno_core::resolve_import;
 use deno_core::url::Url;
 use deno_error::JsErrorBox;
+use futures::future::FutureExt;
+
+use super::ops_loader::ResolveMapping;
 
 // TODO(bartlomieju): this is duplicated in `core/examples/ts_modules_loader.rs`.
 type SourceMapStore = Rc<RefCell<HashMap<String, Vec<u8>>>>;
@@ -37,6 +40,16 @@ type SourceMapStore = Rc<RefCell<HashMap<String, Vec<u8>>>>;
 #[derive(Default)]
 pub struct TypescriptModuleLoader {
   source_maps: SourceMapStore,
+  resolve_mapping: ResolveMapping,
+}
+
+impl TypescriptModuleLoader {
+  pub fn new(resolve_mapping: ResolveMapping) -> Self {
+    Self {
+      source_maps: Default::default(),
+      resolve_mapping,
+    }
+  }
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -57,8 +70,21 @@ impl ModuleLoader for TypescriptModuleLoader {
     specifier: &str,
     referrer: &str,
     _kind: ResolutionKind,
-  ) -> Result<ModuleSpecifier, ModuleLoaderError> {
-    resolve_import(specifier, referrer).map_err(JsErrorBox::from_err)
+  ) -> deno_core::ModuleResolveResponse {
+    // Check if there's a registered resolve mapping for this specifier.
+    // Return Async to exercise the async resolution path.
+    if let Some(resolved) = self.resolve_mapping.map.borrow().get(specifier) {
+      let resolved = resolved.clone();
+      return deno_core::ModuleResolveResponse::Async(
+        async move {
+          ModuleSpecifier::parse(&resolved).map_err(JsErrorBox::from_err)
+        }
+        .boxed_local(),
+      );
+    }
+    deno_core::ModuleResolveResponse::Sync(
+      resolve_import(specifier, referrer).map_err(JsErrorBox::from_err),
+    )
   }
 
   fn load(

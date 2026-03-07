@@ -1239,7 +1239,7 @@ impl ModuleLoader for PlaceholderModuleLoader {
     specifier: &str,
     referrer: &str,
     kind: deno_core::ResolutionKind,
-  ) -> Result<ModuleSpecifier, deno_core::error::ModuleLoaderError> {
+  ) -> deno_core::ModuleResolveResponse {
     self
       .0
       .borrow_mut()
