@@ -157,6 +157,14 @@ const cipherInfoTable: CipherInfoResult[] = [
     mode: "gcm",
   },
   {
+    name: "des-ede3-cbc",
+    nid: 44,
+    blockSize: 8,
+    ivLength: 8,
+    keyLength: 24,
+    mode: "cbc",
+  },
+  {
     name: "aes-128-ctr",
     nid: 904,
     blockSize: 1,
