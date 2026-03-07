@@ -44,6 +44,7 @@ pub use ops::vm::VM_CONTEXT_INDEX;
 pub use ops::vm::create_v8_context;
 pub use ops::vm::init_global_template;
 
+use self::ops::util::NullEnvVarsSys;
 pub use crate::global::GlobalsStorage;
 use crate::global::global_object_middleware;
 use crate::global::global_template_middleware;
@@ -129,7 +130,7 @@ fn op_node_load_env_file(
   #[allow(clippy::disallowed_methods)]
   let contents = fs::read_to_string(path)?;
 
-  parse_env_content_hook(&contents, |key, value| {
+  parse_env_content_hook(&NullEnvVarsSys, &contents, |key, value| {
     // Follows Node.js behavior where null bytes are stripped from env keys and values
     let key = if let Some(null_pos) = key.find('\0') {
       &key[..null_pos]
@@ -309,6 +310,7 @@ deno_core::extension!(deno_node,
     ops::util::op_node_in_npm_package<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys>,
     ops::util::op_node_parse_env,
     ops::worker_threads::op_worker_threads_filename<TSys>,
+    ops::worker_threads::op_worker_get_resource_limits,
     ops::ipc::op_node_child_ipc_pipe,
     ops::ipc::op_node_ipc_write_json,
     ops::ipc::op_node_ipc_read_json,
@@ -381,17 +383,8 @@ deno_core::extension!(deno_node,
     "_fs/cp/cp_sync.ts",
     "_fs/_fs_dir.ts",
     "_fs/_fs_exists.ts",
-    "_fs/_fs_fchmod.ts",
-    "_fs/_fs_fchown.ts",
-    "_fs/_fs_fdatasync.ts",
     "_fs/_fs_fstat.ts",
-    "_fs/_fs_fsync.ts",
-    "_fs/_fs_ftruncate.ts",
-    "_fs/_fs_futimes.ts",
     "_fs/_fs_glob.ts",
-    "_fs/_fs_lchmod.ts",
-    "_fs/_fs_lchown.ts",
-    "_fs/_fs_link.ts",
     "_fs/_fs_lstat.ts",
     "_fs/_fs_lutimes.ts",
     "_fs/_fs_mkdir.ts",
@@ -411,7 +404,6 @@ deno_core::extension!(deno_node,
     "_fs/_fs_statfs.ts",
     "_fs/_fs_symlink.ts",
     "_fs/_fs_truncate.ts",
-    "_fs/_fs_unlink.ts",
     "_fs/_fs_utimes.ts",
     "_fs/_fs_watch.ts",
     "_fs/_fs_write.ts",

@@ -9,5 +9,11 @@ license.workspace = true
 repository.workspace = true
 description = "dotenv file parser for Deno"
 
+[dependencies]
+sys_traits.workspace = true
+
+[dev-dependencies]
+sys_traits = { workspace = true, features = ["memory"] }
+
 [lib]
 path = "lib.rs"

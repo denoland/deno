@@ -55,7 +55,15 @@ pub enum BrokerResponse {
 use self::broker::has_broker;
 use self::broker::maybe_check_with_broker;
 
-pub static AUDIT_FILE: OnceLock<Mutex<std::fs::File>> = OnceLock::new();
+pub type OtelAuditFn =
+  fn(permission: &str, value: &str, stack: Option<&[String]>);
+
+pub enum AuditSink {
+  File(Mutex<std::fs::File>),
+  Otel(OtelAuditFn),
+}
+
+pub static AUDIT_SINK: OnceLock<AuditSink> = OnceLock::new();
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 #[error("{}", custom_message.as_ref().cloned().unwrap_or_else(|| format!("Requires {access}, {}", format_permission_error(.name))))]
@@ -81,34 +89,51 @@ fn write_audit<T>(flag_name: &str, value: T)
 where
   T: Serialize,
 {
-  let Some(file) = AUDIT_FILE.get() else {
+  let Some(sink) = AUDIT_SINK.get() else {
     return;
   };
 
-  let mut file = file.lock();
-
-  let mut map = serde_json::Map::with_capacity(5);
-  let _ = map.insert("v".into(), serde_json::Value::Number(1.into()));
-  let _ = map.insert(
-    "datetime".into(),
-    serde_json::Value::String(
-      chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
-    ),
-  );
-  let _ = map.insert(
-    "permission".into(),
-    serde_json::to_value(flag_name).unwrap(),
-  );
-  let _ = map.insert("value".into(), serde_json::to_value(value).unwrap());
-
   let get_stack = MAYBE_CURRENT_STACKTRACE.lock();
-  if let Some(stack) = get_stack.as_ref().map(|s| s()) {
-    let _ = map.insert("stack".into(), serde_json::to_value(&stack).unwrap());
-  }
+  let stack = get_stack.as_ref().map(|s| s());
 
-  let _ = file.write_all(
-    format!("{}\n", serde_json::to_string(&map).unwrap()).as_bytes(),
-  );
+  match sink {
+    AuditSink::File(file) => {
+      let mut file = file.lock();
+
+      let mut map = serde_json::Map::with_capacity(6);
+      let _ = map.insert("v".into(), serde_json::Value::Number(1.into()));
+      let _ = map.insert(
+        "datetime".into(),
+        serde_json::Value::String(
+          chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+        ),
+      );
+      let _ = map.insert(
+        "permission".into(),
+        serde_json::to_value(flag_name).unwrap(),
+      );
+      let _ = map.insert("value".into(), serde_json::to_value(&value).unwrap());
+
+      if let Some(ref stack) = stack {
+        let _ =
+          map.insert("stack".into(), serde_json::to_value(stack).unwrap());
+      }
+
+      let _ = file.write_all(
+        format!("{}\n", serde_json::to_string(&map).unwrap()).as_bytes(),
+      );
+    }
+    AuditSink::Otel(report_fn) => {
+      let value_str = serde_json::to_value(&value)
+        .map(|v| match v {
+          serde_json::Value::String(s) => s,
+          other => other.to_string(),
+        })
+        .unwrap_or_default();
+
+      report_fn(flag_name, &value_str, stack.as_deref());
+    }
+  }
 }
 
 /// Fast exit from permission check routines if this permission
