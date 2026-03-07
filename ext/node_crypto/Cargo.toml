@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_node_crypto"
-version = "0.4.0"
+version = "0.7.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -26,6 +26,7 @@ deno_core.workspace = true
 deno_crypto_provider.workspace = true
 deno_error.workspace = true
 der = { workspace = true, features = ["derive"] }
+des.workspace = true
 digest = { workspace = true, features = ["core-api", "std"] }
 dsa.workspace = true
 ecb.workspace = true

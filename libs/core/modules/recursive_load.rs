@@ -13,6 +13,7 @@ use deno_error::JsErrorBox;
 use futures::future::FutureExt;
 use futures::stream::FuturesUnordered;
 use futures::stream::Stream;
+use futures::stream::StreamExt;
 use futures::stream::TryStreamExt;
 
 use super::loaders::ModuleLoadOptions;
@@ -57,7 +58,7 @@ enum LoadInit {
   Side {
     specifier: String,
     kind: SideModuleKind,
-    code: RefCell<Option<String>>,
+    code: Option<String>,
   },
   /// Dynamic import specifier with referrer and expected
   /// module type (which is determined by import assertion).
@@ -78,8 +79,8 @@ type ModuleResolveFuture =
 
 /// This future is used to implement parallel async module loading.
 pub(crate) struct RecursiveModuleLoad {
-  pub id: ModuleLoadId,
-  pub root_module_id: Option<ModuleId>,
+  id: ModuleLoadId,
+  root_module_id: Option<ModuleId>,
   init: LoadInit,
   state: LoadState,
   module_map_rc: Rc<ModuleMap>,
@@ -88,7 +89,8 @@ pub(crate) struct RecursiveModuleLoad {
   pending_root_resolve: Option<Pin<Box<ModuleResolveFuture>>>,
   visited: HashSet<ModuleReference>,
   visited_as_alias: Rc<RefCell<HashSet<String>>>,
-  pub root_module_reference: Option<ModuleReference>,
+  root_module_reference: Option<ModuleReference>,
+  resolved_specifier: Option<Result<ModuleSpecifier, CoreError>>,
   // The loader is copied from `module_map_rc`, but its reference is cloned
   // ahead of time to avoid already-borrowed errors.
   loader: Rc<dyn ModuleLoader>,
@@ -105,25 +107,32 @@ impl RecursiveModuleLoad {
   ///
   /// The module corresponding for the given `specifier` will be marked as
   // "the main module" (`import.meta.main` will return `true` for this module).
-  pub(crate) fn main(specifier: String, module_map_rc: Rc<ModuleMap>) -> Self {
-    Self::new(LoadInit::Main(specifier), module_map_rc)
+  pub(crate) async fn main(
+    specifier: String,
+    module_map_rc: Rc<ModuleMap>,
+  ) -> Result<Self, CoreError> {
+    let mut load = Self::new(LoadInit::Main(specifier), module_map_rc);
+    load.prepare().await?;
+    Ok(load)
   }
 
   /// Starts a new asynchronous load of the module graph for given specifier.
-  pub(crate) fn side(
+  pub(crate) async fn side(
     specifier: String,
     module_map_rc: Rc<ModuleMap>,
     kind: SideModuleKind,
     code: Option<String>,
-  ) -> Self {
-    Self::new(
+  ) -> Result<Self, CoreError> {
+    let mut load = Self::new(
       LoadInit::Side {
         specifier,
         kind,
-        code: RefCell::new(code),
+        code,
       },
       module_map_rc,
-    )
+    );
+    load.prepare().await?;
+    Ok(load)
   }
 
   /// Starts a new asynchronous load of the module graph for given specifier
@@ -153,84 +162,89 @@ impl RecursiveModuleLoad {
       LoadInit::DynamicImport(_, _, module_type, _) => module_type.clone(),
       _ => RequestedModuleType::None,
     };
-    let mut load = Self {
+    // Resolve the root specifier eagerly. For sync resolution, cache the
+    // result. For async, store the future for later resolution.
+    let resolve_response =
+      Self::resolve_root_from_init(&init, &module_map_rc);
+    let (resolved_specifier, pending_root_resolve) = match resolve_response {
+      ModuleResolveResponse::Sync(result) => {
+        (Some(result.map_err(CoreError::from)), None)
+      }
+      ModuleResolveResponse::Async(fut) => (None, Some(fut)),
+    };
+    let root_module_id = resolved_specifier
+      .as_ref()
+      .and_then(|r| r.as_ref().ok())
+      .and_then(|spec| {
+        module_map_rc.get_id(spec.as_str(), requested_module_type)
+      });
+    Self {
       id,
-      root_module_id: None,
+      root_module_id,
       init,
       state: LoadState::Init,
       module_map_rc: module_map_rc.clone(),
       loader,
       pending: FuturesUnordered::new(),
-      pending_root_resolve: None,
+      pending_root_resolve,
       visited: HashSet::new(),
       visited_as_alias: Default::default(),
       root_module_reference: None,
-    };
-    // FIXME(bartlomieju): this seems fishy
-    // Ignore the error here, let it be hit in `Stream::poll_next()`.
-    // Only attempt early lookup for sync resolution.
-    if let ModuleResolveResponse::Sync(Ok(root_specifier)) = load.resolve_root()
-      && let Some(module_id) =
-        module_map_rc.get_id(root_specifier.as_str(), requested_module_type)
-    {
-      load.root_module_id = Some(module_id);
+      resolved_specifier,
     }
-    load
   }
 
-  pub fn resolve_root(&self) -> ModuleResolveResponse {
-    match self.init {
-      LoadInit::Main(ref specifier) => {
-        self
-          .module_map_rc
-          .resolve(specifier, ".", ResolutionKind::MainModule)
+  pub(crate) fn id(&self) -> ModuleLoadId {
+    self.id
+  }
+
+  pub(crate) fn root_module_id(&self) -> Option<ModuleId> {
+    self.root_module_id
+  }
+
+  pub(crate) fn root_module_reference(&self) -> Option<&ModuleReference> {
+    self.root_module_reference.as_ref()
+  }
+
+  fn resolve_root_from_init(
+    init: &LoadInit,
+    module_map_rc: &ModuleMap,
+  ) -> ModuleResolveResponse {
+    match init {
+      LoadInit::Main(specifier) => {
+        module_map_rc.resolve(specifier, ".", ResolutionKind::MainModule)
       }
-      LoadInit::Side { ref specifier, .. } => {
-        self
-          .module_map_rc
-          .resolve(specifier, ".", ResolutionKind::Import)
+      LoadInit::Side { specifier, .. } => {
+        module_map_rc.resolve(specifier, ".", ResolutionKind::Import)
       }
-      LoadInit::DynamicImport(ref specifier, ref referrer, _, _) => self
-        .module_map_rc
+      LoadInit::DynamicImport(specifier, referrer, _, _) => module_map_rc
         .resolve(specifier, referrer, ResolutionKind::DynamicImport),
     }
   }
 
-  /// Resolve the root module, handling both sync and async resolution.
-  #[allow(dead_code)]
-  pub async fn resolve_root_async(&self) -> Result<ModuleSpecifier, CoreError> {
-    match self.resolve_root() {
-      ModuleResolveResponse::Sync(result) => result.map_err(|e| e.into()),
-      ModuleResolveResponse::Async(fut) => fut.await.map_err(|e| e.into()),
-    }
-  }
-
-  pub(crate) async fn prepare(&self) -> Result<(), CoreError> {
-    let (
-      module_specifier,
-      maybe_referrer,
-      maybe_code,
-      requested_module_type,
-      is_synchronous,
-    ) = match &self.init {
-      LoadInit::Main(specifier) => {
-        let spec = self
-          .module_map_rc
-          .resolve_async(specifier, ".", ResolutionKind::MainModule)
-          .await?;
-        (spec, None, None, RequestedModuleType::None, false)
+  pub(crate) async fn prepare(&mut self) -> Result<(), CoreError> {
+    let module_specifier = match self.resolved_specifier.take() {
+      Some(Ok(spec)) => {
+        // Put it back for poll_next to use later.
+        self.resolved_specifier = Some(Ok(spec.clone()));
+        spec
       }
-      LoadInit::Side {
-        specifier,
-        kind,
-        code,
-      } => {
-        let spec = self
-          .module_map_rc
-          .resolve_async(specifier, ".", ResolutionKind::Import)
-          .await?;
-        (
-          spec,
+      Some(Err(err)) => return Err(err),
+      None => {
+        // Async resolution — await the pending future.
+        let fut = self
+          .pending_root_resolve
+          .take()
+          .expect("prepare() called but no resolved_specifier or pending_root_resolve");
+        let spec = fut.await.map_err(CoreError::from)?;
+        self.resolved_specifier = Some(Ok(spec.clone()));
+        spec
+      }
+    };
+    let (maybe_referrer, maybe_code, requested_module_type, is_synchronous) =
+      match &mut self.init {
+        LoadInit::Main(_) => (None, None, RequestedModuleType::None, false),
+        LoadInit::Side { kind, code, .. } => (
           None,
           code.take(),
           RequestedModuleType::None,
@@ -238,27 +252,14 @@ impl RecursiveModuleLoad {
             SideModuleKind::Async => false,
             SideModuleKind::Sync => true,
           },
-        )
-      }
-      LoadInit::DynamicImport(
-        specifier,
-        referrer,
-        requested_module_type,
-        _,
-      ) => {
-        let spec = self
-          .module_map_rc
-          .resolve_async(specifier, referrer, ResolutionKind::DynamicImport)
-          .await?;
-        (
-          spec,
+        ),
+        LoadInit::DynamicImport(_, referrer, requested_module_type, _) => (
           Some(referrer.to_string()),
           None,
           requested_module_type.clone(),
           false,
-        )
-      }
-    };
+        ),
+      };
 
     self
       .loader
@@ -486,6 +487,23 @@ impl RecursiveModuleLoad {
       }
     }
   }
+
+  /// Drives the module load stream to completion, calling `on_module` for each
+  /// loaded module. Returns the root module ID once the full graph is loaded.
+  pub(crate) async fn run_to_completion(
+    mut self,
+    mut on_module: impl FnMut(
+      &mut Self,
+      &ModuleRequest,
+      ModuleSource,
+    ) -> Result<(), CoreError>,
+  ) -> Result<ModuleId, CoreError> {
+    while let Some(load_result) = self.next().await {
+      let (request, source) = load_result?;
+      on_module(&mut self, &request, source)?;
+    }
+    Ok(self.root_module_id.expect("Root module should be loaded"))
+  }
 }
 
 impl RecursiveModuleLoad {
@@ -571,14 +589,14 @@ impl Stream for RecursiveModuleLoad {
     // available.
     match inner.state {
       LoadState::Init => {
-        let module_specifier = match inner.resolve_root() {
-          ModuleResolveResponse::Sync(Ok(url)) => url,
-          ModuleResolveResponse::Sync(Err(error)) => {
-            return Poll::Ready(Some(Err(error.into())));
+        let module_specifier = match inner.resolved_specifier.take() {
+          Some(Ok(spec)) => spec,
+          Some(Err(error)) => {
+            return Poll::Ready(Some(Err(error)));
           }
-          ModuleResolveResponse::Async(fut) => {
-            // Async root resolution — store the future and transition state.
-            inner.pending_root_resolve = Some(fut);
+          None => {
+            // Async root resolution — transition to ResolvingRoot state.
+            // pending_root_resolve should already be set from the constructor.
             inner.state = LoadState::ResolvingRoot;
             return Self::poll_next(Pin::new(inner), cx);
           }

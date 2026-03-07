@@ -428,10 +428,10 @@ impl Graph {
           //   package-b@1.0.0_package-c@1.0.0__package-b@1.0.0
           //                                    ^ attempting to resolve this
           // In this case, we go up the ancestors to see if we can find a matching nv.
-          let id = ancestor_ids
+          let maybe_id = ancestor_ids
             .iter()
             .find(|id| id.nv == pkg_id.nv && packages.contains_key(id))
-            .unwrap_or_else(|| {
+            .or_else(|| {
               // If a matching nv is not found in the ancestors, then we fall
               // back to searching the entire collection of packages for a matching
               // nv and just select the first one even though that might not be exactly
@@ -442,15 +442,22 @@ impl Graph {
                 .collect::<Vec<_>>();
               packages_with_same_nv.sort();
               if packages_with_same_nv.is_empty() {
-                // we verify in other places that references in a snapshot
-                // should be valid (ex. when creating a snapshot), so we should
-                // never get here and if so that indicates a bug elsewhere
-                panic!("not found package id: {}", pkg_id.as_serialized());
+                None
               } else {
-                packages_with_same_nv.remove(0)
+                Some(packages_with_same_nv.remove(0))
               }
             });
-          packages.get(id).unwrap()
+          match maybe_id {
+            Some(id) => packages.get(id).unwrap(),
+            None => {
+              // The package NV is not in the snapshot. This can happen
+              // with lockfiles from older versions where a peer dep NV
+              // referenced in an NpmPackageId was not included as a
+              // package. Leave this node with no children.
+              graph.resolved_node_ids.set(node_id, graph_resolved_id);
+              return node_id;
+            }
+          }
         }
       };
       for (name, child_id) in &resolution.dependencies {
@@ -3225,7 +3232,9 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
           .peer_dep_version_req
           .as_ref()
           .unwrap_or(&dep.version_req);
-        if versions.contains_key(effective_req) {
+        if let Some(target_version) = versions.get(effective_req)
+          && child_id.nv.version != *target_version
+        {
           node.children.remove(&dep.bare_specifier);
         }
       }
@@ -3235,6 +3244,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
     // run_dedup_pass now runs BEFORE Phase 2.
     self.graph.moved_package_ids.clear();
     self.graph.packages_to_copy_index.clear();
+    self.visited_requeue.clear();
 
     // Queue all root packages for Phase 1 BFS to re-resolve
     // children that were removed above.
@@ -6447,6 +6457,89 @@ mod test {
     let _graph = Graph::from_snapshot(snapshot);
   }
 
+  /// Builds a snapshot where package-b@1.0.0 has a peer dep on
+  /// package-c@2.0.0, but package-c@2.0.0 is not in the packages list.
+  fn snapshot_with_missing_peer_dep_nv() -> SerializedNpmResolutionSnapshot {
+    SerializedNpmResolutionSnapshot {
+      root_packages: HashMap::from([(
+        PackageReq::from_str("package-a").unwrap(),
+        NpmPackageId::from_serialized("package-a@1.0.0").unwrap(),
+      )]),
+      packages: Vec::from([
+        crate::resolution::SerializedNpmResolutionSnapshotPackage {
+          id: NpmPackageId::from_serialized("package-a@1.0.0").unwrap(),
+          system: Default::default(),
+          dependencies: HashMap::from([(
+            "package-b".into(),
+            NpmPackageId::from_serialized("package-b@1.0.0_package-c@2.0.0")
+              .unwrap(),
+          )]),
+          optional_peer_dependencies: Default::default(),
+          optional_dependencies: HashSet::new(),
+          extra: None,
+          is_deprecated: false,
+          dist: Some(crate::registry::NpmPackageVersionDistInfo {
+            tarball: "https://example.com/package-a@1.0.0.tgz".to_string(),
+            shasum: None,
+            integrity: None,
+          }),
+          has_bin: false,
+          has_scripts: false,
+        },
+        crate::resolution::SerializedNpmResolutionSnapshotPackage {
+          id: NpmPackageId::from_serialized("package-b@1.0.0_package-c@2.0.0")
+            .unwrap(),
+          system: Default::default(),
+          dependencies: HashMap::new(),
+          optional_peer_dependencies: Default::default(),
+          optional_dependencies: HashSet::new(),
+          extra: None,
+          is_deprecated: false,
+          dist: Some(crate::registry::NpmPackageVersionDistInfo {
+            tarball: "https://example.com/package-b@1.0.0.tgz".to_string(),
+            shasum: None,
+            integrity: None,
+          }),
+          has_bin: false,
+          has_scripts: false,
+        },
+      ]),
+    }
+  }
+
+  #[test]
+  fn graph_from_snapshot_peer_dep_not_in_packages_no_panic() {
+    // When a peer dep NV embedded in an NpmPackageId (e.g.
+    // package-b@1.0.0_package-c@2.0.0) references a package that doesn't
+    // exist in the snapshot, from_snapshot should not panic. It should
+    // create a node for the missing package with no children.
+    let snapshot = snapshot_with_missing_peer_dep_nv();
+    let snapshot = NpmResolutionSnapshot::new(snapshot.into_valid().unwrap());
+    let graph = Graph::from_snapshot(snapshot);
+
+    // Should have 3 nodes: package-a, package-b, and the missing package-c
+    assert_eq!(graph.nodes.len(), 3);
+
+    // package-a root should exist and have package-b as a child
+    let pkg_a_nv = PackageNv::from_str("package-a@1.0.0").unwrap();
+    let &pkg_a_node_id = graph.root_packages.get(&pkg_a_nv).unwrap();
+    let pkg_a_node = graph.nodes.get(&pkg_a_node_id).unwrap();
+    assert_eq!(pkg_a_node.children.len(), 1);
+    assert!(pkg_a_node.children.contains_key("package-b"));
+
+    // package-b should have no children (package-c is a peer dep, not a child)
+    let &pkg_b_node_id = pkg_a_node.children.get("package-b").unwrap();
+    let pkg_b_node = graph.nodes.get(&pkg_b_node_id).unwrap();
+    assert!(pkg_b_node.children.is_empty());
+
+    // package-c (the missing peer dep) should exist as a node with no children
+    let pkg_b_resolved = graph.resolved_node_ids.get(pkg_b_node_id).unwrap();
+    assert_eq!(pkg_b_resolved.peer_dependencies.len(), 1);
+    let pkg_c_node_id = pkg_b_resolved.peer_dependencies[0];
+    let pkg_c_node = graph.nodes.get(&pkg_c_node_id).unwrap();
+    assert!(pkg_c_node.children.is_empty());
+  }
+
   #[tokio::test]
   async fn link_packages() {
     let api = TestNpmRegistryApi::default();
@@ -7775,6 +7868,112 @@ mod test {
           "package-b@1.0.0_package-shared@1.1.0".to_string()
         ),
       ]
+    );
+  }
+
+  // Regression test: after dedup consolidates a dependency, the BFS must
+  // fully re-traverse the graph to re-resolve removed children.
+  //
+  // Previously `visited_requeue` was not cleared before the post-dedup BFS.
+  // Within a single `resolve_pending()` call, the initial BFS populates
+  // `visited_requeue` with (parent, child) entries when a node is reached
+  // through multiple graph paths. After dedup removes children deeper in
+  // that subtree, the post-dedup BFS hits `visited_requeue.insert()`
+  // returning `false` for those stale entries, blocking re-queuing of
+  // intermediate nodes and leaving their removed children unresolved.
+  //
+  // The scenario:
+  //
+  // Phase 1 snapshot:
+  //   root-a ──dep──▶ mid ──dep──▶ shared@^1 (→ 1.0.0) ──dep──▶ leaf
+  //                       ──dep──▶ other ──dep──▶ shared@^1 (→ 1.0.0)
+  //
+  // Phase 2 (extends the snapshot):
+  //   root-c ──dep──▶ mid (same node from snapshot)
+  //          ──dep──▶ shared@^1.1 (→ 1.1.0, new version, triggers dedup)
+  //
+  // In Phase 2's initial BFS, root-c depends on mid, causing mid to be
+  // BFS'd. mid.children["shared"] and mid.children["other"] already exist
+  // from the snapshot → Some branch → visited_requeue gets (mid, other_id).
+  //
+  // Dedup consolidates shared to 1.1.0 and removes shared from both
+  // mid.children and other.children. The post-dedup BFS re-queues roots,
+  // reaches mid, and re-resolves mid → shared@1.1.0. But when it tries
+  // to re-queue `other` (whose child `shared` was also removed), it finds
+  // (mid, other_id) already in visited_requeue → not re-queued → other's
+  // dependency on shared is lost.
+  #[tokio::test]
+  async fn dedup_visited_requeue_cleared_for_deep_re_resolution() {
+    let api = TestNpmRegistryApi::default();
+
+    // shared@1.0.0 depends on leaf
+    api.ensure_package_version("shared", "1.0.0");
+    api.ensure_package_version("leaf", "1.0.0");
+    api.add_dependency(("shared", "1.0.0"), ("leaf", "^1.0.0"));
+
+    // mid depends on shared@^1 AND other
+    // other also depends on shared@^1
+    api.ensure_package_version("mid", "1.0.0");
+    api.ensure_package_version("other", "1.0.0");
+    api.add_dependency(("mid", "1.0.0"), ("shared", "^1.0.0"));
+    api.add_dependency(("mid", "1.0.0"), ("other", "^1.0.0"));
+    api.add_dependency(("other", "1.0.0"), ("shared", "^1.0.0"));
+
+    // root-a depends on mid
+    api.ensure_package_version("root-a", "1.0.0");
+    api.add_dependency(("root-a", "1.0.0"), ("mid", "^1.0.0"));
+
+    // Phase 1: resolve root-a (shared resolves to 1.0.0, only version)
+    let snapshot = run_resolver_with_options_and_get_snapshot(
+      &api,
+      RunResolverOptions {
+        reqs: Vec::from(["root-a@1"]),
+        ..Default::default()
+      },
+    )
+    .await
+    .unwrap();
+
+    // Phase 2: publish shared@1.1.0 (also depends on leaf) and root-c.
+    // root-c depends on BOTH mid (to trigger BFS through snapshot nodes,
+    // populating visited_requeue) and shared@^1.1 (to bring 1.1.0 into
+    // the graph for dedup consolidation).
+    api.ensure_package_version("shared", "1.1.0");
+    api.add_dependency(("shared", "1.1.0"), ("leaf", "^1.0.0"));
+    api.ensure_package_version("root-c", "1.0.0");
+    api.add_dependency(("root-c", "1.0.0"), ("mid", "^1.0.0"));
+    api.add_dependency(("root-c", "1.0.0"), ("shared", "^1.1.0"));
+
+    let (packages, _package_reqs) = run_resolver_with_options_and_get_output(
+      api,
+      RunResolverOptions {
+        snapshot,
+        reqs: Vec::from(["root-c@1"]),
+        ..Default::default()
+      },
+    )
+    .await;
+
+    // `other` must have shared@1.1.0 as a dependency after dedup.
+    // Without visited_requeue.clear(), other.children["shared"] was
+    // removed by dedup but never re-resolved because visited_requeue
+    // blocked mid from re-queuing other.
+    let other_pkg = packages
+      .iter()
+      .find(|p| p.pkg_id.starts_with("other@1.0.0"))
+      .expect("other@1.0.0 should be in the snapshot");
+    assert_eq!(
+      other_pkg.dependencies.get("shared"),
+      Some(&"shared@1.1.0".to_string()),
+      "other must have shared@1.1.0 as a dependency after dedup re-resolution"
+    );
+
+    // shared@1.0.0 should be consolidated away
+    assert!(
+      !packages
+        .iter()
+        .any(|p| p.pkg_id.starts_with("shared@1.0.0")),
+      "shared@1.0.0 should be consolidated away"
     );
   }
 

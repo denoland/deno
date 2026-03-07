@@ -385,9 +385,16 @@ impl TestContext {
 
 fn kill_process(pid: u32) {
   #[cfg(unix)]
-  // SAFETY: We're sending SIGKILL to a process we spawned.
-  unsafe {
-    libc::kill(pid as i32, libc::SIGKILL);
+  {
+    // kill the process tree by first killing children via
+    // pkill, then the process itself
+    let _ = std::process::Command::new("pkill")
+      .args(["-9", "-P", &pid.to_string()])
+      .output();
+    // SAFETY: We're sending SIGKILL to a process we spawned.
+    unsafe {
+      libc::kill(pid as i32, libc::SIGKILL);
+    }
   }
   #[cfg(not(unix))]
   {
