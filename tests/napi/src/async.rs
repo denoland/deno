@@ -74,7 +74,7 @@ extern "C" fn test_async_work(
   assert_napi_ok!(napi_create_string_utf8(
     env,
     "test_async_resource".as_ptr() as *const c_char,
-    usize::MAX,
+    -1,
     &mut resource_name,
   ));
 
