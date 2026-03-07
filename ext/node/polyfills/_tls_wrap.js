@@ -302,6 +302,8 @@ export class TLSSocket extends net.Socket {
 
 class JSStreamSocket {
   #rid;
+  #channelRid;
+  #closed = false;
 
   constructor(stream) {
     this.stream = stream;
@@ -310,7 +312,8 @@ class JSStreamSocket {
   init(options) {
     op_node_tls_start(options, tlsStreamRids);
     this.#rid = tlsStreamRids[0];
-    const channelRid = tlsStreamRids[1];
+    this.#channelRid = tlsStreamRids[1];
+    const channelRid = this.#channelRid;
 
     this.stream.on("data", (data) => {
       core.write(channelRid, data);
@@ -329,9 +332,31 @@ class JSStreamSocket {
     })();
 
     this.stream.on("close", () => {
-      core.close(this.#rid);
-      core.close(channelRid);
+      this.close();
     });
+  }
+
+  // Called by stream_wrap's _onClose() via kStreamBaseField.close(),
+  // or by event listeners when the transport/DuplexPair is destroyed.
+  close() {
+    if (this.#closed) return;
+    this.#closed = true;
+    if (this.#rid !== undefined) {
+      try {
+        core.close(this.#rid);
+      } catch {
+        // already closed
+      }
+      this.#rid = undefined;
+    }
+    if (this.#channelRid !== undefined) {
+      try {
+        core.close(this.#channelRid);
+      } catch {
+        // already closed
+      }
+      this.#channelRid = undefined;
+    }
   }
 
   handshake() {
