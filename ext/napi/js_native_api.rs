@@ -1222,6 +1222,106 @@ fn node_api_create_external_string_utf16(
 }
 
 #[napi_sym]
+fn node_api_create_property_key_latin1(
+  env_ptr: *mut Env,
+  string: *const c_char,
+  length: usize,
+  result: *mut napi_value,
+) -> napi_status {
+  let env = check_env!(env_ptr);
+  if length > 0 {
+    check_arg!(env, string);
+  }
+  crate::return_status_if_false!(
+    env,
+    (length == NAPI_AUTO_LENGTH) || length <= INT_MAX as _,
+    napi_invalid_arg
+  );
+
+  let buffer = if length > 0 {
+    unsafe {
+      std::slice::from_raw_parts(
+        string as _,
+        if length == NAPI_AUTO_LENGTH {
+          std::ffi::CStr::from_ptr(string).to_bytes().len()
+        } else {
+          length
+        },
+      )
+    }
+  } else {
+    &[]
+  };
+
+  let Some(string) = ({
+    v8::callback_scope!(unsafe scope, env.context());
+    v8::String::new_from_one_byte(
+      scope,
+      buffer,
+      v8::NewStringType::Internalized,
+    )
+  }) else {
+    return napi_set_last_error(env_ptr, napi_generic_failure);
+  };
+
+  unsafe {
+    *result = string.into();
+  }
+
+  return napi_clear_last_error(env_ptr);
+}
+
+#[napi_sym]
+fn node_api_create_property_key_utf8(
+  env_ptr: *mut Env,
+  string: *const c_char,
+  length: usize,
+  result: *mut napi_value,
+) -> napi_status {
+  let env = check_env!(env_ptr);
+  if length > 0 {
+    check_arg!(env, string);
+  }
+  crate::return_status_if_false!(
+    env,
+    (length == NAPI_AUTO_LENGTH) || length <= INT_MAX as _,
+    napi_invalid_arg
+  );
+
+  let buffer = if length > 0 {
+    unsafe {
+      std::slice::from_raw_parts(
+        string as _,
+        if length == NAPI_AUTO_LENGTH {
+          std::ffi::CStr::from_ptr(string).to_bytes().len()
+        } else {
+          length
+        },
+      )
+    }
+  } else {
+    &[]
+  };
+
+  let Some(string) = ({
+    v8::callback_scope!(unsafe scope, env.context());
+    v8::String::new_from_utf8(
+      scope,
+      buffer,
+      v8::NewStringType::Internalized,
+    )
+  }) else {
+    return napi_set_last_error(env_ptr, napi_generic_failure);
+  };
+
+  unsafe {
+    *result = string.into();
+  }
+
+  return napi_clear_last_error(env_ptr);
+}
+
+#[napi_sym]
 fn node_api_create_property_key_utf16(
   env_ptr: *mut Env,
   string: *const u16,
