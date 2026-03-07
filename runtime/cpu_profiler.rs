@@ -709,13 +709,11 @@ fn generate_flamegraph_svg(
   // Build folded stacks from samples
   let mut stacks: HashMap<String, i32> = HashMap::new();
   for &sample_id in &profile.samples {
-    // Walk from sample node to root to build the stack
     let mut frames = Vec::new();
     let mut current_id = sample_id;
     loop {
       if let Some(node) = node_map.get(&current_id) {
         let name = &node.call_frame.function_name;
-        // Skip idle/root/program frames
         if !name.is_empty()
           && name != "(idle)"
           && name != "(root)"
@@ -753,7 +751,6 @@ fn generate_flamegraph_svg(
     if frames.is_empty() {
       continue;
     }
-    // Reverse so root is first
     frames.reverse();
     let stack = frames.join(";");
     *stacks.entry(stack).or_insert(0) += 1;
@@ -776,149 +773,150 @@ fn generate_flamegraph_svg(
     return Ok(());
   }
 
-  // SVG parameters
-  let frame_height = 18;
-  let font_size = 11;
-  let x_pad = 10;
-  let y_pad_top = 50;
-  let y_pad_bottom = 10;
+  // Layout parameters (matching inferno/cargo-flamegraph style)
+  let frame_height: usize = 16;
+  let font_size: f64 = 12.0;
+  let font_width: f64 = 0.59;
+  let x_pad: usize = 10;
+  let y_pad_top: usize = 66;
+  let y_pad_bottom: usize = 40;
   let max_depth = root.max_depth();
-  let svg_width = 1200;
-  let svg_height = y_pad_top + (max_depth + 1) * frame_height + y_pad_bottom;
-  let chart_width = svg_width - 2 * x_pad;
+  let image_width: usize = 1200;
+  let image_height = y_pad_top + (max_depth + 1) * frame_height + y_pad_bottom;
 
   let mut svg = String::new();
 
-  // SVG header
+  // SVG header with onload for interactivity
   svg.push_str(&format!(
-    r#"<?xml version="1.0" standalone="no"?>
+    r##"<?xml version="1.0" standalone="no"?>
 <!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
-<svg version="1.1" width="{}" height="{}" xmlns="http://www.w3.org/2000/svg">
+<svg version="1.1" width="{image_width}" height="{image_height}" onload="init(evt)" viewBox="0 0 {image_width} {image_height}" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:fg="http://github.com/nicholasgasior/gofern">
+<defs>
+  <linearGradient id="background" y1="0" y2="1">
+    <stop stop-color="#eeeeee" offset="5%"/>
+    <stop stop-color="#eeeeb0" offset="95%"/>
+  </linearGradient>
+</defs>
 <style>
-  .frame rect {{ stroke: #d0d0d0; stroke-width: 0.5; }}
-  .frame text {{ font-family: monospace; font-size: {}px; fill: #333; }}
-  .frame rect:hover {{ stroke: #333; stroke-width: 1; cursor: pointer; }}
-  .title {{ font-family: sans-serif; font-size: 16px; font-weight: bold; fill: #333; }}
-  .subtitle {{ font-family: sans-serif; font-size: 11px; fill: #888; }}
+  text {{ font-family: Verdana, sans-serif; font-size: {font_size}px; fill: rgb(0,0,0); }}
+  #search {{ text-anchor: end; opacity: 0.1; cursor: pointer; }}
+  #search:hover, #search.show {{ opacity: 1; }}
+  #matched {{ text-anchor: end; }}
+  #subtitle {{ text-anchor: middle; font-color: rgb(160,160,160); }}
+  #unzoom {{ cursor: pointer; }}
+  #frames > *:hover {{ stroke: black; stroke-width: 0.5; cursor: pointer; }}
+  .hide {{ display: none; }}
+  .parent {{ opacity: 0.5; }}
 </style>
-<rect width="100%" height="100%" fill="white" />
-<text x="{}" y="20" class="title">CPU Flamegraph</text>
-<text x="{}" y="36" class="subtitle">{} samples</text>
-"#,
-    svg_width, svg_height, font_size, x_pad, x_pad, total_samples
+<script type="text/ecmascript"><![CDATA[
+  "use strict";
+  var nametype = "Function:";
+  var fontsize = {font_size};
+  var fontwidth = {font_width};
+  var xpad = {x_pad};
+  var inverted = false;
+  var searchcolor = "rgb(230,0,230)";
+  var fluiddrawing = true;
+  var truncate_text_right = true;
+{flamegraph_js}
+]]></script>
+<rect x="0" y="0" width="100%" height="100%" fill="url(#background)"/>
+<text id="title" x="50%" y="24" text-anchor="middle" style="font-size:17px">CPU Flamegraph</text>
+<text id="details" x="{x_pad}.0" y="{details_y}">&nbsp;</text>
+<text id="unzoom" class="hide" x="{x_pad}.0" y="24">Reset Zoom</text>
+<text id="search" x="{search_x}.0" y="24">Search</text>
+<text id="matched" class="hide" x="{search_x}.0" y="{details_y}">&nbsp;</text>
+<g id="frames" total_samples="{total_samples}" width="{frames_width}">
+"##,
+    flamegraph_js = FLAMEGRAPH_JS,
+    details_y = image_height - y_pad_bottom + 21,
+    search_x = image_width - x_pad,
+    frames_width = image_width - 2 * x_pad,
   ));
 
-  // Render frames (bottom-up: root at bottom)
-  #[allow(clippy::too_many_arguments)]
-  fn render_node(
-    svg: &mut String,
-    node: &FlameNode,
-    x: f64,
-    width: f64,
-    depth: usize,
+  // Flatten the tree into a list of frame rectangles using percentage-based
+  // coordinates, with fg:x and fg:w storing raw sample counts for zoom.
+  struct FlameLayout {
     max_depth: usize,
+    total_samples: i32,
     frame_height: usize,
     y_pad_top: usize,
-    total_samples: i32,
-    font_size: usize,
+    image_width: usize,
+    x_pad: usize,
+    font_size: f64,
+    font_width: f64,
+  }
+
+  fn collect_frames(
+    node: &FlameNode,
+    x_samples: i32,
+    depth: usize,
+    layout: &FlameLayout,
+    svg: &mut String,
   ) {
-    if node.name == "root" {
-      // Don't render root, just its children
-      let mut child_x = x;
-      for child in &node.children {
-        let child_width = (child.total as f64 / total_samples as f64) * width;
-        if child_width >= 0.5 {
-          render_node(
-            svg,
-            child,
-            child_x,
-            child_width,
-            depth,
-            max_depth,
-            frame_height,
-            y_pad_top,
-            total_samples,
-            font_size,
-          );
-          child_x += child_width;
-        }
-      }
-      return;
-    }
+    if node.name != "root" {
+      let x_pct = 100.0 * x_samples as f64 / layout.total_samples as f64;
+      let w_pct = 100.0 * node.total as f64 / layout.total_samples as f64;
+      let y =
+        layout.y_pad_top + (layout.max_depth - depth) * layout.frame_height;
 
-    // Flamegraph: root at bottom, leaves at top
-    let y = y_pad_top + (max_depth - depth) * frame_height;
+      let (r, g, b) = flame_color(&node.name);
+      let pct = (node.total as f64 / layout.total_samples as f64) * 100.0;
 
-    let (r, g, b) = flame_color(&node.name);
-
-    svg.push_str(&format!(
-      r#"<g class="frame"><title>{} ({} samples, {:.1}%)</title><rect x="{:.1}" y="{}" width="{:.1}" height="{}" fill="rgb({},{},{})" />"#,
-      escape_xml(&node.name),
-      node.total,
-      (node.total as f64 / total_samples as f64) * 100.0,
-      x,
-      y,
-      width,
-      frame_height - 1,
-      r,
-      g,
-      b,
-    ));
-
-    // Only show text if there's enough room
-    if width > 30.0 {
-      let max_chars = (width as usize - 6) / (font_size * 6 / 10);
-      let label = if node.name.len() > max_chars && max_chars > 3 {
-        format!("{}..", &node.name[..max_chars - 2])
-      } else {
-        node.name.clone()
-      };
       svg.push_str(&format!(
-        r#"<text x="{:.1}" y="{}">{}</text>"#,
-        x + 3.0,
-        y + frame_height - 5,
-        escape_xml(&label),
+        r#"<g><title>{name} ({samples} samples, {pct:.2}%)</title><rect x="{x_pct:.4}%" y="{y}" width="{w_pct:.4}%" height="{h}" fill="rgb({r},{g},{b})" fg:x="{x_samples}" fg:w="{w_samples}"/>"#,
+        name = escape_xml(&node.name),
+        samples = node.total,
+        h = layout.frame_height - 1,
+        w_samples = node.total,
       ));
+
+      let chart_width = (layout.image_width - 2 * layout.x_pad) as f64;
+      let avail_px = w_pct / 100.0 * chart_width - 6.0;
+      let max_chars =
+        (avail_px / (layout.font_size * layout.font_width)) as usize;
+      if max_chars >= 3 {
+        let label = if node.name.len() > max_chars {
+          format!("{}..", &node.name[..max_chars.saturating_sub(2)])
+        } else {
+          node.name.clone()
+        };
+        let text_x_pct = x_pct + 100.0 * 3.0 / chart_width;
+        svg.push_str(&format!(
+          r#"<text x="{text_x_pct:.4}%" y="{ty}">{label}</text>"#,
+          ty = y + layout.frame_height - 4,
+          label = escape_xml(&label),
+        ));
+      }
+
+      svg.push_str("</g>\n");
     }
 
-    svg.push_str("</g>\n");
-
-    // Render children
-    let mut child_x = x;
+    let mut child_x = x_samples;
     for child in &node.children {
-      let child_width = (child.total as f64 / node.total as f64) * width;
-      if child_width >= 0.5 {
-        render_node(
-          svg,
-          child,
-          child_x,
-          child_width,
-          depth + 1,
-          max_depth,
-          frame_height,
-          y_pad_top,
-          total_samples,
-          font_size,
-        );
-        child_x += child_width;
-      }
+      let child_depth = if node.name == "root" {
+        depth
+      } else {
+        depth + 1
+      };
+      collect_frames(child, child_x, child_depth, layout, svg);
+      child_x += child.total;
     }
   }
 
-  render_node(
-    &mut svg,
-    &root,
-    x_pad as f64,
-    chart_width as f64,
-    0,
+  let layout = FlameLayout {
     max_depth,
+    total_samples,
     frame_height,
     y_pad_top,
-    total_samples,
+    image_width,
+    x_pad,
     font_size,
-  );
+    font_width,
+  };
+  collect_frames(&root, 0, 0, &layout, &mut svg);
 
-  svg.push_str("</svg>\n");
+  svg.push_str("</g>\n</svg>\n");
 
   let file = File::create(filepath)?;
   let mut out = BufWriter::new(file);
@@ -927,6 +925,246 @@ fn generate_flamegraph_svg(
 
   Ok(())
 }
+
+// Interactive JavaScript for the flamegraph SVG, modeled after inferno/flamegraph.
+// Supports: click-to-zoom, reset zoom, Ctrl+F search with highlight, hover details.
+const FLAMEGRAPH_JS: &str = r##"
+  var details, searchbtn, unzoombtn, matchedtxt, svg, searching, frames, total_samples, known_font_width;
+  function init(evt) {
+    details = document.getElementById("details").firstChild;
+    searchbtn = document.getElementById("search");
+    unzoombtn = document.getElementById("unzoom");
+    matchedtxt = document.getElementById("matched");
+    svg = document.getElementsByTagName("svg")[0];
+    frames = document.getElementById("frames");
+    total_samples = parseInt(frames.attributes.total_samples.value);
+    known_font_width = get_monospace_width(frames);
+    searching = 0;
+    // Make width fluid
+    svg.removeAttribute("width");
+    var update_for_width_change = function() {
+      frames.attributes.width.value = svg.width.baseVal.value - xpad * 2;
+      update_text_for_elements(frames.children);
+      var svgWidth = svg.width.baseVal.value;
+      searchbtn.attributes.x.value = svgWidth - xpad;
+      matchedtxt.attributes.x.value = svgWidth - xpad;
+    };
+    window.addEventListener("resize", update_for_width_change);
+    setTimeout(function() { unzoom(); update_for_width_change(); }, 0);
+  }
+  window.addEventListener("click", function(e) {
+    var target = find_group(e.target);
+    if (target) {
+      if (target.classList.contains("parent")) unzoom();
+      zoom(target);
+    } else if (e.target.id == "unzoom") {
+      unzoom();
+    } else if (e.target.id == "search") {
+      search_prompt();
+    }
+  }, false);
+  window.addEventListener("mouseover", function(e) {
+    var target = find_group(e.target);
+    if (target) details.nodeValue = nametype + " " + g_to_text(target);
+  }, false);
+  window.addEventListener("mouseout", function(e) {
+    var target = find_group(e.target);
+    if (target) details.nodeValue = "\u00a0";
+  }, false);
+  window.addEventListener("keydown", function(e) {
+    if (e.keyCode === 114 || (e.ctrlKey && e.keyCode === 70)) {
+      e.preventDefault(); search_prompt();
+    }
+  }, false);
+  function find_child(node, selector) {
+    var c = node.querySelectorAll(selector);
+    if (c.length) return c[0];
+  }
+  function find_group(node) {
+    var parent = node.parentElement;
+    if (!parent) return;
+    if (parent.id == "frames") return node;
+    return find_group(parent);
+  }
+  function orig_save(e, attr, val) {
+    if (e.attributes["fg:orig_" + attr] != undefined) return;
+    if (e.attributes[attr] == undefined) return;
+    if (val == undefined) val = e.attributes[attr].value;
+    e.setAttribute("fg:orig_" + attr, val);
+  }
+  function orig_load(e, attr) {
+    if (e.attributes["fg:orig_" + attr] == undefined) return;
+    e.attributes[attr].value = e.attributes["fg:orig_" + attr].value;
+    e.removeAttribute("fg:orig_" + attr);
+  }
+  function g_to_text(e) { return find_child(e, "title").firstChild.nodeValue; }
+  function g_to_func(e) { return g_to_text(e); }
+  function get_monospace_width(frames) {
+    if (!frames.children[0]) return 0;
+    var text = find_child(frames.children[0], "text");
+    if (!text) return 0;
+    var orig = text.textContent;
+    text.textContent = "!"; var w1 = text.getComputedTextLength();
+    text.textContent = "W"; var w2 = text.getComputedTextLength();
+    text.textContent = orig;
+    return (w1 === w2) ? w1 : 0;
+  }
+  function update_text_for_elements(elements) {
+    if (known_font_width === 0) {
+      for (var i = 0; i < elements.length; i++) update_text(elements[i]);
+      return;
+    }
+    var attrs = [];
+    for (var i = 0; i < elements.length; i++) {
+      var e = elements[i];
+      var r = find_child(e, "rect");
+      var t = find_child(e, "text");
+      if (!r || !t) { attrs.push(null); continue; }
+      var w = parseFloat(r.attributes.width.value) * frames.attributes.width.value / 100 - 3;
+      var txt = find_child(e, "title").textContent.replace(/\([^(]*\)$/, "");
+      var newX = format_percent(parseFloat(r.attributes.x.value) + 100 * 3 / frames.attributes.width.value);
+      if (w < 2 * known_font_width) { attrs.push([newX, ""]); continue; }
+      if (txt.length * known_font_width < w) { attrs.push([newX, txt]); continue; }
+      var len = Math.floor(w / known_font_width) - 2;
+      attrs.push([newX, txt.substring(0, len) + ".."]);
+    }
+    for (var i = 0; i < elements.length; i++) {
+      if (!attrs[i]) continue;
+      var t = find_child(elements[i], "text");
+      if (t) { t.attributes.x.value = attrs[i][0]; t.textContent = attrs[i][1]; }
+    }
+  }
+  function update_text(e) {
+    var r = find_child(e, "rect"), t = find_child(e, "text");
+    if (!r || !t) return;
+    var w = parseFloat(r.attributes.width.value) * frames.attributes.width.value / 100 - 3;
+    var txt = find_child(e, "title").textContent.replace(/\([^(]*\)$/, "");
+    t.attributes.x.value = format_percent(parseFloat(r.attributes.x.value) + 100 * 3 / frames.attributes.width.value);
+    if (w < 2 * fontsize * fontwidth) { t.textContent = ""; return; }
+    t.textContent = txt;
+    if (t.getComputedTextLength() < w) return;
+    for (var x = txt.length - 2; x > 0; x--) {
+      if (t.getSubStringLength(0, x + 2) <= w) { t.textContent = txt.substring(0, x) + ".."; return; }
+    }
+    t.textContent = "";
+  }
+  function zoom_reset(e) {
+    if (e.tagName == "rect") {
+      e.attributes.x.value = format_percent(100 * parseInt(e.attributes["fg:x"].value) / total_samples);
+      e.attributes.width.value = format_percent(100 * parseInt(e.attributes["fg:w"].value) / total_samples);
+    }
+    if (e.childNodes == undefined) return;
+    for (var i = 0, c = e.childNodes; i < c.length; i++) zoom_reset(c[i]);
+  }
+  function zoom_child(e, x, zoomed_width_samples) {
+    if (e.tagName == "text") {
+      var px = parseFloat(find_child(e.parentNode, "rect[x]").attributes.x.value);
+      e.attributes.x.value = format_percent(px + 100 * 3 / frames.attributes.width.value);
+    } else if (e.tagName == "rect") {
+      e.attributes.x.value = format_percent(100 * (parseInt(e.attributes["fg:x"].value) - x) / zoomed_width_samples);
+      e.attributes.width.value = format_percent(100 * parseInt(e.attributes["fg:w"].value) / zoomed_width_samples);
+    }
+    if (e.childNodes == undefined) return;
+    for (var i = 0, c = e.childNodes; i < c.length; i++) zoom_child(c[i], x, zoomed_width_samples);
+  }
+  function zoom_parent(e) {
+    if (e.attributes) {
+      if (e.attributes.x != undefined) e.attributes.x.value = "0.0%";
+      if (e.attributes.width != undefined) e.attributes.width.value = "100.0%";
+    }
+    if (e.childNodes == undefined) return;
+    for (var i = 0, c = e.childNodes; i < c.length; i++) zoom_parent(c[i]);
+  }
+  function zoom(node) {
+    var attr = find_child(node, "rect").attributes;
+    var width = parseInt(attr["fg:w"].value);
+    var xmin = parseInt(attr["fg:x"].value);
+    var xmax = xmin + width;
+    var ymin = parseFloat(attr.y.value);
+    unzoombtn.classList.remove("hide");
+    var el = frames.children;
+    var to_update = [];
+    for (var i = 0; i < el.length; i++) {
+      var e = el[i];
+      var a = find_child(e, "rect").attributes;
+      var ex = parseInt(a["fg:x"].value);
+      var ew = parseInt(a["fg:w"].value);
+      var upstack = parseFloat(a.y.value) > ymin;
+      if (upstack) {
+        if (ex <= xmin && (ex + ew) >= xmax) { e.classList.add("parent"); zoom_parent(e); to_update.push(e); }
+        else e.classList.add("hide");
+      } else {
+        if (ex < xmin || ex >= xmax) e.classList.add("hide");
+        else { zoom_child(e, xmin, width); to_update.push(e); }
+      }
+    }
+    update_text_for_elements(to_update);
+  }
+  function unzoom() {
+    unzoombtn.classList.add("hide");
+    var el = frames.children;
+    for (var i = 0; i < el.length; i++) {
+      el[i].classList.remove("parent");
+      el[i].classList.remove("hide");
+      zoom_reset(el[i]);
+    }
+    update_text_for_elements(el);
+  }
+  function reset_search() {
+    var el = document.querySelectorAll("#frames rect");
+    for (var i = 0; i < el.length; i++) orig_load(el[i], "fill");
+  }
+  function search_prompt() {
+    if (!searching) {
+      var term = prompt("Enter a search term (regexp allowed, eg: ^fib)", "");
+      if (term != null) search(term);
+    } else {
+      reset_search(); searching = 0;
+      searchbtn.classList.remove("show");
+      searchbtn.firstChild.nodeValue = "Search";
+      matchedtxt.classList.add("hide");
+      matchedtxt.firstChild.nodeValue = "";
+    }
+  }
+  function search(term) {
+    var re = new RegExp(term);
+    var el = frames.children;
+    var matches = {}, maxwidth = 0;
+    for (var i = 0; i < el.length; i++) {
+      var e = el[i];
+      if (e.classList.contains("hide") || e.classList.contains("parent")) continue;
+      var func = g_to_func(e);
+      var rect = find_child(e, "rect");
+      if (!func || !rect) continue;
+      var w = parseInt(rect.attributes["fg:w"].value);
+      if (w > maxwidth) maxwidth = w;
+      if (func.match(re)) {
+        var x = parseInt(rect.attributes["fg:x"].value);
+        orig_save(rect, "fill");
+        rect.attributes.fill.value = searchcolor;
+        if (matches[x] == undefined) matches[x] = w;
+        else if (w > matches[x]) matches[x] = w;
+        searching = 1;
+      }
+    }
+    if (!searching) return;
+    searchbtn.classList.add("show");
+    searchbtn.firstChild.nodeValue = "Reset Search";
+    var count = 0, lastx = -1, lastw = 0;
+    var keys = [];
+    for (var k in matches) { if (matches.hasOwnProperty(k)) keys.push(k); }
+    keys.sort(function(a, b) { return a - b; });
+    for (var k in keys) {
+      var x = parseInt(keys[k]), w = matches[keys[k]];
+      if (x >= lastx + lastw) { count += w; lastx = x; lastw = w; }
+    }
+    matchedtxt.classList.remove("hide");
+    var pct = 100 * count / maxwidth;
+    if (pct != 100) pct = pct.toFixed(1);
+    matchedtxt.firstChild.nodeValue = "Matched: " + pct + "%";
+  }
+  function format_percent(n) { return n.toFixed(4) + "%"; }
+"##;
 
 #[derive(Debug)]
 struct FlameNode {

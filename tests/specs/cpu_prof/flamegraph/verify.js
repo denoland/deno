@@ -12,8 +12,16 @@ if (!content.includes("CPU Flamegraph")) {
   console.log("Missing flamegraph title");
   Deno.exit(1);
 }
-if (!content.includes('class="frame"')) {
-  console.log("Missing flame frames");
+if (!content.includes('id="frames"')) {
+  console.log("Missing frames container");
+  Deno.exit(1);
+}
+if (!content.includes("fg:x=")) {
+  console.log("Missing frame data attributes");
+  Deno.exit(1);
+}
+if (!content.includes("function init(evt)")) {
+  console.log("Missing interactive JavaScript");
   Deno.exit(1);
 }
 console.log("Valid flamegraph");
