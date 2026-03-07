@@ -667,7 +667,9 @@ export function createPrivateKey(
         res.passphrase,
       );
     } catch (e) {
-      if (e instanceof TypeError && e.message === "unsupported private key oid") {
+      if (
+        e instanceof TypeError && e.message === "unsupported private key oid"
+      ) {
         throw new NodeError("ERR_OSSL_UNSUPPORTED", "unsupported");
       }
       throw e;
@@ -702,7 +704,9 @@ export function createPublicKey(
         res.type ?? "",
       );
     } catch (e) {
-      if (e instanceof TypeError && e.message === "unsupported private key oid") {
+      if (
+        e instanceof TypeError && e.message === "unsupported private key oid"
+      ) {
         throw new NodeError("ERR_OSSL_EVP_DECODE_ERROR", "unsupported");
       }
       throw e;
