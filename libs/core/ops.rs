@@ -17,7 +17,6 @@ use crate::ResourceId;
 use crate::error::JsStackFrame;
 use crate::gotham_state::GothamState;
 use crate::io::ResourceTable;
-use crate::ops_metrics::OpMetricsCells;
 use crate::ops_metrics::OpMetricsFn;
 use crate::runtime::JsRuntimeState;
 use crate::runtime::OpDriverImpl;
@@ -96,10 +95,7 @@ pub struct OpCtx {
 
   pub(crate) decl: OpDecl,
   pub(crate) fast_fn_info: Option<CFunction>,
-  /// Direct counters for summary metrics (no vtable dispatch).
-  pub(crate) metrics_cells: Option<Rc<OpMetricsCells>>,
-  /// Optional callback for trace_ops (--trace-ops). Rare.
-  pub(crate) trace_ops_fn: Option<OpMetricsFn>,
+  pub(crate) metrics_fn: Option<OpMetricsFn>,
 
   op_driver: Rc<OpDriverImpl>,
   runtime_state: *const JsRuntimeState,
@@ -114,8 +110,7 @@ impl OpCtx {
     decl: OpDecl,
     state: Rc<RefCell<OpState>>,
     runtime_state: *const JsRuntimeState,
-    metrics_cells: Option<Rc<OpMetricsCells>>,
-    trace_ops_fn: Option<OpMetricsFn>,
+    metrics_fn: Option<OpMetricsFn>,
     enable_stack_trace: bool,
   ) -> Self {
     let fast_fn_info = decl.fast_fn;
@@ -128,8 +123,7 @@ impl OpCtx {
       op_driver,
       fast_fn_info,
       isolate,
-      metrics_cells,
-      trace_ops_fn,
+      metrics_fn,
       enable_stack_trace,
     }
   }
@@ -141,7 +135,7 @@ impl OpCtx {
 
   #[inline(always)]
   pub fn metrics_enabled(&self) -> bool {
-    self.metrics_cells.is_some() || self.trace_ops_fn.is_some()
+    self.metrics_fn.is_some()
   }
 
   /// Generates four external references for each op. If an op does not have a fastcall, it generates

@@ -25,9 +25,7 @@ use deno_core::ModuleLoadOptions;
 use deno_core::ModuleLoadReferrer;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
-use deno_core::OpMetricsCellsFactoryFn;
 use deno_core::OpMetricsFactoryFn;
-use deno_core::OpMetricsSummaryTracker;
 use deno_core::PollEventLoopOptions;
 use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
@@ -291,68 +289,51 @@ impl Default for WorkerOptions {
 }
 
 pub fn create_op_metrics(
-  enable_op_summary_metrics: bool,
   trace_ops: Option<Vec<String>>,
-) -> (
-  Option<Rc<OpMetricsSummaryTracker>>,
-  Option<OpMetricsCellsFactoryFn>,
-  Option<OpMetricsFactoryFn>,
-) {
-  let mut op_summary_metrics = None;
-  let mut op_metrics_cells_factory_fn: Option<OpMetricsCellsFactoryFn> = None;
-  let mut op_metrics_factory_fn: Option<OpMetricsFactoryFn> = None;
+) -> Option<OpMetricsFactoryFn> {
+  let patterns = trace_ops?;
   let now = Instant::now();
   let max_len: Rc<std::cell::Cell<usize>> = Default::default();
-  if let Some(patterns) = trace_ops {
-    /// Match an op name against a list of patterns
-    fn matches_pattern(patterns: &[String], name: &str) -> bool {
-      let mut found_match = false;
-      let mut found_nomatch = false;
-      for pattern in patterns.iter() {
-        if let Some(pattern) = pattern.strip_prefix('-') {
-          if name.contains(pattern) {
-            return false;
-          }
-        } else if name.contains(pattern.as_str()) {
-          found_match = true;
-        } else {
-          found_nomatch = true;
-        }
-      }
 
-      found_match || !found_nomatch
+  /// Match an op name against a list of patterns
+  fn matches_pattern(patterns: &[String], name: &str) -> bool {
+    let mut found_match = false;
+    let mut found_nomatch = false;
+    for pattern in patterns.iter() {
+      if let Some(pattern) = pattern.strip_prefix('-') {
+        if name.contains(pattern) {
+          return false;
+        }
+      } else if name.contains(pattern.as_str()) {
+        found_match = true;
+      } else {
+        found_nomatch = true;
+      }
     }
 
-    op_metrics_factory_fn = Some(Box::new(move |_, _, decl| {
-      // If we don't match a requested pattern, or we match a negative pattern, bail
-      if !matches_pattern(&patterns, decl.name) {
-        return None;
-      }
-
-      max_len.set(max_len.get().max(decl.name.len()));
-      let max_len = max_len.clone();
-      Some(Rc::new(
-        #[allow(clippy::print_stderr)]
-        move |op: &deno_core::_ops::OpCtx, event, source| {
-          eprintln!(
-            "[{: >10.3}] {name:max_len$}: {event:?} {source:?}",
-            now.elapsed().as_secs_f64(),
-            name = op.decl().name,
-            max_len = max_len.get()
-          );
-        },
-      ))
-    }));
+    found_match || !found_nomatch
   }
 
-  if enable_op_summary_metrics {
-    let summary = Rc::new(OpMetricsSummaryTracker::default());
-    op_metrics_cells_factory_fn =
-      Some(summary.op_metrics_cells_fn(|_| true));
-    op_summary_metrics = Some(summary);
-  }
+  Some(Box::new(move |_, _, decl| {
+    // If we don't match a requested pattern, or we match a negative pattern, bail
+    if !matches_pattern(&patterns, decl.name) {
+      return None;
+    }
 
-  (op_summary_metrics, op_metrics_cells_factory_fn, op_metrics_factory_fn)
+    max_len.set(max_len.get().max(decl.name.len()));
+    let max_len = max_len.clone();
+    Some(Rc::new(
+      #[allow(clippy::print_stderr)]
+      move |op: &deno_core::_ops::OpCtx, event, source| {
+        eprintln!(
+          "[{: >10.3}] {name:max_len$}: {event:?} {source:?}",
+          now.elapsed().as_secs_f64(),
+          name = op.decl().name,
+          max_len = max_len.get()
+        );
+      },
+    ))
+  }))
 }
 
 impl MainWorker {
@@ -423,11 +404,7 @@ impl MainWorker {
     let create_cache = create_cache_inner(&options);
 
     // Get our op metrics
-    let (op_summary_metrics, op_metrics_cells_factory_fn, op_metrics_factory_fn) =
-      create_op_metrics(
-        options.bootstrap.enable_op_summary_metrics,
-        options.trace_ops,
-      );
+    let op_metrics_factory_fn = create_op_metrics(options.trace_ops);
 
     // Permissions: many ops depend on this
     let enable_testing_features = options.bootstrap.enable_testing_features;
@@ -436,7 +413,6 @@ impl MainWorker {
     // check options that require configuring a new jsruntime
     if options.unconfigured_runtime.is_some()
       && (options.enable_stack_trace_arg_in_ops
-        || op_metrics_cells_factory_fn.is_some()
         || op_metrics_factory_fn.is_some())
     {
       options.unconfigured_runtime = None;
@@ -481,7 +457,6 @@ impl MainWorker {
         shared_array_buffer_store: services.shared_array_buffer_store,
         compiled_wasm_module_store: services.compiled_wasm_module_store,
         extensions,
-        op_metrics_cells_factory_fn,
         op_metrics_factory_fn,
         enable_stack_trace_arg_in_ops: options.enable_stack_trace_arg_in_ops,
       })
@@ -609,10 +584,6 @@ impl MainWorker {
         ),
       ])
       .unwrap();
-
-    if let Some(op_summary_metrics) = op_summary_metrics {
-      js_runtime.op_state().borrow_mut().put(op_summary_metrics);
-    }
 
     {
       let state = js_runtime.op_state();
@@ -1108,7 +1079,6 @@ struct CommonRuntimeOptions {
   shared_array_buffer_store: Option<SharedArrayBufferStore>,
   compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
   extensions: Vec<Extension>,
-  op_metrics_cells_factory_fn: Option<OpMetricsCellsFactoryFn>,
   op_metrics_factory_fn: Option<OpMetricsFactoryFn>,
   enable_stack_trace_arg_in_ops: bool,
 }
@@ -1136,7 +1106,6 @@ fn common_runtime(opts: CommonRuntimeOptions) -> JsRuntime {
     inspector: true,
     is_main: true,
     worker_id: None,
-    op_metrics_cells_factory_fn: opts.op_metrics_cells_factory_fn,
     op_metrics_factory_fn: opts.op_metrics_factory_fn,
     wait_for_inspector_disconnect_callback: Some(
       make_wait_for_inspector_disconnect_callback(),
@@ -1217,7 +1186,6 @@ impl UnconfiguredRuntime {
       shared_array_buffer_store: options.shared_array_buffer_store,
       compiled_wasm_module_store: options.compiled_wasm_module_store,
       extensions,
-      op_metrics_cells_factory_fn: None,
       op_metrics_factory_fn: None,
       enable_stack_trace_arg_in_ops: false,
     });
