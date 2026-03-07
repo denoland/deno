@@ -21,6 +21,7 @@ const {
   ObjectGetPrototypeOf,
   ObjectHasOwn,
   Promise,
+  PromisePrototypeThen,
   ReflectApply,
   SafeArrayIterator,
   SafeMap,
@@ -67,6 +68,58 @@ import assert from "node:assert";
 // Must be lazy since ops are added after snapshot.
 function isTestSubcommand(): boolean {
   return typeof ops.op_register_test === "function";
+}
+
+// --------------------------------------------------------------------------
+// Unhandled rejection handling for node:test
+// --------------------------------------------------------------------------
+// In Node.js, unhandled rejections during a test cause the test to pass
+// but emit a warning. In Deno, they're fatal for the entire module.
+// We install a global handler that catches them during test execution,
+// preventing Deno from treating them as fatal module errors.
+
+let errorHandlersInstalled = false;
+
+// When a callback-style test is in progress, this holds a reject function
+// so that caught async errors can unblock the pending done() callback.
+let pendingCallbackReject: ((err: unknown) => void) | null = null;
+
+function installErrorHandlers() {
+  if (errorHandlersInstalled) return;
+  errorHandlersInstalled = true;
+
+  // Catch unhandled promise rejections during node:test execution.
+  // In Node.js these cause the test to pass (with a warning), not crash the runner.
+  globalThis.addEventListener("unhandledrejection", (event) => {
+    event.preventDefault();
+  });
+
+  // Catch uncaught exceptions from async callbacks (setImmediate, setTimeout).
+  // In Node.js these also cause the test to pass (with a warning).
+  globalThis.addEventListener("error", (event) => {
+    event.preventDefault();
+    // If a callback test is pending, unblock it so the test doesn't hang
+    if (pendingCallbackReject !== null) {
+      pendingCallbackReject(event.error ?? new Error("uncaught error"));
+      pendingCallbackReject = null;
+    }
+  });
+}
+
+// Safe wrapper for core.destructureError that handles objects with
+// throwing inspect symbols or other problematic error objects
+function safeDestructureError(error: unknown) {
+  try {
+    return core.destructureError(error);
+  } catch {
+    // If destructuring the original error fails (e.g., bad inspect symbol),
+    // create a plain error with whatever string representation we can get
+    try {
+      return core.destructureError(new Error(String(error)));
+    } catch {
+      return core.destructureError(new Error("test failed"));
+    }
+  }
 }
 
 const registerTestIdRetBuf = new Uint32Array(1);
@@ -435,13 +488,28 @@ class NodeTestContext {
       if (prepared.fn.length >= 2) {
         // Callback-style
         await new Promise<void>((resolve, reject) => {
+          pendingCallbackReject = reject;
           const done = (err?: Error) => {
+            pendingCallbackReject = null;
             if (err) reject(err);
             else resolve();
           };
           try {
-            ReflectApply(prepared.fn, childContext, [childContext, done]);
+            const result = ReflectApply(prepared.fn, childContext, [
+              childContext,
+              done,
+            ]);
+            if (
+              result !== null && result !== undefined &&
+              typeof result.then === "function"
+            ) {
+              PromisePrototypeThen(result, undefined, (err: unknown) => {
+                pendingCallbackReject = null;
+                reject(err);
+              });
+            }
           } catch (err) {
+            pendingCallbackReject = null;
             reject(err);
           }
         });
@@ -517,7 +585,7 @@ class NodeTestContext {
       ops.op_test_event_step_result_failed(
         stepId,
         {
-          jsError: core.destructureError(
+          jsError: safeDestructureError(
             stepState.lastError ?? new Error("test failed"),
           ),
         },
@@ -741,15 +809,30 @@ function wrapTestFn(
       }
 
       if (prepared.fn.length >= 2) {
-        // Callback-style async test
+        // Callback-style test
         await new Promise<void>((resolve, reject) => {
+          // Allow error handler to unblock this test if an async throw occurs
+          pendingCallbackReject = reject;
           const done = (err?: Error) => {
+            pendingCallbackReject = null;
             if (err) reject(err);
             else resolve();
           };
           try {
-            ReflectApply(prepared.fn, ctx, [ctx, done]);
+            const result = ReflectApply(prepared.fn, ctx, [ctx, done]);
+            // If the function returns a thenable (async fn with done callback),
+            // also listen for its rejection to avoid hanging
+            if (
+              result !== null && result !== undefined &&
+              typeof result.then === "function"
+            ) {
+              PromisePrototypeThen(result, undefined, (err: unknown) => {
+                pendingCallbackReject = null;
+                reject(err);
+              });
+            }
           } catch (err) {
+            pendingCallbackReject = null;
             reject(err);
           }
         });
@@ -816,7 +899,7 @@ function wrapTestFn(
         };
       }
 
-      return { failed: { jsError: core.destructureError(error) } };
+      return { failed: { jsError: safeDestructureError(error) } };
     } finally {
       if (timeoutId !== undefined) {
         clearTimeout(timeoutId);
@@ -895,7 +978,7 @@ async function executeSuite(
     return failedSteps === 0 ? "ok" : { failed: { failedSteps } };
   } catch (error) {
     state.completed = true;
-    return { failed: { jsError: core.destructureError(error) } };
+    return { failed: { jsError: safeDestructureError(error) } };
   }
 }
 
@@ -909,6 +992,10 @@ function registerTest(
 ) {
   if (!isTestSubcommand()) return;
 
+  // Install error handlers on first test registration to prevent
+  // unhandled rejections/exceptions from being fatal for the module
+  installErrorHandlers();
+
   const location = core.currentUserCallSite();
   const testName = escapeName(prepared.name);
 
@@ -919,8 +1006,8 @@ function registerTest(
   ops.op_register_test(
     wrappedFn,
     testName,
-    prepared.options.skip === true || prepared.options.todo === true, // ignore
-    prepared.options.only === true, // only
+    !!prepared.options.skip || !!prepared.options.todo, // ignore
+    !!prepared.options.only, // only
     false, // sanitize_ops
     false, // sanitize_resources
     location.fileName,
