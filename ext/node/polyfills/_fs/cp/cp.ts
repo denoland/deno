@@ -7,6 +7,7 @@ import { mkdirPromise } from "ext:deno_node/_fs/_fs_mkdir.ts";
 import { opendirPromise } from "ext:deno_node/_fs/_fs_opendir.ts";
 import { EEXIST, EINVAL, EISDIR, ENOTDIR } from "node:constants";
 import {
+  denoErrorToNodeError,
   ERR_FS_CP_DIR_TO_NON_DIR,
   ERR_FS_CP_EEXIST,
   ERR_FS_CP_EINVAL,
@@ -109,6 +110,15 @@ export async function cpFn(
     );
     return await getStatsForCopy(result.dest_exists, src, dest, opts);
   } catch (err) {
+    if (typeof err.os_errno === "number") {
+      throw denoErrorToNodeError(err, {
+        message: err.message,
+        path: err.path,
+        dest: err.dest,
+        syscall: err.syscall,
+      });
+    }
+
     throwCpError(err);
   }
 }

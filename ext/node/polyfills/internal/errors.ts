@@ -2842,6 +2842,10 @@ export const denoErrorToNodeSystemError = hideStackFrames((
 });
 
 function extractOsErrorNumberFromErrorMessage(e: unknown): number | undefined {
+  if (typeof e.os_errno === "number") {
+    return e.os_errno;
+  }
+
   const match = ObjectPrototypeIsPrototypeOf(ErrorPrototype, e)
     ? StringPrototypeMatch(e.message, new SafeRegExp(/\(os error (\d+)\)/))
     : false;
