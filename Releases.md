@@ -6,6 +6,31 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 2.7.4 / 2026.03.05
+
+- Reland refactor(core): move nextTick/immediate queues into core, replace ops
+  with shared buffers (#32440) (#32465)
+- Revert "refactor(core): move nextTick/immediate queues into core, replace ops
+  with shared buffers (#32440) (#32462)
+- fix(core): uv_compat cleanup and fixes (#32458)
+- fix(deploy): correctly handle version lookup (#32489)
+- fix(ext/node): deep `assert` compatibility (#32434)
+- fix(ext/node): use sync writes for TTY stdout/stderr WriteStream (#32488)
+- fix(test): restart all tests on env file change (#32461)
+- perf(npm): actually improve `npm install -g deno` binary startup performance
+  (#32467)
+
+### 2.7.3 / 2026.03.04
+
+- fix(deploy): dont use jsr api for deploy subcommand (#32441)
+- fix(ext/node): handle partial writes to process.stdout/stderr (#32433)
+- fix(ext/node): make UDP socket ops synchronous, implement missing dgram
+  methods (#32381)
+- fix(ext/node): support HTTP over Windows named pipes in node:http (#32414)
+- fix(npm): don't panic when peer dep is not in snapshot (#32454)
+- fix(npm): regression where resolution was missing dependencies (#32453)
+- perf(npm): improve `npm install -g deno` binary startup performance (#32439)
+
 ### 2.7.2 / 2026.03.03
 
 - feat: v8 14.6, fix require(esm), libuv compat (#32347)
