@@ -15,7 +15,6 @@ import {
   op_node_gen_prime,
 } from "ext:core/ops";
 
-import { notImplemented } from "ext:deno_node/_utils.ts";
 import {
   isAnyArrayBuffer,
   isArrayBufferView,
