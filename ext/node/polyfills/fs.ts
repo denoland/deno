@@ -12,11 +12,14 @@ import type { Encodings } from "ext:deno_node/_utils.ts";
 import { denoErrorToNodeError } from "ext:deno_node/internal/errors.ts";
 import * as constants from "ext:deno_node/_fs/_fs_constants.ts";
 
+import { close, closeSync } from "ext:deno_node/_fs/_fs_close.ts";
 import { copyFile, copyFileSync } from "ext:deno_node/_fs/_fs_copy.ts";
 import { cp, cpSync } from "ext:deno_node/_fs/_fs_cp.ts";
 import Dir from "ext:deno_node/_fs/_fs_dir.ts";
 import { exists, existsSync } from "ext:deno_node/_fs/_fs_exists.ts";
+import { fdatasync, fdatasyncSync } from "ext:deno_node/_fs/_fs_fdatasync.ts";
 import { fstat, fstatSync } from "ext:deno_node/_fs/_fs_fstat.ts";
+import { fsync, fsyncSync } from "ext:deno_node/_fs/_fs_fsync.ts";
 import { lstat, lstatSync } from "ext:deno_node/_fs/_fs_lstat.ts";
 import { lutimes, lutimesSync } from "ext:deno_node/_fs/_fs_lutimes.ts";
 import { mkdir, mkdirSync } from "ext:deno_node/_fs/_fs_mkdir.ts";
@@ -334,40 +337,7 @@ function chownSync(
   Deno.chownSync(path, uid, gid);
 }
 
-function defaultCloseCallback(err: Error | null) {
-  if (err !== null) throw err;
-}
 
-function close(
-  fd: number,
-  callback: CallbackWithError = defaultCloseCallback,
-) {
-  fd = getValidatedFd(fd);
-  if (callback !== defaultCloseCallback) {
-    callback = makeCallback(callback);
-  }
-
-  setTimeout(() => {
-    let error = null;
-    try {
-      // TODO(@littledivy): Treat `fd` as real file descriptor. `rid` is an
-      // implementation detail and may change.
-      core.close(fd);
-    } catch (err) {
-      error = ObjectPrototypeIsPrototypeOf(ErrorPrototype, err)
-        ? err as Error
-        : new Error("[non-error thrown]");
-    }
-    callback(error);
-  }, 0);
-}
-
-function closeSync(fd: number) {
-  fd = getValidatedFd(fd);
-  // TODO(@littledivy): Treat `fd` as real file descriptor. `rid` is an
-  // implementation detail and may change.
-  core.close(fd);
-}
 
 function fchown(
   fd: number,
@@ -491,17 +461,7 @@ function fchmodSync(fd: number, mode: string | number) {
   op_fs_fchmod_sync(fd, parseFileMode(mode, "mode"));
 }
 
-function fdatasync(
-  fd: number,
-  callback: CallbackWithError,
-) {
-  validateInt32(fd, "fd", 0);
-  PromisePrototypeThen(
-    new FsFile(fd, SymbolFor("Deno.internal.FsFile")).syncData(),
-    () => callback(null),
-    callback,
-  );
-}
+
 
 function futimesSync(
   fd: number,
@@ -573,22 +533,9 @@ function lchown(
   );
 }
 
-function fdatasyncSync(fd: number) {
-  validateInt32(fd, "fd", 0);
-  new FsFile(fd, SymbolFor("Deno.internal.FsFile")).syncDataSync();
-}
 
-function fsync(
-  fd: number,
-  callback: CallbackWithError,
-) {
-  validateInt32(fd, "fd", 0);
-  PromisePrototypeThen(
-    new FsFile(fd, SymbolFor("Deno.internal.FsFile")).sync(),
-    () => callback(null),
-    callback,
-  );
-}
+
+
 
 function lchownSync(
   path: string | Buffer | URL,
@@ -602,10 +549,7 @@ function lchownSync(
   op_node_lchown_sync(path, uid, gid);
 }
 
-function fsyncSync(fd: number) {
-  validateInt32(fd, "fd", 0);
-  new FsFile(fd, SymbolFor("Deno.internal.FsFile")).syncSync();
-}
+
 
 function link(
   existingPath: string | Buffer | URL,
