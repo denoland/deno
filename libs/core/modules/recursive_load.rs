@@ -164,8 +164,7 @@ impl RecursiveModuleLoad {
     };
     // Resolve the root specifier eagerly. For sync resolution, cache the
     // result. For async, store the future for later resolution.
-    let resolve_response =
-      Self::resolve_root_from_init(&init, &module_map_rc);
+    let resolve_response = Self::resolve_root_from_init(&init, &module_map_rc);
     let (resolved_specifier, pending_root_resolve) = match resolve_response {
       ModuleResolveResponse::Sync(result) => {
         (Some(result.map_err(CoreError::from)), None)
@@ -232,10 +231,9 @@ impl RecursiveModuleLoad {
       Some(Err(err)) => return Err(err),
       None => {
         // Async resolution — await the pending future.
-        let fut = self
-          .pending_root_resolve
-          .take()
-          .expect("prepare() called but no resolved_specifier or pending_root_resolve");
+        let fut = self.pending_root_resolve.take().expect(
+          "prepare() called but no resolved_specifier or pending_root_resolve",
+        );
         let spec = fut.await.map_err(CoreError::from)?;
         self.resolved_specifier = Some(Ok(spec.clone()));
         spec
