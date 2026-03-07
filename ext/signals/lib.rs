@@ -193,7 +193,11 @@ pub fn register(
 
       #[cfg(unix)]
       {
-        handle.0.add_signal(signal).unwrap();
+        handle.0.add_signal(signal).map_err(|e| {
+          std::io::Error::other(format!(
+            "Failed to register signal {signal}: {e}"
+          ))
+        })?;
       }
       #[cfg(windows)]
       {
