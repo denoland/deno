@@ -1078,10 +1078,14 @@ Deno.test({
 Deno.test({
   name: "process.title",
   fn() {
-    assertEquals(process.title, "deno");
-    // Verify that setting the value has no effect.
+    // Default process.title should be the execPath (matches Node.js behavior)
+    assertEquals(process.title, process.execPath);
+    // Setting process.title should work
+    const original = process.title;
     process.title = "foo";
-    assertEquals(process.title, "deno");
+    assertEquals(process.title, "foo");
+    // Restore
+    process.title = original;
   },
 });
 
