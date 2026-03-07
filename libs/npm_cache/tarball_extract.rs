@@ -4,6 +4,7 @@ use std::borrow::Cow;
 use std::collections::HashSet;
 use std::io::ErrorKind;
 use std::io::Read;
+use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -317,9 +318,10 @@ fn extract_tarball(
   archive.set_overwrite(true);
   archive.set_preserve_permissions(true);
   let mut created_dirs = HashSet::new();
+  let mut absolute_path = output_folder.to_path_buf();
 
   for entry in archive.entries()? {
-    let mut entry = entry?;
+    let entry = entry?;
     let path = entry.path()?;
     let entry_type = entry.header().entry_type();
 
@@ -330,14 +332,18 @@ fn extract_tarball(
     }
 
     // skip the first component which will be either "package" or the name of the package
-    let relative_path = path.components().skip(1).collect::<PathBuf>();
-    let absolute_path = output_folder.join(relative_path);
+    absolute_path.clear();
+    absolute_path.push(output_folder);
+    for component in path.components().skip(1) {
+      absolute_path.push(component);
+    }
     let dir_path = if entry_type == EntryType::Directory {
       absolute_path.as_path()
     } else {
       absolute_path.parent().unwrap()
     };
-    if created_dirs.insert(dir_path.to_path_buf()) {
+    if !created_dirs.contains(dir_path) {
+      created_dirs.insert(dir_path.to_path_buf());
       sys.fs_create_dir_all(dir_path)?;
       let dir_path = deno_path_util::normalize_path(Cow::Borrowed(dir_path));
       if !dir_path.starts_with(output_folder) {
@@ -352,15 +358,38 @@ fn extract_tarball(
       EntryType::Regular => {
         let open_options = OpenOptions::new_write();
         let mut f = sys.fs_open(&absolute_path, &open_options)?;
-        std::io::copy(&mut entry, &mut f).map_err(|source| {
+        let data_offset = entry.raw_file_position() as usize;
+        let size = entry.header().size()? as usize;
+        let end = data_offset.checked_add(size).ok_or_else(|| {
           std::io::Error::new(
-            source.kind(),
-            format!("writing '{}': {}", absolute_path.display(), source),
+            std::io::ErrorKind::InvalidData,
+            format!(
+              "tar entry '{}' has invalid offset/size (offset={}, size={})",
+              absolute_path.display(),
+              data_offset,
+              size,
+            ),
           )
         })?;
+        let entry_data =
+          tar_data.get(data_offset..end).ok_or_else(|| {
+            std::io::Error::new(
+              std::io::ErrorKind::UnexpectedEof,
+              format!(
+                "tar entry '{}' extends beyond archive (offset={}, size={}, archive_len={})",
+                absolute_path.display(),
+                data_offset,
+                size,
+                tar_data.len(),
+              ),
+            )
+          })?;
+        f.write_all(entry_data)?;
         if !sys_traits::impls::is_windows() {
           let mode = entry.header().mode()?;
-          f.fs_file_set_permissions(mode)?;
+          if mode != 0o644 {
+            f.fs_file_set_permissions(mode)?;
+          }
         }
       }
       EntryType::Symlink | EntryType::Link => {
