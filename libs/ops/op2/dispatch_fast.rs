@@ -394,7 +394,7 @@ pub(crate) fn generate_dispatch_fast(
   generator_state: &mut GeneratorState,
   signature: &ParsedSignature,
 ) -> Result<
-  Option<(TokenStream, TokenStream, TokenStream)>,
+  Option<(TokenStream, TokenStream)>,
   V8SignatureMappingError,
 > {
   if let Some(alternative) = &config.fast_alternative {
@@ -409,7 +409,6 @@ pub(crate) fn generate_dispatch_fast(
     })?;
     return Ok(Some((
       quote!(#alternative().fast_fn()),
-      quote!(#alternative().fast_fn_with_metrics()),
       quote!(),
     )));
   }
@@ -504,6 +503,11 @@ pub(crate) fn generate_dispatch_fast(
     quote!()
   };
 
+  // For non-no_metrics ops, we always need opctx to check metrics_enabled()
+  if !config.no_metrics {
+    generator_state.needs_opctx = true;
+  }
+
   let with_opctx = if generator_state.needs_opctx {
     generator_state.needs_fast_api_callback_options = true;
     gs_quote!(generator_state(opctx, fast_api_callback_options) => {
@@ -560,9 +564,6 @@ pub(crate) fn generate_dispatch_fast(
     quote!(Self:: #name)
   };
 
-  let mut fastsig_metrics = fastsig.clone();
-  fastsig_metrics.ensure_fast_api_callback_options();
-
   let with_fast_api_callback_options = if generator_state
     .needs_fast_api_callback_options
   {
@@ -576,42 +577,33 @@ pub(crate) fn generate_dispatch_fast(
 
   let fast_function = generator_state.fast_function.clone();
   let fast_definition = fastsig.get_fast_function_def(&fast_function);
-  let fast_function = generator_state.fast_function_metrics.clone();
-  let fast_definition_metrics =
-    fastsig_metrics.get_fast_function_def(&fast_function);
 
   let output_type = fastsig.ret_val.quote_rust_type();
 
   // We don't want clippy to trigger warnings on number of arguments of the fastcall
   // function -- these will still trigger on our normal call function, however.
   let call_names = fastsig.call_names();
-  let (fastcall_metrics_names, fastcall_metrics_types): (Vec<_>, Vec<_>) =
-    fastsig_metrics
-      .input_args(generator_state)
-      .into_iter()
-      .unzip();
   let (fastcall_names, fastcall_types): (Vec<_>, Vec<_>) =
     fastsig.input_args(generator_state).into_iter().unzip();
 
-  let fast_fn = gs_quote!(generator_state(result, fast_api_callback_options, fast_function, fast_function_metrics) => {
-    #[allow(clippy::too_many_arguments)]
-    extern "C" fn #fast_function_metrics<'s>(
-      this: deno_core::v8::Local<deno_core::v8::Object>,
-      #( #fastcall_metrics_names: #fastcall_metrics_types, )*
-    ) -> #output_type {
-      let #fast_api_callback_options: &'s mut _ =
-        unsafe { &mut *#fast_api_callback_options };
-      let opctx: &'s _ = unsafe {
-          &*(deno_core::v8::Local::<deno_core::v8::External>::cast_unchecked(
-            unsafe { #fast_api_callback_options.data }
-          ).value() as *const deno_core::_ops::OpCtx)
-      };
-      deno_core::_ops::dispatch_metrics_fast(opctx, deno_core::_ops::OpMetricsEvent::Dispatched);
-      let res = Self::#fast_function( this, #( #fastcall_names, )* );
-      deno_core::_ops::dispatch_metrics_fast(opctx, deno_core::_ops::OpMetricsEvent::Completed);
-      res
-    }
+  let (with_metrics_entry, with_metrics_exit) = if !config.no_metrics {
+    (
+      gs_quote!(generator_state(opctx) => {
+        if #opctx.metrics_enabled() {
+          deno_core::_ops::dispatch_metrics_fast(#opctx, deno_core::_ops::OpMetricsEvent::Dispatched);
+        }
+      }),
+      gs_quote!(generator_state(opctx) => {
+        if #opctx.metrics_enabled() {
+          deno_core::_ops::dispatch_metrics_fast(#opctx, deno_core::_ops::OpMetricsEvent::Completed);
+        }
+      }),
+    )
+  } else {
+    (quote!(), quote!())
+  };
 
+  let fast_fn = gs_quote!(generator_state(result, fast_api_callback_options, fast_function) => {
     #[allow(clippy::too_many_arguments)]
     extern "C" fn #fast_function<'s>(
       this: deno_core::v8::Local<deno_core::v8::Object>,
@@ -628,16 +620,18 @@ pub(crate) fn generate_dispatch_fast(
       #with_js_runtime_state
       #with_isolate
       #with_self
+      #with_metrics_entry
       let #result = {
         #(#call_args)*
         #call (#(#call_names),*)
       };
       #handle_error
+      #with_metrics_exit
       #handle_result
     }
   });
 
-  Ok(Some((fast_definition, fast_definition_metrics, fast_fn)))
+  Ok(Some((fast_definition, fast_fn)))
 }
 
 fn fast_api_typed_array_to_buffer(

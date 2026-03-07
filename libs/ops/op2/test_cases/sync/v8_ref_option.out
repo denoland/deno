@@ -14,30 +14,12 @@ pub const fn op_v8_lifetime() -> ::deno_core::_ops::OpDecl {
             2usize as u8,
             false,
             Self::v8_fn_ptr as _,
-            Self::v8_fn_ptr_metrics as _,
             ::deno_core::AccessorType::None,
             Some({
                 use deno_core::v8::fast_api::Type as CType;
                 use deno_core::v8;
                 deno_core::v8::fast_api::CFunction::new(
                     Self::v8_fn_ptr_fast as _,
-                    &deno_core::v8::fast_api::CFunctionInfo::new(
-                        CType::Void.as_info(),
-                        &[
-                            CType::V8Value.as_info(),
-                            CType::V8Value.as_info(),
-                            CType::V8Value.as_info(),
-                            CType::CallbackOptions.as_info(),
-                        ],
-                        deno_core::v8::fast_api::Int64Representation::BigInt,
-                    ),
-                )
-            }),
-            Some({
-                use deno_core::v8::fast_api::Type as CType;
-                use deno_core::v8;
-                deno_core::v8::fast_api::CFunction::new(
-                    Self::v8_fn_ptr_fast_metrics as _,
                     &deno_core::v8::fast_api::CFunctionInfo::new(
                         CType::Void.as_info(),
                         &[
@@ -60,35 +42,6 @@ pub const fn op_v8_lifetime() -> ::deno_core::_ops::OpDecl {
             <Self as deno_core::_ops::Op>::NAME
         }
         #[allow(clippy::too_many_arguments)]
-        extern "C" fn v8_fn_ptr_fast_metrics<'s>(
-            this: deno_core::v8::Local<deno_core::v8::Object>,
-            arg0: deno_core::v8::Local<deno_core::v8::Value>,
-            arg1: deno_core::v8::Local<deno_core::v8::Value>,
-            fast_api_callback_options: *mut deno_core::v8::fast_api::FastApiCallbackOptions<
-                's,
-            >,
-        ) -> () {
-            let fast_api_callback_options: &'s mut _ = unsafe {
-                &mut *fast_api_callback_options
-            };
-            let opctx: &'s _ = unsafe {
-                &*(deno_core::v8::Local::<
-                    deno_core::v8::External,
-                >::cast_unchecked(unsafe { fast_api_callback_options.data })
-                    .value() as *const deno_core::_ops::OpCtx)
-            };
-            deno_core::_ops::dispatch_metrics_fast(
-                opctx,
-                deno_core::_ops::OpMetricsEvent::Dispatched,
-            );
-            let res = Self::v8_fn_ptr_fast(this, arg0, arg1, fast_api_callback_options);
-            deno_core::_ops::dispatch_metrics_fast(
-                opctx,
-                deno_core::_ops::OpMetricsEvent::Completed,
-            );
-            res
-        }
-        #[allow(clippy::too_many_arguments)]
         extern "C" fn v8_fn_ptr_fast<'s>(
             this: deno_core::v8::Local<deno_core::v8::Object>,
             arg0: deno_core::v8::Local<deno_core::v8::Value>,
@@ -104,6 +57,18 @@ pub const fn op_v8_lifetime() -> ::deno_core::_ops::OpDecl {
             let fast_api_callback_options: &'s mut _ = unsafe {
                 &mut *fast_api_callback_options
             };
+            let opctx: &'s _ = unsafe {
+                &*(deno_core::v8::Local::<
+                    deno_core::v8::External,
+                >::cast_unchecked(unsafe { fast_api_callback_options.data })
+                    .value() as *const deno_core::_ops::OpCtx)
+            };
+            if opctx.metrics_enabled() {
+                deno_core::_ops::dispatch_metrics_fast(
+                    opctx,
+                    deno_core::_ops::OpMetricsEvent::Dispatched,
+                );
+            }
             let result = {
                 let Ok(mut arg0) = deno_core::_ops::v8_try_convert_option::<
                     deno_core::v8::String,
@@ -147,6 +112,12 @@ pub const fn op_v8_lifetime() -> ::deno_core::_ops::OpDecl {
                 };
                 Self::call(arg0, arg1)
             };
+            if opctx.metrics_enabled() {
+                deno_core::_ops::dispatch_metrics_fast(
+                    opctx,
+                    deno_core::_ops::OpMetricsEvent::Completed,
+                );
+            }
             result as _
         }
         fn slow_function_impl<'s>(
@@ -190,12 +161,6 @@ pub const fn op_v8_lifetime() -> ::deno_core::_ops::OpDecl {
         }
         extern "C" fn v8_fn_ptr<'s>(info: *const deno_core::v8::FunctionCallbackInfo) {
             let info: &'s _ = unsafe { &*info };
-            Self::slow_function_impl(info);
-        }
-        extern "C" fn v8_fn_ptr_metrics<'s>(
-            info: *const deno_core::v8::FunctionCallbackInfo,
-        ) {
-            let info: &'s _ = unsafe { &*info };
             let args = deno_core::v8::FunctionCallbackArguments::from_function_callback_info(
                 info,
             );
@@ -205,21 +170,25 @@ pub const fn op_v8_lifetime() -> ::deno_core::_ops::OpDecl {
                 >::cast_unchecked(args.data())
                     .value() as *const deno_core::_ops::OpCtx)
             };
-            deno_core::_ops::dispatch_metrics_slow(
-                opctx,
-                deno_core::_ops::OpMetricsEvent::Dispatched,
-            );
+            if opctx.metrics_enabled() {
+                deno_core::_ops::dispatch_metrics_slow(
+                    opctx,
+                    deno_core::_ops::OpMetricsEvent::Dispatched,
+                );
+            }
             let res = Self::slow_function_impl(info);
-            if res == 0 {
-                deno_core::_ops::dispatch_metrics_slow(
-                    opctx,
-                    deno_core::_ops::OpMetricsEvent::Completed,
-                );
-            } else {
-                deno_core::_ops::dispatch_metrics_slow(
-                    opctx,
-                    deno_core::_ops::OpMetricsEvent::Error,
-                );
+            if opctx.metrics_enabled() {
+                if res == 0 {
+                    deno_core::_ops::dispatch_metrics_slow(
+                        opctx,
+                        deno_core::_ops::OpMetricsEvent::Completed,
+                    );
+                } else {
+                    deno_core::_ops::dispatch_metrics_slow(
+                        opctx,
+                        deno_core::_ops::OpMetricsEvent::Error,
+                    );
+                }
             }
         }
     }

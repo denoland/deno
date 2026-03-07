@@ -453,8 +453,8 @@ pub struct RuntimeOptions {
   /// If specified, transpiles extensions before loading.
   pub extension_transpiler: Option<Rc<ExtensionTranspiler>>,
 
-  /// Provide a function that may optionally provide a metrics collector
-  /// for a given op.
+  /// Provide a function that may optionally provide a metrics callback
+  /// for a given op. Used for trace_ops (--trace-ops).
   pub op_metrics_factory_fn: Option<OpMetricsFactoryFn>,
 
   /// JsRuntime extensions, not to be confused with ES modules.

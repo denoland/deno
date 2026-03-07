@@ -9,7 +9,7 @@ use crate::ExtensionFileSource;
 use crate::FastString;
 use crate::ModuleCodeString;
 use crate::OpDecl;
-use crate::OpMetricsFactoryFn;
+use crate::ops_metrics::OpMetricsFactoryFn;
 use crate::OpState;
 use crate::SourceMapData;
 use crate::error::CoreError;
@@ -154,7 +154,7 @@ pub fn create_op_ctxs(
   let mut op_ctxs = Vec::with_capacity(op_count);
 
   let runtime_state_ptr = runtime_state.as_ref() as *const _;
-  let create_ctx = |index, decl| {
+  let create_ctx = |index, decl: OpDecl| {
     let metrics_fn = op_metrics_factory_fn
       .as_ref()
       .and_then(|f| (f)(index as _, op_count, &decl));
