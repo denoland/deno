@@ -1,0 +1,17 @@
+{
+  "tempDir": true,
+  "tests": {
+    "unref_child_survives_parent_exit": {
+      "steps": [
+        {
+          "args": "run --allow-all parent.ts",
+          "output": ""
+        },
+        {
+          "args": "run --allow-read verify.ts",
+          "output": "OK: child process survived parent exit\n"
+        }
+      ]
+    }
+  }
+}
