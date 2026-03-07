@@ -289,7 +289,57 @@ interface Uint8Array<TArrayBuffer extends ArrayBufferLike> {
      * @returns A copy of the original array with the inserted value.
      */
     with(index: number, value: number): Uint8Array<ArrayBuffer>;
+
+    /**
+     * Converts this `Uint8Array` object to a base64 string.
+     *
+     * [MDN](https://developer.mozilla.org/docs/Web/JavaScript/Reference/Global_Objects/Uint8Array/toBase64)
+     */
+    toBase64(options?: {
+        alphabet?: "base64" | "base64url";
+        omitPadding?: boolean;
+    }): string;
+    /**
+     * Populates this `Uint8Array` object with data from a base64 string.
+     *
+     * [MDN](https://developer.mozilla.org/docs/Web/JavaScript/Reference/Global_Objects/Uint8Array/setFromBase64)
+     */
+    setFromBase64(string: string, options?: {
+        alphabet?: "base64" | "base64url";
+        lastChunkHandling?: "loose" | "strict" | "stop-before-partial";
+    }): { read: number; written: number };
+    /**
+     * Converts this `Uint8Array` object to a hex string.
+     *
+     * [MDN](https://developer.mozilla.org/docs/Web/JavaScript/Reference/Global_Objects/Uint8Array/toHex)
+     */
+    toHex(): string;
+    /**
+     * Populates this `Uint8Array` object with data from a hex string.
+     *
+     * [MDN](https://developer.mozilla.org/docs/Web/JavaScript/Reference/Global_Objects/Uint8Array/setFromHex)
+     */
+    setFromHex(string: string): { read: number; written: number };
 }
+
+interface Uint8ArrayConstructor {
+  /**
+   * Creates a new `Uint8Array` object from a base64 string.
+   *
+   * [MDN](https://developer.mozilla.org/docs/Web/JavaScript/Reference/Global_Objects/Uint8Array/fromBase64)
+   */
+  fromBase64(string: string, options?: {
+    alphabet?: "base64" | "base64url";
+    lastChunkHandling?: "loose" | "strict" | "stop-before-partial";
+  }): Uint8Array<ArrayBuffer>;
+  /**
+   * Creates a new `Uint8Array` object from a hex string.
+   *
+   * [MDN](https://developer.mozilla.org/docs/Web/JavaScript/Reference/Global_Objects/Uint8Array/fromHex)
+   */
+  fromHex(string: string): Uint8Array<ArrayBuffer>;
+}
+
 
 interface Uint8ClampedArray<TArrayBuffer extends ArrayBufferLike> {
     /**
