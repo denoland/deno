@@ -1,0 +1,7 @@
+{
+  // Regression test for https://github.com/denoland/deno/issues/32123
+  // Libraries like pirates/esbuild-register hook Module.prototype._compile
+  // and expect the content argument to always be a string.
+  "args": "run -A main.cjs",
+  "output": "hello from lib.ts\n"
+}

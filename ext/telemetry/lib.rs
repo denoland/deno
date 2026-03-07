@@ -43,7 +43,7 @@ pub use opentelemetry::KeyValue;
 pub use opentelemetry::StringValue;
 pub use opentelemetry::Value;
 use opentelemetry::logs::AnyValue;
-use opentelemetry::logs::LogRecord as LogRecordTrait;
+pub use opentelemetry::logs::LogRecord as LogRecordTrait;
 use opentelemetry::logs::Severity;
 use opentelemetry::metrics::AsyncInstrumentBuilder;
 pub use opentelemetry::metrics::Gauge;
@@ -70,7 +70,7 @@ use opentelemetry_sdk::Resource;
 use opentelemetry_sdk::export::trace::SpanData;
 use opentelemetry_sdk::logs::BatchLogProcessor;
 use opentelemetry_sdk::logs::LogProcessor;
-use opentelemetry_sdk::logs::LogRecord;
+pub use opentelemetry_sdk::logs::LogRecord;
 use opentelemetry_sdk::metrics::ManualReader;
 use opentelemetry_sdk::metrics::MetricResult;
 use opentelemetry_sdk::metrics::SdkMeterProvider;
@@ -1277,7 +1277,8 @@ fn op_otel_log<'s>(
     ..=0 => Severity::Debug,
     1 => Severity::Info,
     2 => Severity::Warn,
-    3.. => Severity::Error,
+    3 | 5.. => Severity::Error,
+    4 => Severity::Trace,
   };
 
   let mut log_record = LogRecord::default();
@@ -1339,7 +1340,8 @@ fn op_otel_log_foreign(
     ..=0 => Severity::Debug,
     1 => Severity::Info,
     2 => Severity::Warn,
-    3.. => Severity::Error,
+    3 | 5.. => Severity::Error,
+    4 => Severity::Trace,
   };
 
   let trace_id = parse_trace_id(scope, trace_id);
@@ -2512,7 +2514,7 @@ fn op_otel_metric_attribute3<'s>(
 
 struct ObservationDone(oneshot::Sender<()>);
 
-#[op2(async)]
+#[op2]
 async fn op_otel_metric_wait_to_observe(state: Rc<RefCell<OpState>>) -> bool {
   let (tx, rx) = oneshot::channel();
   {

@@ -24,7 +24,6 @@ use deno_runtime::cpu_profiler::CpuProfiler;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::worker::MainWorker;
 use deno_semver::npm::NpmPackageReqReference;
-use sys_traits::EnvCurrentDir;
 use tokio::select;
 
 use crate::args::CliLockfile;
@@ -53,7 +52,7 @@ pub struct CliMainWorkerOptions {
   pub maybe_cpu_prof_config: Option<CpuProfConfig>,
   pub default_npm_caching_strategy: NpmCachingStrategy,
   pub needs_test_modules: bool,
-  pub maybe_initial_cwd: Option<Arc<ModuleSpecifier>>,
+  pub initial_cwd: Arc<ModuleSpecifier>,
 }
 
 /// Data shared between the factory and workers.
@@ -62,7 +61,7 @@ struct SharedState {
   pub maybe_coverage_dir: Option<PathBuf>,
   pub maybe_cpu_prof_config: Option<CpuProfConfig>,
   pub maybe_file_watcher_communicator: Option<Arc<WatcherCommunicator>>,
-  pub maybe_initial_cwd: Option<Arc<ModuleSpecifier>>,
+  pub initial_cwd: Arc<ModuleSpecifier>,
 }
 
 pub struct CliMainWorker {
@@ -325,7 +324,6 @@ pub struct CliMainWorkerFactory {
   progress_bar: ProgressBar,
   root_permissions: PermissionsContainer,
   shared: Arc<SharedState>,
-  sys: CliSys,
   default_npm_caching_strategy: NpmCachingStrategy,
   needs_test_modules: bool,
 }
@@ -339,7 +337,6 @@ impl CliMainWorkerFactory {
     npm_installer: Option<Arc<CliNpmInstaller>>,
     npm_resolver: CliNpmResolver,
     progress_bar: ProgressBar,
-    sys: CliSys,
     options: CliMainWorkerOptions,
     root_permissions: PermissionsContainer,
   ) -> Self {
@@ -350,13 +347,12 @@ impl CliMainWorkerFactory {
       npm_resolver,
       progress_bar,
       root_permissions,
-      sys,
       shared: Arc::new(SharedState {
         create_hmr_runner: options.create_hmr_runner,
         maybe_coverage_dir: options.maybe_coverage_dir,
         maybe_cpu_prof_config: options.maybe_cpu_prof_config,
         maybe_file_watcher_communicator,
-        maybe_initial_cwd: options.maybe_initial_cwd,
+        initial_cwd: options.initial_cwd,
       }),
       default_npm_caching_strategy: options.default_npm_caching_strategy,
       needs_test_modules: options.needs_test_modules,
@@ -441,10 +437,7 @@ impl CliMainWorkerFactory {
         }
 
         // use a fake referrer that can be used to discover the package.json if necessary
-        let referrer =
-          ModuleSpecifier::from_directory_path(self.sys.env_current_dir()?)
-            .unwrap()
-            .join("package.json")?;
+        let referrer = self.shared.initial_cwd.join("package.json")?;
         let package_folder =
           self.npm_resolver.resolve_pkg_folder_from_deno_module_req(
             package_ref.req(),
@@ -499,12 +492,10 @@ impl CliMainWorkerFactory {
       );
     }
 
-    if let Some(initial_cwd) = &self.shared.maybe_initial_cwd {
-      let op_state = worker.js_runtime().op_state();
-      op_state
-        .borrow_mut()
-        .put(deno_core::error::InitialCwd(initial_cwd.clone()));
-    }
+    let op_state = worker.js_runtime().op_state();
+    op_state.borrow_mut().put(deno_core::error::InitialCwd(
+      self.shared.initial_cwd.clone(),
+    ));
 
     Ok(CliMainWorker {
       worker,
@@ -529,10 +520,11 @@ mod tests {
   use deno_runtime::worker::WorkerServiceOptions;
 
   use super::*;
+  use crate::util::env::resolve_cwd;
 
   fn create_test_worker() -> MainWorker {
     let main_module =
-      resolve_path("./hello.js", &std::env::current_dir().unwrap()).unwrap();
+      resolve_path("./hello.js", &resolve_cwd(None).unwrap()).unwrap();
     let fs = Arc::new(RealFs);
     let permission_desc_parser = Arc::new(
       RuntimePermissionDescriptorParser::new(crate::sys::CliSys::default()),
@@ -608,8 +600,7 @@ mod tests {
     // "foo" is not a valid module specifier so this should return an error.
     let mut worker = create_test_worker();
     let module_specifier =
-      resolve_path("./does-not-exist", &std::env::current_dir().unwrap())
-        .unwrap();
+      resolve_path("./does-not-exist", &resolve_cwd(None).unwrap()).unwrap();
     let result = worker.execute_main_module(&module_specifier).await;
     assert!(result.is_err());
   }

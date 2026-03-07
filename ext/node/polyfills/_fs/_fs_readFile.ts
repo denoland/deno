@@ -12,7 +12,6 @@ import {
 import { Buffer } from "node:buffer";
 import { readAllSync } from "ext:deno_io/12_io.js";
 import { FileHandle } from "ext:deno_node/internal/fs/handle.ts";
-import { pathFromURL } from "ext:deno_web/00_infra.js";
 import { Encodings } from "ext:deno_node/_utils.ts";
 import { FsFile } from "ext:deno_fs/30_fs.js";
 import {
@@ -20,7 +19,11 @@ import {
   denoErrorToNodeError,
   ERR_FS_FILE_TOO_LARGE,
 } from "ext:deno_node/internal/errors.ts";
-import { getOptions, stringToFlags } from "ext:deno_node/internal/fs/utils.mjs";
+import {
+  getOptions,
+  getValidatedPathToString,
+  stringToFlags,
+} from "ext:deno_node/internal/fs/utils.mjs";
 import * as abortSignal from "ext:deno_web/03_abort_signal.js";
 import { op_fs_read_file_async, op_fs_read_file_sync } from "ext:core/ops";
 import { core, primordials } from "ext:core/mod.js";
@@ -36,6 +39,7 @@ const {
 const {
   ArrayPrototypePush,
   MathMin,
+  ObjectPrototypeIsPrototypeOf,
   TypedArrayPrototypeGetByteLength,
   TypedArrayPrototypeSet,
   TypedArrayPrototypeSubarray,
@@ -175,11 +179,16 @@ export function readFile(
 ): void;
 export function readFile(path: string | URL, callback: BinaryCallback): void;
 export function readFile(
-  path: Path,
+  pathOrRid: Path,
   optOrCallback?: FileOptionsArgument | Callback | null | undefined,
   callback?: Callback,
 ) {
-  path = path instanceof URL ? pathFromURL(path) : path;
+  if (ObjectPrototypeIsPrototypeOf(FileHandle.prototype, pathOrRid)) {
+    pathOrRid = (pathOrRid as FileHandle).fd;
+  } else if (typeof pathOrRid !== "number") {
+    pathOrRid = getValidatedPathToString(pathOrRid as string);
+  }
+
   let cb: Callback | undefined;
   if (typeof optOrCallback === "function") {
     cb = optOrCallback;
@@ -190,19 +199,28 @@ export function readFile(
   const options = getOptions<FileOptions>(optOrCallback, defaultOptions);
 
   let p: Promise<Uint8Array>;
-  if (typeof path === "string") {
-    p = readFileAsync(path, options);
+  if (typeof pathOrRid === "string") {
+    p = readFileAsync(pathOrRid, options);
   } else {
-    const rid = path instanceof FileHandle ? path.fd : path;
-    const fsFile = new FsFile(rid, Symbol.for("Deno.internal.FsFile"));
+    const fsFile = new FsFile(pathOrRid, Symbol.for("Deno.internal.FsFile"));
     p = fsFileReadAll(fsFile, options);
   }
 
   if (cb) {
-    p.then((data: Uint8Array) => {
-      const textOrBuffer = maybeDecode(data, options?.encoding);
-      (cb as BinaryCallback)(null, textOrBuffer);
-    }, (err) => cb && cb(denoErrorToNodeError(err, { path, syscall: "open" })));
+    p.then(
+      (data: Uint8Array) => {
+        const textOrBuffer = maybeDecode(data, options?.encoding);
+        (cb as BinaryCallback)(null, textOrBuffer);
+      },
+      (err) =>
+        cb &&
+        cb(
+          denoErrorToNodeError(err, {
+            path: typeof pathOrRid === "string" ? pathOrRid : undefined,
+            syscall: "open",
+          }),
+        ),
+    );
   }
 }
 
@@ -231,13 +249,16 @@ export function readFileSync(
   path: string | URL | number,
   opt?: FileOptionsArgument,
 ): string | Buffer {
-  path = path instanceof URL ? pathFromURL(path) : path;
   const options = getOptions<FileOptions>(opt, defaultOptions);
+
   let data;
   if (typeof path === "number") {
     const fsFile = new FsFile(path, Symbol.for("Deno.internal.FsFile"));
     data = readAllSync(fsFile);
   } else {
+    // Validate/convert path to string (throws on invalid types)
+    path = getValidatedPathToString(path as unknown as string);
+
     const flagsNumber = stringToFlags(options?.flag, "options.flag");
     try {
       data = op_fs_read_file_sync(path, flagsNumber);

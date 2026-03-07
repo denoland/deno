@@ -2659,7 +2659,7 @@ async fn websocket_server_multi_field_connection_header() {
   assert!(child.wait().unwrap().success());
 }
 
-#[test(timeout = 60_000)]
+#[test(timeout = 300)]
 async fn websocket_server_idletimeout() {
   let script =
     util::testdata_path().join("run/websocket_server_idletimeout.ts");
@@ -2670,7 +2670,7 @@ async fn websocket_server_idletimeout() {
     .arg("--cert")
     .arg(root_ca)
     .arg("--config")
-    .arg("./config/deno.json")
+    .arg(util::tests_path().join("config/deno.json"))
     .arg(script)
     .stdout_piped()
     .spawn()
@@ -3402,7 +3402,7 @@ fn handle_invalid_path_error() {
 fn test_permission_broker_doesnt_exit() {
   let context = TestContext::default();
   let socket_path = if cfg!(windows) {
-    PathRef::new(r"\\.\pipe\deno-permission-broker")
+    PathRef::new(r"\\.\pipe\deno-permission-broker-nonexistent")
   } else {
     context.temp_dir().path().join("broker.sock")
   };
@@ -3482,4 +3482,34 @@ fn test_permission_broker() {
 {"v":1,"pid":[WILDCARD],"id":5,"datetime":"[WILDCARD]","permission":"env","value":null}
 [WILDCARD]"#,
   );
+}
+
+// Regression test for https://github.com/denoland/deno/issues/32473
+// Verifies that process.stdout.write() and console.log() produce output
+// in the correct order when stdout is a TTY (uses PTY).
+#[test]
+fn process_stdout_write_order_pty() {
+  TestContext::default()
+    .new_command()
+    .args_vec(["run", "run/process_stdout_write_order.ts"])
+    .with_pty(|mut console| {
+      console.expect("A");
+      console.expect("B");
+      console.expect("C");
+      console.expect("D");
+      console.expect("E");
+    });
+}
+
+// Regression test for https://github.com/denoland/deno/issues/32513
+// Verifies that process.stdout survives destroy() calls (e.g. from mute-stream).
+#[test]
+fn process_stdout_destroy_undestroy_pty() {
+  TestContext::default()
+    .new_command()
+    .args_vec(["run", "run/process_stdout_destroy_undestroy.ts"])
+    .with_pty(|mut console| {
+      console.expect("before");
+      console.expect("after");
+    });
 }

@@ -447,13 +447,6 @@ impl WorkspaceMainModuleResolver {
               )?
               .into_url()?
           }
-          deno_package_json::PackageJsonDepValue::JsrReq(_) => {
-            return Err(
-              deno_resolver::DenoResolveErrorKind::UnsupportedPackageJsonJsrReq
-                .into_box()
-                .into(),
-            );
-          }
         }
       }
       deno_resolver::workspace::MappedResolution::PackageJsonImport {
@@ -647,8 +640,16 @@ impl CliOptions {
     self.flags.no_legacy_abort()
   }
 
-  pub fn env_file_name(&self) -> Option<&Vec<String>> {
-    self.flags.env_file.as_ref()
+  pub fn env_file_paths(
+    &self,
+  ) -> impl DoubleEndedIterator<Item = PathBuf> + '_ {
+    self
+      .flags
+      .env_file
+      .as_ref()
+      .into_iter()
+      .flatten()
+      .map(|name| self.initial_cwd.join(name))
   }
 
   pub fn preload_modules(&self) -> Result<Vec<ModuleSpecifier>, AnyError> {
@@ -834,14 +835,18 @@ impl CliOptions {
 
   pub fn resolve_inspector_server_options(
     &self,
-  ) -> Option<(SocketAddr, &'static str)> {
+  ) -> Option<(SocketAddr, &'static str, InspectPublishUid)> {
     let host = self
       .flags
       .inspect
       .or(self.flags.inspect_brk)
       .or(self.flags.inspect_wait)?;
 
-    Some((host, DENO_VERSION_INFO.user_agent))
+    Some((
+      host,
+      DENO_VERSION_INFO.user_agent,
+      self.flags.inspect_publish_uid.unwrap_or_default(),
+    ))
   }
 
   pub fn resolve_fmt_options_for_members(
@@ -1173,6 +1178,7 @@ impl CliOptions {
         "jsr.io:443",
         "deno.land:443",
         "esm.sh:443",
+        "raw.esm.sh:443",
         "cdn.jsdelivr.net:443",
         "raw.githubusercontent.com:443",
         "gist.githubusercontent.com:443",
@@ -1223,6 +1229,9 @@ impl CliOptions {
           .first()
           .and_then(|url| file_to_url(url))
           .map(|url| vec![url]),
+        DenoSubcommand::Install(InstallFlags::Local(
+          InstallFlagsLocal::Entrypoints(flags),
+        )) => Some(files_to_urls(&flags.entrypoints)),
         DenoSubcommand::Doc(DocFlags {
           source_files: DocSourceFileFlag::Paths(paths),
           ..
@@ -1355,6 +1364,16 @@ impl CliOptions {
     }
 
     unstable_features
+  }
+
+  /// Returns unstable feature flags as CLI arguments (e.g., "--unstable-unsafe-proto").
+  /// This includes features from both CLI flags and config file.
+  pub fn unstable_args(&self) -> Vec<String> {
+    self
+      .unstable_features()
+      .into_iter()
+      .map(|f| format!("--unstable-{}", f))
+      .collect()
   }
 
   pub fn v8_flags(&self) -> &Vec<String> {
@@ -1540,12 +1559,7 @@ pub fn config_to_deno_graph_workspace_member(
 pub fn get_default_v8_flags() -> Vec<String> {
   vec![
     "--stack-size=1024".to_string(),
-    "--js-explicit-resource-management".to_string(),
-    // TODO(bartlomieju): I think this can be removed as it's handled by `deno_core`
-    // and its settings.
-    // deno_ast removes TypeScript `assert` keywords, so this flag only affects JavaScript
-    // TODO(petamoriken): Need to check TypeScript `assert` keywords in deno_ast
-    "--no-harmony-import-assertions".to_string(),
+    "--inspector-live-edit".to_string(),
   ]
 }
 
@@ -1819,13 +1833,14 @@ mod test {
   use pretty_assertions::assert_eq;
 
   use super::*;
+  use crate::util::env::resolve_cwd;
 
   #[test]
   fn resolve_import_map_flags_take_precedence() {
     let config_text = r#"{
       "importMap": "import_map.json"
     }"#;
-    let cwd = &std::env::current_dir().unwrap();
+    let cwd = &resolve_cwd(None).unwrap();
     let config_specifier = Url::parse("file:///deno/deno.jsonc").unwrap();
     let config_file = ConfigFile::new(config_text, config_specifier).unwrap();
     let actual = resolve_import_map_specifier(
@@ -1893,7 +1908,7 @@ mod test {
 
   #[test]
   fn test_flags_to_permission_options() {
-    let base_dir = std::env::current_dir().unwrap().join("sub");
+    let base_dir = resolve_cwd(None).unwrap().join("sub");
     {
       let flags = PermissionFlags::default();
       let config = PermissionsObjectWithBase {

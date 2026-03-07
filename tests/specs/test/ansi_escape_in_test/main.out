@@ -1,0 +1,12 @@
+Check [WILDCARD]main.ts
+running 1 test from ./main.ts
+ansi escape filtering ...
+------- output -------
+[WILDCARD]red text[WILDCARD]
+[WILDCARD]bold green[WILDCARD]
+plain output
+----- output end -----
+ansi escape filtering ... ok ([WILDCARD])
+
+ok | 1 passed | 0 failed ([WILDCARD])
+

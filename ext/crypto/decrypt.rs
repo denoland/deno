@@ -17,7 +17,7 @@ use ctr::Ctr64BE;
 use ctr::Ctr128BE;
 use ctr::cipher::StreamCipher;
 use deno_core::JsBuffer;
-use deno_core::ToJsBuffer;
+use deno_core::convert::Uint8Array;
 use deno_core::op2;
 use deno_core::unsync::spawn_blocking;
 use rsa::pkcs1::DecodeRsaPrivateKey;
@@ -120,12 +120,11 @@ pub enum DecryptError {
   Rsa(rsa::Error),
 }
 
-#[op2(async)]
-#[serde]
+#[op2]
 pub async fn op_crypto_decrypt(
   #[serde] opts: DecryptOptions,
   #[buffer] data: JsBuffer,
-) -> Result<ToJsBuffer, DecryptError> {
+) -> Result<Uint8Array, DecryptError> {
   let key = opts.key;
   let fun = move || match opts.algorithm {
     DecryptAlgorithm::RsaOaep { hash, label } => {

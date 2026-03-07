@@ -4,6 +4,7 @@
 // deno-lint-ignore-file ban-types prefer-primordials
 
 import { AssertionError } from "ext:deno_node/internal/assert/assertion_error.js";
+import { innerOk } from "ext:deno_node/internal/assert/utils.ts";
 import { inspect } from "node:util";
 import {
   ERR_AMBIGUOUS_ARGUMENT,
@@ -102,18 +103,8 @@ function Assert(options: AssertOptions) {
 Assert.prototype.fail = fail;
 // Duplicate of the `ok` function below so we don't inherit
 // the extra assigned properties from `assert` function later on.
-Assert.prototype.ok = function (actual: unknown, message?: string | Error) {
-  if (arguments.length === 0) {
-    throw new AssertionError({
-      message: "No value argument passed to `assert.ok()`",
-      expected: true,
-      operator: "==",
-    });
-  }
-  if (actual) {
-    return;
-  }
-  equal(actual, true, message);
+Assert.prototype.ok = function ok(...args: unknown[]) {
+  innerOk(ok, args.length, ...args);
 };
 Assert.prototype.equal = equal;
 Assert.prototype.notEqual = notEqual;
@@ -154,19 +145,8 @@ function innerFail(obj: {
   });
 }
 
-function assert(actual: unknown, message?: string | Error): asserts actual {
-  if (arguments.length === 0) {
-    throw new AssertionError({
-      message: "No value argument passed to `assert.ok()`",
-      expected: true,
-      operator: "==",
-    });
-  }
-  if (actual) {
-    return;
-  }
-
-  equal(actual, true, message);
+function assert(...args: unknown[]) {
+  innerOk(ok, args.length, ...args);
 }
 const ok = assert;
 
@@ -519,46 +499,34 @@ function expectsNoError(
 
 function throws(
   fn: () => void,
-  message?: string,
-): void;
-function throws(
-  fn: () => void,
-  error?: Function,
   message?: string | Error,
 ): void;
 function throws(
   fn: () => void,
-  error?: RegExp,
-  message?: string,
+  error?: AssertPredicate,
+  message?: string | Error,
 ): void;
 function throws(
   fn: () => void,
-  expected?: AssertPredicate | string,
-  message?: Error | string,
+  ...args: [(AssertPredicate | string)?, (string | Error)?]
 ) {
-  expectsError(throws, getActual(fn), expected, message);
+  expectsError(throws, getActual(fn), ...args);
 }
 
 function doesNotThrow(
   fn: () => void,
-  message?: string,
-): void;
-function doesNotThrow(
-  fn: () => void,
-  error?: Function,
   message?: string | Error,
 ): void;
 function doesNotThrow(
   fn: () => void,
-  error?: RegExp,
-  message?: string,
+  error?: AssertPredicate,
+  message?: string | Error,
 ): void;
 function doesNotThrow(
   fn: () => void,
-  expected?: AssertPredicate | string,
-  message?: Error | string,
+  ...args: [(AssertPredicate | string)?, (string | Error)?]
 ) {
-  expectsNoError(() => {}, getActual(fn), expected, message);
+  expectsNoError(doesNotThrow, getActual(fn), ...args);
 }
 
 function equal(
@@ -861,62 +829,38 @@ function doesNotMatch(
   internalMatch(string, regexp, message, doesNotMatch);
 }
 
-function strict(actual: unknown, message?: string | Error): asserts actual {
-  if (arguments.length === 0) {
-    throw new AssertionError({
-      message: "No value argument passed to `assert.ok()`",
-    });
-  }
-  assert(actual, message);
+function strict(...args: unknown[]) {
+  innerOk(strict, args.length, ...args);
 }
 
 async function rejects(
-  // deno-lint-ignore no-explicit-any
-  asyncFn: Promise<any> | (() => Promise<any>),
-  error?: RegExp | Function | Error,
+  asyncFn: Promise<unknown> | (() => Promise<unknown>),
+  error?: AssertPredicate,
 ): Promise<void>;
-
 async function rejects(
-  // deno-lint-ignore no-explicit-any
-  asyncFn: Promise<any> | (() => Promise<any>),
-  message?: string,
+  asyncFn: Promise<unknown> | (() => Promise<unknown>),
+  message?: string | Error,
 ): Promise<void>;
-
-// Intentionally avoid using async/await because test-assert-async.js requires it
 async function rejects(
-  // deno-lint-ignore no-explicit-any
-  asyncFn: Promise<any> | (() => Promise<any>),
-  expected?: AssertPredicate | string,
-  message?: Error | string,
+  asyncFn: Promise<unknown> | (() => Promise<unknown>),
+  ...args: [(AssertPredicate | string)?, (string | Error)?]
 ) {
-  expectsError(rejects, await waitForActual(asyncFn), expected, message);
+  expectsError(rejects, await waitForActual(asyncFn), ...args);
 }
 
 async function doesNotReject(
-  // deno-lint-ignore no-explicit-any
-  asyncFn: Promise<any> | (() => Promise<any>),
-  error?: RegExp | Function,
+  asyncFn: Promise<unknown> | (() => Promise<unknown>),
+  error?: AssertPredicate,
 ): Promise<void>;
-
 async function doesNotReject(
-  // deno-lint-ignore no-explicit-any
-  asyncFn: Promise<any> | (() => Promise<any>),
-  message?: string,
+  asyncFn: Promise<unknown> | (() => Promise<unknown>),
+  message?: string | Error,
 ): Promise<void>;
-
-// Intentionally avoid using async/await because test-assert-async.js requires it
 async function doesNotReject(
-  // deno-lint-ignore no-explicit-any
-  asyncFn: Promise<any> | (() => Promise<any>),
-  expected?: AssertPredicate | string,
-  message?: Error | string,
+  asyncFn: Promise<unknown> | (() => Promise<unknown>),
+  ...args: [(AssertPredicate | string)?, (string | Error)?]
 ) {
-  expectsNoError(
-    doesNotReject,
-    await waitForActual(asyncFn),
-    expected,
-    message,
-  );
+  expectsNoError(doesNotReject, await waitForActual(asyncFn), ...args);
 }
 
 /**
@@ -1038,6 +982,7 @@ Object.assign(strict, {
   notEqual: notStrictEqual,
   notStrictEqual,
   ok,
+  partialDeepStrictEqual,
   rejects,
   strict,
   strictEqual,

@@ -543,18 +543,48 @@ impl<
   }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EnhanceGraphErrorMode {
   ShowRange,
   HideRange,
 }
 
+#[derive(Debug, deno_error::JsError)]
+#[class(inherit)]
+pub struct EnhancedGraphError {
+  #[inherit]
+  original: ModuleGraphError,
+  message: String,
+  mode: EnhanceGraphErrorMode,
+}
+
+impl EnhancedGraphError {
+  pub fn original(&self) -> &ModuleGraphError {
+    &self.original
+  }
+}
+
+impl std::fmt::Display for EnhancedGraphError {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    f.write_str(&self.message)?;
+    if let Some(range) = self.original.maybe_range()
+      && self.mode == EnhanceGraphErrorMode::ShowRange
+      && !range.specifier.as_str().contains("/$deno$eval")
+    {
+      write!(f, "\n    at {}", format_range_with_colors(range))?;
+    }
+    Ok(())
+  }
+}
+
+impl std::error::Error for EnhancedGraphError {}
+
 pub fn enhance_graph_error(
   sys: &(impl sys_traits::FsMetadata + Clone),
-  error: &ModuleGraphError,
+  error: ModuleGraphError,
   mode: EnhanceGraphErrorMode,
-) -> String {
-  let mut message = match &error {
+) -> EnhancedGraphError {
+  let message = match &error {
     ModuleGraphError::ResolutionError(resolution_error) => {
       enhanced_resolution_error_message(resolution_error)
     }
@@ -572,14 +602,11 @@ pub fn enhance_graph_error(
     }
   };
 
-  if let Some(range) = error.maybe_range()
-    && mode == EnhanceGraphErrorMode::ShowRange
-    && !range.specifier.as_str().contains("/$deno$eval")
-  {
-    message.push_str("\n    at ");
-    message.push_str(&format_range_with_colors(range));
+  EnhancedGraphError {
+    original: error,
+    message,
+    mode,
   }
-  message
 }
 
 /// Adds more explanatory information to a resolution error.

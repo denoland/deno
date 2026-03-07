@@ -38,7 +38,7 @@ if (js) {
   promises.push(dlintPreferPrimordials());
   promises.push(ensureCiYmlUpToDate());
   promises.push(ensureNoUnusedOutFiles());
-  promises.push(ensureNoNewTopLevelFiles());
+  promises.push(ensureNoNewTopLevelEntries());
 
   if (rs) {
     promises.push(checkCopyright());
@@ -61,9 +61,6 @@ async function dlint() {
     "*.js",
     "*.ts",
     ":!:.github/mtime_cache/action.js",
-    ":!:cli/bench/testdata/npm/*",
-    ":!:cli/bench/testdata/express-router.js",
-    ":!:cli/bench/testdata/react-dom.js",
     ":!:cli/compilers/wasm_wrap.js",
     ":!:cli/tools/coverage/script.js",
     ":!:cli/tools/doc/prism.css",
@@ -73,14 +70,19 @@ async function dlint() {
     ":!:cli/tsc/compiler.d.ts",
     ":!:ext/node/polyfills/deps/**",
     ":!:runtime/examples/",
+    ":!:libs/eszip/testdata/**",
     ":!:target/",
-    ":!:tests/ffi/tests/test.js",
+    ":!:tests/bench/testdata/npm/*",
+    ":!:tests/bench/testdata/express-router.js",
+    ":!:tests/bench/testdata/react-dom.js",
+    ":!:tests/ffi/testdata/test.js",
     ":!:tests/registry/**",
     ":!:tests/specs/**",
     ":!:tests/testdata/**",
     ":!:tests/unit_node/testdata/**",
     ":!:tests/wpt/runner/**",
     ":!:tests/wpt/suite/**",
+    ":!:libs/**",
   ]);
 
   if (!sourceFiles.length) {
@@ -168,37 +170,89 @@ function splitToChunks(paths, initCmdLen) {
 
 async function clippy() {
   const currentBuildMode = buildMode();
-  const cmd = ["clippy", "--all-targets", "--all-features", "--locked"];
 
-  if (currentBuildMode != "debug") {
-    cmd.push("--release");
+  const clippyDenyFlags = [
+    "--",
+    "-D",
+    "warnings",
+    "--deny",
+    "clippy::unused_async",
+    // generally prefer the `log` crate, but ignore
+    // these print_* rules if necessary
+    "--deny",
+    "clippy::print_stderr",
+    "--deny",
+    "clippy::print_stdout",
+    "--deny",
+    "clippy::large_futures",
+  ];
+
+  // Run clippy for the whole workspace except deno_core with --all-features.
+  // deno_core is excluded because --all-features enables
+  // v8_enable_pointer_compression which is not available on all platforms.
+  {
+    const cmd = [
+      "clippy",
+      "--all-targets",
+      "--all-features",
+      "--locked",
+      "--workspace",
+      "--exclude",
+      "deno_core",
+    ];
+
+    if (currentBuildMode != "debug") {
+      cmd.push("--release");
+    }
+
+    const cargoCmd = new Deno.Command("cargo", {
+      cwd: ROOT_PATH,
+      args: [...cmd, ...clippyDenyFlags],
+      stdout: "inherit",
+      stderr: "inherit",
+    });
+    const { code } = await cargoCmd.output();
+
+    if (code > 0) {
+      throw new Error("clippy failed");
+    }
   }
 
-  const cargoCmd = new Deno.Command("cargo", {
-    cwd: ROOT_PATH,
-    args: [
-      ...cmd,
-      "--",
-      "-D",
-      "warnings",
-      "--deny",
-      "clippy::unused_async",
-      // generally prefer the `log` crate, but ignore
-      // these print_* rules if necessary
-      "--deny",
-      "clippy::print_stderr",
-      "--deny",
-      "clippy::print_stdout",
-      "--deny",
-      "clippy::large_futures",
-    ],
-    stdout: "inherit",
-    stderr: "inherit",
-  });
-  const { code } = await cargoCmd.output();
+  // Run clippy for deno_core with specific features, matching the invocation
+  // from https://github.com/denoland/deno_core/blob/main/tools/lint.ts
+  {
+    const DENO_CORE_CLIPPY_FEATURES = [
+      "default",
+      "include_js_files_for_snapshotting",
+      "unsafe_runtime_options",
+      "unsafe_use_unprotected_platform",
+    ].join(",");
 
-  if (code > 0) {
-    throw new Error("clippy failed");
+    const cmd = [
+      "clippy",
+      "-p",
+      "deno_core",
+      "--all-targets",
+      "--locked",
+      "--features",
+      DENO_CORE_CLIPPY_FEATURES,
+    ];
+
+    if (currentBuildMode != "debug") {
+      cmd.push("--release");
+    }
+
+    const cargoCmd = new Deno.Command("cargo", {
+      cwd: ROOT_PATH,
+      args: [...cmd, ...clippyDenyFlags],
+      stdout: "inherit",
+      stderr: "inherit",
+    });
+    const { code } = await cargoCmd.output();
+
+    if (code > 0) {
+      throw new Error("clippy failed for deno_core");
+    }
   }
 }
 
@@ -325,29 +379,42 @@ async function ensureNoUnusedOutFiles() {
   }
 }
 
-async function listTopLevelFiles() {
+async function listTopLevelEntries() {
   const files = await gitLsFiles(ROOT_PATH, []);
+  const rootPrefix = ROOT_PATH.replace(new RegExp(SEPARATOR + "$"), "") +
+    SEPARATOR;
   return [
     ...new Set(
-      files.map((f) =>
-        f.replace(
-          ROOT_PATH.replace(new RegExp(SEPARATOR + "$"), "") + SEPARATOR,
-          "",
-        )
-      )
-        .filter((file) => !file.includes(SEPARATOR)),
+      files.map((f) => f.replace(rootPrefix, ""))
+        .map((file) => {
+          const sepIndex = file.indexOf(SEPARATOR);
+          // top-level file or first path component (directory)
+          return sepIndex === -1 ? file : file.substring(0, sepIndex);
+        }),
     ),
   ].sort();
 }
 
-async function ensureNoNewTopLevelFiles() {
-  const currentFiles = await listTopLevelFiles();
+async function ensureNoNewTopLevelEntries() {
+  const currentEntries = await listTopLevelEntries();
 
-  const allowedFiles = [
+  // WARNING: When adding anything to this list it must be discussed!
+  // Keep the root of the repository clean.
+  const allowed = new Set([
+    ".cargo",
+    ".devcontainer",
+    ".github",
+    "cli",
+    "ext",
+    "libs",
+    "runtime",
+    "tests",
+    "tools",
     ".dlint.json",
     ".dprint.json",
     ".editorconfig",
     ".gitattributes",
+    // WARNING! See Notice above before adding anything here
     ".gitignore",
     ".gitmodules",
     ".rustfmt.toml",
@@ -359,14 +426,16 @@ async function ensureNoNewTopLevelFiles() {
     "Releases.md",
     "import_map.json",
     "rust-toolchain.toml",
-  ].sort();
+    "flake.nix",
+    "flake.lock",
+  ]);
 
-  const newFiles = currentFiles.filter((file) => !allowedFiles.includes(file));
-  if (newFiles.length > 0) {
+  const newEntries = currentEntries.filter((e) => !allowed.has(e));
+  if (newEntries.length > 0) {
     throw new Error(
-      `New top-level files detected: ${newFiles.join(", ")}. ` +
-        `Only the following top-level files are allowed: ${
-          allowedFiles.join(", ")
+      `New top-level entries detected: ${newEntries.join(", ")}. ` +
+        `Only the following top-level entries are allowed: ${
+          Array.from(allowed).join(", ")
         }`,
     );
   }

@@ -1,5 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+use std::ffi::OsStr;
+use std::ffi::OsString;
 use std::path::Path;
 
 use deno_core::OpState;
@@ -7,6 +9,7 @@ use deno_core::ResourceHandle;
 use deno_core::ResourceHandleFd;
 use deno_core::op2;
 use deno_core::v8;
+use deno_dotenv::parse_env_content_hook;
 use deno_error::JsErrorBox;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::NpmPackageFolderResolver;
@@ -24,6 +27,49 @@ enum HandleType {
   File,
   Pipe,
   Unknown,
+}
+
+/// Check if a raw file descriptor is a TTY.
+/// This is used by Node.js `tty.isatty(fd)`.
+#[op2(fast)]
+pub fn op_node_is_tty(fd: i32) -> bool {
+  if fd < 0 {
+    return false;
+  }
+  is_tty(fd)
+}
+
+#[cfg(unix)]
+fn is_tty(fd: i32) -> bool {
+  // SAFETY: We're checking if the fd is a terminal.
+  // The fd may or may not be valid, but libc::isatty handles that safely.
+  unsafe { libc::isatty(fd) == 1 }
+}
+
+#[cfg(windows)]
+fn is_tty(fd: i32) -> bool {
+  use winapi::um::consoleapi::GetConsoleMode;
+  use winapi::um::processenv::GetStdHandle;
+  use winapi::um::winbase::STD_ERROR_HANDLE;
+  use winapi::um::winbase::STD_INPUT_HANDLE;
+  use winapi::um::winbase::STD_OUTPUT_HANDLE;
+
+  // SAFETY: GetStdHandle returns a borrowed handle to stdin/stdout/stderr.
+  // For fd > 2, we try to use it as a raw handle directly.
+  let handle = match fd {
+    // SAFETY: These are valid standard handles.
+    0 => unsafe { GetStdHandle(STD_INPUT_HANDLE) },
+    // SAFETY: These are valid standard handles.
+    1 => unsafe { GetStdHandle(STD_OUTPUT_HANDLE) },
+    // SAFETY: These are valid standard handles.
+    2 => unsafe { GetStdHandle(STD_ERROR_HANDLE) },
+    _ => fd as winapi::um::winnt::HANDLE,
+  };
+
+  let mut mode = 0;
+  // SAFETY: handle is either a valid standard handle or a raw fd cast to HANDLE.
+  // GetConsoleMode will return 0 if the handle is invalid or not a console.
+  unsafe { GetConsoleMode(handle, &mut mode) != 0 }
 }
 
 #[op2(fast)]
@@ -183,7 +229,7 @@ pub fn op_node_get_own_non_index_properties<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   obj: v8::Local<'s, v8::Object>,
   #[smi] filter: u32,
-) -> Result<v8::Local<'s, v8::Array>, JsErrorBox> {
+) -> Result<v8::Local<'s, v8::Value>, JsErrorBox> {
   let mut property_filter = v8::PropertyFilter::ALL_PROPERTIES;
   if filter & 1 << 0 != 0 {
     property_filter = property_filter | v8::PropertyFilter::ONLY_WRITABLE;
@@ -201,17 +247,57 @@ pub fn op_node_get_own_non_index_properties<'s>(
     property_filter = property_filter | v8::PropertyFilter::SKIP_SYMBOLS;
   }
 
-  obj
-    .get_property_names(
-      scope,
-      v8::GetPropertyNamesArgs {
-        index_filter: v8::IndexFilter::SkipIndices,
-        property_filter,
-        key_conversion: v8::KeyConversionMode::NoNumbers,
-        mode: v8::KeyCollectionMode::OwnOnly,
-      },
-    )
-    .ok_or_else(|| {
-      JsErrorBox::type_error("Failed to get own non-index properties")
-    })
+  v8::tc_scope!(let tc_scope, scope);
+
+  let result = obj.get_property_names(
+    tc_scope,
+    v8::GetPropertyNamesArgs {
+      index_filter: v8::IndexFilter::SkipIndices,
+      property_filter,
+      key_conversion: v8::KeyConversionMode::NoNumbers,
+      mode: v8::KeyCollectionMode::OwnOnly,
+    },
+  );
+
+  match result {
+    Some(names) => Ok(names.into()),
+    None => {
+      if tc_scope.has_caught() || tc_scope.has_terminated() {
+        tc_scope.rethrow();
+        // Dummy value, this result will be discarded because an error was thrown.
+        let v = v8::undefined(tc_scope);
+        Ok(v.into())
+      } else {
+        Err(JsErrorBox::type_error(
+          "Failed to get own non-index properties",
+        ))
+      }
+    }
+  }
+}
+
+#[op2]
+pub fn op_node_parse_env<'a>(
+  scope: &mut v8::PinScope<'a, '_>,
+  #[string] content: &str,
+) -> v8::Local<'a, v8::Object> {
+  let env_obj = v8::Object::new(scope);
+  parse_env_content_hook(&NullEnvVarsSys, content, |key, value| {
+    let key = v8::String::new(scope, key).unwrap();
+    let value = v8::String::new(scope, value).unwrap();
+    env_obj.set(scope, key.into(), value.into());
+  });
+  env_obj
+}
+
+// Avoid reading env vars here for variable substitution
+// in order to have the same behaviour as node and also
+// to not cause a security issue where people can read
+// env vars by using this API.
+pub struct NullEnvVarsSys;
+
+impl sys_traits::BaseEnvVar for NullEnvVarsSys {
+  fn base_env_var_os(&self, _key: &OsStr) -> Option<OsString> {
+    None
+  }
 }

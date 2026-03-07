@@ -314,6 +314,7 @@ function testInner(
     testDesc.location.lineNumber,
     testDesc.location.columnNumber,
     registerTestIdRetBufU8,
+    testDesc.sanitizeOnly ?? true,
   );
   testDesc.id = registerTestIdRetBuf[0];
   testDesc.origin = cachedOrigin;
