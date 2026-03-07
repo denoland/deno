@@ -159,7 +159,7 @@ async fn run_subcommand(
       tools::doc::doc(Arc::new(flags), doc_flags).await
     }),
     DenoSubcommand::Eval(eval_flags) => spawn_subcommand(async {
-      tools::run::eval_command(Arc::new(flags), eval_flags).await
+      tools::run::eval_command(flags, eval_flags).await
     }),
     DenoSubcommand::Cache(cache_flags) => spawn_subcommand(async move {
       tools::installer::install_from_entrypoints(
