@@ -81,6 +81,7 @@ const supportedCiphers = [
   "aes-128-ctr",
   "aes-192-ctr",
   "aes-256-ctr",
+  "des-ede3-cbc",
 ];
 
 export function getCiphers(): string[] {

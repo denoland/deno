@@ -2,7 +2,6 @@
 // Adapted from Node.js. Copyright Joyent, Inc. and other Node contributors.
 
 import { join, resolve, sep } from "node:path";
-import { chmodPromise } from "ext:deno_node/_fs/_fs_chmod.ts";
 import { mkdirPromise } from "ext:deno_node/_fs/_fs_mkdir.ts";
 import { opendirPromise } from "ext:deno_node/_fs/_fs_opendir.ts";
 import { EEXIST, EINVAL, EISDIR, ENOTDIR } from "node:constants";
@@ -214,7 +213,7 @@ async function onFile(
 
 function setDestMode(dest: string, srcMode: number | null): Promise<void> {
   if (!srcMode) return PromiseResolve();
-  return chmodPromise(dest, srcMode);
+  return Deno.chmod(dest, srcMode);
 }
 
 function onDir(
