@@ -1520,8 +1520,8 @@ impl DOMMatrixReadOnly {
       Transform::Perspective(length) => {
         if let Some(length) = length {
           self.perspective_self_inner(length.to_pixels().into());
-          self.is_2d.set(false);
         }
+        self.is_2d.set(false);
       }
       Transform::Matrix([a, b, c, d, e, f]) => {
         let lhs = self.clone();
@@ -1548,7 +1548,6 @@ impl DOMMatrixReadOnly {
         self.multiply_self_inner(&lhs, &rhs);
       }
     }
-
     Ok(())
   }
 }
