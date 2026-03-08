@@ -4,6 +4,8 @@
 #![allow(clippy::print_stdout)]
 #![allow(clippy::print_stderr)]
 #![allow(clippy::undocumented_unsafe_blocks)]
+// napi_sys declares functions as `pub safe fn` inside `unsafe extern "C"` blocks
+// on non-windows, so `unsafe { napi_call(...) }` wrappers become redundant.
 #![allow(unused_unsafe)]
 
 use std::ffi::c_void;
