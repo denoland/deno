@@ -9,8 +9,16 @@
   } = window.__bootstrap.primordials;
   const {
     op_timer_schedule,
+    op_timer_track,
+    op_timer_untrack,
     op_timer_now,
+    op_leak_tracing_submit,
   } = window.Deno.core.ops;
+  const {
+    ErrorCaptureStackTrace,
+    StringPrototypeSlice,
+  } = window.__bootstrap.primordials;
+  const { __isLeakTracingEnabled } = window.__infra;
 
   // ---------------------------------------------------------------------------
   // Linked list helpers (matches Node.js lib/internal/linkedlist.js)
@@ -288,6 +296,7 @@
           if (timer[kRefed]) {
             decRefCount();
           }
+          op_timer_untrack(timer._timerId);
         }
         continue;
       }
@@ -310,6 +319,7 @@
           if (timer[kRefed]) {
             decRefCount();
           }
+          op_timer_untrack(timer._timerId);
         }
       }
     }
@@ -349,6 +359,12 @@
 
     if (isRefed) incRefCount();
     insert(timer, after);
+    op_timer_track(id, !!isRepeat);
+    if (__isLeakTracingEnabled()) {
+      const error = new Error();
+      ErrorCaptureStackTrace(error, createTimer);
+      op_leak_tracing_submit(2, id, StringPrototypeSlice(error.stack, 6));
+    }
     return timer;
   }
 
@@ -362,6 +378,7 @@
       decRefCount();
     }
     L_remove(timer);
+    op_timer_untrack(timer._timerId);
   }
 
   function refreshTimer(timer) {

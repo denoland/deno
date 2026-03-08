@@ -128,13 +128,6 @@
     op_leak_tracing_submit(0, id, StringPrototypeSlice(error.stack, 6));
   }
 
-  function submitTimerTrace(id) {
-    const error = new Error();
-    ErrorCaptureStackTrace(error, submitTimerTrace);
-    // We submit interval and timer traces as type "Timer"
-    // "Error\n".length == 6
-    op_leak_tracing_submit(2, id, StringPrototypeSlice(error.stack, 6));
-  }
 
   let unhandledPromiseRejectionHandler = () => false;
   let timerDepth = 0;

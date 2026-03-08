@@ -101,6 +101,8 @@ builtin_ops! {
   ops_builtin_v8::op_add_main_module_handler,
   ops_builtin_v8::op_set_handled_promise_rejection_handler,
   ops_builtin_v8::op_timer_schedule,
+  ops_builtin_v8::op_timer_track,
+  ops_builtin_v8::op_timer_untrack,
   ops_builtin_v8::op_timer_now,
   ops_builtin_v8::op_ref_op,
   ops_builtin_v8::op_unref_op,

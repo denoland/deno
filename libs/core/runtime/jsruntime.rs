@@ -1464,7 +1464,6 @@ impl JsRuntime {
         PROCESS_TIMERS,
         "Deno.core.__processTimers",
       );
-
       let mut wasm_instance_fn = None;
       if !will_snapshot {
         let key = WEBASSEMBLY.v8_string(scope).unwrap();
@@ -2300,6 +2299,7 @@ impl JsRuntime {
         || pending_state.has_pending_external_ops
         || pending_state.has_tick_scheduled
         || pending_state.has_refed_immediates > 0
+        || pending_state.has_pending_timers
       {
         // pass, will be polled again
       } else {
@@ -2319,6 +2319,7 @@ impl JsRuntime {
         || pending_state.has_pending_external_ops
         || pending_state.has_tick_scheduled
         || pending_state.has_refed_immediates > 0
+        || pending_state.has_pending_timers
       {
         // pass, will be polled again
       } else if realm.modules_idle() {
@@ -2538,6 +2539,7 @@ pub(crate) struct EventLoopPendingState {
   has_pending_external_ops: bool,
   has_outstanding_immediates: bool,
   has_refed_immediates: u32,
+  has_pending_timers: bool,
   has_uv_alive_handles: bool,
 }
 
@@ -2575,6 +2577,7 @@ impl EventLoopPendingState {
       state.immediate_info[IMM_IDX_HAS_OUTSTANDING] != 0,
       state.immediate_info[IMM_IDX_REF_COUNT],
     );
+    let has_pending_timers = !state.active_timers.borrow().is_empty();
     let has_uv_alive_handles =
       if let Some(uv_inner_ptr) = state.uv_loop_inner.get() {
         unsafe { (*uv_inner_ptr).has_alive_handles() }
@@ -2593,6 +2596,7 @@ impl EventLoopPendingState {
       has_pending_external_ops: state.external_ops_tracker.has_pending_ops(),
       has_outstanding_immediates,
       has_refed_immediates,
+      has_pending_timers,
       has_uv_alive_handles,
     }
   }

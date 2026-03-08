@@ -143,6 +143,33 @@ pub fn op_timer_schedule(scope: &mut v8::PinScope, delay_ms: f64) {
   }
 }
 
+/// Register a JS-managed timer with the Rust stats system for leak detection.
+#[op2(fast)]
+pub fn op_timer_track(
+  scope: &mut v8::PinScope,
+  #[smi] id: i32,
+  is_repeat: bool,
+) {
+  let context_state = JsRealm::state_from_scope(scope);
+  context_state
+    .active_timers
+    .borrow_mut()
+    .insert(id as usize, is_repeat);
+}
+
+/// Unregister a JS-managed timer from the Rust stats system.
+#[op2(fast)]
+pub fn op_timer_untrack(scope: &mut v8::PinScope, #[smi] id: i32) {
+  let context_state = JsRealm::state_from_scope(scope);
+  context_state
+    .active_timers
+    .borrow_mut()
+    .remove(&(id as usize));
+  context_state
+    .activity_traces
+    .complete(RuntimeActivityType::Timer, id as usize);
+}
+
 /// Get the current monotonic time in milliseconds (relative to process start).
 #[op2(fast)]
 pub fn op_timer_now(scope: &mut v8::PinScope) -> f64 {
