@@ -977,7 +977,6 @@ impl CliOptions {
     }
   }
 
-
   pub fn enable_testing_features(&self) -> bool {
     self.flags.enable_testing_features
   }

@@ -92,4 +92,3 @@ pub fn dispatch_metrics_async(opctx: &OpCtx, metrics: OpMetricsEvent) {
     )
   }
 }
-
