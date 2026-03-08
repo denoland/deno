@@ -113,7 +113,6 @@ use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 use crate::worker::CliMainWorkerFactory;
 use crate::worker::CliMainWorkerOptions;
-use crate::worker::CpuProfConfig;
 
 struct CliRootCertStoreProvider {
   cell: OnceCell<RootCertStore>,
@@ -1234,7 +1233,7 @@ impl CliFactory {
     };
     let maybe_coverage_dir = cli_options.coverage_dir();
     let maybe_cpu_prof_config =
-      cli_options.cpu_prof_dir().map(|dir| CpuProfConfig {
+      cli_options.cpu_prof_dir().map(|dir| CpuProfilerConfig {
         dir,
         name: cli_options.cpu_prof_name(),
         interval: cli_options.cpu_prof_interval(),

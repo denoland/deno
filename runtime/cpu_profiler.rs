@@ -8,14 +8,46 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::AtomicI32;
+use std::time::SystemTime;
 
 /// Configuration for CPU profiling that can be passed to workers.
 #[derive(Clone, Debug)]
 pub struct CpuProfilerConfig {
   pub dir: PathBuf,
   pub name: Option<String>,
-  pub interval: i32,
+  pub interval: u32,
   pub md: bool,
+}
+
+/// Generate a default CPU profile filename using timestamp and PID.
+/// Optionally includes a suffix (e.g. worker ID) for uniqueness.
+pub fn cpu_prof_default_filename(suffix: Option<&str>) -> String {
+  let timestamp = SystemTime::now()
+    .duration_since(SystemTime::UNIX_EPOCH)
+    .unwrap_or_default()
+    .as_millis();
+  let pid = std::process::id();
+  match suffix {
+    Some(s) => format!("CPU.{}.{}.{}.cpuprofile", timestamp, pid, s),
+    None => format!("CPU.{}.{}.cpuprofile", timestamp, pid),
+  }
+}
+
+/// Generate a CPU profile filename from config, appending a suffix for workers
+/// when a custom name is provided.
+pub fn cpu_prof_filename(
+  config: &CpuProfilerConfig,
+  suffix: Option<&str>,
+) -> String {
+  match (&config.name, suffix) {
+    (Some(name), Some(s)) => {
+      // Always make worker filenames unique even with custom names
+      let stem = name.strip_suffix(".cpuprofile").unwrap_or(name);
+      format!("{}.{}.cpuprofile", stem, s)
+    }
+    (Some(name), None) => name.clone(),
+    (None, _) => cpu_prof_default_filename(suffix),
+  }
 }
 
 use deno_core::InspectorSessionKind;
@@ -37,8 +69,11 @@ fn next_msg_id() -> i32 {
 pub struct CpuProfilerInner {
   dir: PathBuf,
   filename: String,
-  interval: i32,
+  interval: u32,
   generate_md: bool,
+  /// Set by `stop_profiling` and checked by `callback`. This is safe because
+  /// the inspector processes messages on a single thread, so `stop_profiling`
+  /// always sets this before the callback fires for that message.
   profile_msg_id: Option<i32>,
 }
 
@@ -49,7 +84,7 @@ impl CpuProfilerState {
   pub fn new(
     dir: PathBuf,
     filename: String,
-    interval: i32,
+    interval: u32,
     generate_md: bool,
   ) -> Self {
     Self(Arc::new(Mutex::new(CpuProfilerInner {
@@ -139,7 +174,7 @@ impl CpuProfilerState {
       let md_filename = inner.filename.replace(".cpuprofile", ".md");
       let md_filepath = inner.dir.join(&md_filename);
       if let Err(err) =
-        generate_markdown_report(profile, &md_filepath, inner.interval)
+        generate_markdown_report(profile, &md_filepath, inner.interval as i64)
       {
         log::error!(
           "Failed to generate markdown report at {:?}, reason: {:?}",
@@ -154,7 +189,7 @@ impl CpuProfilerState {
 pub struct CpuProfiler {
   pub state: CpuProfilerState,
   session: LocalInspectorSession,
-  interval: i32,
+  interval: u32,
 }
 
 impl CpuProfiler {
@@ -162,7 +197,7 @@ impl CpuProfiler {
     js_runtime: &mut JsRuntime,
     cpu_prof_dir: PathBuf,
     filename: String,
-    interval: i32,
+    interval: u32,
     generate_md: bool,
   ) -> Self {
     let state =
@@ -212,6 +247,9 @@ impl CpuProfiler {
     log::debug!("CPU profiler started with interval: {}us", self.interval);
   }
 
+  // fs::create_dir_all is on the Deno project's clippy disallowed list
+  // (preferring the sys_traits abstraction), but the CPU profiler runs in the
+  // runtime crate where using std::fs directly is acceptable.
   #[allow(clippy::disallowed_methods)]
   pub fn stop_profiling(&mut self) -> Result<(), CoreError> {
     fs::create_dir_all(&self.state.0.lock().dir)?;
@@ -272,15 +310,13 @@ struct FunctionStats {
   url: String,
   line_number: i32,
   self_time: i64,
-  total_time: i64,
   self_samples: i32,
-  total_samples: i32,
 }
 
 fn generate_markdown_report(
   profile: &serde_json::Value,
-  filepath: &PathBuf,
-  interval: i32,
+  filepath: &std::path::Path,
+  interval_us: i64,
 ) -> std::io::Result<()> {
   let profile: CpuProfile = match serde_json::from_value(profile.clone()) {
     Ok(p) => p,
@@ -308,7 +344,6 @@ fn generate_markdown_report(
   let mut function_stats: HashMap<String, FunctionStats> = HashMap::new();
 
   // Calculate self time from samples
-  let interval_us = interval as i64;
   for &sample_id in &profile.samples {
     if let Some(node) = node_map.get(&sample_id) {
       let key = format!(
@@ -322,27 +357,10 @@ fn generate_markdown_report(
         url: node.call_frame.url.clone(),
         line_number: node.call_frame.line_number,
         self_time: 0,
-        total_time: 0,
         self_samples: 0,
-        total_samples: 0,
       });
       entry.self_time += interval_us;
       entry.self_samples += 1;
-    }
-  }
-
-  // Calculate total time (self time + time in children)
-  // This is a simplified calculation - for accurate total time we'd need to walk the call tree
-  for node in &profile.nodes {
-    let key = format!(
-      "{}:{}:{}",
-      node.call_frame.function_name,
-      node.call_frame.url,
-      node.call_frame.line_number
-    );
-    if let Some(stats) = function_stats.get_mut(&key) {
-      stats.total_time = stats.self_time;
-      stats.total_samples = stats.self_samples;
     }
   }
 
@@ -371,7 +389,7 @@ fn generate_markdown_report(
   md.push_str("| --- | --- | --- | --- |\n");
   md.push_str(&format!(
     "| {:.2}ms | {} | {}us | {} |\n\n",
-    duration_ms, total_samples, interval, total_functions
+    duration_ms, total_samples, interval_us, total_functions
   ));
 
   // Top 10 summary
@@ -392,9 +410,9 @@ fn generate_markdown_report(
   md.push_str("\n\n");
 
   // Hot Functions (Self Time)
-  md.push_str("## Hot Functions (Self Time)\n\n");
-  md.push_str("| Self% | Self | Total% | Total | Function | Location |\n");
-  md.push_str("| ---: | ---: | ---: | ---: | --- | --- |\n");
+  md.push_str("## Hot Functions\n\n");
+  md.push_str("| Self% | Self Time | Samples | Function | Location |\n");
+  md.push_str("| ---: | ---: | ---: | --- | --- |\n");
 
   for stats in sorted_stats.iter().take(20) {
     let self_pct = if total_self_time > 0 {
@@ -402,24 +420,22 @@ fn generate_markdown_report(
     } else {
       0.0
     };
-    let total_pct = self_pct; // Simplified - same as self for now
     let self_time_ms = stats.self_time as f64 / 1000.0;
-    let total_time_ms = stats.total_time as f64 / 1000.0;
 
     let location = format_location(&stats.url, stats.line_number);
     let func_name = display_function_name(&stats.function_name);
 
     md.push_str(&format!(
-      "| {:.1}% | {:.2}ms | {:.1}% | {:.2}ms | `{}` | {} |\n",
-      self_pct, self_time_ms, total_pct, total_time_ms, func_name, location
+      "| {:.1}% | {:.2}ms | {} | `{}` | {} |\n",
+      self_pct, self_time_ms, stats.self_samples, func_name, location
     ));
   }
   md.push('\n');
 
-  // Call Tree (simplified - show top-level calls)
-  md.push_str("## Call Tree (Total Time)\n\n");
-  md.push_str("| Total% | Total | Self% | Self | Function | Location |\n");
-  md.push_str("| ---: | ---: | ---: | ---: | --- | --- |\n");
+  // Call Tree
+  md.push_str("## Call Tree\n\n");
+  md.push_str("| Self% | Self Time | Function | Location |\n");
+  md.push_str("| ---: | ---: | --- | --- |\n");
 
   // Find root nodes (nodes with no parents pointing to them)
   let mut has_parent: std::collections::HashSet<i32> =
@@ -475,24 +491,14 @@ fn generate_markdown_report(
     };
     let self_time_ms = self_time as f64 / 1000.0;
 
-    // For total time, we'd need to sum all descendants - simplified here
-    let total_pct = self_pct;
-    let total_time_ms = self_time_ms;
-
     let indent = "  ".repeat(depth);
     let location =
       format_location(&node.call_frame.url, node.call_frame.line_number);
     let func_display = display_function_name(func_name);
 
     md.push_str(&format!(
-      "| {:.1}% | {:.2}ms | {:.1}% | {:.2}ms | {}`{}` | {} |\n",
-      total_pct,
-      total_time_ms,
-      self_pct,
-      self_time_ms,
-      indent,
-      func_display,
-      location
+      "| {:.1}% | {:.2}ms | {}`{}` | {} |\n",
+      self_pct, self_time_ms, indent, func_display, location
     ));
 
     for &child_id in &node.children {
@@ -541,13 +547,8 @@ fn generate_markdown_report(
       display_function_name(&stats.function_name)
     ));
     md.push_str(&format!(
-      "{} | Self: {:.1}% ({:.2}ms) | Total: {:.1}% ({:.2}ms) | Samples: {}\n\n",
-      location,
-      self_pct,
-      self_time_ms,
-      self_pct,
-      self_time_ms,
-      stats.self_samples
+      "{} | Self: {:.1}% ({:.2}ms) | Samples: {}\n\n",
+      location, self_pct, self_time_ms, stats.self_samples
     ));
   }
 
@@ -568,12 +569,19 @@ fn format_location(url: &str, line_number: i32) -> String {
   if url.is_empty() {
     "[native code]".to_string()
   } else {
-    // Shorten the URL for display
-    let short_url = url.rsplit('/').next().unwrap_or(url);
+    // Keep last two path segments for context (e.g. "src/foo.js" not just "foo.js")
+    let short_url = {
+      let mut parts = url.rsplitn(3, '/');
+      let file = parts.next().unwrap_or(url);
+      match parts.next() {
+        Some(parent) => format!("{}/{}", parent, file),
+        None => file.to_string(),
+      }
+    };
     if line_number >= 0 {
       format!("{}:{}", short_url, line_number + 1)
     } else {
-      short_url.to_string()
+      short_url
     }
   }
 }
@@ -585,6 +593,6 @@ mod cdp {
   #[derive(Debug, Serialize)]
   #[serde(rename_all = "camelCase")]
   pub struct SetSamplingIntervalArgs {
-    pub interval: i32,
+    pub interval: u32,
   }
 }

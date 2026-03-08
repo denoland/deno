@@ -990,7 +990,7 @@ impl CliOptions {
     self.flags.cpu_prof.as_ref().and_then(|f| f.name.clone())
   }
 
-  pub fn cpu_prof_interval(&self) -> i32 {
+  pub fn cpu_prof_interval(&self) -> u32 {
     self
       .flags
       .cpu_prof

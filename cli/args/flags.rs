@@ -267,7 +267,7 @@ pub struct DocFlags {
 pub struct CpuProfFlags {
   pub dir: Option<String>,
   pub name: Option<String>,
-  pub interval: Option<i32>,
+  pub interval: Option<u32>,
   pub md: bool,
 }
 
@@ -4154,7 +4154,8 @@ fn serve_host_validator(host: &str) -> Result<String, String> {
 }
 
 fn serve_subcommand() -> Command {
-  runtime_args(command("serve", cstr!("Run a server defined in a main module
+  cpu_prof_args(
+    runtime_args(command("serve", cstr!("Run a server defined in a main module
 
 The serve command uses the default exports of the main module to determine which servers to start.
 
@@ -4197,8 +4198,9 @@ Start a server defined in server.ts, watching for changes and running on port 50
         .trailing_var_arg(true),
     )
     .arg(env_file_arg())
-    .arg(no_code_cache_arg())
-    .arg(tunnel_arg())
+    .arg(no_code_cache_arg()),
+  )
+  .arg(tunnel_arg())
 }
 
 fn task_subcommand() -> Command {
@@ -5553,7 +5555,7 @@ fn cpu_prof_parse(matches: &mut ArgMatches) -> Option<CpuProfFlags> {
   let enabled = matches.get_flag("cpu-prof");
   let dir = matches.remove_one::<String>("cpu-prof-dir");
   let name = matches.remove_one::<String>("cpu-prof-name");
-  let interval = matches.remove_one::<i32>("cpu-prof-interval");
+  let interval = matches.remove_one::<u32>("cpu-prof-interval");
   let md = matches.get_flag("cpu-prof-md");
   if enabled || dir.is_some() || name.is_some() || interval.is_some() || md {
     Some(CpuProfFlags {
@@ -5570,7 +5572,7 @@ fn cpu_prof_parse(matches: &mut ArgMatches) -> Option<CpuProfFlags> {
 fn cpu_prof_arg() -> Arg {
   Arg::new("cpu-prof")
     .long("cpu-prof")
-    .help("Start the V8 CPU profiler on startup and write the profile to disk on exit")
+    .help("Start the V8 CPU profiler on startup and write the profile to disk on exit. Profiles are written to the current directory by default")
     .action(ArgAction::SetTrue)
 }
 
@@ -5578,7 +5580,7 @@ fn cpu_prof_dir_arg() -> Arg {
   Arg::new("cpu-prof-dir")
     .long("cpu-prof-dir")
     .value_name("DIR")
-    .help("Directory where the V8 CPU profiles will be written (defaults to current directory)")
+    .help("Directory where the V8 CPU profiles will be written. Implicitly enables --cpu-prof")
     .value_hint(ValueHint::DirPath)
     .value_parser(value_parser!(String))
 }
@@ -5596,7 +5598,7 @@ fn cpu_prof_interval_arg() -> Arg {
     .long("cpu-prof-interval")
     .value_name("MICROSECONDS")
     .help("Sampling interval in microseconds for CPU profiling (default: 1000)")
-    .value_parser(value_parser!(i32))
+    .value_parser(value_parser!(u32))
 }
 
 fn cpu_prof_md_arg() -> Arg {
@@ -7077,6 +7079,7 @@ fn serve_parse(
   flags.argv.extend(script_arg);
 
   ext_arg_parse(flags, matches);
+  flags.cpu_prof = cpu_prof_parse(matches);
 
   flags.subcommand = DenoSubcommand::Serve(ServeFlags {
     script,

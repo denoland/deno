@@ -32,6 +32,7 @@ pub mod coverage;
 pub mod cpu_profiler;
 pub use cpu_profiler::CpuProfiler;
 pub use cpu_profiler::CpuProfilerConfig;
+pub use cpu_profiler::cpu_prof_filename;
 pub mod fmt_errors;
 pub mod js;
 pub mod ops;

@@ -874,16 +874,9 @@ impl WebWorker {
 
   pub fn maybe_setup_cpu_profiler(&mut self) -> Option<CpuProfiler> {
     let config = self.maybe_cpu_prof_config.as_ref()?;
-
-    // Generate filename with worker ID to make it unique
-    let filename = config.name.clone().unwrap_or_else(|| {
-      let timestamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_millis();
-      let pid = std::process::id();
-      format!("CPU.{}.{}.{}.cpuprofile", timestamp, pid, self.id)
-    });
+    let worker_id = self.id.to_string();
+    let filename =
+      crate::cpu_profiler::cpu_prof_filename(config, Some(&worker_id));
 
     let mut cpu_profiler = CpuProfiler::new(
       &mut self.js_runtime,
