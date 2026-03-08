@@ -1507,8 +1507,8 @@ impl DOMMatrixReadOnly {
         self.is_2d.set(false);
       }
       Transform::Skew(x, y) => {
-        let x = x.to_degrees();
-        let y = if let Some(y) = y { y.to_degrees() } else { 0.0 };
+        let x = x.to_radians();
+        let y = if let Some(y) = y { y.to_radians() } else { 0.0 };
         self.skew_self_inner(x.into(), y.into());
       }
       Transform::SkewX(angle) => {
