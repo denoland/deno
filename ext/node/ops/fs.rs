@@ -50,14 +50,10 @@ pub enum FsError {
   ),
   #[class(inherit)]
   #[error(transparent)]
-  CpError(
-    #[from]
-    #[inherit]
-    CpErrorKind,
-  ),
+  Cp(#[from] CpError),
   #[class(inherit)]
   #[error(transparent)]
-  UVCompat(#[from] NodeFsError),
+  NodeFs(#[from] NodeFsError),
 }
 
 impl From<JoinError> for FsError {
@@ -114,7 +110,7 @@ fn map_fs_error_to_node_fs_error(
 #[property("kind" = self.kind())]
 #[property("message" = self.message())]
 #[property("path" = self.path())]
-pub enum CpErrorKind {
+pub enum CpError {
   EInval { message: String, path: String },
   DirToNonDir { message: String, path: String },
   NonDirToDir { message: String, path: String },
@@ -122,34 +118,34 @@ pub enum CpErrorKind {
   SymlinkToSubdirectory { message: String, path: String },
 }
 
-impl CpErrorKind {
+impl CpError {
   fn kind(&self) -> &'static str {
     match self {
-      CpErrorKind::EInval { .. } => "EINVAL",
-      CpErrorKind::DirToNonDir { .. } => "DIR_TO_NON_DIR",
-      CpErrorKind::NonDirToDir { .. } => "NON_DIR_TO_DIR",
-      CpErrorKind::EExist { .. } => "EEXIST",
-      CpErrorKind::SymlinkToSubdirectory { .. } => "SYMLINK_TO_SUBDIRECTORY",
+      CpError::EInval { .. } => "EINVAL",
+      CpError::DirToNonDir { .. } => "DIR_TO_NON_DIR",
+      CpError::NonDirToDir { .. } => "NON_DIR_TO_DIR",
+      CpError::EExist { .. } => "EEXIST",
+      CpError::SymlinkToSubdirectory { .. } => "SYMLINK_TO_SUBDIRECTORY",
     }
   }
 
   fn message(&self) -> String {
     match self {
-      CpErrorKind::EInval { message, .. } => message.clone(),
-      CpErrorKind::DirToNonDir { message, .. } => message.clone(),
-      CpErrorKind::NonDirToDir { message, .. } => message.clone(),
-      CpErrorKind::EExist { message, .. } => message.clone(),
-      CpErrorKind::SymlinkToSubdirectory { message, .. } => message.clone(),
+      CpError::EInval { message, .. } => message.clone(),
+      CpError::DirToNonDir { message, .. } => message.clone(),
+      CpError::NonDirToDir { message, .. } => message.clone(),
+      CpError::EExist { message, .. } => message.clone(),
+      CpError::SymlinkToSubdirectory { message, .. } => message.clone(),
     }
   }
 
   fn path(&self) -> String {
     match self {
-      CpErrorKind::EInval { path, .. } => path.clone(),
-      CpErrorKind::DirToNonDir { path, .. } => path.clone(),
-      CpErrorKind::NonDirToDir { path, .. } => path.clone(),
-      CpErrorKind::EExist { path, .. } => path.clone(),
-      CpErrorKind::SymlinkToSubdirectory { path, .. } => path.clone(),
+      CpError::EInval { path, .. } => path.clone(),
+      CpError::DirToNonDir { path, .. } => path.clone(),
+      CpError::NonDirToDir { path, .. } => path.clone(),
+      CpError::EExist { path, .. } => path.clone(),
+      CpError::SymlinkToSubdirectory { path, .. } => path.clone(),
     }
   }
 }
@@ -833,7 +829,7 @@ async fn check_paths_impl(
   if let Some(ref dest_stat) = dest_stat {
     if are_identical_stat(&src_stat, dest_stat) {
       return Err(
-        CpErrorKind::EInval {
+        CpError::EInval {
           message: "src and dest cannot be the same".to_string(),
           path: dest.to_string(),
         }
@@ -842,7 +838,7 @@ async fn check_paths_impl(
     }
     if src_stat.is_directory && !dest_stat.is_directory {
       return Err(
-        CpErrorKind::DirToNonDir {
+        CpError::DirToNonDir {
           message: format!(
             "cannot overwrite non-directory {} with directory {}",
             dest, src
@@ -854,7 +850,7 @@ async fn check_paths_impl(
     }
     if !src_stat.is_directory && dest_stat.is_directory {
       return Err(
-        CpErrorKind::NonDirToDir {
+        CpError::NonDirToDir {
           message: format!(
             "cannot overwrite directory {} with non-directory {}",
             dest, src
@@ -868,7 +864,7 @@ async fn check_paths_impl(
 
   if src_stat.is_directory && is_src_subdir(src, dest) {
     return Err(
-      CpErrorKind::EInval {
+      CpError::EInval {
         message: format!(
           "cannot copy {} to a subdirectory of self {}",
           src, dest
@@ -1020,7 +1016,7 @@ async fn check_parent_paths_impl(
           && dest_stat.dev == src_dev
         {
           return Err(
-            CpErrorKind::EInval {
+            CpError::EInval {
               message: format!(
                 "cannot copy {} to a subdirectory of self {}",
                 src, dest
@@ -1041,7 +1037,7 @@ async fn check_parent_paths_impl(
 }
 
 /// Async op: checks that dest is not a subdirectory of src.
-/// Returns null if OK, or a CpErrorKind object if the check fails.
+/// Returns null if OK, or a CpError object if the check fails.
 #[op2(stack_trace)]
 pub async fn op_node_cp_check_parent_paths(
   state: Rc<RefCell<OpState>>,
@@ -1241,7 +1237,7 @@ pub async fn op_node_cp_on_file(
       })?;
     } else if error_on_exist {
       return Err(
-        CpErrorKind::EExist {
+        CpError::EExist {
           message: format!("{} already exists", dest),
           path: dest.to_string(),
         }
@@ -1293,7 +1289,7 @@ pub async fn op_node_cp_on_file(
 }
 
 /// Async op: handles copying a symlink (onLink + copyLink).
-/// Returns null on success, or a CpErrorKind on error.
+/// Returns null on success, or a CpError on error.
 #[op2(stack_trace)]
 pub async fn op_node_cp_on_link(
   state: Rc<RefCell<OpState>>,
@@ -1425,7 +1421,7 @@ pub async fn op_node_cp_on_link(
   let src_is_dir = src_stat.is_directory;
   if src_is_dir && is_src_subdir(&resolved_src, &resolved_dest) {
     return Err(
-      CpErrorKind::EInval {
+      CpError::EInval {
         message: format!(
           "cannot copy {} to a subdirectory of self {}",
           resolved_src, resolved_dest
@@ -1440,7 +1436,7 @@ pub async fn op_node_cp_on_link(
   // dest would remove src contents and create a broken symlink.
   if src_is_dir && is_src_subdir(&resolved_dest, &resolved_src) {
     return Err(
-      CpErrorKind::SymlinkToSubdirectory {
+      CpError::SymlinkToSubdirectory {
         message: format!(
           "cannot overwrite {} with {}",
           resolved_dest, resolved_src
