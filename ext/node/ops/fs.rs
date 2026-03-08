@@ -1061,7 +1061,7 @@ async fn ensure_parent_dir_impl(
   Ok(())
 }
 
-fn handle_timestamps_and_mode_sync(
+fn handle_timestamps_and_mode(
   fs: &FileSystemRc,
   src_path: &CheckedPath,
   dest_path: &CheckedPath,
@@ -1071,11 +1071,11 @@ fn handle_timestamps_and_mode_sync(
   // otherwise open fails with EPERM when invoked with 'r+' (through utimes call)
   if file_is_not_writable(src_mode) {
     let mode = src_mode | 0o200;
-    set_dest_mode_sync(fs, dest_path, mode)?;
+    set_dest_mode(fs, dest_path, mode)?;
   }
 
   // Set timestamps from a fresh stat of src (atime is modified by read).
-  set_dest_timestamps_and_mode_sync(fs, src_path, dest_path, src_mode)?;
+  set_dest_timestamps_and_mode(fs, src_path, dest_path, src_mode)?;
   Ok(())
 }
 
@@ -1083,7 +1083,7 @@ fn file_is_not_writable(mode: u32) -> bool {
   (mode & 0o200) == 0
 }
 
-fn set_dest_mode_sync(
+fn set_dest_mode(
   fs: &FileSystemRc,
   dest_path: &CheckedPath,
   mode: u32,
@@ -1105,7 +1105,7 @@ fn set_dest_mode_sync(
   Ok(())
 }
 
-fn set_dest_timestamps_and_mode_sync(
+fn set_dest_timestamps_and_mode(
   fs: &FileSystemRc,
   src_path: &CheckedPath,
   dest_path: &CheckedPath,
@@ -1145,7 +1145,7 @@ fn set_dest_timestamps_and_mode_sync(
       })?;
   }
 
-  set_dest_mode_sync(fs, dest_path, src_mode)?;
+  set_dest_mode(fs, dest_path, src_mode)?;
   Ok(())
 }
 
@@ -1232,9 +1232,9 @@ pub async fn op_node_cp_on_file(
       )
     })?;
     if preserve_timestamps {
-      handle_timestamps_and_mode_sync(&fs, &src_path, &dest_path, src_mode)?;
+      handle_timestamps_and_mode(&fs, &src_path, &dest_path, src_mode)?;
     } else {
-      set_dest_mode_sync(&fs, &dest_path, src_mode)?;
+      set_dest_mode(&fs, &dest_path, src_mode)?;
     }
     Ok(())
   })
