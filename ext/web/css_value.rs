@@ -33,7 +33,7 @@ pub enum CSSValueCustomError {
   InvalidFunction,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 #[cfg_attr(test, derive(PartialEq))]
 pub struct Number(f32);
 
@@ -126,7 +126,7 @@ impl Angle {
   }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 #[cfg_attr(test, derive(PartialEq))]
 pub struct Percent(f32);
 
@@ -161,20 +161,10 @@ pub enum NumericValue {
 
 impl NumericValue {
   #[inline]
-  fn expect_number(
-    self,
-    allow_percent: bool,
-  ) -> Result<Number, CSSValueCustomError> {
+  fn expect_number(self) -> Result<f32, CSSValueCustomError> {
     match self {
-      NumericValue::Zero => Ok(Number(0.0)),
-      NumericValue::Number(number) => Ok(number),
-      NumericValue::Percent(percent) => {
-        if allow_percent {
-          Ok(Number(*percent))
-        } else {
-          Err(CSSValueCustomError::UnexpectedNumericType)
-        }
-      }
+      NumericValue::Zero => Ok(0.0),
+      NumericValue::Number(number) => Ok(*number),
       _ => Err(CSSValueCustomError::UnexpectedNumericType),
     }
   }
@@ -222,9 +212,19 @@ impl NumericValue {
   }
 
   #[inline]
-  fn expect_percent(self) -> Result<Percent, CSSValueCustomError> {
+  fn expect_percent(self) -> Result<f32, CSSValueCustomError> {
     match self {
-      NumericValue::Percent(percent) => Ok(percent),
+      NumericValue::Percent(percent) => Ok(*percent),
+      _ => Err(CSSValueCustomError::UnexpectedNumericType),
+    }
+  }
+
+  #[inline]
+  fn expect_number_or_percent(self) -> Result<f32, CSSValueCustomError> {
+    match self {
+      NumericValue::Zero => Ok(0.0),
+      NumericValue::Number(number) => Ok(*number),
+      NumericValue::Percent(percent) => Ok(*percent),
       _ => Err(CSSValueCustomError::UnexpectedNumericType),
     }
   }
@@ -371,20 +371,15 @@ impl MathValue {
     Ok(())
   }
 
-  fn expect_number(
-    self,
-    allow_percent: bool,
-  ) -> Result<Number, CSSValueCustomError> {
+  #[inline]
+  fn expect_number(self) -> Result<f32, CSSValueCustomError> {
     if self.dimension != Dimension::default() {
-      if allow_percent {
-        let percent = self.expect_percent()?;
-        return Ok(Number(*percent));
-      }
       return Err(CSSValueCustomError::UnexpectedNumericType);
     }
-    Ok(Number(self.value))
+    Ok(self.value)
   }
 
+  #[inline]
   fn expect_length(self) -> Result<Length, CSSValueCustomError> {
     let dimension = Dimension {
       length: 1,
@@ -400,6 +395,7 @@ impl MathValue {
     })
   }
 
+  #[inline]
   fn expect_angle(self) -> Result<Angle, CSSValueCustomError> {
     let dimension = Dimension {
       length: 0,
@@ -415,7 +411,8 @@ impl MathValue {
     })
   }
 
-  fn expect_percent(self) -> Result<Percent, CSSValueCustomError> {
+  #[inline]
+  fn expect_percent(self) -> Result<f32, CSSValueCustomError> {
     let dimension = Dimension {
       length: 0,
       angle: 0,
@@ -424,7 +421,7 @@ impl MathValue {
     if self.dimension != dimension {
       return Err(CSSValueCustomError::UnexpectedNumericType);
     }
-    Ok(Percent(self.value))
+    Ok(self.value)
   }
 }
 
@@ -483,15 +480,10 @@ impl NumericAccumulator {
   }
 
   #[inline]
-  fn expect_number(
-    self,
-    allow_percent: bool,
-  ) -> Result<Number, CSSValueCustomError> {
+  fn expect_number(self) -> Result<f32, CSSValueCustomError> {
     match self {
-      NumericAccumulator::Numeric(numeric) => {
-        numeric.expect_number(allow_percent)
-      }
-      NumericAccumulator::Math(math) => math.expect_number(allow_percent),
+      NumericAccumulator::Numeric(numeric) => numeric.expect_number(),
+      NumericAccumulator::Math(math) => math.expect_number(),
     }
   }
 
@@ -518,7 +510,7 @@ impl NumericAccumulator {
   }
 
   #[inline]
-  fn expect_percent(self) -> Result<Percent, CSSValueCustomError> {
+  fn expect_percent(self) -> Result<f32, CSSValueCustomError> {
     match self {
       NumericAccumulator::Numeric(numeric) => numeric.expect_percent(),
       NumericAccumulator::Math(math) => math.expect_percent(),
@@ -624,8 +616,8 @@ impl NumericValue {
                   while !arguments.is_exhausted() {
                     arguments.expect_comma()?;
                     let value = Self::parse_additive_expression(arguments, state)?;
-                    let value = match value.expect_number(false) {
-                      Ok(Number(value)) => value,
+                    let value = match value.expect_number() {
+                      Ok(number) => number,
                       Err(error) => return Err(arguments.new_custom_error(error)),
                     };
                     current = minimum(current, value);
@@ -664,7 +656,7 @@ impl NumericValue {
                     arguments.expect_comma()?;
                     let value = Self::parse_additive_expression(arguments, state)?;
                     let value = match value.expect_percent() {
-                      Ok(length) => *length,
+                      Ok(percent) => percent,
                       Err(error) => return Err(arguments.new_custom_error(error)),
                     };
                     current = minimum(current, value);
@@ -689,8 +681,8 @@ impl NumericValue {
                   while !arguments.is_exhausted() {
                     arguments.expect_comma()?;
                     let value = Self::parse_additive_expression(arguments, state)?;
-                    let value = match value.expect_number(false) {
-                      Ok(Number(value)) => value,
+                    let value = match value.expect_number() {
+                      Ok(number) => number,
                       Err(error) => return Err(arguments.new_custom_error(error)),
                     };
                     current = maximum(current, value);
@@ -729,7 +721,7 @@ impl NumericValue {
                     arguments.expect_comma()?;
                     let value = Self::parse_additive_expression(arguments, state)?;
                     let value = match value.expect_percent() {
-                      Ok(length) => *length,
+                      Ok(percent) => percent,
                       Err(error) => return Err(arguments.new_custom_error(error)),
                     };
                     current = maximum(current, value);
@@ -784,8 +776,8 @@ impl NumericValue {
                 NumericValue::Number(Number(value)) => {
                   let min = match min {
                     Some(numeric) => {
-                      match numeric.expect_number(false) {
-                        Ok(numeric) => *numeric,
+                      match numeric.expect_number() {
+                        Ok(number) => number,
                         Err(error) => return Err(arguments.new_custom_error(error)),
                       }
                     },
@@ -793,8 +785,8 @@ impl NumericValue {
                   };
                   let max = match max {
                     Some(numeric) => {
-                      match numeric.expect_number(false) {
-                        Ok(numeric) => *numeric,
+                      match numeric.expect_number() {
+                        Ok(number) => number,
                         Err(error) => return Err(arguments.new_custom_error(error)),
                       }
                     },
@@ -854,7 +846,7 @@ impl NumericValue {
                   let min = match min {
                     Some(numeric) => {
                       match numeric.expect_percent() {
-                        Ok(percent) => *percent,
+                        Ok(percent) => percent,
                         Err(error) => return Err(arguments.new_custom_error(error)),
                       }
                     },
@@ -863,7 +855,7 @@ impl NumericValue {
                   let max = match max {
                     Some(numeric) => {
                       match numeric.expect_percent() {
-                        Ok(percent) => *percent,
+                        Ok(percent) => percent,
                         Err(error) => return Err(arguments.new_custom_error(error)),
                       }
                     },
@@ -946,8 +938,8 @@ impl NumericValue {
           "asin" => {
             input.parse_nested_block(|arguments| {
               let value = Self::parse_additive_expression(arguments, state)?;
-              let number = match value.expect_number(false) {
-                Ok(number) => *number,
+              let number = match value.expect_number() {
+                Ok(number) => number,
                 Err(error) => return Err(arguments.new_custom_error(error)),
               };
               arguments.expect_exhausted()?;
@@ -961,8 +953,8 @@ impl NumericValue {
           "acos" => {
             input.parse_nested_block(|arguments| {
               let value = Self::parse_additive_expression(arguments, state)?;
-              let number = match value.expect_number(false) {
-                Ok(number) => *number,
+              let number = match value.expect_number() {
+                Ok(number) => number,
                 Err(error) => return Err(arguments.new_custom_error(error)),
               };
               arguments.expect_exhausted()?;
@@ -976,8 +968,8 @@ impl NumericValue {
           "atan" => {
             input.parse_nested_block(|arguments| {
               let value = Self::parse_additive_expression(arguments, state)?;
-              let number = match value.expect_number(false) {
-                Ok(number) => *number,
+              let number = match value.expect_number() {
+                Ok(number) => number,
                 Err(error) => return Err(arguments.new_custom_error(error)),
               };
               arguments.expect_exhausted()?;
@@ -1036,14 +1028,14 @@ impl NumericValue {
           "pow" => {
             input.parse_nested_block(|arguments| {
               let base = Self::parse_additive_expression(arguments, state)?;
-              let base = match base.expect_number(false) {
-                Ok(number) => *number,
+              let base = match base.expect_number() {
+                Ok(number) => number,
                 Err(error) => return Err(arguments.new_custom_error(error)),
               };
               arguments.expect_comma()?;
               let exponent = Self::parse_additive_expression(arguments, state)?;
-              let exponent = match exponent.expect_number(false) {
-                Ok(number) => *number,
+              let exponent = match exponent.expect_number() {
+                Ok(number) => number,
                 Err(error) => return Err(arguments.new_custom_error(error)),
               };
               arguments.expect_exhausted()?;
@@ -1054,7 +1046,7 @@ impl NumericValue {
           "sqrt" => {
             input.parse_nested_block(|arguments| {
               let value = Self::parse_additive_expression(arguments, state)?;
-              let value = match value.expect_number(false) {
+              let value = match value.expect_number() {
                 Ok(number) => number,
                 Err(error) => return Err(arguments.new_custom_error(error)),
               };
@@ -1077,8 +1069,8 @@ impl NumericValue {
                   while !arguments.is_exhausted() {
                     arguments.expect_comma()?;
                     let value = Self::parse_additive_expression(arguments, state)?;
-                    let value = match value.expect_number(false) {
-                      Ok(number) => *number,
+                    let value = match value.expect_number() {
+                      Ok(number) => number,
                       Err(error) => return Err(arguments.new_custom_error(error)),
                     };
                     args.push(value);
@@ -1123,7 +1115,7 @@ impl NumericValue {
                     arguments.expect_comma()?;
                     let value = Self::parse_additive_expression(arguments, state)?;
                     let value = match value.expect_percent() {
-                      Ok(number) => *number,
+                      Ok(percent) => percent,
                       Err(error) => return Err(arguments.new_custom_error(error)),
                     };
                     args.push(value);
@@ -1137,15 +1129,15 @@ impl NumericValue {
           "log" => {
             input.parse_nested_block(|arguments| {
               let value = Self::parse_additive_expression(arguments, state)?;
-              let value = match value.expect_number(false) {
-                Ok(number) => *number,
+              let value = match value.expect_number() {
+                Ok(number) => number,
                 Err(error) => return Err(arguments.new_custom_error(error)),
               };
               let result: NumericAccumulator = if !arguments.is_exhausted() {
                 arguments.expect_comma()?;
                 let base = Self::parse_additive_expression(arguments, state)?;
-                let base = match base.expect_number(false) {
-                  Ok(number) => *number,
+                let base = match base.expect_number() {
+                  Ok(number) => number,
                   Err(error) => return Err(arguments.new_custom_error(error)),
                 };
                 arguments.expect_exhausted()?;
@@ -1159,7 +1151,7 @@ impl NumericValue {
           "exp" => {
             input.parse_nested_block(|arguments| {
               let value = Self::parse_additive_expression(arguments, state)?;
-              let number = match value.expect_number(false) {
+              let number = match value.expect_number() {
                 Ok(number) => number,
                 Err(error) => return Err(arguments.new_custom_error(error)),
               };
@@ -2006,22 +1998,22 @@ pub enum Transform {
   TranslateY(Length),
   TranslateZ(Length),
   Translate3d(Length, Length, Length),
-  Scale(Number, Option<Number>),
-  ScaleX(Number),
-  ScaleY(Number),
-  ScaleZ(Number),
-  Scale3d(Number, Number, Number),
+  Scale(f32, Option<f32>),
+  ScaleX(f32),
+  ScaleY(f32),
+  ScaleZ(f32),
+  Scale3d(f32, f32, f32),
   Rotate(Angle),
   RotateX(Angle),
   RotateY(Angle),
   RotateZ(Angle),
-  Rotate3d(Number, Number, Number, Angle),
+  Rotate3d(f32, f32, f32, Angle),
   Skew(Angle, Option<Angle>),
   SkewX(Angle),
   SkewY(Angle),
   Perspective(Option<Length>),
-  Matrix([Number; 6]),
-  Matrix3d([Number; 16]),
+  Matrix([f32; 6]),
+  Matrix3d([f32; 16]),
 }
 
 impl Transform {
@@ -2109,15 +2101,15 @@ impl Transform {
       "scale" => {
         input.parse_nested_block(|arguments| {
           let x = NumericValue::parse(arguments)?;
-          let x = match x.expect_number(true) {
-            Ok(number) => number,
+          let x = match x.expect_number_or_percent() {
+            Ok(value) => value,
             Err(error) => return Err(arguments.new_custom_error(error)),
           };
           let y = if !arguments.is_exhausted() {
             arguments.expect_comma()?;
             let value = NumericValue::parse(arguments)?;
-            let value = match value.expect_number(true) {
-              Ok(number) => number,
+            let value = match value.expect_number_or_percent() {
+              Ok(value) => value,
               Err(error) => return Err(arguments.new_custom_error(error)),
             };
             arguments.expect_exhausted()?;
@@ -2129,8 +2121,8 @@ impl Transform {
       "scalex" => {
         input.parse_nested_block(|arguments| {
           let value = NumericValue::parse(arguments)?;
-          let value = match value.expect_number(true) {
-            Ok(number) => number,
+          let value = match value.expect_number_or_percent() {
+            Ok(value) => value,
             Err(error) => return Err(arguments.new_custom_error(error)),
           };
           arguments.expect_exhausted()?;
@@ -2140,8 +2132,8 @@ impl Transform {
       "scaley" => {
         input.parse_nested_block(|arguments| {
           let value = NumericValue::parse(arguments)?;
-          let value = match value.expect_number(true) {
-            Ok(number) => number,
+          let value = match value.expect_number_or_percent() {
+            Ok(value) => value,
             Err(error) => return Err(arguments.new_custom_error(error)),
           };
           arguments.expect_exhausted()?;
@@ -2151,8 +2143,8 @@ impl Transform {
       "scalez" => {
         input.parse_nested_block(|arguments| {
           let value = NumericValue::parse(arguments)?;
-          let value = match value.expect_number(true) {
-            Ok(number) => number,
+          let value = match value.expect_number_or_percent() {
+            Ok(value) => value,
             Err(error) => return Err(arguments.new_custom_error(error)),
           };
           arguments.expect_exhausted()?;
@@ -2162,20 +2154,20 @@ impl Transform {
       "scale3d" => {
         input.parse_nested_block(|arguments| {
           let x = NumericValue::parse(arguments)?;
-          let x = match x.expect_number(true) {
-            Ok(number) => number,
+          let x = match x.expect_number_or_percent() {
+            Ok(value) => value,
             Err(error) => return Err(arguments.new_custom_error(error)),
           };
           arguments.expect_comma()?;
           let y = NumericValue::parse(arguments)?;
-          let y = match y.expect_number(true) {
-            Ok(number) => number,
+          let y = match y.expect_number_or_percent() {
+            Ok(value) => value,
             Err(error) => return Err(arguments.new_custom_error(error)),
           };
           arguments.expect_comma()?;
           let z = NumericValue::parse(arguments)?;
-          let z = match z.expect_number(true) {
-            Ok(number) => number,
+          let z = match z.expect_number_or_percent() {
+            Ok(value) => value,
             Err(error) => return Err(arguments.new_custom_error(error)),
           };
           arguments.expect_exhausted()?;
@@ -2229,19 +2221,19 @@ impl Transform {
       "rotate3d" => {
         input.parse_nested_block(|arguments| {
           let x = NumericValue::parse(arguments)?;
-          let x = match x.expect_number(false) {
+          let x = match x.expect_number() {
             Ok(number) => number,
             Err(error) => return Err(arguments.new_custom_error(error)),
           };
           arguments.expect_comma()?;
           let y = NumericValue::parse(arguments)?;
-          let y = match y.expect_number(false) {
+          let y = match y.expect_number() {
             Ok(number) => number,
             Err(error) => return Err(arguments.new_custom_error(error)),
           };
           arguments.expect_comma()?;
           let z = NumericValue::parse(arguments)?;
-          let z = match z.expect_number(false) {
+          let z = match z.expect_number() {
             Ok(number) => number,
             Err(error) => return Err(arguments.new_custom_error(error)),
           };
@@ -2319,10 +2311,10 @@ impl Transform {
       },
       "matrix" => {
         input.parse_nested_block(|arguments| {
-          let mut result = [Number(0.0); 6];
+          let mut result = [0.0; 6];
           for slot in &mut result {
             let value = NumericValue::parse(arguments)?;
-            let number = match value.expect_number(false) {
+            let number = match value.expect_number() {
               Ok(number) => number,
               Err(error) => return Err(arguments.new_custom_error(error)),
             };
@@ -2334,10 +2326,10 @@ impl Transform {
       },
       "matrix3d" => {
         input.parse_nested_block(|arguments| {
-          let mut result = [Number(0.0); 16];
+          let mut result = [0.0; 16];
           for slot in &mut result {
             let value = NumericValue::parse(arguments)?;
-            let number = match value.expect_number(false) {
+            let number = match value.expect_number() {
               Ok(number) => number,
               Err(error) => return Err(arguments.new_custom_error(error)),
             };

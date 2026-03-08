@@ -1435,27 +1435,27 @@ impl DOMMatrixReadOnly {
         self.is_2d.set(false);
       }
       Transform::Scale(x, y) => {
-        let x = **x;
-        let y = if let Some(y) = y { **y } else { x };
+        let x = *x;
+        let y = if let Some(y) = y { *y } else { x };
         self.scale_without_origin_self_inner(x.into(), y.into(), 1.0);
       }
       Transform::ScaleX(x) => {
-        let x = **x;
+        let x = *x;
         self.scale_without_origin_self_inner(x.into(), 1.0, 1.0);
       }
       Transform::ScaleY(y) => {
-        let y = **y;
+        let y = *y;
         self.scale_without_origin_self_inner(1.0, y.into(), 1.0);
       }
       Transform::ScaleZ(z) => {
-        let z = **z;
+        let z = *z;
         self.scale_without_origin_self_inner(1.0, 1.0, z.into());
         self.is_2d.set(false);
       }
       Transform::Scale3d(x, y, z) => {
-        let x = **x;
-        let y = **y;
-        let z = **z;
+        let x = *x;
+        let y = *y;
+        let z = *z;
         self.scale_without_origin_self_inner(x.into(), y.into(), z.into());
         self.is_2d.set(false);
       }
@@ -1495,9 +1495,9 @@ impl DOMMatrixReadOnly {
         self.is_2d.set(false);
       }
       Transform::Rotate3d(x, y, z, angle) => {
-        let x = **x;
-        let y = **y;
-        let z = **z;
+        let x = *x;
+        let y = *y;
+        let z = *z;
         self.rotate_axis_angle_self_inner(
           x.into(),
           y.into(),
@@ -1528,17 +1528,17 @@ impl DOMMatrixReadOnly {
         let rhs = DOMMatrixReadOnly {
           #[rustfmt::skip]
           inner: RefCell::new(Matrix4::new(
-            (**a).into(), (**c).into(), 0.0, (**e).into(),
-            (**b).into(), (**d).into(), 0.0, (**f).into(),
-                     0.0,          0.0, 1.0,          0.0,
-                     0.0,          0.0, 0.0,          1.0,
+            (*a).into(), (*c).into(), 0.0, (*e).into(),
+            (*b).into(), (*d).into(), 0.0, (*f).into(),
+                    0.0,         0.0, 1.0,         0.0,
+                    0.0,         0.0, 0.0,         1.0,
           )),
           is_2d: Cell::new(true),
         };
         self.multiply_self_inner(&lhs, &rhs);
       }
       Transform::Matrix3d(array) => {
-        let array: [f64; 16] = array.map(|value| (*value).into());
+        let array: [f64; 16] = array.map(|value| value.into());
         let lhs = self.clone();
         let rhs = DOMMatrixReadOnly {
           #[rustfmt::skip]
