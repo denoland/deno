@@ -711,7 +711,7 @@ pub async fn op_node_rmdir(
   Ok(())
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug)]
 struct CpCheckPathsResult {
   src_dev: u64,
   src_ino: u64,
@@ -882,26 +882,8 @@ async fn check_paths_impl(
   })
 }
 
-/// Async op: validates src and dest paths for a cp operation.
-/// Returns a result with src stat info, dest existence, and optional error.
-#[op2(stack_trace)]
-#[serde]
-pub async fn op_node_cp_check_paths(
-  state: Rc<RefCell<OpState>>,
-  #[string] src: String,
-  #[string] dest: String,
-  dereference: bool,
-) -> Result<CpCheckPathsResult, FsError> {
-  let fs = {
-    let state = state.borrow();
-    state.borrow::<FileSystemRc>().clone()
-  };
-
-  check_paths_impl(&state, &fs, &src, &dest, dereference).await
-}
-
-/// Async op: validates src and dest paths for recursive cp operations.
-/// Returns a result with src stat info, dest existence, and optional error.
+/// Validates src and dest paths for recursive cp operations.
+/// Returns whether dest exists
 #[op2(stack_trace)]
 pub async fn op_node_cp_check_paths_recursive(
   state: Rc<RefCell<OpState>>,
@@ -919,9 +901,9 @@ pub async fn op_node_cp_check_paths_recursive(
   Ok(result.dest_exists)
 }
 
-/// Async op: validates src and dest paths, checks parent paths, and ensures
-/// parent directory exists - all in a single operation for better performance.
-/// Returns a result with src stat info, dest existence, and optional error.
+/// Validates src and dest paths, checks parent paths, and ensures
+/// parent directory exists
+/// Returns whether dest exists
 #[op2(stack_trace)]
 pub async fn op_node_cp_validate_and_prepare(
   state: Rc<RefCell<OpState>>,
@@ -956,7 +938,7 @@ pub async fn op_node_cp_validate_and_prepare(
 /// It works for all file types including symlinks since it
 /// checks the src and dest inodes. It starts from the deepest
 /// parent and stops once it reaches the src parent or the root path.
-#[allow(clippy::disallowed_methods)] // allow, implementation
+#[allow(clippy::disallowed_methods)]
 async fn check_parent_paths_impl(
   state: &Rc<RefCell<OpState>>,
   fs: &FileSystemRc,
@@ -1036,24 +1018,6 @@ async fn check_parent_paths_impl(
   }
 }
 
-/// Async op: checks that dest is not a subdirectory of src.
-/// Returns null if OK, or a CpError object if the check fails.
-#[op2(stack_trace)]
-pub async fn op_node_cp_check_parent_paths(
-  state: Rc<RefCell<OpState>>,
-  #[string] src: String,
-  #[string] dest: String,
-  #[number] src_dev: u64,
-  #[number] src_ino: u64,
-) -> Result<(), FsError> {
-  let fs = {
-    let state = state.borrow();
-    state.borrow::<FileSystemRc>().clone()
-  };
-
-  check_parent_paths_impl(&state, &fs, &src, src_dev, src_ino, &dest).await
-}
-
 /// Ensures the parent directory of `dest` exists, creating it recursively
 /// if needed.
 async fn ensure_parent_dir_impl(
@@ -1095,20 +1059,6 @@ async fn ensure_parent_dir_impl(
       })?;
   }
   Ok(())
-}
-
-/// Async op: ensures the parent directory of dest exists.
-#[op2(stack_trace)]
-pub async fn op_node_cp_ensure_parent_dir(
-  state: Rc<RefCell<OpState>>,
-  #[string] dest: String,
-) -> Result<(), FsError> {
-  let fs = {
-    let state = state.borrow();
-    state.borrow::<FileSystemRc>().clone()
-  };
-
-  ensure_parent_dir_impl(&state, &fs, &dest).await
 }
 
 fn handle_timestamps_and_mode_sync(
@@ -1288,8 +1238,6 @@ pub async fn op_node_cp_on_file(
   .await?
 }
 
-/// Async op: handles copying a symlink (onLink + copyLink).
-/// Returns null on success, or a CpError on error.
 #[op2(stack_trace)]
 pub async fn op_node_cp_on_link(
   state: Rc<RefCell<OpState>>,
@@ -1389,7 +1337,19 @@ pub async fn op_node_cp_on_link(
         // PERMISSIONS: ok because we verified --allow-write and --allow-read above
         let oldpath = CheckedPathBuf::unsafe_new(PathBuf::from(&resolved_src));
         let newpath = CheckedPathBuf::unsafe_new(PathBuf::from(&dest));
-        fs.symlink_async(oldpath, newpath, None).await?;
+        fs.symlink_async(oldpath, newpath, None)
+          .await
+          .map_err(|err| {
+            map_fs_error_to_node_fs_error(
+              err,
+              NodeFsErrorContext {
+                path: Some(resolved_src.to_string()),
+                dest: Some(dest.to_string()),
+                syscall: Some("symlink".into()),
+                ..Default::default()
+              },
+            )
+          })?;
         return Ok(());
       }
 
