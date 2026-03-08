@@ -16,9 +16,9 @@ const {
   getAsyncContext,
   setAsyncContext,
   createTimer,
-  cancelTimer2,
-  refTimer2,
-  unrefTimer2,
+  cancelTimer: coreCancelTimer,
+  refTimer: coreRefTimer,
+  unrefTimer: coreUnrefTimer,
   getTimerDepth,
 } = core;
 
@@ -108,7 +108,7 @@ function clearTimeout(id = 0) {
   id = webidl.converters.long(id);
   const timer = MapPrototypeGet(activeTimers, id);
   if (timer) {
-    cancelTimer2(timer);
+    coreCancelTimer(timer);
     MapPrototypeDelete(activeTimers, id);
   }
 }
@@ -121,7 +121,7 @@ function clearInterval(id = 0) {
   id = webidl.converters.long(id);
   const timer = MapPrototypeGet(activeTimers, id);
   if (timer) {
-    cancelTimer2(timer);
+    coreCancelTimer(timer);
     MapPrototypeDelete(activeTimers, id);
   }
 }
@@ -132,7 +132,7 @@ function clearInterval(id = 0) {
 function unrefTimer(id) {
   const timer = MapPrototypeGet(activeTimers, id);
   if (timer) {
-    unrefTimer2(timer);
+    coreUnrefTimer(timer);
   }
 }
 
@@ -142,7 +142,7 @@ function unrefTimer(id) {
 function refTimer(id) {
   const timer = MapPrototypeGet(activeTimers, id);
   if (timer) {
-    refTimer2(timer);
+    coreRefTimer(timer);
   }
 }
 

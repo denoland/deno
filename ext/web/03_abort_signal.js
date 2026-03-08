@@ -121,7 +121,7 @@ class AbortSignal extends EventTarget {
     const signal = new AbortSignal(illegalConstructorKey);
     signal[timerId] = core.createTimer(
       () => {
-        core.cancelTimer2(signal[timerId]);
+        core.cancelTimer(signal[timerId]);
         signal[timerId] = null;
         signal[signalAbort](
           new DOMException("Signal timed out.", "TimeoutError"),
@@ -238,13 +238,13 @@ class AbortSignal extends EventTarget {
     FunctionPrototypeApply(super.addEventListener, this, arguments);
     if (listenerCount(this, "abort") > 0) {
       if (this[timerId] !== null) {
-        core.refTimer2(this[timerId]);
+        core.refTimer(this[timerId]);
       } else if (this[sourceSignals] !== null) {
         const sourceSignalArray = this[sourceSignals].toArray();
         for (let i = 0; i < sourceSignalArray.length; ++i) {
           const sourceSignal = sourceSignalArray[i];
           if (sourceSignal[timerId] !== null) {
-            core.refTimer2(sourceSignal[timerId]);
+            core.refTimer(sourceSignal[timerId]);
             // prevent GC of this dependent signal while the timer is keeping the event loop alive
             sourceSignal[activeDependents] ??= new SafeSet();
             SetPrototypeAdd(sourceSignal[activeDependents], this);
@@ -258,7 +258,7 @@ class AbortSignal extends EventTarget {
     FunctionPrototypeApply(super.removeEventListener, this, arguments);
     if (listenerCount(this, "abort") === 0) {
       if (this[timerId] !== null) {
-        core.unrefTimer2(this[timerId]);
+        core.unrefTimer(this[timerId]);
       } else if (this[sourceSignals] !== null) {
         const sourceSignalArray = this[sourceSignals].toArray();
         for (let i = 0; i < sourceSignalArray.length; ++i) {
@@ -273,7 +273,7 @@ class AbortSignal extends EventTarget {
                   listenerCount(dependentSignal, "abort") === 0,
               )
             ) {
-              core.unrefTimer2(sourceSignal[timerId]);
+              core.unrefTimer(sourceSignal[timerId]);
             }
             // release the strong reference since no more listeners need it
             if (sourceSignal[activeDependents]) {

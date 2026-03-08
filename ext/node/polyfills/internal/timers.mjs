@@ -4,10 +4,10 @@
 import { core, primordials } from "ext:core/mod.js";
 const {
   createTimer: createTimer_,
-  cancelTimer2: cancelTimer_,
+  cancelTimer: cancelTimer_,
   refreshTimer: refreshTimer_,
-  refTimer2: refTimer_,
-  unrefTimer2: unrefTimer_,
+  refTimer: refTimer_,
+  unrefTimer: unrefTimer_,
   getAsyncContext,
   setAsyncContext,
   immediateRefCount,

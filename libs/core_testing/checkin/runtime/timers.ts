@@ -19,7 +19,7 @@ export function setInterval(callback: () => void, delay = 0) {
  */
 // deno-lint-ignore no-explicit-any
 export function clearTimeout(timer: any) {
-  Deno.core.cancelTimer2(timer);
+  Deno.core.cancelTimer(timer);
 }
 
 /**
@@ -27,7 +27,7 @@ export function clearTimeout(timer: any) {
  */
 // deno-lint-ignore no-explicit-any
 export function clearInterval(timer: any) {
-  Deno.core.cancelTimer2(timer);
+  Deno.core.cancelTimer(timer);
 }
 
 /**
@@ -35,7 +35,7 @@ export function clearInterval(timer: any) {
  */
 // deno-lint-ignore no-explicit-any
 export function unrefTimer(timer: any) {
-  Deno.core.unrefTimer2(timer);
+  Deno.core.unrefTimer(timer);
 }
 
 /**
@@ -43,5 +43,5 @@ export function unrefTimer(timer: any) {
  */
 // deno-lint-ignore no-explicit-any
 export function refTimer(timer: any) {
-  Deno.core.refTimer2(timer);
+  Deno.core.refTimer(timer);
 }
