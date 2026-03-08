@@ -3,12 +3,17 @@
 
 import { core, primordials } from "ext:core/mod.js";
 const {
+  createTimer: createTimer_,
+  cancelTimer2: cancelTimer_,
+  refreshTimer: refreshTimer_,
+  refTimer2: refTimer_,
+  unrefTimer2: unrefTimer_,
   getAsyncContext,
   setAsyncContext,
   immediateRefCount,
 } = core;
 const {
-  FunctionPrototypeBind,
+  FunctionPrototypeCall,
   MapPrototypeDelete,
   MapPrototypeGet,
   MapPrototypeSet,
@@ -31,11 +36,6 @@ import {
 } from "ext:deno_node/internal/validators.mjs";
 import { ERR_OUT_OF_RANGE } from "ext:deno_node/internal/errors.ts";
 import { emitWarning } from "node:process";
-import {
-  clearTimeout as clearTimeout_,
-  setInterval as setInterval_,
-  setTimeout as setTimeout_,
-} from "ext:deno_web/02_timers.js";
 
 // Timeout values > TIMEOUT_MAX are set to 1.
 export const TIMEOUT_MAX = 2 ** 31 - 1;
@@ -77,36 +77,44 @@ export function Timeout(callback, after, args, isRepeat, isRefed) {
 }
 
 Timeout.prototype[createTimer] = function () {
+  const self = this;
   const callback = this._onTimeout;
-  const cb = (...args) => {
-    if (!this._isRepeat) {
-      MapPrototypeDelete(activeTimers, this[kTimerId]);
+  const asyncContext = getAsyncContext();
+  const cb = function () {
+    const oldContext = getAsyncContext();
+    try {
+      setAsyncContext(asyncContext);
+      if (!self._isRepeat) {
+        MapPrototypeDelete(activeTimers, self[kTimerId]);
+      }
+      const args = self._timerArgs;
+      if (args !== undefined && args.length > 0) {
+        return ReflectApply(callback, self, args);
+      }
+      return FunctionPrototypeCall(callback, self);
+    } finally {
+      setAsyncContext(oldContext);
     }
-    return FunctionPrototypeBind(callback, this)(
-      ...new SafeArrayIterator(args),
-    );
   };
-  const id = this._isRepeat
-    ? setInterval_(
-      cb,
-      this._idleTimeout,
-      ...new SafeArrayIterator(this._timerArgs),
-    )
-    : setTimeout_(
-      cb,
-      this._idleTimeout,
-      ...new SafeArrayIterator(this._timerArgs),
-    );
-  if (!this[kRefed]) {
-    Deno.unrefTimer(id);
-  }
+  const timer = createTimer_(
+    cb,
+    this._idleTimeout,
+    undefined,
+    this._isRepeat,
+    this[kRefed],
+  );
+  this._timer = timer;
+  const id = timer._timerId;
   MapPrototypeSet(activeTimers, id, this);
   return id;
 };
 
 Timeout.prototype[kDestroy] = function () {
-  this._destroyed = true;
-  MapPrototypeDelete(activeTimers, this[kTimerId]);
+  if (!this._destroyed) {
+    this._destroyed = true;
+    cancelTimer_(this._timer);
+    MapPrototypeDelete(activeTimers, this[kTimerId]);
+  }
 };
 
 // Make sure the linked list only shows the minimal necessary information.
@@ -122,9 +130,7 @@ Timeout.prototype[inspect.custom] = function (_, options) {
 
 Timeout.prototype.refresh = function () {
   if (!this._destroyed) {
-    clearTimeout_(this[kTimerId]);
-    MapPrototypeDelete(activeTimers, this[kTimerId]);
-    this[kTimerId] = this[createTimer]();
+    refreshTimer_(this._timer);
   }
   return this;
 };
@@ -132,7 +138,9 @@ Timeout.prototype.refresh = function () {
 Timeout.prototype.unref = function () {
   if (this[kRefed]) {
     this[kRefed] = false;
-    Deno.unrefTimer(this[kTimerId]);
+    if (!this._destroyed) {
+      unrefTimer_(this._timer);
+    }
   }
   return this;
 };
@@ -140,7 +148,9 @@ Timeout.prototype.unref = function () {
 Timeout.prototype.ref = function () {
   if (!this[kRefed]) {
     this[kRefed] = true;
-    Deno.refTimer(this[kTimerId]);
+    if (!this._destroyed) {
+      refTimer_(this._timer);
+    }
   }
   return this;
 };
