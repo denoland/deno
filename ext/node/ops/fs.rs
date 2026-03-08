@@ -747,19 +747,24 @@ fn is_src_subdir(src: &str, dest: &str) -> bool {
     .all(|(i, c)| dest_components.get(i) == Some(c))
 }
 
+/// As this function attempts to get the absolute path of the target,
+/// callers of this function should ensure that the permissions are granted
+/// with at minimum using `.check_read_all()`.
 fn cp_symlink_type(
   fs: &FileSystemRc,
-  target: &str,
-  link_path: &str,
+  target: &CheckedPathBuf,
+  link_path: &CheckedPathBuf,
 ) -> Option<FsFileType> {
   #[cfg(windows)]
   {
     // Mirror node polyfill behavior: resolve target relative to the link
     // path, infer dir/file from stat, and default to file on any error.
     // https://github.com/nodejs/node/blob/70f6b58ac655234435a99d72b857dd7b316d34bf/lib/fs.js#L1806-L1837
-    if let Ok(absolute_target) =
-      std::path::absolute(Path::new(link_path).join("..").join(target))
-    {
+    if let Ok(absolute_target) = std::path::absolute(
+      Path::new(link_path.as_os_str())
+        .join("..")
+        .join(target.as_os_str()),
+    ) {
       let checked_target = CheckedPathBuf::unsafe_new(absolute_target);
       let checked_target = checked_target.as_checked_path();
       if let Ok(stat) = fs.stat_sync(&checked_target)
@@ -796,7 +801,7 @@ async fn cp_create_symlink(
     // PERMISSIONS: ok because we verified --allow-write and --allow-read above
     let oldpath = CheckedPathBuf::unsafe_new(PathBuf::from(&target));
     let newpath = CheckedPathBuf::unsafe_new(PathBuf::from(&link_path));
-    let file_type = cp_symlink_type(&fs, &target, &link_path);
+    let file_type = cp_symlink_type(&fs, &oldpath, &newpath);
     let oldpath = oldpath.as_checked_path();
     let newpath = newpath.as_checked_path();
 
@@ -1480,24 +1485,20 @@ pub async fn op_node_cp_on_link(
     );
   }
 
-  let (src_path, dest_path) = {
+  {
     let mut state = state.borrow_mut();
-    (
-      state.borrow_mut::<PermissionsContainer>().check_open(
-        Cow::Owned(PathBuf::from(&resolved_src)),
-        OpenAccessKind::Read,
-        Some("node:fs.cp"),
-      )?,
-      state.borrow_mut::<PermissionsContainer>().check_open(
-        Cow::Owned(PathBuf::from(&dest)),
-        OpenAccessKind::Write,
-        Some("node:fs.cp"),
-      )?,
-    )
-  };
+    let permissions = state.borrow_mut::<PermissionsContainer>();
+    permissions.check_write_all("node:fs.cp")?;
+    permissions.check_read_all("node:fs.cp")?;
+  }
 
   // Unlink dest and create new symlink
   spawn_blocking(move || -> Result<(), FsError> {
+    let src_path_buf = CheckedPathBuf::unsafe_new(PathBuf::from(&resolved_src));
+    let dest_path_buf = CheckedPathBuf::unsafe_new(PathBuf::from(&dest));
+    let src_path = src_path_buf.as_checked_path();
+    let dest_path = dest_path_buf.as_checked_path();
+
     fs.remove_sync(&dest_path, false).map_err(|err| {
       map_fs_error_to_node_fs_error(
         err,
@@ -1509,22 +1510,19 @@ pub async fn op_node_cp_on_link(
       )
     })?;
 
-    let src = src_path.to_string_lossy().to_string();
-    let dest = dest_path.to_string_lossy().to_string();
-    let file_type = cp_symlink_type(&fs, &src, &dest);
+    let file_type = cp_symlink_type(&fs, &src_path_buf, &dest_path_buf);
     fs.symlink_sync(&src_path, &dest_path, file_type)
       .map_err(|err| {
         map_fs_error_to_node_fs_error(
           err,
           NodeFsErrorContext {
-            path: Some(src),
-            dest: Some(dest),
+            path: Some(src_path.to_string_lossy().to_string()),
+            dest: Some(dest_path.to_string_lossy().to_string()),
             syscall: Some("symlink".into()),
             ..Default::default()
           },
         )
-      })?;
-    Ok(())
+      })
   })
   .await?
 }
