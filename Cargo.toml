@@ -430,6 +430,8 @@ napi-sys = { version = "=2.2.2", default-features = false }
 
 # geometry
 cssparser = "0.36.0"
+# NOTE: Due to a bug in Cargo's optional dependencies, an unused dependency on "glam" is being included in Cargo.lock
+# https://github.com/rust-lang/cargo/issues/10801
 nalgebra = { version = "0.34.1", default-features = false, features = ["std"] }
 
 # webgpu
