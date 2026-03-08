@@ -128,30 +128,6 @@ pub fn op_leak_tracing_get<'s, 'i>(
 /// to `MAX_SAFE_INTEGER` (2^53) timers to exist, versus 2^32 timers if we used
 /// `u32`.
 #[op2(fast)]
-pub fn op_timer_queue(
-  scope: &mut v8::PinScope,
-  depth: u32,
-  repeat: bool,
-  timeout_ms: f64,
-  task: v8::Local<v8::Function>,
-) -> f64 {
-  let task = v8::Global::new(scope, task);
-  let context_state = JsRealm::state_from_scope(scope);
-  if repeat {
-    context_state
-      .timers
-      .queue_timer_repeat(timeout_ms as _, (task, depth)) as _
-  } else {
-    context_state
-      .timers
-      .queue_timer(timeout_ms as _, (task, depth)) as _
-  }
-}
-
-/// Queue a timer. We return a "large integer" timer ID in an f64 which allows for up
-/// to `MAX_SAFE_INTEGER` (2^53) timers to exist, versus 2^32 timers if we used
-/// `u32`.
-#[op2(fast)]
 pub fn op_timer_queue_system(
   scope: &mut v8::PinScope,
   repeat: bool,

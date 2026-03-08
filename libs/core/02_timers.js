@@ -246,9 +246,17 @@
 
   // runNextTicks is set by 01_core.js via setRunNextTicks().
   let runNextTicks = () => {};
+  // reportException is set by 01_core.js via setReportException().
+  let reportException = (e) => {
+    throw e;
+  };
 
   function setRunNextTicks(fn) {
     runNextTicks = fn;
+  }
+
+  function setReportException(fn) {
+    reportException = fn;
   }
 
   function listOnTimeout(list, now) {
@@ -291,6 +299,8 @@
         } else {
           timer._onTimeout(...args);
         }
+      } catch (e) {
+        reportException(e);
       } finally {
         if (timer._repeat && timer._idleTimeout !== -1) {
           timer._idleTimeout = timer._repeat;
@@ -390,6 +400,7 @@
     decRefCount,
     kRefed,
     setRunNextTicks,
+    setReportException,
     TIMEOUT_MAX,
     L_init,
     L_peek,

@@ -100,7 +100,6 @@ builtin_ops! {
   ops_builtin_types::op_is_weak_set,
   ops_builtin_v8::op_add_main_module_handler,
   ops_builtin_v8::op_set_handled_promise_rejection_handler,
-  ops_builtin_v8::op_timer_queue,
   ops_builtin_v8::op_timer_queue_system,
   ops_builtin_v8::op_timer_cancel,
   ops_builtin_v8::op_timer_ref,

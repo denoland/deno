@@ -73,7 +73,6 @@
     op_set_wasm_streaming_callback,
     op_str_byte_length,
     op_timer_cancel,
-    op_timer_queue,
     op_timer_queue_system,
     op_timer_ref,
     op_timer_unref,
@@ -425,6 +424,10 @@
   // Wire runNextTicks into the timer module so processTimers can
   // interleave nextTick drains between timer callbacks.
   __timers.setRunNextTicks(runNextTicks);
+  // Wire reportException so timer callback errors are dispatched
+  // via the uncaught exception handler rather than propagating.
+  // Use a wrapper since reportExceptionCallback is defined later.
+  __timers.setReportException((e) => reportExceptionCallback(e));
 
   // Called from Rust at phase 1c of the event loop when the user timer fires.
   function __processTimers(now) {
@@ -1112,13 +1115,6 @@
       unhandledPromiseRejectionHandler = handler,
     reportUnhandledException: (e) => op_dispatch_exception(e, false),
     reportUnhandledPromiseRejection: (e) => op_dispatch_exception(e, true),
-    queueUserTimer: (depth, repeat, timeout, task) => {
-      const id = op_timer_queue(depth, repeat, timeout, task);
-      if (__isLeakTracingEnabled()) {
-        submitTimerTrace(id);
-      }
-      return id;
-    },
     // TODO(mmastrac): Hook up associatedOp to tracing
     queueSystemTimer: (_associatedOp, repeat, timeout, task) =>
       op_timer_queue_system(repeat, timeout, task),
