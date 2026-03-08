@@ -144,17 +144,20 @@ pub fn op_timer_schedule(scope: &mut v8::PinScope, delay_ms: f64) {
 }
 
 /// Register a JS-managed timer with the Rust stats system for leak detection.
+/// System timers (e.g. AbortSignal.timeout) are tracked but excluded from
+/// sanitizer stats, matching the old `op_timer_queue_system` behavior.
 #[op2(fast)]
 pub fn op_timer_track(
   scope: &mut v8::PinScope,
   #[smi] id: i32,
   is_repeat: bool,
+  is_system: bool,
 ) {
   let context_state = JsRealm::state_from_scope(scope);
   context_state
     .active_timers
     .borrow_mut()
-    .insert(id as usize, is_repeat);
+    .insert(id as usize, (is_repeat, is_system));
 }
 
 /// Unregister a JS-managed timer from the Rust stats system.

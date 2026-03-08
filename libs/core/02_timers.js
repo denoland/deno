@@ -333,7 +333,7 @@
 
   // Timer item constructor (internal). Callers (web timers, node timers)
   // wrap this with their own validation and async context handling.
-  function createTimer(callback, after, args, isRepeat, isRefed) {
+  function createTimer(callback, after, args, isRepeat, isRefed, isSystem) {
     if (after === undefined) {
       after = 1;
     } else {
@@ -359,7 +359,7 @@
 
     if (isRefed) incRefCount();
     insert(timer, after);
-    op_timer_track(id, !!isRepeat);
+    op_timer_track(id, !!isRepeat, !!isSystem);
     if (__isLeakTracingEnabled()) {
       const error = new Error();
       ErrorCaptureStackTrace(error, createTimer);

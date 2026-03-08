@@ -107,8 +107,10 @@ pub struct ContextState {
   /// Index 0: refed timer count (managed by JS)
   pub(crate) timer_info: Box<[i32; 1]>,
   /// Active JS-managed timers tracked for the leak sanitizer.
-  /// Maps timer ID → is_repeat (true = interval, false = timeout).
-  pub(crate) active_timers: RefCell<std::collections::HashMap<usize, bool>>,
+  /// Maps timer ID → (is_repeat, is_system). System timers (e.g.
+  /// AbortSignal.timeout) are excluded from sanitizer stats.
+  pub(crate) active_timers:
+    RefCell<std::collections::HashMap<usize, (bool, bool)>>,
   pub(crate) external_ops_tracker: ExternalOpsTracker,
   pub(crate) ext_import_meta_proto: RefCell<Option<v8::Global<v8::Object>>>,
   /// Phase-specific state for the libuv-style event loop.

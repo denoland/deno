@@ -131,6 +131,7 @@ class AbortSignal extends EventTarget {
       undefined,
       false,
       false, // start unrefed (like Node.js)
+      true, // system timer: excluded from leak sanitizer
     );
     return signal;
   }
