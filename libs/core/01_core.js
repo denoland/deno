@@ -128,7 +128,6 @@
     op_leak_tracing_submit(0, id, StringPrototypeSlice(error.stack, 6));
   }
 
-
   let unhandledPromiseRejectionHandler = () => false;
   let timerDepth = 0;
 
