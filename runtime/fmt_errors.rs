@@ -11,6 +11,8 @@ use deno_core::error::format_frame;
 use deno_core::url::Url;
 use deno_terminal::colors;
 
+use crate::source_highlight::syntax_highlight_source_line;
+
 #[derive(Debug, Clone)]
 struct ErrorReference<'a> {
   from: &'a JsError,
@@ -108,6 +110,7 @@ impl deno_core::error::ErrorFormat for AnsiColors {
 fn format_maybe_source_line(
   source_line: Option<&str>,
   column_number: Option<i64>,
+  line_number: Option<i64>,
   is_error: bool,
   level: usize,
 ) -> String {
@@ -136,6 +139,25 @@ fn format_maybe_source_line(
     );
   }
 
+  // Build the line number gutter prefix: "  42 | "
+  let (line_prefix, gutter_width) = if let Some(ln) = line_number {
+    let ln_str = ln.to_string();
+    let prefix = if colors::use_color() {
+      format!("{} {} ", colors::gray(&ln_str), colors::gray("|"))
+    } else {
+      format!("{} | ", ln_str)
+    };
+    // Width of the gutter in visible characters (for the caret alignment)
+    let width = ln_str.len() + 3; // "42 | " = digits + " | "
+    (prefix, width)
+  } else {
+    (String::new(), 0)
+  };
+
+  // Build caret padding (accounting for gutter width)
+  for _ in 0..gutter_width {
+    s.push(' ');
+  }
   for _i in 0..(column_number - 1) {
     if source_line.chars().nth(_i as usize).unwrap() == '\t' {
       s.push('\t');
@@ -145,14 +167,18 @@ fn format_maybe_source_line(
   }
   s.push('^');
   let color_underline = if is_error {
-    colors::red(&s).to_string()
+    colors::red_bold(&s).to_string()
   } else {
     colors::cyan(&s).to_string()
   };
 
   let indent = format!("{:indent$}", "", indent = level);
+  let highlighted_source =
+    syntax_highlight_source_line(source_line, colors::use_color());
 
-  format!("\n{indent}{source_line}\n{indent}{color_underline}")
+  format!(
+    "\n{indent}{line_prefix}{highlighted_source}\n{indent}{color_underline}"
+  )
 }
 
 fn find_recursive_cause(js_error: &JsError) -> Option<ErrorReference<'_>> {
@@ -220,6 +246,55 @@ fn stack_frame_is_ext(frame: &deno_core::error::JsStackFrame) -> bool {
     .unwrap_or(false)
 }
 
+/// Colorize an exception message like "Uncaught (in promise) TypeError: msg".
+///
+/// - "(in promise)" is grayed out
+/// - The error class name (e.g. "TypeError") is colored red
+fn colorize_exception_message(msg: &str) -> String {
+  if !colors::use_color() {
+    return msg.to_string();
+  }
+
+  let mut remaining = msg;
+  let mut result = String::with_capacity(msg.len() + 40);
+
+  // Strip "Uncaught " prefix (will be re-added plain)
+  let uncaught = remaining.starts_with("Uncaught ");
+  if uncaught {
+    result.push_str("Uncaught ");
+    remaining = &remaining["Uncaught ".len()..];
+  }
+
+  // Handle optional "(in promise) "
+  if remaining.starts_with("(in promise) ") {
+    result.push_str(&colors::gray("(in promise)").to_string());
+    result.push(' ');
+    remaining = &remaining["(in promise) ".len()..];
+  }
+
+  // Find the error class name — everything up to the first ": "
+  if let Some(colon_pos) = remaining.find(": ") {
+    let class_name = &remaining[..colon_pos];
+    // Only colorize if it looks like an error class name
+    // (starts with uppercase, contains only alphanumeric chars)
+    if class_name
+      .chars()
+      .next()
+      .is_some_and(|c| c.is_ascii_uppercase())
+      && class_name.chars().all(|c| c.is_ascii_alphanumeric())
+    {
+      result.push_str(&colors::red_bold(class_name).to_string());
+      result.push_str(&remaining[colon_pos..]);
+    } else {
+      result.push_str(remaining);
+    }
+  } else {
+    result.push_str(remaining);
+  }
+
+  result
+}
+
 fn format_js_error_inner(
   js_error: &JsError,
   circular: Option<IndexedErrorReference>,
@@ -230,7 +305,7 @@ fn format_js_error_inner(
 ) -> String {
   let mut s = String::new();
 
-  s.push_str(&js_error.exception_message);
+  s.push_str(&colorize_exception_message(&js_error.exception_message));
 
   if let Some(circular) = &circular
     && js_error.is_same_error(circular.reference.to)
@@ -252,9 +327,11 @@ fn format_js_error_inner(
     s.push_str(&aggregated_message);
   }
 
-  let column_number = js_error
+  let source_frame = js_error
     .source_line_frame_index
-    .and_then(|i| js_error.frames.get(i).unwrap().column_number);
+    .and_then(|i| js_error.frames.get(i));
+  let column_number = source_frame.and_then(|f| f.column_number);
+  let line_number = source_frame.and_then(|f| f.line_number);
   s.push_str(&format_maybe_source_line(
     if include_source_code {
       js_error.source_line.as_deref()
@@ -262,6 +339,7 @@ fn format_js_error_inner(
       None
     },
     column_number,
+    line_number,
     true,
     0,
   ));
@@ -529,17 +607,89 @@ mod tests {
 
   #[test]
   fn test_format_none_source_line() {
-    let actual = format_maybe_source_line(None, None, false, 0);
+    let actual = format_maybe_source_line(None, None, None, false, 0);
     assert_eq!(actual, "");
   }
 
   #[test]
   fn test_format_some_source_line() {
-    let actual =
-      format_maybe_source_line(Some("console.log('foo');"), Some(9), true, 0);
+    let actual = format_maybe_source_line(
+      Some("console.log('foo');"),
+      Some(9),
+      None,
+      true,
+      0,
+    );
     assert_eq!(
       strip_ansi_codes(&actual),
       "\nconsole.log(\'foo\');\n        ^"
     );
+  }
+
+  #[test]
+  fn test_format_source_line_with_line_number() {
+    let actual = format_maybe_source_line(
+      Some("console.log('foo');"),
+      Some(9),
+      Some(42),
+      true,
+      0,
+    );
+    let stripped = strip_ansi_codes(&actual);
+    assert_eq!(stripped, "\n42 | console.log(\'foo\');\n             ^");
+  }
+
+  #[test]
+  fn test_colorize_exception_message_no_color() {
+    colors::set_use_color(false);
+    let msg = "Uncaught (in promise) TypeError: foo";
+    assert_eq!(colorize_exception_message(msg), msg);
+    colors::set_use_color(true);
+  }
+
+  #[test]
+  fn test_colorize_exception_message_basic() {
+    colors::set_use_color(true);
+    let result =
+      colorize_exception_message("Uncaught TypeError: something failed");
+    let stripped = strip_ansi_codes(&result);
+    assert_eq!(stripped, "Uncaught TypeError: something failed");
+    // "TypeError" should be red+bold
+    assert!(result.contains("TypeError"), "result: {result}");
+    // Should NOT contain plain "Uncaught TypeError" (TypeError must be styled)
+    assert!(!result.contains("Uncaught TypeError:"), "result: {result}");
+  }
+
+  #[test]
+  fn test_colorize_exception_message_in_promise() {
+    colors::set_use_color(true);
+    let result = colorize_exception_message(
+      "Uncaught (in promise) Error: something failed",
+    );
+    let stripped = strip_ansi_codes(&result);
+    assert_eq!(stripped, "Uncaught (in promise) Error: something failed");
+    // "(in promise)" should be styled (gray)
+    assert!(
+      !result.contains("Uncaught (in promise) Error"),
+      "result: {result}"
+    );
+  }
+
+  #[test]
+  fn test_colorize_exception_message_no_colon() {
+    colors::set_use_color(true);
+    // No ": " in message — should pass through unchanged
+    let result = colorize_exception_message("Uncaught something");
+    let stripped = strip_ansi_codes(&result);
+    assert_eq!(stripped, "Uncaught something");
+  }
+
+  #[test]
+  fn test_colorize_exception_message_not_class_name() {
+    colors::set_use_color(true);
+    // lowercase after "Uncaught " — not an error class name
+    let result = colorize_exception_message("Uncaught error: something failed");
+    let stripped = strip_ansi_codes(&result);
+    assert_eq!(stripped, "Uncaught error: something failed");
   }
 }
