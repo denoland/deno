@@ -760,17 +760,9 @@ async fn check_paths_impl(
   src: &str,
   dest: &str,
   dereference: bool,
-  skip_permission_check: bool,
 ) -> Result<CpCheckPathsResult, FsError> {
-  let (src_path, dest_path) = if skip_permission_check {
-    let src_path = CheckedPathBuf::unsafe_new(PathBuf::from(&src));
-    let dest_path = CheckedPathBuf::unsafe_new(PathBuf::from(&dest));
-    (src_path, dest_path)
-  } else {
-    let src_path = check_cp_path(state, src, OpenAccessKind::Read)?;
-    let dest_path = check_cp_path(state, dest, OpenAccessKind::Read)?;
-    (src_path, dest_path)
-  };
+  let src_path = check_cp_path(state, src, OpenAccessKind::Read)?;
+  let dest_path = check_cp_path(state, dest, OpenAccessKind::Read)?;
 
   let fs = fs.clone();
   let (src_stat_result, dest_result, syscall) =
@@ -893,7 +885,7 @@ pub async fn op_node_cp_check_paths(
     state.borrow::<FileSystemRc>().clone()
   };
 
-  check_paths_impl(&state, &fs, &src, &dest, dereference, false).await
+  check_paths_impl(&state, &fs, &src, &dest, dereference).await
 }
 
 /// Async op: validates src and dest paths for recursive cp operations.
@@ -910,9 +902,7 @@ pub async fn op_node_cp_check_paths_recursive(
     state.borrow::<FileSystemRc>().clone()
   };
 
-  // skips permission checks since parent directories are already validated.
-  let result =
-    check_paths_impl(&state, &fs, &src, &dest, dereference, true).await?;
+  let result = check_paths_impl(&state, &fs, &src, &dest, dereference).await?;
 
   Ok(result.dest_exists)
 }
@@ -933,7 +923,7 @@ pub async fn op_node_cp_validate_and_prepare(
   };
 
   let check_result =
-    check_paths_impl(&state, &fs, &src, &dest, dereference, false).await?;
+    check_paths_impl(&state, &fs, &src, &dest, dereference).await?;
 
   check_parent_paths_impl(
     &state,
