@@ -110,9 +110,6 @@ function clearTimeout(id = 0) {
   if (timer) {
     cancelTimer2(timer);
     MapPrototypeDelete(activeTimers, id);
-  } else {
-    // Fall back to the old op for system timers (e.g. AbortSignal.timeout)
-    core.cancelTimer(id);
   }
 }
 
@@ -126,8 +123,6 @@ function clearInterval(id = 0) {
   if (timer) {
     cancelTimer2(timer);
     MapPrototypeDelete(activeTimers, id);
-  } else {
-    core.cancelTimer(id);
   }
 }
 
@@ -138,9 +133,6 @@ function unrefTimer(id) {
   const timer = MapPrototypeGet(activeTimers, id);
   if (timer) {
     unrefTimer2(timer);
-  } else {
-    // Fall back to the old op for system timers (e.g. AbortSignal.timeout)
-    core.unrefTimer(id);
   }
 }
 
@@ -151,9 +143,6 @@ function refTimer(id) {
   const timer = MapPrototypeGet(activeTimers, id);
   if (timer) {
     refTimer2(timer);
-  } else {
-    // Fall back to the old op for system timers (e.g. AbortSignal.timeout)
-    core.refTimer(id);
   }
 }
 
