@@ -11,6 +11,7 @@ use deno_core::ResourceId;
 use deno_core::op2;
 use deno_core::unsync::spawn_blocking;
 use deno_fs::FileSystemRc;
+use deno_fs::FsFileType;
 use deno_fs::OpenOptions;
 use deno_io::fs::FileResource;
 use deno_io::fs::FsResult;
@@ -746,6 +747,76 @@ fn is_src_subdir(src: &str, dest: &str) -> bool {
     .all(|(i, c)| dest_components.get(i) == Some(c))
 }
 
+fn cp_symlink_type(
+  fs: &FileSystemRc,
+  target: &str,
+  link_path: &str,
+) -> Option<FsFileType> {
+  #[cfg(windows)]
+  {
+    // Mirror node polyfill behavior: resolve target relative to the link
+    // path, infer dir/file from stat, and default to file on any error.
+    // https://github.com/nodejs/node/blob/70f6b58ac655234435a99d72b857dd7b316d34bf/lib/fs.js#L1806-L1837
+    if let Ok(absolute_target) =
+      std::path::absolute(Path::new(link_path).join("..").join(target))
+    {
+      let checked_target = CheckedPathBuf::unsafe_new(absolute_target);
+      let checked_target = checked_target.as_checked_path();
+      if let Ok(stat) = fs.stat_sync(&checked_target)
+        && stat.is_directory
+      {
+        return Some(FsFileType::Directory);
+      }
+    }
+
+    Some(FsFileType::File)
+  }
+
+  #[cfg(not(windows))]
+  {
+    let _ = (fs, target, link_path);
+    None
+  }
+}
+
+async fn cp_create_symlink(
+  state: &Rc<RefCell<OpState>>,
+  fs: &FileSystemRc,
+  target: String,
+  link_path: String,
+) -> Result<(), FsError> {
+  {
+    let mut state = state.borrow_mut();
+    let permissions = state.borrow_mut::<PermissionsContainer>();
+    permissions.check_write_all("node:fs.symlink")?;
+    permissions.check_read_all("node:fs.symlink")?;
+  }
+  let fs = fs.clone();
+  spawn_blocking(move || -> Result<(), FsError> {
+    // PERMISSIONS: ok because we verified --allow-write and --allow-read above
+    let oldpath = CheckedPathBuf::unsafe_new(PathBuf::from(&target));
+    let newpath = CheckedPathBuf::unsafe_new(PathBuf::from(&link_path));
+    let file_type = cp_symlink_type(&fs, &target, &link_path);
+    let oldpath = oldpath.as_checked_path();
+    let newpath = newpath.as_checked_path();
+
+    fs.symlink_sync(&oldpath, &newpath, file_type)
+      .map_err(|err| {
+        map_fs_error_to_node_fs_error(
+          err,
+          NodeFsErrorContext {
+            path: Some(target),
+            dest: Some(link_path),
+            syscall: Some("symlink".into()),
+            ..Default::default()
+          },
+        )
+      })?;
+    Ok(())
+  })
+  .await?
+}
+
 fn check_cp_path(
   state: &Rc<RefCell<OpState>>,
   path: &str,
@@ -1282,29 +1353,7 @@ pub async fn op_node_cp_on_link(
   }
 
   if !dest_exists {
-    {
-      let mut state = state.borrow_mut();
-      let permissions = state.borrow_mut::<PermissionsContainer>();
-      permissions.check_write_all("node:fs.symlink")?;
-      permissions.check_read_all("node:fs.symlink")?;
-    }
-    // PERMISSIONS: ok because we verified --allow-write and --allow-read above
-    let oldpath = CheckedPathBuf::unsafe_new(PathBuf::from(&resolved_src));
-    let newpath = CheckedPathBuf::unsafe_new(PathBuf::from(&dest));
-    fs.symlink_async(oldpath, newpath, None)
-      .await
-      .map_err(|err| {
-        map_fs_error_to_node_fs_error(
-          err,
-          NodeFsErrorContext {
-            path: Some(resolved_src),
-            dest: Some(dest),
-            syscall: Some("symlink".into()),
-            ..Default::default()
-          },
-        )
-      })?;
-
+    cp_create_symlink(&state, &fs, resolved_src, dest).await?;
     return Ok(());
   }
 
@@ -1331,40 +1380,61 @@ pub async fn op_node_cp_on_link(
       if kind == std::io::ErrorKind::InvalidInput
         || kind == std::io::ErrorKind::Other
       {
-        {
-          let mut state = state.borrow_mut();
-          let permissions = state.borrow_mut::<PermissionsContainer>();
-          permissions.check_write_all("node:fs.symlink")?;
-          permissions.check_read_all("node:fs.symlink")?;
-        }
-        // PERMISSIONS: ok because we verified --allow-write and --allow-read above
-        let oldpath = CheckedPathBuf::unsafe_new(PathBuf::from(&resolved_src));
-        let newpath = CheckedPathBuf::unsafe_new(PathBuf::from(&dest));
-        fs.symlink_async(oldpath, newpath, None)
-          .await
-          .map_err(|err| {
-            map_fs_error_to_node_fs_error(
-              err,
-              NodeFsErrorContext {
-                path: Some(resolved_src.to_string()),
-                dest: Some(dest.to_string()),
-                syscall: Some("symlink".into()),
-                ..Default::default()
-              },
-            )
-          })?;
+        cp_create_symlink(
+          &state,
+          &fs,
+          resolved_src.to_string(),
+          dest.to_string(),
+        )
+        .await?;
         return Ok(());
       }
 
-      return Err(map_fs_error_to_node_fs_error(
-        e,
-        NodeFsErrorContext {
-          path: Some(resolved_src),
-          dest: Some(dest),
-          syscall: Some("symlink".into()),
-          ..Default::default()
-        },
-      ));
+      #[cfg(windows)]
+      {
+        use winapi::shared::winerror::ERROR_NOT_A_REPARSE_POINT;
+
+        let os_error = e.into_io_error();
+        let Some(errno) = os_error.raw_os_error() else {
+          return Err(FsError::Io(os_error));
+        };
+
+        let errno = errno as u32;
+        if errno != ERROR_NOT_A_REPARSE_POINT {
+          return Err(
+            NodeFsError {
+              os_errno: errno as _,
+              context: NodeFsErrorContext {
+                path: Some(resolved_src),
+                dest: Some(dest),
+                syscall: Some("symlink".into()),
+                ..Default::default()
+              },
+            }
+            .into(),
+          );
+        }
+
+        return cp_create_symlink(
+          &state,
+          &fs,
+          resolved_src.to_string(),
+          dest.to_string(),
+        )
+        .await;
+      }
+      #[cfg(not(windows))]
+      {
+        return Err(map_fs_error_to_node_fs_error(
+          e,
+          NodeFsErrorContext {
+            path: Some(resolved_src),
+            dest: Some(dest),
+            syscall: Some("symlink".into()),
+            ..Default::default()
+          },
+        ));
+      }
     }
   };
 
@@ -1414,12 +1484,12 @@ pub async fn op_node_cp_on_link(
     let mut state = state.borrow_mut();
     (
       state.borrow_mut::<PermissionsContainer>().check_open(
-        Cow::Owned(PathBuf::from(resolved_src)),
+        Cow::Owned(PathBuf::from(&resolved_src)),
         OpenAccessKind::Read,
         Some("node:fs.cp"),
       )?,
       state.borrow_mut::<PermissionsContainer>().check_open(
-        Cow::Owned(PathBuf::from(dest)),
+        Cow::Owned(PathBuf::from(&dest)),
         OpenAccessKind::Write,
         Some("node:fs.cp"),
       )?,
@@ -1439,13 +1509,16 @@ pub async fn op_node_cp_on_link(
       )
     })?;
 
-    fs.symlink_sync(&src_path, &dest_path, None)
+    let src = src_path.to_string_lossy().to_string();
+    let dest = dest_path.to_string_lossy().to_string();
+    let file_type = cp_symlink_type(&fs, &src, &dest);
+    fs.symlink_sync(&src_path, &dest_path, file_type)
       .map_err(|err| {
         map_fs_error_to_node_fs_error(
           err,
           NodeFsErrorContext {
-            path: Some(src_path.to_string_lossy().to_string()),
-            dest: Some(dest_path.to_string_lossy().to_string()),
+            path: Some(src),
+            dest: Some(dest),
             syscall: Some("symlink".into()),
             ..Default::default()
           },
