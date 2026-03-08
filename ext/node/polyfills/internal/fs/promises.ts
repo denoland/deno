@@ -10,17 +10,17 @@ import {
   type WriteFileOptions,
 } from "ext:deno_node/_fs/_fs_common.ts";
 import type { Encodings } from "ext:deno_node/_utils.ts";
-import { denoErrorToNodeError } from "ext:deno_node/internal/errors.ts";
-import { promisify } from "ext:deno_node/internal/util.mjs";
+import {
+  denoErrorToNodeError,
+  ERR_INVALID_ARG_TYPE,
+  uvException,
+} from "ext:deno_node/internal/errors.ts";
+import { normalizeEncoding, promisify } from "ext:deno_node/internal/util.mjs";
 import * as constants from "ext:deno_node/_fs/_fs_constants.ts";
 import { copyFilePromise } from "ext:deno_node/_fs/_fs_copy.ts";
 import { cpPromise } from "ext:deno_node/_fs/_fs_cp.ts";
 import { lstatPromise } from "ext:deno_node/_fs/_fs_lstat.ts";
 import { lutimesPromise } from "ext:deno_node/_fs/_fs_lutimes.ts";
-import { mkdirPromise } from "ext:deno_node/_fs/_fs_mkdir.ts";
-import { mkdtempPromise } from "ext:deno_node/_fs/_fs_mkdtemp.ts";
-import { openPromise } from "ext:deno_node/_fs/_fs_open.ts";
-import { opendirPromise } from "ext:deno_node/_fs/_fs_opendir.ts";
 import { readdirPromise } from "ext:deno_node/_fs/_fs_readdir.ts";
 import { readFilePromise } from "ext:deno_node/_fs/_fs_readFile.ts";
 import { readlinkPromise } from "ext:deno_node/_fs/_fs_readlink.ts";
@@ -45,17 +45,31 @@ import {
   getValidMode,
   kMaxUserId,
   type RmOptions,
+  stringToFlags,
   validateRmdirOptions,
   validateRmOptions,
+  warnOnNonPortableTemplate,
 } from "ext:deno_node/internal/fs/utils.mjs";
 import {
   parseFileMode,
+  validateBoolean,
   validateFunction,
   validateInteger,
 } from "ext:deno_node/internal/validators.mjs";
-import type { Buffer } from "node:buffer";
+import { Buffer } from "node:buffer";
+import Dir from "ext:deno_node/_fs/_fs_dir.ts";
+import { FileHandle } from "ext:deno_node/internal/fs/handle.ts";
+import { resolve, toNamespacedPath } from "node:path";
+import { isWindows } from "ext:deno_node/_util/os.ts";
+import type { Encoding } from "node:crypto";
 import { primordials } from "ext:core/mod.js";
-import { op_node_lchmod, op_node_lchown, op_node_rmdir } from "ext:core/ops";
+import {
+  op_node_lchmod,
+  op_node_lchown,
+  op_node_mkdtemp,
+  op_node_open,
+  op_node_rmdir,
+} from "ext:core/ops";
 import { isMacOS } from "ext:deno_node/_util/os.ts";
 import {
   ERR_FS_RMDIR_ENOTDIR,
@@ -65,8 +79,10 @@ import {
 const {
   Error,
   ObjectPrototypeIsPrototypeOf,
+  Promise,
   PromisePrototypeThen,
   PromiseReject,
+  StringPrototypeToString,
 } = primordials;
 
 // -- access --
@@ -442,6 +458,336 @@ const rmdirPromise = promisify(rmdir) as (
   options?: rmdirOptions,
 ) => Promise<void>;
 
+// -- mkdir --
+
+type MkdirCallback =
+  | ((err: Error | null, path?: string) => void)
+  | CallbackWithError;
+
+function fixMkdirError(
+  err: Error,
+  path: string,
+): Error {
+  const nodeErr = denoErrorToNodeError(err, { syscall: "mkdir", path });
+  if (!isWindows) return nodeErr;
+  if ((nodeErr as NodeJS.ErrnoException).code !== "EEXIST") return nodeErr;
+  let cursor = resolve(path, "..");
+  while (true) {
+    try {
+      const stat = Deno.statSync(cursor);
+      if (!stat.isDirectory) {
+        return uvException({
+          errno: codeMap.get("ENOTDIR")!,
+          syscall: "mkdir",
+          path,
+        });
+      }
+      break;
+    } catch {
+      const parent = resolve(cursor, "..");
+      if (parent === cursor) break;
+      cursor = parent;
+    }
+  }
+  return nodeErr;
+}
+
+function findFirstNonExistent(path: string): string | undefined {
+  let cursor = resolve(path);
+  while (true) {
+    try {
+      Deno.statSync(cursor);
+      return undefined;
+    } catch {
+      const parent = resolve(cursor, "..");
+      if (parent === cursor) {
+        return toNamespacedPath(cursor);
+      }
+      try {
+        Deno.statSync(parent);
+        return toNamespacedPath(cursor);
+      } catch {
+        cursor = parent;
+      }
+    }
+  }
+}
+
+type MkdirOptions =
+  | { recursive?: boolean; mode?: number | undefined }
+  | number
+  | boolean;
+
+function mkdir(
+  path: string | URL,
+  options?: MkdirOptions | MkdirCallback,
+  callback?: MkdirCallback,
+) {
+  path = getValidatedPath(path) as string;
+
+  let mode = 0o777;
+  let recursive = false;
+
+  if (typeof options == "function") {
+    callback = options;
+  } else if (typeof options === "number") {
+    mode = parseFileMode(options, "mode");
+  } else if (typeof options === "boolean") {
+    recursive = options;
+  } else if (options) {
+    if (options.recursive !== undefined) recursive = options.recursive;
+    if (options.mode !== undefined) {
+      mode = parseFileMode(options.mode, "options.mode");
+    }
+  }
+  validateBoolean(recursive, "options.recursive");
+
+  let firstNonExistent: string | undefined;
+  try {
+    firstNonExistent = recursive ? findFirstNonExistent(path) : undefined;
+  } catch (err) {
+    if (typeof callback === "function") {
+      callback(
+        denoErrorToNodeError(err as Error, { syscall: "mkdir", path }),
+      );
+    }
+    return;
+  }
+
+  PromisePrototypeThen(
+    Deno.mkdir(path, { recursive, mode }),
+    () => {
+      if (typeof callback === "function") {
+        callback(null, firstNonExistent);
+      }
+    },
+    (err: Error) => {
+      if (typeof callback === "function") {
+        callback(
+          recursive
+            ? fixMkdirError(err as Error, path as string)
+            : denoErrorToNodeError(err as Error, { syscall: "mkdir", path }),
+        );
+      }
+    },
+  );
+}
+
+const mkdirPromise = promisify(mkdir) as (
+  path: string | URL,
+  options?: MkdirOptions,
+) => Promise<string | undefined>;
+
+// -- mkdtemp --
+
+type MkdtempCallback = (
+  err: Error | null,
+  directory?: string,
+) => void;
+type MkdtempBufferCallback = (
+  err: Error | null,
+  directory?: Buffer<ArrayBufferLike>,
+) => void;
+
+function mkdtemp(
+  prefix: string | Buffer | Uint8Array | URL,
+  options: { encoding: string } | string | MkdtempCallback | undefined,
+  callback?: MkdtempCallback | MkdtempBufferCallback,
+) {
+  if (typeof options === "function") {
+    callback = options;
+    options = undefined;
+  }
+  callback = makeCallback(callback);
+  const encoding = parseMkdtempEncoding(options);
+  prefix = getValidatedPathToString(prefix, "prefix");
+
+  warnOnNonPortableTemplate(prefix);
+
+  PromisePrototypeThen(
+    op_node_mkdtemp(prefix),
+    (path: string) => callback(null, decodeMkdtemp(path, encoding)),
+    (err: Error) =>
+      callback(denoErrorToNodeError(err, {
+        syscall: "mkdtemp",
+        path: `${prefix}XXXXXX`,
+      })),
+  );
+}
+
+const mkdtempPromise = promisify(mkdtemp) as (
+  prefix: string | Buffer | Uint8Array | URL,
+  options?: { encoding: string } | string,
+) => Promise<string>;
+
+function decodeMkdtemp(str: string, encoding: Encoding): string;
+function decodeMkdtemp(
+  str: string,
+  encoding: "buffer",
+): Buffer<ArrayBufferLike>;
+function decodeMkdtemp(
+  str: string,
+  encoding: Encoding | "buffer",
+): string | Buffer<ArrayBufferLike> {
+  if (encoding === "utf8") return str;
+  const buffer = Buffer.from(str);
+  if (encoding === "buffer") return buffer;
+  // deno-lint-ignore prefer-primordials
+  return buffer.toString(encoding);
+}
+
+function parseMkdtempEncoding(
+  options: string | { encoding?: string } | undefined,
+): Encoding | "buffer" {
+  let encoding: string | undefined;
+
+  if (typeof options === "undefined" || options === null) {
+    encoding = "utf8";
+  } else if (typeof options === "string") {
+    encoding = options;
+  } else if (typeof options === "object") {
+    encoding = options.encoding ?? "utf8";
+  } else {
+    throw new ERR_INVALID_ARG_TYPE("options", ["string", "Object"], options);
+  }
+
+  if (encoding === "buffer") {
+    return encoding;
+  }
+
+  const parsedEncoding = normalizeEncoding(encoding);
+  if (!parsedEncoding) {
+    throw new ERR_INVALID_ARG_TYPE("encoding", encoding, "is invalid encoding");
+  }
+
+  return parsedEncoding;
+}
+
+// -- open --
+
+type OpenFlags =
+  | "a"
+  | "ax"
+  | "a+"
+  | "ax+"
+  | "as"
+  | "as+"
+  | "r"
+  | "r+"
+  | "rs"
+  | "rs+"
+  | "w"
+  | "wx"
+  | "w+"
+  | "wx+"
+  | number
+  | string;
+
+type OpenCallback = (err: Error | null, fd?: number) => void;
+
+function open(
+  path: string | Buffer | URL,
+  flags: OpenCallback | OpenFlags,
+  mode?: OpenCallback | number,
+  callback?: OpenCallback,
+) {
+  path = getValidatedPathToString(path);
+  if (arguments.length < 3) {
+    // deno-lint-ignore no-explicit-any
+    callback = flags as any;
+    flags = "r";
+    mode = 0o666;
+  } else if (typeof mode === "function") {
+    callback = mode;
+    mode = 0o666;
+  } else {
+    mode = parseFileMode(mode, "mode", 0o666);
+  }
+  flags = stringToFlags(flags);
+  callback = makeCallback(callback);
+
+  PromisePrototypeThen(
+    op_node_open(path, flags, mode),
+    (rid: number) => callback(null, rid),
+    (err: Error) =>
+      callback(denoErrorToNodeError(err, { syscall: "open", path })),
+  );
+}
+
+function openPromise(
+  path: string | Buffer | URL,
+  flags: OpenFlags = "r",
+  mode = 0o666,
+): Promise<FileHandle> {
+  return new Promise((resolve, reject) => {
+    open(path, flags, mode, (err, fd) => {
+      if (err) reject(err);
+      else resolve(new FileHandle(fd as number));
+    });
+  });
+}
+
+// -- opendir --
+
+type OpendirOptions = {
+  encoding?: string;
+  bufferSize?: number;
+};
+type OpendirCallback = (err?: Error | null, dir?: Dir) => void;
+
+function _opendirValidateFunction(
+  callback: unknown,
+): asserts callback is OpendirCallback {
+  validateFunction(callback, "callback");
+}
+
+function _opendirGetPathString(
+  path: string | Buffer | URL,
+): string {
+  if (Buffer.isBuffer(path)) {
+    // deno-lint-ignore prefer-primordials
+    return path.toString();
+  }
+
+  return StringPrototypeToString(path);
+}
+
+function opendir(
+  path: string | Buffer | URL,
+  options: OpendirOptions | OpendirCallback,
+  callback?: OpendirCallback,
+) {
+  callback = typeof options === "function" ? options : callback;
+  _opendirValidateFunction(callback);
+
+  path = _opendirGetPathString(getValidatedPath(path));
+
+  let err, dir;
+  try {
+    const { bufferSize } = getOptions(options, {
+      encoding: "utf8",
+      bufferSize: 32,
+    });
+    validateInteger(bufferSize, "options.bufferSize", 1, 4294967295);
+
+    Deno.readDirSync(path);
+
+    dir = new Dir(path);
+  } catch (error) {
+    err = denoErrorToNodeError(error as Error, { syscall: "opendir" });
+  }
+  if (err) {
+    callback(err);
+  } else {
+    callback(null, dir);
+  }
+}
+
+const opendirPromise = promisify(opendir) as (
+  path: string | Buffer | URL,
+  options?: OpendirOptions,
+) => Promise<Dir>;
+
 // -- promises object --
 
 const promises = {
@@ -480,3 +826,5 @@ const promises = {
 };
 
 export default promises;
+
+export { mkdirPromise, opendirPromise };

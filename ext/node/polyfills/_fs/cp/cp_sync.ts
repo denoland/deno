@@ -4,8 +4,7 @@
 import { dirname, isAbsolute, join, parse, resolve } from "node:path";
 import { copyFileSync } from "ext:deno_node/_fs/_fs_copy.ts";
 import { existsSync } from "ext:deno_node/_fs/_fs_exists.ts";
-import { mkdirSync } from "ext:deno_node/_fs/_fs_mkdir.ts";
-import { opendirSync } from "ext:deno_node/_fs/_fs_opendir.ts";
+import { mkdirSync, opendirSync } from "node:fs";
 import { readlinkSync } from "ext:deno_node/_fs/_fs_readlink.ts";
 import { symlinkSync } from "ext:deno_node/_fs/_fs_symlink.ts";
 import { utimesSync } from "ext:deno_node/_fs/_fs_utimes.ts";
