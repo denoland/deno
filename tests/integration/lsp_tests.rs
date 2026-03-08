@@ -12005,8 +12005,8 @@ fn lsp_jupyter_import_map_and_diagnostics(use_tsgo: bool) {
                 "location": {
                   "uri": "deno:/asset/lib.deno.window.d.ts",
                   "range": {
-                    "start": { "line": 599, "character": 12 },
-                    "end": { "line": 599, "character": 16 },
+                    "start": { "line": 600, "character": 12 },
+                    "end": { "line": 600, "character": 16 },
                   },
                 },
                 "message": "'name' was also declared here.",
