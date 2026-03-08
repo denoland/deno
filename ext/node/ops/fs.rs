@@ -899,33 +899,34 @@ pub async fn op_node_cp_check_paths(
 /// Async op: validates src and dest paths for recursive cp operations.
 /// Returns a result with src stat info, dest existence, and optional error.
 #[op2(stack_trace)]
-#[serde]
 pub async fn op_node_cp_check_paths_recursive(
   state: Rc<RefCell<OpState>>,
   #[string] src: String,
   #[string] dest: String,
   dereference: bool,
-) -> Result<CpCheckPathsResult, FsError> {
+) -> Result<bool, FsError> {
   let fs = {
     let state = state.borrow();
     state.borrow::<FileSystemRc>().clone()
   };
 
   // skips permission checks since parent directories are already validated.
-  check_paths_impl(&state, &fs, &src, &dest, dereference, true).await
+  let result =
+    check_paths_impl(&state, &fs, &src, &dest, dereference, true).await?;
+
+  Ok(result.dest_exists)
 }
 
 /// Async op: validates src and dest paths, checks parent paths, and ensures
 /// parent directory exists - all in a single operation for better performance.
 /// Returns a result with src stat info, dest existence, and optional error.
 #[op2(stack_trace)]
-#[serde]
 pub async fn op_node_cp_validate_and_prepare(
   state: Rc<RefCell<OpState>>,
   #[string] src: String,
   #[string] dest: String,
   dereference: bool,
-) -> Result<CpCheckPathsResult, FsError> {
+) -> Result<bool, FsError> {
   let fs = {
     let state = state.borrow();
     state.borrow::<FileSystemRc>().clone()
@@ -946,7 +947,7 @@ pub async fn op_node_cp_validate_and_prepare(
 
   ensure_parent_dir_impl(&state, &fs, &dest).await?;
 
-  Ok(check_result)
+  Ok(check_result.dest_exists)
 }
 
 /// Recursively check if dest parent is a subdirectory of src.

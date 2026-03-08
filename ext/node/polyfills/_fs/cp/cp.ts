@@ -103,12 +103,12 @@ export async function cpFn(
   try {
     // deno-lint-ignore prefer-primordials
     if (opts.filter && !(await opts.filter(src, dest))) return;
-    const result = await op_node_cp_validate_and_prepare(
+    const isDestExists = await op_node_cp_validate_and_prepare(
       src,
       dest,
       opts.dereference ?? false,
     );
-    return await getStatsForCopy(result.dest_exists, src, dest, opts);
+    return await getStatsForCopy(isDestExists, src, dest, opts);
   } catch (err) {
     if (typeof err.os_errno === "number") {
       throw denoErrorToNodeError(err, {
@@ -251,12 +251,12 @@ async function copyDir(
     const destItem = join(dest, name);
     // deno-lint-ignore prefer-primordials
     if (opts.filter && !(await opts.filter(srcItem, destItem))) continue;
-    const result = await op_node_cp_check_paths_recursive(
+    const isDestExists = await op_node_cp_check_paths_recursive(
       srcItem,
       destItem,
       opts.dereference ?? false,
     );
-    await getStatsForCopy(result.dest_exists, srcItem, destItem, opts);
+    await getStatsForCopy(isDestExists, srcItem, destItem, opts);
   }
 }
 
