@@ -31,6 +31,34 @@ export function clearInterval(timer: any) {
 }
 
 /**
+ * Schedule a callback to run in the check phase (after I/O).
+ */
+export function setImmediate(callback: () => void) {
+  const immediate = {
+    _idleNext: null,
+    _idlePrev: null,
+    _onImmediate: callback,
+    _argv: null,
+    _destroyed: false,
+    [Deno.core.kRefed]: false,
+    asyncId: 0,
+    triggerAsyncId: 0,
+  };
+  immediate[Deno.core.kRefed] = true;
+  Deno.core.immediateRefCount(true);
+  Deno.core.queueImmediate(immediate);
+  return immediate;
+}
+
+/**
+ * Cancel a scheduled immediate.
+ */
+// deno-lint-ignore no-explicit-any
+export function clearImmediate(immediate: any) {
+  Deno.core.clearImmediate(immediate);
+}
+
+/**
  * Mark a timer as not blocking event loop exit.
  */
 // deno-lint-ignore no-explicit-any

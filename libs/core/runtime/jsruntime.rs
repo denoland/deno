@@ -85,6 +85,7 @@ use crate::runtime::ContextState;
 use crate::runtime::JsRealm;
 use crate::runtime::OpDriverImpl;
 use crate::runtime::jsrealm;
+use crate::runtime::jsrealm::IMM_IDX_COUNT;
 use crate::runtime::jsrealm::IMM_IDX_HAS_OUTSTANDING;
 use crate::runtime::jsrealm::IMM_IDX_REF_COUNT;
 use crate::source_map::SourceMapData;
@@ -2094,10 +2095,10 @@ impl JsRuntime {
   ///
   /// 1. Timers          -- fire expired libuv C timers + JS user timers
   /// 2. Pending work     -- module progress, task spawner, async ops,
-  ///    nextTick/macrotask drain, immediates, rejections
-  /// 3. I/O              -- drive TCP read/write/accept via UvLoopInner
-  /// 4. Idle / Prepare   -- libuv idle + prepare callbacks
-  /// 5. Check            -- libuv check callbacks
+  ///    nextTick/macrotask drain, rejections
+  /// 3. Idle / Prepare   -- libuv idle + prepare callbacks
+  /// 4. I/O              -- drive TCP read/write/accept via UvLoopInner
+  /// 5. Check            -- libuv check callbacks + immediates
   /// 6. Close            -- close callbacks (Rust + libuv)
   ///
   /// Microtask checkpoints run between phases.
@@ -2170,13 +2171,6 @@ impl JsRuntime {
       Self::drain_next_tick_and_macrotasks(scope, context_state)?;
     }
 
-    // 2d. Immediates (if ops or timers did work)
-    if (did_work || dispatched_ops)
-      && context_state.immediate_info[IMM_IDX_REF_COUNT] > 0
-    {
-      Self::do_js_run_immediate_callbacks(scope, context_state)?;
-    }
-
     // 2e. Handle promise rejections (after nextTick/macrotask, since
     // unhandledrejection handlers are run in macrotask callbacks).
     // Note: rejections are also drained inside processTicksAndRejections
@@ -2223,8 +2217,13 @@ impl JsRuntime {
 
     // ===== Phase 5: Check =====
     // In libuv: check runs right after I/O polling.
+    // Immediates fire here, matching Node.js's setImmediate semantics
+    // (libuv check phase, after I/O).
     if let Some(uv_inner_ptr) = context_state.uv_loop_inner.get() {
       unsafe { (*uv_inner_ptr).run_check() };
+    }
+    if context_state.immediate_info[IMM_IDX_COUNT] > 0 {
+      Self::do_js_run_immediate_callbacks(scope, context_state)?;
     }
     scope.perform_microtask_checkpoint();
 
@@ -2263,12 +2262,6 @@ impl JsRuntime {
       }
 
       return Poll::Ready(Ok(()));
-    }
-
-    // Run immediates if not already run above and there are refed immediates pending
-    if !did_work && !dispatched_ops && pending_state.has_refed_immediates > 0 {
-      Self::do_js_run_immediate_callbacks(scope, context_state)?;
-      scope.perform_microtask_checkpoint();
     }
 
     // Re-wake logic for next iteration
