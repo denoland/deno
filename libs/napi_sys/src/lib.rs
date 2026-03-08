@@ -42,23 +42,27 @@ macro_rules! generate {
       pub unsafe fn load(
           host: &libloading::Library,
       ) -> Result<(), libloading::Error> {
-          NAPI = Napi {
-              $(
-                  $name: {
-                    let symbol: Result<libloading::Symbol<unsafe extern "C" fn ($(_: $ptype,)*)$( -> $rtype)*>, libloading::Error> = host.get(stringify!($name).as_bytes());
-                    match symbol {
-                      Ok(f) => *f,
-                      Err(e) => {
-                        debug_assert!({
-                          println!("Load Node-API [{}] from host runtime failed: {}", stringify!($name), e);
-                          true
-                        });
-                        return Ok(());
+          // SAFETY: this function is only called from setup() which
+          // uses Once to ensure single-threaded initialization.
+          unsafe {
+            NAPI = Napi {
+                $(
+                    $name: {
+                      let symbol: Result<libloading::Symbol<unsafe extern "C" fn ($(_: $ptype,)*)$( -> $rtype)*>, libloading::Error> = host.get(stringify!($name).as_bytes());
+                      match symbol {
+                        Ok(f) => *f,
+                        Err(e) => {
+                          debug_assert!({
+                            println!("Load Node-API [{}] from host runtime failed: {}", stringify!($name), e);
+                            true
+                          });
+                          return Ok(());
+                        }
                       }
-                    }
-                  },
-              )*
-          };
+                    },
+                )*
+            };
+          }
 
           Ok(())
       }
@@ -67,7 +71,8 @@ macro_rules! generate {
           #[inline]
           #[allow(clippy::missing_safety_doc)]
           pub unsafe fn $name($($param: $ptype,)*)$( -> $rtype)* {
-              (NAPI.$name)($($param,)*)
+              // SAFETY: caller must ensure NAPI has been initialized via setup().
+              unsafe { (NAPI.$name)($($param,)*) }
           }
       )*
   };
@@ -106,8 +111,17 @@ static SETUP: Once = Once::new();
 #[allow(clippy::missing_safety_doc)]
 pub unsafe fn setup() {
   SETUP.call_once(|| {
-    if let Err(err) = functions::load() {
-      panic!("{}", err);
+    let host = match libloading::os::windows::Library::this() {
+      Ok(lib) => lib.into(),
+      Err(err) => {
+        panic!("Initialize libloading failed {}", err);
+      }
+    };
+
+    unsafe {
+      if let Err(err) = functions::load(&host) {
+        panic!("{}", err);
+      }
     }
   });
 }

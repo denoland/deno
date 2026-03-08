@@ -843,17 +843,3 @@ generate!(
     ) -> napi_status;
   }
 );
-
-#[cfg(windows)]
-pub(super) unsafe fn load() -> Result<(), libloading::Error> {
-  let host = match libloading::os::windows::Library::this() {
-    Ok(lib) => lib.into(),
-    Err(err) => {
-      eprintln!("Initialize libloading failed {}", err);
-      return Err(err);
-    }
-  };
-
-  super::functions::load(&host)?;
-  Ok(())
-}
