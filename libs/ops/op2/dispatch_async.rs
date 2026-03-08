@@ -218,25 +218,23 @@ pub(crate) fn generate_dispatch_async(
     })
   };
 
-  Ok(
-    gs_quote!(generator_state(info) => {
-      fn slow_function_impl<'s>(info: &'s deno_core::v8::FunctionCallbackInfo) -> usize {
-        #[cfg(debug_assertions)]
-        let _reentrancy_check_guard = deno_core::_ops::reentrancy_check(&<Self as deno_core::_ops::Op>::DECL);
+  Ok(gs_quote!(generator_state(info) => {
+    fn slow_function_impl<'s>(info: &'s deno_core::v8::FunctionCallbackInfo) -> usize {
+      #[cfg(debug_assertions)]
+      let _reentrancy_check_guard = deno_core::_ops::reentrancy_check(&<Self as deno_core::_ops::Op>::DECL);
 
-        #with_scope
-        #with_retval
-        #with_args
-        #with_required_check
-        #with_opctx
-        #with_opstate
-        #with_self
-        #with_stack_trace
+      #with_scope
+      #with_retval
+      #with_args
+      #with_required_check
+      #with_opctx
+      #with_opstate
+      #with_self
+      #with_stack_trace
 
-        #output
-      }
+      #output
+    }
 
-      #wrapper_fn
-    }),
-  )
+    #wrapper_fn
+  }))
 }

@@ -277,7 +277,6 @@ impl OpDecl {
     };
     f
   }
-
 }
 
 /// Declares a block of Deno `#[op]`s. The first parameter determines the name of the

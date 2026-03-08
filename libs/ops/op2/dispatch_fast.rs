@@ -393,10 +393,7 @@ pub(crate) fn generate_dispatch_fast(
   config: &MacroConfig,
   generator_state: &mut GeneratorState,
   signature: &ParsedSignature,
-) -> Result<
-  Option<(TokenStream, TokenStream)>,
-  V8SignatureMappingError,
-> {
+) -> Result<Option<(TokenStream, TokenStream)>, V8SignatureMappingError> {
   if let Some(alternative) = &config.fast_alternative {
     // TODO(mmastrac): we should validate the alternatives. For now we just assume the caller knows what
     // they are doing.
@@ -407,10 +404,7 @@ pub(crate) fn generate_dispatch_fast(
         Box::new(signature.ret_val.clone()),
       )
     })?;
-    return Ok(Some((
-      quote!(#alternative().fast_fn()),
-      quote!(),
-    )));
+    return Ok(Some((quote!(#alternative().fast_fn()), quote!())));
   }
 
   // async(lazy) can be fast

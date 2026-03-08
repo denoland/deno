@@ -334,49 +334,49 @@ pub(crate) fn generate_op2(
 
   let mut fast_generator_state = base_generator_state.clone();
 
-  let (fast_definition, fast_fn) =
-    match generate_dispatch_fast(&config, &mut fast_generator_state, &signature)
-      .map_err(|e| Op2Error::from(e).with_default_span(sig_span))?
-    {
-      Some((fast_definition, fast_fn)) => {
-        if !config.fast
-          && !config.nofast
-          && config.fast_alternative.is_none()
-          && !config.getter
-          && !config.setter
-          && !config.fake_async
-        {
-          return Err(Op2Error::with_span(
-            op_fn.sig.span(),
-            Op2ErrorKind::ShouldBeFast,
-          ));
-        }
-        // nofast requires the function to be valid for fast
-        if config.nofast || config.getter || config.setter {
-          (quote!(None), quote!())
-        } else {
-          (
-            quote!(Some({#fast_definition})),
-            fast_fn,
-          )
-        }
+  let (fast_definition, fast_fn) = match generate_dispatch_fast(
+    &config,
+    &mut fast_generator_state,
+    &signature,
+  )
+  .map_err(|e| Op2Error::from(e).with_default_span(sig_span))?
+  {
+    Some((fast_definition, fast_fn)) => {
+      if !config.fast
+        && !config.nofast
+        && config.fast_alternative.is_none()
+        && !config.getter
+        && !config.setter
+        && !config.fake_async
+      {
+        return Err(Op2Error::with_span(
+          op_fn.sig.span(),
+          Op2ErrorKind::ShouldBeFast,
+        ));
       }
-      None => {
-        if config.fast {
-          return Err(Op2Error::with_span(
-            op_fn.sig.span(),
-            Op2ErrorKind::ShouldNotBeFast("fast"),
-          ));
-        }
-        if config.nofast {
-          return Err(Op2Error::with_span(
-            op_fn.sig.span(),
-            Op2ErrorKind::ShouldNotBeFast("nofast"),
-          ));
-        }
+      // nofast requires the function to be valid for fast
+      if config.nofast || config.getter || config.setter {
         (quote!(None), quote!())
+      } else {
+        (quote!(Some({#fast_definition})), fast_fn)
       }
-    };
+    }
+    None => {
+      if config.fast {
+        return Err(Op2Error::with_span(
+          op_fn.sig.span(),
+          Op2ErrorKind::ShouldNotBeFast("fast"),
+        ));
+      }
+      if config.nofast {
+        return Err(Op2Error::with_span(
+          op_fn.sig.span(),
+          Op2ErrorKind::ShouldNotBeFast("nofast"),
+        ));
+      }
+      (quote!(None), quote!())
+    }
+  };
 
   let arg_count: usize = if let Some(required) = config.required {
     required as usize + is_async as usize
