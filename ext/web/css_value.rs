@@ -147,8 +147,8 @@ impl fmt::Debug for Percent {
   }
 }
 
-// Currently, units for time, frequency, resolution, and flex are not supported
-// as are combined units such as length-percentage
+// Currently, units for <time>, <frequency>, <resolution>, and <flex> are not supported
+// as are combined units such as <length-percentage>
 #[derive(Debug)]
 #[cfg_attr(test, derive(PartialEq))]
 pub enum NumericValue {
@@ -230,7 +230,7 @@ impl NumericValue {
   }
 }
 
-// Currently, units for time, frequency, resolution, and flex are not supported
+// Currently, units for <time>, <frequency>, <resolution>, and <flex> are not supported
 // https://drafts.css-houdini.org/css-typed-om-1/#numeric-typing
 #[derive(Debug, Default, PartialEq)]
 struct Dimension {
@@ -256,7 +256,7 @@ impl ops::SubAssign<&Dimension> for Dimension {
 }
 
 // Struct for intermediate representations of calculations like `calc(1px / 1px * 1px)`
-// Currently, combined units such as length-percentage are not supported
+// Currently, combined units such as <length-percentage> are not supported
 #[derive(Debug)]
 #[cfg_attr(test, derive(PartialEq))]
 struct MathValue {
@@ -555,7 +555,8 @@ impl NumericValue {
     let token = input.next()?;
     match token {
       Token::Number { value, .. } => {
-        // Due to historical reasons, <transform-function> must allow the literal `0` for length and angle
+        // Due to historical reasons, <transform-function> must allow <zero> (the literal `0`) for <length> and <angle>
+        // https://www.w3.org/TR/css-values-4/#zero-value
         if state.function_depth == 0 && *value == 0.0 {
           return Ok(NumericValue::Zero.into());
         }
@@ -576,9 +577,7 @@ impl NumericValue {
           "vw" | "svw" | "lvw" | "dvw" | "vh" | "svh" | "lvh" | "dvh" | "vi" | "svi" | "lvi" | "dvi" |
           "vb" | "svb" | "lvb" | "dvb" | "vmin" | "svmin" | "lvmin" | "dvmin" | "vmax" | "svmax" | "lvmax" | "dvmax" |
           // https://www.w3.org/TR/css-contain-3/#container-lengths
-          "cqw" | "cqh" | "cqi" | "cqb" | "cqmin" | "cqmax" |
-          // https://www.w3.org/TR/css-grid-2/#fr-unit
-          "fr"
+          "cqw" | "cqh" | "cqi" | "cqb" | "cqmin" | "cqmax"
           => Err(input.new_custom_error(CSSValueCustomError::ContainsRelativeLengthValues)),
           // https://www.w3.org/TR/css-values-4/#angles
           "deg" => Ok(NumericValue::Angle(Angle { value: *value, unit: AngleUnit::Deg }).into()),
@@ -590,7 +589,9 @@ impl NumericValue {
           // https://www.w3.org/TR/css-values-4/#frequency
           "hz" | "khz" |
           // https://www.w3.org/TR/css-values-4/#resolution
-          "dpi" | "dpcm" | "dppx" | "x" => Err(input.new_custom_error(CSSValueCustomError::UnsupportedDimension)),
+          "dpi" | "dpcm" | "dppx" | "x" |
+          // https://www.w3.org/TR/css-grid-2/#fr-unit
+          "fr" => Err(input.new_custom_error(CSSValueCustomError::UnsupportedDimension)),
           _ => Err(input.new_custom_error(CSSValueCustomError::UnexpectedToken))
         }
       }
@@ -1994,7 +1995,9 @@ mod tests {
   }
 }
 
-// Currently, combined units such as length-percentage are not supported
+// Currently, combined units such as <length-percentage> are not supported
+// https://www.w3.org/TR/css-transforms-1/#transform-functions
+// https://drafts.csswg.org/css-transforms-2/#transform-functions
 #[derive(Debug)]
 #[cfg_attr(test, derive(PartialEq))]
 pub enum Transform {
