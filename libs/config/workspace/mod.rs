@@ -2348,23 +2348,6 @@ impl WorkspaceDirectory {
     })
   }
 
-  pub fn to_deploy_config(
-    &self,
-  ) -> Result<Option<DeployConfig>, ToInvalidConfigError> {
-    if let Some(deno_json) = &self.deno_json.member
-      && let Some(config) = deno_json.to_deploy_config()?
-    {
-      return Ok(Some(config));
-    }
-    self
-      .deno_json
-      .root
-      .as_ref()
-      .map(|deno_json| deno_json.to_deploy_config())
-      .transpose()
-      .map(|v| v.flatten())
-  }
-
   /// Removes any "include" patterns from the root files that have
   /// a base in another workspace member.
   fn exclude_includes_with_member_for_base_for_root(
@@ -2415,6 +2398,45 @@ impl WorkspaceDirectory {
         })
         .map(|d| PathOrPattern::Path(d.dir_path())),
     );
+  }
+
+  pub fn to_deploy_config(
+    &self,
+    cli_args: FilePatterns,
+  ) -> Result<Option<DeployConfig>, ToInvalidConfigError> {
+    let Some(mut config) = self.to_deploy_config_inner()? else {
+      return Ok(None);
+    };
+    self.exclude_includes_with_member_for_base_for_root(&mut config.files);
+    combine_files_config_with_cli_args(&mut config.files, cli_args);
+    self.append_workspace_members_to_exclude(&mut config.files);
+    Ok(Some(config))
+  }
+
+  fn to_deploy_config_inner(
+    &self,
+  ) -> Result<Option<DeployConfig>, ToInvalidConfigError> {
+    let member_config = match &self.deno_json.member {
+      Some(member) => member.to_deploy_config()?,
+      None => None,
+    };
+    let Some(member_config) = member_config else {
+      return Ok(None);
+    };
+
+    let root_config = match &self.deno_json.root {
+      Some(root) => root.to_deploy_config()?,
+      None => return Ok(Some(member_config)),
+    };
+    let Some(root_config) = root_config else {
+      return Ok(None);
+    };
+
+    Ok(Some(DeployConfig {
+      org: member_config.org,
+      app: member_config.app,
+      files: combine_patterns(root_config.files, member_config.files),
+    }))
   }
 }
 

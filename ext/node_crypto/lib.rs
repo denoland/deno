@@ -143,6 +143,7 @@ deno_core::extension!(
     keys::op_node_get_private_key_from_pair,
     keys::op_node_get_public_key_from_pair,
     keys::op_node_get_symmetric_key_size,
+    keys::op_node_key_equals,
     keys::op_node_key_type,
     x509::op_node_x509_parse,
     x509::op_node_x509_ca,
@@ -525,12 +526,14 @@ pub fn op_node_sign(
   #[buffer] digest: &[u8],
   #[string] digest_type: &str,
   #[smi] pss_salt_length: Option<u32>,
+  #[smi] padding: Option<u32>,
   #[smi] dsa_signature_encoding: u32,
 ) -> Result<Box<[u8]>, sign::KeyObjectHandlePrehashedSignAndVerifyError> {
   handle.sign_prehashed(
     digest_type,
     digest,
     pss_salt_length,
+    padding,
     dsa_signature_encoding,
   )
 }
@@ -542,6 +545,7 @@ pub fn op_node_verify(
   #[string] digest_type: &str,
   #[buffer] signature: &[u8],
   #[smi] pss_salt_length: Option<u32>,
+  #[smi] padding: Option<u32>,
   #[smi] dsa_signature_encoding: u32,
 ) -> Result<bool, sign::KeyObjectHandlePrehashedSignAndVerifyError> {
   handle.verify_prehashed(
@@ -549,6 +553,7 @@ pub fn op_node_verify(
     digest,
     signature,
     pss_salt_length,
+    padding,
     dsa_signature_encoding,
   )
 }

@@ -179,7 +179,7 @@ fn choose_and_create_extraction_dir(
 
   // try next to the executable first
   if let Some(exe_dir) = current_exe.parent() {
-    let dir = exe_dir.join(format!("{}.fs", exe_name)).join(hash_str);
+    let dir = exe_dir.join(format!(".{}", exe_name)).join(hash_str);
     match std::fs::create_dir_all(&dir) {
       Ok(()) => return Ok(dir),
       Err(err) => {

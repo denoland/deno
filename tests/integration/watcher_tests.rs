@@ -2238,6 +2238,61 @@ console.log("---");
 }
 
 #[test(flaky)]
+async fn run_watch_env_file_process_env_precedence() {
+  let t = TempDir::new();
+
+  let env_file = t.path().join(".env");
+  std::fs::write(&env_file, "FOO=from_env_file\nBAR=from_env_file").unwrap();
+
+  let main_script = t.path().join("main.js");
+  std::fs::write(
+    &main_script,
+    r#"
+console.log("FOO:", Deno.env.get("FOO"));
+console.log("BAR:", Deno.env.get("BAR"));
+console.log("---");
+"#,
+  )
+  .unwrap();
+
+  let mut child = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("run")
+    .arg("--watch")
+    .arg("--allow-env")
+    .arg("--env-file=.env")
+    .arg("-L")
+    .arg("debug")
+    .arg(&main_script)
+    .env("NO_COLOR", "1")
+    .env("FOO", "from_process")
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+
+  wait_for_watcher("main.js", &mut stderr_lines).await;
+
+  wait_contains("FOO: from_process", &mut stdout_lines).await;
+  wait_contains("BAR: from_env_file", &mut stdout_lines).await;
+  wait_contains("---", &mut stdout_lines).await;
+  wait_contains("Process finished", &mut stderr_lines).await;
+
+  std::fs::write(
+    &env_file,
+    "FOO=updated_from_env_file\nBAR=updated_from_env_file",
+  )
+  .unwrap();
+
+  wait_contains("Restarting", &mut stderr_lines).await;
+  wait_contains("FOO: from_process", &mut stdout_lines).await;
+  wait_contains("BAR: updated_from_env_file", &mut stdout_lines).await;
+  wait_contains("---", &mut stdout_lines).await;
+
+  check_alive_then_kill(child);
+}
+
+#[test(flaky)]
 async fn run_watch_env_file_multiple_files() {
   let t = TempDir::new();
 
@@ -2606,6 +2661,57 @@ console.log("---");
   );
   wait_contains("BAR: another_value", &mut stdout_lines).await;
   wait_contains("---", &mut stdout_lines).await;
+
+  check_alive_then_kill(child);
+}
+
+#[test(flaky)]
+async fn test_watch_env_file() {
+  let t = TempDir::new();
+
+  // Create initial .env file
+  let env_file = t.path().join(".env");
+  std::fs::write(&env_file, "FOO=initial_value\nBAR=test_value").unwrap();
+
+  // Create test that reads environment variables
+  let test_file = t.path().join("env_test.ts");
+  std::fs::write(
+    &test_file,
+    r#"
+Deno.test("env test", () => {
+  console.log("FOO:", Deno.env.get("FOO"));
+  console.log("BAR:", Deno.env.get("BAR"));
+});
+"#,
+  )
+  .unwrap();
+
+  let mut child = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("test")
+    .arg("--watch")
+    .arg("--no-check")
+    .arg("--allow-env")
+    .arg("--env-file=.env")
+    .arg(&test_file)
+    .env("NO_COLOR", "1")
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+
+  // Wait for initial run
+  wait_contains("FOO: initial_value", &mut stdout_lines).await;
+  wait_contains("BAR: test_value", &mut stdout_lines).await;
+  wait_contains("Test finished", &mut stderr_lines).await;
+
+  // Change the .env file
+  std::fs::write(&env_file, "FOO=updated_value\nBAR=new_value").unwrap();
+
+  // Wait for restart and verify updated values
+  wait_contains("Restarting", &mut stderr_lines).await;
+  wait_contains("FOO: updated_value", &mut stdout_lines).await;
+  wait_contains("BAR: new_value", &mut stdout_lines).await;
 
   check_alive_then_kill(child);
 }

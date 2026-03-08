@@ -190,6 +190,10 @@ unsafe extern "C" fn deno_ffi_callback(
           if tc_scope.exception().is_some() {
             log::error!("Illegal unhandled exception in nonblocking callback");
           }
+          // Flush microtasks queued by the callback before unblocking the
+          // calling thread.  With explicit microtask policy, microtasks
+          // won't run automatically after the JS callback returns.
+          tc_scope.perform_microtask_checkpoint();
         });
       }
     });
