@@ -39,6 +39,7 @@ macro_rules! generate {
           }
       };
 
+      #[allow(clippy::missing_safety_doc)]
       pub unsafe fn load(
           host: &libloading::Library,
       ) -> Result<(), libloading::Error> {
@@ -118,6 +119,7 @@ pub unsafe fn setup() {
       }
     };
 
+    // SAFETY: Once ensures single-threaded init; host is a valid library handle.
     unsafe {
       if let Err(err) = functions::load(&host) {
         panic!("{}", err);
