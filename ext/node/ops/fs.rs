@@ -1065,17 +1065,17 @@ fn handle_timestamps_and_mode_sync(
   fs: &FileSystemRc,
   src_path: &CheckedPath,
   dest_path: &CheckedPath,
-  mut src_mode: u32,
+  src_mode: u32,
 ) -> Result<(), FsError> {
   // Make sure the file is writable before setting the timestamp
-  // otherwise open fails with EPERM when invoked with 'r+'
+  // otherwise open fails with EPERM when invoked with 'r+' (through utimes call)
   if file_is_not_writable(src_mode) {
-    src_mode |= 0o200;
+    let mode = src_mode | 0o200;
+    set_dest_mode_sync(fs, dest_path, mode)?;
   }
 
   // Set timestamps from a fresh stat of src (atime is modified by read).
-  set_dest_timestamps_sync(fs, src_path, dest_path)?;
-  set_dest_mode_sync(fs, dest_path, src_mode)?;
+  set_dest_timestamps_and_mode_sync(fs, src_path, dest_path, src_mode)?;
   Ok(())
 }
 
@@ -1105,10 +1105,11 @@ fn set_dest_mode_sync(
   Ok(())
 }
 
-fn set_dest_timestamps_sync(
+fn set_dest_timestamps_and_mode_sync(
   fs: &FileSystemRc,
   src_path: &CheckedPath,
   dest_path: &CheckedPath,
+  src_mode: u32,
 ) -> Result<(), FsError> {
   // Re-stat src to get fresh atime/mtime
   let src_stat = fs.stat_sync(src_path).map_err(|err| {
@@ -1143,6 +1144,8 @@ fn set_dest_timestamps_sync(
         )
       })?;
   }
+
+  set_dest_mode_sync(fs, dest_path, src_mode)?;
   Ok(())
 }
 
