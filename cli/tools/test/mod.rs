@@ -81,6 +81,7 @@ use crate::sys::CliSys;
 use crate::util::extract::extract_doc_tests;
 use crate::util::file_watcher;
 use crate::util::fs::CollectSpecifiersOptions;
+use crate::util::fs::canonicalize_path;
 use crate::util::fs::collect_specifiers;
 use crate::util::path::get_extension;
 use crate::util::path::is_script_ext;
@@ -129,6 +130,10 @@ pub enum TestMode {
 }
 
 impl TestMode {
+  fn union(self, other: Self) -> Self {
+    if self == other { self } else { Self::Both }
+  }
+
   /// Returns `true` if the test mode indicates that code snippet extraction is
   /// needed.
   fn needs_test_extraction(&self) -> bool {
@@ -206,6 +211,7 @@ pub(crate) struct TestContainer {
   descriptions: TestDescriptions,
   test_functions: Vec<v8::Global<v8::Function>>,
   test_hooks: TestHooks,
+  registration_phase_ended: bool,
 }
 
 #[derive(Default)]
@@ -217,13 +223,26 @@ pub(crate) struct TestHooks {
 }
 
 impl TestContainer {
+  pub fn with_registration_phase_ended() -> Self {
+    Self {
+      registration_phase_ended: true,
+      ..Default::default()
+    }
+  }
+
   pub fn register(
     &mut self,
     description: TestDescription,
     function: v8::Global<v8::Function>,
-  ) {
+  ) -> Result<(), JsErrorBox> {
+    if self.registration_phase_ended {
+      return Err(JsErrorBox::type_error(
+        "Nested Deno.test() calls are not supported. Use t.step() for nested tests.",
+      ));
+    }
     self.descriptions.tests.insert(description.id, description);
-    self.test_functions.push(function)
+    self.test_functions.push(function);
+    Ok(())
   }
 
   pub fn register_hook(
@@ -913,22 +932,34 @@ pub async fn run_tests_for_worker(
   let state_rc = worker.js_runtime.op_state();
 
   // Take whatever tests have been registered
-  let container =
-    std::mem::take(&mut *state_rc.borrow_mut().borrow_mut::<TestContainer>());
+  let container = std::mem::replace(
+    &mut *state_rc.borrow_mut().borrow_mut::<TestContainer>(),
+    TestContainer::with_registration_phase_ended(),
+  );
 
   let descriptions = Arc::new(container.descriptions);
-  event_tracker.register(descriptions.clone())?;
-  run_tests_for_worker_inner(
-    worker,
-    specifier,
-    descriptions,
-    container.test_functions,
-    container.test_hooks,
-    options,
-    event_tracker,
-    fail_fast_tracker,
-  )
-  .await
+  let result = async {
+    event_tracker.register(descriptions.clone())?;
+    run_tests_for_worker_inner(
+      worker,
+      specifier,
+      descriptions,
+      container.test_functions,
+      container.test_hooks,
+      options,
+      event_tracker,
+      fail_fast_tracker,
+    )
+    .await
+  }
+  .await;
+
+  // This worker can execute another discovery/run cycle (for example in REPL),
+  // so reset to a fresh container after the current run ends.
+  *state_rc.borrow_mut().borrow_mut::<TestContainer>() =
+    TestContainer::default();
+
+  result
 }
 
 fn compute_tests_to_run(
@@ -1536,14 +1567,29 @@ async fn fetch_specifiers_with_test_mode(
   member_patterns: impl Iterator<Item = FilePatterns>,
   doc: &bool,
 ) -> Result<Vec<(ModuleSpecifier, TestMode)>, AnyError> {
-  let mut specifiers_with_mode = member_patterns
+  let mut deduped_specifiers_with_mode: IndexMap<ModuleSpecifier, TestMode> =
+    IndexMap::new();
+  for (specifier, mode) in member_patterns
     .map(|files| {
       collect_specifiers_with_test_mode(cli_options, files.clone(), doc)
     })
     .collect::<Result<Vec<_>, _>>()?
     .into_iter()
     .flatten()
-    .collect::<Vec<_>>();
+  {
+    match deduped_specifiers_with_mode.entry(specifier) {
+      indexmap::map::Entry::Occupied(mut entry) => {
+        let merged_mode = entry.get().clone().union(mode);
+        entry.insert(merged_mode);
+      }
+      indexmap::map::Entry::Vacant(entry) => {
+        entry.insert(mode);
+      }
+    }
+  }
+
+  let mut specifiers_with_mode =
+    deduped_specifiers_with_mode.into_iter().collect::<Vec<_>>();
 
   for (specifier, mode) in &mut specifiers_with_mode {
     let file = file_fetcher.fetch_bypass_permissions(specifier).await?;
@@ -1771,18 +1817,28 @@ pub async fn run_tests_with_watch(
 
         let test_modules_to_reload = if let Some(changed_paths) = changed_paths
         {
-          let mut result = IndexSet::with_capacity(test_modules.len());
           let changed_paths = changed_paths.into_iter().collect::<HashSet<_>>();
-          for test_module_specifier in test_modules {
-            if has_graph_root_local_dependent_changed(
-              &graph,
-              test_module_specifier,
-              &changed_paths,
-            ) {
-              result.insert(test_module_specifier.clone());
+          // If an env file changed, reload all test modules since any
+          // test could depend on environment variables.
+          let env_file_changed = cli_options
+            .env_file_paths()
+            .filter_map(|path| canonicalize_path(&path).ok())
+            .any(|path| changed_paths.contains(&path));
+          if env_file_changed {
+            test_modules.clone()
+          } else {
+            let mut result = IndexSet::with_capacity(test_modules.len());
+            for test_module_specifier in test_modules {
+              if has_graph_root_local_dependent_changed(
+                &graph,
+                test_module_specifier,
+                &changed_paths,
+              ) {
+                result.insert(test_module_specifier.clone());
+              }
             }
+            result
           }
-          result
         } else {
           test_modules.clone()
         };

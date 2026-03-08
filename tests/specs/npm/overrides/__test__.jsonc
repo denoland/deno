@@ -1,0 +1,24 @@
+{
+  "tempDir": true,
+  "tests": {
+    "simple_override": {
+      // tests that overrides can change a transitive dependency version
+      "steps": [{
+        "args": "run --node-modules-dir=auto main.ts",
+        "output": "[WILDCARD]2\n"
+      }, {
+        // verify the lockfile contains the overrides in packageJson section
+        "args": [
+          "eval",
+          "const lock = JSON.parse(Deno.readTextFileSync('deno.lock')); console.log(JSON.stringify(lock.workspace?.packageJson?.overrides || null))"
+        ],
+        "output": "lockfile_overrides.out"
+      }]
+    },
+    "no_override": {
+      // tests without overrides for comparison
+      "args": "run --node-modules-dir=auto no_override/main.ts",
+      "output": "[WILDCARD]1\n"
+    }
+  }
+}

@@ -25,6 +25,8 @@ use deno_semver::SmallStackString;
 use deno_semver::Version;
 use once_cell::sync::Lazy;
 use sha2::Digest;
+use sys_traits::FsDirEntry;
+use sys_traits::FsMetadataValue;
 
 use crate::args::Flags;
 use crate::args::UPGRADE_USAGE;
@@ -478,23 +480,91 @@ async fn fetch_and_store_latest_version<
   env.write_check_file(&version_file.serialize());
 }
 
+fn get_binary_cache_path(
+  dl_dir: &Path,
+  version: &str,
+  release_channel: ReleaseChannel,
+) -> PathBuf {
+  let binary_path_suffix = match release_channel {
+    ReleaseChannel::Canary => {
+      format!("canary/{}/{}", version, *ARCHIVE_NAME)
+    }
+    _ => {
+      format!("release/v{}/{}", version, *ARCHIVE_NAME)
+    }
+  };
+  dl_dir.join(binary_path_suffix)
+}
+
+fn prune_canary_cache<
+  Sys: sys_traits::FsReadDir + sys_traits::FsRemoveDirAll,
+>(
+  sys: &Sys,
+  dl_dir: &Path,
+  max_entries: usize,
+) {
+  let canary_dir = dl_dir.join("canary");
+  let Ok(entries) = sys.fs_read_dir(&canary_dir) else {
+    return;
+  };
+
+  let mut dirs: Vec<(PathBuf, std::time::SystemTime)> = entries
+    .filter_map(|e| e.ok())
+    .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
+    .filter_map(|e| {
+      let modified = e.metadata().ok()?.modified().ok()?;
+      Some((e.path().into_owned(), modified))
+    })
+    .collect();
+
+  if dirs.len() <= max_entries {
+    return;
+  }
+
+  // Sort by modification time, most recent first
+  dirs.sort_by(|a, b| b.1.cmp(&a.1));
+
+  for (path, _) in dirs.into_iter().skip(max_entries) {
+    let _ = sys.fs_remove_dir_all(&path);
+  }
+}
+
+fn try_read_cached_binary(
+  sys: &impl sys_traits::FsRead,
+  cache_path: &Path,
+) -> Option<Vec<u8>> {
+  match sys.fs_read(cache_path) {
+    Ok(data) => Some(data.into_owned()),
+    Err(_) => None,
+  }
+}
+
+fn store_cached_binary(
+  sys: &impl deno_path_util::fs::AtomicWriteFileSys,
+  cache_path: &Path,
+  data: &[u8],
+) {
+  if let Err(err) =
+    deno_path_util::fs::atomic_write_file(sys, cache_path, data, 0o644)
+  {
+    log::debug!("Failed to cache binary: {}", err);
+  }
+}
+
 pub async fn upgrade(
   flags: Arc<Flags>,
   upgrade_flags: UpgradeFlags,
 ) -> Result<(), AnyError> {
   let factory = CliFactory::from_flags(flags);
+  let cli_options = factory.cli_options()?;
   let http_client_provider = factory.http_client_provider();
   let client = http_client_provider.get_or_create()?;
   let current_exe_path = std::env::current_exe()
     .context("failed to get the path of the current executable")?;
-  let full_path_output_flag = match &upgrade_flags.output {
-    Some(output) => Some(
-      std::env::current_dir()
-        .context("failed getting cwd")?
-        .join(output),
-    ),
-    None => None,
-  };
+  let full_path_output_flag = upgrade_flags
+    .output
+    .as_ref()
+    .map(|output| cli_options.initial_cwd().join(output));
   let output_exe_path =
     full_path_output_flag.as_ref().unwrap_or(&current_exe_path);
 
@@ -537,16 +607,39 @@ pub async fn upgrade(
     http_client_provider.get_or_create()?,
   );
 
-  let download_url = get_download_url(
+  let dl_dir = factory.deno_dir()?.dl_folder_path();
+  let cache_path = get_binary_cache_path(
+    &dl_dir,
     &selected_version_to_upgrade.version_or_hash,
     requested_version.release_channel(),
-  )?;
-  log::info!("{}", colors::gray(format!("Downloading {}", &download_url)));
-  let Some(archive_data) = download_package(&client, download_url).await?
-  else {
-    log::error!("Download could not be found, aborting");
-    deno_runtime::exit(1)
-  };
+  );
+
+  let sys = &sys_traits::impls::RealSys;
+  let archive_data =
+    if let Some(data) = try_read_cached_binary(sys, &cache_path) {
+      log::info!(
+        "{}",
+        colors::gray(format!(
+          "Using cached binary from {}",
+          cache_path.display()
+        ))
+      );
+      data
+    } else {
+      let download_url = get_download_url(
+        &selected_version_to_upgrade.version_or_hash,
+        requested_version.release_channel(),
+      )?;
+      log::info!("{}", colors::gray(format!("Downloading {}", &download_url)));
+      let Some(data) = download_package(&client, download_url).await? else {
+        log::error!("Download could not be found, aborting");
+        deno_runtime::exit(1)
+      };
+
+      store_cached_binary(sys, &cache_path, &data);
+
+      data
+    };
 
   // verify checksum if provided
   if let Some(expected_checksum) = &upgrade_flags.checksum {
@@ -629,6 +722,12 @@ pub async fn upgrade(
   }
 
   drop(temp_dir); // delete the temp dir
+
+  // Prune old canary cache entries to avoid unbounded growth
+  if requested_version.release_channel() == ReleaseChannel::Canary {
+    prune_canary_cache(sys, &dl_dir, 10);
+  }
+
   Ok(())
 }
 
@@ -1912,5 +2011,158 @@ mod test {
       get_rc_version_blog_post_url(&version),
       "https://deno.com/blog/v2.0-rc-2"
     );
+  }
+
+  #[test]
+  fn test_get_binary_cache_path() {
+    let dl_dir = Path::new("/dl");
+
+    let path = get_binary_cache_path(dl_dir, "1.46.0", ReleaseChannel::Stable);
+    assert_eq!(
+      path,
+      dl_dir.join(format!("release/v1.46.0/{}", *ARCHIVE_NAME))
+    );
+
+    let path = get_binary_cache_path(dl_dir, "1.46.0-rc.0", ReleaseChannel::Rc);
+    assert_eq!(
+      path,
+      dl_dir.join(format!("release/v1.46.0-rc.0/{}", *ARCHIVE_NAME))
+    );
+
+    let path = get_binary_cache_path(dl_dir, "1.0.0", ReleaseChannel::Lts);
+    assert_eq!(
+      path,
+      dl_dir.join(format!("release/v1.0.0/{}", *ARCHIVE_NAME))
+    );
+
+    let path =
+      get_binary_cache_path(dl_dir, "abc123def456", ReleaseChannel::Canary);
+    assert_eq!(
+      path,
+      dl_dir.join(format!("canary/abc123def456/{}", *ARCHIVE_NAME))
+    );
+  }
+
+  #[test]
+  fn test_try_read_cached_binary() {
+    use sys_traits::FsCreateDirAll;
+    use sys_traits::FsWrite;
+    use sys_traits::impls::InMemorySys;
+
+    let sys = InMemorySys::default();
+
+    // Returns None when file doesn't exist
+    let result =
+      try_read_cached_binary(&sys, Path::new("/dl/release/v1.0.0/deno.zip"));
+    assert!(result.is_none());
+
+    // Returns data when file exists
+    let cache_path = Path::new("/dl/release/v1.0.0/deno.zip");
+    sys.fs_create_dir_all(cache_path.parent().unwrap()).unwrap();
+    sys.fs_write(cache_path, b"archive-data").unwrap();
+
+    let result = try_read_cached_binary(&sys, cache_path);
+    assert_eq!(result.unwrap(), b"archive-data");
+  }
+
+  #[test]
+  fn test_store_cached_binary() {
+    use sys_traits::FsRead;
+    use sys_traits::impls::InMemorySys;
+
+    let sys = InMemorySys::default();
+    sys.set_seed(Some(42));
+
+    let cache_path = Path::new("/dl/release/v1.0.0/deno.zip");
+
+    // Should create parent dirs and write the file
+    store_cached_binary(&sys, cache_path, b"archive-data");
+
+    let data = sys.fs_read(cache_path).unwrap();
+    assert_eq!(data.as_ref(), b"archive-data");
+  }
+
+  #[test]
+  fn test_store_and_read_cached_binary_roundtrip() {
+    use sys_traits::impls::InMemorySys;
+
+    let sys = InMemorySys::default();
+    sys.set_seed(Some(42));
+
+    let cache_path = Path::new("/dl/canary/abc123/deno.zip");
+
+    // Initially no cache
+    assert!(try_read_cached_binary(&sys, cache_path).is_none());
+
+    // Store it
+    let original_data = b"test-archive-contents";
+    store_cached_binary(&sys, cache_path, original_data);
+
+    // Read it back
+    let cached = try_read_cached_binary(&sys, cache_path).unwrap();
+    assert_eq!(cached, original_data);
+  }
+
+  #[test]
+  fn test_prune_canary_cache_no_dir() {
+    use sys_traits::impls::InMemorySys;
+
+    let sys = InMemorySys::default();
+
+    // Should not panic when directory doesn't exist
+    prune_canary_cache(&sys, Path::new("/dl"), 10);
+  }
+
+  #[test]
+  fn test_prune_canary_cache_under_limit() {
+    use sys_traits::FsCreateDirAll;
+    use sys_traits::FsMetadata;
+    use sys_traits::impls::InMemorySys;
+
+    let sys = InMemorySys::default();
+    let dl_dir = Path::new("/dl");
+
+    sys.fs_create_dir_all(dl_dir.join("canary/hash1")).unwrap();
+    sys.fs_create_dir_all(dl_dir.join("canary/hash2")).unwrap();
+
+    prune_canary_cache(&sys, dl_dir, 5);
+
+    // Both should still exist
+    assert!(sys.fs_exists(dl_dir.join("canary/hash1")).unwrap());
+    assert!(sys.fs_exists(dl_dir.join("canary/hash2")).unwrap());
+  }
+
+  #[test]
+  fn test_prune_canary_cache_over_limit() {
+    use std::time::Duration;
+    use std::time::SystemTime;
+
+    use sys_traits::FsCreateDirAll;
+    use sys_traits::FsMetadata;
+    use sys_traits::FsSetFileTimes;
+    use sys_traits::impls::InMemorySys;
+
+    let sys = InMemorySys::default();
+    let dl_dir = Path::new("/dl");
+
+    let base_time = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
+
+    // Create 4 canary dirs with different modification times
+    for (i, name) in ["oldest", "old", "new", "newest"].iter().enumerate() {
+      let dir = dl_dir.join(format!("canary/{}", name));
+      sys.fs_create_dir_all(&dir).unwrap();
+      let time = base_time + Duration::from_secs(i as u64 * 100);
+      sys.fs_set_file_times(&dir, time, time).unwrap();
+    }
+
+    // Prune to keep only 2
+    prune_canary_cache(&sys, dl_dir, 2);
+
+    // Newest 2 should remain
+    assert!(sys.fs_exists(dl_dir.join("canary/newest")).unwrap());
+    assert!(sys.fs_exists(dl_dir.join("canary/new")).unwrap());
+    // Oldest 2 should be pruned
+    assert!(!sys.fs_exists(dl_dir.join("canary/oldest")).unwrap());
+    assert!(!sys.fs_exists(dl_dir.join("canary/old")).unwrap());
   }
 }

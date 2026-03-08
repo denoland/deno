@@ -28,6 +28,7 @@ use crate::tools::pm::CacheTopLevelDepsOptions;
 use crate::util::console::ConfirmOptions;
 use crate::util::console::confirm;
 use crate::util::draw_thread::DrawThread;
+use crate::util::fs::canonicalize_path;
 
 async fn resolve_local_bins(
   node_resolver: &CliNodeResolver,
@@ -81,7 +82,7 @@ fn run_js_file(
   use deno_runtime::deno_io::FromRawIoHandle;
 
   let deno_exe = std::env::current_exe()
-    .and_then(|p| p.canonicalize())
+    .and_then(|p| canonicalize_path(&p))
     .context("Failed to get current executable path")?;
 
   let mut args: Vec<std::ffi::OsString> = vec!["run".into()];
@@ -274,11 +275,7 @@ fn create_package_temp_dir(
     if reload || !temp_dir.join("deno.lock").exists() {
       std::fs::remove_dir_all(&temp_dir)?;
     } else {
-      let canonicalized_temp_dir = temp_dir
-        .canonicalize()
-        .ok()
-        .map(deno_path_util::strip_unc_prefix);
-      let temp_dir = canonicalized_temp_dir.unwrap_or(temp_dir);
+      let temp_dir = canonicalize_path(&temp_dir).unwrap_or(temp_dir);
       return Ok(XTempDir::Existing(temp_dir));
     }
   }
@@ -288,11 +285,7 @@ fn create_package_temp_dir(
   let deno_json_path = temp_dir.join("deno.json");
   std::fs::write(&deno_json_path, r#"{"nodeModulesDir": "auto"}"#)?;
 
-  let canonicalized_temp_dir = temp_dir
-    .canonicalize()
-    .ok()
-    .map(deno_path_util::strip_unc_prefix);
-  let temp_dir = canonicalized_temp_dir.unwrap_or(temp_dir);
+  let temp_dir = canonicalize_path(&temp_dir).unwrap_or(temp_dir);
   Ok(XTempDir::New(temp_dir))
 }
 

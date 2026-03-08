@@ -155,6 +155,9 @@ pub fn create_isolate_create_params<TSys: DenoLibSys>(
 
 #[cfg(any(target_os = "android", target_os = "linux"))]
 mod linux {
+  use deno_runtime::deno_node::ops::process::cgroup::CgroupVersion;
+  use deno_runtime::deno_node::ops::process::cgroup::parse_self_cgroup;
+
   /// Get memory limit with cgroup (either v1 or v2) taken into account.
   pub(super) fn get_memory_limit<TSys: crate::sys::DenoLibSys>(
     sys: &TSys,
@@ -194,104 +197,6 @@ mod linux {
     };
 
     limit.or(system_total_memory)
-  }
-
-  enum CgroupVersion<'a> {
-    V1 { cgroup_relpath: &'a str },
-    V2 { cgroup_relpath: &'a str },
-    None,
-  }
-
-  fn parse_self_cgroup(self_cgroup_content: &str) -> CgroupVersion<'_> {
-    // Initialize the cgroup version as None. This will be updated based on the parsed lines.
-    let mut cgroup_version = CgroupVersion::None;
-
-    // Iterate through each line in the cgroup content. Each line represents a cgroup entry.
-    for line in self_cgroup_content.lines() {
-      // Split the line into parts using ":" as the delimiter. The format is typically:
-      // "<hierarchy_id>:<subsystems>:<cgroup_path>"
-      let split = line.split(":").collect::<Vec<_>>();
-
-      match &split[..] {
-        // If the line specifies "memory" as the subsystem, it indicates cgroup v1 is used
-        // for memory management. Extract the relative path and update the cgroup version.
-        [_, "memory", cgroup_v1_relpath] => {
-          cgroup_version = CgroupVersion::V1 {
-            cgroup_relpath: cgroup_v1_relpath
-              .strip_prefix("/")
-              .unwrap_or(cgroup_v1_relpath),
-          };
-          // Break early since v1 explicitly manages memory, and no further checks are needed.
-          break;
-        }
-        // If the line starts with "0::", it indicates cgroup v2 is used. However, in hybrid
-        // mode, memory might still be managed by v1. Continue checking other lines to confirm.
-        ["0", "", cgroup_v2_relpath] => {
-          cgroup_version = CgroupVersion::V2 {
-            cgroup_relpath: cgroup_v2_relpath
-              .strip_prefix("/")
-              .unwrap_or(cgroup_v2_relpath),
-          };
-        }
-        _ => {}
-      }
-    }
-
-    cgroup_version
-  }
-
-  #[test]
-  fn test_parse_self_cgroup_v2() {
-    let self_cgroup = "0::/user.slice/user-1000.slice/session-3.scope";
-    let cgroup_version = parse_self_cgroup(self_cgroup);
-    assert!(matches!(
-      cgroup_version,
-      CgroupVersion::V2 { cgroup_relpath } if cgroup_relpath == "user.slice/user-1000.slice/session-3.scope"
-    ));
-  }
-
-  #[test]
-  fn test_parse_self_cgroup_hybrid() {
-    let self_cgroup = r#"12:rdma:/
-11:blkio:/user.slice
-10:devices:/user.slice
-9:cpu,cpuacct:/user.slice
-8:pids:/user.slice/user-1000.slice/session-3.scope
-7:memory:/user.slice/user-1000.slice/session-3.scope
-6:perf_event:/
-5:freezer:/
-4:net_cls,net_prio:/
-3:hugetlb:/
-2:cpuset:/
-1:name=systemd:/user.slice/user-1000.slice/session-3.scope
-0::/user.slice/user-1000.slice/session-3.scope
-"#;
-    let cgroup_version = parse_self_cgroup(self_cgroup);
-    assert!(matches!(
-      cgroup_version,
-      CgroupVersion::V1 { cgroup_relpath } if cgroup_relpath == "user.slice/user-1000.slice/session-3.scope"
-    ));
-  }
-
-  #[test]
-  fn test_parse_self_cgroup_v1() {
-    let self_cgroup = r#"11:hugetlb:/
-10:pids:/user.slice/user-1000.slice
-9:perf_event:/
-8:devices:/user.slice
-7:net_cls,net_prio:/
-6:memory:/
-5:blkio:/
-4:cpuset:/
-3:cpu,cpuacct:/
-2:freezer:/
-1:name=systemd:/user.slice/user-1000.slice/session-2.scope
-"#;
-    let cgroup_version = parse_self_cgroup(self_cgroup);
-    assert!(matches!(
-      cgroup_version,
-      CgroupVersion::V1 { cgroup_relpath } if cgroup_relpath.is_empty()
-    ));
   }
 }
 
@@ -464,6 +369,54 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
         bundle_provider: shared.bundle_provider.clone(),
       };
       let maybe_initial_cwd = shared.options.maybe_initial_cwd.clone();
+      // Apply resource limits to v8::CreateParams if specified.
+      // Uses individual V8 ResourceConstraints setters to match Node.js
+      // behavior (node_worker.cc UpdateResourceConstraints).
+      let (create_params, resolved_limits) = if let Some(ref limits) =
+        args.resource_limits
+      {
+        let mut params =
+          create_isolate_create_params(&shared.sys).unwrap_or_default();
+
+        if let Some(max_old) =
+          limits.max_old_generation_size_mb.filter(|&v| v > 0)
+        {
+          params =
+            params.set_max_old_generation_size_in_bytes(max_old * 1024 * 1024);
+        }
+        if let Some(max_young) =
+          limits.max_young_generation_size_mb.filter(|&v| v > 0)
+        {
+          params = params
+            .set_max_young_generation_size_in_bytes(max_young * 1024 * 1024);
+        }
+        if let Some(code_range) = limits.code_range_size_mb.filter(|&v| v > 0) {
+          params =
+            params.set_code_range_size_in_bytes(code_range * 1024 * 1024);
+        }
+
+        let mb = 1024 * 1024;
+        // Read back resolved values (including V8 defaults for
+        // unspecified fields), matching Node.js behavior.
+        // Note: integer division truncates sub-MB fractions, which is fine
+        // since V8 and Node.js both work in whole-MB granularity here.
+        let resolved = deno_node::ops::worker_threads::ResolvedResourceLimits {
+          max_young_generation_size_mb: params
+            .max_young_generation_size_in_bytes()
+            / mb,
+          max_old_generation_size_mb: params.max_old_generation_size_in_bytes()
+            / mb,
+          code_range_size_mb: params.code_range_size_in_bytes() / mb,
+          stack_size_mb: limits
+            .stack_size_mb
+            .unwrap_or(deno_node::ops::worker_threads::DEFAULT_STACK_SIZE_MB),
+        };
+
+        (Some(params), Some(resolved))
+      } else {
+        (create_isolate_create_params(&shared.sys), None)
+      };
+
       let options = WebWorkerOptions {
         name: args.name,
         main_module: args.main_module.clone(),
@@ -498,7 +451,7 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
         },
         extensions: vec![],
         startup_snapshot: shared.options.startup_snapshot,
-        create_params: create_isolate_create_params(&shared.sys),
+        create_params,
         unsafely_ignore_certificate_errors: shared
           .options
           .unsafely_ignore_certificate_errors
@@ -519,7 +472,35 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
         enable_stack_trace_arg_in_ops: has_trace_permissions_enabled(),
       };
 
-      WebWorker::bootstrap_from_options(services, options)
+      let has_resource_limits = args.resource_limits.is_some();
+      let (mut worker, handle, bootstrap_options) =
+        WebWorker::from_options(services, options);
+
+      // Store resolved resource limits in the worker's op state BEFORE
+      // bootstrapping, so the worker_threads polyfill can read them
+      // via op during init.
+      if let Some(resolved) = resolved_limits {
+        worker.js_runtime.op_state().borrow_mut().put(resolved);
+      }
+
+      worker.bootstrap(&bootstrap_options);
+
+      // When resource limits are set, install a near-heap-limit callback
+      // that terminates the worker's isolate gracefully instead of
+      // crashing the entire process with a V8 fatal OOM.
+      if has_resource_limits {
+        let ts_handle = worker.js_runtime.v8_isolate().thread_safe_handle();
+        let oom_flag = worker.oom_triggered.clone();
+        worker.js_runtime.add_near_heap_limit_callback(
+          move |current_limit, _initial_limit| {
+            oom_flag.store(true, std::sync::atomic::Ordering::SeqCst);
+            ts_handle.terminate_execution();
+            current_limit * 2
+          },
+        );
+      }
+
+      (worker, handle)
     })
   }
 }

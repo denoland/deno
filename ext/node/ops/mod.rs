@@ -1,5 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+pub mod assert;
 pub mod blocklist;
 pub mod buffer;
 pub mod constant;
@@ -16,7 +17,9 @@ pub mod os;
 pub mod perf_hooks;
 pub mod process;
 pub mod require;
+pub mod shell;
 pub mod tls;
+pub mod udp;
 pub mod util;
 pub mod v8;
 pub mod vm;

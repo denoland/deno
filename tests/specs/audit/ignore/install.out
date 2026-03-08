@@ -1,0 +1,21 @@
+[UNORDERED_START]
+Download http://localhost:4260/@denotest%2fusing-vuln
+Download http://localhost:4260/@denotest%2fwith-vuln1
+Download http://localhost:4260/@denotest%2fwith-vuln2
+Download http://localhost:4260/@denotest/using-vuln/1.0.0.tgz
+Download http://localhost:4260/@denotest/with-vuln1/1.0.0.tgz
+Download http://localhost:4260/@denotest/with-vuln2/1.5.0.tgz
+Initialize @denotest/using-vuln@1.0.0
+Initialize @denotest/with-vuln2@1.5.0
+Initialize @denotest/with-vuln1@1.0.0
+[UNORDERED_END]
+Installed 3 packages in [WILDLINE]
+Reused 0 packages from cache
+Downloaded 0 packages from JSR
+Downloaded 3 packages from npm
++++
+
+Dependencies:
++ npm:@denotest/using-vuln 1.0.0
++ npm:@denotest/with-vuln1 1.0.0
+

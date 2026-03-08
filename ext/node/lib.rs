@@ -5,6 +5,8 @@
 #![allow(clippy::too_many_arguments)]
 
 use std::borrow::Cow;
+use std::env;
+use std::fs;
 use std::path::Path;
 
 use deno_core::FastString;
@@ -29,6 +31,7 @@ extern crate libz_sys as zlib;
 mod global;
 pub mod ops;
 
+use deno_dotenv::parse_env_content_hook;
 pub use deno_package_json::PackageJson;
 use deno_permissions::PermissionCheckError;
 pub use node_resolver::DENO_SUPPORTED_BUILTIN_NODE_MODULES as SUPPORTED_BUILTIN_NODE_MODULES;
@@ -41,6 +44,7 @@ pub use ops::vm::VM_CONTEXT_INDEX;
 pub use ops::vm::create_v8_context;
 pub use ops::vm::init_global_template;
 
+use self::ops::util::NullEnvVarsSys;
 pub use crate::global::GlobalsStorage;
 use crate::global::global_object_middleware;
 use crate::global::global_template_middleware;
@@ -96,9 +100,9 @@ fn op_node_build_os() -> String {
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 enum DotEnvLoadErr {
-  #[class(generic)]
-  #[error(transparent)]
-  DotEnv(#[from] dotenvy::Error),
+  #[class(inherit)]
+  #[error("{0}")]
+  Io(#[from] std::io::Error),
   #[class(inherit)]
   #[error(transparent)]
   Permission(
@@ -123,7 +127,32 @@ fn op_node_load_env_file(
     )
     .map_err(DotEnvLoadErr::Permission)?;
 
-  dotenvy::from_filename(path).map_err(DotEnvLoadErr::DotEnv)?;
+  #[allow(clippy::disallowed_methods)]
+  let contents = fs::read_to_string(path)?;
+
+  parse_env_content_hook(&NullEnvVarsSys, &contents, |key, value| {
+    // Follows Node.js behavior where null bytes are stripped from env keys and values
+    let key = if let Some(null_pos) = key.find('\0') {
+      &key[..null_pos]
+    } else {
+      key
+    };
+
+    if key.is_empty() {
+      return;
+    }
+
+    let value = if let Some(null_pos) = value.find('\0') {
+      &value[..null_pos]
+    } else {
+      value
+    };
+
+    #[allow(clippy::undocumented_unsafe_blocks)]
+    unsafe {
+      env::set_var(key, value);
+    }
+  });
 
   Ok(())
 }
@@ -145,6 +174,8 @@ deno_core::extension!(deno_node,
   deps = [ deno_io, deno_fs ],
   parameters = [TInNpmPackageChecker: InNpmPackageChecker, TNpmPackageFolderResolver: NpmPackageFolderResolver, TSys: ExtNodeSys],
   ops = [
+    ops::assert::op_node_get_first_expression,
+
     ops::blocklist::op_socket_address_parse,
     ops::blocklist::op_socket_address_get_serialization,
 
@@ -175,12 +206,18 @@ deno_core::extension!(deno_node,
     ops::fs::op_node_mkdtemp,
     ops::fs::op_node_open_sync,
     ops::fs::op_node_open,
+    ops::fs::op_node_rmdir_sync,
+    ops::fs::op_node_rmdir,
     ops::fs::op_node_statfs_sync,
     ops::fs::op_node_statfs,
     ops::fs::op_node_file_from_fd,
     ops::winerror::op_node_sys_to_uv_error,
     ops::v8::op_v8_cached_data_version_tag,
     ops::v8::op_v8_get_heap_statistics,
+    ops::v8::op_v8_number_of_heap_spaces,
+    ops::v8::op_v8_update_heap_space_statistics,
+    ops::v8::op_v8_get_heap_code_statistics,
+    ops::v8::op_v8_take_heap_snapshot,
     ops::v8::op_v8_get_wire_format_version,
     ops::v8::op_v8_new_deserializer,
     ops::v8::op_v8_new_serializer,
@@ -202,6 +239,7 @@ deno_core::extension!(deno_node,
     ops::v8::op_v8_write_value,
     ops::vm::op_vm_create_script,
     ops::vm::op_vm_create_context,
+    ops::vm::op_vm_create_context_without_contextify,
     ops::vm::op_vm_script_run_in_context,
     ops::vm::op_vm_is_context,
     ops::vm::op_vm_compile_function,
@@ -270,7 +308,9 @@ deno_core::extension!(deno_node,
     ops::util::op_node_get_own_non_index_properties,
     ops::util::op_node_call_is_from_dependency<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys>,
     ops::util::op_node_in_npm_package<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys>,
+    ops::util::op_node_parse_env,
     ops::worker_threads::op_worker_threads_filename<TSys>,
+    ops::worker_threads::op_worker_get_resource_limits,
     ops::ipc::op_node_child_ipc_pipe,
     ops::ipc::op_node_ipc_write_json,
     ops::ipc::op_node_ipc_read_json,
@@ -285,7 +325,9 @@ deno_core::extension!(deno_node,
     ops::process::op_node_process_setgid,
     ops::process::op_node_process_setuid,
     ops::process::op_process_abort,
+    ops::process::op_node_process_constrained_memory<TSys>,
     ops::node_cli_parser::op_node_translate_cli_args,
+    ops::shell::op_node_parse_shell_args,
     ops::tls::op_get_root_certificates,
     ops::tls::op_set_default_ca_certificates,
     ops::tls::op_tls_peer_certificate,
@@ -301,6 +343,20 @@ deno_core::extension!(deno_node,
     ops::inspector::op_inspector_disconnect,
     ops::inspector::op_inspector_emit_protocol_event,
     ops::inspector::op_inspector_enabled,
+    ops::udp::op_node_udp_bind,
+    ops::udp::op_node_udp_join_multi_v4,
+    ops::udp::op_node_udp_leave_multi_v4,
+    ops::udp::op_node_udp_join_multi_v6,
+    ops::udp::op_node_udp_leave_multi_v6,
+    ops::udp::op_node_udp_set_broadcast,
+    ops::udp::op_node_udp_set_multicast_loopback,
+    ops::udp::op_node_udp_set_multicast_ttl,
+    ops::udp::op_node_udp_set_ttl,
+    ops::udp::op_node_udp_set_multicast_interface,
+    ops::udp::op_node_udp_join_source_specific,
+    ops::udp::op_node_udp_leave_source_specific,
+    ops::udp::op_node_udp_send,
+    ops::udp::op_node_udp_recv,
   ],
   objects = [
     ops::perf_hooks::EldHistogram,
@@ -318,11 +374,7 @@ deno_core::extension!(deno_node,
     "00_globals.js",
     "02_init.js",
     "_events.mjs",
-    "_fs/_fs_access.ts",
-    "_fs/_fs_appendFile.ts",
-    "_fs/_fs_chmod.ts",
-    "_fs/_fs_chown.ts",
-    "_fs/_fs_close.ts",
+    "internal/fs/promises.ts",
     "_fs/_fs_common.ts",
     "_fs/_fs_constants.ts",
     "_fs/_fs_copy.ts",
@@ -331,17 +383,8 @@ deno_core::extension!(deno_node,
     "_fs/cp/cp_sync.ts",
     "_fs/_fs_dir.ts",
     "_fs/_fs_exists.ts",
-    "_fs/_fs_fchmod.ts",
-    "_fs/_fs_fchown.ts",
-    "_fs/_fs_fdatasync.ts",
     "_fs/_fs_fstat.ts",
-    "_fs/_fs_fsync.ts",
-    "_fs/_fs_ftruncate.ts",
-    "_fs/_fs_futimes.ts",
     "_fs/_fs_glob.ts",
-    "_fs/_fs_lchmod.ts",
-    "_fs/_fs_lchown.ts",
-    "_fs/_fs_link.ts",
     "_fs/_fs_lstat.ts",
     "_fs/_fs_lutimes.ts",
     "_fs/_fs_mkdir.ts",
@@ -354,14 +397,10 @@ deno_core::extension!(deno_node,
     "_fs/_fs_readlink.ts",
     "_fs/_fs_readv.ts",
     "_fs/_fs_realpath.ts",
-    "_fs/_fs_rename.ts",
-    "_fs/_fs_rm.ts",
-    "_fs/_fs_rmdir.ts",
     "_fs/_fs_stat.ts",
     "_fs/_fs_statfs.ts",
     "_fs/_fs_symlink.ts",
     "_fs/_fs_truncate.ts",
-    "_fs/_fs_unlink.ts",
     "_fs/_fs_utimes.ts",
     "_fs/_fs_watch.ts",
     "_fs/_fs_write.ts",
@@ -407,6 +446,7 @@ deno_core::extension!(deno_node,
     "internal/assert/assertion_error.js",
     "internal/assert/calltracker.js",
     "internal/assert/myers_diff.js",
+    "internal/assert/utils.ts",
     "internal/assert.mjs",
     "internal/async_hooks.ts",
     "internal/blocklist.mjs",
@@ -439,9 +479,9 @@ deno_core::extension!(deno_node,
     "internal/dtrace.ts",
     "internal/error_codes.ts",
     "internal/errors.ts",
+    "internal/errors/error_source.ts",
     "internal/event_target.mjs",
     "internal/events/abort_listener.mjs",
-    "internal/fixed_queue.ts",
     "internal/fs/streams.mjs",
     "internal/fs/utils.mjs",
     "internal/fs/handle.ts",
@@ -479,6 +519,7 @@ deno_core::extension!(deno_node,
     "internal/streams/utils.js",
     "internal/test/binding.ts",
     "internal/timers.mjs",
+    "internal/tty.js",
     "internal/url.ts",
     "internal/util.mjs",
     "internal/util/colors.ts",
