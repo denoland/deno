@@ -20,13 +20,6 @@ use deno_core::webidl::ContextFn;
 use deno_core::webidl::UnrestrictedDouble;
 use deno_core::webidl::WebIdlConverter;
 use deno_core::webidl::WebIdlError;
-use lightningcss::properties::transform::Matrix as CSSMatrix;
-use lightningcss::properties::transform::Matrix3d as CSSMatrix3d;
-use lightningcss::properties::transform::Transform;
-use lightningcss::properties::transform::TransformList;
-use lightningcss::traits::Parse;
-use lightningcss::values::length::LengthPercentage;
-use lightningcss::values::number::CSSNumber;
 use nalgebra::Matrix3;
 use nalgebra::Matrix4;
 use nalgebra::Matrix4x2;
@@ -35,6 +28,11 @@ use nalgebra::Rotation3;
 use nalgebra::UnitVector3;
 use nalgebra::Vector3;
 use nalgebra::Vector4;
+
+use crate::css_value::CSSValueError;
+use crate::css_value::ParserInput;
+use crate::css_value::Transform;
+use crate::css_value::TransformListParser;
 
 macro_rules! define_obj {
   ($scope:ident => { $( $modifier:ident $key:literal: $value:expr ),*, }) => {
@@ -107,11 +105,14 @@ pub enum GeometryError {
   #[error("Cannot parse a CSS <transform-list> value on Workers")]
   DisallowWindowFeatures,
   #[class("DOMExceptionSyntaxError")]
-  #[error("Failed to parse the string as CSS <transform-list> value")]
-  FailedToParse,
-  #[class("DOMExceptionSyntaxError")]
-  #[error("The CSS <transform-list> value contains relative values")]
-  ContainsRelativeValue,
+  #[error("Failed to parse the string as CSS <transform-list> value: {0}")]
+  FailedToParse(String),
+}
+
+impl<'i> From<CSSValueError<'i>> for GeometryError {
+  fn from(error: CSSValueError) -> Self {
+    GeometryError::FailedToParse(format!("{}", error))
+  }
 }
 
 #[derive(WebIDL, Debug)]
@@ -957,10 +958,11 @@ impl DOMMatrixReadOnly {
       let matrix = DOMMatrixReadOnly::identity();
       let string = value.to_rust_string_lossy(scope);
       if !string.is_empty() {
-        let Ok(transform_list) = TransformList::parse_string(&string) else {
-          return Err(GeometryError::FailedToParse);
-        };
-        matrix.set_matrix_value_inner(&transform_list)?;
+        let mut input = ParserInput::new(&string);
+        for result in TransformListParser::new(&mut input) {
+          let transform = result?;
+          matrix.exec_css_transform(&transform)?;
+        }
       }
       return Ok(matrix);
     }
@@ -1403,193 +1405,150 @@ impl DOMMatrixReadOnly {
       .all(|&item| item.is_finite())
   }
 
-  fn set_matrix_value_inner(
+  fn exec_css_transform(
     &self,
-    transform_list: &TransformList,
+    transform: &Transform,
   ) -> Result<(), GeometryError> {
-    for transform in transform_list.0.iter() {
-      match transform {
-        Transform::Translate(
-          LengthPercentage::Dimension(x),
-          LengthPercentage::Dimension(y),
-        ) => {
-          if let (Some(x), Some(y)) = (x.to_px(), y.to_px()) {
-            self.translate_self_inner(x.into(), y.into(), 0.0);
-          } else {
-            return Err(GeometryError::ContainsRelativeValue);
-          }
-        }
-        Transform::TranslateX(LengthPercentage::Dimension(x)) => {
-          if let Some(x) = x.to_px() {
-            self.translate_self_inner(x.into(), 0.0, 0.0);
-          } else {
-            return Err(GeometryError::ContainsRelativeValue);
-          }
-        }
-        Transform::TranslateY(LengthPercentage::Dimension(y)) => {
-          if let Some(y) = y.to_px() {
-            self.translate_self_inner(0.0, y.into(), 0.0);
-          } else {
-            return Err(GeometryError::ContainsRelativeValue);
-          }
-        }
-        Transform::TranslateZ(z) => {
-          if let Some(z) = z.to_px() {
-            self.translate_self_inner(0.0, 0.0, z.into());
-            self.is_2d.set(false);
-          } else {
-            return Err(GeometryError::ContainsRelativeValue);
-          }
-        }
-        Transform::Translate3d(
-          LengthPercentage::Dimension(x),
-          LengthPercentage::Dimension(y),
-          z,
-        ) => {
-          if let (Some(x), Some(y), Some(z)) = (x.to_px(), y.to_px(), z.to_px())
-          {
-            self.translate_self_inner(x.into(), y.into(), z.into());
-            self.is_2d.set(false);
-          } else {
-            return Err(GeometryError::ContainsRelativeValue);
-          }
-        }
-        Transform::Scale(x, y) => {
-          let x: CSSNumber = x.into();
-          let y: CSSNumber = y.into();
-          self.scale_without_origin_self_inner(x.into(), y.into(), 1.0);
-        }
-        Transform::ScaleX(x) => {
-          let x: CSSNumber = x.into();
-          self.scale_without_origin_self_inner(x.into(), 1.0, 1.0);
-        }
-        Transform::ScaleY(y) => {
-          let y: CSSNumber = y.into();
-          self.scale_without_origin_self_inner(1.0, y.into(), 1.0);
-        }
-        Transform::ScaleZ(z) => {
-          let z: CSSNumber = z.into();
-          self.scale_without_origin_self_inner(1.0, 1.0, z.into());
+    match transform {
+      Transform::Translate(x, y) => {
+        let x = x.to_pixels();
+        let y = if let Some(y) = y { y.to_pixels() } else { 0.0 };
+        self.translate_self_inner(x.into(), y.into(), 0.0);
+      }
+      Transform::TranslateX(x) => {
+        let x = x.to_pixels();
+        self.translate_self_inner(x.into(), 0.0, 0.0);
+      }
+      Transform::TranslateY(y) => {
+        let y = y.to_pixels();
+        self.translate_self_inner(0.0, y.into(), 0.0);
+      }
+      Transform::TranslateZ(z) => {
+        let z = z.to_pixels();
+        self.translate_self_inner(0.0, 0.0, z.into());
+      }
+      Transform::Translate3d(x, y, z) => {
+        let x = x.to_pixels();
+        let y = y.to_pixels();
+        let z = z.to_pixels();
+        self.translate_self_inner(x.into(), y.into(), z.into());
+        self.is_2d.set(false);
+      }
+      Transform::Scale(x, y) => {
+        let x = **x;
+        let y = if let Some(y) = y { **y } else { x };
+        self.scale_without_origin_self_inner(x.into(), y.into(), 1.0);
+      }
+      Transform::ScaleX(x) => {
+        let x = **x;
+        self.scale_without_origin_self_inner(x.into(), 1.0, 1.0);
+      }
+      Transform::ScaleY(y) => {
+        let y = **y;
+        self.scale_without_origin_self_inner(1.0, y.into(), 1.0);
+      }
+      Transform::ScaleZ(z) => {
+        let z = **z;
+        self.scale_without_origin_self_inner(1.0, 1.0, z.into());
+        self.is_2d.set(false);
+      }
+      Transform::Scale3d(x, y, z) => {
+        let x = **x;
+        let y = **y;
+        let z = **z;
+        self.scale_without_origin_self_inner(x.into(), y.into(), z.into());
+        self.is_2d.set(false);
+      }
+      Transform::Rotate(angle) => {
+        self.rotate_axis_angle_self_inner(
+          0.0,
+          0.0,
+          1.0,
+          angle.to_radians().into(),
+        );
+      }
+      Transform::RotateX(angle) => {
+        self.rotate_axis_angle_self_inner(
+          1.0,
+          0.0,
+          0.0,
+          angle.to_radians().into(),
+        );
+        self.is_2d.set(false);
+      }
+      Transform::RotateY(angle) => {
+        self.rotate_axis_angle_self_inner(
+          0.0,
+          1.0,
+          0.0,
+          angle.to_radians().into(),
+        );
+        self.is_2d.set(false);
+      }
+      Transform::RotateZ(angle) => {
+        self.rotate_axis_angle_self_inner(
+          0.0,
+          0.0,
+          1.0,
+          angle.to_radians().into(),
+        );
+        self.is_2d.set(false);
+      }
+      Transform::Rotate3d(x, y, z, angle) => {
+        let x = **x;
+        let y = **y;
+        let z = **z;
+        self.rotate_axis_angle_self_inner(
+          x.into(),
+          y.into(),
+          z.into(),
+          angle.to_radians().into(),
+        );
+        self.is_2d.set(false);
+      }
+      Transform::Skew(x, y) => {
+        let x = x.to_degrees();
+        let y = if let Some(y) = y { y.to_degrees() } else { 0.0 };
+        self.skew_self_inner(x.into(), y.into());
+      }
+      Transform::SkewX(angle) => {
+        self.skew_self_inner(angle.to_radians().into(), 0.0);
+      }
+      Transform::SkewY(angle) => {
+        self.skew_self_inner(0.0, angle.to_radians().into());
+      }
+      Transform::Perspective(length) => {
+        if let Some(length) = length {
+          self.perspective_self_inner(length.to_pixels().into());
           self.is_2d.set(false);
-        }
-        Transform::Scale3d(x, y, z) => {
-          let x: CSSNumber = x.into();
-          let y: CSSNumber = y.into();
-          let z: CSSNumber = z.into();
-          self.scale_without_origin_self_inner(x.into(), y.into(), z.into());
-          self.is_2d.set(false);
-        }
-        Transform::Rotate(angle) => {
-          self.rotate_axis_angle_self_inner(
-            0.0,
-            0.0,
-            1.0,
-            angle.to_radians().into(),
-          );
-        }
-        Transform::RotateX(angle) => {
-          self.rotate_axis_angle_self_inner(
-            1.0,
-            0.0,
-            0.0,
-            angle.to_radians().into(),
-          );
-          self.is_2d.set(false);
-        }
-        Transform::RotateY(angle) => {
-          self.rotate_axis_angle_self_inner(
-            0.0,
-            1.0,
-            0.0,
-            angle.to_radians().into(),
-          );
-          self.is_2d.set(false);
-        }
-        Transform::RotateZ(angle) => {
-          self.rotate_axis_angle_self_inner(
-            0.0,
-            0.0,
-            1.0,
-            angle.to_radians().into(),
-          );
-          self.is_2d.set(false);
-        }
-        Transform::Rotate3d(x, y, z, angle) => {
-          self.rotate_axis_angle_self_inner(
-            (*x).into(),
-            (*y).into(),
-            (*z).into(),
-            angle.to_radians().into(),
-          );
-          self.is_2d.set(false);
-        }
-        Transform::Skew(x, y) => {
-          self.skew_self_inner(x.to_radians().into(), y.to_radians().into());
-        }
-        Transform::SkewX(angle) => {
-          self.skew_self_inner(angle.to_radians().into(), 0.0);
-        }
-        Transform::SkewY(angle) => {
-          self.skew_self_inner(0.0, angle.to_radians().into());
-        }
-        Transform::Perspective(length) => {
-          if let Some(length) = length.to_px() {
-            self.perspective_self_inner(length.into());
-            self.is_2d.set(false);
-          } else {
-            return Err(GeometryError::ContainsRelativeValue);
-          }
-        }
-        Transform::Matrix(CSSMatrix { a, b, c, d, e, f }) => {
-          let lhs = self.clone();
-          let rhs = DOMMatrixReadOnly {
-            #[rustfmt::skip]
-            inner: RefCell::new(Matrix4::new(
-              (*a).into(), (*c).into(), 0.0, (*e).into(),
-              (*b).into(), (*d).into(), 0.0, (*f).into(),
-                      0.0,         0.0, 1.0,         0.0,
-                      0.0,         0.0, 0.0,         1.0,
-            )),
-            is_2d: Cell::new(true),
-          };
-          self.multiply_self_inner(&lhs, &rhs);
-        }
-        Transform::Matrix3d(CSSMatrix3d {
-          m11,
-          m12,
-          m13,
-          m14,
-          m21,
-          m22,
-          m23,
-          m24,
-          m31,
-          m32,
-          m33,
-          m34,
-          m41,
-          m42,
-          m43,
-          m44,
-        }) => {
-          let lhs = self.clone();
-          let rhs = DOMMatrixReadOnly {
-            #[rustfmt::skip]
-            inner: RefCell::new(Matrix4::new(
-              (*m11).into(), (*m21).into(), (*m31).into(), (*m41).into(),
-              (*m12).into(), (*m22).into(), (*m32).into(), (*m42).into(),
-              (*m13).into(), (*m23).into(), (*m33).into(), (*m43).into(),
-              (*m14).into(), (*m24).into(), (*m34).into(), (*m44).into(),
-            )),
-            is_2d: Cell::new(false),
-          };
-          self.multiply_self_inner(&lhs, &rhs);
-        }
-        _ => {
-          return Err(GeometryError::ContainsRelativeValue);
         }
       }
+      Transform::Matrix([a, b, c, d, e, f]) => {
+        let lhs = self.clone();
+        let rhs = DOMMatrixReadOnly {
+          #[rustfmt::skip]
+          inner: RefCell::new(Matrix4::new(
+            (**a).into(), (**c).into(), 0.0, (**e).into(),
+            (**b).into(), (**d).into(), 0.0, (**f).into(),
+                     0.0,          0.0, 1.0,          0.0,
+                     0.0,          0.0, 0.0,          1.0,
+          )),
+          is_2d: Cell::new(true),
+        };
+        self.multiply_self_inner(&lhs, &rhs);
+      }
+      Transform::Matrix3d(array) => {
+        let array: [f64; 16] = array.map(|value| (*value).into());
+        let lhs = self.clone();
+        let rhs = DOMMatrixReadOnly {
+          #[rustfmt::skip]
+          inner: RefCell::new(Matrix4::from_column_slice(&array)),
+          is_2d: Cell::new(false),
+        };
+        self.multiply_self_inner(&lhs, &rhs);
+      }
     }
+
     Ok(())
   }
 }
@@ -2797,9 +2756,10 @@ pub fn op_geometry_matrix_set_matrix_value<'a>(
     matrix.is_2d.set(true);
     return Ok(());
   }
-  let Ok(transform_list) = TransformList::parse_string(&transform_list) else {
-    return Err(GeometryError::FailedToParse);
-  };
-  matrix.set_matrix_value_inner(&transform_list)?;
+  let mut input = ParserInput::new(&transform_list);
+  for result in TransformListParser::new(&mut input) {
+    let transform = result?;
+    matrix.exec_css_transform(&transform)?;
+  }
   Ok(())
 }

@@ -430,7 +430,6 @@ napi-sys = { version = "=2.2.2", default-features = false }
 
 # geometry
 cssparser = "0.36.0"
-lightningcss = { version = "1.0.0-alpha.67", default-features = false }
 nalgebra = { version = "0.34.1", default-features = false, features = ["std"] }
 
 # webgpu
