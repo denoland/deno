@@ -16,7 +16,7 @@ use deno_core::Extension;
 use deno_core::JsRuntime;
 use deno_core::RuntimeOptions;
 
-use self::ops_loader::ResolveMapping;
+use self::ops_loader::LoaderHookRegistry;
 use self::ops_worker::WorkerCloseWatcher;
 use self::ops_worker::WorkerHostSide;
 use self::ops_worker::worker_create;
@@ -117,9 +117,9 @@ pub fn create_runtime_from_snapshot_with_options(
 
   let mut extensions = vec![extensions::checkin_runtime::init::<()>()];
   extensions.extend(additional_extensions);
-  let resolve_mapping = ResolveMapping::default();
+  let hook_registry = LoaderHookRegistry::default();
   let module_loader = Rc::new(ts_module_loader::TypescriptModuleLoader::new(
-    resolve_mapping.clone(),
+    hook_registry.clone(),
   ));
   let runtime = JsRuntime::new(RuntimeOptions {
     extensions,
@@ -137,8 +137,8 @@ pub fn create_runtime_from_snapshot_with_options(
   runtime.op_state().borrow_mut().put(stats);
   runtime.op_state().borrow_mut().put(worker);
   runtime.op_state().borrow_mut().put(Snapshot(snapshot));
-  // Replace the default ResolveMapping with the shared one from the loader
-  runtime.op_state().borrow_mut().put(resolve_mapping);
+  // Replace the default LoaderHookRegistry with the shared one from the loader
+  runtime.op_state().borrow_mut().put(hook_registry);
 
   (runtime, worker_host_side)
 }

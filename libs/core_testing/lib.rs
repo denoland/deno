@@ -84,6 +84,7 @@ integration_test!(
   import_sync,
   loader_resolve,
   import_sync_existing,
+  loader_register,
   import_sync_throw,
   main_module_handler,
   module_types,

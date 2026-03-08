@@ -31,23 +31,31 @@ use deno_core::url::Url;
 use deno_error::JsErrorBox;
 use futures::future::FutureExt;
 
-use super::ops_loader::ResolveMapping;
+use super::ops_loader::LoaderHookRegistry;
 
 // TODO(bartlomieju): this is duplicated in `core/examples/ts_modules_loader.rs`.
 type SourceMapStore = Rc<RefCell<HashMap<String, Vec<u8>>>>;
 
 // TODO(bartlomieju): this is duplicated in `core/examples/ts_modules_loader.rs`.
-#[derive(Default)]
 pub struct TypescriptModuleLoader {
   source_maps: SourceMapStore,
-  resolve_mapping: ResolveMapping,
+  hook_registry: LoaderHookRegistry,
+}
+
+impl Default for TypescriptModuleLoader {
+  fn default() -> Self {
+    Self {
+      source_maps: Default::default(),
+      hook_registry: Default::default(),
+    }
+  }
 }
 
 impl TypescriptModuleLoader {
-  pub fn new(resolve_mapping: ResolveMapping) -> Self {
+  pub fn new(hook_registry: LoaderHookRegistry) -> Self {
     Self {
       source_maps: Default::default(),
-      resolve_mapping,
+      hook_registry,
     }
   }
 }
@@ -71,13 +79,23 @@ impl ModuleLoader for TypescriptModuleLoader {
     referrer: &str,
     _kind: ResolutionKind,
   ) -> deno_core::ModuleResolveResponse {
-    // Check if there's a registered resolve mapping for this specifier.
-    // Return Async to exercise the async resolution path.
-    if let Some(resolved) = self.resolve_mapping.map.borrow().get(specifier) {
-      let resolved = resolved.clone();
+    // When hooks are active, delegate resolution to JS via the message bridge.
+    if self.hook_registry.active.get() {
+      let receiver = self.hook_registry.push_resolve(
+        specifier.to_string(),
+        referrer.to_string(),
+      );
       return deno_core::ModuleResolveResponse::Async(
         async move {
-          ModuleSpecifier::parse(&resolved).map_err(JsErrorBox::from_err)
+          let result = receiver
+            .await
+            .map_err(|_| JsErrorBox::generic("resolve hook cancelled"))?;
+          match result {
+            Ok(url) => {
+              ModuleSpecifier::parse(&url).map_err(JsErrorBox::from_err)
+            }
+            Err(err) => Err(JsErrorBox::generic(err)),
+          }
         }
         .boxed_local(),
       );
@@ -93,6 +111,35 @@ impl ModuleLoader for TypescriptModuleLoader {
     _maybe_referrer: Option<&ModuleLoadReferrer>,
     options: ModuleLoadOptions,
   ) -> ModuleLoadResponse {
+    // When hooks are active, delegate loading to JS via the message bridge.
+    if self.hook_registry.active.get() {
+      let receiver =
+        self.hook_registry.push_load(module_specifier.to_string());
+      let specifier = module_specifier.clone();
+      let source_maps = self.source_maps.clone();
+      return ModuleLoadResponse::Async(
+        async move {
+          let result = receiver
+            .await
+            .map_err(|_| JsErrorBox::generic("load hook cancelled"))?;
+          match result {
+            Ok(Some(source)) => Ok(ModuleSource::new(
+              ModuleType::JavaScript,
+              ModuleSourceCode::String(source.into()),
+              &specifier,
+              None,
+            )),
+            Ok(None) => {
+              // Hook returned null source — delegate to default loading.
+              load(source_maps, &specifier, options.requested_module_type)
+            }
+            Err(err) => Err(JsErrorBox::generic(err).into()),
+          }
+        }
+        .boxed_local(),
+      );
+    }
+
     let source_maps = self.source_maps.clone();
     fn load(
       source_maps: SourceMapStore,
