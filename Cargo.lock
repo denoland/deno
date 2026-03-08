@@ -2173,6 +2173,9 @@ dependencies = [
 [[package]]
 name = "deno_dotenv"
 version = "0.6.0"
+dependencies = [
+ "sys_traits",
+]
 
 [[package]]
 name = "deno_error"
