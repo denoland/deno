@@ -54,7 +54,12 @@ pub fn dispatch_metrics_slow(opctx: &OpCtx, metrics: OpMetricsEvent) {
 
 #[doc(hidden)]
 pub fn dispatch_metrics_async(opctx: &OpCtx, metrics: OpMetricsEvent) {
-  if let Some(f) = &opctx.metrics_fn {
-    f(opctx, metrics, OpMetricsSource::Async);
+  // SAFETY: this should only be called from ops where we know the function is Some
+  unsafe {
+    (opctx.metrics_fn.as_ref().unwrap_unchecked())(
+      opctx,
+      metrics,
+      OpMetricsSource::Async,
+    )
   }
 }
