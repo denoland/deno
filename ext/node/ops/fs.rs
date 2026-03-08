@@ -92,6 +92,22 @@ pub struct NodeFsError {
   context: NodeFsErrorContext,
 }
 
+fn map_fs_error_to_node_fs_error(
+  err: deno_io::fs::FsError,
+  context: NodeFsErrorContext,
+) -> FsError {
+  let os_errno = match err {
+    deno_io::fs::FsError::Io(ref io_err) => io_err.raw_os_error(),
+    _ => None,
+  };
+
+  if let Some(os_errno) = os_errno {
+    return NodeFsError { os_errno, context }.into();
+  }
+
+  FsError::Fs(err)
+}
+
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 #[class(generic)]
 #[error("{message}")]
@@ -786,7 +802,7 @@ async fn check_paths_impl(
     .await?;
 
   let src_stat = src_stat_result.map_err(|err| {
-    map_fs_error_to_uv_compat(
+    map_fs_error_to_node_fs_error(
       err,
       NodeFsErrorContext {
         path: Some(src.to_string()),
@@ -800,7 +816,7 @@ async fn check_paths_impl(
     Ok(stat) => Some(stat),
     Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
     Err(e) => {
-      return Err(map_fs_error_to_uv_compat(
+      return Err(map_fs_error_to_node_fs_error(
         e,
         NodeFsErrorContext {
           path: Some(dest.to_string()),
@@ -988,7 +1004,7 @@ async fn check_parent_paths_impl(
     match stat_result {
       Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
       Err(e) => {
-        return Err(map_fs_error_to_uv_compat(
+        return Err(map_fs_error_to_node_fs_error(
           e,
           NodeFsErrorContext {
             path: Some(current_str.to_string()),
@@ -1057,7 +1073,7 @@ async fn ensure_parent_dir_impl(
   let parent_str = dest_parent.to_str().unwrap_or_default();
   let checked_parent = check_cp_path(state, parent_str, OpenAccessKind::Read)?;
   let exists = fs.exists_async(checked_parent).await.map_err(|err| {
-    map_fs_error_to_uv_compat(
+    map_fs_error_to_node_fs_error(
       err,
       NodeFsErrorContext {
         path: Some(parent_str.to_string()),
@@ -1072,7 +1088,7 @@ async fn ensure_parent_dir_impl(
     fs.mkdir_async(checked_parent, true, None)
       .await
       .map_err(|err| {
-        map_fs_error_to_uv_compat(
+        map_fs_error_to_node_fs_error(
           err,
           NodeFsErrorContext {
             path: Some(parent_str.to_string()),
@@ -1131,7 +1147,7 @@ fn set_dest_mode_sync(
   }
 
   fs.chmod_sync(dest_path, mode as _).map_err(|err| {
-    map_fs_error_to_uv_compat(
+    map_fs_error_to_node_fs_error(
       err,
       NodeFsErrorContext {
         path: Some(dest_path.to_string_lossy().to_string()),
@@ -1150,7 +1166,7 @@ fn set_dest_timestamps_sync(
 ) -> Result<(), FsError> {
   // Re-stat src to get fresh atime/mtime
   let src_stat = fs.stat_sync(src_path).map_err(|err| {
-    map_fs_error_to_uv_compat(
+    map_fs_error_to_node_fs_error(
       err,
       NodeFsErrorContext {
         path: Some(src_path.to_string_lossy().to_string()),
@@ -1171,7 +1187,7 @@ fn set_dest_timestamps_sync(
     let mtime_nanos = ((mtime % 1000) * 1_000_000) as u32;
     fs.utime_sync(dest_path, atime_secs, atime_nanos, mtime_secs, mtime_nanos)
       .map_err(|err| {
-        map_fs_error_to_uv_compat(
+        map_fs_error_to_node_fs_error(
           err,
           NodeFsErrorContext {
             path: Some(dest_path.to_string_lossy().to_string()),
@@ -1214,7 +1230,7 @@ pub async fn op_node_cp_on_file(
       // Remove dest, then copy
       let dest_path = check_cp_path(&state, &dest, OpenAccessKind::Write)?;
       fs.remove_async(dest_path, false).await.map_err(|err| {
-        map_fs_error_to_uv_compat(
+        map_fs_error_to_node_fs_error(
           err,
           NodeFsErrorContext {
             path: Some(dest.clone()),
@@ -1256,7 +1272,7 @@ pub async fn op_node_cp_on_file(
 
   spawn_blocking(move || -> Result<(), FsError> {
     fs.copy_file_sync(&src_path, &dest_path).map_err(|err| {
-      map_fs_error_to_uv_compat(
+      map_fs_error_to_node_fs_error(
         err,
         NodeFsErrorContext {
           path: Some(src_path.to_string_lossy().to_string()),
@@ -1294,7 +1310,7 @@ pub async fn op_node_cp_on_link(
   let src_path = check_cp_path(&state, &src, OpenAccessKind::ReadNoFollow)?;
   let resolved_src_buf =
     fs.read_link_async(src_path.clone()).await.map_err(|err| {
-      map_fs_error_to_uv_compat(
+      map_fs_error_to_node_fs_error(
         err,
         NodeFsErrorContext {
           path: Some(src.clone()),
@@ -1331,7 +1347,7 @@ pub async fn op_node_cp_on_link(
     fs.symlink_async(oldpath, newpath, None)
       .await
       .map_err(|err| {
-        map_fs_error_to_uv_compat(
+        map_fs_error_to_node_fs_error(
           err,
           NodeFsErrorContext {
             path: Some(resolved_src),
@@ -1381,7 +1397,7 @@ pub async fn op_node_cp_on_link(
         return Ok(());
       }
 
-      return Err(map_fs_error_to_uv_compat(
+      return Err(map_fs_error_to_node_fs_error(
         e,
         NodeFsErrorContext {
           path: Some(resolved_src),
@@ -1396,7 +1412,7 @@ pub async fn op_node_cp_on_link(
   // Check subdirectory relationships
   let src_path = check_cp_path(&state, &src, OpenAccessKind::Read)?;
   let src_stat = fs.stat_async(src_path).await.map_err(|err| {
-    map_fs_error_to_uv_compat(
+    map_fs_error_to_node_fs_error(
       err,
       NodeFsErrorContext {
         path: Some(src),
@@ -1454,7 +1470,7 @@ pub async fn op_node_cp_on_link(
   // Unlink dest and create new symlink
   spawn_blocking(move || -> Result<(), FsError> {
     fs.remove_sync(&dest_path, false).map_err(|err| {
-      map_fs_error_to_uv_compat(
+      map_fs_error_to_node_fs_error(
         err,
         NodeFsErrorContext {
           path: Some(dest_path.to_string_lossy().to_string()),
@@ -1466,7 +1482,7 @@ pub async fn op_node_cp_on_link(
 
     fs.symlink_sync(&src_path, &dest_path, None)
       .map_err(|err| {
-        map_fs_error_to_uv_compat(
+        map_fs_error_to_node_fs_error(
           err,
           NodeFsErrorContext {
             path: Some(src_path.to_string_lossy().to_string()),
@@ -1479,20 +1495,4 @@ pub async fn op_node_cp_on_link(
     Ok(())
   })
   .await?
-}
-
-fn map_fs_error_to_uv_compat(
-  err: deno_io::fs::FsError,
-  context: NodeFsErrorContext,
-) -> FsError {
-  let os_errno = match err {
-    deno_io::fs::FsError::Io(ref io_err) => io_err.raw_os_error(),
-    _ => None,
-  };
-
-  if let Some(os_errno) = os_errno {
-    return NodeFsError { os_errno, context }.into();
-  }
-
-  FsError::Fs(err)
 }
