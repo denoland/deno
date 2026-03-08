@@ -2310,6 +2310,7 @@ impl Transform {
               Some(value)
             }
           };
+          arguments.expect_exhausted()?;
           Ok(Transform::Perspective(value))
         })
       },
