@@ -206,6 +206,7 @@ pub static LAZILY_LOADED_STATIC_ASSETS: Lazy<
     maybe_compressed_lib!("lib.deno.net.d.ts", "lib.deno_net.d.ts"),
     maybe_compressed_lib!("lib.deno.cache.d.ts", "lib.deno_cache.d.ts"),
     maybe_compressed_lib!("lib.deno.webgpu.d.ts", "lib.deno_webgpu.d.ts"),
+    maybe_compressed_lib!("lib.deno.temporal.d.ts", "lib.temporal.d.ts"),
     maybe_compressed_lib!("lib.deno.window.d.ts"),
     maybe_compressed_lib!("lib.deno.worker.d.ts"),
     maybe_compressed_lib!("lib.deno.shared_globals.d.ts"),
