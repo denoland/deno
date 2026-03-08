@@ -3391,6 +3391,7 @@ version = "0.222.0"
 name = "deno_web"
 version = "0.265.0"
 dependencies = [
+ "approx",
  "async-trait",
  "base64-simd",
  "brotli",
