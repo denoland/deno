@@ -4,6 +4,7 @@
 #![allow(clippy::print_stdout)]
 #![allow(clippy::print_stderr)]
 #![allow(clippy::undocumented_unsafe_blocks)]
+#![allow(unused_unsafe)]
 
 use std::ffi::c_void;
 
