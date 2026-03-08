@@ -4687,7 +4687,6 @@ declare var WebSocketError: {
   new (message?: string, init?: WebSocketCloseInfo): WebSocketError;
 };
 
-
 /**
  * @category Intl
  * @experimental
