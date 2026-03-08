@@ -46,23 +46,20 @@ macro_rules! generate {
           // SAFETY: this function is only called from setup() which
           // uses Once to ensure single-threaded initialization.
           unsafe {
-            NAPI = Napi {
-                $(
-                    $name: {
-                      let symbol: Result<libloading::Symbol<unsafe extern "C" fn ($(_: $ptype,)*)$( -> $rtype)*>, libloading::Error> = host.get(stringify!($name).as_bytes());
-                      match symbol {
-                        Ok(f) => *f,
-                        Err(e) => {
-                          debug_assert!({
-                            println!("Load Node-API [{}] from host runtime failed: {}", stringify!($name), e);
-                            true
-                          });
-                          return Ok(());
-                        }
-                      }
-                    },
-                )*
-            };
+            $(
+              {
+                let symbol: Result<libloading::Symbol<unsafe extern "C" fn ($(_: $ptype,)*)$( -> $rtype)*>, libloading::Error> = host.get(stringify!($name).as_bytes());
+                match symbol {
+                  Ok(f) => NAPI.$name = *f,
+                  Err(_e) => {
+                    debug_assert!({
+                      println!("Load Node-API [{}] from host runtime failed: {}", stringify!($name), _e);
+                      true
+                    });
+                  }
+                }
+              }
+            )*
           }
 
           Ok(())
