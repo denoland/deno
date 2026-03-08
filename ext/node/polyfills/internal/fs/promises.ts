@@ -15,8 +15,6 @@ import { promisify } from "ext:deno_node/internal/util.mjs";
 import * as constants from "ext:deno_node/_fs/_fs_constants.ts";
 import { copyFilePromise } from "ext:deno_node/_fs/_fs_copy.ts";
 import { cpPromise } from "ext:deno_node/_fs/_fs_cp.ts";
-import { lchmodPromise } from "ext:deno_node/_fs/_fs_lchmod.ts";
-import { lchownPromise } from "ext:deno_node/_fs/_fs_lchown.ts";
 import { lstatPromise } from "ext:deno_node/_fs/_fs_lstat.ts";
 import { lutimesPromise } from "ext:deno_node/_fs/_fs_lutimes.ts";
 import { mkdirPromise } from "ext:deno_node/_fs/_fs_mkdir.ts";
@@ -27,9 +25,6 @@ import { readdirPromise } from "ext:deno_node/_fs/_fs_readdir.ts";
 import { readFilePromise } from "ext:deno_node/_fs/_fs_readFile.ts";
 import { readlinkPromise } from "ext:deno_node/_fs/_fs_readlink.ts";
 import { realpathPromise } from "ext:deno_node/_fs/_fs_realpath.ts";
-import { renamePromise } from "ext:deno_node/_fs/_fs_rename.ts";
-import { rmdirPromise } from "ext:deno_node/_fs/_fs_rmdir.ts";
-import { rmPromise } from "ext:deno_node/_fs/_fs_rm.ts";
 import { statPromise } from "ext:deno_node/_fs/_fs_stat.ts";
 import { statfsPromise } from "ext:deno_node/_fs/_fs_statfs.ts";
 import { symlinkPromise } from "ext:deno_node/_fs/_fs_symlink.ts";
@@ -43,20 +38,36 @@ import {
 import { globPromise } from "ext:deno_node/_fs/_fs_glob.ts";
 import {
   copyObject,
+  emitRecursiveRmdirWarning,
   getOptions,
   getValidatedPath,
   getValidatedPathToString,
   getValidMode,
   kMaxUserId,
+  type RmOptions,
+  validateRmdirOptions,
+  validateRmOptions,
 } from "ext:deno_node/internal/fs/utils.mjs";
 import {
   parseFileMode,
+  validateFunction,
   validateInteger,
 } from "ext:deno_node/internal/validators.mjs";
 import type { Buffer } from "node:buffer";
 import { primordials } from "ext:core/mod.js";
+import { op_node_lchmod, op_node_lchown, op_node_rmdir } from "ext:core/ops";
+import { isMacOS } from "ext:deno_node/_util/os.ts";
+import {
+  ERR_FS_RMDIR_ENOTDIR,
+  ERR_METHOD_NOT_IMPLEMENTED,
+} from "ext:deno_node/internal/errors.ts";
 
-const { Error, PromisePrototypeThen } = primordials;
+const {
+  Error,
+  ObjectPrototypeIsPrototypeOf,
+  PromisePrototypeThen,
+  PromiseReject,
+} = primordials;
 
 // -- access --
 
@@ -205,7 +216,34 @@ const chownPromise = promisify(chown) as (
   gid: number,
 ) => Promise<void>;
 
-// -- link --
+const lchmodPromise: (
+  path: string | Buffer | URL,
+  mode: number,
+) => Promise<void> = !isMacOS
+  ? () => PromiseReject(new ERR_METHOD_NOT_IMPLEMENTED("lchmod()"))
+  : (path: string | Buffer | URL, mode: number) => {
+    path = getValidatedPathToString(path);
+    mode = parseFileMode(mode, "mode");
+    return op_node_lchmod(path, mode);
+  };
+
+function lchown(
+  path: string | Buffer | URL,
+  uid: number,
+  gid: number,
+  callback: CallbackWithError,
+) {
+  callback = makeCallback(callback);
+  path = getValidatedPathToString(path);
+  validateInteger(uid, "uid", -1, kMaxUserId);
+  validateInteger(gid, "gid", -1, kMaxUserId);
+
+  PromisePrototypeThen(
+    op_node_lchown(path, uid, gid),
+    () => callback(null),
+    callback,
+  );
+}
 
 function link(
   existingPath: string | Buffer | URL,
@@ -222,12 +260,16 @@ function link(
   );
 }
 
+const lchownPromise = promisify(lchown) as (
+  path: string | Buffer | URL,
+  uid: number,
+  gid: number,
+) => Promise<void>;
+
 const linkPromise = promisify(link) as (
   existingPath: string | Buffer | URL,
   newPath: string | Buffer | URL,
 ) => Promise<void>;
-
-// -- unlink --
 
 function unlink(
   path: string | Buffer | URL,
@@ -245,6 +287,159 @@ function unlink(
 
 const unlinkPromise = promisify(unlink) as (
   path: string | Buffer | URL,
+) => Promise<void>;
+
+// -- rename --
+
+function rename(
+  oldPath: string | Buffer | URL,
+  newPath: string | Buffer | URL,
+  callback: (err?: Error) => void,
+) {
+  oldPath = getValidatedPathToString(oldPath, "oldPath");
+  newPath = getValidatedPathToString(newPath, "newPath");
+  validateFunction(callback, "callback");
+
+  PromisePrototypeThen(
+    Deno.rename(oldPath, newPath),
+    () => callback(),
+    (err: Error) =>
+      callback(denoErrorToNodeError(err, {
+        syscall: "rename",
+        path: oldPath,
+        dest: newPath,
+      })),
+  );
+}
+
+const renamePromise = promisify(rename) as (
+  oldPath: string | Buffer | URL,
+  newPath: string | Buffer | URL,
+) => Promise<void>;
+
+// -- rm --
+
+type rmOptions = {
+  force?: boolean;
+  maxRetries?: number;
+  recursive?: boolean;
+  retryDelay?: number;
+};
+
+type rmCallback = (err: Error | null) => void;
+
+function rm(
+  path: string | URL,
+  optionsOrCallback: rmOptions | rmCallback,
+  maybeCallback?: rmCallback,
+) {
+  const callback = typeof optionsOrCallback === "function"
+    ? optionsOrCallback
+    : maybeCallback;
+  const options = typeof optionsOrCallback === "object"
+    ? optionsOrCallback
+    : undefined;
+
+  if (!callback) throw new Error("No callback function supplied");
+
+  validateRmOptions(
+    path,
+    options,
+    false,
+    (err: Error | null, options: rmOptions) => {
+      if (err) {
+        return callback(err);
+      }
+
+      PromisePrototypeThen(
+        Deno.remove(path, { recursive: options?.recursive }),
+        () => callback(null),
+        (err) => {
+          if (
+            options?.force &&
+            ObjectPrototypeIsPrototypeOf(Deno.errors.NotFound.prototype, err)
+          ) {
+            return callback(null);
+          }
+
+          callback(denoErrorToNodeError(err, { syscall: "rm" }));
+        },
+      );
+    },
+  );
+}
+
+const rmPromise = promisify(rm) as (
+  path: string | URL,
+  options?: rmOptions,
+) => Promise<void>;
+
+// -- rmdir --
+
+type rmdirOptions = {
+  maxRetries?: number;
+  recursive?: boolean;
+  retryDelay?: number;
+};
+
+type rmdirCallback = (err?: Error) => void;
+
+const rmdirRecursive =
+  (path: string, callback: rmdirCallback) =>
+  (err: Error | false | null, options?: RmOptions) => {
+    if (err === false) {
+      return callback(new ERR_FS_RMDIR_ENOTDIR(path));
+    }
+    if (err) {
+      return callback(err);
+    }
+
+    PromisePrototypeThen(
+      Deno.remove(path, { recursive: options?.recursive }),
+      (_) => callback(),
+      (err: Error) =>
+        callback(
+          denoErrorToNodeError(err, { syscall: "rmdir", path }),
+        ),
+    );
+  };
+
+function rmdir(
+  path: string | Buffer | URL,
+  options: rmdirOptions | rmdirCallback | undefined,
+  callback?: rmdirCallback,
+) {
+  if (typeof options === "function") {
+    callback = options;
+    options = undefined;
+  }
+  validateFunction(callback, "cb");
+  path = getValidatedPathToString(path);
+
+  if (options?.recursive) {
+    emitRecursiveRmdirWarning();
+    validateRmOptions(
+      path,
+      { ...options, force: false },
+      true,
+      rmdirRecursive(path, callback),
+    );
+  } else {
+    validateRmdirOptions(options);
+    PromisePrototypeThen(
+      op_node_rmdir(path),
+      (_) => callback(),
+      (err: Error) =>
+        callback(
+          denoErrorToNodeError(err, { syscall: "rmdir", path }),
+        ),
+    );
+  }
+}
+
+const rmdirPromise = promisify(rmdir) as (
+  path: string | Buffer | URL,
+  options?: rmdirOptions,
 ) => Promise<void>;
 
 // -- promises object --
