@@ -72,10 +72,6 @@
     op_set_promise_hooks,
     op_set_wasm_streaming_callback,
     op_str_byte_length,
-    op_timer_cancel,
-    op_timer_queue_system,
-    op_timer_ref,
-    op_timer_unref,
     op_unref_op,
     op_cancel_handle,
     op_leak_tracing_enable,
@@ -1115,16 +1111,7 @@
       unhandledPromiseRejectionHandler = handler,
     reportUnhandledException: (e) => op_dispatch_exception(e, false),
     reportUnhandledPromiseRejection: (e) => op_dispatch_exception(e, true),
-    // TODO(mmastrac): Hook up associatedOp to tracing
-    queueSystemTimer: (_associatedOp, repeat, timeout, task) =>
-      op_timer_queue_system(repeat, timeout, task),
-    cancelTimer: (id) => {
-      op_timer_cancel(id);
-    },
-    refTimer: (id) => op_timer_ref(id),
-    unrefTimer: (id) => op_timer_unref(id),
     getTimerDepth: () => timerDepth,
-    // New JS-managed timer API
     createTimer: __timers.createTimer,
     cancelTimer2: __timers.cancelTimer,
     refreshTimer: __timers.refreshTimer,

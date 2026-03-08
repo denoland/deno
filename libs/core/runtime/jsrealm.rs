@@ -38,7 +38,6 @@ use crate::stats::RuntimeActivityTraces;
 use crate::tasks::V8TaskSpawnerFactory;
 use crate::uv_compat::UvLoopInner;
 use crate::web_timeout::UserTimer;
-use crate::web_timeout::WebTimers;
 
 pub const CONTEXT_STATE_SLOT_INDEX: i32 = 1;
 pub const MODULE_MAP_SLOT_INDEX: i32 = 2;
@@ -76,15 +75,12 @@ pub(crate) const IMM_IDX_HAS_OUTSTANDING: usize = 2;
 
 pub struct ContextState {
   pub(crate) task_spawner_factory: Arc<V8TaskSpawnerFactory>,
-  pub(crate) timers: WebTimers<(v8::Global<v8::Function>, u32), DefaultReactor>,
   pub(crate) user_timer: UserTimer<DefaultReactor>,
   // Per-phase JS callbacks (replacing monolithic eventLoopTick)
   pub(crate) js_resolve_ops_cb: RefCell<Option<v8::Global<v8::Function>>>,
   pub(crate) js_drain_next_tick_and_macrotasks_cb:
     RefCell<Option<v8::Global<v8::Function>>>,
   pub(crate) js_handle_rejections_cb: RefCell<Option<v8::Global<v8::Function>>>,
-  pub(crate) js_set_timer_depth_cb: RefCell<Option<v8::Global<v8::Function>>>,
-  pub(crate) js_report_exception_cb: RefCell<Option<v8::Global<v8::Function>>>,
   pub(crate) run_immediate_callbacks_cb:
     RefCell<Option<v8::Global<v8::Function>>>,
   pub(crate) js_process_timers_cb: RefCell<Option<v8::Global<v8::Function>>>,
@@ -156,8 +152,6 @@ impl ContextState {
       js_resolve_ops_cb: Default::default(),
       js_drain_next_tick_and_macrotasks_cb: Default::default(),
       js_handle_rejections_cb: Default::default(),
-      js_set_timer_depth_cb: Default::default(),
-      js_report_exception_cb: Default::default(),
       run_immediate_callbacks_cb: Default::default(),
       js_process_timers_cb: Default::default(),
       js_wasm_streaming_cb: Default::default(),
@@ -168,7 +162,6 @@ impl ContextState {
       methods_ctx_offset,
       pending_ops: op_driver,
       task_spawner_factory: Default::default(),
-      timers: Default::default(),
       user_timer: Default::default(),
       timer_info: Box::new([0i32; 1]),
       unrefed_ops,
@@ -288,8 +281,6 @@ impl JsRealmInner {
       &mut *state.js_drain_next_tick_and_macrotasks_cb.borrow_mut(),
     );
     std::mem::take(&mut *state.js_handle_rejections_cb.borrow_mut());
-    std::mem::take(&mut *state.js_set_timer_depth_cb.borrow_mut());
-    std::mem::take(&mut *state.js_report_exception_cb.borrow_mut());
     std::mem::take(&mut *state.run_immediate_callbacks_cb.borrow_mut());
     std::mem::take(&mut *state.js_wasm_streaming_cb.borrow_mut());
 

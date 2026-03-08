@@ -28,8 +28,6 @@ v8_static_strings!(
   RESOLVE_OPS = "__resolveOps",
   DRAIN_NEXT_TICK_AND_MACROTASKS = "__drainNextTickAndMacrotasks",
   HANDLE_REJECTIONS = "__handleRejections",
-  SET_TIMER_DEPTH = "__setTimerDepth",
-  REPORT_EXCEPTION = "__reportException",
   SET_TICK_INFO = "__setTickInfo",
   SET_IMMEDIATE_INFO = "__setImmediateInfo",
   RUN_IMMEDIATE_CALLBACKS = "runImmediateCallbacks",

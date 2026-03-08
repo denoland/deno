@@ -189,29 +189,8 @@ impl RuntimeActivityStatsFactory {
       ResourceOpenStats::default()
     };
 
-    let timers = if filter.include_timers {
-      let timer_count = self.context_state.timers.len();
-      let mut timers = TimerStats {
-        timers: Vec::with_capacity(timer_count),
-        repeats: BitSet::with_capacity(timer_count),
-      };
-      for (timer_id, repeats, is_system_timer) in
-        &self.context_state.timers.iter()
-      {
-        // Ignore system timer from stats
-        if is_system_timer {
-          continue;
-        }
-
-        if repeats {
-          timers.repeats.insert(timers.timers.len());
-        }
-        timers.timers.push(timer_id as usize);
-      }
-      timers
-    } else {
-      TimerStats::default()
-    };
+    // Timers are now fully JS-managed; the Rust stats system no longer tracks them.
+    let timers = TimerStats::default();
 
     let (ops, activity_traces) = if filter.include_ops {
       let ops = self.context_state.pending_ops.stats(&filter.op_filter);
