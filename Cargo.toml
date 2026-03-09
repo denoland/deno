@@ -45,6 +45,7 @@ members = [
   "libs/inspector_server",
   "libs/lockfile",
   "libs/maybe_sync",
+  "libs/napi_sys",
   "libs/node_resolver",
   "libs/node_shim",
   "libs/npm",
@@ -428,8 +429,7 @@ memmap2 = "0.9"
 # napi
 libloading = "0.7"
 libuv-sys-lite = { version = "=1.48.3", features = ["dyn-symbols"] }
-napi-build = "1"
-napi-sys = { version = "=2.2.2", default-features = false }
+napi_sys = { version = "0.1.0", path = "./libs/napi_sys" }
 
 # webgpu
 raw-window-handle = "0.6.0"
