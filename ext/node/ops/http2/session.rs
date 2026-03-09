@@ -185,7 +185,14 @@ unsafe extern "C" fn h2_write_cb(
     if !session_ptr.is_null() {
       // SAFETY: session_ptr was set in consume_stream and points to a valid Session
       let session = unsafe { &mut *(session_ptr as *mut Session) };
-      session.maybe_notify_graceful_close_complete();
+      session.pending_writes = session.pending_writes.saturating_sub(1);
+      // Only check graceful close when all pending writes have
+      // completed. This ensures the TCP data is actually sent before
+      // we potentially uv_close the handle (which on Windows/IOCP
+      // would cancel pending writes).
+      if session.pending_writes == 0 {
+        session.maybe_notify_graceful_close_complete();
+      }
     }
   }
 
@@ -1386,6 +1393,11 @@ pub struct Session {
   /// handle close is deferred until send_pending_data can run, allowing
   /// GOAWAY to be sent before the connection closes.
   pub pending_destroy: bool,
+  /// Number of outstanding uv_write calls. We must not destroy the
+  /// session (uv_close the TCP handle) while writes are pending,
+  /// because on Windows IOCP would cancel them. Only call
+  /// maybe_notify_graceful_close_complete when this reaches 0.
+  pub pending_writes: u32,
   /// RST_STREAM submissions deferred because is_sending was true.
   /// Matches Node.js's pending_rst_streams_ mechanism: submitting
   /// RST_STREAM during mem_recv/mem_send can cause nghttp2 to
@@ -1556,6 +1568,7 @@ impl Session {
     }
 
     self.is_sending = true;
+    let mut writes_queued = 0u32;
     loop {
       let mut src = std::ptr::null();
       let src_len =
@@ -1587,6 +1600,8 @@ impl Session {
           );
           if ret != 0 {
             let _ = Box::from_raw(write_ptr);
+          } else {
+            writes_queued += 1;
           }
         }
       } else {
@@ -1610,19 +1625,35 @@ impl Session {
             base: (*write_ptr).data.as_ptr() as *mut _,
             len: (*write_ptr).data.len(),
           };
-          deno_core::uv_compat::uv_write(
+          let ret = deno_core::uv_compat::uv_write(
             &mut (*write_ptr).uv_req,
             stream,
             &buf,
             1,
             Some(h2_write_cb),
           );
+          if ret != 0 {
+            let _ = Box::from_raw(write_ptr);
+          } else {
+            writes_queued += 1;
+          }
         }
       }
       self.clear_outgoing();
     }
 
-    self.maybe_notify_graceful_close_complete();
+    self.pending_writes += writes_queued;
+
+    // Only check graceful close when no async writes are pending.
+    // When writes ARE pending, h2_write_cb will check after each
+    // write completes. This matches Node.js's SendPendingData which
+    // only calls MaybeNotifyGracefulCloseComplete for synchronous
+    // (non-async) writes. On Windows, calling it here with pending
+    // writes would trigger uv_close before the writes complete,
+    // cancelling them via IOCP.
+    if writes_queued == 0 {
+      self.maybe_notify_graceful_close_complete();
+    }
 
     // Flush any RST_STREAM submissions that were deferred during
     // mem_recv/mem_send (is_sending was true). Matches Node.js's
@@ -1753,6 +1784,7 @@ impl Http2Session {
       stream: None,
       is_sending: false,
       pending_destroy: false,
+      pending_writes: 0,
       pending_rst_streams: Vec::new(),
     }));
 
