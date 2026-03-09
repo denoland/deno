@@ -1656,13 +1656,13 @@ fn lsp_hover(use_tsgo: bool) {
   client.shutdown();
 }
 
-#[test(timeout = 300)]
-fn lsp_hover_asset() {
+#[test(timeout = 300, fork_with_suffix = "_tsgo")]
+fn lsp_hover_asset(use_tsgo: bool) {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
   temp_dir.write("deno.json", json!({}).to_string());
   let file = temp_dir.source_file("file.ts", "console.log(Date.now());\n");
-  let mut client = context.new_lsp_command().build();
+  let mut client = context.new_lsp_command().set_use_tsgo(use_tsgo).build();
   client.initialize_default();
   client.did_open_file(&file);
   let res = client.write_request(
@@ -1676,16 +1676,32 @@ fn lsp_hover_asset() {
   );
   assert_eq!(
     res,
-    json!({
-      "contents": {
-        "kind": "markdown",
-        "value": "```tsx\ninterface Date\n```\nEnables basic storage and retrieval of dates and times.\n\n*@category* — Temporal\n\n\n*@experimental*",
-      },
-      "range": {
-        "start": { "line": 111, "character": 10, },
-        "end": { "line": 111, "character": 14, }
-      }
-    })
+    // TODO(nayeemrmn): The wrong doc and position is returned by tsgo. Seems
+    // to be treating `interface Date` like `declare var Date` in a different
+    // lib asset.
+    if use_tsgo {
+      json!({
+        "contents": {
+          "kind": "markdown",
+          "value": "```tsx\nvar Date: DateConstructor\ninterface Date\n```\n",
+        },
+        "range": {
+          "start": { "line": 111, "character": 12, },
+          "end": { "line": 111, "character": 16, }
+        }
+      })
+    } else {
+      json!({
+        "contents": {
+          "kind": "markdown",
+          "value": "```tsx\ninterface Date\n```\nEnables basic storage and retrieval of dates and times.\n\n*@category* — Temporal\n\n\n*@experimental*",
+        },
+        "range": {
+          "start": { "line": 111, "character": 10, },
+          "end": { "line": 111, "character": 14, }
+        }
+      })
+    },
   );
   client.shutdown();
 }
