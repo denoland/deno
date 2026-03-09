@@ -1052,8 +1052,9 @@ async fn check_parent_paths_impl(
       return Ok(());
     }
 
-    let current_str = current.to_str().unwrap_or_default();
-    let checked_path = check_cp_path(state, current_str, OpenAccessKind::Read)?;
+    let current_str = current.to_string_lossy();
+    let checked_path =
+      check_cp_path(state, &current_str, OpenAccessKind::Read)?;
     let stat_result = fs.stat_async(checked_path).await;
     match stat_result {
       Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
@@ -1106,8 +1107,8 @@ async fn ensure_parent_dir_impl(
     .map(|p| p.to_path_buf())
     .unwrap_or_default();
 
-  let parent_str = dest_parent.to_str().unwrap_or_default();
-  let checked_parent = check_cp_path(state, parent_str, OpenAccessKind::Read)?;
+  let parent_str = dest_parent.to_string_lossy();
+  let checked_parent = check_cp_path(state, &parent_str, OpenAccessKind::Read)?;
   let exists = fs.exists_async(checked_parent).await.map_err(|err| {
     map_fs_error_to_node_fs_error(
       err,
@@ -1120,7 +1121,7 @@ async fn ensure_parent_dir_impl(
   })?;
   if !exists {
     let checked_parent =
-      check_cp_path(state, parent_str, OpenAccessKind::Write)?;
+      check_cp_path(state, &parent_str, OpenAccessKind::Write)?;
     fs.mkdir_async(checked_parent, true, None)
       .await
       .map_err(|err| {
@@ -1342,23 +1343,18 @@ pub async fn op_node_cp_on_link(
         },
       )
     })?;
-  let mut resolved_src =
-    resolved_src_buf.to_str().unwrap_or_default().to_string();
+  let mut resolved_src = resolved_src_buf.to_string_lossy().to_string();
 
   // Resolve relative symlink targets
   if !verbatim_symlinks
     && !Path::new(&resolved_src).is_absolute()
     && let Some(parent) = Path::new(&src).parent()
   {
-    resolved_src = parent
-      .join(&resolved_src)
-      .to_str()
-      .unwrap_or_default()
-      .to_string();
+    resolved_src = parent.join(&resolved_src).to_string_lossy().to_string();
   }
 
   if !dest_exists {
-    cp_create_symlink(&state, &fs, resolved_src, dest).await?;
+    cp_create_symlink(&state, &fs, resolved_src.to_string(), dest).await?;
     return Ok(());
   }
 
@@ -1367,11 +1363,11 @@ pub async fn op_node_cp_on_link(
   let resolved_dest_result = fs.read_link_async(dest_path).await;
   let resolved_dest = match resolved_dest_result {
     Ok(p) => {
-      let s = p.to_str().unwrap_or_default().to_string();
+      let s = p.to_string_lossy().to_string();
       // If relative, resolve against dirname(dest)
       if !Path::new(&s).is_absolute() {
         if let Some(parent) = Path::new(&dest).parent() {
-          parent.join(&s).to_str().unwrap_or_default().to_string()
+          parent.join(&s).to_string_lossy().to_string()
         } else {
           s
         }
