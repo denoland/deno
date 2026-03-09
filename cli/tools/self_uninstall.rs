@@ -1,6 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::io::IsTerminal;
+use std::io::Write;
 use std::sync::Arc;
 
 use deno_core::anyhow::bail;
@@ -37,6 +38,7 @@ pub async fn self_uninstall(
     }
 
     eprint!("Do you want to continue? [y/N] ");
+    std::io::stderr().flush().ok();
     let mut input = String::new();
     std::io::stdin()
       .read_line(&mut input)
