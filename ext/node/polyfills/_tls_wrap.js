@@ -323,7 +323,9 @@ class JSStreamSocket {
     (async () => {
       while (true) {
         try {
-          const nread = await core.read(channelRid, buf);
+          const readPromise = core.read(channelRid, buf);
+          core.unrefOpPromise(readPromise);
+          const nread = await readPromise;
           this.stream.write(buf.slice(0, nread));
         } catch {
           break;
@@ -364,7 +366,9 @@ class JSStreamSocket {
   }
 
   read(buf) {
-    return core.read(this.#rid, buf);
+    const promise = core.read(this.#rid, buf);
+    core.unrefOpPromise(promise);
+    return promise;
   }
 
   write(data) {
