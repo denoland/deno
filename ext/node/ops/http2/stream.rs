@@ -471,6 +471,7 @@ impl Http2Stream {
   }
 
   #[fast]
+  #[reentrant]
   fn rst_stream(&self, code: u32) {
     log::debug!(
       "sending rst_stream with code {} for stream {}",
