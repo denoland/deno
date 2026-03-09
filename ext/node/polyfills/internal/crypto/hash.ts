@@ -81,10 +81,12 @@ export function Hash(
     validateUint32(xofLen, "options.outputLength");
   }
 
+  const algoLower = isCopy ? undefined : algorithm.toLowerCase();
+
   if (
     !isCopy && xofLen === undefined &&
-    (algorithm.toLowerCase() === "shake128" ||
-      algorithm.toLowerCase() === "shake256")
+    (algoLower === "shake128" ||
+      algoLower === "shake256")
   ) {
     process.emitWarning(
       "Creating SHAKE128/256 digests without an explicit options.outputLength is deprecated.",
@@ -96,7 +98,7 @@ export function Hash(
   try {
     this[kHandle] = isCopy
       ? op_node_hash_clone(algorithm, xofLen)
-      : op_node_create_hash(algorithm.toLowerCase(), xofLen);
+      : op_node_create_hash(algoLower, xofLen);
   } catch (err) {
     // TODO(lucacasonato): don't do this
     if (err.message === "Output length mismatch for non-extendable algorithm") {
