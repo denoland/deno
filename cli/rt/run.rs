@@ -1035,7 +1035,6 @@ pub async fn run(
   let lib_main_worker_options = LibMainWorkerOptions {
     argv: metadata.argv,
     log_level: WorkerLogLevel::Info,
-    enable_op_summary_metrics: false,
     enable_testing_features: false,
     has_node_modules_dir,
     inspect_brk: false,
