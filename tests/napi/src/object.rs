@@ -8,19 +8,6 @@ use crate::assert_napi_ok;
 use crate::napi_get_callback_info;
 use crate::napi_new_property;
 
-// Experimental NAPI function - renamed from napi_ to node_api_ prefix
-// per https://github.com/nodejs/node/pull/61319
-unsafe extern "C" {
-  fn node_api_create_object_with_properties(
-    env: napi_env,
-    prototype_or_null: napi_value,
-    property_names: *const napi_value,
-    property_values: *const napi_value,
-    property_count: usize,
-    result: *mut napi_value,
-  ) -> napi_status;
-}
-
 extern "C" fn test_object_new(
   env: napi_env,
   info: napi_callback_info,
