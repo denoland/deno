@@ -3,13 +3,19 @@ import { fs as fsConstants } from "ext:deno_node/internal_binding/constants.ts";
 import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
 import {
   type CallbackWithError,
+  getValidatedEncoding,
   isFd,
+  isFileOptions,
   makeCallback,
   maybeCallback,
   type WriteFileOptions,
 } from "ext:deno_node/_fs/_fs_common.ts";
 import type { Encodings } from "ext:deno_node/_utils.ts";
-import { denoErrorToNodeError } from "ext:deno_node/internal/errors.ts";
+import {
+  AbortError,
+  denoErrorToNodeError,
+  denoWriteFileErrorToNodeError,
+} from "ext:deno_node/internal/errors.ts";
 import * as constants from "ext:deno_node/_fs/_fs_constants.ts";
 
 import { copyFile, copyFileSync } from "ext:deno_node/_fs/_fs_copy.ts";
@@ -30,12 +36,7 @@ import { symlink, symlinkSync } from "ext:deno_node/_fs/_fs_symlink.ts";
 import { truncate, truncateSync } from "ext:deno_node/_fs/_fs_truncate.ts";
 import { utimes, utimesSync } from "ext:deno_node/_fs/_fs_utimes.ts";
 import { unwatchFile, watch, watchFile } from "ext:deno_node/_fs/_fs_watch.ts";
-// @deno-types="./_fs/_fs_write.d.ts"
-import { write, writeSync } from "ext:deno_node/_fs/_fs_write.ts";
-// @deno-types="./_fs/_fs_writev.d.ts"
-import { writev, writevSync } from "ext:deno_node/_fs/_fs_writev.ts";
 import { readv, readvSync } from "ext:deno_node/_fs/_fs_readv.ts";
-import { writeFile, writeFileSync } from "ext:deno_node/_fs/_fs_writeFile.ts";
 import promises from "ext:deno_node/internal/fs/promises.ts";
 // @deno-types="./internal/fs/streams.d.ts"
 import {
@@ -45,6 +46,8 @@ import {
   WriteStream,
 } from "ext:deno_node/internal/fs/streams.mjs";
 import {
+  arrayBufferViewToUint8Array,
+  constants as fsUtilConstants,
   copyObject,
   Dirent,
   emitRecursiveRmdirWarning,
@@ -57,15 +60,19 @@ import {
   type RmOptions,
   stringToFlags,
   toUnixTimestamp as _toUnixTimestamp,
+  validateBufferArray,
+  validateOffsetLengthWrite,
   validateRmdirOptions,
   validateRmOptions,
   validateRmOptionsSync,
+  validateStringAfterArrayBufferView,
   warnOnNonPortableTemplate,
 } from "ext:deno_node/internal/fs/utils.mjs";
 import { glob, globSync } from "ext:deno_node/_fs/_fs_glob.ts";
 import {
   parseFileMode,
   validateBoolean,
+  validateEncoding,
   validateFunction,
   validateInt32,
   validateInteger,
@@ -73,12 +80,23 @@ import {
   validateString,
 } from "ext:deno_node/internal/validators.mjs";
 import { Buffer } from "node:buffer";
+import process from "node:process";
+import * as io from "ext:deno_io/12_io.js";
+import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
+import { pathFromURL } from "ext:deno_web/00_infra.js";
+import { URLPrototype } from "ext:deno_web/00_url.js";
+import { FileHandle } from "ext:deno_node/internal/fs/handle.ts";
+import { isIterable } from "ext:deno_node/internal/streams/utils.js";
+import type { ErrnoException } from "ext:deno_node/_global.d.ts";
+import type { BufferEncoding } from "ext:deno_node/_global.d.ts";
 import {
   op_fs_fchmod_async,
   op_fs_fchmod_sync,
   op_fs_fchown_async,
   op_fs_fchown_sync,
   op_fs_read_file_async,
+  op_fs_seek_async,
+  op_fs_seek_sync,
   op_node_lchmod,
   op_node_lchmod_sync,
   op_node_lchown,
@@ -98,21 +116,29 @@ import {
 } from "ext:deno_node/internal/errors.ts";
 import { toUnixTimestamp } from "ext:deno_node/internal/fs/utils.mjs";
 import { isMacOS, isWindows } from "ext:deno_node/_util/os.ts";
-import { normalizeEncoding } from "ext:deno_node/internal/util.mjs";
+import {
+  customPromisifyArgs,
+  kEmptyObject,
+  normalizeEncoding,
+} from "ext:deno_node/internal/util.mjs";
 import { resolve, toNamespacedPath } from "node:path";
 import type { Encoding } from "node:crypto";
 import { core, primordials } from "ext:core/mod.js";
 
 const {
+  ArrayBufferIsView,
   Error,
   ErrorPrototype,
+  MathMin,
   Number,
   NumberIsFinite,
   NumberIsNaN,
+  ObjectDefineProperty,
   ObjectPrototypeIsPrototypeOf,
   PromisePrototypeThen,
   StringPrototypeToString,
   SymbolFor,
+  Uint8Array,
 } = primordials;
 
 const {
@@ -1336,6 +1362,567 @@ function openAsBlob(
     op_fs_read_file_async(path as string, undefined, 0),
     (data: Uint8Array) => new Blob([data], { type }),
   );
+}
+
+// -- write --
+
+type WriteCallback = (
+  err: ErrnoException | null,
+  written?: number,
+  strOrBuffer?: string | ArrayBufferView,
+) => void;
+
+type WriteOptions = {
+  offset?: number;
+  length?: number;
+  position?: number | null;
+};
+
+function writeSync(
+  fd: number,
+  buffer: ArrayBufferView | string,
+  offsetOrOptions?: number | WriteOptions | null,
+  length?: number | null,
+  position?: number | null,
+): number {
+  fd = getValidatedFd(fd);
+
+  const innerWriteSync = (
+    fd: number,
+    buffer: ArrayBufferView | Uint8Array,
+    offset: number,
+    length: number,
+    position: number | null | undefined,
+  ) => {
+    buffer = arrayBufferViewToUint8Array(buffer);
+    if (typeof position === "number" && position >= 0) {
+      op_fs_seek_sync(fd, position, io.SeekMode.Start);
+    }
+    let currentOffset = offset;
+    const end = offset + length;
+    while (currentOffset - offset < length) {
+      currentOffset += io.writeSync(
+        fd,
+        (buffer as Uint8Array).subarray(currentOffset, end),
+      );
+    }
+    return currentOffset - offset;
+  };
+
+  let offset = offsetOrOptions;
+  if (isArrayBufferView(buffer)) {
+    if (typeof offset === "object") {
+      ({
+        offset = 0,
+        length = buffer.byteLength - (offset as number),
+        position = null,
+      } = offsetOrOptions ?? kEmptyObject);
+    }
+    if (position === undefined) {
+      position = null;
+    }
+    if (offset == null) {
+      offset = 0;
+    } else {
+      validateInteger(offset, "offset", 0);
+    }
+    if (typeof length !== "number") {
+      length = buffer.byteLength - offset;
+    }
+    validateOffsetLengthWrite(offset, length, buffer.byteLength);
+    return innerWriteSync(fd, buffer, offset, length, position);
+  }
+  validateStringAfterArrayBufferView(buffer, "buffer");
+  validateEncoding(buffer, length);
+  buffer = Buffer.from(buffer, length);
+  return innerWriteSync(fd, buffer, 0, buffer.length, position);
+}
+
+/** Writes the buffer to the file of the given descriptor.
+ * https://nodejs.org/api/fs.html#fswritefd-buffer-offset-length-position-callback
+ * https://github.com/nodejs/node/blob/42ad4137aadda69c51e1df48eee9bc2e5cebca5c/lib/fs.js#L797
+ */
+function write(
+  fd: number,
+  buffer: ArrayBufferView | string,
+  offsetOrOptions?: number | WriteOptions | WriteCallback | null,
+  length?: number | WriteCallback | null,
+  position?: number | WriteCallback | null,
+  callback?: WriteCallback,
+) {
+  fd = getValidatedFd(fd);
+
+  const innerWrite = async (
+    fd: number,
+    buffer: ArrayBufferView | Uint8Array,
+    offset: number,
+    length: number,
+    position: number | null | undefined,
+  ) => {
+    buffer = arrayBufferViewToUint8Array(buffer);
+    if (typeof position === "number" && position >= 0) {
+      await op_fs_seek_async(fd, position, io.SeekMode.Start);
+    }
+    let currentOffset = offset;
+    const end = offset + length;
+    while (currentOffset - offset < length) {
+      currentOffset += await io.write(
+        fd,
+        (buffer as Uint8Array).subarray(currentOffset, end),
+      );
+    }
+    return currentOffset - offset;
+  };
+
+  let offset = offsetOrOptions;
+  if (isArrayBufferView(buffer)) {
+    callback = maybeCallback(callback || position || length || offset);
+
+    if (typeof offset === "object") {
+      ({
+        offset = 0,
+        length = buffer.byteLength - (offset as number),
+        position = null,
+      } = offsetOrOptions ?? kEmptyObject);
+    }
+    if (offset == null || typeof offset === "function") {
+      offset = 0;
+    } else {
+      validateInteger(offset, "offset", 0);
+    }
+    if (typeof length !== "number") {
+      length = buffer.byteLength - offset;
+    }
+    if (typeof position !== "number") {
+      position = null;
+    }
+    validateOffsetLengthWrite(offset, length, buffer.byteLength);
+    innerWrite(fd, buffer, offset, length, position).then(
+      (nwritten) => {
+        callback!(null, nwritten, buffer);
+      },
+      (err) => callback!(err),
+    );
+    return;
+  }
+
+  // Here the call signature is
+  // `fs.write(fd, string[, position[, encoding]], callback)`
+
+  validateStringAfterArrayBufferView(buffer, "buffer");
+
+  if (typeof position !== "function") {
+    if (typeof offset === "function") {
+      position = offset;
+      offset = null;
+    } else {
+      position = length;
+    }
+    length = "utf-8";
+  }
+
+  const str = buffer;
+  validateEncoding(str, length);
+  callback = maybeCallback(position);
+  buffer = Buffer.from(str, length);
+
+  innerWrite(fd, buffer, 0, buffer.length, offset).then(
+    (nwritten) => {
+      callback(null, nwritten, buffer);
+    },
+    (err) => callback(err),
+  );
+}
+
+ObjectDefineProperty(write, customPromisifyArgs, {
+  __proto__: null,
+  value: ["bytesWritten", "buffer"],
+  enumerable: false,
+});
+
+// -- writev --
+
+interface WriteVResult {
+  bytesWritten: number;
+  buffers: ReadonlyArray<ArrayBufferView>;
+}
+
+type writeVCallback = (
+  err: ErrnoException | null,
+  bytesWritten: number,
+  buffers: ReadonlyArray<ArrayBufferView>,
+) => void;
+
+/**
+ * Write an array of `ArrayBufferView`s to the file specified by `fd` using`writev()`.
+ *
+ * `position` is the offset from the beginning of the file where this data
+ * should be written. If `typeof position !== 'number'`, the data will be written
+ * at the current position.
+ *
+ * The callback will be given three arguments: `err`, `bytesWritten`, and`buffers`. `bytesWritten` is how many bytes were written from `buffers`.
+ *
+ * If this method is `util.promisify()` ed, it returns a promise for an`Object` with `bytesWritten` and `buffers` properties.
+ *
+ * It is unsafe to use `fs.writev()` multiple times on the same file without
+ * waiting for the callback. For this scenario, use {@link createWriteStream}.
+ *
+ * On Linux, positional writes don't work when the file is opened in append mode.
+ * The kernel ignores the position argument and always appends the data to
+ * the end of the file.
+ * @since v12.9.0
+ */
+function writev(
+  fd: number,
+  buffers: ReadonlyArray<ArrayBufferView>,
+  position?: number | null,
+  callback?: writeVCallback,
+): void {
+  const innerWritev = async (fd, buffers, position) => {
+    const chunks: Buffer[] = [];
+    const offset = 0;
+    for (let i = 0; i < buffers.length; i++) {
+      if (Buffer.isBuffer(buffers[i])) {
+        chunks.push(buffers[i]);
+      } else {
+        chunks.push(Buffer.from(buffers[i]));
+      }
+    }
+    if (typeof position === "number") {
+      await op_fs_seek_async(fd, position, io.SeekMode.Start);
+    }
+    const buffer = Buffer.concat(chunks);
+    let currentOffset = 0;
+    while (currentOffset < buffer.byteLength) {
+      currentOffset += await io.writeSync(fd, buffer.subarray(currentOffset));
+    }
+    return currentOffset - offset;
+  };
+
+  fd = getValidatedFd(fd);
+  validateBufferArray(buffers);
+  callback = maybeCallback(callback || position);
+
+  if (buffers.length === 0) {
+    process.nextTick(callback, null, 0, buffers);
+    return;
+  }
+
+  if (typeof position !== "number") position = null;
+
+  innerWritev(fd, buffers, position).then(
+    (nwritten) => callback(null, nwritten, buffers),
+    (err) => callback(err),
+  );
+}
+
+/**
+ * For detailed information, see the documentation of the asynchronous version of
+ * this API: {@link writev}.
+ * @since v12.9.0
+ * @return The number of bytes written.
+ */
+function writevSync(
+  fd: number,
+  buffers: ArrayBufferView[],
+  position?: number | null,
+): number {
+  const innerWritev = (fd, buffers, position) => {
+    const chunks: Buffer[] = [];
+    const offset = 0;
+    for (let i = 0; i < buffers.length; i++) {
+      if (Buffer.isBuffer(buffers[i])) {
+        chunks.push(buffers[i]);
+      } else {
+        chunks.push(Buffer.from(buffers[i]));
+      }
+    }
+    if (typeof position === "number") {
+      op_fs_seek_sync(fd, position, io.SeekMode.Start);
+    }
+    const buffer = Buffer.concat(chunks);
+    let currentOffset = 0;
+    while (currentOffset < buffer.byteLength) {
+      currentOffset += io.writeSync(fd, buffer.subarray(currentOffset));
+    }
+    return currentOffset - offset;
+  };
+
+  fd = getValidatedFd(fd);
+  validateBufferArray(buffers);
+
+  if (buffers.length === 0) {
+    return 0;
+  }
+
+  if (typeof position !== "number") position = null;
+
+  return innerWritev(fd, buffers, position);
+}
+
+// -- writeFile --
+
+type WriteFileSyncData =
+  | string
+  | DataView
+  | NodeJS.TypedArray
+  | Iterable<NodeJS.TypedArray | string>;
+
+type WriteFileData =
+  | string
+  | DataView
+  | NodeJS.TypedArray
+  | AsyncIterable<NodeJS.TypedArray | string>;
+
+const {
+  kWriteFileMaxChunkSize,
+} = fsUtilConstants;
+
+interface Writer {
+  write(p: NodeJS.TypedArray): Promise<number>;
+  writeSync(p: NodeJS.TypedArray): number;
+}
+
+async function _writeFileGetRid(
+  pathOrRid: string | number,
+  flag: string = "w",
+): Promise<number> {
+  if (typeof pathOrRid === "number") {
+    return pathOrRid;
+  }
+  try {
+    return await op_node_open(pathOrRid, stringToFlags(flag), 0o666);
+  } catch (err) {
+    throw denoErrorToNodeError(err as Error, {
+      syscall: "open",
+      path: pathOrRid,
+    });
+  }
+}
+
+function _writeFileGetRidSync(
+  pathOrRid: string | number,
+  flag: string = "w",
+): number {
+  if (typeof pathOrRid === "number") {
+    return pathOrRid;
+  }
+  try {
+    return op_node_open_sync(pathOrRid, stringToFlags(flag), 0o666);
+  } catch (err) {
+    throw denoErrorToNodeError(err as Error, {
+      syscall: "open",
+      path: pathOrRid,
+    });
+  }
+}
+
+function writeFile(
+  pathOrRid: string | number | URL | FileHandle,
+  data: WriteFileData,
+  options: Encodings | CallbackWithError | WriteFileOptions | undefined,
+  callback?: CallbackWithError,
+) {
+  let flag: string | undefined;
+  let mode: number | undefined;
+  let signal: AbortSignal | undefined;
+
+  if (typeof options === "function") {
+    callback = options;
+    options = undefined;
+  }
+
+  validateFunction(callback, "callback");
+
+  if (ObjectPrototypeIsPrototypeOf(URLPrototype, pathOrRid)) {
+    pathOrRid = pathFromURL(pathOrRid as URL);
+  } else if (ObjectPrototypeIsPrototypeOf(FileHandle.prototype, pathOrRid)) {
+    pathOrRid = (pathOrRid as FileHandle).fd;
+  }
+
+  if (isFileOptions(options)) {
+    flag = options.flag;
+    mode = options.mode;
+    signal = options.signal;
+  }
+
+  const encoding = getValidatedEncoding(options) || "utf8";
+
+  if (!ArrayBufferIsView(data) && !_isCustomIterable(data)) {
+    validateStringAfterArrayBufferView(data, "data");
+    data = Buffer.from(data, encoding);
+  }
+
+  const isRid = typeof pathOrRid === "number";
+  let file;
+
+  let error: Error | null = null;
+  (async () => {
+    try {
+      const rid = await _writeFileGetRid(pathOrRid as string | number, flag);
+      file = new FsFile(rid, SymbolFor("Deno.internal.FsFile"));
+      _checkAborted(signal);
+
+      if (!isRid && mode) {
+        await Deno.chmod(pathOrRid as string, mode);
+        _checkAborted(signal);
+      }
+
+      await _writeAll(
+        file,
+        data as (Exclude<WriteFileData, string>),
+        encoding,
+        signal,
+      );
+    } catch (e) {
+      error = denoWriteFileErrorToNodeError(e as Error, { syscall: "write" });
+    } finally {
+      // Make sure to close resource
+      if (!isRid && file) file.close();
+      callback(error);
+    }
+  })();
+}
+
+function writeFileSync(
+  pathOrRid: string | number | URL,
+  data: WriteFileSyncData,
+  options?: Encodings | WriteFileOptions,
+) {
+  let flag: string | undefined;
+  let mode: number | undefined;
+
+  pathOrRid = ObjectPrototypeIsPrototypeOf(URLPrototype, pathOrRid)
+    ? pathFromURL(pathOrRid as URL)
+    : pathOrRid as string | number;
+
+  if (isFileOptions(options)) {
+    flag = options.flag;
+    mode = options.mode;
+  }
+
+  const encoding = getValidatedEncoding(options) || "utf8";
+
+  if (!ArrayBufferIsView(data) && !_isCustomIterable(data)) {
+    validateStringAfterArrayBufferView(data, "data");
+    data = Buffer.from(data, encoding);
+  }
+
+  const isRid = typeof pathOrRid === "number";
+  let file;
+
+  let error: Error | null = null;
+  try {
+    const rid = _writeFileGetRidSync(pathOrRid, flag);
+    file = new FsFile(rid, SymbolFor("Deno.internal.FsFile"));
+
+    if (!isRid && mode) {
+      Deno.chmodSync(pathOrRid as string, mode);
+    }
+
+    _writeAllSync(
+      file,
+      data as (Exclude<WriteFileSyncData, string>),
+      encoding,
+    );
+  } catch (e) {
+    error = denoWriteFileErrorToNodeError(e as Error, { syscall: "write" });
+  } finally {
+    // Make sure to close resource
+    if (!isRid && file) file.close();
+  }
+
+  if (error) throw error;
+}
+
+function _writeAllSync(
+  w: Writer,
+  data: Exclude<WriteFileSyncData, string>,
+  encoding: BufferEncoding,
+) {
+  if (!_isCustomIterable(data)) {
+    data = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+    let remaining = data.byteLength;
+    while (remaining > 0) {
+      const bytesWritten = w.writeSync(
+        data.subarray(data.byteLength - remaining),
+      );
+      remaining -= bytesWritten;
+    }
+  } else {
+    for (const buf of data) {
+      let toWrite = ArrayBufferIsView(buf) ? buf : Buffer.from(buf, encoding);
+      toWrite = new Uint8Array(
+        toWrite.buffer,
+        toWrite.byteOffset,
+        toWrite.byteLength,
+      );
+      let remaining = toWrite.byteLength;
+      while (remaining > 0) {
+        const bytesWritten = w.writeSync(
+          toWrite.subarray(toWrite.byteLength - remaining),
+        );
+        remaining -= bytesWritten;
+      }
+    }
+  }
+}
+
+async function _writeAll(
+  w: Writer,
+  data: Exclude<WriteFileData, string>,
+  encoding: BufferEncoding,
+  signal?: AbortSignal,
+) {
+  if (!_isCustomIterable(data)) {
+    data = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+    let remaining = data.byteLength;
+    while (remaining > 0) {
+      const writeSize = MathMin(kWriteFileMaxChunkSize, remaining);
+      const offset = data.byteLength - remaining;
+      const bytesWritten = await w.write(
+        data.subarray(offset, offset + writeSize),
+      );
+      remaining -= bytesWritten;
+      _checkAborted(signal);
+    }
+  } else {
+    for await (const buf of data) {
+      _checkAborted(signal);
+      let toWrite = ArrayBufferIsView(buf) ? buf : Buffer.from(buf, encoding);
+      toWrite = new Uint8Array(
+        toWrite.buffer,
+        toWrite.byteOffset,
+        toWrite.byteLength,
+      );
+      let remaining = toWrite.byteLength;
+      while (remaining > 0) {
+        const writeSize = MathMin(kWriteFileMaxChunkSize, remaining);
+        const offset = toWrite.byteLength - remaining;
+        const bytesWritten = await w.write(
+          toWrite.subarray(offset, offset + writeSize),
+        );
+        remaining -= bytesWritten;
+        _checkAborted(signal);
+      }
+    }
+  }
+
+  _checkAborted(signal);
+}
+
+function _isCustomIterable(
+  obj: unknown,
+): obj is
+  | Iterable<NodeJS.TypedArray | string>
+  | AsyncIterable<NodeJS.TypedArray | string> {
+  return isIterable(obj) && !ArrayBufferIsView(obj) && typeof obj !== "string";
+}
+
+function _checkAborted(signal?: AbortSignal) {
+  if (signal?.aborted) {
+    throw new AbortError();
+  }
 }
 
 export default {
