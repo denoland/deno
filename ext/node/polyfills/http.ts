@@ -71,6 +71,7 @@ import {
 import { getTimerDuration } from "ext:deno_node/internal/timers.mjs";
 import { getIPFamily } from "ext:deno_node/internal/net.ts";
 import { serveHttpOnListener, upgradeHttpRaw } from "ext:deno_http/00_serve.ts";
+import { op_http_serve_address_override } from "ext:core/ops";
 import { listen as listenDeno } from "ext:deno_net/01_net.js";
 import { headersEntries } from "ext:deno_fetch/20_headers.js";
 import { Response } from "ext:deno_fetch/23_response.js";
@@ -97,6 +98,9 @@ import { TlsConn } from "ext:deno_net/02_tls.js";
 import { STATUS_CODES } from "node:_http_server";
 import { methods as METHODS } from "node:_http_common";
 import { deprecate } from "node:util";
+
+// Flag to track if DENO_SERVE_ADDRESS override has been consumed for Node http servers.
+let nodeHttpAddressOverrideConsumed = false;
 
 const { internalRidSymbol } = core;
 const {
@@ -2235,6 +2239,21 @@ export class ServerImpl extends EventEmitter {
     let hostname = options.host ?? "0.0.0.0";
     if (hostname == "localhost") {
       hostname = "127.0.0.1";
+    }
+
+    // Check DENO_SERVE_ADDRESS override (used by desktop runtime, Deno Deploy, etc.)
+    if (!nodeHttpAddressOverrideConsumed) {
+      const {
+        0: overrideKind,
+        1: overrideHost,
+        2: overridePort,
+      } = op_http_serve_address_override();
+      if (overrideKind === 1) {
+        // TCP override
+        nodeHttpAddressOverrideConsumed = true;
+        hostname = overrideHost;
+        port = overridePort;
+      }
     }
 
     // Bind the port synchronously so that address() returns the actual

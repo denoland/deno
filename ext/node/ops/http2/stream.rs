@@ -157,10 +157,6 @@ pub struct Http2Stream {
   /// Used by the data source read callback to decide whether to
   /// return EOF or DEFERRED when pending_data is empty.
   pub(crate) writable_ended: RefCell<bool>,
-  /// Stored shutdown request object. When shutdown is async (returns 0),
-  /// we store the req here so that on_stream_read_callback can call
-  /// req.oncomplete(0) when EOF is actually sent.
-  pub(crate) shutdown_req: RefCell<Option<v8::Global<v8::Object>>>,
 }
 
 // SAFETY: Http2Stream is GC-traced by cppgc
@@ -204,7 +200,6 @@ impl Http2Stream {
         current_headers_length: RefCell::new(0),
         has_trailers: RefCell::new(false),
         writable_ended: RefCell::new(false),
-        shutdown_req: RefCell::new(None),
       },
     );
 
@@ -278,37 +273,6 @@ impl Http2Stream {
   fn nghttp2_session(&self) -> *mut ffi::nghttp2_session {
     // SAFETY: session outlives the stream
     unsafe { (*self.session).session }
-  }
-
-  /// Called when the data source read callback returns EOF.
-  /// Completes the async shutdown by calling req.oncomplete(0).
-  pub fn complete_shutdown(&self) {
-    let req_global = self.shutdown_req.borrow_mut().take();
-    let Some(req_global) = req_global else {
-      return;
-    };
-
-    // SAFETY: session outlives the stream
-    let session = unsafe { &*self.session };
-    let mut isolate =
-      // SAFETY: isolate pointer is valid during session lifetime
-      unsafe { v8::Isolate::from_raw_isolate_ptr(session.isolate) };
-    v8::scope!(let scope, &mut isolate);
-    let context = v8::Local::new(scope, session.context.clone());
-    let scope = &mut v8::ContextScope::new(scope, context);
-
-    let req = v8::Local::new(scope, &req_global);
-    let oncomplete_key = v8::String::new(scope, "oncomplete").unwrap();
-    let Some(oncomplete_val) = req.get(scope, oncomplete_key.into()) else {
-      return;
-    };
-    let Ok(oncomplete_fn) = v8::Local::<v8::Function>::try_from(oncomplete_val)
-    else {
-      return;
-    };
-
-    let zero = v8::Integer::new(scope, 0);
-    oncomplete_fn.call(scope, req.into(), &[zero.into()]);
   }
 }
 
@@ -397,21 +361,10 @@ impl Http2Stream {
   }
 
   #[fast]
-  fn shutdown(&self, req: v8::Local<v8::Object>) -> i32 {
-    // Check if pending_data is already empty - if so, complete synchronously
-    let is_empty = self.pending_data.borrow().is_empty();
-
-    if !is_empty {
-      // Store the request so on_stream_read_callback can call oncomplete later
-      // SAFETY: session outlives the stream
-      let session = unsafe { &*self.session };
-      let mut isolate =
-        // SAFETY: isolate pointer is valid during session lifetime
-        unsafe { v8::Isolate::from_raw_isolate_ptr(session.isolate) };
-      v8::scope!(let scope, &mut isolate);
-      *self.shutdown_req.borrow_mut() = Some(v8::Global::new(scope, req));
-    }
-
+  fn shutdown(&self, _req: v8::Local<v8::Object>) -> i32 {
+    // Match Node.js DoShutdown: always complete synchronously.
+    // Set writable_ended and resume data so the data provider callback
+    // will return EOF on the next mem_send iteration.
     *self.writable_ended.borrow_mut() = true;
     let session_ptr = self.nghttp2_session();
     // SAFETY: session pointer is valid
@@ -419,15 +372,9 @@ impl Http2Stream {
       ffi::nghttp2_session_resume_data(session_ptr, self.id);
     }
 
-    if is_empty {
-      // No pending data, EOF will be set immediately in the next mem_send.
-      // Return 1 for synchronous completion.
-      return 1;
-    }
-
-    // Return 0 to signal async completion - oncomplete will be called
-    // from on_stream_read_callback when EOF is actually sent
-    0
+    // Return 1 for synchronous completion (matches Node.js DoShutdown
+    // which always returns 1).
+    1
   }
 
   fn trailers(&self, #[serde] headers: (String, usize)) -> i32 {

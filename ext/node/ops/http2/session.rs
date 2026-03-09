@@ -1082,51 +1082,69 @@ pub unsafe extern "C" fn on_stream_read_callback(
   // SAFETY: user_data is the user_data pointer set during session creation
   let session = unsafe { Session::from_user_data(user_data) };
 
+  // Gather data and determine flags while holding borrows, then call
+  // into JS (on_trailers) only after dropping all borrows. This prevents
+  // holding a RefMut<pending_data> or &Ref<Http2Stream> (borrowed from
+  // session.streams HashMap) while JS callbacks fire, which could
+  // invalidate the references.
+  //
+  // Unlike Node.js, we don't use NGHTTP2_DATA_FLAG_NO_COPY; we copy
+  // data directly into the provided buffer.
+  let mut amount: usize = 0;
+  let mut need_eof = false;
+  let mut need_trailers = false;
+  let mut is_deferred = false;
+
   if let Some(stream) = session.find_stream(stream_id) {
     let mut pending_data = stream.pending_data.borrow_mut();
     if !pending_data.is_empty() {
-      let amount = std::cmp::min(pending_data.len(), length);
-      if amount > 0 {
-        let data_slice = pending_data.split_to(amount);
+      let amt = std::cmp::min(pending_data.len(), length);
+      if amt > 0 {
+        let data_slice = pending_data.split_to(amt);
         // SAFETY: buf has capacity for `length` bytes per nghttp2 contract
-        unsafe {
-          std::ptr::copy_nonoverlapping(data_slice.as_ptr(), buf, amount)
-        };
-        *stream.available_outbound_length.borrow_mut() -= amount;
+        unsafe { std::ptr::copy_nonoverlapping(data_slice.as_ptr(), buf, amt) };
+        *stream.available_outbound_length.borrow_mut() -= amt;
+        amount = amt;
 
         if pending_data.is_empty() && *stream.writable_ended.borrow() {
-          // SAFETY: data_flags is a valid out-pointer per nghttp2 contract
-          unsafe { *data_flags |= ffi::NGHTTP2_DATA_FLAG_EOF as u32 };
-          if stream.has_trailers() {
-            // SAFETY: data_flags is a valid out-pointer per nghttp2 contract
-            unsafe {
-              *data_flags |= ffi::NGHTTP2_DATA_FLAG_NO_END_STREAM as u32
-            };
-            stream.on_trailers();
-          }
-          stream.complete_shutdown();
+          need_eof = true;
+          need_trailers = stream.has_trailers();
         }
-        return amount as CSsizeT;
       }
+    } else if *stream.writable_ended.borrow() {
+      need_eof = true;
+      need_trailers = stream.has_trailers();
+    } else {
+      is_deferred = true;
     }
-
-    if pending_data.is_empty() {
-      if *stream.writable_ended.borrow() {
-        // SAFETY: data_flags is a valid out-pointer per nghttp2 contract
-        unsafe { *data_flags |= ffi::NGHTTP2_DATA_FLAG_EOF as u32 };
-        if stream.has_trailers() {
-          // SAFETY: data_flags is a valid out-pointer per nghttp2 contract
-          unsafe { *data_flags |= ffi::NGHTTP2_DATA_FLAG_NO_END_STREAM as u32 };
-          stream.on_trailers();
-        }
-        stream.complete_shutdown();
-        return 0;
-      }
-      return ffi::NGHTTP2_ERR_DEFERRED as _;
-    }
+    // pending_data borrow and stream reference are dropped here
+  } else {
+    return ffi::NGHTTP2_ERR_DEFERRED as _;
   }
 
-  ffi::NGHTTP2_ERR_DEFERRED as _
+  if is_deferred {
+    return ffi::NGHTTP2_ERR_DEFERRED as _;
+  }
+
+  if need_eof {
+    // SAFETY: data_flags is a valid out-pointer per nghttp2 contract
+    unsafe { *data_flags |= ffi::NGHTTP2_DATA_FLAG_EOF as u32 };
+    if need_trailers {
+      // SAFETY: data_flags is a valid out-pointer per nghttp2 contract
+      unsafe { *data_flags |= ffi::NGHTTP2_DATA_FLAG_NO_END_STREAM as u32 };
+      // Re-lookup stream after dropping previous borrows; the JS
+      // callback in on_trailers() could modify session.streams.
+      if let Some(stream) = session.find_stream(stream_id) {
+        stream.on_trailers();
+      }
+    }
+    // Note: no complete_shutdown() call here. Matching Node.js,
+    // shutdown always completes synchronously (returns 1), so
+    // afterShutdown has already been called by the time the data
+    // provider fires.
+  }
+
+  amount as CSsizeT
 }
 
 unsafe extern "C" fn on_select_padding(
