@@ -26,6 +26,18 @@ import {
 } from "ext:core/ops";
 import type { CopyOptions } from "ext:deno_node/_fs/cp/cp.d.ts";
 
+interface StatInfo {
+  destExists: boolean;
+  isDirectory: boolean;
+  isFile: boolean;
+  isCharDevice: boolean;
+  isBlockDevice: boolean;
+  isSymlink: boolean;
+  isSocket: boolean;
+  isFifo: boolean;
+  mode: number;
+}
+
 const {
   ArrayPrototypeEvery,
   ArrayPrototypeFilter,
@@ -102,14 +114,14 @@ export async function cpFn(
   try {
     // deno-lint-ignore prefer-primordials
     if (opts.filter && !(await opts.filter(src, dest))) return;
-    const isDestExists = await op_node_cp_validate_and_prepare(
+    const statInfo = await op_node_cp_validate_and_prepare(
       src,
       dest,
       opts.dereference ?? false,
     );
-    return await getStatsForCopy(isDestExists, src, dest, opts);
+    return await getStatsForCopy(statInfo, src, dest, opts);
   } catch (err) {
-    if (typeof err.os_errno === "number") {
+    if (typeof err === "object" && typeof err.os_errno === "number") {
       throw denoErrorToNodeError(err, {
         message: err.message,
         path: err.path,
@@ -141,17 +153,15 @@ export function isSrcSubdir(src: string, dest: string): boolean {
   return ArrayPrototypeEvery(srcArr, (cur, i) => destArr[i] === cur);
 }
 
-async function getStatsForCopy(
-  destExists: boolean,
+function getStatsForCopy(
+  statInfo: StatInfo,
   src: string,
   dest: string,
   opts: CopyOptions,
 ) {
-  const statFn = opts.dereference ? Deno.stat : Deno.lstat;
-  const srcStat = await statFn(src);
-  if (srcStat.isDirectory && opts.recursive) {
-    return onDir(srcStat, destExists, src, dest, opts);
-  } else if (srcStat.isDirectory) {
+  if (statInfo.isDirectory && opts.recursive) {
+    return onDir(statInfo, src, dest, opts);
+  } else if (statInfo.isDirectory) {
     throw new ERR_FS_EISDIR({
       message: `${src} is a directory (not copied)`,
       path: src,
@@ -160,14 +170,14 @@ async function getStatsForCopy(
       code: "EISDIR",
     });
   } else if (
-    srcStat.isFile ||
-    srcStat.isCharDevice ||
-    srcStat.isBlockDevice
+    statInfo.isFile ||
+    statInfo.isCharDevice ||
+    statInfo.isBlockDevice
   ) {
-    return onFile(srcStat, destExists, src, dest, opts);
-  } else if (srcStat.isSymlink) {
-    return onLink(destExists, src, dest, opts);
-  } else if (srcStat.isSocket) {
+    return onFile(statInfo, src, dest, opts);
+  } else if (statInfo.isSymlink) {
+    return onLink(statInfo.destExists, src, dest, opts);
+  } else if (statInfo.isSocket) {
     throw new ERR_FS_CP_SOCKET({
       message: `cannot copy a socket file: ${dest}`,
       path: dest,
@@ -175,7 +185,7 @@ async function getStatsForCopy(
       errno: EINVAL,
       code: "EINVAL",
     });
-  } else if (srcStat.isFifo) {
+  } else if (statInfo.isFifo) {
     throw new ERR_FS_CP_FIFO_PIPE({
       message: `cannot copy a FIFO pipe: ${dest}`,
       path: dest,
@@ -194,8 +204,7 @@ async function getStatsForCopy(
 }
 
 async function onFile(
-  srcStat: Deno.FileInfo,
-  destExists: boolean,
+  statInfo: StatInfo,
   src: string,
   dest: string,
   opts: CopyOptions,
@@ -203,8 +212,8 @@ async function onFile(
   await op_node_cp_on_file(
     src,
     dest,
-    srcStat.mode ?? 0,
-    destExists,
+    statInfo.mode,
+    statInfo.destExists,
     opts.force ?? false,
     opts.errorOnExist ?? false,
     opts.preserveTimestamps ?? false,
@@ -217,13 +226,12 @@ function setDestMode(dest: string, srcMode: number | null): Promise<void> {
 }
 
 function onDir(
-  srcStat: Deno.FileInfo,
-  destExists: boolean,
+  statInfo: StatInfo,
   src: string,
   dest: string,
   opts: CopyOptions,
 ): Promise<void> {
-  if (!destExists) return mkDirAndCopy(srcStat.mode, src, dest, opts);
+  if (!statInfo.destExists) return mkDirAndCopy(statInfo.mode, src, dest, opts);
   return copyDir(src, dest, opts);
 }
 
@@ -250,12 +258,12 @@ async function copyDir(
     const destItem = join(dest, name);
     // deno-lint-ignore prefer-primordials
     if (opts.filter && !(await opts.filter(srcItem, destItem))) continue;
-    const isDestExists = await op_node_cp_check_paths_recursive(
+    const statInfo = await op_node_cp_check_paths_recursive(
       srcItem,
       destItem,
       opts.dereference ?? false,
     );
-    await getStatsForCopy(isDestExists, srcItem, destItem, opts);
+    await getStatsForCopy(statInfo, srcItem, destItem, opts);
   }
 }
 

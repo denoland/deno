@@ -714,11 +714,41 @@ pub async fn op_node_rmdir(
   Ok(())
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CpStatInfo {
+  pub dest_exists: bool,
+  pub is_directory: bool,
+  pub is_file: bool,
+  pub is_char_device: bool,
+  pub is_block_device: bool,
+  pub is_symlink: bool,
+  pub is_socket: bool,
+  pub is_fifo: bool,
+  pub mode: u32,
+}
+
+impl CpStatInfo {
+  fn from_src_stat(src_stat: &deno_io::fs::FsStat, dest_exists: bool) -> Self {
+    Self {
+      dest_exists,
+      is_directory: src_stat.is_directory,
+      is_file: src_stat.is_file,
+      is_char_device: src_stat.is_char_device,
+      is_block_device: src_stat.is_block_device,
+      is_symlink: src_stat.is_symlink,
+      is_socket: src_stat.is_socket,
+      is_fifo: src_stat.is_fifo,
+      mode: src_stat.mode,
+    }
+  }
+}
+
 #[derive(Debug)]
 struct CpCheckPathsResult {
   src_dev: u64,
   src_ino: u64,
-  dest_exists: bool,
+  stat_info: CpStatInfo,
 }
 
 /// Check if two stat results refer to the same file (same dev + ino).
@@ -953,22 +983,25 @@ async fn check_paths_impl(
     );
   }
 
+  let stat_info = CpStatInfo::from_src_stat(&src_stat, dest_stat.is_some());
+
   Ok(CpCheckPathsResult {
     src_dev,
     src_ino,
-    dest_exists: dest_stat.is_some(),
+    stat_info,
   })
 }
 
 /// Validates src and dest paths for recursive cp operations.
-/// Returns whether dest exists
+/// Returns stat info for the source file
 #[op2(stack_trace)]
+#[serde]
 pub async fn op_node_cp_check_paths_recursive(
   state: Rc<RefCell<OpState>>,
   #[string] src: String,
   #[string] dest: String,
   dereference: bool,
-) -> Result<bool, FsError> {
+) -> Result<CpStatInfo, FsError> {
   let fs = {
     let state = state.borrow();
     state.borrow::<FileSystemRc>().clone()
@@ -976,19 +1009,20 @@ pub async fn op_node_cp_check_paths_recursive(
 
   let result = check_paths_impl(&state, &fs, &src, &dest, dereference).await?;
 
-  Ok(result.dest_exists)
+  Ok(result.stat_info)
 }
 
 /// Validates src and dest paths, checks parent paths, and ensures
 /// parent directory exists
-/// Returns whether dest exists
+/// Returns stat info for the source file
 #[op2(stack_trace)]
+#[serde]
 pub async fn op_node_cp_validate_and_prepare(
   state: Rc<RefCell<OpState>>,
   #[string] src: String,
   #[string] dest: String,
   dereference: bool,
-) -> Result<bool, FsError> {
+) -> Result<CpStatInfo, FsError> {
   let fs = {
     let state = state.borrow();
     state.borrow::<FileSystemRc>().clone()
@@ -1009,7 +1043,7 @@ pub async fn op_node_cp_validate_and_prepare(
 
   ensure_parent_dir_impl(&state, &fs, &dest).await?;
 
-  Ok(check_result.dest_exists)
+  Ok(check_result.stat_info)
 }
 
 /// Recursively check if dest parent is a subdirectory of src.
