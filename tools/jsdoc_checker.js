@@ -19,6 +19,7 @@ const libs = [
   join(ROOT_PATH, "cli/tsc/dts/lib.deno.window.d.ts"),
   join(ROOT_PATH, "cli/tsc/dts/lib.deno_webgpu.d.ts"),
   join(ROOT_PATH, "cli/tsc/dts/lib.deno_broadcast_channel.d.ts"),
+  join(ROOT_PATH, "cli/tsc/dts/lib.temporal.d.ts"),
 ];
 
 const unstableLibs = [

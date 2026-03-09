@@ -250,7 +250,12 @@
     "parallel/test-console-sync-write-error.js": {},
     "parallel/test-console-table.js": {},
     "parallel/test-console-with-frozen-intrinsics.js": {},
+    "parallel/test-crypto-classes.js": {},
     "parallel/test-crypto-certificate.js": {},
+    "parallel/test-crypto-cipheriv-decipheriv.js": {
+      "exitCode": 1,
+      "output": "[WILDCARD]Unknown cipher id-aes128-wrap[WILDCARD]"
+    },
     "parallel/test-crypto-dh-constructor.js": {},
     "parallel/test-crypto-dh-errors.js": {},
     "parallel/test-crypto-dh-generate-keys.js": {},

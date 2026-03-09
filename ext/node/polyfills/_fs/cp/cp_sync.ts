@@ -4,11 +4,9 @@
 import { dirname, isAbsolute, join, parse, resolve } from "node:path";
 import { copyFileSync } from "ext:deno_node/_fs/_fs_copy.ts";
 import { existsSync } from "ext:deno_node/_fs/_fs_exists.ts";
-import { mkdirSync } from "ext:deno_node/_fs/_fs_mkdir.ts";
-import { opendirSync } from "ext:deno_node/_fs/_fs_opendir.ts";
+import { mkdirSync, opendirSync } from "node:fs";
 import { readlinkSync } from "ext:deno_node/_fs/_fs_readlink.ts";
 import { symlinkSync } from "ext:deno_node/_fs/_fs_symlink.ts";
-import { unlinkSync } from "ext:deno_node/_fs/_fs_unlink.ts";
 import { utimesSync } from "ext:deno_node/_fs/_fs_utimes.ts";
 import {
   ERR_FS_CP_DIR_TO_NON_DIR,
@@ -270,7 +268,7 @@ function mayCopyFile(
   opts: CopySyncOptions,
 ): void {
   if (opts.force) {
-    unlinkSync(dest);
+    Deno.removeSync(dest);
     return copyFile(srcStat, src, dest, opts);
   } else if (opts.errorOnExist) {
     throw new ERR_FS_CP_EEXIST({
@@ -427,6 +425,6 @@ function onLink(
 }
 
 function copyLink(resolvedSrc: string, dest: string): void {
-  unlinkSync(dest);
+  Deno.removeSync(dest);
   return symlinkSync(resolvedSrc, dest);
 }

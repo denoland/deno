@@ -3,11 +3,12 @@
 
 import { dirname, isAbsolute, join, parse, resolve, sep } from "node:path";
 import { copyFilePromise } from "ext:deno_node/_fs/_fs_copy.ts";
-import { mkdirPromise } from "ext:deno_node/_fs/_fs_mkdir.ts";
-import { opendirPromise } from "ext:deno_node/_fs/_fs_opendir.ts";
+import {
+  mkdirPromise,
+  opendirPromise,
+} from "ext:deno_node/internal/fs/promises.ts";
 import { readlinkPromise } from "ext:deno_node/_fs/_fs_readlink.ts";
 import { symlinkPromise } from "ext:deno_node/_fs/_fs_symlink.ts";
-import { unlinkPromise } from "ext:deno_node/_fs/_fs_unlink.ts";
 import { utimesPromise } from "ext:deno_node/_fs/_fs_utimes.ts";
 import { EEXIST, EINVAL, EISDIR, ENOTDIR } from "node:constants";
 import {
@@ -284,7 +285,7 @@ async function mayCopyFile(
   opts: CopyOptions,
 ) {
   if (opts.force) {
-    await unlinkPromise(dest);
+    await Deno.remove(dest);
     return _copyFile(srcStat, src, dest, opts);
   } else if (opts.errorOnExist) {
     throw new ERR_FS_CP_EEXIST({
@@ -450,6 +451,6 @@ async function onLink(
 }
 
 async function copyLink(resolvedSrc: string, dest: string): Promise<void> {
-  await unlinkPromise(dest);
+  await Deno.remove(dest);
   return symlinkPromise(resolvedSrc, dest);
 }

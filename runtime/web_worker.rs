@@ -64,6 +64,8 @@ use node_resolver::NpmPackageFolderResolver;
 use crate::BootstrapOptions;
 use crate::FeatureChecker;
 use crate::coverage::CoverageCollector;
+use crate::cpu_profiler::CpuProfiler;
+use crate::cpu_profiler::CpuProfilerConfig;
 use crate::deno_inspector_server::MainInspectorSessionChannel;
 use crate::ops;
 use crate::shared::runtime;
@@ -426,6 +428,7 @@ pub struct WebWorkerOptions {
   pub close_on_idle: bool,
   pub maybe_worker_metadata: Option<WorkerMetadata>,
   pub maybe_coverage_dir: Option<PathBuf>,
+  pub maybe_cpu_prof_config: Option<CpuProfilerConfig>,
   pub enable_raw_imports: bool,
   pub enable_stack_trace_arg_in_ops: bool,
 }
@@ -449,6 +452,7 @@ pub struct WebWorker {
   maybe_worker_metadata: Option<WorkerMetadata>,
   memory_trim_handle: Option<tokio::task::JoinHandle<()>>,
   maybe_coverage_dir: Option<PathBuf>,
+  maybe_cpu_prof_config: Option<CpuProfilerConfig>,
   bootstrap_error: Option<CoreError>,
   /// Set to `true` by the near-heap-limit callback when resource limits
   /// are exceeded, so the error handler can emit `ERR_WORKER_OUT_OF_MEMORY`.
@@ -641,10 +645,7 @@ impl WebWorker {
     options.startup_snapshot.as_ref().expect("A user snapshot was not provided, even though 'only_snapshotted_js_sources' is used.");
 
     // Get our op metrics
-    let (op_summary_metrics, op_metrics_factory_fn) = create_op_metrics(
-      options.bootstrap.enable_op_summary_metrics,
-      options.trace_ops,
-    );
+    let op_metrics_factory_fn = create_op_metrics(options.trace_ops);
 
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(services.module_loader),
@@ -678,10 +679,6 @@ impl WebWorker {
       custom_module_evaluation_cb: None,
       eval_context_code_cache_cbs: None,
     });
-
-    if let Some(op_summary_metrics) = op_summary_metrics {
-      js_runtime.op_state().borrow_mut().put(op_summary_metrics);
-    }
 
     {
       let state = js_runtime.op_state();
@@ -765,6 +762,7 @@ impl WebWorker {
         maybe_worker_metadata: options.maybe_worker_metadata,
         memory_trim_handle: None,
         maybe_coverage_dir: options.maybe_coverage_dir,
+        maybe_cpu_prof_config: options.maybe_cpu_prof_config,
         bootstrap_error: None,
         oom_triggered: Arc::new(AtomicBool::new(false)),
       },
@@ -865,6 +863,24 @@ impl WebWorker {
     coverage_collector.start_collecting();
 
     Some(coverage_collector)
+  }
+
+  pub fn maybe_setup_cpu_profiler(&mut self) -> Option<CpuProfiler> {
+    let config = self.maybe_cpu_prof_config.as_ref()?;
+    let worker_id = self.id.to_string();
+    let filename =
+      crate::cpu_profiler::cpu_prof_filename(config, Some(&worker_id));
+
+    let mut cpu_profiler = CpuProfiler::new(
+      &mut self.js_runtime,
+      config.dir.clone(),
+      filename,
+      config.interval,
+      config.md,
+    );
+    cpu_profiler.start_profiling();
+
+    Some(cpu_profiler)
   }
 
   #[cfg(not(target_os = "linux"))]
@@ -1109,6 +1125,7 @@ pub async fn run_web_worker(
 ) -> Result<(), CoreError> {
   worker.setup_memory_trim_handler();
   let mut maybe_coverage_collector = worker.maybe_setup_coverage_collector();
+  let mut maybe_cpu_profiler = worker.maybe_setup_cpu_profiler();
 
   let name = worker.name.to_string();
   let mut internal_handle = worker.internal_handle.clone();
@@ -1145,6 +1162,9 @@ pub async fn run_web_worker(
     if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
       coverage_collector.stop_collecting()?;
     }
+    if let Some(cpu_profiler) = maybe_cpu_profiler.as_mut() {
+      let _ = cpu_profiler.stop_profiling();
+    }
     return Ok(());
   }
 
@@ -1157,6 +1177,9 @@ pub async fn run_web_worker(
       .await;
     if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
       coverage_collector.stop_collecting()?;
+    }
+    if let Some(cpu_profiler) = maybe_cpu_profiler.as_mut() {
+      let _ = cpu_profiler.stop_profiling();
     }
     r
   } else {
