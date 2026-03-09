@@ -1138,10 +1138,13 @@ pub unsafe extern "C" fn on_stream_read_callback(
         stream.on_trailers();
       }
     }
-    // Note: no complete_shutdown() call here. Matching Node.js,
-    // shutdown always completes synchronously (returns 1), so
-    // afterShutdown has already been called by the time the data
-    // provider fires.
+    // Complete shutdown now. All borrows have been dropped above,
+    // so it's safe to call into JS. This must happen before
+    // on_stream_close_callback fires (also during mem_send) so that
+    // writableFinished is true when the close event is emitted.
+    if let Some(stream) = session.find_stream(stream_id) {
+      stream.complete_shutdown();
+    }
   }
 
   amount as CSsizeT
