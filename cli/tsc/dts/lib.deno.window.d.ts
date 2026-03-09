@@ -6,6 +6,7 @@
 /// <reference lib="deno.webstorage" />
 /// <reference lib="esnext" />
 /// <reference lib="deno.cache" />
+/// <reference lib="deno.temporal" />
 
 /**
  * Defines the mapping between event names and their corresponding event types

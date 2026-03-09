@@ -3,8 +3,10 @@
 
 import { dirname, isAbsolute, join, parse, resolve, sep } from "node:path";
 import { copyFilePromise } from "ext:deno_node/_fs/_fs_copy.ts";
-import { mkdirPromise } from "ext:deno_node/_fs/_fs_mkdir.ts";
-import { opendirPromise } from "ext:deno_node/_fs/_fs_opendir.ts";
+import {
+  mkdirPromise,
+  opendirPromise,
+} from "ext:deno_node/internal/fs/promises.ts";
 import { readlinkPromise } from "ext:deno_node/_fs/_fs_readlink.ts";
 import { symlinkPromise } from "ext:deno_node/_fs/_fs_symlink.ts";
 import { utimesPromise } from "ext:deno_node/_fs/_fs_utimes.ts";
