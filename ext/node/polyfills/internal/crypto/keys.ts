@@ -42,7 +42,6 @@ import {
   ERR_CRYPTO_INVALID_KEY_OBJECT_TYPE,
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
-  NodeError,
 } from "ext:deno_node/internal/errors.ts";
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import type {
@@ -658,22 +657,12 @@ export function createPrivateKey(
       throw new TypeError(`Can not create private key from ${type} key`);
     }
   } else {
-    let handle;
-    try {
-      handle = op_node_create_private_key(
-        res.data,
-        res.format,
-        res.type ?? "",
-        res.passphrase,
-      );
-    } catch (e) {
-      if (
-        e instanceof TypeError && e.message === "unsupported private key oid"
-      ) {
-        throw new NodeError("ERR_OSSL_UNSUPPORTED", "unsupported");
-      }
-      throw e;
-    }
+    const handle = op_node_create_private_key(
+      res.data,
+      res.format,
+      res.type ?? "",
+      res.passphrase,
+    );
     return new PrivateKeyObject(handle);
   }
 }
@@ -696,21 +685,11 @@ export function createPublicKey(
       throw new TypeError(`Can not create private key from ${type} key`);
     }
   } else {
-    let handle;
-    try {
-      handle = op_node_create_public_key(
-        res.data,
-        res.format,
-        res.type ?? "",
-      );
-    } catch (e) {
-      if (
-        e instanceof TypeError && e.message === "unsupported private key oid"
-      ) {
-        throw new NodeError("ERR_OSSL_EVP_DECODE_ERROR", "unsupported");
-      }
-      throw e;
-    }
+    const handle = op_node_create_public_key(
+      res.data,
+      res.format,
+      res.type ?? "",
+    );
     return new PublicKeyObject(handle);
   }
 }

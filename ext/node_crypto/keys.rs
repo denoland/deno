@@ -570,6 +570,12 @@ pub enum EdRawError {
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
+#[class(generic)]
+#[error("unsupported")]
+#[property("code" = "ERR_OSSL_UNSUPPORTED")]
+pub struct UnsupportedPrivateKeyOidError;
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 #[class(type)]
 pub enum AsymmetricPrivateKeyError {
   #[error("invalid PEM private key: not valid utf8 starting at byte {0}")]
@@ -621,8 +627,13 @@ pub enum AsymmetricPrivateKeyError {
   InvalidEd25519PrivateKey,
   #[error("missing dh parameters")]
   MissingDhParameters,
-  #[error("unsupported private key oid")]
-  UnsupportedPrivateKeyOid,
+  #[class(inherit)]
+  #[error(transparent)]
+  UnsupportedPrivateKeyOid(
+    #[from]
+    #[inherit]
+    UnsupportedPrivateKeyOidError,
+  ),
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -714,8 +725,9 @@ pub enum AsymmetricPublicKeyError {
   #[class(type)]
   #[error("malformed or missing public key in dh spki")]
   MalformedOrMissingPublicKeyInDhSpki,
-  #[class(type)]
-  #[error("unsupported private key oid")]
+  #[class(generic)]
+  #[error("unsupported")]
+  #[property("code" = "ERR_OSSL_EVP_DECODE_ERROR")]
   UnsupportedPrivateKeyOid,
 }
 
@@ -914,7 +926,7 @@ impl KeyObjectHandle {
           params,
         })
       }
-      _ => return Err(AsymmetricPrivateKeyError::UnsupportedPrivateKeyOid),
+      _ => return Err(UnsupportedPrivateKeyOidError.into()),
     };
 
     Ok(KeyObjectHandle::AsymmetricPrivate(private_key))
