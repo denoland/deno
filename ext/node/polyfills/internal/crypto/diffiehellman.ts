@@ -15,12 +15,12 @@ import {
   op_node_gen_prime,
 } from "ext:core/ops";
 
-import { notImplemented } from "ext:deno_node/_utils.ts";
 import {
   isAnyArrayBuffer,
   isArrayBufferView,
 } from "ext:deno_node/internal/util/types.ts";
 import {
+  ERR_CRYPTO_ECDH_INVALID_FORMAT,
   ERR_CRYPTO_UNKNOWN_DH_GROUP,
   ERR_INVALID_ARG_TYPE,
   NodeError,
@@ -1230,13 +1230,55 @@ export class ECDHImpl {
   }
 
   static convertKey(
-    _key: BinaryLike,
-    _curve: string,
-    _inputEncoding?: BinaryToTextEncoding,
-    _outputEncoding?: "latin1" | "hex" | "base64" | "base64url",
-    _format?: "uncompressed" | "compressed" | "hybrid",
+    key: BinaryLike,
+    curve: string,
+    inputEncoding?: BinaryToTextEncoding,
+    outputEncoding?: "latin1" | "hex" | "base64" | "base64url",
+    format?: "uncompressed" | "compressed" | "hybrid",
   ): Buffer | string {
-    notImplemented("crypto.ECDH.prototype.convertKey");
+    validateString(curve, "curve");
+    const buf = getArrayBufferOrView(key, "key", inputEncoding);
+
+    let compress: boolean;
+    if (format) {
+      if (format === "compressed") {
+        compress = true;
+      } else if (format === "hybrid" || format === "uncompressed") {
+        compress = false;
+      } else {
+        throw new ERR_CRYPTO_ECDH_INVALID_FORMAT(format);
+      }
+    } else {
+      compress = false;
+    }
+
+    let result;
+    try {
+      result = Buffer.from(
+        op_node_ecdh_encode_pubkey(curve, buf, compress),
+      );
+    } catch (e) {
+      if (e instanceof TypeError && e.message === "Unsupported curve") {
+        throw new TypeError("Invalid EC curve name");
+      }
+      throw new Error("Failed to convert Buffer to EC_POINT");
+    }
+
+    if (format === "hybrid") {
+      // Hybrid format: same as uncompressed but first byte is 06 or 07
+      // Get compressed form to determine parity
+      const compressedBuf = Buffer.from(
+        op_node_ecdh_encode_pubkey(curve, buf, true),
+      );
+      // compressed first byte is 02 (even) or 03 (odd)
+      // hybrid first byte is 06 (even) or 07 (odd)
+      result[0] = compressedBuf[0] + 4;
+    }
+
+    if (outputEncoding && outputEncoding !== "buffer") {
+      return result.toString(outputEncoding);
+    }
+    return result;
   }
 
   computeSecret(otherPublicKey: ArrayBufferView): Buffer;
@@ -1312,8 +1354,16 @@ export class ECDHImpl {
     const pubbuf = Buffer.from(op_node_ecdh_encode_pubkey(
       this.#curve.name,
       this.#pubbuf,
-      format == "compressed",
+      format === "compressed",
     ));
+    if (format === "hybrid") {
+      const compressedBuf = Buffer.from(op_node_ecdh_encode_pubkey(
+        this.#curve.name,
+        this.#pubbuf,
+        true,
+      ));
+      pubbuf[0] = compressedBuf[0] + 4;
+    }
     if (encoding !== undefined) {
       return pubbuf.toString(encoding);
     }
@@ -1326,7 +1376,9 @@ export class ECDHImpl {
     privateKey: ArrayBufferView | string,
     encoding?: BinaryToTextEncoding,
   ): Buffer | string {
-    this.#privbuf = privateKey;
+    this.#privbuf = typeof privateKey === "string"
+      ? Buffer.from(privateKey, encoding)
+      : Buffer.from(privateKey);
     this.#pubbuf = Buffer.alloc(this.#curve.publicKeySize);
 
     op_node_ecdh_compute_public_key(
@@ -1343,6 +1395,7 @@ export class ECDHImpl {
 }
 
 ECDH.prototype = ECDHImpl.prototype;
+ECDH.convertKey = ECDHImpl.convertKey;
 
 export function diffieHellman(options: {
   privateKey: KeyObject;
