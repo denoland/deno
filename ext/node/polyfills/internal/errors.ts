@@ -22,6 +22,7 @@ const {
   ArrayPrototypeJoin,
   ArrayPrototypePush,
   ArrayPrototypePop,
+  ArrayPrototypeSlice,
   ArrayPrototypeSplice,
   Error,
   ErrorPrototype,
@@ -54,6 +55,7 @@ const {
   StringPrototypeToString,
   Symbol,
   SymbolFor,
+  SymbolPrototypeToString,
   SyntaxError,
   SyntaxErrorPrototype,
   TypeError,
@@ -2010,10 +2012,15 @@ export class ERR_SOCKET_BAD_PORT extends NodeRangeError {
     );
 
     const operator = allowZero ? ">=" : ">";
+    const portStr = typeof port === "symbol"
+      ? SymbolPrototypeToString(port)
+      : typeof port === "bigint"
+      ? `${port}n`
+      : String(port);
 
     super(
       "ERR_SOCKET_BAD_PORT",
-      `${name} should be ${operator} 0 and < 65536. Received ${port}.`,
+      `${name} should be ${operator} 0 and < 65536. Received ${portStr}.`,
     );
   }
 }
