@@ -262,8 +262,11 @@
     "parallel/test-crypto-dh-shared.js": {},
     "parallel/test-crypto-domain.js": {},
     "parallel/test-crypto-domains.js": {},
+    "parallel/test-crypto-ecdh-convert-key.js": {},
     "parallel/test-crypto-ecb.js": {},
     "parallel/test-crypto-from-binary.js": {},
+    "parallel/test-crypto-getcipherinfo.js": {},
+    "parallel/test-crypto-hmac.js": {},
     "parallel/test-crypto-keygen-async-elliptic-curve-jwk-rsa.js": {},
     "parallel/test-crypto-keygen-dh-classic.js": {},
     "parallel/test-crypto-keygen-duplicate-deprecated-option.js": {},
@@ -273,6 +276,15 @@
     "parallel/test-crypto-keygen-non-standard-public-exponent.js": {},
     "parallel/test-crypto-keygen-rfc8017-9-1.js": {},
     "parallel/test-crypto-keygen-rfc8017-a-2-3.js": {},
+    "parallel/test-crypto-key-objects-messageport.js": {
+      "exitCode": 1,
+      "reason": "KeyObject structured clone (MessagePort serialization) not yet implemented"
+    },
+    "parallel/test-crypto-key-objects-to-crypto-key.js": {
+      "exitCode": 1,
+      "output": "[WILDCARD]Not implemented: ed448[WILDCARD]",
+      "reason": "Ed448 key generation not yet implemented"
+    },
     "parallel/test-crypto-lazy-transform-writable.js": {},
     "parallel/test-crypto-oneshot-hash.js": {},
     "parallel/test-crypto-op-during-process-exit.js": {},

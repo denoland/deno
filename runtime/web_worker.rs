@@ -645,10 +645,7 @@ impl WebWorker {
     options.startup_snapshot.as_ref().expect("A user snapshot was not provided, even though 'only_snapshotted_js_sources' is used.");
 
     // Get our op metrics
-    let (op_summary_metrics, op_metrics_factory_fn) = create_op_metrics(
-      options.bootstrap.enable_op_summary_metrics,
-      options.trace_ops,
-    );
+    let op_metrics_factory_fn = create_op_metrics(options.trace_ops);
 
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(services.module_loader),
@@ -682,10 +679,6 @@ impl WebWorker {
       custom_module_evaluation_cb: None,
       eval_context_code_cache_cbs: None,
     });
-
-    if let Some(op_summary_metrics) = op_summary_metrics {
-      js_runtime.op_state().borrow_mut().put(op_summary_metrics);
-    }
 
     {
       let state = js_runtime.op_state();
@@ -874,16 +867,9 @@ impl WebWorker {
 
   pub fn maybe_setup_cpu_profiler(&mut self) -> Option<CpuProfiler> {
     let config = self.maybe_cpu_prof_config.as_ref()?;
-
-    // Generate filename with worker ID to make it unique
-    let filename = config.name.clone().unwrap_or_else(|| {
-      let timestamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_millis();
-      let pid = std::process::id();
-      format!("CPU.{}.{}.{}.cpuprofile", timestamp, pid, self.id)
-    });
+    let worker_id = self.id.to_string();
+    let filename =
+      crate::cpu_profiler::cpu_prof_filename(config, Some(&worker_id));
 
     let mut cpu_profiler = CpuProfiler::new(
       &mut self.js_runtime,

@@ -8,15 +8,47 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::AtomicI32;
+use std::time::SystemTime;
 
 /// Configuration for CPU profiling that can be passed to workers.
 #[derive(Clone, Debug)]
 pub struct CpuProfilerConfig {
   pub dir: PathBuf,
   pub name: Option<String>,
-  pub interval: i32,
+  pub interval: u32,
   pub md: bool,
   pub flamegraph: bool,
+}
+
+/// Generate a default CPU profile filename using timestamp and PID.
+/// Optionally includes a suffix (e.g. worker ID) for uniqueness.
+pub fn cpu_prof_default_filename(suffix: Option<&str>) -> String {
+  let timestamp = SystemTime::now()
+    .duration_since(SystemTime::UNIX_EPOCH)
+    .unwrap_or_default()
+    .as_millis();
+  let pid = std::process::id();
+  match suffix {
+    Some(s) => format!("CPU.{}.{}.{}.cpuprofile", timestamp, pid, s),
+    None => format!("CPU.{}.{}.cpuprofile", timestamp, pid),
+  }
+}
+
+/// Generate a CPU profile filename from config, appending a suffix for workers
+/// when a custom name is provided.
+pub fn cpu_prof_filename(
+  config: &CpuProfilerConfig,
+  suffix: Option<&str>,
+) -> String {
+  match (&config.name, suffix) {
+    (Some(name), Some(s)) => {
+      // Always make worker filenames unique even with custom names
+      let stem = name.strip_suffix(".cpuprofile").unwrap_or(name);
+      format!("{}.{}.cpuprofile", stem, s)
+    }
+    (Some(name), None) => name.clone(),
+    (None, _) => cpu_prof_default_filename(suffix),
+  }
 }
 
 use deno_core::InspectorSessionKind;
@@ -38,9 +70,12 @@ fn next_msg_id() -> i32 {
 pub struct CpuProfilerInner {
   dir: PathBuf,
   filename: String,
-  interval: i32,
+  interval: u32,
   generate_md: bool,
   generate_flamegraph: bool,
+  /// Set by `stop_profiling` and checked by `callback`. This is safe because
+  /// the inspector processes messages on a single thread, so `stop_profiling`
+  /// always sets this before the callback fires for that message.
   profile_msg_id: Option<i32>,
 }
 
@@ -51,7 +86,7 @@ impl CpuProfilerState {
   pub fn new(
     dir: PathBuf,
     filename: String,
-    interval: i32,
+    interval: u32,
     generate_md: bool,
     generate_flamegraph: bool,
   ) -> Self {
@@ -143,7 +178,7 @@ impl CpuProfilerState {
       let md_filename = inner.filename.replace(".cpuprofile", ".md");
       let md_filepath = inner.dir.join(&md_filename);
       if let Err(err) =
-        generate_markdown_report(profile, &md_filepath, inner.interval)
+        generate_markdown_report(profile, &md_filepath, inner.interval as i64)
       {
         log::error!(
           "Failed to generate markdown report at {:?}, reason: {:?}",
@@ -171,7 +206,7 @@ impl CpuProfilerState {
 pub struct CpuProfiler {
   pub state: CpuProfilerState,
   session: LocalInspectorSession,
-  interval: i32,
+  interval: u32,
 }
 
 impl CpuProfiler {
@@ -179,7 +214,7 @@ impl CpuProfiler {
     js_runtime: &mut JsRuntime,
     cpu_prof_dir: PathBuf,
     filename: String,
-    interval: i32,
+    interval: u32,
     generate_md: bool,
     generate_flamegraph: bool,
   ) -> Self {
@@ -235,6 +270,9 @@ impl CpuProfiler {
     log::debug!("CPU profiler started with interval: {}us", self.interval);
   }
 
+  // fs::create_dir_all is on the Deno project's clippy disallowed list
+  // (preferring the sys_traits abstraction), but the CPU profiler runs in the
+  // runtime crate where using std::fs directly is acceptable.
   #[allow(clippy::disallowed_methods)]
   pub fn stop_profiling(&mut self) -> Result<(), CoreError> {
     fs::create_dir_all(&self.state.0.lock().dir)?;
@@ -302,8 +340,8 @@ struct FunctionStats {
 
 fn generate_markdown_report(
   profile: &serde_json::Value,
-  filepath: &PathBuf,
-  interval: i32,
+  filepath: &std::path::Path,
+  interval_us: i64,
 ) -> std::io::Result<()> {
   let profile: CpuProfile = match serde_json::from_value(profile.clone()) {
     Ok(p) => p,
@@ -337,8 +375,6 @@ fn generate_markdown_report(
       parent_map.insert(child_id, node.id);
     }
   }
-
-  let interval_us = interval as i64;
 
   fn make_key(node: &ProfileNode) -> String {
     format!(
@@ -424,7 +460,7 @@ fn generate_markdown_report(
   md.push_str("| --- | --- | --- | --- |\n");
   md.push_str(&format!(
     "| {:.2}ms | {} | {}us | {} |\n\n",
-    duration_ms, total_samples, interval, total_functions
+    duration_ms, total_samples, interval_us, total_functions
   ));
 
   // Top 10 summary
@@ -671,19 +707,26 @@ fn format_location(url: &str, line_number: i32) -> String {
   if url.is_empty() {
     "[native code]".to_string()
   } else {
-    // Shorten the URL for display
-    let short_url = url.rsplit('/').next().unwrap_or(url);
+    // Keep last two path segments for context (e.g. "src/foo.js" not just "foo.js")
+    let short_url = {
+      let mut parts = url.rsplitn(3, '/');
+      let file = parts.next().unwrap_or(url);
+      match parts.next() {
+        Some(parent) => format!("{}/{}", parent, file),
+        None => file.to_string(),
+      }
+    };
     if line_number >= 0 {
       format!("{}:{}", short_url, line_number + 1)
     } else {
-      short_url.to_string()
+      short_url
     }
   }
 }
 
 fn generate_flamegraph_svg(
   profile: &serde_json::Value,
-  filepath: &PathBuf,
+  filepath: &std::path::Path,
 ) -> std::io::Result<()> {
   let profile: CpuProfile = match serde_json::from_value(profile.clone()) {
     Ok(p) => p,
@@ -1300,6 +1343,6 @@ mod cdp {
   #[derive(Debug, Serialize)]
   #[serde(rename_all = "camelCase")]
   pub struct SetSamplingIntervalArgs {
-    pub interval: i32,
+    pub interval: u32,
   }
 }

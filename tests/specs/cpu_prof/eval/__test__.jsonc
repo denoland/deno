@@ -1,15 +1,11 @@
 {
   "tempDir": true,
   "tests": {
-    "eval_basic": {
+    "eval_cpu_prof": {
       "steps": [
         {
-          "args": [
-            "eval",
-            "--cpu-prof-dir=.",
-            "function fib(n){if(n<=1)return n;return fib(n-1)+fib(n-2)}; console.log(fib(30))"
-          ],
-          "output": "832040\n"
+          "args": "eval --cpu-prof-dir=. console.log(42)",
+          "output": "42\n"
         },
         {
           "args": "run --allow-read verify.js",

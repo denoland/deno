@@ -978,64 +978,33 @@ impl CliOptions {
   }
 
   pub fn cpu_prof_dir(&self) -> Option<PathBuf> {
-    let (cpu_prof, cpu_prof_dir) = match &self.flags.subcommand {
-      DenoSubcommand::Run(flags) => {
-        (flags.cpu_prof, flags.cpu_prof_dir.as_deref())
-      }
-      DenoSubcommand::Eval(flags) => {
-        (flags.cpu_prof, flags.cpu_prof_dir.as_deref())
-      }
-      _ => return None,
-    };
-    if let Some(dir) = cpu_prof_dir {
-      Some(self.initial_cwd.join(dir))
-    } else if cpu_prof {
-      Some(self.initial_cwd.clone())
-    } else {
-      None
-    }
+    self.flags.cpu_prof.as_ref().map(|f| {
+      f.dir
+        .as_ref()
+        .map(|d| self.initial_cwd.join(d))
+        .unwrap_or_else(|| self.initial_cwd.clone())
+    })
   }
 
   pub fn cpu_prof_name(&self) -> Option<String> {
-    match &self.flags.subcommand {
-      DenoSubcommand::Run(flags) => flags.cpu_prof_name.clone(),
-      DenoSubcommand::Eval(flags) => flags.cpu_prof_name.clone(),
-      _ => None,
-    }
+    self.flags.cpu_prof.as_ref().and_then(|f| f.name.clone())
   }
 
-  pub fn cpu_prof_interval(&self) -> i32 {
-    match &self.flags.subcommand {
-      DenoSubcommand::Run(flags) => flags.cpu_prof_interval.unwrap_or(1000),
-      DenoSubcommand::Eval(flags) => flags.cpu_prof_interval.unwrap_or(1000),
-      _ => 1000,
-    }
+  pub fn cpu_prof_interval(&self) -> u32 {
+    self
+      .flags
+      .cpu_prof
+      .as_ref()
+      .and_then(|f| f.interval)
+      .unwrap_or(1000)
   }
 
   pub fn cpu_prof_md(&self) -> bool {
-    match &self.flags.subcommand {
-      DenoSubcommand::Run(flags) => flags.cpu_prof_md,
-      DenoSubcommand::Eval(flags) => flags.cpu_prof_md,
-      _ => false,
-    }
+    self.flags.cpu_prof.as_ref().is_some_and(|f| f.md)
   }
 
   pub fn cpu_prof_flamegraph(&self) -> bool {
-    match &self.flags.subcommand {
-      DenoSubcommand::Run(flags) => flags.cpu_prof_flamegraph,
-      DenoSubcommand::Eval(flags) => flags.cpu_prof_flamegraph,
-      _ => false,
-    }
-  }
-
-  pub fn enable_op_summary_metrics(&self) -> bool {
-    self.flags.enable_op_summary_metrics
-      || matches!(
-        self.flags.subcommand,
-        DenoSubcommand::Test(_)
-          | DenoSubcommand::Repl(_)
-          | DenoSubcommand::Jupyter(_)
-      )
+    self.flags.cpu_prof.as_ref().is_some_and(|f| f.flamegraph)
   }
 
   pub fn enable_testing_features(&self) -> bool {

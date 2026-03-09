@@ -232,7 +232,6 @@ pub enum ResolveNpmBinaryEntrypointFallbackError {
 pub struct LibMainWorkerOptions {
   pub argv: Vec<String>,
   pub log_level: WorkerLogLevel,
-  pub enable_op_summary_metrics: bool,
   pub enable_raw_imports: bool,
   pub enable_testing_features: bool,
   pub has_node_modules_dir: bool,
@@ -430,7 +429,6 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
             .map(|p| p.get())
             .unwrap_or(1),
           log_level: shared.options.log_level,
-          enable_op_summary_metrics: shared.options.enable_op_summary_metrics,
           enable_testing_features: shared.options.enable_testing_features,
           locale: deno_core::v8::icu::get_language_tag(),
           location: Some(args.main_module),
@@ -659,7 +657,6 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
           .map(|p| p.get())
           .unwrap_or(1),
         log_level: shared.options.log_level,
-        enable_op_summary_metrics: shared.options.enable_op_summary_metrics,
         enable_testing_features: shared.options.enable_testing_features,
         locale: deno_core::v8::icu::get_language_tag(),
         location: shared.options.location.clone(),

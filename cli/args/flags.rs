@@ -263,16 +263,19 @@ pub struct DocFlags {
   pub filter: Option<String>,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Default)]
+pub struct CpuProfFlags {
+  pub dir: Option<String>,
+  pub name: Option<String>,
+  pub interval: Option<u32>,
+  pub md: bool,
+  pub flamegraph: bool,
+}
+
 #[derive(Clone, Default, Debug, Eq, PartialEq)]
 pub struct EvalFlags {
   pub print: bool,
   pub code: String,
-  pub cpu_prof: bool,
-  pub cpu_prof_dir: Option<String>,
-  pub cpu_prof_name: Option<String>,
-  pub cpu_prof_interval: Option<i32>,
-  pub cpu_prof_md: bool,
-  pub cpu_prof_flamegraph: bool,
 }
 
 #[derive(Clone, Default, Debug, Eq, PartialEq)]
@@ -417,12 +420,6 @@ pub struct RunFlags {
   pub watch: Option<WatchFlagsWithPaths>,
   pub bare: bool,
   pub coverage_dir: Option<String>,
-  pub cpu_prof: bool,
-  pub cpu_prof_dir: Option<String>,
-  pub cpu_prof_name: Option<String>,
-  pub cpu_prof_interval: Option<i32>,
-  pub cpu_prof_md: bool,
-  pub cpu_prof_flamegraph: bool,
   pub print_task_list: bool,
 }
 
@@ -434,12 +431,6 @@ impl RunFlags {
       watch: None,
       bare: false,
       coverage_dir: None,
-      cpu_prof: false,
-      cpu_prof_dir: None,
-      cpu_prof_name: None,
-      cpu_prof_interval: None,
-      cpu_prof_md: false,
-      cpu_prof_flamegraph: false,
       print_task_list: false,
     }
   }
@@ -892,7 +883,6 @@ pub struct Flags {
   pub config_flag: ConfigFlag,
   pub node_modules_dir: Option<NodeModulesDirMode>,
   pub vendor: Option<bool>,
-  pub enable_op_summary_metrics: bool,
   pub enable_testing_features: bool,
   pub ext: Option<String>,
   /// Flags that aren't exposed in the CLI, but are used internally.
@@ -926,6 +916,7 @@ pub struct Flags {
   pub preload: Vec<String>,
   pub require: Vec<String>,
   pub tunnel: bool,
+  pub cpu_prof: Option<CpuProfFlags>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Default, Serialize, Deserialize)]
@@ -3131,31 +3122,27 @@ This command has implicit access to all permissions.
     UnstableArgsConfig::ResolutionAndRuntime,
   )
   .defer(|cmd| {
-    runtime_args(cmd, false, true, true)
-      .arg(check_arg(false))
-      .arg(executable_ext_arg())
-      .arg(
-        Arg::new("print")
-          .long("print")
-          .short('p')
-          .help("print result to stdout")
-          .action(ArgAction::SetTrue),
-      )
-      .arg(
-        Arg::new("code_arg")
-          .num_args(1..)
-          .action(ArgAction::Append)
-          .help("Code to evaluate")
-          .value_name("CODE_ARG")
-          .required_unless_present("help"),
-      )
-      .arg(env_file_arg())
-      .arg(cpu_prof_arg())
-      .arg(cpu_prof_dir_arg())
-      .arg(cpu_prof_name_arg())
-      .arg(cpu_prof_interval_arg())
-      .arg(cpu_prof_md_arg())
-      .arg(cpu_prof_flamegraph_arg())
+    cpu_prof_args(
+      runtime_args(cmd, false, true, true)
+        .arg(check_arg(false))
+        .arg(executable_ext_arg())
+        .arg(
+          Arg::new("print")
+            .long("print")
+            .short('p')
+            .help("print result to stdout")
+            .action(ArgAction::SetTrue),
+        )
+        .arg(
+          Arg::new("code_arg")
+            .num_args(1..)
+            .action(ArgAction::Append)
+            .help("Code to evaluate")
+            .value_name("CODE_ARG")
+            .required_unless_present("help"),
+        )
+        .arg(env_file_arg()),
+    )
   })
 }
 
@@ -4052,28 +4039,24 @@ TypeScript is supported, however it is not type-checked, only transpiled."
 }
 
 fn run_args(command: Command, top_level: bool) -> Command {
-  runtime_args(command, true, true, true)
-    .arg(check_arg(false))
-    .arg(watch_arg(true))
-    .arg(hmr_arg(true))
-    .arg(watch_exclude_arg())
-    .arg(no_clear_screen_arg())
-    .arg(executable_ext_arg())
-    .arg(if top_level {
-      script_arg().trailing_var_arg(true).hide(true)
-    } else {
-      script_arg().trailing_var_arg(true)
-    })
-    .arg(env_file_arg())
-    .arg(no_code_cache_arg())
-    .arg(coverage_arg())
-    .arg(cpu_prof_arg())
-    .arg(cpu_prof_dir_arg())
-    .arg(cpu_prof_name_arg())
-    .arg(cpu_prof_interval_arg())
-    .arg(cpu_prof_md_arg())
-    .arg(cpu_prof_flamegraph_arg())
-    .arg(tunnel_arg())
+  cpu_prof_args(
+    runtime_args(command, true, true, true)
+      .arg(check_arg(false))
+      .arg(watch_arg(true))
+      .arg(hmr_arg(true))
+      .arg(watch_exclude_arg())
+      .arg(no_clear_screen_arg())
+      .arg(executable_ext_arg())
+      .arg(if top_level {
+        script_arg().trailing_var_arg(true).hide(true)
+      } else {
+        script_arg().trailing_var_arg(true)
+      })
+      .arg(env_file_arg())
+      .arg(no_code_cache_arg())
+      .arg(coverage_arg()),
+  )
+  .arg(tunnel_arg())
 }
 
 #[cfg(test)]
@@ -4171,7 +4154,8 @@ fn serve_host_validator(host: &str) -> Result<String, String> {
 }
 
 fn serve_subcommand() -> Command {
-  runtime_args(command("serve", cstr!("Run a server defined in a main module
+  cpu_prof_args(
+    runtime_args(command("serve", cstr!("Run a server defined in a main module
 
 The serve command uses the default exports of the main module to determine which servers to start.
 
@@ -4214,8 +4198,9 @@ Start a server defined in server.ts, watching for changes and running on port 50
         .trailing_var_arg(true),
     )
     .arg(env_file_arg())
-    .arg(no_code_cache_arg())
-    .arg(tunnel_arg())
+    .arg(no_code_cache_arg()),
+  )
+  .arg(tunnel_arg())
 }
 
 fn task_subcommand() -> Command {
@@ -5557,10 +5542,46 @@ fn coverage_arg() -> Arg {
     .value_hint(ValueHint::AnyPath)
 }
 
+fn cpu_prof_args(cmd: Command) -> Command {
+  cmd
+    .arg(cpu_prof_arg())
+    .arg(cpu_prof_dir_arg())
+    .arg(cpu_prof_name_arg())
+    .arg(cpu_prof_interval_arg())
+    .arg(cpu_prof_md_arg())
+    .arg(cpu_prof_flamegraph_arg())
+}
+
+fn cpu_prof_parse(matches: &mut ArgMatches) -> Option<CpuProfFlags> {
+  let enabled = matches.get_flag("cpu-prof");
+  let dir = matches.remove_one::<String>("cpu-prof-dir");
+  let name = matches.remove_one::<String>("cpu-prof-name");
+  let interval = matches.remove_one::<u32>("cpu-prof-interval");
+  let md = matches.get_flag("cpu-prof-md");
+  let flamegraph = matches.get_flag("cpu-prof-flamegraph");
+  if enabled
+    || dir.is_some()
+    || name.is_some()
+    || interval.is_some()
+    || md
+    || flamegraph
+  {
+    Some(CpuProfFlags {
+      dir,
+      name,
+      interval,
+      md,
+      flamegraph,
+    })
+  } else {
+    None
+  }
+}
+
 fn cpu_prof_arg() -> Arg {
   Arg::new("cpu-prof")
     .long("cpu-prof")
-    .help("Start the V8 CPU profiler on startup and write the profile to disk on exit")
+    .help("Start the V8 CPU profiler on startup and write the profile to disk on exit. Profiles are written to the current directory by default")
     .action(ArgAction::SetTrue)
 }
 
@@ -5568,7 +5589,7 @@ fn cpu_prof_dir_arg() -> Arg {
   Arg::new("cpu-prof-dir")
     .long("cpu-prof-dir")
     .value_name("DIR")
-    .help("Directory where the V8 CPU profiles will be written (defaults to current directory)")
+    .help("Directory where the V8 CPU profiles will be written. Implicitly enables --cpu-prof")
     .value_hint(ValueHint::DirPath)
     .value_parser(value_parser!(String))
 }
@@ -5586,7 +5607,7 @@ fn cpu_prof_interval_arg() -> Arg {
     .long("cpu-prof-interval")
     .value_name("MICROSECONDS")
     .help("Sampling interval in microseconds for CPU profiling (default: 1000)")
-    .value_parser(value_parser!(i32))
+    .value_parser(value_parser!(u32))
 }
 
 fn cpu_prof_md_arg() -> Arg {
@@ -6448,29 +6469,14 @@ fn eval_parse(
   flags.allow_all();
 
   ext_arg_parse(flags, matches);
+  flags.cpu_prof = cpu_prof_parse(matches);
 
   let print = matches.get_flag("print");
   let mut code_args = matches.remove_many::<String>("code_arg").unwrap();
   let code = code_args.next().unwrap();
   flags.argv.extend(code_args);
 
-  let cpu_prof = matches.get_flag("cpu-prof");
-  let cpu_prof_dir = matches.remove_one::<String>("cpu-prof-dir");
-  let cpu_prof_name = matches.remove_one::<String>("cpu-prof-name");
-  let cpu_prof_interval = matches.remove_one::<i32>("cpu-prof-interval");
-  let cpu_prof_md = matches.get_flag("cpu-prof-md");
-  let cpu_prof_flamegraph = matches.get_flag("cpu-prof-flamegraph");
-
-  flags.subcommand = DenoSubcommand::Eval(EvalFlags {
-    print,
-    code,
-    cpu_prof,
-    cpu_prof_dir,
-    cpu_prof_name,
-    cpu_prof_interval,
-    cpu_prof_md,
-    cpu_prof_flamegraph,
-  });
+  flags.subcommand = DenoSubcommand::Eval(EvalFlags { print, code });
   Ok(())
 }
 
@@ -7022,12 +7028,7 @@ fn run_parse(
   flags.tunnel = matches.get_flag("tunnel");
   flags.code_cache_enabled = !matches.get_flag("no-code-cache");
   let coverage_dir = matches.remove_one::<String>("coverage");
-  let cpu_prof = matches.get_flag("cpu-prof");
-  let cpu_prof_dir = matches.remove_one::<String>("cpu-prof-dir");
-  let cpu_prof_name = matches.remove_one::<String>("cpu-prof-name");
-  let cpu_prof_interval = matches.remove_one::<i32>("cpu-prof-interval");
-  let cpu_prof_md = matches.get_flag("cpu-prof-md");
-  let cpu_prof_flamegraph = matches.get_flag("cpu-prof-flamegraph");
+  flags.cpu_prof = cpu_prof_parse(matches);
 
   match matches.remove_many::<String>("script_arg") {
     Some(mut script_arg) => {
@@ -7038,12 +7039,6 @@ fn run_parse(
         watch: watch_arg_parse_with_paths(matches)?,
         bare,
         coverage_dir,
-        cpu_prof,
-        cpu_prof_dir,
-        cpu_prof_name,
-        cpu_prof_interval,
-        cpu_prof_md,
-        cpu_prof_flamegraph,
         print_task_list: false,
       });
     }
@@ -7060,12 +7055,6 @@ fn run_parse(
           watch: None,
           bare: false,
           coverage_dir: None,
-          cpu_prof: false,
-          cpu_prof_dir: None,
-          cpu_prof_name: None,
-          cpu_prof_interval: None,
-          cpu_prof_md: false,
-          cpu_prof_flamegraph: false,
           print_task_list: true,
         });
       }
@@ -7106,6 +7095,7 @@ fn serve_parse(
   flags.argv.extend(script_arg);
 
   ext_arg_parse(flags, matches);
+  flags.cpu_prof = cpu_prof_parse(matches);
 
   flags.subcommand = DenoSubcommand::Serve(ServeFlags {
     script,
@@ -8186,12 +8176,6 @@ mod tests {
           }),
           bare: false,
           coverage_dir: None,
-          cpu_prof: false,
-          cpu_prof_dir: None,
-          cpu_prof_name: None,
-          cpu_prof_interval: None,
-          cpu_prof_md: false,
-          cpu_prof_flamegraph: false,
           print_task_list: false,
         }),
         code_cache_enabled: true,
@@ -8219,12 +8203,6 @@ mod tests {
           }),
           bare: true,
           coverage_dir: None,
-          cpu_prof: false,
-          cpu_prof_dir: None,
-          cpu_prof_name: None,
-          cpu_prof_interval: None,
-          cpu_prof_md: false,
-          cpu_prof_flamegraph: false,
           print_task_list: false,
         }),
         code_cache_enabled: true,
@@ -8253,12 +8231,6 @@ mod tests {
           }),
           bare: false,
           coverage_dir: None,
-          cpu_prof: false,
-          cpu_prof_dir: None,
-          cpu_prof_name: None,
-          cpu_prof_interval: None,
-          cpu_prof_md: false,
-          cpu_prof_flamegraph: false,
           print_task_list: false,
         }),
         code_cache_enabled: true,
@@ -8287,12 +8259,6 @@ mod tests {
           }),
           bare: false,
           coverage_dir: None,
-          cpu_prof: false,
-          cpu_prof_dir: None,
-          cpu_prof_name: None,
-          cpu_prof_interval: None,
-          cpu_prof_md: false,
-          cpu_prof_flamegraph: false,
           print_task_list: false,
         }),
         code_cache_enabled: true,
@@ -8321,12 +8287,6 @@ mod tests {
           }),
           bare: false,
           coverage_dir: None,
-          cpu_prof: false,
-          cpu_prof_dir: None,
-          cpu_prof_name: None,
-          cpu_prof_interval: None,
-          cpu_prof_md: false,
-          cpu_prof_flamegraph: false,
           print_task_list: false,
         }),
         code_cache_enabled: true,
@@ -8356,12 +8316,6 @@ mod tests {
           }),
           bare: true,
           coverage_dir: None,
-          cpu_prof: false,
-          cpu_prof_dir: None,
-          cpu_prof_name: None,
-          cpu_prof_interval: None,
-          cpu_prof_md: false,
-          cpu_prof_flamegraph: false,
           print_task_list: false,
         }),
         code_cache_enabled: true,
@@ -8394,12 +8348,6 @@ mod tests {
           }),
           bare: false,
           coverage_dir: None,
-          cpu_prof: false,
-          cpu_prof_dir: None,
-          cpu_prof_name: None,
-          cpu_prof_interval: None,
-          cpu_prof_md: false,
-          cpu_prof_flamegraph: false,
           print_task_list: false,
         }),
         code_cache_enabled: true,
@@ -8431,12 +8379,6 @@ mod tests {
           }),
           bare: true,
           coverage_dir: None,
-          cpu_prof: false,
-          cpu_prof_dir: None,
-          cpu_prof_name: None,
-          cpu_prof_interval: None,
-          cpu_prof_md: false,
-          cpu_prof_flamegraph: false,
           print_task_list: false,
         }),
         code_cache_enabled: true,
@@ -8465,12 +8407,6 @@ mod tests {
           }),
           bare: false,
           coverage_dir: None,
-          cpu_prof: false,
-          cpu_prof_dir: None,
-          cpu_prof_name: None,
-          cpu_prof_interval: None,
-          cpu_prof_md: false,
-          cpu_prof_flamegraph: false,
           print_task_list: false,
         }),
         code_cache_enabled: true,
@@ -8500,12 +8436,6 @@ mod tests {
           }),
           bare: false,
           coverage_dir: None,
-          cpu_prof: false,
-          cpu_prof_dir: None,
-          cpu_prof_name: None,
-          cpu_prof_interval: None,
-          cpu_prof_md: false,
-          cpu_prof_flamegraph: false,
           print_task_list: false,
         }),
         code_cache_enabled: true,
@@ -8534,12 +8464,6 @@ mod tests {
           }),
           bare: true,
           coverage_dir: None,
-          cpu_prof: false,
-          cpu_prof_dir: None,
-          cpu_prof_name: None,
-          cpu_prof_interval: None,
-          cpu_prof_md: false,
-          cpu_prof_flamegraph: false,
           print_task_list: false,
         }),
         code_cache_enabled: true,
@@ -8580,12 +8504,6 @@ mod tests {
           watch: None,
           bare: false,
           coverage_dir: Some("foo".to_string()),
-          cpu_prof: false,
-          cpu_prof_dir: None,
-          cpu_prof_name: None,
-          cpu_prof_interval: None,
-          cpu_prof_md: false,
-          cpu_prof_flamegraph: false,
           print_task_list: false,
         }),
         code_cache_enabled: true,
@@ -8839,12 +8757,6 @@ mod tests {
           watch: None,
           bare: true,
           coverage_dir: None,
-          cpu_prof: false,
-          cpu_prof_dir: None,
-          cpu_prof_name: None,
-          cpu_prof_interval: None,
-          cpu_prof_md: false,
-          cpu_prof_flamegraph: false,
           print_task_list: false,
         }),
         permissions: PermissionFlags {
@@ -9794,7 +9706,6 @@ mod tests {
         subcommand: DenoSubcommand::Eval(EvalFlags {
           print: false,
           code: "'console.log(\"hello\")'".to_string(),
-          ..Default::default()
         }),
         permissions: PermissionFlags {
           allow_all: true,
@@ -9814,7 +9725,6 @@ mod tests {
         subcommand: DenoSubcommand::Eval(EvalFlags {
           print: true,
           code: "1+2".to_string(),
-          ..Default::default()
         }),
         permissions: PermissionFlags {
           allow_all: true,
@@ -9839,7 +9749,6 @@ mod tests {
         subcommand: DenoSubcommand::Eval(EvalFlags {
           print: false,
           code: "'console.log(\"hello\")'".to_string(),
-          ..Default::default()
         }),
         permissions: PermissionFlags {
           allow_all: true,
@@ -9861,7 +9770,6 @@ mod tests {
         subcommand: DenoSubcommand::Eval(EvalFlags {
           print: false,
           code: "42".to_string(),
-          ..Default::default()
         }),
         import_map_path: Some("import_map.json".to_string()),
         no_remote: true,
@@ -9900,7 +9808,6 @@ mod tests {
         subcommand: DenoSubcommand::Eval(EvalFlags {
           print: false,
           code: "console.log(Deno.args)".to_string(),
-          ..Default::default()
         }),
         argv: svec!["arg1", "arg2"],
         permissions: PermissionFlags {
@@ -10260,12 +10167,6 @@ mod tests {
           watch: None,
           bare: true,
           coverage_dir: None,
-          cpu_prof: false,
-          cpu_prof_dir: None,
-          cpu_prof_name: None,
-          cpu_prof_interval: None,
-          cpu_prof_md: false,
-          cpu_prof_flamegraph: false,
           print_task_list: false,
         }),
         permissions: PermissionFlags {
@@ -10499,12 +10400,6 @@ mod tests {
           watch: None,
           bare: true,
           coverage_dir: None,
-          cpu_prof: false,
-          cpu_prof_dir: None,
-          cpu_prof_name: None,
-          cpu_prof_interval: None,
-          cpu_prof_md: false,
-          cpu_prof_flamegraph: false,
           print_task_list: false,
         }),
         permissions: PermissionFlags {
@@ -10806,12 +10701,6 @@ mod tests {
           watch: None,
           bare: true,
           coverage_dir: None,
-          cpu_prof: false,
-          cpu_prof_dir: None,
-          cpu_prof_name: None,
-          cpu_prof_interval: None,
-          cpu_prof_md: false,
-          cpu_prof_flamegraph: false,
           print_task_list: false,
         }),
         ..Flags::default()
@@ -11136,12 +11025,6 @@ mod tests {
           watch: None,
           bare: true,
           coverage_dir: None,
-          cpu_prof: false,
-          cpu_prof_dir: None,
-          cpu_prof_name: None,
-          cpu_prof_interval: None,
-          cpu_prof_md: false,
-          cpu_prof_flamegraph: false,
           print_task_list: false,
         }),
         log_level: Some(Level::Error),
@@ -11264,12 +11147,6 @@ mod tests {
           watch: None,
           bare: true,
           coverage_dir: None,
-          cpu_prof: false,
-          cpu_prof_dir: None,
-          cpu_prof_name: None,
-          cpu_prof_interval: None,
-          cpu_prof_md: false,
-          cpu_prof_flamegraph: false,
           print_task_list: false,
         }),
         type_check_mode: TypeCheckMode::None,
@@ -11443,12 +11320,6 @@ mod tests {
           watch: None,
           bare: true,
           coverage_dir: None,
-          cpu_prof: false,
-          cpu_prof_dir: None,
-          cpu_prof_name: None,
-          cpu_prof_interval: None,
-          cpu_prof_md: false,
-          cpu_prof_flamegraph: false,
           print_task_list: false,
         }),
         node_modules_dir: Some(NodeModulesDirMode::Auto),
@@ -12676,12 +12547,6 @@ mod tests {
           watch: None,
           bare: true,
           coverage_dir: None,
-          cpu_prof: false,
-          cpu_prof_dir: None,
-          cpu_prof_name: None,
-          cpu_prof_interval: None,
-          cpu_prof_md: false,
-          cpu_prof_flamegraph: false,
           print_task_list: false,
         }),
         inspect_wait: Some("127.0.0.1:9229".parse().unwrap()),
@@ -13389,12 +13254,6 @@ mod tests {
           watch: None,
           bare: true,
           coverage_dir: None,
-          cpu_prof: false,
-          cpu_prof_dir: None,
-          cpu_prof_name: None,
-          cpu_prof_interval: None,
-          cpu_prof_md: false,
-          cpu_prof_flamegraph: false,
           print_task_list: false,
         }),
         type_check_mode: TypeCheckMode::None,
@@ -14306,12 +14165,6 @@ mod tests {
           watch: None,
           bare: true,
           coverage_dir: None,
-          cpu_prof: false,
-          cpu_prof_dir: None,
-          cpu_prof_name: None,
-          cpu_prof_interval: None,
-          cpu_prof_md: false,
-          cpu_prof_flamegraph: false,
           print_task_list: false,
         }),
         config_flag: ConfigFlag::Disabled,

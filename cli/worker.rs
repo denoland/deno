@@ -18,8 +18,10 @@ use deno_lib::worker::LibMainWorkerFactory;
 use deno_lib::worker::ResolveNpmBinaryEntrypointError;
 use deno_npm_installer::PackageCaching;
 use deno_npm_installer::graph::NpmCachingStrategy;
+use deno_runtime::CpuProfilerConfig;
 use deno_runtime::WorkerExecutionMode;
 use deno_runtime::coverage::CoverageCollector;
+use deno_runtime::cpu_prof_filename;
 use deno_runtime::cpu_profiler::CpuProfiler;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::worker::MainWorker;
@@ -38,19 +40,10 @@ use crate::util::progress_bar::ProgressBar;
 
 pub type CreateHmrRunnerCb = Box<dyn Fn() -> HmrRunnerState + Send + Sync>;
 
-#[derive(Clone)]
-pub struct CpuProfConfig {
-  pub dir: PathBuf,
-  pub name: Option<String>,
-  pub interval: i32,
-  pub md: bool,
-  pub flamegraph: bool,
-}
-
 pub struct CliMainWorkerOptions {
   pub create_hmr_runner: Option<CreateHmrRunnerCb>,
   pub maybe_coverage_dir: Option<PathBuf>,
-  pub maybe_cpu_prof_config: Option<CpuProfConfig>,
+  pub maybe_cpu_prof_config: Option<CpuProfilerConfig>,
   pub default_npm_caching_strategy: NpmCachingStrategy,
   pub needs_test_modules: bool,
   pub initial_cwd: Arc<ModuleSpecifier>,
@@ -60,7 +53,7 @@ pub struct CliMainWorkerOptions {
 struct SharedState {
   pub create_hmr_runner: Option<CreateHmrRunnerCb>,
   pub maybe_coverage_dir: Option<PathBuf>,
-  pub maybe_cpu_prof_config: Option<CpuProfConfig>,
+  pub maybe_cpu_prof_config: Option<CpuProfilerConfig>,
   pub maybe_file_watcher_communicator: Option<Arc<WatcherCommunicator>>,
   pub initial_cwd: Arc<ModuleSpecifier>,
 }
@@ -258,24 +251,16 @@ impl CliMainWorker {
   }
 
   pub fn maybe_setup_cpu_profiler(&mut self) -> Option<CpuProfiler> {
-    let cpu_prof_config = self.shared.maybe_cpu_prof_config.as_ref()?;
-
-    let filename = cpu_prof_config.name.clone().unwrap_or_else(|| {
-      let timestamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_millis();
-      let pid = std::process::id();
-      format!("CPU.{}.{}.cpuprofile", timestamp, pid)
-    });
+    let config = self.shared.maybe_cpu_prof_config.as_ref()?;
+    let filename = cpu_prof_filename(config, None);
 
     let mut cpu_profiler = CpuProfiler::new(
       self.worker.js_runtime(),
-      cpu_prof_config.dir.clone(),
+      config.dir.clone(),
       filename,
-      cpu_prof_config.interval,
-      cpu_prof_config.md,
-      cpu_prof_config.flamegraph,
+      config.interval,
+      config.md,
+      config.flamegraph,
     );
     cpu_profiler.start_profiling();
 

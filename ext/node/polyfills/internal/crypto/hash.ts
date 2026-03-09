@@ -259,7 +259,19 @@ class HmacImpl extends Transform {
   digest(): Buffer;
   digest(encoding: BinaryToTextEncoding): string;
   digest(encoding?: BinaryToTextEncoding): Buffer | string {
-    const result = this.#hash.digest();
+    let result;
+    try {
+      result = this.#hash.digest();
+    } catch (err) {
+      if (err instanceof ERR_CRYPTO_HASH_FINALIZED) {
+        // Already finalized - return empty like Node.js
+        if (encoding && encoding !== "buffer") {
+          return "";
+        }
+        return Buffer.alloc(0);
+      }
+      throw err;
+    }
 
     return new Hash(this.#algorithm).update(this.#opad).update(result)
       .digest(
