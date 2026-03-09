@@ -1305,11 +1305,7 @@ fn node_api_create_property_key_utf8(
 
   let Some(string) = ({
     v8::callback_scope!(unsafe scope, env.context());
-    v8::String::new_from_utf8(
-      scope,
-      buffer,
-      v8::NewStringType::Internalized,
-    )
+    v8::String::new_from_utf8(scope, buffer, v8::NewStringType::Internalized)
   }) else {
     return napi_set_last_error(env_ptr, napi_generic_failure);
   };

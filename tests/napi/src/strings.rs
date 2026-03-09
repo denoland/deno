@@ -1,8 +1,9 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+use std::ffi::c_char;
+
 use napi_sys::ValueType::napi_string;
 use napi_sys::*;
-use std::ffi::c_char;
 
 use crate::assert_napi_ok;
 use crate::napi_get_callback_info;
@@ -227,16 +228,8 @@ pub fn init(env: napi_env, exports: napi_value) {
       "test_property_key_latin1",
       test_property_key_latin1
     ),
-    napi_new_property!(
-      env,
-      "test_property_key_utf8",
-      test_property_key_utf8
-    ),
-    napi_new_property!(
-      env,
-      "test_property_key_utf16",
-      test_property_key_utf16
-    ),
+    napi_new_property!(env, "test_property_key_utf8", test_property_key_utf8),
+    napi_new_property!(env, "test_property_key_utf16", test_property_key_utf16),
   ];
 
   assert_napi_ok!(napi_define_properties(
