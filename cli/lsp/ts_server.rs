@@ -234,12 +234,7 @@ impl TsServer {
             locations.insert(location);
           }
         }
-        let locations = if locations.is_empty() {
-          None
-        } else {
-          Some(locations.into_iter().collect())
-        };
-        Ok(locations)
+        Ok(Some(locations.into_iter().collect()))
       }
       Self::Go(ts_server) => {
         ts_server

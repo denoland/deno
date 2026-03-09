@@ -904,17 +904,17 @@ pub fn ts_changes_to_edit(
   module: &DocumentModule,
   language_server: &language_server::Inner,
 ) -> Result<Option<lsp::WorkspaceEdit>, AnyError> {
-  let mut text_document_edits = Vec::new();
+  let mut edits_by_uri = HashMap::with_capacity(changes.len());
   for change in changes {
-    let Some(edit) = change.to_text_document_edit(module, language_server)
+    let Some((uri, edits)) = change.to_text_edits(module, language_server)
     else {
       continue;
     };
-    text_document_edits.push(edit);
+    edits_by_uri.insert(uri, edits);
   }
   Ok(Some(lsp::WorkspaceEdit {
-    changes: None,
-    document_changes: Some(lsp::DocumentChanges::Edits(text_document_edits)),
+    changes: Some(edits_by_uri),
+    document_changes: None,
     change_annotations: None,
   }))
 }
