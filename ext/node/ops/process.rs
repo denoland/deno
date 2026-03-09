@@ -125,7 +125,10 @@ pub fn op_node_process_execve(
     .collect();
 
   // SAFETY: All pointers are valid C strings with null terminators,
-  // and the arrays are null-terminated.
+  // and the pointer arrays are null-terminated. The CString vectors
+  // (args_cstr, env_cstr) and the file CString outlive this call because
+  // execve either replaces the process (never returns) or returns -1
+  // immediately on error.
   let ret =
     unsafe { libc::execve(file_cstr.as_ptr(), args_ptrs.as_ptr(), env_ptrs.as_ptr()) };
 
