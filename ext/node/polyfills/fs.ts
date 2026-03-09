@@ -1414,6 +1414,7 @@ function writeSync(
     if (typeof offset === "object") {
       ({
         offset = 0,
+        // deno-lint-ignore prefer-primordials
         length = buffer.byteLength - (offset as number),
         position = null,
       } = offsetOrOptions ?? kEmptyObject);
@@ -1427,8 +1428,10 @@ function writeSync(
       validateInteger(offset, "offset", 0);
     }
     if (typeof length !== "number") {
+      // deno-lint-ignore prefer-primordials
       length = buffer.byteLength - offset;
     }
+    // deno-lint-ignore prefer-primordials
     validateOffsetLengthWrite(offset, length, buffer.byteLength);
     return innerWriteSync(fd, buffer, offset, length, position);
   }
@@ -1481,6 +1484,7 @@ function write(
     if (typeof offset === "object") {
       ({
         offset = 0,
+        // deno-lint-ignore prefer-primordials
         length = buffer.byteLength - (offset as number),
         position = null,
       } = offsetOrOptions ?? kEmptyObject);
@@ -1491,12 +1495,15 @@ function write(
       validateInteger(offset, "offset", 0);
     }
     if (typeof length !== "number") {
+      // deno-lint-ignore prefer-primordials
       length = buffer.byteLength - offset;
     }
     if (typeof position !== "number") {
       position = null;
     }
+    // deno-lint-ignore prefer-primordials
     validateOffsetLengthWrite(offset, length, buffer.byteLength);
+    // deno-lint-ignore prefer-primordials
     innerWrite(fd, buffer, offset, length, position).then(
       (nwritten) => {
         callback!(null, nwritten, buffer);
@@ -1526,6 +1533,7 @@ function write(
   callback = maybeCallback(position);
   buffer = Buffer.from(str, length);
 
+  // deno-lint-ignore prefer-primordials
   innerWrite(fd, buffer, 0, buffer.length, offset).then(
     (nwritten) => {
       callback(null, nwritten, buffer);
@@ -1583,16 +1591,20 @@ function writev(
     const offset = 0;
     for (let i = 0; i < buffers.length; i++) {
       if (Buffer.isBuffer(buffers[i])) {
+        // deno-lint-ignore prefer-primordials
         chunks.push(buffers[i]);
       } else {
+        // deno-lint-ignore prefer-primordials
         chunks.push(Buffer.from(buffers[i]));
       }
     }
     if (typeof position === "number") {
       await op_fs_seek_async(fd, position, io.SeekMode.Start);
     }
+    // deno-lint-ignore prefer-primordials
     const buffer = Buffer.concat(chunks);
     let currentOffset = 0;
+    // deno-lint-ignore prefer-primordials
     while (currentOffset < buffer.byteLength) {
       currentOffset += await io.writeSync(fd, buffer.subarray(currentOffset));
     }
@@ -1610,6 +1622,7 @@ function writev(
 
   if (typeof position !== "number") position = null;
 
+  // deno-lint-ignore prefer-primordials
   innerWritev(fd, buffers, position).then(
     (nwritten) => callback(null, nwritten, buffers),
     (err) => callback(err),
@@ -1632,16 +1645,20 @@ function writevSync(
     const offset = 0;
     for (let i = 0; i < buffers.length; i++) {
       if (Buffer.isBuffer(buffers[i])) {
+        // deno-lint-ignore prefer-primordials
         chunks.push(buffers[i]);
       } else {
+        // deno-lint-ignore prefer-primordials
         chunks.push(Buffer.from(buffers[i]));
       }
     }
     if (typeof position === "number") {
       op_fs_seek_sync(fd, position, io.SeekMode.Start);
     }
+    // deno-lint-ignore prefer-primordials
     const buffer = Buffer.concat(chunks);
     let currentOffset = 0;
+    // deno-lint-ignore prefer-primordials
     while (currentOffset < buffer.byteLength) {
       currentOffset += io.writeSync(fd, buffer.subarray(currentOffset));
     }
@@ -1841,25 +1858,34 @@ function _writeAllSync(
   encoding: BufferEncoding,
 ) {
   if (!_isCustomIterable(data)) {
+    // deno-lint-ignore prefer-primordials
     data = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+    // deno-lint-ignore prefer-primordials
     let remaining = data.byteLength;
     while (remaining > 0) {
       const bytesWritten = w.writeSync(
+        // deno-lint-ignore prefer-primordials
         data.subarray(data.byteLength - remaining),
       );
       remaining -= bytesWritten;
     }
   } else {
+    // deno-lint-ignore prefer-primordials
     for (const buf of data) {
       let toWrite = ArrayBufferIsView(buf) ? buf : Buffer.from(buf, encoding);
       toWrite = new Uint8Array(
+        // deno-lint-ignore prefer-primordials
         toWrite.buffer,
+        // deno-lint-ignore prefer-primordials
         toWrite.byteOffset,
+        // deno-lint-ignore prefer-primordials
         toWrite.byteLength,
       );
+      // deno-lint-ignore prefer-primordials
       let remaining = toWrite.byteLength;
       while (remaining > 0) {
         const bytesWritten = w.writeSync(
+          // deno-lint-ignore prefer-primordials
           toWrite.subarray(toWrite.byteLength - remaining),
         );
         remaining -= bytesWritten;
@@ -1875,10 +1901,13 @@ async function _writeAll(
   signal?: AbortSignal,
 ) {
   if (!_isCustomIterable(data)) {
+    // deno-lint-ignore prefer-primordials
     data = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+    // deno-lint-ignore prefer-primordials
     let remaining = data.byteLength;
     while (remaining > 0) {
       const writeSize = MathMin(kWriteFileMaxChunkSize, remaining);
+      // deno-lint-ignore prefer-primordials
       const offset = data.byteLength - remaining;
       const bytesWritten = await w.write(
         data.subarray(offset, offset + writeSize),
@@ -1887,17 +1916,23 @@ async function _writeAll(
       _checkAborted(signal);
     }
   } else {
+    // deno-lint-ignore prefer-primordials
     for await (const buf of data) {
       _checkAborted(signal);
       let toWrite = ArrayBufferIsView(buf) ? buf : Buffer.from(buf, encoding);
       toWrite = new Uint8Array(
+        // deno-lint-ignore prefer-primordials
         toWrite.buffer,
+        // deno-lint-ignore prefer-primordials
         toWrite.byteOffset,
+        // deno-lint-ignore prefer-primordials
         toWrite.byteLength,
       );
+      // deno-lint-ignore prefer-primordials
       let remaining = toWrite.byteLength;
       while (remaining > 0) {
         const writeSize = MathMin(kWriteFileMaxChunkSize, remaining);
+        // deno-lint-ignore prefer-primordials
         const offset = toWrite.byteLength - remaining;
         const bytesWritten = await w.write(
           toWrite.subarray(offset, offset + writeSize),

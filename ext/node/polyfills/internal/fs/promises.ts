@@ -923,10 +923,13 @@ async function _writeAll(
   signal?: AbortSignal,
 ) {
   if (!_isCustomIterable(data)) {
+    // deno-lint-ignore prefer-primordials
     data = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+    // deno-lint-ignore prefer-primordials
     let remaining = data.byteLength;
     while (remaining > 0) {
       const writeSize = MathMin(kWriteFileMaxChunkSize, remaining);
+      // deno-lint-ignore prefer-primordials
       const offset = data.byteLength - remaining;
       const bytesWritten = await w.write(
         data.subarray(offset, offset + writeSize),
@@ -935,17 +938,23 @@ async function _writeAll(
       _checkAborted(signal);
     }
   } else {
+    // deno-lint-ignore prefer-primordials
     for await (const buf of data) {
       _checkAborted(signal);
       let toWrite = ArrayBufferIsView(buf) ? buf : Buffer.from(buf, encoding);
       toWrite = new Uint8Array(
+        // deno-lint-ignore prefer-primordials
         toWrite.buffer,
+        // deno-lint-ignore prefer-primordials
         toWrite.byteOffset,
+        // deno-lint-ignore prefer-primordials
         toWrite.byteLength,
       );
+      // deno-lint-ignore prefer-primordials
       let remaining = toWrite.byteLength;
       while (remaining > 0) {
         const writeSize = MathMin(kWriteFileMaxChunkSize, remaining);
+        // deno-lint-ignore prefer-primordials
         const offset = toWrite.byteLength - remaining;
         const bytesWritten = await w.write(
           toWrite.subarray(offset, offset + writeSize),
