@@ -140,9 +140,57 @@ impl<'a> BinNameResolver<'a> {
         if data.len() == 1 {
           return Some(data.keys().next().unwrap().clone());
         }
+        // When there are multiple bin entries, check if one matches the
+        // package name (the npm default bin convention). For scoped packages
+        // like @scope/name, check the unscoped portion.
+        if data.len() > 1 {
+          let pkg_name = &npm_ref.req().name;
+          let unscoped_name = pkg_name
+            .strip_prefix('@')
+            .and_then(|s| s.split_once('/'))
+            .map(|(_, name)| name)
+            .unwrap_or(pkg_name.as_str());
+          if data.contains_key(unscoped_name) {
+            return Some(unscoped_name.to_string());
+          }
+        }
       }
     }
     None
+  }
+
+  /// Resolves all bin entries for an npm package.
+  /// Returns a list of (bin_name, script_path) pairs.
+  pub async fn resolve_all_bin_entries_from_npm(
+    &self,
+    url: &Url,
+  ) -> Option<Vec<(String, String)>> {
+    let npm_ref = NpmPackageReqReference::from_specifier(url).ok()?;
+    let package_info = self
+      .npm_registry_api
+      .package_info(&npm_ref.req().name)
+      .await
+      .ok()?;
+    let version_resolver =
+      self.npm_version_resolver.get_for_package(&package_info);
+    let version_info = version_resolver
+      .resolve_best_package_version_info(
+        &npm_ref.req().version_req,
+        Vec::new().into_iter(),
+      )
+      .ok()?;
+    let bin_entries = version_info.bin.as_ref()?;
+    match bin_entries {
+      deno_npm::registry::NpmPackageVersionBinEntry::String(script) => {
+        let name = npm_ref.req().name.to_string();
+        // Use the last component of the scoped package name
+        let bin_name = name.rsplit('/').next().unwrap_or(&name);
+        Some(vec![(bin_name.to_string(), script.clone())])
+      }
+      deno_npm::registry::NpmPackageVersionBinEntry::Map(data) => {
+        Some(data.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
+      }
+    }
   }
 }
 
