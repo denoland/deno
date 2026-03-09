@@ -1467,12 +1467,9 @@ impl DocumentModules {
     if let Some(scope) = self.primary_scope(document.uri()) {
       return self.module(document, scope.map(|s| s.as_ref()));
     }
-    if let Some((scope, compiler_options_key)) = self
-      .assigned_scopes
-      .read()
-      .get(document.uri())
-      .map(|e| e.clone())
-    {
+    let assigned_scope =
+      self.assigned_scopes.read().get(document.uri()).cloned();
+    if let Some((scope, compiler_options_key)) = assigned_scope {
       return self.module_inner(
         document,
         None,
