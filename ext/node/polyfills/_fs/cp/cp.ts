@@ -121,7 +121,7 @@ export async function cpFn(
     );
     return await getStatsForCopy(statInfo, src, dest, opts);
   } catch (err) {
-    if (typeof err === "object" && typeof err.os_errno === "number") {
+    if (typeof err?.os_errno === "number") {
       throw denoErrorToNodeError(err, {
         message: err.message,
         path: err.path,

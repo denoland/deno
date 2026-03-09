@@ -2842,7 +2842,7 @@ export const denoErrorToNodeSystemError = hideStackFrames((
 });
 
 function extractOsErrorNumberFromErrorMessage(e: unknown): number | undefined {
-  if (typeof e.os_errno === "number") {
+  if (typeof e === "object" && typeof e.os_errno === "number") {
     return e.os_errno;
   }
 
