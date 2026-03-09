@@ -292,8 +292,8 @@
     },
     "parallel/test-crypto-key-objects-to-crypto-key.js": {
       "exitCode": 1,
-      "output": "[WILDCARD]Not implemented: ed448[WILDCARD]",
-      "reason": "Ed448 key generation not yet implemented"
+      "output": "[WILDCARD]NotSupportedError: Unrecognized algorithm name[WILDCARD]",
+      "reason": "Ed448/X448 toCryptoKey not supported by WebCrypto"
     },
     "parallel/test-crypto-lazy-transform-writable.js": {},
     "parallel/test-crypto-oneshot-hash.js": {},
