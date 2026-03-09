@@ -175,6 +175,20 @@ unsafe extern "C" fn h2_write_cb(
   req: *mut deno_core::uv_compat::UvWrite,
   _status: i32,
 ) {
+  // Get the session pointer from the stream handle's data field.
+  // SAFETY: req is valid per libuv write callback contract; handle was set by uv_write
+  let stream_handle = unsafe { (*req).handle };
+  if !stream_handle.is_null() {
+    // SAFETY: stream_handle is valid per libuv; casting to UvHandle to read data field
+    let session_ptr =
+      unsafe { (*(stream_handle as *mut deno_core::uv_compat::UvHandle)).data };
+    if !session_ptr.is_null() {
+      // SAFETY: session_ptr was set in consume_stream and points to a valid Session
+      let session = unsafe { &mut *(session_ptr as *mut Session) };
+      session.maybe_notify_graceful_close_complete();
+    }
+  }
+
   // Free the write request
   // SAFETY: req was created by Box::into_raw in send_pending_data
   let _ = unsafe { Box::from_raw(req as *mut H2WriteReq) };
@@ -238,8 +252,6 @@ unsafe extern "C" fn h2_read_cb(
       deno_core::uv_compat::uv_read_stop(handle);
     }
     // Notify nghttp2 about the EOF by terminating the session.
-    // This causes on_stream_close_callback to fire for all open
-    // streams, triggering the JS-side close/aborted event flow.
     // SAFETY: session.session is a valid nghttp2_session pointer
     unsafe {
       ffi::nghttp2_session_terminate_session(
@@ -247,8 +259,29 @@ unsafe extern "C" fn h2_read_cb(
         ffi::NGHTTP2_CONNECT_ERROR as u32,
       );
     }
-    // Run send to process the GOAWAY and stream close callbacks
     session.send_pending_data();
+
+    // Notify JS that the underlying transport has closed. In Node.js,
+    // EOF flows through PassReadErrorToPreviousListener → socket 'close'
+    // event → socketOnClose, which closes all streams and destroys the
+    // session. Since consume_stream bypasses the socket layer, we call
+    // the handle's onstreamclose callback directly.
+    {
+      // SAFETY: isolate pointer is valid for the session's lifetime
+      let mut isolate =
+        unsafe { v8::Isolate::from_raw_isolate_ptr(session.isolate) };
+      v8::scope!(let scope, &mut isolate);
+      let context = v8::Local::new(scope, session.context.clone());
+      let scope = &mut v8::ContextScope::new(scope, context);
+      let this_local = v8::Local::new(scope, &session.this);
+      let key = v8::String::new(scope, "onstreamclose").unwrap();
+      if let Some(Ok(cb)) = this_local
+        .get(scope, key.into())
+        .map(v8::Local::<v8::Function>::try_from)
+      {
+        cb.call(scope, this_local.into(), &[]);
+      }
+    }
 
     // Free the buffer
     // SAFETY: buf is valid per libuv read callback contract
@@ -1379,6 +1412,42 @@ impl Session {
     self.streams.len()
   }
 
+  /// Check if graceful close is complete and notify JS if so.
+  /// Mirrors Node.js's MaybeNotifyGracefulCloseComplete in node_http2.cc.
+  /// Called after writes complete to detect when the session can be destroyed.
+  pub fn maybe_notify_graceful_close_complete(&mut self) {
+    if !self.graceful_close_initiated {
+      return;
+    }
+
+    let want_write =
+      // SAFETY: self.session is a valid nghttp2 session pointer
+      unsafe { ffi::nghttp2_session_want_write(self.session) };
+    let want_read =
+      // SAFETY: self.session is a valid nghttp2 session pointer
+      unsafe { ffi::nghttp2_session_want_read(self.session) };
+
+    if want_write != 0 || want_read != 0 {
+      return;
+    }
+
+    // SAFETY: isolate pointer is valid for the session's lifetime
+    let mut isolate =
+      unsafe { v8::Isolate::from_raw_isolate_ptr(self.isolate) };
+    v8::scope!(let scope, &mut isolate);
+    let context = v8::Local::new(scope, self.context.clone());
+    let scope = &mut v8::ContextScope::new(scope, context);
+
+    let this_local = v8::Local::new(scope, &self.this);
+    let key = v8::String::new(scope, "ongracefulclosecomplete").unwrap();
+    if let Some(Ok(cb)) = this_local
+      .get(scope, key.into())
+      .map(v8::Local::<v8::Function>::try_from)
+    {
+      cb.call(scope, this_local.into(), &[]);
+    }
+  }
+
   pub unsafe fn from_user_data<'a>(user_data: *mut c_void) -> &'a mut Self {
     // SAFETY: caller guarantees user_data points to a valid Session
     unsafe { &mut *(user_data as *mut Session) }
@@ -1473,6 +1542,8 @@ impl Session {
       }
       self.clear_outgoing();
     }
+
+    self.maybe_notify_graceful_close_complete();
   }
 
   pub fn receive_data(&mut self, data: &[u8]) {

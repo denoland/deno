@@ -2676,9 +2676,6 @@ function setupHandle(socket, type, options) {
     // readStart() again (which would fail with EALREADY since the
     // H2 session already started reading via consume_stream).
     tcpHandle.reading = true;
-    // Track that we consumed the native TCP handle so that session
-    // teardown knows to skip socket.end() (the handle is detached).
-    this[kState].nativeConsumed = true;
     debug("i/o stream consumed (native)");
   } else {
     // Fallback: pump data from socket to session via JS events
@@ -2696,6 +2693,28 @@ function setupHandle(socket, type, options) {
     this,
     null,
   );
+
+  // Called from Rust when EOF is received on the consumed TCP stream.
+  // Mirrors Node.js's socketOnClose handler: when the underlying
+  // transport closes, all open streams must be closed and the session
+  // destroyed. In Node.js this flows through PassReadErrorToPreviousListener
+  // -> socket 'close' event -> socketOnClose. Since consume_stream bypasses
+  // the socket layer, we call this directly from h2_read_cb on EOF.
+  handle.onstreamclose = () => {
+    const session = this;
+    if (!session.destroyed) {
+      const err = session.connecting ? new ERR_SOCKET_CLOSED() : null;
+      const state = session[kState];
+      // deno-lint-ignore prefer-primordials
+      state.streams.forEach((stream) => stream.close(NGHTTP2_CANCEL));
+      // deno-lint-ignore prefer-primordials
+      state.pendingStreams.forEach((stream) => stream.close(NGHTTP2_CANCEL));
+      if (!session.closed) {
+        session.close();
+      }
+      closeSession(session, NGHTTP2_NO_ERROR, err);
+    }
+  };
 
   this[kHandle] = handle;
   if (this[kNativeFields]) {
@@ -2790,32 +2809,23 @@ function finishSessionClose(session, error) {
     socket.on("close", () => {
       emitClose(session, error);
     });
-
-    // If the socket's TCP handle was consumed by the H2 session via
-    // consume_stream, the H2 session's destroy() already uv_close'd
-    // the TCP handle. Just destroy the socket directly since end()
-    // would fail trying to shutdown a detached handle.
-    if (session[kState].nativeConsumed) {
-      socket.destroy(error);
-    } else {
-      if (session.closed) {
-        // If we're gracefully closing the socket, call resume() so we can
-        // detect the peer closing in case Http2Session is already gone.
-        socket.resume();
-      }
-
-      // Always wait for writable side to finish.
-      socket.end((err) => {
-        debugSessionObj(session, "finishSessionClose socket end", err, error);
-        // If session.destroy() was called, destroy the underlying socket.
-        // Delay it a bit to try to avoid ECONNRESET on Windows.
-        if (!session.closed) {
-          setImmediate(() => {
-            socket.destroy(error);
-          });
-        }
-      });
+    if (session.closed) {
+      // If we're gracefully closing the socket, call resume() so we can
+      // detect the peer closing in case Http2Session is already gone.
+      socket.resume();
     }
+
+    // Always wait for writable side to finish.
+    socket.end((err) => {
+      debugSessionObj(session, "finishSessionClose socket end", err, error);
+      // If session.destroy() was called, destroy the underlying socket.
+      // Delay it a bit to try to avoid ECONNRESET on Windows.
+      if (!session.closed) {
+        setImmediate(() => {
+          socket.destroy(error);
+        });
+      }
+    });
   } else {
     process.nextTick(emitClose, session, error);
   }
@@ -3310,6 +3320,7 @@ class Http2Session extends EventEmitter {
     if (this.closed || this.destroyed) {
       return;
     }
+
     debugSessionObj(this, "marking session closed");
     this[kState].flags |= SESSION_FLAGS_CLOSED;
     if (typeof callback === "function") {
@@ -3352,6 +3363,7 @@ class Http2Session extends EventEmitter {
         return;
       }
     }
+
     this.destroy(error);
   }
 
