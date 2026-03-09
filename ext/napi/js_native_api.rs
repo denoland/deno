@@ -132,6 +132,9 @@ impl Reference {
     // it might free the reference (which would be a UAF)
     let ownership = reference.ownership;
     if let Some(finalize_cb) = finalize_cb {
+      // Deregister before calling so it won't be called again at shutdown
+      let env = unsafe { &*reference.env };
+      env.remove_ref_finalizer(finalize_data);
       unsafe {
         finalize_cb(reference.env as _, finalize_data, finalize_hint);
       }
@@ -2357,6 +2360,15 @@ fn napi_wrap(
     finalize_hint,
   );
 
+  if let Some(cb) = finalize_cb {
+    env.add_ref_finalizer(
+      env_ptr as napi_env,
+      cb,
+      native_object,
+      finalize_hint,
+    );
+  }
+
   let reference = Reference::into_raw(reference) as *mut c_void;
 
   if !result.is_null() {
@@ -2408,6 +2420,7 @@ fn unwrap(
   }
 
   if !keep {
+    env.remove_ref_finalizer(reference.finalize_data);
     assert!(obj.delete_private(scope, napi_wrap).unwrap_or(false));
     unsafe { Reference::remove(reference) };
   }
@@ -2459,6 +2472,12 @@ fn napi_create_external<'s>(
   let external = v8::External::new(scope, wrapper as _);
 
   if let Some(finalize_cb) = finalize_cb {
+    env.add_ref_finalizer(
+      env_ptr as napi_env,
+      finalize_cb,
+      data,
+      finalize_hint,
+    );
     Reference::into_raw(Reference::new(
       env_ptr,
       external.into(),
@@ -3506,6 +3525,16 @@ fn napi_add_finalizer(
   } else {
     ReferenceOwnership::Userland
   };
+
+  if let Some(cb) = finalize_cb {
+    env.add_ref_finalizer(
+      env_ptr as napi_env,
+      cb,
+      finalize_data,
+      finalize_hint,
+    );
+  }
+
   let reference = Reference::new(
     env,
     value.into(),
@@ -3561,6 +3590,18 @@ fn napi_set_instance_data(
   finalize_hint: *mut c_void,
 ) -> napi_status {
   let env = check_env!(env);
+  let env_ptr = env as *mut Env;
+
+  // Remove any previous instance data finalizer
+  if let Some(prev) = &env.shared().instance_data
+    && prev.finalize_cb.is_some()
+  {
+    env.remove_ref_finalizer(prev.data);
+  }
+
+  if let Some(cb) = finalize_cb {
+    env.add_ref_finalizer(env_ptr as napi_env, cb, data, finalize_hint);
+  }
 
   env.shared_mut().instance_data = Some(InstanceData {
     data,

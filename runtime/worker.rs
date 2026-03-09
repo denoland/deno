@@ -965,6 +965,42 @@ impl MainWorker {
     Ok(())
   }
 
+  /// Runs pending NAPI ref/wrap finalizers by calling them directly while V8
+  /// is still alive. This matches Node.js behavior where `napi_env::DeleteMe()`
+  /// calls `RefTracker::FinalizeAll()` during environment teardown.
+  pub fn run_napi_ref_finalizers(&mut self) {
+    let finalizers = {
+      let op_state = self.js_runtime.op_state();
+      let op_state = op_state.borrow();
+      match op_state.try_borrow::<deno_napi::NapiState>() {
+        Some(s) => {
+          let mut tracker = s.ref_tracker.borrow_mut();
+          std::mem::take(&mut *tracker)
+        }
+        None => return,
+      }
+    };
+    if finalizers.is_empty() {
+      return;
+    }
+
+    // Call each finalizer in reverse (LIFO) order within a proper HandleScope
+    // so native addon code can use NAPI functions during cleanup. LIFO matches
+    // Node.js's linked list behavior (head insertion → reverse iteration).
+    {
+      deno_core::scope!(scope, &mut self.js_runtime);
+      let _scope = v8::HandleScope::new(scope);
+      for f in finalizers.into_iter().rev() {
+        // SAFETY: The pointers (env, data, hint) were stored when the native
+        // addon called napi_wrap/napi_create_external/napi_add_finalizer and
+        // V8 is still alive (we have an active HandleScope).
+        unsafe {
+          (f.cb)(f.env, f.data, f.hint);
+        }
+      }
+    }
+  }
+
   /// Dispatches "beforeunload" event to the JavaScript runtime. Returns a boolean
   /// indicating if the event was prevented and thus event loop should continue
   /// running.

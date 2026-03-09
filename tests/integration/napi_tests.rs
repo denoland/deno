@@ -98,3 +98,40 @@ fn napi_tests() {
   }
   assert!(output.status.success());
 }
+
+/// Test that NAPI wrap finalizers are called at shutdown even when the
+/// wrapped JS object is still reachable. This matches Node.js behavior
+/// and is required for native addons like DuckDB that rely on destructor
+/// cleanup (e.g., WAL checkpointing) during process exit.
+#[test_util::test]
+fn napi_wrap_leak_pointers_finalizer_on_shutdown() {
+  napi_build();
+
+  let output = deno_cmd()
+    .current_dir(napi_tests_path())
+    .arg("run")
+    .arg("--allow-read")
+    .arg("--allow-env")
+    .arg("--allow-ffi")
+    .arg("--config")
+    .arg(deno_config_path())
+    .arg("--no-lock")
+    .arg("wrap_leak_test.js")
+    .envs(env_vars_for_npm_tests())
+    .output()
+    .unwrap();
+  let stdout = std::str::from_utf8(&output.stdout).unwrap();
+  let stderr = std::str::from_utf8(&output.stderr).unwrap();
+
+  if !output.status.success() {
+    eprintln!("exit code {:?}", output.status.code());
+    println!("stdout {}", stdout);
+    println!("stderr {}", stderr);
+  }
+  assert!(output.status.success());
+  assert!(
+    stdout.contains("pointers released on shutdown"),
+    "Expected wrap finalizer to run at shutdown, got stdout: {}",
+    stdout
+  );
+}
