@@ -489,6 +489,31 @@ function Process(this: any) {
 }
 Process.prototype = Object.create(EventEmitter.prototype);
 
+// Look up the actual registered listener for a signal event. When `once()` is
+// used, EventEmitter wraps the listener in a function with a `.listener`
+// property. We need the wrapper to pass to `Deno.removeSignalListener`.
+function _findSignalListener(
+  // deno-lint-ignore no-explicit-any
+  target: any,
+  event: string,
+  // deno-lint-ignore no-explicit-any
+  listener: (...args: any[]) => void,
+  // deno-lint-ignore no-explicit-any
+): ((...args: any[]) => void) | undefined {
+  const events = target._events;
+  if (events === undefined) return undefined;
+  const list = events[event];
+  if (list === undefined) return undefined;
+  if (typeof list === "function") {
+    if (list !== listener && list.listener === listener) return list;
+    return undefined;
+  }
+  for (let i = list.length - 1; i >= 0; i--) {
+    if (list[i] !== listener && list[i].listener === listener) return list[i];
+  }
+  return undefined;
+}
+
 /** https://nodejs.org/api/process.html#process_process_events */
 Process.prototype.on = function (
   // deno-lint-ignore no-explicit-any
@@ -540,8 +565,16 @@ Process.prototype.off = function (
     ) {
       // Ignores all signals except SIGBREAK, SIGINT, and SIGWINCH on windows.
     } else {
+      // Find the actual registered listener before EventEmitter removes it.
+      // When using `once()`, EventEmitter wraps the original listener in a
+      // wrapper with a `.listener` property pointing to the original. We need
+      // to pass the wrapper (not the original) to Deno.removeSignalListener.
+      const registered = _findSignalListener(this, event, listener);
       EventEmitter.prototype.off.call(this, event, listener);
-      Deno.removeSignalListener(event as Deno.Signal, listener);
+      Deno.removeSignalListener(
+        event as Deno.Signal,
+        registered ?? listener,
+      );
     }
   } else {
     EventEmitter.prototype.off.call(this, event, listener);
