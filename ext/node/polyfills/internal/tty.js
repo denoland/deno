@@ -31,7 +31,7 @@ const {
 
 import { ERR_INVALID_FD } from "ext:deno_node/internal/errors.ts";
 import { validateInteger } from "ext:deno_node/internal/validators.mjs";
-import { TTY } from "ext:deno_node/internal_binding/tty_wrap.ts";
+import { TTY } from "ext:core/ops";
 import { Socket } from "node:net";
 import * as io from "ext:deno_io/12_io.js";
 import {
@@ -301,11 +301,8 @@ function WriteStream(fd) {
     throw new ERR_INVALID_FD(fd);
   }
 
-  // We only support `stdin`, `stdout` and `stderr`.
-  if (fd > 2) throw new Error("Only fd 0, 1 and 2 are supported.");
-
   const tty = new TTY(
-    fd === 0 ? io.stdin : fd === 1 ? io.stdout : io.stderr,
+    fd,
   );
 
   FunctionPrototypeCall(Socket, this, {

@@ -10,7 +10,7 @@ const {
 } = primordials;
 
 import { ERR_INVALID_FD } from "ext:deno_node/internal/errors.ts";
-import { TTY } from "ext:deno_node/internal_binding/tty_wrap.ts";
+import { TTY } from "ext:core/ops";
 import { Socket } from "node:net";
 import { setReadStream } from "ext:deno_node/_process/streams.mjs";
 import * as io from "ext:deno_io/12_io.js";
@@ -21,7 +21,7 @@ function isatty(fd) {
   if (typeof fd !== "number" || fd >> 0 !== fd || fd < 0) {
     return false;
   }
-  return op_node_is_tty(fd);
+  return TTY.isTTY(fd);
 }
 
 // ReadStream needs to be callable without `new` to match Node.js behavior.
@@ -36,9 +36,9 @@ function ReadStream(fd, options) {
   }
 
   // We only support `stdin`.
-  if (fd != 0) throw new Error("Only fd 0 is supported.");
+  // if (fd != 0) throw new Error("Only fd 0 is supported.");
 
-  const tty = new TTY(io.stdin);
+  const tty = new TTY(fd);
   FunctionPrototypeCall(Socket, this, {
     readableHighWaterMark: 0,
     handle: tty,
@@ -55,7 +55,7 @@ ObjectSetPrototypeOf(ReadStream, Socket);
 
 ReadStream.prototype.setRawMode = function setRawMode(flag) {
   flag = !!flag;
-  this._handle.setRaw(flag);
+  this._handle.setRawMode(flag);
 
   this.isRaw = flag;
   return this;

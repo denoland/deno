@@ -1,7 +1,7 @@
 #![allow(non_snake_case)]
 
 use deno_core::{
-  CppgcInherits, GarbageCollected,
+  CppgcInherits, GarbageCollected, OpState,
   cppgc::try_unwrap_cppgc_object,
   op2,
   uv_compat::{
@@ -24,7 +24,7 @@ impl<T> OwnedPtr<T> {
     Self(Box::into_raw(b))
   }
 
-  pub fn as_mut_ptr(&mut self) -> *mut T {
+  pub fn as_mut_ptr(&self) -> *mut T {
     self.0
   }
 
@@ -82,7 +82,7 @@ impl TTY {
     let loop_ = &**op_state.borrow::<Box<uv_loop_t>>() as *const uv_loop_t
       as *mut uv_loop_t;
 
-    let mut tty = OwnedPtr::from_box(Box::<uv_tty_t>::new_uninit());
+    let tty = OwnedPtr::from_box(Box::<uv_tty_t>::new_uninit());
 
     let err = unsafe { uv_tty_init(loop_, tty.as_mut_ptr().cast(), fd, 0) };
 
@@ -105,88 +105,70 @@ impl TTY {
   }
 }
 
-#[op2]
+#[op2(inherit = LibUvStreamWrap)]
 impl TTY {
   #[constructor]
   #[cppgc]
-  pub fn new_tty(fd: i32) -> TTY {
+  pub fn new_tty(
+    fd: i32,
+    #[this] this: v8::Global<v8::Object>,
+    scope: &mut v8::PinScope,
+    op_state: &mut OpState,
+  ) -> TTY {
     assert!(fd >= 0);
-    // let err = uv_tty
-    todo!()
+
+    let obj = v8::Local::new(scope, &this);
+    TTY::new(obj, fd, op_state)
   }
+
   #[fast]
-  pub fn is_TTY(&self, fd: i32) -> bool {
+  #[static_method]
+  pub fn is_TTY(fd: i32) -> bool {
     assert!(fd >= 0);
 
     uv_guess_handle(fd) == uv_handle_type::UV_TTY
   }
-}
 
-// todo: set on proto
-#[op2(fast)]
-pub fn set_raw_mode(
-  #[varargs] args: Option<&v8::FunctionCallbackArguments>,
-  scope: &mut v8::PinScope,
-) -> i32 {
-  let Some(args) = args else {
-    return UV_EBADF;
-  };
-  let Some(wrap) = try_unwrap_cppgc_object::<TTY>(scope, args.this().into())
-  else {
-    return UV_EBADF;
-  };
+  #[fast]
+  #[no_side_effects]
+  pub fn get_window_size(
+    &self,
+    a: v8::Local<v8::Array>,
+    scope: &mut v8::PinScope,
+  ) -> i32 {
+    let handle = self.handle.as_mut_ptr();
 
-  let err = unsafe {
-    uv_tty_set_mode(
-      &raw const wrap.handle as *mut uv_tty_t,
-      if args.get(0).is_true() {
-        uv_tty_mode_t::UV_TTY_MODE_RAW_VT
-      } else {
-        uv_tty_mode_t::UV_TTY_MODE_NORMAL
-      },
-    )
-  };
+    let (mut width, mut height) = (0, 0);
+    let err = unsafe { uv_tty_get_winsize(handle, &mut width, &mut height) };
 
-  err
-}
-
-// todo: set on proto
-#[op2(fast, no_side_effects)]
-pub fn get_window_size(
-  #[varargs] args: Option<&v8::FunctionCallbackArguments>,
-  scope: &mut v8::PinScope,
-) -> i32 {
-  let Some(args) = args else {
-    return UV_EBADF;
-  };
-  let Some(wrap) = try_unwrap_cppgc_object::<TTY>(scope, args.this().into())
-  else {
-    return UV_EBADF;
-  };
-
-  assert!(args.get(0).is_array());
-
-  let (mut width, mut height) = (0, 0);
-  let err = unsafe {
-    uv_tty_get_winsize(
-      &raw const wrap.handle as *mut uv_tty_t,
-      &mut width,
-      &mut height,
-    )
-  };
-
-  if err == 0 {
-    let a = args.get(0).cast::<v8::Array>();
-    if a
-      .set_index(scope, 0, v8::Integer::new(scope, width).into())
-      .is_none()
-      || a
-        .set_index(scope, 1, v8::Integer::new(scope, height).into())
+    if err == 0 {
+      if a
+        .set_index(scope, 0, v8::Integer::new(scope, width).into())
         .is_none()
-    {
-      return -1;
+        || a
+          .set_index(scope, 1, v8::Integer::new(scope, height).into())
+          .is_none()
+      {
+        return -1;
+      }
     }
+
+    err
   }
 
-  err
+  #[fast]
+  pub fn set_raw_mode(&self, arg: v8::Local<v8::Value>) -> i32 {
+    let err = unsafe {
+      uv_tty_set_mode(
+        self.handle.as_mut_ptr(),
+        if arg.is_true() {
+          uv_tty_mode_t::UV_TTY_MODE_RAW_VT
+        } else {
+          uv_tty_mode_t::UV_TTY_MODE_NORMAL
+        },
+      )
+    };
+
+    err
+  }
 }

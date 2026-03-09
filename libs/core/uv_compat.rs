@@ -152,6 +152,7 @@ pub type uv_close_cb = unsafe extern "C" fn(*mut uv_handle_t);
 
 pub type UvHandle = uv_handle_t;
 pub type UvLoop = uv_loop_t;
+pub type UvTcp = uv_tcp_t;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 struct TimerKey {

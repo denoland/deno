@@ -575,6 +575,10 @@ pub unsafe fn uv_tty_init(
       // Reopening a pty master won't work: on *BSD it opens in
       // slave mode, on Linux it allocates a new master/slave pair.
       // So we only reopen slave devices.
+      // Unlike libuv which dup2's the reopened fd over the original,
+      // we keep the original fd untouched and use the new fd directly.
+      // This prevents setting O_NONBLOCK on stdin/stdout/stderr from
+      // affecting other users of those fds (e.g. rustyline in the REPL).
       let mut actual_fd = fd;
       let mut reopened = false;
       if handle_type == uv_handle_type::UV_TTY && tty_is_slave(fd) {
@@ -583,16 +587,8 @@ pub unsafe fn uv_tty_init(
           let new_fd =
             open_cloexec(path.as_ptr().cast(), mode | libc::O_NOCTTY);
           if new_fd >= 0 {
-            let r = dup2_cloexec(new_fd, fd);
-            if r < 0 && r != UV_EINVAL {
-              libc::close(new_fd);
-              return r;
-            }
-            actual_fd = fd;
+            actual_fd = new_fd;
             reopened = true;
-            if new_fd != fd {
-              libc::close(new_fd);
-            }
           }
         }
       }
