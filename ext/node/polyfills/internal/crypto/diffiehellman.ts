@@ -116,11 +116,11 @@ export class DiffieHellmanImpl {
     if (typeof sizeOrKey !== "number") {
       if (isArrayBufferView(sizeOrKey) || isAnyArrayBuffer(sizeOrKey)) {
         this.#prime = Buffer.from(
-          isAnyArrayBuffer(sizeOrKey)
-            ? sizeOrKey
-            : sizeOrKey.buffer,
+          isAnyArrayBuffer(sizeOrKey) ? sizeOrKey : sizeOrKey.buffer,
           isArrayBufferView(sizeOrKey) ? sizeOrKey.byteOffset : 0,
-          isArrayBufferView(sizeOrKey) ? sizeOrKey.byteLength : (sizeOrKey as ArrayBuffer).byteLength,
+          isArrayBufferView(sizeOrKey)
+            ? sizeOrKey.byteLength
+            : (sizeOrKey as ArrayBuffer).byteLength,
         );
       } else {
         this.#prime = toBuf(sizeOrKey as string, keyEncoding as string);
@@ -1479,7 +1479,9 @@ export function diffieHellman(
   if (callback !== undefined && typeof callback !== "function") {
     throw new ERR_INVALID_ARG_TYPE("callback", "function", callback);
   }
-  if (typeof options !== "object" || options === null || Array.isArray(options)) {
+  if (
+    typeof options !== "object" || options === null || Array.isArray(options)
+  ) {
     throw new ERR_INVALID_ARG_TYPE("options", "object", options);
   }
   if (!options.privateKey) {

@@ -247,8 +247,9 @@ impl AsymmetricPrivateKey {
         AsymmetricPublicKey::Ed448(key.verifying_key())
       }
       AsymmetricPrivateKey::Dh(dh_key) => {
-        let prime =
-          num_bigint_dig::BigUint::from_bytes_be(dh_key.params.prime.as_bytes());
+        let prime = num_bigint_dig::BigUint::from_bytes_be(
+          dh_key.params.prime.as_bytes(),
+        );
         let base =
           num_bigint_dig::BigUint::from_bytes_be(dh_key.params.base.as_bytes());
         let public_key = dh_key.key.compute_public_key(&base, &prime);
@@ -1084,9 +1085,9 @@ impl KeyObjectHandle {
             let data = spki.subject_public_key.as_ref();
             let point_bytes: &[u8; 57] = data
               .try_into()
-              .map_err(|_| X509PublicKeyError::InvalidEd25519Key)?;
+              .map_err(|_| X509PublicKeyError::InvalidEd448Key)?;
             let vk = ed448_goldilocks::VerifyingKey::from_bytes(point_bytes)
-              .map_err(|_| X509PublicKeyError::InvalidEd25519Key)?;
+              .map_err(|_| X509PublicKeyError::InvalidEd448Key)?;
             AsymmetricPublicKey::Ed448(vk)
           }
           ID_X448 => {
@@ -2840,7 +2841,6 @@ pub async fn op_node_generate_ed448_key_async() -> KeyObjectHandlePair {
   spawn_blocking(ed448_generate).await.unwrap()
 }
 
-
 fn dh_group_generate(
   group_name: &str,
 ) -> Result<KeyObjectHandlePair, JsErrorBox> {
@@ -2935,7 +2935,10 @@ fn dh_generate(
   } else if generator <= 0xFFFF {
     vec![(generator >> 8) as u8, generator as u8]
   } else {
-    generator.to_be_bytes().iter().copied()
+    generator
+      .to_be_bytes()
+      .iter()
+      .copied()
       .skip_while(|&b| b == 0)
       .collect()
   };
