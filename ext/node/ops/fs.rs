@@ -55,19 +55,11 @@ pub enum FsError {
   #[class(inherit)]
   #[error(transparent)]
   NodeFs(#[from] NodeFsError),
+  #[class(inherit)]
+  #[error(transparent)]
+  JoinError(#[from] JoinError),
 }
 
-impl From<JoinError> for FsError {
-  fn from(err: JoinError) -> Self {
-    if err.is_cancelled() {
-      todo!("async tasks must not be cancelled")
-    }
-    if err.is_panic() {
-      std::panic::resume_unwind(err.into_panic()); // resume the panic on the main thread
-    }
-    unreachable!()
-  }
-}
 #[derive(Debug, Default)]
 pub struct NodeFsErrorContext {
   message: Option<String>,
