@@ -559,6 +559,9 @@ pub enum X509PublicKeyError {
   #[error("invalid Ed25519 public key")]
   InvalidEd25519Key,
   #[class(type)]
+  #[error("invalid Ed448 public key")]
+  InvalidEd448Key,
+  #[class(type)]
   #[error("invalid X25519 public key")]
   InvalidX25519Key,
   #[class(type)]
@@ -2882,7 +2885,7 @@ fn dh_group_generate(
   // Prepend 0x00 if MSB is set, since ASN.1 integers are signed.
   let mut prime_bytes: Vec<u8> =
     prime.iter().flat_map(|x| x.to_be_bytes()).collect();
-  if prime_bytes.first().map_or(false, |b| b & 0x80 != 0) {
+  if prime_bytes.first().is_some_and(|b| b & 0x80 != 0) {
     prime_bytes.insert(0, 0x00);
   }
   let gen_bytes = [generator as u8];
