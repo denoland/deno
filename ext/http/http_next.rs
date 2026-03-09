@@ -1007,6 +1007,10 @@ where
     NetworkStream::Tunnel(conn) => {
       serve_http(conn, connection_properties, lifetime, tx, options)
     }
+    #[cfg(windows)]
+    NetworkStream::WindowsPipe(conn) => {
+      serve_http(conn, connection_properties, lifetime, tx, options)
+    }
   }
 }
 

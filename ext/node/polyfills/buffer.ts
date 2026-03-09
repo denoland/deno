@@ -13,6 +13,7 @@ export {
   isUtf8,
   kMaxLength,
   kStringMaxLength,
+  resolveObjectURL,
   SlowBuffer,
   transcode,
 } from "ext:deno_node/internal/buffer.mjs";

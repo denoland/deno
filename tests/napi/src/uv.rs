@@ -45,7 +45,7 @@ impl KeepAlive {
     assert_napi_ok!(napi_create_function(
       env,
       c"dummy".as_ptr(),
-      -1,
+      usize::MAX,
       Some(dummy),
       null_mut(),
       &mut func,

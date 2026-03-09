@@ -1460,6 +1460,11 @@ static ENV_VARS: &[EnvVar] = &[
     example: None,
   },
   EnvVar {
+    name: "DENO_COVERAGE_DIR",
+    description: "Set the directory for collecting code coverage profiles.\nEquivalent to using the --coverage flag.",
+    example: None,
+  },
+  EnvVar {
     name: "DENO_DIR",
     description: "Set the cache directory",
     example: None,
@@ -4740,8 +4745,9 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
                                              <p(245)>--ignore-read  |  --ignore-read="/etc,/var/log.txt"</>
       <g>DENO_TRACE_PERMISSIONS</>                Environmental variable to enable stack traces in permission prompts.
                                              <p(245)>DENO_TRACE_PERMISSIONS=1 deno run main.ts</>
-      <g>DENO_AUDIT_PERMISSIONS</>               Environmental variable to generate a JSONL file with all permissions accesses.
-                                             <p(245)>DENO_TRACE_PERMISSIONS=./audit.jsonl deno run main.ts</>
+      <g>DENO_AUDIT_PERMISSIONS</>               Environmental variable to audit all permissions accesses. Set to a file path for JSONL output, or "otel" to emit as OpenTelemetry log events via the configured OTel exporter.
+                                             <p(245)>DENO_AUDIT_PERMISSIONS=./audit.jsonl deno run main.ts</>
+                                             <p(245)>DENO_AUDIT_PERMISSIONS=otel deno run main.ts</>
 "#))
     .arg(
       {

@@ -167,6 +167,14 @@ impl Serialize for WorkerControlEvent {
               "exitCode": exit_code,
             })
           }
+          CoreErrorKind::JsBox(js_error_box) => {
+            let class = js_error_box.get_class();
+            json!({
+              "message": js_error_box.to_string(),
+              "name": class,
+              "exitCode": exit_code,
+            })
+          }
           _ => json!({
             "message": error.to_string(),
             "exitCode": exit_code,
@@ -442,6 +450,9 @@ pub struct WebWorker {
   memory_trim_handle: Option<tokio::task::JoinHandle<()>>,
   maybe_coverage_dir: Option<PathBuf>,
   bootstrap_error: Option<CoreError>,
+  /// Set to `true` by the near-heap-limit callback when resource limits
+  /// are exceeded, so the error handler can emit `ERR_WORKER_OUT_OF_MEMORY`.
+  pub oom_triggered: Arc<AtomicBool>,
 }
 
 impl Drop for WebWorker {
@@ -474,7 +485,7 @@ impl WebWorker {
     (worker, handle)
   }
 
-  fn from_options<
+  pub fn from_options<
     TInNpmPackageChecker: InNpmPackageChecker + 'static,
     TNpmPackageFolderResolver: NpmPackageFolderResolver + 'static,
     TExtNodeSys: ExtNodeSys + 'static,
@@ -755,6 +766,7 @@ impl WebWorker {
         memory_trim_handle: None,
         maybe_coverage_dir: options.maybe_coverage_dir,
         bootstrap_error: None,
+        oom_triggered: Arc::new(AtomicBool::new(false)),
       },
       external_handle,
       options.bootstrap,
@@ -1152,6 +1164,24 @@ pub async fn run_web_worker(
   };
 
   if let Err(e) = result {
+    // For Node workers with OOM, skip script execution (V8 is terminated)
+    // and use a dedicated error type with exit code 1.
+    if internal_handle.worker_type == WorkerThreadType::Node
+      && worker.oom_triggered.load(Ordering::SeqCst)
+    {
+      let oom_error: CoreError = CoreErrorKind::JsBox(
+        deno_error::JsErrorBox::new(
+          "ERR_WORKER_OUT_OF_MEMORY",
+          "Worker terminated due to reaching memory limit: JS heap out of memory",
+        ),
+      )
+      .into_box();
+      internal_handle
+        .post_event(WorkerControlEvent::TerminalError(oom_error, 1))
+        .expect("Failed to post message to host");
+      return Ok(());
+    }
+
     print_worker_error(&e, &name, format_js_error_fn.as_deref());
 
     // For Node workers, dispatch process 'exit' event before sending

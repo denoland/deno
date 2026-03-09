@@ -1,0 +1,859 @@
+#[allow(non_camel_case_types)]
+const fn op_buffers() -> ::deno_core::_ops::OpDecl {
+    #[allow(non_camel_case_types)]
+    struct op_buffers {
+        _unconstructable: ::std::marker::PhantomData<()>,
+    }
+    impl ::deno_core::_ops::Op for op_buffers {
+        const NAME: &'static str = stringify!(op_buffers);
+        const DECL: ::deno_core::_ops::OpDecl = ::deno_core::_ops::OpDecl::new_internal_op2(
+            ::deno_core::__op_name_fast!(op_buffers),
+            false,
+            false,
+            false,
+            4usize as u8,
+            false,
+            Self::v8_fn_ptr as _,
+            Self::v8_fn_ptr_metrics as _,
+            ::deno_core::AccessorType::None,
+            Some({
+                use deno_core::v8::fast_api::Type as CType;
+                use deno_core::v8;
+                deno_core::v8::fast_api::CFunction::new(
+                    Self::v8_fn_ptr_fast as _,
+                    &deno_core::v8::fast_api::CFunctionInfo::new(
+                        CType::Void.as_info(),
+                        &[
+                            CType::V8Value.as_info(),
+                            CType::V8Value.as_info(),
+                            CType::V8Value.as_info(),
+                            CType::V8Value.as_info(),
+                            CType::V8Value.as_info(),
+                            CType::CallbackOptions.as_info(),
+                        ],
+                        deno_core::v8::fast_api::Int64Representation::BigInt,
+                    ),
+                )
+            }),
+            Some({
+                use deno_core::v8::fast_api::Type as CType;
+                use deno_core::v8;
+                deno_core::v8::fast_api::CFunction::new(
+                    Self::v8_fn_ptr_fast_metrics as _,
+                    &deno_core::v8::fast_api::CFunctionInfo::new(
+                        CType::Void.as_info(),
+                        &[
+                            CType::V8Value.as_info(),
+                            CType::V8Value.as_info(),
+                            CType::V8Value.as_info(),
+                            CType::V8Value.as_info(),
+                            CType::V8Value.as_info(),
+                            CType::CallbackOptions.as_info(),
+                        ],
+                        deno_core::v8::fast_api::Int64Representation::BigInt,
+                    ),
+                )
+            }),
+            ::deno_core::OpMetadata {
+                ..::deno_core::OpMetadata::default()
+            },
+        );
+    }
+    impl op_buffers {
+        pub const fn name() -> &'static str {
+            <Self as deno_core::_ops::Op>::NAME
+        }
+        #[allow(clippy::too_many_arguments)]
+        extern "C" fn v8_fn_ptr_fast_metrics<'s>(
+            this: deno_core::v8::Local<deno_core::v8::Object>,
+            arg0: deno_core::v8::Local<deno_core::v8::Value>,
+            arg1: deno_core::v8::Local<deno_core::v8::Value>,
+            arg2: deno_core::v8::Local<deno_core::v8::Value>,
+            arg3: deno_core::v8::Local<deno_core::v8::Value>,
+            fast_api_callback_options: *mut deno_core::v8::fast_api::FastApiCallbackOptions<
+                's,
+            >,
+        ) -> () {
+            let fast_api_callback_options: &'s mut _ = unsafe {
+                &mut *fast_api_callback_options
+            };
+            let opctx: &'s _ = unsafe {
+                &*(deno_core::v8::Local::<
+                    deno_core::v8::External,
+                >::cast_unchecked(unsafe { fast_api_callback_options.data })
+                    .value() as *const deno_core::_ops::OpCtx)
+            };
+            deno_core::_ops::dispatch_metrics_fast(
+                opctx,
+                deno_core::_ops::OpMetricsEvent::Dispatched,
+            );
+            let res = Self::v8_fn_ptr_fast(
+                this,
+                arg0,
+                arg1,
+                arg2,
+                arg3,
+                fast_api_callback_options,
+            );
+            deno_core::_ops::dispatch_metrics_fast(
+                opctx,
+                deno_core::_ops::OpMetricsEvent::Completed,
+            );
+            res
+        }
+        #[allow(clippy::too_many_arguments)]
+        extern "C" fn v8_fn_ptr_fast<'s>(
+            this: deno_core::v8::Local<deno_core::v8::Object>,
+            arg0: deno_core::v8::Local<deno_core::v8::Value>,
+            arg1: deno_core::v8::Local<deno_core::v8::Value>,
+            arg2: deno_core::v8::Local<deno_core::v8::Value>,
+            arg3: deno_core::v8::Local<deno_core::v8::Value>,
+            fast_api_callback_options: *mut deno_core::v8::fast_api::FastApiCallbackOptions<
+                's,
+            >,
+        ) -> () {
+            #[cfg(debug_assertions)]
+            let _reentrancy_check_guard = deno_core::_ops::reentrancy_check(
+                &<Self as deno_core::_ops::Op>::DECL,
+            );
+            let fast_api_callback_options: &'s mut _ = unsafe {
+                &mut *fast_api_callback_options
+            };
+            let result = {
+                let Ok(arg0) = arg0.try_cast::<deno_core::v8::ArrayBufferView>() else {
+                    {
+                        let scope = ::std::pin::pin!(
+                            unsafe { deno_core::v8::CallbackScope::new(& *
+                            fast_api_callback_options) }
+                        );
+                        let mut scope = scope.init();
+                        deno_core::_ops::throw_error_one_byte(
+                            &mut scope,
+                            "expected ArrayBufferView",
+                        );
+                        return unsafe { std::mem::zeroed() };
+                    }
+                };
+                let mut buffer = [0; ::deno_core::v8::TYPED_ARRAY_MAX_SIZE_IN_HEAP];
+                let arg0 = unsafe {
+                    let (input_ptr, input_len) = arg0
+                        .get_contents_raw_parts(&mut buffer);
+                    let input_ptr = if input_ptr.is_null() {
+                        ::std::ptr::dangling_mut()
+                    } else {
+                        input_ptr
+                    };
+                    let slice = ::std::slice::from_raw_parts_mut::<
+                        's,
+                    >(input_ptr, input_len);
+                    let (before, slice, after) = slice.align_to_mut();
+                    debug_assert!(before.is_empty());
+                    debug_assert!(after.is_empty());
+                    slice
+                };
+                let arg0 = arg0;
+                let Ok(arg1) = arg1.try_cast::<deno_core::v8::ArrayBufferView>() else {
+                    {
+                        let scope = ::std::pin::pin!(
+                            unsafe { deno_core::v8::CallbackScope::new(& *
+                            fast_api_callback_options) }
+                        );
+                        let mut scope = scope.init();
+                        deno_core::_ops::throw_error_one_byte(
+                            &mut scope,
+                            "expected ArrayBufferView",
+                        );
+                        return unsafe { std::mem::zeroed() };
+                    }
+                };
+                let mut buffer = [0; ::deno_core::v8::TYPED_ARRAY_MAX_SIZE_IN_HEAP];
+                let arg1 = unsafe {
+                    let (input_ptr, input_len) = arg1
+                        .get_contents_raw_parts(&mut buffer);
+                    let input_ptr = if input_ptr.is_null() {
+                        ::std::ptr::dangling_mut()
+                    } else {
+                        input_ptr
+                    };
+                    let slice = ::std::slice::from_raw_parts_mut::<
+                        's,
+                    >(input_ptr, input_len);
+                    let (before, slice, after) = slice.align_to_mut();
+                    debug_assert!(before.is_empty());
+                    debug_assert!(after.is_empty());
+                    slice
+                };
+                let arg1 = arg1;
+                let Ok(arg2) = arg2.try_cast::<deno_core::v8::ArrayBufferView>() else {
+                    {
+                        let scope = ::std::pin::pin!(
+                            unsafe { deno_core::v8::CallbackScope::new(& *
+                            fast_api_callback_options) }
+                        );
+                        let mut scope = scope.init();
+                        deno_core::_ops::throw_error_one_byte(
+                            &mut scope,
+                            "expected ArrayBufferView",
+                        );
+                        return unsafe { std::mem::zeroed() };
+                    }
+                };
+                let mut buffer = [0; ::deno_core::v8::TYPED_ARRAY_MAX_SIZE_IN_HEAP];
+                let arg2 = unsafe {
+                    let (input_ptr, input_len) = arg2
+                        .get_contents_raw_parts(&mut buffer);
+                    let input_ptr = if input_ptr.is_null() {
+                        ::std::ptr::dangling_mut()
+                    } else {
+                        input_ptr
+                    };
+                    let slice = ::std::slice::from_raw_parts_mut::<
+                        's,
+                    >(input_ptr, input_len);
+                    let (before, slice, after) = slice.align_to_mut();
+                    debug_assert!(before.is_empty());
+                    debug_assert!(after.is_empty());
+                    slice
+                };
+                let arg2 = if arg2.len() == 0 {
+                    ::std::ptr::null_mut()
+                } else {
+                    arg2.as_mut_ptr() as _
+                };
+                let Ok(arg3) = arg3.try_cast::<deno_core::v8::ArrayBufferView>() else {
+                    {
+                        let scope = ::std::pin::pin!(
+                            unsafe { deno_core::v8::CallbackScope::new(& *
+                            fast_api_callback_options) }
+                        );
+                        let mut scope = scope.init();
+                        deno_core::_ops::throw_error_one_byte(
+                            &mut scope,
+                            "expected ArrayBufferView",
+                        );
+                        return unsafe { std::mem::zeroed() };
+                    }
+                };
+                let mut buffer = [0; ::deno_core::v8::TYPED_ARRAY_MAX_SIZE_IN_HEAP];
+                let arg3 = unsafe {
+                    let (input_ptr, input_len) = arg3
+                        .get_contents_raw_parts(&mut buffer);
+                    let input_ptr = if input_ptr.is_null() {
+                        ::std::ptr::dangling_mut()
+                    } else {
+                        input_ptr
+                    };
+                    let slice = ::std::slice::from_raw_parts_mut::<
+                        's,
+                    >(input_ptr, input_len);
+                    let (before, slice, after) = slice.align_to_mut();
+                    debug_assert!(before.is_empty());
+                    debug_assert!(after.is_empty());
+                    slice
+                };
+                let arg3 = if arg3.len() == 0 {
+                    ::std::ptr::null_mut()
+                } else {
+                    arg3.as_mut_ptr() as _
+                };
+                Self::call(arg0, arg1, arg2, arg3)
+            };
+            result as _
+        }
+        fn slow_function_impl<'s>(
+            info: &'s deno_core::v8::FunctionCallbackInfo,
+        ) -> usize {
+            #[cfg(debug_assertions)]
+            let _reentrancy_check_guard = deno_core::_ops::reentrancy_check(
+                &<Self as deno_core::_ops::Op>::DECL,
+            );
+            let mut rv = deno_core::v8::ReturnValue::from_function_callback_info(info);
+            let args = deno_core::v8::FunctionCallbackArguments::from_function_callback_info(
+                info,
+            );
+            let result = {
+                let arg0 = args.get(0usize as i32);
+                let mut arg0_temp;
+                arg0_temp = match unsafe { deno_core::_ops::to_v8_slice::<u8>(arg0) } {
+                    Ok(arg0) => arg0,
+                    Err(arg0_err) => {
+                        deno_core::_ops::throw_error_one_byte_info(&info, arg0_err);
+                        return 1;
+                    }
+                };
+                let arg0 = arg0_temp.as_ref();
+                let arg1 = args.get(1usize as i32);
+                let mut arg1_temp;
+                arg1_temp = match unsafe { deno_core::_ops::to_v8_slice::<u8>(arg1) } {
+                    Ok(arg1) => arg1,
+                    Err(arg1_err) => {
+                        deno_core::_ops::throw_error_one_byte_info(&info, arg1_err);
+                        return 1;
+                    }
+                };
+                let arg1 = arg1_temp.as_mut();
+                let arg2 = args.get(2usize as i32);
+                let mut arg2_temp;
+                arg2_temp = match unsafe { deno_core::_ops::to_v8_slice::<u8>(arg2) } {
+                    Ok(arg2) => arg2,
+                    Err(arg2_err) => {
+                        deno_core::_ops::throw_error_one_byte_info(&info, arg2_err);
+                        return 1;
+                    }
+                };
+                let arg2 = if arg2_temp.len() == 0 {
+                    std::ptr::null()
+                } else {
+                    arg2_temp.as_ref().as_ptr()
+                };
+                let arg3 = args.get(3usize as i32);
+                let mut arg3_temp;
+                arg3_temp = match unsafe { deno_core::_ops::to_v8_slice::<u8>(arg3) } {
+                    Ok(arg3) => arg3,
+                    Err(arg3_err) => {
+                        deno_core::_ops::throw_error_one_byte_info(&info, arg3_err);
+                        return 1;
+                    }
+                };
+                let arg3 = if arg3_temp.len() == 0 {
+                    std::ptr::null_mut()
+                } else {
+                    arg3_temp.as_mut().as_mut_ptr()
+                };
+                Self::call(arg0, arg1, arg2, arg3)
+            };
+            deno_core::_ops::RustToV8RetVal::to_v8_rv(result, &mut rv);
+            return 0;
+        }
+        extern "C" fn v8_fn_ptr<'s>(info: *const deno_core::v8::FunctionCallbackInfo) {
+            let info: &'s _ = unsafe { &*info };
+            Self::slow_function_impl(info);
+        }
+        extern "C" fn v8_fn_ptr_metrics<'s>(
+            info: *const deno_core::v8::FunctionCallbackInfo,
+        ) {
+            let info: &'s _ = unsafe { &*info };
+            let args = deno_core::v8::FunctionCallbackArguments::from_function_callback_info(
+                info,
+            );
+            let opctx: &'s _ = unsafe {
+                &*(deno_core::v8::Local::<
+                    deno_core::v8::External,
+                >::cast_unchecked(args.data())
+                    .value() as *const deno_core::_ops::OpCtx)
+            };
+            deno_core::_ops::dispatch_metrics_slow(
+                opctx,
+                deno_core::_ops::OpMetricsEvent::Dispatched,
+            );
+            let res = Self::slow_function_impl(info);
+            if res == 0 {
+                deno_core::_ops::dispatch_metrics_slow(
+                    opctx,
+                    deno_core::_ops::OpMetricsEvent::Completed,
+                );
+            } else {
+                deno_core::_ops::dispatch_metrics_slow(
+                    opctx,
+                    deno_core::_ops::OpMetricsEvent::Error,
+                );
+            }
+        }
+    }
+    impl op_buffers {
+        #[allow(clippy::too_many_arguments)]
+        fn call(_a: &[u8], _b: &mut [u8], _c: *const u8, _d: *mut u8) {}
+    }
+    <op_buffers as ::deno_core::_ops::Op>::DECL
+}
+
+#[allow(non_camel_case_types)]
+const fn op_buffers_32() -> ::deno_core::_ops::OpDecl {
+    #[allow(non_camel_case_types)]
+    struct op_buffers_32 {
+        _unconstructable: ::std::marker::PhantomData<()>,
+    }
+    impl ::deno_core::_ops::Op for op_buffers_32 {
+        const NAME: &'static str = stringify!(op_buffers_32);
+        const DECL: ::deno_core::_ops::OpDecl = ::deno_core::_ops::OpDecl::new_internal_op2(
+            ::deno_core::__op_name_fast!(op_buffers_32),
+            false,
+            false,
+            false,
+            4usize as u8,
+            false,
+            Self::v8_fn_ptr as _,
+            Self::v8_fn_ptr_metrics as _,
+            ::deno_core::AccessorType::None,
+            Some({
+                use deno_core::v8::fast_api::Type as CType;
+                use deno_core::v8;
+                deno_core::v8::fast_api::CFunction::new(
+                    Self::v8_fn_ptr_fast as _,
+                    &deno_core::v8::fast_api::CFunctionInfo::new(
+                        CType::Void.as_info(),
+                        &[
+                            CType::V8Value.as_info(),
+                            CType::V8Value.as_info(),
+                            CType::V8Value.as_info(),
+                            CType::V8Value.as_info(),
+                            CType::V8Value.as_info(),
+                            CType::CallbackOptions.as_info(),
+                        ],
+                        deno_core::v8::fast_api::Int64Representation::BigInt,
+                    ),
+                )
+            }),
+            Some({
+                use deno_core::v8::fast_api::Type as CType;
+                use deno_core::v8;
+                deno_core::v8::fast_api::CFunction::new(
+                    Self::v8_fn_ptr_fast_metrics as _,
+                    &deno_core::v8::fast_api::CFunctionInfo::new(
+                        CType::Void.as_info(),
+                        &[
+                            CType::V8Value.as_info(),
+                            CType::V8Value.as_info(),
+                            CType::V8Value.as_info(),
+                            CType::V8Value.as_info(),
+                            CType::V8Value.as_info(),
+                            CType::CallbackOptions.as_info(),
+                        ],
+                        deno_core::v8::fast_api::Int64Representation::BigInt,
+                    ),
+                )
+            }),
+            ::deno_core::OpMetadata {
+                ..::deno_core::OpMetadata::default()
+            },
+        );
+    }
+    impl op_buffers_32 {
+        pub const fn name() -> &'static str {
+            <Self as deno_core::_ops::Op>::NAME
+        }
+        #[allow(clippy::too_many_arguments)]
+        extern "C" fn v8_fn_ptr_fast_metrics<'s>(
+            this: deno_core::v8::Local<deno_core::v8::Object>,
+            arg0: deno_core::v8::Local<deno_core::v8::Value>,
+            arg1: deno_core::v8::Local<deno_core::v8::Value>,
+            arg2: deno_core::v8::Local<deno_core::v8::Value>,
+            arg3: deno_core::v8::Local<deno_core::v8::Value>,
+            fast_api_callback_options: *mut deno_core::v8::fast_api::FastApiCallbackOptions<
+                's,
+            >,
+        ) -> () {
+            let fast_api_callback_options: &'s mut _ = unsafe {
+                &mut *fast_api_callback_options
+            };
+            let opctx: &'s _ = unsafe {
+                &*(deno_core::v8::Local::<
+                    deno_core::v8::External,
+                >::cast_unchecked(unsafe { fast_api_callback_options.data })
+                    .value() as *const deno_core::_ops::OpCtx)
+            };
+            deno_core::_ops::dispatch_metrics_fast(
+                opctx,
+                deno_core::_ops::OpMetricsEvent::Dispatched,
+            );
+            let res = Self::v8_fn_ptr_fast(
+                this,
+                arg0,
+                arg1,
+                arg2,
+                arg3,
+                fast_api_callback_options,
+            );
+            deno_core::_ops::dispatch_metrics_fast(
+                opctx,
+                deno_core::_ops::OpMetricsEvent::Completed,
+            );
+            res
+        }
+        #[allow(clippy::too_many_arguments)]
+        extern "C" fn v8_fn_ptr_fast<'s>(
+            this: deno_core::v8::Local<deno_core::v8::Object>,
+            arg0: deno_core::v8::Local<deno_core::v8::Value>,
+            arg1: deno_core::v8::Local<deno_core::v8::Value>,
+            arg2: deno_core::v8::Local<deno_core::v8::Value>,
+            arg3: deno_core::v8::Local<deno_core::v8::Value>,
+            fast_api_callback_options: *mut deno_core::v8::fast_api::FastApiCallbackOptions<
+                's,
+            >,
+        ) -> () {
+            #[cfg(debug_assertions)]
+            let _reentrancy_check_guard = deno_core::_ops::reentrancy_check(
+                &<Self as deno_core::_ops::Op>::DECL,
+            );
+            let fast_api_callback_options: &'s mut _ = unsafe {
+                &mut *fast_api_callback_options
+            };
+            let result = {
+                let Ok(arg0) = arg0.try_cast::<deno_core::v8::ArrayBufferView>() else {
+                    {
+                        let scope = ::std::pin::pin!(
+                            unsafe { deno_core::v8::CallbackScope::new(& *
+                            fast_api_callback_options) }
+                        );
+                        let mut scope = scope.init();
+                        deno_core::_ops::throw_error_one_byte(
+                            &mut scope,
+                            "expected ArrayBufferView",
+                        );
+                        return unsafe { std::mem::zeroed() };
+                    }
+                };
+                let mut buffer = [0; ::deno_core::v8::TYPED_ARRAY_MAX_SIZE_IN_HEAP];
+                let arg0 = unsafe {
+                    let (input_ptr, input_len) = arg0
+                        .get_contents_raw_parts(&mut buffer);
+                    let input_ptr = if input_ptr.is_null() {
+                        ::std::ptr::dangling_mut()
+                    } else {
+                        input_ptr
+                    };
+                    let slice = ::std::slice::from_raw_parts_mut::<
+                        's,
+                    >(input_ptr, input_len);
+                    let (before, slice, after) = slice.align_to_mut();
+                    debug_assert!(before.is_empty());
+                    debug_assert!(after.is_empty());
+                    slice
+                };
+                let arg0 = arg0;
+                let Ok(arg1) = arg1.try_cast::<deno_core::v8::ArrayBufferView>() else {
+                    {
+                        let scope = ::std::pin::pin!(
+                            unsafe { deno_core::v8::CallbackScope::new(& *
+                            fast_api_callback_options) }
+                        );
+                        let mut scope = scope.init();
+                        deno_core::_ops::throw_error_one_byte(
+                            &mut scope,
+                            "expected ArrayBufferView",
+                        );
+                        return unsafe { std::mem::zeroed() };
+                    }
+                };
+                let mut buffer = [0; ::deno_core::v8::TYPED_ARRAY_MAX_SIZE_IN_HEAP];
+                let arg1 = unsafe {
+                    let (input_ptr, input_len) = arg1
+                        .get_contents_raw_parts(&mut buffer);
+                    let input_ptr = if input_ptr.is_null() {
+                        ::std::ptr::dangling_mut()
+                    } else {
+                        input_ptr
+                    };
+                    let slice = ::std::slice::from_raw_parts_mut::<
+                        's,
+                    >(input_ptr, input_len);
+                    let (before, slice, after) = slice.align_to_mut();
+                    debug_assert!(before.is_empty());
+                    debug_assert!(after.is_empty());
+                    slice
+                };
+                let arg1 = arg1;
+                let Ok(arg2) = arg2.try_cast::<deno_core::v8::ArrayBufferView>() else {
+                    {
+                        let scope = ::std::pin::pin!(
+                            unsafe { deno_core::v8::CallbackScope::new(& *
+                            fast_api_callback_options) }
+                        );
+                        let mut scope = scope.init();
+                        deno_core::_ops::throw_error_one_byte(
+                            &mut scope,
+                            "expected ArrayBufferView",
+                        );
+                        return unsafe { std::mem::zeroed() };
+                    }
+                };
+                let mut buffer = [0; ::deno_core::v8::TYPED_ARRAY_MAX_SIZE_IN_HEAP];
+                let arg2 = unsafe {
+                    let (input_ptr, input_len) = arg2
+                        .get_contents_raw_parts(&mut buffer);
+                    let input_ptr = if input_ptr.is_null() {
+                        ::std::ptr::dangling_mut()
+                    } else {
+                        input_ptr
+                    };
+                    let slice = ::std::slice::from_raw_parts_mut::<
+                        's,
+                    >(input_ptr, input_len);
+                    let (before, slice, after) = slice.align_to_mut();
+                    debug_assert!(before.is_empty());
+                    debug_assert!(after.is_empty());
+                    slice
+                };
+                let arg2 = if arg2.len() == 0 {
+                    ::std::ptr::null_mut()
+                } else {
+                    arg2.as_mut_ptr() as _
+                };
+                let Ok(arg3) = arg3.try_cast::<deno_core::v8::ArrayBufferView>() else {
+                    {
+                        let scope = ::std::pin::pin!(
+                            unsafe { deno_core::v8::CallbackScope::new(& *
+                            fast_api_callback_options) }
+                        );
+                        let mut scope = scope.init();
+                        deno_core::_ops::throw_error_one_byte(
+                            &mut scope,
+                            "expected ArrayBufferView",
+                        );
+                        return unsafe { std::mem::zeroed() };
+                    }
+                };
+                let mut buffer = [0; ::deno_core::v8::TYPED_ARRAY_MAX_SIZE_IN_HEAP];
+                let arg3 = unsafe {
+                    let (input_ptr, input_len) = arg3
+                        .get_contents_raw_parts(&mut buffer);
+                    let input_ptr = if input_ptr.is_null() {
+                        ::std::ptr::dangling_mut()
+                    } else {
+                        input_ptr
+                    };
+                    let slice = ::std::slice::from_raw_parts_mut::<
+                        's,
+                    >(input_ptr, input_len);
+                    let (before, slice, after) = slice.align_to_mut();
+                    debug_assert!(before.is_empty());
+                    debug_assert!(after.is_empty());
+                    slice
+                };
+                let arg3 = if arg3.len() == 0 {
+                    ::std::ptr::null_mut()
+                } else {
+                    arg3.as_mut_ptr() as _
+                };
+                Self::call(arg0, arg1, arg2, arg3)
+            };
+            result as _
+        }
+        fn slow_function_impl<'s>(
+            info: &'s deno_core::v8::FunctionCallbackInfo,
+        ) -> usize {
+            #[cfg(debug_assertions)]
+            let _reentrancy_check_guard = deno_core::_ops::reentrancy_check(
+                &<Self as deno_core::_ops::Op>::DECL,
+            );
+            let mut rv = deno_core::v8::ReturnValue::from_function_callback_info(info);
+            let args = deno_core::v8::FunctionCallbackArguments::from_function_callback_info(
+                info,
+            );
+            let result = {
+                let arg0 = args.get(0usize as i32);
+                let mut arg0_temp;
+                arg0_temp = match unsafe { deno_core::_ops::to_v8_slice::<u32>(arg0) } {
+                    Ok(arg0) => arg0,
+                    Err(arg0_err) => {
+                        deno_core::_ops::throw_error_one_byte_info(&info, arg0_err);
+                        return 1;
+                    }
+                };
+                let arg0 = arg0_temp.as_ref();
+                let arg1 = args.get(1usize as i32);
+                let mut arg1_temp;
+                arg1_temp = match unsafe { deno_core::_ops::to_v8_slice::<u32>(arg1) } {
+                    Ok(arg1) => arg1,
+                    Err(arg1_err) => {
+                        deno_core::_ops::throw_error_one_byte_info(&info, arg1_err);
+                        return 1;
+                    }
+                };
+                let arg1 = arg1_temp.as_mut();
+                let arg2 = args.get(2usize as i32);
+                let mut arg2_temp;
+                arg2_temp = match unsafe { deno_core::_ops::to_v8_slice::<u32>(arg2) } {
+                    Ok(arg2) => arg2,
+                    Err(arg2_err) => {
+                        deno_core::_ops::throw_error_one_byte_info(&info, arg2_err);
+                        return 1;
+                    }
+                };
+                let arg2 = if arg2_temp.len() == 0 {
+                    std::ptr::null()
+                } else {
+                    arg2_temp.as_ref().as_ptr()
+                };
+                let arg3 = args.get(3usize as i32);
+                let mut arg3_temp;
+                arg3_temp = match unsafe { deno_core::_ops::to_v8_slice::<u32>(arg3) } {
+                    Ok(arg3) => arg3,
+                    Err(arg3_err) => {
+                        deno_core::_ops::throw_error_one_byte_info(&info, arg3_err);
+                        return 1;
+                    }
+                };
+                let arg3 = if arg3_temp.len() == 0 {
+                    std::ptr::null_mut()
+                } else {
+                    arg3_temp.as_mut().as_mut_ptr()
+                };
+                Self::call(arg0, arg1, arg2, arg3)
+            };
+            deno_core::_ops::RustToV8RetVal::to_v8_rv(result, &mut rv);
+            return 0;
+        }
+        extern "C" fn v8_fn_ptr<'s>(info: *const deno_core::v8::FunctionCallbackInfo) {
+            let info: &'s _ = unsafe { &*info };
+            Self::slow_function_impl(info);
+        }
+        extern "C" fn v8_fn_ptr_metrics<'s>(
+            info: *const deno_core::v8::FunctionCallbackInfo,
+        ) {
+            let info: &'s _ = unsafe { &*info };
+            let args = deno_core::v8::FunctionCallbackArguments::from_function_callback_info(
+                info,
+            );
+            let opctx: &'s _ = unsafe {
+                &*(deno_core::v8::Local::<
+                    deno_core::v8::External,
+                >::cast_unchecked(args.data())
+                    .value() as *const deno_core::_ops::OpCtx)
+            };
+            deno_core::_ops::dispatch_metrics_slow(
+                opctx,
+                deno_core::_ops::OpMetricsEvent::Dispatched,
+            );
+            let res = Self::slow_function_impl(info);
+            if res == 0 {
+                deno_core::_ops::dispatch_metrics_slow(
+                    opctx,
+                    deno_core::_ops::OpMetricsEvent::Completed,
+                );
+            } else {
+                deno_core::_ops::dispatch_metrics_slow(
+                    opctx,
+                    deno_core::_ops::OpMetricsEvent::Error,
+                );
+            }
+        }
+    }
+    impl op_buffers_32 {
+        #[allow(clippy::too_many_arguments)]
+        fn call(_a: &[u32], _b: &mut [u32], _c: *const u32, _d: *mut u32) {}
+    }
+    <op_buffers_32 as ::deno_core::_ops::Op>::DECL
+}
+
+#[allow(non_camel_case_types)]
+const fn op_buffers_option() -> ::deno_core::_ops::OpDecl {
+    #[allow(non_camel_case_types)]
+    struct op_buffers_option {
+        _unconstructable: ::std::marker::PhantomData<()>,
+    }
+    impl ::deno_core::_ops::Op for op_buffers_option {
+        const NAME: &'static str = stringify!(op_buffers_option);
+        const DECL: ::deno_core::_ops::OpDecl = ::deno_core::_ops::OpDecl::new_internal_op2(
+            ::deno_core::__op_name_fast!(op_buffers_option),
+            false,
+            false,
+            false,
+            2usize as u8,
+            false,
+            Self::v8_fn_ptr as _,
+            Self::v8_fn_ptr_metrics as _,
+            ::deno_core::AccessorType::None,
+            None,
+            None,
+            ::deno_core::OpMetadata {
+                ..::deno_core::OpMetadata::default()
+            },
+        );
+    }
+    impl op_buffers_option {
+        pub const fn name() -> &'static str {
+            <Self as deno_core::_ops::Op>::NAME
+        }
+        fn slow_function_impl<'s>(
+            info: &'s deno_core::v8::FunctionCallbackInfo,
+        ) -> usize {
+            #[cfg(debug_assertions)]
+            let _reentrancy_check_guard = deno_core::_ops::reentrancy_check(
+                &<Self as deno_core::_ops::Op>::DECL,
+            );
+            let mut rv = deno_core::v8::ReturnValue::from_function_callback_info(info);
+            let args = deno_core::v8::FunctionCallbackArguments::from_function_callback_info(
+                info,
+            );
+            let result = {
+                let arg0 = args.get(0usize as i32);
+                let mut arg0_temp;
+                let arg0 = if arg0.is_null_or_undefined() {
+                    None
+                } else {
+                    arg0_temp = match unsafe {
+                        deno_core::_ops::to_v8_slice::<u8>(arg0)
+                    } {
+                        Ok(arg0) => arg0,
+                        Err(arg0_err) => {
+                            deno_core::_ops::throw_error_one_byte_info(&info, arg0_err);
+                            return 1;
+                        }
+                    };
+                    let arg0 = arg0_temp.as_ref();
+                    Some(arg0)
+                };
+                let arg1 = args.get(1usize as i32);
+                let mut arg1_temp;
+                let arg1 = if arg1.is_null_or_undefined() {
+                    None
+                } else {
+                    arg1_temp = match unsafe {
+                        deno_core::_ops::to_v8_slice::<u8>(arg1)
+                    } {
+                        Ok(arg1) => arg1,
+                        Err(arg1_err) => {
+                            deno_core::_ops::throw_error_one_byte_info(&info, arg1_err);
+                            return 1;
+                        }
+                    };
+                    let arg1 = deno_core::serde_v8::JsBuffer::from_parts(arg1_temp);
+                    Some(arg1)
+                };
+                Self::call(arg0, arg1)
+            };
+            deno_core::_ops::RustToV8RetVal::to_v8_rv(result, &mut rv);
+            return 0;
+        }
+        extern "C" fn v8_fn_ptr<'s>(info: *const deno_core::v8::FunctionCallbackInfo) {
+            let info: &'s _ = unsafe { &*info };
+            Self::slow_function_impl(info);
+        }
+        extern "C" fn v8_fn_ptr_metrics<'s>(
+            info: *const deno_core::v8::FunctionCallbackInfo,
+        ) {
+            let info: &'s _ = unsafe { &*info };
+            let args = deno_core::v8::FunctionCallbackArguments::from_function_callback_info(
+                info,
+            );
+            let opctx: &'s _ = unsafe {
+                &*(deno_core::v8::Local::<
+                    deno_core::v8::External,
+                >::cast_unchecked(args.data())
+                    .value() as *const deno_core::_ops::OpCtx)
+            };
+            deno_core::_ops::dispatch_metrics_slow(
+                opctx,
+                deno_core::_ops::OpMetricsEvent::Dispatched,
+            );
+            let res = Self::slow_function_impl(info);
+            if res == 0 {
+                deno_core::_ops::dispatch_metrics_slow(
+                    opctx,
+                    deno_core::_ops::OpMetricsEvent::Completed,
+                );
+            } else {
+                deno_core::_ops::dispatch_metrics_slow(
+                    opctx,
+                    deno_core::_ops::OpMetricsEvent::Error,
+                );
+            }
+        }
+    }
+    impl op_buffers_option {
+        #[allow(clippy::too_many_arguments)]
+        fn call(_a: Option<&[u8]>, _b: Option<JsBuffer>) {}
+    }
+    <op_buffers_option as ::deno_core::_ops::Op>::DECL
+}

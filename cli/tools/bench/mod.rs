@@ -48,6 +48,7 @@ use crate::tools::test::TestFilter;
 use crate::tools::test::format_test_error;
 use crate::util::file_watcher;
 use crate::util::fs::CollectSpecifiersOptions;
+use crate::util::fs::canonicalize_path;
 use crate::util::fs::collect_specifiers;
 use crate::util::path::is_script_ext;
 use crate::util::path::matches_pattern_or_exact_path;
@@ -605,17 +606,27 @@ pub async fn run_benchmarks_with_watch(
         let bench_modules_to_reload = if let Some(changed_paths) = changed_paths
         {
           let changed_paths = changed_paths.into_iter().collect::<HashSet<_>>();
-          let mut result = IndexSet::with_capacity(bench_modules.len());
-          for bench_module_specifier in bench_modules {
-            if has_graph_root_local_dependent_changed(
-              &graph,
-              bench_module_specifier,
-              &changed_paths,
-            ) {
-              result.insert(bench_module_specifier.clone());
+          // If an env file changed, reload all bench modules since any
+          // bench could depend on environment variables.
+          let env_file_changed = cli_options
+            .env_file_paths()
+            .filter_map(|path| canonicalize_path(&path).ok())
+            .any(|path| changed_paths.contains(&path));
+          if env_file_changed {
+            bench_modules.clone()
+          } else {
+            let mut result = IndexSet::with_capacity(bench_modules.len());
+            for bench_module_specifier in bench_modules {
+              if has_graph_root_local_dependent_changed(
+                &graph,
+                bench_module_specifier,
+                &changed_paths,
+              ) {
+                result.insert(bench_module_specifier.clone());
+              }
             }
+            result
           }
-          result
         } else {
           bench_modules.clone()
         };
