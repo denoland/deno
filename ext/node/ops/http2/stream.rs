@@ -296,11 +296,11 @@ impl Http2Stream {
     let req_local = v8::Local::new(scope, req);
     let key =
       v8::String::new_external_onebyte_static(scope, b"oncomplete").unwrap();
-    if let Some(oncomplete) = req_local.get(scope, key.into()) {
-      if let Ok(oncomplete) = v8::Local::<v8::Function>::try_from(oncomplete) {
-        let zero = v8::Integer::new(scope, 0);
-        oncomplete.call(scope, req_local.into(), &[zero.into()]);
-      }
+    if let Some(oncomplete) = req_local.get(scope, key.into())
+      && let Ok(oncomplete) = v8::Local::<v8::Function>::try_from(oncomplete)
+    {
+      let zero = v8::Integer::new(scope, 0);
+      oncomplete.call(scope, req_local.into(), &[zero.into()]);
     }
   }
 
@@ -412,6 +412,7 @@ impl Http2Stream {
     } else {
       // SAFETY: session outlives the stream
       let session = unsafe { &*self.session };
+      // SAFETY: isolate pointer is valid during session lifetime
       let mut isolate =
         unsafe { v8::Isolate::from_raw_isolate_ptr(session.isolate) };
       v8::scope!(let scope, &mut isolate);
