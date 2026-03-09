@@ -2298,7 +2298,15 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
     parent_pkgs: &BTreeMap<StackString, NodeId>,
   ) -> Option<PeersResolution> {
     let mut checking = HashSet::new();
-    self.find_peers_cache_hit_inner(nv, parent_pkgs, &mut checking)
+    // Memoize recursive equivalence checks within this call.
+    // `parent_pkgs` is constant throughout, so the result of
+    // "does nv X have a matching cache entry?" is the same every
+    // time we ask. Without this memo, mutually-dependent packages
+    // (like the AWS CDK v1 suite) cause combinatorial explosion:
+    // each cache entry re-checks the same peers, each of which
+    // re-checks their peers, leading to millions of redundant calls.
+    let mut memo = HashMap::new();
+    self.find_peers_cache_hit_inner(nv, parent_pkgs, &mut checking, &mut memo)
   }
 
   fn find_peers_cache_hit_inner(
@@ -2306,10 +2314,17 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
     nv: &PackageNv,
     parent_pkgs: &BTreeMap<StackString, NodeId>,
     checking: &mut HashSet<PackageNv>,
+    memo: &mut HashMap<PackageNv, Option<PeersResolution>>,
   ) -> Option<PeersResolution> {
+    // Return memoized result if we've already fully evaluated this nv.
+    if let Some(result) = memo.get(nv) {
+      return result.clone();
+    }
     let entries = self.peers_cache.get(nv)?;
     if !checking.insert(nv.clone()) {
-      // Prevent infinite recursion for circular deps
+      // Prevent infinite recursion for circular deps.
+      // Don't memoize this — the result is context-dependent
+      // (it depends on which ancestors are currently being checked).
       return None;
     }
     for entry in entries {
@@ -2337,7 +2352,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
               // Not pure. Check recursively if the non-pure
               // package would resolve the same way in this context.
               if self
-                .find_peers_cache_hit_inner(cnv, parent_pkgs, checking)
+                .find_peers_cache_hit_inner(cnv, parent_pkgs, checking, memo)
                 .is_some()
               {
                 continue;
@@ -2384,10 +2399,13 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
 
       if all_match {
         checking.remove(nv);
-        return Some(entry.clone());
+        let result = Some(entry.clone());
+        memo.insert(nv.clone(), result.clone());
+        return result;
       }
     }
     checking.remove(nv);
+    memo.insert(nv.clone(), None);
     None
   }
 
