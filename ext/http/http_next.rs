@@ -1440,16 +1440,20 @@ impl UpgradeStream {
               Ok(buf.len())
             }
             Ok(httparse::Status::Complete(n)) => {
-              if response.code != Some(StatusCode::SWITCHING_PROTOCOLS.as_u16())
+              let status_code = response.code.unwrap_or(0);
+              // Accept 101 (WebSocket upgrade) and 200 (CONNECT tunnel)
+              if status_code != StatusCode::SWITCHING_PROTOCOLS.as_u16()
+                && status_code != StatusCode::OK.as_u16()
               {
                 return Err(std::io::Error::other(
                   HttpNextError::InvalidHttpStatusLine,
                 ));
               }
 
-              http
-                .otel_info_set_status(StatusCode::SWITCHING_PROTOCOLS.as_u16());
-              http.response_parts().status = StatusCode::SWITCHING_PROTOCOLS;
+              let status = StatusCode::from_u16(status_code)
+                .unwrap_or(StatusCode::SWITCHING_PROTOCOLS);
+              http.otel_info_set_status(status.as_u16());
+              http.response_parts().status = status;
 
               for header in response.headers {
                 http.response_parts().headers.append(

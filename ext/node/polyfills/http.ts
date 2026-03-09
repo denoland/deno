@@ -2274,9 +2274,29 @@ export class ServerImpl extends EventEmitter {
       });
 
       const req = new IncomingMessageForServer(socket);
+      req.method = request.method;
+
+      if (request.method === "CONNECT") {
+        // For CONNECT, the URL should be in authority form (host:port).
+        // Deno's server adds an "http://" prefix, so strip it.
+        req.url = request.url.replace(/^https?:\/\//, "");
+        req[kRawHeaders] = request.headers;
+
+        if (this.listenerCount("connect") > 0) {
+          const { conn, response } = upgradeHttpRaw(request);
+          const socket = new Socket({
+            handle: new TCP(constants.SERVER, conn),
+          });
+          req.socket = socket;
+          this.emit("connect", req, socket, Buffer.from([]));
+          return response;
+        } else {
+          return new Response(null, { status: 405 });
+        }
+      }
+
       // Slice off the origin so that we only have pathname + search
       req.url = request.url?.slice(request.url.indexOf("/", 8));
-      req.method = request.method;
       req.upgrade =
         request.headers.get("connection")?.toLowerCase().includes("upgrade") &&
         request.headers.get("upgrade");
