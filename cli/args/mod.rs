@@ -977,6 +977,32 @@ impl CliOptions {
     }
   }
 
+  pub fn cpu_prof_dir(&self) -> Option<PathBuf> {
+    self.flags.cpu_prof.as_ref().map(|f| {
+      f.dir
+        .as_ref()
+        .map(|d| self.initial_cwd.join(d))
+        .unwrap_or_else(|| self.initial_cwd.clone())
+    })
+  }
+
+  pub fn cpu_prof_name(&self) -> Option<String> {
+    self.flags.cpu_prof.as_ref().and_then(|f| f.name.clone())
+  }
+
+  pub fn cpu_prof_interval(&self) -> u32 {
+    self
+      .flags
+      .cpu_prof
+      .as_ref()
+      .and_then(|f| f.interval)
+      .unwrap_or(1000)
+  }
+
+  pub fn cpu_prof_md(&self) -> bool {
+    self.flags.cpu_prof.as_ref().is_some_and(|f| f.md)
+  }
+
   pub fn enable_testing_features(&self) -> bool {
     self.flags.enable_testing_features
   }
