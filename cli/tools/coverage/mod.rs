@@ -349,9 +349,8 @@ fn generate_coverage_report(
 
           let overlaps = range.start_char_offset < line_end_char_offset
             && range.end_char_offset > line_start_char_offset;
-          let reaches_edge =
-            range.start_char_offset <= line_start_char_offset
-              || range.end_char_offset >= line_end_char_offset;
+          let reaches_edge = range.start_char_offset <= line_start_char_offset
+            || range.end_char_offset >= line_end_char_offset;
           if overlaps && reaches_edge {
             count = 0;
           }
