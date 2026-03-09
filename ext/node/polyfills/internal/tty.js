@@ -10,6 +10,7 @@ const {
   Error,
   ObjectEntries,
   ObjectPrototypeHasOwnProperty,
+  ObjectPrototypeIsPrototypeOf,
   ObjectValues,
   RegExpPrototypeExec,
   SafeMap,
@@ -22,6 +23,8 @@ const {
   SetPrototypeGetSize,
   StringPrototypeSplit,
   StringPrototypeToLowerCase,
+  TypedArrayPrototypeSlice,
+  Uint8ArrayPrototype,
 } = primordials;
 
 import { ERR_INVALID_FD } from "ext:deno_node/internal/errors.ts";
@@ -35,6 +38,7 @@ import {
   cursorTo,
   moveCursor,
 } from "ext:deno_node/internal/readline/callbacks.mjs";
+import { Buffer } from "node:buffer";
 import { release } from "node:os";
 
 // Color depth constants
@@ -308,6 +312,55 @@ export class WriteStream extends Socket {
     this.columns = columns;
     this.rows = rows;
     this.isTTY = true;
+
+    // For stdout/stderr, use synchronous writes to avoid races with
+    // console.log which writes synchronously via Deno.core.print().
+    // Without this, async writes through the Socket/TTY handle can complete
+    // after a subsequent synchronous console.log, causing output corruption
+    // (e.g. listr2 ANSI redraws overwriting later output).
+    if (fd === 1 || fd === 2) {
+      const writer = fd === 1 ? io.stdout : io.stderr;
+      this._write = function (data, enc, cb) {
+        try {
+          let buf = ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, data)
+            ? data
+            : Buffer.from(data, enc);
+          // deno-lint-ignore prefer-primordials
+          while (buf.byteLength > 0) {
+            const nwritten = writer.writeSync(buf);
+            // deno-lint-ignore prefer-primordials
+            if (nwritten >= buf.byteLength) break;
+            buf = TypedArrayPrototypeSlice(buf, nwritten);
+          }
+        } catch (e) {
+          cb(e);
+          return;
+        }
+        cb();
+      };
+
+      // Prevent actually closing stdout/stderr. Libraries like mute-stream
+      // (used by @inquirer/prompts) call destroy()/end() on the stream,
+      // which would close the underlying resource and break subsequent
+      // console.log calls (BadResource error). Match Node.js behavior
+      // where stdio streams are indestructible.
+      //
+      // Override _destroy to prevent Socket._destroy from calling
+      // this._handle.close(), which would close the Deno resource.
+      this._destroy = function (err, cb) {
+        cb(err);
+        this._undestroy();
+      };
+
+      // Also prevent the handle's _onClose from closing the underlying
+      // io.stdout/io.stderr resource. This handles the end() path:
+      // end() -> _final -> shutdown -> _onClose -> io.stdout.close().
+      // Without this, the Deno resource (rid 1/2) is removed from the
+      // resource table and op_print (used by console.log) fails.
+      this._handle._onClose = function () {
+        return 0;
+      };
+    }
   }
 
   on(event, listener) {

@@ -172,6 +172,8 @@ impl HttpPropertyExtractor for DefaultHttpPropertyExtractor {
       ))]
       NetworkStreamAddress::Vsock(vsock) => Some(vsock.port()),
       NetworkStreamAddress::Tunnel(ref addr) => Some(addr.port() as _),
+      #[cfg(windows)]
+      NetworkStreamAddress::WindowsPipe(_) => None,
     };
     let peer_address = match peer_address {
       NetworkStreamAddress::Ip(addr) => Rc::from(addr.ip().to_string()),
@@ -186,6 +188,8 @@ impl HttpPropertyExtractor for DefaultHttpPropertyExtractor {
         Rc::from(format!("vsock:{}", addr.cid()))
       }
       NetworkStreamAddress::Tunnel(ref addr) => Rc::from(addr.hostname()),
+      #[cfg(windows)]
+      NetworkStreamAddress::WindowsPipe(_) => Rc::from("pipe"),
     };
     let local_port = listen_properties.local_port;
     let stream_type = listen_properties.stream_type;
@@ -231,6 +235,8 @@ fn listener_properties(
     ))]
     NetworkStreamAddress::Vsock(vsock) => Some(vsock.port()),
     NetworkStreamAddress::Tunnel(addr) => Some(addr.port() as _),
+    #[cfg(windows)]
+    NetworkStreamAddress::WindowsPipe(_) => None,
   };
   Ok(HttpListenProperties {
     scheme,
@@ -290,6 +296,8 @@ fn req_host_from_addr(
         format!("{}:{}", addr.hostname(), addr.port())
       }
     }
+    #[cfg(windows)]
+    NetworkStreamAddress::WindowsPipe(_) => "localhost".to_owned(),
   }
 }
 
@@ -305,6 +313,8 @@ fn req_scheme_from_stream_type(stream_type: NetworkStreamType) -> &'static str {
       target_os = "macos"
     ))]
     NetworkStreamType::Vsock => "http+vsock://",
+    #[cfg(windows)]
+    NetworkStreamType::WindowsPipe => "http://",
   }
 }
 
@@ -335,6 +345,8 @@ fn req_host<'a>(
         target_os = "macos"
       ))]
       NetworkStreamType::Vsock => {}
+      #[cfg(windows)]
+      NetworkStreamType::WindowsPipe => {}
     }
     return Some(Cow::Borrowed(auth.as_str()));
   }

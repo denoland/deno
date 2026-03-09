@@ -1,4 +1,5 @@
 {
+  "$schema": "./schema.json",
   "tests": {
     "abort/test-addon-register-signal-handler.js": {},
     "abort/test-addon-uv-handle-leak.js": {},
@@ -67,6 +68,7 @@
     "parallel/test-assert-class-destructuring.js": {},
     "parallel/test-assert-class.js": {},
     "parallel/test-assert-deep-with-error.js": {},
+    "parallel/test-assert-deep.js": {},
     "parallel/test-assert-esm-cjs-message-verify.js": {},
     "parallel/test-assert-fail-deprecation.js": {},
     "parallel/test-assert-fail.js": {},
@@ -248,15 +250,36 @@
     "parallel/test-console-sync-write-error.js": {},
     "parallel/test-console-table.js": {},
     "parallel/test-console-with-frozen-intrinsics.js": {},
+    "parallel/test-crypto-classes.js": {},
+    "parallel/test-crypto-certificate.js": {},
+    "parallel/test-crypto-cipheriv-decipheriv.js": {
+      "exitCode": 1,
+      "output": "[WILDCARD]Unknown cipher id-aes128-wrap[WILDCARD]"
+    },
+    "parallel/test-crypto-default-shake-lengths.js": {},
+    "parallel/test-crypto-default-shake-lengths-oneshot.js": {},
     "parallel/test-crypto-dh-constructor.js": {},
+    "parallel/test-crypto-dh-errors.js": {},
+    "parallel/test-crypto-dh-generate-keys.js": {},
+    "parallel/test-crypto-dh-group-setters.js": {},
     "parallel/test-crypto-dh-leak.js": {},
+    "parallel/test-crypto-dh-modp2.js": {},
+    "parallel/test-crypto-dh-modp2-views.js": {},
     "parallel/test-crypto-dh-odd-key.js": {},
+    "parallel/test-crypto-dh-padding.js": {},
     "parallel/test-crypto-dh-shared.js": {},
     "parallel/test-crypto-domain.js": {},
     "parallel/test-crypto-domains.js": {},
+    "parallel/test-crypto-ecdh-convert-key.js": {},
     "parallel/test-crypto-ecb.js": {},
     "parallel/test-crypto-from-binary.js": {},
+    "parallel/test-crypto-getcipherinfo.js": {},
+    "parallel/test-crypto-hmac.js": {},
+    "parallel/test-crypto-keygen-async-dsa-key-object.js": {},
+    "parallel/test-crypto-keygen-async-elliptic-curve-jwk-ec.js": {},
+    "parallel/test-crypto-keygen-async-elliptic-curve-jwk.js": {},
     "parallel/test-crypto-keygen-async-elliptic-curve-jwk-rsa.js": {},
+    "parallel/test-crypto-keygen-async-named-elliptic-curve.js": {},
     "parallel/test-crypto-keygen-dh-classic.js": {},
     "parallel/test-crypto-keygen-duplicate-deprecated-option.js": {},
     "parallel/test-crypto-keygen-empty-passphrase-no-error.js": {},
@@ -265,6 +288,15 @@
     "parallel/test-crypto-keygen-non-standard-public-exponent.js": {},
     "parallel/test-crypto-keygen-rfc8017-9-1.js": {},
     "parallel/test-crypto-keygen-rfc8017-a-2-3.js": {},
+    "parallel/test-crypto-key-objects-messageport.js": {
+      "exitCode": 1,
+      "reason": "KeyObject structured clone (MessagePort serialization) not yet implemented"
+    },
+    "parallel/test-crypto-key-objects-to-crypto-key.js": {
+      "exitCode": 1,
+      "output": "[WILDCARD]NotSupportedError: Unrecognized algorithm name[WILDCARD]",
+      "reason": "Ed448/X448 toCryptoKey not supported by WebCrypto"
+    },
     "parallel/test-crypto-lazy-transform-writable.js": {},
     "parallel/test-crypto-oneshot-hash.js": {},
     "parallel/test-crypto-op-during-process-exit.js": {},
@@ -1502,7 +1534,9 @@
     "parallel/test-uv-binding-constant.js": {},
     "parallel/test-v8-deserialize-buffer.js": {},
     "parallel/test-v8-flag-pool-size-0.js": {},
+    "parallel/test-v8-getheapsnapshot-twice.js": {},
     "parallel/test-v8-global-setter.js": {},
+    "parallel/test-v8-stats.js": {},
     "parallel/test-vm-access-process-env.js": {},
     "parallel/test-vm-api-handles-getter-errors.js": {},
     "parallel/test-vm-attributes-property-not-on-sandbox.js": {},
@@ -1620,6 +1654,12 @@
     "parallel/test-worker-ref-onexit.js": {},
     "parallel/test-worker-relative-path-double-dot.js": {},
     "parallel/test-worker-relative-path.js": {},
+    "parallel/test-worker-resource-limits.js": {
+      "darwin": false,
+      "linux": false,
+      "windows": false,
+      "reason": "Depends on v8.getHeapSpaceStatistics() which is not yet implemented in Deno"
+    },
     "parallel/test-worker-stdio-flush-inflight.js": {},
     "parallel/test-worker-stdio-flush.js": {},
     "parallel/test-worker-stdio.js": {},
@@ -1637,10 +1677,9 @@
     "parallel/test-zlib-brotli-from-brotli.js": {},
     "parallel/test-zlib-brotli-from-string.js": {},
     "parallel/test-zlib-brotli-kmaxlength-rangeerror.js": {
-      "darwin": false,
-      "linux": false,
-      "windows": false,
-      "reason": "Deno pre-loads polyfills as ESM, so kMaxLength is a live binding that can't be snapshotted like Node.js CJS require"
+      "exitCode": 1,
+      "output": "[WILDCARD]assert.ok(err instanceof RangeError)[WILDCARD]",
+      "reason": "Deno's zlib error is not a RangeError instance (kMaxLength binding differs from Node.js CJS require)"
     },
     "parallel/test-zlib-brotli.js": {},
     "parallel/test-zlib-close-after-error.js": {},
@@ -1718,6 +1757,8 @@
     "pseudo-tty/test-tty-isatty.js": {},
     "pummel/test-buffer-large-size-buffer-alloc-unsafe-slow.js": {},
     "pummel/test-buffer-large-size-buffer-alloc-unsafe.js": {},
+    "pummel/test-crypto-dh-hash.js": {},
+    "pummel/test-crypto-dh-keys.js": {},
     "pummel/test-dh-regr.js": {},
     "pummel/test-fs-watch-system-limit.js": {},
     // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
@@ -1767,6 +1808,9 @@
     // "sequential/test-diagnostic-dir-heap-prof.js": {},
     "sequential/test-fs-readdir-recursive.js": {},
     "sequential/test-fs-stat-sync-overflow.js": {},
+    "sequential/test-heapdump.js": {
+      "windows": false
+    },
     "sequential/test-http-server-keep-alive-timeout-slow-server.js": {},
     // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
     // "sequential/test-inspector-open-dispose.mjs": {},

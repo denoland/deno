@@ -13,6 +13,8 @@ use std::sync::OnceLock;
 
 use deno_terminal::colors;
 
+use crate::sys::CliSys;
+
 pub fn resolve_cwd(
   initial_cwd: Option<&Path>,
 ) -> Result<Cow<'_, Path>, std::io::Error> {
@@ -89,7 +91,10 @@ impl WatchEnvTracker {
       return;
     }
 
-    match deno_dotenv::from_path_sanitized_iter(&file_path) {
+    match deno_dotenv::from_path_sanitized_iter_with_substitution(
+      &CliSys::default(),
+      &file_path,
+    ) {
       Ok(iter) => {
         for item in iter {
           match item {
@@ -244,7 +249,10 @@ pub fn load_env_variables_from_env_files(
   let mut loaded_keys = HashSet::new();
 
   for env_file_name in env_file_names.iter().rev() {
-    let iter = match deno_dotenv::from_path_sanitized_iter(env_file_name) {
+    let iter = match deno_dotenv::from_path_sanitized_iter_with_substitution(
+      &sys_traits::impls::RealSys,
+      env_file_name,
+    ) {
       Ok(iter) => iter,
       Err(error) => {
         handle_dotenv_error(error, env_file_name, flags_log_level);

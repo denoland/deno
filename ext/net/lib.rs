@@ -13,7 +13,7 @@ pub mod resolve_addr;
 pub mod tcp;
 pub mod tunnel;
 #[cfg(windows)]
-mod win_pipe;
+pub mod win_pipe;
 
 use std::sync::Arc;
 

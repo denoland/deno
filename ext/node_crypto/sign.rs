@@ -250,10 +250,10 @@ impl KeyObjectHandle {
           dsa_signature(dsa_signature_encoding, signature)
         }
       },
-      AsymmetricPrivateKey::X25519(_) => {
+      AsymmetricPrivateKey::X25519(_) | AsymmetricPrivateKey::X448(_) => {
         Err(KeyObjectHandlePrehashedSignAndVerifyError::X25519KeyCannotBeUsedForSigning)
       }
-      AsymmetricPrivateKey::Ed25519(_) => Err(KeyObjectHandlePrehashedSignAndVerifyError::Ed25519KeyCannotBeUsedForPrehashedSigning),
+      AsymmetricPrivateKey::Ed25519(_) | AsymmetricPrivateKey::Ed448(_) => Err(KeyObjectHandlePrehashedSignAndVerifyError::Ed25519KeyCannotBeUsedForPrehashedSigning),
       AsymmetricPrivateKey::Dh(_) => {
         Err(KeyObjectHandlePrehashedSignAndVerifyError::DhKeyCannotBeUsedForSigning)
       }
@@ -400,10 +400,10 @@ impl KeyObjectHandle {
           Ok(verifying_key.verify_prehash(digest, &signature).is_ok())
         }
       },
-      AsymmetricPublicKey::X25519(_) => {
+      AsymmetricPublicKey::X25519(_) | AsymmetricPublicKey::X448(_) => {
         Err(KeyObjectHandlePrehashedSignAndVerifyError::X25519KeyCannotBeUsedForVerification)
       }
-      AsymmetricPublicKey::Ed25519(_) => Err(KeyObjectHandlePrehashedSignAndVerifyError::Ed25519KeyCannotBeUsedForPrehashedVerification),
+      AsymmetricPublicKey::Ed25519(_) | AsymmetricPublicKey::Ed448(_) => Err(KeyObjectHandlePrehashedSignAndVerifyError::Ed25519KeyCannotBeUsedForPrehashedVerification),
       AsymmetricPublicKey::Dh(_) => {
         Err(KeyObjectHandlePrehashedSignAndVerifyError::DhKeyCannotBeUsedForVerification)
       }

@@ -996,10 +996,14 @@ impl JsError {
         let mut out = Vec::with_capacity(arr.length() as usize);
 
         for i in 0..arr.length() {
-          let key = arr.get_index(scope, i).unwrap();
+          let Some(key) = arr.get_index(scope, i) else {
+            continue;
+          };
           let key_name = key.to_rust_string_lossy(scope);
 
-          let val = exception.get(scope, key).unwrap();
+          let Some(val) = exception.get(scope, key) else {
+            continue;
+          };
           let val_str = val.to_rust_string_lossy(scope);
           out.push((key_name, val_str));
         }
@@ -1319,10 +1323,6 @@ pub(crate) fn exception_to_err<'s, 'i>(
 
   let mut was_terminating_execution = scope.is_execution_terminating();
 
-  // Disable running microtasks for a moment. When upgrading to V8 v11.4
-  // we discovered that canceling termination here will cause the queued
-  // microtasks to run which breaks some tests.
-  scope.set_microtasks_policy(v8::MicrotasksPolicy::Explicit);
   // If TerminateExecution was called, cancel isolate termination so that the
   // exception can be created. Note that `scope.is_execution_terminating()` may
   // have returned false if TerminateExecution was indeed called but there was
@@ -1364,7 +1364,6 @@ pub(crate) fn exception_to_err<'s, 'i>(
     // Resume exception termination.
     scope.terminate_execution();
   }
-  scope.set_microtasks_policy(v8::MicrotasksPolicy::Auto);
 
   js_error
 }
