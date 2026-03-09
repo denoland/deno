@@ -201,15 +201,6 @@ unsafe extern "C" fn uv_close(handle: *mut uv_handle_t, close: uv_close_cb) {
   }
 }
 
-// Deno does not use a real libuv event loop, so ref/unref are no-ops.
-// These must be exported to avoid null pointer crashes in addons that
-// call them (e.g. zeromq).
-#[unsafe(no_mangle)]
-unsafe extern "C" fn uv_ref(_handle: *mut uv_handle_t) {}
-
-#[unsafe(no_mangle)]
-unsafe extern "C" fn uv_unref(_handle: *mut uv_handle_t) {}
-
 unsafe extern "C" fn async_exec_wrap(_env: napi_env, data: *mut c_void) {
   let data: *mut uv_async_t = data.cast();
   unsafe {

@@ -160,5 +160,3 @@ EXPORTS
   uv_async_init
   uv_async_send
   uv_close
-  uv_ref
-  uv_unref
