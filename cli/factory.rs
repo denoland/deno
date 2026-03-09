@@ -1181,7 +1181,6 @@ impl CliFactory {
       // integration.
       skip_op_registration: cli_options.sub_command().is_run(),
       log_level: cli_options.log_level().unwrap_or(log::Level::Info).into(),
-      enable_op_summary_metrics: cli_options.enable_op_summary_metrics(),
       enable_testing_features: cli_options.enable_testing_features(),
       has_node_modules_dir: workspace_factory
         .node_modules_dir_path()?
