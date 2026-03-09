@@ -21,10 +21,10 @@ pub fn uri_parse_unencoded(s: &str) -> Result<Uri, AnyError> {
 
 pub fn normalize_uri(uri: &Uri) -> Uri {
   if !uri.scheme().as_str().eq_ignore_ascii_case("file") {
-    return uri.normalize().into();
+    return normalize_non_file_uri(uri);
   }
   let Some(path) = uri.to_file_path() else {
-    return uri.normalize().into();
+    return normalize_non_file_uri(uri);
   };
   let normalized_path = normalize_path(path);
   let mut encoded_path =
@@ -49,7 +49,7 @@ pub fn normalize_uri(uri: &Uri) -> Uri {
           }
           Prefix::Verbatim(_) | Prefix::DeviceNS(_) => {
             // Not a local path, abort.
-            return uri.normalize().into();
+            return normalize_non_file_uri(uri);
           }
         }
       }
@@ -75,6 +75,45 @@ pub fn normalize_uri(uri: &Uri) -> Uri {
     .build()
     .expect("component constraints should be met by the above")
     .normalize()
+    .into()
+}
+
+// TODO(nayeemrmn): Remove whe `Uri::normalize()` is fixed:
+// https://github.com/yescallop/fluent-uri-rs/issues/45
+pub fn normalize_non_file_uri(uri: &Uri) -> Uri {
+  let mut encoded_path =
+    fluent_uri::pct_enc::EString::<fluent_uri::pct_enc::encoder::Path>::new();
+  encoded_path.encode_str::<fluent_uri::pct_enc::encoder::Path>(
+    &percent_encoding::percent_decode_str(uri.path().as_str())
+      .decode_utf8_lossy(),
+  );
+  let encoded_query = uri.query().map(|query| {
+    let mut encoded_query = fluent_uri::pct_enc::EString::<
+      fluent_uri::pct_enc::encoder::Query,
+    >::new();
+    encoded_query
+      .encode_str::<fluent_uri::pct_enc::encoder::Query>(query.as_str());
+    encoded_query
+  });
+  let encoded_fragment = uri.fragment().map(|fragment| {
+    let mut encoded_fragment = fluent_uri::pct_enc::EString::<
+      fluent_uri::pct_enc::encoder::Fragment,
+    >::new();
+    encoded_fragment
+      .encode_str::<fluent_uri::pct_enc::encoder::Fragment>(fragment.as_str());
+    encoded_fragment
+  });
+  fluent_uri::Uri::builder()
+    .scheme(uri.scheme())
+    .optional(fluent_uri::build::Builder::authority, uri.authority())
+    .path(encoded_path.as_ref())
+    .optional(fluent_uri::build::Builder::query, encoded_query.as_deref())
+    .optional(
+      fluent_uri::build::Builder::fragment,
+      encoded_fragment.as_deref(),
+    )
+    .build()
+    .expect("component constraints should be met by the above")
     .into()
 }
 
@@ -144,7 +183,15 @@ pub fn uri_to_url(uri: &Uri) -> Url {
     }
     Url::parse(&s).ok().map(normalize_url)
   })()
-  .unwrap_or_else(|| normalize_url(Url::parse(uri.as_str()).unwrap()))
+  .unwrap_or_else(|| {
+    normalize_url(
+      Url::parse(uri.as_str())
+        .inspect_err(|err| {
+          lsp_warn!("Couldn't parse uri \"{}\" as url: {err}", uri.as_str());
+        })
+        .unwrap(),
+    )
+  })
 }
 
 pub fn uri_to_file_path(uri: &Uri) -> Result<PathBuf, UrlToFilePathError> {

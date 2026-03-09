@@ -14,16 +14,18 @@ import {
 } from "ext:deno_node/_fs/_fs_common.ts";
 import {
   AbortError,
+  denoErrorToNodeError,
   denoWriteFileErrorToNodeError,
 } from "ext:deno_node/internal/errors.ts";
 import {
   constants,
+  stringToFlags,
   validateStringAfterArrayBufferView,
 } from "ext:deno_node/internal/fs/utils.mjs";
 import { promisify } from "ext:deno_node/internal/util.mjs";
 import { FileHandle } from "ext:deno_node/internal/fs/handle.ts";
 import { FsFile } from "ext:deno_fs/30_fs.js";
-import { openPromise, openSync } from "ext:deno_node/_fs/_fs_open.ts";
+import { op_node_open, op_node_open_sync } from "ext:core/ops";
 import { isIterable } from "ext:deno_node/internal/streams/utils.js";
 import { primordials } from "ext:core/mod.js";
 import type { BufferEncoding } from "ext:deno_node/_global.d.ts";
@@ -66,15 +68,28 @@ async function getRid(
   if (typeof pathOrRid === "number") {
     return pathOrRid;
   }
-  const fileHandle = await openPromise(pathOrRid, flag);
-  return fileHandle.fd;
+  try {
+    return await op_node_open(pathOrRid, stringToFlags(flag), 0o666);
+  } catch (err) {
+    throw denoErrorToNodeError(err as Error, {
+      syscall: "open",
+      path: pathOrRid,
+    });
+  }
 }
 
 function getRidSync(pathOrRid: string | number, flag: string = "w"): number {
   if (typeof pathOrRid === "number") {
     return pathOrRid;
   }
-  return openSync(pathOrRid, flag);
+  try {
+    return op_node_open_sync(pathOrRid, stringToFlags(flag), 0o666);
+  } catch (err) {
+    throw denoErrorToNodeError(err as Error, {
+      syscall: "open",
+      path: pathOrRid,
+    });
+  }
 }
 
 export function writeFile(

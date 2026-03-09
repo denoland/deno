@@ -2074,6 +2074,30 @@ impl LanguageId {
     }
   }
 
+  pub fn as_ts_script_kind(&self) -> i32 {
+    match self {
+      LanguageId::JavaScript => 1,
+      LanguageId::Jsx => 2,
+      LanguageId::TypeScript => 3,
+      LanguageId::Tsx => 4,
+      LanguageId::Json | LanguageId::JsonC => 6,
+      LanguageId::Markdown => 0,
+      LanguageId::Html => 0,
+      LanguageId::Css => 0,
+      LanguageId::Scss => 0,
+      LanguageId::Sass => 0,
+      LanguageId::Less => 0,
+      LanguageId::Yaml => 0,
+      LanguageId::Sql => 0,
+      LanguageId::Svelte => 0,
+      LanguageId::Vue => 0,
+      LanguageId::Astro => 0,
+      LanguageId::Vento => 0,
+      LanguageId::Nunjucks => 0,
+      LanguageId::Unknown => 0,
+    }
+  }
+
   fn is_diagnosable(&self) -> bool {
     matches!(
       self,
@@ -2182,7 +2206,7 @@ fn get_maybe_test_module_fut(
   Some(handle)
 }
 
-fn resolve_media_type(
+pub fn resolve_media_type(
   specifier: &ModuleSpecifier,
   maybe_headers: Option<&HashMap<String, String>>,
   maybe_language_id: Option<LanguageId>,
