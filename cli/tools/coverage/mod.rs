@@ -336,22 +336,23 @@ fn generate_coverage_report(
         }
       }
 
-      // Reset the count if a zero-count range fully encloses the line and
-      // is more specific (smaller) than the best range from Phase 1. Using
-      // full enclosure (not partial overlap) prevents a tiny zero-count range
-      // (e.g. the unreachable gap between catch's return and finally) from
-      // incorrectly zeroing a line that is mostly covered by a larger range.
+      // Reset the count if a zero-count range overlaps the line and reaches
+      // at least one edge (start or end) of the line. A zero-count range
+      // floating in the middle of a line (not reaching either edge) is
+      // typically just a tiny gap between blocks (e.g. the unreachable path
+      // between catch's return and finally) and should not zero out the line.
       for function in &options.script_coverage.functions {
         for range in &function.ranges {
           if range.count > 0 {
             continue;
           }
 
-          let encloses = range.start_char_offset <= line_start_char_offset
-            && range.end_char_offset >= line_end_char_offset;
-          let range_size = range.end_char_offset - range.start_char_offset;
-          if encloses && range_size < best_range_size {
-            best_range_size = range_size;
+          let overlaps = range.start_char_offset < line_end_char_offset
+            && range.end_char_offset > line_start_char_offset;
+          let reaches_edge =
+            range.start_char_offset <= line_start_char_offset
+              || range.end_char_offset >= line_end_char_offset;
+          if overlaps && reaches_edge {
             count = 0;
           }
         }
