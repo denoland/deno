@@ -42,7 +42,6 @@ import { Buffer } from "node:buffer";
 import { writeFileSync } from "node:fs";
 import { Readable } from "node:stream";
 
-import { notImplemented } from "ext:deno_node/_utils.ts";
 import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
 import { getValidatedPath } from "ext:deno_node/internal/fs/utils.mjs";
 import { validateObject } from "ext:deno_node/internal/validators.mjs";

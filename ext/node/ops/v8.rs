@@ -177,6 +177,7 @@ impl V8CoverageConnection {
       .post_message::<()>(self.next_id(), "Profiler.disable", None);
   }
 
+  #[allow(clippy::disallowed_methods)]
   fn write_coverage(&self, response: &str) {
     let Ok(message) = serde_json::from_str::<serde_json::Value>(response)
     else {
