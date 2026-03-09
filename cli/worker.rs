@@ -18,8 +18,11 @@ use deno_lib::worker::LibMainWorkerFactory;
 use deno_lib::worker::ResolveNpmBinaryEntrypointError;
 use deno_npm_installer::PackageCaching;
 use deno_npm_installer::graph::NpmCachingStrategy;
+use deno_runtime::CpuProfilerConfig;
 use deno_runtime::WorkerExecutionMode;
 use deno_runtime::coverage::CoverageCollector;
+use deno_runtime::cpu_prof_filename;
+use deno_runtime::cpu_profiler::CpuProfiler;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::worker::MainWorker;
 use deno_semver::npm::NpmPackageReqReference;
@@ -40,6 +43,7 @@ pub type CreateHmrRunnerCb = Box<dyn Fn() -> HmrRunnerState + Send + Sync>;
 pub struct CliMainWorkerOptions {
   pub create_hmr_runner: Option<CreateHmrRunnerCb>,
   pub maybe_coverage_dir: Option<PathBuf>,
+  pub maybe_cpu_prof_config: Option<CpuProfilerConfig>,
   pub default_npm_caching_strategy: NpmCachingStrategy,
   pub needs_test_modules: bool,
   pub initial_cwd: Arc<ModuleSpecifier>,
@@ -49,6 +53,7 @@ pub struct CliMainWorkerOptions {
 struct SharedState {
   pub create_hmr_runner: Option<CreateHmrRunnerCb>,
   pub maybe_coverage_dir: Option<PathBuf>,
+  pub maybe_cpu_prof_config: Option<CpuProfilerConfig>,
   pub maybe_file_watcher_communicator: Option<Arc<WatcherCommunicator>>,
   pub initial_cwd: Arc<ModuleSpecifier>,
 }
@@ -71,6 +76,7 @@ impl CliMainWorker {
 
   pub async fn run(&mut self) -> Result<i32, CoreError> {
     let mut maybe_coverage_collector = self.maybe_setup_coverage_collector();
+    let mut maybe_cpu_profiler = self.maybe_setup_cpu_profiler();
     let mut maybe_hmr_runner = self.maybe_setup_hmr_runner();
 
     // WARNING: Remember to update cli/lib/worker.rs to align with
@@ -128,6 +134,9 @@ impl CliMainWorker {
 
     if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
       coverage_collector.stop_collecting()?;
+    }
+    if let Some(cpu_profiler) = maybe_cpu_profiler.as_mut() {
+      cpu_profiler.stop_profiling()?;
     }
     if let Some(hmr_runner) = maybe_hmr_runner.as_mut() {
       hmr_runner.stop();
@@ -241,6 +250,22 @@ impl CliMainWorker {
     Some(coverage_collector)
   }
 
+  pub fn maybe_setup_cpu_profiler(&mut self) -> Option<CpuProfiler> {
+    let config = self.shared.maybe_cpu_prof_config.as_ref()?;
+    let filename = cpu_prof_filename(config, None);
+
+    let mut cpu_profiler = CpuProfiler::new(
+      self.worker.js_runtime(),
+      config.dir.clone(),
+      filename,
+      config.interval,
+      config.md,
+    );
+    cpu_profiler.start_profiling();
+
+    Some(cpu_profiler)
+  }
+
   pub fn execute_script_static(
     &mut self,
     name: &'static str,
@@ -311,6 +336,7 @@ impl CliMainWorkerFactory {
       shared: Arc::new(SharedState {
         create_hmr_runner: options.create_hmr_runner,
         maybe_coverage_dir: options.maybe_coverage_dir,
+        maybe_cpu_prof_config: options.maybe_cpu_prof_config,
         maybe_file_watcher_communicator,
         initial_cwd: options.initial_cwd,
       }),
