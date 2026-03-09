@@ -53,7 +53,7 @@ macro_rules! generate {
                   Ok(f) => NAPI.$name = *f,
                   Err(_e) => {
                     debug_assert!({
-                      println!("Load Node-API [{}] from host runtime failed: {}", stringify!($name), _e);
+                      eprintln!("Load Node-API [{}] from host runtime failed: {}", stringify!($name), _e);
                       true
                     });
                   }
