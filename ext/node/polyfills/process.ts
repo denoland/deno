@@ -931,11 +931,15 @@ function execve(
   args: string[] = [],
   envObj: Record<string, string> = env,
 ): never {
+  if (internals.__isWorkerThread) {
+    throw new ERR_WORKER_UNSUPPORTED_OPERATION("Calling process.execve");
+  }
+
   if (isWindows) {
     throw new ERR_FEATURE_UNAVAILABLE_ON_PLATFORM("process.execve");
   }
 
-  validateString(file, "file");
+  validateString(file, "execPath");
   validateArray(args, "args");
 
   for (let i = 0; i < args.length; i++) {
