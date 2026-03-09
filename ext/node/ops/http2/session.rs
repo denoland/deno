@@ -1015,10 +1015,17 @@ unsafe extern "C" fn on_stream_close_callback(
 ) -> i32 {
   // SAFETY: data is the user_data pointer set during session creation
   let session = unsafe { Session::from_user_data(data) };
-
   let Some(stream_obj) = session.find_stream_obj(stream_id).cloned() else {
     return 0;
   };
+
+  // Mark the stream as being closed by nghttp2 BEFORE calling JS.
+  // This prevents shutdown() from calling resume_data(), which would
+  // re-activate the data provider for a stream that close_stream is
+  // about to destroy (double-free with no_closed_streams=1).
+  if let Some(stream) = session.find_stream(stream_id) {
+    *stream.closed_by_nghttp2.borrow_mut() = true;
+  }
 
   // SAFETY: isolate pointer is valid for the session's lifetime
   let mut isolate =
@@ -1379,6 +1386,12 @@ pub struct Session {
   /// handle close is deferred until send_pending_data can run, allowing
   /// GOAWAY to be sent before the connection closes.
   pub pending_destroy: bool,
+  /// RST_STREAM submissions deferred because is_sending was true.
+  /// Matches Node.js's pending_rst_streams_ mechanism: submitting
+  /// RST_STREAM during mem_recv/mem_send can cause nghttp2 to
+  /// double-free a stream (with no_closed_streams=1). Instead, we
+  /// defer and flush them after send_pending_data completes.
+  pub pending_rst_streams: Vec<(i32, u32)>,
 }
 
 impl Session {
@@ -1398,6 +1411,72 @@ impl Session {
   pub fn clear_outgoing(&mut self) {
     self.outgoing_buffers.clear();
     self.outgoing_length = 0;
+  }
+
+  /// Submit RST_STREAM, or defer it if we're inside mem_recv/mem_send.
+  /// Matches Node.js's Http2Stream::SubmitRstStream: submitting
+  /// RST_STREAM while nghttp2 is processing frames can cause
+  /// double-free with no_closed_streams=1.
+  pub fn submit_rst_stream(&mut self, stream_id: i32, code: u32) {
+    if self.is_sending {
+      self.pending_rst_streams.push((stream_id, code));
+      return;
+    }
+
+    // Flush any pending data first so that response DATA frames are
+    // sent before the RST_STREAM. This matches Node.js's behaviour
+    // in SubmitRstStream.
+    self.send_pending_data();
+
+    // Check if the stream still exists in nghttp2. After
+    // send_pending_data, the stream may already be fully closed
+    // (both sides sent END_STREAM) and freed (no_closed_streams=1).
+    // Submitting RST_STREAM for a freed stream causes a double-free.
+    // SAFETY: self.session is a valid nghttp2 session pointer
+    let stream_ptr =
+      unsafe { ffi::nghttp2_session_find_stream(self.session, stream_id) };
+    if stream_ptr.is_null() {
+      return;
+    }
+
+    // SAFETY: self.session is a valid nghttp2 session pointer
+    unsafe {
+      ffi::nghttp2_submit_rst_stream(
+        self.session,
+        ffi::NGHTTP2_FLAG_NONE as u8,
+        stream_id,
+        code,
+      );
+    }
+  }
+
+  /// Flush deferred RST_STREAM submissions. Called after
+  /// send_pending_data completes.
+  fn flush_pending_rst_streams(&mut self) {
+    if self.pending_rst_streams.is_empty() {
+      return;
+    }
+    let pending: Vec<_> = std::mem::take(&mut self.pending_rst_streams);
+    self.send_pending_data();
+    for (stream_id, code) in pending {
+      // Check if the stream still exists (may have been closed/freed
+      // by send_pending_data above).
+      // SAFETY: self.session is a valid nghttp2 session pointer
+      let stream_ptr =
+        unsafe { ffi::nghttp2_session_find_stream(self.session, stream_id) };
+      if stream_ptr.is_null() {
+        continue;
+      }
+      // SAFETY: self.session is a valid nghttp2 session pointer
+      unsafe {
+        ffi::nghttp2_submit_rst_stream(
+          self.session,
+          ffi::NGHTTP2_FLAG_NONE as u8,
+          stream_id,
+          code,
+        );
+      }
+    }
   }
 
   pub fn is_graceful_closing(&self) -> bool {
@@ -1544,6 +1623,11 @@ impl Session {
     }
 
     self.maybe_notify_graceful_close_complete();
+
+    // Flush any RST_STREAM submissions that were deferred during
+    // mem_recv/mem_send (is_sending was true). Matches Node.js's
+    // pending_rst_streams_ flush at the end of SendPendingData.
+    self.flush_pending_rst_streams();
   }
 
   pub fn receive_data(&mut self, data: &[u8]) {
@@ -1669,6 +1753,7 @@ impl Http2Session {
       stream: None,
       is_sending: false,
       pending_destroy: false,
+      pending_rst_streams: Vec::new(),
     }));
 
     // SAFETY: inner is valid (just allocated); callbacks and options are valid

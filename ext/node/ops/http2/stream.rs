@@ -160,6 +160,11 @@ pub struct Http2Stream {
   /// Stores the ShutdownWrap JS object when shutdown is async (pending data).
   /// complete_shutdown() calls req.oncomplete(0) to signal completion.
   pub(crate) shutdown_req: RefCell<Option<v8::Global<v8::Object>>>,
+  /// Set when nghttp2 fires on_stream_close_callback for this stream.
+  /// Prevents resume_data from being called during shutdown(), which
+  /// would re-activate the data provider for a stream that nghttp2 is
+  /// about to destroy (causing double-free with no_closed_streams=1).
+  pub(crate) closed_by_nghttp2: RefCell<bool>,
 }
 
 // SAFETY: Http2Stream is GC-traced by cppgc
@@ -204,6 +209,7 @@ impl Http2Stream {
         has_trailers: RefCell::new(false),
         writable_ended: RefCell::new(false),
         shutdown_req: RefCell::new(None),
+        closed_by_nghttp2: RefCell::new(false),
       },
     );
 
@@ -359,17 +365,18 @@ impl Http2Stream {
     _req: v8::Local<v8::Object>,
     #[string] data: &str,
   ) -> i32 {
-    let session_ptr = self.nghttp2_session();
-
     self
       .pending_data
       .borrow_mut()
       .extend_from_slice(data.as_bytes());
     *self.available_outbound_length.borrow_mut() += data.len();
 
-    // SAFETY: session pointer is valid during stream lifetime
-    unsafe {
-      ffi::nghttp2_session_resume_data(session_ptr, self.id);
+    if !*self.closed_by_nghttp2.borrow() {
+      let session_ptr = self.nghttp2_session();
+      // SAFETY: session pointer is valid during stream lifetime
+      unsafe {
+        ffi::nghttp2_session_resume_data(session_ptr, self.id);
+      }
     }
 
     0
@@ -381,14 +388,15 @@ impl Http2Stream {
     _req: v8::Local<v8::Object>,
     #[buffer] data: &[u8],
   ) -> i32 {
-    let session_ptr = self.nghttp2_session();
-
     self.pending_data.borrow_mut().extend_from_slice(data);
     *self.available_outbound_length.borrow_mut() += data.len();
 
-    // SAFETY: session pointer is valid during stream lifetime
-    unsafe {
-      ffi::nghttp2_session_resume_data(session_ptr, self.id);
+    if !*self.closed_by_nghttp2.borrow() {
+      let session_ptr = self.nghttp2_session();
+      // SAFETY: session pointer is valid during stream lifetime
+      unsafe {
+        ffi::nghttp2_session_resume_data(session_ptr, self.id);
+      }
     }
 
     0
@@ -397,10 +405,17 @@ impl Http2Stream {
   #[fast]
   fn shutdown(&self, req: v8::Local<v8::Object>) -> i32 {
     *self.writable_ended.borrow_mut() = true;
-    let session_ptr = self.nghttp2_session();
-    // SAFETY: session pointer is valid
-    unsafe {
-      ffi::nghttp2_session_resume_data(session_ptr, self.id);
+    // Skip resume_data if nghttp2 is closing this stream. Calling
+    // resume_data inside on_stream_close_callback re-activates the
+    // data provider, but close_stream then destroys the stream with
+    // no_closed_streams=1. The re-activated item survives destruction
+    // and mem_send later double-frees the stream.
+    if !*self.closed_by_nghttp2.borrow() {
+      let session_ptr = self.nghttp2_session();
+      // SAFETY: session pointer is valid
+      unsafe {
+        ffi::nghttp2_session_resume_data(session_ptr, self.id);
+      }
     }
 
     // If there's pending data, return 0 (async). The data provider will
@@ -462,17 +477,11 @@ impl Http2Stream {
       code,
       self.id
     );
-    let session_ptr = self.nghttp2_session();
-
-    // SAFETY: session pointer is valid during stream lifetime
-    unsafe {
-      ffi::nghttp2_submit_rst_stream(
-        session_ptr,
-        ffi::NGHTTP2_FLAG_NONE as u8,
-        self.id,
-        code,
-      );
-    }
+    // Defer RST_STREAM if we're inside mem_recv/mem_send to avoid
+    // nghttp2 double-free with no_closed_streams=1.
+    // SAFETY: session outlives the stream
+    let session = unsafe { &mut *self.session };
+    session.submit_rst_stream(self.id, code);
   }
 
   #[fast]
