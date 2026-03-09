@@ -545,7 +545,9 @@ class ClientRequest extends OutgoingMessage {
         }
         // For reused TLS sockets, the connection is already encrypted.
         // Skip TLS upgrade if the socket is already encrypted (reusedSocket).
-        const needsTlsUpgrade = this._encrypted && !this.socket.encrypted;
+        // Use _tlsUpgraded flag instead of socket.encrypted, since TLSSocket.encrypted
+        // is always true per Node.js semantics.
+        const needsTlsUpgrade = this._encrypted && !this.socket._tlsUpgraded;
         if (needsTlsUpgrade) {
           const hasCaCerts = !!this.agent?.options?.ca;
           const caCerts = hasCaCerts
@@ -566,8 +568,8 @@ class ClientRequest extends OutgoingMessage {
           // Simulates "secure" event on TLSSocket
           // This makes yarn v1's https client working
           this.socket.authorized = true;
-          // Mark the socket as encrypted for keepAlive reuse detection
-          this.socket.encrypted = true;
+          // Mark the socket as having completed TLS upgrade for keepAlive reuse detection
+          this.socket._tlsUpgraded = true;
         }
 
         // Stop reading and save handle for keepAlive restoration.

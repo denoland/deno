@@ -154,6 +154,9 @@ export class TLSSocket extends net.Socket {
     this.servername = null;
     this.alpnProtocol = null;
     this.alpnProtocols = tlsOptions.ALPNProtocols;
+    // Just a documented property to make secure sockets
+    // distinguishable from regular ones.
+    this.encrypted = true;
     this.authorized = false;
     this.authorizationError = null;
     this[kRes] = null;
@@ -198,8 +201,6 @@ export class TLSSocket extends net.Socket {
       handle.afterConnectTls = async () => {
         options.hostname ??= undefined; // coerce to undefined if null, startTls expects hostname to be undefined
         if (tlssock._needsSockInitWorkaround) {
-          // skips the TLS handshake for @npmcli/agent as it's handled by
-          // onSocket handler of ClientRequest object.
           tlssock.emit("secure");
           tlssock.removeListener("end", onConnectEnd);
           return;
@@ -297,12 +298,6 @@ export class TLSSocket extends net.Socket {
 
   getCipher() {
     return "";
-  }
-
-  // TLSSocket is always encrypted - this property returns true
-  // to indicate that the connection is secured via TLS.
-  get encrypted() {
-    return true;
   }
 }
 
