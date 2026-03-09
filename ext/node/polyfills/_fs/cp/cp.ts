@@ -2,8 +2,10 @@
 // Adapted from Node.js. Copyright Joyent, Inc. and other Node contributors.
 
 import { join, resolve, sep } from "node:path";
-import { mkdirPromise } from "ext:deno_node/_fs/_fs_mkdir.ts";
-import { opendirPromise } from "ext:deno_node/_fs/_fs_opendir.ts";
+import {
+  mkdirPromise,
+  opendirPromise,
+} from "ext:deno_node/internal/fs/promises.ts";
 import { EEXIST, EINVAL, EISDIR, ENOTDIR } from "node:constants";
 import {
   denoErrorToNodeError,
