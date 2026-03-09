@@ -304,6 +304,7 @@
     "parallel/test-crypto-psychic-signatures.js": {},
     "parallel/test-crypto-randomfillsync-regression.js": {},
     "parallel/test-crypto-randomuuid.js": {},
+    "parallel/test-crypto-rsa-pss-default-salt-length.js": {},
     "parallel/test-crypto-sec-level.js": {},
     "parallel/test-crypto-secret-keygen.js": {},
     "parallel/test-crypto-secure-heap.js": {
