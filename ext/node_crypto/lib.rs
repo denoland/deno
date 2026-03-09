@@ -1124,35 +1124,35 @@ pub fn op_node_ecdh_compute_public_key(
         elliptic_curve::SecretKey::<k256::Secp256k1>::from_slice(privkey)
           .expect("bad private key");
       let public_key = this_private_key.public_key();
-      pubkey.copy_from_slice(public_key.to_sec1_bytes().as_ref());
+      pubkey.copy_from_slice(public_key.to_encoded_point(false).as_ref());
     }
     "prime256v1" | "secp256r1" => {
       let this_private_key =
         elliptic_curve::SecretKey::<NistP256>::from_slice(privkey)
           .expect("bad private key");
       let public_key = this_private_key.public_key();
-      pubkey.copy_from_slice(public_key.to_sec1_bytes().as_ref());
+      pubkey.copy_from_slice(public_key.to_encoded_point(false).as_ref());
     }
     "secp384r1" => {
       let this_private_key =
         elliptic_curve::SecretKey::<NistP384>::from_slice(privkey)
           .expect("bad private key");
       let public_key = this_private_key.public_key();
-      pubkey.copy_from_slice(public_key.to_sec1_bytes().as_ref());
+      pubkey.copy_from_slice(public_key.to_encoded_point(false).as_ref());
     }
     "secp521r1" => {
       let this_private_key =
         elliptic_curve::SecretKey::<NistP521>::from_slice(privkey)
           .expect("bad private key");
       let public_key = this_private_key.public_key();
-      pubkey.copy_from_slice(public_key.to_sec1_bytes().as_ref());
+      pubkey.copy_from_slice(public_key.to_encoded_point(false).as_ref());
     }
     "secp224r1" => {
       let this_private_key =
         elliptic_curve::SecretKey::<NistP224>::from_slice(privkey)
           .expect("bad private key");
       let public_key = this_private_key.public_key();
-      pubkey.copy_from_slice(public_key.to_sec1_bytes().as_ref());
+      pubkey.copy_from_slice(public_key.to_encoded_point(false).as_ref());
     }
     &_ => todo!(),
   }
