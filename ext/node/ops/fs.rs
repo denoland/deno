@@ -78,6 +78,8 @@ pub struct NodeFsErrorContext {
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 #[class(generic)]
+// Intentionally set the error message to be empty, so that in the JS side it will fall back to the UV error message
+// https://github.com/denoland/deno/blob/f123d84e7d6e8036c3c38ecec6e25deb87a8829b/ext/node/polyfills/internal/errors.ts#L268-L270
 #[error("")]
 #[property("os_errno" = self.os_errno)]
 #[property("message" = self.context.message.clone().unwrap_or_default().clone())]
