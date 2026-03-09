@@ -729,6 +729,10 @@ impl BinaryNameAndUrl {
                 continue; // skip the primary entry
               }
               validate_name(bin_name)?;
+              // Strip leading "./" from script paths (common in package.json bin fields)
+              let script_path = script_path
+                .strip_prefix("./")
+                .unwrap_or(script_path.as_str());
               // Construct the module URL for this bin entry: npm:package@version/script_path
               let extra_url = if req.version_req.version_text() == "*" {
                 Url::parse(&format!("npm:{}/{}", req.name, script_path))

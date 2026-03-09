@@ -361,4 +361,93 @@ mod test {
       Some("gemini".to_string())
     );
   }
+
+  #[tokio::test]
+  async fn install_infer_name_multi_bin_npm() {
+    // Package with multiple bins where one matches the package name
+    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+    let http_client = HttpClientProvider::new(None, None);
+    let registry_api = TestNpmRegistryApi::default();
+    registry_api.with_version_info(("pyright", "1.0.0"), |info| {
+      info.bin = Some(deno_npm::registry::NpmPackageVersionBinEntry::Map(
+        HashMap::from([
+          ("pyright".to_string(), "index.js".to_string()),
+          (
+            "pyright-langserver".to_string(),
+            "langserver.index.js".to_string(),
+          ),
+        ]),
+      ))
+    });
+    let npm_version_resolver = NpmVersionResolver::default();
+    let resolver =
+      BinNameResolver::new(&http_client, &registry_api, &npm_version_resolver);
+
+    // Should infer "pyright" as the primary name since it matches the package name
+    let name = resolver
+      .infer_name_from_url(&Url::parse("npm:pyright").unwrap())
+      .await;
+    assert_eq!(name, Some("pyright".to_string()));
+  }
+
+  #[tokio::test]
+  async fn install_infer_name_multi_bin_scoped_npm() {
+    // Scoped package with multiple bins where one matches the unscoped package name
+    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+    let http_client = HttpClientProvider::new(None, None);
+    let registry_api = TestNpmRegistryApi::default();
+    registry_api.with_version_info(("@denotest/multi-bin", "1.0.0"), |info| {
+      info.bin = Some(deno_npm::registry::NpmPackageVersionBinEntry::Map(
+        HashMap::from([
+          ("multi-bin".to_string(), "./cli.mjs".to_string()),
+          ("multi-bin-server".to_string(), "./server.mjs".to_string()),
+        ]),
+      ))
+    });
+    let npm_version_resolver = NpmVersionResolver::default();
+    let resolver =
+      BinNameResolver::new(&http_client, &registry_api, &npm_version_resolver);
+
+    // Should infer "multi-bin" as the primary name
+    let name = resolver
+      .infer_name_from_url(&Url::parse("npm:@denotest/multi-bin").unwrap())
+      .await;
+    assert_eq!(name, Some("multi-bin".to_string()));
+  }
+
+  #[tokio::test]
+  async fn resolve_all_bin_entries_multi_bin() {
+    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+    let http_client = HttpClientProvider::new(None, None);
+    let registry_api = TestNpmRegistryApi::default();
+    registry_api.with_version_info(("pyright", "1.0.0"), |info| {
+      info.bin = Some(deno_npm::registry::NpmPackageVersionBinEntry::Map(
+        HashMap::from([
+          ("pyright".to_string(), "index.js".to_string()),
+          (
+            "pyright-langserver".to_string(),
+            "langserver.index.js".to_string(),
+          ),
+        ]),
+      ))
+    });
+    let npm_version_resolver = NpmVersionResolver::default();
+    let resolver =
+      BinNameResolver::new(&http_client, &registry_api, &npm_version_resolver);
+
+    let entries = resolver
+      .resolve_all_bin_entries_from_npm(&Url::parse("npm:pyright").unwrap())
+      .await;
+    let mut entries = entries.unwrap();
+    entries.sort_by(|a, b| a.0.cmp(&b.0));
+    assert_eq!(entries.len(), 2);
+    assert_eq!(entries[0], ("pyright".to_string(), "index.js".to_string()));
+    assert_eq!(
+      entries[1],
+      (
+        "pyright-langserver".to_string(),
+        "langserver.index.js".to_string()
+      )
+    );
+  }
 }
