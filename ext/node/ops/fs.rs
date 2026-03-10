@@ -1550,3 +1550,25 @@ pub async fn op_node_cp_on_link(
   })
   .await?
 }
+
+#[cfg(test)]
+mod tests {
+  use super::is_src_subdir;
+
+  #[test]
+  fn test_is_src_subdir() {
+    let base = std::env::temp_dir().join("deno_is_src_subdir_test");
+    let src = base.join("src");
+    let child = src.join("child");
+    let sibling = base.join("sibling");
+
+    let src = src.to_string_lossy().into_owned();
+    let child = child.to_string_lossy().into_owned();
+    let sibling = sibling.to_string_lossy().into_owned();
+
+    assert!(is_src_subdir(&src, &child));
+    assert!(is_src_subdir(&src, &src));
+    assert!(!is_src_subdir(&src, &sibling));
+    assert!(!is_src_subdir(&child, &src));
+  }
+}
