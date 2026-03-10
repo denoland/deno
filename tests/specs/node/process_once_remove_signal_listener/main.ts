@@ -45,3 +45,29 @@ console.log(
   "SIGINT listeners after prependOnce removeListener:",
   process.listenerCount("SIGINT"),
 );
+
+// Test 5: removeAllListeners("SIGINT") should remove all signal listeners
+process.on("SIGINT", sigintHandler);
+process.once("SIGINT", sigintHandler);
+console.log(
+  "SIGINT listeners before removeAllListeners:",
+  process.listenerCount("SIGINT"),
+);
+process.removeAllListeners("SIGINT");
+console.log(
+  "SIGINT listeners after removeAllListeners:",
+  process.listenerCount("SIGINT"),
+);
+
+// Test 6: removeAllListeners() with no args should remove signal listeners too
+process.on("SIGINT", sigintHandler);
+process.once("SIGINT", sigintHandler);
+console.log(
+  "SIGINT listeners before removeAllListeners():",
+  process.listenerCount("SIGINT"),
+);
+process.removeAllListeners();
+console.log(
+  "SIGINT listeners after removeAllListeners():",
+  process.listenerCount("SIGINT"),
+);

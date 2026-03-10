@@ -644,6 +644,49 @@ Process.prototype.removeListener = function (
   return this.off(event, listener);
 };
 
+Process.prototype.removeAllListeners = function (
+  // deno-lint-ignore no-explicit-any
+  event?: string | any,
+) {
+  if (arguments.length === 0) {
+    // Remove all listeners for all events - find all signal events and
+    // unregister their Deno signal listeners before clearing.
+    const events = this._events;
+    if (events !== undefined) {
+      for (const key of Object.keys(events)) {
+        if (typeof key === "string" && key.startsWith("SIG")) {
+          _removeAllSignalListeners(this, key);
+        }
+      }
+    }
+    return EventEmitter.prototype.removeAllListeners.call(this);
+  }
+  if (typeof event === "string" && event.startsWith("SIG")) {
+    _removeAllSignalListeners(this, event);
+  }
+  return EventEmitter.prototype.removeAllListeners.call(this, event);
+};
+
+function _removeAllSignalListeners(
+  // deno-lint-ignore no-explicit-any
+  target: any,
+  event: string,
+) {
+  const events = target._events;
+  if (events === undefined) return;
+  const list = events[event];
+  if (list === undefined) return;
+  if (typeof list === "function") {
+    const actual = list.listener ?? list;
+    Deno.removeSignalListener(event as Deno.Signal, actual);
+  } else {
+    for (let i = 0; i < list.length; i++) {
+      const actual = list[i].listener ?? list[i];
+      Deno.removeSignalListener(event as Deno.Signal, actual);
+    }
+  }
+}
+
 /** https://nodejs.org/api/process.html#process_process */
 // @ts-ignore TS doesn't work well with ES5 classes
 const process = new Process();
