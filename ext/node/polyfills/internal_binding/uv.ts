@@ -533,6 +533,7 @@ export function mapSysErrnoToUvErrno(sysErrno: number): number {
   }
 }
 
+export const UV_EACCES = codeMap.get("EACCES")!;
 export const UV_EAI_MEMORY = codeMap.get("EAI_MEMORY")!;
 export const UV_EBADF = codeMap.get("EBADF")!;
 export const UV_ECANCELED = codeMap.get("ECANCELED")!;
