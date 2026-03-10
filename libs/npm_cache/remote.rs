@@ -33,8 +33,7 @@ pub fn maybe_auth_header_value_for_npm_registry(
     .as_ref()
     .or(registry_config.email.as_ref());
   let password = registry_config.password.as_ref();
-  if username_or_email.is_some() != password.is_some()
-  {
+  if username_or_email.is_some() != password.is_some() {
     return Err(AuthHeaderForNpmRegistryError::Both);
   }
 
