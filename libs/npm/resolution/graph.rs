@@ -9247,7 +9247,9 @@ mod test {
     );
     for name in &pkg_names {
       assert!(
-        packages.iter().any(|p| p.pkg_id.starts_with(&format!("{}@", name))),
+        packages
+          .iter()
+          .any(|p| p.pkg_id.starts_with(&format!("{}@", name))),
         "should have {}",
         name
       );
