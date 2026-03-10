@@ -21,7 +21,6 @@ import {
   op_process_abort,
 } from "ext:core/ops";
 
-import { warnNotImplemented } from "ext:deno_node/_utils.ts";
 import { EventEmitter } from "node:events";
 import Module, { getBuiltinModule } from "node:module";
 import { report } from "ext:deno_node/internal/process/report.ts";
@@ -106,10 +105,6 @@ const {
   ObjectDefineProperty,
   ObjectPrototypeIsPrototypeOf,
 } = primordials;
-
-const notImplementedEvents = [
-  "multipleResolves",
-];
 
 export const argv: string[] = ["", ""];
 
@@ -497,10 +492,7 @@ Process.prototype.on = function (
   // deno-lint-ignore no-explicit-any
   listener: (...args: any[]) => void,
 ) {
-  if (notImplementedEvents.includes(event)) {
-    warnNotImplemented(`process.on("${event}")`);
-    EventEmitter.prototype.on.call(this, event, listener);
-  } else if (typeof event === "string" && event.startsWith("SIG")) {
+  if (typeof event === "string" && event.startsWith("SIG")) {
     if (event === "SIGBREAK" && Deno.build.os !== "windows") {
       // Ignores SIGBREAK if the platform is not windows.
     } else if (event === "SIGTERM" && Deno.build.os === "windows") {
@@ -528,10 +520,7 @@ Process.prototype.off = function (
   // deno-lint-ignore no-explicit-any
   listener: (...args: any[]) => void,
 ) {
-  if (notImplementedEvents.includes(event)) {
-    warnNotImplemented(`process.off("${event}")`);
-    EventEmitter.prototype.off.call(this, event, listener);
-  } else if (typeof event === "string" && event.startsWith("SIG")) {
+  if (typeof event === "string" && event.startsWith("SIG")) {
     if (event === "SIGBREAK" && Deno.build.os !== "windows") {
       // Ignores SIGBREAK if the platform is not windows.
     } else if (
@@ -567,10 +556,7 @@ Process.prototype.prependListener = function (
   // deno-lint-ignore no-explicit-any
   listener: (...args: any[]) => void,
 ) {
-  if (notImplementedEvents.includes(event)) {
-    warnNotImplemented(`process.prependListener("${event}")`);
-    EventEmitter.prototype.prependListener.call(this, event, listener);
-  } else if (typeof event === "string" && event.startsWith("SIG")) {
+  if (typeof event === "string" && event.startsWith("SIG")) {
     if (event === "SIGBREAK" && Deno.build.os !== "windows") {
       // Ignores SIGBREAK if the platform is not windows.
     } else {
@@ -591,10 +577,6 @@ Process.prototype.addListener = function (
   // deno-lint-ignore no-explicit-any
   listener: (...args: any[]) => void,
 ) {
-  if (notImplementedEvents.includes(event)) {
-    warnNotImplemented(`process.addListener("${event}")`);
-  }
-
   return this.on(event, listener);
 };
 
@@ -604,10 +586,6 @@ Process.prototype.removeListener = function (
   event: string, // deno-lint-ignore no-explicit-any
   listener: (...args: any[]) => void,
 ) {
-  if (notImplementedEvents.includes(event)) {
-    warnNotImplemented(`process.removeListener("${event}")`);
-  }
-
   return this.off(event, listener);
 };
 
