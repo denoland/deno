@@ -175,6 +175,7 @@ function copyDir(src: string, dest: string, opts: CopySyncOptions): void {
       const srcItem = join(src, name);
       const destItem = join(dest, name);
 
+      // deno-lint-ignore prefer-primordials
       if (opts.filter && !opts.filter(srcItem, destItem)) {
         continue;
       }
