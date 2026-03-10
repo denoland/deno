@@ -1,7 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Adapted from Node.js. Copyright Joyent, Inc. and other Node contributors.
 
-import { join, resolve, sep } from "node:path";
+import { join } from "node:path";
 import {
   mkdirPromise,
   opendirPromise,
@@ -28,7 +28,7 @@ import {
 } from "ext:core/ops";
 import type { CopyOptions } from "ext:deno_node/_fs/cp/cp.d.ts";
 
-enum CpEntryFlags {
+export enum CpEntryFlags {
   IsDestExists = 1 << 0,
   IsDirectory = 1 << 1,
   IsFile = 1 << 2,
@@ -39,17 +39,13 @@ enum CpEntryFlags {
   IsFifo = 1 << 7,
 }
 
-interface StatInfo {
+export interface StatInfo {
   flags: number;
   mode: number;
 }
 
 const {
-  ArrayPrototypeEvery,
-  ArrayPrototypeFilter,
-  Boolean,
   PromiseResolve,
-  StringPrototypeSplit,
 } = primordials;
 
 export type CheckPathsResult = {
@@ -65,7 +61,7 @@ export type CheckPathsResult = {
 };
 
 // deno-lint-ignore no-explicit-any
-function throwCpError(err: any): never {
+export function throwCpError(err: any): never {
   switch (err.kind) {
     case "EINVAL":
       throw new ERR_FS_CP_EINVAL({
@@ -138,25 +134,6 @@ export async function cpFn(
 
     throwCpError(err);
   }
-}
-
-export function areIdentical(
-  srcStat: Deno.FileInfo,
-  destStat: Deno.FileInfo,
-): boolean {
-  return !!(destStat.ino && destStat.dev && destStat.ino === srcStat.ino &&
-    destStat.dev === srcStat.dev);
-}
-
-const normalizePathToArray = (path: string): string[] =>
-  ArrayPrototypeFilter(StringPrototypeSplit(resolve(path), sep), Boolean);
-
-// Return true if dest is a subdir of src, otherwise false.
-// It only checks the path strings.
-export function isSrcSubdir(src: string, dest: string): boolean {
-  const srcArr = normalizePathToArray(src);
-  const destArr = normalizePathToArray(dest);
-  return ArrayPrototypeEvery(srcArr, (cur, i) => destArr[i] === cur);
 }
 
 function getStatsForCopy(
