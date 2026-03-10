@@ -9176,6 +9176,84 @@ mod test {
     );
   }
 
+  /// Test that mutual peer dependencies between many packages don't cause
+  /// combinatorial explosion in `find_peers_cache_hit_inner`.
+  /// Simulates the AWS CDK v1 pattern where ~30 packages all peer-depend
+  /// on each other (e.g. @aws-cdk/aws-ecs peers with aws-iam, aws-ec2,
+  /// aws-logs, etc., and each of those peers back).
+  /// Without memoization in `find_peers_cache_hit_inner`, this causes
+  /// millions of redundant recursive calls and hangs indefinitely.
+  /// Regression test for https://github.com/denoland/deno/issues/26430
+  #[tokio::test]
+  async fn peer_deps_mutual_many_packages_no_hang() {
+    let api = TestNpmRegistryApi::default();
+
+    // Create a "core" package that all CDK packages depend on
+    api.ensure_package_version("cdk-core", "1.0.0");
+
+    // Create N packages that mutually peer-depend on each other.
+    // With N=25, without memoization this causes combinatorial explosion
+    // in find_peers_cache_hit_inner (hangs indefinitely).
+    let n = 25;
+    let pkg_names: Vec<String> =
+      (0..n).map(|i| format!("cdk-pkg-{}", i)).collect();
+
+    for name in &pkg_names {
+      api.ensure_package_version(name, "1.0.0");
+      // Each package depends on cdk-core
+      api.add_dependency((name, "1.0.0"), ("cdk-core", "1"));
+    }
+
+    // Each package peer-depends on every other package
+    for i in 0..n {
+      for j in 0..n {
+        if i != j {
+          api.add_peer_dependency(
+            (&pkg_names[i], "1.0.0"),
+            (&pkg_names[j], "*"),
+          );
+        }
+      }
+    }
+
+    // A root package that depends on all of them
+    api.ensure_package_version("cdk-app", "1.0.0");
+    for name in &pkg_names {
+      api.add_dependency(("cdk-app", "1.0.0"), (name, "1"));
+    }
+
+    // Build root reqs: cdk-app + all cdk-pkg-N (to provide the peers)
+    let owned_reqs: Vec<String> =
+      pkg_names.iter().map(|n| format!("{}@1", n)).collect();
+    let mut root_reqs: Vec<&str> = vec!["cdk-app@1", "cdk-core@1"];
+    root_reqs.extend(owned_reqs.iter().map(|s| s.as_str()));
+
+    // Without memoization this would hang; with it, completes in < 5s
+    let result = tokio::time::timeout(
+      std::time::Duration::from_secs(30),
+      run_resolver_and_get_output(api, root_reqs),
+    )
+    .await;
+
+    let (packages, _) = result.expect(
+      "Resolution timed out — find_peers_cache_hit likely has \
+       combinatorial explosion (missing memoization)",
+    );
+
+    // Verify all packages resolved
+    assert!(
+      packages.iter().any(|p| p.pkg_id.starts_with("cdk-core@")),
+      "should have cdk-core"
+    );
+    for name in &pkg_names {
+      assert!(
+        packages.iter().any(|p| p.pkg_id.starts_with(&format!("{}@", name))),
+        "should have {}",
+        name
+      );
+    }
+  }
+
   /// Test that NpmPackageId serialization length stays bounded.
   /// With the Expo-like pattern of many plugins with circular peer deps,
   /// no single package ID should exceed a reasonable length.
