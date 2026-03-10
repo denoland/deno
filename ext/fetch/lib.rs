@@ -1512,18 +1512,24 @@ fn is_error_retryable(err: &(dyn std::error::Error + 'static)) -> bool {
   // This happens when a pooled keep-alive connection is stale (e.g. the
   // server shut down between requests). Safe to retry because the server
   // never received/processed the request on this connection.
-  if let Some(err) = find_source::<hyper::Error>(err) {
-    if err.is_incomplete_message() {
-      return true;
-    }
+  if let Some(err) = find_source::<hyper::Error>(err)
+    && err.is_incomplete_message()
+  {
+    return true;
   }
 
-  // Connection reset by the server before we could send the request.
+  // Connection reset/aborted by the server before we could send the request.
   // This is another manifestation of stale pooled connections.
-  if let Some(err) = find_source::<std::io::Error>(err) {
-    if err.kind() == std::io::ErrorKind::ConnectionReset {
-      return true;
-    }
+  // ConnectionReset (ECONNRESET) on Unix, ConnectionAborted (WSAECONNABORTED /
+  // os error 10053) on Windows.
+  if let Some(err) = find_source::<std::io::Error>(err)
+    && matches!(
+      err.kind(),
+      std::io::ErrorKind::ConnectionReset
+        | std::io::ErrorKind::ConnectionAborted
+    )
+  {
+    return true;
   }
 
   false
