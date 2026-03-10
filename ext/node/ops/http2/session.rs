@@ -185,14 +185,7 @@ unsafe extern "C" fn h2_write_cb(
     if !session_ptr.is_null() {
       // SAFETY: session_ptr was set in consume_stream and points to a valid Session
       let session = unsafe { &mut *(session_ptr as *mut Session) };
-      session.pending_writes = session.pending_writes.saturating_sub(1);
-      // Only check graceful close when all pending writes have
-      // completed. This ensures the TCP data is actually sent before
-      // we potentially uv_close the handle (which on Windows/IOCP
-      // would cancel pending writes).
-      if session.pending_writes == 0 {
-        session.maybe_notify_graceful_close_complete();
-      }
+      session.maybe_notify_graceful_close_complete();
     }
   }
 
@@ -209,6 +202,25 @@ unsafe extern "C" fn h2_stream_close_cb(
   // freeing the memory.
   // SAFETY: handle was allocated by Box::into_raw and ownership transferred via detach
   let _ = unsafe { Box::from_raw(handle as *mut deno_core::uv_compat::UvTcp) };
+}
+
+unsafe extern "C" fn h2_shutdown_cb(
+  req: *mut deno_core::uv_compat::UvShutdown,
+  _status: i32,
+) {
+  // After graceful shutdown (FIN sent), close the handle to free it.
+  // SAFETY: req.handle was set by uv_shutdown and is a valid stream handle
+  let stream_handle = unsafe { (*req).handle };
+  if !stream_handle.is_null() {
+    unsafe {
+      deno_core::uv_compat::uv_close(
+        stream_handle as *mut deno_core::uv_compat::UvHandle,
+        Some(h2_stream_close_cb),
+      );
+    }
+  }
+  // SAFETY: req was allocated by Box::into_raw in destroy()
+  let _ = unsafe { Box::from_raw(req) };
 }
 
 unsafe extern "C" fn h2_alloc_cb(
@@ -1393,11 +1405,6 @@ pub struct Session {
   /// handle close is deferred until send_pending_data can run, allowing
   /// GOAWAY to be sent before the connection closes.
   pub pending_destroy: bool,
-  /// Number of outstanding uv_write calls. We must not destroy the
-  /// session (uv_close the TCP handle) while writes are pending,
-  /// because on Windows IOCP would cancel them. Only call
-  /// maybe_notify_graceful_close_complete when this reaches 0.
-  pub pending_writes: u32,
   /// RST_STREAM submissions deferred because is_sending was true.
   /// Matches Node.js's pending_rst_streams_ mechanism: submitting
   /// RST_STREAM during mem_recv/mem_send can cause nghttp2 to
@@ -1568,7 +1575,6 @@ impl Session {
     }
 
     self.is_sending = true;
-    let mut writes_queued = 0u32;
     loop {
       let mut src = std::ptr::null();
       let src_len =
@@ -1600,8 +1606,6 @@ impl Session {
           );
           if ret != 0 {
             let _ = Box::from_raw(write_ptr);
-          } else {
-            writes_queued += 1;
           }
         }
       } else {
@@ -1625,35 +1629,19 @@ impl Session {
             base: (*write_ptr).data.as_ptr() as *mut _,
             len: (*write_ptr).data.len(),
           };
-          let ret = deno_core::uv_compat::uv_write(
+          deno_core::uv_compat::uv_write(
             &mut (*write_ptr).uv_req,
             stream,
             &buf,
             1,
             Some(h2_write_cb),
           );
-          if ret != 0 {
-            let _ = Box::from_raw(write_ptr);
-          } else {
-            writes_queued += 1;
-          }
         }
       }
       self.clear_outgoing();
     }
 
-    self.pending_writes += writes_queued;
-
-    // Only check graceful close when no async writes are pending.
-    // When writes ARE pending, h2_write_cb will check after each
-    // write completes. This matches Node.js's SendPendingData which
-    // only calls MaybeNotifyGracefulCloseComplete for synchronous
-    // (non-async) writes. On Windows, calling it here with pending
-    // writes would trigger uv_close before the writes complete,
-    // cancelling them via IOCP.
-    if writes_queued == 0 {
-      self.maybe_notify_graceful_close_complete();
-    }
+    self.maybe_notify_graceful_close_complete();
 
     // Flush any RST_STREAM submissions that were deferred during
     // mem_recv/mem_send (is_sending was true). Matches Node.js's
@@ -1691,10 +1679,21 @@ impl Session {
         // SAFETY: stream is a valid libuv handle
         unsafe {
           deno_core::uv_compat::uv_read_stop(stream);
-          deno_core::uv_compat::uv_close(
-            stream as *mut deno_core::uv_compat::UvHandle,
-            Some(h2_stream_close_cb),
+          let req = Box::into_raw(Box::new(
+            deno_core::uv_compat::new_shutdown(),
+          ));
+          let ret = deno_core::uv_compat::uv_shutdown(
+            req,
+            stream,
+            Some(h2_shutdown_cb),
           );
+          if ret != 0 {
+            let _ = Box::from_raw(req);
+            deno_core::uv_compat::uv_close(
+              stream as *mut deno_core::uv_compat::UvHandle,
+              Some(h2_stream_close_cb),
+            );
+          }
         }
       }
     }
@@ -1784,7 +1783,6 @@ impl Http2Session {
       stream: None,
       is_sending: false,
       pending_destroy: false,
-      pending_writes: 0,
       pending_rst_streams: Vec::new(),
     }));
 
@@ -1959,15 +1957,31 @@ impl Http2Session {
       // closes.
       session.pending_destroy = true;
     } else {
-      // Close the stream handle we took ownership of via consume_stream
+      // Close the stream handle we took ownership of via consume_stream.
+      // Use uv_shutdown first to send TCP FIN (graceful close) so the
+      // peer can read any remaining buffered data. On Windows, calling
+      // uv_close directly sends TCP RST which discards buffered data.
       if let Some(stream) = session.stream.take() {
         // SAFETY: stream is a valid libuv handle taken via consume_stream
         unsafe {
           deno_core::uv_compat::uv_read_stop(stream);
-          deno_core::uv_compat::uv_close(
-            stream as *mut deno_core::uv_compat::UvHandle,
-            Some(h2_stream_close_cb),
+          let req = Box::into_raw(Box::new(
+            deno_core::uv_compat::new_shutdown(),
+          ));
+          let ret = deno_core::uv_compat::uv_shutdown(
+            req,
+            stream,
+            Some(h2_shutdown_cb),
           );
+          if ret != 0 {
+            // Shutdown failed (e.g. not connected), fall back to
+            // closing the handle directly.
+            let _ = Box::from_raw(req);
+            deno_core::uv_compat::uv_close(
+              stream as *mut deno_core::uv_compat::UvHandle,
+              Some(h2_stream_close_cb),
+            );
+          }
         }
       }
     }
