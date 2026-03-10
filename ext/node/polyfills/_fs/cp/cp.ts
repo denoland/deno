@@ -119,7 +119,7 @@ export async function cpFn(
     const statInfo = await op_node_cp_validate_and_prepare(
       src,
       dest,
-      opts.dereference ?? false,
+      opts.dereference,
     );
     return await getStatsForCopy(statInfo, src, dest, opts);
   } catch (err) {
@@ -216,9 +216,9 @@ async function onFile(
     dest,
     statInfo.mode,
     statInfo.destExists,
-    opts.force ?? false,
-    opts.errorOnExist ?? false,
-    opts.preserveTimestamps ?? false,
+    opts.force,
+    opts.errorOnExist,
+    opts.preserveTimestamps,
   );
 }
 
@@ -263,7 +263,7 @@ async function copyDir(
     const statInfo = await op_node_cp_check_paths_recursive(
       srcItem,
       destItem,
-      opts.dereference ?? false,
+      opts.dereference,
     );
     await getStatsForCopy(statInfo, srcItem, destItem, opts);
   }
@@ -279,6 +279,6 @@ async function onLink(
     src,
     dest,
     destExists,
-    opts.verbatimSymlinks ?? false,
+    opts.verbatimSymlinks,
   );
 }
