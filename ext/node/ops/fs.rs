@@ -884,6 +884,134 @@ fn check_cp_path(
   )
 }
 
+fn check_cp_path_sync(
+  state: &mut OpState,
+  path: &str,
+  access_kind: OpenAccessKind,
+) -> Result<CheckedPathBuf, FsError> {
+  Ok(
+    state
+      .borrow_mut::<PermissionsContainer>()
+      .check_open(
+        Cow::Owned(PathBuf::from(path)),
+        access_kind,
+        Some("node:fs.cp"),
+      )?
+      .into_owned(),
+  )
+}
+
+fn check_paths_impl_sync(
+  state: &mut OpState,
+  fs: &FileSystemRc,
+  src: &str,
+  dest: &str,
+  dereference: bool,
+) -> Result<CpCheckPathsResult, FsError> {
+  let src_path = check_cp_path_sync(state, src, OpenAccessKind::Read)?;
+  let dest_path = check_cp_path_sync(state, dest, OpenAccessKind::Read)?;
+
+  let (src_stat_result, dest_result, syscall) = if dereference {
+    (
+      fs.stat_sync(&src_path.as_checked_path()),
+      fs.stat_sync(&dest_path.as_checked_path()),
+      "stat".to_string(),
+    )
+  } else {
+    (
+      fs.lstat_sync(&src_path.as_checked_path()),
+      fs.lstat_sync(&dest_path.as_checked_path()),
+      "lstat".to_string(),
+    )
+  };
+
+  let src_stat = src_stat_result.map_err(|err| {
+    map_fs_error_to_node_fs_error(
+      err,
+      NodeFsErrorContext {
+        path: Some(src.to_string()),
+        syscall: Some(syscall.to_string()),
+        ..Default::default()
+      },
+    )
+  })?;
+
+  let dest_stat = match dest_result {
+    Ok(stat) => Some(stat),
+    Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+    Err(e) => {
+      return Err(map_fs_error_to_node_fs_error(
+        e,
+        NodeFsErrorContext {
+          path: Some(dest.to_string()),
+          syscall: Some(syscall.to_string()),
+          ..Default::default()
+        },
+      ));
+    }
+  };
+
+  let src_dev = src_stat.dev;
+  let src_ino = src_stat.ino.unwrap_or(0);
+
+  if let Some(ref dest_stat) = dest_stat {
+    if are_identical_stat(&src_stat, dest_stat) {
+      return Err(
+        CpError::EInval {
+          message: "src and dest cannot be the same".to_string(),
+          path: dest.to_string(),
+        }
+        .into(),
+      );
+    }
+    if src_stat.is_directory && !dest_stat.is_directory {
+      return Err(
+        CpError::DirToNonDir {
+          message: format!(
+            "cannot overwrite non-directory {} with directory {}",
+            dest, src
+          ),
+          path: dest.to_string(),
+        }
+        .into(),
+      );
+    }
+    if !src_stat.is_directory && dest_stat.is_directory {
+      return Err(
+        CpError::NonDirToDir {
+          message: format!(
+            "cannot overwrite directory {} with non-directory {}",
+            dest, src
+          ),
+          path: dest.to_string(),
+        }
+        .into(),
+      );
+    }
+  }
+
+  if src_stat.is_directory && is_src_subdir(src, dest) {
+    return Err(
+      CpError::EInval {
+        message: format!(
+          "cannot copy {} to a subdirectory of self {}",
+          src, dest
+        ),
+        path: dest.to_string(),
+      }
+      .into(),
+    );
+  }
+
+  let stat_info = CpStatInfo::from_src_stat(&src_stat, dest_stat.is_some());
+
+  Ok(CpCheckPathsResult {
+    src_dev,
+    src_ino,
+    stat_info,
+  })
+}
+
 /// Validates src and dest paths for a cp operation.
 /// Checks identity, directory type conflicts, and subdirectory relationships.
 async fn check_paths_impl(
@@ -1024,6 +1152,19 @@ pub async fn op_node_cp_check_paths_recursive(
   Ok(result.stat_info)
 }
 
+#[op2(stack_trace)]
+#[serde]
+pub fn op_node_cp_check_paths_recursive_sync(
+  state: &mut OpState,
+  #[string] src: &str,
+  #[string] dest: &str,
+  dereference: bool,
+) -> Result<CpStatInfo, FsError> {
+  let fs = state.borrow::<FileSystemRc>().clone();
+  let result = check_paths_impl_sync(state, &fs, src, dest, dereference)?;
+  Ok(result.stat_info)
+}
+
 /// Validates src and dest paths, checks parent paths, and ensures
 /// parent directory exists
 /// Returns stat info for the source file
@@ -1054,6 +1195,35 @@ pub async fn op_node_cp_validate_and_prepare(
   .await?;
 
   ensure_parent_dir_impl(&state, &fs, &dest).await?;
+
+  Ok(check_result.stat_info)
+}
+
+/// Validates src and dest paths, checks parent paths, and ensures
+/// parent directory exists for cpSync.
+/// Returns stat info for the source file.
+#[op2(stack_trace)]
+#[serde]
+pub fn op_node_cp_validate_and_prepare_sync(
+  state: &mut OpState,
+  #[string] src: &str,
+  #[string] dest: &str,
+  dereference: bool,
+) -> Result<CpStatInfo, FsError> {
+  let fs = state.borrow::<FileSystemRc>().clone();
+
+  let check_result = check_paths_impl_sync(state, &fs, src, dest, dereference)?;
+
+  check_parent_paths_impl_sync(
+    state,
+    &fs,
+    src,
+    check_result.src_dev,
+    check_result.src_ino,
+    dest,
+  )?;
+
+  ensure_parent_dir_impl_sync(state, &fs, dest)?;
 
   Ok(check_result.stat_info)
 }
@@ -1143,6 +1313,86 @@ async fn check_parent_paths_impl(
   }
 }
 
+#[allow(clippy::disallowed_methods)]
+fn check_parent_paths_impl_sync(
+  state: &mut OpState,
+  fs: &FileSystemRc,
+  src: &str,
+  src_dev: u64,
+  src_ino: u64,
+  dest: &str,
+) -> Result<(), FsError> {
+  let src_parent = Path::new(src)
+    .parent()
+    .map(|p| p.to_path_buf())
+    .unwrap_or_default();
+  let src_parent =
+    deno_path_util::strip_unc_prefix(src_parent.canonicalize().unwrap_or_else(
+      |_| std::path::absolute(&src_parent).unwrap_or(src_parent),
+    ));
+
+  let mut current = Path::new(dest)
+    .parent()
+    .map(|p| p.to_path_buf())
+    .unwrap_or_default();
+  current = deno_path_util::strip_unc_prefix(
+    current
+      .canonicalize()
+      .unwrap_or_else(|_| std::path::absolute(&current).unwrap_or(current)),
+  );
+
+  loop {
+    if current == src_parent {
+      return Ok(());
+    }
+
+    // Check if current is the root
+    if current.parent().is_none() || current.parent() == Some(&current) {
+      return Ok(());
+    }
+
+    let current_str = current.to_string_lossy();
+    let checked_path =
+      check_cp_path_sync(state, &current_str, OpenAccessKind::Read)?;
+    match fs.stat_sync(&checked_path.as_checked_path()) {
+      Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+      Err(e) => {
+        return Err(map_fs_error_to_node_fs_error(
+          e,
+          NodeFsErrorContext {
+            path: Some(current_str.to_string()),
+            syscall: Some("stat".to_string()),
+            ..Default::default()
+          },
+        ));
+      }
+      Ok(dest_stat) => {
+        // Check if src and current parent are identical (same dev + ino)
+        if let Some(dest_ino) = dest_stat.ino
+          && dest_ino == src_ino
+          && dest_stat.dev == src_dev
+        {
+          return Err(
+            CpError::EInval {
+              message: format!(
+                "cannot copy {} to a subdirectory of self {}",
+                src, dest
+              ),
+              path: dest.to_string(),
+            }
+            .into(),
+          );
+        }
+      }
+    }
+
+    current = match current.parent() {
+      Some(p) => p.to_path_buf(),
+      None => return Ok(()),
+    };
+  }
+}
+
 /// Ensures the parent directory of `dest` exists, creating it recursively
 /// if needed.
 async fn ensure_parent_dir_impl(
@@ -1183,6 +1433,40 @@ async fn ensure_parent_dir_impl(
         )
       })?;
   }
+  Ok(())
+}
+
+fn ensure_parent_dir_impl_sync(
+  state: &mut OpState,
+  fs: &FileSystemRc,
+  dest: &str,
+) -> Result<(), FsError> {
+  let dest_parent = Path::new(dest)
+    .parent()
+    .map(|p| p.to_path_buf())
+    .unwrap_or_default();
+
+  let parent_str = dest_parent.to_string_lossy();
+  let checked_parent =
+    check_cp_path_sync(state, &parent_str, OpenAccessKind::Read)?;
+  let exists = fs.exists_sync(&checked_parent.as_checked_path());
+
+  if !exists {
+    let checked_parent =
+      check_cp_path_sync(state, &parent_str, OpenAccessKind::Write)?;
+    fs.mkdir_sync(&checked_parent.as_checked_path(), true, None)
+      .map_err(|err| {
+        map_fs_error_to_node_fs_error(
+          err,
+          NodeFsErrorContext {
+            path: Some(parent_str.to_string()),
+            syscall: Some("mkdir".into()),
+            ..Default::default()
+          },
+        )
+      })?;
+  }
+
   Ok(())
 }
 
@@ -1364,6 +1648,78 @@ pub async fn op_node_cp_on_file(
     Ok(())
   })
   .await?
+}
+
+#[op2(fast, stack_trace)]
+pub fn op_node_cp_on_file_sync(
+  state: &mut OpState,
+  #[string] src: &str,
+  #[string] dest: &str,
+  #[smi] src_mode: u32,
+  dest_exists: bool,
+  force: bool,
+  error_on_exist: bool,
+  preserve_timestamps: bool,
+) -> Result<(), FsError> {
+  let fs = state.borrow::<FileSystemRc>().clone();
+
+  if dest_exists {
+    if force {
+      // Remove dest, then copy.
+      let dest_path = check_cp_path_sync(state, dest, OpenAccessKind::Write)?;
+      fs.remove_sync(&dest_path.as_checked_path(), false)
+        .map_err(|err| {
+          map_fs_error_to_node_fs_error(
+            err,
+            NodeFsErrorContext {
+              path: Some(dest.to_string()),
+              syscall: Some("unlink".into()),
+              ..Default::default()
+            },
+          )
+        })?;
+    } else if error_on_exist {
+      return Err(
+        CpError::EExist {
+          message: format!("{} already exists", dest),
+          path: dest.to_string(),
+        }
+        .into(),
+      );
+    } else {
+      // Neither force nor errorOnExist: do nothing.
+      return Ok(());
+    }
+  }
+
+  let src_path = check_cp_path_sync(state, src, OpenAccessKind::Read)?;
+  let dest_path = check_cp_path_sync(state, dest, OpenAccessKind::Write)?;
+
+  fs.copy_file_sync(&src_path.as_checked_path(), &dest_path.as_checked_path())
+    .map_err(|err| {
+      map_fs_error_to_node_fs_error(
+        err,
+        NodeFsErrorContext {
+          path: Some(src.to_string()),
+          dest: Some(dest.to_string()),
+          syscall: Some("copyfile".into()),
+          ..Default::default()
+        },
+      )
+    })?;
+
+  if preserve_timestamps {
+    handle_timestamps_and_mode(
+      &fs,
+      &src_path.as_checked_path(),
+      &dest_path.as_checked_path(),
+      src_mode,
+    )?;
+  } else {
+    set_dest_mode(&fs, &dest_path.as_checked_path(), src_mode)?;
+  }
+
+  Ok(())
 }
 
 #[op2(stack_trace)]
@@ -1569,6 +1925,271 @@ pub async fn op_node_cp_on_link(
       })
   })
   .await?
+}
+
+#[op2(fast, stack_trace)]
+pub fn op_node_cp_on_link_sync(
+  state: &mut OpState,
+  #[string] src: &str,
+  #[string] dest: &str,
+  dest_exists: bool,
+  verbatim_symlinks: bool,
+) -> Result<(), FsError> {
+  let fs = state.borrow::<FileSystemRc>().clone();
+
+  let src_path = check_cp_path_sync(state, src, OpenAccessKind::ReadNoFollow)?;
+  let resolved_src_buf = fs
+    .read_link_sync(&src_path.as_checked_path())
+    .map_err(|err| {
+      map_fs_error_to_node_fs_error(
+        err,
+        NodeFsErrorContext {
+          path: Some(src.to_string()),
+          syscall: Some("readlink".into()),
+          ..Default::default()
+        },
+      )
+    })?;
+  let mut resolved_src = resolved_src_buf.to_string_lossy().to_string();
+
+  // Resolve relative symlink targets.
+  if !verbatim_symlinks
+    && !Path::new(&resolved_src).is_absolute()
+    && let Some(parent) = Path::new(src).parent()
+  {
+    resolved_src = parent.join(&resolved_src).to_string_lossy().to_string();
+  }
+
+  if !dest_exists {
+    state
+      .borrow_mut::<PermissionsContainer>()
+      .check_write_all("node:fs.symlink")?;
+    state
+      .borrow_mut::<PermissionsContainer>()
+      .check_read_all("node:fs.symlink")?;
+
+    let oldpath = CheckedPathBuf::unsafe_new(PathBuf::from(&resolved_src));
+    let newpath = CheckedPathBuf::unsafe_new(PathBuf::from(dest));
+    let file_type = cp_symlink_type(&fs, &oldpath, &newpath);
+    fs.symlink_sync(
+      &oldpath.as_checked_path(),
+      &newpath.as_checked_path(),
+      file_type,
+    )
+    .map_err(|err| {
+      map_fs_error_to_node_fs_error(
+        err,
+        NodeFsErrorContext {
+          path: Some(resolved_src),
+          dest: Some(dest.to_string()),
+          syscall: Some("symlink".into()),
+          ..Default::default()
+        },
+      )
+    })?;
+    return Ok(());
+  }
+
+  // Dest exists — try to read it as a symlink.
+  let dest_path =
+    check_cp_path_sync(state, dest, OpenAccessKind::ReadNoFollow)?;
+  let resolved_dest_result = fs.read_link_sync(&dest_path.as_checked_path());
+  let resolved_dest = match resolved_dest_result {
+    Ok(p) => {
+      let s = p.to_string_lossy().to_string();
+      // If relative, resolve against dirname(dest).
+      if !Path::new(&s).is_absolute() {
+        if let Some(parent) = Path::new(dest).parent() {
+          parent.join(&s).to_string_lossy().to_string()
+        } else {
+          s
+        }
+      } else {
+        s
+      }
+    }
+    Err(e) => {
+      let kind = e.kind();
+      // EINVAL or UNKNOWN means dest is a regular file/directory, not a symlink.
+      if kind == std::io::ErrorKind::InvalidInput
+        || kind == std::io::ErrorKind::Other
+      {
+        state
+          .borrow_mut::<PermissionsContainer>()
+          .check_write_all("node:fs.symlink")?;
+        state
+          .borrow_mut::<PermissionsContainer>()
+          .check_read_all("node:fs.symlink")?;
+
+        let oldpath = CheckedPathBuf::unsafe_new(PathBuf::from(&resolved_src));
+        let newpath = CheckedPathBuf::unsafe_new(PathBuf::from(dest));
+        let file_type = cp_symlink_type(&fs, &oldpath, &newpath);
+        fs.symlink_sync(
+          &oldpath.as_checked_path(),
+          &newpath.as_checked_path(),
+          file_type,
+        )
+        .map_err(|err| {
+          map_fs_error_to_node_fs_error(
+            err,
+            NodeFsErrorContext {
+              path: Some(resolved_src.clone()),
+              dest: Some(dest.to_string()),
+              syscall: Some("symlink".into()),
+              ..Default::default()
+            },
+          )
+        })?;
+        return Ok(());
+      }
+
+      #[cfg(windows)]
+      {
+        use winapi::shared::winerror::ERROR_NOT_A_REPARSE_POINT;
+
+        let os_error = e.into_io_error();
+        let Some(errno) = os_error.raw_os_error() else {
+          return Err(FsError::Io(os_error));
+        };
+
+        let errno = errno as u32;
+        if errno != ERROR_NOT_A_REPARSE_POINT {
+          return Err(
+            NodeFsError {
+              os_errno: errno as _,
+              context: NodeFsErrorContext {
+                path: Some(resolved_src),
+                dest: Some(dest.to_string()),
+                syscall: Some("symlink".into()),
+                ..Default::default()
+              },
+            }
+            .into(),
+          );
+        }
+
+        state
+          .borrow_mut::<PermissionsContainer>()
+          .check_write_all("node:fs.symlink")?;
+        state
+          .borrow_mut::<PermissionsContainer>()
+          .check_read_all("node:fs.symlink")?;
+
+        let oldpath = CheckedPathBuf::unsafe_new(PathBuf::from(&resolved_src));
+        let newpath = CheckedPathBuf::unsafe_new(PathBuf::from(dest));
+        let file_type = cp_symlink_type(&fs, &oldpath, &newpath);
+        fs.symlink_sync(
+          &oldpath.as_checked_path(),
+          &newpath.as_checked_path(),
+          file_type,
+        )
+        .map_err(|err| {
+          map_fs_error_to_node_fs_error(
+            err,
+            NodeFsErrorContext {
+              path: Some(resolved_src.clone()),
+              dest: Some(dest.to_string()),
+              syscall: Some("symlink".into()),
+              ..Default::default()
+            },
+          )
+        })?;
+        return Ok(());
+      }
+      #[cfg(not(windows))]
+      {
+        return Err(map_fs_error_to_node_fs_error(
+          e,
+          NodeFsErrorContext {
+            path: Some(resolved_src),
+            dest: Some(dest.to_string()),
+            syscall: Some("symlink".into()),
+            ..Default::default()
+          },
+        ));
+      }
+    }
+  };
+
+  // Check subdirectory relationships.
+  let src_path = check_cp_path_sync(state, src, OpenAccessKind::Read)?;
+  let src_stat = fs.stat_sync(&src_path.as_checked_path()).map_err(|err| {
+    map_fs_error_to_node_fs_error(
+      err,
+      NodeFsErrorContext {
+        path: Some(src.to_string()),
+        syscall: Some("stat".into()),
+        ..Default::default()
+      },
+    )
+  })?;
+
+  let src_is_dir = src_stat.is_directory;
+  if src_is_dir && is_src_subdir(&resolved_src, &resolved_dest) {
+    return Err(
+      CpError::EInval {
+        message: format!(
+          "cannot copy {} to a subdirectory of self {}",
+          resolved_src, resolved_dest
+        ),
+        path: dest.to_string(),
+      }
+      .into(),
+    );
+  }
+
+  // Do not copy if src is a subdir of dest since unlinking
+  // dest would remove src contents and create a broken symlink.
+  if src_is_dir && is_src_subdir(&resolved_dest, &resolved_src) {
+    return Err(
+      CpError::SymlinkToSubdirectory {
+        message: format!(
+          "cannot overwrite {} with {}",
+          resolved_dest, resolved_src
+        ),
+        path: dest.to_string(),
+      }
+      .into(),
+    );
+  }
+
+  state
+    .borrow_mut::<PermissionsContainer>()
+    .check_write_all("node:fs.cp")?;
+  state
+    .borrow_mut::<PermissionsContainer>()
+    .check_read_all("node:fs.cp")?;
+
+  // Unlink dest and create new symlink.
+  let src_path_buf = CheckedPathBuf::unsafe_new(PathBuf::from(&resolved_src));
+  let dest_path_buf = CheckedPathBuf::unsafe_new(PathBuf::from(dest));
+  let src_path = src_path_buf.as_checked_path();
+  let dest_path = dest_path_buf.as_checked_path();
+
+  fs.remove_sync(&dest_path, false).map_err(|err| {
+    map_fs_error_to_node_fs_error(
+      err,
+      NodeFsErrorContext {
+        path: Some(dest_path.to_string_lossy().to_string()),
+        syscall: Some("unlink".into()),
+        ..Default::default()
+      },
+    )
+  })?;
+
+  let file_type = cp_symlink_type(&fs, &src_path_buf, &dest_path_buf);
+  fs.symlink_sync(&src_path, &dest_path, file_type)
+    .map_err(|err| {
+      map_fs_error_to_node_fs_error(
+        err,
+        NodeFsErrorContext {
+          path: Some(src_path.to_string_lossy().to_string()),
+          dest: Some(dest_path.to_string_lossy().to_string()),
+          syscall: Some("symlink".into()),
+          ..Default::default()
+        },
+      )
+    })
 }
 
 #[cfg(test)]
