@@ -2,7 +2,7 @@
 // Adapted from Node.js. Copyright Joyent, Inc. and other Node contributors.
 
 import { join } from "node:path";
-import { mkdirSync, opendirSync } from "node:fs";
+import { type CopySyncOptions, mkdirSync, opendirSync } from "node:fs";
 import { EINVAL, EISDIR } from "node:constants";
 import {
   denoErrorToNodeError,
@@ -19,7 +19,6 @@ import {
   op_node_cp_on_link_sync,
   op_node_cp_validate_and_prepare_sync,
 } from "ext:core/ops";
-import type { CopySyncOptions } from "ext:deno_node/_fs/cp/cp.d.ts";
 import {
   CpEntryFlags,
   StatInfo,

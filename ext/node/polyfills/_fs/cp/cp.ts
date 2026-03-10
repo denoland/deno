@@ -26,7 +26,7 @@ import {
   op_node_cp_on_link,
   op_node_cp_validate_and_prepare,
 } from "ext:core/ops";
-import type { CopyOptions } from "ext:deno_node/_fs/cp/cp.d.ts";
+import type { CopyOptions } from "node:fs";
 
 export enum CpEntryFlags {
   IsDestExists = 1 << 0,
