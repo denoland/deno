@@ -1000,6 +1000,15 @@ export class ERR_CRYPTO_UNKNOWN_DH_GROUP extends NodeError {
   }
 }
 
+export class ERR_CRYPTO_UNKNOWN_CIPHER extends NodeError {
+  constructor() {
+    super(
+      "ERR_CRYPTO_UNKNOWN_CIPHER",
+      "Unknown cipher",
+    );
+  }
+}
+
 export class ERR_CRYPTO_ENGINE_UNKNOWN extends NodeError {
   constructor(x: string) {
     super("ERR_CRYPTO_ENGINE_UNKNOWN", `Engine "${x}" was not found`);
@@ -1052,8 +1061,11 @@ export class ERR_CRYPTO_INCOMPATIBLE_KEY_OPTIONS extends NodeError {
 }
 
 export class ERR_CRYPTO_INVALID_DIGEST extends NodeTypeError {
-  constructor(x: string) {
-    super("ERR_CRYPTO_INVALID_DIGEST", `Invalid digest: ${x}`);
+  constructor(x: string, prefix?: string) {
+    super(
+      "ERR_CRYPTO_INVALID_DIGEST",
+      prefix ? `Invalid ${prefix} digest: ${x}` : `Invalid digest: ${x}`,
+    );
   }
 }
 
