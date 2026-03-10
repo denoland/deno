@@ -5,13 +5,11 @@
 
 import { basename } from "node:path";
 import { EventEmitter } from "node:events";
-import { notImplemented } from "ext:deno_node/_utils.ts";
 import { promisify } from "node:util";
 import { getValidatedPath } from "ext:deno_node/internal/fs/utils.mjs";
 import { validateFunction } from "ext:deno_node/internal/validators.mjs";
 import { stat, Stats } from "ext:deno_node/_fs/_fs_stat.ts";
 import { Buffer } from "node:buffer";
-import { delay } from "ext:deno_node/_util/async.ts";
 
 const statPromisified = promisify(stat);
 const statAsync = async (filename: string): Promise<Stats | null> => {
@@ -290,7 +288,8 @@ const kFSStatWatcherAddOrCleanRef = Symbol("kFSStatWatcherAddOrCleanRef");
 class StatWatcher extends EventEmitter {
   #bigint: boolean;
   #refCount = 0;
-  #abortController = new AbortController();
+  #timerId: number | undefined = undefined;
+  #stopped = false;
 
   constructor(bigint: boolean) {
     super();
@@ -305,29 +304,30 @@ class StatWatcher extends EventEmitter {
       this.#refCount++;
     }
 
-    (async () => {
-      let prev = await statAsync(filename);
+    // Do initial stat, then start polling interval
+    statAsync(filename).then((prev) => {
+      if (this.#stopped) return;
 
       if (prev === emptyStats) {
         this.emit("change", prev, prev);
       }
 
-      try {
-        while (true) {
-          await delay(interval, { signal: this.#abortController.signal });
+      this.#timerId = setInterval(async () => {
+        try {
           const curr = await statAsync(filename);
           if (curr?.mtime.getTime() !== prev?.mtime.getTime()) {
             this.emit("change", curr, prev);
             prev = curr;
           }
+        } catch (e) {
+          this.emit("error", e);
         }
-      } catch (e) {
-        if (e instanceof DOMException && e.name === "AbortError") {
-          return;
-        }
-        this.emit("error", e);
+      }, interval) as unknown as number;
+
+      if (!persistent) {
+        Deno.unrefTimer(this.#timerId);
       }
-    })();
+    });
   }
   [kFSStatWatcherAddOrCleanRef](addOrClean: "add" | "clean" | "cleanAll") {
     if (addOrClean === "add") {
@@ -339,17 +339,24 @@ class StatWatcher extends EventEmitter {
     }
   }
   stop() {
-    if (this.#abortController.signal.aborted) {
+    if (this.#stopped) {
       return;
     }
-    this.#abortController.abort();
+    this.#stopped = true;
+    if (this.#timerId !== undefined) {
+      clearInterval(this.#timerId);
+    }
     this.emit("stop");
   }
   ref() {
-    notImplemented("StatWatcher.ref() is not implemented");
+    if (this.#timerId !== undefined) {
+      Deno.refTimer(this.#timerId);
+    }
   }
   unref() {
-    notImplemented("StatWatcher.unref() is not implemented");
+    if (this.#timerId !== undefined) {
+      Deno.unrefTimer(this.#timerId);
+    }
   }
 }
 
