@@ -597,6 +597,26 @@ dependencies = [
 
 [[package]]
 name = "bindgen"
+version = "0.71.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5f58bf3d7db68cfbac37cfc485a8d711e87e064c3d0fe0435b92f7a407f9d6b3"
+dependencies = [
+ "bitflags 2.9.3",
+ "cexpr",
+ "clang-sys",
+ "itertools 0.13.0",
+ "log",
+ "prettyplease",
+ "proc-macro2",
+ "quote",
+ "regex",
+ "rustc-hash 2.1.1",
+ "shlex",
+ "syn 2.0.117",
+]
+
+[[package]]
+name = "bindgen"
 version = "0.72.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "993776b509cfb49c750f11b8f07a46fa23e0a1386ffc01fb1e7d343efc387895"
@@ -2728,6 +2748,7 @@ dependencies = [
  "idna",
  "ipnetwork",
  "libc",
+ "libnghttp2",
  "libz-sys",
  "log",
  "nix 0.30.1",
@@ -6460,6 +6481,17 @@ name = "libm"
 version = "0.2.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4ec2a862134d2a7d32d7983ddcdd1c4923530833c9f2ea1a44fc5fa473989058"
+
+[[package]]
+name = "libnghttp2"
+version = "1.68.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "de061ac7dc8893bbb8b212a03444dc19f0f2f28e2be4c80dbc19aa9cc45586e5"
+dependencies = [
+ "bindgen 0.71.1",
+ "cc",
+ "libc",
+]
 
 [[package]]
 name = "libredox"

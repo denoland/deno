@@ -246,8 +246,17 @@ impl AsymmetricPrivateKey {
       AsymmetricPrivateKey::Ed448(key) => {
         AsymmetricPublicKey::Ed448(key.verifying_key())
       }
-      AsymmetricPrivateKey::Dh(_) => {
-        panic!("cannot derive public key from DH private key")
+      AsymmetricPrivateKey::Dh(dh_key) => {
+        let prime = num_bigint_dig::BigUint::from_bytes_be(
+          dh_key.params.prime.as_bytes(),
+        );
+        let base =
+          num_bigint_dig::BigUint::from_bytes_be(dh_key.params.base.as_bytes());
+        let public_key = dh_key.key.compute_public_key(&base, &prime);
+        AsymmetricPublicKey::Dh(DhPublicKey {
+          key: public_key,
+          params: dh_key.params.clone(),
+        })
       }
     }
   }
@@ -550,6 +559,9 @@ pub enum X509PublicKeyError {
   #[error("invalid Ed25519 public key")]
   InvalidEd25519Key,
   #[class(type)]
+  #[error("invalid Ed448 public key")]
+  InvalidEd448Key,
+  #[class(type)]
   #[error("invalid X25519 public key")]
   InvalidX25519Key,
   #[class(type)]
@@ -598,6 +610,12 @@ pub enum EdRawError {
   #[error("unsupported curve")]
   UnsupportedCurve,
 }
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+#[class(generic)]
+#[error("unsupported")]
+#[property("code" = "ERR_OSSL_UNSUPPORTED")]
+pub struct UnsupportedPrivateKeyOidError;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 #[class(type)]
@@ -657,8 +675,13 @@ pub enum AsymmetricPrivateKeyError {
   InvalidEd448PrivateKey,
   #[error("missing dh parameters")]
   MissingDhParameters,
-  #[error("unsupported private key oid")]
-  UnsupportedPrivateKeyOid,
+  #[class(inherit)]
+  #[error(transparent)]
+  UnsupportedPrivateKeyOid(
+    #[from]
+    #[inherit]
+    UnsupportedPrivateKeyOidError,
+  ),
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -759,8 +782,9 @@ pub enum AsymmetricPublicKeyError {
   #[class(type)]
   #[error("malformed or missing public key in dh spki")]
   MalformedOrMissingPublicKeyInDhSpki,
-  #[class(type)]
-  #[error("unsupported private key oid")]
+  #[class(generic)]
+  #[error("unsupported")]
+  #[property("code" = "ERR_OSSL_EVP_DECODE_ERROR")]
   UnsupportedPrivateKeyOid,
 }
 
@@ -976,12 +1000,17 @@ impl KeyObjectHandle {
           .ok_or(AsymmetricPrivateKeyError::MissingDhParameters)?;
         let params = pkcs3::DhParameter::from_der(&params.to_der().unwrap())
           .map_err(|_| AsymmetricPrivateKeyError::MissingDhParameters)?;
+        // pk_info.private_key is a DER-encoded INTEGER (tag + length + value)
+        // inside the PKCS#8 OCTET STRING, so we need to decode it first.
+        let private_key_int =
+          <AnyRef<'_> as spki::der::Decode>::from_der(pk_info.private_key)
+            .map_err(|_| AsymmetricPrivateKeyError::MissingDhParameters)?;
         AsymmetricPrivateKey::Dh(DhPrivateKey {
-          key: dh::PrivateKey::from_bytes(pk_info.private_key),
+          key: dh::PrivateKey::from_bytes(private_key_int.value()),
           params,
         })
       }
-      _ => return Err(AsymmetricPrivateKeyError::UnsupportedPrivateKeyOid),
+      _ => return Err(UnsupportedPrivateKeyOidError.into()),
     };
 
     Ok(KeyObjectHandle::AsymmetricPrivate(private_key))
@@ -1071,9 +1100,9 @@ impl KeyObjectHandle {
             let data = spki.subject_public_key.as_ref();
             let point_bytes: &[u8; 57] = data
               .try_into()
-              .map_err(|_| X509PublicKeyError::InvalidEd25519Key)?;
+              .map_err(|_| X509PublicKeyError::InvalidEd448Key)?;
             let vk = ed448_goldilocks::VerifyingKey::from_bytes(point_bytes)
-              .map_err(|_| X509PublicKeyError::InvalidEd25519Key)?;
+              .map_err(|_| X509PublicKeyError::InvalidEd448Key)?;
             AsymmetricPublicKey::Ed448(vk)
           }
           ID_X448 => {
@@ -1452,8 +1481,15 @@ impl KeyObjectHandle {
             AsymmetricPublicKeyError::MalformedOrMissingPublicKeyInDhSpki,
           );
         };
+        // subject_public_key is a DER-encoded INTEGER inside the BIT STRING,
+        // so we need to decode it to get the raw key bytes.
+        let public_key_int =
+          <AnyRef<'_> as spki::der::Decode>::from_der(subject_public_key)
+            .map_err(|_| {
+              AsymmetricPublicKeyError::MalformedOrMissingPublicKeyInDhSpki
+            })?;
         AsymmetricPublicKey::Dh(DhPublicKey {
-          key: dh::PublicKey::from_bytes(subject_public_key),
+          key: dh::PublicKey::from_bytes(public_key_int.value()),
           params,
         })
       }
@@ -1777,14 +1813,19 @@ impl AsymmetricPublicKey {
               .into_boxed_slice()
           }
           AsymmetricPublicKey::Dh(key) => {
-            let public_key_bytes = key.key.clone().into_vec();
+            // The public key in SPKI for DH must be a DER-encoded INTEGER
+            let raw_key = key.key.clone().into_vec();
+            let public_key_int = asn1::Int::new(&raw_key).unwrap();
+            let public_key_der = public_key_int
+              .to_der()
+              .map_err(|_| AsymmetricPublicKeyDerError::InvalidDhPublicKey)?;
             let params = key.params.to_der().unwrap();
             let spki = SubjectPublicKeyInfoRef {
               algorithm: rsa::pkcs8::AlgorithmIdentifierRef {
                 oid: DH_KEY_AGREEMENT_OID,
                 parameters: Some(AnyRef::new(Tag::Sequence, &params).unwrap()),
               },
-              subject_public_key: BitStringRef::from_bytes(&public_key_bytes)
+              subject_public_key: BitStringRef::from_bytes(&public_key_der)
                 .map_err(|_| {
                   AsymmetricPublicKeyDerError::InvalidDhPublicKey
               })?,
@@ -2102,14 +2143,19 @@ impl AsymmetricPrivateKey {
               .into_boxed_slice()
           }
           AsymmetricPrivateKey::Dh(key) => {
-            let private_key = key.key.clone().into_vec();
+            // The private key in PKCS#8 for DH must be a DER-encoded INTEGER
+            let raw_key = key.key.clone().into_vec();
+            let private_key_int = asn1::Int::new(&raw_key).unwrap();
+            let private_key_der = private_key_int
+              .to_der()
+              .map_err(|_| AsymmetricPrivateKeyDerError::InvalidDhPrivateKey)?;
             let params = key.params.to_der().unwrap();
             let private_key = PrivateKeyInfo {
               algorithm: rsa::pkcs8::AlgorithmIdentifierRef {
                 oid: DH_KEY_AGREEMENT_OID,
                 parameters: Some(AnyRef::new(Tag::Sequence, &params).unwrap()),
               },
-              private_key: &private_key,
+              private_key: &private_key_der,
               public_key: None,
             };
 
@@ -2810,16 +2856,6 @@ pub async fn op_node_generate_ed448_key_async() -> KeyObjectHandlePair {
   spawn_blocking(ed448_generate).await.unwrap()
 }
 
-fn u32_slice_to_u8_slice(slice: &[u32]) -> &[u8] {
-  // SAFETY: just reinterpreting the slice as u8
-  unsafe {
-    std::slice::from_raw_parts(
-      slice.as_ptr() as *const u8,
-      std::mem::size_of_val(slice),
-    )
-  }
-}
-
 fn dh_group_generate(
   group_name: &str,
 ) -> Result<KeyObjectHandlePair, JsErrorBox> {
@@ -2856,9 +2892,18 @@ fn dh_group_generate(
     ),
     _ => return Err(JsErrorBox::type_error("Unsupported group name")),
   };
+  // MODULUS arrays are big-endian u32 words. Convert to big-endian bytes
+  // for ASN.1, matching the prime used during key generation.
+  // Prepend 0x00 if MSB is set, since ASN.1 integers are signed.
+  let mut prime_bytes: Vec<u8> =
+    prime.iter().flat_map(|x| x.to_be_bytes()).collect();
+  if prime_bytes.first().is_some_and(|b| b & 0x80 != 0) {
+    prime_bytes.insert(0, 0x00);
+  }
+  let gen_bytes = [generator as u8];
   let params = DhParameter {
-    prime: asn1::Int::new(u32_slice_to_u8_slice(prime)).unwrap(),
-    base: asn1::Int::new(generator.to_be_bytes().as_slice()).unwrap(),
+    prime: asn1::Int::new(&prime_bytes).unwrap(),
+    base: asn1::Int::new(&gen_bytes).unwrap(),
     private_value_length: None,
   };
   Ok(KeyObjectHandlePair::new(
@@ -2900,9 +2945,21 @@ fn dh_generate(
     .map(|p| p.into())
     .unwrap_or_else(|| Prime::generate(prime_len));
   let dh = dh::DiffieHellman::new(prime.clone(), generator);
+  let gen_bytes = if generator <= 0xFF {
+    vec![generator as u8]
+  } else if generator <= 0xFFFF {
+    vec![(generator >> 8) as u8, generator as u8]
+  } else {
+    generator
+      .to_be_bytes()
+      .iter()
+      .copied()
+      .skip_while(|&b| b == 0)
+      .collect()
+  };
   let params = DhParameter {
     prime: asn1::Int::new(&prime.0.to_bytes_be()).unwrap(),
-    base: asn1::Int::new(generator.to_be_bytes().as_slice()).unwrap(),
+    base: asn1::Int::new(&gen_bytes).unwrap(),
     private_value_length: None,
   };
   KeyObjectHandlePair::new(

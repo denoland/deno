@@ -1201,89 +1201,94 @@ pub fn op_node_diffie_hellman(
     .as_public_key()
     .ok_or(DiffieHellmanError::ExpectedPublicKey)?;
 
-  let res =
-    match (private, &*public) {
-      (
-        AsymmetricPrivateKey::Ec(EcPrivateKey::P224(private)),
-        AsymmetricPublicKey::Ec(EcPublicKey::P224(public)),
-      ) => p224::ecdh::diffie_hellman(
-        private.to_nonzero_scalar(),
-        public.as_affine(),
-      )
-      .raw_secret_bytes()
-      .to_vec()
-      .into_boxed_slice(),
-      (
-        AsymmetricPrivateKey::Ec(EcPrivateKey::P256(private)),
-        AsymmetricPublicKey::Ec(EcPublicKey::P256(public)),
-      ) => p256::ecdh::diffie_hellman(
-        private.to_nonzero_scalar(),
-        public.as_affine(),
-      )
-      .raw_secret_bytes()
-      .to_vec()
-      .into_boxed_slice(),
-      (
-        AsymmetricPrivateKey::Ec(EcPrivateKey::P384(private)),
-        AsymmetricPublicKey::Ec(EcPublicKey::P384(public)),
-      ) => p384::ecdh::diffie_hellman(
-        private.to_nonzero_scalar(),
-        public.as_affine(),
-      )
-      .raw_secret_bytes()
-      .to_vec()
-      .into_boxed_slice(),
-      (
-        AsymmetricPrivateKey::Ec(EcPrivateKey::P521(private)),
-        AsymmetricPublicKey::Ec(EcPublicKey::P521(public)),
-      ) => p521::ecdh::diffie_hellman(
-        private.to_nonzero_scalar(),
-        public.as_affine(),
-      )
-      .raw_secret_bytes()
-      .to_vec()
-      .into_boxed_slice(),
-      (
-        AsymmetricPrivateKey::Ec(EcPrivateKey::Secp256k1(private)),
-        AsymmetricPublicKey::Ec(EcPublicKey::Secp256k1(public)),
-      ) => k256::ecdh::diffie_hellman(
-        private.to_nonzero_scalar(),
-        public.as_affine(),
-      )
-      .raw_secret_bytes()
-      .to_vec()
-      .into_boxed_slice(),
-      (
-        AsymmetricPrivateKey::X25519(private),
-        AsymmetricPublicKey::X25519(public),
-      ) => private
-        .diffie_hellman(public)
-        .to_bytes()
-        .into_iter()
-        .collect(),
-      (AsymmetricPrivateKey::Dh(private), AsymmetricPublicKey::Dh(public)) => {
-        if private.params.prime != public.params.prime
-          || private.params.base != public.params.base
-        {
-          return Err(DiffieHellmanError::DhParametersMismatch);
-        }
-
-        // OSIP - Octet-String-to-Integer primitive
-        let public_key = public.key.clone().into_vec();
-        let pubkey = BigUint::from_bytes_be(&public_key);
-
-        // Exponentiation (z = y^x mod p)
-        let prime = BigUint::from_bytes_be(private.params.prime.as_bytes());
-        let private_key = private.key.clone().into_vec();
-        let private_key = BigUint::from_bytes_be(&private_key);
-        let shared_secret = pubkey.modpow(&private_key, &prime);
-
-        shared_secret.to_bytes_be().into()
+  let res = match (private, &*public) {
+    (
+      AsymmetricPrivateKey::Ec(EcPrivateKey::P224(private)),
+      AsymmetricPublicKey::Ec(EcPublicKey::P224(public)),
+    ) => p224::ecdh::diffie_hellman(
+      private.to_nonzero_scalar(),
+      public.as_affine(),
+    )
+    .raw_secret_bytes()
+    .to_vec()
+    .into_boxed_slice(),
+    (
+      AsymmetricPrivateKey::Ec(EcPrivateKey::P256(private)),
+      AsymmetricPublicKey::Ec(EcPublicKey::P256(public)),
+    ) => p256::ecdh::diffie_hellman(
+      private.to_nonzero_scalar(),
+      public.as_affine(),
+    )
+    .raw_secret_bytes()
+    .to_vec()
+    .into_boxed_slice(),
+    (
+      AsymmetricPrivateKey::Ec(EcPrivateKey::P384(private)),
+      AsymmetricPublicKey::Ec(EcPublicKey::P384(public)),
+    ) => p384::ecdh::diffie_hellman(
+      private.to_nonzero_scalar(),
+      public.as_affine(),
+    )
+    .raw_secret_bytes()
+    .to_vec()
+    .into_boxed_slice(),
+    (
+      AsymmetricPrivateKey::Ec(EcPrivateKey::P521(private)),
+      AsymmetricPublicKey::Ec(EcPublicKey::P521(public)),
+    ) => p521::ecdh::diffie_hellman(
+      private.to_nonzero_scalar(),
+      public.as_affine(),
+    )
+    .raw_secret_bytes()
+    .to_vec()
+    .into_boxed_slice(),
+    (
+      AsymmetricPrivateKey::Ec(EcPrivateKey::Secp256k1(private)),
+      AsymmetricPublicKey::Ec(EcPublicKey::Secp256k1(public)),
+    ) => k256::ecdh::diffie_hellman(
+      private.to_nonzero_scalar(),
+      public.as_affine(),
+    )
+    .raw_secret_bytes()
+    .to_vec()
+    .into_boxed_slice(),
+    (
+      AsymmetricPrivateKey::X25519(private),
+      AsymmetricPublicKey::X25519(public),
+    ) => private
+      .diffie_hellman(public)
+      .to_bytes()
+      .into_iter()
+      .collect(),
+    (AsymmetricPrivateKey::Dh(private), AsymmetricPublicKey::Dh(public)) => {
+      // Compare DH parameters by integer value, not byte encoding,
+      // since different generation paths may produce different ASN.1
+      // encodings of the same integer (e.g. with/without leading 0x00).
+      let priv_prime = BigUint::from_bytes_be(private.params.prime.as_bytes());
+      let pub_prime = BigUint::from_bytes_be(public.params.prime.as_bytes());
+      let priv_base = BigUint::from_bytes_be(private.params.base.as_bytes());
+      let pub_base = BigUint::from_bytes_be(public.params.base.as_bytes());
+      if priv_prime != pub_prime || priv_base != pub_base {
+        return Err(DiffieHellmanError::DhParametersMismatch);
       }
-      _ => return Err(
+
+      // OSIP - Octet-String-to-Integer primitive
+      let public_key = public.key.clone().into_vec();
+      let pubkey = BigUint::from_bytes_be(&public_key);
+
+      // Exponentiation (z = y^x mod p)
+      let private_key = private.key.clone().into_vec();
+      let private_key = BigUint::from_bytes_be(&private_key);
+      let shared_secret = pubkey.modpow(&private_key, &priv_prime);
+
+      shared_secret.to_bytes_be().into()
+    }
+    _ => {
+      return Err(
         DiffieHellmanError::UnsupportedKeyTypeForDiffieHellmanOrKeyTypeMismatch,
-      ),
-    };
+      );
+    }
+  };
 
   Ok(res)
 }
