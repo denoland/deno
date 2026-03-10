@@ -558,7 +558,7 @@ function _internalConnect(
   let err;
 
   if (localAddress || localPort) {
-    localPort |= 0;
+    localPort = (localPort ?? 0) | 0;
     if (addressType === 4) {
       localAddress = localAddress || DEFAULT_IPV4_ADDR;
       err = (socket._handle as TCP).bind(localAddress, localPort);

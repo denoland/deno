@@ -355,8 +355,6 @@ impl Http2Stream {
         dp_ptr,
       );
     }
-
-    std::mem::forget(headers);
   }
 
   #[fast]

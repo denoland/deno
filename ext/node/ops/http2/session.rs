@@ -505,8 +505,8 @@ impl Http2Settings {
                 settings_id: $nghttp2_id as _,
                 value: val,
               };
+              count += 1;
             }
-            count += 1;
           }
         };
       }
@@ -548,8 +548,8 @@ impl Http2Settings {
               settings_id: key as i32,
               value: val,
             };
+            count += 1;
           }
-          count += 1;
         }
       }
 
@@ -1630,13 +1630,16 @@ impl Session {
             base: (*write_ptr).data.as_ptr() as *mut _,
             len: (*write_ptr).data.len(),
           };
-          deno_core::uv_compat::uv_write(
+          let ret = deno_core::uv_compat::uv_write(
             &mut (*write_ptr).uv_req,
             stream,
             &buf,
             1,
             Some(h2_write_cb),
           );
+          if ret != 0 {
+            let _ = Box::from_raw(write_ptr);
+          }
         }
       }
       self.clear_outgoing();

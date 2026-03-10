@@ -290,7 +290,7 @@ export class TCP extends ConnectionWrap {
       streamBaseState[kArrayBufferOffset] = 0;
 
       try {
-        self.onread!(buf!, nread);
+        self.onread!(buf ?? new Uint8Array(0), nread);
       } catch {
         // swallow callback errors.
       }
@@ -375,13 +375,15 @@ export class TCP extends ConnectionWrap {
 
     // Call uv_shutdown to send FIN to the remote side.
     const ret = this.#native!.shutdown();
-    // Signal completion to the JS layer regardless - the FIN is queued
+    // Signal async completion like Node.js - the FIN is queued
     // in libuv and will be sent asynchronously.
-    try {
-      req.oncomplete(ret);
-    } catch {
-      // swallow callback errors.
-    }
+    queueMicrotask(() => {
+      try {
+        req.oncomplete(ret);
+      } catch {
+        // swallow callback errors.
+      }
+    });
 
     return ret;
   }
