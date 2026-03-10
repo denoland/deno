@@ -3753,19 +3753,10 @@ fn napi_set_instance_data(
   finalize_hint: *mut c_void,
 ) -> napi_status {
   let env = check_env!(env);
-  let env_ptr = env as *mut Env;
 
-  // Remove any previous instance data finalizer
-  if let Some(prev) = &env.shared().instance_data
-    && prev.finalize_cb.is_some()
-  {
-    env.remove_ref_finalizer(prev.data);
-  }
-
-  if let Some(cb) = finalize_cb {
-    env.add_ref_finalizer(env_ptr as napi_env, cb, data, finalize_hint);
-  }
-
+  // Note: instance data finalizers are NOT registered in ref_tracker because
+  // they already have their own teardown path in NapiState::Drop which calls
+  // EnvShared instance_data finalize_cb directly.
   env.shared_mut().instance_data = Some(InstanceData {
     data,
     finalize_cb,

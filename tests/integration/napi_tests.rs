@@ -116,7 +116,7 @@ fn napi_wrap_leak_pointers_finalizer_on_shutdown() {
     .arg("--config")
     .arg(deno_config_path())
     .arg("--no-lock")
-    .arg("wrap_leak_test.js")
+    .arg("wrap_leak.js")
     .envs(env_vars_for_npm_tests())
     .output()
     .unwrap();
