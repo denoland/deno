@@ -207,7 +207,8 @@ if (Deno.env.get("DENO_DESKTOP_DEV")) {
   await server.listen();
   await new Promise(() => {});
 } else {
-  await import("./_fresh/server.js");
+  const mod = await import("./_fresh/server.js");
+  Deno.serve({ port: 41520, hostname: "127.0.0.1" }, mod.default.fetch);
 }
 "#
       .into(),

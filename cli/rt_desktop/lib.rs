@@ -389,25 +389,43 @@ async fn run_desktop() -> Result<(), AnyError> {
     denort::run::run_with_options(Arc::new(sys.clone()), sys, data, run_opts);
   let wef_fut = wef::run();
 
-  // Wait for the server to start listening, then navigate the webview.
+  // Wait for the server to be ready, then navigate the webview.
+  // Do a full HTTP request instead of just a TCP connect — frameworks
+  // like Vite accept connections before they're ready to serve.
   let navigate_fut = async {
-    for i in 0..100 {
-      if tokio::net::TcpStream::connect(("127.0.0.1", DESKTOP_SERVE_PORT))
-        .await
-        .is_ok()
+    use tokio::io::AsyncReadExt;
+    use tokio::io::AsyncWriteExt;
+    for i in 0..60 {
+      if let Ok(mut stream) =
+        tokio::net::TcpStream::connect(("127.0.0.1", DESKTOP_SERVE_PORT)).await
       {
-        log::debug!(
-          "Server ready after {} attempts, navigating to {}",
-          i + 1,
-          &url
+        let req = format!(
+          "GET / HTTP/1.1\r\nHost: 127.0.0.1:{}\r\nConnection: close\r\n\r\n",
+          DESKTOP_SERVE_PORT
         );
-        wef::navigate(&url);
-        return;
+        if stream.write_all(req.as_bytes()).await.is_ok() {
+          let mut buf = vec![0u8; 256];
+          if let Ok(n) = stream.read(&mut buf).await {
+            let response = String::from_utf8_lossy(&buf[..n]);
+            if response.starts_with("HTTP/1.1 2")
+              || response.starts_with("HTTP/1.1 3")
+              || response.starts_with("HTTP/1.0 2")
+              || response.starts_with("HTTP/1.0 3")
+            {
+              log::debug!(
+                "Server ready after {} attempts, navigating to {}",
+                i + 1,
+                &url
+              );
+              wef::navigate(&url);
+              return;
+            }
+          }
+        }
       }
-      tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+      tokio::time::sleep(std::time::Duration::from_millis(250)).await;
     }
-    log::warn!("Server not ready after 5s, navigating anyway");
-    // Fallback: navigate anyway after timeout.
+    log::warn!("Server not ready after 15s, navigating anyway");
     wef::navigate(&url);
   };
 

@@ -1112,6 +1112,9 @@ async fn install_global_compiled(
     exclude: vec![],
     eszip: false,
     self_extracting: false,
+    desktop: false,
+    hmr: false,
+    backend: None,
   };
 
   let mut new_flags = flags.as_ref().clone();

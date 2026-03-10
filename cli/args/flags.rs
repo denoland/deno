@@ -177,6 +177,7 @@ pub struct CompileFlags {
   pub self_extracting: bool,
   pub desktop: bool,
   pub hmr: bool,
+  pub backend: Option<String>,
 }
 
 impl CompileFlags {
@@ -2830,6 +2831,15 @@ On the first invocation of `deno compile`, Deno will download the relevant binar
           .help("Compile and run the desktop app with Hot Module Replacement enabled")
           .requires("desktop")
           .action(ArgAction::SetTrue)
+          .help_heading(COMPILE_HEADING),
+      )
+      .arg(
+        Arg::new("backend")
+          .long("backend")
+          .help("WEF backend to use for the desktop app")
+          .value_parser(["webview", "cef", "servo"])
+          .default_value("webview")
+          .requires("desktop")
           .help_heading(COMPILE_HEADING),
       )
       .arg(executable_ext_arg())
@@ -6154,6 +6164,7 @@ fn compile_parse(
   let self_extracting = matches.get_flag("self-extracting");
   let desktop = matches.get_flag("desktop");
   let hmr = matches.get_flag("hmr");
+  let backend = matches.remove_one::<String>("backend");
   let include = matches
     .remove_many::<String>("include")
     .map(|f| f.collect::<Vec<_>>())
@@ -6179,6 +6190,7 @@ fn compile_parse(
     self_extracting,
     desktop,
     hmr,
+    backend,
   });
 
   Ok(())

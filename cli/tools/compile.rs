@@ -35,9 +35,27 @@ use crate::util::temp::create_temp_node_modules_dir;
 
 /// Environment variable for the WEF backend executable path.
 const WEF_BACKEND_ENV: &str = "WEF_BACKEND";
-/// Default WEF backend paths to search on macOS.
-const WEF_BACKEND_SEARCH_PATHS: &[&str] =
-  &["../wef/webview/build/wef_webview.app/Contents/MacOS/wef_webview"];
+
+/// Find the deno repo root from the current exe path.
+/// Dev builds live at `<repo>/target/{debug,release}/deno`.
+/// Resolve WEF backend binary search paths based on the chosen backend.
+fn wef_backend_search_paths(backend: &str) -> Vec<PathBuf> {
+  match backend {
+    "cef" => vec![
+      PathBuf::from("/Users/divy/gh/wef/result/Applications/wef.app/Contents/MacOS/wef"),
+      PathBuf::from("/Users/divy/gh/wef/cef/build/wef.app/Contents/MacOS/wef"),
+    ],
+    "servo" => vec![
+      PathBuf::from("/Users/divy/gh/wef/servo/target/release/wef_servo"),
+      PathBuf::from("/Users/divy/gh/wef/servo/target/debug/wef_servo"),
+    ],
+    _ => vec![
+      PathBuf::from("/Users/divy/gh/wef/result-1/Applications/wef_webview.app/Contents/MacOS/wef_webview"),
+      PathBuf::from("/Users/divy/gh/wef/result/Applications/wef_webview.app/Contents/MacOS/wef_webview"),
+      PathBuf::from("/Users/divy/gh/wef/webview/build/wef_webview.app/Contents/MacOS/wef_webview"),
+    ],
+  }
+}
 
 pub async fn compile(
   mut flags: Flags,
@@ -286,9 +304,425 @@ async fn compile_binary(
   if compile_flags.desktop && compile_flags.hmr {
     let cwd = cli_options.initial_cwd();
     let framework = super::framework::detect_framework(cwd)?;
-    run_desktop_hmr(&output_path, cwd, framework.as_ref()).await?;
+    let backend = compile_flags.backend.as_deref().unwrap_or("webview");
+    run_desktop_hmr(&output_path, cwd, framework.as_ref(), backend)
+      .await?;
+  } else if compile_flags.desktop {
+    // Package the dylib into a platform-specific app bundle.
+    let bundle_path =
+      package_desktop_app(&output_path, &compile_flags, cli_options)?;
+    let initial_cwd =
+      deno_path_util::url_from_directory_path(cli_options.initial_cwd())?;
+    log::info!(
+      "{} {}",
+      colors::green("Bundle"),
+      if let Ok(bundle_url) = deno_path_util::url_from_file_path(&bundle_path) {
+        crate::util::path::relative_specifier_path_for_display(
+          &initial_cwd,
+          &bundle_url,
+        )
+      } else {
+        bundle_path.display().to_string()
+      }
+    );
   }
 
+  Ok(())
+}
+
+/// Package a compiled desktop dylib into a platform-specific app bundle.
+fn package_desktop_app(
+  dylib_path: &Path,
+  compile_flags: &CompileFlags,
+  cli_options: &CliOptions,
+) -> Result<PathBuf, AnyError> {
+  let is_darwin = match &compile_flags.target {
+    Some(target) => target.contains("darwin"),
+    None => cfg!(target_os = "macos"),
+  };
+
+  if is_darwin {
+    package_macos_app_bundle(dylib_path, compile_flags, cli_options)
+  } else {
+    // TODO(divy): Windows and Linux packaging
+    Ok(dylib_path.to_path_buf())
+  }
+}
+
+/// Environment variable pointing to a WEF backend .app bundle.
+const WEF_BACKEND_APP_ENV: &str = "WEF_BACKEND_APP";
+
+/// Resolve WEF backend .app search paths based on the chosen backend.
+fn wef_backend_app_search_paths(backend: &str) -> Vec<String> {
+  match backend {
+    "cef" => vec![
+      "/Users/divy/gh/wef/result/Applications/wef.app".to_string(),
+      "/Users/divy/gh/wef/cef/build/wef.app".to_string(),
+    ],
+    "servo" => vec![], // Servo is not an .app bundle
+    _ => vec![
+      "/Users/divy/gh/wef/result-1/Applications/wef_webview.app".to_string(),
+      "/Users/divy/gh/wef/result/Applications/wef_webview.app".to_string(),
+      "/Users/divy/gh/wef/webview/build/wef_webview.app".to_string(),
+    ],
+  }
+}
+
+/// Find the WEF backend .app bundle directory.
+fn find_wef_backend_app_bundle(backend: &str) -> Result<PathBuf, AnyError> {
+  // Check explicit env var first.
+  if let Ok(path) = std::env::var(WEF_BACKEND_APP_ENV) {
+    let p = PathBuf::from(&path);
+    if p.exists() && p.extension().map_or(false, |e| e == "app") {
+      return Ok(p);
+    }
+    bail!(
+      "WEF backend .app not found at {} (set via {})",
+      path,
+      WEF_BACKEND_APP_ENV
+    );
+  }
+
+  // Search well-known paths.
+  let exe_dir = std::env::current_exe()
+    .ok()
+    .and_then(|p| p.parent().map(|p| p.to_path_buf()));
+  for search_path in wef_backend_app_search_paths(backend) {
+    let p = PathBuf::from(&search_path);
+    if p.exists() {
+      return Ok(p);
+    }
+    if let Some(exe_dir) = &exe_dir {
+      let p = exe_dir.join(&search_path);
+      if p.exists() {
+        return Ok(p);
+      }
+    }
+  }
+
+  // Derive from the WEF backend binary path (walk up to .app).
+  if let Ok(backend_binary) = find_wef_backend(backend) {
+    let mut current = backend_binary.as_path();
+    while let Some(parent) = current.parent() {
+      if parent.extension().map_or(false, |e| e == "app") {
+        return Ok(parent.to_path_buf());
+      }
+      current = parent;
+    }
+  }
+
+  bail!(
+    "WEF backend '{}' .app bundle not found. Set {} to the path of the WEF .app bundle.",
+    backend,
+    WEF_BACKEND_APP_ENV
+  )
+}
+
+/// Extract a string value from a plist XML by key.
+fn extract_plist_string(plist_xml: &str, key: &str) -> Option<String> {
+  let key_tag = format!("<key>{}</key>", key);
+  let pos = plist_xml.find(&key_tag)?;
+  let after_key = &plist_xml[pos + key_tag.len()..];
+  let start = after_key.find("<string>")? + "<string>".len();
+  let end = after_key.find("</string>")?;
+  Some(after_key[start..end].to_string())
+}
+
+/// Create a macOS .app bundle from the compiled desktop dylib.
+///
+/// Bundle structure:
+/// ```text
+/// AppName.app/
+///   Contents/
+///     Info.plist
+///     MacOS/
+///       AppName          (launcher script)
+///       wef_webview      (WEF backend binary)
+///       libapp.dylib     (compiled Deno runtime + user code)
+///     Resources/
+///       AppIcon.icns     (optional)
+/// ```
+fn package_macos_app_bundle(
+  dylib_path: &Path,
+  compile_flags: &CompileFlags,
+  cli_options: &CliOptions,
+) -> Result<PathBuf, AnyError> {
+  let app_name = dylib_path
+    .file_stem()
+    .unwrap()
+    .to_string_lossy()
+    .to_string();
+  let app_bundle = dylib_path
+    .parent()
+    .unwrap()
+    .join(format!("{}.app", app_name));
+
+  // Find the WEF backend .app and its main executable.
+  let backend = compile_flags.backend.as_deref().unwrap_or("webview");
+  let wef_app = find_wef_backend_app_bundle(backend)?;
+  let wef_plist_path = wef_app.join("Contents/Info.plist");
+  let wef_executable_name = if wef_plist_path.exists() {
+    let plist_content = std::fs::read_to_string(&wef_plist_path)?;
+    extract_plist_string(&plist_content, "CFBundleExecutable")
+      .unwrap_or_else(|| "wef_webview".to_string())
+  } else {
+    "wef_webview".to_string()
+  };
+  let wef_binary = wef_app.join("Contents/MacOS").join(&wef_executable_name);
+  if !wef_binary.exists() {
+    bail!(
+      "WEF backend executable not found at '{}'",
+      wef_binary.display()
+    );
+  }
+
+  // Remove existing bundle.
+  if app_bundle.exists() {
+    std::fs::remove_dir_all(&app_bundle)?;
+  }
+
+  // Copy the entire WEF .app as the shell (CEF needs Frameworks/, Resources/, etc.).
+  copy_dir_all(&wef_app, &app_bundle)?;
+
+  let contents_dir = app_bundle.join("Contents");
+  let macos_dir = contents_dir.join("MacOS");
+  let resources_dir = contents_dir.join("Resources");
+  std::fs::create_dir_all(&resources_dir)?;
+
+  // Strip unnecessary bulk from the CEF framework.
+  strip_cef_bloat(&contents_dir);
+
+  // Copy the compiled dylib.
+  let dylib_filename = dylib_path.file_name().unwrap();
+  std::fs::copy(dylib_path, macos_dir.join(dylib_filename))?;
+
+  // Create launcher script as the main executable.
+  let launcher_path = macos_dir.join(&app_name);
+  std::fs::write(
+    &launcher_path,
+    format!(
+      "#!/bin/bash\n\
+       DIR=\"$(cd \"$(dirname \"$0\")\" && pwd)\"\n\
+       exec \"$DIR/{wef_binary}\" --runtime \"$DIR/{dylib}\" \"$@\"\n",
+      wef_binary = wef_executable_name,
+      dylib = dylib_filename.to_string_lossy(),
+    ),
+  )?;
+  #[cfg(unix)]
+  {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(
+      &launcher_path,
+      std::fs::Permissions::from_mode(0o755),
+    )?;
+  }
+
+  // Generate Info.plist.
+  let has_icon = compile_flags.icon.is_some();
+  let bundle_id = app_name.to_lowercase().replace(' ', "-");
+  let info_plist = format!(
+    r#"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleDevelopmentRegion</key>
+  <string>en</string>
+  <key>CFBundleExecutable</key>
+  <string>{app_name}</string>
+  <key>CFBundleIconFile</key>
+  <string>{icon_file}</string>
+  <key>CFBundleIdentifier</key>
+  <string>com.deno.desktop.{bundle_id}</string>
+  <key>CFBundleInfoDictionaryVersion</key>
+  <string>6.0</string>
+  <key>CFBundleName</key>
+  <string>{app_name}</string>
+  <key>CFBundlePackageType</key>
+  <string>APPL</string>
+  <key>CFBundleShortVersionString</key>
+  <string>1.0</string>
+  <key>CFBundleVersion</key>
+  <string>1.0.0</string>
+  <key>LSMinimumSystemVersion</key>
+  <string>10.15</string>
+  <key>NSHighResolutionCapable</key>
+  <true/>
+  <key>NSSupportsAutomaticGraphicsSwitching</key>
+  <true/>
+</dict>
+</plist>
+"#,
+    app_name = app_name,
+    bundle_id = bundle_id,
+    icon_file = if has_icon { "AppIcon" } else { "" },
+  );
+  std::fs::write(contents_dir.join("Info.plist"), info_plist)?;
+
+  // Handle icon.
+  if let Some(ref icon) = compile_flags.icon {
+    let icon_path = cli_options.initial_cwd().join(icon);
+    if icon_path.exists() {
+      let dest = resources_dir.join("AppIcon.icns");
+      match icon_path.extension().and_then(|e| e.to_str()) {
+        Some("icns") => {
+          std::fs::copy(&icon_path, &dest)?;
+        }
+        Some("png") => {
+          convert_png_to_icns(&icon_path, &dest)?;
+        }
+        _ => {
+          log::warn!(
+            "Icon '{}' is not .icns or .png, skipping",
+            icon_path.display()
+          );
+        }
+      }
+    } else {
+      log::warn!("Icon '{}' not found, skipping", icon_path.display());
+    }
+  }
+
+  // Remove the standalone dylib (it's now inside the .app).
+  let _ = std::fs::remove_file(dylib_path);
+
+  Ok(app_bundle)
+}
+
+/// Convert a PNG image to macOS .icns format using `sips` and `iconutil`.
+fn convert_png_to_icns(
+  png_path: &Path,
+  icns_path: &Path,
+) -> Result<(), AnyError> {
+  let iconset_dir = icns_path.with_extension("iconset");
+  std::fs::create_dir_all(&iconset_dir)?;
+
+  let sizes: &[(u32, &str)] = &[
+    (16, "icon_16x16.png"),
+    (32, "icon_16x16@2x.png"),
+    (32, "icon_32x32.png"),
+    (64, "icon_32x32@2x.png"),
+    (128, "icon_128x128.png"),
+    (256, "icon_128x128@2x.png"),
+    (256, "icon_256x256.png"),
+    (512, "icon_256x256@2x.png"),
+    (512, "icon_512x512.png"),
+    (1024, "icon_512x512@2x.png"),
+  ];
+
+  for (size, name) in sizes {
+    let dest = iconset_dir.join(name);
+    let status = std::process::Command::new("sips")
+      .args([
+        "-z",
+        &size.to_string(),
+        &size.to_string(),
+        &png_path.display().to_string(),
+        "--out",
+        &dest.display().to_string(),
+      ])
+      .stdout(std::process::Stdio::null())
+      .stderr(std::process::Stdio::null())
+      .status();
+    if status.map_or(true, |s| !s.success()) {
+      std::fs::copy(png_path, &dest)?;
+    }
+  }
+
+  let status = std::process::Command::new("iconutil")
+    .args([
+      "-c",
+      "icns",
+      &iconset_dir.display().to_string(),
+      "-o",
+      &icns_path.display().to_string(),
+    ])
+    .stdout(std::process::Stdio::null())
+    .stderr(std::process::Stdio::null())
+    .status()?;
+
+  let _ = std::fs::remove_dir_all(&iconset_dir);
+
+  if !status.success() {
+    bail!("Failed to convert PNG to ICNS. Provide an .icns file directly or ensure iconutil is available.");
+  }
+
+  Ok(())
+}
+
+/// Recursively copy a directory tree, ensuring writable permissions on the
+/// destination. This is needed because source files from the Nix store are
+/// read-only.
+/// Strip unnecessary files from a CEF-based app bundle to reduce size.
+///
+/// Removes:
+/// - Non-English locale packs (~47MB)
+/// - SwiftShader software Vulkan renderer (~16MB, not needed on macOS with Metal)
+/// - OpenGL ES emulation library (~6.5MB, not needed on macOS with Metal)
+fn strip_cef_bloat(contents_dir: &Path) {
+  let frameworks_dir = contents_dir.join("Frameworks");
+  let cef_framework = frameworks_dir
+    .join("Chromium Embedded Framework.framework")
+    .join("Versions")
+    .join("A");
+
+  if !cef_framework.exists() {
+    return;
+  }
+
+  let cef_resources = cef_framework.join("Resources");
+  let cef_libraries = cef_framework.join("Libraries");
+
+  // Remove non-English locale packs.
+  if let Ok(entries) = std::fs::read_dir(&cef_resources) {
+    for entry in entries.flatten() {
+      let name = entry.file_name();
+      let name = name.to_string_lossy();
+      if name.ends_with(".lproj") && name != "en.lproj" {
+        let _ = std::fs::remove_dir_all(entry.path());
+      }
+    }
+  }
+
+  // Remove SwiftShader (software Vulkan fallback, not needed on macOS with Metal).
+  let _ = std::fs::remove_file(cef_libraries.join("libvk_swiftshader.dylib"));
+  let _ = std::fs::remove_file(cef_libraries.join("vk_swiftshader_icd.json"));
+}
+
+fn copy_dir_all(src: &Path, dst: &Path) -> Result<(), AnyError> {
+  std::fs::create_dir_all(dst)?;
+  for entry in std::fs::read_dir(src).with_context(|| {
+    format!("Reading directory '{}'", src.display())
+  })? {
+    let entry = entry?;
+    let ty = entry.file_type()?;
+    let dest = dst.join(entry.file_name());
+    if ty.is_dir() {
+      copy_dir_all(&entry.path(), &dest)?;
+    } else if ty.is_symlink() {
+      let target = std::fs::read_link(entry.path())?;
+      #[cfg(unix)]
+      std::os::unix::fs::symlink(&target, &dest)?;
+      #[cfg(windows)]
+      {
+        if target.is_dir() {
+          std::os::windows::fs::symlink_dir(&target, &dest)?;
+        } else {
+          std::os::windows::fs::symlink_file(&target, &dest)?;
+        }
+      }
+    } else {
+      std::fs::copy(entry.path(), &dest)?;
+      // Ensure the copied file is writable (nix store files are read-only).
+      #[cfg(unix)]
+      {
+        use std::os::unix::fs::PermissionsExt;
+        let meta = std::fs::metadata(&dest)?;
+        let mut perms = meta.permissions();
+        perms.set_mode(perms.mode() | 0o200);
+        std::fs::set_permissions(&dest, perms)?;
+      }
+    }
+  }
   Ok(())
 }
 
@@ -410,7 +844,7 @@ async fn compile_eszip(
 }
 
 /// Find the WEF backend executable.
-fn find_wef_backend() -> Result<PathBuf, AnyError> {
+fn find_wef_backend(backend: &str) -> Result<PathBuf, AnyError> {
   if let Ok(path) = std::env::var(WEF_BACKEND_ENV) {
     let p = PathBuf::from(&path);
     if p.exists() {
@@ -427,13 +861,13 @@ fn find_wef_backend() -> Result<PathBuf, AnyError> {
   let exe_dir = std::env::current_exe()
     .ok()
     .and_then(|p| p.parent().map(|p| p.to_path_buf()));
-  for search_path in WEF_BACKEND_SEARCH_PATHS {
-    let p = PathBuf::from(search_path);
+  for search_path in wef_backend_search_paths(backend) {
+    let p = PathBuf::from(&search_path);
     if p.exists() {
       return Ok(p);
     }
     if let Some(exe_dir) = &exe_dir {
-      let p = exe_dir.join(search_path);
+      let p = exe_dir.join(&search_path);
       if p.exists() {
         return Ok(p);
       }
@@ -441,7 +875,8 @@ fn find_wef_backend() -> Result<PathBuf, AnyError> {
   }
 
   bail!(
-    "WEF backend not found. Set {} to the path of the WEF backend executable.",
+    "WEF backend '{}' not found. Set {} to the path of the WEF backend executable.",
+    backend,
     WEF_BACKEND_ENV
   )
 }
@@ -461,8 +896,9 @@ async fn run_desktop_hmr(
   dylib_path: &Path,
   source_dir: &Path,
   framework: Option<&super::framework::FrameworkDetection>,
+  backend: &str,
 ) -> Result<(), AnyError> {
-  let wef_backend = find_wef_backend()?;
+  let wef_backend = find_wef_backend(backend)?;
   let dylib_abs = dylib_path
     .canonicalize()
     .unwrap_or(dylib_path.to_path_buf());
@@ -797,6 +1233,7 @@ mod test {
         self_extracting: false,
         desktop: false,
         hmr: false,
+        backend: None,
       },
       &resolve_cwd(None).unwrap(),
     )
@@ -831,6 +1268,7 @@ mod test {
         self_extracting: false,
         desktop: false,
         hmr: false,
+        backend: None,
       },
       &resolve_cwd(None).unwrap(),
     )

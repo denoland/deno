@@ -259,7 +259,8 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     }
     if options.compile_flags.icon.is_some() {
       let target = options.compile_flags.resolve_target();
-      if !target.contains("windows") {
+      // Desktop builds handle icons during app bundle packaging.
+      if !target.contains("windows") && !options.compile_flags.desktop {
         bail!(
           "The `--icon` flag is only available when targeting Windows (current: {})",
           target,
@@ -1351,7 +1352,15 @@ fn get_dev_desktop_binary_path() -> Option<OsString> {
         .components()
         .any(|component| component == Component::Normal("target".as_ref()))
       {
-        get_libdenort_path(exec_path)
+        // Prefer release libdenort (optimized) over debug.
+        let target_dir = exec_path
+          .parent()
+          .and_then(|p| p.parent());
+        target_dir
+          .and_then(|d| {
+            get_libdenort_path(d.join("release").join("libdenort.dylib"))
+          })
+          .or_else(|| get_libdenort_path(exec_path.clone()))
       } else {
         None
       }
