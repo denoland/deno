@@ -7,7 +7,9 @@ use deno_npm::npm_rc::RegistryConfig;
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum AuthHeaderForNpmRegistryError {
   #[class(type)]
-  #[error("Both the username / email and password must be provided for basic auth")]
+  #[error(
+    "Both the username / email and password must be provided for basic auth"
+  )]
   Both,
   #[class(type)]
   #[error("The password in npmrc is an invalid base64 string: {0}")]
