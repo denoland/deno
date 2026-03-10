@@ -6,6 +6,7 @@ members = [
   "cli",
   "cli/lib",
   "cli/rt",
+  "cli/rt_desktop",
   "cli/snapshot",
   "ext/bundle",
   "ext/cache",
@@ -360,7 +361,7 @@ dprint-plugin-markdown = "=0.20.0"
 dprint-plugin-typescript = "=0.95.15"
 env_logger = "=0.11.6"
 fancy-regex = "=0.14.0"
-libsui = "0.12.6"
+libsui = { path = "../sui" }
 malva = "=0.12.1"
 markup_fmt = "=0.22.0"
 open = "5.0.1"

@@ -175,6 +175,8 @@ pub struct CompileFlags {
   pub exclude: Vec<String>,
   pub eszip: bool,
   pub self_extracting: bool,
+  pub desktop: bool,
+  pub hmr: bool,
 }
 
 impl CompileFlags {
@@ -2812,6 +2814,21 @@ On the first invocation of `deno compile`, Deno will download the relevant binar
         Arg::new("self-extracting")
           .long("self-extracting")
           .help("Create a self-extracting binary that extracts the embedded file system to disk on first run and then runs from there")
+          .action(ArgAction::SetTrue)
+          .help_heading(COMPILE_HEADING),
+      )
+      .arg(
+        Arg::new("desktop")
+          .long("desktop")
+          .help("Compile as a desktop application using a WEF backend for the UI layer")
+          .action(ArgAction::SetTrue)
+          .help_heading(COMPILE_HEADING),
+      )
+      .arg(
+        Arg::new("hmr")
+          .long("hmr")
+          .help("Compile and run the desktop app with Hot Module Replacement enabled")
+          .requires("desktop")
           .action(ArgAction::SetTrue)
           .help_heading(COMPILE_HEADING),
       )
@@ -6135,6 +6152,8 @@ fn compile_parse(
   let no_terminal = matches.get_flag("no-terminal");
   let eszip = matches.get_flag("eszip-internal-do-not-use");
   let self_extracting = matches.get_flag("self-extracting");
+  let desktop = matches.get_flag("desktop");
+  let hmr = matches.get_flag("hmr");
   let include = matches
     .remove_many::<String>("include")
     .map(|f| f.collect::<Vec<_>>())
@@ -6158,6 +6177,8 @@ fn compile_parse(
     exclude,
     eszip,
     self_extracting,
+    desktop,
+    hmr,
   });
 
   Ok(())
@@ -12495,6 +12516,8 @@ mod tests {
           exclude: Default::default(),
           eszip: false,
           self_extracting: false,
+          desktop: false,
+          hmr: false,
         }),
         type_check_mode: TypeCheckMode::Local,
         code_cache_enabled: true,
@@ -12522,6 +12545,8 @@ mod tests {
           exclude: vec!["exclude.txt".to_string()],
           eszip: false,
           self_extracting: false,
+          desktop: false,
+          hmr: false,
         }),
         import_map_path: Some("import_map.json".to_string()),
         no_remote: true,
@@ -14837,6 +14862,8 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
           exclude: Default::default(),
           eszip: false,
           self_extracting: false,
+          desktop: false,
+          hmr: false,
         }),
         type_check_mode: TypeCheckMode::Local,
         preload: svec!["p1.js", "./p2.js"],

@@ -73,6 +73,7 @@ use deno_runtime::code_cache::CodeCache;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::NodeRequireLoader;
 use deno_runtime::deno_node::create_host_defined_options;
+use deno_runtime::deno_node::ops::ipc::ChildIpcSerialization;
 use deno_runtime::deno_permissions::Permissions;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::deno_tls::RootCertStoreProvider;
@@ -550,6 +551,66 @@ impl ModuleLoader for EmbeddedModuleLoader {
         }
       }
       Ok(None) => {
+        // Fall back to reading from disk (used by dev entrypoint in HMR mode).
+        if original_specifier.scheme() == "file" {
+          if let Ok(path) = original_specifier.to_file_path() {
+            if let Ok(source) = std::fs::read_to_string(&path) {
+              let media_type = MediaType::from_specifier(original_specifier);
+              let (module_type, should_transpile) = match media_type {
+                MediaType::JavaScript | MediaType::Mjs | MediaType::Cjs => {
+                  (ModuleType::JavaScript, false)
+                }
+                MediaType::TypeScript
+                | MediaType::Mts
+                | MediaType::Cts
+                | MediaType::Jsx
+                | MediaType::Tsx => (ModuleType::JavaScript, true),
+                MediaType::Json => (ModuleType::Json, false),
+                _ => (ModuleType::JavaScript, false),
+              };
+              let code = if should_transpile {
+                match deno_ast::parse_module(deno_ast::ParseParams {
+                  specifier: original_specifier.clone(),
+                  text: source.into(),
+                  media_type,
+                  capture_tokens: false,
+                  scope_analysis: false,
+                  maybe_syntax: None,
+                }) {
+                  Ok(parsed) => match parsed.transpile(
+                    &deno_ast::TranspileOptions::default(),
+                    &deno_ast::TranspileModuleOptions::default(),
+                    &deno_ast::EmitOptions::default(),
+                  ) {
+                    Ok(transpiled) => ModuleSourceCode::String(
+                      transpiled.into_source().text.into(),
+                    ),
+                    Err(e) => {
+                      return deno_core::ModuleLoadResponse::Sync(Err(
+                        JsErrorBox::type_error(format!("Transpile error: {e}")),
+                      ));
+                    }
+                  },
+                  Err(e) => {
+                    return deno_core::ModuleLoadResponse::Sync(Err(
+                      JsErrorBox::type_error(format!("Parse error: {e}")),
+                    ));
+                  }
+                }
+              } else {
+                ModuleSourceCode::String(source.into())
+              };
+              return deno_core::ModuleLoadResponse::Sync(Ok(
+                deno_core::ModuleSource::new(
+                  module_type,
+                  code,
+                  original_specifier,
+                  None,
+                ),
+              ));
+            }
+          }
+        }
         deno_core::ModuleLoadResponse::Sync(Err(JsErrorBox::type_error(
           format!("Module not found: {}", original_specifier),
         )))
@@ -651,22 +712,30 @@ impl NodeRequireLoader for EmbeddedModuleLoader {
     &self,
     path: &std::path::Path,
   ) -> Result<FastString, JsErrorBox> {
-    let file_entry = self
-      .shared
-      .vfs
-      .file_entry(path)
-      .map_err(JsErrorBox::from_err)?;
-    let file_bytes = self
-      .shared
-      .vfs
-      .read_file_offset_with_len(
-        file_entry.transpiled_offset.unwrap_or(file_entry.offset),
-      )
-      .map_err(JsErrorBox::from_err)?;
-    Ok(match from_utf8_lossy_cow(file_bytes) {
-      Cow::Borrowed(s) => FastString::from_static(s),
-      Cow::Owned(s) => s.into(),
-    })
+    match self.shared.vfs.file_entry(path) {
+      Ok(file_entry) => {
+        let file_bytes = self
+          .shared
+          .vfs
+          .read_file_offset_with_len(
+            file_entry.transpiled_offset.unwrap_or(file_entry.offset),
+          )
+          .map_err(JsErrorBox::from_err)?;
+        Ok(match from_utf8_lossy_cow(file_bytes) {
+          Cow::Borrowed(s) => FastString::from_static(s),
+          Cow::Owned(s) => s.into(),
+        })
+      }
+      Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+        // Fall back to the real filesystem (e.g. for paths outside VFS
+        // root in self-extracting/desktop dev mode).
+        let bytes = std::fs::read(path).map_err(JsErrorBox::from_err)?;
+        Ok(FastString::from(
+          String::from_utf8_lossy(&bytes).into_owned(),
+        ))
+      }
+      Err(err) => Err(JsErrorBox::from_err(err)),
+    }
   }
 
   fn is_maybe_cjs(
@@ -732,11 +801,73 @@ impl RootCertStoreProvider for StandaloneRootCertStoreProvider {
   }
 }
 
+/// Options to override default standalone runtime behavior.
+/// Used by the desktop runtime to enable auto_serve and set the port.
+pub struct RunOptions {
+  pub auto_serve: bool,
+  pub serve_port: Option<u16>,
+  pub serve_host: Option<String>,
+  /// Enable HMR file watching from this directory.
+  pub hmr_watch_dir: Option<PathBuf>,
+  /// Callback invoked after each successful HMR replacement.
+  pub hmr_on_reload: Option<crate::hmr::HmrReloadCallback>,
+  /// Additional extensions to load (e.g. desktop window APIs).
+  pub custom_extensions: Vec<deno_core::Extension>,
+  /// Override the main module to execute instead of the embedded entrypoint.
+  /// Used by desktop runtime for forked worker processes (child_process.fork)
+  /// where the child should run a specific script, not the embedded entrypoint.
+  pub override_main_module: Option<deno_core::url::Url>,
+}
+
+impl Default for RunOptions {
+  fn default() -> Self {
+    Self {
+      auto_serve: false,
+      serve_port: None,
+      serve_host: None,
+      hmr_watch_dir: None,
+      hmr_on_reload: None,
+      custom_extensions: vec![],
+      override_main_module: None,
+    }
+  }
+}
+
+/// Read NODE_CHANNEL_FD from the environment to initialize IPC for
+/// forked child processes (e.g. child_process.fork()).
+fn node_ipc_init_from_env() -> Option<(i64, ChildIpcSerialization)> {
+  let fd_str = std::env::var("NODE_CHANNEL_FD").ok()?;
+  let serialization = std::env::var("NODE_CHANNEL_SERIALIZATION_MODE")
+    .ok()
+    .and_then(|s| s.parse::<ChildIpcSerialization>().ok())
+    .unwrap_or(ChildIpcSerialization::Json);
+  #[allow(clippy::undocumented_unsafe_blocks)]
+  unsafe {
+    std::env::remove_var("NODE_CHANNEL_FD");
+    std::env::remove_var("NODE_CHANNEL_SERIALIZATION_MODE");
+  }
+  let fd = fd_str.parse::<i64>().ok()?;
+  Some((fd, serialization))
+}
+
 pub async fn run(
   fs: Arc<dyn FileSystem>,
   sys: DenoRtSys,
   data: StandaloneData,
 ) -> Result<i32, AnyError> {
+  run_with_options(fs, sys, data, RunOptions::default()).await
+}
+
+pub async fn run_with_options(
+  fs: Arc<dyn FileSystem>,
+  sys: DenoRtSys,
+  data: StandaloneData,
+  options: RunOptions,
+) -> Result<i32, AnyError> {
+  let hmr_watch_dir = options.hmr_watch_dir;
+  let hmr_on_reload = options.hmr_on_reload;
+  let custom_extensions = options.custom_extensions;
+  let override_main_module = options.override_main_module;
   let StandaloneData {
     metadata,
     modules,
@@ -753,7 +884,11 @@ pub async fn run(
   // use a dummy npm registry url
   let npm_registry_url = Url::parse("https://localhost/").unwrap();
   let root_dir_url = Arc::new(Url::from_directory_path(&root_path).unwrap());
-  let main_module = root_dir_url.join(&metadata.entrypoint_key).unwrap();
+  let main_module = if let Some(url) = override_main_module {
+    url
+  } else {
+    root_dir_url.join(&metadata.entrypoint_key).unwrap()
+  };
   let npm_global_cache_dir = root_path.join(".deno_compile_node_modules");
   let pkg_json_resolver = Arc::new(PackageJsonResolver::new(
     sys.clone(),
@@ -1043,8 +1178,8 @@ pub async fn run(
     trace_ops: None,
     is_inspecting: false,
     is_standalone: true,
-    auto_serve: false,
-    skip_op_registration: true,
+    auto_serve: options.auto_serve,
+    skip_op_registration: custom_extensions.is_empty(),
     location: metadata.location,
     argv0: NpmPackageReqReference::from_specifier(&main_module)
       .ok()
@@ -1055,9 +1190,9 @@ pub async fn run(
     seed: metadata.seed,
     unsafely_ignore_certificate_errors: metadata
       .unsafely_ignore_certificate_errors,
-    node_ipc_init: None,
-    serve_port: None,
-    serve_host: None,
+    node_ipc_init: node_ipc_init_from_env(),
+    serve_port: options.serve_port,
+    serve_host: options.serve_host,
     otel_config: metadata.otel_config,
     no_legacy_abort: false,
     startup_snapshot: deno_snapshots::CLI_SNAPSHOT,
@@ -1113,16 +1248,73 @@ pub async fn run(
     .map(|key| root_dir_url.join(key).unwrap())
     .collect::<Vec<_>>();
 
-  let mut worker = worker_factory.create_main_worker(
+  let has_desktop = !custom_extensions.is_empty();
+  let mut worker = worker_factory.create_custom_worker(
     WorkerExecutionMode::Run,
-    permissions,
     main_module,
     preload_modules,
     require_modules,
+    permissions,
+    custom_extensions,
+    Default::default(),
+    None,
   )?;
 
-  let exit_code = worker.run().await?;
-  Ok(exit_code)
+  // Initialize desktop APIs (Deno.desktop.*).
+  if has_desktop {
+    worker
+      .js_runtime()
+      .execute_script("ext:deno_desktop/init", crate::desktop::DESKTOP_JS)?;
+  }
+
+  if let Some(watch_dir) = hmr_watch_dir {
+    let mut hmr_runner =
+      crate::hmr::setup_desktop_hmr(&mut worker, watch_dir, root_path.clone())?;
+    if let Some(cb) = hmr_on_reload {
+      hmr_runner.set_on_reload(cb);
+    }
+
+    // Run one event loop tick so the inspector processes the
+    // Debugger.enable / Runtime.enable messages before we load modules.
+    // This ensures scriptParsed notifications are emitted during module load.
+    worker.run_event_loop(false).await?;
+
+    // Run preload modules first
+    worker.execute_preload_modules().await?;
+    worker.execute_main_module().await?;
+    worker.dispatch_load_event()?;
+
+    loop {
+      let hmr_fut = hmr_runner.run();
+      let event_loop_fut = worker.run_event_loop(false);
+
+      tokio::select! {
+        hmr_result = hmr_fut => {
+          if let Err(e) = hmr_result {
+            log::error!("HMR error: {:?}", e);
+          }
+        }
+        event_loop_result = event_loop_fut => {
+          event_loop_result?;
+          let web_continue = worker.dispatch_beforeunload_event()?;
+          if !web_continue {
+            let node_continue =
+              worker.dispatch_process_beforeexit_event()?;
+            if !node_continue {
+              break;
+            }
+          }
+        }
+      }
+    }
+
+    worker.dispatch_unload_event()?;
+    worker.dispatch_process_exit_event()?;
+    Ok(worker.exit_code())
+  } else {
+    let exit_code = worker.run().await?;
+    Ok(exit_code)
+  }
 }
 
 fn create_default_npmrc() -> Arc<ResolvedNpmRc> {

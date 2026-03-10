@@ -33,10 +33,89 @@ use crate::standalone::binary::WriteBinOptions;
 use crate::standalone::binary::is_standalone_binary;
 use crate::util::temp::create_temp_node_modules_dir;
 
+/// Environment variable for the WEF backend executable path.
+const WEF_BACKEND_ENV: &str = "WEF_BACKEND";
+/// Default WEF backend paths to search on macOS.
+const WEF_BACKEND_SEARCH_PATHS: &[&str] =
+  &["../wef/webview/build/wef_webview.app/Contents/MacOS/wef_webview"];
+
 pub async fn compile(
   mut flags: Flags,
-  compile_flags: CompileFlags,
+  mut compile_flags: CompileFlags,
 ) -> Result<(), AnyError> {
+  // Desktop framework detection: when --desktop is used and the source is
+  // "." (a directory), detect the framework and generate the entrypoint.
+  let _desktop_entrypoint_file = if compile_flags.desktop
+    && compile_flags.source_file == "."
+  {
+    let cwd = flags
+      .initial_cwd
+      .clone()
+      .unwrap_or_else(|| std::env::current_dir().unwrap());
+    if let Some(detection) = super::framework::detect_framework(&cwd)? {
+      let entrypoint_code = detection.entrypoint_code;
+      let includes = detection.include_paths;
+      log::info!("Detected {} framework", detection.name);
+      // Enable CJS detection for Node-based frameworks.
+      flags.unstable_config.detect_cjs = true;
+      // Write a temporary entrypoint file.
+      let entrypoint_path = cwd.join(".deno_desktop_entry.ts");
+      std::fs::write(&entrypoint_path, entrypoint_code)?;
+      let entrypoint_str = entrypoint_path.display().to_string();
+      compile_flags.source_file = entrypoint_str.clone();
+      // Also update the source in flags.subcommand so resolve_main_module sees it.
+      if let crate::args::DenoSubcommand::Compile(ref mut cf) = flags.subcommand
+      {
+        cf.source_file = entrypoint_str;
+        cf.self_extracting = true;
+        // Use the project directory name as the output binary name.
+        if cf.output.is_none() {
+          if let Some(dir_name) = cwd.file_name() {
+            cf.output = Some(dir_name.to_string_lossy().into_owned());
+          }
+        }
+      }
+      if compile_flags.output.is_none() {
+        if let Some(dir_name) = cwd.file_name() {
+          compile_flags.output = Some(dir_name.to_string_lossy().into_owned());
+        }
+      }
+      // Auto-enable self-extracting for framework apps.
+      compile_flags.self_extracting = true;
+      // Add framework build output to includes.
+      for inc in includes {
+        if !compile_flags.include.contains(&inc) {
+          compile_flags.include.push(inc.clone());
+        }
+        if let crate::args::DenoSubcommand::Compile(ref mut cf) =
+          flags.subcommand
+        {
+          if !cf.include.contains(&inc) {
+            cf.include.push(inc);
+          }
+        }
+      }
+      Some(entrypoint_path)
+    } else {
+      bail!(
+        "Could not detect a supported framework in the current directory.\nSupported frameworks: Next.js, Astro\nProvide an explicit entrypoint instead of \".\"."
+      );
+    }
+  } else {
+    None
+  };
+
+  // Clean up temp entrypoint on exit.
+  struct CleanupGuard(Option<PathBuf>);
+  impl Drop for CleanupGuard {
+    fn drop(&mut self) {
+      if let Some(ref path) = self.0 {
+        let _ = std::fs::remove_file(path);
+      }
+    }
+  }
+  let _cleanup = CleanupGuard(_desktop_entrypoint_file);
+
   // use a temporary directory with a node_modules folder when the user
   // specifies an npm package for better compatibility
   let _temp_dir =
@@ -203,6 +282,13 @@ async fn compile_binary(
     return Err(err);
   }
 
+  // When --desktop --hmr, compile and immediately run with HMR enabled.
+  if compile_flags.desktop && compile_flags.hmr {
+    let cwd = cli_options.initial_cwd();
+    let framework = super::framework::detect_framework(cwd)?;
+    run_desktop_hmr(&output_path, cwd, framework.as_ref()).await?;
+  }
+
   Ok(())
 }
 
@@ -320,6 +406,115 @@ async fn compile_eszip(
     return Err(err.into());
   }
 
+  Ok(())
+}
+
+/// Find the WEF backend executable.
+fn find_wef_backend() -> Result<PathBuf, AnyError> {
+  if let Ok(path) = std::env::var(WEF_BACKEND_ENV) {
+    let p = PathBuf::from(&path);
+    if p.exists() {
+      return Ok(p);
+    }
+    bail!(
+      "WEF backend not found at {} (set via {})",
+      path,
+      WEF_BACKEND_ENV
+    );
+  }
+
+  // Search relative to the deno executable for development.
+  let exe_dir = std::env::current_exe()
+    .ok()
+    .and_then(|p| p.parent().map(|p| p.to_path_buf()));
+  for search_path in WEF_BACKEND_SEARCH_PATHS {
+    let p = PathBuf::from(search_path);
+    if p.exists() {
+      return Ok(p);
+    }
+    if let Some(exe_dir) = &exe_dir {
+      let p = exe_dir.join(search_path);
+      if p.exists() {
+        return Ok(p);
+      }
+    }
+  }
+
+  bail!(
+    "WEF backend not found. Set {} to the path of the WEF backend executable.",
+    WEF_BACKEND_ENV
+  )
+}
+
+/// Launch the desktop app with HMR enabled after compilation.
+///
+/// The compiled dylib contains the entrypoint with both production and dev
+/// code paths. The `dev_entrypoint_code` is parsed as KEY=VALUE env vars
+/// that switch the entrypoint to dev mode (e.g. DENO_DESKTOP_DEV=1).
+///
+/// Framework dev servers provide HMR via websocket. Since they run inside
+/// the Deno desktop runtime, `Deno.desktop` APIs remain available.
+/// `child_process.fork()` works because forked workers use
+/// `override_main_module` to run the target script instead of the
+/// embedded entrypoint.
+async fn run_desktop_hmr(
+  dylib_path: &Path,
+  source_dir: &Path,
+  framework: Option<&super::framework::FrameworkDetection>,
+) -> Result<(), AnyError> {
+  let wef_backend = find_wef_backend()?;
+  let dylib_abs = dylib_path
+    .canonicalize()
+    .unwrap_or(dylib_path.to_path_buf());
+  let source_abs = source_dir
+    .canonicalize()
+    .unwrap_or(source_dir.to_path_buf());
+
+  if let Some(fw) = framework {
+    if fw.dev_entrypoint_code.is_some() {
+      log::info!(
+        "{} {} dev server with HMR in desktop mode",
+        colors::green("Running"),
+        fw.name,
+      );
+    }
+  }
+
+  log::info!(
+    "{} desktop app with HMR (watching {})",
+    colors::green("Running"),
+    source_abs.display(),
+  );
+
+  let mut cmd = std::process::Command::new(&wef_backend);
+  cmd
+    .arg("--runtime")
+    .arg(&dylib_abs)
+    .env("WEF_RUNTIME_PATH", &dylib_abs)
+    .env("DENO_DESKTOP_HMR", &source_abs)
+    .current_dir(&source_abs);
+
+  // Set framework dev env vars (e.g. DENO_DESKTOP_DEV=1) so the
+  // embedded entrypoint branches into dev mode.
+  if let Some(fw) = framework {
+    if let Some(ref dev_env) = fw.dev_entrypoint_code {
+      for line in dev_env.lines() {
+        if let Some((key, value)) = line.split_once('=') {
+          cmd.env(key.trim(), value.trim());
+        }
+      }
+    }
+  }
+
+  let mut child = cmd.spawn().with_context(|| {
+    format!("Failed to launch WEF backend: {}", wef_backend.display())
+  })?;
+
+  let status = child.wait().context("Failed waiting for WEF backend")?;
+
+  if !status.success() {
+    bail!("WEF backend exited with status: {}", status);
+  }
   Ok(())
 }
 
@@ -522,8 +717,33 @@ async fn resolve_compile_executable_output_path(
   output_path.ok_or_else(|| anyhow!(
     "An executable name was not provided. One could not be inferred from the URL. Aborting.",
   )).map(|output_path| {
-    get_os_specific_filepath(output_path, &compile_flags.target)
+    if compile_flags.desktop {
+      get_desktop_specific_filepath(output_path, &compile_flags.target)
+    } else {
+      get_os_specific_filepath(output_path, &compile_flags.target)
+    }
   })
+}
+
+fn get_desktop_specific_filepath(
+  output: PathBuf,
+  target: &Option<String>,
+) -> PathBuf {
+  let is_windows = match target {
+    Some(target) => target.contains("windows"),
+    None => cfg!(windows),
+  };
+  let is_darwin = match target {
+    Some(target) => target.contains("darwin"),
+    None => cfg!(target_os = "macos"),
+  };
+  if is_windows {
+    output.with_extension("dll")
+  } else if is_darwin {
+    output.with_extension("dylib")
+  } else {
+    output.with_extension("so")
+  }
 }
 
 fn get_os_specific_filepath(
@@ -575,6 +795,8 @@ mod test {
         exclude: Default::default(),
         eszip: true,
         self_extracting: false,
+        desktop: false,
+        hmr: false,
       },
       &resolve_cwd(None).unwrap(),
     )
@@ -607,6 +829,8 @@ mod test {
         no_terminal: false,
         eszip: true,
         self_extracting: false,
+        desktop: false,
+        hmr: false,
       },
       &resolve_cwd(None).unwrap(),
     )

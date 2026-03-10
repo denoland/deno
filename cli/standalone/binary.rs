@@ -273,6 +273,10 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     &self,
     compile_flags: &CompileFlags,
   ) -> Result<Vec<u8>, AnyError> {
+    if compile_flags.desktop {
+      return self.get_desktop_base_binary(compile_flags).await;
+    }
+
     // Used for testing.
     //
     // Phase 2 of the 'min sized' deno compile RFC talks
@@ -321,6 +325,71 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     })?;
     let base_binary = read_file(&base_binary_path)?;
     drop(temp_dir); // delete the temp dir
+    Ok(base_binary)
+  }
+
+  async fn get_desktop_base_binary(
+    &self,
+    compile_flags: &CompileFlags,
+  ) -> Result<Vec<u8>, AnyError> {
+    // For development: check DENORT_DESKTOP_BIN env var or look
+    // for libdenort next to the deno executable.
+    if let Some(path) = get_dev_desktop_binary_path() {
+      log::debug!("Resolved libdenort: {}", path.to_string_lossy());
+      return std::fs::read(&path).with_context(|| {
+        format!("Could not find libdenort at '{}'", path.to_string_lossy())
+      });
+    }
+
+    let target = compile_flags.resolve_target();
+    let lib_ext = if target.contains("darwin") {
+      "dylib"
+    } else if target.contains("windows") {
+      "dll"
+    } else {
+      "so"
+    };
+    let lib_name = if target.contains("windows") {
+      format!("denort.{lib_ext}")
+    } else {
+      format!("libdenort.{lib_ext}")
+    };
+    let binary_name = format!("libdenort-{target}.zip");
+
+    let binary_path_suffix = match DENO_VERSION_INFO.release_channel {
+      ReleaseChannel::Canary => {
+        format!("canary/{}/{}", DENO_VERSION_INFO.git_hash, binary_name)
+      }
+      _ => {
+        format!("release/v{}/{}", DENO_VERSION_INFO.deno, binary_name)
+      }
+    };
+
+    let download_directory = self.deno_dir.dl_folder_path();
+    let binary_path = download_directory.join(&binary_path_suffix);
+    log::debug!("Resolved libdenort: {}", binary_path.display());
+
+    let read_file = |path: &Path| -> Result<Vec<u8>, AnyError> {
+      std::fs::read(path).with_context(|| format!("Reading {}", path.display()))
+    };
+    let archive_data = if binary_path.exists() {
+      read_file(&binary_path)?
+    } else {
+      self
+        .download_base_binary(&binary_path, &binary_path_suffix)
+        .await
+        .context("Setting up desktop base binary.")?
+    };
+    let temp_dir = tempfile::TempDir::new()?;
+    let base_binary_path = archive::unpack_into_dir(archive::UnpackArgs {
+      exe_name: &lib_name,
+      archive_name: &binary_name,
+      archive_data: &archive_data,
+      is_windows: target.contains("windows"),
+      dest_path: temp_dir.path(),
+    })?;
+    let base_binary = read_file(&base_binary_path)?;
+    drop(temp_dir);
     Ok(base_binary)
   }
 
@@ -1256,6 +1325,33 @@ fn get_dev_binary_path() -> Option<OsString> {
         .any(|component| component == Component::Normal("target".as_ref()))
       {
         get_denort_path(exec_path)
+      } else {
+        None
+      }
+    })
+  })
+}
+
+fn get_libdenort_path(deno_exe: PathBuf) -> Option<OsString> {
+  let mut libdenort = deno_exe;
+  if cfg!(target_os = "macos") {
+    libdenort.set_file_name("libdenort.dylib");
+  } else if cfg!(windows) {
+    libdenort.set_file_name("denort.dll");
+  } else {
+    libdenort.set_file_name("libdenort.so");
+  }
+  libdenort.exists().then(|| libdenort.into_os_string())
+}
+
+fn get_dev_desktop_binary_path() -> Option<OsString> {
+  env::var_os("DENORT_DESKTOP_BIN").or_else(|| {
+    env::current_exe().ok().and_then(|exec_path| {
+      if exec_path
+        .components()
+        .any(|component| component == Component::Normal("target".as_ref()))
+      {
+        get_libdenort_path(exec_path)
       } else {
         None
       }

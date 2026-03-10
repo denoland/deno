@@ -29,6 +29,7 @@ deno_runtime = { workspace = true, features = ["include_js_files_for_snapshottin
 deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
 
 [dependencies]
+deno_ast = { workspace = true, features = ["transpiling"] }
 deno_cache_dir = { workspace = true, features = ["sync"] }
 deno_config = { workspace = true, features = ["sync", "workspace"] }
 deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
@@ -45,6 +46,7 @@ deno_snapshots.workspace = true
 deno_terminal.workspace = true
 libsui.workspace = true
 node_resolver.workspace = true
+notify.workspace = true
 
 async-trait.workspace = true
 bincode.workspace = true
