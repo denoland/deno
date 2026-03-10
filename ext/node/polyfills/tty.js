@@ -9,7 +9,10 @@ const {
   ObjectSetPrototypeOf,
 } = primordials;
 
-import { ERR_INVALID_FD } from "ext:deno_node/internal/errors.ts";
+import {
+  ERR_INVALID_FD,
+  ERR_TTY_INIT_FAILED,
+} from "ext:deno_node/internal/errors.ts";
 import { TTY } from "ext:core/ops";
 import { Socket } from "node:net";
 import { setReadStream } from "ext:deno_node/_process/streams.mjs";
@@ -38,7 +41,11 @@ function ReadStream(fd, options) {
   // We only support `stdin`.
   // if (fd != 0) throw new Error("Only fd 0 is supported.");
 
-  const tty = new TTY(fd);
+  const ctx = {};
+  const tty = new TTY(fd, ctx);
+  if (ctx.code !== undefined) {
+    throw new ERR_TTY_INIT_FAILED(ctx);
+  }
   FunctionPrototypeCall(Socket, this, {
     readableHighWaterMark: 0,
     handle: tty,

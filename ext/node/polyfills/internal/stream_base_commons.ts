@@ -25,6 +25,7 @@ import {
   kArrayBufferOffset,
   kBytesWritten,
   kLastWriteWasAsync,
+  kReadBytesOrError,
   LibuvStreamWrap,
   streamBaseState,
   WriteWrap,
@@ -229,8 +230,13 @@ export function onStreamRead(
   // deno-lint-ignore no-explicit-any
   this: any,
   arrayBuffer: Uint8Array,
-  nread: number,
+  nread?: number,
 ) {
+  // When called from the native (Rust) read callback, nread is communicated
+  // via streamBaseState[kReadBytesOrError] rather than as a direct argument.
+  if (nread === undefined) {
+    nread = streamBaseState[kReadBytesOrError];
+  }
   // deno-lint-ignore no-this-alias
   const handle = this;
 
@@ -261,9 +267,13 @@ export function onStreamRead(
     } else {
       const offset = streamBaseState[kArrayBufferOffset];
       // Performance note: Pass ArrayBuffer to Buffer#from to avoid
-      // copy.
+      // copy. When called from native (Rust) code, arrayBuffer is
+      // already an ArrayBuffer; from JS it may be a Uint8Array.
+      const ab = arrayBuffer instanceof ArrayBuffer
+        ? arrayBuffer
+        : TypedArrayPrototypeGetBuffer(arrayBuffer);
       const buf = Buffer.from(
-        TypedArrayPrototypeGetBuffer(arrayBuffer),
+        ab,
         offset,
         nread,
       );

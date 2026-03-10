@@ -131,6 +131,44 @@ pub unsafe fn uv_read_stop(stream: *mut uv_stream_t) -> c_int {
   0
 }
 
+/// Mirrors libuv's `uv_stream_set_blocking`: toggles `O_NONBLOCK` on the
+/// stream's underlying file descriptor.
+///
+/// ### Safety
+/// `stream` must be a valid pointer to an initialized stream handle.
+pub unsafe fn uv_stream_set_blocking(
+  stream: *mut uv_stream_t,
+  blocking: c_int,
+) -> c_int {
+  unsafe {
+    let fd = if (*stream).r#type == uv_handle_type::UV_TTY {
+      (*(stream as *mut uv_tty_t)).internal_fd
+    } else {
+      // TCP and other stream types
+      match (*(stream as *mut uv_tcp_t)).internal_fd {
+        Some(fd) => fd,
+        None => return super::UV_EBADF,
+      }
+    };
+
+    let flags = libc::fcntl(fd, libc::F_GETFL);
+    if flags == -1 {
+      return -(*(libc::__error()));
+    }
+    let new_flags = if blocking != 0 {
+      flags & !libc::O_NONBLOCK
+    } else {
+      flags | libc::O_NONBLOCK
+    };
+    if new_flags != flags {
+      if libc::fcntl(fd, libc::F_SETFL, new_flags) == -1 {
+        return -(*(libc::__error()));
+      }
+    }
+    0
+  }
+}
+
 /// ### Safety
 /// `handle` must be a valid pointer to an initialized stream handle
 /// (`uv_tcp_t` or `uv_tty_t`, cast as `uv_stream_t`).
@@ -186,6 +224,11 @@ pub unsafe fn uv_write(
     (*req).handle = handle;
 
     if (*tcp).internal_stream.is_none() {
+      eprintln!(
+        "[uv_write] EBADF: internal_stream is None for handle {:?} type={:?}",
+        handle,
+        (*handle).r#type
+      );
       // Match libuv: return error code from uv_write, don't invoke callback.
       return UV_EBADF;
     }

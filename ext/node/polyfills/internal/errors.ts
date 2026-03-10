@@ -650,6 +650,10 @@ export const ERR_FS_EISDIR = makeSystemErrorWithCode(
   "ERR_FS_EISDIR",
   "Path is a directory",
 );
+export const ERR_TTY_INIT_FAILED = makeSystemErrorWithCode(
+  "ERR_TTY_INIT_FAILED",
+  "TTY initialization failed",
+);
 
 function createInvalidArgType(
   name: string,

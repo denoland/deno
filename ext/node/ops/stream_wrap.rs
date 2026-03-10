@@ -9,6 +9,8 @@
 
 #![allow(non_snake_case)]
 
+use std::cell::Cell;
+use std::cell::UnsafeCell;
 use std::ffi::c_char;
 use std::ptr::NonNull;
 
@@ -19,7 +21,6 @@ use deno_core::OpState;
 use deno_core::op2;
 use deno_core::uv_compat;
 use deno_core::uv_compat::UV_EBADF;
-use deno_core::uv_compat::UV_EINVAL;
 use deno_core::uv_compat::uv_buf_t;
 use deno_core::uv_compat::uv_shutdown_t;
 use deno_core::uv_compat::uv_stream_t;
@@ -36,7 +37,22 @@ use crate::ops::tty_wrap::OwnedPtr;
 // These index into a shared Uint8Array visible to JS.
 // ---------------------------------------------------------------------------
 
-const STREAM_BASE_STATE_FIELDS: usize = 5;
+/// Per-environment stream_base_state array, stored in OpState.
+/// This is an Int32Array shared between JS and Rust (mirrors Node's AliasedInt32Array).
+pub struct StreamBaseState {
+  pub array: v8::Global<v8::Int32Array>,
+}
+
+#[op2(fast)]
+pub fn op_stream_base_register_state(
+  state: &mut OpState,
+  array: v8::Local<v8::Int32Array>,
+  scope: &mut v8::PinScope,
+) {
+  state.put(StreamBaseState {
+    array: v8::Global::new(scope, array),
+  });
+}
 
 #[repr(usize)]
 enum StreamBaseStateFields {
@@ -126,8 +142,12 @@ pub struct LibUvStreamWrap {
   base: HandleWrap,
   fd: i32,
   stream: *const uv_stream_t,
-  bytes_read: u64,
-  bytes_written: u64,
+  bytes_read: Cell<u64>,
+  bytes_written: Cell<u64>,
+  /// The JS object wrapping this cppgc object. Set by JS via set_handle()
+  /// after construction. Needed so completion callbacks can pass the handle
+  /// to oncomplete(status, handle, error).
+  js_handle: UnsafeCell<Option<v8::Global<v8::Object>>>,
 }
 
 impl LibUvStreamWrap {
@@ -136,14 +156,19 @@ impl LibUvStreamWrap {
       base,
       fd,
       stream,
-      bytes_read: 0,
-      bytes_written: 0,
+      bytes_read: Cell::new(0),
+      bytes_written: Cell::new(0),
+      js_handle: UnsafeCell::new(None),
     }
   }
 
   #[inline]
   pub fn stream_ptr(&self) -> *mut uv_stream_t {
     self.stream as *mut uv_stream_t
+  }
+
+  fn js_handle_global(&self) -> Option<v8::Global<v8::Object>> {
+    unsafe { (*self.js_handle.get()).clone() }
   }
 }
 
@@ -254,11 +279,17 @@ unsafe extern "C" fn on_uv_read(
       );
 
       let onread = v8::Local::new(scope, &cb_data.onread);
-      let recv = v8::undefined(scope);
+      let recv = v8::Local::new(scope, &cb_data.handle);
       let undef = v8::undefined(scope);
       onread.call(scope, recv.into(), &[undef.into()]);
     }
     return;
+  }
+
+  // Update bytes_read counter (mirrors Node's EmitRead in stream_base-inl.h)
+  unsafe {
+    let counter = &*cb_data.bytes_read;
+    counter.set(counter.get() + nread as u64);
   }
 
   // Successful read: wrap data in ArrayBuffer
@@ -291,9 +322,9 @@ unsafe extern "C" fn on_uv_read(
     v8::Integer::new(scope, 0).into(),
   );
 
-  // Call onread(arrayBuffer)
+  // Call onread(arrayBuffer) with handle as `this`
   let onread = v8::Local::new(scope, &cb_data.onread);
-  let recv = v8::undefined(scope);
+  let recv = v8::Local::new(scope, &cb_data.handle);
   onread.call(scope, recv.into(), &[ab.into()]);
 }
 
@@ -328,7 +359,11 @@ unsafe extern "C" fn backing_store_deleter(
 struct CallbackData {
   isolate: v8::UnsafeRawIsolatePtr,
   onread: v8::Global<v8::Function>,
-  stream_base_state: v8::Global<v8::Array>,
+  stream_base_state: v8::Global<v8::Int32Array>,
+  /// The JS handle object — used as `this` when calling onread
+  handle: v8::Global<v8::Object>,
+  /// Pointer to LibUvStreamWrap.bytes_read for updating from C callback
+  bytes_read: *const Cell<u64>,
 }
 
 // ---------------------------------------------------------------------------
@@ -373,15 +408,22 @@ unsafe extern "C" fn after_uv_write(req: *mut uv_write_t, status: i32) {
     v8::Number::new(scope, cb_data.bytes as f64).into(),
   );
 
-  // Call req_wrap_obj.oncomplete(status)
+  // Call req_wrap_obj.oncomplete(status, handle, error)
+  // Matches Node's ReportWritesToJSStreamListener::OnStreamAfterReqFinished
   let req_obj = v8::Local::new(scope, &cb_data.req_wrap_obj);
+  let handle = v8::Local::new(scope, &cb_data.stream_handle);
   let oncomplete_str =
     v8::String::new_external_onebyte_static(scope, b"oncomplete").unwrap();
   if let Some(oncomplete) = req_obj.get(scope, oncomplete_str.into()) {
     if let Ok(oncomplete) = oncomplete.try_into() {
       let oncomplete: v8::Local<v8::Function> = oncomplete;
       let status_val = v8::Integer::new(scope, status);
-      oncomplete.call(scope, req_obj.into(), &[status_val.into()]);
+      let undef = v8::undefined(scope);
+      oncomplete.call(
+        scope,
+        req_obj.into(),
+        &[status_val.into(), handle.into(), undef.into()],
+      );
     }
   }
 }
@@ -389,7 +431,8 @@ unsafe extern "C" fn after_uv_write(req: *mut uv_write_t, status: i32) {
 struct WriteCallbackData {
   isolate: v8::UnsafeRawIsolatePtr,
   req_wrap_obj: v8::Global<v8::Object>,
-  stream_base_state: v8::Global<v8::Array>,
+  stream_handle: v8::Global<v8::Object>,
+  stream_base_state: v8::Global<v8::Int32Array>,
   bytes: usize,
 }
 
@@ -423,15 +466,21 @@ unsafe extern "C" fn after_uv_shutdown(req: *mut uv_shutdown_t, status: i32) {
   let context = v8::Local::new(handle_scope, context);
   let scope = &mut v8::ContextScope::new(handle_scope, context);
 
-  // Call req_wrap_obj.oncomplete(status)
+  // Call req_wrap_obj.oncomplete(status, handle, error)
   let req_obj = v8::Local::new(scope, &cb_data.req_wrap_obj);
+  let handle = v8::Local::new(scope, &cb_data.stream_handle);
   let oncomplete_str =
     v8::String::new_external_onebyte_static(scope, b"oncomplete").unwrap();
   if let Some(oncomplete) = req_obj.get(scope, oncomplete_str.into()) {
     if let Ok(oncomplete) = oncomplete.try_into() {
       let oncomplete: v8::Local<v8::Function> = oncomplete;
       let status_val = v8::Integer::new(scope, status);
-      oncomplete.call(scope, req_obj.into(), &[status_val.into()]);
+      let undef = v8::undefined(scope);
+      oncomplete.call(
+        scope,
+        req_obj.into(),
+        &[status_val.into(), handle.into(), undef.into()],
+      );
     }
   }
 }
@@ -439,6 +488,7 @@ unsafe extern "C" fn after_uv_shutdown(req: *mut uv_shutdown_t, status: i32) {
 struct ShutdownCallbackData {
   isolate: v8::UnsafeRawIsolatePtr,
   req_wrap_obj: v8::Global<v8::Object>,
+  stream_handle: v8::Global<v8::Object>,
 }
 
 // ---------------------------------------------------------------------------
@@ -456,24 +506,99 @@ enum StringEncoding {
   Ucs2,
 }
 
+fn encode_string_to_vec(
+  scope: &mut v8::PinScope,
+  string: v8::Local<v8::String>,
+  encoding: StringEncoding,
+  out: &mut Vec<u8>,
+) {
+  match encoding {
+    StringEncoding::Utf8 => {
+      let len = string.utf8_length(scope);
+      let start = out.len();
+      out.reserve(len);
+      let written = string.write_utf8_uninit_v2(
+        scope,
+        &mut out.spare_capacity_mut()[..len],
+        v8::WriteFlags::kReplaceInvalidUtf8,
+        None,
+      );
+      unsafe { out.set_len(start + written) };
+    }
+    StringEncoding::Latin1 | StringEncoding::Ascii => {
+      let len = string.length();
+      let start = out.len();
+      out.reserve(len);
+      string.write_one_byte_uninit_v2(
+        scope,
+        0,
+        &mut out.spare_capacity_mut()[..len],
+        v8::WriteFlags::empty(),
+      );
+      unsafe { out.set_len(start + len) };
+    }
+    StringEncoding::Ucs2 => {
+      let len = string.length();
+      let mut buf = vec![0u16; len];
+      string.write_v2(scope, 0, &mut buf, v8::WriteFlags::empty());
+      out.reserve(len * 2);
+      for &ch in &buf {
+        out.extend_from_slice(&ch.to_le_bytes());
+      }
+    }
+  }
+}
+
 #[op2(base)]
 impl LibUvStreamWrap {
+  /// Called by JS immediately after construction to store the JS object
+  /// reference: `stream.setHandle(stream)`
+  #[fast]
+  pub fn set_handle(
+    &self,
+    handle: v8::Local<v8::Object>,
+    scope: &mut v8::PinScope,
+  ) {
+    unsafe {
+      *self.js_handle.get() = Some(v8::Global::new(scope, handle));
+    }
+  }
+
   #[fast]
   pub fn read_start(
     &self,
-    state_array: v8::Local<v8::Array>,
-    onread: v8::Local<v8::Function>,
+    #[this] this: v8::Global<v8::Object>,
     scope: &mut v8::PinScope,
+    op_state: &mut OpState,
   ) -> i32 {
     let stream = self.stream_ptr();
     if stream.is_null() {
       return UV_EBADF;
     }
 
+    let this = v8::Local::new(scope, &this);
+
+    // Get onread callback from JS object property (set by JS layer)
+    let onread_key =
+      v8::String::new_external_onebyte_static(scope, b"onread").unwrap();
+    let Some(onread_val) = this.get(scope, onread_key.into()) else {
+      return UV_EBADF;
+    };
+    let Ok(onread) = v8::Local::<v8::Function>::try_from(onread_val) else {
+      return UV_EBADF;
+    };
+
+    // Get stream_base_state from OpState (registered by JS via
+    // op_stream_base_register_state)
+    let state_global = &op_state.borrow::<StreamBaseState>().array;
+    let state_array = v8::Local::new(scope, state_global);
+
     let cb_data = Box::new(CallbackData {
       isolate: unsafe { scope.as_raw_isolate_ptr() },
       onread: v8::Global::new(scope, onread),
       stream_base_state: v8::Global::new(scope, state_array),
+      handle: v8::Global::new(scope, this),
+      bytes_read: &self.bytes_read as *const Cell<u64>,
     });
     unsafe {
       (*stream).data = Box::into_raw(cb_data) as *mut std::ffi::c_void;
@@ -503,6 +628,16 @@ impl LibUvStreamWrap {
   }
 
   #[fast]
+  #[rename("setBlocking")]
+  pub fn set_blocking(&self, enable: bool) -> i32 {
+    let stream = self.stream_ptr();
+    if stream.is_null() {
+      return UV_EBADF;
+    }
+    unsafe { uv_compat::uv_stream_set_blocking(stream, enable as i32) }
+  }
+
+  #[fast]
   pub fn shutdown(
     &self,
     req_wrap_obj: v8::Local<v8::Object>,
@@ -513,10 +648,14 @@ impl LibUvStreamWrap {
       return UV_EBADF;
     }
 
+    let stream_handle = self
+      .js_handle_global()
+      .unwrap_or_else(|| v8::Global::new(scope, v8::Object::new(scope)));
     let mut req = Box::new(uv_compat::new_shutdown());
     let cb_data = Box::new(ShutdownCallbackData {
       isolate: unsafe { scope.as_raw_isolate_ptr() },
       req_wrap_obj: v8::Global::new(scope, req_wrap_obj),
+      stream_handle,
     });
     req.data = Box::into_raw(cb_data) as *mut std::ffi::c_void;
     let req_ptr = Box::into_raw(req);
@@ -543,16 +682,23 @@ impl LibUvStreamWrap {
     &self,
     req_wrap_obj: v8::Local<v8::Object>,
     buffer: v8::Local<v8::Uint8Array>,
-    state_array: v8::Local<v8::Array>,
     scope: &mut v8::PinScope,
+    op_state: &mut OpState,
   ) -> i32 {
     let stream = self.stream_ptr();
     if stream.is_null() {
       return UV_EBADF;
     }
+    let state_global = &op_state.borrow::<StreamBaseState>().array;
+    let state_array = v8::Local::new(scope, state_global);
 
     let byte_length = buffer.byte_length();
     let byte_offset = buffer.byte_offset();
+
+    // Track bytes_written (mirrors Node's Write() in stream_base.cc)
+    self
+      .bytes_written
+      .set(self.bytes_written.get() + byte_length as u64);
 
     let ab = buffer.buffer(scope).unwrap();
     let data = ab.data().unwrap().as_ptr() as *const u8;
@@ -591,10 +737,14 @@ impl LibUvStreamWrap {
       len: write_len,
     };
 
+    let stream_handle = self
+      .js_handle_global()
+      .unwrap_or_else(|| v8::Global::new(scope, v8::Object::new(scope)));
     let mut req = Box::new(uv_compat::new_write());
     let cb_data = Box::new(WriteCallbackData {
       isolate: unsafe { scope.as_raw_isolate_ptr() },
       req_wrap_obj: v8::Global::new(scope, req_wrap_obj),
+      stream_handle,
       stream_base_state: v8::Global::new(scope, state_array),
       bytes: byte_length,
     });
@@ -636,13 +786,15 @@ impl LibUvStreamWrap {
     req_wrap_obj: v8::Local<v8::Object>,
     chunks: v8::Local<v8::Array>,
     all_buffers: bool,
-    state_array: v8::Local<v8::Array>,
     scope: &mut v8::PinScope,
+    op_state: &mut OpState,
   ) -> i32 {
     let stream = self.stream_ptr();
     if stream.is_null() {
       return UV_EBADF;
     }
+    let state_global = &op_state.borrow::<StreamBaseState>().array;
+    let state_array = v8::Local::new(scope, state_global);
 
     let mut data = Vec::new();
 
@@ -679,22 +831,29 @@ impl LibUvStreamWrap {
           data.extend_from_slice(slice);
         } else if let Ok(s) = TryInto::<v8::Local<v8::String>>::try_into(chunk)
         {
-          // TODO: handle latin1, ucs2, etc. based on encoding arg
-          let len = s.utf8_length(scope);
-          let start = data.len();
-          data.reserve(len);
-          let written = s.write_utf8_uninit_v2(
-            scope,
-            &mut data.spare_capacity_mut()[..len],
-            v8::WriteFlags::kReplaceInvalidUtf8,
-            None,
-          );
-          unsafe { data.set_len(start + written) };
+          let encoding = chunks
+            .get_index(scope, i * 2 + 1)
+            .and_then(|v| TryInto::<v8::Local<v8::String>>::try_into(v).ok())
+            .map(|v| v.to_rust_string_lossy(scope));
+          let enc = match encoding.as_deref() {
+            Some("latin1" | "binary") => StringEncoding::Latin1,
+            Some("ucs2" | "ucs-2" | "utf16le" | "utf-16le") => {
+              StringEncoding::Ucs2
+            }
+            Some("ascii") => StringEncoding::Ascii,
+            _ => StringEncoding::Utf8,
+          };
+          encode_string_to_vec(scope, s, enc, &mut data);
         }
       }
     }
 
     let total_bytes = data.len();
+
+    // Track bytes_written
+    self
+      .bytes_written
+      .set(self.bytes_written.get() + total_bytes as u64);
 
     if total_bytes == 0 {
       state_array.set_index(
@@ -718,9 +877,11 @@ impl LibUvStreamWrap {
     &self,
     req_wrap_obj: v8::Local<v8::Object>,
     string: v8::Local<v8::String>,
-    state_array: v8::Local<v8::Array>,
     scope: &mut v8::PinScope,
+    op_state: &mut OpState,
   ) -> i32 {
+    let state_global = &op_state.borrow::<StreamBaseState>().array;
+    let state_array = v8::Local::new(scope, state_global);
     self.write_string(
       scope,
       req_wrap_obj,
@@ -735,9 +896,11 @@ impl LibUvStreamWrap {
     &self,
     req_wrap_obj: v8::Local<v8::Object>,
     string: v8::Local<v8::String>,
-    state_array: v8::Local<v8::Array>,
     scope: &mut v8::PinScope,
+    op_state: &mut OpState,
   ) -> i32 {
+    let state_global = &op_state.borrow::<StreamBaseState>().array;
+    let state_array = v8::Local::new(scope, state_global);
     self.write_string(
       scope,
       req_wrap_obj,
@@ -752,9 +915,11 @@ impl LibUvStreamWrap {
     &self,
     req_wrap_obj: v8::Local<v8::Object>,
     string: v8::Local<v8::String>,
-    state_array: v8::Local<v8::Array>,
     scope: &mut v8::PinScope,
+    op_state: &mut OpState,
   ) -> i32 {
+    let state_global = &op_state.borrow::<StreamBaseState>().array;
+    let state_array = v8::Local::new(scope, state_global);
     self.write_string(
       scope,
       req_wrap_obj,
@@ -769,9 +934,11 @@ impl LibUvStreamWrap {
     &self,
     req_wrap_obj: v8::Local<v8::Object>,
     string: v8::Local<v8::String>,
-    state_array: v8::Local<v8::Array>,
     scope: &mut v8::PinScope,
+    op_state: &mut OpState,
   ) -> i32 {
+    let state_global = &op_state.borrow::<StreamBaseState>().array;
+    let state_array = v8::Local::new(scope, state_global);
     self.write_string(
       scope,
       req_wrap_obj,
@@ -784,13 +951,13 @@ impl LibUvStreamWrap {
   #[fast]
   #[no_side_effects]
   pub fn get_bytes_read(&self) -> f64 {
-    self.bytes_read as f64
+    self.bytes_read.get() as f64
   }
 
   #[fast]
   #[no_side_effects]
   pub fn get_bytes_written(&self) -> f64 {
-    self.bytes_written as f64
+    self.bytes_written.get() as f64
   }
 }
 
@@ -800,7 +967,7 @@ impl LibUvStreamWrap {
     scope: &mut v8::PinScope,
     req_wrap_obj: v8::Local<v8::Object>,
     string: v8::Local<v8::String>,
-    state_array: v8::Local<v8::Array>,
+    state_array: v8::Local<v8::Int32Array>,
     encoding: StringEncoding,
   ) -> i32 {
     let stream = self.stream_ptr();
@@ -808,50 +975,23 @@ impl LibUvStreamWrap {
       return UV_EBADF;
     }
 
-    let data: Vec<u8> = match encoding {
-      StringEncoding::Utf8 | StringEncoding::Ascii => {
-        let len = string.utf8_length(scope);
-        let mut buf = Vec::with_capacity(len);
-        let written = string.write_utf8_uninit_v2(
-          scope,
-          buf.spare_capacity_mut(),
-          v8::WriteFlags::kReplaceInvalidUtf8,
-          None,
-        );
-        unsafe { buf.set_len(written) };
-        buf
-      }
-      StringEncoding::Latin1 => {
-        let len = string.length();
-        let mut buf = Vec::with_capacity(len);
-        string.write_one_byte_uninit_v2(
-          scope,
-          0,
-          buf.spare_capacity_mut(),
-          v8::WriteFlags::empty(),
-        );
-        unsafe { buf.set_len(len) };
-        buf
-      }
-      StringEncoding::Ucs2 => {
-        let len = string.length();
-        let mut buf = vec![0u16; len];
-        string.write_v2(scope, 0, &mut buf, v8::WriteFlags::empty());
-        let mut bytes = Vec::with_capacity(len * 2);
-        for &ch in &buf {
-          bytes.extend_from_slice(&ch.to_le_bytes());
-        }
-        bytes
-      }
-    };
+    let mut data = Vec::new();
+    encode_string_to_vec(scope, string, encoding, &mut data);
 
     let total_bytes = data.len();
 
+    // Track bytes_written (mirrors Node's Write() in stream_base.cc)
+    self
+      .bytes_written
+      .set(self.bytes_written.get() + total_bytes as u64);
+
     // For small strings, try synchronous write first
+    // (mirrors Node's WriteString stack_storage[16384] optimization)
     if total_bytes <= 16384 {
       let try_result = unsafe { uv_compat::uv_try_write(stream, &data) };
 
       if try_result >= 0 && try_result as usize == total_bytes {
+        // Fully written synchronously
         state_array.set_index(
           scope,
           StreamBaseStateFields::BytesWritten as u32,
@@ -864,8 +1004,22 @@ impl LibUvStreamWrap {
         );
         return 0;
       }
+
+      // Partial try_write — async write only the remaining bytes
+      if try_result > 0 {
+        let written = try_result as usize;
+        return self.do_write(
+          scope,
+          stream,
+          &data[written..],
+          total_bytes,
+          req_wrap_obj,
+          state_array,
+        );
+      }
     }
 
+    // Full async write (no try_write or try_write returned error/0)
     self.do_write(scope, stream, &data, total_bytes, req_wrap_obj, state_array)
   }
 
@@ -876,17 +1030,21 @@ impl LibUvStreamWrap {
     data: &[u8],
     total_bytes: usize,
     req_wrap_obj: v8::Local<v8::Object>,
-    state_array: v8::Local<v8::Array>,
+    state_array: v8::Local<v8::Int32Array>,
   ) -> i32 {
     let buf = uv_buf_t {
       base: data.as_ptr() as *mut c_char,
       len: data.len(),
     };
 
+    let stream_handle = self
+      .js_handle_global()
+      .unwrap_or_else(|| v8::Global::new(scope, v8::Object::new(scope)));
     let mut req = Box::new(uv_compat::new_write());
     let cb_data = Box::new(WriteCallbackData {
       isolate: unsafe { scope.as_raw_isolate_ptr() },
       req_wrap_obj: v8::Global::new(scope, req_wrap_obj),
+      stream_handle,
       stream_base_state: v8::Global::new(scope, state_array),
       bytes: total_bytes,
     });

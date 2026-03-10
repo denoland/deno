@@ -15,6 +15,7 @@ path = "lib.rs"
 
 [features]
 sync_fs = ["deno_fs/sync_fs", "deno_package_json/sync", "node_resolver/sync"]
+default = ["sync_fs"]
 
 [dependencies]
 base64.workspace = true

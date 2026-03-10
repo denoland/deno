@@ -1,15 +1,47 @@
 #![allow(non_snake_case)]
 
-use deno_core::{
-  CppgcInherits, GarbageCollected, OpState,
-  cppgc::try_unwrap_cppgc_object,
-  op2,
-  uv_compat::{
-    UV_EBADF, uv_guess_handle, uv_handle_type, uv_loop_t, uv_tty_get_winsize,
-    uv_tty_init, uv_tty_mode_t, uv_tty_set_mode, uv_tty_t,
-  },
-  v8,
-};
+use deno_core::CppgcInherits;
+use deno_core::GarbageCollected;
+use deno_core::OpState;
+use deno_core::op2;
+use deno_core::uv_compat::UV_EADDRINUSE;
+use deno_core::uv_compat::UV_EAGAIN;
+use deno_core::uv_compat::UV_EBADF;
+use deno_core::uv_compat::UV_EBUSY;
+use deno_core::uv_compat::UV_ECANCELED;
+use deno_core::uv_compat::UV_ECONNREFUSED;
+use deno_core::uv_compat::UV_EINVAL;
+use deno_core::uv_compat::UV_ENOBUFS;
+use deno_core::uv_compat::UV_ENOTCONN;
+use deno_core::uv_compat::UV_ENOTSUP;
+use deno_core::uv_compat::UV_EPIPE;
+use deno_core::uv_compat::uv_guess_handle;
+use deno_core::uv_compat::uv_handle_type;
+use deno_core::uv_compat::uv_loop_t;
+use deno_core::uv_compat::uv_tty_get_winsize;
+use deno_core::uv_compat::uv_tty_init;
+use deno_core::uv_compat::uv_tty_mode_t;
+use deno_core::uv_compat::uv_tty_set_mode;
+use deno_core::uv_compat::uv_tty_t;
+use deno_core::v8;
+
+/// Map a uv error code to (name, message) matching libuv's uv_err_name/uv_strerror.
+fn uv_error_info(err: i32) -> (&'static str, &'static str) {
+  match err {
+    x if x == UV_EAGAIN => ("EAGAIN", "resource temporarily unavailable"),
+    x if x == UV_EADDRINUSE => ("EADDRINUSE", "address already in use"),
+    x if x == UV_EBADF => ("EBADF", "bad file descriptor"),
+    x if x == UV_EBUSY => ("EBUSY", "resource busy or locked"),
+    x if x == UV_ECANCELED => ("ECANCELED", "operation canceled"),
+    x if x == UV_ECONNREFUSED => ("ECONNREFUSED", "connection refused"),
+    x if x == UV_EINVAL => ("EINVAL", "invalid argument"),
+    x if x == UV_ENOBUFS => ("ENOBUFS", "no buffer space available"),
+    x if x == UV_ENOTCONN => ("ENOTCONN", "socket is not connected"),
+    x if x == UV_ENOTSUP => ("ENOTSUP", "operation not supported on socket"),
+    x if x == UV_EPIPE => ("EPIPE", "broken pipe"),
+    _ => ("UNKNOWN", "unknown error"),
+  }
+}
 
 use crate::ops::handle_wrap::AsyncWrap;
 use crate::ops::handle_wrap::Handle;
@@ -38,7 +70,9 @@ impl<T> OwnedPtr<T> {
       assert!(align_of::<T>() == align_of::<U>());
     }
 
-    OwnedPtr(self.0.cast())
+    let ptr = self.0.cast();
+    std::mem::forget(self);
+    OwnedPtr(ptr)
   }
 }
 
@@ -55,7 +89,7 @@ impl<T> Drop for OwnedPtr<T> {
 #[repr(C)]
 pub struct TTY {
   base: LibUvStreamWrap,
-  pub(crate) handle: OwnedPtr<uv_tty_t>,
+  pub(crate) handle: Option<OwnedPtr<uv_tty_t>>,
 }
 
 unsafe impl GarbageCollected for TTY {
@@ -73,9 +107,7 @@ impl TTY {
     _obj: v8::Local<v8::Object>,
     fd: i32,
     op_state: &mut deno_core::OpState,
-  ) -> Self {
-    // todo: uv_stream_t thing + LibuvStreamWrap init
-
+  ) -> (Self, i32) {
     // todo: this should really not be a Box<uv_loop_t> because of uniqueness guarantees.
     // instead it should be a custom wrapper around a raw pointer
     // right now this is most likely ub
@@ -88,19 +120,42 @@ impl TTY {
 
     if err == 0 {
       let tty = unsafe { tty.cast::<uv_tty_t>() };
-      Self {
-        base: LibUvStreamWrap::new(
-          HandleWrap::create(
-            AsyncWrap::create(op_state, ProviderType::TtyWrap as i32),
-            Some(Handle::New(tty.as_ptr().cast())),
+      (
+        Self {
+          base: LibUvStreamWrap::new(
+            HandleWrap::create(
+              AsyncWrap::create(op_state, ProviderType::TtyWrap as i32),
+              Some(Handle::New(tty.as_ptr().cast())),
+            ),
+            fd,
+            tty.as_ptr().cast(),
           ),
-          fd,
-          tty.as_ptr().cast(),
-        ),
-        handle: tty,
-      }
+          handle: Some(tty),
+        },
+        0,
+      )
     } else {
-      panic!("Failed to initialize TTY: {}", err);
+      // Match Node: don't panic, return uninitialized handle with error code.
+      // Free the uninit allocation without dropping as uv_tty_t.
+      unsafe {
+        let layout = std::alloc::Layout::new::<uv_tty_t>();
+        std::alloc::dealloc(tty.as_mut_ptr() as *mut u8, layout);
+        std::mem::forget(tty);
+      }
+      (
+        Self {
+          base: LibUvStreamWrap::new(
+            HandleWrap::create(
+              AsyncWrap::create(op_state, ProviderType::TtyWrap as i32),
+              None,
+            ),
+            fd,
+            std::ptr::null(),
+          ),
+          handle: None,
+        },
+        err,
+      )
     }
   }
 }
@@ -111,6 +166,7 @@ impl TTY {
   #[cppgc]
   pub fn new_tty(
     fd: i32,
+    ctx: v8::Local<v8::Value>,
     #[this] this: v8::Global<v8::Object>,
     scope: &mut v8::PinScope,
     op_state: &mut OpState,
@@ -118,10 +174,39 @@ impl TTY {
     assert!(fd >= 0);
 
     let obj = v8::Local::new(scope, &this);
-    TTY::new(obj, fd, op_state)
+    let (tty, err) = TTY::new(obj, fd, op_state);
+    if err != 0 {
+      if let Ok(ctx_obj) = v8::Local::<v8::Object>::try_from(ctx) {
+        let (code_name, message) = uv_error_info(err);
+
+        let code_key =
+          v8::String::new_external_onebyte_static(scope, b"code").unwrap();
+        let code_str = v8::String::new(scope, code_name).unwrap();
+        ctx_obj.set(scope, code_key.into(), code_str.into());
+
+        let msg_key =
+          v8::String::new_external_onebyte_static(scope, b"message").unwrap();
+        let msg_str = v8::String::new(scope, message).unwrap();
+        ctx_obj.set(scope, msg_key.into(), msg_str.into());
+
+        let errno_key =
+          v8::String::new_external_onebyte_static(scope, b"errno").unwrap();
+        let errno_val = v8::Integer::new(scope, err);
+        ctx_obj.set(scope, errno_key.into(), errno_val.into());
+
+        let syscall_key =
+          v8::String::new_external_onebyte_static(scope, b"syscall").unwrap();
+        let syscall_str =
+          v8::String::new_external_onebyte_static(scope, b"uv_tty_init")
+            .unwrap();
+        ctx_obj.set(scope, syscall_key.into(), syscall_str.into());
+      }
+    }
+    tty
   }
 
   #[fast]
+  #[rename("isTTY")]
   #[static_method]
   pub fn is_TTY(fd: i32) -> bool {
     assert!(fd >= 0);
@@ -136,7 +221,10 @@ impl TTY {
     a: v8::Local<v8::Array>,
     scope: &mut v8::PinScope,
   ) -> i32 {
-    let handle = self.handle.as_mut_ptr();
+    let Some(ref handle) = self.handle else {
+      return UV_EBADF;
+    };
+    let handle = handle.as_mut_ptr();
 
     let (mut width, mut height) = (0, 0);
     let err = unsafe { uv_tty_get_winsize(handle, &mut width, &mut height) };
@@ -158,9 +246,12 @@ impl TTY {
 
   #[fast]
   pub fn set_raw_mode(&self, arg: v8::Local<v8::Value>) -> i32 {
+    let Some(ref handle) = self.handle else {
+      return UV_EBADF;
+    };
     let err = unsafe {
       uv_tty_set_mode(
-        self.handle.as_mut_ptr(),
+        handle.as_mut_ptr(),
         if arg.is_true() {
           uv_tty_mode_t::UV_TTY_MODE_RAW_VT
         } else {
