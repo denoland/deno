@@ -212,6 +212,7 @@ unsafe extern "C" fn h2_shutdown_cb(
   // SAFETY: req.handle was set by uv_shutdown and is a valid stream handle
   let stream_handle = unsafe { (*req).handle };
   if !stream_handle.is_null() {
+    // SAFETY: stream_handle is valid per uv_shutdown callback contract
     unsafe {
       deno_core::uv_compat::uv_close(
         stream_handle as *mut deno_core::uv_compat::UvHandle,
