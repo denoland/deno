@@ -4,10 +4,15 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-// `debugImpls` and `testEnabled` are deliberately not initialized so any call
-// to `debuglog()` before `initializeDebugEnv()` is called will throw.
-let debugImpls: Record<string, (...args: unknown[]) => void>;
-let testEnabled: (str: string) => boolean;
+// `debugImpls` and `testEnabled` are initialized with safe defaults so that
+// calls to `debuglog()` before `initializeDebugEnv()` do not crash. This can
+// happen when internal stream code triggers debug logging during bootstrap
+// before the Node process is fully initialized (e.g. when stdin is unavailable
+// in compiled binaries run as Windows services or detached processes).
+let debugImpls: Record<string, (...args: unknown[]) => void> = Object.create(
+  null,
+);
+let testEnabled: (str: string) => boolean = () => false;
 
 // `debugEnv` is initial value of process.env.NODE_DEBUG
 export function initializeDebugEnv(debugEnv: string) {
