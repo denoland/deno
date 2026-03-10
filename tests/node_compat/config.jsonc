@@ -381,12 +381,17 @@
     "parallel/test-crypto-keygen-async-named-elliptic-curve.js": {},
     "parallel/test-crypto-keygen-dh-classic.js": {},
     "parallel/test-crypto-keygen-duplicate-deprecated-option.js": {},
+    "parallel/test-crypto-keygen-eddsa.js": {},
     "parallel/test-crypto-keygen-empty-passphrase-no-error.js": {},
+    "parallel/test-crypto-keygen-key-object-without-encoding.js": {},
     "parallel/test-crypto-keygen-key-objects.js": {},
     "parallel/test-crypto-keygen-missing-oid.js": {},
     "parallel/test-crypto-keygen-non-standard-public-exponent.js": {},
+    "parallel/test-crypto-keygen-promisify.js": {},
     "parallel/test-crypto-keygen-rfc8017-9-1.js": {},
     "parallel/test-crypto-keygen-rfc8017-a-2-3.js": {},
+    "parallel/test-crypto-keygen-rsa-pss.js": {},
+    "parallel/test-crypto-keygen-sync.js": {},
     "parallel/test-crypto-key-objects-messageport.js": {
       "exitCode": 1,
       "reason": "KeyObject structured clone (MessagePort serialization) not yet implemented"
