@@ -105,16 +105,12 @@ use crate::util::v8::convert;
 
 static BRACKET_ACCESSOR_RE: Lazy<Regex> =
   lazy_regex!(r#"^\[['"](.+)[\['"]\]$"#);
-static CAPTION_RE: Lazy<Regex> =
-  lazy_regex!(r"<caption>(.*?)</caption>\s*\r?\n((?:\s|\S)*)");
 static CODEBLOCK_RE: Lazy<Regex> = lazy_regex!(r"^\s*[~`]{3}"m);
-static EMAIL_MATCH_RE: Lazy<Regex> = lazy_regex!(r"(.+)\s<([-.\w]+@[-.\w]+)>");
 static HTTP_RE: Lazy<Regex> = lazy_regex!(r#"(?i)^https?:"#);
 static JSDOC_LINKS_RE: Lazy<Regex> = lazy_regex!(
   r"(?i)\{@(link|linkplain|linkcode) (https?://[^ |}]+?)(?:[| ]([^{}\n]+?))?\}"
 );
 static PART_KIND_MODIFIER_RE: Lazy<Regex> = lazy_regex!(r",|\s+");
-static PART_RE: Lazy<Regex> = lazy_regex!(r"^(\S+)\s*-?\s*");
 static SCOPE_RE: Lazy<Regex> = lazy_regex!(r"scope_(\d)");
 
 const FILE_EXTENSION_KIND_MODIFIERS: &[&str] =
@@ -1618,83 +1614,83 @@ impl TsJsServer {
   }
 }
 
-fn get_tag_body_text(
-  tag: &JsDocTagInfo,
-  module: &DocumentModule,
-  snapshot: &StateSnapshot,
-) -> Option<String> {
-  tag.text.as_ref().map(|display_parts| {
-    // TODO(@kitsonk) check logic in vscode about handling this API change in
-    // tsserver
-    let text = display_parts_to_string(display_parts, module, snapshot);
-    match tag.name.as_str() {
-      "example" => {
-        if CAPTION_RE.is_match(&text) {
-          CAPTION_RE
-            .replace(&text, |c: &Captures| {
-              format!("{}\n\n{}", &c[1], make_codeblock(&c[2]))
-            })
-            .to_string()
-        } else {
-          make_codeblock(&text)
-        }
-      }
-      "author" => EMAIL_MATCH_RE
-        .replace(&text, |c: &Captures| format!("{} {}", &c[1], &c[2]))
-        .to_string(),
-      "default" => make_codeblock(&text),
-      _ => replace_links(&text),
-    }
-  })
-}
-
 fn get_tag_documentation(
   tag: &JsDocTagInfo,
   module: &DocumentModule,
   snapshot: &StateSnapshot,
 ) -> String {
+  let mut result = format!("*@{}*", tag.name);
+  let Some(display_parts) = &tag.text else {
+    return result;
+  };
   match tag.name.as_str() {
-    "augments" | "extends" | "param" | "template" => {
-      if let Some(display_parts) = &tag.text {
-        // TODO(@kitsonk) check logic in vscode about handling this API change
-        // in tsserver
-        let text = display_parts_to_string(display_parts, module, snapshot);
-        let body: Vec<&str> = PART_RE.split(&text).collect();
-        if body.len() == 3 {
-          let param = body[1];
-          let doc = body[2];
-          let label = format!("*@{}* `{}`", tag.name, param);
-          if doc.is_empty() {
-            return label;
-          }
-          if doc.contains('\n') {
-            return format!("{}  \n{}", label, replace_links(doc));
-          } else {
-            return format!("{} - {}", label, replace_links(doc));
-          }
+    "param" => {
+      let mut display_parts = display_parts.iter().peekable();
+      if display_parts
+        .peek()
+        .is_some_and(|p| p.kind == "parameterName")
+      {
+        let parameter_name = &display_parts.next().unwrap().text;
+        result.push_str(" `");
+        result.push_str(parameter_name);
+        result.push('`');
+        if display_parts.peek().is_some_and(|p| p.kind == "space") {
+          display_parts.next();
+        }
+      }
+      let doc =
+        replace_links(display_parts_to_string(display_parts, module, snapshot));
+      if !doc.is_empty() {
+        if doc.starts_with('-') {
+          result.push(' ');
+          result.push_str(&doc);
+        } else {
+          result.push_str(" — ");
+          result.push_str(&doc);
         }
       }
     }
-    _ => (),
-  }
-  let label = format!("*@{}*", tag.name);
-  let maybe_text = get_tag_body_text(tag, module, snapshot);
-  if let Some(text) = maybe_text {
-    if text.contains('\n') {
-      format!("{label}  \n{text}")
-    } else {
-      format!("{label} - {text}")
+    "example" => {
+      let text = display_parts_to_string(display_parts, module, snapshot);
+      let code = if let Some(suffix_for_caption) =
+        text.strip_prefix("<caption>")
+        && let Some((caption, code)) =
+          suffix_for_caption.split_once("</caption>")
+      {
+        result.push_str(" — ");
+        result.push_str(&replace_links(caption));
+        code.trim_start()
+      } else {
+        text.as_str()
+      };
+      if !code.is_empty() {
+        result.push('\n');
+        result.push_str(&make_codeblock(code));
+      }
     }
-  } else {
-    label
+    _ => {
+      let doc =
+        replace_links(display_parts_to_string(display_parts, module, snapshot));
+      if !doc.is_empty() {
+        if doc.starts_with('-') {
+          result.push(' ');
+          result.push_str(&doc);
+        } else {
+          result.push_str(" — ");
+          result.push_str(&doc);
+        }
+      }
+    }
   }
+  result.push('\n');
+  result
 }
 
 fn make_codeblock(text: &str) -> String {
   if CODEBLOCK_RE.is_match(text) {
     text.to_string()
   } else {
-    format!("```\n{text}\n```")
+    format!("```tsx\n{text}\n```")
   }
 }
 
@@ -2002,15 +1998,27 @@ struct Link {
 /// Takes `SymbolDisplayPart` items and converts them into a string, handling
 /// any `{@link Symbol}` and `{@linkcode Symbol}` JSDoc tags and linking them
 /// to the their source location.
-fn display_parts_to_string(
-  parts: &[SymbolDisplayPart],
+fn display_parts_to_string<'a>(
+  parts: impl IntoIterator<Item = &'a SymbolDisplayPart>,
   module: &DocumentModule,
   snapshot: &StateSnapshot,
 ) -> String {
   let mut out = Vec::<String>::new();
 
   let mut current_link: Option<Link> = None;
-  for part in parts {
+  let mut parts = parts.into_iter().peekable();
+  while let Some(part) = parts.next() {
+    // Skip `import` lines.
+    if part.kind == "lineBreak"
+      && parts
+        .peek()
+        .is_some_and(|p| p.kind == "keyword" && p.text == "import")
+    {
+      while parts.next().is_some()
+        && parts.peek().is_none_or(|p| p.kind != "lineBreak")
+      {}
+      continue;
+    }
     match part.kind.as_str() {
       "link" => {
         if let Some(link) = current_link.as_mut() {
@@ -2117,34 +2125,30 @@ impl QuickInfo {
     module: &DocumentModule,
     snapshot: &StateSnapshot,
   ) -> lsp::Hover {
-    let mut parts = Vec::new();
+    let mut value = String::new();
     if let Some(display_string) = self
       .display_parts
       .clone()
       .map(|p| display_parts_to_string(&p, module, snapshot))
       && !display_string.is_empty()
     {
-      parts.push(format!("```typescript\n{}\n```", display_string));
+      value.push_str("```tsx\n");
+      value.push_str(&display_string);
+      value.push_str("\n```\n");
     }
     if let Some(documentation) = self
       .documentation
       .clone()
       .map(|p| display_parts_to_string(&p, module, snapshot))
-      && !documentation.is_empty()
     {
-      parts.push(documentation);
+      value.push_str(&documentation);
     }
     if let Some(tags) = &self.tags {
-      let tags_preview = tags
-        .iter()
-        .map(|tag_info| get_tag_documentation(tag_info, module, snapshot))
-        .collect::<Vec<String>>()
-        .join("  \n\n");
-      if !tags_preview.is_empty() {
-        parts.push(tags_preview);
+      for tag_info in tags {
+        value.push_str("\n\n");
+        value.push_str(&get_tag_documentation(tag_info, module, snapshot));
       }
     }
-    let value = parts.join("\n\n");
     lsp::Hover {
       contents: lsp::HoverContents::Markup(lsp::MarkupContent {
         kind: lsp::MarkupKind::Markdown,
@@ -2234,9 +2238,11 @@ impl DocumentSpan {
     let range = self.text_span.to_range(target_module.line_index.clone());
     let mut target = uri_to_url(&target_module.uri);
     target.set_fragment(Some(&format!(
-      "L{},{}",
+      "{},{}-{},{}",
       range.start.line + 1,
-      range.start.character + 1
+      range.start.character + 1,
+      range.end.line + 1,
+      range.end.character + 1,
     )));
 
     Some(target)
@@ -2856,11 +2862,11 @@ impl FileTextChanges {
     Ok(())
   }
 
-  pub fn to_text_document_edit(
+  pub fn to_text_edits(
     &self,
     module: &DocumentModule,
     language_server: &language_server::Inner,
-  ) -> Option<lsp::TextDocumentEdit> {
+  ) -> Option<(Uri, Vec<lsp::TextEdit>)> {
     let is_new_file = self.is_new_file.unwrap_or(false);
     let target_specifier = resolve_url(&self.file_name).ok()?;
     let target_module = if is_new_file {
@@ -2883,18 +2889,9 @@ impl FileTextChanges {
     let edits = self
       .text_changes
       .iter()
-      .map(|tc| tc.as_text_or_annotated_text_edit(line_index.clone()))
+      .map(|tc| tc.as_text_edit(line_index.clone()))
       .collect();
-    Some(lsp::TextDocumentEdit {
-      text_document: lsp::OptionalVersionedTextDocumentIdentifier {
-        uri: target_uri.as_ref().clone(),
-        version: target_module
-          .as_ref()
-          .and_then(|m| m.open_data.as_ref())
-          .map(|d| d.version),
-      },
-      edits,
-    })
+    Some((target_uri.as_ref().clone(), edits))
   }
 
   pub fn to_text_document_change_ops(
@@ -3723,15 +3720,19 @@ impl CompletionEntryDetails {
           .iter()
           .map(|tag_info| get_tag_documentation(tag_info, module, snapshot))
           .collect::<Vec<String>>()
-          .join("  \n\n");
+          .join("\n\n");
         if !tags_preview.is_empty() {
           value = format!("{value}\n\n{tags_preview}");
         }
       }
-      Some(lsp::Documentation::MarkupContent(lsp::MarkupContent {
-        kind: lsp::MarkupKind::Markdown,
-        value,
-      }))
+      if value.is_empty() {
+        None
+      } else {
+        Some(lsp::Documentation::MarkupContent(lsp::MarkupContent {
+          kind: lsp::MarkupKind::Markdown,
+          value,
+        }))
+      }
     } else {
       None
     };
@@ -4424,7 +4425,7 @@ impl SignatureHelpItems {
     snapshot: &StateSnapshot,
     token: &CancellationToken,
   ) -> Result<lsp::SignatureHelp, AnyError> {
-    let signatures = self
+    let mut signatures = self
       .items
       .into_iter()
       .map(|item| {
@@ -4433,12 +4434,23 @@ impl SignatureHelpItems {
         }
         Ok(item.into_signature_information(module, snapshot))
       })
-      .collect::<Result<_, _>>()?;
-    Ok(lsp::SignatureHelp {
-      signatures,
-      active_parameter: Some(self.argument_index),
-      active_signature: Some(self.selected_item_index),
-    })
+      .collect::<Result<Vec<_>, _>>()?;
+    if let Some(active_signature) =
+      signatures.get_mut(self.selected_item_index as usize)
+    {
+      active_signature.active_parameter = Some(self.argument_index);
+      Ok(lsp::SignatureHelp {
+        signatures,
+        active_parameter: None,
+        active_signature: Some(self.selected_item_index),
+      })
+    } else {
+      Ok(lsp::SignatureHelp {
+        signatures,
+        active_parameter: Some(self.argument_index),
+        active_signature: Some(self.selected_item_index),
+      })
+    }
   }
 }
 
@@ -4509,8 +4521,10 @@ impl SignatureHelpParameter {
     module: &DocumentModule,
     snapshot: &StateSnapshot,
   ) -> lsp::ParameterInformation {
-    let documentation =
-      display_parts_to_string(&self.documentation, module, snapshot);
+    let documentation = format!(
+      "{}\n",
+      display_parts_to_string(&self.documentation, module, snapshot)
+    );
     lsp::ParameterInformation {
       label: lsp::ParameterLabel::Simple(display_parts_to_string(
         &self.display_parts,
