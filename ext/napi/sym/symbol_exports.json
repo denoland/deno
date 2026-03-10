@@ -148,6 +148,8 @@
     "napi_fatal_exception",
     "napi_create_async_work",
     "napi_async_init",
+    "node_api_create_property_key_latin1",
+    "node_api_create_property_key_utf8",
     "node_api_create_property_key_utf16",
     "napi_type_tag_object",
     "napi_check_object_type_tag",
