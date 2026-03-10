@@ -176,15 +176,33 @@ impl InnerIsolateState {
   }
 
   pub fn cleanup(&mut self) {
-    self.prepare_for_cleanup();
+    // Shut down the op driver and take the inspector before realm destroy.
+    self.main_realm.0.context_state.pending_ops.shutdown();
+    let inspector = self.state.inspector.take();
 
     let state_ptr = self.v8_isolate.get_data(STATE_DATA_OFFSET);
     // SAFETY: We are sure that it's a valid pointer for whole lifetime of
     // the runtime.
     _ = unsafe { Rc::from_raw(state_ptr as *const JsRuntimeState) };
 
+    // Destroy the realm while the uv_loop (stored in op_state's
+    // gotham_state) is still alive. destroy() reads uv_loop_ptr to
+    // release the Global<Context> stored in loop.data. If we clear
+    // op_state first, the Box<UvLoop> is freed and destroy() would
+    // dereference a dangling pointer (use-after-free).
     unsafe {
       ManuallyDrop::take(&mut self.main_realm).0.destroy();
+    }
+
+    // Now safe to clear op_state (drops Box<UvLoop> etc.) since
+    // destroy() has already released the Global from loop.data.
+    self.state.op_state.borrow_mut().clear();
+    if let Some(inspector) = inspector {
+      assert_eq!(
+        Rc::strong_count(&inspector),
+        1,
+        "The inspector must be dropped before the runtime"
+      );
     }
 
     debug_assert_eq!(Rc::strong_count(&self.state), 1);

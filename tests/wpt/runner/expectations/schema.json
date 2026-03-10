@@ -41,6 +41,10 @@
             "type": "string"
           },
           "description": "Subtest names expected to fail; all others should pass"
+        },
+        "flaky": {
+          "type": "boolean",
+          "description": "If true, retry test up to 3 times before marking as failed"
         }
       },
       "additionalProperties": false
