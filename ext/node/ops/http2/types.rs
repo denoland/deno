@@ -152,6 +152,10 @@ pub struct Http2Constants {
   http2_header_transfer_encoding: &'static str,
   http2_header_keep_alive: &'static str,
   http2_header_proxy_connection: &'static str,
+  http2_header_accept: &'static str,
+  http2_header_accept_encoding: &'static str,
+  http2_header_accept_language: &'static str,
+  http2_header_accept_ranges: &'static str,
 
   http2_method_connect: &'static str,
   http2_method_delete: &'static str,
@@ -302,6 +306,10 @@ pub fn op_http2_constants() -> Http2Constants {
     http2_header_transfer_encoding: "transfer-encoding",
     http2_header_keep_alive: "keep-alive",
     http2_header_proxy_connection: "proxy-connection",
+    http2_header_accept: "accept",
+    http2_header_accept_encoding: "accept-encoding",
+    http2_header_accept_language: "accept-language",
+    http2_header_accept_ranges: "accept-ranges",
 
     http2_method_connect: "CONNECT",
     http2_method_delete: "DELETE",
