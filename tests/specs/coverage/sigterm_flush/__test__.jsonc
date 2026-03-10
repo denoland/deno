@@ -1,0 +1,22 @@
+{
+  // Coverage data should be flushed when a process receives SIGTERM.
+  // This is important for tools like Playwright that use SIGTERM to
+  // shut down a webServer process.
+  // Unix-only because SIGTERM interception for coverage is only
+  // implemented on unix (see cli/worker.rs).
+  "tempDir": true,
+  "tests": {
+    "main_worker": {
+      "if": "unix",
+      "args": "run --allow-run --allow-read --allow-net --allow-env spawn_and_kill.ts server.ts",
+      "output": "expected.out",
+      "exitCode": 0
+    },
+    "web_worker": {
+      "if": "unix",
+      "args": "run --allow-run --allow-read --allow-net --allow-env spawn_and_kill.ts server_with_worker.ts",
+      "output": "expected_worker.out",
+      "exitCode": 0
+    }
+  }
+}
