@@ -706,31 +706,51 @@ pub async fn op_node_rmdir(
   Ok(())
 }
 
+const CP_DEST_EXISTS_FLAG: u32 = 1 << 0;
+const CP_IS_DIRECTORY_FLAG: u32 = 1 << 1;
+const CP_IS_FILE_FLAG: u32 = 1 << 2;
+const CP_IS_CHAR_DEVICE_FLAG: u32 = 1 << 3;
+const CP_IS_BLOCK_DEVICE_FLAG: u32 = 1 << 4;
+const CP_IS_SYMLINK_FLAG: u32 = 1 << 5;
+const CP_IS_SOCKET_FLAG: u32 = 1 << 6;
+const CP_IS_FIFO_FLAG: u32 = 1 << 7;
+
 #[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct CpStatInfo {
-  pub dest_exists: bool,
-  pub is_directory: bool,
-  pub is_file: bool,
-  pub is_char_device: bool,
-  pub is_block_device: bool,
-  pub is_symlink: bool,
-  pub is_socket: bool,
-  pub is_fifo: bool,
+  pub flags: u32,
   pub mode: u32,
 }
 
 impl CpStatInfo {
   fn from_src_stat(src_stat: &deno_io::fs::FsStat, dest_exists: bool) -> Self {
+    let mut flags: u32 = 0;
+    if dest_exists {
+      flags |= CP_DEST_EXISTS_FLAG
+    }
+    if src_stat.is_directory {
+      flags |= CP_IS_DIRECTORY_FLAG
+    }
+    if src_stat.is_file {
+      flags |= CP_IS_FILE_FLAG
+    }
+    if src_stat.is_char_device {
+      flags |= CP_IS_CHAR_DEVICE_FLAG
+    }
+    if src_stat.is_block_device {
+      flags |= CP_IS_BLOCK_DEVICE_FLAG
+    }
+    if src_stat.is_symlink {
+      flags |= CP_IS_SYMLINK_FLAG
+    }
+    if src_stat.is_socket {
+      flags |= CP_IS_SOCKET_FLAG
+    }
+    if src_stat.is_fifo {
+      flags |= CP_IS_FIFO_FLAG
+    }
+
     Self {
-      dest_exists,
-      is_directory: src_stat.is_directory,
-      is_file: src_stat.is_file,
-      is_char_device: src_stat.is_char_device,
-      is_block_device: src_stat.is_block_device,
-      is_symlink: src_stat.is_symlink,
-      is_socket: src_stat.is_socket,
-      is_fifo: src_stat.is_fifo,
+      flags,
       mode: src_stat.mode,
     }
   }

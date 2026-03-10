@@ -28,15 +28,19 @@ import {
 } from "ext:core/ops";
 import type { CopyOptions } from "ext:deno_node/_fs/cp/cp.d.ts";
 
+enum CpEntryFlags {
+  IsDestExists = 1 << 0,
+  IsDirectory = 1 << 1,
+  IsFile = 1 << 2,
+  IsCharDevice = 1 << 3,
+  IsBlockDevice = 1 << 4,
+  IsSymlink = 1 << 5,
+  IsSocket = 1 << 6,
+  IsFifo = 1 << 7,
+}
+
 interface StatInfo {
-  destExists: boolean;
-  isDirectory: boolean;
-  isFile: boolean;
-  isCharDevice: boolean;
-  isBlockDevice: boolean;
-  isSymlink: boolean;
-  isSocket: boolean;
-  isFifo: boolean;
+  flags: number;
   mode: number;
 }
 
@@ -161,9 +165,9 @@ function getStatsForCopy(
   dest: string,
   opts: CopyOptions,
 ) {
-  if (statInfo.isDirectory && opts.recursive) {
+  if (statInfo.flags & CpEntryFlags.IsDirectory && opts.recursive) {
     return onDir(statInfo, src, dest, opts);
-  } else if (statInfo.isDirectory) {
+  } else if (statInfo.flags & CpEntryFlags.IsDirectory) {
     throw new ERR_FS_EISDIR({
       message: `${src} is a directory (not copied)`,
       path: src,
@@ -172,14 +176,19 @@ function getStatsForCopy(
       code: "EISDIR",
     });
   } else if (
-    statInfo.isFile ||
-    statInfo.isCharDevice ||
-    statInfo.isBlockDevice
+    statInfo.flags & CpEntryFlags.IsFile ||
+    statInfo.flags & CpEntryFlags.IsCharDevice ||
+    statInfo.flags & CpEntryFlags.IsBlockDevice
   ) {
     return onFile(statInfo, src, dest, opts);
-  } else if (statInfo.isSymlink) {
-    return onLink(statInfo.destExists, src, dest, opts);
-  } else if (statInfo.isSocket) {
+  } else if (statInfo.flags & CpEntryFlags.IsSymlink) {
+    return onLink(
+      !!(statInfo.flags & CpEntryFlags.IsDestExists),
+      src,
+      dest,
+      opts,
+    );
+  } else if (statInfo.flags & CpEntryFlags.IsSocket) {
     throw new ERR_FS_CP_SOCKET({
       message: `cannot copy a socket file: ${dest}`,
       path: dest,
@@ -187,7 +196,7 @@ function getStatsForCopy(
       errno: EINVAL,
       code: "EINVAL",
     });
-  } else if (statInfo.isFifo) {
+  } else if (statInfo.flags & CpEntryFlags.IsFifo) {
     throw new ERR_FS_CP_FIFO_PIPE({
       message: `cannot copy a FIFO pipe: ${dest}`,
       path: dest,
@@ -215,7 +224,7 @@ async function onFile(
     src,
     dest,
     statInfo.mode,
-    statInfo.destExists,
+    !!(statInfo.flags & CpEntryFlags.IsDestExists),
     opts.force,
     opts.errorOnExist,
     opts.preserveTimestamps,
@@ -233,7 +242,9 @@ function onDir(
   dest: string,
   opts: CopyOptions,
 ): Promise<void> {
-  if (!statInfo.destExists) return mkDirAndCopy(statInfo.mode, src, dest, opts);
+  if (!(statInfo.flags & CpEntryFlags.IsDestExists)) {
+    return mkDirAndCopy(statInfo.mode, src, dest, opts);
+  }
   return copyDir(src, dest, opts);
 }
 
