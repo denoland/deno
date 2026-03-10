@@ -505,9 +505,7 @@ pub fn op_fetch(
         let name = HeaderName::from_bytes(&key)?;
         let v = HeaderValue::from_bytes(&value)?;
 
-        if (name != HOST || allow_host)
-          && (name != CONTENT_LENGTH || con_len.is_none())
-        {
+        if (name != HOST || allow_host) && name != CONTENT_LENGTH {
           request.headers_mut().append(name, v);
         }
       }
