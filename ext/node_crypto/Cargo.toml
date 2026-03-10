@@ -32,6 +32,7 @@ dsa.workspace = true
 ecb.workspace = true
 ecdsa.workspace = true
 ed25519-dalek = { workspace = true, features = ["digest", "pkcs8", "rand_core", "signature"] }
+ed448-goldilocks = { workspace = true }
 elliptic-curve.workspace = true
 faster-hex.workspace = true
 hkdf.workspace = true
