@@ -1808,6 +1808,8 @@ impl Http2Session {
           std::ptr::null_mut(),
         ),
       };
+      // nghttp2 copies callbacks internally, free the original
+      ffi::nghttp2_session_callbacks_del(callbacks);
       (*inner).session = session;
     }
 
@@ -1986,6 +1988,12 @@ impl Http2Session {
           }
         }
       }
+    }
+
+    // Free the nghttp2 session
+    // SAFETY: session.session is a valid nghttp2_session pointer
+    unsafe {
+      ffi::nghttp2_session_del(session.session);
     }
 
     // Call ondone callback if set
