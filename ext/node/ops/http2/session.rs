@@ -1679,9 +1679,8 @@ impl Session {
         // SAFETY: stream is a valid libuv handle
         unsafe {
           deno_core::uv_compat::uv_read_stop(stream);
-          let req = Box::into_raw(Box::new(
-            deno_core::uv_compat::new_shutdown(),
-          ));
+          let req =
+            Box::into_raw(Box::new(deno_core::uv_compat::new_shutdown()));
           let ret = deno_core::uv_compat::uv_shutdown(
             req,
             stream,
@@ -1965,9 +1964,8 @@ impl Http2Session {
         // SAFETY: stream is a valid libuv handle taken via consume_stream
         unsafe {
           deno_core::uv_compat::uv_read_stop(stream);
-          let req = Box::into_raw(Box::new(
-            deno_core::uv_compat::new_shutdown(),
-          ));
+          let req =
+            Box::into_raw(Box::new(deno_core::uv_compat::new_shutdown()));
           let ret = deno_core::uv_compat::uv_shutdown(
             req,
             stream,
