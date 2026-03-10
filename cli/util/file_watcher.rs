@@ -405,10 +405,12 @@ where
     select! {
       _ = receiver_future => {},
       _ = deno_signals::ctrl_c() => {
-        // Dispatch SIGTERM to give JS code a chance for async cleanup.
-        // If handlers are registered (raise returns true), wait for the
-        // operation to finish gracefully before exiting.
-        if deno_signals::raise(deno_signals::SIGTERM) {
+        // Dispatch SIGINT (matching what Ctrl+C normally sends) and
+        // SIGTERM to give JS code a chance for async cleanup. Some
+        // libraries only listen for SIGINT, others for SIGTERM.
+        let has_handlers = deno_signals::raise(deno_signals::SIGINT)
+          | deno_signals::raise(deno_signals::SIGTERM);
+        if has_handlers {
           info!(
             "{} Waiting for graceful termination...",
             colors::intense_blue(banner),

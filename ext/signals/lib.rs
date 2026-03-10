@@ -241,6 +241,7 @@ pub fn run_exit() {
   }
 }
 
+pub const SIGINT: i32 = 2;
 pub const SIGTERM: i32 = 15;
 
 /// Synthetically raise a signal, triggering all registered handlers.
