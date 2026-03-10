@@ -317,8 +317,6 @@ impl WebWorkerHandle {
   /// This function will set the termination signal, close the message channel,
   /// and schedule to terminate the isolate after two seconds.
   pub fn terminate(self) {
-    use std::thread::sleep;
-    use std::thread::spawn;
     use std::time::Duration;
 
     let schedule_termination =
@@ -331,20 +329,41 @@ impl WebWorkerHandle {
       self.terminate_waker.wake();
 
       let has_terminated = self.has_terminated.clone();
+      let isolate_handle = self.isolate_handle.clone();
 
-      // Schedule to terminate the isolate's execution.
-      spawn(move || {
-        sleep(Duration::from_secs(2));
+      // Schedule to terminate the isolate's execution. Use a tokio task
+      // instead of spawning an OS thread to avoid the overhead of creating
+      // a thread just for a 2-second timer. The parent's tokio runtime is
+      // always available here since this is called from ops or drop handlers
+      // running within the parent's async context.
+      if let Ok(handle) = tokio::runtime::Handle::try_current() {
+        handle.spawn(async move {
+          tokio::time::sleep(Duration::from_secs(2)).await;
 
-        // A worker's isolate can only be terminated once, so we need a guard
-        // here.
-        let already_terminated = has_terminated.swap(true, Ordering::SeqCst);
+          // A worker's isolate can only be terminated once, so we need a
+          // guard here.
+          let already_terminated =
+            has_terminated.swap(true, Ordering::SeqCst);
 
-        if !already_terminated {
-          // Stop javascript execution
-          self.isolate_handle.terminate_execution();
-        }
-      });
+          if !already_terminated {
+            // Stop javascript execution
+            isolate_handle.terminate_execution();
+          }
+        });
+      } else {
+        // Fallback: no tokio runtime available (e.g. during process shutdown).
+        // Spawn an OS thread as before.
+        std::thread::spawn(move || {
+          std::thread::sleep(Duration::from_secs(2));
+
+          let already_terminated =
+            has_terminated.swap(true, Ordering::SeqCst);
+
+          if !already_terminated {
+            isolate_handle.terminate_execution();
+          }
+        });
+      }
     }
   }
 }
