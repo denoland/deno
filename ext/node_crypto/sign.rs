@@ -8,6 +8,7 @@ use elliptic_curve::generic_array::ArrayLength;
 use rand::rngs::OsRng;
 use rsa::signature::hazmat::PrehashSigner as _;
 use rsa::signature::hazmat::PrehashVerifier as _;
+use rsa::traits::PublicKeyParts as _;
 use rsa::traits::SignatureScheme as _;
 use spki::der::Decode;
 
@@ -19,6 +20,9 @@ use super::keys::KeyObjectHandle;
 use super::keys::RsaPssHashAlgorithm;
 use crate::digest::match_fixed_digest;
 use crate::digest::match_fixed_digest_with_oid;
+
+/// OpenSSL RSA_PKCS1_PSS_PADDING constant value.
+const RSA_PKCS1_PSS_PADDING: u32 = 6;
 
 fn dsa_signature<C: elliptic_curve::PrimeCurve>(
   encoding: u32,
@@ -86,12 +90,49 @@ pub enum KeyObjectHandlePrehashedSignAndVerifyError {
   DhKeyCannotBeUsedForVerification,
 }
 
+/// Constructs a PSS scheme for the given digest type and optional salt length.
+/// Used by both sign and verify operations on RSA keys with PSS padding.
+///
+/// When `key_size_bits` is provided and `pss_salt_length` is `None`,
+/// the default salt length is max (key_bytes - hash_len - 2), matching
+/// Node.js's documented default of `RSA_PSS_SALTLEN_MAX_SIGN`.
+/// When `key_size_bits` is `None` (verify path), the default salt length
+/// is the digest length.
+fn new_pss_scheme(
+  digest_type: &str,
+  pss_salt_length: Option<u32>,
+  key_size_bits: Option<usize>,
+) -> Result<rsa::pss::Pss, KeyObjectHandlePrehashedSignAndVerifyError> {
+  let pss = match_fixed_digest_with_oid!(
+    digest_type,
+    fn <D>(algorithm: Option<RsaPssHashAlgorithm>) {
+      let _: Option<RsaPssHashAlgorithm> = algorithm;
+      if let Some(salt_length) = pss_salt_length {
+        rsa::pss::Pss::new_with_salt::<D>(salt_length as usize)
+      } else if let Some(key_bits) = key_size_bits {
+        // Default to max salt length for signing (RSA_PSS_SALTLEN_MAX_SIGN)
+        let key_bytes = key_bits / 8;
+        let hash_len = <D as digest::Digest>::output_size();
+        let max_salt = key_bytes.saturating_sub(hash_len + 2);
+        rsa::pss::Pss::new_with_salt::<D>(max_salt)
+      } else {
+        rsa::pss::Pss::new::<D>()
+      }
+    },
+    _ => {
+      return Err(KeyObjectHandlePrehashedSignAndVerifyError::DigestNotAllowedForRsaPssSignature(digest_type.to_string()));
+    }
+  );
+  Ok(pss)
+}
+
 impl KeyObjectHandle {
   pub fn sign_prehashed(
     &self,
     digest_type: &str,
     digest: &[u8],
     pss_salt_length: Option<u32>,
+    padding: Option<u32>,
     dsa_signature_encoding: u32,
   ) -> Result<Box<[u8]>, KeyObjectHandlePrehashedSignAndVerifyError> {
     let private_key = self
@@ -100,6 +141,18 @@ impl KeyObjectHandle {
 
     match private_key {
       AsymmetricPrivateKey::Rsa(key) => {
+        if padding == Some(RSA_PKCS1_PSS_PADDING) {
+          let pss = new_pss_scheme(
+            digest_type,
+            pss_salt_length,
+            Some(key.n().bits()),
+          )?;
+          let signature = pss
+            .sign(Some(&mut OsRng), key, digest)
+            .map_err(|_| KeyObjectHandlePrehashedSignAndVerifyError::FailedToSignDigestWithRsaPss)?;
+          return Ok(signature.into());
+        }
+
         let signer = if digest_type == "md5-sha1" {
           rsa::pkcs1v15::Pkcs1v15Sign::new_unprefixed()
         } else {
@@ -215,10 +268,10 @@ impl KeyObjectHandle {
           dsa_signature(dsa_signature_encoding, signature)
         }
       },
-      AsymmetricPrivateKey::X25519(_) => {
+      AsymmetricPrivateKey::X25519(_) | AsymmetricPrivateKey::X448(_) => {
         Err(KeyObjectHandlePrehashedSignAndVerifyError::X25519KeyCannotBeUsedForSigning)
       }
-      AsymmetricPrivateKey::Ed25519(_) => Err(KeyObjectHandlePrehashedSignAndVerifyError::Ed25519KeyCannotBeUsedForPrehashedSigning),
+      AsymmetricPrivateKey::Ed25519(_) | AsymmetricPrivateKey::Ed448(_) => Err(KeyObjectHandlePrehashedSignAndVerifyError::Ed25519KeyCannotBeUsedForPrehashedSigning),
       AsymmetricPrivateKey::Dh(_) => {
         Err(KeyObjectHandlePrehashedSignAndVerifyError::DhKeyCannotBeUsedForSigning)
       }
@@ -231,6 +284,7 @@ impl KeyObjectHandle {
     digest: &[u8],
     signature: &[u8],
     pss_salt_length: Option<u32>,
+    padding: Option<u32>,
     dsa_signature_encoding: u32,
   ) -> Result<bool, KeyObjectHandlePrehashedSignAndVerifyError> {
     let public_key = self.as_public_key().ok_or(
@@ -239,6 +293,11 @@ impl KeyObjectHandle {
 
     match &*public_key {
       AsymmetricPublicKey::Rsa(key) => {
+        if padding == Some(RSA_PKCS1_PSS_PADDING) {
+          let pss = new_pss_scheme(digest_type, pss_salt_length, None)?;
+          return Ok(pss.verify(key, digest, signature).is_ok());
+        }
+
         let signer = if digest_type == "md5-sha1" {
           rsa::pkcs1v15::Pkcs1v15Sign::new_unprefixed()
         } else {
@@ -359,10 +418,10 @@ impl KeyObjectHandle {
           Ok(verifying_key.verify_prehash(digest, &signature).is_ok())
         }
       },
-      AsymmetricPublicKey::X25519(_) => {
+      AsymmetricPublicKey::X25519(_) | AsymmetricPublicKey::X448(_) => {
         Err(KeyObjectHandlePrehashedSignAndVerifyError::X25519KeyCannotBeUsedForVerification)
       }
-      AsymmetricPublicKey::Ed25519(_) => Err(KeyObjectHandlePrehashedSignAndVerifyError::Ed25519KeyCannotBeUsedForPrehashedVerification),
+      AsymmetricPublicKey::Ed25519(_) | AsymmetricPublicKey::Ed448(_) => Err(KeyObjectHandlePrehashedSignAndVerifyError::Ed25519KeyCannotBeUsedForPrehashedVerification),
       AsymmetricPublicKey::Dh(_) => {
         Err(KeyObjectHandlePrehashedSignAndVerifyError::DhKeyCannotBeUsedForVerification)
       }

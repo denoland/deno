@@ -958,7 +958,8 @@ fn catch_dynamic_import_promise_error<'s, 'i>(
 ) {
   let arg = args.get(0);
   if is_instance_of_error(scope, arg) {
-    let e: crate::error::NativeJsError = serde_v8::from_v8(scope, arg).unwrap();
+    let e: crate::error::NativeJsError =
+      serde_v8::from_v8(scope, arg).unwrap_or_default();
     let name = e.name.unwrap_or_else(|| {
       deno_error::builtin_classes::GENERIC_ERROR.to_string()
     });
@@ -1012,6 +1013,19 @@ pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
     message.get_event(),
     message.get_value(),
   );
+
+  // Set hasRejectionToWarn in the shared tick_info buffer so that JS
+  // runNextTicks() enters processTicksAndRejections() even when no
+  // ticks are queued (matching Node.js behavior).
+  if message.get_event() == v8::PromiseRejectEvent::PromiseRejectWithNoHandler {
+    let context_state = JsRealm::state_from_scope(scope);
+    // SAFETY: We're in a single-threaded environment so if we're here
+    // we're guaranteed that JS will not change this value.
+    unsafe {
+      let ptr = context_state.tick_info.as_ptr() as *mut u8;
+      *ptr.add(1) = 1;
+    }
+  }
 }
 
 /// This binding should be used if there's a custom console implementation

@@ -34,6 +34,7 @@ import {
   op_preview_entries,
 } from "ext:core/ops";
 import * as ops from "ext:core/ops";
+import { URLPrototype } from "ext:deno_web/00_url.js";
 const {
   AggregateError,
   AggregateErrorPrototype,
@@ -71,6 +72,7 @@ const {
   DatePrototype,
   DatePrototypeGetTime,
   DatePrototypeToISOString,
+  DatePrototypeToString,
   Error,
   ErrorCaptureStackTrace,
   ErrorPrototype,
@@ -847,14 +849,16 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
         (proxyDetails === null && isDate(value)) ||
         (proxyDetails !== null && isDate(proxyDetails[0]))
       ) {
-        const date = proxyDetails?.[0] ?? value;
-        if (NumberIsNaN(DatePrototypeGetTime(date))) {
-          return ctx.stylize("Invalid Date", "date");
-        } else {
-          base = DatePrototypeToISOString(date);
-          if (keys.length === 0 && protoProps === undefined) {
-            return ctx.stylize(base, "date");
-          }
+        value = proxyDetails?.[0] ?? value;
+        base = NumberIsNaN(DatePrototypeGetTime(value))
+          ? DatePrototypeToString(value)
+          : DatePrototypeToISOString(value);
+        const prefix = getPrefix(constructor, tag, "Date");
+        if (prefix !== "Date ") {
+          base = `${prefix}${base}`;
+        }
+        if (keys.length === 0 && protoProps === undefined) {
+          return ctx.stylize(base, "date");
         }
       } else if (
         proxyDetails === null &&
@@ -966,6 +970,14 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
         formatter = FunctionPrototypeBind(formatNamespaceObject, null, keys);
       } else if (isBoxedPrimitive(value)) {
         base = getBoxedBase(value, ctx, keys, constructor, tag);
+        if (keys.length === 0 && protoProps === undefined) {
+          return base;
+        }
+      } else if (
+        ObjectPrototypeIsPrototypeOf(URLPrototype, value) &&
+        !(recurseTimes > ctx.depth && ctx.depth !== null)
+      ) {
+        base = value.href;
         if (keys.length === 0 && protoProps === undefined) {
           return base;
         }
@@ -3759,6 +3771,7 @@ class Console {
         ...getConsoleInspectOptions(noColorStdout()),
         depth: 1,
         compact: true,
+        breakLength: Infinity,
       });
     const toTable = (header, body) => this.log(cliTable(header, body));
 

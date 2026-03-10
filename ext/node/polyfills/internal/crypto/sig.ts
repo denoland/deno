@@ -16,8 +16,10 @@ import {
   op_node_get_asymmetric_key_type,
   op_node_sign,
   op_node_sign_ed25519,
+  op_node_sign_ed448,
   op_node_verify,
   op_node_verify_ed25519,
+  op_node_verify_ed448,
 } from "ext:core/ops";
 
 import {
@@ -64,6 +66,10 @@ export interface VerifyPublicKeyInput extends PublicKeyInput, SigningOptions {}
 
 export interface VerifyKeyObjectInput extends SigningOptions {
   key: KeyObject;
+}
+
+function getPadding(options) {
+  return getIntOption("padding", options);
 }
 
 function getSaltLength(options) {
@@ -124,6 +130,9 @@ export class SignImpl extends Writable {
   ): Buffer | string {
     const res = prepareAsymmetricKey(privateKey, kConsumePrivate);
 
+    // Options specific to RSA
+    const rsaPadding = getPadding(privateKey);
+
     // Options specific to RSA-PSS
     const pssSaltLength = getSaltLength(privateKey);
 
@@ -146,6 +155,7 @@ export class SignImpl extends Writable {
       this.hash.digest(),
       this.#digestType,
       pssSaltLength,
+      rsaPadding,
       dsaSigEnc,
     ));
     return encoding ? ret.toString(encoding) : ret;
@@ -199,6 +209,9 @@ export class VerifyImpl extends Writable {
   ): boolean {
     const res = prepareAsymmetricKey(publicKey, kConsumePublic);
 
+    // Options specific to RSA
+    const rsaPadding = getPadding(publicKey);
+
     // Options specific to RSA-PSS
     const pssSaltLength = getSaltLength(publicKey);
 
@@ -222,6 +235,7 @@ export class VerifyImpl extends Writable {
       this.#digestType,
       Buffer.from(signature, encoding),
       pssSaltLength,
+      rsaPadding,
       dsaSigEnc,
     );
   }
@@ -265,19 +279,28 @@ export function signOneShot(
   }
 
   let result: Buffer;
-  if (op_node_get_asymmetric_key_type(handle) === "ed25519") {
+  const keyType = op_node_get_asymmetric_key_type(handle);
+  if (keyType === "ed25519") {
     if (algorithm != null && algorithm !== "sha512") {
       throw new TypeError("Only 'sha512' is supported for Ed25519 keys");
     }
     result = new FastBuffer(64);
     op_node_sign_ed25519(handle, data, result);
+  } else if (keyType === "ed448") {
+    result = new FastBuffer(114);
+    op_node_sign_ed448(handle, data, result);
   } else if (algorithm == null) {
     throw new TypeError(
       "Algorithm must be specified when using non-Ed25519 keys",
     );
   } else {
+    // Preserve padding/saltLength options from the original key
+    const privateKeyObject = new PrivateKeyObject(handle);
+    const signKey = typeof key === "object" && !(key instanceof KeyObject)
+      ? { ...key, key: privateKeyObject }
+      : privateKeyObject;
     result = Sign(algorithm!).update(data)
-      .sign(new PrivateKeyObject(handle));
+      .sign(signKey);
   }
 
   if (callback) {
@@ -320,18 +343,26 @@ export function verifyOneShot(
   }
 
   let result: boolean;
-  if (op_node_get_asymmetric_key_type(handle) === "ed25519") {
+  const keyType = op_node_get_asymmetric_key_type(handle);
+  if (keyType === "ed25519") {
     if (algorithm != null && algorithm !== "sha512") {
       throw new TypeError("Only 'sha512' is supported for Ed25519 keys");
     }
     result = op_node_verify_ed25519(handle, data, signature);
+  } else if (keyType === "ed448") {
+    result = op_node_verify_ed448(handle, data, signature);
   } else if (algorithm == null) {
     throw new TypeError(
       "Algorithm must be specified when using non-Ed25519 keys",
     );
   } else {
+    // Preserve padding/saltLength options from the original key
+    const publicKeyObject = new PublicKeyObject(handle);
+    const verifyKey = typeof key === "object" && !(key instanceof KeyObject)
+      ? { ...key, key: publicKeyObject }
+      : publicKeyObject;
     result = Verify(algorithm!).update(data)
-      .verify(new PublicKeyObject(handle), signature);
+      .verify(verifyKey, signature);
   }
 
   if (callback) {

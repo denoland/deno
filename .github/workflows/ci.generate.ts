@@ -18,7 +18,7 @@ import {
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 98;
+const cacheVersion = 101;
 
 const ubuntuX86Runner = "ubuntu-24.04";
 const ubuntuARMRunner = "ubuntu-24.04-arm";
@@ -477,15 +477,28 @@ const preBuildCheckStep = step({
   outputs: ["skip_build"] as const,
 });
 
+const denoCoreChangesCheckStep = step({
+  id: "deno_core_changes",
+  run: [
+    // Fetch the base SHA so it's available even in shallow clones
+    `git fetch --depth=1 origin \${{ github.event.pull_request.base.sha }}`,
+    `deno run -A tools/check_deno_core_changes.js \${{ github.event.pull_request.base.sha }}`,
+  ],
+  outputs: ["skip_deno_core_test"] as const,
+});
+
 const preBuildJob = job("pre_build", {
   name: "pre-build",
   runsOn: "ubuntu-latest",
-  steps: step.if(conditions.isDraftPr())(
+  steps: step.if(isPr)(
     cloneRepoStep,
-    preBuildCheckStep,
+    installDenoStep,
+    step.if(conditions.isDraftPr())(preBuildCheckStep),
+    denoCoreChangesCheckStep,
   ),
   outputs: {
     skip_build: preBuildCheckStep.outputs.skip_build,
+    skip_deno_core_test: denoCoreChangesCheckStep.outputs.skip_deno_core_test,
   },
 });
 
@@ -1252,7 +1265,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
               "deno run -RWNE --allow-run --lock=tools/deno.lock.json --config tests/config/deno.json \\",
               "    ./tests/wpt/wpt.ts setup",
               "deno run -RWNE --allow-run --lock=tools/deno.lock.json --config tests/config/deno.json --unsafely-ignore-certificate-errors \\",
-              '    ./tests/wpt/wpt.ts run --quiet --binary="$DENO_BIN"',
+              '    ./tests/wpt/wpt.ts run --all --quiet --binary="$DENO_BIN"',
             ],
           },
           {
@@ -1265,7 +1278,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
               "deno run -RWNE --allow-run --lock=tools/deno.lock.json --config tests/config/deno.json \\",
               "    ./tests/wpt/wpt.ts setup",
               "deno run -RWNE --allow-run --lock=tools/deno.lock.json --config tests/config/deno.json --unsafely-ignore-certificate-errors \\",
-              '    ./tests/wpt/wpt.ts run --quiet --release --binary="$DENO_BIN" --json=wpt.json --wptreport=wptreport.json',
+              '    ./tests/wpt/wpt.ts run --all --quiet --release --binary="$DENO_BIN" --json=wpt.json --wptreport=wptreport.json',
             ],
           },
           {
@@ -1524,7 +1537,8 @@ const denoCoreTestCacheSteps = createCacheSteps({
 const denoCoreTestJob = job("deno-core-test", {
   name: `deno_core test linux-x86_64`,
   needs: [preBuildJob],
-  if: preBuildJob.outputs.skip_build.notEquals("true"),
+  if: preBuildJob.outputs.skip_build.notEquals("true")
+    .and(preBuildJob.outputs.skip_deno_core_test.notEquals("true")),
   runsOn: denoCoreTestProfile.runner,
   timeoutMinutes: 60,
   defaults: {

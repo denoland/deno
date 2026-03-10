@@ -15,7 +15,6 @@ import {
   isFloat64Array,
   isKeyObject,
   isMap,
-  isNativeError,
   isNumberObject,
   isRegExp,
   isSet,
@@ -33,6 +32,7 @@ import {
 import { primordials } from "ext:core/mod.js";
 import assert from "node:assert";
 import { kKeyObject } from "ext:deno_node/internal/crypto/constants.ts";
+import { isError } from "ext:deno_node/internal/util.mjs";
 import { isURL } from "ext:deno_node/internal/url.ts";
 
 const {
@@ -51,7 +51,6 @@ const {
   Date,
   DatePrototypeGetTime,
   Error,
-  ErrorPrototype,
   Float32Array,
   Float64Array,
   Function,
@@ -69,7 +68,6 @@ const {
   ObjectKeys,
   ObjectPrototypeHasOwnProperty: hasOwn,
   ObjectPrototypePropertyIsEnumerable: hasEnumerable,
-  ObjectPrototypeIsPrototypeOf,
   ObjectPrototypeToString,
   Promise,
   RegExp,
@@ -419,11 +417,11 @@ function objectComparisonStart(
     ) {
       return false;
     }
-  } else if (ObjectPrototypeIsPrototypeOf(ErrorPrototype, val1)) {
+  } else if (isError(val1)) {
     // Do not compare the stack as it might differ even though the error itself
     // is otherwise identical.
     if (
-      !ObjectPrototypeIsPrototypeOf(ErrorPrototype, val2) ||
+      !isError(val2) ||
       !isEnumerableOrIdentical(val1, val2, "message", mode, memos) ||
       !isEnumerableOrIdentical(val1, val2, "name", mode, memos) ||
       !isEnumerableOrIdentical(val1, val2, "cause", mode, memos) ||
@@ -451,8 +449,7 @@ function objectComparisonStart(
     isRegExp(val2) ||
     isAnyArrayBuffer(val2) ||
     isBoxedPrimitive(val2) ||
-    isNativeError(val2) ||
-    ObjectPrototypeIsPrototypeOf(ErrorPrototype, val2)
+    isError(val2)
   ) {
     return false;
   } else if (isURL(val1)) {
