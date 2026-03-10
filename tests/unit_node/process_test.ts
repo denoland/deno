@@ -865,7 +865,6 @@ Deno.test("process.on, process.off, process.removeListener doesn't throw on unim
     "beforeExit",
     "disconnect",
     "message",
-    "multipleResolves",
     "rejectionHandled",
     "uncaughtException",
     "uncaughtExceptionMonitor",
@@ -960,6 +959,7 @@ Deno.test("process._exiting", () => {
 });
 
 Deno.test("process.execPath", () => {
+  assertEquals(typeof process.execPath, "string");
   assertEquals(process.execPath, process.argv[0]);
 });
 
@@ -1317,6 +1317,7 @@ Deno.test(function importedExecArgvTest() {
 });
 
 Deno.test(function importedExecPathTest() {
+  assertEquals(typeof importedExecPath, "string");
   assertEquals(importedExecPath, Deno.execPath());
 });
 

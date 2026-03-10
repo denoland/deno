@@ -5,6 +5,7 @@ use aws_lc_rs::signature::EcdsaKeyPair;
 use deno_core::convert::Uint8Array;
 use deno_core::op2;
 use deno_core::unsync::spawn_blocking;
+use elliptic_curve::pkcs8::EncodePrivateKey;
 use elliptic_curve::rand_core::OsRng;
 use num_traits::FromPrimitive;
 use once_cell::sync::Lazy;
@@ -110,10 +111,13 @@ fn generate_key_rsa(
   Ok(private_key.as_bytes().to_vec())
 }
 
-fn generate_key_ec_p521() -> Vec<u8> {
+fn generate_key_ec_p521() -> Result<Vec<u8>, GenerateKeyError> {
   let mut rng = OsRng;
   let key = p521::SecretKey::random(&mut rng);
-  key.to_nonzero_scalar().to_bytes().to_vec()
+  let pkcs8 = key
+    .to_pkcs8_der()
+    .map_err(|_| GenerateKeyError::FailedECKeyGeneration)?;
+  Ok(pkcs8.as_bytes().to_vec())
 }
 
 fn generate_key_ec(
@@ -126,7 +130,7 @@ fn generate_key_ec(
     EcNamedCurve::P384 => {
       &aws_lc_rs::signature::ECDSA_P384_SHA384_FIXED_SIGNING
     }
-    EcNamedCurve::P521 => return Ok(generate_key_ec_p521()),
+    EcNamedCurve::P521 => return generate_key_ec_p521(),
   };
 
   let rng = aws_lc_rs::rand::SystemRandom::new();

@@ -11,6 +11,7 @@ use super::DiskCacheSys;
 
 #[derive(Debug, Clone)]
 pub struct DenoDirOptions {
+  pub maybe_initial_cwd: Option<PathBuf>,
   pub maybe_custom_root: Option<PathBuf>,
 }
 
@@ -44,9 +45,12 @@ impl<TSys: DenoDirSys> DenoDirProvider<TSys> {
     self.deno_dir_cell.get_or_try_init(|| {
       let path = deno_cache_dir::resolve_deno_dir(
         &self.sys,
-        self.options.maybe_custom_root.clone(),
+        deno_cache_dir::ResolveDenoDirOptions {
+          maybe_custom_root: self.options.maybe_custom_root.as_deref(),
+          maybe_initial_cwd: self.options.maybe_initial_cwd.as_deref(),
+        },
       )?;
-      Ok(DenoDir::new(self.sys.clone(), path))
+      Ok(DenoDir::new(self.sys.clone(), path.into_owned()))
     })
   }
 }

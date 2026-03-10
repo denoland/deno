@@ -22,6 +22,7 @@ const {
   ArrayPrototypeJoin,
   ArrayPrototypePush,
   ArrayPrototypePop,
+  ArrayPrototypeSlice,
   ArrayPrototypeSplice,
   Error,
   ErrorPrototype,
@@ -54,6 +55,7 @@ const {
   StringPrototypeToString,
   Symbol,
   SymbolFor,
+  SymbolPrototypeToString,
   SyntaxError,
   SyntaxErrorPrototype,
   TypeError,
@@ -2010,10 +2012,15 @@ export class ERR_SOCKET_BAD_PORT extends NodeRangeError {
     );
 
     const operator = allowZero ? ">=" : ">";
+    const portStr = typeof port === "symbol"
+      ? SymbolPrototypeToString(port)
+      : typeof port === "bigint"
+      ? `${port}n`
+      : String(port);
 
     super(
       "ERR_SOCKET_BAD_PORT",
-      `${name} should be ${operator} 0 and < 65536. Received ${port}.`,
+      `${name} should be ${operator} 0 and < 65536. Received ${portStr}.`,
     );
   }
 }
@@ -2450,7 +2457,24 @@ export class ERR_HTTP2_TOO_MANY_CUSTOM_SETTINGS extends NodeError {
   }
 }
 
-export class ERR_HTTP2_INVALID_SETTING_VALUE extends NodeRangeError {
+function _http2InvalidSettingMsg(name: string, actual: unknown) {
+  return `Invalid value for setting "${name}": ${actual}`;
+}
+
+// deno-lint-ignore camelcase
+class _ERR_HTTP2_INVALID_SETTING_VALUE_TypeError extends NodeTypeError {
+  actual: unknown;
+  constructor(name: string, actual: unknown) {
+    super(
+      "ERR_HTTP2_INVALID_SETTING_VALUE",
+      _http2InvalidSettingMsg(name, actual),
+    );
+    this.actual = actual;
+  }
+}
+
+// deno-lint-ignore camelcase
+class _ERR_HTTP2_INVALID_SETTING_VALUE_RangeError extends NodeRangeError {
   actual: unknown;
   min?: number;
   max?: number;
@@ -2458,7 +2482,7 @@ export class ERR_HTTP2_INVALID_SETTING_VALUE extends NodeRangeError {
   constructor(name: string, actual: unknown, min?: number, max?: number) {
     super(
       "ERR_HTTP2_INVALID_SETTING_VALUE",
-      `Invalid value for setting "${name}": ${actual}`,
+      _http2InvalidSettingMsg(name, actual),
     );
     this.actual = actual;
     if (min !== undefined) {
@@ -2467,6 +2491,22 @@ export class ERR_HTTP2_INVALID_SETTING_VALUE extends NodeRangeError {
     }
   }
 }
+
+// In Node.js, ERR_HTTP2_INVALID_SETTING_VALUE has both TypeError and RangeError
+// variants. The access patterns used are:
+//   new ERR_HTTP2_INVALID_SETTING_VALUE.HideStackFramesError(...)            -> TypeError
+//   new ERR_HTTP2_INVALID_SETTING_VALUE.RangeError(...)                      -> RangeError
+//   new ERR_HTTP2_INVALID_SETTING_VALUE.RangeError.HideStackFramesError(...) -> RangeError
+
+// deno-lint-ignore no-explicit-any
+const _RangeErrorWithHSFE: any = _ERR_HTTP2_INVALID_SETTING_VALUE_RangeError;
+_RangeErrorWithHSFE.HideStackFramesError =
+  _ERR_HTTP2_INVALID_SETTING_VALUE_RangeError;
+
+export const ERR_HTTP2_INVALID_SETTING_VALUE = {
+  HideStackFramesError: _ERR_HTTP2_INVALID_SETTING_VALUE_TypeError,
+  RangeError: _RangeErrorWithHSFE,
+};
 export class ERR_HTTP2_STREAM_CANCEL extends NodeError {
   override cause?: Error;
   constructor(error?: Error) {
@@ -2933,6 +2973,16 @@ codes.ERR_STREAM_WRITE_AFTER_END = ERR_STREAM_WRITE_AFTER_END;
 codes.ERR_BROTLI_INVALID_PARAM = ERR_BROTLI_INVALID_PARAM;
 codes.ERR_ZSTD_INVALID_PARAM = ERR_ZSTD_INVALID_PARAM;
 codes.ERR_ZLIB_INITIALIZATION_FAILED = ERR_ZLIB_INITIALIZATION_FAILED;
+codes.ERR_HTTP2_HEADERS_SENT = ERR_HTTP2_HEADERS_SENT;
+codes.ERR_HTTP2_INFO_STATUS_NOT_ALLOWED = ERR_HTTP2_INFO_STATUS_NOT_ALLOWED;
+codes.ERR_HTTP2_INVALID_HEADER_VALUE = ERR_HTTP2_INVALID_HEADER_VALUE;
+codes.ERR_HTTP2_INVALID_SETTING_VALUE = ERR_HTTP2_INVALID_SETTING_VALUE;
+codes.ERR_HTTP2_INVALID_STREAM = ERR_HTTP2_INVALID_STREAM;
+codes.ERR_HTTP2_NO_SOCKET_MANIPULATION = ERR_HTTP2_NO_SOCKET_MANIPULATION;
+codes.ERR_HTTP2_PAYLOAD_FORBIDDEN = ERR_HTTP2_PAYLOAD_FORBIDDEN;
+codes.ERR_HTTP2_PSEUDOHEADER_NOT_ALLOWED = ERR_HTTP2_PSEUDOHEADER_NOT_ALLOWED;
+codes.ERR_HTTP2_STATUS_INVALID = ERR_HTTP2_STATUS_INVALID;
+codes.ERR_HTTP2_TOO_MANY_CUSTOM_SETTINGS = ERR_HTTP2_TOO_MANY_CUSTOM_SETTINGS;
 
 // TODO(kt3k): assign all error classes here.
 

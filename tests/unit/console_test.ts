@@ -1722,6 +1722,35 @@ Deno.test(function consoleTable() {
 `,
     );
   });
+  // Objects with long values should stay on a single line (#18828)
+  mockConsole((console, out) => {
+    console.table([
+      ["b0a6d0c1-7b6c-4fea-9efa-cb2629ce6068", {
+        id: "b0a6d0c1-7b6c-4fea-9efa-cb2629ce6068",
+        name: "Trenitalia",
+        countryCode: "IT",
+      }],
+      ["371fe41e-349c-40b7-be93-10c58fbbb95f", {
+        id: "371fe41e-349c-40b7-be93-10c58fbbb95f",
+        name: "Deutsche Bahn",
+        countryCode: "DE",
+      }],
+    ]);
+    const output = stripAnsiCode(out.toString());
+    // Each row should be a single line (no newlines within cell values)
+    const rows = output.split("\n").filter((line) => line.startsWith("│"));
+    for (const row of rows) {
+      // The row should not contain embedded newlines (the cell value should be flat)
+      assert(!row.includes("\n  "), "Table row should be single-line");
+    }
+    // Verify object values are rendered on one line
+    assert(
+      output.includes(
+        'name: "Deutsche Bahn", countryCode: "DE"',
+      ),
+      "Object should be on single line",
+    );
+  });
   mockConsole((console, out) => {
     console.table([]);
     assertEquals(
@@ -1853,6 +1882,56 @@ Deno.test(function consoleTable() {
 │     2 │ 2 │   │   │
 │     3 │ 3 │   │ 3 │
 └───────┴───┴───┴───┘
+`,
+    );
+  });
+  // console.table with iterators (https://github.com/denoland/deno/issues/20725)
+  mockConsole((console, out) => {
+    console.table(
+      new Map([[1, 1], [2, 2], [3, 3]]).entries(),
+    );
+    assertEquals(
+      stripAnsiCode(out.toString()),
+      `\
+┌────────────┬───┬───┐
+│ (iter idx) │ 0 │ 1 │
+├────────────┼───┼───┤
+│          0 │ 1 │ 1 │
+│          1 │ 2 │ 2 │
+│          2 │ 3 │ 3 │
+└────────────┴───┴───┘
+`,
+    );
+  });
+  mockConsole((console, out) => {
+    console.table(
+      new Map([[1, 1], [2, 2], [3, 3]]).values(),
+    );
+    assertEquals(
+      stripAnsiCode(out.toString()),
+      `\
+┌────────────┬────────┐
+│ (iter idx) │ Values │
+├────────────┼────────┤
+│          0 │      1 │
+│          1 │      2 │
+│          2 │      3 │
+└────────────┴────────┘
+`,
+    );
+  });
+  mockConsole((console, out) => {
+    console.table(new Set([1, 2, 3]).values());
+    assertEquals(
+      stripAnsiCode(out.toString()),
+      `\
+┌────────────┬────────┐
+│ (iter idx) │ Values │
+├────────────┼────────┤
+│          0 │      1 │
+│          1 │      2 │
+│          2 │      3 │
+└────────────┴────────┘
 `,
     );
   });
