@@ -54,6 +54,7 @@ const {
   encodeURIComponent,
   Error,
   FunctionPrototypeCall,
+  ObjectCreate,
   NumberIsFinite,
   ObjectHasOwn,
   ObjectKeys,
@@ -785,7 +786,64 @@ internals.__initWorkerThreads = (
       (ev: any) => any
     >();
 
-    parentPort = globalThis as ParentPort;
+    // Create parentPort as a separate object that delegates to the web
+    // worker's native APIs. We capture the native methods here (before
+    // user code runs) so that user code overriding globalThis.postMessage
+    // (e.g. Emscripten/z3-solver) doesn't cause infinite recursion.
+    const nativePostMessage = FunctionPrototypeBind(
+      globalThis.postMessage,
+      globalThis,
+    );
+    const nativeAddEventListener = FunctionPrototypeBind(
+      globalThis.addEventListener,
+      globalThis,
+    );
+    const nativeRemoveEventListener = FunctionPrototypeBind(
+      globalThis.removeEventListener,
+      globalThis,
+    );
+    parentPort = ObjectCreate(null) as ParentPort;
+    parentPort.postMessage = function (message, transferOrOptions?) {
+      return nativePostMessage(message, transferOrOptions);
+    };
+    parentPort.addEventListener = function (name, listener, options?) {
+      return nativeAddEventListener(name, listener, options);
+    };
+    parentPort.removeEventListener = function (name, listener) {
+      return nativeRemoveEventListener(name, listener);
+    };
+
+    // Track Node-style message listener count to prevent double delivery.
+    // When parentPort.on('message') listeners exist, suppress the web
+    // IDL onmessage handler (globalThis.onmessage) since both would fire
+    // for the same MessageEvent. Node.js doesn't have globalThis.onmessage
+    // in workers, so libraries like Emscripten that set both
+    // parentPort.on('message') AND self.onmessage get double delivery.
+    let messageListenerCount = 0;
+
+    // Store the user's onmessage handler but only dispatch to it when
+    // there are no Node-style message listeners.
+    let storedOnmessage: ((ev: Event) => void) | null = null;
+    // deno-lint-ignore prefer-primordials
+    Object.defineProperty(globalThis, "onmessage", {
+      get() {
+        return storedOnmessage;
+      },
+      set(handler) {
+        storedOnmessage = handler;
+      },
+      configurable: true,
+      enumerable: true,
+    });
+    // Dispatch to the stored onmessage handler only when there are no
+    // Node-style message listeners (to prevent double delivery).
+    nativeAddEventListener("message", (ev: Event) => {
+      if (messageListenerCount > 0) return;
+      if (typeof storedOnmessage === "function") {
+        storedOnmessage(ev);
+      }
+    });
+
     threadId = workerId;
     let isWorkerThread = false;
     if (maybeWorkerMetadata) {
@@ -914,16 +972,15 @@ internals.__initWorkerThreads = (
     patchMessagePortIfFound(workerData);
 
     parentPort.off = parentPort.removeListener = function (
-      this: ParentPort,
       name,
       listener,
     ) {
-      this.removeEventListener(name, listeners.get(listener)!);
+      nativeRemoveEventListener(name, listeners.get(listener)!);
       listeners.delete(listener);
-      return this;
+      if (name === "message") messageListenerCount--;
+      return parentPort;
     };
     parentPort.on = parentPort.addListener = function (
-      this: ParentPort,
       name,
       listener,
     ) {
@@ -934,21 +991,24 @@ internals.__initWorkerThreads = (
         return listener(message);
       };
       listeners.set(listener, _listener);
-      this.addEventListener(name, _listener);
-      return this;
+      nativeAddEventListener(name, _listener);
+      if (name === "message") messageListenerCount++;
+      return parentPort;
     };
 
-    parentPort.once = function (this: ParentPort, name, listener) {
+    parentPort.once = function (name, listener) {
       // deno-lint-ignore no-explicit-any
       const _listener = (ev: any) => {
         listeners.delete(listener);
+        if (name === "message") messageListenerCount--;
         const message = ev.data;
         patchMessagePortIfFound(message);
         return listener(message);
       };
       listeners.set(listener, _listener);
-      this.addEventListener(name, _listener, { once: true });
-      return this;
+      nativeAddEventListener(name, _listener, { once: true });
+      if (name === "message") messageListenerCount++;
+      return parentPort;
     };
 
     // mocks
@@ -961,14 +1021,18 @@ internals.__initWorkerThreads = (
     parentPort.removeAllListeners = () =>
       notImplemented("parentPort.removeAllListeners");
 
-    parentPort.addEventListener("offline", () => {
+    nativeAddEventListener("offline", () => {
       parentPort.emit("close");
     });
     parentPort.unref = () => {
       parentPort[unrefParentPort] = true;
+      // Also set on globalThis so runtime/js/99_main.js event loop
+      // check (globalThis[unrefParentPort]) still works.
+      globalThis[unrefParentPort] = true;
     };
     parentPort.ref = () => {
       parentPort[unrefParentPort] = false;
+      globalThis[unrefParentPort] = false;
     };
 
     if (isWorkerThread) {
