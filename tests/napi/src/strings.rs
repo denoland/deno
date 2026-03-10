@@ -9,29 +9,6 @@ use crate::assert_napi_ok;
 use crate::napi_get_callback_info;
 use crate::napi_new_property;
 
-unsafe extern "C" {
-  fn node_api_create_property_key_latin1(
-    env: napi_env,
-    str_: *const c_char,
-    length: usize,
-    result: *mut napi_value,
-  ) -> napi_status;
-
-  fn node_api_create_property_key_utf8(
-    env: napi_env,
-    str_: *const c_char,
-    length: usize,
-    result: *mut napi_value,
-  ) -> napi_status;
-
-  fn node_api_create_property_key_utf16(
-    env: napi_env,
-    str_: *const u16,
-    length: usize,
-    result: *mut napi_value,
-  ) -> napi_status;
-}
-
 extern "C" fn test_utf8(env: napi_env, info: napi_callback_info) -> napi_value {
   let (args, argc, _) = napi_get_callback_info!(env, info, 1);
   assert_eq!(argc, 1);
