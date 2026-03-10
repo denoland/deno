@@ -1159,20 +1159,65 @@ pub fn op_node_ecdh_compute_public_key(
 }
 
 #[inline]
-fn gen_prime(size: usize) -> Uint8Array {
-  primes::Prime::generate(size).0.to_bytes_be().into()
+fn gen_prime(
+  size: usize,
+  safe: bool,
+  add: Option<&[u8]>,
+  rem: Option<&[u8]>,
+) -> Result<Uint8Array, GeneratePrimeError> {
+  if safe || add.is_some() || rem.is_some() {
+    let prime = primes::Prime::generate_with_options(size, safe, add, rem)?;
+    Ok(prime.0.to_bytes_be().into())
+  } else {
+    Ok(primes::Prime::generate(size).0.to_bytes_be().into())
+  }
+}
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum GeneratePrimeError {
+  #[class("ERR_OUT_OF_RANGE")]
+  #[error("invalid options.add")]
+  InvalidAdd,
+  #[class("ERR_OUT_OF_RANGE")]
+  #[error("invalid options.rem")]
+  InvalidRem,
+  #[class("ERR_OUT_OF_RANGE")]
+  #[error("prime generation failed: no suitable prime found in range")]
+  OutOfRange,
+  #[class(generic)]
+  #[error(transparent)]
+  JoinError(#[from] tokio::task::JoinError),
+}
+
+impl From<primes::GeneratePrimeError> for GeneratePrimeError {
+  fn from(e: primes::GeneratePrimeError) -> Self {
+    match e {
+      primes::GeneratePrimeError::InvalidAdd => GeneratePrimeError::InvalidAdd,
+      primes::GeneratePrimeError::InvalidRem => GeneratePrimeError::InvalidRem,
+      primes::GeneratePrimeError::OutOfRange => GeneratePrimeError::OutOfRange,
+    }
+  }
 }
 
 #[op2]
-pub fn op_node_gen_prime(#[number] size: usize) -> Uint8Array {
-  gen_prime(size)
+pub fn op_node_gen_prime(
+  #[number] size: usize,
+  safe: bool,
+  #[buffer] add: Option<JsBuffer>,
+  #[buffer] rem: Option<JsBuffer>,
+) -> Result<Uint8Array, GeneratePrimeError> {
+  gen_prime(size, safe, add.as_deref(), rem.as_deref())
 }
 
 #[op2]
 pub async fn op_node_gen_prime_async(
   #[number] size: usize,
-) -> Result<Uint8Array, tokio::task::JoinError> {
-  spawn_blocking(move || gen_prime(size)).await
+  safe: bool,
+  #[buffer] add: Option<JsBuffer>,
+  #[buffer] rem: Option<JsBuffer>,
+) -> Result<Uint8Array, GeneratePrimeError> {
+  spawn_blocking(move || gen_prime(size, safe, add.as_deref(), rem.as_deref()))
+    .await?
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
