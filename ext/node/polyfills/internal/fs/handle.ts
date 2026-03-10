@@ -27,12 +27,34 @@ import {
   FileOptionsArgument,
   TextOptionsArgument,
 } from "ext:deno_node/_fs/_fs_common.ts";
-import { ftruncatePromise } from "ext:deno_node/_fs/_fs_ftruncate.ts";
-import { writevPromise, WriteVResult } from "ext:deno_node/_fs/_fs_writev.ts";
+import { writev } from "node:fs";
+
+export interface WriteVResult {
+  bytesWritten: number;
+  buffers: ReadonlyArray<ArrayBufferView>;
+}
+
+function writevPromise(
+  fd: number,
+  buffers: ArrayBufferView[],
+  position?: number,
+): Promise<WriteVResult> {
+  return new Promise((resolve, reject) => {
+    writev(fd, buffers, position, (err, bytesWritten, buffers) => {
+      if (err) reject(err);
+      else resolve({ bytesWritten, buffers });
+    });
+  });
+}
 import { readvPromise, ReadVResult } from "ext:deno_node/_fs/_fs_readv.ts";
-import { fchownPromise } from "ext:deno_node/_fs/_fs_fchown.ts";
 import { fstatPromise } from "ext:deno_node/_fs/_fs_fstat.ts";
-import { futimesPromise } from "ext:deno_node/_fs/_fs_futimes.ts";
+import {
+  fchown as fchownCb,
+  ftruncate as ftruncateCb,
+  futimes as futimesCb,
+} from "node:fs";
+import { kEmptyObject, promisify } from "ext:deno_node/internal/util.mjs";
+
 import {
   CreateReadStreamOptions,
   CreateWriteStreamOptions,
@@ -47,7 +69,7 @@ import {
   validateBoolean,
   validateObject,
 } from "ext:deno_node/internal/validators.mjs";
-import { kEmptyObject, promisify } from "ext:deno_node/internal/util.mjs";
+import process from "node:process";
 
 const fchmodPromise = promisify(fchmod) as (
   fd: number,
@@ -57,7 +79,6 @@ const fdatasyncPromise = promisify(fdatasync) as (
   fd: number,
 ) => Promise<void>;
 const fsyncPromise = promisify(fsync) as (fd: number) => Promise<void>;
-import process from "node:process";
 
 const {
   Error,
@@ -80,6 +101,10 @@ const kCloseReject = Symbol("kCloseReject");
 const kRef = Symbol("kRef");
 const kUnref = Symbol("kUnref");
 const kLocked = Symbol("kLocked");
+
+const ftruncatePromise = promisify(ftruncateCb);
+const fchownPromise = promisify(fchownCb);
+const futimesPromise = promisify(futimesCb);
 
 interface WriteResult {
   bytesWritten: number;

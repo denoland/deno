@@ -3500,3 +3500,16 @@ fn process_stdout_write_order_pty() {
       console.expect("E");
     });
 }
+
+// Regression test for https://github.com/denoland/deno/issues/32513
+// Verifies that process.stdout survives destroy() calls (e.g. from mute-stream).
+#[test]
+fn process_stdout_destroy_undestroy_pty() {
+  TestContext::default()
+    .new_command()
+    .args_vec(["run", "run/process_stdout_destroy_undestroy.ts"])
+    .with_pty(|mut console| {
+      console.expect("before");
+      console.expect("after");
+    });
+}

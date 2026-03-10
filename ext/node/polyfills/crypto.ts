@@ -222,6 +222,39 @@ function hash(
   return hash.digest(outputEncoding);
 }
 
+function validateCipherivArgs(
+  cipher: unknown,
+  key: unknown,
+  iv: unknown,
+) {
+  if (typeof cipher !== "string") {
+    throw new ERR_INVALID_ARG_TYPE(
+      "cipher",
+      "string",
+      cipher,
+    );
+  }
+  if (
+    typeof key !== "string" && !isArrayBufferView(key) &&
+    !(key && typeof key === "object" && "type" in key)
+  ) {
+    throw new ERR_INVALID_ARG_TYPE(
+      "key",
+      ["string", "ArrayBufferView", "Buffer", "KeyObject"],
+      key,
+    );
+  }
+  if (
+    iv !== null && typeof iv !== "string" && !isArrayBufferView(iv)
+  ) {
+    throw new ERR_INVALID_ARG_TYPE(
+      "iv",
+      ["string", "ArrayBufferView", "Buffer", "null"],
+      iv,
+    );
+  }
+}
+
 function createCipheriv(
   algorithm: CipherCCMTypes,
   key: CipherKey,
@@ -252,7 +285,8 @@ function createCipheriv(
   iv: BinaryLike | null,
   options?: TransformOptions,
 ): Cipher {
-  return new Cipheriv(cipher, key, iv, options);
+  validateCipherivArgs(cipher, key, iv);
+  return Cipheriv(cipher, key, iv, options);
 }
 
 function createDecipheriv(
@@ -279,7 +313,8 @@ function createDecipheriv(
   iv: BinaryLike | null,
   options?: TransformOptions,
 ): Decipher {
-  return new Decipheriv(algorithm, key, iv, options);
+  validateCipherivArgs(algorithm, key, iv);
+  return Decipheriv(algorithm, key, iv, options);
 }
 
 function createDiffieHellman(

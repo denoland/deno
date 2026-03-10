@@ -1,0 +1,17 @@
+{
+  "tempDir": true,
+  "tests": {
+    "eval_cpu_prof": {
+      "steps": [
+        {
+          "args": "eval --cpu-prof-dir=. console.log(42)",
+          "output": "42\n"
+        },
+        {
+          "args": "run --allow-read verify.js",
+          "output": "Valid profile with [WILDCARD] nodes\n"
+        }
+      ]
+    }
+  }
+}

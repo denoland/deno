@@ -80,6 +80,8 @@ pub enum AsymmetricPrivateKey {
   Ec(EcPrivateKey),
   X25519(x25519_dalek::StaticSecret),
   Ed25519(ed25519_dalek::SigningKey),
+  X448([u8; 56]),
+  Ed448(ed448_goldilocks::SigningKey),
   Dh(DhPrivateKey),
 }
 
@@ -154,6 +156,8 @@ pub enum AsymmetricPublicKey {
   Ec(EcPublicKey),
   X25519(x25519_dalek::PublicKey),
   Ed25519(ed25519_dalek::VerifyingKey),
+  X448([u8; 56]),
+  Ed448(ed448_goldilocks::VerifyingKey),
   Dh(DhPublicKey),
 }
 
@@ -230,8 +234,29 @@ impl AsymmetricPrivateKey {
       AsymmetricPrivateKey::Ed25519(key) => {
         AsymmetricPublicKey::Ed25519(key.verifying_key())
       }
-      AsymmetricPrivateKey::Dh(_) => {
-        panic!("cannot derive public key from DH private key")
+      AsymmetricPrivateKey::X448(key) => {
+        let mut scalar_bytes = [0u8; 57];
+        scalar_bytes[..56].copy_from_slice(&key[..56]);
+        let scalar = ed448_goldilocks::EdwardsScalar::from_bytes_mod_order(
+          &scalar_bytes.into(),
+        );
+        let point = &ed448_goldilocks::MontgomeryPoint::GENERATOR * &scalar;
+        AsymmetricPublicKey::X448(point.0)
+      }
+      AsymmetricPrivateKey::Ed448(key) => {
+        AsymmetricPublicKey::Ed448(key.verifying_key())
+      }
+      AsymmetricPrivateKey::Dh(dh_key) => {
+        let prime = num_bigint_dig::BigUint::from_bytes_be(
+          dh_key.params.prime.as_bytes(),
+        );
+        let base =
+          num_bigint_dig::BigUint::from_bytes_be(dh_key.params.base.as_bytes());
+        let public_key = dh_key.key.compute_public_key(&base, &prime);
+        AsymmetricPublicKey::Dh(DhPublicKey {
+          key: public_key,
+          params: dh_key.params.clone(),
+        })
       }
     }
   }
@@ -353,6 +378,8 @@ impl PartialEq for AsymmetricPublicKey {
       (Self::Ec(a), Self::Ec(b)) => a == b,
       (Self::X25519(a), Self::X25519(b)) => a == b,
       (Self::Ed25519(a), Self::Ed25519(b)) => a == b,
+      (Self::X448(a), Self::X448(b)) => a == b,
+      (Self::Ed448(a), Self::Ed448(b)) => a == b,
       (Self::Dh(a), Self::Dh(b)) => a == b,
       _ => false,
     }
@@ -371,6 +398,8 @@ impl PartialEq for AsymmetricPrivateKey {
       (Self::Ec(a), Self::Ec(b)) => a == b,
       (Self::X25519(a), Self::X25519(b)) => a.to_bytes() == b.to_bytes(),
       (Self::Ed25519(a), Self::Ed25519(b)) => a.to_bytes() == b.to_bytes(),
+      (Self::X448(a), Self::X448(b)) => a == b,
+      (Self::Ed448(a), Self::Ed448(b)) => a == b,
       (Self::Dh(a), Self::Dh(b)) => a == b,
       _ => false,
     }
@@ -429,6 +458,10 @@ pub const X25519_OID: const_oid::ObjectIdentifier =
   const_oid::ObjectIdentifier::new_unwrap("1.3.101.110");
 pub const ED25519_OID: const_oid::ObjectIdentifier =
   const_oid::ObjectIdentifier::new_unwrap("1.3.101.112");
+pub const X448_OID: const_oid::ObjectIdentifier =
+  const_oid::ObjectIdentifier::new_unwrap("1.3.101.111");
+pub const ED448_OID: const_oid::ObjectIdentifier =
+  const_oid::ObjectIdentifier::new_unwrap("1.3.101.113");
 pub const DH_KEY_AGREEMENT_OID: const_oid::ObjectIdentifier =
   const_oid::ObjectIdentifier::new_unwrap("1.2.840.113549.1.3.1");
 
@@ -526,6 +559,9 @@ pub enum X509PublicKeyError {
   #[error("invalid Ed25519 public key")]
   InvalidEd25519Key,
   #[class(type)]
+  #[error("invalid Ed448 public key")]
+  InvalidEd448Key,
+  #[class(type)]
   #[error("invalid X25519 public key")]
   InvalidX25519Key,
   #[class(type)]
@@ -565,9 +601,21 @@ pub enum EdRawError {
   #[error("invalid Ed25519 key")]
   InvalidEd25519Key,
   #[class(type)]
+  #[error("invalid Ed448 key")]
+  InvalidEd448Key,
+  #[class(type)]
+  #[error("invalid X448 key")]
+  InvalidX448Key,
+  #[class(type)]
   #[error("unsupported curve")]
   UnsupportedCurve,
 }
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+#[class(generic)]
+#[error("unsupported")]
+#[property("code" = "ERR_OSSL_UNSUPPORTED")]
+pub struct UnsupportedPrivateKeyOidError;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 #[class(type)]
@@ -619,10 +667,21 @@ pub enum AsymmetricPrivateKeyError {
   X25519PrivateKeyIsWrongLength,
   #[error("invalid Ed25519 private key")]
   InvalidEd25519PrivateKey,
+  #[error("invalid x448 private key")]
+  InvalidX448PrivateKey,
+  #[error("x448 private key is the wrong length")]
+  X448PrivateKeyIsWrongLength,
+  #[error("invalid Ed448 private key")]
+  InvalidEd448PrivateKey,
   #[error("missing dh parameters")]
   MissingDhParameters,
-  #[error("unsupported private key oid")]
-  UnsupportedPrivateKeyOid,
+  #[class(inherit)]
+  #[error(transparent)]
+  UnsupportedPrivateKeyOid(
+    #[from]
+    #[inherit]
+    UnsupportedPrivateKeyOidError,
+  ),
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -706,6 +765,15 @@ pub enum AsymmetricPublicKeyError {
   #[error("invalid Ed25519 public key")]
   InvalidEd25519PublicKey,
   #[class(type)]
+  #[error("malformed or missing public key in x448 spki")]
+  MalformedOrMissingPublicKeyInX448Spki,
+  #[class(type)]
+  #[error("x448 public key is too short")]
+  X448PublicKeyIsTooShort,
+  #[class(type)]
+  #[error("invalid Ed448 public key")]
+  InvalidEd448PublicKey,
+  #[class(type)]
   #[error("missing dh parameters")]
   MissingDhParameters,
   #[class(type)]
@@ -714,8 +782,9 @@ pub enum AsymmetricPublicKeyError {
   #[class(type)]
   #[error("malformed or missing public key in dh spki")]
   MalformedOrMissingPublicKeyInDhSpki,
-  #[class(type)]
-  #[error("unsupported private key oid")]
+  #[class(generic)]
+  #[error("unsupported")]
+  #[property("code" = "ERR_OSSL_EVP_DECODE_ERROR")]
   UnsupportedPrivateKeyOid,
 }
 
@@ -902,6 +971,28 @@ impl KeyObjectHandle {
           .map_err(|_| AsymmetricPrivateKeyError::InvalidEd25519PrivateKey)?;
         AsymmetricPrivateKey::Ed25519(signing_key)
       }
+      X448_OID => {
+        let string_ref = OctetStringRef::from_der(pk_info.private_key)
+          .map_err(|_| AsymmetricPrivateKeyError::InvalidX448PrivateKey)?;
+        if string_ref.as_bytes().len() != 56 {
+          return Err(AsymmetricPrivateKeyError::X448PrivateKeyIsWrongLength);
+        }
+        let mut bytes = [0u8; 56];
+        bytes.copy_from_slice(string_ref.as_bytes());
+        AsymmetricPrivateKey::X448(bytes)
+      }
+      ED448_OID => {
+        let string_ref = OctetStringRef::from_der(pk_info.private_key)
+          .map_err(|_| AsymmetricPrivateKeyError::InvalidEd448PrivateKey)?;
+        let key_bytes = string_ref.as_bytes();
+        if key_bytes.len() != 57 {
+          return Err(AsymmetricPrivateKeyError::InvalidEd448PrivateKey);
+        }
+        let mut seed = [0u8; 57];
+        seed.copy_from_slice(key_bytes);
+        let seed = ed448_goldilocks::EdwardsScalarBytes::from(seed);
+        AsymmetricPrivateKey::Ed448(ed448_goldilocks::SigningKey::from(seed))
+      }
       DH_KEY_AGREEMENT_OID => {
         let params = pk_info
           .algorithm
@@ -909,12 +1000,17 @@ impl KeyObjectHandle {
           .ok_or(AsymmetricPrivateKeyError::MissingDhParameters)?;
         let params = pkcs3::DhParameter::from_der(&params.to_der().unwrap())
           .map_err(|_| AsymmetricPrivateKeyError::MissingDhParameters)?;
+        // pk_info.private_key is a DER-encoded INTEGER (tag + length + value)
+        // inside the PKCS#8 OCTET STRING, so we need to decode it first.
+        let private_key_int =
+          <AnyRef<'_> as spki::der::Decode>::from_der(pk_info.private_key)
+            .map_err(|_| AsymmetricPrivateKeyError::MissingDhParameters)?;
         AsymmetricPrivateKey::Dh(DhPrivateKey {
-          key: dh::PrivateKey::from_bytes(pk_info.private_key),
+          key: dh::PrivateKey::from_bytes(private_key_int.value()),
           params,
         })
       }
-      _ => return Err(AsymmetricPrivateKeyError::UnsupportedPrivateKeyOid),
+      _ => return Err(UnsupportedPrivateKeyOidError.into()),
     };
 
     Ok(KeyObjectHandle::AsymmetricPrivate(private_key))
@@ -979,6 +1075,8 @@ impl KeyObjectHandle {
       _ => {
         const ID_ED25519: &[u8] = &oid!(raw 1.3.101.112);
         const ID_X25519: &[u8] = &oid!(raw 1.3.101.110);
+        const ID_ED448: &[u8] = &oid!(raw 1.3.101.113);
+        const ID_X448: &[u8] = &oid!(raw 1.3.101.111);
 
         match spki.algorithm.algorithm.as_bytes() {
           ID_ED25519 => {
@@ -997,6 +1095,22 @@ impl KeyObjectHandle {
               .try_into()
               .map_err(|_| X509PublicKeyError::InvalidX25519Key)?;
             AsymmetricPublicKey::X25519(x25519_dalek::PublicKey::from(data))
+          }
+          ID_ED448 => {
+            let data = spki.subject_public_key.as_ref();
+            let point_bytes: &[u8; 57] = data
+              .try_into()
+              .map_err(|_| X509PublicKeyError::InvalidEd448Key)?;
+            let vk = ed448_goldilocks::VerifyingKey::from_bytes(point_bytes)
+              .map_err(|_| X509PublicKeyError::InvalidEd448Key)?;
+            AsymmetricPublicKey::Ed448(vk)
+          }
+          ID_X448 => {
+            let data: &[u8] = spki.subject_public_key.as_ref();
+            let data: [u8; 56] = data
+              .try_into()
+              .map_err(|_| X509PublicKeyError::InvalidX25519Key)?;
+            AsymmetricPublicKey::X448(data)
           }
           _ => return Err(X509PublicKeyError::UnsupportedX509KeyType),
         }
@@ -1144,6 +1258,39 @@ impl KeyObjectHandle {
         } else {
           Ok(KeyObjectHandle::AsymmetricPublic(
             AsymmetricPublicKey::X25519(x25519_dalek::PublicKey::from(data)),
+          ))
+        }
+      }
+      "Ed448" => {
+        if !is_public {
+          let key_bytes: [u8; 57] =
+            data.try_into().map_err(|_| EdRawError::InvalidEd448Key)?;
+          let seed = ed448_goldilocks::EdwardsScalarBytes::from(key_bytes);
+          Ok(KeyObjectHandle::AsymmetricPrivate(
+            AsymmetricPrivateKey::Ed448(ed448_goldilocks::SigningKey::from(
+              seed,
+            )),
+          ))
+        } else {
+          let point_bytes: &[u8; 57] =
+            data.try_into().map_err(|_| EdRawError::InvalidEd448Key)?;
+          let vk = ed448_goldilocks::VerifyingKey::from_bytes(point_bytes)
+            .map_err(|_| EdRawError::InvalidEd448Key)?;
+          Ok(KeyObjectHandle::AsymmetricPublic(
+            AsymmetricPublicKey::Ed448(vk),
+          ))
+        }
+      }
+      "X448" => {
+        let data: [u8; 56] =
+          data.try_into().map_err(|_| EdRawError::InvalidX448Key)?;
+        if !is_public {
+          Ok(KeyObjectHandle::AsymmetricPrivate(
+            AsymmetricPrivateKey::X448(data),
+          ))
+        } else {
+          Ok(KeyObjectHandle::AsymmetricPublic(
+            AsymmetricPublicKey::X448(data),
           ))
         }
       }
@@ -1298,6 +1445,29 @@ impl KeyObjectHandle {
           .map_err(|_| AsymmetricPublicKeyError::InvalidEd25519PublicKey)?;
         AsymmetricPublicKey::Ed25519(verifying_key)
       }
+      X448_OID => {
+        let mut bytes = [0; 56];
+        let data = spki.subject_public_key.as_bytes().ok_or(
+          AsymmetricPublicKeyError::MalformedOrMissingPublicKeyInX448Spki,
+        )?;
+        if data.len() < 56 {
+          return Err(AsymmetricPublicKeyError::X448PublicKeyIsTooShort);
+        }
+        bytes.copy_from_slice(&data[0..56]);
+        AsymmetricPublicKey::X448(bytes)
+      }
+      ED448_OID => {
+        let data = spki
+          .subject_public_key
+          .as_bytes()
+          .ok_or(AsymmetricPublicKeyError::InvalidEd448PublicKey)?;
+        let point_bytes: &[u8; 57] = data
+          .try_into()
+          .map_err(|_| AsymmetricPublicKeyError::InvalidEd448PublicKey)?;
+        let vk = ed448_goldilocks::VerifyingKey::from_bytes(point_bytes)
+          .map_err(|_| AsymmetricPublicKeyError::InvalidEd448PublicKey)?;
+        AsymmetricPublicKey::Ed448(vk)
+      }
       DH_KEY_AGREEMENT_OID => {
         let params = spki
           .algorithm
@@ -1311,8 +1481,15 @@ impl KeyObjectHandle {
             AsymmetricPublicKeyError::MalformedOrMissingPublicKeyInDhSpki,
           );
         };
+        // subject_public_key is a DER-encoded INTEGER inside the BIT STRING,
+        // so we need to decode it to get the raw key bytes.
+        let public_key_int =
+          <AnyRef<'_> as spki::der::Decode>::from_der(subject_public_key)
+            .map_err(|_| {
+              AsymmetricPublicKeyError::MalformedOrMissingPublicKeyInDhSpki
+            })?;
         AsymmetricPublicKey::Dh(DhPublicKey {
-          key: dh::PublicKey::from_bytes(subject_public_key),
+          key: dh::PublicKey::from_bytes(public_key_int.value()),
           params,
         })
       }
@@ -1440,6 +1617,10 @@ pub enum AsymmetricPublicKeyDerError {
   InvalidX25519PublicKey,
   #[error("invalid Ed25519 public key")]
   InvalidEd25519PublicKey,
+  #[error("invalid X448 public key")]
+  InvalidX448PublicKey,
+  #[error("invalid Ed448 public key")]
+  InvalidEd448PublicKey,
   #[error("invalid DH public key")]
   InvalidDhPublicKey,
   #[error("unsupported key type: {0}")]
@@ -1469,6 +1650,23 @@ impl AsymmetricPublicKey {
         let jwk = deno_core::serde_json::json!({
             "kty": "OKP",
             "crv": "Ed25519",
+            "x": bytes_to_b64(&bytes),
+        });
+        Ok(jwk)
+      }
+      AsymmetricPublicKey::X448(key) => {
+        let jwk = deno_core::serde_json::json!({
+            "kty": "OKP",
+            "crv": "X448",
+            "x": bytes_to_b64(key),
+        });
+        Ok(jwk)
+      }
+      AsymmetricPublicKey::Ed448(key) => {
+        let bytes = key.to_bytes();
+        let jwk = deno_core::serde_json::json!({
+            "kty": "OKP",
+            "crv": "Ed448",
             "x": bytes_to_b64(&bytes),
         });
         Ok(jwk)
@@ -1583,15 +1781,51 @@ impl AsymmetricPublicKey {
               .map_err(|_| AsymmetricPublicKeyDerError::InvalidEd25519PublicKey)?
               .into_boxed_slice()
           }
+          AsymmetricPublicKey::X448(key) => {
+            let spki = SubjectPublicKeyInfoRef {
+              algorithm: rsa::pkcs8::AlgorithmIdentifierRef {
+                oid: X448_OID,
+                parameters: None,
+              },
+              subject_public_key: BitStringRef::from_bytes(key)
+                .map_err(|_| AsymmetricPublicKeyDerError::InvalidX448PublicKey)?,
+            };
+
+            spki
+              .to_der()
+              .map_err(|_| AsymmetricPublicKeyDerError::InvalidX448PublicKey)?
+              .into_boxed_slice()
+          }
+          AsymmetricPublicKey::Ed448(key) => {
+            let bytes = key.to_bytes();
+            let spki = SubjectPublicKeyInfoRef {
+              algorithm: rsa::pkcs8::AlgorithmIdentifierRef {
+                oid: ED448_OID,
+                parameters: None,
+              },
+              subject_public_key: BitStringRef::from_bytes(&bytes)
+                .map_err(|_| AsymmetricPublicKeyDerError::InvalidEd448PublicKey)?,
+            };
+
+            spki
+              .to_der()
+              .map_err(|_| AsymmetricPublicKeyDerError::InvalidEd448PublicKey)?
+              .into_boxed_slice()
+          }
           AsymmetricPublicKey::Dh(key) => {
-            let public_key_bytes = key.key.clone().into_vec();
+            // The public key in SPKI for DH must be a DER-encoded INTEGER
+            let raw_key = key.key.clone().into_vec();
+            let public_key_int = asn1::Int::new(&raw_key).unwrap();
+            let public_key_der = public_key_int
+              .to_der()
+              .map_err(|_| AsymmetricPublicKeyDerError::InvalidDhPublicKey)?;
             let params = key.params.to_der().unwrap();
             let spki = SubjectPublicKeyInfoRef {
               algorithm: rsa::pkcs8::AlgorithmIdentifierRef {
                 oid: DH_KEY_AGREEMENT_OID,
                 parameters: Some(AnyRef::new(Tag::Sequence, &params).unwrap()),
               },
-              subject_public_key: BitStringRef::from_bytes(&public_key_bytes)
+              subject_public_key: BitStringRef::from_bytes(&public_key_der)
                 .map_err(|_| {
                   AsymmetricPublicKeyDerError::InvalidDhPublicKey
               })?,
@@ -1631,6 +1865,10 @@ pub enum AsymmetricPrivateKeyDerError {
   InvalidX25519PrivateKey,
   #[error("invalid Ed25519 private key")]
   InvalidEd25519PrivateKey,
+  #[error("invalid X448 private key")]
+  InvalidX448PrivateKey,
+  #[error("invalid Ed448 private key")]
+  InvalidEd448PrivateKey,
   #[error("invalid DH private key")]
   InvalidDhPrivateKey,
   #[error("unsupported key type: {0}")]
@@ -1704,6 +1942,32 @@ impl AsymmetricPrivateKey {
         Ok(deno_core::serde_json::json!({
             "crv": "Ed25519",
             "x": bytes_to_b64(x.as_bytes()),
+            "d": bytes_to_b64(&bytes),
+            "kty": "OKP",
+        }))
+      }
+      AsymmetricPrivateKey::X448(key) => {
+        let AsymmetricPublicKey::X448(x) = self.to_public_key() else {
+          unreachable!();
+        };
+
+        Ok(deno_core::serde_json::json!({
+            "crv": "X448",
+            "x": bytes_to_b64(&x),
+            "d": bytes_to_b64(&key[..56]),
+            "kty": "OKP",
+        }))
+      }
+      AsymmetricPrivateKey::Ed448(key) => {
+        let bytes = key.to_bytes();
+        let AsymmetricPublicKey::Ed448(x) = self.to_public_key() else {
+          unreachable!();
+        };
+        let x_bytes = x.to_bytes();
+
+        Ok(deno_core::serde_json::json!({
+            "crv": "Ed448",
+            "x": bytes_to_b64(&x_bytes),
             "d": bytes_to_b64(&bytes),
             "kty": "OKP",
         }))
@@ -1837,15 +2101,61 @@ impl AsymmetricPrivateKey {
               .map_err(|_| AsymmetricPrivateKeyDerError::InvalidEd25519PrivateKey)?
               .into_boxed_slice()
           }
+          AsymmetricPrivateKey::X448(key) => {
+            let private_key = OctetStringRef::new(&key[..56])
+              .map_err(|_| AsymmetricPrivateKeyDerError::InvalidX448PrivateKey)?
+              .to_der()
+              .map_err(|_| AsymmetricPrivateKeyDerError::InvalidX448PrivateKey)?;
+
+            let private_key = PrivateKeyInfo {
+              algorithm: rsa::pkcs8::AlgorithmIdentifierRef {
+                oid: X448_OID,
+                parameters: None,
+              },
+              private_key: &private_key,
+              public_key: None,
+            };
+
+            private_key
+              .to_der()
+              .map_err(|_| AsymmetricPrivateKeyDerError::InvalidX448PrivateKey)?
+              .into_boxed_slice()
+          }
+          AsymmetricPrivateKey::Ed448(key) => {
+            let seed = key.to_bytes();
+            let private_key = OctetStringRef::new(&seed)
+              .map_err(|_| AsymmetricPrivateKeyDerError::InvalidEd448PrivateKey)?
+              .to_der()
+              .map_err(|_| AsymmetricPrivateKeyDerError::InvalidEd448PrivateKey)?;
+
+            let private_key = PrivateKeyInfo {
+              algorithm: rsa::pkcs8::AlgorithmIdentifierRef {
+                oid: ED448_OID,
+                parameters: None,
+              },
+              private_key: &private_key,
+              public_key: None,
+            };
+
+            private_key
+              .to_der()
+              .map_err(|_| AsymmetricPrivateKeyDerError::InvalidEd448PrivateKey)?
+              .into_boxed_slice()
+          }
           AsymmetricPrivateKey::Dh(key) => {
-            let private_key = key.key.clone().into_vec();
+            // The private key in PKCS#8 for DH must be a DER-encoded INTEGER
+            let raw_key = key.key.clone().into_vec();
+            let private_key_int = asn1::Int::new(&raw_key).unwrap();
+            let private_key_der = private_key_int
+              .to_der()
+              .map_err(|_| AsymmetricPrivateKeyDerError::InvalidDhPrivateKey)?;
             let params = key.params.to_der().unwrap();
             let private_key = PrivateKeyInfo {
               algorithm: rsa::pkcs8::AlgorithmIdentifierRef {
                 oid: DH_KEY_AGREEMENT_OID,
                 parameters: Some(AnyRef::new(Tag::Sequence, &params).unwrap()),
               },
-              private_key: &private_key,
+              private_key: &private_key_der,
               public_key: None,
             };
 
@@ -1962,6 +2272,14 @@ pub fn op_node_get_asymmetric_key_type(
     | KeyObjectHandle::AsymmetricPublic(AsymmetricPublicKey::Ed25519(_)) => {
       Ok("ed25519")
     }
+    KeyObjectHandle::AsymmetricPrivate(AsymmetricPrivateKey::X448(_))
+    | KeyObjectHandle::AsymmetricPublic(AsymmetricPublicKey::X448(_)) => {
+      Ok("x448")
+    }
+    KeyObjectHandle::AsymmetricPrivate(AsymmetricPrivateKey::Ed448(_))
+    | KeyObjectHandle::AsymmetricPublic(AsymmetricPublicKey::Ed448(_)) => {
+      Ok("ed448")
+    }
     KeyObjectHandle::AsymmetricPrivate(AsymmetricPrivateKey::Dh(_))
     | KeyObjectHandle::AsymmetricPublic(AsymmetricPublicKey::Dh(_)) => Ok("dh"),
     KeyObjectHandle::Secret(_) => Err(JsErrorBox::type_error(
@@ -2002,6 +2320,8 @@ pub enum AsymmetricKeyDetails {
   },
   X25519,
   Ed25519,
+  X448,
+  Ed448,
   Dh,
 }
 
@@ -2064,6 +2384,8 @@ pub fn op_node_get_asymmetric_key_details(
       }
       AsymmetricPrivateKey::X25519(_) => Ok(AsymmetricKeyDetails::X25519),
       AsymmetricPrivateKey::Ed25519(_) => Ok(AsymmetricKeyDetails::Ed25519),
+      AsymmetricPrivateKey::X448(_) => Ok(AsymmetricKeyDetails::X448),
+      AsymmetricPrivateKey::Ed448(_) => Ok(AsymmetricKeyDetails::Ed448),
       AsymmetricPrivateKey::Dh(_) => Ok(AsymmetricKeyDetails::Dh),
     },
     KeyObjectHandle::AsymmetricPublic(public_key) => match public_key {
@@ -2119,6 +2441,8 @@ pub fn op_node_get_asymmetric_key_details(
       }
       AsymmetricPublicKey::X25519(_) => Ok(AsymmetricKeyDetails::X25519),
       AsymmetricPublicKey::Ed25519(_) => Ok(AsymmetricKeyDetails::Ed25519),
+      AsymmetricPublicKey::X448(_) => Ok(AsymmetricKeyDetails::X448),
+      AsymmetricPublicKey::Ed448(_) => Ok(AsymmetricKeyDetails::Ed448),
       AsymmetricPublicKey::Dh(_) => Ok(AsymmetricKeyDetails::Dh),
     },
     KeyObjectHandle::Secret(_) => Err(JsErrorBox::type_error(
@@ -2489,14 +2813,47 @@ pub async fn op_node_generate_ed25519_key_async() -> KeyObjectHandlePair {
   spawn_blocking(ed25519_generate).await.unwrap()
 }
 
-fn u32_slice_to_u8_slice(slice: &[u32]) -> &[u8] {
-  // SAFETY: just reinterpreting the slice as u8
-  unsafe {
-    std::slice::from_raw_parts(
-      slice.as_ptr() as *const u8,
-      std::mem::size_of_val(slice),
-    )
-  }
+fn x448_generate() -> KeyObjectHandlePair {
+  let mut seed = [0u8; 56];
+  thread_rng().fill_bytes(&mut seed);
+  let private_key = AsymmetricPrivateKey::X448(seed);
+  let public_key = private_key.to_public_key();
+  KeyObjectHandlePair::new(private_key, public_key)
+}
+
+#[op2]
+#[cppgc]
+pub fn op_node_generate_x448_key() -> KeyObjectHandlePair {
+  x448_generate()
+}
+
+#[op2]
+#[cppgc]
+pub async fn op_node_generate_x448_key_async() -> KeyObjectHandlePair {
+  spawn_blocking(x448_generate).await.unwrap()
+}
+
+fn ed448_generate() -> KeyObjectHandlePair {
+  let mut seed = [0u8; 57];
+  thread_rng().fill_bytes(&mut seed);
+  let signing_key = ed448_goldilocks::SigningKey::from(
+    ed448_goldilocks::EdwardsScalarBytes::from(seed),
+  );
+  let private_key = AsymmetricPrivateKey::Ed448(signing_key);
+  let public_key = private_key.to_public_key();
+  KeyObjectHandlePair::new(private_key, public_key)
+}
+
+#[op2]
+#[cppgc]
+pub fn op_node_generate_ed448_key() -> KeyObjectHandlePair {
+  ed448_generate()
+}
+
+#[op2]
+#[cppgc]
+pub async fn op_node_generate_ed448_key_async() -> KeyObjectHandlePair {
+  spawn_blocking(ed448_generate).await.unwrap()
 }
 
 fn dh_group_generate(
@@ -2535,9 +2892,18 @@ fn dh_group_generate(
     ),
     _ => return Err(JsErrorBox::type_error("Unsupported group name")),
   };
+  // MODULUS arrays are big-endian u32 words. Convert to big-endian bytes
+  // for ASN.1, matching the prime used during key generation.
+  // Prepend 0x00 if MSB is set, since ASN.1 integers are signed.
+  let mut prime_bytes: Vec<u8> =
+    prime.iter().flat_map(|x| x.to_be_bytes()).collect();
+  if prime_bytes.first().is_some_and(|b| b & 0x80 != 0) {
+    prime_bytes.insert(0, 0x00);
+  }
+  let gen_bytes = [generator as u8];
   let params = DhParameter {
-    prime: asn1::Int::new(u32_slice_to_u8_slice(prime)).unwrap(),
-    base: asn1::Int::new(generator.to_be_bytes().as_slice()).unwrap(),
+    prime: asn1::Int::new(&prime_bytes).unwrap(),
+    base: asn1::Int::new(&gen_bytes).unwrap(),
     private_value_length: None,
   };
   Ok(KeyObjectHandlePair::new(
@@ -2579,9 +2945,21 @@ fn dh_generate(
     .map(|p| p.into())
     .unwrap_or_else(|| Prime::generate(prime_len));
   let dh = dh::DiffieHellman::new(prime.clone(), generator);
+  let gen_bytes = if generator <= 0xFF {
+    vec![generator as u8]
+  } else if generator <= 0xFFFF {
+    vec![(generator >> 8) as u8, generator as u8]
+  } else {
+    generator
+      .to_be_bytes()
+      .iter()
+      .copied()
+      .skip_while(|&b| b == 0)
+      .collect()
+  };
   let params = DhParameter {
     prime: asn1::Int::new(&prime.0.to_bytes_be()).unwrap(),
-    base: asn1::Int::new(generator.to_be_bytes().as_slice()).unwrap(),
+    base: asn1::Int::new(&gen_bytes).unwrap(),
     private_value_length: None,
   };
   KeyObjectHandlePair::new(
