@@ -1145,15 +1145,31 @@ async fn run_tests_for_worker_inner(
     }
 
     // Execute afterEach hooks (LIFO order)
+    // Only report afterEach failure if the original test passed,
+    // otherwise the original test failure would be masked by the afterEach error.
+    let original_test_passed = !matches!(result, TestResult::Failed(_));
     call_hooks(worker, test_hooks.after_each.iter().rev(), |core_error| {
-      match core_error {
-        CoreErrorKind::Js(err) => {
-          let test_result = TestResult::Failed(TestFailure::JsError(err));
-          fail_fast_tracker.add_failure();
-          event_tracker.result(desc, test_result, earlier.elapsed())?;
-          Ok(())
+      if original_test_passed {
+        match core_error {
+          CoreErrorKind::Js(err) => {
+            let test_result = TestResult::Failed(TestFailure::JsError(err));
+            fail_fast_tracker.add_failure();
+            event_tracker.result(desc, test_result, earlier.elapsed())?;
+            Ok(())
+          }
+          err => Err(err.into_box().into()),
         }
-        err => Err(err.into_box().into()),
+      } else {
+        // Original test already failed, so we don't report afterEach failure
+        // to avoid masking the original test failure. The hooks still run
+        // for cleanup purposes.
+        match core_error {
+          CoreErrorKind::Js(_err) => {
+            // Don't report the afterEach error since the original test already failed
+            Ok(())
+          }
+          err => Err(err.into_box().into()),
+        }
       }
     })
     .await?;
