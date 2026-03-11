@@ -3,13 +3,19 @@ import { fs as fsConstants } from "ext:deno_node/internal_binding/constants.ts";
 import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
 import {
   type CallbackWithError,
+  getValidatedEncoding,
   isFd,
+  isFileOptions,
   makeCallback,
   maybeCallback,
   type WriteFileOptions,
 } from "ext:deno_node/_fs/_fs_common.ts";
 import type { Encodings } from "ext:deno_node/_utils.ts";
-import { denoErrorToNodeError } from "ext:deno_node/internal/errors.ts";
+import {
+  AbortError,
+  denoErrorToNodeError,
+  denoWriteFileErrorToNodeError,
+} from "ext:deno_node/internal/errors.ts";
 import * as constants from "ext:deno_node/_fs/_fs_constants.ts";
 
 import { copyFile, copyFileSync } from "ext:deno_node/_fs/_fs_copy.ts";
@@ -19,30 +25,18 @@ import { exists, existsSync } from "ext:deno_node/_fs/_fs_exists.ts";
 import { fstat, fstatSync } from "ext:deno_node/_fs/_fs_fstat.ts";
 import { lstat, lstatSync } from "ext:deno_node/_fs/_fs_lstat.ts";
 import { lutimes, lutimesSync } from "ext:deno_node/_fs/_fs_lutimes.ts";
-import { mkdir, mkdirSync } from "ext:deno_node/_fs/_fs_mkdir.ts";
-import { mkdtemp, mkdtempSync } from "ext:deno_node/_fs/_fs_mkdtemp.ts";
-import { open, openSync } from "ext:deno_node/_fs/_fs_open.ts";
-import { opendir, opendirSync } from "ext:deno_node/_fs/_fs_opendir.ts";
 import { read, readSync } from "ext:deno_node/_fs/_fs_read.ts";
 import { readdir, readdirSync } from "ext:deno_node/_fs/_fs_readdir.ts";
 import { readFile, readFileSync } from "ext:deno_node/_fs/_fs_readFile.ts";
 import { readlink, readlinkSync } from "ext:deno_node/_fs/_fs_readlink.ts";
 import { realpath, realpathSync } from "ext:deno_node/_fs/_fs_realpath.ts";
-import { rename, renameSync } from "ext:deno_node/_fs/_fs_rename.ts";
-import { rmdir, rmdirSync } from "ext:deno_node/_fs/_fs_rmdir.ts";
-import { rm, rmSync } from "ext:deno_node/_fs/_fs_rm.ts";
 import { stat, Stats, statSync } from "ext:deno_node/_fs/_fs_stat.ts";
 import { statfs, statfsSync } from "ext:deno_node/_fs/_fs_statfs.ts";
-import { symlink, symlinkSync } from "ext:deno_node/_fs/_fs_symlink.ts";
-import { truncate, truncateSync } from "ext:deno_node/_fs/_fs_truncate.ts";
-import { utimes, utimesSync } from "ext:deno_node/_fs/_fs_utimes.ts";
-import { unwatchFile, watch, watchFile } from "ext:deno_node/_fs/_fs_watch.ts";
-// @deno-types="./_fs/_fs_write.d.ts"
-import { write, writeSync } from "ext:deno_node/_fs/_fs_write.ts";
-// @deno-types="./_fs/_fs_writev.d.ts"
-import { writev, writevSync } from "ext:deno_node/_fs/_fs_writev.ts";
+import { EventEmitter } from "node:events";
+import { notImplemented } from "ext:deno_node/_utils.ts";
+import { promisify } from "node:util";
+import { delay } from "ext:deno_node/_util/async.ts";
 import { readv, readvSync } from "ext:deno_node/_fs/_fs_readv.ts";
-import { writeFile, writeFileSync } from "ext:deno_node/_fs/_fs_writeFile.ts";
 import promises from "ext:deno_node/internal/fs/promises.ts";
 // @deno-types="./internal/fs/streams.d.ts"
 import {
@@ -52,52 +46,110 @@ import {
   WriteStream,
 } from "ext:deno_node/internal/fs/streams.mjs";
 import {
+  arrayBufferViewToUint8Array,
+  constants as fsUtilConstants,
   copyObject,
   Dirent,
+  emitRecursiveRmdirWarning,
   getOptions,
   getValidatedFd,
   getValidatedPath,
   getValidatedPathToString,
   getValidMode,
   kMaxUserId,
+  type RmOptions,
+  stringToFlags,
   toUnixTimestamp as _toUnixTimestamp,
+  validateBufferArray,
+  validateOffsetLengthWrite,
+  validateRmdirOptions,
+  validateRmOptions,
+  validateRmOptionsSync,
+  validateStringAfterArrayBufferView,
+  warnOnNonPortableTemplate,
 } from "ext:deno_node/internal/fs/utils.mjs";
 import { glob, globSync } from "ext:deno_node/_fs/_fs_glob.ts";
 import {
   parseFileMode,
+  validateBoolean,
+  validateEncoding,
   validateFunction,
   validateInt32,
   validateInteger,
   validateObject,
+  validateOneOf,
   validateString,
 } from "ext:deno_node/internal/validators.mjs";
-import type { Buffer } from "node:buffer";
+import { Buffer } from "node:buffer";
+import process from "node:process";
+import * as io from "ext:deno_io/12_io.js";
+import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
+import { pathFromURL } from "ext:deno_web/00_infra.js";
+import { URLPrototype } from "ext:deno_web/00_url.js";
+import { FileHandle } from "ext:deno_node/internal/fs/handle.ts";
+import { isIterable } from "ext:deno_node/internal/streams/utils.js";
+import type { ErrnoException } from "ext:deno_node/_global.d.ts";
+import type { BufferEncoding } from "ext:deno_node/_global.d.ts";
 import {
   op_fs_fchmod_async,
   op_fs_fchmod_sync,
   op_fs_fchown_async,
   op_fs_fchown_sync,
   op_fs_read_file_async,
+  op_fs_seek_async,
+  op_fs_seek_sync,
   op_node_lchmod,
   op_node_lchmod_sync,
   op_node_lchown,
   op_node_lchown_sync,
+  op_node_mkdtemp,
+  op_node_mkdtemp_sync,
+  op_node_open,
+  op_node_open_sync,
+  op_node_rmdir,
+  op_node_rmdir_sync,
 } from "ext:core/ops";
 import { FsFile } from "ext:deno_fs/30_fs.js";
-import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
+import {
+  ERR_FS_RMDIR_ENOTDIR,
+  ERR_INVALID_ARG_TYPE,
+  uvException,
+} from "ext:deno_node/internal/errors.ts";
 import { toUnixTimestamp } from "ext:deno_node/internal/fs/utils.mjs";
-import { isMacOS } from "ext:deno_node/_util/os.ts";
+import { isMacOS, isWindows } from "ext:deno_node/_util/os.ts";
+import {
+  customPromisifyArgs,
+  kEmptyObject,
+  normalizeEncoding,
+} from "ext:deno_node/internal/util.mjs";
+import { basename, resolve, toNamespacedPath } from "node:path";
+import * as pathModule from "node:path";
+import type { Encoding } from "node:crypto";
 import { core, primordials } from "ext:core/mod.js";
 
 const {
+  ArrayBufferIsView,
+  DatePrototypeGetTime,
+  DateUTC,
   Error,
+  FunctionPrototypeBind,
   ErrorPrototype,
+  MapPrototypeDelete,
+  MapPrototypeGet,
+  MapPrototypeSet,
+  MathMin,
   Number,
   NumberIsFinite,
   NumberIsNaN,
+  ObjectDefineProperty,
   ObjectPrototypeIsPrototypeOf,
   PromisePrototypeThen,
+  PromiseResolve,
+  SafeMap,
+  StringPrototypeToString,
+  SymbolAsyncIterator,
   SymbolFor,
+  Uint8Array,
 } = primordials;
 
 const {
@@ -656,6 +708,656 @@ function unlinkSync(path: string | Buffer | URL): void {
   }
 }
 
+function rename(
+  oldPath: string | Buffer | URL,
+  newPath: string | Buffer | URL,
+  callback: (err?: Error) => void,
+) {
+  oldPath = getValidatedPathToString(oldPath, "oldPath");
+  newPath = getValidatedPathToString(newPath, "newPath");
+  validateFunction(callback, "callback");
+
+  PromisePrototypeThen(
+    Deno.rename(oldPath, newPath),
+    () => callback(),
+    (err: Error) =>
+      callback(denoErrorToNodeError(err, {
+        syscall: "rename",
+        path: oldPath,
+        dest: newPath,
+      })),
+  );
+}
+
+function renameSync(
+  oldPath: string | Buffer | URL,
+  newPath: string | Buffer | URL,
+) {
+  oldPath = getValidatedPathToString(oldPath, "oldPath");
+  newPath = getValidatedPathToString(newPath, "newPath");
+
+  try {
+    Deno.renameSync(oldPath, newPath);
+  } catch (err) {
+    throw denoErrorToNodeError(err as Error, {
+      syscall: "rename",
+      path: oldPath,
+      dest: newPath,
+    });
+  }
+}
+
+type rmOptions = {
+  force?: boolean;
+  maxRetries?: number;
+  recursive?: boolean;
+  retryDelay?: number;
+};
+
+type rmCallback = (err: Error | null) => void;
+
+function rm(path: string | URL, callback: rmCallback): void;
+function rm(
+  path: string | URL,
+  options: rmOptions,
+  callback: rmCallback,
+): void;
+function rm(
+  path: string | URL,
+  optionsOrCallback: rmOptions | rmCallback,
+  maybeCallback?: rmCallback,
+) {
+  const callback = typeof optionsOrCallback === "function"
+    ? optionsOrCallback
+    : maybeCallback;
+  const options = typeof optionsOrCallback === "object"
+    ? optionsOrCallback
+    : undefined;
+
+  if (!callback) throw new Error("No callback function supplied");
+
+  validateRmOptions(
+    path,
+    options,
+    false,
+    (err: Error | null, options: rmOptions) => {
+      if (err) {
+        return callback(err);
+      }
+
+      PromisePrototypeThen(
+        Deno.remove(path, { recursive: options?.recursive }),
+        () => callback(null),
+        (err) => {
+          if (
+            options?.force &&
+            ObjectPrototypeIsPrototypeOf(Deno.errors.NotFound.prototype, err)
+          ) {
+            return callback(null);
+          }
+
+          callback(denoErrorToNodeError(err, { syscall: "rm" }));
+        },
+      );
+    },
+  );
+}
+
+function rmSync(path: string | URL, options?: rmOptions) {
+  options = validateRmOptionsSync(path, options, false);
+  try {
+    Deno.removeSync(path, { recursive: options?.recursive });
+  } catch (err: unknown) {
+    if (
+      options?.force &&
+      ObjectPrototypeIsPrototypeOf(Deno.errors.NotFound.prototype, err)
+    ) {
+      return;
+    }
+    throw denoErrorToNodeError(err, { syscall: "rm" });
+  }
+}
+
+type rmdirOptions = {
+  maxRetries?: number;
+  recursive?: boolean;
+  retryDelay?: number;
+};
+
+type rmdirCallback = (err?: Error) => void;
+
+const rmdirRecursive =
+  (path: string, callback: rmdirCallback) =>
+  (err: Error | false | null, options?: RmOptions) => {
+    if (err === false) {
+      return callback(new ERR_FS_RMDIR_ENOTDIR(path));
+    }
+    if (err) {
+      return callback(err);
+    }
+
+    PromisePrototypeThen(
+      Deno.remove(path, { recursive: options?.recursive }),
+      (_) => callback(),
+      (err: Error) =>
+        callback(
+          denoErrorToNodeError(err, { syscall: "rmdir", path }),
+        ),
+    );
+  };
+
+function rmdir(
+  path: string | Buffer | URL,
+  callback: rmdirCallback,
+): void;
+function rmdir(
+  path: string | Buffer | URL,
+  options: rmdirOptions,
+  callback: rmdirCallback,
+): void;
+function rmdir(
+  path: string | Buffer | URL,
+  options: rmdirOptions | rmdirCallback | undefined,
+  callback?: rmdirCallback,
+) {
+  if (typeof options === "function") {
+    callback = options;
+    options = undefined;
+  }
+  validateFunction(callback, "cb");
+  path = getValidatedPathToString(path);
+
+  if (options?.recursive) {
+    emitRecursiveRmdirWarning();
+    validateRmOptions(
+      path,
+      { ...options, force: false },
+      true,
+      rmdirRecursive(path, callback),
+    );
+  } else {
+    validateRmdirOptions(options);
+    PromisePrototypeThen(
+      op_node_rmdir(path),
+      (_) => callback(),
+      (err: Error) =>
+        callback(
+          denoErrorToNodeError(err, { syscall: "rmdir", path }),
+        ),
+    );
+  }
+}
+
+function rmdirSync(path: string | Buffer | URL, options?: rmdirOptions) {
+  path = getValidatedPathToString(path);
+  if (options?.recursive) {
+    emitRecursiveRmdirWarning();
+    const optionsOrFalse = validateRmOptionsSync(path, {
+      ...options,
+      force: false,
+    }, true);
+    if (optionsOrFalse === false) {
+      throw new ERR_FS_RMDIR_ENOTDIR(path);
+    }
+    return Deno.removeSync(path, {
+      recursive: true,
+    });
+  }
+
+  validateRmdirOptions(options);
+  try {
+    op_node_rmdir_sync(path);
+  } catch (err) {
+    throw (denoErrorToNodeError(err as Error, { syscall: "rmdir", path }));
+  }
+}
+
+// -- mkdir --
+
+type MkdirCallback =
+  | ((err: Error | null, path?: string) => void)
+  | CallbackWithError;
+
+/**
+ * On Windows, recursive mkdir through a file returns EEXIST instead of
+ * ENOTDIR. Check if any component of the path is a file and fix the error.
+ */
+function fixMkdirError(
+  err: Error,
+  path: string,
+): Error {
+  const nodeErr = denoErrorToNodeError(err, { syscall: "mkdir", path });
+  if (!isWindows) return nodeErr;
+  if ((nodeErr as NodeJS.ErrnoException).code !== "EEXIST") return nodeErr;
+  let cursor = resolve(path, "..");
+  while (true) {
+    try {
+      const stat = Deno.statSync(cursor);
+      if (!stat.isDirectory) {
+        return uvException({
+          errno: codeMap.get("ENOTDIR")!,
+          syscall: "mkdir",
+          path,
+        });
+      }
+      break;
+    } catch {
+      const parent = resolve(cursor, "..");
+      if (parent === cursor) break;
+      cursor = parent;
+    }
+  }
+  return nodeErr;
+}
+
+/** Find the first component of `path` that does not exist. */
+function findFirstNonExistent(path: string): string | undefined {
+  let cursor = resolve(path);
+  while (true) {
+    try {
+      Deno.statSync(cursor);
+      return undefined;
+    } catch {
+      const parent = resolve(cursor, "..");
+      if (parent === cursor) {
+        return toNamespacedPath(cursor);
+      }
+      try {
+        Deno.statSync(parent);
+        return toNamespacedPath(cursor);
+      } catch {
+        cursor = parent;
+      }
+    }
+  }
+}
+
+type MkdirOptions =
+  | { recursive?: boolean; mode?: number | undefined }
+  | number
+  | boolean;
+
+function mkdir(
+  path: string | URL,
+  options?: MkdirOptions | MkdirCallback,
+  callback?: MkdirCallback,
+) {
+  path = getValidatedPath(path) as string;
+
+  let mode = 0o777;
+  let recursive = false;
+
+  if (typeof options == "function") {
+    callback = options;
+  } else if (typeof options === "number") {
+    mode = parseFileMode(options, "mode");
+  } else if (typeof options === "boolean") {
+    recursive = options;
+  } else if (options) {
+    if (options.recursive !== undefined) recursive = options.recursive;
+    if (options.mode !== undefined) {
+      mode = parseFileMode(options.mode, "options.mode");
+    }
+  }
+  validateBoolean(recursive, "options.recursive");
+
+  let firstNonExistent: string | undefined;
+  try {
+    firstNonExistent = recursive ? findFirstNonExistent(path) : undefined;
+  } catch (err) {
+    if (typeof callback === "function") {
+      callback(
+        denoErrorToNodeError(err as Error, { syscall: "mkdir", path }),
+      );
+    }
+    return;
+  }
+
+  PromisePrototypeThen(
+    Deno.mkdir(path, { recursive, mode }),
+    () => {
+      if (typeof callback === "function") {
+        callback(null, firstNonExistent);
+      }
+    },
+    (err: Error) => {
+      if (typeof callback === "function") {
+        callback(
+          recursive
+            ? fixMkdirError(err as Error, path as string)
+            : denoErrorToNodeError(err as Error, { syscall: "mkdir", path }),
+        );
+      }
+    },
+  );
+}
+
+function mkdirSync(
+  path: string | URL,
+  options?: MkdirOptions,
+): string | undefined {
+  path = getValidatedPath(path) as string;
+
+  let mode = 0o777;
+  let recursive = false;
+
+  if (typeof options === "number") {
+    mode = parseFileMode(options, "mode");
+  } else if (typeof options === "boolean") {
+    recursive = options;
+  } else if (options) {
+    if (options.recursive !== undefined) recursive = options.recursive;
+    if (options.mode !== undefined) {
+      mode = parseFileMode(options.mode, "options.mode");
+    }
+  }
+  validateBoolean(recursive, "options.recursive");
+
+  let firstNonExistent: string | undefined;
+  try {
+    firstNonExistent = recursive ? findFirstNonExistent(path) : undefined;
+    Deno.mkdirSync(path, { recursive, mode });
+  } catch (err) {
+    throw recursive
+      ? fixMkdirError(err as Error, path)
+      : denoErrorToNodeError(err as Error, { syscall: "mkdir", path });
+  }
+
+  return firstNonExistent;
+}
+
+// -- mkdtemp --
+
+type MkdtempCallback = (
+  err: Error | null,
+  directory?: string,
+) => void;
+type MkdtempBufferCallback = (
+  err: Error | null,
+  directory?: Buffer<ArrayBufferLike>,
+) => void;
+
+function mkdtemp(
+  prefix: string | Buffer | Uint8Array | URL,
+  callback: MkdtempCallback,
+): void;
+function mkdtemp(
+  prefix: string | Buffer | Uint8Array | URL,
+  options: { encoding: "buffer" } | "buffer",
+  callback: MkdtempBufferCallback,
+): void;
+function mkdtemp(
+  prefix: string | Buffer | Uint8Array | URL,
+  options: { encoding: string } | string,
+  callback: MkdtempCallback,
+): void;
+function mkdtemp(
+  prefix: string | Buffer | Uint8Array | URL,
+  options: { encoding: string } | string | MkdtempCallback | undefined,
+  callback?: MkdtempCallback | MkdtempBufferCallback,
+) {
+  if (typeof options === "function") {
+    callback = options;
+    options = undefined;
+  }
+  callback = makeCallback(callback);
+  const encoding = parseMkdtempEncoding(options);
+  prefix = getValidatedPathToString(prefix, "prefix");
+
+  warnOnNonPortableTemplate(prefix);
+
+  PromisePrototypeThen(
+    op_node_mkdtemp(prefix),
+    (path: string) => callback(null, decodeMkdtemp(path, encoding)),
+    (err: Error) =>
+      callback(denoErrorToNodeError(err, {
+        syscall: "mkdtemp",
+        path: `${prefix}XXXXXX`,
+      })),
+  );
+}
+
+function mkdtempSync(
+  prefix: string | Buffer | Uint8Array | URL,
+  options?: { encoding: "buffer" } | "buffer",
+): Buffer<ArrayBufferLike>;
+function mkdtempSync(
+  prefix: string | Buffer | Uint8Array | URL,
+  options?: { encoding: string } | string,
+): string;
+function mkdtempSync(
+  prefix: string | Buffer | Uint8Array | URL,
+  options?: { encoding: string } | string,
+): string | Buffer<ArrayBufferLike> {
+  const encoding = parseMkdtempEncoding(options);
+  prefix = getValidatedPathToString(prefix, "prefix");
+
+  warnOnNonPortableTemplate(prefix);
+
+  try {
+    const path = op_node_mkdtemp_sync(prefix) as string;
+    return decodeMkdtemp(path, encoding);
+  } catch (err) {
+    throw denoErrorToNodeError(err as Error, {
+      syscall: "mkdtemp",
+      path: `${prefix}XXXXXX`,
+    });
+  }
+}
+
+function decodeMkdtemp(str: string, encoding: Encoding): string;
+function decodeMkdtemp(
+  str: string,
+  encoding: "buffer",
+): Buffer<ArrayBufferLike>;
+function decodeMkdtemp(
+  str: string,
+  encoding: Encoding | "buffer",
+): string | Buffer<ArrayBufferLike> {
+  if (encoding === "utf8") return str;
+  const buffer = Buffer.from(str);
+  if (encoding === "buffer") return buffer;
+  // deno-lint-ignore prefer-primordials
+  return buffer.toString(encoding);
+}
+
+function parseMkdtempEncoding(
+  options: string | { encoding?: string } | undefined,
+): Encoding | "buffer" {
+  let encoding: string | undefined;
+
+  if (typeof options === "undefined" || options === null) {
+    encoding = "utf8";
+  } else if (typeof options === "string") {
+    encoding = options;
+  } else if (typeof options === "object") {
+    encoding = options.encoding ?? "utf8";
+  } else {
+    throw new ERR_INVALID_ARG_TYPE("options", ["string", "Object"], options);
+  }
+
+  if (encoding === "buffer") {
+    return encoding;
+  }
+
+  const parsedEncoding = normalizeEncoding(encoding);
+  if (!parsedEncoding) {
+    throw new ERR_INVALID_ARG_TYPE("encoding", encoding, "is invalid encoding");
+  }
+
+  return parsedEncoding;
+}
+
+// -- open --
+
+type OpenFlags =
+  | "a"
+  | "ax"
+  | "a+"
+  | "ax+"
+  | "as"
+  | "as+"
+  | "r"
+  | "r+"
+  | "rs"
+  | "rs+"
+  | "w"
+  | "wx"
+  | "w+"
+  | "wx+"
+  | number
+  | string;
+
+type OpenCallback = (err: Error | null, fd?: number) => void;
+
+function open(path: string | Buffer | URL, callback: OpenCallback): void;
+function open(
+  path: string | Buffer | URL,
+  flags: OpenFlags,
+  callback: OpenCallback,
+): void;
+function open(
+  path: string | Buffer | URL,
+  flags: OpenFlags,
+  mode: number,
+  callback: OpenCallback,
+): void;
+function open(
+  path: string | Buffer | URL,
+  flags: OpenCallback | OpenFlags,
+  mode?: OpenCallback | number,
+  callback?: OpenCallback,
+) {
+  path = getValidatedPathToString(path);
+  if (arguments.length < 3) {
+    // deno-lint-ignore no-explicit-any
+    callback = flags as any;
+    flags = "r";
+    mode = 0o666;
+  } else if (typeof mode === "function") {
+    callback = mode;
+    mode = 0o666;
+  } else {
+    mode = parseFileMode(mode, "mode", 0o666);
+  }
+  flags = stringToFlags(flags);
+  callback = makeCallback(callback);
+
+  PromisePrototypeThen(
+    op_node_open(path, flags, mode),
+    (rid: number) => callback(null, rid),
+    (err: Error) =>
+      callback(denoErrorToNodeError(err, { syscall: "open", path })),
+  );
+}
+
+function openSync(path: string | Buffer | URL): number;
+function openSync(
+  path: string | Buffer | URL,
+  flags?: OpenFlags,
+): number;
+function openSync(path: string | Buffer | URL, mode?: number): number;
+function openSync(
+  path: string | Buffer | URL,
+  flags?: OpenFlags,
+  mode?: number,
+): number;
+function openSync(
+  path: string | Buffer | URL,
+  flags: OpenFlags = "r",
+  maybeMode?: number,
+) {
+  path = getValidatedPathToString(path);
+  flags = stringToFlags(flags);
+  const mode = parseFileMode(maybeMode, "mode", 0o666);
+
+  try {
+    return op_node_open_sync(path, flags, mode);
+  } catch (err) {
+    throw denoErrorToNodeError(err as Error, { syscall: "open", path });
+  }
+}
+
+// -- opendir --
+
+type OpendirOptions = {
+  encoding?: string;
+  bufferSize?: number;
+};
+type OpendirCallback = (err?: Error | null, dir?: Dir) => void;
+
+function _opendirValidateFunction(
+  callback: unknown,
+): asserts callback is OpendirCallback {
+  validateFunction(callback, "callback");
+}
+
+function _opendirGetPathString(
+  path: string | Buffer | URL,
+): string {
+  if (Buffer.isBuffer(path)) {
+    // deno-lint-ignore prefer-primordials
+    return path.toString();
+  }
+
+  return StringPrototypeToString(path);
+}
+
+function opendir(
+  path: string | Buffer | URL,
+  options: OpendirOptions | OpendirCallback,
+  callback?: OpendirCallback,
+) {
+  callback = typeof options === "function" ? options : callback;
+  _opendirValidateFunction(callback);
+
+  path = _opendirGetPathString(getValidatedPath(path));
+
+  let err, dir;
+  try {
+    const { bufferSize } = getOptions(options, {
+      encoding: "utf8",
+      bufferSize: 32,
+    });
+    validateInteger(bufferSize, "options.bufferSize", 1, 4294967295);
+
+    /** Throws if path is invalid */
+    Deno.readDirSync(path);
+
+    dir = new Dir(path);
+  } catch (error) {
+    err = denoErrorToNodeError(error as Error, { syscall: "opendir" });
+  }
+  if (err) {
+    callback(err);
+  } else {
+    callback(null, dir);
+  }
+}
+
+function opendirSync(
+  path: string | Buffer | URL,
+  options?: OpendirOptions,
+): Dir {
+  path = _opendirGetPathString(getValidatedPath(path));
+
+  const { bufferSize } = getOptions(options, {
+    encoding: "utf8",
+    bufferSize: 32,
+  });
+
+  validateInteger(bufferSize, "options.bufferSize", 1, 4294967295);
+
+  try {
+    /** Throws if path is invalid */
+    Deno.readDirSync(path);
+
+    return new Dir(path);
+  } catch (err) {
+    throw denoErrorToNodeError(err as Error, { syscall: "opendir" });
+  }
+}
+
 /**
  * Returns a `Blob` whose data is read from the given file.
  */
@@ -671,6 +1373,1166 @@ function openAsBlob(
     op_fs_read_file_async(path as string, undefined, 0),
     (data: Uint8Array) => new Blob([data], { type }),
   );
+}
+
+// -- write --
+
+type WriteCallback = (
+  err: ErrnoException | null,
+  written?: number,
+  strOrBuffer?: string | ArrayBufferView,
+) => void;
+
+type WriteOptions = {
+  offset?: number;
+  length?: number;
+  position?: number | null;
+};
+
+function writeSync(
+  fd: number,
+  buffer: ArrayBufferView | string,
+  offsetOrOptions?: number | WriteOptions | null,
+  length?: number | null,
+  position?: number | null,
+): number {
+  fd = getValidatedFd(fd);
+
+  const innerWriteSync = (
+    fd: number,
+    buffer: ArrayBufferView | Uint8Array,
+    offset: number,
+    length: number,
+    position: number | null | undefined,
+  ) => {
+    buffer = arrayBufferViewToUint8Array(buffer);
+    if (typeof position === "number" && position >= 0) {
+      op_fs_seek_sync(fd, position, io.SeekMode.Start);
+    }
+    let currentOffset = offset;
+    const end = offset + length;
+    while (currentOffset - offset < length) {
+      currentOffset += io.writeSync(
+        fd,
+        (buffer as Uint8Array).subarray(currentOffset, end),
+      );
+    }
+    return currentOffset - offset;
+  };
+
+  let offset = offsetOrOptions;
+  if (isArrayBufferView(buffer)) {
+    if (typeof offset === "object") {
+      ({
+        offset = 0,
+        // deno-lint-ignore prefer-primordials
+        length = buffer.byteLength - (offset as number),
+        position = null,
+      } = offsetOrOptions ?? kEmptyObject);
+    }
+    if (position === undefined) {
+      position = null;
+    }
+    if (offset == null) {
+      offset = 0;
+    } else {
+      validateInteger(offset, "offset", 0);
+    }
+    if (typeof length !== "number") {
+      // deno-lint-ignore prefer-primordials
+      length = buffer.byteLength - offset;
+    }
+    // deno-lint-ignore prefer-primordials
+    validateOffsetLengthWrite(offset, length, buffer.byteLength);
+    return innerWriteSync(fd, buffer, offset, length, position);
+  }
+  validateStringAfterArrayBufferView(buffer, "buffer");
+  validateEncoding(buffer, length);
+  buffer = Buffer.from(buffer, length);
+  return innerWriteSync(fd, buffer, 0, buffer.length, position);
+}
+
+/** Writes the buffer to the file of the given descriptor.
+ * https://nodejs.org/api/fs.html#fswritefd-buffer-offset-length-position-callback
+ * https://github.com/nodejs/node/blob/42ad4137aadda69c51e1df48eee9bc2e5cebca5c/lib/fs.js#L797
+ */
+function write(
+  fd: number,
+  buffer: ArrayBufferView | string,
+  offsetOrOptions?: number | WriteOptions | WriteCallback | null,
+  length?: number | WriteCallback | null,
+  position?: number | WriteCallback | null,
+  callback?: WriteCallback,
+) {
+  fd = getValidatedFd(fd);
+
+  const innerWrite = async (
+    fd: number,
+    buffer: ArrayBufferView | Uint8Array,
+    offset: number,
+    length: number,
+    position: number | null | undefined,
+  ) => {
+    buffer = arrayBufferViewToUint8Array(buffer);
+    if (typeof position === "number" && position >= 0) {
+      await op_fs_seek_async(fd, position, io.SeekMode.Start);
+    }
+    let currentOffset = offset;
+    const end = offset + length;
+    while (currentOffset - offset < length) {
+      currentOffset += await io.write(
+        fd,
+        (buffer as Uint8Array).subarray(currentOffset, end),
+      );
+    }
+    return currentOffset - offset;
+  };
+
+  let offset = offsetOrOptions;
+  if (isArrayBufferView(buffer)) {
+    callback = maybeCallback(callback || position || length || offset);
+
+    if (typeof offset === "object") {
+      ({
+        offset = 0,
+        // deno-lint-ignore prefer-primordials
+        length = buffer.byteLength - (offset as number),
+        position = null,
+      } = offsetOrOptions ?? kEmptyObject);
+    }
+    if (offset == null || typeof offset === "function") {
+      offset = 0;
+    } else {
+      validateInteger(offset, "offset", 0);
+    }
+    if (typeof length !== "number") {
+      // deno-lint-ignore prefer-primordials
+      length = buffer.byteLength - offset;
+    }
+    if (typeof position !== "number") {
+      position = null;
+    }
+    // deno-lint-ignore prefer-primordials
+    validateOffsetLengthWrite(offset, length, buffer.byteLength);
+    // deno-lint-ignore prefer-primordials
+    innerWrite(fd, buffer, offset, length, position).then(
+      (nwritten) => {
+        callback!(null, nwritten, buffer);
+      },
+      (err) => callback!(err),
+    );
+    return;
+  }
+
+  // Here the call signature is
+  // `fs.write(fd, string[, position[, encoding]], callback)`
+
+  validateStringAfterArrayBufferView(buffer, "buffer");
+
+  if (typeof position !== "function") {
+    if (typeof offset === "function") {
+      position = offset;
+      offset = null;
+    } else {
+      position = length;
+    }
+    length = "utf-8";
+  }
+
+  const str = buffer;
+  validateEncoding(str, length);
+  callback = maybeCallback(position);
+  buffer = Buffer.from(str, length);
+
+  // deno-lint-ignore prefer-primordials
+  innerWrite(fd, buffer, 0, buffer.length, offset).then(
+    (nwritten) => {
+      callback(null, nwritten, buffer);
+    },
+    (err) => callback(err),
+  );
+}
+
+ObjectDefineProperty(write, customPromisifyArgs, {
+  __proto__: null,
+  value: ["bytesWritten", "buffer"],
+  enumerable: false,
+});
+
+// -- writev --
+
+interface WriteVResult {
+  bytesWritten: number;
+  buffers: ReadonlyArray<ArrayBufferView>;
+}
+
+type writeVCallback = (
+  err: ErrnoException | null,
+  bytesWritten: number,
+  buffers: ReadonlyArray<ArrayBufferView>,
+) => void;
+
+/**
+ * Write an array of `ArrayBufferView`s to the file specified by `fd` using`writev()`.
+ *
+ * `position` is the offset from the beginning of the file where this data
+ * should be written. If `typeof position !== 'number'`, the data will be written
+ * at the current position.
+ *
+ * The callback will be given three arguments: `err`, `bytesWritten`, and`buffers`. `bytesWritten` is how many bytes were written from `buffers`.
+ *
+ * If this method is `util.promisify()` ed, it returns a promise for an`Object` with `bytesWritten` and `buffers` properties.
+ *
+ * It is unsafe to use `fs.writev()` multiple times on the same file without
+ * waiting for the callback. For this scenario, use {@link createWriteStream}.
+ *
+ * On Linux, positional writes don't work when the file is opened in append mode.
+ * The kernel ignores the position argument and always appends the data to
+ * the end of the file.
+ * @since v12.9.0
+ */
+function writev(
+  fd: number,
+  buffers: ReadonlyArray<ArrayBufferView>,
+  position?: number | null,
+  callback?: writeVCallback,
+): void {
+  const innerWritev = async (fd, buffers, position) => {
+    const chunks: Buffer[] = [];
+    const offset = 0;
+    for (let i = 0; i < buffers.length; i++) {
+      if (Buffer.isBuffer(buffers[i])) {
+        // deno-lint-ignore prefer-primordials
+        chunks.push(buffers[i]);
+      } else {
+        // deno-lint-ignore prefer-primordials
+        chunks.push(Buffer.from(buffers[i]));
+      }
+    }
+    if (typeof position === "number") {
+      await op_fs_seek_async(fd, position, io.SeekMode.Start);
+    }
+    // deno-lint-ignore prefer-primordials
+    const buffer = Buffer.concat(chunks);
+    let currentOffset = 0;
+    // deno-lint-ignore prefer-primordials
+    while (currentOffset < buffer.byteLength) {
+      currentOffset += await io.writeSync(fd, buffer.subarray(currentOffset));
+    }
+    return currentOffset - offset;
+  };
+
+  fd = getValidatedFd(fd);
+  validateBufferArray(buffers);
+  callback = maybeCallback(callback || position);
+
+  if (buffers.length === 0) {
+    process.nextTick(callback, null, 0, buffers);
+    return;
+  }
+
+  if (typeof position !== "number") position = null;
+
+  // deno-lint-ignore prefer-primordials
+  innerWritev(fd, buffers, position).then(
+    (nwritten) => callback(null, nwritten, buffers),
+    (err) => callback(err),
+  );
+}
+
+/**
+ * For detailed information, see the documentation of the asynchronous version of
+ * this API: {@link writev}.
+ * @since v12.9.0
+ * @return The number of bytes written.
+ */
+function writevSync(
+  fd: number,
+  buffers: ArrayBufferView[],
+  position?: number | null,
+): number {
+  const innerWritev = (fd, buffers, position) => {
+    const chunks: Buffer[] = [];
+    const offset = 0;
+    for (let i = 0; i < buffers.length; i++) {
+      if (Buffer.isBuffer(buffers[i])) {
+        // deno-lint-ignore prefer-primordials
+        chunks.push(buffers[i]);
+      } else {
+        // deno-lint-ignore prefer-primordials
+        chunks.push(Buffer.from(buffers[i]));
+      }
+    }
+    if (typeof position === "number") {
+      op_fs_seek_sync(fd, position, io.SeekMode.Start);
+    }
+    // deno-lint-ignore prefer-primordials
+    const buffer = Buffer.concat(chunks);
+    let currentOffset = 0;
+    // deno-lint-ignore prefer-primordials
+    while (currentOffset < buffer.byteLength) {
+      currentOffset += io.writeSync(fd, buffer.subarray(currentOffset));
+    }
+    return currentOffset - offset;
+  };
+
+  fd = getValidatedFd(fd);
+  validateBufferArray(buffers);
+
+  if (buffers.length === 0) {
+    return 0;
+  }
+
+  if (typeof position !== "number") position = null;
+
+  return innerWritev(fd, buffers, position);
+}
+
+// -- writeFile --
+
+type WriteFileSyncData =
+  | string
+  | DataView
+  | NodeJS.TypedArray
+  | Iterable<NodeJS.TypedArray | string>;
+
+type WriteFileData =
+  | string
+  | DataView
+  | NodeJS.TypedArray
+  | AsyncIterable<NodeJS.TypedArray | string>;
+
+const {
+  kWriteFileMaxChunkSize,
+} = fsUtilConstants;
+
+interface Writer {
+  write(p: NodeJS.TypedArray): Promise<number>;
+  writeSync(p: NodeJS.TypedArray): number;
+}
+
+async function _writeFileGetRid(
+  pathOrRid: string | number,
+  flag: string = "w",
+): Promise<number> {
+  if (typeof pathOrRid === "number") {
+    return pathOrRid;
+  }
+  try {
+    return await op_node_open(pathOrRid, stringToFlags(flag), 0o666);
+  } catch (err) {
+    throw denoErrorToNodeError(err as Error, {
+      syscall: "open",
+      path: pathOrRid,
+    });
+  }
+}
+
+function _writeFileGetRidSync(
+  pathOrRid: string | number,
+  flag: string = "w",
+): number {
+  if (typeof pathOrRid === "number") {
+    return pathOrRid;
+  }
+  try {
+    return op_node_open_sync(pathOrRid, stringToFlags(flag), 0o666);
+  } catch (err) {
+    throw denoErrorToNodeError(err as Error, {
+      syscall: "open",
+      path: pathOrRid,
+    });
+  }
+}
+
+function writeFile(
+  pathOrRid: string | number | URL | FileHandle,
+  data: WriteFileData,
+  options: Encodings | CallbackWithError | WriteFileOptions | undefined,
+  callback?: CallbackWithError,
+) {
+  let flag: string | undefined;
+  let mode: number | undefined;
+  let signal: AbortSignal | undefined;
+
+  if (typeof options === "function") {
+    callback = options;
+    options = undefined;
+  }
+
+  validateFunction(callback, "callback");
+
+  if (ObjectPrototypeIsPrototypeOf(URLPrototype, pathOrRid)) {
+    pathOrRid = pathFromURL(pathOrRid as URL);
+  } else if (ObjectPrototypeIsPrototypeOf(FileHandle.prototype, pathOrRid)) {
+    pathOrRid = (pathOrRid as FileHandle).fd;
+  }
+
+  if (isFileOptions(options)) {
+    flag = options.flag;
+    mode = options.mode;
+    signal = options.signal;
+  }
+
+  const encoding = getValidatedEncoding(options) || "utf8";
+
+  if (!ArrayBufferIsView(data) && !_isCustomIterable(data)) {
+    validateStringAfterArrayBufferView(data, "data");
+    data = Buffer.from(data, encoding);
+  }
+
+  const isRid = typeof pathOrRid === "number";
+  let file;
+
+  let error: Error | null = null;
+  (async () => {
+    try {
+      const rid = await _writeFileGetRid(pathOrRid as string | number, flag);
+      file = new FsFile(rid, SymbolFor("Deno.internal.FsFile"));
+      _checkAborted(signal);
+
+      if (!isRid && mode) {
+        await Deno.chmod(pathOrRid as string, mode);
+        _checkAborted(signal);
+      }
+
+      await _writeAll(
+        file,
+        data as (Exclude<WriteFileData, string>),
+        encoding,
+        signal,
+      );
+    } catch (e) {
+      error = denoWriteFileErrorToNodeError(e as Error, { syscall: "write" });
+    } finally {
+      // Make sure to close resource
+      if (!isRid && file) file.close();
+      callback(error);
+    }
+  })();
+}
+
+function writeFileSync(
+  pathOrRid: string | number | URL,
+  data: WriteFileSyncData,
+  options?: Encodings | WriteFileOptions,
+) {
+  let flag: string | undefined;
+  let mode: number | undefined;
+
+  pathOrRid = ObjectPrototypeIsPrototypeOf(URLPrototype, pathOrRid)
+    ? pathFromURL(pathOrRid as URL)
+    : pathOrRid as string | number;
+
+  if (isFileOptions(options)) {
+    flag = options.flag;
+    mode = options.mode;
+  }
+
+  const encoding = getValidatedEncoding(options) || "utf8";
+
+  if (!ArrayBufferIsView(data) && !_isCustomIterable(data)) {
+    validateStringAfterArrayBufferView(data, "data");
+    data = Buffer.from(data, encoding);
+  }
+
+  const isRid = typeof pathOrRid === "number";
+  let file;
+
+  let error: Error | null = null;
+  try {
+    const rid = _writeFileGetRidSync(pathOrRid, flag);
+    file = new FsFile(rid, SymbolFor("Deno.internal.FsFile"));
+
+    if (!isRid && mode) {
+      Deno.chmodSync(pathOrRid as string, mode);
+    }
+
+    _writeAllSync(
+      file,
+      data as (Exclude<WriteFileSyncData, string>),
+      encoding,
+    );
+  } catch (e) {
+    error = denoWriteFileErrorToNodeError(e as Error, { syscall: "write" });
+  } finally {
+    // Make sure to close resource
+    if (!isRid && file) file.close();
+  }
+
+  if (error) throw error;
+}
+
+function _writeAllSync(
+  w: Writer,
+  data: Exclude<WriteFileSyncData, string>,
+  encoding: BufferEncoding,
+) {
+  if (!_isCustomIterable(data)) {
+    // deno-lint-ignore prefer-primordials
+    data = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+    // deno-lint-ignore prefer-primordials
+    let remaining = data.byteLength;
+    while (remaining > 0) {
+      const bytesWritten = w.writeSync(
+        // deno-lint-ignore prefer-primordials
+        data.subarray(data.byteLength - remaining),
+      );
+      remaining -= bytesWritten;
+    }
+  } else {
+    // deno-lint-ignore prefer-primordials
+    for (const buf of data) {
+      let toWrite = ArrayBufferIsView(buf) ? buf : Buffer.from(buf, encoding);
+      toWrite = new Uint8Array(
+        // deno-lint-ignore prefer-primordials
+        toWrite.buffer,
+        // deno-lint-ignore prefer-primordials
+        toWrite.byteOffset,
+        // deno-lint-ignore prefer-primordials
+        toWrite.byteLength,
+      );
+      // deno-lint-ignore prefer-primordials
+      let remaining = toWrite.byteLength;
+      while (remaining > 0) {
+        const bytesWritten = w.writeSync(
+          // deno-lint-ignore prefer-primordials
+          toWrite.subarray(toWrite.byteLength - remaining),
+        );
+        remaining -= bytesWritten;
+      }
+    }
+  }
+}
+
+async function _writeAll(
+  w: Writer,
+  data: Exclude<WriteFileData, string>,
+  encoding: BufferEncoding,
+  signal?: AbortSignal,
+) {
+  if (!_isCustomIterable(data)) {
+    // deno-lint-ignore prefer-primordials
+    data = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+    // deno-lint-ignore prefer-primordials
+    let remaining = data.byteLength;
+    while (remaining > 0) {
+      const writeSize = MathMin(kWriteFileMaxChunkSize, remaining);
+      // deno-lint-ignore prefer-primordials
+      const offset = data.byteLength - remaining;
+      const bytesWritten = await w.write(
+        data.subarray(offset, offset + writeSize),
+      );
+      remaining -= bytesWritten;
+      _checkAborted(signal);
+    }
+  } else {
+    // deno-lint-ignore prefer-primordials
+    for await (const buf of data) {
+      _checkAborted(signal);
+      let toWrite = ArrayBufferIsView(buf) ? buf : Buffer.from(buf, encoding);
+      toWrite = new Uint8Array(
+        // deno-lint-ignore prefer-primordials
+        toWrite.buffer,
+        // deno-lint-ignore prefer-primordials
+        toWrite.byteOffset,
+        // deno-lint-ignore prefer-primordials
+        toWrite.byteLength,
+      );
+      // deno-lint-ignore prefer-primordials
+      let remaining = toWrite.byteLength;
+      while (remaining > 0) {
+        const writeSize = MathMin(kWriteFileMaxChunkSize, remaining);
+        // deno-lint-ignore prefer-primordials
+        const offset = toWrite.byteLength - remaining;
+        const bytesWritten = await w.write(
+          toWrite.subarray(offset, offset + writeSize),
+        );
+        remaining -= bytesWritten;
+        _checkAborted(signal);
+      }
+    }
+  }
+
+  _checkAborted(signal);
+}
+
+function _isCustomIterable(
+  obj: unknown,
+): obj is
+  | Iterable<NodeJS.TypedArray | string>
+  | AsyncIterable<NodeJS.TypedArray | string> {
+  return isIterable(obj) && !ArrayBufferIsView(obj) && typeof obj !== "string";
+}
+
+function _checkAborted(signal?: AbortSignal) {
+  if (signal?.aborted) {
+    throw new AbortError();
+  }
+}
+
+// -- truncate --
+
+function truncate(
+  path: string | URL,
+  lenOrCallback: number | CallbackWithError,
+  maybeCallback?: CallbackWithError,
+) {
+  path = ObjectPrototypeIsPrototypeOf(URLPrototype, path)
+    ? pathFromURL(path)
+    : path;
+  const len: number | undefined = typeof lenOrCallback === "number"
+    ? lenOrCallback
+    : undefined;
+  const callback: CallbackWithError = typeof lenOrCallback === "function"
+    ? lenOrCallback
+    : maybeCallback as CallbackWithError;
+
+  if (!callback) throw new Error("No callback function supplied");
+
+  PromisePrototypeThen(
+    Deno.truncate(path, len),
+    () => callback(null),
+    callback,
+  );
+}
+
+function truncateSync(path: string | URL, len?: number) {
+  path = ObjectPrototypeIsPrototypeOf(URLPrototype, path)
+    ? pathFromURL(path)
+    : path;
+
+  Deno.truncateSync(path, len);
+}
+
+// -- utimes --
+
+function getValidTime(
+  time: number | string | Date,
+  name: string,
+): number {
+  if (typeof time === "string") {
+    time = Number(time);
+  }
+
+  if (
+    typeof time === "number" &&
+    (NumberIsNaN(time) || !NumberIsFinite(time))
+  ) {
+    throw new Deno.errors.InvalidData(
+      `invalid ${name}, must not be infinity or NaN`,
+    );
+  }
+
+  return toUnixTimestamp(time);
+}
+
+function utimes(
+  path: string | URL,
+  atime: number | string | Date,
+  mtime: number | string | Date,
+  callback: CallbackWithError,
+) {
+  // deno-lint-ignore prefer-primordials
+  path = getValidatedPath(path).toString();
+
+  if (!callback) {
+    throw new Deno.errors.InvalidData("No callback function supplied");
+  }
+
+  atime = getValidTime(atime, "atime");
+  mtime = getValidTime(mtime, "mtime");
+
+  PromisePrototypeThen(
+    Deno.utime(path, atime, mtime),
+    () => callback(null),
+    callback,
+  );
+}
+
+function utimesSync(
+  path: string | URL,
+  atime: number | string | Date,
+  mtime: number | string | Date,
+) {
+  // deno-lint-ignore prefer-primordials
+  path = getValidatedPath(path).toString();
+  atime = getValidTime(atime, "atime");
+  mtime = getValidTime(mtime, "mtime");
+
+  Deno.utimeSync(path, atime, mtime);
+}
+
+// -- symlink --
+
+type SymlinkType = "file" | "dir" | "junction";
+
+function symlink(
+  target: string | Buffer | URL,
+  path: string | Buffer | URL,
+  linkType?: SymlinkType | CallbackWithError,
+  callback?: CallbackWithError,
+) {
+  if (callback === undefined) {
+    callback = linkType as CallbackWithError;
+    linkType = undefined;
+  } else {
+    validateOneOf(linkType, "type", [
+      "dir",
+      "file",
+      "junction",
+      null,
+      undefined,
+    ]);
+  }
+
+  callback = makeCallback(callback);
+  target = getValidatedPathToString(target, "target");
+  path = getValidatedPathToString(path);
+
+  if (isWindows && !linkType) {
+    let absoluteTarget;
+    try {
+      // Symlinks targets can be relative to the newly created path.
+      // Calculate absolute file name of the symlink target, and check
+      // if it is a directory. Ignore resolve error to keep symlink
+      // errors consistent between platforms if invalid path is
+      // provided.
+      absoluteTarget = pathModule.resolve(path, "..", target);
+    } catch {
+      // Continue regardless of error.
+    }
+    if (absoluteTarget !== undefined) {
+      stat(absoluteTarget, (err, stat) => {
+        const resolvedType = !err && stat.isDirectory() ? "dir" : "file";
+
+        PromisePrototypeThen(
+          Deno.symlink(
+            target,
+            path,
+            { type: resolvedType },
+          ),
+          () => callback(null),
+          callback,
+        );
+      });
+      return;
+    }
+  }
+
+  PromisePrototypeThen(
+    Deno.symlink(
+      target,
+      path,
+      { type: linkType ?? "file" },
+    ),
+    () => callback(null),
+    callback,
+  );
+}
+
+function symlinkSync(
+  target: string | Buffer | URL,
+  path: string | Buffer | URL,
+  type?: SymlinkType,
+) {
+  validateOneOf(type, "type", ["dir", "file", "junction", null, undefined]);
+  target = getValidatedPathToString(target, "target");
+  path = getValidatedPathToString(path);
+
+  if (isWindows && !type) {
+    const absoluteTarget = pathModule.resolve(path, "..", target);
+    if (
+      statSync(absoluteTarget, { bigint: false, throwIfNoEntry: false })
+        ?.isDirectory()
+    ) {
+      type = "dir";
+    }
+  }
+
+  Deno.symlinkSync(target, path, { type: type ?? "file" });
+}
+
+// -- watch --
+
+const statPromisified = promisify(stat);
+const statAsync = async (filename: string): Promise<Stats | null> => {
+  try {
+    return await statPromisified(filename);
+  } catch {
+    return emptyStats;
+  }
+};
+const emptyStats = new Stats(
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  DateUTC(1970, 0, 1, 0, 0, 0),
+  DateUTC(1970, 0, 1, 0, 0, 0),
+  DateUTC(1970, 0, 1, 0, 0, 0),
+  DateUTC(1970, 0, 1, 0, 0, 0),
+) as unknown as Stats;
+
+function asyncIterableToCallback<T>(
+  iter: AsyncIterable<T>,
+  callback: (val: T, done?: boolean) => void,
+  errCallback: (e: unknown) => void,
+) {
+  const iterator = iter[SymbolAsyncIterator]();
+  function next() {
+    // deno-lint-ignore prefer-primordials
+    PromisePrototypeThen(iterator.next(), (obj: IteratorResult<T>) => {
+      if (obj.done) {
+        callback(obj.value, true);
+        return;
+      }
+      callback(obj.value);
+      next();
+    }, errCallback);
+  }
+  next();
+}
+
+type watchOptions = {
+  persistent?: boolean;
+  recursive?: boolean;
+  encoding?: string;
+};
+
+type watchListener = (eventType: string, filename: string) => void;
+
+function watch(
+  filename: string | URL,
+  options: watchOptions,
+  listener: watchListener,
+): FSWatcher;
+function watch(
+  filename: string | URL,
+  listener: watchListener,
+): FSWatcher;
+function watch(
+  filename: string | URL,
+  options: watchOptions,
+): FSWatcher;
+function watch(filename: string | URL): FSWatcher;
+function watch(
+  filename: string | URL,
+  optionsOrListener?: watchOptions | watchListener,
+  optionsOrListener2?: watchOptions | watchListener,
+) {
+  const listener = typeof optionsOrListener === "function"
+    ? optionsOrListener
+    : typeof optionsOrListener2 === "function"
+    ? optionsOrListener2
+    : undefined;
+  const options = typeof optionsOrListener === "object"
+    ? optionsOrListener
+    : typeof optionsOrListener2 === "object"
+    ? optionsOrListener2
+    : undefined;
+
+  // deno-lint-ignore prefer-primordials
+  const watchPath = getValidatedPath(filename).toString();
+
+  let iterator: Deno.FsWatcher;
+  // Start the actual watcher a few msec later to avoid race condition
+  // error in test case in compat test case
+  // (parallel/test-fs-watch.js, parallel/test-fs-watchfile.js)
+  const timer = setTimeout(() => {
+    iterator = Deno.watchFs(watchPath, {
+      recursive: options?.recursive || false,
+    });
+
+    asyncIterableToCallback<Deno.FsEvent>(iterator, (val, done) => {
+      if (done) return;
+      fsWatcher.emit(
+        "change",
+        convertDenoFsEventToNodeFsEvent(val.kind),
+        basename(val.paths[0]),
+      );
+    }, (e) => {
+      fsWatcher.emit("error", e);
+    });
+  }, 5);
+
+  const fsWatcher = new FSWatcher(() => {
+    clearTimeout(timer);
+    try {
+      iterator?.close();
+    } catch (e) {
+      if (
+        ObjectPrototypeIsPrototypeOf(Deno.errors.BadResource.prototype, e)
+      ) {
+        // already closed
+        return;
+      }
+      throw e;
+    }
+  }, () => iterator);
+
+  if (listener) {
+    fsWatcher.on(
+      "change",
+      FunctionPrototypeBind(listener, { _handle: fsWatcher }),
+    );
+  }
+
+  return fsWatcher;
+}
+
+function watchPromise(
+  filename: string | Buffer | URL,
+  options?: {
+    persistent?: boolean;
+    recursive?: boolean;
+    encoding?: string;
+    signal?: AbortSignal;
+  },
+): AsyncIterable<{ eventType: string; filename: string | Buffer | null }> {
+  // deno-lint-ignore prefer-primordials
+  const watchPath = getValidatedPath(filename).toString();
+
+  const watcher = Deno.watchFs(watchPath, {
+    recursive: options?.recursive ?? false,
+  });
+
+  if (options?.signal) {
+    if (options.signal.aborted) {
+      watcher.close();
+    } else {
+      options.signal.addEventListener(
+        "abort",
+        () => watcher.close(),
+        { once: true },
+      );
+    }
+  }
+
+  const fsIterable = watcher[SymbolAsyncIterator]();
+  const result = {
+    async next(): Promise<
+      IteratorResult<{ eventType: string; filename: string | Buffer | null }>
+    > {
+      // deno-lint-ignore prefer-primordials
+      const iterResult = await fsIterable.next();
+      if (iterResult.done) return iterResult;
+
+      const eventType = convertDenoFsEventToNodeFsEvent(
+        iterResult.value.kind,
+      );
+      return {
+        value: { eventType, filename: basename(iterResult.value.paths[0]) },
+        done: false,
+      };
+    },
+    // deno-lint-ignore no-explicit-any
+    return(value?: any): Promise<IteratorResult<any>> {
+      watcher.close();
+      return PromiseResolve({ value, done: true });
+    },
+    [SymbolAsyncIterator]() {
+      return this;
+    },
+  };
+
+  return result;
+}
+
+type WatchFileListener = (curr: Stats, prev: Stats) => void;
+type WatchFileOptions = {
+  bigint?: boolean;
+  persistent?: boolean;
+  interval?: number;
+};
+
+function watchFile(
+  filename: string | Buffer | URL,
+  listener: WatchFileListener,
+): StatWatcher;
+function watchFile(
+  filename: string | Buffer | URL,
+  options: WatchFileOptions,
+  listener: WatchFileListener,
+): StatWatcher;
+function watchFile(
+  filename: string | Buffer | URL,
+  listenerOrOptions: WatchFileListener | WatchFileOptions,
+  listener?: WatchFileListener,
+): StatWatcher {
+  // deno-lint-ignore prefer-primordials
+  const watchPath = getValidatedPath(filename).toString();
+  const handler = typeof listenerOrOptions === "function"
+    ? listenerOrOptions
+    : listener!;
+  validateFunction(handler, "listener");
+  const {
+    bigint = false,
+    persistent = true,
+    interval = 5007,
+  } = typeof listenerOrOptions === "object" ? listenerOrOptions : {};
+
+  let watcher = MapPrototypeGet(statWatchers, watchPath);
+  if (watcher === undefined) {
+    watcher = new StatWatcher(bigint);
+    watcher[kFSStatWatcherStart](watchPath, persistent, interval);
+    MapPrototypeSet(statWatchers, watchPath, watcher);
+  }
+
+  watcher.addListener("change", handler);
+  return watcher;
+}
+
+function unwatchFile(
+  filename: string | Buffer | URL,
+  listener?: WatchFileListener,
+) {
+  // deno-lint-ignore prefer-primordials
+  const watchPath = getValidatedPath(filename).toString();
+  const watcher = MapPrototypeGet(statWatchers, watchPath);
+
+  if (!watcher) {
+    return;
+  }
+
+  if (typeof listener === "function") {
+    const beforeListenerCount = watcher.listenerCount("change");
+    watcher.removeListener("change", listener);
+    if (watcher.listenerCount("change") < beforeListenerCount) {
+      watcher[kFSStatWatcherAddOrCleanRef]("clean");
+    }
+  } else {
+    watcher.removeAllListeners("change");
+    watcher[kFSStatWatcherAddOrCleanRef]("cleanAll");
+  }
+
+  if (watcher.listenerCount("change") === 0) {
+    watcher.stop();
+    MapPrototypeDelete(statWatchers, watchPath);
+  }
+}
+
+const statWatchers = new SafeMap<string, StatWatcher>();
+
+const kFSStatWatcherStart = SymbolFor("kFSStatWatcherStart");
+const kFSStatWatcherAddOrCleanRef = SymbolFor("kFSStatWatcherAddOrCleanRef");
+
+class StatWatcher extends EventEmitter {
+  #bigint: boolean;
+  #refCount = 0;
+  #abortController = new AbortController();
+
+  constructor(bigint: boolean) {
+    super();
+    this.#bigint = bigint;
+  }
+  [kFSStatWatcherStart](
+    filename: string,
+    persistent: boolean,
+    interval: number,
+  ) {
+    if (persistent) {
+      this.#refCount++;
+    }
+
+    (async () => {
+      let prev = await statAsync(filename);
+
+      if (prev === emptyStats) {
+        this.emit("change", prev, prev);
+      }
+
+      try {
+        while (true) {
+          await delay(interval, { signal: this.#abortController.signal });
+          const curr = await statAsync(filename);
+          if (
+            DatePrototypeGetTime(curr?.mtime) !==
+              DatePrototypeGetTime(prev?.mtime)
+          ) {
+            this.emit("change", curr, prev);
+            prev = curr;
+          }
+        }
+      } catch (e) {
+        if (
+          ObjectPrototypeIsPrototypeOf(DOMException.prototype, e) &&
+          e.name === "AbortError"
+        ) {
+          return;
+        }
+        this.emit("error", e);
+      }
+    })();
+  }
+  [kFSStatWatcherAddOrCleanRef](addOrClean: "add" | "clean" | "cleanAll") {
+    if (addOrClean === "add") {
+      this.#refCount++;
+    } else if (addOrClean === "clean") {
+      this.#refCount--;
+    } else {
+      this.#refCount = 0;
+    }
+  }
+  stop() {
+    if (this.#abortController.signal.aborted) {
+      return;
+    }
+    this.#abortController.abort();
+    this.emit("stop");
+  }
+  ref() {
+    notImplemented("StatWatcher.ref() is not implemented");
+  }
+  unref() {
+    notImplemented("StatWatcher.unref() is not implemented");
+  }
+}
+
+class FSWatcher extends EventEmitter {
+  #closer: () => void;
+  #closed = false;
+  #watcher: () => Deno.FsWatcher;
+
+  constructor(closer: () => void, getter: () => Deno.FsWatcher) {
+    super();
+    this.#closer = closer;
+    this.#watcher = getter;
+  }
+  close() {
+    if (this.#closed) {
+      return;
+    }
+    this.#closed = true;
+    this.emit("close");
+    this.#closer();
+  }
+  ref() {
+    this.#watcher().ref();
+  }
+  unref() {
+    this.#watcher().unref();
+  }
+}
+
+type NodeFsEventType = "rename" | "change";
+
+function convertDenoFsEventToNodeFsEvent(
+  kind: Deno.FsEvent["kind"],
+): NodeFsEventType {
+  if (kind === "create" || kind === "remove") {
+    return "rename";
+  } else if (kind === "rename") {
+    return "rename";
+  } else {
+    return "change";
+  }
 }
 
 export default {
@@ -783,6 +2645,7 @@ export default {
   W_OK,
   watch,
   watchFile,
+  watchPromise,
   write,
   writeFile,
   writev,
@@ -907,6 +2770,7 @@ export {
   W_OK,
   watch,
   watchFile,
+  watchPromise,
   write,
   writeFile,
   writeFileSync,

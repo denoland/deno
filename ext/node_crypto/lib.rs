@@ -99,8 +99,10 @@ deno_core::extension!(
     op_node_scrypt_sync,
     op_node_sign,
     op_node_sign_ed25519,
+    op_node_sign_ed448,
     op_node_verify,
     op_node_verify_ed25519,
+    op_node_verify_ed448,
     op_node_verify_spkac,
     op_node_cert_export_public_key,
     op_node_cert_export_challenge,
@@ -130,6 +132,10 @@ deno_core::extension!(
     keys::op_node_generate_ec_key,
     keys::op_node_generate_ed25519_key_async,
     keys::op_node_generate_ed25519_key,
+    keys::op_node_generate_x448_key_async,
+    keys::op_node_generate_x448_key,
+    keys::op_node_generate_ed448_key_async,
+    keys::op_node_generate_ed448_key,
     keys::op_node_generate_rsa_key_async,
     keys::op_node_generate_rsa_key,
     keys::op_node_generate_rsa_pss_key,
@@ -1118,35 +1124,35 @@ pub fn op_node_ecdh_compute_public_key(
         elliptic_curve::SecretKey::<k256::Secp256k1>::from_slice(privkey)
           .expect("bad private key");
       let public_key = this_private_key.public_key();
-      pubkey.copy_from_slice(public_key.to_sec1_bytes().as_ref());
+      pubkey.copy_from_slice(public_key.to_encoded_point(false).as_ref());
     }
     "prime256v1" | "secp256r1" => {
       let this_private_key =
         elliptic_curve::SecretKey::<NistP256>::from_slice(privkey)
           .expect("bad private key");
       let public_key = this_private_key.public_key();
-      pubkey.copy_from_slice(public_key.to_sec1_bytes().as_ref());
+      pubkey.copy_from_slice(public_key.to_encoded_point(false).as_ref());
     }
     "secp384r1" => {
       let this_private_key =
         elliptic_curve::SecretKey::<NistP384>::from_slice(privkey)
           .expect("bad private key");
       let public_key = this_private_key.public_key();
-      pubkey.copy_from_slice(public_key.to_sec1_bytes().as_ref());
+      pubkey.copy_from_slice(public_key.to_encoded_point(false).as_ref());
     }
     "secp521r1" => {
       let this_private_key =
         elliptic_curve::SecretKey::<NistP521>::from_slice(privkey)
           .expect("bad private key");
       let public_key = this_private_key.public_key();
-      pubkey.copy_from_slice(public_key.to_sec1_bytes().as_ref());
+      pubkey.copy_from_slice(public_key.to_encoded_point(false).as_ref());
     }
     "secp224r1" => {
       let this_private_key =
         elliptic_curve::SecretKey::<NistP224>::from_slice(privkey)
           .expect("bad private key");
       let public_key = this_private_key.public_key();
-      pubkey.copy_from_slice(public_key.to_sec1_bytes().as_ref());
+      pubkey.copy_from_slice(public_key.to_encoded_point(false).as_ref());
     }
     &_ => todo!(),
   }
@@ -1195,89 +1201,94 @@ pub fn op_node_diffie_hellman(
     .as_public_key()
     .ok_or(DiffieHellmanError::ExpectedPublicKey)?;
 
-  let res =
-    match (private, &*public) {
-      (
-        AsymmetricPrivateKey::Ec(EcPrivateKey::P224(private)),
-        AsymmetricPublicKey::Ec(EcPublicKey::P224(public)),
-      ) => p224::ecdh::diffie_hellman(
-        private.to_nonzero_scalar(),
-        public.as_affine(),
-      )
-      .raw_secret_bytes()
-      .to_vec()
-      .into_boxed_slice(),
-      (
-        AsymmetricPrivateKey::Ec(EcPrivateKey::P256(private)),
-        AsymmetricPublicKey::Ec(EcPublicKey::P256(public)),
-      ) => p256::ecdh::diffie_hellman(
-        private.to_nonzero_scalar(),
-        public.as_affine(),
-      )
-      .raw_secret_bytes()
-      .to_vec()
-      .into_boxed_slice(),
-      (
-        AsymmetricPrivateKey::Ec(EcPrivateKey::P384(private)),
-        AsymmetricPublicKey::Ec(EcPublicKey::P384(public)),
-      ) => p384::ecdh::diffie_hellman(
-        private.to_nonzero_scalar(),
-        public.as_affine(),
-      )
-      .raw_secret_bytes()
-      .to_vec()
-      .into_boxed_slice(),
-      (
-        AsymmetricPrivateKey::Ec(EcPrivateKey::P521(private)),
-        AsymmetricPublicKey::Ec(EcPublicKey::P521(public)),
-      ) => p521::ecdh::diffie_hellman(
-        private.to_nonzero_scalar(),
-        public.as_affine(),
-      )
-      .raw_secret_bytes()
-      .to_vec()
-      .into_boxed_slice(),
-      (
-        AsymmetricPrivateKey::Ec(EcPrivateKey::Secp256k1(private)),
-        AsymmetricPublicKey::Ec(EcPublicKey::Secp256k1(public)),
-      ) => k256::ecdh::diffie_hellman(
-        private.to_nonzero_scalar(),
-        public.as_affine(),
-      )
-      .raw_secret_bytes()
-      .to_vec()
-      .into_boxed_slice(),
-      (
-        AsymmetricPrivateKey::X25519(private),
-        AsymmetricPublicKey::X25519(public),
-      ) => private
-        .diffie_hellman(public)
-        .to_bytes()
-        .into_iter()
-        .collect(),
-      (AsymmetricPrivateKey::Dh(private), AsymmetricPublicKey::Dh(public)) => {
-        if private.params.prime != public.params.prime
-          || private.params.base != public.params.base
-        {
-          return Err(DiffieHellmanError::DhParametersMismatch);
-        }
-
-        // OSIP - Octet-String-to-Integer primitive
-        let public_key = public.key.clone().into_vec();
-        let pubkey = BigUint::from_bytes_be(&public_key);
-
-        // Exponentiation (z = y^x mod p)
-        let prime = BigUint::from_bytes_be(private.params.prime.as_bytes());
-        let private_key = private.key.clone().into_vec();
-        let private_key = BigUint::from_bytes_be(&private_key);
-        let shared_secret = pubkey.modpow(&private_key, &prime);
-
-        shared_secret.to_bytes_be().into()
+  let res = match (private, &*public) {
+    (
+      AsymmetricPrivateKey::Ec(EcPrivateKey::P224(private)),
+      AsymmetricPublicKey::Ec(EcPublicKey::P224(public)),
+    ) => p224::ecdh::diffie_hellman(
+      private.to_nonzero_scalar(),
+      public.as_affine(),
+    )
+    .raw_secret_bytes()
+    .to_vec()
+    .into_boxed_slice(),
+    (
+      AsymmetricPrivateKey::Ec(EcPrivateKey::P256(private)),
+      AsymmetricPublicKey::Ec(EcPublicKey::P256(public)),
+    ) => p256::ecdh::diffie_hellman(
+      private.to_nonzero_scalar(),
+      public.as_affine(),
+    )
+    .raw_secret_bytes()
+    .to_vec()
+    .into_boxed_slice(),
+    (
+      AsymmetricPrivateKey::Ec(EcPrivateKey::P384(private)),
+      AsymmetricPublicKey::Ec(EcPublicKey::P384(public)),
+    ) => p384::ecdh::diffie_hellman(
+      private.to_nonzero_scalar(),
+      public.as_affine(),
+    )
+    .raw_secret_bytes()
+    .to_vec()
+    .into_boxed_slice(),
+    (
+      AsymmetricPrivateKey::Ec(EcPrivateKey::P521(private)),
+      AsymmetricPublicKey::Ec(EcPublicKey::P521(public)),
+    ) => p521::ecdh::diffie_hellman(
+      private.to_nonzero_scalar(),
+      public.as_affine(),
+    )
+    .raw_secret_bytes()
+    .to_vec()
+    .into_boxed_slice(),
+    (
+      AsymmetricPrivateKey::Ec(EcPrivateKey::Secp256k1(private)),
+      AsymmetricPublicKey::Ec(EcPublicKey::Secp256k1(public)),
+    ) => k256::ecdh::diffie_hellman(
+      private.to_nonzero_scalar(),
+      public.as_affine(),
+    )
+    .raw_secret_bytes()
+    .to_vec()
+    .into_boxed_slice(),
+    (
+      AsymmetricPrivateKey::X25519(private),
+      AsymmetricPublicKey::X25519(public),
+    ) => private
+      .diffie_hellman(public)
+      .to_bytes()
+      .into_iter()
+      .collect(),
+    (AsymmetricPrivateKey::Dh(private), AsymmetricPublicKey::Dh(public)) => {
+      // Compare DH parameters by integer value, not byte encoding,
+      // since different generation paths may produce different ASN.1
+      // encodings of the same integer (e.g. with/without leading 0x00).
+      let priv_prime = BigUint::from_bytes_be(private.params.prime.as_bytes());
+      let pub_prime = BigUint::from_bytes_be(public.params.prime.as_bytes());
+      let priv_base = BigUint::from_bytes_be(private.params.base.as_bytes());
+      let pub_base = BigUint::from_bytes_be(public.params.base.as_bytes());
+      if priv_prime != pub_prime || priv_base != pub_base {
+        return Err(DiffieHellmanError::DhParametersMismatch);
       }
-      _ => return Err(
+
+      // OSIP - Octet-String-to-Integer primitive
+      let public_key = public.key.clone().into_vec();
+      let pubkey = BigUint::from_bytes_be(&public_key);
+
+      // Exponentiation (z = y^x mod p)
+      let private_key = private.key.clone().into_vec();
+      let private_key = BigUint::from_bytes_be(&private_key);
+      let shared_secret = pubkey.modpow(&private_key, &priv_prime);
+
+      shared_secret.to_bytes_be().into()
+    }
+    _ => {
+      return Err(
         DiffieHellmanError::UnsupportedKeyTypeForDiffieHellmanOrKeyTypeMismatch,
-      ),
-    };
+      );
+    }
+  };
 
   Ok(res)
 }
@@ -1347,6 +1358,68 @@ pub fn op_node_verify_ed25519(
   .is_ok();
 
   Ok(verified)
+}
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+#[class(type)]
+pub enum SignEd448Error {
+  #[error("Expected private key")]
+  ExpectedPrivateKey,
+  #[error("Expected Ed448 private key")]
+  ExpectedEd448PrivateKey,
+}
+
+#[op2(fast)]
+pub fn op_node_sign_ed448(
+  #[cppgc] key: &KeyObjectHandle,
+  #[buffer] data: &[u8],
+  #[buffer] signature: &mut [u8],
+) -> Result<(), SignEd448Error> {
+  let private = key
+    .as_private_key()
+    .ok_or(SignEd448Error::ExpectedPrivateKey)?;
+
+  let ed448 = match private {
+    AsymmetricPrivateKey::Ed448(private) => private,
+    _ => return Err(SignEd448Error::ExpectedEd448PrivateKey),
+  };
+
+  let sig = ed448.sign_raw(data);
+  signature.copy_from_slice(&sig.to_bytes());
+
+  Ok(())
+}
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+#[class(type)]
+pub enum VerifyEd448Error {
+  #[error("Expected public key")]
+  ExpectedPublicKey,
+  #[error("Expected Ed448 public key")]
+  ExpectedEd448PublicKey,
+}
+
+#[op2(fast)]
+pub fn op_node_verify_ed448(
+  #[cppgc] key: &KeyObjectHandle,
+  #[buffer] data: &[u8],
+  #[buffer] signature: &[u8],
+) -> Result<bool, VerifyEd448Error> {
+  let public = key
+    .as_public_key()
+    .ok_or(VerifyEd448Error::ExpectedPublicKey)?;
+
+  let ed448 = match &*public {
+    AsymmetricPublicKey::Ed448(public) => public,
+    _ => return Err(VerifyEd448Error::ExpectedEd448PublicKey),
+  };
+
+  let sig = match ed448_goldilocks::Signature::from_slice(signature) {
+    Ok(sig) => sig,
+    Err(_) => return Ok(false),
+  };
+
+  Ok(ed448.verify_raw(&sig, data).is_ok())
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
