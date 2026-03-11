@@ -209,8 +209,7 @@ fn op_base64_decode_into(
   // (the common case from Buffer.toString('base64')).
   {
     use base64_simd::AsOut;
-    if let Ok(decoded) = base64_simd::STANDARD.decode(&input, target.as_out())
-    {
+    if let Ok(decoded) = base64_simd::STANDARD.decode(&input, target.as_out()) {
       return Ok(decoded.len() as u32);
     }
   }
