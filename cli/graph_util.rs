@@ -517,7 +517,7 @@ impl ModuleGraphCreator {
         // include compilerOptions.types but not tsconfig files for publish
         imports: self
           .module_graph_builder
-          .resolve_compiler_options_types_imports(deno_graph::GraphKind::All),
+          .maybe_resolve_ts_config_imports(deno_graph::GraphKind::All),
         loader: Some(&publish_loader),
         npm_caching: self.options.default_npm_caching_strategy(),
       })
@@ -1074,17 +1074,6 @@ impl ModuleGraphBuilder {
   }
 
   fn maybe_resolve_ts_config_imports(
-    &self,
-    graph_kind: GraphKind,
-  ) -> Vec<deno_graph::ReferrerImports> {
-    if graph_kind.include_types() {
-      self.compiler_options_resolver.to_graph_imports()
-    } else {
-      Vec::new()
-    }
-  }
-
-  pub fn resolve_compiler_options_types_imports(
     &self,
     graph_kind: GraphKind,
   ) -> Vec<deno_graph::ReferrerImports> {
