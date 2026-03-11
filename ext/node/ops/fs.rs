@@ -9,6 +9,7 @@ use std::rc::Rc;
 use deno_core::OpState;
 use deno_core::ResourceId;
 use deno_core::op2;
+#[cfg(feature = "sync_fs")]
 use deno_core::unsync::spawn_blocking;
 use deno_fs::FileSystemRc;
 use deno_fs::FsFileType;
@@ -20,7 +21,23 @@ use deno_permissions::CheckedPathBuf;
 use deno_permissions::OpenAccessKind;
 use deno_permissions::PermissionsContainer;
 use serde::Serialize;
+#[cfg(feature = "sync_fs")]
 use tokio::task::JoinError;
+
+/// When `sync_fs` is enabled, `FileSystemRc` is `Arc` (Send) and we can
+/// offload work to a blocking thread. Otherwise, run inline.
+macro_rules! maybe_spawn_blocking {
+  ($f:expr) => {{
+    #[cfg(feature = "sync_fs")]
+    {
+      spawn_blocking($f).await.unwrap()
+    }
+    #[cfg(not(feature = "sync_fs"))]
+    {
+      ($f)()
+    }
+  }};
+}
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum FsError {
@@ -55,6 +72,7 @@ pub enum FsError {
   #[class(inherit)]
   #[error(transparent)]
   NodeFs(#[from] NodeFsError),
+  #[cfg(feature = "sync_fs")]
   #[class(inherit)]
   #[error(transparent)]
   JoinError(#[from] JoinError),
@@ -298,10 +316,7 @@ pub async fn op_node_statfs(
     path
   };
 
-  match spawn_blocking(move || statfs(path, bigint)).await {
-    Ok(result) => result,
-    Err(err) => Err(FsError::Io(err.into())),
-  }
+  maybe_spawn_blocking!(move || statfs(path, bigint))
 }
 
 fn statfs(path: CheckedPath, bigint: bool) -> Result<StatFs, FsError> {
@@ -821,7 +836,7 @@ async fn cp_create_symlink(
     permissions.check_read_all("node:fs.symlink")?;
   }
   let fs = fs.clone();
-  spawn_blocking(move || -> Result<(), FsError> {
+  maybe_spawn_blocking!(move || -> Result<(), FsError> {
     // PERMISSIONS: ok because we verified --allow-write and --allow-read above
     let oldpath = CheckedPathBuf::unsafe_new(PathBuf::from(&target));
     let newpath = CheckedPathBuf::unsafe_new(PathBuf::from(&link_path));
@@ -843,7 +858,6 @@ async fn cp_create_symlink(
       })?;
     Ok(())
   })
-  .await?
 }
 
 fn check_cp_path(
@@ -878,7 +892,7 @@ async fn check_paths_impl(
 
   let fs = fs.clone();
   let (src_stat_result, dest_result, syscall) =
-    spawn_blocking(move || -> (FsResult<_>, FsResult<_>, String) {
+    maybe_spawn_blocking!(move || -> (FsResult<_>, FsResult<_>, String) {
       let src_path = src_path.as_checked_path();
       let dest_path = dest_path.as_checked_path();
       if dereference {
@@ -894,8 +908,7 @@ async fn check_paths_impl(
           "lstat".to_string(),
         )
       }
-    })
-    .await?;
+    });
 
   let src_stat = src_stat_result.map_err(|err| {
     map_fs_error_to_node_fs_error(
@@ -1324,7 +1337,7 @@ pub async fn op_node_cp_on_file(
     )
   };
 
-  spawn_blocking(move || -> Result<(), FsError> {
+  maybe_spawn_blocking!(move || -> Result<(), FsError> {
     fs.copy_file_sync(&src_path, &dest_path).map_err(|err| {
       map_fs_error_to_node_fs_error(
         err,
@@ -1343,7 +1356,6 @@ pub async fn op_node_cp_on_file(
     }
     Ok(())
   })
-  .await?
 }
 
 #[op2(stack_trace)]
@@ -1517,7 +1529,7 @@ pub async fn op_node_cp_on_link(
   }
 
   // Unlink dest and create new symlink
-  spawn_blocking(move || -> Result<(), FsError> {
+  maybe_spawn_blocking!(move || -> Result<(), FsError> {
     let src_path_buf = CheckedPathBuf::unsafe_new(PathBuf::from(&resolved_src));
     let dest_path_buf = CheckedPathBuf::unsafe_new(PathBuf::from(&dest));
     let src_path = src_path_buf.as_checked_path();
@@ -1548,7 +1560,6 @@ pub async fn op_node_cp_on_link(
         )
       })
   })
-  .await?
 }
 
 #[cfg(test)]
