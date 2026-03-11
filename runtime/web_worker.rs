@@ -693,6 +693,25 @@ impl WebWorker {
       state.put(js_runtime.inspector());
     }
 
+    // Register the uv_loop_t (created by deno_node extension state callback)
+    // with the JsRuntime so that its event loop phases are driven by
+    // poll_event_loop.
+    {
+      let op_state_rc = js_runtime.op_state();
+      let op_state = op_state_rc.borrow();
+      if let Some(uv_loop) =
+        op_state.try_borrow::<Box<deno_core::uv_compat::UvLoop>>()
+      {
+        let loop_ptr: *mut deno_core::uv_compat::UvLoop =
+          &**uv_loop as *const _ as *mut _;
+        drop(op_state);
+        // SAFETY: loop_ptr points to a valid initialized UvLoop stored in OpState
+        unsafe {
+          js_runtime.register_uv_loop(loop_ptr);
+        }
+      }
+    }
+
     if let Some(main_session_tx) = services.main_inspector_session_tx.get() {
       let (main_proxy, worker_proxy) =
         deno_core::create_worker_inspector_session_pair(
@@ -1139,7 +1158,11 @@ pub async fn run_web_worker(
     return Ok(());
   }
 
-  // Execute provided source code immediately
+  // Execute provided source code immediately via V8 script evaluation
+  // (sloppy mode). This path is used by node:worker_threads `{ eval: true }`
+  // when the code doesn't contain ESM syntax (import/export), matching
+  // Node.js behavior where such eval workers run as CJS (sloppy mode).
+  // See: https://github.com/denoland/deno/issues/26739
   let result = if let Some(source_code) = maybe_source_code.take() {
     let r = worker.execute_script(located_script_name!(), source_code.into());
     worker.start_polling_for_messages();

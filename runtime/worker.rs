@@ -598,6 +598,25 @@ impl MainWorker {
       state.put(services.feature_checker);
     }
 
+    // Register the uv_loop_t (created by deno_node extension state callback)
+    // with the JsRuntime so that its event loop phases are driven by
+    // poll_event_loop.
+    {
+      let op_state_rc = js_runtime.op_state();
+      let op_state = op_state_rc.borrow();
+      if let Some(uv_loop) =
+        op_state.try_borrow::<Box<deno_core::uv_compat::UvLoop>>()
+      {
+        let loop_ptr: *mut deno_core::uv_compat::UvLoop =
+          &**uv_loop as *const _ as *mut _;
+        drop(op_state);
+        // SAFETY: loop_ptr points to a valid initialized UvLoop stored in OpState
+        unsafe {
+          js_runtime.register_uv_loop(loop_ptr);
+        }
+      }
+    }
+
     if let Some(server) = get_inspector_server() {
       let inspector_url = server.register_inspector(
         main_module.to_string(),
