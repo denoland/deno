@@ -14,13 +14,14 @@ use hyper::HeaderMap;
 use hyper::StatusCode;
 use hyper::body::Incoming;
 use hyper::header::AUTHORIZATION;
+use hyper::header::HeaderValue;
 use hyper_util::client::legacy::Client;
 use hyper_util::client::legacy::connect::HttpConnector;
 use hyper_util::rt::tokio::TokioExecutor;
 
 use crate::CacheError;
 
-type ClientBody =
+pub type ClientBody =
   Either<UnsyncBoxBody<Bytes, CacheError>, UnsyncBoxBody<Bytes, Infallible>>;
 
 pub struct CacheShard {
@@ -44,15 +45,27 @@ impl CacheShard {
   pub async fn get_object(
     &self,
     object_key: &str,
+    trace_headers: Option<(&str, Option<&str>)>,
   ) -> Result<Option<Response<Incoming>>, CacheError> {
     let body = Either::Right(UnsyncBoxBody::new(Empty::new()));
-    let req = Request::builder()
+    let mut req = Request::builder()
       .method(Method::GET)
       .uri(format!("{}/objects/{}", self.endpoint, object_key))
       .header(&AUTHORIZATION, format!("Bearer {}", self.token))
       .header("x-ryw", "1")
       .body(body)
       .unwrap();
+
+    if let Some((traceparent, tracestate)) = trace_headers {
+      req
+        .headers_mut()
+        .insert("traceparent", HeaderValue::from_str(traceparent)?);
+      if let Some(tracestate) = tracestate {
+        req
+          .headers_mut()
+          .insert("tracestate", HeaderValue::from_str(tracestate)?);
+      }
+    }
 
     let res = self.client.request(req).await?;
 
@@ -72,6 +85,7 @@ impl CacheShard {
     &self,
     object_key: &str,
     headers: HeaderMap,
+    trace_headers: Option<(&str, Option<&str>)>,
   ) -> Result<(), CacheError> {
     let body = Either::Right(UnsyncBoxBody::new(Empty::new()));
     let mut builder = Request::builder()
@@ -83,7 +97,17 @@ impl CacheShard {
       builder = builder.header(key, val)
     }
 
-    let req = builder.body(body).unwrap();
+    let mut req = builder.body(body).unwrap();
+    if let Some((traceparent, tracestate)) = trace_headers {
+      req
+        .headers_mut()
+        .insert("traceparent", HeaderValue::from_str(traceparent)?);
+      if let Some(tracestate) = tracestate {
+        req
+          .headers_mut()
+          .insert("tracestate", HeaderValue::from_str(tracestate)?);
+      }
+    }
 
     let res = self.client.request(req).await?;
 
@@ -107,6 +131,7 @@ impl CacheShard {
     object_key: &str,
     headers: HeaderMap,
     body: UnsyncBoxBody<Bytes, CacheError>,
+    trace_headers: Option<(&str, Option<&str>)>,
   ) -> Result<(), CacheError> {
     let mut builder = Request::builder()
       .method(Method::PUT)
@@ -117,7 +142,17 @@ impl CacheShard {
       builder = builder.header(key, val)
     }
 
-    let req = builder.body(Either::Left(body)).unwrap();
+    let mut req = builder.body(Either::Left(body)).unwrap();
+    if let Some((traceparent, tracestate)) = trace_headers {
+      req
+        .headers_mut()
+        .insert("traceparent", HeaderValue::from_str(traceparent)?);
+      if let Some(tracestate) = tracestate {
+        req
+          .headers_mut()
+          .insert("tracestate", HeaderValue::from_str(tracestate)?);
+      }
+    }
 
     let res = self.client.request(req).await?;
 
