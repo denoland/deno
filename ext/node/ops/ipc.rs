@@ -165,9 +165,9 @@ mod impl_ {
       }
       map.end()
     } else {
-      // TODO(nathanwhit): better error message
+      // Improved error message to help users understand which types are not supported
       Err(S::Error::custom(JsErrorBox::type_error(format!(
-        "Unsupported type: {}",
+        "Unsupported type: {}. Supported types: null, undefined, numbers, strings, booleans, arrays, objects, ArrayBuffer, and typed arrays.",
         value.type_repr()
       ))))
     }
