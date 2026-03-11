@@ -18,6 +18,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
+use std::thread;
+use std::time::Duration;
+use std::time::Instant;
 
 use async_trait::async_trait;
 use deno_ast::ParsedSource;
@@ -444,122 +447,162 @@ pub fn format_html(
   fmt_options: &FmtOptionsConfig,
   unstable_options: &UnstableFmtOptions,
 ) -> Result<Option<String>, AnyError> {
-  let format_result = markup_fmt::format_text(
-    file_text,
-    markup_fmt::detect_language(file_path)
-      .unwrap_or(markup_fmt::Language::Html),
-    &get_resolved_markup_fmt_config(fmt_options),
-    |text, hints| {
-      let mut file_name =
-        file_path.file_name().expect("missing file name").to_owned();
-      file_name.push(".");
-      file_name.push(hints.ext);
-      let path = file_path.with_file_name(file_name);
-      match hints.ext {
-        "css" | "scss" | "sass" | "less" => {
-          let mut malva_config = get_resolved_malva_config(fmt_options);
-          malva_config.layout.print_width = hints.print_width;
-          if hints.attr {
-            malva_config.language.quotes =
-              if let Some(true) = fmt_options.single_quote {
-                malva::config::Quotes::AlwaysDouble
-              } else {
-                malva::config::Quotes::AlwaysSingle
-              };
-            malva_config.language.single_line_top_level_declarations = true;
+  // Timeout for HTML formatting to prevent hangs with large files (issue #30982)
+  // See: https://github.com/denoland/deno/issues/30982
+  const HTML_FMT_TIMEOUT_SECS: u64 = 30;
+
+  let file_path_buf = file_path.to_path_buf();
+  let file_text_owned = file_text.to_string();
+  let config = get_resolved_markup_fmt_config(fmt_options);
+  let language = markup_fmt::detect_language(&file_path_buf)
+    .unwrap_or(markup_fmt::Language::Html);
+  let start_time = Instant::now();
+
+  // Run markup_fmt in a separate thread with timeout
+  let handle = thread::spawn(move || {
+    markup_fmt::format_text(
+      &file_text_owned,
+      language,
+      &config,
+      move |text, hints| {
+        let mut file_name = file_path_buf
+          .file_name()
+          .expect("missing file name")
+          .to_owned();
+        file_name.push(".");
+        file_name.push(hints.ext);
+        let path = file_path_buf.with_file_name(file_name);
+        match hints.ext {
+          "css" | "scss" | "sass" | "less" => {
+            let mut malva_config = get_resolved_malva_config(fmt_options);
+            malva_config.layout.print_width = hints.print_width;
+            malva::format_text(
+              text,
+              malva::detect_syntax(path).unwrap_or(malva::Syntax::Css),
+              &malva_config,
+            )
+            .map(Cow::from)
+            .map_err(AnyError::from)
           }
-          malva::format_text(
-            text,
-            malva::detect_syntax(path).unwrap_or(malva::Syntax::Css),
-            &malva_config,
-          )
-          .map(Cow::from)
-          .map_err(AnyError::from)
-        }
-        "json" | "jsonc" => {
-          let mut json_config = get_resolved_json_config(fmt_options);
-          json_config.line_width = hints.print_width as u32;
-          dprint_plugin_json::format_text(&path, text, &json_config).map(
-            |formatted| {
+          "json" | "jsonc" => {
+            let mut json_config = get_resolved_json_config(fmt_options);
+            json_config.line_width = hints.print_width as u32;
+            dprint_plugin_json::format_text(&path, text, &json_config).map(
+              |formatted| {
+                if let Some(formatted) = formatted {
+                  Cow::from(formatted)
+                } else {
+                  Cow::from(text)
+                }
+              },
+            )
+          }
+          _ => {
+            let mut typescript_config_builder =
+              get_typescript_config_builder(fmt_options);
+            typescript_config_builder.file_indent_level(hints.indent_level);
+            let mut typescript_config = typescript_config_builder.build();
+            typescript_config.line_width = hints.print_width as u32;
+            dprint_plugin_typescript::format_text(
+              dprint_plugin_typescript::FormatTextOptions {
+                path: &path,
+                extension: None,
+                text: text.to_string(),
+                config: &typescript_config,
+                external_formatter: Some(
+                  &create_external_formatter_for_typescript(unstable_options),
+                ),
+              },
+            )
+            .map(|formatted| {
               if let Some(formatted) = formatted {
                 Cow::from(formatted)
               } else {
                 Cow::from(text)
               }
-            },
-          )
+            })
+          }
         }
-        _ => {
-          let mut typescript_config_builder =
-            get_typescript_config_builder(fmt_options);
-          typescript_config_builder.file_indent_level(hints.indent_level);
-          let mut typescript_config = typescript_config_builder.build();
-          typescript_config.line_width = hints.print_width as u32;
-          dprint_plugin_typescript::format_text(
-            dprint_plugin_typescript::FormatTextOptions {
-              path: &path,
-              extension: None,
-              text: text.to_string(),
-              config: &typescript_config,
-              external_formatter: Some(
-                &create_external_formatter_for_typescript(unstable_options),
-              ),
-            },
-          )
-          .map(|formatted| {
-            if let Some(formatted) = formatted {
-              Cow::from(formatted)
-            } else {
-              Cow::from(text)
-            }
-          })
-        }
-      }
-    },
-  )
-  .map_err(|error| match error {
-    markup_fmt::FormatError::Syntax(error) => {
-      fn inner(
-        error: &markup_fmt::SyntaxError,
-        file_path: &Path,
-      ) -> Option<String> {
-        let url = Url::from_file_path(file_path).ok()?;
-
-        let error_msg = format!(
-          "Syntax error ({}) at {}:{}:{}\n",
-          error.kind,
-          url.as_str(),
-          error.line,
-          error.column
-        );
-        Some(error_msg)
-      }
-
-      if let Some(error_msg) = inner(&error, file_path) {
-        AnyError::msg(error_msg)
-      } else {
-        AnyError::from(error)
-      }
-    }
-    markup_fmt::FormatError::External(errors) => {
-      let last = errors.len() - 1;
-      AnyError::msg(
-        errors
-          .into_iter()
-          .enumerate()
-          .map(|(i, error)| {
-            if i == last {
-              format!("{error}")
-            } else {
-              format!("{error}\n\n")
-            }
-          })
-          .collect::<String>(),
-      )
-    }
+      },
+    )
   });
 
-  let formatted_str = format_result?;
+  // Wait for the result with timeout
+  let timeout_duration = Duration::from_secs(HTML_FMT_TIMEOUT_SECS);
+  let format_result;
+  loop {
+    match handle.try_join() {
+      Ok(result) => {
+        format_result = result;
+        break;
+      }
+      Err(_) => {
+        // Thread panicked - log warning
+        warn!(
+          "HTML formatting thread panicked for {}, returning original text",
+          file_path.display()
+        );
+        return Ok(None);
+      }
+    }
+    if start_time.elapsed() > timeout_duration {
+      // Timeout occurred - log warning and return original text
+      warn!(
+        "HTML formatting timed out after {} seconds for {}, returning original text",
+        HTML_FMT_TIMEOUT_SECS,
+        file_path.display()
+      );
+      return Ok(None);
+    }
+    thread::sleep(Duration::from_millis(100));
+  }
+
+  let format_result = match format_result {
+    Ok(result) => result,
+    Err(error) => match error {
+      markup_fmt::FormatError::Syntax(error) => {
+        fn inner(
+          error: &markup_fmt::SyntaxError,
+          file_path: &Path,
+        ) -> Option<String> {
+          let url = Url::from_file_path(file_path).ok()?;
+
+          let error_msg = format!(
+            "Syntax error ({}) at {}:{}:{}\n",
+            error.kind,
+            url.as_str(),
+            error.line,
+            error.column
+          );
+          Some(error_msg)
+        }
+
+        if let Some(error_msg) = inner(&error, file_path) {
+          return Err(AnyError::msg(error_msg));
+        } else {
+          return Err(AnyError::from(error));
+        }
+      }
+      markup_fmt::FormatError::External(errors) => {
+        let last = errors.len() - 1;
+        return Err(AnyError::msg(
+          errors
+            .into_iter()
+            .enumerate()
+            .map(|(i, error)| {
+              if i == last {
+                format!("{error}")
+              } else {
+                format!("{error}\n\n")
+              }
+            })
+            .collect::<String>(),
+        ));
+      }
+    },
+  };
+
+  let formatted_str = format_result;
 
   Ok(if formatted_str == file_text {
     None
