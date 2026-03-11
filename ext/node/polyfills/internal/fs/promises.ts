@@ -14,10 +14,6 @@ import { readlinkPromise } from "ext:deno_node/_fs/_fs_readlink.ts";
 import { realpathPromise } from "ext:deno_node/_fs/_fs_realpath.ts";
 import { statPromise } from "ext:deno_node/_fs/_fs_stat.ts";
 import { statfsPromise } from "ext:deno_node/_fs/_fs_statfs.ts";
-import { symlinkPromise } from "ext:deno_node/_fs/_fs_symlink.ts";
-import { truncatePromise } from "ext:deno_node/_fs/_fs_truncate.ts";
-import { utimesPromise } from "ext:deno_node/_fs/_fs_utimes.ts";
-import { watchPromise } from "ext:deno_node/_fs/_fs_watch.ts";
 import {
   access,
   appendFile,
@@ -32,7 +28,11 @@ import {
   rename,
   rm,
   rmdir,
+  symlink,
+  truncate,
   unlink,
+  utimes,
+  watchPromise,
   writeFile,
 } from "node:fs";
 import { globPromise } from "ext:deno_node/_fs/_fs_glob.ts";
@@ -191,6 +191,29 @@ const opendirPromise = promisify(opendir) as (
   path: string | Buffer | URL,
   options?: OpendirOptions,
 ) => Promise<Dir>;
+
+// -- symlink --
+
+const symlinkPromise = promisify(symlink) as (
+  target: string | Buffer | URL,
+  path: string | Buffer | URL,
+  type?: string,
+) => Promise<void>;
+
+// -- truncate --
+
+const truncatePromise = promisify(truncate) as (
+  path: string | URL,
+  len?: number,
+) => Promise<void>;
+
+// -- utimes --
+
+const utimesPromise = promisify(utimes) as (
+  path: string | URL,
+  atime: number | string | Date,
+  mtime: number | string | Date,
+) => Promise<void>;
 
 // -- writeFile --
 
