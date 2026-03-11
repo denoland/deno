@@ -300,6 +300,10 @@ pub fn main() {
     return; // all tests filtered out
   }
 
+  if test_util::test_runner::print_tests_if_list_flag(&root_category) {
+    return;
+  }
+
   let _http_guard = test_util::http_server();
   let parallelism = Parallelism::default();
   let flaky_test_tracker = Arc::new(FlakyTestTracker::default());

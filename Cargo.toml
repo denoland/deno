@@ -45,6 +45,7 @@ members = [
   "libs/inspector_server",
   "libs/lockfile",
   "libs/maybe_sync",
+  "libs/napi_sys",
   "libs/node_resolver",
   "libs/node_shim",
   "libs/npm",
@@ -88,7 +89,7 @@ deno_ast = { version = "=0.53.1", features = ["transpiling"] }
 deno_core_icudata = "0.77.0"
 deno_doc = "=0.190.1"
 deno_error = "=0.7.1"
-deno_graph = { version = "=0.107.0", default-features = false }
+deno_graph = { version = "=0.107.1", default-features = false }
 deno_lint = "=0.83.0"
 deno_media_type = { version = "=0.4.0", features = ["module_specifier"] }
 deno_native_certs = "0.3.0"
@@ -391,7 +392,7 @@ dsa = "0.6.3"
 ecb = "=0.1.2"
 ecdsa = "0.16.9"
 ed25519-dalek = "2.1.1"
-ed448-goldilocks = "0.8.3"
+ed448-goldilocks = "0.14.0-pre.10"
 elliptic-curve = { version = "0.13.4", features = ["alloc", "arithmetic", "ecdh", "std", "pem", "jwk"] }
 hkdf = "0.12.3"
 k256 = { version = "0.13.1", features = ["ecdh", "jwk", "pem"] }
@@ -428,8 +429,7 @@ memmap2 = "0.9"
 # napi
 libloading = "0.7"
 libuv-sys-lite = { version = "=1.48.3", features = ["dyn-symbols"] }
-napi-build = "1"
-napi-sys = { version = "=2.2.2", default-features = false }
+napi_sys = { version = "0.1.0", path = "./libs/napi_sys" }
 
 # webgpu
 raw-window-handle = "0.6.0"

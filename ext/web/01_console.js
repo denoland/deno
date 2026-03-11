@@ -3771,6 +3771,7 @@ class Console {
         ...getConsoleInspectOptions(noColorStdout()),
         depth: 1,
         compact: true,
+        breakLength: Infinity,
       });
     const toTable = (header, body) => this.log(cliTable(header, body));
 

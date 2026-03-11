@@ -99,7 +99,10 @@ import {
   Pipe,
   PipeConnectWrap,
 } from "ext:deno_node/internal_binding/pipe_wrap.ts";
-import { ShutdownWrap } from "ext:deno_node/internal_binding/stream_wrap.ts";
+import {
+  kUseNativeWrap,
+  ShutdownWrap,
+} from "ext:deno_node/internal_binding/stream_wrap.ts";
 import assert from "node:assert";
 import { isWindows } from "ext:deno_node/_util/os.ts";
 import { ADDRCONFIG, lookup as dnsLookup } from "node:dns";
@@ -547,7 +550,7 @@ function _internalConnect(
   port: number,
   addressType: number,
   localAddress: string,
-  localPort: number,
+  localPort: number | undefined,
   flags: number,
 ) {
   assert(socket.connecting);
@@ -555,6 +558,7 @@ function _internalConnect(
   let err;
 
   if (localAddress || localPort) {
+    localPort = (localPort ?? 0) | 0;
     if (addressType === 4) {
       localAddress = localAddress || DEFAULT_IPV4_ADDR;
       err = (socket._handle as TCP).bind(localAddress, localPort);
@@ -653,7 +657,8 @@ function _internalConnectMultiple(context, canceled?: boolean) {
     if (addressType === 4) {
       localAddress = DEFAULT_IPV4_ADDR;
       err = self._handle.bind(localAddress, localPort);
-    } else { // addressType === 6
+    } else {
+      // addressType === 6
       localAddress = DEFAULT_IPV6_ADDR;
       err = self._handle.bind6(localAddress, localPort, flags);
     }
@@ -837,10 +842,7 @@ function _initSocketHandle(socket: Socket) {
   }
 }
 
-function _lookupAndConnect(
-  self: Socket,
-  options: TcpSocketConnectOptions,
-) {
+function _lookupAndConnect(self: Socket, options: TcpSocketConnectOptions) {
   const { localAddress, localPort } = options;
   const host = options.host || "localhost";
   let { port, autoSelectFamilyAttemptTimeout, autoSelectFamily } = options;
@@ -930,7 +932,9 @@ function _lookupAndConnect(
   const lookup = options.lookup || dnsLookup;
 
   if (
-    dnsOpts.family !== 4 && dnsOpts.family !== 6 && !localAddress &&
+    dnsOpts.family !== 4 &&
+    dnsOpts.family !== 6 &&
+    !localAddress &&
     autoSelectFamily
   ) {
     debug("connect: autodetecting");
@@ -1231,6 +1235,8 @@ export function Socket(options) {
   this.autoSelectFamilyAttemptedAddresses = undefined;
   this.connecting = false;
 
+  this[kUseNativeWrap] = options[kUseNativeWrap] || false;
+
   const errorStack = new Error().stack;
   this._needsSockInitWorkaround = options.handle?.ipc !== true &&
     pkgsNeedsSockInitWorkaround.some((pkg) => errorStack?.includes(pkg));
@@ -1282,10 +1288,7 @@ Object.setPrototypeOf(Socket, Duplex);
 Socket.prototype.connect = function (...args) {
   let normalized;
 
-  if (
-    Array.isArray(args[0]) &&
-    args[0][normalizedArgsSymbol]
-  ) {
+  if (Array.isArray(args[0]) && args[0][normalizedArgsSymbol]) {
     normalized = args[0];
   } else {
     normalized = _normalizeArgs(args);
@@ -1294,10 +1297,7 @@ Socket.prototype.connect = function (...args) {
   const options = normalized[0];
   const cb = normalized[1];
 
-  if (
-    options.port === undefined &&
-    options.path == null
-  ) {
+  if (options.port === undefined && options.path == null) {
     throw new ERR_MISSING_ARGS(["options", "port", "path"]);
   }
 
@@ -1319,6 +1319,10 @@ Socket.prototype.connect = function (...args) {
     this._handle = pipe
       ? new Pipe(PipeConstants.SOCKET)
       : new TCP(TCPConstants.SOCKET);
+
+    if (this[kUseNativeWrap]) {
+      this._handle[kUseNativeWrap] = this[kUseNativeWrap];
+    }
 
     _initSocketHandle(this);
   }
@@ -1347,11 +1351,7 @@ Socket.prototype.connect = function (...args) {
 };
 
 Socket.prototype.pause = function () {
-  if (
-    !this.connecting &&
-    this._handle &&
-    this._handle.reading
-  ) {
+  if (!this.connecting && this._handle && this._handle.reading) {
     this._handle.reading = false;
 
     if (!this.destroyed) {
@@ -1367,11 +1367,7 @@ Socket.prototype.pause = function () {
 };
 
 Socket.prototype.resume = function () {
-  if (
-    !this.connecting &&
-    this._handle &&
-    !this._handle.reading
-  ) {
+  if (!this.connecting && this._handle && !this._handle.reading) {
     _tryReadStart(this);
   }
 
@@ -1721,12 +1717,7 @@ Socket.prototype._getsockname = function () {
   return this._sockname;
 };
 
-Socket.prototype._writeGeneric = function (
-  writev,
-  data,
-  encoding,
-  cb,
-) {
+Socket.prototype._writeGeneric = function (writev, data, encoding, cb) {
   if (this.connecting) {
     this._pendingData = data;
     this._pendingEncoding = encoding;
@@ -1760,18 +1751,11 @@ Socket.prototype._writeGeneric = function (
   }
 };
 
-Socket.prototype._writev = function (
-  chunks,
-  cb,
-) {
+Socket.prototype._writev = function (chunks, cb) {
   this._writeGeneric(true, chunks, "", cb);
 };
 
-Socket.prototype._write = function (
-  data,
-  encoding,
-  cb,
-) {
+Socket.prototype._write = function (data, encoding, cb) {
   this._writeGeneric(false, data, encoding, cb);
 };
 
@@ -2136,7 +2120,7 @@ function _onconnection(this: any, err: number, clientHandle?: Handle) {
   }
 
   const socket = self._createSocket(clientHandle);
-  this._connections++;
+  self._connections++;
   self.emit("connection", socket);
 
   if (netServerSocketChannel.hasSubscribers) {
