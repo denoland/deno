@@ -1641,10 +1641,10 @@ const denoCoreMiriJob = job("deno-core-miri", {
   ),
 });
 
-// === lint ci status job (status check gate) ===
+// === ci status job (status check gate) ===
 
-const lintCiStatusJob = job("lint-ci-status", {
-  name: "lint ci status",
+const ciStatusJob = job("ci-status", {
+  name: "ci status",
   // We use this job in the main branch rule status checks for PRs.
   // All jobs that are required to pass on a PR should be listed here.
   needs: [
@@ -1704,7 +1704,7 @@ const workflow = createWorkflow({
     lintJob,
     denoCoreTestJob,
     denoCoreMiriJob,
-    lintCiStatusJob,
+    ciStatusJob,
     publishCanaryJob,
   ],
 });
