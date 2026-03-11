@@ -461,6 +461,7 @@ function fromString(string, encoding) {
   if (!BufferIsEncoding(encoding)) {
     throw new codes.ERR_UNKNOWN_ENCODING(encoding);
   }
+
   const maxLength = Buffer.poolSize >>> 1;
   const length = byteLength(string, encoding) | 0;
   if (length >= maxLength) {

@@ -180,15 +180,20 @@ pub enum WebError {
 fn op_base64_decode(
   #[string(onebyte)] input: Cow<[u8]>,
 ) -> Result<Uint8Array, WebError> {
-  let mut s = input.into_owned();
-  let decoded_len = forgiving_base64_decode_inplace(&mut s)?;
-  s.truncate(decoded_len);
-  Ok(s.into())
+  // Use forgiving_decode_to_vec which handles whitespace stripping
+  // and decodes in one pass without unnecessary intermediate copies.
+  let v = base64_simd::forgiving_decode_to_vec(&input)
+    .map_err(|_| WebError::Base64Decode)?;
+  Ok(v.into())
 }
 
 /// Decode base64 directly into a target buffer at the given offset.
 /// Returns the number of bytes written.
-/// Uses stack allocation for inputs up to 8KB to avoid heap allocation overhead.
+///
+/// Fast path: tries STANDARD.decode directly into target (zero intermediate
+/// copies). This works for properly-padded base64 without whitespace.
+/// Slow path: uses a stack/heap buffer with forgiving_decode for inputs
+/// with whitespace or missing padding.
 #[op2(fast)]
 fn op_base64_decode_into(
   #[string(onebyte)] input: Cow<[u8]>,
@@ -196,26 +201,35 @@ fn op_base64_decode_into(
   #[smi] offset: u32,
 ) -> Result<u32, WebError> {
   let offset = offset as usize;
-  let len = input.len();
+  let target = &mut target[offset..];
 
-  // Stack-allocate for small strings (covers ≤4KB binary = ≤5.5KB base64)
-  // In the V8 fast call path, Cow is borrowed (zero-copy from V8 memory),
-  // so we need a mutable copy for in-place decode. Stack avoids heap alloc.
+  // Fast path: try strict STANDARD decode directly into target.
+  // This avoids any intermediate buffer — input is read directly and
+  // decoded bytes are written to target. Works for clean padded base64
+  // (the common case from Buffer.toString('base64')).
+  {
+    use base64_simd::AsOut;
+    if let Ok(decoded) = base64_simd::STANDARD.decode(&input, target.as_out())
+    {
+      return Ok(decoded.len() as u32);
+    }
+  }
+
+  // Slow path: forgiving decode for whitespace/missing padding/unpadded input.
+  // Needs a buffer >= input length for forgiving_decode's internal copy.
+  let len = input.len();
   const STACK_BUF_SIZE: usize = 8192;
   if len <= STACK_BUF_SIZE {
     let mut buf = [0u8; STACK_BUF_SIZE];
-    buf[..len].copy_from_slice(&input);
-    let decoded = base64_simd::forgiving_decode_inplace(&mut buf[..len])
+    use base64_simd::AsOut;
+    let decoded = base64_simd::forgiving_decode(&input, buf[..len].as_out())
       .map_err(|_| WebError::Base64Decode)?;
-    let target = &mut target[offset..];
     let bytes_to_write = decoded.len().min(target.len());
     target[..bytes_to_write].copy_from_slice(&decoded[..bytes_to_write]);
     Ok(bytes_to_write as u32)
   } else {
-    // Heap allocation for large strings
     let mut s = input.into_owned();
     let decoded_len = forgiving_base64_decode_inplace(&mut s)?;
-    let target = &mut target[offset..];
     let bytes_to_write = decoded_len.min(target.len());
     target[..bytes_to_write].copy_from_slice(&s[..bytes_to_write]);
     Ok(bytes_to_write as u32)
