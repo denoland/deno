@@ -586,32 +586,11 @@ export function generateKeyPair(
   }
   validateFunction(callback, "callback");
 
-  // createJob is called synchronously so validation errors throw synchronously
-  const job = createJob(kAsync, type, options);
-
-  job.then((pair) => {
-    const privateKeyHandle = op_node_get_private_key_from_pair(pair);
-    const publicKeyHandle = op_node_get_public_key_from_pair(pair);
-
-    let privateKey: any = new PrivateKeyObject(privateKeyHandle);
-    let publicKey: any = new PublicKeyObject(publicKeyHandle);
-
-    if (typeof options === "object" && options !== null) {
-      const { publicKeyEncoding, privateKeyEncoding } = options as any;
-
-      if (publicKeyEncoding) {
-        publicKey = publicKey.export(publicKeyEncoding);
-      }
-
-      if (privateKeyEncoding) {
-        privateKey = privateKey.export(privateKeyEncoding);
-      }
-    }
-
-    callback!(null, publicKey, privateKey);
-  }, (err) => {
-    callback!(err, null, null);
-  });
+  _generateKeyPair(type, options)
+    .then(
+      (res) => callback!(null, res.publicKey, res.privateKey),
+      (err) => callback!(err, null, null),
+    );
 }
 
 function _generateKeyPair(type: string, options: unknown) {

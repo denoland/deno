@@ -53,6 +53,7 @@ use sys_traits::FsMetadata;
 
 use crate::args::CliLockfile;
 use crate::args::CliOptions;
+use crate::args::DenoSubcommand;
 use crate::args::config_to_deno_graph_workspace_member;
 use crate::args::jsr_url;
 use crate::cache;
@@ -792,14 +793,13 @@ impl ModuleGraphBuilder {
     let graph_resolver = self.resolver.as_graph_resolver(
       self.cjs_tracker.as_ref(),
       &jsx_import_source_config_resolver,
+      None,
     );
     let maybe_reporter = self.maybe_reporter.as_deref();
     let mut locker = self.lockfile.as_ref().map(|l| l.as_deno_graph_locker());
-    self
-      .build_graph_with_npm_resolution_and_build_options(
-        graph,
-        request,
-        loader.as_loader(),
+
+    macro_rules! build_options {
+      ($npm_resolver:expr, $resolver:expr) => {
         deno_graph::BuildOptions {
           skip_dynamic_deps: self.cli_options.unstable_lazy_dynamic_imports()
             && graph.graph_kind() == GraphKind::CodeOnly,
@@ -812,18 +812,52 @@ impl ModuleGraphBuilder {
           jsr_version_resolver: Cow::Borrowed(
             self.jsr_version_resolver.as_ref(),
           ),
-          npm_resolver: Some(self.npm_graph_resolver.as_ref()),
+          npm_resolver: $npm_resolver,
           module_analyzer: &analyzer,
           module_info_cacher: self.module_info_cache.as_ref(),
           reporter: maybe_reporter,
-          resolver: Some(&graph_resolver),
+          resolver: Some($resolver),
           locker: locker.as_mut().map(|l| l as _),
           unstable_bytes_imports: self.cli_options.unstable_raw_imports(),
           unstable_text_imports: self.cli_options.unstable_raw_imports(),
-        },
+        }
+      };
+    }
+
+    self
+      .build_graph_with_npm_resolution_and_build_options(
+        graph,
+        request,
+        loader.as_loader(),
+        build_options!(Some(self.npm_graph_resolver.as_ref()), &graph_resolver),
         options.npm_caching,
       )
       .await?;
+
+    if self.analyze_npm_sources() {
+      let has_npm_specifier = graph
+        .modules()
+        .any(|m| matches!(m, deno_graph::Module::Npm(_)))
+        || graph.roots.iter().any(|r| r.scheme() == "npm");
+      if has_npm_specifier {
+        // go through the graph and resolve npm: modules to real js modules
+        let cloned_graph = graph.clone();
+        let graph_resolver = self.resolver.as_graph_resolver(
+          self.cjs_tracker.as_ref(),
+          &jsx_import_source_config_resolver,
+          Some(&cloned_graph),
+        );
+
+        graph
+          .build_npm_packages(
+            self.cli_options.start_dir.dir_url(),
+            deno_graph::source::ResolutionKind::Types,
+            loader.as_loader(),
+            build_options!(None, &graph_resolver),
+          )
+          .await;
+      }
+    }
 
     Ok(())
   }
@@ -870,6 +904,7 @@ impl ModuleGraphBuilder {
       BuildGraphRequest::Roots(roots, imports) => {
         if roots.iter().any(|r| r.scheme() == "npm")
           && self.npm_resolver.is_byonm()
+          && !self.analyze_npm_sources()
         {
           return Err(BuildGraphWithNpmResolutionError::UnsupportedNpmSpecifierEntrypointResolutionWay);
         }
@@ -947,6 +982,7 @@ impl ModuleGraphBuilder {
     let graph_resolver = self.resolver.as_graph_resolver(
       self.cjs_tracker.as_ref(),
       &jsx_import_source_config_resolver,
+      None,
     );
 
     graph.build_fast_check_type_graph(
@@ -984,8 +1020,14 @@ impl ModuleGraphBuilder {
         file_header_overrides: self.cli_options.resolve_file_header_overrides(),
         permissions: Some(permissions),
         reporter: self.load_reporter.clone(),
+        include_npm_sources: self.analyze_npm_sources(),
       },
     )
+  }
+
+  fn analyze_npm_sources(&self) -> bool {
+    // only analyze npm packages with deno_graph for deno doc
+    matches!(self.cli_options.sub_command(), DenoSubcommand::Doc(_))
   }
 
   /// Check if `roots` and their deps are available. Returns `Ok(())` if

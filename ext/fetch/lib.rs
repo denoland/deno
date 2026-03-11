@@ -239,6 +239,9 @@ pub enum FetchError {
   #[class(generic)]
   #[error(transparent)]
   PermissionCheck(PermissionCheckError),
+  #[class(inherit)]
+  #[error(transparent)]
+  Other(JsErrorBox),
 }
 
 impl From<deno_fs::FsError> for FetchError {
@@ -249,6 +252,9 @@ impl From<deno_fs::FsError> for FetchError {
       | deno_fs::FsError::NotSupported => FetchError::NetworkError,
       deno_fs::FsError::PermissionCheck(err) => {
         FetchError::PermissionCheck(err)
+      }
+      deno_fs::FsError::JoinError(err) => {
+        FetchError::Other(JsErrorBox::from_err(err))
       }
     }
   }
@@ -1506,6 +1512,30 @@ fn is_error_retryable(err: &(dyn std::error::Error + 'static)) -> bool {
     {
       return true;
     }
+  }
+
+  // HTTP/1.1: The connection was closed before the message completed.
+  // This happens when a pooled keep-alive connection is stale (e.g. the
+  // server shut down between requests). Safe to retry because the server
+  // never received/processed the request on this connection.
+  if let Some(err) = find_source::<hyper::Error>(err)
+    && err.is_incomplete_message()
+  {
+    return true;
+  }
+
+  // Connection reset/aborted by the server before we could send the request.
+  // This is another manifestation of stale pooled connections.
+  // ConnectionReset (ECONNRESET) on Unix, ConnectionAborted (WSAECONNABORTED /
+  // os error 10053) on Windows.
+  if let Some(err) = find_source::<std::io::Error>(err)
+    && matches!(
+      err.kind(),
+      std::io::ErrorKind::ConnectionReset
+        | std::io::ErrorKind::ConnectionAborted
+    )
+  {
+    return true;
   }
 
   false
