@@ -2292,10 +2292,12 @@ impl JsRuntime {
         .safety_net_active
         .swap(true, std::sync::atomic::Ordering::SeqCst)
     {
-      let waker = cx.waker().clone();
-      let flag = self.inner.state.safety_net_active.clone();
-      waker.wake();
-      flag.store(false, std::sync::atomic::Ordering::SeqCst);
+      cx.waker().wake_by_ref();
+      self
+        .inner
+        .state
+        .safety_net_active
+        .store(false, std::sync::atomic::Ordering::SeqCst);
     }
 
     // Re-wake logic for next iteration
