@@ -737,8 +737,7 @@ impl BinaryNameAndUrl {
         .resolve_all_bin_entries_from_npm(&module_url)
         .await
       && all_bins.len() > 1
-      && let Ok(npm_ref) =
-        NpmPackageReqReference::from_specifier(&module_url)
+      && let Ok(npm_ref) = NpmPackageReqReference::from_specifier(&module_url)
     {
       let req = npm_ref.req();
       for (bin_name, script_path) in &all_bins {
