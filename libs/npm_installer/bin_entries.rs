@@ -494,6 +494,7 @@ mod test {
 
   use sys_traits::FsCreateDirAll;
   use sys_traits::FsRemoveDirAll;
+  #[cfg(unix)]
   use sys_traits::FsWrite;
 
   use super::*;
