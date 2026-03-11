@@ -1504,6 +1504,25 @@ fn get_resolved_markdown_config(
     });
   }
 
+  if let Some(new_line_kind) = options.new_line_kind {
+    builder.new_line_kind(match new_line_kind {
+      NewLineKind::Auto => dprint_core::configuration::NewLineKind::Auto,
+      NewLineKind::CarriageReturnLineFeed => {
+        dprint_core::configuration::NewLineKind::CarriageReturnLineFeed
+      }
+      NewLineKind::LineFeed => {
+        dprint_core::configuration::NewLineKind::LineFeed
+      }
+      NewLineKind::System => {
+        if cfg!(windows) {
+          dprint_core::configuration::NewLineKind::CarriageReturnLineFeed
+        } else {
+          dprint_core::configuration::NewLineKind::LineFeed
+        }
+      }
+    });
+  }
+
   builder.build()
 }
 
@@ -1525,6 +1544,25 @@ fn get_resolved_json_config(
 
   if let Some(indent_width) = options.indent_width {
     builder.indent_width(indent_width);
+  }
+
+  if let Some(new_line_kind) = options.new_line_kind {
+    builder.new_line_kind(match new_line_kind {
+      NewLineKind::Auto => dprint_core::configuration::NewLineKind::Auto,
+      NewLineKind::CarriageReturnLineFeed => {
+        dprint_core::configuration::NewLineKind::CarriageReturnLineFeed
+      }
+      NewLineKind::LineFeed => {
+        dprint_core::configuration::NewLineKind::LineFeed
+      }
+      NewLineKind::System => {
+        if cfg!(windows) {
+          dprint_core::configuration::NewLineKind::CarriageReturnLineFeed
+        } else {
+          dprint_core::configuration::NewLineKind::LineFeed
+        }
+      }
+    });
   }
 
   builder.build()
