@@ -185,28 +185,25 @@ function printHelp() {
   console.log();
 }
 
-async function main() {
-  const args = Deno.args;
+const args = Deno.args;
 
-  if (
-    args.length === 0 || args[0] === "--help" || args[0] === "-h" ||
-    args[0] === "help"
-  ) {
-    printHelp();
-    return;
-  }
-
-  const subcommand = args[0];
-  const cmd = COMMANDS[subcommand];
-
-  if (!cmd) {
-    $.logError(`Unknown command '${subcommand}'.`);
-    console.log();
-    printHelp();
-    Deno.exit(1);
-  }
-
-  await cmd.fn();
+if (
+  args.length === 0 || args[0] === "--help" || args[0] === "-h" ||
+  args[0] === "help"
+) {
+  printHelp();
+  Deno.exit(0);
 }
 
-await main();
+const subcommand = args[0];
+const cmd = COMMANDS[subcommand];
+
+if (!cmd) {
+  $.logError(`Unknown command '${subcommand}'.`);
+  console.log();
+  printHelp();
+  Deno.exit(1);
+}
+
+await cmd.fn();
+
