@@ -568,16 +568,20 @@ export function generateKeyPair(
 export function generateKeyPair(
   type: KeyType,
   options: unknown,
-  callback: (
+  callback?: (
     err: Error | null,
     publicKey: any,
     privateKey: any,
   ) => void,
 ) {
+  if (typeof options === "function") {
+    callback = options;
+    options = undefined;
+  }
   _generateKeyPair(type, options)
     .then(
-      (res) => callback(null, res.publicKey, res.privateKey),
-      (err) => callback(err, null, null),
+      (res) => callback!(null, res.publicKey, res.privateKey),
+      (err) => callback!(err, null, null),
     );
 }
 

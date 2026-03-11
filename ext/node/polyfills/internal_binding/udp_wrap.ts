@@ -500,6 +500,7 @@ export class UDP extends HandleWrap {
         ip,
         port,
         (flags & os.UV_UDP_REUSEADDR) !== 0,
+        (flags & os.UV_UDP_IPV6ONLY) !== 0,
       );
       this.#rid = rid;
       this.#address = hostname;
