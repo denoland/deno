@@ -298,6 +298,7 @@ pub fn op_node_statfs_sync(
 
 #[op2(stack_trace)]
 #[serde]
+#[allow(clippy::unused_async)]
 pub async fn op_node_statfs(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
@@ -823,6 +824,7 @@ fn cp_symlink_type(
   }
 }
 
+#[allow(clippy::unused_async)]
 async fn cp_create_symlink(
   state: &Rc<RefCell<OpState>>,
   fs: &FileSystemRc,
@@ -880,6 +882,7 @@ fn check_cp_path(
 
 /// Validates src and dest paths for a cp operation.
 /// Checks identity, directory type conflicts, and subdirectory relationships.
+#[allow(clippy::unused_async)]
 async fn check_paths_impl(
   state: &Rc<RefCell<OpState>>,
   fs: &FileSystemRc,
