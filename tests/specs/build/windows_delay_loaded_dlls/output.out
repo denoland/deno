@@ -1,3 +1,4 @@
+[# this test is to ensure dlls don't negatively impact windows startup perf. Prefer lazily loading]
 advapi32.dll: eager
 api-ms-win-core-synch-l1-2-0.dll: eager
 bcrypt.dll: eager
