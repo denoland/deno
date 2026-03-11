@@ -32,10 +32,10 @@ import { readlink, readlinkSync } from "ext:deno_node/_fs/_fs_readlink.ts";
 import { realpath, realpathSync } from "ext:deno_node/_fs/_fs_realpath.ts";
 import { stat, Stats, statSync } from "ext:deno_node/_fs/_fs_stat.ts";
 import { statfs, statfsSync } from "ext:deno_node/_fs/_fs_statfs.ts";
-import { symlink, symlinkSync } from "ext:deno_node/_fs/_fs_symlink.ts";
-import { truncate, truncateSync } from "ext:deno_node/_fs/_fs_truncate.ts";
-import { utimes, utimesSync } from "ext:deno_node/_fs/_fs_utimes.ts";
-import { unwatchFile, watch, watchFile } from "ext:deno_node/_fs/_fs_watch.ts";
+import { EventEmitter } from "node:events";
+import { notImplemented } from "ext:deno_node/_utils.ts";
+import { promisify } from "node:util";
+import { delay } from "ext:deno_node/_util/async.ts";
 import { readv, readvSync } from "ext:deno_node/_fs/_fs_readv.ts";
 import promises from "ext:deno_node/internal/fs/promises.ts";
 // @deno-types="./internal/fs/streams.d.ts"
@@ -77,6 +77,7 @@ import {
   validateInt32,
   validateInteger,
   validateObject,
+  validateOneOf,
   validateString,
 } from "ext:deno_node/internal/validators.mjs";
 import { Buffer } from "node:buffer";
@@ -121,14 +122,21 @@ import {
   kEmptyObject,
   normalizeEncoding,
 } from "ext:deno_node/internal/util.mjs";
-import { resolve, toNamespacedPath } from "node:path";
+import { basename, resolve, toNamespacedPath } from "node:path";
+import * as pathModule from "node:path";
 import type { Encoding } from "node:crypto";
 import { core, primordials } from "ext:core/mod.js";
 
 const {
   ArrayBufferIsView,
+  DatePrototypeGetTime,
+  DateUTC,
   Error,
+  FunctionPrototypeBind,
   ErrorPrototype,
+  MapPrototypeDelete,
+  MapPrototypeGet,
+  MapPrototypeSet,
   MathMin,
   Number,
   NumberIsFinite,
@@ -136,7 +144,10 @@ const {
   ObjectDefineProperty,
   ObjectPrototypeIsPrototypeOf,
   PromisePrototypeThen,
+  PromiseResolve,
+  SafeMap,
   StringPrototypeToString,
+  SymbolAsyncIterator,
   SymbolFor,
   Uint8Array,
 } = primordials;
@@ -1960,6 +1971,570 @@ function _checkAborted(signal?: AbortSignal) {
   }
 }
 
+// -- truncate --
+
+function truncate(
+  path: string | URL,
+  lenOrCallback: number | CallbackWithError,
+  maybeCallback?: CallbackWithError,
+) {
+  path = ObjectPrototypeIsPrototypeOf(URLPrototype, path)
+    ? pathFromURL(path)
+    : path;
+  const len: number | undefined = typeof lenOrCallback === "number"
+    ? lenOrCallback
+    : undefined;
+  const callback: CallbackWithError = typeof lenOrCallback === "function"
+    ? lenOrCallback
+    : maybeCallback as CallbackWithError;
+
+  if (!callback) throw new Error("No callback function supplied");
+
+  PromisePrototypeThen(
+    Deno.truncate(path, len),
+    () => callback(null),
+    callback,
+  );
+}
+
+function truncateSync(path: string | URL, len?: number) {
+  path = ObjectPrototypeIsPrototypeOf(URLPrototype, path)
+    ? pathFromURL(path)
+    : path;
+
+  Deno.truncateSync(path, len);
+}
+
+// -- utimes --
+
+function getValidTime(
+  time: number | string | Date,
+  name: string,
+): number {
+  if (typeof time === "string") {
+    time = Number(time);
+  }
+
+  if (
+    typeof time === "number" &&
+    (NumberIsNaN(time) || !NumberIsFinite(time))
+  ) {
+    throw new Deno.errors.InvalidData(
+      `invalid ${name}, must not be infinity or NaN`,
+    );
+  }
+
+  return toUnixTimestamp(time);
+}
+
+function utimes(
+  path: string | URL,
+  atime: number | string | Date,
+  mtime: number | string | Date,
+  callback: CallbackWithError,
+) {
+  // deno-lint-ignore prefer-primordials
+  path = getValidatedPath(path).toString();
+
+  if (!callback) {
+    throw new Deno.errors.InvalidData("No callback function supplied");
+  }
+
+  atime = getValidTime(atime, "atime");
+  mtime = getValidTime(mtime, "mtime");
+
+  PromisePrototypeThen(
+    Deno.utime(path, atime, mtime),
+    () => callback(null),
+    callback,
+  );
+}
+
+function utimesSync(
+  path: string | URL,
+  atime: number | string | Date,
+  mtime: number | string | Date,
+) {
+  // deno-lint-ignore prefer-primordials
+  path = getValidatedPath(path).toString();
+  atime = getValidTime(atime, "atime");
+  mtime = getValidTime(mtime, "mtime");
+
+  Deno.utimeSync(path, atime, mtime);
+}
+
+// -- symlink --
+
+type SymlinkType = "file" | "dir" | "junction";
+
+function symlink(
+  target: string | Buffer | URL,
+  path: string | Buffer | URL,
+  linkType?: SymlinkType | CallbackWithError,
+  callback?: CallbackWithError,
+) {
+  if (callback === undefined) {
+    callback = linkType as CallbackWithError;
+    linkType = undefined;
+  } else {
+    validateOneOf(linkType, "type", [
+      "dir",
+      "file",
+      "junction",
+      null,
+      undefined,
+    ]);
+  }
+
+  callback = makeCallback(callback);
+  target = getValidatedPathToString(target, "target");
+  path = getValidatedPathToString(path);
+
+  if (isWindows && !linkType) {
+    let absoluteTarget;
+    try {
+      // Symlinks targets can be relative to the newly created path.
+      // Calculate absolute file name of the symlink target, and check
+      // if it is a directory. Ignore resolve error to keep symlink
+      // errors consistent between platforms if invalid path is
+      // provided.
+      absoluteTarget = pathModule.resolve(path, "..", target);
+    } catch {
+      // Continue regardless of error.
+    }
+    if (absoluteTarget !== undefined) {
+      stat(absoluteTarget, (err, stat) => {
+        const resolvedType = !err && stat.isDirectory() ? "dir" : "file";
+
+        PromisePrototypeThen(
+          Deno.symlink(
+            target,
+            path,
+            { type: resolvedType },
+          ),
+          () => callback(null),
+          callback,
+        );
+      });
+      return;
+    }
+  }
+
+  PromisePrototypeThen(
+    Deno.symlink(
+      target,
+      path,
+      { type: linkType ?? "file" },
+    ),
+    () => callback(null),
+    callback,
+  );
+}
+
+function symlinkSync(
+  target: string | Buffer | URL,
+  path: string | Buffer | URL,
+  type?: SymlinkType,
+) {
+  validateOneOf(type, "type", ["dir", "file", "junction", null, undefined]);
+  target = getValidatedPathToString(target, "target");
+  path = getValidatedPathToString(path);
+
+  if (isWindows && !type) {
+    const absoluteTarget = pathModule.resolve(path, "..", target);
+    if (
+      statSync(absoluteTarget, { bigint: false, throwIfNoEntry: false })
+        ?.isDirectory()
+    ) {
+      type = "dir";
+    }
+  }
+
+  Deno.symlinkSync(target, path, { type: type ?? "file" });
+}
+
+// -- watch --
+
+const statPromisified = promisify(stat);
+const statAsync = async (filename: string): Promise<Stats | null> => {
+  try {
+    return await statPromisified(filename);
+  } catch {
+    return emptyStats;
+  }
+};
+const emptyStats = new Stats(
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  DateUTC(1970, 0, 1, 0, 0, 0),
+  DateUTC(1970, 0, 1, 0, 0, 0),
+  DateUTC(1970, 0, 1, 0, 0, 0),
+  DateUTC(1970, 0, 1, 0, 0, 0),
+) as unknown as Stats;
+
+function asyncIterableToCallback<T>(
+  iter: AsyncIterable<T>,
+  callback: (val: T, done?: boolean) => void,
+  errCallback: (e: unknown) => void,
+) {
+  const iterator = iter[SymbolAsyncIterator]();
+  function next() {
+    // deno-lint-ignore prefer-primordials
+    PromisePrototypeThen(iterator.next(), (obj: IteratorResult<T>) => {
+      if (obj.done) {
+        callback(obj.value, true);
+        return;
+      }
+      callback(obj.value);
+      next();
+    }, errCallback);
+  }
+  next();
+}
+
+type watchOptions = {
+  persistent?: boolean;
+  recursive?: boolean;
+  encoding?: string;
+};
+
+type watchListener = (eventType: string, filename: string) => void;
+
+function watch(
+  filename: string | URL,
+  options: watchOptions,
+  listener: watchListener,
+): FSWatcher;
+function watch(
+  filename: string | URL,
+  listener: watchListener,
+): FSWatcher;
+function watch(
+  filename: string | URL,
+  options: watchOptions,
+): FSWatcher;
+function watch(filename: string | URL): FSWatcher;
+function watch(
+  filename: string | URL,
+  optionsOrListener?: watchOptions | watchListener,
+  optionsOrListener2?: watchOptions | watchListener,
+) {
+  const listener = typeof optionsOrListener === "function"
+    ? optionsOrListener
+    : typeof optionsOrListener2 === "function"
+    ? optionsOrListener2
+    : undefined;
+  const options = typeof optionsOrListener === "object"
+    ? optionsOrListener
+    : typeof optionsOrListener2 === "object"
+    ? optionsOrListener2
+    : undefined;
+
+  // deno-lint-ignore prefer-primordials
+  const watchPath = getValidatedPath(filename).toString();
+
+  let iterator: Deno.FsWatcher;
+  // Start the actual watcher a few msec later to avoid race condition
+  // error in test case in compat test case
+  // (parallel/test-fs-watch.js, parallel/test-fs-watchfile.js)
+  const timer = setTimeout(() => {
+    iterator = Deno.watchFs(watchPath, {
+      recursive: options?.recursive || false,
+    });
+
+    asyncIterableToCallback<Deno.FsEvent>(iterator, (val, done) => {
+      if (done) return;
+      fsWatcher.emit(
+        "change",
+        convertDenoFsEventToNodeFsEvent(val.kind),
+        basename(val.paths[0]),
+      );
+    }, (e) => {
+      fsWatcher.emit("error", e);
+    });
+  }, 5);
+
+  const fsWatcher = new FSWatcher(() => {
+    clearTimeout(timer);
+    try {
+      iterator?.close();
+    } catch (e) {
+      if (
+        ObjectPrototypeIsPrototypeOf(Deno.errors.BadResource.prototype, e)
+      ) {
+        // already closed
+        return;
+      }
+      throw e;
+    }
+  }, () => iterator);
+
+  if (listener) {
+    fsWatcher.on(
+      "change",
+      FunctionPrototypeBind(listener, { _handle: fsWatcher }),
+    );
+  }
+
+  return fsWatcher;
+}
+
+function watchPromise(
+  filename: string | Buffer | URL,
+  options?: {
+    persistent?: boolean;
+    recursive?: boolean;
+    encoding?: string;
+    signal?: AbortSignal;
+  },
+): AsyncIterable<{ eventType: string; filename: string | Buffer | null }> {
+  // deno-lint-ignore prefer-primordials
+  const watchPath = getValidatedPath(filename).toString();
+
+  const watcher = Deno.watchFs(watchPath, {
+    recursive: options?.recursive ?? false,
+  });
+
+  if (options?.signal) {
+    if (options.signal.aborted) {
+      watcher.close();
+    } else {
+      options.signal.addEventListener(
+        "abort",
+        () => watcher.close(),
+        { once: true },
+      );
+    }
+  }
+
+  const fsIterable = watcher[SymbolAsyncIterator]();
+  const result = {
+    async next(): Promise<
+      IteratorResult<{ eventType: string; filename: string | Buffer | null }>
+    > {
+      // deno-lint-ignore prefer-primordials
+      const iterResult = await fsIterable.next();
+      if (iterResult.done) return iterResult;
+
+      const eventType = convertDenoFsEventToNodeFsEvent(
+        iterResult.value.kind,
+      );
+      return {
+        value: { eventType, filename: basename(iterResult.value.paths[0]) },
+        done: false,
+      };
+    },
+    // deno-lint-ignore no-explicit-any
+    return(value?: any): Promise<IteratorResult<any>> {
+      watcher.close();
+      return PromiseResolve({ value, done: true });
+    },
+    [SymbolAsyncIterator]() {
+      return this;
+    },
+  };
+
+  return result;
+}
+
+type WatchFileListener = (curr: Stats, prev: Stats) => void;
+type WatchFileOptions = {
+  bigint?: boolean;
+  persistent?: boolean;
+  interval?: number;
+};
+
+function watchFile(
+  filename: string | Buffer | URL,
+  listener: WatchFileListener,
+): StatWatcher;
+function watchFile(
+  filename: string | Buffer | URL,
+  options: WatchFileOptions,
+  listener: WatchFileListener,
+): StatWatcher;
+function watchFile(
+  filename: string | Buffer | URL,
+  listenerOrOptions: WatchFileListener | WatchFileOptions,
+  listener?: WatchFileListener,
+): StatWatcher {
+  // deno-lint-ignore prefer-primordials
+  const watchPath = getValidatedPath(filename).toString();
+  const handler = typeof listenerOrOptions === "function"
+    ? listenerOrOptions
+    : listener!;
+  validateFunction(handler, "listener");
+  const {
+    bigint = false,
+    persistent = true,
+    interval = 5007,
+  } = typeof listenerOrOptions === "object" ? listenerOrOptions : {};
+
+  let watcher = MapPrototypeGet(statWatchers, watchPath);
+  if (watcher === undefined) {
+    watcher = new StatWatcher(bigint);
+    watcher[kFSStatWatcherStart](watchPath, persistent, interval);
+    MapPrototypeSet(statWatchers, watchPath, watcher);
+  }
+
+  watcher.addListener("change", handler);
+  return watcher;
+}
+
+function unwatchFile(
+  filename: string | Buffer | URL,
+  listener?: WatchFileListener,
+) {
+  // deno-lint-ignore prefer-primordials
+  const watchPath = getValidatedPath(filename).toString();
+  const watcher = MapPrototypeGet(statWatchers, watchPath);
+
+  if (!watcher) {
+    return;
+  }
+
+  if (typeof listener === "function") {
+    const beforeListenerCount = watcher.listenerCount("change");
+    watcher.removeListener("change", listener);
+    if (watcher.listenerCount("change") < beforeListenerCount) {
+      watcher[kFSStatWatcherAddOrCleanRef]("clean");
+    }
+  } else {
+    watcher.removeAllListeners("change");
+    watcher[kFSStatWatcherAddOrCleanRef]("cleanAll");
+  }
+
+  if (watcher.listenerCount("change") === 0) {
+    watcher.stop();
+    MapPrototypeDelete(statWatchers, watchPath);
+  }
+}
+
+const statWatchers = new SafeMap<string, StatWatcher>();
+
+const kFSStatWatcherStart = SymbolFor("kFSStatWatcherStart");
+const kFSStatWatcherAddOrCleanRef = SymbolFor("kFSStatWatcherAddOrCleanRef");
+
+class StatWatcher extends EventEmitter {
+  #bigint: boolean;
+  #refCount = 0;
+  #abortController = new AbortController();
+
+  constructor(bigint: boolean) {
+    super();
+    this.#bigint = bigint;
+  }
+  [kFSStatWatcherStart](
+    filename: string,
+    persistent: boolean,
+    interval: number,
+  ) {
+    if (persistent) {
+      this.#refCount++;
+    }
+
+    (async () => {
+      let prev = await statAsync(filename);
+
+      if (prev === emptyStats) {
+        this.emit("change", prev, prev);
+      }
+
+      try {
+        while (true) {
+          await delay(interval, { signal: this.#abortController.signal });
+          const curr = await statAsync(filename);
+          if (
+            DatePrototypeGetTime(curr?.mtime) !==
+              DatePrototypeGetTime(prev?.mtime)
+          ) {
+            this.emit("change", curr, prev);
+            prev = curr;
+          }
+        }
+      } catch (e) {
+        if (
+          ObjectPrototypeIsPrototypeOf(DOMException.prototype, e) &&
+          e.name === "AbortError"
+        ) {
+          return;
+        }
+        this.emit("error", e);
+      }
+    })();
+  }
+  [kFSStatWatcherAddOrCleanRef](addOrClean: "add" | "clean" | "cleanAll") {
+    if (addOrClean === "add") {
+      this.#refCount++;
+    } else if (addOrClean === "clean") {
+      this.#refCount--;
+    } else {
+      this.#refCount = 0;
+    }
+  }
+  stop() {
+    if (this.#abortController.signal.aborted) {
+      return;
+    }
+    this.#abortController.abort();
+    this.emit("stop");
+  }
+  ref() {
+    notImplemented("StatWatcher.ref() is not implemented");
+  }
+  unref() {
+    notImplemented("StatWatcher.unref() is not implemented");
+  }
+}
+
+class FSWatcher extends EventEmitter {
+  #closer: () => void;
+  #closed = false;
+  #watcher: () => Deno.FsWatcher;
+
+  constructor(closer: () => void, getter: () => Deno.FsWatcher) {
+    super();
+    this.#closer = closer;
+    this.#watcher = getter;
+  }
+  close() {
+    if (this.#closed) {
+      return;
+    }
+    this.#closed = true;
+    this.emit("close");
+    this.#closer();
+  }
+  ref() {
+    this.#watcher().ref();
+  }
+  unref() {
+    this.#watcher().unref();
+  }
+}
+
+type NodeFsEventType = "rename" | "change";
+
+function convertDenoFsEventToNodeFsEvent(
+  kind: Deno.FsEvent["kind"],
+): NodeFsEventType {
+  if (kind === "create" || kind === "remove") {
+    return "rename";
+  } else if (kind === "rename") {
+    return "rename";
+  } else {
+    return "change";
+  }
+}
+
 export default {
   access,
   accessSync,
@@ -2070,6 +2645,7 @@ export default {
   W_OK,
   watch,
   watchFile,
+  watchPromise,
   write,
   writeFile,
   writev,
@@ -2194,6 +2770,7 @@ export {
   W_OK,
   watch,
   watchFile,
+  watchPromise,
   write,
   writeFile,
   writeFileSync,
