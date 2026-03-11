@@ -342,8 +342,7 @@ impl WebWorkerHandle {
 
           // A worker's isolate can only be terminated once, so we need a
           // guard here.
-          let already_terminated =
-            has_terminated.swap(true, Ordering::SeqCst);
+          let already_terminated = has_terminated.swap(true, Ordering::SeqCst);
 
           if !already_terminated {
             // Stop javascript execution
@@ -356,8 +355,7 @@ impl WebWorkerHandle {
         std::thread::spawn(move || {
           std::thread::sleep(Duration::from_secs(2));
 
-          let already_terminated =
-            has_terminated.swap(true, Ordering::SeqCst);
+          let already_terminated = has_terminated.swap(true, Ordering::SeqCst);
 
           if !already_terminated {
             isolate_handle.terminate_execution();
