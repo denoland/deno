@@ -176,15 +176,33 @@ impl InnerIsolateState {
   }
 
   pub fn cleanup(&mut self) {
-    self.prepare_for_cleanup();
+    // Shut down the op driver and take the inspector before realm destroy.
+    self.main_realm.0.context_state.pending_ops.shutdown();
+    let inspector = self.state.inspector.take();
 
     let state_ptr = self.v8_isolate.get_data(STATE_DATA_OFFSET);
     // SAFETY: We are sure that it's a valid pointer for whole lifetime of
     // the runtime.
     _ = unsafe { Rc::from_raw(state_ptr as *const JsRuntimeState) };
 
+    // Destroy the realm while the uv_loop (stored in op_state's
+    // gotham_state) is still alive. destroy() reads uv_loop_ptr to
+    // release the Global<Context> stored in loop.data. If we clear
+    // op_state first, the Box<UvLoop> is freed and destroy() would
+    // dereference a dangling pointer (use-after-free).
     unsafe {
       ManuallyDrop::take(&mut self.main_realm).0.destroy();
+    }
+
+    // Now safe to clear op_state (drops Box<UvLoop> etc.) since
+    // destroy() has already released the Global from loop.data.
+    self.state.op_state.borrow_mut().clear();
+    if let Some(inspector) = inspector {
+      assert_eq!(
+        Rc::strong_count(&inspector),
+        1,
+        "The inspector must be dropped before the runtime"
+      );
     }
 
     debug_assert_eq!(Rc::strong_count(&self.state), 1);
@@ -1875,7 +1893,10 @@ impl JsRuntime {
 
     v8::tc_scope!(let tc_scope, scope);
 
-    tc_scope.perform_microtask_checkpoint();
+    let context_state = JsRealm::state_from_scope(tc_scope);
+    if !context_state.has_tick_scheduled() {
+      tc_scope.perform_microtask_checkpoint();
+    }
     match tc_scope.exception() {
       None => Ok(()),
       Some(exception) => {
@@ -2113,7 +2134,9 @@ impl JsRuntime {
     }
     // 1b. Fire expired JS timers (direct v8::Function::call per timer)
     did_work |= Self::dispatch_timers(cx, scope, context_state);
-    scope.perform_microtask_checkpoint();
+    if !context_state.has_tick_scheduled() {
+      scope.perform_microtask_checkpoint();
+    }
 
     // ===== Phase 2: Pending work =====
     // Module progress polling (before ops, matching original ordering)
@@ -2123,11 +2146,10 @@ impl JsRuntime {
     dispatched_ops |= Self::dispatch_task_spawner(cx, scope, context_state);
 
     // 2b. Poll and resolve completed async ops
-    // NOTE: No microtask checkpoint between ops and nextTick/macrotask!
-    // This matches the old eventLoopTick behavior where ops resolve,
-    // nextTick drains, and macrotasks run all within the same JS call
-    // before any microtask checkpoint. Promise continuations (like await
-    // resumption) run only after all three have completed.
+    // NOTE: No microtask checkpoint here. Under Explicit microtask policy,
+    // microtasks from op completions (including await continuations) are
+    // deferred to __drainNextTickAndMacrotasks which correctly interleaves
+    // nextTick callbacks before promise microtasks.
     dispatched_ops |= Self::dispatch_pending_ops(cx, scope, context_state)?;
 
     // 2c. Dispatch "rejectionhandled" events before tick processing.
@@ -2885,8 +2907,15 @@ impl JsRuntime {
         }
       }
 
-      // Microtask checkpoint between each timer
-      scope.perform_microtask_checkpoint();
+      // Microtask checkpoint between each timer (skipped when ticks are
+      // scheduled so processTicksAndRejections drains them in the right order)
+      if !context_state.has_tick_scheduled() {
+        scope.perform_microtask_checkpoint();
+      }
+
+      // Dispatch "rejectionhandled" events before tick drain, so that
+      // rejectionhandled fires before unhandledrejection for later promises.
+      Self::dispatch_handled_rejections(scope, &context_state.exception_state);
 
       // Dispatch "rejectionhandled" events before tick drain, so that
       // rejectionhandled fires before unhandledrejection for later promises.
@@ -2929,7 +2958,9 @@ impl JsRuntime {
       for task in tasks {
         task(scope);
       }
-      scope.perform_microtask_checkpoint();
+      if !context_state.has_tick_scheduled() {
+        scope.perform_microtask_checkpoint();
+      }
 
       retries -= 1;
       if retries == 0 {

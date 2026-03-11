@@ -239,6 +239,9 @@ pub enum FetchError {
   #[class(generic)]
   #[error(transparent)]
   PermissionCheck(PermissionCheckError),
+  #[class(inherit)]
+  #[error(transparent)]
+  Other(JsErrorBox),
 }
 
 impl From<deno_fs::FsError> for FetchError {
@@ -249,6 +252,9 @@ impl From<deno_fs::FsError> for FetchError {
       | deno_fs::FsError::NotSupported => FetchError::NetworkError,
       deno_fs::FsError::PermissionCheck(err) => {
         FetchError::PermissionCheck(err)
+      }
+      deno_fs::FsError::JoinError(err) => {
+        FetchError::Other(JsErrorBox::from_err(err))
       }
     }
   }

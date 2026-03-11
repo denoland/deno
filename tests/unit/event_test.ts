@@ -142,6 +142,19 @@ Deno.test(function inspectEvent() {
   );
 });
 
+Deno.test(function removeEventListenerWithEmptyObjectOptions() {
+  const target = new EventTarget();
+  let callCount = 0;
+  const listener = () => {
+    callCount++;
+  };
+
+  target.addEventListener("foo", listener);
+  target.removeEventListener("foo", listener, {});
+  target.dispatchEvent(new Event("foo"));
+  assertEquals(callCount, 0);
+});
+
 Deno.test("default argument is null prototype", () => {
   const event = new Event("test");
   assertEquals(event.bubbles, false);

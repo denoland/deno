@@ -47,7 +47,7 @@ pub async fn deploy(
       let file = factory
         .file_fetcher()?
         .fetch_bypass_permissions(
-          &registry_url.join("@deploy/deno/meta.json").unwrap(),
+          &registry_url.join("@deno/deploy/meta.json").unwrap(),
         )
         .await?;
       let info = serde_json::from_slice::<JsrPackageInfo>(&file.source)?;

@@ -6,6 +6,83 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 2.7.5 / 2026.03.11
+
+- feat(coverage): add function coverage to summary and HTML reports (#32507)
+- feat(doc): support npm packages in `deno doc` (#32435)
+- feat(ext/node): add `node_api_create_object_with_properties` API (#31443)
+- feat(ext/node): implement KeyObject.toCryptoKey() and
+  KeyObject.from(CryptoKey) (#32523)
+- feat(otel): allow feeding permission audit data into OTEL (#32501)
+- feat: --cpu-prof flags for CPU profiles (#31909)
+- fix(console): prevent multi-line object values in console.table (#32604)
+- fix(core): switch to V8 Explicit microtask policy for correct nextTick
+  ordering (#32466)
+- fix(ext/http): allow rejecting HTTP upgrades with non-101 status codes
+  (#32615)
+- fix(ext/napi): run async work execute callback on a worker thread (#32560)
+- fix(ext/node): add `node_api_create_property_key_(latin1/utf8)` (#32559)
+- fix(ext/node): add missing http2 header constants (#32611)
+- fix(ext/node): emit DEP0198 warning for SHAKE digests without outputLength
+  (#32521)
+- fix(ext/node): emit correct error codes for unsupported PQC key types (#32533)
+- fix(ext/node): fix multiple DiffieHellman crypto bugs (#32531)
+- fix(ext/node): fix multiple node:dgram compatibility issues (#32520)
+- fix(ext/node): handle generateKeyPair 2-arg call and enable PQC tests (#32619)
+- fix(ext/node): implement ECDH.convertKey and fix related ECDH bugs (#32532)
+- fix(ext/node): implement `node:v8` heap APIs (#32483)
+- fix(ext/node): implement proper `resourceLimits` for `node:worker_threads`
+  (#32430)
+- fix(ext/node): improve getCipherInfo and allow repeated Hmac digest() (#32522)
+- fix(ext/node): improve node:dns compat (#32536)
+- fix(ext/node): initialize debuglog testEnabled with safe default (#32598)
+- fix(ext/node): make TTY stdout/stderr indestructible (#32530)
+- fix(ext/node): make tty ReadStream/WriteStream callable without `new` (#32537)
+- fix(ext/node): multiple readline improvements (#32538)
+- fix(ext/node): napi_set_instance_data on exit (#32509)
+- fix(ext/node): rewrite http2 implementation (#32418)
+- fix(ext/node): run worker_threads eval code in sloppy mode (#32428)
+- fix(ext/node): support des-ede3-cbc cipher and allow Cipheriv/Decipheriv
+  without new (#32519)
+- fix(ext/node): use max salt length as default for RSA-PSS signing (#32534)
+- fix(ext/otel): remove panicking unwraps in telemetry code (#32557)
+- fix(ext/websocket): handle non-ASCII bytes in WebSocket response headers
+  (#32594)
+- fix(lsp): properly sync root files with tsgo (#32455)
+- fix(lsp): tsgo scope attribution for asset files (#32608)
+- fix(napi): remove unimplemented Node-API symbols from napi_sys (#32593)
+- fix(npm): memoize peer cache hit checks to prevent combinatorial explosion
+  (#32609)
+- fix(npm): support npmrc email authorization (#32616)
+- fix: ensure binaries distributed in `@deno/...` npm packages are exectuable
+  (#32581)
+- fix: flush CPU profile and coverage data on Deno.exit() (#32591)
+- fix: normalize `capture` to boolean in `removeEventListener` options (#32508)
+- fix: prevent panic on dynamic import with non-string error name (#32498)
+- fix: set `process.features.openssl_is_boringssl` to `true` (#32512)
+- fix: support value substitution when loading environment variable files
+  (#32495)
+- perf(ext/node): move most `fs.cp` logic to rust (#32580)
+- perf(lsp): drop jsx import source cache (#32506)
+- perf(npm): improve decompression speed more (#32547)
+- perf(npm): less syscalls in tarball extraction (#32541)
+- perf(npm): remove folder canonicalization in tarball extract (#32540)
+- perf(npm): use libdeflater and preallocate buffer (#32511)
+
+### 2.7.4 / 2026.03.05
+
+- Reland refactor(core): move nextTick/immediate queues into core, replace ops
+  with shared buffers (#32440) (#32465)
+- Revert "refactor(core): move nextTick/immediate queues into core, replace ops
+  with shared buffers (#32440) (#32462)
+- fix(core): uv_compat cleanup and fixes (#32458)
+- fix(deploy): correctly handle version lookup (#32489)
+- fix(ext/node): deep `assert` compatibility (#32434)
+- fix(ext/node): use sync writes for TTY stdout/stderr WriteStream (#32488)
+- fix(test): restart all tests on env file change (#32461)
+- perf(npm): actually improve `npm install -g deno` binary startup performance
+  (#32467)
+
 ### 2.7.3 / 2026.03.04
 
 - fix(deploy): dont use jsr api for deploy subcommand (#32441)

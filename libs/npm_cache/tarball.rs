@@ -42,6 +42,7 @@ enum MemoryCacheItem {
 /// and on macOS APFS has an internal mutex that makes highly parallel filesystem
 /// operations contend heavily. Limiting concurrency reduces this contention.
 /// Decompression (CPU-bound) is not gated by this limit.
+#[cfg(not(target_arch = "wasm32"))]
 const MAX_CONCURRENT_FS_WRITES: usize =
   if cfg!(target_os = "macos") { 4 } else { 128 };
 
@@ -249,8 +250,6 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
             // renaming. So we settle for overwriting.
             TarballExtractionMode::Overwrite
           };
-          let dist = dist.clone();
-          let package_nv = package_nv.clone();
           // Phase 1: verify integrity + decompress (CPU-bound, no concurrency limit)
           let tar_data = spawn_blocking(move || {
             verify_and_decompress_tarball(&package_nv, &bytes, &dist)

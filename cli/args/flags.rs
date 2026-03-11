@@ -263,6 +263,14 @@ pub struct DocFlags {
   pub filter: Option<String>,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Default)]
+pub struct CpuProfFlags {
+  pub dir: Option<String>,
+  pub name: Option<String>,
+  pub interval: Option<u32>,
+  pub md: bool,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct EvalFlags {
   pub print: bool,
@@ -874,7 +882,6 @@ pub struct Flags {
   pub config_flag: ConfigFlag,
   pub node_modules_dir: Option<NodeModulesDirMode>,
   pub vendor: Option<bool>,
-  pub enable_op_summary_metrics: bool,
   pub enable_testing_features: bool,
   pub ext: Option<String>,
   /// Flags that aren't exposed in the CLI, but are used internally.
@@ -908,6 +915,7 @@ pub struct Flags {
   pub preload: Vec<String>,
   pub require: Vec<String>,
   pub tunnel: bool,
+  pub cpu_prof: Option<CpuProfFlags>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Default, Serialize, Deserialize)]
@@ -3113,25 +3121,27 @@ This command has implicit access to all permissions.
     UnstableArgsConfig::ResolutionAndRuntime,
   )
   .defer(|cmd| {
-    runtime_args(cmd, false, true, true)
-      .arg(check_arg(false))
-      .arg(executable_ext_arg())
-      .arg(
-        Arg::new("print")
-          .long("print")
-          .short('p')
-          .help("print result to stdout")
-          .action(ArgAction::SetTrue),
-      )
-      .arg(
-        Arg::new("code_arg")
-          .num_args(1..)
-          .action(ArgAction::Append)
-          .help("Code to evaluate")
-          .value_name("CODE_ARG")
-          .required_unless_present("help"),
-      )
-      .arg(env_file_arg())
+    cpu_prof_args(
+      runtime_args(cmd, false, true, true)
+        .arg(check_arg(false))
+        .arg(executable_ext_arg())
+        .arg(
+          Arg::new("print")
+            .long("print")
+            .short('p')
+            .help("print result to stdout")
+            .action(ArgAction::SetTrue),
+        )
+        .arg(
+          Arg::new("code_arg")
+            .num_args(1..)
+            .action(ArgAction::Append)
+            .help("Code to evaluate")
+            .value_name("CODE_ARG")
+            .required_unless_present("help"),
+        )
+        .arg(env_file_arg()),
+    )
   })
 }
 
@@ -4028,22 +4038,24 @@ TypeScript is supported, however it is not type-checked, only transpiled."
 }
 
 fn run_args(command: Command, top_level: bool) -> Command {
-  runtime_args(command, true, true, true)
-    .arg(check_arg(false))
-    .arg(watch_arg(true))
-    .arg(hmr_arg(true))
-    .arg(watch_exclude_arg())
-    .arg(no_clear_screen_arg())
-    .arg(executable_ext_arg())
-    .arg(if top_level {
-      script_arg().trailing_var_arg(true).hide(true)
-    } else {
-      script_arg().trailing_var_arg(true)
-    })
-    .arg(env_file_arg())
-    .arg(no_code_cache_arg())
-    .arg(coverage_arg())
-    .arg(tunnel_arg())
+  cpu_prof_args(
+    runtime_args(command, true, true, true)
+      .arg(check_arg(false))
+      .arg(watch_arg(true))
+      .arg(hmr_arg(true))
+      .arg(watch_exclude_arg())
+      .arg(no_clear_screen_arg())
+      .arg(executable_ext_arg())
+      .arg(if top_level {
+        script_arg().trailing_var_arg(true).hide(true)
+      } else {
+        script_arg().trailing_var_arg(true)
+      })
+      .arg(env_file_arg())
+      .arg(no_code_cache_arg())
+      .arg(coverage_arg()),
+  )
+  .arg(tunnel_arg())
 }
 
 #[cfg(test)]
@@ -4141,7 +4153,8 @@ fn serve_host_validator(host: &str) -> Result<String, String> {
 }
 
 fn serve_subcommand() -> Command {
-  runtime_args(command("serve", cstr!("Run a server defined in a main module
+  cpu_prof_args(
+    runtime_args(command("serve", cstr!("Run a server defined in a main module
 
 The serve command uses the default exports of the main module to determine which servers to start.
 
@@ -4184,8 +4197,9 @@ Start a server defined in server.ts, watching for changes and running on port 50
         .trailing_var_arg(true),
     )
     .arg(env_file_arg())
-    .arg(no_code_cache_arg())
-    .arg(tunnel_arg())
+    .arg(no_code_cache_arg()),
+  )
+  .arg(tunnel_arg())
 }
 
 fn task_subcommand() -> Command {
@@ -4745,8 +4759,9 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
                                              <p(245)>--ignore-read  |  --ignore-read="/etc,/var/log.txt"</>
       <g>DENO_TRACE_PERMISSIONS</>                Environmental variable to enable stack traces in permission prompts.
                                              <p(245)>DENO_TRACE_PERMISSIONS=1 deno run main.ts</>
-      <g>DENO_AUDIT_PERMISSIONS</>               Environmental variable to generate a JSONL file with all permissions accesses.
-                                             <p(245)>DENO_TRACE_PERMISSIONS=./audit.jsonl deno run main.ts</>
+      <g>DENO_AUDIT_PERMISSIONS</>               Environmental variable to audit all permissions accesses. Set to a file path for JSONL output, or "otel" to emit as OpenTelemetry log events via the configured OTel exporter.
+                                             <p(245)>DENO_AUDIT_PERMISSIONS=./audit.jsonl deno run main.ts</>
+                                             <p(245)>DENO_AUDIT_PERMISSIONS=otel deno run main.ts</>
 "#))
     .arg(
       {
@@ -5524,6 +5539,72 @@ fn coverage_arg() -> Arg {
     .help(cstr!("Collect coverage profile data into DIR. If DIR is not specified, it uses 'coverage/'.
   <p(245)>This option can also be set via the DENO_COVERAGE_DIR environment variable."))
     .value_hint(ValueHint::AnyPath)
+}
+
+fn cpu_prof_args(cmd: Command) -> Command {
+  cmd
+    .arg(cpu_prof_arg())
+    .arg(cpu_prof_dir_arg())
+    .arg(cpu_prof_name_arg())
+    .arg(cpu_prof_interval_arg())
+    .arg(cpu_prof_md_arg())
+}
+
+fn cpu_prof_parse(matches: &mut ArgMatches) -> Option<CpuProfFlags> {
+  let enabled = matches.get_flag("cpu-prof");
+  let dir = matches.remove_one::<String>("cpu-prof-dir");
+  let name = matches.remove_one::<String>("cpu-prof-name");
+  let interval = matches.remove_one::<u32>("cpu-prof-interval");
+  let md = matches.get_flag("cpu-prof-md");
+  if enabled || dir.is_some() || name.is_some() || interval.is_some() || md {
+    Some(CpuProfFlags {
+      dir,
+      name,
+      interval,
+      md,
+    })
+  } else {
+    None
+  }
+}
+
+fn cpu_prof_arg() -> Arg {
+  Arg::new("cpu-prof")
+    .long("cpu-prof")
+    .help("Start the V8 CPU profiler on startup and write the profile to disk on exit. Profiles are written to the current directory by default")
+    .action(ArgAction::SetTrue)
+}
+
+fn cpu_prof_dir_arg() -> Arg {
+  Arg::new("cpu-prof-dir")
+    .long("cpu-prof-dir")
+    .value_name("DIR")
+    .help("Directory where the V8 CPU profiles will be written. Implicitly enables --cpu-prof")
+    .value_hint(ValueHint::DirPath)
+    .value_parser(value_parser!(String))
+}
+
+fn cpu_prof_name_arg() -> Arg {
+  Arg::new("cpu-prof-name")
+    .long("cpu-prof-name")
+    .value_name("NAME")
+    .help("Filename for the CPU profile (defaults to CPU.<timestamp>.<pid>.cpuprofile)")
+    .value_parser(value_parser!(String))
+}
+
+fn cpu_prof_interval_arg() -> Arg {
+  Arg::new("cpu-prof-interval")
+    .long("cpu-prof-interval")
+    .value_name("MICROSECONDS")
+    .help("Sampling interval in microseconds for CPU profiling (default: 1000)")
+    .value_parser(value_parser!(u32))
+}
+
+fn cpu_prof_md_arg() -> Arg {
+  Arg::new("cpu-prof-md")
+    .long("cpu-prof-md")
+    .help("Generate a human-readable markdown report alongside the CPU profile")
+    .action(ArgAction::SetTrue)
 }
 
 fn permit_no_files_arg() -> Arg {
@@ -6371,6 +6452,7 @@ fn eval_parse(
   flags.allow_all();
 
   ext_arg_parse(flags, matches);
+  flags.cpu_prof = cpu_prof_parse(matches);
 
   let print = matches.get_flag("print");
   let mut code_args = matches.remove_many::<String>("code_arg").unwrap();
@@ -6929,6 +7011,7 @@ fn run_parse(
   flags.tunnel = matches.get_flag("tunnel");
   flags.code_cache_enabled = !matches.get_flag("no-code-cache");
   let coverage_dir = matches.remove_one::<String>("coverage");
+  flags.cpu_prof = cpu_prof_parse(matches);
 
   match matches.remove_many::<String>("script_arg") {
     Some(mut script_arg) => {
@@ -6995,6 +7078,7 @@ fn serve_parse(
   flags.argv.extend(script_arg);
 
   ext_arg_parse(flags, matches);
+  flags.cpu_prof = cpu_prof_parse(matches);
 
   flags.subcommand = DenoSubcommand::Serve(ServeFlags {
     script,

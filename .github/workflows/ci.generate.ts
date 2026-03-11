@@ -18,7 +18,7 @@ import {
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 100;
+const cacheVersion = 102;
 
 const ubuntuX86Runner = "ubuntu-24.04";
 const ubuntuARMRunner = "ubuntu-24.04-arm";
@@ -1641,10 +1641,10 @@ const denoCoreMiriJob = job("deno-core-miri", {
   ),
 });
 
-// === lint ci status job (status check gate) ===
+// === ci status job (status check gate) ===
 
-const lintCiStatusJob = job("lint-ci-status", {
-  name: "lint ci status",
+const ciStatusJob = job("ci-status", {
+  name: "ci status",
   // We use this job in the main branch rule status checks for PRs.
   // All jobs that are required to pass on a PR should be listed here.
   needs: [
@@ -1704,7 +1704,7 @@ const workflow = createWorkflow({
     lintJob,
     denoCoreTestJob,
     denoCoreMiriJob,
-    lintCiStatusJob,
+    ciStatusJob,
     publishCanaryJob,
   ],
 });
