@@ -288,18 +288,22 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
 
       deps
         .dependencies
-        .values()
-        .chain(deps.dev_dependencies.values())
-        .filter_map(|dep| dep.as_ref().ok())
-        .filter_map(|dep| match dep {
-          PackageJsonDepValue::File(_) => {
-            // ignored because this will have its own separate lockfile
-            None
+        .keys()
+        .chain(deps.dev_dependencies.keys())
+        .filter(|name| !name.is_empty()) // Skip empty package names
+        .filter_map(|name| {
+          let dep = deps.dependencies.get(name).and_then(|d| d.as_ref().ok())
+            .or_else(|| deps.dev_dependencies.get(name).and_then(|d| d.as_ref().ok()))?;
+          match dep {
+            PackageJsonDepValue::File(_) => {
+              // ignored because this will have its own separate lockfile
+              None
+            }
+            PackageJsonDepValue::Req(req) => {
+              Some(JsrDepPackageReq::npm(req.clone()))
+            }
+            PackageJsonDepValue::Workspace(_) => None,
           }
-          PackageJsonDepValue::Req(req) => {
-            Some(JsrDepPackageReq::npm(req.clone()))
-          }
-          PackageJsonDepValue::Workspace(_) => None,
         })
         .collect()
     }
