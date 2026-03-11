@@ -41,7 +41,7 @@ const UV_TCP_IPV6ONLY: u32 = 1;
 #[cppgc_inherits_from(LibUvStreamWrap)]
 #[repr(C)]
 pub struct TCPWrap {
-  base: LibUvStreamWrap,
+  pub(crate) base: LibUvStreamWrap,
   pub(crate) handle: Option<OwnedPtr<uv_tcp_t>>,
 }
 
@@ -52,6 +52,14 @@ unsafe impl GarbageCollected for TCPWrap {
 
   fn trace(&self, visitor: &mut deno_core::v8::cppgc::Visitor) {
     self.base.trace(visitor);
+  }
+}
+
+impl Drop for TCPWrap {
+  fn drop(&mut self) {
+    // Detach the stream data pointer so pending uv callbacks see null
+    // and bail out instead of dereferencing freed StreamHandleData.
+    self.base.detach_stream();
   }
 }
 
@@ -72,16 +80,20 @@ impl TCPWrap {
 
     if err == 0 {
       let tcp = unsafe { tcp.cast::<uv_tcp_t>() };
+      let base = LibUvStreamWrap::new(
+        HandleWrap::create(
+          AsyncWrap::create(op_state, provider as i32),
+          Some(Handle::New(tcp.as_ptr().cast())),
+        ),
+        fd,
+        tcp.as_ptr().cast(),
+      );
+      unsafe {
+        (*tcp.as_mut_ptr()).data = base.handle_data_ptr();
+      }
       (
         Self {
-          base: LibUvStreamWrap::new(
-            HandleWrap::create(
-              AsyncWrap::create(op_state, provider as i32),
-              Some(Handle::New(tcp.as_ptr().cast())),
-            ),
-            fd,
-            tcp.as_ptr().cast(),
-          ),
+          base,
           handle: Some(tcp),
         },
         0,
@@ -182,20 +194,23 @@ unsafe extern "C" fn after_connect(req: *mut uv_connect_t, status: i32) {
       return;
     }
 
-    let context = std::mem::transmute::<
-      std::ptr::NonNull<v8::Context>,
-      v8::Local<'_, v8::Context>,
-    >(std::ptr::NonNull::new_unchecked(
-      ctx_ptr as *mut v8::Context,
-    ));
+    let handle_data =
+      &*(data as *const crate::ops::stream_wrap::StreamHandleData);
+    let isolate_ptr = *handle_data.isolate.get();
+    if isolate_ptr.is_null() {
+      return;
+    }
 
-    v8::callback_scope!(unsafe let scope, context);
-    v8::tc_scope!(let scope, scope);
+    let mut isolate = v8::Isolate::from_raw_isolate_ptr(isolate_ptr);
+    v8::scope!(let handle_scope, &mut isolate);
+    let raw = std::ptr::NonNull::new_unchecked(ctx_ptr as *mut v8::Context);
+    let global = v8::Global::from_raw(handle_scope, raw);
+    let cloned = global.clone();
+    global.into_raw();
+    let context = v8::Local::new(handle_scope, cloned);
+    let scope = &mut v8::ContextScope::new(handle_scope, context);
 
-    // data points to the LibUvStreamWrap's js_handle
-    let js_handle =
-      &*(data as *const std::cell::UnsafeCell<Option<v8::Global<v8::Object>>>);
-    let js_obj = match *js_handle.get() {
+    let js_obj = match *handle_data.js_handle.get() {
       Some(ref obj) => v8::Local::new(scope, obj),
       None => return,
     };
@@ -228,19 +243,23 @@ unsafe extern "C" fn on_connection(
       return;
     }
 
-    let context = std::mem::transmute::<
-      std::ptr::NonNull<v8::Context>,
-      v8::Local<'_, v8::Context>,
-    >(std::ptr::NonNull::new_unchecked(
-      ctx_ptr as *mut v8::Context,
-    ));
+    let handle_data =
+      &*(data as *const crate::ops::stream_wrap::StreamHandleData);
+    let isolate_ptr = *handle_data.isolate.get();
+    if isolate_ptr.is_null() {
+      return;
+    }
 
-    v8::callback_scope!(unsafe let scope, context);
-    v8::tc_scope!(let scope, scope);
+    let mut isolate = v8::Isolate::from_raw_isolate_ptr(isolate_ptr);
+    v8::scope!(let handle_scope, &mut isolate);
+    let raw = std::ptr::NonNull::new_unchecked(ctx_ptr as *mut v8::Context);
+    let global = v8::Global::from_raw(handle_scope, raw);
+    let cloned = global.clone();
+    global.into_raw();
+    let context = v8::Local::new(handle_scope, cloned);
+    let scope = &mut v8::ContextScope::new(handle_scope, context);
 
-    let js_handle =
-      &*(data as *const std::cell::UnsafeCell<Option<v8::Global<v8::Object>>>);
-    let js_obj = match *js_handle.get() {
+    let js_obj = match *handle_data.js_handle.get() {
       Some(ref obj) => v8::Local::new(scope, obj),
       None => return,
     };
@@ -265,11 +284,13 @@ impl TCPWrap {
   pub fn new_tcp(
     #[smi] socket_type: i32,
     ctx: v8::Local<v8::Value>,
-    #[this] _this: v8::Global<v8::Object>,
+    #[this] this: v8::Global<v8::Object>,
     scope: &mut v8::PinScope,
     op_state: &mut OpState,
   ) -> TCPWrap {
     let (tcp, err) = TCPWrap::new(-1, socket_type, op_state);
+    // Store the JS object reference so libuv callbacks can call back into JS.
+    tcp.base.set_js_handle(this, scope);
     if err != 0 {
       if let Ok(ctx_obj) = v8::Local::<v8::Object>::try_from(ctx) {
         let (code_name, message) = uv_error_info(err);
@@ -305,15 +326,18 @@ impl TCPWrap {
     let Some(ref handle) = self.handle else {
       return UV_EBADF;
     };
-    unsafe { uv_tcp_open(handle.as_mut_ptr(), fd) }
+    let err = unsafe { uv_tcp_open(handle.as_mut_ptr(), fd) };
+    if err == 0 {
+      self.base.set_fd(fd);
+    }
+    err
   }
 
-  #[fast]
   pub fn bind(
     &self,
     #[string] address: &str,
     #[smi] port: i32,
-    #[smi] flags: u32,
+    #[smi] flags: Option<u32>,
   ) -> i32 {
     let Some(ref handle) = self.handle else {
       return UV_EBADF;
@@ -327,6 +351,10 @@ impl TCPWrap {
       },
       Err(_) => return UV_EINVAL,
     };
+
+    let flags = flags.unwrap_or(0);
+    // Cannot set IPV6 flags on IPv4 socket
+    let flags = flags & !UV_TCP_IPV6ONLY;
 
     unsafe {
       let sock_addr = socket2::SockAddr::from(socket_addr);
@@ -342,12 +370,11 @@ impl TCPWrap {
     }
   }
 
-  #[fast]
   pub fn bind6(
     &self,
     #[string] address: &str,
     #[smi] port: i32,
-    #[smi] flags: u32,
+    #[smi] flags: Option<u32>,
   ) -> i32 {
     let Some(ref handle) = self.handle else {
       return UV_EBADF;
@@ -362,11 +389,10 @@ impl TCPWrap {
       Err(_) => return UV_EINVAL,
     };
 
+    let flags = flags.unwrap_or(0);
+
     unsafe {
       let sock_addr = socket2::SockAddr::from(socket_addr);
-      // Strip UV_TCP_IPV6ONLY for IPv4 sockets (shouldn't happen for bind6 but be safe)
-      let flags = flags & !UV_TCP_IPV6ONLY;
-      let _ = flags; // bind6 always passes flags through
       uv_tcp_bind(
         handle.as_mut_ptr(),
         sock_addr.as_ptr() as *const c_void,
@@ -555,6 +581,40 @@ impl TCPWrap {
         client_handle.as_mut_ptr() as *mut deno_core::uv_compat::uv_stream_t,
       )
     }
+  }
+
+  pub fn reset(
+    &self,
+    op_state: std::rc::Rc<std::cell::RefCell<OpState>>,
+    #[this] this: v8::Global<v8::Object>,
+    scope: &mut v8::PinScope<'_, '_>,
+    #[scoped] cb: Option<v8::Global<v8::Function>>,
+  ) -> i32 {
+    let handle_wrap = self.base.handle_wrap();
+    if !handle_wrap.is_alive() {
+      return 0;
+    }
+
+    let Some(ref handle) = self.handle else {
+      return UV_EBADF;
+    };
+
+    // uv_tcp_close_reset sets SO_LINGER to zero and calls uv_close
+    // internally, which handles the native handle cleanup.
+    let err = unsafe {
+      deno_core::uv_compat::uv_tcp_close_reset(handle.as_mut_ptr(), None)
+    };
+
+    // Transition state to Closing regardless of error (matches Node).
+    handle_wrap.set_state_closing();
+
+    if err == 0 {
+      let this = self.base.js_handle_global().unwrap_or(this);
+      // Fire _onClose() JS callback and schedule the close callback.
+      handle_wrap.run_close_callback(op_state, this, scope, cb);
+    }
+
+    err
   }
 }
 

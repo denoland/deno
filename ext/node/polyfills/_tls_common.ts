@@ -6,17 +6,20 @@ import { crypto as cryptoConstants } from "ext:deno_node/internal_binding/consta
 import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
 import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
 import { toBuf } from "ext:deno_node/internal/crypto/util.ts";
-import { createPrivateKey, createPublicKey } from "ext:deno_node/internal/crypto/keys.ts";
+import {
+  createPrivateKey,
+  createPublicKey,
+} from "ext:deno_node/internal/crypto/keys.ts";
 import { X509Certificate } from "ext:deno_node/internal/crypto/x509.ts";
 import { Buffer } from "node:buffer";
 import { readFileSync } from "node:fs";
 import process from "node:process";
 import {
+  codes,
   ERR_CRYPTO_CUSTOM_ENGINE_NOT_SUPPORTED,
   ERR_TLS_INVALID_PROTOCOL_METHOD,
   ERR_TLS_INVALID_PROTOCOL_VERSION,
   ERR_TLS_PROTOCOL_VERSION_CONFLICT,
-  codes,
 } from "ext:deno_node/internal/errors.ts";
 import {
   validateBuffer,
@@ -585,7 +588,9 @@ export function translatePeerCertificate(c: any) {
     c.infoAccess = { __proto__: null };
 
     info.replace(/([^\n:]*):([^\n]*)(?:\n|$)/g, (_all, key, value) => {
-      const normalized = value.charCodeAt(0) === 0x22 ? JSON.parse(value) : value;
+      const normalized = value.charCodeAt(0) === 0x22
+        ? JSON.parse(value)
+        : value;
       if (key in c.infoAccess) {
         c.infoAccess[key].push(normalized);
       } else {

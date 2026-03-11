@@ -157,7 +157,8 @@ function scheduleSyntheticSessionEvents(socket) {
     return;
   }
 
-  const session = socket._session ?? createSyntheticSessionToken("tls12-session");
+  const session = socket._session ??
+    createSyntheticSessionToken("tls12-session");
   socket._session = session;
   nextTick(() => {
     socket.emit("session", session);
@@ -170,6 +171,9 @@ function scheduleSyntheticSessionEvents(socket) {
 
 function onhandshakedone() {
   debug("client onhandshakedone");
+  if (process.env.DENO_TLS_DEBUG) {
+    console.error("[tls_wrap.js] onhandshakedone: _owner?", !!this._owner);
+  }
   const owner = this._owner;
   if (owner) owner._finishInit();
 }
@@ -257,6 +261,14 @@ function TLSSocket(socket, opts) {
       wrap = socket;
     }
     handle = wrap._handle;
+    if (process.env.DENO_TLS_DEBUG) {
+      console.error(
+        "[tls_wrap.js] TLSSocket ctor: socket._handle=",
+        !!socket._handle,
+        "handle=",
+        !!handle,
+      );
+    }
   } else {
     wrap = null;
   }
@@ -264,6 +276,11 @@ function TLSSocket(socket, opts) {
   // Just a documented property to make secure sockets
   // distinguishable from regular ones.
   this.encrypted = true;
+
+  // Validate SNICallback early (before _wrapHandle eagerly inits TLS)
+  if (tlsOptions.isServer && tlsOptions.SNICallback) {
+    validateFunction(tlsOptions.SNICallback, "options.SNICallback");
+  }
 
   net.Socket.call(this, {
     handle: this._wrapHandle(wrap, handle),
@@ -469,6 +486,12 @@ TLSSocket.prototype._init = function (socket, wrap) {
     ssl.onhandshakestart = noop;
     ssl.onhandshakedone = function () {
       debug("server onhandshakedone");
+      if (process.env.DENO_TLS_DEBUG) {
+        console.error(
+          "[tls_wrap.js] server onhandshakedone: _owner?",
+          !!this._owner,
+        );
+      }
       const owner = this._owner;
       if (!owner) return;
       if (owner._newSessionPending) {
@@ -492,6 +515,11 @@ TLSSocket.prototype._init = function (socket, wrap) {
 
   ssl.onerror = onerror;
 
+  // Set SNICallback (already validated in constructor)
+  if (options.isServer && options.SNICallback) {
+    this._SNICallback = options.SNICallback;
+  }
+
   if (options.handshakeTimeout > 0) {
     this.setTimeout(options.handshakeTimeout, this._handleTimeout);
   }
@@ -502,6 +530,13 @@ TLSSocket.prototype._init = function (socket, wrap) {
     this.connecting = socket.connecting || !socket._handle;
     socket.once("connect", () => {
       this.connecting = false;
+      // If the original socket created its own TCP handle during
+      // connect() (because it had no handle when we wrapped it),
+      // re-attach the TLS wrap to the socket's actual TCP handle.
+      if (ssl && socket._handle) {
+        const nativeHandle = socket._handle._nativeHandle ?? socket._handle;
+        ssl.attach(nativeHandle);
+      }
       this.emit("connect");
     });
   }
@@ -550,13 +585,25 @@ TLSSocket.prototype._releaseControl = function () {
 };
 
 TLSSocket.prototype._finishInit = function () {
+  if (process.env.DENO_TLS_DEBUG) {
+    console.error("[tls_wrap.js] _finishInit called, handle?", !!this._handle);
+  }
   if (!this._handle) return;
 
-  const alpnOut = {};
-  this._handle.getAlpnNegotiatedProtocol(alpnOut);
-  this.alpnProtocol = alpnOut.alpnProtocol || false;
-  if (this.servername === null) {
-    this.servername = this._handle.getServername?.() ?? null;
+  try {
+    const alpnOut = {};
+    this._handle.getAlpnNegotiatedProtocol(alpnOut);
+    this.alpnProtocol = alpnOut.alpnProtocol || false;
+    if (this.servername === null) {
+      this.servername = this._handle.getServername?.() ?? null;
+    }
+  } catch (e) {
+    if (process.env.DENO_TLS_DEBUG) {
+      console.error(
+        "[tls_wrap.js] _finishInit error in getAlpn/getServername:",
+        e,
+      );
+    }
   }
 
   debug(
@@ -586,6 +633,13 @@ TLSSocket.prototype._start = function () {
     "connecting?",
     this.connecting,
   );
+  if (process.env.DENO_TLS_DEBUG) {
+    console.error(
+      "[tls_wrap.js] _start called, isServer=" + !!this._tlsOptions?.isServer +
+        ", connecting=" + this.connecting + ", started=" +
+        !!this._handle?.started,
+    );
+  }
   if (this.connecting) {
     this.once("connect", this._start);
     return;
@@ -670,12 +724,16 @@ TLSSocket.prototype.getProtocol = function getProtocol() {
 
 TLSSocket.prototype.getFinished = function getFinished() {
   const data = this._handle?.getFinished();
-  return data ? Buffer.from(data.buffer, data.byteOffset, data.byteLength) : undefined;
+  return data
+    ? Buffer.from(data.buffer, data.byteOffset, data.byteLength)
+    : undefined;
 };
 
 TLSSocket.prototype.getPeerFinished = function getPeerFinished() {
   const data = this._handle?.getPeerFinished();
-  return data ? Buffer.from(data.buffer, data.byteOffset, data.byteLength) : undefined;
+  return data
+    ? Buffer.from(data.buffer, data.byteOffset, data.byteLength)
+    : undefined;
 };
 
 TLSSocket.prototype.getSession = function getSession() {
@@ -706,11 +764,21 @@ TLSSocket.prototype.getX509Certificate = function getX509Certificate() {
 // Server
 // ---------------------------------------------------------------------------
 
+function makeVerifyError(code) {
+  if (!code) return null;
+  const err = new Error(code);
+  err.code = code;
+  return err;
+}
+
 function onServerSocketSecure() {
+  if (process.env.DENO_TLS_DEBUG) {
+    console.error("[tls_wrap.js] onServerSocketSecure called");
+  }
   if (this._requestCert) {
-    const verifyError = this._handle.verifyError();
+    const verifyError = makeVerifyError(this._handle.verifyError());
     if (verifyError) {
-      this.authorizationError = verifyError;
+      this.authorizationError = verifyError.code;
 
       if (this._rejectUnauthorized) {
         this.destroy();
@@ -723,9 +791,20 @@ function onServerSocketSecure() {
     this.authorized = true;
   }
 
+  if (process.env.DENO_TLS_DEBUG) {
+    console.error(
+      "[tls_wrap.js] onServerSocketSecure: destroyed?",
+      this.destroyed,
+      "_controlReleased?",
+      this._controlReleased,
+    );
+  }
   if (!this.destroyed && this._releaseControl()) {
     debug("server emit secureConnection");
     this.secureConnecting = false;
+    if (process.env.DENO_TLS_DEBUG) {
+      console.error("[tls_wrap.js] emitting secureConnection");
+    }
     this._tlsOptions.server.emit("secureConnection", this);
   }
 }
@@ -800,6 +879,10 @@ function Server(options, listener) {
 
   this._SNICallback = options.SNICallback;
 
+  if (this._SNICallback) {
+    validateFunction(this._SNICallback, "options.SNICallback");
+  }
+
   // Constructor call
   net.Server.call(this, options, tlsConnectionListener);
 
@@ -871,9 +954,12 @@ function onConnectEnd() {
 }
 
 function onConnectSecure() {
+  if (process.env.DENO_TLS_DEBUG) {
+    console.error("[tls_wrap.js] onConnectSecure called");
+  }
   const options = this[kConnectOptions];
 
-  let verifyError = this._handle.verifyError();
+  let verifyError = makeVerifyError(this._handle.verifyError());
 
   // Verify that server's identity matches its certificate's names
   if (!verifyError && !this.isSessionReused()) {
@@ -911,6 +997,14 @@ function onConnectSecure() {
   }
 
   this.secureConnecting = false;
+  if (process.env.DENO_TLS_DEBUG) {
+    console.error(
+      "[tls_wrap.js] emitting secureConnect, authorized:",
+      this.authorized,
+      "authError:",
+      this.authorizationError,
+    );
+  }
   this.emit("secureConnect");
 
   scheduleSyntheticSessionEvents(this);

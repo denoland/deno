@@ -1941,10 +1941,10 @@ impl Http2Session {
 
   #[fast]
   #[reentrant]
-  fn consume_stream(&self, #[cppgc] tcp: &crate::ops::libuv_stream::TCP) {
+  fn consume_stream(&self, #[cppgc] tcp: &crate::ops::tcp_wrap::TCPWrap) {
     // SAFETY: self.inner was allocated by Box::into_raw and is valid
     let session = unsafe { &mut *self.inner };
-    let stream = tcp.stream();
+    let stream = tcp.base.stream_ptr();
 
     // Stop the existing read on the TCP handle
     // SAFETY: stream is a valid libuv stream handle from TCP object

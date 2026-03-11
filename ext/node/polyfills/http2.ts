@@ -1377,30 +1377,22 @@ class Http2Stream extends Duplex {
     this[kHandle] = handle;
 
     // Add missing StreamBase write methods and wrap existing ones.
-    // Deno sets streamBaseState[kLastWriteWasAsync] = 1 globally, which
-    // means afterWriteDispatched won't call req.callback synchronously.
-    // HTTP2 stream writes are synchronous (they buffer data), so we need
-    // to call req.oncomplete(0) to signal write completion.
+    // HTTP2 stream writes are synchronous (they buffer into nghttp2),
+    // so the native methods return 0 and kLastWriteWasAsync stays false.
+    // afterWriteDispatched handles calling req.callback synchronously.
+    // We just need to trigger scheduleSendPending after each write.
     const nativeWriteUtf8String = FunctionPrototypeBind(
       handle.writeUtf8String,
       handle,
     );
     const nativeWriteBuffer = FunctionPrototypeBind(handle.writeBuffer, handle);
-    function completeWrite(req, err) {
-      if (err === 0 && typeof req.oncomplete === "function") {
-        process.nextTick(() => {
-          FunctionPrototypeCall(req.oncomplete, req, 0);
-        });
-      }
-      return err;
-    }
     handle.writeUtf8String = function (req, data) {
-      const err = completeWrite(req, nativeWriteUtf8String(req, data));
+      const err = nativeWriteUtf8String(req, data);
       scheduleSendPending(session);
       return err;
     };
     handle.writeBuffer = function (req, data) {
-      const err = completeWrite(req, nativeWriteBuffer(req, data));
+      const err = nativeWriteBuffer(req, data);
       scheduleSendPending(session);
       return err;
     };
@@ -2658,9 +2650,15 @@ function setupHandle(socket, type, options) {
 
   // Get the native TCP handle from the socket wrapper
   const tcpHandle = socket._handle;
+  // Only use consumeStream with the old libuv_stream TCP type (which has
+  // a stream() method). The new TCPWrap (kUseNativeWrap path) uses the
+  // JS socket data pump fallback, matching Node's StreamBase listener
+  // pattern more closely.
   const nativeHandle = tcpHandle?._nativeHandle;
+  const canConsumeNative = nativeHandle &&
+    typeof nativeHandle.stream === "function";
 
-  if (nativeHandle) {
+  if (canConsumeNative) {
     // Cache socket address info before detaching the native handle,
     // since getpeername/getsockname won't work after detach.
     socket._getpeername();

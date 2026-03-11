@@ -222,6 +222,11 @@ export class LibuvStreamWrap extends HandleWrap {
 
     this.#write(req, data);
 
+    // Mark as async so afterWriteDispatched doesn't call req.callback
+    // synchronously. #write is async and will call req.oncomplete
+    // when done.
+    streamBaseState[kLastWriteWasAsync] = 1;
+
     return 0;
   }
 
@@ -479,10 +484,15 @@ export class LibuvStreamWrap extends HandleWrap {
         status = MapPrototypeGet(codeMap, "UNKNOWN")!;
       }
 
-      try {
-        req.oncomplete(status);
-      } catch {
-        // swallow callback errors.
+      // Only fire oncomplete if afterWriteDispatched didn't already
+      // handle completion synchronously (req.async is set by
+      // afterWriteDispatched based on streamBaseState[kLastWriteWasAsync]).
+      if (req.async) {
+        try {
+          req.oncomplete(status);
+        } catch {
+          // swallow callback errors.
+        }
       }
 
       return;
@@ -491,10 +501,14 @@ export class LibuvStreamWrap extends HandleWrap {
     streamBaseState[kBytesWritten] = byteLength;
     this.bytesWritten += byteLength;
 
-    try {
-      req.oncomplete(0);
-    } catch {
-      // swallow callback errors.
+    // Only fire oncomplete if afterWriteDispatched didn't already
+    // handle completion synchronously.
+    if (req.async) {
+      try {
+        req.oncomplete(0);
+      } catch {
+        // swallow callback errors.
+      }
     }
 
     return;
