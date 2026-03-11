@@ -61,7 +61,9 @@ deno_core::extension!(deno_web,
   deps = [ deno_webidl ],
   ops = [
     op_base64_decode,
+    op_base64_decode_into,
     op_base64_encode,
+    op_base64_encode_from_buffer,
     op_base64_atob,
     op_base64_btoa,
     op_encoding_normalize_label,
@@ -175,11 +177,49 @@ pub enum WebError {
 }
 
 #[op2]
-fn op_base64_decode(#[string] input: String) -> Result<Uint8Array, WebError> {
-  let mut s = input.into_bytes();
+fn op_base64_decode(
+  #[string(onebyte)] input: Cow<[u8]>,
+) -> Result<Uint8Array, WebError> {
+  let mut s = input.into_owned();
   let decoded_len = forgiving_base64_decode_inplace(&mut s)?;
   s.truncate(decoded_len);
   Ok(s.into())
+}
+
+/// Decode base64 directly into a target buffer at the given offset.
+/// Returns the number of bytes written.
+/// Uses stack allocation for inputs up to 8KB to avoid heap allocation overhead.
+#[op2(fast)]
+fn op_base64_decode_into(
+  #[string(onebyte)] input: Cow<[u8]>,
+  #[buffer] target: &mut [u8],
+  #[smi] offset: u32,
+) -> Result<u32, WebError> {
+  let offset = offset as usize;
+  let len = input.len();
+
+  // Stack-allocate for small strings (covers ≤4KB binary = ≤5.5KB base64)
+  // In the V8 fast call path, Cow is borrowed (zero-copy from V8 memory),
+  // so we need a mutable copy for in-place decode. Stack avoids heap alloc.
+  const STACK_BUF_SIZE: usize = 8192;
+  if len <= STACK_BUF_SIZE {
+    let mut buf = [0u8; STACK_BUF_SIZE];
+    buf[..len].copy_from_slice(&input);
+    let decoded = base64_simd::forgiving_decode_inplace(&mut buf[..len])
+      .map_err(|_| WebError::Base64Decode)?;
+    let target = &mut target[offset..];
+    let bytes_to_write = decoded.len().min(target.len());
+    target[..bytes_to_write].copy_from_slice(&decoded[..bytes_to_write]);
+    Ok(bytes_to_write as u32)
+  } else {
+    // Heap allocation for large strings
+    let mut s = input.into_owned();
+    let decoded_len = forgiving_base64_decode_inplace(&mut s)?;
+    let target = &mut target[offset..];
+    let bytes_to_write = decoded_len.min(target.len());
+    target[..bytes_to_write].copy_from_slice(&s[..bytes_to_write]);
+    Ok(bytes_to_write as u32)
+  }
 }
 
 #[op2]
@@ -203,6 +243,20 @@ fn forgiving_base64_decode_inplace(
 #[string]
 fn op_base64_encode(#[buffer] s: &[u8]) -> String {
   forgiving_base64_encode(s)
+}
+
+/// Encode a sub-range of a buffer to base64, avoiding a JS-side slice copy.
+#[op2]
+#[string]
+fn op_base64_encode_from_buffer(
+  #[buffer] s: &[u8],
+  #[smi] offset: u32,
+  #[smi] length: u32,
+) -> String {
+  let offset = offset as usize;
+  let length = length as usize;
+  let end = (offset + length).min(s.len());
+  forgiving_base64_encode(&s[offset..end])
 }
 
 #[op2]
