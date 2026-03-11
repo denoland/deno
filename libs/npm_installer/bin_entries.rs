@@ -517,6 +517,7 @@ mod test {
     (dir, cleanup)
   }
 
+  #[cfg(unix)]
   fn write_and_chmod(path: &Path, contents: &[u8], mode: u32) {
     let sys = sys_traits::impls::RealSys;
     sys.fs_write(path, contents).unwrap();
@@ -527,6 +528,7 @@ mod test {
     file.fs_file_set_permissions(mode).unwrap();
   }
 
+  #[cfg(unix)]
   fn file_mode(path: &Path) -> u32 {
     let sys = sys_traits::impls::RealSys;
     let mut open_options = sys_traits::OpenOptions::new();
