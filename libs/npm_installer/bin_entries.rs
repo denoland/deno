@@ -382,11 +382,12 @@ fn make_executable_if_exists(
   path: &Path,
 ) -> Result<bool, std::io::Error> {
   let sys = sys.with_paths_in_errors();
-  let mut open_options = sys_traits::OpenOptions::new();
-  open_options.read = true;
-  open_options.write = true;
-  open_options.truncate = false; // ensure false
-  let mut file = match sys.fs_open(path, &open_options) {
+  // Open read-only first to check existing permissions. Some npm tarballs
+  // ship bin files as read+execute without write (e.g. mode 555), so opening
+  // with O_RDWR would fail with EACCES.
+  let mut read_options = sys_traits::OpenOptions::new();
+  read_options.read = true;
+  let file = match sys.fs_open(path, &read_options) {
     Ok(file) => file,
     Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
       return Ok(false);
@@ -395,8 +396,15 @@ fn make_executable_if_exists(
   };
   let metadata = file.fs_file_metadata()?;
   let mode = metadata.mode()?;
+  drop(file);
+
   if mode & 0o111 == 0 {
-    // if the original file is not executable, make it executable
+    // The file is not executable — reopen with write to set permissions.
+    let mut write_options = sys_traits::OpenOptions::new();
+    write_options.read = true;
+    write_options.write = true;
+    write_options.truncate = false;
+    let mut file = sys.fs_open(path, &write_options)?;
     file.fs_file_set_permissions(mode | 0o111)?;
   }
 
