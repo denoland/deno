@@ -289,17 +289,16 @@ pub async fn uninstall(
 
   // check for extra bin entries stored during install and remove their shims
   let extra_bins_file = config_dir.join("extra_bin_entries.json");
-  if extra_bins_file.is_file() {
-    if let Ok(content) = fs::read_to_string(&extra_bins_file) {
-      if let Ok(extra_names) = serde_json::from_str::<Vec<String>>(&content) {
-        for extra_name in &extra_names {
-          let extra_path = installation_dir.join(extra_name);
-          remove_file_if_exists(&extra_path)?;
-          if cfg!(windows) {
-            remove_file_if_exists(&extra_path.with_extension("cmd"))?;
-            remove_file_if_exists(&extra_path.with_extension("exe"))?;
-          }
-        }
+  if extra_bins_file.is_file()
+    && let Ok(content) = fs::read_to_string(&extra_bins_file)
+    && let Ok(extra_names) = serde_json::from_str::<Vec<String>>(&content)
+  {
+    for extra_name in &extra_names {
+      let extra_path = installation_dir.join(extra_name);
+      remove_file_if_exists(&extra_path)?;
+      if cfg!(windows) {
+        remove_file_if_exists(&extra_path.with_extension("cmd"))?;
+        remove_file_if_exists(&extra_path.with_extension("exe"))?;
       }
     }
   }
@@ -733,46 +732,41 @@ impl BinaryNameAndUrl {
 
     // If a --name flag was provided, don't resolve extra bin entries
     let mut extra_entries = Vec::new();
-    if install_flags_global.name.is_none() {
-      if let Some(all_bins) = bin_name_resolver
+    if install_flags_global.name.is_none()
+      && let Some(all_bins) = bin_name_resolver
         .resolve_all_bin_entries_from_npm(&module_url)
         .await
-      {
-        if all_bins.len() > 1 {
-          // Get the npm package reference to construct URLs for extra bins
-          if let Ok(npm_ref) =
-            NpmPackageReqReference::from_specifier(&module_url)
-          {
-            let req = npm_ref.req();
-            for (bin_name, script_path) in &all_bins {
-              if *bin_name == name {
-                continue; // skip the primary entry
-              }
-              validate_name(bin_name)?;
-              // Strip leading "./" from script paths (common in package.json bin fields)
-              let script_path = script_path
-                .strip_prefix("./")
-                .unwrap_or(script_path.as_str());
-              // Construct the module URL for this bin entry: npm:package@version/script_path
-              let extra_url = if req.version_req.version_text() == "*" {
-                Url::parse(&format!("npm:{}/{}", req.name, script_path))
-              } else {
-                Url::parse(&format!(
-                  "npm:{}@{}/{}",
-                  req.name,
-                  req.version_req.version_text(),
-                  script_path
-                ))
-              };
-              if let Ok(extra_url) = extra_url {
-                extra_entries.push(BinaryNameAndUrl {
-                  name: bin_name.clone(),
-                  module_url: extra_url,
-                  config_name: Some(name.clone()),
-                });
-              }
-            }
-          }
+      && all_bins.len() > 1
+      && let Ok(npm_ref) =
+        NpmPackageReqReference::from_specifier(&module_url)
+    {
+      let req = npm_ref.req();
+      for (bin_name, script_path) in &all_bins {
+        if *bin_name == name {
+          continue; // skip the primary entry
+        }
+        validate_name(bin_name)?;
+        // Strip leading "./" from script paths (common in package.json bin fields)
+        let script_path = script_path
+          .strip_prefix("./")
+          .unwrap_or(script_path.as_str());
+        // Construct the module URL for this bin entry: npm:package@version/script_path
+        let extra_url = if req.version_req.version_text() == "*" {
+          Url::parse(&format!("npm:{}/{}", req.name, script_path))
+        } else {
+          Url::parse(&format!(
+            "npm:{}@{}/{}",
+            req.name,
+            req.version_req.version_text(),
+            script_path
+          ))
+        };
+        if let Ok(extra_url) = extra_url {
+          extra_entries.push(BinaryNameAndUrl {
+            name: bin_name.clone(),
+            module_url: extra_url,
+            config_name: Some(name.clone()),
+          });
         }
       }
     }
