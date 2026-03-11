@@ -98,7 +98,7 @@ pub enum CacheError {
 pub struct CreateCache(pub Arc<dyn Fn() -> Result<CacheImpl, CacheError>>);
 
 deno_core::extension!(deno_cache,
-  deps = [ deno_webidl, deno_web, deno_fetch ],
+  deps = [ deno_webidl, deno_web, deno_fetch, deno_telemetry ],
   ops = [
     op_cache_storage_open,
     op_cache_storage_has,
@@ -128,6 +128,8 @@ pub struct CachePutRequest {
   pub response_status: u16,
   pub response_status_text: String,
   pub response_rid: Option<ResourceId>,
+  pub traceparent: Option<String>,
+  pub tracestate: Option<String>,
 }
 
 #[derive(Deserialize, Serialize, Debug)]
@@ -136,6 +138,8 @@ pub struct CacheMatchRequest {
   pub cache_id: i64,
   pub request_url: String,
   pub request_headers: Vec<(ByteString, ByteString)>,
+  pub traceparent: Option<String>,
+  pub tracestate: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -156,6 +160,8 @@ pub struct CacheMatchResponseMeta {
 pub struct CacheDeleteRequest {
   pub cache_id: i64,
   pub request_url: String,
+  pub traceparent: Option<String>,
+  pub tracestate: Option<String>,
 }
 
 #[async_trait(?Send)]

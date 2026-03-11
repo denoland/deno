@@ -316,6 +316,8 @@ impl SqliteBackedCache {
               .delete(CacheDeleteRequest {
                 cache_id: request.cache_id,
                 request_url: request.request_url,
+                traceparent: None,
+                tracestate: None,
               })
               .await;
             return Ok(None);
