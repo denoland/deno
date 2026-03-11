@@ -70,6 +70,7 @@ pub fn op_node_udp_bind(
   #[string] hostname: &str,
   #[smi] port: u16,
   reuse_address: bool,
+  ipv6_only: bool,
 ) -> Result<(ResourceId, String, u16), NodeUdpError> {
   state
     .borrow_mut::<PermissionsContainer>()
@@ -94,6 +95,9 @@ pub fn op_node_udp_bind(
     sock.set_reuse_address(true)?;
     #[cfg(all(unix, not(any(target_os = "android", target_os = "linux"))))]
     sock.set_reuse_port(true)?;
+  }
+  if addr.is_ipv6() && ipv6_only {
+    sock.set_only_v6(true)?;
   }
   let socket_addr = socket2::SockAddr::from(addr);
   sock.bind(&socket_addr)?;
@@ -240,7 +244,7 @@ pub fn op_node_udp_set_multicast_interface(
   let resource = state.resource_table.get::<NodeUdpSocketResource>(rid)?;
   let sock_ref = socket2::SockRef::from(&resource.socket);
   if is_ipv6 {
-    let index = interface_address.parse::<u32>().unwrap_or(0);
+    let index = ipv6_interface_index(interface_address)?;
     sock_ref.set_multicast_if_v6(index)?;
   } else {
     let addr: Ipv4Addr = interface_address.parse().map_err(|_| {
@@ -252,6 +256,70 @@ pub fn op_node_udp_set_multicast_interface(
     sock_ref.set_multicast_if_v4(&addr)?;
   }
   Ok(())
+}
+
+/// Parse an IPv6 interface address string to a network interface index.
+/// Matches libuv's `uv__udp_set_multicast_interface6` behavior:
+/// - Parses IPv6 address strings like `::%lo0`, `::%1`, `::`
+/// - Extracts scope_id and resolves interface names via if_nametoindex
+/// - Returns EINVAL for empty or unparseable addresses
+fn ipv6_interface_index(interface_address: &str) -> Result<u32, NodeUdpError> {
+  let einval =
+    || NodeUdpError::Io(std::io::Error::from_raw_os_error(libc::EINVAL));
+
+  if interface_address.is_empty() {
+    return Err(einval());
+  }
+
+  // Check for scope ID separator
+  if let Some(pos) = interface_address.rfind('%') {
+    // Validate the address part before % is a valid IPv6 address
+    let addr_part = &interface_address[..pos];
+    if addr_part.parse::<Ipv6Addr>().is_err() {
+      return Err(einval());
+    }
+
+    let scope_id = &interface_address[pos + 1..];
+    if scope_id.is_empty() {
+      return Err(einval());
+    }
+
+    // Try numeric scope ID first
+    if let Ok(index) = scope_id.parse::<u32>() {
+      return Ok(index);
+    }
+
+    // Resolve interface name to index
+    #[cfg(unix)]
+    {
+      let name = std::ffi::CString::new(scope_id).map_err(|_| einval())?;
+      // SAFETY: name is a valid CString
+      let index = unsafe { libc::if_nametoindex(name.as_ptr()) };
+      // if_nametoindex returns 0 for unknown interfaces, which is
+      // acceptable as "default selection" (matches libuv behavior)
+      return Ok(index);
+    }
+    #[cfg(windows)]
+    {
+      let name = std::ffi::CString::new(scope_id).map_err(|_| einval())?;
+      // SAFETY: name is a valid CString
+      let index = unsafe {
+        windows_sys::Win32::NetworkManagement::IpHelper::if_nametoindex(
+          name.as_ptr() as *const u8,
+        )
+      };
+      return Ok(index);
+    }
+    #[cfg(not(any(unix, windows)))]
+    return Ok(0);
+  }
+
+  // No scope ID separator — try parsing as plain IPv6 address
+  if interface_address.parse::<Ipv6Addr>().is_ok() {
+    return Ok(0);
+  }
+
+  Err(einval())
 }
 
 fn source_specific_multicast(
