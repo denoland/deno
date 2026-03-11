@@ -489,6 +489,7 @@ fn symlink_bin_entry<'a>(
 }
 
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)]
 mod test {
   use std::path::PathBuf;
 
