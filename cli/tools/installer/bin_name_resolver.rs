@@ -143,16 +143,14 @@ impl<'a> BinNameResolver<'a> {
         // When there are multiple bin entries, check if one matches the
         // package name (the npm default bin convention). For scoped packages
         // like @scope/name, check the unscoped portion.
-        if data.len() > 1 {
-          let pkg_name = &npm_ref.req().name;
-          let unscoped_name = pkg_name
-            .strip_prefix('@')
-            .and_then(|s| s.split_once('/'))
-            .map(|(_, name)| name)
-            .unwrap_or(pkg_name.as_str());
-          if data.contains_key(unscoped_name) {
-            return Some(unscoped_name.to_string());
-          }
+        let pkg_name = &npm_ref.req().name;
+        let unscoped_name = pkg_name
+          .strip_prefix('@')
+          .and_then(|s| s.split_once('/'))
+          .map(|(_, name)| name)
+          .unwrap_or(pkg_name.as_str());
+        if data.contains_key(unscoped_name) {
+          return Some(unscoped_name.to_string());
         }
       }
     }

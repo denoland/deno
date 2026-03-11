@@ -165,20 +165,6 @@ pub async fn install_global(
     )?;
     setup_config_dir(&name_and_url, &flags, &installation_dir).await?;
 
-    // if there are extra bin entries, store them in the config dir for uninstall
-    if !extra_bin_entries.is_empty() {
-      let config_dir =
-        installation_dir.join(format!(".{}", name_and_url.name));
-      let extra_names: Vec<&str> = extra_bin_entries
-        .iter()
-        .map(|e| e.name.as_str())
-        .collect();
-      fs::write(
-        config_dir.join("extra_bin_entries.json"),
-        serde_json::to_string(&extra_names).unwrap(),
-      )?;
-    }
-
     // create the install shim for the primary entry
     create_install_shim(
       &name_and_url,
@@ -188,12 +174,46 @@ pub async fn install_global(
     )?;
 
     // create install shims for extra bin entries
-    for extra_entry in &extra_bin_entries {
-      create_install_shim(
-        extra_entry,
-        cli_options.initial_cwd(),
-        &flags,
-        &install_flags_global,
+    let mut installed_extra: Vec<&str> = Vec::new();
+    let extra_install_result: Result<(), AnyError> = (|| {
+      for extra_entry in &extra_bin_entries {
+        create_install_shim(
+          extra_entry,
+          cli_options.initial_cwd(),
+          &flags,
+          &install_flags_global,
+        )?;
+        installed_extra.push(&extra_entry.name);
+      }
+      Ok(())
+    })();
+    if let Err(err) = extra_install_result {
+      // rollback: remove the primary shim and any extra shims that were created
+      let primary_path = installation_dir.join(&name_and_url.name);
+      let _ = remove_file_if_exists(&primary_path);
+      if cfg!(windows) {
+        let _ = remove_file_if_exists(&primary_path.with_extension("cmd"));
+        let _ = remove_file_if_exists(&primary_path.with_extension("exe"));
+      }
+      for extra_name in &installed_extra {
+        let extra_path = installation_dir.join(extra_name);
+        let _ = remove_file_if_exists(&extra_path);
+        if cfg!(windows) {
+          let _ = remove_file_if_exists(&extra_path.with_extension("cmd"));
+          let _ = remove_file_if_exists(&extra_path.with_extension("exe"));
+        }
+      }
+      return Err(err);
+    }
+
+    // store extra bin entry names in the config dir for uninstall
+    if !extra_bin_entries.is_empty() {
+      let config_dir = installation_dir.join(format!(".{}", name_and_url.name));
+      let extra_names: Vec<&str> =
+        extra_bin_entries.iter().map(|e| e.name.as_str()).collect();
+      fs::write(
+        config_dir.join("extra_bin_entries.json"),
+        serde_json::to_string(&extra_names).unwrap(),
       )?;
     }
   }
