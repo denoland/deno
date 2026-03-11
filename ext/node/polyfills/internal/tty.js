@@ -8,9 +8,11 @@ import { primordials } from "ext:core/mod.js";
 const {
   ArrayPrototypeSome,
   Error,
+  FunctionPrototypeCall,
   ObjectEntries,
   ObjectPrototypeHasOwnProperty,
   ObjectPrototypeIsPrototypeOf,
+  ObjectSetPrototypeOf,
   ObjectValues,
   RegExpPrototypeExec,
   SafeMap,
@@ -289,170 +291,180 @@ function removeSigwinchListener(stream) {
   }
 }
 
-export class WriteStream extends Socket {
-  constructor(fd) {
-    if (fd >> 0 !== fd || fd < 0) {
-      throw new ERR_INVALID_FD(fd);
-    }
+// WriteStream needs to be callable without `new` to match Node.js behavior.
+function WriteStream(fd) {
+  if (!ObjectPrototypeIsPrototypeOf(WriteStream.prototype, this)) {
+    return new WriteStream(fd);
+  }
 
-    // We only support `stdin`, `stdout` and `stderr`.
-    if (fd > 2) throw new Error("Only fd 0, 1 and 2 are supported.");
+  if (fd >> 0 !== fd || fd < 0) {
+    throw new ERR_INVALID_FD(fd);
+  }
 
-    const tty = new TTY(
-      fd === 0 ? io.stdin : fd === 1 ? io.stdout : io.stderr,
-    );
+  // We only support `stdin`, `stdout` and `stderr`.
+  if (fd > 2) throw new Error("Only fd 0, 1 and 2 are supported.");
 
-    super({
-      readableHighWaterMark: 0,
-      handle: tty,
-      manualStart: true,
-    });
+  const tty = new TTY(
+    fd === 0 ? io.stdin : fd === 1 ? io.stdout : io.stderr,
+  );
 
-    const { columns, rows } = Deno.consoleSize();
-    this.columns = columns;
-    this.rows = rows;
-    this.isTTY = true;
+  FunctionPrototypeCall(Socket, this, {
+    readableHighWaterMark: 0,
+    handle: tty,
+    manualStart: true,
+  });
 
-    // For stdout/stderr, use synchronous writes to avoid races with
-    // console.log which writes synchronously via Deno.core.print().
-    // Without this, async writes through the Socket/TTY handle can complete
-    // after a subsequent synchronous console.log, causing output corruption
-    // (e.g. listr2 ANSI redraws overwriting later output).
-    if (fd === 1 || fd === 2) {
-      const writer = fd === 1 ? io.stdout : io.stderr;
-      this._write = function (data, enc, cb) {
-        try {
-          let buf = ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, data)
-            ? data
-            : Buffer.from(data, enc);
+  const { columns, rows } = Deno.consoleSize();
+  this.columns = columns;
+  this.rows = rows;
+  this.isTTY = true;
+
+  // For stdout/stderr, use synchronous writes to avoid races with
+  // console.log which writes synchronously via Deno.core.print().
+  // Without this, async writes through the Socket/TTY handle can complete
+  // after a subsequent synchronous console.log, causing output corruption
+  // (e.g. listr2 ANSI redraws overwriting later output).
+  if (fd === 1 || fd === 2) {
+    const writer = fd === 1 ? io.stdout : io.stderr;
+    this._write = function (data, enc, cb) {
+      try {
+        let buf = ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, data)
+          ? data
+          : Buffer.from(data, enc);
+        // deno-lint-ignore prefer-primordials
+        while (buf.byteLength > 0) {
+          const nwritten = writer.writeSync(buf);
           // deno-lint-ignore prefer-primordials
-          while (buf.byteLength > 0) {
-            const nwritten = writer.writeSync(buf);
-            // deno-lint-ignore prefer-primordials
-            if (nwritten >= buf.byteLength) break;
-            buf = TypedArrayPrototypeSlice(buf, nwritten);
-          }
-        } catch (e) {
-          cb(e);
-          return;
+          if (nwritten >= buf.byteLength) break;
+          buf = TypedArrayPrototypeSlice(buf, nwritten);
         }
-        cb();
-      };
+      } catch (e) {
+        cb(e);
+        return;
+      }
+      cb();
+    };
 
-      // Prevent actually closing stdout/stderr. Libraries like mute-stream
-      // (used by @inquirer/prompts) call destroy()/end() on the stream,
-      // which would close the underlying resource and break subsequent
-      // console.log calls (BadResource error). Match Node.js behavior
-      // where stdio streams are indestructible.
-      //
-      // Override _destroy to prevent Socket._destroy from calling
-      // this._handle.close(), which would close the Deno resource.
-      this._destroy = function (err, cb) {
-        cb(err);
-        this._undestroy();
-      };
+    // Prevent actually closing stdout/stderr. Libraries like mute-stream
+    // (used by @inquirer/prompts) call destroy()/end() on the stream,
+    // which would close the underlying resource and break subsequent
+    // console.log calls (BadResource error). Match Node.js behavior
+    // where stdio streams are indestructible.
+    //
+    // Override _destroy to prevent Socket._destroy from calling
+    // this._handle.close(), which would close the Deno resource.
+    this._destroy = function (err, cb) {
+      cb(err);
+      this._undestroy();
+    };
 
-      // Also prevent the handle's _onClose from closing the underlying
-      // io.stdout/io.stderr resource. This handles the end() path:
-      // end() -> _final -> shutdown -> _onClose -> io.stdout.close().
-      // Without this, the Deno resource (rid 1/2) is removed from the
-      // resource table and op_print (used by console.log) fails.
-      this._handle._onClose = function () {
-        return 0;
-      };
-    }
-  }
-
-  on(event, listener) {
-    super.on(event, listener);
-    if (event === "resize" && this.listenerCount("resize") === 1) {
-      addSigwinchListener(this);
-    }
-    return this;
-  }
-
-  addListener(event, listener) {
-    return this.on(event, listener);
-  }
-
-  removeListener(event, listener) {
-    super.removeListener(event, listener);
-    if (event === "resize" && this.listenerCount("resize") === 0) {
-      removeSigwinchListener(this);
-    }
-    return this;
-  }
-
-  off(event, listener) {
-    return this.removeListener(event, listener);
-  }
-
-  removeAllListeners(event) {
-    super.removeAllListeners(event);
-    if (!event || event === "resize") {
-      removeSigwinchListener(this);
-    }
-    return this;
-  }
-
-  _refreshSize() {
-    const oldCols = this.columns;
-    const oldRows = this.rows;
-    const { columns, rows } = Deno.consoleSize();
-    if (oldCols !== columns || oldRows !== rows) {
-      this.columns = columns;
-      this.rows = rows;
-      this.emit("resize");
-    }
-  }
-
-  cursorTo(x, y, callback) {
-    return cursorTo(this, x, y, callback);
-  }
-
-  moveCursor(dx, dy, callback) {
-    return moveCursor(this, dx, dy, callback);
-  }
-
-  clearLine(dir, callback) {
-    return clearLine(this, dir, callback);
-  }
-
-  clearScreenDown(callback) {
-    return clearScreenDown(this, callback);
-  }
-
-  getWindowSize() {
-    return ObjectValues(Deno.consoleSize());
-  }
-
-  /**
-   * @param {number | Record<string, string>} [count]
-   * @param {Record<string, string>} [env]
-   * @returns {boolean}
-   */
-  hasColors(count, env) {
-    if (
-      env === undefined &&
-      (count === undefined || typeof count === "object" && count !== null)
-    ) {
-      env = count;
-      count = 16;
-    } else {
-      validateInteger(count, "count", 2);
-    }
-
-    const depth = this.getColorDepth(env);
-    return count <= 2 ** depth;
-  }
-
-  /**
-   * @param {Record<string, string>} [env]
-   * @returns {1 | 4 | 8 | 24}
-   */
-  getColorDepth(env) {
-    return getColorDepth(env);
+    // Also prevent the handle's _onClose from closing the underlying
+    // io.stdout/io.stderr resource. This handles the end() path:
+    // end() -> _final -> shutdown -> _onClose -> io.stdout.close().
+    // Without this, the Deno resource (rid 1/2) is removed from the
+    // resource table and op_print (used by console.log) fails.
+    this._handle._onClose = function () {
+      return 0;
+    };
   }
 }
 
+ObjectSetPrototypeOf(WriteStream.prototype, Socket.prototype);
+ObjectSetPrototypeOf(WriteStream, Socket);
+
+WriteStream.prototype.on = function on(event, listener) {
+  FunctionPrototypeCall(Socket.prototype.on, this, event, listener);
+  if (event === "resize" && this.listenerCount("resize") === 1) {
+    addSigwinchListener(this);
+  }
+  return this;
+};
+
+WriteStream.prototype.addListener = function addListener(event, listener) {
+  return this.on(event, listener);
+};
+
+WriteStream.prototype.removeListener = function removeListener(
+  event,
+  listener,
+) {
+  FunctionPrototypeCall(Socket.prototype.removeListener, this, event, listener);
+  if (event === "resize" && this.listenerCount("resize") === 0) {
+    removeSigwinchListener(this);
+  }
+  return this;
+};
+
+WriteStream.prototype.off = function off(event, listener) {
+  return this.removeListener(event, listener);
+};
+
+WriteStream.prototype.removeAllListeners = function removeAllListeners(event) {
+  FunctionPrototypeCall(Socket.prototype.removeAllListeners, this, event);
+  if (!event || event === "resize") {
+    removeSigwinchListener(this);
+  }
+  return this;
+};
+
+WriteStream.prototype._refreshSize = function _refreshSize() {
+  const oldCols = this.columns;
+  const oldRows = this.rows;
+  const { columns, rows } = Deno.consoleSize();
+  if (oldCols !== columns || oldRows !== rows) {
+    this.columns = columns;
+    this.rows = rows;
+    this.emit("resize");
+  }
+};
+
+WriteStream.prototype.cursorTo = function cursorTo_(x, y, callback) {
+  return cursorTo(this, x, y, callback);
+};
+
+WriteStream.prototype.moveCursor = function moveCursor_(dx, dy, callback) {
+  return moveCursor(this, dx, dy, callback);
+};
+
+WriteStream.prototype.clearLine = function clearLine_(dir, callback) {
+  return clearLine(this, dir, callback);
+};
+
+WriteStream.prototype.clearScreenDown = function clearScreenDown_(callback) {
+  return clearScreenDown(this, callback);
+};
+
+WriteStream.prototype.getWindowSize = function getWindowSize() {
+  return ObjectValues(Deno.consoleSize());
+};
+
+/**
+ * @param {number | Record<string, string>} [count]
+ * @param {Record<string, string>} [env]
+ * @returns {boolean}
+ */
+WriteStream.prototype.hasColors = function hasColors(count, env) {
+  if (
+    env === undefined &&
+    (count === undefined || typeof count === "object" && count !== null)
+  ) {
+    env = count;
+    count = 16;
+  } else {
+    validateInteger(count, "count", 2);
+  }
+
+  const depth = this.getColorDepth(env);
+  return count <= 2 ** depth;
+};
+
+/**
+ * @param {Record<string, string>} [env]
+ * @returns {1 | 4 | 8 | 24}
+ */
+WriteStream.prototype.getColorDepth = function getColorDepth_(env) {
+  return getColorDepth(env);
+};
+
+export { WriteStream };
 export default WriteStream;
