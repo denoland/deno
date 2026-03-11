@@ -346,6 +346,7 @@ pub enum DenoTaskLifecycleScriptsError {
 pub struct DenoTaskLifeCycleScriptsExecutor {
   progress_bar: ProgressBar,
   npm_resolver: ManagedNpmResolverRc<CliSys>,
+  system_info: deno_npm::NpmSystemInfo,
 }
 
 #[async_trait::async_trait(?Send)]
@@ -514,10 +515,12 @@ impl DenoTaskLifeCycleScriptsExecutor {
   pub fn new(
     npm_resolver: ManagedNpmResolverRc<CliSys>,
     progress_bar: ProgressBar,
+    system_info: deno_npm::NpmSystemInfo,
   ) -> Self {
     Self {
       npm_resolver,
       progress_bar,
+      system_info,
     }
   }
 
@@ -634,10 +637,16 @@ impl DenoTaskLifeCycleScriptsExecutor {
         &mut bin_entries,
         baseline,
         snapshot,
-        package
-          .dependencies
-          .values()
-          .map(|id| snapshot.package_from_id(id).unwrap()),
+        package.dependencies.iter().filter_map(|(name, id)| {
+          let dep = snapshot.package_from_id(id).unwrap();
+          // Skip optional dependencies that don't match the current system
+          if package.optional_dependencies.contains(name)
+            && !dep.system.matches_system(&self.system_info)
+          {
+            return None;
+          }
+          Some(dep)
+        }),
       )
       .await
   }
