@@ -1635,6 +1635,12 @@ impl JsRuntime {
     self.inner.state.op_state.clone()
   }
 
+  /// Returns the runtime's source mapper, which can be used to apply
+  /// source maps to file locations.
+  pub fn source_mapper(&self) -> Rc<RefCell<crate::source_map::SourceMapper>> {
+    self.inner.state.source_mapper.clone()
+  }
+
   /// Register a `uv_loop_t` with the runtime so that its event loop phases
   /// (timers, I/O, idle, prepare, check, close) are driven by
   /// `poll_event_loop`.
