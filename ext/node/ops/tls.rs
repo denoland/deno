@@ -46,19 +46,11 @@ use rustls_tokio_stream::UnderlyingStream;
 use webpki_root_certs;
 
 #[derive(Clone)]
-struct NodeTlsState {
-  custom_ca_certs: Option<Vec<String>>,
+pub(crate) struct NodeTlsState {
+  pub(crate) custom_ca_certs: Option<Vec<String>>,
 }
 
-#[op2]
-pub fn op_get_root_certificates(state: &mut OpState) -> Vec<String> {
-  if let Some(tls_state) = state.try_borrow::<NodeTlsState>()
-    && let Some(certs) = &tls_state.custom_ca_certs
-  {
-    return certs.clone();
-  }
-
-  // Return default root certificates if no custom ones are set
+fn bundled_root_certificates() -> Vec<String> {
   webpki_root_certs::TLS_SERVER_ROOT_CERTS
     .iter()
     .map(|cert| {
@@ -73,11 +65,16 @@ pub fn op_get_root_certificates(state: &mut OpState) -> Vec<String> {
         .collect::<Vec<String>>()
         .join("\n");
       let pem = format!(
-        "-----BEGIN CERTIFICATE-----\n{pem_lines}\n-----END CERTIFICATE-----\n",
+        "-----BEGIN CERTIFICATE-----\n{pem_lines}\n-----END CERTIFICATE-----",
       );
       pem
     })
     .collect::<Vec<String>>()
+}
+
+#[op2]
+pub fn op_get_root_certificates(_state: &mut OpState) -> Vec<String> {
+  bundled_root_certificates()
 }
 
 #[op2]

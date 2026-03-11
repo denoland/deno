@@ -2684,6 +2684,15 @@ function setupHandle(socket, type, options) {
         handle.receive(buf);
       }
     });
+    // Write path: when the native session has data to send (from
+    // nghttp2_session_mem_send), it calls this callback instead of
+    // writing directly to a libuv stream. We write through the
+    // socket so the data goes through TLS encryption if applicable.
+    handle.onsenddata = (data) => {
+      if (!this.destroyed && socket.writable) {
+        socket.write(data);
+      }
+    };
     socket.resume();
     debug("i/o stream consumed (socket data events)");
   }

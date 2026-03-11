@@ -4,16 +4,27 @@
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import tlsCommon from "node:_tls_common";
 import tlsWrap from "node:_tls_wrap";
+import { Buffer } from "node:buffer";
+import { readFileSync } from "node:fs";
+import process from "node:process";
 import {
   op_get_root_certificates,
   op_set_default_ca_certificates,
 } from "ext:core/ops";
+import { codes } from "ext:deno_node/internal/errors.ts";
+import {
+  isArrayBufferView,
+  isUint8Array,
+} from "ext:deno_node/internal/util/types.ts";
+import { validateString } from "ext:deno_node/internal/validators.mjs";
 import { primordials } from "ext:core/mod.js";
 
 const {
   ArrayIsArray,
   ArrayPrototypeForEach,
+  ArrayPrototypeMap,
   ArrayPrototypePush,
+  ObjectDefineProperty,
   ObjectKeys,
   ObjectFreeze,
   Proxy,
@@ -27,7 +38,6 @@ const {
   ReflectPreventExtensions,
   ReflectSet,
   StringPrototypeToLowerCase,
-  TypeError,
 } = primordials;
 
 // openssl -> rustls
@@ -55,14 +65,14 @@ export function getCiphers() {
   );
 }
 
-let lazyRootCertificates: string[] | null = null;
-function ensureLazyRootCertificates(target: string[]) {
-  if (lazyRootCertificates === null) {
-    lazyRootCertificates = op_get_root_certificates() as string[];
+let bundledRootCertificates: string[] | null = null;
+function ensureBundledRootCertificates(target: string[]) {
+  if (bundledRootCertificates === null) {
+    bundledRootCertificates = op_get_root_certificates() as string[];
     // Clear target and repopulate
     target.length = 0;
     ArrayPrototypeForEach(
-      lazyRootCertificates,
+      bundledRootCertificates,
       (v) => ArrayPrototypePush(target, v),
     );
     ObjectFreeze(target);
@@ -72,45 +82,85 @@ export const rootCertificates = new Proxy([] as string[], {
   // @ts-ignore __proto__ is not in the types
   __proto__: null,
   get(target, prop) {
-    ensureLazyRootCertificates(target);
+    ensureBundledRootCertificates(target);
     return ReflectGet(target, prop);
   },
   ownKeys(target) {
-    ensureLazyRootCertificates(target);
+    ensureBundledRootCertificates(target);
     return ReflectOwnKeys(target);
   },
   has(target, prop) {
-    ensureLazyRootCertificates(target);
+    ensureBundledRootCertificates(target);
     return ReflectHas(target, prop);
   },
   getOwnPropertyDescriptor(target, prop) {
-    ensureLazyRootCertificates(target);
+    ensureBundledRootCertificates(target);
     return ReflectGetOwnPropertyDescriptor(target, prop);
   },
   set(target, prop, value) {
-    ensureLazyRootCertificates(target);
+    ensureBundledRootCertificates(target);
     return ReflectSet(target, prop, value);
   },
   defineProperty(target, prop, descriptor) {
-    ensureLazyRootCertificates(target);
+    ensureBundledRootCertificates(target);
     return ReflectDefineProperty(target, prop, descriptor);
   },
   deleteProperty(target, prop) {
-    ensureLazyRootCertificates(target);
+    ensureBundledRootCertificates(target);
     return ReflectDeleteProperty(target, prop);
   },
   isExtensible(target) {
-    ensureLazyRootCertificates(target);
+    ensureBundledRootCertificates(target);
     return ReflectIsExtensible(target);
   },
   preventExtensions(target) {
-    ensureLazyRootCertificates(target);
+    ensureBundledRootCertificates(target);
     return ReflectPreventExtensions(target);
   },
   setPrototypeOf() {
     return false;
   },
 });
+
+let extraCACertificates: string[] | undefined;
+function cacheExtraCACertificates() {
+  if (extraCACertificates) {
+    return extraCACertificates;
+  }
+  const path = process.env.NODE_EXTRA_CA_CERTS;
+  extraCACertificates = ObjectFreeze(
+    path ? [readFileSync(path, "utf8")] : [],
+  );
+  return extraCACertificates;
+}
+
+let systemCACertificates: string[] | undefined;
+function cacheSystemCACertificates() {
+  systemCACertificates ??= ObjectFreeze([]);
+  return systemCACertificates;
+}
+
+let defaultCACertificates: string[] | undefined;
+let customDefaultCACertificates: string[] | undefined;
+let hasResetDefaultCACertificates = false;
+
+function cacheDefaultCACertificates() {
+  if (defaultCACertificates) {
+    return defaultCACertificates;
+  }
+
+  if (hasResetDefaultCACertificates) {
+    defaultCACertificates = ObjectFreeze(customDefaultCACertificates ?? []);
+    return defaultCACertificates;
+  }
+
+  defaultCACertificates = [
+    ...rootCertificates,
+    ...cacheExtraCACertificates(),
+  ];
+  ObjectFreeze(defaultCACertificates);
+  return defaultCACertificates;
+}
 
 export const DEFAULT_ECDH_CURVE = "auto";
 export const DEFAULT_MAX_VERSION = "TLSv1.3";
@@ -122,43 +172,124 @@ export class CryptoStream {}
 export class SecurePair {}
 export const Server = tlsWrap.Server;
 
-export function setDefaultCACertificates(certs: string[]) {
+export function getCACertificates(type = "default") {
+  validateString(type, "type");
+
+  switch (type) {
+    case "default":
+      return cacheDefaultCACertificates();
+    case "bundled":
+      return rootCertificates;
+    case "system":
+      return cacheSystemCACertificates();
+    case "extra":
+      return cacheExtraCACertificates();
+    default:
+      throw new codes.ERR_INVALID_ARG_VALUE("type", type);
+  }
+}
+
+function normalizeCACert(cert: string | ArrayBufferView, index: number) {
+  if (typeof cert === "string") {
+    return cert;
+  }
+  if (isArrayBufferView(cert)) {
+    return Buffer.from(cert.buffer, cert.byteOffset, cert.byteLength)
+      .toString();
+  }
+  throw new codes.ERR_INVALID_ARG_TYPE(
+    `certs[${index}]`,
+    ["string", "ArrayBufferView"],
+    cert,
+  );
+}
+
+export function setDefaultCACertificates(
+  certs: Array<string | ArrayBufferView>,
+) {
   if (!ArrayIsArray(certs)) {
-    throw new TypeError(
-      "The argument 'certs' must be an array of strings",
-    );
+    throw new codes.ERR_INVALID_ARG_TYPE("certs", "Array", certs);
   }
 
-  for (let i = 0; i < certs.length; ++i) {
-    const cert = certs[i];
-    if (typeof cert !== "string") {
-      throw new TypeError(
-        "Each certificate in 'certs' must be a string",
-      );
+  const normalizedCerts = [];
+  const seen = new Set<string>();
+  for (let i = 0; i < certs.length; i++) {
+    const cert = normalizeCACert(certs[i], i);
+    if (!seen.has(cert)) {
+      seen.add(cert);
+      ArrayPrototypePush(normalizedCerts, cert);
     }
   }
 
-  op_set_default_ca_certificates(certs);
-
-  lazyRootCertificates = null;
+  op_set_default_ca_certificates(normalizedCerts);
+  customDefaultCACertificates = ObjectFreeze([...normalizedCerts]);
+  defaultCACertificates = undefined;
+  hasResetDefaultCACertificates = true;
 }
 
 export function createSecurePair() {
   notImplemented("tls.createSecurePair");
 }
 
-export default {
+function convertProtocols(protocols: string[]) {
+  const lengths = new Array(protocols.length);
+  const buffer = Buffer.allocUnsafe(
+    protocols.reduce((total, protocol, index) => {
+      const length = Buffer.byteLength(protocol);
+      if (length > 255) {
+        throw new codes.ERR_OUT_OF_RANGE(
+          `The byte length of the protocol at index ${index} exceeds the maximum length.`,
+          "<= 255",
+          length,
+          true,
+        );
+      }
+      lengths[index] = length;
+      return total + 1 + length;
+    }, 0),
+  );
+
+  let offset = 0;
+  for (let i = 0; i < protocols.length; i++) {
+    buffer[offset++] = lengths[i];
+    buffer.write(protocols[i], offset);
+    offset += lengths[i];
+  }
+
+  return buffer;
+}
+
+export function convertALPNProtocols(
+  protocols: unknown,
+  out: Record<string, unknown>,
+) {
+  if (ArrayIsArray(protocols)) {
+    out.ALPNProtocols = convertProtocols(protocols);
+  } else if (isUint8Array(protocols)) {
+    out.ALPNProtocols = Buffer.from(protocols);
+  } else if (isArrayBufferView(protocols)) {
+    out.ALPNProtocols = Buffer.from(
+      protocols.buffer.slice(
+        protocols.byteOffset,
+        protocols.byteOffset + protocols.byteLength,
+      ),
+    );
+  }
+}
+
+const exported = {
   CryptoStream,
   SecurePair,
   Server,
   TLSSocket: tlsWrap.TLSSocket,
   checkServerIdentity: tlsWrap.checkServerIdentity,
   connect: tlsWrap.connect,
+  convertALPNProtocols,
   createSecureContext: tlsCommon.createSecureContext,
   createSecurePair,
   createServer: tlsWrap.createServer,
+  getCACertificates,
   getCiphers,
-  rootCertificates,
   setDefaultCACertificates,
   DEFAULT_CIPHERS: tlsWrap.DEFAULT_CIPHERS,
   DEFAULT_ECDH_CURVE,
@@ -167,6 +298,15 @@ export default {
   CLIENT_RENEG_LIMIT,
   CLIENT_RENEG_WINDOW,
 };
+
+ObjectDefineProperty(exported, "rootCertificates", {
+  __proto__: null,
+  configurable: false,
+  enumerable: true,
+  get: () => rootCertificates,
+});
+
+export default exported;
 
 export const checkServerIdentity = tlsWrap.checkServerIdentity;
 export const connect = tlsWrap.connect;

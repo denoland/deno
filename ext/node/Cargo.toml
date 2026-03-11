@@ -54,7 +54,10 @@ node_resolver.workspace = true
 node_shim.workspace = true
 once_cell.workspace = true
 rand.workspace = true
+rustls.workspace = true
+rustls-pemfile.workspace = true
 rustls-tokio-stream.workspace = true
+rustls-webpki.workspace = true
 serde.workspace = true
 socket2.workspace = true
 sys_traits = { workspace = true, features = ["real", "winapi", "libc"] }

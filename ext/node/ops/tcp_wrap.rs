@@ -1,0 +1,578 @@
+#![allow(non_snake_case)]
+
+use std::ffi::c_void;
+use std::net::ToSocketAddrs;
+
+use deno_core::CppgcInherits;
+use deno_core::GarbageCollected;
+use deno_core::OpState;
+use deno_core::op2;
+use deno_core::uv_compat::UV_EBADF;
+use deno_core::uv_compat::UV_EINVAL;
+use deno_core::uv_compat::uv_accept;
+use deno_core::uv_compat::uv_connect_t;
+use deno_core::uv_compat::uv_listen;
+use deno_core::uv_compat::uv_loop_t;
+use deno_core::uv_compat::uv_tcp_bind;
+use deno_core::uv_compat::uv_tcp_connect;
+use deno_core::uv_compat::uv_tcp_getpeername;
+use deno_core::uv_compat::uv_tcp_getsockname;
+use deno_core::uv_compat::uv_tcp_init;
+use deno_core::uv_compat::uv_tcp_keepalive;
+use deno_core::uv_compat::uv_tcp_nodelay;
+use deno_core::uv_compat::uv_tcp_open;
+use deno_core::uv_compat::uv_tcp_t;
+use deno_core::v8;
+
+use super::tty_wrap::OwnedPtr;
+use crate::ops::handle_wrap::AsyncWrap;
+use crate::ops::handle_wrap::Handle;
+use crate::ops::handle_wrap::HandleWrap;
+use crate::ops::handle_wrap::ProviderType;
+use crate::ops::stream_wrap::LibUvStreamWrap;
+
+/// Socket type constants matching Node's TCPWrap::SocketType.
+const SERVER: i32 = 1;
+
+/// UV_TCP_IPV6ONLY flag value matching libuv.
+const UV_TCP_IPV6ONLY: u32 = 1;
+
+#[derive(CppgcInherits)]
+#[cppgc_inherits_from(LibUvStreamWrap)]
+#[repr(C)]
+pub struct TCPWrap {
+  base: LibUvStreamWrap,
+  pub(crate) handle: Option<OwnedPtr<uv_tcp_t>>,
+}
+
+unsafe impl GarbageCollected for TCPWrap {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"TCPWrap"
+  }
+
+  fn trace(&self, visitor: &mut deno_core::v8::cppgc::Visitor) {
+    self.base.trace(visitor);
+  }
+}
+
+impl TCPWrap {
+  pub fn new(fd: i32, socket_type: i32, op_state: &mut OpState) -> (Self, i32) {
+    let loop_ = &**op_state.borrow::<Box<uv_loop_t>>() as *const uv_loop_t
+      as *mut uv_loop_t;
+
+    let tcp = OwnedPtr::from_box(Box::<uv_tcp_t>::new_uninit());
+
+    let err = unsafe { uv_tcp_init(loop_, tcp.as_mut_ptr().cast()) };
+
+    let provider = if socket_type == SERVER {
+      ProviderType::TcpServerWrap
+    } else {
+      ProviderType::TcpWrap
+    };
+
+    if err == 0 {
+      let tcp = unsafe { tcp.cast::<uv_tcp_t>() };
+      (
+        Self {
+          base: LibUvStreamWrap::new(
+            HandleWrap::create(
+              AsyncWrap::create(op_state, provider as i32),
+              Some(Handle::New(tcp.as_ptr().cast())),
+            ),
+            fd,
+            tcp.as_ptr().cast(),
+          ),
+          handle: Some(tcp),
+        },
+        0,
+      )
+    } else {
+      // Just drop tcp — it's an OwnedPtr<MaybeUninit<uv_tcp_t>>,
+      // and MaybeUninit's drop is a no-op, so this safely frees the allocation.
+      drop(tcp);
+      (
+        Self {
+          base: LibUvStreamWrap::new(
+            HandleWrap::create(
+              AsyncWrap::create(op_state, provider as i32),
+              None,
+            ),
+            fd,
+            std::ptr::null(),
+          ),
+          handle: None,
+        },
+        err,
+      )
+    }
+  }
+}
+
+/// Helper to convert address info from a sockaddr into JS object properties.
+fn address_to_js(
+  scope: &mut v8::PinScope<'_, '_>,
+  sock_addr: &socket2::SockAddr,
+  obj: v8::Local<v8::Object>,
+) -> bool {
+  if let Some(addr) = sock_addr.as_socket_ipv4() {
+    let address_key =
+      v8::String::new_external_onebyte_static(scope, b"address").unwrap();
+    let address_val = v8::String::new(scope, &addr.ip().to_string()).unwrap();
+    obj.set(scope, address_key.into(), address_val.into());
+
+    let family_key =
+      v8::String::new_external_onebyte_static(scope, b"family").unwrap();
+    let family_val =
+      v8::String::new_external_onebyte_static(scope, b"IPv4").unwrap();
+    obj.set(scope, family_key.into(), family_val.into());
+
+    let port_key =
+      v8::String::new_external_onebyte_static(scope, b"port").unwrap();
+    let port_val = v8::Integer::new(scope, addr.port() as i32);
+    obj.set(scope, port_key.into(), port_val.into());
+
+    true
+  } else if let Some(addr) = sock_addr.as_socket_ipv6() {
+    let address_key =
+      v8::String::new_external_onebyte_static(scope, b"address").unwrap();
+    let address_val = v8::String::new(scope, &addr.ip().to_string()).unwrap();
+    obj.set(scope, address_key.into(), address_val.into());
+
+    let family_key =
+      v8::String::new_external_onebyte_static(scope, b"family").unwrap();
+    let family_val =
+      v8::String::new_external_onebyte_static(scope, b"IPv6").unwrap();
+    obj.set(scope, family_key.into(), family_val.into());
+
+    let port_key =
+      v8::String::new_external_onebyte_static(scope, b"port").unwrap();
+    let port_val = v8::Integer::new(scope, addr.port() as i32);
+    obj.set(scope, port_key.into(), port_val.into());
+
+    true
+  } else {
+    false
+  }
+}
+
+/// Wraps a uv_connect_t request so it stays alive until the callback fires.
+#[repr(C)]
+struct ConnectReq {
+  uv_req: uv_connect_t,
+}
+
+unsafe extern "C" fn after_connect(req: *mut uv_connect_t, status: i32) {
+  // SAFETY: pointer was allocated by Box::into_raw in connect/connect6
+  unsafe {
+    let stream = (*req).handle;
+    // Free the ConnectReq
+    let _ = Box::from_raw(req as *mut ConnectReq);
+
+    if stream.is_null() {
+      return;
+    }
+    let data = (*stream).data;
+    if data.is_null() {
+      return;
+    }
+
+    let loop_ = (*stream).loop_;
+    let ctx_ptr = (*loop_).data;
+    if ctx_ptr.is_null() {
+      return;
+    }
+
+    let context = std::mem::transmute::<
+      std::ptr::NonNull<v8::Context>,
+      v8::Local<'_, v8::Context>,
+    >(std::ptr::NonNull::new_unchecked(
+      ctx_ptr as *mut v8::Context,
+    ));
+
+    v8::callback_scope!(unsafe let scope, context);
+    v8::tc_scope!(let scope, scope);
+
+    // data points to the LibUvStreamWrap's js_handle
+    let js_handle =
+      &*(data as *const std::cell::UnsafeCell<Option<v8::Global<v8::Object>>>);
+    let js_obj = match *js_handle.get() {
+      Some(ref obj) => v8::Local::new(scope, obj),
+      None => return,
+    };
+
+    let key =
+      v8::String::new_external_onebyte_static(scope, b"onconnect").unwrap();
+    let onconnect = js_obj.get(scope, key.into());
+
+    if let Some(Ok(func)) = onconnect.map(v8::Local::<v8::Function>::try_from) {
+      let status_val = v8::Integer::new(scope, status);
+      func.call(scope, js_obj.into(), &[status_val.into()]);
+    }
+  }
+}
+
+unsafe extern "C" fn on_connection(
+  server: *mut deno_core::uv_compat::uv_stream_t,
+  status: i32,
+) {
+  // SAFETY: pointers are valid per libuv connection callback contract
+  unsafe {
+    let data = (*server).data;
+    if data.is_null() {
+      return;
+    }
+
+    let loop_ = (*server).loop_;
+    let ctx_ptr = (*loop_).data;
+    if ctx_ptr.is_null() {
+      return;
+    }
+
+    let context = std::mem::transmute::<
+      std::ptr::NonNull<v8::Context>,
+      v8::Local<'_, v8::Context>,
+    >(std::ptr::NonNull::new_unchecked(
+      ctx_ptr as *mut v8::Context,
+    ));
+
+    v8::callback_scope!(unsafe let scope, context);
+    v8::tc_scope!(let scope, scope);
+
+    let js_handle =
+      &*(data as *const std::cell::UnsafeCell<Option<v8::Global<v8::Object>>>);
+    let js_obj = match *js_handle.get() {
+      Some(ref obj) => v8::Local::new(scope, obj),
+      None => return,
+    };
+
+    let key =
+      v8::String::new_external_onebyte_static(scope, b"onconnection").unwrap();
+    let onconnection = js_obj.get(scope, key.into());
+
+    if let Some(Ok(func)) =
+      onconnection.map(v8::Local::<v8::Function>::try_from)
+    {
+      let status_val = v8::Integer::new(scope, status);
+      func.call(scope, js_obj.into(), &[status_val.into()]);
+    }
+  }
+}
+
+#[op2(inherit = LibUvStreamWrap)]
+impl TCPWrap {
+  #[constructor]
+  #[cppgc]
+  pub fn new_tcp(
+    #[smi] socket_type: i32,
+    ctx: v8::Local<v8::Value>,
+    #[this] _this: v8::Global<v8::Object>,
+    scope: &mut v8::PinScope,
+    op_state: &mut OpState,
+  ) -> TCPWrap {
+    let (tcp, err) = TCPWrap::new(-1, socket_type, op_state);
+    if err != 0 {
+      if let Ok(ctx_obj) = v8::Local::<v8::Object>::try_from(ctx) {
+        let (code_name, message) = uv_error_info(err);
+
+        let code_key =
+          v8::String::new_external_onebyte_static(scope, b"code").unwrap();
+        let code_str = v8::String::new(scope, code_name).unwrap();
+        ctx_obj.set(scope, code_key.into(), code_str.into());
+
+        let msg_key =
+          v8::String::new_external_onebyte_static(scope, b"message").unwrap();
+        let msg_str = v8::String::new(scope, message).unwrap();
+        ctx_obj.set(scope, msg_key.into(), msg_str.into());
+
+        let errno_key =
+          v8::String::new_external_onebyte_static(scope, b"errno").unwrap();
+        let errno_val = v8::Integer::new(scope, err);
+        ctx_obj.set(scope, errno_key.into(), errno_val.into());
+
+        let syscall_key =
+          v8::String::new_external_onebyte_static(scope, b"syscall").unwrap();
+        let syscall_str =
+          v8::String::new_external_onebyte_static(scope, b"uv_tcp_init")
+            .unwrap();
+        ctx_obj.set(scope, syscall_key.into(), syscall_str.into());
+      }
+    }
+    tcp
+  }
+
+  #[fast]
+  pub fn open(&self, #[smi] fd: i32) -> i32 {
+    let Some(ref handle) = self.handle else {
+      return UV_EBADF;
+    };
+    unsafe { uv_tcp_open(handle.as_mut_ptr(), fd) }
+  }
+
+  #[fast]
+  pub fn bind(
+    &self,
+    #[string] address: &str,
+    #[smi] port: i32,
+    #[smi] flags: u32,
+  ) -> i32 {
+    let Some(ref handle) = self.handle else {
+      return UV_EBADF;
+    };
+
+    let addr_str = format!("{}:{}", address, port);
+    let socket_addr = match addr_str.to_socket_addrs() {
+      Ok(mut addrs) => match addrs.next() {
+        Some(addr) => addr,
+        None => return UV_EINVAL,
+      },
+      Err(_) => return UV_EINVAL,
+    };
+
+    unsafe {
+      let sock_addr = socket2::SockAddr::from(socket_addr);
+      uv_tcp_bind(
+        handle.as_mut_ptr(),
+        sock_addr.as_ptr() as *const c_void,
+        #[allow(clippy::unnecessary_cast)]
+        {
+          sock_addr.len() as u32
+        },
+        flags,
+      )
+    }
+  }
+
+  #[fast]
+  pub fn bind6(
+    &self,
+    #[string] address: &str,
+    #[smi] port: i32,
+    #[smi] flags: u32,
+  ) -> i32 {
+    let Some(ref handle) = self.handle else {
+      return UV_EBADF;
+    };
+
+    let addr_str = format!("[{}]:{}", address, port);
+    let socket_addr = match addr_str.to_socket_addrs() {
+      Ok(mut addrs) => match addrs.next() {
+        Some(addr) => addr,
+        None => return UV_EINVAL,
+      },
+      Err(_) => return UV_EINVAL,
+    };
+
+    unsafe {
+      let sock_addr = socket2::SockAddr::from(socket_addr);
+      // Strip UV_TCP_IPV6ONLY for IPv4 sockets (shouldn't happen for bind6 but be safe)
+      let flags = flags & !UV_TCP_IPV6ONLY;
+      let _ = flags; // bind6 always passes flags through
+      uv_tcp_bind(
+        handle.as_mut_ptr(),
+        sock_addr.as_ptr() as *const c_void,
+        #[allow(clippy::unnecessary_cast)]
+        {
+          sock_addr.len() as u32
+        },
+        flags,
+      )
+    }
+  }
+
+  #[fast]
+  pub fn listen(&self, #[smi] backlog: i32) -> i32 {
+    let Some(ref handle) = self.handle else {
+      return UV_EBADF;
+    };
+
+    unsafe {
+      uv_listen(
+        handle.as_mut_ptr() as *mut deno_core::uv_compat::uv_stream_t,
+        backlog,
+        Some(on_connection),
+      )
+    }
+  }
+
+  #[fast]
+  pub fn connect(&self, #[string] address: &str, #[smi] port: i32) -> i32 {
+    let Some(ref handle) = self.handle else {
+      return UV_EBADF;
+    };
+
+    let addr_str = format!("{}:{}", address, port);
+    let socket_addr = match addr_str.to_socket_addrs() {
+      Ok(mut addrs) => match addrs.next() {
+        Some(addr) => addr,
+        None => return UV_EINVAL,
+      },
+      Err(_) => return UV_EINVAL,
+    };
+
+    unsafe {
+      let sock_addr = socket2::SockAddr::from(socket_addr);
+      let mut connect_req = Box::new(ConnectReq {
+        uv_req: std::mem::zeroed(),
+      });
+      let req_ptr = &mut connect_req.uv_req as *mut uv_connect_t;
+      let _ = Box::into_raw(connect_req); // leak; freed in after_connect
+      let ret = uv_tcp_connect(
+        req_ptr,
+        handle.as_mut_ptr(),
+        sock_addr.as_ptr() as *const c_void,
+        Some(after_connect),
+      );
+      if ret != 0 {
+        let _ = Box::from_raw(req_ptr as *mut ConnectReq);
+      }
+      ret
+    }
+  }
+
+  #[fast]
+  pub fn connect6(&self, #[string] address: &str, #[smi] port: i32) -> i32 {
+    let Some(ref handle) = self.handle else {
+      return UV_EBADF;
+    };
+
+    let addr_str = format!("[{}]:{}", address, port);
+    let socket_addr = match addr_str.to_socket_addrs() {
+      Ok(mut addrs) => match addrs.next() {
+        Some(addr) => addr,
+        None => return UV_EINVAL,
+      },
+      Err(_) => return UV_EINVAL,
+    };
+
+    unsafe {
+      let sock_addr = socket2::SockAddr::from(socket_addr);
+      let mut connect_req = Box::new(ConnectReq {
+        uv_req: std::mem::zeroed(),
+      });
+      let req_ptr = &mut connect_req.uv_req as *mut uv_connect_t;
+      let _ = Box::into_raw(connect_req); // leak; freed in after_connect
+      let ret = uv_tcp_connect(
+        req_ptr,
+        handle.as_mut_ptr(),
+        sock_addr.as_ptr() as *const c_void,
+        Some(after_connect),
+      );
+      if ret != 0 {
+        let _ = Box::from_raw(req_ptr as *mut ConnectReq);
+      }
+      ret
+    }
+  }
+
+  #[fast]
+  pub fn getsockname(
+    &self,
+    out: v8::Local<v8::Object>,
+    scope: &mut v8::PinScope,
+  ) -> i32 {
+    let Some(ref handle) = self.handle else {
+      return UV_EBADF;
+    };
+
+    unsafe {
+      let mut storage = std::mem::MaybeUninit::<socket2::SockAddr>::uninit();
+      let mut len = std::mem::size_of::<socket2::SockAddr>() as i32;
+      let ret = uv_tcp_getsockname(
+        handle.as_ptr(),
+        storage.as_mut_ptr() as *mut c_void,
+        &mut len,
+      );
+      if ret != 0 {
+        return ret;
+      }
+      let sock_addr = storage.assume_init();
+      if !address_to_js(scope, &sock_addr, out) {
+        return UV_EINVAL;
+      }
+      0
+    }
+  }
+
+  #[fast]
+  pub fn getpeername(
+    &self,
+    out: v8::Local<v8::Object>,
+    scope: &mut v8::PinScope,
+  ) -> i32 {
+    let Some(ref handle) = self.handle else {
+      return UV_EBADF;
+    };
+
+    unsafe {
+      let mut storage = std::mem::MaybeUninit::<socket2::SockAddr>::uninit();
+      let mut len = std::mem::size_of::<socket2::SockAddr>() as i32;
+      let ret = uv_tcp_getpeername(
+        handle.as_ptr(),
+        storage.as_mut_ptr() as *mut c_void,
+        &mut len,
+      );
+      if ret != 0 {
+        return ret;
+      }
+      let sock_addr = storage.assume_init();
+      if !address_to_js(scope, &sock_addr, out) {
+        return UV_EINVAL;
+      }
+      0
+    }
+  }
+
+  #[fast]
+  #[rename("setNoDelay")]
+  pub fn set_no_delay(&self, enable: bool) -> i32 {
+    let Some(ref handle) = self.handle else {
+      return UV_EBADF;
+    };
+    unsafe { uv_tcp_nodelay(handle.as_mut_ptr(), enable as i32) }
+  }
+
+  #[fast]
+  #[rename("setKeepAlive")]
+  pub fn set_keep_alive(&self, enable: bool, #[smi] delay: u32) -> i32 {
+    let Some(ref handle) = self.handle else {
+      return UV_EBADF;
+    };
+    unsafe { uv_tcp_keepalive(handle.as_mut_ptr(), enable as i32, delay) }
+  }
+
+  #[fast]
+  pub fn accept(&self, #[cppgc] client: &TCPWrap) -> i32 {
+    let Some(ref server_handle) = self.handle else {
+      return UV_EBADF;
+    };
+    let Some(ref client_handle) = client.handle else {
+      return UV_EBADF;
+    };
+
+    unsafe {
+      uv_accept(
+        server_handle.as_mut_ptr() as *mut deno_core::uv_compat::uv_stream_t,
+        client_handle.as_mut_ptr() as *mut deno_core::uv_compat::uv_stream_t,
+      )
+    }
+  }
+}
+
+/// Map a uv error code to (name, message).
+fn uv_error_info(err: i32) -> (&'static str, &'static str) {
+  use deno_core::uv_compat::*;
+  match err {
+    x if x == UV_EAGAIN => ("EAGAIN", "resource temporarily unavailable"),
+    x if x == UV_EADDRINUSE => ("EADDRINUSE", "address already in use"),
+    x if x == UV_EBADF => ("EBADF", "bad file descriptor"),
+    x if x == UV_EBUSY => ("EBUSY", "resource busy or locked"),
+    x if x == UV_ECANCELED => ("ECANCELED", "operation canceled"),
+    x if x == UV_ECONNREFUSED => ("ECONNREFUSED", "connection refused"),
+    x if x == UV_EINVAL => ("EINVAL", "invalid argument"),
+    x if x == UV_ENOBUFS => ("ENOBUFS", "no buffer space available"),
+    x if x == UV_ENOTCONN => ("ENOTCONN", "socket is not connected"),
+    x if x == UV_ENOTSUP => ("ENOTSUP", "operation not supported on socket"),
+    x if x == UV_EPIPE => ("EPIPE", "broken pipe"),
+    _ => ("UNKNOWN", "unknown error"),
+  }
+}

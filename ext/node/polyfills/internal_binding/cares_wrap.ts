@@ -42,6 +42,7 @@ import {
   op_net_get_system_dns_servers,
   op_node_getaddrinfo,
   op_node_getnameinfo,
+  op_tls_canonicalize_ipv4_address,
 } from "ext:core/ops";
 
 interface LookupAddress {
@@ -626,6 +627,10 @@ export function strerror(code: number) {
     : ares_strerror(code);
 }
 
+export function canonicalizeIP(ip: string): string | undefined {
+  return op_tls_canonicalize_ipv4_address(ip);
+}
+
 export default {
   DNS_ORDER_VERBATIM,
   DNS_ORDER_IPV4_FIRST,
@@ -635,5 +640,6 @@ export default {
   getnameinfo,
   QueryReqWrap,
   ChannelWrap,
+  canonicalizeIP,
   strerror,
 };

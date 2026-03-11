@@ -2202,6 +2202,11 @@ export class ERR_TLS_INVALID_PROTOCOL_VERSION extends NodeTypeError {
     );
   }
 }
+export class ERR_TLS_INVALID_PROTOCOL_METHOD extends NodeTypeError {
+  constructor(details: string) {
+    super("ERR_TLS_INVALID_PROTOCOL_METHOD", details);
+  }
+}
 export class ERR_TLS_PROTOCOL_VERSION_CONFLICT extends NodeTypeError {
   constructor(prevProtocol: string, protocol: string) {
     super(
@@ -3311,6 +3316,7 @@ export default {
   ERR_TLS_DH_PARAM_SIZE,
   ERR_TLS_HANDSHAKE_TIMEOUT,
   ERR_TLS_INVALID_CONTEXT,
+  ERR_TLS_INVALID_PROTOCOL_METHOD,
   ERR_TLS_INVALID_PROTOCOL_VERSION,
   ERR_TLS_INVALID_STATE,
   ERR_TLS_PROTOCOL_VERSION_CONFLICT,
