@@ -47,6 +47,26 @@ pub fn exit(code: i32) -> ! {
   std::process::exit(code);
 }
 
+/// Callbacks to run before the process exits via `Deno.exit()`.
+///
+/// Used to flush CPU profiling data and coverage data that would otherwise
+/// be lost when `Deno.exit()` calls `std::process::exit()` directly,
+/// bypassing normal cleanup in the worker's run loop.
+#[derive(Default)]
+pub struct OpExitCallbacks(Vec<Box<dyn FnMut()>>);
+
+impl OpExitCallbacks {
+  pub fn push(&mut self, cb: Box<dyn FnMut()>) {
+    self.0.push(cb);
+  }
+
+  fn run(&mut self) {
+    for cb in self.0.iter_mut() {
+      cb();
+    }
+  }
+}
+
 deno_core::extension!(
   deno_os,
   ops = [
@@ -317,6 +337,9 @@ fn op_get_exit_code(state: &mut OpState) -> i32 {
 
 #[op2(fast)]
 fn op_exit(state: &mut OpState) {
+  if let Some(cbs) = state.try_borrow_mut::<OpExitCallbacks>() {
+    cbs.run();
+  }
   if let Some(exit_code) = state.try_borrow::<ExitCode>() {
     exit(exit_code.get())
   }

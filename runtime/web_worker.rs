@@ -1175,7 +1175,11 @@ pub async fn run_web_worker(
     return Ok(());
   }
 
-  // Execute provided source code immediately
+  // Execute provided source code immediately via V8 script evaluation
+  // (sloppy mode). This path is used by node:worker_threads `{ eval: true }`
+  // when the code doesn't contain ESM syntax (import/export), matching
+  // Node.js behavior where such eval workers run as CJS (sloppy mode).
+  // See: https://github.com/denoland/deno/issues/26739
   let result = if let Some(source_code) = maybe_source_code.take() {
     let r = worker.execute_script(located_script_name!(), source_code.into());
     worker.start_polling_for_messages();
