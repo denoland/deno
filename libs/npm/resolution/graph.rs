@@ -1829,7 +1829,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
     node_id: NodeId,
     parent_pkgs: &BTreeMap<StackString, NodeId>,
     visiting: &mut HashSet<NodeId>,
-    ancestors: &[PackageNv],
+    ancestors: &[Rc<PackageNv>],
   ) -> Result<PeersResolution, NpmResolutionError> {
     let nv = self
       .graph
@@ -1944,7 +1944,8 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
                 let mut diag_ancestors =
                   Vec::with_capacity(ancestors.len() + 1);
                 diag_ancestors.push((*nv).clone());
-                diag_ancestors.extend_from_slice(ancestors);
+                diag_ancestors
+                  .extend(ancestors.iter().map(|nv| nv.as_ref().clone()));
                 self.unmet_peer_diagnostics.borrow_mut().insert(
                   UnmetPeerDepDiagnostic {
                     ancestors: diag_ancestors,
@@ -2006,7 +2007,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
     let mut resolved_children: BTreeMap<StackString, NodeId> = BTreeMap::new();
 
     let mut child_ancestors = Vec::with_capacity(ancestors.len() + 1);
-    child_ancestors.push((*nv).clone());
+    child_ancestors.push(nv.clone());
     child_ancestors.extend_from_slice(ancestors);
 
     for (spec, child_id) in &all_deps_to_recurse {
@@ -2294,7 +2295,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
   /// Check if a cached peer resolution matches the current parent context.
   fn find_peers_cache_hit(
     &self,
-    nv: &PackageNv,
+    nv: &Rc<PackageNv>,
     parent_pkgs: &BTreeMap<StackString, NodeId>,
   ) -> Option<PeersResolution> {
     let mut checking = HashSet::new();
@@ -2311,10 +2312,10 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
 
   fn find_peers_cache_hit_inner(
     &self,
-    nv: &PackageNv,
+    nv: &Rc<PackageNv>,
     parent_pkgs: &BTreeMap<StackString, NodeId>,
-    checking: &mut HashSet<PackageNv>,
-    memo: &mut HashMap<PackageNv, Option<PeersResolution>>,
+    checking: &mut HashSet<Rc<PackageNv>>,
+    memo: &mut HashMap<Rc<PackageNv>, Option<PeersResolution>>,
   ) -> Option<PeersResolution> {
     // Return memoized result if we've already fully evaluated this nv.
     if let Some(result) = memo.get(nv) {
