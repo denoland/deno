@@ -260,16 +260,40 @@ fn op_base64_encode(#[buffer] s: &[u8]) -> String {
 
 /// Encode a sub-range of a buffer to base64, avoiding a JS-side slice copy.
 #[op2]
-#[string]
-fn op_base64_encode_from_buffer(
+fn op_base64_encode_from_buffer<'a>(
+  scope: &mut v8::PinScope<'a, '_>,
   #[buffer] s: &[u8],
   #[smi] offset: u32,
   #[smi] length: u32,
-) -> String {
+) -> Result<v8::Local<'a, v8::String>, WebError> {
   let offset = offset as usize;
   let length = length as usize;
   let end = (offset + length).min(s.len());
-  forgiving_base64_encode(&s[offset..end])
+  base64_encode_to_v8_string(scope, &s[offset..end])
+}
+
+/// Encode bytes to base64 and create a V8 one-byte string directly.
+/// Uses v8::String::new_from_one_byte (base64 output is always ASCII).
+/// Stack-allocates for inputs up to 6KB (producing ≤8KB base64).
+#[inline]
+fn base64_encode_to_v8_string<'a>(
+  scope: &mut v8::PinScope<'a, '_>,
+  src: &[u8],
+) -> Result<v8::Local<'a, v8::String>, WebError> {
+  use base64_simd::AsOut;
+  let b64_len = (src.len() + 2) / 3 * 4;
+
+  const STACK_BUF_SIZE: usize = 8192;
+  if b64_len <= STACK_BUF_SIZE {
+    let mut buf = [0u8; STACK_BUF_SIZE];
+    let encoded = base64_simd::STANDARD.encode(src, buf[..b64_len].as_out());
+    v8::String::new_from_one_byte(scope, encoded, v8::NewStringType::Normal)
+      .ok_or(WebError::BufferTooLong)
+  } else {
+    let encoded = base64_simd::STANDARD.encode_type::<Vec<u8>>(src);
+    v8::String::new_from_one_byte(scope, &encoded, v8::NewStringType::Normal)
+      .ok_or(WebError::BufferTooLong)
+  }
 }
 
 #[op2]
