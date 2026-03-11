@@ -1481,6 +1481,8 @@ fn get_resolved_typescript_config(
 fn get_resolved_markdown_config(
   options: &FmtOptionsConfig,
 ) -> dprint_plugin_markdown::configuration::Configuration {
+  use dprint_core::configuration::NewLineKind;
+
   let mut builder =
     dprint_plugin_markdown::configuration::ConfigurationBuilder::new();
 
@@ -1504,12 +1506,33 @@ fn get_resolved_markdown_config(
     });
   }
 
+  if let Some(new_line_kind) = options.new_line_kind {
+    builder.new_line_kind(match new_line_kind {
+      NewLineKind::Auto => dprint_core::configuration::NewLineKind::Auto,
+      NewLineKind::CarriageReturnLineFeed => {
+        dprint_core::configuration::NewLineKind::CarriageReturnLineFeed
+      }
+      NewLineKind::LineFeed => {
+        dprint_core::configuration::NewLineKind::LineFeed
+      }
+      NewLineKind::System => {
+        if cfg!(windows) {
+          dprint_core::configuration::NewLineKind::CarriageReturnLineFeed
+        } else {
+          dprint_core::configuration::NewLineKind::LineFeed
+        }
+      }
+    });
+  }
+
   builder.build()
 }
 
 fn get_resolved_json_config(
   options: &FmtOptionsConfig,
 ) -> dprint_plugin_json::configuration::Configuration {
+  use dprint_core::configuration::NewLineKind;
+
   let mut builder =
     dprint_plugin_json::configuration::ConfigurationBuilder::new();
 
@@ -1525,6 +1548,25 @@ fn get_resolved_json_config(
 
   if let Some(indent_width) = options.indent_width {
     builder.indent_width(indent_width);
+  }
+
+  if let Some(new_line_kind) = options.new_line_kind {
+    builder.new_line_kind(match new_line_kind {
+      NewLineKind::Auto => dprint_core::configuration::NewLineKind::Auto,
+      NewLineKind::CarriageReturnLineFeed => {
+        dprint_core::configuration::NewLineKind::CarriageReturnLineFeed
+      }
+      NewLineKind::LineFeed => {
+        dprint_core::configuration::NewLineKind::LineFeed
+      }
+      NewLineKind::System => {
+        if cfg!(windows) {
+          dprint_core::configuration::NewLineKind::CarriageReturnLineFeed
+        } else {
+          dprint_core::configuration::NewLineKind::LineFeed
+        }
+      }
+    });
   }
 
   builder.build()
