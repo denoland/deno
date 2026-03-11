@@ -1,5 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+use std::ffi::OsStr;
+use std::ffi::OsString;
 use std::path::Path;
 
 use deno_core::OpState;
@@ -280,10 +282,22 @@ pub fn op_node_parse_env<'a>(
   #[string] content: &str,
 ) -> v8::Local<'a, v8::Object> {
   let env_obj = v8::Object::new(scope);
-  parse_env_content_hook(content, |key, value| {
+  parse_env_content_hook(&NullEnvVarsSys, content, |key, value| {
     let key = v8::String::new(scope, key).unwrap();
     let value = v8::String::new(scope, value).unwrap();
     env_obj.set(scope, key.into(), value.into());
   });
   env_obj
+}
+
+// Avoid reading env vars here for variable substitution
+// in order to have the same behaviour as node and also
+// to not cause a security issue where people can read
+// env vars by using this API.
+pub struct NullEnvVarsSys;
+
+impl sys_traits::BaseEnvVar for NullEnvVarsSys {
+  fn base_env_var_os(&self, _key: &OsStr) -> Option<OsString> {
+    None
+  }
 }

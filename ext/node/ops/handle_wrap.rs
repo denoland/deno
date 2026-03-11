@@ -25,7 +25,8 @@ impl Default for AsyncId {
 
 impl AsyncId {
   // Increment the internal id counter and return the value.
-  fn next(&mut self) -> i64 {
+  #[allow(clippy::should_implement_trait)]
+  pub fn next(&mut self) -> i64 {
     self.0 += 1;
     self.0
   }

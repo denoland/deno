@@ -31,6 +31,7 @@ enum Cipher {
   Aes128Ctr(Box<ctr::Ctr128BE<aes::Aes128>>),
   Aes192Ctr(Box<ctr::Ctr128BE<aes::Aes192>>),
   Aes256Ctr(Box<ctr::Ctr128BE<aes::Aes256>>),
+  DesEde3Cbc(Box<cbc::Encryptor<des::TdesEde3>>),
   // TODO(kt3k): add more algorithms Aes192Cbc, etc.
 }
 
@@ -45,6 +46,7 @@ enum Decipher {
   Aes128Ctr(Box<ctr::Ctr128BE<aes::Aes128>>),
   Aes192Ctr(Box<ctr::Ctr128BE<aes::Aes192>>),
   Aes256Ctr(Box<ctr::Ctr128BE<aes::Aes256>>),
+  DesEde3Cbc(Box<cbc::Decryptor<des::TdesEde3>>),
   // TODO(kt3k): add more algorithms Aes192Cbc, Aes128GCM, etc.
 }
 
@@ -292,6 +294,15 @@ impl Cipher {
         }
         Aes128Ctr(Box::new(ctr::Ctr128BE::new(key.into(), iv.into())))
       }
+      "des-ede3-cbc" => {
+        if key.len() != 24 {
+          return Err(CipherError::InvalidKeyLength);
+        }
+        if iv.len() != 8 {
+          return Err(CipherError::InvalidInitializationVector);
+        }
+        DesEde3Cbc(Box::new(cbc::Encryptor::new(key.into(), iv.into())))
+      }
       _ => return Err(CipherError::UnknownCipher(algorithm_name.to_string())),
     })
   }
@@ -360,6 +371,12 @@ impl Cipher {
       Aes128Ctr(encryptor) => {
         encryptor.apply_keystream_b2b(input, output).unwrap();
       }
+      DesEde3Cbc(encryptor) => {
+        assert!(input.len().is_multiple_of(8));
+        for (input, output) in input.chunks(8).zip(output.chunks_mut(8)) {
+          encryptor.encrypt_block_b2b_mut(input.into(), output.into());
+        }
+      }
     }
   }
 
@@ -370,7 +387,6 @@ impl Cipher {
     input: &[u8],
     output: &mut [u8],
   ) -> Result<Tag, CipherError> {
-    assert!(input.len() < 16);
     use Cipher::*;
     match (self, auto_pad) {
       (Aes128Cbc(encryptor), true) => {
@@ -453,6 +469,19 @@ impl Cipher {
         Ok(None)
       }
       (Aes256Ctr(_) | Aes128Ctr(_) | Aes192Ctr(_), _) => Ok(None),
+      (DesEde3Cbc(encryptor), true) => {
+        let _ = (*encryptor)
+          .encrypt_padded_b2b_mut::<Pkcs7>(input, output)
+          .map_err(|_| CipherError::CannotPadInputData)?;
+        Ok(None)
+      }
+      (DesEde3Cbc(mut encryptor), false) => {
+        encryptor.encrypt_block_b2b_mut(
+          GenericArray::from_slice(input),
+          GenericArray::from_mut_slice(output),
+        );
+        Ok(None)
+      }
     }
   }
 
@@ -634,6 +663,15 @@ impl Decipher {
         }
         Aes128Ctr(Box::new(ctr::Ctr128BE::new(key.into(), iv.into())))
       }
+      "des-ede3-cbc" => {
+        if key.len() != 24 {
+          return Err(DecipherError::InvalidKeyLength);
+        }
+        if iv.len() != 8 {
+          return Err(DecipherError::InvalidInitializationVector);
+        }
+        DesEde3Cbc(Box::new(cbc::Decryptor::new(key.into(), iv.into())))
+      }
       _ => {
         return Err(DecipherError::UnknownCipher(algorithm_name.to_string()));
       }
@@ -716,6 +754,12 @@ impl Decipher {
       }
       Aes128Ctr(decryptor) => {
         decryptor.apply_keystream_b2b(input, output).unwrap();
+      }
+      DesEde3Cbc(decryptor) => {
+        assert!(input.len().is_multiple_of(8));
+        for (input, output) in input.chunks(8).zip(output.chunks_mut(8)) {
+          decryptor.decrypt_block_b2b_mut(input.into(), output.into());
+        }
       }
     }
   }
@@ -867,6 +911,23 @@ impl Decipher {
       }
       (Aes128Ctr(mut decryptor), _) => {
         decryptor.apply_keystream_b2b(input, output).unwrap();
+        Ok(())
+      }
+      (DesEde3Cbc(decryptor), true) => {
+        assert_block_len!(input.len(), 8);
+        let _ = (*decryptor)
+          .decrypt_padded_b2b_mut::<Pkcs7>(input, output)
+          .map_err(|_| DecipherError::CannotUnpadInputData)?;
+        Ok(())
+      }
+      (DesEde3Cbc(mut decryptor), false) => {
+        if !input.is_empty() {
+          assert_block_len!(input.len(), 8);
+          decryptor.decrypt_block_b2b_mut(
+            GenericArray::from_slice(input),
+            GenericArray::from_mut_slice(output),
+          );
+        }
         Ok(())
       }
     }

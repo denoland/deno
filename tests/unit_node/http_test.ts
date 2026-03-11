@@ -2316,3 +2316,41 @@ Deno.test("[node/http] ServerResponse.writeEarlyHints", async () => {
   });
   await promise;
 });
+
+// https://github.com/denoland/deno/issues/32311
+Deno.test("[node/http] upgrade request can be rejected with non-101 status", async () => {
+  const { promise, resolve } = Promise.withResolvers<void>();
+  const server = http.createServer((_req, res) => res.end("ok"));
+
+  server.on("upgrade", (_req, socket) => {
+    const msg = "HTTP/1.1 401 Unauthorized\r\n" +
+      "Connection: close\r\n" +
+      "Content-Length: 0\r\n" +
+      "\r\n";
+    socket.end(msg);
+  });
+
+  server.listen(0, async () => {
+    const addr = server.address() as { port: number };
+
+    // Upgrade request should get 401
+    const res1 = await fetch(`http://127.0.0.1:${addr.port}/`, {
+      headers: {
+        Connection: "Upgrade",
+        Upgrade: "websocket",
+        "Sec-WebSocket-Version": "13",
+        "Sec-WebSocket-Key": "QUFBQUFBQUFBQUFBQUFBQQ==",
+      },
+    });
+    assertEquals(res1.status, 401);
+    await res1.body?.cancel();
+
+    // Normal request should still work
+    const res2 = await fetch(`http://127.0.0.1:${addr.port}/`);
+    assertEquals(await res2.text(), "ok");
+
+    server.close(() => resolve());
+  });
+
+  await promise;
+});
