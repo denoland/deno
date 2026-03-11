@@ -2658,7 +2658,7 @@ impl BinValue {
   }
 }
 fn is_binary(data: &[u8]) -> bool {
-  is_elf(data) || is_macho(data) || is_pe(data)
+  is_elf(data) || is_macho(data) || is_pe(data) || is_wasm(data)
 }
 
 // vendored from libsui because they're super small
@@ -2687,6 +2687,15 @@ fn is_pe(data: &[u8]) -> bool {
   }
   let magic = u16::from_le_bytes([data[0], data[1]]);
   magic == 0x5a4d
+}
+
+/// Check if the given data is a WebAssembly binary
+fn is_wasm(data: &[u8]) -> bool {
+  if data.len() < 4 {
+    return false;
+  }
+  // WebAssembly magic number is "\0asm"
+  data[0] == 0x00 && data[1] == 0x61 && data[2] == 0x73 && data[3] == 0x6d
 }
 
 #[cfg(test)]
