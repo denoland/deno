@@ -487,3 +487,101 @@ fn symlink_bin_entry<'a>(
 
   Ok(EntrySetupOutcome::Success)
 }
+
+#[cfg(test)]
+mod test {
+  use std::path::PathBuf;
+
+  use super::*;
+
+  fn test_dir(name: &str) -> (PathBuf, impl Drop) {
+    static COUNTER: std::sync::atomic::AtomicU64 =
+      std::sync::atomic::AtomicU64::new(0);
+    let id = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let dir = std::env::temp_dir()
+      .join(format!("deno_test_bin_entries_{name}_{id}"));
+    std::fs::create_dir_all(&dir).unwrap();
+    struct Cleanup(PathBuf);
+    impl Drop for Cleanup {
+      fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+      }
+    }
+    let cleanup = Cleanup(dir.clone());
+    (dir, cleanup)
+  }
+
+  /// Regression test for https://github.com/denoland/deno/issues/29847
+  /// Some npm tarballs ship bin files with read+execute but no write
+  /// permission (mode 555). make_executable_if_exists must not fail on these.
+  #[cfg(unix)]
+  #[test]
+  fn make_executable_readonly_bin_file() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let sys = sys_traits::impls::RealSys;
+    let (dir, _cleanup) = test_dir("readonly");
+
+    // Create a file with mode 555 (r-xr-xr-x) — executable but not writable
+    let bin_path = dir.join("my-bin");
+    std::fs::write(&bin_path, "#!/bin/sh\necho hi").unwrap();
+    std::fs::set_permissions(
+      &bin_path,
+      std::fs::Permissions::from_mode(0o555),
+    )
+    .unwrap();
+
+    // Should succeed without EACCES
+    let result = make_executable_if_exists(&sys, &bin_path);
+    assert!(result.is_ok());
+    assert!(result.unwrap()); // file exists
+
+    // Permissions should still include execute
+    let mode = std::fs::metadata(&bin_path)
+      .unwrap()
+      .permissions()
+      .mode();
+    assert_ne!(mode & 0o111, 0);
+  }
+
+  /// Verify make_executable_if_exists adds execute bit when missing.
+  #[cfg(unix)]
+  #[test]
+  fn make_executable_non_executable_file() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let sys = sys_traits::impls::RealSys;
+    let (dir, _cleanup) = test_dir("non_exec");
+
+    // Create a file with mode 644 (rw-r--r--) — no execute bit
+    let bin_path = dir.join("my-bin");
+    std::fs::write(&bin_path, "#!/bin/sh\necho hi").unwrap();
+    std::fs::set_permissions(
+      &bin_path,
+      std::fs::Permissions::from_mode(0o644),
+    )
+    .unwrap();
+
+    let result = make_executable_if_exists(&sys, &bin_path);
+    assert!(result.is_ok());
+    assert!(result.unwrap());
+
+    // Execute bit should now be set
+    let mode = std::fs::metadata(&bin_path)
+      .unwrap()
+      .permissions()
+      .mode();
+    assert_ne!(mode & 0o111, 0);
+  }
+
+  #[test]
+  fn make_executable_nonexistent_file() {
+    let sys = sys_traits::impls::RealSys;
+    let (dir, _cleanup) = test_dir("nonexistent");
+    let bin_path = dir.join("does-not-exist");
+
+    let result = make_executable_if_exists(&sys, &bin_path);
+    assert!(result.is_ok());
+    assert!(!result.unwrap()); // file does not exist
+  }
+}
