@@ -207,9 +207,17 @@ fn op_base64_decode_into(
   // This avoids any intermediate buffer — input is read directly and
   // decoded bytes are written to target. Works for clean padded base64
   // (the common case from Buffer.toString('base64')).
+  //
+  // Guard: base64_simd::STANDARD.decode asserts dst.len() >= decoded_length
+  // internally (panics rather than returning Err), so we must check that
+  // the target is large enough before calling it.
   {
     use base64_simd::AsOut;
-    if let Ok(decoded) = base64_simd::STANDARD.decode(&input, target.as_out()) {
+    let max_decoded_len = input.len() / 4 * 3;
+    if target.len() >= max_decoded_len
+      && let Ok(decoded) =
+        base64_simd::STANDARD.decode(&input, target.as_out())
+    {
       return Ok(decoded.len() as u32);
     }
   }
@@ -281,7 +289,7 @@ fn base64_encode_to_v8_string<'a>(
   src: &[u8],
 ) -> Result<v8::Local<'a, v8::String>, WebError> {
   use base64_simd::AsOut;
-  let b64_len = (src.len() + 2) / 3 * 4;
+  let b64_len = src.len().div_ceil(3) * 4;
 
   const STACK_BUF_SIZE: usize = 8192;
   if b64_len <= STACK_BUF_SIZE {
