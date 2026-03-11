@@ -18,7 +18,7 @@ use crate::npm::CliNpmCacheHttpClient;
 use crate::npm::CliNpmRegistryInfoProvider;
 use crate::sys::CliSys;
 
-pub const ESBUILD_VERSION: &str = "0.25.5";
+pub const ESBUILD_VERSION: &str = "0.26.0";
 
 fn esbuild_platform() -> &'static str {
   match (std::env::consts::ARCH, std::env::consts::OS) {
