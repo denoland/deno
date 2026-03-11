@@ -310,8 +310,13 @@ function validateRandomPrimeJob(
   const remBuf = rem ? toUint8Array(rem) : undefined;
 
   if (addBuf) {
-    // Node.js/OpenSSL: bit count of add must not exceed requested size
+    // add must be non-zero; a zero modulus would cause division by zero in the
+    // Rust generator.
     const addBitCount = bitCount(addBuf);
+    if (addBitCount === 0) {
+      throw new NodeRangeError("ERR_OUT_OF_RANGE", "invalid options.add");
+    }
+    // Node.js/OpenSSL: bit count of add must not exceed requested size
     if (addBitCount > size) {
       throw new NodeRangeError("ERR_OUT_OF_RANGE", "invalid options.add");
     }
