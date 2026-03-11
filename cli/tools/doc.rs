@@ -137,7 +137,7 @@ pub async fn doc(
       let module_graph_creator = factory.module_graph_creator().await?;
       let sys = CliSys::default();
 
-      let mut module_specifiers = collect_specifiers(
+      let module_specifiers = collect_specifiers(
         CollectSpecifiersOptions {
           file_patterns: FilePatterns {
             base: cli_options.initial_cwd().to_path_buf(),
@@ -154,6 +154,7 @@ pub async fn doc(
         },
         |_| true,
       )?;
+
       let graph = module_graph_creator
         .create_graph(
           GraphKind::TypesOnly,
@@ -161,6 +162,11 @@ pub async fn doc(
           NpmCachingStrategy::Eager,
         )
         .await?;
+
+      // building the graph may have changed npm specifiers to
+      // file: specifiers, so get the new roots
+      let mut module_specifiers =
+        graph.roots.iter().cloned().collect::<Vec<_>>();
 
       graph_exit_integrity_errors(&graph);
       let errors = graph_walk_errors(
