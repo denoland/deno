@@ -1,12 +1,15 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
+use std::collections::BinaryHeap;
 use std::collections::HashMap;
 use std::ffi::c_void;
 use std::sync::Mutex;
 use std::sync::Once;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
+use std::time::Duration;
+use std::time::Instant;
 
 use futures::task::AtomicWaker;
 
@@ -90,6 +93,86 @@ fn wake_isolate(key: usize) {
   }
 }
 
+/// Entry in the delayed-task timer queue.
+struct TimerEntry {
+  deadline: Instant,
+  isolate_key: usize,
+}
+
+impl PartialEq for TimerEntry {
+  fn eq(&self, other: &Self) -> bool {
+    self.deadline == other.deadline
+  }
+}
+
+impl Eq for TimerEntry {}
+
+impl PartialOrd for TimerEntry {
+  fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+    Some(self.cmp(other))
+  }
+}
+
+impl Ord for TimerEntry {
+  fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+    // Reverse so BinaryHeap (max-heap) yields the earliest deadline first.
+    other.deadline.cmp(&self.deadline)
+  }
+}
+
+/// Single shared timer thread that processes all delayed V8 foreground
+/// task wake-ups, avoiding one OS thread per delayed task.
+static DELAYED_TASK_SENDER: std::sync::LazyLock<
+  Mutex<std::sync::mpsc::Sender<TimerEntry>>,
+> = std::sync::LazyLock::new(|| {
+  let (tx, rx) = std::sync::mpsc::channel();
+  std::thread::Builder::new()
+    .name("deno-v8-timer".into())
+    .spawn(move || delayed_task_thread(rx))
+    .unwrap();
+  Mutex::new(tx)
+});
+
+fn delayed_task_thread(rx: std::sync::mpsc::Receiver<TimerEntry>) {
+  let mut heap: BinaryHeap<TimerEntry> = BinaryHeap::new();
+  loop {
+    // Block until either a new entry arrives or the next timer fires.
+    if heap.is_empty() {
+      match rx.recv() {
+        Ok(entry) => heap.push(entry),
+        Err(_) => break,
+      }
+    } else {
+      let timeout = heap
+        .peek()
+        .unwrap()
+        .deadline
+        .saturating_duration_since(Instant::now());
+      match rx.recv_timeout(timeout) {
+        Ok(entry) => heap.push(entry),
+        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
+        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
+      }
+    }
+
+    // Drain any additional entries that arrived.
+    while let Ok(entry) = rx.try_recv() {
+      heap.push(entry);
+    }
+
+    // Fire all expired timers.
+    let now = Instant::now();
+    while let Some(entry) = heap.peek() {
+      if entry.deadline <= now {
+        let entry = heap.pop().unwrap();
+        wake_isolate(entry.isolate_key);
+      } else {
+        break;
+      }
+    }
+  }
+}
+
 /// Custom V8 platform implementation that wakes isolate event loops
 /// when foreground tasks are posted from any thread (including V8
 /// background compilation threads).
@@ -101,13 +184,11 @@ impl DenoPlatformImpl {
   }
 
   fn wake_delayed(&self, isolate_ptr: *mut c_void, delay_in_seconds: f64) {
-    let key = isolate_ptr as usize;
-    // Spawns an OS thread per delayed task; this is acceptable because
-    // delayed foreground tasks are rare (e.g. Atomics.waitAsync timeouts).
-    std::thread::spawn(move || {
-      std::thread::sleep(std::time::Duration::from_secs_f64(delay_in_seconds));
-      wake_isolate(key);
-    });
+    let entry = TimerEntry {
+      deadline: Instant::now() + Duration::from_secs_f64(delay_in_seconds),
+      isolate_key: isolate_ptr as usize,
+    };
+    let _ = DELAYED_TASK_SENDER.lock().unwrap().send(entry);
   }
 }
 
