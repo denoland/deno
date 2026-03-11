@@ -1266,7 +1266,10 @@ fn get_file_env_vars(
   file_path: &Path,
 ) -> Result<IndexMap<String, String>, deno_dotenv::Error> {
   let mut file_env_vars = IndexMap::new();
-  for item in deno_dotenv::from_path_sanitized_iter(file_path)? {
+  for item in deno_dotenv::from_path_sanitized_iter_with_substitution(
+    &CliSys::default(),
+    file_path,
+  )? {
     let Ok((key, val)) = item else {
       continue; // this failure will be warned about on load
     };

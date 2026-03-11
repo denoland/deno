@@ -32,6 +32,8 @@ pub enum FsError {
   NotSupported,
   #[class(inherit)]
   PermissionCheck(PermissionCheckError),
+  #[class(inherit)]
+  JoinError(JoinError),
 }
 
 impl std::fmt::Display for FsError {
@@ -41,6 +43,7 @@ impl std::fmt::Display for FsError {
       FsError::FileBusy => f.write_str("file busy"),
       FsError::NotSupported => f.write_str("not supported"),
       FsError::PermissionCheck(err) => std::fmt::Display::fmt(err, f),
+      FsError::JoinError(err) => std::fmt::Display::fmt(err, f),
     }
   }
 }
@@ -54,6 +57,7 @@ impl FsError {
       Self::FileBusy => io::ErrorKind::Other,
       Self::NotSupported => io::ErrorKind::Other,
       Self::PermissionCheck(e) => e.kind(),
+      Self::JoinError(_) => io::ErrorKind::Other,
     }
   }
 
@@ -63,6 +67,9 @@ impl FsError {
       FsError::FileBusy => io::Error::new(self.kind(), "file busy"),
       FsError::NotSupported => io::Error::new(self.kind(), "not supported"),
       FsError::PermissionCheck(err) => err.into_io_error(),
+      FsError::JoinError(ref err) => {
+        io::Error::new(self.kind(), format!("join error: {err}"))
+      }
     }
   }
 }
@@ -87,13 +94,7 @@ impl From<PermissionCheckError> for FsError {
 
 impl From<JoinError> for FsError {
   fn from(err: JoinError) -> Self {
-    if err.is_cancelled() {
-      todo!("async tasks must not be cancelled")
-    }
-    if err.is_panic() {
-      std::panic::resume_unwind(err.into_panic()); // resume the panic on the main thread
-    }
-    unreachable!()
+    Self::JoinError(err)
   }
 }
 

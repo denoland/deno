@@ -47,15 +47,52 @@ const TEST_ARGS: &[&str] = &[
   "--unstable-detect-cjs",
 ];
 
-/// Configuration for a single test from config.json
+/// Per-platform value: either a boolean (true = enabled, false = disabled)
+/// or an object describing an expected failure.
+///
+/// Uses `#[serde(untagged)]` so that config.jsonc can use both
+/// `"windows": false` (boolean) and `"windows": { "exitCode": 1 }` (object).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+enum PlatformExpectation {
+  Enabled(bool),
+  ExpectedFailure(ExpectedFailure),
+}
+
+/// Describes an expected test failure: the exit code and/or output pattern.
+#[derive(Debug, Clone, Default, Deserialize)]
+struct ExpectedFailure {
+  #[serde(rename = "exitCode")]
+  exit_code: Option<i32>,
+  output: Option<String>,
+}
+
+/// Configuration for a single test from config.jsonc
+///
+/// Platform fields (`windows`, `darwin`, `linux`) accept:
+///   - `false` — skip the test on that OS
+///   - `true` (or omit) — run normally; expected to pass
+///   - `{ "exitCode": N, "output": "pattern with [WILDCARD]" }` — run the test
+///     but expect it to fail with the given exit code / output
+///
+/// Top-level `exitCode` and `output` apply to **all** platforms unless a
+/// platform-specific entry overrides them.
 #[derive(Debug, Clone, Default, Deserialize)]
 struct TestConfig {
   #[serde(default)]
   flaky: bool,
-  windows: Option<bool>,
-  darwin: Option<bool>,
-  linux: Option<bool>,
+  /// When `true`, the test is skipped on all platforms. Requires `reason`.
+  #[serde(default)]
+  ignore: bool,
+  windows: Option<PlatformExpectation>,
+  darwin: Option<PlatformExpectation>,
+  linux: Option<PlatformExpectation>,
   reason: Option<String>,
+  /// Expected exit code for all platforms (overridden by per-platform config)
+  #[serde(rename = "exitCode")]
+  exit_code: Option<i32>,
+  /// Expected output pattern (with [WILDCARD] support) for all platforms
+  output: Option<String>,
 }
 
 /// The full config.json structure
@@ -369,20 +406,61 @@ fn wrap_in_category(
   }
 }
 
-fn should_ignore(config: &TestConfig) -> Option<&str> {
+fn platform_expectation(config: &TestConfig) -> Option<&PlatformExpectation> {
   let os = std::env::consts::OS;
   match os {
-    "windows" if config.windows == Some(false) => {
-      Some(config.reason.as_deref().unwrap_or("disabled on windows"))
-    }
-    "linux" if config.linux == Some(false) => {
-      Some(config.reason.as_deref().unwrap_or("disabled on linux"))
-    }
-    "macos" if config.darwin == Some(false) => {
-      Some(config.reason.as_deref().unwrap_or("disabled on macos"))
-    }
+    "windows" => config.windows.as_ref(),
+    "linux" => config.linux.as_ref(),
+    "macos" => config.darwin.as_ref(),
     _ => None,
   }
+}
+
+fn should_ignore(config: &TestConfig) -> Option<&str> {
+  if config.ignore {
+    return Some(
+      config
+        .reason
+        .as_deref()
+        .expect("tests with `ignore: true` must have a `reason`"),
+    );
+  }
+  if let Some(PlatformExpectation::Enabled(false)) =
+    platform_expectation(config)
+  {
+    let os = std::env::consts::OS;
+    return Some(config.reason.as_deref().unwrap_or(match os {
+      "windows" => "disabled on windows",
+      "linux" => "disabled on linux",
+      "macos" => "disabled on macos",
+      _ => "disabled on this platform",
+    }));
+  }
+  None
+}
+
+/// Resolve the expected-failure expectation for the current platform.
+///
+/// Returns `Some(ExpectedFailure)` if the test is expected to fail
+/// (either from a platform-specific object or from top-level fields),
+/// or `None` if the test is expected to pass.
+fn resolve_expected_failure(config: &TestConfig) -> Option<ExpectedFailure> {
+  // 1. Platform-specific object takes precedence
+  if let Some(PlatformExpectation::ExpectedFailure(ef)) =
+    platform_expectation(config)
+  {
+    return Some(ef.clone());
+  }
+
+  // 2. Fall back to top-level exitCode / output
+  if config.exit_code.is_some() || config.output.is_some() {
+    return Some(ExpectedFailure {
+      exit_code: config.exit_code,
+      output: config.output.clone(),
+    });
+  }
+
+  None
 }
 
 fn uses_node_test_module(source: &str) -> bool {
@@ -658,6 +736,22 @@ fn run_test(
     setup.run_piped()
   };
 
+  let debugging_command_text = setup.debugging_command_text();
+
+  // Check for expected failure configuration
+  if let Some(ef) = test_config.and_then(resolve_expected_failure) {
+    return handle_expected_failure(
+      &ef,
+      success,
+      exit_code,
+      setup.uses_node_test,
+      &output_text,
+      &debugging_command_text,
+      &data.test_path,
+      results,
+    );
+  }
+
   let collected = make_collected_result(
     success,
     &output_text,
@@ -672,7 +766,6 @@ fn run_test(
     .unwrap()
     .insert(data.test_path.clone(), collected);
 
-  let debugging_command_text = setup.debugging_command_text();
   if success {
     if *file_test_runner::NO_CAPTURE {
       test_util::eprintln!("{}", debugging_command_text);
@@ -684,5 +777,115 @@ fn run_test(
       output: format!("{}\n{}", output_text, debugging_command_text)
         .into_bytes(),
     }
+  }
+}
+
+/// Handle a test that has an expected-failure configuration.
+///
+/// Returns `Passed` when the test fails in the expected way (matching exit code
+/// and/or output pattern), and `Failed` otherwise.
+#[allow(clippy::too_many_arguments)]
+fn handle_expected_failure(
+  ef: &ExpectedFailure,
+  success: bool,
+  actual_exit_code: Option<i32>,
+  uses_node_test: bool,
+  output_text: &str,
+  debugging_command_text: &str,
+  test_path: &str,
+  results: &Arc<Mutex<HashMap<String, CollectedResult>>>,
+) -> TestResult {
+  if success {
+    // Test passed but was expected to fail
+    results.lock().unwrap().insert(
+      test_path.to_string(),
+      CollectedResult {
+        passed: Some(false),
+        error: Some(ErrorInfo {
+          code: actual_exit_code,
+          stderr: None,
+          timeout: None,
+          message: Some("expected test to fail but it passed".to_string()),
+        }),
+        uses_node_test,
+        ignore_reason: None,
+      },
+    );
+    return TestResult::Failed {
+      duration: None,
+      output: format!(
+        "Test was expected to fail but passed\n{}",
+        debugging_command_text
+      )
+      .into_bytes(),
+    };
+  }
+
+  // When exitCode/output are omitted, any value is accepted.
+  let exit_code_matches =
+    ef.exit_code.is_none_or(|ec| actual_exit_code == Some(ec));
+  let output_matches = ef.output.as_ref().is_none_or(|pattern| {
+    util::wildcard_match_detailed(pattern, output_text).is_success()
+  });
+
+  if exit_code_matches && output_matches {
+    // Failed as expected — treat as a pass
+    results.lock().unwrap().insert(
+      test_path.to_string(),
+      CollectedResult {
+        passed: Some(true),
+        error: None,
+        uses_node_test,
+        ignore_reason: None,
+      },
+    );
+    if *file_test_runner::NO_CAPTURE {
+      test_util::eprintln!("{}", debugging_command_text);
+    }
+    return TestResult::Passed { duration: None };
+  }
+
+  // Failed, but not in the expected way
+  let mut mismatch_details = String::new();
+  if !exit_code_matches {
+    mismatch_details.push_str(&format!(
+      "Exit code mismatch: expected {:?}, got {:?}\n",
+      ef.exit_code, actual_exit_code
+    ));
+  }
+  if !output_matches {
+    let match_result = ef
+      .output
+      .as_ref()
+      .map(|pattern| util::wildcard_match_detailed(pattern, output_text));
+    if let Some(util::WildcardMatchResult::Fail(detail)) = match_result {
+      mismatch_details
+        .push_str(&format!("Output mismatch detail:\n{}\n", detail));
+    } else {
+      mismatch_details.push_str("Output did not match expected pattern\n");
+    }
+  }
+
+  results.lock().unwrap().insert(
+    test_path.to_string(),
+    CollectedResult {
+      passed: Some(false),
+      error: Some(ErrorInfo {
+        code: actual_exit_code,
+        stderr: Some(truncate_output(output_text, 2000)),
+        timeout: None,
+        message: Some(mismatch_details.clone()),
+      }),
+      uses_node_test,
+      ignore_reason: None,
+    },
+  );
+  TestResult::Failed {
+    duration: None,
+    output: format!(
+      "Test failed but not in the expected way:\n{}\nActual output:\n{}\n{}",
+      mismatch_details, output_text, debugging_command_text
+    )
+    .into_bytes(),
   }
 }

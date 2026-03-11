@@ -197,7 +197,7 @@ async function setup() {
 function isLeafExpectation(e: unknown): e is boolean | TestExpectation {
   return typeof e === "boolean" ||
     (typeof e === "object" && e !== null && !Array.isArray(e) &&
-      ("expectedFailures" in e || "ignore" in e));
+      ("expectedFailures" in e || "ignore" in e || "flaky" in e));
 }
 
 interface TestToRun {
@@ -269,13 +269,54 @@ Options:
         if (!inParallel) {
           console.log(`${blue("-".repeat(40))}\n${bold(test.path)}\n`);
         }
-        const result = await runSingleTest(
+        let result = await runSingleTest(
           test.url,
           test.options,
           inParallel ? () => {} : createReportTestCase(test.expectation),
           inspectBrk,
           getTestTimeout(test),
         );
+        const isFlaky = typeof test.expectation === "object" &&
+          test.expectation !== null && test.expectation.flaky === true;
+        if (isFlaky) {
+          const isFileLevelFailure = result.status !== 0 ||
+            result.harnessStatus === null;
+          const analysis = analyzeTestResult(result, test.expectation);
+          const hasFailed = isFileLevelFailure || analysis.failedCount > 0;
+          if (hasFailed) {
+            for (let attempt = 2; attempt <= 3; attempt++) {
+              console.log(
+                yellow(
+                  `Retrying flaky test ${test.path} (attempt ${attempt}/3)`,
+                ),
+              );
+              const retryResult = await runSingleTest(
+                test.url,
+                test.options,
+                () => {},
+                inspectBrk,
+                getTestTimeout(test),
+              );
+              const retryFileLevelFailure = retryResult.status !== 0 ||
+                retryResult.harnessStatus === null;
+              const retryAnalysis = analyzeTestResult(
+                retryResult,
+                test.expectation,
+              );
+              const retryFailed = retryFileLevelFailure ||
+                retryAnalysis.failedCount > 0;
+              if (!retryFailed) {
+                console.log(
+                  yellow(
+                    `Flaky test ${test.path} passed on attempt ${attempt}/3`,
+                  ),
+                );
+                result = retryResult;
+                break;
+              }
+            }
+          }
+        }
         results.push({ test, result });
         if (inParallel) {
           console.log(`${blue("-".repeat(40))}\n${bold(test.path)}\n`);
@@ -537,6 +578,17 @@ function newExpectation(
 
   const currentExpectation = getExpectation();
 
+  // Build a map of path -> flaky flag from the original expectations
+  const flakyTests = new Set<string>();
+  for (const { test } of results) {
+    if (
+      typeof test.expectation === "object" && test.expectation !== null &&
+      test.expectation.flaky === true
+    ) {
+      flakyTests.add(test.path);
+    }
+  }
+
   for (const [path, result] of Object.entries(resultTests)) {
     const { passed, failed, testSucceeded } = result;
     let finalExpectation: boolean | TestExpectation;
@@ -546,6 +598,15 @@ function newExpectation(
       finalExpectation = { expectedFailures: failed };
     } else {
       finalExpectation = false;
+    }
+
+    // Preserve the flaky flag from the original expectation
+    if (flakyTests.has(path)) {
+      if (typeof finalExpectation === "object") {
+        finalExpectation.flaky = true;
+      } else if (finalExpectation === true) {
+        finalExpectation = { flaky: true };
+      }
     }
 
     insertExpectation(
