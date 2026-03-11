@@ -1118,7 +1118,7 @@ async fn test_watch_external_watch_files() {
     .piped_output()
     .spawn()
     .unwrap();
-  let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+  let (_stdout_lines, mut stderr_lines) = child_lines(&mut child);
   wait_contains("Test finished", &mut stderr_lines).await;
   wait_for_watcher("external_file.txt", &mut stderr_lines).await;
 
@@ -1127,7 +1127,6 @@ async fn test_watch_external_watch_files() {
   wait_contains("Restarting", &mut stderr_lines).await;
   wait_contains("Test finished", &mut stderr_lines).await;
 
-  drop(stdout_lines);
   check_alive_then_kill(child);
 }
 
