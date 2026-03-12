@@ -28,7 +28,7 @@ import {
 } from "ext:core/ops";
 import type { CopyOptions } from "node:fs";
 
-export enum CpEntryFlags {
+enum CpEntryFlags {
   IsDestExists = 1 << 0,
   IsDirectory = 1 << 1,
   IsFile = 1 << 2,
@@ -39,7 +39,7 @@ export enum CpEntryFlags {
   IsFifo = 1 << 7,
 }
 
-export interface StatInfo {
+interface StatInfo {
   flags: number;
   mode: number;
 }
@@ -47,18 +47,6 @@ export interface StatInfo {
 const {
   PromiseResolve,
 } = primordials;
-
-export type CheckPathsResult = {
-  __proto__: null;
-  srcStat: Deno.FileInfo;
-  destStat: Deno.FileInfo | undefined;
-  skipped: false;
-} | {
-  __proto__: null;
-  srcStat?: undefined;
-  destStat?: undefined;
-  skipped: true;
-};
 
 // deno-lint-ignore no-explicit-any
 export function throwCpError(err: any): never {
@@ -94,6 +82,38 @@ export function throwCpError(err: any): never {
         syscall: "cp",
         errno: EEXIST,
         code: "EEXIST",
+      });
+    case "EISDIR":
+      throw new ERR_FS_EISDIR({
+        message: err.message,
+        path: err.path,
+        syscall: "cp",
+        errno: EISDIR,
+        code: "EISDIR",
+      });
+    case "SOCKET":
+      throw new ERR_FS_CP_SOCKET({
+        message: err.message,
+        path: err.path,
+        syscall: "cp",
+        errno: EINVAL,
+        code: "EINVAL",
+      });
+    case "FIFO":
+      throw new ERR_FS_CP_FIFO_PIPE({
+        message: err.message,
+        path: err.path,
+        syscall: "cp",
+        errno: EINVAL,
+        code: "EINVAL",
+      });
+    case "UNKNOWN":
+      throw new ERR_FS_CP_UNKNOWN({
+        message: err.message,
+        path: err.path,
+        syscall: "cp",
+        errno: EINVAL,
+        code: "EINVAL",
       });
     case "SYMLINK_TO_SUBDIRECTORY":
       throw new ERR_FS_CP_SYMLINK_TO_SUBDIRECTORY({
