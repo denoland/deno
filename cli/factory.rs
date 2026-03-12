@@ -602,6 +602,7 @@ impl CliFactory {
             Arc::new(DenoTaskLifeCycleScriptsExecutor::new(
               managed_npm_resolver.clone(),
               self.text_only_progress_bar().clone(),
+              cli_options.npm_system_info(),
             )) as Arc<dyn LifecycleScriptsExecutor>
           }
           None => Arc::new(NullLifecycleScriptsExecutor),
