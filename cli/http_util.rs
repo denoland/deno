@@ -344,8 +344,7 @@ impl HttpClient {
         let mut req = self.get(new_url.clone())?.build();
 
         let mut headers = headers.clone();
-        // SECURITY: Do NOT forward auth headers to a new origin
-        if new_url.origin() != url.origin() && url.host() != new_url.host() {
+        if should_strip_auth_on_redirect(&url, &new_url) {
           headers.remove(http::header::AUTHORIZATION);
         }
         *req.headers_mut() = headers;
@@ -369,6 +368,16 @@ impl HttpClient {
       Ok((response, url))
     }
   }
+}
+
+/// Returns true if auth headers should be stripped when redirecting from
+/// `original` to `new_url`. Auth is stripped when the host or port changes,
+/// or on a scheme downgrade (https -> http) to avoid leaking credentials
+/// over plaintext. Same-host scheme upgrades (http -> https) are allowed.
+fn should_strip_auth_on_redirect(original: &Url, new_url: &Url) -> bool {
+  new_url.host() != original.host()
+    || new_url.port() != original.port()
+    || (original.scheme() == "https" && new_url.scheme() == "http")
 }
 
 pub async fn get_response_body_with_progress(
@@ -712,5 +721,38 @@ mod test {
     );
     assert_eq!(headers.get("etag"), None);
     assert_eq!(headers.get("x-typescript-types"), None);
+  }
+
+  #[test]
+  fn test_should_strip_auth_on_redirect() {
+    // http -> https same host: safe upgrade, retain auth
+    assert!(!should_strip_auth_on_redirect(
+      &Url::parse("http://npm.pkg.github.com/package").unwrap(),
+      &Url::parse("https://npm.pkg.github.com/package").unwrap(),
+    ));
+
+    // same origin: retain auth
+    assert!(!should_strip_auth_on_redirect(
+      &Url::parse("https://registry.example.com/a").unwrap(),
+      &Url::parse("https://registry.example.com/b").unwrap(),
+    ));
+
+    // different host: strip auth
+    assert!(should_strip_auth_on_redirect(
+      &Url::parse("https://registry.example.com/package").unwrap(),
+      &Url::parse("https://other.example.com/package").unwrap(),
+    ));
+
+    // different port: strip auth
+    assert!(should_strip_auth_on_redirect(
+      &Url::parse("https://registry.example.com:8080/package").unwrap(),
+      &Url::parse("https://registry.example.com:9090/package").unwrap(),
+    ));
+
+    // https -> http same host: scheme downgrade, strip auth
+    assert!(should_strip_auth_on_redirect(
+      &Url::parse("https://npm.pkg.github.com/package").unwrap(),
+      &Url::parse("http://npm.pkg.github.com/package").unwrap(),
+    ));
   }
 }
