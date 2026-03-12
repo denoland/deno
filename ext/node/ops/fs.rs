@@ -2354,12 +2354,15 @@ fn op_node_cp_on_link_sync(
           );
         }
 
-        state
-          .borrow_mut::<PermissionsContainer>()
-          .check_write_all("node:fs.symlink")?;
-        state
-          .borrow_mut::<PermissionsContainer>()
-          .check_read_all("node:fs.symlink")?;
+        {
+          let mut state = state.borrow_mut();
+          state
+            .borrow_mut::<PermissionsContainer>()
+            .check_write_all("node:fs.symlink")?;
+          state
+            .borrow_mut::<PermissionsContainer>()
+            .check_read_all("node:fs.symlink")?;
+        }
 
         let oldpath = CheckedPathBuf::unsafe_new(PathBuf::from(&resolved_src));
         let newpath = CheckedPathBuf::unsafe_new(PathBuf::from(dest));
