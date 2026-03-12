@@ -7,7 +7,7 @@ import * as constants from "ext:deno_node/_fs/_fs_constants.ts";
 import { copyFilePromise } from "ext:deno_node/_fs/_fs_copy.ts";
 import { cpPromise } from "ext:deno_node/_fs/_fs_cp.ts";
 import { lutimesPromise } from "ext:deno_node/_fs/_fs_lutimes.ts";
-import { readdirPromise, readFilePromise, readlinkPromise } from "node:fs";
+import { readdirPromise } from "ext:deno_node/_fs/_fs_readdir.ts";
 import { lstatPromise } from "ext:deno_node/_fs/_fs_lstat.ts";
 import {
   access,
@@ -20,6 +20,8 @@ import {
   mkdtemp,
   open,
   opendir,
+  readFile,
+  readlink,
   realpath,
   rename,
   rm,
@@ -245,6 +247,15 @@ const statfsPromise = promisify(statfs) as (
   path: string | Buffer | URL,
   options?: { bigint?: boolean },
 ) => Promise<unknown>;
+
+// -- readFile / readlink --
+
+const readFilePromise = promisify(readFile);
+
+const readlinkPromise = promisify(readlink) as (
+  path: string | Buffer | URL,
+  opt?: { encoding?: string | null },
+) => Promise<string | Uint8Array>;
 
 // -- promises object --
 

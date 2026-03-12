@@ -20,7 +20,6 @@ import {
   denoErrorToNodeError,
   denoWriteFileErrorToNodeError,
   ERR_FS_FILE_TOO_LARGE,
-  ERR_INVALID_ARG_VALUE,
 } from "ext:deno_node/internal/errors.ts";
 import * as constants from "ext:deno_node/_fs/_fs_constants.ts";
 
@@ -31,6 +30,8 @@ import { exists, existsSync } from "ext:deno_node/_fs/_fs_exists.ts";
 import { fstat, fstatSync } from "ext:deno_node/_fs/_fs_fstat.ts";
 import { lstat, lstatSync } from "ext:deno_node/_fs/_fs_lstat.ts";
 import { lutimes, lutimesSync } from "ext:deno_node/_fs/_fs_lutimes.ts";
+import { read, readSync } from "ext:deno_node/_fs/_fs_read.ts";
+import { readdir, readdirSync } from "ext:deno_node/_fs/_fs_readdir.ts";
 import { EventEmitter } from "node:events";
 import { type MaybeEmpty, notImplemented } from "ext:deno_node/_utils.ts";
 import { promisify } from "node:util";
@@ -49,7 +50,6 @@ import {
   constants as fsUtilConstants,
   copyObject,
   Dirent,
-  direntFromDeno,
   emitRecursiveRmdirWarning,
   getOptions,
   getValidatedFd,
@@ -62,9 +62,7 @@ import {
   stringToFlags,
   toUnixTimestamp as _toUnixTimestamp,
   validateBufferArray,
-  validateOffsetLengthRead,
   validateOffsetLengthWrite,
-  validatePosition,
   validateRmdirOptions,
   validateRmOptions,
   validateRmOptionsSync,
@@ -75,7 +73,6 @@ import { glob, globSync } from "ext:deno_node/_fs/_fs_glob.ts";
 import {
   parseFileMode,
   validateBoolean,
-  validateBuffer,
   validateEncoding,
   validateFunction,
   validateInt32,
@@ -88,9 +85,9 @@ import { Buffer } from "node:buffer";
 import process from "node:process";
 import * as io from "ext:deno_io/12_io.js";
 import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
-import { pathFromURL } from "ext:deno_web/00_infra.js";
-import { TextDecoder, TextEncoder } from "ext:deno_web/08_text_encoding.js";
+import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
 import * as abortSignal from "ext:deno_web/03_abort_signal.js";
+import { pathFromURL } from "ext:deno_web/00_infra.js";
 import { URLPrototype } from "ext:deno_web/00_url.js";
 import { FileHandle } from "ext:deno_node/internal/fs/handle.ts";
 import { isIterable } from "ext:deno_node/internal/streams/utils.js";
@@ -101,8 +98,6 @@ import {
   op_fs_fchmod_sync,
   op_fs_fchown_async,
   op_fs_fchown_sync,
-  op_fs_read_dir_async,
-  op_fs_read_dir_sync,
   op_fs_read_file_async,
   op_fs_read_file_sync,
   op_fs_seek_async,
@@ -133,7 +128,7 @@ import {
   kEmptyObject,
   normalizeEncoding,
 } from "ext:deno_node/internal/util.mjs";
-import { basename, join, relative, resolve, toNamespacedPath } from "node:path";
+import { basename, resolve, toNamespacedPath } from "node:path";
 import * as pathModule from "node:path";
 import type { Encoding } from "node:crypto";
 import { core, primordials } from "ext:core/mod.js";
@@ -509,443 +504,6 @@ function readvPromise(
       else resolve({ bytesRead, buffers });
     });
   });
-}
-
-// -- read --
-
-interface ReadSyncOptions {
-  offset?: number | undefined;
-  length?: number | undefined;
-  position?: number | null | undefined;
-}
-
-interface ReadAsyncOptions<TBuffer extends NodeJS.ArrayBufferView>
-  extends ReadSyncOptions {
-  buffer?: TBuffer;
-}
-
-const validateOptionArgs = { __proto__: null, nullable: true };
-
-type ReadBinaryCallback = (
-  err: Error | null,
-  bytesRead: number | null,
-  data?: ArrayBufferView,
-) => void;
-type ReadCallback = ReadBinaryCallback;
-
-function read(fd: number, callback: ReadCallback): void;
-function read(
-  fd: number,
-  options: ReadAsyncOptions<NodeJS.ArrayBufferView>,
-  callback: ReadCallback,
-): void;
-function read(
-  fd: number,
-  buffer: ArrayBufferView,
-  options: ReadSyncOptions,
-  callback: ReadCallback,
-): void;
-function read(
-  fd: number,
-  buffer: ArrayBufferView,
-  offset: number,
-  length: number,
-  position: number | null,
-  callback: ReadCallback,
-): void;
-function read(
-  fd: number,
-  optOrBufferOrCb?:
-    | ArrayBufferView
-    | ReadAsyncOptions<NodeJS.ArrayBufferView>
-    | ReadCallback,
-  offsetOrOpt?:
-    | number
-    | ReadAsyncOptions<NodeJS.ArrayBufferView>
-    | ReadCallback,
-  lengthOrCb?: number | ReadCallback,
-  position?: number | null,
-  callback?: ReadCallback,
-) {
-  fd = getValidatedFd(fd);
-
-  let offset = offsetOrOpt;
-  let buffer = optOrBufferOrCb;
-  let length = lengthOrCb;
-  let params = null;
-  if (arguments.length <= 4) {
-    if (arguments.length === 4) {
-      // This is fs.read(fd, buffer, options, callback)
-      validateObject(offsetOrOpt, "options", validateOptionArgs);
-      callback = length as ReadCallback;
-      params = offsetOrOpt;
-    } else if (arguments.length === 3) {
-      // This is fs.read(fd, bufferOrParams, callback)
-      if (!isArrayBufferView(buffer)) {
-        // This is fs.read(fd, params, callback)
-        params = buffer;
-        ({ buffer = Buffer.alloc(16384) } = params ?? kEmptyObject);
-      }
-      callback = offsetOrOpt as ReadCallback;
-    } else {
-      // This is fs.read(fd, callback)
-      callback = buffer as ReadCallback;
-      buffer = Buffer.alloc(16384);
-    }
-
-    if (params !== undefined) {
-      validateObject(params, "options", validateOptionArgs);
-    }
-    ({
-      offset = 0,
-      // deno-lint-ignore prefer-primordials
-      length = buffer?.byteLength - (offset as number),
-      position = null,
-    } = params ?? kEmptyObject);
-  }
-
-  validateBuffer(buffer);
-  validateFunction(callback, "cb");
-
-  if (offset == null) {
-    offset = 0;
-  } else {
-    validateInteger(offset, "offset", 0);
-  }
-
-  (length as number) |= 0;
-
-  if (length === 0) {
-    return process.nextTick(function tick() {
-      callback!(null, 0, buffer);
-    });
-  }
-
-  // deno-lint-ignore prefer-primordials
-  if (buffer.byteLength === 0) {
-    throw new ERR_INVALID_ARG_VALUE(
-      "buffer",
-      buffer,
-      "is empty and cannot be written",
-    );
-  }
-
-  // deno-lint-ignore prefer-primordials
-  validateOffsetLengthRead(offset, length, buffer.byteLength);
-
-  if (position == null) {
-    position = -1;
-  } else {
-    validatePosition(position, "position", length as number);
-  }
-
-  (async () => {
-    try {
-      let nread: number | null;
-      if (typeof position === "number" && position >= 0) {
-        const currentPosition = await op_fs_seek_async(
-          fd,
-          0,
-          io.SeekMode.Current,
-        );
-        // We use sync calls below to avoid being affected by others during
-        // these calls.
-        op_fs_seek_sync(fd, position, io.SeekMode.Start);
-        nread = io.readSync(
-          fd,
-          arrayBufferViewToUint8Array(buffer).subarray(
-            offset,
-            offset + (length as number),
-          ),
-        );
-        op_fs_seek_sync(fd, currentPosition, io.SeekMode.Start);
-      } else {
-        nread = await io.read(
-          fd,
-          arrayBufferViewToUint8Array(buffer).subarray(
-            offset,
-            offset + (length as number),
-          ),
-        );
-      }
-      callback!(null, nread ?? 0, buffer);
-    } catch (error) {
-      callback!(error as Error, null);
-    }
-  })();
-}
-
-ObjectDefineProperty(read, customPromisifyArgs, {
-  __proto__: null,
-  value: ["bytesRead", "buffer"],
-  enumerable: false,
-});
-
-function readSync(
-  fd: number,
-  buffer: ArrayBufferView,
-  offset: number,
-  length: number,
-  position: number | null,
-): number;
-function readSync(
-  fd: number,
-  buffer: ArrayBufferView,
-  opt: ReadSyncOptions,
-): number;
-function readSync(
-  fd: number,
-  buffer: ArrayBufferView,
-  offsetOrOpt?: number | ReadSyncOptions,
-  length?: number,
-  position?: number | null,
-): number {
-  fd = getValidatedFd(fd);
-
-  validateBuffer(buffer);
-
-  let offset = offsetOrOpt;
-  if (arguments.length <= 3 || typeof offsetOrOpt === "object") {
-    if (offsetOrOpt !== undefined) {
-      validateObject(offsetOrOpt, "options", validateOptionArgs);
-    }
-
-    ({
-      offset = 0,
-      // deno-lint-ignore prefer-primordials
-      length = buffer.byteLength - (offset as number),
-      position = null,
-    } = offsetOrOpt ?? kEmptyObject);
-  }
-
-  if (offset === undefined) {
-    offset = 0;
-  } else {
-    validateInteger(offset, "offset", 0);
-  }
-
-  length! |= 0;
-
-  if (length === 0) {
-    return 0;
-  }
-
-  // deno-lint-ignore prefer-primordials
-  if (buffer.byteLength === 0) {
-    throw new ERR_INVALID_ARG_VALUE(
-      "buffer",
-      buffer,
-      "is empty and cannot be written",
-    );
-  }
-
-  // deno-lint-ignore prefer-primordials
-  validateOffsetLengthRead(offset, length, buffer.byteLength);
-
-  if (position == null) {
-    position = -1;
-  } else {
-    validatePosition(position, "position", length);
-  }
-
-  let currentPosition = 0;
-  if (typeof position === "number" && position >= 0) {
-    currentPosition = op_fs_seek_sync(fd, 0, io.SeekMode.Current);
-    op_fs_seek_sync(fd, position, io.SeekMode.Start);
-  }
-
-  const numberOfBytesRead = io.readSync(
-    fd,
-    arrayBufferViewToUint8Array(buffer).subarray(offset, offset + length!),
-  );
-
-  if (typeof position === "number" && position >= 0) {
-    op_fs_seek_sync(fd, currentPosition, io.SeekMode.Start);
-  }
-
-  return numberOfBytesRead ?? 0;
-}
-
-// -- readdir --
-
-type readDirOptions = {
-  encoding?: string;
-  withFileTypes?: boolean;
-  recursive?: boolean;
-};
-
-type readDirCallback = (err: Error | null, files: string[]) => void;
-
-type readDirCallbackDirent = (err: Error | null, files: Dirent[]) => void;
-
-type readDirBoth = (
-  ...args: [Error] | [null, string[] | Dirent[] | Array<string | Dirent>]
-) => void;
-
-function readdirDecode(str: string, encoding?: string): string {
-  if (!encoding) return str;
-  else {
-    const decoder = new TextDecoder(encoding);
-    const encoder = new TextEncoder();
-    return decoder.decode(encoder.encode(str));
-  }
-}
-
-function readdir(
-  path: string | Buffer | URL,
-  options: readDirOptions,
-  callback: readDirCallback,
-): void;
-function readdir(
-  path: string | Buffer | URL,
-  options: readDirOptions,
-  callback: readDirCallbackDirent,
-): void;
-function readdir(path: string | URL, callback: readDirCallback): void;
-function readdir(
-  path: string | Buffer | URL,
-  optionsOrCallback: readDirOptions | readDirCallback | readDirCallbackDirent,
-  maybeCallback?: readDirCallback | readDirCallbackDirent,
-) {
-  const callback =
-    (typeof optionsOrCallback === "function"
-      ? optionsOrCallback
-      : maybeCallback) as readDirBoth | undefined;
-  const options = typeof optionsOrCallback === "object"
-    ? optionsOrCallback
-    : null;
-  // deno-lint-ignore prefer-primordials
-  path = getValidatedPath(path).toString();
-
-  if (!callback) throw new Error("No callback function supplied");
-
-  if (options?.encoding) {
-    try {
-      new TextDecoder(options.encoding);
-    } catch {
-      throw new Error(
-        `TypeError [ERR_INVALID_OPT_VALUE_ENCODING]: The value "${options.encoding}" is invalid for option "encoding"`,
-      );
-    }
-  }
-
-  const result: Array<string | Dirent> = [];
-  const dirs = [path];
-  let current: string | undefined;
-  (async () => {
-    // deno-lint-ignore prefer-primordials
-    while ((current = dirs.shift()) !== undefined) {
-      try {
-        const entries = await op_fs_read_dir_async(current);
-
-        for (let i = 0; i < entries.length; i++) {
-          const entry = entries[i];
-          if (options?.recursive && entry.isDirectory) {
-            // deno-lint-ignore prefer-primordials
-            dirs.push(join(current, entry.name));
-          }
-
-          if (options?.withFileTypes) {
-            entry.parentPath = current;
-            // deno-lint-ignore prefer-primordials
-            result.push(direntFromDeno(entry));
-          } else {
-            let name = readdirDecode(entry.name, options?.encoding);
-            if (options?.recursive) {
-              name = relative(path, join(current, name));
-            }
-            // deno-lint-ignore prefer-primordials
-            result.push(name);
-          }
-        }
-      } catch (err) {
-        callback(
-          denoErrorToNodeError(err as Error, {
-            syscall: "readdir",
-            path: current,
-          }),
-        );
-        return;
-      }
-    }
-
-    callback(null, result);
-  })();
-}
-
-const readdirPromise = promisify(readdir) as (
-  & ((path: string | Buffer | URL, options: {
-    withFileTypes: true;
-    encoding?: string;
-  }) => Promise<Dirent[]>)
-  & ((path: string | Buffer | URL, options?: {
-    withFileTypes?: false;
-    encoding?: string;
-  }) => Promise<string[]>)
-);
-
-function readdirSync(
-  path: string | Buffer | URL,
-  options: { withFileTypes: true; encoding?: string },
-): Dirent[];
-function readdirSync(
-  path: string | Buffer | URL,
-  options?: { withFileTypes?: false; encoding?: string },
-): string[];
-function readdirSync(
-  path: string | Buffer | URL,
-  options?: readDirOptions,
-): Array<string | Dirent> {
-  // deno-lint-ignore prefer-primordials
-  path = getValidatedPath(path).toString();
-
-  if (options?.encoding) {
-    try {
-      new TextDecoder(options.encoding);
-    } catch {
-      throw new Error(
-        `TypeError [ERR_INVALID_OPT_VALUE_ENCODING]: The value "${options.encoding}" is invalid for option "encoding"`,
-      );
-    }
-  }
-
-  const result: Array<string | Dirent> = [];
-  const dirs = [path];
-  let current: string | undefined;
-  // deno-lint-ignore prefer-primordials
-  while ((current = dirs.shift()) !== undefined) {
-    try {
-      const entries = op_fs_read_dir_sync(current);
-
-      for (let i = 0; i < entries.length; i++) {
-        const entry = entries[i];
-        if (options?.recursive && entry.isDirectory) {
-          // deno-lint-ignore prefer-primordials
-          dirs.push(join(current, entry.name));
-        }
-
-        if (options?.withFileTypes) {
-          entry.parentPath = current;
-          // deno-lint-ignore prefer-primordials
-          result.push(direntFromDeno(entry));
-        } else {
-          let name = readdirDecode(entry.name, options?.encoding);
-          if (options?.recursive) {
-            name = relative(path, join(current, name));
-          }
-          // deno-lint-ignore prefer-primordials
-          result.push(name);
-        }
-      }
-    } catch (e) {
-      throw denoErrorToNodeError(e as Error, {
-        syscall: "readdir",
-        path: current,
-      });
-    }
-  }
-
-  return result;
 }
 
 // -- readFile --
@@ -3904,8 +3462,10 @@ export default {
   readdir,
   readdirSync,
   readFile,
+  readFilePromise,
   readFileSync,
   readlink,
+  readlinkPromise,
   readlinkSync,
   ReadStream,
   realpath,
@@ -4032,7 +3592,6 @@ export {
   R_OK,
   read,
   readdir,
-  readdirPromise,
   readdirSync,
   readFile,
   readFilePromise,
