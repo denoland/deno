@@ -64,20 +64,25 @@ pub type CliNpmGraphResolver = deno_npm_installer::graph::NpmDenoGraphResolver<
   CliSys,
 >;
 
+pub use deno_npm_cache::NpmPackumentFormat;
+
 #[derive(Debug)]
 pub struct CliNpmCacheHttpClient {
   http_client_provider: Arc<HttpClientProvider>,
   progress_bar: ProgressBar,
+  packument_format: NpmPackumentFormat,
 }
 
 impl CliNpmCacheHttpClient {
   pub fn new(
     http_client_provider: Arc<HttpClientProvider>,
     progress_bar: ProgressBar,
+    packument_format: NpmPackumentFormat,
   ) -> Self {
     Self {
       http_client_provider,
       progress_bar,
+      packument_format,
     }
   }
 }
@@ -110,25 +115,33 @@ impl deno_npm_cache::NpmCacheHttpClient for CliNpmCacheHttpClient {
         http::header::HeaderValue::try_from(etag).unwrap(),
       );
     }
-    client
-      .download_with_progress_and_retries(url, &headers, &guard)
+    if self.packument_format == NpmPackumentFormat::Abbreviated {
+      // Request the abbreviated install manifest when possible. This is 2-5x
+      // smaller than the full packument (e.g. @types/node: 2.3 MB vs 10.9 MB).
+      // Uses content negotiation with quality factors for registry compatibility
+      // (some registries like older Artifactory don't support the abbreviated
+      // format and need the JSON fallback).
+      //
+      // Not used when minimumDependencyAge is configured, because the
+      // abbreviated format omits the `time` field needed for date filtering.
+      headers.insert(
+        http::header::ACCEPT,
+        http::header::HeaderValue::from_static(
+          "application/vnd.npm.install-v1+json; q=1.0, application/json; q=0.8, */*",
+        ),
+      );
+    }
+    // Request gzip and bypass the tower-http Decompression middleware so
+    // that gzip inflate happens on a blocking thread instead of inline on
+    // the async event loop. This prevents large packument decompression
+    // (~12% of CPU during resolution) from blocking other HTTP/2 streams.
+    headers.insert(
+      http::header::ACCEPT_ENCODING,
+      http::header::HeaderValue::from_static("gzip"),
+    );
+    let response = client
+      .download_with_progress_and_retries_no_decompress(url, &headers, &guard)
       .await
-      .map(|response| match response {
-        crate::http_util::HttpClientResponse::Success { headers, body } => {
-          NpmCacheHttpClientResponse::Bytes(NpmCacheHttpClientBytesResponse {
-            etag: headers
-              .get(http::header::ETAG)
-              .and_then(|e| e.to_str().map(|t| t.to_string()).ok()),
-            bytes: body,
-          })
-        }
-        crate::http_util::HttpClientResponse::NotFound => {
-          NpmCacheHttpClientResponse::NotFound
-        }
-        crate::http_util::HttpClientResponse::NotModified => {
-          NpmCacheHttpClientResponse::NotModified
-        }
-      })
       .map_err(|err| {
         use crate::http_util::DownloadErrorKind::*;
         let status_code = match err.as_kind() {
@@ -150,8 +163,57 @@ impl deno_npm_cache::NpmCacheHttpClient for CliNpmCacheHttpClient {
           status_code,
           error: JsErrorBox::from_err(err),
         }
-      })
+      })?;
+    match response {
+      crate::http_util::HttpClientResponse::Success { headers, body } => {
+        // Decompress gzip on a blocking thread to keep the event loop free
+        let body = if headers
+          .get(http::header::CONTENT_ENCODING)
+          .and_then(|v| v.to_str().ok())
+          .is_some_and(|v| v == "gzip")
+        {
+          tokio::task::spawn_blocking(move || decompress_gzip(body))
+            .await
+            .map_err(|e| deno_npm_cache::DownloadError {
+              status_code: None,
+              error: JsErrorBox::generic(e.to_string()),
+            })?
+            .map_err(|e| deno_npm_cache::DownloadError {
+              status_code: None,
+              error: e,
+            })?
+        } else {
+          body
+        };
+        Ok(NpmCacheHttpClientResponse::Bytes(
+          NpmCacheHttpClientBytesResponse {
+            etag: headers
+              .get(http::header::ETAG)
+              .and_then(|e| e.to_str().map(|t| t.to_string()).ok()),
+            bytes: body,
+          },
+        ))
+      }
+      crate::http_util::HttpClientResponse::NotFound => {
+        Ok(NpmCacheHttpClientResponse::NotFound)
+      }
+      crate::http_util::HttpClientResponse::NotModified => {
+        Ok(NpmCacheHttpClientResponse::NotModified)
+      }
+    }
   }
+}
+
+fn decompress_gzip(compressed: Vec<u8>) -> Result<Vec<u8>, JsErrorBox> {
+  use std::io::Read;
+
+  use flate2::read::GzDecoder;
+  let mut decoder = GzDecoder::new(compressed.as_slice());
+  let mut decompressed = Vec::new();
+  decoder.read_to_end(&mut decompressed).map_err(|e| {
+    JsErrorBox::generic(format!("gzip decompression failed: {e}"))
+  })?;
+  Ok(decompressed)
 }
 
 #[derive(Debug)]
@@ -284,6 +346,7 @@ pub enum DenoTaskLifecycleScriptsError {
 pub struct DenoTaskLifeCycleScriptsExecutor {
   progress_bar: ProgressBar,
   npm_resolver: ManagedNpmResolverRc<CliSys>,
+  system_info: deno_npm::NpmSystemInfo,
 }
 
 #[async_trait::async_trait(?Send)]
@@ -452,10 +515,12 @@ impl DenoTaskLifeCycleScriptsExecutor {
   pub fn new(
     npm_resolver: ManagedNpmResolverRc<CliSys>,
     progress_bar: ProgressBar,
+    system_info: deno_npm::NpmSystemInfo,
   ) -> Self {
     Self {
       npm_resolver,
       progress_bar,
+      system_info,
     }
   }
 
@@ -572,10 +637,16 @@ impl DenoTaskLifeCycleScriptsExecutor {
         &mut bin_entries,
         baseline,
         snapshot,
-        package
-          .dependencies
-          .values()
-          .map(|id| snapshot.package_from_id(id).unwrap()),
+        package.dependencies.iter().filter_map(|(name, id)| {
+          let dep = snapshot.package_from_id(id).unwrap();
+          // Skip optional dependencies that don't match the current system
+          if package.optional_dependencies.contains(name)
+            && !dep.system.matches_system(&self.system_info)
+          {
+            return None;
+          }
+          Some(dep)
+        }),
       )
       .await
   }

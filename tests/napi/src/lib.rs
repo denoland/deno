@@ -4,6 +4,9 @@
 #![allow(clippy::print_stdout)]
 #![allow(clippy::print_stderr)]
 #![allow(clippy::undocumented_unsafe_blocks)]
+// napi_sys declares functions as `pub safe fn` inside `unsafe extern "C"` blocks
+// on non-windows, so `unsafe { napi_call(...) }` wrappers become redundant.
+#![allow(unused_unsafe)]
 
 use std::ffi::c_void;
 
@@ -19,6 +22,7 @@ pub mod date;
 pub mod env;
 pub mod error;
 pub mod finalizer;
+pub mod instance_data;
 pub mod make_callback;
 pub mod mem;
 pub mod numbers;
@@ -180,6 +184,8 @@ unsafe extern "C" fn napi_register_module_v1(
   make_callback::init(env, exports);
   object::init(env, exports);
   uv::init(env, exports);
+
+  instance_data::init(env, exports);
 
   init_cleanup_hook(env, exports);
 

@@ -8,6 +8,7 @@ import { core, internals, primordials } from "ext:core/mod.js";
 import { initializeDebugEnv } from "ext:deno_node/internal/util/debuglog.ts";
 import { format } from "ext:deno_node/internal/util/inspect.mjs";
 import {
+  op_fs_umask,
   op_getegid,
   op_geteuid,
   op_node_load_env_file,
@@ -21,12 +22,12 @@ import {
   op_process_abort,
 } from "ext:core/ops";
 
-import { warnNotImplemented } from "ext:deno_node/_utils.ts";
 import { EventEmitter } from "node:events";
 import Module, { getBuiltinModule } from "node:module";
 import { report } from "ext:deno_node/internal/process/report.ts";
 import { onWarning } from "ext:deno_node/internal/process/warning.ts";
 import {
+  parseFileMode,
   validateNumber,
   validateObject,
   validateString,
@@ -38,6 +39,7 @@ import {
   ERR_INVALID_ARG_VALUE_RANGE,
   ERR_OUT_OF_RANGE,
   ERR_UNKNOWN_SIGNAL,
+  ERR_WORKER_UNSUPPORTED_OPERATION,
   errnoException,
   NodeTypeError,
 } from "ext:deno_node/internal/errors.ts";
@@ -69,12 +71,7 @@ import {
   initStdin,
 } from "ext:deno_node/_process/streams.mjs";
 import { WriteStream as TTYWriteStream } from "ext:deno_node/internal/tty.js";
-import {
-  enableNextTick,
-  processTicksAndRejections,
-  runNextTicks,
-} from "ext:deno_node/_next_tick.ts";
-import { runImmediates } from "ext:deno_node/internal/timers.mjs";
+import { enableNextTick } from "ext:deno_node/_next_tick.ts";
 import { isAndroid, isWindows } from "ext:deno_node/_util/os.ts";
 import * as io from "ext:deno_io/12_io.js";
 import * as denoOs from "ext:deno_os/30_os.js";
@@ -109,10 +106,6 @@ const {
   ObjectDefineProperty,
   ObjectPrototypeIsPrototypeOf,
 } = primordials;
-
-const notImplementedEvents = [
-  "multipleResolves",
-];
 
 export const argv: string[] = ["", ""];
 
@@ -160,13 +153,19 @@ export const exit = (code?: number | string) => {
 };
 
 /** https://nodejs.org/api/process.html#processumaskmask */
-export const umask = () => {
-  // Always return the system default umask value.
-  // We don't use Deno.umask here because it has a race
-  // condition bug.
-  // See https://github.com/denoland/deno_std/issues/1893#issuecomment-1032897779
-  return 0o22;
-};
+export function umask(mask?: number | string): number {
+  if (mask !== undefined) {
+    if (internals.__isWorkerThread) {
+      throw new ERR_WORKER_UNSUPPORTED_OPERATION("Setting process.umask()");
+    }
+    mask = parseFileMode(mask, "mask");
+    return op_fs_umask(mask & 0o777);
+  }
+  // Note: reading the umask without setting has an inherent race condition
+  // (two syscalls: set to 0 then restore). Node.js has the same issue and
+  // has deprecated process.umask() with no arguments.
+  return op_fs_umask(null);
+}
 
 export const abort = () => {
   op_process_abort();
@@ -472,20 +471,7 @@ function uncaughtExceptionHandler(err: any, origin: string) {
   process.emit("uncaughtException", err, origin);
 }
 
-export let execPath: string = Object.freeze({
-  __proto__: String.prototype,
-  toString() {
-    execPath = Deno.execPath();
-    return execPath;
-  },
-  get length() {
-    return this.toString().length;
-  },
-  [Symbol.for("Deno.customInspect")](inspect, options) {
-    return inspect(this.toString(), options);
-  },
-  // deno-lint-ignore no-explicit-any
-}) as any as string;
+export let execPath: string = "";
 
 // The process class needs to be an ES5 class because it can be instantiated
 // in Node without the `new` keyword. It's not a true class in Node. Popular
@@ -507,10 +493,7 @@ Process.prototype.on = function (
   // deno-lint-ignore no-explicit-any
   listener: (...args: any[]) => void,
 ) {
-  if (notImplementedEvents.includes(event)) {
-    warnNotImplemented(`process.on("${event}")`);
-    EventEmitter.prototype.on.call(this, event, listener);
-  } else if (typeof event === "string" && event.startsWith("SIG")) {
+  if (typeof event === "string" && event.startsWith("SIG")) {
     if (event === "SIGBREAK" && Deno.build.os !== "windows") {
       // Ignores SIGBREAK if the platform is not windows.
     } else if (event === "SIGTERM" && Deno.build.os === "windows") {
@@ -538,10 +521,7 @@ Process.prototype.off = function (
   // deno-lint-ignore no-explicit-any
   listener: (...args: any[]) => void,
 ) {
-  if (notImplementedEvents.includes(event)) {
-    warnNotImplemented(`process.off("${event}")`);
-    EventEmitter.prototype.off.call(this, event, listener);
-  } else if (typeof event === "string" && event.startsWith("SIG")) {
+  if (typeof event === "string" && event.startsWith("SIG")) {
     if (event === "SIGBREAK" && Deno.build.os !== "windows") {
       // Ignores SIGBREAK if the platform is not windows.
     } else if (
@@ -577,10 +557,7 @@ Process.prototype.prependListener = function (
   // deno-lint-ignore no-explicit-any
   listener: (...args: any[]) => void,
 ) {
-  if (notImplementedEvents.includes(event)) {
-    warnNotImplemented(`process.prependListener("${event}")`);
-    EventEmitter.prototype.prependListener.call(this, event, listener);
-  } else if (typeof event === "string" && event.startsWith("SIG")) {
+  if (typeof event === "string" && event.startsWith("SIG")) {
     if (event === "SIGBREAK" && Deno.build.os !== "windows") {
       // Ignores SIGBREAK if the platform is not windows.
     } else {
@@ -601,10 +578,6 @@ Process.prototype.addListener = function (
   // deno-lint-ignore no-explicit-any
   listener: (...args: any[]) => void,
 ) {
-  if (notImplementedEvents.includes(event)) {
-    warnNotImplemented(`process.addListener("${event}")`);
-  }
-
   return this.on(event, listener);
 };
 
@@ -614,10 +587,6 @@ Process.prototype.removeListener = function (
   event: string, // deno-lint-ignore no-explicit-any
   listener: (...args: any[]) => void,
 ) {
-  if (notImplementedEvents.includes(event)) {
-    warnNotImplemented(`process.removeListener("${event}")`);
-  }
-
   return this.off(event, listener);
 };
 
@@ -882,13 +851,7 @@ process.binding = (name: BindingName) => {
 };
 
 /** https://nodejs.org/api/process.html#processumaskmask */
-process.umask = () => {
-  // Always return the system default umask value.
-  // We don't use Deno.umask here because it has a race
-  // condition bug.
-  // See https://github.com/denoland/deno_std/issues/1893#issuecomment-1032897779
-  return 0o22;
-};
+process.umask = umask;
 
 /** This method is removed on Windows */
 process.getgid = getgid;
@@ -978,8 +941,9 @@ const features = {
   // deno-lint-ignore camelcase
   tls_ocsp: true,
   tls: true,
+  // Deno uses aws-lc, which is BoringSSL-based.
   // deno-lint-ignore camelcase
-  openssl_is_boringssl: false,
+  openssl_is_boringssl: true,
   // deno-lint-ignore camelcase
   cached_builtins: true,
   // deno-lint-ignore camelcase
@@ -1102,7 +1066,7 @@ function dispatchProcessBeforeExitEvent() {
     dispatchProcessExitEvent();
     Deno.exit(process.exitCode || 0);
   }
-  processTicksAndRejections();
+  core.processTicksAndRejections();
   return core.eventLoopHasMoreWork();
 }
 
@@ -1180,9 +1144,6 @@ internals.__bootstrapNodeProcess = function (
       versions[key] = value;
     }
 
-    core.setNextTickCallback(processTicksAndRejections);
-    core.setImmediateCallback(runImmediates);
-    core.setMacrotaskCallback(runNextTicks);
     enableNextTick();
 
     // Replace warmup stdout/stderr with proper streams
@@ -1210,6 +1171,7 @@ internals.__bootstrapNodeProcess = function (
     platform = isWindows ? "win32" : Deno.build.os;
     pid = Deno.pid;
     ppid = Deno.ppid;
+    execPath = Deno.execPath();
     initializeDebugEnv(nodeDebug);
 
     const title = getOptionValue("--title");

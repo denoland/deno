@@ -212,66 +212,33 @@ pub fn op_run_microtasks(isolate: &mut v8::Isolate) {
   isolate.perform_microtask_checkpoint()
 }
 
-#[op2(fast)]
-pub fn op_has_tick_scheduled(scope: &mut v8::PinScope) -> bool {
-  JsRealm::state_from_scope(scope)
-    .has_next_tick_scheduled
-    .get()
-}
-
-#[op2(fast)]
-pub fn op_set_has_tick_scheduled(scope: &mut v8::PinScope, v: bool) {
-  JsRealm::state_from_scope(scope)
-    .has_next_tick_scheduled
-    .set(v);
-}
-
-#[op2(fast)]
-pub fn op_immediate_count(scope: &mut v8::PinScope, increase: bool) -> u32 {
-  let state = JsRealm::state_from_scope(scope);
-  let mut immediate_info = state.immediate_info.borrow_mut();
-
-  if increase {
-    immediate_info.count += 1;
-  } else {
-    immediate_info.count -= 1;
+/// Drain all pending promise rejections from the Rust-side queue and return
+/// them as a flat JS array: [promise, reason, asyncContext, ...].
+/// Returns an empty array if there are no pending rejections.
+/// This allows JS-side processTicksAndRejections to interleave rejection
+/// processing with tick draining, matching Node.js behavior.
+#[op2]
+pub fn op_drain_pending_rejections<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+) -> v8::Local<'s, v8::Value> {
+  let exception_state = JsRealm::exception_state_from_scope(scope);
+  let mut pending = exception_state.pending_promise_rejections.borrow_mut();
+  if pending.is_empty() {
+    return v8::undefined(scope).into();
   }
-
-  immediate_info.count
-}
-
-#[op2(fast)]
-pub fn op_immediate_ref_count(scope: &mut v8::PinScope, increase: bool) -> u32 {
-  let state = JsRealm::state_from_scope(scope);
-  let mut immediate_info = state.immediate_info.borrow_mut();
-
-  if increase {
-    immediate_info.ref_count += 1;
-  } else {
-    immediate_info.ref_count -= 1;
+  let len = pending.len();
+  let arr = v8::Array::new(scope, (len * 3) as i32);
+  let mut idx = 0u32;
+  while let Some((promise, reason, async_context)) = pending.pop_front() {
+    let p = v8::Local::new(scope, promise);
+    let r = v8::Local::new(scope, reason);
+    let c = v8::Local::new(scope, async_context);
+    arr.set_index(scope, idx, p.into());
+    arr.set_index(scope, idx + 1, r);
+    arr.set_index(scope, idx + 2, c);
+    idx += 3;
   }
-
-  immediate_info.ref_count
-}
-
-#[op2(fast)]
-pub fn op_immediate_set_has_outstanding(
-  scope: &mut v8::PinScope,
-  has_outstanding: bool,
-) {
-  JsRealm::state_from_scope(scope)
-    .immediate_info
-    .borrow_mut()
-    .has_outstanding = has_outstanding;
-}
-
-#[op2(fast)]
-pub fn op_immediate_has_ref_count(scope: &mut v8::PinScope) -> bool {
-  JsRealm::state_from_scope(scope)
-    .immediate_info
-    .borrow()
-    .ref_count
-    > 0
+  arr.into()
 }
 
 pub struct EvalContextError<'s> {
@@ -414,6 +381,133 @@ pub fn op_eval_context<'s, 'i>(
       Ok(out.into())
     }
   }
+}
+
+#[op2(reentrant)]
+pub fn op_compile_function<'s, 'i>(
+  scope: &mut v8::PinScope<'s, 'i>,
+  source: v8::Local<'s, v8::Value>,
+  #[string] specifier: String,
+  host_defined_options: Option<v8::Local<'s, v8::Array>>,
+  params_buf: v8::Local<'s, v8::Array>,
+) -> Result<v8::Local<'s, v8::Value>, JsErrorBox> {
+  let out = v8::Array::new(scope, 2);
+  let state = JsRuntime::state_from(scope);
+  v8::tc_scope!(let tc_scope, scope);
+
+  let source = v8::Local::<v8::String>::try_from(source)
+    .map_err(|_| JsErrorBox::type_error("Invalid source"))?;
+  let specifier = resolve_url(&specifier).map_err(JsErrorBox::from_err)?;
+  let specifier_v8 = v8::String::new(tc_scope, specifier.as_str()).unwrap();
+  let host_defined_options = match host_defined_options {
+    Some(array) => {
+      let output = v8::PrimitiveArray::new(tc_scope, array.length() as _);
+      for i in 0..array.length() {
+        let value = array.get_index(tc_scope, i).unwrap();
+        let value = value
+          .try_cast::<v8::Primitive>()
+          .map_err(|e| JsErrorBox::from_err(crate::error::DataError(e)))?;
+        output.set(tc_scope, i as _, value);
+      }
+      Some(output.into())
+    }
+    None => None,
+  };
+  let origin =
+    script_origin(tc_scope, specifier_v8, false, host_defined_options);
+
+  let mut params = Vec::with_capacity(params_buf.length() as _);
+  for i in 0..params_buf.length() {
+    let ext = params_buf
+      .get_index(tc_scope, i)
+      .unwrap()
+      .try_into()
+      .unwrap();
+    params.push(ext);
+  }
+
+  let (maybe_function, maybe_code_cache_hash) = state
+    .eval_context_get_code_cache_cb
+    .borrow()
+    .as_ref()
+    .map(|cb| {
+      let code_cache = cb(&specifier, &source).unwrap();
+      if let Some(code_cache_data) = &code_cache.data {
+        let mut source = v8::script_compiler::Source::new_with_cached_data(
+          source,
+          Some(&origin),
+          v8::CachedData::new(code_cache_data),
+        );
+        let function = v8::script_compiler::compile_function(
+          tc_scope,
+          &mut source,
+          &params,
+          &[],
+          v8::script_compiler::CompileOptions::ConsumeCodeCache,
+          v8::script_compiler::NoCacheReason::NoReason,
+        );
+        // Check if the provided code cache is rejected by V8.
+        let rejected = match source.get_cached_data() {
+          Some(cached_data) => cached_data.rejected(),
+          _ => true,
+        };
+        let maybe_code_cache_hash = if rejected {
+          Some(code_cache.hash) // recreate the cache
+        } else {
+          None
+        };
+        (Some(function), maybe_code_cache_hash)
+      } else {
+        (None, Some(code_cache.hash))
+      }
+    })
+    .unwrap_or_else(|| (None, None));
+
+  let function = match maybe_function {
+    Some(f) => f,
+    None => {
+      let mut source = v8::script_compiler::Source::new(source, Some(&origin));
+      v8::script_compiler::compile_function(
+        tc_scope,
+        &mut source,
+        &params,
+        &[],
+        v8::script_compiler::CompileOptions::NoCompileOptions,
+        v8::script_compiler::NoCacheReason::NoReason,
+      )
+    }
+  };
+
+  let null = v8::null(tc_scope);
+  let function = match function {
+    Some(s) => s,
+    None => {
+      assert!(tc_scope.has_caught());
+      let exception = tc_scope.exception().unwrap();
+      let e = EvalContextError {
+        thrown: exception,
+        is_native_error: is_instance_of_error(tc_scope, exception),
+        is_compile_error: true,
+      };
+      let eval_context_error = e.to_v8(tc_scope);
+      out.set_index(tc_scope, 0, null.into());
+      out.set_index(tc_scope, 1, eval_context_error);
+      return Ok(out.into());
+    }
+  };
+
+  if let Some(code_cache_hash) = maybe_code_cache_hash
+    && let Some(cb) = state.eval_context_code_cache_ready_cb.borrow().as_ref()
+  {
+    let code_cache = function.create_code_cache().ok_or_else(|| {
+      JsErrorBox::type_error("Unable to create code cache from function")
+    })?;
+    cb(specifier, code_cache_hash, &code_cache);
+  };
+
+  out.set_index(tc_scope, 0, function.into());
+  out.set_index(tc_scope, 1, null.into());
+  Ok(out.into())
 }
 
 #[op2]

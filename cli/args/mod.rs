@@ -640,8 +640,16 @@ impl CliOptions {
     self.flags.no_legacy_abort()
   }
 
-  pub fn env_file_name(&self) -> Option<&Vec<String>> {
-    self.flags.env_file.as_ref()
+  pub fn env_file_paths(
+    &self,
+  ) -> impl DoubleEndedIterator<Item = PathBuf> + '_ {
+    self
+      .flags
+      .env_file
+      .as_ref()
+      .into_iter()
+      .flatten()
+      .map(|name| self.initial_cwd.join(name))
   }
 
   pub fn preload_modules(&self) -> Result<Vec<ModuleSpecifier>, AnyError> {
@@ -969,14 +977,30 @@ impl CliOptions {
     }
   }
 
-  pub fn enable_op_summary_metrics(&self) -> bool {
-    self.flags.enable_op_summary_metrics
-      || matches!(
-        self.flags.subcommand,
-        DenoSubcommand::Test(_)
-          | DenoSubcommand::Repl(_)
-          | DenoSubcommand::Jupyter(_)
-      )
+  pub fn cpu_prof_dir(&self) -> Option<PathBuf> {
+    self.flags.cpu_prof.as_ref().map(|f| {
+      f.dir
+        .as_ref()
+        .map(|d| self.initial_cwd.join(d))
+        .unwrap_or_else(|| self.initial_cwd.clone())
+    })
+  }
+
+  pub fn cpu_prof_name(&self) -> Option<String> {
+    self.flags.cpu_prof.as_ref().and_then(|f| f.name.clone())
+  }
+
+  pub fn cpu_prof_interval(&self) -> u32 {
+    self
+      .flags
+      .cpu_prof
+      .as_ref()
+      .and_then(|f| f.interval)
+      .unwrap_or(1000)
+  }
+
+  pub fn cpu_prof_md(&self) -> bool {
+    self.flags.cpu_prof.as_ref().is_some_and(|f| f.md)
   }
 
   pub fn enable_testing_features(&self) -> bool {

@@ -1263,6 +1263,24 @@ Deno.test({
   },
 });
 
+// Regression test for https://github.com/denoland/deno/issues/25776
+Deno.test(async function killSignalZero() {
+  const child = CP.spawn(Deno.execPath(), [
+    "eval",
+    "setTimeout(() => {}, 60_000)",
+  ]);
+  try {
+    // Signal 0 checks if the process exists without sending a signal
+    const alive = child.kill(0);
+    assertEquals(alive, true);
+    // The child should not be marked as killed
+    assertEquals(child.killed, false);
+  } finally {
+    child.kill();
+    await new Promise((resolve) => child.on("close", resolve));
+  }
+});
+
 Deno.test(async function experimentalFlag() {
   const code = ``;
   const file = await Deno.makeTempFile();
@@ -1277,4 +1295,52 @@ Deno.test(async function experimentalFlag() {
   });
 
   await timeout.promise;
+});
+
+// Regression test for https://github.com/denoland/deno/issues/26784
+// process.stdout partial writes were silently dropped, causing data
+// truncation when piping >64KB through a subprocess.
+Deno.test(async function stdoutPipePartialWriteNotTruncated() {
+  // Child script: pipe a file to stdout via createReadStream
+  const pipeScript = await Deno.makeTempFile({ suffix: ".mjs" });
+  await Deno.writeTextFile(
+    pipeScript,
+    `import fs from "node:fs";fs.createReadStream(process.argv[2]).pipe(process.stdout);`,
+  );
+  // Create a file >65536 bytes with multiple lines (triggers chunked reads)
+  const dataFile = await Deno.makeTempFile();
+  const content = "x".repeat(40000) + "\n" + "y".repeat(40000) + "\n";
+  await Deno.writeTextFile(dataFile, content);
+  try {
+    const output = execFileSync(Deno.execPath(), [
+      "run",
+      "--allow-read",
+      pipeScript,
+      dataFile,
+    ], { encoding: "utf-8", maxBuffer: 50 * 1024 * 1024 });
+    assertEquals(output.length, content.length);
+    assertEquals(output, content);
+  } finally {
+    await Deno.remove(pipeScript);
+    await Deno.remove(dataFile);
+  }
+});
+
+Deno.test(async function stdoutWriteMultipleChunksNotTruncated() {
+  // Child script: write two large chunks to stdout directly
+  const script = await Deno.makeTempFile({ suffix: ".mjs" });
+  await Deno.writeTextFile(
+    script,
+    `const chunk1 = "A".repeat(50000);const chunk2 = "B".repeat(50000);process.stdout.write(chunk1);process.stdout.write(chunk2);`,
+  );
+  try {
+    const output = execFileSync(Deno.execPath(), ["run", script], {
+      encoding: "utf-8",
+      maxBuffer: 50 * 1024 * 1024,
+    });
+    assertEquals(output.length, 100000);
+    assertEquals(output, "A".repeat(50000) + "B".repeat(50000));
+  } finally {
+    await Deno.remove(script);
+  }
 });

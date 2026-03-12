@@ -6,6 +6,165 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 2.7.5 / 2026.03.11
+
+- feat(coverage): add function coverage to summary and HTML reports (#32507)
+- feat(doc): support npm packages in `deno doc` (#32435)
+- feat(ext/node): add `node_api_create_object_with_properties` API (#31443)
+- feat(ext/node): implement KeyObject.toCryptoKey() and
+  KeyObject.from(CryptoKey) (#32523)
+- feat(otel): allow feeding permission audit data into OTEL (#32501)
+- feat: --cpu-prof flags for CPU profiles (#31909)
+- fix(console): prevent multi-line object values in console.table (#32604)
+- fix(core): switch to V8 Explicit microtask policy for correct nextTick
+  ordering (#32466)
+- fix(ext/http): allow rejecting HTTP upgrades with non-101 status codes
+  (#32615)
+- fix(ext/napi): run async work execute callback on a worker thread (#32560)
+- fix(ext/node): add `node_api_create_property_key_(latin1/utf8)` (#32559)
+- fix(ext/node): add missing http2 header constants (#32611)
+- fix(ext/node): emit DEP0198 warning for SHAKE digests without outputLength
+  (#32521)
+- fix(ext/node): emit correct error codes for unsupported PQC key types (#32533)
+- fix(ext/node): fix multiple DiffieHellman crypto bugs (#32531)
+- fix(ext/node): fix multiple node:dgram compatibility issues (#32520)
+- fix(ext/node): handle generateKeyPair 2-arg call and enable PQC tests (#32619)
+- fix(ext/node): implement ECDH.convertKey and fix related ECDH bugs (#32532)
+- fix(ext/node): implement `node:v8` heap APIs (#32483)
+- fix(ext/node): implement proper `resourceLimits` for `node:worker_threads`
+  (#32430)
+- fix(ext/node): improve getCipherInfo and allow repeated Hmac digest() (#32522)
+- fix(ext/node): improve node:dns compat (#32536)
+- fix(ext/node): initialize debuglog testEnabled with safe default (#32598)
+- fix(ext/node): make TTY stdout/stderr indestructible (#32530)
+- fix(ext/node): make tty ReadStream/WriteStream callable without `new` (#32537)
+- fix(ext/node): multiple readline improvements (#32538)
+- fix(ext/node): napi_set_instance_data on exit (#32509)
+- fix(ext/node): rewrite http2 implementation (#32418)
+- fix(ext/node): run worker_threads eval code in sloppy mode (#32428)
+- fix(ext/node): support des-ede3-cbc cipher and allow Cipheriv/Decipheriv
+  without new (#32519)
+- fix(ext/node): use max salt length as default for RSA-PSS signing (#32534)
+- fix(ext/otel): remove panicking unwraps in telemetry code (#32557)
+- fix(ext/websocket): handle non-ASCII bytes in WebSocket response headers
+  (#32594)
+- fix(lsp): properly sync root files with tsgo (#32455)
+- fix(lsp): tsgo scope attribution for asset files (#32608)
+- fix(napi): remove unimplemented Node-API symbols from napi_sys (#32593)
+- fix(npm): memoize peer cache hit checks to prevent combinatorial explosion
+  (#32609)
+- fix(npm): support npmrc email authorization (#32616)
+- fix: ensure binaries distributed in `@deno/...` npm packages are exectuable
+  (#32581)
+- fix: flush CPU profile and coverage data on Deno.exit() (#32591)
+- fix: normalize `capture` to boolean in `removeEventListener` options (#32508)
+- fix: prevent panic on dynamic import with non-string error name (#32498)
+- fix: set `process.features.openssl_is_boringssl` to `true` (#32512)
+- fix: support value substitution when loading environment variable files
+  (#32495)
+- perf(ext/node): move most `fs.cp` logic to rust (#32580)
+- perf(lsp): drop jsx import source cache (#32506)
+- perf(npm): improve decompression speed more (#32547)
+- perf(npm): less syscalls in tarball extraction (#32541)
+- perf(npm): remove folder canonicalization in tarball extract (#32540)
+- perf(npm): use libdeflater and preallocate buffer (#32511)
+
+### 2.7.4 / 2026.03.05
+
+- Reland refactor(core): move nextTick/immediate queues into core, replace ops
+  with shared buffers (#32440) (#32465)
+- Revert "refactor(core): move nextTick/immediate queues into core, replace ops
+  with shared buffers (#32440) (#32462)
+- fix(core): uv_compat cleanup and fixes (#32458)
+- fix(deploy): correctly handle version lookup (#32489)
+- fix(ext/node): deep `assert` compatibility (#32434)
+- fix(ext/node): use sync writes for TTY stdout/stderr WriteStream (#32488)
+- fix(test): restart all tests on env file change (#32461)
+- perf(npm): actually improve `npm install -g deno` binary startup performance
+  (#32467)
+
+### 2.7.3 / 2026.03.04
+
+- fix(deploy): dont use jsr api for deploy subcommand (#32441)
+- fix(ext/node): handle partial writes to process.stdout/stderr (#32433)
+- fix(ext/node): make UDP socket ops synchronous, implement missing dgram
+  methods (#32381)
+- fix(ext/node): support HTTP over Windows named pipes in node:http (#32414)
+- fix(npm): don't panic when peer dep is not in snapshot (#32454)
+- fix(npm): regression where resolution was missing dependencies (#32453)
+- perf(npm): improve `npm install -g deno` binary startup performance (#32439)
+
+### 2.7.2 / 2026.03.03
+
+- feat: v8 14.6, fix require(esm), libuv compat (#32347)
+- fix(ci): fix ordering of platforms in ecosystem_compat_slack (#32393)
+- fix(cli): load multiple env files in the correct order (#32354)
+- fix(compile): store self extracting dir in hidden dir beside executable
+  (#32329)
+- fix(core): store Global<Context> ptr for libuv-compat callbacks (#32361)
+- fix(coverage): correct line and branch counts in coverage reports (#32312)
+- fix(coverage): warn instead of erroring when source files are missing (#32398)
+- fix(ext/console): support iterators in console.table (#32379)
+- fix(ext/crypto): fix P-521 EC key export for all formats (#32412)
+- fix(ext/crypto): handle wrong algorithm in subtle.importKey without panicking
+  (#32410)
+- fix(ext/node): CBC decipher setAutoPadding(false) incorrectly strips bytes
+  (#32403)
+- fix(ext/node): gracefully exit on invalid NODE_CHANNEL_FD instead of panicking
+  (#32421)
+- fix(ext/node): handle emoji width correctly in readline (#32383)
+- fix(ext/node): implement KeyObject.equals, fix createCipheriv with
+  KeyObject/null IV (#32409)
+- fix(ext/node): implement missing X509Certificate methods (#32270)
+- fix(ext/node): make `execPath` named export a real string (#32396)
+- fix(ext/node): make `setAutoPadding(false)` a no-op for GCM ciphers (#32290)
+- fix(ext/node): make fsPromises.watch() a proper AsyncIterable with close()
+  (#32378)
+- fix(ext/node): provide CJS globals in worker_threads eval mode (#32266)
+- fix(ext/node): rename conflict callback field typo (#32306)
+- fix(ext/node): return first created path from recursive "node:fs" mkdir call
+  (#32300)
+- fix(ext/node): support DER-encoded keys in publicEncrypt/privateDecrypt
+  (#32291)
+- fix(ext/node): support Ed25519, X25519, and P-521 keys in
+  X509Certificate.publicKey (#32267)
+- fix(ext/node): support RSA PSS padding option in crypto sign/verify (#32269)
+- fix(ext/node): support SEC1 EC private key import/export in `node:crypto`
+  (#32401)
+- fix(ext/node): support process.stdout resize events (#32343)
+- fix(ext/node): use internal compileFunction binding in CJS wrap (#32373)
+- fix(install): do not panic if lockfile incorrectly says package has a bin
+  (#32345)
+- fix(install): global install should not warn about using node_modules dir for
+  npm specifiers (#32341)
+- fix(jupyter): handle shutdown and interrupt requests per protocol (#32359)
+- fix(node): implement `resolveObjectURL` for `node:buffer` (#32382)
+- fix(node): implement process.umask properly (#32385)
+- fix(node): preserve AsyncLocalStorage context in stream.finished callback
+  (#32389)
+- fix(node): support ECDSA with secp256k1 in `node:crypto` (#32390)
+- fix(node/buffer): fix base64 decoding for strings with hyphens (#32298)
+- fix(node/crypto): handle empty input in decipher final with auto_pad=false
+  (#31958)
+- fix(node/vm): support vm.constants.DONT_CONTEXTIFY in createContext (#32337)
+- fix(npm): NPM_CONFIG_REGISTRY correctly overrides .npmrc (#32394)
+- fix(npm): peerDependency resolution leading to multiple versions being
+  installed + hanging (#32358)
+- fix(test): dedupe discovered workspace test modules (#32380)
+- fix: fix some stack frame dimming, and make the console log more aligned with
+  cli formatting (#32399)
+- fix: process level environment variables should take precedence over env files
+  (#32407)
+- fix: validate cron schedule when using cron socket (#32406)
+- fix:(ext/node): escape simple quotes in node:child_process (#32336)
+- perf(install): improve parallelism of fetches during npm resolution (#32416)
+- perf(install): move HTTP decompression for registry requests off the async
+  event loop (#32400)
+- perf(install): request abbreviated packuments from npm registry (#32364)
+- perf(install): split tarball extraction into decompress + write, limit write
+  concurrency (#32408)
+- perf(install): use aws-lc-rs for tarball integrity hashing (#32365)
+
 ### 2.7.1 / 2026.02.25
 
 ### 2.7.0 / 2026.02.25

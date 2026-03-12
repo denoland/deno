@@ -1,0 +1,8 @@
+{
+  "args": "eval console.log('hello')",
+  "output": "Failed to open IPC channel from NODE_CHANNEL_FD (999): [WILDCARD]\n",
+  "exitCode": 1,
+  "envs": {
+    "NODE_CHANNEL_FD": "999"
+  }
+}

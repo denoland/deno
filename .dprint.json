@@ -74,7 +74,7 @@
     "tests/testdata/run/inline_js_source_map*",
     "tests/testdata/test/markdown_windows.md",
     "tests/util/std",
-    "tests/wpt/runner/expectation.json",
+    "tests/wpt/runner/expectations/",
     "tests/wpt/runner/manifest.json",
     "tests/wpt/suite",
     "third_party",

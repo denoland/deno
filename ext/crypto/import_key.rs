@@ -686,7 +686,7 @@ fn import_key_ec(
         .parameters
         .ok_or(ImportKeyError::MalformedParameters)?
         .try_into()
-        .unwrap();
+        .map_err(|_| ImportKeyError::MalformedParameters)?;
 
       let pk_named_curve = match named_curve_alg {
         // id-secp256r1

@@ -1,7 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::io::Read;
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_cache_dir::file_fetcher::File;
@@ -25,7 +24,6 @@ use crate::args::WatchFlagsWithPaths;
 use crate::factory::CliFactory;
 use crate::util;
 use crate::util::file_watcher::WatcherRestartMode;
-use crate::util::watch_env_tracker::WatchEnvTracker;
 
 pub mod hmr;
 
@@ -179,14 +177,6 @@ async fn run_with_watch(
     WatcherRestartMode::Automatic,
     move |flags, watcher_communicator, changed_paths| {
       watcher_communicator.show_path_changed(changed_paths.clone());
-      let env_file_paths: Option<Vec<std::path::PathBuf>> = flags
-        .env_file
-        .as_ref()
-        .map(|files| files.iter().map(PathBuf::from).collect());
-      WatchEnvTracker::snapshot().load_env_variables_from_env_files(
-        env_file_paths.as_ref(),
-        flags.log_level,
-      );
       Ok(async move {
         let factory = CliFactory::from_flags_for_watcher(
           flags,

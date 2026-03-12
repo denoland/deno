@@ -576,6 +576,17 @@ export class ChildProcess extends EventEmitter {
       return this.killed;
     }
 
+    // Signal 0 is a special case: it checks if the process exists
+    // without sending a signal (POSIX kill(pid, 0)).
+    if (signal === 0 || signal === "0") {
+      try {
+        process.kill(this.pid!, 0);
+        return true;
+      } catch {
+        return false;
+      }
+    }
+
     const denoSignal = signal == null ? "SIGTERM" : toDenoSignal(signal);
     this.#closePipes();
     try {
@@ -1284,13 +1295,15 @@ function transformDenoShellCommand(
         return a;
       })
       : result.deno_args.map((a) => {
-        // POSIX: args with shell variable refs use double quotes to
-        // preserve variable expansion. Other metacharacters use single
-        // quotes.
-        if (/\$\{[^}]+\}|\$[A-Za-z_]/.test(a)) {
-          return '"' + a.replace(/"/g, '\\"') + '"';
-        }
-        if (/[();&|<>`!\n\r\s"'\\$]/.test(a)) {
+        // POSIX shell quoting for translated args.
+        const hasShellVarRef = /\$\{[^}]+\}|\$[A-Za-z_]/.test(a);
+        const unsafeInDoubleQuotes = /`|\$\(|\\/.test(a);
+        const hasShellMetachars = /[();&|<>`!\n\r\s"'\\$]/.test(a);
+
+        if (hasShellMetachars) {
+          if (hasShellVarRef && !unsafeInDoubleQuotes) {
+            return '"' + a.replace(/"/g, '\\"') + '"';
+          }
           return "'" + a.replace(/'/g, "'\\''") + "'";
         }
         return a;
