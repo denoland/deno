@@ -1098,6 +1098,8 @@ function synchronizeListeners() {
           const err = new Error(message);
           // deno-lint-ignore no-explicit-any
           (err as any).code = "ERR_UNHANDLED_REJECTION";
+          // deno-lint-ignore no-explicit-any
+          (err as any).reason = event.reason;
           Object.defineProperty(err, "name", {
             value: "UnhandledPromiseRejection",
             writable: true,
