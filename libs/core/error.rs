@@ -807,6 +807,7 @@ impl JsError {
         if let (Some(file_name), Some(line_number)) =
           (&frame.file_name, frame.line_number)
           && !file_name.trim_start_matches('[').starts_with("ext:")
+          && !file_name.starts_with("node:")
         {
           source_line = source_mapper.get_source_line(file_name, line_number);
           source_line_frame_index = Some(i);
@@ -954,6 +955,7 @@ impl JsError {
           if let (Some(file_name), Some(line_number)) =
             (&frame.file_name, frame.line_number)
             && !file_name.trim_start_matches('[').starts_with("ext:")
+            && !file_name.starts_with("node:")
           {
             source_line = source_mapper.get_source_line(file_name, line_number);
             source_line_frame_index = Some(i);
