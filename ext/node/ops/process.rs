@@ -91,6 +91,10 @@ static ARGV_INIT: unsafe extern "C" fn(
 
 #[cfg(target_os = "macos")]
 fn set_process_title(title: &str) {
+  // SAFETY: We call macOS-specific C functions to read and overwrite the
+  // process argv buffer in place. The argv pointer and argc count come from
+  // the OS and are valid for the lifetime of the process. We bounds-check
+  // before writing and null-terminate the buffer.
   unsafe {
     unsafe extern "C" {
       fn _NSGetArgc() -> *mut libc::c_int;
