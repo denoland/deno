@@ -86,6 +86,45 @@ impl<TSys: FsCanonicalize + FsMetadata> GlobalNpmPackageResolver<TSys> {
         })
       })
   }
+
+  /// Checks if the referrer's package folder contains a bundled copy of the
+  /// requested package in its node_modules directory. Bundled dependencies
+  /// are extracted from the tarball directly into the package's folder.
+  fn resolve_bundled_dep(
+    &self,
+    name: &str,
+    referrer: &UrlOrPathRef,
+  ) -> Result<Option<PathBuf>, PackageFolderResolveError> {
+    let Ok(referrer_path) = referrer.path() else {
+      return Ok(None);
+    };
+    // strip any subpath (e.g. "@denotest/add2/sub.js" -> "@denotest/add2")
+    let name = deno_npm::package_name_without_subpath(name);
+    let cache_location = self.cache.root_dir();
+    for current_folder in referrer_path
+      .ancestors()
+      .skip(1)
+      .take_while(|path| path.starts_with(&cache_location))
+    {
+      let node_modules_folder = if current_folder.ends_with("node_modules") {
+        Cow::Borrowed(current_folder)
+      } else {
+        Cow::Owned(current_folder.join("node_modules"))
+      };
+
+      let sub_dir = join_package_name_to_path(&node_modules_folder, name);
+      if self.sys.fs_is_dir_no_err(&sub_dir) {
+        return Ok(Some(self.sys.fs_canonicalize(&sub_dir).map_err(
+          |err| PackageFolderResolveIoError {
+            package_name: name.to_string(),
+            referrer: referrer.display(),
+            source: err,
+          },
+        )?));
+      }
+    }
+    Ok(None)
+  }
 }
 
 impl<TSys: FsCanonicalize + FsMetadata> NpmPackageFolderResolver
@@ -108,6 +147,13 @@ impl<TSys: FsCanonicalize + FsMetadata> NpmPackageFolderResolver
         .into(),
       );
     };
+
+    // check for bundled dependencies within the referrer's package folder
+    // first, as these should always take priority over global resolution
+    if let Some(bundled_folder) = self.resolve_bundled_dep(name, referrer)? {
+      return Ok(bundled_folder);
+    }
+
     let resolve_result = self
       .resolution
       .resolve_package_from_package(name, &referrer_cache_folder_id);
@@ -138,45 +184,14 @@ impl<TSys: FsCanonicalize + FsMetadata> NpmPackageFolderResolver
         PackageNotFoundFromReferrerError::Package {
           name,
           referrer: cache_folder_id_referrer,
-        } => {
-          // check for any bundled dependencies within the package
-          if let Ok(referrer_path) = referrer.path() {
-            let cache_location = self.cache.get_cache_location();
-            for current_folder in referrer_path
-              .ancestors()
-              .skip(1)
-              .take_while(|path| path.starts_with(&cache_location))
-            {
-              let node_modules_folder =
-                if current_folder.ends_with("node_modules") {
-                  Cow::Borrowed(current_folder)
-                } else {
-                  Cow::Owned(current_folder.join("node_modules"))
-                };
-
-              let sub_dir =
-                join_package_name_to_path(&node_modules_folder, &name);
-              if self.sys.fs_is_dir_no_err(&sub_dir) {
-                return Ok(self.sys.fs_canonicalize(&sub_dir).map_err(
-                  |err| PackageFolderResolveIoError {
-                    package_name: name.to_string(),
-                    referrer: referrer.display(),
-                    source: err,
-                  },
-                )?);
-              }
-            }
+        } => Err(
+          PackageNotFoundError {
+            package_name: name,
+            referrer: referrer.display(),
+            referrer_extra: Some(cache_folder_id_referrer.to_string()),
           }
-
-          Err(
-            PackageNotFoundError {
-              package_name: name,
-              referrer: referrer.display(),
-              referrer_extra: Some(cache_folder_id_referrer.to_string()),
-            }
-            .into(),
-          )
-        }
+          .into(),
+        ),
       },
     }
   }

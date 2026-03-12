@@ -1,5 +1,5 @@
 {
-  "name": "@denotest/bundled-deps",
+  "name": "@denotest/bundled-add",
   "version": "1.0.0",
   "bin": "./index.js",
   "dependencies": {
@@ -7,5 +7,6 @@
   },
   "bundleDependencies": [
     "@denotest/add"
-  ]
+  ],
+  "exports": "./index.js"
 }
