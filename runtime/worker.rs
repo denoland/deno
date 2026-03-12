@@ -946,8 +946,9 @@ impl MainWorker {
     let undefined = v8::undefined(tc_scope);
     dispatch_load_event_fn.call(tc_scope, undefined.into(), &[]);
     if let Some(exception) = tc_scope.exception() {
-      let error = JsError::from_v8_exception(tc_scope, exception);
-      return Err(error);
+      return Err(deno_core::exception_to_err(
+        tc_scope, exception, false, true,
+      ));
     }
     Ok(())
   }
@@ -963,8 +964,9 @@ impl MainWorker {
     let undefined = v8::undefined(tc_scope);
     dispatch_unload_event_fn.call(tc_scope, undefined.into(), &[]);
     if let Some(exception) = tc_scope.exception() {
-      let error = JsError::from_v8_exception(tc_scope, exception);
-      return Err(error);
+      return Err(deno_core::exception_to_err(
+        tc_scope, exception, false, true,
+      ));
     }
     Ok(())
   }
@@ -978,8 +980,9 @@ impl MainWorker {
     let undefined = v8::undefined(tc_scope);
     dispatch_process_exit_event_fn.call(tc_scope, undefined.into(), &[]);
     if let Some(exception) = tc_scope.exception() {
-      let error = JsError::from_v8_exception(tc_scope, exception);
-      return Err(error);
+      return Err(deno_core::exception_to_err(
+        tc_scope, exception, false, true,
+      ));
     }
     Ok(())
   }
@@ -996,8 +999,9 @@ impl MainWorker {
     let ret_val =
       dispatch_beforeunload_event_fn.call(tc_scope, undefined.into(), &[]);
     if let Some(exception) = tc_scope.exception() {
-      let error = JsError::from_v8_exception(tc_scope, exception);
-      return Err(error);
+      return Err(deno_core::exception_to_err(
+        tc_scope, exception, false, true,
+      ));
     }
     let ret_val = ret_val.unwrap();
     Ok(ret_val.is_false())
@@ -1020,8 +1024,9 @@ impl MainWorker {
       &[],
     );
     if let Some(exception) = tc_scope.exception() {
-      let error = JsError::from_v8_exception(tc_scope, exception);
-      return Err(error);
+      return Err(deno_core::exception_to_err(
+        tc_scope, exception, false, true,
+      ));
     }
     let ret_val = ret_val.unwrap();
     Ok(ret_val.is_true())
