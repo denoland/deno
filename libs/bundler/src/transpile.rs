@@ -121,6 +121,7 @@ mod tests {
   ) -> BundlerModule {
     BundlerModule {
       specifier: specifier.clone(),
+      original_loader: loader,
       loader,
       module_type: ModuleType::Esm,
       dependencies: Vec::new(),

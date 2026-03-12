@@ -21,6 +21,7 @@ use tokio::net::TcpListener;
 use tokio::sync::broadcast;
 use tokio::sync::RwLock;
 
+use deno_bundler::analyze::analyze_graph;
 use deno_bundler::chunk::build_chunk_graph;
 use deno_bundler::chunk::ChunkGraph;
 use deno_bundler::config::EnvironmentId;
@@ -271,8 +272,9 @@ pub async fn dev(
     let mut bundler_graph =
       build_bundler_graph(&deno_module_graph, env_id, &entries);
 
-    // Transpile TS/TSX/JSX → JS.
+    // Transpile TS/TSX/JSX → JS, then analyze for imports/exports/HMR.
     transpile_graph(&mut bundler_graph);
+    analyze_graph(&mut bundler_graph);
 
     log::warn!(
       "  {} {} ({} modules)",
@@ -619,21 +621,22 @@ async fn run_file_watcher(
         continue;
       }
 
-      // Re-read and re-transpile changed modules.
+      // Re-read, re-transpile, and re-analyze changed modules.
       for spec in &changed_specifiers {
         if let Ok(path) = spec.to_file_path() {
           if let Ok(new_source) = std::fs::read_to_string(&path) {
             if let Some(module) = env_state.bundler_graph.get_module_mut(spec)
             {
-              let loader = module.loader;
-              // Transpile if needed.
+              // Use original_loader to determine if re-transpilation is needed,
+              // since loader gets set to Js after the first transpile pass.
+              let orig_loader = module.original_loader;
               let transpiled = if matches!(
-                loader,
+                orig_loader,
                 deno_bundler::loader::Loader::Ts
                   | deno_bundler::loader::Loader::Tsx
                   | deno_bundler::loader::Loader::Jsx
               ) {
-                let media_type = match loader {
+                let media_type = match orig_loader {
                   deno_bundler::loader::Loader::Ts => {
                     deno_ast::MediaType::TypeScript
                   }
@@ -651,6 +654,28 @@ async fn run_file_watcher(
                 new_source
               };
               module.source = transpiled;
+
+              // Re-analyze: extract updated module_info and hmr_info.
+              if let Ok(parsed) = deno_ast::parse_module(deno_ast::ParseParams {
+                specifier: spec.clone(),
+                text: module.source.clone().into(),
+                media_type: deno_ast::MediaType::JavaScript,
+                capture_tokens: false,
+                scope_analysis: false,
+                maybe_syntax: None,
+              }) {
+                module.module_info = Some(
+                  deno_bundler::js::module_info_swc::extract_module_info(&parsed),
+                );
+                module.hmr_info = Some(
+                  deno_bundler::js::hmr_info_swc::extract_hmr_info(&parsed),
+                );
+                module.is_async = module
+                  .module_info
+                  .as_ref()
+                  .map(|i| i.has_tla)
+                  .unwrap_or(false);
+              }
             }
           }
         }

@@ -93,6 +93,7 @@ fn convert_js_module(js: &deno_graph::JsModule) -> BundlerModule {
 
   BundlerModule {
     specifier: js.specifier.clone(),
+    original_loader: loader,
     loader,
     module_type,
     dependencies,
@@ -109,6 +110,7 @@ fn convert_js_module(js: &deno_graph::JsModule) -> BundlerModule {
 fn convert_json_module(json: &deno_graph::JsonModule) -> BundlerModule {
   BundlerModule {
     specifier: json.specifier.clone(),
+    original_loader: Loader::Json,
     loader: Loader::Json,
     module_type: ModuleType::Esm,
     dependencies: Vec::new(),

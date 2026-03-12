@@ -226,6 +226,7 @@ mod tests {
   ) -> BundlerModule {
     BundlerModule {
       specifier: specifier.clone(),
+      original_loader: Loader::Js,
       loader: Loader::Js,
       module_type: ModuleType::Esm,
       dependencies: deps,

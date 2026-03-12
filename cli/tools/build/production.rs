@@ -7,6 +7,7 @@ use deno_core::ModuleSpecifier;
 use deno_graph::GraphKind;
 use deno_path_util::url_from_directory_path;
 
+use deno_bundler::analyze::analyze_graph;
 use deno_bundler::chunk::build_chunk_graph;
 use deno_bundler::chunk::ChunkType;
 use deno_bundler::config::EnvironmentId;
@@ -94,10 +95,11 @@ pub async fn build(
       .create_graph(GraphKind::All, entries.clone(), NpmCachingStrategy::Eager)
       .await?;
 
-    // Convert + transpile.
+    // Convert, transpile, and analyze.
     let mut bundler_graph =
       build_bundler_graph(&deno_module_graph, env_id, &entries);
     transpile_graph(&mut bundler_graph);
+    analyze_graph(&mut bundler_graph);
 
     let module_count = bundler_graph.len();
     total_modules += module_count;

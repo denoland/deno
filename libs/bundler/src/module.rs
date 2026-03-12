@@ -27,8 +27,11 @@ pub enum SideEffectFlag {
 pub struct BundlerModule {
   /// The module's URL specifier (matches deno_graph).
   pub specifier: ModuleSpecifier,
-  /// How this module is loaded/parsed.
+  /// How this module is loaded/parsed (may change after transpilation to Js).
   pub loader: Loader,
+  /// The original loader before transpilation (used by file watcher to
+  /// know whether a re-read file needs re-transpilation).
+  pub original_loader: Loader,
   /// ESM or CJS.
   pub module_type: ModuleType,
   /// Resolved dependency edges.
