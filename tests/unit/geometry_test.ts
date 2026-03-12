@@ -943,6 +943,10 @@ Deno.test(function matrixInvert2DSelf() {
   );
 });
 
+Deno.test(function matrixConstructor() {
+  new DOMMatrix("translateX(calc(1px + 2px)) rotate(atan2(3, 2))");
+});
+
 Deno.test(function prototypeOverwrite() {
   const point = new DOMPointReadOnly();
   Object.setPrototypeOf(point, DOMPoint.prototype);
