@@ -727,7 +727,8 @@ fn get_info_access_object(
       let (_, any) =
         x509_parser::der_parser::asn1_rs::Any::from_der(general_name_data)
           .ok()?;
-      if any.tag().0 == 6
+      if any.class() == x509_parser::der_parser::asn1_rs::Class::ContextSpecific
+        && any.tag().0 == 6
         && let Ok(uri) = std::str::from_utf8(any.data)
       {
         result
@@ -1272,8 +1273,8 @@ pub fn op_node_x509_get_info_access(
       let (_, any) =
         x509_parser::der_parser::asn1_rs::Any::from_der(general_name_data)
           .ok()?;
-      // Tag 6 is context-specific for URI in GeneralName
-      if any.tag().0 == 6
+      if any.class() == x509_parser::der_parser::asn1_rs::Class::ContextSpecific
+        && any.tag().0 == 6
         && let Ok(uri) = std::str::from_utf8(any.data)
       {
         entries.push(format!("{}:{}", method_name, uri));
