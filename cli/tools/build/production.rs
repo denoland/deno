@@ -14,9 +14,10 @@ use deno_bundler::chunk::ChunkType;
 use deno_bundler::config::EnvironmentId;
 use deno_bundler::emit::emit_production_chunk;
 use deno_bundler::graph_builder::build_bundler_graph;
+use deno_bundler::plugin::create_default_plugin_driver;
+use deno_bundler::process::transform_modules;
 use deno_bundler::transform_pipeline::transform_graph;
 use deno_bundler::transform_pipeline::TransformOptions;
-use deno_bundler::transpile::transpile_graph;
 
 use crate::args::BuildFlags;
 use crate::args::Flags;
@@ -112,10 +113,11 @@ pub async fn build(
       .create_graph(GraphKind::All, entries.clone(), NpmCachingStrategy::Eager)
       .await?;
 
-    // Convert, transpile, transform, and analyze.
+    // Convert, transform (includes transpilation), and analyze.
     let mut bundler_graph =
       build_bundler_graph(&deno_module_graph, env_id, &entries);
-    transpile_graph(&mut bundler_graph);
+    let plugin_driver = create_default_plugin_driver();
+    transform_modules(&mut bundler_graph, &plugin_driver);
     transform_graph(&mut bundler_graph, &transform_options);
     analyze_graph(&mut bundler_graph);
 

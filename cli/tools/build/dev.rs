@@ -30,10 +30,11 @@ use deno_bundler::emit::emit_hmr_update;
 use deno_bundler::graph::BundlerGraph;
 use deno_bundler::graph_builder::build_bundler_graph;
 use deno_bundler::js::hmr::compute_hmr_boundaries;
-use deno_bundler::transpile::transpile_graph;
-use deno_bundler::transpile::transpile_source;
 use deno_bundler::js::hmr::HmrBoundaryResult;
 use deno_bundler::js::hmr::HmrGraph;
+use deno_bundler::plugin::create_default_plugin_driver;
+use deno_bundler::plugin::PluginDriver;
+use deno_bundler::process::transform_modules;
 
 use crate::args::DevFlags;
 use crate::args::Flags;
@@ -272,8 +273,9 @@ pub async fn dev(
     let mut bundler_graph =
       build_bundler_graph(&deno_module_graph, env_id, &entries);
 
-    // Transpile TS/TSX/JSX → JS, then analyze for imports/exports/HMR.
-    transpile_graph(&mut bundler_graph);
+    // Transform (includes TS transpilation via plugin chain), then analyze.
+    let plugin_driver = create_default_plugin_driver();
+    transform_modules(&mut bundler_graph, &plugin_driver);
     analyze_graph(&mut bundler_graph);
 
     log::warn!(
@@ -308,6 +310,9 @@ pub async fn dev(
     environments,
   }));
 
+  // Plugin driver is immutable after creation — shared separately.
+  let plugin_driver = Arc::new(create_default_plugin_driver());
+
   // HMR broadcast channel.
   let (hmr_tx, _) = broadcast::channel::<String>(64);
 
@@ -315,9 +320,10 @@ pub async fn dev(
   let watcher_state = state.clone();
   let watcher_hmr_tx = hmr_tx.clone();
   let watcher_root = root_dir.clone();
+  let watcher_plugin_driver = plugin_driver.clone();
   tokio::spawn(async move {
     if let Err(e) =
-      run_file_watcher(watcher_root, watcher_state, watcher_hmr_tx).await
+      run_file_watcher(watcher_root, watcher_state, watcher_hmr_tx, watcher_plugin_driver).await
     {
       log::error!("File watcher error: {}", e);
     }
@@ -544,6 +550,7 @@ async fn run_file_watcher(
   root_dir: PathBuf,
   state: Arc<RwLock<DevServerState>>,
   hmr_tx: broadcast::Sender<String>,
+  plugin_driver: Arc<PluginDriver>,
 ) -> Result<(), AnyError> {
   use notify::RecursiveMode;
   use notify::Watcher;
@@ -621,39 +628,22 @@ async fn run_file_watcher(
         continue;
       }
 
-      // Re-read, re-transpile, and re-analyze changed modules.
+      // Re-read, re-transform, and re-analyze changed modules.
       for spec in &changed_specifiers {
         if let Ok(path) = spec.to_file_path() {
           if let Ok(new_source) = std::fs::read_to_string(&path) {
             if let Some(module) = env_state.bundler_graph.get_module_mut(spec)
             {
-              // Use original_loader to determine if re-transpilation is needed,
-              // since loader gets set to Js after the first transpile pass.
+              // Run through the plugin transform chain (includes transpilation).
               let orig_loader = module.original_loader;
-              let transpiled = if matches!(
+              let output = plugin_driver.transform(
+                new_source,
+                &path,
+                "file",
                 orig_loader,
-                deno_bundler::loader::Loader::Ts
-                  | deno_bundler::loader::Loader::Tsx
-                  | deno_bundler::loader::Loader::Jsx
-              ) {
-                let media_type = match orig_loader {
-                  deno_bundler::loader::Loader::Ts => {
-                    deno_ast::MediaType::TypeScript
-                  }
-                  deno_bundler::loader::Loader::Tsx => {
-                    deno_ast::MediaType::Tsx
-                  }
-                  deno_bundler::loader::Loader::Jsx => {
-                    deno_ast::MediaType::Jsx
-                  }
-                  _ => deno_ast::MediaType::JavaScript,
-                };
-                transpile_source(spec, &new_source, media_type)
-                  .unwrap_or(new_source)
-              } else {
-                new_source
-              };
-              module.source = transpiled;
+              );
+              module.source = output.content;
+              module.loader = output.loader;
 
               // Re-analyze: extract updated module_info and hmr_info.
               if let Ok(parsed) = deno_ast::parse_module(deno_ast::ParseParams {
