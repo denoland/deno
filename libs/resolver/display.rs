@@ -60,27 +60,12 @@ impl<'a> DiffBuilder<'a> {
 
   fn handle_diff(mut self, diff: Diff) -> String {
     let mut prev_before_end: u32 = 0;
-    let mut prev_after_end: u32 = 0;
 
     for hunk in diff.hunks() {
-      // Show unchanged context lines between hunks
+      // Skip unchanged lines between hunks
       let gap_len = (hunk.before.start - prev_before_end) as usize;
-      if gap_len > 0 {
-        if prev_before_end == 0 {
-          // Before the first hunk — just skip, no context needed
-          self.orig_line += gap_len;
-          self.edit_line += gap_len;
-        } else {
-          // Between hunks — show up to 1 trailing context line
-          let skip = if gap_len > 1 { gap_len - 1 } else { 0 };
-          self.orig_line += skip;
-          self.edit_line += skip;
-          for idx in (hunk.before.start - 1)..hunk.before.start {
-            let s = self.input.interner[self.input.before[idx as usize]];
-            self.write_context_line(s);
-          }
-        }
-      }
+      self.orig_line += gap_len;
+      self.edit_line += gap_len;
 
       // Interleave deleted/inserted line pairs, then emit remaining
       let del_count = hunk.before.len();
@@ -107,39 +92,9 @@ impl<'a> DiffBuilder<'a> {
       }
 
       prev_before_end = hunk.before.end;
-      prev_after_end = hunk.after.end;
     }
 
     self.output
-  }
-
-  fn write_context_line(&mut self, text: &str) {
-    let text = text.strip_suffix('\n').unwrap_or(text);
-    write!(
-      self.output,
-      "{:width$}{} ",
-      self.orig_line,
-      colors::gray(" |"),
-      width = self.line_number_width
-    )
-    .unwrap();
-    self.output.push_str(&fmt_rem());
-    self.output.push_str(&fmt_rem_text(text));
-    self.output.push('\n');
-    self.orig_line += 1;
-
-    write!(
-      self.output,
-      "{:width$}{} ",
-      self.edit_line,
-      colors::gray(" |"),
-      width = self.line_number_width
-    )
-    .unwrap();
-    self.output.push_str(&fmt_add());
-    self.output.push_str(&fmt_add_text(text));
-    self.output.push('\n');
-    self.edit_line += 1;
   }
 
   fn write_rem_line(&mut self, text: &str) {
@@ -179,20 +134,12 @@ fn fmt_add() -> String {
   colors::green_bold("+").to_string()
 }
 
-fn fmt_add_text(x: &str) -> String {
-  colors::green(x).to_string()
-}
-
 fn fmt_add_text_highlight(x: &str) -> String {
   colors::black_on_green(x).to_string()
 }
 
 fn fmt_rem() -> String {
   colors::red_bold("-").to_string()
-}
-
-fn fmt_rem_text(x: &str) -> String {
-  colors::red(x).to_string()
 }
 
 fn fmt_rem_text_highlight(x: &str) -> String {
@@ -294,8 +241,6 @@ mod tests {
         "2 | -\n",
         "3 | -\n",
         "4 | -\n",
-        "5 | -console.log(\n",
-        "1 | +console.log(\n",
         "6 | -'Hello World'\n",
         "2 | +\"Hello World\"\n",
         "7 | -)\n",
