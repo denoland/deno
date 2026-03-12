@@ -1086,7 +1086,29 @@ function synchronizeListeners() {
         // listeners.
 
         event.preventDefault();
-        uncaughtExceptionHandler(event.reason, "unhandledRejection");
+
+        let reason = event.reason;
+        // If the rejection reason is not an Error, wrap it in an
+        // ERR_UNHANDLED_REJECTION error, matching Node.js behavior.
+        if (!(reason instanceof Error)) {
+          const message = "This error originated either by throwing " +
+            "inside of an async function without a catch block, or by rejecting a " +
+            "promise which was not handled with .catch(). The promise rejected with the" +
+            ` reason "${reason}".`;
+          const err = new Error(message);
+          // deno-lint-ignore no-explicit-any
+          (err as any).code = "ERR_UNHANDLED_REJECTION";
+          // deno-lint-ignore no-explicit-any
+          (err as any).reason = event.reason;
+          Object.defineProperty(err, "name", {
+            value: "UnhandledPromiseRejection",
+            writable: true,
+            configurable: true,
+          });
+          reason = err;
+        }
+
+        uncaughtExceptionHandler(reason, "unhandledRejection");
         return;
       }
 

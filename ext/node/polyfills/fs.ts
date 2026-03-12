@@ -2096,7 +2096,7 @@ function writev(
     let currentOffset = 0;
     // deno-lint-ignore prefer-primordials
     while (currentOffset < buffer.byteLength) {
-      currentOffset += await io.writeSync(fd, buffer.subarray(currentOffset));
+      currentOffset += await io.write(fd, buffer.subarray(currentOffset));
     }
     return currentOffset - offset;
   };
