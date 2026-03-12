@@ -835,6 +835,9 @@
     "parallel/test-fs-write-optional-params.js": {},
     "parallel/test-fs-write-stream-encoding.js": {},
     "parallel/test-fs-write-sync-optional-params.js": {},
+    "parallel/test-fs-writev.js": {},
+    "parallel/test-fs-writev-promises.js": {},
+    "parallel/test-fs-writev-sync.js": {},
     "parallel/test-global-console-exists.js": {},
     "parallel/test-global-domexception.js": {},
     "parallel/test-global-encoder.js": {},
@@ -1596,6 +1599,7 @@
     },
     "parallel/test-pipe-head.js": {},
     "parallel/test-pipe-return-val.js": {},
+    "parallel/test-pipe-writev.js": {},
     "parallel/test-preload-worker.js": {},
     "parallel/test-primordials-apply.js": {
       "ignore": true,
