@@ -723,57 +723,52 @@ pub async fn op_node_rmdir(
   Ok(())
 }
 
-const CP_IS_DEST_EXISTS_FLAG: u32 = 1 << 0;
-const CP_IS_SRC_DIRECTORY_FLAG: u32 = 1 << 1;
-const CP_IS_SRC_FILE_FLAG: u32 = 1 << 2;
-const CP_IS_SRC_CHAR_DEVICE_FLAG: u32 = 1 << 3;
-const CP_IS_SRC_BLOCK_DEVICE_FLAG: u32 = 1 << 4;
-const CP_IS_SRC_SYMLINK_FLAG: u32 = 1 << 5;
-const CP_IS_SRC_SOCKET_FLAG: u32 = 1 << 6;
-const CP_IS_SRC_FIFO_FLAG: u32 = 1 << 7;
+const CP_IS_DEST_EXISTS_FLAG: u64 = 1u64 << 32;
+const CP_IS_SRC_DIRECTORY_FLAG: u64 = 1u64 << 33;
+const CP_IS_SRC_FILE_FLAG: u64 = 1u64 << 34;
+const CP_IS_SRC_CHAR_DEVICE_FLAG: u64 = 1u64 << 35;
+const CP_IS_SRC_BLOCK_DEVICE_FLAG: u64 = 1u64 << 36;
+const CP_IS_SRC_SYMLINK_FLAG: u64 = 1u64 << 37;
+const CP_IS_SRC_SOCKET_FLAG: u64 = 1u64 << 38;
+const CP_IS_SRC_FIFO_FLAG: u64 = 1u64 << 39;
 
-#[derive(Debug, Serialize)]
-pub struct CpStatInfoFast {
-  pub flags: u32,
-  pub mode: u32,
-}
-
-impl CpStatInfoFast {
-  fn from_src_stat(
-    src_stat: &deno_io::fs::FsStat,
-    is_dest_exists: bool,
-  ) -> Self {
-    let mut flags: u32 = 0;
-    if is_dest_exists {
-      flags |= CP_IS_DEST_EXISTS_FLAG
-    }
-    if src_stat.is_directory {
-      flags |= CP_IS_SRC_DIRECTORY_FLAG
-    }
-    if src_stat.is_file {
-      flags |= CP_IS_SRC_FILE_FLAG
-    }
-    if src_stat.is_char_device {
-      flags |= CP_IS_SRC_CHAR_DEVICE_FLAG
-    }
-    if src_stat.is_block_device {
-      flags |= CP_IS_SRC_BLOCK_DEVICE_FLAG
-    }
-    if src_stat.is_symlink {
-      flags |= CP_IS_SRC_SYMLINK_FLAG
-    }
-    if src_stat.is_socket {
-      flags |= CP_IS_SRC_SOCKET_FLAG
-    }
-    if src_stat.is_fifo {
-      flags |= CP_IS_SRC_FIFO_FLAG
-    }
-
-    Self {
-      flags,
-      mode: src_stat.mode,
-    }
+/// Bit-packed stat metadata passed to JS for cp operations.
+///
+/// Layout (u64):
+/// - bits 0..31  : src mode (`st_mode`)
+/// - bit 32      : destination exists
+/// - bits 33..39 : source type flags (dir, file, char/block device, symlink,
+///                 socket, fifo)
+fn compact_stat_info(
+  src_stat: &deno_io::fs::FsStat,
+  is_dest_exists: bool,
+) -> u64 {
+  let mut packed = src_stat.mode as u64;
+  if is_dest_exists {
+    packed |= CP_IS_DEST_EXISTS_FLAG;
   }
+  if src_stat.is_file {
+    packed |= CP_IS_SRC_FILE_FLAG;
+  }
+  if src_stat.is_directory {
+    packed |= CP_IS_SRC_DIRECTORY_FLAG;
+  }
+  if src_stat.is_char_device {
+    packed |= CP_IS_SRC_CHAR_DEVICE_FLAG;
+  }
+  if src_stat.is_block_device {
+    packed |= CP_IS_SRC_BLOCK_DEVICE_FLAG;
+  }
+  if src_stat.is_symlink {
+    packed |= CP_IS_SRC_SYMLINK_FLAG;
+  }
+  if src_stat.is_socket {
+    packed |= CP_IS_SRC_SOCKET_FLAG;
+  }
+  if src_stat.is_fifo {
+    packed |= CP_IS_SRC_FIFO_FLAG;
+  }
+  packed
 }
 
 struct CpCheckPathsSyncResult {
@@ -790,11 +785,13 @@ struct CpCheckPathsSyncResult {
   src_ino: u64,
 }
 
+// To save the cost of multiple round trips between Rust and JS,
+// we pack the necessary metadata for `cp` operations into a single u64 value and pass it to JS.
 #[derive(Debug)]
 struct CpCheckPathsResult {
   src_dev: u64,
   src_ino: u64,
-  stat_info: CpStatInfoFast,
+  stat_info: u64,
 }
 
 #[derive(Clone, Copy)]
@@ -819,11 +816,19 @@ fn call_cp_sync_filter<'a>(
   src: &str,
   dest: &str,
 ) -> Option<bool> {
-  let recv = v8::undefined(scope);
-  let src = v8::String::new(scope, src).unwrap();
-  let dest = v8::String::new(scope, dest).unwrap();
-  let result = filter.call(scope, recv.into(), &[src.into(), dest.into()])?;
-  Some(result.boolean_value(scope))
+  v8::tc_scope!(tc_scope, scope);
+
+  let recv = v8::undefined(tc_scope);
+  let src = v8::String::new(tc_scope, src).unwrap();
+  let dest = v8::String::new(tc_scope, dest).unwrap();
+
+  let result = filter.call(tc_scope, recv.into(), &[src.into(), dest.into()]);
+  if tc_scope.has_caught() || tc_scope.has_terminated() {
+    tc_scope.rethrow();
+    return None;
+  }
+
+  Some(result.unwrap().boolean_value(tc_scope))
 }
 
 fn cp_sync_copy_dir<'a>(
@@ -1365,25 +1370,23 @@ async fn check_paths_impl(
     );
   }
 
-  let stat_info = CpStatInfoFast::from_src_stat(&src_stat, dest_stat.is_some());
-
   Ok(CpCheckPathsResult {
     src_dev,
     src_ino,
-    stat_info,
+    stat_info: compact_stat_info(&src_stat, dest_stat.is_some()),
   })
 }
 
 /// Validates src and dest paths for recursive cp operations.
 /// Returns stat info for the source file
 #[op2(stack_trace)]
-#[serde]
+#[bigint]
 pub async fn op_node_cp_check_paths_recursive(
   state: Rc<RefCell<OpState>>,
   #[string] src: String,
   #[string] dest: String,
   dereference: bool,
-) -> Result<CpStatInfoFast, FsError> {
+) -> Result<u64, FsError> {
   let fs = {
     let state = state.borrow();
     state.borrow::<FileSystemRc>().clone()
@@ -1413,13 +1416,13 @@ fn op_node_cp_check_paths_recursive_sync(
 /// parent directory exists
 /// Returns stat info for the source file
 #[op2(stack_trace)]
-#[serde]
+#[bigint]
 pub async fn op_node_cp_validate_and_prepare(
   state: Rc<RefCell<OpState>>,
   #[string] src: String,
   #[string] dest: String,
   dereference: bool,
-) -> Result<CpStatInfoFast, FsError> {
+) -> Result<u64, FsError> {
   let fs = {
     let state = state.borrow();
     state.borrow::<FileSystemRc>().clone()

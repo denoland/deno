@@ -28,21 +28,27 @@ import {
 } from "ext:core/ops";
 import type { CopyOptions } from "node:fs";
 
-enum CpEntryFlags {
-  IsDestExists = 1 << 0,
-  IsDirectory = 1 << 1,
-  IsFile = 1 << 2,
-  IsCharDevice = 1 << 3,
-  IsBlockDevice = 1 << 4,
-  IsSymlink = 1 << 5,
-  IsSocket = 1 << 6,
-  IsFifo = 1 << 7,
-}
+/**
+  Layout (bigint):
+  - bits 0..31  : source mode (`st_mode`) masked by `SrcModeMask`
+  - bit 32      : whether destination exists
+  - bits 33..39 : source entry type flags (dir, file, char/block device,
+                  symlink, socket, fifo)
 
-interface StatInfo {
-  flags: number;
-  mode: number;
-}
+  This keeps the op boundary cheap by passing a single bigint instead of
+  a JS object.
+*/
+const CpEntryFlags = {
+  SrcModeMask: (1n << 32n) - 1n,
+  IsDestExists: 1n << 32n,
+  IsSrcDirectory: 1n << 33n,
+  IsSrcFile: 1n << 34n,
+  IsSrcCharDevice: 1n << 35n,
+  IsSrcBlockDevice: 1n << 36n,
+  IsSrcSymlink: 1n << 37n,
+  IsSrcSocket: 1n << 38n,
+  IsSrcFifo: 1n << 39n,
+} as const;
 
 const {
   PromiseResolve,
@@ -136,7 +142,7 @@ export async function cpFn(
   try {
     // deno-lint-ignore prefer-primordials
     if (opts.filter && !(await opts.filter(src, dest))) return;
-    const statInfo = await op_node_cp_validate_and_prepare(
+    const statInfo: bigint = await op_node_cp_validate_and_prepare(
       src,
       dest,
       opts.dereference,
@@ -145,7 +151,6 @@ export async function cpFn(
   } catch (err) {
     if (typeof err?.os_errno === "number") {
       throw denoErrorToNodeError(err, {
-        message: err.message,
         path: err.path,
         dest: err.dest,
         syscall: err.syscall,
@@ -157,14 +162,14 @@ export async function cpFn(
 }
 
 function getStatsForCopy(
-  statInfo: StatInfo,
+  statInfo: bigint,
   src: string,
   dest: string,
   opts: CopyOptions,
 ) {
-  if (statInfo.flags & CpEntryFlags.IsDirectory && opts.recursive) {
+  if ((statInfo & CpEntryFlags.IsSrcDirectory) && opts.recursive) {
     return onDir(statInfo, src, dest, opts);
-  } else if (statInfo.flags & CpEntryFlags.IsDirectory) {
+  } else if (statInfo & CpEntryFlags.IsSrcDirectory) {
     throw new ERR_FS_EISDIR({
       message: `${src} is a directory (not copied)`,
       path: src,
@@ -173,19 +178,15 @@ function getStatsForCopy(
       code: "EISDIR",
     });
   } else if (
-    statInfo.flags & CpEntryFlags.IsFile ||
-    statInfo.flags & CpEntryFlags.IsCharDevice ||
-    statInfo.flags & CpEntryFlags.IsBlockDevice
+    (statInfo & CpEntryFlags.IsSrcFile) ||
+    (statInfo & CpEntryFlags.IsSrcCharDevice) ||
+    (statInfo & CpEntryFlags.IsSrcBlockDevice)
   ) {
     return onFile(statInfo, src, dest, opts);
-  } else if (statInfo.flags & CpEntryFlags.IsSymlink) {
-    return onLink(
-      !!(statInfo.flags & CpEntryFlags.IsDestExists),
-      src,
-      dest,
-      opts,
-    );
-  } else if (statInfo.flags & CpEntryFlags.IsSocket) {
+  } else if (statInfo & CpEntryFlags.IsSrcSymlink) {
+    const isDestExists = !!(statInfo & CpEntryFlags.IsDestExists);
+    return onLink(isDestExists, src, dest, opts);
+  } else if (statInfo & CpEntryFlags.IsSrcSocket) {
     throw new ERR_FS_CP_SOCKET({
       message: `cannot copy a socket file: ${dest}`,
       path: dest,
@@ -193,7 +194,7 @@ function getStatsForCopy(
       errno: EINVAL,
       code: "EINVAL",
     });
-  } else if (statInfo.flags & CpEntryFlags.IsFifo) {
+  } else if (statInfo & CpEntryFlags.IsSrcFifo) {
     throw new ERR_FS_CP_FIFO_PIPE({
       message: `cannot copy a FIFO pipe: ${dest}`,
       path: dest,
@@ -212,16 +213,18 @@ function getStatsForCopy(
 }
 
 async function onFile(
-  statInfo: StatInfo,
+  statInfo: bigint,
   src: string,
   dest: string,
   opts: CopyOptions,
 ) {
+  const srcMode = Number(statInfo & CpEntryFlags.SrcModeMask);
+  const isDestExists = !!(statInfo & CpEntryFlags.IsDestExists);
   await op_node_cp_on_file(
     src,
     dest,
-    statInfo.mode,
-    !!(statInfo.flags & CpEntryFlags.IsDestExists),
+    srcMode,
+    isDestExists,
     opts.force,
     opts.errorOnExist,
     opts.preserveTimestamps,
@@ -234,13 +237,14 @@ function setDestMode(dest: string, srcMode: number | null): Promise<void> {
 }
 
 function onDir(
-  statInfo: StatInfo,
+  statInfo: bigint,
   src: string,
   dest: string,
   opts: CopyOptions,
 ): Promise<void> {
-  if (!(statInfo.flags & CpEntryFlags.IsDestExists)) {
-    return mkDirAndCopy(statInfo.mode, src, dest, opts);
+  if (!(statInfo & CpEntryFlags.IsDestExists)) {
+    const srcMode = Number(statInfo & CpEntryFlags.SrcModeMask);
+    return mkDirAndCopy(srcMode, src, dest, opts);
   }
   return copyDir(src, dest, opts);
 }
@@ -268,7 +272,7 @@ async function copyDir(
     const destItem = join(dest, name);
     // deno-lint-ignore prefer-primordials
     if (opts.filter && !(await opts.filter(srcItem, destItem))) continue;
-    const statInfo = await op_node_cp_check_paths_recursive(
+    const statInfo: bigint = await op_node_cp_check_paths_recursive(
       srcItem,
       destItem,
       opts.dereference,
