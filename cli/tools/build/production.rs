@@ -9,6 +9,7 @@ use deno_graph::GraphKind;
 use deno_path_util::url_from_directory_path;
 
 use deno_bundler::analyze::analyze_graph;
+use deno_bundler::asset_discovery::discover_assets;
 use deno_bundler::chunk::build_chunk_graph;
 use deno_bundler::chunk::ChunkType;
 use deno_bundler::config::EnvironmentId;
@@ -113,12 +114,13 @@ pub async fn build(
       .create_graph(GraphKind::All, entries.clone(), NpmCachingStrategy::Eager)
       .await?;
 
-    // Convert, transform (includes transpilation), and analyze.
+    // Convert, transform (includes transpilation), discover assets, and analyze.
     let mut bundler_graph =
       build_bundler_graph(&deno_module_graph, env_id, &entries);
     let plugin_driver = create_default_plugin_driver();
     transform_modules(&mut bundler_graph, &plugin_driver);
     transform_graph(&mut bundler_graph, &transform_options);
+    discover_assets(&mut bundler_graph);
     analyze_graph(&mut bundler_graph);
 
     let module_count = bundler_graph.len();
@@ -212,6 +214,61 @@ pub async fn build(
         filename,
         output.code.len(),
       );
+    }
+
+    // Copy asset files to output directory with content-hashed names.
+    let assets_dir = output_dir.join("assets");
+    let mut asset_count = 0usize;
+    for module in bundler_graph.modules() {
+      if !module.loader.is_asset() {
+        continue;
+      }
+      if let Ok(src_path) = module.specifier.to_file_path() {
+        if src_path.exists() {
+          // Create assets subdirectory.
+          if asset_count == 0 {
+            let _ = std::fs::create_dir_all(&assets_dir);
+          }
+
+          // Content-hash the filename.
+          let file_bytes = std::fs::read(&src_path).unwrap_or_default();
+          let hash = {
+            use std::hash::Hasher;
+            let mut hasher =
+              std::collections::hash_map::DefaultHasher::new();
+            hasher.write(&file_bytes);
+            format!("{:x}", hasher.finish())
+          };
+          let stem = src_path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("asset");
+          let ext = src_path
+            .extension()
+            .and_then(|s| s.to_str())
+            .unwrap_or("bin");
+          let hashed_name =
+            format!("{}-{}.{}", stem, &hash[..8], ext);
+          let out_path = assets_dir.join(&hashed_name);
+
+          if let Err(e) = std::fs::write(&out_path, &file_bytes) {
+            log::warn!(
+              "    {} failed to copy asset {}: {}",
+              colors::red("!"),
+              src_path.display(),
+              e
+            );
+          } else {
+            log::warn!(
+              "    {} assets/{} ({} bytes)",
+              colors::green("→"),
+              hashed_name,
+              file_bytes.len(),
+            );
+            asset_count += 1;
+          }
+        }
+      }
     }
 
     log::warn!(

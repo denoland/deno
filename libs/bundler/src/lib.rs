@@ -1,6 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 pub mod analyze;
+pub mod asset_discovery;
 pub mod chunk;
 pub mod config;
 pub mod dependency;

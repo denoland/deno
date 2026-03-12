@@ -22,6 +22,7 @@ use tokio::sync::broadcast;
 use tokio::sync::RwLock;
 
 use deno_bundler::analyze::analyze_graph;
+use deno_bundler::asset_discovery::discover_assets;
 use deno_bundler::chunk::build_chunk_graph;
 use deno_bundler::chunk::ChunkGraph;
 use deno_bundler::config::EnvironmentId;
@@ -273,9 +274,11 @@ pub async fn dev(
     let mut bundler_graph =
       build_bundler_graph(&deno_module_graph, env_id, &entries);
 
-    // Transform (includes TS transpilation via plugin chain), then analyze.
+    // Transform (includes TS transpilation via plugin chain),
+    // discover non-JS assets, then analyze.
     let plugin_driver = create_default_plugin_driver();
     transform_modules(&mut bundler_graph, &plugin_driver);
+    discover_assets(&mut bundler_graph);
     analyze_graph(&mut bundler_graph);
 
     log::warn!(
