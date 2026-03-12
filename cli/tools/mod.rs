@@ -1,6 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 pub mod bench;
+pub mod build;
 pub mod bundle;
 pub mod check;
 pub mod clean;

@@ -1042,6 +1042,51 @@
       "description": "Named permission sets that can be selected with -P/--permission-set or referenced in \"test\", \"bench\", or \"compile\" permissions. A special name \"default\" is used when -P is passed without a value.",
       "additionalProperties": { "$ref": "#/$defs/permissionSet" }
     },
+    "build": {
+      "type": "object",
+      "description": "Configuration for deno build and deno dev commands.",
+      "properties": {
+        "environments": {
+          "type": "object",
+          "description": "Named build environments. Each environment gets its own module graph and output.",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "runtime": {
+                "type": "string",
+                "description": "The target runtime for this environment.",
+                "enum": ["browser", "deno", "node"]
+              },
+              "entries": {
+                "type": "array",
+                "description": "Entry point module specifiers for this environment.",
+                "items": { "type": "string" }
+              },
+              "output": {
+                "type": "string",
+                "description": "Output directory for this environment's build artifacts."
+              },
+              "conditions": {
+                "type": "array",
+                "description": "Custom export conditions for module resolution.",
+                "items": { "type": "string" }
+              },
+              "external": {
+                "type": "array",
+                "description": "Patterns for modules to treat as external (not bundled).",
+                "items": { "type": "string" }
+              }
+            },
+            "required": ["entries"]
+          }
+        }
+      }
+    },
+    "plugins": {
+      "type": "array",
+      "description": "List of build plugin module specifiers to load.",
+      "items": { "type": "string" }
+    },
     "patch": {
       "type": "array",
       "items": {

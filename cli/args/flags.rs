@@ -501,6 +501,18 @@ impl ServeFlags {
   }
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DevFlags {
+  pub port: u16,
+  pub host: String,
+  pub open: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BuildFlags {
+  pub watch: bool,
+}
+
 pub enum WatchFlagsRef<'a> {
   Watch(&'a WatchFlags),
   WithPaths(&'a WatchFlagsWithPaths),
@@ -617,6 +629,7 @@ pub enum DenoSubcommand {
   ApproveScripts(ApproveScriptsFlags),
   Remove(RemoveFlags),
   Bench(BenchFlags),
+  Build(BuildFlags),
   Bundle(BundleFlags),
   Cache(CacheFlags),
   Check(CheckFlags),
@@ -625,6 +638,7 @@ pub enum DenoSubcommand {
   Completions(CompletionsFlags),
   Coverage(CoverageFlags),
   Deploy(DeployFlags),
+  Dev(DevFlags),
   Doc(DocFlags),
   Eval(EvalFlags),
   Fmt(FmtFlags),
@@ -1875,6 +1889,7 @@ pub fn flags_from_vec_with_initial_cwd(
         "approve-scripts" => approve_scripts_parse(&mut flags, &mut m)?,
         "remove" => remove_parse(&mut flags, &mut m),
         "bench" => bench_parse(&mut flags, &mut m)?,
+        "build" => build_parse(&mut flags, &mut m),
         "bundle" => bundle_parse(&mut flags, &mut m)?,
         "cache" => cache_parse(&mut flags, &mut m)?,
         "check" => check_parse(&mut flags, &mut m)?,
@@ -1883,6 +1898,7 @@ pub fn flags_from_vec_with_initial_cwd(
         "create" => create_parse(&mut flags, &mut m)?,
         "completions" => completions_parse(&mut flags, &mut m, app),
         "coverage" => coverage_parse(&mut flags, &mut m)?,
+        "dev" => dev_parse(&mut flags, &mut m),
         "doc" => doc_parse(&mut flags, &mut m)?,
         "eval" => eval_parse(&mut flags, &mut m)?,
         "fmt" => fmt_parse(&mut flags, &mut m)?,
@@ -2142,6 +2158,7 @@ pub fn clap_root() -> Command {
         .subcommand(audit_subcommand())
         .subcommand(remove_subcommand())
         .subcommand(bench_subcommand())
+        .subcommand(build_subcommand())
         .subcommand(bundle_subcommand())
         .subcommand(cache_subcommand())
         .subcommand(check_subcommand())
@@ -2152,6 +2169,7 @@ pub fn clap_root() -> Command {
         .subcommand(coverage_subcommand())
         .subcommand(doc_subcommand())
         .subcommand(deploy_subcommand())
+        .subcommand(dev_subcommand())
         .subcommand(sandbox_subcommand())
         .subcommand(eval_subcommand())
         .subcommand(fmt_subcommand())
@@ -2601,6 +2619,67 @@ If no output file is given, the output is written to standard output:
       .arg(allow_scripts_arg())
       .arg(allow_import_arg())
       .arg(deny_import_arg())
+  })
+}
+
+fn build_subcommand() -> Command {
+  command(
+    "build",
+    "Bundle and build project for production.
+
+  deno build
+
+Reads build configuration from deno.json and outputs optimized bundles.
+
+",
+    UnstableArgsConfig::ResolutionOnly,
+  )
+  .defer(|cmd| {
+    cmd
+      .arg(config_arg())
+      .arg(
+        Arg::new("watch")
+          .long("watch")
+          .help("Watch for file changes and rebuild")
+          .action(ArgAction::SetTrue),
+      )
+  })
+}
+
+fn dev_subcommand() -> Command {
+  command(
+    "dev",
+    "Start a development server with hot module replacement.
+
+  deno dev
+
+Reads build configuration from deno.json and starts a dev server with HMR support.
+
+",
+    UnstableArgsConfig::ResolutionOnly,
+  )
+  .defer(|cmd| {
+    cmd
+      .arg(config_arg())
+      .arg(
+        Arg::new("port")
+          .long("port")
+          .help("The port to listen on")
+          .value_parser(value_parser!(u16))
+          .default_value("5173"),
+      )
+      .arg(
+        Arg::new("host")
+          .long("host")
+          .help("The host to listen on")
+          .default_value("localhost"),
+      )
+      .arg(
+        Arg::new("open")
+          .long("open")
+          .help("Open the site in the default browser")
+          .action(ArgAction::SetTrue),
+      )
   })
 }
 
@@ -6097,6 +6176,32 @@ fn bench_parse(
   });
 
   Ok(())
+}
+
+fn build_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  flags.config_flag = matches
+    .remove_one::<String>("config")
+    .map(ConfigFlag::Path)
+    .unwrap_or(ConfigFlag::Discover);
+
+  flags.subcommand = DenoSubcommand::Build(BuildFlags {
+    watch: matches.get_flag("watch"),
+  });
+}
+
+fn dev_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  flags.config_flag = matches
+    .remove_one::<String>("config")
+    .map(ConfigFlag::Path)
+    .unwrap_or(ConfigFlag::Discover);
+
+  let port = matches.remove_one::<u16>("port").unwrap_or(5173);
+  let host = matches
+    .remove_one::<String>("host")
+    .unwrap_or_else(|| "localhost".to_owned());
+  let open = matches.get_flag("open");
+
+  flags.subcommand = DenoSubcommand::Dev(DevFlags { port, host, open });
 }
 
 fn bundle_parse(

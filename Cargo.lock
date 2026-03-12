@@ -2022,6 +2022,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "deno_bundler"
+version = "0.1.0"
+dependencies = [
+ "deno_ast",
+ "deno_error",
+ "deno_graph",
+ "deno_media_type",
+ "regex",
+ "rustc-hash 2.1.1",
+ "serde",
+ "url",
+]
+
+[[package]]
 name = "deno_cache"
 version = "0.171.0"
 dependencies = [

@@ -145,6 +145,13 @@ async fn run_subcommand(
         tools::bench::run_benchmarks(flags, bench_flags).await
       }
     }),
+    DenoSubcommand::Build(build_flags) => spawn_subcommand(async {
+      log::warn!(
+        "⚠️  {} is experimental and subject to changes",
+        colors::cyan("deno build")
+      );
+      tools::build::build(Arc::new(flags), build_flags).await
+    }),
     DenoSubcommand::Bundle(bundle_flags) => spawn_subcommand(async {
       log::warn!(
         "⚠️  {} is experimental and subject to changes",
@@ -154,6 +161,13 @@ async fn run_subcommand(
     }),
     DenoSubcommand::Deploy(deploy_flags) => spawn_subcommand(async move {
       tools::deploy::deploy(flags, deploy_flags).await
+    }),
+    DenoSubcommand::Dev(dev_flags) => spawn_subcommand(async {
+      log::warn!(
+        "⚠️  {} is experimental and subject to changes",
+        colors::cyan("deno dev")
+      );
+      tools::build::dev(Arc::new(flags), dev_flags).await
     }),
     DenoSubcommand::Doc(doc_flags) => spawn_subcommand(async {
       tools::doc::doc(Arc::new(flags), doc_flags).await

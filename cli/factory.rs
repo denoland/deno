@@ -632,6 +632,7 @@ impl CliFactory {
             },
             DenoSubcommand::Audit { .. }
             | DenoSubcommand::Bench { .. }
+            | DenoSubcommand::Build { .. }
             | DenoSubcommand::Bundle { .. }
             | DenoSubcommand::Check { .. }
             | DenoSubcommand::Clean { .. }
@@ -639,6 +640,7 @@ impl CliFactory {
             | DenoSubcommand::Completions { .. }
             | DenoSubcommand::Coverage { .. }
             | DenoSubcommand::Deploy { .. }
+            | DenoSubcommand::Dev { .. }
             | DenoSubcommand::Doc { .. }
             | DenoSubcommand::Eval { .. }
             | DenoSubcommand::Fmt { .. }

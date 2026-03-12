@@ -1125,6 +1125,8 @@ pub struct ConfigFileJson {
   pub permissions: Option<Value>,
   pub publish: Option<Value>,
   pub deploy: Option<Value>,
+  pub build: Option<Value>,
+  pub plugins: Option<Vec<String>>,
   pub allow_scripts: Option<Value>,
 
   pub name: Option<String>,
