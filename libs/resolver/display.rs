@@ -263,6 +263,54 @@ mod tests {
     run_test("test\n", "test\r\n", " | Text differed by line endings.\n");
   }
 
+  #[test]
+  fn test_lockfile_diff() {
+    // Simulates the frozen lockfile diff scenario where adding a new
+    // dependency inserts lines while matching braces remain unchanged.
+    let before = r#"{
+  "version": "5",
+  "packages": {
+    "npm:@denotest/add@1": "1.0.0"
+  },
+  "npm": {
+    "@denotest/add@1.0.0": {
+      "integrity": "abc",
+      "tarball": "http://localhost/add/1.0.0.tgz"
+    }
+  }
+}"#;
+    let after = r#"{
+  "version": "5",
+  "packages": {
+    "npm:@denotest/add@1": "1.0.0",
+    "npm:@denotest/subtract@1": "1.0.0"
+  },
+  "npm": {
+    "@denotest/add@1.0.0": {
+      "integrity": "abc",
+      "tarball": "http://localhost/add/1.0.0.tgz"
+    },
+    "@denotest/subtract@1.0.0": {
+      "integrity": "def",
+      "tarball": "http://localhost/subtract/1.0.0.tgz"
+    }
+  }
+}"#;
+    run_test(
+      before,
+      after,
+      concat!(
+        " 4 | -    \"npm:@denotest/add@1\": \"1.0.0\"\n",
+        " 4 | +    \"npm:@denotest/add@1\": \"1.0.0\",\n",
+        " 5 | +    \"npm:@denotest/subtract@1\": \"1.0.0\"\n",
+        "11 | +    },\n",
+        "12 | +    \"@denotest/subtract@1.0.0\": {\n",
+        "13 | +      \"integrity\": \"def\",\n",
+        "14 | +      \"tarball\": \"http://localhost/subtract/1.0.0.tgz\"\n",
+      ),
+    );
+  }
+
   fn run_test(diff_text1: &str, diff_text2: &str, expected_output: &str) {
     assert_eq!(
       test_util::strip_ansi_codes(&diff(diff_text1, diff_text2,)),
