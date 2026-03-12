@@ -237,7 +237,9 @@ pub async fn eval_command(
   eval_flags: EvalFlags,
 ) -> Result<i32, AnyError> {
   // Auto-detect CJS vs ESM if --ext was not explicitly provided.
-  if flags.ext.is_none() {
+  // Only applies to the `-e/--eval` top-level flag, not `deno eval` which
+  // defaults to ESM for backwards compatibility.
+  if eval_flags.auto_detect_ext && flags.ext.is_none() {
     let source_code = if eval_flags.print {
       format!("console.log({})", &eval_flags.code)
     } else {

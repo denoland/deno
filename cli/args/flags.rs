@@ -267,6 +267,10 @@ pub struct DocFlags {
 pub struct EvalFlags {
   pub print: bool,
   pub code: String,
+  /// When true, auto-detect CJS vs ESM based on the code content.
+  /// This is enabled for the `-e/--eval` top-level flag but not for
+  /// the `deno eval` subcommand (which defaults to ESM).
+  pub auto_detect_ext: bool,
 }
 
 #[derive(Clone, Default, Debug, Eq, PartialEq)]
@@ -1924,8 +1928,11 @@ pub fn flags_from_vec_with_initial_cwd(
 
         ext_arg_parse(&mut flags, &mut matches);
 
-        flags.subcommand =
-          DenoSubcommand::Eval(EvalFlags { print: false, code });
+        flags.subcommand = DenoSubcommand::Eval(EvalFlags {
+          print: false,
+          code,
+          auto_detect_ext: true,
+        });
       } else if has_non_globals || matches.contains_id("script_arg") {
         run_parse(&mut flags, &mut matches, app, true)?;
       } else {
@@ -6397,7 +6404,11 @@ fn eval_parse(
   let code = code_args.next().unwrap();
   flags.argv.extend(code_args);
 
-  flags.subcommand = DenoSubcommand::Eval(EvalFlags { print, code });
+  flags.subcommand = DenoSubcommand::Eval(EvalFlags {
+    print,
+    code,
+    auto_detect_ext: false,
+  });
   Ok(())
 }
 
@@ -9625,6 +9636,7 @@ mod tests {
         subcommand: DenoSubcommand::Eval(EvalFlags {
           print: false,
           code: "'console.log(\"hello\")'".to_string(),
+          auto_detect_ext: false,
         }),
         permissions: PermissionFlags {
           allow_all: true,
@@ -9644,6 +9656,7 @@ mod tests {
         subcommand: DenoSubcommand::Eval(EvalFlags {
           print: true,
           code: "1+2".to_string(),
+          auto_detect_ext: false,
         }),
         permissions: PermissionFlags {
           allow_all: true,
@@ -9668,6 +9681,7 @@ mod tests {
         subcommand: DenoSubcommand::Eval(EvalFlags {
           print: false,
           code: "'console.log(\"hello\")'".to_string(),
+          auto_detect_ext: false,
         }),
         permissions: PermissionFlags {
           allow_all: true,
@@ -9689,6 +9703,7 @@ mod tests {
         subcommand: DenoSubcommand::Eval(EvalFlags {
           print: false,
           code: "42".to_string(),
+          auto_detect_ext: false,
         }),
         import_map_path: Some("import_map.json".to_string()),
         no_remote: true,
@@ -9727,6 +9742,7 @@ mod tests {
         subcommand: DenoSubcommand::Eval(EvalFlags {
           print: false,
           code: "console.log(Deno.args)".to_string(),
+          auto_detect_ext: false,
         }),
         argv: svec!["arg1", "arg2"],
         permissions: PermissionFlags {
@@ -9747,6 +9763,7 @@ mod tests {
         subcommand: DenoSubcommand::Eval(EvalFlags {
           print: false,
           code: "console.log('hello')".to_string(),
+          auto_detect_ext: true,
         }),
         permissions: PermissionFlags {
           allow_all: true,
@@ -9766,6 +9783,7 @@ mod tests {
         subcommand: DenoSubcommand::Eval(EvalFlags {
           print: false,
           code: "require('fs')".to_string(),
+          auto_detect_ext: true,
         }),
         permissions: PermissionFlags {
           allow_all: true,
@@ -9785,6 +9803,7 @@ mod tests {
         subcommand: DenoSubcommand::Eval(EvalFlags {
           print: false,
           code: "import('fs')".to_string(),
+          auto_detect_ext: true,
         }),
         permissions: PermissionFlags {
           allow_all: true,
