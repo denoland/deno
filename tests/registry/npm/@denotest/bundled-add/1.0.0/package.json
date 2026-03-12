@@ -1,6 +1,7 @@
 {
   "name": "@denotest/bundled-deps",
   "version": "1.0.0",
+  "bin": "./index.js",
   "dependencies": {
     "@denotest/add": "1"
   },

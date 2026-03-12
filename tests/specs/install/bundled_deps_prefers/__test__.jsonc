@@ -7,6 +7,6 @@
     "output": "[WILDCARD]"
   }, {
     "args": "run -A npm:@denotest/bundled-add 1 2",
-    "output": "Using vendored\n3\n"
+    "output": "output.out"
   }]
 }
