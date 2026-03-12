@@ -64,8 +64,7 @@ impl<'a> DiffBuilder<'a> {
 
     for hunk in diff.hunks() {
       // Show unchanged context lines between hunks
-      let gap_len =
-        (hunk.before.start - prev_before_end) as usize;
+      let gap_len = (hunk.before.start - prev_before_end) as usize;
       if gap_len > 0 {
         if prev_before_end == 0 {
           // Before the first hunk — just skip, no context needed
@@ -77,21 +76,33 @@ impl<'a> DiffBuilder<'a> {
           self.orig_line += skip;
           self.edit_line += skip;
           for idx in (hunk.before.start - 1)..hunk.before.start {
-            let s =
-              self.input.interner[self.input.before[idx as usize]];
+            let s = self.input.interner[self.input.before[idx as usize]];
             self.write_context_line(s);
           }
         }
       }
 
-      // Write deleted lines
-      for del in hunk.before.clone() {
-        let s = self.input.interner[self.input.before[del as usize]];
+      // Interleave deleted/inserted line pairs, then emit remaining
+      let del_count = hunk.before.len();
+      let ins_count = hunk.after.len();
+      let paired = std::cmp::min(del_count, ins_count);
+
+      for i in 0..paired {
+        let del_idx = hunk.before.start + i as u32;
+        let s = self.input.interner[self.input.before[del_idx as usize]];
+        self.write_rem_line(s);
+        let ins_idx = hunk.after.start + i as u32;
+        let s = self.input.interner[self.input.after[ins_idx as usize]];
+        self.write_add_line(s);
+      }
+      // Remaining unpaired deletes
+      for del_idx in (hunk.before.start + paired as u32)..hunk.before.end {
+        let s = self.input.interner[self.input.before[del_idx as usize]];
         self.write_rem_line(s);
       }
-      // Write inserted lines
-      for ins in hunk.after.clone() {
-        let s = self.input.interner[self.input.after[ins as usize]];
+      // Remaining unpaired inserts
+      for ins_idx in (hunk.after.start + paired as u32)..hunk.after.end {
+        let s = self.input.interner[self.input.after[ins_idx as usize]];
         self.write_add_line(s);
       }
 
@@ -286,8 +297,8 @@ mod tests {
         "5 | -console.log(\n",
         "1 | +console.log(\n",
         "6 | -'Hello World'\n",
-        "7 | -)\n",
         "2 | +\"Hello World\"\n",
+        "7 | -)\n",
         "3 | +);\n",
       ),
     );
@@ -298,10 +309,7 @@ mod tests {
     run_test(
       "test\nsome line text test",
       "test\nsome line text test\n",
-      concat!(
-        "2 | -some line text test\n",
-        "2 | +some line text test\n",
-      ),
+      concat!("2 | -some line text test\n", "2 | +some line text test\n",),
     );
   }
 
