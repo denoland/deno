@@ -1,0 +1,12 @@
+{
+  "tasks": {
+    "test1": {
+      "description": "Test 1",
+      "command": "deno test1"
+    },
+    "test2": {
+      "description": "Test 2",
+      "command": "deno test2"
+    }
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "tests": {
+    "fallback_to_backend_task": {
+      "args": "run backend",
+      "output": "run_task_when_entry_isdir.out"
+    }
+  }
+}

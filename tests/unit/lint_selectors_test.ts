@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import { assertEquals } from "@std/assert/equals";
 import {
@@ -460,6 +460,27 @@ Deno.test("Parser - Attr", () => {
       op: BinOp.Equal,
       prop: [1],
       value: /str/g,
+    },
+  ]]);
+});
+
+// See https://github.com/denoland/deno/issues/30460
+Deno.test("Parser - Attr regex", () => {
+  assertEquals(testParse("[bar=/^[a-z]$/]"), [[
+    {
+      type: ATTR_BIN_NODE,
+      op: BinOp.Equal,
+      prop: [2],
+      value: /^[a-z]$/,
+    },
+  ]]);
+
+  assertEquals(testParse("[bar=/^[a-z\\]]foo$/]"), [[
+    {
+      type: ATTR_BIN_NODE,
+      op: BinOp.Equal,
+      prop: [2],
+      value: /^[a-z\]]foo$/,
     },
   ]]);
 });

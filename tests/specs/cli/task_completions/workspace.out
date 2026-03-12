@@ -1,0 +1,4 @@
+member-task1[WILDCHAR]Member task 1
+member-task2[WILDCHAR]Member task 2
+should-be-inherited[WILDCHAR]Should be inherited
+--[WILDCARD]

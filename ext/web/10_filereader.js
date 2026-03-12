@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // @ts-check
 /// <reference no-default-lib="true" />
@@ -34,7 +34,7 @@ const {
 } = primordials;
 
 import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
+import { createFilteredInspectProxy } from "./01_console.js";
 import { forgivingBase64Encode } from "./00_infra.js";
 import { EventTarget, ProgressEvent } from "./02_event.js";
 import { decode, TextDecoder } from "./08_text_encoding.js";

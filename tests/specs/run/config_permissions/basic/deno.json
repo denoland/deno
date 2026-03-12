@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "data-read": {
+      "read": ["./data"]
+    },
+    "data-write": {
+      "write": {
+        "allow": true,
+        "deny": ["./data"]
+      }
+    }
+  }
+}

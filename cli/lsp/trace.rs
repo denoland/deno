@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::fmt;
 
@@ -29,15 +29,15 @@ impl fmt::Debug for TracingGuard {
 #[cfg(feature = "lsp-tracing")]
 mod real_tracing {
   use deno_core::anyhow;
-  use opentelemetry::trace::TracerProvider;
   pub use opentelemetry::Context;
   use opentelemetry::KeyValue;
+  use opentelemetry::trace::TracerProvider;
   use opentelemetry_otlp::WithExportConfig;
   use opentelemetry_sdk::Resource;
   use opentelemetry_semantic_conventions::resource::SERVICE_NAME;
+  pub use tracing::Span;
   use tracing::level_filters::LevelFilter;
   pub use tracing::span::EnteredSpan;
-  pub use tracing::Span;
   use tracing_opentelemetry::OpenTelemetryLayer;
   pub use tracing_opentelemetry::OpenTelemetrySpanExt as SpanExt;
   use tracing_subscriber::fmt::format::FmtSpan;

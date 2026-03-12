@@ -1,40 +1,40 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::sync::Arc;
 
+use deno_core::anyhow::Context;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
-use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::located_script_name;
-use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::url::Url;
+use deno_path_util::resolve_url_or_path;
+use deno_runtime::WorkerExecutionMode;
 use deno_runtime::deno_io::Stdio;
 use deno_runtime::deno_io::StdioPipe;
 use deno_runtime::deno_permissions::PermissionsContainer;
-use deno_runtime::WorkerExecutionMode;
 use deno_terminal::colors;
-use jupyter_protocol::messaging::StreamContent;
-use jupyter_runtime::ConnectionInfo;
+use jupyter_protocol::ConnectionInfo;
+use jupyter_protocol::StreamContent;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::oneshot;
 use tokio_util::sync::CancellationToken;
 
+use crate::CliFactory;
 use crate::args::Flags;
 use crate::args::JupyterFlags;
 use crate::cdp;
 use crate::lsp::ReplCompletionItem;
 use crate::ops;
 use crate::tools::repl;
-use crate::tools::test::create_single_test_event_channel;
-use crate::tools::test::reporters::PrettyTestReporter;
 use crate::tools::test::TestEventWorkerSender;
 use crate::tools::test::TestFailureFormatOptions;
-use crate::CliFactory;
+use crate::tools::test::create_single_test_event_channel;
+use crate::tools::test::reporters::PrettyTestReporter;
 
 mod install;
 pub mod server;
@@ -73,7 +73,7 @@ pub async fn kernel(
   let permissions =
     PermissionsContainer::allow_all(factory.permission_desc_parser()?.clone());
   let npm_installer = factory.npm_installer_if_managed().await?.cloned();
-  let tsconfig_resolver = factory.tsconfig_resolver()?;
+  let compiler_options_resolver = factory.compiler_options_resolver()?;
   let resolver = factory.resolver().await?.clone();
   let worker_factory = factory.create_cli_main_worker_factory().await?;
   let (stdio_tx, stdio_rx) = mpsc::unbounded_channel();
@@ -100,6 +100,10 @@ pub async fn kernel(
     .create_custom_worker(
       WorkerExecutionMode::Jupyter,
       main_module.clone(),
+      // `deno jupyter` doesn't support preloading modules
+      vec![],
+      // `deno jupyter` doesn't support require modules
+      vec![],
       permissions,
       vec![
         ops::jupyter::deno_jupyter::init(stdio_tx.clone()),
@@ -124,7 +128,7 @@ pub async fn kernel(
     cli_options,
     npm_installer,
     resolver,
-    tsconfig_resolver,
+    compiler_options_resolver,
     worker,
     main_module,
     test_event_receiver,
@@ -176,12 +180,20 @@ pub async fn kernel(
   };
   let repl_session_proxy_channels = JupyterReplProxy { tx: tx1, rx: rx2 };
 
+  let isolate_handle = repl_session_proxy
+    .repl_session
+    .worker
+    .js_runtime
+    .v8_isolate()
+    .thread_safe_handle();
+
   let join_handle = std::thread::spawn(move || {
     let fut = server::JupyterServer::start(
       spec,
       stdio_rx,
       repl_session_proxy_channels,
       startup_data_tx,
+      isolate_handle,
     )
     .boxed_local();
     deno_runtime::tokio_util::create_and_run_current_thread(fut)
@@ -465,8 +477,7 @@ impl JupyterReplSession {
           non_indexed_properties_only: Some(true),
         }),
       )
-      .await
-      .ok()?;
+      .await;
     serde_json::from_value(get_properties_response).ok()
   }
 
@@ -496,8 +507,7 @@ impl JupyterReplSession {
           unique_context_id: None,
         }),
       )
-      .await
-      .ok()?;
+      .await;
     serde_json::from_value(evaluate_response).ok()
   }
 
@@ -512,8 +522,7 @@ impl JupyterReplSession {
           execution_context_id: Some(self.repl_session.context_id),
         }),
       )
-      .await
-      .unwrap();
+      .await;
     serde_json::from_value(evaluate_response).unwrap()
   }
 
@@ -521,6 +530,14 @@ impl JupyterReplSession {
     &mut self,
     line: &str,
   ) -> Result<repl::TsEvaluateResponse, AnyError> {
+    // Clear any pending termination flag from a previous interrupt request,
+    // so that the next evaluation can proceed normally.
+    self
+      .repl_session
+      .worker
+      .js_runtime
+      .v8_isolate()
+      .cancel_terminate_execution();
     self
       .repl_session
       .evaluate_line_with_object_wrapping(line)
@@ -556,7 +573,7 @@ impl JupyterReplSession {
         "awaitPromise": true,
       })),
     )
-    .await.ok()?;
+    .await;
     serde_json::from_value(response).ok()
   }
 }

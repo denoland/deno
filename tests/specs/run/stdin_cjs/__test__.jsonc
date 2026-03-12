@@ -1,0 +1,5 @@
+{
+  "args": "run --allow-read=. --quiet --ext=cjs -",
+  "output": "Hello!\n",
+  "input": "require('./say_hello.js');"
+}

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 mod permission_checker;
 
@@ -60,7 +60,7 @@ impl<TSys: DenoLibSys> NpmProcessStateProvider
       local_node_modules_path: self
         .0
         .root_node_modules_path()
-        .map(|p| p.to_string_lossy().to_string()),
+        .map(|p| p.to_string_lossy().into_owned()),
     }
     .as_serialized()
   }

@@ -1,0 +1,2 @@
+Download http://127.0.0.1:4250/@denotest/bin/meta.json
+error: JSR package not found: @denotest/bin

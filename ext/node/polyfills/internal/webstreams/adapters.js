@@ -1,5 +1,5 @@
 // deno-lint-ignore-file
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 import { destroy } from "ext:deno_node/internal/streams/destroy.js";
 import finished from "ext:deno_node/internal/streams/end-of-stream.js";
 import {
@@ -516,6 +516,8 @@ export function newReadableStreamFromStreamReadable(
 
   streamReadable.pause();
 
+  let isCanceled = false;
+
   const cleanup = finished(streamReadable, (error) => {
     if (error?.code === "ERR_STREAM_PREMATURE_CLOSE") {
       const err = new AbortError(undefined, { cause: error });
@@ -528,6 +530,9 @@ export function newReadableStreamFromStreamReadable(
     streamReadable.on("error", () => {});
     if (error) {
       return controller.error(error);
+    }
+    if (isCanceled) {
+      return;
     }
     controller.close();
   });
@@ -544,7 +549,8 @@ export function newReadableStreamFromStreamReadable(
     },
 
     cancel(reason) {
-      destroy(streamReadable, reason);
+      isCanceled = true;
+      destroy.call(streamReadable, reason);
     },
   }, strategy);
 }

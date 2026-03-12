@@ -1,0 +1,4 @@
+error: The import attribute type of "bytes" is unsupported.
+  Specifier: file:///[WILDLINE]/data.txt
+  hint: run with --unstable-raw-imports
+    at file:///[WILDLINE]/main.ts:1:18

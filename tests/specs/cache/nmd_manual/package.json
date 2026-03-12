@@ -1,0 +1,4 @@
+{
+  "@denotest/add": "jsr:^1",
+  "@denotest/esm-basic": "1"
+}

@@ -1,17 +1,17 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
 import {
-  BigIntStats,
   CFISBIS,
-  statCallback,
-  statCallbackBigInt,
-  statOptions,
-  Stats,
-} from "ext:deno_node/_fs/_fs_stat.ts";
+  type statCallback,
+  type statCallbackBigInt,
+  type statOptions,
+} from "ext:deno_node/internal/fs/stat_utils.ts";
+import { BigIntStats, Stats } from "ext:deno_node/internal/fs/utils.mjs";
 import { FsFile } from "ext:deno_fs/30_fs.js";
+import { denoErrorToNodeError } from "ext:deno_node/internal/errors.ts";
 
 export function fstat(fd: number, callback: statCallback): void;
 export function fstat(
@@ -43,7 +43,7 @@ export function fstat(
 
   new FsFile(fd, Symbol.for("Deno.internal.FsFile")).stat().then(
     (stat) => callback(null, CFISBIS(stat, options.bigint)),
-    (err) => callback(err),
+    (err) => callback(denoErrorToNodeError(err, { syscall: "fstat" })),
   );
 }
 
@@ -60,8 +60,13 @@ export function fstatSync(
   fd: number,
   options?: statOptions,
 ): Stats | BigIntStats {
-  const origin = new FsFile(fd, Symbol.for("Deno.internal.FsFile")).statSync();
-  return CFISBIS(origin, options?.bigint || false);
+  try {
+    const origin = new FsFile(fd, Symbol.for("Deno.internal.FsFile"))
+      .statSync();
+    return CFISBIS(origin, options?.bigint || false);
+  } catch (err) {
+    throw denoErrorToNodeError(err, { syscall: "fstat" });
+  }
 }
 
 export function fstatPromise(fd: number): Promise<Stats>;

@@ -1,0 +1,12 @@
+require_first.js loading
+require_first.js platform: [WILDCARD]
+require_second.js loading
+require_second.js path separator: [WILDCARD]
+main_multiple.ts starts
+First: first
+Second: second
+First filename: [WILDCARD]require_first.js
+Second filename: [WILDCARD]require_second.js
+First dirname: [WILDCARD]require_modules_multiple
+Second dirname: [WILDCARD]require_modules_multiple
+main_multiple.ts finished

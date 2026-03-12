@@ -1,0 +1,36 @@
+{
+  "tempDir": true,
+  "tests": {
+    "run_coverage": {
+      "steps": [
+        {
+          "args": "run --coverage foo.ts",
+          "output": "0\n0\n"
+        },
+        {
+          "args": "coverage",
+          "output": "coverage_summary.out"
+        }
+      ]
+    },
+    "run_coverage_env": {
+      "steps": [
+        {
+          "args": "run foo.ts",
+          "output": "0\n0\n",
+          "envs": {
+            "DENO_COVERAGE_DIR": "my_coverage_dir"
+          }
+        },
+        {
+          "args": "coverage my_coverage_dir",
+          "output": "coverage_summary.out"
+        }
+      ]
+    },
+    "test_child_process_coverage": {
+      "args": "test -A --coverage child_process_coverage_test.ts",
+      "output": "child_process_coverage_test.out"
+    }
+  }
+}

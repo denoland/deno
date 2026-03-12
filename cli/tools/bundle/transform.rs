@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use deno_ast::swc;
 use deno_ast::swc::ast::Bool;
@@ -21,22 +21,18 @@ impl VisitMut for BundleImportMetaMainTransform {
     //   import.meta.main => import.meta.main
     // else:
     //   import.meta.main => false
-    if let swc::ast::Expr::Member(member) = node {
-      if let swc::ast::Expr::MetaProp(meta_prop) = &mut *member.obj {
-        if meta_prop.kind == swc::ast::MetaPropKind::ImportMeta
-          && member.prop.is_ident_with("main")
-        {
-          if self.is_entrypoint {
-            return;
-          } else {
-            let span = member.span;
-            *node = swc::ast::Expr::Lit(swc::ast::Lit::Bool(Bool {
-              span,
-              value: false,
-            }));
-            return;
-          }
-        }
+    if let swc::ast::Expr::Member(member) = node
+      && let swc::ast::Expr::MetaProp(meta_prop) = &mut *member.obj
+      && meta_prop.kind == swc::ast::MetaPropKind::ImportMeta
+      && member.prop.is_ident_with("main")
+    {
+      if self.is_entrypoint {
+        return;
+      } else {
+        let span = member.span;
+        *node =
+          swc::ast::Expr::Lit(swc::ast::Lit::Bool(Bool { span, value: false }));
+        return;
       }
     }
     node.visit_mut_children_with(self);

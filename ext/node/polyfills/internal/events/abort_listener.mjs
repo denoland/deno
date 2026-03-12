@@ -1,9 +1,8 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
 import { primordials } from "ext:core/mod.js";
-const { queueMicrotask } = primordials;
-import { SymbolDispose } from "ext:deno_web/00_infra.js";
+const { queueMicrotask, SymbolDispose } = primordials;
 import * as abortSignal from "ext:deno_web/03_abort_signal.js";
 import { validateAbortSignal, validateFunction } from "../validators.mjs";
 import { codes } from "../errors.ts";

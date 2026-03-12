@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use super::common;
 use super::fmt::to_relative_path_or_remote_url;
@@ -41,7 +41,7 @@ impl DotTestReporter {
       return;
     }
 
-    if self.n != 0 && self.n % self.width == 0 {
+    if self.n != 0 && self.n.is_multiple_of(self.width) {
       println!();
     }
     self.n += 1;

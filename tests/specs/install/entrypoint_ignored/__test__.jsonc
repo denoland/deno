@@ -1,0 +1,4 @@
+{
+  "args": "install --allow-import -e ignore/main.ts",
+  "output": "install.out"
+}

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use deno_error::JsErrorBox;
 
@@ -57,7 +57,7 @@ impl TryFrom<NativeType> for libffi::middle::Type {
           false => {
             return Err(JsErrorBox::type_error(
               "Struct must have at least one field",
-            ))
+            ));
           }
         })
       }

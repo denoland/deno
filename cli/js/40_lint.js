@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // @ts-check
 
@@ -391,6 +391,12 @@ export class Context {
     const start = range[0];
     const end = range[1];
 
+    if (start > end) {
+      throw new RangeError(
+        `Invalid range. Start value is bigger than end value: [${start}, ${end}]`,
+      );
+    }
+
     /** @type {Deno.lint.Fix[]} */
     const fixes = [];
 
@@ -607,6 +613,9 @@ function setNodeGetters(ctx) {
     const name = getString(ctx.strTable, id);
 
     Object.defineProperty(FacadeNode.prototype, name, {
+      // The `parent` key is expected to be non-enumerable.
+      // See the npm `zimmerframe` library.
+      enumerable: name !== "parent",
       get() {
         return readValue(
           this[INTERNAL_CTX],
@@ -622,8 +631,8 @@ function setNodeGetters(ctx) {
     hasCommenstGetter = true;
     Object.defineProperty(FacadeNode.prototype, "comments", {
       get() {
-        materializeComments(ctx);
-        return ctx.comments;
+        materializeComments(this[INTERNAL_CTX]);
+        return this[INTERNAL_CTX].comments;
       },
     });
   }

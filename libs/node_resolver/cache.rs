@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -6,17 +6,19 @@ use std::path::Path;
 use std::path::PathBuf;
 
 use sys_traits::BaseFsCanonicalize;
+use sys_traits::BaseFsOpen;
 use sys_traits::BaseFsRead;
 use sys_traits::BaseFsReadDir;
 use sys_traits::FileType;
 use sys_traits::FsCanonicalize;
 use sys_traits::FsMetadata;
 use sys_traits::FsMetadataValue;
+use sys_traits::FsOpen;
 use sys_traits::FsRead;
 use sys_traits::FsReadDir;
 
 pub trait NodeResolutionCache:
-  std::fmt::Debug + crate::sync::MaybeSend + crate::sync::MaybeSync
+  std::fmt::Debug + deno_maybe_sync::MaybeSend + deno_maybe_sync::MaybeSync
 {
   fn get_canonicalized(
     &self,
@@ -86,7 +88,8 @@ impl NodeResolutionCache for NodeResolutionThreadLocalCache {
 }
 
 #[allow(clippy::disallowed_types)]
-pub type NodeResolutionCacheRc = crate::sync::MaybeArc<dyn NodeResolutionCache>;
+pub type NodeResolutionCacheRc =
+  deno_maybe_sync::MaybeArc<dyn NodeResolutionCache>;
 
 #[derive(Debug, Default)]
 pub struct NodeResolutionSys<TSys> {
@@ -159,10 +162,10 @@ impl<TSys: FsMetadata> NodeResolutionSys<TSys> {
 
 impl<TSys: FsCanonicalize> BaseFsCanonicalize for NodeResolutionSys<TSys> {
   fn base_fs_canonicalize(&self, from: &Path) -> std::io::Result<PathBuf> {
-    if let Some(cache) = &self.cache {
-      if let Some(result) = cache.get_canonicalized(from) {
-        return result;
-      }
+    if let Some(cache) = &self.cache
+      && let Some(result) = cache.get_canonicalized(from)
+    {
+      return result;
     }
     let result = self.sys.base_fs_canonicalize(from);
     if let Some(cache) = &self.cache {
@@ -193,5 +196,17 @@ impl<TSys: FsRead> BaseFsRead for NodeResolutionSys<TSys> {
     path: &Path,
   ) -> std::io::Result<std::borrow::Cow<'static, [u8]>> {
     self.sys.base_fs_read(path)
+  }
+}
+
+impl<TSys: FsOpen> BaseFsOpen for NodeResolutionSys<TSys> {
+  type File = TSys::File;
+
+  fn base_fs_open(
+    &self,
+    path: &Path,
+    flags: &sys_traits::OpenOptions,
+  ) -> std::io::Result<Self::File> {
+    self.sys.base_fs_open(path, flags)
   }
 }

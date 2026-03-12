@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -7,13 +7,13 @@ use deno_config::workspace::Workspace;
 use deno_package_json::PackageJsonDepValue;
 use deno_package_json::PackageJsonDepValueParseError;
 use deno_package_json::PackageJsonDepWorkspaceReq;
+use deno_semver::StackString;
+use deno_semver::Version;
+use deno_semver::VersionReq;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageName;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
-use deno_semver::StackString;
-use deno_semver::Version;
-use deno_semver::VersionReq;
 use serde_json;
 use thiserror::Error;
 use url::Url;
@@ -173,19 +173,6 @@ impl NpmInstallDepsProvider {
                   target_dir: pkg.pkg_json.dir_path().to_path_buf(),
                 });
               }
-            }
-            PackageJsonDepValue::JsrReq(_) => {
-              pkg_json_dep_errors.push(
-                PackageJsonDepValueParseWithLocationError {
-                  location: pkg_json.specifier(),
-                  alias: alias.clone(),
-                  source: PackageJsonDepValueParseError(Box::new(
-                    deno_package_json::PackageJsonDepValueParseErrorKind::Unsupported {
-                      scheme: "jsr".to_string(),
-                    },
-                  )),
-                },
-              );
             }
           }
         }

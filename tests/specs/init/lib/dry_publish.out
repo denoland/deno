@@ -1,6 +1,6 @@
-Check file:///[WILDLINE]/mod.ts
+Check [WILDCARD]mod.ts
 Checking for slow types in the public API...
-Check file:///[WILDLINE]/mod.ts
+Check [WILDCARD]mod.ts
 error: Failed preparing 'project'.
 
 Caused by:

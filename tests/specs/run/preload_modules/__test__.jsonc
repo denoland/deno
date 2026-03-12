@@ -1,0 +1,5 @@
+{
+  "args": "run --preload preload.js --import import.js main.ts",
+  "exitCode": 0,
+  "output": "main.out"
+}

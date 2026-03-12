@@ -1,11 +1,11 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 import { assertEquals, assertThrows, delay } from "./test_util.ts";
 
 Deno.test(
   { ignore: Deno.build.os !== "windows" },
   function signalsNotImplemented() {
     const msg =
-      "Windows only supports ctrl-c (SIGINT) and ctrl-break (SIGBREAK), but got ";
+      "Windows only supports ctrl-c (SIGINT), ctrl-break (SIGBREAK), ctrl-close (SIGHUP), and SIGWINCH, but got ";
     assertThrows(
       () => {
         Deno.addSignalListener("SIGALRM", () => {});
@@ -19,13 +19,6 @@ Deno.test(
       },
       Error,
       msg + "SIGCHLD",
-    );
-    assertThrows(
-      () => {
-        Deno.addSignalListener("SIGHUP", () => {});
-      },
-      Error,
-      msg + "SIGHUP",
     );
     assertThrows(
       () => {
@@ -68,13 +61,6 @@ Deno.test(
       },
       Error,
       msg + "SIGUSR2",
-    );
-    assertThrows(
-      () => {
-        Deno.addSignalListener("SIGWINCH", () => {});
-      },
-      Error,
-      msg + "SIGWINCH",
     );
     assertThrows(
       () => Deno.addSignalListener("SIGKILL", () => {}),
@@ -313,5 +299,24 @@ Deno.test(
 
     Deno.removeSignalListener("SIGUNUSED", i);
     Deno.removeSignalListener("SIGPOLL", i);
+  },
+);
+
+Deno.test(
+  {
+    ignore: Deno.build.os === "windows",
+    permissions: { run: true },
+  },
+  function killWithSignalZero() {
+    // This should not throw for the current process
+    Deno.kill(Deno.pid, 0);
+
+    // Test with a non-existent PID (very high number unlikely to exist)
+    assertThrows(
+      () => {
+        Deno.kill(999999, 0);
+      },
+      Deno.errors.NotFound,
+    );
   },
 );

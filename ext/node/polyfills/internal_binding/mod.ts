@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
@@ -13,6 +13,7 @@ import * as streamWrap from "ext:deno_node/internal_binding/stream_wrap.ts";
 import * as stringDecoder from "ext:deno_node/internal_binding/string_decoder.ts";
 import * as symbols from "ext:deno_node/internal_binding/symbols.ts";
 import * as tcpWrap from "ext:deno_node/internal_binding/tcp_wrap.ts";
+import * as ttyWrap from "ext:deno_node/internal_binding/tty_wrap.ts";
 import * as types from "ext:deno_node/internal_binding/types.ts";
 import * as udpWrap from "ext:deno_node/internal_binding/udp_wrap.ts";
 import * as util from "ext:deno_node/internal_binding/util.ts";
@@ -43,7 +44,11 @@ const modules = {
   natives: {},
   options: {},
   os: {},
-  performance: {},
+  performance: {
+    // observerCounts is an array where index is entry type and value is observer count
+    // Initialize with zeros for all entry types (0-8)
+    observerCounts: [0, 0, 0, 0, 0, 0, 0, 0, 0],
+  },
   "pipe_wrap": pipeWrap,
   "process_methods": {},
   report: {},
@@ -58,7 +63,7 @@ const modules = {
   timers: {},
   "tls_wrap": {},
   "trace_events": {},
-  "tty_wrap": {},
+  "tty_wrap": ttyWrap,
   types,
   "udp_wrap": udpWrap,
   url: {},

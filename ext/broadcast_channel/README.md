@@ -1,5 +1,4 @@
-# deno_broadcast_channel
+# deno_cache
 
-This crate implements the BroadcastChannel functions of Deno.
-
-Spec: https://html.spec.whatwg.org/multipage/web-messaging.html
+This crate has been deprecated, use
+[deno_web](https://crates.io/crates/deno_web) instead.

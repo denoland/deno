@@ -1,14 +1,10 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 pub struct PKey(pub *mut aws_lc_sys::EVP_PKEY);
 
 impl PKey {
   pub fn from_ptr(ptr: *mut aws_lc_sys::EVP_PKEY) -> Option<Self> {
-    if ptr.is_null() {
-      None
-    } else {
-      Some(Self(ptr))
-    }
+    if ptr.is_null() { None } else { Some(Self(ptr)) }
   }
 
   pub fn as_ptr(&self) -> *mut aws_lc_sys::EVP_PKEY {

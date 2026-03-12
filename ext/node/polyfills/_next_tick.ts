@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and other Node contributors.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
@@ -8,94 +8,33 @@ import { core } from "ext:core/mod.js";
 
 import { validateFunction } from "ext:deno_node/internal/validators.mjs";
 import { _exiting } from "ext:deno_node/_process/exiting.ts";
-import { FixedQueue } from "ext:deno_node/internal/fixed_queue.ts";
+import {
+  emitAfter,
+  emitBefore,
+  emitDestroy,
+  emitInit,
+  executionAsyncId,
+  newAsyncId as nextAsyncId,
+} from "ext:deno_node/internal/async_hooks.ts";
 
 const {
   getAsyncContext,
-  setAsyncContext,
 } = core;
-
-interface Tock {
-  callback: (...args: Array<unknown>) => void;
-  args: Array<unknown>;
-  snapshot: unknown;
-}
 
 let nextTickEnabled = false;
 export function enableNextTick() {
   nextTickEnabled = true;
+
+  // TODO(bartlomieju): ideally this should not be needed
+  // and async hook implementation would live in core
+  // Register the async hook emit functions directly with core.
+  // The core drain loop calls these inline per-tick -- no indirection.
+  core.setAsyncHooksEmit(emitBefore, emitAfter, emitDestroy);
 }
 
-const queue = new FixedQueue();
-
-export function processTicksAndRejections() {
-  let tock: Tock;
-  do {
-    // deno-lint-ignore no-cond-assign
-    while (tock = queue.shift()) {
-      // FIXME(bartlomieju): Deno currently doesn't support async hooks
-      // const asyncId = tock[async_id_symbol];
-      // emitBefore(asyncId, tock[trigger_async_id_symbol], tock);
-
-      const oldContext = getAsyncContext();
-      try {
-        setAsyncContext(tock.snapshot);
-        const callback = tock.callback;
-        if (tock.args === undefined) {
-          callback();
-        } else {
-          const args = (tock as Tock).args;
-          switch (args.length) {
-            case 1:
-              callback(args[0]);
-              break;
-            case 2:
-              callback(args[0], args[1]);
-              break;
-            case 3:
-              callback(args[0], args[1], args[2]);
-              break;
-            case 4:
-              callback(args[0], args[1], args[2], args[3]);
-              break;
-            default:
-              callback(...args);
-          }
-        }
-      } catch (e) {
-        reportError(e);
-      } finally {
-        // FIXME(bartlomieju): Deno currently doesn't support async hooks
-        // if (destroyHooksExist())
-        // emitDestroy(asyncId);
-        setAsyncContext(oldContext);
-      }
-
-      // FIXME(bartlomieju): Deno currently doesn't support async hooks
-      // emitAfter(asyncId);
-    }
-    core.runMicrotasks();
-    // FIXME(bartlomieju): Deno currently doesn't unhandled rejections
-    // } while (!queue.isEmpty() || processPromiseRejections());
-  } while (!queue.isEmpty());
-  core.setHasTickScheduled(false);
-  // FIXME(bartlomieju): Deno currently doesn't unhandled rejections
-  // setHasRejectionToWarn(false);
-}
-
-export function runNextTicks() {
-  // FIXME(bartlomieju): Deno currently doesn't unhandled rejections
-  // if (!hasTickScheduled() && !hasRejectionToWarn())
-  //   runMicrotasks();
-  // if (!hasTickScheduled() && !hasRejectionToWarn())
-  //   return;
-  if (queue.isEmpty() || !core.hasTickScheduled()) {
-    return true;
-  }
-
-  processTicksAndRejections();
-  return true;
-}
+// Re-export from core for consumers (e.g. timers.mjs)
+export const processTicksAndRejections = core.processTicksAndRejections;
+export const runNextTicks = core.runNextTicks;
 
 // `nextTick()` will not enqueue any callback when the process is about to
 // exit since the callback would not have a chance to be executed.
@@ -143,22 +82,18 @@ export function nextTick<T extends Array<unknown>>(
       }
   }
 
-  if (queue.isEmpty()) {
-    core.setHasTickScheduled(true);
-  }
-  // FIXME(bartlomieju): Deno currently doesn't support async hooks
-  // const asyncId = newAsyncId();
-  // const triggerAsyncId = getDefaultTriggerAsyncId();
+  const asyncId = nextAsyncId();
+  const triggerAsyncId = executionAsyncId();
   const tickObject = {
-    // FIXME(bartlomieju): Deno currently doesn't support async hooks
-    // [async_id_symbol]: asyncId,
-    // [trigger_async_id_symbol]: triggerAsyncId,
+    asyncId,
+    triggerAsyncId,
     snapshot: getAsyncContext(),
     callback,
     args: args_,
   };
-  // FIXME(bartlomieju): Deno currently doesn't support async hooks
-  // if (initHooksExist())
-  //   emitInit(asyncId, 'TickObject', triggerAsyncId, tickObject);
-  queue.push(tickObject);
+  emitInit(asyncId, "TickObject", triggerAsyncId, tickObject);
+  if (!core.hasTickScheduled()) {
+    core.setHasTickScheduled(true);
+  }
+  core.queueNextTick(tickObject);
 }

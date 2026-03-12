@@ -1,9 +1,11 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
-use deno_core::op2;
-use deno_core::webidl::WebIdlInterfaceConverter;
+use std::sync::OnceLock;
+
 use deno_core::GarbageCollected;
 use deno_core::WebIDL;
+use deno_core::op2;
+use deno_core::webidl::WebIdlInterfaceConverter;
 use deno_error::JsErrorBox;
 use wgpu_types::AstcBlock;
 use wgpu_types::AstcChannel;
@@ -14,6 +16,7 @@ use wgpu_types::TextureFormat;
 use wgpu_types::TextureViewDimension;
 
 use crate::Instance;
+use crate::error::GPUGenericError;
 
 #[derive(WebIDL)]
 #[webidl(dictionary)]
@@ -42,8 +45,11 @@ pub struct GPUTexture {
   pub error_handler: super::error::ErrorHandler,
 
   pub id: wgpu_core::id::TextureId,
+  // needed by deno
   pub device_id: wgpu_core::id::DeviceId,
+  // needed by deno
   pub queue_id: wgpu_core::id::QueueId,
+  pub default_view_id: OnceLock<wgpu_core::id::TextureViewId>,
 
   pub label: String,
 
@@ -55,8 +61,35 @@ pub struct GPUTexture {
   pub usage: u32,
 }
 
+impl GPUTexture {
+  pub(crate) fn default_view_id(&self) -> wgpu_core::id::TextureViewId {
+    *self.default_view_id.get_or_init(|| {
+      let (id, err) =
+        self
+          .instance
+          .texture_create_view(self.id, &Default::default(), None);
+      if let Some(err) = err {
+        use wgpu_types::error::WebGpuError;
+        assert_ne!(
+          err.webgpu_error_type(),
+          wgpu_types::error::ErrorType::Validation,
+          concat!(
+            "getting default view for a texture ",
+            "caused a validation error (!?)"
+          )
+        );
+        self.error_handler.push_error(Some(err));
+      }
+      id
+    })
+  }
+}
+
 impl Drop for GPUTexture {
   fn drop(&mut self) {
+    if let Some(id) = self.default_view_id.take() {
+      self.instance.texture_view_drop(id).unwrap();
+    }
     self.instance.texture_drop(self.id);
   }
 }
@@ -65,7 +98,10 @@ impl WebIdlInterfaceConverter for GPUTexture {
   const NAME: &'static str = "GPUTexture";
 }
 
-impl GarbageCollected for GPUTexture {
+// SAFETY: we're sure this can be GCed
+unsafe impl GarbageCollected for GPUTexture {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"GPUTexture"
   }
@@ -73,6 +109,12 @@ impl GarbageCollected for GPUTexture {
 
 #[op2]
 impl GPUTexture {
+  #[constructor]
+  #[cppgc]
+  fn constructor(_: bool) -> Result<GPUTexture, GPUGenericError> {
+    Err(GPUGenericError::InvalidConstructor)
+  }
+
   #[getter]
   #[string]
   fn label(&self) -> String {
@@ -119,11 +161,9 @@ impl GPUTexture {
     self.usage
   }
   #[fast]
-  fn destroy(&self) -> Result<(), JsErrorBox> {
-    self
-      .instance
-      .texture_destroy(self.id)
-      .map_err(|e| JsErrorBox::generic(e.to_string()))
+  #[undefined]
+  fn destroy(&self) {
+    self.instance.texture_destroy(self.id);
   }
 
   #[cppgc]
@@ -252,7 +292,10 @@ impl WebIdlInterfaceConverter for GPUTextureView {
   const NAME: &'static str = "GPUTextureView";
 }
 
-impl GarbageCollected for GPUTextureView {
+// SAFETY: we're sure this can be GCed
+unsafe impl GarbageCollected for GPUTextureView {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"GPUTextureView"
   }
@@ -261,6 +304,12 @@ impl GarbageCollected for GPUTextureView {
 
 #[op2]
 impl GPUTextureView {
+  #[constructor]
+  #[cppgc]
+  fn constructor(_: bool) -> Result<GPUTextureView, GPUGenericError> {
+    Err(GPUGenericError::InvalidConstructor)
+  }
+
   #[getter]
   #[string]
   fn label(&self) -> String {
@@ -564,7 +613,7 @@ impl From<GPUTextureFormat> for TextureFormat {
         channel: AstcChannel::Unorm,
       },
       GPUTextureFormat::Astc4x4UnormSrgb => Self::Astc {
-        block: AstcBlock::B5x4,
+        block: AstcBlock::B4x4,
         channel: AstcChannel::UnormSrgb,
       },
       GPUTextureFormat::Astc5x4Unorm => Self::Astc {
@@ -674,3 +723,21 @@ impl From<GPUTextureFormat> for TextureFormat {
     }
   }
 }
+
+pub struct GPUExternalTexture {}
+
+impl WebIdlInterfaceConverter for GPUExternalTexture {
+  const NAME: &'static str = "GPUExternalTexture";
+}
+
+// SAFETY: we're sure this can be GCed
+unsafe impl GarbageCollected for GPUExternalTexture {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"GPUExternalTexture"
+  }
+}
+
+#[op2]
+impl GPUExternalTexture {}

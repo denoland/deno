@@ -1,0 +1,6 @@
+// https://github.com/denoland/deno/issues/30182
+{
+  "cwd": "./src",
+  "args": "task run",
+  "output": "task.out"
+}

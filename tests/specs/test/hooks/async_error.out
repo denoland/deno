@@ -1,0 +1,48 @@
+Check [WILDCARD]async_error.ts
+running 3 tests from ./async_error.ts
+first test ... ok ([WILDCARD])
+second test (beforeEach fails) ... FAILED ([WILDCARD])
+third test (afterEach fails) ... FAILED ([WILDCARD])
+------- post-test output -------
+[
+  "beforeAll started",
+  "beforeAll completed",
+  "beforeEach started for test 1",
+  "beforeEach completed for test 1",
+  "first test executed",
+  "afterEach started for test 1",
+  "afterEach completed for test 1",
+  "beforeEach started for test 2",
+  "afterEach started for test 2",
+  "afterEach completed for test 2",
+  "beforeEach started for test 3",
+  "beforeEach completed for test 3",
+  "third test executed",
+  "afterEach started for test 3",
+  "afterAll started",
+  "afterAll completed"
+]
+----- post-test output end -----
+
+ ERRORS 
+
+second test (beforeEach fails) => ./async_error.ts:46:6
+error: (in promise) Error: Async error in beforeEach
+      setTimeout(() => reject(new Error("Async error in beforeEach")), 5);
+                              ^
+    at [WILDCARD]async_error.ts:18:31
+
+third test (afterEach fails) => ./async_error.ts:50:6
+error: (in promise) Error: Async error in afterEach
+    await Promise.reject(new Error("Async error in afterEach"));
+                         ^
+    at [WILDCARD]async_error.ts:30:26
+
+ FAILURES 
+
+second test (beforeEach fails) => ./async_error.ts:46:6
+third test (afterEach fails) => ./async_error.ts:50:6
+
+FAILED | 1 passed | 2 failed ([WILDCARD])
+
+error: Test failed

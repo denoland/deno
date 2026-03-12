@@ -1,4 +1,4 @@
-Check [WILDCARD]/overloads/main.ts
+Check [WILDCARD]main.ts
 running 6 tests from ./main.ts
 test0 ... ok ([WILDCARD])
 test1 ... ok ([WILDCARD])

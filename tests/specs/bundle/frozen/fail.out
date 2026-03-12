@@ -1,0 +1,4 @@
+[WILDCARD]
+Caused by:
+    The lockfile is out of date. Run `deno install --frozen=false`, or rerun with `--frozen=false` to update it.
+[WILDCARD]

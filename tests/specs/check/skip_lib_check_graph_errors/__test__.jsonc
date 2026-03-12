@@ -1,0 +1,4 @@
+{
+  "args": "check --quiet types.d.ts",
+  "output": ""
+}

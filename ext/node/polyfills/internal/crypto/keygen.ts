@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
@@ -11,7 +11,6 @@ import {
   PublicKeyObject,
   SecretKeyObject,
 } from "ext:deno_node/internal/crypto/keys.ts";
-import { notImplemented } from "ext:deno_node/_utils.ts";
 import {
   ERR_INCOMPATIBLE_OPTION_PAIR,
   ERR_INVALID_ARG_VALUE,
@@ -43,6 +42,8 @@ import {
   op_node_generate_ec_key_async,
   op_node_generate_ed25519_key,
   op_node_generate_ed25519_key_async,
+  op_node_generate_ed448_key,
+  op_node_generate_ed448_key_async,
   op_node_generate_rsa_key,
   op_node_generate_rsa_key_async,
   op_node_generate_rsa_pss_key,
@@ -51,6 +52,8 @@ import {
   op_node_generate_secret_key_async,
   op_node_generate_x25519_key,
   op_node_generate_x25519_key_async,
+  op_node_generate_x448_key,
+  op_node_generate_x448_key_async,
   op_node_get_private_key_from_pair,
   op_node_get_public_key_from_pair,
 } from "ext:core/ops";
@@ -565,16 +568,20 @@ export function generateKeyPair(
 export function generateKeyPair(
   type: KeyType,
   options: unknown,
-  callback: (
+  callback?: (
     err: Error | null,
     publicKey: any,
     privateKey: any,
   ) => void,
 ) {
+  if (typeof options === "function") {
+    callback = options;
+    options = undefined;
+  }
   _generateKeyPair(type, options)
     .then(
-      (res) => callback(null, res.publicKey, res.privateKey),
-      (err) => callback(err, null, null),
+      (res) => callback!(null, res.publicKey, res.privateKey),
+      (err) => callback!(err, null, null),
     );
 }
 
@@ -960,10 +967,17 @@ function createJob(mode, type, options) {
       }
       return op_node_generate_x25519_key_async();
     }
-    case "ed448":
+    case "ed448": {
+      if (mode === kSync) {
+        return op_node_generate_ed448_key();
+      }
+      return op_node_generate_ed448_key_async();
+    }
     case "x448": {
-      notImplemented(type);
-      break;
+      if (mode === kSync) {
+        return op_node_generate_x448_key();
+      }
+      return op_node_generate_x448_key_async();
     }
     case "dh": {
       validateObject(options, "options");

@@ -1,4 +1,4 @@
-Check [WILDCARD]/load_unload.ts
+Check [WILDCARD]load_unload.ts
     CPU | [WILDCARD]
 Runtime | Deno [WILDCARD] ([WILDCARD])
 

@@ -1,4 +1,4 @@
-Check file:///[WILDCARD]/mod.ts
+Check [WILDCARD]mod.ts
 Checking for slow types in the public API...
 error[missing-explicit-return-type]: missing explicit return type in the public API
  --> [WILDCARD]mod.ts:2:17

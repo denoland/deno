@@ -14,6 +14,37 @@
       "args": "run --unstable-bare-node-builtins main.ts",
       "output": "feature_enabled.out"
     },
+    "unstable_bare_node_builtins_enabled2": {
+      "args": "run main.ts",
+      "envs": {
+        "DENO_COMPAT": "1"
+      },
+      "output": "feature_enabled.out"
+    },
+    "unstable_node_globals_enabled": {
+      "args": "run --unstable-node-globals node_globals.ts",
+      "output": "node_globals.out"
+    },
+    "unstable_node_globals_enabled_check": {
+      "args": "check --unstable-node-globals node_globals.ts",
+      "output": "node_globals_check.out",
+      "exitCode": 1
+    },
+    "unstable_node_globals_enabled2": {
+      "args": "run node_globals.ts",
+      "envs": {
+        "DENO_COMPAT": "1"
+      },
+      "output": "node_globals.out"
+    },
+    "unstable_node_globals_enabled2_check": {
+      "args": "check node_globals.ts",
+      "envs": {
+        "DENO_COMPAT": "1"
+      },
+      "output": "node_globals_check.out",
+      "exitCode": 1
+    },
     "unstable_bare_node_builtins_enabled_by_env": {
       "args": "run main.ts",
       "envs": {

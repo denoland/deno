@@ -1,0 +1,14 @@
+{
+  "tasks": {
+    "member-task1": {
+      "description": "Member task 1",
+      "command": "deno member-task1"
+    },
+    "member-task2": {
+      "description": "Member task 2",
+      "command": "deno member-task2"
+    }
+  },
+  "name": "@testing/member",
+  "exports": {}
+}

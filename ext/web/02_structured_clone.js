@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // @ts-check
 /// <reference path="../../core/lib.deno_core.d.ts" />
@@ -134,7 +134,7 @@ function structuredClone(value) {
   }
 
   try {
-    return core.deserialize(core.serialize(value));
+    return core.structuredClone(value);
   } catch (e) {
     if (ObjectPrototypeIsPrototypeOf(TypeErrorPrototype, e)) {
       throw new DOMException(e.message, "DataCloneError");

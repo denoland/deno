@@ -1,6 +1,6 @@
 // Copyright the Browserify authors. MIT License.
 // Ported from https://github.com/browserify/path-browserify/
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import type { FormatInputPathObject } from "ext:deno_node/path/_interface.ts";
 import {
@@ -61,15 +61,14 @@ export function normalizeString(
     if (isPathSeparator(code!)) {
       if (lastSlash === i - 1 || dots === 1) {
         // NOOP
-      } else if (lastSlash !== i - 1 && dots === 2) {
+      } else if (dots === 2) {
         if (
-          res.length < 2 ||
-          lastSegmentLength !== 2 ||
+          res.length < 2 || lastSegmentLength !== 2 ||
           StringPrototypeCharCodeAt(res, res.length - 1) !== CHAR_DOT ||
           StringPrototypeCharCodeAt(res, res.length - 2) !== CHAR_DOT
         ) {
           if (res.length > 2) {
-            const lastSlashIndex = StringPrototypeLastIndexOf(res, separator);
+            const lastSlashIndex = res.length - lastSegmentLength - 1;
             if (lastSlashIndex === -1) {
               res = "";
               lastSegmentLength = 0;
@@ -81,7 +80,7 @@ export function normalizeString(
             lastSlash = i;
             dots = 0;
             continue;
-          } else if (res.length === 2 || res.length === 1) {
+          } else if (res.length !== 0) {
             res = "";
             lastSegmentLength = 0;
             lastSlash = i;
@@ -90,8 +89,7 @@ export function normalizeString(
           }
         }
         if (allowAboveRoot) {
-          if (res.length > 0) res += `${separator}..`;
-          else res = "..";
+          res += res.length > 0 ? `${separator}..` : "..";
           lastSegmentLength = 2;
         }
       } else {
@@ -113,7 +111,7 @@ export function normalizeString(
   return res;
 }
 
-function formatExt(ext) {
+function formatExt(ext: string | undefined): string {
   return ext ? `${ext[0] === "." ? "" : "."}${ext}` : "";
 }
 

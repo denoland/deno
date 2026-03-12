@@ -1,4 +1,4 @@
-Check file:///[WILDCARD]/type_check.ts
+Check [WILDCARD]type_check.ts
 TS2880 [ERROR]: Import assertions have been replaced by import attributes. Use 'with' instead of 'assert'.
 import data2 from "./data.json" assert { type: "json" };
                                 ~~~~~~

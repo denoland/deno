@@ -1,0 +1,3 @@
+Download [WILDCARD]
+error: Uncaught (in promise) NotCapable: Requires write access to "test.txt", run again with the --allow-write flag
+[WILDCARD]

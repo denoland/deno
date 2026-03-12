@@ -1,10 +1,12 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
+use std::borrow::Cow;
 use std::cmp::Ordering;
-use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::VecDeque;
+use std::collections::hash_map::Entry;
+use std::ffi::OsString;
 use std::fmt;
 use std::io::Read;
 use std::path::Path;
@@ -14,17 +16,19 @@ use std::time::SystemTime;
 use deno_path_util::normalize_path;
 use deno_path_util::strip_unc_prefix;
 use deno_runtime::colors;
-use deno_runtime::deno_core::anyhow::bail;
 use deno_runtime::deno_core::anyhow::Context;
+use deno_runtime::deno_core::anyhow::bail;
 use deno_runtime::deno_core::error::AnyError;
 use indexmap::IndexSet;
-use serde::de;
-use serde::de::SeqAccess;
-use serde::de::Visitor;
 use serde::Deserialize;
 use serde::Deserializer;
 use serde::Serialize;
 use serde::Serializer;
+use serde::de;
+use serde::de::SeqAccess;
+use serde::de::Visitor;
+
+use crate::util::text_encoding::is_valid_utf8;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum WindowsSystemRootablePath {
@@ -72,6 +76,25 @@ pub enum FileSystemCaseSensitivity {
   #[serde(rename = "i")]
   Insensitive,
 }
+
+impl FileSystemCaseSensitivity {
+  pub fn cmp_name(&self, a: &str, b: &str) -> Ordering {
+    match self {
+      FileSystemCaseSensitivity::Sensitive => a.cmp(b),
+      FileSystemCaseSensitivity::Insensitive => a
+        .chars()
+        .zip(b.chars())
+        .map(|(a, b)| a.to_ascii_lowercase().cmp(&b.to_ascii_lowercase()))
+        .find(|&ord| ord != Ordering::Equal)
+        .unwrap_or_else(|| a.len().cmp(&b.len())),
+    }
+  }
+
+  pub fn eq_name(&self, a: &str, b: &str) -> bool {
+    self.cmp_name(a, b) == Ordering::Equal
+  }
+}
+
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct VirtualDirectoryEntries(Vec<VfsEntry>);
 
@@ -137,19 +160,9 @@ impl VirtualDirectoryEntries {
     name: &str,
     case_sensitivity: FileSystemCaseSensitivity,
   ) -> Result<usize, usize> {
-    match case_sensitivity {
-      FileSystemCaseSensitivity::Sensitive => {
-        self.0.binary_search_by(|e| e.name().cmp(name))
-      }
-      FileSystemCaseSensitivity::Insensitive => self.0.binary_search_by(|e| {
-        e.name()
-          .chars()
-          .zip(name.chars())
-          .map(|(a, b)| a.to_ascii_lowercase().cmp(&b.to_ascii_lowercase()))
-          .find(|&ord| ord != Ordering::Equal)
-          .unwrap_or_else(|| e.name().len().cmp(&name.len()))
-      }),
-    }
+    self
+      .0
+      .binary_search_by(|e| case_sensitivity.cmp_name(e.name(), name))
   }
 
   pub fn insert(
@@ -257,6 +270,8 @@ pub struct VirtualFile {
   pub name: String,
   #[serde(rename = "o")]
   pub offset: OffsetWithLength,
+  #[serde(default, rename = "u", skip_serializing_if = "is_false")]
+  pub is_valid_utf8: bool,
   #[serde(rename = "m", skip_serializing_if = "Option::is_none")]
   pub transpiled_offset: Option<OffsetWithLength>,
   #[serde(rename = "c", skip_serializing_if = "Option::is_none")]
@@ -265,6 +280,12 @@ pub struct VirtualFile {
   pub source_map_offset: Option<OffsetWithLength>,
   #[serde(rename = "t", skip_serializing_if = "Option::is_none")]
   pub mtime: Option<u128>, // mtime in milliseconds
+  #[serde(default, rename = "x", skip_serializing_if = "is_false")]
+  pub executable: bool,
+}
+
+fn is_false(value: &bool) -> bool {
+  !value
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -276,7 +297,7 @@ impl VirtualSymlinkParts {
       path
         .components()
         .filter(|c| !matches!(c, std::path::Component::RootDir))
-        .map(|c| c.as_os_str().to_string_lossy().to_string())
+        .map(|c| c.as_os_str().to_string_lossy().into_owned())
         .collect(),
     )
   }
@@ -304,6 +325,10 @@ pub struct VirtualSymlink {
   pub name: String,
   #[serde(rename = "p")]
   pub dest_parts: VirtualSymlinkParts,
+  /// Whether the symlink target is a directory (needed on Windows where
+  /// file and directory symlinks are distinct).
+  #[serde(rename = "d", default, skip_serializing_if = "std::ops::Not::not")]
+  pub dest_is_dir: bool,
 }
 
 impl VirtualSymlink {
@@ -350,7 +375,7 @@ impl VfsEntry {
     }
   }
 
-  pub fn as_ref(&self) -> VfsEntryRef {
+  pub fn as_ref(&self) -> VfsEntryRef<'_> {
     match self {
       VfsEntry::Dir(dir) => VfsEntryRef::Dir(dir),
       VfsEntry::File(file) => VfsEntryRef::File(file),
@@ -414,7 +439,7 @@ impl FilesData {
     if data.is_empty() {
       return OffsetWithLength { offset: 0, len: 0 };
     }
-    let checksum = crate::util::checksum::gen(&[&data]);
+    let checksum = crate::util::checksum::r#gen(&[&data]);
     match self.file_offsets.entry((checksum, data.len())) {
       Entry::Occupied(occupied_entry) => {
         let offset_and_len = *occupied_entry.get();
@@ -435,6 +460,49 @@ impl FilesData {
   }
 }
 
+struct CanonicalPath<'a>(Cow<'a, Path>);
+
+impl CanonicalPath<'_> {
+  pub fn as_ref(&self) -> &Path {
+    self.0.as_ref()
+  }
+
+  pub fn display(&self) -> std::path::Display<'_> {
+    self.0.display()
+  }
+
+  pub fn parent(&self) -> CanonicalPath<'_> {
+    CanonicalPath(Cow::Borrowed(self.0.parent().unwrap()))
+  }
+
+  pub fn join_directory_entry(
+    &self,
+    name: OsString,
+  ) -> CanonicalParentPath<'_> {
+    CanonicalParentPath(Cow::Owned(self.0.join(name)))
+  }
+}
+
+struct CanonicalParentPath<'a>(Cow<'a, Path>);
+
+impl CanonicalParentPath<'_> {
+  pub fn as_ref(&self) -> &Path {
+    self.0.as_ref()
+  }
+
+  pub fn display(&self) -> std::path::Display<'_> {
+    self.0.display()
+  }
+
+  pub fn parent(&self) -> CanonicalPath<'_> {
+    CanonicalPath(Cow::Borrowed(self.0.parent().unwrap()))
+  }
+
+  pub fn assert_canonical_path(&self) -> CanonicalPath<'_> {
+    CanonicalPath(Cow::Borrowed(self.as_ref()))
+  }
+}
+
 pub struct AddFileDataOptions {
   pub data: Vec<u8>,
   pub mtime: Option<SystemTime>,
@@ -451,6 +519,11 @@ pub struct VfsBuilder {
   min_root_dir: Option<WindowsSystemRootablePath>,
   case_sensitivity: FileSystemCaseSensitivity,
   exclude_paths: HashSet<PathBuf>,
+  /// Cache of path canonicalization results. Maps original paths to their
+  /// canonical forms, used to detect aliased parent directories.
+  /// - `None` = path is already canonical (no changes needed)
+  /// - `Some(path)` = path was aliased, use this canonical form instead
+  canonical_path_cache: HashMap<PathBuf, Option<PathBuf>>,
 }
 
 impl Default for VfsBuilder {
@@ -479,6 +552,7 @@ impl VfsBuilder {
         FileSystemCaseSensitivity::Sensitive
       },
       exclude_paths: Default::default(),
+      canonical_path_cache: Default::default(),
     }
   }
 
@@ -507,7 +581,8 @@ impl VfsBuilder {
   /// tell the VFS builder to include the base of the import map
   /// by calling this method.
   pub fn add_possible_min_root_dir(&mut self, path: &Path) {
-    self.add_dir_raw(path);
+    let path = self.ensure_canonical_dir(path);
+    self.add_dir_raw(&path);
 
     match &self.min_root_dir {
       Some(WindowsSystemRootablePath::WindowSystemRoot) => {
@@ -515,7 +590,8 @@ impl VfsBuilder {
       }
       Some(WindowsSystemRootablePath::Path(current_path)) => {
         let mut common_components = Vec::new();
-        for (a, b) in current_path.components().zip(path.components()) {
+        for (a, b) in current_path.components().zip(path.as_ref().components())
+        {
           if a != b {
             break;
           }
@@ -532,28 +608,31 @@ impl VfsBuilder {
       }
       None => {
         self.min_root_dir =
-          Some(WindowsSystemRootablePath::Path(path.to_path_buf()));
+          Some(WindowsSystemRootablePath::Path(path.0.into_owned()));
       }
     }
   }
 
   pub fn add_dir_recursive(&mut self, path: &Path) -> Result<(), AnyError> {
-    let target_path = self.resolve_target_path(path)?;
-    self.add_dir_recursive_not_symlink(&target_path)
+    if self.exclude_paths.contains(path) {
+      return Ok(());
+    }
+    let canonical = self.ensure_canonical_dir(path);
+    self.add_dir_recursive_not_symlink(&canonical)
   }
 
   fn add_dir_recursive_not_symlink(
     &mut self,
-    path: &Path,
+    dir_path: &CanonicalPath,
   ) -> Result<(), AnyError> {
-    if self.exclude_paths.contains(path) {
+    if self.exclude_paths.contains(dir_path.as_ref()) {
       return Ok(());
     }
-    self.add_dir_raw(path);
+    self.add_dir_raw(dir_path);
     // ok, building fs implementation
     #[allow(clippy::disallowed_methods)]
-    let read_dir = std::fs::read_dir(path)
-      .with_context(|| format!("Reading {}", path.display()))?;
+    let read_dir = std::fs::read_dir(dir_path.as_ref())
+      .with_context(|| format!("Reading {}", dir_path.display()))?;
 
     let mut dir_entries =
       read_dir.into_iter().collect::<Result<Vec<_>, _>>()?;
@@ -561,40 +640,42 @@ impl VfsBuilder {
 
     for entry in dir_entries {
       let file_type = entry.file_type()?;
-      let path = entry.path();
-      self.add_path_with_file_type(&path, file_type)?;
+      let file_name = entry.file_name();
+      let file_path = dir_path.join_directory_entry(file_name);
+      self.add_path_with_file_type(&file_path, file_type)?;
     }
 
     Ok(())
   }
 
   pub fn add_path(&mut self, path: &Path) -> Result<(), AnyError> {
+    let path = self.ensure_canonical_parent_path(path);
     // ok, building fs implementation
     #[allow(clippy::disallowed_methods)]
-    let file_type = path.metadata()?.file_type();
-    self.add_path_with_file_type(path, file_type)
+    let file_type = path.as_ref().symlink_metadata()?.file_type();
+    self.add_path_with_file_type(&path, file_type)
   }
 
   fn add_path_with_file_type(
     &mut self,
-    path: &Path,
+    path: &CanonicalParentPath,
     file_type: std::fs::FileType,
   ) -> Result<(), AnyError> {
-    if self.exclude_paths.contains(path) {
+    if self.exclude_paths.contains(path.as_ref()) {
       return Ok(());
     }
     if file_type.is_dir() {
-      self.add_dir_recursive_not_symlink(path)
+      self.add_dir_recursive_not_symlink(&path.assert_canonical_path())
     } else if file_type.is_file() {
-      self.add_file_at_path_not_symlink(path)
+      self.add_file_at_path_not_symlink(&path.assert_canonical_path())
     } else if file_type.is_symlink() {
-      match self.add_symlink(path) {
-        Ok(target) => match target {
-          SymlinkTarget::File(target) => {
-            self.add_file_at_path_not_symlink(&target)
+      match self.add_symlink_for_canonical_parent_path(path) {
+        Ok(target) => match &target {
+          SymlinkTarget::File(_) => {
+            self.add_file_at_path_not_symlink(&target.into_canonicalized())
           }
-          SymlinkTarget::Dir(target) => {
-            self.add_dir_recursive_not_symlink(&target)
+          SymlinkTarget::Dir(_) => {
+            self.add_dir_recursive_not_symlink(&target.into_canonicalized())
           }
         },
         Err(err) => {
@@ -613,12 +694,12 @@ impl VfsBuilder {
     }
   }
 
-  fn add_dir_raw(&mut self, path: &Path) -> &mut VirtualDirectory {
+  fn add_dir_raw(&mut self, path: &CanonicalPath) -> &mut VirtualDirectory {
     log::debug!("Ensuring directory '{}'", path.display());
-    debug_assert!(path.is_absolute());
+    debug_assert!(path.as_ref().is_absolute());
     let mut current_dir = &mut self.executable_root;
 
-    for component in path.components() {
+    for component in path.as_ref().components() {
       if matches!(component, std::path::Component::RootDir) {
         continue;
       }
@@ -674,44 +755,27 @@ impl VfsBuilder {
     Some(current_dir)
   }
 
-  pub fn add_file_at_path(&mut self, path: &Path) -> Result<(), AnyError> {
-    if self.exclude_paths.contains(path) {
-      return Ok(());
-    }
-    let (file_bytes, mtime) = self.read_file_bytes_and_mtime(path)?;
-    self.add_file_with_data(
-      path,
-      AddFileDataOptions {
-        data: file_bytes,
-        mtime,
-        maybe_cjs_export_analysis: None,
-        maybe_transpiled: None,
-        maybe_source_map: None,
-      },
-    )
-  }
-
   fn add_file_at_path_not_symlink(
     &mut self,
-    path: &Path,
+    path: &CanonicalPath,
   ) -> Result<(), AnyError> {
-    if self.exclude_paths.contains(path) {
+    if self.exclude_paths.contains(path.as_ref()) {
       return Ok(());
     }
     let (file_bytes, mtime) = self.read_file_bytes_and_mtime(path)?;
-    self.add_file_with_data_raw(path, file_bytes, mtime)
+    self.add_canonical_file_with_data_raw(path, file_bytes, mtime)
   }
 
   fn read_file_bytes_and_mtime(
     &self,
-    path: &Path,
+    path: &CanonicalPath,
   ) -> Result<(Vec<u8>, Option<SystemTime>), AnyError> {
     // ok, building fs implementation
     #[allow(clippy::disallowed_methods)]
     {
       let mut file = std::fs::OpenOptions::new()
         .read(true)
-        .open(path)
+        .open(path.as_ref())
         .with_context(|| format!("Opening {}", path.display()))?;
       let mtime = file.metadata().ok().and_then(|m| m.modified().ok());
       let mut file_bytes = Vec::new();
@@ -722,27 +786,258 @@ impl VfsBuilder {
     }
   }
 
+  /// Canonicalizes the parent directory of the given path and, if it
+  /// differs from the original, adds VFS symlink entries for any aliased
+  /// directory components (e.g. Windows 8.3 short names like
+  /// RUNNER~1 -> runneradmin). Only the parent is canonicalized so that
+  /// symlink files themselves are not followed.
+  /// Returns the path with canonical parent, or the original path if
+  /// canonicalization fails or produces the same result.
+  fn ensure_canonical_parent_path<'a>(
+    &mut self,
+    path: &'a Path,
+  ) -> CanonicalParentPath<'a> {
+    if let Some(cached) = self.canonical_path_cache.get(path) {
+      return match cached {
+        Some(canonical) => CanonicalParentPath(Cow::Owned(canonical.clone())),
+        None => CanonicalParentPath(Cow::Borrowed(path)),
+      };
+    }
+
+    let Some(parent) = path.parent() else {
+      return CanonicalParentPath(Cow::Borrowed(path));
+    };
+    let Some(file_name) = path.file_name() else {
+      return CanonicalParentPath(Cow::Borrowed(path));
+    };
+
+    let canonical_parent =
+      self.ensure_canonical_dir_inner(parent, &mut HashSet::new());
+    if canonical_parent.as_ref() == parent {
+      self.canonical_path_cache.insert(path.to_path_buf(), None);
+      return CanonicalParentPath(Cow::Borrowed(path));
+    }
+    let result = canonical_parent.as_ref().join(file_name);
+    self
+      .canonical_path_cache
+      .insert(path.to_path_buf(), Some(result.clone()));
+    CanonicalParentPath(Cow::Owned(result))
+  }
+
+  /// Resolves a directory path by walking component by component, detecting
+  /// symlinks (via `read_link`) and name aliases (e.g. Windows 8.3 short
+  /// names). For each symlink or alias found, a VFS symlink entry is
+  /// created so the VFS mirrors the real filesystem structure.
+  /// Caches results (including negative) to avoid repeated filesystem calls.
+  fn ensure_canonical_dir<'a>(
+    &mut self,
+    dir_path: &'a Path,
+  ) -> CanonicalPath<'a> {
+    self.ensure_canonical_dir_inner(dir_path, &mut HashSet::new())
+  }
+
+  fn ensure_canonical_dir_inner<'a>(
+    &mut self,
+    dir_path: &'a Path,
+    visited: &mut HashSet<PathBuf>,
+  ) -> CanonicalPath<'a> {
+    if let Some(cached) = self.canonical_path_cache.get(dir_path) {
+      return match cached {
+        Some(canonical) => CanonicalPath(Cow::Owned(canonical.clone())),
+        None => CanonicalPath(Cow::Borrowed(dir_path)),
+      };
+    }
+
+    if !visited.insert(dir_path.to_path_buf()) {
+      log::warn!(
+        "Circular symlink detected while canonicalizing directory: {}",
+        dir_path.display()
+      );
+      return CanonicalPath(Cow::Borrowed(dir_path));
+    }
+
+    let mut current_real = PathBuf::new();
+    let mut changed = false;
+
+    for component in dir_path.components() {
+      if matches!(
+        component,
+        std::path::Component::RootDir | std::path::Component::Prefix(_)
+      ) {
+        current_real.push(component);
+        continue;
+      }
+
+      let candidate = current_real.join(component.as_os_str());
+
+      // ok, fs implementation
+      #[allow(clippy::disallowed_methods)]
+      let is_symlink = std::fs::symlink_metadata(&candidate)
+        .map(|m| m.is_symlink())
+        .unwrap_or(false);
+
+      if is_symlink {
+        // ok, fs implementation
+        #[allow(clippy::disallowed_methods)]
+        if let Ok(link_target) = std::fs::read_link(&candidate) {
+          let resolved = normalize_path(Cow::Owned(
+            current_real.join(strip_unc_prefix(link_target)),
+          ));
+
+          // recursively ensure the symlink target is canonical
+          let resolved = self
+            .ensure_canonical_dir_inner(&resolved, visited)
+            .0
+            .into_owned();
+
+          // determine if the final target is a directory
+          // ok, fs implementation
+          #[allow(clippy::disallowed_methods)]
+          let dest_is_dir = std::fs::metadata(&candidate)
+            .map(|m| m.is_dir())
+            .unwrap_or(true);
+
+          let name = component.as_os_str().to_string_lossy();
+          let case_sensitivity = self.case_sensitivity;
+          let dir =
+            self.add_dir_raw(&CanonicalPath(Cow::Borrowed(&current_real)));
+          dir.entries.insert_or_modify(
+            &name,
+            case_sensitivity,
+            || {
+              VfsEntry::Symlink(VirtualSymlink {
+                name: name.to_string(),
+                dest_parts: VirtualSymlinkParts::from_path(&resolved),
+                dest_is_dir,
+              })
+            },
+            |_| {
+              // already exists
+            },
+          );
+
+          log::debug!(
+            "Resolved symlink component: {} -> {}",
+            candidate.display(),
+            resolved.display()
+          );
+
+          current_real = resolved;
+          changed = true;
+          continue;
+        }
+      }
+
+      // not a symlink — on Windows, check for 8.3 short name aliases
+      // by canonicalizing just this path and comparing the last component.
+      // This is Windows-specific; on other platforms non-symlink components
+      // won't have name aliases, and running this could create spurious VFS
+      // symlinks for case differences on case-insensitive filesystems.
+      #[cfg(windows)]
+      {
+        // ok, fs implementation
+        #[allow(clippy::disallowed_methods)]
+        if let Ok(canonical) = std::fs::canonicalize(&candidate) {
+          let canonical = strip_unc_prefix(canonical);
+          if let Some(canon_name) = canonical.file_name() {
+            let orig_name = component.as_os_str();
+            if !self.case_sensitivity.eq_name(
+              &orig_name.to_string_lossy(),
+              &canon_name.to_string_lossy(),
+            ) {
+              let real_dir = current_real.join(canon_name);
+              let orig_name_str = orig_name.to_string_lossy();
+              let case_sensitivity = self.case_sensitivity;
+              let dir =
+                self.add_dir_raw(&CanonicalPath(Cow::Borrowed(&current_real)));
+              dir.entries.insert_or_modify(
+                &orig_name_str,
+                case_sensitivity,
+                || {
+                  VfsEntry::Symlink(VirtualSymlink {
+                    name: orig_name_str.to_string(),
+                    dest_parts: VirtualSymlinkParts::from_path(&real_dir),
+                    dest_is_dir: true,
+                  })
+                },
+                |_| {
+                  // already exists
+                },
+              );
+
+              log::debug!(
+                "Resolved 8.3 name alias: {} -> {}",
+                candidate.display(),
+                real_dir.display()
+              );
+
+              current_real = real_dir;
+              changed = true;
+              continue;
+            }
+          }
+        }
+      }
+
+      current_real.push(component);
+    }
+
+    if changed {
+      self
+        .canonical_path_cache
+        .insert(dir_path.to_path_buf(), Some(current_real.clone()));
+      CanonicalPath(Cow::Owned(current_real))
+    } else {
+      self
+        .canonical_path_cache
+        .insert(dir_path.to_path_buf(), None);
+      CanonicalPath(Cow::Borrowed(dir_path))
+    }
+  }
+
   pub fn add_file_with_data(
     &mut self,
     path: &Path,
     options: AddFileDataOptions,
   ) -> Result<(), AnyError> {
+    // canonicalize parent to resolve aliased directory components
+    // (e.g. Windows 8.3 short names), adding VFS symlinks as needed
+    let path = self.ensure_canonical_parent_path(path);
     // ok, fs implementation
     #[allow(clippy::disallowed_methods)]
-    let metadata = std::fs::symlink_metadata(path).with_context(|| {
-      format!("Resolving target path for '{}'", path.display())
-    })?;
+    let metadata =
+      std::fs::symlink_metadata(path.as_ref()).with_context(|| {
+        format!("Resolving target path for '{}'", path.display())
+      })?;
     if metadata.is_symlink() {
-      let target = self.add_symlink(path)?.into_path_buf();
+      let target = self
+        .add_symlink_for_canonical_parent_path(&path)?
+        .into_canonicalized();
       self.add_file_with_data_raw_options(&target, options)
     } else {
-      self.add_file_with_data_raw_options(path, options)
+      self
+        .add_file_with_data_raw_options(&path.assert_canonical_path(), options)
     }
   }
 
-  pub fn add_file_with_data_raw(
+  pub fn add_file_with_data_raw_for_testing(
     &mut self,
     path: &Path,
+    data: Vec<u8>,
+    mtime: Option<SystemTime>,
+  ) -> Result<(), AnyError> {
+    let path = self.ensure_canonical_parent_path(path);
+    self.add_canonical_file_with_data_raw(
+      // not exactly correct, but only used for testing
+      &path.assert_canonical_path(),
+      data,
+      mtime,
+    )
+  }
+
+  fn add_canonical_file_with_data_raw(
+    &mut self,
+    path: &CanonicalPath,
     data: Vec<u8>,
     mtime: Option<SystemTime>,
   ) -> Result<(), AnyError> {
@@ -760,12 +1055,13 @@ impl VfsBuilder {
 
   fn add_file_with_data_raw_options(
     &mut self,
-    path: &Path,
+    path: &CanonicalPath,
     options: AddFileDataOptions,
   ) -> Result<(), AnyError> {
     log::debug!("Adding file '{}'", path.display());
     let case_sensitivity = self.case_sensitivity;
 
+    let is_valid_utf8 = is_valid_utf8(&options.data);
     let offset_and_len = self.files.add_data(options.data);
     let transpiled_offset = options
       .maybe_transpiled
@@ -776,13 +1072,29 @@ impl VfsBuilder {
     let cjs_export_analysis_offset = options
       .maybe_cjs_export_analysis
       .map(|data| self.files.add_data(data));
-    let dir = self.add_dir_raw(path.parent().unwrap());
-    let name = path.file_name().unwrap().to_string_lossy();
+    let dir = self.add_dir_raw(&path.parent());
+    let name = path.as_ref().file_name().unwrap().to_string_lossy();
 
     let mtime = options
       .mtime
       .and_then(|mtime| mtime.duration_since(std::time::UNIX_EPOCH).ok())
       .map(|m| m.as_millis());
+
+    let executable = {
+      #[cfg(unix)]
+      {
+        use std::os::unix::fs::PermissionsExt;
+        // ok, fs implementation
+        #[allow(clippy::disallowed_methods)]
+        std::fs::metadata(path.as_ref())
+          .map(|m| m.permissions().mode() & 0o111 != 0)
+          .unwrap_or(false)
+      }
+      #[cfg(not(unix))]
+      {
+        false
+      }
+    };
 
     dir.entries.insert_or_modify(
       &name,
@@ -790,11 +1102,13 @@ impl VfsBuilder {
       || {
         VfsEntry::File(VirtualFile {
           name: name.to_string(),
+          is_valid_utf8,
           offset: offset_and_len,
           transpiled_offset,
           cjs_export_analysis_offset,
           source_map_offset,
           mtime,
+          executable,
         })
       },
       |entry| match entry {
@@ -820,49 +1134,52 @@ impl VfsBuilder {
     Ok(())
   }
 
-  fn resolve_target_path(&mut self, path: &Path) -> Result<PathBuf, AnyError> {
-    // ok, fs implementation
-    #[allow(clippy::disallowed_methods)]
-    let metadata = std::fs::symlink_metadata(path).with_context(|| {
-      format!("Resolving target path for '{}'", path.display())
-    })?;
-    if metadata.is_symlink() {
-      Ok(self.add_symlink(path)?.into_path_buf())
-    } else {
-      Ok(path.to_path_buf())
-    }
-  }
-
   pub fn add_symlink(
     &mut self,
     path: &Path,
+  ) -> Result<SymlinkTarget, AnyError> {
+    let path = self.ensure_canonical_parent_path(path);
+    self.add_symlink_for_canonical_parent_path(&path)
+  }
+
+  fn add_symlink_for_canonical_parent_path(
+    &mut self,
+    path: &CanonicalParentPath,
   ) -> Result<SymlinkTarget, AnyError> {
     self.add_symlink_inner(path, &mut IndexSet::new())
   }
 
   fn add_symlink_inner(
     &mut self,
-    path: &Path,
+    path: &CanonicalParentPath,
     visited: &mut IndexSet<PathBuf>,
   ) -> Result<SymlinkTarget, AnyError> {
     log::debug!("Adding symlink '{}'", path.display());
     let target = strip_unc_prefix(
       // ok, fs implementation
       #[allow(clippy::disallowed_methods)]
-      std::fs::read_link(path)
+      std::fs::read_link(path.as_ref())
         .with_context(|| format!("Reading symlink '{}'", path.display()))?,
     );
     let case_sensitivity = self.case_sensitivity;
-    let target = normalize_path(path.parent().unwrap().join(&target));
-    let dir = self.add_dir_raw(path.parent().unwrap());
-    let name = path.file_name().unwrap().to_string_lossy();
+    let target =
+      normalize_path(Cow::Owned(path.as_ref().parent().unwrap().join(&target)));
+    let target = self.ensure_canonical_parent_path(&target);
+    // use metadata (follows symlinks) to determine final target type
+    #[allow(clippy::disallowed_methods)]
+    let dest_is_dir = std::fs::metadata(target.as_ref())
+      .map(|m| m.is_dir())
+      .unwrap_or(false);
+    let dir = self.add_dir_raw(&path.parent());
+    let name = path.as_ref().file_name().unwrap().to_string_lossy();
     dir.entries.insert_or_modify(
       &name,
       case_sensitivity,
       || {
         VfsEntry::Symlink(VirtualSymlink {
           name: name.to_string(),
-          dest_parts: VirtualSymlinkParts::from_path(&target),
+          dest_parts: VirtualSymlinkParts::from_path(target.as_ref()),
+          dest_is_dir,
         })
       },
       |_| {
@@ -871,12 +1188,12 @@ impl VfsBuilder {
     );
     // ok, fs implementation
     #[allow(clippy::disallowed_methods)]
-    let target_metadata =
-      std::fs::symlink_metadata(&target).with_context(|| {
+    let target_metadata = std::fs::symlink_metadata(target.as_ref())
+      .with_context(|| {
         format!("Reading symlink target '{}'", target.display())
       })?;
     if target_metadata.is_symlink() {
-      if !visited.insert(target.clone()) {
+      if !visited.insert(target.as_ref().to_path_buf()) {
         // todo: probably don't error in this scenario
         bail!(
           "Circular symlink detected: {} -> {}",
@@ -890,9 +1207,9 @@ impl VfsBuilder {
       }
       self.add_symlink_inner(&target, visited)
     } else if target_metadata.is_dir() {
-      Ok(SymlinkTarget::Dir(target))
+      Ok(SymlinkTarget::Dir(target.0.into_owned()))
     } else {
-      Ok(SymlinkTarget::File(target))
+      Ok(SymlinkTarget::File(target.0.into_owned()))
     }
   }
 
@@ -912,9 +1229,11 @@ impl VfsBuilder {
     data: Vec<u8>,
     update_file: impl FnOnce(&mut VirtualFile, OffsetWithLength),
   ) {
+    debug_assert_eq!(self.ensure_canonical_parent_path(path).as_ref(), path);
     let offset_with_length = self.files.add_data(data);
     let case_sensitivity = self.case_sensitivity;
-    let dir = self.get_dir_mut(path.parent().unwrap()).unwrap();
+    let parent = path.parent().unwrap();
+    let dir = self.get_dir_mut(parent).unwrap();
     let name = path.file_name().unwrap().to_string_lossy();
     let file = dir
       .entries
@@ -1061,5 +1380,10 @@ impl SymlinkTarget {
       Self::File(path) => path,
       Self::Dir(path) => path,
     }
+  }
+
+  fn into_canonicalized(self) -> CanonicalPath<'static> {
+    // the target will always be canonicalized
+    CanonicalPath(Cow::Owned(self.into_path_buf()))
   }
 }

@@ -1,0 +1,9 @@
+{
+  "name": "@denotest/fallible-imports",
+  "version": "1.0.0",
+  "exports": {
+    ".": "./mod.js",
+    "./other": "./other.mjs",
+    "./infallible": "./infallible.js"
+  }
+}

@@ -10,16 +10,6 @@ disallowed-methods = [
   { path = "std::path::Path::read_link", reason = "File system operations should be done using the sys_traits crate" },
   { path = "std::path::Path::symlink_metadata", reason = "File system operations should be done using the sys_traits crate" },
   { path = "std::path::Path::try_exists", reason = "File system operations should be done using the sys_traits crate" },
-  { path = "std::path::PathBuf::exists", reason = "File system operations should be done using the sys_traits crate" },
-  { path = "std::path::PathBuf::canonicalize", reason = "File system operations should be done using the sys_traits crate" },
-  { path = "std::path::PathBuf::is_dir", reason = "File system operations should be done using the sys_traits crate" },
-  { path = "std::path::PathBuf::is_file", reason = "File system operations should be done using the sys_traits crate" },
-  { path = "std::path::PathBuf::is_symlink", reason = "File system operations should be done using the sys_traits crate" },
-  { path = "std::path::PathBuf::metadata", reason = "File system operations should be done using the sys_traits crate" },
-  { path = "std::path::PathBuf::read_dir", reason = "File system operations should be done using the sys_traits crate" },
-  { path = "std::path::PathBuf::read_link", reason = "File system operations should be done using the sys_traits crate" },
-  { path = "std::path::PathBuf::symlink_metadata", reason = "File system operations should be done using the sys_traits crate" },
-  { path = "std::path::PathBuf::try_exists", reason = "File system operations should be done using the sys_traits crate" },
   { path = "std::fs::canonicalize", reason = "File system operations should be done using the sys_traits crate" },
   { path = "std::fs::copy", reason = "File system operations should be done using the sys_traits crate" },
   { path = "std::fs::create_dir", reason = "File system operations should be done using the sys_traits crate" },
@@ -39,6 +29,6 @@ disallowed-methods = [
   { path = "std::fs::write", reason = "File system operations should be done using the sys_traits crate" },
 ]
 disallowed-types = [
-  { path = "std::sync::Arc", reason = "use crate::sync::MaybeArc instead" },
-  { path = "std::sync::OnceLock", reason = "use crate::sync::MaybeOnceLock instead" },
+  { path = "std::sync::Arc", reason = "use deno_maybe_sync::MaybeArc instead" },
+  { path = "std::sync::OnceLock", reason = "use deno_maybe_sync::MaybeOnceLock instead" },
 ]

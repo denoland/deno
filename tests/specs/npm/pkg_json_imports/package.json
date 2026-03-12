@@ -1,0 +1,7 @@
+{
+  "imports": {
+    "#add": {
+      "default": "./add.ts"
+    }
+  }
+}

@@ -5,7 +5,7 @@
       "steps": [
         {
           "args": "install",
-          "output": ""
+          "output": "[WILDCARD]"
         }
       ]
     },

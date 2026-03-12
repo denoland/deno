@@ -1,0 +1,21 @@
+{
+  "tests": {
+    "bare": {
+      "args": "fmt",
+      "output": "error.out",
+      "exitCode": 1
+    },
+    "specify_dir": {
+      "args": "fmt .",
+      "output": "[WILDCARD]"
+    },
+    "check": {
+      "args": "fmt --check",
+      "output": "[WILDCARD]"
+    },
+    "arg": {
+      "args": "fmt main.ts",
+      "output": "[WILDCARD]"
+    }
+  }
+}

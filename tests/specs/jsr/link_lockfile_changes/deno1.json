@@ -1,0 +1,8 @@
+{
+  "imports": {
+    "@denotest/add": "jsr:@denotest/add"
+  },
+  "links": [
+    "./add"
+  ]
+}

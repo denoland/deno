@@ -1,10 +1,9 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::path::PathBuf;
 
 use anyhow::Context;
-
-use crate::factory::WorkspaceRc;
+use deno_config::workspace::WorkspaceRc;
 
 #[derive(Debug, Clone)]
 pub struct ExternalImportMap {
@@ -14,7 +13,7 @@ pub struct ExternalImportMap {
 
 #[allow(clippy::disallowed_types)]
 pub type WorkspaceExternalImportMapLoaderRc<TSys> =
-  crate::sync::MaybeArc<WorkspaceExternalImportMapLoader<TSys>>;
+  deno_maybe_sync::MaybeArc<WorkspaceExternalImportMapLoader<TSys>>;
 
 #[derive(Debug)]
 pub struct WorkspaceExternalImportMapLoader<TSys: sys_traits::FsRead> {

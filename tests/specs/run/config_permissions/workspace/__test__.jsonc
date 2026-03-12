@@ -1,0 +1,12 @@
+{
+  "tests": {
+    "member": {
+      "args": "run -P=member a/main.ts",
+      "output": "member.out"
+    },
+    "root": {
+      "args": "run -P=root a/main.ts",
+      "output": "root.out"
+    }
+  }
+}

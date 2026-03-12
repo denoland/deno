@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::fmt::Debug;
@@ -7,19 +7,13 @@ use std::path::PathBuf;
 
 use boxed_error::Boxed;
 use deno_error::JsError;
+use deno_maybe_sync::MaybeSend;
+use deno_maybe_sync::MaybeSync;
+use deno_maybe_sync::new_rc;
+use deno_semver::Version;
 use deno_semver::npm::NpmPackageReqReference;
-use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use deno_semver::package::PackageReqReference;
-use node_resolver::errors::NodeResolveError;
-use node_resolver::errors::NodeResolveErrorKind;
-use node_resolver::errors::PackageFolderResolveErrorKind;
-use node_resolver::errors::PackageFolderResolveIoError;
-use node_resolver::errors::PackageNotFoundError;
-use node_resolver::errors::PackageResolveErrorKind;
-use node_resolver::errors::PackageSubpathResolveError;
-use node_resolver::errors::TypesNotFoundError;
-use node_resolver::types_package_name;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::IsBuiltInNodeModuleChecker;
 use node_resolver::NodeResolution;
@@ -29,6 +23,16 @@ use node_resolver::NpmPackageFolderResolver;
 use node_resolver::ResolutionMode;
 use node_resolver::UrlOrPath;
 use node_resolver::UrlOrPathRef;
+use node_resolver::errors::NodeJsErrorCode;
+use node_resolver::errors::NodeJsErrorCoded;
+use node_resolver::errors::NodeResolveError;
+use node_resolver::errors::NodeResolveErrorKind;
+use node_resolver::errors::PackageFolderResolveErrorKind;
+use node_resolver::errors::PackageFolderResolveIoError;
+use node_resolver::errors::PackageNotFoundError;
+use node_resolver::errors::PackageResolveErrorKind;
+use node_resolver::errors::PackageSubpathFromDenoModuleResolveError;
+use node_resolver::errors::TypesNotFoundError;
 use thiserror::Error;
 use url::Url;
 
@@ -39,15 +43,12 @@ pub use self::byonm::ByonmNpmResolverRc;
 pub use self::byonm::ByonmResolvePkgFolderFromDenoReqError;
 pub use self::local::get_package_folder_id_folder_name;
 pub use self::local::normalize_pkg_name_for_node_modules_deno_folder;
-use self::managed::create_managed_in_npm_pkg_checker;
 use self::managed::ManagedInNpmPackageChecker;
 use self::managed::ManagedInNpmPkgCheckerCreateOptions;
 pub use self::managed::ManagedNpmResolver;
 use self::managed::ManagedNpmResolverCreateOptions;
 pub use self::managed::ManagedNpmResolverRc;
-use crate::sync::new_rc;
-use crate::sync::MaybeSend;
-use crate::sync::MaybeSync;
+use self::managed::create_managed_in_npm_pkg_checker;
 
 mod byonm;
 mod local;
@@ -91,7 +92,10 @@ impl InNpmPackageChecker for DenoInNpmPackageChecker {
 
 #[derive(Debug, Error, JsError)]
 #[class(generic)]
-#[error("Could not resolve \"{}\", but found it in a package.json. Deno expects the node_modules/ directory to be up to date. Did you forget to run `deno install`?", specifier)]
+#[error(
+  "Could not resolve \"{}\", but found it in a package.json. Deno expects the node_modules/ directory to be up to date. Did you forget to run `deno install`?",
+  specifier
+)]
 pub struct NodeModulesOutOfDateError {
   pub specifier: String,
 }
@@ -102,7 +106,7 @@ pub struct NodeModulesOutOfDateError {
 pub struct MissingPackageNodeModulesFolderError {
   pub package_json_path: PathBuf,
   // Don't bother displaying this error, so don't name it "source"
-  pub inner: PackageSubpathResolveError,
+  pub inner: PackageSubpathFromDenoModuleResolveError,
 }
 
 #[derive(Debug, Boxed, JsError)]
@@ -119,6 +123,11 @@ pub enum ResolveIfForNpmPackageErrorKind {
   #[error(transparent)]
   NodeModulesOutOfDate(#[from] NodeModulesOutOfDateError),
 }
+
+#[derive(Debug, Error, JsError)]
+#[error("npm specifiers were requested; but --no-npm is specified")]
+#[class("generic")]
+pub struct NoNpmError;
 
 #[derive(Debug, JsError)]
 #[class(inherit)]
@@ -144,8 +153,9 @@ impl std::fmt::Display for ResolveNpmReqRefError {
 pub struct ResolveReqWithSubPathError(pub Box<ResolveReqWithSubPathErrorKind>);
 
 impl ResolveReqWithSubPathError {
-  pub fn maybe_specifier(&self) -> Option<Cow<UrlOrPath>> {
+  pub fn maybe_specifier(&self) -> Option<Cow<'_, UrlOrPath>> {
     match self.as_kind() {
+      ResolveReqWithSubPathErrorKind::NoNpm(_) => None,
       ResolveReqWithSubPathErrorKind::MissingPackageNodeModulesFolder(err) => {
         err.inner.maybe_specifier()
       }
@@ -166,22 +176,39 @@ pub enum ResolveReqWithSubPathErrorKind {
   MissingPackageNodeModulesFolder(#[from] MissingPackageNodeModulesFolderError),
   #[class(inherit)]
   #[error(transparent)]
+  NoNpm(NoNpmError),
+  #[class(inherit)]
+  #[error(transparent)]
   ResolvePkgFolderFromDenoReq(
     #[from] ContextedResolvePkgFolderFromDenoReqError,
   ),
   #[class(inherit)]
   #[error(transparent)]
-  PackageSubpathResolve(#[from] PackageSubpathResolveError),
+  PackageSubpathResolve(#[from] PackageSubpathFromDenoModuleResolveError),
 }
 
 impl ResolveReqWithSubPathErrorKind {
   pub fn as_types_not_found(&self) -> Option<&TypesNotFoundError> {
     match self {
+      ResolveReqWithSubPathErrorKind::NoNpm(_) => None,
       ResolveReqWithSubPathErrorKind::MissingPackageNodeModulesFolder(_)
       | ResolveReqWithSubPathErrorKind::ResolvePkgFolderFromDenoReq(_) => None,
       ResolveReqWithSubPathErrorKind::PackageSubpathResolve(
         package_subpath_resolve_error,
       ) => package_subpath_resolve_error.as_types_not_found(),
+    }
+  }
+
+  pub fn maybe_code(&self) -> Option<NodeJsErrorCode> {
+    match self {
+      ResolveReqWithSubPathErrorKind::NoNpm(_) => None,
+      ResolveReqWithSubPathErrorKind::MissingPackageNodeModulesFolder(_) => {
+        None
+      }
+      ResolveReqWithSubPathErrorKind::ResolvePkgFolderFromDenoReq(_) => None,
+      ResolveReqWithSubPathErrorKind::PackageSubpathResolve(e) => {
+        Some(e.code())
+      }
     }
   }
 }
@@ -291,7 +318,7 @@ impl<TSys: NpmResolverSys> NpmResolver<TSys> {
         .resolve_pkg_folder_from_deno_module_req(req, referrer)
         .map_err(ResolvePkgFolderFromDenoReqError::Byonm),
       NpmResolver::Managed(managed_resolver) => managed_resolver
-        .resolve_pkg_folder_from_deno_module_req(req, referrer)
+        .resolve_pkg_folder_from_deno_module_req(req)
         .map_err(ResolvePkgFolderFromDenoReqError::Managed),
     }
   }
@@ -309,6 +336,28 @@ impl<TSys: NpmResolverSys> NpmPackageFolderResolver for NpmResolver<TSys> {
       }
       NpmResolver::Managed(managed_resolver) => managed_resolver
         .resolve_package_folder_from_package(specifier, referrer),
+    }
+  }
+
+  fn resolve_types_package_folder(
+    &self,
+    types_package_name: &str,
+    maybe_package_version: Option<&Version>,
+    maybe_referrer: Option<&UrlOrPathRef>,
+  ) -> Option<PathBuf> {
+    match self {
+      NpmResolver::Byonm(byonm_resolver) => byonm_resolver
+        .resolve_types_package_folder(
+          types_package_name,
+          maybe_package_version,
+          maybe_referrer,
+        ),
+      NpmResolver::Managed(managed_resolver) => managed_resolver
+        .resolve_types_package_folder(
+          types_package_name,
+          maybe_package_version,
+          maybe_referrer,
+        ),
     }
   }
 }
@@ -336,7 +385,7 @@ pub type NpmReqResolverRc<
   TIsBuiltInNodeModuleChecker,
   TNpmPackageFolderResolver,
   TSys,
-> = crate::sync::MaybeArc<
+> = deno_maybe_sync::MaybeArc<
   NpmReqResolver<
     TInNpmPackageChecker,
     TIsBuiltInNodeModuleChecker,
@@ -364,11 +413,11 @@ pub struct NpmReqResolver<
 }
 
 impl<
-    TInNpmPackageChecker: InNpmPackageChecker,
-    TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
-    TNpmPackageFolderResolver: NpmPackageFolderResolver,
-    TSys: NpmResolverSys,
-  >
+  TInNpmPackageChecker: InNpmPackageChecker,
+  TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
+  TNpmPackageFolderResolver: NpmPackageFolderResolver,
+  TSys: NpmResolverSys,
+>
   NpmReqResolver<
     TInNpmPackageChecker,
     TIsBuiltInNodeModuleChecker,
@@ -464,41 +513,6 @@ impl<
     match resolution_result {
       Ok(url) => Ok(url),
       Err(err) => {
-        if err.as_types_not_found().is_some() {
-          let maybe_definitely_typed_req =
-            if let Some(npm_resolver) = self.npm_resolver.as_managed() {
-              let snapshot = npm_resolver.resolution().snapshot();
-              if let Some(nv) = snapshot.package_reqs().get(req) {
-                let type_req = find_definitely_typed_package(
-                  nv,
-                  snapshot.package_reqs().iter(),
-                );
-
-                type_req.map(|(r, _)| r).cloned()
-              } else {
-                None
-              }
-            } else {
-              Some(
-                PackageReq::from_str(&format!(
-                  "{}@*",
-                  types_package_name(&req.name)
-                ))
-                .unwrap(),
-              )
-            };
-          if let Some(req) = maybe_definitely_typed_req {
-            if let Ok(resolved) = self.resolve_req_with_sub_path(
-              &req,
-              sub_path,
-              referrer,
-              resolution_mode,
-              resolution_kind,
-            ) {
-              return Ok(resolved);
-            }
-          }
-        }
         if matches!(self.npm_resolver, NpmResolver::Byonm(_)) {
           let package_json_path = package_folder.join("package.json");
           if !self.sys.fs_exists_no_err(&package_json_path) {
@@ -554,7 +568,7 @@ impl<
                 )
                 .into_box(),
               ),
-              PackageResolveErrorKind::ClosestPkgJson(_)
+              PackageResolveErrorKind::PkgJsonLoad(_)
               | PackageResolveErrorKind::InvalidModuleSpecifier(_)
               | PackageResolveErrorKind::ExportsResolve(_)
               | PackageResolveErrorKind::SubpathResolve(_) => Err(
@@ -588,22 +602,21 @@ impl<
                     }
                     if let NpmResolver::Byonm(byonm_npm_resolver) =
                       &self.npm_resolver
-                    {
-                      if byonm_npm_resolver
+                      && byonm_npm_resolver
                         .find_ancestor_package_json_with_dep(
                           package_name,
                           referrer,
                         )
                         .is_some()
-                      {
-                        return Err(
-                          ResolveIfForNpmPackageErrorKind::NodeModulesOutOfDate(
-                            NodeModulesOutOfDateError {
-                              specifier: specifier.to_string(),
-                            },
-                          ).into_box(),
-                        );
-                      }
+                    {
+                      return Err(
+                        ResolveIfForNpmPackageErrorKind::NodeModulesOutOfDate(
+                          NodeModulesOutOfDateError {
+                            specifier: specifier.to_string(),
+                          },
+                        )
+                        .into_box(),
+                      );
                     }
                     Ok(None)
                   }
@@ -627,42 +640,4 @@ impl<
       }
     }
   }
-}
-
-/// Attempt to choose the "best" `@types/*` package
-/// if possible. If multiple versions exist, try to match
-/// the major and minor versions of the `@types` package with the
-/// actual package, falling back to the latest @types version present.
-pub fn find_definitely_typed_package<'a>(
-  nv: &'a PackageNv,
-  packages: impl IntoIterator<Item = (&'a PackageReq, &'a PackageNv)>,
-) -> Option<(&'a PackageReq, &'a PackageNv)> {
-  let types_name = types_package_name(&nv.name);
-  let mut best_patch = 0;
-  let mut highest: Option<(&PackageReq, &PackageNv)> = None;
-  let mut best = None;
-
-  for (req, type_nv) in packages {
-    if type_nv.name != types_name {
-      continue;
-    }
-    if type_nv.version.major == nv.version.major
-      && type_nv.version.minor == nv.version.minor
-      && type_nv.version.patch >= best_patch
-      && type_nv.version.pre == nv.version.pre
-    {
-      best = Some((req, type_nv));
-      best_patch = type_nv.version.patch;
-    }
-
-    if let Some((_, highest_nv)) = highest {
-      if type_nv.version > highest_nv.version {
-        highest = Some((req, type_nv));
-      }
-    } else {
-      highest = Some((req, type_nv));
-    }
-  }
-
-  best.or(highest)
 }

@@ -1,0 +1,13 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "bundle --quiet -o main.bundle.js main.tsx",
+      "output": ""
+    },
+    {
+      "args": "run -A main.bundle.js",
+      "output": "main.out"
+    }
+  ]
+}

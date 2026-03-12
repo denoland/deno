@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use deno_core::serde::Serialize;
 
@@ -73,7 +73,7 @@ pub fn cpu_info() -> Option<Vec<CpuInfo>> {
       cpu_speed = 2_400_000_000;
     }
 
-    extern "C" {
+    unsafe extern "C" {
       fn mach_host_self() -> std::ffi::c_uint;
       static mut mach_task_self_: std::ffi::c_uint;
     }

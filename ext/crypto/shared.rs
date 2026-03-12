@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 
@@ -6,9 +6,9 @@ use deno_core::JsBuffer;
 use deno_core::ToJsBuffer;
 use elliptic_curve::sec1::ToEncodedPoint;
 use p256::pkcs8::DecodePrivateKey;
+use rsa::RsaPrivateKey;
 use rsa::pkcs1::DecodeRsaPrivateKey;
 use rsa::pkcs1::EncodeRsaPublicKey;
-use rsa::RsaPrivateKey;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -32,6 +32,12 @@ pub enum ShaHash {
   Sha384,
   #[serde(rename = "SHA-512")]
   Sha512,
+  #[serde(rename = "SHA3-256")]
+  Sha3_256,
+  #[serde(rename = "SHA3-384")]
+  Sha3_384,
+  #[serde(rename = "SHA3-512")]
+  Sha3_512,
 }
 
 #[derive(Serialize, Deserialize, Copy, Clone, Eq, PartialEq)]

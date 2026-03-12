@@ -1,0 +1,15 @@
+{
+  "tempDir": true,
+  "tests": {
+    "deny_write_jsr": {
+      "args": "x --deny-write -y jsr:@denotest/try-write",
+      "output": "deny_write_jsr.out",
+      "exitCode": 1
+    },
+    "deny_write_npm": {
+      "args": "x --deny-write -y @denotest/try-write",
+      "output": "deny_write_npm.out",
+      "exitCode": 1
+    }
+  }
+}

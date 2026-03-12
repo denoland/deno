@@ -1,11 +1,11 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 use std::io;
 use std::os::windows::io::RawHandle;
 use std::sync::atomic::AtomicU32;
 use std::sync::atomic::Ordering;
 
-use rand::thread_rng;
 use rand::RngCore;
+use rand::thread_rng;
 use winapi::shared::minwindef::DWORD;
 use winapi::um::errhandlingapi::GetLastError;
 use winapi::um::fileapi::CreateFileA;

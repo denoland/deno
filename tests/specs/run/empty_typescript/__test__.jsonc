@@ -1,4 +1,4 @@
 {
   "args": "run --reload --check empty.ts",
-  "output": "Check file:[WILDCARD]/empty.ts\n"
+  "output": "Check [WILDCARD]empty.ts\n"
 }

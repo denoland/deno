@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -9,7 +9,7 @@ use deno_core::error::AnyError;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmRegistryApi;
 use deno_npm_cache::TarballCache;
-use deno_resolver::workspace::WorkspaceNpmLinkPackages;
+use deno_resolver::workspace::WorkspaceNpmLinkPackagesRc;
 use deno_semver::package::PackageNv;
 
 use crate::cache::DenoDir;
@@ -28,6 +28,8 @@ fn esbuild_platform() -> &'static str {
     ("aarch64", "macos" | "apple") => "darwin-arm64",
     ("x86_64", "windows") => "win32-x64",
     ("aarch64", "windows") => "win32-arm64",
+    ("x86_64", "android") => "android-x64",
+    ("aarch64", "android") => "android-arm64",
     _ => panic!(
       "Unsupported platform: {} {}",
       std::env::consts::ARCH,
@@ -39,8 +41,8 @@ fn esbuild_platform() -> &'static str {
 pub async fn ensure_esbuild(
   deno_dir: &DenoDir,
   npmrc: &ResolvedNpmRc,
-  npm_registry_info: &Arc<CliNpmRegistryInfoProvider>,
-  workspace_link_packages: &Arc<WorkspaceNpmLinkPackages>,
+  api: &Arc<CliNpmRegistryInfoProvider>,
+  workspace_link_packages: &WorkspaceNpmLinkPackagesRc,
   tarball_cache: &Arc<TarballCache<CliNpmCacheHttpClient, CliSys>>,
   npm_cache: &CliNpmCache,
 ) -> Result<PathBuf, AnyError> {
@@ -60,7 +62,6 @@ pub async fn ensure_esbuild(
   let pkg_name = format!("@esbuild/{}", target);
   let nv =
     PackageNv::from_str(&format!("{}@{}", pkg_name, ESBUILD_VERSION)).unwrap();
-  let api = npm_registry_info.as_npm_registry_api();
   let mut info = api.package_info(&pkg_name).await?;
   let version_info = match info.version_info(&nv, &workspace_link_packages.0) {
     Ok(version_info) => version_info,
@@ -111,9 +112,13 @@ pub async fn ensure_esbuild(
     })?;
 
     if !existed {
-      std::fs::remove_dir_all(&package_folder).with_context(|| {
-        format!("failed to remove directory {}", package_folder.display())
-      })?;
+      let _ = std::fs::remove_dir_all(&package_folder).inspect_err(|e| {
+        log::warn!(
+          "failed to remove directory {}: {}",
+          package_folder.display(),
+          e
+        );
+      });
     }
     Ok(esbuild_path)
   } else {

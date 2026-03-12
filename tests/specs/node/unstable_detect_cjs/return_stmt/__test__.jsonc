@@ -1,0 +1,13 @@
+{
+  "tests": {
+    "on": {
+      "args": "run -A --unstable-detect-cjs main.ts",
+      "output": "main.out"
+    },
+    "off": {
+      "args": "run -A main.ts",
+      "exitCode": 1,
+      "output": "fail.out"
+    }
+  }
+}

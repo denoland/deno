@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // Interfaces 100% copied from Go.
 // Documentation liberally lifted from them too.
@@ -167,7 +167,7 @@ class Stdin {
 
   get readable() {
     if (this.#readable === undefined) {
-      this.#readable = readableStreamForRid(this.#rid);
+      this.#readable = readableStreamForRid(this.#rid, false);
     }
     return this.#readable;
   }

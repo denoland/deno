@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::collections::HashMap;
 
@@ -10,6 +10,7 @@ use deno_core::error::AnyError;
 use deno_core::serde_json;
 use lsp_types::Uri;
 use tokio_util::sync::CancellationToken;
+use tower_lsp::LanguageServer;
 use tower_lsp::lsp_types::ClientCapabilities;
 use tower_lsp::lsp_types::ClientInfo;
 use tower_lsp::lsp_types::CompletionContext;
@@ -31,7 +32,6 @@ use tower_lsp::lsp_types::TextDocumentItem;
 use tower_lsp::lsp_types::TextDocumentPositionParams;
 use tower_lsp::lsp_types::VersionedTextDocumentIdentifier;
 use tower_lsp::lsp_types::WorkDoneProgressParams;
-use tower_lsp::LanguageServer;
 
 use super::client::Client;
 use super::config::ClassMemberSnippets;
@@ -292,6 +292,7 @@ fn lsp_range_to_std_range(
 }
 
 fn get_cwd_uri() -> Result<ModuleSpecifier, AnyError> {
+  #[allow(clippy::disallowed_methods)] // ok, used for initialization
   let cwd = std::env::current_dir()?;
   ModuleSpecifier::from_directory_path(&cwd)
     .map_err(|_| anyhow!("Could not get URI from {}", cwd.display()))
@@ -313,6 +314,7 @@ pub fn get_repl_workspace_settings() -> WorkspaceSettings {
     log_file: false,
     lint: false,
     document_preload_limit: 0, // don't pre-load any modules as it's expensive and not useful for the repl
+    force_push_based_diagnostics: false,
     tls_certificate: None,
     unsafely_ignore_certificate_errors: None,
     unstable: Default::default(),

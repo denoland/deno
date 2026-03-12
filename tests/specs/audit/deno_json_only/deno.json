@@ -1,0 +1,6 @@
+{
+  "imports": {
+    "@denotest/using-vuln": "npm:@denotest/using-vuln@1.0.0",
+    "@denotest/with-vuln1": "npm:@denotest/with-vuln1@1.0.0"
+  }
+}

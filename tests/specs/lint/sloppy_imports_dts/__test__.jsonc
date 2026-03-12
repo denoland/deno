@@ -1,15 +1,15 @@
 {
   "tests": {
     "check": {
-      "args": "check --unstable-sloppy-imports main.ts",
+      "args": "check --sloppy-imports main.ts",
       "output": "check.out"
     },
     "run": {
-      "args": "run --unstable-sloppy-imports main.ts",
+      "args": "run --sloppy-imports main.ts",
       "output": "run.out"
     },
     "lint": {
-      "args": "lint --unstable-sloppy-imports",
+      "args": "lint --sloppy-imports",
       "output": "lint.out",
       "exitCode": 1
     },
@@ -17,16 +17,16 @@
     "lint_fix": {
       "tempDir": true,
       "steps": [{
-        "args": "lint --unstable-sloppy-imports --fix",
+        "args": "lint --sloppy-imports --fix",
         "output": "Checked 17 files\n"
       }, {
-        "args": "lint --unstable-sloppy-imports",
+        "args": "lint --sloppy-imports",
         "output": "Checked 17 files\n"
       }, {
-        "args": "check --unstable-sloppy-imports main.ts",
+        "args": "check --sloppy-imports main.ts",
         "output": "check.out"
       }, {
-        "args": "run --unstable-sloppy-imports main.ts",
+        "args": "run --sloppy-imports main.ts",
         "output": "run.out"
       }]
     }

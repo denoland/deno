@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -18,8 +18,6 @@ use std::process::ExitStatus;
 use std::process::Stdio as StdStdio;
 use std::rc::Rc;
 
-use deno_core::op2;
-use deno_core::serde_json;
 use deno_core::AsyncMutFuture;
 use deno_core::AsyncRefCell;
 use deno_core::JsBuffer;
@@ -27,14 +25,18 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
-use deno_core::ToJsBuffer;
+use deno_core::ToV8;
+use deno_core::convert::Uint8Array;
+use deno_core::op2;
+use deno_core::serde_json;
 use deno_error::JsErrorBox;
-use deno_io::fs::FileResource;
 use deno_io::ChildStderrResource;
 use deno_io::ChildStdinResource;
 use deno_io::ChildStdoutResource;
 use deno_io::IntoRawIoHandle;
+use deno_io::fs::FileResource;
 use deno_os::SignalError;
+use deno_permissions::PathQueryDescriptor;
 use deno_permissions::PermissionsContainer;
 use deno_permissions::RunQueryDescriptor;
 #[cfg(windows)]
@@ -44,11 +46,11 @@ use deno_subprocess_windows::Command;
 #[cfg(windows)]
 use deno_subprocess_windows::Stdio as StdStdio;
 use serde::Deserialize;
-use serde::Serialize;
 #[cfg(unix)]
 use tokio::process::Child as AsyncChild;
 
 pub mod ipc;
+use ipc::IpcAdvancedStreamResource;
 use ipc::IpcJsonStreamResource;
 use ipc::IpcRefTracker;
 
@@ -179,7 +181,7 @@ deno_core::extension!(
 struct ChildResource(RefCell<AsyncChild>, u32);
 
 impl Resource for ChildResource {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "child".into()
   }
 }
@@ -200,6 +202,8 @@ pub struct SpawnArgs {
   windows_raw_arguments: bool,
   ipc: Option<i32>,
 
+  serialization: Option<ChildIpcSerialization>,
+
   #[serde(flatten)]
   stdio: ChildStdio,
 
@@ -208,6 +212,26 @@ pub struct SpawnArgs {
   extra_stdio: Vec<Stdio>,
   detached: bool,
   needs_npm_process_state: bool,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ChildIpcSerialization {
+  Json,
+  Advanced,
+}
+
+impl std::fmt::Display for ChildIpcSerialization {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    write!(
+      f,
+      "{}",
+      match self {
+        ChildIpcSerialization::Json => "json",
+        ChildIpcSerialization::Advanced => "advanced",
+      }
+    )
+  }
 }
 
 #[cfg(unix)]
@@ -289,8 +313,7 @@ pub struct ChildStdio {
   stderr: StdioOrRid,
 }
 
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(ToV8)]
 pub struct ChildStatus {
   success: bool,
   code: i32,
@@ -312,7 +335,7 @@ impl TryFrom<ExitStatus> for ChildStatus {
         success: false,
         code: 128 + signal,
         #[cfg(unix)]
-        signal: Some(deno_os::signal::signal_int_to_str(signal)?.to_string()),
+        signal: Some(deno_signals::signal_int_to_str(signal)?.to_string()),
         #[cfg(not(unix))]
         signal: None,
       }
@@ -330,12 +353,11 @@ impl TryFrom<ExitStatus> for ChildStatus {
   }
 }
 
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(ToV8)]
 pub struct SpawnOutput {
   status: ChildStatus,
-  stdout: Option<ToJsBuffer>,
-  stderr: Option<ToJsBuffer>,
+  stdout: Option<Uint8Array>,
+  stderr: Option<Uint8Array>,
 }
 
 type CreateCommand = (
@@ -469,20 +491,38 @@ fn create_command(
     if let Some(fd) = maybe_npm_process_state {
       fds_to_close.push(fd);
     }
-    if let Some(ipc) = args.ipc {
-      if ipc >= 0 {
-        let (ipc_fd1, ipc_fd2) = deno_io::bi_pipe_pair_raw()?;
-        fds_to_dup.push((ipc_fd2, ipc));
-        fds_to_close.push(ipc_fd2);
-        /* One end returned to parent process (this) */
-        let pipe_rid = state.resource_table.add(IpcJsonStreamResource::new(
-          ipc_fd1 as _,
-          IpcRefTracker::new(state.external_ops_tracker.clone()),
-        )?);
-        /* The other end passed to child process via NODE_CHANNEL_FD */
-        command.env("NODE_CHANNEL_FD", format!("{}", ipc));
-        ipc_rid = Some(pipe_rid);
-      }
+    if let Some(ipc) = args.ipc
+      && ipc >= 0
+    {
+      let (ipc_fd1, ipc_fd2) = deno_io::bi_pipe_pair_raw()?;
+      fds_to_dup.push((ipc_fd2, ipc));
+      fds_to_close.push(ipc_fd2);
+      /* One end returned to parent process (this) */
+      let pipe_rid = match args.serialization {
+        Some(ChildIpcSerialization::Json) | None => {
+          state.resource_table.add(IpcJsonStreamResource::new(
+            ipc_fd1 as _,
+            IpcRefTracker::new(state.external_ops_tracker.clone()),
+          )?)
+        }
+        Some(ChildIpcSerialization::Advanced) => {
+          state.resource_table.add(IpcAdvancedStreamResource::new(
+            ipc_fd1 as _,
+            IpcRefTracker::new(state.external_ops_tracker.clone()),
+          )?)
+        }
+      };
+
+      /* The other end passed to child process via NODE_CHANNEL_FD */
+      command.env("NODE_CHANNEL_FD", format!("{}", ipc));
+      command.env(
+        "NODE_CHANNEL_SERIALIZATION_MODE",
+        args
+          .serialization
+          .unwrap_or(ChildIpcSerialization::Json)
+          .to_string(),
+      );
+      ipc_rid = Some(pipe_rid);
     }
 
     for (i, stdio) in args.extra_stdio.into_iter().enumerate() {
@@ -541,24 +581,40 @@ fn create_command(
     if let Some(handle) = maybe_npm_process_state {
       handles_to_close.push(handle);
     }
-    if let Some(ipc) = args.ipc {
-      if ipc >= 0 {
-        let (hd1, hd2) = deno_io::bi_pipe_pair_raw()?;
+    if let Some(ipc) = args.ipc
+      && ipc >= 0
+    {
+      let (hd1, hd2) = deno_io::bi_pipe_pair_raw()?;
 
-        /* One end returned to parent process (this) */
-        let pipe_rid =
-          Some(state.resource_table.add(IpcJsonStreamResource::new(
-            hd1 as i64,
+      /* One end returned to parent process (this) */
+      let pipe_rid = match args.serialization {
+        Some(ChildIpcSerialization::Json) | None => {
+          state.resource_table.add(IpcJsonStreamResource::new(
+            hd1 as _,
             IpcRefTracker::new(state.external_ops_tracker.clone()),
-          )?));
+          )?)
+        }
+        Some(ChildIpcSerialization::Advanced) => {
+          state.resource_table.add(IpcAdvancedStreamResource::new(
+            hd1 as _,
+            IpcRefTracker::new(state.external_ops_tracker.clone()),
+          )?)
+        }
+      };
 
-        /* The other end passed to child process via NODE_CHANNEL_FD */
-        command.env("NODE_CHANNEL_FD", format!("{}", hd2 as i64));
+      /* The other end passed to child process via NODE_CHANNEL_FD */
+      command.env("NODE_CHANNEL_FD", format!("{}", hd2 as i64));
+      command.env(
+        "NODE_CHANNEL_SERIALIZATION_MODE",
+        args
+          .serialization
+          .unwrap_or(ChildIpcSerialization::Json)
+          .to_string(),
+      );
 
-        handles_to_close.push(hd2);
+      handles_to_close.push(hd2);
 
-        ipc_rid = pipe_rid;
-      }
+      ipc_rid = Some(pipe_rid);
     }
 
     for (i, stdio) in args.extra_stdio.into_iter().enumerate() {
@@ -594,8 +650,7 @@ fn create_command(
   }
 }
 
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(ToV8)]
 struct Child {
   rid: ResourceId,
   pid: u32,
@@ -666,7 +721,7 @@ fn spawn_child(
       }
 
       return Err(ProcessError::SpawnFailed {
-        command: command.get_program().to_string_lossy().to_string(),
+        command: command.get_program().to_string_lossy().into_owned(),
         error: Box::new(err.into()),
       });
     }
@@ -753,10 +808,10 @@ fn compute_run_cmd_and_check_permissions(
     })?;
   check_run_permission(
     state,
-    &RunQueryDescriptor::Path {
-      requested: arg_cmd.to_string(),
-      resolved: cmd.clone(),
-    },
+    &RunQueryDescriptor::Path(
+      PathQueryDescriptor::new_known_absolute(Cow::Borrowed(&cmd))
+        .with_requested(arg_cmd.to_string()),
+    ),
     &run_env,
     api_name,
   )?;
@@ -877,7 +932,7 @@ fn resolve_cmd(cmd: &str, env: &RunEnv) -> Result<PathBuf, ProcessError> {
 }
 
 fn resolve_path(path: &str, cwd: &Path) -> PathBuf {
-  deno_path_util::normalize_path(cwd.join(path))
+  deno_path_util::normalize_path(Cow::Owned(cwd.join(path))).into_owned()
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -903,17 +958,19 @@ fn check_run_permission(
     if !env_var_names.is_empty() {
       // we don't allow users to launch subprocesses with any LD_ or DYLD_*
       // env vars set because this allows executing code (ex. LD_PRELOAD)
-      return Err(CheckRunPermissionError::Other(
-        JsErrorBox::new(
-          "NotCapable",
-          format!(
-            "Requires --allow-run permissions to spawn subprocess with {0} environment variable{1}. Alternatively, spawn with {2} environment variable{1} unset.",
-            env_var_names.join(", "),
-            if env_var_names.len() != 1 { "s" } else { "" },
-            if env_var_names.len() != 1 { "these" } else { "the" }
-          ),
+      return Err(CheckRunPermissionError::Other(JsErrorBox::new(
+        "NotCapable",
+        format!(
+          "Requires --allow-run permissions to spawn subprocess with {0} environment variable{1}. Alternatively, spawn with {2} environment variable{1} unset.",
+          env_var_names.join(", "),
+          if env_var_names.len() != 1 { "s" } else { "" },
+          if env_var_names.len() != 1 {
+            "these"
+          } else {
+            "the"
+          }
         ),
-      ));
+      )));
     }
     permissions.check_run(cmd, api_name)?;
   }
@@ -958,7 +1015,6 @@ fn get_requires_allow_all_env_vars(env: &RunEnv) -> Vec<&str> {
 }
 
 #[op2(stack_trace)]
-#[serde]
 fn op_spawn_child(
   state: &mut OpState,
   #[serde] args: SpawnArgs,
@@ -974,9 +1030,8 @@ fn op_spawn_child(
   child
 }
 
-#[op2(async)]
+#[op2]
 #[allow(clippy::await_holding_refcell_ref)]
-#[serde]
 async fn op_spawn_wait(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -1000,7 +1055,6 @@ async fn op_spawn_wait(
 }
 
 #[op2(stack_trace)]
-#[serde]
 fn op_spawn_sync(
   state: &mut OpState,
   #[serde] args: SpawnArgs,
@@ -1012,7 +1066,7 @@ fn op_spawn_sync(
     create_command(state, args, "Deno.Command().outputSync()")?;
 
   let mut child = command.spawn().map_err(|e| ProcessError::SpawnFailed {
-    command: command.get_program().to_string_lossy().to_string(),
+    command: command.get_program().to_string_lossy().into_owned(),
     error: Box::new(e.into()),
   })?;
   if let Some(input) = input {
@@ -1026,7 +1080,7 @@ fn op_spawn_sync(
     child
       .wait_with_output()
       .map_err(|e| ProcessError::SpawnFailed {
-        command: command.get_program().to_string_lossy().to_string(),
+        command: command.get_program().to_string_lossy().into_owned(),
         error: Box::new(e.into()),
       })?;
   Ok(SpawnOutput {
@@ -1044,11 +1098,18 @@ fn op_spawn_sync(
   })
 }
 
-#[op2(fast)]
+#[derive(serde::Deserialize)]
+#[serde(untagged)]
+enum SignalArg {
+  String(String),
+  Int(i32),
+}
+
+#[op2(stack_trace)]
 fn op_spawn_kill(
   state: &mut OpState,
   #[smi] rid: ResourceId,
-  #[string] signal: String,
+  #[serde] signal: SignalArg,
 ) -> Result<(), ProcessError> {
   if let Ok(child_resource) = state.resource_table.get::<ChildResource>(rid) {
     deprecated::kill(child_resource.1 as i32, &signal)?;
@@ -1058,6 +1119,7 @@ fn op_spawn_kill(
 }
 
 mod deprecated {
+  use deno_core::FromV8;
   #[cfg(windows)]
   use deno_subprocess_windows::Child;
   #[cfg(not(windows))]
@@ -1065,14 +1127,16 @@ mod deprecated {
 
   use super::*;
 
-  #[derive(Deserialize)]
-  #[serde(rename_all = "camelCase")]
+  #[derive(FromV8)]
   pub struct RunArgs {
     cmd: Vec<String>,
     cwd: Option<String>,
     env: Vec<(String, String)>,
+    #[from_v8(serde)]
     stdin: StdioOrRid,
+    #[from_v8(serde)]
     stdout: StdioOrRid,
+    #[from_v8(serde)]
     stderr: StdioOrRid,
   }
 
@@ -1081,7 +1145,7 @@ mod deprecated {
   }
 
   impl Resource for ChildResource {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> Cow<'_, str> {
       "child".into()
     }
   }
@@ -1092,8 +1156,7 @@ mod deprecated {
     }
   }
 
-  #[derive(Serialize)]
-  #[serde(rename_all = "camelCase")]
+  #[derive(ToV8)]
   // TODO(@AaronO): maybe find a more descriptive name or a convention for return structs
   pub struct RunInfo {
     rid: ResourceId,
@@ -1104,10 +1167,9 @@ mod deprecated {
   }
 
   #[op2(stack_trace)]
-  #[serde]
   pub fn op_run(
     state: &mut OpState,
-    #[serde] run_args: RunArgs,
+    #[scoped] run_args: RunArgs,
   ) -> Result<RunInfo, ProcessError> {
     let args = run_args.cmd;
     let cmd = args.first().ok_or(ProcessError::MissingCmd)?;
@@ -1218,16 +1280,14 @@ mod deprecated {
     })
   }
 
-  #[derive(Serialize)]
-  #[serde(rename_all = "camelCase")]
+  #[derive(ToV8)]
   pub struct ProcessStatus {
     got_signal: bool,
     exit_code: i32,
     exit_signal: i32,
   }
 
-  #[op2(async)]
-  #[serde]
+  #[op2]
   pub async fn op_run_status(
     state: Rc<RefCell<OpState>>,
     #[smi] rid: ResourceId,
@@ -1259,20 +1319,32 @@ mod deprecated {
   }
 
   #[cfg(unix)]
-  pub fn kill(pid: i32, signal: &str) -> Result<(), ProcessError> {
-    let signo = deno_os::signal::signal_str_to_int(signal)
-      .map_err(SignalError::InvalidSignalStr)?;
-    use nix::sys::signal::kill as unix_kill;
+  pub fn kill(pid: i32, signal: &SignalArg) -> Result<(), ProcessError> {
+    let signo = match signal {
+      SignalArg::Int(n) => *n,
+      SignalArg::String(s) => deno_signals::signal_str_to_int(s)
+        .map_err(SignalError::InvalidSignalStr)?,
+    };
     use nix::sys::signal::Signal;
+    use nix::sys::signal::kill as unix_kill;
     use nix::unistd::Pid;
-    let sig =
-      Signal::try_from(signo).map_err(|e| ProcessError::Nix(JsNixError(e)))?;
-    unix_kill(Pid::from_raw(pid), Some(sig))
+
+    // Signal 0 is special, it checks if the process exists without sending a signal
+    let sig = if signo == 0 {
+      None
+    } else {
+      Some(
+        Signal::try_from(signo)
+          .map_err(|e| ProcessError::Nix(JsNixError(e)))?,
+      )
+    };
+
+    unix_kill(Pid::from_raw(pid), sig)
       .map_err(|e| ProcessError::Nix(JsNixError(e)))
   }
 
   #[cfg(not(unix))]
-  pub fn kill(pid: i32, signal: &str) -> Result<(), ProcessError> {
+  pub fn kill(pid: i32, signal: &SignalArg) -> Result<(), ProcessError> {
     use std::io::Error;
     use std::io::ErrorKind::NotFound;
 
@@ -1286,10 +1358,15 @@ mod deprecated {
     use winapi::um::processthreadsapi::TerminateProcess;
     use winapi::um::winnt::PROCESS_TERMINATE;
 
-    if !matches!(signal, "SIGKILL" | "SIGTERM") {
+    let signal_str = match signal {
+      SignalArg::Int(n) => n.to_string(),
+      SignalArg::String(s) => s.clone(),
+    };
+
+    if !matches!(signal_str.as_str(), "SIGKILL" | "SIGTERM") {
       Err(
-        SignalError::InvalidSignalStr(deno_os::signal::InvalidSignalStrError(
-          signal.to_string(),
+        SignalError::InvalidSignalStr(deno_signals::InvalidSignalStrError(
+          signal_str,
         ))
         .into(),
       )
@@ -1322,11 +1399,11 @@ mod deprecated {
     }
   }
 
-  #[op2(fast, stack_trace)]
+  #[op2(stack_trace)]
   pub fn op_kill(
     state: &mut OpState,
     #[smi] pid: i32,
-    #[string] signal: String,
+    #[serde] signal: SignalArg,
     #[string] api_name: String,
   ) -> Result<(), ProcessError> {
     state

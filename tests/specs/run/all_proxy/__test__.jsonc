@@ -1,0 +1,5 @@
+{
+  "if": "linux",
+  "args": "run -A --unstable-vsock test.ts",
+  "output": "test.out"
+}

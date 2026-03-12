@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::collections::BTreeMap;
@@ -9,12 +9,12 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_cache_dir::GlobalOrLocalHttpCache;
-use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
+use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
-use deno_graph::packages::PackageSpecifiers;
 use deno_graph::ModuleGraph;
+use deno_graph::packages::PackageSpecifiers;
 use deno_npm_installer::graph::NpmCachingStrategy;
 use sys_traits::FsCanonicalize;
 use sys_traits::FsCreateDirAll;
@@ -25,31 +25,15 @@ use crate::args::Flags;
 use crate::colors;
 use crate::display;
 use crate::factory::CliFactory;
+use crate::graph_container::CollectSpecifiersOptions;
 use crate::graph_container::ModuleGraphContainer;
 use crate::graph_container::ModuleGraphUpdatePermit;
-use crate::graph_util::BuildGraphRequest;
 use crate::graph_util::BuildGraphWithNpmOptions;
 use crate::sys::CliSys;
+use crate::util::fs::FsCleaner;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 use crate::util::progress_bar::ProgressMessagePrompt;
-use crate::util::progress_bar::UpdateGuard;
-
-#[derive(Default)]
-struct CleanState {
-  files_removed: u64,
-  dirs_removed: u64,
-  bytes_removed: u64,
-  progress_guard: Option<UpdateGuard>,
-}
-
-impl CleanState {
-  fn update_progress(&self) {
-    if let Some(pg) = &self.progress_guard {
-      pg.set_position(self.files_removed + self.dirs_removed);
-    }
-  }
-}
 
 pub async fn clean(
   flags: Arc<Flags>,
@@ -68,17 +52,12 @@ pub async fn clean(
     let progress_guard =
       progress_bar.update_with_prompt(ProgressMessagePrompt::Cleaning, "");
     progress_guard.set_total_size(no_of_files.try_into().unwrap());
-    let mut state = CleanState {
-      files_removed: 0,
-      dirs_removed: 0,
-      bytes_removed: 0,
-      progress_guard: Some(progress_guard),
-    };
+    let mut cleaner = FsCleaner::new(Some(progress_guard));
 
-    rm_rf(&mut state, &deno_dir.root)?;
+    cleaner.rm_rf(&deno_dir.root)?;
 
     // Drop the guard so that progress bar disappears.
-    drop(state.progress_guard);
+    drop(cleaner.progress_guard);
 
     log::info!(
       "{} {} {}",
@@ -86,8 +65,8 @@ pub async fn clean(
       deno_dir.root.display(),
       colors::gray(&format!(
         "({} files, {})",
-        state.files_removed + state.dirs_removed,
-        display::human_size(state.bytes_removed as f64)
+        cleaner.files_removed + cleaner.dirs_removed,
+        display::human_size(cleaner.bytes_removed as f64)
       ))
     );
   }
@@ -130,18 +109,18 @@ impl PathTrie {
     self.rewrites.push((from, to));
   }
 
-  fn rewrite(&self, s: &Path) -> PathBuf {
+  fn rewrite<'a>(&self, s: Cow<'a, Path>) -> Cow<'a, Path> {
     let normalized = deno_path_util::normalize_path(s);
     for (from, to) in &self.rewrites {
       if normalized.starts_with(from) {
-        return to.join(normalized.strip_prefix(from).unwrap());
+        return Cow::Owned(to.join(normalized.strip_prefix(from).unwrap()));
       }
     }
     normalized
   }
 
-  fn insert(&mut self, s: &Path) {
-    let normalized = self.rewrite(s);
+  fn insert(&mut self, s: PathBuf) {
+    let normalized = self.rewrite(Cow::Owned(s));
     let components = normalized.components().map(|c| c.as_os_str());
     let mut node = self.root;
 
@@ -162,7 +141,7 @@ impl PathTrie {
   }
 
   fn find(&self, s: &Path) -> Option<Found> {
-    let normalized = self.rewrite(s);
+    let normalized = self.rewrite(Cow::Borrowed(s));
     let components = normalized.components().map(|c| c.as_os_str());
     let mut node = self.root;
 
@@ -201,13 +180,18 @@ async fn clean_except(
   entrypoints: &[String],
   dry_run: bool,
 ) -> Result<(), AnyError> {
-  let mut state = CleanState::default();
+  let mut state = FsCleaner::default();
 
   let factory = CliFactory::from_flags(flags.clone());
   let sys = factory.sys();
   let options = factory.cli_options()?;
   let main_graph_container = factory.main_module_graph_container().await?;
-  let roots = main_graph_container.collect_specifiers(entrypoints)?;
+  let roots = main_graph_container.collect_specifiers(
+    entrypoints,
+    CollectSpecifiersOptions {
+      include_ignored_specified: true,
+    },
+  )?;
   let http_cache = factory.global_http_cache()?;
   let local_or_global_http_cache = factory.http_cache()?.clone();
   let deno_dir = factory.deno_dir()?.clone();
@@ -220,10 +204,10 @@ async fn clean_except(
   graph.packages = PackageSpecifiers::default();
   let graph_builder = factory.module_graph_builder().await?;
   graph_builder
-    .build_graph_with_npm_resolution(
+    .build_graph_roots_with_npm_resolution(
       graph,
+      roots.clone(),
       BuildGraphWithNpmOptions {
-        request: BuildGraphRequest::Roots(roots.clone()),
         loader: None,
         is_dynamic: false,
         npm_caching: NpmCachingStrategy::Manual,
@@ -265,7 +249,7 @@ async fn clean_except(
           if let Some(managed) = npm_resolver.as_managed() {
             let id = managed
               .resolution()
-              .resolve_pkg_id_from_deno_module(npm_module.nv_reference.nv())
+              .resolve_pkg_id_from_pkg_req(npm_module.pkg_req_ref.req())
               .unwrap();
             npm_reqs
               .extend(managed.resolution().resolve_pkg_reqs_from_pkg_id(&id));
@@ -280,17 +264,17 @@ async fn clean_except(
   }
 
   for url in &keep {
-    if url.scheme() == "http" || url.scheme() == "https" {
-      if let Ok(path) = http_cache.local_path_for_url(url) {
-        keep_paths_trie.insert(&path);
-      }
+    if (url.scheme() == "http" || url.scheme() == "https")
+      && let Ok(path) = http_cache.local_path_for_url(url)
+    {
+      keep_paths_trie.insert(path);
     }
     if let Some(path) = deno_dir
       .gen_cache
       .get_cache_filename_with_extension(url, "js")
     {
       let path = deno_dir.gen_cache.location.join(path);
-      keep_paths_trie.insert(&path);
+      keep_paths_trie.insert(path);
     }
   }
 
@@ -299,7 +283,7 @@ async fn clean_except(
   // TODO(nathanwhit): remove once we don't need packuments for creating the snapshot from lockfile
   for package in snap.all_system_packages(&options.npm_system_info()) {
     keep_paths_trie.insert(
-      &npm_cache
+      npm_cache
         .package_name_folder(&package.id.nv.name)
         .join("registry.json"),
     );
@@ -311,7 +295,7 @@ async fn clean_except(
     if node_modules_path.is_some() {
       node_modules_keep.insert(package.get_package_cache_folder_id());
     }
-    keep_paths_trie.insert(&npm_cache.package_folder_for_id(
+    keep_paths_trie.insert(npm_cache.package_folder_for_id(
       &deno_npm::NpmPackageCacheFolderId {
         nv: package.id.nv.clone(),
         copy_index: package.copy_index,
@@ -328,7 +312,10 @@ async fn clean_except(
 
   let jsr_url = crate::args::jsr_url();
   add_jsr_meta_paths(graph, &mut keep_paths_trie, jsr_url, &|url| {
-    http_cache.local_path_for_url(url).map_err(Into::into)
+    http_cache
+      .local_path_for_url(url)
+      .map_err(Into::into)
+      .map(Some)
   })?;
   walk_removing(
     &mut state,
@@ -339,12 +326,9 @@ async fn clean_except(
     &deno_dir.root,
     dry_run,
   )?;
-  let mut node_modules_cleaned = CleanState::default();
+  let mut node_modules_cleaned = FsCleaner::default();
 
   if let Some(dir) = node_modules_path {
-    // let npm_installer = factory.npm_installer_if_managed().await?.unwrap();
-    // npm_installer.
-    // let npm_installer = npm_installer.as_local().unwrap();
     clean_node_modules(
       &mut node_modules_cleaned,
       &node_modules_keep,
@@ -353,39 +337,49 @@ async fn clean_except(
     )?;
   }
 
-  let mut vendor_cleaned = CleanState::default();
-  if let Some(vendor_dir) = options.vendor_dir_path() {
-    if let GlobalOrLocalHttpCache::Local(cache) = local_or_global_http_cache {
-      let mut trie = PathTrie::new();
-      if deno_dir_root_canonical != deno_dir.root {
-        trie.add_rewrite(deno_dir.root.clone(), deno_dir_root_canonical);
+  let mut vendor_cleaned = FsCleaner::default();
+  if let Some(vendor_dir) = options.vendor_dir_path()
+    && let GlobalOrLocalHttpCache::Local(cache) = local_or_global_http_cache
+  {
+    let mut trie = PathTrie::new();
+    if deno_dir_root_canonical != deno_dir.root {
+      trie.add_rewrite(deno_dir.root.clone(), deno_dir_root_canonical);
+    }
+    let cache = cache.clone();
+    add_jsr_meta_paths(graph, &mut trie, jsr_url, &|url| match cache
+      .local_path_for_url(url)
+    {
+      Ok(path) => Ok(path),
+      Err(err) => {
+        log::warn!(
+          "failed to get local path for jsr meta url {}: {}",
+          url,
+          err
+        );
+        Ok(None)
       }
-      let cache = cache.clone();
-      add_jsr_meta_paths(graph, &mut trie, jsr_url, &|_url| {
-        if let Ok(Some(path)) = cache.local_path_for_url(_url) {
-          Ok(path)
-        } else {
-          panic!("should not happen")
-        }
-      })?;
-      for url in keep {
-        if url.scheme() == "http" || url.scheme() == "https" {
-          if let Ok(Some(path)) = cache.local_path_for_url(url) {
-            trie.insert(&path);
-          } else {
-            panic!("should not happen")
+    })?;
+    for url in keep {
+      if url.scheme() == "http" || url.scheme() == "https" {
+        match cache.local_path_for_url(url) {
+          Ok(Some(path)) => {
+            trie.insert(path);
+          }
+          Ok(None) => {}
+          Err(err) => {
+            log::warn!("failed to get local path for url {}: {}", url, err);
           }
         }
       }
-
-      walk_removing(
-        &mut vendor_cleaned,
-        WalkDir::new(vendor_dir).contents_first(false),
-        &trie,
-        vendor_dir,
-        dry_run,
-      )?;
     }
+
+    walk_removing(
+      &mut vendor_cleaned,
+      WalkDir::new(vendor_dir).contents_first(false),
+      &trie,
+      vendor_dir,
+      dry_run,
+    )?;
   }
 
   if !dry_run {
@@ -402,10 +396,10 @@ async fn clean_except(
   Ok(())
 }
 
-fn log_stats(state: &CleanState, dir: &Path) {
-  if state.bytes_removed == 0
-    && state.dirs_removed == 0
-    && state.files_removed == 0
+fn log_stats(cleaner: &FsCleaner, dir: &Path) {
+  if cleaner.bytes_removed == 0
+    && cleaner.dirs_removed == 0
+    && cleaner.files_removed == 0
   {
     return;
   }
@@ -414,8 +408,8 @@ fn log_stats(state: &CleanState, dir: &Path) {
     colors::green("Removed"),
     colors::gray(&format!(
       "{} files, {} from {}",
-      state.files_removed + state.dirs_removed,
-      display::human_size(state.bytes_removed as f64),
+      cleaner.files_removed + cleaner.dirs_removed,
+      display::human_size(cleaner.bytes_removed as f64),
       dir.display()
     ))
   );
@@ -425,27 +419,31 @@ fn add_jsr_meta_paths(
   graph: &ModuleGraph,
   path_trie: &mut PathTrie,
   jsr_url: &Url,
-  url_to_path: &dyn Fn(&Url) -> Result<PathBuf, AnyError>,
+  url_to_path: &dyn Fn(&Url) -> Result<Option<PathBuf>, AnyError>,
 ) -> Result<(), AnyError> {
   for package in graph.packages.mappings().values() {
     let Ok(base_url) = jsr_url.join(&format!("{}/", &package.name)) else {
       continue;
     };
     let keep = url_to_path(&base_url.join("meta.json").unwrap())?;
-    path_trie.insert(&keep);
+    if let Some(keep) = keep {
+      path_trie.insert(keep);
+    }
     let keep = url_to_path(
       &base_url
         .join(&format!("{}_meta.json", package.version))
         .unwrap(),
     )?;
-    path_trie.insert(&keep);
+    if let Some(keep) = keep {
+      path_trie.insert(keep);
+    }
   }
   Ok(())
 }
 
 // TODO(nathanwhit): use strategy pattern instead of branching on dry_run
 fn walk_removing(
-  state: &mut CleanState,
+  cleaner: &mut FsCleaner,
   walker: WalkDir,
   trie: &PathTrie,
   base: &Path,
@@ -475,7 +473,7 @@ fn walk_removing(
           eprintln!(" {}", entry.path().display());
         }
       } else {
-        rm_rf(state, entry.path())?;
+        cleaner.rm_rf(entry.path())?;
       }
       walker.skip_current_dir();
     } else if dry_run {
@@ -484,7 +482,7 @@ fn walk_removing(
         eprintln!(" {}", entry.path().display());
       }
     } else {
-      remove_file(state, entry.path(), Some(entry.metadata()?))?;
+      cleaner.remove_file(entry.path(), Some(entry.metadata()?))?;
     }
   }
 
@@ -492,7 +490,7 @@ fn walk_removing(
 }
 
 fn clean_node_modules(
-  state: &mut CleanState,
+  cleaner: &mut FsCleaner,
   keep_pkgs: &HashSet<deno_npm::NpmPackageCacheFolderId>,
   dir: &Path,
   dry_run: bool,
@@ -505,7 +503,7 @@ fn clean_node_modules(
     return Ok(());
   }
 
-  let keep_names = keep_pkgs
+  let keep_ids = keep_pkgs
     .iter()
     .map(deno_resolver::npm::get_package_folder_id_folder_name)
     .collect::<HashSet<_>>();
@@ -527,13 +525,14 @@ fn clean_node_modules(
           "failed to clean node_modules directory at {}",
           dir.display()
         )
-      })
+      });
     }
   };
 
   // TODO(nathanwhit): this probably shouldn't reach directly into this code
+  let sys = CliSys::default();
   let mut setup_cache = deno_npm_installer::LocalSetupCache::load(
-    CliSys::default(),
+    sys.clone(),
     base.join(".setup-cache.bin"),
   );
 
@@ -544,7 +543,7 @@ fn clean_node_modules(
     }
     let file_name = entry.file_name();
     let file_name = file_name.to_string_lossy();
-    if keep_names.contains(file_name.as_ref()) || file_name == "node_modules" {
+    if keep_ids.contains(file_name.as_ref()) || file_name == "node_modules" {
       continue;
     } else if dry_run {
       #[allow(clippy::print_stderr)]
@@ -552,27 +551,48 @@ fn clean_node_modules(
         eprintln!(" {}", entry.path().display());
       }
     } else {
-      rm_rf(state, &entry.path())?;
+      cleaner.rm_rf(&entry.path())?;
     }
   }
 
+  let mut remove_symlink = |path: &Path| -> std::io::Result<()> {
+    if dry_run {
+      #[allow(clippy::print_stderr)]
+      {
+        eprintln!(" {}", path.display());
+      }
+      Ok(())
+    } else {
+      cleaner.remove_file(path, None)
+    }
+  };
+
   // remove top level symlinks from node_modules/<package> to node_modules/.deno/<package>
   // where the target doesn't exist (because it was removed above)
-  clean_node_modules_symlinks(state, &keep_names, dir, dry_run, &mut |name| {
-    setup_cache.remove_root_symlink(name);
-  })?;
+  deno_npm_installer::remove_unused_node_modules_symlinks(
+    &sys,
+    dir,
+    &keep_ids,
+    &mut |name, path| {
+      setup_cache.remove_root_symlink(name);
+      remove_symlink(path)
+    },
+  )
+  .map_err(AnyError::from)?;
 
   // remove symlinks from node_modules/.deno/node_modules/<package> to node_modules/.deno/<package>
   // where the target doesn't exist (because it was removed above)
-  clean_node_modules_symlinks(
-    state,
-    &keep_names,
-    &base.join("node_modules"),
-    dry_run,
-    &mut |name| {
+  let deno_nm = base.join("node_modules");
+  deno_npm_installer::remove_unused_node_modules_symlinks(
+    &sys,
+    &deno_nm,
+    &keep_ids,
+    &mut |name, path| {
       setup_cache.remove_deno_symlink(name);
+      remove_symlink(path)
     },
-  )?;
+  )
+  .map_err(AnyError::from)?;
   if !dry_run {
     setup_cache.save();
   }
@@ -580,99 +600,14 @@ fn clean_node_modules(
   Ok(())
 }
 
-// node_modules/.deno/chalk@5.0.1/node_modules/chalk -> chalk@5.0.1
-fn node_modules_package_actual_dir_to_name(path: &Path) -> Option<Cow<str>> {
-  path
-    .parent()?
-    .parent()?
-    .file_name()
-    .map(|name| name.to_string_lossy())
-}
-
-fn clean_node_modules_symlinks(
-  state: &mut CleanState,
-  keep_names: &HashSet<String>,
-  dir: &Path,
-  dry_run: bool,
-  on_remove: &mut dyn FnMut(&str),
-) -> Result<(), AnyError> {
-  for entry in std::fs::read_dir(dir)? {
-    let entry = entry?;
-    let ty = entry.file_type()?;
-    if ty.is_symlink() {
-      let target = std::fs::read_link(entry.path())?;
-      let name = node_modules_package_actual_dir_to_name(&target);
-      if let Some(name) = name {
-        if !keep_names.contains(&*name) {
-          if dry_run {
-            #[allow(clippy::print_stderr)]
-            {
-              eprintln!(" {}", entry.path().display());
-            }
-          } else {
-            on_remove(&name);
-            remove_file(state, &entry.path(), None)?;
-          }
-        }
-      }
-    }
-  }
-  Ok(())
-}
-
-fn rm_rf(state: &mut CleanState, path: &Path) -> Result<(), AnyError> {
-  for entry in walkdir::WalkDir::new(path).contents_first(true) {
-    let entry = entry?;
-
-    if entry.file_type().is_dir() {
-      state.dirs_removed += 1;
-      state.update_progress();
-      std::fs::remove_dir_all(entry.path())?;
-    } else {
-      remove_file(state, entry.path(), entry.metadata().ok())?;
-    }
-  }
-
-  Ok(())
-}
-
-fn remove_file(
-  state: &mut CleanState,
-  path: &Path,
-  meta: Option<std::fs::Metadata>,
-) -> Result<(), AnyError> {
-  if let Some(meta) = meta {
-    state.bytes_removed += meta.len();
-  }
-  state.files_removed += 1;
-  state.update_progress();
-  if let Err(e) = std::fs::remove_file(path)
-    .with_context(|| format!("Failed to remove file: {}", path.display()))
-  {
-    if cfg!(windows) {
-      if let Ok(meta) = path.symlink_metadata() {
-        if meta.is_symlink() {
-          std::fs::remove_dir(path).with_context(|| {
-            format!("Failed to remove symlink: {}", path.display())
-          })?;
-          return Ok(());
-        }
-      }
-    }
-    Err(e)
-  } else {
-    Ok(())
-  }
-}
-
 #[cfg(test)]
 mod tests {
+  use std::path::Path;
+
   use super::Found::*;
 
   #[test]
   fn path_trie() {
-    use std::path::Path;
-
     let mut trie = super::PathTrie::new();
 
     #[cfg(unix)]
@@ -757,7 +692,7 @@ mod tests {
 
     for pth in paths {
       let path = Path::new(pth);
-      trie.insert(path);
+      trie.insert(path.into());
     }
 
     for (input, expect) in cases {

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 /// <reference no-default-lib="true" />
 /// <reference lib="deno.ns" />
@@ -6,6 +6,7 @@
 /// <reference lib="deno.webstorage" />
 /// <reference lib="esnext" />
 /// <reference lib="deno.cache" />
+/// <reference lib="deno.temporal" />
 
 /**
  * Defines the mapping between event names and their corresponding event types
@@ -362,6 +363,7 @@ interface Navigator {
   readonly userAgent: string;
   readonly language: string;
   readonly languages: string[];
+  readonly platform: string;
 }
 
 /**

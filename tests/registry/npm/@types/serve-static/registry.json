@@ -1,0 +1,56 @@
+{
+  "name": "@types/serve-static",
+  "dist-tags": {
+    "ts6.0": "2.2.0",
+    "ts5.7": "2.2.0",
+    "ts5.5": "2.2.0",
+    "ts5.9": "2.2.0",
+    "ts5.8": "2.2.0",
+    "latest": "2.2.0",
+    "ts5.6": "2.2.0",
+    "ts5.4": "2.2.0",
+    "ts5.2": "2.2.0",
+    "ts5.3": "2.2.0"
+  },
+  "versions": {
+    "2.2.0": {
+      "name": "@types/serve-static",
+      "version": "2.2.0",
+      "license": "MIT",
+      "_id": "@types/serve-static@2.2.0",
+      "dist": {
+        "shasum": "d4a447503ead0d1671132d1ab6bd58b805d8de6a",
+        "tarball": "http://localhost:4260/@types/serve-static/serve-static-2.2.0.tgz",
+        "fileCount": 5,
+        "integrity": "sha512-8mam4H1NHLtu7nmtalF7eyBH14QyOASmcxHhSfEoRyr0nP/YdoesEtU+uSRvMe96TW/HPTtkoKqQLl53N7UXMQ==",
+        "unpackedSize": 8660
+      },
+      "main": "",
+      "types": "index.d.ts",
+      "scripts": {},
+      "repository": {
+        "url": "https://github.com/DefinitelyTyped/DefinitelyTyped.git",
+        "type": "git",
+        "directory": "types/serve-static"
+      },
+      "description": "TypeScript definitions for serve-static",
+      "directories": {},
+      "dependencies": {
+        "@types/node": "*",
+        "@types/http-errors": "*"
+      },
+      "_hasShrinkwrap": false,
+      "peerDependencies": {},
+      "typeScriptVersion": "5.2",
+      "typesPublisherContentHash": "2b9f0fc410d8328fd2fa43368ffb4c00c1321f91568bd833f289e57161f1771e"
+    }
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/serve-static",
+  "repository": {
+    "url": "https://github.com/DefinitelyTyped/DefinitelyTyped.git",
+    "type": "git",
+    "directory": "types/serve-static"
+  },
+  "description": "TypeScript definitions for serve-static"
+}

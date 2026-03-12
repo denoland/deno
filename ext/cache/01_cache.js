@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 import { primordials } from "ext:core/mod.js";
 import {
   op_cache_delete,
@@ -25,7 +25,7 @@ import {
   toInnerRequest,
 } from "ext:deno_fetch/23_request.js";
 import { toInnerResponse } from "ext:deno_fetch/23_response.js";
-import { URLPrototype } from "ext:deno_url/00_url.js";
+import { URLPrototype } from "ext:deno_web/00_url.js";
 import { getHeader } from "ext:deno_fetch/20_headers.js";
 import {
   getReadableStreamResourceBacking,

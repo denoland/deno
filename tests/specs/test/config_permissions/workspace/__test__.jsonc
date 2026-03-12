@@ -1,0 +1,25 @@
+{
+  "tests": {
+    "flag": {
+      "args": "test -P",
+      "output": "test.out"
+    },
+    "no_flag": {
+      "args": "test",
+      "exitCode": 1,
+      "output": "missing_flag.out"
+    },
+    "no_flag_sub_dir_permissions": {
+      "args": "test",
+      "cwd": "./a",
+      "exitCode": 1,
+      "output": "missing_flag_a.out"
+    },
+    "no_flag_sub_dir_no_permissions": {
+      "args": "test",
+      "cwd": "./b",
+      "exitCode": 1,
+      "output": "missing_flag.out"
+    }
+  }
+}

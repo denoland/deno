@@ -1,0 +1,19 @@
+{
+  "tempDir": true,
+  "tests": {
+    "run": {
+      "args": "run main.ts",
+      "output": "run.out"
+    },
+    "compile": {
+      "steps": [{
+        "args": "compile --unstable-raw-imports --output bin main.ts",
+        "output": "[WILDCARD]"
+      }, {
+        "commandName": "./bin",
+        "args": [],
+        "output": "run.out"
+      }]
+    }
+  }
+}

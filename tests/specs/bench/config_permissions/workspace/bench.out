@@ -1,0 +1,10 @@
+[WILDCARD]
+Root: granted
+Member: prompt
+[WILDCARD]workspace/main.bench.ts[WILDCARD]
+Root: prompt
+Member: granted
+[WILDCARD]workspace/a/main.bench.ts[WILDCARD]
+Root: granted
+Member: prompt
+[WILDCARD]workspace/b/main.bench.ts[WILDCARD]

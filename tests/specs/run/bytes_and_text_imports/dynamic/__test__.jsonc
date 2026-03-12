@@ -1,0 +1,13 @@
+{
+  "tests": {
+    "missing_permissions": {
+      "args": "run main.ts",
+      "output": "main_missing_permissions.out",
+      "exitCode": 1
+    },
+    "permissions": {
+      "args": "run --allow-read=non_analyzable.txt,non_analyzable_utf8_bom.txt main.ts",
+      "output": "main.out"
+    }
+  }
+}

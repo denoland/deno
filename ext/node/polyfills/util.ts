@@ -1,6 +1,7 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
+import { op_node_call_is_from_dependency } from "ext:core/ops";
 const {
   ArrayIsArray,
   ArrayPrototypeJoin,
@@ -12,12 +13,9 @@ const {
   DatePrototypeGetMonth,
   DatePrototypeGetSeconds,
   ErrorCaptureStackTrace,
-  ErrorPrototype,
   NumberPrototypeToString,
   ObjectDefineProperty,
   ObjectKeys,
-  ObjectPrototypeIsPrototypeOf,
-  ObjectPrototypeToString,
   ObjectSetPrototypeOf,
   ReflectApply,
   ReflectConstruct,
@@ -43,9 +41,7 @@ import {
 } from "ext:deno_node/internal/util/inspect.mjs";
 import { codes } from "ext:deno_node/internal/error_codes.ts";
 import types from "node:util/types";
-import { Buffer } from "node:buffer";
 import { isDeepStrictEqual } from "ext:deno_node/internal/util/comparisons.ts";
-import process from "node:process";
 import {
   validateAbortSignal,
   validateNumber,
@@ -55,6 +51,12 @@ import {
 import { parseArgs } from "ext:deno_node/internal/util/parse_args/parse_args.js";
 import * as abortSignal from "ext:deno_web/03_abort_signal.js";
 import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
+import binding from "ext:deno_node/internal_binding/util.ts";
+
+let process: NodeJS.Process;
+const lazyLoadProcess = core.createLazyLoader<NodeJS.Process>(
+  "node:process",
+);
 
 export {
   callbackify,
@@ -72,73 +74,6 @@ export {
 
 /** @deprecated - use `Array.isArray()` instead. */
 export const isArray = ArrayIsArray;
-
-/** @deprecated - use `typeof value === "boolean" instead. */
-export function isBoolean(value: unknown): boolean {
-  return typeof value === "boolean";
-}
-
-/** @deprecated - use `value === null` instead. */
-export function isNull(value: unknown): boolean {
-  return value === null;
-}
-
-/** @deprecated - use `value === null || value === undefined` instead. */
-export function isNullOrUndefined(value: unknown): boolean {
-  return value === null || value === undefined;
-}
-
-/** @deprecated - use `typeof value === "number" instead. */
-export function isNumber(value: unknown): boolean {
-  return typeof value === "number";
-}
-
-/** @deprecated - use `typeof value === "string" instead. */
-export function isString(value: unknown): boolean {
-  return typeof value === "string";
-}
-
-/** @deprecated - use `typeof value === "symbol"` instead. */
-export function isSymbol(value: unknown): boolean {
-  return typeof value === "symbol";
-}
-
-/** @deprecated - use `value === undefined` instead. */
-export function isUndefined(value: unknown): boolean {
-  return value === undefined;
-}
-
-/** @deprecated - use `value !== null && typeof value === "object"` instead. */
-export function isObject(value: unknown): boolean {
-  return value !== null && typeof value === "object";
-}
-
-/** @deprecated - use `e instanceof Error` instead. */
-export function isError(e: unknown): boolean {
-  return ObjectPrototypeToString(e) === "[object Error]" ||
-    ObjectPrototypeIsPrototypeOf(ErrorPrototype, e);
-}
-
-/** @deprecated - use `typeof value === "function"` instead. */
-export function isFunction(value: unknown): boolean {
-  return typeof value === "function";
-}
-
-/** @deprecated Use util.types.isRegExp() instead. */
-export const isRegExp = types.isRegExp;
-
-/** @deprecated Use util.types.isDate() instead. */
-export const isDate = types.isDate;
-
-/** @deprecated - use `value === null || (typeof value !== "object" && typeof value !== "function")` instead. */
-export function isPrimitive(value: unknown): boolean {
-  return (
-    value === null || (typeof value !== "object" && typeof value !== "function")
-  );
-}
-
-/** @deprecated  Use Buffer.isBuffer() instead. */
-export const isBuffer = Buffer.isBuffer;
 
 /** @deprecated Use Object.assign() instead. */
 export function _extend(
@@ -192,6 +127,7 @@ export function inherits<T, U>(
 import {
   _TextDecoder,
   _TextEncoder,
+  getSystemErrorMessage,
   getSystemErrorName,
 } from "ext:deno_node/_utils.ts";
 
@@ -261,6 +197,7 @@ const codesWarned = new SafeSet();
 // If --no-deprecation is set, then it is a no-op.
 // deno-lint-ignore no-explicit-any
 export function deprecate(fn: any, msg: string, code?: any) {
+  process ??= lazyLoadProcess();
   if (process.noDeprecation === true) {
     return fn;
   }
@@ -272,7 +209,7 @@ export function deprecate(fn: any, msg: string, code?: any) {
   let warned = false;
   // deno-lint-ignore no-explicit-any
   function deprecated(this: any, ...args: any[]) {
-    if (!warned) {
+    if (!warned && !op_node_call_is_from_dependency()) {
       warned = true;
       if (code !== undefined) {
         if (!SetPrototypeHas(codesWarned, code)) {
@@ -377,30 +314,23 @@ export function getCallSites(
   return capturedTraces;
 }
 
-export { getSystemErrorName, isDeepStrictEqual };
+export function parseEnv(
+  input: string,
+): Record<string, string> {
+  validateString(input, "content");
+  return binding.parseEnv(input);
+}
+
+export { getSystemErrorMessage, getSystemErrorName, isDeepStrictEqual };
 
 export default {
   format,
   formatWithOptions,
   inspect,
-  isArray,
-  isBoolean,
-  isNull,
-  isNullOrUndefined,
-  isNumber,
-  isString,
-  isSymbol,
-  isUndefined,
-  isObject,
-  isError,
-  isFunction,
-  isRegExp,
-  isDate,
-  isPrimitive,
-  isBuffer,
   _extend,
   getCallSites,
   getSystemErrorName,
+  getSystemErrorMessage,
   aborted,
   deprecate,
   callbackify,
@@ -416,5 +346,7 @@ export default {
   debuglog,
   debug: debuglog,
   isDeepStrictEqual,
+  isArray,
   styleText,
+  parseEnv,
 };

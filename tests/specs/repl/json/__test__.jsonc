@@ -1,0 +1,5 @@
+{
+  "if": "unix",
+  "args": "run -A --quiet test.ts",
+  "output": "test.out"
+}

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import * as colors from "@std/fmt/colors";
 import { assert } from "@std/assert";
@@ -1348,4 +1348,39 @@ export class BufWriterSync extends AbstractBufBase implements WriterSync {
     totalBytesWritten += numBytesWritten;
     return totalBytesWritten;
   }
+}
+
+/**
+ * Trims the minimum indent from each line of a multiline string,
+ * removing leading and trailing blank lines.
+ * @param text
+ * @returns the trimmed string
+ */
+export function trimIndent(text: string): string {
+  if (text.startsWith("\n")) {
+    text = text.slice(1);
+  }
+  const lines = text.split("\n");
+  const nonEmptyLines = lines.filter((line) => line.trim().length > 0);
+  const indent = nonEmptyLines.length > 0
+    ? Math.min(
+      ...nonEmptyLines.map((line) => line.length - line.trimStart().length),
+    )
+    : 0;
+
+  return lines
+    .map((line) => {
+      if (line.length <= indent) {
+        return line.replace(/^ +/, "");
+      } else {
+        return line.slice(indent);
+      }
+    })
+    .join("\n");
+}
+
+export function unindent(strings: TemplateStringsArray, ...values: unknown[]) {
+  // normal template substitution
+  const raw = String.raw({ raw: strings }, ...values);
+  return trimIndent(raw);
 }

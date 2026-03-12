@@ -1,0 +1,11 @@
+TS2769 [ERROR]: No overload matches this call.
+foo("hello", 42);
+    ~~~~~~~
+    at [WILDLINE]/message_chain_formatting.ts:8:5
+
+TS2771 [ERROR]:     The last overload is declared here.
+    function foo(ss: string[], b: Date): void;
+             ~~~
+        at [WILDLINE]/message_chain_formatting.ts:3:10
+
+error: Type checking failed.

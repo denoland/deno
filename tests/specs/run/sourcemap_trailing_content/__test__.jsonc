@@ -1,0 +1,5 @@
+{
+  "args": "run trailing_content.js",
+  "output": "trailing_content.js.out",
+  "exitCode": 1
+}

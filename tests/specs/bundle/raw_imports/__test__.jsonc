@@ -1,0 +1,17 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "bundle --unstable-raw-imports --output=out.js main.ts",
+      "output": "[WILDCARD]"
+    },
+    {
+      "args": ["eval", "Deno.removeSync('./other.ts')"],
+      "output": ""
+    },
+    {
+      "args": "run out.js",
+      "output": "expected_output.out"
+    }
+  ]
+}

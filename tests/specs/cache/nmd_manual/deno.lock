@@ -1,0 +1,11 @@
+{
+  "version": "5",
+  "specifiers": {
+    "jsr:@denotest/subtract@*": "1.0.0"
+  },
+  "jsr": {
+    "@denotest/subtract@1.0.0": {
+      "integrity": "e178a7101c073e93d9efa6833d5cbf83bc1bc8d509b7c2a5ecbf74265e917597"
+    }
+  }
+}

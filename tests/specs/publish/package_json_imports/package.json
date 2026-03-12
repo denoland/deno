@@ -1,0 +1,9 @@
+{
+  "name": "@deno/foo",
+  "version": "0.0.1",
+  "imports": {
+    "#add": {
+      "default": "./add.ts"
+    }
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "version": "5",
+  "specifiers": {
+    "npm:@denotest/add@*": "1.0.0",
+    "npm:@denotest/add@0.5.0": "0.5.0"
+  },
+  "npm": {
+    "@denotest/add@0.5.0": {
+      "integrity": "[WILDLINE]",
+      "tarball": "http://localhost:4260/@denotest/add/0.5.0.tgz"
+    },
+    "@denotest/add@1.0.0": {
+      "integrity": "[WILDLINE]",
+      "tarball": "http://localhost:4260/@denotest/add/1.0.0.tgz"
+    }
+  }
+}

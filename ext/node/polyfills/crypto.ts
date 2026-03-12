@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
@@ -164,9 +164,7 @@ import type {
   TransformOptions,
   WritableOptions,
 } from "ext:deno_node/_stream.d.ts";
-import {
-  normalizeEncoding,
-} from "ext:deno_node/internal/normalize_encoding.mjs";
+import { normalizeEncoding } from "ext:deno_node/internal/util.mjs";
 import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
 import { validateString } from "ext:deno_node/internal/validators.mjs";
 import { crypto as webcrypto } from "ext:deno_crypto/00_crypto.js";
@@ -224,6 +222,39 @@ function hash(
   return hash.digest(outputEncoding);
 }
 
+function validateCipherivArgs(
+  cipher: unknown,
+  key: unknown,
+  iv: unknown,
+) {
+  if (typeof cipher !== "string") {
+    throw new ERR_INVALID_ARG_TYPE(
+      "cipher",
+      "string",
+      cipher,
+    );
+  }
+  if (
+    typeof key !== "string" && !isArrayBufferView(key) &&
+    !(key && typeof key === "object" && "type" in key)
+  ) {
+    throw new ERR_INVALID_ARG_TYPE(
+      "key",
+      ["string", "ArrayBufferView", "Buffer", "KeyObject"],
+      key,
+    );
+  }
+  if (
+    iv !== null && typeof iv !== "string" && !isArrayBufferView(iv)
+  ) {
+    throw new ERR_INVALID_ARG_TYPE(
+      "iv",
+      ["string", "ArrayBufferView", "Buffer", "null"],
+      iv,
+    );
+  }
+}
+
 function createCipheriv(
   algorithm: CipherCCMTypes,
   key: CipherKey,
@@ -254,7 +285,8 @@ function createCipheriv(
   iv: BinaryLike | null,
   options?: TransformOptions,
 ): Cipher {
-  return new Cipheriv(cipher, key, iv, options);
+  validateCipherivArgs(cipher, key, iv);
+  return Cipheriv(cipher, key, iv, options);
 }
 
 function createDecipheriv(
@@ -281,7 +313,8 @@ function createDecipheriv(
   iv: BinaryLike | null,
   options?: TransformOptions,
 ): Decipher {
-  return new Decipheriv(algorithm, key, iv, options);
+  validateCipherivArgs(algorithm, key, iv);
+  return Decipheriv(algorithm, key, iv, options);
 }
 
 function createDiffieHellman(
@@ -331,7 +364,7 @@ function createHmac(
   key: string | ArrayBuffer | KeyObject,
   options?: TransformOptions,
 ) {
-  return Hmac(hmac, key, options);
+  return Hmac_(hmac, key, options);
 }
 
 function createSign(algorithm: string, options?: WritableOptions): Sign {

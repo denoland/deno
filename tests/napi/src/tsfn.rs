@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // This test performs initialization similar to napi-rs.
 // https://github.com/napi-rs/napi-rs/commit/a5a04a4e545f268769cc78e2bd6c45af4336aac3
@@ -84,7 +84,9 @@ unsafe extern "C" fn custom_gc_finalize(
   _finalize_data: *mut c_void,
   finalize_hint: *mut c_void,
 ) {
-  let _ = Box::from_raw(finalize_hint as *mut i32);
+  unsafe {
+    let _ = Box::from_raw(finalize_hint as *mut i32);
+  }
 }
 
 extern "C" fn custom_gc(

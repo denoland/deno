@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::fs;
 use std::io::prelude::*;
@@ -53,12 +53,11 @@ impl LogFile {
   }
 }
 
-pub fn init_log_file(enabled: bool) {
+pub fn init_log_file(enabled: bool, cwd: &Path) {
   let prepare_path = || {
     if !enabled {
       return None;
     }
-    let cwd = std::env::current_dir().ok()?;
     let now = SystemTime::now();
     let now: DateTime<Utc> = now.into();
     let now = now.to_rfc3339().replace(':', "_");
@@ -72,9 +71,11 @@ pub fn init_log_file(enabled: bool) {
     LOG_FILE.buffer.lock().clear();
     return;
   };
-  thread::spawn(move || loop {
-    LOG_FILE.commit(&path);
-    thread::sleep(std::time::Duration::from_secs(1));
+  thread::spawn(move || {
+    loop {
+      LOG_FILE.commit(&path);
+      thread::sleep(std::time::Duration::from_secs(1));
+    }
   });
 }
 

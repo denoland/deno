@@ -7,7 +7,7 @@
     },
     {
       "args": "outdated --update",
-      "output": "[WILDCARD]Updated 1 dependency:\n - jsr:@denotest/multiple-exports 0.7.0 -> 0.7.1\n"
+      "output": "[WILDCARD]Updated 1 dependency:\n - jsr:@denotest/multiple-exports ^0.7.0 -> ^0.7.1\n"
     }
   ]
 }

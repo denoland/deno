@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // deno-lint-ignore-file no-console
 
@@ -1453,15 +1453,26 @@ Deno.test(
     await using server = Deno.serve({
       handler: async (request) => {
         const { conn, response } = upgradeHttpRaw(request);
+        let written;
+
+        written = await conn.write(new TextEncoder().encode("HTTP/1.1 101 Sw"));
+        assertEquals(written, 15);
+
+        written = await conn.write(
+          new TextEncoder().encode("itching Protocols\r\nConnection:"),
+        );
+        assertEquals(written, 30);
+
+        written = await conn.write(
+          new TextEncoder().encode("Upgrade\r\n\r\nExtra"),
+        );
+        assertEquals(written, 11); // note: does not include "Extra"
+
+        written = await conn.write(new TextEncoder().encode("Extra"));
+        assertEquals(written, 5);
+
         const buf = new Uint8Array(1024);
         let read;
-
-        // Write our fake HTTP upgrade
-        await conn.write(
-          new TextEncoder().encode(
-            "HTTP/1.1 101 Switching Protocols\r\nConnection: Upgraded\r\n\r\nExtra",
-          ),
-        );
 
         // Upgrade data
         read = await conn.read(buf);
@@ -1469,6 +1480,7 @@ Deno.test(
           new TextDecoder().decode(buf.subarray(0, read!)),
           "Upgrade data",
         );
+
         // Read the packet to echo
         read = await conn.read(buf);
         // Echo
@@ -4329,6 +4341,27 @@ Deno.test({
   }).catch(() => {});
 
   await server.shutdown();
+});
+
+Deno.test({
+  name: "support shutdown while open idle connection exists",
+}, async () => {
+  const { promise, resolve } = Promise.withResolvers<void>();
+
+  await using server = Deno.serve({
+    hostname: "0.0.0.0",
+    port: servePort,
+    onListen: () => resolve(),
+  }, () => new Response("Ok"));
+
+  await promise;
+
+  using conn = await Deno.connect({ port: servePort });
+
+  await server.shutdown();
+
+  const read = await conn.read(new Uint8Array(10));
+  assertEquals(read, null);
 });
 
 // https://github.com/denoland/deno/issues/27083

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::sync::Arc;
 
@@ -9,13 +9,13 @@ use deno_core::serde_json;
 use deno_error::JsErrorBox;
 use deno_graph::analysis::ModuleInfo;
 use deno_graph::ast::ParserModuleAnalyzer;
+use deno_resolver::cache::ParsedSourceCache;
 use deno_runtime::deno_webstorage::rusqlite::params;
 
 use super::cache_db::CacheDB;
 use super::cache_db::CacheDBConfiguration;
 use super::cache_db::CacheDBHash;
 use super::cache_db::CacheFailure;
-use super::ParsedSourceCache;
 
 const SELECT_MODULE_INFO: &str = "
 SELECT
@@ -129,7 +129,7 @@ impl ModuleInfoCache {
     Ok(())
   }
 
-  pub fn as_module_analyzer(&self) -> ModuleInfoCacheModuleAnalyzer {
+  pub fn as_module_analyzer(&self) -> ModuleInfoCacheModuleAnalyzer<'_> {
     ModuleInfoCacheModuleAnalyzer {
       module_info_cache: self,
       parsed_source_cache: &self.parsed_source_cache,
@@ -305,20 +305,23 @@ fn serialize_media_type(media_type: MediaType) -> i64 {
     Dcts => 10,
     Tsx => 11,
     Json => 12,
-    Wasm => 13,
-    Css => 14,
-    Html => 15,
-    SourceMap => 16,
-    Sql => 17,
-    Unknown => 18,
+    Jsonc => 13,
+    Json5 => 14,
+    Markdown => 15,
+    Wasm => 16,
+    Css => 17,
+    Html => 18,
+    SourceMap => 19,
+    Sql => 20,
+    Unknown => 21,
   }
 }
 
 #[cfg(test)]
 mod test {
+  use deno_graph::PositionRange;
   use deno_graph::analysis::JsDocImportInfo;
   use deno_graph::analysis::SpecifierWithRange;
-  use deno_graph::PositionRange;
 
   use super::*;
 

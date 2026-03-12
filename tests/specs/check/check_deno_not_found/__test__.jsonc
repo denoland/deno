@@ -1,5 +1,16 @@
 {
   "args": "check --quiet deno_not_found/main.ts",
   "output": "deno_not_found/main.out",
-  "exitCode": 1
+  "exitCode": 1,
+  "variants": {
+    "tsgo": {
+      "use_tsgo": "1"
+    },
+    "tsc": {
+      "use_tsgo": ""
+    }
+  },
+  "envs": {
+    "DENO_UNSTABLE_TSGO": "${use_tsgo}"
+  }
 }

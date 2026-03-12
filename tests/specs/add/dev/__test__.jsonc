@@ -5,7 +5,7 @@
       "steps": [
         {
           "args": "add --dev npm:@denotest/esm-basic",
-          "output": "add.out"
+          "output": "add_packagejson.out"
         },
         {
           "args": [

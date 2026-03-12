@@ -42,7 +42,6 @@
 - v8_code_cache_v2[WILDCARD]
 
 ./node_modules
-- .bin
 - .deno
 -- .deno.lock
 -- .setup-cache.bin

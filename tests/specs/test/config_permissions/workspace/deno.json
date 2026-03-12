@@ -1,0 +1,11 @@
+{
+  "workspace": [
+    "./a",
+    "./b"
+  ],
+  "test": {
+    "permissions": {
+      "read": ["./data"]
+    }
+  }
+}

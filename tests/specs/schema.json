@@ -48,7 +48,8 @@
             "mac",
             "linux",
             "windows",
-            "unix"
+            "unix",
+            "notMacIntel"
           ]
         },
         "output": {
@@ -59,6 +60,16 @@
         },
         "ignore": {
           "type": "boolean"
+        },
+        "variants": {
+          "type": "object",
+          "patternProperties": {
+            ".*": {
+              "type": "object",
+              "additionalProperties": { "type": "string" }
+            }
+          },
+          "additionalProperties": false
         }
       }
     },
@@ -70,6 +81,9 @@
             "type": "boolean"
           },
           "canonicalizedTempDir": {
+            "type": "boolean"
+          },
+          "flaky": {
             "type": "boolean"
           },
           "symlinkedTempDir": {
@@ -90,11 +104,16 @@
               "mac",
               "linux",
               "windows",
-              "unix"
+              "unix",
+              "notMacIntel"
             ]
           },
           "repeat": {
             "type": "number"
+          },
+          "timeout": {
+            "type": "number",
+            "description": "Timeout in seconds for each step. Defaults to 300 (5 minutes)."
           },
           "steps": {
             "type": "array",
@@ -104,6 +123,16 @@
           },
           "ignore": {
             "type": "boolean"
+          },
+          "variants": {
+            "type": "object",
+            "patternProperties": {
+              ".*": {
+                "type": "object",
+                "additionalProperties": { "type": "string" }
+              }
+            },
+            "additionalProperties": false
           }
         }
       }, {
@@ -129,6 +158,10 @@
             },
             "repeat": {
               "type": "number"
+            },
+            "timeout": {
+              "type": "number",
+              "description": "Timeout in seconds for each step. Defaults to 300 (5 minutes)."
             }
           }
         }, {
@@ -154,6 +187,10 @@
         "repeat": {
           "type": "number"
         },
+        "timeout": {
+          "type": "number",
+          "description": "Timeout in seconds for each step. Defaults to 300 (5 minutes)."
+        },
         "tests": {
           "type": "object",
           "additionalProperties": {
@@ -162,6 +199,16 @@
         },
         "ignore": {
           "type": "boolean"
+        },
+        "variants": {
+          "type": "object",
+          "patternProperties": {
+            ".*": {
+              "type": "object",
+              "additionalProperties": { "type": "string" }
+            }
+          },
+          "additionalProperties": false
         }
       }
     }

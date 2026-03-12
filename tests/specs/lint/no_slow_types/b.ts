@@ -3,3 +3,4 @@ export function addB(a: number, b: number) {
 }
 
 export * from "./d.ts";
+export * from "./non-existent.ts"; // should not cause a linting error

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::time::Duration;
 
@@ -7,11 +7,13 @@ use std::time::Duration;
 /// it will terminate the current process.
 pub fn start(parent_process_id: u32) {
   // use a separate thread in case the runtime gets hung up
-  std::thread::spawn(move || loop {
-    std::thread::sleep(Duration::from_secs(10));
+  std::thread::spawn(move || {
+    loop {
+      std::thread::sleep(Duration::from_secs(10));
 
-    if !is_process_active(parent_process_id) {
-      deno_runtime::exit(1);
+      if !is_process_active(parent_process_id) {
+        deno_runtime::exit(1);
+      }
     }
   });
 }
@@ -53,15 +55,19 @@ fn is_process_active(process_id: u32) -> bool {
 #[cfg(test)]
 mod test {
   use std::process::Command;
-
-  use test_util::deno_exe_path;
+  use std::process::Stdio;
 
   use super::is_process_active;
 
   #[test]
   fn process_active() {
-    // launch a long running process
-    let mut child = Command::new(deno_exe_path()).arg("lsp").spawn().unwrap();
+    // launch a long running process that blocks on stdin
+    let mut child = Command::new(if cfg!(windows) { "cmd.exe" } else { "cat" })
+      .stdin(Stdio::piped())
+      .stdout(Stdio::null())
+      .stderr(Stdio::null())
+      .spawn()
+      .unwrap();
 
     let pid = child.id();
     assert!(is_process_active(pid));

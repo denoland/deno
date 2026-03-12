@@ -1,6 +1,6 @@
-Check [WILDCARD]/collect/bench.ts
-Check [WILDCARD]/collect/include/2_bench.ts
-Check [WILDCARD]/collect/include/bench.ts
+Check [WILDCARD]bench.ts
+Check [WILDCARD]2_bench.ts
+Check [WILDCARD]bench.ts
     CPU | [WILDCARD]
 Runtime | Deno [WILDCARD] ([WILDCARD])
 

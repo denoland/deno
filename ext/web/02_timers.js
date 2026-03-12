@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import { core, primordials } from "ext:core/mod.js";
 import { op_defer } from "ext:core/ops";
@@ -21,22 +21,6 @@ function checkThis(thisArg) {
   if (thisArg !== null && thisArg !== undefined && thisArg !== globalThis) {
     throw new TypeError("Illegal invocation");
   }
-}
-
-/**
- * Call a callback function immediately.
- */
-function setImmediate(callback, ...args) {
-  const asyncContext = getAsyncContext();
-  return core.queueImmediate(() => {
-    const oldContext = getAsyncContext();
-    try {
-      setAsyncContext(asyncContext);
-      return ReflectApply(callback, globalThis, args);
-    } finally {
-      setAsyncContext(oldContext);
-    }
-  });
 }
 
 /**
@@ -142,7 +126,6 @@ export {
   clearTimeout,
   defer,
   refTimer,
-  setImmediate,
   setInterval,
   setTimeout,
   unrefTimer,

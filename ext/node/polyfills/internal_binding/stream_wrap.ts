@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -33,10 +33,12 @@ const {
   Array,
   MapPrototypeGet,
   ObjectPrototypeIsPrototypeOf,
+  PromiseResolve,
   PromisePrototypeThen,
   Symbol,
   TypedArrayPrototypeSlice,
   Uint8Array,
+  Uint8ArrayPrototype,
 } = primordials;
 import { op_can_write_vectored, op_raw_write_vectored } from "ext:core/ops";
 
@@ -51,6 +53,9 @@ import {
 } from "ext:deno_node/internal_binding/async_wrap.ts";
 import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
 import { _readWithCancelHandle } from "ext:deno_io/12_io.js";
+import { NodeTypeError } from "ext:deno_node/internal/errors.ts";
+
+export const kUseNativeWrap = Symbol("useNativeWrap");
 
 export interface Reader {
   read(p: Uint8Array): Promise<number | null>;
@@ -200,6 +205,13 @@ export class LibuvStreamWrap extends HandleWrap {
    * @return An error status code.
    */
   writeBuffer(req: WriteWrap<LibuvStreamWrap>, data: Uint8Array): number {
+    if (!ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, data)) {
+      throw new NodeTypeError(
+        "ERR_INVALID_ARG_TYPE",
+        "Second argument must be a buffer",
+      );
+    }
+
     this.#write(req, data);
 
     return 0;
@@ -221,7 +233,9 @@ export class LibuvStreamWrap extends HandleWrap {
     const rid = this[kStreamBaseField]![internalRidSymbol];
     // Fast case optimization: two chunks, and all buffers.
     if (
-      chunks.length === 2 && allBuffers && supportsWritev &&
+      chunks.length === 2 &&
+      allBuffers &&
+      supportsWritev &&
       op_can_write_vectored(rid)
     ) {
       // String chunks.
@@ -229,11 +243,7 @@ export class LibuvStreamWrap extends HandleWrap {
       if (typeof chunks[1] === "string") chunks[1] = Buffer.from(chunks[1]);
 
       PromisePrototypeThen(
-        op_raw_write_vectored(
-          rid,
-          chunks[0],
-          chunks[1],
-        ),
+        op_raw_write_vectored(rid, chunks[0], chunks[1]),
         (nwritten) => {
           try {
             req.oncomplete(0);
@@ -336,10 +346,15 @@ export class LibuvStreamWrap extends HandleWrap {
 
   /** Internal method for reading from the attached stream. */
   async #read() {
+    // Queue the read operation and allow TLS upgrades to complete.
+    //
+    // This is done to ensure that the resource is not locked up by
+    // op_read.
+    await PromiseResolve();
+
     let buf = this.#buf;
 
     let nread: number | null;
-    const ridBefore = this[kStreamBaseField]![internalRidSymbol];
 
     if (this.upgrading) {
       // Starting an upgrade, stop reading. Upgrading will resume reading.
@@ -347,6 +362,7 @@ export class LibuvStreamWrap extends HandleWrap {
       return;
     }
 
+    const ridBefore = this[kStreamBaseField]![internalRidSymbol];
     try {
       if (this[kStreamBaseField]![_readWithCancelHandle]) {
         const { cancelHandle, nread: p } = this[kStreamBaseField]!
@@ -362,9 +378,7 @@ export class LibuvStreamWrap extends HandleWrap {
     } catch (e) {
       // Try to read again if the underlying stream resource
       // changed. This can happen during TLS upgrades (eg. STARTTLS)
-      if (
-        ridBefore != this[kStreamBaseField]![internalRidSymbol]
-      ) {
+      if (ridBefore != this[kStreamBaseField]![internalRidSymbol]) {
         return this.#read();
       }
 
@@ -372,7 +386,8 @@ export class LibuvStreamWrap extends HandleWrap {
 
       if (
         ObjectPrototypeIsPrototypeOf(Deno.errors.Interrupted.prototype, e) ||
-        ObjectPrototypeIsPrototypeOf(Deno.errors.BadResource.prototype, e)
+        ObjectPrototypeIsPrototypeOf(Deno.errors.BadResource.prototype, e) ||
+        ObjectPrototypeIsPrototypeOf(Deno.errors.UnexpectedEof.prototype, e)
       ) {
         nread = MapPrototypeGet(codeMap, "EOF")!;
       } else if (
@@ -438,17 +453,17 @@ export class LibuvStreamWrap extends HandleWrap {
     } catch (e) {
       // Try to read again if the underlying stream resource
       // changed. This can happen during TLS upgrades (eg. STARTTLS)
-      if (
-        ridBefore != this[kStreamBaseField]![internalRidSymbol]
-      ) {
+      if (ridBefore != this[kStreamBaseField]![internalRidSymbol]) {
         return this.#write(req, data.subarray(nwritten));
       }
 
       let status: number;
-      // TODO(cmorten): map err to status codes
       if (
-        ObjectPrototypeIsPrototypeOf(Deno.errors.BadResource.prototype, e) ||
         ObjectPrototypeIsPrototypeOf(Deno.errors.BrokenPipe.prototype, e)
+      ) {
+        status = MapPrototypeGet(codeMap, "EPIPE")!;
+      } else if (
+        ObjectPrototypeIsPrototypeOf(Deno.errors.BadResource.prototype, e)
       ) {
         status = MapPrototypeGet(codeMap, "EBADF")!;
       } else {

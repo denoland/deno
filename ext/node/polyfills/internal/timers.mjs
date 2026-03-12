@@ -1,18 +1,29 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
+const {
+  getAsyncContext,
+  setAsyncContext,
+  immediateRefCount,
+} = core;
 const {
   FunctionPrototypeBind,
   MapPrototypeDelete,
+  MapPrototypeGet,
   MapPrototypeSet,
   NumberIsFinite,
+  ReflectApply,
   SafeArrayIterator,
   SafeMap,
   Symbol,
   SymbolToPrimitive,
 } = primordials;
-
+import {
+  emitInit,
+  executionAsyncId,
+  newAsyncId as nextAsyncId,
+} from "ext:deno_node/internal/async_hooks.ts";
 import { inspect } from "ext:deno_node/internal/util/inspect.mjs";
 import {
   validateFunction,
@@ -22,7 +33,6 @@ import { ERR_OUT_OF_RANGE } from "ext:deno_node/internal/errors.ts";
 import { emitWarning } from "node:process";
 import {
   clearTimeout as clearTimeout_,
-  setImmediate as setImmediate_,
   setInterval as setInterval_,
   setTimeout as setTimeout_,
 } from "ext:deno_web/02_timers.js";
@@ -30,9 +40,10 @@ import {
 // Timeout values > TIMEOUT_MAX are set to 1.
 export const TIMEOUT_MAX = 2 ** 31 - 1;
 
+export const kDestroy = Symbol("destroy");
 export const kTimerId = Symbol("timerId");
 export const kTimeout = Symbol("timeout");
-const kRefed = Symbol("refed");
+export const kRefed = core.kRefed;
 const createTimer = Symbol("createTimer");
 
 /**
@@ -41,7 +52,15 @@ const createTimer = Symbol("createTimer");
  *
  * @type {Map<number, Timeout>}
  */
-export const activeTimers = new SafeMap();
+const activeTimers = new SafeMap();
+
+/**
+ * @param {number} id
+ * @returns {Timeout | undefined}
+ */
+export function getActiveTimer(id) {
+  return MapPrototypeGet(activeTimers, id);
+}
 
 // Timer constructor function.
 export function Timeout(callback, after, args, isRepeat, isRefed) {
@@ -85,6 +104,11 @@ Timeout.prototype[createTimer] = function () {
   return id;
 };
 
+Timeout.prototype[kDestroy] = function () {
+  this._destroyed = true;
+  MapPrototypeDelete(activeTimers, this[kTimerId]);
+};
+
 // Make sure the linked list only shows the minimal necessary information.
 Timeout.prototype[inspect.custom] = function (_, options) {
   return inspect(this, {
@@ -99,6 +123,7 @@ Timeout.prototype[inspect.custom] = function (_, options) {
 Timeout.prototype.refresh = function () {
   if (!this._destroyed) {
     clearTimeout_(this[kTimerId]);
+    MapPrototypeDelete(activeTimers, this[kTimerId]);
     this[kTimerId] = this[createTimer]();
   }
   return this;
@@ -126,35 +151,6 @@ Timeout.prototype.hasRef = function () {
 
 Timeout.prototype[SymbolToPrimitive] = function () {
   return this[kTimerId];
-};
-
-// Immediate constructor function.
-export function Immediate(callback, ...args) {
-  this._immediateId = setImmediate_(callback, ...new SafeArrayIterator(args));
-}
-
-// Make sure the linked list only shows the minimal necessary information.
-Immediate.prototype[inspect.custom] = function (_, options) {
-  return inspect(this, {
-    ...options,
-    // Only inspect one level.
-    depth: 0,
-    // It should not recurse.
-    customInspect: false,
-  });
-};
-
-// FIXME(nathanwhit): actually implement {ref,unref,hasRef} once deno_core supports it
-Immediate.prototype.unref = function () {
-  return this;
-};
-
-Immediate.prototype.ref = function () {
-  return this;
-};
-
-Immediate.prototype.hasRef = function () {
-  return true;
 };
 
 /**
@@ -186,6 +182,71 @@ export function getTimerDuration(msecs, name) {
 export function setUnrefTimeout(callback, timeout, ...args) {
   validateFunction(callback, "callback");
   return new Timeout(callback, timeout, args, false, false);
+}
+
+// Re-export immediate queue and runImmediates from core for consumers
+export const immediateQueue = core.immediateQueue;
+export const runImmediates = core.runImmediates;
+
+export class Immediate {
+  constructor(unboundCallback, ...args) {
+    const asyncContext = getAsyncContext();
+    const callback = (...argv) => {
+      const oldContext = getAsyncContext();
+      try {
+        setAsyncContext(asyncContext);
+        return ReflectApply(unboundCallback, globalThis, argv);
+      } finally {
+        setAsyncContext(oldContext);
+      }
+    };
+
+    this._idleNext = null;
+    this._idlePrev = null;
+    this._onImmediate = callback;
+    this._argv = args;
+    this._destroyed = false;
+    this[kRefed] = false;
+
+    const asyncId = nextAsyncId();
+    const triggerAsyncId = executionAsyncId();
+    this.asyncId = asyncId;
+    this.triggerAsyncId = triggerAsyncId;
+    emitInit(asyncId, "Immediate", triggerAsyncId, this);
+
+    this.ref();
+    core.queueImmediate(this);
+  }
+
+  ref() {
+    if (this[kRefed] === false) {
+      this[kRefed] = true;
+      immediateRefCount(true);
+    }
+    return this;
+  }
+
+  unref() {
+    if (this[kRefed] === true) {
+      this[kRefed] = false;
+      immediateRefCount(false);
+    }
+    return this;
+  }
+
+  hasRef() {
+    return !!this[kRefed];
+  }
+
+  [inspect.custom] = function (_, options) {
+    return inspect(this, {
+      ...options,
+      // Only inspect one level.
+      depth: 0,
+      // It should not recurse.
+      customInspect: false,
+    });
+  };
 }
 
 export default {

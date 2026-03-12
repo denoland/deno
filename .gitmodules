@@ -10,7 +10,8 @@
 	path = tests/node_compat/runner/suite
 	url = https://github.com/denoland/node_test.git
 	shallow = true
-[submodule "cli/bench/testdata/lsp_benchdata"]
-	path = cli/bench/testdata/lsp_benchdata
+	ignore = untracked
+[submodule "tests/bench/testdata/lsp_benchdata"]
+	path = tests/bench/testdata/lsp_benchdata
 	url = https://github.com/denoland/deno_lsp_benchdata.git
 	shallow = true

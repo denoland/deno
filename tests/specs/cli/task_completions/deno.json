@@ -1,0 +1,13 @@
+{
+  "tasks": {
+    "build": {
+      "description": "Build the project",
+      "command": "deno build"
+    },
+    "test": {
+      "description": "Test the project",
+      "command": "deno test"
+    },
+    "dev": "echo dev"
+  }
+}

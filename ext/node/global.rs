@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::rc::Rc;
 
@@ -50,24 +50,20 @@ const fn str_to_utf16<const N: usize>(s: &str) -> [u16; N] {
 // The Deno and Node specific globals are stored in a struct in a context slot.
 //
 // These are the globals that are handled:
-// - clearImmediate (node only)
 // - clearInterval (both, but different implementation)
 // - clearTimeout (both, but different implementation)
 // - process (always available in Node, while the availability in Deno depends
 //   on project creation time in Deno Deploy)
-// - setImmediate (node only)
 // - setInterval (both, but different implementation)
 // - setTimeout (both, but different implementation)
 // - window (deno only)
 
 // UTF-16 encodings of the managed globals. THIS LIST MUST BE SORTED.
 #[rustfmt::skip]
-const MANAGED_GLOBALS: [&[u16]; 8] = [
-  &str_to_utf16::<14>("clearImmediate"),
+const MANAGED_GLOBALS: [&[u16]; 6] = [
   &str_to_utf16::<13>("clearInterval"),
   &str_to_utf16::<12>("clearTimeout"),
   &str_to_utf16::<7>("process"),
-  &str_to_utf16::<12>("setImmediate"),
   &str_to_utf16::<11>("setInterval"),
   &str_to_utf16::<10>("setTimeout"),
   &str_to_utf16::<6>("window"),
@@ -115,7 +111,7 @@ impl GlobalsStorage {
 }
 
 pub fn global_template_middleware<'s>(
-  _scope: &mut v8::HandleScope<'s, ()>,
+  _scope: &mut v8::PinScope<'s, '_, ()>,
   template: v8::Local<'s, v8::ObjectTemplate>,
 ) -> v8::Local<'s, v8::ObjectTemplate> {
   let mut config = v8::NamedPropertyHandlerConfiguration::new().flags(
@@ -139,7 +135,7 @@ pub fn global_template_middleware<'s>(
 }
 
 pub fn global_object_middleware<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
   global: v8::Local<'s, v8::Object>,
 ) {
   // ensure the global object is not Object.prototype
@@ -222,7 +218,7 @@ pub fn global_object_middleware<'s>(
 }
 
 fn is_managed_key(
-  scope: &mut v8::HandleScope,
+  scope: &mut v8::PinScope<'_, '_>,
   key: v8::Local<v8::Name>,
 ) -> bool {
   let Ok(str): Result<v8::Local<v8::String>, _> = key.try_into() else {
@@ -239,7 +235,7 @@ fn is_managed_key(
   MANAGED_GLOBALS.binary_search(&&buf[..len]).is_ok()
 }
 
-fn current_mode(scope: &mut v8::HandleScope) -> Mode {
+fn current_mode(scope: &mut v8::PinScope<'_, '_>) -> Mode {
   let Some(host_defined_options) = scope.get_current_host_defined_options()
   else {
     return Mode::Deno;
@@ -252,65 +248,61 @@ fn current_mode(scope: &mut v8::HandleScope) -> Mode {
     return Mode::Deno;
   }
   let is_node = host_defined_options.get(scope, 0).is_true();
-  if is_node {
-    Mode::Node
-  } else {
-    Mode::Deno
-  }
+  if is_node { Mode::Node } else { Mode::Deno }
 }
 
 pub fn getter<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
   key: v8::Local<'s, v8::Name>,
   args: v8::PropertyCallbackArguments<'s>,
   mut rv: v8::ReturnValue,
 ) -> v8::Intercepted {
   if !is_managed_key(scope, key) {
-    return v8::Intercepted::No;
+    return v8::Intercepted::kNo;
   };
 
-  let this = args.this();
+  let this = args.holder();
   let mode = current_mode(scope);
 
   let context = scope.get_current_context();
   let inner = {
     let Some(storage) = context.get_slot::<GlobalsStorage>() else {
-      return v8::Intercepted::No;
+      return v8::Intercepted::kNo;
     };
     storage.inner_for_mode(mode)
   };
   let inner = v8::Local::new(scope, inner);
 
   if !inner.has_own_property(scope, key).unwrap_or(false) {
-    return v8::Intercepted::No;
+    return v8::Intercepted::kNo;
   }
 
   let Some(value) = inner.get_with_receiver(scope, key.into(), this) else {
-    return v8::Intercepted::No;
+    return v8::Intercepted::kNo;
   };
 
   rv.set(value);
-  v8::Intercepted::Yes
+  v8::Intercepted::kYes
 }
 
 pub fn setter<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
   key: v8::Local<'s, v8::Name>,
   value: v8::Local<'s, v8::Value>,
   args: v8::PropertyCallbackArguments<'s>,
   mut rv: v8::ReturnValue<()>,
 ) -> v8::Intercepted {
   if !is_managed_key(scope, key) {
-    return v8::Intercepted::No;
+    return v8::Intercepted::kNo;
   };
 
-  let this = args.this();
+  let this = args.holder();
   let mode = current_mode(scope);
 
   let context = scope.get_current_context();
   let inner = {
     let Some(storage) = context.get_slot::<GlobalsStorage>() else {
-      return v8::Intercepted::No;
+      return v8::Intercepted::kNo;
     };
     storage.inner_for_mode(mode)
   };
@@ -318,54 +310,54 @@ pub fn setter<'s>(
 
   let Some(success) = inner.set_with_receiver(scope, key.into(), value, this)
   else {
-    return v8::Intercepted::No;
+    return v8::Intercepted::kNo;
   };
 
   rv.set_bool(success);
-  v8::Intercepted::Yes
+  v8::Intercepted::kYes
 }
 
 pub fn query<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
   key: v8::Local<'s, v8::Name>,
   _args: v8::PropertyCallbackArguments<'s>,
   mut rv: v8::ReturnValue<v8::Integer>,
 ) -> v8::Intercepted {
   if !is_managed_key(scope, key) {
-    return v8::Intercepted::No;
+    return v8::Intercepted::kNo;
   };
   let mode = current_mode(scope);
 
   let context = scope.get_current_context();
   let inner = {
     let Some(storage) = context.get_slot::<GlobalsStorage>() else {
-      return v8::Intercepted::No;
+      return v8::Intercepted::kNo;
     };
     storage.inner_for_mode(mode)
   };
   let inner = v8::Local::new(scope, inner);
 
   let Some(true) = inner.has_own_property(scope, key) else {
-    return v8::Intercepted::No;
+    return v8::Intercepted::kNo;
   };
 
   let Some(attributes) = inner.get_property_attributes(scope, key.into())
   else {
-    return v8::Intercepted::No;
+    return v8::Intercepted::kNo;
   };
 
   rv.set_uint32(attributes.as_u32());
-  v8::Intercepted::Yes
+  v8::Intercepted::kYes
 }
 
 pub fn deleter<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
   key: v8::Local<'s, v8::Name>,
   args: v8::PropertyCallbackArguments<'s>,
   mut rv: v8::ReturnValue<v8::Boolean>,
 ) -> v8::Intercepted {
   if !is_managed_key(scope, key) {
-    return v8::Intercepted::No;
+    return v8::Intercepted::kNo;
   };
 
   let mode = current_mode(scope);
@@ -373,29 +365,29 @@ pub fn deleter<'s>(
   let context = scope.get_current_context();
   let inner = {
     let Some(storage) = context.get_slot::<GlobalsStorage>() else {
-      return v8::Intercepted::No;
+      return v8::Intercepted::kNo;
     };
     storage.inner_for_mode(mode)
   };
   let inner = v8::Local::new(scope, inner);
 
   let Some(success) = inner.delete(scope, key.into()) else {
-    return v8::Intercepted::No;
+    return v8::Intercepted::kNo;
   };
 
   if args.should_throw_on_error() && !success {
     let message = v8::String::new(scope, "Cannot delete property").unwrap();
     let exception = v8::Exception::type_error(scope, message);
     scope.throw_exception(exception);
-    return v8::Intercepted::Yes;
+    return v8::Intercepted::kYes;
   }
 
   rv.set_bool(success);
-  v8::Intercepted::Yes
+  v8::Intercepted::kYes
 }
 
 pub fn enumerator<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
   _args: v8::PropertyCallbackArguments<'s>,
   mut rv: v8::ReturnValue<v8::Array>,
 ) {
@@ -425,14 +417,14 @@ pub fn enumerator<'s>(
 }
 
 pub fn definer<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
   key: v8::Local<'s, v8::Name>,
   descriptor: &v8::PropertyDescriptor,
   args: v8::PropertyCallbackArguments<'s>,
   _rv: v8::ReturnValue<()>,
 ) -> v8::Intercepted {
   if !is_managed_key(scope, key) {
-    return v8::Intercepted::No;
+    return v8::Intercepted::kNo;
   };
 
   let mode = current_mode(scope);
@@ -440,14 +432,14 @@ pub fn definer<'s>(
   let context = scope.get_current_context();
   let inner = {
     let Some(storage) = context.get_slot::<GlobalsStorage>() else {
-      return v8::Intercepted::No;
+      return v8::Intercepted::kNo;
     };
     storage.inner_for_mode(mode)
   };
   let inner = v8::Local::new(scope, inner);
 
   let Some(success) = inner.define_property(scope, key, descriptor) else {
-    return v8::Intercepted::No;
+    return v8::Intercepted::kNo;
   };
 
   if args.should_throw_on_error() && !success {
@@ -456,27 +448,27 @@ pub fn definer<'s>(
     scope.throw_exception(exception);
   }
 
-  v8::Intercepted::Yes
+  v8::Intercepted::kYes
 }
 
 pub fn descriptor<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
   key: v8::Local<'s, v8::Name>,
   _args: v8::PropertyCallbackArguments<'s>,
   mut rv: v8::ReturnValue,
 ) -> v8::Intercepted {
   if !is_managed_key(scope, key) {
-    return v8::Intercepted::No;
+    return v8::Intercepted::kNo;
   };
 
   let mode = current_mode(scope);
 
-  let scope = &mut v8::TryCatch::new(scope);
+  v8::tc_scope!(scope, scope);
 
   let context = scope.get_current_context();
   let inner = {
     let Some(storage) = context.get_slot::<GlobalsStorage>() else {
-      return v8::Intercepted::No;
+      return v8::Intercepted::kNo;
     };
     storage.inner_for_mode(mode)
   };
@@ -484,13 +476,13 @@ pub fn descriptor<'s>(
 
   let Some(descriptor) = inner.get_own_property_descriptor(scope, key) else {
     scope.rethrow().expect("to have caught an exception");
-    return v8::Intercepted::Yes;
+    return v8::Intercepted::kYes;
   };
 
   if descriptor.is_undefined() {
-    return v8::Intercepted::No;
+    return v8::Intercepted::kNo;
   }
 
   rv.set(descriptor);
-  v8::Intercepted::Yes
+  v8::Intercepted::kYes
 }

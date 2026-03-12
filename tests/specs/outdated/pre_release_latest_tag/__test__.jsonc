@@ -1,0 +1,17 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "install",
+      "output": "[WILDCARD]"
+    },
+    {
+      "args": "outdated",
+      "output": "outdated.out"
+    },
+    {
+      "args": "update",
+      "output": "update.out"
+    }
+  ]
+}

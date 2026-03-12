@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // NOTE(bartlomieju): unfortunately it appears that clippy is broken
 // and can't allow a single line ignore for `await_holding_lock`.
@@ -8,17 +8,17 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
 
+use deno_core::OpState;
 use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
-use deno_core::OpState;
 use deno_error::JsErrorBox;
-use jupyter_runtime::InputRequest;
-use jupyter_runtime::JupyterMessage;
-use jupyter_runtime::JupyterMessageContent;
+use jupyter_protocol::InputRequest;
+use jupyter_protocol::JupyterMessage;
+use jupyter_protocol::JupyterMessageContent;
+use jupyter_protocol::StreamContent;
 use jupyter_runtime::KernelIoPubConnection;
-use jupyter_runtime::StreamContent;
 use tokio::sync::mpsc;
 
 use crate::tools::jupyter::server::StdinConnectionProxy;
@@ -122,7 +122,7 @@ pub enum JupyterBroadcastError {
   ZeroMq(AnyError),
 }
 
-#[op2(async)]
+#[op2]
 pub async fn op_jupyter_broadcast(
   state: Rc<RefCell<OpState>>,
   #[string] message_type: String,
@@ -163,7 +163,7 @@ pub async fn op_jupyter_broadcast(
       .lock()
       .send(jupyter_message)
       .await
-      .map_err(JupyterBroadcastError::ZeroMq)?;
+      .map_err(|e| JupyterBroadcastError::ZeroMq(e.into()))?;
   }
 
   Ok(())
@@ -190,8 +190,8 @@ pub fn op_print(state: &mut OpState, #[string] msg: &str, is_err: bool) {
 pub fn op_jupyter_create_png_from_texture(
   #[cppgc] texture: &deno_runtime::deno_webgpu::texture::GPUTexture,
 ) -> Result<String, JsErrorBox> {
-  use deno_runtime::deno_canvas::image::ExtendedColorType;
-  use deno_runtime::deno_canvas::image::ImageEncoder;
+  use deno_runtime::deno_image::image::ExtendedColorType;
+  use deno_runtime::deno_image::image::ImageEncoder;
   use deno_runtime::deno_webgpu::error::GPUError;
   use deno_runtime::deno_webgpu::*;
   use texture::GPUTextureFormat;
@@ -257,8 +257,9 @@ pub fn op_jupyter_create_png_from_texture(
   let (command_buffer, maybe_err) = texture.instance.command_encoder_finish(
     command_encoder,
     &wgpu_types::CommandBufferDescriptor { label: None },
+    None,
   );
-  if let Some(maybe_err) = maybe_err {
+  if let Some((_, maybe_err)) = maybe_err {
     return Err(JsErrorBox::from_err::<GPUError>(maybe_err.into()));
   }
 
@@ -287,9 +288,12 @@ pub fn op_jupyter_create_png_from_texture(
     .instance
     .device_poll(
       texture.device_id,
-      wgpu_types::Maintain::WaitForSubmissionIndex(index),
+      wgpu_types::PollType::Wait {
+        submission_index: Some(index),
+        timeout: None,
+      },
     )
-    .map_err(|e| JsErrorBox::from_err::<GPUError>(e.into()))?;
+    .unwrap();
 
   let (slice_pointer, range_size) = texture
     .instance
@@ -329,14 +333,14 @@ pub fn op_jupyter_create_png_from_texture(
       return Err(JsErrorBox::type_error(format!(
         "Unsupported texture format '{}'",
         texture.format.as_str()
-      )))
+      )));
     }
   };
 
   let mut out: Vec<u8> = vec![];
 
   let img =
-    deno_runtime::deno_canvas::image::codecs::png::PngEncoder::new(&mut out);
+    deno_runtime::deno_image::image::codecs::png::PngEncoder::new(&mut out);
   img
     .write_image(&data, texture.size.width, texture.size.height, color_type)
     .map_err(|e| JsErrorBox::type_error(e.to_string()))?;
@@ -351,7 +355,6 @@ pub fn op_jupyter_create_png_from_texture(
 }
 
 #[op2]
-#[serde]
 pub fn op_jupyter_get_buffer(
   #[cppgc] buffer: &deno_runtime::deno_webgpu::buffer::GPUBuffer,
 ) -> Result<Vec<u8>, deno_runtime::deno_webgpu::error::GPUError> {
@@ -366,10 +369,16 @@ pub fn op_jupyter_get_buffer(
     },
   )?;
 
-  buffer.instance.device_poll(
-    buffer.device,
-    wgpu_types::Maintain::WaitForSubmissionIndex(index),
-  )?;
+  buffer
+    .instance
+    .device_poll(
+      buffer.device,
+      wgpu_types::PollType::Wait {
+        submission_index: Some(index),
+        timeout: None,
+      },
+    )
+    .unwrap();
 
   let (slice_pointer, range_size) = buffer
     .instance

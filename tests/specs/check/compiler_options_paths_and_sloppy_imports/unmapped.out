@@ -1,0 +1,2 @@
+error: Failed resolving types. Import "@unmapped/foo" via 'compilerOptions.paths["@unmapped/*"]' did not match an existing file
+    at [WILDLINE]/unmapped.ts:1:21
