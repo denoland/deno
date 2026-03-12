@@ -173,6 +173,8 @@ deno_core::extension!(
     x509::op_node_x509_check_private_key,
     x509::op_node_x509_verify,
     x509::op_node_x509_get_info_access,
+    x509::op_node_x509_get_signature_algorithm_name,
+    x509::op_node_x509_get_signature_algorithm_oid,
     x509::op_node_x509_to_legacy_object,
   ],
   objects = [digest::Hasher,],
