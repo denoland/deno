@@ -155,26 +155,6 @@ const {
   Uint8Array,
 } = primordials;
 
-const {
-  F_OK,
-  R_OK,
-  W_OK,
-  X_OK,
-  O_RDONLY,
-  O_WRONLY,
-  O_RDWR,
-  O_NOCTTY,
-  O_TRUNC,
-  O_APPEND,
-  O_DIRECTORY,
-  O_NOFOLLOW,
-  O_SYNC,
-  O_DSYNC,
-  O_SYMLINK,
-  O_NONBLOCK,
-  O_CREAT,
-  O_EXCL,
-} = constants;
 
 // -- stat --
 
@@ -232,18 +212,6 @@ function stat(
       ),
   );
 }
-
-const statPromise = promisify(stat) as (
-  & ((path: string | Buffer | URL) => Promise<Stats>)
-  & ((
-    path: string | Buffer | URL,
-    options: { bigint: false },
-  ) => Promise<Stats>)
-  & ((
-    path: string | Buffer | URL,
-    options: { bigint: true },
-  ) => Promise<BigIntStats>)
-);
 
 function statSync(path: string | Buffer | URL): Stats;
 function statSync(
@@ -335,11 +303,6 @@ function realpath(
 }
 
 realpath.native = realpath;
-
-const realpathPromise = promisify(realpath) as (
-  path: string | Buffer,
-  options?: RealpathOptions,
-) => Promise<string | Buffer>;
 
 function realpathSync(
   path: string,
@@ -640,17 +603,6 @@ function statfsSync(
     });
   }
 }
-
-const statfsPromise = promisify(statfs) as (
-  & ((
-    path: string | Buffer | URL,
-    options?: { bigint?: false },
-  ) => Promise<StatFs<number>>)
-  & ((
-    path: string | Buffer | URL,
-    options: { bigint: true },
-  ) => Promise<StatFs<bigint>>)
-);
 
 function access(
   path: string | Buffer | URL,
@@ -3036,7 +2988,6 @@ export default {
   Dirent,
   exists,
   existsSync,
-  F_OK,
   fchmod,
   fchmodSync,
   fchown,
@@ -3067,20 +3018,6 @@ export default {
   mkdirSync,
   mkdtemp,
   mkdtempSync,
-  O_APPEND,
-  O_CREAT,
-  O_DIRECTORY,
-  O_DSYNC,
-  O_EXCL,
-  O_NOCTTY,
-  O_NOFOLLOW,
-  O_NONBLOCK,
-  O_RDONLY,
-  O_RDWR,
-  O_SYMLINK,
-  O_SYNC,
-  O_TRUNC,
-  O_WRONLY,
   open,
   openAsBlob,
   openSync,
@@ -3089,7 +3026,6 @@ export default {
   read,
   readSync,
   promises,
-  R_OK,
   readdir,
   readdirSync,
   readFile,
@@ -3121,10 +3057,8 @@ export default {
   unwatchFile,
   utimes,
   utimesSync,
-  W_OK,
   watch,
   watchFile,
-  watchPromise,
   write,
   writeFile,
   writev,
@@ -3132,7 +3066,6 @@ export default {
   writeFileSync,
   WriteStream,
   writeSync,
-  X_OK,
   // For tests
   _toUnixTimestamp,
 };
@@ -3167,7 +3100,6 @@ export {
   Dirent,
   exists,
   existsSync,
-  F_OK,
   fchmod,
   fchmodSync,
   fchown,
@@ -3198,27 +3130,12 @@ export {
   mkdirSync,
   mkdtemp,
   mkdtempSync,
-  O_APPEND,
-  O_CREAT,
-  O_DIRECTORY,
-  O_DSYNC,
-  O_EXCL,
-  O_NOCTTY,
-  O_NOFOLLOW,
-  O_NONBLOCK,
-  O_RDONLY,
-  O_RDWR,
-  O_SYMLINK,
-  O_SYNC,
-  O_TRUNC,
-  O_WRONLY,
   open,
   openAsBlob,
   opendir,
   opendirSync,
   openSync,
   promises,
-  R_OK,
   read,
   readdir,
   readdirSync,
@@ -3232,7 +3149,6 @@ export {
   readvPromise,
   readvSync,
   realpath,
-  realpathPromise,
   realpathSync,
   rename,
   renameSync,
@@ -3242,9 +3158,7 @@ export {
   rmSync,
   stat,
   statfs,
-  statfsPromise,
   statfsSync,
-  statPromise,
   Stats,
   statSync,
   symlink,
@@ -3256,7 +3170,6 @@ export {
   unwatchFile,
   utimes,
   utimesSync,
-  W_OK,
   watch,
   watchFile,
   watchPromise,
@@ -3267,5 +3180,4 @@ export {
   writeSync,
   writev,
   writevSync,
-  X_OK,
 };
