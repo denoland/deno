@@ -98,7 +98,10 @@ impl<'a> DiffBuilder<'a> {
   }
 
   fn write_rem_line(&mut self, text: &str) {
-    let text = text.strip_suffix('\n').unwrap_or(text);
+    let (text, has_newline) = match text.strip_suffix('\n') {
+      Some(t) => (t, true),
+      None => (text, false),
+    };
     write!(
       self.output,
       "{:width$}{} ",
@@ -110,11 +113,17 @@ impl<'a> DiffBuilder<'a> {
     self.output.push_str(&fmt_rem());
     self.output.push_str(&fmt_rem_text_highlight(text));
     self.output.push('\n');
+    if !has_newline {
+      self.write_no_newline_marker();
+    }
     self.orig_line += 1;
   }
 
   fn write_add_line(&mut self, text: &str) {
-    let text = text.strip_suffix('\n').unwrap_or(text);
+    let (text, has_newline) = match text.strip_suffix('\n') {
+      Some(t) => (t, true),
+      None => (text, false),
+    };
     write!(
       self.output,
       "{:width$}{} ",
@@ -126,7 +135,22 @@ impl<'a> DiffBuilder<'a> {
     self.output.push_str(&fmt_add());
     self.output.push_str(&fmt_add_text_highlight(text));
     self.output.push('\n');
+    if !has_newline {
+      self.write_no_newline_marker();
+    }
     self.edit_line += 1;
+  }
+
+  fn write_no_newline_marker(&mut self) {
+    writeln!(
+      self.output,
+      "{:width$}{} {}",
+      "",
+      colors::gray(" |"),
+      colors::gray("\\ No newline at end of file"),
+      width = self.line_number_width
+    )
+    .unwrap();
   }
 }
 
@@ -229,7 +253,9 @@ mod tests {
       "console.log(\"Hello World\");",
       concat!(
         "1 | -console.log('Hello World')\n",
+        "  | \\ No newline at end of file\n",
         "1 | +console.log(\"Hello World\");\n",
+        "  | \\ No newline at end of file\n",
       ),
     );
 
@@ -244,7 +270,9 @@ mod tests {
         "6 | -'Hello World'\n",
         "2 | +\"Hello World\"\n",
         "7 | -)\n",
+        "  | \\ No newline at end of file\n",
         "3 | +);\n",
+        "  | \\ No newline at end of file\n",
       ),
     );
   }
@@ -254,7 +282,11 @@ mod tests {
     run_test(
       "test\nsome line text test",
       "test\nsome line text test\n",
-      concat!("2 | -some line text test\n", "2 | +some line text test\n",),
+      concat!(
+        "2 | -some line text test\n",
+        "  | \\ No newline at end of file\n",
+        "2 | +some line text test\n",
+      ),
     );
   }
 
