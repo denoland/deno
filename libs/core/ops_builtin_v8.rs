@@ -848,7 +848,7 @@ pub fn op_serialize<'s, 'i>(
   }
 }
 
-#[op2]
+#[op2(reentrant)]
 pub fn op_deserialize<'s, 'i>(
   scope: &mut v8::PinScope<'s, 'i>,
   #[buffer] zero_copy: JsBuffer,
