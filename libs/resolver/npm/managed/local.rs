@@ -13,6 +13,7 @@ use deno_path_util::url_from_directory_path;
 use deno_semver::Version;
 use node_resolver::NpmPackageFolderResolver;
 use node_resolver::UrlOrPathRef;
+use node_resolver::cache::NodeResolutionSys;
 use node_resolver::errors::PackageFolderResolveError;
 use node_resolver::errors::PackageFolderResolveIoError;
 use node_resolver::errors::PackageNotFoundError;
@@ -31,7 +32,7 @@ use crate::npm::local::get_package_folder_id_from_folder_name;
 #[derive(Debug)]
 pub struct LocalNpmPackageResolver<TSys: FsCanonicalize + FsMetadata> {
   resolution: NpmResolutionCellRc,
-  sys: TSys,
+  sys: NodeResolutionSys<TSys>,
   root_node_modules_path: PathBuf,
   root_node_modules_url: Url,
 }
@@ -40,7 +41,7 @@ impl<TSys: FsCanonicalize + FsMetadata> LocalNpmPackageResolver<TSys> {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
     resolution: NpmResolutionCellRc,
-    sys: TSys,
+    sys: NodeResolutionSys<TSys>,
     node_modules_folder: PathBuf,
   ) -> Self {
     Self {
@@ -179,7 +180,7 @@ impl<TSys: FsCanonicalize + FsMetadata> NpmPackageFolderResolver
       };
 
       let sub_dir = join_package_name_to_path(&node_modules_folder, name);
-      if self.sys.fs_is_dir_no_err(&sub_dir) {
+      if self.sys.is_dir(Cow::Borrowed(&sub_dir)) {
         return Ok(self.sys.fs_canonicalize(&sub_dir).map_err(|err| {
           PackageFolderResolveIoError {
             package_name: name.to_string(),

@@ -140,7 +140,7 @@ impl<TSys: ByonmNpmResolverSys> ByonmNpmResolver<TSys> {
       for ancestor in start_dir.ancestors() {
         let node_modules_folder = ancestor.join("node_modules");
         let sub_dir = join_package_name(Cow::Owned(node_modules_folder), alias);
-        if sys.is_dir(&sub_dir) {
+        if sys.is_dir(Cow::Borrowed(&sub_dir)) {
           return Ok(Some(
             deno_path_util::fs::canonicalize_path_maybe_not_exists(
               sys, &sub_dir,
@@ -413,7 +413,7 @@ impl<TSys: FsCanonicalize + FsMetadata + FsRead + FsReadDir>
           };
 
           let sub_dir = join_package_name(node_modules_folder, name);
-          if sys.is_dir(&sub_dir) {
+          if sys.is_dir(Cow::Borrowed(&sub_dir)) {
             return Ok(sub_dir);
           }
 

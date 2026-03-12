@@ -12,6 +12,7 @@ use deno_semver::Version;
 use deno_semver::package::PackageNv;
 use node_resolver::NpmPackageFolderResolver;
 use node_resolver::UrlOrPathRef;
+use node_resolver::cache::NodeResolutionSys;
 use node_resolver::errors::PackageFolderResolveError;
 use node_resolver::errors::PackageFolderResolveIoError;
 use node_resolver::errors::PackageNotFoundError;
@@ -25,21 +26,24 @@ use super::resolution::NpmResolutionCellRc;
 use crate::npm::managed::common::join_package_name_to_path;
 use crate::npmrc::ResolvedNpmRcRc;
 
+#[sys_traits::auto_impl]
+pub trait GlobalNpmPackageResolverSys: FsCanonicalize + FsMetadata {}
+
 /// Resolves packages from the global npm cache.
 #[derive(Debug)]
-pub struct GlobalNpmPackageResolver<TSys: FsCanonicalize + FsMetadata> {
+pub struct GlobalNpmPackageResolver<TSys: GlobalNpmPackageResolverSys> {
   cache: NpmCacheDirRc,
   npm_rc: ResolvedNpmRcRc,
   resolution: NpmResolutionCellRc,
-  sys: TSys,
+  sys: NodeResolutionSys<TSys>,
 }
 
-impl<TSys: FsCanonicalize + FsMetadata> GlobalNpmPackageResolver<TSys> {
+impl<TSys: GlobalNpmPackageResolverSys> GlobalNpmPackageResolver<TSys> {
   pub fn new(
     cache: NpmCacheDirRc,
     npm_rc: ResolvedNpmRcRc,
     resolution: NpmResolutionCellRc,
-    sys: TSys,
+    sys: NodeResolutionSys<TSys>,
   ) -> Self {
     Self {
       cache,
@@ -112,22 +116,29 @@ impl<TSys: FsCanonicalize + FsMetadata> GlobalNpmPackageResolver<TSys> {
         Cow::Owned(current_folder.join("node_modules"))
       };
 
-      let sub_dir = join_package_name_to_path(&node_modules_folder, name);
-      if self.sys.fs_is_dir_no_err(&sub_dir) {
-        return Ok(Some(self.sys.fs_canonicalize(&sub_dir).map_err(
-          |err| PackageFolderResolveIoError {
-            package_name: name.to_string(),
-            referrer: referrer.display(),
-            source: err,
-          },
-        )?));
+      // Eagerly check for the existence of a node_modules folder because
+      // in most cases it won't exist and this will cause it to be placed
+      // in the memory cache, which will be shared amongst all the packages.
+      if !self.sys.has_cache()
+        || self.sys.is_dir(Cow::Borrowed(&node_modules_folder))
+      {
+        let sub_dir = join_package_name_to_path(&node_modules_folder, name);
+        if self.sys.is_dir(Cow::Borrowed(&sub_dir)) {
+          return Ok(Some(self.sys.fs_canonicalize(&sub_dir).map_err(
+            |err| PackageFolderResolveIoError {
+              package_name: name.to_string(),
+              referrer: referrer.display(),
+              source: err,
+            },
+          )?));
+        }
       }
     }
     Ok(None)
   }
 }
 
-impl<TSys: FsCanonicalize + FsMetadata> NpmPackageFolderResolver
+impl<TSys: GlobalNpmPackageResolverSys> NpmPackageFolderResolver
   for GlobalNpmPackageResolver<TSys>
 {
   fn resolve_package_folder_from_package(
