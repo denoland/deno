@@ -29,14 +29,10 @@ import { read, readSync } from "ext:deno_node/_fs/_fs_read.ts";
 import { readdir, readdirSync } from "ext:deno_node/_fs/_fs_readdir.ts";
 import { readFile, readFileSync } from "ext:deno_node/_fs/_fs_readFile.ts";
 import { readlink, readlinkSync } from "ext:deno_node/_fs/_fs_readlink.ts";
-import { realpath, realpathSync } from "ext:deno_node/_fs/_fs_realpath.ts";
-import { stat, Stats, statSync } from "ext:deno_node/_fs/_fs_stat.ts";
-import { statfs, statfsSync } from "ext:deno_node/_fs/_fs_statfs.ts";
 import { EventEmitter } from "node:events";
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import { promisify } from "node:util";
 import { delay } from "ext:deno_node/_util/async.ts";
-import { readv, readvSync } from "ext:deno_node/_fs/_fs_readv.ts";
 import promises from "ext:deno_node/internal/fs/promises.ts";
 // @deno-types="./internal/fs/streams.d.ts"
 import {
@@ -47,6 +43,7 @@ import {
 } from "ext:deno_node/internal/fs/streams.mjs";
 import {
   arrayBufferViewToUint8Array,
+  BigIntStats,
   constants as fsUtilConstants,
   copyObject,
   Dirent,
@@ -58,6 +55,7 @@ import {
   getValidMode,
   kMaxUserId,
   type RmOptions,
+  Stats,
   stringToFlags,
   toUnixTimestamp as _toUnixTimestamp,
   validateBufferArray,
@@ -108,6 +106,8 @@ import {
   op_node_open_sync,
   op_node_rmdir,
   op_node_rmdir_sync,
+  op_node_statfs,
+  op_node_statfs_sync,
 } from "ext:core/ops";
 import { FsFile } from "ext:deno_fs/30_fs.js";
 import {
@@ -129,6 +129,7 @@ import { core, primordials } from "ext:core/mod.js";
 
 const {
   ArrayBufferIsView,
+  BigInt,
   DatePrototypeGetTime,
   DateUTC,
   Error,
@@ -143,12 +144,14 @@ const {
   NumberIsNaN,
   ObjectDefineProperty,
   ObjectPrototypeIsPrototypeOf,
+  Promise,
   PromisePrototypeThen,
   PromiseResolve,
   SafeMap,
   StringPrototypeToString,
   SymbolAsyncIterator,
   SymbolFor,
+  TypedArrayPrototypeGetByteLength,
   Uint8Array,
 } = primordials;
 
@@ -172,6 +175,482 @@ const {
   O_CREAT,
   O_EXCL,
 } = constants;
+
+// -- stat --
+
+import {
+  CFISBIS,
+  convertFileInfoToBigIntStats,
+  convertFileInfoToStats,
+  type statCallback,
+  type statCallbackBigInt,
+  type statOptions,
+} from "ext:deno_node/internal/fs/stat_utils.ts";
+
+const defaultStatOptions = { __proto__: null, bigint: false };
+const defaultStatSyncOptions = {
+  __proto__: null,
+  bigint: false,
+  throwIfNoEntry: true,
+};
+
+function stat(
+  path: string | Buffer | URL,
+  callback: statCallback,
+): void;
+function stat(
+  path: string | Buffer | URL,
+  options: { bigint: false },
+  callback: statCallback,
+): void;
+function stat(
+  path: string | Buffer | URL,
+  options: { bigint: true },
+  callback: statCallbackBigInt,
+): void;
+function stat(
+  path: string | Buffer | URL,
+  options:
+    | statCallback
+    | statCallbackBigInt
+    | statOptions = defaultStatOptions,
+  callback?: statCallback | statCallbackBigInt,
+) {
+  if (typeof options === "function") {
+    callback = options;
+    options = defaultStatOptions;
+  }
+  callback = makeCallback(callback);
+  path = getValidatedPathToString(path);
+
+  PromisePrototypeThen(
+    Deno.stat(path),
+    (stat) => callback(null, CFISBIS(stat, options.bigint)),
+    (err) =>
+      callback(
+        denoErrorToNodeError(err, { syscall: "stat", path }),
+      ),
+  );
+}
+
+const statPromise = promisify(stat) as (
+  & ((path: string | Buffer | URL) => Promise<Stats>)
+  & ((
+    path: string | Buffer | URL,
+    options: { bigint: false },
+  ) => Promise<Stats>)
+  & ((
+    path: string | Buffer | URL,
+    options: { bigint: true },
+  ) => Promise<BigIntStats>)
+);
+
+function statSync(path: string | Buffer | URL): Stats;
+function statSync(
+  path: string | Buffer | URL,
+  options: { bigint: false; throwIfNoEntry: true },
+): Stats;
+function statSync(
+  path: string | Buffer | URL,
+  options: { bigint: false; throwIfNoEntry: false },
+): Stats | undefined;
+function statSync(
+  path: string | Buffer | URL,
+  options: { bigint: true; throwIfNoEntry: true },
+): BigIntStats;
+function statSync(
+  path: string | Buffer | URL,
+  options: { bigint: true; throwIfNoEntry: false },
+): BigIntStats | undefined;
+function statSync(
+  path: string | Buffer | URL,
+  options: statOptions = defaultStatSyncOptions,
+): Stats | BigIntStats | undefined {
+  path = getValidatedPathToString(path);
+
+  try {
+    const origin = Deno.statSync(path);
+    return CFISBIS(origin, options.bigint);
+  } catch (err) {
+    if (
+      options?.throwIfNoEntry === false &&
+      ObjectPrototypeIsPrototypeOf(Deno.errors.NotFound.prototype, err)
+    ) {
+      return;
+    }
+    if (ObjectPrototypeIsPrototypeOf(ErrorPrototype, err)) {
+      throw denoErrorToNodeError(err as Error, {
+        syscall: "stat",
+        path,
+      });
+    } else {
+      throw err;
+    }
+  }
+}
+
+// -- realpath --
+
+type RealpathEncoding = BufferEncoding | "buffer";
+type RealpathEncodingObj = { encoding?: RealpathEncoding };
+type RealpathOptions = RealpathEncoding | RealpathEncodingObj;
+type RealpathCallback = (
+  err: Error | null,
+  path?: string | Buffer,
+) => void;
+
+function encodeRealpathResult(
+  result: string,
+  options?: RealpathEncodingObj,
+): string | Buffer {
+  if (!options || !options.encoding || options.encoding === "utf8") {
+    return result;
+  }
+
+  const asBuffer = Buffer.from(result);
+  if (options.encoding === "buffer") {
+    return asBuffer;
+  }
+  // deno-lint-ignore prefer-primordials
+  return asBuffer.toString(options.encoding);
+}
+
+function realpath(
+  path: string | Buffer,
+  options?: RealpathOptions | RealpathCallback | RealpathEncoding,
+  callback?: RealpathCallback,
+) {
+  if (typeof options === "function") {
+    callback = options;
+  }
+  validateFunction(callback, "cb");
+  options = getOptions(options) as RealpathEncodingObj;
+  path = getValidatedPathToString(path);
+
+  PromisePrototypeThen(
+    Deno.realPath(path),
+    (path) => callback!(null, encodeRealpathResult(path, options)),
+    (err) => callback!(err),
+  );
+}
+
+realpath.native = realpath;
+
+const realpathPromise = promisify(realpath) as (
+  path: string | Buffer,
+  options?: RealpathOptions,
+) => Promise<string | Buffer>;
+
+function realpathSync(
+  path: string,
+  options?: RealpathOptions | RealpathEncoding,
+): string | Buffer {
+  options = getOptions(options) as RealpathEncodingObj;
+  path = getValidatedPathToString(path);
+  const result = Deno.realPathSync(path);
+  return encodeRealpathResult(result, options);
+}
+
+realpathSync.native = realpathSync;
+
+// -- readv --
+
+type ReadvCallback = (
+  err: ErrnoException | null,
+  bytesRead: number,
+  buffers: readonly ArrayBufferView[],
+) => void;
+
+function readv(
+  fd: number,
+  buffers: readonly ArrayBufferView[],
+  callback: ReadvCallback,
+): void;
+function readv(
+  fd: number,
+  buffers: readonly ArrayBufferView[],
+  position: number | ReadvCallback,
+  callback?: ReadvCallback,
+): void {
+  if (typeof fd !== "number") {
+    throw new ERR_INVALID_ARG_TYPE("fd", "number", fd);
+  }
+  fd = getValidatedFd(fd);
+  validateBufferArray(buffers);
+  const cb = maybeCallback(callback || position) as ReadvCallback;
+  let pos: number | null = null;
+  if (typeof position === "number") {
+    validateInteger(position, "position", 0);
+    pos = position;
+  }
+
+  if (buffers.length === 0) {
+    process.nextTick(cb, null, 0, buffers);
+    return;
+  }
+
+  const innerReadv = async (
+    fd: number,
+    buffers: readonly ArrayBufferView[],
+    position: number | null,
+  ) => {
+    if (typeof position === "number") {
+      await op_fs_seek_async(fd, position, io.SeekMode.Start);
+    }
+
+    let readTotal = 0;
+    let readInBuf = 0;
+    let bufIdx = 0;
+    let buf = buffers[bufIdx];
+    while (bufIdx < buffers.length) {
+      const nread = await io.read(fd, buf);
+      if (nread === null) {
+        break;
+      }
+      readInBuf += nread;
+      if (readInBuf === TypedArrayPrototypeGetByteLength(buf)) {
+        readTotal += readInBuf;
+        readInBuf = 0;
+        bufIdx += 1;
+        buf = buffers[bufIdx];
+      }
+    }
+    readTotal += readInBuf;
+
+    return readTotal;
+  };
+
+  PromisePrototypeThen(innerReadv(fd, buffers, pos), (numRead) => {
+    cb(null, numRead, buffers);
+  }, (err) => cb(err, -1, buffers));
+}
+
+ObjectDefineProperty(readv, customPromisifyArgs, {
+  __proto__: null,
+  value: ["bytesRead", "buffers"],
+  enumerable: false,
+});
+
+interface ReadVResult {
+  bytesRead: number;
+  buffers: readonly ArrayBufferView[];
+}
+
+function readvSync(
+  fd: number,
+  buffers: readonly ArrayBufferView[],
+  position: number | null = null,
+): number {
+  if (typeof fd !== "number") {
+    throw new ERR_INVALID_ARG_TYPE("fd", "number", fd);
+  }
+  fd = getValidatedFd(fd);
+  validateBufferArray(buffers);
+  if (buffers.length === 0) {
+    return 0;
+  }
+  if (typeof position === "number") {
+    validateInteger(position, "position", 0);
+    op_fs_seek_sync(fd, position, io.SeekMode.Start);
+  }
+
+  let readTotal = 0;
+  let readInBuf = 0;
+  let bufIdx = 0;
+  let buf = buffers[bufIdx];
+  while (bufIdx < buffers.length) {
+    const nread = io.readSync(fd, buf);
+    if (nread === null) {
+      break;
+    }
+    readInBuf += nread;
+    if (readInBuf === TypedArrayPrototypeGetByteLength(buf)) {
+      readTotal += readInBuf;
+      readInBuf = 0;
+      bufIdx += 1;
+      buf = buffers[bufIdx];
+    }
+  }
+  readTotal += readInBuf;
+
+  return readTotal;
+}
+
+function readvPromise(
+  fd: number,
+  buffers: readonly ArrayBufferView[],
+  position?: number,
+): Promise<ReadVResult> {
+  return new Promise((resolve, reject) => {
+    readv(fd, buffers, position ?? null, (err, bytesRead, buffers) => {
+      if (err) reject(err);
+      else resolve({ bytesRead, buffers });
+    });
+  });
+}
+
+// -- statfs --
+
+type StatFsCallback<T> = (err: Error | null, stats?: StatFs<T>) => void;
+
+type StatFsOptions = {
+  bigint?: boolean;
+};
+
+class StatFs<T> {
+  type: T;
+  bsize: T;
+  blocks: T;
+  bfree: T;
+  bavail: T;
+  files: T;
+  ffree: T;
+  constructor(
+    type: T,
+    bsize: T,
+    blocks: T,
+    bfree: T,
+    bavail: T,
+    files: T,
+    ffree: T,
+  ) {
+    this.type = type;
+    this.bsize = bsize;
+    this.blocks = blocks;
+    this.bfree = bfree;
+    this.bavail = bavail;
+    this.files = files;
+    this.ffree = ffree;
+  }
+}
+
+type StatFsOpResult = {
+  type: number;
+  bsize: number;
+  blocks: number;
+  bfree: number;
+  bavail: number;
+  files: number;
+  ffree: number;
+};
+
+function opResultToStatFs(
+  result: StatFsOpResult,
+  bigint: true,
+): StatFs<bigint>;
+function opResultToStatFs(
+  result: StatFsOpResult,
+  bigint: false,
+): StatFs<number>;
+function opResultToStatFs(
+  result: StatFsOpResult,
+  bigint: boolean,
+): StatFs<bigint> | StatFs<number> {
+  if (!bigint) {
+    return new StatFs(
+      result.type,
+      result.bsize,
+      result.blocks,
+      result.bfree,
+      result.bavail,
+      result.files,
+      result.ffree,
+    );
+  }
+  return new StatFs(
+    BigInt(result.type),
+    BigInt(result.bsize),
+    BigInt(result.blocks),
+    BigInt(result.bfree),
+    BigInt(result.bavail),
+    BigInt(result.files),
+    BigInt(result.ffree),
+  );
+}
+
+function statfs(
+  path: string | Buffer | URL,
+  callback: StatFsCallback<number>,
+): void;
+function statfs(
+  path: string | Buffer | URL,
+  options: { bigint?: false },
+  callback: StatFsCallback<number>,
+): void;
+function statfs(
+  path: string | Buffer | URL,
+  options: { bigint: true },
+  callback: StatFsCallback<bigint>,
+): void;
+function statfs(
+  path: string | Buffer | URL,
+  options: StatFsOptions | StatFsCallback<number> | undefined,
+  callback?: StatFsCallback<number> | StatFsCallback<bigint>,
+): void {
+  if (typeof options === "function") {
+    callback = options;
+    options = undefined;
+  }
+  // @ts-expect-error callback type is known to be valid
+  callback = makeCallback(callback);
+  path = getValidatedPathToString(path);
+  const bigint = typeof options?.bigint === "boolean" ? options.bigint : false;
+
+  PromisePrototypeThen(
+    op_node_statfs(path, bigint),
+    (statFs) => {
+      callback(
+        null,
+        opResultToStatFs(statFs, bigint),
+      );
+    },
+    (err: Error) =>
+      callback(denoErrorToNodeError(err, {
+        syscall: "statfs",
+        path,
+      })),
+  );
+}
+
+function statfsSync(
+  path: string | Buffer | URL,
+  options?: { bigint?: false },
+): StatFs<number>;
+function statfsSync(
+  path: string | Buffer | URL,
+  options: { bigint: true },
+): StatFs<bigint>;
+function statfsSync(
+  path: string | Buffer | URL,
+  options?: StatFsOptions,
+): StatFs<number> | StatFs<bigint> {
+  path = getValidatedPathToString(path);
+  const bigint = typeof options?.bigint === "boolean" ? options.bigint : false;
+
+  try {
+    const result = op_node_statfs_sync(
+      path,
+      bigint,
+    );
+    return opResultToStatFs(result, bigint);
+  } catch (err) {
+    throw denoErrorToNodeError(err as Error, {
+      syscall: "statfs",
+      path,
+    });
+  }
+}
+
+const statfsPromise = promisify(statfs) as (
+  & ((
+    path: string | Buffer | URL,
+    options?: { bigint?: false },
+  ) => Promise<StatFs<number>>)
+  & ((
+    path: string | Buffer | URL,
+    options: { bigint: true },
+  ) => Promise<StatFs<bigint>>)
+);
 
 function access(
   path: string | Buffer | URL,
@@ -2658,6 +3137,8 @@ export default {
   _toUnixTimestamp,
 };
 
+export type { ReadVResult, statCallback, statCallbackBigInt, statOptions };
+
 export {
   // For tests
   _toUnixTimestamp,
@@ -2665,6 +3146,8 @@ export {
   accessSync,
   appendFile,
   appendFileSync,
+  BigIntStats,
+  CFISBIS,
   chmod,
   chmodSync,
   chown,
@@ -2672,6 +3155,8 @@ export {
   close,
   closeSync,
   constants,
+  convertFileInfoToBigIntStats,
+  convertFileInfoToStats,
   copyFile,
   copyFileSync,
   cp,
@@ -2744,8 +3229,10 @@ export {
   ReadStream,
   readSync,
   readv,
+  readvPromise,
   readvSync,
   realpath,
+  realpathPromise,
   realpathSync,
   rename,
   renameSync,
@@ -2755,7 +3242,9 @@ export {
   rmSync,
   stat,
   statfs,
+  statfsPromise,
   statfsSync,
+  statPromise,
   Stats,
   statSync,
   symlink,
