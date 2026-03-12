@@ -63,6 +63,7 @@ async function dlint() {
     ":!:.github/mtime_cache/action.js",
     ":!:cli/compilers/wasm_wrap.js",
     ":!:cli/tools/coverage/script.js",
+    ":!:runtime/cpu_profiler/flamegraph.js",
     ":!:cli/tools/doc/prism.css",
     ":!:cli/tools/doc/prism.js",
     ":!:cli/tsc/dts/**",

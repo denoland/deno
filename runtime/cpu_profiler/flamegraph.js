@@ -1,4 +1,12 @@
-var details, searchbtn, unzoombtn, matchedtxt, svg, searching, frames, total_samples, known_font_width;
+var details,
+  searchbtn,
+  unzoombtn,
+  matchedtxt,
+  svg,
+  searching,
+  frames,
+  total_samples,
+  known_font_width;
 var orig_height, detailsEl, matchedEl, update_for_resize;
 function init(evt) {
   detailsEl = document.getElementById("details");
@@ -14,11 +22,15 @@ function init(evt) {
   searching = 0;
   inverted = false;
   var cb = document.getElementById("invert_cb");
-  if (cb) cb.addEventListener("change", function() { toggle_invert(); });
+  if (cb) {
+    cb.addEventListener("change", function () {
+      toggle_invert();
+    });
+  }
   orig_height = parseFloat(svg.attributes.height.value);
   // Fluid: fill viewport width and height
   svg.removeAttribute("width");
-  update_for_resize = function() {
+  update_for_resize = function () {
     // Width
     frames.attributes.width.value = svg.width.baseVal.value - xpad * 2;
     var svgWidth = svg.width.baseVal.value;
@@ -44,9 +56,12 @@ function init(evt) {
     update_text_for_elements(frames.children);
   };
   window.addEventListener("resize", update_for_resize);
-  setTimeout(function() { unzoom(); update_for_resize(); }, 0);
+  setTimeout(function () {
+    unzoom();
+    update_for_resize();
+  }, 0);
 }
-window.addEventListener("click", function(e) {
+window.addEventListener("click", function (e) {
   var target = find_group(e.target);
   if (target) {
     if (target.classList.contains("parent")) unzoom();
@@ -57,17 +72,18 @@ window.addEventListener("click", function(e) {
     search_prompt();
   }
 }, false);
-window.addEventListener("mouseover", function(e) {
+window.addEventListener("mouseover", function (e) {
   var target = find_group(e.target);
   if (target) details.nodeValue = nametype + " " + g_to_text(target);
 }, false);
-window.addEventListener("mouseout", function(e) {
+window.addEventListener("mouseout", function (e) {
   var target = find_group(e.target);
   if (target) details.nodeValue = "\u00a0";
 }, false);
-window.addEventListener("keydown", function(e) {
+window.addEventListener("keydown", function (e) {
   if (e.keyCode === 114 || (e.ctrlKey && e.keyCode === 70)) {
-    e.preventDefault(); search_prompt();
+    e.preventDefault();
+    search_prompt();
   }
 }, false);
 function find_child(node, selector) {
@@ -91,15 +107,21 @@ function orig_load(e, attr) {
   e.attributes[attr].value = e.attributes["fg:orig_" + attr].value;
   e.removeAttribute("fg:orig_" + attr);
 }
-function g_to_text(e) { return find_child(e, "title").firstChild.nodeValue; }
-function g_to_func(e) { return g_to_text(e); }
+function g_to_text(e) {
+  return find_child(e, "title").firstChild.nodeValue;
+}
+function g_to_func(e) {
+  return g_to_text(e);
+}
 function get_monospace_width(frames) {
   if (!frames.children[0]) return 0;
   var text = find_child(frames.children[0], "text");
   if (!text) return 0;
   var orig = text.textContent;
-  text.textContent = "!"; var w1 = text.getComputedTextLength();
-  text.textContent = "W"; var w2 = text.getComputedTextLength();
+  text.textContent = "!";
+  var w1 = text.getComputedTextLength();
+  text.textContent = "W";
+  var w2 = text.getComputedTextLength();
   text.textContent = orig;
   return (w1 === w2) ? w1 : 0;
 }
@@ -113,39 +135,70 @@ function update_text_for_elements(elements) {
     var e = elements[i];
     var r = find_child(e, "rect");
     var t = find_child(e, "text");
-    if (!r || !t) { attrs.push(null); continue; }
-    var w = parseFloat(r.attributes.width.value) * frames.attributes.width.value / 100 - 3;
+    if (!r || !t) {
+      attrs.push(null);
+      continue;
+    }
+    var w =
+      parseFloat(r.attributes.width.value) * frames.attributes.width.value /
+        100 - 3;
     var txt = find_child(e, "title").textContent.replace(/\([^(]*\)$/, "");
-    var newX = format_percent(parseFloat(r.attributes.x.value) + 100 * 3 / frames.attributes.width.value);
-    if (w < 2 * known_font_width) { attrs.push([newX, ""]); continue; }
-    if (txt.length * known_font_width < w) { attrs.push([newX, txt]); continue; }
+    var newX = format_percent(
+      parseFloat(r.attributes.x.value) +
+        100 * 3 / frames.attributes.width.value,
+    );
+    if (w < 2 * known_font_width) {
+      attrs.push([newX, ""]);
+      continue;
+    }
+    if (txt.length * known_font_width < w) {
+      attrs.push([newX, txt]);
+      continue;
+    }
     var len = Math.floor(w / known_font_width) - 2;
     attrs.push([newX, txt.substring(0, len) + ".."]);
   }
   for (var i = 0; i < elements.length; i++) {
     if (!attrs[i]) continue;
     var t = find_child(elements[i], "text");
-    if (t) { t.attributes.x.value = attrs[i][0]; t.textContent = attrs[i][1]; }
+    if (t) {
+      t.attributes.x.value = attrs[i][0];
+      t.textContent = attrs[i][1];
+    }
   }
 }
 function update_text(e) {
   var r = find_child(e, "rect"), t = find_child(e, "text");
   if (!r || !t) return;
-  var w = parseFloat(r.attributes.width.value) * frames.attributes.width.value / 100 - 3;
+  var w =
+    parseFloat(r.attributes.width.value) * frames.attributes.width.value / 100 -
+    3;
   var txt = find_child(e, "title").textContent.replace(/\([^(]*\)$/, "");
-  t.attributes.x.value = format_percent(parseFloat(r.attributes.x.value) + 100 * 3 / frames.attributes.width.value);
-  if (w < 2 * fontsize * fontwidth) { t.textContent = ""; return; }
+  t.attributes.x.value = format_percent(
+    parseFloat(r.attributes.x.value) + 100 * 3 / frames.attributes.width.value,
+  );
+  if (w < 2 * fontsize * fontwidth) {
+    t.textContent = "";
+    return;
+  }
   t.textContent = txt;
   if (t.getComputedTextLength() < w) return;
   for (var x = txt.length - 2; x > 0; x--) {
-    if (t.getSubStringLength(0, x + 2) <= w) { t.textContent = txt.substring(0, x) + ".."; return; }
+    if (t.getSubStringLength(0, x + 2) <= w) {
+      t.textContent = txt.substring(0, x) + "..";
+      return;
+    }
   }
   t.textContent = "";
 }
 function zoom_reset(e) {
   if (e.tagName == "rect") {
-    e.attributes.x.value = format_percent(100 * parseInt(e.attributes["fg:x"].value) / total_samples);
-    e.attributes.width.value = format_percent(100 * parseInt(e.attributes["fg:w"].value) / total_samples);
+    e.attributes.x.value = format_percent(
+      100 * parseInt(e.attributes["fg:x"].value) / total_samples,
+    );
+    e.attributes.width.value = format_percent(
+      100 * parseInt(e.attributes["fg:w"].value) / total_samples,
+    );
   }
   if (e.childNodes == undefined) return;
   for (var i = 0, c = e.childNodes; i < c.length; i++) zoom_reset(c[i]);
@@ -153,13 +206,21 @@ function zoom_reset(e) {
 function zoom_child(e, x, zoomed_width_samples) {
   if (e.tagName == "text") {
     var px = parseFloat(find_child(e.parentNode, "rect[x]").attributes.x.value);
-    e.attributes.x.value = format_percent(px + 100 * 3 / frames.attributes.width.value);
+    e.attributes.x.value = format_percent(
+      px + 100 * 3 / frames.attributes.width.value,
+    );
   } else if (e.tagName == "rect") {
-    e.attributes.x.value = format_percent(100 * (parseInt(e.attributes["fg:x"].value) - x) / zoomed_width_samples);
-    e.attributes.width.value = format_percent(100 * parseInt(e.attributes["fg:w"].value) / zoomed_width_samples);
+    e.attributes.x.value = format_percent(
+      100 * (parseInt(e.attributes["fg:x"].value) - x) / zoomed_width_samples,
+    );
+    e.attributes.width.value = format_percent(
+      100 * parseInt(e.attributes["fg:w"].value) / zoomed_width_samples,
+    );
   }
   if (e.childNodes == undefined) return;
-  for (var i = 0, c = e.childNodes; i < c.length; i++) zoom_child(c[i], x, zoomed_width_samples);
+  for (var i = 0, c = e.childNodes; i < c.length; i++) {
+    zoom_child(c[i], x, zoomed_width_samples);
+  }
 }
 function zoom_parent(e) {
   if (e.attributes) {
@@ -183,13 +244,21 @@ function zoom(node) {
     var a = find_child(e, "rect").attributes;
     var ex = parseInt(a["fg:x"].value);
     var ew = parseInt(a["fg:w"].value);
-    var upstack = inverted ? parseFloat(a.y.value) < ymin : parseFloat(a.y.value) > ymin;
+    var upstack = inverted
+      ? parseFloat(a.y.value) < ymin
+      : parseFloat(a.y.value) > ymin;
     if (upstack) {
-      if (ex <= xmin && (ex + ew) >= xmax) { e.classList.add("parent"); zoom_parent(e); to_update.push(e); }
-      else e.classList.add("hide");
+      if (ex <= xmin && (ex + ew) >= xmax) {
+        e.classList.add("parent");
+        zoom_parent(e);
+        to_update.push(e);
+      } else e.classList.add("hide");
     } else {
       if (ex < xmin || ex >= xmax) e.classList.add("hide");
-      else { zoom_child(e, xmin, width); to_update.push(e); }
+      else {
+        zoom_child(e, xmin, width);
+        to_update.push(e);
+      }
     }
   }
   update_text_for_elements(to_update);
@@ -213,7 +282,8 @@ function search_prompt() {
     var term = prompt("Enter a search term (regexp allowed, eg: ^fib)", "");
     if (term != null) search(term);
   } else {
-    reset_search(); searching = 0;
+    reset_search();
+    searching = 0;
     searchbtn.classList.remove("show");
     searchbtn.firstChild.nodeValue = "Search";
     matchedtxt.classList.add("hide");
@@ -226,7 +296,9 @@ function search(term) {
   var matches = {}, maxwidth = 0;
   for (var i = 0; i < el.length; i++) {
     var e = el[i];
-    if (e.classList.contains("hide") || e.classList.contains("parent")) continue;
+    if (e.classList.contains("hide") || e.classList.contains("parent")) {
+      continue;
+    }
     var func = g_to_func(e);
     var rect = find_child(e, "rect");
     if (!func || !rect) continue;
@@ -246,11 +318,17 @@ function search(term) {
   searchbtn.firstChild.nodeValue = "Reset Search";
   var count = 0, lastx = -1, lastw = 0;
   var keys = [];
-  for (var k in matches) { if (matches.hasOwnProperty(k)) keys.push(k); }
-  keys.sort(function(a, b) { return a - b; });
+  for (var k in matches) if (matches.hasOwnProperty(k)) keys.push(k);
+  keys.sort(function (a, b) {
+    return a - b;
+  });
   for (var k in keys) {
     var x = parseInt(keys[k]), w = matches[keys[k]];
-    if (x >= lastx + lastw) { count += w; lastx = x; lastw = w; }
+    if (x >= lastx + lastw) {
+      count += w;
+      lastx = x;
+      lastw = w;
+    }
   }
   matchedtxt.classList.remove("hide");
   var pct = 100 * count / maxwidth;
@@ -276,4 +354,6 @@ function toggle_invert() {
   }
   update_for_resize();
 }
-function format_percent(n) { return n.toFixed(4) + "%"; }
+function format_percent(n) {
+  return n.toFixed(4) + "%";
+}
