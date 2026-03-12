@@ -203,6 +203,14 @@ impl<'a, TSys: FsMetadata> LifecycleScripts<'a, TSys> {
     package_path: Cow<'_, Path>,
   ) {
     if has_lifecycle_scripts(self.sys, extra, &package_path) {
+      // sharp >= 0.33.0 ships prebuilt binaries and doesn't need
+      // its postinstall script
+      if package.id.nv.name == "sharp"
+        && package.id.nv.version >= Version::parse_standard("0.33.0").unwrap()
+      {
+        return;
+      }
+
       if self.can_run_scripts(&package.id.nv) {
         if !self.has_run_scripts(package) {
           self.packages_with_scripts.push(PackageWithScript {
