@@ -269,9 +269,7 @@ pub struct SendableWebWorkerHandle {
   port: MessagePort,
   receiver: mpsc::Receiver<WorkerControlEvent>,
   termination_signal: Arc<AtomicBool>,
-  has_terminated: Arc<AtomicBool>,
   terminate_waker: Arc<AtomicWaker>,
-  isolate_handle: v8::IsolateHandle,
 }
 
 impl From<SendableWebWorkerHandle> for WebWorkerHandle {
@@ -280,9 +278,7 @@ impl From<SendableWebWorkerHandle> for WebWorkerHandle {
       receiver: Rc::new(RefCell::new(handle.receiver)),
       port: Rc::new(handle.port),
       termination_signal: handle.termination_signal,
-      has_terminated: handle.has_terminated,
       terminate_waker: handle.terminate_waker,
-      isolate_handle: handle.isolate_handle,
     }
   }
 }
@@ -299,9 +295,7 @@ pub struct WebWorkerHandle {
   pub port: Rc<MessagePort>,
   receiver: Rc<RefCell<mpsc::Receiver<WorkerControlEvent>>>,
   termination_signal: Arc<AtomicBool>,
-  has_terminated: Arc<AtomicBool>,
   terminate_waker: Arc<AtomicWaker>,
-  isolate_handle: v8::IsolateHandle,
 }
 
 impl WebWorkerHandle {
@@ -315,36 +309,16 @@ impl WebWorkerHandle {
 
   /// Terminate the worker
   /// This function will set the termination signal, close the message channel,
-  /// and schedule to terminate the isolate after two seconds.
+  /// and wake the worker's event loop so it can terminate.
   pub fn terminate(self) {
-    use std::thread::sleep;
-    use std::thread::spawn;
-    use std::time::Duration;
-
     let schedule_termination =
       !self.termination_signal.swap(true, Ordering::SeqCst);
 
     self.port.disentangle();
 
-    if schedule_termination && !self.has_terminated.load(Ordering::SeqCst) {
+    if schedule_termination {
       // Wake up the worker's event loop so it can terminate.
       self.terminate_waker.wake();
-
-      let has_terminated = self.has_terminated.clone();
-
-      // Schedule to terminate the isolate's execution.
-      spawn(move || {
-        sleep(Duration::from_secs(2));
-
-        // A worker's isolate can only be terminated once, so we need a guard
-        // here.
-        let already_terminated = has_terminated.swap(true, Ordering::SeqCst);
-
-        if !already_terminated {
-          // Stop javascript execution
-          self.isolate_handle.terminate_execution();
-        }
-      });
     }
   }
 }
@@ -363,9 +337,9 @@ fn create_handles(
     name,
     port: Rc::new(parent_port),
     termination_signal: termination_signal.clone(),
-    has_terminated: has_terminated.clone(),
+    has_terminated,
     terminate_waker: terminate_waker.clone(),
-    isolate_handle: isolate_handle.clone(),
+    isolate_handle,
     cancel: CancelHandle::new_rc(),
     sender: ctrl_tx,
     worker_type,
@@ -374,9 +348,7 @@ fn create_handles(
     receiver: ctrl_rx,
     port: worker_port,
     termination_signal,
-    has_terminated,
     terminate_waker,
-    isolate_handle,
   };
   (internal_handle, external_handle)
 }
