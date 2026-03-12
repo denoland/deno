@@ -999,12 +999,13 @@ fn node_api_create_object_with_properties<'s>(
   property_count: usize,
   result: *mut napi_value<'s>,
 ) -> napi_status {
+  let env_ptr = env as *mut Env;
   check_arg!(env, result);
 
-  if property_count > 0 {
-    if property_names.is_null() || property_values.is_null() {
-      return napi_set_last_error(env as *mut Env, napi_invalid_arg);
-    }
+  if property_count > 0
+    && (property_names.is_null() || property_values.is_null())
+  {
+    return napi_set_last_error(env_ptr, napi_invalid_arg);
   }
 
   v8::callback_scope!(unsafe scope, env.context());
@@ -1014,7 +1015,7 @@ fn node_api_create_object_with_properties<'s>(
     Some(local) => local,
   };
 
-  let names: &[v8::Local<v8::Value>] = if property_count == 0 {
+  let names_values: &[v8::Local<v8::Value>] = if property_count == 0 {
     &[]
   } else {
     unsafe {
@@ -1036,18 +1037,23 @@ fn node_api_create_object_with_properties<'s>(
     }
   };
 
-  let obj = v8::Object::with_prototype_and_properties(
-    scope,
-    prototype,
-    names,
-    values,
-  );
+  let names: Vec<v8::Local<v8::Name>> = match names_values
+    .iter()
+    .map(|v| v8::Local::<v8::Name>::try_from(*v))
+    .collect::<Result<Vec<_>, _>>()
+  {
+    Ok(n) => n,
+    Err(_) => return napi_set_last_error(env_ptr, napi_name_expected),
+  };
+
+  let obj =
+    v8::Object::with_prototype_and_properties(scope, prototype, &names, values);
 
   unsafe {
     *result = obj.into();
   }
 
-  napi_clear_last_error(env as *mut Env)
+  napi_clear_last_error(env_ptr)
 }
 
 #[napi_sym]
