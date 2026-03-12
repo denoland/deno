@@ -34,9 +34,6 @@ struct DiffBuilder<'a> {
   line_number_width: usize,
   orig_line: usize,
   edit_line: usize,
-  orig: String,
-  edit: String,
-  has_changes: bool,
 }
 
 impl<'a> DiffBuilder<'a> {
@@ -50,9 +47,6 @@ impl<'a> DiffBuilder<'a> {
       output: String::new(),
       orig_line: 1,
       edit_line: 1,
-      orig: String::new(),
-      edit: String::new(),
-      has_changes: false,
       line_number_width: {
         let line_count = std::cmp::max(
           orig_text.split('\n').count(),
@@ -65,108 +59,70 @@ impl<'a> DiffBuilder<'a> {
   }
 
   fn handle_diff(mut self, diff: Diff) -> String {
+    let mut prev_before_end: u32 = 0;
+    let mut prev_after_end: u32 = 0;
+
     for hunk in diff.hunks() {
-      if !hunk.before.is_empty() || !hunk.after.is_empty() {
-        self.has_changes = true;
-      }
-      // TODO: add leading lines for context
-      // Chunk::Equal(s) => {
-      //   let split = s.split('\n').enumerate();
-      //   for (i, s) in split {
-      //     if i > 0 {
-      //       self.flush_changes();
-      //     }
-      //     self.orig.push_str(&fmt_rem_text(s));
-      //     self.edit.push_str(&fmt_add_text(s));
-      //   }
-      // }
-      for (i, del) in hunk.before.enumerate() {
+      // Skip unchanged lines between hunks
+      self.orig_line +=
+        (hunk.before.start - prev_before_end) as usize;
+      self.edit_line +=
+        (hunk.after.start - prev_after_end) as usize;
+
+      // Write deleted lines
+      for del in hunk.before.clone() {
         let s = self.input.interner[self.input.before[del as usize]];
-        if i > 0 {
-          self.orig.push('\n');
-        }
-        self.orig.push_str(&fmt_rem_text_highlight(s));
+        self.write_rem_line(s);
       }
-      for (i, ins) in hunk.after.enumerate() {
+      // Write inserted lines
+      for ins in hunk.after.clone() {
         let s = self.input.interner[self.input.after[ins as usize]];
-        if i > 0 {
-          self.edit.push('\n');
-        }
-        self.edit.push_str(&fmt_add_text_highlight(s));
+        self.write_add_line(s);
       }
-      // TODO: add trailing lines for context
-      // Chunk::Equal(s) => {
-      //   let split = s.split('\n').enumerate();
-      //   for (i, s) in split {
-      //     if i > 0 {
-      //       self.flush_changes();
-      //     }
-      //     self.orig.push_str(&fmt_rem_text(s));
-      //     self.edit.push_str(&fmt_add_text(s));
-      //   }
-      // }
+
+      prev_before_end = hunk.before.end;
+      prev_after_end = hunk.after.end;
     }
 
-    self.flush_changes();
     self.output
   }
 
-  fn flush_changes(&mut self) {
-    if self.has_changes {
-      self.write_line_diff();
-
-      self.orig_line += self.orig.split('\n').count();
-      self.edit_line += self.edit.split('\n').count();
-      self.has_changes = false;
-    } else {
-      self.orig_line += 1;
-      self.edit_line += 1;
-    }
-
-    self.orig.clear();
-    self.edit.clear();
+  fn write_rem_line(&mut self, text: &str) {
+    let text = text.strip_suffix('\n').unwrap_or(text);
+    write!(
+      self.output,
+      "{:width$}{} ",
+      self.orig_line,
+      colors::gray(" |"),
+      width = self.line_number_width
+    )
+    .unwrap();
+    self.output.push_str(&fmt_rem());
+    self.output.push_str(&fmt_rem_text_highlight(text));
+    self.output.push('\n');
+    self.orig_line += 1;
   }
 
-  fn write_line_diff(&mut self) {
-    let split = self.orig.split('\n').enumerate();
-    for (i, s) in split {
-      write!(
-        self.output,
-        "{:width$}{} ",
-        self.orig_line + i,
-        colors::gray(" |"),
-        width = self.line_number_width
-      )
-      .unwrap();
-      self.output.push_str(&fmt_rem());
-      self.output.push_str(s);
-      self.output.push('\n');
-    }
-
-    let split = self.edit.split('\n').enumerate();
-    for (i, s) in split {
-      write!(
-        self.output,
-        "{:width$}{} ",
-        self.edit_line + i,
-        colors::gray(" |"),
-        width = self.line_number_width
-      )
-      .unwrap();
-      self.output.push_str(&fmt_add());
-      self.output.push_str(s);
-      self.output.push('\n');
-    }
+  fn write_add_line(&mut self, text: &str) {
+    let text = text.strip_suffix('\n').unwrap_or(text);
+    write!(
+      self.output,
+      "{:width$}{} ",
+      self.edit_line,
+      colors::gray(" |"),
+      width = self.line_number_width
+    )
+    .unwrap();
+    self.output.push_str(&fmt_add());
+    self.output.push_str(&fmt_add_text_highlight(text));
+    self.output.push('\n');
+    self.edit_line += 1;
   }
 }
 
 fn fmt_add() -> String {
   colors::green_bold("+").to_string()
 }
-
-// fn fmt_add_text(x: &str) -> String {
-//   colors::green(x).to_string()
-// }
 
 fn fmt_add_text_highlight(x: &str) -> String {
   colors::black_on_green(x).to_string()
@@ -175,10 +131,6 @@ fn fmt_add_text_highlight(x: &str) -> String {
 fn fmt_rem() -> String {
   colors::red_bold("-").to_string()
 }
-
-// fn fmt_rem_text(x: &str) -> String {
-//   colors::red(x).to_string()
-// }
 
 fn fmt_rem_text_highlight(x: &str) -> String {
   colors::white_on_red(x).to_string()
@@ -279,11 +231,10 @@ mod tests {
         "2 | -\n",
         "3 | -\n",
         "4 | -\n",
-        "5 | -console.log(\n",
-        "1 | +console.log(\n",
         "6 | -'Hello World'\n",
+        "7 | -)\n",
         "2 | +\"Hello World\"\n",
-        "7 | -)\n3 | +);\n",
+        "3 | +);\n",
       ),
     );
   }
@@ -296,7 +247,6 @@ mod tests {
       concat!(
         "2 | -some line text test\n",
         "2 | +some line text test\n",
-        "3 | +\n",
       ),
     );
   }
