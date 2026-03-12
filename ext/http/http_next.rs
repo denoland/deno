@@ -1414,6 +1414,9 @@ enum UpgradeStreamWriteState {
   /// writes (since it's redundant), then switches to Network mode.
   ConsumeResponse(BytesMut, NetworkStreamWriteHalf),
   Network(NetworkStreamWriteHalf),
+  /// The upgrade was rejected with a non-101 status code.
+  /// The response has been sent and the stream is now closed for writing.
+  Rejected,
   Failed,
 }
 
@@ -1424,6 +1427,9 @@ struct UpgradeStream {
   /// Head bytes extracted during a CONNECT upgrade, available via
   /// `op_http_upgrade_raw_get_head`.
   head_bytes: RefCell<Option<Bytes>>,
+  /// Set to true when the upgrade was rejected with a non-101 status.
+  /// When rejected, reads return EOF and writes are silently ignored.
+  rejected: std::cell::Cell<bool>,
 }
 
 impl UpgradeStream {
@@ -1436,6 +1442,7 @@ impl UpgradeStream {
       write: AsyncRefCell::new(write),
       cancel_handle: CancelHandle::new(),
       head_bytes: RefCell::new(None),
+      rejected: std::cell::Cell::new(false),
     }
   }
 
@@ -1453,6 +1460,7 @@ impl UpgradeStream {
       )),
       cancel_handle: CancelHandle::new(),
       head_bytes: RefCell::new(Some(head_bytes)),
+      rejected: std::cell::Cell::new(false),
     }
   }
 
@@ -1460,6 +1468,11 @@ impl UpgradeStream {
     self: Rc<Self>,
     buf: &mut [u8],
   ) -> Result<usize, std::io::Error> {
+    // If the upgrade was rejected, return EOF
+    if self.rejected.get() {
+      return Ok(0);
+    }
+
     let cancel_handle = RcRef::map(self.clone(), |this| &this.cancel_handle);
     async {
       let read = RcRef::map(self, |this| &this.read);
@@ -1481,12 +1494,19 @@ impl UpgradeStream {
 
   async fn write(self: Rc<Self>, buf: &[u8]) -> Result<usize, std::io::Error> {
     let cancel_handle = RcRef::map(self.clone(), |this| &this.cancel_handle);
+    let this = self.clone();
     async {
       let wr = RcRef::map(self, |this| &this.write);
       let mut wr = wr.borrow_mut().await;
       match std::mem::replace(&mut *wr, UpgradeStreamWriteState::Failed) {
         UpgradeStreamWriteState::Failed => {
           Err(std::io::Error::other(HttpNextError::RawUpgradeFailed))
+        }
+        UpgradeStreamWriteState::Rejected => {
+          // The upgrade was rejected and the response was already sent.
+          // Silently accept writes but don't do anything with them.
+          *wr = UpgradeStreamWriteState::Rejected;
+          Ok(buf.len())
         }
         UpgradeStreamWriteState::Parsing(
           mut bytes,
@@ -1508,39 +1528,70 @@ impl UpgradeStream {
             }
             Ok(httparse::Status::Complete(n)) => {
               let status_code = response.code.unwrap_or(0);
+
               // Accept 101 (WebSocket upgrade) and 200 (CONNECT tunnel)
-              if status_code != StatusCode::SWITCHING_PROTOCOLS.as_u16()
-                && status_code != StatusCode::OK.as_u16()
+              if status_code == StatusCode::SWITCHING_PROTOCOLS.as_u16()
+                || status_code == StatusCode::OK.as_u16()
               {
-                return Err(std::io::Error::other(
-                  HttpNextError::InvalidHttpStatusLine,
-                ));
+                let status = StatusCode::from_u16(status_code)
+                  .unwrap_or(StatusCode::SWITCHING_PROTOCOLS);
+                http.otel_info_set_status(status.as_u16());
+                http.response_parts().status = status;
+
+                for header in response.headers {
+                  http.response_parts().headers.append(
+                    HeaderName::from_bytes(header.name.as_bytes())
+                      .map_err(std::io::Error::other)?,
+                    HeaderValue::from_bytes(header.value)
+                      .map_err(std::io::Error::other)?,
+                  );
+                }
+
+                http.complete();
+
+                let upgraded =
+                  on_upgrade.await.map_err(std::io::Error::other)?;
+                let (stream, bytes) = extract_network_stream(upgraded);
+                let (read, write) = stream.into_split();
+
+                let _ = read_cell.insert((read, bytes));
+                *wr = UpgradeStreamWriteState::Network(write);
+
+                Ok(n - prev_len)
+              } else {
+                // Upgrade rejected - send the rejection response through hyper
+                http.otel_info_set_status(status_code);
+                http.response_parts().status =
+                  StatusCode::from_u16(status_code)
+                    .unwrap_or(StatusCode::BAD_REQUEST);
+
+                for header in response.headers {
+                  http.response_parts().headers.append(
+                    HeaderName::from_bytes(header.name.as_bytes())
+                      .map_err(std::io::Error::other)?,
+                    HeaderValue::from_bytes(header.value)
+                      .map_err(std::io::Error::other)?,
+                  );
+                }
+
+                // Any data after the headers is the response body
+                let body = bytes.split_off(n);
+                if !body.is_empty() {
+                  http.set_response_body(ResponseBytesInner::Bytes(
+                    BufView::from(body.freeze()),
+                  ));
+                }
+
+                http.complete();
+
+                // Mark as rejected - no upgrade will happen
+                *wr = UpgradeStreamWriteState::Rejected;
+                this.rejected.set(true);
+                // Drop the on_upgrade future since we're not upgrading
+                drop(on_upgrade);
+
+                Ok(buf.len())
               }
-
-              let status = StatusCode::from_u16(status_code)
-                .unwrap_or(StatusCode::SWITCHING_PROTOCOLS);
-              http.otel_info_set_status(status.as_u16());
-              http.response_parts().status = status;
-
-              for header in response.headers {
-                http.response_parts().headers.append(
-                  HeaderName::from_bytes(header.name.as_bytes())
-                    .map_err(std::io::Error::other)?,
-                  HeaderValue::from_bytes(header.value)
-                    .map_err(std::io::Error::other)?,
-                );
-              }
-
-              http.complete();
-
-              let upgraded = on_upgrade.await.map_err(std::io::Error::other)?;
-              let (stream, bytes) = extract_network_stream(upgraded);
-              let (read, write) = stream.into_split();
-
-              let _ = read_cell.insert((read, bytes));
-              *wr = UpgradeStreamWriteState::Network(write);
-
-              Ok(n - prev_len)
             }
             Err(e) => Err(std::io::Error::other(e)),
           }
@@ -1605,7 +1656,12 @@ impl UpgradeStream {
       UpgradeStreamWriteState::Failed => {
         Err(std::io::Error::other(HttpNextError::RawUpgradeFailed))
       }
+      UpgradeStreamWriteState::Rejected => {
+        // The upgrade was rejected; silently accept writes
+        Ok(buf1.len() + buf2.len())
+      }
       UpgradeStreamWriteState::Parsing(..) => {
+        drop(wr);
         self.write(if buf1.is_empty() { buf2 } else { buf1 }).await
       }
       UpgradeStreamWriteState::ConsumeResponse(..) => {

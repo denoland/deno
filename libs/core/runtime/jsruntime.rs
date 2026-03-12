@@ -176,15 +176,37 @@ impl InnerIsolateState {
   }
 
   pub fn cleanup(&mut self) {
-    self.prepare_for_cleanup();
+    // Shut down the op driver and take the inspector before realm destroy.
+    self.main_realm.0.context_state.pending_ops.shutdown();
+    let inspector = self.state.inspector.take();
+
+    // Unregister isolate waker before dropping the isolate
+    let isolate_ptr = unsafe { self.v8_isolate.as_raw_isolate_ptr() };
+    setup::unregister_isolate_waker(setup::isolate_ptr_to_key(isolate_ptr));
 
     let state_ptr = self.v8_isolate.get_data(STATE_DATA_OFFSET);
     // SAFETY: We are sure that it's a valid pointer for whole lifetime of
     // the runtime.
     _ = unsafe { Rc::from_raw(state_ptr as *const JsRuntimeState) };
 
+    // Destroy the realm while the uv_loop (stored in op_state's
+    // gotham_state) is still alive. destroy() reads uv_loop_ptr to
+    // release the Global<Context> stored in loop.data. If we clear
+    // op_state first, the Box<UvLoop> is freed and destroy() would
+    // dereference a dangling pointer (use-after-free).
     unsafe {
       ManuallyDrop::take(&mut self.main_realm).0.destroy();
+    }
+
+    // Now safe to clear op_state (drops Box<UvLoop> etc.) since
+    // destroy() has already released the Global from loop.data.
+    self.state.op_state.borrow_mut().clear();
+    if let Some(inspector) = inspector {
+      assert_eq!(
+        Rc::strong_count(&inspector),
+        1,
+        "The inspector must be dropped before the runtime"
+      );
     }
 
     debug_assert_eq!(Rc::strong_count(&self.state), 1);
@@ -432,6 +454,7 @@ pub struct JsRuntimeState {
   pub(crate) function_templates: Rc<RefCell<FunctionTemplateData>>,
   pub(crate) callsite_prototype: RefCell<Option<v8::Global<v8::Object>>>,
   waker: Arc<AtomicWaker>,
+  safety_net_active: Arc<std::sync::atomic::AtomicBool>,
   /// Accessed through [`JsRuntimeState::with_inspector`].
   inspector: RefCell<Option<Rc<JsRuntimeInspector>>>,
   has_inspector: Cell<bool>,
@@ -758,7 +781,8 @@ impl JsRuntime {
       eval_context_code_cache_ready_cb: RefCell::new(
         eval_context_set_code_cache_cb,
       ),
-      waker,
+      waker: waker.clone(),
+      safety_net_active: Arc::new(std::sync::atomic::AtomicBool::new(false)),
       // Some fields are initialized later after isolate is created
       inspector: None.into(),
       has_inspector: false.into(),
@@ -834,6 +858,14 @@ impl JsRuntime {
     );
 
     let isolate_ptr = unsafe { isolate.as_raw_isolate_ptr() };
+
+    // Register this isolate's waker so the custom platform can wake
+    // the event loop when V8 posts foreground tasks from background threads.
+    setup::register_isolate_waker(
+      setup::isolate_ptr_to_key(isolate_ptr),
+      waker.clone(),
+    );
+
     // ...isolate is fully set up, we can forward its pointer to the ops to finish
     // their' setup...
     for op_ctx in op_ctxs.iter_mut() {
@@ -2248,6 +2280,24 @@ impl JsRuntime {
     if !did_work && !dispatched_ops && pending_state.has_refed_immediates > 0 {
       Self::do_js_run_immediate_callbacks(scope, context_state)?;
       scope.perform_microtask_checkpoint();
+    }
+
+    // Safety net: if V8 has pending background tasks (e.g. module compilation),
+    // schedule a delayed wake to pump the message loop in case the platform
+    // callback was missed due to a race condition.
+    if pending_state.has_pending_background_tasks
+      && !self
+        .inner
+        .state
+        .safety_net_active
+        .swap(true, std::sync::atomic::Ordering::SeqCst)
+    {
+      cx.waker().wake_by_ref();
+      self
+        .inner
+        .state
+        .safety_net_active
+        .store(false, std::sync::atomic::Ordering::SeqCst);
     }
 
     // Re-wake logic for next iteration

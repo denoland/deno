@@ -235,16 +235,6 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
 
   fn create_load_future(self: &Arc<Self>, name: &str) -> LoadFuture {
     let downloader = self.clone();
-    let package_url = get_package_url(&self.npmrc, name);
-    let registry_config = self.npmrc.get_registry_config(name);
-    let maybe_auth_header_value =
-      match maybe_auth_header_value_for_npm_registry(registry_config) {
-        Ok(maybe_auth_header_value) => maybe_auth_header_value,
-        Err(err) => {
-          return std::future::ready(Err(Arc::new(JsErrorBox::from_err(err))))
-            .boxed_local();
-        }
-      };
     let name = name.to_string();
     async move {
       let maybe_file_cached = if (downloader.cache.cache_setting().should_use_for_npm_package(&name) && !downloader.force_reload_flag.is_raised())
@@ -280,6 +270,11 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
 
       downloader.previously_loaded_packages.lock().insert(name.to_string());
 
+      let npmrc = &downloader.npmrc;
+      let package_url = get_package_url(npmrc, &name);
+      let registry_config = npmrc.get_registry_config(&name);
+      let maybe_auth_header_value =
+        maybe_auth_header_value_for_npm_registry(registry_config).map_err(JsErrorBox::from_err)?;
       let (maybe_etag, maybe_cached_info) = match maybe_file_cached {
         Some(cached_info) => (cached_info.etag, Some(cached_info.info)),
         None => (None, None)
@@ -291,6 +286,7 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
           package_url,
           maybe_auth_header_value,
           maybe_etag,
+          Some(registry_config),
         )
         .await.map_err(JsErrorBox::from_err)?;
       match response {

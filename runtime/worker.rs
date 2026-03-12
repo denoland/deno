@@ -598,6 +598,25 @@ impl MainWorker {
       state.put(services.feature_checker);
     }
 
+    // Register the uv_loop_t (created by deno_node extension state callback)
+    // with the JsRuntime so that its event loop phases are driven by
+    // poll_event_loop.
+    {
+      let op_state_rc = js_runtime.op_state();
+      let op_state = op_state_rc.borrow();
+      if let Some(uv_loop) =
+        op_state.try_borrow::<Box<deno_core::uv_compat::UvLoop>>()
+      {
+        let loop_ptr: *mut deno_core::uv_compat::UvLoop =
+          &**uv_loop as *const _ as *mut _;
+        drop(op_state);
+        // SAFETY: loop_ptr points to a valid initialized UvLoop stored in OpState
+        unsafe {
+          js_runtime.register_uv_loop(loop_ptr);
+        }
+      }
+    }
+
     if let Some(server) = get_inspector_server() {
       let inspector_url = server.register_inspector(
         main_module.to_string(),
@@ -927,8 +946,9 @@ impl MainWorker {
     let undefined = v8::undefined(tc_scope);
     dispatch_load_event_fn.call(tc_scope, undefined.into(), &[]);
     if let Some(exception) = tc_scope.exception() {
-      let error = JsError::from_v8_exception(tc_scope, exception);
-      return Err(error);
+      return Err(deno_core::exception_to_err(
+        tc_scope, exception, false, true,
+      ));
     }
     Ok(())
   }
@@ -944,8 +964,9 @@ impl MainWorker {
     let undefined = v8::undefined(tc_scope);
     dispatch_unload_event_fn.call(tc_scope, undefined.into(), &[]);
     if let Some(exception) = tc_scope.exception() {
-      let error = JsError::from_v8_exception(tc_scope, exception);
-      return Err(error);
+      return Err(deno_core::exception_to_err(
+        tc_scope, exception, false, true,
+      ));
     }
     Ok(())
   }
@@ -959,10 +980,47 @@ impl MainWorker {
     let undefined = v8::undefined(tc_scope);
     dispatch_process_exit_event_fn.call(tc_scope, undefined.into(), &[]);
     if let Some(exception) = tc_scope.exception() {
-      let error = JsError::from_v8_exception(tc_scope, exception);
-      return Err(error);
+      return Err(deno_core::exception_to_err(
+        tc_scope, exception, false, true,
+      ));
     }
     Ok(())
+  }
+
+  /// Runs pending NAPI ref/wrap finalizers by calling them directly while V8
+  /// is still alive. This matches Node.js behavior where `napi_env::DeleteMe()`
+  /// calls `RefTracker::FinalizeAll()` during environment teardown.
+  pub fn run_napi_ref_finalizers(&mut self) {
+    let finalizers = {
+      let op_state = self.js_runtime.op_state();
+      let op_state = op_state.borrow();
+      match op_state.try_borrow::<deno_napi::NapiState>() {
+        Some(s) => {
+          let mut tracker = s.ref_tracker.borrow_mut();
+          std::mem::take(&mut *tracker)
+        }
+        None => return,
+      }
+    };
+    if finalizers.is_empty() {
+      return;
+    }
+
+    // Call each finalizer in reverse (LIFO) order within a proper HandleScope
+    // so native addon code can use NAPI functions during cleanup. LIFO matches
+    // Node.js's linked list behavior (head insertion → reverse iteration).
+    {
+      deno_core::scope!(scope, &mut self.js_runtime);
+      let _scope = v8::HandleScope::new(scope);
+      for f in finalizers.into_iter().rev() {
+        // SAFETY: The pointers (env, data, hint) were stored when the native
+        // addon called napi_wrap/napi_create_external/napi_add_finalizer and
+        // V8 is still alive (we have an active HandleScope).
+        unsafe {
+          (f.cb)(f.env, f.data, f.hint);
+        }
+      }
+    }
   }
 
   /// Dispatches "beforeunload" event to the JavaScript runtime. Returns a boolean
@@ -977,8 +1035,9 @@ impl MainWorker {
     let ret_val =
       dispatch_beforeunload_event_fn.call(tc_scope, undefined.into(), &[]);
     if let Some(exception) = tc_scope.exception() {
-      let error = JsError::from_v8_exception(tc_scope, exception);
-      return Err(error);
+      return Err(deno_core::exception_to_err(
+        tc_scope, exception, false, true,
+      ));
     }
     let ret_val = ret_val.unwrap();
     Ok(ret_val.is_false())
@@ -1001,8 +1060,9 @@ impl MainWorker {
       &[],
     );
     if let Some(exception) = tc_scope.exception() {
-      let error = JsError::from_v8_exception(tc_scope, exception);
-      return Err(error);
+      return Err(deno_core::exception_to_err(
+        tc_scope, exception, false, true,
+      ));
     }
     let ret_val = ret_val.unwrap();
     Ok(ret_val.is_true())

@@ -451,14 +451,14 @@ pub async fn op_ws_create(
   let mut state = state.borrow_mut();
   let rid = state.resource_table.add(ServerWebSocket::new(stream));
 
-  let protocol = match response.get("Sec-WebSocket-Protocol") {
-    Some(header) => header.to_str().unwrap(),
-    None => "",
-  };
+  let protocol = response
+    .get("Sec-WebSocket-Protocol")
+    .and_then(|header| header.to_str().ok())
+    .unwrap_or("");
   let extensions = response
     .get_all("Sec-WebSocket-Extensions")
     .iter()
-    .map(|header| header.to_str().unwrap())
+    .filter_map(|header| header.to_str().ok())
     .collect::<String>();
   Ok(CreateResponse {
     rid,

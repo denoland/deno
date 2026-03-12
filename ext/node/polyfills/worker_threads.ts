@@ -51,7 +51,6 @@ import { createRequire } from "node:module";
 
 const {
   ArrayIsArray,
-  encodeURIComponent,
   Error,
   FunctionPrototypeCall,
   NumberIsFinite,
@@ -359,24 +358,29 @@ class NodeWorker extends EventEmitter {
       resourceLimits: resourceLimits_,
     }, options?.transferList ?? []);
 
+    let sourceCode = "";
+    let hasSourceCode = false;
+
     if (options?.eval) {
       const code = typeof specifier === "string"
         ? specifier
         // deno-lint-ignore prefer-primordials
         : specifier.toString();
-      // Node.js evaluates worker eval code as CommonJS, so we wrap
-      // the code to provide CJS globals (require, __filename, etc.)
-      // since the data: URL will be loaded as ESM.
-      const wrapped =
-        `import { createRequire as __cjsRequire } from "node:module";\n` +
-        `import { cwd as __cjsCwd } from "node:process";\n` +
-        `const require = __cjsRequire(__cjsCwd() + "/[worker eval]");\n` +
-        `const __filename = __cjsCwd() + "/[worker eval]";\n` +
-        `const __dirname = __cjsCwd();\n` +
-        `const module = { exports: {} };\n` +
-        `const exports = module.exports;\n` +
+      // Node.js runs eval workers as CJS (sloppy mode).
+      // Pass as source code for execute_script (sloppy mode).
+      // `require` is already available from the Node worker bootstrap.
+      // See: https://github.com/denoland/deno/issues/26739
+      sourceCode = `var __filename = ${
+        // deno-lint-ignore prefer-primordials
+        JSON.stringify(process.cwd() + "/[worker eval]")};\n` +
+        `var __dirname = ${
+          // deno-lint-ignore prefer-primordials
+          JSON.stringify(process.cwd())};\n` +
+        `var module = { exports: {} };\n` +
+        `var exports = module.exports;\n` +
         code;
-      specifier = `data:text/javascript,${encodeURIComponent(wrapped)}`;
+      hasSourceCode = true;
+      specifier = `data:text/javascript,`;
     } else if (
       !(typeof specifier === "object" && specifier.protocol === "data:")
     ) {
@@ -397,8 +401,8 @@ class NodeWorker extends EventEmitter {
       {
         // deno-lint-ignore prefer-primordials
         specifier: specifier.toString(),
-        hasSourceCode: false,
-        sourceCode: "",
+        hasSourceCode,
+        sourceCode,
         permissions: null,
         name: this.#name,
         workerType: "node",
