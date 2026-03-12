@@ -2,6 +2,7 @@
 
 use std::borrow::Cow;
 use std::collections::BTreeMap;
+use std::collections::HashMap;
 use std::collections::HashSet;
 use std::path::Path;
 use std::path::PathBuf;
@@ -267,6 +268,46 @@ impl LintConfig {
       files: FilePatterns::new_with_base(base),
     }
   }
+}
+
+// -- Build config types --
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[serde(default, rename_all = "camelCase")]
+pub struct SerializedBuildConfig {
+  pub environments: HashMap<String, SerializedBuildEnvironment>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[serde(default, rename_all = "camelCase")]
+pub struct SerializedBuildEnvironment {
+  pub runtime: Option<String>,
+  pub entries: Vec<String>,
+  pub output: Option<String>,
+  pub conditions: Vec<String>,
+  pub external: Vec<String>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct BuildConfig {
+  pub environments: HashMap<String, BuildEnvironmentConfig>,
+  pub plugins: Vec<PluginConfig>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct BuildEnvironmentConfig {
+  pub name: String,
+  pub runtime: Option<String>,
+  pub entries: Vec<String>,
+  pub output: Option<String>,
+  pub conditions: Vec<String>,
+  pub external: Vec<String>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct PluginConfig {
+  pub specifier: String,
+  pub base: Url,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, Hash, PartialEq)]
@@ -1901,6 +1942,53 @@ impl ConfigFile {
         options: Default::default(),
         files: self.to_exclude_files_config()?,
       }),
+    }
+  }
+
+  pub fn to_build_config(
+    &self,
+  ) -> Result<Option<BuildConfig>, ToInvalidConfigError> {
+    match self.json.build.clone() {
+      Some(config) => {
+        let serialized: SerializedBuildConfig =
+          serde_json::from_value(config).map_err(|error| {
+            ToInvalidConfigError::Parse {
+              config: "build",
+              source: error,
+            }
+          })?;
+        let environments = serialized
+          .environments
+          .into_iter()
+          .map(|(name, env)| {
+            let config = BuildEnvironmentConfig {
+              name: name.clone(),
+              runtime: env.runtime,
+              entries: env.entries,
+              output: env.output,
+              conditions: env.conditions,
+              external: env.external,
+            };
+            (name, config)
+          })
+          .collect();
+        let plugins = self
+          .json
+          .plugins
+          .clone()
+          .unwrap_or_default()
+          .into_iter()
+          .map(|specifier| PluginConfig {
+            specifier,
+            base: self.specifier.clone(),
+          })
+          .collect();
+        Ok(Some(BuildConfig {
+          environments,
+          plugins,
+        }))
+      }
+      None => Ok(None),
     }
   }
 

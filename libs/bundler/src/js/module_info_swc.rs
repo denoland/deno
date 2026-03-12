@@ -12,7 +12,7 @@ use rustc_hash::FxHashMap;
 
 /// Convert a WTF-8 atom (used for string literal values) to a String.
 /// Module specifiers and identifiers are always valid UTF-8.
-fn wtf8_to_string(atom: &deno_ast::swc::atoms::Wtf8Atom) -> String {
+pub fn wtf8_to_string(atom: &deno_ast::swc::atoms::Wtf8Atom) -> String {
   String::from_utf8_lossy(atom.as_bytes()).into_owned()
 }
 
