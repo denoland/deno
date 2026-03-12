@@ -29,6 +29,7 @@ use thiserror::Error;
 use url::Url;
 
 use super::local::normalize_pkg_name_for_node_modules_deno_folder;
+use crate::npm::join_package_name_to_path;
 
 #[derive(Debug, Error, deno_error::JsError)]
 pub enum ByonmResolvePkgFolderFromDenoReqError {
@@ -139,13 +140,18 @@ impl<TSys: ByonmNpmResolverSys> ByonmNpmResolver<TSys> {
     ) -> std::io::Result<Option<PathBuf>> {
       for ancestor in start_dir.ancestors() {
         let node_modules_folder = ancestor.join("node_modules");
-        let sub_dir = join_package_name(Cow::Owned(node_modules_folder), alias);
-        if sys.is_dir(Cow::Borrowed(&sub_dir)) {
-          return Ok(Some(
-            deno_path_util::fs::canonicalize_path_maybe_not_exists(
-              sys, &sub_dir,
-            )?,
-          ));
+        // When using the cache, eagerly check for the node_modules directory in order
+        // to reduce cache entries and get an answer more quickly on negative lookups.
+        if !sys.has_cache() || sys.is_dir(Cow::Borrowed(&node_modules_folder)) {
+          let sub_dir =
+            join_package_name_to_path(Cow::Owned(node_modules_folder), alias);
+          if sys.is_dir(Cow::Borrowed(&sub_dir)) {
+            return Ok(Some(
+              deno_path_util::fs::canonicalize_path_maybe_not_exists(
+                sys, &sub_dir,
+              )?,
+            ));
+          }
         }
       }
       Ok(None)
@@ -373,7 +379,7 @@ impl<TSys: ByonmNpmResolverSys> ByonmNpmResolver<TSys> {
     }
 
     best_version.map(|(_version, entry_name)| {
-      join_package_name(
+      join_package_name_to_path(
         Cow::Owned(node_modules_deno_dir.join(entry_name).join("node_modules")),
         &req.name,
       )
@@ -412,9 +418,14 @@ impl<TSys: FsCanonicalize + FsMetadata + FsRead + FsReadDir>
             Cow::Owned(current_folder.join("node_modules"))
           };
 
-          let sub_dir = join_package_name(node_modules_folder, name);
-          if sys.is_dir(Cow::Borrowed(&sub_dir)) {
-            return Ok(sub_dir);
+          // When using the cache, eagerly check for the node_modules directory in order
+          // to reduce cache entries and get an answer more quickly on negative lookups.
+          if !sys.has_cache() || sys.is_dir(Cow::Borrowed(&node_modules_folder))
+          {
+            let sub_dir = join_package_name_to_path(node_modules_folder, name);
+            if sys.is_dir(Cow::Borrowed(&sub_dir)) {
+              return Ok(sub_dir);
+            }
           }
 
           // prevent code like deno rt from going outside the vfs
@@ -469,17 +480,4 @@ impl InNpmPackageChecker for ByonmInNpmPackageChecker {
         .to_ascii_lowercase()
         .contains("/node_modules/")
   }
-}
-
-fn join_package_name(mut path: Cow<'_, Path>, package_name: &str) -> PathBuf {
-  // ensure backslashes are used on windows
-  for part in package_name.split('/') {
-    match path {
-      Cow::Borrowed(inner) => path = Cow::Owned(inner.join(part)),
-      Cow::Owned(ref mut path) => {
-        path.push(part);
-      }
-    }
-  }
-  path.into_owned()
 }

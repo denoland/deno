@@ -21,9 +21,9 @@ use sys_traits::FsCanonicalize;
 use sys_traits::FsMetadata;
 use url::Url;
 
+use super::super::join_package_name_to_path;
 use super::NpmCacheDirRc;
 use super::resolution::NpmResolutionCellRc;
-use crate::npm::managed::common::join_package_name_to_path;
 use crate::npmrc::ResolvedNpmRcRc;
 
 #[sys_traits::auto_impl]
@@ -122,7 +122,7 @@ impl<TSys: GlobalNpmPackageResolverSys> GlobalNpmPackageResolver<TSys> {
       if !self.sys.has_cache()
         || self.sys.is_dir(Cow::Borrowed(&node_modules_folder))
       {
-        let sub_dir = join_package_name_to_path(&node_modules_folder, name);
+        let sub_dir = join_package_name_to_path(node_modules_folder, name);
         if self.sys.is_dir(Cow::Borrowed(&sub_dir)) {
           return Ok(Some(self.sys.fs_canonicalize(&sub_dir).map_err(
             |err| PackageFolderResolveIoError {

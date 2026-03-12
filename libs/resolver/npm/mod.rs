@@ -641,3 +641,19 @@ impl<
     }
   }
 }
+
+pub(crate) fn join_package_name_to_path(
+  mut path: Cow<'_, Path>,
+  package_name: &str,
+) -> PathBuf {
+  // ensure backslashes are used on windows
+  for part in package_name.split('/') {
+    match path {
+      Cow::Borrowed(inner) => path = Cow::Owned(inner.join(part)),
+      Cow::Owned(ref mut path) => {
+        path.push(part);
+      }
+    }
+  }
+  path.into_owned()
+}

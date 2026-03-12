@@ -22,7 +22,7 @@ use sys_traits::FsCanonicalize;
 use sys_traits::FsMetadata;
 use url::Url;
 
-use super::common::join_package_name_to_path;
+use super::super::join_package_name_to_path;
 use super::resolution::NpmResolutionCellRc;
 use crate::npm::local::get_package_folder_id_folder_name_from_parts;
 use crate::npm::local::get_package_folder_id_from_folder_name;
@@ -179,7 +179,7 @@ impl<TSys: FsCanonicalize + FsMetadata> NpmPackageFolderResolver
         Cow::Owned(current_folder.join("node_modules"))
       };
 
-      let sub_dir = join_package_name_to_path(&node_modules_folder, name);
+      let sub_dir = join_package_name_to_path(node_modules_folder, name);
       if self.sys.is_dir(Cow::Borrowed(&sub_dir)) {
         return Ok(self.sys.fs_canonicalize(&sub_dir).map_err(|err| {
           PackageFolderResolveIoError {
