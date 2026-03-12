@@ -63,11 +63,26 @@ impl<'a> DiffBuilder<'a> {
     let mut prev_after_end: u32 = 0;
 
     for hunk in diff.hunks() {
-      // Skip unchanged lines between hunks
-      self.orig_line +=
+      // Show unchanged context lines between hunks
+      let gap_len =
         (hunk.before.start - prev_before_end) as usize;
-      self.edit_line +=
-        (hunk.after.start - prev_after_end) as usize;
+      if gap_len > 0 {
+        if prev_before_end == 0 {
+          // Before the first hunk — just skip, no context needed
+          self.orig_line += gap_len;
+          self.edit_line += gap_len;
+        } else {
+          // Between hunks — show up to 1 trailing context line
+          let skip = if gap_len > 1 { gap_len - 1 } else { 0 };
+          self.orig_line += skip;
+          self.edit_line += skip;
+          for idx in (hunk.before.start - 1)..hunk.before.start {
+            let s =
+              self.input.interner[self.input.before[idx as usize]];
+            self.write_context_line(s);
+          }
+        }
+      }
 
       // Write deleted lines
       for del in hunk.before.clone() {
@@ -85,6 +100,35 @@ impl<'a> DiffBuilder<'a> {
     }
 
     self.output
+  }
+
+  fn write_context_line(&mut self, text: &str) {
+    let text = text.strip_suffix('\n').unwrap_or(text);
+    write!(
+      self.output,
+      "{:width$}{} ",
+      self.orig_line,
+      colors::gray(" |"),
+      width = self.line_number_width
+    )
+    .unwrap();
+    self.output.push_str(&fmt_rem());
+    self.output.push_str(&fmt_rem_text(text));
+    self.output.push('\n');
+    self.orig_line += 1;
+
+    write!(
+      self.output,
+      "{:width$}{} ",
+      self.edit_line,
+      colors::gray(" |"),
+      width = self.line_number_width
+    )
+    .unwrap();
+    self.output.push_str(&fmt_add());
+    self.output.push_str(&fmt_add_text(text));
+    self.output.push('\n');
+    self.edit_line += 1;
   }
 
   fn write_rem_line(&mut self, text: &str) {
@@ -124,12 +168,20 @@ fn fmt_add() -> String {
   colors::green_bold("+").to_string()
 }
 
+fn fmt_add_text(x: &str) -> String {
+  colors::green(x).to_string()
+}
+
 fn fmt_add_text_highlight(x: &str) -> String {
   colors::black_on_green(x).to_string()
 }
 
 fn fmt_rem() -> String {
   colors::red_bold("-").to_string()
+}
+
+fn fmt_rem_text(x: &str) -> String {
+  colors::red(x).to_string()
 }
 
 fn fmt_rem_text_highlight(x: &str) -> String {
@@ -231,6 +283,8 @@ mod tests {
         "2 | -\n",
         "3 | -\n",
         "4 | -\n",
+        "5 | -console.log(\n",
+        "1 | +console.log(\n",
         "6 | -'Hello World'\n",
         "7 | -)\n",
         "2 | +\"Hello World\"\n",
