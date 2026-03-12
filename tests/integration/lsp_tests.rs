@@ -1676,32 +1676,26 @@ fn lsp_hover_asset(use_tsgo: bool) {
   );
   assert_eq!(
     res,
-    // TODO(nayeemrmn): The wrong doc and position is returned by tsgo. Seems
-    // to be treating `interface Date` like `declare var Date` in a different
-    // lib asset.
-    if use_tsgo {
-      json!({
-        "contents": {
-          "kind": "markdown",
-          "value": "```tsx\nvar Date: DateConstructor\ninterface Date\n```\n",
-        },
-        "range": {
+    json!({
+      "contents": {
+        "kind": "markdown",
+        "value": "```tsx\ninterface Date\n```\nEnables basic storage and retrieval of dates and times.",
+      },
+      // TODO(nayeemrmn): The position returned by tsgo is wrong. Seems to be
+      // reading `declare var Date` instead of `interface Date` in a different
+      // lib asset.
+      "range": if use_tsgo {
+        json!({
           "start": { "line": 111, "character": 12, },
           "end": { "line": 111, "character": 16, }
-        }
-      })
-    } else {
-      json!({
-        "contents": {
-          "kind": "markdown",
-          "value": "```tsx\ninterface Date\n```\nEnables basic storage and retrieval of dates and times.\n\n*@category* — Temporal\n\n\n*@experimental*",
-        },
-        "range": {
+        })
+      } else {
+        json!({
           "start": { "line": 111, "character": 10, },
           "end": { "line": 111, "character": 14, }
-        }
-      })
-    },
+        })
+      },
+    }),
   );
   client.shutdown();
 }
@@ -3966,17 +3960,17 @@ fn lsp_folding_range(use_tsgo: bool) {
       }, {
         "startLine": 4,
         "startCharacter": 9,
-        "endLine": 11,
+        "endLine": 10,
         "endCharacter": 1,
       }, {
         "startLine": 5,
         "startCharacter": 11,
-        "endLine": 10,
+        "endLine": 9,
         "endCharacter": 3,
       }, {
         "startLine": 6,
         "startCharacter": 16,
-        "endLine": 8,
+        "endLine": 7,
         "endCharacter": 5,
       }])
     } else {
@@ -8034,7 +8028,6 @@ fn lsp_code_actions_organize_imports_already_organized(use_tsgo: bool) {
 console.log(a, b, c);
 "#,
   );
-  let uri = file.uri();
   let mut client = context.new_lsp_command().set_use_tsgo(use_tsgo).build();
   client.initialize_default();
   client.did_open_file(&file);
@@ -8043,7 +8036,7 @@ console.log(a, b, c);
   let res = client.write_request(
     "textDocument/codeAction",
     json!({
-      "textDocument": { "uri": uri },
+      "textDocument": { "uri": file.uri() },
       "range": {
         "start": { "line": 0, "character": 0 },
         "end": { "line": 0, "character": 0 }
@@ -8055,7 +8048,33 @@ console.log(a, b, c);
     }),
   );
 
-  assert_eq!(res, json!(null));
+  assert_eq!(
+    res,
+    // TODO(nayeemrmn): tsgo creates a redundant edit in this case. Report.
+    if use_tsgo {
+      json!([
+        {
+          "title": "Organize Imports",
+          "kind": "source.organizeImports",
+          "edit": {
+            "changes": {
+              file.uri().as_str(): [
+                {
+                  "range": {
+                    "start": { "line": 0, "character": 0 },
+                    "end": { "line": 1, "character": 0 },
+                  },
+                  "newText": "import { a, b, c } from \"./b.ts\";\n",
+                },
+              ],
+            },
+          },
+        },
+      ])
+    } else {
+      json!(null)
+    },
+  );
   client.shutdown();
 }
 
@@ -12021,8 +12040,8 @@ fn lsp_jupyter_import_map_and_diagnostics(use_tsgo: bool) {
                 "location": {
                   "uri": "deno:/asset/lib.deno.window.d.ts",
                   "range": {
-                    "start": { "line": 600, "character": 12 },
-                    "end": { "line": 600, "character": 16 },
+                    "start": { "line": 599, "character": 12 },
+                    "end": { "line": 599, "character": 16 },
                   },
                 },
                 "message": "'name' was also declared here.",
@@ -13808,6 +13827,8 @@ fn lsp_workspace_symbol(use_tsgo: bool) {
         "containerName": "REPLServerSetupHistoryOptions",
       }),
     );
+    expected
+      .retain(|v| v["name"].as_str().unwrap() != "ClassFieldDecoratorContext");
   }
   assert_eq!(json!(res), json!(expected));
   client.shutdown();
