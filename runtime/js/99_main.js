@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // Remove Intl.v8BreakIterator because it is a non-standard API.
 delete Intl.v8BreakIterator;
@@ -90,6 +90,7 @@ import {
 } from "ext:runtime/98_global_scope_worker.js";
 import { SymbolMetadata } from "ext:deno_web/00_infra.js";
 import { bootstrap as bootstrapOtel } from "ext:deno_telemetry/telemetry.ts";
+import { nodeGlobals } from "ext:deno_node/00_globals.js";
 
 // deno-lint-ignore prefer-primordials
 if (Symbol.metadata) {
@@ -557,7 +558,7 @@ function removeImportedOps() {
 // FIXME(bartlomieju): temporarily add whole `Deno.core` to
 // `Deno[Deno.internal]` namespace. It should be removed and only necessary
 // methods should be left there.
-ObjectAssign(internals, { core });
+ObjectAssign(internals, { core, nodeGlobals: { ...nodeGlobals } });
 const internalSymbol = Symbol("Deno.internal");
 const finalDenoNs = {
   internal: internalSymbol,
@@ -798,12 +799,6 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       delete Object.prototype.__proto__;
     }
 
-    if (!ArrayPrototypeIncludes(unstableFeatures, unstableIds.temporal)) {
-      // Removes the `Temporal` API.
-      delete globalThis.Temporal;
-      delete globalThis.Date.prototype.toTemporalInstant;
-    }
-
     // Setup `Deno` global - we're actually overriding already existing global
     // `Deno` with `Deno` namespace from "./deno.ts".
     ObjectDefineProperty(globalThis, "Deno", core.propReadOnly(finalDenoNs));
@@ -919,12 +914,6 @@ function bootstrapWorkerRuntime(
       // Removes the `__proto__` for security reasons.
       // https://tc39.es/ecma262/#sec-get-object.prototype.__proto__
       delete Object.prototype.__proto__;
-    }
-
-    if (!ArrayPrototypeIncludes(unstableFeatures, unstableIds.temporal)) {
-      // Removes the `Temporal` API.
-      delete globalThis.Temporal;
-      delete globalThis.Date.prototype.toTemporalInstant;
     }
 
     // Setup `Deno` global - we're actually overriding already existing global

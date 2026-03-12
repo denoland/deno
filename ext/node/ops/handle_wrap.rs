@@ -1,9 +1,11 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::cell::Cell;
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use deno_core::CppgcBase;
+use deno_core::CppgcInherits;
 use deno_core::GarbageCollected;
 use deno_core::OpState;
 use deno_core::ResourceId;
@@ -23,7 +25,8 @@ impl Default for AsyncId {
 
 impl AsyncId {
   // Increment the internal id counter and return the value.
-  fn next(&mut self) -> i64 {
+  #[allow(clippy::should_implement_trait)]
+  pub fn next(&mut self) -> i64 {
     self.0 += 1;
     self.0
   }
@@ -38,6 +41,8 @@ pub fn op_node_new_async_id(state: &mut OpState) -> f64 {
   next_async_id(state) as f64
 }
 
+#[derive(CppgcBase)]
+#[repr(C)]
 pub struct AsyncWrap {
   provider: i32,
   async_id: i64,
@@ -86,7 +91,11 @@ enum State {
   Closed,
 }
 
+#[derive(CppgcBase, CppgcInherits)]
+#[cppgc_inherits_from(AsyncWrap)]
+#[repr(C)]
 pub struct HandleWrap {
+  base: AsyncWrap,
   handle: Option<ResourceId>,
   state: Rc<Cell<State>>,
 }
@@ -101,8 +110,9 @@ unsafe impl GarbageCollected for HandleWrap {
 }
 
 impl HandleWrap {
-  pub(crate) fn create(handle: Option<ResourceId>) -> Self {
+  pub(crate) fn create(base: AsyncWrap, handle: Option<ResourceId>) -> Self {
     Self {
+      base,
       handle,
       state: Rc::new(Cell::new(State::Initialized)),
     }
@@ -124,11 +134,8 @@ impl HandleWrap {
     state: &mut OpState,
     #[smi] provider: i32,
     #[smi] handle: Option<ResourceId>,
-  ) -> (AsyncWrap, HandleWrap) {
-    (
-      AsyncWrap::create(state, provider),
-      HandleWrap::create(handle),
-    )
+  ) -> HandleWrap {
+    HandleWrap::create(AsyncWrap::create(state, provider), handle)
   }
 
   // Ported from Node.js
@@ -140,7 +147,7 @@ impl HandleWrap {
     op_state: Rc<RefCell<OpState>>,
     #[this] this: v8::Global<v8::Object>,
     scope: &mut v8::PinScope<'_, '_>,
-    #[global] cb: Option<v8::Global<v8::Function>>,
+    #[scoped] cb: Option<v8::Global<v8::Function>>,
   ) -> Result<(), ResourceError> {
     if self.state.get() != State::Initialized {
       return Ok(());

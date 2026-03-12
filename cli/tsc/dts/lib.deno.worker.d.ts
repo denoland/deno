@@ -1,10 +1,11 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 /// <reference no-default-lib="true" />
 /// <reference lib="deno.ns" />
 /// <reference lib="deno.shared_globals" />
 /// <reference lib="esnext" />
 /// <reference lib="deno.cache" />
+/// <reference lib="deno.temporal" />
 
 /**
  * Event map for WorkerGlobalScope event handlers.
@@ -122,6 +123,9 @@ declare interface WorkerNavigator {
 
   /** Returns the number of logical processors available to run threads on the user's computer. */
   readonly hardwareConcurrency: number;
+
+  /** Returns a string identifying the platform on which the user's browser is running. */
+  readonly platform: string;
 
   /** Returns the user agent string for the current browser. */
   readonly userAgent: string;

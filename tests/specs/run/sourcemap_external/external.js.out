@@ -1,0 +1,5 @@
+error: Uncaught (in promise) Error: Test error with external sourcemap
+  throw new Error("Test error with external sourcemap");
+  ^
+    at throwError ([WILDCARD]original.ts:3:3)
+    at [WILDCARD]original.ts:6:14

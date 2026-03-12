@@ -6,7 +6,7 @@ Download http://localhost:4260/node-gyp
 │  Ignored build scripts for packages:
 │  npm:@denotest/node-addon@1.0.0
 │
-│  Run "deno install --allow-scripts=npm:@denotest/node-addon" to run build scripts.
+│  Run "deno approve-scripts" to run build scripts.
 ╰─
 error: Uncaught (in promise) Error: Cannot find module './build/Release/node_addon'
 [WILDCARD]

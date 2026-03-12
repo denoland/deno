@@ -1,6 +1,6 @@
 {
-  "args": "check jsx_not_checked/main.jsx",
-  "output": "jsx_not_checked/main.out",
+  "args": "check main.jsx",
+  "output": "main.out",
   "exitCode": 1,
   "variants": {
     "tsgo": {

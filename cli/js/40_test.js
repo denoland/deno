@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import { core, primordials } from "ext:core/mod.js";
 import { escapeName, withPermissions } from "ext:cli/40_test_common.js";
@@ -314,6 +314,7 @@ function testInner(
     testDesc.location.lineNumber,
     testDesc.location.columnNumber,
     registerTestIdRetBufU8,
+    testDesc.sanitizeOnly ?? true,
   );
   testDesc.id = registerTestIdRetBuf[0];
   testDesc.origin = cachedOrigin;

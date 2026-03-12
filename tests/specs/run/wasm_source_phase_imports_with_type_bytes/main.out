@@ -1,0 +1,3 @@
+error: Importing Wasm modules with { type: "bytes" } at source phase is unsupported.
+  Specifier: [WILDLINE]/math.wasm
+    at [WILDLINE]/main.ts:1:31

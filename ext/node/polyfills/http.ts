@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
@@ -9,6 +9,7 @@ import {
   op_node_http_await_response,
   op_node_http_fetch_response_upgrade,
   op_node_http_request_with_conn,
+  op_node_http_response_reclaim_conn,
   op_tls_key_null,
   op_tls_key_static,
   op_tls_start,
@@ -68,7 +69,10 @@ import {
   ERR_UNESCAPED_CHARACTERS,
 } from "ext:deno_node/internal/errors.ts";
 import { getTimerDuration } from "ext:deno_node/internal/timers.mjs";
-import { serve, upgradeHttpRaw } from "ext:deno_http/00_serve.ts";
+import { getIPFamily } from "ext:deno_node/internal/net.ts";
+import { serveHttpOnListener, upgradeHttpRaw } from "ext:deno_http/00_serve.ts";
+import { op_http_serve_address_override } from "ext:core/ops";
+import { listen as listenDeno } from "ext:deno_net/01_net.js";
 import { headersEntries } from "ext:deno_fetch/20_headers.js";
 import { Response } from "ext:deno_fetch/23_response.js";
 import {
@@ -82,14 +86,29 @@ import {
 import { timerId } from "ext:deno_web/03_abort_signal.js";
 import { clearTimeout as webClearTimeout } from "ext:deno_web/02_timers.js";
 import { resourceForReadableStream } from "ext:deno_web/06_streams.js";
-import { UpgradedConn } from "ext:deno_net/01_net.js";
+import {
+  kDestroyed,
+  kEnded,
+  kEnding,
+  kErrored,
+  kState,
+} from "ext:deno_node/internal/streams/utils.js";
+import { TcpConn, UpgradedConn } from "ext:deno_net/01_net.js";
+import { TlsConn } from "ext:deno_net/02_tls.js";
 import { STATUS_CODES } from "node:_http_server";
 import { methods as METHODS } from "node:_http_common";
 import { deprecate } from "node:util";
 
+// Flag to track if DENO_SERVE_ADDRESS override has been consumed for Node http servers.
+let nodeHttpAddressOverrideConsumed = false;
+
 const { internalRidSymbol } = core;
-const { ArrayIsArray, StringPrototypeToLowerCase, SafeArrayIterator } =
-  primordials;
+const {
+  ArrayIsArray,
+  StringPrototypeIncludes,
+  StringPrototypeToLowerCase,
+  SafeArrayIterator,
+} = primordials;
 
 type Chunk = string | Buffer | Uint8Array;
 
@@ -422,6 +441,8 @@ class ClientRequest extends OutgoingMessage {
     }
 
     if (this.agent) {
+      // Store options for potential retry on stale keepAlive connections.
+      this._agentOptions = optsWithoutSignal;
       this.agent.addRequest(this, optsWithoutSignal);
     } else {
       // No agent, default to Connection:close.
@@ -522,7 +543,12 @@ class ClientRequest extends OutgoingMessage {
         } catch (err) {
           throw (this.socket.errored || err);
         }
-        if (this._encrypted) {
+        // For reused TLS sockets, the connection is already encrypted.
+        // Skip TLS upgrade if the socket is already encrypted (reusedSocket).
+        // Use _tlsUpgraded flag instead of socket.encrypted, since TLSSocket.encrypted
+        // is always true per Node.js semantics.
+        const needsTlsUpgrade = this._encrypted && !this.socket._tlsUpgraded;
+        if (needsTlsUpgrade) {
           const hasCaCerts = !!this.agent?.options?.ca;
           const caCerts = hasCaCerts
             ? [this.agent.options.ca.toString("UTF-8")]
@@ -542,8 +568,13 @@ class ClientRequest extends OutgoingMessage {
           // Simulates "secure" event on TLSSocket
           // This makes yarn v1's https client working
           this.socket.authorized = true;
+          // Mark the socket as having completed TLS upgrade for keepAlive reuse detection
+          this.socket._tlsUpgraded = true;
         }
 
+        // Stop reading and save handle for keepAlive restoration.
+        this.socket?._handle?.readStop();
+        this._socketHandle = this.socket?._handle;
         this._req = await op_node_http_request_with_conn(
           this.method,
           url,
@@ -552,6 +583,11 @@ class ClientRequest extends OutgoingMessage {
           this._bodyWriteRid,
           baseConnRid,
         );
+        // Save body data before flushing so it can be restored if
+        // a stale keepAlive socket fails during the response phase.
+        if (this.reusedSocket && this.outputData.length > 0) {
+          this._outputDataForRetry = [...this.outputData];
+        }
         this._flushBuffer();
 
         const infoPromise = op_node_http_await_information(
@@ -703,9 +739,52 @@ class ClientRequest extends OutgoingMessage {
         if (
           err.message.includes("connection closed before message completed")
         ) {
-          // Node.js seems ignoring this error
-        } else if (err.message.includes("The signal has been aborted")) {
-          // Remap this error
+          // Node.js seems ignoring these errors
+        } else if (
+          err.message.includes("The signal has been aborted") ||
+          err.message.includes("Bad resource ID") ||
+          err.message.includes("operation was canceled")
+        ) {
+          // Stale keepAlive connection. If this was a reused socket,
+          // retry the request on a fresh connection.
+          if (this.reusedSocket && this.agent && this._agentOptions) {
+            const socket = this.socket;
+            if (socket) {
+              socket.destroy();
+            }
+            this.socket = null;
+            this._header = null;
+            this._headerSent = false;
+            this.reusedSocket = false;
+            this._req = null;
+            // Reset body stream state so _writeHeader() creates a
+            // fresh TransformStream on the next attempt.
+            this._bodyWriter = null;
+            this._bodyWriteRid = null;
+            this._bodyWritable = null;
+            // Restore body data that was consumed by the failed attempt.
+            if (this._outputDataForRetry) {
+              this.outputData = this._outputDataForRetry;
+              this._outputDataForRetry = null;
+            }
+            // Restore body data from streaming writes (e.g. pipeline)
+            // that bypassed outputData and went directly to _bodyWriter.
+            if (this._bodyDataForRetry) {
+              for (const entry of this._bodyDataForRetry) {
+                this.outputData.push(entry);
+              }
+              this._bodyDataForRetry = null;
+            }
+            // If the request body was already fully sent (e.g. pipeline
+            // called end()), re-call end() to set up body writer close
+            // logic for the retry attempt.
+            if (this.finished) {
+              this.finished = false;
+              this.end();
+            }
+            this.agent.addRequest(this, this._agentOptions);
+            return;
+          }
           this.emit("error", connResetException("socket hang up"));
         } else {
           this.emit("error", err);
@@ -776,12 +855,14 @@ class ClientRequest extends OutgoingMessage {
         };
         this.socket = socket;
         this.emit("socket", socket);
-        socket.once("error", (err) => {
+        const socketErrorListener = (err) => {
           // This callback loosely follow `socketErrorListener` in Node.js
           // https://github.com/nodejs/node/blob/f16cd10946ca9ad272f42b94f00cf960571c9181/lib/_http_client.js#L509
           emitErrorEvent(this, err);
           socket.destroy(err);
-        });
+        };
+        this._socketErrorListener = socketErrorListener;
+        socket.once("error", socketErrorListener);
         if (socket.readyState === "opening") {
           socket.on("connect", onConnect);
         } else {
@@ -899,9 +980,9 @@ class ClientRequest extends OutgoingMessage {
       path = "/" + path;
     }
     const url = new URL(
-      `${protocol}//${auth ? `${auth}@` : ""}${host}${
-        port === 80 ? "" : `:${port}`
-      }${path}`,
+      `${protocol}//${auth ? `${auth}@` : ""}${
+        StringPrototypeIncludes(host, ":") ? `[${host}]` : host
+      }${port === 80 ? "" : `:${port}`}${path}`,
     );
     url.hash = hash;
     return url.href;
@@ -1038,9 +1119,11 @@ export class IncomingMessageForClient extends NodeReadable {
 
     this.on("close", () => {
       // Let the final data flush before closing the socket.
-      this.socket.once("drain", () => {
-        this.socket.emit("close");
-      });
+      if (this.socket) {
+        this.socket.once("drain", () => {
+          this.socket.emit("close");
+        });
+      }
     });
   }
 
@@ -1140,13 +1223,94 @@ export class IncomingMessageForClient extends NodeReadable {
 
     const buf = new Uint8Array(16 * 1024);
 
-    core.read(this._bodyRid, buf).then((bytesRead) => {
+    core.read(this._bodyRid, buf).then(async (bytesRead) => {
       if (bytesRead === 0) {
+        // Return the socket to the agent pool BEFORE pushing null.
+        // This must happen before the stream ends, otherwise the socket
+        // may already be marked as destroyed.
+        await this.#tryReturnSocket();
         this.push(null);
       } else {
         this.push(Buffer.from(buf.subarray(0, bytesRead)));
       }
     });
+  }
+
+  // Try to return the socket to the agent pool for keepAlive reuse.
+  async #tryReturnSocket() {
+    const socket = this.socket;
+    if (!socket) {
+      return;
+    }
+
+    const req = this.req;
+    // Only pool the socket if keepAlive is enabled.
+    if (!req?.shouldKeepAlive) {
+      return;
+    }
+
+    const handle = req?._socketHandle || socket._handle;
+    if (!handle) {
+      return;
+    }
+
+    try {
+      const newRid = await op_node_http_response_reclaim_conn(this._bodyRid);
+      if (newRid == null) {
+        return;
+      }
+
+      const remoteAddr = {
+        hostname: socket.remoteAddress || "",
+        port: socket.remotePort || 0,
+      };
+      const localAddr = {
+        hostname: socket.localAddress || "",
+        port: socket.localPort || 0,
+      };
+
+      const isTls = socket.encrypted === true;
+      const conn = isTls
+        ? new TlsConn(newRid, remoteAddr, localAddr)
+        : new TcpConn(newRid, remoteAddr, localAddr);
+
+      handle[kStreamBaseField] = conn;
+      if (!socket._handle) {
+        socket._handle = handle;
+      }
+
+      // Reset socket state for reuse.
+      if (socket._readableState?.[kState] !== undefined) {
+        socket._readableState[kState] &= ~(kDestroyed | kErrored);
+      }
+      if (socket._writableState?.[kState] !== undefined) {
+        socket._writableState[kState] &=
+          ~(kEnding | kEnded | kDestroyed | kErrored);
+        socket._writableState.writable = true;
+      }
+      handle.destroyed = false;
+
+      // Agent's 'free' handler checks socket._httpMessage.shouldKeepAlive.
+      if (req && !socket._httpMessage) {
+        socket._httpMessage = req;
+      }
+
+      // Remove error listener to prevent accumulation on reused sockets.
+      if (req?._socketErrorListener) {
+        socket.removeListener("error", req._socketErrorListener);
+        req._socketErrorListener = null;
+      }
+
+      socket.emit("free");
+
+      // Clear references so old request/response don't destroy the pooled socket.
+      if (req) {
+        req.socket = null;
+      }
+      this.socket = null;
+    } catch (_e) {
+      // Socket reuse is best-effort.
+    }
   }
 
   // It's possible that the socket will be destroyed, and removed from
@@ -1449,6 +1613,10 @@ export type ServerResponse = {
   end(chunk?: any, encoding?: any, cb?: any): void;
 
   flushHeaders(): void;
+  writeEarlyHints(
+    hints: Record<string, string | string[]>,
+    callback?: () => void,
+  ): void;
   _implicitHeader(): void;
 
   // Undocumented field used by `npm:light-my-request`.
@@ -1861,6 +2029,15 @@ ServerResponse.prototype.writeContinue = function writeContinue(cb) {
   }
 };
 
+ServerResponse.prototype.writeEarlyHints = function writeEarlyHints(
+  _hints,
+  cb,
+) {
+  if (cb) {
+    nextTick(cb);
+  }
+};
+
 Object.defineProperty(ServerResponse.prototype, "connection", {
   get: deprecate(
     function (this: ServerResponse) {
@@ -2015,6 +2192,7 @@ export class ServerImpl extends EventEmitter {
   #server: Deno.HttpServer;
   #unref = false;
   #ac?: AbortController;
+  #listener: Deno.Listener | null = null;
   #serveDeferred: ReturnType<typeof Promise.withResolvers<void>>;
   listening = false;
 
@@ -2064,14 +2242,45 @@ export class ServerImpl extends EventEmitter {
     if (hostname == "localhost") {
       hostname = "127.0.0.1";
     }
+
+    // Check DENO_SERVE_ADDRESS override (used by desktop runtime, Deno Deploy, etc.)
+    if (!nodeHttpAddressOverrideConsumed) {
+      const {
+        0: overrideKind,
+        1: overrideHost,
+        2: overridePort,
+      } = op_http_serve_address_override();
+      if (overrideKind === 1) {
+        // TCP override
+        nodeHttpAddressOverrideConsumed = true;
+        hostname = overrideHost;
+        port = overridePort;
+      }
+    }
+
+    // Bind the port synchronously so that address() returns the actual
+    // port immediately after listen(), matching Node.js behavior.
+    try {
+      this.#listener = this._listen(hostname, port);
+    } catch (e) {
+      // Emit the error asynchronously, matching Node.js behavior.
+      this.#addr = { hostname, port } as Deno.NetAddr;
+      nextTick(() => this.emit("error", e));
+      return this;
+    }
+    const addr = this.#listener.addr as Deno.NetAddr;
     this.#addr = {
-      hostname,
-      port,
+      hostname: addr.hostname,
+      port: addr.port,
     } as Deno.NetAddr;
     this.listening = true;
     nextTick(() => this._serve());
 
     return this;
+  }
+
+  _listen(hostname: string, port: number): Deno.Listener {
+    return listenDeno({ hostname, port });
   }
 
   _serve() {
@@ -2132,18 +2341,21 @@ export class ServerImpl extends EventEmitter {
       return;
     }
     this.#ac = ac;
+    const listener = this.#listener;
+    this.#listener = null;
+    if (!listener) {
+      return;
+    }
     try {
-      this.#server = serve(
-        {
-          handler: handler as Deno.ServeHandler,
-          ...this.#addr,
-          signal: ac.signal,
-          // @ts-ignore Might be any without `--unstable` flag
-          onListen: ({ port }) => {
-            this.#addr!.port = port;
-            this.emit("listening");
-          },
-          ...this._additionalServeOptions?.(),
+      this.#server = serveHttpOnListener(
+        listener,
+        ac.signal,
+        handler,
+        (_error) => {
+          return new Response("Internal Server Error", { status: 500 });
+        },
+        () => {
+          this.emit("listening");
         },
       );
     } catch (e) {
@@ -2195,6 +2407,12 @@ export class ServerImpl extends EventEmitter {
       }
     }
 
+    // Close pre-bound listener if _serve() hasn't consumed it yet.
+    if (this.#listener) {
+      this.#listener.close();
+      this.#listener = null;
+    }
+
     if (listening && this.#ac) {
       if (this.#server) {
         this.#server.shutdown();
@@ -2232,10 +2450,10 @@ export class ServerImpl extends EventEmitter {
 
   address() {
     if (this.#addr === null) return null;
-    return {
-      port: this.#addr.port,
-      address: this.#addr.hostname,
-    };
+    const addr = this.#addr.hostname;
+    // Match Node.js: family is undefined for non-IP addresses (isIP returns 0)
+    const family = getIPFamily(addr);
+    return { port: this.#addr.port, address: addr, family };
   }
 }
 

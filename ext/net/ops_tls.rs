@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -17,6 +17,7 @@ use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
+use deno_core::FromV8;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
@@ -35,6 +36,7 @@ use deno_tls::TlsKeyLookup;
 use deno_tls::TlsKeys;
 use deno_tls::TlsKeysHolder;
 use deno_tls::create_client_config;
+use deno_tls::get_ssl_key_log;
 use deno_tls::load_certs;
 use deno_tls::load_private_keys;
 use deno_tls::new_resolver;
@@ -44,7 +46,6 @@ use deno_tls::rustls::pki_types::ServerName;
 pub use rustls_tokio_stream::TlsStream;
 pub use rustls_tokio_stream::TlsStreamRead;
 pub use rustls_tokio_stream::TlsStreamWrite;
-use serde::Deserialize;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
@@ -226,8 +227,7 @@ impl Resource for TlsStreamResource {
   }
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(FromV8)]
 pub struct ConnectTlsArgs {
   cert_file: Option<String>,
   ca_certs: Vec<String>,
@@ -236,8 +236,7 @@ pub struct ConnectTlsArgs {
   unsafely_disable_hostname_verification: Option<bool>,
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(FromV8)]
 pub struct StartTlsArgs {
   rid: ResourceId,
   ca_certs: Vec<String>,
@@ -280,7 +279,7 @@ pub fn op_tls_cert_resolver_create<'s>(
   v8::Array::new_with_elements(scope, &[resolver.into(), lookup.into()])
 }
 
-#[op2(async)]
+#[op2]
 #[string]
 pub async fn op_tls_cert_resolver_poll(
   #[cppgc] lookup: &TlsKeyLookup,
@@ -311,10 +310,9 @@ pub fn op_tls_cert_resolver_resolve_error(
 }
 
 #[op2(stack_trace)]
-#[serde]
 pub fn op_tls_start(
   state: Rc<RefCell<OpState>>,
-  #[serde] args: StartTlsArgs,
+  #[scoped] args: StartTlsArgs,
   #[cppgc] key_pair: Option<&TlsKeysHolder>,
 ) -> Result<(ResourceId, IpAddr, IpAddr), NetError> {
   let rid = args.rid;
@@ -401,12 +399,11 @@ pub fn op_tls_start(
   Ok((rid, IpAddr::from(local_addr), IpAddr::from(remote_addr)))
 }
 
-#[op2(async, stack_trace)]
-#[serde]
+#[op2(stack_trace)]
 pub async fn op_net_connect_tls(
   state: Rc<RefCell<OpState>>,
-  #[serde] addr: IpAddr,
-  #[serde] args: ConnectTlsArgs,
+  #[scoped] addr: IpAddr,
+  #[scoped] args: ConnectTlsArgs,
   #[cppgc] key_pair: &TlsKeysHolder,
 ) -> Result<(ResourceId, IpAddr, IpAddr), NetError> {
   let cert_file = args.cert_file.as_deref();
@@ -501,22 +498,20 @@ pub async fn op_net_connect_tls(
   Ok((rid, IpAddr::from(local_addr), IpAddr::from(remote_addr)))
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(FromV8)]
 pub struct ListenTlsArgs {
   alpn_protocols: Option<Vec<String>>,
   reuse_port: bool,
-  #[serde(default)]
+  #[from_v8(default)]
   load_balanced: bool,
   tcp_backlog: i32,
 }
 
 #[op2(stack_trace)]
-#[serde]
 pub fn op_net_listen_tls(
   state: &mut OpState,
-  #[serde] addr: IpAddr,
-  #[serde] args: ListenTlsArgs,
+  #[scoped] addr: IpAddr,
+  #[scoped] args: ListenTlsArgs,
   #[cppgc] keys: &TlsKeysHolder,
 ) -> Result<(ResourceId, IpAddr), NetError> {
   if args.reuse_port {
@@ -552,6 +547,7 @@ pub fn op_net_listen_tls(
       let mut tls_config = ServerConfig::builder()
         .with_no_client_auth()
         .with_single_cert(cert, key)?;
+      tls_config.key_log = get_ssl_key_log();
       tls_config.alpn_protocols = alpn;
       TlsListener {
         tcp_listener,
@@ -573,8 +569,7 @@ pub fn op_net_listen_tls(
   Ok((rid, IpAddr::from(local_addr)))
 }
 
-#[op2(async)]
-#[serde]
+#[op2]
 pub async fn op_net_accept_tls(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -610,7 +605,7 @@ pub async fn op_net_accept_tls(
   Ok((rid, IpAddr::from(local_addr), IpAddr::from(remote_addr)))
 }
 
-#[op2(async)]
+#[op2]
 #[serde]
 pub async fn op_tls_handshake(
   state: Rc<RefCell<OpState>>,

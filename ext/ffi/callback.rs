@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -190,6 +190,10 @@ unsafe extern "C" fn deno_ffi_callback(
           if tc_scope.exception().is_some() {
             log::error!("Illegal unhandled exception in nonblocking callback");
           }
+          // Flush microtasks queued by the callback before unblocking the
+          // calling thread.  With explicit microtask policy, microtasks
+          // won't run automatically after the JS callback returns.
+          tc_scope.perform_microtask_checkpoint();
         });
       }
     });
@@ -547,7 +551,7 @@ unsafe fn do_ffi_callback(
   }
 }
 
-#[op2(async)]
+#[op2]
 pub fn op_ffi_unsafe_callback_ref(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,

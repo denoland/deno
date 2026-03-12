@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // deno-lint-ignore-file no-console
 
 import { LogLevel, WebClient } from "npm:@slack/web-api@7.8.0";
@@ -135,7 +135,7 @@ function createMessage(ecosystemReports: Record<string, EcosystemReport>) {
       },
     ];
 
-    for (const os of ["darwin", "linux", "windows"]) {
+    for (const os of ["linux", "darwin", "windows"]) {
       const report = ecosystemReports[os][program] satisfies PmResult;
 
       const text = `${

@@ -1,0 +1,5 @@
+{
+  "imports": {
+    "@denotest/with-vuln3": "npm:@denotest/with-vuln3@1.0.0"
+  }
+}

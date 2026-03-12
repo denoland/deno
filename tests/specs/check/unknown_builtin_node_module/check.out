@@ -1,0 +1,5 @@
+Check main.ts
+TS2307 [ERROR]: Cannot find module 'node:unknown'.
+    at file:///[WILDLINE]/main.ts:3:24
+
+error: Type checking failed.

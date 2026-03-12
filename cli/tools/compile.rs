@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::collections::HashSet;
 use std::collections::VecDeque;
@@ -9,10 +9,12 @@ use std::sync::Arc;
 
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
+use deno_config::deno_json::NodeModulesDirMode;
 use deno_core::anyhow::Context;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
+use deno_core::futures::FutureExt;
 use deno_graph::GraphKind;
 use deno_npm_installer::graph::NpmCachingStrategy;
 use deno_path_util::resolve_url_or_path;
@@ -24,12 +26,44 @@ use rand::Rng;
 use super::installer::BinNameResolver;
 use crate::args::CliOptions;
 use crate::args::CompileFlags;
+use crate::args::ConfigFlag;
 use crate::args::Flags;
 use crate::factory::CliFactory;
 use crate::standalone::binary::WriteBinOptions;
 use crate::standalone::binary::is_standalone_binary;
+use crate::util::temp::create_temp_node_modules_dir;
 
 pub async fn compile(
+  mut flags: Flags,
+  compile_flags: CompileFlags,
+) -> Result<(), AnyError> {
+  // use a temporary directory with a node_modules folder when the user
+  // specifies an npm package for better compatibility
+  let _temp_dir =
+    if compile_flags.source_file.to_lowercase().starts_with("npm:")
+      && flags.node_modules_dir.is_none()
+      && !matches!(flags.config_flag, ConfigFlag::Path(_))
+    {
+      let temp_node_modules_dir = create_temp_node_modules_dir()
+        .context("Failed creating temp directory for node_modules folder.")?;
+      flags.initial_cwd = Some(temp_node_modules_dir.parent().to_path_buf());
+      flags.internal.root_node_modules_dir_override =
+        Some(temp_node_modules_dir.node_modules_dir_path().to_path_buf());
+      flags.node_modules_dir = Some(NodeModulesDirMode::Auto);
+      Some(temp_node_modules_dir)
+    } else {
+      None
+    };
+  let flags = Arc::new(flags);
+  // boxed_local() is to avoid large futures
+  if compile_flags.eszip {
+    compile_eszip(flags, compile_flags).boxed_local().await
+  } else {
+    compile_binary(flags, compile_flags).boxed_local().await
+  }
+}
+
+async fn compile_binary(
   flags: Arc<Flags>,
   compile_flags: CompileFlags,
 ) -> Result<(), AnyError> {
@@ -172,7 +206,7 @@ pub async fn compile(
   Ok(())
 }
 
-pub async fn compile_eszip(
+async fn compile_eszip(
   flags: Arc<Flags>,
   compile_flags: CompileFlags,
 ) -> Result<(), AnyError> {
@@ -238,6 +272,7 @@ pub async fn compile_eszip(
     relative_file_base: Some(relative_file_base),
     npm_packages: None,
     module_kind_resolver: Default::default(),
+    npm_snapshot: Default::default(),
   })?;
 
   if let Some(import_map_specifier) = maybe_import_map_specifier {
@@ -369,6 +404,9 @@ fn get_module_roots_and_include_paths(
       | MediaType::Wasm => true,
       MediaType::Css
       | MediaType::Html
+      | MediaType::Jsonc
+      | MediaType::Json5
+      | MediaType::Markdown
       | MediaType::SourceMap
       | MediaType::Sql
       | MediaType::Unknown => false,
@@ -438,6 +476,10 @@ fn get_module_roots_and_include_paths(
 
   for preload_module in cli_options.preload_modules()? {
     module_roots.push(preload_module);
+  }
+
+  for require_module in cli_options.require_modules()? {
+    module_roots.push(require_module);
   }
 
   Ok((module_roots, include_paths))
@@ -511,6 +553,7 @@ mod test {
 
   pub use super::*;
   use crate::http_util::HttpClientProvider;
+  use crate::util::env::resolve_cwd;
 
   #[tokio::test]
   async fn resolve_compile_executable_output_path_target_linux() {
@@ -531,8 +574,9 @@ mod test {
         include: Default::default(),
         exclude: Default::default(),
         eszip: true,
+        self_extracting: false,
       },
-      &std::env::current_dir().unwrap(),
+      &resolve_cwd(None).unwrap(),
     )
     .await
     .unwrap();
@@ -562,8 +606,9 @@ mod test {
         icon: None,
         no_terminal: false,
         eszip: true,
+        self_extracting: false,
       },
-      &std::env::current_dir().unwrap(),
+      &resolve_cwd(None).unwrap(),
     )
     .await
     .unwrap();

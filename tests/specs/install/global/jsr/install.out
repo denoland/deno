@@ -1,0 +1,5 @@
+Download http://127.0.0.1:4250/@denotest/echo/meta.json
+Download http://127.0.0.1:4250/@denotest/echo/1.0.0_meta.json
+Download http://127.0.0.1:4250/@denotest/echo/1.0.0/mod.ts
+✅ Successfully installed echo
+[WILDCARD]

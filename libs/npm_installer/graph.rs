@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::sync::Arc;
@@ -113,7 +113,7 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
             .results
             .into_iter()
             .map(|r| {
-              r.map_err(|err| match err {
+              r.map(|_| ()).map_err(|err| match err {
                 NpmResolutionError::Registry(e) => {
                   NpmLoadError::RegistryInfo(Arc::new(e))
                 }

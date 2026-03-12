@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -26,16 +26,14 @@ use deno_core::ModuleLoadReferrer;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_core::OpMetricsFactoryFn;
-use deno_core::OpMetricsSummaryTracker;
 use deno_core::PollEventLoopOptions;
 use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
 use deno_core::SourceCodeCacheInfo;
 use deno_core::error::CoreError;
 use deno_core::error::JsError;
-use deno_core::merge_op_metrics;
 use deno_core::v8;
-use deno_cron::local::LocalCronHandler;
+use deno_cron::CronHandlerImpl;
 use deno_fs::FileSystem;
 use deno_io::Stdio;
 use deno_kv::dynamic::MultiBackendDbHandler;
@@ -57,7 +55,7 @@ use crate::BootstrapOptions;
 use crate::FeatureChecker;
 use crate::code_cache::CodeCache;
 use crate::code_cache::CodeCacheType;
-use crate::inspector_server::InspectorServer;
+use crate::deno_inspector_server::get_inspector_server;
 use crate::ops;
 use crate::shared::runtime;
 
@@ -108,9 +106,7 @@ pub fn create_validate_import_attributes_callback(
       for (key, value) in attributes {
         let msg = if key != "type" {
           Some(format!("\"{key}\" attribute is not supported."))
-        } else if !valid_attribute(value.as_str())
-          && value != "$$deno-core-internal-wasm-module"
-        {
+        } else if !valid_attribute(value.as_str()) {
           Some(format!("\"{value}\" is not a valid module type."))
         } else {
           None
@@ -246,7 +242,6 @@ pub struct WorkerOptions {
   pub create_web_worker_cb: Arc<ops::worker_host::CreateWebWorkerCb>,
   pub format_js_error_fn: Option<Arc<FormatJsErrorFn>>,
 
-  pub maybe_inspector_server: Option<Arc<InspectorServer>>,
   // If true, the worker will wait for inspector session and break on first
   // statement of user code. Takes higher precedence than
   // `should_wait_for_inspector_session`.
@@ -278,7 +273,6 @@ impl Default for WorkerOptions {
       should_break_on_first_statement: Default::default(),
       should_wait_for_inspector_session: Default::default(),
       trace_ops: Default::default(),
-      maybe_inspector_server: Default::default(),
       format_js_error_fn: Default::default(),
       origin_storage_dir: Default::default(),
       cache_storage_dir: Default::default(),
@@ -295,69 +289,51 @@ impl Default for WorkerOptions {
 }
 
 pub fn create_op_metrics(
-  enable_op_summary_metrics: bool,
   trace_ops: Option<Vec<String>>,
-) -> (
-  Option<Rc<OpMetricsSummaryTracker>>,
-  Option<OpMetricsFactoryFn>,
-) {
-  let mut op_summary_metrics = None;
-  let mut op_metrics_factory_fn: Option<OpMetricsFactoryFn> = None;
+) -> Option<OpMetricsFactoryFn> {
+  let patterns = trace_ops?;
   let now = Instant::now();
   let max_len: Rc<std::cell::Cell<usize>> = Default::default();
-  if let Some(patterns) = trace_ops {
-    /// Match an op name against a list of patterns
-    fn matches_pattern(patterns: &[String], name: &str) -> bool {
-      let mut found_match = false;
-      let mut found_nomatch = false;
-      for pattern in patterns.iter() {
-        if let Some(pattern) = pattern.strip_prefix('-') {
-          if name.contains(pattern) {
-            return false;
-          }
-        } else if name.contains(pattern.as_str()) {
-          found_match = true;
-        } else {
-          found_nomatch = true;
-        }
-      }
 
-      found_match || !found_nomatch
+  /// Match an op name against a list of patterns
+  fn matches_pattern(patterns: &[String], name: &str) -> bool {
+    let mut found_match = false;
+    let mut found_nomatch = false;
+    for pattern in patterns.iter() {
+      if let Some(pattern) = pattern.strip_prefix('-') {
+        if name.contains(pattern) {
+          return false;
+        }
+      } else if name.contains(pattern.as_str()) {
+        found_match = true;
+      } else {
+        found_nomatch = true;
+      }
     }
 
-    op_metrics_factory_fn = Some(Box::new(move |_, _, decl| {
-      // If we don't match a requested pattern, or we match a negative pattern, bail
-      if !matches_pattern(&patterns, decl.name) {
-        return None;
-      }
-
-      max_len.set(max_len.get().max(decl.name.len()));
-      let max_len = max_len.clone();
-      Some(Rc::new(
-        #[allow(clippy::print_stderr)]
-        move |op: &deno_core::_ops::OpCtx, event, source| {
-          eprintln!(
-            "[{: >10.3}] {name:max_len$}: {event:?} {source:?}",
-            now.elapsed().as_secs_f64(),
-            name = op.decl().name,
-            max_len = max_len.get()
-          );
-        },
-      ))
-    }));
+    found_match || !found_nomatch
   }
 
-  if enable_op_summary_metrics {
-    let summary = Rc::new(OpMetricsSummaryTracker::default());
-    let summary_metrics = summary.clone().op_metrics_factory_fn(|_| true);
-    op_metrics_factory_fn = Some(match op_metrics_factory_fn {
-      Some(f) => merge_op_metrics(f, summary_metrics),
-      None => summary_metrics,
-    });
-    op_summary_metrics = Some(summary);
-  }
+  Some(Box::new(move |_, _, decl| {
+    // If we don't match a requested pattern, or we match a negative pattern, bail
+    if !matches_pattern(&patterns, decl.name) {
+      return None;
+    }
 
-  (op_summary_metrics, op_metrics_factory_fn)
+    max_len.set(max_len.get().max(decl.name.len()));
+    let max_len = max_len.clone();
+    Some(Rc::new(
+      #[allow(clippy::print_stderr)]
+      move |op: &deno_core::_ops::OpCtx, event, source| {
+        eprintln!(
+          "[{: >10.3}] {name:max_len$}: {event:?} {source:?}",
+          now.elapsed().as_secs_f64(),
+          name = op.decl().name,
+          max_len = max_len.get()
+        );
+      },
+    ))
+  }))
 }
 
 impl MainWorker {
@@ -428,10 +404,7 @@ impl MainWorker {
     let create_cache = create_cache_inner(&options);
 
     // Get our op metrics
-    let (op_summary_metrics, op_metrics_factory_fn) = create_op_metrics(
-      options.bootstrap.enable_op_summary_metrics,
-      options.trace_ops,
-    );
+    let op_metrics_factory_fn = create_op_metrics(options.trace_ops);
 
     // Permissions: many ops depend on this
     let enable_testing_features = options.bootstrap.enable_testing_features;
@@ -446,16 +419,27 @@ impl MainWorker {
     }
 
     #[cfg(feature = "hmr")]
-    assert!(
-      cfg!(not(feature = "only_snapshotted_js_sources")),
-      "'hmr' is incompatible with 'only_snapshotted_js_sources'."
-    );
+    const {
+      assert!(
+        cfg!(not(feature = "only_snapshotted_js_sources")),
+        "'hmr' is incompatible with 'only_snapshotted_js_sources'."
+      );
+    }
 
     #[cfg(feature = "only_snapshotted_js_sources")]
     options.startup_snapshot.as_ref().expect("A user snapshot was not provided, even though 'only_snapshotted_js_sources' is used.");
 
     let mut js_runtime = if let Some(u) = options.unconfigured_runtime {
-      u.hydrate(services.module_loader)
+      let js_runtime = u.hydrate(services.module_loader);
+
+      let op_state = js_runtime.op_state();
+      let current_handler =
+        op_state.borrow().borrow::<Rc<CronHandlerImpl>>().clone();
+      if let Some(new_handler) = current_handler.maybe_reload() {
+        op_state.borrow_mut().put(Rc::new(new_handler));
+      }
+
+      js_runtime
     } else {
       let mut extensions = common_extensions::<
         TInNpmPackageChecker,
@@ -601,10 +585,6 @@ impl MainWorker {
       ])
       .unwrap();
 
-    if let Some(op_summary_metrics) = op_summary_metrics {
-      js_runtime.op_state().borrow_mut().put(op_summary_metrics);
-    }
-
     {
       let state = js_runtime.op_state();
       let mut state = state.borrow_mut();
@@ -618,13 +598,33 @@ impl MainWorker {
       state.put(services.feature_checker);
     }
 
-    if let Some(server) = options.maybe_inspector_server.clone() {
-      server.register_inspector(
+    // Register the uv_loop_t (created by deno_node extension state callback)
+    // with the JsRuntime so that its event loop phases are driven by
+    // poll_event_loop.
+    {
+      let op_state_rc = js_runtime.op_state();
+      let op_state = op_state_rc.borrow();
+      if let Some(uv_loop) =
+        op_state.try_borrow::<Box<deno_core::uv_compat::UvLoop>>()
+      {
+        let loop_ptr: *mut deno_core::uv_compat::UvLoop =
+          &**uv_loop as *const _ as *mut _;
+        drop(op_state);
+        // SAFETY: loop_ptr points to a valid initialized UvLoop stored in OpState
+        unsafe {
+          js_runtime.register_uv_loop(loop_ptr);
+        }
+      }
+    }
+
+    if let Some(server) = get_inspector_server() {
+      let inspector_url = server.register_inspector(
         main_module.to_string(),
         js_runtime.inspector(),
         options.should_break_on_first_statement
           || options.should_wait_for_inspector_session,
       );
+      js_runtime.op_state().borrow_mut().put(inspector_url);
     }
 
     let (
@@ -739,8 +739,8 @@ impl MainWorker {
       let op_state = self.js_runtime.op_state();
       let mut state = op_state.borrow_mut();
       state.put(options.clone());
-      if let Some(node_ipc_fd) = options.node_ipc_fd {
-        state.put(deno_node::ChildPipeFd(node_ipc_fd));
+      if let Some((fd, serialization)) = options.node_ipc_init {
+        state.put(deno_node::ChildPipeFd(fd, serialization));
       }
     }
 
@@ -1045,7 +1045,7 @@ fn common_extensions<
     deno_webidl::deno_webidl::init(),
     deno_web::deno_web::lazy_init(),
     deno_webgpu::deno_webgpu::init(),
-    deno_canvas::deno_canvas::init(),
+    deno_image::deno_image::init(),
     deno_fetch::deno_fetch::lazy_init(),
     deno_cache::deno_cache::lazy_init(),
     deno_websocket::deno_websocket::lazy_init(),
@@ -1055,13 +1055,15 @@ fn common_extensions<
     deno_net::deno_net::lazy_init(),
     deno_tls::deno_tls::init(),
     deno_kv::deno_kv::lazy_init::<MultiBackendDbHandler>(),
-    deno_cron::deno_cron::init(LocalCronHandler::new()),
+    deno_cron::deno_cron::init(CronHandlerImpl::create_from_env()),
     deno_napi::deno_napi::lazy_init(),
     deno_http::deno_http::lazy_init(),
     deno_io::deno_io::lazy_init(),
     deno_fs::deno_fs::lazy_init(),
     deno_os::deno_os::lazy_init(),
     deno_process::deno_process::lazy_init(),
+    deno_node_crypto::deno_node_crypto::init(),
+    deno_node_sqlite::deno_node_sqlite::init(),
     deno_node::deno_node::lazy_init::<
       TInNpmPackageChecker,
       TNpmPackageFolderResolver,
@@ -1122,6 +1124,7 @@ fn common_runtime(opts: CommonRuntimeOptions) -> JsRuntime {
     extension_transpiler: None,
     inspector: true,
     is_main: true,
+    worker_id: None,
     op_metrics_factory_fn: opts.op_metrics_factory_fn,
     wait_for_inspector_disconnect_callback: Some(
       make_wait_for_inspector_disconnect_callback(),
@@ -1129,7 +1132,6 @@ fn common_runtime(opts: CommonRuntimeOptions) -> JsRuntime {
     validate_import_attributes_cb: Some(
       create_validate_import_attributes_callback(enable_raw_imports.clone()),
     ),
-    import_assertions_support: deno_core::ImportAssertionsSupport::Error,
     maybe_op_stack_trace_callback: opts
       .enable_stack_trace_arg_in_ops
       .then(create_permissions_stack_trace_callback),
@@ -1255,6 +1257,7 @@ impl ModuleLoader for PlaceholderModuleLoader {
     &self,
     module_specifier: &ModuleSpecifier,
     maybe_referrer: Option<String>,
+    maybe_code: Option<String>,
     options: ModuleLoadOptions,
   ) -> std::pin::Pin<
     Box<
@@ -1266,6 +1269,7 @@ impl ModuleLoader for PlaceholderModuleLoader {
     self.0.borrow_mut().clone().unwrap().prepare_load(
       module_specifier,
       maybe_referrer,
+      maybe_code,
       options,
     )
   }

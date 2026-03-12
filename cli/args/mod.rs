@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 mod flags;
 mod flags_net;
@@ -48,10 +48,10 @@ use deno_npm_installer::LifecycleScriptsConfig;
 use deno_npm_installer::graph::NpmCachingStrategy;
 use deno_path_util::resolve_url_or_path;
 use deno_resolver::factory::resolve_jsr_url;
+use deno_runtime::deno_node::ops::ipc::ChildIpcSerialization;
 use deno_runtime::deno_permissions::AllowRunDescriptor;
 use deno_runtime::deno_permissions::PathDescriptor;
 use deno_runtime::deno_permissions::PermissionsOptions;
-use deno_runtime::inspector_server::InspectorServer;
 use deno_semver::StackString;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_telemetry::OtelConfig;
@@ -447,13 +447,6 @@ impl WorkspaceMainModuleResolver {
               )?
               .into_url()?
           }
-          deno_package_json::PackageJsonDepValue::JsrReq(_) => {
-            return Err(
-              deno_resolver::DenoResolveErrorKind::UnsupportedPackageJsonJsrReq
-                .into_box()
-                .into(),
-            );
-          }
         }
       }
       deno_resolver::workspace::MappedResolution::PackageJsonImport {
@@ -541,6 +534,7 @@ impl CliOptions {
 
   pub fn graph_kind(&self) -> GraphKind {
     match self.sub_command() {
+      DenoSubcommand::Add(_) => GraphKind::All,
       DenoSubcommand::Cache(_) => GraphKind::All,
       DenoSubcommand::Check(_) => GraphKind::TypesOnly,
       DenoSubcommand::Install(InstallFlags::Local(_)) => GraphKind::All,
@@ -586,18 +580,31 @@ impl CliOptions {
     )
   }
 
-  pub fn node_ipc_fd(&self) -> Option<i64> {
+  pub fn node_ipc_init(
+    &self,
+  ) -> Result<Option<(i64, ChildIpcSerialization)>, AnyError> {
     let maybe_node_channel_fd = std::env::var("NODE_CHANNEL_FD").ok();
-    if let Some(node_channel_fd) = maybe_node_channel_fd {
-      // Remove so that child processes don't inherit this environment variable.
-
-      #[allow(clippy::undocumented_unsafe_blocks)]
-      unsafe {
-        std::env::remove_var("NODE_CHANNEL_FD")
-      };
-      node_channel_fd.parse::<i64>().ok()
+    let maybe_node_channel_serialization = if let Ok(serialization) =
+      std::env::var("NODE_CHANNEL_SERIALIZATION_MODE")
+    {
+      Some(serialization.parse::<ChildIpcSerialization>()?)
     } else {
       None
+    };
+    if let Some(node_channel_fd) = maybe_node_channel_fd {
+      // Remove so that child processes don't inherit this environment variables.
+      #[allow(clippy::undocumented_unsafe_blocks)]
+      unsafe {
+        std::env::remove_var("NODE_CHANNEL_FD");
+        std::env::remove_var("NODE_CHANNEL_SERIALIZATION_MODE");
+      }
+      let node_channel_fd = node_channel_fd.parse::<i64>()?;
+      Ok(Some((
+        node_channel_fd,
+        maybe_node_channel_serialization.unwrap_or(ChildIpcSerialization::Json),
+      )))
+    } else {
+      Ok(None)
     }
   }
 
@@ -633,8 +640,16 @@ impl CliOptions {
     self.flags.no_legacy_abort()
   }
 
-  pub fn env_file_name(&self) -> Option<&Vec<String>> {
-    self.flags.env_file.as_ref()
+  pub fn env_file_paths(
+    &self,
+  ) -> impl DoubleEndedIterator<Item = PathBuf> + '_ {
+    self
+      .flags
+      .env_file
+      .as_ref()
+      .into_iter()
+      .flatten()
+      .map(|name| self.initial_cwd.join(name))
   }
 
   pub fn preload_modules(&self) -> Result<Vec<ModuleSpecifier>, AnyError> {
@@ -642,12 +657,25 @@ impl CliOptions {
       return Ok(vec![]);
     }
 
-    let mut preload = Vec::with_capacity(self.flags.preload.len());
+    let mut modules = Vec::with_capacity(self.flags.preload.len());
     for preload_specifier in self.flags.preload.iter() {
-      preload.push(resolve_url_or_path(preload_specifier, self.initial_cwd())?);
+      modules.push(resolve_url_or_path(preload_specifier, self.initial_cwd())?);
     }
 
-    Ok(preload)
+    Ok(modules)
+  }
+
+  pub fn require_modules(&self) -> Result<Vec<ModuleSpecifier>, AnyError> {
+    if self.flags.require.is_empty() {
+      return Ok(vec![]);
+    }
+
+    let mut require = Vec::with_capacity(self.flags.require.len());
+    for require_specifier in self.flags.require.iter() {
+      require.push(resolve_url_or_path(require_specifier, self.initial_cwd())?);
+    }
+
+    Ok(require)
   }
 
   fn resolve_main_module_with_resolver_if_bare(
@@ -771,7 +799,7 @@ impl CliOptions {
   pub fn resolve_storage_key_resolver(&self) -> StorageKeyResolver {
     if let Some(location) = &self.flags.location {
       StorageKeyResolver::from_flag(location)
-    } else if let Some(deno_json) = self.start_dir.maybe_deno_json() {
+    } else if let Some(deno_json) = self.start_dir.member_or_root_deno_json() {
       StorageKeyResolver::from_config_file_url(&deno_json.specifier)
     } else {
       StorageKeyResolver::new_use_main_module()
@@ -805,23 +833,20 @@ impl CliOptions {
     self.workspace().vendor_dir_path()
   }
 
-  pub fn resolve_inspector_server(
+  pub fn resolve_inspector_server_options(
     &self,
-  ) -> Result<Option<InspectorServer>, AnyError> {
-    let maybe_inspect_host = self
+  ) -> Option<(SocketAddr, &'static str, InspectPublishUid)> {
+    let host = self
       .flags
       .inspect
       .or(self.flags.inspect_brk)
-      .or(self.flags.inspect_wait);
+      .or(self.flags.inspect_wait)?;
 
-    let Some(host) = maybe_inspect_host else {
-      return Ok(None);
-    };
-
-    Ok(Some(InspectorServer::new(
+    Some((
       host,
       DENO_VERSION_INFO.user_agent,
-    )?))
+      self.flags.inspect_publish_uid.unwrap_or_default(),
+    ))
   }
 
   pub fn resolve_fmt_options_for_members(
@@ -952,14 +977,30 @@ impl CliOptions {
     }
   }
 
-  pub fn enable_op_summary_metrics(&self) -> bool {
-    self.flags.enable_op_summary_metrics
-      || matches!(
-        self.flags.subcommand,
-        DenoSubcommand::Test(_)
-          | DenoSubcommand::Repl(_)
-          | DenoSubcommand::Jupyter(_)
-      )
+  pub fn cpu_prof_dir(&self) -> Option<PathBuf> {
+    self.flags.cpu_prof.as_ref().map(|f| {
+      f.dir
+        .as_ref()
+        .map(|d| self.initial_cwd.join(d))
+        .unwrap_or_else(|| self.initial_cwd.clone())
+    })
+  }
+
+  pub fn cpu_prof_name(&self) -> Option<String> {
+    self.flags.cpu_prof.as_ref().and_then(|f| f.name.clone())
+  }
+
+  pub fn cpu_prof_interval(&self) -> u32 {
+    self
+      .flags
+      .cpu_prof
+      .as_ref()
+      .and_then(|f| f.interval)
+      .unwrap_or(1000)
+  }
+
+  pub fn cpu_prof_md(&self) -> bool {
+    self.flags.cpu_prof.as_ref().is_some_and(|f| f.md)
   }
 
   pub fn enable_testing_features(&self) -> bool {
@@ -995,12 +1036,12 @@ impl CliOptions {
       || self.flags.inspect_wait.is_some()
   }
 
-  pub fn inspect_brk(&self) -> Option<SocketAddr> {
-    self.flags.inspect_brk
+  pub fn inspect_brk(&self) -> bool {
+    self.flags.inspect_brk.is_some()
   }
 
-  pub fn inspect_wait(&self) -> Option<SocketAddr> {
-    self.flags.inspect_wait
+  pub fn inspect_wait(&self) -> bool {
+    self.flags.inspect_wait.is_some()
   }
 
   pub fn log_level(&self) -> Option<log::Level> {
@@ -1036,6 +1077,12 @@ impl CliOptions {
       config_permissions,
     )?;
     self.augment_import_permissions(&mut permissions_options);
+    if let DenoSubcommand::Serve(serve_flags) = &self.flags.subcommand {
+      augment_permissions_with_serve_flags(
+        &mut permissions_options,
+        serve_flags,
+      )?;
+    }
     Ok(permissions_options)
   }
 
@@ -1110,6 +1157,7 @@ impl CliOptions {
         "jsr.io:443",
         "deno.land:443",
         "esm.sh:443",
+        "raw.esm.sh:443",
         "cdn.jsdelivr.net:443",
         "raw.githubusercontent.com:443",
         "gist.githubusercontent.com:443",
@@ -1160,6 +1208,9 @@ impl CliOptions {
           .first()
           .and_then(|url| file_to_url(url))
           .map(|url| vec![url]),
+        DenoSubcommand::Install(InstallFlags::Local(
+          InstallFlagsLocal::Entrypoints(flags),
+        )) => Some(files_to_urls(&flags.entrypoints)),
         DenoSubcommand::Doc(DocFlags {
           source_files: DocSourceFileFlag::Paths(paths),
           ..
@@ -1294,6 +1345,16 @@ impl CliOptions {
     unstable_features
   }
 
+  /// Returns unstable feature flags as CLI arguments (e.g., "--unstable-unsafe-proto").
+  /// This includes features from both CLI flags and config file.
+  pub fn unstable_args(&self) -> Vec<String> {
+    self
+      .unstable_features()
+      .into_iter()
+      .map(|f| format!("--unstable-{}", f))
+      .collect()
+  }
+
   pub fn v8_flags(&self) -> &Vec<String> {
     &self.flags.v8_flags
   }
@@ -1371,7 +1432,12 @@ impl CliOptions {
     if matches!(
       self.sub_command(),
       DenoSubcommand::Install(InstallFlags::Local(
-        InstallFlagsLocal::TopLevel | InstallFlagsLocal::Add(_)
+        InstallFlagsLocal::TopLevel(_)
+          | InstallFlagsLocal::Add(_)
+          | InstallFlagsLocal::Entrypoints(InstallEntrypointsFlags {
+            lockfile_only: true,
+            ..
+          })
       )) | DenoSubcommand::Add(_)
         | DenoSubcommand::Outdated(_)
     ) {
@@ -1472,12 +1538,7 @@ pub fn config_to_deno_graph_workspace_member(
 pub fn get_default_v8_flags() -> Vec<String> {
   vec![
     "--stack-size=1024".to_string(),
-    "--js-explicit-resource-management".to_string(),
-    // TODO(bartlomieju): I think this can be removed as it's handled by `deno_core`
-    // and its settings.
-    // deno_ast removes TypeScript `assert` keywords, so this flag only affects JavaScript
-    // TODO(petamoriken): Need to check TypeScript `assert` keywords in deno_ast
-    "--no-harmony-import-assertions".to_string(),
+    "--inspector-live-edit".to_string(),
   ]
 }
 
@@ -1664,6 +1725,11 @@ fn flags_to_permissions_options(
       config.and_then(|c| c.permissions.read.deny.as_ref()),
       &make_fs_config_value_absolute,
     ),
+    ignore_read: handle_deny_or_ignore(
+      flags.ignore_read.as_ref(),
+      config.and_then(|c| c.permissions.read.ignore.as_ref()),
+      &make_fs_config_value_absolute,
+    ),
     allow_run: handle_allow(
       flags.allow_all,
       config.and_then(|c| c.permissions.all),
@@ -1716,6 +1782,28 @@ fn flags_to_permissions_options(
   })
 }
 
+fn augment_permissions_with_serve_flags(
+  permissions_options: &mut PermissionsOptions,
+  serve_flags: &ServeFlags,
+) -> Result<(), AnyError> {
+  let allowed = flags_net::parse(vec![if serve_flags.host == "0.0.0.0" {
+    format!(":{}", serve_flags.port)
+  } else {
+    format!("{}:{}", serve_flags.host, serve_flags.port)
+  }])?;
+  match &mut permissions_options.allow_net {
+    None => {
+      permissions_options.allow_net = Some(allowed);
+    }
+    Some(v) => {
+      if !v.is_empty() {
+        v.extend(allowed);
+      }
+    }
+  }
+  Ok(())
+}
+
 #[cfg(test)]
 mod test {
   use deno_config::deno_json::AllowDenyIgnorePermissionConfig;
@@ -1724,13 +1812,14 @@ mod test {
   use pretty_assertions::assert_eq;
 
   use super::*;
+  use crate::util::env::resolve_cwd;
 
   #[test]
   fn resolve_import_map_flags_take_precedence() {
     let config_text = r#"{
       "importMap": "import_map.json"
     }"#;
-    let cwd = &std::env::current_dir().unwrap();
+    let cwd = &resolve_cwd(None).unwrap();
     let config_specifier = Url::parse("file:///deno/deno.jsonc").unwrap();
     let config_file = ConfigFile::new(config_text, config_specifier).unwrap();
     let actual = resolve_import_map_specifier(
@@ -1798,7 +1887,7 @@ mod test {
 
   #[test]
   fn test_flags_to_permission_options() {
-    let base_dir = std::env::current_dir().unwrap().join("sub");
+    let base_dir = resolve_cwd(None).unwrap().join("sub");
     {
       let flags = PermissionFlags::default();
       let config = PermissionsObjectWithBase {
@@ -1806,13 +1895,16 @@ mod test {
           .unwrap(),
         permissions: PermissionsObject {
           all: None,
-          read: AllowDenyPermissionConfig {
+          read: AllowDenyIgnorePermissionConfig {
             allow: Some(PermissionConfigValue::Some(vec![
               ".".to_string(),
               "./read-allow".to_string(),
             ])),
             deny: Some(PermissionConfigValue::Some(vec![
               "./read-deny".to_string(),
+            ])),
+            ignore: Some(PermissionConfigValue::Some(vec![
+              "./read-ignore".to_string(),
             ])),
           },
           write: AllowDenyPermissionConfig {
@@ -1917,6 +2009,13 @@ mod test {
               .into_string()
               .unwrap()
           ]),
+          ignore_read: Some(vec![
+            base_dir
+              .join("read-ignore")
+              .into_os_string()
+              .into_string()
+              .unwrap()
+          ]),
           allow_run: Some(vec![
             "run-allow".to_string(),
             base_dir
@@ -1992,6 +2091,7 @@ mod test {
           deny_ffi: None,
           allow_read: Some(vec!["./folder".to_string()]),
           deny_read: None,
+          ignore_read: None,
           allow_run: Some(vec![]),
           deny_run: None,
           allow_sys: Some(vec![]),

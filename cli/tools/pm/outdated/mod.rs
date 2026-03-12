@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 mod interactive;
 
@@ -15,6 +15,7 @@ use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use deno_terminal::colors;
 
+use super::CacheTopLevelDepsOptions;
 use super::deps::Dep;
 use super::deps::DepId;
 use super::deps::DepKind;
@@ -209,9 +210,7 @@ pub async fn outdated(
     factory.jsr_version_resolver()?.clone(),
   ));
 
-  if !cli_options.start_dir.has_deno_json()
-    && !cli_options.start_dir.has_pkg_json()
-  {
+  if !cli_options.start_dir.has_deno_or_pkg_json() {
     bail!(
       "No deno.json or package.json in \"{}\".",
       cli_options.initial_cwd().display(),
@@ -252,8 +251,17 @@ pub async fn outdated(
     crate::args::OutdatedKind::Update {
       latest,
       interactive,
+      lockfile_only,
     } => {
-      update(deps, latest, &filter_set, interactive, flags).await?;
+      update(
+        deps,
+        latest,
+        &filter_set,
+        interactive,
+        flags,
+        CacheTopLevelDepsOptions { lockfile_only },
+      )
+      .await?;
     }
     crate::args::OutdatedKind::PrintOutdated { compatible } => {
       print_outdated(&mut deps, compatible)?;
@@ -353,6 +361,7 @@ async fn update(
   filter_set: &filter::FilterSet,
   interactive: bool,
   flags: Arc<Flags>,
+  cache_options: CacheTopLevelDepsOptions,
 ) -> Result<(), AnyError> {
   let mut to_update = Vec::new();
 
@@ -425,6 +434,7 @@ async fn update(
     let factory = super::npm_install_after_modification(
       flags.clone(),
       Some(deps.jsr_fetch_resolver.clone()),
+      cache_options,
     )
     .await?;
 

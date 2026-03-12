@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::ffi::c_void;
 use std::ptr;
@@ -97,7 +97,7 @@ pub union NativeValue {
 }
 
 impl NativeValue {
-  pub unsafe fn as_arg(&self, native_type: &NativeType) -> Arg {
+  pub unsafe fn as_arg(&self, native_type: &NativeType) -> Arg<'_> {
     #[allow(clippy::undocumented_unsafe_blocks)]
     unsafe {
       match native_type {

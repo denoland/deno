@@ -1,0 +1,8 @@
+Test 1: Fork without conditions
+Without conditions: default
+
+Test 2: Fork with --conditions=custom
+With --conditions=custom: custom
+
+Test 3: Fork with -C custom
+With -C custom: custom

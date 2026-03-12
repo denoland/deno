@@ -1,0 +1,8 @@
+{
+  "name": "@foo/bar",
+  "version": "1.0.0",
+  "publish": false,
+  "exports": {
+    ".": "./mod.ts"
+  }
+}

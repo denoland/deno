@@ -1,16 +1,12 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Adapted from Node.js. Copyright Joyent, Inc. and other Node contributors.
 
 import { dirname, isAbsolute, join, parse, resolve } from "node:path";
-import { chmodSync } from "ext:deno_node/_fs/_fs_chmod.ts";
 import { copyFileSync } from "ext:deno_node/_fs/_fs_copy.ts";
 import { existsSync } from "ext:deno_node/_fs/_fs_exists.ts";
-import { mkdirSync } from "ext:deno_node/_fs/_fs_mkdir.ts";
-import { opendirSync } from "ext:deno_node/_fs/_fs_opendir.ts";
+import { mkdirSync, opendirSync } from "node:fs";
 import { readlinkSync } from "ext:deno_node/_fs/_fs_readlink.ts";
-import { symlinkSync } from "ext:deno_node/_fs/_fs_symlink.ts";
-import { unlinkSync } from "ext:deno_node/_fs/_fs_unlink.ts";
-import { utimesSync } from "ext:deno_node/_fs/_fs_utimes.ts";
+import { symlinkSync, utimesSync } from "node:fs";
 import {
   ERR_FS_CP_DIR_TO_NON_DIR,
   ERR_FS_CP_EEXIST,
@@ -271,7 +267,7 @@ function mayCopyFile(
   opts: CopySyncOptions,
 ): void {
   if (opts.force) {
-    unlinkSync(dest);
+    Deno.removeSync(dest);
     return copyFile(srcStat, src, dest, opts);
   } else if (opts.errorOnExist) {
     throw new ERR_FS_CP_EEXIST({
@@ -316,7 +312,7 @@ function makeFileWritable(dest: string, srcMode: number | null): void {
 }
 
 function setDestMode(dest: string, srcMode: number | null): void {
-  return chmodSync(dest, srcMode!);
+  Deno.chmodSync(dest, srcMode!);
 }
 
 function setDestTimestamps(src: string, dest: string): void {
@@ -428,6 +424,6 @@ function onLink(
 }
 
 function copyLink(resolvedSrc: string, dest: string): void {
-  unlinkSync(dest);
+  Deno.removeSync(dest);
   return symlinkSync(resolvedSrc, dest);
 }

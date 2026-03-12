@@ -1,10 +1,12 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 #![deny(clippy::print_stderr)]
 #![deny(clippy::print_stdout)]
 #![allow(clippy::too_many_arguments)]
 
 use std::borrow::Cow;
+use std::env;
+use std::fs;
 use std::path::Path;
 
 use deno_core::FastString;
@@ -25,8 +27,11 @@ use node_resolver::PackageJsonResolverRc;
 use node_resolver::errors::PackageJsonLoadError;
 
 extern crate libz_sys as zlib;
+
+mod global;
 pub mod ops;
 
+use deno_dotenv::parse_env_content_hook;
 pub use deno_package_json::PackageJson;
 use deno_permissions::PermissionCheckError;
 pub use node_resolver::DENO_SUPPORTED_BUILTIN_NODE_MODULES as SUPPORTED_BUILTIN_NODE_MODULES;
@@ -38,6 +43,11 @@ pub use ops::vm::ContextInitMode;
 pub use ops::vm::VM_CONTEXT_INDEX;
 pub use ops::vm::create_v8_context;
 pub use ops::vm::init_global_template;
+
+use self::ops::util::NullEnvVarsSys;
+pub use crate::global::GlobalsStorage;
+use crate::global::global_object_middleware;
+use crate::global::global_template_middleware;
 
 pub fn is_builtin_node_module(module_name: &str) -> bool {
   DenoIsBuiltInNodeModuleChecker.is_builtin_node_module(module_name)
@@ -90,9 +100,9 @@ fn op_node_build_os() -> String {
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 enum DotEnvLoadErr {
-  #[class(generic)]
-  #[error(transparent)]
-  DotEnv(#[from] dotenvy::Error),
+  #[class(inherit)]
+  #[error("{0}")]
+  Io(#[from] std::io::Error),
   #[class(inherit)]
   #[error(transparent)]
   Permission(
@@ -117,7 +127,33 @@ fn op_node_load_env_file(
     )
     .map_err(DotEnvLoadErr::Permission)?;
 
-  dotenvy::from_filename(path).map_err(DotEnvLoadErr::DotEnv)?;
+  #[allow(clippy::disallowed_methods)]
+  let contents = fs::read_to_string(path)?;
+
+  parse_env_content_hook(&NullEnvVarsSys, &contents, |key, value| {
+    // Follows Node.js behavior where null bytes are stripped from env keys and values
+    let key = if let Some(null_pos) = key.find('\0') {
+      &key[..null_pos]
+    } else {
+      key
+    };
+
+    if key.is_empty() {
+      return;
+    }
+
+    let value = if let Some(null_pos) = value.find('\0') {
+      &value[..null_pos]
+    } else {
+      value
+    };
+
+    // SAFETY: called during single-threaded initialization
+    #[allow(clippy::undocumented_unsafe_blocks)]
+    unsafe {
+      env::set_var(key, value);
+    }
+  });
 
   Ok(())
 }
@@ -139,6 +175,8 @@ deno_core::extension!(deno_node,
   deps = [ deno_io, deno_fs ],
   parameters = [TInNpmPackageChecker: InNpmPackageChecker, TNpmPackageFolderResolver: NpmPackageFolderResolver, TSys: ExtNodeSys],
   ops = [
+    ops::assert::op_node_get_first_expression,
+
     ops::blocklist::op_socket_address_parse,
     ops::blocklist::op_socket_address_get_serialization,
 
@@ -151,112 +189,10 @@ deno_core::extension!(deno_node,
     ops::buffer::op_is_ascii,
     ops::buffer::op_is_utf8,
     ops::buffer::op_transcode,
+    ops::buffer::op_node_buffer_compare,
+    ops::buffer::op_node_buffer_compare_offset,
     ops::constant::op_node_fs_constants,
     ops::buffer::op_node_decode_utf8,
-    ops::crypto::op_node_check_prime_async,
-    ops::crypto::op_node_check_prime_bytes_async,
-    ops::crypto::op_node_check_prime_bytes,
-    ops::crypto::op_node_check_prime,
-    ops::crypto::op_node_cipheriv_encrypt,
-    ops::crypto::op_node_cipheriv_final,
-    ops::crypto::op_node_cipheriv_set_aad,
-    ops::crypto::op_node_cipheriv_take,
-    ops::crypto::op_node_create_cipheriv,
-    ops::crypto::op_node_create_decipheriv,
-    ops::crypto::op_node_create_hash,
-    ops::crypto::op_node_decipheriv_decrypt,
-    ops::crypto::op_node_decipheriv_final,
-    ops::crypto::op_node_decipheriv_set_aad,
-    ops::crypto::op_node_decipheriv_auth_tag,
-    ops::crypto::op_node_dh_compute_secret,
-    ops::crypto::op_node_diffie_hellman,
-    ops::crypto::op_node_ecdh_compute_public_key,
-    ops::crypto::op_node_ecdh_compute_secret,
-    ops::crypto::op_node_ecdh_encode_pubkey,
-    ops::crypto::op_node_ecdh_generate_keys,
-    ops::crypto::op_node_fill_random_async,
-    ops::crypto::op_node_fill_random,
-    ops::crypto::op_node_gen_prime_async,
-    ops::crypto::op_node_gen_prime,
-    ops::crypto::op_node_get_hash_size,
-    ops::crypto::op_node_get_hashes,
-    ops::crypto::op_node_hash_clone,
-    ops::crypto::op_node_hash_digest_hex,
-    ops::crypto::op_node_hash_digest,
-    ops::crypto::op_node_hash_update_str,
-    ops::crypto::op_node_hash_update,
-    ops::crypto::op_node_hkdf_async,
-    ops::crypto::op_node_hkdf,
-    ops::crypto::op_node_pbkdf2_async,
-    ops::crypto::op_node_pbkdf2,
-    ops::crypto::op_node_pbkdf2_validate,
-    ops::crypto::op_node_private_decrypt,
-    ops::crypto::op_node_private_encrypt,
-    ops::crypto::op_node_public_encrypt,
-    ops::crypto::op_node_random_int,
-    ops::crypto::op_node_scrypt_async,
-    ops::crypto::op_node_scrypt_sync,
-    ops::crypto::op_node_sign,
-    ops::crypto::op_node_sign_ed25519,
-    ops::crypto::op_node_verify,
-    ops::crypto::op_node_verify_ed25519,
-    ops::crypto::op_node_verify_spkac,
-    ops::crypto::op_node_cert_export_public_key,
-    ops::crypto::op_node_cert_export_challenge,
-    ops::crypto::keys::op_node_create_private_key,
-    ops::crypto::keys::op_node_create_ed_raw,
-    ops::crypto::keys::op_node_create_rsa_jwk,
-    ops::crypto::keys::op_node_create_ec_jwk,
-    ops::crypto::keys::op_node_create_public_key,
-    ops::crypto::keys::op_node_create_secret_key,
-    ops::crypto::keys::op_node_derive_public_key_from_private_key,
-    ops::crypto::keys::op_node_dh_keys_generate_and_export,
-    ops::crypto::keys::op_node_export_private_key_der,
-    ops::crypto::keys::op_node_export_private_key_jwk,
-    ops::crypto::keys::op_node_export_private_key_pem,
-    ops::crypto::keys::op_node_export_public_key_der,
-    ops::crypto::keys::op_node_export_public_key_pem,
-    ops::crypto::keys::op_node_export_public_key_jwk,
-    ops::crypto::keys::op_node_export_secret_key_b64url,
-    ops::crypto::keys::op_node_export_secret_key,
-    ops::crypto::keys::op_node_generate_dh_group_key_async,
-    ops::crypto::keys::op_node_generate_dh_group_key,
-    ops::crypto::keys::op_node_generate_dh_key_async,
-    ops::crypto::keys::op_node_generate_dh_key,
-    ops::crypto::keys::op_node_generate_dsa_key_async,
-    ops::crypto::keys::op_node_generate_dsa_key,
-    ops::crypto::keys::op_node_generate_ec_key_async,
-    ops::crypto::keys::op_node_generate_ec_key,
-    ops::crypto::keys::op_node_generate_ed25519_key_async,
-    ops::crypto::keys::op_node_generate_ed25519_key,
-    ops::crypto::keys::op_node_generate_rsa_key_async,
-    ops::crypto::keys::op_node_generate_rsa_key,
-    ops::crypto::keys::op_node_generate_rsa_pss_key,
-    ops::crypto::keys::op_node_generate_rsa_pss_key_async,
-    ops::crypto::keys::op_node_generate_secret_key_async,
-    ops::crypto::keys::op_node_generate_secret_key,
-    ops::crypto::keys::op_node_generate_x25519_key_async,
-    ops::crypto::keys::op_node_generate_x25519_key,
-    ops::crypto::keys::op_node_get_asymmetric_key_details,
-    ops::crypto::keys::op_node_get_asymmetric_key_type,
-    ops::crypto::keys::op_node_get_private_key_from_pair,
-    ops::crypto::keys::op_node_get_public_key_from_pair,
-    ops::crypto::keys::op_node_get_symmetric_key_size,
-    ops::crypto::keys::op_node_key_type,
-    ops::crypto::x509::op_node_x509_parse,
-    ops::crypto::x509::op_node_x509_ca,
-    ops::crypto::x509::op_node_x509_check_email,
-    ops::crypto::x509::op_node_x509_check_host,
-    ops::crypto::x509::op_node_x509_fingerprint,
-    ops::crypto::x509::op_node_x509_fingerprint256,
-    ops::crypto::x509::op_node_x509_fingerprint512,
-    ops::crypto::x509::op_node_x509_get_issuer,
-    ops::crypto::x509::op_node_x509_get_subject,
-    ops::crypto::x509::op_node_x509_get_valid_from,
-    ops::crypto::x509::op_node_x509_get_valid_to,
-    ops::crypto::x509::op_node_x509_get_serial_number,
-    ops::crypto::x509::op_node_x509_key_usage,
-    ops::crypto::x509::op_node_x509_public_key,
     ops::dns::op_node_getaddrinfo,
     ops::dns::op_node_getnameinfo,
     ops::fs::op_node_fs_exists_sync,
@@ -271,11 +207,22 @@ deno_core::extension!(deno_node,
     ops::fs::op_node_mkdtemp,
     ops::fs::op_node_open_sync,
     ops::fs::op_node_open,
+    ops::fs::op_node_rmdir_sync,
+    ops::fs::op_node_rmdir,
     ops::fs::op_node_statfs_sync,
     ops::fs::op_node_statfs,
+    ops::fs::op_node_file_from_fd,
+    ops::fs::op_node_cp_check_paths_recursive,
+    ops::fs::op_node_cp_on_file,
+    ops::fs::op_node_cp_on_link,
+    ops::fs::op_node_cp_validate_and_prepare,
     ops::winerror::op_node_sys_to_uv_error,
     ops::v8::op_v8_cached_data_version_tag,
     ops::v8::op_v8_get_heap_statistics,
+    ops::v8::op_v8_number_of_heap_spaces,
+    ops::v8::op_v8_update_heap_space_statistics,
+    ops::v8::op_v8_get_heap_code_statistics,
+    ops::v8::op_v8_take_heap_snapshot,
     ops::v8::op_v8_get_wire_format_version,
     ops::v8::op_v8_new_deserializer,
     ops::v8::op_v8_new_serializer,
@@ -297,6 +244,7 @@ deno_core::extension!(deno_node,
     ops::v8::op_v8_write_value,
     ops::vm::op_vm_create_script,
     ops::vm::op_vm_create_context,
+    ops::vm::op_vm_create_context_without_contextify,
     ops::vm::op_vm_script_run_in_context,
     ops::vm::op_vm_is_context,
     ops::vm::op_vm_compile_function,
@@ -313,20 +261,12 @@ deno_core::extension!(deno_node,
     ops::handle_wrap::op_node_new_async_id,
     ops::http::op_node_http_fetch_response_upgrade,
     ops::http::op_node_http_request_with_conn,
+    ops::http::op_node_http_response_reclaim_conn,
     ops::http::op_node_http_await_information,
     ops::http::op_node_http_await_response,
-    ops::http2::op_http2_connect,
-    ops::http2::op_http2_poll_client_connection,
-    ops::http2::op_http2_client_request,
-    ops::http2::op_http2_client_get_response,
-    ops::http2::op_http2_client_get_response_body_chunk,
-    ops::http2::op_http2_client_send_data,
-    ops::http2::op_http2_client_reset_stream,
-    ops::http2::op_http2_client_send_trailers,
-    ops::http2::op_http2_client_get_response_trailers,
-    ops::http2::op_http2_accept,
-    ops::http2::op_http2_listen,
-    ops::http2::op_http2_send_response,
+    ops::http2::op_http2_constants,
+    ops::http2::op_http2_callbacks,
+    ops::http2::op_http2_http_state,
     ops::os::op_node_os_get_priority,
     ops::os::op_node_os_set_priority,
     ops::os::op_node_os_user_info,
@@ -359,13 +299,20 @@ deno_core::extension!(deno_node,
     ops::require::op_require_package_imports_resolve<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys>,
     ops::require::op_require_break_on_next_statement,
     ops::util::op_node_guess_handle_type,
+    ops::util::op_node_is_tty,
     ops::util::op_node_view_has_buffer,
+    ops::util::op_node_get_own_non_index_properties,
     ops::util::op_node_call_is_from_dependency<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys>,
     ops::util::op_node_in_npm_package<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys>,
+    ops::util::op_node_parse_env,
     ops::worker_threads::op_worker_threads_filename<TSys>,
+    ops::worker_threads::op_worker_get_resource_limits,
     ops::ipc::op_node_child_ipc_pipe,
-    ops::ipc::op_node_ipc_write,
-    ops::ipc::op_node_ipc_read,
+    ops::ipc::op_node_ipc_write_json,
+    ops::ipc::op_node_ipc_read_json,
+    ops::ipc::op_node_ipc_read_advanced,
+    ops::ipc::op_node_ipc_write_advanced,
+    ops::ipc::op_node_ipc_buffer_constructor,
     ops::ipc::op_node_ipc_ref,
     ops::ipc::op_node_ipc_unref,
     ops::process::op_node_process_kill,
@@ -374,7 +321,11 @@ deno_core::extension!(deno_node,
     ops::process::op_node_process_setgid,
     ops::process::op_node_process_setuid,
     ops::process::op_process_abort,
+    ops::process::op_node_process_constrained_memory<TSys>,
+    ops::node_cli_parser::op_node_translate_cli_args,
+    ops::shell::op_node_parse_shell_args,
     ops::tls::op_get_root_certificates,
+    ops::tls::op_set_default_ca_certificates,
     ops::tls::op_tls_peer_certificate,
     ops::tls::op_tls_canonicalize_ipv4_address,
     ops::tls::op_node_tls_start,
@@ -388,30 +339,41 @@ deno_core::extension!(deno_node,
     ops::inspector::op_inspector_disconnect,
     ops::inspector::op_inspector_emit_protocol_event,
     ops::inspector::op_inspector_enabled,
-    ops::sqlite::op_node_database_backup,
+    ops::udp::op_node_udp_bind,
+    ops::udp::op_node_udp_join_multi_v4,
+    ops::udp::op_node_udp_leave_multi_v4,
+    ops::udp::op_node_udp_join_multi_v6,
+    ops::udp::op_node_udp_leave_multi_v6,
+    ops::udp::op_node_udp_set_broadcast,
+    ops::udp::op_node_udp_set_multicast_loopback,
+    ops::udp::op_node_udp_set_multicast_ttl,
+    ops::udp::op_node_udp_set_ttl,
+    ops::udp::op_node_udp_set_multicast_interface,
+    ops::udp::op_node_udp_join_source_specific,
+    ops::udp::op_node_udp_leave_source_specific,
+    ops::udp::op_node_udp_send,
+    ops::udp::op_node_udp_recv,
   ],
   objects = [
     ops::perf_hooks::EldHistogram,
-    ops::sqlite::DatabaseSync,
-    ops::sqlite::Session,
     ops::handle_wrap::AsyncWrap,
     ops::handle_wrap::HandleWrap,
-    ops::sqlite::StatementSync,
-    ops::crypto::digest::Hasher,
     ops::zlib::BrotliDecoder,
     ops::zlib::BrotliEncoder,
     ops::zlib::Zlib,
+    ops::zlib::ZstdCompress,
+    ops::zlib::ZstdDecompress,
+    ops::libuv_stream::TCP,
+    ops::http2::Http2Session,
+    ops::http2::Http2Stream,
   ],
   esm_entry_point = "ext:deno_node/02_init.js",
   esm = [
     dir "polyfills",
+    "00_globals.js",
     "02_init.js",
     "_events.mjs",
-    "_fs/_fs_access.ts",
-    "_fs/_fs_appendFile.ts",
-    "_fs/_fs_chmod.ts",
-    "_fs/_fs_chown.ts",
-    "_fs/_fs_close.ts",
+    "internal/fs/promises.ts",
     "_fs/_fs_common.ts",
     "_fs/_fs_constants.ts",
     "_fs/_fs_copy.ts",
@@ -420,55 +382,24 @@ deno_core::extension!(deno_node,
     "_fs/cp/cp_sync.ts",
     "_fs/_fs_dir.ts",
     "_fs/_fs_exists.ts",
-    "_fs/_fs_fchmod.ts",
-    "_fs/_fs_fchown.ts",
-    "_fs/_fs_fdatasync.ts",
     "_fs/_fs_fstat.ts",
-    "_fs/_fs_fsync.ts",
-    "_fs/_fs_ftruncate.ts",
-    "_fs/_fs_futimes.ts",
     "_fs/_fs_glob.ts",
-    "_fs/_fs_lchmod.ts",
-    "_fs/_fs_lchown.ts",
-    "_fs/_fs_link.ts",
     "_fs/_fs_lstat.ts",
     "_fs/_fs_lutimes.ts",
-    "_fs/_fs_mkdir.ts",
-    "_fs/_fs_mkdtemp.ts",
-    "_fs/_fs_open.ts",
-    "_fs/_fs_opendir.ts",
     "_fs/_fs_read.ts",
     "_fs/_fs_readdir.ts",
     "_fs/_fs_readFile.ts",
     "_fs/_fs_readlink.ts",
-    "_fs/_fs_readv.ts",
-    "_fs/_fs_realpath.ts",
-    "_fs/_fs_rename.ts",
-    "_fs/_fs_rm.ts",
-    "_fs/_fs_rmdir.ts",
-    "_fs/_fs_stat.ts",
-    "_fs/_fs_statfs.ts",
-    "_fs/_fs_symlink.ts",
-    "_fs/_fs_truncate.ts",
-    "_fs/_fs_unlink.ts",
-    "_fs/_fs_utimes.ts",
-    "_fs/_fs_watch.ts",
-    "_fs/_fs_write.ts",
-    "_fs/_fs_writeFile.ts",
-    "_fs/_fs_writev.ts",
     "_next_tick.ts",
     "_process/exiting.ts",
     "_process/process.ts",
     "_process/streams.mjs",
     "_readline.mjs",
     "_util/_util_callbackify.js",
-    "_util/asserts.ts",
     "_util/async.ts",
     "_util/os.ts",
-    "_util/std_asserts.ts",
     "_utils.ts",
     "_zlib_binding.mjs",
-    "assertion_error.ts",
     "internal_binding/_libuv_winerror.ts",
     "internal_binding/_listen.ts",
     "internal_binding/_node.ts",
@@ -496,7 +427,10 @@ deno_core::extension!(deno_node,
     "internal_binding/udp_wrap.ts",
     "internal_binding/util.ts",
     "internal_binding/uv.ts",
+    "internal/assert/assertion_error.js",
     "internal/assert/calltracker.js",
+    "internal/assert/myers_diff.js",
+    "internal/assert/utils.ts",
     "internal/assert.mjs",
     "internal/async_hooks.ts",
     "internal/blocklist.mjs",
@@ -529,15 +463,17 @@ deno_core::extension!(deno_node,
     "internal/dtrace.ts",
     "internal/error_codes.ts",
     "internal/errors.ts",
+    "internal/errors/error_source.ts",
     "internal/event_target.mjs",
     "internal/events/abort_listener.mjs",
-    "internal/fixed_queue.ts",
+    "internal/fs/stat_utils.ts",
     "internal/fs/streams.mjs",
     "internal/fs/utils.mjs",
     "internal/fs/handle.ts",
     "internal/hide_stack_frames.ts",
     "internal/http.ts",
     "internal/http2/util.ts",
+    "internal/http2/compat.js",
     "internal/idna.ts",
     "internal/net.ts",
     "internal/normalize_encoding.ts",
@@ -569,8 +505,10 @@ deno_core::extension!(deno_node,
     "internal/streams/utils.js",
     "internal/test/binding.ts",
     "internal/timers.mjs",
+    "internal/tty.js",
     "internal/url.ts",
     "internal/util.mjs",
+    "internal/util/colors.ts",
     "internal/util/comparisons.ts",
     "internal/util/debuglog.ts",
     "internal/util/inspect.mjs",
@@ -675,7 +613,17 @@ deno_core::extension!(deno_node,
     }
 
     state.put(AsyncId::default());
+
+    // Initialize a uv_loop_t for libuv compat layer (used by TCP/HTTP2)
+    // SAFETY: zeroed memory is valid for UvLoop before uv_loop_init
+    let mut uv_loop = Box::new(unsafe { std::mem::zeroed::<deno_core::uv_compat::UvLoop>() });
+    // SAFETY: uv_loop points to valid zeroed memory ready for initialization
+    unsafe { deno_core::uv_compat::uv_loop_init(&mut *uv_loop) };
+    state.put(uv_loop);
+
   },
+  global_template_middleware = global_template_middleware,
+  global_object_middleware = global_object_middleware,
   customizer = |ext: &mut deno_core::Extension| {
     let external_references = [
       vm::QUERY_MAP_FN.with(|query| {
@@ -747,6 +695,42 @@ deno_core::extension!(deno_node,
       vm::INDEXED_ENUMERATOR_MAP_FN.with(|enumerator| {
         ExternalReference {
           enumerator: *enumerator,
+        }
+      }),
+
+      global::GETTER_MAP_FN.with(|getter| {
+        ExternalReference {
+          named_getter: *getter,
+        }
+      }),
+      global::SETTER_MAP_FN.with(|setter| {
+        ExternalReference {
+          named_setter: *setter,
+        }
+      }),
+      global::QUERY_MAP_FN.with(|query| {
+        ExternalReference {
+          named_query: *query,
+        }
+      }),
+      global::DELETER_MAP_FN.with(|deleter| {
+        ExternalReference {
+          named_deleter: *deleter,
+        }
+      }),
+      global::ENUMERATOR_MAP_FN.with(|enumerator| {
+        ExternalReference {
+          enumerator: *enumerator,
+        }
+      }),
+      global::DEFINER_MAP_FN.with(|definer| {
+        ExternalReference {
+          named_definer: *definer,
+        }
+      }),
+      global::DESCRIPTOR_MAP_FN.with(|descriptor| {
+        ExternalReference {
+          named_getter: *descriptor,
         }
       }),
     ];

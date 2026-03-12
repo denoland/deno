@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::ffi::c_void;
@@ -16,20 +16,20 @@ use deno_core::AsyncMut;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
 use deno_core::BufView;
-use deno_core::ByteString;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
 use deno_core::ExternalPointer;
+use deno_core::FromV8;
 use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_core::convert::ByteString;
 use deno_core::external;
 use deno_core::futures::TryFutureExt;
 use deno_core::op2;
-use deno_core::serde_v8::from_v8;
 use deno_core::unsync::JoinHandle;
 use deno_core::unsync::spawn;
 use deno_core::v8;
@@ -218,7 +218,7 @@ pub fn op_http_upgrade_raw(
   Ok(state.resource_table.add(UpgradeStream::new(read, write)))
 }
 
-#[op2(async)]
+#[op2]
 #[smi]
 pub async fn op_http_upgrade_websocket_next(
   state: Rc<RefCell<OpState>>,
@@ -366,7 +366,6 @@ where
 }
 
 #[op2]
-#[serde]
 pub fn op_http_get_request_header(
   external: *const c_void,
   #[string] name: String,
@@ -519,8 +518,8 @@ pub fn op_http_set_response_headers(
     let name = pair.get_index(scope, 0).unwrap();
     let value = pair.get_index(scope, 1).unwrap();
 
-    let v8_name: ByteString = from_v8(scope, name).unwrap();
-    let v8_value: ByteString = from_v8(scope, value).unwrap();
+    let v8_name = ByteString::from_v8(scope, name).unwrap();
+    let v8_value = ByteString::from_v8(scope, value).unwrap();
     let header_name = HeaderName::from_bytes(&v8_name).unwrap();
     let header_value =
       // SAFETY: These are valid latin-1 strings
@@ -532,7 +531,7 @@ pub fn op_http_set_response_headers(
 #[op2]
 pub fn op_http_set_response_trailers(
   external: *const c_void,
-  #[serde] trailers: Vec<(ByteString, ByteString)>,
+  #[scoped] trailers: Vec<(ByteString, ByteString)>,
 ) {
   let http =
     // SAFETY: op is called with external.
@@ -711,7 +710,7 @@ pub fn op_http_get_request_cancelled(external: *const c_void) -> bool {
   http.cancelled()
 }
 
-#[op2(async)]
+#[op2]
 pub async fn op_http_request_on_cancel(external: *const c_void) -> bool {
   let http =
     // SAFETY: op is called with external.
@@ -726,7 +725,7 @@ pub async fn op_http_request_on_cancel(external: *const c_void) -> bool {
 
 /// Returned promise resolves when body streaming finishes.
 /// Call [`op_http_close_after_finish`] when done with the external.
-#[op2(async)]
+#[op2]
 pub async fn op_http_set_response_body_resource(
   state: Rc<RefCell<OpState>>,
   external: *const c_void,
@@ -874,7 +873,8 @@ async fn serve_http2_autodetect(
   options: Options,
 ) -> Result<(), HttpNextError> {
   let prefix = NetworkStreamPrefixCheck::new(io, HTTP2_PREFIX);
-  let (matches, io) = prefix.match_prefix().await?;
+  let (matches, io) =
+    prefix.match_prefix().try_or_cancel(cancel.clone()).await?;
   if matches {
     serve_http2_unconditional(io, svc, cancel, options.http2_builder_hook)
       .await
@@ -1007,6 +1007,10 @@ where
     NetworkStream::Tunnel(conn) => {
       serve_http(conn, connection_properties, lifetime, tx, options)
     }
+    #[cfg(windows)]
+    NetworkStream::WindowsPipe(conn) => {
+      serve_http(conn, connection_properties, lifetime, tx, options)
+    }
   }
 }
 
@@ -1074,7 +1078,6 @@ impl Drop for HttpJoinHandle {
 }
 
 #[op2]
-#[serde]
 pub fn op_http_serve<HTTP>(
   state: Rc<RefCell<OpState>>,
   #[smi] listener_rid: ResourceId,
@@ -1130,7 +1133,6 @@ where
 }
 
 #[op2]
-#[serde]
 pub fn op_http_serve_on<HTTP>(
   state: Rc<RefCell<OpState>>,
   #[smi] connection_rid: ResourceId,
@@ -1200,7 +1202,7 @@ pub fn op_http_try_wait(
   ptr.into_raw()
 }
 
-#[op2(async)]
+#[op2]
 pub async fn op_http_wait(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -1321,7 +1323,7 @@ pub fn op_http_cancel(
   Ok(())
 }
 
-#[op2(async)]
+#[op2]
 pub async fn op_http_close(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -1366,6 +1368,9 @@ enum UpgradeStreamWriteState {
     AsyncMut<Option<(NetworkStreamReadHalf, Bytes)>>,
   ),
   Network(NetworkStreamWriteHalf),
+  /// The upgrade was rejected with a non-101 status code.
+  /// The response has been sent and the stream is now closed for writing.
+  Rejected,
   Failed,
 }
 
@@ -1373,6 +1378,9 @@ struct UpgradeStream {
   read: Rc<AsyncRefCell<Option<(NetworkStreamReadHalf, Bytes)>>>,
   write: AsyncRefCell<UpgradeStreamWriteState>,
   cancel_handle: CancelHandle,
+  /// Set to true when the upgrade was rejected with a non-101 status.
+  /// When rejected, reads return EOF and writes are silently ignored.
+  rejected: std::cell::Cell<bool>,
 }
 
 impl UpgradeStream {
@@ -1384,6 +1392,7 @@ impl UpgradeStream {
       read,
       write: AsyncRefCell::new(write),
       cancel_handle: CancelHandle::new(),
+      rejected: std::cell::Cell::new(false),
     }
   }
 
@@ -1391,6 +1400,11 @@ impl UpgradeStream {
     self: Rc<Self>,
     buf: &mut [u8],
   ) -> Result<usize, std::io::Error> {
+    // If the upgrade was rejected, return EOF
+    if self.rejected.get() {
+      return Ok(0);
+    }
+
     let cancel_handle = RcRef::map(self.clone(), |this| &this.cancel_handle);
     async {
       let read = RcRef::map(self, |this| &this.read);
@@ -1412,12 +1426,19 @@ impl UpgradeStream {
 
   async fn write(self: Rc<Self>, buf: &[u8]) -> Result<usize, std::io::Error> {
     let cancel_handle = RcRef::map(self.clone(), |this| &this.cancel_handle);
+    let this = self.clone();
     async {
       let wr = RcRef::map(self, |this| &this.write);
       let mut wr = wr.borrow_mut().await;
       match std::mem::replace(&mut *wr, UpgradeStreamWriteState::Failed) {
         UpgradeStreamWriteState::Failed => {
           Err(std::io::Error::other(HttpNextError::RawUpgradeFailed))
+        }
+        UpgradeStreamWriteState::Rejected => {
+          // The upgrade was rejected and the response was already sent.
+          // Silently accept writes but don't do anything with them.
+          *wr = UpgradeStreamWriteState::Rejected;
+          Ok(buf.len())
         }
         UpgradeStreamWriteState::Parsing(
           mut bytes,
@@ -1438,36 +1459,69 @@ impl UpgradeStream {
               Ok(buf.len())
             }
             Ok(httparse::Status::Complete(n)) => {
-              if response.code != Some(StatusCode::SWITCHING_PROTOCOLS.as_u16())
-              {
-                return Err(std::io::Error::other(
-                  HttpNextError::InvalidHttpStatusLine,
-                ));
-              }
+              let status_code = response.code.unwrap_or(200);
 
-              http
-                .otel_info_set_status(StatusCode::SWITCHING_PROTOCOLS.as_u16());
-              http.response_parts().status = StatusCode::SWITCHING_PROTOCOLS;
-
-              for header in response.headers {
-                http.response_parts().headers.append(
-                  HeaderName::from_bytes(header.name.as_bytes())
-                    .map_err(std::io::Error::other)?,
-                  HeaderValue::from_bytes(header.value)
-                    .map_err(std::io::Error::other)?,
+              if status_code == StatusCode::SWITCHING_PROTOCOLS.as_u16() {
+                // Upgrade accepted - proceed with upgrade
+                http.otel_info_set_status(
+                  StatusCode::SWITCHING_PROTOCOLS.as_u16(),
                 );
+                http.response_parts().status = StatusCode::SWITCHING_PROTOCOLS;
+
+                for header in response.headers {
+                  http.response_parts().headers.append(
+                    HeaderName::from_bytes(header.name.as_bytes())
+                      .map_err(std::io::Error::other)?,
+                    HeaderValue::from_bytes(header.value)
+                      .map_err(std::io::Error::other)?,
+                  );
+                }
+
+                http.complete();
+
+                let upgraded =
+                  on_upgrade.await.map_err(std::io::Error::other)?;
+                let (stream, bytes) = extract_network_stream(upgraded);
+                let (read, write) = stream.into_split();
+
+                let _ = read_cell.insert((read, bytes));
+                *wr = UpgradeStreamWriteState::Network(write);
+
+                Ok(n - prev_len)
+              } else {
+                // Upgrade rejected - send the rejection response through hyper
+                http.otel_info_set_status(status_code);
+                http.response_parts().status =
+                  StatusCode::from_u16(status_code)
+                    .unwrap_or(StatusCode::BAD_REQUEST);
+
+                for header in response.headers {
+                  http.response_parts().headers.append(
+                    HeaderName::from_bytes(header.name.as_bytes())
+                      .map_err(std::io::Error::other)?,
+                    HeaderValue::from_bytes(header.value)
+                      .map_err(std::io::Error::other)?,
+                  );
+                }
+
+                // Any data after the headers is the response body
+                let body = bytes.split_off(n);
+                if !body.is_empty() {
+                  http.set_response_body(ResponseBytesInner::Bytes(
+                    BufView::from(body.freeze()),
+                  ));
+                }
+
+                http.complete();
+
+                // Mark as rejected - no upgrade will happen
+                *wr = UpgradeStreamWriteState::Rejected;
+                this.rejected.set(true);
+                // Drop the on_upgrade future since we're not upgrading
+                drop(on_upgrade);
+
+                Ok(buf.len())
               }
-
-              http.complete();
-
-              let upgraded = on_upgrade.await.map_err(std::io::Error::other)?;
-              let (stream, bytes) = extract_network_stream(upgraded);
-              let (read, write) = stream.into_split();
-
-              let _ = read_cell.insert((read, bytes));
-              *wr = UpgradeStreamWriteState::Network(write);
-
-              Ok(n - prev_len)
             }
             Err(e) => Err(std::io::Error::other(e)),
           }
@@ -1494,7 +1548,12 @@ impl UpgradeStream {
       UpgradeStreamWriteState::Failed => {
         Err(std::io::Error::other(HttpNextError::RawUpgradeFailed))
       }
+      UpgradeStreamWriteState::Rejected => {
+        // The upgrade was rejected; silently accept writes
+        Ok(buf1.len() + buf2.len())
+      }
       UpgradeStreamWriteState::Parsing(..) => {
+        drop(wr);
         self.write(if buf1.is_empty() { buf2 } else { buf1 }).await
       }
       UpgradeStreamWriteState::Network(stream) => {
@@ -1526,7 +1585,7 @@ pub fn op_can_write_vectored(
   state.resource_table.get::<UpgradeStream>(rid).is_ok()
 }
 
-#[op2(async)]
+#[op2]
 #[number]
 pub async fn op_raw_write_vectored(
   state: Rc<RefCell<OpState>>,

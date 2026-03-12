@@ -1,0 +1,57 @@
+{
+  "name": "@types/body-parser",
+  "dist-tags": {
+    "ts5.2": "1.19.6",
+    "ts5.9": "1.19.6",
+    "ts5.6": "1.19.6",
+    "ts5.7": "1.19.6",
+    "ts5.8": "1.19.6",
+    "ts5.5": "1.19.6",
+    "ts5.1": "1.19.6",
+    "ts5.3": "1.19.6",
+    "ts5.4": "1.19.6",
+    "latest": "1.19.6",
+    "ts6.0": "1.19.6"
+  },
+  "versions": {
+    "1.19.6": {
+      "name": "@types/body-parser",
+      "version": "1.19.6",
+      "license": "MIT",
+      "_id": "@types/body-parser@1.19.6",
+      "dist": {
+        "shasum": "1859bebb8fd7dac9918a45d54c1971ab8b5af474",
+        "tarball": "http://localhost:4260/@types/body-parser/body-parser-1.19.6.tgz",
+        "fileCount": 5,
+        "integrity": "sha512-HLFeCYgz89uk22N5Qg3dvGvsv46B8GLvKKo1zKG4NybA8U2DiEO3w9lqGg29t/tfLRJpJ6iQxnVw4OnB7MoM9g==",
+        "unpackedSize": 7888
+      },
+      "main": "",
+      "types": "index.d.ts",
+      "scripts": {},
+      "repository": {
+        "url": "https://github.com/DefinitelyTyped/DefinitelyTyped.git",
+        "type": "git",
+        "directory": "types/body-parser"
+      },
+      "description": "TypeScript definitions for body-parser",
+      "directories": {},
+      "dependencies": {
+        "@types/node": "*",
+        "@types/connect": "*"
+      },
+      "_hasShrinkwrap": false,
+      "peerDependencies": {},
+      "typeScriptVersion": "5.1",
+      "typesPublisherContentHash": "d788c843f427d6ca19640ee90eb433324a18f23aed05402a82c4e47e6d60b29d"
+    }
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/body-parser",
+  "repository": {
+    "url": "https://github.com/DefinitelyTyped/DefinitelyTyped.git",
+    "type": "git",
+    "directory": "types/body-parser"
+  },
+  "description": "TypeScript definitions for body-parser"
+}

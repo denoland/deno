@@ -1,0 +1,8 @@
+{
+  "name": "@workspace/a",
+  "version": "1.0.0",
+  "publish": false,
+  "exports": {
+    ".": "./mod.ts"
+  }
+}

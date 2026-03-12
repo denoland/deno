@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // deno-lint-ignore-file no-undef no-console
 
@@ -39,6 +39,7 @@ import * as path from "@std/path";
 import { delay } from "@std/async/delay";
 import { stub } from "@std/testing/mock";
 import { execSync } from "node:child_process";
+import nodeAssert from "node:assert";
 
 const testDir = new URL(".", import.meta.url);
 
@@ -544,7 +545,19 @@ Deno.test({
   fn() {
     // @ts-ignore `Deno.stdin.rid` was soft-removed in Deno 2.
     assertEquals(process.stdin.fd, Deno.stdin.rid);
-    assertEquals(process.stdin.isTTY, Deno.stdin.isTerminal());
+    const isTTY = Deno.stdin.isTerminal();
+    assertEquals(process.stdin.isTTY, isTTY);
+
+    // Allows overwriting `process.stdin.isTTY` (mirrors stdout/stderr from #26130)
+    const original = process.stdin.isTTY;
+    try {
+      // @ts-ignore isTTY is defined as readonly in types but we allow setting it
+      process.stdin.isTTY = !isTTY;
+      assertEquals(process.stdin.isTTY, !isTTY);
+    } finally {
+      // @ts-ignore isTTY is defined as readonly in types but we allow setting it
+      process.stdin.isTTY = original;
+    }
   },
 });
 
@@ -852,7 +865,6 @@ Deno.test("process.on, process.off, process.removeListener doesn't throw on unim
     "beforeExit",
     "disconnect",
     "message",
-    "multipleResolves",
     "rejectionHandled",
     "uncaughtException",
     "uncaughtExceptionMonitor",
@@ -938,6 +950,7 @@ Deno.test("process.config", () => {
   assert(process.config !== undefined);
   assert(process.config.target_defaults !== undefined);
   assert(process.config.variables !== undefined);
+  assertEquals(process.config.variables.host_arch, process.arch);
 });
 
 Deno.test("process._exiting", () => {
@@ -946,6 +959,7 @@ Deno.test("process._exiting", () => {
 });
 
 Deno.test("process.execPath", () => {
+  assertEquals(typeof process.execPath, "string");
   assertEquals(process.execPath, process.argv[0]);
 });
 
@@ -1092,6 +1106,51 @@ Deno.test({
     assert(uv.errname);
     assert(typeof uv.errname === "function");
     assertEquals(uv.errname(-1), "EPERM");
+  },
+});
+
+Deno.test({
+  name: "process.binding('uv').getErrorMessage",
+  ignore: Deno.build.os === "windows",
+  fn() {
+    // @ts-ignore: untyped internal binding, not actually supposed to be
+    // used by userland modules in Node.js
+    const uv = process.binding("uv");
+    assert(uv.getErrorMessage);
+    assert(typeof uv.getErrorMessage === "function");
+    assertEquals(uv.getErrorMessage(-1), "operation not permitted");
+  },
+});
+
+Deno.test({
+  name: "process.binding('uv').getErrorMap",
+  ignore: Deno.build.os === "windows",
+  fn() {
+    // @ts-ignore: untyped internal binding, not actually supposed to be
+    // used by userland modules in Node.js
+    const uv = process.binding("uv");
+    assert(uv.getErrorMap);
+    assert(typeof uv.getErrorMap === "function");
+    const errorMap = uv.getErrorMap();
+    assert(errorMap instanceof Map);
+    // errorMap maps error code (number) to [name, message]
+    assertEquals(errorMap.get(-1), ["EPERM", "operation not permitted"]);
+  },
+});
+
+Deno.test({
+  name: "process.binding('uv').getCodeMap",
+  ignore: Deno.build.os === "windows",
+  fn() {
+    // @ts-ignore: untyped internal binding, not actually supposed to be
+    // used by userland modules in Node.js
+    const uv = process.binding("uv");
+    assert(uv.getCodeMap);
+    assert(typeof uv.getCodeMap === "function");
+    const codeMap = uv.getCodeMap();
+    assert(codeMap instanceof Map);
+    // codeMap maps error name (string) to error code (number)
+    assertEquals(codeMap.get("EPERM"), -1);
   },
 });
 
@@ -1258,6 +1317,7 @@ Deno.test(function importedExecArgvTest() {
 });
 
 Deno.test(function importedExecPathTest() {
+  assertEquals(typeof importedExecPath, "string");
   assertEquals(importedExecPath, Deno.execPath());
 });
 
@@ -1503,5 +1563,149 @@ Deno.test({
   ignore: Deno.build.os !== "windows" && Deno.build.os !== "android",
   fn() {
     assertEquals(process.setuid, undefined);
+  },
+});
+
+Deno.test({
+  name: "process.loadEnvFile()",
+  async fn() {
+    const dirPath = Deno.makeTempDirSync();
+    const envFilePath = path.join(dirPath, "envfile.env");
+    const envContent = "FOO=foo\nBAR=bar\nBAZ=baz";
+    Deno.writeTextFileSync(envFilePath, envContent);
+
+    const code = `
+    import assert from "node:assert";
+    import process from "node:process";
+    process.loadEnvFile(Deno.args[0]);
+
+    assert.strictEqual(process.env.FOO, "foo");
+    assert.strictEqual(process.env.BAR, "bar");
+    assert.strictEqual(process.env.BAZ, "baz");
+    `;
+
+    const command = new Deno.Command(Deno.execPath(), {
+      args: ["eval", code, envFilePath],
+      cwd: testDir,
+      stderr: "piped",
+      stdout: "piped",
+    });
+    const { code: exitCode, stderr } = await command.output();
+    const decoder = new TextDecoder();
+    const stderrStr = decoder.decode(stderr).trim();
+    if (exitCode !== 0) {
+      console.error("Error output:", stderrStr);
+    }
+
+    Deno.removeSync(dirPath, { recursive: true });
+  },
+});
+
+Deno.test({
+  name: "process.loadEnvFile() with buffer path",
+  async fn() {
+    const dirPath = Deno.makeTempDirSync();
+    const envFilePath = path.join(dirPath, "envfile.env");
+    const envContent = "FOO=foo\nBAR=bar\nBAZ=baz";
+    Deno.writeTextFileSync(envFilePath, envContent);
+
+    const code = `
+    import assert from "node:assert";
+    import process from "node:process";
+    process.loadEnvFile(Buffer.from(Deno.args[0]));
+
+    assert.strictEqual(process.env.FOO, "foo");
+    assert.strictEqual(process.env.BAR, "bar");
+    assert.strictEqual(process.env.BAZ, "baz");
+    `;
+
+    const command = new Deno.Command(Deno.execPath(), {
+      args: ["eval", code, envFilePath],
+      cwd: testDir,
+      stderr: "piped",
+      stdout: "piped",
+    });
+    const { code: exitCode, stderr } = await command.output();
+    const decoder = new TextDecoder();
+    const stderrStr = decoder.decode(stderr).trim();
+    if (exitCode !== 0) {
+      console.error("Error output:", stderrStr);
+    }
+
+    Deno.removeSync(dirPath, { recursive: true });
+  },
+});
+
+Deno.test({
+  name: "process.loadEnvFile() with non-existent file",
+  fn() {
+    const dirPath = Deno.makeTempDirSync();
+    const envFilePath = path.join(dirPath, "envfile.env");
+
+    nodeAssert.throws(
+      () => process.loadEnvFile(envFilePath),
+      {
+        code: "ENOENT",
+        syscall: "open",
+        path: envFilePath,
+      },
+    );
+
+    Deno.removeSync(dirPath, { recursive: true });
+  },
+});
+
+Deno.test({
+  name: "process.loadEnvFile() trim null characters in env values",
+  async fn() {
+    const dirPath = Deno.makeTempDirSync();
+    const envFilePath = path.join(dirPath, "envfile.env");
+    const envContent = "FOO=f\0oo\nBAR=bar\n";
+    Deno.writeTextFileSync(envFilePath, envContent);
+
+    const code = `
+    import assert from "node:assert";
+    import process from "node:process";
+    process.loadEnvFile(Deno.args[0]);
+
+    assert.strictEqual(process.env.FOO, "f");
+    assert.strictEqual(process.env.BAR, "bar");
+    `;
+
+    const command = new Deno.Command(Deno.execPath(), {
+      args: ["eval", code, envFilePath],
+      cwd: testDir,
+      stderr: "piped",
+      stdout: "piped",
+    });
+    const { code: exitCode, stderr } = await command.output();
+    const decoder = new TextDecoder();
+    const stderrStr = decoder.decode(stderr).trim();
+    if (exitCode !== 0) {
+      console.error("Error output:", stderrStr);
+    }
+
+    Deno.removeSync(dirPath, { recursive: true });
+  },
+});
+
+Deno.test({
+  name: "process.loadEnvFile() throws on invalid UTF-8 encoding",
+  fn() {
+    const dirPath = Deno.makeTempDirSync();
+    const envFilePath = path.join(dirPath, "envfile.env");
+    const contentArray = new Uint8Array([0xff, 0xfe, 0xfd]);
+    Deno.writeFileSync(envFilePath, contentArray);
+
+    nodeAssert.throws(
+      () => process.loadEnvFile(envFilePath),
+      {
+        name: "TypeError",
+        code: "ERR_INVALID_ARG_TYPE",
+        message: `Contents of '${envFilePath}' should be a valid string.`,
+      },
+    );
+
+    Deno.removeSync(dirPath, { recursive: true });
   },
 });

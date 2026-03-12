@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -49,6 +49,7 @@ const {
 export const kMaybeDestroy = Symbol("kMaybeDestroy");
 export const kUpdateTimer = Symbol("kUpdateTimer");
 export const kAfterAsyncWrite = Symbol("kAfterAsyncWrite");
+export const kBoundSession = Symbol("kBoundSession");
 export const kHandle = Symbol("kHandle");
 export const kSession = Symbol("kSession");
 export const kBuffer = Symbol("kBuffer");

@@ -1,0 +1,13 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "install",
+      "output": "[WILDCARD]"
+    },
+    {
+      "args": "compile --unstable-npm-lazy-caching -A --output out main.ts",
+      "output": "compile.out"
+    }
+  ]
+}

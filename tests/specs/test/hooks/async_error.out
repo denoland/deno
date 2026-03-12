@@ -30,7 +30,7 @@ second test (beforeEach fails) => ./async_error.ts:46:6
 error: (in promise) Error: Async error in beforeEach
       setTimeout(() => reject(new Error("Async error in beforeEach")), 5);
                               ^
-    at [WILDCARD]async_error.ts:18:31)
+    at [WILDCARD]async_error.ts:18:31
 
 third test (afterEach fails) => ./async_error.ts:50:6
 error: (in promise) Error: Async error in afterEach

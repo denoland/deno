@@ -1,10 +1,15 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
+
+use std::cell::RefCell;
+use std::rc::Rc;
+use std::time::Duration;
 
 use deno_core::GarbageCollected;
 use deno_core::WebIDL;
 use deno_core::cppgc::Ref;
 use deno_core::futures::channel::oneshot;
 use deno_core::op2;
+use deno_core::v8;
 use deno_error::JsErrorBox;
 
 use crate::Instance;
@@ -23,6 +28,7 @@ pub struct GPUQueue {
   pub label: String,
 
   pub id: wgpu_core::id::QueueId,
+  pub device: wgpu_core::id::DeviceId,
 }
 
 impl Drop for GPUQueue {
@@ -59,23 +65,15 @@ impl GPUQueue {
   }
 
   #[required(1)]
+  #[undefined]
   fn submit(
     &self,
     #[webidl] command_buffers: Vec<Ref<GPUCommandBuffer>>,
   ) -> Result<(), JsErrorBox> {
     let ids = command_buffers
       .into_iter()
-      .enumerate()
-      .map(|(i, cb)| {
-        if cb.consumed.set(()).is_err() {
-          Err(JsErrorBox::type_error(format!(
-            "The command buffer at position {i} has already been submitted."
-          )))
-        } else {
-          Ok(cb.id)
-        }
-      })
-      .collect::<Result<Vec<_>, _>>()?;
+      .map(|cb| cb.id)
+      .collect::<Vec<_>>();
 
     let err = self.instance.queue_submit(self.id, &ids).err();
 
@@ -86,33 +84,107 @@ impl GPUQueue {
     Ok(())
   }
 
-  #[async_method]
-  async fn on_submitted_work_done(&self) {
+  // In the successful case, the promise should resolve to undefined, but
+  // `#[undefined]` does not seem to work here.
+  // https://github.com/denoland/deno/issues/29603
+  async fn on_submitted_work_done(&self) -> Result<(), JsErrorBox> {
     let (sender, receiver) = oneshot::channel::<()>();
+
     let callback = Box::new(move || {
-      // the promise may be dropped, so `send` may fail.
-      let _ = sender.send(());
+      sender.send(()).unwrap();
     });
+
     self
       .instance
       .queue_on_submitted_work_done(self.id, callback);
-    receiver.await.unwrap();
+
+    let done = Rc::new(RefCell::new(false));
+    let done_ = done.clone();
+    let device_poll_fut = async move {
+      while !*done.borrow() {
+        {
+          self
+            .instance
+            .device_poll(self.device, wgpu_types::PollType::wait_indefinitely())
+            .unwrap();
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+      }
+      Ok::<(), JsErrorBox>(())
+    };
+
+    let receiver_fut = async move {
+      receiver
+        .await
+        .map_err(|e| JsErrorBox::generic(e.to_string()))?;
+      let mut done = done_.borrow_mut();
+      *done = true;
+      Ok::<(), JsErrorBox>(())
+    };
+
+    tokio::try_join!(device_poll_fut, receiver_fut)?;
+
+    Ok(())
   }
 
   #[required(3)]
-  fn write_buffer(
+  #[undefined]
+  fn write_buffer<'a>(
     &self,
+    scope: &mut v8::PinScope<'a, '_>,
     #[webidl] buffer: Ref<GPUBuffer>,
     #[webidl(options(enforce_range = true))] buffer_offset: u64,
-    #[anybuffer] buf: &[u8],
+    data_arg: v8::Local<'a, v8::Value>,
     #[webidl(default = 0, options(enforce_range = true))] data_offset: u64,
     #[webidl(options(enforce_range = true))] size: Option<u64>,
-  ) {
+  ) -> Result<(), JsErrorBox> {
+    // Per the WebGPU spec, dataOffset and size are in elements (not bytes)
+    // when data is a TypedArray, and in bytes otherwise.
+    let (buf, bytes_per_element) = if let Ok(typed_array) =
+      v8::Local::<v8::TypedArray>::try_from(data_arg)
+    {
+      let len = typed_array.length();
+      let bpe = if len > 0 {
+        typed_array.byte_length() / len
+      } else {
+        1
+      };
+      let byte_offset = typed_array.byte_offset();
+      let byte_len = typed_array.byte_length();
+      let ab = typed_array.buffer(scope).unwrap();
+      // SAFETY: Pointer is non-null, and V8 guarantees that the
+      // byte_offset is within the buffer backing store.
+      let ptr = unsafe { ab.data().unwrap().as_ptr().add(byte_offset) };
+      let buf =
+          // SAFETY: the slice is within the bounds of the backing store
+          unsafe { std::slice::from_raw_parts(ptr as *const u8, byte_len) };
+      (buf, bpe)
+    } else if let Ok(view) =
+      v8::Local::<v8::ArrayBufferView>::try_from(data_arg)
+    {
+      let byte_offset = view.byte_offset();
+      let byte_len = view.byte_length();
+      let ab = view.buffer(scope).unwrap();
+      // SAFETY: Pointer is non-null, and V8 guarantees that the
+      // byte_offset is within the buffer backing store.
+      let ptr = unsafe { ab.data().unwrap().as_ptr().add(byte_offset) };
+      // SAFETY: the slice is within the bounds of the backing store
+      let buf =
+        unsafe { std::slice::from_raw_parts(ptr as *const u8, byte_len) };
+      (buf, 1)
+    } else {
+      return Err(JsErrorBox::type_error(
+        "data must be an ArrayBuffer or ArrayBufferView",
+      ));
+    };
+
+    let data_offset_bytes = data_offset as usize * bytes_per_element;
     let data = match size {
       Some(size) => {
-        &buf[(data_offset as usize)..((data_offset + size) as usize)]
+        let size_bytes = size as usize * bytes_per_element;
+        &buf[data_offset_bytes..(data_offset_bytes + size_bytes)]
       }
-      None => &buf[(data_offset as usize)..],
+      None => &buf[data_offset_bytes..],
     };
 
     let err = self
@@ -121,9 +193,12 @@ impl GPUQueue {
       .err();
 
     self.error_handler.push_error(err);
+
+    Ok(())
   }
 
   #[required(4)]
+  #[undefined]
   fn write_texture(
     &self,
     #[webidl] destination: GPUTexelCopyTextureInfo,
@@ -131,7 +206,7 @@ impl GPUQueue {
     #[webidl] data_layout: GPUTexelCopyBufferLayout,
     #[webidl] size: GPUExtent3D,
   ) {
-    let destination = wgpu_core::command::TexelCopyTextureInfo {
+    let destination = wgpu_types::TexelCopyTextureInfo {
       texture: destination.texture.id,
       mip_level: destination.mip_level,
       origin: destination.origin.into(),

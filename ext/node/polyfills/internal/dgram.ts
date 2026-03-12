@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -20,7 +20,7 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-import { lookup as defaultLookup } from "node:dns";
+import dns from "node:dns";
 import {
   isInt32,
   validateFunction,
@@ -38,7 +38,7 @@ export type SocketType = "udp4" | "udp6";
 export const kStateSymbol: unique symbol = Symbol("kStateSymbol");
 
 function lookup4(
-  lookup: typeof defaultLookup,
+  lookup: typeof dns.lookup,
   address: string,
   callback: (
     err: ErrnoException | null,
@@ -50,7 +50,7 @@ function lookup4(
 }
 
 function lookup6(
-  lookup: typeof defaultLookup,
+  lookup: typeof dns.lookup,
   address: string,
   callback: (
     err: ErrnoException | null,
@@ -63,10 +63,10 @@ function lookup6(
 
 export function newHandle(
   type: SocketType,
-  lookup?: typeof defaultLookup,
+  lookup?: typeof dns.lookup,
 ): UDP {
   if (lookup === undefined) {
-    lookup = defaultLookup;
+    lookup = dns.lookup;
   } else {
     validateFunction(lookup, "lookup");
   }

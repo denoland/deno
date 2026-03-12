@@ -1,0 +1,6 @@
+{
+  "tempDir": true,
+  "args": "lint a.ts b.ts",
+  "output": "lint.out",
+  "exitCode": 0
+}

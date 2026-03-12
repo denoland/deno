@@ -1,0 +1,6 @@
+First request: reusedSocket = false
+Socket in freeSockets pool: 1
+Second request: reusedSocket = true
+Socket back in freeSockets pool: 1
+Third request: reusedSocket = true
+All keepAlive tests passed!

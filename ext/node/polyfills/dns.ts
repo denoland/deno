@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -35,9 +35,10 @@ import {
 } from "ext:deno_node/internal/validators.mjs";
 import { isIP } from "ext:deno_node/internal/net.ts";
 import {
+  dnsOrderToNumber,
   emitInvalidHostnameWarning,
+  getDefaultDnsOrder,
   getDefaultResolver,
-  getDefaultVerbatim,
   isFamily,
   isLookupCallback,
   isLookupOptions,
@@ -46,6 +47,7 @@ import {
   setDefaultResolver,
   setDefaultResultOrder,
   validateHints,
+  validDnsOrders,
 } from "ext:deno_node/internal/dns/utils.ts";
 import type {
   AnyAaaaRecord,
@@ -204,7 +206,7 @@ export function lookup(
   let hints = 0;
   let family = 0;
   let all = false;
-  let verbatim = getDefaultVerbatim();
+  let dnsOrder = getDefaultDnsOrder();
   let port = undefined;
 
   // Parse arguments
@@ -234,8 +236,19 @@ export function lookup(
     }
 
     if (options?.family != null) {
-      validateOneOf(options.family, "options.family", validFamilies);
-      family = options.family;
+      // Accept both numeric (0, 4, 6) and string ('IPv4', 'IPv6') family values
+      // to match Node.js behavior
+      switch (options.family) {
+        case "IPv4":
+          family = 4;
+          break;
+        case "IPv6":
+          family = 6;
+          break;
+        default:
+          validateOneOf(options.family, "options.family", validFamilies);
+          family = options.family;
+      }
     }
 
     if (options?.all != null) {
@@ -245,7 +258,16 @@ export function lookup(
 
     if (options?.verbatim != null) {
       validateBoolean(options.verbatim, "options.verbatim");
-      verbatim = options.verbatim;
+      dnsOrder = options.verbatim ? "verbatim" : "ipv4first";
+    }
+
+    if ((options as Record<string, unknown>)?.order != null) {
+      validateOneOf(
+        (options as Record<string, unknown>).order,
+        "options.order",
+        validDnsOrders,
+      );
+      dnsOrder = (options as Record<string, unknown>).order as string;
     }
 
     if (options?.port != null) {
@@ -292,7 +314,7 @@ export function lookup(
     domainToASCII(hostname),
     family,
     hints,
-    verbatim ? cares.DNS_ORDER_VERBATIM : cares.DNS_ORDER_IPV4_FIRST,
+    dnsOrderToNumber(dnsOrder),
   );
 
   if (err) {

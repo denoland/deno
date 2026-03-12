@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::collections::BTreeMap;
@@ -34,7 +34,6 @@ use crate::glob::PathOrPatternSet;
 use crate::import_map::imports_values;
 use crate::import_map::scope_values;
 use crate::import_map::value_to_dep_req;
-use crate::import_map::values_to_set;
 use crate::util::is_skippable_io_error;
 
 mod permissions;
@@ -766,7 +765,7 @@ impl SerializedCompileConfig {
   }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Default, Debug, PartialEq)]
 pub struct CompileConfig {
   pub permissions: Option<Box<PermissionsObjectWithBase>>,
 }
@@ -1067,11 +1066,41 @@ impl NodeModulesDirMode {
   }
 }
 
+/// `deploy` config representation for serde
+///
+/// fields `include` and `exclude` are expanded from [SerializedFilesConfig].
 #[derive(Clone, Debug, Deserialize, PartialEq)]
-#[serde(deny_unknown_fields)]
+struct SerializedDeployConfig {
+  pub org: String,
+  pub app: Option<String>,
+  #[serde(default)]
+  pub include: Option<Vec<String>>,
+  #[serde(default)]
+  pub exclude: Vec<String>,
+}
+
+impl SerializedDeployConfig {
+  pub fn into_resolved(
+    self,
+    config_file_specifier: &Url,
+  ) -> Result<DeployConfig, IntoResolvedError> {
+    let files = SerializedFilesConfig {
+      include: self.include,
+      exclude: self.exclude,
+    };
+    Ok(DeployConfig {
+      org: self.org,
+      app: self.app,
+      files: files.into_resolved(config_file_specifier)?,
+    })
+  }
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct DeployConfig {
   pub org: String,
-  pub app: String,
+  pub app: Option<String>,
+  pub files: FilePatterns,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -1433,11 +1462,15 @@ impl ConfigFile {
   }
 
   pub fn dir_path(&self) -> PathBuf {
-    url_to_file_path(&self.specifier)
-      .unwrap()
-      .parent()
-      .unwrap()
-      .to_path_buf()
+    let path = url_to_file_path(&self.specifier).unwrap();
+    match path.parent() {
+      Some(parent) => parent.to_path_buf(),
+      None => panic!(
+        "Could not get parent of {} ({})",
+        path.display(),
+        self.specifier
+      ),
+    }
   }
 
   pub fn to_import_map_specifier(
@@ -1542,6 +1575,10 @@ impl ConfigFile {
 
   pub fn is_package(&self) -> bool {
     self.json.name.is_some() && self.json.exports.is_some()
+  }
+
+  pub fn should_publish(&self) -> bool {
+    !matches!(self.json.publish, Some(serde_json::Value::Bool(false)))
   }
 
   pub fn is_workspace(&self) -> bool {
@@ -1912,11 +1949,14 @@ impl ConfigFile {
   pub(crate) fn to_publish_config(
     &self,
   ) -> Result<PublishConfig, ToInvalidConfigError> {
-    match self.json.publish.clone() {
+    match &self.json.publish {
+      Some(serde_json::Value::Bool(_)) | None => Ok(PublishConfig {
+        files: self.to_exclude_files_config()?,
+      }),
       Some(config) => {
         let mut exclude_patterns = self.resolve_exclude_patterns()?;
         let mut serialized: SerializedPublishConfig =
-          serde_json::from_value(config).map_err(|error| {
+          serde_json::from_value(config.clone()).map_err(|error| {
             ToInvalidConfigError::Parse {
               config: "publish",
               source: error,
@@ -1932,9 +1972,6 @@ impl ConfigFile {
           }
         })
       }
-      None => Ok(PublishConfig {
-        files: self.to_exclude_files_config()?,
-      }),
     }
   }
 
@@ -2110,14 +2147,26 @@ impl ConfigFile {
   pub fn to_deploy_config(
     &self,
   ) -> Result<Option<DeployConfig>, ToInvalidConfigError> {
-    match &self.json.deploy {
+    match self.json.deploy.clone() {
       Some(config) => {
-        Ok(Some(serde_json::from_value(config.clone()).map_err(
-          |error| ToInvalidConfigError::Parse {
+        let mut exclude_patterns = self.resolve_exclude_patterns()?;
+        let mut serialized: SerializedDeployConfig =
+          serde_json::from_value(config).map_err(|error| {
+            ToInvalidConfigError::Parse {
+              config: "deploy",
+              source: error,
+            }
+          })?;
+        // top level excludes at the start because they're lower priority
+        exclude_patterns.extend(std::mem::take(&mut serialized.exclude));
+        serialized.exclude = exclude_patterns;
+        serialized
+          .into_resolved(&self.specifier)
+          .map(Some)
+          .map_err(|error| ToInvalidConfigError::InvalidConfig {
             config: "deploy",
             source: error,
-          },
-        )?))
+          })
       }
       None => Ok(None),
     }
@@ -2251,10 +2300,10 @@ impl ConfigFile {
   }
 
   pub fn dependencies(&self) -> HashSet<JsrDepPackageReq> {
-    let values = imports_values(self.json.imports.as_ref())
-      .into_iter()
-      .chain(scope_values(self.json.scopes.as_ref()));
-    let mut set = values_to_set(values);
+    let mut set = imports_values(self.json.imports.as_ref())
+      .chain(scope_values(self.json.scopes.as_ref()))
+      .filter_map(value_to_dep_req)
+      .collect::<HashSet<_>>();
 
     if let Some(serde_json::Value::Object(compiler_options)) =
       &self.json.compiler_options

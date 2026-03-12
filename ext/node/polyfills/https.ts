@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
@@ -17,6 +17,7 @@ import { type ServerHandler, ServerImpl as HttpServer } from "node:http";
 import { validateObject } from "ext:deno_node/internal/validators.mjs";
 import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
 import { Buffer } from "node:buffer";
+import { listenTls } from "ext:deno_net/02_tls.js";
 
 export class Server extends HttpServer {
   constructor(opts, requestListener?: ServerHandler) {
@@ -40,15 +41,20 @@ export class Server extends HttpServer {
     super(opts, requestListener);
   }
 
-  _additionalServeOptions() {
-    return {
-      cert: this._opts.cert instanceof Buffer
-        ? this._opts.cert.toString()
-        : this._opts.cert,
-      key: this._opts.key instanceof Buffer
-        ? this._opts.key.toString()
-        : this._opts.key,
-    };
+  _listen(hostname: string, port: number): Deno.Listener {
+    const cert = this._opts.cert instanceof Buffer
+      ? this._opts.cert.toString()
+      : this._opts.cert;
+    const key = this._opts.key instanceof Buffer
+      ? this._opts.key.toString()
+      : this._opts.key;
+    return listenTls({
+      hostname,
+      port,
+      cert,
+      key,
+      alpnProtocols: ["h2", "http/1.1"],
+    });
   }
 
   _encrypted = true;

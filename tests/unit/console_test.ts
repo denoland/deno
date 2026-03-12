@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // TODO(ry) The unit test functions in this module are too coarse. They should
 // be broken up into smaller bits.
@@ -154,11 +154,11 @@ Deno.test(
         },
       ),
       `{
-  [Symbol("foo\\b")]: 'Symbol("foo\\n")',
-  [Symbol("bar\\n")]: 'Symbol("bar\\n")',
-  [Symbol("bar\\r")]: 'Symbol("bar\\r")',
-  [Symbol("baz\\t")]: 'Symbol("baz\\t")',
-  [Symbol("qux\\x00")]: 'Symbol("qux\\x00")'
+  Symbol(foo\\b): 'Symbol("foo\\n")',
+  Symbol(bar\\n): 'Symbol("bar\\n")',
+  Symbol(bar\\r): 'Symbol("bar\\r")',
+  Symbol(baz\\t): 'Symbol("baz\\t")',
+  Symbol(qux\\x00): 'Symbol("qux\\x00")'
 }`,
     );
     assertEquals(
@@ -362,15 +362,15 @@ Deno.test(function consoleTestStringifyCircular() {
   profileEnd: [Function: profileEnd],
   timeStamp: [Function: timeStamp],
   indentLevel: 0,
-  [Symbol(isConsoleInstance)]: true
+  Symbol(isConsoleInstance): true
 }`,
   );
   assertEquals(
     stringify({ str: 1, [Symbol.for("sym")]: 2, [Symbol.toStringTag]: "TAG" }),
     `Object [TAG] {
   str: 1,
-  [Symbol(sym)]: 2,
-  [Symbol(Symbol.toStringTag)]: "TAG"
+  Symbol(sym): 2,
+  Symbol(Symbol.toStringTag): "TAG"
 }`,
   );
   // test inspect is working the same
@@ -1523,6 +1523,32 @@ Deno.test(function consoleGroup() {
   });
 });
 
+// console.group with console.dir test
+Deno.test(function consoleGroupDir() {
+  mockConsole((console, out) => {
+    console.dir("1");
+    console.group();
+    console.dir("2");
+    console.group();
+    console.dir("3");
+    console.groupEnd();
+    console.dir("4");
+    console.groupEnd();
+    console.dir("5");
+
+    // console.dir should respect group indentation
+    assertEquals(
+      out.toString(),
+      `1
+  2
+    3
+  4
+5
+`,
+    );
+  });
+});
+
 // console.group with console.warn test
 Deno.test(function consoleGroupWarn() {
   mockConsole((console, _out, _err, both) => {
@@ -1696,6 +1722,35 @@ Deno.test(function consoleTable() {
 `,
     );
   });
+  // Objects with long values should stay on a single line (#18828)
+  mockConsole((console, out) => {
+    console.table([
+      ["b0a6d0c1-7b6c-4fea-9efa-cb2629ce6068", {
+        id: "b0a6d0c1-7b6c-4fea-9efa-cb2629ce6068",
+        name: "Trenitalia",
+        countryCode: "IT",
+      }],
+      ["371fe41e-349c-40b7-be93-10c58fbbb95f", {
+        id: "371fe41e-349c-40b7-be93-10c58fbbb95f",
+        name: "Deutsche Bahn",
+        countryCode: "DE",
+      }],
+    ]);
+    const output = stripAnsiCode(out.toString());
+    // Each row should be a single line (no newlines within cell values)
+    const rows = output.split("\n").filter((line) => line.startsWith("│"));
+    for (const row of rows) {
+      // The row should not contain embedded newlines (the cell value should be flat)
+      assert(!row.includes("\n  "), "Table row should be single-line");
+    }
+    // Verify object values are rendered on one line
+    assert(
+      output.includes(
+        'name: "Deutsche Bahn", countryCode: "DE"',
+      ),
+      "Object should be on single line",
+    );
+  });
   mockConsole((console, out) => {
     console.table([]);
     assertEquals(
@@ -1830,6 +1885,56 @@ Deno.test(function consoleTable() {
 `,
     );
   });
+  // console.table with iterators (https://github.com/denoland/deno/issues/20725)
+  mockConsole((console, out) => {
+    console.table(
+      new Map([[1, 1], [2, 2], [3, 3]]).entries(),
+    );
+    assertEquals(
+      stripAnsiCode(out.toString()),
+      `\
+┌────────────┬───┬───┐
+│ (iter idx) │ 0 │ 1 │
+├────────────┼───┼───┤
+│          0 │ 1 │ 1 │
+│          1 │ 2 │ 2 │
+│          2 │ 3 │ 3 │
+└────────────┴───┴───┘
+`,
+    );
+  });
+  mockConsole((console, out) => {
+    console.table(
+      new Map([[1, 1], [2, 2], [3, 3]]).values(),
+    );
+    assertEquals(
+      stripAnsiCode(out.toString()),
+      `\
+┌────────────┬────────┐
+│ (iter idx) │ Values │
+├────────────┼────────┤
+│          0 │      1 │
+│          1 │      2 │
+│          2 │      3 │
+└────────────┴────────┘
+`,
+    );
+  });
+  mockConsole((console, out) => {
+    console.table(new Set([1, 2, 3]).values());
+    assertEquals(
+      stripAnsiCode(out.toString()),
+      `\
+┌────────────┬────────┐
+│ (iter idx) │ Values │
+├────────────┼────────┤
+│          0 │      1 │
+│          1 │      2 │
+│          2 │      3 │
+└────────────┴────────┘
+`,
+    );
+  });
 });
 
 // console.log(Error) test
@@ -1908,8 +2013,9 @@ Deno.test(function consoleLogWhenCauseIsAssignedShouldNotPrintCauseTwice() {
       .filter((line) => !line.trim().startsWith("at"))
       .join("\n");
 
-    const expectedResult =
-      "TypeError: Type incorrect\nCaused by SyntaxError: Improper syntax\n";
+    const expectedResult = "TypeError: Type incorrect\n" +
+      "    ... 3 lines matching cause stack trace ...\n" +
+      "  cause: SyntaxError: Improper syntax\n}";
     assertEquals(filteredOutput.trim(), expectedResult.trim());
   });
 });
@@ -2247,7 +2353,7 @@ Deno.test(function inspectError() {
   );
   assertStringIncludes(
     stripAnsiCode(Deno.inspect(error2)),
-    "Caused by Error: This is a cause error",
+    "[cause]: Error: This is a cause error",
   );
 });
 
@@ -2270,11 +2376,11 @@ Deno.test(function inspectErrorCircular() {
   );
   assertStringIncludes(
     stripAnsiCode(Deno.inspect(error2)),
-    "Caused by Error: This is a cause error",
+    "[cause]: Error: This is a cause error",
   );
   assertStringIncludes(
     stripAnsiCode(Deno.inspect(error2)),
-    "Caused by [Circular *1]",
+    "cause: [Circular *1]",
   );
 });
 
@@ -2290,7 +2396,7 @@ Deno.test(function inspectErrorWithCauseFormat() {
   );
   assertStringIncludes(
     stripAnsiCode(Deno.inspect(error)),
-    "Caused by { code: 100500 }",
+    "[cause]: { code: 100500 }",
   );
 });
 
@@ -2413,7 +2519,7 @@ Deno.test(async function inspectAggregateError() {
   } catch (err) {
     assertEquals(
       Deno.inspect(err).trimEnd(),
-      "AggregateError: All promises were rejected",
+      "[AggregateError: All promises were rejected] { [errors]: [] }",
     );
   }
 });
