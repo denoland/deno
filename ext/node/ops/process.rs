@@ -84,6 +84,7 @@ static ARGV_INIT: unsafe extern "C" fn(
     argv: *mut *mut libc::c_char,
     _envp: *mut *mut libc::c_char,
   ) {
+    // SAFETY: argc and argv are provided by the OS at process init and are valid.
     unsafe { argv_store::save(argc, argv) };
   }
   init
@@ -132,6 +133,8 @@ fn set_process_title(title: &str) {
 
 #[cfg(target_os = "linux")]
 fn set_process_title(title: &str) {
+  // SAFETY: We overwrite the saved argv buffer with the new title via
+  // argv_store, then call prctl to set the kernel thread name.
   unsafe {
     argv_store::overwrite(title);
 
