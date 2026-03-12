@@ -138,6 +138,7 @@ denort_helper = { version = "0.36.0", path = "./ext/rt_helper" }
 
 # workspace libraries
 deno_bench_util = { version = "0.232.0", path = "./tests/bench_util" }
+deno_bundler = { version = "0.1.0", path = "./libs/bundler" }
 deno_cache_dir = { version = "0.30.0", path = "./libs/cache_dir" }
 deno_config = { version = "0.88.0", features = ["workspace"], path = "./libs/config" }
 deno_core = { version = "0.391.0", path = "./libs/core" }

@@ -36,5 +36,5 @@ pub struct Dependency {
   /// The kind of import.
   pub kind: ImportKind,
   /// The range of the specifier in the importer's source.
-  pub range: SourceRange,
+  pub range: Option<SourceRange>,
 }

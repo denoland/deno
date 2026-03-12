@@ -1825,6 +1825,7 @@ dependencies = [
  "dashmap",
  "deno_ast",
  "deno_bundle_runtime",
+ "deno_bundler",
  "deno_cache_dir",
  "deno_config",
  "deno_core",

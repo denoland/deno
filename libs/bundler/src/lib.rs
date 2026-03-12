@@ -1,9 +1,12 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+pub mod chunk;
 pub mod config;
 pub mod dependency;
+pub mod emit;
 pub mod external;
 pub mod graph;
+pub mod graph_builder;
 pub mod js;
 pub mod loader;
 pub mod module;
