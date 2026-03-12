@@ -431,10 +431,10 @@ impl NpmSystemInfo {
 /// For example, "@denotest/add2/sub.js" -> "@denotest/add2", "foo/bar" -> "foo".
 pub fn package_name_without_subpath(name: &str) -> &str {
   let mut search_start_index = 0;
-  if name.starts_with('@') {
-    if let Some(slash_index) = name.find('/') {
-      search_start_index = slash_index + 1;
-    }
+  if name.starts_with('@')
+    && let Some(slash_index) = name.find('/')
+  {
+    search_start_index = slash_index + 1;
   }
   if let Some(slash_index) = name[search_start_index..].find('/') {
     &name[..search_start_index + slash_index]

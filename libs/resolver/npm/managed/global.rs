@@ -104,7 +104,7 @@ impl<TSys: FsCanonicalize + FsMetadata> GlobalNpmPackageResolver<TSys> {
     for current_folder in referrer_path
       .ancestors()
       .skip(1)
-      .take_while(|path| path.starts_with(&cache_location))
+      .take_while(|path| path.starts_with(cache_location))
     {
       let node_modules_folder = if current_folder.ends_with("node_modules") {
         Cow::Borrowed(current_folder)
