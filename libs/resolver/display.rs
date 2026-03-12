@@ -60,12 +60,25 @@ impl<'a> DiffBuilder<'a> {
 
   fn handle_diff(mut self, diff: Diff) -> String {
     let mut prev_before_end: u32 = 0;
+    let mut is_first_hunk = true;
 
     for hunk in diff.hunks() {
       // Skip unchanged lines between hunks
       let gap_len = (hunk.before.start - prev_before_end) as usize;
+      if gap_len > 0 && !is_first_hunk {
+        writeln!(
+          self.output,
+          "{:width$}{} {}",
+          "",
+          colors::gray(" |"),
+          colors::gray("..."),
+          width = self.line_number_width
+        )
+        .unwrap();
+      }
       self.orig_line += gap_len;
       self.edit_line += gap_len;
+      is_first_hunk = false;
 
       // Interleave deleted/inserted line pairs, then emit remaining
       let del_count = hunk.before.len();
@@ -335,6 +348,7 @@ mod tests {
         " 4 | -    \"npm:@denotest/add@1\": \"1.0.0\"\n",
         " 4 | +    \"npm:@denotest/add@1\": \"1.0.0\",\n",
         " 5 | +    \"npm:@denotest/subtract@1\": \"1.0.0\"\n",
+        "   | ...\n",
         "11 | +    },\n",
         "12 | +    \"@denotest/subtract@1.0.0\": {\n",
         "13 | +      \"integrity\": \"def\",\n",
