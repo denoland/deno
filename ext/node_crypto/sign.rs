@@ -21,6 +21,8 @@ use super::keys::RsaPssHashAlgorithm;
 use crate::digest::match_fixed_digest;
 use crate::digest::match_fixed_digest_with_oid;
 
+/// OpenSSL RSA_PKCS1_PADDING constant value.
+const RSA_PKCS1_PADDING: u32 = 1;
 /// OpenSSL RSA_PKCS1_PSS_PADDING constant value.
 const RSA_PKCS1_PSS_PADDING: u32 = 6;
 
@@ -88,6 +90,9 @@ pub enum KeyObjectHandlePrehashedSignAndVerifyError {
   Ed25519KeyCannotBeUsedForPrehashedVerification,
   #[error("DH key cannot be used for verification")]
   DhKeyCannotBeUsedForVerification,
+  #[class(generic)]
+  #[error("illegal or unsupported padding mode")]
+  IllegalOrUnsupportedPaddingMode,
 }
 
 /// Constructs a PSS scheme for the given digest type and optional salt length.
@@ -173,6 +178,9 @@ impl KeyObjectHandle {
         Ok(signature.into())
       }
       AsymmetricPrivateKey::RsaPss(key) => {
+        if padding == Some(RSA_PKCS1_PADDING) {
+          return Err(KeyObjectHandlePrehashedSignAndVerifyError::IllegalOrUnsupportedPaddingMode);
+        }
         let mut hash_algorithm = None;
         let mut salt_length = None;
         if let Some(details) = &key.details {
@@ -315,6 +323,9 @@ impl KeyObjectHandle {
         Ok(signer.verify(key, digest, signature).is_ok())
       }
       AsymmetricPublicKey::RsaPss(key) => {
+        if padding == Some(RSA_PKCS1_PADDING) {
+          return Err(KeyObjectHandlePrehashedSignAndVerifyError::IllegalOrUnsupportedPaddingMode);
+        }
         let mut hash_algorithm = None;
         let mut salt_length = None;
         if let Some(details) = &key.details {
