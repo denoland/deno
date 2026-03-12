@@ -1,4 +1,9 @@
 {
+  // On Windows, non-detached children are assigned to a global job object with
+  // JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE, so they are always terminated when the
+  // parent exits — regardless of unref(). This is a Windows OS-level behaviour
+  // that cannot be changed after the child is spawned.
+  "if": "unix",
   "tempDir": true,
   "tests": {
     "unref_child_survives_parent_exit": {
