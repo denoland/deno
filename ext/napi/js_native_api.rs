@@ -991,6 +991,66 @@ fn napi_create_object(
 }
 
 #[napi_sym]
+fn node_api_create_object_with_properties<'s>(
+  env: &'s mut Env,
+  prototype_or_null: napi_value<'s>,
+  property_names: *const napi_value<'s>,
+  property_values: *const napi_value<'s>,
+  property_count: usize,
+  result: *mut napi_value<'s>,
+) -> napi_status {
+  check_arg!(env, result);
+
+  if property_count > 0 {
+    if property_names.is_null() || property_values.is_null() {
+      return napi_set_last_error(env as *mut Env, napi_invalid_arg);
+    }
+  }
+
+  v8::callback_scope!(unsafe scope, env.context());
+
+  let prototype: v8::Local<v8::Value> = match *prototype_or_null {
+    None => v8::null(scope).into(),
+    Some(local) => local,
+  };
+
+  let names: &[v8::Local<v8::Value>] = if property_count == 0 {
+    &[]
+  } else {
+    unsafe {
+      std::slice::from_raw_parts(
+        property_names as *const v8::Local<v8::Value>,
+        property_count,
+      )
+    }
+  };
+
+  let values: &[v8::Local<v8::Value>] = if property_count == 0 {
+    &[]
+  } else {
+    unsafe {
+      std::slice::from_raw_parts(
+        property_values as *const v8::Local<v8::Value>,
+        property_count,
+      )
+    }
+  };
+
+  let obj = v8::Object::with_prototype_and_properties(
+    scope,
+    prototype,
+    names,
+    values,
+  );
+
+  unsafe {
+    *result = obj.into();
+  }
+
+  napi_clear_last_error(env as *mut Env)
+}
+
+#[napi_sym]
 fn napi_create_array(
   env_ptr: *mut Env,
   result: *mut napi_value,
