@@ -1054,7 +1054,9 @@ impl DepEntryCache {
     version_info: &NpmPackageVersionInfo,
   ) -> Result<Rc<Vec<NpmDependencyEntry>>, Box<NpmDependencyEntryError>> {
     debug_assert_eq!(nv.version, version_info.version);
-    debug_assert!(!self.0.contains_key(&nv)); // we should not be re-inserting
+    if let Some(deps) = self.0.get(&nv) {
+      return Ok(deps.clone());
+    }
     let mut deps = version_info.dependencies_as_entries(&nv.name)?;
     // Ensure name alphabetical and then version descending
     // so these are resolved in that order
