@@ -855,12 +855,36 @@ impl LibMainWorker {
 
   pub async fn execute_main_module(&mut self) -> Result<(), CoreError> {
     let id = self.worker.preload_main_module(&self.main_module).await?;
-    self.worker.evaluate_module(id).await
+    self.worker.evaluate_module(id).await?;
+
+    // After loading and evaluating all modules, trim the glibc malloc arena.
+    // Module loading/TypeScript compilation creates heavy allocation churn
+    // that glibc's allocator doesn't release back to the OS, causing RSS on
+    // Linux to be much higher than on other platforms (see #25722).
+    #[cfg(target_os = "linux")]
+    {
+      // SAFETY: calling libc malloc_trim which is safe to call at any time.
+      unsafe {
+        libc::malloc_trim(0);
+      }
+    }
+
+    Ok(())
   }
 
   pub async fn execute_side_module(&mut self) -> Result<(), CoreError> {
     let id = self.worker.preload_side_module(&self.main_module).await?;
-    self.worker.evaluate_module(id).await
+    self.worker.evaluate_module(id).await?;
+
+    #[cfg(target_os = "linux")]
+    {
+      // SAFETY: calling libc malloc_trim which is safe to call at any time.
+      unsafe {
+        libc::malloc_trim(0);
+      }
+    }
+
+    Ok(())
   }
 
   pub async fn execute_preload_modules(&mut self) -> Result<(), CoreError> {

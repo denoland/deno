@@ -131,6 +131,7 @@ async function dlintPreferPrimordials() {
     ":!:ext/**/*.d.ts",
     "ext/node/polyfills/*.mjs",
     ":!:ext/node/polyfills/deps/**",
+    ":!:runtime/cpu_profiler/flamegraph.js",
   ]);
 
   if (!sourceFiles.length) {
