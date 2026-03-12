@@ -236,9 +236,9 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
   fn create_load_future(self: &Arc<Self>, name: &str) -> LoadFuture {
     let downloader = self.clone();
     let package_url = get_package_url(&self.npmrc, name);
-    let registry_config = self.npmrc.get_registry_config(name);
+    let registry_config = self.npmrc.get_registry_config(name).clone();
     let maybe_auth_header_value =
-      match maybe_auth_header_value_for_npm_registry(registry_config) {
+      match maybe_auth_header_value_for_npm_registry(&registry_config) {
         Ok(maybe_auth_header_value) => maybe_auth_header_value,
         Err(err) => {
           return std::future::ready(Err(Arc::new(JsErrorBox::from_err(err))))
@@ -291,6 +291,7 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
           package_url,
           maybe_auth_header_value,
           maybe_etag,
+          Some(registry_config.as_ref()),
         )
         .await.map_err(JsErrorBox::from_err)?;
       match response {
