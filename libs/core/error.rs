@@ -1313,7 +1313,7 @@ pub(crate) fn exception_to_err_result<'s, 'i, T>(
   Err(exception_to_err(scope, exception, in_promise, clear_error))
 }
 
-pub(crate) fn exception_to_err<'s, 'i>(
+pub fn exception_to_err<'s, 'i>(
   scope: &mut v8::PinScope<'s, 'i>,
   exception: v8::Local<'s, v8::Value>,
   mut in_promise: bool,
