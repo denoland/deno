@@ -73,7 +73,7 @@ mod argv_store {
 
 #[cfg(target_os = "linux")]
 #[used]
-#[link_section = ".init_array"]
+#[unsafe(link_section = ".init_array")]
 static ARGV_INIT: unsafe extern "C" fn(
   libc::c_int,
   *mut *mut libc::c_char,
