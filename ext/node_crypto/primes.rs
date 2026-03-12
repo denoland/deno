@@ -25,6 +25,11 @@ impl Prime {
   /// When `add` is set but `rem` is not:
   /// - If safe is false, rem defaults to 1
   /// - If safe is true, rem defaults to 3
+  ///
+  /// This follows the same algorithm as OpenSSL's BN_generate_prime_ex():
+  /// generate random candidates in [2^(n-1), 2^n), adjust to satisfy the
+  /// add/rem constraint, then test with Miller-Rabin. For safe primes,
+  /// also verify (p-1)/2 is prime.
   pub fn generate_with_options(
     n: usize,
     safe: bool,
