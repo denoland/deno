@@ -4,8 +4,10 @@ import { core, primordials } from "ext:core/mod.js";
 import {
   op_create_worker,
   op_host_post_message,
+  op_host_post_message_raw,
   op_host_recv_ctrl,
   op_host_recv_message,
+  op_host_recv_message_sync,
   op_host_terminate_worker,
 } from "ext:core/ops";
 const {
@@ -217,6 +219,34 @@ class Worker extends EventTarget {
     }
   };
 
+  #dispatchWorkerMessage(data) {
+    let message, transferables;
+    try {
+      const v = deserializeJsMessageData(data);
+      message = v[0];
+      transferables = v[1];
+    } catch (err) {
+      const event = new MessageEvent("messageerror", {
+        cancelable: false,
+        data: err,
+      });
+      setIsTrusted(event, true);
+      this.dispatchEvent(event);
+      return false;
+    }
+    const event = new MessageEvent("message", {
+      cancelable: false,
+      data: message,
+      ports: ArrayPrototypeFilter(
+        transferables,
+        (t) => ObjectPrototypeIsPrototypeOf(MessagePortPrototype, t),
+      ),
+    });
+    setIsTrusted(event, true);
+    this.dispatchEvent(event);
+    return true;
+  }
+
   #pollMessages = async () => {
     while (this.#status !== "TERMINATED") {
       this.#messagePromise = hostRecvMessage(this.#id);
@@ -227,34 +257,31 @@ class Worker extends EventTarget {
       if (this.#status === "TERMINATED" || data === null) {
         return;
       }
-      let message, transferables;
-      try {
-        const v = deserializeJsMessageData(data);
-        message = v[0];
-        transferables = v[1];
-      } catch (err) {
-        const event = new MessageEvent("messageerror", {
-          cancelable: false,
-          data: err,
-        });
-        setIsTrusted(event, true);
-        this.dispatchEvent(event);
-        return;
+      if (!this.#dispatchWorkerMessage(data)) return;
+      // Sync drain: process any already-queued messages without
+      // going through the async op machinery
+      while (this.#status !== "TERMINATED") {
+        const syncData = op_host_recv_message_sync(this.#id);
+        if (syncData === null) break;
+        if (!this.#dispatchWorkerMessage(syncData)) return;
       }
-      const event = new MessageEvent("message", {
-        cancelable: false,
-        data: message,
-        ports: ArrayPrototypeFilter(
-          transferables,
-          (t) => ObjectPrototypeIsPrototypeOf(MessagePortPrototype, t),
-        ),
-      });
-      setIsTrusted(event, true);
-      this.dispatchEvent(event);
     }
   };
 
   postMessage(message, transferOrOptions = { __proto__: null }) {
+    if (this.#status !== "RUNNING") return;
+    // Fast path: no transferables
+    if (
+      transferOrOptions === undefined ||
+      transferOrOptions === null ||
+      (arguments.length <= 1)
+    ) {
+      op_host_post_message_raw(
+        this.#id,
+        core.serialize(message),
+      );
+      return;
+    }
     const prefix = "Failed to execute 'postMessage' on 'MessagePort'";
     webidl.requiredArguments(arguments.length, 1, prefix);
     message = webidl.converters.any(message);
@@ -279,9 +306,7 @@ class Worker extends EventTarget {
     }
     const { transfer } = options;
     const data = serializeJsMessageData(message, transfer);
-    if (this.#status === "RUNNING") {
-      hostPostMessage(this.#id, data);
-    }
+    hostPostMessage(this.#id, data);
   }
 
   terminate() {
