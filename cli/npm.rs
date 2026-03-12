@@ -13,6 +13,7 @@ use deno_core::url::Url;
 use deno_error::JsErrorBox;
 use deno_lib::version::DENO_VERSION_INFO;
 use deno_npm::NpmResolutionPackage;
+use deno_npm::npm_rc::RegistryConfig;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmPackageInfo;
 use deno_npm::registry::NpmPackageVersionInfosIterator;
@@ -85,6 +86,22 @@ impl CliNpmCacheHttpClient {
       packument_format,
     }
   }
+
+  fn get_or_create_http_client(
+    &self,
+    maybe_registry_config: Option<&RegistryConfig>,
+  ) -> Result<crate::http_util::HttpClient, deno_error::JsErrorBox> {
+    if let Some(config) = maybe_registry_config
+      && let (Some(certfile), Some(keyfile)) =
+        (&config.certfile, &config.keyfile)
+    {
+      return self.http_client_provider.get_or_create_with_client_cert(
+        std::path::Path::new(certfile),
+        std::path::Path::new(keyfile),
+      );
+    }
+    self.http_client_provider.get_or_create()
+  }
 }
 
 #[async_trait::async_trait(?Send)]
@@ -94,14 +111,15 @@ impl deno_npm_cache::NpmCacheHttpClient for CliNpmCacheHttpClient {
     url: Url,
     maybe_auth: Option<String>,
     maybe_etag: Option<String>,
+    maybe_registry_config: Option<&RegistryConfig>,
   ) -> Result<NpmCacheHttpClientResponse, deno_npm_cache::DownloadError> {
     let guard = self.progress_bar.update(url.as_str());
-    let client = self.http_client_provider.get_or_create().map_err(|err| {
-      deno_npm_cache::DownloadError {
+    let client = self
+      .get_or_create_http_client(maybe_registry_config)
+      .map_err(|err| deno_npm_cache::DownloadError {
         status_code: None,
         error: err,
-      }
-    })?;
+      })?;
     let mut headers = http::HeaderMap::new();
     if let Some(auth) = maybe_auth {
       headers.append(
