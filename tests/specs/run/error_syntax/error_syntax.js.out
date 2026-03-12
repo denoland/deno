@@ -1,5 +1,5 @@
 error: Expected ',', got 'following'
-    at [WILDCARD]/error_syntax.js:3:6
   |
 3 | (the following is a syntax error  ^^ ! )
   |      ~~~~~~~~~
+    at [WILDCARD]/error_syntax.js:3:6
