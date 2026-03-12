@@ -1204,14 +1204,23 @@ fn op_spawn_kill(
 ) -> Result<(), ProcessError> {
   if let Ok(child_resource) = state.resource_table.get::<ChildResource>(rid) {
     let pid = child_resource.1 as i32;
-    // Kill descendant processes first so they don't become orphans.
-    // This is best-effort; ignore errors from descendants that may
-    // have already exited.
+    // For SIGKILL, also kill descendant processes first so they don't become
+    // orphans. SIGKILL is uncatchable, so the target process has no chance to
+    // forward it to its children. For other signals (SIGTERM, etc.), the target
+    // process can catch and propagate them, so we only send to the target.
+    // This is best-effort; ignore errors from descendants that may have
+    // already exited.
     #[cfg(unix)]
     {
-      let descendants = find_descendant_pids(pid);
-      for &desc in descendants.iter().rev() {
-        let _ = deprecated::kill(desc, &signal);
+      let is_sigkill = match &signal {
+        SignalArg::String(s) => s == "SIGKILL",
+        SignalArg::Int(n) => *n == libc::SIGKILL,
+      };
+      if is_sigkill {
+        let descendants = find_descendant_pids(pid);
+        for &desc in descendants.iter().rev() {
+          let _ = deprecated::kill(desc, &signal);
+        }
       }
     }
     deprecated::kill(pid, &signal)?;
