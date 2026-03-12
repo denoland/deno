@@ -27,8 +27,6 @@ pub enum CSSValueCustomError {
   UnsupportedDimension,
   #[error("the dimensions of the calculation results are incorrect")]
   InvalidDimension,
-  #[error("contains unsupported function")]
-  UnsupportedFunction,
   #[error("contains invalid function")]
   InvalidFunction,
 }
@@ -867,9 +865,239 @@ impl NumericValue {
               Ok(result)
             })
           },
-          // TODO(petamoriken): implement round functions
           // https://www.w3.org/TR/css-values-4/#round-func
-          "round" | "mod" | "rem" => Err(input.new_custom_error(CSSValueCustomError::UnsupportedFunction)),
+          "round" => {
+            enum RoundStrategy {
+              Nearest,
+              Up,
+              Down,
+              ToZero,
+            }
+            fn round(strategy: &RoundStrategy, value: f32, interval: f32) -> f32 {
+              if interval == 0.0 || value.is_nan() || interval.is_nan() || value.is_infinite() && interval.is_infinite() {
+                return f32::NAN;
+              }
+              if value.is_infinite() {
+                return value;
+              }
+              if interval.is_infinite() {
+                return match strategy {
+                  RoundStrategy::Up => if value > 0.0 { f32::INFINITY } else if value == 0.0 && value.is_sign_positive() { 0.0 } else { -0.0 },
+                  RoundStrategy::Down => if value < 0.0 { f32::NEG_INFINITY } else if value == 0.0 && value.is_sign_negative() { -0.0 } else { 0.0 },
+                  RoundStrategy::Nearest | RoundStrategy::ToZero => if value.is_sign_positive() { 0.0 } else { -0.0 },
+                }
+              }
+              let interval = interval.abs();
+              let quotient = value / interval;
+              let rounded = match strategy {
+                RoundStrategy::Nearest => (quotient + 0.5).floor(),
+                RoundStrategy::Up => quotient.ceil(),
+                RoundStrategy::Down => quotient.floor(),
+                RoundStrategy::ToZero => quotient.trunc(),
+              };
+              rounded * interval
+            }
+
+            input.parse_nested_block(|arguments| {
+              let strategy = {
+                let start = arguments.state();
+                let token = arguments.next()?;
+                match token {
+                  Token::Ident(ident) => {
+                    let strategy = match_ignore_ascii_case! { &ident,
+                      "nearest" => RoundStrategy::Nearest,
+                      "up" => RoundStrategy::Up,
+                      "down" => RoundStrategy::Down,
+                      "to-zero" => RoundStrategy::ToZero,
+                      _ => return Err(arguments.new_custom_error(CSSValueCustomError::UnexpectedToken))
+                    };
+                    arguments.expect_comma()?;
+                    strategy
+                  },
+                  _ => {
+                    arguments.reset(&start);
+                    RoundStrategy::Nearest
+                  }
+                }
+              };
+              let value = Self::parse_additive_expression(arguments, state)?;
+              let value = match value.expect_numeric() {
+                Ok(numeric) => numeric,
+                Err(error) => return Err(arguments.new_custom_error(error)),
+              };
+              let interval = if !arguments.is_exhausted() {
+                arguments.expect_comma()?;
+                let interval = Self::parse_additive_expression(arguments, state)?;
+                let interval = match value {
+                  NumericValue::Zero => unreachable!(),
+                  NumericValue::Number(_) => {
+                    match interval.expect_number() {
+                      Ok(number) => number,
+                      Err(error) => return Err(arguments.new_custom_error(error)),
+                    }
+                  },
+                  NumericValue::Length(_) => {
+                    match interval.expect_length(false) {
+                      Ok(length) => length.to_pixels(),
+                      Err(error) => return Err(arguments.new_custom_error(error)),
+                    }
+                  },
+                  NumericValue::Angle(_) => {
+                    match interval.expect_angle(false) {
+                      Ok(angle) => angle.to_degrees(),
+                      Err(error) => return Err(arguments.new_custom_error(error)),
+                    }
+                  },
+                  NumericValue::Percent(_) => {
+                    match interval.expect_percent() {
+                      Ok(percent) => percent,
+                      Err(error) => return Err(arguments.new_custom_error(error)),
+                    }
+                  }
+                };
+                arguments.expect_exhausted()?;
+                interval
+              } else { 1.0 };
+              let result: NumericAccumulator = match value {
+                NumericValue::Zero => unreachable!(),
+                NumericValue::Number(value) => {
+                  NumericValue::Number(Number(round(&strategy, *value, interval))).into()
+                },
+                NumericValue::Length(value) => {
+                  NumericValue::Length(Length {
+                    value: round(&strategy, value.to_pixels(), interval),
+                    unit: LengthUnit::Px,
+                  }).into()
+                },
+                NumericValue::Angle(value) => {
+                  NumericValue::Angle(Angle {
+                    value: round(&strategy, value.to_degrees(), interval),
+                    unit: AngleUnit::Deg,
+                  }).into()
+                },
+                NumericValue::Percent(value) => {
+                  NumericValue::Percent(Percent(round(&strategy, *value, interval))).into()
+                }
+              };
+              Ok(result)
+            })
+          },
+          "mod" => {
+            input.parse_nested_block(|arguments| {
+              let dividend = Self::parse_additive_expression(arguments, state)?;
+              let dividend = match dividend.expect_numeric() {
+                Ok(numeric) => numeric,
+                Err(error) => return Err(arguments.new_custom_error(error)),
+              };
+              arguments.expect_comma()?;
+              let result: NumericAccumulator = match dividend {
+                NumericValue::Zero => unreachable!(),
+                NumericValue::Number(dividend) => {
+                  let divisor = Self::parse_additive_expression(arguments, state)?;
+                  let divisor = match divisor.expect_number() {
+                    Ok(number) => number,
+                    Err(error) => return Err(arguments.new_custom_error(error)),
+                  };
+                  arguments.expect_exhausted()?;
+                  NumericValue::Number(Number(dividend.rem_euclid(divisor))).into()
+                },
+                NumericValue::Length(dividend) => {
+                  let dividend = dividend.to_pixels();
+                  let divisor = Self::parse_additive_expression(arguments, state)?;
+                  let divisor = match divisor.expect_length(false) {
+                    Ok(length) => length.to_pixels(),
+                    Err(error) => return Err(arguments.new_custom_error(error)),
+                  };
+                  arguments.expect_exhausted()?;
+                  NumericValue::Length(Length {
+                    value: dividend.rem_euclid(divisor),
+                    unit: LengthUnit::Px,
+                  }).into()
+                },
+                NumericValue::Angle(dividend) => {
+                  let dividend = dividend.to_degrees();
+                  let divisor = Self::parse_additive_expression(arguments, state)?;
+                  let divisor = match divisor.expect_angle(false) {
+                    Ok(angle) => angle.to_degrees(),
+                    Err(error) => return Err(arguments.new_custom_error(error)),
+                  };
+                  arguments.expect_exhausted()?;
+                  NumericValue::Angle(Angle {
+                    value: dividend.rem_euclid(divisor),
+                    unit: AngleUnit::Deg,
+                  }).into()
+                },
+                NumericValue::Percent(dividend) => {
+                  let divisor = Self::parse_additive_expression(arguments, state)?;
+                  let divisor = match divisor.expect_percent() {
+                    Ok(percent) => percent,
+                    Err(error) => return Err(arguments.new_custom_error(error)),
+                  };
+                  arguments.expect_exhausted()?;
+                  NumericValue::Percent(Percent(dividend.rem_euclid(divisor))).into()
+                },
+              };
+              Ok(result)
+            })
+          },
+          "rem" => {
+            input.parse_nested_block(|arguments| {
+              let dividend = Self::parse_additive_expression(arguments, state)?;
+              let dividend = match dividend.expect_numeric() {
+                Ok(numeric) => numeric,
+                Err(error) => return Err(arguments.new_custom_error(error)),
+              };
+              arguments.expect_comma()?;
+              let result: NumericAccumulator = match dividend {
+                NumericValue::Zero => unreachable!(),
+                NumericValue::Number(dividend) => {
+                  let divisor = Self::parse_additive_expression(arguments, state)?;
+                  let divisor = match divisor.expect_number() {
+                    Ok(number) => number,
+                    Err(error) => return Err(arguments.new_custom_error(error)),
+                  };
+                  arguments.expect_exhausted()?;
+                  NumericValue::Number(Number(*dividend % divisor)).into()
+                },
+                NumericValue::Length(dividend) => {
+                  let dividend = dividend.to_pixels();
+                  let divisor = Self::parse_additive_expression(arguments, state)?;
+                  let divisor = match divisor.expect_length(false) {
+                    Ok(length) => length.to_pixels(),
+                    Err(error) => return Err(arguments.new_custom_error(error)),
+                  };
+                  arguments.expect_exhausted()?;
+                  NumericValue::Length(Length {
+                    value: dividend % divisor,
+                    unit: LengthUnit::Px,
+                  }).into()
+                },
+                NumericValue::Angle(dividend) => {
+                  let dividend = dividend.to_degrees();
+                  let divisor = Self::parse_additive_expression(arguments, state)?;
+                  let divisor = match divisor.expect_angle(false) {
+                    Ok(angle) => angle.to_degrees(),
+                    Err(error) => return Err(arguments.new_custom_error(error)),
+                  };
+                  arguments.expect_exhausted()?;
+                  NumericValue::Angle(Angle {
+                    value: dividend % divisor,
+                    unit: AngleUnit::Deg,
+                  }).into()
+                },
+                NumericValue::Percent(dividend) => {
+                  let divisor = Self::parse_additive_expression(arguments, state)?;
+                  let divisor = match divisor.expect_percent() {
+                    Ok(percent) => percent,
+                    Err(error) => return Err(arguments.new_custom_error(error)),
+                  };
+                  arguments.expect_exhausted()?;
+                  NumericValue::Percent(Percent(*dividend % divisor)).into()
+                },
+              };
+              Ok(result)
+            })
+          },
           // https://www.w3.org/TR/css-values-4/#trig-funcs
           "sin" => {
             input.parse_nested_block(|arguments| {
@@ -1056,6 +1284,33 @@ impl NumericValue {
             })
           },
           "hypot" => {
+            fn hypot(args: &[f32]) -> f32 {
+              match *args {
+                [] => 0.0,
+                [arg1] => arg1.abs(),
+                [arg1, arg2] => arg1.hypot(arg2),
+                _ => {
+                  let mut sum = 0.0;
+                  let mut scale = 0.0;
+                  for &arg in args {
+                    let value = arg.abs();
+                    if !value.is_finite() {
+                      return value;
+                    }
+                    if scale < value {
+                      let div = scale / value;
+                      sum = sum * div * div + 1.0;
+                      scale = value;
+                    } else if value > 0.0 {
+                      let div = value / scale;
+                      sum += div * div;
+                    }
+                  }
+                  scale * sum.sqrt()
+                }
+              }
+            }
+
             input.parse_nested_block(|arguments| {
               let first = Self::parse_additive_expression(arguments, state)?;
               let first = match first.expect_numeric() {
@@ -1194,6 +1449,11 @@ impl NumericValue {
             })
           },
           "sign" => {
+            #[inline]
+            fn sign(value: f32) -> f32 {
+              if value == 0.0 { value } else { value.signum() }
+            }
+
             input.parse_nested_block(|arguments| {
               let value = Self::parse_additive_expression(arguments, state)?;
               let value = match value.expect_numeric() {
@@ -1376,42 +1636,6 @@ fn minimum(a: f32, b: f32) -> f32 {
     // At least one input is NaN. Use `+` to perform NaN propagation and quieting.
     a + b
   }
-}
-
-fn hypot(args: &[f32]) -> f32 {
-  match *args {
-    [] => 0.0,
-    [arg1] => arg1.abs(),
-    [arg1, arg2] => arg1.hypot(arg2),
-    _ => {
-      let mut sum = 0.0;
-      let mut scale = 0.0;
-
-      for &arg in args {
-        let value = arg.abs();
-
-        if !value.is_finite() {
-          return value;
-        }
-
-        if scale < value {
-          let div = scale / value;
-          sum = sum * div * div + 1.0;
-          scale = value;
-        } else if value > 0.0 {
-          let div = value / scale;
-          sum += div * div;
-        }
-      }
-
-      scale * sum.sqrt()
-    }
-  }
-}
-
-#[inline]
-fn sign(value: f32) -> f32 {
-  if value == 0.0 { value } else { value.signum() }
 }
 
 #[cfg(test)]
@@ -1715,6 +1939,129 @@ mod tests {
       result,
       Ok(NumericValue::Length(Length {
         value: -1.0,
+        unit: LengthUnit::Px
+      }))
+    );
+  }
+
+  #[test]
+  fn round() {
+    let mut input = ParserInput::new("round(1.5)");
+    let mut parser = Parser::new(&mut input);
+    let result = NumericValue::parse(&mut parser);
+    assert_eq!(result, Ok(NumericValue::Number(Number(2.0))));
+  }
+
+  #[test]
+  fn round_with_interval() {
+    let mut input = ParserInput::new("round(1, 2)");
+    let mut parser = Parser::new(&mut input);
+    let result = NumericValue::parse(&mut parser);
+    assert_eq!(result, Ok(NumericValue::Number(Number(2.0))));
+  }
+
+  #[test]
+  fn round_with_strategy() {
+    let mut input = ParserInput::new("round(to-zero, 2.5, 5)");
+    let mut parser = Parser::new(&mut input);
+    let result = NumericValue::parse(&mut parser);
+    assert_eq!(result, Ok(NumericValue::Number(Number(0.0))));
+  }
+
+  #[test]
+  fn round_with_interval_infinity() {
+    let mut input = ParserInput::new("round(down, 1, infinity)");
+    let mut parser = Parser::new(&mut input);
+    let result = NumericValue::parse(&mut parser);
+    assert_eq!(result, Ok(NumericValue::Number(Number(0.0))));
+  }
+
+  #[test]
+  fn round_nan() {
+    let mut input = ParserInput::new("round(up, nan, 3)");
+    let mut parser = Parser::new(&mut input);
+    let result = NumericValue::parse(&mut parser);
+    let Ok(NumericValue::Number(Number(value))) = result else {
+      panic!("expect number: {:?}", result);
+    };
+    assert!(value.is_nan());
+  }
+
+  #[test]
+  fn round_length() {
+    let mut input = ParserInput::new("round(-1.5px)");
+    let mut parser = Parser::new(&mut input);
+    let result = NumericValue::parse(&mut parser);
+    assert_eq!(
+      result,
+      Ok(NumericValue::Length(Length {
+        value: -1.0,
+        unit: LengthUnit::Px
+      }))
+    );
+  }
+
+  #[test]
+  fn modulo() {
+    let mut input = ParserInput::new("mod(-3, 2)");
+    let mut parser = Parser::new(&mut input);
+    let result = NumericValue::parse(&mut parser);
+    assert_eq!(result, Ok(NumericValue::Number(Number(1.0))));
+  }
+
+  #[test]
+  fn modulo_zero() {
+    let mut input = ParserInput::new("mod(2, 0)");
+    let mut parser = Parser::new(&mut input);
+    let result = NumericValue::parse(&mut parser);
+    let Ok(NumericValue::Number(Number(value))) = result else {
+      panic!("expect number: {:?}", result);
+    };
+    assert!(value.is_nan());
+  }
+
+  #[test]
+  fn modulo_length() {
+    let mut input = ParserInput::new("mod(3px, 2px)");
+    let mut parser = Parser::new(&mut input);
+    let result = NumericValue::parse(&mut parser);
+    assert_eq!(
+      result,
+      Ok(NumericValue::Length(Length {
+        value: 1.0,
+        unit: LengthUnit::Px
+      }))
+    );
+  }
+
+  #[test]
+  fn rem() {
+    let mut input = ParserInput::new("rem(-3, 2)");
+    let mut parser = Parser::new(&mut input);
+    let result = NumericValue::parse(&mut parser);
+    assert_eq!(result, Ok(NumericValue::Number(Number(-1.0))));
+  }
+
+  #[test]
+  fn rem_zero() {
+    let mut input = ParserInput::new("rem(2, 0)");
+    let mut parser = Parser::new(&mut input);
+    let result = NumericValue::parse(&mut parser);
+    let Ok(NumericValue::Number(Number(value))) = result else {
+      panic!("expect number: {:?}", result);
+    };
+    assert!(value.is_nan());
+  }
+
+  #[test]
+  fn rem_length() {
+    let mut input = ParserInput::new("mod(3px, 2px)");
+    let mut parser = Parser::new(&mut input);
+    let result = NumericValue::parse(&mut parser);
+    assert_eq!(
+      result,
+      Ok(NumericValue::Length(Length {
+        value: 1.0,
         unit: LengthUnit::Px
       }))
     );
