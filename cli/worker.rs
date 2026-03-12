@@ -193,9 +193,16 @@ impl CliMainWorker {
       /// Execute the given main module emitting load and unload events before and after execution
       /// respectively.
       pub async fn execute(&mut self) -> Result<(), CoreError> {
-        self.inner.execute_main_module().await?;
-        self.inner.worker.dispatch_load_event()?;
+        // Set pending_unload before module execution so that if the future
+        // is cancelled during a top-level await, Drop will still dispatch
+        // the unload event for any handlers registered during partial
+        // module evaluation.
         self.pending_unload = true;
+        if let Err(e) = self.inner.execute_main_module().await {
+          self.pending_unload = false;
+          return Err(e);
+        }
+        self.inner.worker.dispatch_load_event()?;
 
         let result = loop {
           match self.inner.worker.run_event_loop(false).await {
@@ -226,6 +233,7 @@ impl CliMainWorker {
       fn drop(&mut self) {
         if self.pending_unload {
           let _ = self.inner.worker.dispatch_unload_event();
+          let _ = self.inner.worker.dispatch_process_exit_event();
         }
       }
     }
