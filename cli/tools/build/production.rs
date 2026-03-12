@@ -1,5 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use deno_core::error::AnyError;
@@ -11,8 +12,10 @@ use deno_bundler::analyze::analyze_graph;
 use deno_bundler::chunk::build_chunk_graph;
 use deno_bundler::chunk::ChunkType;
 use deno_bundler::config::EnvironmentId;
-use deno_bundler::emit::emit_dev_chunk;
+use deno_bundler::emit::emit_production_chunk;
 use deno_bundler::graph_builder::build_bundler_graph;
+use deno_bundler::transform_pipeline::transform_graph;
+use deno_bundler::transform_pipeline::TransformOptions;
 use deno_bundler::transpile::transpile_graph;
 
 use crate::args::BuildFlags;
@@ -69,6 +72,20 @@ pub async fn build(
   let mut total_chunks = 0usize;
   let mut total_modules = 0usize;
 
+  // Default production defines.
+  let mut defines = HashMap::new();
+  defines.insert(
+    "process.env.NODE_ENV".to_string(),
+    "\"production\"".to_string(),
+  );
+
+  let transform_options = TransformOptions {
+    define: defines,
+    dead_code_elimination: true,
+    convert_to_var: false,
+    production: true,
+  };
+
   for (name, env_config) in &build_config.environments {
     let env_id = EnvironmentId::new(env_id_counter);
     env_id_counter += 1;
@@ -95,10 +112,11 @@ pub async fn build(
       .create_graph(GraphKind::All, entries.clone(), NpmCachingStrategy::Eager)
       .await?;
 
-    // Convert, transpile, and analyze.
+    // Convert, transpile, transform, and analyze.
     let mut bundler_graph =
       build_bundler_graph(&deno_module_graph, env_id, &entries);
     transpile_graph(&mut bundler_graph);
+    transform_graph(&mut bundler_graph, &transform_options);
     analyze_graph(&mut bundler_graph);
 
     let module_count = bundler_graph.len();
@@ -133,11 +151,10 @@ pub async fn build(
       )
     })?;
 
-    // Emit chunks.
-    // TODO: Use production emit with scope hoisting + minification.
-    // For now, use dev emit format.
+    // Emit chunks using production format.
     for chunk in chunk_graph.chunks() {
-      let output = emit_dev_chunk(chunk, &bundler_graph, &chunk_graph);
+      let output =
+        emit_production_chunk(chunk, &bundler_graph, &chunk_graph);
 
       let filename = match chunk.chunk_type {
         ChunkType::Entry => {

@@ -2,8 +2,10 @@
 
 //! Code emission for bundled chunks.
 //!
-//! Responsible for generating the final JavaScript output from chunks,
-//! including import rewriting, scope hoisting, and source map generation.
+//! Provides both dev-mode emission (module registration wrappers) and
+//! production emission (concatenated modules with CJS interop helpers).
+
+mod production;
 
 use deno_ast::ModuleSpecifier;
 
@@ -12,6 +14,8 @@ use crate::chunk::ChunkGraph;
 use crate::chunk::ChunkType;
 use crate::graph::BundlerGraph;
 use crate::module::ModuleType;
+
+pub use production::emit_production_chunk;
 
 /// Output from emitting a chunk.
 #[derive(Debug, Clone)]

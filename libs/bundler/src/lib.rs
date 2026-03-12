@@ -11,4 +11,5 @@ pub mod graph_builder;
 pub mod js;
 pub mod loader;
 pub mod module;
+pub mod transform_pipeline;
 pub mod transpile;
