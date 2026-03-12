@@ -51,6 +51,7 @@ const CpEntryFlags = {
 } as const;
 
 const {
+  Number,
   PromiseResolve,
 } = primordials;
 

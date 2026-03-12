@@ -732,13 +732,12 @@ const CP_IS_SRC_SYMLINK_FLAG: u64 = 1u64 << 37;
 const CP_IS_SRC_SOCKET_FLAG: u64 = 1u64 << 38;
 const CP_IS_SRC_FIFO_FLAG: u64 = 1u64 << 39;
 
-/// Bit-packed stat metadata passed to JS for cp operations.
+/// Bit-packed stat metadata passed to JS for `cp`` operations.
 ///
 /// Layout (u64):
 /// - bits 0..31  : src mode (`st_mode`)
 /// - bit 32      : destination exists
-/// - bits 33..39 : source type flags (dir, file, char/block device, symlink,
-///                 socket, fifo)
+/// - bits 33..39 : source type flags (dir, file, char/block device, symlink, socket, fifo)
 fn compact_stat_info(
   src_stat: &deno_io::fs::FsStat,
   is_dest_exists: bool,
