@@ -17,6 +17,16 @@ use nix::unistd::User;
 use crate::ExtNodeSys;
 
 // --- process.title support ---
+//
+// The argv buffer overwrite technique used here is the standard approach for
+// setting the process title visible in `ps`. This is the same technique used by
+// Node.js (via libuv's uv_setup_args/uv_set_process_title), nginx, PostgreSQL,
+// and many other programs. The OS allocates argv as a contiguous buffer; we
+// save its bounds at startup, then overwrite it with the new title.
+//
+// References:
+// - libuv: https://github.com/libuv/libuv/blob/v1.x/src/unix/proctitle.c
+// - Node.js: uses uv_setup_args() in node_main.cc, uv_set_process_title() in node.cc
 
 #[cfg(target_os = "linux")]
 mod argv_store {

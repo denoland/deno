@@ -4,9 +4,8 @@ import { primordials } from "ext:core/mod.js";
 const {
   SafeMap,
   ArrayPrototypeForEach,
-  SafeRegExp,
+  ArrayPrototypePush,
   StringPrototypeSlice,
-  StringPrototypeSplit,
   StringPrototypeStartsWith,
 } = primordials;
 
@@ -14,6 +13,39 @@ const {
 // - https://github.com/nodejs/node/blob/master/src/node_options-inl.h
 // - https://github.com/nodejs/node/blob/master/src/node_options.cc
 // - https://github.com/nodejs/node/blob/master/src/node_options.h
+
+// Quote-aware tokenizer for NODE_OPTIONS. Node.js uses a shell-like parser
+// that respects single and double quotes, so `--title="hello world"` is a
+// single token whose value is `hello world`, not two tokens.
+function splitNodeOptions(input: string): string[] {
+  const args: string[] = [];
+  let current = "";
+  let inDouble = false;
+  let inSingle = false;
+
+  for (let i = 0; i < input.length; i++) {
+    const ch = input[i];
+    if (ch === '"' && !inSingle) {
+      inDouble = !inDouble;
+    } else if (ch === "'" && !inDouble) {
+      inSingle = !inSingle;
+    } else if (
+      (ch === " " || ch === "\t" || ch === "\n" || ch === "\r") && !inDouble &&
+      !inSingle
+    ) {
+      if (current.length > 0) {
+        ArrayPrototypePush(args, current);
+        current = "";
+      }
+    } else {
+      current += ch;
+    }
+  }
+  if (current.length > 0) {
+    ArrayPrototypePush(args, current);
+  }
+  return args;
+}
 
 /** Gets the all options for Node.js
  * This function is expensive to execute. `getOptionValue` in `internal/options.ts`
@@ -26,9 +58,7 @@ export function getOptions() {
   ]);
 
   const nodeOptions = Deno.env.get("NODE_OPTIONS");
-  const args = nodeOptions
-    ? StringPrototypeSplit(nodeOptions, new SafeRegExp("\\s"))
-    : [];
+  const args = nodeOptions ? splitNodeOptions(nodeOptions) : [];
   ArrayPrototypeForEach(args, (arg) => {
     if (StringPrototypeStartsWith(arg, "--title=")) {
       options.set("--title", { value: StringPrototypeSlice(arg, 8) });
