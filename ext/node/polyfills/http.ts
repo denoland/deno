@@ -70,7 +70,11 @@ import {
 } from "ext:deno_node/internal/errors.ts";
 import { getTimerDuration } from "ext:deno_node/internal/timers.mjs";
 import { getIPFamily } from "ext:deno_node/internal/net.ts";
-import { serveHttpOnListener, upgradeHttpRaw } from "ext:deno_http/00_serve.ts";
+import {
+  serveHttpOnListener,
+  upgradeHttpRaw,
+  upgradeHttpRawConnect,
+} from "ext:deno_http/00_serve.ts";
 import { listen as listenDeno } from "ext:deno_net/01_net.js";
 import { headersEntries } from "ext:deno_fetch/20_headers.js";
 import { Response } from "ext:deno_fetch/23_response.js";
@@ -2283,13 +2287,17 @@ export class ServerImpl extends EventEmitter {
         req[kRawHeaders] = request.headers;
 
         if (this.listenerCount("connect") > 0) {
-          const { conn, response } = upgradeHttpRaw(request);
-          const socket = new Socket({
-            handle: new TCP(constants.SERVER, conn),
-          });
-          req.socket = socket;
-          this.emit("connect", req, socket, Buffer.from([]));
-          return response;
+          return (async () => {
+            const { conn, response, head } = await upgradeHttpRawConnect(
+              request,
+            );
+            const socket = new Socket({
+              handle: new TCP(constants.SERVER, conn),
+            });
+            req.socket = socket;
+            this.emit("connect", req, socket, Buffer.from(head));
+            return response;
+          })();
         } else {
           return new Response(null, { status: 405 });
         }
