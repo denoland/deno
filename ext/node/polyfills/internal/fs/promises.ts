@@ -7,9 +7,7 @@ import * as constants from "ext:deno_node/_fs/_fs_constants.ts";
 import { copyFilePromise } from "ext:deno_node/_fs/_fs_copy.ts";
 import { cpPromise } from "ext:deno_node/_fs/_fs_cp.ts";
 import { lutimesPromise } from "ext:deno_node/_fs/_fs_lutimes.ts";
-import { readdirPromise } from "ext:deno_node/_fs/_fs_readdir.ts";
-import { readFilePromise } from "ext:deno_node/_fs/_fs_readFile.ts";
-import { readlinkPromise } from "ext:deno_node/_fs/_fs_readlink.ts";
+import { readdirPromise, readFilePromise, readlinkPromise } from "node:fs";
 import { lstatPromise } from "ext:deno_node/_fs/_fs_lstat.ts";
 import {
   access,
