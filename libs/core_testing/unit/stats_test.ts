@@ -59,6 +59,8 @@ test(function testStatsResources() {
 });
 
 test(function testTimers() {
+  // Timers are now JS-managed and not tracked by the Rust stats system.
+  // Verify that creating/clearing timers doesn't affect Rust-side stats.
   using statsBefore = StatsFactory.capture();
 
   const timeout = setTimeout(() => null, 1000);
@@ -68,9 +70,8 @@ test(function testTimers() {
   const diffMiddle = StatsFactory.diff(statsBefore, statsMiddle);
   assertEquals(
     0,
-    diffMiddle.disappeared.count(LeakType.Timer, LeakType.Interval),
+    diffMiddle.appeared.count(LeakType.Timer, LeakType.Interval),
   );
-  assertEquals(2, diffMiddle.appeared.count(LeakType.Timer, LeakType.Interval));
   clearTimeout(timeout);
   clearInterval(interval);
 
@@ -118,44 +119,12 @@ test(async function testAsyncLeakTrace() {
 });
 
 test(async function testTimeoutLeakTrace() {
+  // Timers are now JS-managed and not tracked by the Rust leak tracing system.
+  // Verify that creating/clearing timers doesn't affect leak traces.
   await enableTracingForTest(() => {
     const tracesBefore = Deno.core.getAllLeakTraces();
     using statsBefore = StatsFactory.capture();
     const t1 = setTimeout(() => {}, 100_000);
-    const tracesAfter = Deno.core.getAllLeakTraces();
-    using statsAfter = StatsFactory.capture();
-    const diff = StatsFactory.diff(statsBefore, statsAfter);
-    assertEquals(diff.appeared.countWithTraces(LeakType.Timer), 1);
-
-    assertEquals(tracesAfter.size, tracesBefore.size + 1);
-    clearTimeout(t1);
-    const tracesFinal = Deno.core.getAllLeakTraces();
-    assertEquals(tracesFinal.size, 0);
-  });
-});
-
-test(async function testIntervalLeakTrace() {
-  await enableTracingForTest(() => {
-    const tracesBefore = Deno.core.getAllLeakTraces();
-    using statsBefore = StatsFactory.capture();
-    const t1 = setInterval(() => {}, 100_000);
-    const tracesAfter = Deno.core.getAllLeakTraces();
-    using statsAfter = StatsFactory.capture();
-    const diff = StatsFactory.diff(statsBefore, statsAfter);
-    assertEquals(diff.appeared.countWithTraces(LeakType.Interval), 1);
-
-    assertEquals(tracesAfter.size, tracesBefore.size + 1);
-    clearInterval(t1);
-    const tracesFinal = Deno.core.getAllLeakTraces();
-    assertEquals(tracesFinal.size, 0);
-  });
-});
-
-test(async function testSystemTimeoutLeakTrace() {
-  await enableTracingForTest(() => {
-    const tracesBefore = Deno.core.getAllLeakTraces();
-    using statsBefore = StatsFactory.capture();
-    const t1 = Deno.core.queueSystemTimer(undefined, false, 100_000, () => {});
     const tracesAfter = Deno.core.getAllLeakTraces();
     using statsAfter = StatsFactory.capture();
     const diff = StatsFactory.diff(statsBefore, statsAfter);
@@ -164,6 +133,24 @@ test(async function testSystemTimeoutLeakTrace() {
     assertEquals(tracesAfter.size, tracesBefore.size);
     clearTimeout(t1);
     const tracesFinal = Deno.core.getAllLeakTraces();
-    assertEquals(tracesFinal.size, 0);
+    assertEquals(tracesFinal.size, tracesBefore.size);
+  });
+});
+
+test(async function testIntervalLeakTrace() {
+  // Timers are now JS-managed and not tracked by the Rust leak tracing system.
+  await enableTracingForTest(() => {
+    const tracesBefore = Deno.core.getAllLeakTraces();
+    using statsBefore = StatsFactory.capture();
+    const t1 = setInterval(() => {}, 100_000);
+    const tracesAfter = Deno.core.getAllLeakTraces();
+    using statsAfter = StatsFactory.capture();
+    const diff = StatsFactory.diff(statsBefore, statsAfter);
+    assertEquals(diff.appeared.countWithTraces(LeakType.Interval), 0);
+
+    assertEquals(tracesAfter.size, tracesBefore.size);
+    clearInterval(t1);
+    const tracesFinal = Deno.core.getAllLeakTraces();
+    assertEquals(tracesFinal.size, tracesBefore.size);
   });
 });

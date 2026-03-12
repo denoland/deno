@@ -124,66 +124,30 @@ pub fn op_leak_tracing_get<'s, 'i>(
   )
 }
 
-/// Queue a timer. We return a "large integer" timer ID in an f64 which allows for up
-/// to `MAX_SAFE_INTEGER` (2^53) timers to exist, versus 2^32 timers if we used
-/// `u32`.
+/// Schedule the user-timer wake-up.
+///
+/// - `delay_ms >= 0`: schedule a wakeup in `delay_ms` milliseconds
+/// - `delay_ms == -1`: ref the timer handle (keep event loop alive)
+/// - `delay_ms == -2`: unref the timer handle (allow event loop to exit)
 #[op2(fast)]
-pub fn op_timer_queue(
-  scope: &mut v8::PinScope,
-  depth: u32,
-  repeat: bool,
-  timeout_ms: f64,
-  task: v8::Local<v8::Function>,
-) -> f64 {
-  let task = v8::Global::new(scope, task);
+pub fn op_timer_schedule(scope: &mut v8::PinScope, delay_ms: f64) {
   let context_state = JsRealm::state_from_scope(scope);
-  if repeat {
-    context_state
-      .timers
-      .queue_timer_repeat(timeout_ms as _, (task, depth)) as _
+  if delay_ms == -1.0 {
+    context_state.user_timer.ref_timer();
+  } else if delay_ms == -2.0 {
+    context_state.user_timer.unref_timer();
   } else {
     context_state
-      .timers
-      .queue_timer(timeout_ms as _, (task, depth)) as _
+      .user_timer
+      .schedule(std::time::Duration::from_millis(delay_ms as u64));
   }
 }
 
-/// Queue a timer. We return a "large integer" timer ID in an f64 which allows for up
-/// to `MAX_SAFE_INTEGER` (2^53) timers to exist, versus 2^32 timers if we used
-/// `u32`.
+/// Get the current monotonic time in milliseconds (relative to process start).
 #[op2(fast)]
-pub fn op_timer_queue_system(
-  scope: &mut v8::PinScope,
-  repeat: bool,
-  timeout_ms: f64,
-  task: v8::Local<v8::Function>,
-) -> f64 {
-  let task = v8::Global::new(scope, task);
+pub fn op_timer_now(scope: &mut v8::PinScope) -> f64 {
   let context_state = JsRealm::state_from_scope(scope);
-  context_state
-    .timers
-    .queue_system_timer(repeat, timeout_ms as _, (task, 0)) as _
-}
-
-#[op2(fast)]
-pub fn op_timer_cancel(scope: &mut v8::PinScope, id: f64) {
-  let context_state = JsRealm::state_from_scope(scope);
-  context_state.timers.cancel_timer(id as _);
-  context_state
-    .activity_traces
-    .complete(RuntimeActivityType::Timer, id as _);
-}
-
-#[op2(fast)]
-pub fn op_timer_ref(scope: &mut v8::PinScope, id: f64) {
-  let context_state = JsRealm::state_from_scope(scope);
-  context_state.timers.ref_timer(id as _);
-}
-
-#[op2(fast)]
-pub fn op_timer_unref(scope: &mut v8::PinScope, id: f64) {
-  let context_state = JsRealm::state_from_scope(scope);
-  context_state.timers.unref_timer(id as _);
+  context_state.user_timer.now()
 }
 
 #[op2(reentrant)]
