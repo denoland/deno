@@ -148,6 +148,7 @@ fn op_node_load_env_file(
       value
     };
 
+    // SAFETY: called during single-threaded initialization
     #[allow(clippy::undocumented_unsafe_blocks)]
     unsafe {
       env::set_var(key, value);
@@ -211,6 +212,10 @@ deno_core::extension!(deno_node,
     ops::fs::op_node_statfs_sync,
     ops::fs::op_node_statfs,
     ops::fs::op_node_file_from_fd,
+    ops::fs::op_node_cp_check_paths_recursive,
+    ops::fs::op_node_cp_on_file,
+    ops::fs::op_node_cp_on_link,
+    ops::fs::op_node_cp_validate_and_prepare,
     ops::winerror::op_node_sys_to_uv_error,
     ops::v8::op_v8_cached_data_version_tag,
     ops::v8::op_v8_get_heap_statistics,
@@ -259,18 +264,9 @@ deno_core::extension!(deno_node,
     ops::http::op_node_http_response_reclaim_conn,
     ops::http::op_node_http_await_information,
     ops::http::op_node_http_await_response,
-    ops::http2::op_http2_connect,
-    ops::http2::op_http2_poll_client_connection,
-    ops::http2::op_http2_client_request,
-    ops::http2::op_http2_client_get_response,
-    ops::http2::op_http2_client_get_response_body_chunk,
-    ops::http2::op_http2_client_send_data,
-    ops::http2::op_http2_client_reset_stream,
-    ops::http2::op_http2_client_send_trailers,
-    ops::http2::op_http2_client_get_response_trailers,
-    ops::http2::op_http2_accept,
-    ops::http2::op_http2_listen,
-    ops::http2::op_http2_send_response,
+    ops::http2::op_http2_constants,
+    ops::http2::op_http2_callbacks,
+    ops::http2::op_http2_http_state,
     ops::os::op_node_os_get_priority,
     ops::os::op_node_os_set_priority,
     ops::os::op_node_os_user_info,
@@ -367,6 +363,9 @@ deno_core::extension!(deno_node,
     ops::zlib::Zlib,
     ops::zlib::ZstdCompress,
     ops::zlib::ZstdDecompress,
+    ops::libuv_stream::TCP,
+    ops::http2::Http2Session,
+    ops::http2::Http2Stream,
   ],
   esm_entry_point = "ext:deno_node/02_init.js",
   esm = [
@@ -387,10 +386,6 @@ deno_core::extension!(deno_node,
     "_fs/_fs_glob.ts",
     "_fs/_fs_lstat.ts",
     "_fs/_fs_lutimes.ts",
-    "_fs/_fs_mkdir.ts",
-    "_fs/_fs_mkdtemp.ts",
-    "_fs/_fs_open.ts",
-    "_fs/_fs_opendir.ts",
     "_fs/_fs_read.ts",
     "_fs/_fs_readdir.ts",
     "_fs/_fs_readFile.ts",
@@ -399,13 +394,6 @@ deno_core::extension!(deno_node,
     "_fs/_fs_realpath.ts",
     "_fs/_fs_stat.ts",
     "_fs/_fs_statfs.ts",
-    "_fs/_fs_symlink.ts",
-    "_fs/_fs_truncate.ts",
-    "_fs/_fs_utimes.ts",
-    "_fs/_fs_watch.ts",
-    "_fs/_fs_write.ts",
-    "_fs/_fs_writeFile.ts",
-    "_fs/_fs_writev.ts",
     "_next_tick.ts",
     "_process/exiting.ts",
     "_process/process.ts",
@@ -488,6 +476,7 @@ deno_core::extension!(deno_node,
     "internal/hide_stack_frames.ts",
     "internal/http.ts",
     "internal/http2/util.ts",
+    "internal/http2/compat.js",
     "internal/idna.ts",
     "internal/net.ts",
     "internal/normalize_encoding.ts",
@@ -627,6 +616,14 @@ deno_core::extension!(deno_node,
     }
 
     state.put(AsyncId::default());
+
+    // Initialize a uv_loop_t for libuv compat layer (used by TCP/HTTP2)
+    // SAFETY: zeroed memory is valid for UvLoop before uv_loop_init
+    let mut uv_loop = Box::new(unsafe { std::mem::zeroed::<deno_core::uv_compat::UvLoop>() });
+    // SAFETY: uv_loop points to valid zeroed memory ready for initialization
+    unsafe { deno_core::uv_compat::uv_loop_init(&mut *uv_loop) };
+    state.put(uv_loop);
+
   },
   global_template_middleware = global_template_middleware,
   global_object_middleware = global_object_middleware,

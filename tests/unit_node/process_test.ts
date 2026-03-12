@@ -865,7 +865,6 @@ Deno.test("process.on, process.off, process.removeListener doesn't throw on unim
     "beforeExit",
     "disconnect",
     "message",
-    "multipleResolves",
     "rejectionHandled",
     "uncaughtException",
     "uncaughtExceptionMonitor",
