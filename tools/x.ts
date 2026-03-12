@@ -1,4 +1,18 @@
+#!/usr/bin/env -S deno run --allow-all
+
 // Copyright 2018-2026 the Deno authors. MIT license.
+
+/**
+ * x - Developer CLI for contributing to Deno
+ *
+ * Inspired by Servo's mach tool, this script provides a unified
+ * interface for common development tasks like building, testing, and more.
+ *
+ * Usage:
+ *   ./x <command> [options]
+ *
+ * Run `./x --help` for more information.
+ */
 
 // deno-lint-ignore-file no-console
 
@@ -370,33 +384,31 @@ function printCommandHelp(name: string, cmd: Command) {
 // Entry point
 // ---------------------------------------------------------------------------
 
-export async function main(dirname: string) {
-  const root = $.path(dirname);
-  const COMMANDS = buildCommands(root);
-  const args = Deno.args;
+const root = $.path(import.meta.dirname).parent();
+const COMMANDS = buildCommands(root);
+const args = Deno.args;
 
-  if (
-    args.length === 0 || args[0] === "--help" || args[0] === "-h" ||
-    args[0] === "help"
-  ) {
-    printHelp(COMMANDS);
-    Deno.exit(0);
-  }
-
-  const subcommand = args[0];
-  const cmd = COMMANDS[subcommand];
-
-  if (!cmd) {
-    $.logError(`Unknown command '${subcommand}'.`);
-    console.log();
-    printHelp(COMMANDS);
-    Deno.exit(1);
-  }
-
-  if (args.includes("--help") || args.includes("-h")) {
-    printCommandHelp(subcommand, cmd);
-    Deno.exit(0);
-  }
-
-  await cmd.fn(args.slice(1));
+if (
+  args.length === 0 || args[0] === "--help" || args[0] === "-h" ||
+  args[0] === "help"
+) {
+  printHelp(COMMANDS);
+  Deno.exit(0);
 }
+
+const subcommand = args[0];
+const cmd = COMMANDS[subcommand];
+
+if (!cmd) {
+  $.logError(`Unknown command '${subcommand}'.`);
+  console.log();
+  printHelp(COMMANDS);
+  Deno.exit(1);
+}
+
+if (args.includes("--help") || args.includes("-h")) {
+  printCommandHelp(subcommand, cmd);
+  Deno.exit(0);
+}
+
+await cmd.fn(args.slice(1));
