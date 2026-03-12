@@ -1319,7 +1319,6 @@ pub static TYPES_NODE_IGNORABLE_NAMES: &[&str] = &[
   "EventTarget",
   "fetch",
   "File",
-  "Float16Array",
   "Float32Array",
   "Float64Array",
   "FormData",
