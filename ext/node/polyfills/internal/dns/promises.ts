@@ -32,13 +32,15 @@ import {
 } from "ext:deno_node/internal/validators.mjs";
 import { isIP } from "ext:deno_node/internal/net.ts";
 import {
+  dnsOrderToNumber,
   emitInvalidHostnameWarning,
+  getDefaultDnsOrder,
   getDefaultResolver,
-  getDefaultVerbatim,
   isFamily,
   isLookupOptions,
   Resolver as CallbackResolver,
   validateHints,
+  validDnsOrders,
 } from "ext:deno_node/internal/dns/utils.ts";
 import type {
   LookupAddress,
@@ -108,7 +110,7 @@ function createLookupPromise(
   hostname: string,
   all: boolean,
   hints: number,
-  verbatim: boolean,
+  dnsOrder: string,
 ): Promise<void | LookupAddress | LookupAddress[]> {
   return new Promise((resolve, reject) => {
     if (!hostname) {
@@ -140,7 +142,7 @@ function createLookupPromise(
       toASCII(hostname),
       family,
       hints,
-      verbatim ? cares.DNS_ORDER_VERBATIM : cares.DNS_ORDER_IPV4_FIRST,
+      dnsOrderToNumber(dnsOrder),
     );
 
     if (err) {
@@ -174,7 +176,7 @@ export function lookup(
   let hints = 0;
   let family = 0;
   let all = false;
-  let verbatim = getDefaultVerbatim();
+  let dnsOrder = getDefaultDnsOrder();
 
   // Parse arguments
   if (hostname) {
@@ -216,11 +218,20 @@ export function lookup(
 
     if (options?.verbatim != null) {
       validateBoolean(options.verbatim, "options.verbatim");
-      verbatim = options.verbatim;
+      dnsOrder = options.verbatim ? "verbatim" : "ipv4first";
+    }
+
+    if ((options as Record<string, unknown>)?.order != null) {
+      validateOneOf(
+        (options as Record<string, unknown>).order,
+        "options.order",
+        validDnsOrders,
+      );
+      dnsOrder = (options as Record<string, unknown>).order as string;
     }
   }
 
-  return createLookupPromise(family, hostname, all, hints, verbatim);
+  return createLookupPromise(family, hostname, all, hints, dnsOrder);
 }
 
 function onresolve(

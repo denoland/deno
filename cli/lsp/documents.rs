@@ -1159,7 +1159,7 @@ pub struct DocumentModules {
   dep_info_by_scope: once_cell::sync::OnceCell<Arc<DepInfoByScope>>,
   modules_unscoped: Arc<WeakDocumentModuleMap>,
   modules_by_scope: Arc<BTreeMap<Arc<Url>, Arc<WeakDocumentModuleMap>>>,
-  assigned_scopes: Arc<DashMap<Arc<Uri>, ScopeInfo>>,
+  assigned_scopes: Arc<RwLock<HashMap<Arc<Uri>, ScopeInfo>>>,
 }
 
 impl DocumentModules {
@@ -1294,6 +1294,15 @@ impl DocumentModules {
     self.documents.remove_server_doc(&module.uri);
   }
 
+  pub fn assign_scopes(
+    &self,
+    entries: impl IntoIterator<
+      Item = (Arc<Uri>, (Option<Arc<Url>>, CompilerOptionsKey)),
+    >,
+  ) {
+    self.assigned_scopes.write().extend(entries);
+  }
+
   fn infer_specifier(&self, document: &Document) -> Option<Arc<Url>> {
     if let Some(document) = document.server() {
       match &document.kind {
@@ -1400,7 +1409,7 @@ impl DocumentModules {
       compiler_options_key,
     );
     if let Some(module) = &module {
-      self.assigned_scopes.insert(
+      self.assigned_scopes.write().insert(
         document.uri().clone(),
         (module.scope.clone(), module.compiler_options_key.clone()),
       );
@@ -1458,9 +1467,9 @@ impl DocumentModules {
     if let Some(scope) = self.primary_scope(document.uri()) {
       return self.module(document, scope.map(|s| s.as_ref()));
     }
-    if let Some((scope, compiler_options_key)) =
-      self.assigned_scopes.get(document.uri()).map(|e| e.clone())
-    {
+    let assigned_scope =
+      self.assigned_scopes.read().get(document.uri()).cloned();
+    if let Some((scope, compiler_options_key)) = assigned_scope {
       return self.module_inner(
         document,
         None,
@@ -2074,6 +2083,30 @@ impl LanguageId {
     }
   }
 
+  pub fn as_ts_script_kind(&self) -> i32 {
+    match self {
+      LanguageId::JavaScript => 1,
+      LanguageId::Jsx => 2,
+      LanguageId::TypeScript => 3,
+      LanguageId::Tsx => 4,
+      LanguageId::Json | LanguageId::JsonC => 6,
+      LanguageId::Markdown => 0,
+      LanguageId::Html => 0,
+      LanguageId::Css => 0,
+      LanguageId::Scss => 0,
+      LanguageId::Sass => 0,
+      LanguageId::Less => 0,
+      LanguageId::Yaml => 0,
+      LanguageId::Sql => 0,
+      LanguageId::Svelte => 0,
+      LanguageId::Vue => 0,
+      LanguageId::Astro => 0,
+      LanguageId::Vento => 0,
+      LanguageId::Nunjucks => 0,
+      LanguageId::Unknown => 0,
+    }
+  }
+
   fn is_diagnosable(&self) -> bool {
     matches!(
       self,
@@ -2182,7 +2215,7 @@ fn get_maybe_test_module_fut(
   Some(handle)
 }
 
-fn resolve_media_type(
+pub fn resolve_media_type(
   specifier: &ModuleSpecifier,
   maybe_headers: Option<&HashMap<String, String>>,
   maybe_language_id: Option<LanguageId>,
