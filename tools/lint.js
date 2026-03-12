@@ -404,6 +404,7 @@ async function ensureNoNewTopLevelEntries() {
     ".cargo",
     ".devcontainer",
     ".github",
+    "x",
     "cli",
     "ext",
     "libs",

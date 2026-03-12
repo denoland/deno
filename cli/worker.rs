@@ -23,6 +23,7 @@ use deno_runtime::WorkerExecutionMode;
 use deno_runtime::coverage::CoverageCollector;
 use deno_runtime::cpu_prof_filename;
 use deno_runtime::cpu_profiler::CpuProfiler;
+use deno_runtime::deno_os::OpExitCallbacks;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::worker::MainWorker;
 use deno_semver::npm::NpmPackageReqReference;
@@ -75,9 +76,39 @@ impl CliMainWorker {
   }
 
   pub async fn run(&mut self) -> Result<i32, CoreError> {
-    let mut maybe_coverage_collector = self.maybe_setup_coverage_collector();
-    let mut maybe_cpu_profiler = self.maybe_setup_cpu_profiler();
+    let maybe_coverage_collector = self.maybe_setup_coverage_collector();
+    let maybe_cpu_profiler = self.maybe_setup_cpu_profiler();
     let mut maybe_hmr_runner = self.maybe_setup_hmr_runner();
+
+    // Wrap profiler and coverage in Rc<RefCell<Option<...>>> so that
+    // both the normal cleanup path and the Deno.exit() op_exit path
+    // can stop them. Whichever runs first takes the value; the other
+    // finds None and skips.
+    let coverage_cell: Rc<RefCell<Option<CoverageCollector>>> =
+      Rc::new(RefCell::new(maybe_coverage_collector));
+    let profiler_cell: Rc<RefCell<Option<CpuProfiler>>> =
+      Rc::new(RefCell::new(maybe_cpu_profiler));
+
+    // Register exit callbacks so Deno.exit() flushes profiling/coverage
+    // data before calling std::process::exit().
+    {
+      let coverage_for_exit = coverage_cell.clone();
+      let profiler_for_exit = profiler_cell.clone();
+      let mut cbs = OpExitCallbacks::default();
+      cbs.push(Box::new(move || {
+        if let Some(mut cc) = coverage_for_exit.borrow_mut().take() {
+          let _ = cc.stop_collecting();
+        }
+      }));
+      cbs.push(Box::new(move || {
+        if let Some(mut cp) = profiler_for_exit.borrow_mut().take() {
+          let _ = cp.stop_profiling();
+        }
+      }));
+      self.worker.js_runtime().op_state().borrow_mut().put(cbs);
+    }
+
+    let has_coverage = coverage_cell.borrow().is_some();
 
     // WARNING: Remember to update cli/lib/worker.rs to align with
     // changes made here so that they affect deno_compile as well.
@@ -114,10 +145,7 @@ impl CliMainWorker {
         }
       } else {
         // TODO(bartlomieju): this might not be needed anymore
-        self
-          .worker
-          .run_event_loop(maybe_coverage_collector.is_none())
-          .await?;
+        self.worker.run_event_loop(!has_coverage).await?;
       }
 
       let web_continue = self.worker.dispatch_beforeunload_event()?;
@@ -132,10 +160,10 @@ impl CliMainWorker {
     self.worker.dispatch_unload_event()?;
     self.worker.dispatch_process_exit_event()?;
 
-    if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
+    if let Some(mut coverage_collector) = coverage_cell.borrow_mut().take() {
       coverage_collector.stop_collecting()?;
     }
-    if let Some(cpu_profiler) = maybe_cpu_profiler.as_mut() {
+    if let Some(mut cpu_profiler) = profiler_cell.borrow_mut().take() {
       cpu_profiler.stop_profiling()?;
     }
     if let Some(hmr_runner) = maybe_hmr_runner.as_mut() {
