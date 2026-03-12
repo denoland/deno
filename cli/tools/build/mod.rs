@@ -1,6 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 mod dev;
+mod production;
 
 use std::sync::Arc;
 
@@ -11,11 +12,10 @@ use crate::args::DevFlags;
 use crate::args::Flags;
 
 pub async fn build(
-  _flags: Arc<Flags>,
-  _build_flags: BuildFlags,
+  flags: Arc<Flags>,
+  build_flags: BuildFlags,
 ) -> Result<(), AnyError> {
-  log::error!("deno build is not yet implemented");
-  std::process::exit(1);
+  production::build(flags, build_flags).await
 }
 
 pub async fn dev(

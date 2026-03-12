@@ -29,6 +29,8 @@ use deno_bundler::emit::emit_hmr_update;
 use deno_bundler::graph::BundlerGraph;
 use deno_bundler::graph_builder::build_bundler_graph;
 use deno_bundler::js::hmr::compute_hmr_boundaries;
+use deno_bundler::transpile::transpile_graph;
+use deno_bundler::transpile::transpile_source;
 use deno_bundler::js::hmr::HmrBoundaryResult;
 use deno_bundler::js::hmr::HmrGraph;
 
@@ -266,8 +268,11 @@ pub async fn dev(
       .create_graph(GraphKind::All, entries.clone(), NpmCachingStrategy::Eager)
       .await?;
 
-    let bundler_graph =
+    let mut bundler_graph =
       build_bundler_graph(&deno_module_graph, env_id, &entries);
+
+    // Transpile TS/TSX/JSX → JS.
+    transpile_graph(&mut bundler_graph);
 
     log::warn!(
       "  {} {} ({} modules)",
@@ -599,11 +604,11 @@ async fn run_file_watcher(
       }
     }
 
-    // Compute HMR update for each environment.
-    let state = state.read().await;
+    // Re-read changed files, re-transpile, compute HMR boundaries.
+    let mut state = state.write().await;
     let mut full_reload = false;
 
-    for (_env_name, env_state) in &state.environments {
+    for (_env_name, env_state) in &mut state.environments {
       let changed_specifiers: Vec<ModuleSpecifier> = all_paths
         .iter()
         .filter_map(|p| ModuleSpecifier::from_file_path(p).ok())
@@ -614,6 +619,60 @@ async fn run_file_watcher(
         continue;
       }
 
+      // Re-read and re-transpile changed modules.
+      for spec in &changed_specifiers {
+        if let Ok(path) = spec.to_file_path() {
+          if let Ok(new_source) = std::fs::read_to_string(&path) {
+            if let Some(module) = env_state.bundler_graph.get_module_mut(spec)
+            {
+              let loader = module.loader;
+              // Transpile if needed.
+              let transpiled = if matches!(
+                loader,
+                deno_bundler::loader::Loader::Ts
+                  | deno_bundler::loader::Loader::Tsx
+                  | deno_bundler::loader::Loader::Jsx
+              ) {
+                let media_type = match loader {
+                  deno_bundler::loader::Loader::Ts => {
+                    deno_ast::MediaType::TypeScript
+                  }
+                  deno_bundler::loader::Loader::Tsx => {
+                    deno_ast::MediaType::Tsx
+                  }
+                  deno_bundler::loader::Loader::Jsx => {
+                    deno_ast::MediaType::Jsx
+                  }
+                  _ => deno_ast::MediaType::JavaScript,
+                };
+                transpile_source(spec, &new_source, media_type)
+                  .unwrap_or(new_source)
+              } else {
+                new_source
+              };
+              module.source = transpiled;
+            }
+          }
+        }
+      }
+
+      // Re-emit affected chunks.
+      for chunk in env_state.chunk_graph.chunks() {
+        let affected = chunk
+          .modules
+          .iter()
+          .any(|m| changed_specifiers.contains(m));
+        if affected {
+          let output = emit_dev_chunk(
+            chunk,
+            &env_state.bundler_graph,
+            &env_state.chunk_graph,
+          );
+          env_state.chunk_code.insert(chunk.id.0, output.code);
+        }
+      }
+
+      // Compute HMR boundaries.
       let hmr_graph = BundlerHmrGraph {
         graph: &env_state.bundler_graph,
       };
