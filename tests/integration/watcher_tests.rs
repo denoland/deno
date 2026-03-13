@@ -1347,8 +1347,106 @@ async fn test_watch_sigint() {
   assert_eq!(exit_status.code(), Some(130));
 }
 
+/// Test that the "unload" event fires on watch restart when the
+/// event loop is running (e.g. with setInterval keeping it alive).
+#[test(flaky)]
+async fn run_watch_unload_on_restart() {
+  let t = TempDir::new();
+  let file_to_watch = t.path().join("file_to_watch.js");
+  file_to_watch.write(
+    r#"
+      addEventListener("unload", () => {
+        console.log("unload event fired");
+      });
+      setInterval(() => {}, 1000);
+    "#,
+  );
+
+  let mut child = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("run")
+    .arg("--watch")
+    .arg("-L")
+    .arg("debug")
+    .arg("--allow-all")
+    .arg(&file_to_watch)
+    .env("NO_COLOR", "1")
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+
+  wait_for_watcher("file_to_watch.js", &mut stderr_lines).await;
+
+  // Trigger a restart by modifying the file
+  file_to_watch.write(
+    r#"
+      addEventListener("unload", () => {
+        console.log("unload event fired");
+      });
+      setInterval(() => {}, 1000);
+      // changed
+    "#,
+  );
+
+  // The unload handler should fire before the process restarts
+  wait_contains("unload event fired", &mut stdout_lines).await;
+  wait_contains("Restarting", &mut stderr_lines).await;
+  check_alive_then_kill(child);
+}
+
+/// Test that Node.js process "exit" event fires on watch restart.
+#[test(flaky)]
+async fn run_watch_process_exit_on_restart() {
+  let t = TempDir::new();
+  let file_to_watch = t.path().join("file_to_watch.js");
+  file_to_watch.write(
+    r#"
+      import process from "node:process";
+      process.on("exit", () => {
+        console.log("process exit fired");
+      });
+      setInterval(() => {}, 1000);
+    "#,
+  );
+
+  let mut child = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("run")
+    .arg("--watch")
+    .arg("-L")
+    .arg("debug")
+    .arg("--allow-all")
+    .arg(&file_to_watch)
+    .env("NO_COLOR", "1")
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+
+  wait_for_watcher("file_to_watch.js", &mut stderr_lines).await;
+
+  // Trigger a restart by modifying the file
+  file_to_watch.write(
+    r#"
+      import process from "node:process";
+      process.on("exit", () => {
+        console.log("process exit fired");
+      });
+      setInterval(() => {}, 1000);
+      // changed
+    "#,
+  );
+
+  // The process exit handler should fire before the process restarts
+  wait_contains("process exit fired", &mut stdout_lines).await;
+  wait_contains("Restarting", &mut stderr_lines).await;
+  check_alive_then_kill(child);
+}
+
 /// Test that SIGTERM is dispatched to JS signal handlers on watch restart,
 /// giving the process a chance to clean up before restarting.
+#[cfg(unix)]
 #[test(flaky)]
 async fn run_watch_sigterm_on_restart() {
   let t = TempDir::new();
