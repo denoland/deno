@@ -736,7 +736,11 @@ fn resolve_graph_specifier_types(
           Ok(path_or_url) => Some(path_or_url.into_url()?),
           Err(err) => match err.code() {
             NodeJsErrorCode::ERR_MODULE_NOT_FOUND
-            | NodeJsErrorCode::ERR_TYPES_NOT_FOUND => None,
+            | NodeJsErrorCode::ERR_TYPES_NOT_FOUND
+            | NodeJsErrorCode::ERR_PACKAGE_PATH_NOT_EXPORTED
+            | NodeJsErrorCode::ERR_INVALID_PACKAGE_TARGET
+            | NodeJsErrorCode::ERR_UNSUPPORTED_DIR_IMPORT
+            | NodeJsErrorCode::ERR_PACKAGE_IMPORT_NOT_DEFINED => None,
             _ => return Err(ResolveError::PackageSubpathResolve(err)),
           },
         };
@@ -822,7 +826,11 @@ fn resolve_non_graph_specifier_types(
           Ok(url_or_path) => Some(url_or_path.into_url()?),
           Err(err) => match err.code() {
             NodeJsErrorCode::ERR_MODULE_NOT_FOUND
-            | NodeJsErrorCode::ERR_TYPES_NOT_FOUND => None,
+            | NodeJsErrorCode::ERR_TYPES_NOT_FOUND
+            | NodeJsErrorCode::ERR_PACKAGE_PATH_NOT_EXPORTED
+            | NodeJsErrorCode::ERR_INVALID_PACKAGE_TARGET
+            | NodeJsErrorCode::ERR_UNSUPPORTED_DIR_IMPORT
+            | NodeJsErrorCode::ERR_PACKAGE_IMPORT_NOT_DEFINED => None,
             _ => return Err(err.into()),
           },
         };

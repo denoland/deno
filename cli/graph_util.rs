@@ -280,29 +280,14 @@ pub fn module_error_for_tsc_diagnostic<'a>(
 pub struct ResolutionErrorRef<'a> {
   pub specifier: &'a str,
   pub range: &'a deno_graph::Range,
-  pub is_module_not_found: bool,
+  /// When true, the error message will be the generic "Cannot find module"
+  /// rather than the original resolution error message.
+  pub use_module_not_found_error: bool,
 }
 
 pub fn resolution_error_for_tsc_diagnostic(
   error: &ResolutionError,
 ) -> Option<ResolutionErrorRef<'_>> {
-  fn is_module_not_found_code(code: NodeJsErrorCode) -> bool {
-    match code {
-      NodeJsErrorCode::ERR_INVALID_MODULE_SPECIFIER
-      | NodeJsErrorCode::ERR_INVALID_PACKAGE_CONFIG
-      | NodeJsErrorCode::ERR_INVALID_PACKAGE_TARGET
-      | NodeJsErrorCode::ERR_UNKNOWN_FILE_EXTENSION
-      | NodeJsErrorCode::ERR_UNSUPPORTED_DIR_IMPORT
-      | NodeJsErrorCode::ERR_UNSUPPORTED_ESM_URL_SCHEME
-      | NodeJsErrorCode::ERR_INVALID_FILE_URL_PATH
-      | NodeJsErrorCode::ERR_PACKAGE_IMPORT_NOT_DEFINED
-      | NodeJsErrorCode::ERR_PACKAGE_PATH_NOT_EXPORTED => false,
-      NodeJsErrorCode::ERR_MODULE_NOT_FOUND
-      | NodeJsErrorCode::ERR_TYPES_NOT_FOUND
-      | NodeJsErrorCode::ERR_UNKNOWN_BUILTIN_MODULE => true,
-    }
-  }
-
   match error {
     ResolutionError::InvalidDowngrade { .. }
     | ResolutionError::InvalidJsrHttpsTypesImport { .. }
@@ -313,7 +298,7 @@ pub fn resolution_error_for_tsc_diagnostic(
         Some(ResolutionErrorRef {
           specifier,
           range,
-          is_module_not_found: false,
+          use_module_not_found_error: false,
         })
       }
     },
@@ -328,7 +313,7 @@ pub fn resolution_error_for_tsc_diagnostic(
           Some(ResolutionErrorRef {
             specifier,
             range,
-            is_module_not_found: false,
+            use_module_not_found_error: false,
           })
         }
       },
@@ -349,21 +334,34 @@ pub fn resolution_error_for_tsc_diagnostic(
               Some(ResolutionErrorRef {
                 specifier,
                 range,
-                is_module_not_found: false,
+                use_module_not_found_error: false,
               })
             }
           }
-        } else {
-          let is_module_not_found_error =
-            downcast_ref_deno_resolve_error(error)
-              .and_then(|err| err.maybe_node_code())
-              .map(is_module_not_found_code)
-              .unwrap_or(false);
-          is_module_not_found_error.then(|| ResolutionErrorRef {
+        } else if let Some(err) = downcast_ref_deno_resolve_error(error) {
+          let use_module_not_found_error = match err.maybe_node_code()? {
+            NodeJsErrorCode::ERR_INVALID_MODULE_SPECIFIER
+            | NodeJsErrorCode::ERR_INVALID_PACKAGE_CONFIG
+            | NodeJsErrorCode::ERR_UNKNOWN_FILE_EXTENSION
+            | NodeJsErrorCode::ERR_UNSUPPORTED_ESM_URL_SCHEME
+            | NodeJsErrorCode::ERR_INVALID_FILE_URL_PATH => return None,
+            // use generic "Cannot find module" message
+            NodeJsErrorCode::ERR_MODULE_NOT_FOUND
+            | NodeJsErrorCode::ERR_TYPES_NOT_FOUND => true,
+            // use the original error message
+            NodeJsErrorCode::ERR_UNKNOWN_BUILTIN_MODULE
+            | NodeJsErrorCode::ERR_INVALID_PACKAGE_TARGET
+            | NodeJsErrorCode::ERR_UNSUPPORTED_DIR_IMPORT
+            | NodeJsErrorCode::ERR_PACKAGE_IMPORT_NOT_DEFINED
+            | NodeJsErrorCode::ERR_PACKAGE_PATH_NOT_EXPORTED => false,
+          };
+          Some(ResolutionErrorRef {
             specifier,
             range,
-            is_module_not_found: true,
+            use_module_not_found_error,
           })
+        } else {
+          None
         }
       }
     },
