@@ -1446,7 +1446,6 @@ async fn run_watch_process_exit_on_restart() {
 
 /// Test that SIGTERM is dispatched to JS signal handlers on watch restart,
 /// giving the process a chance to clean up before restarting.
-#[cfg(unix)]
 #[test(flaky)]
 async fn run_watch_sigterm_on_restart() {
   let t = TempDir::new();
