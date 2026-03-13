@@ -721,29 +721,38 @@ impl LibUvStreamWrap {
     if stream.is_null() {
       return UV_EBADF;
     }
-
-    // Only drop CallbackData if readStart was called. The stream's data
-    // pointer may point to other data (e.g. StreamHandleData set by the
-    // constructor). Without this guard, readStop would misinterpret that
-    // data as CallbackData and corrupt memory.
-    if self.reading_started.get() {
-      // SAFETY: stream is a valid non-null uv_stream_t; data was set by
+    // SAFETY: stream is a valid non-null uv_stream_t; data was set by
       // read_start via Box::into_raw and reading_started confirms it is
       // CallbackData.
       unsafe {
-        let data = (*stream).data as *mut CallbackData;
-        if !data.is_null() {
+    let data = (*stream).data as *mut CallbackData;
+    if !data.is_null() {
+        let stream = self.stream_ptr();
+        if stream.is_null() {
+          return UV_EBADF;
+        }
+
+        // Only drop CallbackData if readStart was called. The stream's data
+        // pointer may point to other data (e.g. StreamHandleData set by the
+        // constructor). Without this guard, readStop would misinterpret that
+        // data as CallbackData and corrupt memory.
+        if self.reading_started.get() {
+          // SAFETY: stream is a valid non-null uv_stream_t; data was set by
+          // read_start via Box::into_raw and reading_started confirms it is
+          // CallbackData.
           drop(Box::from_raw(data));
           (*stream).data = std::ptr::null_mut();
+          self.reading_started.set(false);
         }
+
+        // No longer actively reading — allow GC to collect the JS object.
+        self.make_handle_weak(scope);
+
+        // SAFETY: stream is a valid non-null uv_stream_t (checked above).
+        unsafe { uv_compat::uv_read_stop(stream) }
       }
-      self.reading_started.set(false);
-    }
+  }
 
-    // No longer actively reading — allow GC to collect the JS object.
-    self.make_handle_weak(scope);
-
-    // SAFETY: stream is a valid non-null uv_stream_t (checked above).
     unsafe { uv_compat::uv_read_stop(stream) }
   }
 
