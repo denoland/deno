@@ -410,6 +410,7 @@
     },
     "parallel/test-crypto-lazy-transform-writable.js": {},
     "parallel/test-crypto-oneshot-hash.js": {},
+    "parallel/test-crypto-oneshot-hash-xof.js": {},
     "parallel/test-crypto-oaep-zero-length.js": {},
     "parallel/test-crypto-op-during-process-exit.js": {},
     "parallel/test-crypto-padding-aes256.js": {},
