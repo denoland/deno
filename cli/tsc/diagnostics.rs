@@ -217,7 +217,7 @@ impl Diagnostic {
     }
 
     let error_ref = resolution_error_for_tsc_diagnostic(error)?;
-    if error_ref.use_module_not_found_error {
+    if error_ref.is_module_not_found {
       Some(Self::from_missing_error(
         error_ref.specifier,
         Some(error_ref.range),

@@ -280,9 +280,7 @@ pub fn module_error_for_tsc_diagnostic<'a>(
 pub struct ResolutionErrorRef<'a> {
   pub specifier: &'a str,
   pub range: &'a deno_graph::Range,
-  /// When true, the error message will be the generic "Cannot find module"
-  /// rather than the original resolution error message.
-  pub use_module_not_found_error: bool,
+  pub is_module_not_found: bool,
 }
 
 pub fn resolution_error_for_tsc_diagnostic(
@@ -298,7 +296,7 @@ pub fn resolution_error_for_tsc_diagnostic(
         Some(ResolutionErrorRef {
           specifier,
           range,
-          use_module_not_found_error: false,
+          is_module_not_found: false,
         })
       }
     },
@@ -313,7 +311,7 @@ pub fn resolution_error_for_tsc_diagnostic(
           Some(ResolutionErrorRef {
             specifier,
             range,
-            use_module_not_found_error: false,
+            is_module_not_found: false,
           })
         }
       },
@@ -334,7 +332,7 @@ pub fn resolution_error_for_tsc_diagnostic(
               Some(ResolutionErrorRef {
                 specifier,
                 range,
-                use_module_not_found_error: false,
+                is_module_not_found: false,
               })
             }
           }
@@ -358,7 +356,7 @@ pub fn resolution_error_for_tsc_diagnostic(
           Some(ResolutionErrorRef {
             specifier,
             range,
-            use_module_not_found_error,
+            is_module_not_found: use_module_not_found_error,
           })
         } else {
           None
