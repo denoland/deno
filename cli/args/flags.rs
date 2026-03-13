@@ -506,11 +506,13 @@ pub struct DevFlags {
   pub port: u16,
   pub host: String,
   pub open: bool,
+  pub env_file: Option<Vec<String>>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct BuildFlags {
   pub watch: bool,
+  pub env_file: Option<Vec<String>>,
 }
 
 pub enum WatchFlagsRef<'a> {
@@ -2637,6 +2639,7 @@ Reads build configuration from deno.json and outputs optimized bundles.
   .defer(|cmd| {
     cmd
       .arg(config_arg())
+      .arg(env_file_arg())
       .arg(
         Arg::new("watch")
           .long("watch")
@@ -2680,6 +2683,7 @@ Reads build configuration from deno.json and starts a dev server with HMR suppor
           .help("Open the site in the default browser")
           .action(ArgAction::SetTrue),
       )
+      .arg(env_file_arg())
   })
 }
 
@@ -6184,8 +6188,13 @@ fn build_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     .map(ConfigFlag::Path)
     .unwrap_or(ConfigFlag::Discover);
 
+  let env_file = matches
+    .get_many::<String>("env-file")
+    .map(|values| values.cloned().collect());
+
   flags.subcommand = DenoSubcommand::Build(BuildFlags {
     watch: matches.get_flag("watch"),
+    env_file,
   });
 }
 
@@ -6200,8 +6209,12 @@ fn dev_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     .remove_one::<String>("host")
     .unwrap_or_else(|| "localhost".to_owned());
   let open = matches.get_flag("open");
+  let env_file = matches
+    .get_many::<String>("env-file")
+    .map(|values| values.cloned().collect());
 
-  flags.subcommand = DenoSubcommand::Dev(DevFlags { port, host, open });
+  flags.subcommand =
+    DenoSubcommand::Dev(DevFlags { port, host, open, env_file });
 }
 
 fn bundle_parse(

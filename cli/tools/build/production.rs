@@ -32,10 +32,13 @@ use super::plugin_host;
 
 pub async fn build(
   flags: Arc<Flags>,
-  _build_flags: BuildFlags,
+  build_flags: BuildFlags,
 ) -> Result<(), AnyError> {
   let factory = CliFactory::from_flags(flags);
   let cli_options = factory.cli_options()?;
+
+  // Load .env file variables as defines for process.env.* replacement.
+  let env_defines = load_env_defines(build_flags.env_file.as_ref());
 
   let deno_json = cli_options
     .start_dir
@@ -101,6 +104,10 @@ pub async fn build(
     "process.env.NODE_ENV".to_string(),
     "\"production\"".to_string(),
   );
+  // Merge .env file defines (don't override explicit defines like NODE_ENV).
+  for (key, value) in &env_defines {
+    defines.entry(key.clone()).or_insert_with(|| value.clone());
+  }
 
   let transform_options = TransformOptions {
     define: defines,
@@ -282,4 +289,53 @@ pub async fn build(
   );
 
   Ok(())
+}
+
+/// Read .env files and return a map of `process.env.KEY` → `"\"value\""` defines.
+fn load_env_defines(
+  env_files: Option<&Vec<String>>,
+) -> HashMap<String, String> {
+  let mut defines = HashMap::new();
+  let Some(env_files) = env_files else {
+    return defines;
+  };
+  for file_path in env_files {
+    let path = std::path::Path::new(file_path);
+    let iter = match deno_dotenv::from_path_sanitized_iter_with_substitution(
+      &sys_traits::impls::RealSys,
+      path,
+    ) {
+      Ok(iter) => iter,
+      Err(e) => {
+        log::warn!(
+          "  {} Failed to read {}: {}",
+          colors::yellow("Warning"),
+          file_path,
+          e,
+        );
+        continue;
+      }
+    };
+    for item in iter {
+      match item {
+        Ok((key, value)) => {
+          let define_key = format!("process.env.{}", key);
+          // First file wins (don't override).
+          defines
+            .entry(define_key)
+            .or_insert_with(|| format!("\"{}\"", value.replace('\\', "\\\\").replace('"', "\\\"")));
+        }
+        Err(e) => {
+          log::warn!(
+            "  {} Error parsing {}: {:?}",
+            colors::yellow("Warning"),
+            file_path,
+            e,
+          );
+          break;
+        }
+      }
+    }
+  }
+  defines
 }

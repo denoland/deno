@@ -381,7 +381,7 @@ async fn create_plugin_host_inner(
   rx_req: mpsc::Receiver<PluginHostRequest>,
 ) -> Result<BundlerPluginHost, AnyError> {
   let flags = Flags {
-    subcommand: DenoSubcommand::Build(BuildFlags { watch: false }),
+    subcommand: DenoSubcommand::Build(BuildFlags { watch: false, env_file: None }),
     permissions: PermissionFlags {
       allow_env: Some(vec![]),
       allow_read: Some(vec![]),

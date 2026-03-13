@@ -37,6 +37,8 @@ use deno_bundler::plugin::create_default_plugin_driver;
 use deno_bundler::plugin::create_plugin_driver;
 use deno_bundler::plugin::PluginDriver;
 use deno_bundler::process::transform_modules;
+use deno_bundler::transform_pipeline::transform_graph;
+use deno_bundler::transform_pipeline::TransformOptions;
 
 use crate::args::DevFlags;
 use crate::args::Flags;
@@ -217,6 +219,21 @@ pub async fn dev(
     .map(|p| p.parent().unwrap().to_path_buf())
     .unwrap_or_else(|_| std::env::current_dir().unwrap());
 
+  // Load .env file variables as defines for process.env.* replacement.
+  let env_defines = load_env_defines(dev_flags.env_file.as_ref());
+  let transform_options = {
+    let mut defines = env_defines;
+    defines
+      .entry("process.env.NODE_ENV".to_string())
+      .or_insert_with(|| "\"development\"".to_string());
+    TransformOptions {
+      define: defines,
+      dead_code_elimination: false,
+      convert_to_var: false,
+      production: false,
+    }
+  };
+
   let env_count = build_config.environments.len();
   log::warn!(
     "{} dev server on {}:{} ({} environment{})",
@@ -291,8 +308,11 @@ pub async fn dev(
       build_bundler_graph(&deno_module_graph, env_id, &entries);
 
     // Transform (includes TS transpilation via plugin chain),
-    // discover non-JS assets, then analyze.
+    // apply define replacements, discover non-JS assets, then analyze.
     transform_modules(&mut bundler_graph, &plugin_driver);
+    if !transform_options.define.is_empty() {
+      transform_graph(&mut bundler_graph, &transform_options);
+    }
     discover_assets(&mut bundler_graph);
     analyze_graph(&mut bundler_graph);
 
@@ -814,4 +834,52 @@ async fn run_file_watcher(
   }
 
   Ok(())
+}
+
+/// Read .env files and return a map of `process.env.KEY` → `"\"value\""` defines.
+fn load_env_defines(
+  env_files: Option<&Vec<String>>,
+) -> HashMap<String, String> {
+  let mut defines = HashMap::new();
+  let Some(env_files) = env_files else {
+    return defines;
+  };
+  for file_path in env_files {
+    let path = std::path::Path::new(file_path);
+    let iter = match deno_dotenv::from_path_sanitized_iter_with_substitution(
+      &sys_traits::impls::RealSys,
+      path,
+    ) {
+      Ok(iter) => iter,
+      Err(e) => {
+        log::warn!(
+          "  {} Failed to read {}: {}",
+          crate::colors::yellow("Warning"),
+          file_path,
+          e,
+        );
+        continue;
+      }
+    };
+    for item in iter {
+      match item {
+        Ok((key, value)) => {
+          let define_key = format!("process.env.{}", key);
+          defines
+            .entry(define_key)
+            .or_insert_with(|| format!("\"{}\"", value.replace('\\', "\\\\").replace('"', "\\\"")));
+        }
+        Err(e) => {
+          log::warn!(
+            "  {} Error parsing {}: {:?}",
+            crate::colors::yellow("Warning"),
+            file_path,
+            e,
+          );
+          break;
+        }
+      }
+    }
+  }
+  defines
 }
