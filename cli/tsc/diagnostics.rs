@@ -208,11 +208,11 @@ impl Diagnostic {
     /// context, so remove that text
     fn remove_imported_from(message: &mut String) {
       let prefix = " imported from '";
-      if let Some(start) = message.find(prefix) {
-        if let Some(end) = message[start + prefix.len()..].find('\'') {
-          let end = start + prefix.len() + end + 1;
-          message.replace_range(start..end, "");
-        }
+      if let Some(start) = message.find(prefix)
+        && let Some(end) = message[start + prefix.len()..].find('\'')
+      {
+        let end = start + prefix.len() + end + 1;
+        message.replace_range(start..end, "");
       }
     }
 
