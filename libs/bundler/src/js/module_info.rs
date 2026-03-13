@@ -70,6 +70,10 @@ pub struct ExportBinding {
   pub local_name: Option<String>,
   /// The kind of export.
   pub kind: ExportKind,
+  /// The DeclId of the local declaration this export refers to.
+  /// `None` for re-exports (`ReExport`, `ReExportAll`) since the
+  /// declaration lives in another module.
+  pub decl_id: Option<DeclId>,
 }
 
 /// The kind of export.

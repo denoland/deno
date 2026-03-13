@@ -12,6 +12,7 @@ use deno_ast::ParseParams;
 use crate::graph::BundlerGraph;
 use crate::js::hmr_info_swc::extract_hmr_info;
 use crate::js::module_info_swc::extract_module_info;
+use crate::js::tree_shake::tree_shake_module;
 use crate::loader::Loader;
 
 /// Analyze all JS modules in the graph, populating `module_info` and `hmr_info`.
@@ -53,6 +54,36 @@ pub fn analyze_graph(graph: &mut BundlerGraph) {
       module.module_info = Some(module_info);
       module.hmr_info = Some(hmr_info);
       module.is_async = is_async;
+    }
+  }
+}
+
+/// Apply tree shaking to all modules in the graph.
+///
+/// Must be called after `analyze_graph()`, `resolve_cross_module_bindings()`,
+/// and `compute_used_exports()`.
+pub fn tree_shake_graph(graph: &mut BundlerGraph) {
+  let specifiers: Vec<_> = graph
+    .modules()
+    .filter(|m| is_analyzable(m.loader))
+    .map(|m| m.specifier.clone())
+    .collect();
+
+  for specifier in specifiers {
+    let module = graph.get_module(&specifier).unwrap();
+    let live_decls = graph.used_exports.get(&specifier).and_then(|o| o.as_ref());
+    let Some(mi) = &module.module_info else {
+      continue;
+    };
+    let source = module.source.clone();
+    let scope_analysis = mi.scope_analysis.clone();
+
+    if let Some(shaken) =
+      tree_shake_module(&source, &specifier, live_decls, &scope_analysis)
+    {
+      if let Some(module) = graph.get_module_mut(&specifier) {
+        module.source = shaken;
+      }
     }
   }
 }

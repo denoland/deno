@@ -9,6 +9,7 @@ use deno_graph::GraphKind;
 use deno_path_util::url_from_directory_path;
 
 use deno_bundler::analyze::analyze_graph;
+use deno_bundler::analyze::tree_shake_graph;
 use deno_bundler::asset_discovery::discover_assets;
 use deno_bundler::chunk::build_chunk_graph;
 use deno_bundler::chunk::ChunkType;
@@ -141,6 +142,11 @@ pub async fn build(
     transform_graph(&mut bundler_graph, &transform_options);
     discover_assets(&mut bundler_graph);
     analyze_graph(&mut bundler_graph);
+
+    // Cross-module binding resolution and tree shaking.
+    bundler_graph.resolve_cross_module_bindings();
+    bundler_graph.compute_used_exports();
+    tree_shake_graph(&mut bundler_graph);
 
     let module_count = bundler_graph.len();
     total_modules += module_count;

@@ -126,7 +126,7 @@ fn extract_module_decl(
       if export.type_only {
         return;
       }
-      extract_export_named(export, exports);
+      extract_export_named(export, scope_analysis, exports);
     }
     ModuleDecl::ExportAll(export) => {
       if export.type_only {
@@ -137,20 +137,23 @@ fn extract_module_decl(
         exported_name: "*".to_string(),
         local_name: None,
         kind: ExportKind::ReExportAll { source },
+        decl_id: None,
       });
     }
     ModuleDecl::ExportDefaultDecl(export) => {
-      extract_export_default_decl(export, exports);
+      extract_export_default_decl(export, scope_analysis, exports);
     }
     ModuleDecl::ExportDefaultExpr(_) => {
+      let decl_id = find_module_scope_decl(scope_analysis, "__default");
       exports.push(ExportBinding {
         exported_name: "default".to_string(),
         local_name: Some("__default".to_string()),
         kind: ExportKind::DefaultExpression,
+        decl_id,
       });
     }
     ModuleDecl::ExportDecl(export) => {
-      extract_export_decl(&export.decl, exports);
+      extract_export_decl(&export.decl, scope_analysis, exports);
     }
     ModuleDecl::TsImportEquals(_)
     | ModuleDecl::TsExportAssignment(_)
@@ -235,12 +238,31 @@ fn find_import_decl(
   None
 }
 
+/// Find any declaration in the module scope by name (not restricted to imports).
+fn find_module_scope_decl(
+  scope_analysis: &ScopeAnalysis,
+  name: &str,
+) -> Option<DeclId> {
+  if scope_analysis.scopes.is_empty() {
+    return None;
+  }
+  let module_scope = &scope_analysis.scopes[0];
+  for &decl_id in &module_scope.decls {
+    let decl = scope_analysis.get_decl(decl_id);
+    if decl.name == name {
+      return Some(decl_id);
+    }
+  }
+  None
+}
+
 // ============================================================================
 // Export extraction
 // ============================================================================
 
 fn extract_export_named(
   export: &NamedExport,
+  scope_analysis: &ScopeAnalysis,
   exports: &mut Vec<ExportBinding>,
 ) {
   let source = export.src.as_ref().map(|s| wtf8_to_string(&s.value));
@@ -257,17 +279,24 @@ fn extract_export_named(
           .as_ref()
           .map(module_export_name_to_string)
           .unwrap_or_else(|| local.clone());
-        let kind = if let Some(ref src) = source {
-          ExportKind::ReExport {
-            source: src.clone(),
-          }
+        let (kind, decl_id) = if let Some(ref src) = source {
+          (
+            ExportKind::ReExport {
+              source: src.clone(),
+            },
+            None,
+          )
         } else {
-          ExportKind::Local
+          (
+            ExportKind::Local,
+            find_module_scope_decl(scope_analysis, &local),
+          )
         };
         exports.push(ExportBinding {
           exported_name: exported,
           local_name: Some(local),
           kind,
+          decl_id,
         });
       }
       ExportSpecifier::Namespace(s) => {
@@ -277,6 +306,7 @@ fn extract_export_named(
           exported_name: exported,
           local_name: None,
           kind: ExportKind::ReExport { source: src },
+          decl_id: None,
         });
       }
       ExportSpecifier::Default(_) => {
@@ -288,36 +318,47 @@ fn extract_export_named(
 
 fn extract_export_default_decl(
   export: &ExportDefaultDecl,
+  scope_analysis: &ScopeAnalysis,
   exports: &mut Vec<ExportBinding>,
 ) {
   match &export.decl {
     DefaultDecl::Fn(f) => {
       if let Some(ident) = &f.ident {
+        let name = ident.sym.to_string();
+        let decl_id = find_module_scope_decl(scope_analysis, &name);
         exports.push(ExportBinding {
           exported_name: "default".to_string(),
-          local_name: Some(ident.sym.to_string()),
+          local_name: Some(name),
           kind: ExportKind::Default,
+          decl_id,
         });
       } else {
+        let decl_id = find_module_scope_decl(scope_analysis, "__default");
         exports.push(ExportBinding {
           exported_name: "default".to_string(),
           local_name: Some("__default".to_string()),
           kind: ExportKind::DefaultExpression,
+          decl_id,
         });
       }
     }
     DefaultDecl::Class(c) => {
       if let Some(ident) = &c.ident {
+        let name = ident.sym.to_string();
+        let decl_id = find_module_scope_decl(scope_analysis, &name);
         exports.push(ExportBinding {
           exported_name: "default".to_string(),
-          local_name: Some(ident.sym.to_string()),
+          local_name: Some(name),
           kind: ExportKind::Default,
+          decl_id,
         });
       } else {
+        let decl_id = find_module_scope_decl(scope_analysis, "__default");
         exports.push(ExportBinding {
           exported_name: "default".to_string(),
           local_name: Some("__default".to_string()),
           kind: ExportKind::DefaultExpression,
+          decl_id,
         });
       }
     }
@@ -327,35 +368,45 @@ fn extract_export_default_decl(
   }
 }
 
-fn extract_export_decl(decl: &Decl, exports: &mut Vec<ExportBinding>) {
+fn extract_export_decl(
+  decl: &Decl,
+  scope_analysis: &ScopeAnalysis,
+  exports: &mut Vec<ExportBinding>,
+) {
   match decl {
     Decl::Var(var_decl) => {
       for declarator in &var_decl.decls {
-        extract_pat_names(&declarator.name, exports);
+        extract_pat_names(&declarator.name, scope_analysis, exports);
       }
     }
     Decl::Fn(fn_decl) => {
       let name = fn_decl.ident.sym.to_string();
+      let decl_id = find_module_scope_decl(scope_analysis, &name);
       exports.push(ExportBinding {
         exported_name: name.clone(),
         local_name: Some(name),
         kind: ExportKind::Local,
+        decl_id,
       });
     }
     Decl::Class(class_decl) => {
       let name = class_decl.ident.sym.to_string();
+      let decl_id = find_module_scope_decl(scope_analysis, &name);
       exports.push(ExportBinding {
         exported_name: name.clone(),
         local_name: Some(name),
         kind: ExportKind::Local,
+        decl_id,
       });
     }
     Decl::TsEnum(en) => {
       let name = en.id.sym.to_string();
+      let decl_id = find_module_scope_decl(scope_analysis, &name);
       exports.push(ExportBinding {
         exported_name: name.clone(),
         local_name: Some(name),
         kind: ExportKind::Local,
+        decl_id,
       });
     }
     Decl::TsInterface(_) | Decl::TsTypeAlias(_) | Decl::TsModule(_) => {
@@ -368,46 +419,54 @@ fn extract_export_decl(decl: &Decl, exports: &mut Vec<ExportBinding>) {
   }
 }
 
-fn extract_pat_names(pat: &Pat, exports: &mut Vec<ExportBinding>) {
+fn extract_pat_names(
+  pat: &Pat,
+  scope_analysis: &ScopeAnalysis,
+  exports: &mut Vec<ExportBinding>,
+) {
   match pat {
     Pat::Ident(id) => {
       let name = id.id.sym.to_string();
+      let decl_id = find_module_scope_decl(scope_analysis, &name);
       exports.push(ExportBinding {
         exported_name: name.clone(),
         local_name: Some(name),
         kind: ExportKind::Local,
+        decl_id,
       });
     }
     Pat::Object(obj) => {
       for prop in &obj.props {
         match prop {
           ObjectPatProp::KeyValue(kv) => {
-            extract_pat_names(&kv.value, exports);
+            extract_pat_names(&kv.value, scope_analysis, exports);
           }
           ObjectPatProp::Assign(assign) => {
             let name = assign.key.sym.to_string();
+            let decl_id = find_module_scope_decl(scope_analysis, &name);
             exports.push(ExportBinding {
               exported_name: name.clone(),
               local_name: Some(name),
               kind: ExportKind::Local,
+              decl_id,
             });
           }
           ObjectPatProp::Rest(rest) => {
-            extract_pat_names(&rest.arg, exports);
+            extract_pat_names(&rest.arg, scope_analysis, exports);
           }
         }
       }
     }
     Pat::Array(arr) => {
       for elem in arr.elems.iter().flatten() {
-        extract_pat_names(elem, exports);
+        extract_pat_names(elem, scope_analysis, exports);
       }
     }
     Pat::Rest(rest) => {
-      extract_pat_names(&rest.arg, exports);
+      extract_pat_names(&rest.arg, scope_analysis, exports);
     }
     Pat::Assign(assign) => {
-      extract_pat_names(&assign.left, exports);
+      extract_pat_names(&assign.left, scope_analysis, exports);
     }
     Pat::Expr(_) | Pat::Invalid(_) => {}
   }

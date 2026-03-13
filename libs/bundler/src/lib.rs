@@ -14,5 +14,7 @@ pub mod loader;
 pub mod module;
 pub mod plugin;
 pub mod process;
+pub mod symbol;
 pub mod transform_pipeline;
 pub mod transpile;
+pub mod union_find;
