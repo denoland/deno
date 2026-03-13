@@ -1581,9 +1581,13 @@ fn bytes_to_b64(bytes: &[u8]) -> String {
 pub enum AsymmetricPrivateKeyJwkError {
   #[error("key is not an asymmetric private key")]
   KeyIsNotAsymmetricPrivateKey,
-  #[error("Unsupported JWK EC curve: P224")]
+  #[class(generic)]
+  #[property("code" = "ERR_CRYPTO_JWK_UNSUPPORTED_CURVE")]
+  #[error("Unsupported JWK EC curve: secp224r1.")]
   UnsupportedJwkEcCurveP224,
-  #[error("jwk export not implemented for this key type")]
+  #[class(generic)]
+  #[property("code" = "ERR_CRYPTO_JWK_UNSUPPORTED_KEY_TYPE")]
+  #[error("Unsupported JWK Key Type.")]
   JwkExportNotImplementedForKeyType,
 }
 
@@ -1592,9 +1596,13 @@ pub enum AsymmetricPrivateKeyJwkError {
 pub enum AsymmetricPublicKeyJwkError {
   #[error("key is not an asymmetric public key")]
   KeyIsNotAsymmetricPublicKey,
-  #[error("Unsupported JWK EC curve: P224")]
+  #[class(generic)]
+  #[property("code" = "ERR_CRYPTO_JWK_UNSUPPORTED_CURVE")]
+  #[error("Unsupported JWK EC curve: secp224r1.")]
   UnsupportedJwkEcCurveP224,
-  #[error("jwk export not implemented for this key type")]
+  #[class(generic)]
+  #[property("code" = "ERR_CRYPTO_JWK_UNSUPPORTED_KEY_TYPE")]
+  #[error("Unsupported JWK Key Type.")]
   JwkExportNotImplementedForKeyType,
 }
 
