@@ -1,0 +1,6 @@
+main: opened fd [WILDCARD] (>= 3: true)
+worker: received fd [WILDCARD]
+worker: read 64 bytes
+worker: starts with copyright: true
+main: worker result: ok
+main: closed fd

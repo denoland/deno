@@ -122,6 +122,12 @@ import {
   op_node_statfs,
   op_node_statfs_sync,
 } from "ext:core/ops";
+import {
+  getRid,
+  hasFd,
+  registerFd,
+  unregisterFd,
+} from "ext:deno_node/internal/fs/fd_map.ts";
 import { FsFile } from "ext:deno_fs/30_fs.js";
 import {
   ERR_FS_RMDIR_ENOTDIR,
@@ -367,8 +373,9 @@ function readv(
     buffers: readonly ArrayBufferView[],
     position: number | null,
   ) => {
+    const rid = getRid(fd);
     if (typeof position === "number") {
-      await op_fs_seek_async(fd, position, io.SeekMode.Start);
+      await op_fs_seek_async(rid, position, io.SeekMode.Start);
     }
 
     let readTotal = 0;
@@ -376,7 +383,7 @@ function readv(
     let bufIdx = 0;
     let buf = buffers[bufIdx];
     while (bufIdx < buffers.length) {
-      const nread = await io.read(fd, buf);
+      const nread = await io.read(rid, buf);
       if (nread === null) {
         break;
       }
@@ -422,9 +429,10 @@ function readvSync(
   if (buffers.length === 0) {
     return 0;
   }
+  const rid = getRid(fd);
   if (typeof position === "number") {
     validateInteger(position, "position", 0);
-    op_fs_seek_sync(fd, position, io.SeekMode.Start);
+    op_fs_seek_sync(rid, position, io.SeekMode.Start);
   }
 
   let readTotal = 0;
@@ -432,7 +440,7 @@ function readvSync(
   let bufIdx = 0;
   let buf = buffers[bufIdx];
   while (bufIdx < buffers.length) {
-    const nread = io.readSync(fd, buf);
+    const nread = io.readSync(rid, buf);
     if (nread === null) {
       break;
     }
@@ -639,7 +647,7 @@ function readFile(
     p = readFileAsync(pathOrRid, options);
   } else {
     const fsFile = new FsFile(
-      pathOrRid,
+      getRid(pathOrRid),
       SymbolFor("Deno.internal.FsFile"),
     );
     p = fsFileReadAll(fsFile, options);
@@ -694,7 +702,7 @@ function readFileSync(
   let data;
   if (typeof path === "number") {
     const fsFile = new FsFile(
-      path,
+      getRid(path),
       SymbolFor("Deno.internal.FsFile"),
     );
     data = io.readAllSync(fsFile);
@@ -1195,9 +1203,9 @@ function close(
   setTimeout(() => {
     let error = null;
     try {
-      // TODO(@littledivy): Treat `fd` as real file descriptor. `rid` is an
-      // implementation detail and may change.
-      core.close(fd);
+      const rid = getRid(fd);
+      core.close(rid);
+      unregisterFd(fd);
     } catch (err) {
       error = ObjectPrototypeIsPrototypeOf(ErrorPrototype, err)
         ? err as Error
@@ -1209,9 +1217,9 @@ function close(
 
 function closeSync(fd: number) {
   fd = getValidatedFd(fd);
-  // TODO(@littledivy): Treat `fd` as real file descriptor. `rid` is an
-  // implementation detail and may change.
-  core.close(fd);
+  const rid = getRid(fd);
+  core.close(rid);
+  unregisterFd(fd);
 }
 
 function fchown(
@@ -1226,7 +1234,7 @@ function fchown(
   callback = makeCallback(callback);
 
   PromisePrototypeThen(
-    op_fs_fchown_async(fd, uid, gid),
+    op_fs_fchown_async(getRid(fd), uid, gid),
     () => callback(null),
     callback,
   );
@@ -1242,7 +1250,7 @@ function fchmod(
   callback = makeCallback(callback);
 
   PromisePrototypeThen(
-    op_fs_fchmod_async(fd, mode),
+    op_fs_fchmod_async(getRid(fd), mode),
     () => callback(null),
     callback,
   );
@@ -1257,7 +1265,7 @@ function fchownSync(
   validateInteger(uid, "uid", -1, kMaxUserId);
   validateInteger(gid, "gid", -1, kMaxUserId);
 
-  op_fs_fchown_sync(fd, uid, gid);
+  op_fs_fchown_sync(getRid(fd), uid, gid);
 }
 
 function ftruncate(
@@ -1275,14 +1283,14 @@ function ftruncate(
   if (!callback) throw new Error("No callback function supplied");
 
   PromisePrototypeThen(
-    new FsFile(fd, SymbolFor("Deno.internal.FsFile")).truncate(len),
+    new FsFile(getRid(fd), SymbolFor("Deno.internal.FsFile")).truncate(len),
     () => callback(null),
     callback,
   );
 }
 
 function ftruncateSync(fd: number, len?: number) {
-  new FsFile(fd, SymbolFor("Deno.internal.FsFile")).truncateSync(len);
+  new FsFile(getRid(fd), SymbolFor("Deno.internal.FsFile")).truncateSync(len);
 }
 
 function _getValidTime(
@@ -1324,7 +1332,10 @@ function futimes(
   mtime = _getValidTime(mtime, "mtime");
 
   PromisePrototypeThen(
-    new FsFile(fd, SymbolFor("Deno.internal.FsFile")).utime(atime, mtime),
+    new FsFile(getRid(fd), SymbolFor("Deno.internal.FsFile")).utime(
+      atime,
+      mtime,
+    ),
     () => callback(null),
     callback,
   );
@@ -1333,7 +1344,7 @@ function futimes(
 function fchmodSync(fd: number, mode: string | number) {
   validateInteger(fd, "fd", 0, 2147483647);
 
-  op_fs_fchmod_sync(fd, parseFileMode(mode, "mode"));
+  op_fs_fchmod_sync(getRid(fd), parseFileMode(mode, "mode"));
 }
 
 function fdatasync(
@@ -1342,7 +1353,7 @@ function fdatasync(
 ) {
   validateInt32(fd, "fd", 0);
   PromisePrototypeThen(
-    new FsFile(fd, SymbolFor("Deno.internal.FsFile")).syncData(),
+    new FsFile(getRid(fd), SymbolFor("Deno.internal.FsFile")).syncData(),
     () => callback(null),
     callback,
   );
@@ -1362,7 +1373,10 @@ function futimesSync(
   atime = _getValidTime(atime, "atime");
   mtime = _getValidTime(mtime, "mtime");
 
-  new FsFile(fd, SymbolFor("Deno.internal.FsFile")).utimeSync(atime, mtime);
+  new FsFile(getRid(fd), SymbolFor("Deno.internal.FsFile")).utimeSync(
+    atime,
+    mtime,
+  );
 }
 
 const lchmod:
@@ -1420,7 +1434,7 @@ function lchown(
 
 function fdatasyncSync(fd: number) {
   validateInt32(fd, "fd", 0);
-  new FsFile(fd, SymbolFor("Deno.internal.FsFile")).syncDataSync();
+  new FsFile(getRid(fd), SymbolFor("Deno.internal.FsFile")).syncDataSync();
 }
 
 function fsync(
@@ -1429,7 +1443,7 @@ function fsync(
 ) {
   validateInt32(fd, "fd", 0);
   PromisePrototypeThen(
-    new FsFile(fd, SymbolFor("Deno.internal.FsFile")).sync(),
+    new FsFile(getRid(fd), SymbolFor("Deno.internal.FsFile")).sync(),
     () => callback(null),
     callback,
   );
@@ -1449,7 +1463,7 @@ function lchownSync(
 
 function fsyncSync(fd: number) {
   validateInt32(fd, "fd", 0);
-  new FsFile(fd, SymbolFor("Deno.internal.FsFile")).syncSync();
+  new FsFile(getRid(fd), SymbolFor("Deno.internal.FsFile")).syncSync();
 }
 
 function link(
@@ -2038,7 +2052,10 @@ function open(
 
   PromisePrototypeThen(
     op_node_open(path, flags, mode),
-    (rid: number) => callback(null, rid),
+    ({ rid, fd }: { rid: number; fd: number }) => {
+      registerFd(fd, rid);
+      callback(null, fd);
+    },
     (err: Error) =>
       callback(denoErrorToNodeError(err, { syscall: "open", path })),
   );
@@ -2065,7 +2082,9 @@ function openSync(
   const mode = parseFileMode(maybeMode, "mode", 0o666);
 
   try {
-    return op_node_open_sync(path, flags, mode);
+    const { rid, fd } = op_node_open_sync(path, flags, mode);
+    registerFd(fd, rid);
+    return fd;
   } catch (err) {
     throw denoErrorToNodeError(err as Error, { syscall: "open", path });
   }
@@ -2198,15 +2217,16 @@ function writeSync(
     length: number,
     position: number | null | undefined,
   ) => {
+    const rid = getRid(fd);
     buffer = arrayBufferViewToUint8Array(buffer);
     if (typeof position === "number" && position >= 0) {
-      op_fs_seek_sync(fd, position, io.SeekMode.Start);
+      op_fs_seek_sync(rid, position, io.SeekMode.Start);
     }
     let currentOffset = offset;
     const end = offset + length;
     while (currentOffset - offset < length) {
       currentOffset += io.writeSync(
-        fd,
+        rid,
         (buffer as Uint8Array).subarray(currentOffset, end),
       );
     }
@@ -2266,15 +2286,16 @@ function write(
     length: number,
     position: number | null | undefined,
   ) => {
+    const rid = getRid(fd);
     buffer = arrayBufferViewToUint8Array(buffer);
     if (typeof position === "number" && position >= 0) {
-      await op_fs_seek_async(fd, position, io.SeekMode.Start);
+      await op_fs_seek_async(rid, position, io.SeekMode.Start);
     }
     let currentOffset = offset;
     const end = offset + length;
     while (currentOffset - offset < length) {
       currentOffset += await io.write(
-        fd,
+        rid,
         (buffer as Uint8Array).subarray(currentOffset, end),
       );
     }
@@ -2391,6 +2412,7 @@ function writev(
   callback?: writeVCallback,
 ): void {
   const innerWritev = async (fd, buffers, position) => {
+    const rid = getRid(fd);
     const chunks: Buffer[] = [];
     const offset = 0;
     for (let i = 0; i < buffers.length; i++) {
@@ -2403,14 +2425,14 @@ function writev(
       }
     }
     if (typeof position === "number") {
-      await op_fs_seek_async(fd, position, io.SeekMode.Start);
+      await op_fs_seek_async(rid, position, io.SeekMode.Start);
     }
     // deno-lint-ignore prefer-primordials
     const buffer = Buffer.concat(chunks);
     let currentOffset = 0;
     // deno-lint-ignore prefer-primordials
     while (currentOffset < buffer.byteLength) {
-      currentOffset += await io.write(fd, buffer.subarray(currentOffset));
+      currentOffset += await io.write(rid, buffer.subarray(currentOffset));
     }
     return currentOffset - offset;
   };
@@ -2445,6 +2467,7 @@ function writevSync(
   position?: number | null,
 ): number {
   const innerWritev = (fd, buffers, position) => {
+    const rid = getRid(fd);
     const chunks: Buffer[] = [];
     const offset = 0;
     for (let i = 0; i < buffers.length; i++) {
@@ -2457,14 +2480,14 @@ function writevSync(
       }
     }
     if (typeof position === "number") {
-      op_fs_seek_sync(fd, position, io.SeekMode.Start);
+      op_fs_seek_sync(rid, position, io.SeekMode.Start);
     }
     // deno-lint-ignore prefer-primordials
     const buffer = Buffer.concat(chunks);
     let currentOffset = 0;
     // deno-lint-ignore prefer-primordials
     while (currentOffset < buffer.byteLength) {
-      currentOffset += io.writeSync(fd, buffer.subarray(currentOffset));
+      currentOffset += io.writeSync(rid, buffer.subarray(currentOffset));
     }
     return currentOffset - offset;
   };
@@ -2504,15 +2527,25 @@ interface Writer {
   writeSync(p: NodeJS.TypedArray): number;
 }
 
-async function _writeFileGetRid(
+async function _writeFileGetOpenInfo(
   pathOrRid: string | number,
   flag: string = "w",
-): Promise<number> {
+): Promise<{ rid: number; openedFd: number | null }> {
   if (typeof pathOrRid === "number") {
-    return pathOrRid;
+    // If fd is not yet mapped, getRid will dup it (creating a new rid).
+    // Track that so the caller can clean up the dup'd rid.
+    const wasMapped = hasFd(pathOrRid);
+    const rid = getRid(pathOrRid);
+    return { rid, openedFd: wasMapped ? null : pathOrRid };
   }
   try {
-    return await op_node_open(pathOrRid, stringToFlags(flag), 0o666);
+    const { rid, fd } = await op_node_open(
+      pathOrRid,
+      stringToFlags(flag),
+      0o666,
+    );
+    registerFd(fd, rid);
+    return { rid, openedFd: fd };
   } catch (err) {
     throw denoErrorToNodeError(err as Error, {
       syscall: "open",
@@ -2521,15 +2554,25 @@ async function _writeFileGetRid(
   }
 }
 
-function _writeFileGetRidSync(
+function _writeFileGetOpenInfoSync(
   pathOrRid: string | number,
   flag: string = "w",
-): number {
+): { rid: number; openedFd: number | null } {
   if (typeof pathOrRid === "number") {
-    return pathOrRid;
+    // If fd is not yet mapped, getRid will dup it (creating a new rid).
+    // Track that so the caller can clean up the dup'd rid.
+    const wasMapped = hasFd(pathOrRid);
+    const rid = getRid(pathOrRid);
+    return { rid, openedFd: wasMapped ? null : pathOrRid };
   }
   try {
-    return op_node_open_sync(pathOrRid, stringToFlags(flag), 0o666);
+    const { rid, fd } = op_node_open_sync(
+      pathOrRid,
+      stringToFlags(flag),
+      0o666,
+    );
+    registerFd(fd, rid);
+    return { rid, openedFd: fd };
   } catch (err) {
     throw denoErrorToNodeError(err as Error, {
       syscall: "open",
@@ -2579,8 +2622,15 @@ function writeFile(
 
   let error: Error | null = null;
   (async () => {
+    let openedFd: number | null = null;
+    let rid: number | undefined;
     try {
-      const rid = await _writeFileGetRid(pathOrRid as string | number, flag);
+      const info = await _writeFileGetOpenInfo(
+        pathOrRid as string | number,
+        flag,
+      );
+      rid = info.rid;
+      openedFd = info.openedFd;
       file = new FsFile(rid, SymbolFor("Deno.internal.FsFile"));
       _checkAborted(signal);
 
@@ -2598,8 +2648,13 @@ function writeFile(
     } catch (e) {
       error = denoWriteFileErrorToNodeError(e as Error, { syscall: "write" });
     } finally {
-      // Make sure to close resource
-      if (!isRid && file) file.close();
+      // Make sure to close resource and clean up fd mapping
+      if (openedFd !== null && rid !== undefined) {
+        try {
+          core.close(rid);
+        } catch { /* ignore close errors */ }
+        unregisterFd(openedFd);
+      }
       callback(error);
     }
   })();
@@ -2632,9 +2687,9 @@ function writeFileSync(
   const isRid = typeof pathOrRid === "number";
   let file;
 
+  const { rid, openedFd } = _writeFileGetOpenInfoSync(pathOrRid, flag);
   let error: Error | null = null;
   try {
-    const rid = _writeFileGetRidSync(pathOrRid, flag);
     file = new FsFile(rid, SymbolFor("Deno.internal.FsFile"));
 
     if (!isRid && mode) {
@@ -2649,8 +2704,13 @@ function writeFileSync(
   } catch (e) {
     error = denoWriteFileErrorToNodeError(e as Error, { syscall: "write" });
   } finally {
-    // Make sure to close resource
-    if (!isRid && file) file.close();
+    // Make sure to close resource and clean up fd mapping
+    if (openedFd !== null) {
+      try {
+        core.close(rid);
+      } catch { /* ignore close errors */ }
+      unregisterFd(openedFd);
+    }
   }
 
   if (error) throw error;

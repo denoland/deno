@@ -3,7 +3,6 @@
 import { op_node_is_tty } from "ext:core/ops";
 import { primordials } from "ext:core/mod.js";
 const {
-  Error,
   FunctionPrototypeCall,
   ObjectPrototypeIsPrototypeOf,
   ObjectSetPrototypeOf,
@@ -14,7 +13,8 @@ import { TTY } from "ext:deno_node/internal_binding/tty_wrap.ts";
 import { Socket } from "node:net";
 import { setReadStream } from "ext:deno_node/_process/streams.mjs";
 import * as io from "ext:deno_io/12_io.js";
-import { WriteStream } from "ext:deno_node/internal/tty.js";
+import { TTYStream, WriteStream } from "ext:deno_node/internal/tty.js";
+import { getRid } from "ext:deno_node/internal/fs/fd_map.ts";
 
 // Returns true when the given numeric fd is associated with a TTY and false otherwise.
 function isatty(fd) {
@@ -25,7 +25,6 @@ function isatty(fd) {
 }
 
 // ReadStream needs to be callable without `new` to match Node.js behavior.
-// We use a wrapper function that delegates to the actual class.
 function ReadStream(fd, options) {
   if (!ObjectPrototypeIsPrototypeOf(ReadStream.prototype, this)) {
     return new ReadStream(fd, options);
@@ -35,14 +34,28 @@ function ReadStream(fd, options) {
     throw new ERR_INVALID_FD(fd);
   }
 
-  // We only support `stdin`.
-  if (fd != 0) throw new Error("Only fd 0 is supported.");
+  let handle;
+  // For fd > 2 (PTY from NAPI modules like node-pty), create a TTYStream wrapper
+  const isPty = fd > 2;
+  if (isPty) {
+    // Security: Only allow TTY file descriptors. This prevents access to
+    // arbitrary fds (sockets, files, etc.) via tty.ReadStream/WriteStream.
+    if (!op_node_is_tty(fd)) {
+      throw new ERR_INVALID_FD(fd);
+    }
+    const rid = getRid(fd);
+    const stream = new TTYStream(rid, fd);
+    handle = new TTY(stream);
+  } else {
+    handle = new TTY(
+      fd === 0 ? io.stdin : fd === 1 ? io.stdout : io.stderr,
+    );
+  }
 
-  const tty = new TTY(io.stdin);
   FunctionPrototypeCall(Socket, this, {
     readableHighWaterMark: 0,
-    handle: tty,
-    manualStart: true,
+    handle,
+    manualStart: !isPty, // PTY streams should auto-start reading
     ...options,
   });
 
