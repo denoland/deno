@@ -280,6 +280,8 @@ impl super::LoadContent for FastString {
 }
 
 #[derive(Debug, ToV8)]
+#[cfg_attr(test, derive(serde::Serialize))]
+#[cfg_attr(test, serde(rename_all = "camelCase"))]
 struct LoadResponse {
   data: FastString,
   version: Option<String>,
