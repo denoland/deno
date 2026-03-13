@@ -1203,6 +1203,8 @@ fn op_spawn_kill(
   #[serde] signal: SignalArg,
   kill_descendants: bool,
 ) -> Result<(), ProcessError> {
+  #[cfg(not(unix))]
+  let _ = kill_descendants;
   if let Ok(child_resource) = state.resource_table.get::<ChildResource>(rid) {
     let pid = child_resource.1 as i32;
     // For SIGKILL, also kill descendant processes first so they don't become
