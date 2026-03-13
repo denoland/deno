@@ -67,6 +67,18 @@ pub static PRIVATE_TEST_NPM_REGISTRY_3: Lazy<TestNpmRegistry> =
     )
   });
 
+pub static PRIVATE_TEST_NPM_REGISTRY_MTLS: Lazy<TestNpmRegistry> =
+  Lazy::new(|| {
+    TestNpmRegistry::new(
+      NpmRegistryKind::Private,
+      &format!(
+        "https://localhost:{}",
+        crate::consts::PRIVATE_NPM_REGISTRY_MTLS_PORT
+      ),
+      "npm-private",
+    )
+  });
+
 pub static PUBLIC_TEST_NPM_JSR_REGISTRY: Lazy<TestNpmRegistry> =
   Lazy::new(|| {
     TestNpmRegistry::new(

@@ -34,6 +34,16 @@ use crate::worker::FormatJsErrorFn;
 
 pub const UNSTABLE_FEATURE_NAME: &str = "worker-options";
 
+/// V8 resource limits for worker isolates, matching Node.js `resourceLimits`.
+#[derive(Deserialize, Default, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ResourceLimits {
+  pub max_young_generation_size_mb: Option<usize>,
+  pub max_old_generation_size_mb: Option<usize>,
+  pub code_range_size_mb: Option<usize>,
+  pub stack_size_mb: Option<usize>,
+}
+
 pub struct CreateWebWorkerArgs {
   pub name: String,
   pub worker_id: WorkerId,
@@ -43,6 +53,7 @@ pub struct CreateWebWorkerArgs {
   pub worker_type: WorkerThreadType,
   pub close_on_idle: bool,
   pub maybe_worker_metadata: Option<WorkerMetadata>,
+  pub resource_limits: Option<ResourceLimits>,
 }
 
 pub type CreateWebWorkerCb = dyn Fn(CreateWebWorkerArgs) -> (WebWorker, SendableWebWorkerHandle)
@@ -124,6 +135,7 @@ pub struct CreateWorkerArgs {
   #[from_v8(serde)]
   worker_type: WorkerThreadType,
   close_on_idle: bool,
+  resource_limits: Option<ResourceLimits>,
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -194,8 +206,15 @@ fn op_create_worker(
   let (handle_sender, handle_receiver) =
     std::sync::mpsc::sync_channel::<SendableWebWorkerHandle>(1);
 
-  // Setup new thread
-  let thread_builder = std::thread::Builder::new().name(format!("{worker_id}"));
+  // Setup new thread. If stackSizeMb is specified in resourceLimits,
+  // set the OS thread stack size to match Node.js behavior.
+  let mut thread_builder =
+    std::thread::Builder::new().name(format!("{worker_id}"));
+  if let Some(ref limits) = args.resource_limits
+    && let Some(stack_mb) = limits.stack_size_mb.filter(|&v| v > 0)
+  {
+    thread_builder = thread_builder.stack_size(stack_mb * 1024 * 1024);
+  }
   let maybe_worker_metadata = if let Some(data) = maybe_worker_metadata {
     let transferables =
       deserialize_js_transferables(state, data.transferables)?;
@@ -230,6 +249,7 @@ fn op_create_worker(
           worker_type,
           close_on_idle: args.close_on_idle,
           maybe_worker_metadata,
+          resource_limits: args.resource_limits,
         });
 
       // Send thread safe handle from newly created worker to host thread
@@ -249,7 +269,20 @@ fn op_create_worker(
       .await
     };
 
-    create_and_run_current_thread(fut)
+    let _ = create_and_run_current_thread(fut);
+
+    // After the worker's tokio runtime and JsRuntime/V8 isolate have been
+    // dropped, ask the system allocator to release freed memory back to the
+    // OS. Without this, glibc in particular holds onto the fragmented heap
+    // pages, causing RSS to remain high after many workers are created and
+    // destroyed (https://github.com/denoland/deno/issues/26058).
+    #[cfg(target_os = "linux")]
+    {
+      // SAFETY: calling libc function with no preconditions.
+      unsafe {
+        libc::malloc_trim(0);
+      }
+    }
   })?;
 
   // Receive WebWorkerHandle from newly created worker

@@ -958,7 +958,8 @@ fn catch_dynamic_import_promise_error<'s, 'i>(
 ) {
   let arg = args.get(0);
   if is_instance_of_error(scope, arg) {
-    let e: crate::error::NativeJsError = serde_v8::from_v8(scope, arg).unwrap();
+    let e: crate::error::NativeJsError =
+      serde_v8::from_v8(scope, arg).unwrap_or_default();
     let name = e.name.unwrap_or_else(|| {
       deno_error::builtin_classes::GENERIC_ERROR.to_string()
     });

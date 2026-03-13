@@ -93,6 +93,9 @@ impl From<FsError> for FsOpsError {
         FsOpsErrorKind::Other(JsErrorBox::not_supported())
       }
       FsError::PermissionCheck(err) => FsOpsErrorKind::Permission(err),
+      FsError::JoinError(err) => {
+        FsOpsErrorKind::Other(JsErrorBox::from_err(err))
+      }
     }
     .into_box()
   }

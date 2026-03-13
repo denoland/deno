@@ -303,10 +303,28 @@ pub struct napi_node_version {
 pub trait PendingNapiAsyncWork: FnOnce() + Send + 'static {}
 impl<T> PendingNapiAsyncWork for T where T: FnOnce() + Send + 'static {}
 
+/// A pending NAPI finalizer callback to be called at environment shutdown.
+/// This matches Node.js's behavior of tracking references with finalize
+/// callbacks and calling them during `napi_env::DeleteMe()`.
+pub struct PendingNapiFinalizer {
+  pub env: napi_env,
+  pub cb: napi_finalize,
+  pub data: *mut c_void,
+  pub hint: *mut c_void,
+}
+
 pub struct NapiState {
   // Thread safe functions.
   pub env_cleanup_hooks: Rc<RefCell<Vec<(napi_cleanup_hook, *mut c_void)>>>,
+  /// Tracked finalizer callbacks that should be called at shutdown.
+  /// Matches Node.js `finalizing_reflist` / `reflist` behavior.
+  pub ref_tracker: Rc<RefCell<Vec<PendingNapiFinalizer>>>,
+  pub env_shared_ptrs: Vec<*mut EnvShared>,
 }
+
+// SAFETY: finalizer pointers in env_shared_ptrs are only accessed during Drop
+// on the same thread that created them.
+unsafe impl Send for NapiState {}
 
 impl Drop for NapiState {
   fn drop(&mut self) {
@@ -337,6 +355,36 @@ impl Drop for NapiState {
         self.env_cleanup_hooks.borrow_mut().retain(|pair| {
           !(std::ptr::fn_addr_eq(pair.0, hook.0) && pair.1 == hook.1)
         });
+      }
+    }
+
+    // Note: remaining ref tracker entries are not finalized here because
+    // V8 is no longer alive. MainWorker::run_napi_ref_finalizers() handles
+    // this by calling finalizers directly while V8 is still alive.
+
+    // Call instance data finalize callbacks for all registered EnvShared instances.
+    // Each entry should be unique since each op_napi_open creates a fresh EnvShared.
+    debug_assert!(
+      {
+        let mut seen = std::collections::HashSet::new();
+        self.env_shared_ptrs.iter().all(|p| seen.insert(*p))
+      },
+      "env_shared_ptrs contains duplicate entries"
+    );
+    for env_shared_ptr in &self.env_shared_ptrs {
+      // SAFETY: env_shared_ptr was created via Box::into_raw in op_napi_open
+      // and the native module library is kept alive (via std::mem::forget).
+      let env_shared = unsafe { &mut **env_shared_ptr };
+      if let Some(instance_data) = env_shared.instance_data.take()
+        && let Some(cb) = instance_data.finalize_cb
+      {
+        unsafe {
+          cb(
+            std::ptr::null_mut(),
+            instance_data.data,
+            instance_data.finalize_hint,
+          );
+        }
       }
     }
   }
@@ -387,6 +435,7 @@ pub struct Env {
   pub shared: *mut EnvShared,
   pub async_work_sender: V8CrossThreadTaskSpawner,
   cleanup_hooks: Rc<RefCell<Vec<(napi_cleanup_hook, *mut c_void)>>>,
+  ref_tracker: Rc<RefCell<Vec<PendingNapiFinalizer>>>,
   external_ops_tracker: ExternalOpsTracker,
   pub last_error: napi_extended_error_info,
   pub last_exception: Option<v8::Global<v8::Value>>,
@@ -408,6 +457,7 @@ impl Env {
     report_error: v8::Global<v8::Function>,
     sender: V8CrossThreadTaskSpawner,
     cleanup_hooks: Rc<RefCell<Vec<(napi_cleanup_hook, *mut c_void)>>>,
+    ref_tracker: Rc<RefCell<Vec<PendingNapiFinalizer>>>,
     external_ops_tracker: ExternalOpsTracker,
   ) -> Self {
     Self {
@@ -420,6 +470,7 @@ impl Env {
       open_handle_scopes: 0,
       async_work_sender: sender,
       cleanup_hooks,
+      ref_tracker,
       external_ops_tracker,
       last_error: napi_extended_error_info {
         error_message: std::ptr::null(),
@@ -502,6 +553,28 @@ impl Env {
       None => panic!("Cannot remove cleanup hook which was not registered"),
     }
   }
+
+  pub fn add_ref_finalizer(
+    &self,
+    env: napi_env,
+    cb: napi_finalize,
+    data: *mut c_void,
+    hint: *mut c_void,
+  ) {
+    self.ref_tracker.borrow_mut().push(PendingNapiFinalizer {
+      env,
+      cb,
+      data,
+      hint,
+    });
+  }
+
+  pub fn remove_ref_finalizer(&self, data: *mut c_void) {
+    let mut tracker = self.ref_tracker.borrow_mut();
+    if let Some(pos) = tracker.iter().rposition(|f| f.data == data) {
+      tracker.remove(pos);
+    }
+  }
 }
 
 deno_core::extension!(deno_napi,
@@ -514,6 +587,8 @@ deno_core::extension!(deno_napi,
   state = |state, options| {
     state.put(NapiState {
       env_cleanup_hooks: Rc::new(RefCell::new(vec![])),
+      ref_tracker: Rc::new(RefCell::new(vec![])),
+      env_shared_ptrs: vec![],
     });
     if let Some(loader) = options.deno_rt_native_addon_loader {
       state.put(loader);
@@ -546,6 +621,7 @@ fn op_napi_open<'scope>(
   let (
     async_work_sender,
     cleanup_hooks,
+    ref_tracker,
     external_ops_tracker,
     deno_rt_native_addon_loader,
     path,
@@ -558,6 +634,7 @@ fn op_napi_open<'scope>(
     (
       op_state.borrow::<V8CrossThreadTaskSpawner>().clone(),
       napi_state.env_cleanup_hooks.clone(),
+      napi_state.ref_tracker.clone(),
       op_state.external_ops_tracker.clone(),
       op_state.try_borrow::<DenoRtNativeAddonLoaderRc>().cloned(),
       path,
@@ -586,9 +663,18 @@ fn op_napi_open<'scope>(
     v8::Global::new(scope, report_error),
     async_work_sender,
     cleanup_hooks,
+    ref_tracker,
     external_ops_tracker,
   );
   env.shared = Box::into_raw(Box::new(env_shared));
+  // Track the EnvShared pointer so we can call instance data finalize
+  // callbacks when the runtime exits. Each op_napi_open call creates a
+  // fresh EnvShared, so entries are always unique.
+  op_state
+    .borrow_mut()
+    .borrow_mut::<NapiState>()
+    .env_shared_ptrs
+    .push(env.shared);
   let env_ptr = Box::into_raw(Box::new(env)) as _;
 
   #[cfg(unix)]

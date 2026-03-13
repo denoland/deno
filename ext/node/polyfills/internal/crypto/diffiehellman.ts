@@ -15,14 +15,15 @@ import {
   op_node_gen_prime,
 } from "ext:core/ops";
 
-import { notImplemented } from "ext:deno_node/_utils.ts";
 import {
   isAnyArrayBuffer,
   isArrayBufferView,
 } from "ext:deno_node/internal/util/types.ts";
 import {
+  ERR_CRYPTO_ECDH_INVALID_FORMAT,
   ERR_CRYPTO_UNKNOWN_DH_GROUP,
   ERR_INVALID_ARG_TYPE,
+  ERR_INVALID_ARG_VALUE,
   NodeError,
 } from "ext:deno_node/internal/errors.ts";
 import {
@@ -73,6 +74,7 @@ export class DiffieHellmanImpl {
   #generator: Buffer;
   #privateKey: Buffer;
   #publicKey: Buffer;
+  #publicKeyNeedsUpdate = false;
 
   constructor(
     sizeOrKey: number | string | ArrayBufferView,
@@ -112,7 +114,17 @@ export class DiffieHellmanImpl {
     genEncoding = genEncoding || encoding;
 
     if (typeof sizeOrKey !== "number") {
-      this.#prime = toBuf(sizeOrKey as string, keyEncoding as string);
+      if (isArrayBufferView(sizeOrKey) || isAnyArrayBuffer(sizeOrKey)) {
+        this.#prime = Buffer.from(
+          isAnyArrayBuffer(sizeOrKey) ? sizeOrKey : sizeOrKey.buffer,
+          isArrayBufferView(sizeOrKey) ? sizeOrKey.byteOffset : 0,
+          isArrayBufferView(sizeOrKey)
+            ? sizeOrKey.byteLength
+            : (sizeOrKey as ArrayBuffer).byteLength,
+        );
+      } else {
+        this.#prime = toBuf(sizeOrKey as string, keyEncoding as string);
+      }
     } else {
       // The supplied parameter is our primeLength, generate a suitable prime.
       this.#primeLength = sizeOrKey as number;
@@ -124,22 +136,30 @@ export class DiffieHellmanImpl {
       }
 
       this.#prime = Buffer.from(
-        op_node_gen_prime(this.#primeLength).buffer,
+        op_node_gen_prime(this.#primeLength, false, null, null).buffer,
       );
     }
 
     if (!generator) {
-      // While the commonly used cyclic group generators for DH are 2 and 5, we
-      // need this a buffer, because, well.. Node.
-      this.#generator = Buffer.alloc(4);
-      this.#generator.writeUint32BE(DH_GENERATOR);
-    } else if (typeof generator === "number") {
+      generator = DH_GENERATOR;
+    }
+
+    if (typeof generator === "number") {
       validateInt32(generator, "generator");
-      this.#generator = Buffer.alloc(4);
       if (generator <= 0 || generator >= 0x7fffffff) {
         throw new NodeError("ERR_OSSL_DH_BAD_GENERATOR", "bad generator");
       }
-      this.#generator.writeUint32BE(generator);
+      // Store with minimal byte representation, matching Node.js/OpenSSL behavior
+      if (generator <= 0xff) {
+        this.#generator = Buffer.alloc(1);
+        this.#generator.writeUint8(generator);
+      } else if (generator <= 0xffff) {
+        this.#generator = Buffer.alloc(2);
+        this.#generator.writeUint16BE(generator);
+      } else {
+        this.#generator = Buffer.alloc(4);
+        this.#generator.writeUint32BE(generator);
+      }
     } else if (typeof generator === "string") {
       generator = toBuf(generator, genEncoding as string);
       this.#generator = generator;
@@ -212,25 +232,52 @@ export class DiffieHellmanImpl {
       buf,
     );
 
-    if (outputEncoding == undefined || outputEncoding == "buffer") {
-      return Buffer.from(sharedSecret.buffer);
+    // Zero-pad the shared secret to the length of the prime, per RFC 4346
+    let secretBuf = Buffer.from(sharedSecret.buffer);
+    const primeLen = this.#prime.length;
+    if (secretBuf.length < primeLen) {
+      const padded = Buffer.alloc(primeLen);
+      secretBuf.copy(padded, primeLen - secretBuf.length);
+      secretBuf = padded;
     }
 
-    return Buffer.from(sharedSecret.buffer).toString(outputEncoding);
+    if (outputEncoding == undefined || outputEncoding == "buffer") {
+      return secretBuf;
+    }
+
+    return secretBuf.toString(outputEncoding);
   }
 
   generateKeys(): Buffer;
   generateKeys(encoding: BinaryToTextEncoding): string;
   generateKeys(_encoding?: BinaryToTextEncoding): Buffer | string {
     const generator = this.#checkGenerator();
-    const [privateKey, publicKey] = op_node_dh_keys_generate_and_export(
-      this.#prime,
-      this.#primeLength ?? 0,
-      generator,
-    );
 
-    this.#privateKey = Buffer.from(privateKey.buffer);
-    this.#publicKey = Buffer.from(publicKey.buffer);
+    if (this.#privateKey && this.#publicKey && !this.#publicKeyNeedsUpdate) {
+      // Both keys already exist and are up to date, no-op
+      return this.#publicKey;
+    }
+
+    if (this.#privateKey) {
+      // Private key set externally, compute public key from it
+      const publicKey = op_node_dh_compute_secret(
+        this.#prime,
+        this.#privateKey,
+        this.#generator,
+      );
+      this.#publicKey = Buffer.from(publicKey.buffer);
+      this.#publicKeyNeedsUpdate = false;
+    } else {
+      // Generate both keys
+      const [privateKey, publicKey] = op_node_dh_keys_generate_and_export(
+        this.#prime,
+        this.#primeLength ?? 0,
+        generator,
+      );
+      this.#privateKey = Buffer.from(privateKey.buffer);
+      this.#publicKey = Buffer.from(publicKey.buffer);
+      this.#publicKeyNeedsUpdate = false;
+    }
 
     return this.#publicKey;
   }
@@ -286,6 +333,8 @@ export class DiffieHellmanImpl {
     } else {
       this.#privateKey = Buffer.from(privateKey, encoding);
     }
+    // Mark public key as needing regeneration
+    this.#publicKeyNeedsUpdate = true;
   }
 
   setPublicKey(publicKey: ArrayBufferView): void;
@@ -303,6 +352,8 @@ export class DiffieHellmanImpl {
 }
 
 const DH_GROUP_NAMES = [
+  "modp1",
+  "modp2",
   "modp5",
   "modp14",
   "modp15",
@@ -311,6 +362,74 @@ const DH_GROUP_NAMES = [
   "modp18",
 ];
 const DH_GROUPS = {
+  "modp1": {
+    // 768-bit prime from RFC 2409
+    prime: [
+      0xFFFFFFFF,
+      0xFFFFFFFF,
+      0xC90FDAA2,
+      0x2168C234,
+      0xC4C6628B,
+      0x80DC1CD1,
+      0x29024E08,
+      0x8A67CC74,
+      0x020BBEA6,
+      0x3B139B22,
+      0x514A0879,
+      0x8E3404DD,
+      0xEF9519B3,
+      0xCD3A431B,
+      0x302B0A6D,
+      0xF25F1437,
+      0x4FE1356D,
+      0x6D51C245,
+      0xE485B576,
+      0x625E7EC6,
+      0xF44C42E9,
+      0xA63A3620,
+      0xFFFFFFFF,
+      0xFFFFFFFF,
+    ],
+    generator: 2,
+  },
+  "modp2": {
+    // 1024-bit prime from RFC 2409
+    prime: [
+      0xFFFFFFFF,
+      0xFFFFFFFF,
+      0xC90FDAA2,
+      0x2168C234,
+      0xC4C6628B,
+      0x80DC1CD1,
+      0x29024E08,
+      0x8A67CC74,
+      0x020BBEA6,
+      0x3B139B22,
+      0x514A0879,
+      0x8E3404DD,
+      0xEF9519B3,
+      0xCD3A431B,
+      0x302B0A6D,
+      0xF25F1437,
+      0x4FE1356D,
+      0x6D51C245,
+      0xE485B576,
+      0x625E7EC6,
+      0xF44C42E9,
+      0xA637ED6B,
+      0x0BFF5CB6,
+      0xF406B7ED,
+      0xEE386BFB,
+      0x5A899FA5,
+      0xAE9F2411,
+      0x7C4B1FE6,
+      0x49286651,
+      0xECE65381,
+      0xFFFFFFFF,
+      0xFFFFFFFF,
+    ],
+    generator: 2,
+  },
   "modp5": {
     prime: [
       0xFFFFFFFF,
@@ -1141,8 +1260,13 @@ export class DiffieHellmanGroupImpl {
     if (!DH_GROUP_NAMES.includes(name)) {
       throw new ERR_CRYPTO_UNKNOWN_DH_GROUP();
     }
+    const words = DH_GROUPS[name].prime;
+    const buf = Buffer.alloc(words.length * 4);
+    for (let i = 0; i < words.length; i++) {
+      buf.writeUInt32BE(words[i], i * 4);
+    }
     this.#diffiehellman = new DiffieHellmanImpl(
-      Buffer.from(DH_GROUPS[name].prime),
+      buf,
       DH_GROUPS[name].generator,
     );
     this.verifyError = 0;
@@ -1206,6 +1330,7 @@ export class DiffieHellmanGroupImpl {
 }
 
 DiffieHellmanGroup.prototype = DiffieHellmanGroupImpl.prototype;
+DiffieHellmanGroup.prototype.constructor = DiffieHellmanGroup;
 
 export function ECDH(curve: string) {
   return new ECDHImpl(curve);
@@ -1230,13 +1355,55 @@ export class ECDHImpl {
   }
 
   static convertKey(
-    _key: BinaryLike,
-    _curve: string,
-    _inputEncoding?: BinaryToTextEncoding,
-    _outputEncoding?: "latin1" | "hex" | "base64" | "base64url",
-    _format?: "uncompressed" | "compressed" | "hybrid",
+    key: BinaryLike,
+    curve: string,
+    inputEncoding?: BinaryToTextEncoding,
+    outputEncoding?: "latin1" | "hex" | "base64" | "base64url",
+    format?: "uncompressed" | "compressed" | "hybrid",
   ): Buffer | string {
-    notImplemented("crypto.ECDH.prototype.convertKey");
+    validateString(curve, "curve");
+    const buf = getArrayBufferOrView(key, "key", inputEncoding);
+
+    let compress: boolean;
+    if (format) {
+      if (format === "compressed") {
+        compress = true;
+      } else if (format === "hybrid" || format === "uncompressed") {
+        compress = false;
+      } else {
+        throw new ERR_CRYPTO_ECDH_INVALID_FORMAT(format);
+      }
+    } else {
+      compress = false;
+    }
+
+    let result;
+    try {
+      result = Buffer.from(
+        op_node_ecdh_encode_pubkey(curve, buf, compress),
+      );
+    } catch (e) {
+      if (e instanceof TypeError && e.message === "Unsupported curve") {
+        throw new TypeError("Invalid EC curve name");
+      }
+      throw new Error("Failed to convert Buffer to EC_POINT");
+    }
+
+    if (format === "hybrid") {
+      // Hybrid format: same as uncompressed but first byte is 06 or 07
+      // Get compressed form to determine parity
+      const compressedBuf = Buffer.from(
+        op_node_ecdh_encode_pubkey(curve, buf, true),
+      );
+      // compressed first byte is 02 (even) or 03 (odd)
+      // hybrid first byte is 06 (even) or 07 (odd)
+      result[0] = compressedBuf[0] + 4;
+    }
+
+    if (outputEncoding && outputEncoding !== "buffer") {
+      return result.toString(outputEncoding);
+    }
+    return result;
   }
 
   computeSecret(otherPublicKey: ArrayBufferView): Buffer;
@@ -1312,8 +1479,16 @@ export class ECDHImpl {
     const pubbuf = Buffer.from(op_node_ecdh_encode_pubkey(
       this.#curve.name,
       this.#pubbuf,
-      format == "compressed",
+      format === "compressed",
     ));
+    if (format === "hybrid") {
+      const compressedBuf = Buffer.from(op_node_ecdh_encode_pubkey(
+        this.#curve.name,
+        this.#pubbuf,
+        true,
+      ));
+      pubbuf[0] = compressedBuf[0] + 4;
+    }
     if (encoding !== undefined) {
       return pubbuf.toString(encoding);
     }
@@ -1326,7 +1501,9 @@ export class ECDHImpl {
     privateKey: ArrayBufferView | string,
     encoding?: BinaryToTextEncoding,
   ): Buffer | string {
-    this.#privbuf = privateKey;
+    this.#privbuf = typeof privateKey === "string"
+      ? Buffer.from(privateKey, encoding)
+      : Buffer.from(privateKey);
     this.#pubbuf = Buffer.alloc(this.#curve.publicKeySize);
 
     op_node_ecdh_compute_public_key(
@@ -1343,11 +1520,45 @@ export class ECDHImpl {
 }
 
 ECDH.prototype = ECDHImpl.prototype;
+ECDH.convertKey = ECDHImpl.convertKey;
 
-export function diffieHellman(options: {
-  privateKey: KeyObject;
-  publicKey: KeyObject;
-}): Buffer {
+export function diffieHellman(
+  options: {
+    privateKey: KeyObject;
+    publicKey: KeyObject;
+  },
+  callback?: (err: Error | null, secret?: Buffer) => void,
+): Buffer | void {
+  if (callback !== undefined && typeof callback !== "function") {
+    throw new ERR_INVALID_ARG_TYPE("callback", "function", callback);
+  }
+  if (
+    typeof options !== "object" || options === null || Array.isArray(options)
+  ) {
+    throw new ERR_INVALID_ARG_TYPE("options", "object", options);
+  }
+  if (!options.privateKey) {
+    throw new ERR_INVALID_ARG_VALUE("options.privateKey", options.privateKey);
+  }
+  if (!options.publicKey) {
+    throw new ERR_INVALID_ARG_VALUE("options.publicKey", options.publicKey);
+  }
+
+  if (callback) {
+    try {
+      const privateKey = getKeyObjectHandle(
+        options.privateKey,
+        kConsumePrivate,
+      );
+      const publicKey = getKeyObjectHandle(options.publicKey, kConsumePublic);
+      const bytes = op_node_diffie_hellman(privateKey, publicKey);
+      callback(null, Buffer.from(bytes));
+    } catch (err) {
+      callback(err as Error);
+    }
+    return;
+  }
+
   const privateKey = getKeyObjectHandle(options.privateKey, kConsumePrivate);
   const publicKey = getKeyObjectHandle(options.publicKey, kConsumePublic);
   const bytes = op_node_diffie_hellman(privateKey, publicKey);

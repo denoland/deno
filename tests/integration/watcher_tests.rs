@@ -1347,6 +1347,103 @@ async fn test_watch_sigint() {
   assert_eq!(exit_status.code(), Some(130));
 }
 
+/// Test that the "unload" event fires on watch restart when the
+/// event loop is running (e.g. with setInterval keeping it alive).
+#[test(flaky)]
+async fn run_watch_unload_on_restart() {
+  let t = TempDir::new();
+  let file_to_watch = t.path().join("file_to_watch.js");
+  file_to_watch.write(
+    r#"
+      addEventListener("unload", () => {
+        console.log("unload event fired");
+      });
+      setInterval(() => {}, 1000);
+    "#,
+  );
+
+  let mut child = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("run")
+    .arg("--watch")
+    .arg("-L")
+    .arg("debug")
+    .arg("--allow-all")
+    .arg(&file_to_watch)
+    .env("NO_COLOR", "1")
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+
+  wait_for_watcher("file_to_watch.js", &mut stderr_lines).await;
+
+  // Trigger a restart by modifying the file
+  file_to_watch.write(
+    r#"
+      addEventListener("unload", () => {
+        console.log("unload event fired");
+      });
+      setInterval(() => {}, 1000);
+      // changed
+    "#,
+  );
+
+  // The unload handler should fire before the process restarts
+  wait_contains("unload event fired", &mut stdout_lines).await;
+  wait_contains("Restarting", &mut stderr_lines).await;
+  check_alive_then_kill(child);
+}
+
+/// Test that Node.js process "exit" event fires on watch restart.
+#[test(flaky)]
+async fn run_watch_process_exit_on_restart() {
+  let t = TempDir::new();
+  let file_to_watch = t.path().join("file_to_watch.js");
+  file_to_watch.write(
+    r#"
+      import process from "node:process";
+      process.on("exit", () => {
+        console.log("process exit fired");
+      });
+      setInterval(() => {}, 1000);
+    "#,
+  );
+
+  let mut child = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("run")
+    .arg("--watch")
+    .arg("-L")
+    .arg("debug")
+    .arg("--allow-all")
+    .arg(&file_to_watch)
+    .env("NO_COLOR", "1")
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+
+  wait_for_watcher("file_to_watch.js", &mut stderr_lines).await;
+
+  // Trigger a restart by modifying the file
+  file_to_watch.write(
+    r#"
+      import process from "node:process";
+      process.on("exit", () => {
+        console.log("process exit fired");
+      });
+      setInterval(() => {}, 1000);
+      // changed
+    "#,
+  );
+
+  // The process exit handler should fire before the process restarts
+  wait_contains("process exit fired", &mut stdout_lines).await;
+  wait_contains("Restarting", &mut stderr_lines).await;
+  check_alive_then_kill(child);
+}
+
 #[test(flaky)]
 async fn bench_watch_basic() {
   let t = TempDir::new();
@@ -2661,6 +2758,57 @@ console.log("---");
   );
   wait_contains("BAR: another_value", &mut stdout_lines).await;
   wait_contains("---", &mut stdout_lines).await;
+
+  check_alive_then_kill(child);
+}
+
+#[test(flaky)]
+async fn test_watch_env_file() {
+  let t = TempDir::new();
+
+  // Create initial .env file
+  let env_file = t.path().join(".env");
+  std::fs::write(&env_file, "FOO=initial_value\nBAR=test_value").unwrap();
+
+  // Create test that reads environment variables
+  let test_file = t.path().join("env_test.ts");
+  std::fs::write(
+    &test_file,
+    r#"
+Deno.test("env test", () => {
+  console.log("FOO:", Deno.env.get("FOO"));
+  console.log("BAR:", Deno.env.get("BAR"));
+});
+"#,
+  )
+  .unwrap();
+
+  let mut child = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("test")
+    .arg("--watch")
+    .arg("--no-check")
+    .arg("--allow-env")
+    .arg("--env-file=.env")
+    .arg(&test_file)
+    .env("NO_COLOR", "1")
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+
+  // Wait for initial run
+  wait_contains("FOO: initial_value", &mut stdout_lines).await;
+  wait_contains("BAR: test_value", &mut stdout_lines).await;
+  wait_contains("Test finished", &mut stderr_lines).await;
+
+  // Change the .env file
+  std::fs::write(&env_file, "FOO=updated_value\nBAR=new_value").unwrap();
+
+  // Wait for restart and verify updated values
+  wait_contains("Restarting", &mut stderr_lines).await;
+  wait_contains("FOO: updated_value", &mut stdout_lines).await;
+  wait_contains("BAR: new_value", &mut stdout_lines).await;
 
   check_alive_then_kill(child);
 }

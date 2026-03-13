@@ -21,7 +21,6 @@ import {
   op_process_abort,
 } from "ext:core/ops";
 
-import { warnNotImplemented } from "ext:deno_node/_utils.ts";
 import { EventEmitter } from "node:events";
 import Module, { getBuiltinModule } from "node:module";
 import { report } from "ext:deno_node/internal/process/report.ts";
@@ -106,10 +105,6 @@ const {
   ObjectDefineProperty,
   ObjectPrototypeIsPrototypeOf,
 } = primordials;
-
-const notImplementedEvents = [
-  "multipleResolves",
-];
 
 export const argv: string[] = ["", ""];
 
@@ -497,10 +492,7 @@ Process.prototype.on = function (
   // deno-lint-ignore no-explicit-any
   listener: (...args: any[]) => void,
 ) {
-  if (notImplementedEvents.includes(event)) {
-    warnNotImplemented(`process.on("${event}")`);
-    EventEmitter.prototype.on.call(this, event, listener);
-  } else if (typeof event === "string" && event.startsWith("SIG")) {
+  if (typeof event === "string" && event.startsWith("SIG")) {
     if (event === "SIGBREAK" && Deno.build.os !== "windows") {
       // Ignores SIGBREAK if the platform is not windows.
     } else if (event === "SIGTERM" && Deno.build.os === "windows") {
@@ -528,10 +520,7 @@ Process.prototype.off = function (
   // deno-lint-ignore no-explicit-any
   listener: (...args: any[]) => void,
 ) {
-  if (notImplementedEvents.includes(event)) {
-    warnNotImplemented(`process.off("${event}")`);
-    EventEmitter.prototype.off.call(this, event, listener);
-  } else if (typeof event === "string" && event.startsWith("SIG")) {
+  if (typeof event === "string" && event.startsWith("SIG")) {
     if (event === "SIGBREAK" && Deno.build.os !== "windows") {
       // Ignores SIGBREAK if the platform is not windows.
     } else if (
@@ -567,10 +556,7 @@ Process.prototype.prependListener = function (
   // deno-lint-ignore no-explicit-any
   listener: (...args: any[]) => void,
 ) {
-  if (notImplementedEvents.includes(event)) {
-    warnNotImplemented(`process.prependListener("${event}")`);
-    EventEmitter.prototype.prependListener.call(this, event, listener);
-  } else if (typeof event === "string" && event.startsWith("SIG")) {
+  if (typeof event === "string" && event.startsWith("SIG")) {
     if (event === "SIGBREAK" && Deno.build.os !== "windows") {
       // Ignores SIGBREAK if the platform is not windows.
     } else {
@@ -591,10 +577,6 @@ Process.prototype.addListener = function (
   // deno-lint-ignore no-explicit-any
   listener: (...args: any[]) => void,
 ) {
-  if (notImplementedEvents.includes(event)) {
-    warnNotImplemented(`process.addListener("${event}")`);
-  }
-
   return this.on(event, listener);
 };
 
@@ -604,10 +586,6 @@ Process.prototype.removeListener = function (
   event: string, // deno-lint-ignore no-explicit-any
   listener: (...args: any[]) => void,
 ) {
-  if (notImplementedEvents.includes(event)) {
-    warnNotImplemented(`process.removeListener("${event}")`);
-  }
-
   return this.off(event, listener);
 };
 
@@ -959,8 +937,9 @@ const features = {
   // deno-lint-ignore camelcase
   tls_ocsp: true,
   tls: true,
+  // Deno uses aws-lc, which is BoringSSL-based.
   // deno-lint-ignore camelcase
-  openssl_is_boringssl: false,
+  openssl_is_boringssl: true,
   // deno-lint-ignore camelcase
   cached_builtins: true,
   // deno-lint-ignore camelcase
@@ -1107,7 +1086,29 @@ function synchronizeListeners() {
         // listeners.
 
         event.preventDefault();
-        uncaughtExceptionHandler(event.reason, "unhandledRejection");
+
+        let reason = event.reason;
+        // If the rejection reason is not an Error, wrap it in an
+        // ERR_UNHANDLED_REJECTION error, matching Node.js behavior.
+        if (!(reason instanceof Error)) {
+          const message = "This error originated either by throwing " +
+            "inside of an async function without a catch block, or by rejecting a " +
+            "promise which was not handled with .catch(). The promise rejected with the" +
+            ` reason "${reason}".`;
+          const err = new Error(message);
+          // deno-lint-ignore no-explicit-any
+          (err as any).code = "ERR_UNHANDLED_REJECTION";
+          // deno-lint-ignore no-explicit-any
+          (err as any).reason = event.reason;
+          Object.defineProperty(err, "name", {
+            value: "UnhandledPromiseRejection",
+            writable: true,
+            configurable: true,
+          });
+          reason = err;
+        }
+
+        uncaughtExceptionHandler(reason, "unhandledRejection");
         return;
       }
 

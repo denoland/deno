@@ -280,7 +280,7 @@ pub fn op_node_parse_env<'a>(
   #[string] content: &str,
 ) -> v8::Local<'a, v8::Object> {
   let env_obj = v8::Object::new(scope);
-  parse_env_content_hook(content, |key, value| {
+  parse_env_content_hook(content, &mut |key, value| {
     let key = v8::String::new(scope, key).unwrap();
     let value = v8::String::new(scope, value).unwrap();
     env_obj.set(scope, key.into(), value.into());

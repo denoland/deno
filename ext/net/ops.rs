@@ -1036,6 +1036,22 @@ pub async fn op_dns_resolve(
     .collect::<Result<Vec<DnsRecordWithTtl>, NetError>>()
 }
 
+#[op2]
+#[serde]
+pub fn op_net_get_system_dns_servers() -> Result<Vec<(String, u16)>, NetError> {
+  let (config, _opts) = system_conf::read_system_conf()
+    .unwrap_or_else(|_| (ResolverConfig::default(), ResolverOpts::default()));
+  let servers = config
+    .name_servers()
+    .iter()
+    .map(|ns| {
+      let addr = ns.socket_addr;
+      (addr.ip().to_string(), addr.port())
+    })
+    .collect();
+  Ok(servers)
+}
+
 #[op2(fast)]
 pub fn op_set_nodelay(
   state: &mut OpState,
