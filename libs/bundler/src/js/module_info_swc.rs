@@ -15,12 +15,15 @@ pub fn wtf8_to_string(atom: &deno_ast::swc::atoms::Wtf8Atom) -> String {
   String::from_utf8_lossy(atom.as_bytes()).into_owned()
 }
 
+use rustc_hash::FxHashSet;
+
 use super::module_info::ConstantValue;
 use super::module_info::ExportBinding;
 use super::module_info::ExportKind;
 use super::module_info::ImportBinding;
 use super::module_info::ImportedName;
 use super::module_info::ModuleInfo;
+use super::module_info::NamespaceAccess;
 use super::module_info::TopLevelDecl;
 use super::scope::DeclId;
 use super::scope::DeclKind;
@@ -95,6 +98,10 @@ pub fn extract_module_info(program: &Program) -> ModuleInfo {
     }
   });
 
+  // Analyze namespace import usage patterns.
+  let namespace_accesses =
+    analyze_namespace_accesses(program, &imports);
+
   ModuleInfo {
     imports,
     exports,
@@ -104,6 +111,7 @@ pub fn extract_module_info(program: &Program) -> ModuleInfo {
     has_tla,
     constant_exports,
     default_export_decl_id,
+    namespace_accesses,
   }
 }
 
@@ -475,6 +483,142 @@ fn module_export_name_to_string(name: &ModuleExportName) -> String {
     ModuleExportName::Ident(id) => id.sym.to_string(),
     ModuleExportName::Str(lit) => wtf8_to_string(&lit.value),
   }
+}
+
+// ============================================================================
+// Namespace import access analysis
+// ============================================================================
+
+/// Analyze how namespace imports are used in the module.
+///
+/// For each `import * as ns from '...'`, determines whether only specific
+/// properties are accessed (`ns.foo`, `ns.bar`) or if the namespace escaped
+/// (passed as argument, spread, assigned to another variable, etc.).
+fn analyze_namespace_accesses(
+  program: &Program,
+  imports: &[ImportBinding],
+) -> FxHashMap<DeclId, NamespaceAccess> {
+  // Collect namespace import local names → DeclIds.
+  let ns_bindings: FxHashMap<String, DeclId> = imports
+    .iter()
+    .filter(|i| matches!(i.imported, ImportedName::Namespace))
+    .map(|i| (i.local_name.clone(), i.decl_id))
+    .collect();
+
+  if ns_bindings.is_empty() {
+    return FxHashMap::default();
+  }
+
+  let mut visitor = NamespaceAccessVisitor {
+    ns_bindings: &ns_bindings,
+    accesses: ns_bindings
+      .values()
+      .map(|&id| (id, NamespaceAccess::Properties(FxHashSet::default())))
+      .collect(),
+  };
+  program.visit_with(&mut visitor);
+  visitor.accesses
+}
+
+/// Visitor that tracks how namespace identifiers are used.
+struct NamespaceAccessVisitor<'a> {
+  /// Maps namespace local name → DeclId.
+  ns_bindings: &'a FxHashMap<String, DeclId>,
+  /// Accumulated access info per DeclId.
+  accesses: FxHashMap<DeclId, NamespaceAccess>,
+}
+
+impl<'a> NamespaceAccessVisitor<'a> {
+  /// Mark a namespace as escaped (all exports live).
+  fn mark_escaped(&mut self, name: &str) {
+    if let Some(&decl_id) = self.ns_bindings.get(name) {
+      self.accesses.insert(decl_id, NamespaceAccess::Escaped);
+    }
+  }
+
+  /// Record a property access on a namespace.
+  fn record_property(&mut self, name: &str, prop: String) {
+    if let Some(&decl_id) = self.ns_bindings.get(name) {
+      match self.accesses.get_mut(&decl_id) {
+        Some(NamespaceAccess::Properties(set)) => {
+          set.insert(prop);
+        }
+        Some(NamespaceAccess::Escaped) => {
+          // Already escaped, nothing to do.
+        }
+        None => {
+          let mut set = FxHashSet::default();
+          set.insert(prop);
+          self
+            .accesses
+            .insert(decl_id, NamespaceAccess::Properties(set));
+        }
+      }
+    }
+  }
+
+  /// Check if an expression is a namespace identifier, returning the name.
+  fn namespace_name(&self, expr: &Expr) -> Option<String> {
+    if let Expr::Ident(id) = expr {
+      let name = id.sym.to_string();
+      if self.ns_bindings.contains_key(&name) {
+        return Some(name);
+      }
+    }
+    None
+  }
+}
+
+impl Visit for NamespaceAccessVisitor<'_> {
+  fn visit_member_expr(&mut self, node: &MemberExpr) {
+    // `ns.foo` or `ns["foo"]` — record property access.
+    if let Some(ns_name) = self.namespace_name(&node.obj) {
+      match &node.prop {
+        MemberProp::Ident(prop) => {
+          self.record_property(&ns_name, prop.sym.to_string());
+          return;
+        }
+        MemberProp::Computed(comp) => {
+          if let Expr::Lit(Lit::Str(s)) = &*comp.expr {
+            self.record_property(&ns_name, wtf8_to_string(&s.value));
+            return;
+          }
+          // Computed with non-literal — escape.
+          self.mark_escaped(&ns_name);
+          return;
+        }
+        MemberProp::PrivateName(_) => {
+          self.mark_escaped(&ns_name);
+          return;
+        }
+      }
+    }
+    // Not a namespace member — recurse normally.
+    node.visit_children_with(self);
+  }
+
+  fn visit_expr(&mut self, expr: &Expr) {
+    match expr {
+      Expr::Member(_) => {
+        // Handled by visit_member_expr.
+        expr.visit_children_with(self);
+      }
+      Expr::Ident(id) => {
+        let name = id.sym.to_string();
+        if self.ns_bindings.contains_key(&name) {
+          // Bare namespace ident in a non-member context = escaped.
+          self.mark_escaped(&name);
+        }
+      }
+      _ => {
+        expr.visit_children_with(self);
+      }
+    }
+  }
+
+  // Don't descend into import declarations (the binding ident there
+  // is a declaration, not a usage).
+  fn visit_import_decl(&mut self, _: &ImportDecl) {}
 }
 
 // ============================================================================
@@ -1047,5 +1191,78 @@ mod tests {
   fn test_non_constant_export() {
     let info = parse_and_extract("export const X = {};");
     assert!(info.constant_exports.is_empty());
+  }
+
+  // --- Namespace access tracking ---
+
+  #[test]
+  fn test_namespace_property_access() {
+    let info = parse_and_extract(
+      "import * as ns from './lib';\nns.foo();\nns.bar;",
+    );
+    assert_eq!(info.imports.len(), 1);
+    let decl_id = info.imports[0].decl_id;
+    let access = info.namespace_accesses.get(&decl_id).unwrap();
+    match access {
+      NamespaceAccess::Properties(props) => {
+        assert!(props.contains("foo"));
+        assert!(props.contains("bar"));
+        assert_eq!(props.len(), 2);
+      }
+      NamespaceAccess::Escaped => panic!("expected Properties, got Escaped"),
+    }
+  }
+
+  #[test]
+  fn test_namespace_escaped_as_argument() {
+    let info = parse_and_extract(
+      "import * as ns from './lib';\ndoSomething(ns);",
+    );
+    let decl_id = info.imports[0].decl_id;
+    let access = info.namespace_accesses.get(&decl_id).unwrap();
+    assert_eq!(*access, NamespaceAccess::Escaped);
+  }
+
+  #[test]
+  fn test_namespace_escaped_assignment() {
+    let info = parse_and_extract(
+      "import * as ns from './lib';\nconst x = ns;",
+    );
+    let decl_id = info.imports[0].decl_id;
+    let access = info.namespace_accesses.get(&decl_id).unwrap();
+    assert_eq!(*access, NamespaceAccess::Escaped);
+  }
+
+  #[test]
+  fn test_namespace_computed_string_property() {
+    let info = parse_and_extract(
+      "import * as ns from './lib';\nns[\"foo\"];",
+    );
+    let decl_id = info.imports[0].decl_id;
+    let access = info.namespace_accesses.get(&decl_id).unwrap();
+    match access {
+      NamespaceAccess::Properties(props) => {
+        assert!(props.contains("foo"));
+      }
+      NamespaceAccess::Escaped => panic!("expected Properties"),
+    }
+  }
+
+  #[test]
+  fn test_namespace_computed_dynamic_escapes() {
+    let info = parse_and_extract(
+      "import * as ns from './lib';\nconst k = 'foo';\nns[k];",
+    );
+    let decl_id = info.imports[0].decl_id;
+    let access = info.namespace_accesses.get(&decl_id).unwrap();
+    assert_eq!(*access, NamespaceAccess::Escaped);
+  }
+
+  #[test]
+  fn test_no_namespace_for_named_import() {
+    let info = parse_and_extract(
+      "import { foo } from './lib';\nfoo();",
+    );
+    assert!(info.namespace_accesses.is_empty());
   }
 }

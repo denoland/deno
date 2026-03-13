@@ -1,6 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 use rustc_hash::FxHashMap;
+use rustc_hash::FxHashSet;
 
 use super::scope::DeclId;
 use super::scope::DeclKind;
@@ -25,6 +26,21 @@ pub struct ModuleInfo {
   pub constant_exports: FxHashMap<String, ConstantValue>,
   /// DeclId of the default export declaration, if any.
   pub default_export_decl_id: Option<DeclId>,
+  /// How namespace imports are used. Maps the namespace import's DeclId to
+  /// the set of accessed property names, or `None` if the namespace escaped
+  /// (was passed as argument, spread, assigned, etc.) — meaning all exports
+  /// must be considered live.
+  pub namespace_accesses: FxHashMap<DeclId, NamespaceAccess>,
+}
+
+/// How a namespace import (`import * as ns from '...'`) is used.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum NamespaceAccess {
+  /// Only specific properties were accessed (e.g., `ns.foo`, `ns.bar`).
+  Properties(FxHashSet<String>),
+  /// The namespace escaped (passed as argument, spread, assigned, etc.).
+  /// All exports must be considered live.
+  Escaped,
 }
 
 /// A constant value that can be determined at compile time.

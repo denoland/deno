@@ -8,6 +8,7 @@ use crate::config::EnvironmentId;
 use crate::dependency::ImportKind;
 use crate::js::module_info::ExportKind;
 use crate::js::module_info::ImportedName;
+use crate::js::module_info::NamespaceAccess;
 use crate::js::scope::DeclId;
 use crate::module::BundlerModule;
 use crate::module::SideEffectFlag;
@@ -301,14 +302,15 @@ impl BundlerGraph {
       }
     }
 
-    // Namespace import targets are all-live
-    // (unless they have sideEffects: false).
-    let namespace_targets: Vec<ModuleSpecifier> = self
+    // Namespace import targets: check whether only specific properties
+    // are accessed. If so, resolve those to individual symbols instead
+    // of marking the entire target module as all-live.
+    let namespace_info: Vec<(ModuleSpecifier, DeclId, ModuleSpecifier)> = self
       .modules
       .values()
       .filter_map(|m| {
         let mi = m.module_info.as_ref()?;
-        let targets: Vec<_> = mi
+        let items: Vec<_> = mi
           .imports
           .iter()
           .filter(|i| matches!(i.imported, ImportedName::Namespace))
@@ -316,21 +318,46 @@ impl BundlerGraph {
             m.dependencies
               .iter()
               .find(|d| d.specifier == i.source)
-              .map(|d| d.resolved.clone())
+              .map(|d| (m.specifier.clone(), i.decl_id, d.resolved.clone()))
           })
           .collect();
-        Some(targets)
+        Some(items)
       })
       .flatten()
       .collect();
-    for target in namespace_targets {
-      let is_side_effect_free = self
-        .get_module(&target)
-        .map(|m| m.side_effects == SideEffectFlag::False)
-        .unwrap_or(false);
-      if !is_side_effect_free {
-        if all_live_modules.insert(target.clone()) {
-          all_live_worklist.push(target);
+
+    for (importer_spec, ns_decl_id, target) in namespace_info {
+      let importer = self.get_module(&importer_spec).unwrap();
+      let mi = importer.module_info.as_ref().unwrap();
+
+      // Check namespace access pattern.
+      let access = mi.namespace_accesses.get(&ns_decl_id);
+      match access {
+        Some(NamespaceAccess::Properties(props)) if !props.is_empty() => {
+          // Only specific properties accessed — resolve each to a
+          // live symbol in the target module instead of all-live.
+          for prop_name in props {
+            let mut visited = FxHashSet::default();
+            if let Some(sym) =
+              self.resolve_named_export(&target, prop_name, &mut visited)
+            {
+              let canonical = self.symbol_uf.find(sym);
+              live_symbols.insert(canonical);
+            }
+          }
+        }
+        _ => {
+          // Namespace escaped or no access info — fall back to all-live
+          // (unless sideEffects: false).
+          let is_side_effect_free = self
+            .get_module(&target)
+            .map(|m| m.side_effects == SideEffectFlag::False)
+            .unwrap_or(false);
+          if !is_side_effect_free {
+            if all_live_modules.insert(target.clone()) {
+              all_live_worklist.push(target);
+            }
+          }
         }
       }
     }
