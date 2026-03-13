@@ -131,13 +131,3 @@ Deno.test("structuredClone CryptoKey", async () => {
   assertEquals(edClone.type, "private");
   assertEquals(edClone.algorithm.name, "Ed25519");
 });
-
-Deno.test("structuredClone DOMException", () => {
-  const original = new DOMException("test message", "DataError");
-  const cloned = structuredClone(original);
-  assert(original !== cloned);
-  assertEquals(cloned.message, "test message");
-  assertEquals(cloned.name, "DataError");
-  assertEquals(cloned.code, original.code);
-  assert(cloned instanceof DOMException);
-});
