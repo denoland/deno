@@ -268,6 +268,7 @@ prettyplease = "0.2.31"
 proc-macro2 = "1.0"
 prost = "0.13"
 prost-build = "0.13"
+qbsdiff = "1.4"
 quick-junit = "0.3.5"
 quinn = { version = "0.11.8", default-features = false }
 rand = "=0.8.5"

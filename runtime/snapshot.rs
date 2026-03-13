@@ -59,6 +59,7 @@ pub fn create_runtime_snapshot(
     ops::tty::deno_tty::lazy_init(),
     ops::http::deno_http_runtime::lazy_init(),
     deno_bundle_runtime::deno_bundle_runtime::lazy_init(),
+    ops::desktop::deno_desktop::lazy_init(),
     ops::bootstrap::deno_bootstrap::init(Some(snapshot_options), false),
     runtime::lazy_init(),
     ops::web_worker::deno_web_worker::lazy_init(),

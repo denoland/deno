@@ -28,6 +28,7 @@ use crate::args::CliOptions;
 use crate::args::CompileFlags;
 use crate::args::ConfigFlag;
 use crate::args::Flags;
+use crate::args::TypeCheckMode;
 use crate::factory::CliFactory;
 use crate::standalone::binary::WriteBinOptions;
 use crate::standalone::binary::is_standalone_binary;
@@ -42,6 +43,7 @@ const WEF_BACKEND_ENV: &str = "WEF_BACKEND";
 fn wef_backend_search_paths(backend: &str) -> Vec<PathBuf> {
   match backend {
     "cef" => vec![
+      PathBuf::from("/Users/divy/gh/wef/result-cef/Applications/wef.app/Contents/MacOS/wef"),
       PathBuf::from("/Users/divy/gh/wef/result/Applications/wef.app/Contents/MacOS/wef"),
       PathBuf::from("/Users/divy/gh/wef/cef/build/wef.app/Contents/MacOS/wef"),
     ],
@@ -76,6 +78,14 @@ pub async fn compile(
       log::info!("Detected {} framework", detection.name);
       // Enable CJS detection for Node-based frameworks.
       flags.unstable_config.detect_cjs = true;
+      if detection.name == "Next.js"
+        && !matches!(flags.type_check_mode, TypeCheckMode::None)
+      {
+        log::info!(
+          "Disabling Deno type checking for Next.js desktop compile; Next handles app compilation itself"
+        );
+        flags.type_check_mode = TypeCheckMode::None;
+      }
       // Write a temporary entrypoint file.
       let entrypoint_path = cwd.join(".deno_desktop_entry.ts");
       std::fs::write(&entrypoint_path, entrypoint_code)?;
@@ -356,6 +366,7 @@ const WEF_BACKEND_APP_ENV: &str = "WEF_BACKEND_APP";
 fn wef_backend_app_search_paths(backend: &str) -> Vec<String> {
   match backend {
     "cef" => vec![
+      "/Users/divy/gh/wef/result-cef/Applications/wef.app".to_string(),
       "/Users/divy/gh/wef/result/Applications/wef.app".to_string(),
       "/Users/divy/gh/wef/cef/build/wef.app".to_string(),
     ],
@@ -549,6 +560,11 @@ fn package_macos_app_bundle(
   <true/>
   <key>NSSupportsAutomaticGraphicsSwitching</key>
   <true/>
+  <key>NSAppTransportSecurity</key>
+  <dict>
+    <key>NSAllowsLocalNetworking</key>
+    <true/>
+  </dict>
 </dict>
 </plist>
 "#,

@@ -47,7 +47,6 @@ deno_terminal.workspace = true
 libsui.workspace = true
 node_resolver.workspace = true
 notify.workspace = true
-
 async-trait.workspace = true
 bincode.workspace = true
 import_map.workspace = true

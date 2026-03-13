@@ -903,6 +903,11 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       } else {
         None
       },
+      app_version: self
+        .cli_options
+        .workspace()
+        .root_deno_json()
+        .and_then(|c| c.json.version.clone()),
     };
 
     let (data_section_bytes, section_sizes) = serialize_binary_data_section(

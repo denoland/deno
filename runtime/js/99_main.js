@@ -541,10 +541,14 @@ const NOT_IMPORTED_OPS = [
 
   // Related to `Deno.desktop` API (deno compile --desktop)
   "op_desktop_set_title",
-  "op_desktop_set_window_size",
+  "op_desktop_set_size",
   "op_desktop_navigate",
   "op_desktop_execute_js",
-  "op_desktop_quit",
+  "op_desktop_close",
+  "op_desktop_set_application_menu",
+  "op_desktop_apply_patch",
+  "op_desktop_confirm_update",
+  "op_desktop_recv_menu_click",
 
   // deno deploy subcommand
   "op_deploy_token_get",

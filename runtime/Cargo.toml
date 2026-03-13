@@ -87,6 +87,7 @@ indexmap.workspace = true
 libc.workspace = true
 log.workspace = true
 notify.workspace = true
+qbsdiff.workspace = true
 once_cell.workspace = true
 regex.workspace = true
 rustyline = { workspace = true, features = ["custom-bindings"] }

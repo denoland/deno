@@ -811,12 +811,16 @@ pub struct RunOptions {
   pub hmr_watch_dir: Option<PathBuf>,
   /// Callback invoked after each successful HMR replacement.
   pub hmr_on_reload: Option<crate::hmr::HmrReloadCallback>,
-  /// Additional extensions to load (e.g. desktop window APIs).
-  pub custom_extensions: Vec<deno_core::Extension>,
+  /// Callback to initialize additional OpState (e.g. desktop APIs).
+  /// Called during worker creation to inject state without adding extensions.
+  pub op_state_init: Option<Box<dyn FnOnce(&mut deno_core::OpState) + Send>>,
   /// Override the main module to execute instead of the embedded entrypoint.
   /// Used by desktop runtime for forked worker processes (child_process.fork)
   /// where the child should run a specific script, not the embedded entrypoint.
   pub override_main_module: Option<deno_core::url::Url>,
+  /// Version and rollback state for desktop auto-update JS initialization.
+  pub auto_update_version: Option<String>,
+  pub auto_update_rolled_back: bool,
 }
 
 impl Default for RunOptions {
@@ -827,8 +831,10 @@ impl Default for RunOptions {
       serve_host: None,
       hmr_watch_dir: None,
       hmr_on_reload: None,
-      custom_extensions: vec![],
+      op_state_init: None,
       override_main_module: None,
+      auto_update_version: None,
+      auto_update_rolled_back: false,
     }
   }
 }
@@ -866,7 +872,7 @@ pub async fn run_with_options(
 ) -> Result<i32, AnyError> {
   let hmr_watch_dir = options.hmr_watch_dir;
   let hmr_on_reload = options.hmr_on_reload;
-  let custom_extensions = options.custom_extensions;
+  let op_state_init = options.op_state_init;
   let override_main_module = options.override_main_module;
   let StandaloneData {
     metadata,
@@ -884,6 +890,11 @@ pub async fn run_with_options(
   // use a dummy npm registry url
   let npm_registry_url = Url::parse("https://localhost/").unwrap();
   let root_dir_url = Arc::new(Url::from_directory_path(&root_path).unwrap());
+  let workspace_root_path = hmr_watch_dir
+    .clone()
+    .unwrap_or_else(|| root_path.clone());
+  let workspace_root_dir_url =
+    Arc::new(Url::from_directory_path(&workspace_root_path).unwrap());
   let main_module = if let Some(url) = override_main_module {
     url
   } else {
@@ -930,7 +941,7 @@ pub async fn run_with_options(
       ));
       let snapshot = npm_snapshot.unwrap();
       let maybe_node_modules_path = node_modules_dir
-        .map(|node_modules_dir| root_path.join(node_modules_dir));
+        .map(|node_modules_dir| workspace_root_path.join(node_modules_dir));
       let in_npm_pkg_checker =
         DenoInNpmPackageChecker::new(CreateInNpmPkgCheckerOptions::Managed(
           ManagedInNpmPkgCheckerCreateOptions {
@@ -956,7 +967,7 @@ pub async fn run_with_options(
       root_node_modules_dir,
     }) => {
       let root_node_modules_dir =
-        root_node_modules_dir.map(|p| vfs.root().join(p));
+        root_node_modules_dir.map(|p| workspace_root_path.join(p));
       let in_npm_pkg_checker =
         DenoInNpmPackageChecker::new(CreateInNpmPkgCheckerOptions::Byonm);
       let npm_resolver = NpmResolver::<DenoRtSys>::new::<DenoRtSys>(
@@ -964,7 +975,7 @@ pub async fn run_with_options(
           sys: node_resolution_sys.clone(),
           pkg_json_resolver: pkg_json_resolver.clone(),
           root_node_modules_dir,
-          search_stop_dir: Some(root_path.clone()),
+          search_stop_dir: Some(workspace_root_path.clone()),
         }),
       );
       (in_npm_pkg_checker, npm_resolver)
@@ -1050,7 +1061,7 @@ pub async fn run_with_options(
     let import_map = match metadata.workspace_resolver.import_map {
       Some(import_map) => Some(
         import_map::parse_from_json_with_options(
-          root_dir_url.join(&import_map.specifier).unwrap(),
+          workspace_root_dir_url.join(&import_map.specifier).unwrap(),
           &import_map.json,
           import_map::ImportMapOptions {
             address_hook: None,
@@ -1066,7 +1077,7 @@ pub async fn run_with_options(
       .package_jsons
       .into_iter()
       .map(|(relative_path, json)| {
-        let path = root_dir_url
+        let path = workspace_root_dir_url
           .join(&relative_path)
           .unwrap()
           .to_file_path()
@@ -1077,7 +1088,7 @@ pub async fn run_with_options(
       })
       .collect::<Result<Vec<_>, AnyError>>()?;
     WorkspaceResolver::new_raw(
-      root_dir_url.clone(),
+      workspace_root_dir_url.clone(),
       import_map,
       metadata
         .workspace_resolver
@@ -1179,7 +1190,7 @@ pub async fn run_with_options(
     is_inspecting: false,
     is_standalone: true,
     auto_serve: options.auto_serve,
-    skip_op_registration: custom_extensions.is_empty(),
+    skip_op_registration: true,
     location: metadata.location,
     argv0: NpmPackageReqReference::from_specifier(&main_module)
       .ok()
@@ -1248,23 +1259,39 @@ pub async fn run_with_options(
     .map(|key| root_dir_url.join(key).unwrap())
     .collect::<Vec<_>>();
 
-  let has_desktop = !custom_extensions.is_empty();
+  let has_desktop = op_state_init.is_some();
   let mut worker = worker_factory.create_custom_worker(
     WorkerExecutionMode::Run,
     main_module,
     preload_modules,
     require_modules,
     permissions,
-    custom_extensions,
+    vec![],
     Default::default(),
     None,
   )?;
+
+  // Inject desktop API state into OpState after worker creation.
+  if let Some(init_fn) = op_state_init {
+    let op_state = worker.js_runtime().op_state();
+    init_fn(&mut op_state.borrow_mut());
+  }
 
   // Initialize desktop APIs (Deno.desktop.*).
   if has_desktop {
     worker
       .js_runtime()
       .execute_script("ext:deno_desktop/init", crate::desktop::DESKTOP_JS)?;
+
+    // Initialize auto-update JS (DesktopUpdater cppgc object is already
+    // registered via the desktop extension's objects).
+    let js = crate::desktop::desktop_auto_update_js(
+      options.auto_update_version.as_deref(),
+      options.auto_update_rolled_back,
+    );
+    worker
+      .js_runtime()
+      .execute_script("ext:deno_desktop/auto_update", js)?;
   }
 
   if let Some(watch_dir) = hmr_watch_dir {

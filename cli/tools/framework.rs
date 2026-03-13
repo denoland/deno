@@ -164,6 +164,25 @@ fn detect_fresh(dir: &Path) -> FrameworkDetection {
   // Fresh 2.x uses _fresh/server.js, older uses main.ts
   let is_fresh2 = dir.join("_fresh/server.js").exists();
   if is_fresh2 {
+    let vite_config_loader =
+      if let Some(vite_config) = find_config_file(dir, "vite.config") {
+        format!(
+          r#"
+const userConfigMod = await import("./{vite_config}");
+const exportedConfig = userConfigMod.default ?? userConfigMod;
+const userConfig = (typeof exportedConfig === "function"
+  ? await exportedConfig({{
+      command: "serve",
+      mode: Deno.env.get("NODE_ENV") ?? "development",
+      isSsrBuild: false,
+      isPreview: false,
+    }})
+  : await exportedConfig) ?? {{}};
+"#
+        )
+      } else {
+        "const userConfig = { plugins: [fresh()] };".to_string()
+      };
     // Fresh 2.x: production imports _fresh/server.js, dev starts Vite
     FrameworkDetection {
       name: "Fresh",
@@ -171,38 +190,38 @@ fn detect_fresh(dir: &Path) -> FrameworkDetection {
 import { createServer } from "npm:vite";
 import { fresh } from "@fresh/plugin-vite";
 if (Deno.env.get("DENO_DESKTOP_DEV")) {
+  __DENO_DESKTOP_VITE_CONFIG__
+  const freshDesktopFixup = {
+    name: "fresh-desktop:fixup",
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        const origWrite = res.write.bind(res);
+        const origEnd = res.end.bind(res);
+        const chunks = [];
+        res.write = (chunk, ...args) => { chunks.push(Buffer.from(chunk)); return true; };
+        res.end = (chunk, ...args) => {
+          if (chunk) chunks.push(Buffer.from(chunk));
+          let body = Buffer.concat(chunks).toString();
+          const ct = res.getHeader("content-type") || "";
+          if (ct.includes("text/html")) {
+            body = body.replace(/from "(fresh-(?:island|route)::)/g, 'from "/@id/$1');
+          }
+          res.setHeader("content-length", Buffer.byteLength(body));
+          origEnd(body);
+        };
+        next();
+      });
+    },
+  };
   const server = await createServer({
+    ...userConfig,
     configFile: false,
-    plugins: [
-      fresh(),
-      // Workaround: Fresh's dev server SSR can emit bare `fresh-island::`
-      // specifiers in inline scripts after snapshot re-crawl. Browsers
-      // treat the colon as a URL scheme and block it as cross-origin.
-      // Rewrite to /@id/ so Vite's module resolver handles it.
-      {
-        name: "fresh-desktop:fixup",
-        configureServer(server) {
-          server.middlewares.use((req, res, next) => {
-            const origWrite = res.write.bind(res);
-            const origEnd = res.end.bind(res);
-            const chunks = [];
-            res.write = (chunk, ...args) => { chunks.push(Buffer.from(chunk)); return true; };
-            res.end = (chunk, ...args) => {
-              if (chunk) chunks.push(Buffer.from(chunk));
-              let body = Buffer.concat(chunks).toString();
-              const ct = res.getHeader("content-type") || "";
-              if (ct.includes("text/html")) {
-                body = body.replace(/from "(fresh-(?:island|route)::)/g, 'from "/@id/$1');
-              }
-              res.setHeader("content-length", Buffer.byteLength(body));
-              origEnd(body);
-            };
-            next();
-          });
-        },
-      },
-    ],
-    server: { port: 41520, host: "127.0.0.1" },
+    plugins: [...(userConfig.plugins ?? [fresh()]), freshDesktopFixup],
+    server: {
+      ...(userConfig.server ?? {}),
+      port: 41520,
+      host: "127.0.0.1",
+    },
   });
   await server.listen();
   await new Promise(() => {});
@@ -211,6 +230,7 @@ if (Deno.env.get("DENO_DESKTOP_DEV")) {
   Deno.serve({ port: 41520, hostname: "127.0.0.1" }, mod.default.fetch);
 }
 "#
+      .replace("__DENO_DESKTOP_VITE_CONFIG__", &vite_config_loader)
       .into(),
       include_paths: vec!["_fresh".into()],
       dev_entrypoint_code: Some("DENO_DESKTOP_DEV=1".into()),
@@ -366,6 +386,15 @@ fn has_config_file(dir: &Path, base_name: &str) -> bool {
   ["js", "mjs", "ts", "mts", "cjs"]
     .iter()
     .any(|ext| dir.join(format!("{base_name}.{ext}")).exists())
+}
+
+fn find_config_file(dir: &Path, base_name: &str) -> Option<String> {
+  ["js", "mjs", "ts", "mts", "cjs"]
+    .iter()
+    .find_map(|ext| {
+      let file_name = format!("{base_name}.{ext}");
+      dir.join(&file_name).exists().then_some(file_name)
+    })
 }
 
 /// Read package.json dependencies.
