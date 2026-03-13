@@ -29,6 +29,7 @@ pub(crate) mod sys {
   pub type CliSys = sys_traits::impls::RealSys;
 }
 
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::env;
 use std::future::Future;
@@ -732,11 +733,22 @@ async fn resolve_flags_and_init(
   if flags.subcommand.watch_flags().is_some() {
     WatchEnvTracker::snapshot();
   }
-  let env_file_paths: Option<Vec<std::path::PathBuf>> = flags
-    .env_file
-    .as_ref()
-    .map(|files| files.iter().map(PathBuf::from).collect());
-  load_env_variables_from_env_files(env_file_paths.as_ref(), flags.log_level);
+
+  if let Some(files) = &flags.env_file {
+    let cwd = match &flags.initial_cwd {
+      Some(cwd) => Cow::Borrowed(cwd),
+      None => match resolve_cwd(None) {
+        Ok(cwd) => {
+          flags.initial_cwd = Some(cwd.into_owned());
+          Cow::Borrowed(flags.initial_cwd.as_ref().unwrap())
+        }
+        Err(_) => Cow::Owned(PathBuf::from(".")),
+      },
+    };
+    let env_file_paths: Vec<std::path::PathBuf> =
+      files.iter().map(|p| cwd.join(p)).collect();
+    load_env_variables_from_env_files(&cwd, &env_file_paths, flags.log_level);
+  }
 
   if deno_lib::args::has_flag_env_var("DENO_CONNECTED") {
     flags.tunnel = true;

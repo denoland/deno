@@ -15,45 +15,6 @@ use deno_terminal::colors;
 
 use crate::sys::CliSys;
 
-/// Given a file path, if the file doesn't exist, walk up parent directories
-/// looking for a file with the same name. This replicates the behavior of
-/// dotenvy's `find()` function that was lost when switching to deno_dotenv.
-pub fn find_env_file(file_path: &Path) -> PathBuf {
-  if file_path.exists() {
-    return file_path.to_path_buf();
-  }
-
-  let Some(filename) = file_path.file_name() else {
-    return file_path.to_path_buf();
-  };
-
-  // Determine the starting directory for parent traversal.
-  let start_dir = if file_path.is_absolute() {
-    file_path.parent().map(Path::to_path_buf)
-  } else {
-    // For relative paths, resolve against CWD
-    #[allow(clippy::disallowed_methods)]
-    env::current_dir().ok()
-  };
-
-  let Some(start) = start_dir else {
-    return file_path.to_path_buf();
-  };
-
-  // Walk parent directories looking for the file
-  let mut dir = start.parent();
-  while let Some(parent) = dir {
-    let candidate = parent.join(filename);
-    if candidate.exists() {
-      return candidate;
-    }
-    dir = parent.parent();
-  }
-
-  // Return the original path so the caller can handle the "not found" case
-  file_path.to_path_buf()
-}
-
 pub fn resolve_cwd(
   initial_cwd: Option<&Path>,
 ) -> Result<Cow<'_, Path>, std::io::Error> {
@@ -112,28 +73,30 @@ impl WatchEnvTracker {
   // Internal method that accepts an already-acquired lock to avoid deadlocks
   fn load_env_file_inner(
     &self,
-    file_path: PathBuf,
+    cwd: &Path,
+    file_path: &Path,
     log_level: Option<log::Level>,
     inner: &mut WatchEnvTrackerInner,
   ) {
-    let file_path = find_env_file(&file_path);
+    let (file_path, content) = match deno_dotenv::find_path_and_content(
+      &CliSys::default(),
+      cwd,
+      file_path,
+    ) {
+      Ok(result) => result,
+      Err(err) => {
+        handle_dotenv_error(deno_dotenv::Error::Io(err), file_path, log_level);
+        return;
+      }
+    };
     // Check if file exists
     if !file_path.exists() {
-      // Only show warning if logging is enabled
-      #[allow(clippy::print_stderr)]
-      if log_level.map(|l| l >= log::Level::Info).unwrap_or(true) {
-        eprintln!(
-          "{} The environment file specified '{}' was not found.",
-          colors::yellow("Warning"),
-          file_path.display()
-        );
-      }
       return;
     }
 
-    match deno_dotenv::from_path_sanitized_iter_with_substitution(
+    match deno_dotenv::from_content_sanitized_iter_with_substitution(
       &CliSys::default(),
-      &file_path,
+      &content,
     ) {
       Ok(iter) => {
         for item in iter {
@@ -194,17 +157,8 @@ impl WatchEnvTracker {
           }
         }
       }
-      Err(e) =>
-      {
-        #[allow(clippy::print_stderr)]
-        if log_level.map(|l| l >= log::Level::Info).unwrap_or(true) {
-          eprintln!(
-            "{} Failed to read {}: {}",
-            colors::yellow("Warning"),
-            file_path.display(),
-            e
-          );
-        }
+      Err(e) => {
+        handle_dotenv_error(e, &file_path, log_level);
       }
     }
   }
@@ -252,24 +206,17 @@ impl WatchEnvTracker {
   // Load multiple env files in reverse order (later files take precedence over earlier ones)
   pub fn load_env_variables_from_env_files(
     &self,
-    file_paths: Option<&Vec<PathBuf>>,
+    cwd: &Path,
+    file_paths: &[PathBuf],
     log_level: Option<log::Level>,
   ) {
-    let Some(env_file_names) = file_paths else {
-      return;
-    };
-
     let mut inner = self.inner.lock().unwrap();
 
     inner.unused_variables = std::mem::take(&mut inner.loaded_variables);
     inner.loaded_variables = HashSet::new();
 
-    for env_file_name in env_file_names.iter().rev() {
-      self.load_env_file_inner(
-        env_file_name.to_path_buf(),
-        log_level,
-        &mut inner,
-      );
+    for env_file_name in file_paths.iter().rev() {
+      self.load_env_file_inner(cwd, env_file_name, log_level, &mut inner);
     }
 
     self._cleanup_removed_variables(&mut inner, log_level);
@@ -277,26 +224,37 @@ impl WatchEnvTracker {
 }
 
 pub fn load_env_variables_from_env_files(
-  filename: Option<&Vec<PathBuf>>,
+  cwd: &Path,
+  env_file_paths: &[PathBuf],
   flags_log_level: Option<log::Level>,
 ) {
-  let Some(env_file_names) = filename else {
-    return;
-  };
-
   let original_env_keys: HashSet<OsString> =
     env::vars_os().map(|(key, _)| key).collect();
   let mut loaded_keys = HashSet::new();
 
-  for env_file_name in env_file_names.iter().rev() {
-    let resolved = find_env_file(env_file_name);
-    let iter = match deno_dotenv::from_path_sanitized_iter_with_substitution(
+  for env_file_path in env_file_paths.iter().rev() {
+    let (env_file_path, content) = match deno_dotenv::find_path_and_content(
+      &CliSys::default(),
+      cwd,
+      env_file_path,
+    ) {
+      Ok(resolved) => resolved,
+      Err(err) => {
+        handle_dotenv_error(
+          deno_dotenv::Error::Io(err),
+          env_file_path,
+          flags_log_level,
+        );
+        continue;
+      }
+    };
+    let iter = match deno_dotenv::from_content_sanitized_iter_with_substitution(
       &sys_traits::impls::RealSys,
-      &resolved,
+      &content,
     ) {
       Ok(iter) => iter,
       Err(error) => {
-        handle_dotenv_error(error, env_file_name, flags_log_level);
+        handle_dotenv_error(error, &env_file_path, flags_log_level);
         continue;
       }
     };
@@ -305,7 +263,7 @@ pub fn load_env_variables_from_env_files(
       let (key, value) = match item {
         Ok(pair) => pair,
         Err(error) => {
-          handle_dotenv_error(error, env_file_name, flags_log_level);
+          handle_dotenv_error(error, &env_file_path, flags_log_level);
           break;
         }
       };
@@ -324,7 +282,7 @@ pub fn load_env_variables_from_env_files(
   }
 }
 
-fn handle_dotenv_error(
+pub fn handle_dotenv_error(
   error: deno_dotenv::Error,
   file_path: &Path,
   log_level: Option<log::Level>,
