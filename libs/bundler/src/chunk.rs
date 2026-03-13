@@ -613,6 +613,8 @@ mod tests {
       dependencies: deps,
       side_effects: SideEffectFlag::Unknown,
       source: String::new(),
+      source_map: None,
+      source_hash: None,
       parsed: None,
       transformed_program: None,
       module_info: None,

@@ -307,7 +307,12 @@ pub async fn dev(
 
     let mut chunk_code = HashMap::default();
     for chunk in chunk_graph.chunks() {
-      let output = emit_dev_chunk(chunk, &bundler_graph, &chunk_graph);
+      let output = emit_dev_chunk(
+        chunk,
+        &bundler_graph,
+        &chunk_graph,
+        deno_bundler::config::SourceMapMode::Inline,
+      );
       chunk_code.insert(chunk.id.0, output.code);
     }
 
@@ -647,10 +652,29 @@ async fn run_file_watcher(
       }
 
       // Re-read, re-transform, and re-analyze changed modules.
+      // Skip modules whose source hasn't actually changed (content hash).
+      let mut actually_changed: Vec<deno_ast::ModuleSpecifier> = Vec::new();
       for spec in &changed_specifiers {
         if let Ok(path) = spec.to_file_path() {
           if let Ok(new_source) = std::fs::read_to_string(&path) {
-            if let Some(module) = env_state.bundler_graph.get_module_mut(spec)
+            // Content hash check: skip if file hasn't changed.
+            let new_hash = {
+              use std::hash::Hash;
+              use std::hash::Hasher;
+              let mut hasher = rustc_hash::FxHasher::default();
+              new_source.hash(&mut hasher);
+              hasher.finish()
+            };
+            if let Some(module) =
+              env_state.bundler_graph.get_module(spec)
+            {
+              if module.source_hash == Some(new_hash) {
+                continue; // Source unchanged, skip re-transform.
+              }
+            }
+
+            if let Some(module) =
+              env_state.bundler_graph.get_module_mut(spec)
             {
               // Run through the plugin transform chain (includes transpilation).
               let orig_loader = module.original_loader;
@@ -662,19 +686,41 @@ async fn run_file_watcher(
               );
               module.source = output.content;
               module.loader = output.loader;
+              module.source_map = output.source_map;
+              module.source_hash = Some(new_hash);
 
-              // Re-analyze: extract updated module_info and hmr_info.
-              if let Ok(parsed) = deno_ast::parse_module(deno_ast::ParseParams {
-                specifier: spec.clone(),
-                text: module.source.clone().into(),
-                media_type: deno_ast::MediaType::JavaScript,
-                capture_tokens: false,
-                scope_analysis: false,
-                maybe_syntax: None,
-              }) {
+              // Use transform output AST if available (avoids re-parsing).
+              if let Some(program) = &output.program {
+                module.module_info = Some(
+                  deno_bundler::js::module_info_swc::extract_module_info(
+                    program,
+                  ),
+                );
+                module.hmr_info = Some(
+                  deno_bundler::js::hmr_info_swc::extract_hmr_info(program),
+                );
+                module.is_async = module
+                  .module_info
+                  .as_ref()
+                  .map(|i| i.has_tla)
+                  .unwrap_or(false);
+                module.transformed_program = Some(program.clone());
+                module.parsed = None;
+              } else if let Ok(parsed) =
+                deno_ast::parse_module(deno_ast::ParseParams {
+                  specifier: spec.clone(),
+                  text: module.source.clone().into(),
+                  media_type: deno_ast::MediaType::JavaScript,
+                  capture_tokens: false,
+                  scope_analysis: false,
+                  maybe_syntax: None,
+                })
+              {
                 let program = parsed.program();
                 module.module_info = Some(
-                  deno_bundler::js::module_info_swc::extract_module_info(&program),
+                  deno_bundler::js::module_info_swc::extract_module_info(
+                    &program,
+                  ),
                 );
                 module.hmr_info = Some(
                   deno_bundler::js::hmr_info_swc::extract_hmr_info(&program),
@@ -684,11 +730,16 @@ async fn run_file_watcher(
                   .as_ref()
                   .map(|i| i.has_tla)
                   .unwrap_or(false);
+                module.parsed = Some(parsed);
+                module.transformed_program = None;
               }
+
+              actually_changed.push(spec.clone());
             }
           }
         }
       }
+      let changed_specifiers = actually_changed;
 
       // Re-emit affected chunks.
       for chunk in env_state.chunk_graph.chunks() {
@@ -701,6 +752,7 @@ async fn run_file_watcher(
             chunk,
             &env_state.bundler_graph,
             &env_state.chunk_graph,
+            deno_bundler::config::SourceMapMode::Inline,
           );
           env_state.chunk_code.insert(chunk.id.0, output.code);
         }
@@ -715,9 +767,11 @@ async fn run_file_watcher(
         HmrBoundaryResult::Update(update) => {
           let mut modules = HashMap::new();
           for spec in &update.invalidated {
-            if let Some(code) =
-              emit_hmr_update(spec, &env_state.bundler_graph)
-            {
+            if let Some((code, _source_map)) = emit_hmr_update(
+              spec,
+              &env_state.bundler_graph,
+              deno_bundler::config::SourceMapMode::Inline,
+            ) {
               let mid =
                 env_state.bundler_graph.module_index(spec).unwrap_or(0);
               modules.insert(mid, code);

@@ -55,6 +55,11 @@ pub struct BundlerModule {
   pub side_effects: SideEffectFlag,
   /// The module's source code.
   pub source: String,
+  /// Source map (v3 JSON) mapping this module's `source` back to the
+  /// original file (e.g. TS → JS). Set during transpilation.
+  pub source_map: Option<String>,
+  /// Hash of the original (pre-transform) source, for incremental builds.
+  pub source_hash: Option<u64>,
   /// Cached parsed AST. Cleared when `source` changes.
   pub parsed: Option<ParsedSource>,
   /// Post-transform AST (set by `transform_graph`). Used by analysis

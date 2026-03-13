@@ -29,6 +29,15 @@ pub fn transform_modules(graph: &mut BundlerGraph, driver: &PluginDriver) {
     let module = graph.get_module(&specifier).unwrap();
     let source = module.source.clone();
 
+    // Compute hash of original source for incremental rebuild detection.
+    let source_hash = {
+      use std::hash::Hash;
+      use std::hash::Hasher;
+      let mut hasher = rustc_hash::FxHasher::default();
+      source.hash(&mut hasher);
+      hasher.finish()
+    };
+
     // Determine the path for matching hook filters.
     let path = if specifier.scheme() == "file" {
       specifier
@@ -43,15 +52,22 @@ pub fn transform_modules(graph: &mut BundlerGraph, driver: &PluginDriver) {
     if let Some(module) = graph.get_module_mut(&specifier) {
       module.source = output.content;
       module.loader = output.loader;
+      module.source_map = output.source_map;
+      module.source_hash = Some(source_hash);
       // Clear stale analysis/parse data — will be repopulated later.
       module.parsed = None;
-      module.transformed_program = None;
       module.module_info = None;
       module.hmr_info = None;
       module.is_async = false;
-      // Eagerly parse JS output so downstream passes reuse the cached AST.
-      if matches!(module.loader, Loader::Js) {
-        module.ensure_parsed();
+      // Use the transpiler's AST if available (avoids re-parsing).
+      // Otherwise, eagerly parse so downstream passes reuse the cached AST.
+      if let Some(program) = output.program {
+        module.transformed_program = Some(program);
+      } else {
+        module.transformed_program = None;
+        if matches!(module.loader, Loader::Js) {
+          module.ensure_parsed();
+        }
       }
     }
   }
@@ -98,6 +114,8 @@ mod tests {
       dependencies: Vec::new(),
       side_effects: SideEffectFlag::Unknown,
       source: source.to_string(),
+      source_map: None,
+      source_hash: None,
       parsed: None,
       transformed_program: None,
       module_info: None,

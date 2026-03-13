@@ -15,9 +15,9 @@ use deno_ast::swc::common::SourceMap;
 use deno_ast::swc_codegen_config;
 
 use crate::graph::BundlerGraph;
-use crate::js::transform::DefineReplacer;
-use crate::js::transform::ImportMetaRewriter;
-use crate::js::transform::{
+use deno_ast::bundler_transforms::DefineReplacer;
+use deno_ast::bundler_transforms::ImportMetaRewriter;
+use deno_ast::bundler_transforms::{
   convert_top_level_to_var, eliminate_dead_branches,
 };
 use crate::loader::Loader;
@@ -222,6 +222,8 @@ mod tests {
       dependencies: Vec::new(),
       side_effects: SideEffectFlag::Unknown,
       source: source.to_string(),
+      source_map: None,
+      source_hash: None,
       parsed: None,
       transformed_program: None,
       module_info: None,

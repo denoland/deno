@@ -201,6 +201,9 @@ pub struct TransformResult {
   pub loader: Option<Loader>,
   /// Source map for this transform (v3 JSON string).
   pub source_map: Option<String>,
+  /// Post-transform AST. If set, downstream consumers can skip re-parsing.
+  /// Invalidated if a subsequent hook modifies `content`.
+  pub program: Option<deno_ast::swc::ast::Program>,
 }
 
 /// Trait for transform hooks.
@@ -456,6 +459,7 @@ impl PluginDriver {
     mut loader: Loader,
   ) -> TransformOutput {
     let mut source_map: Option<String> = None;
+    let mut program: Option<deno_ast::swc::ast::Program> = None;
     let mut runs = 0;
     const MAX_RERUNS: usize = 10;
 
@@ -498,6 +502,15 @@ impl PluginDriver {
         if let Some(result) = hook.on_transform(&args) {
           if let Some(new_content) = result.content {
             content = new_content;
+            // If a hook changed content, any previously cached program
+            // is stale — unless this hook also provides a new one.
+            if result.program.is_some() {
+              program = result.program;
+            } else {
+              program = None;
+            }
+          } else if result.program.is_some() {
+            program = result.program;
           }
           if result.source_map.is_some() {
             source_map = result.source_map;
@@ -522,6 +535,7 @@ impl PluginDriver {
       content,
       loader,
       source_map,
+      program,
     }
   }
 
@@ -558,6 +572,9 @@ pub struct TransformOutput {
   pub loader: Loader,
   /// Composed source map (v3 JSON string).
   pub source_map: Option<String>,
+  /// Post-transform AST from transpilation. Present when the built-in
+  /// transpiler produced it and no subsequent hook modified the content.
+  pub program: Option<deno_ast::swc::ast::Program>,
 }
 
 // ---------------------------------------------------------------------------
@@ -597,29 +614,30 @@ impl OnTransform for BuiltinTranspiler {
     })
     .ok()?;
 
-    let emit_options = deno_ast::EmitOptions {
-      source_map: deno_ast::SourceMapOption::Inline,
-      inline_sources: true,
-      ..Default::default()
-    };
-
-    let result = parsed
-      .transpile(
+    let (program, comments, source_map) = parsed
+      .transpile_to_program(
         &deno_ast::TranspileOptions::default(),
         &deno_ast::TranspileModuleOptions::default(),
-        &emit_options,
       )
       .ok()?;
 
-    let text = match result {
-      deno_ast::TranspileResult::Owned(e) => e.text,
-      deno_ast::TranspileResult::Cloned(e) => e.text,
-    };
+    let emitted = deno_ast::emit(
+      (&program).into(),
+      &comments,
+      &source_map,
+      &deno_ast::EmitOptions {
+        source_map: deno_ast::SourceMapOption::Separate,
+        inline_sources: true,
+        ..Default::default()
+      },
+    )
+    .ok()?;
 
     Some(TransformResult {
-      content: Some(text),
+      content: Some(emitted.text),
       loader: Some(Loader::Js),
-      source_map: None, // Inline in the content.
+      source_map: emitted.source_map,
+      program: Some(program),
     })
   }
 }
@@ -735,6 +753,7 @@ mod tests {
             ),
             loader: Some(Loader::Tsx), // Change loader to TSX.
             source_map: None,
+            program: None,
           })
         } else {
           None

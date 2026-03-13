@@ -1015,6 +1015,7 @@ impl OnTransform for JsTransformBridge {
         content: r.content,
         loader: r.loader.map(|l| loader_from_str(&l)),
         source_map: r.source_map,
+        program: None,
       }),
       Ok(None) => None,
       Err(e) => {

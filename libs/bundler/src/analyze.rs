@@ -134,6 +134,8 @@ mod tests {
       dependencies: Vec::new(),
       side_effects: SideEffectFlag::Unknown,
       source: source.to_string(),
+      source_map: None,
+      source_hash: None,
       parsed: None,
       transformed_program: None,
       module_info: None,

@@ -7,5 +7,4 @@ pub mod module_info;
 pub mod module_info_swc;
 pub mod scope;
 pub mod scope_swc;
-pub mod transform;
 pub mod tree_shake;
