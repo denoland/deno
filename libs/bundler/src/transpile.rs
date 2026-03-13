@@ -128,6 +128,7 @@ mod tests {
       side_effects: SideEffectFlag::Unknown,
       source: source.to_string(),
       parsed: None,
+      transformed_program: None,
       module_info: None,
       hmr_info: None,
       is_async: false,

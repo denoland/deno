@@ -672,11 +672,12 @@ async fn run_file_watcher(
                 scope_analysis: false,
                 maybe_syntax: None,
               }) {
+                let program = parsed.program();
                 module.module_info = Some(
-                  deno_bundler::js::module_info_swc::extract_module_info(&parsed),
+                  deno_bundler::js::module_info_swc::extract_module_info(&program),
                 );
                 module.hmr_info = Some(
-                  deno_bundler::js::hmr_info_swc::extract_hmr_info(&parsed),
+                  deno_bundler::js::hmr_info_swc::extract_hmr_info(&program),
                 );
                 module.is_async = module
                   .module_info

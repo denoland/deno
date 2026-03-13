@@ -5,14 +5,12 @@
 use deno_ast::swc::ast::*;
 use deno_ast::swc::ecma_visit::Visit;
 use deno_ast::swc::ecma_visit::VisitWith;
-use deno_ast::ParsedSource;
 
 use super::hmr_info::HmrInfo;
 use super::module_info_swc::wtf8_to_string;
 
-/// Extract HMR info from a parsed source.
-pub fn extract_hmr_info(parsed: &ParsedSource) -> HmrInfo {
-  let program = parsed.program();
+/// Extract HMR info from an AST program.
+pub fn extract_hmr_info(program: &Program) -> HmrInfo {
   let mut extractor = HmrExtractor {
     info: HmrInfo::default(),
   };
@@ -142,7 +140,7 @@ mod tests {
       scope_analysis: false,
     })
     .unwrap();
-    extract_hmr_info(&parsed)
+    extract_hmr_info(&parsed.program())
   }
 
   #[test]

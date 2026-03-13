@@ -1,5 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+use deno_ast::swc::ast::Program;
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
 use deno_ast::ParseParams;
@@ -26,7 +27,18 @@ pub enum SideEffectFlag {
 }
 
 /// A module in the bundler graph with all bundler-specific metadata.
-#[derive(Debug)]
+// Manual Debug impl because `Program` doesn't implement Debug.
+impl std::fmt::Debug for BundlerModule {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    f.debug_struct("BundlerModule")
+      .field("specifier", &self.specifier)
+      .field("loader", &self.loader)
+      .field("module_type", &self.module_type)
+      .field("is_async", &self.is_async)
+      .finish_non_exhaustive()
+  }
+}
+
 pub struct BundlerModule {
   /// The module's URL specifier (matches deno_graph).
   pub specifier: ModuleSpecifier,
@@ -45,6 +57,9 @@ pub struct BundlerModule {
   pub source: String,
   /// Cached parsed AST. Cleared when `source` changes.
   pub parsed: Option<ParsedSource>,
+  /// Post-transform AST (set by `transform_graph`). Used by analysis
+  /// to avoid re-parsing after transforms mutate the AST.
+  pub transformed_program: Option<Program>,
   /// Import/export/scope analysis (populated after parsing).
   pub module_info: Option<ModuleInfo>,
   /// HMR metadata (populated after parsing).

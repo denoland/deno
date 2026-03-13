@@ -614,6 +614,7 @@ mod tests {
       side_effects: SideEffectFlag::Unknown,
       source: String::new(),
       parsed: None,
+      transformed_program: None,
       module_info: None,
       hmr_info: None,
       is_async: false,

@@ -45,9 +45,14 @@ pub fn transform_modules(graph: &mut BundlerGraph, driver: &PluginDriver) {
       module.loader = output.loader;
       // Clear stale analysis/parse data — will be repopulated later.
       module.parsed = None;
+      module.transformed_program = None;
       module.module_info = None;
       module.hmr_info = None;
       module.is_async = false;
+      // Eagerly parse JS output so downstream passes reuse the cached AST.
+      if matches!(module.loader, Loader::Js) {
+        module.ensure_parsed();
+      }
     }
   }
 }
@@ -94,6 +99,7 @@ mod tests {
       side_effects: SideEffectFlag::Unknown,
       source: source.to_string(),
       parsed: None,
+      transformed_program: None,
       module_info: None,
       hmr_info: None,
       is_async: false,

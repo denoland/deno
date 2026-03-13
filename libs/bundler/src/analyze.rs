@@ -6,11 +6,16 @@
 //! module with deno_ast and extracts import/export bindings, top-level
 //! declarations, and HMR metadata.
 
+use deno_ast::swc::ast::Module as SwcModule;
+use deno_ast::swc::ast::Program;
+use deno_ast::swc::common::DUMMY_SP;
+
 use crate::graph::BundlerGraph;
 use crate::js::hmr_info_swc::extract_hmr_info;
 use crate::js::module_info_swc::extract_module_info;
 use crate::js::tree_shake::tree_shake_module;
 use crate::loader::Loader;
+use crate::transform_pipeline::emit_program;
 
 /// Analyze all JS modules in the graph, populating `module_info` and `hmr_info`.
 ///
@@ -23,20 +28,27 @@ pub fn analyze_graph(graph: &mut BundlerGraph) {
     .collect();
 
   // Ensure all analyzable modules are parsed (populates cached ParsedSource).
+  // Modules with transformed_program already have an AST and don't need parsing.
   for specifier in &specifiers {
     if let Some(module) = graph.get_module_mut(specifier) {
-      module.ensure_parsed();
+      if module.transformed_program.is_none() {
+        module.ensure_parsed();
+      }
     }
   }
 
   for specifier in specifiers {
     let module = graph.get_module(&specifier).unwrap();
-    let Some(parsed) = &module.parsed else {
+
+    // Use transformed AST if available, otherwise fall back to cached parse.
+    let (module_info, hmr_info) = if let Some(tp) = &module.transformed_program {
+      (extract_module_info(tp), extract_hmr_info(tp))
+    } else if let Some(parsed) = &module.parsed {
+      let program = parsed.program();
+      (extract_module_info(&program), extract_hmr_info(&program))
+    } else {
       continue;
     };
-
-    let module_info = extract_module_info(parsed);
-    let hmr_info = extract_hmr_info(parsed);
     let is_async = module_info.has_tla;
 
     if let Some(module) = graph.get_module_mut(&specifier) {
@@ -64,19 +76,30 @@ pub fn tree_shake_graph(graph: &mut BundlerGraph) {
     let Some(mi) = &module.module_info else {
       continue;
     };
-    let Some(parsed) = &module.parsed else {
+    let scope_analysis = mi.scope_analysis.clone();
+
+    // Use transformed AST if available, otherwise fall back to cached parse.
+    let maybe_kept = if let Some(tp) = &module.transformed_program {
+      tree_shake_module(tp, live_decls, &scope_analysis)
+    } else if let Some(parsed) = &module.parsed {
+      let program = parsed.program();
+      tree_shake_module(&program, live_decls, &scope_analysis)
+    } else {
       continue;
     };
-    let source = module.source.clone();
-    let scope_analysis = mi.scope_analysis.clone();
-    let parsed_clone = parsed.clone();
 
-    if let Some(shaken) =
-      tree_shake_module(&source, &parsed_clone, live_decls, &scope_analysis)
+    if let Some(kept_body) = maybe_kept
     {
-      if let Some(module) = graph.get_module_mut(&specifier) {
-        module.source = shaken;
-        module.parsed = None;
+      let shaken_program = Program::Module(SwcModule {
+        body: kept_body,
+        span: DUMMY_SP,
+        shebang: None,
+      });
+      if let Some(emitted) = emit_program(&shaken_program) {
+        if let Some(module) = graph.get_module_mut(&specifier) {
+          module.source = emitted;
+          module.parsed = None;
+        }
       }
     }
   }
@@ -112,6 +135,7 @@ mod tests {
       side_effects: SideEffectFlag::Unknown,
       source: source.to_string(),
       parsed: None,
+      transformed_program: None,
       module_info: None,
       hmr_info: None,
       is_async: false,

@@ -56,28 +56,31 @@ fn discover_pass(graph: &mut BundlerGraph) -> Vec<BundlerModule> {
     .collect();
 
   // Ensure all JS modules are parsed (populates cached ParsedSource).
+  // Modules with transformed_program already have an AST.
   for specifier in &js_specifiers {
     if let Some(module) = graph.get_module_mut(specifier) {
-      module.ensure_parsed();
+      if module.transformed_program.is_none() {
+        module.ensure_parsed();
+      }
     }
   }
-
-  // Collect parsed sources (cheap Arc clone).
-  let js_modules: Vec<(ModuleSpecifier, deno_ast::ParsedSource)> =
-    js_specifiers
-      .iter()
-      .filter_map(|spec| {
-        let m = graph.get_module(spec)?;
-        Some((spec.clone(), m.parsed.clone()?))
-      })
-      .collect();
 
   let mut new_modules = Vec::new();
   let mut seen_new: std::collections::HashSet<ModuleSpecifier> =
     std::collections::HashSet::new();
 
-  for (specifier, parsed) in &js_modules {
-    let refs = extract_url_references(specifier, parsed);
+  for specifier in &js_specifiers {
+    let module = graph.get_module(specifier).unwrap();
+
+    // Use transformed AST if available, otherwise fall back to cached parse.
+    let refs = if let Some(tp) = &module.transformed_program {
+      extract_url_references(specifier, tp)
+    } else if let Some(parsed) = &module.parsed {
+      let program = parsed.program();
+      extract_url_references(specifier, &program)
+    } else {
+      continue;
+    };
 
     for url_ref in refs {
       // Skip if already in the graph or already discovered this pass.
@@ -131,6 +134,7 @@ fn discover_pass(graph: &mut BundlerGraph) -> Vec<BundlerModule> {
         side_effects: SideEffectFlag::False,
         source,
         parsed: None,
+        transformed_program: None,
         module_info: None,
         hmr_info: None,
         is_async: false,
@@ -166,14 +170,14 @@ struct UrlReference {
 /// Extract `new URL('./file', import.meta.url)` references from a parsed module.
 fn extract_url_references(
   specifier: &ModuleSpecifier,
-  parsed: &deno_ast::ParsedSource,
+  program: &Program,
 ) -> Vec<UrlReference> {
   let mut visitor = UrlReferenceVisitor {
     base_specifier: specifier.clone(),
     refs: Vec::new(),
   };
 
-  parsed.program().visit_with(&mut visitor);
+  program.visit_with(&mut visitor);
 
   visitor.refs
 }
@@ -302,6 +306,7 @@ mod tests {
       side_effects: SideEffectFlag::Unknown,
       source: source.to_string(),
       parsed: None,
+      transformed_program: None,
       module_info: None,
       hmr_info: None,
       is_async: false,
@@ -314,7 +319,7 @@ mod tests {
     let s = spec("src/main.js");
     let src = "const img = new URL('./image.png', import.meta.url);";
     let parsed = parse_js(&s, src);
-    let refs = extract_url_references(&s, &parsed);
+    let refs = extract_url_references(&s, &parsed.program());
     assert_eq!(refs.len(), 1);
     assert_eq!(refs[0].raw_specifier, "./image.png");
     assert_eq!(
@@ -328,7 +333,7 @@ mod tests {
     let s = spec("src/main.js");
     let src = "const img = new URL(`./photo.jpg`, import.meta.url);";
     let parsed = parse_js(&s, src);
-    let refs = extract_url_references(&s, &parsed);
+    let refs = extract_url_references(&s, &parsed.program());
     assert_eq!(refs.len(), 1);
     assert_eq!(refs[0].raw_specifier, "./photo.jpg");
   }
@@ -338,7 +343,7 @@ mod tests {
     let s = spec("src/main.js");
     let src = "const img = new URL(dynamicVar, import.meta.url);";
     let parsed = parse_js(&s, src);
-    let refs = extract_url_references(&s, &parsed);
+    let refs = extract_url_references(&s, &parsed.program());
     assert_eq!(refs.len(), 0);
   }
 
@@ -347,7 +352,7 @@ mod tests {
     let s = spec("src/main.js");
     let src = "const img = new URL('./image.png', 'http://example.com');";
     let parsed = parse_js(&s, src);
-    let refs = extract_url_references(&s, &parsed);
+    let refs = extract_url_references(&s, &parsed.program());
     assert_eq!(refs.len(), 0);
   }
 
@@ -356,7 +361,7 @@ mod tests {
     let s = spec("src/main.js");
     let src = "const u = new URL('http://example.com');";
     let parsed = parse_js(&s, src);
-    let refs = extract_url_references(&s, &parsed);
+    let refs = extract_url_references(&s, &parsed.program());
     assert_eq!(refs.len(), 0);
   }
 
@@ -369,7 +374,7 @@ mod tests {
         const c = new URL('./c.svg', import.meta.url);
       "#;
     let parsed = parse_js(&s, src);
-    let refs = extract_url_references(&s, &parsed);
+    let refs = extract_url_references(&s, &parsed.program());
     assert_eq!(refs.len(), 3);
   }
 
@@ -449,6 +454,7 @@ mod tests {
       side_effects: SideEffectFlag::False,
       source: String::new(),
       parsed: None,
+      transformed_program: None,
       module_info: None,
       hmr_info: None,
       is_async: false,

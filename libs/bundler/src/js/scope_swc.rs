@@ -12,7 +12,6 @@ use deno_ast::swc::common::Span;
 use deno_ast::swc::ecma_visit::Visit;
 use deno_ast::swc::ecma_visit::VisitWith;
 use deno_ast::swc::utils::find_pat_ids;
-use deno_ast::ParsedSource;
 
 use super::scope::DeclId;
 use super::scope::DeclKind;
@@ -24,9 +23,8 @@ use super::scope::ScopeAnalysis;
 use super::scope::ScopeId;
 use super::scope::ScopeKind;
 
-/// Build a `ScopeAnalysis` from a parsed source.
-pub fn analyze_scope(parsed: &ParsedSource) -> ScopeAnalysis {
-  let program = parsed.program();
+/// Build a `ScopeAnalysis` from an AST program.
+pub fn analyze_scope(program: &Program) -> ScopeAnalysis {
   let mut analyzer = ScopeAnalyzer::new();
   program.visit_with(&mut analyzer);
   analyzer.finish()
@@ -310,7 +308,7 @@ mod tests {
       scope_analysis: false,
     })
     .unwrap();
-    analyze_scope(&parsed)
+    analyze_scope(&parsed.program())
   }
 
   fn find_decl<'a>(

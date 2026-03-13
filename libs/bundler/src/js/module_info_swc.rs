@@ -7,7 +7,6 @@
 use deno_ast::swc::ast::*;
 use deno_ast::swc::ecma_visit::Visit;
 use deno_ast::swc::ecma_visit::VisitWith;
-use deno_ast::ParsedSource;
 use rustc_hash::FxHashMap;
 
 /// Convert a WTF-8 atom (used for string literal values) to a String.
@@ -28,16 +27,15 @@ use super::scope::DeclKind;
 use super::scope::ScopeAnalysis;
 use super::scope_swc::analyze_scope;
 
-/// Extract ModuleInfo from a parsed source.
-pub fn extract_module_info(parsed: &ParsedSource) -> ModuleInfo {
-  let scope_analysis = analyze_scope(parsed);
-  let program = parsed.program();
+/// Extract ModuleInfo from an AST program.
+pub fn extract_module_info(program: &Program) -> ModuleInfo {
+  let scope_analysis = analyze_scope(program);
 
   let mut imports = Vec::new();
   let mut exports = Vec::new();
   let mut has_module_syntax = false;
 
-  match program.as_ref() {
+  match program {
     Program::Module(module) => {
       for item in &module.body {
         match item {
@@ -730,7 +728,7 @@ mod tests {
       scope_analysis: false,
     })
     .unwrap();
-    extract_module_info(&parsed)
+    extract_module_info(&parsed.program())
   }
 
   fn parse_ts_and_extract(source: &str) -> ModuleInfo {
@@ -743,7 +741,7 @@ mod tests {
       scope_analysis: false,
     })
     .unwrap();
-    extract_module_info(&parsed)
+    extract_module_info(&parsed.program())
   }
 
   // --- Import tests ---

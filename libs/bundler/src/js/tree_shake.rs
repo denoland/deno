@@ -22,32 +22,28 @@ use deno_ast::swc::ecma_visit::VisitWith;
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
 use deno_ast::ParseParams;
-use deno_ast::ParsedSource;
 use rustc_hash::FxHashSet;
 
 use super::scope::DeclId;
 use super::scope::ScopeAnalysis;
 
-/// Tree-shake a module's source code, removing unused top-level statements.
+/// Tree-shake a module, removing unused top-level statements.
 ///
-/// `source`: The module's source text (must match `parsed`).
-/// `parsed`: The pre-parsed AST (avoids redundant re-parsing).
+/// `program`: The module's AST.
 /// `live_export_decls`: The set of DeclIds whose exports are actually used
 /// by importers. If `None`, all exports are considered live (no shaking).
 /// `scope_analysis`: The module's scope analysis, used to map declared names
 /// to DeclIds for liveness matching.
 ///
-/// Returns the shaken source code, or `None` if no changes were made.
+/// Returns the filtered body items, or `None` if no changes were made.
 pub fn tree_shake_module(
-  source: &str,
-  parsed: &ParsedSource,
+  program: &Program,
   live_export_decls: Option<&FxHashSet<DeclId>>,
   scope_analysis: &ScopeAnalysis,
-) -> Option<String> {
+) -> Option<Vec<ModuleItem>> {
   let live_decls = live_export_decls?;
 
-  let program = parsed.program();
-  let module = match program.as_ref() {
+  let module = match program {
     Program::Module(m) => m,
     Program::Script(_) => return None,
   };
@@ -133,26 +129,16 @@ pub fn tree_shake_module(
     return None;
   }
 
-  // Phase 4: Rebuild the source with only included statements.
-  // We use line-based removal for simplicity — each ModuleItem's span
-  // maps to a range in the source text.
-  let mut result = String::with_capacity(source.len());
-  let source_bytes = source.as_bytes();
+  // Phase 4: Collect kept module items.
+  let kept: Vec<ModuleItem> = module
+    .body
+    .iter()
+    .enumerate()
+    .filter(|(i, _)| included[*i])
+    .map(|(_, item)| item.clone())
+    .collect();
 
-  for (i, item) in module.body.iter().enumerate() {
-    if included[i] {
-      let span = module_item_span(item);
-      // SWC spans are 1-based byte positions.
-      let start = (span.lo.0 as usize).saturating_sub(1);
-      let end = (span.hi.0 as usize).saturating_sub(1);
-      if start < source_bytes.len() && end <= source_bytes.len() {
-        result.push_str(&source[start..end]);
-        result.push('\n');
-      }
-    }
-  }
-
-  Some(result.trim_end().to_string())
+  Some(kept)
 }
 
 /// Analyze whether a module has any side-effectful top-level statements.
@@ -643,64 +629,6 @@ fn export_name_to_string(name: &ModuleExportName) -> String {
   }
 }
 
-fn module_item_span(item: &ModuleItem) -> deno_ast::swc::common::Span {
-  match item {
-    ModuleItem::Stmt(s) => stmt_span(s),
-    ModuleItem::ModuleDecl(d) => module_decl_span(d),
-  }
-}
-
-fn stmt_span(stmt: &Stmt) -> deno_ast::swc::common::Span {
-  match stmt {
-    Stmt::Block(s) => s.span,
-    Stmt::Empty(s) => s.span,
-    Stmt::Debugger(s) => s.span,
-    Stmt::With(s) => s.span,
-    Stmt::Return(s) => s.span,
-    Stmt::Labeled(s) => s.span,
-    Stmt::Break(s) => s.span,
-    Stmt::Continue(s) => s.span,
-    Stmt::If(s) => s.span,
-    Stmt::Switch(s) => s.span,
-    Stmt::Throw(s) => s.span,
-    Stmt::Try(s) => s.span,
-    Stmt::While(s) => s.span,
-    Stmt::DoWhile(s) => s.span,
-    Stmt::For(s) => s.span,
-    Stmt::ForIn(s) => s.span,
-    Stmt::ForOf(s) => s.span,
-    Stmt::Decl(d) => decl_span(d),
-    Stmt::Expr(s) => s.span,
-  }
-}
-
-fn decl_span(decl: &Decl) -> deno_ast::swc::common::Span {
-  match decl {
-    Decl::Class(d) => d.class.span,
-    Decl::Fn(d) => d.function.span,
-    Decl::Var(d) => d.span,
-    Decl::Using(d) => d.span,
-    Decl::TsInterface(d) => d.span,
-    Decl::TsTypeAlias(d) => d.span,
-    Decl::TsEnum(d) => d.span,
-    Decl::TsModule(d) => d.span,
-  }
-}
-
-fn module_decl_span(decl: &ModuleDecl) -> deno_ast::swc::common::Span {
-  match decl {
-    ModuleDecl::Import(d) => d.span,
-    ModuleDecl::ExportDecl(d) => d.span,
-    ModuleDecl::ExportNamed(d) => d.span,
-    ModuleDecl::ExportDefaultDecl(d) => d.span,
-    ModuleDecl::ExportDefaultExpr(d) => d.span,
-    ModuleDecl::ExportAll(d) => d.span,
-    ModuleDecl::TsImportEquals(d) => d.span,
-    ModuleDecl::TsExportAssignment(d) => d.span,
-    ModuleDecl::TsNamespaceExport(d) => d.span,
-  }
-}
-
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -725,7 +653,7 @@ mod tests {
     })
     .unwrap();
 
-    let module_info = extract_module_info(&parsed);
+    let module_info = extract_module_info(&parsed.program());
 
     // Convert export names to live DeclIds.
     let mut live_decls = FxHashSet::default();
@@ -760,8 +688,18 @@ mod tests {
       }
     }
 
-    tree_shake_module(source, &parsed, Some(&live_decls), &module_info.scope_analysis)
-      .unwrap_or_else(|| source.to_string())
+    match tree_shake_module(&parsed.program(), Some(&live_decls), &module_info.scope_analysis) {
+      Some(kept_body) => {
+        use deno_ast::swc::common::DUMMY_SP;
+        let program = Program::Module(Module {
+          body: kept_body,
+          span: DUMMY_SP,
+          shebang: None,
+        });
+        crate::transform_pipeline::emit_program(&program).unwrap()
+      }
+      None => source.to_string(),
+    }
   }
 
   fn has_side_effects(source: &str) -> bool {
@@ -1206,8 +1144,8 @@ mod tests {
       maybe_syntax: None,
     })
     .unwrap();
-    let mi = extract_module_info(&parsed);
-    let result = tree_shake_module(source, &parsed, None, &mi.scope_analysis);
+    let mi = extract_module_info(&parsed.program());
+    let result = tree_shake_module(&parsed.program(), None, &mi.scope_analysis);
     assert!(result.is_none()); // No changes
   }
 

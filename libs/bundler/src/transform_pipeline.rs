@@ -13,8 +13,6 @@ use deno_ast::swc::codegen::Emitter;
 use deno_ast::swc::codegen::Node;
 use deno_ast::swc::common::SourceMap;
 use deno_ast::swc_codegen_config;
-use deno_ast::MediaType;
-use deno_ast::ParseParams;
 
 use crate::graph::BundlerGraph;
 use crate::js::transform::DefineReplacer;
@@ -59,26 +57,20 @@ pub fn transform_graph(
     .map(|m| m.specifier.clone())
     .collect();
 
+  // Ensure all modules are parsed (reuses cache if available).
+  for specifier in &specifiers {
+    if let Some(module) = graph.get_module_mut(specifier) {
+      module.ensure_parsed();
+    }
+  }
+
   for specifier in specifiers {
     let module = graph.get_module(&specifier).unwrap();
-    let source = module.source.clone();
-
-    let parsed = match deno_ast::parse_module(ParseParams {
-      specifier: specifier.clone(),
-      text: source.into(),
-      media_type: MediaType::JavaScript,
-      capture_tokens: false,
-      scope_analysis: false,
-      maybe_syntax: None,
-    }) {
-      Ok(p) => p,
-      Err(e) => {
-        eprintln!("Failed to parse {} for transforms: {}", specifier, e);
-        continue;
-      }
+    let Some(parsed) = &module.parsed else {
+      continue;
     };
 
-    // Clone the AST so we can mutate it.
+    // Clone the AST from cached parse so we can mutate it.
     let mut program = (*parsed.program()).clone();
     let mut changed = false;
 
@@ -113,6 +105,8 @@ pub fn transform_graph(
         if let Some(module) = graph.get_module_mut(&specifier) {
           module.source = emitted;
           module.parsed = None;
+          // Store transformed AST so downstream analysis doesn't re-parse.
+          module.transformed_program = Some(program);
         }
       }
     }
@@ -130,6 +124,13 @@ pub fn transform_import_meta(
     .filter(|m| matches!(m.loader, Loader::Js))
     .map(|m| (m.specifier.clone(), m.source.clone()))
     .collect();
+
+  // Ensure all modules are parsed (reuses cache if available).
+  for (specifier, _) in &specifiers {
+    if let Some(module) = graph.get_module_mut(specifier) {
+      module.ensure_parsed();
+    }
+  }
 
   for (specifier, source) in specifiers {
     // Only rewrite if source contains import.meta.
@@ -153,16 +154,9 @@ pub fn transform_import_meta(
       (String::new(), String::new())
     };
 
-    let parsed = match deno_ast::parse_module(ParseParams {
-      specifier: specifier.clone(),
-      text: source.into(),
-      media_type: MediaType::JavaScript,
-      capture_tokens: false,
-      scope_analysis: false,
-      maybe_syntax: None,
-    }) {
-      Ok(p) => p,
-      Err(_) => continue,
+    let module = graph.get_module(&specifier).unwrap();
+    let Some(parsed) = &module.parsed else {
+      continue;
     };
 
     let mut program = (*parsed.program()).clone();
@@ -179,13 +173,14 @@ pub fn transform_import_meta(
       if let Some(module) = graph.get_module_mut(&specifier) {
         module.source = emitted;
         module.parsed = None;
+        module.transformed_program = Some(program);
       }
     }
   }
 }
 
 /// Emit an SWC Program back to a JavaScript source string.
-fn emit_program(program: &Program) -> Option<String> {
+pub fn emit_program(program: &Program) -> Option<String> {
   let cm = std::rc::Rc::new(SourceMap::default());
   let mut buf = vec![];
   {
@@ -228,6 +223,7 @@ mod tests {
       side_effects: SideEffectFlag::Unknown,
       source: source.to_string(),
       parsed: None,
+      transformed_program: None,
       module_info: None,
       hmr_info: None,
       is_async: false,
