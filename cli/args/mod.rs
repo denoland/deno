@@ -61,6 +61,7 @@ use once_cell::sync::Lazy;
 use thiserror::Error;
 
 use crate::sys::CliSys;
+use crate::util::fs::canonicalize_path;
 
 pub type CliLockfile = deno_resolver::lockfile::LockfileLock<CliSys>;
 
@@ -650,6 +651,17 @@ impl CliOptions {
       .into_iter()
       .flatten()
       .map(|name| name.as_str())
+  }
+
+  pub fn possible_env_file_paths_for_watch(
+    &self,
+  ) -> impl Iterator<Item = PathBuf> {
+    self
+      .env_file_names()
+      .flat_map(|env_file| {
+        deno_dotenv::candidate_paths(&self.initial_cwd, env_file)
+      })
+      .filter_map(|p| canonicalize_path(&p).ok())
   }
 
   pub fn preload_modules(&self) -> Result<Vec<ModuleSpecifier>, AnyError> {

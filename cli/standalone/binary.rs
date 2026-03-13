@@ -20,7 +20,6 @@ use deno_cache_dir::CACHE_PERM;
 use deno_core::anyhow::Context;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
-use deno_core::normalize_path;
 use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_graph::ModuleGraph;

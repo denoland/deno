@@ -6,12 +6,10 @@ use std::collections::HashSet;
 use std::env;
 use std::ffi::OsString;
 use std::path::Path;
-use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::OnceLock;
 
-use deno_core::normalize_path;
 use deno_terminal::colors;
 
 use crate::sys::CliSys;

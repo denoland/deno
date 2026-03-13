@@ -30,10 +30,30 @@ pub struct FindPathAndContentError {
   pub source: std::io::Error,
 }
 
-/// Discovers the path and content fo an env file, which can then be parsed.
+/// Returns an iterator of candidate paths for the given env file specifier.
+///
+/// If the specifier is absolute, yields just that path. Otherwise, walks
+/// ancestor directories starting from `cwd`, joining the specifier to each.
+pub fn candidate_paths<'a>(
+  cwd: &'a Path,
+  specifier: &'a str,
+) -> Box<dyn Iterator<Item = Cow<'a, Path>> + 'a> {
+  let specifier_path = Path::new(specifier);
+  if specifier_path.is_absolute() {
+    Box::new(std::iter::once(Cow::Borrowed(specifier_path)))
+  } else {
+    Box::new(
+      cwd
+        .ancestors()
+        .map(move |dir| Cow::Owned(dir.join(specifier))),
+    )
+  }
+}
+
+/// Discovers the path and content of an env file, which can then be parsed.
 ///
 /// This walks the ancestor directories attempting to find the env file.
-pub fn find_path_and_content<'a>(
+pub fn find_path_and_content(
   sys: &impl FsRead,
   cwd: &Path,
   specifier: &str,
@@ -42,7 +62,7 @@ pub fn find_path_and_content<'a>(
     sys: &impl FsRead,
     file_path: Cow<'_, Path>,
   ) -> Result<Option<(PathBuf, Cow<'static, str>)>, FindPathAndContentError> {
-    match sys.fs_read_to_string_lossy(&file_path) {
+    match sys.fs_read_to_string(&file_path) {
       Ok(content) => Ok(Some((
         deno_path_util::normalize_path(file_path).into_owned(),
         content,
@@ -60,24 +80,15 @@ pub fn find_path_and_content<'a>(
     }
   }
 
-  let specifier_path = Path::new(specifier);
-  if specifier_path.is_absolute() {
-    try_read(sys, Cow::Borrowed(specifier_path))
-  } else {
-    // walk parent directories looking for the file
-    for dir in cwd.ancestors() {
-      let file_path = dir.join(specifier);
-      match try_read(sys, Cow::Owned(file_path)) {
-        Ok(Some(content)) => return Ok(Some(content)),
-        Ok(None) => {
-          // keep going
-        }
-        Err(err) => return Err(err),
-      }
+  for file_path in candidate_paths(cwd, specifier) {
+    match try_read(sys, file_path) {
+      Ok(Some(content)) => return Ok(Some(content)),
+      Ok(None) => {}
+      Err(err) => return Err(err),
     }
-
-    Ok(None)
   }
+
+  Ok(None)
 }
 
 #[derive(Debug, Error)]
