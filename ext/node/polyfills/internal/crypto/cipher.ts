@@ -250,7 +250,12 @@ Cipheriv.prototype.final = function (
   }
 
   if (!this._autoPadding && this._cache.cache.byteLength != bs) {
-    throw new Error("Invalid final block size");
+    const err = new Error("wrong final block length");
+    // deno-lint-ignore no-explicit-any
+    (err as any).code = "ERR_OSSL_EVP_WRONG_FINAL_BLOCK_LENGTH";
+    // deno-lint-ignore no-explicit-any
+    (err as any).reason = "wrong final block length";
+    throw err;
   }
   const maybeTag = op_node_cipheriv_final(
     this._context,
@@ -491,13 +496,23 @@ Decipheriv.prototype.final = function (
     return encoding === "buffer" ? Buffer.from([]) : "";
   }
   if (this._cache.cache.byteLength != bs) {
-    throw new Error("Invalid final block size");
+    const err = new Error("wrong final block length");
+    // deno-lint-ignore no-explicit-any
+    (err as any).code = "ERR_OSSL_EVP_WRONG_FINAL_BLOCK_LENGTH";
+    // deno-lint-ignore no-explicit-any
+    (err as any).reason = "wrong final block length";
+    throw err;
   }
 
   if (this._autoPadding) {
     const padLen = buf.at(-1);
     if (padLen === 0 || padLen > bs) {
-      throw new Error("bad decrypt");
+      const err = new Error("bad decrypt");
+      // deno-lint-ignore no-explicit-any
+      (err as any).code = "ERR_OSSL_EVP_BAD_DECRYPT";
+      // deno-lint-ignore no-explicit-any
+      (err as any).reason = "bad decrypt";
+      throw err;
     }
     buf = buf.subarray(0, bs - padLen); // Padded in Pkcs7 mode
   }
