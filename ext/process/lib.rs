@@ -1201,6 +1201,7 @@ fn op_spawn_kill(
   state: &mut OpState,
   #[smi] rid: ResourceId,
   #[serde] signal: SignalArg,
+  kill_descendants: bool,
 ) -> Result<(), ProcessError> {
   if let Ok(child_resource) = state.resource_table.get::<ChildResource>(rid) {
     let pid = child_resource.1 as i32;
@@ -1210,8 +1211,11 @@ fn op_spawn_kill(
     // process can catch and propagate them, so we only send to the target.
     // This is best-effort; ignore errors from descendants that may have
     // already exited.
+    //
+    // This is only done when kill_descendants is true (Deno.Command API).
+    // node:child_process does NOT kill descendants, matching Node.js behavior.
     #[cfg(unix)]
-    {
+    if kill_descendants {
       let is_sigkill = match &signal {
         SignalArg::String(s) => s == "SIGKILL",
         SignalArg::Int(n) => *n == libc::SIGKILL,

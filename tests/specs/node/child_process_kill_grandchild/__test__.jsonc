@@ -1,0 +1,12 @@
+{
+  "tests": {
+    // Verify node:child_process matches Node.js behavior: killing a child
+    // with SIGKILL should NOT automatically kill grandchild processes.
+    // Node.js explicitly documents this as expected behavior.
+    "node_kill_does_not_propagate_to_grandchild": {
+      "if": "unix",
+      "args": "run --allow-all main.ts",
+      "output": "OK: grandchild survived (matches Node.js behavior)\n"
+    }
+  }
+}
