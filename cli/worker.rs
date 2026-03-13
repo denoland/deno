@@ -159,6 +159,7 @@ impl CliMainWorker {
 
     self.worker.dispatch_unload_event()?;
     self.worker.dispatch_process_exit_event()?;
+    self.worker.run_napi_ref_finalizers();
 
     if let Some(mut coverage_collector) = coverage_cell.borrow_mut().take() {
       coverage_collector.stop_collecting()?;
@@ -217,6 +218,7 @@ impl CliMainWorker {
 
         self.inner.worker.dispatch_unload_event()?;
         self.inner.worker.dispatch_process_exit_event()?;
+        self.inner.worker.run_napi_ref_finalizers();
 
         Ok(())
       }

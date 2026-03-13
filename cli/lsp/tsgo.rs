@@ -2047,6 +2047,17 @@ fn normalize_code_action_response(
   response: &mut lsp::CodeActionResponse,
   snapshot: &StateSnapshot,
 ) {
+  if snapshot.config.client_provided_organize_imports_capable() {
+    response.retain(|item| {
+      let lsp::CodeActionOrCommand::CodeAction(code_action) = item else {
+        return true;
+      };
+      code_action
+        .kind
+        .as_ref()
+        .is_none_or(|k| k.as_str() != "source.organizeImports")
+    });
+  }
   for item in response {
     match item {
       lsp::CodeActionOrCommand::CodeAction(code_action) => {

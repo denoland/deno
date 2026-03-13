@@ -7,23 +7,21 @@ License at http://www.apache.org/licenses/LICENSE-2.0
 THIS CODE IS PROVIDED ON AN *AS IS* BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
 KIND, EITHER EXPRESS OR IMPLIED, INCLUDING WITHOUT LIMITATION ANY IMPLIED
 WARRANTIES OR CONDITIONS OF TITLE, FITNESS FOR A PARTICULAR PURPOSE,
-MERCHANTABLITY OR NON-INFRINGEMENT.
+MERCHANTABILITY OR NON-INFRINGEMENT.
 
 See the Apache Version 2.0 License for specific language governing permissions
 and limitations under the License.
 ***************************************************************************** */
 
 
-/// <reference no-default-lib="true"/>
-
-/// <reference lib="es2024" />
+/// <reference lib="es2025" />
 /// <reference lib="esnext.intl" />
+/// <reference lib="esnext.collection" />
 /// <reference lib="esnext.decorators" />
 /// <reference lib="esnext.disposable" />
-/// <reference lib="esnext.collection" />
 /// <reference lib="esnext.array" />
-/// <reference lib="esnext.iterator" />
-/// <reference lib="esnext.promise" />
-/// <reference lib="esnext.float16" />
 /// <reference lib="esnext.error" />
 /// <reference lib="esnext.sharedmemory" />
+/// <reference lib="esnext.typedarrays" />
+/// <reference lib="esnext.temporal" />
+/// <reference lib="esnext.date" />

@@ -291,6 +291,7 @@ async fn bench_specifier_inner(
   worker
     .dispatch_process_exit_event()
     .map_err(|e| CoreErrorKind::Js(e).into_box())?;
+  worker.run_napi_ref_finalizers();
 
   // Ensure the worker has settled so we can catch any remaining unhandled rejections. We don't
   // want to wait forever here.
