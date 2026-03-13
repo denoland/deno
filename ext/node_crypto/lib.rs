@@ -327,12 +327,12 @@ fn pkcs1v15_type1_unpad(
   }
   // Find the 0x00 separator after the 0xFF padding
   let mut sep = None;
-  for i in 2..k {
-    if em[i] == 0 {
+  for (i, &byte) in em.iter().enumerate().take(k).skip(2) {
+    if byte == 0 {
       sep = Some(i);
       break;
     }
-    if em[i] != 0xff {
+    if byte != 0xff {
       return Err(PrivateEncryptDecryptError::Rsa(rsa::Error::Decryption));
     }
   }
