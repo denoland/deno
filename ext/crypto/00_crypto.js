@@ -65,6 +65,7 @@ const {
   JSONStringify,
   MathCeil,
   ObjectAssign,
+  ObjectDefineProperty,
   ObjectHasOwn,
   ObjectPrototypeIsPrototypeOf,
   SafeArrayIterator,
@@ -438,8 +439,34 @@ function constructKey(type, extractable, usages, algorithm, handle) {
   key[_algorithm] = algorithm;
   key[_handle] = handle;
   key[kKeyObject] = WeakMapPrototypeGet(KEY_STORE, handle);
+  ObjectDefineProperty(key, core.hostObjectBrand, {
+    __proto__: null,
+    value: () => ({
+      type: "CryptoKey",
+      keyType: type,
+      extractable,
+      usages,
+      algorithm,
+      keyData: WeakMapPrototypeGet(KEY_STORE, handle),
+    }),
+    enumerable: false,
+    configurable: false,
+    writable: false,
+  });
   return key;
 }
+
+core.registerCloneableResource("CryptoKey", (data) => {
+  const handle = {};
+  WeakMapPrototypeSet(KEY_STORE, handle, data.keyData);
+  return constructKey(
+    data.keyType,
+    data.extractable,
+    data.usages,
+    data.algorithm,
+    handle,
+  );
+});
 
 // https://w3c.github.io/webcrypto/#concept-usage-intersection
 /**
