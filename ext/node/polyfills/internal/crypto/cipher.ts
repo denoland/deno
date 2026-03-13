@@ -662,6 +662,9 @@ export function prepareKey(key) {
     return { data: getArrayBufferOrView(data, "key") };
   } else if (typeof key == "object") {
     const { key: data, encoding } = key;
+    if (isKeyObject(data)) {
+      return prepareKey(data);
+    }
     if (!isStringOrBuffer(data)) {
       throw new TypeError("Invalid key type");
     }
