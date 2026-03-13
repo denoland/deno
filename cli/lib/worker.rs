@@ -853,6 +853,11 @@ impl LibMainWorker {
     self.worker.dispatch_process_exit_event()
   }
 
+  #[inline]
+  pub fn run_napi_ref_finalizers(&mut self) {
+    self.worker.run_napi_ref_finalizers()
+  }
+
   pub async fn execute_main_module(&mut self) -> Result<(), CoreError> {
     let id = self.worker.preload_main_module(&self.main_module).await?;
     self.worker.evaluate_module(id).await
@@ -905,6 +910,7 @@ impl LibMainWorker {
 
     self.worker.dispatch_unload_event()?;
     self.worker.dispatch_process_exit_event()?;
+    self.worker.run_napi_ref_finalizers();
 
     Ok(self.worker.exit_code())
   }

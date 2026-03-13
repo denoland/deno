@@ -20,9 +20,9 @@ use deno_resolver::deno_json::JsxImportSourceConfigResolver;
 use deno_typescript_go_client_rust::CallbackHandler;
 use deno_typescript_go_client_rust::SyncRpcChannel;
 use deno_typescript_go_client_rust::types::GetImpliedNodeFormatForFilePayload;
-use deno_typescript_go_client_rust::types::Project;
 use deno_typescript_go_client_rust::types::ResolveModuleNamePayload;
 use deno_typescript_go_client_rust::types::ResolveTypeReferenceDirectivePayload;
+use deno_typescript_go_client_rust::types::UpdateSnapshotResponse;
 pub use setup::DownloadError;
 pub use setup::ensure_tsgo;
 
@@ -108,13 +108,15 @@ fn exec_request_inner(
 
   let callbacks = handler.supported_callbacks();
   let bin_path = tsgo_path;
-  let mut channel = SyncRpcChannel::new(bin_path, vec!["--api"], handler)?;
+  let mut channel = SyncRpcChannel::new(
+    bin_path,
+    vec!["--api", "--callbacks", &callbacks.join(",")],
+    handler,
+  )?;
 
   channel.request_sync(
-    "configure",
+    "initialize",
     jsons!({
-      "callbacks": callbacks.iter().collect::<Vec<_>>(),
-      "logFile": "",
       "forkContextInfo": {
         "typesNodeIgnorableNames": super::TYPES_NODE_IGNORABLE_NAMES,
         "nodeOnlyGlobalNames": super::NODE_ONLY_GLOBALS,
@@ -122,13 +124,17 @@ fn exec_request_inner(
     })?,
   )?;
 
-  let project = channel.request_sync(
-    "loadProject",
+  let update_snapshot_response = channel.request_sync(
+    "updateSnapshot",
     jsons!({
-      "configFileName": "/virtual/tsconfig.json",
+      "openProject": "/virtual/tsconfig.json",
     })?,
   )?;
-  let project = deser::<Project>(project)?;
+  let update_snapshot_response =
+    deser::<UpdateSnapshotResponse>(update_snapshot_response)?;
+  debug_assert!(update_snapshot_response.projects.len() == 1);
+
+  let project = update_snapshot_response.projects.first().unwrap();
 
   let file_names = if request.check_mode != TypeCheckMode::All {
     root_names
@@ -138,6 +144,7 @@ fn exec_request_inner(
   let diagnostics = channel.request_sync(
     "getDiagnostics",
     jsons!({
+      "snapshot": &update_snapshot_response.snapshot,
       "project": &project.id,
       "fileNames": file_names,
     })?,
@@ -167,7 +174,7 @@ fn diagnostic_category(category: &str) -> super::DiagnosticCategory {
 pub fn maybe_rewrite_message(message: String, code: u64) -> String {
   if code == 2304 && message.starts_with("Cannot find name 'Deno'") {
     r#"Cannot find name 'Deno'. Do you need to change your target library? Try changing the 'lib' compiler option to include 'deno.ns' or add a triple-slash directive to the top of your entrypoint (main file): /// <reference lib="deno.ns" />"#.to_string()
-  } else if code == 2581 {
+  } else if code == 2581 || code == 2592 {
     r#"Cannot find name '$'. Did you mean to import jQuery? Try adding `import $ from "npm:jquery";`."#.to_string()
   } else if code == 2580 {
     let regex = lazy_regex::regex!(r#"Cannot find name '([^']+)'"#);
@@ -398,11 +405,15 @@ impl deno_typescript_go_client_rust::CallbackHandler for Handler {
         log::debug!("readFile: {}", payload);
         let payload = deser::<String>(payload)?;
         if payload == state.config_path {
-          Ok(jsons!(&state.synthetic_config)?)
+          Ok(jsons!({
+            "content": &state.synthetic_config,
+          })?)
         } else {
           if let Some(load_result) = state.load_result_pending.remove(&payload)
           {
-            return Ok(jsons!(load_result.contents)?);
+            return Ok(jsons!({
+              "content": load_result.contents,
+            })?);
           }
           let result = load_inner(&mut state, &payload).map_err(adhoc)?;
 
@@ -413,21 +424,15 @@ impl deno_typescript_go_client_rust::CallbackHandler for Handler {
             let path = Path::new(&payload);
 
             if let Ok(contents) = std::fs::read_to_string(path) {
-              Ok(jsons!(&contents)?)
+              Ok(jsons!({
+                "content": &contents,
+              })?)
             } else {
-              Ok(jsons!(None::<String>)?)
+              Ok(jsons!({
+                "content": null,
+              })?)
             }
           }
-        }
-      }
-      "loadSourceFile" => {
-        let payload = deser::<String>(payload)?;
-        log::debug!("loadSourceFile: {}", payload);
-        if let Some(load_result) = state.load_result_pending.remove(&payload) {
-          Ok(jsons!(&load_result)?)
-        } else {
-          let result = load_inner(&mut state, &payload).map_err(adhoc)?;
-          Ok(jsons!(&result)?)
         }
       }
       "resolveModuleName" => {

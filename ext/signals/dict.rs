@@ -104,8 +104,7 @@ signal_dict!(
   (29, "SIGINFO"),
   (30, "SIGUSR1"),
   (31, "SIGUSR2"),
-  (32, "SIGTHR"),
-  (33, "SIGLIBRT")
+  (32, "SIGTHR")
 );
 
 #[cfg(target_os = "openbsd")]

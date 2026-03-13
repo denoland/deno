@@ -6,18 +6,11 @@ import { promisify } from "ext:deno_node/internal/util.mjs";
 import * as constants from "ext:deno_node/_fs/_fs_constants.ts";
 import { copyFilePromise } from "ext:deno_node/_fs/_fs_copy.ts";
 import { cpPromise } from "ext:deno_node/_fs/_fs_cp.ts";
-import { lstatPromise } from "ext:deno_node/_fs/_fs_lstat.ts";
 import { lutimesPromise } from "ext:deno_node/_fs/_fs_lutimes.ts";
 import { readdirPromise } from "ext:deno_node/_fs/_fs_readdir.ts";
 import { readFilePromise } from "ext:deno_node/_fs/_fs_readFile.ts";
 import { readlinkPromise } from "ext:deno_node/_fs/_fs_readlink.ts";
-import { realpathPromise } from "ext:deno_node/_fs/_fs_realpath.ts";
-import { statPromise } from "ext:deno_node/_fs/_fs_stat.ts";
-import { statfsPromise } from "ext:deno_node/_fs/_fs_statfs.ts";
-import { symlinkPromise } from "ext:deno_node/_fs/_fs_symlink.ts";
-import { truncatePromise } from "ext:deno_node/_fs/_fs_truncate.ts";
-import { utimesPromise } from "ext:deno_node/_fs/_fs_utimes.ts";
-import { watchPromise } from "ext:deno_node/_fs/_fs_watch.ts";
+import { lstatPromise } from "ext:deno_node/_fs/_fs_lstat.ts";
 import {
   access,
   appendFile,
@@ -29,10 +22,17 @@ import {
   mkdtemp,
   open,
   opendir,
+  realpath,
   rename,
   rm,
   rmdir,
+  stat,
+  statfs,
+  symlink,
+  truncate,
   unlink,
+  utimes,
+  watchPromise,
   writeFile,
 } from "node:fs";
 import { globPromise } from "ext:deno_node/_fs/_fs_glob.ts";
@@ -192,6 +192,29 @@ const opendirPromise = promisify(opendir) as (
   options?: OpendirOptions,
 ) => Promise<Dir>;
 
+// -- symlink --
+
+const symlinkPromise = promisify(symlink) as (
+  target: string | Buffer | URL,
+  path: string | Buffer | URL,
+  type?: string,
+) => Promise<void>;
+
+// -- truncate --
+
+const truncatePromise = promisify(truncate) as (
+  path: string | URL,
+  len?: number,
+) => Promise<void>;
+
+// -- utimes --
+
+const utimesPromise = promisify(utimes) as (
+  path: string | URL,
+  atime: number | string | Date,
+  mtime: number | string | Date,
+) => Promise<void>;
+
 // -- writeFile --
 
 const writeFilePromise = promisify(writeFile) as (
@@ -203,6 +226,27 @@ const writeFilePromise = promisify(writeFile) as (
     | AsyncIterable<NodeJS.TypedArray | string>,
   options?: Encodings | WriteFileOptions,
 ) => Promise<void>;
+
+// -- realpath --
+
+const realpathPromise = promisify(realpath) as (
+  path: string | Buffer,
+  options?: string | { encoding?: string },
+) => Promise<string | Buffer>;
+
+// -- stat --
+
+const statPromise = promisify(stat) as (
+  path: string | Buffer | URL,
+  options?: { bigint?: boolean },
+) => Promise<unknown>;
+
+// -- statfs --
+
+const statfsPromise = promisify(statfs) as (
+  path: string | Buffer | URL,
+  options?: { bigint?: boolean },
+) => Promise<unknown>;
 
 // -- promises object --
 
