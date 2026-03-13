@@ -768,6 +768,7 @@ pub async fn op_node_rmdir(
 /// Note: This is O(n) in the number of registered resources. Fine for typical
 /// workloads since it only runs on the first use of an unknown fd (then cached
 /// in fd_map), but could matter with thousands of open resources.
+#[cfg(unix)]
 fn deny_internal_resource_handle(
   state: &mut OpState,
   handle: deno_core::ResourceHandleFd,
@@ -860,82 +861,14 @@ pub fn op_node_dup_fd(
   dup_fd_impl(state, fd)
 }
 
-/// Like `libc::get_osfhandle` but safe to call with invalid fds.
-///
-/// On Windows, CRT functions invoke the "invalid parameter handler" when
-/// given a bad fd, which by default terminates the process. We temporarily
-/// install a no-op handler so `get_osfhandle` returns -1 instead of
-/// aborting. This is the same pattern libuv uses (`uv__get_osfhandle`).
-///
-/// Returns the raw HANDLE as `isize`, or -1 / -2 for invalid fds.
+/// On Windows, get_fd_from_rid returns rid as fd (identity mapping), so
+/// all valid fds are always in fd_map and getRid() never calls this op.
+/// The only way this runs is for invalid/unknown fds, so we return EBADF.
+/// Real Windows fd support can be added later via get_fd_from_rid.
 #[cfg(not(unix))]
-fn safe_get_osfhandle(fd: i32) -> isize {
-  extern "C" fn silent_invalid_parameter_handler(
-    _: *const u16,
-    _: *const u16,
-    _: *const u16,
-    _: u32,
-    _: usize,
-  ) {
-  }
-
-  unsafe extern "C" {
-    fn _set_thread_local_invalid_parameter_handler(
-      handler: Option<
-        unsafe extern "C" fn(*const u16, *const u16, *const u16, u32, usize),
-      >,
-    ) -> Option<
-      unsafe extern "C" fn(*const u16, *const u16, *const u16, u32, usize),
-    >;
-  }
-
-  // SAFETY: _set_thread_local_invalid_parameter_handler and
-  // get_osfhandle are standard CRT calls. The no-op handler is
-  // thread-local and immediately restored after the call.
-  unsafe {
-    let prev = _set_thread_local_invalid_parameter_handler(Some(
-      silent_invalid_parameter_handler,
-    ));
-    let handle = libc::get_osfhandle(fd);
-    _set_thread_local_invalid_parameter_handler(prev);
-    handle
-  }
-}
-
-#[cfg(not(unix))]
-fn dup_fd_impl(state: &mut OpState, fd: i32) -> Result<ResourceId, FsError> {
-  use std::fs::File as StdFile;
-  use std::os::windows::io::BorrowedHandle;
-  use std::os::windows::io::RawHandle;
-
-  if fd < 0 {
-    return Err(FsError::Io(std::io::Error::new(
-      std::io::ErrorKind::InvalidInput,
-      "Invalid file descriptor",
-    )));
-  }
-
-  let raw_handle = safe_get_osfhandle(fd);
-  if raw_handle == -1 || raw_handle == -2 {
-    // ERROR_INVALID_HANDLE (6) maps to EBADF via uvTranslateSysError
-    return Err(FsError::Io(std::io::Error::from_raw_os_error(6)));
-  }
-  let handle = raw_handle as RawHandle;
-
-  deny_internal_resource_handle(state, handle)?;
-
-  // Duplicate the handle so it's independently owned and closeable.
-  // SAFETY: handle is valid (checked above via safe_get_osfhandle).
-  let borrowed = unsafe { BorrowedHandle::borrow_raw(handle) };
-  let owned = borrowed.try_clone_to_owned().map_err(FsError::Io)?;
-
-  let std_file = StdFile::from(owned);
-  let file: Rc<dyn deno_io::fs::File> =
-    Rc::new(deno_io::StdFileResourceInner::file(std_file, None));
-  let rid = state
-    .resource_table
-    .add(FileResource::new(file, "fsFile".to_string()));
-  Ok(rid)
+fn dup_fd_impl(_state: &mut OpState, _fd: i32) -> Result<ResourceId, FsError> {
+  // ERROR_INVALID_HANDLE (6) maps to EBADF via uvTranslateSysError
+  Err(FsError::Io(std::io::Error::from_raw_os_error(6)))
 }
 
 #[derive(Debug, Serialize)]
