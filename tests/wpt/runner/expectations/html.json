@@ -1154,9 +1154,7 @@
           "ImageData object can be cloned",
           "ImageData expandos are not cloned",
           "Document objects cannot be cloned",
-          "URIError objects from other realms are treated as URIError",
-          "DOMException objects can be cloned",
-          "DOMException objects created by the UA can be cloned"
+          "URIError objects from other realms are treated as URIError"
         ]
       }
     },
