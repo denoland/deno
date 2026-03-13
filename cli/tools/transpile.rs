@@ -340,9 +340,7 @@ fn compute_output_path(
   if let Some(outdir) = output_dir {
     let outdir = cwd.join(outdir);
     // Preserve relative directory structure under outdir
-    let relative = js_filename
-      .strip_prefix(cwd)
-      .unwrap_or(&js_filename);
+    let relative = js_filename.strip_prefix(cwd).unwrap_or(&js_filename);
     Ok(outdir.join(relative))
   } else {
     // Write alongside source file
