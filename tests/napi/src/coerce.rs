@@ -70,8 +70,7 @@ extern "C" fn test_coerce_object_null_no_pending_exception(
   // args[0] should be null, args[1] should be undefined
   for i in 0..2 {
     let mut result: napi_value = ptr::null_mut();
-    let status =
-      unsafe { napi_coerce_to_object(env, args[i], &mut result) };
+    let status = unsafe { napi_coerce_to_object(env, args[i], &mut result) };
     // Should fail
     assert_ne!(status, napi_ok);
 
