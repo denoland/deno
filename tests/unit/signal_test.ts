@@ -8,8 +8,11 @@ Deno.test(
     const unsupported = [
       "SIGALRM",
       "SIGCHLD",
+      "SIGFPE",
+      "SIGILL",
       "SIGIO",
       "SIGPIPE",
+      "SIGSEGV",
       "SIGUSR1",
       "SIGUSR2",
     ];
@@ -39,21 +42,6 @@ Deno.test(
       () => Deno.addSignalListener("SIGABRT", () => {}),
       TypeError,
       "Binding to signal 'SIGABRT' is not allowed",
-    );
-    assertThrows(
-      () => Deno.addSignalListener("SIGILL", () => {}),
-      TypeError,
-      "Binding to signal 'SIGILL' is not allowed",
-    );
-    assertThrows(
-      () => Deno.addSignalListener("SIGFPE", () => {}),
-      TypeError,
-      "Binding to signal 'SIGFPE' is not allowed",
-    );
-    assertThrows(
-      () => Deno.addSignalListener("SIGSEGV", () => {}),
-      TypeError,
-      "Binding to signal 'SIGSEGV' is not allowed",
     );
   },
 );
