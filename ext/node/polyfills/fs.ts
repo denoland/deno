@@ -561,7 +561,7 @@ async function fsFileReadAll(fsFile: FsFile, options?: FileOptions) {
 
   let size = 0;
   let length = 0;
-  if ((statFields.mode & S_IFMT) === S_IFREG) {
+  if ((statFields.mode & fsConstants.S_IFMT) === fsConstants.S_IFREG) {
     size = statFields.size;
     length = encoding ? MathMin(size, kReadFileBufferLength) : size;
   }
