@@ -215,8 +215,8 @@ impl WatchEnvTracker {
     inner.unused_variables = std::mem::take(&mut inner.loaded_variables);
     inner.loaded_variables = HashSet::new();
 
-    for env_file_name in file_paths.iter().rev() {
-      self.load_env_file_inner(cwd, env_file_name, log_level, &mut inner);
+    for env_file_path in file_paths.iter().rev() {
+      self.load_env_file_inner(cwd, env_file_path, log_level, &mut inner);
     }
 
     self._cleanup_removed_variables(&mut inner, log_level);

@@ -64,7 +64,7 @@ pub fn find_path_and_content<'a>(
 ) -> std::io::Result<(Cow<'a, Path>, Cow<'static, str>)> {
   let sys = sys.with_paths_in_errors();
   let (start_dir, filename, original_not_found) =
-    match sys.fs_read_to_string_lossy(file_path) {
+    match sys.fs_read_to_string(file_path) {
       Ok(content) => return Ok((Cow::Borrowed(file_path), content)),
       Err(err) => {
         if err.kind() != std::io::ErrorKind::NotFound {
