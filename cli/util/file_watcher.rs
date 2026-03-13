@@ -379,7 +379,7 @@ where
         .unwrap_or_else(|| Cow::Owned(PathBuf::from(".")));
       snapshot.load_env_variables_from_env_files(
         &cwd,
-        &env_files,
+        env_files,
         flags.log_level,
       );
     }
