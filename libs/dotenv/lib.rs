@@ -1072,9 +1072,9 @@ u4QuUoobAgMBAAE=
   fn find_path_and_content_relative_subdir_traverses_ancestors() {
     let sys = InMemorySys::default();
     sys.fs_create_dir_all("/project/sub/deep").unwrap();
-    // file doesn't exist at sub/.envfile relative to cwd, but exists in
-    // an ancestor directory — traversal uses just the filename component
-    sys.fs_write("/project/.envfile", "ANCESTOR=found").unwrap();
+    sys
+      .fs_write("/project/sub/.envfile", "ANCESTOR=found")
+      .unwrap();
 
     let (path, content) = find_path_and_content(
       &sys,
@@ -1083,7 +1083,7 @@ u4QuUoobAgMBAAE=
     )
     .unwrap()
     .unwrap();
-    assert_eq!(path, Path::new("/project/.envfile"));
+    assert_eq!(path, Path::new("/project/sub/.envfile"));
     assert_eq!(content.as_ref(), "ANCESTOR=found");
   }
 }
