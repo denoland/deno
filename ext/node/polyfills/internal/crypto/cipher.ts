@@ -251,9 +251,7 @@ Cipheriv.prototype.final = function (
 
   if (!this._autoPadding && this._cache.cache.byteLength != bs) {
     const err = new Error("wrong final block length");
-    // deno-lint-ignore no-explicit-any
     (err as any).code = "ERR_OSSL_EVP_WRONG_FINAL_BLOCK_LENGTH";
-    // deno-lint-ignore no-explicit-any
     (err as any).reason = "wrong final block length";
     throw err;
   }
@@ -497,9 +495,7 @@ Decipheriv.prototype.final = function (
   }
   if (this._cache.cache.byteLength != bs) {
     const err = new Error("wrong final block length");
-    // deno-lint-ignore no-explicit-any
     (err as any).code = "ERR_OSSL_EVP_WRONG_FINAL_BLOCK_LENGTH";
-    // deno-lint-ignore no-explicit-any
     (err as any).reason = "wrong final block length";
     throw err;
   }
@@ -508,9 +504,7 @@ Decipheriv.prototype.final = function (
     const padLen = buf.at(-1);
     if (padLen === 0 || padLen > bs) {
       const err = new Error("bad decrypt");
-      // deno-lint-ignore no-explicit-any
       (err as any).code = "ERR_OSSL_EVP_BAD_DECRYPT";
-      // deno-lint-ignore no-explicit-any
       (err as any).reason = "bad decrypt";
       throw err;
     }

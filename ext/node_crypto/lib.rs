@@ -34,7 +34,8 @@ use rsa::Oaep;
 use rsa::Pkcs1v15Encrypt;
 use rsa::RsaPrivateKey;
 use rsa::RsaPublicKey;
-use rsa::hazmat::{rsa_decrypt_and_check, rsa_encrypt};
+use rsa::hazmat::rsa_decrypt_and_check;
+use rsa::hazmat::rsa_encrypt;
 use rsa::pkcs1::DecodeRsaPrivateKey;
 use rsa::pkcs1::DecodeRsaPublicKey;
 use rsa::pkcs8::DecodePrivateKey;
@@ -305,9 +306,7 @@ fn pkcs1v15_type1_pad(
   k: usize,
 ) -> Result<Vec<u8>, PrivateEncryptDecryptError> {
   if msg.len() > k - 11 {
-    return Err(PrivateEncryptDecryptError::Rsa(
-      rsa::Error::MessageTooLong,
-    ));
+    return Err(PrivateEncryptDecryptError::Rsa(rsa::Error::MessageTooLong));
   }
   let mut em = vec![0xffu8; k];
   em[0] = 0;
@@ -337,7 +336,8 @@ fn pkcs1v15_type1_unpad(
       return Err(PrivateEncryptDecryptError::Rsa(rsa::Error::Decryption));
     }
   }
-  let sep = sep.ok_or(PrivateEncryptDecryptError::Rsa(rsa::Error::Decryption))?;
+  let sep =
+    sep.ok_or(PrivateEncryptDecryptError::Rsa(rsa::Error::Decryption))?;
   if sep < 10 {
     // PS must be at least 8 bytes
     return Err(PrivateEncryptDecryptError::Rsa(rsa::Error::Decryption));
