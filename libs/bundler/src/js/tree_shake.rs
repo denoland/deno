@@ -17,6 +17,9 @@
 use std::collections::HashMap;
 
 use deno_ast::swc::ast::*;
+use deno_ast::swc::common::comments::Comments;
+use deno_ast::swc::common::Span;
+use deno_ast::swc::common::Spanned;
 use deno_ast::swc::ecma_visit::Visit;
 use deno_ast::swc::ecma_visit::VisitWith;
 use deno_ast::MediaType;
@@ -40,6 +43,8 @@ pub fn tree_shake_module(
   program: &Program,
   live_export_decls: Option<&FxHashSet<DeclId>>,
   scope_analysis: &ScopeAnalysis,
+  comments: Option<&dyn Comments>,
+  force_no_side_effects: bool,
 ) -> Option<Vec<ModuleItem>> {
   let live_decls = live_export_decls?;
 
@@ -56,7 +61,7 @@ pub fn tree_shake_module(
   // Phase 1: Classify each top-level statement.
   let mut stmt_infos: Vec<StmtInfo> = Vec::with_capacity(stmts_len);
   for item in &module.body {
-    stmt_infos.push(classify_module_item(item));
+    stmt_infos.push(classify_module_item(item, comments));
   }
 
   // Map declared names to DeclIds using scope analysis.
@@ -100,8 +105,8 @@ pub fn tree_shake_module(
 
   for (i, info) in stmt_infos.iter().enumerate() {
     let must_include =
-      // Statement has side effects
-      !info.can_be_removed_if_unused
+      // Statement has side effects (skipped when module has sideEffects: false)
+      (!force_no_side_effects && !info.can_be_removed_if_unused)
       // Statement declares a live export (DeclId-based matching)
       || info.declared_decl_ids.iter().any(|id| live_decls.contains(id))
       // Statement is a re-export or export-all (handled by import removal)
@@ -173,7 +178,7 @@ pub fn module_has_side_effects(source: &str, specifier: &ModuleSpecifier) -> boo
       continue;
     }
 
-    let info = classify_module_item(item);
+    let info = classify_module_item(item, None);
     if !info.can_be_removed_if_unused {
       return true;
     }
@@ -216,14 +221,20 @@ impl StmtInfo {
   }
 }
 
-fn classify_module_item(item: &ModuleItem) -> StmtInfo {
+fn classify_module_item(
+  item: &ModuleItem,
+  comments: Option<&dyn Comments>,
+) -> StmtInfo {
   match item {
-    ModuleItem::Stmt(stmt) => classify_statement(stmt),
-    ModuleItem::ModuleDecl(decl) => classify_module_decl(decl),
+    ModuleItem::Stmt(stmt) => classify_statement(stmt, comments),
+    ModuleItem::ModuleDecl(decl) => classify_module_decl(decl, comments),
   }
 }
 
-fn classify_statement(stmt: &Stmt) -> StmtInfo {
+fn classify_statement(
+  stmt: &Stmt,
+  comments: Option<&dyn Comments>,
+) -> StmtInfo {
   match stmt {
     Stmt::Decl(Decl::Fn(f)) => {
       let name = f.ident.sym.to_string();
@@ -238,9 +249,10 @@ fn classify_statement(stmt: &Stmt) -> StmtInfo {
       collect_refs_from_class(&c.class, &mut refs);
       StmtInfo::new(removable, vec![name], refs, false)
     }
-    Stmt::Decl(Decl::Var(var)) => classify_var_decl(var),
+    Stmt::Decl(Decl::Var(var)) => classify_var_decl(var, comments),
     Stmt::Expr(expr_stmt) => {
-      let removable = expr_can_be_removed_if_unused(&expr_stmt.expr);
+      let removable =
+        expr_can_be_removed_if_unused(&expr_stmt.expr, comments);
       let mut refs = Vec::new();
       collect_refs_from_expr(&expr_stmt.expr, &mut refs);
       StmtInfo::new(removable, vec![], refs, false)
@@ -253,7 +265,10 @@ fn classify_statement(stmt: &Stmt) -> StmtInfo {
   }
 }
 
-fn classify_module_decl(decl: &ModuleDecl) -> StmtInfo {
+fn classify_module_decl(
+  decl: &ModuleDecl,
+  comments: Option<&dyn Comments>,
+) -> StmtInfo {
   match decl {
     ModuleDecl::Import(_) => StmtInfo::new(true, vec![], vec![], false),
     ModuleDecl::ExportNamed(export) => {
@@ -277,12 +292,15 @@ fn classify_module_decl(decl: &ModuleDecl) -> StmtInfo {
       }
     }
     ModuleDecl::ExportAll(_) => StmtInfo::new(true, vec![], vec![], true),
-    ModuleDecl::ExportDecl(export) => classify_export_decl(&export.decl),
+    ModuleDecl::ExportDecl(export) => {
+      classify_export_decl(&export.decl, comments)
+    }
     ModuleDecl::ExportDefaultDecl(export) => {
-      classify_export_default_decl(export)
+      classify_export_default_decl(export, comments)
     }
     ModuleDecl::ExportDefaultExpr(export) => {
-      let removable = expr_can_be_removed_if_unused(&export.expr);
+      let removable =
+        expr_can_be_removed_if_unused(&export.expr, comments);
       let mut refs = Vec::new();
       collect_refs_from_expr(&export.expr, &mut refs);
       StmtInfo::new(removable, vec!["default".to_string()], refs, false)
@@ -291,7 +309,10 @@ fn classify_module_decl(decl: &ModuleDecl) -> StmtInfo {
   }
 }
 
-fn classify_export_decl(decl: &Decl) -> StmtInfo {
+fn classify_export_decl(
+  decl: &Decl,
+  comments: Option<&dyn Comments>,
+) -> StmtInfo {
   match decl {
     Decl::Fn(f) => {
       let name = f.ident.sym.to_string();
@@ -306,12 +327,15 @@ fn classify_export_decl(decl: &Decl) -> StmtInfo {
       collect_refs_from_class(&c.class, &mut refs);
       StmtInfo::new(removable, vec![name], refs, false)
     }
-    Decl::Var(var) => classify_var_decl(var),
+    Decl::Var(var) => classify_var_decl(var, comments),
     _ => StmtInfo::new(false, vec![], vec![], false),
   }
 }
 
-fn classify_export_default_decl(export: &ExportDefaultDecl) -> StmtInfo {
+fn classify_export_default_decl(
+  export: &ExportDefaultDecl,
+  _comments: Option<&dyn Comments>,
+) -> StmtInfo {
   match &export.decl {
     DefaultDecl::Fn(f) => {
       let name = f
@@ -346,7 +370,10 @@ fn classify_export_default_decl(export: &ExportDefaultDecl) -> StmtInfo {
   }
 }
 
-fn classify_var_decl(var: &VarDecl) -> StmtInfo {
+fn classify_var_decl(
+  var: &VarDecl,
+  comments: Option<&dyn Comments>,
+) -> StmtInfo {
   let mut names = Vec::new();
   let mut refs = Vec::new();
   let mut all_removable = true;
@@ -354,7 +381,7 @@ fn classify_var_decl(var: &VarDecl) -> StmtInfo {
   for decl in &var.decls {
     collect_pat_names(&decl.name, &mut names);
     if let Some(init) = &decl.init {
-      if !expr_can_be_removed_if_unused(init) {
+      if !expr_can_be_removed_if_unused(init, comments) {
         all_removable = false;
       }
       collect_refs_from_expr(init, &mut refs);
@@ -369,7 +396,10 @@ fn classify_var_decl(var: &VarDecl) -> StmtInfo {
 // ---------------------------------------------------------------------------
 
 /// Check if an expression can be removed if its result is unused.
-fn expr_can_be_removed_if_unused(expr: &Expr) -> bool {
+fn expr_can_be_removed_if_unused(
+  expr: &Expr,
+  comments: Option<&dyn Comments>,
+) -> bool {
   match expr {
     // Literals are always safe
     Expr::Lit(_) => true,
@@ -390,7 +420,7 @@ fn expr_can_be_removed_if_unused(expr: &Expr) -> bool {
     Expr::Array(arr) => arr.elems.iter().all(|elem| match elem {
       Some(ExprOrSpread { spread: Some(_), .. }) => false,
       Some(ExprOrSpread { expr, .. }) => {
-        expr_can_be_removed_if_unused(expr)
+        expr_can_be_removed_if_unused(expr, comments)
       }
       None => true,
     }),
@@ -401,10 +431,12 @@ fn expr_can_be_removed_if_unused(expr: &Expr) -> bool {
       PropOrSpread::Prop(p) => match p.as_ref() {
         Prop::KeyValue(kv) => {
           let key_safe = match &kv.key {
-            PropName::Computed(c) => expr_can_be_removed_if_unused(&c.expr),
+            PropName::Computed(c) => {
+              expr_can_be_removed_if_unused(&c.expr, comments)
+            }
             _ => true,
           };
-          key_safe && expr_can_be_removed_if_unused(&kv.value)
+          key_safe && expr_can_be_removed_if_unused(&kv.value, comments)
         }
         Prop::Shorthand(_) => true,
         Prop::Method(_) => true,
@@ -417,43 +449,77 @@ fn expr_can_be_removed_if_unused(expr: &Expr) -> bool {
     Expr::Unary(u) => match u.op {
       UnaryOp::TypeOf => true,
       UnaryOp::Void | UnaryOp::Bang | UnaryOp::Tilde | UnaryOp::Minus
-      | UnaryOp::Plus => expr_can_be_removed_if_unused(&u.arg),
+      | UnaryOp::Plus => expr_can_be_removed_if_unused(&u.arg, comments),
       UnaryOp::Delete => false,
     },
 
     // Binary — safe if both sides safe
     Expr::Bin(b) => {
-      expr_can_be_removed_if_unused(&b.left)
-        && expr_can_be_removed_if_unused(&b.right)
+      expr_can_be_removed_if_unused(&b.left, comments)
+        && expr_can_be_removed_if_unused(&b.right, comments)
     }
 
     // Ternary — safe if all three safe
     Expr::Cond(c) => {
-      expr_can_be_removed_if_unused(&c.test)
-        && expr_can_be_removed_if_unused(&c.cons)
-        && expr_can_be_removed_if_unused(&c.alt)
+      expr_can_be_removed_if_unused(&c.test, comments)
+        && expr_can_be_removed_if_unused(&c.cons, comments)
+        && expr_can_be_removed_if_unused(&c.alt, comments)
     }
 
     // Comma — safe if all safe
     Expr::Seq(s) => {
-      s.exprs.iter().all(|e| expr_can_be_removed_if_unused(e))
+      s.exprs
+        .iter()
+        .all(|e| expr_can_be_removed_if_unused(e, comments))
     }
 
     // Template literal (untagged) — safe if all expressions safe
     Expr::Tpl(t) => {
-      t.exprs.iter().all(|e| expr_can_be_removed_if_unused(e))
+      t.exprs
+        .iter()
+        .all(|e| expr_can_be_removed_if_unused(e, comments))
     }
 
     // Parenthesized
-    Expr::Paren(p) => expr_can_be_removed_if_unused(&p.expr),
+    Expr::Paren(p) => expr_can_be_removed_if_unused(&p.expr, comments),
 
     // Class expression
     Expr::Class(c) => class_can_be_removed_if_unused(&c.class),
 
-    // Call/new — NOT safe by default (no @__PURE__ check yet via SWC comments)
-    // TODO: Add @__PURE__ annotation support
+    // Call expression — safe only if annotated with @__PURE__ / #__PURE__
+    Expr::Call(call) => {
+      is_pure_annotated(call.span(), comments)
+        && call
+          .args
+          .iter()
+          .all(|a| expr_can_be_removed_if_unused(&a.expr, comments))
+    }
+
+    // New expression — safe only if annotated with @__PURE__ / #__PURE__
+    Expr::New(new_expr) => {
+      is_pure_annotated(new_expr.span(), comments)
+        && new_expr.args.as_ref().map_or(true, |args| {
+          args
+            .iter()
+            .all(|a| expr_can_be_removed_if_unused(&a.expr, comments))
+        })
+    }
+
     _ => false,
   }
+}
+
+/// Check if a span has a leading `@__PURE__` or `#__PURE__` comment annotation.
+fn is_pure_annotated(span: Span, comments: Option<&dyn Comments>) -> bool {
+  let Some(comments) = comments else {
+    return false;
+  };
+  comments.get_leading(span.lo).map_or(false, |leading| {
+    leading.iter().any(|c| {
+      let text = c.text.trim();
+      text.contains("@__PURE__") || text.contains("#__PURE__")
+    })
+  })
 }
 
 fn class_can_be_removed_if_unused(class: &Class) -> bool {
@@ -461,7 +527,7 @@ fn class_can_be_removed_if_unused(class: &Class) -> bool {
     return false;
   }
   if let Some(s) = &class.super_class {
-    if !expr_can_be_removed_if_unused(s) {
+    if !expr_can_be_removed_if_unused(s, None) {
       return false;
     }
   }
@@ -475,12 +541,12 @@ fn class_can_be_removed_if_unused(class: &Class) -> bool {
       ClassMember::ClassProp(p) => {
         if p.is_static {
           if let Some(key) = prop_name_expr(&p.key) {
-            if !expr_can_be_removed_if_unused(key) {
+            if !expr_can_be_removed_if_unused(key, None) {
               return false;
             }
           }
           if let Some(v) = &p.value {
-            if !expr_can_be_removed_if_unused(v) {
+            if !expr_can_be_removed_if_unused(v, None) {
               return false;
             }
           }
@@ -492,7 +558,7 @@ fn class_can_be_removed_if_unused(class: &Class) -> bool {
       ClassMember::Method(m) => {
         if m.is_static {
           if let Some(key) = prop_name_expr(&m.key) {
-            if !expr_can_be_removed_if_unused(key) {
+            if !expr_can_be_removed_if_unused(key, None) {
               return false;
             }
           }
@@ -504,7 +570,7 @@ fn class_can_be_removed_if_unused(class: &Class) -> bool {
       ClassMember::AutoAccessor(a) => {
         if a.is_static {
           if let Some(v) = &a.value {
-            if !expr_can_be_removed_if_unused(v) {
+            if !expr_can_be_removed_if_unused(v, None) {
               return false;
             }
           }
@@ -688,7 +754,8 @@ mod tests {
       }
     }
 
-    match tree_shake_module(&parsed.program(), Some(&live_decls), &module_info.scope_analysis) {
+    let comments_box = parsed.comments().as_swc_comments();
+    match tree_shake_module(&parsed.program(), Some(&live_decls), &module_info.scope_analysis, Some(&*comments_box), false) {
       Some(kept_body) => {
         use deno_ast::swc::common::DUMMY_SP;
         let program = Program::Module(Module {
@@ -1145,7 +1212,7 @@ mod tests {
     })
     .unwrap();
     let mi = extract_module_info(&parsed.program());
-    let result = tree_shake_module(&parsed.program(), None, &mi.scope_analysis);
+    let result = tree_shake_module(&parsed.program(), None, &mi.scope_analysis, None, false);
     assert!(result.is_none()); // No changes
   }
 
@@ -1416,5 +1483,166 @@ mod tests {
     assert!(result.contains("used"));
     // Default expr with literal is safe to remove
     assert!(!result.contains("42"));
+  }
+
+  // --- @__PURE__ annotation support ---
+
+  #[test]
+  fn test_tree_shake_pure_call_removed() {
+    let result = shake(
+      "export const used = 1;\nconst unused = /*@__PURE__*/ createThing();",
+      &["used"],
+    );
+    assert!(result.contains("used"));
+    assert!(!result.contains("createThing"));
+  }
+
+  #[test]
+  fn test_tree_shake_hash_pure_call_removed() {
+    let result = shake(
+      "export const used = 1;\nconst unused = /*#__PURE__*/ createThing();",
+      &["used"],
+    );
+    assert!(result.contains("used"));
+    assert!(!result.contains("createThing"));
+  }
+
+  #[test]
+  fn test_tree_shake_pure_new_removed() {
+    let result = shake(
+      "export const used = 1;\nconst unused = /*@__PURE__*/ new MyClass();",
+      &["used"],
+    );
+    assert!(result.contains("used"));
+    assert!(!result.contains("MyClass"));
+  }
+
+  #[test]
+  fn test_tree_shake_impure_call_kept() {
+    let result = shake(
+      "export const used = 1;\nconst unused = createThing();",
+      &["used"],
+    );
+    assert!(result.contains("used"));
+    assert!(result.contains("createThing")); // No pure annotation → kept
+  }
+
+  #[test]
+  fn test_tree_shake_pure_iife_removed() {
+    let result = shake(
+      "export const used = 1;\n/*@__PURE__*/ (function() { setup(); })();",
+      &["used"],
+    );
+    assert!(result.contains("used"));
+    assert!(!result.contains("setup"));
+  }
+
+  // --- sideEffects: false support ---
+
+  /// Like `shake` but with `force_no_side_effects: true`, simulating
+  /// a module from a package with `"sideEffects": false`.
+  fn shake_no_side_effects(source: &str, live_exports: &[&str]) -> String {
+    let s = spec("mod.js");
+    let parsed = deno_ast::parse_module(ParseParams {
+      specifier: s.clone(),
+      text: source.into(),
+      media_type: MediaType::JavaScript,
+      capture_tokens: false,
+      scope_analysis: false,
+      maybe_syntax: None,
+    })
+    .unwrap();
+
+    let module_info = extract_module_info(&parsed.program());
+    let mut live_decls = FxHashSet::default();
+    for &name in live_exports {
+      for export in &module_info.exports {
+        if export.exported_name == name {
+          if let Some(decl_id) = export.decl_id {
+            live_decls.insert(decl_id);
+          } else if let Some(local) = &export.local_name {
+            for &did in &module_info.scope_analysis.scopes[0].decls {
+              let d = module_info.scope_analysis.get_decl(did);
+              if d.name == *local {
+                live_decls.insert(did);
+                break;
+              }
+            }
+          }
+        }
+      }
+      if !module_info.scope_analysis.scopes.is_empty() {
+        for &did in &module_info.scope_analysis.scopes[0].decls {
+          let d = module_info.scope_analysis.get_decl(did);
+          if d.name == name {
+            live_decls.insert(did);
+          }
+        }
+      }
+    }
+
+    let comments_box = parsed.comments().as_swc_comments();
+    match tree_shake_module(
+      &parsed.program(),
+      Some(&live_decls),
+      &module_info.scope_analysis,
+      Some(&*comments_box),
+      true, // force_no_side_effects
+    ) {
+      Some(kept_body) => {
+        use deno_ast::swc::common::DUMMY_SP;
+        let program = Program::Module(Module {
+          body: kept_body,
+          span: DUMMY_SP,
+          shebang: None,
+        });
+        crate::transform_pipeline::emit_program(&program).unwrap()
+      }
+      None => source.to_string(),
+    }
+  }
+
+  #[test]
+  fn test_tree_shake_side_effects_false_removes_top_level_call() {
+    // With sideEffects: false, top-level calls are removed if unused.
+    let result = shake_no_side_effects(
+      "export const used = 1;\nconsole.log('init');",
+      &["used"],
+    );
+    assert!(result.contains("used"));
+    assert!(!result.contains("console.log"));
+  }
+
+  #[test]
+  fn test_tree_shake_side_effects_false_keeps_used_export() {
+    let result = shake_no_side_effects(
+      "export function used() { return 1; }\nexport function unused() { return 2; }",
+      &["used"],
+    );
+    assert!(result.contains("used"));
+    assert!(!result.contains("unused"));
+  }
+
+  #[test]
+  fn test_tree_shake_side_effects_false_removes_var_with_call() {
+    // Normally this is kept because the call has side effects.
+    // With sideEffects: false, it's removed because `bar` is unused.
+    let result = shake_no_side_effects(
+      "export const used = 1;\nconst bar = sideEffect();",
+      &["used"],
+    );
+    assert!(result.contains("used"));
+    assert!(!result.contains("sideEffect"));
+  }
+
+  #[test]
+  fn test_tree_shake_side_effects_true_keeps_top_level_call() {
+    // Without sideEffects: false, top-level calls are kept.
+    let result = shake(
+      "export const used = 1;\nconsole.log('init');",
+      &["used"],
+    );
+    assert!(result.contains("used"));
+    assert!(result.contains("console.log"));
   }
 }

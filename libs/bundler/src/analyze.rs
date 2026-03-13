@@ -15,6 +15,7 @@ use crate::js::hmr_info_swc::extract_hmr_info;
 use crate::js::module_info_swc::extract_module_info;
 use crate::js::tree_shake::tree_shake_module;
 use crate::loader::Loader;
+use crate::module::SideEffectFlag;
 use crate::transform_pipeline::emit_program;
 
 /// Analyze all JS modules in the graph, populating `module_info` and `hmr_info`.
@@ -79,11 +80,19 @@ pub fn tree_shake_graph(graph: &mut BundlerGraph) {
     let scope_analysis = mi.scope_analysis.clone();
 
     // Use transformed AST if available, otherwise fall back to cached parse.
+    // Extract comments for @__PURE__ annotation support.
+    let comments_box = module
+      .parsed
+      .as_ref()
+      .map(|p| p.comments().as_swc_comments());
+    let comments = comments_box.as_deref();
+    let force_no_side_effects =
+      module.side_effects == SideEffectFlag::False;
     let maybe_kept = if let Some(tp) = &module.transformed_program {
-      tree_shake_module(tp, live_decls, &scope_analysis)
+      tree_shake_module(tp, live_decls, &scope_analysis, comments, force_no_side_effects)
     } else if let Some(parsed) = &module.parsed {
       let program = parsed.program();
-      tree_shake_module(&program, live_decls, &scope_analysis)
+      tree_shake_module(&program, live_decls, &scope_analysis, comments, force_no_side_effects)
     } else {
       continue;
     };

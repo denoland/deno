@@ -32,5 +32,6 @@ deno_error.workspace = true
 
 rustc-hash = "2"
 serde = { version = "1", features = ["derive"] }
+serde_json = { workspace = true }
 url = { version = "2", features = ["serde"] }
 regex = "1"

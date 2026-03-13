@@ -10,6 +10,7 @@ use crate::js::module_info::ExportKind;
 use crate::js::module_info::ImportedName;
 use crate::js::scope::DeclId;
 use crate::module::BundlerModule;
+use crate::module::SideEffectFlag;
 use crate::symbol::SymbolId;
 use crate::union_find::SymbolUnionFind;
 
@@ -269,7 +270,8 @@ impl BundlerGraph {
       }
     }
 
-    // Dynamic import and require targets are all-live.
+    // Dynamic import and require targets are all-live
+    // (unless they have sideEffects: false).
     let dynamic_targets: Vec<ModuleSpecifier> = self
       .modules
       .values()
@@ -286,12 +288,21 @@ impl BundlerGraph {
       })
       .collect();
     for target in dynamic_targets {
-      if all_live_modules.insert(target.clone()) {
-        all_live_worklist.push(target);
+      // Modules with sideEffects: false are not all-live even
+      // when dynamically imported — only their used exports survive.
+      let is_side_effect_free = self
+        .get_module(&target)
+        .map(|m| m.side_effects == SideEffectFlag::False)
+        .unwrap_or(false);
+      if !is_side_effect_free {
+        if all_live_modules.insert(target.clone()) {
+          all_live_worklist.push(target);
+        }
       }
     }
 
-    // Namespace import targets are all-live.
+    // Namespace import targets are all-live
+    // (unless they have sideEffects: false).
     let namespace_targets: Vec<ModuleSpecifier> = self
       .modules
       .values()
@@ -313,8 +324,14 @@ impl BundlerGraph {
       .flatten()
       .collect();
     for target in namespace_targets {
-      if all_live_modules.insert(target.clone()) {
-        all_live_worklist.push(target);
+      let is_side_effect_free = self
+        .get_module(&target)
+        .map(|m| m.side_effects == SideEffectFlag::False)
+        .unwrap_or(false);
+      if !is_side_effect_free {
+        if all_live_modules.insert(target.clone()) {
+          all_live_worklist.push(target);
+        }
       }
     }
 

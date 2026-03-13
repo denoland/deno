@@ -90,6 +90,7 @@ fn convert_js_module(js: &deno_graph::JsModule) -> BundlerModule {
   };
 
   let source = js.source.text.to_string();
+  let side_effects = lookup_side_effects(&js.specifier);
 
   BundlerModule {
     specifier: js.specifier.clone(),
@@ -97,7 +98,7 @@ fn convert_js_module(js: &deno_graph::JsModule) -> BundlerModule {
     loader,
     module_type,
     dependencies,
-    side_effects: SideEffectFlag::Unknown,
+    side_effects,
     source,
     source_map: None,
     source_hash: None,
@@ -162,6 +163,60 @@ fn extract_dependencies(js: &deno_graph::JsModule) -> Vec<Dependency> {
   }
 
   deps
+}
+
+/// Look up `sideEffects` from the nearest package.json for `node_modules` files.
+///
+/// Only checks `file://` URLs whose path contains `node_modules/`.
+/// Walks up from the module's directory looking for `package.json` files
+/// within the `node_modules` tree.
+fn lookup_side_effects(specifier: &ModuleSpecifier) -> SideEffectFlag {
+  if specifier.scheme() != "file" {
+    return SideEffectFlag::Unknown;
+  }
+
+  let file_path = match specifier.to_file_path() {
+    Ok(p) => p,
+    Err(_) => return SideEffectFlag::Unknown,
+  };
+
+  let path_str = file_path.to_string_lossy();
+  if !path_str.contains("node_modules") {
+    return SideEffectFlag::Unknown;
+  }
+
+  // Walk up from the file's parent directory looking for package.json.
+  let mut dir = file_path.parent();
+  while let Some(d) = dir {
+    let pkg_json = d.join("package.json");
+    if pkg_json.is_file() {
+      if let Ok(contents) = std::fs::read_to_string(&pkg_json) {
+        if let Ok(json) = serde_json::from_str::<serde_json::Value>(&contents)
+        {
+          if let Some(side_effects) = json.get("sideEffects") {
+            return match side_effects {
+              serde_json::Value::Bool(false) => SideEffectFlag::False,
+              serde_json::Value::Bool(true) => SideEffectFlag::True,
+              // Array of glob patterns — treat as True for now.
+              // TODO: support glob pattern matching for sideEffects arrays.
+              serde_json::Value::Array(_) => SideEffectFlag::True,
+              _ => SideEffectFlag::Unknown,
+            };
+          }
+        }
+      }
+      // Found a package.json but no sideEffects field.
+      return SideEffectFlag::Unknown;
+    }
+
+    // Stop at node_modules boundary — don't look above it.
+    if d.file_name().map(|n| n == "node_modules").unwrap_or(false) {
+      break;
+    }
+    dir = d.parent();
+  }
+
+  SideEffectFlag::Unknown
 }
 
 /// Map deno_media_type::MediaType to our Loader.

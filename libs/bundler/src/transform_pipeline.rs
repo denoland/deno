@@ -15,6 +15,8 @@ use deno_ast::swc::common::SourceMap;
 use deno_ast::swc_codegen_config;
 
 use crate::graph::BundlerGraph;
+use deno_ast::bundler_transforms::ConstantFolder;
+use deno_ast::bundler_transforms::DeadBranchEliminator;
 use deno_ast::bundler_transforms::DefineReplacer;
 use deno_ast::bundler_transforms::ImportMetaRewriter;
 use deno_ast::bundler_transforms::{
@@ -84,12 +86,23 @@ pub fn transform_graph(
       changed = true;
     }
 
-    // Dead branch elimination.
+    // Constant folding (after define replacement so `"production" === "production"` → `true`).
     if options.dead_code_elimination && !options.define.is_empty() {
+      use deno_ast::swc::ecma_visit::VisitMutWith;
+      program.visit_mut_with(&mut ConstantFolder);
+      changed = true;
+    }
+
+    // Dead branch elimination (recursive — handles if/ternary at any depth).
+    if options.dead_code_elimination && !options.define.is_empty() {
+      use deno_ast::swc::ecma_visit::VisitMutWith;
+      program.visit_mut_with(&mut DeadBranchEliminator);
+      // Also run the top-level define-aware elimination for patterns
+      // that involve define values directly (not yet folded to literals).
       if let Program::Module(module) = &mut program {
         eliminate_dead_branches(&mut module.body, &options.define);
-        changed = true;
       }
+      changed = true;
     }
 
     // Convert top-level let/const to var.
@@ -352,5 +365,71 @@ mod tests {
     let module = graph.get_module(&s).unwrap();
     // Source should be unchanged.
     assert_eq!(module.source, source);
+  }
+
+  #[test]
+  fn test_define_fold_dce_chain() {
+    // End-to-end: define replacement + constant folding + dead branch elimination.
+    // `process.env.NODE_ENV !== "production"` → `"production" !== "production"` → `false`
+    // → `if (false) { devSetup(); }` → removed
+    let s = spec("mod.js");
+    let mut graph = BundlerGraph::new(EnvironmentId::new(0));
+    graph.add_module(make_module(
+      &s,
+      "if (process.env.NODE_ENV !== \"production\") { devSetup(); }\nconsole.log('app');",
+    ));
+    graph.add_entry(s.clone());
+
+    let mut defines = HashMap::new();
+    defines.insert(
+      "process.env.NODE_ENV".to_string(),
+      "\"production\"".to_string(),
+    );
+
+    transform_graph(
+      &mut graph,
+      &TransformOptions {
+        define: defines,
+        dead_code_elimination: true,
+        convert_to_var: false,
+        production: true,
+      },
+    );
+
+    let module = graph.get_module(&s).unwrap();
+    assert!(!module.source.contains("devSetup"));
+    assert!(module.source.contains("app"));
+  }
+
+  #[test]
+  fn test_nested_dce_in_function() {
+    // Dead branch elimination inside a function body.
+    let s = spec("mod.js");
+    let mut graph = BundlerGraph::new(EnvironmentId::new(0));
+    graph.add_module(make_module(
+      &s,
+      "function init() { if (process.env.NODE_ENV === \"production\") { prod(); } else { dev(); } }",
+    ));
+    graph.add_entry(s.clone());
+
+    let mut defines = HashMap::new();
+    defines.insert(
+      "process.env.NODE_ENV".to_string(),
+      "\"production\"".to_string(),
+    );
+
+    transform_graph(
+      &mut graph,
+      &TransformOptions {
+        define: defines,
+        dead_code_elimination: true,
+        convert_to_var: false,
+        production: true,
+      },
+    );
+
+    let module = graph.get_module(&s).unwrap();
+    assert!(module.source.contains("prod"));
+    assert!(!module.source.contains("dev"));
   }
 }
