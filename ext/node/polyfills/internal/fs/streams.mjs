@@ -4,15 +4,19 @@
 import { primordials } from "ext:core/mod.js";
 const {
   Array,
+  Error,
+  FunctionPrototypeBind,
   MathMin,
   NumberPOSITIVE_INFINITY,
   ObjectDefineProperty,
   ObjectPrototypeIsPrototypeOf,
   ObjectSetPrototypeOf,
   Promise,
+  PromisePrototypeThen,
   ReflectApply,
   StringPrototypeToString,
   Symbol,
+  SymbolFor,
 } = primordials;
 import {
   ERR_INVALID_ARG_TYPE,
@@ -40,6 +44,45 @@ const kIoDone = Symbol("kIoDone");
 const kIsPerformingIO = Symbol("kIsPerformingIO");
 
 const kFs = Symbol("kFs");
+const kHandle = Symbol("kHandle");
+const kHandleRef = SymbolFor("deno.fs.handle.kRef");
+const kHandleUnref = SymbolFor("deno.fs.handle.kUnref");
+
+function FileHandleOperations(handle) {
+  return {
+    open: (_path, _flags, _mode, cb) => {
+      cb(new Error("open() is not supported with FileHandle"));
+    },
+    close: (_fd, cb) => {
+      handle[kHandleUnref]();
+      PromisePrototypeThen(handle.close(), () => cb(), cb);
+    },
+    read: (fd, buf, offset, length, pos, cb) => {
+      PromisePrototypeThen(
+        handle.read(buf, offset, length, pos),
+        ({ bytesRead, buffer: readBuffer }) =>
+          cb(null, bytesRead, readBuffer),
+        (err) => cb(err, 0, buf),
+      );
+    },
+    write: (fd, buf, offset, length, pos, cb) => {
+      PromisePrototypeThen(
+        handle.write(buf, offset, length, pos),
+        ({ bytesWritten, buffer: writeBuffer }) =>
+          cb(null, bytesWritten, writeBuffer),
+        (err) => cb(err, 0, buf),
+      );
+    },
+    writev: (fd, buffers, pos, cb) => {
+      PromisePrototypeThen(
+        handle.writev(buffers, pos),
+        ({ bytesWritten, buffers: writtenBuffers }) =>
+          cb(null, bytesWritten, writtenBuffers),
+        (err) => cb(err, 0, buffers),
+      );
+    },
+  };
+}
 
 function _construct(callback) {
   // deno-lint-ignore no-this-alias
@@ -99,20 +142,24 @@ function close(stream, err, cb) {
   }
 }
 
-// TODO(bartlomieju): looks like this impl is completely out of sync with Node.js...
 function importFd(stream, options) {
   if (typeof options.fd === "number") {
     // When fd is a raw descriptor, we must keep our fingers crossed
     // that the descriptor won't get closed, or worse, replaced with
     // another one
     // https://github.com/nodejs/node/issues/35862
-    if (ObjectPrototypeIsPrototypeOf(ReadStream.prototype, stream)) {
-      stream[kFs] = options.fs || fs;
-    }
-    if (ObjectPrototypeIsPrototypeOf(WriteStream.prototype, stream)) {
-      stream[kFs] = options.fs || fs;
-    }
+    stream[kFs] = options.fs || fs;
     return options.fd;
+  } else if (
+    typeof options.fd === "object" && options.fd != null &&
+    typeof options.fd.fd === "number"
+  ) {
+    // When fd is a FileHandle we can listen for 'close' events
+    stream[kHandle] = options.fd;
+    stream[kFs] = FileHandleOperations(stream[kHandle]);
+    stream[kHandle][kHandleRef]();
+    options.fd.on("close", FunctionPrototypeBind(stream.close, stream));
+    return options.fd.fd;
   }
 
   throw new ERR_INVALID_ARG_TYPE("options.fd", ["number"], options.fd);
