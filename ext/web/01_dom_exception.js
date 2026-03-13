@@ -137,11 +137,17 @@ class DOMException {
     error[_name] = name;
     error[_code] = code;
     error[webidl.brand] = webidl.brand;
-    error[core.hostObjectBrand] = () => ({
-      type: "DOMException",
-      message,
-      name,
-      stack: error.stack,
+    ObjectDefineProperty(error, core.hostObjectBrand, {
+      __proto__: null,
+      value: () => ({
+        type: "DOMException",
+        message,
+        name,
+        stack: error.stack,
+      }),
+      enumerable: false,
+      configurable: false,
+      writable: false,
     });
 
     return error;
