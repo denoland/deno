@@ -10,17 +10,25 @@ use deno_ast::SourceMapOption;
 use deno_ast::TranspileModuleOptions;
 use deno_ast::TranspileOptions;
 use deno_ast::TranspileResult;
+use deno_config::deno_json::CompilerOptions;
+use deno_core::ModuleSpecifier;
 use deno_core::anyhow;
 use deno_core::error::AnyError;
+use deno_core::serde_json::json;
+use deno_graph::GraphKind;
+use deno_graph::ModuleGraph;
 use deno_terminal::colors;
 
 use crate::args::Flags;
 use crate::args::SourceMapMode;
 use crate::args::TranspileFlags;
+use crate::args::TypeCheckMode;
+use crate::factory::CliFactory;
+use crate::tsc;
 use crate::util::display;
 use crate::util::fs::canonicalize_path;
 
-pub fn transpile(
+pub async fn transpile(
   flags: Arc<Flags>,
   transpile_flags: TranspileFlags,
 ) -> Result<(), AnyError> {
@@ -44,6 +52,8 @@ pub fn transpile(
     SourceMapMode::Separate => SourceMapOption::Separate,
   };
 
+  // Collect file paths and specifiers
+  let mut file_entries = Vec::new();
   for file_path_str in files {
     let file_path = cwd.join(file_path_str);
     let file_path = canonicalize_path(&file_path).unwrap_or(file_path.clone());
@@ -58,16 +68,22 @@ pub fn transpile(
       continue;
     }
 
-    let source_code = std::fs::read_to_string(&file_path)?;
-    let specifier = deno_core::ModuleSpecifier::from_file_path(&file_path)
-      .map_err(|_| {
+    let specifier =
+      ModuleSpecifier::from_file_path(&file_path).map_err(|_| {
         anyhow::anyhow!("Invalid file path: {}", file_path.display())
       })?;
+
+    file_entries.push((file_path, specifier, media_type));
+  }
+
+  // Transpile each file (TS -> JS)
+  for (file_path, specifier, media_type) in &file_entries {
+    let source_code = std::fs::read_to_string(file_path)?;
 
     let parsed_source = deno_ast::parse_module(deno_ast::ParseParams {
       specifier: specifier.clone(),
       text: source_code.into(),
-      media_type,
+      media_type: *media_type,
       capture_tokens: false,
       scope_analysis: false,
       maybe_syntax: None,
@@ -109,7 +125,7 @@ pub fn transpile(
       }
     } else {
       let output_path = compute_output_path(
-        &file_path,
+        file_path,
         &cwd,
         transpile_flags.output.as_deref(),
         transpile_flags.output_dir.as_deref(),
@@ -134,7 +150,169 @@ pub fn transpile(
     }
   }
 
+  // Generate .d.ts declaration files if requested
+  if transpile_flags.declaration && !file_entries.is_empty() {
+    emit_declarations(&flags, &transpile_flags, &file_entries, &cwd).await?;
+  }
+
   Ok(())
+}
+
+async fn emit_declarations(
+  flags: &Arc<Flags>,
+  transpile_flags: &TranspileFlags,
+  file_entries: &[(PathBuf, ModuleSpecifier, MediaType)],
+  cwd: &Path,
+) -> Result<(), AnyError> {
+  let factory = CliFactory::from_flags(flags.clone());
+  let cli_options = factory.cli_options()?;
+
+  // Build a module graph for the input files
+  let root_names: Vec<(ModuleSpecifier, MediaType)> = file_entries
+    .iter()
+    .map(|(_, specifier, media_type)| (specifier.clone(), *media_type))
+    .collect();
+
+  let specifiers: Vec<ModuleSpecifier> =
+    root_names.iter().map(|(s, _)| s.clone()).collect();
+
+  let mut graph = ModuleGraph::new(GraphKind::All);
+  let module_graph_builder = factory.module_graph_builder().await?;
+  module_graph_builder
+    .build_graph_roots_with_npm_resolution(
+      &mut graph,
+      specifiers,
+      crate::graph_util::BuildGraphWithNpmOptions {
+        is_dynamic: false,
+        loader: None,
+        npm_caching: cli_options.default_npm_caching_strategy(),
+      },
+    )
+    .await?;
+
+  // Resolve compiler options, adding declaration-specific settings
+  let compiler_options_resolver = factory.compiler_options_resolver()?;
+  let first_specifier = &root_names[0].0;
+  let base_compiler_options = compiler_options_resolver
+    .for_specifier(first_specifier)
+    .compiler_options_for_lib(cli_options.ts_type_lib_window())?;
+
+  // Merge declaration options into the base compiler options
+  let mut config_value =
+    deno_core::serde_json::to_value(base_compiler_options.as_ref())?;
+  let config_obj = config_value
+    .as_object_mut()
+    .ok_or_else(|| anyhow::anyhow!("Invalid compiler options"))?;
+  config_obj.insert("declaration".into(), json!(true));
+  config_obj.insert("emitDeclarationOnly".into(), json!(true));
+  config_obj.insert("noEmit".into(), json!(false));
+
+  let compiler_options = Arc::new(CompilerOptions::new(config_value));
+
+  let hash_data =
+    deno_lib::util::hash::FastInsecureHasher::new_deno_versioned()
+      .write_hashable(&compiler_options)
+      .finish();
+
+  let jsx_import_source_config_resolver = Arc::new(
+    deno_resolver::deno_json::JsxImportSourceConfigResolver::from_compiler_options_resolver(
+      compiler_options_resolver,
+    )?,
+  );
+
+  // Set up npm state if available
+  let maybe_npm = {
+    let cjs_tracker = Arc::new(tsc::TypeCheckingCjsTracker::new(
+      factory.cjs_tracker()?.clone(),
+      factory.module_info_cache()?.clone(),
+    ));
+    let node_resolver = factory.node_resolver().await?.clone();
+    let npm_resolver = factory.npm_resolver().await?.clone();
+    let package_json_resolver = factory.pkg_json_resolver()?.clone();
+    Some(tsc::RequestNpmState {
+      cjs_tracker,
+      node_resolver,
+      npm_resolver,
+      package_json_resolver,
+    })
+  };
+
+  let response = tsc::exec(
+    tsc::Request {
+      config: compiler_options,
+      debug: cli_options.log_level() == Some(log::Level::Debug),
+      graph: Arc::new(graph),
+      jsx_import_source_config_resolver,
+      hash_data,
+      maybe_npm,
+      maybe_tsbuildinfo: None,
+      root_names,
+      check_mode: TypeCheckMode::All,
+      initial_cwd: cwd.to_path_buf(),
+    },
+    None,
+    None,
+  )?;
+
+  // Report diagnostics if any
+  if response.diagnostics.has_diagnostic() {
+    log::warn!(
+      "{} Type checking produced diagnostics:\n{}",
+      colors::yellow("Warning"),
+      response.diagnostics
+    );
+  }
+
+  // Write emitted .d.ts files
+  for (file_name, content) in &response.emitted_files {
+    // The file names from TSC are specifier-based, convert to output paths
+    let output_path = resolve_dts_output_path(
+      file_name,
+      transpile_flags.output_dir.as_deref(),
+      cwd,
+    )?;
+
+    if let Some(parent) = output_path.parent() {
+      std::fs::create_dir_all(parent)?;
+    }
+
+    std::fs::write(&output_path, content)?;
+    log::info!("{} {}", colors::green("Emit"), output_path.display());
+  }
+
+  if response.emitted_files.is_empty() {
+    log::warn!(
+      "{} No declaration files were emitted",
+      colors::yellow("Warning")
+    );
+  }
+
+  Ok(())
+}
+
+fn resolve_dts_output_path(
+  tsc_file_name: &str,
+  output_dir: Option<&str>,
+  cwd: &Path,
+) -> Result<PathBuf, AnyError> {
+  // TSC emits file names like "file:///path/to/file.d.ts"
+  let path = if let Ok(specifier) = ModuleSpecifier::parse(tsc_file_name) {
+    specifier.to_file_path().map_err(|_| {
+      anyhow::anyhow!("Cannot convert specifier to path: {tsc_file_name}")
+    })?
+  } else {
+    PathBuf::from(tsc_file_name)
+  };
+
+  if let Some(outdir) = output_dir {
+    let outdir = cwd.join(outdir);
+    let file_name = path
+      .file_name()
+      .ok_or_else(|| anyhow::anyhow!("Invalid .d.ts file name"))?;
+    Ok(outdir.join(file_name))
+  } else {
+    Ok(path)
+  }
 }
 
 fn compute_output_path(

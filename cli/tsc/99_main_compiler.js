@@ -177,6 +177,16 @@ function exec({ config, debug: debugFlag, rootNames, localOnly }) {
   // @ts-ignore: emitBuildInfo is not exposed (https://github.com/microsoft/TypeScript/issues/49871)
   program.emitBuildInfo(host.writeFile);
 
+  // When declaration or emitDeclarationOnly is enabled, emit .d.ts files
+  if (options.declaration || options.emitDeclarationOnly) {
+    program.emit(
+      /* targetSourceFile */ undefined,
+      host.writeFile,
+      /* cancellationToken */ undefined,
+      /* emitOnlyDtsFiles */ true,
+    );
+  }
+
   performanceProgram({ program });
 
   const checker = program.getProgram().getTypeChecker();

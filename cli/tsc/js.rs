@@ -235,6 +235,9 @@ fn op_emit_inner(state: &mut OpState, args: EmitArgs) -> bool {
   let state = state.borrow_mut::<State>();
   match args.file_name.as_ref() {
     "internal:///.tsbuildinfo" => state.maybe_tsbuildinfo = Some(args.data),
+    name if name.ends_with(".d.ts") || name.ends_with(".d.ts.map") => {
+      state.emitted_files.insert(args.file_name, args.data);
+    }
     _ => {
       if cfg!(debug_assertions) {
         panic!("Unhandled emit write: {}", args.file_name);
@@ -380,6 +383,7 @@ pub fn exec_request(
       ambient_modules,
       maybe_tsbuildinfo,
       stats,
+      emitted_files: state.emitted_files,
     })
   } else {
     Err(ExecError::ResponseNotSet)
@@ -470,6 +474,7 @@ struct State {
   remapped_specifiers: HashMap<String, ModuleSpecifier>,
   root_map: HashMap<String, ModuleSpecifier>,
   current_dir: PathBuf,
+  emitted_files: HashMap<String, String>,
 }
 
 impl Default for State {
@@ -484,6 +489,7 @@ impl Default for State {
       remapped_specifiers: Default::default(),
       root_map: Default::default(),
       current_dir: Default::default(),
+      emitted_files: Default::default(),
     }
   }
 }
@@ -510,6 +516,7 @@ impl State {
       remapped_specifiers,
       root_map,
       current_dir,
+      emitted_files: Default::default(),
     }
   }
 

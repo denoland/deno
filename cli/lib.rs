@@ -198,7 +198,7 @@ async fn run_subcommand(
     }),
     DenoSubcommand::Transpile(transpile_flags) => {
       spawn_subcommand(async move {
-        tools::transpile::transpile(Arc::new(flags), transpile_flags)
+        tools::transpile::transpile(Arc::new(flags), transpile_flags).await
       })
     }
     DenoSubcommand::Init(init_flags) => spawn_subcommand(async {
