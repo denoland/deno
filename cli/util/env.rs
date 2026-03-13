@@ -15,6 +15,45 @@ use deno_terminal::colors;
 
 use crate::sys::CliSys;
 
+/// Given a file path, if the file doesn't exist, walk up parent directories
+/// looking for a file with the same name. This replicates the behavior of
+/// dotenvy's `find()` function that was lost when switching to deno_dotenv.
+pub fn find_env_file(file_path: &Path) -> PathBuf {
+  if file_path.exists() {
+    return file_path.to_path_buf();
+  }
+
+  let Some(filename) = file_path.file_name() else {
+    return file_path.to_path_buf();
+  };
+
+  // Determine the starting directory for parent traversal.
+  let start_dir = if file_path.is_absolute() {
+    file_path.parent().map(Path::to_path_buf)
+  } else {
+    // For relative paths, resolve against CWD
+    #[allow(clippy::disallowed_methods)]
+    env::current_dir().ok()
+  };
+
+  let Some(start) = start_dir else {
+    return file_path.to_path_buf();
+  };
+
+  // Walk parent directories looking for the file
+  let mut dir = start.parent();
+  while let Some(parent) = dir {
+    let candidate = parent.join(filename);
+    if candidate.exists() {
+      return candidate;
+    }
+    dir = parent.parent();
+  }
+
+  // Return the original path so the caller can handle the "not found" case
+  file_path.to_path_buf()
+}
+
 pub fn resolve_cwd(
   initial_cwd: Option<&Path>,
 ) -> Result<Cow<'_, Path>, std::io::Error> {
@@ -77,6 +116,7 @@ impl WatchEnvTracker {
     log_level: Option<log::Level>,
     inner: &mut WatchEnvTrackerInner,
   ) {
+    let file_path = find_env_file(&file_path);
     // Check if file exists
     if !file_path.exists() {
       // Only show warning if logging is enabled
@@ -249,9 +289,10 @@ pub fn load_env_variables_from_env_files(
   let mut loaded_keys = HashSet::new();
 
   for env_file_name in env_file_names.iter().rev() {
+    let resolved = find_env_file(env_file_name);
     let iter = match deno_dotenv::from_path_sanitized_iter_with_substitution(
       &sys_traits::impls::RealSys,
-      env_file_name,
+      &resolved,
     ) {
       Ok(iter) => iter,
       Err(error) => {

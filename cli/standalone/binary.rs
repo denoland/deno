@@ -720,6 +720,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
           env_filename.display()
         );
 
+        let env_filename = crate::util::env::find_env_file(&env_filename);
         let env_vars = get_file_env_vars(&env_filename)?;
         aggregated_env_vars.extend(env_vars);
       }
