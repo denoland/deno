@@ -428,7 +428,6 @@ impl TLSWrapInner {
     } else {
       "client"
     };
-    eprintln!("[tls_wrap] cycle({side}) called");
     self.cycling = true;
     self.clear_in();
     unsafe { self.clear_out() };
@@ -582,10 +581,6 @@ impl TLSWrapInner {
     } else {
       "client"
     };
-    eprintln!(
-      "[tls_wrap] clear_out({side}): data={} eof={got_eof} err={got_error} handshake_done={handshake_done}",
-      data.len()
-    );
 
     if !data.is_empty() {
       self.emit_read(data.len() as isize, Some(&data));
@@ -621,13 +616,6 @@ impl TLSWrapInner {
     }
 
     if self.pending_enc_out.is_empty() {
-      eprintln!(
-        "[tls_wrap] enc_out: empty, established={} write_cb_sched={} in_flight={} in_dowrite={}",
-        self.established,
-        self.write_callback_scheduled,
-        self.enc_writes_in_flight,
-        self.in_dowrite
-      );
       if self.established
         && self.write_callback_scheduled
         && self.enc_writes_in_flight == 0
@@ -638,12 +626,6 @@ impl TLSWrapInner {
       return;
     }
 
-    eprintln!(
-      "[tls_wrap] enc_out: {} bytes to write, established={} has_write_obj={}",
-      self.pending_enc_out.len(),
-      self.established,
-      self.current_write_obj.is_some()
-    );
     if self.established && self.current_write_obj.is_some() {
       self.write_callback_scheduled = true;
     }
@@ -872,10 +854,6 @@ impl TLSWrapInner {
 
   /// Signal write completion to JS.
   fn invoke_queued(&mut self, status: i32) {
-    eprintln!(
-      "[tls_wrap] invoke_queued: status={status} has_write_obj={}",
-      self.current_write_obj.is_some()
-    );
     self.write_callback_scheduled = false;
     let write_obj = self.current_write_obj.take();
     let _bytes = self.current_write_bytes;
@@ -1003,10 +981,6 @@ unsafe extern "C" fn tls_read_cb(
     } else {
       "client"
     };
-    eprintln!(
-      "[tls_wrap] tls_read_cb({side}): nread={nread} enc_in={}",
-      inner.enc_in.len()
-    );
 
     // Drive the TLS state machine
     inner.cycle();
@@ -1026,10 +1000,6 @@ fn free_uv_buf(buf: *const uv_buf_t) {
 unsafe extern "C" fn enc_write_cb(req: *mut uv_write_t, status: i32) {
   unsafe {
     let write_req = Box::from_raw(req as *mut EncryptedWriteReq);
-    eprintln!(
-      "[tls_wrap] enc_write_cb: status={status} has_write_cb={}",
-      write_req.has_write_callback
-    );
     if !write_req.tls_wrap_inner.is_null() {
       let inner = &mut *write_req.tls_wrap_inner;
       inner.enc_writes_in_flight = inner.enc_writes_in_flight.saturating_sub(1);
@@ -1099,11 +1069,6 @@ impl TLSWrap {
     }
 
     inner.bytes_written += byte_length as u64;
-    eprintln!(
-      "[tls_wrap] write_data: {} bytes, has_write_obj={}",
-      byte_length,
-      inner.current_write_obj.is_some()
-    );
 
     if byte_length == 0 {
       unsafe { inner.clear_out() };
@@ -1676,6 +1641,22 @@ impl TLSWrap {
       }
       inner.shutdown = true;
       inner.enc_out();
+
+      // Forward shutdown to underlying stream, matching Node's
+      // TLSWrap::DoShutdown → underlying_stream()->DoShutdown().
+      // uv_shutdown defers until the write queue drains, so the
+      // close_notify (written by enc_out above) is sent first.
+      if !inner.underlying_stream.is_null() {
+        let req = Box::new(uv_compat::new_shutdown());
+        let req_ptr = Box::into_raw(req);
+        unsafe {
+          let ret =
+            uv_compat::uv_shutdown(req_ptr, inner.underlying_stream, None);
+          if ret != 0 {
+            let _ = Box::from_raw(req_ptr);
+          }
+        }
+      }
     }
 
     // Call req.oncomplete(0) to signal completion to the JS side,
