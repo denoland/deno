@@ -900,7 +900,7 @@
           "requires-failure.https.any.html": false,
           "requires-success.any.worker.html": true,
           "atomics-wait-async.https.any.html": false,
-          "atomics-wait-async.https.any.worker.html": false
+          "atomics-wait-async.https.any.worker.html": true
         },
         "addEventListener.html": false,
         "body-onerror-compile-error-data-url.html": false,

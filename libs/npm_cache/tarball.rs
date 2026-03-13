@@ -196,8 +196,7 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
       // IMPORTANT: npm registries may specify tarball URLs at different URLS than the
       // registry, so we MUST get the auth for the tarball URL and not the registry URL.
       let tarball_uri = Url::parse(&dist.tarball).map_err(JsErrorBox::from_err)?;
-      let maybe_registry_config =
-        tarball_cache.npmrc.tarball_config(&tarball_uri);
+      let maybe_registry_config = tarball_cache.npmrc.tarball_config(&tarball_uri);
       let maybe_auth_header = maybe_registry_config.and_then(|c| maybe_auth_header_value_for_npm_registry(c).ok()?);
 
       if let Some(reporter) = &reporter {
@@ -205,7 +204,7 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
 
       }
       let result = tarball_cache.http_client
-        .download_with_retries_on_any_tokio_runtime(tarball_uri, maybe_auth_header, None)
+        .download_with_retries_on_any_tokio_runtime(tarball_uri, maybe_auth_header, None, maybe_registry_config.map(|c| c.as_ref()))
         .await;
       if let Some(reporter) = &reporter {
         reporter.downloaded(&package_nv);

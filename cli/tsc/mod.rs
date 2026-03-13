@@ -73,7 +73,6 @@ pub fn get_types_declaration_file_text() -> String {
     "deno.net",
     "deno.shared_globals",
     "deno.cache",
-    "deno.temporal",
     "deno.window",
     "deno.unstable",
   ];
@@ -207,7 +206,6 @@ pub static LAZILY_LOADED_STATIC_ASSETS: Lazy<
     maybe_compressed_lib!("lib.deno.net.d.ts", "lib.deno_net.d.ts"),
     maybe_compressed_lib!("lib.deno.cache.d.ts", "lib.deno_cache.d.ts"),
     maybe_compressed_lib!("lib.deno.webgpu.d.ts", "lib.deno_webgpu.d.ts"),
-    maybe_compressed_lib!("lib.deno.temporal.d.ts", "lib.temporal.d.ts"),
     maybe_compressed_lib!("lib.deno.window.d.ts"),
     maybe_compressed_lib!("lib.deno.worker.d.ts"),
     maybe_compressed_lib!("lib.deno.shared_globals.d.ts"),
@@ -294,11 +292,20 @@ pub static LAZILY_LOADED_STATIC_ASSETS: Lazy<
     maybe_compressed_lib!("lib.es2024.regexp.d.ts"),
     maybe_compressed_lib!("lib.es2024.sharedmemory.d.ts"),
     maybe_compressed_lib!("lib.es2024.string.d.ts"),
+    maybe_compressed_lib!("lib.es2025.collection.d.ts"),
+    maybe_compressed_lib!("lib.es2025.d.ts"),
+    maybe_compressed_lib!("lib.es2025.float16.d.ts"),
+    maybe_compressed_lib!("lib.es2025.full.d.ts"),
+    maybe_compressed_lib!("lib.es2025.intl.d.ts"),
+    maybe_compressed_lib!("lib.es2025.iterator.d.ts"),
+    maybe_compressed_lib!("lib.es2025.promise.d.ts"),
+    maybe_compressed_lib!("lib.es2025.regexp.d.ts"),
     maybe_compressed_lib!("lib.es5.d.ts"),
     maybe_compressed_lib!("lib.es6.d.ts"),
     maybe_compressed_lib!("lib.esnext.array.d.ts"),
     maybe_compressed_lib!("lib.esnext.collection.d.ts"),
     maybe_compressed_lib!("lib.esnext.d.ts"),
+    maybe_compressed_lib!("lib.esnext.date.d.ts"),
     maybe_compressed_lib!("lib.esnext.decorators.d.ts"),
     maybe_compressed_lib!("lib.esnext.disposable.d.ts"),
     maybe_compressed_lib!("lib.esnext.error.d.ts"),
@@ -308,6 +315,8 @@ pub static LAZILY_LOADED_STATIC_ASSETS: Lazy<
     maybe_compressed_lib!("lib.esnext.iterator.d.ts"),
     maybe_compressed_lib!("lib.esnext.promise.d.ts"),
     maybe_compressed_lib!("lib.esnext.sharedmemory.d.ts"),
+    maybe_compressed_lib!("lib.esnext.temporal.d.ts"),
+    maybe_compressed_lib!("lib.esnext.typedarrays.d.ts"),
     maybe_compressed_lib!("lib.node.d.ts"),
     maybe_compressed_lib!("lib.scripthost.d.ts"),
     maybe_compressed_lib!("lib.webworker.asynciterable.d.ts"),
@@ -1262,6 +1271,9 @@ pub static IGNORED_DIAGNOSTIC_CODES: LazyLock<HashSet<u64>> =
       // TS2307: Cannot find module '{0}' or its corresponding type declarations.
       2307, // Relative import errors to add an extension
       2834, 2835,
+      // TS2882: Cannot find module or type declarations for side-effect import
+      // of 'foo'.
+      2882,
       // TS5009: Cannot find the common subdirectory path for the input files.
       5009,
       // TS5055: Cannot write file
