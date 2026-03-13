@@ -16,6 +16,7 @@ use deno_bundler::config::EnvironmentId;
 use deno_bundler::emit::emit_production_chunk;
 use deno_bundler::graph_builder::build_bundler_graph;
 use deno_bundler::plugin::create_default_plugin_driver;
+use deno_bundler::plugin::create_plugin_driver;
 use deno_bundler::process::transform_modules;
 use deno_bundler::transform_pipeline::transform_graph;
 use deno_bundler::transform_pipeline::TransformOptions;
@@ -25,6 +26,8 @@ use crate::args::Flags;
 use crate::colors;
 use crate::factory::CliFactory;
 use deno_npm_installer::graph::NpmCachingStrategy;
+
+use super::plugin_host;
 
 pub async fn build(
   flags: Arc<Flags>,
@@ -66,6 +69,23 @@ pub async fn build(
     env_count,
     if env_count == 1 { "" } else { "s" },
   );
+
+  // Resolve and load JS plugins if configured.
+  let plugin_driver = if !build_config.plugins.is_empty() {
+    let specifiers = plugin_host::resolve_plugin_specifiers(&build_config.plugins)?;
+    for spec in &specifiers {
+      log::warn!("  {} {}", colors::cyan("plugin"), spec);
+    }
+    let proxy = plugin_host::create_and_load_plugins(specifiers).await?;
+    let proxy = Arc::new(proxy);
+    let bridge = plugin_host::JsPluginBridge::new(
+      proxy,
+      tokio::runtime::Handle::current(),
+    );
+    create_plugin_driver(vec![Box::new(bridge)])
+  } else {
+    create_default_plugin_driver()
+  };
 
   let graph_creator = factory.module_graph_creator().await?.clone();
   let root_url = url_from_directory_path(&root_dir)?;
@@ -117,7 +137,6 @@ pub async fn build(
     // Convert, transform (includes transpilation), discover assets, and analyze.
     let mut bundler_graph =
       build_bundler_graph(&deno_module_graph, env_id, &entries);
-    let plugin_driver = create_default_plugin_driver();
     transform_modules(&mut bundler_graph, &plugin_driver);
     transform_graph(&mut bundler_graph, &transform_options);
     discover_assets(&mut bundler_graph);

@@ -1,6 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 mod dev;
+pub mod plugin_host;
 mod production;
 
 use std::sync::Arc;

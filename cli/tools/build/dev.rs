@@ -34,6 +34,7 @@ use deno_bundler::js::hmr::compute_hmr_boundaries;
 use deno_bundler::js::hmr::HmrBoundaryResult;
 use deno_bundler::js::hmr::HmrGraph;
 use deno_bundler::plugin::create_default_plugin_driver;
+use deno_bundler::plugin::create_plugin_driver;
 use deno_bundler::plugin::PluginDriver;
 use deno_bundler::process::transform_modules;
 
@@ -42,6 +43,8 @@ use crate::args::Flags;
 use crate::colors;
 use crate::factory::CliFactory;
 use deno_npm_installer::graph::NpmCachingStrategy;
+
+use super::plugin_host;
 
 /// HMR message types sent to browser clients.
 #[derive(Debug, Clone)]
@@ -236,9 +239,22 @@ pub async fn dev(
     );
   }
 
-  for plugin in &build_config.plugins {
-    log::warn!("  {} {}", colors::cyan("plugin"), plugin.specifier);
-  }
+  // Resolve and load JS plugins if configured.
+  let plugin_driver = if !build_config.plugins.is_empty() {
+    let specifiers = plugin_host::resolve_plugin_specifiers(&build_config.plugins)?;
+    for spec in &specifiers {
+      log::warn!("  {} {}", colors::cyan("plugin"), spec);
+    }
+    let proxy = plugin_host::create_and_load_plugins(specifiers).await?;
+    let proxy = Arc::new(proxy);
+    let bridge = plugin_host::JsPluginBridge::new(
+      proxy,
+      tokio::runtime::Handle::current(),
+    );
+    create_plugin_driver(vec![Box::new(bridge)])
+  } else {
+    create_default_plugin_driver()
+  };
 
   // Build module graphs per environment.
   let graph_creator = factory.module_graph_creator().await?.clone();
@@ -276,7 +292,6 @@ pub async fn dev(
 
     // Transform (includes TS transpilation via plugin chain),
     // discover non-JS assets, then analyze.
-    let plugin_driver = create_default_plugin_driver();
     transform_modules(&mut bundler_graph, &plugin_driver);
     discover_assets(&mut bundler_graph);
     analyze_graph(&mut bundler_graph);
@@ -313,8 +328,8 @@ pub async fn dev(
     environments,
   }));
 
-  // Plugin driver is immutable after creation — shared separately.
-  let plugin_driver = Arc::new(create_default_plugin_driver());
+  // Plugin driver is immutable after creation — shared for file watcher.
+  let plugin_driver = Arc::new(plugin_driver);
 
   // HMR broadcast channel.
   let (hmr_tx, _) = broadcast::channel::<String>(64);
