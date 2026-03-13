@@ -720,7 +720,7 @@ pub async fn op_net_connect_vsock(
   target_os = "linux",
   target_os = "macos"
 )))]
-#[op2]
+#[op2(fast)]
 pub fn op_net_connect_vsock() -> Result<(), NetError> {
   Err(NetError::VsockUnsupported)
 }
@@ -761,7 +761,7 @@ pub fn op_net_listen_vsock(
   target_os = "linux",
   target_os = "macos"
 )))]
-#[op2]
+#[op2(fast)]
 pub fn op_net_listen_vsock() -> Result<(), NetError> {
   Err(NetError::VsockUnsupported)
 }
@@ -809,7 +809,7 @@ pub async fn op_net_accept_vsock(
   target_os = "linux",
   target_os = "macos"
 )))]
-#[op2]
+#[op2(fast)]
 pub fn op_net_accept_vsock() -> Result<(), NetError> {
   Err(NetError::VsockUnsupported)
 }
