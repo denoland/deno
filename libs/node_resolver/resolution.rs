@@ -572,7 +572,7 @@ impl<
       None => Cow::Owned(path),
     };
 
-    let maybe_file_type = self.sys.get_file_type(&path);
+    let maybe_file_type = self.sys.get_file_type(Cow::Borrowed(&path));
     match maybe_file_type {
       Ok(FileType::Dir) => {
         if resolution_mode == ResolutionMode::Import
@@ -590,7 +590,7 @@ impl<
         } else {
           // prefer the file over the directory
           let path_with_ext = with_known_extension(&path, "js");
-          if self.sys.is_file(&path_with_ext) {
+          if self.sys.is_file(Cow::Borrowed(&path_with_ext)) {
             Ok(UrlOrPath::Path(path_with_ext))
           } else {
             let (resolved_url, resolved_method) = self
@@ -628,7 +628,7 @@ impl<
           && e.kind() == std::io::ErrorKind::NotFound
         {
           let file_with_ext = with_known_extension(&path, "js");
-          if self.sys.is_file(&file_with_ext) {
+          if self.sys.is_file(Cow::Borrowed(&file_with_ext)) {
             return Ok(UrlOrPath::Path(file_with_ext));
           }
         }
@@ -666,9 +666,11 @@ impl<
     }
 
     if should_probe(path, resolved_method) {
-      ["js", "mjs", "cjs"]
-        .into_iter()
-        .find(|ext| self.sys.is_file(&with_known_extension(path, ext)))
+      ["js", "mjs", "cjs"].into_iter().find(|ext| {
+        self
+          .sys
+          .is_file(Cow::Owned(with_known_extension(path, ext)))
+      })
     } else {
       None
     }
@@ -702,7 +704,7 @@ impl<
         .flatten(),
       )
       .map(|p| deno_path_util::normalize_path(Cow::Owned(p)))
-      .find(|p| self.sys.is_file(p))
+      .find(|p| self.sys.is_file(Cow::Borrowed(p.as_ref())))
       .and_then(|suggested_file_path| {
         let pkg_json = self
           .pkg_json_resolver
@@ -920,20 +922,20 @@ impl<
       let mut searched_for_d_cts = false;
       if media_type == MediaType::Mjs {
         let d_mts_path = with_known_extension(path, "d.mts");
-        if sys.exists_(&d_mts_path) {
+        if sys.exists_(Cow::Borrowed(&d_mts_path)) {
           return Some(d_mts_path);
         }
         searched_for_d_mts = true;
       } else if media_type == MediaType::Cjs {
         let d_cts_path = with_known_extension(path, "d.cts");
-        if sys.exists_(&d_cts_path) {
+        if sys.exists_(Cow::Borrowed(&d_cts_path)) {
           return Some(d_cts_path);
         }
         searched_for_d_cts = true;
       }
 
       let dts_path = with_known_extension(path, "d.ts");
-      if sys.exists_(&dts_path) {
+      if sys.exists_(Cow::Borrowed(&dts_path)) {
         return Some(dts_path);
       }
 
@@ -947,12 +949,12 @@ impl<
         _ => None, // already searched above
       };
       if let Some(specific_dts_path) = specific_dts_path
-        && sys.exists_(&specific_dts_path)
+        && sys.exists_(Cow::Borrowed(&specific_dts_path))
       {
         return Some(specific_dts_path);
       }
       let ts_path = with_known_extension(path, "ts");
-      if sys.is_file(&ts_path) {
+      if sys.is_file(Cow::Borrowed(&ts_path)) {
         return Some(ts_path);
       }
       None
@@ -970,7 +972,7 @@ impl<
         known_exists: true,
       })));
     }
-    if self.sys.is_dir(&local_path.path) {
+    if self.sys.is_dir(Cow::Borrowed(&local_path.path)) {
       let resolution_result = self.resolve_package_dir_subpath(
         &local_path.path,
         /* sub path */ ".",
@@ -1968,7 +1970,7 @@ impl<
 
     if let Some(main) = maybe_main.as_deref() {
       let guess = package_json.path.parent().unwrap().join(main).clean();
-      if self.sys.is_file(&guess) {
+      if self.sys.is_file(Cow::Borrowed(&guess)) {
         return Ok(self.maybe_resolve_types(
           LocalUrlOrPath::Path(LocalPath {
             path: guess,
@@ -2006,7 +2008,7 @@ impl<
           .unwrap()
           .join(format!("{main}{ending}"))
           .clean();
-        if self.sys.is_file(&guess) {
+        if self.sys.is_file(Cow::Borrowed(&guess)) {
           // TODO(bartlomieju): emitLegacyIndexDeprecation()
           return Ok(MaybeTypesResolvedUrl(LocalUrlOrPath::Path(LocalPath {
             path: guess,
@@ -2045,7 +2047,7 @@ impl<
     };
     for index_file_name in index_file_names {
       let guess = directory.join(index_file_name).clean();
-      if self.sys.is_file(&guess) {
+      if self.sys.is_file(Cow::Borrowed(&guess)) {
         // TODO(bartlomieju): emitLegacyIndexDeprecation()
         return Ok(MaybeTypesResolvedUrl(LocalUrlOrPath::Path(LocalPath {
           path: guess,
@@ -2633,7 +2635,7 @@ impl<'a, TSys: FsMetadata> TypesVersions<'a, TSys> {
             Cow::Borrowed(value)
           };
           let path = self.dir_path.join(value.as_ref());
-          if self.sys.is_file(&path) {
+          if self.sys.is_file(Cow::Owned(path)) {
             return Some(value);
           }
         }
