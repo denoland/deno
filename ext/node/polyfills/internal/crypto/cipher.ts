@@ -25,11 +25,11 @@ import {
   op_node_export_secret_key,
   op_node_private_decrypt,
   op_node_private_encrypt,
+  op_node_public_decrypt,
   op_node_public_encrypt,
 } from "ext:core/ops";
 
 import { Buffer } from "node:buffer";
-import { notImplemented } from "ext:deno_node/_utils.ts";
 import type { TransformOptions } from "ext:deno_node/_stream.d.ts";
 import { Transform } from "node:stream";
 import {
@@ -690,8 +690,16 @@ export function prepareKey(key) {
   throw new TypeError("Invalid key type");
 }
 
-export function publicDecrypt() {
-  notImplemented("crypto.publicDecrypt");
+export function publicDecrypt(
+  publicKey: ArrayBufferView | string | KeyObject,
+  buffer: ArrayBufferView | string | KeyObject,
+): Buffer {
+  checkUnsupportedKeyType(publicKey);
+  const { data } = prepareKey(publicKey);
+  const padding = publicKey.padding || 1;
+
+  buffer = getArrayBufferOrView(buffer, "buffer");
+  return Buffer.from(op_node_public_decrypt(data, buffer, padding));
 }
 
 export default {
