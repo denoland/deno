@@ -720,8 +720,7 @@ pub async fn op_node_rmdir(
   Ok(())
 }
 
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, ToV8)]
 pub struct CpStatInfo {
   pub dest_exists: bool,
   pub is_directory: bool,
@@ -1001,7 +1000,6 @@ async fn check_paths_impl(
 /// Validates src and dest paths for recursive cp operations.
 /// Returns stat info for the source file
 #[op2(stack_trace)]
-#[serde]
 pub async fn op_node_cp_check_paths_recursive(
   state: Rc<RefCell<OpState>>,
   #[string] src: String,
@@ -1022,7 +1020,6 @@ pub async fn op_node_cp_check_paths_recursive(
 /// parent directory exists
 /// Returns stat info for the source file
 #[op2(stack_trace)]
-#[serde]
 pub async fn op_node_cp_validate_and_prepare(
   state: Rc<RefCell<OpState>>,
   #[string] src: String,

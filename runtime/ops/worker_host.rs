@@ -35,8 +35,7 @@ use crate::worker::FormatJsErrorFn;
 pub const UNSTABLE_FEATURE_NAME: &str = "worker-options";
 
 /// V8 resource limits for worker isolates, matching Node.js `resourceLimits`.
-#[derive(Deserialize, Default, Clone)]
-#[serde(rename_all = "camelCase")]
+#[derive(FromV8, Default, Clone)]
 pub struct ResourceLimits {
   pub max_young_generation_size_mb: Option<usize>,
   pub max_old_generation_size_mb: Option<usize>,
