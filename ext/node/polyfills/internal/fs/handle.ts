@@ -27,8 +27,26 @@ import {
   FileOptionsArgument,
   TextOptionsArgument,
 } from "ext:deno_node/_fs/_fs_common.ts";
-import { writevPromise, WriteVResult } from "ext:deno_node/_fs/_fs_writev.ts";
-import { readvPromise, ReadVResult } from "ext:deno_node/_fs/_fs_readv.ts";
+import { writev } from "node:fs";
+
+export interface WriteVResult {
+  bytesWritten: number;
+  buffers: ReadonlyArray<ArrayBufferView>;
+}
+
+function writevPromise(
+  fd: number,
+  buffers: ArrayBufferView[],
+  position?: number,
+): Promise<WriteVResult> {
+  return new Promise((resolve, reject) => {
+    writev(fd, buffers, position, (err, bytesWritten, buffers) => {
+      if (err) reject(err);
+      else resolve({ bytesWritten, buffers });
+    });
+  });
+}
+import { readvPromise, type ReadVResult } from "node:fs";
 import { fstatPromise } from "ext:deno_node/_fs/_fs_fstat.ts";
 import {
   fchown as fchownCb,

@@ -269,7 +269,20 @@ fn op_create_worker(
       .await
     };
 
-    create_and_run_current_thread(fut)
+    let _ = create_and_run_current_thread(fut);
+
+    // After the worker's tokio runtime and JsRuntime/V8 isolate have been
+    // dropped, ask the system allocator to release freed memory back to the
+    // OS. Without this, glibc in particular holds onto the fragmented heap
+    // pages, causing RSS to remain high after many workers are created and
+    // destroyed (https://github.com/denoland/deno/issues/26058).
+    #[cfg(target_os = "linux")]
+    {
+      // SAFETY: calling libc function with no preconditions.
+      unsafe {
+        libc::malloc_trim(0);
+      }
+    }
   })?;
 
   // Receive WebWorkerHandle from newly created worker

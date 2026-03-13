@@ -54,6 +54,10 @@
           "type": "boolean",
           "description": "If true, the test is considered flaky and may be retried in CI."
         },
+        "ignore": {
+          "type": "boolean",
+          "description": "If true, the test is skipped on all platforms. Must be used together with 'reason'."
+        },
         "windows": {
           "$ref": "#/definitions/platformExpectation"
         },

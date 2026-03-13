@@ -807,6 +807,7 @@ impl JsError {
         if let (Some(file_name), Some(line_number)) =
           (&frame.file_name, frame.line_number)
           && !file_name.trim_start_matches('[').starts_with("ext:")
+          && !file_name.starts_with("node:")
         {
           source_line = source_mapper.get_source_line(file_name, line_number);
           source_line_frame_index = Some(i);
@@ -954,6 +955,7 @@ impl JsError {
           if let (Some(file_name), Some(line_number)) =
             (&frame.file_name, frame.line_number)
             && !file_name.trim_start_matches('[').starts_with("ext:")
+            && !file_name.starts_with("node:")
           {
             source_line = source_mapper.get_source_line(file_name, line_number);
             source_line_frame_index = Some(i);
@@ -1313,7 +1315,7 @@ pub(crate) fn exception_to_err_result<'s, 'i, T>(
   Err(exception_to_err(scope, exception, in_promise, clear_error))
 }
 
-pub(crate) fn exception_to_err<'s, 'i>(
+pub fn exception_to_err<'s, 'i>(
   scope: &mut v8::PinScope<'s, 'i>,
   exception: v8::Local<'s, v8::Value>,
   mut in_promise: bool,
