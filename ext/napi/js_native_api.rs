@@ -2447,7 +2447,15 @@ fn napi_coerce_to_object<'s>(
   check_arg!(env, result);
 
   v8::callback_scope!(unsafe scope, env.context());
-  let Some(coerced) = value.unwrap().to_object(scope) else {
+  let val = value.unwrap();
+  // Check for null/undefined before calling to_object() to avoid
+  // V8 generating a TypeError exception that would get stored in
+  // env.last_exception and later re-thrown as a spurious unhandled
+  // rejection (ECMAScript's ToObject throws for null/undefined).
+  if val.is_null_or_undefined() {
+    return napi_invalid_arg;
+  }
+  let Some(coerced) = val.to_object(scope) else {
     return napi_object_expected;
   };
 
