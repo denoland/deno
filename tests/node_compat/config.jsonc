@@ -393,6 +393,7 @@
     "parallel/test-crypto-keygen-key-object-without-encoding.js": {},
     "parallel/test-crypto-keygen-key-objects.js": {},
     "parallel/test-crypto-keygen-missing-oid.js": {},
+    "parallel/test-crypto-keygen-no-rsassa-pss-params.js": {},
     "parallel/test-crypto-keygen-non-standard-public-exponent.js": {},
     "parallel/test-crypto-keygen-promisify.js": {},
     "parallel/test-crypto-keygen-rfc8017-9-1.js": {},
