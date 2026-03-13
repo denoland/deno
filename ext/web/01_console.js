@@ -3535,6 +3535,13 @@ function inspectArgs(args, inspectOptions = { __proto__: null }) {
             } else {
               formattedArg = `${NumberParseFloat(value)}`;
             }
+          } else if (char == "j") {
+            // Format as JSON.
+            try {
+              formattedArg = JSON.stringify(args[a++]);
+            } catch {
+              formattedArg = "[Circular]";
+            }
           } else if (ArrayPrototypeIncludes(["O", "o"], char)) {
             // Format as an object.
             formattedArg = formatValue(ctx, args[a++], 0);
