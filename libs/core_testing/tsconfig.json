@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "baseUrl": ".",
+    "paths": {
+      "ext:core/mod.js": ["../core/core.d.ts"],
+      "ext:core/ops": ["ops.d.ts"],
+      "checkin:async": ["checkin/runtime/async.ts"],
+      "checkin:console": ["checkin/runtime/console.ts"],
+      "checkin:error": ["checkin/runtime/error.ts"],
+      "checkin:testing": ["checkin/runtime/testing.ts"],
+      "checkin:throw": ["checkin/runtime/throw.ts"],
+      "checkin:timers": ["checkin/runtime/timers.ts"],
+      "checkin:worker": ["checkin/runtime/worker.ts"],
+      "checkin:object": ["checkin/runtime/object.ts"],
+      "checkin:callsite": ["checkin/runtime/callsite.ts"]
+    },
+    "lib": ["ESNext", "DOM", "ES2023.Array"],
+    "module": "ESNext",
+    "moduleDetection": "force",
+    "moduleResolution": "Bundler",
+    "noEmit": true,
+    "allowImportingTsExtensions": true
+  }
+}

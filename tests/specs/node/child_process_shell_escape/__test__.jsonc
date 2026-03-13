@@ -1,0 +1,10 @@
+{
+  "tempDir": true,
+  "tests": {
+    "shell_args_escaped": {
+      "if": "unix",
+      "args": "run -A main.ts",
+      "output": "main.out"
+    }
+  }
+}

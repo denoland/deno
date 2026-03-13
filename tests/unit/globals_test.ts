@@ -233,3 +233,20 @@ Deno.test(async function overwriteEventOnExternalModuleShouldNotCrash() {
   assert(status.success);
   await Deno.remove(tmpDir, { recursive: true });
 });
+
+Deno.test(function navigatorPlatformExists() {
+  switch (Deno.build.os) {
+    case "linux": {
+      assertEquals(navigator.platform, `Linux ${Deno.build.arch}`);
+      break;
+    }
+    case "darwin": {
+      assertEquals(navigator.platform, "MacIntel");
+      break;
+    }
+    case "windows": {
+      assertEquals(navigator.platform, "Win32");
+      break;
+    }
+  }
+});

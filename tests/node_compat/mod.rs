@@ -118,6 +118,18 @@ struct CollectedResult {
 }
 
 fn main() {
+  let ci_hash = test_util::hash::check_ci_hash("node_compat", |hasher| {
+    let tests = test_util::tests_path();
+    hasher
+      .hash_dir(tests.join("node_compat"))
+      .hash_dir(tests.join("util"))
+      .hash_file(test_util::deno_exe_path())
+      .hash_file(test_util::test_server_path());
+  });
+  if matches!(ci_hash, test_util::hash::CiHashStatus::Skip) {
+    return;
+  }
+
   let cli_args = parse_cli_args();
   let config = load_config();
   let mut category = if cli_args.report {
@@ -215,6 +227,9 @@ fn main() {
     summary.panic_on_failures();
   } else if std::env::var("CI").is_ok() {
     generate_report(&results.lock().unwrap());
+  }
+  if let test_util::hash::CiHashStatus::RunThenCommit(pending) = ci_hash {
+    pending.commit();
   }
 }
 
@@ -455,6 +470,9 @@ fn parse_flags(source: &str) -> (Vec<String>, Vec<String>) {
           }
           "--expose-gc" => {
             v8_flags.push("--expose-gc".to_string());
+          }
+          "--no-concurrent-array-buffer-sweeping" => {
+            v8_flags.push("--no-concurrent-array-buffer-sweeping".to_string());
           }
           "--no-warnings" => {
             node_options.push("--no-warnings".to_string());

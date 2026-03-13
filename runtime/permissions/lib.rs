@@ -2585,7 +2585,7 @@ pub enum RunDescriptorArg {
 }
 
 pub enum AllowRunDescriptorParseResult {
-  /// An error occured getting the descriptor that should
+  /// An error occurred getting the descriptor that should
   /// be surfaced as a warning when launching deno, but should
   /// be ignored when creating a worker.
   Unresolved(Box<which::Error>),
@@ -4025,7 +4025,7 @@ impl PermissionsContainer {
       })
     } else {
       let path = self.descriptor_parser.parse_special_file_descriptor(path)?;
-      self.check_special_file(path, api_name)
+      self.check_special_file(path, access_kind, api_name)
     }
   }
 
@@ -4177,21 +4177,32 @@ impl PermissionsContainer {
   pub fn check_special_file<'a>(
     &self,
     path: SpecialFilePathQueryDescriptor<'a>,
+    access_kind: OpenAccessKind,
     _api_name: Option<&str>,
   ) -> Result<CheckedPath<'a>, PermissionCheckError> {
     let requested = path.requested;
     let canonicalized = path.canonicalized;
     let path = path.path;
 
-    // Safe files with no major additional side-effects. While there's a small risk of someone
-    // draining system entropy by just reading one of these files constantly, that's not really
-    // something we worry about as they already have --allow-read to /dev.
+    // Safe files with no major additional side-effects.
     if cfg!(unix)
       && (path == OsStr::new("/dev/random")
         || path == OsStr::new("/dev/urandom")
         || path == OsStr::new("/dev/zero")
         || path == OsStr::new("/dev/null"))
     {
+      return Ok(CheckedPath {
+        path: PathWithRequested {
+          path,
+          requested: requested.map(Cow::Owned),
+        },
+        canonicalized,
+      });
+    }
+
+    // We allow /dev/tty access specifically for checking isatty() or reading input,
+    // but we BLOCK write access to prevent permission prompt spoofing attacks.
+    if cfg!(unix) && path == OsStr::new("/dev/tty") && !access_kind.is_write() {
       return Ok(CheckedPath {
         path: PathWithRequested {
           path,
@@ -4257,6 +4268,9 @@ impl PermissionsContainer {
       {
         if path.ends_with("/environ") {
           self.check_env_all()?;
+        } else if path.starts_with("/proc/pressure/") {
+          // Allow /proc/pressure/* files with just --allow-read since they are
+          // read-only system monitoring files that only expose performance metrics
         } else {
           self.check_has_all_permissions(&path)?;
         }

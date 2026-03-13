@@ -275,7 +275,8 @@ fn format_js_error_inner(
       && let Some(fn_name) = &frame.function_name
       && (fn_name.starts_with("__node_internal_")
         || fn_name == "eventLoopTick"
-        || fn_name == "denoErrorToNodeError")
+        || fn_name == "denoErrorToNodeError"
+        || fn_name == "__drainNextTickAndMacrotasks")
     {
       continue;
     }
@@ -423,13 +424,6 @@ fn get_suggestions_for_terminal_errors(e: &JsError) -> Vec<FixSuggestion<'_>> {
         FixSuggestion::info("new WebSocketStream() is an unstable API."),
         FixSuggestion::hint(
           "Run again with `--unstable-net` flag to enable this API.",
-        ),
-      ];
-    } else if msg.contains("Temporal is not defined") {
-      return vec![
-        FixSuggestion::info("Temporal is an unstable API."),
-        FixSuggestion::hint(
-          "Run again with `--unstable-temporal` flag to enable this API.",
         ),
       ];
     } else if msg.contains("window is not defined") {

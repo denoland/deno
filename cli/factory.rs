@@ -58,7 +58,6 @@ use node_resolver::NodeConditionOptions;
 use node_resolver::NodeResolverOptions;
 use node_resolver::cache::NodeResolutionThreadLocalCache;
 use once_cell::sync::OnceCell;
-use sys_traits::EnvCurrentDir;
 
 use crate::args::BundleFlags;
 use crate::args::CliLockfile;
@@ -67,6 +66,7 @@ use crate::args::ConfigFlag;
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
 use crate::args::InstallFlags;
+use crate::args::InstallFlagsLocal;
 use crate::cache::Caches;
 use crate::cache::CodeCache;
 use crate::cache::DenoDir;
@@ -95,6 +95,7 @@ use crate::npm::CliNpmInstaller;
 use crate::npm::CliNpmInstallerFactory;
 use crate::npm::CliNpmResolver;
 use crate::npm::DenoTaskLifeCycleScriptsExecutor;
+use crate::npm::NpmPackumentFormat;
 use crate::resolver::CliCjsTracker;
 use crate::resolver::CliNpmReqResolver;
 use crate::resolver::CliResolver;
@@ -579,11 +580,21 @@ impl CliFactory {
     self.services.npm_installer_factory.get_or_try_init(|| {
       let cli_options = self.cli_options()?;
       let resolver_factory = self.resolver_factory()?;
+      let needs_full_packument = resolver_factory
+        .minimum_dependency_age_config()
+        .ok()
+        .and_then(|c| c.age.as_ref().and_then(|d| d.into_option()))
+        .is_some();
       Ok(CliNpmInstallerFactory::new(
         resolver_factory.clone(),
         Arc::new(CliNpmCacheHttpClient::new(
           self.http_client_provider().clone(),
           self.text_only_progress_bar().clone(),
+          if needs_full_packument {
+            NpmPackumentFormat::Full
+          } else {
+            NpmPackumentFormat::Abbreviated
+          },
         )),
         match resolver_factory.npm_resolver()?.as_managed() {
           Some(managed_npm_resolver) => {
@@ -600,6 +611,54 @@ impl CliFactory {
           .cloned()
           .map(|r| r as Arc<dyn deno_npm_installer::InstallReporter>),
         NpmInstallerFactoryOptions {
+          clean_on_install: match cli_options.sub_command() {
+            DenoSubcommand::Add { .. }
+            | DenoSubcommand::ApproveScripts { .. }
+            | DenoSubcommand::Remove { .. }
+            | DenoSubcommand::Cache { .. }
+            | DenoSubcommand::Uninstall { .. } => true,
+            DenoSubcommand::Install(flags) => match flags {
+              InstallFlags::Local(flags) => match flags {
+                InstallFlagsLocal::Add { .. }
+                | InstallFlagsLocal::TopLevel { .. } => true,
+                // someone might be terribly storing dependencies in a
+                // module and needs to populate their node_modules directory
+                // with the dependencies in that file
+                InstallFlagsLocal::Entrypoints { .. } => false,
+              },
+              InstallFlags::Global(_) => false,
+            },
+            DenoSubcommand::Audit { .. }
+            | DenoSubcommand::Bench { .. }
+            | DenoSubcommand::Bundle { .. }
+            | DenoSubcommand::Check { .. }
+            | DenoSubcommand::Clean { .. }
+            | DenoSubcommand::Compile { .. }
+            | DenoSubcommand::Completions { .. }
+            | DenoSubcommand::Coverage { .. }
+            | DenoSubcommand::Deploy { .. }
+            | DenoSubcommand::Doc { .. }
+            | DenoSubcommand::Eval { .. }
+            | DenoSubcommand::Fmt { .. }
+            | DenoSubcommand::Init { .. }
+            | DenoSubcommand::Info { .. }
+            | DenoSubcommand::JSONReference { .. }
+            | DenoSubcommand::Jupyter { .. }
+            | DenoSubcommand::Lsp
+            | DenoSubcommand::Lint { .. }
+            | DenoSubcommand::Repl { .. }
+            | DenoSubcommand::Run { .. }
+            | DenoSubcommand::Serve { .. }
+            | DenoSubcommand::Task { .. }
+            | DenoSubcommand::Test { .. }
+            | DenoSubcommand::Outdated { .. }
+            | DenoSubcommand::Types
+            | DenoSubcommand::Upgrade { .. }
+            | DenoSubcommand::Vendor
+            | DenoSubcommand::Publish { .. }
+            | DenoSubcommand::Help { .. }
+            | DenoSubcommand::X { .. } => false,
+          },
           cache_setting: NpmCacheSetting::from_cache_setting(
             &cli_options.cache_setting(),
           ),
@@ -651,14 +710,8 @@ impl CliFactory {
       let initial_cwd = match self.overrides.initial_cwd.clone() {
         Some(v) => v,
         None => {
-          if let Some(initial_cwd) = self.flags.initial_cwd.clone() {
-            initial_cwd
-          } else {
-            self
-              .sys()
-              .env_current_dir()
-              .with_context(|| "Failed getting cwd.")?
-          }
+          crate::util::env::resolve_cwd(self.flags.initial_cwd.as_deref())?
+            .into_owned()
         }
       };
       let options = new_workspace_factory_options(&initial_cwd, &self.flags);
@@ -1101,7 +1154,6 @@ impl CliFactory {
       self.npm_installer_if_managed().await?.cloned(),
       npm_resolver.clone(),
       self.text_only_progress_bar().clone(),
-      self.sys(),
       self.create_cli_main_worker_options()?,
       self.root_permissions_container()?.clone(),
     ))
@@ -1179,7 +1231,7 @@ impl CliFactory {
       create_hmr_runner,
       maybe_coverage_dir,
       default_npm_caching_strategy: cli_options.default_npm_caching_strategy(),
-      maybe_initial_cwd: Some(Arc::new(initial_cwd)),
+      initial_cwd: Arc::new(initial_cwd),
     })
   }
 
@@ -1194,6 +1246,10 @@ impl CliFactory {
         ResolverFactoryOptions {
           compiler_options_overrides: CompilerOptionsOverrides {
             no_transpile: false,
+            force_check_js: matches!(
+              &self.flags.subcommand,
+              DenoSubcommand::Check(check_flags) if check_flags.check_js
+            ),
             source_map_base: None,
             preserve_jsx: false,
           },

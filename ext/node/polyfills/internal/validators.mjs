@@ -282,10 +282,7 @@ const validateAbortSignal = hideStackFrames(
   },
 );
 
-/**
- * @param {unknown} value
- * @param {string} name
- */
+/** @type {(value: unknown, name: string) => asserts value is Function} */
 const validateFunction = hideStackFrames(
   (value, name) => {
     if (typeof value !== "function") {

@@ -37,8 +37,6 @@ mod rt;
 mod tarball;
 mod tarball_extract;
 
-pub use fs_util::HardLinkDirRecursiveError;
-pub use fs_util::HardLinkFileError;
 pub use fs_util::hard_link_dir_recursive;
 pub use fs_util::hard_link_file;
 pub use registry_info::RegistryInfoProvider;
@@ -68,6 +66,14 @@ impl std::fmt::Display for DownloadError {
   fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
     self.error.fmt(f)
   }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NpmPackumentFormat {
+  /// Request the abbreviated install manifest (smaller, but omits `time` and `scripts`).
+  Abbreviated,
+  /// Request the full packument (needed when `minimumDependencyAge` is configured).
+  Full,
 }
 
 pub enum NpmCacheHttpClientResponse {

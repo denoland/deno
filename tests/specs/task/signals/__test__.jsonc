@@ -1,4 +1,5 @@
 {
+  "timeout": 60,
   // signals don't really exist on windows
   "if": "unix",
   // this runs a deno task

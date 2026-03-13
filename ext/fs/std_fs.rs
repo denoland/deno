@@ -43,12 +43,23 @@ impl FileSystem for RealFs {
     std::env::set_current_dir(path).map_err(Into::into)
   }
 
-  #[cfg(not(unix))]
-  fn umask(&self, _mask: Option<u32>) -> FsResult<u32> {
-    // TODO implement umask for Windows
-    // see https://github.com/nodejs/node/blob/master/src/node_process_methods.cc
-    // and https://docs.microsoft.com/fr-fr/cpp/c-runtime-library/reference/umask?view=vs-2019
-    Err(FsError::NotSupported)
+  #[cfg(windows)]
+  fn umask(&self, mask: Option<u32>) -> FsResult<u32> {
+    unsafe extern "C" {
+      fn _umask(mask: std::ffi::c_int) -> std::ffi::c_int;
+    }
+    // SAFETY: `_umask` is a Windows CRT function that sets the file mode
+    // creation mask and returns the previous value.
+    unsafe {
+      let old = if let Some(mask) = mask {
+        _umask(mask as std::ffi::c_int)
+      } else {
+        let prev = _umask(0);
+        _umask(prev);
+        prev
+      };
+      Ok(old as u32)
+    }
   }
 
   #[cfg(unix)]
@@ -299,6 +310,15 @@ impl FileSystem for RealFs {
   }
   async fn read_link_async(&self, path: CheckedPathBuf) -> FsResult<PathBuf> {
     spawn_blocking(move || fs::read_link(path))
+      .await?
+      .map_err(Into::into)
+  }
+
+  fn rmdir_sync(&self, path: &CheckedPath) -> FsResult<()> {
+    fs::remove_dir(path).map_err(Into::into)
+  }
+  async fn rmdir_async(&self, path: CheckedPathBuf) -> FsResult<()> {
+    spawn_blocking(move || fs::remove_dir(path))
       .await?
       .map_err(Into::into)
   }
@@ -1029,13 +1049,49 @@ fn open_options(options: OpenOptions) -> fs::OpenOptions {
   open_options
 }
 
-#[inline(always)]
 pub fn open_with_checked_path(
-  options: OpenOptions,
+  opts: OpenOptions,
   path: &CheckedPath,
 ) -> FsResult<std::fs::File> {
-  let opts = open_options_for_checked_path(options, path);
-  Ok(opts.open(path)?)
+  // Rust's std::fs::OpenOptions requires write or append when create is set.
+  // However, POSIX allows O_RDONLY | O_CREAT (create the file if it doesn't
+  // exist, then open for reading). Handle this by creating the file first
+  // if needed, then opening for read only.
+  if opts.create && !opts.write && !opts.append {
+    if !path.exists() {
+      let create_opts = open_options_for_checked_path(
+        OpenOptions {
+          read: false,
+          write: true,
+          create: true,
+          truncate: false,
+          append: false,
+          create_new: opts.create_new,
+          custom_flags: None,
+          mode: opts.mode,
+        },
+        path,
+      );
+      // Create and immediately close the file
+      drop(create_opts.open(path)?);
+    }
+    let read_opts = open_options_for_checked_path(
+      OpenOptions {
+        read: true,
+        write: false,
+        create: false,
+        truncate: false,
+        append: false,
+        create_new: false,
+        custom_flags: opts.custom_flags,
+        mode: None,
+      },
+      path,
+    );
+    return Ok(read_opts.open(path)?);
+  }
+  let std_opts = open_options_for_checked_path(opts, path);
+  Ok(std_opts.open(path)?)
 }
 
 #[inline(always)]

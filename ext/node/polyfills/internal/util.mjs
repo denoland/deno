@@ -24,6 +24,10 @@ const {
   ObjectSetPrototypeOf,
   Promise,
   ReflectApply,
+  ReflectConstruct,
+  SafeSet,
+  SetPrototypeAdd,
+  SetPrototypeHas,
   SafeWeakRef,
   StringPrototypeReplace,
   SymbolFor,
@@ -158,7 +162,19 @@ export function convertToValidSignal(signal) {
   throw new ERR_UNKNOWN_SIGNAL(signal);
 }
 
-export function deprecateInstantiation() {}
+const codesWarned = new SafeSet();
+
+export function deprecateInstantiation(Constructor, deprecationCode, ...args) {
+  if (!SetPrototypeHas(codesWarned, deprecationCode)) {
+    SetPrototypeAdd(codesWarned, deprecationCode);
+    globalThis.process.emitWarning(
+      `Instantiating ${Constructor.name} without the 'new' keyword has been deprecated.`,
+      "DeprecationWarning",
+      deprecationCode,
+    );
+  }
+  return ReflectConstruct(Constructor, args);
+}
 
 export class WeakReference {
   #weak = null;

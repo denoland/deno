@@ -1280,13 +1280,19 @@ async fn check_if_git_repo_dirty(cwd: &Path) -> Option<String> {
   }
 }
 
-static SUPPORTED_LICENSE_FILE_NAMES: [&str; 6] = [
+static SUPPORTED_LICENSE_FILE_NAMES: [&str; 12] = [
   "LICENSE",
   "LICENSE.md",
   "LICENSE.txt",
   "LICENCE",
   "LICENCE.md",
   "LICENCE.txt",
+  "COPYING",
+  "COPYING.md",
+  "COPYING.txt",
+  "COPYING.LESSER",
+  "COPYING.LESSER.md",
+  "COPYING.LESSER.txt",
 ];
 
 fn resolve_license_file(

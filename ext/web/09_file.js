@@ -684,7 +684,7 @@ function blobFromObjectUrl(url) {
     totalSize += size;
   }
 
-  const blob = webidl.createBranded(Blob);
+  const blob = new Blob();
   blob[_type] = blobData.mediaType;
   blob[_size] = totalSize;
   blob[_parts] = parts;

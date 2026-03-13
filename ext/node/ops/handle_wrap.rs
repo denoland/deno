@@ -4,6 +4,8 @@ use std::cell::Cell;
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use deno_core::CppgcBase;
+use deno_core::CppgcInherits;
 use deno_core::GarbageCollected;
 use deno_core::OpState;
 use deno_core::ResourceId;
@@ -38,6 +40,8 @@ pub fn op_node_new_async_id(state: &mut OpState) -> f64 {
   next_async_id(state) as f64
 }
 
+#[derive(CppgcBase)]
+#[repr(C)]
 pub struct AsyncWrap {
   provider: i32,
   async_id: i64,
@@ -86,7 +90,11 @@ enum State {
   Closed,
 }
 
+#[derive(CppgcBase, CppgcInherits)]
+#[cppgc_inherits_from(AsyncWrap)]
+#[repr(C)]
 pub struct HandleWrap {
+  base: AsyncWrap,
   handle: Option<ResourceId>,
   state: Rc<Cell<State>>,
 }
@@ -101,8 +109,9 @@ unsafe impl GarbageCollected for HandleWrap {
 }
 
 impl HandleWrap {
-  pub(crate) fn create(handle: Option<ResourceId>) -> Self {
+  pub(crate) fn create(base: AsyncWrap, handle: Option<ResourceId>) -> Self {
     Self {
+      base,
       handle,
       state: Rc::new(Cell::new(State::Initialized)),
     }
@@ -124,11 +133,8 @@ impl HandleWrap {
     state: &mut OpState,
     #[smi] provider: i32,
     #[smi] handle: Option<ResourceId>,
-  ) -> (AsyncWrap, HandleWrap) {
-    (
-      AsyncWrap::create(state, provider),
-      HandleWrap::create(handle),
-    )
+  ) -> HandleWrap {
+    HandleWrap::create(AsyncWrap::create(state, provider), handle)
   }
 
   // Ported from Node.js

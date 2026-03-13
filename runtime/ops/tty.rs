@@ -453,11 +453,6 @@ deno_error::js_error_wrapper!(ReadlineError, JsReadlineError, |err| {
     ReadlineError::Interrupted => GENERIC_ERROR.into(),
     #[cfg(unix)]
     ReadlineError::Errno(e) => JsNixError(*e).get_class(),
-    ReadlineError::WindowResized => GENERIC_ERROR.into(),
-    #[cfg(windows)]
-    ReadlineError::Decode(_) => GENERIC_ERROR.into(),
-    #[cfg(windows)]
-    ReadlineError::SystemError(_) => GENERIC_ERROR.into(),
     _ => GENERIC_ERROR.into(),
   }
 });
@@ -471,7 +466,7 @@ pub fn op_read_line_prompt(
   let mut editor = Editor::<(), rustyline::history::DefaultHistory>::new()
     .expect("Failed to create editor.");
 
-  editor.set_keyseq_timeout(1);
+  editor.set_keyseq_timeout(Some(1));
   editor
     .bind_sequence(KeyEvent(KeyCode::Esc, Modifiers::empty()), Cmd::Interrupt);
 

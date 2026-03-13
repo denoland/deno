@@ -1,0 +1,121 @@
+#[allow(non_camel_case_types)]
+pub const fn op_async_stack_trace() -> ::deno_core::_ops::OpDecl {
+    #[allow(non_camel_case_types)]
+    pub struct op_async_stack_trace {
+        _unconstructable: ::std::marker::PhantomData<()>,
+    }
+    impl ::deno_core::_ops::Op for op_async_stack_trace {
+        const NAME: &'static str = stringify!(op_async_stack_trace);
+        const DECL: ::deno_core::_ops::OpDecl = ::deno_core::_ops::OpDecl::new_internal_op2(
+            ::deno_core::__op_name_fast!(op_async_stack_trace),
+            true,
+            false,
+            false,
+            1usize as u8,
+            false,
+            Self::v8_fn_ptr as _,
+            Self::v8_fn_ptr_metrics as _,
+            ::deno_core::AccessorType::None,
+            None,
+            None,
+            ::deno_core::OpMetadata {
+                ..::deno_core::OpMetadata::default()
+            },
+        );
+    }
+    impl op_async_stack_trace {
+        pub const fn name() -> &'static str {
+            <Self as deno_core::_ops::Op>::NAME
+        }
+        fn slow_function_impl<'s>(
+            info: &'s deno_core::v8::FunctionCallbackInfo,
+        ) -> usize {
+            #[cfg(debug_assertions)]
+            let _reentrancy_check_guard = deno_core::_ops::reentrancy_check(
+                &<Self as deno_core::_ops::Op>::DECL,
+            );
+            let scope = ::std::pin::pin!(
+                unsafe { deno_core::v8::CallbackScope::new(info) }
+            );
+            let mut scope = scope.init();
+            let mut rv = deno_core::v8::ReturnValue::from_function_callback_info(info);
+            let args = deno_core::v8::FunctionCallbackArguments::from_function_callback_info(
+                info,
+            );
+            let opctx: &'s _ = unsafe {
+                &*(deno_core::v8::Local::<
+                    deno_core::v8::External,
+                >::cast_unchecked(args.data())
+                    .value() as *const deno_core::_ops::OpCtx)
+            };
+            let opstate = &opctx.state;
+            if opctx.enable_stack_trace {
+                let stack_trace_msg = deno_core::v8::String::empty(&mut scope);
+                let stack_trace_error = deno_core::v8::Exception::error(
+                    &mut scope,
+                    stack_trace_msg.into(),
+                );
+                let js_error = deno_core::error::JsError::from_v8_exception(
+                    &mut scope,
+                    stack_trace_error,
+                );
+                let mut op_state = ::std::cell::RefCell::borrow_mut(&opstate);
+                op_state.op_stack_trace_callback.as_ref().unwrap()(js_error.frames)
+            }
+            let result = { Self::call() };
+            let promise_id = deno_core::_ops::to_i32_option(&args.get(0))
+                .unwrap_or_default();
+            if let Some(result) = deno_core::_ops::map_async_op_infallible(
+                opctx,
+                false,
+                false,
+                promise_id,
+                result,
+                |scope, result| { Ok(deno_core::_ops::RustToV8::to_v8(result, scope)) },
+            ) {
+                deno_core::_ops::RustToV8RetVal::to_v8_rv(result, &mut rv);
+                return 0;
+            }
+            return 2;
+        }
+        extern "C" fn v8_fn_ptr<'s>(info: *const deno_core::v8::FunctionCallbackInfo) {
+            let info: &'s _ = unsafe { &*info };
+            Self::slow_function_impl(info);
+        }
+        extern "C" fn v8_fn_ptr_metrics<'s>(
+            info: *const deno_core::v8::FunctionCallbackInfo,
+        ) {
+            let info: &'s _ = unsafe { &*info };
+            let args = deno_core::v8::FunctionCallbackArguments::from_function_callback_info(
+                info,
+            );
+            let opctx: &'s _ = unsafe {
+                &*(deno_core::v8::Local::<
+                    deno_core::v8::External,
+                >::cast_unchecked(args.data())
+                    .value() as *const deno_core::_ops::OpCtx)
+            };
+            deno_core::_ops::dispatch_metrics_async(
+                opctx,
+                deno_core::_ops::OpMetricsEvent::Dispatched,
+            );
+            let res = Self::slow_function_impl(info);
+            if res == 0 {
+                deno_core::_ops::dispatch_metrics_async(
+                    opctx,
+                    deno_core::_ops::OpMetricsEvent::Completed,
+                );
+            } else if res == 1 {
+                deno_core::_ops::dispatch_metrics_async(
+                    opctx,
+                    deno_core::_ops::OpMetricsEvent::Error,
+                );
+            }
+        }
+    }
+    impl op_async_stack_trace {
+        #[allow(clippy::too_many_arguments)]
+        pub async fn call() {}
+    }
+    <op_async_stack_trace as ::deno_core::_ops::Op>::DECL
+}
