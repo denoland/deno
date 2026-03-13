@@ -1,0 +1,2 @@
+const element = /*#__PURE__*/ React.createElement("div", null, "Hello");
+export default element;

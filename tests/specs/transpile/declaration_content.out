@@ -1,0 +1,8 @@
+[WILDCARD]
+export interface User {
+    name: string;
+    age: number;
+}
+export declare function greet(user: User): string;
+export declare const DEFAULT_USER: User;
+

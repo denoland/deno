@@ -1,0 +1,74 @@
+{
+  "tempDir": true,
+  "tests": {
+    "basic_stdout": {
+      "args": "transpile main.ts",
+      "output": "basic_stdout.out"
+    },
+    "output_flag": {
+      "steps": [
+        {
+          "args": "transpile main.ts -o out.js",
+          "output": "Emit [WILDCARD]out.js\n"
+        },
+        {
+          "args": "run out.js",
+          "output": "Hello, Alice! You are 30 years old.\n"
+        }
+      ]
+    },
+    "outdir": {
+      "steps": [
+        {
+          "args": "transpile main.ts helpers.ts --outdir dist",
+          "output": "outdir_emit.out"
+        },
+        {
+          "args": "run dist/main.js",
+          "output": "Hello, Alice! You are 30 years old.\n"
+        }
+      ]
+    },
+    "source_map_inline": {
+      "args": "transpile main.ts --source-map inline",
+      "output": "source_map_inline.out"
+    },
+    "source_map_separate": {
+      "steps": [
+        {
+          "args": "transpile main.ts -o out.js --source-map separate",
+          "output": "source_map_separate_emit.out"
+        },
+        {
+          "args": "run --allow-read check_map.ts",
+          "output": "3\n"
+        }
+      ]
+    },
+    "declaration": {
+      "steps": [
+        {
+          "args": "transpile main.ts -o out.js --declaration",
+          "output": "declaration_emit.out"
+        },
+        {
+          "args": "run --allow-read check_dts.ts",
+          "output": "declaration_content.out"
+        }
+      ]
+    },
+    "error_output_multiple_files": {
+      "args": "transpile main.ts helpers.ts -o out.js",
+      "output": "error: Cannot use --output with multiple input files. Use --outdir instead.\n",
+      "exitCode": 1
+    },
+    "skip_js_file": {
+      "args": "transpile plain.js",
+      "output": "Warning Skipping [WILDCARD]plain.js (not a TypeScript/JSX/TSX file)\n"
+    },
+    "tsx_file": {
+      "args": "transpile component.tsx",
+      "output": "tsx.out"
+    }
+  }
+}
