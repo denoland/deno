@@ -161,22 +161,27 @@ pub enum Type {
 }
 
 pub fn type_of<'a, 'i>(
-  scope: &mut v8::PinScope<'a, 'i>,
+  _scope: &mut v8::PinScope<'a, 'i>,
   value: Local<'a, Value>,
 ) -> Type {
   if value.is_null() {
     return Type::Null;
   }
 
-  #[allow(clippy::wildcard_in_or_patterns)]
-  match value.type_of(scope).to_rust_string_lossy(scope).as_str() {
-    "undefined" => Type::Undefined,
-    "boolean" => Type::Boolean,
-    "number" => Type::Number,
-    "string" => Type::String,
-    "symbol" => Type::Symbol,
-    "bigint" => Type::BigInt,
-    "object" | "function" | _ => Type::Object,
+  if value.is_undefined() {
+    Type::Undefined
+  } else if value.is_boolean() {
+    Type::Boolean
+  } else if value.is_number() {
+    Type::Number
+  } else if value.is_string() {
+    Type::String
+  } else if value.is_symbol() {
+    Type::Symbol
+  } else if value.is_big_int() {
+    Type::BigInt
+  } else {
+    Type::Object
   }
 }
 
