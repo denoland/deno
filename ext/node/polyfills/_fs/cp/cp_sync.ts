@@ -5,7 +5,7 @@ import { dirname, isAbsolute, join, parse, resolve } from "node:path";
 import { copyFileSync } from "ext:deno_node/_fs/_fs_copy.ts";
 import { existsSync } from "ext:deno_node/_fs/_fs_exists.ts";
 import { mkdirSync, opendirSync } from "node:fs";
-import { readlinkSync } from "ext:deno_node/_fs/_fs_readlink.ts";
+import { readlinkSync } from "node:fs";
 import { symlinkSync, utimesSync } from "node:fs";
 import {
   ERR_FS_CP_DIR_TO_NON_DIR,
