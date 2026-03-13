@@ -22,6 +22,7 @@ use deno_ast::swc::ecma_visit::VisitWith;
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
 use deno_ast::ParseParams;
+use deno_ast::ParsedSource;
 use rustc_hash::FxHashSet;
 
 use super::scope::DeclId;
@@ -29,30 +30,21 @@ use super::scope::ScopeAnalysis;
 
 /// Tree-shake a module's source code, removing unused top-level statements.
 ///
+/// `source`: The module's source text (must match `parsed`).
+/// `parsed`: The pre-parsed AST (avoids redundant re-parsing).
 /// `live_export_decls`: The set of DeclIds whose exports are actually used
 /// by importers. If `None`, all exports are considered live (no shaking).
-///
 /// `scope_analysis`: The module's scope analysis, used to map declared names
 /// to DeclIds for liveness matching.
 ///
 /// Returns the shaken source code, or `None` if no changes were made.
 pub fn tree_shake_module(
   source: &str,
-  specifier: &ModuleSpecifier,
+  parsed: &ParsedSource,
   live_export_decls: Option<&FxHashSet<DeclId>>,
   scope_analysis: &ScopeAnalysis,
 ) -> Option<String> {
   let live_decls = live_export_decls?;
-
-  let parsed = deno_ast::parse_module(ParseParams {
-    specifier: specifier.clone(),
-    text: source.into(),
-    media_type: MediaType::JavaScript,
-    capture_tokens: false,
-    scope_analysis: false,
-    maybe_syntax: None,
-  })
-  .ok()?;
 
   let program = parsed.program();
   let module = match program.as_ref() {
@@ -714,7 +706,6 @@ mod tests {
   use super::*;
 
   use super::super::module_info_swc::extract_module_info;
-  use super::super::scope::ScopeId;
 
   fn spec(s: &str) -> ModuleSpecifier {
     ModuleSpecifier::parse(&format!("file:///{}", s)).unwrap()
@@ -769,7 +760,7 @@ mod tests {
       }
     }
 
-    tree_shake_module(source, &s, Some(&live_decls), &module_info.scope_analysis)
+    tree_shake_module(source, &parsed, Some(&live_decls), &module_info.scope_analysis)
       .unwrap_or_else(|| source.to_string())
   }
 
@@ -1216,7 +1207,7 @@ mod tests {
     })
     .unwrap();
     let mi = extract_module_info(&parsed);
-    let result = tree_shake_module(source, &s, None, &mi.scope_analysis);
+    let result = tree_shake_module(source, &parsed, None, &mi.scope_analysis);
     assert!(result.is_none()); // No changes
   }
 

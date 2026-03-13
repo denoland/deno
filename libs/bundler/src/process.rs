@@ -43,7 +43,8 @@ pub fn transform_modules(graph: &mut BundlerGraph, driver: &PluginDriver) {
     if let Some(module) = graph.get_module_mut(&specifier) {
       module.source = output.content;
       module.loader = output.loader;
-      // Clear stale analysis data — will be repopulated by analyze_graph().
+      // Clear stale analysis/parse data — will be repopulated later.
+      module.parsed = None;
       module.module_info = None;
       module.hmr_info = None;
       module.is_async = false;
@@ -92,6 +93,7 @@ mod tests {
       dependencies: Vec::new(),
       side_effects: SideEffectFlag::Unknown,
       source: source.to_string(),
+      parsed: None,
       module_info: None,
       hmr_info: None,
       is_async: false,

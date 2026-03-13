@@ -236,6 +236,7 @@ mod tests {
       dependencies: deps,
       side_effects: SideEffectFlag::Unknown,
       source: source.to_string(),
+      parsed: None,
       module_info: None,
       hmr_info: None,
       is_async: false,

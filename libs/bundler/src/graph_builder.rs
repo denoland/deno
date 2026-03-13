@@ -99,6 +99,7 @@ fn convert_js_module(js: &deno_graph::JsModule) -> BundlerModule {
     dependencies,
     side_effects: SideEffectFlag::Unknown,
     source,
+    parsed: None,
     module_info: None,
     hmr_info: None,
     is_async: false, // Detected later by AST analysis.
@@ -116,6 +117,7 @@ fn convert_json_module(json: &deno_graph::JsonModule) -> BundlerModule {
     dependencies: Vec::new(),
     side_effects: SideEffectFlag::False,
     source: json.source.text.to_string(),
+    parsed: None,
     module_info: None,
     hmr_info: None,
     is_async: false,

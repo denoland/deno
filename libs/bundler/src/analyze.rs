@@ -6,9 +6,6 @@
 //! module with deno_ast and extracts import/export bindings, top-level
 //! declarations, and HMR metadata.
 
-use deno_ast::MediaType;
-use deno_ast::ParseParams;
-
 use crate::graph::BundlerGraph;
 use crate::js::hmr_info_swc::extract_hmr_info;
 use crate::js::module_info_swc::extract_module_info;
@@ -25,29 +22,21 @@ pub fn analyze_graph(graph: &mut BundlerGraph) {
     .map(|m| m.specifier.clone())
     .collect();
 
+  // Ensure all analyzable modules are parsed (populates cached ParsedSource).
+  for specifier in &specifiers {
+    if let Some(module) = graph.get_module_mut(specifier) {
+      module.ensure_parsed();
+    }
+  }
+
   for specifier in specifiers {
     let module = graph.get_module(&specifier).unwrap();
-    let source = module.source.clone();
-
-    let parsed = match deno_ast::parse_module(ParseParams {
-      specifier: specifier.clone(),
-      text: source.into(),
-      media_type: MediaType::JavaScript,
-      capture_tokens: false,
-      scope_analysis: false,
-      maybe_syntax: None,
-    }) {
-      Ok(p) => p,
-      Err(e) => {
-        eprintln!("Failed to parse {} for analysis: {}", specifier, e);
-        continue;
-      }
+    let Some(parsed) = &module.parsed else {
+      continue;
     };
 
-    let module_info = extract_module_info(&parsed);
-    let hmr_info = extract_hmr_info(&parsed);
-
-    // Check for top-level await.
+    let module_info = extract_module_info(parsed);
+    let hmr_info = extract_hmr_info(parsed);
     let is_async = module_info.has_tla;
 
     if let Some(module) = graph.get_module_mut(&specifier) {
@@ -75,14 +64,19 @@ pub fn tree_shake_graph(graph: &mut BundlerGraph) {
     let Some(mi) = &module.module_info else {
       continue;
     };
+    let Some(parsed) = &module.parsed else {
+      continue;
+    };
     let source = module.source.clone();
     let scope_analysis = mi.scope_analysis.clone();
+    let parsed_clone = parsed.clone();
 
     if let Some(shaken) =
-      tree_shake_module(&source, &specifier, live_decls, &scope_analysis)
+      tree_shake_module(&source, &parsed_clone, live_decls, &scope_analysis)
     {
       if let Some(module) = graph.get_module_mut(&specifier) {
         module.source = shaken;
+        module.parsed = None;
       }
     }
   }
@@ -117,6 +111,7 @@ mod tests {
       dependencies: Vec::new(),
       side_effects: SideEffectFlag::Unknown,
       source: source.to_string(),
+      parsed: None,
       module_info: None,
       hmr_info: None,
       is_async: false,

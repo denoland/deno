@@ -1,6 +1,9 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
+use deno_ast::ParseParams;
+use deno_ast::ParsedSource;
 
 use crate::dependency::Dependency;
 use crate::js::hmr_info::HmrInfo;
@@ -40,6 +43,8 @@ pub struct BundlerModule {
   pub side_effects: SideEffectFlag,
   /// The module's source code.
   pub source: String,
+  /// Cached parsed AST. Cleared when `source` changes.
+  pub parsed: Option<ParsedSource>,
   /// Import/export/scope analysis (populated after parsing).
   pub module_info: Option<ModuleInfo>,
   /// HMR metadata (populated after parsing).
@@ -48,4 +53,31 @@ pub struct BundlerModule {
   pub is_async: bool,
   /// External import specifiers found in this module.
   pub external_imports: Vec<String>,
+}
+
+impl BundlerModule {
+  /// Parse this module if not already cached.
+  /// Returns `None` for non-JS loaders or parse errors.
+  pub fn ensure_parsed(&mut self) -> Option<&ParsedSource> {
+    if self.parsed.is_some() {
+      return self.parsed.as_ref();
+    }
+    if !matches!(
+      self.loader,
+      Loader::Js | Loader::Jsx | Loader::Ts | Loader::Tsx
+    ) {
+      return None;
+    }
+    let parsed = deno_ast::parse_module(ParseParams {
+      specifier: self.specifier.clone(),
+      text: self.source.clone().into(),
+      media_type: MediaType::JavaScript,
+      capture_tokens: false,
+      scope_analysis: false,
+      maybe_syntax: None,
+    })
+    .ok()?;
+    self.parsed = Some(parsed);
+    self.parsed.as_ref()
+  }
 }

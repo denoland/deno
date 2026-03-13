@@ -112,6 +112,7 @@ pub fn transform_graph(
       if let Some(emitted) = emit_program(&program) {
         if let Some(module) = graph.get_module_mut(&specifier) {
           module.source = emitted;
+          module.parsed = None;
         }
       }
     }
@@ -177,6 +178,7 @@ pub fn transform_import_meta(
     if let Some(emitted) = emit_program(&program) {
       if let Some(module) = graph.get_module_mut(&specifier) {
         module.source = emitted;
+        module.parsed = None;
       }
     }
   }
@@ -225,6 +227,7 @@ mod tests {
       dependencies: Vec::new(),
       side_effects: SideEffectFlag::Unknown,
       source: source.to_string(),
+      parsed: None,
       module_info: None,
       hmr_info: None,
       is_async: false,

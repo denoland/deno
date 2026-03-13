@@ -13,9 +13,7 @@
 use deno_ast::swc::ast::*;
 use deno_ast::swc::ecma_visit::Visit;
 use deno_ast::swc::ecma_visit::VisitWith;
-use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
-use deno_ast::ParseParams;
 
 use crate::dependency::Dependency;
 use crate::dependency::ImportKind;
@@ -50,19 +48,36 @@ pub fn discover_assets(graph: &mut BundlerGraph) {
 /// Returns newly discovered modules that should be added to the graph.
 /// Also updates dependency lists on existing modules.
 fn discover_pass(graph: &mut BundlerGraph) -> Vec<BundlerModule> {
-  // Collect all JS modules and their specifiers.
-  let js_modules: Vec<(ModuleSpecifier, String)> = graph
+  // Collect all JS module specifiers.
+  let js_specifiers: Vec<ModuleSpecifier> = graph
     .modules()
     .filter(|m| matches!(m.loader, Loader::Js))
-    .map(|m| (m.specifier.clone(), m.source.clone()))
+    .map(|m| m.specifier.clone())
     .collect();
+
+  // Ensure all JS modules are parsed (populates cached ParsedSource).
+  for specifier in &js_specifiers {
+    if let Some(module) = graph.get_module_mut(specifier) {
+      module.ensure_parsed();
+    }
+  }
+
+  // Collect parsed sources (cheap Arc clone).
+  let js_modules: Vec<(ModuleSpecifier, deno_ast::ParsedSource)> =
+    js_specifiers
+      .iter()
+      .filter_map(|spec| {
+        let m = graph.get_module(spec)?;
+        Some((spec.clone(), m.parsed.clone()?))
+      })
+      .collect();
 
   let mut new_modules = Vec::new();
   let mut seen_new: std::collections::HashSet<ModuleSpecifier> =
     std::collections::HashSet::new();
 
-  for (specifier, source) in &js_modules {
-    let refs = extract_url_references(specifier, source);
+  for (specifier, parsed) in &js_modules {
+    let refs = extract_url_references(specifier, parsed);
 
     for url_ref in refs {
       // Skip if already in the graph or already discovered this pass.
@@ -115,6 +130,7 @@ fn discover_pass(graph: &mut BundlerGraph) -> Vec<BundlerModule> {
         dependencies: Vec::new(),
         side_effects: SideEffectFlag::False,
         source,
+        parsed: None,
         module_info: None,
         hmr_info: None,
         is_async: false,
@@ -147,23 +163,11 @@ struct UrlReference {
   resolved: ModuleSpecifier,
 }
 
-/// Extract `new URL('./file', import.meta.url)` references from JS source.
+/// Extract `new URL('./file', import.meta.url)` references from a parsed module.
 fn extract_url_references(
   specifier: &ModuleSpecifier,
-  source: &str,
+  parsed: &deno_ast::ParsedSource,
 ) -> Vec<UrlReference> {
-  let parsed = match deno_ast::parse_module(ParseParams {
-    specifier: specifier.clone(),
-    text: source.into(),
-    media_type: MediaType::JavaScript,
-    capture_tokens: false,
-    scope_analysis: false,
-    maybe_syntax: None,
-  }) {
-    Ok(p) => p,
-    Err(_) => return Vec::new(),
-  };
-
   let mut visitor = UrlReferenceVisitor {
     base_specifier: specifier.clone(),
     refs: Vec::new(),
@@ -270,6 +274,21 @@ mod tests {
     ModuleSpecifier::parse(&format!("file:///{}", s)).unwrap()
   }
 
+  fn parse_js(
+    specifier: &ModuleSpecifier,
+    source: &str,
+  ) -> deno_ast::ParsedSource {
+    deno_ast::parse_module(deno_ast::ParseParams {
+      specifier: specifier.clone(),
+      text: source.into(),
+      media_type: deno_ast::MediaType::JavaScript,
+      capture_tokens: false,
+      scope_analysis: false,
+      maybe_syntax: None,
+    })
+    .unwrap()
+  }
+
   fn make_js_module(
     specifier: &ModuleSpecifier,
     source: &str,
@@ -282,6 +301,7 @@ mod tests {
       dependencies: Vec::new(),
       side_effects: SideEffectFlag::Unknown,
       source: source.to_string(),
+      parsed: None,
       module_info: None,
       hmr_info: None,
       is_async: false,
@@ -292,10 +312,9 @@ mod tests {
   #[test]
   fn test_extract_new_url_import_meta() {
     let s = spec("src/main.js");
-    let refs = extract_url_references(
-      &s,
-      "const img = new URL('./image.png', import.meta.url);",
-    );
+    let src = "const img = new URL('./image.png', import.meta.url);";
+    let parsed = parse_js(&s, src);
+    let refs = extract_url_references(&s, &parsed);
     assert_eq!(refs.len(), 1);
     assert_eq!(refs[0].raw_specifier, "./image.png");
     assert_eq!(
@@ -307,10 +326,9 @@ mod tests {
   #[test]
   fn test_extract_new_url_template_literal() {
     let s = spec("src/main.js");
-    let refs = extract_url_references(
-      &s,
-      "const img = new URL(`./photo.jpg`, import.meta.url);",
-    );
+    let src = "const img = new URL(`./photo.jpg`, import.meta.url);";
+    let parsed = parse_js(&s, src);
+    let refs = extract_url_references(&s, &parsed);
     assert_eq!(refs.len(), 1);
     assert_eq!(refs[0].raw_specifier, "./photo.jpg");
   }
@@ -318,44 +336,40 @@ mod tests {
   #[test]
   fn test_extract_ignores_dynamic_specifier() {
     let s = spec("src/main.js");
-    let refs = extract_url_references(
-      &s,
-      "const img = new URL(dynamicVar, import.meta.url);",
-    );
+    let src = "const img = new URL(dynamicVar, import.meta.url);";
+    let parsed = parse_js(&s, src);
+    let refs = extract_url_references(&s, &parsed);
     assert_eq!(refs.len(), 0);
   }
 
   #[test]
   fn test_extract_ignores_non_import_meta_url() {
     let s = spec("src/main.js");
-    let refs = extract_url_references(
-      &s,
-      "const img = new URL('./image.png', 'http://example.com');",
-    );
+    let src = "const img = new URL('./image.png', 'http://example.com');";
+    let parsed = parse_js(&s, src);
+    let refs = extract_url_references(&s, &parsed);
     assert_eq!(refs.len(), 0);
   }
 
   #[test]
   fn test_extract_ignores_single_arg_url() {
     let s = spec("src/main.js");
-    let refs = extract_url_references(
-      &s,
-      "const u = new URL('http://example.com');",
-    );
+    let src = "const u = new URL('http://example.com');";
+    let parsed = parse_js(&s, src);
+    let refs = extract_url_references(&s, &parsed);
     assert_eq!(refs.len(), 0);
   }
 
   #[test]
   fn test_extract_multiple_refs() {
     let s = spec("src/main.js");
-    let refs = extract_url_references(
-      &s,
-      r#"
+    let src = r#"
         const a = new URL('./a.png', import.meta.url);
         const b = new URL('./b.woff2', import.meta.url);
         const c = new URL('./c.svg', import.meta.url);
-      "#,
-    );
+      "#;
+    let parsed = parse_js(&s, src);
+    let refs = extract_url_references(&s, &parsed);
     assert_eq!(refs.len(), 3);
   }
 
@@ -434,6 +448,7 @@ mod tests {
       dependencies: Vec::new(),
       side_effects: SideEffectFlag::False,
       source: String::new(),
+      parsed: None,
       module_info: None,
       hmr_info: None,
       is_async: false,
