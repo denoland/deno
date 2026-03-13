@@ -12,8 +12,8 @@ use deno_bundler::analyze::analyze_graph;
 use deno_bundler::analyze::tree_shake_graph;
 use deno_bundler::asset_discovery::discover_assets;
 use deno_bundler::chunk::build_chunk_graph;
-use deno_bundler::chunk::ChunkType;
 use deno_bundler::config::EnvironmentId;
+use deno_bundler::emit::cross_chunk::compute_cross_chunk_bindings;
 use deno_bundler::emit::emit_production_chunk;
 use deno_bundler::graph_builder::build_bundler_graph;
 use deno_bundler::plugin::create_default_plugin_driver;
@@ -180,49 +180,20 @@ pub async fn build(
       )
     })?;
 
+    // Compute cross-chunk bindings and content-hashed filenames.
+    let cross_chunk =
+      compute_cross_chunk_bindings(&chunk_graph, &bundler_graph);
+
     // Emit chunks using production format.
     for chunk in chunk_graph.chunks() {
-      let output =
-        emit_production_chunk(chunk, &bundler_graph, &chunk_graph);
+      let output = emit_production_chunk(
+        chunk,
+        &bundler_graph,
+        &chunk_graph,
+        Some(&cross_chunk),
+      );
 
-      let filename = match chunk.chunk_type {
-        ChunkType::Entry => {
-          if let Some(entry) = &chunk.entry {
-            let name = entry
-              .path_segments()
-              .and_then(|s| s.last())
-              .unwrap_or("entry");
-            let name = name
-              .strip_suffix(".ts")
-              .or_else(|| name.strip_suffix(".tsx"))
-              .or_else(|| name.strip_suffix(".jsx"))
-              .or_else(|| name.strip_suffix(".js"))
-              .unwrap_or(name);
-            format!("{}.js", name)
-          } else {
-            format!("chunk_{}.js", chunk.id.0)
-          }
-        }
-        ChunkType::DynamicImport => {
-          if let Some(entry) = &chunk.entry {
-            let name = entry
-              .path_segments()
-              .and_then(|s| s.last())
-              .unwrap_or("dynamic");
-            let name = name
-              .strip_suffix(".ts")
-              .or_else(|| name.strip_suffix(".tsx"))
-              .or_else(|| name.strip_suffix(".jsx"))
-              .or_else(|| name.strip_suffix(".js"))
-              .unwrap_or(name);
-            format!("{}.js", name)
-          } else {
-            format!("chunk_{}.js", chunk.id.0)
-          }
-        }
-        ChunkType::Shared => format!("shared_{}.js", chunk.id.0),
-        ChunkType::Asset => format!("asset_{}", chunk.id.0),
-      };
+      let filename = output.filename.clone();
 
       let out_path = output_dir.join(&filename);
       std::fs::write(&out_path, &output.code).map_err(|e| {

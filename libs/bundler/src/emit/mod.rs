@@ -5,6 +5,8 @@
 //! Provides both dev-mode emission (module registration wrappers) and
 //! production emission (concatenated modules with CJS interop helpers).
 
+pub mod cross_chunk;
+mod deconflict;
 mod production;
 
 use deno_ast::ModuleSpecifier;
@@ -25,6 +27,8 @@ pub struct ChunkOutput {
   pub code: String,
   /// Optional source map JSON.
   pub source_map: Option<String>,
+  /// Content-hashed filename for this chunk (e.g. `"app-abc12345.js"`).
+  pub filename: String,
 }
 
 /// Emit a chunk in dev mode (no minification, no scope hoisting).
@@ -164,6 +168,12 @@ pub fn emit_dev_chunk(
     }
   }
 
+  let filename = chunk
+    .entry
+    .as_ref()
+    .and_then(|e| e.path_segments().and_then(|s| s.last().map(|s| s.to_string())))
+    .unwrap_or_else(|| format!("chunk-{}.js", chunk.id.0));
+
   ChunkOutput {
     code,
     source_map: if source_map_mode == SourceMapMode::Inline {
@@ -171,6 +181,7 @@ pub fn emit_dev_chunk(
     } else {
       source_map
     },
+    filename,
   }
 }
 
