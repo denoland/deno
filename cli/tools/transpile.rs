@@ -28,7 +28,6 @@ use crate::args::TypeCheckMode;
 use crate::factory::CliFactory;
 use crate::tsc;
 use crate::util::display;
-use crate::util::fs::canonicalize_path;
 
 pub async fn transpile(
   flags: Arc<Flags>,
@@ -62,7 +61,6 @@ pub async fn transpile(
   let mut file_entries = Vec::new();
   for file_path_str in files {
     let file_path = cwd.join(file_path_str);
-    let file_path = canonicalize_path(&file_path).unwrap_or(file_path.clone());
 
     let media_type = MediaType::from_path(&file_path);
     if !media_type.is_emittable() {
@@ -317,10 +315,9 @@ fn resolve_dts_output_path(
 
   if let Some(outdir) = output_dir {
     let outdir = cwd.join(outdir);
-    let file_name = path
-      .file_name()
-      .ok_or_else(|| anyhow::anyhow!("Invalid .d.ts file name"))?;
-    Ok(outdir.join(file_name))
+    // Preserve relative directory structure under outdir
+    let relative = path.strip_prefix(cwd).unwrap_or(&path);
+    Ok(outdir.join(relative))
   } else {
     Ok(path)
   }
@@ -342,11 +339,11 @@ fn compute_output_path(
 
   if let Some(outdir) = output_dir {
     let outdir = cwd.join(outdir);
-    // Try to maintain relative structure
-    let file_name = js_filename.file_name().ok_or_else(|| {
-      anyhow::anyhow!("Invalid file path: {}", js_filename.display())
-    })?;
-    Ok(outdir.join(file_name))
+    // Preserve relative directory structure under outdir
+    let relative = js_filename
+      .strip_prefix(cwd)
+      .unwrap_or(&js_filename);
+    Ok(outdir.join(relative))
   } else {
     // Write alongside source file
     Ok(js_filename)

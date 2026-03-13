@@ -4510,7 +4510,9 @@ With source maps:
   <p(245)>deno transpile main.ts --source-map separate</>
 
 Generate declaration files:
-  <p(245)>deno transpile main.ts --declaration</>"
+  <p(245)>deno transpile main.ts -o out.js --declaration</>
+
+Note: --declaration always writes .d.ts files to disk (next to the source or in --outdir)."
     ),
     UnstableArgsConfig::ResolutionOnly,
   )

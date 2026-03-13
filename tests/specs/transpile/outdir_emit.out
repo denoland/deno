@@ -1,2 +1,2 @@
-Emit [WILDCARD]dist/main.js
-Emit [WILDCARD]dist/helpers.js
+Emit [WILDCARD]dist[WILDCARD]main.js
+Emit [WILDCARD]dist[WILDCARD]helpers.js
