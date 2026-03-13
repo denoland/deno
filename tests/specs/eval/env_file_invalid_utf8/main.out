@@ -1,2 +1,3 @@
-Warning Error reading from environment file 'invalid_utf8_env': stream did not contain valid UTF-8.
+Warning Error reading from environment file: stream did not contain valid UTF-8.
+    at [WILDLINE]invalid_utf8_env
 undefined

@@ -745,9 +745,7 @@ async fn resolve_flags_and_init(
         Err(_) => Cow::Owned(PathBuf::from(".")),
       },
     };
-    let env_file_paths: Vec<std::path::PathBuf> =
-      files.iter().map(|p| cwd.join(p)).collect();
-    load_env_variables_from_env_files(&cwd, &env_file_paths, flags.log_level);
+    load_env_variables_from_env_files(&cwd, files, flags.log_level);
   }
 
   if deno_lib::args::has_flag_env_var("DENO_CONNECTED") {

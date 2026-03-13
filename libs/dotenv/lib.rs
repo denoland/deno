@@ -3,10 +3,11 @@
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::path::Path;
+use std::path::PathBuf;
 
 use sys_traits::BaseEnvVar;
 use sys_traits::FsRead;
-use sys_traits::PathsInErrorsExt;
+use thiserror::Error;
 
 const CHAR_NL: u8 = b'\n';
 const CHAR_CR: u8 = b'\r';
@@ -22,36 +23,11 @@ const CHAR_N: u8 = b'n';
 const CHAR_DOLLAR: u8 = b'$';
 const CHAR_LBRACE: u8 = b'{';
 
-#[derive(Debug)]
-pub enum Error {
-  LineParse(String, usize),
-  Io(std::io::Error),
-}
-
-impl std::fmt::Display for Error {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    match self {
-      Error::LineParse(line, index) => {
-        write!(f, "Error parsing line at index {}: {}", index, line)
-      }
-      Error::Io(err) => write!(f, "{}", err),
-    }
-  }
-}
-
-impl std::error::Error for Error {
-  fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-    match self {
-      Error::Io(err) => Some(err),
-      _ => None,
-    }
-  }
-}
-
-impl From<std::io::Error> for Error {
-  fn from(err: std::io::Error) -> Self {
-    Error::Io(err)
-  }
+#[derive(Debug, Error)]
+#[error("Failed reading '{}'", path.display())]
+pub struct FindPathAndContentError {
+  pub path: PathBuf,
+  pub source: std::io::Error,
 }
 
 /// Discovers the path and content fo an env file, which can then be parsed.
@@ -60,61 +36,73 @@ impl From<std::io::Error> for Error {
 pub fn find_path_and_content<'a>(
   sys: &impl FsRead,
   cwd: &Path,
-  file_path: &'a Path,
-) -> std::io::Result<(Cow<'a, Path>, Cow<'static, str>)> {
-  let sys = sys.with_paths_in_errors();
-  let (start_dir, filename, original_not_found) =
-    match sys.fs_read_to_string(file_path) {
-      Ok(content) => return Ok((Cow::Borrowed(file_path), content)),
+  specifier: &str,
+) -> Result<Option<(PathBuf, Cow<'static, str>)>, FindPathAndContentError> {
+  fn try_read(
+    sys: &impl FsRead,
+    file_path: Cow<'_, Path>,
+  ) -> Result<Option<(PathBuf, Cow<'static, str>)>, FindPathAndContentError> {
+    match sys.fs_read_to_string_lossy(&file_path) {
+      Ok(content) => Ok(Some((
+        deno_path_util::normalize_path(file_path).into_owned(),
+        content,
+      ))),
       Err(err) => {
         if err.kind() != std::io::ErrorKind::NotFound {
-          return Err(err);
-        }
-        let Some(filename) = file_path.file_name() else {
-          return Err(err);
-        };
-        // Determine the starting directory for parent traversal.
-        let start_dir = if file_path.is_absolute() {
-          file_path.parent()
+          Err(FindPathAndContentError {
+            path: deno_path_util::normalize_path(file_path).into_owned(),
+            source: err,
+          })
         } else {
-          Some(cwd)
-        };
-        let Some(start_dir) = start_dir else {
-          return Err(err);
-        };
-        (start_dir, filename, err)
-      }
-    };
-
-  // walk parent directories looking for the file
-  for dir in start_dir.ancestors().skip(1) {
-    let candidate = dir.join(filename);
-    match sys.fs_read_to_string_lossy(&candidate) {
-      Ok(content) => return Ok((Cow::Owned(candidate), content)),
-      Err(err) => {
-        if err.kind() != std::io::ErrorKind::NotFound {
-          return Err(err);
+          Ok(None)
         }
       }
     }
   }
 
-  Err(original_not_found)
+  let specifier_path = Path::new(specifier);
+  if specifier_path.is_absolute() {
+    try_read(sys, Cow::Borrowed(specifier_path))
+  } else {
+    // walk parent directories looking for the file
+    for dir in cwd.ancestors() {
+      let file_path = dir.join(specifier);
+      match try_read(sys, Cow::Owned(file_path)) {
+        Ok(Some(content)) => return Ok(Some(content)),
+        Ok(None) => {
+          // keep going
+        }
+        Err(err) => return Err(err),
+      }
+    }
+
+    Ok(None)
+  }
 }
 
-type IterElement = Result<(String, String), Error>;
+#[derive(Debug, Error)]
+#[error("Error parsing line at index {index}: {line}")]
+pub struct ParseError {
+  pub line: String,
+  pub index: usize,
+}
+
+type IterElement = Result<(String, String), ParseError>;
 
 pub fn from_content_sanitized_iter_with_substitution(
   sys: &dyn BaseEnvVar,
   content: &str,
-) -> Result<std::vec::IntoIter<IterElement>, Error> {
+) -> Result<std::vec::IntoIter<IterElement>, ParseError> {
   let mut pairs = Vec::new();
   parse_env_content_with_substitution_hook(sys, content, &mut |k, v| {
     if let Some(index) = k
       .find('\0')
       .or_else(|| v.find('\0').map(|i| k.len() + i + 1))
     {
-      pairs.push(Err(Error::LineParse(format!("{}={}", k, v), index)));
+      pairs.push(Err(ParseError {
+        line: format!("{}={}", k, v),
+        index,
+      }));
     } else {
       pairs.push(Ok((k.to_string(), v.to_string())));
     }
@@ -1008,12 +996,10 @@ u4QuUoobAgMBAAE=
     sys.fs_create_dir_all("/project").unwrap();
     sys.fs_write("/project/.env", "KEY=value").unwrap();
 
-    let (path, content) = find_path_and_content(
-      &sys,
-      Path::new("/project"),
-      Path::new("/project/.env"),
-    )
-    .unwrap();
+    let (path, content) =
+      find_path_and_content(&sys, Path::new("/project"), "/project/.env")
+        .unwrap()
+        .unwrap();
     assert_eq!(path, Path::new("/project/.env"));
     assert_eq!(content.as_ref(), "KEY=value");
   }
@@ -1024,12 +1010,10 @@ u4QuUoobAgMBAAE=
     sys.fs_create_dir_all("/project/sub/deep").unwrap();
     sys.fs_write("/project/.env", "FOUND=true").unwrap();
 
-    let (path, content) = find_path_and_content(
-      &sys,
-      Path::new("/project/sub/deep"),
-      Path::new(".env"),
-    )
-    .unwrap();
+    let (path, content) =
+      find_path_and_content(&sys, Path::new("/project/sub/deep"), ".env")
+        .unwrap()
+        .unwrap();
     assert_eq!(path, Path::new("/project/.env"));
     assert_eq!(content.as_ref(), "FOUND=true");
   }
@@ -1042,12 +1026,10 @@ u4QuUoobAgMBAAE=
     sys.fs_write("/project/sub/.env", "MID=true").unwrap();
 
     // starting from /project/sub/deep, should find /project/sub/.env first
-    let (path, content) = find_path_and_content(
-      &sys,
-      Path::new("/project/sub/deep"),
-      Path::new(".env"),
-    )
-    .unwrap();
+    let (path, content) =
+      find_path_and_content(&sys, Path::new("/project/sub/deep"), ".env")
+        .unwrap()
+        .unwrap();
     assert_eq!(path, Path::new("/project/sub/.env"));
     assert_eq!(content.as_ref(), "MID=true");
   }
@@ -1057,10 +1039,8 @@ u4QuUoobAgMBAAE=
     let sys = InMemorySys::default();
     sys.fs_create_dir_all("/project").unwrap();
 
-    let result =
-      find_path_and_content(&sys, Path::new("/project"), Path::new(".env"));
-    assert!(result.is_err());
-    assert_eq!(result.unwrap_err().kind(), std::io::ErrorKind::NotFound);
+    let result = find_path_and_content(&sys, Path::new("/project"), ".env");
+    assert!(result.unwrap().is_none());
   }
 
   #[test]
@@ -1069,12 +1049,10 @@ u4QuUoobAgMBAAE=
     sys.fs_create_dir_all("/project/child").unwrap();
     sys.fs_write("/project/.env.local", "LOCAL=1").unwrap();
 
-    let (path, content) = find_path_and_content(
-      &sys,
-      Path::new("/project/child"),
-      Path::new(".env.local"),
-    )
-    .unwrap();
+    let (path, content) =
+      find_path_and_content(&sys, Path::new("/project/child"), ".env.local")
+        .unwrap()
+        .unwrap();
     assert_eq!(path, Path::new("/project/.env.local"));
     assert_eq!(content.as_ref(), "LOCAL=1");
   }
@@ -1090,8 +1068,9 @@ u4QuUoobAgMBAAE=
     let (path, content) = find_path_and_content(
       &sys,
       Path::new("/project/sub/deep"),
-      Path::new("sub/.envfile"),
+      "sub/.envfile",
     )
+    .unwrap()
     .unwrap();
     assert_eq!(path, Path::new("/project/.envfile"));
     assert_eq!(content.as_ref(), "ANCESTOR=found");

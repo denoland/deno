@@ -373,20 +373,13 @@ where
     };
     let snapshot = WatchEnvTracker::snapshot();
     if let Some(env_files) = &flags.env_file {
-      let env_file_paths = env_files
-        .iter()
-        .map(|file| match initial_cwd.as_ref() {
-          Some(cwd) => cwd.join(file),
-          None => PathBuf::from(file),
-        })
-        .collect::<Vec<_>>();
       let cwd = initial_cwd
         .as_deref()
         .map(Cow::Borrowed)
         .unwrap_or_else(|| Cow::Owned(PathBuf::from(".")));
       snapshot.load_env_variables_from_env_files(
         &cwd,
-        env_file_paths.as_ref(),
+        &env_files,
         flags.log_level,
       );
     }

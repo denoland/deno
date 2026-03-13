@@ -1821,7 +1821,7 @@ pub async fn run_tests_with_watch(
           // If an env file changed, reload all test modules since any
           // test could depend on environment variables.
           let env_file_changed = cli_options
-            .env_file_paths()
+            .env_file_names()
             .filter_map(|path| canonicalize_path(&path).ok())
             .any(|path| changed_paths.contains(&path));
           if env_file_changed {

@@ -11,6 +11,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::OnceLock;
 
+use deno_core::normalize_path;
 use deno_terminal::colors;
 
 use crate::sys::CliSys;
@@ -47,8 +48,8 @@ impl WatchEnvTrackerInner {
     let original_env: HashMap<OsString, OsString> = env::vars_os().collect();
 
     Self {
-      loaded_variables: HashSet::new(),
-      unused_variables: HashSet::new(),
+      loaded_variables: Default::default(),
+      unused_variables: Default::default(),
       original_env,
     }
   }
@@ -74,25 +75,25 @@ impl WatchEnvTracker {
   fn load_env_file_inner(
     &self,
     cwd: &Path,
-    file_path: &Path,
+    env_file: &str,
     log_level: Option<log::Level>,
     inner: &mut WatchEnvTrackerInner,
   ) {
     let (file_path, content) = match deno_dotenv::find_path_and_content(
       &CliSys::default(),
       cwd,
-      file_path,
+      env_file,
     ) {
-      Ok(result) => result,
+      Ok(Some(result)) => result,
+      Ok(None) => {
+        handle_dotenv_not_found(env_file, log_level);
+        return;
+      }
       Err(err) => {
-        handle_dotenv_error(deno_dotenv::Error::Io(err), file_path, log_level);
+        handle_dotenv_io_error(&err, log_level);
         return;
       }
     };
-    // Check if file exists
-    if !file_path.exists() {
-      return;
-    }
 
     match deno_dotenv::from_content_sanitized_iter_with_substitution(
       &CliSys::default(),
@@ -152,13 +153,13 @@ impl WatchEnvTracker {
               inner.unused_variables.remove(&key_os);
             }
             Err(e) => {
-              handle_dotenv_error(e, &file_path, log_level);
+              handle_dotenv_error(&e, &file_path, log_level);
             }
           }
         }
       }
       Err(e) => {
-        handle_dotenv_error(e, &file_path, log_level);
+        handle_dotenv_error(&e, &file_path, log_level);
       }
     }
   }
@@ -207,7 +208,7 @@ impl WatchEnvTracker {
   pub fn load_env_variables_from_env_files(
     &self,
     cwd: &Path,
-    file_paths: &[PathBuf],
+    env_files: &[String],
     log_level: Option<log::Level>,
   ) {
     let mut inner = self.inner.lock().unwrap();
@@ -215,7 +216,7 @@ impl WatchEnvTracker {
     inner.unused_variables = std::mem::take(&mut inner.loaded_variables);
     inner.loaded_variables = HashSet::new();
 
-    for env_file_path in file_paths.iter().rev() {
+    for env_file_path in env_files.iter().rev() {
       self.load_env_file_inner(cwd, env_file_path, log_level, &mut inner);
     }
 
@@ -225,26 +226,26 @@ impl WatchEnvTracker {
 
 pub fn load_env_variables_from_env_files(
   cwd: &Path,
-  env_file_paths: &[PathBuf],
+  env_file_names: &[String],
   flags_log_level: Option<log::Level>,
 ) {
   let original_env_keys: HashSet<OsString> =
     env::vars_os().map(|(key, _)| key).collect();
   let mut loaded_keys = HashSet::new();
 
-  for env_file_path in env_file_paths.iter().rev() {
+  for env_file_name in env_file_names.iter().rev() {
     let (env_file_path, content) = match deno_dotenv::find_path_and_content(
       &CliSys::default(),
       cwd,
-      env_file_path,
+      env_file_name,
     ) {
-      Ok(resolved) => resolved,
+      Ok(Some(resolved)) => resolved,
+      Ok(None) => {
+        handle_dotenv_not_found(env_file_name, flags_log_level);
+        continue;
+      }
       Err(err) => {
-        handle_dotenv_error(
-          deno_dotenv::Error::Io(err),
-          env_file_path,
-          flags_log_level,
-        );
+        handle_dotenv_io_error(&err, flags_log_level);
         continue;
       }
     };
@@ -253,8 +254,8 @@ pub fn load_env_variables_from_env_files(
       &content,
     ) {
       Ok(iter) => iter,
-      Err(error) => {
-        handle_dotenv_error(error, &env_file_path, flags_log_level);
+      Err(err) => {
+        handle_dotenv_error(&err, &env_file_path, flags_log_level);
         continue;
       }
     };
@@ -263,7 +264,7 @@ pub fn load_env_variables_from_env_files(
       let (key, value) = match item {
         Ok(pair) => pair,
         Err(error) => {
-          handle_dotenv_error(error, &env_file_path, flags_log_level);
+          handle_dotenv_error(&error, &env_file_path, flags_log_level);
           break;
         }
       };
@@ -283,33 +284,44 @@ pub fn load_env_variables_from_env_files(
 }
 
 pub fn handle_dotenv_error(
-  error: deno_dotenv::Error,
+  error: &deno_dotenv::ParseError,
   file_path: &Path,
   log_level: Option<log::Level>,
 ) {
   #[allow(clippy::print_stderr)]
   if log_level.map(|l| l >= log::Level::Info).unwrap_or(true) {
-    match error {
-      deno_dotenv::Error::LineParse(line, index) => eprintln!(
-        "{} Parsing failed within the specified environment file: {} at index: {} of the value: {}",
-        colors::yellow("Warning"),
-        file_path.display(),
-        index,
-        line
-      ),
-      deno_dotenv::Error::Io(e) => match e.kind() {
-        std::io::ErrorKind::NotFound => eprintln!(
-          "{} The `--env-file` flag was used, but the environment file specified '{}' was not found.",
-          colors::yellow("Warning"),
-          file_path.display(),
-        ),
-        _ => eprintln!(
-          "{} Error reading from environment file '{}': {}.",
-          colors::yellow("Warning"),
-          file_path.display(),
-          e,
-        ),
-      },
-    }
+    eprintln!(
+      "{} Failed parsing value '{}' at index {} within the specified environment file.\n    at {}",
+      colors::yellow("Warning"),
+      error.line,
+      error.index,
+      file_path.display(),
+    )
+  }
+}
+
+pub fn handle_dotenv_io_error(
+  error: &deno_dotenv::FindPathAndContentError,
+  log_level: Option<log::Level>,
+) {
+  #[allow(clippy::print_stderr)]
+  if log_level.map(|l| l >= log::Level::Info).unwrap_or(true) {
+    eprintln!(
+      "{} Error reading from environment file: {}\n    at {}",
+      colors::yellow("Warning"),
+      error.source,
+      error.path.display(),
+    )
+  }
+}
+
+pub fn handle_dotenv_not_found(specifier: &str, log_level: Option<log::Level>) {
+  #[allow(clippy::print_stderr)]
+  if log_level.map(|l| l >= log::Level::Info).unwrap_or(true) {
+    eprintln!(
+      "{} The `--env-file` flag was used, but the environment file specified '{}' was not found.",
+      colors::yellow("Warning"),
+      specifier,
+    )
   }
 }

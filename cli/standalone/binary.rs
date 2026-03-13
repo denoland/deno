@@ -20,6 +20,7 @@ use deno_cache_dir::CACHE_PERM;
 use deno_core::anyhow::Context;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
+use deno_core::normalize_path;
 use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_graph::ModuleGraph;
@@ -75,6 +76,8 @@ use crate::resolver::CliCjsTracker;
 use crate::sys::CliSys;
 use crate::util::archive;
 use crate::util::env::handle_dotenv_error;
+use crate::util::env::handle_dotenv_io_error;
+use crate::util::env::handle_dotenv_not_found;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 
@@ -714,13 +717,13 @@ impl<'a> DenoCompileBinaryWriter<'a> {
 
     let env_vars_from_env_file = {
       let mut aggregated_env_vars = IndexMap::new();
-      for env_file_path in self.cli_options.env_file_paths().rev() {
+      for env_file_name in self.cli_options.env_file_names().rev() {
         match deno_dotenv::find_path_and_content(
           &CliSys::default(),
           self.cli_options.initial_cwd(),
-          &env_file_path,
+          env_file_name,
         ) {
-          Ok((env_file_path, content)) => {
+          Ok(Some((env_file_path, content))) => {
             match get_file_env_vars(&content) {
               Ok(env_vars) => {
                 aggregated_env_vars.extend(env_vars);
@@ -732,19 +735,21 @@ impl<'a> DenoCompileBinaryWriter<'a> {
               }
               Err(e) => {
                 handle_dotenv_error(
-                  e,
+                  &e,
                   &env_file_path,
                   self.cli_options.log_level(),
                 );
               }
             };
           }
-          Err(e) => {
-            handle_dotenv_error(
-              deno_dotenv::Error::Io(e),
-              &env_file_path,
+          Ok(None) => {
+            handle_dotenv_not_found(
+              env_file_name,
               self.cli_options.log_level(),
             );
+          }
+          Err(e) => {
+            handle_dotenv_io_error(&e, self.cli_options.log_level());
           }
         };
       }
@@ -1289,7 +1294,7 @@ fn get_dev_binary_path() -> Option<OsString> {
 /// in the passed environment file.
 fn get_file_env_vars(
   content: &str,
-) -> Result<IndexMap<String, String>, deno_dotenv::Error> {
+) -> Result<IndexMap<String, String>, deno_dotenv::ParseError> {
   let mut file_env_vars = IndexMap::new();
   for item in deno_dotenv::from_content_sanitized_iter_with_substitution(
     &CliSys::default(),

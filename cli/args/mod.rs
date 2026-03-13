@@ -640,16 +640,16 @@ impl CliOptions {
     self.flags.no_legacy_abort()
   }
 
-  pub fn env_file_paths(
+  pub fn env_file_names(
     &self,
-  ) -> impl DoubleEndedIterator<Item = PathBuf> + '_ {
+  ) -> impl DoubleEndedIterator<Item = &'_ str> + '_ {
     self
       .flags
       .env_file
       .as_ref()
       .into_iter()
       .flatten()
-      .map(|name| self.initial_cwd.join(name))
+      .map(|name| name.as_str())
   }
 
   pub fn preload_modules(&self) -> Result<Vec<ModuleSpecifier>, AnyError> {
