@@ -781,7 +781,7 @@ impl WebWorker {
       let id: v8::Local<v8::Value> =
         v8::Integer::new(scope, self.id.0 as i32).into();
       let worker_type: v8::Local<v8::Value> =
-        self.worker_type.to_v8(scope).into();
+        self.worker_type.to_v8(scope).unwrap();
       let result = bootstrap_fn.call(
         scope,
         undefined.into(),

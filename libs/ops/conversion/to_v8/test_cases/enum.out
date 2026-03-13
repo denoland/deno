@@ -1,0 +1,413 @@
+impl<'a> ::deno_core::convert::ToV8<'a> for SimpleEnum {
+    type Error = ::deno_error::JsErrorBox;
+    fn to_v8<'i>(
+        self,
+        __scope: &mut ::deno_core::v8::PinScope<'a, 'i>,
+    ) -> Result<::deno_core::v8::Local<'a, ::deno_core::v8::Value>, Self::Error> {
+        match self {
+            Self::VariantA => {
+                Ok(
+                    ::deno_core::v8::String::new_from_one_byte(
+                            __scope,
+                            "variantA".as_bytes(),
+                            ::deno_core::v8::NewStringType::Internalized,
+                        )
+                        .unwrap()
+                        .into(),
+                )
+            }
+            Self::VariantB => {
+                Ok(
+                    ::deno_core::v8::String::new_from_one_byte(
+                            __scope,
+                            "customName".as_bytes(),
+                            ::deno_core::v8::NewStringType::Internalized,
+                        )
+                        .unwrap()
+                        .into(),
+                )
+            }
+            Self::VariantC { field } => {
+                let __body = {
+                    let __null = ::deno_core::v8::null(__scope).into();
+                    let __keys = &[
+                        ::deno_core::v8::String::new_from_one_byte(
+                                __scope,
+                                "field".as_bytes(),
+                                ::deno_core::v8::NewStringType::Internalized,
+                            )
+                            .unwrap()
+                            .into(),
+                    ];
+                    let __converters = &[
+                        ::deno_core::convert::ToV8::to_v8(field, __scope)
+                            .map_err(::deno_error::JsErrorBox::from_err)?,
+                    ];
+                    Ok::<
+                        _,
+                        ::deno_error::JsErrorBox,
+                    >(
+                        ::deno_core::v8::Object::with_prototype_and_properties(
+                                __scope,
+                                __null,
+                                __keys,
+                                __converters,
+                            )
+                            .into(),
+                    )
+                }?;
+                let __null = ::deno_core::v8::null(__scope).into();
+                let __keys = &[
+                    ::deno_core::v8::String::new_from_one_byte(
+                            __scope,
+                            "variantC".as_bytes(),
+                            ::deno_core::v8::NewStringType::Internalized,
+                        )
+                        .unwrap()
+                        .into(),
+                ];
+                let __converters = &[__body];
+                Ok(
+                    ::deno_core::v8::Object::with_prototype_and_properties(
+                            __scope,
+                            __null,
+                            __keys,
+                            __converters,
+                        )
+                        .into(),
+                )
+            }
+            Self::VariantD { value } => {
+                let __body = {
+                    let __null = ::deno_core::v8::null(__scope).into();
+                    let __keys = &[
+                        ::deno_core::v8::String::new_from_one_byte(
+                                __scope,
+                                "value".as_bytes(),
+                                ::deno_core::v8::NewStringType::Internalized,
+                            )
+                            .unwrap()
+                            .into(),
+                    ];
+                    let __converters = &[
+                        ::deno_core::convert::ToV8::to_v8(value, __scope)
+                            .map_err(::deno_error::JsErrorBox::from_err)?,
+                    ];
+                    Ok::<
+                        _,
+                        ::deno_error::JsErrorBox,
+                    >(
+                        ::deno_core::v8::Object::with_prototype_and_properties(
+                                __scope,
+                                __null,
+                                __keys,
+                                __converters,
+                            )
+                            .into(),
+                    )
+                }?;
+                let __null = ::deno_core::v8::null(__scope).into();
+                let __keys = &[
+                    ::deno_core::v8::String::new_from_one_byte(
+                            __scope,
+                            "renamedWithFields".as_bytes(),
+                            ::deno_core::v8::NewStringType::Internalized,
+                        )
+                        .unwrap()
+                        .into(),
+                ];
+                let __converters = &[__body];
+                Ok(
+                    ::deno_core::v8::Object::with_prototype_and_properties(
+                            __scope,
+                            __null,
+                            __keys,
+                            __converters,
+                        )
+                        .into(),
+                )
+            }
+        }
+    }
+}
+
+impl<'a> ::deno_core::convert::ToV8<'a> for InternallyTaggedEnum {
+    type Error = ::deno_error::JsErrorBox;
+    fn to_v8<'i>(
+        self,
+        __scope: &mut ::deno_core::v8::PinScope<'a, 'i>,
+    ) -> Result<::deno_core::v8::Local<'a, ::deno_core::v8::Value>, Self::Error> {
+        match self {
+            Self::A => {
+                let __null = ::deno_core::v8::null(__scope).into();
+                let __keys = &[
+                    ::deno_core::v8::String::new_from_one_byte(
+                            __scope,
+                            "type".as_bytes(),
+                            ::deno_core::v8::NewStringType::Internalized,
+                        )
+                        .unwrap()
+                        .into(),
+                ];
+                let __values = &[
+                    ::deno_core::v8::String::new_from_one_byte(
+                            __scope,
+                            "custom_a".as_bytes(),
+                            ::deno_core::v8::NewStringType::Internalized,
+                        )
+                        .unwrap()
+                        .into(),
+                ];
+                Ok(
+                    ::deno_core::v8::Object::with_prototype_and_properties(
+                            __scope,
+                            __null,
+                            __keys,
+                            __values,
+                        )
+                        .into(),
+                )
+            }
+            Self::B { data } => {
+                let __body = {
+                    let __null = ::deno_core::v8::null(__scope).into();
+                    let __keys = &[
+                        ::deno_core::v8::String::new_from_one_byte(
+                                __scope,
+                                "data".as_bytes(),
+                                ::deno_core::v8::NewStringType::Internalized,
+                            )
+                            .unwrap()
+                            .into(),
+                    ];
+                    let __converters = &[
+                        ::deno_core::convert::ToV8::to_v8(data, __scope)
+                            .map_err(::deno_error::JsErrorBox::from_err)?,
+                    ];
+                    Ok::<
+                        _,
+                        ::deno_error::JsErrorBox,
+                    >(
+                        ::deno_core::v8::Object::with_prototype_and_properties(
+                                __scope,
+                                __null,
+                                __keys,
+                                __converters,
+                            )
+                            .into(),
+                    )
+                }?;
+                if Ok(__obj_body) = __body.try_cast::<::deno_core::v8::Object>() {
+                    let __tag_key = ::deno_core::v8::String::new_from_one_byte(
+                            __scope,
+                            "type".as_bytes(),
+                            ::deno_core::v8::NewStringType::Internalized,
+                        )
+                        .unwrap()
+                        .into();
+                    let __tag_value = ::deno_core::v8::String::new_from_one_byte(
+                            __scope,
+                            "b".as_bytes(),
+                            ::deno_core::v8::NewStringType::Internalized,
+                        )
+                        .unwrap()
+                        .into();
+                    __obj_body.set(__scope, __tag_key, __tag_value);
+                    Ok(__obj_body.into())
+                } else {
+                    panic!("cannot use non-object value with an internally tag enum");
+                }
+            }
+        }
+    }
+}
+
+impl<'a> ::deno_core::convert::ToV8<'a> for AdjacentlyTaggedEnum {
+    type Error = ::deno_error::JsErrorBox;
+    fn to_v8<'i>(
+        self,
+        __scope: &mut ::deno_core::v8::PinScope<'a, 'i>,
+    ) -> Result<::deno_core::v8::Local<'a, ::deno_core::v8::Value>, Self::Error> {
+        match self {
+            Self::First => {
+                let __null = ::deno_core::v8::null(__scope).into();
+                let __keys = &[
+                    ::deno_core::v8::String::new_from_one_byte(
+                            __scope,
+                            "kind".as_bytes(),
+                            ::deno_core::v8::NewStringType::Internalized,
+                        )
+                        .unwrap()
+                        .into(),
+                ];
+                let __values = &[
+                    ::deno_core::v8::String::new_from_one_byte(
+                            __scope,
+                            "FIRST".as_bytes(),
+                            ::deno_core::v8::NewStringType::Internalized,
+                        )
+                        .unwrap()
+                        .into(),
+                ];
+                Ok(
+                    ::deno_core::v8::Object::with_prototype_and_properties(
+                            __scope,
+                            __null,
+                            __keys,
+                            __values,
+                        )
+                        .into(),
+                )
+            }
+            Self::Second { 0: __0 } => {
+                let __body = {
+                    Ok::<
+                        _,
+                        ::deno_error::JsErrorBox,
+                    >(
+                        ::deno_core::convert::ToV8::to_v8(__0, __scope)
+                            .map_err(::deno_error::JsErrorBox::from_err)?,
+                    )
+                }?;
+                let __null = ::deno_core::v8::null(__scope).into();
+                let __keys = &[
+                    ::deno_core::v8::String::new_from_one_byte(
+                            __scope,
+                            "kind".as_bytes(),
+                            ::deno_core::v8::NewStringType::Internalized,
+                        )
+                        .unwrap()
+                        .into(),
+                    ::deno_core::v8::String::new_from_one_byte(
+                            __scope,
+                            "data".as_bytes(),
+                            ::deno_core::v8::NewStringType::Internalized,
+                        )
+                        .unwrap()
+                        .into(),
+                ];
+                let __converters = &[
+                    ::deno_core::v8::String::new_from_one_byte(
+                            __scope,
+                            "second".as_bytes(),
+                            ::deno_core::v8::NewStringType::Internalized,
+                        )
+                        .unwrap()
+                        .into(),
+                    __body,
+                ];
+                Ok(
+                    ::deno_core::v8::Object::with_prototype_and_properties(
+                            __scope,
+                            __null,
+                            __keys,
+                            __converters,
+                        )
+                        .into(),
+                )
+            }
+        }
+    }
+}
+
+impl<'a> ::deno_core::convert::ToV8<'a> for SerdeEnum {
+    type Error = ::deno_error::JsErrorBox;
+    fn to_v8<'i>(
+        self,
+        __scope: &mut ::deno_core::v8::PinScope<'a, 'i>,
+    ) -> Result<::deno_core::v8::Local<'a, ::deno_core::v8::Value>, Self::Error> {
+        match self {
+            Self::WithSerde { data, other } => {
+                let __body = {
+                    let __obj = ::deno_core::v8::Object::new(__scope);
+                    let __key = ::deno_core::v8::String::new(__scope, stringify!(data))
+                        .unwrap()
+                        .into();
+                    let __val = ::deno_core::serde_v8::to_v8(__scope, data)
+                        .map_err(::deno_error::JsErrorBox::from_err)?;
+                    __obj.set(__scope, __key, __val);
+                    let __key = ::deno_core::v8::String::new(
+                            __scope,
+                            stringify!(renamedField),
+                        )
+                        .unwrap()
+                        .into();
+                    let __val = ::deno_core::serde_v8::to_v8(__scope, other)
+                        .map_err(::deno_error::JsErrorBox::from_err)?;
+                    __obj.set(__scope, __key, __val);
+                    Ok::<_, ::deno_error::JsErrorBox>(__obj.into())
+                }?;
+                let __null = ::deno_core::v8::null(__scope).into();
+                let __keys = &[
+                    ::deno_core::v8::String::new_from_one_byte(
+                            __scope,
+                            "withSerde".as_bytes(),
+                            ::deno_core::v8::NewStringType::Internalized,
+                        )
+                        .unwrap()
+                        .into(),
+                ];
+                let __converters = &[__body];
+                Ok(
+                    ::deno_core::v8::Object::with_prototype_and_properties(
+                            __scope,
+                            __null,
+                            __keys,
+                            __converters,
+                        )
+                        .into(),
+                )
+            }
+            Self::WithoutSerde { value } => {
+                let __body = {
+                    let __null = ::deno_core::v8::null(__scope).into();
+                    let __keys = &[
+                        ::deno_core::v8::String::new_from_one_byte(
+                                __scope,
+                                "value".as_bytes(),
+                                ::deno_core::v8::NewStringType::Internalized,
+                            )
+                            .unwrap()
+                            .into(),
+                    ];
+                    let __converters = &[
+                        ::deno_core::convert::ToV8::to_v8(value, __scope)
+                            .map_err(::deno_error::JsErrorBox::from_err)?,
+                    ];
+                    Ok::<
+                        _,
+                        ::deno_error::JsErrorBox,
+                    >(
+                        ::deno_core::v8::Object::with_prototype_and_properties(
+                                __scope,
+                                __null,
+                                __keys,
+                                __converters,
+                            )
+                            .into(),
+                    )
+                }?;
+                let __null = ::deno_core::v8::null(__scope).into();
+                let __keys = &[
+                    ::deno_core::v8::String::new_from_one_byte(
+                            __scope,
+                            "withoutSerde".as_bytes(),
+                            ::deno_core::v8::NewStringType::Internalized,
+                        )
+                        .unwrap()
+                        .into(),
+                ];
+                let __converters = &[__body];
+                Ok(
+                    ::deno_core::v8::Object::with_prototype_and_properties(
+                            __scope,
+                            __null,
+                            __keys,
+                            __converters,
+                        )
+                        .into(),
+                )
+            }
+        }
+    }
+}

@@ -428,7 +428,7 @@ fn op_host_post_message(
 #[op2]
 fn op_host_get_worker_cpu_usage(
   state: &mut OpState,
-  #[serde] id: WorkerId,
+  #[scoped] id: WorkerId,
   #[buffer] out: &mut [f64],
 ) {
   if let Some(worker_thread) = state.borrow::<WorkersTable>().get(&id) {
