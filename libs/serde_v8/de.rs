@@ -728,52 +728,16 @@ fn bigint_to_f64(b: v8::Local<v8::BigInt>) -> f64 {
   sign * x
 }
 
+/// Converts a V8 string to a Rust `String` using `write_utf8_into`, which
+/// uses `ValueView` internally for single-pass access. This replaces the
+/// previous two-tier approach (fast path with 20% over-allocation + slow path
+/// with `utf8_length` pre-scan) with a single code path that:
+/// - For ASCII one-byte strings: direct memcpy (no transcoding)
+/// - For Latin-1 one-byte strings: SIMD-friendly Latin-1→UTF-8 transcoding
+/// - For two-byte (UTF-16) strings: single-pass transcode with replacement
+///   character for invalid surrogates (equivalent to `kReplaceInvalidUtf8`)
 pub fn to_utf8(s: v8::Local<v8::String>, scope: &mut v8::PinScope) -> String {
-  to_utf8_fast(s, scope).unwrap_or_else(|| to_utf8_slow(s, scope))
-}
-
-fn to_utf8_fast(
-  s: v8::Local<v8::String>,
-  scope: &mut v8::PinScope,
-) -> Option<String> {
-  // Over-allocate by 20% to avoid checking string twice
-  let str_chars = s.length();
-  let capacity = (str_chars as f64 * 1.2) as usize;
-  let mut buf = Vec::with_capacity(capacity);
-
-  let mut nchars = 0;
-  let bytes_len = s.write_utf8_uninit_v2(
-    scope,
-    buf.spare_capacity_mut(),
-    v8::WriteFlags::kReplaceInvalidUtf8,
-    Some(&mut nchars),
-  );
-
-  if nchars < str_chars {
-    return None;
-  }
-
-  // SAFETY: write_utf8_uninit guarantees `bytes_len` bytes are initialized & valid utf8
-  unsafe {
-    buf.set_len(bytes_len);
-    Some(String::from_utf8_unchecked(buf))
-  }
-}
-
-fn to_utf8_slow(s: v8::Local<v8::String>, scope: &mut v8::PinScope) -> String {
-  let capacity = s.utf8_length(scope);
-  let mut buf = Vec::with_capacity(capacity);
-
-  s.write_utf8_uninit_v2(
-    scope,
-    buf.spare_capacity_mut(),
-    v8::WriteFlags::kReplaceInvalidUtf8,
-    None,
-  );
-
-  // SAFETY: write_utf8_uninit guarantees `bytes_len` bytes are initialized & valid utf8
-  unsafe {
-    buf.set_len(capacity);
-    String::from_utf8_unchecked(buf)
-  }
+  let mut buf = String::new();
+  s.write_utf8_into(scope, &mut buf);
+  buf
 }

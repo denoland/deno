@@ -401,7 +401,19 @@ impl<'s> FromV8<'s> for String {
     scope: &mut v8::PinScope<'s, 'i>,
     value: v8::Local<'s, v8::Value>,
   ) -> Result<String, Self::Error> {
-    Ok(value.to_rust_string_lossy(scope))
+    // Use write_utf8_into (ValueView-based, single-pass) instead of
+    // to_rust_string_lossy (utf8_length pre-scan + write_utf8, two-pass).
+    let v8_string = if let Ok(s) = value.try_cast::<v8::String>() {
+      s
+    } else {
+      match value.to_string(scope) {
+        Some(s) => s,
+        None => return Ok(String::new()),
+      }
+    };
+    let mut buf = String::new();
+    v8_string.write_utf8_into(scope, &mut buf);
+    Ok(buf)
   }
 }
 impl<'s> ToV8<'s> for String {
