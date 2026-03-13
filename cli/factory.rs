@@ -106,6 +106,7 @@ use crate::sys::CliSys;
 use crate::tools::installer::BinNameResolver;
 use crate::tools::lint::LintRuleProvider;
 use crate::tools::run::hmr::HmrRunnerState;
+use crate::tsc;
 use crate::tsc::TypeCheckingCjsTracker;
 use crate::type_checker::TypeChecker;
 use crate::util::file_watcher::WatcherCommunicator;
@@ -853,6 +854,23 @@ impl CliFactory {
         .boxed_local(),
       )
       .await
+  }
+
+  pub async fn create_request_npm_state(
+    &self,
+  ) -> Result<tsc::RequestNpmState, AnyError> {
+    Ok(tsc::RequestNpmState {
+      cjs_tracker: Arc::new(TypeCheckingCjsTracker::new(
+        self.cjs_tracker()?.clone(),
+        self.module_info_cache()?.clone(),
+      )),
+      node_resolver: self.node_resolver().await?.clone(),
+      npm_resolver: self.npm_resolver().await?.clone(),
+      package_json_resolver: self
+        .resolver_factory()?
+        .pkg_json_resolver()
+        .clone(),
+    })
   }
 
   pub async fn module_graph_builder(

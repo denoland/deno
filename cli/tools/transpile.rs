@@ -13,11 +13,13 @@ use deno_ast::TranspileResult;
 use deno_config::deno_json::CompilerOptions;
 use deno_core::ModuleSpecifier;
 use deno_core::anyhow;
+use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::serde_json::json;
 use deno_graph::GraphKind;
 use deno_graph::ModuleGraph;
 use deno_terminal::colors;
+use sys_traits::PathsInErrorsExt;
 
 use crate::args::Flags;
 use crate::args::SourceMapMode;
@@ -44,7 +46,11 @@ pub async fn transpile(
     );
   }
 
-  let cwd = crate::util::env::resolve_cwd(flags.initial_cwd.as_deref())?;
+  let factory = CliFactory::from_flags(flags.clone());
+  let cli_options = factory.cli_options()?;
+  let cwd = cli_options.initial_cwd();
+  let real_sys = factory.sys();
+  let sys = real_sys.with_paths_in_errors();
 
   let source_map_option = match transpile_flags.source_map {
     SourceMapMode::None => SourceMapOption::None,
@@ -78,7 +84,11 @@ pub async fn transpile(
 
   // Transpile each file (TS -> JS)
   for (file_path, specifier, media_type) in &file_entries {
-    let source_code = std::fs::read_to_string(file_path)?;
+    let source_bytes = sys
+      .fs_read(file_path)
+      .with_context(|| format!("Failed to read {}", file_path.display()))?;
+    let source_code = String::from_utf8(source_bytes.into_owned())
+      .with_context(|| format!("{} is not valid UTF-8", file_path.display()))?;
 
     let parsed_source = deno_ast::parse_module(deno_ast::ParseParams {
       specifier: specifier.clone(),
@@ -126,17 +136,23 @@ pub async fn transpile(
     } else {
       let output_path = compute_output_path(
         file_path,
-        &cwd,
+        cwd,
         transpile_flags.output.as_deref(),
         transpile_flags.output_dir.as_deref(),
       )?;
 
       // Ensure parent directory exists
       if let Some(parent) = output_path.parent() {
-        std::fs::create_dir_all(parent)?;
+        sys.fs_create_dir_all(parent).with_context(|| {
+          format!("Failed to create directory {}", parent.display())
+        })?;
       }
 
-      std::fs::write(&output_path, js_text)?;
+      sys
+        .fs_write(&output_path, js_text.as_bytes())
+        .with_context(|| {
+          format!("Failed to write {}", output_path.display())
+        })?;
       log::info!("{} {}", colors::green("Emit"), output_path.display());
 
       // Write separate source map file
@@ -144,7 +160,9 @@ pub async fn transpile(
         && matches!(transpile_flags.source_map, SourceMapMode::Separate)
       {
         let map_path = output_path.with_extension("js.map");
-        std::fs::write(&map_path, sm)?;
+        sys
+          .fs_write(&map_path, sm.as_bytes())
+          .with_context(|| format!("Failed to write {}", map_path.display()))?;
         log::info!("{} {}", colors::green("Emit"), map_path.display());
       }
     }
@@ -152,20 +170,21 @@ pub async fn transpile(
 
   // Generate .d.ts declaration files if requested
   if transpile_flags.declaration && !file_entries.is_empty() {
-    emit_declarations(&flags, &transpile_flags, &file_entries, &cwd).await?;
+    emit_declarations(&factory, &transpile_flags, &file_entries, cwd).await?;
   }
 
   Ok(())
 }
 
 async fn emit_declarations(
-  flags: &Arc<Flags>,
+  factory: &CliFactory,
   transpile_flags: &TranspileFlags,
   file_entries: &[(PathBuf, ModuleSpecifier, MediaType)],
   cwd: &Path,
 ) -> Result<(), AnyError> {
-  let factory = CliFactory::from_flags(flags.clone());
   let cli_options = factory.cli_options()?;
+  let real_sys = factory.sys();
+  let sys = real_sys.with_paths_in_errors();
 
   // Build a module graph for the input files
   let root_names: Vec<(ModuleSpecifier, MediaType)> = file_entries
@@ -220,23 +239,11 @@ async fn emit_declarations(
     )?,
   );
 
-  // Set up npm state if available
-  let maybe_npm = {
-    let cjs_tracker = Arc::new(tsc::TypeCheckingCjsTracker::new(
-      factory.cjs_tracker()?.clone(),
-      factory.module_info_cache()?.clone(),
-    ));
-    let node_resolver = factory.node_resolver().await?.clone();
-    let npm_resolver = factory.npm_resolver().await?.clone();
-    let package_json_resolver = factory.pkg_json_resolver()?.clone();
-    Some(tsc::RequestNpmState {
-      cjs_tracker,
-      node_resolver,
-      npm_resolver,
-      package_json_resolver,
-    })
-  };
+  // Set up npm state
+  let maybe_npm = Some(factory.create_request_npm_state().await?);
 
+  // Note: We use tsc::exec directly because TypeChecker.check_diagnostics
+  // does not support returning emitted declaration files.
   let response = tsc::exec(
     tsc::Request {
       config: compiler_options,
@@ -273,10 +280,14 @@ async fn emit_declarations(
     )?;
 
     if let Some(parent) = output_path.parent() {
-      std::fs::create_dir_all(parent)?;
+      sys.fs_create_dir_all(parent).with_context(|| {
+        format!("Failed to create directory {}", parent.display())
+      })?;
     }
 
-    std::fs::write(&output_path, content)?;
+    sys
+      .fs_write(&output_path, content.as_bytes())
+      .with_context(|| format!("Failed to write {}", output_path.display()))?;
     log::info!("{} {}", colors::green("Emit"), output_path.display());
   }
 
@@ -297,8 +308,8 @@ fn resolve_dts_output_path(
 ) -> Result<PathBuf, AnyError> {
   // TSC emits file names like "file:///path/to/file.d.ts"
   let path = if let Ok(specifier) = ModuleSpecifier::parse(tsc_file_name) {
-    specifier.to_file_path().map_err(|_| {
-      anyhow::anyhow!("Cannot convert specifier to path: {tsc_file_name}")
+    deno_path_util::url_to_file_path(&specifier).with_context(|| {
+      format!("Cannot convert specifier to path: {tsc_file_name}")
     })?
   } else {
     PathBuf::from(tsc_file_name)
@@ -332,9 +343,9 @@ fn compute_output_path(
   if let Some(outdir) = output_dir {
     let outdir = cwd.join(outdir);
     // Try to maintain relative structure
-    let file_name = js_filename
-      .file_name()
-      .ok_or_else(|| anyhow::anyhow!("Invalid file path"))?;
+    let file_name = js_filename.file_name().ok_or_else(|| {
+      anyhow::anyhow!("Invalid file path: {}", js_filename.display())
+    })?;
     Ok(outdir.join(file_name))
   } else {
     // Write alongside source file

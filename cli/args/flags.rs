@@ -15400,4 +15400,172 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
     set_test_node_options(None);
     assert_eq!(flags.require, vec!["known.js"]);
   }
+
+  #[test]
+  fn transpile_single_file() {
+    let r = flags_from_vec(svec!["deno", "transpile", "main.ts"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Transpile(TranspileFlags {
+          files: svec!["main.ts"],
+          output: None,
+          output_dir: None,
+          declaration: false,
+          source_map: SourceMapMode::None,
+        }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn transpile_multiple_files() {
+    let r = flags_from_vec(svec!["deno", "transpile", "main.ts", "helpers.ts"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Transpile(TranspileFlags {
+          files: svec!["main.ts", "helpers.ts"],
+          output: None,
+          output_dir: None,
+          declaration: false,
+          source_map: SourceMapMode::None,
+        }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn transpile_with_output() {
+    let r =
+      flags_from_vec(svec!["deno", "transpile", "main.ts", "-o", "out.js"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Transpile(TranspileFlags {
+          files: svec!["main.ts"],
+          output: Some("out.js".to_string()),
+          output_dir: None,
+          declaration: false,
+          source_map: SourceMapMode::None,
+        }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn transpile_with_outdir() {
+    let r =
+      flags_from_vec(svec!["deno", "transpile", "main.ts", "--outdir", "dist"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Transpile(TranspileFlags {
+          files: svec!["main.ts"],
+          output: None,
+          output_dir: Some("dist".to_string()),
+          declaration: false,
+          source_map: SourceMapMode::None,
+        }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn transpile_with_source_map_inline() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "transpile",
+      "main.ts",
+      "--source-map",
+      "inline"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Transpile(TranspileFlags {
+          files: svec!["main.ts"],
+          output: None,
+          output_dir: None,
+          declaration: false,
+          source_map: SourceMapMode::Inline,
+        }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn transpile_with_source_map_separate() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "transpile",
+      "main.ts",
+      "--source-map",
+      "separate"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Transpile(TranspileFlags {
+          files: svec!["main.ts"],
+          output: None,
+          output_dir: None,
+          declaration: false,
+          source_map: SourceMapMode::Separate,
+        }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn transpile_with_declaration() {
+    let r =
+      flags_from_vec(svec!["deno", "transpile", "main.ts", "--declaration"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Transpile(TranspileFlags {
+          files: svec!["main.ts"],
+          output: None,
+          output_dir: None,
+          declaration: true,
+          source_map: SourceMapMode::None,
+        }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn transpile_all_flags() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "transpile",
+      "main.ts",
+      "-o",
+      "out.js",
+      "--source-map",
+      "separate",
+      "--declaration"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Transpile(TranspileFlags {
+          files: svec!["main.ts"],
+          output: Some("out.js".to_string()),
+          output_dir: None,
+          declaration: true,
+          source_map: SourceMapMode::Separate,
+        }),
+        ..Flags::default()
+      }
+    );
+  }
 }
