@@ -612,6 +612,12 @@ pub enum EdRawError {
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
+#[class(generic)]
+#[error("unsupported")]
+#[property("code" = "ERR_OSSL_UNSUPPORTED")]
+pub struct UnsupportedPrivateKeyOidError;
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 #[class(type)]
 pub enum AsymmetricPrivateKeyError {
   #[error("invalid PEM private key: not valid utf8 starting at byte {0}")]
@@ -669,8 +675,13 @@ pub enum AsymmetricPrivateKeyError {
   InvalidEd448PrivateKey,
   #[error("missing dh parameters")]
   MissingDhParameters,
-  #[error("unsupported private key oid")]
-  UnsupportedPrivateKeyOid,
+  #[class(inherit)]
+  #[error(transparent)]
+  UnsupportedPrivateKeyOid(
+    #[from]
+    #[inherit]
+    UnsupportedPrivateKeyOidError,
+  ),
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -771,8 +782,9 @@ pub enum AsymmetricPublicKeyError {
   #[class(type)]
   #[error("malformed or missing public key in dh spki")]
   MalformedOrMissingPublicKeyInDhSpki,
-  #[class(type)]
-  #[error("unsupported private key oid")]
+  #[class(generic)]
+  #[error("unsupported")]
+  #[property("code" = "ERR_OSSL_EVP_DECODE_ERROR")]
   UnsupportedPrivateKeyOid,
 }
 
@@ -998,7 +1010,7 @@ impl KeyObjectHandle {
           params,
         })
       }
-      _ => return Err(AsymmetricPrivateKeyError::UnsupportedPrivateKeyOid),
+      _ => return Err(UnsupportedPrivateKeyOidError.into()),
     };
 
     Ok(KeyObjectHandle::AsymmetricPrivate(private_key))
@@ -2524,18 +2536,25 @@ pub fn op_node_get_private_key_from_pair(
 fn generate_rsa(
   modulus_length: usize,
   public_exponent: usize,
-) -> KeyObjectHandlePair {
+) -> Result<KeyObjectHandlePair, JsErrorBox> {
+  if public_exponent <= 1 || public_exponent.is_multiple_of(2) {
+    return Err(JsErrorBox::generic(format!(
+      "invalid RSA public exponent: {}",
+      public_exponent
+    )));
+  }
+
   let private_key = RsaPrivateKey::new_with_exp(
     &mut thread_rng(),
     modulus_length,
     &rsa::BigUint::from_usize(public_exponent).unwrap(),
   )
-  .unwrap();
+  .map_err(|e| JsErrorBox::generic(e.to_string()))?;
 
   let private_key = AsymmetricPrivateKey::Rsa(private_key);
   let public_key = private_key.to_public_key();
 
-  KeyObjectHandlePair::new(private_key, public_key)
+  Ok(KeyObjectHandlePair::new(private_key, public_key))
 }
 
 #[op2]
@@ -2543,7 +2562,7 @@ fn generate_rsa(
 pub fn op_node_generate_rsa_key(
   #[smi] modulus_length: usize,
   #[smi] public_exponent: usize,
-) -> KeyObjectHandlePair {
+) -> Result<KeyObjectHandlePair, JsErrorBox> {
   generate_rsa(modulus_length, public_exponent)
 }
 
@@ -2552,7 +2571,7 @@ pub fn op_node_generate_rsa_key(
 pub async fn op_node_generate_rsa_key_async(
   #[smi] modulus_length: usize,
   #[smi] public_exponent: usize,
-) -> KeyObjectHandlePair {
+) -> Result<KeyObjectHandlePair, JsErrorBox> {
   spawn_blocking(move || generate_rsa(modulus_length, public_exponent))
     .await
     .unwrap()
@@ -2735,10 +2754,7 @@ fn ec_generate(named_curve: &str) -> Result<KeyObjectHandlePair, JsErrorBox> {
       AsymmetricPrivateKey::Ec(EcPrivateKey::Secp256k1(key))
     }
     _ => {
-      return Err(JsErrorBox::type_error(format!(
-        "unsupported named curve: {}",
-        named_curve
-      )));
+      return Err(JsErrorBox::type_error("Invalid EC curve name"));
     }
   };
   let public_key = private_key.to_public_key();

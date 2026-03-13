@@ -132,6 +132,9 @@ impl Reference {
     // it might free the reference (which would be a UAF)
     let ownership = reference.ownership;
     if let Some(finalize_cb) = finalize_cb {
+      // Deregister before calling so it won't be called again at shutdown
+      let env = unsafe { &*reference.env };
+      env.remove_ref_finalizer(finalize_data);
       unsafe {
         finalize_cb(reference.env as _, finalize_data, finalize_hint);
       }
@@ -992,7 +995,7 @@ fn napi_create_object(
 
 #[napi_sym]
 fn node_api_create_object_with_properties<'s>(
-  env: &'s mut Env,
+  env_ptr: *mut Env,
   prototype_or_null: napi_value<'s>,
   property_names: *const napi_value<'s>,
   property_values: *const napi_value<'s>,
@@ -1285,6 +1288,102 @@ fn node_api_create_external_string_utf16(
   }
 
   status
+}
+
+#[napi_sym]
+fn node_api_create_property_key_latin1(
+  env_ptr: *mut Env,
+  string: *const c_char,
+  length: usize,
+  result: *mut napi_value,
+) -> napi_status {
+  let env = check_env!(env_ptr);
+  if length > 0 {
+    check_arg!(env, string);
+  }
+  crate::return_status_if_false!(
+    env,
+    (length == NAPI_AUTO_LENGTH) || length <= INT_MAX as _,
+    napi_invalid_arg
+  );
+
+  let buffer = if length > 0 {
+    unsafe {
+      std::slice::from_raw_parts(
+        string as _,
+        if length == NAPI_AUTO_LENGTH {
+          std::ffi::CStr::from_ptr(string).to_bytes().len()
+        } else {
+          length
+        },
+      )
+    }
+  } else {
+    &[]
+  };
+
+  let Some(string) = ({
+    v8::callback_scope!(unsafe scope, env.context());
+    v8::String::new_from_one_byte(
+      scope,
+      buffer,
+      v8::NewStringType::Internalized,
+    )
+  }) else {
+    return napi_set_last_error(env_ptr, napi_generic_failure);
+  };
+
+  unsafe {
+    *result = string.into();
+  }
+
+  return napi_clear_last_error(env_ptr);
+}
+
+#[napi_sym]
+fn node_api_create_property_key_utf8(
+  env_ptr: *mut Env,
+  string: *const c_char,
+  length: usize,
+  result: *mut napi_value,
+) -> napi_status {
+  let env = check_env!(env_ptr);
+  if length > 0 {
+    check_arg!(env, string);
+  }
+  crate::return_status_if_false!(
+    env,
+    (length == NAPI_AUTO_LENGTH) || length <= INT_MAX as _,
+    napi_invalid_arg
+  );
+
+  let buffer = if length > 0 {
+    unsafe {
+      std::slice::from_raw_parts(
+        string as _,
+        if length == NAPI_AUTO_LENGTH {
+          std::ffi::CStr::from_ptr(string).to_bytes().len()
+        } else {
+          length
+        },
+      )
+    }
+  } else {
+    &[]
+  };
+
+  let Some(string) = ({
+    v8::callback_scope!(unsafe scope, env.context());
+    v8::String::new_from_utf8(scope, buffer, v8::NewStringType::Internalized)
+  }) else {
+    return napi_set_last_error(env_ptr, napi_generic_failure);
+  };
+
+  unsafe {
+    *result = string.into();
+  }
+
+  return napi_clear_last_error(env_ptr);
 }
 
 #[napi_sym]
@@ -2423,6 +2522,15 @@ fn napi_wrap(
     finalize_hint,
   );
 
+  if let Some(cb) = finalize_cb {
+    env.add_ref_finalizer(
+      env_ptr as napi_env,
+      cb,
+      native_object,
+      finalize_hint,
+    );
+  }
+
   let reference = Reference::into_raw(reference) as *mut c_void;
 
   if !result.is_null() {
@@ -2474,6 +2582,7 @@ fn unwrap(
   }
 
   if !keep {
+    env.remove_ref_finalizer(reference.finalize_data);
     assert!(obj.delete_private(scope, napi_wrap).unwrap_or(false));
     unsafe { Reference::remove(reference) };
   }
@@ -2525,6 +2634,12 @@ fn napi_create_external<'s>(
   let external = v8::External::new(scope, wrapper as _);
 
   if let Some(finalize_cb) = finalize_cb {
+    env.add_ref_finalizer(
+      env_ptr as napi_env,
+      finalize_cb,
+      data,
+      finalize_hint,
+    );
     Reference::into_raw(Reference::new(
       env_ptr,
       external.into(),
@@ -3572,6 +3687,16 @@ fn napi_add_finalizer(
   } else {
     ReferenceOwnership::Userland
   };
+
+  if let Some(cb) = finalize_cb {
+    env.add_ref_finalizer(
+      env_ptr as napi_env,
+      cb,
+      finalize_data,
+      finalize_hint,
+    );
+  }
+
   let reference = Reference::new(
     env,
     value.into(),
@@ -3628,6 +3753,9 @@ fn napi_set_instance_data(
 ) -> napi_status {
   let env = check_env!(env);
 
+  // Note: instance data finalizers are NOT registered in ref_tracker because
+  // they already have their own teardown path in NapiState::Drop which calls
+  // EnvShared instance_data finalize_cb directly.
   env.shared_mut().instance_data = Some(InstanceData {
     data,
     finalize_cb,

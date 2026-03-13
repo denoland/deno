@@ -818,6 +818,18 @@ generate!(
     // TODO(denoland): add these once they are implemented in ext/napi
     // fn node_api_create_property_key_latin1(...) -> napi_status;
     // fn node_api_create_property_key_utf8(...) -> napi_status;
+    fn node_api_create_property_key_latin1(
+      env: napi_env,
+      str_: *const c_char,
+      length: usize,
+      result: *mut napi_value,
+    ) -> napi_status;
+    fn node_api_create_property_key_utf8(
+      env: napi_env,
+      str_: *const c_char,
+      length: usize,
+      result: *mut napi_value,
+    ) -> napi_status;
     fn node_api_create_object_with_properties(
       env: napi_env,
       prototype_or_null: napi_value,
