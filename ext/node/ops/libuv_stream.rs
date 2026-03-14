@@ -9,6 +9,7 @@ use std::ptr;
 use deno_core::GarbageCollected;
 use deno_core::JsBuffer;
 use deno_core::OpState;
+use deno_core::ResourceId;
 use deno_core::op2;
 use deno_core::uv_compat;
 use deno_core::uv_compat::UvBuf;
@@ -20,6 +21,7 @@ use deno_core::uv_compat::UvStream;
 use deno_core::uv_compat::UvTcp;
 use deno_core::uv_compat::UvWrite;
 use deno_core::v8;
+use deno_net::io::TcpStreamResource;
 use deno_permissions::PermissionsContainer;
 use socket2::SockAddr as Socket2SockAddr;
 
@@ -369,6 +371,37 @@ impl TCP {
       }
       // For C libuv, use uv_tcp_open to assign an existing fd
       uv_compat::uv_tcp_open(tcp, fd)
+    }
+  }
+
+  #[fast]
+  fn open_from_rid(&self, state: &mut OpState, #[smi] rid: ResourceId) -> i32 {
+    let fd = state
+      .resource_table
+      .get::<TcpStreamResource>(rid)
+      .ok()
+      .and_then(|r| r.dup_raw_fd());
+    match fd {
+      Some(fd) => {
+        // SAFETY: fd is a valid dup'd descriptor from the resource
+        let ret = unsafe { uv_compat::uv_tcp_open(self.raw(), fd) };
+        if ret != 0 {
+          #[cfg(unix)]
+          // SAFETY: fd is a valid dup'd descriptor that uv_tcp_open
+          // declined to take ownership of; must close to prevent leak.
+          unsafe {
+            libc::close(fd);
+          }
+          #[cfg(windows)]
+          // SAFETY: fd is a valid dup'd socket that uv_tcp_open
+          // declined to take ownership of; must close to prevent leak.
+          unsafe {
+            windows_sys::Win32::Networking::WinSock::closesocket(fd as _);
+          }
+        }
+        ret
+      }
+      None => -1,
     }
   }
 
