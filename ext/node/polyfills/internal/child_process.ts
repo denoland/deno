@@ -564,7 +564,51 @@ export class ChildProcess extends EventEmitter {
         // args.slice(1) to exclude argv0 (prepended by normalizeSpawnArguments)
         e = _createSpawnError("ENOENT", command, args.slice(1));
       }
+
+      // Set up stdio streams even when spawn fails (Node.js creates pipes
+      // before the OS spawn call, so they exist regardless of spawn outcome).
+      if (stdin === "pipe") {
+        this.stdin = new Writable({
+          write(_chunk, _enc, cb) {
+            cb(new Error("spawn failed"));
+          },
+        });
+      }
+      if (stdout === "pipe") {
+        this.stdout = new Readable({ read() {} });
+        this[kClosesNeeded]++;
+        this.stdout.on("close", () => {
+          maybeClose(this);
+        });
+      }
+      if (stderr === "pipe") {
+        this.stderr = new Readable({ read() {} });
+        this[kClosesNeeded]++;
+        this.stderr.on("close", () => {
+          maybeClose(this);
+        });
+      }
+
+      this.stdio[0] = this.stdin;
+      this.stdio[1] = this.stdout;
+      this.stdio[2] = this.stderr;
+
       this.#_handleError(e);
+
+      // Destroy stdio streams and emit close (matching Node.js behavior
+      // where failed spawns still trigger 'close' but not 'exit').
+      nextTick(() => {
+        if (this.stdout) {
+          this.stdout.destroy();
+        }
+        if (this.stderr) {
+          this.stderr.destroy();
+        }
+        if (this.stdin) {
+          this.stdin.destroy();
+        }
+        maybeClose(this);
+      });
     }
   }
 
