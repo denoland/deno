@@ -154,6 +154,7 @@ function appendHeader(headers, name, value) {
     }
   }
   ArrayPrototypePush(list, [name, value]);
+  headers[_iterableHeadersCache] = undefined;
 }
 
 /**
@@ -230,14 +231,11 @@ class Headers {
   [_guard];
 
   get [_iterableHeaders]() {
-    const list = this[_headerList];
-
-    if (
-      this[_guard] === "immutable" &&
-      this[_iterableHeadersCache] !== undefined
-    ) {
+    if (this[_iterableHeadersCache] !== undefined) {
       return this[_iterableHeadersCache];
     }
+
+    const list = this[_headerList];
 
     // The order of steps are not similar to the ones suggested by the
     // spec but produce the same result.
@@ -344,6 +342,7 @@ class Headers {
         i--;
       }
     }
+    this[_iterableHeadersCache] = undefined;
   }
 
   /**
@@ -442,6 +441,7 @@ class Headers {
     if (!added) {
       ArrayPrototypePush(list, [name, value]);
     }
+    this[_iterableHeadersCache] = undefined;
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
