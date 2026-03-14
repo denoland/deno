@@ -587,86 +587,13 @@ function respondWith(req, response, innerRequest) {
 function mapToCallback(context, callback, onError) {
   const hasInfoParam = callback.length >= 2;
 
-  let mapped = function (req, span) {
-    // Get the response from the user-provided callback. If that fails, use onError. If that fails, return a fallback
-    // 500 error.
-    let innerRequest;
-    let response;
-    try {
-      innerRequest = new InnerRequest(req, context);
-      const request = fromInnerRequest(innerRequest, "immutable");
-      innerRequest.request = request;
+  const asyncContextSnapshot = context.asyncContextSnapshot;
 
-      if (span) {
-        updateSpanFromRequest(span, request);
-      }
-
-      const info = hasInfoParam
-        ? new ServeHandlerInfo(innerRequest)
-        : undefined;
-      response = callback(request, info);
-    } catch (error) {
-      return handleError(req, innerRequest, span, error, onError, context);
-    }
-
-    // Fast path: handler returned a Response synchronously (not a Promise)
-    if (ObjectPrototypeIsPrototypeOf(ResponsePrototype, response)) {
-      if (response.type === "error") {
-        return handleError(
-          req,
-          innerRequest,
-          span,
-          new TypeError(
-            "Return value from serve handler must not be an error response (like Response.error())",
-          ),
-          onError,
-          context,
-        );
-      }
-
-      if (response.bodyUsed) {
-        return handleError(
-          req,
-          innerRequest,
-          span,
-          new TypeError(
-            "The body of the Response returned from the serve handler has already been consumed",
-          ),
-          onError,
-          context,
-        );
-      }
-
-      if (span) {
-        updateSpanFromResponse(span, response);
-      }
-
-      if (context.closed) {
-        innerRequest?.close();
-        op_http_set_promise_complete(req, 503);
-        return;
-      }
-
-      respondWith(req, response, innerRequest);
-      return;
-    }
-
-    // Slow path: handler returned a Promise
-    return handleAsyncResponse(
-      req,
-      innerRequest,
-      span,
-      response,
-      onError,
-      context,
-    );
-  };
-
+  let mapped;
   if (TRACING_ENABLED) {
-    const origMapped = mapped;
     mapped = function (req, _span) {
       const snapshot = currentSnapshot();
-      restoreSnapshot(context.asyncContext);
+      restoreSnapshot(asyncContextSnapshot);
 
       const reqHeaders = op_http_get_request_headers(req);
       const headers: [key: string, value: string][] = [];
@@ -699,7 +626,7 @@ function mapToCallback(context, callback, onError) {
       enterSpan(span, activeContext);
       try {
         return SafePromisePrototypeFinally(
-          origMapped(req, span),
+          serveRequest(req, span),
           () => span.end(),
         );
       } finally {
@@ -707,16 +634,152 @@ function mapToCallback(context, callback, onError) {
       }
     };
   } else {
-    const origMapped = mapped;
-    mapped = function (req, span) {
+    mapped = function (req, _span) {
       const snapshot = currentSnapshot();
-      restoreSnapshot(context.asyncContext);
+      restoreSnapshot(asyncContextSnapshot);
       try {
-        return origMapped(req, span);
+        // Inlined serveRequest for the common non-tracing path
+        let innerRequest;
+        let response;
+        try {
+          innerRequest = new InnerRequest(req, context);
+          const request = fromInnerRequest(innerRequest, "immutable");
+          innerRequest.request = request;
+
+          const info = hasInfoParam
+            ? new ServeHandlerInfo(innerRequest)
+            : undefined;
+          response = callback(request, info);
+        } catch (error) {
+          return handleError(
+            req,
+            innerRequest,
+            undefined,
+            error,
+            onError,
+            context,
+          );
+        }
+
+        // Fast path: handler returned a Response synchronously
+        if (ObjectPrototypeIsPrototypeOf(ResponsePrototype, response)) {
+          if (response.type === "error") {
+            return handleError(
+              req,
+              innerRequest,
+              undefined,
+              new TypeError(
+                "Return value from serve handler must not be an error response (like Response.error())",
+              ),
+              onError,
+              context,
+            );
+          }
+
+          if (response.bodyUsed) {
+            return handleError(
+              req,
+              innerRequest,
+              undefined,
+              new TypeError(
+                "The body of the Response returned from the serve handler has already been consumed",
+              ),
+              onError,
+              context,
+            );
+          }
+
+          if (context.closed) {
+            innerRequest?.close();
+            op_http_set_promise_complete(req, 503);
+            return;
+          }
+
+          respondWith(req, response, innerRequest);
+          return;
+        }
+
+        // Slow path: handler returned a Promise
+        return handleAsyncResponse(
+          req,
+          innerRequest,
+          undefined,
+          response,
+          onError,
+          context,
+        );
       } finally {
         restoreSnapshot(snapshot);
       }
     };
+  }
+
+  // Used by the tracing path only
+  function serveRequest(req, span) {
+    let innerRequest;
+    let response;
+    try {
+      innerRequest = new InnerRequest(req, context);
+      const request = fromInnerRequest(innerRequest, "immutable");
+      innerRequest.request = request;
+
+      if (span) {
+        updateSpanFromRequest(span, request);
+      }
+
+      const info = hasInfoParam
+        ? new ServeHandlerInfo(innerRequest)
+        : undefined;
+      response = callback(request, info);
+    } catch (error) {
+      return handleError(req, innerRequest, span, error, onError, context);
+    }
+
+    if (ObjectPrototypeIsPrototypeOf(ResponsePrototype, response)) {
+      if (response.type === "error") {
+        return handleError(
+          req,
+          innerRequest,
+          span,
+          new TypeError(
+            "Return value from serve handler must not be an error response (like Response.error())",
+          ),
+          onError,
+          context,
+        );
+      }
+      if (response.bodyUsed) {
+        return handleError(
+          req,
+          innerRequest,
+          span,
+          new TypeError(
+            "The body of the Response returned from the serve handler has already been consumed",
+          ),
+          onError,
+          context,
+        );
+      }
+      if (span) {
+        updateSpanFromResponse(span, response);
+      }
+      if (context.closed) {
+        innerRequest?.close();
+        op_http_set_promise_complete(req, 503);
+        return;
+      }
+      respondWith(req, response, innerRequest);
+      return;
+    }
+
+    return handleAsyncResponse(
+      req,
+      innerRequest,
+      span,
+      response,
+      onError,
+      context,
+    );
   }
 
   return mapped;

@@ -834,9 +834,24 @@ pub fn op_http_set_response_body_text(
     // SAFETY: external is deleted before calling this op.
     unsafe { take_external!(external, "op_http_set_response_body_text") };
   if !text.is_empty() {
-    set_response(http, Some(text.len()), status, false, |compression| {
-      ResponseBytesInner::from_vec(compression, text.into_bytes())
-    });
+    // Fast path: skip compression check for small bodies (< 64 bytes)
+    // since is_request_compressible always returns None for these.
+    if text.len() < 64 {
+      if !http.cancelled() {
+        http.set_response_body(ResponseBytesInner::Bytes(BufView::from(
+          text.into_bytes(),
+        )));
+        if let Ok(code) = StatusCode::from_u16(status) {
+          http.response_parts().status = code;
+          http.otel_info_set_status(status);
+        }
+      }
+      http.complete();
+    } else {
+      set_response(http, Some(text.len()), status, false, |compression| {
+        ResponseBytesInner::from_vec(compression, text.into_bytes())
+      });
+    }
   } else {
     set_promise_complete(http, status);
   }

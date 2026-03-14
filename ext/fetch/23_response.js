@@ -296,9 +296,42 @@ class Response {
   static json(data = undefined, init = { __proto__: null }) {
     const prefix = "Failed to execute 'Response.json'";
     data = webidlConvertersAny(data);
-    init = webidlConvertersResponseInitFast(init, prefix, "Argument 2");
-
     const str = serializeJSValueToJSONString(data);
+
+    // Fast path for Response.json(data) and Response.json(data, {status})
+    if (
+      init === undefined || init === null ||
+      (typeof init === "object" && !core.isProxy(init) && !init.headers)
+    ) {
+      const status = init?.status !== undefined
+        ? webidlConvertersUnsignedShort(init.status)
+        : 200;
+      if ((status < 200 || status > 599) && status != 101) {
+        throw new RangeError(
+          `The status provided (${status}) is not equal to 101 and outside the range [200, 599]`,
+        );
+      }
+      const statusText = init?.statusText !== undefined
+        ? webidlConvertersByteString(init.statusText)
+        : "";
+      const innerBody = new InnerBody({ body: str, consumed: false });
+      innerBody.source = str;
+      const response = webidl.createBranded(Response);
+      response[_response] = {
+        __proto__: _innerResponseProto,
+        type: "default",
+        body: innerBody,
+        headerList: [["Content-Type", "application/json"]],
+        urlList: _emptyUrlList,
+        status,
+        statusMessage: statusText,
+        aborted: false,
+      };
+      return response;
+    }
+
+    // Slow path with headers
+    init = webidlConvertersResponseInitFast(init, prefix, "Argument 2");
     const res = extractBody(str);
     res.contentType = "application/json";
     const response = webidl.createBranded(Response);
