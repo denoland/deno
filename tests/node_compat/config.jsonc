@@ -86,7 +86,7 @@
     "parallel/test-assert-class-destructuring.js": {},
     "parallel/test-assert-class.js": {},
     "parallel/test-assert-deep-with-error.js": {},
-    "parallel/test-assert-deep.js": {},
+    // "parallel/test-assert-deep.js": {}, // https://github.com/denoland/deno/issues/32706
     "parallel/test-assert-esm-cjs-message-verify.js": {},
     "parallel/test-assert-fail-deprecation.js": {},
     "parallel/test-assert-fail.js": {},
@@ -134,7 +134,7 @@
     "parallel/test-buffer-bytelength.js": {},
     "parallel/test-buffer-compare-offset.js": {},
     "parallel/test-buffer-compare.js": {},
-    "parallel/test-buffer-concat.js": {},
+    // "parallel/test-buffer-concat.js": {}, // https://github.com/denoland/deno/issues/32706
     "parallel/test-buffer-constants.js": {},
     "parallel/test-buffer-constructor-deprecation-error.js": {},
     "parallel/test-buffer-constructor-node-modules-paths.js": {},
@@ -161,7 +161,7 @@
     "parallel/test-buffer-over-max-length.js": {},
     "parallel/test-buffer-parent-property.js": {},
     "parallel/test-buffer-pending-deprecation.js": {},
-    "parallel/test-buffer-pool-untransferable.js": {},
+    // "parallel/test-buffer-pool-untransferable.js": {}, // https://github.com/denoland/deno/issues/32706
     "parallel/test-buffer-prototype-inspect.js": {},
     "parallel/test-buffer-read.js": {},
     "parallel/test-buffer-readdouble.js": {},
@@ -179,7 +179,7 @@
     "parallel/test-buffer-tostring-range.js": {},
     "parallel/test-buffer-tostring-rangeerror.js": {},
     "parallel/test-buffer-tostring.js": {},
-    "parallel/test-buffer-write-fast.js": {},
+    // "parallel/test-buffer-write-fast.js": {}, // https://github.com/denoland/deno/issues/32706
     "parallel/test-buffer-write.js": {},
     "parallel/test-buffer-writedouble.js": {},
     "parallel/test-buffer-writefloat.js": {},
@@ -224,7 +224,7 @@
     "parallel/test-child-process-fork-no-shell.js": {},
     "parallel/test-child-process-fork-ref.js": {},
     "parallel/test-child-process-fork-ref2.js": {},
-    "parallel/test-child-process-fork-timeout-kill-signal.js": {},
+    // "parallel/test-child-process-fork-timeout-kill-signal.js": {}, // https://github.com/denoland/deno/issues/32706
     "parallel/test-child-process-fork3.js": {},
     "parallel/test-child-process-ipc-next-tick.js": {},
     "parallel/test-child-process-no-deprecation.js": {},
@@ -235,12 +235,12 @@
     "parallel/test-child-process-silent.js": {},
     "parallel/test-child-process-spawn-error.js": {},
     "parallel/test-child-process-spawn-event.js": {},
-    "parallel/test-child-process-spawn-timeout-kill-signal.js": {},
-    "parallel/test-child-process-spawn-typeerror.js": {},
+    // "parallel/test-child-process-spawn-timeout-kill-signal.js": {}, // https://github.com/denoland/deno/issues/32706
+    // "parallel/test-child-process-spawn-typeerror.js": {}, // https://github.com/denoland/deno/issues/32706
     "parallel/test-child-process-spawnsync-args.js": {},
     "parallel/test-child-process-spawnsync-env.js": {},
     "parallel/test-child-process-spawnsync-maxbuf.js": {},
-    "parallel/test-child-process-spawnsync-validation-errors.js": {},
+    // "parallel/test-child-process-spawnsync-validation-errors.js": {}, // https://github.com/denoland/deno/issues/32706
     "parallel/test-child-process-spawnsync.js": {},
     "parallel/test-child-process-stdin-ipc.js": {},
     "parallel/test-child-process-stdin.js": {},
@@ -451,7 +451,7 @@
     // "parallel/test-debugger-object-type-remote-object.js": {},
     // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
     // "parallel/test-debugger-pid.js": {},
-    "parallel/test-debugger-preserve-breaks.js": {},
+    // "parallel/test-debugger-preserve-breaks.js": {}, // https://github.com/denoland/deno/issues/32706
     // "parallel/test-debugger-profile-command.js": {},
     // "parallel/test-debugger-profile.js": {},
     // "parallel/test-debugger-random-port-with-inspect-port.js": {},
@@ -755,7 +755,7 @@
     "parallel/test-fs-fchown.js": {},
     "parallel/test-fs-filehandle-use-after-close.js": {},
     "parallel/test-fs-fsync.js": {},
-    "parallel/test-fs-glob.mjs": {},
+    // "parallel/test-fs-glob.mjs": {}, // https://github.com/denoland/deno/issues/32706
     "parallel/test-fs-internal-assertencoding.js": {},
     "parallel/test-fs-link.js": {
       "flaky": true
@@ -1359,7 +1359,7 @@
     "parallel/test-module-wrapper.js": {},
     "parallel/test-net-access-byteswritten.js": {},
     "parallel/test-net-after-close.js": {},
-    "parallel/test-net-autoselectfamily-attempt-timeout-default-value.js": {},
+    // "parallel/test-net-autoselectfamily-attempt-timeout-default-value.js": {}, // https://github.com/denoland/deno/issues/32706
     "parallel/test-net-autoselectfamily-ipv4first.js": {},
     "parallel/test-net-better-error-messages-listen.js": {},
     "parallel/test-net-better-error-messages-port-hostname.js": {},
@@ -1456,7 +1456,7 @@
     "parallel/test-os.js": {},
     "parallel/test-outgoing-message-destroy.js": {},
     "parallel/test-outgoing-message-pipe.js": {},
-    "parallel/test-parse-args.mjs": {},
+    // "parallel/test-parse-args.mjs": {}, // https://github.com/denoland/deno/issues/32706
     "parallel/test-path-basename.js": {},
     "parallel/test-path-dirname.js": {},
     "parallel/test-path-extname.js": {},
@@ -1639,7 +1639,7 @@
     "parallel/test-process-exit-handler.js": {},
     "parallel/test-process-exit-recursive.js": {},
     "parallel/test-process-exit.js": {},
-    "parallel/test-process-features.js": {},
+    // "parallel/test-process-features.js": {}, // https://github.com/denoland/deno/issues/32706
     "parallel/test-process-getgroups.js": {},
     "parallel/test-process-hrtime-bigint.js": {},
     "parallel/test-process-kill-null.js": {},
@@ -1840,17 +1840,17 @@
     // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
     // "parallel/test-source-map-enable.js": {},
     "parallel/test-sqlite-authz.js": {},
-    "parallel/test-sqlite-config.js": {},
+    // "parallel/test-sqlite-config.js": {}, // https://github.com/denoland/deno/issues/32706
     "parallel/test-sqlite-custom-functions.js": {},
     "parallel/test-sqlite-data-types.js": {},
     "parallel/test-sqlite-database-sync-dispose.js": {},
     "parallel/test-sqlite-database-sync.js": {},
-    "parallel/test-sqlite-named-parameters.js": {},
+    // "parallel/test-sqlite-named-parameters.js": {}, // https://github.com/denoland/deno/issues/32706
     "parallel/test-sqlite-session.js": {
       "flaky": true
     },
     "parallel/test-sqlite-statement-sync-columns.js": {},
-    "parallel/test-sqlite-statement-sync.js": {},
+    // "parallel/test-sqlite-statement-sync.js": {}, // https://github.com/denoland/deno/issues/32706
     "parallel/test-sqlite-timeout.js": {},
     "parallel/test-sqlite-transactions.js": {},
     "parallel/test-sqlite-typed-array-and-data-view.js": {},
@@ -1903,7 +1903,7 @@
     "parallel/test-stream-duplex-readable-end.js": {},
     "parallel/test-stream-duplex-readable-writable.js": {},
     "parallel/test-stream-duplex-writable-finished.js": {},
-    "parallel/test-stream-duplex.js": {},
+    // "parallel/test-stream-duplex.js": {}, // https://github.com/denoland/deno/issues/32706
     "parallel/test-stream-duplexpair.js": {},
     "parallel/test-stream-end-of-streams.js": {},
     "parallel/test-stream-end-paused.js": {},
@@ -2169,7 +2169,7 @@
     "parallel/test-util-inherits.js": {},
     "parallel/test-util-inspect-getters-accessing-this.js": {},
     "parallel/test-util-isDeepStrictEqual.js": {},
-    "parallel/test-util-parse-env.js": {},
+    // "parallel/test-util-parse-env.js": {}, // https://github.com/denoland/deno/issues/32706
     "parallel/test-util-primordial-monkeypatching.js": {},
     "parallel/test-util-text-decoder.js": {},
     "parallel/test-util-types-exists.js": {},
@@ -2179,7 +2179,7 @@
     "parallel/test-v8-flag-pool-size-0.js": {},
     "parallel/test-v8-getheapsnapshot-twice.js": {},
     "parallel/test-v8-global-setter.js": {},
-    "parallel/test-v8-stats.js": {},
+    // "parallel/test-v8-stats.js": {}, // https://github.com/denoland/deno/issues/32706
     "parallel/test-vm-access-process-env.js": {},
     "parallel/test-vm-api-handles-getter-errors.js": {},
     "parallel/test-vm-attributes-property-not-on-sandbox.js": {},
@@ -2267,7 +2267,7 @@
     "parallel/test-worker-cleanexit-with-js.js": {},
     "parallel/test-worker-cleanexit-with-moduleload.js": {},
     "parallel/test-worker-console-listeners.js": {},
-    "parallel/test-worker-cpu-usage.js": {},
+    // "parallel/test-worker-cpu-usage.js": {}, // https://github.com/denoland/deno/issues/32706
     // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
     // "parallel/test-worker-debug.js": {},
     "parallel/test-worker-dns-terminate.js": {},
