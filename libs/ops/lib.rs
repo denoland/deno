@@ -1,5 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+#![forbid(clippy::disallowed_methods)]
+
 #![doc = include_str!("README.md")]
 #![deny(clippy::unnecessary_wraps)]
 // TODO(bartlomieju): remove println! usage from macro debugging/test code

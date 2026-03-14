@@ -1,5 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+#![forbid(clippy::disallowed_methods)]
+
 // Alias for the future `!` type.
 use core::convert::Infallible as Never;
 use std::cell::RefCell;

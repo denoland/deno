@@ -46,4 +46,3 @@ pub(crate) use snapshot::SnapshotLoadDataStore;
 pub(crate) use snapshot::SnapshotStoreDataStore;
 pub(crate) use snapshot::SnapshottedData;
 pub use snapshot::create_snapshot;
-pub use snapshot::get_js_files;

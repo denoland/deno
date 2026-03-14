@@ -90,6 +90,7 @@ use node_resolver::analyze::CjsModuleExportAnalyzer;
 use node_resolver::analyze::NodeCodeTranslator;
 use node_resolver::cache::NodeResolutionSys;
 use node_resolver::errors::PackageJsonLoadError;
+use sys_traits::EnvCurrentDir;
 
 use crate::binary::DenoCompileModuleSource;
 use crate::binary::StandaloneData;
@@ -167,7 +168,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
     let referrer = if referrer == "." {
       #[allow(clippy::disallowed_methods)] // ok to use current_dir here
       let current_dir =
-        std::env::current_dir().map_err(JsErrorBox::from_err)?;
+        self.sys.env_current_dir().map_err(JsErrorBox::from_err)?;
       deno_core::resolve_path(".", &current_dir)
         .map_err(JsErrorBox::from_err)?
     } else {

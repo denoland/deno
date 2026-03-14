@@ -1,5 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+#![forbid(clippy::disallowed_methods)]
+
 use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::ffi::OsStr;
@@ -5290,6 +5292,7 @@ mod tests {
   use fqdn::fqdn;
   use prompter::tests::*;
   use serde_json::json;
+  use sys_traits::EnvCurrentDir;
 
   use super::*;
   use crate::prompter::set_prompter;
@@ -6230,8 +6233,7 @@ mod tests {
         .is_err()
     );
 
-    #[allow(clippy::disallowed_methods)]
-    let cwd = std::env::current_dir().unwrap();
+    let cwd = sys_traits::impls::RealSys.env_current_dir().unwrap();
     prompt_value.set(true);
     assert!(
       perms
@@ -6396,8 +6398,7 @@ mod tests {
     );
 
     prompt_value.set(false);
-    #[allow(clippy::disallowed_methods)]
-    let cwd = std::env::current_dir().unwrap();
+    let cwd = sys_traits::impls::RealSys.env_current_dir().unwrap();
     assert!(
       perms
         .run

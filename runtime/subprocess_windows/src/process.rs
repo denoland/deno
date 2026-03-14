@@ -552,8 +552,7 @@ pub fn spawn(options: &SpawnOptions) -> Result<ChildProcess, std::io::Error> {
     WCString::new(cwd_option)
   } else {
     // Inherit cwd
-    #[allow(clippy::disallowed_methods)]
-    let cwd = std::env::current_dir().unwrap();
+    let cwd = std::env::current_dir()?;
     WCString::new(cwd)
   };
 

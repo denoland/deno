@@ -1,5 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+#![forbid(clippy::disallowed_methods)]
+
 #![allow(non_camel_case_types)]
 #![allow(non_upper_case_globals)]
 #![allow(clippy::undocumented_unsafe_blocks)]

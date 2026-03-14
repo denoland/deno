@@ -1,5 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+#![forbid(clippy::disallowed_methods)]
+
 use std::mem::size_of;
 use std::os::raw::c_char;
 use std::os::raw::c_short;

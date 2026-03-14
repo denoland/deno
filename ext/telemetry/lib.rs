@@ -1,5 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+#![forbid(clippy::disallowed_methods)]
+
 #![allow(clippy::too_many_arguments)]
 #![expect(unexpected_cfgs)]
 

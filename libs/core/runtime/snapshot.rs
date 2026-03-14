@@ -272,29 +272,6 @@ pub fn create_snapshot(
   })
 }
 
-pub type FilterFn = Box<dyn Fn(&PathBuf) -> bool>;
-
-pub fn get_js_files(
-  cargo_manifest_dir: &'static str,
-  directory: &str,
-  filter: Option<FilterFn>,
-) -> Vec<PathBuf> {
-  let manifest_dir = Path::new(cargo_manifest_dir);
-  let mut js_files = std::fs::read_dir(directory)
-    .unwrap()
-    .map(|dir_entry| {
-      let file = dir_entry.unwrap();
-      manifest_dir.join(file.path())
-    })
-    .filter(|path| {
-      path.extension().unwrap_or_default() == "js"
-        && filter.as_ref().map(|filter| filter(path)).unwrap_or(true)
-    })
-    .collect::<Vec<PathBuf>>();
-  js_files.sort();
-  js_files
-}
-
 /// The data we intend to snapshot, separated from any V8 objects that
 /// are stored in the [`SnapshotLoadDataStore`]/[`SnapshotStoreDataStore`].
 #[derive(Serialize, Deserialize)]

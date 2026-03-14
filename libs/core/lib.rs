@@ -1,5 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+#![forbid(clippy::disallowed_methods)]
 #![deny(clippy::print_stderr)]
 #![deny(clippy::print_stdout)]
 #![deny(clippy::unused_async)]
@@ -224,7 +225,6 @@ pub mod snapshot {
   pub use crate::runtime::CreateSnapshotOutput;
   pub use crate::runtime::FilterFn;
   pub use crate::runtime::create_snapshot;
-  pub use crate::runtime::get_js_files;
 }
 
 /// A helper macro that will return a call site in Rust code. Should be

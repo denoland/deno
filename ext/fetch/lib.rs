@@ -1,5 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+#![forbid(clippy::disallowed_methods)]
+
 pub mod dns;
 mod fs_fetch_handler;
 mod proxy;

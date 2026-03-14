@@ -2870,7 +2870,7 @@ pub mod test {
       workspace_dir
         .workspace
         .deno_jsons()
-        .map(|d| d.specifier.to_file_path().unwrap())
+        .map(|d| deno_path_util::url_to_file_path(&d.specifier).unwrap())
         .collect::<Vec<_>>(),
       vec![root_dir().join("sub_dir").join("deno.json")]
     );
@@ -4783,7 +4783,7 @@ pub mod test {
         workspace_dir
           .workspace
           .deno_jsons()
-          .map(|c| c.specifier.to_file_path().unwrap())
+          .map(|c| deno_path_util::url_to_file_path(&c.specifier).unwrap())
           .collect::<Vec<_>>(),
         vec![config_file_path]
       );
@@ -4815,7 +4815,7 @@ pub mod test {
       workspace_dir
         .workspace
         .deno_jsons()
-        .map(|c| c.specifier.to_file_path().unwrap())
+        .map(|c| deno_path_util::url_to_file_path(&c.specifier).unwrap())
         .collect::<Vec<_>>(),
       vec![root_config_path, member_a_config]
     );
@@ -5059,11 +5059,10 @@ pub mod test {
     assert_eq!(workspace_dir.workspace.diagnostics(), Vec::new());
     assert_eq!(workspace_dir.workspace.deno_jsons().count(), 1);
     assert_eq!(
-      workspace_dir
-        .workspace
-        .root_dir_url()
-        .to_file_path()
-        .unwrap(),
+      deno_path_util::url_to_file_path(
+        workspace_dir.workspace.root_dir_url(),
+      )
+      .unwrap(),
       root_dir().join("member")
     );
     assert_eq!(workspace_dir.workspace.package_jsons().count(), 0);
@@ -5107,11 +5106,10 @@ pub mod test {
     );
     assert_eq!(workspace_dir.workspace.deno_jsons().count(), 1);
     assert_eq!(
-      workspace_dir
-        .workspace
-        .root_dir_url()
-        .to_file_path()
-        .unwrap(),
+      deno_path_util::url_to_file_path(
+        workspace_dir.workspace.root_dir_url(),
+      )
+      .unwrap(),
       root_dir()
     );
     assert_eq!(workspace_dir.workspace.package_jsons().count(), 2);
@@ -5155,11 +5153,10 @@ pub mod test {
     );
     assert_eq!(workspace_dir.workspace.deno_jsons().count(), 1);
     assert_eq!(
-      workspace_dir
-        .workspace
-        .root_dir_url()
-        .to_file_path()
-        .unwrap(),
+      deno_path_util::url_to_file_path(
+        workspace_dir.workspace.root_dir_url(),
+      )
+      .unwrap(),
       root_dir()
     );
     assert_eq!(workspace_dir.workspace.package_jsons().count(), 2);
@@ -5195,7 +5192,7 @@ pub mod test {
     assert_eq!(workspace_dir.workspace.diagnostics().len(), 2); // for each unstable
     assert_eq!(workspace_dir.workspace.deno_jsons().count(), 2);
     assert_eq!(
-      workspace_dir.workspace.root_dir_url.to_file_path().unwrap(),
+      deno_path_util::url_to_file_path(&workspace_dir.workspace.root_dir_url).unwrap(),
       root_dir()
     );
     assert_eq!(workspace_dir.workspace.package_jsons().count(), 3);
@@ -5220,10 +5217,7 @@ pub mod test {
     assert_eq!(workspace_dir.workspace.diagnostics(), Vec::new());
     assert_eq!(workspace_dir.workspace.deno_jsons().count(), 0);
     assert_eq!(
-      workspace_dir
-        .workspace
-        .root_dir_url()
-        .to_file_path()
+      deno_path_util::url_to_file_path(workspace_dir.workspace.root_dir_url())
         .unwrap(),
       root_dir().join("member")
     );
@@ -5397,7 +5391,7 @@ pub mod test {
         .deno_jsons()
         .map(|d| d.specifier.clone())
         .collect::<Vec<_>>(),
-      vec![Url::from_file_path(&other_deno_json).unwrap()]
+      vec![deno_path_util::url_from_file_path(&other_deno_json).unwrap()]
     );
   }
 
@@ -5426,7 +5420,7 @@ pub mod test {
       workspace_dir
         .workspace
         .deno_jsons()
-        .map(|c| c.specifier.to_file_path().unwrap())
+        .map(|c| deno_path_util::url_to_file_path(&c.specifier).unwrap())
         .collect::<Vec<_>>(),
       vec![root_config_path, member_a_config]
     );
@@ -6110,7 +6104,8 @@ pub mod test {
     );
     let new_config_file = ConfigFile::new(
       r#"{ "nodeModulesDir": false }"#,
-      Url::from_file_path(root_dir().join("deno.json")).unwrap(),
+      deno_path_util::url_from_file_path(&root_dir().join("deno.json"))
+        .unwrap(),
     )
     .unwrap();
     cache
@@ -6336,7 +6331,7 @@ pub mod test {
           .workspace
           .config_folders_sorted_by_dependencies()
           .keys()
-          .map(|k| k.to_file_path().unwrap())
+          .map(|k| deno_path_util::url_to_file_path(k).unwrap())
           .collect::<Vec<_>>(),
         expected,
       );

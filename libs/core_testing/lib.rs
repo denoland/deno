@@ -1,5 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+#![forbid(clippy::disallowed_methods)]
+
 // NB(bartlomieju): these are fine for testing
 #![allow(clippy::print_stdout)]
 #![allow(clippy::print_stderr)]

@@ -3103,7 +3103,7 @@ mod tests {
       ) -> std::io::Result<Cow<'static, [u8]>> {
         assert_eq!(
           path,
-          root_url().to_file_path().unwrap().join("import_map.json")
+          deno_path_util::url_to_file_path(&root_url()).unwrap().join("import_map.json")
         );
         Ok(Cow::Borrowed(
           r#"{ "imports": { "@std/test": "jsr:@std/test@0.2.0" } }"#.as_bytes(),
@@ -3197,11 +3197,9 @@ mod tests {
   #[test]
   fn resolve_import_map_url_parent() {
     let config_text = r#"{ "importMap": "../import_map.json" }"#;
-    let file_path = root_url()
-      .join("sub/deno.json")
-      .unwrap()
-      .to_file_path()
-      .unwrap();
+    let file_path =
+      deno_path_util::url_to_file_path(&root_url().join("sub/deno.json").unwrap())
+        .unwrap();
     let config_specifier = Url::from_file_path(&file_path).unwrap();
     let config_file = ConfigFile::new(config_text, config_specifier).unwrap();
     assert_eq!(
@@ -3218,7 +3216,7 @@ mod tests {
   #[test]
   fn lock_object() {
     fn root_joined(path: &str) -> PathBuf {
-      root_url().join(path).unwrap().to_file_path().unwrap()
+      deno_path_util::url_to_file_path(&root_url().join(path).unwrap()).unwrap()
     }
     let cases = [
       (
