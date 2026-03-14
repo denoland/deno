@@ -23,6 +23,9 @@ const {
   MapPrototypeGet,
   MapPrototypeSet,
   SafeArrayIterator,
+  StringPrototypeLastIndexOf,
+  StringPrototypeSlice,
+  SymbolFor,
   SymbolToStringTag,
   TypeError,
 } = primordials;
@@ -80,6 +83,43 @@ const DenoNs = globalThis.Deno;
 
 /** @type {Map<number, TestState | TestStepState>} */
 const testStates = new Map();
+
+/**
+ * Symbol that test functions (or their wrappers) can carry to tell the test
+ * runner which source location to report for the test, instead of the call
+ * site of `Deno.test()` itself.
+ *
+ * The value must be a string in the format `"fileName:lineNumber:columnNumber"`,
+ * where `fileName` may be an absolute file URL or any remote URL.  Parsing
+ * works from the right so that URL schemes (which also contain `:`) are
+ * handled correctly.
+ *
+ * This is primarily intended for test-helper libraries (e.g. `@std/testing/bdd`)
+ * that call `Deno.test()` on behalf of the user: by setting this symbol on the
+ * wrapped function they can report the location in *user* code rather than the
+ * location inside the library itself.
+ */
+const TEST_LOCATION_SYMBOL = SymbolFor("Deno.test.location");
+
+/**
+ * Parse a location string of the form `"fileName:lineNumber:columnNumber"`.
+ * Parsing is done from the right so that file names that contain `:` (such as
+ * `file://` or `https://` URLs) are handled correctly.
+ *
+ * @param {string} str
+ * @returns {{ fileName: string, lineNumber: number, columnNumber: number }}
+ */
+function parseTestLocation(str) {
+  const lastColon = StringPrototypeLastIndexOf(str, ":");
+  const secondLastColon = StringPrototypeLastIndexOf(str, ":", lastColon - 1);
+  return {
+    fileName: StringPrototypeSlice(str, 0, secondLastColon),
+    lineNumber: parseInt(
+      StringPrototypeSlice(str, secondLastColon + 1, lastColon),
+    ),
+    columnNumber: parseInt(StringPrototypeSlice(str, lastColon + 1)),
+  };
+}
 
 // Wrap test function in additional assertion that makes sure
 // that the test case does not accidentally exit prematurely.
@@ -299,7 +339,10 @@ function testInner(
     cachedOrigin = op_test_get_origin();
   }
 
-  testDesc.location = core.currentUserCallSite();
+  const locationOverride = testDesc.fn[TEST_LOCATION_SYMBOL];
+  testDesc.location = locationOverride
+    ? parseTestLocation(locationOverride)
+    : core.currentUserCallSite();
   testDesc.fn = wrapTest(testDesc);
   testDesc.name = escapeName(testDesc.name);
 
