@@ -269,6 +269,38 @@ Examples:
 Under the hood:
   cargo test -p specs_tests --test specs -- <filter>`,
     }),
+    "test-napi": {
+      description: "Run NAPI (native addon) tests",
+      help: `Builds the test_napi native module and runs the NAPI test suite.
+These tests verify Deno's Node-API compatibility by loading a native
+addon (cdylib) and calling its exported functions from JavaScript.
+
+The native module source is in tests/napi/src/ and the JS tests are
+in tests/napi/*_test.js.
+
+An optional filter argument selects which test files to run.
+
+Usage:
+  ./x test-napi             Run all NAPI tests
+  ./x test-napi <filter>    Run test files matching the filter
+
+Examples:
+  ./x test-napi uv          Run tests with "uv" in their filename
+  ./x test-napi async       Run tests with "async" in their filename
+
+Under the hood:
+  cargo build -p test_napi
+  deno test --allow-read --allow-env --allow-ffi --allow-run \\
+    --v8-flags=--expose-gc tests/napi/`,
+      async fn(args: string[]) {
+        $.logStep("Building test_napi native module...");
+        await $`cargo build -p test_napi`.cwd(root);
+        $.logStep("Running NAPI tests...");
+        const filter = args.length > 0 ? args.map((a) => `--filter=${a}`) : [];
+        await $`${root.join("target/debug/deno").toString()} test --allow-read --allow-env --allow-ffi --allow-run --v8-flags=--expose-gc --config ${root.join("tests/config/deno.json").toString()} --no-lock ${filter} .`.cwd(root.join("tests/napi"));
+        $.logStep("NAPI tests complete.");
+      },
+    },
     "fmt": fmtCmd,
     "lint": {
       description: "Lint all code (JS/TS + Rust)",
