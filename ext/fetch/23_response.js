@@ -65,6 +65,8 @@ const _mimeType = Symbol("mime type");
 const _emptyUrlList = [];
 const _body = Symbol("body");
 const _brand = webidl.brand;
+// Marker for fast-path responses that skip validation in serve
+const _fastResponse = Symbol("fastResponse");
 
 // it's slightly faster to cache these
 const webidlConvertersBodyInitDomString =
@@ -382,6 +384,7 @@ class Response {
           aborted: false,
         };
         this[_brand] = _brand;
+        this[_fastResponse] = true;
         return;
       }
       if (typeof init === "object" && !core.isProxy(init)) {
@@ -631,6 +634,7 @@ function fromInnerResponse(inner, guard) {
 }
 
 export {
+  _fastResponse,
   abortedNetworkError,
   fromInnerResponse,
   networkError,

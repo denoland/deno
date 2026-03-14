@@ -60,6 +60,7 @@ const {
 
 import { InnerBody } from "ext:deno_fetch/22_body.js";
 import {
+  _fastResponse,
   fromInnerResponse,
   newInnerResponse,
   ResponsePrototype,
@@ -688,6 +689,22 @@ function mapToCallback(context, callback, onError) {
             onError,
             context,
           );
+        }
+
+        // Ultra-fast path: response from new Response(string) fast constructor
+        // No validation needed - type is "default", body is unconsumed,
+        // status is 200, single Content-Type header
+        if (response !== null && response !== undefined && response[_fastResponse] === true) {
+          innerRequest?.close();
+          const inner = toInnerResponse(response);
+          op_http_set_response_body_text_with_header(
+            req,
+            inner.body.source,
+            inner.status,
+            inner.headerList[0][0],
+            inner.headerList[0][1],
+          );
+          return;
         }
 
         // Fast path: handler returned a Response synchronously
