@@ -1179,7 +1179,7 @@
     // TODO(bartlomieju): depends on `Network` CDP domain
     // "parallel/test-inspector-network-http.js": {},
     // "parallel/test-inspector-network-arbitrary-data.js": {},
-    // "parallel/test-inspector-emit-protocol-event.js": {},
+    "parallel/test-inspector-emit-protocol-event.js": {},
 
     // TODO(bartlomieju): depends on `NodeRuntime` CDP domain
     // "parallel/test-inspector-esm.js": {},
