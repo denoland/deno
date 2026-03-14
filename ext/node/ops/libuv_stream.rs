@@ -376,31 +376,20 @@ impl TCP {
 
   #[fast]
   fn open_from_rid(&self, state: &mut OpState, #[smi] rid: ResourceId) -> i32 {
+    let tcp = self.raw();
+    if tcp.is_null() {
+      return -1;
+    }
     let fd = state
       .resource_table
       .get::<TcpStreamResource>(rid)
       .ok()
       .and_then(|r| r.dup_raw_fd());
     match fd {
-      Some(fd) => {
-        // SAFETY: fd is a valid dup'd descriptor from the resource
-        let ret = unsafe { uv_compat::uv_tcp_open(self.raw(), fd) };
-        if ret != 0 {
-          #[cfg(unix)]
-          // SAFETY: fd is a valid dup'd descriptor that uv_tcp_open
-          // declined to take ownership of; must close to prevent leak.
-          unsafe {
-            libc::close(fd);
-          }
-          #[cfg(windows)]
-          // SAFETY: fd is a valid dup'd socket that uv_tcp_open
-          // declined to take ownership of; must close to prevent leak.
-          unsafe {
-            windows_sys::Win32::Networking::WinSock::closesocket(fd as _);
-          }
-        }
-        ret
-      }
+      // SAFETY: tcp is a valid initialized handle (null-checked above),
+      // fd is a valid dup'd descriptor. uv_tcp_open takes ownership of
+      // fd in all cases (closes on failure via std_stream drop).
+      Some(fd) => unsafe { uv_compat::uv_tcp_open(tcp, fd) },
       None => -1,
     }
   }

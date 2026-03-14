@@ -124,37 +124,16 @@ impl Resource for TcpStreamResource {
 impl TcpStreamResource {
   pub fn dup_raw_fd(self: &Rc<Self>) -> Option<i32> {
     let wr = RcRef::map(self, |r| &r.wr).try_borrow()?;
+    let sock = SockRef::from(wr.as_ref().as_ref()).try_clone().ok()?;
     #[cfg(unix)]
     {
-      use std::os::unix::io::AsRawFd;
-      let fd = wr.as_ref().as_ref().as_raw_fd();
-      let dup_fd = unsafe { libc::dup(fd) };
-      if dup_fd < 0 { None } else { Some(dup_fd) }
+      use std::os::unix::io::IntoRawFd;
+      Some(sock.into_raw_fd())
     }
     #[cfg(windows)]
     {
-      use std::os::windows::io::AsRawSocket;
-      use windows_sys::Win32::Foundation::DUPLICATE_SAME_ACCESS;
-      use windows_sys::Win32::Foundation::DuplicateHandle;
-      use windows_sys::Win32::System::Threading::GetCurrentProcess;
-      let sock = wr.as_ref().as_ref().as_raw_socket();
-      let mut new_sock = 0;
-      let ok = unsafe {
-        DuplicateHandle(
-          GetCurrentProcess(),
-          sock as _,
-          GetCurrentProcess(),
-          &mut new_sock,
-          0,
-          0,
-          DUPLICATE_SAME_ACCESS,
-        )
-      };
-      if ok == 0 {
-        None
-      } else {
-        i32::try_from(new_sock).ok()
-      }
+      use std::os::windows::io::IntoRawSocket;
+      i32::try_from(sock.into_raw_socket()).ok()
     }
   }
 
