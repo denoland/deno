@@ -43,6 +43,7 @@ import {
   AbortError,
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
+  ERR_INVALID_HANDLE_TYPE,
   ERR_INVALID_SYNC_FORK_INPUT,
   ERR_IPC_CHANNEL_CLOSED,
   ERR_IPC_SYNC_FORK,
@@ -1859,6 +1860,16 @@ export function setupChannel(
     }
 
     if (handle !== undefined) {
+      // Validate handle type before rejecting as not implemented.
+      // Node.js only accepts net.Server, net.Socket, or dgram.Socket.
+      if (
+        !(handle instanceof Socket) &&
+        !(handle?._handle) &&
+        !(handle?.constructor?.name === "Server") &&
+        !(handle?.constructor?.name === "Socket")
+      ) {
+        throw new ERR_INVALID_HANDLE_TYPE();
+      }
       notImplemented("ChildProcess.send with handle");
     }
 
