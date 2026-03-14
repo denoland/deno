@@ -3123,6 +3123,9 @@ pub enum ExportPrivateKeyPemError {
   #[class(type)]
   #[error("{0}")]
   UnsupportedCipher(String),
+  #[class(type)]
+  #[error("cipher and passphrase must both be provided for encrypted key export")]
+  MissingCipherOrPassphrase,
 }
 
 /// Derive an encryption key from a passphrase and salt using the legacy
@@ -3245,13 +3248,19 @@ pub fn op_node_export_private_key_pem(
     _ => unreachable!("export_der would have errored"),
   };
 
-  if let (Some(cipher), Some(passphrase)) = (cipher, passphrase) {
-    return encrypt_private_key_pem(
-      label,
-      &data,
-      &cipher,
-      passphrase.as_bytes(),
-    );
+  match (&cipher, &passphrase) {
+    (Some(cipher), Some(passphrase)) => {
+      return encrypt_private_key_pem(
+        label,
+        &data,
+        cipher,
+        passphrase.as_bytes(),
+      );
+    }
+    (Some(_), None) | (None, Some(_)) => {
+      return Err(ExportPrivateKeyPemError::MissingCipherOrPassphrase);
+    }
+    (None, None) => {}
   }
 
   let pem_len = der::pem::encapsulated_len(label, LineEnding::LF, data.len())
