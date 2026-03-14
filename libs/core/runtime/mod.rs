@@ -40,7 +40,6 @@ pub use jsruntime::RuntimeOptions;
 pub use jsruntime::SharedArrayBufferStore;
 pub use snapshot::CreateSnapshotOptions;
 pub use snapshot::CreateSnapshotOutput;
-pub use snapshot::FilterFn;
 pub(crate) use snapshot::SnapshotDataId;
 pub(crate) use snapshot::SnapshotLoadDataStore;
 pub(crate) use snapshot::SnapshotStoreDataStore;

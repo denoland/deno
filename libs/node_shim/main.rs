@@ -2,6 +2,7 @@
 
 #![allow(clippy::print_stdout)]
 #![allow(clippy::print_stderr)]
+#![allow(clippy::disallowed_methods)]
 
 use std::env;
 use std::process::Stdio;

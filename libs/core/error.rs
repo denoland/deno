@@ -1471,10 +1471,8 @@ macro_rules! make_callsite_fn {
 fn maybe_to_path_str(string: &str) -> Option<String> {
   if string.starts_with("file://") {
     Some(
-      Url::parse(string)
-        .unwrap()
-        .to_file_path()
-        .unwrap()
+      deno_path_util::url_to_file_path(&Url::parse(string).ok()?)
+        .ok()?
         .to_string_lossy()
         .into_owned(),
     )

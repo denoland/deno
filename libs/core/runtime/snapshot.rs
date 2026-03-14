@@ -2,7 +2,6 @@
 
 use std::borrow::Cow;
 use std::collections::HashMap;
-use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::Instant;

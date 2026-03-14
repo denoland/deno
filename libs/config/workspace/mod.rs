@@ -3151,7 +3151,7 @@ pub mod test {
       workspace_dir.workspace.diagnostics(),
       vec![WorkspaceDiagnostic {
         kind: WorkspaceDiagnosticKind::RootOnlyOption("importMap"),
-        config_url: Url::from_file_path(root_dir().join("member/deno.json"))
+        config_url: url_from_file_path(&root_dir().join("member/deno.json"))
           .unwrap(),
       }]
     );
@@ -3176,7 +3176,7 @@ pub mod test {
       workspace_dir.workspace.diagnostics(),
       vec![WorkspaceDiagnostic {
         kind: WorkspaceDiagnosticKind::RootOnlyOption("links"),
-        config_url: Url::from_file_path(root_dir().join("member/deno.json"))
+        config_url: url_from_file_path(&root_dir().join("member/deno.json"))
           .unwrap(),
       }]
     );
@@ -3341,7 +3341,7 @@ pub mod test {
       workspace_dir.workspace.diagnostics(),
       vec![WorkspaceDiagnostic {
         kind: WorkspaceDiagnosticKind::RootOnlyOption("scopes"),
-        config_url: Url::from_file_path(root_dir().join("member/deno.json"))
+        config_url: url_from_file_path(&root_dir().join("member/deno.json"))
           .unwrap(),
       }]
     );
@@ -3362,7 +3362,7 @@ pub mod test {
       workspace_dir.workspace.diagnostics(),
       vec![WorkspaceDiagnostic {
         kind: WorkspaceDiagnosticKind::DeprecatedPatch,
-        config_url: Url::from_file_path(root_dir().join("deno.json")).unwrap(),
+        config_url: url_from_file_path(&root_dir().join("deno.json")).unwrap(),
       }]
     );
     assert_eq!(workspace_dir.workspace.link_folders().len(), 1); // should still work though
@@ -3392,7 +3392,7 @@ pub mod test {
       workspace_dir.workspace.diagnostics(),
       vec![WorkspaceDiagnostic {
         kind: WorkspaceDiagnosticKind::ImportMapReferencingImportMap,
-        config_url: Url::from_file_path(root_dir().join("deno.json")).unwrap(),
+        config_url: url_from_file_path(&root_dir().join("deno.json")).unwrap(),
       }]
     );
   }
@@ -3413,7 +3413,7 @@ pub mod test {
       workspace_dir.workspace.diagnostics(),
       vec![WorkspaceDiagnostic {
         kind: WorkspaceDiagnosticKind::MemberImportsScopesIgnored,
-        config_url: Url::from_file_path(root_dir().join("member/deno.json"))
+        config_url: url_from_file_path(&root_dir().join("member/deno.json"))
           .unwrap(),
       }]
     );
@@ -3499,7 +3499,7 @@ pub mod test {
       workspace_dir.workspace.diagnostics(),
       vec![WorkspaceDiagnostic {
         kind: WorkspaceDiagnosticKind::RootOnlyOption("lint.report"),
-        config_url: Url::from_file_path(root_dir().join("member/deno.json"))
+        config_url: url_from_file_path(&root_dir().join("member/deno.json"))
           .unwrap(),
       }]
     );
@@ -3985,32 +3985,32 @@ pub mod test {
             previous: false,
             suggestion: NodeModulesDirMode::Manual,
           },
-          config_url: Url::from_file_path(root_dir().join("deno.json"))
+          config_url: url_from_file_path(&root_dir().join("deno.json"))
             .unwrap(),
         },
         WorkspaceDiagnostic {
           kind: WorkspaceDiagnosticKind::RootOnlyOption("lock"),
-          config_url: Url::from_file_path(root_dir().join("member/deno.json"))
+          config_url: url_from_file_path(&root_dir().join("member/deno.json"))
             .unwrap(),
         },
         WorkspaceDiagnostic {
           kind: WorkspaceDiagnosticKind::RootOnlyOption("minimumDependencyAge"),
-          config_url: Url::from_file_path(root_dir().join("member/deno.json"))
+          config_url: url_from_file_path(&root_dir().join("member/deno.json"))
             .unwrap(),
         },
         WorkspaceDiagnostic {
           kind: WorkspaceDiagnosticKind::RootOnlyOption("nodeModulesDir"),
-          config_url: Url::from_file_path(root_dir().join("member/deno.json"))
+          config_url: url_from_file_path(&root_dir().join("member/deno.json"))
             .unwrap(),
         },
         WorkspaceDiagnostic {
           kind: WorkspaceDiagnosticKind::RootOnlyOption("unstable"),
-          config_url: Url::from_file_path(root_dir().join("member/deno.json"))
+          config_url: url_from_file_path(&root_dir().join("member/deno.json"))
             .unwrap(),
         },
         WorkspaceDiagnostic {
           kind: WorkspaceDiagnosticKind::RootOnlyOption("vendor"),
-          config_url: Url::from_file_path(root_dir().join("member/deno.json"))
+          config_url: url_from_file_path(&root_dir().join("member/deno.json"))
             .unwrap(),
         },
       ]
@@ -4066,7 +4066,7 @@ pub mod test {
           previous,
           suggestion,
         },
-        config_url: Url::from_file_path(root_dir().join("deno.json")).unwrap(),
+        config_url: url_from_file_path(&root_dir().join("deno.json")).unwrap(),
       }
     }
 
@@ -4154,7 +4154,7 @@ pub mod test {
       workspace_dir.workspace.diagnostics(),
       vec![WorkspaceDiagnostic {
         kind: WorkspaceDiagnosticKind::RootOnlyOption("workspace"),
-        config_url: Url::from_file_path(root_dir().join("member/deno.json"))
+        config_url: url_from_file_path(&root_dir().join("member/deno.json"))
           .unwrap(),
       }]
     );
@@ -4222,7 +4222,7 @@ pub mod test {
         .map(|kind| {
           WorkspaceDiagnostic {
             kind,
-            config_url: Url::from_file_path(root_dir().join("deno.json"))
+            config_url: url_from_file_path(&root_dir().join("deno.json"))
               .unwrap(),
           }
         })
@@ -4270,12 +4270,12 @@ pub mod test {
           assert_eq!(name, "@scope/pkg");
           assert_eq!(
             deno_json_url,
-            Url::from_file_path(root_dir().join("member2").join("deno.json"))
+            url_from_file_path(&root_dir().join("member2").join("deno.json"))
               .unwrap()
           );
           assert_eq!(
             other_deno_json_url,
-            Url::from_file_path(root_dir().join("member1").join("deno.json"))
+            url_from_file_path(&root_dir().join("member1").join("deno.json"))
               .unwrap()
           );
         }
@@ -4717,7 +4717,7 @@ pub mod test {
           );
           assert_eq!(
             config_url,
-            &Url::from_file_path(config_file_path).unwrap()
+            &url_from_file_path(config_file_path).unwrap()
           );
         }
         _ => unreachable!(),

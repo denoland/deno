@@ -10154,9 +10154,9 @@ dependencies = [
 
 [[package]]
 name = "sys_traits"
-version = "0.1.24"
+version = "0.1.25"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5410f31d223892c1ce7a098da845c99d023b4c7f18632bc8f09e60dfae3cbb75"
+checksum = "24954f769b36305ab4dc502d095da5cfd9c697c73a8f2c0636a7fca76ff1f24b"
 dependencies = [
  "filetime",
  "getrandom 0.2.14",
@@ -12754,7 +12754,3 @@ checksum = "16099418600b4d8f028622f73ff6e3deaabdff330fb9a2a131dea781ee8b0768"
 dependencies = [
  "zune-core",
 ]
-
-[[patch.unused]]
-name = "sys_traits"
-version = "0.1.25"

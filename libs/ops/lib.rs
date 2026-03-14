@@ -1,7 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 #![forbid(clippy::disallowed_methods)]
-
 #![doc = include_str!("README.md")]
 #![deny(clippy::unnecessary_wraps)]
 // TODO(bartlomieju): remove println! usage from macro debugging/test code
@@ -87,6 +86,8 @@ fn get_internalized_string(
 
 #[cfg(test)]
 mod infra {
+  #![allow(clippy::disallowed_methods)]
+
   use std::path::PathBuf;
 
   use syn::File;

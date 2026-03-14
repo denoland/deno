@@ -223,7 +223,6 @@ pub mod _ops {
 pub mod snapshot {
   pub use crate::runtime::CreateSnapshotOptions;
   pub use crate::runtime::CreateSnapshotOutput;
-  pub use crate::runtime::FilterFn;
   pub use crate::runtime::create_snapshot;
 }
 
