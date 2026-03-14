@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 #![allow(non_upper_case_globals)]
 #![deny(unsafe_op_in_unsafe_fn)]
@@ -132,6 +132,9 @@ impl Reference {
     // it might free the reference (which would be a UAF)
     let ownership = reference.ownership;
     if let Some(finalize_cb) = finalize_cb {
+      // Deregister before calling so it won't be called again at shutdown
+      let env = unsafe { &*reference.env };
+      env.remove_ref_finalizer(finalize_data);
       unsafe {
         finalize_cb(reference.env as _, finalize_data, finalize_hint);
       }
@@ -285,13 +288,6 @@ fn napi_define_class<'s>(
       let setter = p
         .setter
         .map(|s| create_function_template(scope, env_ptr, None, s, p.data));
-      if getter.is_some()
-        && setter.is_some()
-        && (p.attributes & napi_writable) == 0
-      {
-        accessor_property =
-          accessor_property | v8::PropertyAttribute::READ_ONLY;
-      }
       let proto = tpl.prototype_template(scope);
       proto.set_accessor_property(name, getter, setter, accessor_property);
     } else if let Some(method) = p.method {
@@ -998,6 +994,73 @@ fn napi_create_object(
 }
 
 #[napi_sym]
+fn node_api_create_object_with_properties<'s>(
+  env_ptr: *mut Env,
+  prototype_or_null: napi_value<'s>,
+  property_names: *const napi_value<'s>,
+  property_values: *const napi_value<'s>,
+  property_count: usize,
+  result: *mut napi_value<'s>,
+) -> napi_status {
+  let env = check_env!(env_ptr);
+  check_arg!(env, result);
+
+  if property_count > 0 {
+    check_arg!(env, property_names);
+    check_arg!(env, property_values);
+  }
+
+  unsafe {
+    v8::callback_scope!(unsafe scope, env.context());
+
+    let prototype = if let Some(proto) = *prototype_or_null {
+      proto
+    } else {
+      v8::null(scope).into()
+    };
+
+    let (names, values): (&[napi_value<'s>], &[napi_value<'s>]) =
+      if property_count == 0 {
+        (&[], &[])
+      } else {
+        (
+          std::slice::from_raw_parts(property_names, property_count),
+          std::slice::from_raw_parts(property_values, property_count),
+        )
+      };
+
+    for name in names {
+      if let Some(name_val) = **name {
+        if !name_val.is_name() {
+          return napi_name_expected;
+        }
+      } else {
+        return napi_invalid_arg;
+      }
+    }
+
+    let mut v8_names = Vec::with_capacity(property_count);
+    let mut v8_values = Vec::with_capacity(property_count);
+
+    for i in 0..property_count {
+      if let Some(name) = *names[i] {
+        v8_names.push(name.try_cast::<v8::Name>().unwrap());
+      }
+      if let Some(value) = *values[i] {
+        v8_values.push(value);
+      }
+    }
+
+    *result = v8::Object::with_prototype_and_properties(
+      scope, prototype, &v8_names, &v8_values,
+    )
+    .into();
+  }
+
+  return napi_clear_last_error(env_ptr);
+}
+
+#[napi_sym]
 fn napi_create_array(
   env_ptr: *mut Env,
   result: *mut napi_value,
@@ -1226,6 +1289,102 @@ fn node_api_create_external_string_utf16(
   }
 
   status
+}
+
+#[napi_sym]
+fn node_api_create_property_key_latin1(
+  env_ptr: *mut Env,
+  string: *const c_char,
+  length: usize,
+  result: *mut napi_value,
+) -> napi_status {
+  let env = check_env!(env_ptr);
+  if length > 0 {
+    check_arg!(env, string);
+  }
+  crate::return_status_if_false!(
+    env,
+    (length == NAPI_AUTO_LENGTH) || length <= INT_MAX as _,
+    napi_invalid_arg
+  );
+
+  let buffer = if length > 0 {
+    unsafe {
+      std::slice::from_raw_parts(
+        string as _,
+        if length == NAPI_AUTO_LENGTH {
+          std::ffi::CStr::from_ptr(string).to_bytes().len()
+        } else {
+          length
+        },
+      )
+    }
+  } else {
+    &[]
+  };
+
+  let Some(string) = ({
+    v8::callback_scope!(unsafe scope, env.context());
+    v8::String::new_from_one_byte(
+      scope,
+      buffer,
+      v8::NewStringType::Internalized,
+    )
+  }) else {
+    return napi_set_last_error(env_ptr, napi_generic_failure);
+  };
+
+  unsafe {
+    *result = string.into();
+  }
+
+  return napi_clear_last_error(env_ptr);
+}
+
+#[napi_sym]
+fn node_api_create_property_key_utf8(
+  env_ptr: *mut Env,
+  string: *const c_char,
+  length: usize,
+  result: *mut napi_value,
+) -> napi_status {
+  let env = check_env!(env_ptr);
+  if length > 0 {
+    check_arg!(env, string);
+  }
+  crate::return_status_if_false!(
+    env,
+    (length == NAPI_AUTO_LENGTH) || length <= INT_MAX as _,
+    napi_invalid_arg
+  );
+
+  let buffer = if length > 0 {
+    unsafe {
+      std::slice::from_raw_parts(
+        string as _,
+        if length == NAPI_AUTO_LENGTH {
+          std::ffi::CStr::from_ptr(string).to_bytes().len()
+        } else {
+          length
+        },
+      )
+    }
+  } else {
+    &[]
+  };
+
+  let Some(string) = ({
+    v8::callback_scope!(unsafe scope, env.context());
+    v8::String::new_from_utf8(scope, buffer, v8::NewStringType::Internalized)
+  }) else {
+    return napi_set_last_error(env_ptr, napi_generic_failure);
+  };
+
+  unsafe {
+    *result = string.into();
+  }
+
+  return napi_clear_last_error(env_ptr);
 }
 
 #[napi_sym]
@@ -2129,20 +2288,12 @@ fn napi_get_value_string_latin1(
       *result = value.length();
     }
   } else if bufsize != 0 {
-    let buffer =
-      unsafe { std::slice::from_raw_parts_mut(buf as _, bufsize - 1) };
-    let copied = value.write_one_byte(
-      scope,
-      buffer,
-      0,
-      v8::WriteOptions::NO_NULL_TERMINATION,
-    );
-    unsafe {
-      buf.add(copied).write(0);
-    }
+    let length = value.length().min(bufsize - 1);
+    let buffer = unsafe { std::slice::from_raw_parts_mut(buf as _, length) };
+    value.write_one_byte_v2(scope, 0, buffer, v8::WriteFlags::kNullTerminate);
     if !result.is_null() {
       unsafe {
-        *result = copied;
+        *result = length;
       }
     }
   } else if !result.is_null() {
@@ -2181,12 +2332,11 @@ fn napi_get_value_string_utf8(
   } else if bufsize != 0 {
     let buffer =
       unsafe { std::slice::from_raw_parts_mut(buf as _, bufsize - 1) };
-    let copied = value.write_utf8(
+    let copied = value.write_utf8_v2(
       scope,
       buffer,
+      v8::WriteFlags::kReplaceInvalidUtf8,
       None,
-      v8::WriteOptions::REPLACE_INVALID_UTF8
-        | v8::WriteOptions::NO_NULL_TERMINATION,
     );
     unsafe {
       buf.add(copied).write(0);
@@ -2230,16 +2380,12 @@ fn napi_get_value_string_utf16(
       *result = value.length();
     }
   } else if bufsize != 0 {
-    let buffer =
-      unsafe { std::slice::from_raw_parts_mut(buf as _, bufsize - 1) };
-    let copied =
-      value.write(scope, buffer, 0, v8::WriteOptions::NO_NULL_TERMINATION);
-    unsafe {
-      buf.add(copied).write(0);
-    }
+    let length = value.length().min(bufsize - 1);
+    let buffer = unsafe { std::slice::from_raw_parts_mut(buf as _, length) };
+    value.write_v2(scope, 0, buffer, v8::WriteFlags::kNullTerminate);
     if !result.is_null() {
       unsafe {
-        *result = copied;
+        *result = length;
       }
     }
   } else if !result.is_null() {
@@ -2377,6 +2523,15 @@ fn napi_wrap(
     finalize_hint,
   );
 
+  if let Some(cb) = finalize_cb {
+    env.add_ref_finalizer(
+      env_ptr as napi_env,
+      cb,
+      native_object,
+      finalize_hint,
+    );
+  }
+
   let reference = Reference::into_raw(reference) as *mut c_void;
 
   if !result.is_null() {
@@ -2428,6 +2583,7 @@ fn unwrap(
   }
 
   if !keep {
+    env.remove_ref_finalizer(reference.finalize_data);
     assert!(obj.delete_private(scope, napi_wrap).unwrap_or(false));
     unsafe { Reference::remove(reference) };
   }
@@ -2479,6 +2635,12 @@ fn napi_create_external<'s>(
   let external = v8::External::new(scope, wrapper as _);
 
   if let Some(finalize_cb) = finalize_cb {
+    env.add_ref_finalizer(
+      env_ptr as napi_env,
+      finalize_cb,
+      data,
+      finalize_hint,
+    );
     Reference::into_raw(Reference::new(
       env_ptr,
       external.into(),
@@ -3526,6 +3688,16 @@ fn napi_add_finalizer(
   } else {
     ReferenceOwnership::Userland
   };
+
+  if let Some(cb) = finalize_cb {
+    env.add_ref_finalizer(
+      env_ptr as napi_env,
+      cb,
+      finalize_data,
+      finalize_hint,
+    );
+  }
+
   let reference = Reference::new(
     env,
     value.into(),
@@ -3582,6 +3754,9 @@ fn napi_set_instance_data(
 ) -> napi_status {
   let env = check_env!(env);
 
+  // Note: instance data finalizers are NOT registered in ref_tracker because
+  // they already have their own teardown path in NapiState::Drop which calls
+  // EnvShared instance_data finalize_cb directly.
   env.shared_mut().instance_data = Some(InstanceData {
     data,
     finalize_cb,

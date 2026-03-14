@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 #![deny(unsafe_op_in_unsafe_fn)]
 
@@ -299,9 +299,9 @@ fn napi_create_buffer<'s>(
 
   let ab = v8::ArrayBuffer::new(scope, length);
 
-  let buffer_constructor = v8::Local::new(scope, &env.buffer_constructor);
-  let Some(buffer) = buffer_constructor.new_instance(scope, &[ab.into()])
-  else {
+  let create_buffer = v8::Local::new(scope, &env.create_buffer);
+  let recv = v8::null(scope).into();
+  let Some(buffer) = create_buffer.call(scope, recv, &[ab.into()]) else {
     return napi_generic_failure;
   };
 
@@ -341,9 +341,9 @@ fn napi_create_external_buffer<'s>(
   v8::callback_scope!(unsafe scope, env.context());
   let ab = v8::ArrayBuffer::with_backing_store(scope, &store.make_shared());
 
-  let buffer_constructor = v8::Local::new(scope, &env.buffer_constructor);
-  let Some(buffer) = buffer_constructor.new_instance(scope, &[ab.into()])
-  else {
+  let create_buffer = v8::Local::new(scope, &env.create_buffer);
+  let recv = v8::null(scope).into();
+  let Some(buffer) = create_buffer.call(scope, recv, &[ab.into()]) else {
     return napi_generic_failure;
   };
 
@@ -368,9 +368,9 @@ fn napi_create_buffer_copy<'s>(
 
   let ab = v8::ArrayBuffer::new(scope, length);
 
-  let buffer_constructor = v8::Local::new(scope, &env.buffer_constructor);
-  let Some(buffer) = buffer_constructor.new_instance(scope, &[ab.into()])
-  else {
+  let create_buffer = v8::Local::new(scope, &env.create_buffer);
+  let recv = v8::null(scope).into();
+  let Some(buffer) = create_buffer.call(scope, recv, &[ab.into()]) else {
     return napi_generic_failure;
   };
 
@@ -586,8 +586,16 @@ pub(crate) fn napi_queue_async_work(
   }
 
   let work = SendPtr(work);
+  let sender = env.async_work_sender.clone();
+  let tracker = env.external_ops_tracker.clone();
 
-  env.add_async_work(move || {
+  // Keep the event loop alive while async work is pending.
+  tracker.ref_op();
+
+  // Per NAPI spec, `execute` runs on a worker thread and `complete` runs on
+  // the main thread. Previously both ran on the main thread which caused
+  // deadlocks when `execute` called threadsafe functions.
+  std::thread::spawn(move || {
     let work = work.take();
     let work = unsafe { &*work };
 
@@ -612,7 +620,13 @@ pub(crate) fn napi_queue_async_work(
       );
     }
 
-    if let Some(complete) = work.complete {
+    // Capture fields before dispatching to the main thread, since `complete`
+    // may call `napi_delete_async_work` which frees the work struct.
+    let complete = work.complete;
+    let env_ptr = SendPtr(work.env);
+    let data = SendPtr(work.data);
+
+    if let Some(complete) = complete {
       let status = if state.is_ok() {
         napi_ok
       } else if state == Err(AsyncWork::IDLE) {
@@ -621,12 +635,16 @@ pub(crate) fn napi_queue_async_work(
         napi_generic_failure
       };
 
-      unsafe {
-        complete(work.env as _, status, work.data);
-      }
+      // Dispatch `complete` to the main thread where it can safely access V8.
+      sender.spawn(move |_| {
+        unsafe {
+          complete(env_ptr.take() as _, status, data.take() as _);
+        }
+        tracker.unref_op();
+      });
+    } else {
+      tracker.unref_op();
     }
-
-    // `complete` probably deletes this `work`, so don't use it here.
   });
 
   napi_clear_last_error(env)

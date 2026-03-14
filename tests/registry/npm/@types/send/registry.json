@@ -1,0 +1,55 @@
+{
+  "name": "@types/send",
+  "dist-tags": {
+    "ts6.0": "1.2.1",
+    "ts5.8": "1.2.1",
+    "ts5.7": "1.2.1",
+    "ts5.6": "1.2.1",
+    "ts5.4": "1.2.1",
+    "ts5.3": "1.2.1",
+    "ts5.2": "1.2.1",
+    "ts5.5": "1.2.1",
+    "ts5.9": "1.2.1",
+    "latest": "1.2.1"
+  },
+  "versions": {
+    "1.2.1": {
+      "name": "@types/send",
+      "version": "1.2.1",
+      "license": "MIT",
+      "_id": "@types/send@1.2.1",
+      "dist": {
+        "shasum": "6a784e45543c18c774c049bff6d3dbaf045c9c74",
+        "tarball": "http://localhost:4260/@types/send/send-1.2.1.tgz",
+        "fileCount": 5,
+        "integrity": "sha512-arsCikDvlU99zl1g69TcAB3mzZPpxgw0UQnaHeC1Nwb015xp8bknZv5rIfri9xTOcMuaVgvabfIRA7PSZVuZIQ==",
+        "unpackedSize": 9006
+      },
+      "main": "",
+      "types": "index.d.ts",
+      "scripts": {},
+      "repository": {
+        "url": "https://github.com/DefinitelyTyped/DefinitelyTyped.git",
+        "type": "git",
+        "directory": "types/send"
+      },
+      "description": "TypeScript definitions for send",
+      "directories": {},
+      "dependencies": {
+        "@types/node": "*"
+      },
+      "_hasShrinkwrap": false,
+      "peerDependencies": {},
+      "typeScriptVersion": "5.2",
+      "typesPublisherContentHash": "7e844b30112f7eee3dc5a8f5c053af5f6bc07315ee3f5620d343ee55dcc2bffe"
+    }
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/send",
+  "repository": {
+    "url": "https://github.com/DefinitelyTyped/DefinitelyTyped.git",
+    "type": "git",
+    "directory": "types/send"
+  },
+  "description": "TypeScript definitions for send"
+}

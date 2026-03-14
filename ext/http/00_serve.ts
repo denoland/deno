@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import { core, internals, primordials } from "ext:core/mod.js";
 const {
@@ -29,6 +29,8 @@ import {
   op_http_set_response_trailers,
   op_http_try_wait,
   op_http_upgrade_raw,
+  op_http_upgrade_raw_connect,
+  op_http_upgrade_raw_get_head,
   op_http_upgrade_websocket_next,
   op_http_wait,
 } from "ext:core/ops";
@@ -151,6 +153,16 @@ function upgradeHttpRaw(req) {
   throw new TypeError("'upgradeHttpRaw' may only be used with Deno.serve");
 }
 
+function upgradeHttpRawConnect(req) {
+  const inner = toInnerRequest(req);
+  if (inner?._wantsUpgrade) {
+    return inner._wantsUpgrade("upgradeConnect");
+  }
+  throw new TypeError(
+    "'upgradeHttpRawConnect' may only be used with Deno.serve",
+  );
+}
+
 function addTrailers(resp, headerList) {
   const inner = toInnerResponse(resp);
   op_http_set_response_trailers(inner.external, headerList);
@@ -224,6 +236,31 @@ class InnerRequest {
       );
 
       return { response: UPGRADE_RESPONSE_SENTINEL, conn };
+    }
+
+    if (upgradeType == "upgradeConnect") {
+      const external = this.#external;
+      const remoteAddr = this.remoteAddr;
+      const localAddr = this.#context.listener.addr;
+
+      this.url();
+      this.headerList;
+      this.close();
+
+      this.#upgraded = true;
+
+      return (async () => {
+        const upgradeRid = await op_http_upgrade_raw_connect(external);
+        const head = op_http_upgrade_raw_get_head(upgradeRid);
+
+        const conn = new UpgradedConn(
+          upgradeRid,
+          remoteAddr,
+          localAddr,
+        );
+
+        return { response: UPGRADE_RESPONSE_SENTINEL, conn, head };
+      })();
     }
 
     if (upgradeType == "upgradeWebSocket") {
@@ -638,7 +675,7 @@ function mapToCallback(context, callback, onError) {
         { kind: 1 },
         activeContext,
       );
-      enterSpan(span);
+      enterSpan(span, activeContext);
       try {
         return SafePromisePrototypeFinally(
           origMapped(req, span),
@@ -698,6 +735,9 @@ function formatHostName(hostname: string): string {
   return StringPrototypeIncludes(hostname, ":") ? `[${hostname}]` : hostname;
 }
 
+// Flag to track if DENO_SERVE_ADDRESS override has been consumed
+let serveAddressOverrideConsumed = false;
+
 function serve(arg1, arg2) {
   let options: RawServeOptions | undefined;
   let handler: RawHandler | undefined;
@@ -727,6 +767,10 @@ function serve(arg1, arg2) {
     options = { __proto__: null };
   }
 
+  if (serveAddressOverrideConsumed) {
+    return serveInner(options, handler);
+  }
+
   const {
     0: overrideKind,
     1: overrideHost,
@@ -734,6 +778,8 @@ function serve(arg1, arg2) {
     3: duplicateListener,
   } = op_http_serve_address_override();
   if (overrideKind) {
+    serveAddressOverrideConsumed = true;
+
     let envOptions = duplicateListener
       ? { __proto__: null, signal: options.signal, onError: options.onError }
       : options;
@@ -1092,6 +1138,7 @@ function serveHttpOn(context, addr, callback) {
 
 internals.addTrailers = addTrailers;
 internals.upgradeHttpRaw = upgradeHttpRaw;
+internals.upgradeHttpRawConnect = upgradeHttpRawConnect;
 internals.serveHttpOnListener = serveHttpOnListener;
 internals.serveHttpOnConnection = serveHttpOnConnection;
 
@@ -1169,4 +1216,5 @@ export {
   serveHttpOnConnection,
   serveHttpOnListener,
   upgradeHttpRaw,
+  upgradeHttpRawConnect,
 };

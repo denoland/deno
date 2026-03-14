@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -173,19 +173,6 @@ impl NpmInstallDepsProvider {
                   target_dir: pkg.pkg_json.dir_path().to_path_buf(),
                 });
               }
-            }
-            PackageJsonDepValue::JsrReq(_) => {
-              pkg_json_dep_errors.push(
-                PackageJsonDepValueParseWithLocationError {
-                  location: pkg_json.specifier(),
-                  alias: alias.clone(),
-                  source: PackageJsonDepValueParseError(Box::new(
-                    deno_package_json::PackageJsonDepValueParseErrorKind::Unsupported {
-                      scheme: "jsr".to_string(),
-                    },
-                  )),
-                },
-              );
             }
           }
         }

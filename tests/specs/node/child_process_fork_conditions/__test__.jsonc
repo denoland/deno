@@ -1,0 +1,8 @@
+{
+  "tests": {
+    "exec_argv_conditions": {
+      "args": "run -A main.js",
+      "output": "main.out"
+    }
+  }
+}

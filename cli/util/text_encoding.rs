@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::collections::HashMap;
 use std::ops::Range;
@@ -176,6 +176,10 @@ impl Utf16Map {
 
   pub fn utf8_offsets_len(&self) -> usize {
     self.utf8_offsets.len()
+  }
+
+  pub fn line_starts(&self) -> &[TextSize] {
+    &self.utf16_offsets
   }
 
   pub fn line_length_utf16(&self, line: u32) -> TextSize {

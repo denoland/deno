@@ -12,7 +12,7 @@
     "result": {
       "description": "The result of the check, tells Deno if the request should be granted or rejected",
       "enum": [
-        "grant",
+        "allow",
         "deny"
       ]
     },

@@ -1,0 +1,5 @@
+error: Uncaught (in promise) Error: Error with blocked sourcemap host
+  throw new Error("Error with blocked sourcemap host");
+        ^
+    at throwError (file://[WILDCARD]/blocked_host.js:3:9)
+    at file://[WILDCARD]/blocked_host.js:6:1

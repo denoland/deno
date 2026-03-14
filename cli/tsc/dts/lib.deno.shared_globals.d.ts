@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // Documentation partially adapted from [MDN](https://developer.mozilla.org/),
 // by Mozilla Contributors, which is licensed under CC-BY-SA 2.5.
@@ -14,6 +14,7 @@
 /// <reference lib="deno.websocket" />
 /// <reference lib="deno.crypto" />
 /// <reference lib="deno.ns" />
+/// <reference lib="deno.broadcast_channel" />
 
 /** @category Wasm */
 declare namespace WebAssembly {
@@ -587,13 +588,13 @@ interface WorkerOptions {
  */
 interface Worker extends EventTarget {
   /** Event handler for error events. Fired when an error occurs in the worker's execution context. */
-  onerror: (this: Worker, e: ErrorEvent) => any | null;
+  onerror: ((this: Worker, e: ErrorEvent) => any) | null;
 
   /** Event handler for message events. Fired when the worker sends data back to the main thread. */
-  onmessage: (this: Worker, e: MessageEvent) => any | null;
+  onmessage: ((this: Worker, e: MessageEvent) => any) | null;
 
   /** Event handler for message error events. Fired when a message cannot be deserialized. */
-  onmessageerror: (this: Worker, e: MessageEvent) => any | null;
+  onmessageerror: ((this: Worker, e: MessageEvent) => any) | null;
 
   /**
    * Sends a message to the worker, transferring ownership of the specified transferable objects.
@@ -738,6 +739,23 @@ interface Performance extends EventTarget {
 
   /** Removes stored timestamp with the associated name. */
   clearMeasures(measureName?: string): void;
+
+  /** Removes all performance entries with an entryType of "resource" from the
+   * performance timeline and sets the size of the performance resource data
+   * buffer to zero.
+   *
+   * Note: Deno does not currently track resource timings, so this method has
+   * no observable effect. It is provided for API compatibility.
+   */
+  clearResourceTimings(): void;
+
+  /** Sets the desired size of the browser's resource timing buffer which
+   * stores the "resource" performance entries.
+   *
+   * Note: Deno does not currently track resource timings, so this method has
+   * no observable effect. It is provided for API compatibility.
+   */
+  setResourceTimingBufferSize(maxSize: number): void;
 
   getEntries(): PerformanceEntryList;
   getEntriesByName(name: string, type?: string): PerformanceEntryList;

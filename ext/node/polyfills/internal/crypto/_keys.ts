@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // This file is here because to break a circular dependency between streams and
 // crypto.
@@ -8,6 +8,7 @@
 
 import { kKeyObject } from "ext:deno_node/internal/crypto/constants.ts";
 import type { KeyObject } from "ext:deno_node/internal/crypto/keys.ts";
+import type { CryptoKey } from "ext:deno_crypto/00_crypto.js";
 
 export const kKeyType = Symbol("kKeyType");
 

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::rc::Rc;
@@ -442,7 +442,7 @@ network_stream!(
     Unix,
     unix,
     tokio::net::UnixStream,
-    tokio::net::UnixListener,
+    crate::ops_unix::UnixListenerWithPath,
     tokio::net::unix::SocketAddr,
     crate::io::UnixStreamResource,
     tokio::net::unix::OwnedReadHalf,
@@ -468,6 +468,17 @@ network_stream!(
     crate::tunnel::TunnelStreamResource,
     crate::tunnel::OwnedReadHalf,
     crate::tunnel::OwnedWriteHalf,
+  ],
+  #[cfg(windows)]
+  [
+    WindowsPipe,
+    windowsPipe,
+    crate::win_pipe::WindowsPipeStream,
+    crate::win_pipe::WindowsPipeListener,
+    crate::win_pipe::WindowsPipeAddr,
+    crate::win_pipe::NamedPipe,
+    tokio::io::ReadHalf<crate::win_pipe::WindowsPipeStream>,
+    tokio::io::WriteHalf<crate::win_pipe::WindowsPipeStream>,
   ]
 );
 
@@ -478,6 +489,8 @@ pub enum NetworkStreamAddress {
   #[cfg(any(target_os = "android", target_os = "linux", target_os = "macos"))]
   Vsock(tokio_vsock::VsockAddr),
   Tunnel(crate::tunnel::TunnelAddr),
+  #[cfg(windows)]
+  WindowsPipe(crate::win_pipe::WindowsPipeAddr),
 }
 
 impl From<std::net::SocketAddr> for NetworkStreamAddress {
@@ -506,6 +519,13 @@ impl From<crate::tunnel::TunnelAddr> for NetworkStreamAddress {
   }
 }
 
+#[cfg(windows)]
+impl From<crate::win_pipe::WindowsPipeAddr> for NetworkStreamAddress {
+  fn from(value: crate::win_pipe::WindowsPipeAddr) -> Self {
+    NetworkStreamAddress::WindowsPipe(value)
+  }
+}
+
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum TakeNetworkStreamError {
   #[class("Busy")]
@@ -525,6 +545,10 @@ pub enum TakeNetworkStreamError {
   #[class("Busy")]
   #[error("Tunnel socket is currently in use")]
   TunnelBusy,
+  #[cfg(windows)]
+  #[class("Busy")]
+  #[error("Windows named pipe is currently in use")]
+  WindowsPipeBusy,
   #[class(generic)]
   #[error(transparent)]
   ReuniteTcp(#[from] tokio::net::tcp::ReuniteError),
@@ -604,6 +628,20 @@ pub fn take_network_stream_resource(
       .map_err(|_| TakeNetworkStreamError::TunnelBusy)?;
     let stream = resource.into_inner();
     return Ok(NetworkStream::Tunnel(stream));
+  }
+
+  #[cfg(windows)]
+  if let Ok(resource_rc) =
+    resource_table.take::<crate::win_pipe::NamedPipe>(stream_rid)
+  {
+    let resource = Rc::try_unwrap(resource_rc)
+      .map_err(|_| TakeNetworkStreamError::WindowsPipeBusy)?;
+    let client = resource.into_client().map_err(|_| {
+      TakeNetworkStreamError::Resource(ResourceError::BadResourceId)
+    })?;
+    return Ok(NetworkStream::WindowsPipe(
+      crate::win_pipe::WindowsPipeStream::new(client),
+    ));
   }
 
   Err(TakeNetworkStreamError::Resource(

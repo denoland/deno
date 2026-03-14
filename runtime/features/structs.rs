@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 #[derive(Clone, Debug)]
 pub enum UnstableFeatureKind {
@@ -15,5 +15,4 @@ pub struct UnstableFeatureDefinition {
   pub show_in_help: bool,
   pub id: i32,
   pub kind: UnstableFeatureKind,
-  pub config_file_option: &'static str,
 }

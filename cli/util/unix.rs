@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 /// Raise soft file descriptor limit to hard file descriptor limit.
 /// This is the difference between `ulimit -n` and `ulimit -n -H`.

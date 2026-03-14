@@ -1,0 +1,13 @@
+{
+  "tests": {
+    "console_log": {
+      "args": "run --quiet --allow-read console_log.ts",
+      "output": "console_log.out"
+    },
+    "thrown": {
+      "args": "run --quiet --allow-read thrown.ts",
+      "output": "thrown.out",
+      "exitCode": 1
+    }
+  }
+}

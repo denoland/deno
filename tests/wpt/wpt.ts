@@ -1,5 +1,5 @@
 #!/usr/bin/env -S deno run -RWNE --allow-run --lock=tools/deno.lock.json --config=tests/config/deno.json --unsafely-ignore-certificate-errors
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // deno-lint-ignore-file no-console
 
@@ -12,13 +12,15 @@ import {
   TestResult,
 } from "./runner/runner.ts";
 import {
+  all,
   assert,
   autoConfig,
   cargoBuild,
   checkPy3Available,
+  checkWptCiHash,
   escapeLoneSurrogates,
   Expectation,
-  EXPECTATION_PATH,
+  EXPECTATIONS_DIR,
   generateRunInfo,
   getExpectation,
   getExpectFailForCase,
@@ -33,6 +35,7 @@ import {
   rest,
   runGitDiff,
   runPy,
+  TestExpectation,
   updateManifest,
   wptreport,
 } from "./runner/utils.ts";
@@ -64,6 +67,24 @@ class TestFilter {
     }
     return false;
   }
+
+  shouldKeepWalking(path: string): boolean {
+    if (this.filter === undefined || this.filter.length == 0) {
+      return true;
+    }
+    for (const filter of this.filter) {
+      if (filter.startsWith("/")) {
+        if (filter.startsWith(path)) {
+          return true;
+        }
+      } else {
+        if (filter.startsWith(path.substring(1))) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
 }
 
 const command = Deno.args[0];
@@ -75,11 +96,16 @@ switch (command) {
     await setup();
     break;
 
-  case "run":
+  case "run": {
     await checkPy3Available();
     await cargoBuild();
-    await run();
+    const ciHash = await checkWptCiHash();
+    if (ciHash.skip) break;
+    const exitCode = await run();
+    if (exitCode === 0) await ciHash.commit();
+    Deno.exit(exitCode);
     break;
+  }
 
   case "update":
     await cargoBuild();
@@ -93,10 +119,10 @@ switch (command) {
       Validate that your environment is configured correctly, or help you configure it.
 
     run
-      Run all tests like specified in \`expectation.json\`.
+      Run all tests like specified in the expectations directory.
 
     update
-      Update the \`expectation.json\` to match the current reality.
+      Update the expectations directory to match the current reality.
 
 More details at https://docs.deno.com/runtime/manual/references/contributing/web_platform_tests
 
@@ -168,11 +194,17 @@ async function setup() {
   console.log(green("Setup complete!"));
 }
 
+function isLeafExpectation(e: unknown): e is boolean | TestExpectation {
+  return typeof e === "boolean" ||
+    (typeof e === "object" && e !== null && !Array.isArray(e) &&
+      ("expectedFailures" in e || "ignore" in e || "flaky" in e));
+}
+
 interface TestToRun {
   path: string;
   url: URL;
   options: ManifestTestOptions;
-  expectation: boolean | string[];
+  expectation: boolean | TestExpectation;
 }
 
 function getTestTimeout(test: TestToRun) {
@@ -188,8 +220,33 @@ function getTestTimeout(test: TestToRun) {
 }
 
 async function run() {
-  const startTime = new Date().getTime();
   assert(Array.isArray(rest), "filter must be array");
+  const hasFilters = rest.length > 0;
+  if (!hasFilters && !all) {
+    console.log(`Usage: wpt.ts run [OPTIONS] [-- <filters...>]
+
+Run WPT tests and check results against expectations.
+
+Either specify test filters or use --all to run the entire suite:
+
+    wpt.ts run -- fetch/api/basic
+    wpt.ts run -- /WebCryptoAPI/getRandomValues.any.html
+    wpt.ts run --all
+
+Options:
+    --all              Run all tests
+    --quiet            Only print failing test cases
+    --release          Use the release build of Deno
+    --binary=<path>    Use a specific Deno binary
+    --json=<file>      Write test results as JSON
+    --wptreport=<file> Write results in wptreport format
+    --inspect-brk      Attach V8 inspector to each test
+    --no-ignore        Include tests marked with {"ignore": true}
+    --exit-zero        Exit with code 0 even on failures
+`);
+    Deno.exit(1);
+  }
+  const startTime = Date.now();
   const expectation = getExpectation();
   const filter = new TestFilter(rest);
   const tests = discoverTestsToRun(
@@ -212,13 +269,54 @@ async function run() {
         if (!inParallel) {
           console.log(`${blue("-".repeat(40))}\n${bold(test.path)}\n`);
         }
-        const result = await runSingleTest(
+        let result = await runSingleTest(
           test.url,
           test.options,
           inParallel ? () => {} : createReportTestCase(test.expectation),
           inspectBrk,
           getTestTimeout(test),
         );
+        const isFlaky = typeof test.expectation === "object" &&
+          test.expectation !== null && test.expectation.flaky === true;
+        if (isFlaky) {
+          const isFileLevelFailure = result.status !== 0 ||
+            result.harnessStatus === null;
+          const analysis = analyzeTestResult(result, test.expectation);
+          const hasFailed = isFileLevelFailure || analysis.failedCount > 0;
+          if (hasFailed) {
+            for (let attempt = 2; attempt <= 3; attempt++) {
+              console.log(
+                yellow(
+                  `Retrying flaky test ${test.path} (attempt ${attempt}/3)`,
+                ),
+              );
+              const retryResult = await runSingleTest(
+                test.url,
+                test.options,
+                () => {},
+                inspectBrk,
+                getTestTimeout(test),
+              );
+              const retryFileLevelFailure = retryResult.status !== 0 ||
+                retryResult.harnessStatus === null;
+              const retryAnalysis = analyzeTestResult(
+                retryResult,
+                test.expectation,
+              );
+              const retryFailed = retryFileLevelFailure ||
+                retryAnalysis.failedCount > 0;
+              if (!retryFailed) {
+                console.log(
+                  yellow(
+                    `Flaky test ${test.path} passed on attempt ${attempt}/3`,
+                  ),
+                );
+                result = retryResult;
+                break;
+              }
+            }
+          }
+        }
         results.push({ test, result });
         if (inParallel) {
           console.log(`${blue("-".repeat(40))}\n${bold(test.path)}\n`);
@@ -233,7 +331,7 @@ async function run() {
 
     return results;
   });
-  const endTime = new Date().getTime();
+  const endTime = Date.now();
 
   if (json) {
     const minifiedResults = [];
@@ -259,16 +357,22 @@ async function run() {
   }
 
   const newExpectations = newExpectation(results);
-  const tmp = Deno.makeTempFileSync();
-  saveExpectation(newExpectations, tmp);
+  const tmpDir = Deno.makeTempDirSync();
+  // Write each suite to its own file in the tmp directory for diffing
+  for (const [key, value] of Object.entries(newExpectations)) {
+    Deno.writeTextFileSync(
+      `${tmpDir}/${key}.json`,
+      JSON.stringify(value, undefined, "  ") + "\n",
+    );
+  }
 
   const code = reportFinal(results, endTime - startTime);
 
   // Run git diff to see what changed
-  await runGitDiff([EXPECTATION_PATH, tmp]);
-  Deno.removeSync(tmp);
+  await runGitDiff(["--no-index", EXPECTATIONS_DIR, tmpDir]);
+  Deno.removeSync(tmpDir, { recursive: true });
 
-  Deno.exit(code);
+  return code;
 }
 
 async function generateWptReport(
@@ -299,8 +403,10 @@ async function generateWptReport(
         if (!case_.passed) {
           if (typeof test.expectation === "boolean") {
             expected = test.expectation ? "PASS" : "FAIL";
-          } else if (Array.isArray(test.expectation)) {
-            expected = test.expectation.includes(case_.name) ? "FAIL" : "PASS";
+          } else if (typeof test.expectation === "object") {
+            expected = test.expectation.expectedFailures?.includes(case_.name)
+              ? "FAIL"
+              : "PASS";
           } else {
             expected = "PASS";
           }
@@ -342,16 +448,29 @@ function assertAllExpectationsHaveTests(
   function walk(parentExpectation: Expectation, parent: string) {
     for (const [key, expectation] of Object.entries(parentExpectation)) {
       const path = `${parent}/${key}`;
-      if (!filter.matches(path)) continue;
-      if (
-        (typeof expectation == "boolean" || Array.isArray(expectation)) &&
-        key !== "ignore"
-      ) {
+      if (!filter.matches(path)) {
+        if (
+          filter.shouldKeepWalking(path) &&
+          !isLeafExpectation(expectation) &&
+          key !== "ignore"
+        ) {
+          walk(expectation as Expectation, path);
+        }
+        continue;
+      }
+      if (isLeafExpectation(expectation) && key !== "ignore") {
+        // Skip ignored tests — they are intentionally excluded from testsToRun
+        if (
+          !noIgnore && typeof expectation === "object" &&
+          (expectation as TestExpectation).ignore === true
+        ) {
+          continue;
+        }
         if (!tests.has(path)) {
           missingTests.push(path);
         }
-      } else {
-        walk(expectation, path);
+      } else if (!isLeafExpectation(expectation)) {
+        walk(expectation as Expectation, path);
       }
     }
   }
@@ -372,7 +491,29 @@ function assertAllExpectationsHaveTests(
 
 async function update() {
   assert(Array.isArray(rest), "filter must be array");
-  const startTime = new Date().getTime();
+  const hasFilters = rest.length > 0;
+  if (!hasFilters && !all) {
+    console.log(`Usage: wpt.ts update [OPTIONS] [-- <filters...>]
+
+Run WPT tests and update expectations to match current results.
+
+Either specify test filters or use --all to update the entire suite:
+
+    wpt.ts update -- fetch/api/basic
+    wpt.ts update --all
+
+Options:
+    --all              Run all tests
+    --quiet            Only print failing test cases
+    --release          Use the release build of Deno
+    --binary=<path>    Use a specific Deno binary
+    --json=<file>      Write test results as JSON
+    --inspect-brk      Attach V8 inspector to each test
+    --no-ignore        Include tests marked with {"ignore": true}
+`);
+    Deno.exit(1);
+  }
+  const startTime = Date.now();
   const filter = new TestFilter(rest);
   const tests = discoverTestsToRun(filter, true);
   console.log(`Going to run ${tests.length} test files.`);
@@ -395,7 +536,7 @@ async function update() {
 
     return results;
   });
-  const endTime = new Date().getTime();
+  const endTime = Date.now();
 
   if (json) {
     await Deno.writeTextFile(json, JSON.stringify(results) + "\n");
@@ -406,7 +547,7 @@ async function update() {
 
   reportFinal(results, endTime - startTime);
 
-  console.log(blue("Updated expectation.json to match reality."));
+  console.log(blue("Updated expectations to match reality."));
 
   Deno.exit(0);
 }
@@ -437,15 +578,35 @@ function newExpectation(
 
   const currentExpectation = getExpectation();
 
+  // Build a map of path -> flaky flag from the original expectations
+  const flakyTests = new Set<string>();
+  for (const { test } of results) {
+    if (
+      typeof test.expectation === "object" && test.expectation !== null &&
+      test.expectation.flaky === true
+    ) {
+      flakyTests.add(test.path);
+    }
+  }
+
   for (const [path, result] of Object.entries(resultTests)) {
     const { passed, failed, testSucceeded } = result;
-    let finalExpectation: boolean | string[];
+    let finalExpectation: boolean | TestExpectation;
     if (failed.length == 0 && testSucceeded) {
       finalExpectation = true;
     } else if (failed.length > 0 && passed.length > 0 && testSucceeded) {
-      finalExpectation = failed;
+      finalExpectation = { expectedFailures: failed };
     } else {
       finalExpectation = false;
+    }
+
+    // Preserve the flaky flag from the original expectation
+    if (flakyTests.has(path)) {
+      if (typeof finalExpectation === "object") {
+        finalExpectation.flaky = true;
+      } else if (finalExpectation === true) {
+        finalExpectation = { flaky: true };
+      }
     }
 
     insertExpectation(
@@ -461,15 +622,14 @@ function newExpectation(
 function insertExpectation(
   segments: string[],
   currentExpectation: Expectation,
-  finalExpectation: boolean | string[],
+  finalExpectation: boolean | TestExpectation,
 ) {
   const segment = segments.shift();
   assert(segment, "segments array must never be empty");
   if (segments.length > 0) {
     if (
       currentExpectation[segment] === undefined ||
-      Array.isArray(currentExpectation[segment]) ||
-      typeof currentExpectation[segment] === "boolean"
+      isLeafExpectation(currentExpectation[segment])
     ) {
       currentExpectation[segment] = {};
     }
@@ -481,9 +641,8 @@ function insertExpectation(
   } else {
     if (
       currentExpectation[segment] === undefined ||
-      Array.isArray(currentExpectation[segment]) ||
       typeof currentExpectation[segment] === "boolean" ||
-      (currentExpectation[segment] as { ignore: boolean })?.ignore !== true
+      (currentExpectation[segment] as TestExpectation)?.ignore !== true
     ) {
       currentExpectation[segment] = finalExpectation;
     }
@@ -588,7 +747,7 @@ function reportFinal(
 
 function analyzeTestResult(
   result: TestResult,
-  expectation: boolean | string[],
+  expectation: boolean | TestExpectation,
 ): {
   failed: TestCaseResult[];
   failedCount: number;
@@ -623,7 +782,10 @@ function analyzeTestResult(
   };
 }
 
-function reportVariation(result: TestResult, expectation: boolean | string[]) {
+function reportVariation(
+  result: TestResult,
+  expectation: boolean | TestExpectation,
+) {
   if (result.status !== 0 || result.harnessStatus === null) {
     if (result.stderr) {
       console.log(`test stderr:\n${result.stderr}\n`);
@@ -682,7 +844,7 @@ function reportVariation(result: TestResult, expectation: boolean | string[]) {
   );
 }
 
-function createReportTestCase(expectation: boolean | string[]) {
+function createReportTestCase(expectation: boolean | TestExpectation) {
   return function reportTestCase({ name, status }: TestCaseResult) {
     const expectFail = getExpectFailForCase(expectation, name);
     let simpleMessage = `test ${name} ... `;
@@ -728,7 +890,7 @@ function createReportTestCase(expectation: boolean | string[]) {
 
 function discoverTestsToRun(
   filter: TestFilter,
-  expectation: Expectation | string[] | boolean = getExpectation(),
+  expectation: Expectation | TestExpectation | boolean = getExpectation(),
 ): TestToRun[] {
   const manifestFolder = getManifest().items.testharness;
 
@@ -736,7 +898,7 @@ function discoverTestsToRun(
 
   function walk(
     parentFolder: ManifestFolder,
-    parentExpectation: Expectation | string[] | boolean,
+    parentExpectation: Expectation | TestExpectation | boolean,
     prefix: string,
   ) {
     for (const [key, entry] of Object.entries(parentFolder)) {
@@ -780,26 +942,31 @@ function discoverTestsToRun(
           const split = finalPath.split("/");
           const finalKey = split[split.length - 1];
 
-          const expectation = Array.isArray(parentExpectation) ||
-              typeof parentExpectation == "boolean"
+          const expectation = isLeafExpectation(parentExpectation)
             ? parentExpectation
-            : parentExpectation[finalKey];
+            : (parentExpectation as Expectation)[finalKey];
 
           if (expectation === undefined) continue;
 
           if (typeof expectation === "object") {
-            if (typeof expectation.ignore !== "undefined") {
+            if (
+              typeof (expectation as TestExpectation).ignore !== "undefined"
+            ) {
               assert(
-                typeof expectation.ignore === "boolean",
+                typeof (expectation as TestExpectation).ignore === "boolean",
                 "test entry's `ignore` key must be a boolean",
               );
-              if (expectation.ignore === true && !noIgnore) continue;
+              if (
+                (expectation as TestExpectation).ignore === true && !noIgnore
+              ) {
+                continue;
+              }
             }
           }
 
           if (!noIgnore) {
             assert(
-              Array.isArray(expectation) || typeof expectation == "boolean",
+              isLeafExpectation(expectation),
               "test entry must not have a folder expectation",
             );
           }
@@ -814,10 +981,9 @@ function discoverTestsToRun(
           });
         }
       } else {
-        const expectation = Array.isArray(parentExpectation) ||
-            typeof parentExpectation == "boolean"
+        const expectation = isLeafExpectation(parentExpectation)
           ? parentExpectation
-          : parentExpectation[key];
+          : (parentExpectation as Expectation)[key];
 
         if (expectation === undefined) continue;
 

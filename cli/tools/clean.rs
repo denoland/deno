@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::collections::BTreeMap;
@@ -28,7 +28,6 @@ use crate::factory::CliFactory;
 use crate::graph_container::CollectSpecifiersOptions;
 use crate::graph_container::ModuleGraphContainer;
 use crate::graph_container::ModuleGraphUpdatePermit;
-use crate::graph_util::BuildGraphRequest;
 use crate::graph_util::BuildGraphWithNpmOptions;
 use crate::sys::CliSys;
 use crate::util::fs::FsCleaner;
@@ -205,10 +204,10 @@ async fn clean_except(
   graph.packages = PackageSpecifiers::default();
   let graph_builder = factory.module_graph_builder().await?;
   graph_builder
-    .build_graph_with_npm_resolution(
+    .build_graph_roots_with_npm_resolution(
       graph,
+      roots.clone(),
       BuildGraphWithNpmOptions {
-        request: BuildGraphRequest::Roots(roots.clone()),
         loader: None,
         is_dynamic: false,
         npm_caching: NpmCachingStrategy::Manual,
@@ -248,12 +247,9 @@ async fn clean_except(
         }
         deno_graph::Module::Npm(npm_module) => {
           if let Some(managed) = npm_resolver.as_managed() {
-            // TODO(dsherret): ok to use for now, but we should use the req in the future
-            #[allow(deprecated)]
-            let nv = npm_module.nv_reference.nv();
             let id = managed
               .resolution()
-              .resolve_pkg_id_from_deno_module(nv)
+              .resolve_pkg_id_from_pkg_req(npm_module.pkg_req_ref.req())
               .unwrap();
             npm_reqs
               .extend(managed.resolution().resolve_pkg_reqs_from_pkg_id(&id));
@@ -507,7 +503,7 @@ fn clean_node_modules(
     return Ok(());
   }
 
-  let keep_names = keep_pkgs
+  let keep_ids = keep_pkgs
     .iter()
     .map(deno_resolver::npm::get_package_folder_id_folder_name)
     .collect::<HashSet<_>>();
@@ -534,8 +530,9 @@ fn clean_node_modules(
   };
 
   // TODO(nathanwhit): this probably shouldn't reach directly into this code
+  let sys = CliSys::default();
   let mut setup_cache = deno_npm_installer::LocalSetupCache::load(
-    CliSys::default(),
+    sys.clone(),
     base.join(".setup-cache.bin"),
   );
 
@@ -546,7 +543,7 @@ fn clean_node_modules(
     }
     let file_name = entry.file_name();
     let file_name = file_name.to_string_lossy();
-    if keep_names.contains(file_name.as_ref()) || file_name == "node_modules" {
+    if keep_ids.contains(file_name.as_ref()) || file_name == "node_modules" {
       continue;
     } else if dry_run {
       #[allow(clippy::print_stderr)]
@@ -558,75 +555,48 @@ fn clean_node_modules(
     }
   }
 
+  let mut remove_symlink = |path: &Path| -> std::io::Result<()> {
+    if dry_run {
+      #[allow(clippy::print_stderr)]
+      {
+        eprintln!(" {}", path.display());
+      }
+      Ok(())
+    } else {
+      cleaner.remove_file(path, None)
+    }
+  };
+
   // remove top level symlinks from node_modules/<package> to node_modules/.deno/<package>
   // where the target doesn't exist (because it was removed above)
-  clean_node_modules_symlinks(
-    cleaner,
-    &keep_names,
+  deno_npm_installer::remove_unused_node_modules_symlinks(
+    &sys,
     dir,
-    dry_run,
-    &mut |name| {
+    &keep_ids,
+    &mut |name, path| {
       setup_cache.remove_root_symlink(name);
+      remove_symlink(path)
     },
-  )?;
+  )
+  .map_err(AnyError::from)?;
 
   // remove symlinks from node_modules/.deno/node_modules/<package> to node_modules/.deno/<package>
   // where the target doesn't exist (because it was removed above)
-  clean_node_modules_symlinks(
-    cleaner,
-    &keep_names,
-    &base.join("node_modules"),
-    dry_run,
-    &mut |name| {
+  let deno_nm = base.join("node_modules");
+  deno_npm_installer::remove_unused_node_modules_symlinks(
+    &sys,
+    &deno_nm,
+    &keep_ids,
+    &mut |name, path| {
       setup_cache.remove_deno_symlink(name);
+      remove_symlink(path)
     },
-  )?;
+  )
+  .map_err(AnyError::from)?;
   if !dry_run {
     setup_cache.save();
   }
 
-  Ok(())
-}
-
-// node_modules/.deno/chalk@5.0.1/node_modules/chalk -> chalk@5.0.1
-fn node_modules_package_actual_dir_to_name(
-  path: &Path,
-) -> Option<Cow<'_, str>> {
-  path
-    .parent()?
-    .parent()?
-    .file_name()
-    .map(|name| name.to_string_lossy())
-}
-
-fn clean_node_modules_symlinks(
-  cleaner: &mut FsCleaner,
-  keep_names: &HashSet<String>,
-  dir: &Path,
-  dry_run: bool,
-  on_remove: &mut dyn FnMut(&str),
-) -> Result<(), AnyError> {
-  for entry in std::fs::read_dir(dir)? {
-    let entry = entry?;
-    let ty = entry.file_type()?;
-    if ty.is_symlink() {
-      let target = std::fs::read_link(entry.path())?;
-      let name = node_modules_package_actual_dir_to_name(&target);
-      if let Some(name) = name
-        && !keep_names.contains(&*name)
-      {
-        if dry_run {
-          #[allow(clippy::print_stderr)]
-          {
-            eprintln!(" {}", entry.path().display());
-          }
-        } else {
-          on_remove(&name);
-          cleaner.remove_file(&entry.path(), None)?;
-        }
-      }
-    }
-  }
   Ok(())
 }
 

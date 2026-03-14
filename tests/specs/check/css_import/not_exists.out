@@ -1,4 +1,4 @@
-Check [WILDLINE]exists.ts
+Check [WILDCARD]exists.ts
 TS2307 [ERROR]: Cannot find module 'file:///[WILDLINE]/not_exists.css'.
     at file:///[WILDLINE]/not_exists.ts:1:8
 

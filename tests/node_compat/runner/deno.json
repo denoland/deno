@@ -2,6 +2,6 @@
   "importMap": "../../../import_map.json",
   "tasks": {
     "setup": "deno run --allow-read --allow-write ./setup.ts",
-    "test": "deno test -A ../test.ts --"
+    "test": "DENO_TEST_UTIL_DENO_EXE=\"$(deno eval 'console.log(Deno.execPath())')\" cargo test --test node_compat --"
   }
 }

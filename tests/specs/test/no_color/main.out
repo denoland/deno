@@ -1,4 +1,4 @@
-Check [WILDCARD]/main.ts
+Check [WILDCARD]main.ts
 running 3 tests from ./main.ts
 success ... ok ([WILDCARD])
 fail ... FAILED ([WILDCARD])

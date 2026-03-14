@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -322,6 +322,8 @@ impl TestRun {
             permissions_container,
             specifier,
             // Executing tests in the LSP currently doesn't support preload option
+            vec![],
+            // Executing tests in the LSP currently doesn't support require option
             vec![],
             worker_sender,
             fail_fast_tracker,

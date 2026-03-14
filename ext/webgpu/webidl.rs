@@ -1,6 +1,7 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
+#[allow(clippy::disallowed_types)]
 use std::collections::HashSet;
 
 use deno_core::WebIDL;
@@ -65,7 +66,7 @@ impl<'a> WebIdlConverter<'a> for GPUExtent3D {
             enforce_range: true,
           },
         )?;
-        if !(conv.len() > 1 && conv.len() <= 3) {
+        if conv.is_empty() || conv.len() > 3 {
           return Err(WebIdlError::other(
             prefix,
             context,
@@ -385,6 +386,8 @@ pub enum GPUFeatureName {
   TextureCompressionEtc2,
   #[webidl(rename = "texture-compression-astc")]
   TextureCompressionAstc,
+  #[webidl(rename = "texture-compression-astc-sliced-3d")]
+  TextureCompressionAstcSliced3d,
   #[webidl(rename = "rg11b10ufloat-renderable")]
   Rg11b10ufloatRenderable,
   #[webidl(rename = "bgra8unorm-storage")]
@@ -419,18 +422,16 @@ pub enum GPUFeatureName {
     rename = "sampled-texture-and-storage-buffer-array-non-uniform-indexing"
   )]
   SampledTextureAndStorageBufferArrayNonUniformIndexing,
-  #[webidl(
-    rename = "uniform-buffer-and-storage-texture-array-non-uniform-indexing"
-  )]
-  UniformBufferAndStorageTextureArrayNonUniformIndexing,
+  #[webidl(rename = "storage-texture-array-non-uniform-indexing")]
+  StorageTextureArrayNonUniformIndexing,
+  #[webidl(rename = "uniform-buffer-binding-arrays")]
+  UniformBufferBindingArrays,
   #[webidl(rename = "partially-bound-binding-array")]
   PartiallyBoundBindingArray,
-  #[webidl(rename = "multi-draw-indirect")]
-  MultiDrawIndirect,
   #[webidl(rename = "multi-draw-indirect-count")]
   MultiDrawIndirectCount,
-  #[webidl(rename = "push-constants")]
-  PushConstants,
+  #[webidl(rename = "immediate-data")]
+  ImmediateData,
   #[webidl(rename = "address-mode-clamp-to-zero")]
   AddressModeClampToZero,
   #[webidl(rename = "address-mode-clamp-to-border")]
@@ -445,8 +446,6 @@ pub enum GPUFeatureName {
   VertexWritableStorage,
   #[webidl(rename = "clear-texture")]
   ClearTexture,
-  #[webidl(rename = "spirv-shader-passthrough")]
-  SpirvShaderPassthrough,
   #[webidl(rename = "multiview")]
   Multiview,
   #[webidl(rename = "vertex-attribute-64-bit")]
@@ -459,6 +458,8 @@ pub enum GPUFeatureName {
   ShaderPrimitiveIndex,
   #[webidl(rename = "shader-early-depth-test")]
   ShaderEarlyDepthTest,
+  #[webidl(rename = "passthrough-shaders")]
+  PassthroughShaders,
 }
 
 pub fn feature_names_to_features(
@@ -479,6 +480,7 @@ pub fn feature_names_to_features(
       GPUFeatureName::TextureCompressionBcSliced3d => Features::TEXTURE_COMPRESSION_BC_SLICED_3D,
       GPUFeatureName::TextureCompressionEtc2 => Features::TEXTURE_COMPRESSION_ETC2,
       GPUFeatureName::TextureCompressionAstc => Features::TEXTURE_COMPRESSION_ASTC,
+      GPUFeatureName::TextureCompressionAstcSliced3d => Features::TEXTURE_COMPRESSION_ASTC_SLICED_3D,
       GPUFeatureName::Rg11b10ufloatRenderable => Features::RG11B10UFLOAT_RENDERABLE,
       GPUFeatureName::Bgra8unormStorage => Features::BGRA8UNORM_STORAGE,
       GPUFeatureName::Float32Filterable => Features::FLOAT32_FILTERABLE,
@@ -494,11 +496,11 @@ pub fn feature_names_to_features(
       GPUFeatureName::BufferBindingArray => Features::BUFFER_BINDING_ARRAY,
       GPUFeatureName::StorageResourceBindingArray => Features::STORAGE_RESOURCE_BINDING_ARRAY,
       GPUFeatureName::SampledTextureAndStorageBufferArrayNonUniformIndexing => Features::SAMPLED_TEXTURE_AND_STORAGE_BUFFER_ARRAY_NON_UNIFORM_INDEXING,
-      GPUFeatureName::UniformBufferAndStorageTextureArrayNonUniformIndexing => Features::UNIFORM_BUFFER_AND_STORAGE_TEXTURE_ARRAY_NON_UNIFORM_INDEXING,
+      GPUFeatureName::StorageTextureArrayNonUniformIndexing => Features::STORAGE_TEXTURE_ARRAY_NON_UNIFORM_INDEXING,
+      GPUFeatureName::UniformBufferBindingArrays => Features::UNIFORM_BUFFER_BINDING_ARRAYS,
       GPUFeatureName::PartiallyBoundBindingArray => Features::PARTIALLY_BOUND_BINDING_ARRAY,
-      GPUFeatureName::MultiDrawIndirect => Features::MULTI_DRAW_INDIRECT,
       GPUFeatureName::MultiDrawIndirectCount => Features::MULTI_DRAW_INDIRECT_COUNT,
-      GPUFeatureName::PushConstants => Features::PUSH_CONSTANTS,
+      GPUFeatureName::ImmediateData => Features::IMMEDIATES,
       GPUFeatureName::AddressModeClampToZero => Features::ADDRESS_MODE_CLAMP_TO_ZERO,
       GPUFeatureName::AddressModeClampToBorder => Features::ADDRESS_MODE_CLAMP_TO_BORDER,
       GPUFeatureName::PolygonModeLine => Features::POLYGON_MODE_LINE,
@@ -506,13 +508,13 @@ pub fn feature_names_to_features(
       GPUFeatureName::ConservativeRasterization => Features::CONSERVATIVE_RASTERIZATION,
       GPUFeatureName::VertexWritableStorage => Features::VERTEX_WRITABLE_STORAGE,
       GPUFeatureName::ClearTexture => Features::CLEAR_TEXTURE,
-      GPUFeatureName::SpirvShaderPassthrough => Features::SPIRV_SHADER_PASSTHROUGH,
       GPUFeatureName::Multiview => Features::MULTIVIEW,
       GPUFeatureName::VertexAttribute64Bit => Features::VERTEX_ATTRIBUTE_64BIT,
       GPUFeatureName::ShaderF64 => Features::SHADER_F64,
-      GPUFeatureName::ShaderI16 => Features::SHADER_F16,
+      GPUFeatureName::ShaderI16 => Features::SHADER_I16,
       GPUFeatureName::ShaderPrimitiveIndex => Features::SHADER_PRIMITIVE_INDEX,
       GPUFeatureName::ShaderEarlyDepthTest => Features::SHADER_EARLY_DEPTH_TEST,
+      GPUFeatureName::PassthroughShaders => Features::EXPERIMENTAL_PASSTHROUGH_SHADERS,
     };
     features.set(feature, true);
   }
@@ -520,6 +522,7 @@ pub fn feature_names_to_features(
   features
 }
 
+#[allow(clippy::disallowed_types)]
 pub fn features_to_feature_names(
   features: wgpu_types::Features,
 ) -> HashSet<GPUFeatureName> {
@@ -555,6 +558,10 @@ pub fn features_to_feature_names(
   }
   if features.contains(wgpu_types::Features::TEXTURE_COMPRESSION_ASTC) {
     return_features.insert(TextureCompressionAstc);
+  }
+  if features.contains(wgpu_types::Features::TEXTURE_COMPRESSION_ASTC_SLICED_3D)
+  {
+    return_features.insert(TextureCompressionAstcSliced3d);
   }
   if features.contains(wgpu_types::Features::RG11B10UFLOAT_RENDERABLE) {
     return_features.insert(Rg11b10ufloatRenderable);
@@ -606,26 +613,26 @@ pub fn features_to_feature_names(
     return_features.insert(StorageResourceBindingArray);
   }
   if features.contains(
-    wgpu_types::Features::SAMPLED_TEXTURE_AND_STORAGE_BUFFER_ARRAY_NON_UNIFORM_INDEXING,
-  ) {
-    return_features.insert(SampledTextureAndStorageBufferArrayNonUniformIndexing);
+        wgpu_types::Features::SAMPLED_TEXTURE_AND_STORAGE_BUFFER_ARRAY_NON_UNIFORM_INDEXING,
+    ) {
+        return_features.insert(SampledTextureAndStorageBufferArrayNonUniformIndexing);
+    }
+  if features
+    .contains(wgpu_types::Features::STORAGE_TEXTURE_ARRAY_NON_UNIFORM_INDEXING)
+  {
+    return_features.insert(StorageTextureArrayNonUniformIndexing);
   }
-  if features.contains(
-    wgpu_types::Features::UNIFORM_BUFFER_AND_STORAGE_TEXTURE_ARRAY_NON_UNIFORM_INDEXING,
-  ) {
-    return_features.insert(UniformBufferAndStorageTextureArrayNonUniformIndexing);
+  if features.contains(wgpu_types::Features::UNIFORM_BUFFER_BINDING_ARRAYS) {
+    return_features.insert(UniformBufferBindingArrays);
   }
   if features.contains(wgpu_types::Features::PARTIALLY_BOUND_BINDING_ARRAY) {
     return_features.insert(PartiallyBoundBindingArray);
   }
-  if features.contains(wgpu_types::Features::MULTI_DRAW_INDIRECT) {
-    return_features.insert(MultiDrawIndirect);
-  }
   if features.contains(wgpu_types::Features::MULTI_DRAW_INDIRECT_COUNT) {
     return_features.insert(MultiDrawIndirectCount);
   }
-  if features.contains(wgpu_types::Features::PUSH_CONSTANTS) {
-    return_features.insert(PushConstants);
+  if features.contains(wgpu_types::Features::IMMEDIATES) {
+    return_features.insert(ImmediateData);
   }
   if features.contains(wgpu_types::Features::ADDRESS_MODE_CLAMP_TO_ZERO) {
     return_features.insert(AddressModeClampToZero);
@@ -648,9 +655,6 @@ pub fn features_to_feature_names(
   if features.contains(wgpu_types::Features::CLEAR_TEXTURE) {
     return_features.insert(ClearTexture);
   }
-  if features.contains(wgpu_types::Features::SPIRV_SHADER_PASSTHROUGH) {
-    return_features.insert(SpirvShaderPassthrough);
-  }
   if features.contains(wgpu_types::Features::MULTIVIEW) {
     return_features.insert(Multiview);
   }
@@ -669,6 +673,9 @@ pub fn features_to_feature_names(
   }
   if features.contains(wgpu_types::Features::SHADER_EARLY_DEPTH_TEST) {
     return_features.insert(ShaderEarlyDepthTest);
+  }
+  if features.contains(wgpu_types::Features::EXPERIMENTAL_PASSTHROUGH_SHADERS) {
+    return_features.insert(PassthroughShaders);
   }
 
   return_features

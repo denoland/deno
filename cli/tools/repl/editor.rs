@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::path::PathBuf;
@@ -336,7 +336,12 @@ impl Highlighter for EditorHelper {
     }
   }
 
-  fn highlight_char(&self, line: &str, _: usize, _: bool) -> bool {
+  fn highlight_char(
+    &self,
+    line: &str,
+    _: usize,
+    _: rustyline::highlight::CmdKind,
+  ) -> bool {
     !line.is_empty()
   }
 

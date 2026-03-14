@@ -1,0 +1,58 @@
+impl<'a> ::deno_core::convert::ToV8<'a> for Struct {
+    type Error = ::deno_error::JsErrorBox;
+    fn to_v8<'i>(
+        self,
+        __scope: &mut ::deno_core::v8::PinScope<'a, 'i>,
+    ) -> Result<::deno_core::v8::Local<'a, ::deno_core::v8::Value>, Self::Error> {
+        let __null = ::deno_core::v8::null(__scope).into();
+        let __keys = &[
+            ::deno_core::v8::String::new_from_one_byte(
+                    __scope,
+                    "a".as_bytes(),
+                    ::deno_core::v8::NewStringType::Internalized,
+                )
+                .unwrap()
+                .into(),
+            ::deno_core::v8::String::new_from_one_byte(
+                    __scope,
+                    "c".as_bytes(),
+                    ::deno_core::v8::NewStringType::Internalized,
+                )
+                .unwrap()
+                .into(),
+            ::deno_core::v8::String::new_from_one_byte(
+                    __scope,
+                    "e".as_bytes(),
+                    ::deno_core::v8::NewStringType::Internalized,
+                )
+                .unwrap()
+                .into(),
+            ::deno_core::v8::String::new_from_one_byte(
+                    __scope,
+                    "f".as_bytes(),
+                    ::deno_core::v8::NewStringType::Internalized,
+                )
+                .unwrap()
+                .into(),
+        ];
+        let __converters = &[
+            ::deno_core::convert::ToV8::to_v8(self.a, __scope)
+                .map_err(::deno_error::JsErrorBox::from_err)?,
+            ::deno_core::serde_v8::to_v8(__scope, self.c)
+                .map_err(::deno_error::JsErrorBox::from_err)?,
+            ::deno_core::convert::ToV8::to_v8(self.d, __scope)
+                .map_err(::deno_error::JsErrorBox::from_err)?,
+            ::deno_core::convert::ToV8::to_v8(self.f, __scope)
+                .map_err(::deno_error::JsErrorBox::from_err)?,
+        ];
+        Ok(
+            ::deno_core::v8::Object::with_prototype_and_properties(
+                    __scope,
+                    __null,
+                    __keys,
+                    __converters,
+                )
+                .into(),
+        )
+    }
+}

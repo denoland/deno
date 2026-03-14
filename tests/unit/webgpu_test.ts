@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import { assert, assertEquals, assertThrows } from "./test_util.ts";
 
@@ -646,6 +646,47 @@ Deno.test({
   device.queue.submit([encoder.finish()]);
   await fut;
 
+  device.destroy();
+});
+
+Deno.test({
+  permissions: { read: true, env: true },
+  ignore: isWsl || isCIWithoutGPU,
+}, async function webgpuWriteBufferTypedArrayElementOffsets() {
+  const adapter = await navigator.gpu.requestAdapter();
+  assert(adapter);
+  const device = await adapter.requestDevice();
+  assert(device);
+
+  const source = new Float32Array([1.0, 2.0, 3.0, 4.0]);
+  const gpuBuffer = device.createBuffer({
+    size: 2 * Float32Array.BYTES_PER_ELEMENT,
+    usage: GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
+  });
+
+  // dataOffset=1 and size=2 should be in elements for a Float32Array
+  device.queue.writeBuffer(gpuBuffer, 0, source, 1, 2);
+
+  const readBuffer = device.createBuffer({
+    size: 2 * Float32Array.BYTES_PER_ELEMENT,
+    usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+  });
+
+  const encoder = device.createCommandEncoder();
+  encoder.copyBufferToBuffer(
+    gpuBuffer,
+    0,
+    readBuffer,
+    0,
+    2 * Float32Array.BYTES_PER_ELEMENT,
+  );
+  device.queue.submit([encoder.finish()]);
+
+  await readBuffer.mapAsync(GPUMapMode.READ);
+  const result = new Float32Array(readBuffer.getMappedRange());
+  assertEquals(result, new Float32Array([2.0, 3.0]));
+
+  readBuffer.unmap();
   device.destroy();
 });
 

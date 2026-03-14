@@ -1,6 +1,6 @@
 // Copyright the Browserify authors. MIT License.
 // Ported from https://github.com/browserify/path-browserify/
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import type {
   FormatInputPathObject,
@@ -22,7 +22,7 @@ import {
   isWindowsDeviceRoot,
   normalizeString,
 } from "ext:deno_node/path/_util.ts";
-import { assert } from "ext:deno_node/_util/asserts.ts";
+import assert from "node:assert";
 import { core, primordials } from "ext:core/mod.js";
 import process from "node:process";
 import type * as fsGlob from "ext:deno_node/_fs/_fs_glob.ts";

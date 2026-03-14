@@ -1,11 +1,10 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Node.js contributors. All rights reserved. MIT License.
 
 /** NOT IMPLEMENTED
  * ERR_MANIFEST_ASSERT_INTEGRITY
  * ERR_QUICSESSION_VERSION_NEGOTIATION
  * ERR_REQUIRE_ESM
- * ERR_WORKER_INVALID_EXEC_ARGV
  * ERR_WORKER_PATH
  * ERR_QUIC_ERROR
  * ERR_SYSTEM_ERROR //System error, shouldn't ever happen inside Deno
@@ -13,7 +12,7 @@
  * ERR_INVALID_PACKAGE_CONFIG // package.json stuff, probably useless
  */
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 const {
   AggregateError,
   ArrayIsArray,
@@ -23,6 +22,7 @@ const {
   ArrayPrototypeJoin,
   ArrayPrototypePush,
   ArrayPrototypePop,
+  ArrayPrototypeSlice,
   ArrayPrototypeSplice,
   Error,
   ErrorPrototype,
@@ -34,7 +34,10 @@ const {
   ObjectAssign,
   ObjectDefineProperty,
   ObjectDefineProperties,
+  ObjectGetOwnPropertyDescriptor,
+  ObjectIsExtensible,
   ObjectKeys,
+  ObjectPrototypeHasOwnProperty,
   ObjectPrototypeIsPrototypeOf,
   ObjectSetPrototypeOf,
   RangeErrorPrototype,
@@ -52,6 +55,7 @@ const {
   StringPrototypeToString,
   Symbol,
   SymbolFor,
+  SymbolPrototypeToString,
   SyntaxError,
   SyntaxErrorPrototype,
   TypeError,
@@ -67,11 +71,18 @@ import {
   mapSysErrnoToUvErrno,
   UV_EBADF,
 } from "ext:deno_node/internal_binding/uv.ts";
-import { assert } from "ext:deno_node/_util/asserts.ts";
+import type * as nodeAssert from "node:assert";
 import { isWindows } from "ext:deno_node/_util/os.ts";
 import { os as osConstants } from "ext:deno_node/internal_binding/constants.ts";
 import { hideStackFrames } from "ext:deno_node/internal/hide_stack_frames.ts";
 import { getSystemErrorName } from "ext:deno_node/_utils.ts";
+
+let assert: typeof nodeAssert.default;
+const lazyLoadAssert = () => {
+  return core.createLazyLoader<typeof nodeAssert>(
+    "node:assert",
+  )().default;
+};
 
 export { errorMap };
 
@@ -141,6 +152,17 @@ export function isStackOverflowError(err: Error): boolean {
     err.message === maxStackErrorMessage;
 }
 
+export function isErrorStackTraceLimitWritable(): boolean {
+  const desc = ObjectGetOwnPropertyDescriptor(Error, "stackTraceLimit");
+  if (desc === undefined) {
+    return ObjectIsExtensible(Error);
+  }
+
+  return ObjectPrototypeHasOwnProperty(desc, "writable")
+    ? desc.writable
+    : desc.set !== undefined;
+}
+
 function addNumericalSeparator(val: string) {
   let res = "";
   let i = val.length;
@@ -150,15 +172,6 @@ function addNumericalSeparator(val: string) {
   }
   return `${StringPrototypeSlice(val, 0, i)}${res}`;
 }
-
-const captureLargerStackTrace = hideStackFrames(
-  function captureLargerStackTrace(err) {
-    // @ts-ignore this function is not available in lib.dom.d.ts
-    ErrorCaptureStackTrace(err);
-
-    return err;
-  },
-);
 
 export interface ErrnoException extends Error {
   errno?: number;
@@ -207,7 +220,7 @@ export const uvExceptionWithHostPort = hideStackFrames(
       ex.port = port;
     }
 
-    return captureLargerStackTrace(ex);
+    return ex;
   },
 );
 
@@ -235,7 +248,7 @@ export const errnoException = hideStackFrames(function errnoException(
   ex.code = code;
   ex.syscall = syscall;
 
-  return captureLargerStackTrace(ex);
+  return ex;
 });
 
 function uvErrmapGet(name: number) {
@@ -291,7 +304,7 @@ export const uvException = hideStackFrames(function uvException(ctx) {
     err.dest = dest;
   }
 
-  return captureLargerStackTrace(err);
+  return err;
 });
 
 /**
@@ -336,7 +349,23 @@ export const exceptionWithHostPort = hideStackFrames(
       ex.port = port;
     }
 
-    return captureLargerStackTrace(ex);
+    return ex;
+  },
+);
+
+export const handleDnsError = hideStackFrames(
+  (err: Error, syscall: string, address: string) => {
+    //@ts-expect-error code is safe to access with optional chaining
+    if (typeof err?.uv_errcode === "number") {
+      //@ts-expect-error code is safe to access with optional chaining
+      return dnsException(err?.uv_errcode, syscall, address);
+    }
+
+    if (ObjectPrototypeIsPrototypeOf(Deno.errors.NotCapable.prototype, err)) {
+      return dnsException(codeMap.get("EPERM")!, syscall, address);
+    }
+
+    return denoErrorToNodeError(err, { syscall });
   },
 );
 
@@ -376,7 +405,7 @@ export const dnsException = hideStackFrames(function (code, syscall, hostname) {
     ex.hostname = hostname;
   }
 
-  return captureLargerStackTrace(ex);
+  return ex;
 });
 
 /**
@@ -479,7 +508,7 @@ class NodeSystemError extends Error {
       message += ` => ${context.dest}`;
     }
 
-    captureLargerStackTrace(this);
+    ErrorCaptureStackTrace(this);
 
     ObjectDefineProperties(this, {
       [kIsNodeError]: {
@@ -790,6 +819,7 @@ export class ERR_OUT_OF_RANGE extends NodeRangeError {
     input: unknown,
     replaceDefaultBoolean = false,
   ) {
+    assert ??= lazyLoadAssert();
     assert(range, 'Missing "range" argument');
     let msg = replaceDefaultBoolean
       ? str
@@ -845,6 +875,12 @@ export class ERR_ASYNC_TYPE extends NodeTypeError {
 export class ERR_BROTLI_INVALID_PARAM extends NodeRangeError {
   constructor(x: string) {
     super("ERR_BROTLI_INVALID_PARAM", `${x} is not a valid Brotli parameter`);
+  }
+}
+
+export class ERR_ZSTD_INVALID_PARAM extends NodeRangeError {
+  constructor(x: string) {
+    super("ERR_ZSTD_INVALID_PARAM", `${x} is not a valid zstd parameter`);
   }
 }
 
@@ -910,6 +946,15 @@ export class ERR_CONSOLE_WRITABLE_STREAM extends NodeTypeError {
   }
 }
 
+export class ERR_CONSTRUCT_CALL_REQUIRED extends NodeTypeError {
+  constructor(x: string) {
+    super(
+      "ERR_CONSTRUCT_CALL_REQUIRED",
+      `Class constructor ${x} cannot be invoked without \`new\``,
+    );
+  }
+}
+
 export class ERR_CONTEXT_NOT_INITIALIZED extends NodeError {
   constructor() {
     super("ERR_CONTEXT_NOT_INITIALIZED", "context used is not initialized");
@@ -951,6 +996,15 @@ export class ERR_CRYPTO_UNKNOWN_DH_GROUP extends NodeError {
     super(
       "ERR_CRYPTO_UNKNOWN_DH_GROUP",
       "Unknown DH group",
+    );
+  }
+}
+
+export class ERR_CRYPTO_UNKNOWN_CIPHER extends NodeError {
+  constructor() {
+    super(
+      "ERR_CRYPTO_UNKNOWN_CIPHER",
+      "Unknown cipher",
     );
   }
 }
@@ -1007,8 +1061,11 @@ export class ERR_CRYPTO_INCOMPATIBLE_KEY_OPTIONS extends NodeError {
 }
 
 export class ERR_CRYPTO_INVALID_DIGEST extends NodeTypeError {
-  constructor(x: string) {
-    super("ERR_CRYPTO_INVALID_DIGEST", `Invalid digest: ${x}`);
+  constructor(x: string, prefix?: string) {
+    super(
+      "ERR_CRYPTO_INVALID_DIGEST",
+      prefix ? `Invalid ${prefix} digest: ${x}` : `Invalid digest: ${x}`,
+    );
   }
 }
 
@@ -1151,7 +1208,7 @@ export class ERR_FEATURE_UNAVAILABLE_ON_PLATFORM extends NodeTypeError {
   }
 }
 export class ERR_FS_FILE_TOO_LARGE extends NodeRangeError {
-  constructor(x: string) {
+  constructor(x: string | number) {
     super("ERR_FS_FILE_TOO_LARGE", `File size (${x}) is greater than 2 GB`);
   }
 }
@@ -1960,16 +2017,22 @@ export class ERR_SOCKET_BAD_BUFFER_SIZE extends NodeTypeError {
 }
 export class ERR_SOCKET_BAD_PORT extends NodeRangeError {
   constructor(name: string, port: unknown, allowZero = true) {
+    assert ??= lazyLoadAssert();
     assert(
       typeof allowZero === "boolean",
       "The 'allowZero' argument must be of type boolean.",
     );
 
     const operator = allowZero ? ">=" : ">";
+    const portStr = typeof port === "symbol"
+      ? SymbolPrototypeToString(port)
+      : typeof port === "bigint"
+      ? `${port}n`
+      : String(port);
 
     super(
       "ERR_SOCKET_BAD_PORT",
-      `${name} should be ${operator} 0 and < 65536. Received ${port}.`,
+      `${name} should be ${operator} 0 and < 65536. Received ${portStr}.`,
     );
   }
 }
@@ -2334,6 +2397,14 @@ export class ERR_WASI_ALREADY_STARTED extends NodeError {
     super("ERR_WASI_ALREADY_STARTED", `WASI instance has already started`);
   }
 }
+export class ERR_WORKER_INVALID_EXEC_ARGV extends NodeError {
+  constructor(errors: string[], msg = "invalid execArgv flags") {
+    super(
+      "ERR_WORKER_INVALID_EXEC_ARGV",
+      `Initiated Worker with ${msg}: ${ArrayPrototypeJoin(errors, ", ")}`,
+    );
+  }
+}
 export class ERR_WORKER_INIT_FAILED extends NodeError {
   constructor(x: string) {
     super("ERR_WORKER_INIT_FAILED", `Worker initialization failure: ${x}`);
@@ -2377,8 +2448,8 @@ export class ERR_WORKER_UNSUPPORTED_OPERATION extends NodeTypeError {
   }
 }
 export class ERR_ZLIB_INITIALIZATION_FAILED extends NodeError {
-  constructor() {
-    super("ERR_ZLIB_INITIALIZATION_FAILED", `Initialization failed`);
+  constructor(message = "Initialization failed") {
+    super("ERR_ZLIB_INITIALIZATION_FAILED", message);
   }
 }
 export class ERR_FALSY_VALUE_REJECTION extends NodeError {
@@ -2398,7 +2469,24 @@ export class ERR_HTTP2_TOO_MANY_CUSTOM_SETTINGS extends NodeError {
   }
 }
 
-export class ERR_HTTP2_INVALID_SETTING_VALUE extends NodeRangeError {
+function _http2InvalidSettingMsg(name: string, actual: unknown) {
+  return `Invalid value for setting "${name}": ${actual}`;
+}
+
+// deno-lint-ignore camelcase
+class _ERR_HTTP2_INVALID_SETTING_VALUE_TypeError extends NodeTypeError {
+  actual: unknown;
+  constructor(name: string, actual: unknown) {
+    super(
+      "ERR_HTTP2_INVALID_SETTING_VALUE",
+      _http2InvalidSettingMsg(name, actual),
+    );
+    this.actual = actual;
+  }
+}
+
+// deno-lint-ignore camelcase
+class _ERR_HTTP2_INVALID_SETTING_VALUE_RangeError extends NodeRangeError {
   actual: unknown;
   min?: number;
   max?: number;
@@ -2406,7 +2494,7 @@ export class ERR_HTTP2_INVALID_SETTING_VALUE extends NodeRangeError {
   constructor(name: string, actual: unknown, min?: number, max?: number) {
     super(
       "ERR_HTTP2_INVALID_SETTING_VALUE",
-      `Invalid value for setting "${name}": ${actual}`,
+      _http2InvalidSettingMsg(name, actual),
     );
     this.actual = actual;
     if (min !== undefined) {
@@ -2415,6 +2503,22 @@ export class ERR_HTTP2_INVALID_SETTING_VALUE extends NodeRangeError {
     }
   }
 }
+
+// In Node.js, ERR_HTTP2_INVALID_SETTING_VALUE has both TypeError and RangeError
+// variants. The access patterns used are:
+//   new ERR_HTTP2_INVALID_SETTING_VALUE.HideStackFramesError(...)            -> TypeError
+//   new ERR_HTTP2_INVALID_SETTING_VALUE.RangeError(...)                      -> RangeError
+//   new ERR_HTTP2_INVALID_SETTING_VALUE.RangeError.HideStackFramesError(...) -> RangeError
+
+// deno-lint-ignore no-explicit-any
+const _RangeErrorWithHSFE: any = _ERR_HTTP2_INVALID_SETTING_VALUE_RangeError;
+_RangeErrorWithHSFE.HideStackFramesError =
+  _ERR_HTTP2_INVALID_SETTING_VALUE_RangeError;
+
+export const ERR_HTTP2_INVALID_SETTING_VALUE = {
+  HideStackFramesError: _ERR_HTTP2_INVALID_SETTING_VALUE_TypeError,
+  RangeError: _RangeErrorWithHSFE,
+};
 export class ERR_HTTP2_STREAM_CANCEL extends NodeError {
   override cause?: Error;
   constructor(error?: Error) {
@@ -2578,6 +2682,7 @@ export class ERR_INVALID_PACKAGE_TARGET extends NodeError {
       target.length &&
       !StringPrototypeStartsWith(target, "./");
     if (key === ".") {
+      assert ??= lazyLoadAssert();
       assert(isImport === false);
       msg = `Invalid "exports" main target ${JSONStringify(target)} defined ` +
         `in the package config ${displayJoin(pkgPath, "package.json")}${
@@ -2729,6 +2834,40 @@ export function denoErrorToNodeError(e: Error, ctx: UvExceptionContext) {
   return ex;
 }
 
+export function denoWriteFileErrorToNodeError(
+  e: Error,
+  ctx: UvExceptionContext,
+) {
+  if (ObjectPrototypeIsPrototypeOf(Deno.errors.BadResource.prototype, e)) {
+    return uvException({
+      errno: UV_EBADF,
+      ...ctx,
+    });
+  }
+
+  let errno = extractOsErrorNumberFromErrorMessage(e);
+  if (typeof errno === "undefined") {
+    return e;
+  }
+
+  if (isWindows) {
+    // https://learn.microsoft.com/en-us/windows/win32/debug/system-error-codes--0-499-#ERROR_ACCESS_DENIED
+    const ERROR_ACCESS_DENIED = 5;
+    // https://learn.microsoft.com/en-us/windows/win32/debug/system-error-codes--1000-1299-#ERROR_INVALID_FLAGS
+    const ERROR_INVALID_FLAGS = 1004;
+
+    // https://github.com/nodejs/node/blob/70f6b58ac655234435a99d72b857dd7b316d34bf/deps/uv/src/win/fs.c#L1090-L1092
+    if (errno === ERROR_ACCESS_DENIED) {
+      errno = ERROR_INVALID_FLAGS;
+    }
+  }
+
+  return uvException({
+    errno: mapSysErrnoToUvErrno(errno),
+    ...ctx,
+  });
+}
+
 export const denoErrorToNodeSystemError = hideStackFrames((
   e: Error,
   syscall: string,
@@ -2755,6 +2894,10 @@ export const denoErrorToNodeSystemError = hideStackFrames((
 });
 
 function extractOsErrorNumberFromErrorMessage(e: unknown): number | undefined {
+  if (typeof e === "object" && typeof e.os_errno === "number") {
+    return e.os_errno;
+  }
+
   const match = ObjectPrototypeIsPrototypeOf(ErrorPrototype, e)
     ? StringPrototypeMatch(e.message, new SafeRegExp(/\(os error (\d+)\)/))
     : false;
@@ -2844,6 +2987,18 @@ codes.ERR_STREAM_UNSHIFT_AFTER_END_EVENT = ERR_STREAM_UNSHIFT_AFTER_END_EVENT;
 codes.ERR_STREAM_WRAP = ERR_STREAM_WRAP;
 codes.ERR_STREAM_WRITE_AFTER_END = ERR_STREAM_WRITE_AFTER_END;
 codes.ERR_BROTLI_INVALID_PARAM = ERR_BROTLI_INVALID_PARAM;
+codes.ERR_ZSTD_INVALID_PARAM = ERR_ZSTD_INVALID_PARAM;
+codes.ERR_ZLIB_INITIALIZATION_FAILED = ERR_ZLIB_INITIALIZATION_FAILED;
+codes.ERR_HTTP2_HEADERS_SENT = ERR_HTTP2_HEADERS_SENT;
+codes.ERR_HTTP2_INFO_STATUS_NOT_ALLOWED = ERR_HTTP2_INFO_STATUS_NOT_ALLOWED;
+codes.ERR_HTTP2_INVALID_HEADER_VALUE = ERR_HTTP2_INVALID_HEADER_VALUE;
+codes.ERR_HTTP2_INVALID_SETTING_VALUE = ERR_HTTP2_INVALID_SETTING_VALUE;
+codes.ERR_HTTP2_INVALID_STREAM = ERR_HTTP2_INVALID_STREAM;
+codes.ERR_HTTP2_NO_SOCKET_MANIPULATION = ERR_HTTP2_NO_SOCKET_MANIPULATION;
+codes.ERR_HTTP2_PAYLOAD_FORBIDDEN = ERR_HTTP2_PAYLOAD_FORBIDDEN;
+codes.ERR_HTTP2_PSEUDOHEADER_NOT_ALLOWED = ERR_HTTP2_PSEUDOHEADER_NOT_ALLOWED;
+codes.ERR_HTTP2_STATUS_INVALID = ERR_HTTP2_STATUS_INVALID;
+codes.ERR_HTTP2_TOO_MANY_CUSTOM_SETTINGS = ERR_HTTP2_TOO_MANY_CUSTOM_SETTINGS;
 
 // TODO(kt3k): assign all error classes here.
 
@@ -2909,6 +3064,7 @@ export default {
   ERR_ASYNC_CALLBACK,
   ERR_ASYNC_TYPE,
   ERR_BROTLI_INVALID_PARAM,
+  ERR_ZSTD_INVALID_PARAM,
   ERR_BUFFER_OUT_OF_BOUNDS,
   ERR_BUFFER_TOO_LARGE,
   ERR_CANNOT_WATCH_SIGINT,
@@ -2916,6 +3072,7 @@ export default {
   ERR_CHILD_PROCESS_IPC_REQUIRED,
   ERR_CHILD_PROCESS_STDIO_MAXBUFFER,
   ERR_CONSOLE_WRITABLE_STREAM,
+  ERR_CONSTRUCT_CALL_REQUIRED,
   ERR_CONTEXT_NOT_INITIALIZED,
   ERR_CPU_USAGE,
   ERR_CRYPTO_CUSTOM_ENGINE_NOT_SUPPORTED,
@@ -3154,6 +3311,7 @@ export default {
   ERR_VM_MODULE_STATUS,
   ERR_WASI_ALREADY_STARTED,
   ERR_WORKER_INIT_FAILED,
+  ERR_WORKER_INVALID_EXEC_ARGV,
   ERR_WORKER_NOT_RUNNING,
   ERR_WORKER_OUT_OF_MEMORY,
   ERR_WORKER_UNSERIALIZABLE_ERROR,
@@ -3177,6 +3335,7 @@ export default {
   exceptionWithHostPort,
   genericNodeError,
   hideStackFrames,
+  isErrorStackTraceLimitWritable,
   isStackOverflowError,
   uvException,
   uvExceptionWithHostPort,

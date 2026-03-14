@@ -1,6 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
-
-use std::cell::OnceCell;
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use deno_core::GarbageCollected;
 use deno_core::WebIDL;
@@ -13,15 +11,11 @@ pub struct GPUCommandBuffer {
   pub instance: Instance,
   pub id: wgpu_core::id::CommandBufferId,
   pub label: String,
-
-  pub consumed: OnceCell<()>,
 }
 
 impl Drop for GPUCommandBuffer {
   fn drop(&mut self) {
-    if self.consumed.get().is_none() {
-      self.instance.command_buffer_drop(self.id);
-    }
+    self.instance.command_buffer_drop(self.id);
   }
 }
 

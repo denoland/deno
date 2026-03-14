@@ -1,0 +1,4 @@
+disallowed-methods = [
+  { path = "std::env::var", reason = "Environment operations should be done using sys_traits" },
+  { path = "std::env::var_os", reason = "Environment operations should be done using sys_traits" },
+]

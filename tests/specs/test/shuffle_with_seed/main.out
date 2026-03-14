@@ -1,6 +1,6 @@
-Check [WILDCARD]/test/shuffle_with_seed/shuffle/bar_test.ts
-Check [WILDCARD]/test/shuffle_with_seed/shuffle/baz_test.ts
-Check [WILDCARD]/test/shuffle_with_seed/shuffle/foo_test.ts
+Check [WILDCARD]bar_test.ts
+Check [WILDCARD]baz_test.ts
+Check [WILDCARD]foo_test.ts
 running 10 tests from [WILDCARD]shuffle/foo_test.ts
 test 3 ... ok ([WILDCARD])
 test 2 ... ok ([WILDCARD])

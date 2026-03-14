@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import { op_node_build_os } from "ext:core/ops";
 
@@ -12,6 +12,7 @@ export type OSType =
 
 export const osType: OSType = op_node_build_os();
 
+export const isAndroid = osType === "android";
 export const isWindows = osType === "windows";
 export const isLinux = osType === "linux" || osType === "android";
 export const isMacOS = osType === "darwin";

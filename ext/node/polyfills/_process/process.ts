@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
 // The following are all the process APIs that don't depend on the stream module
@@ -200,6 +200,7 @@ export const versions = {
   unicode: "14.0",
   ngtcp2: "0.8.1",
   nghttp3: "0.7.0",
+  sqlite: "3.49.0",
   // Will be filled when calling "__bootstrapNodeProcess()",
   deno: "",
   v8: "",

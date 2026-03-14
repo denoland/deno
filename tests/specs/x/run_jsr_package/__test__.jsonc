@@ -1,0 +1,5 @@
+{
+  "tempDir": true,
+  "args": "x -y jsr:@denotest/bin-package foo bar",
+  "output": "run.out"
+}

@@ -1,4 +1,4 @@
-Check [WILDCARD]/unresolved_promise.ts
+Check [WILDCARD]unresolved_promise.ts
 error: Top-level await promise never resolved
 await new Promise((_resolve, _reject) => {});
 ^

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::collections::BTreeMap;
@@ -31,6 +31,7 @@ use deno_resolver::NodeAndNpmResolvers;
 use deno_resolver::cjs::IsCjsResolutionMode;
 use deno_resolver::deno_json::CompilerOptionsResolver;
 use deno_resolver::deno_json::JsxImportSourceConfig;
+use deno_resolver::factory::npm_overrides_from_workspace;
 use deno_resolver::graph::FoundPackageJsonDepFlag;
 use deno_resolver::npm::CreateInNpmPkgCheckerOptions;
 use deno_resolver::npm::DenoInNpmPackageChecker;
@@ -80,7 +81,7 @@ use crate::npm::CliNpmInstaller;
 use crate::npm::CliNpmRegistryInfoProvider;
 use crate::npm::CliNpmResolver;
 use crate::npm::CliNpmResolverCreateOptions;
-use crate::npm::get_types_node_version_req;
+use crate::npm::NpmPackumentFormat;
 use crate::resolver::CliIsCjsResolver;
 use crate::resolver::CliNpmReqResolver;
 use crate::resolver::CliResolver;
@@ -203,7 +204,7 @@ impl LspScopedResolver {
       .set_snapshot(self.npm_resolution.snapshot());
     let npm_resolver = self.npm_resolver.as_ref();
     if let Some(npm_resolver) = &npm_resolver {
-      factory.set_npm_resolver(CliNpmResolver::new::<CliSys>(
+      factory.set_npm_resolver(CliNpmResolver::<CliSys>::new::<CliSys>(
         match npm_resolver {
           CliNpmResolver::Byonm(byonm_npm_resolver) => {
             CliNpmResolverCreateOptions::Byonm(
@@ -211,6 +212,7 @@ impl LspScopedResolver {
                 root_node_modules_dir: byonm_npm_resolver
                   .root_node_modules_path()
                   .map(|p| p.to_path_buf()),
+                search_stop_dir: None,
                 sys: factory.node_resolution_sys.clone(),
                 pkg_json_resolver: self.pkg_json_resolver.clone(),
               },
@@ -567,16 +569,6 @@ impl LspResolver {
         .cloned()
         .unwrap_or_default();
       {
-        if resolver.npm_installer.is_some() && dep_info.has_node_specifier {
-          let has_types_node = {
-            let npm_installer_reqs = resolver.npm_installer_reqs.lock();
-            npm_installer_reqs.iter().any(|r| r.name == "@types/node")
-          };
-          if !has_types_node {
-            resolver
-              .add_npm_reqs(vec![PackageReq::from_str("@types/node").unwrap()]);
-          }
-        }
         let mut resolver_dep_info = resolver.dep_info.lock();
         *resolver_dep_info = dep_info.clone();
       }
@@ -889,6 +881,7 @@ impl<'a> ResolverFactory<'a> {
               .map(|p| p.join("node_modules/"))
           })
         }),
+        search_stop_dir: None,
       })
     } else {
       let npmrc = self
@@ -914,11 +907,13 @@ impl<'a> ResolverFactory<'a> {
       let npm_client = Arc::new(CliNpmCacheHttpClient::new(
         http_client_provider.clone(),
         pb.clone(),
+        NpmPackumentFormat::Abbreviated,
       ));
       let registry_info_provider = Arc::new(CliNpmRegistryInfoProvider::new(
         npm_cache.clone(),
         npm_client.clone(),
         npmrc.clone(),
+        NpmPackumentFormat::Abbreviated,
       ));
       let link_packages: WorkspaceNpmLinkPackagesRc = self
         .config_data
@@ -952,10 +947,15 @@ impl<'a> ResolverFactory<'a> {
         npmrc.clone(),
         None,
       ));
+      // parse npm overrides from workspace config
+      let overrides = self
+        .config_data
+        .map(|d| npm_overrides_from_workspace(&d.member_dir.workspace))
+        .unwrap_or_default();
       let npm_version_resolver = Arc::new(NpmVersionResolver {
-        types_node_version_req: Some(get_types_node_version_req()),
         link_packages: link_packages.0.clone(),
         newest_dependency_date_options: Default::default(),
+        overrides: Arc::new(overrides),
       });
       let npm_resolution_installer = Arc::new(NpmResolutionInstaller::new(
         Default::default(),
@@ -966,6 +966,7 @@ impl<'a> ResolverFactory<'a> {
         maybe_lockfile.clone(),
       ));
       let npm_installer = Arc::new(CliNpmInstaller::new(
+        None,
         Arc::new(NullLifecycleScriptsExecutor),
         npm_cache.clone(),
         Arc::new(NpmInstallDepsProvider::empty()),
@@ -976,12 +977,14 @@ impl<'a> ResolverFactory<'a> {
         &pb,
         sys.clone(),
         tarball_cache.clone(),
-        maybe_lockfile,
-        maybe_node_modules_path.clone(),
-        LifecycleScriptsConfig::default(),
-        NpmSystemInfo::default(),
-        link_packages,
-        None,
+        deno_npm_installer::NpmInstallerOptions {
+          clean_on_install: false,
+          maybe_lockfile,
+          maybe_node_modules_path: maybe_node_modules_path.clone(),
+          lifecycle_scripts: Arc::new(LifecycleScriptsConfig::default()),
+          system_info: NpmSystemInfo::default(),
+          workspace_link_packages: link_packages,
+        },
       ));
       self.set_npm_installer(npm_installer);
       if let Err(err) = npm_resolution_initializer.ensure_initialized().await {
@@ -997,7 +1000,7 @@ impl<'a> ResolverFactory<'a> {
         npm_system_info: NpmSystemInfo::default(),
       })
     };
-    self.set_npm_resolver(CliNpmResolver::new(options));
+    self.set_npm_resolver(CliNpmResolver::<CliSys>::new(options));
   }
 
   pub fn set_npm_installer(&mut self, npm_installer: Arc<CliNpmInstaller>) {

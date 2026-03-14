@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 //! These represent the various types of TLS keys we support for both client and server
 //! connections.
@@ -31,6 +31,8 @@ use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use webpki::types::CertificateDer;
 use webpki::types::PrivateKeyDer;
+
+use crate::get_ssl_key_log;
 
 #[derive(Debug, thiserror::Error)]
 pub enum TlsKeyError {
@@ -138,6 +140,7 @@ impl TlsKeyResolver {
     let mut tls_config = ServerConfig::builder()
       .with_no_client_auth()
       .with_single_cert(key.0, key.1.clone_key())?;
+    tls_config.key_log = get_ssl_key_log();
     tls_config.alpn_protocols = alpn;
     Ok(tls_config.into())
   }

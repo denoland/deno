@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // deno-lint-ignore-file
 
@@ -41,6 +41,7 @@ const {
   Error,
   JSONParse,
   ObjectCreate,
+  ObjectDefineProperty,
   ObjectEntries,
   ObjectGetOwnPropertyDescriptor,
   ObjectGetPrototypeOf,
@@ -49,6 +50,7 @@ const {
   ObjectPrototype,
   ObjectSetPrototypeOf,
   Proxy,
+  ReflectSet,
   RegExpPrototypeTest,
   SafeArrayIterator,
   SafeMap,
@@ -98,6 +100,7 @@ import http2 from "node:http2";
 import https from "node:https";
 import inspector from "node:inspector";
 import inspectorPromises from "node:inspector/promises";
+import internalAssertMyersDiff from "ext:deno_node/internal/assert/myers_diff.js";
 import internalCp from "ext:deno_node/internal/child_process.ts";
 import internalCryptoCertificate from "ext:deno_node/internal/crypto/certificate.ts";
 import internalCryptoCipher from "ext:deno_node/internal/crypto/cipher.ts";
@@ -201,6 +204,7 @@ function setupBuiltinModules() {
     https,
     inspector,
     "inspector/promises": inspectorPromises,
+    "internal/assert/myers_diff": internalAssertMyersDiff,
     "internal/console/constructor": internalConsole,
     "internal/child_process": internalCp,
     "internal/crypto/certificate": internalCryptoCertificate,
@@ -304,6 +308,7 @@ let hasBrokenOnInspectBrk = false;
 let hasInspectBrk = false;
 // Are we running with --node-modules-dir flag or byonm?
 let usesLocalNodeModulesDir = false;
+let patched = false;
 
 function stat(filename) {
   if (statCache !== null) {
@@ -960,14 +965,49 @@ Module.prototype.require = function (id) {
 // access to magic node globals, like `Buffer`. The second one is the actual
 // wrapper function we run the users code in. The only observable difference is
 // that in Deno `arguments.callee` is not null.
-Module.wrapper = [
+const wrapper = [
   `(function (exports, require, module, __filename, __dirname) { var { Buffer, clearImmediate, clearInterval, clearTimeout, global, process, setImmediate, setInterval, setTimeout } = Deno[Deno.internal].nodeGlobals; (() => {`,
   "\n})(); })",
 ];
-Module.wrap = function (script) {
+
+export let wrap = function (script) {
   script = script.replace(/^#!.*?\n/, "");
   return `${Module.wrapper[0]}${script}${Module.wrapper[1]}`;
 };
+
+let wrapperProxy = new Proxy(wrapper, {
+  set(target, property, value, receiver) {
+    patched = true;
+    return ReflectSet(target, property, value, receiver);
+  },
+
+  defineProperty(target, property, descriptor) {
+    patched = true;
+    return ObjectDefineProperty(target, property, descriptor);
+  },
+});
+
+ObjectDefineProperty(Module, "wrap", {
+  get() {
+    return wrap;
+  },
+
+  set(value) {
+    patched = true;
+    wrap = value;
+  },
+});
+
+ObjectDefineProperty(Module, "wrapper", {
+  get() {
+    return wrapperProxy;
+  },
+
+  set(value) {
+    patched = true;
+    wrapperProxy = value;
+  },
+});
 
 function isEsmSyntaxError(error) {
   return error instanceof SyntaxError && (
@@ -994,12 +1034,29 @@ function wrapSafe(
   cjsModuleInstance,
   format,
 ) {
-  const wrapper = Module.wrap(content);
-  const [f, err] = core.evalContext(
-    wrapper,
-    url.pathToFileURL(filename).toString(),
-    [format !== "module"],
-  );
+  let f;
+  let err;
+
+  if (patched) {
+    [f, err] = core.evalContext(
+      Module.wrap(content),
+      url.pathToFileURL(filename).toString(),
+      [format !== "module"],
+    );
+  } else {
+    [f, err] = core.compileFunction(
+      content,
+      url.pathToFileURL(filename).toString(),
+      [format !== "module"],
+      [
+        "exports",
+        "require",
+        "module",
+        "__filename",
+        "__dirname",
+      ],
+    );
+  }
   if (err) {
     if (process.mainModule === cjsModuleInstance) {
       enrichCJSError(err.thrown);
@@ -1127,7 +1184,7 @@ Module._extensions[".node"] = function (module, filename) {
   module.exports = op_napi_open(
     filename,
     globalThis,
-    buffer.Buffer,
+    buffer.Buffer.from,
     reportError,
   );
 };
@@ -1341,6 +1398,5 @@ export const _preloadModules = Module._preloadModules;
 export const _resolveFilename = Module._resolveFilename;
 export const _resolveLookupPaths = Module._resolveLookupPaths;
 export const globalPaths = Module.globalPaths;
-export const wrap = Module.wrap;
 
 export default Module;

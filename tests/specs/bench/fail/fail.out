@@ -1,4 +1,4 @@
-Check [WILDCARD]/fail.ts
+Check [WILDCARD]fail.ts
     CPU | [WILDCARD]
 Runtime | Deno [WILDCARD] ([WILDCARD])
 

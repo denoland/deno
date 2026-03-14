@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import crypto from "node:crypto";
 import { Buffer } from "node:buffer";
@@ -143,6 +143,39 @@ Deno.test({
       TypeError,
       "Failed to authenticate data",
     );
+  },
+});
+
+Deno.test({
+  name: "aes-128-gcm and aes-256-gcm with setAutoPadding(false)",
+  fn() {
+    for (const bits of ["128", "256"] as const) {
+      const algo = `aes-${bits}-gcm` as const;
+      const keyLen = bits === "128" ? 16 : 32;
+      const key = Buffer.alloc(keyLen, 0xaa);
+      const iv = Buffer.alloc(12, 0xbb);
+      const plaintext = "Hello, GCM with setAutoPadding(false)!";
+
+      // Encrypt
+      const cipher = crypto.createCipheriv(algo, key, iv);
+      cipher.setAutoPadding(false);
+      const encrypted = Buffer.concat([
+        cipher.update(plaintext, "utf8"),
+        cipher.final(),
+      ]);
+      const authTag = cipher.getAuthTag();
+
+      // Decrypt
+      const decipher = crypto.createDecipheriv(algo, key, iv);
+      decipher.setAutoPadding(false);
+      decipher.setAuthTag(authTag);
+      const decrypted = Buffer.concat([
+        decipher.update(encrypted),
+        decipher.final(),
+      ]);
+
+      assertEquals(decrypted.toString("utf8"), plaintext);
+    }
   },
 });
 

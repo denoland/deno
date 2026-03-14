@@ -1,10 +1,20 @@
-Immediate { _immediateId: [WILDLINE] }
+Immediate {
+  _idleNext: null,
+  _idlePrev: null,
+  _onImmediate: [Function: callback],
+  _argv: [],
+  _destroyed: false,
+  asyncId: [WILDLINE],
+  triggerAsyncId: [WILDLINE],
+  Symbol(nodejs.util.inspect.custom): [Function: [nodejs.util.inspect.custom]],
+  Symbol(refed): true
+}
 Timeout {
   _idleTimeout: 1000,
   _onTimeout: [Function (anonymous)],
   _timerArgs: [],
   _isRepeat: false,
   _destroyed: false,
-  [Symbol(refed)]: true,
-  [Symbol(timerId)]: [WILDLINE]
+  Symbol(refed): true,
+  Symbol(timerId): [WILDLINE]
 }

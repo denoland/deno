@@ -1,4 +1,4 @@
-Check file:///[WILDLINE]/main.ts
+Check [WILDCARD]main.ts
 TS2322 [ERROR]: Type 'string' is not assignable to type 'Test'.
 const test: Test = "";
       ~~~~

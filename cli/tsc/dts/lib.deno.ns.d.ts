@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
@@ -859,6 +859,11 @@ declare namespace Deno {
    *
    * `fn` can be async if required.
    *
+   * Tests are discovered before they are executed, so registrations must happen
+   * at module load time.
+   * Nested `Deno.test()` calls are not supported.
+   * Use `t.step()` for nested tests.
+   *
    * ```ts
    * import { assertEquals } from "jsr:@std/assert";
    *
@@ -1572,6 +1577,22 @@ declare namespace Deno {
   /** An interface containing methods to interact with the process environment
    * variables.
    *
+   * Environment variables can also be loaded from a `.env` file by using the
+   * `--env-file` flag when running a Deno program:
+   *
+   * ```sh
+   * deno run --env-file=.env --allow-env main.ts
+   * ```
+   *
+   * If `--env-file` is specified without a value, it defaults to loading `.env`
+   * from the current working directory:
+   *
+   * ```sh
+   * deno run --env-file --allow-env main.ts
+   * ```
+   *
+   * Learn more at [the Deno docs](https://docs.deno.com/runtime/reference/env_variables/).
+   *
    * @tags allow-env
    * @category Runtime
    */
@@ -1700,9 +1721,6 @@ declare namespace Deno {
    *
    * Throws {@linkcode Deno.errors.NotFound} if directory not available.
    *
-   * Requires `allow-read` permission.
-   *
-   * @tags allow-read
    * @category Runtime
    */
   export function cwd(): string;
@@ -2225,6 +2243,26 @@ declare namespace Deno {
      * @param [exclusive=false]
      */
     lockSync(exclusive?: boolean): void;
+    /**
+     * Try to acquire an advisory file-system lock for the file. Returns `true`
+     * if the lock was acquired, `false` if the file is already locked.
+     *
+     * Unlike {@linkcode Deno.FsFile.lock}, this method will not block if the
+     * lock cannot be acquired.
+     *
+     * @param [exclusive=false]
+     */
+    tryLock(exclusive?: boolean): Promise<boolean>;
+    /**
+     * Synchronously try to acquire an advisory file-system lock for the file.
+     * Returns `true` if the lock was acquired, `false` if the file is already locked.
+     *
+     * Unlike {@linkcode Deno.FsFile.lockSync}, this method will not block if the
+     * lock cannot be acquired.
+     *
+     * @param [exclusive=false]
+     */
+    tryLockSync(exclusive?: boolean): boolean;
     /**
      * Release an advisory file-system lock for the file.
      */
@@ -3796,13 +3834,13 @@ declare namespace Deno {
     /** Waits for the child to exit completely, returning all its output and
      * status. */
     output(): Promise<CommandOutput>;
-    /** Kills the process with given {@linkcode Deno.Signal}.
+    /** Kills the process with given {@linkcode Deno.Signal} or numeric signal.
      *
      * Defaults to `SIGTERM` if no signal is provided.
      *
      * @param [signo="SIGTERM"]
      */
-    kill(signo?: Signal): void;
+    kill(signo?: Signal | number): void;
 
     /** Ensure that the status of the child process prevents the Deno process
      * from exiting. */
@@ -3948,6 +3986,168 @@ declare namespace Deno {
     /** The buffered output from the child process' `stderr`. */
     readonly stderr: Uint8Array<ArrayBuffer>;
   }
+
+  /** Spawns a new subprocess, returning a {@linkcode Deno.ChildProcess} handle.
+   *
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
+   *
+   * This is a shorthand for `new Deno.Command(command, options).spawn()`.
+   *
+   * By default, `stdin`, `stdout`, and `stderr` are set to `"inherit"`.
+   *
+   * @example Spawn a subprocess
+   *
+   * ```ts
+   * const child = Deno.spawn(Deno.execPath(), {
+   *   args: ["eval", "console.log('hello')"],
+   *   stdout: "piped",
+   * });
+   * const output = await child.stdout.text();
+   * console.log(output); // "hello\n"
+   * const status = await child.status;
+   * ```
+   *
+   * @tags allow-run
+   * @category Subprocess
+   */
+  export function spawn(
+    command: string | URL,
+    options?: CommandOptions,
+  ): ChildProcess;
+  /** Spawns a new subprocess with the given arguments, returning a
+   * {@linkcode Deno.ChildProcess} handle.
+   *
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
+   *
+   * This is a shorthand for `new Deno.Command(command, { ...options, args }).spawn()`.
+   *
+   * By default, `stdin`, `stdout`, and `stderr` are set to `"inherit"`.
+   *
+   * @example Spawn a subprocess with args
+   *
+   * ```ts
+   * const child = Deno.spawn(Deno.execPath(), ["eval", "console.log('hello')"], {
+   *   stdout: "piped",
+   * });
+   * const output = await child.stdout.text();
+   * console.log(output); // "hello\n"
+   * const status = await child.status;
+   * ```
+   *
+   * @tags allow-run
+   * @category Subprocess
+   */
+  export function spawn(
+    command: string | URL,
+    args: string[],
+    options?: Omit<CommandOptions, "args">,
+  ): ChildProcess;
+
+  /** Spawns a subprocess, waits for it to finish, and returns the output.
+   *
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
+   *
+   * This is a shorthand for `new Deno.Command(command, options).output()`.
+   *
+   * Will throw an error if `stdin: "piped"` is set.
+   *
+   * @example Spawn and wait for output
+   *
+   * ```ts
+   * const { code, stdout, stderr } = await Deno.spawnAndWait(Deno.execPath(), {
+   *   args: ["eval", "console.log('hello')"],
+   * });
+   * console.log(new TextDecoder().decode(stdout)); // "hello\n"
+   * ```
+   *
+   * @tags allow-run
+   * @category Subprocess
+   */
+  export function spawnAndWait(
+    command: string | URL,
+    options?: CommandOptions,
+  ): Promise<CommandOutput>;
+  /** Spawns a subprocess with the given arguments, waits for it to finish,
+   * and returns the output.
+   *
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
+   *
+   * This is a shorthand for `new Deno.Command(command, { ...options, args }).output()`.
+   *
+   * Will throw an error if `stdin: "piped"` is set.
+   *
+   * @example Spawn and wait with args
+   *
+   * ```ts
+   * const { code, stdout } = await Deno.spawnAndWait(
+   *   Deno.execPath(),
+   *   ["eval", "console.log('hello')"],
+   * );
+   * console.log(new TextDecoder().decode(stdout)); // "hello\n"
+   * ```
+   *
+   * @tags allow-run
+   * @category Subprocess
+   */
+  export function spawnAndWait(
+    command: string | URL,
+    args: string[],
+    options?: Omit<CommandOptions, "args">,
+  ): Promise<CommandOutput>;
+
+  /** Synchronously spawns a subprocess, waits for it to finish, and returns
+   * the output.
+   *
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
+   *
+   * This is a shorthand for `new Deno.Command(command, options).outputSync()`.
+   *
+   * Will throw an error if `stdin: "piped"` is set.
+   *
+   * @example Spawn and wait synchronously
+   *
+   * ```ts
+   * const { code, stdout } = Deno.spawnAndWaitSync(Deno.execPath(), {
+   *   args: ["eval", "console.log('hello')"],
+   * });
+   * console.log(new TextDecoder().decode(stdout)); // "hello\n"
+   * ```
+   *
+   * @tags allow-run
+   * @category Subprocess
+   */
+  export function spawnAndWaitSync(
+    command: string | URL,
+    options?: CommandOptions,
+  ): CommandOutput;
+  /** Synchronously spawns a subprocess with the given arguments, waits for it
+   * to finish, and returns the output.
+   *
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
+   *
+   * This is a shorthand for
+   * `new Deno.Command(command, { ...options, args }).outputSync()`.
+   *
+   * Will throw an error if `stdin: "piped"` is set.
+   *
+   * @example Spawn and wait synchronously with args
+   *
+   * ```ts
+   * const { code, stdout } = Deno.spawnAndWaitSync(
+   *   Deno.execPath(),
+   *   ["eval", "console.log('hello')"],
+   * );
+   * console.log(new TextDecoder().decode(stdout)); // "hello\n"
+   * ```
+   *
+   * @tags allow-run
+   * @category Subprocess
+   */
+  export function spawnAndWaitSync(
+    command: string | URL,
+    args: string[],
+    options?: Omit<CommandOptions, "args">,
+  ): CommandOutput;
 
   /** Option which can be specified when performing {@linkcode Deno.inspect}.
    *
@@ -4739,12 +4939,14 @@ declare namespace Deno {
    * Deno.kill(child.pid, "SIGINT");
    * ```
    *
+   * As a special case, a signal of 0 can be used to test for the existence of a process.
+   *
    * Requires `allow-run` permission.
    *
    * @tags allow-run
    * @category Subprocess
    */
-  export function kill(pid: number, signo?: Signal): void;
+  export function kill(pid: number, signo?: Signal | number): void;
 
   /** The type of the resource record to resolve via DNS using
    * {@linkcode Deno.resolveDns}.
@@ -6034,11 +6236,17 @@ declare namespace Deno {
     getFloat64(offset?: number): number;
     /** Gets a pointer at the specified byte offset from the pointer */
     getPointer<T = unknown>(offset?: number): PointerValue<T>;
-    /** Gets a C string (`null` terminated string) at the specified byte offset
-     * from the pointer. */
+    /** Gets a UTF-8 encoded string at the specified byte offset until 0 byte.
+     *
+     * Returned string doesn't include U+0000 character.
+     *
+     * Invalid UTF-8 characters are replaced with U+FFFD character in the returned string. */
     getCString(offset?: number): string;
-    /** Gets a C string (`null` terminated string) at the specified byte offset
-     * from the specified pointer. */
+    /** Gets a UTF-8 encoded string at the specified byte offset from the specified pointer until 0 byte.
+     *
+     * Returned string doesn't include U+0000 character.
+     *
+     * Invalid UTF-8 characters are replaced with U+FFFD character in the returned string. */
     static getCString(pointer: PointerObject, offset?: number): string;
     /** Gets an `ArrayBuffer` of length `byteLength` at the specified byte
      * offset from the pointer. */

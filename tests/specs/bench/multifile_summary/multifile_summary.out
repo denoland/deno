@@ -1,6 +1,6 @@
-Check [WILDCARD]/group_baseline.ts
-Check [WILDCARD]/pass.ts
-Check [WILDCARD]/multiple_group.ts
+Check [WILDCARD]group_baseline.ts
+Check [WILDCARD]pass.ts
+Check [WILDCARD]multiple_group.ts
     CPU | [WILDCARD]
 Runtime | Deno [WILDCARD] ([WILDCARD])
 

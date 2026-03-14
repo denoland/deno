@@ -1,0 +1,5 @@
+{
+  "tempDir": true,
+  "args": "run -A main.cjs",
+  "output": "main.out"
+}

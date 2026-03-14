@@ -1,4 +1,3 @@
-[WILDCARD]
 running 69 tests from ./test.js
 sync pass todo ... ok ([WILDLINE])
 sync pass todo with message ... ok ([WILDLINE])
@@ -136,6 +135,8 @@ error: AssertionError: Expected values to be strictly equal:
 
 true !== false
 
+  assert.strictEqual(true, false);
+         ^
     at [WILDCARD]
 
 reject fail => [WILDLINE]

@@ -35,6 +35,20 @@
       },
       "output": "message_port_unref.out",
       "exitCode": 0
+    },
+    "eval_cjs_require": {
+      // Test for https://github.com/denoland/deno/issues/27181
+      "args": "run --quiet eval_cjs_require.mjs",
+      "output": "ok\n",
+      "exitCode": 0
+    },
+    "eval_sloppy_mode": {
+      // Test for https://github.com/denoland/deno/issues/26739
+      // eval workers must run in sloppy mode (not strict/ESM) to match
+      // Node.js behavior. Libraries like fflate depend on this.
+      "args": "run --quiet eval_sloppy_mode.mjs",
+      "output": "sloppy mode works, myGlobal=42\n",
+      "exitCode": 0
     }
   }
 }

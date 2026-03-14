@@ -1,6 +1,6 @@
 Download http://localhost:4545/check/import_non_existent.ts
 Download http://localhost:4545/check/non-existent-module.ts
-Check file:///[WILDLINE]/import_remote.ts
+Check [WILDCARD]import_remote.ts
 TS2307 [ERROR]: Cannot find module 'http://localhost:4545/check/non-existent-module.ts'.
     at http://localhost:4545/check/import_non_existent.ts:1:22
 

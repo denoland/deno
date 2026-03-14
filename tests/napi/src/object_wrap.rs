@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -171,6 +171,88 @@ impl NapiObject {
   }
 }
 
+/// A class that uses getter/setter accessor properties defined via
+/// napi_define_class with napi_default (0) attributes. This tests that
+/// napi_writable is correctly ignored for accessor properties — the
+/// presence of a setter should make the property writable regardless
+/// of whether napi_writable is set.
+pub struct NapiAccessorObject {
+  value: i32,
+}
+
+extern "C" fn accessor_obj_constructor(
+  env: napi_env,
+  info: napi_callback_info,
+) -> napi_value {
+  let mut this: napi_value = ptr::null_mut();
+  assert_napi_ok!(napi_get_cb_info(
+    env,
+    info,
+    &mut 0,
+    ptr::null_mut(),
+    &mut this,
+    ptr::null_mut(),
+  ));
+
+  let obj = Box::new(NapiAccessorObject { value: 0 });
+  let obj_raw = Box::into_raw(obj) as *mut c_void;
+  assert_napi_ok!(napi_wrap(
+    env,
+    this,
+    obj_raw,
+    Some(accessor_obj_release),
+    ptr::null_mut(),
+    ptr::null_mut(),
+  ));
+
+  this
+}
+
+extern "C" fn accessor_obj_release(
+  _env: napi_env,
+  data: *mut c_void,
+  _hint: *mut c_void,
+) {
+  unsafe {
+    drop(Box::from_raw(data as *mut NapiAccessorObject));
+  }
+}
+
+extern "C" fn accessor_getter(
+  env: napi_env,
+  info: napi_callback_info,
+) -> napi_value {
+  let (_args, _argc, this) = napi_get_callback_info!(env, info, 0);
+  let mut obj: *mut NapiAccessorObject = ptr::null_mut();
+  assert_napi_ok!(napi_unwrap(
+    env,
+    this,
+    &mut obj as *mut _ as *mut *mut c_void
+  ));
+
+  let mut result: napi_value = ptr::null_mut();
+  assert_napi_ok!(napi_create_int32(env, (*obj).value, &mut result));
+  result
+}
+
+extern "C" fn accessor_setter(
+  env: napi_env,
+  info: napi_callback_info,
+) -> napi_value {
+  let (args, argc, this) = napi_get_callback_info!(env, info, 1);
+  assert_eq!(argc, 1);
+  let mut obj: *mut NapiAccessorObject = ptr::null_mut();
+  assert_napi_ok!(napi_unwrap(
+    env,
+    this,
+    &mut obj as *mut _ as *mut *mut c_void
+  ));
+
+  assert_napi_ok!(napi_get_value_int32(env, args[0], &mut (*obj).value));
+
+  ptr::null_mut()
+}
+
 pub fn init(env: napi_env, exports: napi_value) {
   let mut static_prop = napi_new_property!(env, "factory", NapiObject::factory);
   static_prop.attributes = PropertyAttributes::static_;
@@ -217,6 +299,38 @@ pub fn init(env: napi_env, exports: napi_value) {
     env,
     exports,
     "NapiObjectOwned\0".as_ptr() as *const c_char,
+    cons,
+  ));
+
+  // Register NapiAccessorObject — class with getter/setter properties
+  // using napi_default attributes (napi_writable NOT set).
+  let accessor_properties = &[napi_property_descriptor {
+    utf8name: c"value".as_ptr(),
+    name: ptr::null_mut(),
+    method: None,
+    getter: Some(accessor_getter),
+    setter: Some(accessor_setter),
+    data: ptr::null_mut(),
+    attributes: PropertyAttributes::default, // napi_writable is NOT set
+    value: ptr::null_mut(),
+  }];
+
+  let mut cons: napi_value = ptr::null_mut();
+  assert_napi_ok!(napi_define_class(
+    env,
+    c"NapiAccessorObject".as_ptr(),
+    usize::MAX,
+    Some(accessor_obj_constructor),
+    ptr::null_mut(),
+    accessor_properties.len(),
+    accessor_properties.as_ptr(),
+    &mut cons,
+  ));
+
+  assert_napi_ok!(napi_set_named_property(
+    env,
+    exports,
+    c"NapiAccessorObject".as_ptr(),
     cons,
   ));
 }

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import { validateFunction } from "ext:deno_node/internal/validators.mjs";
 import { normalizeEncoding } from "ext:deno_node/internal/normalize_encoding.ts";
@@ -10,16 +10,24 @@ import {
 import { ERR_UNKNOWN_SIGNAL } from "ext:deno_node/internal/errors.ts";
 import { os } from "ext:deno_node/internal_binding/constants.ts";
 import { primordials } from "ext:core/mod.js";
+import { isNativeError } from "ext:deno_node/internal/util/types.ts";
+
 const {
   ArrayPrototypePush,
+  ErrorPrototype,
   ObjectDefineProperties,
   ObjectDefineProperty,
   ObjectFreeze,
   ObjectGetPrototypeOf,
   ObjectGetOwnPropertyDescriptors,
+  ObjectPrototypeIsPrototypeOf,
   ObjectSetPrototypeOf,
   Promise,
   ReflectApply,
+  ReflectConstruct,
+  SafeSet,
+  SetPrototypeAdd,
+  SetPrototypeHas,
   SafeWeakRef,
   StringPrototypeReplace,
   SymbolFor,
@@ -58,6 +66,17 @@ export const customPromisifyArgs = kCustomPromisifyArgsSymbol;
 /** @param {string} str */
 export function removeColors(str) {
   return StringPrototypeReplace(str, colorRegExp, "");
+}
+
+/**
+ * @param {unknown} e
+ * @returns {boolean}
+ */
+export function isError(e) {
+  // An error could be an instance of Error while not being a native error
+  // or could be from a different realm and not be instance of Error but still
+  // be a native error.
+  return isNativeError(e) || ObjectPrototypeIsPrototypeOf(ErrorPrototype, e);
 }
 
 export function promisify(
@@ -143,7 +162,19 @@ export function convertToValidSignal(signal) {
   throw new ERR_UNKNOWN_SIGNAL(signal);
 }
 
-export function deprecateInstantiation() {}
+const codesWarned = new SafeSet();
+
+export function deprecateInstantiation(Constructor, deprecationCode, ...args) {
+  if (!SetPrototypeHas(codesWarned, deprecationCode)) {
+    SetPrototypeAdd(codesWarned, deprecationCode);
+    globalThis.process.emitWarning(
+      `Instantiating ${Constructor.name} without the 'new' keyword has been deprecated.`,
+      "DeprecationWarning",
+      deprecationCode,
+    );
+  }
+  return ReflectConstruct(Constructor, args);
+}
 
 export class WeakReference {
   #weak = null;
@@ -184,6 +215,7 @@ export default {
   customInspectSymbol,
   customPromisifyArgs,
   deprecateInstantiation,
+  isError,
   kEmptyObject,
   kEnumerableProperty,
   normalizeEncoding,

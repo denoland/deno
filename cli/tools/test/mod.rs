@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -81,6 +81,7 @@ use crate::sys::CliSys;
 use crate::util::extract::extract_doc_tests;
 use crate::util::file_watcher;
 use crate::util::fs::CollectSpecifiersOptions;
+use crate::util::fs::canonicalize_path;
 use crate::util::fs::collect_specifiers;
 use crate::util::path::get_extension;
 use crate::util::path::is_script_ext;
@@ -129,6 +130,10 @@ pub enum TestMode {
 }
 
 impl TestMode {
+  fn union(self, other: Self) -> Self {
+    if self == other { self } else { Self::Both }
+  }
+
   /// Returns `true` if the test mode indicates that code snippet extraction is
   /// needed.
   fn needs_test_extraction(&self) -> bool {
@@ -206,6 +211,7 @@ pub(crate) struct TestContainer {
   descriptions: TestDescriptions,
   test_functions: Vec<v8::Global<v8::Function>>,
   test_hooks: TestHooks,
+  registration_phase_ended: bool,
 }
 
 #[derive(Default)]
@@ -217,13 +223,26 @@ pub(crate) struct TestHooks {
 }
 
 impl TestContainer {
+  pub fn with_registration_phase_ended() -> Self {
+    Self {
+      registration_phase_ended: true,
+      ..Default::default()
+    }
+  }
+
   pub fn register(
     &mut self,
     description: TestDescription,
     function: v8::Global<v8::Function>,
-  ) {
+  ) -> Result<(), JsErrorBox> {
+    if self.registration_phase_ended {
+      return Err(JsErrorBox::type_error(
+        "Nested Deno.test() calls are not supported. Use t.step() for nested tests.",
+      ));
+    }
     self.descriptions.tests.insert(description.id, description);
-    self.test_functions.push(function)
+    self.test_functions.push(function);
+    Ok(())
   }
 
   pub fn register_hook(
@@ -276,6 +295,7 @@ pub struct TestDescription {
   pub name: String,
   pub ignore: bool,
   pub only: bool,
+  pub sanitize_only: bool,
   pub origin: String,
   pub location: TestLocation,
   pub sanitize_ops: bool,
@@ -306,6 +326,8 @@ impl From<&TestDescription> for TestFailureDescription {
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct TestFailureFormatOptions {
   pub hide_stacktraces: bool,
+  pub strip_ascii_color: bool,
+  pub initial_cwd: Option<Url>,
 }
 
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -605,6 +627,8 @@ fn get_test_reporter(options: &TestSpecifiersOptions) -> Box<dyn TestReporter> {
   let parallel = options.concurrent_jobs.get() > 1;
   let failure_format_options = TestFailureFormatOptions {
     hide_stacktraces: options.hide_stacktraces,
+    strip_ascii_color: false,
+    initial_cwd: Some(options.cwd.clone()),
   };
   let reporter: Box<dyn TestReporter> = match &options.reporter {
     TestReporterConfig::Dot => Box::new(DotTestReporter::new(
@@ -622,7 +646,10 @@ fn get_test_reporter(options: &TestSpecifiersOptions) -> Box<dyn TestReporter> {
     TestReporterConfig::Junit => Box::new(JunitTestReporter::new(
       options.cwd.clone(),
       "-".to_string(),
-      failure_format_options,
+      TestFailureFormatOptions {
+        strip_ascii_color: true,
+        ..failure_format_options
+      },
     )),
     TestReporterConfig::Tap => Box::new(TapTestReporter::new(
       options.cwd.clone(),
@@ -637,6 +664,8 @@ fn get_test_reporter(options: &TestSpecifiersOptions) -> Box<dyn TestReporter> {
       junit_path.to_string(),
       TestFailureFormatOptions {
         hide_stacktraces: options.hide_stacktraces,
+        strip_ascii_color: true,
+        initial_cwd: Some(options.cwd.clone()),
       },
     ));
     return Box::new(CompoundTestReporter::new(vec![reporter, junit]));
@@ -645,10 +674,12 @@ fn get_test_reporter(options: &TestSpecifiersOptions) -> Box<dyn TestReporter> {
   reporter
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn configure_main_worker(
   worker_factory: Arc<CliMainWorkerFactory>,
   specifier: &Url,
   preload_modules: Vec<Url>,
+  require_modules: Vec<Url>,
   permissions_container: PermissionsContainer,
   worker_sender: TestEventWorkerSender,
   options: &TestSpecifierOptions,
@@ -659,6 +690,7 @@ async fn configure_main_worker(
       WorkerExecutionMode::Test,
       specifier.clone(),
       preload_modules,
+      require_modules,
       permissions_container,
       vec![
         ops::testing::deno_test::init(worker_sender.sender),
@@ -704,11 +736,13 @@ async fn configure_main_worker(
 
 /// Test a single specifier as documentation containing test programs, an executable test module or
 /// both.
+#[allow(clippy::too_many_arguments)]
 pub async fn test_specifier(
   worker_factory: Arc<CliMainWorkerFactory>,
   permissions_container: PermissionsContainer,
   specifier: ModuleSpecifier,
   preload_modules: Vec<ModuleSpecifier>,
+  require_modules: Vec<ModuleSpecifier>,
   worker_sender: TestEventWorkerSender,
   fail_fast_tracker: FailFastTracker,
   options: TestSpecifierOptions,
@@ -721,6 +755,7 @@ pub async fn test_specifier(
     worker_factory,
     &specifier,
     preload_modules,
+    require_modules,
     permissions_container,
     worker_sender,
     &options,
@@ -897,22 +932,34 @@ pub async fn run_tests_for_worker(
   let state_rc = worker.js_runtime.op_state();
 
   // Take whatever tests have been registered
-  let container =
-    std::mem::take(&mut *state_rc.borrow_mut().borrow_mut::<TestContainer>());
+  let container = std::mem::replace(
+    &mut *state_rc.borrow_mut().borrow_mut::<TestContainer>(),
+    TestContainer::with_registration_phase_ended(),
+  );
 
   let descriptions = Arc::new(container.descriptions);
-  event_tracker.register(descriptions.clone())?;
-  run_tests_for_worker_inner(
-    worker,
-    specifier,
-    descriptions,
-    container.test_functions,
-    container.test_hooks,
-    options,
-    event_tracker,
-    fail_fast_tracker,
-  )
-  .await
+  let result = async {
+    event_tracker.register(descriptions.clone())?;
+    run_tests_for_worker_inner(
+      worker,
+      specifier,
+      descriptions,
+      container.test_functions,
+      container.test_hooks,
+      options,
+      event_tracker,
+      fail_fast_tracker,
+    )
+    .await
+  }
+  .await;
+
+  // This worker can execute another discovery/run cycle (for example in REPL),
+  // so reset to a fresh container after the current run ends.
+  *state_rc.borrow_mut().borrow_mut::<TestContainer>() =
+    TestContainer::default();
+
+  result
 }
 
 fn compute_tests_to_run(
@@ -922,20 +969,24 @@ fn compute_tests_to_run(
 ) -> (Vec<(&TestDescription, v8::Global<v8::Function>)>, bool) {
   let mut tests_to_run = Vec::with_capacity(descs.len());
   let mut used_only = false;
+  let mut has_only = false;
   for ((_, d), f) in descs.tests.iter().zip(test_functions) {
     if !filter.includes(&d.name) {
       continue;
     }
 
     // If we've seen an "only: true" test, the remaining tests must be "only: true" to be added
-    if used_only && !d.only {
+    if has_only && !d.only {
       continue;
     }
 
     // If this is the first "only: true" test we've seen, clear the other tests since they were
     // only: false.
-    if d.only && !used_only {
-      used_only = true;
+    if d.only && !has_only {
+      has_only = true;
+      if d.sanitize_only {
+        used_only = true;
+      }
       tests_to_run.clear();
     }
     tests_to_run.push((d, f));
@@ -1111,6 +1162,14 @@ async fn run_tests_for_worker_inner(
       continue;
     }
 
+    // Close idle Node.js HTTP Agent connections to prevent cross-test
+    // pollution and false positive resource leak detection from pooled
+    // keepAlive connections.
+    _ = worker.js_runtime.execute_script(
+      located_script_name!(),
+      "Deno[Deno.internal].node?.closeIdleConnections?.()",
+    );
+
     // Await activity stabilization
     if let Some(diff) = sanitizers::wait_for_activity_to_stabilize(
       worker,
@@ -1166,6 +1225,7 @@ async fn test_specifiers(
   permission_desc_parser: &Arc<RuntimePermissionDescriptorParser<CliSys>>,
   specifiers: Vec<ModuleSpecifier>,
   preload_modules: Vec<ModuleSpecifier>,
+  require_modules: Vec<ModuleSpecifier>,
   options: TestSpecifiersOptions,
 ) -> Result<(), AnyError> {
   let specifiers = if let Some(seed) = options.specifier.shuffle {
@@ -1194,6 +1254,7 @@ async fn test_specifiers(
     let worker_factory = worker_factory.clone();
     let specifier_dir = cli_options.workspace().resolve_member_dir(&specifier);
     let preload_modules = preload_modules.clone();
+    let require_modules = require_modules.clone();
     let worker_sender = test_event_sender_factory.worker();
     let fail_fast_tracker = fail_fast_tracker.clone();
     let specifier_options = options.specifier.clone();
@@ -1217,6 +1278,7 @@ async fn test_specifiers(
         permissions_container,
         specifier,
         preload_modules,
+        require_modules,
         worker_sender,
         fail_fast_tracker,
         specifier_options,
@@ -1505,20 +1567,38 @@ async fn fetch_specifiers_with_test_mode(
   member_patterns: impl Iterator<Item = FilePatterns>,
   doc: &bool,
 ) -> Result<Vec<(ModuleSpecifier, TestMode)>, AnyError> {
-  let mut specifiers_with_mode = member_patterns
+  let mut deduped_specifiers_with_mode: IndexMap<ModuleSpecifier, TestMode> =
+    IndexMap::new();
+  for (specifier, mode) in member_patterns
     .map(|files| {
       collect_specifiers_with_test_mode(cli_options, files.clone(), doc)
     })
     .collect::<Result<Vec<_>, _>>()?
     .into_iter()
     .flatten()
-    .collect::<Vec<_>>();
+  {
+    match deduped_specifiers_with_mode.entry(specifier) {
+      indexmap::map::Entry::Occupied(mut entry) => {
+        let merged_mode = entry.get().clone().union(mode);
+        entry.insert(merged_mode);
+      }
+      indexmap::map::Entry::Vacant(entry) => {
+        entry.insert(mode);
+      }
+    }
+  }
+
+  let mut specifiers_with_mode =
+    deduped_specifiers_with_mode.into_iter().collect::<Vec<_>>();
 
   for (specifier, mode) in &mut specifiers_with_mode {
     let file = file_fetcher.fetch_bypass_permissions(specifier).await?;
 
     let (media_type, _) = file.resolve_media_type_and_charset();
-    if matches!(media_type, MediaType::Unknown | MediaType::Dts) {
+    if matches!(
+      media_type,
+      MediaType::Unknown | MediaType::Dts | MediaType::Markdown
+    ) {
       *mode = TestMode::Documentation
     }
   }
@@ -1579,6 +1659,7 @@ pub async fn run_tests(
   let worker_factory =
     Arc::new(factory.create_cli_main_worker_factory().await?);
   let preload_modules = cli_options.preload_modules()?;
+  let require_modules = cli_options.require_modules()?;
 
   // Run tests
   test_specifiers(
@@ -1587,6 +1668,7 @@ pub async fn run_tests(
     factory.permission_desc_parser()?,
     specifiers_for_typecheck_and_test,
     preload_modules,
+    require_modules,
     TestSpecifiersOptions {
       cwd: Url::from_directory_path(cli_options.initial_cwd()).map_err(
         |_| {
@@ -1735,18 +1817,28 @@ pub async fn run_tests_with_watch(
 
         let test_modules_to_reload = if let Some(changed_paths) = changed_paths
         {
-          let mut result = IndexSet::with_capacity(test_modules.len());
           let changed_paths = changed_paths.into_iter().collect::<HashSet<_>>();
-          for test_module_specifier in test_modules {
-            if has_graph_root_local_dependent_changed(
-              &graph,
-              test_module_specifier,
-              &changed_paths,
-            ) {
-              result.insert(test_module_specifier.clone());
+          // If an env file changed, reload all test modules since any
+          // test could depend on environment variables.
+          let env_file_changed = cli_options
+            .env_file_paths()
+            .filter_map(|path| canonicalize_path(&path).ok())
+            .any(|path| changed_paths.contains(&path));
+          if env_file_changed {
+            test_modules.clone()
+          } else {
+            let mut result = IndexSet::with_capacity(test_modules.len());
+            for test_module_specifier in test_modules {
+              if has_graph_root_local_dependent_changed(
+                &graph,
+                test_module_specifier,
+                &changed_paths,
+              ) {
+                result.insert(test_module_specifier.clone());
+              }
             }
+            result
           }
-          result
         } else {
           test_modules.clone()
         };
@@ -1791,6 +1883,7 @@ pub async fn run_tests_with_watch(
         let worker_factory =
           Arc::new(factory.create_cli_main_worker_factory().await?);
         let preload_modules = cli_options.preload_modules()?;
+        let require_modules = cli_options.require_modules()?;
 
         test_specifiers(
           worker_factory,
@@ -1798,6 +1891,7 @@ pub async fn run_tests_with_watch(
           factory.permission_desc_parser()?,
           specifiers_for_typecheck_and_test,
           preload_modules,
+          require_modules,
           TestSpecifiersOptions {
             cwd: Url::from_directory_path(cli_options.initial_cwd()).map_err(
               |_| {

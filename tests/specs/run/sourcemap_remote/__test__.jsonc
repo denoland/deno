@@ -1,0 +1,19 @@
+{
+  "tests": {
+    "basic": {
+      "args": "run --allow-import external.js",
+      "output": "external.js.out",
+      "exitCode": 1
+    },
+    "no_permission": {
+      "args": "run no_permission.js",
+      "output": "no_permission.out",
+      "exitCode": 1
+    },
+    "blocked_host": {
+      "args": "run --allow-import=localhost:4545 blocked_host.js",
+      "output": "blocked_host.out",
+      "exitCode": 1
+    }
+  }
+}

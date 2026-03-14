@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::path::Path;
@@ -33,7 +33,7 @@ pub struct GlobalNpmPackageInstaller<
   tarball_cache: Arc<TarballCache<THttpClient, TSys>>,
   sys: TSys,
   resolution: Arc<NpmResolutionCell>,
-  lifecycle_scripts: LifecycleScriptsConfig,
+  lifecycle_scripts: Arc<LifecycleScriptsConfig>,
   system_info: NpmSystemInfo,
   install_reporter: Option<Arc<dyn crate::InstallReporter>>,
 }
@@ -60,7 +60,7 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
     tarball_cache: Arc<TarballCache<THttpClient, TSys>>,
     sys: TSys,
     resolution: Arc<NpmResolutionCell>,
-    lifecycle_scripts: LifecycleScriptsConfig,
+    lifecycle_scripts: Arc<LifecycleScriptsConfig>,
     system_info: NpmSystemInfo,
     install_reporter: Option<Arc<dyn crate::InstallReporter>>,
   ) -> Self {

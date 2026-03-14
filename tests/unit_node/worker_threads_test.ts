@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import {
   assert,
@@ -13,7 +13,11 @@ import { EventEmitter, once } from "node:events";
 import process from "node:process";
 
 Deno.test("[node/worker_threads] BroadcastChannel is exported", () => {
-  assertEquals<unknown>(workerThreads.BroadcastChannel, BroadcastChannel);
+  const bc = new workerThreads.BroadcastChannel("test");
+  assert(bc instanceof BroadcastChannel);
+  assert(typeof bc.ref === "function");
+  assert(typeof bc.unref === "function");
+  bc.close();
 });
 
 Deno.test("[node/worker_threads] MessageChannel are MessagePort are exported", () => {
@@ -124,7 +128,7 @@ Deno.test({
   async fn() {
     const worker = new workerThreads.Worker(
       `
-      import { parentPort } from "node:worker_threads";
+      const { parentPort } = require("node:worker_threads");
       parentPort.postMessage("It works!");
       `,
       {
@@ -142,7 +146,7 @@ Deno.test({
     // Check that newlines are encoded properly
     const worker = new workerThreads.Worker(
       `
-      import { parentPort } from "node:worker_threads"
+      const { parentPort } = require("node:worker_threads");
       console.log("hey, foo") // comment
       parentPort.postMessage("It works!");
       `,
@@ -279,26 +283,16 @@ Deno.test({
 });
 
 Deno.test({
-  name: "[node/worker_threads] throws on non-existend file",
-  fn() {
-    assertThrows(
-      () => {
-        new workerThreads.Worker(new URL("file://very/unlikely"));
-      },
-    );
-  },
-});
-
-Deno.test({
   name: "[node/worker_threads] inheritances",
   async fn() {
     const worker = new workerThreads.Worker(
       `
-      import { EventEmitter } from "node:events";
-      import { parentPort } from "node:worker_threads";
+      const { EventEmitter } = require("node:events");
+      const { parentPort } = require("node:worker_threads");
       parentPort.postMessage(parentPort instanceof EventTarget);
-      await new Promise(resolve => setTimeout(resolve, 100));
-      parentPort.postMessage(parentPort instanceof EventEmitter);
+      setTimeout(() => {
+        parentPort.postMessage(parentPort instanceof EventEmitter);
+      }, 100);
       `,
       {
         eval: true,
@@ -394,14 +388,14 @@ Deno.test({
     const deferred = Promise.withResolvers<void>();
     const worker = new workerThreads.Worker(
       `
-      import {
+      const {
         isMainThread,
         MessageChannel,
         parentPort,
         receiveMessageOnPort,
         Worker,
         workerData,
-      } from "node:worker_threads";
+      } = require("node:worker_threads");
       parentPort.on("message", (msg) => {
         /* console.log("message from main", msg); */
         parentPort.postMessage("Hello from worker on parentPort!");
@@ -487,8 +481,8 @@ Deno.test({
     const deferred = Promise.withResolvers<void>();
     const worker = new workerThreads.Worker(
       `
-      import { parentPort } from "node:worker_threads";
-      import process from "node:process";
+      const { parentPort } = require("node:worker_threads");
+      const process = require("node:process");
       parentPort.postMessage(process.env.TEST_ENV);
       `,
       {
@@ -513,8 +507,8 @@ Deno.test({
     const deferred = Promise.withResolvers<void>();
     const worker = new workerThreads.Worker(
       `
-      import { parentPort } from "node:worker_threads";
-      import process from "node:process";
+      const { parentPort } = require("node:worker_threads");
+      const process = require("node:process");
       parentPort.postMessage("ok");
       `,
       {
@@ -541,7 +535,7 @@ Deno.test({
     const deferred = Promise.withResolvers<void>();
     const worker = new workerThreads.Worker(
       `
-      import { parentPort } from "node:worker_threads";
+      const { parentPort } = require("node:worker_threads");
       parentPort.postMessage("ok");
       `,
       {
@@ -557,7 +551,7 @@ Deno.test({
     await deferred.promise;
     const promise = worker.terminate();
     assertEquals(typeof promise.then, "function");
-    assertEquals(await promise, 0);
+    assertEquals(await promise, 1);
   },
 });
 
@@ -589,7 +583,7 @@ Deno.test({
     const channel = new workerThreads.MessageChannel();
     const worker = new workerThreads.Worker(
       `
-      import { parentPort } from "node:worker_threads";
+      const { parentPort } = require("node:worker_threads");
       parentPort.addListener("message", message => {
         if (message.foo) {
           const success = typeof message.foo.bar.addListener === "function";
@@ -615,19 +609,17 @@ Deno.test({
   async fn() {
     const worker = new workerThreads.Worker(
       `
-      import { parentPort } from "node:worker_threads";
-      const p = Promise.withResolvers();
+      const { parentPort } = require("node:worker_threads");
       let ok = false;
       parentPort.on("message", () => {
         ok = true;
-        p.resolve();
-      });
-      await Promise.race([p.promise, new Promise(resolve => setTimeout(resolve, 20000))]);
-      if (ok) {
         parentPort.postMessage("ok");
-      } else {
-        parentPort.postMessage("timed out");
-      }
+      });
+      setTimeout(() => {
+        if (!ok) {
+          parentPort.postMessage("timed out");
+        }
+      }, 20000);
       `,
       {
         eval: true,
@@ -646,7 +638,7 @@ Deno.test({
   async fn() {
     const worker = new workerThreads.Worker(
       `
-      import { parentPort, receiveMessageOnPort } from "node:worker_threads";
+      const { parentPort, receiveMessageOnPort } = require("node:worker_threads");
       parentPort.on("message", (msg) => {
         const port = msg.port;
         port.on("message", (msg2) => {
@@ -699,7 +691,7 @@ Deno.test({
   async fn() {
     const worker = new workerThreads.Worker(
       `
-      import { parentPort } from "node:worker_threads";
+      const { parentPort } = require("node:worker_threads");
       const assertEquals = (a, b) => {
         if (a !== b) {
           throw new Error();
@@ -759,8 +751,8 @@ Deno.test({
   async fn() {
     const worker = new workerThreads.Worker(
       `
-      import { assert, assertEquals } from "@std/assert";
-      import { parentPort, receiveMessageOnPort } from "node:worker_threads";
+      const assert = require("node:assert");
+      const { parentPort, receiveMessageOnPort } = require("node:worker_threads");
 
       assert(parentPort !== null);
 
@@ -847,7 +839,7 @@ Deno.test("[node/worker_threads] Worker runs async ops correctly", async () => {
   const timer = setTimeout(() => recvMessage.reject(), 1000);
   const worker = new workerThreads.Worker(
     `
-    import { parentPort } from "node:worker_threads";
+    const { parentPort } = require("node:worker_threads");
     setTimeout(() => {
       parentPort.postMessage("Hello from worker");
     }, 10);
@@ -890,4 +882,88 @@ Deno.test("[node/worker_threads] Worker works with CJS require", async () => {
   });
 
   await recvMessage.promise;
+});
+
+Deno.test({
+  name: "[node/worker_threads] terminate emits 'exit' and stops receiving",
+  async fn() {
+    const recv: string[] = [];
+    const done = Promise.withResolvers<void>();
+
+    const worker = new (await import("node:worker_threads")).Worker(
+      `
+      const { parentPort } = require("node:worker_threads");
+      // Periodically send messages to simulate ongoing work.
+      const id = setInterval(() => {
+        parentPort.postMessage("tick");
+      }, 10);
+
+      parentPort.on("message", (m) => {
+        if (m === "stop") {
+          clearInterval(id);
+          // Attempt to send one more message after stop;
+          // the main thread should not receive it after terminate().
+          parentPort.postMessage("last");
+        }
+      });
+      `,
+      { eval: true },
+    );
+
+    const first = await once(worker, "message");
+    recv.push(first[0]);
+
+    const exitP = new Promise<number>((resolve) =>
+      worker.once("exit", (code) => resolve(code))
+    );
+
+    worker.postMessage("stop");
+
+    const termRet = worker.terminate();
+    const code = await exitP;
+
+    if (typeof termRet.then === "function") {
+      const v = await termRet;
+      assertEquals(v, 1);
+    }
+    assertEquals(code, 1);
+
+    setTimeout(() => done.resolve(), 50);
+    await done.promise;
+
+    assertEquals(recv[0], "tick");
+    assertEquals(recv.length, 1);
+  },
+  sanitizeResources: false,
+});
+
+Deno.test({
+  name:
+    "[node/worker_threads] 'online' fires before first user message (pollMessages)",
+  async fn() {
+    const wt = await import("node:worker_threads");
+    let gotOnline = false;
+
+    const worker = new wt.Worker(
+      `
+      const { parentPort } = require("node:worker_threads");
+      // When the worker becomes ready, it will receive 'ping' and respond with 'pong'.
+      parentPort.on("message", (m) => {
+        if (m === "ping") parentPort.postMessage("pong");
+      });
+      `,
+      { eval: true },
+    );
+
+    worker.on("online", () => {
+      gotOnline = true;
+      worker.postMessage("ping");
+    });
+
+    const msg = await once(worker, "message");
+    assertEquals(msg[0], "pong");
+    assertEquals(gotOnline, true);
+
+    await worker.terminate();
+  },
 });

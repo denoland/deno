@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::sync::Arc;
 
@@ -17,8 +17,8 @@ use deno_runtime::deno_io::Stdio;
 use deno_runtime::deno_io::StdioPipe;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_terminal::colors;
-use jupyter_protocol::messaging::StreamContent;
-use jupyter_runtime::ConnectionInfo;
+use jupyter_protocol::ConnectionInfo;
+use jupyter_protocol::StreamContent;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::oneshot;
@@ -102,6 +102,8 @@ pub async fn kernel(
       main_module.clone(),
       // `deno jupyter` doesn't support preloading modules
       vec![],
+      // `deno jupyter` doesn't support require modules
+      vec![],
       permissions,
       vec![
         ops::jupyter::deno_jupyter::init(stdio_tx.clone()),
@@ -178,12 +180,20 @@ pub async fn kernel(
   };
   let repl_session_proxy_channels = JupyterReplProxy { tx: tx1, rx: rx2 };
 
+  let isolate_handle = repl_session_proxy
+    .repl_session
+    .worker
+    .js_runtime
+    .v8_isolate()
+    .thread_safe_handle();
+
   let join_handle = std::thread::spawn(move || {
     let fut = server::JupyterServer::start(
       spec,
       stdio_rx,
       repl_session_proxy_channels,
       startup_data_tx,
+      isolate_handle,
     )
     .boxed_local();
     deno_runtime::tokio_util::create_and_run_current_thread(fut)
@@ -520,6 +530,14 @@ impl JupyterReplSession {
     &mut self,
     line: &str,
   ) -> Result<repl::TsEvaluateResponse, AnyError> {
+    // Clear any pending termination flag from a previous interrupt request,
+    // so that the next evaluation can proceed normally.
+    self
+      .repl_session
+      .worker
+      .js_runtime
+      .v8_isolate()
+      .cancel_terminate_execution();
     self
       .repl_session
       .evaluate_line_with_object_wrapping(line)

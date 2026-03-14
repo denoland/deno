@@ -1,9 +1,9 @@
 Publishing a workspace...
-Check file:///[WILDLINE]/workspace/bar/mod.ts
-Check file:///[WILDLINE]/workspace/foo/mod.ts
+Check [WILDCARD]mod.ts
+Check [WILDCARD]mod.ts
 Checking for slow types in the public API...
-Check file:///[WILDLINE]/workspace/bar/mod.ts
-Check file:///[WILDLINE]/workspace/foo/mod.ts
+Check [WILDCARD]mod.ts
+Check [WILDCARD]mod.ts
 [UNORDERED_START]
 Simulating publish of @foo/foo@1.0.0 with files:
    file:///[WILDLINE]/workspace/LICENSE (0B)

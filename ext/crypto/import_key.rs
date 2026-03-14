@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use base64::Engine;
 use deno_core::JsBuffer;
@@ -686,7 +686,7 @@ fn import_key_ec(
         .parameters
         .ok_or(ImportKeyError::MalformedParameters)?
         .try_into()
-        .unwrap();
+        .map_err(|_| ImportKeyError::MalformedParameters)?;
 
       let pk_named_curve = match named_curve_alg {
         // id-secp256r1

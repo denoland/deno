@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::num::NonZeroUsize;
 use std::str::FromStr;
@@ -100,6 +100,7 @@ async fn do_serve(
       main_module.clone(),
       // TODO(bartlomieju):
       vec![],
+      vec![],
       unconfigured_runtime,
     )
     .await?;
@@ -154,6 +155,7 @@ async fn run_worker(
       deno_runtime::WorkerExecutionMode::ServeWorker { worker_index },
       main_module,
       // TODO(bartlomieju):
+      vec![],
       vec![],
     )
     .await?;

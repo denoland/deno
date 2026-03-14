@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::cell::RefCell;
 use std::collections::HashSet;
@@ -13,6 +13,7 @@ use deno_config::glob::PathOrPatternSet;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::parking_lot::Mutex;
+use deno_core::url::Url;
 use deno_lib::util::result::js_error_downcast_ref;
 use deno_runtime::fmt_errors::format_js_error;
 use deno_signals;
@@ -30,6 +31,7 @@ use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::sync::mpsc::error::SendError;
 use tokio::time::sleep;
 
+use super::env::WatchEnvTracker;
 use crate::args::Flags;
 use crate::colors;
 use crate::util::fs::canonicalize_path;
@@ -77,14 +79,17 @@ impl DebouncedReceiver {
   }
 }
 
-async fn error_handler<F>(watch_future: F) -> bool
+async fn error_handler<F>(
+  watch_future: F,
+  initial_cwd_url: Option<&Url>,
+) -> bool
 where
   F: Future<Output = Result<(), AnyError>>,
 {
   let result = watch_future.await;
   if let Err(err) = result {
     let error_string = match js_error_downcast_ref(&err) {
-      Some(e) => format_js_error(e),
+      Some(e) => format_js_error(e, initial_cwd_url),
       None => format!("{err:?}"),
     };
     log::error!(
@@ -299,6 +304,10 @@ where
   ) -> Result<F, AnyError>,
   F: Future<Output = Result<(), AnyError>>,
 {
+  let initial_cwd_url = flags
+    .initial_cwd
+    .as_ref()
+    .and_then(|path| deno_path_util::url_from_directory_path(path).ok());
   let exclude_set = flags.resolve_watch_exclude_set()?;
   let (paths_to_watch_tx, mut paths_to_watch_rx) =
     tokio::sync::mpsc::unbounded_channel();
@@ -359,11 +368,28 @@ where
         add_paths_to_watcher(&mut watcher, &maybe_paths.unwrap(), &exclude_set);
       }
     };
-    let operation_future = error_handler(operation(
-      flags.clone(),
-      watcher_communicator.clone(),
-      changed_paths.borrow_mut().take(),
-    )?);
+    let env_file_paths: Option<Vec<PathBuf>> =
+      flags.env_file.as_ref().map(|files| {
+        files
+          .iter()
+          .map(|file| match flags.initial_cwd.as_ref() {
+            Some(cwd) => cwd.join(file),
+            None => PathBuf::from(file),
+          })
+          .collect()
+      });
+    WatchEnvTracker::snapshot().load_env_variables_from_env_files(
+      env_file_paths.as_ref(),
+      flags.log_level,
+    );
+    let operation_future = error_handler(
+      operation(
+        flags.clone(),
+        watcher_communicator.clone(),
+        changed_paths.borrow_mut().take(),
+      )?,
+      initial_cwd_url.as_ref(),
+    );
 
     // don't reload dependencies after the first run
     if flags.reload {
@@ -379,6 +405,7 @@ where
         return Ok(());
       },
       _ = restart_rx.recv() => {
+        deno_runtime::deno_inspector_server::notify_restart();
         print_after_restart();
         continue;
       },
@@ -415,6 +442,7 @@ where
         return Ok(());
       },
       _ = restart_rx.recv() => {
+        deno_runtime::deno_inspector_server::notify_restart();
         print_after_restart();
         continue;
       },
