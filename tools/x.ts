@@ -269,6 +269,49 @@ Examples:
 Under the hood:
   cargo test -p specs_tests --test specs -- <filter>`,
     }),
+    "test-core": {
+      description: "Run deno_core and related crate tests (nextest)",
+      help:
+        `Runs the deno_core test suite and related crates using cargo-nextest,
+matching what CI runs in the 'deno_core test' job.
+
+This includes tests for: deno_core, deno_ops, serde_v8, deno_core_testing,
+build-your-own-js-snapshot, dcore, and deno_ops_compile_test_runner.
+
+Requires cargo-nextest to be installed:
+  cargo binstall cargo-nextest
+
+Usage:
+  ./x test-core              Run all deno_core tests
+  ./x test-core <filter>     Run tests matching the filter
+
+Under the hood:
+  cargo nextest run --features "deno_core/default deno_core/include_js_files_for_snapshotting deno_core/unsafe_use_unprotected_platform" \\
+    --tests --examples \\
+    -p deno_core -p build-your-own-js-snapshot -p dcore -p deno_ops -p deno_ops_compile_test_runner -p serde_v8 -p deno_core_testing
+  cargo nextest run -p deno_ops_compile_test_runner
+  cargo test --doc -p deno_core -p build-your-own-js-snapshot -p deno_ops -p serde_v8 -p deno_core_testing`,
+      async fn(args: string[]) {
+        const filterArgs = args.length > 0
+          ? ["-E", `test(${args.join(" ")})`]
+          : [];
+        $.logStep("Running deno_core nextest...");
+        await $`cargo nextest run ${filterArgs}
+          --features ${"deno_core/default deno_core/include_js_files_for_snapshotting deno_core/unsafe_use_unprotected_platform"}
+          --tests --examples
+          -p deno_core -p build-your-own-js-snapshot -p dcore -p deno_ops -p deno_ops_compile_test_runner -p serde_v8 -p deno_core_testing`
+          .cwd(root);
+        $.logStep("Running deno_ops compile test runner...");
+        await $`cargo nextest run ${filterArgs} -p deno_ops_compile_test_runner`
+          .cwd(root);
+        if (filterArgs.length === 0) {
+          $.logStep("Running doc tests...");
+          await $`cargo test --doc -p deno_core -p build-your-own-js-snapshot -p deno_ops -p serde_v8 -p deno_core_testing`
+            .cwd(root);
+        }
+        $.logStep("deno_core tests complete.");
+      },
+    },
     "fmt": fmtCmd,
     "lint": {
       description: "Lint all code (JS/TS + Rust)",

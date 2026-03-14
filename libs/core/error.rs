@@ -248,6 +248,16 @@ impl From<v8::DataError> for CoreError {
   }
 }
 
+/// Single-pass V8 string → Rust string via `write_utf8_into` (uses ValueView
+/// internally). Replaces the two-pass `to_rust_string_lossy` which does a
+/// `utf8_length` pre-scan before writing.
+#[inline]
+fn v8_to_rust_string(s: &v8::String, scope: &mut v8::Isolate) -> String {
+  let mut buf = String::new();
+  s.write_utf8_into(scope, &mut buf);
+  buf
+}
+
 pub fn throw_js_error_class(
   scope: &mut v8::PinScope,
   error: &dyn JsErrorClass,
@@ -664,7 +674,7 @@ impl JsStackFrame {
   ) -> Option<Self> {
     let f = message.get_script_resource_name(scope)?;
     let f: v8::Local<v8::String> = f.try_into().ok()?;
-    let f = f.to_rust_string_lossy(scope);
+    let f = v8_to_rust_string(&f, scope);
     let l = message.get_line_number(scope)? as i64;
     // V8's column numbers are 0-based, we want 1-based.
     let c = message.get_start_column() as i64 + 1;
@@ -790,7 +800,7 @@ impl JsError {
     // handles below.
     v8::scope!(let scope, scope);
 
-    let exception_message = msg.get(scope).to_rust_string_lossy(scope);
+    let exception_message = v8_to_rust_string(&msg.get(scope), scope);
 
     // Convert them into Vec<JsStackFrame>
     let mut frames: Vec<JsStackFrame> = vec![];
@@ -851,9 +861,9 @@ impl JsError {
       let this = v8::undefined(scope).into();
       let formatted = format_exception_cb.call(scope, this, &[exception]);
       if let Some(formatted) = formatted
-        && formatted.is_string()
+        && let Ok(formatted) = formatted.try_cast::<v8::String>()
       {
-        exception_message = Some(formatted.to_rust_string_lossy(scope));
+        exception_message = Some(v8_to_rust_string(&formatted, scope));
       }
     }
 
@@ -894,7 +904,7 @@ impl JsError {
       let stack = get_property(scope, exception, v8_static_strings::STACK);
       let stack: Option<v8::Local<v8::String>> =
         stack.and_then(|s| s.try_into().ok());
-      let stack = stack.map(|s| s.to_rust_string_lossy(scope));
+      let stack = stack.map(|s| v8_to_rust_string(&s, scope));
 
       // Read an array of structured frames from error.#callSiteEvals.
       let frames_v8 = {
@@ -916,12 +926,13 @@ impl JsError {
             let Some(stack_frame) =
               JsStackFrame::from_callsite_object(tc_scope, callsite)
             else {
-              let message = tc_scope
-                .exception()
-                .expect(
-                  "JsStackFrame::from_callsite_object raised an exception",
-                )
-                .to_rust_string_lossy(tc_scope);
+              let exc = tc_scope.exception().expect(
+                "JsStackFrame::from_callsite_object raised an exception",
+              );
+              let message = match exc.to_string(tc_scope) {
+                Some(s) => v8_to_rust_string(&s, tc_scope),
+                None => String::new(),
+              };
               #[allow(clippy::print_stderr)]
               {
                 eprintln!(
@@ -1001,12 +1012,18 @@ impl JsError {
           let Some(key) = arr.get_index(scope, i) else {
             continue;
           };
-          let key_name = key.to_rust_string_lossy(scope);
+          let key_name = match key.to_string(scope) {
+            Some(s) => v8_to_rust_string(&s, scope),
+            None => continue,
+          };
 
           let Some(val) = exception.get(scope, key) else {
             continue;
           };
-          let val_str = val.to_rust_string_lossy(scope);
+          let val_str = match val.to_string(scope) {
+            Some(s) => v8_to_rust_string(&s, scope),
+            None => continue,
+          };
           out.push((key_name, val_str));
         }
 
@@ -1029,7 +1046,7 @@ impl JsError {
       }
     } else {
       let exception_message = exception_message
-        .unwrap_or_else(|| msg.get(scope).to_rust_string_lossy(scope));
+        .unwrap_or_else(|| v8_to_rust_string(&msg.get(scope), scope));
       // The exception is not a JS Error object.
       // Get the message given by V8::Exception::create_message(), and provide
       // empty frames.
@@ -1124,7 +1141,8 @@ pub(crate) fn is_aggregate_error<'s, 'i>(
         Some(constructor) => {
           let ctor = constructor.to_object(scope).unwrap();
           get_property(scope, ctor, v8_static_strings::NAME)
-            .map(|v| v.to_rust_string_lossy(scope))
+            .and_then(|v| v.to_string(scope))
+            .map(|s| v8_to_rust_string(&s, scope))
         }
         None => return false,
       };
@@ -1714,7 +1732,10 @@ pub mod callsite_fns {
     let orig_file_name_line_col =
       fmt_file_line_col(&orig_file_name, orig_line_number, orig_column_number);
     let mapped = source_mapped_call_site_info(scope, this)?;
-    let mapped_file_name = mapped.file_name(scope).to_rust_string_lossy(scope);
+    let mapped_file_name = match mapped.file_name(scope).to_string(scope) {
+      Some(s) => v8_to_rust_string(&s, scope),
+      None => String::new(),
+    };
     let mapped_line_num = mapped
       .line_number(scope)
       .try_cast::<v8::Number>()
@@ -1938,11 +1959,13 @@ pub fn format_stack_trace<'s, 'i>(
     // Write out the error name + message, if any
     let msg = get_property(scope, obj, v8_static_strings::MESSAGE)
       .filter(|v| !v.is_undefined())
-      .map(|v| v.to_rust_string_lossy(scope))
+      .and_then(|v| v.to_string(scope))
+      .map(|s| v8_to_rust_string(&s, scope))
       .unwrap_or_default();
     let name = get_property(scope, obj, v8_static_strings::NAME)
       .filter(|v| !v.is_undefined())
-      .map(|v| v.to_rust_string_lossy(scope))
+      .and_then(|v| v.to_string(scope))
+      .map(|s| v8_to_rust_string(&s, scope))
       .unwrap_or_else(|| GENERIC_ERROR.to_string());
 
     match (!msg.is_empty(), !name.is_empty()) {
@@ -1960,10 +1983,13 @@ pub fn format_stack_trace<'s, 'i>(
 
     let Some(frame) = JsStackFrame::from_callsite_object(tc_scope, callsite)
     else {
-      let message = tc_scope
+      let exc = tc_scope
         .exception()
-        .expect("JsStackFrame::from_callsite_object raised an exception")
-        .to_rust_string_lossy(tc_scope);
+        .expect("JsStackFrame::from_callsite_object raised an exception");
+      let message = match exc.to_string(tc_scope) {
+        Some(s) => v8_to_rust_string(&s, tc_scope),
+        None => String::new(),
+      };
       #[allow(clippy::print_stderr)]
       {
         eprintln!(

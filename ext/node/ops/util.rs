@@ -164,7 +164,9 @@ pub fn op_node_call_is_from_dependency<
     let Some(script) = frame.get_script_name(scope) else {
       continue;
     };
-    let name = script.to_rust_string_lossy(scope);
+    let mut name_buf: [std::mem::MaybeUninit<u8>; 1024] =
+      [std::mem::MaybeUninit::uninit(); 1024];
+    let name = script.to_rust_cow_lossy(scope, &mut name_buf);
 
     if name.starts_with("node:") || name.starts_with("ext:") {
       continue;
