@@ -177,6 +177,7 @@ struct JsRuntimeInspectorState {
   nodeworker_enabled: Rc<Cell<bool>>,
   auto_attach_enabled: Rc<Cell<bool>>,
   discover_targets_enabled: Rc<Cell<bool>>,
+  noderuntime_enabled: Rc<Cell<bool>>,
 }
 
 struct JsRuntimeInspectorClient(Rc<JsRuntimeInspectorState>);
@@ -352,6 +353,8 @@ impl JsRuntimeInspectorState {
                 self.nodeworker_enabled.clone(),
                 self.auto_attach_enabled.clone(),
                 self.discover_targets_enabled.clone(),
+                self.noderuntime_enabled.clone(),
+                self.flags.clone(),
               );
 
               let prev = sessions.handshake.replace(session);
@@ -567,6 +570,7 @@ impl JsRuntimeInspector {
       nodeworker_enabled: Rc::new(Cell::new(false)),
       auto_attach_enabled: Rc::new(Cell::new(false)),
       discover_targets_enabled: Rc::new(Cell::new(false)),
+      noderuntime_enabled: Rc::new(Cell::new(false)),
     });
     let client = Box::new(JsRuntimeInspectorClient(state.clone()));
     let v8_inspector_client = v8::inspector::V8InspectorClient::new(client);
@@ -738,6 +742,8 @@ impl JsRuntimeInspector {
         inspector.state.nodeworker_enabled.clone(),
         inspector.state.auto_attach_enabled.clone(),
         inspector.state.discover_targets_enabled.clone(),
+        inspector.state.noderuntime_enabled.clone(),
+        inspector.state.flags.clone(),
       );
 
       let session_id = {
@@ -1070,6 +1076,10 @@ struct InspectorSessionState {
   auto_attach_enabled: Rc<Cell<bool>>,
   // Track whether Target.setDiscoverTargets has been called (enables target discovery)
   discover_targets_enabled: Rc<Cell<bool>>,
+  // Track whether NodeRuntime.enable has been called
+  noderuntime_enabled: Rc<Cell<bool>>,
+  // Inspector flags (shared with JsRuntimeInspectorState) for checking waiting_for_session
+  flags: Rc<RefCell<InspectorFlags>>,
 }
 
 /// An inspector session that proxies messages to concrete "transport layer",
@@ -1094,6 +1104,8 @@ impl InspectorSession {
     nodeworker_enabled: Rc<Cell<bool>>,
     auto_attach_enabled: Rc<Cell<bool>>,
     discover_targets_enabled: Rc<Cell<bool>>,
+    noderuntime_enabled: Rc<Cell<bool>>,
+    flags: Rc<RefCell<InspectorFlags>>,
   ) -> Rc<Self> {
     let state = InspectorSessionState {
       is_dispatching_message,
@@ -1105,6 +1117,8 @@ impl InspectorSession {
       nodeworker_enabled,
       auto_attach_enabled,
       discover_targets_enabled,
+      noderuntime_enabled,
+      flags,
     };
 
     let v8_session = v8_inspector.connect(
@@ -1262,6 +1276,19 @@ async fn pump_inspector_session_messages(session: Rc<InspectorSession>) {
     let msg_id = parsed.get("id").cloned();
 
     match method {
+      "NodeRuntime.enable" => {
+        session.state.noderuntime_enabled.set(true);
+        // If the runtime is waiting for a debugger (--inspect-brk),
+        // emit NodeRuntime.waitingForDebugger notification
+        if session.state.flags.borrow().waiting_for_session {
+          (session.state.send)(InspectorMsg::notification(json!({
+            "method": "NodeRuntime.waitingForDebugger"
+          })));
+        }
+      }
+      "NodeRuntime.disable" => {
+        session.state.noderuntime_enabled.set(false);
+      }
       "NodeWorker.enable" => {
         session.state.nodeworker_enabled.set(true);
         session.notify_workers(|ts, send| {
