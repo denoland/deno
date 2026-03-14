@@ -43,3 +43,6 @@ sys_traits = { workspace = true, features = ["getrandom"] }
 thiserror.workspace = true
 twox-hash.workspace = true
 url.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+libc.workspace = true

@@ -2588,6 +2588,7 @@ dependencies = [
  "env_logger",
  "faster-hex",
  "indexmap 2.12.0",
+ "libc",
  "libsui",
  "log",
  "node_resolver",
