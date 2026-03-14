@@ -1,6 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-#![forbid(clippy::disallowed_methods)]
+#![deny(clippy::disallowed_methods)]
 
 mod cache;
 mod common;

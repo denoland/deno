@@ -446,11 +446,7 @@ impl ModuleLoader for FsModuleLoader {
   ) -> ModuleLoadResponse {
     let module_specifier = module_specifier.clone();
     let fut = async move {
-      let path = module_specifier.to_file_path().map_err(|_| {
-        JsErrorBox::generic(format!(
-          "Provided module specifier \"{module_specifier}\" is not a file URL."
-        ))
-      })?;
+      let path = deno_path_util::url_to_file_path(&module_specifier).map_err(JsErrorBox::from_err)?;
       let module_type = if let Some(extension) = path.extension() {
         let ext = extension.to_string_lossy().to_lowercase();
         // We only return JSON modules if extension was actually `.json`.
