@@ -354,7 +354,7 @@ impl JSDuplexResource {
     }
   }
 
-  #[allow(clippy::await_holding_lock)]
+  #[allow(clippy::await_holding_lock, reason = "lock is dropped before await points")]
   pub async fn read(
     self: Rc<Self>,
     data: &mut [u8],

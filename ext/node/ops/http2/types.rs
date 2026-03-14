@@ -32,7 +32,7 @@ pub enum SettingsIndex {
 
 #[repr(usize)]
 #[derive(Debug, Clone, Copy)]
-#[allow(dead_code)]
+#[allow(dead_code, reason = "variants used for repr(usize) mapping")]
 pub enum SessionStateIndex {
   EffectiveLocalWindowSize = 0,
   EffectiveRecvDataLength = 1,
@@ -48,7 +48,7 @@ pub enum SessionStateIndex {
 
 #[repr(usize)]
 #[derive(Debug, Clone, Copy)]
-#[allow(dead_code)]
+#[allow(dead_code, reason = "variants used for repr(usize) mapping")]
 pub enum StreamStateIndex {
   State = 0,
   Weight = 1,
@@ -61,7 +61,7 @@ pub enum StreamStateIndex {
 
 #[repr(usize)]
 #[derive(Debug, Clone, Copy)]
-#[allow(dead_code)]
+#[allow(dead_code, reason = "variants used for repr(usize) mapping")]
 pub enum OptionsIndex {
   MaxDeflateDynamicTableSize = 0,
   MaxReservedRemoteStreams = 1,
