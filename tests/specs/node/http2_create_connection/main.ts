@@ -12,8 +12,7 @@ server.listen(0, () => {
   const addr = server.address() as { port: number };
 
   const client = http2.connect(`http://127.0.0.1:${addr.port}`, {
-    createConnection: () =>
-      net.connect({ port: addr.port, host: "127.0.0.1" }),
+    createConnection: () => net.connect({ port: addr.port, host: "127.0.0.1" }),
   });
 
   client.on("error", (err: Error) => {
