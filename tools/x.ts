@@ -297,7 +297,11 @@ Under the hood:
         await $`cargo build -p test_napi`.cwd(root);
         $.logStep("Running NAPI tests...");
         const filter = args.length > 0 ? args.map((a) => `--filter=${a}`) : [];
-        await $`${root.join("target/debug/deno").toString()} test --allow-read --allow-env --allow-ffi --allow-run --v8-flags=--expose-gc --config ${root.join("tests/config/deno.json").toString()} --no-lock ${filter} .`.cwd(root.join("tests/napi"));
+        await $`${
+          root.join("target/debug/deno").toString()
+        } test --allow-read --allow-env --allow-ffi --allow-run --v8-flags=--expose-gc --config ${
+          root.join("tests/config/deno.json").toString()
+        } --no-lock ${filter} .`.cwd(root.join("tests/napi"));
         $.logStep("NAPI tests complete.");
       },
     },

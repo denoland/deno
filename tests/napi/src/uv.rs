@@ -219,7 +219,12 @@ unsafe extern "C" fn ref_callback(handle: *mut uv_async_t) {
     assert_napi_ok!(napi_get_global(env, &mut global));
     let mut result: napi_value = ptr::null_mut();
     assert_napi_ok!(napi_call_function(
-      env, global, js_cb, 0, ptr::null(), &mut result,
+      env,
+      global,
+      js_cb,
+      0,
+      ptr::null(),
+      &mut result,
     ));
     assert_napi_ok!(napi_delete_reference(env, (*async_).callback));
     let _ = Box::from_raw(async_);
