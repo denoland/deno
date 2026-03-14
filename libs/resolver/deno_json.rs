@@ -529,7 +529,10 @@ pub struct CompilerOptionsData {
   workspace_dir_url: Option<UrlRc>,
   memoized: MemoizedValues,
   logged_warnings: LoggedWarningsRc,
-  #[cfg_attr(not(feature = "deno_ast"), allow(unused))]
+  #[cfg_attr(
+    not(feature = "deno_ast"),
+    allow(unused, reason = "simpler to have dead code when feature isn't on")
+  )]
   overrides: CompilerOptionsOverrides,
 }
 

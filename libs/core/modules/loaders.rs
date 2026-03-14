@@ -476,6 +476,7 @@ impl ModuleLoader for FsModuleLoader {
         return Err(JsErrorBox::generic("Attempted to load JSON module without specifying \"type\": \"json\" attribute in the import statement."));
       }
 
+      #[allow(clippy::disallowed_methods, reason = "this is specificially a file system loader")]
       let code = std::fs::read(path).map_err(|source| {
         JsErrorBox::from_err(LoadFailedError {
           specifier: module_specifier.clone(),

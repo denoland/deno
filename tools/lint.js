@@ -489,6 +489,9 @@ async function ensureDisallowedMethodsEnforced() {
   for await (
     const entry of Deno.readDir(join(ROOT_PATH, "libs"))
   ) {
+    if (entry.name === "core_testing") {
+      continue; // skip only test crates
+    }
     if (!entry.isDirectory) continue;
     const crateDir = join(ROOT_PATH, "libs", entry.name);
     try {

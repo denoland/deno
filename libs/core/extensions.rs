@@ -117,8 +117,8 @@ impl ExtensionFileSource {
     s.chars().filter(|c| !c.is_ascii()).collect::<String>()
   }
 
-  #[allow(deprecated, reason = "needed to match on deprecated variants")]
   pub fn load(&self) -> Result<ModuleCodeString, std::io::Error> {
+    #[allow(deprecated, reason = "needed to match on deprecated variants")]
     match &self.code {
       ExtensionFileSourceCode::LoadedFromMemoryDuringSnapshot(code)
       | ExtensionFileSourceCode::IncludedInBinary(code) => {
@@ -131,6 +131,10 @@ impl ExtensionFileSource {
         Ok(IntoModuleCodeString::into_module_code(*code))
       }
       ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(path) => {
+        #[allow(
+          clippy::disallowed_methods,
+          reason = "load extensions from real fs"
+        )]
         let s = std::fs::read_to_string(path)?;
         debug_assert!(
           s.is_ascii(),
