@@ -3120,6 +3120,109 @@ pub enum ExportPrivateKeyPemError {
   #[class(generic)]
   #[error(transparent)]
   Der(#[from] der::Error),
+  #[class(type)]
+  #[error("{0}")]
+  UnsupportedCipher(String),
+}
+
+/// Derive an encryption key from a passphrase and salt using the legacy
+/// OpenSSL EVP_BytesToKey algorithm (MD5-based). This is used for the
+/// traditional PEM encryption format (Proc-Type/DEK-Info headers).
+fn evp_bytes_to_key(
+  passphrase: &[u8],
+  salt: &[u8; 8],
+  key_len: usize,
+) -> Vec<u8> {
+  use digest::Digest;
+
+  let mut key = Vec::with_capacity(key_len);
+  let mut prev_hash: Option<[u8; 16]> = None;
+
+  while key.len() < key_len {
+    let mut hasher = md5::Md5::new();
+    if let Some(ref prev) = prev_hash {
+      hasher.update(prev);
+    }
+    hasher.update(passphrase);
+    hasher.update(salt);
+    let hash: [u8; 16] = hasher.finalize().into();
+    key.extend_from_slice(&hash);
+    prev_hash = Some(hash);
+  }
+
+  key.truncate(key_len);
+  key
+}
+
+/// Encrypt DER data and format as legacy OpenSSL encrypted PEM with
+/// Proc-Type and DEK-Info headers.
+fn encrypt_private_key_pem(
+  label: &str,
+  data: &[u8],
+  cipher_name: &str,
+  passphrase: &[u8],
+) -> Result<String, ExportPrivateKeyPemError> {
+  use aes::cipher::BlockEncryptMut;
+  use aes::cipher::KeyIvInit;
+  use aes::cipher::block_padding::Pkcs7;
+
+  let (key_len, dek_info_name, iv_len) = match cipher_name {
+    "aes-128-cbc" => (16, "AES-128-CBC", 16),
+    "aes-192-cbc" => (24, "AES-192-CBC", 16),
+    "aes-256-cbc" => (32, "AES-256-CBC", 16),
+    "des-ede3-cbc" => (24, "DES-EDE3-CBC", 8),
+    _ => {
+      return Err(ExportPrivateKeyPemError::UnsupportedCipher(format!(
+        "Unsupported cipher for PEM encryption: {cipher_name}"
+      )));
+    }
+  };
+
+  // Generate random IV
+  let mut iv = vec![0u8; iv_len];
+  thread_rng().fill_bytes(&mut iv);
+
+  // Derive key using EVP_BytesToKey (uses first 8 bytes of IV as salt)
+  let mut salt = [0u8; 8];
+  salt.copy_from_slice(&iv[..8]);
+  let key = evp_bytes_to_key(passphrase, &salt, key_len);
+
+  // Encrypt with PKCS#7 padding
+  let encrypted = match cipher_name {
+    "aes-128-cbc" => cbc::Encryptor::<aes::Aes128>::new_from_slices(&key, &iv)
+      .unwrap()
+      .encrypt_padded_vec_mut::<Pkcs7>(data),
+    "aes-192-cbc" => cbc::Encryptor::<aes::Aes192>::new_from_slices(&key, &iv)
+      .unwrap()
+      .encrypt_padded_vec_mut::<Pkcs7>(data),
+    "aes-256-cbc" => cbc::Encryptor::<aes::Aes256>::new_from_slices(&key, &iv)
+      .unwrap()
+      .encrypt_padded_vec_mut::<Pkcs7>(data),
+    "des-ede3-cbc" => {
+      cbc::Encryptor::<des::TdesEde3>::new_from_slices(&key, &iv)
+        .unwrap()
+        .encrypt_padded_vec_mut::<Pkcs7>(data)
+    }
+    _ => unreachable!(),
+  };
+
+  // Format as legacy encrypted PEM
+  let iv_hex = iv.iter().map(|b| format!("{b:02X}")).collect::<String>();
+  let b64 = base64::engine::general_purpose::STANDARD.encode(&encrypted);
+
+  // Split base64 into 64-char lines
+  let mut pem = String::new();
+  pem.push_str(&format!("-----BEGIN {label}-----\n"));
+  pem.push_str("Proc-Type: 4,ENCRYPTED\n");
+  pem.push_str(&format!("DEK-Info: {dek_info_name},{iv_hex}\n"));
+  pem.push('\n');
+  for chunk in b64.as_bytes().chunks(64) {
+    pem.push_str(std::str::from_utf8(chunk).unwrap());
+    pem.push('\n');
+  }
+  pem.push_str(&format!("-----END {label}-----\n"));
+
+  Ok(pem)
 }
 
 #[op2]
@@ -3127,6 +3230,8 @@ pub enum ExportPrivateKeyPemError {
 pub fn op_node_export_private_key_pem(
   #[cppgc] handle: &KeyObjectHandle,
   #[string] typ: &str,
+  #[string] cipher: Option<String>,
+  #[string] passphrase: Option<String>,
 ) -> Result<String, ExportPrivateKeyPemError> {
   let private_key = handle
     .as_private_key()
@@ -3139,6 +3244,15 @@ pub fn op_node_export_private_key_pem(
     "sec1" => "EC PRIVATE KEY",
     _ => unreachable!("export_der would have errored"),
   };
+
+  if let (Some(cipher), Some(passphrase)) = (cipher, passphrase) {
+    return encrypt_private_key_pem(
+      label,
+      &data,
+      &cipher,
+      passphrase.as_bytes(),
+    );
+  }
 
   let pem_len = der::pem::encapsulated_len(label, LineEnding::LF, data.len())
     .map_err(|_| ExportPrivateKeyPemError::VeryLargeData)?;
