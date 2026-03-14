@@ -586,6 +586,7 @@ function respondWith(req, response, innerRequest) {
 
 function mapToCallback(context, callback, onError) {
   const hasInfoParam = callback.length >= 2;
+  const noRequestParam = callback.length === 0;
 
   const asyncContextSnapshot = context.asyncContextSnapshot;
 
@@ -642,14 +643,20 @@ function mapToCallback(context, callback, onError) {
         let innerRequest;
         let response;
         try {
-          innerRequest = new InnerRequest(req, context);
-          const request = fromInnerRequest(innerRequest, "immutable");
-          innerRequest.request = request;
+          if (noRequestParam) {
+            // Ultra-fast path: handler takes no request parameter
+            // Skip InnerRequest and Request creation entirely
+            response = callback();
+          } else {
+            innerRequest = new InnerRequest(req, context);
+            const request = fromInnerRequest(innerRequest, "immutable");
+            innerRequest.request = request;
 
-          const info = hasInfoParam
-            ? new ServeHandlerInfo(innerRequest)
-            : undefined;
-          response = callback(request, info);
+            const info = hasInfoParam
+              ? new ServeHandlerInfo(innerRequest)
+              : undefined;
+            response = callback(request, info);
+          }
         } catch (error) {
           return handleError(
             req,
