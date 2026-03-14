@@ -824,7 +824,7 @@ fn cp_symlink_type(
   }
 }
 
-#[allow(clippy::unused_async)]
+#[allow(clippy::unused_async, reason = "sometimes it's async")]
 async fn cp_create_symlink(
   state: &Rc<RefCell<OpState>>,
   fs: &FileSystemRc,

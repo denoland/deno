@@ -91,7 +91,8 @@ mod inner {
   /// processes to not update something on the file system at the same time,
   /// but it's not that big of a deal.
   pub struct LaxSingleProcessFsFlag<TSys: LaxSingleProcessFsFlagSys>(
-    #[allow(dead_code)] Option<LaxSingleProcessFsFlagInner<TSys>>,
+    #[allow(dead_code, reason = "kept alive for drop")]
+    Option<LaxSingleProcessFsFlagInner<TSys>>,
   );
 
   impl<TSys: LaxSingleProcessFsFlagSys> LaxSingleProcessFsFlag<TSys> {
@@ -248,15 +249,13 @@ mod inner {
   }
 }
 
+#[allow(clippy::disallowed_methods, reason = "test code")]
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod test {
+  use std::sync::Arc;
   use std::time::Duration;
 
   use parking_lot::Mutex;
-  use sys_traits::FsMetadata;
-  use sys_traits::FsReadToString;
-  use sys_traits::FsWrite;
-  use sys_traits::impls::RealSys;
   use test_util::TempDir;
   use tokio::sync::Notify;
 
@@ -323,11 +322,7 @@ mod test {
     assert_eq!(temp_dir.read_to_string("file.txt"), "update2");
 
     // ensure this is cleaned up
-    assert!(
-      !RealSys
-        .fs_metadata(lock_path.with_extension("lock.poll"))
-        .is_ok()
-    )
+    assert!(!lock_path.with_extension("lock.poll").exists())
   }
 
   #[tokio::test]
@@ -339,7 +334,7 @@ mod test {
     let count = 10;
     let mut tasks = Vec::with_capacity(count);
 
-    RealSys.fs_write(&output_path, "").unwrap();
+    std::fs::write(&output_path, "").unwrap();
 
     for i in 0..count {
       let lock_path = lock_path.clone();
@@ -347,7 +342,7 @@ mod test {
       let expected_order = expected_order.clone();
       tasks.push(tokio::spawn(async move {
         let flag = LaxSingleProcessFsFlag::lock(
-          &RealSys,
+          &sys_traits::impls::RealSys,
           lock_path.to_path_buf(),
           &LogReporter,
           "waiting",
@@ -355,12 +350,12 @@ mod test {
         .await;
         expected_order.lock().push(i.to_string());
         // be extremely racy
-        let mut output = RealSys.fs_read_to_string(&output_path).unwrap();
+        let mut output = std::fs::read_to_string(&output_path).unwrap();
         if !output.is_empty() {
           output.push('\n');
         }
         output.push_str(&i.to_string());
-        RealSys.fs_write(&output_path, output).unwrap();
+        std::fs::write(&output_path, output).unwrap();
         drop(flag);
       }));
     }
@@ -368,7 +363,7 @@ mod test {
     futures::future::join_all(tasks).await;
     let expected_output = expected_order.lock().join("\n");
     assert_eq!(
-      RealSys.fs_read_to_string(output_path).unwrap(),
+      std::fs::read_to_string(output_path).unwrap(),
       expected_output
     );
   }

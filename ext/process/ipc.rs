@@ -586,6 +586,8 @@ impl<R: AsyncRead + ?Sized + Unpin> Future for ReadMsgInner<'_, R> {
   }
 }
 
+#[allow(clippy::disallowed_methods, reason = "test code")]
+#[allow(clippy::print_stdout, reason = "test code")]
 #[cfg(test)]
 mod tests {
   use std::rc::Rc;
@@ -631,7 +633,6 @@ mod tests {
     (client, server)
   }
 
-  #[allow(clippy::print_stdout)]
   #[tokio::test]
   async fn bench_ipc() -> Result<(), Box<dyn std::error::Error>> {
     // A simple round trip benchmark for quick dev feedback.

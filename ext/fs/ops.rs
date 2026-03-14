@@ -2028,7 +2028,7 @@ macro_rules! create_struct_writer {
           let value = self.$field as u64;
           buf[offset] = value as u32;
           buf[offset + 1] = (value >> 32) as u32;
-          #[allow(unused_assignments)]
+          #[allow(unused_assignments, reason = "last assignment is unused")]
           {
             offset += 2;
           }

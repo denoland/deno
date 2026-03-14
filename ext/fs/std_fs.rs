@@ -1,5 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+#![allow(clippy::disallowed_methods, reason = "file system implementation")]
+
 use std::borrow::Cow;
 use std::fs;
 use std::io;

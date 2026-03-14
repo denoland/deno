@@ -782,6 +782,7 @@ async fn resolve_flags_and_init(
   let otel_config = flags.otel_config();
   init_logging(flags.log_level, Some(otel_config.clone()));
   deno_telemetry::init(
+    &crate::sys::CliSys::default(),
     deno_lib::version::otel_runtime_config(),
     otel_config.clone(),
   )?;

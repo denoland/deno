@@ -133,7 +133,7 @@ impl TcpStreamResource {
     self.map_socket(Box::new(move |socket| socket.set_keepalive(keepalive)))
   }
 
-  #[allow(clippy::type_complexity)]
+  #[allow(clippy::type_complexity, reason = "internal code")]
   fn map_socket(
     self: Rc<Self>,
     map: Box<dyn FnOnce(SockRef) -> Result<(), std::io::Error>>,

@@ -120,6 +120,7 @@ impl BoundedBufferChannelInner {
   /// calling this.
   #[inline(always)]
   unsafe fn next_unsafe(&mut self) -> &mut V8Slice<u8> {
+    // SAFETY: caller guarantees ring_consumer is a valid index
     unsafe {
       self
         .buffers
@@ -134,6 +135,7 @@ impl BoundedBufferChannelInner {
   /// calling this.
   #[inline(always)]
   unsafe fn take_next_unsafe(&mut self) -> V8Slice<u8> {
+    // SAFETY: caller guarantees ring_consumer is a valid index
     unsafe {
       let res = std::ptr::read(self.next_unsafe());
       self.ring_consumer = (self.ring_consumer + 1) % BUFFER_CHANNEL_SIZE;
