@@ -518,14 +518,10 @@ Deno.test("[node/http2 client] connect without net permission", {
   permissions: { net: false },
 }, async () => {
   await assertRejects(
-    async () => {
-      const client = http2.connect("http://localhost:4246");
-      client.on("error", () => {});
-      const req = client.request({ ":path": "/" });
-      req.end();
-      await new Promise((_resolve, reject) => {
-        req.on("error", reject);
-        req.on("end", () => reject(new Error("should have failed")));
+    () => {
+      return new Promise((_resolve, reject) => {
+        const client = http2.connect("http://localhost:4246");
+        client.on("error", reject);
       });
     },
     Deno.errors.NotCapable,
