@@ -1186,10 +1186,26 @@ const otelConsoleConfig = {
   replace: 2,
 };
 
-function otelLog(message: string, level: number, args?: unknown[]) {
-  const exception = args?.length === 1 && core.isNativeError(args[0])
-    ? args[0] as Error
-    : undefined;
+let pendingException: Error | undefined;
+
+const OTEL_CONSOLE_METHODS = ["log", "debug", "info", "warn", "error"];
+
+function wrapOtelConsoleMethods(otelConsole: Console) {
+  for (let i = 0; i < OTEL_CONSOLE_METHODS.length; i++) {
+    const method = OTEL_CONSOLE_METHODS[i];
+    const orig = otelConsole[method];
+    otelConsole[method] = (...args: unknown[]) => {
+      if (args.length === 1 && core.isNativeError(args[0])) {
+        pendingException = args[0] as Error;
+      }
+      return ReflectApply(orig, otelConsole, args);
+    };
+  }
+}
+
+function otelLog(message: string, level: number) {
+  const exception = pendingException;
+  pendingException = undefined;
   const currentSpan = CURRENT.get()?.getValue(SPAN_KEY);
   const otelSpan = currentSpan !== undefined
     ? getOtelSpan(currentSpan)
@@ -1878,16 +1894,22 @@ export function bootstrap(
   );
 
   switch (consoleConfig) {
-    case otelConsoleConfig.capture:
-      core.wrapConsole(globalThis.console, new Console(otelLog));
+    case otelConsoleConfig.capture: {
+      const otelConsole = new Console(otelLog);
+      wrapOtelConsoleMethods(otelConsole);
+      core.wrapConsole(globalThis.console, otelConsole);
       break;
-    case otelConsoleConfig.replace:
+    }
+    case otelConsoleConfig.replace: {
+      const otelConsole = new Console(otelLog);
+      wrapOtelConsoleMethods(otelConsole);
       ObjectDefineProperty(
         globalThis,
         "console",
-        core.propNonEnumerable(new Console(otelLog)),
+        core.propNonEnumerable(otelConsole),
       );
       break;
+    }
     default:
       break;
   }
