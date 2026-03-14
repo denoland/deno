@@ -19,7 +19,7 @@ import {
   regexMatcher,
   serializeJSValueToJSONString,
 } from "ext:deno_web/00_infra.js";
-import { extractBody, mixinBody } from "ext:deno_fetch/22_body.js";
+import { extractBody, InnerBody, mixinBody } from "ext:deno_fetch/22_body.js";
 import { getLocationHref } from "ext:deno_web/12_location.js";
 import { extractMimeType } from "ext:deno_web/01_mimesniff.js";
 import { URL } from "ext:deno_web/00_url.js";
@@ -31,9 +31,11 @@ import {
   headersFromHeaderList,
 } from "ext:deno_fetch/20_headers.js";
 const {
+  ArrayIsArray,
   ArrayPrototypeMap,
   ArrayPrototypePush,
   ObjectDefineProperties,
+  ObjectHasOwn,
   ObjectPrototypeIsPrototypeOf,
   RangeError,
   RegExpPrototypeExec,
@@ -57,9 +59,16 @@ const REASON_PHRASE_RE = new SafeRegExp(`^[${REASON_PHRASE_MATCHER}]*$`);
 
 const _response = Symbol("response");
 const _headers = Symbol("headers");
+const _headersCache = Symbol("headers cache");
+const _headersGuard = Symbol("headers guard");
 const _mimeType = Symbol("mime type");
+// Shared empty urlList for responses created by user code (not from fetch).
+// These responses never have their urlList modified, so sharing is safe.
+const _emptyUrlList = [];
 const _body = Symbol("body");
 const _brand = webidl.brand;
+// Marker for fast-path responses that skip validation in serve
+const _fastResponse = Symbol("fastResponse");
 
 // it's slightly faster to cache these
 const webidlConvertersBodyInitDomString =
@@ -118,6 +127,7 @@ function cloneInnerResponse(response) {
   }
 
   return {
+    __proto__: _innerResponseProto,
     type: response.type,
     body,
     headerList,
@@ -125,18 +135,23 @@ function cloneInnerResponse(response) {
     status: response.status,
     statusMessage: response.statusMessage,
     aborted: response.aborted,
-    url() {
-      if (this.urlList.length == 0) return null;
-      return this.urlList[this.urlList.length - 1];
-    },
   };
 }
+
+const _innerResponseProto = {
+  __proto__: null,
+  url() {
+    if (this.urlList.length == 0) return null;
+    return this.urlList[this.urlList.length - 1];
+  },
+};
 
 /**
  * @returns {InnerResponse}
  */
 function newInnerResponse(status = 200, statusMessage = "") {
   return {
+    __proto__: _innerResponseProto,
     type: "default",
     body: null,
     headerList: [],
@@ -144,10 +159,6 @@ function newInnerResponse(status = 200, statusMessage = "") {
     status,
     statusMessage,
     aborted: false,
-    url() {
-      if (this.urlList.length == 0) return null;
-      return this.urlList[this.urlList.length - 1];
-    },
   };
 }
 
@@ -201,10 +212,8 @@ function initializeAResponse(response, init, bodyWithType) {
   // 4.
   response[_response].statusMessage = init.statusText;
   // 5.
-  /** @type {headers.Headers} */
-  const headers = response[_headers];
   if (init.headers) {
-    fillHeaders(headers, init.headers);
+    fillHeaders(response[_headers], init.headers);
   }
 
   // 6.
@@ -219,8 +228,9 @@ function initializeAResponse(response, init, bodyWithType) {
     response[_response].body = body;
 
     if (contentType !== null) {
+      // Use the raw headerList directly to avoid creating Headers wrapper
+      const list = response[_response].headerList;
       let hasContentType = false;
-      const list = headerListFromHeaders(headers);
       for (let i = 0; i < list.length; i++) {
         if (byteLowerCase(list[i][0]) === "content-type") {
           hasContentType = true;
@@ -254,10 +264,7 @@ class Response {
     inner.type = "error";
     const response = webidl.createBranded(Response);
     response[_response] = inner;
-    response[_headers] = headersFromHeaderList(
-      response[_response].headerList,
-      "immutable",
-    );
+    response[_headersGuard] = "immutable";
     return response;
   }
 
@@ -281,10 +288,7 @@ class Response {
     ArrayPrototypePush(inner.headerList, ["Location", parsedURL.href]);
     const response = webidl.createBranded(Response);
     response[_response] = inner;
-    response[_headers] = headersFromHeaderList(
-      response[_response].headerList,
-      "immutable",
-    );
+    response[_headersGuard] = "immutable";
     return response;
   }
 
@@ -296,17 +300,46 @@ class Response {
   static json(data = undefined, init = { __proto__: null }) {
     const prefix = "Failed to execute 'Response.json'";
     data = webidlConvertersAny(data);
-    init = webidlConvertersResponseInitFast(init, prefix, "Argument 2");
-
     const str = serializeJSValueToJSONString(data);
+
+    // Fast path for Response.json(data) and Response.json(data, {status})
+    if (
+      init === undefined || init === null ||
+      (typeof init === "object" && !core.isProxy(init) && !init.headers)
+    ) {
+      const status = init?.status !== undefined
+        ? webidlConvertersUnsignedShort(init.status)
+        : 200;
+      if ((status < 200 || status > 599) && status != 101) {
+        throw new RangeError(
+          `The status provided (${status}) is not equal to 101 and outside the range [200, 599]`,
+        );
+      }
+      const statusText = init?.statusText !== undefined
+        ? webidlConvertersByteString(init.statusText)
+        : "";
+      const innerBody = new InnerBody({ body: str, consumed: false });
+      innerBody.source = str;
+      const response = webidl.createBranded(Response);
+      response[_response] = {
+        __proto__: _innerResponseProto,
+        type: "default",
+        body: innerBody,
+        headerList: [["Content-Type", "application/json"]],
+        urlList: _emptyUrlList,
+        status,
+        statusMessage: statusText,
+        aborted: false,
+      };
+      return response;
+    }
+
+    // Slow path with headers
+    init = webidlConvertersResponseInitFast(init, prefix, "Argument 2");
     const res = extractBody(str);
     res.contentType = "application/json";
     const response = webidl.createBranded(Response);
     response[_response] = newInnerResponse();
-    response[_headers] = headersFromHeaderList(
-      response[_response].headerList,
-      "response",
-    );
     initializeAResponse(response, init, res);
     return response;
   }
@@ -315,21 +348,118 @@ class Response {
    * @param {BodyInit | null} body
    * @param {ResponseInit} init
    */
+  [_headersCache];
+  get [_headers]() {
+    if (this[_headersCache] === undefined) {
+      this[_headersCache] = headersFromHeaderList(
+        this[_response].headerList,
+        this[_headersGuard] ?? "response",
+      );
+    }
+    return this[_headersCache];
+  }
+  set [_headers](value) {
+    this[_headersCache] = value;
+  }
+
   constructor(body = null, init = undefined) {
     if (body === _brand) {
       this[_brand] = _brand;
       return;
     }
 
+    // Fast path for new Response(string) and new Response(string, {status})
+    // Avoids multiple intermediate object allocations from extractBody, webidl converters
+    if (typeof body === "string") {
+      if (init === undefined || init === null) {
+        // new Response(string) - most common in serve handlers
+        const innerBody = new InnerBody({ body, consumed: false });
+        innerBody.source = body;
+        this[_response] = {
+          __proto__: _innerResponseProto,
+          type: "default",
+          body: innerBody,
+          headerList: [["Content-Type", "text/plain;charset=UTF-8"]],
+          urlList: _emptyUrlList,
+          status: 200,
+          statusMessage: "",
+          aborted: false,
+        };
+        this[_brand] = _brand;
+        this[_fastResponse] = true;
+        return;
+      }
+      if (typeof init === "object" && !core.isProxy(init)) {
+        // new Response(string, {status, headers?})
+        const status = init.status !== undefined
+          ? webidlConvertersUnsignedShort(init.status)
+          : 200;
+        if ((status < 200 || status > 599) && status != 101) {
+          throw new RangeError(
+            `The status provided (${status}) is not equal to 101 and outside the range [200, 599]`,
+          );
+        }
+        const statusText = init.statusText !== undefined
+          ? webidlConvertersByteString(init.statusText)
+          : "";
+        if (
+          statusText &&
+          RegExpPrototypeExec(REASON_PHRASE_RE, statusText) === null
+        ) {
+          throw new TypeError(`Invalid status text: "${statusText}"`);
+        }
+        const innerBody = new InnerBody({ body, consumed: false });
+        innerBody.source = body;
+        const headerList = [];
+        this[_response] = {
+          __proto__: _innerResponseProto,
+          type: "default",
+          body: innerBody,
+          headerList,
+          urlList: _emptyUrlList,
+          status,
+          statusMessage: statusText,
+          aborted: false,
+        };
+        if (init.headers !== undefined) {
+          // Fast path for plain object headers (most common pattern)
+          const h = init.headers;
+          if (typeof h === "object" && !core.isProxy(h) && !ArrayIsArray(h)) {
+            // Plain record<string, string> - add directly to headerList
+            for (const key in h) {
+              if (ObjectHasOwn(h, key)) {
+                ArrayPrototypePush(headerList, [key, h[key]]);
+              }
+            }
+          } else {
+            fillHeaders(this[_headers], h);
+          }
+        }
+        // Add Content-Type if not already provided
+        let hasContentType = false;
+        for (let i = 0; i < headerList.length; i++) {
+          if (byteLowerCase(headerList[i][0]) === "content-type") {
+            hasContentType = true;
+            break;
+          }
+        }
+        if (!hasContentType) {
+          ArrayPrototypePush(headerList, [
+            "Content-Type",
+            "text/plain;charset=UTF-8",
+          ]);
+        }
+        this[_brand] = _brand;
+        return;
+      }
+    }
+
+    // General path
     const prefix = "Failed to construct 'Response'";
     body = webidlConvertersBodyInitDomString(body, prefix, "Argument 1");
     init = webidlConvertersResponseInitFast(init, prefix, "Argument 2");
 
     this[_response] = newInnerResponse();
-    this[_headers] = headersFromHeaderList(
-      this[_response].headerList,
-      "response",
-    );
 
     let bodyWithType = null;
     if (body !== null) {
@@ -512,11 +642,12 @@ function toInnerResponse(response) {
 function fromInnerResponse(inner, guard) {
   const response = new Response(_brand);
   response[_response] = inner;
-  response[_headers] = headersFromHeaderList(inner.headerList, guard);
+  response[_headersGuard] = guard;
   return response;
 }
 
 export {
+  _fastResponse,
   abortedNetworkError,
   fromInnerResponse,
   networkError,
