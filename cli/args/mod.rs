@@ -1015,6 +1015,10 @@ impl CliOptions {
     self.flags.cpu_prof.as_ref().is_some_and(|f| f.md)
   }
 
+  pub fn cpu_prof_flamegraph(&self) -> bool {
+    self.flags.cpu_prof.as_ref().is_some_and(|f| f.flamegraph)
+  }
+
   pub fn enable_testing_features(&self) -> bool {
     self.flags.enable_testing_features
   }
