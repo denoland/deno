@@ -870,9 +870,9 @@ pub fn init(
   // Parse the `OTEL_EXPORTER_OTLP_PROTOCOL` variable. The opentelemetry_*
   // crates don't do this automatically.
   // TODO(piscisaureus): enable GRPC support.
-  let use_console_exporter =
-    env::var("OTEL_EXPORTER_OTLP_PROTOCOL").as_deref() == Ok("console");
-  let protocol = match env::var("OTEL_EXPORTER_OTLP_PROTOCOL").as_deref() {
+  let protocol_var = env::var("OTEL_EXPORTER_OTLP_PROTOCOL");
+  let use_console_exporter = protocol_var.as_deref() == Ok("console");
+  let protocol = match protocol_var.as_deref() {
     Ok("http/protobuf") => Protocol::HttpBinary,
     Ok("http/json") => Protocol::HttpJson,
     Ok("console") => Protocol::HttpBinary, // unused, console path bypasses OTLP

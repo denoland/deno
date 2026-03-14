@@ -6,6 +6,7 @@ use std::time::SystemTime;
 
 use async_trait::async_trait;
 use deno_core::futures::future::BoxFuture;
+use deno_terminal::colors;
 use opentelemetry::InstrumentationScope;
 use opentelemetry::KeyValue;
 use opentelemetry::logs::AnyValue;
@@ -83,46 +84,67 @@ fn format_span(
 
   let _ = writeln!(
     out,
-    "SPAN {name} [{trace_id}/{span_id}] {kind} {duration_ms:.3}ms",
-    name = span.name,
+    "{} {} {} {} {}",
+    colors::cyan_bold("SPAN"),
+    colors::bold(&span.name),
+    colors::gray(format!("[{trace_id}/{span_id}]")),
+    colors::gray(kind),
+    colors::yellow(format!("{duration_ms:.3}ms")),
   );
 
   if span.parent_span_id != SpanId::INVALID {
-    let _ = writeln!(out, "  parent: {}", span.parent_span_id);
+    let _ = writeln!(
+      out,
+      "  {}: {}",
+      colors::gray("parent"),
+      colors::gray(span.parent_span_id),
+    );
   }
 
   match &span.status {
     SpanStatus::Unset => {}
     SpanStatus::Ok => {
-      let _ = writeln!(out, "  status: Ok");
+      let _ =
+        writeln!(out, "  {}: {}", colors::gray("status"), colors::green("Ok"),);
     }
     SpanStatus::Error { description } => {
-      let _ = writeln!(out, "  status: Error ({description})");
+      let _ = writeln!(
+        out,
+        "  {}: {}",
+        colors::gray("status"),
+        colors::red_bold(format!("Error ({description})")),
+      );
     }
   }
 
   let _ = writeln!(
     out,
-    "  scope: {}",
-    format_scope(&span.instrumentation_scope)
+    "  {}: {}",
+    colors::gray("scope"),
+    colors::gray(format_scope(&span.instrumentation_scope)),
   );
 
   for kv in &span.attributes {
-    let _ = writeln!(out, "  {}: {}", kv.key, kv.value);
+    let _ = writeln!(out, "  {}: {}", colors::cyan(&kv.key), kv.value,);
   }
 
   if !span.events.is_empty() {
-    let _ = writeln!(out, "  events:");
+    let _ = writeln!(out, "  {}:", colors::gray("events"));
     for event in span.events.iter() {
       let ts = format_system_time(event.timestamp);
-      let _ = write!(out, "    - {} ({ts})", event.name);
+      let _ = write!(
+        out,
+        "    - {} {}",
+        colors::yellow(&event.name),
+        colors::gray(format!("({ts})")),
+      );
       if !event.attributes.is_empty() {
         let _ = write!(out, " {{");
         for (i, kv) in event.attributes.iter().enumerate() {
           if i > 0 {
             let _ = write!(out, ",");
           }
-          let _ = write!(out, " {}: {}", kv.key, kv.value);
+          let _ = write!(out, " {}: {}", colors::cyan(&kv.key), kv.value);
         }
         let _ = write!(out, " }}");
       }
@@ -131,13 +153,16 @@ fn format_span(
   }
 
   if !span.links.is_empty() {
-    let _ = writeln!(out, "  links:");
+    let _ = writeln!(out, "  {}:", colors::gray("links"));
     for link in span.links.iter() {
       let _ = writeln!(
         out,
-        "    - {}/{}",
-        link.span_context.trace_id(),
-        link.span_context.span_id()
+        "    - {}",
+        colors::gray(format!(
+          "{}/{}",
+          link.span_context.trace_id(),
+          link.span_context.span_id()
+        )),
       );
     }
   }
@@ -177,6 +202,33 @@ impl opentelemetry_sdk::export::logs::LogExporter for ConsoleLogExporter {
   }
 }
 
+fn severity_to_str(s: Severity) -> &'static str {
+  match s {
+    Severity::Trace
+    | Severity::Trace2
+    | Severity::Trace3
+    | Severity::Trace4 => "TRACE",
+    Severity::Debug
+    | Severity::Debug2
+    | Severity::Debug3
+    | Severity::Debug4 => "DEBUG",
+    Severity::Info | Severity::Info2 | Severity::Info3 | Severity::Info4 => {
+      "INFO"
+    }
+    Severity::Warn | Severity::Warn2 | Severity::Warn3 | Severity::Warn4 => {
+      "WARN"
+    }
+    Severity::Error
+    | Severity::Error2
+    | Severity::Error3
+    | Severity::Error4 => "ERROR",
+    Severity::Fatal
+    | Severity::Fatal2
+    | Severity::Fatal3
+    | Severity::Fatal4 => "FATAL",
+  }
+}
+
 fn format_log(
   out: &mut String,
   record: &LogRecord,
@@ -184,35 +236,16 @@ fn format_log(
 ) {
   let severity = record
     .severity_text
-    .or_else(|| {
-      record.severity_number.map(|s| match s {
-        Severity::Trace
-        | Severity::Trace2
-        | Severity::Trace3
-        | Severity::Trace4 => "TRACE",
-        Severity::Debug
-        | Severity::Debug2
-        | Severity::Debug3
-        | Severity::Debug4 => "DEBUG",
-        Severity::Info
-        | Severity::Info2
-        | Severity::Info3
-        | Severity::Info4 => "INFO",
-        Severity::Warn
-        | Severity::Warn2
-        | Severity::Warn3
-        | Severity::Warn4 => "WARN",
-        Severity::Error
-        | Severity::Error2
-        | Severity::Error3
-        | Severity::Error4 => "ERROR",
-        Severity::Fatal
-        | Severity::Fatal2
-        | Severity::Fatal3
-        | Severity::Fatal4 => "FATAL",
-      })
-    })
+    .or_else(|| record.severity_number.map(severity_to_str))
     .unwrap_or("UNKNOWN");
+
+  let colored_severity: String = match severity {
+    "ERROR" | "FATAL" => colors::red_bold(severity).to_string(),
+    "WARN" => colors::yellow_bold(severity).to_string(),
+    "INFO" => colors::green_bold(severity).to_string(),
+    "DEBUG" => colors::cyan(severity).to_string(),
+    _ => colors::gray(severity).to_string(),
+  };
 
   let ts = record.timestamp.map(format_system_time).unwrap_or_default();
 
@@ -222,15 +255,33 @@ fn format_log(
     .map(format_any_value)
     .unwrap_or_default();
 
-  let _ = writeln!(out, "LOG [{severity}] {ts} {body}");
-  let _ = writeln!(out, "  scope: {}", format_scope(scope));
+  let _ = writeln!(
+    out,
+    "{} [{}] {} {}",
+    colors::green_bold("LOG"),
+    colored_severity,
+    colors::gray(ts),
+    body,
+  );
+  let _ = writeln!(
+    out,
+    "  {}: {}",
+    colors::gray("scope"),
+    colors::gray(format_scope(scope)),
+  );
 
   if let Some(tc) = &record.trace_context {
-    let _ = writeln!(out, "  trace: {}/{}", tc.trace_id, tc.span_id);
+    let _ = writeln!(
+      out,
+      "  {}: {}",
+      colors::gray("trace"),
+      colors::gray(format!("{}/{}", tc.trace_id, tc.span_id)),
+    );
   }
 
   for (key, value) in record.attributes_iter() {
-    let _ = writeln!(out, "  {key}: {}", format_any_value(value));
+    let _ =
+      writeln!(out, "  {}: {}", colors::cyan(key), format_any_value(value),);
   }
 }
 
@@ -307,57 +358,85 @@ fn format_metric(
     format!(", unit={}", metric.unit)
   };
 
-  let _ = writeln!(out, "METRIC {name} ({kind}{unit})", name = metric.name);
-  let _ = writeln!(out, "  scope: {}", format_scope(scope));
+  let _ = writeln!(
+    out,
+    "{} {} {}",
+    colors::magenta(colors::bold("METRIC")),
+    colors::bold(&metric.name),
+    colors::gray(format!("({kind}{unit})")),
+  );
+  let _ = writeln!(
+    out,
+    "  {}: {}",
+    colors::gray("scope"),
+    colors::gray(format_scope(scope)),
+  );
 
   if !metric.description.is_empty() {
-    let _ = writeln!(out, "  description: {}", metric.description);
+    let _ = writeln!(
+      out,
+      "  {}: {}",
+      colors::gray("description"),
+      colors::gray(&metric.description),
+    );
   }
 
   // Sum
   if let Some(sum) = data.downcast_ref::<Sum<f64>>() {
     let _ = writeln!(
       out,
-      "  temporality: {} | monotonic: {}",
-      format_temporality(sum.temporality),
-      sum.is_monotonic
+      "  {} | {}",
+      colors::gray(format!(
+        "temporality: {}",
+        format_temporality(sum.temporality)
+      )),
+      colors::gray(format!("monotonic: {}", sum.is_monotonic)),
     );
     for dp in &sum.data_points {
       let _ = writeln!(
         out,
-        "  {} value={}",
-        format_attributes(&dp.attributes),
-        dp.value
+        "  {} {}={}",
+        format_attributes_colored(&dp.attributes),
+        colors::gray("value"),
+        colors::yellow(dp.value),
       );
     }
   } else if let Some(sum) = data.downcast_ref::<Sum<u64>>() {
     let _ = writeln!(
       out,
-      "  temporality: {} | monotonic: {}",
-      format_temporality(sum.temporality),
-      sum.is_monotonic
+      "  {} | {}",
+      colors::gray(format!(
+        "temporality: {}",
+        format_temporality(sum.temporality)
+      )),
+      colors::gray(format!("monotonic: {}", sum.is_monotonic)),
     );
     for dp in &sum.data_points {
       let _ = writeln!(
         out,
-        "  {} value={}",
-        format_attributes(&dp.attributes),
-        dp.value
+        "  {} {}={}",
+        format_attributes_colored(&dp.attributes),
+        colors::gray("value"),
+        colors::yellow(dp.value),
       );
     }
   } else if let Some(sum) = data.downcast_ref::<Sum<i64>>() {
     let _ = writeln!(
       out,
-      "  temporality: {} | monotonic: {}",
-      format_temporality(sum.temporality),
-      sum.is_monotonic
+      "  {} | {}",
+      colors::gray(format!(
+        "temporality: {}",
+        format_temporality(sum.temporality)
+      )),
+      colors::gray(format!("monotonic: {}", sum.is_monotonic)),
     );
     for dp in &sum.data_points {
       let _ = writeln!(
         out,
-        "  {} value={}",
-        format_attributes(&dp.attributes),
-        dp.value
+        "  {} {}={}",
+        format_attributes_colored(&dp.attributes),
+        colors::gray("value"),
+        colors::yellow(dp.value),
       );
     }
   }
@@ -367,27 +446,30 @@ fn format_metric(
     for dp in &gauge.data_points {
       let _ = writeln!(
         out,
-        "  {} value={}",
-        format_attributes(&dp.attributes),
-        dp.value
+        "  {} {}={}",
+        format_attributes_colored(&dp.attributes),
+        colors::gray("value"),
+        colors::yellow(dp.value),
       );
     }
   } else if let Some(gauge) = data.downcast_ref::<Gauge<u64>>() {
     for dp in &gauge.data_points {
       let _ = writeln!(
         out,
-        "  {} value={}",
-        format_attributes(&dp.attributes),
-        dp.value
+        "  {} {}={}",
+        format_attributes_colored(&dp.attributes),
+        colors::gray("value"),
+        colors::yellow(dp.value),
       );
     }
   } else if let Some(gauge) = data.downcast_ref::<Gauge<i64>>() {
     for dp in &gauge.data_points {
       let _ = writeln!(
         out,
-        "  {} value={}",
-        format_attributes(&dp.attributes),
-        dp.value
+        "  {} {}={}",
+        format_attributes_colored(&dp.attributes),
+        colors::gray("value"),
+        colors::yellow(dp.value),
       );
     }
   }
@@ -396,48 +478,80 @@ fn format_metric(
   if let Some(hist) = data.downcast_ref::<Histogram<f64>>() {
     let _ = writeln!(
       out,
-      "  temporality: {}",
-      format_temporality(hist.temporality)
+      "  {}",
+      colors::gray(format!(
+        "temporality: {}",
+        format_temporality(hist.temporality)
+      )),
     );
     for dp in &hist.data_points {
       let _ = writeln!(
         out,
-        "  {} count={} sum={} min={} max={}",
-        format_attributes(&dp.attributes),
-        dp.count,
-        dp.sum,
-        dp.min
-          .map(|v| v.to_string())
-          .unwrap_or_else(|| "-".to_string()),
-        dp.max
-          .map(|v| v.to_string())
-          .unwrap_or_else(|| "-".to_string()),
+        "  {} {}={} {}={} {}={} {}={}",
+        format_attributes_colored(&dp.attributes),
+        colors::gray("count"),
+        colors::yellow(dp.count),
+        colors::gray("sum"),
+        colors::yellow(dp.sum),
+        colors::gray("min"),
+        colors::yellow(
+          dp.min
+            .map(|v| v.to_string())
+            .unwrap_or_else(|| "-".to_string())
+        ),
+        colors::gray("max"),
+        colors::yellow(
+          dp.max
+            .map(|v| v.to_string())
+            .unwrap_or_else(|| "-".to_string())
+        ),
       );
-      let _ = writeln!(out, "    bounds:  {:?}", dp.bounds);
-      let _ = writeln!(out, "    counts:  {:?}", dp.bucket_counts);
+      let _ = writeln!(out, "    {}  {:?}", colors::gray("bounds:"), dp.bounds);
+      let _ = writeln!(
+        out,
+        "    {}  {:?}",
+        colors::gray("counts:"),
+        dp.bucket_counts
+      );
     }
   } else if let Some(hist) = data.downcast_ref::<Histogram<u64>>() {
     let _ = writeln!(
       out,
-      "  temporality: {}",
-      format_temporality(hist.temporality)
+      "  {}",
+      colors::gray(format!(
+        "temporality: {}",
+        format_temporality(hist.temporality)
+      )),
     );
     for dp in &hist.data_points {
       let _ = writeln!(
         out,
-        "  {} count={} sum={} min={} max={}",
-        format_attributes(&dp.attributes),
-        dp.count,
-        dp.sum,
-        dp.min
-          .map(|v| v.to_string())
-          .unwrap_or_else(|| "-".to_string()),
-        dp.max
-          .map(|v| v.to_string())
-          .unwrap_or_else(|| "-".to_string()),
+        "  {} {}={} {}={} {}={} {}={}",
+        format_attributes_colored(&dp.attributes),
+        colors::gray("count"),
+        colors::yellow(dp.count),
+        colors::gray("sum"),
+        colors::yellow(dp.sum),
+        colors::gray("min"),
+        colors::yellow(
+          dp.min
+            .map(|v| v.to_string())
+            .unwrap_or_else(|| "-".to_string())
+        ),
+        colors::gray("max"),
+        colors::yellow(
+          dp.max
+            .map(|v| v.to_string())
+            .unwrap_or_else(|| "-".to_string())
+        ),
       );
-      let _ = writeln!(out, "    bounds:  {:?}", dp.bounds);
-      let _ = writeln!(out, "    counts:  {:?}", dp.bucket_counts);
+      let _ = writeln!(out, "    {}  {:?}", colors::gray("bounds:"), dp.bounds);
+      let _ = writeln!(
+        out,
+        "    {}  {:?}",
+        colors::gray("counts:"),
+        dp.bucket_counts
+      );
     }
   }
 }
@@ -449,7 +563,6 @@ fn format_system_time(t: SystemTime) -> String {
   let secs = dur.as_secs();
   let nanos = dur.subsec_nanos();
 
-  // Format as ISO 8601 (simplified — no chrono dependency)
   const SECS_PER_MIN: u64 = 60;
   const SECS_PER_HOUR: u64 = 3600;
   const SECS_PER_DAY: u64 = 86400;
@@ -461,7 +574,6 @@ fn format_system_time(t: SystemTime) -> String {
   let s = time_secs % SECS_PER_MIN;
   let millis = nanos / 1_000_000;
 
-  // Compute date from days since epoch (1970-01-01)
   let (year, month, day) = days_to_date(days);
 
   format!(
@@ -514,13 +626,13 @@ fn format_any_value(value: &AnyValue) -> String {
   }
 }
 
-fn format_attributes(attrs: &[KeyValue]) -> String {
+fn format_attributes_colored(attrs: &[KeyValue]) -> String {
   if attrs.is_empty() {
-    return "{}".to_string();
+    return colors::gray("{}").to_string();
   }
   let items: Vec<String> = attrs
     .iter()
-    .map(|kv| format!("{}={}", kv.key, kv.value))
+    .map(|kv| format!("{}={}", colors::magenta(&kv.key), kv.value))
     .collect();
   format!("{{{}}}", items.join(", "))
 }
