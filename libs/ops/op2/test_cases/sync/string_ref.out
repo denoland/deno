@@ -131,6 +131,9 @@ const fn op_string_owned() -> ::deno_core::_ops::OpDecl {
             let mut scope = &mut scope;
             let result = {
                 let arg0 = args.get(0usize as i32);
+                let mut arg0_temp: [::std::mem::MaybeUninit<
+                    u8,
+                >; deno_core::_ops::STRING_STACK_BUFFER_SIZE] = [::std::mem::MaybeUninit::uninit(); deno_core::_ops::STRING_STACK_BUFFER_SIZE];
                 let arg0 = if !arg0.is_string() {
                     let scope = ::std::pin::pin!(
                         unsafe { deno_core::v8::CallbackScope::new(info) }
@@ -148,10 +151,7 @@ const fn op_string_owned() -> ::deno_core::_ops::OpDecl {
                 } else {
                     arg0
                 };
-                let arg0_temp = unsafe {
-                    deno_core::_ops::value_view_from_value(&mut scope, arg0)
-                };
-                let arg0 = &arg0_temp.to_cow_lossy();
+                let arg0 = &deno_core::_ops::to_str(&mut scope, &arg0, &mut arg0_temp);
                 Self::call(arg0)
             };
             deno_core::_ops::RustToV8RetVal::to_v8_rv(result, &mut rv);

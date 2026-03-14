@@ -523,6 +523,8 @@ pub fn from_arg(
       };
 
       gs_quote!(generator_state(scope) => {
+        // Trade stack space for potentially non-allocating strings
+        let mut #arg_temp: [::std::mem::MaybeUninit<u8>; deno_core::_ops::STRING_STACK_BUFFER_SIZE] = [::std::mem::MaybeUninit::uninit(); deno_core::_ops::STRING_STACK_BUFFER_SIZE];
         let #arg_ident = if !#arg_ident.is_string() {
             #maybe_scope
             let tc = ::std::pin::pin!(deno_core::v8::TryCatch::new(&mut #scope));
@@ -538,11 +540,7 @@ pub fn from_arg(
             #arg_ident
         };
 
-        // SAFETY: #arg_ident is verified to be a v8::String above.
-        // ValueView provides zero-copy access for ASCII strings (the common case),
-        // eliminating the 8KB stack buffer that was previously needed.
-        let #arg_temp = unsafe { deno_core::_ops::value_view_from_value(&mut #scope, #arg_ident) };
-        let #arg_ident = #maybe_ref #arg_temp.to_cow_lossy();
+        let #arg_ident = #maybe_ref deno_core::_ops::to_str(&mut #scope, &#arg_ident, &mut #arg_temp);
       })
     }
     Arg::String(Strings::CowByte) => {
