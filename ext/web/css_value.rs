@@ -15,20 +15,22 @@ pub type CSSValueError<'i> = ParseError<'i, CSSValueCustomError>;
 #[derive(Debug, thiserror::Error)]
 #[cfg_attr(test, derive(PartialEq))]
 pub enum CSSValueCustomError {
-  #[error("unexpected token")]
-  UnexpectedToken,
   #[error("unexpected numeric type")]
   UnexpectedNumericType,
-  #[error("numeric types do not match")]
-  NumericTypeMismatch,
   #[error("contains relative <length> values")]
   ContainsRelativeLengthValues,
-  #[error("contains unsupported <dimension> values")]
-  UnsupportedDimension,
-  #[error("the dimensions of the calculation results are incorrect")]
+  #[error("the {0} dimension is currently not supported")]
+  UnsupportedDimension(&'static str),
+  #[error(
+    "contains <length-percentage> calculations that cannot be resolved at parse time"
+  )]
+  UnresolvableAtParseTime,
+  #[error("cannot add or subtract different numeric types")]
+  NumericTypeMismatch,
+  #[error("the dimension of the calculation result is incorrect")]
   InvalidDimension,
-  #[error("contains invalid function")]
-  InvalidFunction,
+  #[error("contains invalid function name: {0}")]
+  InvalidFunction(String),
 }
 
 #[derive(Clone, Debug)]
@@ -351,6 +353,12 @@ impl MathValue {
     other: &MathValue,
   ) -> Result<(), CSSValueCustomError> {
     if self.dimension != other.dimension {
+      // <length-percentage>
+      if self.is_percent() && other.is_length()
+        || self.is_length() && other.is_percent()
+      {
+        return Err(CSSValueCustomError::UnresolvableAtParseTime);
+      }
       return Err(CSSValueCustomError::NumericTypeMismatch);
     }
     self.value += other.value;
@@ -363,6 +371,12 @@ impl MathValue {
     other: &MathValue,
   ) -> Result<(), CSSValueCustomError> {
     if self.dimension != other.dimension {
+      // <length-percentage>
+      if self.is_percent() && other.is_length()
+        || self.is_length() && other.is_percent()
+      {
+        return Err(CSSValueCustomError::UnresolvableAtParseTime);
+      }
       return Err(CSSValueCustomError::NumericTypeMismatch);
     }
     self.value -= other.value;
@@ -370,8 +384,56 @@ impl MathValue {
   }
 
   #[inline]
+  fn is_number(&self) -> bool {
+    matches!(
+      self.dimension,
+      Dimension {
+        length: 0,
+        angle: 0,
+        percent: 0
+      }
+    )
+  }
+
+  #[inline]
+  fn is_length(&self) -> bool {
+    matches!(
+      self.dimension,
+      Dimension {
+        length: 1,
+        angle: 0,
+        percent: 0
+      }
+    )
+  }
+
+  #[inline]
+  fn is_angle(&self) -> bool {
+    matches!(
+      self.dimension,
+      Dimension {
+        length: 0,
+        angle: 1,
+        percent: 0
+      }
+    )
+  }
+
+  #[inline]
+  fn is_percent(&self) -> bool {
+    matches!(
+      self.dimension,
+      Dimension {
+        length: 0,
+        angle: 0,
+        percent: 1
+      }
+    )
+  }
+
+  #[inline]
   fn expect_number(self) -> Result<f32, CSSValueCustomError> {
-    if self.dimension != Dimension::default() {
+    if !self.is_number() {
       return Err(CSSValueCustomError::UnexpectedNumericType);
     }
     Ok(self.value)
@@ -379,12 +441,7 @@ impl MathValue {
 
   #[inline]
   fn expect_length(self) -> Result<Length, CSSValueCustomError> {
-    let dimension = Dimension {
-      length: 1,
-      angle: 0,
-      percent: 0,
-    };
-    if self.dimension != dimension {
+    if !self.is_length() {
       return Err(CSSValueCustomError::UnexpectedNumericType);
     }
     Ok(Length {
@@ -395,12 +452,7 @@ impl MathValue {
 
   #[inline]
   fn expect_angle(self) -> Result<Angle, CSSValueCustomError> {
-    let dimension = Dimension {
-      length: 0,
-      angle: 1,
-      percent: 0,
-    };
-    if self.dimension != dimension {
+    if !self.is_angle() {
       return Err(CSSValueCustomError::UnexpectedNumericType);
     }
     Ok(Angle {
@@ -411,12 +463,7 @@ impl MathValue {
 
   #[inline]
   fn expect_percent(self) -> Result<f32, CSSValueCustomError> {
-    let dimension = Dimension {
-      length: 0,
-      angle: 0,
-      percent: 1,
-    };
-    if self.dimension != dimension {
+    if !self.is_percent() {
       return Err(CSSValueCustomError::UnexpectedNumericType);
     }
     Ok(self.value)
@@ -575,14 +622,17 @@ impl NumericValue {
           "rad" => Ok(NumericValue::Angle(Angle { value: *value, unit: AngleUnit::Rad }).into()),
           "turn" => Ok(NumericValue::Angle(Angle { value: *value, unit: AngleUnit::Turn }).into()),
           // https://www.w3.org/TR/css-values-4/#time
-          "s" | "ms" |
+          "s" | "ms" => Err(input.new_custom_error(CSSValueCustomError::UnsupportedDimension("<time>"))),
           // https://www.w3.org/TR/css-values-4/#frequency
-          "hz" | "khz" |
+          "hz" | "khz" => Err(input.new_custom_error(CSSValueCustomError::UnsupportedDimension("<frequency>"))),
           // https://www.w3.org/TR/css-values-4/#resolution
-          "dpi" | "dpcm" | "dppx" | "x" |
+          "dpi" | "dpcm" | "dppx" | "x" => Err(input.new_custom_error(CSSValueCustomError::UnsupportedDimension("<resolution>"))),
           // https://www.w3.org/TR/css-grid-2/#fr-unit
-          "fr" => Err(input.new_custom_error(CSSValueCustomError::UnsupportedDimension)),
-          _ => Err(input.new_custom_error(CSSValueCustomError::UnexpectedToken))
+          "fr" => Err(input.new_custom_error(CSSValueCustomError::UnsupportedDimension("<flex>"))),
+          _ => {
+            let token = token.clone();
+            Err(input.new_unexpected_token_error(token))
+          }
         }
       }
       Token::Percentage { unit_value, .. } => {
@@ -909,7 +959,10 @@ impl NumericValue {
                       "up" => RoundStrategy::Up,
                       "down" => RoundStrategy::Down,
                       "to-zero" => RoundStrategy::ToZero,
-                      _ => return Err(arguments.new_custom_error(CSSValueCustomError::UnexpectedToken))
+                      _ => {
+                        let token = token.clone();
+                        return Err(arguments.new_unexpected_token_error(token))
+                      }
                     };
                     arguments.expect_comma()?;
                     strategy
@@ -1479,18 +1532,18 @@ impl NumericValue {
               Ok(result)
             })
           },
-          // https://www.w3.org/TR/css-variables-1/#using-variables
-          "var" => return Err(input.new_custom_error(CSSValueCustomError::InvalidFunction)),
-          _ => return Err(input.new_custom_error(CSSValueCustomError::UnexpectedToken)),
+          _ => {
+            let name = name.to_string();
+            return Err(input.new_custom_error(CSSValueCustomError::InvalidFunction(name)))
+          },
         };
         state.function_depth -= 1;
         result
       }
       Token::ParenthesisBlock => {
         if state.function_depth == 0 {
-          return Err(
-            input.new_custom_error(CSSValueCustomError::UnexpectedToken),
-          );
+          let token = token.clone();
+          return Err(input.new_unexpected_token_error(token));
         }
         input.parse_nested_block(|arguments| {
           let value = Self::parse_additive_expression(arguments, state)?;
@@ -1500,9 +1553,8 @@ impl NumericValue {
       }
       Token::Ident(ident) => {
         if state.function_depth == 0 {
-          return Err(
-            input.new_custom_error(CSSValueCustomError::UnexpectedToken),
-          );
+          let token = token.clone();
+          return Err(input.new_unexpected_token_error(token));
         }
         match_ignore_ascii_case! { &ident,
           // https://www.w3.org/TR/css-values-4/#calc-constants
@@ -1512,10 +1564,16 @@ impl NumericValue {
           "infinity" => Ok(NumericValue::Number(Number(f32::INFINITY)).into()),
           "-infinity" => Ok(NumericValue::Number(Number(f32::NEG_INFINITY)).into()),
           "nan" => Ok(NumericValue::Number(Number(f32::NAN)).into()),
-          _ => Err(input.new_custom_error(CSSValueCustomError::UnexpectedToken))
+          _ => {
+            let token = token.clone();
+            Err(input.new_unexpected_token_error(token))
+          }
         }
       }
-      _ => Err(input.new_custom_error(CSSValueCustomError::UnexpectedToken)),
+      _ => {
+        let token = token.clone();
+        Err(input.new_unexpected_token_error(token))
+      }
     }
   }
 
@@ -2686,7 +2744,10 @@ impl Transform {
           Ok(Transform::Matrix3d(result))
         })
       },
-      _ => Err(input.new_custom_error(CSSValueCustomError::UnexpectedToken)),
+      _ => {
+        let name = name.to_string();
+        Err(input.new_custom_error(CSSValueCustomError::InvalidFunction(name)))
+      },
     }
   }
 }

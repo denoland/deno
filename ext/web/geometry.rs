@@ -94,16 +94,26 @@ pub enum GeometryError {
   #[error("Cannot be serialized with NaN or Infinity values")]
   InvalidState,
   #[class(type)]
-  #[error("Cannot parse a CSS <transform-list> value on Workers")]
+  #[error("Cannot parse CSS <transform-list> on Workers")]
   DisallowWindowFeatures,
   #[class("DOMExceptionSyntaxError")]
-  #[error("Failed to parse the string as CSS <transform-list> value: {0}")]
+  #[error("Failed to parse as CSS <transform-list>: {0}")]
   FailedToParse(String),
 }
 
 impl<'i> From<CSSValueError<'i>> for GeometryError {
   fn from(error: CSSValueError) -> Self {
-    GeometryError::FailedToParse(format!("{}", error))
+    use cssparser::BasicParseErrorKind;
+    use cssparser::ParseErrorKind;
+
+    // Suppress Debug output for cssparser::Token
+    let message: String = match error.kind {
+      ParseErrorKind::Basic(BasicParseErrorKind::UnexpectedToken(_)) => {
+        "unexpected token".into()
+      }
+      _ => format!("{}", error),
+    };
+    GeometryError::FailedToParse(message)
   }
 }
 
