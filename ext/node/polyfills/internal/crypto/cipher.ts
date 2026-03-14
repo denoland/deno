@@ -624,7 +624,7 @@ function checkUnsupportedKeyType(key) {
 
 export function privateEncrypt(
   privateKey: ArrayBufferView | string | KeyObject,
-  buffer: ArrayBufferView | string | KeyObject,
+  buffer: ArrayBufferView,
 ): Buffer {
   checkUnsupportedKeyType(privateKey);
   const { data } = prepareKey(privateKey);
@@ -636,7 +636,7 @@ export function privateEncrypt(
 
 export function privateDecrypt(
   privateKey: ArrayBufferView | string | KeyObject,
-  buffer: ArrayBufferView | string | KeyObject,
+  buffer: ArrayBufferView,
 ): Buffer {
   checkUnsupportedKeyType(privateKey);
   const { data } = prepareKey(privateKey);
@@ -648,7 +648,7 @@ export function privateDecrypt(
 
 export function publicEncrypt(
   publicKey: ArrayBufferView | string | KeyObject,
-  buffer: ArrayBufferView | string | KeyObject,
+  buffer: ArrayBufferView,
 ): Buffer {
   checkUnsupportedKeyType(publicKey);
   const { data } = prepareKey(publicKey);
@@ -686,7 +686,7 @@ export function prepareKey(key) {
 
 export function publicDecrypt(
   publicKey: ArrayBufferView | string | KeyObject,
-  buffer: ArrayBufferView | string | KeyObject,
+  buffer: ArrayBufferView,
 ): Buffer {
   checkUnsupportedKeyType(publicKey);
   const { data } = prepareKey(publicKey);
