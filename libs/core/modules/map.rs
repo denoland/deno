@@ -788,8 +788,8 @@ impl ModuleMap {
         [std::mem::MaybeUninit::uninit(); 1024];
       let source_mapping_url: v8::Local<v8::String> =
         source_mapping_url_value.try_cast().unwrap();
-      let source_mapping_url =
-        source_mapping_url.to_rust_cow_lossy(tc_scope, &mut source_mapping_url_buf);
+      let source_mapping_url = source_mapping_url
+        .to_rust_cow_lossy(tc_scope, &mut source_mapping_url_buf);
 
       let module_name = name
         .try_clone()
