@@ -186,6 +186,8 @@ async function clippy() {
     "clippy::print_stdout",
     "--deny",
     "clippy::large_futures",
+    "--deny",
+    "clippy::allow_attributes_without_reason",
   ];
 
   // Run clippy for the whole workspace except deno_core with --all-features.
@@ -397,7 +399,7 @@ async function listTopLevelEntries() {
 }
 
 // every ext/ and libs/ crate must have a clippy.toml with the correct
-// disallowed methods and #![forbid(clippy::disallowed_methods)] in lib.rs
+// disallowed methods
 async function ensureDisallowedMethodsEnforced() {
   // methods that must be banned in both ext and libs crates
   const COMMON_METHODS = [
@@ -466,27 +468,6 @@ async function ensureDisallowedMethodsEnforced() {
       if (!clippyContent.includes(`"${method}"`)) {
         errors.push(`Missing disallowed method "${method}" in: ${clippyToml}`);
       }
-    }
-
-    // find the lib.rs (could be at root or in src/)
-    let libRsPath = join(crateDir, "lib.rs");
-    try {
-      await Deno.stat(libRsPath);
-    } catch {
-      libRsPath = join(crateDir, "src", "lib.rs");
-      try {
-        await Deno.stat(libRsPath);
-      } catch {
-        // not a library crate (e.g. binary), skip lib.rs check
-        return;
-      }
-    }
-
-    const libContent = await Deno.readTextFile(libRsPath);
-    if (!libContent.includes("#![forbid(clippy::disallowed_methods)]")) {
-      errors.push(
-        `Missing #![forbid(clippy::disallowed_methods)] in: ${libRsPath}`,
-      );
     }
   }
 

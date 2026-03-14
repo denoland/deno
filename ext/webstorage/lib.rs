@@ -1,7 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-#![forbid(clippy::disallowed_methods)]
-
 // NOTE to all: use **cached** prepared statements when interfacing with SQLite.
 
 use std::path::PathBuf;

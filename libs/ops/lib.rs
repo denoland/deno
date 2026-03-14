@@ -1,10 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-#![forbid(clippy::disallowed_methods)]
 #![doc = include_str!("README.md")]
 #![deny(clippy::unnecessary_wraps)]
-// TODO(bartlomieju): remove println! usage from macro debugging/test code
-#![allow(clippy::print_stdout)]
 
 use proc_macro::TokenStream;
 
@@ -114,6 +111,7 @@ deno_ops_compile_test_runner::prelude!();";
     let file =
       syn::parse_str::<File>(&source).expect("Failed to parse Rust file");
 
+    #[allow(clippy::print_stdout, reason = "test code")]
     let expected_out = expander(file)
       .map(|tokens| {
         println!("======== Raw tokens ========:\n{}", tokens.clone());

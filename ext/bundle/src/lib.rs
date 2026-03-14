@@ -1,7 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-#![forbid(clippy::disallowed_methods)]
-
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;

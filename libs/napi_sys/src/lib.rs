@@ -1,7 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-#![forbid(clippy::disallowed_methods)]
-
 // Forked from napi-sys (https://github.com/napi-rs/napi-rs)
 // to avoid build-time dependency on Node.js binaries and to allow
 // adding new Node-API symbols in-tree.

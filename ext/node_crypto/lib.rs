@@ -1,7 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-#![forbid(clippy::disallowed_methods)]
-
 #![deny(clippy::print_stderr)]
 #![deny(clippy::print_stdout)]
 

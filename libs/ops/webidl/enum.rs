@@ -85,7 +85,7 @@ fn get_variant_name(value: Variant) -> Result<(String, Ident), Error> {
   ))
 }
 
-#[allow(dead_code)]
+#[allow(dead_code, reason = "some properties unused")]
 enum EnumVariantArgument {
   Rename {
     name_token: kw::rename,

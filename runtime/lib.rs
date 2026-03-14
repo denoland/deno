@@ -1,7 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-#![forbid(clippy::disallowed_methods)]
-
 pub use deno_cache;
 pub use deno_core;
 pub use deno_cron;

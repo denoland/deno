@@ -1,6 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-#![forbid(clippy::disallowed_methods)]
 use std::io::BufRead;
 use std::io::BufReader;
 use std::io::Cursor;

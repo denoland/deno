@@ -1,7 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-#![forbid(clippy::disallowed_methods)]
-
 // Partially extracted / adapted from https://github.com/microsoft/libsyncrpc
 // Copyright 2024 Microsoft Corporation. MIT license.
 
