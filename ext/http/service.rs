@@ -19,6 +19,7 @@ use deno_core::BufView;
 use deno_core::OpState;
 use deno_core::ResourceId;
 use deno_error::JsErrorBox;
+use deno_telemetry::IdGenerator as _;
 use http::request::Parts;
 use hyper::body::Body;
 use hyper::body::Frame;
@@ -239,12 +240,47 @@ pub(crate) async fn handle_request(
         server_address: request.uri().host().map(|host| host.to_string()),
         server_port: request.uri().port_u16().map(|port| port as i64),
         error_type: Default::default(),
+        http_route: None,
         http_response_status_code: Default::default(),
       },
     ))
   } else {
     None
   };
+
+  // Create an OTel span for tracing this request. This span is created in Rust
+  // so it can be shared with the HttpRecord and later exposed to JavaScript
+  // via op_http_get_span. When the response is finalized, relevant span
+  // attributes (like http.route) are copied to OtelInfo for metrics.
+  let otel_span = deno_telemetry::OTEL_GLOBALS
+    .get()
+    .filter(|o| o.has_tracing())
+    .map(|otel| {
+      let span_context = deno_telemetry::SpanContext::new(
+        otel.id_generator.new_trace_id(),
+        otel.id_generator.new_span_id(),
+        deno_telemetry::TraceFlags::SAMPLED,
+        false,
+        deno_telemetry::TraceState::NONE,
+      );
+      let span_data = deno_telemetry::SpanData {
+        span_context,
+        parent_span_id: deno_telemetry::SpanId::INVALID,
+        span_kind: deno_telemetry::SpanKind::Server,
+        name: Cow::Borrowed("deno.serve"),
+        start_time: std::time::SystemTime::now(),
+        end_time: std::time::SystemTime::UNIX_EPOCH,
+        attributes: Vec::new(),
+        dropped_attributes_count: 0,
+        status: deno_telemetry::SpanStatus::Unset,
+        events: deno_telemetry::SpanEvents::default(),
+        links: deno_telemetry::SpanLinks::default(),
+        instrumentation_scope: otel.builtin_instrumentation_scope.clone(),
+      };
+      deno_telemetry::OtelSpan(Rc::new(RefCell::new(Box::new(
+        deno_telemetry::OtelSpanState::Recording(span_data),
+      ))))
+    });
 
   // If the underlying TCP connection is closed, this future will be dropped
   // and execution could stop at any await point.
@@ -255,6 +291,7 @@ pub(crate) async fn handle_request(
       request,
       request_info,
       server_state,
+      otel_span,
       otel_info,
       legacy_abort,
     ),
@@ -297,6 +334,7 @@ struct HttpRecordInner {
   finished: bool,
   needs_close_after_finish: bool,
   legacy_abort: bool,
+  otel_span: Option<deno_telemetry::OtelSpan>,
   otel_info: Option<OtelInfo>,
   client_addr: Option<http::HeaderValue>,
 }
@@ -337,6 +375,7 @@ impl HttpRecord {
     request: Request,
     request_info: HttpConnectionProperties,
     server_state: SignallingRc<HttpServerState>,
+    otel_span: Option<deno_telemetry::OtelSpan>,
     otel_info: Option<OtelInfo>,
     legacy_abort: bool,
   ) -> Rc<Self> {
@@ -383,6 +422,7 @@ impl HttpRecord {
       finished: false,
       legacy_abort,
       needs_close_after_finish: false,
+      otel_span,
       otel_info,
       client_addr,
     });
@@ -643,6 +683,36 @@ impl HttpRecord {
       info.attributes.error_type = Some(error);
       info.handle_duration_and_request_size();
     }
+  }
+
+  pub fn get_otel_span(&self) -> Option<deno_telemetry::OtelSpan> {
+    let inner = self.self_ref();
+    inner.otel_span.clone()
+  }
+
+  /// Copy relevant attributes from the OTel span to OtelInfo for metrics.
+  /// This allows users to set attributes like `http.route` on the span
+  /// and have them reflected in the automatically recorded HTTP metrics.
+  pub fn copy_span_attributes_to_otel_info(&self) {
+    let mut inner = self.self_mut();
+    // Take the span temporarily to avoid holding both mutable and immutable
+    // borrows of fields within inner simultaneously.
+    let Some(span) = inner.otel_span.take() else {
+      return;
+    };
+    let span_state = span.0.borrow();
+    if let deno_telemetry::OtelSpanState::Recording(data) = &**span_state
+      && let Some(info) = inner.otel_info.as_mut()
+    {
+      for attr in &data.attributes {
+        if attr.key.as_str() == "http.route" {
+          info.attributes.http_route = Some(attr.value.to_string());
+        }
+      }
+    }
+    drop(span_state);
+    // Put the span back
+    inner.otel_span = Some(span);
   }
 
   pub fn client_addr(&self) -> Ref<'_, Option<http::HeaderValue>> {

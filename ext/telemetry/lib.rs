@@ -55,19 +55,19 @@ use opentelemetry::otel_debug;
 use opentelemetry::otel_error;
 use opentelemetry::trace::Event;
 use opentelemetry::trace::Link;
-use opentelemetry::trace::SpanContext;
-use opentelemetry::trace::SpanId;
-use opentelemetry::trace::SpanKind;
-use opentelemetry::trace::Status as SpanStatus;
-use opentelemetry::trace::TraceFlags;
+pub use opentelemetry::trace::SpanContext;
+pub use opentelemetry::trace::SpanId;
+pub use opentelemetry::trace::SpanKind;
+pub use opentelemetry::trace::Status as SpanStatus;
+pub use opentelemetry::trace::TraceFlags;
 use opentelemetry::trace::TraceId;
-use opentelemetry::trace::TraceState;
+pub use opentelemetry::trace::TraceState;
 use opentelemetry_otlp::HttpExporterBuilder;
 use opentelemetry_otlp::Protocol;
 use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_otlp::WithHttpConfig;
 use opentelemetry_sdk::Resource;
-use opentelemetry_sdk::export::trace::SpanData;
+pub use opentelemetry_sdk::export::trace::SpanData;
 use opentelemetry_sdk::logs::BatchLogProcessor;
 use opentelemetry_sdk::logs::LogProcessor;
 pub use opentelemetry_sdk::logs::LogRecord;
@@ -78,10 +78,10 @@ use opentelemetry_sdk::metrics::Temporality;
 use opentelemetry_sdk::metrics::exporter::PushMetricExporter;
 use opentelemetry_sdk::metrics::reader::MetricReader;
 use opentelemetry_sdk::trace::BatchSpanProcessor;
-use opentelemetry_sdk::trace::IdGenerator;
+pub use opentelemetry_sdk::trace::IdGenerator;
 use opentelemetry_sdk::trace::RandomIdGenerator;
-use opentelemetry_sdk::trace::SpanEvents;
-use opentelemetry_sdk::trace::SpanLinks;
+pub use opentelemetry_sdk::trace::SpanEvents;
+pub use opentelemetry_sdk::trace::SpanLinks;
 use opentelemetry_sdk::trace::SpanProcessor as _;
 use opentelemetry_semantic_conventions::resource::PROCESS_RUNTIME_NAME;
 use opentelemetry_semantic_conventions::resource::PROCESS_RUNTIME_VERSION;
@@ -1520,8 +1520,8 @@ impl OtelTracer {
       links: SpanLinks::default(),
       instrumentation_scope: self.0.clone(),
     };
-    Ok(OtelSpan(RefCell::new(Box::new(OtelSpanState::Recording(
-      span_data,
+    Ok(OtelSpan(Rc::new(RefCell::new(Box::new(
+      OtelSpanState::Recording(span_data),
     )))))
   }
 
@@ -1589,8 +1589,8 @@ impl OtelTracer {
       links: SpanLinks::default(),
       instrumentation_scope: self.0.clone(),
     };
-    Ok(OtelSpan(RefCell::new(Box::new(OtelSpanState::Recording(
-      span_data,
+    Ok(OtelSpan(Rc::new(RefCell::new(Box::new(
+      OtelSpanState::Recording(span_data),
     )))))
   }
 }
@@ -1613,13 +1613,15 @@ struct OtelSpanCannotBeConstructedError;
 #[class(type)]
 struct InvalidSpanStatusCodeError;
 
-// boxed because of https://github.com/denoland/rusty_v8/issues/1676
-#[derive(Debug)]
-struct OtelSpan(RefCell<Box<OtelSpanState>>);
+// Rc-wrapped so the span can be shared between JS (via cppgc) and the HTTP
+// record (for copying attributes to metrics). The inner Box is kept to keep
+// the cppgc-traced struct small (see https://github.com/denoland/rusty_v8/issues/1676).
+#[derive(Debug, Clone)]
+pub struct OtelSpan(pub Rc<RefCell<Box<OtelSpanState>>>);
 
 #[derive(Debug)]
 #[allow(clippy::large_enum_variant)]
-enum OtelSpanState {
+pub enum OtelSpanState {
   Recording(SpanData),
   Done(SpanContext),
 }

@@ -11,8 +11,10 @@ import {
   op_http_cancel,
   op_http_close,
   op_http_close_after_finish,
+  op_http_copy_span_attributes_to_otel_info,
   op_http_get_request_headers,
   op_http_get_request_method_and_url,
+  op_http_get_span,
   op_http_metric_handle_otel_error,
   op_http_notify_serving,
   op_http_read_request_body,
@@ -100,6 +102,7 @@ import {
   METRICS_ENABLED,
   PROPAGATORS,
   restoreSnapshot,
+  Span,
   TRACING_ENABLED,
 } from "ext:deno_telemetry/telemetry.ts";
 import {
@@ -670,16 +673,29 @@ function mapToCallback(context, callback, onError) {
         });
       }
 
-      const span = builtinTracer().startSpan(
-        "deno.serve",
-        { kind: 1 },
-        activeContext,
-      );
+      // Get the span created in Rust for this request. If available, wrap it
+      // in a JS Span so the user can set attributes like http.route on it.
+      // These attributes are later copied to OtelInfo for HTTP metrics.
+      const otelSpan = op_http_get_span(req);
+      let span;
+      if (otelSpan) {
+        span = new Span(otelSpan);
+      } else {
+        span = builtinTracer().startSpan(
+          "deno.serve",
+          { kind: 1 },
+          activeContext,
+        );
+      }
       enterSpan(span, activeContext);
       try {
         return SafePromisePrototypeFinally(
           origMapped(req, span),
-          () => span.end(),
+          () => {
+            // Copy span attributes (like http.route) to metrics before ending
+            op_http_copy_span_attributes_to_otel_info(req);
+            span.end();
+          },
         );
       } finally {
         restoreSnapshot(snapshot);
