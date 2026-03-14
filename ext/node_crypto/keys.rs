@@ -3124,7 +3124,9 @@ pub enum ExportPrivateKeyPemError {
   #[error("{0}")]
   UnsupportedCipher(String),
   #[class(type)]
-  #[error("cipher and passphrase must both be provided for encrypted key export")]
+  #[error(
+    "cipher and passphrase must both be provided for encrypted key export"
+  )]
   MissingCipherOrPassphrase,
 }
 
