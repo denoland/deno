@@ -240,6 +240,7 @@
     "parallel/test-child-process-spawn-typeerror.js": {},
     "parallel/test-child-process-spawnsync-args.js": {},
     "parallel/test-child-process-spawnsync-env.js": {},
+    "parallel/test-child-process-spawnsync-input.js": {},
     "parallel/test-child-process-spawnsync-maxbuf.js": {},
     "parallel/test-child-process-spawnsync-validation-errors.js": {},
     "parallel/test-child-process-spawnsync.js": {},
