@@ -513,3 +513,24 @@ Deno.test("[node/http2] Server.address() includes family property", async () => 
     await promise;
   }
 });
+
+Deno.test("[node/http2 client] connect without net permission", {
+  permissions: { net: false },
+}, async () => {
+  try {
+    const client = http2.connect("http://localhost:4246");
+    client.on("error", () => {});
+    const req = client.request({ ":path": "/" });
+    req.end();
+    await new Promise((_resolve, reject) => {
+      req.on("error", reject);
+      req.on("end", () => reject(new Error("should have failed")));
+    });
+    throw new Error("should have failed");
+  } catch (e) {
+    assert(
+      e instanceof Deno.errors.NotCapable,
+      `Expected NotCapable, got: ${e}`,
+    );
+  }
+});
