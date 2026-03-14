@@ -809,7 +809,7 @@ pub async fn run(
         NpmResolverCreateOptions::Managed(ManagedNpmResolverCreateOptions {
           npm_resolution,
           npm_cache_dir,
-          sys: sys.clone(),
+          sys: node_resolution_sys.clone(),
           maybe_node_modules_path,
           npm_system_info: Default::default(),
           npmrc,
@@ -854,7 +854,7 @@ pub async fn run(
       let npm_resolver = NpmResolver::<DenoRtSys>::new::<DenoRtSys>(
         NpmResolverCreateOptions::Managed(ManagedNpmResolverCreateOptions {
           npm_resolution,
-          sys: sys.clone(),
+          sys: node_resolution_sys.clone(),
           npm_cache_dir,
           maybe_node_modules_path: None,
           npm_system_info: Default::default(),

@@ -200,6 +200,7 @@
       "flaky": true
     },
     "parallel/test-child-process-constructor.js": {},
+    "parallel/test-child-process-cwd.js": {},
     "parallel/test-child-process-default-options.js": {},
     "parallel/test-child-process-detached.js": {},
     "parallel/test-child-process-disconnect.js": {},
@@ -379,6 +380,15 @@
     "parallel/test-crypto-keygen-async-elliptic-curve-jwk.js": {},
     "parallel/test-crypto-keygen-async-elliptic-curve-jwk-rsa.js": {},
     "parallel/test-crypto-keygen-async-named-elliptic-curve.js": {},
+    "parallel/test-crypto-keygen-async-rsa.js": {
+      "ignore": true,
+      "reason": "Decrypting legacy PEM encrypted private keys (Proc-Type/DEK-Info format) is not yet supported; only PKCS#8 encrypted key import works"
+    },
+    "parallel/test-crypto-keygen-bit-length.js": {
+      "ignore": true,
+      "reason": "DSA key generation with arbitrary bit lengths (e.g. 2049) is not supported; the Rust dsa crate only supports fixed KeySize variants (1024/160, 2048/224, 2048/256, 3072/256)"
+    },
+    "parallel/test-crypto-keygen-deprecation.js": {},
     "parallel/test-crypto-keygen-dh-classic.js": {},
     "parallel/test-crypto-keygen-duplicate-deprecated-option.js": {},
     "parallel/test-crypto-keygen-eddsa.js": {},
@@ -418,6 +428,7 @@
     "parallel/test-crypto-psychic-signatures.js": {},
     "parallel/test-crypto-randomfillsync-regression.js": {},
     "parallel/test-crypto-randomuuid.js": {},
+    "parallel/test-crypto-prime.js": {},
     "parallel/test-crypto-rsa-pss-default-salt-length.js": {},
     "parallel/test-crypto-sec-level.js": {},
     "parallel/test-crypto-secret-keygen.js": {},
