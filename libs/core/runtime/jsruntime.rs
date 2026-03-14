@@ -2133,6 +2133,8 @@ impl JsRuntime {
     let modules = &realm.0.module_map;
     let context_state = &realm.0.context_state;
 
+    let poll_start = context_state.event_loop_metrics.borrow_mut().on_poll_start();
+
     let exception_state = &context_state.exception_state;
 
     // Tight I/O loop: when run_io does work, re-run I/O phases immediately
@@ -2249,6 +2251,8 @@ impl JsRuntime {
       unsafe { (*uv_inner_ptr).run_close() };
     }
     scope.perform_microtask_checkpoint();
+
+    context_state.event_loop_metrics.borrow_mut().on_poll_end(poll_start);
 
     // Evaluate pending state
     let pending_state =

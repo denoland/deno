@@ -2791,23 +2791,26 @@ fn op_otel_enable_event_loop_metrics(scope: &mut v8::PinScope<'_, '_>) {
 }
 
 #[op2(fast)]
-fn op_otel_collect_event_loop_metrics(
-  scope: &mut v8::PinScope<'_, '_>,
-  min: f64,
-  max: f64,
-  mean: f64,
-  stddev: f64,
-  p50: f64,
-  p90: f64,
-  p99: f64,
-  util: f64,
-  active_delta: f64,
-  idle_delta: f64,
-) {
+fn op_otel_collect_event_loop_metrics(scope: &mut v8::PinScope<'_, '_>) {
   let Some(data) = scope.get_slot::<EventLoopMetricData>() else {
     return;
   };
   let data = data.clone();
+
+  let context = scope.get_current_context();
+  // SAFETY: slot is set during realm creation and contains a valid Rc<ContextState>
+  let context_state = unsafe {
+    let ptr = context
+      .get_aligned_pointer_from_embedder_data(deno_core::CONTEXT_STATE_SLOT_INDEX);
+    let rc = ptr as *const deno_core::ContextState;
+    std::rc::Rc::increment_strong_count(rc);
+    std::rc::Rc::from_raw(rc)
+  };
+  let Some(vals) = context_state.event_loop_metrics.borrow_mut().read() else {
+    return;
+  };
+  let [min, max, mean, stddev, p50, p90, p99, util, active_delta, idle_delta] =
+    vals;
 
   data.delay_min.record(min, &[]);
   data.delay_max.record(max, &[]);

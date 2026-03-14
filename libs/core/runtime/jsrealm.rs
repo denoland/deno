@@ -7,6 +7,7 @@ use std::hash::BuildHasherDefault;
 use std::hash::Hasher;
 use std::rc::Rc;
 use std::sync::Arc;
+use std::time::Instant;
 
 use super::exception_state::ExceptionState;
 #[cfg(test)]
@@ -72,6 +73,108 @@ pub(crate) const IMM_IDX_COUNT: usize = 0;
 pub(crate) const IMM_IDX_REF_COUNT: usize = 1;
 pub(crate) const IMM_IDX_HAS_OUTSTANDING: usize = 2;
 
+/// Tracks event loop timing metrics for OTEL instrumentation.
+/// Updated by the event loop in `poll_event_loop_inner`.
+pub struct EventLoopMetrics {
+  /// Delay samples (in seconds) collected since last read.
+  samples: Vec<f64>,
+  /// Cumulative active time in seconds.
+  active_time: f64,
+  /// Cumulative idle time in seconds.
+  idle_time: f64,
+  /// Last time we finished a poll (used to measure idle gap).
+  last_poll_end: Option<Instant>,
+  /// Active/idle at last read (for computing deltas).
+  last_read_active: f64,
+  last_read_idle: f64,
+}
+
+impl Default for EventLoopMetrics {
+  fn default() -> Self {
+    Self {
+      samples: Vec::new(),
+      active_time: 0.0,
+      idle_time: 0.0,
+      last_poll_end: None,
+      last_read_active: 0.0,
+      last_read_idle: 0.0,
+    }
+  }
+}
+
+impl EventLoopMetrics {
+  /// Called at the start of each poll_event_loop_inner iteration.
+  /// Records the idle gap since the last poll ended.
+  pub fn on_poll_start(&mut self) -> Instant {
+    let now = Instant::now();
+    if let Some(last_end) = self.last_poll_end {
+      let idle = now.duration_since(last_end).as_secs_f64();
+      self.idle_time += idle;
+      // The idle gap is also the "event loop delay" — how long
+      // callbacks had to wait before the loop came back around.
+      self.samples.push(idle);
+    }
+    now
+  }
+
+  /// Called at the end of each poll_event_loop_inner iteration.
+  pub fn on_poll_end(&mut self, poll_start: Instant) {
+    let now = Instant::now();
+    let active = now.duration_since(poll_start).as_secs_f64();
+    self.active_time += active;
+    self.last_poll_end = Some(now);
+  }
+
+  /// Read and reset collected samples. Returns None if no samples.
+  /// Returns (min, max, mean, stddev, p50, p90, p99, utilization,
+  /// active_delta, idle_delta).
+  pub fn read(&mut self) -> Option<[f64; 10]> {
+    if self.samples.is_empty() {
+      return None;
+    }
+
+    self.samples.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
+    let len = self.samples.len();
+
+    let mut sum = 0.0;
+    let mut min = f64::MAX;
+    let mut max = f64::MIN;
+    for &v in &self.samples {
+      sum += v;
+      if v < min { min = v; }
+      if v > max { max = v; }
+    }
+    let mean = sum / len as f64;
+
+    let mut variance = 0.0;
+    for &v in &self.samples {
+      let diff = v - mean;
+      variance += diff * diff;
+    }
+    let stddev = (variance / len as f64).sqrt();
+
+    let percentile = |p: f64| -> f64 {
+      let idx = ((len as f64 * p).ceil() as usize).saturating_sub(1).min(len - 1);
+      self.samples[idx]
+    };
+    let p50 = percentile(0.5);
+    let p90 = percentile(0.9);
+    let p99 = percentile(0.99);
+
+    let total = self.active_time + self.idle_time;
+    let utilization = if total > 0.0 { self.active_time / total } else { 0.0 };
+
+    let active_delta = self.active_time - self.last_read_active;
+    let idle_delta = self.idle_time - self.last_read_idle;
+    self.last_read_active = self.active_time;
+    self.last_read_idle = self.idle_time;
+
+    self.samples.clear();
+
+    Some([min, max, mean, stddev, p50, p90, p99, utilization, active_delta, idle_delta])
+  }
+}
+
 pub struct ContextState {
   pub(crate) task_spawner_factory: Arc<V8TaskSpawnerFactory>,
   pub(crate) timers: WebTimers<(v8::Global<v8::Function>, u32), DefaultReactor>,
@@ -125,6 +228,8 @@ pub struct ContextState {
   /// # Safety
   /// Same lifetime requirements as `uv_loop_inner` above.
   pub(crate) uv_loop_ptr: Cell<Option<*mut crate::uv_compat::uv_loop_t>>,
+  /// Event loop timing metrics for OTEL instrumentation.
+  pub event_loop_metrics: RefCell<EventLoopMetrics>,
 }
 
 impl ContextState {
@@ -167,6 +272,7 @@ impl ContextState {
       event_loop_phases: Default::default(),
       uv_loop_inner: Cell::new(None),
       uv_loop_ptr: Cell::new(None),
+      event_loop_metrics: Default::default(),
     }
   }
 }
