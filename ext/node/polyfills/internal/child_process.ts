@@ -1823,6 +1823,11 @@ export function setupChannel(
     if (!target.channel) {
       return;
     }
+    // serde_v8 deserializes objects with null prototype, but Node.js IPC
+    // messages should have Object.prototype (as if from JSON.parse).
+    if (serialization === "json" && msg !== null && typeof msg === "object") {
+      msg = JSON.parse(JSON.stringify(msg));
+    }
     if (target.listenerCount("message") !== 0) {
       target.emit("message", msg);
       return;
