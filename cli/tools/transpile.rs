@@ -238,7 +238,8 @@ async fn emit_declarations(
   );
 
   // Set up npm state
-  let maybe_npm = Some(factory.create_request_npm_state().await?);
+  let type_checker = factory.type_checker().await?;
+  let maybe_npm = Some(type_checker.create_request_npm_state());
 
   // Note: We use tsc::exec directly because TypeChecker.check_diagnostics
   // does not support returning emitted declaration files.
