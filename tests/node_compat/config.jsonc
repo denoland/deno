@@ -205,6 +205,7 @@
     "parallel/test-child-process-detached.js": {},
     "parallel/test-child-process-disconnect.js": {},
     "parallel/test-child-process-double-pipe.js": {},
+    "parallel/test-child-process-env.js": {},
     "parallel/test-child-process-exec-cwd.js": {},
     "parallel/test-child-process-exec-env.js": {},
     "parallel/test-child-process-exec-error.js": {},

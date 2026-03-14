@@ -1148,10 +1148,9 @@ export function normalizeSpawnArguments(
 
   let envKeys: string[] = [];
   // Prototype values are intentionally included.
+  // deno-lint-ignore guard-for-in
   for (const key in env) {
-    if (Object.hasOwn(env, key)) {
-      ArrayPrototypePush(envKeys, key);
-    }
+    ArrayPrototypePush(envKeys, key);
   }
 
   if (process.platform === "win32") {
