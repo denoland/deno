@@ -1584,10 +1584,7 @@ function normalizeInput(input: unknown) {
   if (typeof input === "string") {
     return Buffer.from(input);
   }
-  if (input instanceof Uint8Array) {
-    return input;
-  }
-  if (input instanceof DataView) {
+  if (ArrayBuffer.isView(input)) {
     return Buffer.from(input.buffer, input.byteOffset, input.byteLength);
   }
   throw new ERR_INVALID_ARG_TYPE("input", [
