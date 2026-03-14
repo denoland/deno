@@ -62,7 +62,7 @@ function onListen({ port }) {
         Number(BigInt(`0x${a.spanId}`) - BigInt(`0x${b.spanId}`))
       );
       // v8js metrics are non-deterministic
-      data.metrics = data.metrics.filter((m) => !m.name.startsWith("v8js"));
+      data.metrics = data.metrics.filter((m) => !m.name.startsWith("v8js") && !m.name.startsWith("deno.eventloop"));
       data.metrics.sort((a, b) => a.name.localeCompare(b.name));
       for (const metric of data.metrics) {
         if ("histogram" in metric) {

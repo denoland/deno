@@ -96,6 +96,13 @@
     "cron_error": {
       "args": "run -A main.ts cron_error.ts",
       "output": "cron_error.out"
+    },
+    "event_loop_metric": {
+      "envs": {
+        "OTEL_METRIC_EXPORT_INTERVAL": "1000"
+      },
+      "args": "run -A main_event_loop.ts event_loop_metric.ts",
+      "output": "event_loop_metric.out"
     }
   }
 }

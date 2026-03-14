@@ -2,7 +2,9 @@
 
 import { core, primordials } from "ext:core/mod.js";
 import {
+  op_otel_collect_event_loop_metrics,
   op_otel_collect_isolate_metrics,
+  op_otel_enable_event_loop_metrics,
   op_otel_enable_isolate_metrics,
   op_otel_log,
   op_otel_log_foreign,
@@ -41,11 +43,17 @@ const {
   ArrayPrototypeReverse,
   ArrayPrototypeShift,
   ArrayPrototypeSlice,
+  ArrayPrototypeSort,
+  DateNow,
   DatePrototype,
   DatePrototypeGetTime,
   decodeURIComponent,
   encodeURIComponent,
   Error,
+  MathCeil,
+  MathMax,
+  MathMin,
+  MathSqrt,
   MapPrototypeEntries,
   MapPrototypeKeys,
   Number,
@@ -79,6 +87,89 @@ export let TRACING_ENABLED = false;
 export let METRICS_ENABLED = false;
 export let PROPAGATORS: TextMapPropagator[] = [];
 let ISOLATE_METRICS = false;
+let EVENT_LOOP_METRICS = false;
+
+// Event loop metrics state
+let elSamples: number[] = [];
+let elLastSampleTime = 0;
+let elActiveTime = 0;
+let elIdleTime = 0;
+let elLastObserveActive = 0;
+let elLastObserveIdle = 0;
+const EL_SAMPLE_INTERVAL = 10; // ms
+
+function eventLoopSample() {
+  const now = DateNow();
+  if (elLastSampleTime > 0) {
+    const elapsed = now - elLastSampleTime;
+    const delay = MathMax(0, elapsed - EL_SAMPLE_INTERVAL);
+    ArrayPrototypePush(elSamples, delay);
+    // Active time is the delay portion, idle is the expected interval
+    elActiveTime += MathMin(delay, elapsed);
+    elIdleTime += MathMax(0, elapsed - delay);
+  }
+  elLastSampleTime = now;
+}
+
+function collectEventLoopMetrics() {
+  if (elSamples.length === 0) return;
+
+  ArrayPrototypeSort(elSamples, (a: number, b: number) => a - b);
+  const len = elSamples.length;
+
+  let sum = 0;
+  let min = elSamples[0];
+  let max = elSamples[0];
+  for (let i = 0; i < len; i++) {
+    const v = elSamples[i];
+    sum += v;
+    if (v < min) min = v;
+    if (v > max) max = v;
+  }
+  const mean = sum / len;
+
+  let variance = 0;
+  for (let i = 0; i < len; i++) {
+    const diff = elSamples[i] - mean;
+    variance += diff * diff;
+  }
+  const stddev = MathSqrt(variance / len);
+
+  const p50 = elSamples[MathMin(MathCeil(len * 0.5) - 1, len - 1)];
+  const p90 = elSamples[MathMin(MathCeil(len * 0.9) - 1, len - 1)];
+  const p99 = elSamples[MathMin(MathCeil(len * 0.99) - 1, len - 1)];
+
+  const totalTime = elActiveTime + elIdleTime;
+  const utilization = totalTime > 0 ? elActiveTime / totalTime : 0;
+
+  const activeDelta = (elActiveTime - elLastObserveActive) / 1000;
+  const idleDelta = (elIdleTime - elLastObserveIdle) / 1000;
+  elLastObserveActive = elActiveTime;
+  elLastObserveIdle = elIdleTime;
+
+  // Convert ms to seconds
+  op_otel_collect_event_loop_metrics(
+    min / 1000,
+    max / 1000,
+    mean / 1000,
+    stddev / 1000,
+    p50 / 1000,
+    p90 / 1000,
+    p99 / 1000,
+    utilization,
+    MathMax(0, activeDelta),
+    MathMax(0, idleDelta),
+  );
+
+  elSamples = [];
+}
+
+function enableEventLoopMetrics() {
+  op_otel_enable_event_loop_metrics();
+  EVENT_LOOP_METRICS = true;
+  core.queueSystemTimer(undefined, true, EL_SAMPLE_INTERVAL, eventLoopSample);
+  startObserving();
+}
 
 // Note: These start at 0 in the JS library,
 // but start at 1 when serialized with JSON.
@@ -1137,6 +1228,9 @@ async function observe(): Promise<void> {
   if (ISOLATE_METRICS) {
     op_otel_collect_isolate_metrics();
   }
+  if (EVENT_LOOP_METRICS) {
+    collectEventLoopMetrics();
+  }
 
   const promises: Promise<void>[] = [];
   // Primordials are not needed, because this is a SafeMap.
@@ -1874,6 +1968,7 @@ export function bootstrap(
     if (METRICS_ENABLED) {
       otel.metrics = MeterProvider;
       enableIsolateMetrics();
+      enableEventLoopMetrics();
     }
     if (PROPAGATORS.length > 0) {
       otel.propagation = new CompositePropagator(PROPAGATORS);

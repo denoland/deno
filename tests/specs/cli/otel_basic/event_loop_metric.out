@@ -1,0 +1,9 @@
+deno.eventloop.delay.max gauge s
+deno.eventloop.delay.mean gauge s
+deno.eventloop.delay.min gauge s
+deno.eventloop.delay.p50 gauge s
+deno.eventloop.delay.p90 gauge s
+deno.eventloop.delay.p99 gauge s
+deno.eventloop.delay.stddev gauge s
+deno.eventloop.time sum s
+deno.eventloop.utilization gauge 1
