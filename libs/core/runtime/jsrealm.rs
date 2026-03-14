@@ -133,7 +133,9 @@ impl EventLoopMetrics {
       return None;
     }
 
-    self.samples.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
+    self
+      .samples
+      .sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
     let len = self.samples.len();
 
     let mut sum = 0.0;
@@ -141,8 +143,12 @@ impl EventLoopMetrics {
     let mut max = f64::MIN;
     for &v in &self.samples {
       sum += v;
-      if v < min { min = v; }
-      if v > max { max = v; }
+      if v < min {
+        min = v;
+      }
+      if v > max {
+        max = v;
+      }
     }
     let mean = sum / len as f64;
 
@@ -154,7 +160,9 @@ impl EventLoopMetrics {
     let stddev = (variance / len as f64).sqrt();
 
     let percentile = |p: f64| -> f64 {
-      let idx = ((len as f64 * p).ceil() as usize).saturating_sub(1).min(len - 1);
+      let idx = ((len as f64 * p).ceil() as usize)
+        .saturating_sub(1)
+        .min(len - 1);
       self.samples[idx]
     };
     let p50 = percentile(0.5);
@@ -162,7 +170,11 @@ impl EventLoopMetrics {
     let p99 = percentile(0.99);
 
     let total = self.active_time + self.idle_time;
-    let utilization = if total > 0.0 { self.active_time / total } else { 0.0 };
+    let utilization = if total > 0.0 {
+      self.active_time / total
+    } else {
+      0.0
+    };
 
     let active_delta = self.active_time - self.last_read_active;
     let idle_delta = self.idle_time - self.last_read_idle;
@@ -171,7 +183,18 @@ impl EventLoopMetrics {
 
     self.samples.clear();
 
-    Some([min, max, mean, stddev, p50, p90, p99, utilization, active_delta, idle_delta])
+    Some([
+      min,
+      max,
+      mean,
+      stddev,
+      p50,
+      p90,
+      p99,
+      utilization,
+      active_delta,
+      idle_delta,
+    ])
   }
 }
 

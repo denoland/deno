@@ -2133,7 +2133,10 @@ impl JsRuntime {
     let modules = &realm.0.module_map;
     let context_state = &realm.0.context_state;
 
-    let poll_start = context_state.event_loop_metrics.borrow_mut().on_poll_start();
+    let poll_start = context_state
+      .event_loop_metrics
+      .borrow_mut()
+      .on_poll_start();
 
     let exception_state = &context_state.exception_state;
 
@@ -2252,7 +2255,10 @@ impl JsRuntime {
     }
     scope.perform_microtask_checkpoint();
 
-    context_state.event_loop_metrics.borrow_mut().on_poll_end(poll_start);
+    context_state
+      .event_loop_metrics
+      .borrow_mut()
+      .on_poll_end(poll_start);
 
     // Evaluate pending state
     let pending_state =
