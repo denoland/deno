@@ -512,10 +512,17 @@ export class ChildProcess extends EventEmitter {
       });
 
       if (signal) {
+        const killSignal = options.killSignal ?? "SIGTERM";
         const onAbortListener = () => {
           try {
-            if (this.kill("SIGKILL")) {
-              this.emit("error", new AbortError());
+            if (this.kill(killSignal as string)) {
+              this.emit(
+                "error",
+                new AbortError(
+                  undefined,
+                  { cause: signal.reason },
+                ),
+              );
             }
           } catch (err) {
             this.emit("error", err);
