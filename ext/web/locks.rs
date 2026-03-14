@@ -205,7 +205,7 @@ struct LockResource(u64);
 
 impl Resource for LockResource {}
 
-#[op2(async)]
+#[op2]
 #[smi]
 pub async fn op_lock_manager_request(
   state: Rc<RefCell<OpState>>,
@@ -241,7 +241,7 @@ pub async fn op_lock_manager_request(
   }
 }
 
-#[op2(async)]
+#[op2]
 pub async fn op_lock_manager_release(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -275,7 +275,7 @@ struct Query {
   pending: Vec<QueryLock>,
 }
 
-#[op2(async)]
+#[op2]
 #[serde]
 pub async fn op_lock_manager_query() -> Query {
   let (tx, rx) = oneshot::channel();
