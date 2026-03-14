@@ -31,9 +31,11 @@ import {
   headersFromHeaderList,
 } from "ext:deno_fetch/20_headers.js";
 const {
+  ArrayIsArray,
   ArrayPrototypeMap,
   ArrayPrototypePush,
   ObjectDefineProperties,
+  ObjectHasOwn,
   ObjectPrototypeIsPrototypeOf,
   RangeError,
   RegExpPrototypeExec,
@@ -420,7 +422,18 @@ class Response {
           aborted: false,
         };
         if (init.headers !== undefined) {
-          fillHeaders(this[_headers], init.headers);
+          // Fast path for plain object headers (most common pattern)
+          const h = init.headers;
+          if (typeof h === "object" && !core.isProxy(h) && !ArrayIsArray(h)) {
+            // Plain record<string, string> - add directly to headerList
+            for (const key in h) {
+              if (ObjectHasOwn(h, key)) {
+                ArrayPrototypePush(headerList, [key, h[key]]);
+              }
+            }
+          } else {
+            fillHeaders(this[_headers], h);
+          }
         }
         // Add Content-Type if not already provided
         let hasContentType = false;
