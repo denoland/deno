@@ -67,7 +67,8 @@ import process from "node:process";
 import { StringPrototypeSlice } from "ext:deno_node/internal/primordials.mjs";
 import { StreamBase } from "ext:deno_node/internal_binding/stream_wrap.ts";
 import { Pipe, socketType } from "ext:deno_node/internal_binding/pipe_wrap.ts";
-import { Socket } from "node:net";
+import { Server as NetServer, Socket } from "node:net";
+import { Socket as DgramSocket } from "node:dgram";
 import {
   kExtraStdio,
   kInputOption,
@@ -1864,9 +1865,8 @@ export function setupChannel(
       // Node.js only accepts net.Server, net.Socket, or dgram.Socket.
       if (
         !(handle instanceof Socket) &&
-        !(handle?._handle) &&
-        !(handle?.constructor?.name === "Server") &&
-        !(handle?.constructor?.name === "Socket")
+        !(handle instanceof NetServer) &&
+        !(handle instanceof DgramSocket)
       ) {
         throw new ERR_INVALID_HANDLE_TYPE();
       }
