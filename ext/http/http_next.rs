@@ -660,10 +660,11 @@ fn modify_compressibility_from_response(
   compression: Compression,
   headers: &mut HeaderMap,
 ) -> Compression {
-  ensure_vary_accept_encoding(headers);
   if compression == Compression::None {
     return Compression::None;
   }
+  // Set Vary: Accept-Encoding only when we're actually considering compression
+  ensure_vary_accept_encoding(headers);
   if !is_response_compressible(headers) {
     return Compression::None;
   }
@@ -724,11 +725,16 @@ fn set_response(
   if !http.cancelled() {
     let compression =
       is_request_compressible(length, &http.request_parts().headers);
-    let mut response_headers =
-      std::cell::RefMut::map(http.response_parts(), |this| &mut this.headers);
-    let compression =
-      modify_compressibility_from_response(compression, &mut response_headers);
-    drop(response_headers);
+    let compression = if compression != Compression::None {
+      let mut response_headers =
+        std::cell::RefMut::map(http.response_parts(), |this| &mut this.headers);
+      let c =
+        modify_compressibility_from_response(compression, &mut response_headers);
+      drop(response_headers);
+      c
+    } else {
+      Compression::None
+    };
     http.set_response_body(response_fn(compression));
 
     // The Javascript code should never provide a status that is invalid here (see 23_response.js), so we

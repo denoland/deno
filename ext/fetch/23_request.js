@@ -52,6 +52,7 @@ const _request = Symbol("request");
 const _headers = Symbol("headers");
 const _getHeaders = Symbol("get headers");
 const _headersCache = Symbol("headers cache");
+const _headersGuard = Symbol("headers guard");
 const _signal = Symbol("signal");
 const _signalCache = Symbol("signalCache");
 const _mimeType = Symbol("mime type");
@@ -262,7 +263,14 @@ class Request {
   /** @type {Headers} */
   get [_headers]() {
     if (this[_headersCache] === undefined) {
-      this[_headersCache] = this[_getHeaders]();
+      if (this[_getHeaders]) {
+        this[_headersCache] = this[_getHeaders]();
+      } else {
+        this[_headersCache] = headersFromHeaderList(
+          this[_request].headerList,
+          this[_headersGuard] ?? "request",
+        );
+      }
     }
     return this[_headersCache];
   }
@@ -607,7 +615,7 @@ function toInnerRequest(request) {
 function fromInnerRequest(inner, guard) {
   const request = new Request(_brand);
   request[_request] = inner;
-  request[_getHeaders] = () => headersFromHeaderList(inner.headerList, guard);
+  request[_headersGuard] = guard;
   return request;
 }
 

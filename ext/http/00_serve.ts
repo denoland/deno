@@ -545,8 +545,49 @@ function fastSyncResponseOrStream(
  *
  * This function returns a promise that will only reject in the case of abnormal exit.
  */
+function respondWith(req, response, innerRequest) {
+  const inner = toInnerResponse(response);
+  if (innerRequest?.[_upgraded]) {
+    if (response.status !== 101) {
+      import.meta.log(
+        "error",
+        "Upgrade response was not returned from callback",
+      );
+      return;
+    }
+    if (response === UPGRADE_RESPONSE_SENTINEL) {
+      return;
+    }
+  }
+
+  const status = inner.status;
+  const headers = inner.headerList;
+  if (headers && headers.length > 0) {
+    if (headers.length == 1) {
+      op_http_set_response_header(req, headers[0][0], headers[0][1]);
+    } else {
+      op_http_set_response_headers(req, headers);
+    }
+  }
+
+  // Fast path for string body - skip InnerBody/streamOrStatic indirection
+  const body = inner.body;
+  if (body !== null && body !== undefined) {
+    const source = body.source;
+    if (typeof source === "string") {
+      innerRequest?.close();
+      op_http_set_response_body_text(req, source, status);
+      return;
+    }
+  }
+
+  fastSyncResponseOrStream(req, body, status, innerRequest);
+}
+
 function mapToCallback(context, callback, onError) {
-  let mapped = async function (req, span) {
+  const hasInfoParam = callback.length >= 2;
+
+  let mapped = function (req, span) {
     // Get the response from the user-provided callback. If that fails, use onError. If that fails, return a fallback
     // 500 error.
     let innerRequest;
@@ -560,85 +601,65 @@ function mapToCallback(context, callback, onError) {
         updateSpanFromRequest(span, request);
       }
 
-      response = await callback(request, new ServeHandlerInfo(innerRequest));
+      const info = hasInfoParam
+        ? new ServeHandlerInfo(innerRequest)
+        : undefined;
+      response = callback(request, info);
+    } catch (error) {
+      return handleError(req, innerRequest, span, error, onError, context);
+    }
 
-      // Throwing Error if the handler return value is not a Response class
-      if (!ObjectPrototypeIsPrototypeOf(ResponsePrototype, response)) {
-        throw new TypeError(
-          "Return value from serve handler must be a response or a promise resolving to a response",
-        );
-      }
-
+    // Fast path: handler returned a Response synchronously (not a Promise)
+    if (ObjectPrototypeIsPrototypeOf(ResponsePrototype, response)) {
       if (response.type === "error") {
-        throw new TypeError(
-          "Return value from serve handler must not be an error response (like Response.error())",
+        return handleError(
+          req,
+          innerRequest,
+          span,
+          new TypeError(
+            "Return value from serve handler must not be an error response (like Response.error())",
+          ),
+          onError,
+          context,
         );
       }
 
       if (response.bodyUsed) {
-        throw new TypeError(
-          "The body of the Response returned from the serve handler has already been consumed",
+        return handleError(
+          req,
+          innerRequest,
+          span,
+          new TypeError(
+            "The body of the Response returned from the serve handler has already been consumed",
+          ),
+          onError,
+          context,
         );
       }
-    } catch (error) {
-      try {
-        response = await onError(error);
-        if (!ObjectPrototypeIsPrototypeOf(ResponsePrototype, response)) {
-          throw new TypeError(
-            "Return value from onError handler must be a response or a promise resolving to a response",
-          );
-        }
-      } catch (error) {
-        if (METRICS_ENABLED) {
-          op_http_metric_handle_otel_error(req);
-        }
-        import.meta.log(
-          "error",
-          "Exception in onError while handling exception",
-          error,
-        );
-        response = internalServerError();
+
+      if (span) {
+        updateSpanFromResponse(span, response);
       }
-    }
 
-    if (span) {
-      updateSpanFromResponse(span, response);
-    }
-
-    const inner = toInnerResponse(response);
-    if (innerRequest?.[_upgraded]) {
-      if (response.status !== 101) {
-        import.meta.log(
-          "error",
-          "Upgrade response was not returned from callback",
-        );
-        context.close();
+      if (context.closed) {
+        innerRequest?.close();
+        op_http_set_promise_complete(req, 503);
         return;
       }
-      if (response === UPGRADE_RESPONSE_SENTINEL) {
-        return;
-      }
-    }
 
-    // Did everything shut down while we were waiting?
-    if (context.closed) {
-      // We're shutting down, so this status shouldn't make it back to the client but "Service Unavailable" seems appropriate
-      innerRequest?.close();
-      op_http_set_promise_complete(req, 503);
+      respondWith(req, response, innerRequest);
       return;
     }
 
-    const status = inner.status;
-    const headers = inner.headerList;
-    if (headers && headers.length > 0) {
-      if (headers.length == 1) {
-        op_http_set_response_header(req, headers[0][0], headers[0][1]);
-      } else {
-        op_http_set_response_headers(req, headers);
-      }
-    }
-
-    fastSyncResponseOrStream(req, inner.body, status, innerRequest);
+    // Slow path: handler returned a Promise
+    return handleAsyncResponse(
+      req,
+      innerRequest,
+      span,
+      response,
+      onError,
+      context,
+    );
   };
 
   if (TRACING_ENABLED) {
@@ -699,6 +720,93 @@ function mapToCallback(context, callback, onError) {
   }
 
   return mapped;
+}
+
+async function handleAsyncResponse(
+  req,
+  innerRequest,
+  span,
+  responsePromise,
+  onError,
+  context,
+) {
+  let response;
+  try {
+    response = await responsePromise;
+
+    if (!ObjectPrototypeIsPrototypeOf(ResponsePrototype, response)) {
+      throw new TypeError(
+        "Return value from serve handler must be a response or a promise resolving to a response",
+      );
+    }
+
+    if (response.type === "error") {
+      throw new TypeError(
+        "Return value from serve handler must not be an error response (like Response.error())",
+      );
+    }
+
+    if (response.bodyUsed) {
+      throw new TypeError(
+        "The body of the Response returned from the serve handler has already been consumed",
+      );
+    }
+  } catch (error) {
+    return handleError(req, innerRequest, span, error, onError, context);
+  }
+
+  if (span) {
+    updateSpanFromResponse(span, response);
+  }
+
+  if (context.closed) {
+    innerRequest?.close();
+    op_http_set_promise_complete(req, 503);
+    return;
+  }
+
+  respondWith(req, response, innerRequest);
+}
+
+async function handleError(
+  req,
+  innerRequest,
+  span,
+  error,
+  onError,
+  context,
+) {
+  let response;
+  try {
+    response = await onError(error);
+    if (!ObjectPrototypeIsPrototypeOf(ResponsePrototype, response)) {
+      throw new TypeError(
+        "Return value from onError handler must be a response or a promise resolving to a response",
+      );
+    }
+  } catch (error) {
+    if (METRICS_ENABLED) {
+      op_http_metric_handle_otel_error(req);
+    }
+    import.meta.log(
+      "error",
+      "Exception in onError while handling exception",
+      error,
+    );
+    response = internalServerError();
+  }
+
+  if (span) {
+    updateSpanFromResponse(span, response);
+  }
+
+  if (context.closed) {
+    innerRequest?.close();
+    op_http_set_promise_complete(req, 503);
+    return;
+  }
+
+  respondWith(req, response, innerRequest);
 }
 
 type RawHandler = (
@@ -1046,7 +1154,10 @@ function serveHttpOn(context, addr, callback) {
         // Attempt to pull as many requests out of the queue as possible before awaiting. This API is
         // a synchronous, non-blocking API that returns u32::MAX if anything goes wrong.
         while ((req = op_http_try_wait(rid)) !== null) {
-          PromisePrototypeCatch(callback(req, undefined), promiseErrorHandler);
+          const result = callback(req, undefined);
+          if (result) {
+            PromisePrototypeCatch(result, promiseErrorHandler);
+          }
         }
         currentPromise = op_http_wait(rid);
         if (!ref) {
@@ -1066,7 +1177,10 @@ function serveHttpOn(context, addr, callback) {
       if (req === null) {
         break;
       }
-      PromisePrototypeCatch(callback(req, undefined), promiseErrorHandler);
+      const result = callback(req, undefined);
+      if (result) {
+        PromisePrototypeCatch(result, promiseErrorHandler);
+      }
     }
 
     try {
