@@ -3639,8 +3639,6 @@ function createStylizeWithColor(styles, colors) {
   };
 }
 
-const countMap = new SafeMap();
-const timerMap = new SafeMap();
 const isConsoleInstance = Symbol("isConsoleInstance");
 
 /** @param noColor {boolean} */
@@ -3654,6 +3652,8 @@ function getConsoleInspectOptions(noColor) {
 
 class Console {
   #printFunc = null;
+  #countMap = new SafeMap();
+  #timerMap = new SafeMap();
   [isConsoleInstance] = false;
 
   constructor(printFunc) {
@@ -3766,21 +3766,21 @@ class Console {
   count = (label = "default") => {
     label = String(label);
 
-    if (MapPrototypeHas(countMap, label)) {
-      const current = MapPrototypeGet(countMap, label) || 0;
-      MapPrototypeSet(countMap, label, current + 1);
+    if (MapPrototypeHas(this.#countMap, label)) {
+      const current = MapPrototypeGet(this.#countMap, label) || 0;
+      MapPrototypeSet(this.#countMap, label, current + 1);
     } else {
-      MapPrototypeSet(countMap, label, 1);
+      MapPrototypeSet(this.#countMap, label, 1);
     }
 
-    this.info(`${label}: ${MapPrototypeGet(countMap, label)}`);
+    this.info(`${label}: ${MapPrototypeGet(this.#countMap, label)}`);
   };
 
   countReset = (label = "default") => {
     label = String(label);
 
-    if (MapPrototypeHas(countMap, label)) {
-      MapPrototypeSet(countMap, label, 0);
+    if (MapPrototypeHas(this.#countMap, label)) {
+      MapPrototypeSet(this.#countMap, label, 0);
     } else {
       this.warn(`Count for '${label}' does not exist`);
     }
@@ -3892,23 +3892,23 @@ class Console {
   time = (label = "default") => {
     label = String(label);
 
-    if (MapPrototypeHas(timerMap, label)) {
+    if (MapPrototypeHas(this.#timerMap, label)) {
       this.warn(`Timer '${label}' already exists`);
       return;
     }
 
-    MapPrototypeSet(timerMap, label, currentTime());
+    MapPrototypeSet(this.#timerMap, label, currentTime());
   };
 
   timeLog = (label = "default", ...args) => {
     label = String(label);
 
-    if (!MapPrototypeHas(timerMap, label)) {
+    if (!MapPrototypeHas(this.#timerMap, label)) {
       this.warn(`Timer '${label}' does not exist`);
       return;
     }
 
-    const startTime = MapPrototypeGet(timerMap, label);
+    const startTime = MapPrototypeGet(this.#timerMap, label);
     let duration = currentTime() - startTime;
     if (duration < 1) {
       duration = NumberPrototypeToFixed(duration, 3);
@@ -3926,13 +3926,13 @@ class Console {
   timeEnd = (label = "default") => {
     label = String(label);
 
-    if (!MapPrototypeHas(timerMap, label)) {
+    if (!MapPrototypeHas(this.#timerMap, label)) {
       this.warn(`Timer '${label}' does not exist`);
       return;
     }
 
-    const startTime = MapPrototypeGet(timerMap, label);
-    MapPrototypeDelete(timerMap, label);
+    const startTime = MapPrototypeGet(this.#timerMap, label);
+    MapPrototypeDelete(this.#timerMap, label);
     let duration = currentTime() - startTime;
     if (duration < 1) {
       duration = NumberPrototypeToFixed(duration, 3);
