@@ -3652,6 +3652,7 @@ class Console {
         indentLevel: this.indentLevel,
       }) + "\n",
       1,
+      args,
     );
   };
 
@@ -3662,6 +3663,7 @@ class Console {
         indentLevel: this.indentLevel,
       }) + "\n",
       0,
+      args,
     );
   };
 
@@ -3672,6 +3674,7 @@ class Console {
         indentLevel: this.indentLevel,
       }) + "\n",
       1,
+      args,
     );
   };
 
@@ -3695,6 +3698,7 @@ class Console {
         indentLevel: this.indentLevel,
       }) + "\n",
       2,
+      args,
     );
   };
 
@@ -3705,6 +3709,7 @@ class Console {
         indentLevel: this.indentLevel,
       }) + "\n",
       3,
+      args,
     );
   };
 
