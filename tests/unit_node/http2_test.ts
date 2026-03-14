@@ -7,7 +7,7 @@ import { Buffer } from "node:buffer";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import * as net from "node:net";
-import { assert, assertEquals } from "@std/assert";
+import { assert, assertEquals, assertRejects } from "@std/assert";
 import { curlRequest } from "../unit/test_util.ts";
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
@@ -517,20 +517,17 @@ Deno.test("[node/http2] Server.address() includes family property", async () => 
 Deno.test("[node/http2 client] connect without net permission", {
   permissions: { net: false },
 }, async () => {
-  try {
-    const client = http2.connect("http://localhost:4246");
-    client.on("error", () => {});
-    const req = client.request({ ":path": "/" });
-    req.end();
-    await new Promise((_resolve, reject) => {
-      req.on("error", reject);
-      req.on("end", () => reject(new Error("should have failed")));
-    });
-    throw new Error("should have failed");
-  } catch (e) {
-    assert(
-      e instanceof Deno.errors.NotCapable,
-      `Expected NotCapable, got: ${e}`,
-    );
-  }
+  await assertRejects(
+    async () => {
+      const client = http2.connect("http://localhost:4246");
+      client.on("error", () => {});
+      const req = client.request({ ":path": "/" });
+      req.end();
+      await new Promise((_resolve, reject) => {
+        req.on("error", reject);
+        req.on("end", () => reject(new Error("should have failed")));
+      });
+    },
+    Deno.errors.NotCapable,
+  );
 });
