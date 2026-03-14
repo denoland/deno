@@ -102,7 +102,7 @@ impl<TSys: LocalHttpCacheSys> LocalLspHttpCache<TSys> {
     };
     let path = sub_path.as_path_from_root(&self.cache.path);
     if self.cache.env().fs_is_file_no_err(&path) {
-      Url::from_file_path(path).ok()
+      deno_path_util::url_from_file_path(&path).ok()
     } else {
       None
     }

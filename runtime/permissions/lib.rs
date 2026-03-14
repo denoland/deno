@@ -417,7 +417,7 @@ impl AsRef<Path> for CheckedPathBuf {
 /// want to wastefully check for partial denials when, say, checking read
 /// access for a file.
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
-#[allow(clippy::enum_variant_names)]
+#[allow(clippy::enum_variant_names, reason = "more clear")]
 enum AllowPartial {
   TreatAsGranted,
   TreatAsDenied,

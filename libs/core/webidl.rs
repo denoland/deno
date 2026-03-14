@@ -480,7 +480,6 @@ macro_rules! impl_ints {
       impl<'a> WebIdlConverter<'a> for $t {
         type Options = IntOptions;
 
-        #[allow(clippy::manual_range_contains)]
         fn convert<'b, 'i>(
           scope: &mut v8::PinScope<'a, 'i>,
           value: Local<'a, Value>,
@@ -513,7 +512,7 @@ macro_rules! impl_ints {
               n = 0.0;
             }
 
-            if n < MIN || n > MAX {
+            if !(MIN..=MAX).contains(&n) {
               return Err(WebIdlError::new(prefix, context.borrowed(), WebIdlErrorKind::IntRange {
                 lower_bound: MIN,
                 upper_bound: MAX,

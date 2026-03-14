@@ -1960,6 +1960,9 @@ pub(crate) fn parse_type(
 
 #[cfg(test)]
 mod tests {
+  #![allow(clippy::disallowed_methods, reason = "test code")]
+  #![allow(clippy::print_stdout, reason = "test code")]
+
   use syn::ItemFn;
   use syn::parse_str;
 

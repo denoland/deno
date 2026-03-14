@@ -155,7 +155,7 @@ fn resolve_temp_file_name(
 
 #[cfg(test)]
 mod test {
-  #![allow(clippy::disallowed_methods)]
+  #![allow(clippy::disallowed_methods, reason = "test code")]
 
   use sys_traits::EnvTempDir;
   use sys_traits::impls::InMemorySys;

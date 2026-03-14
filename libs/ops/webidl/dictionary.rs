@@ -230,7 +230,7 @@ impl TryFrom<Field> for DictionaryField {
   }
 }
 
-#[allow(dead_code)]
+#[allow(dead_code, reason = "unused properties")]
 enum DictionaryFieldArgument {
   Default {
     name_token: kw::default,

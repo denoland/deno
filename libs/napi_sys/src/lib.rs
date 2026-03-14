@@ -39,7 +39,6 @@ macro_rules! generate {
           }
       };
 
-      #[allow(clippy::missing_safety_doc)]
       pub unsafe fn load(
           host: &libloading::Library,
       ) -> Result<(), libloading::Error> {
@@ -67,7 +66,6 @@ macro_rules! generate {
 
       $(
           #[inline]
-          #[allow(clippy::missing_safety_doc)]
           pub unsafe fn $name($($param: $ptype,)*)$( -> $rtype)* {
               // SAFETY: caller must ensure NAPI has been initialized via setup().
               unsafe { (NAPI.$name)($($param,)*) }
@@ -106,7 +104,6 @@ static SETUP: Once = Once::new();
 /// they will panic.
 /// Safety: `env` must be a valid `napi_env` for the current thread
 #[cfg(windows)]
-#[allow(clippy::missing_safety_doc)]
 pub unsafe fn setup() {
   SETUP.call_once(|| {
     let host = match libloading::os::windows::Library::this() {
