@@ -667,7 +667,7 @@ impl NpmResolutionSnapshot {
         Box::new(PackageNotFoundFromReferrerError::Referrer(referrer.clone()))
       })?;
 
-    let name = name_without_path(name);
+    let name = crate::package_name_without_subpath(name);
     if let Some(id) = referrer_package.dependencies.get(name) {
       return Ok(self.packages.get(id).unwrap());
     }
@@ -863,21 +863,6 @@ impl SnapshotPackageCopyIndexResolver {
   }
 }
 
-fn name_without_path(name: &str) -> &str {
-  let mut search_start_index = 0;
-  if name.starts_with('@')
-    && let Some(slash_index) = name.find('/')
-  {
-    search_start_index = slash_index + 1;
-  }
-  if let Some(slash_index) = &name[search_start_index..].find('/') {
-    // get the name up until the path slash
-    &name[0..search_start_index + slash_index]
-  } else {
-    name
-  }
-}
-
 #[derive(Debug, Error, Clone, JsError)]
 pub enum SnapshotFromLockfileError {
   #[error("Could not find '{}' specified in the lockfile.", .source.0)]
@@ -1069,14 +1054,6 @@ mod tests {
 
   use super::*;
   use crate::registry::TestNpmRegistryApi;
-
-  #[test]
-  fn test_name_without_path() {
-    assert_eq!(name_without_path("foo"), "foo");
-    assert_eq!(name_without_path("@foo/bar"), "@foo/bar");
-    assert_eq!(name_without_path("@foo/bar/baz"), "@foo/bar");
-    assert_eq!(name_without_path("@hello"), "@hello");
-  }
 
   #[test]
   fn test_copy_index_resolver() {
