@@ -520,7 +520,7 @@ Deno.test("[node/http2 client] connect without net permission", {
   await assertRejects(
     () => {
       return new Promise((_resolve, reject) => {
-        const client = http2.connect("http://localhost:4246");
+        const client = http2.connect("http://127.0.0.1:4246");
         client.on("error", reject);
       });
     },
