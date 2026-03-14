@@ -168,7 +168,7 @@ pub fn type_of<'a, 'i>(
     return Type::Null;
   }
 
-  #[allow(clippy::wildcard_in_or_patterns)]
+  #[allow(clippy::wildcard_in_or_patterns, reason = "better readability")]
   match value.type_of(scope).to_rust_string_lossy(scope).as_str() {
     "undefined" => Type::Undefined,
     "boolean" => Type::Boolean,
@@ -538,7 +538,7 @@ macro_rules! impl_ints {
             n = 0.0;
           }
 
-          if n >= MIN && n <= MAX {
+          if (MIN..=MAX).contains(&n) {
             return Ok(n as Self);
           }
 

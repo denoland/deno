@@ -5,7 +5,10 @@
 #![deny(clippy::unused_async)]
 #![deny(clippy::unnecessary_wraps)]
 // TODO(bartlomieju): add safety comments to unsafe blocks and remove this allow
-#![allow(clippy::undocumented_unsafe_blocks)]
+#![allow(
+  clippy::undocumented_unsafe_blocks,
+  reason = "TODO: add safety comments"
+)]
 
 pub mod arena;
 mod async_cancel;
@@ -38,7 +41,7 @@ mod tasks;
 #[allow(
   non_camel_case_types,
   non_upper_case_globals,
-  clippy::missing_safety_doc
+  reason = "generated bindings match external API naming"
 )]
 pub mod uv_compat;
 mod web_timeout;
@@ -273,7 +276,10 @@ mod tests {
       .stdout(Stdio::null())
       .status()
     {
-      #[allow(clippy::print_stderr)]
+      #[allow(
+        clippy::print_stderr,
+        reason = "intentional test diagnostic output"
+      )]
       {
         eprintln!("Ignoring test because we couldn't find deno: {e:?}");
       }

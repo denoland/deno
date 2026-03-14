@@ -83,7 +83,7 @@ fn get_internalized_string(
 
 #[cfg(test)]
 mod infra {
-  #![allow(clippy::disallowed_methods)]
+  #![allow(clippy::disallowed_methods, reason = "test code")]
 
   use std::path::PathBuf;
 

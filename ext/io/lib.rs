@@ -855,7 +855,7 @@ impl crate::fs::File for StdFileResourceInner {
         if mode & libc::S_IWRITE as u32 > 0 {
           // clippy warning should only be applicable to Unix platforms
           // https://rust-lang.github.io/rust-clippy/master/index.html#permissions_set_readonly_false
-          #[allow(clippy::permissions_set_readonly_false)]
+          #[allow(clippy::permissions_set_readonly_false, reason = "only applicable to Unix platforms")]
           permissions.set_readonly(false);
         } else {
           permissions.set_readonly(true);
@@ -883,7 +883,7 @@ impl crate::fs::File for StdFileResourceInner {
           if mode & libc::S_IWRITE as u32 > 0 {
             // clippy warning should only be applicable to Unix platforms
             // https://rust-lang.github.io/rust-clippy/master/index.html#permissions_set_readonly_false
-            #[allow(clippy::permissions_set_readonly_false)]
+            #[allow(clippy::permissions_set_readonly_false, reason = "only applicable to Unix platforms")]
             permissions.set_readonly(false);
           } else {
             permissions.set_readonly(true);

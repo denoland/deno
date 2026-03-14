@@ -430,6 +430,7 @@ async fn pump_event_notifications(
       result = restart_rx.recv() => {
         match result {
           Ok(()) => {
+            #[allow(clippy::disallowed_methods, reason = "inspector server needs direct env/time access")]
             let timestamp = std::time::SystemTime::now()
               .duration_since(std::time::UNIX_EPOCH)
               .map(|d| d.as_millis() as u64)

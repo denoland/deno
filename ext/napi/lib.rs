@@ -1,8 +1,8 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-#![allow(non_camel_case_types)]
-#![allow(non_upper_case_globals)]
-#![allow(clippy::undocumented_unsafe_blocks)]
+#![allow(non_camel_case_types, reason = "matches Node-API naming conventions")]
+#![allow(non_upper_case_globals, reason = "matches Node-API naming conventions")]
+#![allow(clippy::undocumented_unsafe_blocks, reason = "pervasive FFI unsafe blocks throughout NAPI implementation")]
 #![deny(clippy::missing_safety_doc)]
 
 //! Symbols to be exported are now defined in this JSON file.
@@ -448,7 +448,7 @@ unsafe impl Send for Env {}
 unsafe impl Sync for Env {}
 
 impl Env {
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "construction")]
   pub fn new(
     isolate_ptr: v8::UnsafeRawIsolatePtr,
     context: v8::Global<v8::Context>,
@@ -649,6 +649,7 @@ fn op_napi_open<'scope>(
   let type_tag = v8::Private::new(scope, Some(type_tag_name));
   let type_tag = v8::Global::new(scope, type_tag);
 
+  #[allow(clippy::disallowed_methods, reason = "napi requires file path URL conversion")]
   let url_filename =
     Url::from_file_path(&path).map_err(|_| NApiError::InvalidPath)?;
   let env_shared =
@@ -746,7 +747,7 @@ fn op_napi_open<'scope>(
   Ok(exports)
 }
 
-#[allow(clippy::print_stdout)]
+#[allow(clippy::print_stdout, reason = "cargo build script output")]
 pub fn print_linker_flags(name: &str) {
   let symbols_path =
     include_str!(concat!(env!("OUT_DIR"), "/napi_symbol_path.txt"));

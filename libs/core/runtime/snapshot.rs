@@ -183,7 +183,7 @@ pub fn create_snapshot(
   warmup_script: Option<&'static str>,
 ) -> Result<CreateSnapshotOutput, CoreError> {
   let mut mark = Instant::now();
-  #[allow(clippy::print_stdout)]
+  #[allow(clippy::print_stdout, reason = "intentional build-time progress output")]
   {
     println!("Creating a snapshot...",);
   }
@@ -205,7 +205,7 @@ pub fn create_snapshot(
     ..Default::default()
   });
 
-  #[allow(clippy::print_stdout)]
+  #[allow(clippy::print_stdout, reason = "intentional build-time progress output")]
   {
     println!("JsRuntimeForSnapshot prepared, took {:#?}", mark.elapsed(),);
   }
@@ -247,7 +247,7 @@ pub fn create_snapshot(
     snapshot = js_runtime.snapshot();
   }
 
-  #[allow(clippy::print_stdout)]
+  #[allow(clippy::print_stdout, reason = "intentional build-time progress output")]
   {
     println!(
       "Snapshot size: {}, took {:#?}",
@@ -257,7 +257,7 @@ pub fn create_snapshot(
   }
   mark = Instant::now();
 
-  #[allow(clippy::print_stdout)]
+  #[allow(clippy::print_stdout, reason = "intentional build-time progress output")]
   {
     println!(
       "Snapshot written, took: {:#?}",

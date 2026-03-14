@@ -113,7 +113,7 @@ impl<T, R: Reactor> WebTimers<T, R> {
     }
   }
 
-  #[allow(unused)]
+  #[allow(unused, reason = "used in other configurations")]
   pub fn has_pending(&self) -> bool {
     !self.timers.borrow().is_empty()
   }
@@ -384,7 +384,7 @@ impl<T: Clone, R: Reactor> WebTimers<T, R> {
     data: T,
     is_system_timer: bool,
   ) -> WebTimerId {
-    #[allow(clippy::let_unit_value)]
+    #[allow(clippy::let_unit_value, reason = "type varies by platform")]
     let high_res = self.high_res_timer_lock.maybe_lock(timeout_ms);
 
     let id = self.next_id.get() + 1;
@@ -734,7 +734,7 @@ mod tests {
         timers.take_fired_timer(*id, timer_type);
       }
       v.extend(batch.into_iter().map(|(id, _)| id));
-      #[allow(clippy::print_stderr)]
+      #[allow(clippy::print_stderr, reason = "intentional test diagnostic output")]
       {
         eprintln!(
           "{} ({} {})",
@@ -1029,7 +1029,7 @@ mod tests {
         timers.assert_consistent();
       }
 
-      #[allow(clippy::print_stderr)]
+      #[allow(clippy::print_stderr, reason = "intentional test diagnostic output")]
       {
         eprintln!("count={count} ref_count={ref_count}");
       }

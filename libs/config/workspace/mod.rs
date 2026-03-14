@@ -72,11 +72,11 @@ use crate::glob::PathOrPatternSet;
 
 mod discovery;
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 type UrlRc = deno_maybe_sync::MaybeArc<Url>;
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type WorkspaceRc = deno_maybe_sync::MaybeArc<Workspace>;
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type WorkspaceDirectoryRc = deno_maybe_sync::MaybeArc<WorkspaceDirectory>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -801,7 +801,7 @@ impl Workspace {
       .filter_map(|f| f.pkg_json.as_ref())
   }
 
-  #[allow(clippy::needless_lifetimes)] // clippy issue
+  #[allow(clippy::needless_lifetimes, reason = "clippy false positive")]
   pub fn jsr_packages<'a>(
     self: &'a WorkspaceRc,
   ) -> impl Iterator<Item = JsrPackageConfig> + 'a {
@@ -1548,9 +1548,9 @@ impl Workspace {
 
 #[derive(Debug, Clone)]
 struct WorkspaceDirConfig<T> {
-  #[allow(clippy::disallowed_types)]
+  #[allow(clippy::disallowed_types, reason = "field uses MaybeArc")]
   member: Option<deno_maybe_sync::MaybeArc<T>>,
-  #[allow(clippy::disallowed_types)]
+  #[allow(clippy::disallowed_types, reason = "field uses MaybeArc")]
   root: Option<deno_maybe_sync::MaybeArc<T>>,
 }
 
@@ -2670,7 +2670,7 @@ fn combine_files_config_with_cli_args(
   }
 }
 
-#[allow(clippy::owned_cow)]
+#[allow(clippy::owned_cow, reason = "Cow is used for conditional borrowing")]
 struct CombineOptionVecsWithOverride<'a, T: Clone> {
   root: Option<Vec<T>>,
   member: Option<Cow<'a, Vec<T>>>,
@@ -5059,10 +5059,8 @@ pub mod test {
     assert_eq!(workspace_dir.workspace.diagnostics(), Vec::new());
     assert_eq!(workspace_dir.workspace.deno_jsons().count(), 1);
     assert_eq!(
-      deno_path_util::url_to_file_path(
-        workspace_dir.workspace.root_dir_url(),
-      )
-      .unwrap(),
+      deno_path_util::url_to_file_path(workspace_dir.workspace.root_dir_url(),)
+        .unwrap(),
       root_dir().join("member")
     );
     assert_eq!(workspace_dir.workspace.package_jsons().count(), 0);
@@ -5106,10 +5104,8 @@ pub mod test {
     );
     assert_eq!(workspace_dir.workspace.deno_jsons().count(), 1);
     assert_eq!(
-      deno_path_util::url_to_file_path(
-        workspace_dir.workspace.root_dir_url(),
-      )
-      .unwrap(),
+      deno_path_util::url_to_file_path(workspace_dir.workspace.root_dir_url(),)
+        .unwrap(),
       root_dir()
     );
     assert_eq!(workspace_dir.workspace.package_jsons().count(), 2);
@@ -5153,10 +5149,8 @@ pub mod test {
     );
     assert_eq!(workspace_dir.workspace.deno_jsons().count(), 1);
     assert_eq!(
-      deno_path_util::url_to_file_path(
-        workspace_dir.workspace.root_dir_url(),
-      )
-      .unwrap(),
+      deno_path_util::url_to_file_path(workspace_dir.workspace.root_dir_url(),)
+        .unwrap(),
       root_dir()
     );
     assert_eq!(workspace_dir.workspace.package_jsons().count(), 2);
@@ -5192,7 +5186,8 @@ pub mod test {
     assert_eq!(workspace_dir.workspace.diagnostics().len(), 2); // for each unstable
     assert_eq!(workspace_dir.workspace.deno_jsons().count(), 2);
     assert_eq!(
-      deno_path_util::url_to_file_path(&workspace_dir.workspace.root_dir_url).unwrap(),
+      deno_path_util::url_to_file_path(&workspace_dir.workspace.root_dir_url)
+        .unwrap(),
       root_dir()
     );
     assert_eq!(workspace_dir.workspace.package_jsons().count(), 3);

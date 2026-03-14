@@ -21,7 +21,7 @@ impl DenoAstModuleExportAnalyzer {
   }
 }
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "source text is always stored as Arc<str>")]
 type ArcStr = std::sync::Arc<str>;
 
 impl ModuleExportAnalyzer for DenoAstModuleExportAnalyzer {

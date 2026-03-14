@@ -86,12 +86,12 @@ impl NapiObject {
     unreachable!();
   }
 
-  #[allow(clippy::new_ret_no_self)]
+  #[allow(clippy::new_ret_no_self, reason = "napi constructor returns napi_value")]
   pub extern "C" fn new(env: napi_env, info: napi_callback_info) -> napi_value {
     Self::new_inner(env, info, None, None)
   }
 
-  #[allow(clippy::new_ret_no_self)]
+  #[allow(clippy::new_ret_no_self, reason = "napi constructor returns napi_value")]
   pub extern "C" fn new_with_finalizer(
     env: napi_env,
     info: napi_callback_info,

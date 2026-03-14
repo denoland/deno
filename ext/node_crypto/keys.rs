@@ -2689,7 +2689,7 @@ fn dsa_generate(
   use dsa::SigningKey;
 
   let key_size = match (modulus_length, divisor_length) {
-    #[allow(deprecated)]
+    #[allow(deprecated, reason = "needed for compatibility with legacy DSA key sizes")]
     (1024, 160) => KeySize::DSA_1024_160,
     (2048, 224) => KeySize::DSA_2048_224,
     (2048, 256) => KeySize::DSA_2048_256,

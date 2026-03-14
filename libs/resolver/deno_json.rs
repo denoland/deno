@@ -47,11 +47,11 @@ use crate::factory::ConfigDiscoveryOption;
 use crate::npm::DenoInNpmPackageChecker;
 use crate::npm::NpmResolverSys;
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 type UrlRc = deno_maybe_sync::MaybeArc<Url>;
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 type CompilerOptionsRc = deno_maybe_sync::MaybeArc<CompilerOptions>;
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type CompilerOptionsTypesRc =
   deno_maybe_sync::MaybeArc<Vec<(Url, Vec<String>)>>;
 
@@ -203,7 +203,10 @@ pub fn parse_compiler_options(
   }
 }
 
-#[allow(clippy::disallowed_types)]
+#[allow(
+  clippy::disallowed_types,
+  reason = "Arc needed for cloneable error sharing"
+)]
 pub type SerdeJsonErrorArc = std::sync::Arc<serde_json::Error>;
 
 #[derive(Debug, Clone, Error, JsError)]
@@ -234,7 +237,7 @@ impl JsxImportSourceConfig {
   }
 }
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type JsxImportSourceConfigRc =
   deno_maybe_sync::MaybeArc<JsxImportSourceConfig>;
 
@@ -375,7 +378,7 @@ pub struct TranspileAndEmitOptions {
 }
 
 #[cfg(feature = "deno_ast")]
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type TranspileAndEmitOptionsRc =
   deno_maybe_sync::MaybeArc<TranspileAndEmitOptions>;
 
@@ -478,7 +481,7 @@ struct LoggedWarnings {
   folders: deno_maybe_sync::MaybeDashSet<Url>,
 }
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 type LoggedWarningsRc = deno_maybe_sync::MaybeArc<LoggedWarnings>;
 
 #[derive(Default, Debug)]
@@ -972,7 +975,7 @@ impl TsConfigFileFilter {
   }
 }
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 type TsConfigFileFilterRc = deno_maybe_sync::MaybeArc<TsConfigFileFilter>;
 
 #[derive(Debug)]
@@ -1617,7 +1620,7 @@ impl deno_graph::CheckJsResolver for CompilerOptionsResolver {
   }
 }
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type CompilerOptionsResolverRc =
   deno_maybe_sync::MaybeArc<CompilerOptionsResolver>;
 

@@ -76,7 +76,7 @@ unsafe extern "C" fn uv_mutex_destroy(_lock: *mut uv_mutex_t) {
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
-#[allow(dead_code)]
+#[allow(dead_code, reason = "variants represent libuv enum values")]
 enum uv_handle_type {
   UV_UNKNOWN_HANDLE = 0,
   UV_ASYNC,

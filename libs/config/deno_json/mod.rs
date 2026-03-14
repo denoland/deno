@@ -1317,7 +1317,7 @@ pub enum ToLockConfigError {
   UrlToFilePath(#[from] UrlToFilePathError),
 }
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type ConfigFileRc = deno_maybe_sync::MaybeArc<ConfigFile>;
 
 #[derive(Clone, Debug)]

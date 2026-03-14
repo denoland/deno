@@ -240,7 +240,7 @@ impl TlsKeyResolver {
 }
 
 pub struct TlsKeyLookup {
-  #[allow(clippy::type_complexity)]
+  #[allow(clippy::type_complexity, reason = "complex type is necessary here")]
   resolution_rx: RefCell<
     mpsc::UnboundedReceiver<(
       String,
