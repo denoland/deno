@@ -293,6 +293,7 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
       new_rc(DenoDirProvider::new(
         self.sys.clone(),
         DenoDirOptions {
+          maybe_initial_cwd: Some(self.initial_cwd.clone()),
           maybe_custom_root: self.options.maybe_custom_deno_dir_root.clone(),
         },
       ))
@@ -1072,7 +1073,7 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
         })
       } else {
         NpmResolverCreateOptions::Managed(ManagedNpmResolverCreateOptions {
-          sys: self.workspace_factory.sys.clone(),
+          sys: self.sys.clone(),
           npm_resolution: self.npm_resolution().clone(),
           npm_cache_dir: self.workspace_factory.npm_cache_dir()?.clone(),
           maybe_node_modules_path: self

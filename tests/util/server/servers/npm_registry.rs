@@ -12,6 +12,7 @@ use base64::Engine;
 use base64::prelude::BASE64_STANDARD;
 use bytes::Bytes;
 use futures::FutureExt;
+use futures::StreamExt;
 use futures::future::LocalBoxFuture;
 use http::HeaderMap;
 use http::HeaderValue;
@@ -30,6 +31,7 @@ use super::custom_headers;
 use super::empty_body;
 use super::hyper_utils::HandlerOutput;
 use super::run_server;
+use super::run_server_with_acceptor;
 use super::string_body;
 use crate::npm;
 use crate::root_path;
@@ -55,6 +57,8 @@ const PRIVATE_NPM_REGISTRY_2_AUTH_TOKEN: &str = "private-reg-token2";
 
 // `deno:land` encoded using base64
 const PRIVATE_NPM_REGISTRY_AUTH_BASE64: &str = "ZGVubzpsYW5k";
+// `deno@test.com:land` encoded using base64
+const PRIVATE_NPM_REGISTRY_AUTH_EMAIL_BASE64: &str = "ZGVub0B0ZXN0LmNvbTpsYW5k";
 // `deno:land2` encoded using base64
 const PRIVATE_NPM_REGISTRY_2_AUTH_BASE64: &str = "ZGVubzpsYW5kMg==";
 
@@ -80,6 +84,40 @@ pub fn private_npm_registry3(port: u16) -> Vec<LocalBoxFuture<'static, ()>> {
     "npm private registry server error",
     private_npm_registry3_handler,
   )
+}
+
+/// An HTTPS npm registry that requires mutual TLS (client certificate)
+pub fn private_npm_registry_mtls(
+  port: u16,
+) -> Vec<LocalBoxFuture<'static, ()>> {
+  vec![async move {
+    ensure_esbuild_prebuilt().await.unwrap();
+    let mut tls =
+      super::super::https::get_tls_listener_stream_with_required_client_auth(
+        "npm_mtls_registry",
+        port,
+      )
+      .await;
+    let tls = async_stream::stream! {
+      while let Some(Ok(mut tls)) = tls.next().await {
+        let handshake = tls.handshake().await?;
+        match handshake.has_peer_certificates {
+          true => { yield Ok(tls); },
+          false => { eprintln!("npm_mtls_registry: no valid client certificate"); },
+        };
+      }
+    };
+    run_server_with_acceptor(
+      tls.boxed_local(),
+      |req| async move {
+        handle_req_for_registry(req, &npm::PRIVATE_TEST_NPM_REGISTRY_MTLS).await
+      },
+      "npm mTLS registry server error",
+      ServerKind::Auto,
+    )
+    .await
+  }
+  .boxed_local()]
 }
 
 fn run_npm_server<F, S>(
@@ -134,6 +172,7 @@ async fn private_npm_registry1_handler(
     .unwrap_or_default();
   if auth != format!("Bearer {}", PRIVATE_NPM_REGISTRY_AUTH_TOKEN)
     && auth != format!("Basic {}", PRIVATE_NPM_REGISTRY_AUTH_BASE64)
+    && auth != format!("Basic {}", PRIVATE_NPM_REGISTRY_AUTH_EMAIL_BASE64)
   {
     return Ok(
       Response::builder()
@@ -221,6 +260,56 @@ async fn handle_req_for_registry(
     .map_err(|e| e.into())
 }
 
+/// Returns true if the Accept header indicates the client wants the
+/// abbreviated install manifest (`application/vnd.npm.install-v1+json`).
+fn wants_abbreviated(headers: &HeaderMap<HeaderValue>) -> bool {
+  headers
+    .get(http::header::ACCEPT)
+    .and_then(|v| v.to_str().ok())
+    .map(|v| v.contains("application/vnd.npm.install-v1+json"))
+    .unwrap_or(false)
+}
+
+/// Converts a full packument JSON into the abbreviated install manifest format.
+/// Strips `time` and `scripts`, replaces scripts with `hasInstallScript`.
+fn to_abbreviated_packument(full: &[u8]) -> Vec<u8> {
+  let mut packument: serde_json::Value = serde_json::from_slice(full).unwrap();
+  let obj = packument.as_object_mut().unwrap();
+
+  // Remove `time` (not present in abbreviated format)
+  obj.remove("time");
+
+  // Transform each version entry
+  if let Some(versions) =
+    obj.get_mut("versions").and_then(|v| v.as_object_mut())
+  {
+    for version_info in versions.values_mut() {
+      let vi = version_info.as_object_mut().unwrap();
+
+      // Check for install lifecycle scripts before removing
+      let has_install_script = vi
+        .get("scripts")
+        .and_then(|s| s.as_object())
+        .map(|scripts| {
+          scripts.contains_key("preinstall")
+            || scripts.contains_key("install")
+            || scripts.contains_key("postinstall")
+        })
+        .unwrap_or(false);
+
+      // Remove `scripts` (not present in abbreviated format)
+      vi.remove("scripts");
+
+      // Add `hasInstallScript` if applicable
+      if has_install_script {
+        vi.insert("hasInstallScript".to_string(), json!(true));
+      }
+    }
+  }
+
+  serde_json::to_vec(&packument).unwrap()
+}
+
 fn handle_custom_npm_registry_path(
   scope_name: &str,
   path: &str,
@@ -246,6 +335,12 @@ fn handle_custom_npm_registry_path(
     && let Some(registry_file) =
       test_npm_registry.registry_file(&package_name)?
   {
+    let registry_file = if wants_abbreviated(headers) {
+      to_abbreviated_packument(&registry_file)
+    } else {
+      registry_file
+    };
+
     let actual_etag = format!(
       "\"{}\"",
       BASE64_STANDARD.encode(sha2::Sha256::digest(&registry_file))
@@ -313,6 +408,11 @@ async fn try_serve_npm_registry(
       testdata_file_path.push("registry.json");
     }
     if let Ok(file) = tokio::fs::read(&testdata_file_path).await {
+      let file = if !is_tarball && wants_abbreviated(headers) {
+        to_abbreviated_packument(&file)
+      } else {
+        file
+      };
       let file_resp = custom_headers(uri_path, file);
       return Some(Ok(file_resp));
     } else if should_download_npm_packages() {

@@ -43,7 +43,7 @@ pub use opentelemetry::KeyValue;
 pub use opentelemetry::StringValue;
 pub use opentelemetry::Value;
 use opentelemetry::logs::AnyValue;
-use opentelemetry::logs::LogRecord as LogRecordTrait;
+pub use opentelemetry::logs::LogRecord as LogRecordTrait;
 use opentelemetry::logs::Severity;
 use opentelemetry::metrics::AsyncInstrumentBuilder;
 pub use opentelemetry::metrics::Gauge;
@@ -70,7 +70,7 @@ use opentelemetry_sdk::Resource;
 use opentelemetry_sdk::export::trace::SpanData;
 use opentelemetry_sdk::logs::BatchLogProcessor;
 use opentelemetry_sdk::logs::LogProcessor;
-use opentelemetry_sdk::logs::LogRecord;
+pub use opentelemetry_sdk::logs::LogRecord;
 use opentelemetry_sdk::metrics::ManualReader;
 use opentelemetry_sdk::metrics::MetricResult;
 use opentelemetry_sdk::metrics::SdkMeterProvider;
@@ -1433,12 +1433,14 @@ impl OtelTracer {
 
   #[static_method]
   #[cppgc]
-  fn builtin() -> OtelTracer {
+  fn builtin() -> Result<OtelTracer, JsErrorBox> {
     let OtelGlobals {
       builtin_instrumentation_scope,
       ..
-    } = OTEL_GLOBALS.get().unwrap();
-    OtelTracer(builtin_instrumentation_scope.clone())
+    } = OTEL_GLOBALS
+      .get()
+      .ok_or_else(|| JsErrorBox::generic("otel not initialized"))?;
+    Ok(OtelTracer(builtin_instrumentation_scope.clone()))
   }
 
   #[cppgc]
@@ -1451,7 +1453,9 @@ impl OtelTracer {
     start_time: Option<f64>,
     #[smi] attribute_count: usize,
   ) -> Result<OtelSpan, JsErrorBox> {
-    let OtelGlobals { id_generator, .. } = OTEL_GLOBALS.get().unwrap();
+    let OtelGlobals { id_generator, .. } = OTEL_GLOBALS
+      .get()
+      .ok_or_else(|| JsErrorBox::generic("otel not initialized"))?;
     let span_context;
     let parent_span_id;
     match parent {
@@ -1540,7 +1544,9 @@ impl OtelTracer {
     if parent_span_id == SpanId::INVALID {
       return Err(JsErrorBox::generic("invalid span id"));
     };
-    let OtelGlobals { id_generator, .. } = OTEL_GLOBALS.get().unwrap();
+    let OtelGlobals { id_generator, .. } = OTEL_GLOBALS
+      .get()
+      .ok_or_else(|| JsErrorBox::generic("otel not initialized"))?;
     let span_context = SpanContext::new(
       parent_trace_id,
       id_generator.new_span_id(),
@@ -1915,7 +1921,7 @@ impl OtelMeter {
     #[string] name: String,
     #[string] version: Option<String>,
     #[string] schema_url: Option<String>,
-  ) -> OtelMeter {
+  ) -> Result<OtelMeter, JsErrorBox> {
     let mut builder = opentelemetry::InstrumentationScope::builder(name);
     if let Some(version) = version {
       builder = builder.with_version(version);
@@ -1926,10 +1932,10 @@ impl OtelMeter {
     let scope = builder.build();
     let meter = OTEL_GLOBALS
       .get()
-      .unwrap()
+      .ok_or_else(|| JsErrorBox::generic("otel not initialized"))?
       .meter_provider
       .meter_with_scope(scope);
-    OtelMeter(meter)
+    Ok(OtelMeter(meter))
   }
 
   #[cppgc]
@@ -2556,7 +2562,9 @@ impl GcMetricData {
     // SAFETY: Isolate is valid during callback
     let isolate =
       unsafe { v8::Isolate::from_raw_isolate_ptr_unchecked(isolate) };
-    let this = isolate.get_slot::<Self>().unwrap();
+    let Some(this) = isolate.get_slot::<Self>() else {
+      return;
+    };
     this.0.borrow_mut().start = Instant::now();
   }
 
@@ -2569,7 +2577,9 @@ impl GcMetricData {
     // SAFETY: Isolate is valid during callback
     let isolate =
       unsafe { v8::Isolate::from_raw_isolate_ptr_unchecked(isolate) };
-    let this = isolate.get_slot::<Self>().unwrap();
+    let Some(this) = isolate.get_slot::<Self>() else {
+      return;
+    };
     let this = this.0.borrow_mut();
 
     let elapsed = this.start.elapsed();
@@ -2605,7 +2615,10 @@ fn op_otel_enable_isolate_metrics(scope: &mut v8::PinScope<'_, '_>) {
     return;
   }
 
-  let meter = OTEL_GLOBALS.get().unwrap().meter_provider.meter("v8js");
+  let Some(globals) = OTEL_GLOBALS.get() else {
+    return;
+  };
+  let meter = globals.meter_provider.meter("v8js");
 
   // https://opentelemetry.io/docs/specs/semconv/runtime/v8js-metrics/#metric-v8jsgcduration
   let duration = meter
@@ -2663,7 +2676,10 @@ fn op_otel_enable_isolate_metrics(scope: &mut v8::PinScope<'_, '_>) {
 
 #[op2(fast)]
 fn op_otel_collect_isolate_metrics(scope: &mut v8::PinScope<'_, '_>) {
-  let data = scope.get_slot::<HeapMetricData>().unwrap().clone();
+  let Some(data) = scope.get_slot::<HeapMetricData>() else {
+    return;
+  };
+  let data = data.clone();
   for i in 0..scope.get_number_of_data_slots() {
     let Some(space) = scope.get_heap_space_statistics(i as _) else {
       continue;

@@ -45,13 +45,22 @@ pub const UNSTABLE_FEATURE_NAME: &str = "webgpu";
 #[allow(clippy::print_stdout)]
 pub fn print_linker_flags(name: &str) {
   if cfg!(windows) {
-    // these dls load slowly, so delay loading them
+    // these dlls load slowly, so delay loading them
     let dlls = [
       // webgpu
       "d3dcompiler_47",
       "OPENGL32",
+      "gdi32",
+      "setupapi",
+      "oleaut32",
+      "combase",
       // network related functions
       "iphlpapi",
+      // timer functions
+      "winmm",
+      // debugging/diagnostics (only needed on panic/crash)
+      "dbghelp",
+      "psapi",
     ];
     for dll in dlls {
       println!("cargo:rustc-link-arg-bin={name}=/delayload:{dll}.dll");

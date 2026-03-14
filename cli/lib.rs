@@ -29,6 +29,7 @@ pub(crate) mod sys {
   pub type CliSys = sys_traits::impls::RealSys;
 }
 
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::env;
 use std::future::Future;
@@ -39,6 +40,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use args::TaskFlags;
+use deno_config::glob::FilePatterns;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
@@ -68,10 +70,10 @@ use crate::args::Flags;
 use crate::args::flags_from_vec_with_initial_cwd;
 use crate::args::get_default_v8_flags;
 use crate::util::display;
+use crate::util::env::WatchEnvTracker;
+use crate::util::env::load_env_variables_from_env_files;
 use crate::util::v8::get_v8_flags_from_env;
 use crate::util::v8::init_v8_flags;
-use crate::util::watch_env_tracker::WatchEnvTracker;
-use crate::util::watch_env_tracker::load_env_variables_from_env_files;
 
 #[cfg(feature = "dhat-heap")]
 #[global_allocator]
@@ -731,11 +733,20 @@ async fn resolve_flags_and_init(
   if flags.subcommand.watch_flags().is_some() {
     WatchEnvTracker::snapshot();
   }
-  let env_file_paths: Option<Vec<std::path::PathBuf>> = flags
-    .env_file
-    .as_ref()
-    .map(|files| files.iter().map(PathBuf::from).collect());
-  load_env_variables_from_env_files(env_file_paths.as_ref(), flags.log_level);
+
+  if let Some(files) = &flags.env_file {
+    let cwd = match &flags.initial_cwd {
+      Some(cwd) => Cow::Borrowed(cwd),
+      None => match resolve_cwd(None) {
+        Ok(cwd) => {
+          flags.initial_cwd = Some(cwd.into_owned());
+          Cow::Borrowed(flags.initial_cwd.as_ref().unwrap())
+        }
+        Err(_) => Cow::Owned(PathBuf::from(".")),
+      },
+    };
+    load_env_variables_from_env_files(&cwd, files, flags.log_level);
+  }
 
   if deno_lib::args::has_flag_env_var("DENO_CONNECTED") {
     flags.tunnel = true;
@@ -790,12 +801,35 @@ async fn resolve_flags_and_init(
     );
   }
 
-  if let Ok(audit_path) = std::env::var("DENO_AUDIT_PERMISSIONS") {
-    let audit_file = deno_runtime::deno_permissions::AUDIT_FILE.set(
-      deno_core::parking_lot::Mutex::new(std::fs::File::create(audit_path)?),
-    );
-    if audit_file.is_err() {
-      log::warn!("⚠️  {}", colors::yellow("Audit file is already set"));
+  if let Ok(audit_target) = std::env::var("DENO_AUDIT_PERMISSIONS") {
+    use deno_runtime::deno_permissions::AuditSink;
+
+    let sink = if audit_target == "otel" {
+      AuditSink::Otel(|permission, value, stack| {
+        let stack = stack.unwrap_or_default().join("\n");
+        let kvs = HashMap::from([
+          ("deno.permission.type", permission),
+          ("deno.permission.value", value),
+          ("deno.permission.stack", stack.as_str()),
+        ]);
+        deno_telemetry::handle_log(
+          &log::Record::builder()
+            .level(log::Level::Info)
+            .target("deno.permission.access")
+            .args(format_args!("{permission}: {value}"))
+            .key_values(&kvs)
+            .build(),
+        );
+      })
+    } else {
+      AuditSink::File(deno_core::parking_lot::Mutex::new(
+        std::fs::File::create(audit_target)?,
+      ))
+    };
+
+    let result = deno_runtime::deno_permissions::AUDIT_SINK.set(sink);
+    if result.is_err() {
+      log::warn!("⚠️  {}", colors::yellow("Audit sink is already set"));
     }
   }
 
@@ -1034,7 +1068,10 @@ async fn initialize_tunnel(
 ) -> Result<(), deno_core::anyhow::Error> {
   let factory = CliFactory::from_flags(Arc::new(flags.clone()));
   let cli_options = factory.cli_options()?;
-  let deploy_config = cli_options.start_dir.to_deploy_config()?;
+  let start_dir = &cli_options.start_dir;
+  let deploy_config = cli_options
+    .start_dir
+    .to_deploy_config(FilePatterns::new_with_base(start_dir.dir_path()))?;
 
   let no_config = flags.config_flag == crate::args::ConfigFlag::Disabled;
 

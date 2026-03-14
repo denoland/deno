@@ -4,6 +4,7 @@ import { parse as parseToml } from "jsr:@std/toml@1";
 import {
   Condition,
   conditions,
+  type ConfigValue,
   createWorkflow,
   defineArtifact,
   defineExprObj,
@@ -17,18 +18,15 @@ import {
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 98;
+const cacheVersion = 102;
 
 const ubuntuX86Runner = "ubuntu-24.04";
-const ubuntuX86XlRunner = "ghcr.io/cirruslabs/ubuntu-runner-amd64:24.04";
-const ubuntuARMXlRunner = "ghcr.io/cirruslabs/ubuntu-runner-arm64:24.04-plus";
 const ubuntuARMRunner = "ubuntu-24.04-arm";
 const windowsX86Runner = "windows-2022";
 const windowsX86XlRunner = "windows-2022-xl";
 const windowsArmRunner = "windows-11-arm";
 const macosX86Runner = "macos-15-intel";
 const macosArmRunner = "macos-14";
-const selfHostedMacosArmRunner = "ghcr.io/cirruslabs/macos-runner:sonoma";
 
 // shared conditions
 const isDenoland = conditions.isRepository("denoland/deno");
@@ -49,14 +47,12 @@ const Runners = {
   linuxX86Xl: {
     os: "linux",
     arch: "x86_64",
-    runner: isDenoland.then(ubuntuX86XlRunner).else(ubuntuX86Runner),
-    testRunner: ubuntuX86Runner,
+    runner: ubuntuX86Runner,
   },
   linuxArm: {
     os: "linux",
     arch: "aarch64",
-    runner: ubuntuARMXlRunner,
-    testRunner: ubuntuARMRunner,
+    runner: ubuntuARMRunner,
   },
   macosX86: {
     os: "macos",
@@ -71,10 +67,7 @@ const Runners = {
   macosArmSelfHosted: {
     os: "macos",
     arch: "aarch64",
-    // actually use self-hosted runner only in denoland/deno on `main` branch and for tags (release) builds
-    runner: isDenoland.and(isMainOrTag).then(selfHostedMacosArmRunner)
-      .else(macosArmRunner),
-    testRunner: macosArmRunner,
+    runner: macosArmRunner,
   },
   windowsX86: {
     os: "windows",
@@ -93,6 +86,16 @@ const Runners = {
     runner: windowsArmRunner,
   },
 } as const;
+
+const denoCorePackageDirs = [
+  "libs/core_testing",
+  "libs/core",
+  "libs/core/examples/snapshot",
+  "libs/dcore",
+  "libs/ops",
+  "libs/ops/compile_test_runner",
+  "libs/serde_v8",
+];
 
 // discover test crates first so we know which workspace members are test packages
 const { testCrates, testPackageMembers } = resolveTestCrateTests();
@@ -188,6 +191,13 @@ CFLAGS=$CFLAGS
 " > $GITHUB_ENV`,
 };
 
+const S3Envs: Readonly<Record<string, ConfigValue>> = {
+  AWS_ACCESS_KEY_ID: "${{ vars.S3_ACCESS_KEY_ID }}",
+  AWS_SECRET_ACCESS_KEY: "${{ secrets.S3_SECRET_ACCESS_KEY }}",
+  AWS_ENDPOINT_URL_S3: "${{ vars.S3_ENDPOINT }}",
+  AWS_DEFAULT_REGION: "${{ vars.S3_REGION }}",
+};
+
 function handleBuildItems(items: {
   skip_pr?: Condition | true;
   skip?: Condition | boolean;
@@ -275,7 +285,7 @@ function createRestoreAndSaveCacheSteps(m: {
   const path = m.path.join("\n");
   const restoreCacheStep = step({
     name: `Restore cache ${m.name}`,
-    uses: "cirruslabs/cache/restore@v4",
+    uses: "actions/cache/restore@v4",
     with: {
       path,
       key: "never_saved",
@@ -284,7 +294,7 @@ function createRestoreAndSaveCacheSteps(m: {
   });
   const saveCacheStep = step({
     name: `Cache ${m.name}`,
-    uses: "cirruslabs/cache/save@v4",
+    uses: "actions/cache/save@v4",
     with: {
       path,
       // We force saving a new cache on every main run so that PRs can
@@ -467,15 +477,28 @@ const preBuildCheckStep = step({
   outputs: ["skip_build"] as const,
 });
 
+const denoCoreChangesCheckStep = step({
+  id: "deno_core_changes",
+  run: [
+    // Fetch the base SHA so it's available even in shallow clones
+    `git fetch --depth=1 origin \${{ github.event.pull_request.base.sha }}`,
+    `deno run -A tools/check_deno_core_changes.js \${{ github.event.pull_request.base.sha }}`,
+  ],
+  outputs: ["skip_deno_core_test"] as const,
+});
+
 const preBuildJob = job("pre_build", {
   name: "pre-build",
   runsOn: "ubuntu-latest",
-  steps: step.if(conditions.isDraftPr())(
+  steps: step.if(isPr)(
     cloneRepoStep,
-    preBuildCheckStep,
+    installDenoStep,
+    step.if(conditions.isDraftPr())(preBuildCheckStep),
+    denoCoreChangesCheckStep,
   ),
   outputs: {
     skip_build: preBuildCheckStep.outputs.skip_build,
+    skip_deno_core_test: denoCoreChangesCheckStep.outputs.skip_deno_core_test,
   },
 });
 
@@ -747,12 +770,17 @@ const buildJobs = buildItems.map((rawBuildItem) => {
           step.dependsOn(setupGcloudStep)({
             name: "Upload canary to dl.deno.land",
             if: isDenoland.and(isMainBranch),
+            env: S3Envs,
             run: [
               'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/',
               'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.sha256sum gs://dl.deno.land/canary/$(git rev-parse HEAD)/',
               'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.symcache gs://dl.deno.land/canary/$(git rev-parse HEAD)/',
+              'aws s3 sync ./target/release/ s3://dl-deno-land/canary/$(git rev-parse HEAD)/ --exclude "*" --include "*.zip"',
+              'aws s3 sync ./target/release/ s3://dl-deno-land/canary/$(git rev-parse HEAD)/ --exclude "*" --include "*.sha256sum"',
+              'aws s3 sync ./target/release/ s3://dl-deno-land/canary/$(git rev-parse HEAD)/ --exclude "*" --include "*.symcache"',
               "echo ${{ github.sha }} > canary-latest.txt",
               'gsutil -h "Cache-Control: no-cache" cp canary-latest.txt gs://dl.deno.land/canary-$(rustc -vV | sed -n "s|host: ||p")-latest.txt',
+              'aws s3 cp canary-latest.txt s3://dl-deno-land/canary-$(rustc -vV | sed -n "s|host: ||p")-latest.txt',
               "rm canary-latest.txt gha-creds-*.json",
             ],
           }),
@@ -845,19 +873,29 @@ const buildJobs = buildItems.map((rawBuildItem) => {
           step.dependsOn(setupGcloudStep)({
             name: "Upload release to dl.deno.land (unix)",
             if: isWindows.not(),
+            env: S3Envs,
             run: [
               'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/',
               'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.sha256sum gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/',
               'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.symcache gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/',
+              'aws s3 sync ./target/release/ s3://dl-deno-land/release/${GITHUB_REF#refs/*/}/ --exclude "*" --include "*.zip"',
+              'aws s3 sync ./target/release/ s3://dl-deno-land/release/${GITHUB_REF#refs/*/}/ --exclude "*" --include "*.sha256sum"',
+              'aws s3 sync ./target/release/ s3://dl-deno-land/release/${GITHUB_REF#refs/*/}/ --exclude "*" --include "*.symcache"',
             ],
           }, {
             name: "Upload release to dl.deno.land (windows)",
             if: isWindows,
-            env: { CLOUDSDK_PYTHON: "${{env.pythonLocation}}\\python.exe" },
+            env: {
+              ...S3Envs,
+              CLOUDSDK_PYTHON: "${{env.pythonLocation}}\\python.exe",
+            },
             run: [
               'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/',
               'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.sha256sum gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/',
               'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.symcache gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/',
+              'aws s3 sync ./target/release/ s3://dl-deno-land/release/${GITHUB_REF#refs/*/}/ --exclude "*" --include "*.zip"',
+              'aws s3 sync ./target/release/ s3://dl-deno-land/release/${GITHUB_REF#refs/*/}/ --exclude "*" --include "*.sha256sum"',
+              'aws s3 sync ./target/release/ s3://dl-deno-land/release/${GITHUB_REF#refs/*/}/ --exclude "*" --include "*.symcache"',
             ],
           }),
           {
@@ -1227,7 +1265,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
               "deno run -RWNE --allow-run --lock=tools/deno.lock.json --config tests/config/deno.json \\",
               "    ./tests/wpt/wpt.ts setup",
               "deno run -RWNE --allow-run --lock=tools/deno.lock.json --config tests/config/deno.json --unsafely-ignore-certificate-errors \\",
-              '    ./tests/wpt/wpt.ts run --quiet --binary="$DENO_BIN"',
+              '    ./tests/wpt/wpt.ts run --all --quiet --binary="$DENO_BIN"',
             ],
           },
           {
@@ -1240,7 +1278,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
               "deno run -RWNE --allow-run --lock=tools/deno.lock.json --config tests/config/deno.json \\",
               "    ./tests/wpt/wpt.ts setup",
               "deno run -RWNE --allow-run --lock=tools/deno.lock.json --config tests/config/deno.json --unsafely-ignore-certificate-errors \\",
-              '    ./tests/wpt/wpt.ts run --quiet --release --binary="$DENO_BIN" --json=wpt.json --wptreport=wptreport.json',
+              '    ./tests/wpt/wpt.ts run --all --quiet --release --binary="$DENO_BIN" --json=wpt.json --wptreport=wptreport.json',
             ],
           },
           {
@@ -1255,12 +1293,16 @@ const buildJobs = buildItems.map((rawBuildItem) => {
             if: isRelease.and(isLinux).and(isDenoland).and(isMainBranch).and(
               isNotTag,
             ),
+            env: S3Envs,
             run: [
               "gzip ./wptreport.json",
               'gsutil -h "Cache-Control: public, max-age=3600" cp ./wpt.json gs://dl.deno.land/wpt/$(git rev-parse HEAD).json',
               'gsutil -h "Cache-Control: public, max-age=3600" cp ./wptreport.json.gz gs://dl.deno.land/wpt/$(git rev-parse HEAD)-wptreport.json.gz',
+              "aws s3 cp ./wpt.json s3://dl-deno-land/wpt/$(git rev-parse HEAD).json",
+              "aws s3 cp ./wptreport.json.gz s3://dl-deno-land/wpt/$(git rev-parse HEAD)-wptreport.json.gz",
               "echo $(git rev-parse HEAD) > wpt-latest.txt",
               'gsutil -h "Cache-Control: no-cache" cp wpt-latest.txt gs://dl.deno.land/wpt-latest.txt',
+              "aws s3 cp wpt-latest.txt s3://dl-deno-land/wpt-latest.txt",
             ],
           }),
           {
@@ -1459,25 +1501,158 @@ const publishCanaryJob = job("publish-canary", {
       setupGcloudStep,
       {
         name: "Upload canary version file to dl.deno.land",
+        env: S3Envs,
         run: [
           "echo ${{ github.sha }} > canary-latest.txt",
           'gsutil -h "Cache-Control: no-cache" cp canary-latest.txt gs://dl.deno.land/canary-latest.txt',
+          "aws s3 cp canary-latest.txt s3://dl-deno-land/canary-latest.txt",
         ],
       },
     );
   })(),
 });
 
-// === lint ci status job (status check gate) ===
+// === deno_core test job ===
+// Ported from denoland/deno_core .github/workflows/ci-test/action.yml
+// Tests the merged deno_core crates (libs/*) using cargo nextest.
 
-const lintCiStatusJob = job("lint-ci-status", {
-  name: "lint ci status",
+// Cargo package names for the libs/* workspace members (merged from deno_core).
+const denoCorePackageNames = [
+  "deno_core",
+  "build-your-own-js-snapshot",
+  "dcore",
+  "deno_ops",
+  "deno_ops_compile_test_runner",
+  "serde_v8",
+  "deno_core_testing",
+];
+const denoCoreTestProfile = defineExprObj({
+  ...Runners.linuxX86Xl,
+  profile: "release",
+});
+const denoCoreTestCacheSteps = createCacheSteps({
+  ...denoCoreTestProfile,
+  cachePrefix: "deno-core-test",
+});
+const denoCoreTestJob = job("deno-core-test", {
+  name: `deno_core test linux-x86_64`,
+  needs: [preBuildJob],
+  if: preBuildJob.outputs.skip_build.notEquals("true")
+    .and(preBuildJob.outputs.skip_deno_core_test.notEquals("true")),
+  runsOn: denoCoreTestProfile.runner,
+  timeoutMinutes: 60,
+  defaults: {
+    run: {
+      shell: "bash",
+    },
+  },
+  env: {
+    CARGO_TERM_COLOR: "always",
+    RUST_BACKTRACE: "full",
+    RUST_LIB_BACKTRACE: 0,
+  },
+  steps: step.if(isNotTag)(
+    cloneRepoStep,
+    denoCoreTestCacheSteps.restoreCacheStep,
+    installRustStep,
+    installDenoStep,
+    step(sysRootConfig),
+    {
+      name: "Install cargo-binstall",
+      uses: "cargo-bins/cargo-binstall@main",
+    },
+    {
+      name: "Install nextest",
+      run: "cargo binstall cargo-nextest --secure --locked",
+    },
+    {
+      name: "Cargo nextest (release)",
+      run: [
+        `cargo nextest run --release`,
+        `  --features "deno_core/default deno_core/include_js_files_for_snapshotting deno_core/unsafe_use_unprotected_platform"`,
+        `  --tests --examples`,
+        `  ${denoCorePackageNames.map((p) => `-p ${p}`).join(" ")}`,
+      ].join(" \\\n    "),
+    },
+    {
+      // Ported from denoland/deno_core .github/workflows/ci-test-ops/action.yml
+      name: "Cargo nextest ops compile test runner (release)",
+      run: "cargo nextest run --release -p deno_ops_compile_test_runner",
+    },
+    {
+      name: "Cargo doc test",
+      run: `cargo test --doc --release ${
+        denoCorePackageNames.filter((p) =>
+          p !== "deno_ops_compile_test_runner" && p !== "dcore"
+        ).map((p) => `-p ${p}`).join(" ")
+      }`,
+    },
+    {
+      // Regression test for https://github.com/denoland/deno/pull/19615.
+      name: "Run examples (regression tests)",
+      run: [
+        "cargo run -p deno_core --example op2",
+        "cargo run -p deno_core --example op2 --features include_js_files_for_snapshotting",
+      ],
+    },
+    denoCoreTestCacheSteps.saveCacheStep,
+  ),
+});
+
+// === deno_core miri test job ===
+// Ported from denoland/deno_core .github/workflows/ci-test-miri/action.yml
+// Runs miri tests for deno_core using a nightly Rust toolchain.
+
+const miriNightlyToolchain = "nightly-2025-11-12";
+const denoCoreMiriJob = job("deno-core-miri", {
+  name: "deno_core miri linux-x86_64",
+  needs: [preBuildJob],
+  if: preBuildJob.outputs.skip_build.notEquals("true"),
+  runsOn: Runners.linuxX86Xl.runner,
+  timeoutMinutes: 60,
+  defaults: {
+    run: {
+      shell: "bash",
+    },
+  },
+  env: {
+    CARGO_TERM_COLOR: "always",
+    RUST_BACKTRACE: "full",
+    RUST_LIB_BACKTRACE: 0,
+  },
+  steps: step.if(isNotTag)(
+    cloneRepoStep,
+    {
+      name: "Install Rust (nightly)",
+      uses: "dtolnay/rust-toolchain@master",
+      with: {
+        toolchain: miriNightlyToolchain,
+      },
+    },
+    {
+      name: "Cargo test (miri)",
+      run: [
+        "cargo clean",
+        `rustup component add --toolchain ${miriNightlyToolchain} miri`,
+        "# This somehow prints errors in CI that don't show up locally",
+        `RUSTFLAGS=-Awarnings cargo +${miriNightlyToolchain} miri test -p deno_core`,
+      ],
+    },
+  ),
+});
+
+// === ci status job (status check gate) ===
+
+const ciStatusJob = job("ci-status", {
+  name: "ci status",
   // We use this job in the main branch rule status checks for PRs.
   // All jobs that are required to pass on a PR should be listed here.
   needs: [
     benchJob,
     ...buildJobs.map((j) => [j.buildJob, ...j.additionalJobs]).flat(),
     lintJob,
+    denoCoreTestJob,
+    denoCoreMiriJob,
   ],
   if: preBuildJob.outputs.skip_build.notEquals("true")
     .and(conditions.status.always()),
@@ -1527,7 +1702,9 @@ const workflow = createWorkflow({
     benchJob,
     ...buildJobs.map((j) => [j.buildJob, ...j.additionalJobs]).flat(),
     lintJob,
-    lintCiStatusJob,
+    denoCoreTestJob,
+    denoCoreMiriJob,
+    ciStatusJob,
     publishCanaryJob,
   ],
 });
@@ -1604,6 +1781,10 @@ function resolveWorkspaceCrates(testPackageMembers: Set<string>) {
       if (!testPackageMembers.has(member)) {
         ensureNoIntegrationTests(member, cargoToml);
       }
+    } else if (denoCorePackageDirs.includes(member)) {
+      // libs/* crates (merged from deno_core) have their own dedicated
+      // deno-core-test CI job, so skip them here.
+      continue;
     } else if (cargoToml.bin) {
       ensureNoIntegrationTests(member, cargoToml);
       binCrates.push(cargoToml.package.name);

@@ -6,8 +6,6 @@ use std::sync::Arc;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::futures::future::Shared;
-use deno_core::serde_json::json;
-use deno_path_util::url_to_file_path;
 use deno_resolver::deno_json::CompilerOptionsKey;
 use indexmap::IndexMap;
 use indexmap::IndexSet;
@@ -170,7 +168,7 @@ impl TsServer {
       }
       Self::Go(ts_server) => {
         let report = ts_server
-          .provide_diagnostics(module, snapshot, token)
+          .provide_diagnostics(module, &snapshot, token)
           .await?;
         let lsp::DocumentDiagnosticReport::Full(report) = report else {
           unreachable!(
@@ -188,7 +186,7 @@ impl TsServer {
     module: &DocumentModule,
     position: lsp::Position,
     context: lsp::ReferenceContext,
-    snapshot: Arc<StateSnapshot>,
+    snapshot: &Arc<StateSnapshot>,
     token: &CancellationToken,
   ) -> Result<Option<Vec<lsp::Location>>, AnyError> {
     match self {
@@ -228,20 +226,14 @@ impl TsServer {
             if !context.include_declaration && reference.is_definition {
               continue;
             }
-            let Some(location) =
-              reference.entry.to_location(&module, &snapshot)
+            let Some(location) = reference.entry.to_location(&module, snapshot)
             else {
               continue;
             };
             locations.insert(location);
           }
         }
-        let locations = if locations.is_empty() {
-          None
-        } else {
-          Some(locations.into_iter().collect())
-        };
-        Ok(locations)
+        Ok(Some(locations.into_iter().collect()))
       }
       Self::Go(ts_server) => {
         ts_server
@@ -276,7 +268,7 @@ impl TsServer {
         let code_lenses = crate::lsp::code_lens::collect_tsc(
           &module.uri,
           settings,
-          module.line_index.clone(),
+          &module.line_index,
           &navigation_tree,
           token,
         )?;
@@ -317,7 +309,7 @@ impl TsServer {
               return Err(anyhow!("request cancelled"));
             }
             item.collect_document_symbols(
-              module.line_index.clone(),
+              &module.line_index,
               &mut document_symbols,
             );
           }
@@ -499,18 +491,8 @@ impl TsServer {
             o.contains(&lsp::CodeActionKind::SOURCE_ORGANIZE_IMPORTS)
           })
         {
-          let document_has_errors = context.diagnostics.iter().any(|d| {
-            // Assume diagnostics without a severity are errors
-            d.severity
-              .is_none_or(|s| s == lsp::DiagnosticSeverity::ERROR)
-          });
           let organize_imports_edit = ts_server
-            .organize_imports(
-              snapshot.clone(),
-              module,
-              document_has_errors,
-              token,
-            )
+            .organize_imports(snapshot.clone(), module, token)
             .await
             .map_err(|err| {
               anyhow!(
@@ -518,21 +500,26 @@ impl TsServer {
                 err
               )
             })?;
-          if !organize_imports_edit.is_empty() {
-            let changes_with_modules = organize_imports_edit
+          let text_edits = organize_imports_edit.first().map(|c| {
+            c.text_changes
               .iter()
-              .map(|c| (c, module))
-              .collect::<IndexMap<_, _>>();
+              .map(|c| c.as_text_edit(&module.line_index))
+              .collect::<Vec<_>>()
+          });
+          if let Some(text_edits) = text_edits
+            && !text_edits.is_empty()
+          {
             actions.push(lsp::CodeActionOrCommand::CodeAction(
               lsp::CodeAction {
-                title: "Organize imports".to_string(),
+                title: "Organize Imports".to_string(),
                 kind: Some(lsp::CodeActionKind::SOURCE_ORGANIZE_IMPORTS),
-                edit: file_text_changes_to_workspace_edit(
-                  changes_with_modules,
-                  &snapshot,
-                  token,
-                )?,
-                data: Some(json!({ "uri": &module.uri})),
+                edit: Some(lsp::WorkspaceEdit {
+                  changes: Some(
+                    std::iter::once((module.uri.as_ref().clone(), text_edits))
+                      .collect(),
+                  ),
+                  ..Default::default()
+                }),
                 ..Default::default()
               },
             ));
@@ -543,7 +530,7 @@ impl TsServer {
       }
       Self::Go(ts_server) => {
         ts_server
-          .provide_code_actions(module, range, context, snapshot, token)
+          .provide_code_actions(module, range, context, &snapshot, token)
           .await
       }
     }
@@ -571,11 +558,9 @@ impl TsServer {
             highlights
               .into_iter()
               .map(|dh| {
-                dh.to_highlight(module.line_index.clone(), token).map_err(
-                  |err| {
-                    anyhow!("Unable to convert document highlights: {:#}", err)
-                  },
-                )
+                dh.to_highlight(&module.line_index, token).map_err(|err| {
+                  anyhow!("Unable to convert document highlights: {:#}", err)
+                })
               })
               .collect::<Result<Vec<_>, _>>()
               .map(|s| s.into_iter().flatten().collect())
@@ -594,7 +579,7 @@ impl TsServer {
     &self,
     module: &DocumentModule,
     position: lsp::Position,
-    snapshot: Arc<StateSnapshot>,
+    snapshot: &Arc<StateSnapshot>,
     token: &CancellationToken,
   ) -> Result<Option<lsp::GotoDefinitionResponse>, AnyError> {
     match self {
@@ -607,16 +592,16 @@ impl TsServer {
             token,
           )
           .await?;
-        definition_info
-          .map(|definition_info| {
-            definition_info
-              .to_definition(module, &snapshot, token)
-              .map_err(|err| {
-                anyhow!("Unable to convert definition info: {:#}", err)
-              })
-          })
-          .transpose()
-          .map(|d| d.flatten())
+        super::tsc::DocumentSpan::collect_into_goto_definition_response(
+          definition_info
+            .iter()
+            .flat_map(|i| &i.definitions)
+            .flatten()
+            .map(|i| (&i.document_span, module)),
+          snapshot,
+          token,
+        )
+        .map_err(|err| anyhow!("Unable to convert definition info: {:#}", err))
       }
       Self::Go(ts_server) => {
         ts_server
@@ -630,7 +615,7 @@ impl TsServer {
     &self,
     module: &DocumentModule,
     position: lsp::Position,
-    snapshot: Arc<StateSnapshot>,
+    snapshot: &Arc<StateSnapshot>,
     token: &CancellationToken,
   ) -> Result<Option<lsp::request::GotoTypeDefinitionResponse>, AnyError> {
     match self {
@@ -643,23 +628,17 @@ impl TsServer {
             token,
           )
           .await?;
-        definition_info
-          .map(|definition_info| {
-            let mut location_links = Vec::new();
-            for info in definition_info {
-              if token.is_cancelled() {
-                return Err(anyhow!("request cancelled"));
-              }
-              if let Some(link) = info.document_span.to_link(module, &snapshot)
-              {
-                location_links.push(link);
-              }
-            }
-            Ok(lsp::request::GotoTypeDefinitionResponse::Link(
-              location_links,
-            ))
-          })
-          .transpose()
+        super::tsc::DocumentSpan::collect_into_goto_definition_response(
+          definition_info
+            .iter()
+            .flatten()
+            .map(|i| (&i.document_span, module)),
+          snapshot,
+          token,
+        )
+        .map_err(|err| {
+          anyhow!("Unable to convert type definition info: {:#}", err)
+        })
       }
       Self::Go(ts_server) => {
         ts_server
@@ -704,7 +683,7 @@ impl TsServer {
           .map(|completion_info| {
             completion_info
               .as_completion_response(
-                module.line_index.clone(),
+                &module.line_index,
                 &snapshot
                   .config
                   .language_settings_for_specifier(&module.specifier)
@@ -796,7 +775,7 @@ impl TsServer {
     document: &Document,
     module: &DocumentModule,
     position: lsp::Position,
-    snapshot: Arc<StateSnapshot>,
+    snapshot: &Arc<StateSnapshot>,
     token: &CancellationToken,
   ) -> Result<Option<lsp::request::GotoImplementationResponse>, AnyError> {
     match self {
@@ -835,22 +814,16 @@ impl TsServer {
               .extend(implementations.into_iter().map(|i| (i, module.clone())))
           }
         }
-        let links = implementations_with_modules
-          .iter()
-          .flat_map(|(i, module)| {
-            if token.is_cancelled() {
-              return Some(Err(anyhow!("request cancelled")));
-            }
-            Some(Ok(i.to_link(module, &snapshot)?))
-          })
-          .collect::<Result<Vec<_>, _>>()?;
-        if links.is_empty() {
-          Ok(None)
-        } else {
-          Ok(Some(lsp::GotoDefinitionResponse::Link(
-            links.into_iter().collect(),
-          )))
-        }
+        super::tsc::DocumentSpan::collect_into_goto_definition_response(
+          implementations_with_modules
+            .iter()
+            .map(|(i, m)| (&i.document_span, m.as_ref())),
+          snapshot,
+          token,
+        )
+        .map_err(|err| {
+          anyhow!("Unable to convert implementation info: {:#}", err)
+        })
       }
       Self::Go(ts_server) => {
         ts_server
@@ -879,7 +852,7 @@ impl TsServer {
                 return Err(anyhow!("request cancelled"));
               }
               Ok(span.to_folding_range(
-                module.line_index.clone(),
+                &module.line_index,
                 module.text.as_bytes(),
                 snapshot.config.line_folding_only_capable(),
               ))
@@ -903,7 +876,7 @@ impl TsServer {
     document: &Document,
     module: &DocumentModule,
     item: &lsp::CallHierarchyItem,
-    snapshot: Arc<StateSnapshot>,
+    snapshot: &Arc<StateSnapshot>,
     token: &CancellationToken,
   ) -> Result<Option<Vec<lsp::CallHierarchyIncomingCall>>, AnyError> {
     match self {
@@ -936,21 +909,15 @@ impl TsServer {
           incoming_calls_with_modules
             .extend(incoming_calls.into_iter().map(|c| (c, module.clone())));
         }
-        let root_path = snapshot
-          .config
-          .root_url()
-          .and_then(|s| url_to_file_path(s).ok());
         let incoming_calls = incoming_calls_with_modules
           .iter()
           .flat_map(|(c, module)| {
             if token.is_cancelled() {
               return Some(Err(anyhow!("request cancelled")));
             }
-            Some(Ok(c.try_resolve_call_hierarchy_incoming_call(
-              module,
-              &snapshot,
-              root_path.as_deref(),
-            )?))
+            Some(Ok(
+              c.try_resolve_call_hierarchy_incoming_call(module, snapshot)?,
+            ))
           })
           .collect::<Result<Vec<_>, _>>()?;
         Ok(Some(incoming_calls))
@@ -967,7 +934,7 @@ impl TsServer {
     &self,
     module: &DocumentModule,
     item: &lsp::CallHierarchyItem,
-    snapshot: Arc<StateSnapshot>,
+    snapshot: &Arc<StateSnapshot>,
     token: &CancellationToken,
   ) -> Result<Option<Vec<lsp::CallHierarchyOutgoingCall>>, AnyError> {
     match self {
@@ -980,21 +947,15 @@ impl TsServer {
             token,
           )
           .await?;
-        let root_path = snapshot
-          .config
-          .root_url()
-          .and_then(|s| url_to_file_path(s).ok());
         let outgoing_calls = outgoing_calls
           .iter()
           .flat_map(|c| {
             if token.is_cancelled() {
               return Some(Err(anyhow!("request cancelled")));
             }
-            Some(Ok(c.try_resolve_call_hierarchy_outgoing_call(
-              module,
-              &snapshot,
-              root_path.as_deref(),
-            )?))
+            Some(Ok(
+              c.try_resolve_call_hierarchy_outgoing_call(module, snapshot)?,
+            ))
           })
           .collect::<Result<_, _>>()?;
         Ok(Some(outgoing_calls))
@@ -1011,7 +972,7 @@ impl TsServer {
     &self,
     module: &DocumentModule,
     position: lsp::Position,
-    snapshot: Arc<StateSnapshot>,
+    snapshot: &Arc<StateSnapshot>,
     token: &CancellationToken,
   ) -> Result<Option<Vec<lsp::CallHierarchyItem>>, AnyError> {
     match self {
@@ -1026,22 +987,15 @@ impl TsServer {
           .await?;
         items
           .map(|items| {
-            let items = items.into_vec();
-            let root_path = snapshot
-              .config
-              .root_url()
-              .and_then(|s| url_to_file_path(s).ok());
             let items = items
+              .into_vec()
               .into_iter()
               .flat_map(|item| {
                 if token.is_cancelled() {
                   return Some(Err(anyhow!("request cancelled")));
                 }
-                let item = item.try_resolve_call_hierarchy_item(
-                  module,
-                  &snapshot,
-                  root_path.as_deref(),
-                )?;
+                let item =
+                  item.try_resolve_call_hierarchy_item(module, snapshot)?;
                 Some(Ok(item))
               })
               .collect::<Result<Vec<_>, _>>()?;
@@ -1065,7 +1019,7 @@ impl TsServer {
     position: lsp::Position,
     new_name: &str,
     language_server: &language_server::Inner,
-    snapshot: Arc<StateSnapshot>,
+    snapshot: &Arc<StateSnapshot>,
     token: &CancellationToken,
   ) -> Result<Option<lsp::WorkspaceEdit>, AnyError> {
     match self {
@@ -1150,9 +1104,8 @@ impl TsServer {
               token,
             )
             .await?;
-          selection_ranges.push(
-            selection_range.to_selection_range(module.line_index.clone()),
-          );
+          selection_ranges
+            .push(selection_range.to_selection_range(&module.line_index));
         }
         Ok(Some(selection_ranges))
       }
@@ -1182,7 +1135,7 @@ impl TsServer {
               token,
             )
             .await?
-            .to_semantic_tokens(module.line_index.clone(), token),
+            .to_semantic_tokens(&module.line_index, token),
           // TODO(nayeemrmn): Fix when tsgo supports semantic tokens.
           Self::Go(_) => Ok(Default::default()),
         }
@@ -1222,7 +1175,7 @@ impl TsServer {
           token,
         )
         .await?
-        .to_semantic_tokens(module.line_index.clone(), token)?,
+        .to_semantic_tokens(&module.line_index, token)?,
       // TODO(nayeemrmn): Fix when tsgo supports semantic tokens.
       Self::Go(_) => Default::default(),
     };
@@ -1358,17 +1311,15 @@ impl TsServer {
     &self,
     module: &DocumentModule,
     range: lsp::Range,
-    snapshot: Arc<StateSnapshot>,
+    snapshot: &Arc<StateSnapshot>,
     token: &CancellationToken,
   ) -> Result<Option<Vec<lsp::InlayHint>>, AnyError> {
     match self {
       Self::Js(ts_server) => {
-        let text_span =
-          tsc::TextSpan::from_range(range, module.line_index.clone()).map_err(
-            |err| {
-              anyhow!("Failed to convert range to tsc text span: {:#}", err)
-            },
-          )?;
+        let text_span = tsc::TextSpan::from_range(range, &module.line_index)
+          .map_err(|err| {
+            anyhow!("Failed to convert range to tsc text span: {:#}", err)
+          })?;
         let mut inlay_hints = ts_server
           .provide_inlay_hints(snapshot.clone(), module, text_span, token)
           .await;
@@ -1389,7 +1340,7 @@ impl TsServer {
                 if token.is_cancelled() {
                   return Err(anyhow!("request cancelled"));
                 }
-                Ok(inlay_hint.to_lsp(module, &snapshot))
+                Ok(inlay_hint.to_lsp(module, snapshot))
               })
               .collect()
           })
@@ -1406,7 +1357,7 @@ impl TsServer {
   pub async fn provide_workspace_symbol(
     &self,
     query: &str,
-    snapshot: Arc<StateSnapshot>,
+    snapshot: &Arc<StateSnapshot>,
     token: &CancellationToken,
   ) -> Result<Option<Vec<lsp::SymbolInformation>>, AnyError> {
     match self {
@@ -1458,7 +1409,7 @@ impl TsServer {
             Some(Ok(item.to_symbol_information(
               scope.map(|s| s.as_ref()),
               compiler_options_key,
-              &snapshot,
+              snapshot,
             )?))
           })
           .collect::<Result<Vec<_>, _>>()?;

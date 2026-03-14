@@ -1,5 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::ffi::OsString;
@@ -29,14 +30,29 @@ use lsp_types::CodeActionKindLiteralSupport;
 use lsp_types::CodeActionLiteralSupport;
 use lsp_types::CompletionClientCapabilities;
 use lsp_types::CompletionItemCapability;
+use lsp_types::CompletionItemCapabilityResolveSupport;
+use lsp_types::CompletionItemKindCapability;
+use lsp_types::CompletionItemTag;
+use lsp_types::CompletionListCapability;
+use lsp_types::DiagnosticClientCapabilities;
 use lsp_types::FoldingRangeClientCapabilities;
 use lsp_types::HoverClientCapabilities;
 use lsp_types::InitializeParams;
+use lsp_types::InsertTextMode;
+use lsp_types::InsertTextModeSupport;
 use lsp_types::MarkupKind;
+use lsp_types::ParameterInformationSettings;
+use lsp_types::SignatureHelpClientCapabilities;
+use lsp_types::SignatureInformationSettings;
+use lsp_types::SymbolKindCapability;
+use lsp_types::SymbolTag;
+use lsp_types::TagSupport;
 use lsp_types::TextDocumentClientCapabilities;
 use lsp_types::TextDocumentSyncClientCapabilities;
 use lsp_types::Uri;
 use lsp_types::WorkspaceClientCapabilities;
+use lsp_types::WorkspaceSymbolClientCapabilities;
+use lsp_types::WorkspaceSymbolResolveSupportCapability;
 use once_cell::sync::Lazy;
 use parking_lot::Condvar;
 use parking_lot::Mutex;
@@ -56,6 +72,7 @@ use crate::eprintln;
 use crate::jsr_registry_url;
 use crate::npm_registry_url;
 use crate::print::spawn_thread;
+use crate::tsgo_prebuilt_path;
 
 static CONTENT_TYPE_REG: Lazy<Regex> =
   lazy_regex::lazy_regex!(r"(?i)^content-length:\s+(\d+)");
@@ -264,8 +281,62 @@ impl InitializeParamsBuilder {
             completion: Some(CompletionClientCapabilities {
               completion_item: Some(CompletionItemCapability {
                 snippet_support: Some(true),
-                ..Default::default()
+                commit_characters_support: Some(true),
+                documentation_format: Some(vec![
+                  MarkupKind::Markdown,
+                  MarkupKind::PlainText,
+                ]),
+                deprecated_support: Some(true),
+                preselect_support: Some(true),
+                tag_support: Some(TagSupport {
+                  value_set: vec![CompletionItemTag::DEPRECATED],
+                }),
+                insert_replace_support: Some(true),
+                resolve_support: Some(CompletionItemCapabilityResolveSupport {
+                  properties: vec![
+                    "documentation".to_string(),
+                    "detail".to_string(),
+                    "additionalTextEdits".to_string(),
+                  ],
+                }),
+                insert_text_mode_support: Some(InsertTextModeSupport {
+                  value_set: vec![
+                    InsertTextMode::AS_IS,
+                    InsertTextMode::ADJUST_INDENTATION,
+                  ],
+                }),
+                label_details_support: Some(true),
               }),
+              completion_item_kind: Some(CompletionItemKindCapability {
+                value_set: Some(
+                  (1..=25)
+                    .map(|n| serde_json::from_value(json!(n)).unwrap())
+                    .collect(),
+                ),
+              }),
+              context_support: Some(true),
+              insert_text_mode: Some(InsertTextMode::ADJUST_INDENTATION),
+              completion_list: Some(CompletionListCapability {
+                item_defaults: Some(vec![
+                  "commitCharacters".to_string(),
+                  "editRange".to_string(),
+                  "insertTextFormat".to_string(),
+                  "insertTextMode".to_string(),
+                  "data".to_string(),
+                ]),
+              }),
+              ..Default::default()
+            }),
+            definition: Some(lsp::GotoCapability {
+              link_support: Some(true),
+              ..Default::default()
+            }),
+            type_definition: Some(lsp::GotoCapability {
+              link_support: Some(true),
+              ..Default::default()
+            }),
+            implementation: Some(lsp::GotoCapability {
+              link_support: Some(true),
               ..Default::default()
             }),
             hover: Some(HoverClientCapabilities {
@@ -275,7 +346,24 @@ impl InitializeParamsBuilder {
               ]),
               ..Default::default()
             }),
-            diagnostic: Some(Default::default()),
+            signature_help: Some(SignatureHelpClientCapabilities {
+              signature_information: Some(SignatureInformationSettings {
+                documentation_format: Some(vec![
+                  MarkupKind::Markdown,
+                  MarkupKind::PlainText,
+                ]),
+                parameter_information: Some(ParameterInformationSettings {
+                  label_offset_support: Some(true),
+                }),
+                active_parameter_support: Some(true),
+              }),
+              context_support: Some(true),
+              ..Default::default()
+            }),
+            diagnostic: Some(DiagnosticClientCapabilities {
+              related_document_support: Some(true),
+              ..Default::default()
+            }),
             folding_range: Some(FoldingRangeClientCapabilities {
               line_folding_only: Some(true),
               ..Default::default()
@@ -289,6 +377,22 @@ impl InitializeParamsBuilder {
             ..Default::default()
           }),
           workspace: Some(WorkspaceClientCapabilities {
+            symbol: Some(WorkspaceSymbolClientCapabilities {
+              symbol_kind: Some(SymbolKindCapability {
+                value_set: Some(
+                  (1..=26)
+                    .map(|n| serde_json::from_value(json!(n)).unwrap())
+                    .collect(),
+                ),
+              }),
+              tag_support: Some(TagSupport {
+                value_set: vec![SymbolTag::DEPRECATED],
+              }),
+              resolve_support: Some(WorkspaceSymbolResolveSupportCapability {
+                properties: vec!["location.range".to_string()],
+              }),
+              ..Default::default()
+            }),
             configuration: Some(true),
             diagnostics: Some(lsp::DiagnosticWorkspaceClientCapabilities {
               refresh_support: Some(true),
@@ -580,6 +684,7 @@ impl LspClientBuilder {
       // turn on diagnostic synchronization communication
       .env("DENO_INTERNAL_DIAGNOSTIC_BATCH_NOTIFICATIONS", "1")
       .env("DENO_NO_UPDATE_CHECK", "1")
+      .env("DENO_TSGO_PATH", tsgo_prebuilt_path())
       .args(args)
       .stdin(Stdio::piped())
       .stdout(Stdio::piped());
@@ -1527,6 +1632,9 @@ pub struct SourceFile {
 
 impl SourceFile {
   pub fn new(path: PathRef, src: String) -> Self {
+    let path = PathRef::new(deno_path_util::normalize_path(Cow::Borrowed(
+      path.as_ref(),
+    )));
     path.write(&src);
     Self::new_in_mem(path, src)
   }
@@ -1553,7 +1661,7 @@ impl SourceFile {
       "vento" => "vento",
       "njk" => "nunjucks",
       "nunjucks" => "nunjucks",
-      other => panic!("unsupported file extension: {other}"),
+      _ => "plaintext",
     };
     Self {
       path,
@@ -1569,6 +1677,10 @@ impl SourceFile {
 
   pub fn range_of_nth(&self, n: usize, text: &str) -> lsp::Range {
     range_of_nth(n, text, &self.src)
+  }
+
+  pub fn path(&self) -> &PathRef {
+    &self.path
   }
 
   pub fn url(&self) -> Url {

@@ -74,6 +74,9 @@ use crate::npm::CliNpmResolver;
 use crate::resolver::CliCjsTracker;
 use crate::sys::CliSys;
 use crate::util::archive;
+use crate::util::env::handle_dotenv_error;
+use crate::util::env::handle_dotenv_io_error;
+use crate::util::env::handle_dotenv_not_found;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 
@@ -711,22 +714,45 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       }),
     };
 
-    let env_vars_from_env_file = match self.cli_options.env_file_name() {
-      Some(env_filenames) => {
-        let mut aggregated_env_vars = IndexMap::new();
-        for env_filename in env_filenames.iter().rev() {
-          log::info!(
-            "{} Environment variables from the file \"{}\" were embedded in the generated executable file",
-            crate::colors::yellow("Warning"),
-            env_filename
-          );
-
-          let env_vars = get_file_env_vars(env_filename.to_string())?;
-          aggregated_env_vars.extend(env_vars);
-        }
-        aggregated_env_vars
+    let env_vars_from_env_file = {
+      let mut aggregated_env_vars = IndexMap::new();
+      for env_file_name in self.cli_options.env_file_names().rev() {
+        match deno_dotenv::find_path_and_content(
+          &CliSys::default(),
+          self.cli_options.initial_cwd(),
+          env_file_name,
+        ) {
+          Ok(Some((env_file_path, content))) => {
+            match get_file_env_vars(&content) {
+              Ok(env_vars) => {
+                aggregated_env_vars.extend(env_vars);
+                log::info!(
+                  "{} Environment variables from the file \"{}\" were embedded in the generated executable file",
+                  crate::colors::yellow("Warning"),
+                  env_file_path.display()
+                );
+              }
+              Err(e) => {
+                handle_dotenv_error(
+                  &e,
+                  &env_file_path,
+                  self.cli_options.log_level(),
+                );
+              }
+            };
+          }
+          Ok(None) => {
+            handle_dotenv_not_found(
+              env_file_name,
+              self.cli_options.log_level(),
+            );
+          }
+          Err(e) => {
+            handle_dotenv_io_error(&e, self.cli_options.log_level());
+          }
+        };
       }
-      None => Default::default(),
+      aggregated_env_vars
     };
 
     output_vfs(&vfs, display_output_filename);
@@ -1266,10 +1292,13 @@ fn get_dev_binary_path() -> Option<OsString> {
 /// This function returns the environment variables specified
 /// in the passed environment file.
 fn get_file_env_vars(
-  filename: String,
-) -> Result<IndexMap<String, String>, deno_dotenv::Error> {
+  content: &str,
+) -> Result<IndexMap<String, String>, deno_dotenv::ParseError> {
   let mut file_env_vars = IndexMap::new();
-  for item in deno_dotenv::from_path_sanitized_iter(filename)? {
+  for item in deno_dotenv::from_content_sanitized_iter_with_substitution(
+    &CliSys::default(),
+    content,
+  )? {
     let Ok((key, val)) = item else {
       continue; // this failure will be warned about on load
     };

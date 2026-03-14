@@ -982,6 +982,7 @@ Object.assign(strict, {
   notEqual: notStrictEqual,
   notStrictEqual,
   ok,
+  partialDeepStrictEqual,
   rejects,
   strict,
   strictEqual,

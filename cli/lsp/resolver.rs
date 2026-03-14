@@ -81,6 +81,7 @@ use crate::npm::CliNpmInstaller;
 use crate::npm::CliNpmRegistryInfoProvider;
 use crate::npm::CliNpmResolver;
 use crate::npm::CliNpmResolverCreateOptions;
+use crate::npm::NpmPackumentFormat;
 use crate::resolver::CliIsCjsResolver;
 use crate::resolver::CliNpmReqResolver;
 use crate::resolver::CliResolver;
@@ -219,19 +220,19 @@ impl LspScopedResolver {
           }
           CliNpmResolver::Managed(managed_npm_resolver) => {
             CliNpmResolverCreateOptions::Managed({
-              let sys = CliSys::default();
+              let sys = &factory.sys;
               let npmrc = self
                 .config_data
                 .as_ref()
                 .and_then(|d| d.npmrc.clone())
-                .unwrap_or_else(|| Arc::new(create_default_npmrc(&sys)));
+                .unwrap_or_else(|| Arc::new(create_default_npmrc(sys)));
               let npm_cache_dir = Arc::new(NpmCacheDir::new(
-                &sys,
+                sys,
                 managed_npm_resolver.global_cache_root_path().to_path_buf(),
                 npmrc.get_all_known_registries_urls(),
               ));
               ManagedNpmResolverCreateOptions {
-                sys,
+                sys: factory.node_resolution_sys.clone(),
                 npm_cache_dir,
                 maybe_node_modules_path: managed_npm_resolver
                   .root_node_modules_path()
@@ -906,11 +907,13 @@ impl<'a> ResolverFactory<'a> {
       let npm_client = Arc::new(CliNpmCacheHttpClient::new(
         http_client_provider.clone(),
         pb.clone(),
+        NpmPackumentFormat::Abbreviated,
       ));
       let registry_info_provider = Arc::new(CliNpmRegistryInfoProvider::new(
         npm_cache.clone(),
         npm_client.clone(),
         npmrc.clone(),
+        NpmPackumentFormat::Abbreviated,
       ));
       let link_packages: WorkspaceNpmLinkPackagesRc = self
         .config_data
@@ -989,7 +992,7 @@ impl<'a> ResolverFactory<'a> {
       }
 
       CliNpmResolverCreateOptions::Managed(ManagedNpmResolverCreateOptions {
-        sys: CliSys::default(),
+        sys: self.node_resolution_sys.clone(),
         npm_cache_dir,
         maybe_node_modules_path,
         npmrc,

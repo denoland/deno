@@ -34,6 +34,7 @@ import {
   op_preview_entries,
 } from "ext:core/ops";
 import * as ops from "ext:core/ops";
+import { URLPrototype } from "ext:deno_web/00_url.js";
 const {
   AggregateError,
   AggregateErrorPrototype,
@@ -71,6 +72,7 @@ const {
   DatePrototype,
   DatePrototypeGetTime,
   DatePrototypeToISOString,
+  DatePrototypeToString,
   Error,
   ErrorCaptureStackTrace,
   ErrorPrototype,
@@ -193,6 +195,7 @@ const {
   Uint32Array,
   WeakMap,
   WeakMapPrototype,
+  JSONStringify,
   WeakSet,
   WeakSetPrototype,
 } = primordials;
@@ -245,6 +248,34 @@ class AssertionError extends Error {
 function assert(cond, msg = "Assertion failed") {
   if (!cond) {
     throw new AssertionError(msg);
+  }
+}
+
+// Attempt to JSON.stringify, returning "[Circular]" only for circular
+// reference errors (matching Node.js behavior).
+const firstErrorLine = (error) =>
+  StringPrototypeSplit(error.message, "\n", 1)[0];
+let CIRCULAR_ERROR_MESSAGE;
+function tryStringify(arg) {
+  try {
+    return JSONStringify(arg);
+  } catch (err) {
+    if (!CIRCULAR_ERROR_MESSAGE) {
+      try {
+        const a = {};
+        a.a = a;
+        JSONStringify(a);
+      } catch (circularError) {
+        CIRCULAR_ERROR_MESSAGE = firstErrorLine(circularError);
+      }
+    }
+    if (
+      err.name === "TypeError" &&
+      firstErrorLine(err) === CIRCULAR_ERROR_MESSAGE
+    ) {
+      return "[Circular]";
+    }
+    throw err;
   }
 }
 
@@ -368,6 +399,12 @@ const kArrayExtrasType = 2;
 
 const coreModuleRegExp = new SafeRegExp(
   /^ {4}at (?:[^/\\(]+ \(|)node:(.+):\d+:\d+\)?$/,
+);
+const extModuleRegExp = new SafeRegExp(
+  /^ {4}at (?:[^/\\(]+ \(|)ext:.+:\d+:\d+\)?$/,
+);
+const filteredExtFrameRegExp = new SafeRegExp(
+  /^ {4}at (?:__node_internal_\S+|eventLoopTick|denoErrorToNodeError|__drainNextTickAndMacrotasks) /,
 );
 
 const kMinLineLength = 16;
@@ -841,14 +878,16 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
         (proxyDetails === null && isDate(value)) ||
         (proxyDetails !== null && isDate(proxyDetails[0]))
       ) {
-        const date = proxyDetails?.[0] ?? value;
-        if (NumberIsNaN(DatePrototypeGetTime(date))) {
-          return ctx.stylize("Invalid Date", "date");
-        } else {
-          base = DatePrototypeToISOString(date);
-          if (keys.length === 0 && protoProps === undefined) {
-            return ctx.stylize(base, "date");
-          }
+        value = proxyDetails?.[0] ?? value;
+        base = NumberIsNaN(DatePrototypeGetTime(value))
+          ? DatePrototypeToString(value)
+          : DatePrototypeToISOString(value);
+        const prefix = getPrefix(constructor, tag, "Date");
+        if (prefix !== "Date ") {
+          base = `${prefix}${base}`;
+        }
+        if (keys.length === 0 && protoProps === undefined) {
+          return ctx.stylize(base, "date");
         }
       } else if (
         proxyDetails === null &&
@@ -960,6 +999,14 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
         formatter = FunctionPrototypeBind(formatNamespaceObject, null, keys);
       } else if (isBoxedPrimitive(value)) {
         base = getBoxedBase(value, ctx, keys, constructor, tag);
+        if (keys.length === 0 && protoProps === undefined) {
+          return base;
+        }
+      } else if (
+        ObjectPrototypeIsPrototypeOf(URLPrototype, value) &&
+        !(recurseTimes > ctx.depth && ctx.depth !== null)
+      ) {
+        base = value.href;
         if (keys.length === 0 && protoProps === undefined) {
           return base;
         }
@@ -1975,8 +2022,17 @@ function formatError(err, constructor, tag, ctx, keys) {
       nodeModule ??= lazyLoadModule();
       for (let i = 0; i < lines.length; i++) {
         let line = lines[i];
+        if (
+          RegExpPrototypeExec(filteredExtFrameRegExp, line) !== null &&
+          RegExpPrototypeExec(extModuleRegExp, line) !== null
+        ) {
+          continue;
+        }
         const core = RegExpPrototypeExec(coreModuleRegExp, line);
-        if (core !== null && nodeModule.isBuiltin(core[1])) {
+        if (
+          (core !== null && nodeModule.isBuiltin(core[1])) ||
+          RegExpPrototypeExec(extModuleRegExp, line) !== null
+        ) {
           newStack += `\n${ctx.stylize(line, "undefined")}`;
         } else {
           newStack += "\n";
@@ -1995,7 +2051,16 @@ function formatError(err, constructor, tag, ctx, keys) {
         }
       }
     } else {
-      newStack += `\n${ArrayPrototypeJoin(lines, "\n")}`;
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        if (
+          RegExpPrototypeExec(filteredExtFrameRegExp, line) !== null &&
+          RegExpPrototypeExec(extModuleRegExp, line) !== null
+        ) {
+          continue;
+        }
+        newStack += `\n${line}`;
+      }
     }
     stack = newStack;
   }
@@ -2161,21 +2226,20 @@ function formatProperty(
     return str;
   }
   if (typeof key === "symbol") {
-    name = `[${ctx.stylize(maybeQuoteSymbol(key, ctx), "symbol")}]`;
-  } else if (key === "__proto__") {
-    name = "['__proto__']";
-  } else if (desc.enumerable === false) {
-    const tmp = StringPrototypeReplace(
-      key,
+    const tmp = RegExpPrototypeSymbolReplace(
       strEscapeSequencesReplacer,
+      SymbolPrototypeToString(key),
       escapeFn,
     );
-
-    name = `[${tmp}]`;
+    name = ctx.stylize(tmp, "symbol");
   } else if (keyStrRegExp.test(key)) {
-    name = ctx.stylize(key, "name");
+    name = key === "__proto__" ? "['__proto__']" : ctx.stylize(key, "name");
   } else {
     name = ctx.stylize(quoteString(key, ctx), "string");
+  }
+
+  if (desc.enumerable === false) {
+    name = `[${name}]`;
   }
   return `${name}:${extra}${str}`;
 }
@@ -3500,6 +3564,9 @@ function inspectArgs(args, inspectOptions = { __proto__: null }) {
             } else {
               formattedArg = `${NumberParseFloat(value)}`;
             }
+          } else if (char == "j") {
+            // Format as JSON.
+            formattedArg = tryStringify(args[a++]);
           } else if (ArrayPrototypeIncludes(["O", "o"], char)) {
             // Format as an object.
             formattedArg = formatValue(ctx, args[a++], 0);
@@ -3736,14 +3803,19 @@ class Console {
         ...getConsoleInspectOptions(noColorStdout()),
         depth: 1,
         compact: true,
+        breakLength: Infinity,
       });
     const toTable = (header, body) => this.log(cliTable(header, body));
 
     let resultData;
     const isSetObject = isSet(data);
     const isMapObject = isMap(data);
+    const isIteratorObject = !isSetObject && !isMapObject &&
+      !ArrayIsArray(data) && typeof data[SymbolIterator] === "function";
     const valuesKey = "Values";
-    const indexKey = isSetObject || isMapObject ? "(iter idx)" : "(idx)";
+    const indexKey = isSetObject || isMapObject || isIteratorObject
+      ? "(iter idx)"
+      : "(idx)";
 
     if (isSetObject) {
       resultData = [...new SafeSetIterator(data)];
@@ -3755,6 +3827,8 @@ class Console {
         resultData[idx] = { Key: k, Values: v };
         idx++;
       });
+    } else if (isIteratorObject) {
+      resultData = ArrayFrom(data);
     } else {
       resultData = data;
     }

@@ -258,31 +258,31 @@ pub fn getter<'s>(
   mut rv: v8::ReturnValue,
 ) -> v8::Intercepted {
   if !is_managed_key(scope, key) {
-    return v8::Intercepted::No;
+    return v8::Intercepted::kNo;
   };
 
-  let this = args.this();
+  let this = args.holder();
   let mode = current_mode(scope);
 
   let context = scope.get_current_context();
   let inner = {
     let Some(storage) = context.get_slot::<GlobalsStorage>() else {
-      return v8::Intercepted::No;
+      return v8::Intercepted::kNo;
     };
     storage.inner_for_mode(mode)
   };
   let inner = v8::Local::new(scope, inner);
 
   if !inner.has_own_property(scope, key).unwrap_or(false) {
-    return v8::Intercepted::No;
+    return v8::Intercepted::kNo;
   }
 
   let Some(value) = inner.get_with_receiver(scope, key.into(), this) else {
-    return v8::Intercepted::No;
+    return v8::Intercepted::kNo;
   };
 
   rv.set(value);
-  v8::Intercepted::Yes
+  v8::Intercepted::kYes
 }
 
 pub fn setter<'s>(
@@ -293,16 +293,16 @@ pub fn setter<'s>(
   mut rv: v8::ReturnValue<()>,
 ) -> v8::Intercepted {
   if !is_managed_key(scope, key) {
-    return v8::Intercepted::No;
+    return v8::Intercepted::kNo;
   };
 
-  let this = args.this();
+  let this = args.holder();
   let mode = current_mode(scope);
 
   let context = scope.get_current_context();
   let inner = {
     let Some(storage) = context.get_slot::<GlobalsStorage>() else {
-      return v8::Intercepted::No;
+      return v8::Intercepted::kNo;
     };
     storage.inner_for_mode(mode)
   };
@@ -310,11 +310,11 @@ pub fn setter<'s>(
 
   let Some(success) = inner.set_with_receiver(scope, key.into(), value, this)
   else {
-    return v8::Intercepted::No;
+    return v8::Intercepted::kNo;
   };
 
   rv.set_bool(success);
-  v8::Intercepted::Yes
+  v8::Intercepted::kYes
 }
 
 pub fn query<'s>(
@@ -324,30 +324,30 @@ pub fn query<'s>(
   mut rv: v8::ReturnValue<v8::Integer>,
 ) -> v8::Intercepted {
   if !is_managed_key(scope, key) {
-    return v8::Intercepted::No;
+    return v8::Intercepted::kNo;
   };
   let mode = current_mode(scope);
 
   let context = scope.get_current_context();
   let inner = {
     let Some(storage) = context.get_slot::<GlobalsStorage>() else {
-      return v8::Intercepted::No;
+      return v8::Intercepted::kNo;
     };
     storage.inner_for_mode(mode)
   };
   let inner = v8::Local::new(scope, inner);
 
   let Some(true) = inner.has_own_property(scope, key) else {
-    return v8::Intercepted::No;
+    return v8::Intercepted::kNo;
   };
 
   let Some(attributes) = inner.get_property_attributes(scope, key.into())
   else {
-    return v8::Intercepted::No;
+    return v8::Intercepted::kNo;
   };
 
   rv.set_uint32(attributes.as_u32());
-  v8::Intercepted::Yes
+  v8::Intercepted::kYes
 }
 
 pub fn deleter<'s>(
@@ -357,7 +357,7 @@ pub fn deleter<'s>(
   mut rv: v8::ReturnValue<v8::Boolean>,
 ) -> v8::Intercepted {
   if !is_managed_key(scope, key) {
-    return v8::Intercepted::No;
+    return v8::Intercepted::kNo;
   };
 
   let mode = current_mode(scope);
@@ -365,25 +365,25 @@ pub fn deleter<'s>(
   let context = scope.get_current_context();
   let inner = {
     let Some(storage) = context.get_slot::<GlobalsStorage>() else {
-      return v8::Intercepted::No;
+      return v8::Intercepted::kNo;
     };
     storage.inner_for_mode(mode)
   };
   let inner = v8::Local::new(scope, inner);
 
   let Some(success) = inner.delete(scope, key.into()) else {
-    return v8::Intercepted::No;
+    return v8::Intercepted::kNo;
   };
 
   if args.should_throw_on_error() && !success {
     let message = v8::String::new(scope, "Cannot delete property").unwrap();
     let exception = v8::Exception::type_error(scope, message);
     scope.throw_exception(exception);
-    return v8::Intercepted::Yes;
+    return v8::Intercepted::kYes;
   }
 
   rv.set_bool(success);
-  v8::Intercepted::Yes
+  v8::Intercepted::kYes
 }
 
 pub fn enumerator<'s>(
@@ -424,7 +424,7 @@ pub fn definer<'s>(
   _rv: v8::ReturnValue<()>,
 ) -> v8::Intercepted {
   if !is_managed_key(scope, key) {
-    return v8::Intercepted::No;
+    return v8::Intercepted::kNo;
   };
 
   let mode = current_mode(scope);
@@ -432,14 +432,14 @@ pub fn definer<'s>(
   let context = scope.get_current_context();
   let inner = {
     let Some(storage) = context.get_slot::<GlobalsStorage>() else {
-      return v8::Intercepted::No;
+      return v8::Intercepted::kNo;
     };
     storage.inner_for_mode(mode)
   };
   let inner = v8::Local::new(scope, inner);
 
   let Some(success) = inner.define_property(scope, key, descriptor) else {
-    return v8::Intercepted::No;
+    return v8::Intercepted::kNo;
   };
 
   if args.should_throw_on_error() && !success {
@@ -448,7 +448,7 @@ pub fn definer<'s>(
     scope.throw_exception(exception);
   }
 
-  v8::Intercepted::Yes
+  v8::Intercepted::kYes
 }
 
 pub fn descriptor<'s>(
@@ -458,7 +458,7 @@ pub fn descriptor<'s>(
   mut rv: v8::ReturnValue,
 ) -> v8::Intercepted {
   if !is_managed_key(scope, key) {
-    return v8::Intercepted::No;
+    return v8::Intercepted::kNo;
   };
 
   let mode = current_mode(scope);
@@ -468,7 +468,7 @@ pub fn descriptor<'s>(
   let context = scope.get_current_context();
   let inner = {
     let Some(storage) = context.get_slot::<GlobalsStorage>() else {
-      return v8::Intercepted::No;
+      return v8::Intercepted::kNo;
     };
     storage.inner_for_mode(mode)
   };
@@ -476,13 +476,13 @@ pub fn descriptor<'s>(
 
   let Some(descriptor) = inner.get_own_property_descriptor(scope, key) else {
     scope.rethrow().expect("to have caught an exception");
-    return v8::Intercepted::Yes;
+    return v8::Intercepted::kYes;
   };
 
   if descriptor.is_undefined() {
-    return v8::Intercepted::No;
+    return v8::Intercepted::kNo;
   }
 
   rv.set(descriptor);
-  v8::Intercepted::Yes
+  v8::Intercepted::kYes
 }

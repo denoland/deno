@@ -61,6 +61,7 @@ use once_cell::sync::Lazy;
 use thiserror::Error;
 
 use crate::sys::CliSys;
+use crate::util::fs::canonicalize_path;
 
 pub type CliLockfile = deno_resolver::lockfile::LockfileLock<CliSys>;
 
@@ -640,8 +641,27 @@ impl CliOptions {
     self.flags.no_legacy_abort()
   }
 
-  pub fn env_file_name(&self) -> Option<&Vec<String>> {
-    self.flags.env_file.as_ref()
+  pub fn env_file_names(
+    &self,
+  ) -> impl DoubleEndedIterator<Item = &'_ str> + '_ {
+    self
+      .flags
+      .env_file
+      .as_ref()
+      .into_iter()
+      .flatten()
+      .map(|name| name.as_str())
+  }
+
+  pub fn possible_env_file_paths_for_watch(
+    &self,
+  ) -> impl Iterator<Item = PathBuf> {
+    self
+      .env_file_names()
+      .flat_map(|env_file| {
+        deno_dotenv::candidate_paths(&self.initial_cwd, env_file)
+      })
+      .filter_map(|p| canonicalize_path(&p).ok())
   }
 
   pub fn preload_modules(&self) -> Result<Vec<ModuleSpecifier>, AnyError> {
@@ -969,14 +989,34 @@ impl CliOptions {
     }
   }
 
-  pub fn enable_op_summary_metrics(&self) -> bool {
-    self.flags.enable_op_summary_metrics
-      || matches!(
-        self.flags.subcommand,
-        DenoSubcommand::Test(_)
-          | DenoSubcommand::Repl(_)
-          | DenoSubcommand::Jupyter(_)
-      )
+  pub fn cpu_prof_dir(&self) -> Option<PathBuf> {
+    self.flags.cpu_prof.as_ref().map(|f| {
+      f.dir
+        .as_ref()
+        .map(|d| self.initial_cwd.join(d))
+        .unwrap_or_else(|| self.initial_cwd.clone())
+    })
+  }
+
+  pub fn cpu_prof_name(&self) -> Option<String> {
+    self.flags.cpu_prof.as_ref().and_then(|f| f.name.clone())
+  }
+
+  pub fn cpu_prof_interval(&self) -> u32 {
+    self
+      .flags
+      .cpu_prof
+      .as_ref()
+      .and_then(|f| f.interval)
+      .unwrap_or(1000)
+  }
+
+  pub fn cpu_prof_md(&self) -> bool {
+    self.flags.cpu_prof.as_ref().is_some_and(|f| f.md)
+  }
+
+  pub fn cpu_prof_flamegraph(&self) -> bool {
+    self.flags.cpu_prof.as_ref().is_some_and(|f| f.flamegraph)
   }
 
   pub fn enable_testing_features(&self) -> bool {
@@ -1184,6 +1224,9 @@ impl CliOptions {
           .first()
           .and_then(|url| file_to_url(url))
           .map(|url| vec![url]),
+        DenoSubcommand::Install(InstallFlags::Local(
+          InstallFlagsLocal::Entrypoints(flags),
+        )) => Some(files_to_urls(&flags.entrypoints)),
         DenoSubcommand::Doc(DocFlags {
           source_files: DocSourceFileFlag::Paths(paths),
           ..

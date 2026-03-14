@@ -1070,7 +1070,6 @@ impl NodeModulesDirMode {
 ///
 /// fields `include` and `exclude` are expanded from [SerializedFilesConfig].
 #[derive(Clone, Debug, Deserialize, PartialEq)]
-#[serde(deny_unknown_fields)]
 struct SerializedDeployConfig {
   pub org: String,
   pub app: Option<String>,

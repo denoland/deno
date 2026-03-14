@@ -809,7 +809,7 @@ pub async fn run(
         NpmResolverCreateOptions::Managed(ManagedNpmResolverCreateOptions {
           npm_resolution,
           npm_cache_dir,
-          sys: sys.clone(),
+          sys: node_resolution_sys.clone(),
           maybe_node_modules_path,
           npm_system_info: Default::default(),
           npmrc,
@@ -854,7 +854,7 @@ pub async fn run(
       let npm_resolver = NpmResolver::<DenoRtSys>::new::<DenoRtSys>(
         NpmResolverCreateOptions::Managed(ManagedNpmResolverCreateOptions {
           npm_resolution,
-          sys: sys.clone(),
+          sys: node_resolution_sys.clone(),
           npm_cache_dir,
           maybe_node_modules_path: None,
           npm_system_info: Default::default(),
@@ -1035,7 +1035,6 @@ pub async fn run(
   let lib_main_worker_options = LibMainWorkerOptions {
     argv: metadata.argv,
     log_level: WorkerLogLevel::Info,
-    enable_op_summary_metrics: false,
     enable_testing_features: false,
     has_node_modules_dir,
     inspect_brk: false,
@@ -1070,7 +1069,8 @@ pub async fn run(
     sys.maybe_native_addon_loader(),
     feature_checker,
     fs,
-    None,
+    None, // maybe_coverage_dir
+    None, // maybe_cpu_prof_config
     Box::new(module_loader_factory),
     node_resolver.clone(),
     create_npm_process_state_provider(&npm_resolver),

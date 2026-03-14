@@ -44,8 +44,6 @@ use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_semver::jsr::JsrPackageReqReference;
 use indexmap::IndexSet;
 use log::error;
-use node_resolver::NodeResolutionKind;
-use node_resolver::ResolutionMode;
 use serde::Deserialize;
 use serde_json::from_value;
 use tokio::sync::OnceCell;
@@ -1196,42 +1194,6 @@ impl Inner {
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
-  fn dispatch_cache_jsx_import_sources(&self) {
-    for specifier_config in self
-      .compiler_options_resolver
-      .entries()
-      .filter_map(|(_, d)| d.jsx_import_source_config.as_ref())
-      .flat_map(|c| c.import_source.iter().chain(c.import_source_types.iter()))
-    {
-      let referrer = specifier_config.base.clone();
-      let specifier = format!("{}/jsx-runtime", &specifier_config.specifier);
-      self.task_queue.queue_task(Box::new(|ls: LanguageServer| {
-        spawn(async move {
-          let specifier = {
-            let inner = ls.inner.read().await;
-            let scoped_resolver =
-              inner.resolver.get_scoped_resolver(Some(&referrer));
-            let resolver = scoped_resolver.as_cli_resolver();
-            let Ok(specifier) = resolver.resolve(
-              &specifier,
-              &referrer,
-              deno_graph::Position::zeroed(),
-              ResolutionMode::Import,
-              NodeResolutionKind::Types,
-            ) else {
-              return;
-            };
-            specifier
-          };
-          if let Err(err) = ls.cache(vec![specifier], referrer, false).await {
-            lsp_warn!("{:#}", err);
-          }
-        });
-      }));
-    }
-  }
-
-  #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   async fn refresh_resolver(&mut self) {
     self.resolver = Arc::new(
       LspResolver::from_config(
@@ -1609,7 +1571,6 @@ impl Inner {
     self.update_cache();
     self.refresh_resolver().await;
     self.refresh_compiler_options_resolver();
-    self.dispatch_cache_jsx_import_sources();
     self.refresh_linter_resolver();
     self.refresh_documents_config();
     self.send_diagnostics_update();
@@ -1674,11 +1635,6 @@ impl Inner {
       self.update_cache();
       self.refresh_resolver().await;
       self.refresh_compiler_options_resolver();
-      // Don't cache anything if only a lockfile has changed, or it can
-      // retrigger this notification and cause an infinite loop.
-      if changed_deno_json {
-        self.dispatch_cache_jsx_import_sources();
-      }
       self.refresh_linter_resolver();
       self.refresh_documents_config();
       self.project_changed(
@@ -2594,7 +2550,7 @@ impl Inner {
         &module,
         params.text_document_position.position,
         params.context,
-        self.snapshot(),
+        &self.snapshot(),
         token,
       )
       .await
@@ -2636,7 +2592,7 @@ impl Inner {
       .provide_definition(
         &module,
         params.text_document_position_params.position,
-        self.snapshot(),
+        &self.snapshot(),
         token,
       )
       .await
@@ -2678,7 +2634,7 @@ impl Inner {
       .provide_type_definition(
         &module,
         params.text_document_position_params.position,
-        self.snapshot(),
+        &self.snapshot(),
         token,
       )
       .await
@@ -2967,7 +2923,7 @@ impl Inner {
         &document,
         &module,
         params.text_document_position_params.position,
-        self.snapshot(),
+        &self.snapshot(),
         token,
       )
       .await
@@ -3047,7 +3003,7 @@ impl Inner {
         &document,
         &module,
         &params.item,
-        self.snapshot(),
+        &self.snapshot(),
         token,
       )
       .await
@@ -3089,7 +3045,7 @@ impl Inner {
       .provide_call_hierarchy_outgoing_calls(
         &module,
         &params.item,
-        self.snapshot(),
+        &self.snapshot(),
         token,
       )
       .await
@@ -3131,7 +3087,7 @@ impl Inner {
       .provide_prepare_call_hierarchy(
         &module,
         params.text_document_position_params.position,
-        self.snapshot(),
+        &self.snapshot(),
         token,
       )
       .await
@@ -3174,7 +3130,7 @@ impl Inner {
         params.text_document_position.position,
         &params.new_name,
         self,
-        self.snapshot(),
+        &self.snapshot(),
         token,
       )
       .await
@@ -3395,7 +3351,7 @@ impl Inner {
     let mark = self.performance.mark_with_args("lsp.symbol", &params);
     let symbol_information = self
       .ts_server
-      .provide_workspace_symbol(&params.query, self.snapshot(), token)
+      .provide_workspace_symbol(&params.query, &self.snapshot(), token)
       .await
       .map_err(|err| {
         if token.is_cancelled() {
@@ -3994,7 +3950,6 @@ impl Inner {
     self.update_cache();
     self.refresh_resolver().await;
     self.refresh_compiler_options_resolver();
-    self.dispatch_cache_jsx_import_sources();
     self.refresh_linter_resolver();
     self.refresh_documents_config();
 
@@ -4231,7 +4186,6 @@ impl Inner {
     self.refresh_config_tree().await;
     self.refresh_resolver().await;
     self.refresh_compiler_options_resolver();
-    self.dispatch_cache_jsx_import_sources();
     self.refresh_linter_resolver();
     self.refresh_documents_config();
     self.send_diagnostics_update();
@@ -4336,7 +4290,7 @@ impl Inner {
     }
     let inlay_hints = self
       .ts_server
-      .provide_inlay_hint(&module, params.range, self.snapshot(), token)
+      .provide_inlay_hint(&module, params.range, &self.snapshot(), token)
       .await
       .map_err(|err| {
         if token.is_cancelled() {

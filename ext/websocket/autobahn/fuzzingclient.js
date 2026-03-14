@@ -3,22 +3,17 @@
 // deno-lint-ignore-file
 
 import { $ } from "https://deno.land/x/dax@0.31.0/mod.ts";
-import { join, ROOT_PATH, shouldSkipOnCi } from "../../../tools/util.js";
+import { checkCiHash } from "../../../tools/util.js";
 
 $.setPrintCommand(true);
 const pwd = new URL(".", import.meta.url).pathname;
 
 const self = Deno.execPath();
-if (
-  await shouldSkipOnCi(
-    "autobahn",
-    join(ROOT_PATH, "target"),
-    async (hasher) => {
-      await hasher.hashFile(self);
-      await hasher.hashDir(pwd);
-    },
-  )
-) {
+const ciHash = await checkCiHash("autobahn", async (hasher) => {
+  await hasher.hashFile(self);
+  await hasher.hashDir(pwd);
+});
+if (ciHash.skip) {
   Deno.exit(0);
 }
 
@@ -63,4 +58,6 @@ console.log(
   `color: ${failedtests.length == 0 ? "green" : "red"}`,
 );
 
-Deno.exit(failedtests.length == 0 ? 0 : 1);
+const exitCode = failedtests.length == 0 ? 0 : 1;
+if (exitCode === 0) await ciHash.commit();
+Deno.exit(exitCode);

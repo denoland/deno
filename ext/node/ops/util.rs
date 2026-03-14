@@ -227,7 +227,7 @@ pub fn op_node_get_own_non_index_properties<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   obj: v8::Local<'s, v8::Object>,
   #[smi] filter: u32,
-) -> Result<v8::Local<'s, v8::Array>, JsErrorBox> {
+) -> Result<v8::Local<'s, v8::Value>, JsErrorBox> {
   let mut property_filter = v8::PropertyFilter::ALL_PROPERTIES;
   if filter & 1 << 0 != 0 {
     property_filter = property_filter | v8::PropertyFilter::ONLY_WRITABLE;
@@ -245,19 +245,33 @@ pub fn op_node_get_own_non_index_properties<'s>(
     property_filter = property_filter | v8::PropertyFilter::SKIP_SYMBOLS;
   }
 
-  obj
-    .get_property_names(
-      scope,
-      v8::GetPropertyNamesArgs {
-        index_filter: v8::IndexFilter::SkipIndices,
-        property_filter,
-        key_conversion: v8::KeyConversionMode::NoNumbers,
-        mode: v8::KeyCollectionMode::OwnOnly,
-      },
-    )
-    .ok_or_else(|| {
-      JsErrorBox::type_error("Failed to get own non-index properties")
-    })
+  v8::tc_scope!(let tc_scope, scope);
+
+  let result = obj.get_property_names(
+    tc_scope,
+    v8::GetPropertyNamesArgs {
+      index_filter: v8::IndexFilter::SkipIndices,
+      property_filter,
+      key_conversion: v8::KeyConversionMode::NoNumbers,
+      mode: v8::KeyCollectionMode::OwnOnly,
+    },
+  );
+
+  match result {
+    Some(names) => Ok(names.into()),
+    None => {
+      if tc_scope.has_caught() || tc_scope.has_terminated() {
+        tc_scope.rethrow();
+        // Dummy value, this result will be discarded because an error was thrown.
+        let v = v8::undefined(tc_scope);
+        Ok(v.into())
+      } else {
+        Err(JsErrorBox::type_error(
+          "Failed to get own non-index properties",
+        ))
+      }
+    }
+  }
 }
 
 #[op2]
@@ -266,7 +280,7 @@ pub fn op_node_parse_env<'a>(
   #[string] content: &str,
 ) -> v8::Local<'a, v8::Object> {
   let env_obj = v8::Object::new(scope);
-  parse_env_content_hook(content, |key, value| {
+  parse_env_content_hook(content, &mut |key, value| {
     let key = v8::String::new(scope, key).unwrap();
     let value = v8::String::new(scope, value).unwrap();
     env_obj.set(scope, key.into(), value.into());
