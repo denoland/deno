@@ -286,6 +286,8 @@ impl TlsKeyLookup {
 
 #[cfg(test)]
 pub mod tests {
+  #![allow(clippy::disallowed_methods, reason = "tests")]
+
   use deno_core::unsync::spawn;
 
   use super::*;

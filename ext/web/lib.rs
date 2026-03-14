@@ -384,7 +384,6 @@ unsafe impl deno_core::GarbageCollected for TextDecoderResource {
 }
 
 #[op2(fast(op_encoding_encode_into_fast))]
-#[allow(deprecated)]
 fn op_encoding_encode_into(
   scope: &mut v8::PinScope<'_, '_>,
   input: v8::Local<v8::Value>,

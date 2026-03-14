@@ -104,6 +104,10 @@ where
       let _ = map.insert("v".into(), serde_json::Value::Number(1.into()));
       let _ = map.insert(
         "datetime".into(),
+        #[allow(
+          clippy::disallowed_methods,
+          reason = "TODO: support passing in a sys here"
+        )]
         serde_json::Value::String(
           chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
         ),
