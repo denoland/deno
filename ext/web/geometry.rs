@@ -37,21 +37,13 @@ use crate::css_value::TransformListParser;
 macro_rules! define_obj {
   ($scope:ident => { $( $modifier:ident $key:literal: $value:expr ),*, }) => {
     {
-      let proto = v8::null($scope).into();
-      let keys = [
-        $( v8::String::new($scope, $key).unwrap().into() ),*
-      ];
-      let values = [
-        $(
-          define_obj!(@modifier $modifier $scope => $value)
-        ),*
-      ];
-      v8::Object::with_prototype_and_properties(
-        $scope,
-        proto,
-        &keys,
-        &values,
-      )
+      let obj = v8::Object::new($scope);
+      $(
+        let key = v8::String::new($scope, $key).unwrap().into();
+        let value = define_obj!(@modifier $modifier $scope => $value);
+        obj.create_data_property($scope, key, value);
+      )*
+      obj
     }
   };
   (@modifier bool $scope:ident => $value:expr) => {
