@@ -24,6 +24,7 @@ import {
   op_http_set_response_body_bytes,
   op_http_set_response_body_resource,
   op_http_set_response_body_text,
+  op_http_set_response_body_text_with_header,
   op_http_set_response_header,
   op_http_set_response_headers,
   op_http_set_response_trailers,
@@ -562,6 +563,28 @@ function respondWith(req, response, innerRequest) {
 
   const status = inner.status;
   const headers = inner.headerList;
+  const body = inner.body;
+
+  // Ultra-fast path: 1 header + string body (most common case for new Response("text"))
+  if (
+    headers && headers.length == 1 &&
+    body !== null && body !== undefined
+  ) {
+    const source = body.source;
+    if (typeof source === "string") {
+      innerRequest?.close();
+      op_http_set_response_body_text_with_header(
+        req,
+        source,
+        status,
+        headers[0][0],
+        headers[0][1],
+      );
+      return;
+    }
+  }
+
+  // Set headers
   if (headers && headers.length > 0) {
     if (headers.length == 1) {
       op_http_set_response_header(req, headers[0][0], headers[0][1]);
@@ -570,8 +593,7 @@ function respondWith(req, response, innerRequest) {
     }
   }
 
-  // Fast path for string body - skip InnerBody/streamOrStatic indirection
-  const body = inner.body;
+  // Fast path for string body
   if (body !== null && body !== undefined) {
     const source = body.source;
     if (typeof source === "string") {
@@ -670,7 +692,9 @@ function mapToCallback(context, callback, onError) {
 
         // Fast path: handler returned a Response synchronously
         if (ObjectPrototypeIsPrototypeOf(ResponsePrototype, response)) {
-          if (response.type === "error") {
+          const inner = toInnerResponse(response);
+
+          if (inner.type === "error") {
             return handleError(
               req,
               innerRequest,
@@ -683,7 +707,10 @@ function mapToCallback(context, callback, onError) {
             );
           }
 
-          if (response.bodyUsed) {
+          // Check bodyUsed via inner body directly - avoids webidl.assertBranded
+          // and multiple getter chain (response.bodyUsed -> _body -> consumed())
+          const innerBody = inner.body;
+          if (innerBody !== null && innerBody.streamOrStatic?.consumed === true) {
             return handleError(
               req,
               innerRequest,
@@ -702,7 +729,47 @@ function mapToCallback(context, callback, onError) {
             return;
           }
 
-          respondWith(req, response, innerRequest);
+          // Inline respondWith for the sync path
+          const status = inner.status;
+          const headers = inner.headerList;
+
+          // Ultra-fast path: 1 header + string body
+          if (
+            headers && headers.length == 1 &&
+            innerBody !== null && innerBody !== undefined
+          ) {
+            const source = innerBody.source;
+            if (typeof source === "string") {
+              innerRequest?.close();
+              op_http_set_response_body_text_with_header(
+                req,
+                source,
+                status,
+                headers[0][0],
+                headers[0][1],
+              );
+              return;
+            }
+          }
+
+          if (headers && headers.length > 0) {
+            if (headers.length == 1) {
+              op_http_set_response_header(req, headers[0][0], headers[0][1]);
+            } else {
+              op_http_set_response_headers(req, headers);
+            }
+          }
+
+          if (innerBody !== null && innerBody !== undefined) {
+            const source = innerBody.source;
+            if (typeof source === "string") {
+              innerRequest?.close();
+              op_http_set_response_body_text(req, source, status);
+              return;
+            }
+          }
+
+          fastSyncResponseOrStream(req, innerBody, status, innerRequest);
           return;
         }
 

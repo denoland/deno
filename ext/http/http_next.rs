@@ -875,6 +875,65 @@ pub fn op_http_set_response_body_bytes(
   }
 }
 
+/// Combined op: set one header + text body + status in a single op dispatch.
+/// This is the hot path for `new Response("text")` which always has exactly
+/// one header (Content-Type: text/plain;charset=UTF-8).
+#[op2(fast)]
+pub fn op_http_set_response_body_text_with_header(
+  external: *const c_void,
+  #[string] text: String,
+  status: u16,
+  #[string(onebyte)] header_name: Cow<'_, [u8]>,
+  #[string(onebyte)] header_value: Cow<'_, [u8]>,
+) {
+  let http =
+    // SAFETY: external is deleted before calling this op.
+    unsafe { take_external!(external, "op_http_set_response_body_text_with_header") };
+  if !http.cancelled() {
+    // Set header
+    let name = HeaderName::from_bytes(&header_name).unwrap();
+    let value = match header_value {
+      Cow::Borrowed(bytes) => HeaderValue::from_bytes(bytes).unwrap(),
+      // SAFETY: These are valid latin-1 strings
+      Cow::Owned(bytes_vec) => unsafe {
+        HeaderValue::from_maybe_shared_unchecked(bytes::Bytes::from(bytes_vec))
+      },
+    };
+    http.response_parts().headers.append(name, value);
+
+    // Set body and status
+    if !text.is_empty() {
+      if text.len() < 64 {
+        http.set_response_body(ResponseBytesInner::Bytes(BufView::from(
+          text.into_bytes(),
+        )));
+      } else {
+        let compression =
+          is_request_compressible(Some(text.len()), &http.request_parts().headers);
+        let compression = if compression != Compression::None {
+          let mut response_headers =
+            std::cell::RefMut::map(http.response_parts(), |this| &mut this.headers);
+          let c =
+            modify_compressibility_from_response(compression, &mut response_headers);
+          drop(response_headers);
+          c
+        } else {
+          Compression::None
+        };
+        http.set_response_body(ResponseBytesInner::from_vec(
+          compression,
+          text.into_bytes(),
+        ));
+      }
+    }
+    if let Ok(code) = StatusCode::from_u16(status) {
+      http.response_parts().status = code;
+      http.otel_info_set_status(status);
+    }
+  }
+  http.complete();
+}
+
 fn serve_http11_unconditional(
   io: impl HttpServeStream,
   svc: impl HttpService<Incoming, ResBody = HttpRecordResponse> + 'static,
