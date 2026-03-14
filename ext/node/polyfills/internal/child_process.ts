@@ -54,8 +54,8 @@ import { errnoException } from "ext:deno_node/internal/errors.ts";
 import { ErrnoException } from "ext:deno_node/_global.d.ts";
 import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
 import {
-  isInt32,
   validateBoolean,
+  validateInt32,
   validateObject,
   validateOneOf,
   validateString,
@@ -997,13 +997,13 @@ export function normalizeSpawnArguments(
   }
 
   // Validate the uid, if present.
-  if (options.uid != null && !isInt32(options.uid)) {
-    throw new ERR_INVALID_ARG_TYPE("options.uid", "int32", options.uid);
+  if (options.uid != null) {
+    validateInt32(options.uid, "options.uid");
   }
 
   // Validate the gid, if present.
-  if (options.gid != null && !isInt32(options.gid)) {
-    throw new ERR_INVALID_ARG_TYPE("options.gid", "int32", options.gid);
+  if (options.gid != null) {
+    validateInt32(options.gid, "options.gid");
   }
 
   // Validate the shell, if present.

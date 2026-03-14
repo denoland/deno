@@ -236,11 +236,11 @@
     "parallel/test-child-process-spawn-error.js": {},
     "parallel/test-child-process-spawn-event.js": {},
     // "parallel/test-child-process-spawn-timeout-kill-signal.js": {}, // https://github.com/denoland/deno/issues/32706
-    // "parallel/test-child-process-spawn-typeerror.js": {}, // https://github.com/denoland/deno/issues/32706
+    "parallel/test-child-process-spawn-typeerror.js": {},
     "parallel/test-child-process-spawnsync-args.js": {},
     "parallel/test-child-process-spawnsync-env.js": {},
     "parallel/test-child-process-spawnsync-maxbuf.js": {},
-    // "parallel/test-child-process-spawnsync-validation-errors.js": {}, // https://github.com/denoland/deno/issues/32706
+    "parallel/test-child-process-spawnsync-validation-errors.js": {},
     "parallel/test-child-process-spawnsync.js": {},
     "parallel/test-child-process-stdin-ipc.js": {},
     "parallel/test-child-process-stdin.js": {},
