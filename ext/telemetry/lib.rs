@@ -94,6 +94,8 @@ use thiserror::Error;
 use tokio::sync::oneshot;
 use tokio::task::JoinSet;
 
+mod console_exporter;
+
 deno_core::extension!(
   deno_telemetry,
   ops = [
@@ -373,7 +375,7 @@ const METRIC_EXPORT_INTERVAL_NAME: &str = "OTEL_METRIC_EXPORT_INTERVAL";
 const DEFAULT_INTERVAL: Duration = Duration::from_secs(60);
 
 impl DenoPeriodicReader {
-  fn new(exporter: opentelemetry_otlp::MetricExporter) -> Self {
+  fn new(exporter: impl PushMetricExporter) -> Self {
     let interval = env::var(METRIC_EXPORT_INTERVAL_NAME)
       .ok()
       .and_then(|v| v.parse().map(Duration::from_millis).ok())
@@ -868,9 +870,12 @@ pub fn init(
   // Parse the `OTEL_EXPORTER_OTLP_PROTOCOL` variable. The opentelemetry_*
   // crates don't do this automatically.
   // TODO(piscisaureus): enable GRPC support.
-  let protocol = match env::var("OTEL_EXPORTER_OTLP_PROTOCOL").as_deref() {
+  let protocol_var = env::var("OTEL_EXPORTER_OTLP_PROTOCOL");
+  let use_console_exporter = protocol_var.as_deref() == Ok("console");
+  let protocol = match protocol_var.as_deref() {
     Ok("http/protobuf") => Protocol::HttpBinary,
     Ok("http/json") => Protocol::HttpJson,
+    Ok("console") => Protocol::HttpBinary, // unused, console path bypasses OTLP
     Ok("") | Err(env::VarError::NotPresent) => Protocol::HttpBinary,
     Ok(protocol) => {
       return Err(deno_core::anyhow::anyhow!(
@@ -927,16 +932,6 @@ pub fn init(
   // `OTEL_EXPORTER_OTLP_ENDPOINT` environment variable. Additional headers can
   // be specified using `OTEL_EXPORTER_OTLP_HEADERS`.
 
-  let client = hyper_client::HyperClient::new()?;
-
-  let span_exporter = HttpExporterBuilder::default()
-    .with_http_client(client.clone())
-    .with_protocol(protocol)
-    .build_span_exporter()?;
-  let mut span_processor =
-    BatchSpanProcessor::builder(span_exporter, OtelSharedRuntime).build();
-  span_processor.set_resource(&resource);
-
   let temporality_preference =
     env::var("OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE")
       .ok()
@@ -952,23 +947,59 @@ pub fn init(
       ));
     }
   };
-  let metric_exporter = HttpExporterBuilder::default()
-    .with_http_client(client.clone())
-    .with_protocol(protocol)
-    .build_metrics_exporter(temporality)?;
-  let metric_reader = DenoPeriodicReader::new(metric_exporter);
-  let meter_provider = SdkMeterProvider::builder()
-    .with_reader(metric_reader)
-    .with_resource(resource.clone())
-    .build();
 
-  let log_exporter = HttpExporterBuilder::default()
-    .with_http_client(client)
-    .with_protocol(protocol)
-    .build_log_exporter()?;
-  let log_processor =
-    BatchLogProcessor::builder(log_exporter, OtelSharedRuntime).build();
-  log_processor.set_resource(&resource);
+  let (span_processor, log_processor, meter_provider) = if use_console_exporter
+  {
+    let span_exporter = console_exporter::ConsoleSpanExporter::new();
+    let mut span_processor =
+      BatchSpanProcessor::builder(span_exporter, OtelSharedRuntime).build();
+    span_processor.set_resource(&resource);
+
+    let metric_exporter =
+      console_exporter::ConsoleMetricExporter::new(temporality);
+    let metric_reader = DenoPeriodicReader::new(metric_exporter);
+    let meter_provider = SdkMeterProvider::builder()
+      .with_reader(metric_reader)
+      .with_resource(resource.clone())
+      .build();
+
+    let log_exporter = console_exporter::ConsoleLogExporter::new();
+    let log_processor =
+      BatchLogProcessor::builder(log_exporter, OtelSharedRuntime).build();
+    log_processor.set_resource(&resource);
+
+    (span_processor, log_processor, meter_provider)
+  } else {
+    let client = hyper_client::HyperClient::new()?;
+
+    let span_exporter = HttpExporterBuilder::default()
+      .with_http_client(client.clone())
+      .with_protocol(protocol)
+      .build_span_exporter()?;
+    let mut span_processor =
+      BatchSpanProcessor::builder(span_exporter, OtelSharedRuntime).build();
+    span_processor.set_resource(&resource);
+
+    let metric_exporter = HttpExporterBuilder::default()
+      .with_http_client(client.clone())
+      .with_protocol(protocol)
+      .build_metrics_exporter(temporality)?;
+    let metric_reader = DenoPeriodicReader::new(metric_exporter);
+    let meter_provider = SdkMeterProvider::builder()
+      .with_reader(metric_reader)
+      .with_resource(resource.clone())
+      .build();
+
+    let log_exporter = HttpExporterBuilder::default()
+      .with_http_client(client)
+      .with_protocol(protocol)
+      .build_log_exporter()?;
+    let log_processor =
+      BatchLogProcessor::builder(log_exporter, OtelSharedRuntime).build();
+    log_processor.set_resource(&resource);
+
+    (span_processor, log_processor, meter_provider)
+  };
 
   let builtin_instrumentation_scope =
     opentelemetry::InstrumentationScope::builder("deno")

@@ -3288,6 +3288,7 @@ dependencies = [
  "deno_error",
  "deno_net",
  "deno_signals",
+ "deno_terminal",
  "deno_tls",
  "http-body-util",
  "hyper 1.6.0",
