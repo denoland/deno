@@ -3773,7 +3773,10 @@ class Console {
       MapPrototypeSet(this.#countMap, label, 1);
     }
 
-    this.info(`${label}: ${MapPrototypeGet(this.#countMap, label)}`);
+    this.#printFunc(
+      `${label}: ${MapPrototypeGet(this.#countMap, label)}\n`,
+      1,
+    );
   };
 
   countReset = (label = "default") => {
@@ -3782,7 +3785,7 @@ class Console {
     if (MapPrototypeHas(this.#countMap, label)) {
       MapPrototypeSet(this.#countMap, label, 0);
     } else {
-      this.warn(`Count for '${label}' does not exist`);
+      this.#printFunc(`Count for '${label}' does not exist\n`, 2);
     }
   };
 
@@ -3893,7 +3896,7 @@ class Console {
     label = String(label);
 
     if (MapPrototypeHas(this.#timerMap, label)) {
-      this.warn(`Timer '${label}' already exists`);
+      this.#printFunc(`Timer '${label}' already exists\n`, 2);
       return;
     }
 
@@ -3904,7 +3907,7 @@ class Console {
     label = String(label);
 
     if (!MapPrototypeHas(this.#timerMap, label)) {
-      this.warn(`Timer '${label}' does not exist`);
+      this.#printFunc(`Timer '${label}' does not exist\n`, 2);
       return;
     }
 
@@ -3920,14 +3923,23 @@ class Console {
       duration = NumberPrototypeToFixed(duration, 0);
     }
 
-    this.info(`${label}: ${duration}ms`, ...new SafeArrayIterator(args));
+    this.#printFunc(
+      inspectArgs(
+        [`${label}: ${duration}ms`, ...new SafeArrayIterator(args)],
+        {
+          ...getConsoleInspectOptions(noColorStdout()),
+          indentLevel: this.indentLevel,
+        },
+      ) + "\n",
+      1,
+    );
   };
 
   timeEnd = (label = "default") => {
     label = String(label);
 
     if (!MapPrototypeHas(this.#timerMap, label)) {
-      this.warn(`Timer '${label}' does not exist`);
+      this.#printFunc(`Timer '${label}' does not exist\n`, 2);
       return;
     }
 
@@ -3944,7 +3956,7 @@ class Console {
       duration = NumberPrototypeToFixed(duration, 0);
     }
 
-    this.info(`${label}: ${duration}ms`);
+    this.#printFunc(`${label}: ${duration}ms\n`, 1);
   };
 
   group = (...label) => {
