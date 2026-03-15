@@ -944,7 +944,9 @@ Deno.test(function matrixInvert2DSelf() {
 });
 
 Deno.test(function parseCSSTransfromList() {
-  const matrix = new DOMMatrix("translateX(calc(1px + 2px)) rotate(atan2(3, 2))");
+  const matrix = new DOMMatrix(
+    "translateX(calc(1px + 2px)) rotate(atan2(3, 2))",
+  );
   matrix.setMatrixValue("matrix(1, 2, 3, 4, 5, 6)");
   assertEquals(
     matrix,
