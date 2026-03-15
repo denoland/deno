@@ -25,11 +25,11 @@ import {
   op_node_export_secret_key,
   op_node_private_decrypt,
   op_node_private_encrypt,
+  op_node_public_decrypt,
   op_node_public_encrypt,
 } from "ext:core/ops";
 
 import { Buffer } from "node:buffer";
-import { notImplemented } from "ext:deno_node/_utils.ts";
 import type { TransformOptions } from "ext:deno_node/_stream.d.ts";
 import { Transform } from "node:stream";
 import {
@@ -250,7 +250,10 @@ Cipheriv.prototype.final = function (
   }
 
   if (!this._autoPadding && this._cache.cache.byteLength != bs) {
-    throw new Error("Invalid final block size");
+    const err = new Error("wrong final block length");
+    (err as any).code = "ERR_OSSL_EVP_WRONG_FINAL_BLOCK_LENGTH";
+    (err as any).reason = "wrong final block length";
+    throw err;
   }
   const maybeTag = op_node_cipheriv_final(
     this._context,
@@ -491,13 +494,19 @@ Decipheriv.prototype.final = function (
     return encoding === "buffer" ? Buffer.from([]) : "";
   }
   if (this._cache.cache.byteLength != bs) {
-    throw new Error("Invalid final block size");
+    const err = new Error("wrong final block length");
+    (err as any).code = "ERR_OSSL_EVP_WRONG_FINAL_BLOCK_LENGTH";
+    (err as any).reason = "wrong final block length";
+    throw err;
   }
 
   if (this._autoPadding) {
     const padLen = buf.at(-1);
     if (padLen === 0 || padLen > bs) {
-      throw new Error("bad decrypt");
+      const err = new Error("bad decrypt");
+      (err as any).code = "ERR_OSSL_EVP_BAD_DECRYPT";
+      (err as any).reason = "bad decrypt";
+      throw err;
     }
     buf = buf.subarray(0, bs - padLen); // Padded in Pkcs7 mode
   }
@@ -615,7 +624,7 @@ function checkUnsupportedKeyType(key) {
 
 export function privateEncrypt(
   privateKey: ArrayBufferView | string | KeyObject,
-  buffer: ArrayBufferView | string | KeyObject,
+  buffer: ArrayBufferView,
 ): Buffer {
   checkUnsupportedKeyType(privateKey);
   const { data } = prepareKey(privateKey);
@@ -627,7 +636,7 @@ export function privateEncrypt(
 
 export function privateDecrypt(
   privateKey: ArrayBufferView | string | KeyObject,
-  buffer: ArrayBufferView | string | KeyObject,
+  buffer: ArrayBufferView,
 ): Buffer {
   checkUnsupportedKeyType(privateKey);
   const { data } = prepareKey(privateKey);
@@ -639,7 +648,7 @@ export function privateDecrypt(
 
 export function publicEncrypt(
   publicKey: ArrayBufferView | string | KeyObject,
-  buffer: ArrayBufferView | string | KeyObject,
+  buffer: ArrayBufferView,
 ): Buffer {
   checkUnsupportedKeyType(publicKey);
   const { data } = prepareKey(publicKey);
@@ -662,6 +671,9 @@ export function prepareKey(key) {
     return { data: getArrayBufferOrView(data, "key") };
   } else if (typeof key == "object") {
     const { key: data, encoding } = key;
+    if (isKeyObject(data)) {
+      return prepareKey(data);
+    }
     if (!isStringOrBuffer(data)) {
       throw new TypeError("Invalid key type");
     }
@@ -672,8 +684,16 @@ export function prepareKey(key) {
   throw new TypeError("Invalid key type");
 }
 
-export function publicDecrypt() {
-  notImplemented("crypto.publicDecrypt");
+export function publicDecrypt(
+  publicKey: ArrayBufferView | string | KeyObject,
+  buffer: ArrayBufferView,
+): Buffer {
+  checkUnsupportedKeyType(publicKey);
+  const { data } = prepareKey(publicKey);
+  const padding = publicKey.padding || 1;
+
+  buffer = getArrayBufferOrView(buffer, "buffer");
+  return Buffer.from(op_node_public_decrypt(data, buffer, padding));
 }
 
 export default {
