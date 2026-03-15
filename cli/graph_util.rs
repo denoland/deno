@@ -510,8 +510,10 @@ impl ModuleGraphCreator {
         is_dynamic: false,
         graph_kind: deno_graph::GraphKind::All,
         roots,
-        // do not include the tsconfig imports for `deno publish`
-        imports: Vec::new(),
+        // include compilerOptions.types but not tsconfig files for publish
+        imports: self
+          .module_graph_builder
+          .maybe_resolve_ts_config_imports(deno_graph::GraphKind::All),
         loader: Some(&publish_loader),
         npm_caching: self.options.default_npm_caching_strategy(),
       })
