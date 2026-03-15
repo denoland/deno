@@ -353,8 +353,8 @@ fn op_base64_encode_from_buffer<'a>(
 }
 
 /// Encode bytes to base64 and create a V8 one-byte string directly.
-/// Uses v8::String::new_from_one_byte (base64 output is always ASCII).
-/// Stack-allocates for inputs up to 6KB (producing ≤8KB base64).
+/// Stack-allocates for inputs producing ≤8KB base64.
+/// Uses v8::String::new_external_onebyte for large outputs to avoid copying.
 #[inline]
 fn base64_encode_to_v8_string<'a>(
   scope: &mut v8::PinScope<'a, '_>,
@@ -376,19 +376,13 @@ fn base64_encode_to_v8_string<'a>(
     )
     .ok_or(WebError::BufferTooLong)
   } else {
-    let mut buf = Vec::with_capacity(b64_len);
-    // Safety: binary_to_base64 writes up to b64_len bytes, all valid ASCII.
-    let written = unsafe {
-      let slice = std::slice::from_raw_parts_mut(buf.as_mut_ptr(), b64_len);
-      simdutf_base64_encode(src, slice)
-    };
-    v8::String::new_from_one_byte(
-      scope,
-      // Safety: written <= b64_len which is the allocated capacity.
-      unsafe { std::slice::from_raw_parts(buf.as_ptr(), written) },
-      v8::NewStringType::Normal,
-    )
-    .ok_or(WebError::BufferTooLong)
+    // Encode into a boxed slice and hand ownership to V8 via external string.
+    // This avoids a copy — V8 will free the buffer when the string is GC'd.
+    let mut buf = vec![0u8; b64_len].into_boxed_slice();
+    let written = simdutf_base64_encode(src, &mut buf);
+    debug_assert_eq!(written, b64_len);
+    v8::String::new_external_onebyte(scope, buf)
+      .ok_or(WebError::BufferTooLong)
   }
 }
 
