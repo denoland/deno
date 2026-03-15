@@ -3408,7 +3408,6 @@ name = "deno_web"
 version = "0.269.0"
 dependencies = [
  "async-trait",
- "base64-simd",
  "brotli",
  "bytes",
  "deno_bench_util",
@@ -11173,9 +11172,9 @@ dependencies = [
 
 [[package]]
 name = "v8"
-version = "146.4.0"
+version = "146.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d97bcac5cdc5a195a4813f1855a6bc658f240452aac36caa12fd6c6f16026ab1"
+checksum = "c0ba02707365d6fcb8d7da46fa490cedb2b59bc96d01fa56c2c7b240454c9490"
 dependencies = [
  "bindgen 0.72.1",
  "bitflags 2.9.3",
