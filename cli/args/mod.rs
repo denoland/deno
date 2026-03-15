@@ -1263,9 +1263,7 @@ impl CliOptions {
             // remove the env var so that child sub processes won't pick this up
 
             // SAFETY: single-threaded at this point in startup
-            unsafe {
-              std::env::remove_var(NPM_CMD_NAME_ENV_VAR_NAME)
-            };
+            unsafe { std::env::remove_var(NPM_CMD_NAME_ENV_VAR_NAME) };
             Some(var)
           }
           Err(_) => NpmPackageReqReference::from_str(&flags.script).ok().map(

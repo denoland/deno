@@ -890,6 +890,7 @@ mod socket_dev {
   pub struct FirewallScore {
     pub license: f64,
     pub maintenance: f64,
+    #[allow(dead_code, reason = "we don't use it yet")]
     pub overall: f64,
     pub quality: f64,
     pub supply_chain: f64,
@@ -900,14 +901,17 @@ mod socket_dev {
   #[serde(rename_all = "camelCase")]
   pub struct FirewallAlert {
     pub r#type: String,
+    #[allow(dead_code, reason = "we don't use it yet")]
     pub action: String,
     pub severity: String,
+    #[allow(dead_code, reason = "we don't use it yet")]
     pub category: String,
   }
 
   #[derive(Debug, Deserialize)]
   #[serde(rename_all = "camelCase")]
   pub struct FirewallResponse {
+    #[allow(dead_code, reason = "we don't use it yet")]
     pub id: String,
     pub name: String,
     pub version: String,

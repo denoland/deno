@@ -900,9 +900,7 @@ fn wait_for_start(
   let addr = std::env::var("DENO_UNSTABLE_CONTROL_SOCK").ok()?;
 
   // SAFETY: single-threaded at this point in startup
-  unsafe {
-    std::env::remove_var("DENO_UNSTABLE_CONTROL_SOCK")
-  };
+  unsafe { std::env::remove_var("DENO_UNSTABLE_CONTROL_SOCK") };
 
   let argv0 = args[0].clone();
 
