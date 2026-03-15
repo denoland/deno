@@ -2736,12 +2736,11 @@ pub fn op_geometry_matrix_set_matrix_value<'a>(
   input: v8::Local<'a, v8::Value>,
   transform_list: v8::Local<'a, v8::Value>,
 ) -> Result<(), GeometryError> {
-  if cppgc::try_unwrap_cppgc_base_object::<DOMMatrix>(scope, input).is_none() {
+  let Some(matrix) =
+    cppgc::try_unwrap_cppgc_base_object::<DOMMatrix>(scope, input)
+  else {
     return Err(GeometryError::IllegalInvocation);
-  }
-  let matrix =
-    cppgc::try_unwrap_cppgc_base_object::<DOMMatrixReadOnly>(scope, input)
-      .unwrap();
+  };
   let transform_list = String::convert(
     scope,
     transform_list,
@@ -2749,18 +2748,23 @@ pub fn op_geometry_matrix_set_matrix_value<'a>(
     (|| Cow::Borrowed("Argument 1")).into(),
     &Default::default(),
   )?;
+
   if transform_list.is_empty() {
     // Make it an identity matrix
-    let mut inner = matrix.inner.borrow_mut();
+    let mut inner = matrix.base.inner.borrow_mut();
     inner.fill(0.0);
     inner.fill_diagonal(1.0);
-    matrix.is_2d.set(true);
-    return Ok(());
+    matrix.base.is_2d.set(true);
+    Ok(())
+  } else {
+    let result = DOMMatrixReadOnly::identity();
+    let mut input = ParserInput::new(&transform_list);
+    for transform_result in TransformListParser::new(&mut input) {
+      let transform = transform_result?;
+      result.exec_css_transform(&transform)?;
+    }
+    matrix.base.inner.swap(&result.inner);
+    matrix.base.is_2d.swap(&result.is_2d);
+    Ok(())
   }
-  let mut input = ParserInput::new(&transform_list);
-  for result in TransformListParser::new(&mut input) {
-    let transform = result?;
-    matrix.exec_css_transform(&transform)?;
-  }
-  Ok(())
 }

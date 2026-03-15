@@ -943,8 +943,19 @@ Deno.test(function matrixInvert2DSelf() {
   );
 });
 
-Deno.test(function matrixConstructor() {
-  new DOMMatrix("translateX(calc(1px + 2px)) rotate(atan2(3, 2))");
+Deno.test(function parseCSSTransfromList() {
+  const matrix = new DOMMatrix("translateX(calc(1px + 2px)) rotate(atan2(3, 2))");
+  matrix.setMatrixValue("matrix(1, 2, 3, 4, 5, 6)");
+  assertEquals(
+    matrix,
+    // deno-fmt-ignore
+    DOMMatrix.fromMatrix({
+      m11: 1, m21: 3, m31: 0, m41: 5,
+      m12: 2, m22: 4, m32: 0, m42: 6,
+      m13: 0, m23: 0, m33: 1, m43: 0,
+      m14: 0, m24: 0, m34: 0, m44: 1,
+    }),
+  );
 });
 
 Deno.test(function prototypeOverwrite() {
