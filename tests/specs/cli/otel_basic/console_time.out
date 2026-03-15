@@ -7,7 +7,7 @@
       "severityNumber": 9,
       "severityText": "INFO",
       "body": {
-        "stringValue": "my timer: [WILDCARD]ms\n"
+        "stringValue": "my timer: [WILDCARD]\n"
       },
       "attributes": [],
       "droppedAttributesCount": 0,
