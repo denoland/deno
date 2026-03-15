@@ -1,0 +1,4 @@
+Warning Not using lockfile from JSR package @denotest/echo-lockfile-bad-tarball@1.0.0 because it contains an npm tarball URL ("https://evil.example.com/chalk/-/chalk-5.0.0.tgz") not from a configured npm registry. This may indicate a security issue.
+[WILDCARD]
+✅ Successfully installed echo-lockfile-bad-tarball
+[WILDCARD]

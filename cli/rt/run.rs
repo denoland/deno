@@ -1130,7 +1130,8 @@ fn create_default_npmrc() -> Arc<ResolvedNpmRc> {
   // one when compiling the binary
   Arc::new(ResolvedNpmRc {
     default_config: deno_npm::npm_rc::RegistryConfigWithUrl {
-      registry_url: Url::parse("https://registry.npmjs.org").unwrap(),
+      registry_url: Url::parse(deno_npm::npm_rc::NPM_DEFAULT_REGISTRY)
+        .unwrap(),
       config: Default::default(),
     },
     scopes: Default::default(),
