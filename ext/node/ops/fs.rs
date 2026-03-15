@@ -748,7 +748,7 @@ const CP_IS_SRC_SYMLINK_FLAG: u64 = 1u64 << 37;
 const CP_IS_SRC_SOCKET_FLAG: u64 = 1u64 << 38;
 const CP_IS_SRC_FIFO_FLAG: u64 = 1u64 << 39;
 
-/// Bit-packed stat metadata passed to JS for `cp`` operations.
+/// Bit-packed stat metadata passed to JS for `cp` operations.
 ///
 /// Layout (u64):
 /// - bits 0..31  : src mode (`st_mode`)
