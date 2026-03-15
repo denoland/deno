@@ -99,12 +99,19 @@ pub fn op_inspector_wait(state: &OpState) -> bool {
   }
 }
 
-#[op2(fast)]
+#[op2(fast, reentrant)]
 pub fn op_inspector_emit_protocol_event(
-  #[string] _event_name: String,
-  #[string] _params: String,
+  state: Rc<RefCell<OpState>>,
+  #[string] event_name: String,
+  #[string] params: String,
 ) {
-  // TODO: inspector channel & protocol notifications
+  let inspector = {
+    let state = state.borrow();
+    state.try_borrow::<Rc<JsRuntimeInspector>>().cloned()
+  };
+  if let Some(inspector) = inspector {
+    inspector.broadcast_to_sessions(&event_name, &params);
+  }
 }
 
 struct JSInspectorSession {

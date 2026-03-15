@@ -177,6 +177,7 @@ struct JsRuntimeInspectorState {
   nodeworker_enabled: Rc<Cell<bool>>,
   auto_attach_enabled: Rc<Cell<bool>>,
   discover_targets_enabled: Rc<Cell<bool>>,
+  network_enabled: Rc<Cell<bool>>,
 }
 
 struct JsRuntimeInspectorClient(Rc<JsRuntimeInspectorState>);
@@ -352,6 +353,7 @@ impl JsRuntimeInspectorState {
                 self.nodeworker_enabled.clone(),
                 self.auto_attach_enabled.clone(),
                 self.discover_targets_enabled.clone(),
+                self.network_enabled.clone(),
               );
 
               let prev = sessions.handshake.replace(session);
@@ -567,6 +569,7 @@ impl JsRuntimeInspector {
       nodeworker_enabled: Rc::new(Cell::new(false)),
       auto_attach_enabled: Rc::new(Cell::new(false)),
       discover_targets_enabled: Rc::new(Cell::new(false)),
+      network_enabled: Rc::new(Cell::new(false)),
     });
     let client = Box::new(JsRuntimeInspectorClient(state.clone()));
     let v8_inspector_client = v8::inspector::V8InspectorClient::new(client);
@@ -719,6 +722,41 @@ impl JsRuntimeInspector {
     rx
   }
 
+  /// Broadcast a protocol event notification to all sessions that have the
+  /// given domain enabled. Used for custom domains like Network.
+  pub fn broadcast_to_sessions(&self, event_name: &str, params_json: &str) {
+    let domain = event_name.split('.').next().unwrap_or("");
+    let notification = json!({
+      "method": event_name,
+      "params": serde_json::from_str::<serde_json::Value>(params_json)
+        .unwrap_or_default()
+    })
+    .to_string();
+
+    let sessions = self.state.sessions.borrow();
+
+    // Broadcast to local sessions
+    for session in sessions.local.values() {
+      let enabled = match domain {
+        "Network" => session.state.network_enabled.get(),
+        _ => false,
+      };
+      if enabled {
+        (session.state.send)(InspectorMsg {
+          kind: InspectorMsgKind::Notification,
+          content: notification.clone(),
+        });
+      }
+    }
+
+    // Broadcast to established (WebSocket) sessions
+    // Established sessions are futures, we can't directly access their state.
+    // The WebSocket sessions share the same Rc<Cell<bool>> flags as local sessions
+    // since they're created from the same JsRuntimeInspectorState.
+    // However, established sessions are wrapped in futures and we can't access them here.
+    // For now, the Network domain is primarily used via local sessions (session.post()).
+  }
+
   pub fn create_local_session(
     inspector: Rc<JsRuntimeInspector>,
     callback: InspectorSessionSend,
@@ -738,6 +776,7 @@ impl JsRuntimeInspector {
         inspector.state.nodeworker_enabled.clone(),
         inspector.state.auto_attach_enabled.clone(),
         inspector.state.discover_targets_enabled.clone(),
+        inspector.state.network_enabled.clone(),
       );
 
       let session_id = {
@@ -915,6 +954,39 @@ impl SessionContainer {
     message: String,
   ) {
     let session = self.local.get(&session_id).unwrap();
+
+    // Try custom domain dispatch before sending to V8
+    if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&message)
+      && let Some(method) = parsed.get("method").and_then(|m| m.as_str())
+    {
+      let handled = match method {
+        "Network.enable" => {
+          session.state.network_enabled.set(true);
+          true
+        }
+        "Network.disable" => {
+          session.state.network_enabled.set(false);
+          true
+        }
+        _ => false,
+      };
+      if handled {
+        // Send success response if there's an id
+        if let Some(id) = parsed.get("id").cloned() {
+          let call_id = id.as_i64().unwrap_or(0) as i32;
+          (session.state.send)(InspectorMsg {
+            kind: InspectorMsgKind::Message(call_id),
+            content: json!({
+              "id": id,
+              "result": {}
+            })
+            .to_string(),
+          });
+        }
+        return;
+      }
+    }
+
     session.dispatch_message(message);
   }
 
@@ -1070,6 +1142,8 @@ struct InspectorSessionState {
   auto_attach_enabled: Rc<Cell<bool>>,
   // Track whether Target.setDiscoverTargets has been called (enables target discovery)
   discover_targets_enabled: Rc<Cell<bool>>,
+  // Track whether Network.enable has been called (enables Network domain events)
+  network_enabled: Rc<Cell<bool>>,
 }
 
 /// An inspector session that proxies messages to concrete "transport layer",
@@ -1094,6 +1168,7 @@ impl InspectorSession {
     nodeworker_enabled: Rc<Cell<bool>>,
     auto_attach_enabled: Rc<Cell<bool>>,
     discover_targets_enabled: Rc<Cell<bool>>,
+    network_enabled: Rc<Cell<bool>>,
   ) -> Rc<Self> {
     let state = InspectorSessionState {
       is_dispatching_message,
@@ -1105,6 +1180,7 @@ impl InspectorSession {
       nodeworker_enabled,
       auto_attach_enabled,
       discover_targets_enabled,
+      network_enabled,
     };
 
     let v8_session = v8_inspector.connect(
@@ -1262,6 +1338,12 @@ async fn pump_inspector_session_messages(session: Rc<InspectorSession>) {
     let msg_id = parsed.get("id").cloned();
 
     match method {
+      "Network.enable" => {
+        session.state.network_enabled.set(true);
+      }
+      "Network.disable" => {
+        session.state.network_enabled.set(false);
+      }
       "NodeWorker.enable" => {
         session.state.nodeworker_enabled.set(true);
         session.notify_workers(|ts, send| {

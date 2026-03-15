@@ -244,15 +244,74 @@ function broadcastToFrontend(eventName, params) {
   op_inspector_emit_protocol_event(eventName, JSONStringify(params ?? {}));
 }
 
+function captureInitiator() {
+  const error = {};
+  Error.captureStackTrace(error, captureInitiator);
+  const stack = error.stack;
+  // Parse the stack trace to extract caller info
+  const lines = stack.split("\n");
+  if (lines.length > 1) {
+    const callerLine = lines[1].trim();
+    const match = callerLine.match(/at\s+(.+?)\s+\((.+?):(\d+):(\d+)\)/);
+    if (match) {
+      return {
+        type: "script",
+        stackTrace: {
+          callFrames: [{
+            functionName: match[1],
+            scriptId: "",
+            url: match[2],
+            lineNumber: parseInt(match[3], 10) - 1,
+            columnNumber: parseInt(match[4], 10) - 1,
+          }],
+        },
+      };
+    }
+    const match2 = callerLine.match(/at\s+(.+?):(\d+):(\d+)/);
+    if (match2) {
+      return {
+        type: "script",
+        stackTrace: {
+          callFrames: [{
+            functionName: "",
+            scriptId: "",
+            url: match2[1],
+            lineNumber: parseInt(match2[2], 10) - 1,
+            columnNumber: parseInt(match2[3], 10) - 1,
+          }],
+        },
+      };
+    }
+  }
+  return { type: "other" };
+}
+
 const Network = {
-  requestWillBeSent: (params) =>
-    broadcastToFrontend("Network.requestWillBeSent", params),
+  requestWillBeSent: (params) => {
+    validateObject(params, "params");
+    const augmented = { ...params, initiator: captureInitiator() };
+    if (augmented.request && !("hasPostData" in augmented.request)) {
+      augmented.request = { ...augmented.request, hasPostData: false };
+    }
+    broadcastToFrontend("Network.requestWillBeSent", augmented);
+  },
   responseReceived: (params) =>
     broadcastToFrontend("Network.responseReceived", params),
   loadingFinished: (params) =>
     broadcastToFrontend("Network.loadingFinished", params),
   loadingFailed: (params) =>
     broadcastToFrontend("Network.loadingFailed", params),
+  dataReceived: (params) => broadcastToFrontend("Network.dataReceived", params),
+  dataSent: (params) => broadcastToFrontend("Network.dataSent", params),
+  webSocketCreated: (params) => {
+    validateObject(params, "params");
+    const augmented = { ...params, initiator: captureInitiator() };
+    broadcastToFrontend("Network.webSocketCreated", augmented);
+  },
+  webSocketHandshakeResponseReceived: (params) =>
+    broadcastToFrontend("Network.webSocketHandshakeResponseReceived", params),
+  webSocketClosed: (params) =>
+    broadcastToFrontend("Network.webSocketClosed", params),
 };
 
 const console = op_get_extras_binding_object().console;
