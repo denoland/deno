@@ -90,7 +90,7 @@ macro_rules! network_stream {
   ) => {
     /// A raw stream of one of the types handled by this extension.
     #[pin_project::pin_project(project = NetworkStreamProject)]
-    #[allow(clippy::large_enum_variant, reason = "TODO: investigate this one")]
+    #[allow(clippy::large_enum_variant, reason = "TODO: investigate")]
     pub enum NetworkStream {
       $(
         $( #[ $meta ] )?

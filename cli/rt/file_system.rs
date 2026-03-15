@@ -1093,7 +1093,7 @@ impl sys_traits::EnvCurrentDir for DenoRtSys {
   fn env_current_dir(&self) -> std::io::Result<PathBuf> {
     #[allow(
       clippy::disallowed_methods,
-      reason = "ok because we're implement the sys"
+      reason = "ok because we're implementing the sys"
     )]
     sys_traits::impls::RealSys.env_current_dir()
   }
@@ -1104,7 +1104,7 @@ impl sys_traits::EnvHomeDir for DenoRtSys {
   fn env_home_dir(&self) -> Option<PathBuf> {
     #[allow(
       clippy::disallowed_methods,
-      reason = "ok because we're implement the sys"
+      reason = "ok because we're implementing the sys"
     )]
     sys_traits::impls::RealSys.env_home_dir()
   }
@@ -1117,7 +1117,7 @@ impl sys_traits::BaseEnvVar for DenoRtSys {
   ) -> Option<std::ffi::OsString> {
     #[allow(
       clippy::disallowed_methods,
-      reason = "ok because we're implement the sys"
+      reason = "ok because we're implementing the sys"
     )]
     sys_traits::impls::RealSys.base_env_var_os(key)
   }
