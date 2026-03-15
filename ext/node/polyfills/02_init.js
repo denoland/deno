@@ -158,3 +158,7 @@ nativeModuleExports["internal/console/constructor"].bindStreamsLazy(
   nativeModuleExports["console"],
   nativeModuleExports["process"],
 );
+nativeModuleExports["internal/console/constructor"]
+  .bindNodeConsoleMethodsToGlobal(
+    nativeModuleExports["console"],
+  );
