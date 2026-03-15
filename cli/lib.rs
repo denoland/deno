@@ -884,7 +884,7 @@ fn init_logging(
 }
 
 #[cfg(unix)]
-#[allow(clippy::type_complexity)]
+#[allow(clippy::type_complexity, reason = "private code")]
 fn wait_for_start(
   args: &[std::ffi::OsString],
   roots: LibWorkerFactoryRoots,

@@ -597,7 +597,7 @@ mod tests {
 
   use super::IpcJsonStreamResource;
 
-  #[allow(clippy::unused_async)]
+  #[allow(clippy::unused_async, reason = "async on windows")]
   #[cfg(unix)]
   pub async fn pair() -> (Rc<IpcJsonStreamResource>, tokio::net::UnixStream) {
     let (a, b) = tokio::net::UnixStream::pair().unwrap();

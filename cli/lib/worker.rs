@@ -173,7 +173,7 @@ mod linux {
       .map(|mem_info| mem_info.total);
 
     // For performance, parse cgroup config only when DENO_USE_CGROUPS is set
-    if std::env::var("DENO_USE_CGROUPS").is_err() {
+    if sys.env_var_os("DENO_USE_CGROUPS").is_none() {
       return system_total_memory;
     }
 
