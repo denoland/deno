@@ -1627,8 +1627,7 @@ mod test {
   }
 
   fn base_dir() -> PathBuf {
-    let mut path = PathBuf::from(file!());
-    path.pop();
-    path
+    #[allow(clippy::disallowed_methods, reason = "test code")]
+    std::env::current_dir().unwrap()
   }
 }
