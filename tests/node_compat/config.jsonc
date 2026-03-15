@@ -134,7 +134,7 @@
     "parallel/test-buffer-bytelength.js": {},
     "parallel/test-buffer-compare-offset.js": {},
     "parallel/test-buffer-compare.js": {},
-    // "parallel/test-buffer-concat.js": {}, // https://github.com/denoland/deno/issues/32706
+    "parallel/test-buffer-concat.js": {},
     "parallel/test-buffer-constants.js": {},
     "parallel/test-buffer-constructor-deprecation-error.js": {},
     "parallel/test-buffer-constructor-node-modules-paths.js": {},

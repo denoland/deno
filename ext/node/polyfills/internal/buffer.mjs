@@ -569,7 +569,9 @@ Buffer.concat = function concat(list, length) {
     length = 0;
     for (let i = 0; i < list.length; i++) {
       if (list[i].length) {
-        length += list[i].length;
+        length += isUint8Array(list[i])
+          ? TypedArrayPrototypeGetByteLength(list[i])
+          : list[i].length;
       }
     }
   } else {
@@ -589,7 +591,7 @@ Buffer.concat = function concat(list, length) {
         list[i],
       );
     }
-    pos += _copyActual(buf, buffer, pos, 0, buf.length);
+    pos += _copyActual(buf, buffer, pos, 0, TypedArrayPrototypeGetByteLength(buf));
   }
 
   // Note: `length` is always equal to `buffer.length` at this point
