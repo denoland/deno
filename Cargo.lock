@@ -1087,7 +1087,7 @@ version = "0.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fe6d2e5af09e8c8ad56c969f2157a3d4238cebc7c55f0a517728c38f7b200f81"
 dependencies = [
- "unicode-width 0.2.2",
+ "unicode-width 0.1.13",
 ]
 
 [[package]]
@@ -2405,8 +2405,7 @@ dependencies = [
 [[package]]
 name = "deno_graph"
 version = "0.107.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "06518571e56fef9ae4441b93445754f0b3c608404607b8143541ab672e589bf6"
+source = "git+https://github.com/bartlomieju/deno_graph.git?branch=fix%2Fimprove-parse-error-display#4e60a7cc316baff915a00d1e301098eccb967961"
 dependencies = [
  "async-trait",
  "boxed_error",

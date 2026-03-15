@@ -1,4 +1,5 @@
-error: The module's source code could not be parsed: Expected ',', got 'following' at [WILDCARD]/error_syntax.js:3:6
-
-  (the following is a syntax error  ^^ ! )
-       ~~~~~~~~~
+error: Expected ',', got 'following'
+  |
+3 | (the following is a syntax error  ^^ ! )
+  |      ~~~~~~~~~
+    at [WILDCARD]/error_syntax.js:3:6
