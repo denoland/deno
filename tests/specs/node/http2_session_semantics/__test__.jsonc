@@ -1,0 +1,4 @@
+{
+  "args": "run --quiet --no-lock -A main.ts",
+  "output": "main.out"
+}

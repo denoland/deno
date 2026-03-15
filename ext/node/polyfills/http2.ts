@@ -24,6 +24,7 @@ const {
   ObjectEntries,
   ObjectHasOwn,
   ObjectKeys,
+  ObjectSetPrototypeOf,
   ObjectPrototypeIsPrototypeOf,
   Promise,
   Proxy,
@@ -108,6 +109,7 @@ import {
   ERR_HTTP2_ORIGIN_LENGTH,
   ERR_HTTP2_OUT_OF_STREAMS,
   ERR_HTTP2_PAYLOAD_FORBIDDEN,
+  ERR_HTTP2_PING_CANCEL,
   ERR_HTTP2_PING_LENGTH,
   ERR_HTTP2_PUSH_DISABLED,
   ERR_HTTP2_SEND_FILE,
@@ -221,9 +223,17 @@ function getURLOrigin(urlStr) {
   return new URL(urlStr).origin;
 }
 
-// Schedule a deferred sendPending() call on the session's native handle.
-// This is deferred via queueMicrotask to avoid re-entrancy: nghttp2's
-// send_pending_data can invoke callbacks that call back into JS ops.
+function clearConnectKeepAlive(session) {
+  const state = session[kState];
+  const keepAlive = state?.connectKeepAlive;
+  if (keepAlive !== null && keepAlive !== undefined) {
+    clearInterval(keepAlive);
+    state.connectKeepAlive = null;
+  }
+}
+
+// Schedule a sendPending() call on the session's native handle.
+// The op is marked re-entrant and has guards against nested send loops.
 function scheduleSendPending(session) {
   if (!session) return;
   const handle = session[kHandle];
@@ -522,13 +532,19 @@ const proxySocketHandler = {
   },
 };
 
-function onPing(payload) {
+function onPing(ack, payload) {
   const session = this[kOwner];
   if (session.destroyed) {
     return;
   }
   session[kUpdateTimer]();
   debugSessionObj(session, "new ping received");
+  if (ack) {
+    const pendingPing = session[kState].pendingPings.shift();
+    if (pendingPing !== undefined) {
+      pendingPing.cb(true, Date.now() - pendingPing.start, payload);
+    }
+  }
   session.emit("ping", payload);
 }
 
@@ -595,7 +611,13 @@ function onSettings() {
   session[kUpdateTimer]();
   debugSessionObj(session, "new settings received");
   session[kRemoteSettings] = undefined;
-  session.emit("remoteSettings", session.remoteSettings);
+  // Defer the event to avoid races where initial SETTINGS arrives during
+  // connection setup before userland attaches `remoteSettings` listeners.
+  process.nextTick(() => {
+    if (!session.destroyed) {
+      session.emit("remoteSettings", session.remoteSettings);
+    }
+  });
 }
 
 // If the stream exists, an attempt will be made to emit an event
@@ -2636,6 +2658,7 @@ function setupHandle(socket, type, options) {
   // core will check for session.destroyed before progressing, this
   // ensures that those at least get cleared out.
   if (this.destroyed) {
+    clearConnectKeepAlive(this);
     process.nextTick(emit, this, "connect", this, socket);
     return;
   }
@@ -2656,9 +2679,14 @@ function setupHandle(socket, type, options) {
   const handle = new InternalHttp2Session(type);
   handle[kOwner] = this;
 
-  // Get the native TCP handle from the socket wrapper
+  // Keep transport owned by net.Socket and bridge bytes via onwrite/receive by
+  // default. Native-handle consumption remains opt-in until detached-socket
+  // shutdown/close behavior matches Node semantics end-to-end.
   const tcpHandle = socket._handle;
-  const nativeHandle = tcpHandle?._nativeHandle;
+  const canConsumeNativeStream =
+    options.consumeNativeHttp2Stream === true &&
+    !!tcpHandle?.[kUseNativeWrap];
+  const nativeHandle = canConsumeNativeStream ? tcpHandle?._nativeHandle : null;
 
   if (nativeHandle) {
     // Cache socket address info before detaching the native handle,
@@ -2679,10 +2707,54 @@ function setupHandle(socket, type, options) {
     debug("i/o stream consumed (native)");
   } else {
     // Fallback: pump data from socket to session via JS events
-    socket.on("data", (buf) => {
-      if (!this.destroyed) {
-        handle.receive(buf);
+    const pendingSocketWrites = [];
+    let flushScheduled = false;
+    let waitingForDrain = false;
+    const onDrain = () => {
+      waitingForDrain = false;
+      if (!this.destroyed && pendingSocketWrites.length > 0) {
+        flushSocketWrites();
       }
+    };
+    const flushSocketWrites = () => {
+      flushScheduled = false;
+      if (this.destroyed || waitingForDrain) {
+        return;
+      }
+      while (!this.destroyed && pendingSocketWrites.length > 0) {
+        const chunk = pendingSocketWrites.shift();
+        if (chunk) {
+          const canContinue = socket.write(chunk);
+          if (!canContinue) {
+            waitingForDrain = true;
+            socket.once("drain", onDrain);
+            return;
+          }
+        }
+      }
+    };
+    handle.onwrite = (chunk) => {
+      pendingSocketWrites.push(chunk);
+      if (!flushScheduled && !waitingForDrain) {
+        flushScheduled = true;
+        // queueMicrotask() crosses into a runtime op in Deno and can panic
+        // when invoked re-entrantly from non-reentrant HTTP/2 backend ops.
+        // nextTick keeps the flush deferred without that re-entrant op path.
+        process.nextTick(flushSocketWrites);
+      }
+    };
+    socket.on("data", (buf) => {
+      if (this.destroyed) return;
+      process.nextTick(() => {
+        if (!this.destroyed) {
+          handle.receive(buf);
+        }
+      });
+    });
+    socket.once("close", () => {
+      waitingForDrain = false;
+      pendingSocketWrites.length = 0;
+      socket.removeListener("drain", onDrain);
     });
     socket.resume();
     debug("i/o stream consumed (socket data events)");
@@ -2801,6 +2873,7 @@ function cleanupSession(session) {
 
 function finishSessionClose(session, error) {
   debugSessionObj(session, "finishSessionClose");
+  clearConnectKeepAlive(session);
 
   const socket = session[kSocket];
   cleanupSession(session);
@@ -2837,6 +2910,12 @@ function closeSession(session, code, error) {
   const state = session[kState];
   state.flags |= SESSION_FLAGS_DESTROYED;
   state.destroyCode = code;
+  while (state.pendingPings.length > 0) {
+    const pendingPing = state.pendingPings.shift();
+    if (pendingPing) {
+      process.nextTick(pendingPing.cb, false, 0.0, undefined);
+    }
+  }
 
   // Clear timeout and remove timeout listeners.
   session.setTimeout(0);
@@ -2964,9 +3043,11 @@ class Http2Session extends EventEmitter {
       streams: new SafeMap(),
       pendingStreams: new SafeSet(),
       pendingAck: 0,
+      pendingPings: [],
       shutdownWritableCalled: false,
       writeQueueSize: 0,
       originSet: undefined,
+      connectKeepAlive: null,
     };
 
     this[kEncrypted] = undefined;
@@ -2995,17 +3076,29 @@ class Http2Session extends EventEmitter {
       options,
     );
     if (socket.connecting || socket.secureConnecting) {
+      this[kState].connectKeepAlive ??= setInterval(
+        () => {},
+        2_147_483_647,
+      );
+      // Ensure the pending socket connection keeps the event loop alive until
+      // setupHandle runs on connect/secureConnect.
+      if (typeof socket.ref === "function") {
+        socket.ref();
+      }
       const connectEvent =
         ObjectPrototypeIsPrototypeOf(tls.TLSSocket.prototype, socket)
           ? "secureConnect"
           : "connect";
       socket.once(connectEvent, () => {
+        clearConnectKeepAlive(this);
         try {
           setupFn();
         } catch (error) {
           socket.destroy(error);
         }
       });
+      socket.once("close", () => clearConnectKeepAlive(this));
+      socket.once("error", () => clearConnectKeepAlive(this));
     } else {
       setupFn();
     }
@@ -3139,7 +3232,18 @@ class Http2Session extends EventEmitter {
       return;
     }
 
-    return this[kHandle].ping(payload, cb);
+    const pingPayload = payload ?? Buffer.alloc(8);
+    this[kState].pendingPings.push({
+      cb,
+      start: Date.now(),
+    });
+    const ret = this[kHandle].ping(pingPayload);
+    if (ret !== 0) {
+      this[kState].pendingPings.pop();
+      process.nextTick(cb, false, 0.0, pingPayload);
+      return false;
+    }
+    return true;
   }
 
   [kInspect](depth, opts) {
@@ -3861,6 +3965,10 @@ class Http2SecureServer extends tls.Server {
   constructor(options, requestListener) {
     options = initializeTLSOptions(options);
     super(options, connectionListener);
+    // tls.Server is implemented as a function constructor returning a
+    // ServerImpl instance. Ensure Http2SecureServer prototype methods are
+    // visible on the returned object.
+    ObjectSetPrototypeOf(this, Http2SecureServer.prototype);
     this[kOptions] = options;
     this[kSessions] = new SafeSet();
     this.timeout = 0;
@@ -4001,8 +4109,6 @@ function connect(authority, options, listener) {
   } else if (authority.host) {
     host = authority.host;
   }
-
-  options[kUseNativeWrap] = true;
 
   let socket;
   if (typeof options.createConnection === "function") {
