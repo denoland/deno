@@ -1,0 +1,7 @@
+Download http://localhost:4260/@denotest%2fbundled-add
+[UNORDERED_START]
+Download http://localhost:4260/@denotest/bundled-add/1.0.0.tgz
+Download http://localhost:4260/@denotest/add/1.0.0.tgz
+[UNORDERED_END]
+Using bundled
+3

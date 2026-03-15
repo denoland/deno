@@ -175,6 +175,12 @@ unsafe extern "C" fn _napi_uv_async_init(
       r#async.cast(),
       addr_of_mut!((*r#async).work),
     );
+
+    // In libuv, uv_async_init starts the handle and keeps the event loop
+    // alive until uv_close is called. Ref the event loop to match this.
+    let env = &mut *r#loop;
+    env.external_ops_tracker.ref_op();
+
     -res
   }
 }
@@ -210,6 +216,9 @@ unsafe extern "C" fn _napi_uv_close(
     if let uv_handle_type::UV_ASYNC = (*handle).r#type {
       let handle: *mut uv_async_t = handle.cast();
       napi_delete_async_work((*handle).r#loop, (*handle).work);
+      // Unref the event loop to match the ref in uv_async_init.
+      let env = &mut *(*handle).r#loop;
+      env.external_ops_tracker.unref_op();
     }
     close(handle);
   }
