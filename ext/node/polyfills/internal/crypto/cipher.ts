@@ -285,6 +285,9 @@ Cipheriv.prototype.setAAD = function (
     plaintextLength: number;
   },
 ) {
+  if (this._finalized) {
+    throw new ERR_CRYPTO_INVALID_STATE("setAAD");
+  }
   op_node_cipheriv_set_aad(this._context, buffer);
   return this;
 };
@@ -474,8 +477,6 @@ Decipheriv.prototype.final = function (
     throw new ERR_CRYPTO_INVALID_STATE("final");
   }
 
-  _lazyInitDecipherDecoder(this, encoding);
-
   const bs = this._blockSize;
   let buf = new FastBuffer(bs);
   op_node_decipheriv_final(
@@ -503,6 +504,7 @@ Decipheriv.prototype.final = function (
   }
   this._finalized = true;
   if (encoding !== "buffer") {
+    _lazyInitDecipherDecoder(this, encoding);
     return this._decoder!.end(buf);
   }
 
@@ -523,6 +525,9 @@ Decipheriv.prototype.setAuthTag = function (
   buffer: BinaryLike,
   _encoding?: string,
 ) {
+  if (this._authTag) {
+    throw new ERR_CRYPTO_INVALID_STATE("setAuthTag");
+  }
   op_node_decipheriv_auth_tag(this._context, buffer.byteLength);
   this._authTag = buffer;
   return this;
@@ -584,13 +589,11 @@ function _lazyInitDecipherDecoder(self: any, encoding: string) {
   }
 
   const normalizedEncoding = normalizeEncoding(encoding);
-  self._decoder ||= new StringDecoder(normalizedEncoding);
-
-  if (self._decoder.encoding !== normalizedEncoding) {
-    if (normalizedEncoding === undefined) {
-      throw new ERR_UNKNOWN_ENCODING(encoding);
-    }
-    assert(false, "Cannot change encoding");
+  if (normalizedEncoding === undefined) {
+    throw new ERR_UNKNOWN_ENCODING(encoding);
+  }
+  if (!self._decoder || self._decoder.encoding !== normalizedEncoding) {
+    self._decoder = new StringDecoder(normalizedEncoding);
   }
 }
 
