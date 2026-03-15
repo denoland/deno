@@ -712,11 +712,13 @@ mod tests {
   use super::Subject;
   use super::SubjectDigest;
 
+  // TODO(dsherret): use sys_traits in the implementation so that this can
+  // be properly tested without polluting the process environment
   #[test]
   fn slsa_github_actions() {
     // Set environment variable
     if env::var("GITHUB_ACTIONS").is_err() {
-      #[allow(clippy::undocumented_unsafe_blocks)]
+      // SAFETY: test code
       unsafe {
         env::set_var("CI", "true");
         env::set_var("GITHUB_ACTIONS", "true");

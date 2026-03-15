@@ -2574,6 +2574,7 @@ dependencies = [
  "arc-swap",
  "aws-lc-rs",
  "base64 0.22.1",
+ "boxed_error",
  "capacity_builder",
  "deno_bundle_runtime",
  "deno_error",

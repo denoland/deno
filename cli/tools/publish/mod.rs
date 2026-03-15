@@ -1364,7 +1364,7 @@ fn error_missing_exports_field(deno_json: &ConfigFile) -> Result<(), AnyError> {
   );
 }
 
-#[allow(clippy::print_stderr)]
+#[allow(clippy::print_stderr, reason = "actually want to output")]
 fn ring_bell() {
   // ASCII code for the bell character.
   eprint!("\x07");

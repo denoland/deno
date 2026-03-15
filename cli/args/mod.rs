@@ -1529,7 +1529,7 @@ fn resolve_import_map_specifier(
 
 /// Resolves the no_prompt value based on the cli flags and environment.
 pub fn resolve_no_prompt(flags: &PermissionFlags) -> bool {
-  flags.no_prompt || has_flag_env_var("DENO_NO_PROMPT")
+  flags.no_prompt || has_flag_env_var(&CliSys::default(), "DENO_NO_PROMPT")
 }
 
 pub fn config_to_deno_graph_workspace_member(

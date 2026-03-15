@@ -449,7 +449,10 @@ impl PermissionPrompter for TtyPrompter {
       // Clear stdin each time we loop around in case the user accidentally pasted
       // multiple lines or otherwise did something silly to generate a torrent of
       // input. This doesn't work on Windows because `clear_stdin` has other side-effects.
-      #[allow(clippy::print_stderr)]
+      #[allow(
+        clippy::print_stderr,
+        reason = "force outputting when permission prompt fails to output"
+      )]
       #[cfg(unix)]
       if let Err(err) = clear_stdin(&mut stdin_lock, &mut stderr_lock) {
         eprintln!("Error clearing stdin for permission prompt. {err:#}");

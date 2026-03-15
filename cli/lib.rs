@@ -25,7 +25,7 @@ mod util;
 mod worker;
 
 pub(crate) mod sys {
-  #[allow(clippy::disallowed_types)] // ok, definition
+  #[allow(clippy::disallowed_types, reason = "definition")]
   pub type CliSys = sys_traits::impls::RealSys;
 }
 
@@ -416,7 +416,7 @@ async fn run_subcommand(
           // this is set in order to ensure spawned processes use the same
           // coverage directory
 
-          #[allow(clippy::undocumented_unsafe_blocks)]
+          // SAFETY: called during single-threaded CLI startup
           unsafe {
             env::set_var(
               "DENO_COVERAGE_DIR",
@@ -514,7 +514,7 @@ fn should_fallback_on_run_error(script_err: &str) -> bool {
   re.is_match(script_err)
 }
 
-#[allow(clippy::print_stderr)]
+#[allow(clippy::print_stderr, reason = "panic hook")]
 fn setup_panic_hook() {
   // This function does two things inside of the panic hook:
   // - Tokio does not exit the process when a task panics, so we define a custom
@@ -748,7 +748,8 @@ async fn resolve_flags_and_init(
     load_env_variables_from_env_files(&cwd, files, flags.log_level);
   }
 
-  if deno_lib::args::has_flag_env_var("DENO_CONNECTED") {
+  let sys = crate::sys::CliSys::default();
+  if deno_lib::args::has_flag_env_var(&sys, "DENO_CONNECTED") {
     flags.tunnel = true;
   }
 
@@ -766,7 +767,7 @@ async fn resolve_flags_and_init(
     }
   }
 
-  flags.unstable_config.fill_with_env();
+  flags.unstable_config.fill_with_env(&sys);
   if std::env::var("DENO_COMPAT").is_ok() {
     flags.unstable_config.enable_node_compat();
   }
@@ -782,7 +783,7 @@ async fn resolve_flags_and_init(
   let otel_config = flags.otel_config();
   init_logging(flags.log_level, Some(otel_config.clone()));
   deno_telemetry::init(
-    &crate::sys::CliSys::default(),
+    &sys,
     deno_lib::version::otel_runtime_config(),
     otel_config.clone(),
   )?;
@@ -1063,7 +1064,6 @@ async fn auth_tunnel(
   Ok(output)
 }
 
-#[allow(clippy::print_stderr)]
 async fn initialize_tunnel(
   flags: &Flags,
 ) -> Result<(), deno_core::anyhow::Error> {
@@ -1168,10 +1168,13 @@ async fn initialize_tunnel(
 
         // We explicitly use eprintln instead of log here since
         // there is a circular dep between tunnel and telemetry
-        eprintln!(
-          "{}",
-          colors::green(format!("You are connected to {endpoint}"))
-        );
+        #[allow(clippy::print_stderr, reason = "can't use log crate yet")]
+        {
+          eprintln!(
+            "{}",
+            colors::green(format!("You are connected to {endpoint}"))
+          );
+        }
       }
       Event::Reconnect(duration, reason) => {
         let reason = if let Some(reason) = reason {
@@ -1181,14 +1184,17 @@ async fn initialize_tunnel(
         };
         // We explicitly use eprintln instead of log here since
         // there is a circular dep between tunnel and telemetry
-        eprintln!(
-          "{}",
-          colors::green(format!(
-            "Reconnecting tunnel in {}s...{}",
-            duration.as_secs(),
-            reason
-          ))
-        );
+        #[allow(clippy::print_stderr, reason = "can't use log crate yet")]
+        {
+          eprintln!(
+            "{}",
+            colors::green(format!(
+              "Reconnecting tunnel in {}s...{}",
+              duration.as_secs(),
+              reason
+            ))
+          );
+        }
       }
       _ => {}
     }

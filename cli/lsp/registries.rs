@@ -569,7 +569,7 @@ impl ModuleRegistry {
   async fn enable_custom(&mut self, specifier: &str) -> Result<(), AnyError> {
     let specifier = Url::parse(specifier)?;
     let origin = base_url(&specifier);
-    #[allow(clippy::map_entry)]
+    #[allow(clippy::map_entry, reason = "reduces a clone")]
     if !self.origins.contains_key(&origin) {
       let configs = self.fetch_config(&specifier).await?;
       self.origins.insert(origin, configs);

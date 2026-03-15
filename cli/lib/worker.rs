@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 
+use boxed_error::Boxed;
 use deno_bundle_runtime::BundleProvider;
 use deno_core::error::JsError;
 use deno_node::NodeRequireLoaderRc;
@@ -206,8 +207,13 @@ mod linux {
   }
 }
 
+#[derive(Debug, Boxed, deno_error::JsError)]
+pub struct ResolveNpmBinaryEntrypointError(
+  pub Box<ResolveNpmBinaryEntrypointErrorKind>,
+);
+
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
-pub enum ResolveNpmBinaryEntrypointError {
+pub enum ResolveNpmBinaryEntrypointErrorKind {
   #[class(inherit)]
   #[error(transparent)]
   PathToUrl(#[from] deno_path_util::PathToUrlError),
@@ -475,7 +481,9 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
         maybe_coverage_dir: shared.maybe_coverage_dir.clone(),
         maybe_cpu_prof_config: shared.maybe_cpu_prof_config.clone(),
         enable_raw_imports: shared.options.enable_raw_imports,
-        enable_stack_trace_arg_in_ops: has_trace_permissions_enabled(),
+        enable_stack_trace_arg_in_ops: has_trace_permissions_enabled(
+          &shared.sys,
+        ),
       };
 
       let has_resource_limits = args.resource_limits.is_some();
@@ -700,7 +708,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
       stdio,
       skip_op_registration: shared.options.skip_op_registration,
       enable_raw_imports: shared.options.enable_raw_imports,
-      enable_stack_trace_arg_in_ops: has_trace_permissions_enabled(),
+      enable_stack_trace_arg_in_ops: has_trace_permissions_enabled(&shared.sys),
       unconfigured_runtime,
     };
 
@@ -721,7 +729,6 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
     })
   }
 
-  #[allow(clippy::result_large_err)]
   pub fn resolve_npm_binary_entrypoint(
     &self,
     package_folder: &Path,
@@ -739,15 +746,19 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
           self.resolve_binary_entrypoint_fallback(package_folder, sub_path);
         match result {
           Ok(Some(path)) => Ok(url_from_file_path(&path)?),
-          Ok(None) => {
-            Err(ResolveNpmBinaryEntrypointError::ResolvePkgJsonBinExport(
+          Ok(None) => Err(
+            ResolveNpmBinaryEntrypointErrorKind::ResolvePkgJsonBinExport(
               original_err,
-            ))
-          }
-          Err(fallback_err) => Err(ResolveNpmBinaryEntrypointError::Fallback {
-            original: original_err,
-            fallback: fallback_err,
-          }),
+            )
+            .into_box(),
+          ),
+          Err(fallback_err) => Err(
+            ResolveNpmBinaryEntrypointErrorKind::Fallback {
+              original: original_err,
+              fallback: fallback_err,
+            }
+            .into_box(),
+          ),
         }
       }
     }

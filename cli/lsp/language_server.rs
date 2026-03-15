@@ -750,6 +750,7 @@ impl Inner {
       .root_url()
       .and_then(|url| url_to_file_path(url).ok());
     let root_cert_store = get_root_cert_store(
+      &CliSys::default(),
       maybe_root_path,
       workspace_settings.certificate_stores.clone(),
       workspace_settings.tls_certificate.clone().map(CaData::File),

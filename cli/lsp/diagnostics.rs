@@ -83,6 +83,7 @@ impl DiagnosticSource {
 
 fn should_send_diagnostic_batch_notifications() -> bool {
   deno_lib::args::has_flag_env_var(
+    &CliSys::default(),
     "DENO_INTERNAL_DIAGNOSTIC_BATCH_NOTIFICATIONS",
   )
 }

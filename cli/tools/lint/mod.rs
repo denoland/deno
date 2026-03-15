@@ -315,8 +315,8 @@ impl WorkspaceLinter {
       )));
     }
 
-    #[allow(clippy::print_stdout)]
-    #[allow(clippy::print_stderr)]
+    #[allow(clippy::print_stdout, reason = "actually want to output")]
+    #[allow(clippy::print_stderr, reason = "actually want to output")]
     fn logger_printer(msg: &str, is_err: bool) {
       if is_err {
         eprint!("{}", msg);
