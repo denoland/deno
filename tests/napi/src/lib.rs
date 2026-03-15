@@ -146,12 +146,10 @@ unsafe extern "C" fn napi_register_module_v1(
   env: napi_env,
   _: napi_value,
 ) -> napi_value {
-  #[cfg(windows)]
-  {
-    unsafe {
-      napi_sys::setup();
-      libuv_sys_lite::setup();
-    }
+  unsafe {
+    #[cfg(windows)]
+    napi_sys::setup();
+    libuv_sys_lite::setup();
   }
 
   // We create a fresh exports object and leave the passed
