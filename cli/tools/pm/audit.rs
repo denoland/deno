@@ -608,8 +608,6 @@ mod npm {
 }
 
 mod socket_dev {
-  #![allow(dead_code)]
-
   use super::*;
 
   pub async fn call_firewall_api(

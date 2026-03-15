@@ -150,11 +150,17 @@ include!(concat!(env!("OUT_DIR"), "/node_types.rs"));
 
 #[derive(Clone)]
 pub enum StaticAssetSource {
-  #[cfg_attr(any(debug_assertions, feature = "hmr"), allow(dead_code))]
+  #[cfg_attr(
+    any(debug_assertions, feature = "hmr"),
+    allow(dead_code, reason = "not used for hmr")
+  )]
   Compressed(CompressedSource),
-  #[allow(dead_code)]
+  #[allow(dead_code, reason = "used for hmr")]
   Uncompressed(&'static str),
-  #[cfg_attr(not(feature = "hmr"), allow(dead_code))]
+  #[cfg_attr(
+    not(feature = "hmr"),
+    allow(dead_code, reason = "not used for hmr")
+  )]
   Owned(&'static str, std::sync::OnceLock<Arc<str>>),
 }
 
@@ -423,14 +429,6 @@ fn hash_url(specifier: &ModuleSpecifier, media_type: MediaType) -> String {
     hash,
     media_type.as_ts_extension()
   )
-}
-
-#[derive(Debug, Clone, Default, Eq, PartialEq)]
-#[allow(dead_code)]
-pub struct EmittedFile {
-  pub data: String,
-  pub maybe_specifiers: Option<Vec<ModuleSpecifier>>,
-  pub media_type: MediaType,
 }
 
 pub fn into_specifier_and_media_type(
@@ -862,7 +860,10 @@ pub(crate) struct CompressedSource {
 }
 
 impl CompressedSource {
-  #[cfg_attr(any(debug_assertions, feature = "hmr"), allow(dead_code))]
+  #[cfg_attr(
+    any(debug_assertions, feature = "hmr"),
+    allow(dead_code, reason = "not used for hmr")
+  )]
   pub(crate) const fn new(bytes: &'static [u8]) -> Self {
     Self {
       bytes,
@@ -897,7 +898,6 @@ pub(crate) fn decompress_source(contents: &[u8]) -> Arc<str> {
 /// Execute a request on the supplied snapshot, returning a response which
 /// contains information, like any emitted files, diagnostics, statistics and
 /// optionally an updated TypeScript build info.
-#[allow(clippy::result_large_err)]
 pub fn exec(
   request: Request,
   code_cache: Option<Arc<dyn deno_runtime::code_cache::CodeCache>>,

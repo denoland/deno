@@ -480,7 +480,6 @@ pub struct CliOptions {
 }
 
 impl CliOptions {
-  #[allow(clippy::too_many_arguments)]
   pub fn new(
     flags: Arc<Flags>,
     initial_cwd: PathBuf,
@@ -594,7 +593,7 @@ impl CliOptions {
     };
     if let Some(node_channel_fd) = maybe_node_channel_fd {
       // Remove so that child processes don't inherit this environment variables.
-      #[allow(clippy::undocumented_unsafe_blocks)]
+      // SAFETY: single-threaded at this point in startup
       unsafe {
         std::env::remove_var("NODE_CHANNEL_FD");
         std::env::remove_var("NODE_CHANNEL_SERIALIZATION_MODE");
@@ -1263,7 +1262,7 @@ impl CliOptions {
           Ok(var) => {
             // remove the env var so that child sub processes won't pick this up
 
-            #[allow(clippy::undocumented_unsafe_blocks)]
+            // SAFETY: single-threaded at this point in startup
             unsafe {
               std::env::remove_var(NPM_CMD_NAME_ENV_VAR_NAME)
             };

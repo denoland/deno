@@ -663,7 +663,10 @@ pub fn main() {
       (None, None, None);
 
     let args = waited_args.unwrap_or(args);
-    #[allow(clippy::disallowed_methods)] // ok because initialization of cwd
+    #[allow(
+      clippy::disallowed_methods,
+      reason = "ok because initialization of cwd"
+    )]
     let initial_cwd =
       waited_cwd
         .map(Some)
@@ -896,7 +899,7 @@ fn wait_for_start(
   let startup_snapshot = deno_snapshots::CLI_SNAPSHOT?;
   let addr = std::env::var("DENO_UNSTABLE_CONTROL_SOCK").ok()?;
 
-  #[allow(clippy::undocumented_unsafe_blocks)]
+  // SAFETY: single-threaded at this point in startup
   unsafe {
     std::env::remove_var("DENO_UNSTABLE_CONTROL_SOCK")
   };

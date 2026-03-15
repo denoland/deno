@@ -541,7 +541,7 @@ impl ModuleRegistry {
       return;
     };
     let origin = base_url(&origin_url);
-    #[allow(clippy::map_entry)]
+    #[allow(clippy::map_entry, reason = "less allocations")]
     // we can't use entry().or_insert_with() because we can't use async closures
     if !self.origins.contains_key(&origin) {
       let Ok(specifier) = origin_url.join(CONFIG_PATH) else {

@@ -468,7 +468,7 @@ fn walk_removing(
     }
     if entry.file_type().is_dir() {
       if dry_run {
-        #[allow(clippy::print_stder, reason = "actually want to output"r)]
+        #[allow(clippy::print_stderr, reason = "actually want to output")]
         {
           eprintln!(" {}", entry.path().display());
         }

@@ -412,7 +412,6 @@ impl PublishPreparer {
     }
   }
 
-  #[allow(clippy::too_many_arguments)]
   async fn prepare_publish(
     &self,
     package: &JsrPackageConfig,

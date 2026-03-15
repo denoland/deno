@@ -204,7 +204,6 @@ impl DiagnosticsServer {
     }
   }
 
-  #[allow(unused_must_use)]
   pub fn start(&mut self) {
     let (tx, mut rx) = mpsc::unbounded_channel::<DiagnosticsUpdateMessage>();
     self.channel = Some(tx);
@@ -898,7 +897,7 @@ fn maybe_ambient_specifier_resolution_err(
   }
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, reason = "private code")]
 fn diagnose_resolution(
   snapshot: &language_server::StateSnapshot,
   dependency_key: &str,
