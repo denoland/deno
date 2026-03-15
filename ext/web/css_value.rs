@@ -2762,7 +2762,10 @@ impl<'i, 't> Iterator for TransformListParser<'i, 't> {
       let start = input.state();
       if input.expect_ident_matching("none").is_ok() {
         self.finished = true;
-        return None;
+        match input.expect_exhausted() {
+          Ok(_) => return None,
+          Err(error) => return Some(Err(error.into())),
+        }
       } else {
         input.reset(&start);
       }
