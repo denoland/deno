@@ -14,6 +14,7 @@ const {
   DatePrototypeGetSeconds,
   ErrorCaptureStackTrace,
   NumberPrototypeToString,
+  ObjectCreate,
   ObjectDefineProperty,
   ObjectKeys,
   ObjectSetPrototypeOf,
@@ -319,9 +320,10 @@ export function parseEnv(
 ): Record<string, string> {
   validateString(input, "content");
   const parsed = binding.parseEnv(input);
-  const result = Object.create(null);
-  for (const key in parsed) {
-    result[key] = parsed[key];
+  const result = ObjectCreate(null);
+  const keys = ObjectKeys(parsed);
+  for (let i = 0; i < keys.length; i++) {
+    result[keys[i]] = parsed[keys[i]];
   }
   return result;
 }

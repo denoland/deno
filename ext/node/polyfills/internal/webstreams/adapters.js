@@ -539,7 +539,7 @@ export function newReadableStreamFromStreamReadable(
 
   streamReadable.on("data", onData);
 
-  const isByteStream = options?.type === 'bytes';
+  const isByteStream = options?.type === "bytes";
   const underlyingSource = {
     start(c) {
       controller = c;
@@ -555,7 +555,7 @@ export function newReadableStreamFromStreamReadable(
     },
   };
   if (isByteStream) {
-    underlyingSource.type = 'bytes';
+    underlyingSource.type = "bytes";
   }
   return new ReadableStream(underlyingSource, strategy);
 }
@@ -662,7 +662,10 @@ export function newWritableStreamFromStreamWritable(streamWritable) {
   }, strategy);
 }
 
-export function newReadableWritablePairFromDuplex(duplex, options = kEmptyObject) {
+export function newReadableWritablePairFromDuplex(
+  duplex,
+  options = kEmptyObject,
+) {
   // Not using the internal/streams/utils isWritableNodeStream and
   // isReadableNodestream utilities here because they will return false
   // if the duplex was created with writable or readable options set to
