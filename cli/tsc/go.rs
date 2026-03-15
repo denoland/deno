@@ -158,6 +158,7 @@ fn exec_request_inner(
     maybe_tsbuildinfo: None,
     ambient_modules: vec![],
     stats: super::Stats::default(),
+    emitted_files: Default::default(),
   })
 }
 

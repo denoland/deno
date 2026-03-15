@@ -142,6 +142,15 @@ impl TypeChecker {
     }
   }
 
+  pub fn create_request_npm_state(&self) -> tsc::RequestNpmState {
+    tsc::RequestNpmState {
+      cjs_tracker: self.cjs_tracker.clone(),
+      node_resolver: self.node_resolver.clone(),
+      npm_resolver: self.npm_resolver.clone(),
+      package_json_resolver: self.package_json_resolver.clone(),
+    }
+  }
+
   /// Type check the module graph.
   ///
   /// It is expected that it is determined if a check and/or emit is validated

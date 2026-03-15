@@ -543,6 +543,8 @@ pub struct Response {
   pub ambient_modules: Vec<String>,
   /// Statistics from the check.
   pub stats: Stats,
+  /// Emitted files from the compiler (e.g., .d.ts declaration files).
+  pub emitted_files: HashMap<String, String>,
 }
 
 pub fn as_ts_script_kind(media_type: MediaType) -> i32 {
