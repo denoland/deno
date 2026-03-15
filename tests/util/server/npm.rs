@@ -180,6 +180,8 @@ impl TestNpmRegistry {
       "@denotest",
       "@denotest2",
       "@denotest3",
+      "@grpc",
+      "@js-sdsl",
       "@jsr",
       "@esbuild",
       "@types",

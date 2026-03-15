@@ -179,12 +179,10 @@ export class TLSSocket extends net.Socket {
       let wrap;
 
       if (socket) {
-        if (socket instanceof net.Socket && socket._handle) {
-          wrap = socket;
-        } else {
-          wrap = new JSStreamSocket(socket);
-        }
-
+        // For socket-backed TLS upgrades, use JSStreamSocket bridging.
+        // Reusing an already-active net.Socket rid directly can fail with
+        // "TCP stream is currently in use" in op_tls_start.
+        wrap = new JSStreamSocket(socket);
         handle = wrap._handle;
       }
 
@@ -204,6 +202,18 @@ export class TLSSocket extends net.Socket {
           tlssock.emit("secure");
           tlssock.removeListener("end", onConnectEnd);
           return;
+        }
+
+        // Upgrading an existing net.Socket requires quiescing the old reader
+        // first. Otherwise op_tls_start can fail with "stream is currently in use".
+        if (wrap) {
+          try {
+            wrap.pause?.();
+            handle.readStop?.();
+            handle.reading = false;
+          } catch {
+            // ignore best-effort pause/readStop failures
+          }
         }
 
         try {
@@ -235,8 +245,14 @@ export class TLSSocket extends net.Socket {
 
           tlssock.emit("secure");
           tlssock.removeListener("end", onConnectEnd);
-        } catch {
-          // TODO(kt3k): Handle this
+        } catch (error) {
+          // Avoid hanging writes forever if TLS upgrade fails.
+          // stream_wrap awaits `handle.upgrading`; leaving this unresolved
+          // causes callers (including grpc-js) to stall indefinitely.
+          handle.upgrading = false;
+          resolve();
+          debug("TLS upgrade failed: %s", error?.message ?? error);
+          tlssock.destroy(error);
         }
       };
 
@@ -305,20 +321,28 @@ class JSStreamSocket {
   #rid;
   #channelRid;
   #closed = false;
+  #onData;
+  #onClose;
 
   constructor(stream) {
     this.stream = stream;
   }
 
   init(options) {
-    op_node_tls_start(options, tlsStreamRids);
+    op_node_tls_start(options, options.keyPair ?? null, tlsStreamRids);
     this.#rid = tlsStreamRids[0];
     this.#channelRid = tlsStreamRids[1];
     const channelRid = this.#channelRid;
 
-    this.stream.on("data", (data) => {
-      core.write(channelRid, data);
-    });
+    this.#onData = (data) => {
+      if (this.#closed || this.#channelRid === undefined) return;
+      try {
+        core.write(channelRid, data);
+      } catch {
+        // Channel may already be closed due to concurrent teardown.
+      }
+    };
+    this.stream.on("data", this.#onData);
 
     const buf = new Uint8Array(1024 * 16);
     (async () => {
@@ -334,9 +358,10 @@ class JSStreamSocket {
       }
     })();
 
-    this.stream.on("close", () => {
+    this.#onClose = () => {
       this.close();
-    });
+    };
+    this.stream.on("close", this.#onClose);
   }
 
   // Called by stream_wrap's _onClose() via kStreamBaseField.close(),
@@ -344,6 +369,14 @@ class JSStreamSocket {
   close() {
     if (this.#closed) return;
     this.#closed = true;
+    if (this.#onData) {
+      this.stream.removeListener?.("data", this.#onData);
+      this.#onData = undefined;
+    }
+    if (this.#onClose) {
+      this.stream.removeListener?.("close", this.#onClose);
+      this.#onClose = undefined;
+    }
     if (this.#rid !== undefined) {
       try {
         core.close(this.#rid);
@@ -362,8 +395,22 @@ class JSStreamSocket {
     }
   }
 
+  ref() {
+    this.stream?.ref?.();
+  }
+
+  unref() {
+    this.stream?.unref?.();
+  }
+
   handshake() {
     return op_node_tls_handshake(this.#rid);
+  }
+
+  [internals.getPeerCertificate](_detailed = false) {
+    // TLS-over-JSStreamSocket currently does not expose peer cert details.
+    // Return an empty object for Node compatibility callers.
+    return {};
   }
 
   read(buf) {
@@ -392,6 +439,13 @@ function normalizeConnectArgs(listArgs) {
   const options = args[0];
   const cb = args[1];
 
+  // net._normalizeArgs only keeps net-related fields, but tls.connect(options)
+  // also carries TLS-specific fields (e.g. secureContext, ALPNProtocols, socket).
+  // Preserve all first-object properties so socket-backed TLS handshakes work.
+  if (listArgs[0] !== null && typeof listArgs[0] === "object") {
+    ObjectAssign(options, listArgs[0]);
+  }
+
   // If args[0] was options, then normalize dealt with it.
   // If args[0] is port, or args[0], args[1] is host, port, we need to
   // find the options and merge them in, normalize's options has only
@@ -407,6 +461,22 @@ function normalizeConnectArgs(listArgs) {
 }
 
 let ipServernameWarned = false;
+
+function normalizeCaCerts(ca) {
+  if (ca == null) {
+    return [];
+  }
+  if (typeof ca === "string") {
+    return [ca];
+  }
+  if (isArrayBufferView(ca) || isAnyArrayBuffer(ca)) {
+    return [new TextDecoder().decode(ca)];
+  }
+  if (ArrayIsArray(ca)) {
+    return ca.flatMap((cert) => normalizeCaCerts(cert));
+  }
+  return [String(ca)];
+}
 
 export function Server(options, listener) {
   return new ServerImpl(options, listener);
@@ -438,15 +508,51 @@ export class ServerImpl extends EventEmitter {
     }
   }
 
-  listen(port, callback) {
+  listen(...args) {
     const key = this.options.key?.toString();
     const cert = this.options.cert?.toString();
     // TODO(kt3k): The default host should be "localhost"
-    const hostname = this.options.host ?? "0.0.0.0";
+    let hostname = this.options.host ?? "0.0.0.0";
+    let port = 0;
+    let callback;
 
-    this.listener = Deno.listenTls({ port, hostname, cert, key });
+    if (typeof args[0] === "object" && args[0] !== null) {
+      const options = args[0];
+      if (options.host !== undefined) {
+        hostname = options.host;
+      }
+      if (options.port !== undefined) {
+        port = options.port;
+      }
+      callback = args[1];
+    } else {
+      if (typeof args[0] === "function") {
+        callback = args[0];
+      } else {
+        if (args[0] !== undefined) {
+          port = args[0];
+        }
+        if (typeof args[1] === "string") {
+          hostname = args[1];
+          callback = args[2];
+        } else {
+          callback = args[1];
+        }
+      }
+    }
 
-    callback?.call(this);
+    const listenOptions = { port, hostname, cert, key };
+    listenOptions[internals.requestClientCertSymbol] =
+      this.options.requestCert === true;
+    listenOptions[internals.rejectUnauthorizedSymbol] =
+      this.options.rejectUnauthorized !== false;
+    const clientCa = this.options.ca ?? this.options.secureContext?.ca;
+    listenOptions[internals.clientCaCertsSymbol] = normalizeCaCerts(clientCa);
+    this.listener = Deno.listenTls(listenOptions);
+
+    if (typeof callback === "function") {
+      callback.call(this);
+    }
     this.#listen(this.listener);
     return this;
   }
@@ -487,6 +593,9 @@ export class ServerImpl extends EventEmitter {
   }
 
   address() {
+    if (!this.listener) {
+      return null;
+    }
     const addr = this.listener.addr;
     return {
       port: addr.port,
@@ -572,6 +681,11 @@ export function connect(...args) {
     tlssock.once("secureConnect", cb);
   }
 
+  // Attach handshake listeners before starting TLS on an existing socket.
+  // Otherwise the "secure" event can fire before onConnectSecure is bound.
+  tlssock.on("secure", onConnectSecure);
+  tlssock.prependListener("end", onConnectEnd);
+
   if (!options.socket) {
     // If user provided the socket, it's their responsibility to manage its
     // connectivity. If we created one internally, we connect it.
@@ -579,7 +693,7 @@ export function connect(...args) {
       tlssock.setTimeout(options.timeout);
     }
 
-    tlssock.connect(options, tlssock._start);
+    tlssock.connect(options);
   }
 
   tlssock._releaseControl();
@@ -604,9 +718,6 @@ export function connect(...args) {
   if (options.socket) {
     tlssock._start();
   }
-
-  tlssock.on("secure", onConnectSecure);
-  tlssock.prependListener("end", onConnectEnd);
 
   return tlssock;
 }

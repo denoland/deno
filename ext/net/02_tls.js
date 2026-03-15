@@ -174,10 +174,20 @@ function listenTls({
       "A key and certificate are required for `Deno.listenTls`",
     );
   }
+  const requestClientCert = arguments[0][requestClientCertSymbol] === true;
+  const rejectUnauthorized = arguments[0][rejectUnauthorizedSymbol] !== false;
+  const clientCaCerts = arguments[0][clientCaCertsSymbol] ?? [];
   const keyPair = loadTlsKeyPair("Deno.listenTls", arguments[0]);
   const { 0: rid, 1: localAddr } = op_net_listen_tls(
     { hostname, port },
-    { alpnProtocols, reusePort, tcpBacklog },
+    {
+      alpnProtocols,
+      reusePort,
+      tcpBacklog,
+      requestClientCert,
+      rejectUnauthorized,
+      caCerts: clientCaCerts,
+    },
     keyPair,
   );
   return new TlsListener(rid, localAddr);
@@ -225,6 +235,9 @@ function startTlsInternal(
 
 const resolverSymbol = SymbolFor("unstableSniResolver");
 const serverNameSymbol = SymbolFor("unstableServerName");
+const requestClientCertSymbol = SymbolFor("unstableRequestClientCert");
+const rejectUnauthorizedSymbol = SymbolFor("unstableRejectUnauthorized");
+const clientCaCertsSymbol = SymbolFor("unstableClientCaCerts");
 
 function createTlsKeyResolver(callback) {
   const { 0: resolver, 1: lookup } = op_tls_cert_resolver_create();
@@ -252,6 +265,9 @@ function createTlsKeyResolver(callback) {
 
 internals.resolverSymbol = resolverSymbol;
 internals.serverNameSymbol = serverNameSymbol;
+internals.requestClientCertSymbol = requestClientCertSymbol;
+internals.rejectUnauthorizedSymbol = rejectUnauthorizedSymbol;
+internals.clientCaCertsSymbol = clientCaCertsSymbol;
 internals.createTlsKeyResolver = createTlsKeyResolver;
 internals.getPeerCertificate = _getPeerCertificate;
 

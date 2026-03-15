@@ -25,6 +25,7 @@ use deno_core::futures::FutureExt;
 use deno_core::futures::future::Either;
 use deno_core::unsync::spawn;
 use rustls::ServerConfig;
+use rustls::server::danger::ClientCertVerifier;
 use rustls_tokio_stream::ServerConfigProvider;
 use tokio::sync::broadcast;
 use tokio::sync::mpsc;
@@ -134,12 +135,21 @@ impl TlsKeyResolver {
     &self,
     sni: String,
     alpn: Vec<Vec<u8>>,
+    client_cert_verifier: Option<Arc<dyn ClientCertVerifier>>,
   ) -> Result<Arc<ServerConfig>, TlsKeyError> {
     let key = self.resolve(sni).await?;
 
-    let mut tls_config = ServerConfig::builder()
-      .with_no_client_auth()
-      .with_single_cert(key.0, key.1.clone_key())?;
+    let mut tls_config = if let Some(client_cert_verifier) =
+      client_cert_verifier
+    {
+      ServerConfig::builder()
+        .with_client_cert_verifier(client_cert_verifier)
+        .with_single_cert(key.0, key.1.clone_key())?
+    } else {
+      ServerConfig::builder()
+        .with_no_client_auth()
+        .with_single_cert(key.0, key.1.clone_key())?
+    };
     tls_config.key_log = get_ssl_key_log();
     tls_config.alpn_protocols = alpn;
     Ok(tls_config.into())
@@ -148,6 +158,7 @@ impl TlsKeyResolver {
   pub fn into_server_config_provider(
     self,
     alpn: Vec<Vec<u8>>,
+    client_cert_verifier: Option<Arc<dyn ClientCertVerifier>>,
   ) -> ServerConfigProvider {
     let (tx, mut rx) = mpsc::unbounded_channel::<(_, oneshot::Sender<_>)>();
 
@@ -156,7 +167,15 @@ impl TlsKeyResolver {
     // to respond to the requests.
     spawn(async move {
       while let Some((sni, txr)) = rx.recv().await {
-        _ = txr.send(self.resolve_internal(sni, alpn.clone()).await);
+        _ = txr.send(
+          self
+            .resolve_internal(
+              sni,
+              alpn.clone(),
+              client_cert_verifier.clone(),
+            )
+            .await,
+        );
       }
     });
 

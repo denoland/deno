@@ -721,7 +721,7 @@ unsafe extern "C" fn on_frame_recv_callback(
   } else if ft == ffi::NGHTTP2_GOAWAY as u32 {
     handle_goaway_frame(session, frame);
   } else if ft == ffi::NGHTTP2_PING as u32 {
-    handle_ping_frame(session);
+    handle_ping_frame(session, frame);
   } else if ft == ffi::NGHTTP2_ALTSVC as u32 {
     handle_alt_svc_frame(session, frame);
   } else if ft == ffi::NGHTTP2_ORIGIN as u32 {
@@ -831,7 +831,7 @@ fn handle_settings_frame(session: &Session) {
   callback.call(scope, recv.into(), &[]);
 }
 
-fn handle_ping_frame(session: &Session) {
+fn handle_ping_frame(session: &Session, frame: *const ffi::nghttp2_frame) {
   let mut isolate =
     // SAFETY: isolate pointer is valid for the session's lifetime
     unsafe { v8::Isolate::from_raw_isolate_ptr(session.isolate) };
@@ -845,8 +845,28 @@ fn handle_ping_frame(session: &Session) {
   let callback = v8::Local::new(scope, &callbacks.ping_frame_cb);
   drop(state);
 
-  let arg = v8::null(scope);
-  callback.call(scope, recv.into(), &[arg.into()]);
+  let ack =
+    (frame_flags(frame) & (ffi::NGHTTP2_FLAG_ACK as u8)) != 0;
+  let ack_val = v8::Boolean::new(scope, ack);
+
+  let array_buffer = v8::ArrayBuffer::new(scope, 8);
+  let backing_store = array_buffer.get_backing_store();
+  if let Some(dst) = backing_store.data() {
+    // SAFETY: frame is valid per nghttp2 callback contract.
+    let ping_frame = unsafe { (*frame).ping };
+    // SAFETY: src points to 8-byte opaque_data and dst has 8-byte capacity.
+    unsafe {
+      std::ptr::copy_nonoverlapping(
+        ping_frame.opaque_data.as_ptr(),
+        dst.as_ptr() as *mut u8,
+        8,
+      )
+    };
+  }
+  let Some(payload) = v8::Uint8Array::new(scope, array_buffer, 0, 8) else {
+    return;
+  };
+  callback.call(scope, recv.into(), &[ack_val.into(), payload.into()]);
 }
 
 fn handle_goaway_frame(session: &Session, frame: *const ffi::nghttp2_frame) {
@@ -1552,6 +1572,38 @@ impl Session {
     unsafe { &mut *(user_data as *mut Session) }
   }
 
+  fn write_chunk_via_js_socket(&self, data: &[u8]) {
+    // SAFETY: isolate pointer is valid for the session's lifetime
+    let mut isolate =
+      unsafe { v8::Isolate::from_raw_isolate_ptr(self.isolate) };
+    v8::scope!(let scope, &mut isolate);
+    let context = v8::Local::new(scope, self.context.clone());
+    let scope = &mut v8::ContextScope::new(scope, context);
+
+    let this_local = v8::Local::new(scope, &self.this);
+    let onwrite_key = v8::String::new(scope, "onwrite").unwrap();
+    let Some(onwrite_val) = this_local.get(scope, onwrite_key.into()) else {
+      return;
+    };
+    let Ok(onwrite_fn) = v8::Local::<v8::Function>::try_from(onwrite_val) else {
+      return;
+    };
+
+    let array_buffer = v8::ArrayBuffer::new(scope, data.len());
+    let backing_store = array_buffer.get_backing_store();
+    let Some(dst) = backing_store.data() else {
+      return;
+    };
+    // SAFETY: src and dst are valid, non-overlapping, and dst has data.len() bytes capacity
+    unsafe {
+      std::ptr::copy_nonoverlapping(data.as_ptr(), dst.as_ptr() as *mut u8, data.len())
+    };
+    let Some(chunk) = v8::Uint8Array::new(scope, array_buffer, 0, data.len()) else {
+      return;
+    };
+    onwrite_fn.call(scope, this_local.into(), &[chunk.into()]);
+  }
+
   pub fn send_pending_data(&mut self) {
     // Prevent recursive calls. JS callbacks from nghttp2_session_mem_recv
     // can call back into send_pending_data via scheduleSendPending. Nested
@@ -1561,19 +1613,17 @@ impl Session {
     if self.is_sending {
       return;
     }
-    let stream = match self.stream {
-      Some(stream) => stream,
-      None => return,
-    };
-
-    // Safety check: ensure the stream handle is still a valid TCP handle
-    let handle_type =
-      // SAFETY: stream pointer is valid, stored in self.stream by consume_stream
-      unsafe { (*(stream as *mut deno_core::uv_compat::UvHandle)).r#type };
-    if handle_type != deno_core::uv_compat::uv_handle_type::UV_TCP {
-      self.stream = None;
-      return;
-    }
+    let stream = self.stream.filter(|stream| {
+      let handle_type =
+        // SAFETY: stream pointer is valid, stored in self.stream by consume_stream
+        unsafe { (*(*stream as *mut deno_core::uv_compat::UvHandle)).r#type };
+      if handle_type != deno_core::uv_compat::uv_handle_type::UV_TCP {
+        self.stream = None;
+        false
+      } else {
+        true
+      }
+    });
 
     self.is_sending = true;
     loop {
@@ -1585,29 +1635,33 @@ impl Session {
       if src_len > 0 {
         // SAFETY: src and src_len are valid per nghttp2_session_mem_send contract
         let data = unsafe { std::slice::from_raw_parts(src, src_len as usize) };
-        // Write to libuv stream
-        let data_copy = data.to_vec();
-        let write_req = Box::new(H2WriteReq {
-          uv_req: deno_core::uv_compat::new_write(),
-          data: data_copy,
-        });
-        let write_ptr = Box::into_raw(write_req);
-        // SAFETY: write_ptr is freshly allocated; stream is a valid libuv handle
-        unsafe {
-          let buf = deno_core::uv_compat::UvBuf {
-            base: (*write_ptr).data.as_ptr() as *mut _,
-            len: (*write_ptr).data.len(),
-          };
-          let ret = deno_core::uv_compat::uv_write(
-            &mut (*write_ptr).uv_req,
-            stream,
-            &buf,
-            1,
-            Some(h2_write_cb),
-          );
-          if ret != 0 {
-            let _ = Box::from_raw(write_ptr);
+        if let Some(stream) = stream {
+          // Write to consumed libuv stream.
+          let write_req = Box::new(H2WriteReq {
+            uv_req: deno_core::uv_compat::new_write(),
+            data: data.to_vec(),
+          });
+          let write_ptr = Box::into_raw(write_req);
+          // SAFETY: write_ptr is freshly allocated; stream is a valid libuv handle
+          unsafe {
+            let buf = deno_core::uv_compat::UvBuf {
+              base: (*write_ptr).data.as_ptr() as *mut _,
+              len: (*write_ptr).data.len(),
+            };
+            let ret = deno_core::uv_compat::uv_write(
+              &mut (*write_ptr).uv_req,
+              stream,
+              &buf,
+              1,
+              Some(h2_write_cb),
+            );
+            if ret != 0 {
+              let _ = Box::from_raw(write_ptr);
+            }
           }
+        } else {
+          // Fallback path: deliver bytes to JS where socket.write() handles transport.
+          self.write_chunk_via_js_socket(data);
         }
       } else {
         break;
@@ -1618,28 +1672,31 @@ impl Session {
     if !self.outgoing_buffers.is_empty() {
       for buffer in &self.outgoing_buffers {
         let data = buffer.data.as_ref();
-        let data_copy = data.to_vec();
-        let write_req = Box::new(H2WriteReq {
-          uv_req: deno_core::uv_compat::new_write(),
-          data: data_copy,
-        });
-        let write_ptr = Box::into_raw(write_req);
-        // SAFETY: write_ptr is freshly allocated; stream is a valid libuv handle
-        unsafe {
-          let buf = deno_core::uv_compat::UvBuf {
-            base: (*write_ptr).data.as_ptr() as *mut _,
-            len: (*write_ptr).data.len(),
-          };
-          let ret = deno_core::uv_compat::uv_write(
-            &mut (*write_ptr).uv_req,
-            stream,
-            &buf,
-            1,
-            Some(h2_write_cb),
-          );
-          if ret != 0 {
-            let _ = Box::from_raw(write_ptr);
+        if let Some(stream) = stream {
+          let write_req = Box::new(H2WriteReq {
+            uv_req: deno_core::uv_compat::new_write(),
+            data: data.to_vec(),
+          });
+          let write_ptr = Box::into_raw(write_req);
+          // SAFETY: write_ptr is freshly allocated; stream is a valid libuv handle
+          unsafe {
+            let buf = deno_core::uv_compat::UvBuf {
+              base: (*write_ptr).data.as_ptr() as *mut _,
+              len: (*write_ptr).data.len(),
+            };
+            let ret = deno_core::uv_compat::uv_write(
+              &mut (*write_ptr).uv_req,
+              stream,
+              &buf,
+              1,
+              Some(h2_write_cb),
+            );
+            if ret != 0 {
+              let _ = Box::from_raw(write_ptr);
+            }
           }
+        } else {
+          self.write_chunk_via_js_socket(data);
         }
       }
       self.clear_outgoing();
@@ -1929,6 +1986,7 @@ impl Http2Session {
   }
 
   #[fast]
+  #[reentrant]
   fn receive(&self, #[buffer] data: &[u8]) {
     // SAFETY: self.inner was allocated by Box::into_raw and is valid
     let session = unsafe { &mut *self.inner };
@@ -2000,6 +2058,7 @@ impl Http2Session {
   }
 
   #[fast]
+  #[reentrant]
   fn settings(&self, _cb: v8::Local<v8::Function>) -> bool {
     let settings = Http2Settings::init(self.inner);
     settings.send();
@@ -2319,6 +2378,7 @@ impl Http2Session {
   }
 
   #[fast]
+  #[reentrant]
   fn ping(&self, #[buffer] payload: &[u8]) -> i32 {
     if payload.len() != 8 {
       return -1;
@@ -2338,6 +2398,7 @@ impl Http2Session {
     ret
   }
 
+  #[reentrant]
   fn request<'s>(
     &self,
     scope: &mut v8::PinScope<'s, '_>,
