@@ -38,6 +38,8 @@
     __resolvePromise,
     FixedQueue,
   } = window.__infra;
+  const __timers = window.__timers;
+  delete window.__timers;
   const {
     op_abort_wasm_streaming,
     op_current_user_call_site,
@@ -70,11 +72,6 @@
     op_set_promise_hooks,
     op_set_wasm_streaming_callback,
     op_str_byte_length,
-    op_timer_cancel,
-    op_timer_queue,
-    op_timer_queue_system,
-    op_timer_ref,
-    op_timer_unref,
     op_unref_op,
     op_cancel_handle,
     op_leak_tracing_enable,
@@ -129,14 +126,6 @@
     ErrorCaptureStackTrace(error, submitLeakTrace);
     // "Error\n".length == 6
     op_leak_tracing_submit(0, id, StringPrototypeSlice(error.stack, 6));
-  }
-
-  function submitTimerTrace(id) {
-    const error = new Error();
-    ErrorCaptureStackTrace(error, submitTimerTrace);
-    // We submit interval and timer traces as type "Timer"
-    // "Error\n".length == 6
-    op_leak_tracing_submit(2, id, StringPrototypeSlice(error.stack, 6));
   }
 
   let unhandledPromiseRejectionHandler = () => false;
@@ -418,6 +407,19 @@
       return;
     }
     processTicksAndRejections();
+  }
+
+  // Wire runNextTicks into the timer module so processTimers can
+  // interleave nextTick drains between timer callbacks.
+  __timers.setRunNextTicks(runNextTicks);
+  // Wire reportException so timer callback errors are dispatched
+  // via the uncaught exception handler rather than propagating.
+  // Use a wrapper since reportExceptionCallback is defined later.
+  __timers.setReportException((e) => reportExceptionCallback(e));
+
+  // Called from Rust at phase 1c of the event loop when the user timer fires.
+  function __processTimers(now) {
+    return __timers.processTimers(now);
   }
 
   // Phase 2: Resolve completed async ops. Called from Rust with flat args:
@@ -928,6 +930,8 @@
     __handleRejections,
     __setTimerDepth,
     __reportException,
+    __processTimers,
+    __setTimerInfo: __timers.__setTimerInfo,
     immediateRefCount(increase) {
       if (increase) {
         immediateInfo[kImmRefCount]++;
@@ -1109,22 +1113,17 @@
       unhandledPromiseRejectionHandler = handler,
     reportUnhandledException: (e) => op_dispatch_exception(e, false),
     reportUnhandledPromiseRejection: (e) => op_dispatch_exception(e, true),
-    queueUserTimer: (depth, repeat, timeout, task) => {
-      const id = op_timer_queue(depth, repeat, timeout, task);
-      if (__isLeakTracingEnabled()) {
-        submitTimerTrace(id);
-      }
-      return id;
-    },
-    // TODO(mmastrac): Hook up associatedOp to tracing
-    queueSystemTimer: (_associatedOp, repeat, timeout, task) =>
-      op_timer_queue_system(repeat, timeout, task),
-    cancelTimer: (id) => {
-      op_timer_cancel(id);
-    },
-    refTimer: (id) => op_timer_ref(id),
-    unrefTimer: (id) => op_timer_unref(id),
     getTimerDepth: () => timerDepth,
+    createTimer: __timers.createTimer,
+    cancelTimer: __timers.cancelTimer,
+    refreshTimer: __timers.refreshTimer,
+    refTimer: __timers.refTimer,
+    unrefTimer: __timers.unrefTimer,
+    timerInsert: __timers.insert,
+    timerIncRefCount: __timers.incRefCount,
+    timerDecRefCount: __timers.decRefCount,
+    timerKRefed: __timers.kRefed,
+    TIMEOUT_MAX: __timers.TIMEOUT_MAX,
     currentUserCallSite,
     wrapConsole,
     v8Console,
