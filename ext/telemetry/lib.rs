@@ -1291,6 +1291,16 @@ fn op_otel_log<'s>(
   log_record.set_body(owned_string(scope, message).into());
   log_record.set_severity_number(severity);
   log_record.set_severity_text(severity.name());
+
+  // console.warn (level 2) and console.error (level 3) write to stderr,
+  // everything else writes to stdout.
+  let iostream = if level == 2 || level == 3 {
+    "stderr"
+  } else {
+    "stdout"
+  };
+  log_record.add_attribute("log.iostream", iostream);
+
   if let Some(span) =
     deno_core::_ops::try_unwrap_cppgc_object::<OtelSpan>(scope, span)
   {
@@ -1355,6 +1365,14 @@ fn op_otel_log_foreign(
   log_record.set_body(message.into());
   log_record.set_severity_number(severity);
   log_record.set_severity_text(severity.name());
+
+  let iostream = if level == 2 || level == 3 {
+    "stderr"
+  } else {
+    "stdout"
+  };
+  log_record.add_attribute("log.iostream", iostream);
+
   if trace_id != TraceId::INVALID && span_id != SpanId::INVALID {
     log_record.set_trace_context(
       trace_id,

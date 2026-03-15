@@ -153,10 +153,10 @@ pub(crate) fn generate_flamegraph_svg(
 ]]></script>
 <rect x="0" y="0" width="100%" height="100%" fill="url(#background)"/>
 <text id="title" x="50%" y="24" text-anchor="middle" style="font-size:17px">CPU Flamegraph</text>
-<text id="details" x="{x_pad}.0" y="{details_y}">&nbsp;</text>
+<text id="details" x="{x_pad}.0" y="{details_y}">&#160;</text>
 <text id="unzoom" class="hide" x="{x_pad}.0" y="24">Reset Zoom</text>
 <text id="search" x="{search_x}.0" y="24">Search</text>
-<text id="matched" class="hide" x="{search_x}.0" y="{details_y}">&nbsp;</text>
+<text id="matched" class="hide" x="{search_x}.0" y="{details_y}">&#160;</text>
 <foreignObject x="{invert_x}" y="6" width="80" height="30">
 <body xmlns="http://www.w3.org/1999/xhtml">
 <label style="font-family:Verdana,sans-serif;font-size:12px;cursor:pointer"><input type="checkbox" id="invert_cb" style="cursor:pointer"/> Invert</label>

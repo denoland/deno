@@ -512,10 +512,17 @@ export class ChildProcess extends EventEmitter {
       });
 
       if (signal) {
+        const killSignal = options.killSignal ?? "SIGTERM";
         const onAbortListener = () => {
           try {
-            if (this.kill("SIGKILL")) {
-              this.emit("error", new AbortError());
+            if (this.kill(killSignal as string)) {
+              this.emit(
+                "error",
+                new AbortError(
+                  undefined,
+                  { cause: signal.reason },
+                ),
+              );
             }
           } catch (err) {
             this.emit("error", err);
@@ -1148,10 +1155,9 @@ export function normalizeSpawnArguments(
 
   let envKeys: string[] = [];
   // Prototype values are intentionally included.
+  // deno-lint-ignore guard-for-in
   for (const key in env) {
-    if (Object.hasOwn(env, key)) {
-      ArrayPrototypePush(envKeys, key);
-    }
+    ArrayPrototypePush(envKeys, key);
   }
 
   if (process.platform === "win32") {
@@ -1585,10 +1591,7 @@ function normalizeInput(input: unknown) {
   if (typeof input === "string") {
     return Buffer.from(input);
   }
-  if (input instanceof Uint8Array) {
-    return input;
-  }
-  if (input instanceof DataView) {
+  if (ArrayBuffer.isView(input)) {
     return Buffer.from(input.buffer, input.byteOffset, input.byteLength);
   }
   throw new ERR_INVALID_ARG_TYPE("input", [
