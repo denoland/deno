@@ -182,12 +182,13 @@ pub enum WebError {
 fn simdutf_base64_decode_to_vec(input: &[u8]) -> Result<Vec<u8>, WebError> {
   use v8::simdutf;
   let max_len = simdutf::maximal_binary_length_from_base64(input);
-  let mut output = vec![0u8; max_len];
-  // Safety: output has max_len bytes which is >= decoded size.
+  let mut output = Vec::with_capacity(max_len);
+  // Safety: output has max_len bytes of capacity which is >= decoded size.
+  // base64_to_binary writes into the buffer without reading uninitialized data.
   let result = unsafe {
     simdutf::base64_to_binary(
       input,
-      &mut output,
+      std::slice::from_raw_parts_mut(output.as_mut_ptr(), max_len),
       simdutf::Base64Options::Default,
       simdutf::LastChunkHandling::Loose,
     )
@@ -195,7 +196,8 @@ fn simdutf_base64_decode_to_vec(input: &[u8]) -> Result<Vec<u8>, WebError> {
   if !result.is_ok() {
     return Err(WebError::Base64Decode);
   }
-  output.truncate(result.count);
+  // Safety: base64_to_binary wrote result.count bytes.
+  unsafe { output.set_len(result.count) };
   Ok(output)
 }
 
@@ -299,10 +301,19 @@ fn op_base64_decode_into(
   let max_len = v8::simdutf::maximal_binary_length_from_base64(&input);
   const STACK_BUF_SIZE: usize = 8192;
   if max_len <= STACK_BUF_SIZE {
-    let mut buf = [0u8; STACK_BUF_SIZE];
-    let decoded_len = simdutf_base64_decode_into(&input, &mut buf)?;
+    let mut buf = std::mem::MaybeUninit::<[u8; STACK_BUF_SIZE]>::uninit();
+    // Safety: simdutf writes into buf without reading uninitialized data.
+    let decoded_len = simdutf_base64_decode_into(&input, unsafe {
+      std::slice::from_raw_parts_mut(
+        buf.as_mut_ptr() as *mut u8,
+        STACK_BUF_SIZE,
+      )
+    })?;
     let bytes_to_write = decoded_len.min(target.len());
-    target[..bytes_to_write].copy_from_slice(&buf[..bytes_to_write]);
+    // Safety: decoded_len bytes were written by simdutf.
+    target[..bytes_to_write].copy_from_slice(unsafe {
+      std::slice::from_raw_parts(buf.as_ptr() as *const u8, bytes_to_write)
+    });
     Ok(bytes_to_write as u32)
   } else {
     let decoded = simdutf_base64_decode_to_vec(&input)?;
@@ -318,9 +329,18 @@ fn op_base64_atob(#[scoped] mut s: ByteString) -> Result<ByteString, WebError> {
   let max_len = v8::simdutf::maximal_binary_length_from_base64(&s);
   const STACK_BUF_SIZE: usize = 8192;
   if max_len <= STACK_BUF_SIZE {
-    let mut buf = [0u8; STACK_BUF_SIZE];
-    let decoded_len = simdutf_base64_decode_into(&s, &mut buf)?;
-    s[..decoded_len].copy_from_slice(&buf[..decoded_len]);
+    let mut buf = std::mem::MaybeUninit::<[u8; STACK_BUF_SIZE]>::uninit();
+    // Safety: simdutf writes into buf without reading uninitialized data.
+    let decoded_len = simdutf_base64_decode_into(&s, unsafe {
+      std::slice::from_raw_parts_mut(
+        buf.as_mut_ptr() as *mut u8,
+        STACK_BUF_SIZE,
+      )
+    })?;
+    // Safety: decoded_len bytes were written by simdutf.
+    s[..decoded_len].copy_from_slice(unsafe {
+      std::slice::from_raw_parts(buf.as_ptr() as *const u8, decoded_len)
+    });
     s.truncate(decoded_len);
     Ok(s)
   } else {
@@ -367,22 +387,33 @@ fn base64_encode_to_v8_string<'a>(
 
   const STACK_BUF_SIZE: usize = 8192;
   if b64_len <= STACK_BUF_SIZE {
-    let mut buf = [0u8; STACK_BUF_SIZE];
-    let written = simdutf_base64_encode(src, &mut buf);
+    let mut buf = std::mem::MaybeUninit::<[u8; STACK_BUF_SIZE]>::uninit();
+    // Safety: simdutf writes `written` bytes without reading uninitialized data.
+    let written = unsafe {
+      let ptr = buf.as_mut_ptr() as *mut u8;
+      simdutf_base64_encode(src, std::slice::from_raw_parts_mut(ptr, b64_len))
+    };
     v8::String::new_from_one_byte(
       scope,
-      &buf[..written],
+      // Safety: written <= b64_len <= STACK_BUF_SIZE, all initialized.
+      unsafe { std::slice::from_raw_parts(buf.as_ptr() as *const u8, written) },
       v8::NewStringType::Normal,
     )
     .ok_or(WebError::BufferTooLong)
   } else {
     // Encode into a boxed slice and hand ownership to V8 via external string.
     // This avoids a copy — V8 will free the buffer when the string is GC'd.
-    let mut buf = vec![0u8; b64_len].into_boxed_slice();
-    let written = simdutf_base64_encode(src, &mut buf);
+    let mut buf = Vec::with_capacity(b64_len);
+    // Safety: binary_to_base64 writes exactly b64_len bytes without reading.
+    let written = unsafe {
+      let slice = std::slice::from_raw_parts_mut(buf.as_mut_ptr(), b64_len);
+      simdutf_base64_encode(src, slice)
+    };
+    // Safety: written bytes are initialized by binary_to_base64.
+    unsafe { buf.set_len(written) };
+    let buf = buf.into_boxed_slice();
     debug_assert_eq!(written, b64_len);
-    v8::String::new_external_onebyte(scope, buf)
-      .ok_or(WebError::BufferTooLong)
+    v8::String::new_external_onebyte(scope, buf).ok_or(WebError::BufferTooLong)
   }
 }
 
