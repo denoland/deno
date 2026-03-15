@@ -521,11 +521,14 @@ function _write(stream, chunk, encoding, cb) {
       chunk = Stream._uint8ArrayToBuffer(chunk);
       encoding = "buffer";
     } else {
-      throw new ERR_INVALID_ARG_TYPE(
+      const err = new ERR_INVALID_ARG_TYPE(
         "chunk",
         ["string", "Buffer", "TypedArray", "DataView"],
         chunk,
       );
+      process.nextTick(cb, err);
+      errorOrDestroy(stream, err, true);
+      return err;
     }
   }
 
@@ -620,7 +623,11 @@ function writeOrBuffer(stream, state, chunk, encoding, callback) {
       state.writecb = callback;
     }
     state[kState] |= kWriting | kSync | kExpectWriteCb;
-    stream._write(chunk, encoding, state.onwrite);
+    try {
+      stream._write(chunk, encoding, state.onwrite);
+    } catch (err) {
+      state.onwrite(err);
+    }
     state[kState] &= ~kSync;
   }
 
@@ -644,9 +651,17 @@ function doWrite(stream, state, writev, len, chunk, encoding, cb) {
   if ((state[kState] & kDestroyed) !== 0) {
     state.onwrite(new ERR_STREAM_DESTROYED("write"));
   } else if (writev) {
-    stream._writev(chunk, state.onwrite);
+    try {
+      stream._writev(chunk, state.onwrite);
+    } catch (err) {
+      state.onwrite(err);
+    }
   } else {
-    stream._write(chunk, encoding, state.onwrite);
+    try {
+      stream._write(chunk, encoding, state.onwrite);
+    } catch (err) {
+      state.onwrite(err);
+    }
   }
   state[kState] &= ~kSync;
 }

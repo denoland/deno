@@ -180,31 +180,35 @@ Transform.prototype._write = function (chunk, encoding, callback) {
   const wState = this._writableState;
   const length = rState.length;
 
-  this._transform(chunk, encoding, (err, val) => {
-    if (err) {
-      callback(err);
-      return;
-    }
+  try {
+    this._transform(chunk, encoding, (err, val) => {
+      if (err) {
+        callback(err);
+        return;
+      }
 
-    if (val != null) {
-      this.push(val);
-    }
+      if (val != null) {
+        this.push(val);
+      }
 
-    if (rState.ended) {
-      // If user has called this.push(null) we have to
-      // delay the callback to properly propagate the new
-      // state.
-      process.nextTick(callback);
-    } else if (
-      wState.ended || // Backwards compat.
-      length === rState.length || // Backwards compat.
-      rState.length < rState.highWaterMark
-    ) {
-      callback();
-    } else {
-      this[kCallback] = callback;
-    }
-  });
+      if (rState.ended) {
+        // If user has called this.push(null) we have to
+        // delay the callback to properly propagate the new
+        // state.
+        process.nextTick(callback);
+      } else if (
+        wState.ended || // Backwards compat.
+        length === rState.length || // Backwards compat.
+        rState.length < rState.highWaterMark
+      ) {
+        callback();
+      } else {
+        this[kCallback] = callback;
+      }
+    });
+  } catch (err) {
+    callback(err);
+  }
 };
 
 Transform.prototype._read = function () {
