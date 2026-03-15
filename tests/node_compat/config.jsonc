@@ -775,7 +775,7 @@
     "parallel/test-fs-fchown.js": {},
     "parallel/test-fs-filehandle-use-after-close.js": {},
     "parallel/test-fs-fsync.js": {},
-    // "parallel/test-fs-glob.mjs": {}, // https://github.com/denoland/deno/issues/32706
+    "parallel/test-fs-glob.mjs": {},
     "parallel/test-fs-internal-assertencoding.js": {},
     "parallel/test-fs-link.js": {
       "flaky": true
