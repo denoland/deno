@@ -239,6 +239,7 @@ pub(crate) async fn handle_request(
         server_address: request.uri().host().map(|host| host.to_string()),
         server_port: request.uri().port_u16().map(|port| port as i64),
         error_type: Default::default(),
+        http_route: None,
         http_response_status_code: Default::default(),
       },
     ))
@@ -297,6 +298,7 @@ struct HttpRecordInner {
   finished: bool,
   needs_close_after_finish: bool,
   legacy_abort: bool,
+  otel_span: Option<deno_telemetry::OtelSpan>,
   otel_info: Option<OtelInfo>,
   client_addr: Option<http::HeaderValue>,
 }
@@ -383,6 +385,7 @@ impl HttpRecord {
       finished: false,
       legacy_abort,
       needs_close_after_finish: false,
+      otel_span: None,
       otel_info,
       client_addr,
     });
@@ -643,6 +646,36 @@ impl HttpRecord {
       info.attributes.error_type = Some(error);
       info.handle_duration_and_request_size();
     }
+  }
+
+  pub fn set_otel_span(&self, span: deno_telemetry::OtelSpan) {
+    let mut inner = self.self_mut();
+    inner.otel_span = Some(span);
+  }
+
+  /// Copy relevant attributes from the OTel span to OtelInfo for metrics.
+  /// This allows users to set attributes like `http.route` on the span
+  /// and have them reflected in the automatically recorded HTTP metrics.
+  pub fn copy_span_attributes_to_otel_info(&self) {
+    let mut inner = self.self_mut();
+    // Take the span temporarily to avoid holding both mutable and immutable
+    // borrows of fields within inner simultaneously.
+    let Some(span) = inner.otel_span.take() else {
+      return;
+    };
+    let span_state = span.0.borrow();
+    if let deno_telemetry::OtelSpanState::Recording(data) = &**span_state
+      && let Some(info) = inner.otel_info.as_mut()
+    {
+      for attr in &data.attributes {
+        if attr.key.as_str() == "http.route" {
+          info.attributes.http_route = Some(attr.value.to_string());
+        }
+      }
+    }
+    drop(span_state);
+    // Put the span back
+    inner.otel_span = Some(span);
   }
 
   pub fn client_addr(&self) -> Ref<'_, Option<http::HeaderValue>> {
