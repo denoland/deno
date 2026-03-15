@@ -1,0 +1,6 @@
+{
+  "name": "@grpc/proto-loader",
+  "version": "0.8.0",
+  "main": "index.js",
+  "types": "index.d.ts"
+}

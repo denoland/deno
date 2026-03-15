@@ -1,0 +1,6 @@
+{
+  "name": "@js-sdsl/ordered-map",
+  "version": "4.4.2",
+  "main": "index.js",
+  "types": "index.d.ts"
+}
