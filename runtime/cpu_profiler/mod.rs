@@ -3,11 +3,13 @@
 mod cpuprof;
 mod flamegraph;
 
+use std::cell::RefCell;
 use std::fs;
 use std::fs::File;
 use std::io::BufWriter;
 use std::io::Write;
 use std::path::PathBuf;
+use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::AtomicI32;
 use std::time::SystemTime;
@@ -57,6 +59,8 @@ use deno_core::InspectorSessionKind;
 use deno_core::JsRuntime;
 use deno_core::JsRuntimeInspector;
 use deno_core::LocalInspectorSession;
+use deno_core::SourceMapApplication;
+use deno_core::SourceMapper;
 use deno_core::error::CoreError;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
@@ -101,7 +105,11 @@ impl CpuProfilerState {
     })))
   }
 
-  pub fn callback(&self, msg: deno_core::InspectorMsg) {
+  pub fn callback(
+    &self,
+    msg: deno_core::InspectorMsg,
+    source_mapper: &Rc<RefCell<SourceMapper>>,
+  ) {
     let deno_core::InspectorMsgKind::Message(msg_id) = msg.kind else {
       return;
     };
@@ -110,18 +118,19 @@ impl CpuProfilerState {
     if let Some(profile_msg_id) = maybe_profile_msg_id
       && profile_msg_id == msg_id
     {
-      let message: serde_json::Value = match serde_json::from_str(&msg.content)
-      {
-        Ok(v) => v,
-        Err(err) => {
-          log::error!("Failed to parse CPU profiler response: {:?}", err);
-          return;
-        }
-      };
+      let mut message: serde_json::Value =
+        match serde_json::from_str(&msg.content) {
+          Ok(v) => v,
+          Err(err) => {
+            log::error!("Failed to parse CPU profiler response: {:?}", err);
+            return;
+          }
+        };
 
-      // Extract the profile from result.profile
-      if let Some(result) = message.get("result") {
-        if let Some(profile) = result.get("profile") {
+      // Extract the profile from result.profile and apply source maps
+      if let Some(result) = message.get_mut("result") {
+        if let Some(profile) = result.get_mut("profile") {
+          apply_source_maps(profile, &mut source_mapper.borrow_mut());
           self.write_profile(profile);
         } else {
           log::error!("No 'profile' field in CPU profiler response");
@@ -233,9 +242,11 @@ impl CpuProfiler {
 
     js_runtime.maybe_init_inspector();
     let insp = js_runtime.inspector();
+    let source_mapper = js_runtime.source_mapper();
 
     let s = state.clone();
-    let callback = Box::new(move |message| s.clone().callback(message));
+    let callback =
+      Box::new(move |message| s.clone().callback(message, &source_mapper));
     let session = JsRuntimeInspector::create_local_session(
       insp,
       callback,
@@ -292,6 +303,75 @@ impl CpuProfiler {
     log::debug!("CPU profiler stopped");
 
     Ok(())
+  }
+}
+
+/// Apply source maps to all call frames in the CPU profile.
+/// V8's profiler reports positions in transpiled JavaScript; this maps them
+/// back to the original TypeScript (or other) source locations.
+fn apply_source_maps(
+  profile: &mut serde_json::Value,
+  source_mapper: &mut SourceMapper,
+) {
+  let Some(nodes) = profile.get_mut("nodes").and_then(|n| n.as_array_mut())
+  else {
+    return;
+  };
+
+  for node in nodes {
+    let Some(call_frame) = node.get_mut("callFrame") else {
+      continue;
+    };
+
+    let Some(url) = call_frame.get("url").and_then(|u| u.as_str()) else {
+      continue;
+    };
+    if url.is_empty() {
+      continue;
+    }
+
+    // V8 profile line/column numbers are 0-based;
+    // SourceMapper::apply_source_map expects 1-based.
+    let line_number = call_frame
+      .get("lineNumber")
+      .and_then(|l| l.as_i64())
+      .unwrap_or(-1);
+    let column_number = call_frame
+      .get("columnNumber")
+      .and_then(|c| c.as_i64())
+      .unwrap_or(-1);
+
+    if line_number < 0 || column_number < 0 {
+      continue;
+    }
+
+    let url_str = url.to_string();
+    match source_mapper.apply_source_map(
+      &url_str,
+      (line_number + 1) as u32,
+      (column_number + 1) as u32,
+    ) {
+      SourceMapApplication::LineAndColumn {
+        line_number: new_line,
+        column_number: new_col,
+      } => {
+        // Convert back to 0-based for the profile
+        call_frame["lineNumber"] = serde_json::Value::from(new_line as i64 - 1);
+        call_frame["columnNumber"] =
+          serde_json::Value::from(new_col as i64 - 1);
+      }
+      SourceMapApplication::LineAndColumnAndFileName {
+        file_name,
+        line_number: new_line,
+        column_number: new_col,
+      } => {
+        call_frame["url"] = serde_json::Value::from(file_name);
+        call_frame["lineNumber"] = serde_json::Value::from(new_line as i64 - 1);
+        call_frame["columnNumber"] =
+          serde_json::Value::from(new_col as i64 - 1);
+      }
+      SourceMapApplication::Unchanged => {}
+    }
   }
 }
 
