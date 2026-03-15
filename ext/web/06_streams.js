@@ -42,6 +42,7 @@ const {
   DataViewPrototypeGetBuffer,
   DataViewPrototypeGetByteLength,
   DataViewPrototypeGetByteOffset,
+  FunctionPrototypeCall,
   Float32Array,
   Float64Array,
   Int16Array,
@@ -1039,11 +1040,22 @@ const _isUnref = Symbol("isUnref");
  * @param constructor A class that extends ReadableStream.
  * @returns {ReadableStream<Uint8Array>}
  */
-function readableStreamForRidUnrefable(rid, constructor = ReadableStream) {
+function readableStreamForRidUnrefable(
+  rid,
+  constructor = ReadableStream,
+  autoClose = true,
+  onClose,
+) {
   const stream = new constructor(_brand);
   stream[promiseSymbol] = undefined;
   stream[_isUnref] = false;
-  stream[_resourceBackingUnrefable] = { rid, autoClose: true };
+  stream[_resourceBackingUnrefable] = { rid, autoClose };
+
+  const tryClose = () => {
+    if (autoClose) core.tryClose(rid);
+    if (onClose) onClose();
+  };
+
   const underlyingSource = {
     type: "bytes",
     async pull(controller) {
@@ -1055,7 +1067,7 @@ function readableStreamForRidUnrefable(rid, constructor = ReadableStream) {
         const bytesRead = await promise;
         stream[promiseSymbol] = undefined;
         if (bytesRead === 0) {
-          core.tryClose(rid);
+          tryClose();
           controller.close();
           controller.byobRequest.respond(0);
         } else {
@@ -1063,11 +1075,11 @@ function readableStreamForRidUnrefable(rid, constructor = ReadableStream) {
         }
       } catch (e) {
         controller.error(e);
-        core.tryClose(rid);
+        tryClose();
       }
     },
     cancel() {
-      core.tryClose(rid);
+      tryClose();
     },
     autoAllocateChunkSize: DEFAULT_CHUNK_SIZE,
   };
@@ -1191,33 +1203,95 @@ async function readableStreamCollectIntoUint8Array(stream) {
  * @param {boolean=} autoClose If the resource should be auto-closed when the stream closes. Defaults to true.
  * @returns {ReadableStream<Uint8Array>}
  */
-function writableStreamForRid(rid, autoClose = true, cfn) {
+function writableStreamForRid(rid, autoClose = true, cfn, onClose) {
   const stream = cfn ? cfn(_brand) : new WritableStream(_brand);
   stream[_resourceBacking] = { rid, autoClose };
 
   const tryClose = () => {
-    if (!autoClose) return;
-    RESOURCE_REGISTRY.unregister(stream);
-    core.tryClose(rid);
+    if (autoClose) {
+      RESOURCE_REGISTRY.unregister(stream);
+      core.tryClose(rid);
+    }
+    if (onClose) onClose();
   };
 
   if (autoClose) {
     RESOURCE_REGISTRY.register(stream, rid, stream);
   }
 
-  const underlyingSink = {
-    async write(chunk, controller) {
+  // Write coalescing: buffer chunks and flush in background.
+  // While an I/O write is in progress, new chunks accumulate in the buffer
+  // and are written in a single batch when the current I/O completes.
+  // This mirrors Node.js's writeOrBuffer + writev pattern.
+  let pendingChunks = [];
+  let pendingBytes = 0;
+  let flushing = false;
+  let currentFlushPromise = null;
+  let errorOccurred = false;
+
+  async function flushLoop(controller) {
+    while (pendingChunks.length > 0) {
+      const chunks = pendingChunks;
+      const totalBytes = pendingBytes;
+      pendingChunks = [];
+      pendingBytes = 0;
+
       try {
-        await core.writeAll(rid, chunk);
+        if (chunks.length === 1) {
+          await core.writeAll(rid, chunks[0]);
+        } else {
+          // Concatenate chunks into a single buffer for one syscall
+          const buf = new Uint8Array(totalBytes);
+          let off = 0;
+          for (let i = 0; i < chunks.length; i++) {
+            TypedArrayPrototypeSet(buf, chunks[i], off);
+            off += TypedArrayPrototypeGetByteLength(chunks[i]);
+          }
+          await core.writeAll(rid, buf);
+        }
       } catch (e) {
-        controller.error(e);
+        // Write failed (e.g. resource closed by readable side).
+        // Drop remaining pending data and error the stream.
+        errorOccurred = true;
+        pendingChunks = [];
+        pendingBytes = 0;
+        flushing = false;
+        currentFlushPromise = null;
+        // The stream might already be closing/errored, so guard this
+        try {
+          controller.error(e);
+        } catch { /* stream already errored/closed */ }
         tryClose();
+        return;
       }
+    }
+    flushing = false;
+    currentFlushPromise = null;
+  }
+
+  const underlyingSink = {
+    write(chunk, controller) {
+      if (errorOccurred) return PromiseResolve(undefined);
+      ArrayPrototypePush(pendingChunks, chunk);
+      pendingBytes += TypedArrayPrototypeGetByteLength(chunk);
+
+      if (!flushing) {
+        flushing = true;
+        currentFlushPromise = flushLoop(controller);
+      }
+      // Resolve immediately - actual I/O happens in background flushLoop
+      return PromiseResolve(undefined);
     },
     close() {
+      // Ensure all pending writes are flushed before closing
+      if (currentFlushPromise) {
+        return PromisePrototypeThen(currentFlushPromise, tryClose);
+      }
       tryClose();
     },
     abort() {
+      pendingChunks = [];
+      pendingBytes = 0;
       tryClose();
     },
   };
@@ -3845,21 +3919,34 @@ function setUpTransformStreamDefaultControllerFromTransformer(
     } catch (e) {
       return PromiseReject(e);
     }
-    return PromiseResolve(undefined);
+    return _syncTransformSuccess;
   };
   /** @type {(controller: TransformStreamDefaultController<O>) => Promise<void>} */
   let flushAlgorithm = _defaultFlushAlgorithm;
   let cancelAlgorithm = _defaultCancelAlgorithm;
   if (transformerDict.transform !== undefined) {
-    transformAlgorithm = (chunk, controller) =>
-      webidl.invokeCallbackFunction(
-        transformerDict.transform,
-        [chunk, controller],
-        transformer,
-        webidl.converters["Promise<undefined>"],
-        "Failed to execute 'transformAlgorithm' on 'TransformStreamDefaultController'",
-        true,
-      );
+    const transformFn = transformerDict.transform;
+    transformAlgorithm = (chunk, controller) => {
+      try {
+        const rv = FunctionPrototypeCall(
+          transformFn,
+          transformer,
+          chunk,
+          controller,
+        );
+        // Fast path: synchronous transforms return undefined/void.
+        // Use the cached sentinel promise to avoid allocations in
+        // performTransform.
+        if (rv === undefined) return _syncTransformSuccess;
+        // Async transforms: wrap thenable in promise chain
+        if (typeof rv?.then === "function") {
+          return PromisePrototypeThen(PromiseResolve(rv), () => undefined);
+        }
+        return _syncTransformSuccess;
+      } catch (err) {
+        return PromiseReject(err);
+      }
+    };
   }
   if (transformerDict.flush !== undefined) {
     flushAlgorithm = (controller) =>
@@ -4120,8 +4207,14 @@ function transformStreamDefaultControllerError(controller, e) {
  * @param {any} chunk
  * @returns {Promise<void>}
  */
+/** @type {Promise<void>} Cached resolved promise for synchronous transforms */
+const _syncTransformSuccess = PromiseResolve(undefined);
+
 function transformStreamDefaultControllerPerformTransform(controller, chunk) {
   const transformPromise = controller[_transformAlgorithm](chunk, controller);
+  // Fast path: synchronous transforms return the cached sentinel promise.
+  // Skip the extra .then() wrapping since the promise is already resolved.
+  if (transformPromise === _syncTransformSuccess) return _syncTransformSuccess;
   return transformPromiseWith(transformPromise, undefined, (r) => {
     transformStreamError(controller[_stream], r);
     throw r;
@@ -4999,7 +5092,9 @@ const readableStreamAsyncIteratorPrototype = ObjectSetPrototypeOf({
       );
 
       readableStreamDefaultReaderRead(reader, readRequest);
-      return PromisePrototypeThen(promise.promise);
+      // The Deferred's promise is already a native Promise, no need
+      // to wrap in an additional .then() (saves one promise allocation).
+      return promise.promise;
     }
 
     return reader[_iteratorNext] = reader[_iteratorNext]
