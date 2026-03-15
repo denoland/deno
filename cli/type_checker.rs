@@ -224,6 +224,7 @@ impl TypeChecker {
         &mut graph,
         BuildFastCheckGraphOptions {
           workspace_fast_check: deno_graph::WorkspaceFastCheckOption::Disabled,
+          fast_check_dts: false,
         },
       )?;
     }

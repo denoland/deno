@@ -1,0 +1,12 @@
+{
+  "tempDir": true,
+  "tests": {
+    "pack_missing_version": {
+      "steps": [{
+        "args": "pack",
+        "exitCode": 1,
+        "output": "[WILDCARD]error: Missing version in package '@test/missing-version'. Add a version field or use --set-version\n"
+      }]
+    }
+  }
+}

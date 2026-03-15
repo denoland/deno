@@ -1,0 +1,13 @@
+{
+  "name": "@test/pkg-json",
+  "version": "1.0.0",
+  "type": "module",
+  "license": "MIT",
+  "main": "./mod.js",
+  "types": "./mod.d.ts",
+  "exports": {
+    "types": "./mod.d.ts",
+    "import": "./mod.js",
+    "default": "./mod.js"
+  }
+}
