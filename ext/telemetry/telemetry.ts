@@ -1195,7 +1195,7 @@ function wrapOtelConsoleMethods(otelConsole: Console) {
     const method = OTEL_CONSOLE_METHODS[i];
     const orig = otelConsole[method];
     otelConsole[method] = (...args: unknown[]) => {
-      if (args.length === 1 && core.isNativeError(args[0])) {
+      if (args.length >= 1 && core.isNativeError(args[0])) {
         pendingException = args[0] as Error;
       }
       return ReflectApply(orig, otelConsole, args);

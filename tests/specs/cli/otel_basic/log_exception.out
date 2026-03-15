@@ -1,5 +1,7 @@
 Error: test error
     at file:///test.ts:1:1
+Error: test error
+    at file:///test.ts:1:1 with extra context
 string error with extra arg
 {
   "spans": [],
@@ -11,6 +13,39 @@ string error with extra arg
       "severityText": "ERROR",
       "body": {
         "stringValue": "Error: test error\n    at file:///test.ts:1:1\n"
+      },
+      "attributes": [
+        {
+          "key": "exception.type",
+          "value": {
+            "stringValue": "Error"
+          }
+        },
+        {
+          "key": "exception.message",
+          "value": {
+            "stringValue": "test error"
+          }
+        },
+        {
+          "key": "exception.stacktrace",
+          "value": {
+            "stringValue": "Error: test error\n    at file:///test.ts:1:1"
+          }
+        }
+      ],
+      "droppedAttributesCount": 0,
+      "flags": 0,
+      "traceId": "",
+      "spanId": ""
+    },
+    {
+      "timeUnixNano": "[WILDLINE]",
+      "observedTimeUnixNano": "[WILDCARD]",
+      "severityNumber": 17,
+      "severityText": "ERROR",
+      "body": {
+        "stringValue": "Error: test error\n    at file:///test.ts:1:1 with extra context\n"
       },
       "attributes": [
         {
