@@ -117,6 +117,8 @@ deno_core::extension!(
     op_otel_metric_observable_record3,
     op_otel_metric_wait_to_observe,
     op_otel_metric_observation_done,
+    op_otel_enable_event_loop_metrics,
+    op_otel_collect_event_loop_metrics,
   ],
   objects = [OtelTracer, OtelMeter, OtelSpan],
   esm = ["telemetry.ts", "util.ts"],
@@ -2703,4 +2705,135 @@ fn op_otel_collect_isolate_metrics(scope: &mut v8::PinScope<'_, '_>) {
       .physical_size
       .record(space.physical_space_size() as _, &attributes);
   }
+}
+
+#[derive(Clone)]
+struct EventLoopMetricData {
+  delay_min: Gauge<f64>,
+  delay_max: Gauge<f64>,
+  delay_mean: Gauge<f64>,
+  delay_stddev: Gauge<f64>,
+  delay_p50: Gauge<f64>,
+  delay_p90: Gauge<f64>,
+  delay_p99: Gauge<f64>,
+  utilization: Gauge<f64>,
+  time: opentelemetry::metrics::Counter<f64>,
+}
+
+#[op2(fast)]
+fn op_otel_enable_event_loop_metrics(scope: &mut v8::PinScope<'_, '_>) {
+  if scope.get_slot::<EventLoopMetricData>().is_some() {
+    return;
+  }
+
+  let Some(globals) = OTEL_GLOBALS.get() else {
+    return;
+  };
+  let meter = globals.meter_provider.meter("deno");
+
+  let delay_min = meter
+    .f64_gauge("deno.eventloop.delay.min")
+    .with_unit("s")
+    .with_description("Minimum event loop delay")
+    .build();
+  let delay_max = meter
+    .f64_gauge("deno.eventloop.delay.max")
+    .with_unit("s")
+    .with_description("Maximum event loop delay")
+    .build();
+  let delay_mean = meter
+    .f64_gauge("deno.eventloop.delay.mean")
+    .with_unit("s")
+    .with_description("Mean event loop delay")
+    .build();
+  let delay_stddev = meter
+    .f64_gauge("deno.eventloop.delay.stddev")
+    .with_unit("s")
+    .with_description("Standard deviation of event loop delay")
+    .build();
+  let delay_p50 = meter
+    .f64_gauge("deno.eventloop.delay.p50")
+    .with_unit("s")
+    .with_description("50th percentile event loop delay")
+    .build();
+  let delay_p90 = meter
+    .f64_gauge("deno.eventloop.delay.p90")
+    .with_unit("s")
+    .with_description("90th percentile event loop delay")
+    .build();
+  let delay_p99 = meter
+    .f64_gauge("deno.eventloop.delay.p99")
+    .with_unit("s")
+    .with_description("99th percentile event loop delay")
+    .build();
+  let utilization = meter
+    .f64_gauge("deno.eventloop.utilization")
+    .with_unit("1")
+    .with_description("Event loop utilization")
+    .build();
+  let time = meter
+    .f64_counter("deno.eventloop.time")
+    .with_unit("s")
+    .with_description("Cumulative event loop time")
+    .build();
+
+  scope.set_slot(EventLoopMetricData {
+    delay_min,
+    delay_max,
+    delay_mean,
+    delay_stddev,
+    delay_p50,
+    delay_p90,
+    delay_p99,
+    utilization,
+    time,
+  });
+}
+
+#[op2(fast)]
+fn op_otel_collect_event_loop_metrics(scope: &mut v8::PinScope<'_, '_>) {
+  let Some(data) = scope.get_slot::<EventLoopMetricData>() else {
+    return;
+  };
+  let data = data.clone();
+
+  let context = scope.get_current_context();
+  // SAFETY: slot is set during realm creation and contains a valid Rc<ContextState>
+  let context_state = unsafe {
+    let ptr = context.get_aligned_pointer_from_embedder_data(
+      deno_core::CONTEXT_STATE_SLOT_INDEX,
+    );
+    let rc = ptr as *const deno_core::ContextState;
+    std::rc::Rc::increment_strong_count(rc);
+    std::rc::Rc::from_raw(rc)
+  };
+  let Some(vals) = context_state.event_loop_metrics.borrow_mut().read() else {
+    return;
+  };
+  let [
+    min,
+    max,
+    mean,
+    stddev,
+    p50,
+    p90,
+    p99,
+    util,
+    active_delta,
+    idle_delta,
+  ] = vals;
+
+  data.delay_min.record(min, &[]);
+  data.delay_max.record(max, &[]);
+  data.delay_mean.record(mean, &[]);
+  data.delay_stddev.record(stddev, &[]);
+  data.delay_p50.record(p50, &[]);
+  data.delay_p90.record(p90, &[]);
+  data.delay_p99.record(p99, &[]);
+  data.utilization.record(util, &[]);
+
+  let active_attr = [KeyValue::new("deno.eventloop.state", "active")];
+  let idle_attr = [KeyValue::new("deno.eventloop.state", "idle")];
+  data.time.add(active_delta, &active_attr);
+  data.time.add(idle_delta, &idle_attr);
 }

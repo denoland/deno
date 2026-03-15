@@ -2,7 +2,9 @@
 
 import { core, primordials } from "ext:core/mod.js";
 import {
+  op_otel_collect_event_loop_metrics,
   op_otel_collect_isolate_metrics,
+  op_otel_enable_event_loop_metrics,
   op_otel_enable_isolate_metrics,
   op_otel_log,
   op_otel_log_foreign,
@@ -79,6 +81,13 @@ export let TRACING_ENABLED = false;
 export let METRICS_ENABLED = false;
 export let PROPAGATORS: TextMapPropagator[] = [];
 let ISOLATE_METRICS = false;
+let EVENT_LOOP_METRICS = false;
+
+function enableEventLoopMetrics() {
+  op_otel_enable_event_loop_metrics();
+  EVENT_LOOP_METRICS = true;
+  startObserving();
+}
 
 // Note: These start at 0 in the JS library,
 // but start at 1 when serialized with JSON.
@@ -1137,6 +1146,9 @@ async function observe(): Promise<void> {
   if (ISOLATE_METRICS) {
     op_otel_collect_isolate_metrics();
   }
+  if (EVENT_LOOP_METRICS) {
+    op_otel_collect_event_loop_metrics();
+  }
 
   const promises: Promise<void>[] = [];
   // Primordials are not needed, because this is a SafeMap.
@@ -1874,6 +1886,7 @@ export function bootstrap(
     if (METRICS_ENABLED) {
       otel.metrics = MeterProvider;
       enableIsolateMetrics();
+      enableEventLoopMetrics();
     }
     if (PROPAGATORS.length > 0) {
       otel.propagation = new CompositePropagator(PROPAGATORS);
