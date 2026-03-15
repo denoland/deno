@@ -1,7 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::f32;
-use std::fmt;
 use std::ops;
 
 use cssparser::ParseError;
@@ -17,7 +16,9 @@ pub type CSSValueError<'i> = ParseError<'i, CSSValueCustomError>;
 pub enum CSSValueCustomError {
   #[error("unexpected numeric type")]
   UnexpectedNumericType,
-  #[error("contains relative <length> values")]
+  #[error(
+    "contains relative <length> values that cannot be resolved at parse time"
+  )]
   ContainsRelativeLengthValues,
   #[error("the {0} dimension is currently not supported")]
   UnsupportedDimension(&'static str),
@@ -31,18 +32,6 @@ pub enum CSSValueCustomError {
   InvalidDimension,
   #[error("contains invalid function name: {0}")]
   InvalidFunction(String),
-}
-
-#[derive(Clone, Debug)]
-#[cfg_attr(test, derive(PartialEq))]
-pub struct Number(f32);
-
-impl ops::Deref for Number {
-  type Target = f32;
-
-  fn deref(&self) -> &Self::Target {
-    &self.0
-  }
 }
 
 #[derive(Clone, Debug)]
@@ -126,51 +115,30 @@ impl Angle {
   }
 }
 
-#[derive(Clone)]
-#[cfg_attr(test, derive(PartialEq))]
-pub struct Percent(f32);
-
-impl ops::Deref for Percent {
-  type Target = f32;
-
-  fn deref(&self) -> &Self::Target {
-    &self.0
-  }
-}
-
-impl fmt::Debug for Percent {
-  fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-    fmt
-      .debug_tuple("Percent")
-      .field(&format_args!("{}%", self.0 * 100.0))
-      .finish()
-  }
-}
-
 // Currently, units for <time>, <frequency>, <resolution>, and <flex> are not supported
 // as are combined units such as <length-percentage>
 #[derive(Debug)]
 #[cfg_attr(test, derive(PartialEq))]
 pub enum NumericValue {
   Zero,
-  Number(Number),
+  Number(f32),
   Length(Length),
   Angle(Angle),
-  Percent(Percent),
+  Percent(f32),
 }
 
 impl NumericValue {
   #[inline]
-  fn expect_number(self) -> Result<f32, CSSValueCustomError> {
+  pub fn expect_number(self) -> Result<f32, CSSValueCustomError> {
     match self {
       NumericValue::Zero => Ok(0.0),
-      NumericValue::Number(number) => Ok(*number),
+      NumericValue::Number(number) => Ok(number),
       _ => Err(CSSValueCustomError::UnexpectedNumericType),
     }
   }
 
   #[inline]
-  fn expect_length(
+  pub fn expect_length(
     self,
     allow_zero: bool,
   ) -> Result<Length, CSSValueCustomError> {
@@ -191,7 +159,7 @@ impl NumericValue {
   }
 
   #[inline]
-  fn expect_angle(
+  pub fn expect_angle(
     self,
     allow_zero: bool,
   ) -> Result<Angle, CSSValueCustomError> {
@@ -212,19 +180,19 @@ impl NumericValue {
   }
 
   #[inline]
-  fn expect_percent(self) -> Result<f32, CSSValueCustomError> {
+  pub fn expect_percent(self) -> Result<f32, CSSValueCustomError> {
     match self {
-      NumericValue::Percent(percent) => Ok(*percent),
+      NumericValue::Percent(percent) => Ok(percent),
       _ => Err(CSSValueCustomError::UnexpectedNumericType),
     }
   }
 
   #[inline]
-  fn expect_number_or_percent(self) -> Result<f32, CSSValueCustomError> {
+  pub fn expect_number_or_percent(self) -> Result<f32, CSSValueCustomError> {
     match self {
       NumericValue::Zero => Ok(0.0),
-      NumericValue::Number(number) => Ok(*number),
-      NumericValue::Percent(percent) => Ok(*percent),
+      NumericValue::Number(number) => Ok(number),
+      NumericValue::Percent(percent) => Ok(percent),
       _ => Err(CSSValueCustomError::UnexpectedNumericType),
     }
   }
@@ -271,7 +239,7 @@ impl From<NumericValue> for MathValue {
         value: 0.0,
         dimension: Default::default(),
       },
-      NumericValue::Number(Number(value)) => MathValue {
+      NumericValue::Number(value) => MathValue {
         value,
         dimension: Default::default(),
       },
@@ -297,7 +265,7 @@ impl From<NumericValue> for MathValue {
           },
         }
       }
-      NumericValue::Percent(Percent(value)) => MathValue {
+      NumericValue::Percent(value) => MathValue {
         value,
         dimension: Dimension {
           length: 0,
@@ -319,7 +287,7 @@ impl TryFrom<MathValue> for NumericValue {
         length: 0,
         angle: 0,
         percent: 0,
-      } => Ok(NumericValue::Number(Number(value))),
+      } => Ok(NumericValue::Number(value)),
       Dimension {
         length: 1,
         angle: 0,
@@ -340,7 +308,7 @@ impl TryFrom<MathValue> for NumericValue {
         length: 0,
         angle: 0,
         percent: 1,
-      } => Ok(NumericValue::Percent(Percent(value))),
+      } => Ok(NumericValue::Percent(value)),
       _ => Err(CSSValueCustomError::InvalidDimension),
     }
   }
@@ -575,7 +543,7 @@ impl ParseState {
 }
 
 impl NumericValue {
-  fn parse<'i, 't>(
+  pub fn parse<'i, 't>(
     input: &mut Parser<'i, 't>,
   ) -> Result<Self, ParseError<'i, CSSValueCustomError>> {
     let result = Self::parse_inner(input, &mut ParseState::new())?;
@@ -597,7 +565,7 @@ impl NumericValue {
         if state.function_depth == 0 && *value == 0.0 {
           return Ok(NumericValue::Zero.into());
         }
-        Ok(NumericValue::Number(Number(*value)).into())
+        Ok(NumericValue::Number(*value).into())
       }
       Token::Dimension { value, unit, .. } => {
         match_ignore_ascii_case! { &unit,
@@ -636,7 +604,7 @@ impl NumericValue {
         }
       }
       Token::Percentage { unit_value, .. } => {
-        Ok(NumericValue::Percent(Percent(*unit_value)).into())
+        Ok(NumericValue::Percent(*unit_value).into())
       }
       Token::Function(name) => {
         state.function_depth += 1;
@@ -660,7 +628,7 @@ impl NumericValue {
               let result: NumericAccumulator = match numeric {
                 NumericValue::Zero => unreachable!(),
                 NumericValue::Number(number) => {
-                  let mut current = *number;
+                  let mut current = number;
                   while !arguments.is_exhausted() {
                     arguments.expect_comma()?;
                     let value = Self::parse_additive_expression(arguments, state)?;
@@ -670,7 +638,7 @@ impl NumericValue {
                     };
                     current = minimum(current, value);
                   }
-                  NumericValue::Number(Number(current)).into()
+                  NumericValue::Number(current).into()
                 },
                 NumericValue::Length(length) => {
                   let mut current = length.to_pixels();
@@ -699,7 +667,7 @@ impl NumericValue {
                   NumericValue::Angle(Angle { value: current, unit: AngleUnit::Deg }).into()
                 },
                 NumericValue::Percent(percent) => {
-                  let mut current = *percent;
+                  let mut current = percent;
                   while !arguments.is_exhausted() {
                     arguments.expect_comma()?;
                     let value = Self::parse_additive_expression(arguments, state)?;
@@ -709,7 +677,7 @@ impl NumericValue {
                     };
                     current = minimum(current, value);
                   }
-                  NumericValue::Percent(Percent(current)).into()
+                  NumericValue::Percent(current).into()
                 },
               };
               Ok(result)
@@ -725,7 +693,7 @@ impl NumericValue {
               let result: NumericAccumulator = match numeric {
                 NumericValue::Zero => unreachable!(),
                 NumericValue::Number(number) => {
-                  let mut current = *number;
+                  let mut current = number;
                   while !arguments.is_exhausted() {
                     arguments.expect_comma()?;
                     let value = Self::parse_additive_expression(arguments, state)?;
@@ -735,7 +703,7 @@ impl NumericValue {
                     };
                     current = maximum(current, value);
                   }
-                  NumericValue::Number(Number(current)).into()
+                  NumericValue::Number(current).into()
                 },
                 NumericValue::Length(length) => {
                   let mut current = length.to_pixels();
@@ -764,7 +732,7 @@ impl NumericValue {
                   NumericValue::Angle(Angle { value: current, unit: AngleUnit::Deg }).into()
                 },
                 NumericValue::Percent(percent) => {
-                  let mut current = *percent;
+                  let mut current = percent;
                   while !arguments.is_exhausted() {
                     arguments.expect_comma()?;
                     let value = Self::parse_additive_expression(arguments, state)?;
@@ -774,7 +742,7 @@ impl NumericValue {
                     };
                     current = maximum(current, value);
                   }
-                  NumericValue::Percent(Percent(current)).into()
+                  NumericValue::Percent(current).into()
                 },
               };
               Ok(result)
@@ -821,7 +789,7 @@ impl NumericValue {
 
               let result: NumericAccumulator = match value {
                 NumericValue::Zero => unreachable!(),
-                NumericValue::Number(Number(value)) => {
+                NumericValue::Number(value) => {
                   let min = match min {
                     Some(numeric) => {
                       match numeric.expect_number() {
@@ -840,7 +808,7 @@ impl NumericValue {
                     },
                     None => f32::INFINITY,
                   };
-                  NumericValue::Number(Number(maximum(min, minimum(value, max)))).into()
+                  NumericValue::Number(maximum(min, minimum(value, max))).into()
                 },
                 NumericValue::Length(value) => {
                   let min = match min {
@@ -890,7 +858,7 @@ impl NumericValue {
                     unit: AngleUnit::Deg,
                   }).into()
                 },
-                NumericValue::Percent(Percent(value)) => {
+                NumericValue::Percent(value) => {
                   let min = match min {
                     Some(numeric) => {
                       match numeric.expect_percent() {
@@ -909,7 +877,7 @@ impl NumericValue {
                     },
                     None => f32::INFINITY,
                   };
-                  NumericValue::Percent(Percent(maximum(min, minimum(value, max)))).into()
+                  NumericValue::Percent(maximum(min, minimum(value, max))).into()
                 },
               };
               Ok(result)
@@ -1014,7 +982,7 @@ impl NumericValue {
               let result: NumericAccumulator = match value {
                 NumericValue::Zero => unreachable!(),
                 NumericValue::Number(value) => {
-                  NumericValue::Number(Number(round(&strategy, *value, interval))).into()
+                  NumericValue::Number(round(&strategy, value, interval)).into()
                 },
                 NumericValue::Length(value) => {
                   NumericValue::Length(Length {
@@ -1029,7 +997,7 @@ impl NumericValue {
                   }).into()
                 },
                 NumericValue::Percent(value) => {
-                  NumericValue::Percent(Percent(round(&strategy, *value, interval))).into()
+                  NumericValue::Percent(round(&strategy, value, interval)).into()
                 }
               };
               Ok(result)
@@ -1052,7 +1020,7 @@ impl NumericValue {
                     Err(error) => return Err(arguments.new_custom_error(error)),
                   };
                   arguments.expect_exhausted()?;
-                  NumericValue::Number(Number(dividend.rem_euclid(divisor))).into()
+                  NumericValue::Number(dividend.rem_euclid(divisor)).into()
                 },
                 NumericValue::Length(dividend) => {
                   let dividend = dividend.to_pixels();
@@ -1087,7 +1055,7 @@ impl NumericValue {
                     Err(error) => return Err(arguments.new_custom_error(error)),
                   };
                   arguments.expect_exhausted()?;
-                  NumericValue::Percent(Percent(dividend.rem_euclid(divisor))).into()
+                  NumericValue::Percent(dividend.rem_euclid(divisor)).into()
                 },
               };
               Ok(result)
@@ -1110,7 +1078,7 @@ impl NumericValue {
                     Err(error) => return Err(arguments.new_custom_error(error)),
                   };
                   arguments.expect_exhausted()?;
-                  NumericValue::Number(Number(*dividend % divisor)).into()
+                  NumericValue::Number(dividend % divisor).into()
                 },
                 NumericValue::Length(dividend) => {
                   let dividend = dividend.to_pixels();
@@ -1145,7 +1113,7 @@ impl NumericValue {
                     Err(error) => return Err(arguments.new_custom_error(error)),
                   };
                   arguments.expect_exhausted()?;
-                  NumericValue::Percent(Percent(*dividend % divisor)).into()
+                  NumericValue::Percent(dividend % divisor).into()
                 },
               };
               Ok(result)
@@ -1162,11 +1130,11 @@ impl NumericValue {
               arguments.expect_exhausted()?;
               let result: NumericAccumulator = match numeric {
                 NumericValue::Zero => unreachable!(),
-                NumericValue::Number(Number(number)) => {
-                  NumericValue::Number(Number(number.sin())).into()
+                NumericValue::Number(number) => {
+                  NumericValue::Number(number.sin()).into()
                 },
                 NumericValue::Angle(angle) => {
-                  NumericValue::Number(Number(angle.to_radians().sin())).into()
+                  NumericValue::Number(angle.to_radians().sin()).into()
                 },
                 NumericValue::Length(_) |
                 NumericValue::Percent(_) => return Err(arguments.new_custom_error(CSSValueCustomError::UnexpectedNumericType)),
@@ -1184,14 +1152,15 @@ impl NumericValue {
               arguments.expect_exhausted()?;
               let result: NumericAccumulator = match numeric {
                 NumericValue::Zero => unreachable!(),
-                NumericValue::Number(Number(number)) => {
-                  NumericValue::Number(Number(number.cos())).into()
+                NumericValue::Number(number) => {
+                  NumericValue::Number(number.cos()).into()
                 },
                 NumericValue::Angle(angle) => {
-                  NumericValue::Number(Number(angle.to_radians().cos())).into()
+                  NumericValue::Number(angle.to_radians().cos()).into()
                 },
                 NumericValue::Length(_) |
-                NumericValue::Percent(_) => return Err(arguments.new_custom_error(CSSValueCustomError::UnexpectedNumericType)),              };
+                NumericValue::Percent(_) => return Err(arguments.new_custom_error(CSSValueCustomError::UnexpectedNumericType)),
+              };
               Ok(result)
             })
           },
@@ -1205,14 +1174,15 @@ impl NumericValue {
               arguments.expect_exhausted()?;
               let result: NumericAccumulator = match numeric {
                 NumericValue::Zero => unreachable!(),
-                NumericValue::Number(Number(number)) => {
-                  NumericValue::Number(Number(number.tan())).into()
+                NumericValue::Number(number) => {
+                  NumericValue::Number(number.tan()).into()
                 },
                 NumericValue::Angle(angle) => {
-                  NumericValue::Number(Number(angle.to_radians().tan())).into()
+                  NumericValue::Number(angle.to_radians().tan()).into()
                 },
                 NumericValue::Length(_) |
-                NumericValue::Percent(_) => return Err(arguments.new_custom_error(CSSValueCustomError::UnexpectedNumericType)),              };
+                NumericValue::Percent(_) => return Err(arguments.new_custom_error(CSSValueCustomError::UnexpectedNumericType)),
+              };
               Ok(result)
             })
           },
@@ -1276,7 +1246,7 @@ impl NumericValue {
               };
               arguments.expect_exhausted()?;
               let result: NumericAccumulator = match (y, x) {
-                (NumericValue::Number(Number(y)), NumericValue::Number(Number(x))) => {
+                (NumericValue::Number(y), NumericValue::Number(x)) => {
                   NumericValue::Angle(Angle {
                     value: y.atan2(x),
                     unit: AngleUnit::Rad,
@@ -1294,7 +1264,7 @@ impl NumericValue {
                     unit: AngleUnit::Rad,
                   }).into()
                 },
-                (NumericValue::Percent(Percent(y)), NumericValue::Percent(Percent(x))) => {
+                (NumericValue::Percent(y), NumericValue::Percent(x)) => {
                   NumericValue::Angle(Angle {
                     value: y.atan2(x),
                     unit: AngleUnit::Rad,
@@ -1320,7 +1290,7 @@ impl NumericValue {
                 Err(error) => return Err(arguments.new_custom_error(error)),
               };
               arguments.expect_exhausted()?;
-              let result = NumericValue::Number(Number(base.powf(exponent))).into();
+              let result = NumericValue::Number(base.powf(exponent)).into();
               Ok(result)
             })
           },
@@ -1332,7 +1302,7 @@ impl NumericValue {
                 Err(error) => return Err(arguments.new_custom_error(error)),
               };
               arguments.expect_exhausted()?;
-              let result = NumericValue::Number(Number(value.sqrt())).into();
+              let result = NumericValue::Number(value.sqrt()).into();
               Ok(result)
             })
           },
@@ -1373,7 +1343,7 @@ impl NumericValue {
               let result: NumericAccumulator = match first {
                 NumericValue::Zero => unreachable!(),
                 NumericValue::Number(first) => {
-                  let mut args = vec![*first];
+                  let mut args = vec![first];
                   while !arguments.is_exhausted() {
                     arguments.expect_comma()?;
                     let value = Self::parse_additive_expression(arguments, state)?;
@@ -1383,7 +1353,7 @@ impl NumericValue {
                     };
                     args.push(value);
                   }
-                  NumericValue::Number(Number(hypot(&args))).into()
+                  NumericValue::Number(hypot(&args)).into()
                 },
                 NumericValue::Length(first) => {
                   let mut args = vec![first.to_pixels()];
@@ -1418,7 +1388,7 @@ impl NumericValue {
                   }).into()
                 },
                 NumericValue::Percent(first) => {
-                  let mut args = vec![*first];
+                  let mut args = vec![first];
                   while !arguments.is_exhausted() {
                     arguments.expect_comma()?;
                     let value = Self::parse_additive_expression(arguments, state)?;
@@ -1428,7 +1398,7 @@ impl NumericValue {
                     };
                     args.push(value);
                   }
-                  NumericValue::Number(Number(hypot(&args))).into()
+                  NumericValue::Number(hypot(&args)).into()
                 },
               };
               Ok(result)
@@ -1449,9 +1419,9 @@ impl NumericValue {
                   Err(error) => return Err(arguments.new_custom_error(error)),
                 };
                 arguments.expect_exhausted()?;
-                NumericValue::Number(Number(value.log(base))).into()
+                NumericValue::Number(value.log(base)).into()
               } else {
-                NumericValue::Number(Number(value.ln())).into()
+                NumericValue::Number(value.ln()).into()
               };
               Ok(result)
             })
@@ -1464,7 +1434,7 @@ impl NumericValue {
                 Err(error) => return Err(arguments.new_custom_error(error)),
               };
               arguments.expect_exhausted()?;
-              let result: NumericAccumulator = NumericValue::Number(Number(number.exp())).into();
+              let result: NumericAccumulator = NumericValue::Number(number.exp()).into();
               Ok(result)
             })
           },
@@ -1479,8 +1449,8 @@ impl NumericValue {
               arguments.expect_exhausted()?;
               let result: NumericAccumulator = match value {
                 NumericValue::Zero => unreachable!(),
-                NumericValue::Number(Number(number)) => {
-                  NumericValue::Number(Number(number.abs())).into()
+                NumericValue::Number(number) => {
+                  NumericValue::Number(number.abs()).into()
                 },
                 NumericValue::Length(length) => {
                   NumericValue::Length(Length {
@@ -1494,8 +1464,8 @@ impl NumericValue {
                     unit: angle.unit,
                   }).into()
                 },
-                NumericValue::Percent(Percent(percent)) => {
-                  NumericValue::Percent(Percent(percent.abs())).into()
+                NumericValue::Percent(percent) => {
+                  NumericValue::Percent(percent.abs()).into()
                 },
               };
               Ok(result)
@@ -1516,17 +1486,17 @@ impl NumericValue {
               arguments.expect_exhausted()?;
               let result: NumericAccumulator = match value {
                 NumericValue::Zero => unreachable!(),
-                NumericValue::Number(Number(number)) => {
-                  NumericValue::Number(Number(sign(number))).into()
+                NumericValue::Number(number) => {
+                  NumericValue::Number(sign(number)).into()
                 },
                 NumericValue::Length(length) => {
-                  NumericValue::Number(Number(sign(length.value))).into()
+                  NumericValue::Number(sign(length.value)).into()
                 },
                 NumericValue::Angle(angle) => {
-                  NumericValue::Number(Number(sign(angle.value))).into()
+                  NumericValue::Number(sign(angle.value)).into()
                 },
-                NumericValue::Percent(Percent(percent)) => {
-                  NumericValue::Number(Number(sign(percent))).into()
+                NumericValue::Percent(percent) => {
+                  NumericValue::Number(sign(percent)).into()
                 },
               };
               Ok(result)
@@ -1558,12 +1528,12 @@ impl NumericValue {
         }
         match_ignore_ascii_case! { &ident,
           // https://www.w3.org/TR/css-values-4/#calc-constants
-          "e" => Ok(NumericValue::Number(Number(f32::consts::E)).into()),
-          "pi" => Ok(NumericValue::Number(Number(f32::consts::PI)).into()),
+          "e" => Ok(NumericValue::Number(f32::consts::E).into()),
+          "pi" => Ok(NumericValue::Number(f32::consts::PI).into()),
           // https://www.w3.org/TR/css-values-4/#calc-error-constants
-          "infinity" => Ok(NumericValue::Number(Number(f32::INFINITY)).into()),
-          "-infinity" => Ok(NumericValue::Number(Number(f32::NEG_INFINITY)).into()),
-          "nan" => Ok(NumericValue::Number(Number(f32::NAN)).into()),
+          "infinity" => Ok(NumericValue::Number(f32::INFINITY).into()),
+          "-infinity" => Ok(NumericValue::Number(f32::NEG_INFINITY).into()),
+          "nan" => Ok(NumericValue::Number(f32::NAN).into()),
           _ => {
             let token = token.clone();
             Err(input.new_unexpected_token_error(token))
@@ -1717,7 +1687,7 @@ mod tests {
     let mut input = ParserInput::new("42");
     let mut parser = Parser::new(&mut input);
     let result = NumericValue::parse(&mut parser);
-    assert_eq!(result, Ok(NumericValue::Number(Number(42.0))));
+    assert_eq!(result, Ok(NumericValue::Number(42.0)));
   }
 
   #[test]
@@ -1762,7 +1732,7 @@ mod tests {
     let mut input = ParserInput::new("10%");
     let mut parser = Parser::new(&mut input);
     let result = NumericValue::parse(&mut parser);
-    assert_eq!(result, Ok(NumericValue::Percent(Percent(0.1))));
+    assert_eq!(result, Ok(NumericValue::Percent(0.1)));
   }
 
   #[test]
@@ -1770,7 +1740,7 @@ mod tests {
     let mut input = ParserInput::new("calc(0)");
     let mut parser = Parser::new(&mut input);
     let result = NumericValue::parse(&mut parser);
-    assert_eq!(result, Ok(NumericValue::Number(Number(0.0))));
+    assert_eq!(result, Ok(NumericValue::Number(0.0)));
   }
 
   #[test]
@@ -1778,7 +1748,7 @@ mod tests {
     let mut input = ParserInput::new("calc(e)");
     let mut parser = Parser::new(&mut input);
     let result = NumericValue::parse(&mut parser);
-    assert_eq!(result, Ok(NumericValue::Number(Number(f32::consts::E))));
+    assert_eq!(result, Ok(NumericValue::Number(f32::consts::E)));
   }
 
   #[test]
@@ -1786,7 +1756,7 @@ mod tests {
     let mut input = ParserInput::new("calc(pi)");
     let mut parser = Parser::new(&mut input);
     let result = NumericValue::parse(&mut parser);
-    assert_eq!(result, Ok(NumericValue::Number(Number(f32::consts::PI))));
+    assert_eq!(result, Ok(NumericValue::Number(f32::consts::PI)));
   }
 
   #[test]
@@ -1794,7 +1764,7 @@ mod tests {
     let mut input = ParserInput::new("calc(infinity)");
     let mut parser = Parser::new(&mut input);
     let result = NumericValue::parse(&mut parser);
-    assert_eq!(result, Ok(NumericValue::Number(Number(f32::INFINITY))));
+    assert_eq!(result, Ok(NumericValue::Number(f32::INFINITY)));
   }
 
   #[test]
@@ -1802,7 +1772,7 @@ mod tests {
     let mut input = ParserInput::new("calc(-infinity)");
     let mut parser = Parser::new(&mut input);
     let result = NumericValue::parse(&mut parser);
-    assert_eq!(result, Ok(NumericValue::Number(Number(f32::NEG_INFINITY))));
+    assert_eq!(result, Ok(NumericValue::Number(f32::NEG_INFINITY)));
   }
 
   #[test]
@@ -1810,7 +1780,7 @@ mod tests {
     let mut input = ParserInput::new("calc(nan)");
     let mut parser = Parser::new(&mut input);
     let result = NumericValue::parse(&mut parser);
-    let Ok(NumericValue::Number(Number(value))) = result else {
+    let Ok(NumericValue::Number(value)) = result else {
       panic!("expect number: {:?}", result);
     };
     assert!(value.is_nan());
@@ -1883,7 +1853,7 @@ mod tests {
     let mut input = ParserInput::new("calc(2px / 1px)");
     let mut parser = Parser::new(&mut input);
     let result = NumericValue::parse(&mut parser);
-    assert_eq!(result, Ok(NumericValue::Number(Number(2.0))));
+    assert_eq!(result, Ok(NumericValue::Number(2.0)));
   }
 
   #[test]
@@ -1900,7 +1870,7 @@ mod tests {
     let mut input = ParserInput::new("min(-1, 1 - 3, 3)");
     let mut parser = Parser::new(&mut input);
     let result = NumericValue::parse(&mut parser);
-    assert_eq!(result, Ok(NumericValue::Number(Number(-2.0))));
+    assert_eq!(result, Ok(NumericValue::Number(-2.0)));
   }
 
   #[test]
@@ -1908,7 +1878,7 @@ mod tests {
     let mut input = ParserInput::new("min(-1, nan, 3)");
     let mut parser = Parser::new(&mut input);
     let result = NumericValue::parse(&mut parser);
-    let Ok(NumericValue::Number(Number(value))) = result else {
+    let Ok(NumericValue::Number(value)) = result else {
       panic!("expect number: {:?}", result);
     };
     assert!(value.is_nan());
@@ -1933,7 +1903,7 @@ mod tests {
     let mut input = ParserInput::new("max(-1, 1 - 3, 3)");
     let mut parser = Parser::new(&mut input);
     let result = NumericValue::parse(&mut parser);
-    assert_eq!(result, Ok(NumericValue::Number(Number(3.0))));
+    assert_eq!(result, Ok(NumericValue::Number(3.0)));
   }
 
   #[test]
@@ -1941,7 +1911,7 @@ mod tests {
     let mut input = ParserInput::new("max(-1, nan, 3)");
     let mut parser = Parser::new(&mut input);
     let result = NumericValue::parse(&mut parser);
-    let Ok(NumericValue::Number(Number(value))) = result else {
+    let Ok(NumericValue::Number(value)) = result else {
       panic!("expect number: {:?}", result);
     };
     assert!(value.is_nan());
@@ -1966,7 +1936,7 @@ mod tests {
     let mut input = ParserInput::new("clamp(-1, 1 - 3, 3)");
     let mut parser = Parser::new(&mut input);
     let result = NumericValue::parse(&mut parser);
-    assert_eq!(result, Ok(NumericValue::Number(Number(-1.0))));
+    assert_eq!(result, Ok(NumericValue::Number(-1.0)));
   }
 
   #[test]
@@ -1974,7 +1944,7 @@ mod tests {
     let mut input = ParserInput::new("clamp(none, 1 - 3, 3)");
     let mut parser = Parser::new(&mut input);
     let result = NumericValue::parse(&mut parser);
-    assert_eq!(result, Ok(NumericValue::Number(Number(-2.0))));
+    assert_eq!(result, Ok(NumericValue::Number(-2.0)));
   }
 
   #[test]
@@ -1982,7 +1952,7 @@ mod tests {
     let mut input = ParserInput::new("clamp(-1, nan, 3)");
     let mut parser = Parser::new(&mut input);
     let result = NumericValue::parse(&mut parser);
-    let Ok(NumericValue::Number(Number(value))) = result else {
+    let Ok(NumericValue::Number(value)) = result else {
       panic!("expect number: {:?}", result);
     };
     assert!(value.is_nan());
@@ -2007,7 +1977,7 @@ mod tests {
     let mut input = ParserInput::new("round(1.5)");
     let mut parser = Parser::new(&mut input);
     let result = NumericValue::parse(&mut parser);
-    assert_eq!(result, Ok(NumericValue::Number(Number(2.0))));
+    assert_eq!(result, Ok(NumericValue::Number(2.0)));
   }
 
   #[test]
@@ -2015,7 +1985,7 @@ mod tests {
     let mut input = ParserInput::new("round(1, 2)");
     let mut parser = Parser::new(&mut input);
     let result = NumericValue::parse(&mut parser);
-    assert_eq!(result, Ok(NumericValue::Number(Number(2.0))));
+    assert_eq!(result, Ok(NumericValue::Number(2.0)));
   }
 
   #[test]
@@ -2023,7 +1993,7 @@ mod tests {
     let mut input = ParserInput::new("round(to-zero, 2.5, 5)");
     let mut parser = Parser::new(&mut input);
     let result = NumericValue::parse(&mut parser);
-    assert_eq!(result, Ok(NumericValue::Number(Number(0.0))));
+    assert_eq!(result, Ok(NumericValue::Number(0.0)));
   }
 
   #[test]
@@ -2031,7 +2001,7 @@ mod tests {
     let mut input = ParserInput::new("round(down, 1, infinity)");
     let mut parser = Parser::new(&mut input);
     let result = NumericValue::parse(&mut parser);
-    assert_eq!(result, Ok(NumericValue::Number(Number(0.0))));
+    assert_eq!(result, Ok(NumericValue::Number(0.0)));
   }
 
   #[test]
@@ -2039,7 +2009,7 @@ mod tests {
     let mut input = ParserInput::new("round(up, nan, 3)");
     let mut parser = Parser::new(&mut input);
     let result = NumericValue::parse(&mut parser);
-    let Ok(NumericValue::Number(Number(value))) = result else {
+    let Ok(NumericValue::Number(value)) = result else {
       panic!("expect number: {:?}", result);
     };
     assert!(value.is_nan());
@@ -2064,7 +2034,7 @@ mod tests {
     let mut input = ParserInput::new("mod(-3, 2)");
     let mut parser = Parser::new(&mut input);
     let result = NumericValue::parse(&mut parser);
-    assert_eq!(result, Ok(NumericValue::Number(Number(1.0))));
+    assert_eq!(result, Ok(NumericValue::Number(1.0)));
   }
 
   #[test]
@@ -2072,7 +2042,7 @@ mod tests {
     let mut input = ParserInput::new("mod(2, 0)");
     let mut parser = Parser::new(&mut input);
     let result = NumericValue::parse(&mut parser);
-    let Ok(NumericValue::Number(Number(value))) = result else {
+    let Ok(NumericValue::Number(value)) = result else {
       panic!("expect number: {:?}", result);
     };
     assert!(value.is_nan());
@@ -2097,7 +2067,7 @@ mod tests {
     let mut input = ParserInput::new("rem(-3, 2)");
     let mut parser = Parser::new(&mut input);
     let result = NumericValue::parse(&mut parser);
-    assert_eq!(result, Ok(NumericValue::Number(Number(-1.0))));
+    assert_eq!(result, Ok(NumericValue::Number(-1.0)));
   }
 
   #[test]
@@ -2105,7 +2075,7 @@ mod tests {
     let mut input = ParserInput::new("rem(2, 0)");
     let mut parser = Parser::new(&mut input);
     let result = NumericValue::parse(&mut parser);
-    let Ok(NumericValue::Number(Number(value))) = result else {
+    let Ok(NumericValue::Number(value)) = result else {
       panic!("expect number: {:?}", result);
     };
     assert!(value.is_nan());
@@ -2130,7 +2100,7 @@ mod tests {
     let mut input = ParserInput::new("sin(pi / 2)");
     let mut parser = Parser::new(&mut input);
     let result = NumericValue::parse(&mut parser);
-    let Ok(NumericValue::Number(Number(value))) = result else {
+    let Ok(NumericValue::Number(value)) = result else {
       panic!("expect number: {:?}", result);
     };
     assert_relative_eq!(value, 1.0);
@@ -2141,7 +2111,7 @@ mod tests {
     let mut input = ParserInput::new("sin(90deg)");
     let mut parser = Parser::new(&mut input);
     let result = NumericValue::parse(&mut parser);
-    let Ok(NumericValue::Number(Number(value))) = result else {
+    let Ok(NumericValue::Number(value)) = result else {
       panic!("expect number: {:?}", result);
     };
     assert_relative_eq!(value, 1.0);
@@ -2152,7 +2122,7 @@ mod tests {
     let mut input = ParserInput::new("cos(pi)");
     let mut parser = Parser::new(&mut input);
     let result = NumericValue::parse(&mut parser);
-    let Ok(NumericValue::Number(Number(value))) = result else {
+    let Ok(NumericValue::Number(value)) = result else {
       panic!("expect number: {:?}", result);
     };
     assert_relative_eq!(value, -1.0);
@@ -2163,7 +2133,7 @@ mod tests {
     let mut input = ParserInput::new("cos(180deg)");
     let mut parser = Parser::new(&mut input);
     let result = NumericValue::parse(&mut parser);
-    let Ok(NumericValue::Number(Number(value))) = result else {
+    let Ok(NumericValue::Number(value)) = result else {
       panic!("expect number: {:?}", result);
     };
     assert_relative_eq!(value, -1.0);
@@ -2174,7 +2144,7 @@ mod tests {
     let mut input = ParserInput::new("tan(pi / 4)");
     let mut parser = Parser::new(&mut input);
     let result = NumericValue::parse(&mut parser);
-    let Ok(NumericValue::Number(Number(value))) = result else {
+    let Ok(NumericValue::Number(value)) = result else {
       panic!("expect number: {:?}", result);
     };
     assert_relative_eq!(value, 1.0);
@@ -2185,7 +2155,7 @@ mod tests {
     let mut input = ParserInput::new("tan(45deg)");
     let mut parser = Parser::new(&mut input);
     let result = NumericValue::parse(&mut parser);
-    let Ok(NumericValue::Number(Number(value))) = result else {
+    let Ok(NumericValue::Number(value)) = result else {
       panic!("expect number: {:?}", result);
     };
     assert_relative_eq!(value, 1.0);
@@ -2251,7 +2221,7 @@ mod tests {
     let mut input = ParserInput::new("pow(2, 3)");
     let mut parser = Parser::new(&mut input);
     let result = NumericValue::parse(&mut parser);
-    let Ok(NumericValue::Number(Number(value))) = result else {
+    let Ok(NumericValue::Number(value)) = result else {
       panic!("expect number: {:?}", result);
     };
     assert_relative_eq!(value, 8.0);
@@ -2262,7 +2232,7 @@ mod tests {
     let mut input = ParserInput::new("sqrt(4)");
     let mut parser = Parser::new(&mut input);
     let result = NumericValue::parse(&mut parser);
-    let Ok(NumericValue::Number(Number(value))) = result else {
+    let Ok(NumericValue::Number(value)) = result else {
       panic!("expect number: {:?}", result);
     };
     assert_relative_eq!(value, 2.0);
@@ -2273,7 +2243,7 @@ mod tests {
     let mut input = ParserInput::new("hypot(3, 4, 12)");
     let mut parser = Parser::new(&mut input);
     let result = NumericValue::parse(&mut parser);
-    let Ok(NumericValue::Number(Number(value))) = result else {
+    let Ok(NumericValue::Number(value)) = result else {
       panic!("expect number: {:?}", result);
     };
     assert_relative_eq!(value, 13.0);
@@ -2295,7 +2265,7 @@ mod tests {
     let mut input = ParserInput::new("log(10)");
     let mut parser = Parser::new(&mut input);
     let result = NumericValue::parse(&mut parser);
-    let Ok(NumericValue::Number(Number(value))) = result else {
+    let Ok(NumericValue::Number(value)) = result else {
       panic!("expect number: {:?}", result);
     };
     assert_relative_eq!(value, 10.0_f32.ln());
@@ -2306,7 +2276,7 @@ mod tests {
     let mut input = ParserInput::new("log(8, 2)");
     let mut parser = Parser::new(&mut input);
     let result = NumericValue::parse(&mut parser);
-    let Ok(NumericValue::Number(Number(value))) = result else {
+    let Ok(NumericValue::Number(value)) = result else {
       panic!("expect number: {:?}", result);
     };
     assert_relative_eq!(value, 3.0);
@@ -2317,7 +2287,7 @@ mod tests {
     let mut input = ParserInput::new("exp(2)");
     let mut parser = Parser::new(&mut input);
     let result = NumericValue::parse(&mut parser);
-    let Ok(NumericValue::Number(Number(value))) = result else {
+    let Ok(NumericValue::Number(value)) = result else {
       panic!("expect number: {:?}", result);
     };
     assert_relative_eq!(value, 2.0_f32.exp());
@@ -2328,7 +2298,7 @@ mod tests {
     let mut input = ParserInput::new("abs(-3)");
     let mut parser = Parser::new(&mut input);
     let result = NumericValue::parse(&mut parser);
-    let Ok(NumericValue::Number(Number(value))) = result else {
+    let Ok(NumericValue::Number(value)) = result else {
       panic!("expect number: {:?}", result);
     };
     assert_relative_eq!(value, 3.0);
@@ -2350,7 +2320,7 @@ mod tests {
     let mut input = ParserInput::new("sign(-2)");
     let mut parser = Parser::new(&mut input);
     let result = NumericValue::parse(&mut parser);
-    let Ok(NumericValue::Number(Number(value))) = result else {
+    let Ok(NumericValue::Number(value)) = result else {
       panic!("expect number: {:?}", result);
     };
     assert_eq!(value, -1.0);
@@ -2361,7 +2331,7 @@ mod tests {
     let mut input = ParserInput::new("sign(0)");
     let mut parser = Parser::new(&mut input);
     let result = NumericValue::parse(&mut parser);
-    let Ok(NumericValue::Number(Number(value))) = result else {
+    let Ok(NumericValue::Number(value)) = result else {
       panic!("expect number: {:?}", result);
     };
     assert_eq!(value, 0.0);
@@ -2373,7 +2343,7 @@ mod tests {
     let mut input = ParserInput::new("sign(-0)");
     let mut parser = Parser::new(&mut input);
     let result = NumericValue::parse(&mut parser);
-    let Ok(NumericValue::Number(Number(value))) = result else {
+    let Ok(NumericValue::Number(value)) = result else {
       panic!("expect number: {:?}", result);
     };
     assert_eq!(value, -0.0);
@@ -2385,7 +2355,7 @@ mod tests {
     let mut input = ParserInput::new("sign(-2px)");
     let mut parser = Parser::new(&mut input);
     let result = NumericValue::parse(&mut parser);
-    let Ok(NumericValue::Number(Number(value))) = result else {
+    let Ok(NumericValue::Number(value)) = result else {
       panic!("expect number: {:?}", result);
     };
     assert_eq!(value, -1.0);
@@ -2717,7 +2687,10 @@ impl Transform {
       "matrix" => {
         input.parse_nested_block(|arguments| {
           let mut result = [0.0; 6];
-          for slot in &mut result {
+          for (i, slot) in result.iter_mut().enumerate() {
+            if i != 0 {
+              arguments.expect_comma()?;
+            }
             let value = NumericValue::parse(arguments)?;
             let number = match value.expect_number() {
               Ok(number) => number,
@@ -2732,7 +2705,10 @@ impl Transform {
       "matrix3d" => {
         input.parse_nested_block(|arguments| {
           let mut result = [0.0; 16];
-          for slot in &mut result {
+          for (i, slot) in result.iter_mut().enumerate() {
+            if i != 0 {
+              arguments.expect_comma()?;
+            }
             let value = NumericValue::parse(arguments)?;
             let number = match value.expect_number() {
               Ok(number) => number,
