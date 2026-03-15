@@ -2414,7 +2414,7 @@ fn op_node_cp_on_link_sync(
 
         let oldpath = CheckedPathBuf::unsafe_new(PathBuf::from(&resolved_src));
         let newpath = CheckedPathBuf::unsafe_new(PathBuf::from(dest));
-        let file_type = cp_symlink_type(&fs, &oldpath, &newpath);
+        let file_type = cp_symlink_type(fs, &oldpath, &newpath);
         fs.symlink_sync(
           &oldpath.as_checked_path(),
           &newpath.as_checked_path(),
