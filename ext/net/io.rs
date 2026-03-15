@@ -122,6 +122,21 @@ impl Resource for TcpStreamResource {
 }
 
 impl TcpStreamResource {
+  pub fn dup_raw_fd(self: &Rc<Self>) -> Option<i32> {
+    let wr = RcRef::map(self, |r| &r.wr).try_borrow()?;
+    let sock = SockRef::from(wr.as_ref().as_ref()).try_clone().ok()?;
+    #[cfg(unix)]
+    {
+      use std::os::unix::io::IntoRawFd;
+      Some(sock.into_raw_fd())
+    }
+    #[cfg(windows)]
+    {
+      use std::os::windows::io::IntoRawSocket;
+      i32::try_from(sock.into_raw_socket()).ok()
+    }
+  }
+
   pub fn set_nodelay(self: Rc<Self>, nodelay: bool) -> Result<(), MapError> {
     self.map_socket(Box::new(move |socket| socket.set_nodelay(nodelay)))
   }

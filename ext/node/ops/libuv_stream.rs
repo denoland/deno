@@ -9,6 +9,7 @@ use std::ptr;
 use deno_core::GarbageCollected;
 use deno_core::JsBuffer;
 use deno_core::OpState;
+use deno_core::ResourceId;
 use deno_core::op2;
 use deno_core::uv_compat;
 use deno_core::uv_compat::UvBuf;
@@ -20,6 +21,7 @@ use deno_core::uv_compat::UvStream;
 use deno_core::uv_compat::UvTcp;
 use deno_core::uv_compat::UvWrite;
 use deno_core::v8;
+use deno_net::io::TcpStreamResource;
 use deno_permissions::PermissionsContainer;
 use socket2::SockAddr as Socket2SockAddr;
 
@@ -369,6 +371,26 @@ impl TCP {
       }
       // For C libuv, use uv_tcp_open to assign an existing fd
       uv_compat::uv_tcp_open(tcp, fd)
+    }
+  }
+
+  #[fast]
+  fn open_from_rid(&self, state: &mut OpState, #[smi] rid: ResourceId) -> i32 {
+    let tcp = self.raw();
+    if tcp.is_null() {
+      return -1;
+    }
+    let fd = state
+      .resource_table
+      .get::<TcpStreamResource>(rid)
+      .ok()
+      .and_then(|r| r.dup_raw_fd());
+    match fd {
+      // SAFETY: tcp is a valid initialized handle (null-checked above),
+      // fd is a valid dup'd descriptor. uv_tcp_open takes ownership of
+      // fd in all cases (closes on failure via std_stream drop).
+      Some(fd) => unsafe { uv_compat::uv_tcp_open(tcp, fd) },
+      None => -1,
     }
   }
 
