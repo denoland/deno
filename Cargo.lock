@@ -1854,7 +1854,6 @@ dependencies = [
  "deno_tower_lsp",
  "deno_typescript_go_client_rust",
  "dhat",
- "dissimilar",
  "dprint-core",
  "dprint-plugin-json",
  "dprint-plugin-jupyter",
@@ -1869,6 +1868,7 @@ dependencies = [
  "http 1.4.0",
  "http-body 1.0.0",
  "http-body-util",
+ "imara-diff",
  "import_map",
  "indexmap 2.12.0",
  "jsonc-parser 0.28.0",
@@ -3906,12 +3906,6 @@ dependencies = [
  "quote",
  "syn 2.0.117",
 ]
-
-[[package]]
-name = "dissimilar"
-version = "1.0.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "59f8e79d1fbf76bdfbde321e902714bf6c49df88a7dda6fc682fc2979226962d"
 
 [[package]]
 name = "divan"
