@@ -272,6 +272,12 @@ pub struct StatementSync {
   pub allow_unknown_named_params: Cell<bool>,
 
   pub is_iter_finished: Cell<bool>,
+  pub iter_generation: Cell<u64>,
+}
+
+struct IteratorContext {
+  statement: *const StatementSync,
+  expected_generation: u64,
 }
 
 impl Drop for StatementSync {
@@ -405,6 +411,10 @@ impl StatementSync {
     let r = unsafe { ffi::sqlite3_reset(raw) };
 
     self.check_error_code_impl(r)
+  }
+
+  fn invalidate_iter(&self) {
+    self.iter_generation.set(self.iter_generation.get() + 1);
   }
 
   fn check_error_code_impl(&self, r: i32) -> Result<(), SqliteError> {
@@ -587,6 +597,7 @@ impl StatementSync {
     scope: &mut v8::PinScope<'a, '_>,
     #[varargs] params: Option<&v8::FunctionCallbackArguments>,
   ) -> Result<v8::Local<'a, v8::Value>, SqliteError> {
+    self.invalidate_iter();
     self.reset()?;
 
     self.bind_params(scope, params)?;
@@ -608,6 +619,7 @@ impl StatementSync {
     scope: &mut v8::PinScope<'_, '_>,
     #[varargs] params: Option<&v8::FunctionCallbackArguments>,
   ) -> Result<RunStatementResult, SqliteError> {
+    self.invalidate_iter();
     let db = self.db.borrow();
     let db = db.as_ref().ok_or(SqliteError::AlreadyClosed)?;
 
@@ -635,6 +647,7 @@ impl StatementSync {
     scope: &mut v8::PinScope<'a, '_>,
     #[varargs] params: Option<&v8::FunctionCallbackArguments>,
   ) -> Result<v8::Local<'a, v8::Array>, SqliteError> {
+    self.invalidate_iter();
     let mut arr = vec![];
 
     self.bind_params(scope, params)?;
@@ -671,22 +684,48 @@ impl StatementSync {
       __STATEMENT_REF = "__statement_ref",
     }
 
+    self.invalidate_iter();
     self.reset()?;
 
     self.bind_params(scope, params)?;
 
+    // Capture the current generation so the iterator can detect invalidation
+    let iter_ctx = Box::into_raw(Box::new(IteratorContext {
+      statement: self as *const StatementSync,
+      expected_generation: self.iter_generation.get(),
+    }));
+
     let iterate_next = |scope: &mut v8::PinScope<'_, '_>,
                         args: v8::FunctionCallbackArguments,
                         mut rv: v8::ReturnValue| {
-      let context = v8::Local::<v8::External>::try_from(args.data())
+      let external = v8::Local::<v8::External>::try_from(args.data())
         .expect("Iterator#next expected external data");
-      // SAFETY: `context` is a valid pointer to a StatementSync instance
-      let statement = unsafe { &mut *(context.value() as *mut StatementSync) };
+      // SAFETY: `external` is a valid pointer to an IteratorContext
+      let ctx = unsafe { &*(external.value() as *const IteratorContext) };
+      // SAFETY: the statement pointer is valid as long as the iterator is alive
+      let statement = unsafe { &*ctx.statement };
 
       let names = &[
         DONE.v8_string(scope).unwrap().into(),
         VALUE.v8_string(scope).unwrap().into(),
       ];
+
+      // Check if iterator was invalidated by get/all/run/iterate
+      if statement.iter_generation.get() != ctx.expected_generation {
+        let msg =
+          v8::String::new(scope, "This iterator was invalidated because the statement was reset by calling get(), all(), run(), or iterate() on the same statement object.")
+            .unwrap();
+        let err = v8::Exception::error(scope, msg);
+        let code_key = v8::String::new(scope, "code").unwrap();
+        let code_val =
+          v8::String::new(scope, "ERR_INVALID_STATE").unwrap();
+        err
+          .to_object(scope)
+          .unwrap()
+          .set(scope, code_key.into(), code_val.into());
+        scope.throw_exception(err);
+        return;
+      }
 
       if statement.is_iter_finished.get() {
         let values =
@@ -721,10 +760,12 @@ impl StatementSync {
     let iterate_return = |scope: &mut v8::PinScope<'_, '_>,
                           args: v8::FunctionCallbackArguments,
                           mut rv: v8::ReturnValue| {
-      let context = v8::Local::<v8::External>::try_from(args.data())
+      let external = v8::Local::<v8::External>::try_from(args.data())
         .expect("Iterator#return expected external data");
-      // SAFETY: `context` is a valid pointer to a StatementSync instance
-      let statement = unsafe { &mut *(context.value() as *mut StatementSync) };
+      // SAFETY: `external` is a valid pointer to an IteratorContext
+      let ctx = unsafe { &*(external.value() as *const IteratorContext) };
+      // SAFETY: the statement pointer is valid as long as the iterator is alive
+      let statement = unsafe { &*ctx.statement };
 
       statement.is_iter_finished.set(true);
       let _ = statement.reset();
@@ -742,7 +783,7 @@ impl StatementSync {
       rv.set(result.into());
     };
 
-    let external = v8::External::new(scope, self as *const _ as _);
+    let external = v8::External::new(scope, iter_ctx as _);
     let next_func = v8::Function::builder(iterate_next)
       .data(external.into())
       .build(scope)
