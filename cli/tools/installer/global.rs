@@ -18,6 +18,7 @@ use deno_core::anyhow::Context;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
+use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_npm_installer::PackagesAllowedScripts;
 use deno_path_util::resolve_url_or_path;
@@ -149,7 +150,7 @@ pub async fn install_global(
       }
     }
 
-    let name_and_url = BinaryNameAndUrl::resolve(
+    let (name_and_url, extra_bin_entries) = BinaryNameAndUrl::resolve(
       &factory.bin_name_resolver()?,
       cli_options.initial_cwd(),
       module_url,
@@ -164,13 +165,57 @@ pub async fn install_global(
     )?;
     setup_config_dir(&name_and_url, &flags, &installation_dir).await?;
 
-    // create the install shim
+    // create the install shim for the primary entry
     create_install_shim(
       &name_and_url,
       cli_options.initial_cwd(),
       &flags,
       &install_flags_global,
     )?;
+
+    // create install shims for extra bin entries
+    let mut installed_extra: Vec<&str> = Vec::new();
+    let extra_install_result: Result<(), AnyError> = (|| {
+      for extra_entry in &extra_bin_entries {
+        create_install_shim(
+          extra_entry,
+          cli_options.initial_cwd(),
+          &flags,
+          &install_flags_global,
+        )?;
+        installed_extra.push(&extra_entry.name);
+      }
+      Ok(())
+    })();
+    if let Err(err) = extra_install_result {
+      // rollback: remove the primary shim and any extra shims that were created
+      let primary_path = installation_dir.join(&name_and_url.name);
+      let _ = remove_file_if_exists(&primary_path);
+      if cfg!(windows) {
+        let _ = remove_file_if_exists(&primary_path.with_extension("cmd"));
+        let _ = remove_file_if_exists(&primary_path.with_extension("exe"));
+      }
+      for extra_name in &installed_extra {
+        let extra_path = installation_dir.join(extra_name);
+        let _ = remove_file_if_exists(&extra_path);
+        if cfg!(windows) {
+          let _ = remove_file_if_exists(&extra_path.with_extension("cmd"));
+          let _ = remove_file_if_exists(&extra_path.with_extension("exe"));
+        }
+      }
+      return Err(err);
+    }
+
+    // store extra bin entry names in the config dir for uninstall
+    if !extra_bin_entries.is_empty() {
+      let config_dir = installation_dir.join(format!(".{}", name_and_url.name));
+      let extra_names: Vec<&str> =
+        extra_bin_entries.iter().map(|e| e.name.as_str()).collect();
+      fs::write(
+        config_dir.join("extra_bin_entries.json"),
+        serde_json::to_string(&extra_names).unwrap(),
+      )?;
+    }
   }
   Ok(())
 }
@@ -241,6 +286,23 @@ pub async fn uninstall(
 
   // remove the .<name>/ config directory if it exists
   let config_dir = installation_dir.join(format!(".{}", uninstall_flags.name));
+
+  // check for extra bin entries stored during install and remove their shims
+  let extra_bins_file = config_dir.join("extra_bin_entries.json");
+  if extra_bins_file.is_file()
+    && let Ok(content) = fs::read_to_string(&extra_bins_file)
+    && let Ok(extra_names) = serde_json::from_str::<Vec<String>>(&content)
+  {
+    for extra_name in &extra_names {
+      let extra_path = installation_dir.join(extra_name);
+      remove_file_if_exists(&extra_path)?;
+      if cfg!(windows) {
+        remove_file_if_exists(&extra_path.with_extension("cmd"))?;
+        remove_file_if_exists(&extra_path.with_extension("exe"))?;
+      }
+    }
+  }
+
   if config_dir.is_dir() {
     fs::remove_dir_all(&config_dir).with_context(|| {
       format!("Failed removing directory: {}", config_dir.display())
@@ -589,7 +651,8 @@ fn resolve_shim_data(
   }
 
   // all config/lock files live under .<name>/ in the bin dir
-  let config_dir = installation_dir.join(format!(".{}", bin_name_and_url.name));
+  let config_dir =
+    installation_dir.join(format!(".{}", bin_name_and_url.config_dir_name()));
 
   let deno_json_path = config_dir.join("deno.json");
   executable_args.push("--config".to_string());
@@ -617,15 +680,23 @@ fn resolve_shim_data(
 struct BinaryNameAndUrl {
   name: String,
   module_url: Url,
+  /// For extra bin entries, this is the primary bin name (used for config dir).
+  /// None means this is the primary entry (config dir uses self.name).
+  config_name: Option<String>,
 }
 
 impl BinaryNameAndUrl {
+  /// Returns the name to use for the config directory.
+  fn config_dir_name(&self) -> &str {
+    self.config_name.as_deref().unwrap_or(&self.name)
+  }
+
   pub async fn resolve(
     bin_name_resolver: &BinNameResolver<'_>,
     cwd: &Path,
     module_url: &str,
     install_flags_global: &InstallFlagsGlobal,
-  ) -> Result<Self, AnyError> {
+  ) -> Result<(Self, Vec<Self>), AnyError> {
     static EXEC_NAME_RE: Lazy<Regex> = Lazy::new(|| {
       RegexBuilder::new(r"^[a-z0-9][\w-]*$")
         .case_insensitive(true)
@@ -658,7 +729,55 @@ impl BinaryNameAndUrl {
       }
     };
     validate_name(&name)?;
-    Ok(BinaryNameAndUrl { name, module_url })
+
+    // If a --name flag was provided, don't resolve extra bin entries
+    let mut extra_entries = Vec::new();
+    if install_flags_global.name.is_none()
+      && let Some(all_bins) = bin_name_resolver
+        .resolve_all_bin_entries_from_npm(&module_url)
+        .await
+      && all_bins.len() > 1
+      && let Ok(npm_ref) = NpmPackageReqReference::from_specifier(&module_url)
+    {
+      let req = npm_ref.req();
+      for (bin_name, script_path) in &all_bins {
+        if *bin_name == name {
+          continue; // skip the primary entry
+        }
+        validate_name(bin_name)?;
+        // Strip leading "./" from script paths (common in package.json bin fields)
+        let script_path = script_path
+          .strip_prefix("./")
+          .unwrap_or(script_path.as_str());
+        // Construct the module URL for this bin entry: npm:package@version/script_path
+        let extra_url = if req.version_req.version_text() == "*" {
+          Url::parse(&format!("npm:{}/{}", req.name, script_path))
+        } else {
+          Url::parse(&format!(
+            "npm:{}@{}/{}",
+            req.name,
+            req.version_req.version_text(),
+            script_path
+          ))
+        };
+        if let Ok(extra_url) = extra_url {
+          extra_entries.push(BinaryNameAndUrl {
+            name: bin_name.clone(),
+            module_url: extra_url,
+            config_name: Some(name.clone()),
+          });
+        }
+      }
+    }
+
+    Ok((
+      BinaryNameAndUrl {
+        name,
+        module_url,
+        config_name: None,
+      },
+      extra_entries,
+    ))
   }
 }
 
@@ -832,7 +951,7 @@ mod tests {
     let npm_version_resolver = NpmVersionResolver::default();
     let resolver =
       BinNameResolver::new(&http_client, &registry_api, &npm_version_resolver);
-    let binary_name_and_url = BinaryNameAndUrl::resolve(
+    let (binary_name_and_url, _extra_entries) = BinaryNameAndUrl::resolve(
       &resolver,
       &cwd,
       &install_flags_global.module_urls[0],
@@ -873,7 +992,7 @@ mod tests {
     let npm_version_resolver = NpmVersionResolver::default();
     let resolver =
       BinNameResolver::new(&http_client, &registry_api, &npm_version_resolver);
-    let binary_name_and_url = BinaryNameAndUrl::resolve(
+    let (binary_name_and_url, _extra_entries) = BinaryNameAndUrl::resolve(
       &resolver,
       &cwd,
       &install_flags_global.module_urls[0],
