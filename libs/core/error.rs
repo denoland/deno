@@ -330,7 +330,7 @@ pub fn to_v8_error<'s, 'i>(
       if tc_scope.has_caught() {
         tc_scope.reset();
       }
-      return message.into();
+      message.into()
     }
   }
 }
