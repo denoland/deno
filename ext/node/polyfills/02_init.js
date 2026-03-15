@@ -3,6 +3,7 @@
 // deno-lint-ignore-file
 
 import { core, internals } from "ext:core/mod.js";
+import { op_v8_start_coverage } from "ext:core/ops";
 const requireImpl = internals.requireImpl;
 
 import { nodeGlobals } from "ext:deno_node/00_globals.js";
@@ -46,6 +47,8 @@ function initialize(args) {
       moduleSpecifier,
     );
     internals.__setupChildProcessIpcChannel();
+    // Start V8 coverage collection if NODE_V8_COVERAGE is set.
+    op_v8_start_coverage();
     // `Deno[Deno.internal].requireImpl` will be unreachable after this line.
     delete internals.requireImpl;
   } else {
