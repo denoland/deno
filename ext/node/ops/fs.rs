@@ -320,6 +320,8 @@ pub async fn op_node_statfs(
   maybe_spawn_blocking!(move || statfs(path, bigint))
 }
 
+// TODO(dsherret): move this method onto FileSystem trait as this is completely
+// bypassing the FileSystem trait.
 fn statfs(path: CheckedPath, bigint: bool) -> Result<StatFs, FsError> {
   #[cfg(unix)]
   {
@@ -395,9 +397,7 @@ fn statfs(path: CheckedPath, bigint: bool) -> Result<StatFs, FsError> {
     use windows_sys::Win32::Storage::FileSystem::GetDiskFreeSpaceW;
 
     let _ = bigint;
-    // Using a vfs here doesn't make sense, it won't align with the windows API
-    // call below.
-    #[allow(clippy::disallowed_methods)]
+    #[allow(clippy::disallowed_methods, reason = "TODO: move onto RealFs")]
     let path = path.canonicalize()?;
     let root = path.ancestors().last().ok_or(FsError::PathHasNoRoot)?;
     let mut root = OsStr::new(root).encode_wide().collect::<Vec<_>>();
@@ -882,7 +882,7 @@ fn check_cp_path(
 
 /// Validates src and dest paths for a cp operation.
 /// Checks identity, directory type conflicts, and subdirectory relationships.
-#[allow(clippy::unused_async)]
+#[allow(clippy::unused_async, reason = "sometimes async depending on cfg")]
 async fn check_paths_impl(
   state: &Rc<RefCell<OpState>>,
   fs: &FileSystemRc,

@@ -3146,6 +3146,7 @@ name = "deno_runtime"
 version = "0.246.0"
 dependencies = [
  "async-trait",
+ "boxed_error",
  "color-print",
  "deno_ast",
  "deno_bundle_runtime",

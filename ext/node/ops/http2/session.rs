@@ -4,7 +4,7 @@
 // while on Unix they are u32. Explicit `as` casts are needed for cross-platform
 // compatibility but trigger unnecessary_cast on the platform where the type
 // already matches.
-#![allow(clippy::unnecessary_cast)]
+#![allow(clippy::unnecessary_cast, reason = "platform specific")]
 
 use std::cell::RefCell;
 use std::cell::UnsafeCell;

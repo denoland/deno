@@ -123,8 +123,10 @@ impl StorageKeyResolver {
 }
 
 pub fn get_cache_storage_dir() -> PathBuf {
-  // ok because this won't ever be used by the js runtime
-  #[allow(clippy::disallowed_methods)]
+  #[allow(
+    clippy::disallowed_methods,
+    reason = "ok because this won't ever be used by the js runtime"
+  )]
   // Note: we currently use temp_dir() to avoid managing storage size.
   std::env::temp_dir().join("deno_cache")
 }
@@ -134,8 +136,11 @@ pub fn get_cache_storage_dir() -> PathBuf {
 /// as a default. In case the platform is Linux and `DENO_USE_CGROUPS` is set,
 /// parse cgroup config to get the cgroup-constrained memory limit.
 pub fn create_isolate_create_params<TSys: DenoLibSys>(
-  // This is used only in Linux to get cgroup-constrained memory limit.
-  #[allow(unused_variables)] sys: &TSys,
+  #[allow(
+    unused_variables,
+    reason = "used only in Linux to get cgroup-constrained memory limit"
+  )]
+  sys: &TSys,
 ) -> Option<v8::CreateParams> {
   #[cfg(any(target_os = "android", target_os = "linux"))]
   {
@@ -511,7 +516,7 @@ pub struct LibMainWorkerFactory<TSys: DenoLibSys> {
 }
 
 impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "construction")]
   pub fn new(
     blob_store: Arc<BlobStore>,
     code_cache: Option<Arc<dyn deno_runtime::code_cache::CodeCache>>,
@@ -559,7 +564,6 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
     }
   }
 
-  #[allow(clippy::result_large_err)]
   pub fn create_main_worker(
     &self,
     mode: WorkerExecutionMode,
@@ -580,8 +584,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
     )
   }
 
-  #[allow(clippy::result_large_err)]
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
   pub fn create_custom_worker(
     &self,
     mode: WorkerExecutionMode,

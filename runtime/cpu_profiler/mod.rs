@@ -289,8 +289,11 @@ impl CpuProfiler {
   // fs::create_dir_all is on the Deno project's clippy disallowed list
   // (preferring the sys_traits abstraction), but the CPU profiler runs in the
   // runtime crate where using std::fs directly is acceptable.
-  #[allow(clippy::disallowed_methods)]
   pub fn stop_profiling(&mut self) -> Result<(), CoreError> {
+    #[allow(
+      clippy::disallowed_methods,
+      reason = "always using real fs with profiler"
+    )]
     fs::create_dir_all(&self.state.0.lock().dir)?;
 
     let msg_id = next_msg_id();

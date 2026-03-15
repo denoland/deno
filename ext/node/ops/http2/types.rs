@@ -239,7 +239,7 @@ pub struct Http2Constants {
 
 #[op2]
 #[serde]
-#[allow(clippy::unnecessary_cast)]
+#[allow(clippy::unnecessary_cast, reason = "platform specific")]
 pub fn op_http2_constants() -> Http2Constants {
   Http2Constants {
     nghttp2_hcat_request: ffi::NGHTTP2_HCAT_REQUEST as u32,

@@ -171,7 +171,7 @@ pub fn npm_process_state(
       use deno_runtime::deno_process::NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME;
       let fd_or_path = std::env::var_os(NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME)?;
 
-      #[allow(clippy::undocumented_unsafe_blocks)]
+      // SAFETY: called once during single-threaded init via OnceLock
       unsafe {
         std::env::remove_var(NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME)
       };

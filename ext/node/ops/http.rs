@@ -157,7 +157,10 @@ pub enum ConnError {
 #[op2(stack_trace)]
 // This is triggering a known false positive for explicit drop(state) calls.
 // See https://rust-lang.github.io/rust-clippy/master/index.html#await_holding_refcell_ref
-#[allow(clippy::await_holding_refcell_ref, reason = "false positive, ref is explicitly dropped before await")]
+#[allow(
+  clippy::await_holding_refcell_ref,
+  reason = "false positive, ref is explicitly dropped before await"
+)]
 pub async fn op_node_http_request_with_conn(
   state: Rc<RefCell<OpState>>,
   #[scoped] method: ByteString,
@@ -749,7 +752,7 @@ impl Resource for NodeHttpResponseResource {
   }
 }
 
-#[allow(clippy::type_complexity)]
+#[allow(clippy::type_complexity, reason = "TODO: improve")]
 pub struct NodeHttpResourceToBodyAdapter(
   Rc<dyn Resource>,
   Option<Pin<Box<dyn Future<Output = Result<BufView, JsErrorBox>>>>>,

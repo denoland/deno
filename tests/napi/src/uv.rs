@@ -243,7 +243,7 @@ struct RefAsync {
   callback: napi_ref,
 }
 
-#[allow(unused_unsafe)]
+#[allow(unused_unsafe, reason = "only unsafe on Windows")]
 extern "C" fn test_uv_async_ref(
   env: napi_env,
   info: napi_callback_info,

@@ -18,7 +18,7 @@ pub(crate) struct CpuProfile {
   #[serde(default)]
   pub samples: Vec<i32>,
   #[serde(default)]
-  #[allow(dead_code)]
+  #[allow(dead_code, reason = "deserialized but not directly read")]
   pub time_deltas: Vec<i32>,
 }
 
@@ -37,11 +37,11 @@ pub(crate) struct ProfileNode {
 #[serde(rename_all = "camelCase")]
 pub(crate) struct CallFrame {
   pub function_name: String,
-  #[allow(dead_code)]
+  #[allow(dead_code, reason = "deserialized but not directly read")]
   pub script_id: String,
   pub url: String,
   pub line_number: i32,
-  #[allow(dead_code)]
+  #[allow(dead_code, reason = "deserialized but not directly read")]
   pub column_number: i32,
 }
 
@@ -273,7 +273,7 @@ pub(crate) fn generate_markdown_report(
   }
 
   // Print call tree starting from root
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "private code")]
   fn print_call_tree(
     md: &mut String,
     node_id: i32,
