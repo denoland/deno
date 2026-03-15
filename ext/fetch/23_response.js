@@ -29,6 +29,7 @@ import {
   guardFromHeaders,
   headerListFromHeaders,
   headersFromHeaderList,
+  invalidateHeaderListCache,
 } from "ext:deno_fetch/20_headers.js";
 const {
   ArrayPrototypeMap,
@@ -229,6 +230,7 @@ function initializeAResponse(response, init, bodyWithType) {
       }
       if (!hasContentType) {
         ArrayPrototypePush(list, ["Content-Type", contentType]);
+        invalidateHeaderListCache(headers);
       }
     }
   }

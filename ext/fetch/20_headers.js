@@ -526,6 +526,13 @@ function headersEntries(headers) {
   return headers[_iterableHeaders];
 }
 
+/**
+ * @param {Headers} headers
+ */
+function invalidateHeaderListCache(headers) {
+  headers[_iterableHeadersCache] = undefined;
+}
+
 export {
   fillHeaders,
   getDecodeSplitHeader,
@@ -535,4 +542,5 @@ export {
   Headers,
   headersEntries,
   headersFromHeaderList,
+  invalidateHeaderListCache,
 };
