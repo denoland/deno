@@ -424,6 +424,7 @@ async function ensureNoNewTopLevelEntries() {
     "CLAUDE.md",
     "Cargo.lock",
     "Cargo.toml",
+    "deno.json",
     "LICENSE.md",
     "README.md",
     "Releases.md",
