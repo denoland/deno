@@ -82,6 +82,75 @@ pub fn op_process_abort() {
   std::process::abort();
 }
 
+#[cfg(unix)]
+#[op2(stack_trace)]
+pub fn op_node_process_execve(
+  state: &mut OpState,
+  #[string] file: String,
+  #[serde] args: Vec<String>,
+  #[serde] env: Vec<String>,
+) -> Result<(), ProcessError> {
+  state
+    .borrow_mut::<PermissionsContainer>()
+    .check_run_all("process.execve")?;
+
+  use std::ffi::CString;
+
+  let file_cstr = CString::new(file)
+    .map_err(|_| ProcessError::InvalidParam("file".to_string()))?;
+  let args_cstr: Vec<CString> = args
+    .into_iter()
+    .map(|a| {
+      CString::new(a)
+        .map_err(|_| ProcessError::InvalidParam("args".to_string()))
+    })
+    .collect::<Result<Vec<_>, _>>()?;
+  let env_cstr: Vec<CString> = env
+    .into_iter()
+    .map(|e| {
+      CString::new(e)
+        .map_err(|_| ProcessError::InvalidParam("env".to_string()))
+    })
+    .collect::<Result<Vec<_>, _>>()?;
+
+  let args_ptrs: Vec<*const libc::c_char> = args_cstr
+    .iter()
+    .map(|a| a.as_ptr())
+    .chain(std::iter::once(std::ptr::null()))
+    .collect();
+  let env_ptrs: Vec<*const libc::c_char> = env_cstr
+    .iter()
+    .map(|e| e.as_ptr())
+    .chain(std::iter::once(std::ptr::null()))
+    .collect();
+
+  // SAFETY: All pointers are valid C strings with null terminators,
+  // and the pointer arrays are null-terminated. The CString vectors
+  // (args_cstr, env_cstr) and the file CString outlive this call because
+  // execve either replaces the process (never returns) or returns -1
+  // immediately on error.
+  let ret =
+    unsafe { libc::execve(file_cstr.as_ptr(), args_ptrs.as_ptr(), env_ptrs.as_ptr()) };
+
+  if ret == -1 {
+    return Err(ProcessError::Io(std::io::Error::last_os_error()));
+  }
+
+  // execve should never return on success
+  unreachable!()
+}
+
+#[cfg(not(unix))]
+#[op2(stack_trace)]
+pub fn op_node_process_execve(
+  _state: &mut OpState,
+  #[string] _file: String,
+  #[serde] _args: Vec<String>,
+  #[serde] _env: Vec<String>,
+) -> Result<(), ProcessError> {
+  Err(ProcessError::NotSupported)
+}
+
 #[cfg(not(any(target_os = "android", target_os = "windows")))]
 enum Id {
   Number(u32),

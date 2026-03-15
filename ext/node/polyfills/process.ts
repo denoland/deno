@@ -13,6 +13,7 @@ import {
   op_geteuid,
   op_node_load_env_file,
   op_node_process_constrained_memory,
+  op_node_process_execve,
   op_node_process_kill,
   op_node_process_setegid,
   op_node_process_seteuid,
@@ -27,6 +28,7 @@ import { report } from "ext:deno_node/internal/process/report.ts";
 import { onWarning } from "ext:deno_node/internal/process/warning.ts";
 import {
   parseFileMode,
+  validateArray,
   validateNumber,
   validateObject,
   validateString,
@@ -34,7 +36,9 @@ import {
 } from "ext:deno_node/internal/validators.mjs";
 import {
   denoErrorToNodeError,
+  ERR_FEATURE_UNAVAILABLE_ON_PLATFORM,
   ERR_INVALID_ARG_TYPE,
+  ERR_INVALID_ARG_VALUE,
   ERR_INVALID_ARG_VALUE_RANGE,
   ERR_OUT_OF_RANGE,
   ERR_UNKNOWN_SIGNAL,
@@ -898,6 +902,63 @@ export function loadEnvFile(path = ".env") {
 }
 
 process.loadEnvFile = loadEnvFile;
+
+/** https://nodejs.org/api/process.html#processexecvefile-args-env */
+function execve(
+  file: string,
+  args: string[] = [],
+  envObj: Record<string, string> = env,
+): never {
+  if (internals.__isWorkerThread) {
+    throw new ERR_WORKER_UNSUPPORTED_OPERATION("Calling process.execve");
+  }
+
+  if (isWindows) {
+    throw new ERR_FEATURE_UNAVAILABLE_ON_PLATFORM("process.execve");
+  }
+
+  validateString(file, "execPath");
+  validateArray(args, "args");
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (typeof arg !== "string" || arg.includes("\u0000")) {
+      throw new ERR_INVALID_ARG_VALUE(
+        `args[${i}]`,
+        arg,
+        "must be a string without null bytes",
+      );
+    }
+  }
+
+  validateObject(envObj, "env");
+
+  const envArray: string[] = [];
+  for (const [key, value] of Object.entries(envObj)) {
+    if (
+      typeof key !== "string" ||
+      typeof value !== "string" ||
+      key.includes("\u0000") ||
+      value.includes("\u0000")
+    ) {
+      throw new ERR_INVALID_ARG_VALUE(
+        "env",
+        envObj,
+        "must be an object with string keys and values without null bytes",
+      );
+    }
+    envArray.push(`${key}=${value}`);
+  }
+
+  op_node_process_execve(file, args, envArray);
+
+  // If execve succeeds, this should never be reached.
+  throw new Error("process.execve failed");
+}
+
+if (!isWindows) {
+  process.execve = execve;
+}
 
 /** https://nodejs.org/api/process.html#processexecpath */
 
