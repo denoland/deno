@@ -318,7 +318,12 @@ export function parseEnv(
   input: string,
 ): Record<string, string> {
   validateString(input, "content");
-  return binding.parseEnv(input);
+  const parsed = binding.parseEnv(input);
+  const result = Object.create(null);
+  for (const key in parsed) {
+    result[key] = parsed[key];
+  }
+  return result;
 }
 
 export { getSystemErrorMessage, getSystemErrorName, isDeepStrictEqual };
