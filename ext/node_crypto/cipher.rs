@@ -93,15 +93,6 @@ impl AesCcmCipher {
     self.plaintext_length = plaintext_length;
   }
 
-  fn max_message_size(&self) -> usize {
-    let q = 15 - self.nonce.len();
-    if q >= 8 {
-      usize::MAX
-    } else {
-      (1usize << (8 * q)) - 1
-    }
-  }
-
   /// Buffer data (plaintext for encrypt, ciphertext for decrypt).
   fn push_data(&mut self, data: &[u8]) {
     self.data.extend_from_slice(data);
@@ -112,7 +103,7 @@ impl AesCcmCipher {
   /// Format the B0 block.
   fn format_b0(&self, plaintext_len: usize) -> [u8; 16] {
     let q = 15 - self.nonce.len();
-    let has_aad = self.aad.as_ref().map_or(false, |a| !a.is_empty());
+    let has_aad = self.aad.as_ref().is_some_and(|a| !a.is_empty());
     let flags: u8 = (if has_aad { 1u8 << 6 } else { 0 })
       | ((((self.auth_tag_length as u8) - 2) / 2) << 3)
       | ((q as u8) - 1);
@@ -142,8 +133,9 @@ impl AesCcmCipher {
     self.cipher.encrypt_block_in_place(&mut x);
 
     // Process AAD if present
-    if let Some(aad) = &self.aad {
-      if !aad.is_empty() {
+    if let Some(aad) = &self.aad
+      && !aad.is_empty()
+    {
         let mut aad_buf = Vec::new();
         let alen = aad.len();
         if alen < 0xFF00 {
@@ -168,7 +160,6 @@ impl AesCcmCipher {
           }
           self.cipher.encrypt_block_in_place(&mut x);
         }
-      }
     }
 
     // Process plaintext
@@ -565,7 +556,7 @@ fn is_valid_chacha20_poly1305_tag_length(tag_len: usize) -> bool {
 }
 
 fn is_valid_ccm_tag_length(tag_len: usize) -> bool {
-  tag_len >= 4 && tag_len <= 16 && tag_len % 2 == 0
+  (4..=16).contains(&tag_len) && tag_len.is_multiple_of(2)
 }
 
 impl Cipher {
