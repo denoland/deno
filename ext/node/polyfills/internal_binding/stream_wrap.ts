@@ -356,6 +356,10 @@ export class LibuvStreamWrap extends HandleWrap {
 
     let nread: number | null;
 
+    if (!this.#reading) {
+      return;
+    }
+
     if (this.upgrading) {
       // Starting an upgrade, stop reading. Upgrading will resume reading.
       this.readStop();

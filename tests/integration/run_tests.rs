@@ -3484,6 +3484,19 @@ fn test_permission_broker() {
   );
 }
 
+// https://github.com/denoland/deno/issues/30075
+#[test]
+fn readline_promises_close() {
+  TestContext::default()
+    .new_command()
+    .args_vec(["run", "run/readline_promises_close.js"])
+    .with_pty(|mut console| {
+      console.expect("question> ");
+      console.write_line_raw("hello");
+      console.expect("hello");
+    });
+}
+
 // Regression test for https://github.com/denoland/deno/issues/32473
 // Verifies that process.stdout.write() and console.log() produce output
 // in the correct order when stdout is a TTY (uses PTY).
