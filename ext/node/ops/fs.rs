@@ -939,7 +939,7 @@ fn cp_sync_mkdir_and_copy<'a>(
     return Ok(result);
   }
 
-  set_dest_mode(&fs, &dest_path.as_checked_path(), src_mode)?;
+  set_dest_mode(fs, &dest_path.as_checked_path(), src_mode)?;
   Ok(CpSyncRunStatus::Completed)
 }
 
@@ -994,8 +994,8 @@ fn cp_sync_dispatch<'a>(
     return Ok(CpSyncRunStatus::Completed);
   } else if stat_info.is_src_symlink {
     op_node_cp_on_link_sync(
-      fs,
       state,
+      fs,
       src,
       dest,
       stat_info.is_dest_exists,
@@ -2042,13 +2042,13 @@ fn op_node_cp_on_file_sync(
 
   if opts.preserve_timestamps {
     handle_timestamps_and_mode(
-      &fs,
+      fs,
       &src_path.as_checked_path(),
       &dest_path.as_checked_path(),
       stat_info.src_mode,
     )?;
   } else {
-    set_dest_mode(&fs, &dest_path.as_checked_path(), stat_info.src_mode)?;
+    set_dest_mode(fs, &dest_path.as_checked_path(), stat_info.src_mode)?;
   }
 
   Ok(())
@@ -2259,8 +2259,8 @@ pub async fn op_node_cp_on_link(
 }
 
 fn op_node_cp_on_link_sync(
-  fs: &FileSystemRc,
   state: &Rc<RefCell<OpState>>,
+  fs: &FileSystemRc,
   src: &str,
   dest: &str,
   dest_exists: bool,
@@ -2302,7 +2302,7 @@ fn op_node_cp_on_link_sync(
 
     let oldpath = CheckedPathBuf::unsafe_new(PathBuf::from(&resolved_src));
     let newpath = CheckedPathBuf::unsafe_new(PathBuf::from(dest));
-    let file_type = cp_symlink_type(&fs, &oldpath, &newpath);
+    let file_type = cp_symlink_type(fs, &oldpath, &newpath);
     fs.symlink_sync(
       &oldpath.as_checked_path(),
       &newpath.as_checked_path(),
@@ -2357,7 +2357,7 @@ fn op_node_cp_on_link_sync(
 
         let oldpath = CheckedPathBuf::unsafe_new(PathBuf::from(&resolved_src));
         let newpath = CheckedPathBuf::unsafe_new(PathBuf::from(dest));
-        let file_type = cp_symlink_type(&fs, &oldpath, &newpath);
+        let file_type = cp_symlink_type(fs, &oldpath, &newpath);
         fs.symlink_sync(
           &oldpath.as_checked_path(),
           &newpath.as_checked_path(),
@@ -2524,7 +2524,7 @@ fn op_node_cp_on_link_sync(
   let dest_path_buf = CheckedPathBuf::unsafe_new(dest_path.to_path_buf());
   let src_path = src_path_buf.as_checked_path();
 
-  let file_type = cp_symlink_type(&fs, &src_path_buf, &dest_path_buf);
+  let file_type = cp_symlink_type(fs, &src_path_buf, &dest_path_buf);
   fs.symlink_sync(&src_path, &dest_path, file_type)
     .map_err(|err| {
       map_fs_error_to_node_fs_error(
