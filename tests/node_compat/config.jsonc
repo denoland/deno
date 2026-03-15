@@ -1923,7 +1923,7 @@
     "parallel/test-stream-duplex-readable-end.js": {},
     "parallel/test-stream-duplex-readable-writable.js": {},
     "parallel/test-stream-duplex-writable-finished.js": {},
-    // "parallel/test-stream-duplex.js": {}, // https://github.com/denoland/deno/issues/32706
+    "parallel/test-stream-duplex.js": {},
     "parallel/test-stream-duplexpair.js": {},
     "parallel/test-stream-end-of-streams.js": {},
     "parallel/test-stream-end-paused.js": {},
