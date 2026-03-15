@@ -5,7 +5,7 @@ Deno.test(
   { ignore: Deno.build.os !== "windows" },
   function signalsNotImplemented() {
     const msg =
-      "Windows only supports ctrl-c (SIGINT), ctrl-break (SIGBREAK), ctrl-close (SIGHUP), and SIGWINCH, but got ";
+      "Windows only supports ctrl-c (SIGINT), ctrl-break (SIGBREAK), ctrl-close (SIGHUP), SIGTERM, and SIGWINCH, but got ";
     assertThrows(
       () => {
         Deno.addSignalListener("SIGALRM", () => {});
@@ -40,13 +40,6 @@ Deno.test(
       },
       Error,
       msg + "SIGQUIT",
-    );
-    assertThrows(
-      () => {
-        Deno.addSignalListener("SIGTERM", () => {});
-      },
-      Error,
-      msg + "SIGTERM",
     );
     assertThrows(
       () => {
@@ -87,6 +80,17 @@ Deno.test(
       Error,
       msg + "SIGSEGV",
     );
+  },
+);
+
+Deno.test(
+  { ignore: Deno.build.os !== "windows" },
+  function windowsSigtermSupported() {
+    // SIGTERM should be registerable on Windows (used by watcher for
+    // graceful shutdown).
+    const listener = () => {};
+    Deno.addSignalListener("SIGTERM", listener);
+    Deno.removeSignalListener("SIGTERM", listener);
   },
 );
 

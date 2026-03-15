@@ -245,6 +245,15 @@ pub fn run_exit() {
   }
 }
 
+pub const SIGINT: i32 = 2;
+pub const SIGTERM: i32 = 15;
+
+/// Synthetically raise a signal, triggering all registered handlers.
+/// Returns true if any handler prevented the default behavior.
+pub fn raise(signal: i32) -> bool {
+  handle_signal(signal)
+}
+
 pub fn is_forbidden(signo: i32) -> bool {
   FORBIDDEN.contains(&signo)
 }
