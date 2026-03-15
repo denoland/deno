@@ -364,6 +364,10 @@
       "reason": "Deno supports argon2, so this unsupported test is not applicable"
     },
     "parallel/test-crypto-async-sign-verify.js": {},
+    "parallel/test-crypto-authenticated.js": {
+      "exitCode": 1,
+      "output": "[WILDCARD]Unknown cipher aes-128-ccm[WILDCARD]"
+    },
     "parallel/test-crypto-certificate.js": {},
     "parallel/test-crypto-cipheriv-decipheriv.js": {
       "exitCode": 1,
