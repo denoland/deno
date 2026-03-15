@@ -104,7 +104,7 @@ import {
 } from "ext:deno_telemetry/telemetry.ts";
 import {
   updateSpanFromRequest,
-  updateSpanFromResponse,
+  updateSpanFromServerResponse,
 } from "ext:deno_telemetry/util.ts";
 
 const _upgraded = Symbol("_upgraded");
@@ -602,7 +602,7 @@ function mapToCallback(context, callback, onError) {
     }
 
     if (span) {
-      updateSpanFromResponse(span, response);
+      updateSpanFromServerResponse(span, response);
     }
 
     const inner = toInnerResponse(response);
