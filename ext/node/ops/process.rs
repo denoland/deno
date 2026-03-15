@@ -16,6 +16,169 @@ use nix::unistd::User;
 
 use crate::ExtNodeSys;
 
+// --- process.title support ---
+//
+// The argv buffer overwrite technique used here is the standard approach for
+// setting the process title visible in `ps`. This is the same technique used by
+// Node.js (via libuv's uv_setup_args/uv_set_process_title), nginx, PostgreSQL,
+// and many other programs. The OS allocates argv as a contiguous buffer; we
+// save its bounds at startup, then overwrite it with the new title.
+//
+// References:
+// - libuv: https://github.com/libuv/libuv/blob/v1.x/src/unix/proctitle.c
+// - Node.js: uses uv_setup_args() in node_main.cc, uv_set_process_title() in node.cc
+
+#[cfg(target_os = "linux")]
+mod argv_store {
+  use std::ffi::c_char;
+  use std::ffi::c_int;
+  use std::sync::Once;
+
+  static mut ARGV_PTR: *mut *mut c_char = std::ptr::null_mut();
+  static mut ARGV_BUF_SIZE: usize = 0;
+  static INIT: Once = Once::new();
+
+  /// # Safety
+  /// Called from `.init_array` before main. Must only store the pointers.
+  pub unsafe fn save(argc: c_int, argv: *mut *mut c_char) {
+    INIT.call_once(|| {
+      if argv.is_null() || argc <= 0 {
+        return;
+      }
+      let argc = argc as usize;
+      // SAFETY: argv is valid and has argc entries (guaranteed by the OS loader).
+      unsafe {
+        // Calculate the contiguous buffer size from argv[0] to end of argv[argc-1]
+        let start = (*argv) as *const u8;
+        let last_arg = *argv.add(argc - 1);
+        let last_arg_len = libc::strlen(last_arg);
+        let end = last_arg.add(last_arg_len + 1) as *const u8;
+        let buf_size = end.offset_from(start) as usize;
+
+        ARGV_PTR = argv;
+        ARGV_BUF_SIZE = buf_size;
+      }
+    });
+  }
+
+  /// # Safety
+  /// The stored argv pointer must still be valid (it always is for the process lifetime).
+  pub unsafe fn overwrite(title: &str) {
+    // SAFETY: ARGV_PTR and ARGV_BUF_SIZE are set once in save() and remain
+    // valid for the process lifetime. The buffer at *ARGV_PTR is the original
+    // argv[0] area allocated by the OS.
+    unsafe {
+      if ARGV_PTR.is_null() || ARGV_BUF_SIZE == 0 {
+        return;
+      }
+      let buf =
+        std::slice::from_raw_parts_mut(*ARGV_PTR as *mut u8, ARGV_BUF_SIZE);
+      let title_bytes = title.as_bytes();
+      let copy_len = title_bytes.len().min(ARGV_BUF_SIZE - 1);
+      buf[..copy_len].copy_from_slice(&title_bytes[..copy_len]);
+      buf[copy_len..].fill(0);
+    }
+  }
+}
+
+#[cfg(target_os = "linux")]
+#[used]
+#[unsafe(link_section = ".init_array")]
+static ARGV_INIT: unsafe extern "C" fn(
+  libc::c_int,
+  *mut *mut libc::c_char,
+  *mut *mut libc::c_char,
+) = {
+  unsafe extern "C" fn init(
+    argc: libc::c_int,
+    argv: *mut *mut libc::c_char,
+    _envp: *mut *mut libc::c_char,
+  ) {
+    // SAFETY: argc and argv are provided by the OS at process init and are valid.
+    unsafe { argv_store::save(argc, argv) };
+  }
+  init
+};
+
+#[cfg(target_os = "macos")]
+fn set_process_title(title: &str) {
+  // SAFETY: We call macOS-specific C functions to read and overwrite the
+  // process argv buffer in place. The argv pointer and argc count come from
+  // the OS and are valid for the lifetime of the process. We bounds-check
+  // before writing and null-terminate the buffer.
+  unsafe {
+    unsafe extern "C" {
+      fn _NSGetArgc() -> *mut libc::c_int;
+      fn _NSGetArgv() -> *mut *mut *mut libc::c_char;
+    }
+
+    let argc = *_NSGetArgc() as usize;
+    let argv = *_NSGetArgv();
+    if argv.is_null() || argc == 0 {
+      return;
+    }
+
+    // Calculate contiguous buffer size from argv[0] through argv[argc-1]
+    let start = *argv as *const u8;
+    let last_arg = *argv.add(argc - 1);
+    let last_arg_len = libc::strlen(last_arg);
+    let end = last_arg.add(last_arg_len + 1) as *const u8;
+    let buf_size = end.offset_from(start) as usize;
+
+    // Overwrite argv[0] buffer with the new title
+    let buf = std::slice::from_raw_parts_mut(*argv as *mut u8, buf_size);
+    let title_bytes = title.as_bytes();
+    let copy_len = title_bytes.len().min(buf_size - 1);
+    buf[..copy_len].copy_from_slice(&title_bytes[..copy_len]);
+    buf[copy_len..].fill(0);
+
+    // Also set the pthread name (visible in Activity Monitor / debugger, 63 char limit)
+    let c_title =
+      std::ffi::CString::new(&title.as_bytes()[..title.len().min(63)]);
+    if let Ok(c_title) = c_title {
+      libc::pthread_setname_np(c_title.as_ptr());
+    }
+  }
+}
+
+#[cfg(target_os = "linux")]
+fn set_process_title(title: &str) {
+  // SAFETY: We overwrite the saved argv buffer with the new title via
+  // argv_store, then call prctl to set the kernel thread name.
+  unsafe {
+    argv_store::overwrite(title);
+
+    // Also set the kernel thread name via prctl (15 char limit, visible in /proc/self/comm)
+    let truncated = &title.as_bytes()[..title.len().min(15)];
+    if let Ok(c_title) = std::ffi::CString::new(truncated) {
+      libc::prctl(libc::PR_SET_NAME, c_title.as_ptr() as libc::c_ulong);
+    }
+  }
+}
+
+#[cfg(target_os = "windows")]
+fn set_process_title(title: &str) {
+  let wide: Vec<u16> = title.encode_utf16().chain(std::iter::once(0)).collect();
+  // SAFETY: FFI call, wide is null-terminated
+  unsafe {
+    winapi::um::wincon::SetConsoleTitleW(wide.as_ptr());
+  }
+}
+
+#[cfg(not(any(
+  target_os = "macos",
+  target_os = "linux",
+  target_os = "windows"
+)))]
+fn set_process_title(_title: &str) {
+  // No-op on unsupported platforms
+}
+
+#[op2(fast)]
+pub fn op_node_process_set_title(#[string] title: &str) {
+  set_process_title(title);
+}
+
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum ProcessError {
   #[class(inherit)]
