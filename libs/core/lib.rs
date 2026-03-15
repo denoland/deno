@@ -90,6 +90,7 @@ pub use crate::convert::FromV8;
 pub use crate::convert::FromV8Scopeless;
 pub use crate::convert::ToV8;
 pub use crate::cppgc::GarbageCollected;
+pub use crate::error::exception_to_err;
 pub use crate::extensions::AccessorType;
 pub use crate::extensions::Extension;
 pub use crate::extensions::ExtensionArguments;

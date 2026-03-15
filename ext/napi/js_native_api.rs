@@ -132,6 +132,9 @@ impl Reference {
     // it might free the reference (which would be a UAF)
     let ownership = reference.ownership;
     if let Some(finalize_cb) = finalize_cb {
+      // Deregister before calling so it won't be called again at shutdown
+      let env = unsafe { &*reference.env };
+      env.remove_ref_finalizer(finalize_data);
       unsafe {
         finalize_cb(reference.env as _, finalize_data, finalize_hint);
       }
@@ -2444,7 +2447,15 @@ fn napi_coerce_to_object<'s>(
   check_arg!(env, result);
 
   v8::callback_scope!(unsafe scope, env.context());
-  let Some(coerced) = value.unwrap().to_object(scope) else {
+  let val = value.unwrap();
+  // Check for null/undefined before calling to_object() to avoid
+  // V8 generating a TypeError exception that would get stored in
+  // env.last_exception and later re-thrown as a spurious unhandled
+  // rejection (ECMAScript's ToObject throws for null/undefined).
+  if val.is_null_or_undefined() {
+    return napi_invalid_arg;
+  }
+  let Some(coerced) = val.to_object(scope) else {
     return napi_object_expected;
   };
 
@@ -2520,6 +2531,15 @@ fn napi_wrap(
     finalize_hint,
   );
 
+  if let Some(cb) = finalize_cb {
+    env.add_ref_finalizer(
+      env_ptr as napi_env,
+      cb,
+      native_object,
+      finalize_hint,
+    );
+  }
+
   let reference = Reference::into_raw(reference) as *mut c_void;
 
   if !result.is_null() {
@@ -2571,6 +2591,7 @@ fn unwrap(
   }
 
   if !keep {
+    env.remove_ref_finalizer(reference.finalize_data);
     assert!(obj.delete_private(scope, napi_wrap).unwrap_or(false));
     unsafe { Reference::remove(reference) };
   }
@@ -2622,6 +2643,12 @@ fn napi_create_external<'s>(
   let external = v8::External::new(scope, wrapper as _);
 
   if let Some(finalize_cb) = finalize_cb {
+    env.add_ref_finalizer(
+      env_ptr as napi_env,
+      finalize_cb,
+      data,
+      finalize_hint,
+    );
     Reference::into_raw(Reference::new(
       env_ptr,
       external.into(),
@@ -3669,6 +3696,16 @@ fn napi_add_finalizer(
   } else {
     ReferenceOwnership::Userland
   };
+
+  if let Some(cb) = finalize_cb {
+    env.add_ref_finalizer(
+      env_ptr as napi_env,
+      cb,
+      finalize_data,
+      finalize_hint,
+    );
+  }
+
   let reference = Reference::new(
     env,
     value.into(),
@@ -3725,6 +3762,9 @@ fn napi_set_instance_data(
 ) -> napi_status {
   let env = check_env!(env);
 
+  // Note: instance data finalizers are NOT registered in ref_tracker because
+  // they already have their own teardown path in NapiState::Drop which calls
+  // EnvShared instance_data finalize_cb directly.
   env.shared_mut().instance_data = Some(InstanceData {
     data,
     finalize_cb,
