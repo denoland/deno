@@ -36,13 +36,16 @@ use deno_tls::TlsKeyLookup;
 use deno_tls::TlsKeys;
 use deno_tls::TlsKeysHolder;
 use deno_tls::create_client_config;
+use deno_tls::create_default_root_cert_store;
 use deno_tls::get_ssl_key_log;
 use deno_tls::load_certs;
 use deno_tls::load_private_keys;
 use deno_tls::new_resolver;
 use deno_tls::rustls::ClientConnection;
+use deno_tls::rustls::RootCertStore;
 use deno_tls::rustls::ServerConfig;
 use deno_tls::rustls::pki_types::ServerName;
+use deno_tls::rustls::server::WebPkiClientVerifier;
 pub use rustls_tokio_stream::TlsStream;
 pub use rustls_tokio_stream::TlsStreamRead;
 pub use rustls_tokio_stream::TlsStreamWrite;
@@ -505,6 +508,52 @@ pub struct ListenTlsArgs {
   #[from_v8(default)]
   load_balanced: bool,
   tcp_backlog: i32,
+  #[from_v8(default)]
+  ca_certs: Vec<String>,
+  #[from_v8(default)]
+  request_client_cert: bool,
+  #[from_v8(default)]
+  reject_unauthorized: Option<bool>,
+}
+
+fn create_client_cert_verifier(
+  state: &OpState,
+  ca_certs: Vec<String>,
+  reject_unauthorized: bool,
+) -> Result<
+  Arc<dyn deno_tls::rustls::server::danger::ClientCertVerifier>,
+  NetError,
+> {
+  let mut root_cert_store: RootCertStore = state
+    .borrow::<DefaultTlsOptions>()
+    .root_cert_store()
+    .map_err(NetError::RootCertStore)?
+    .unwrap_or_else(create_default_root_cert_store);
+
+  // Add custom CA certs for mTLS verification when provided.
+  for cert in ca_certs {
+    let certs = load_certs(&mut BufReader::new(cert.as_bytes()))?;
+    for cert in certs {
+      root_cert_store.add(cert)?;
+    }
+  }
+
+  let verifier = if reject_unauthorized {
+    WebPkiClientVerifier::builder(root_cert_store.into())
+      .build()
+      .map_err(|error| {
+        NetError::Io(std::io::Error::new(ErrorKind::InvalidData, error))
+      })?
+  } else {
+    WebPkiClientVerifier::builder(root_cert_store.into())
+      .allow_unauthenticated()
+      .build()
+      .map_err(|error| {
+        NetError::Io(std::io::Error::new(ErrorKind::InvalidData, error))
+      })?
+  };
+
+  Ok(verifier)
 }
 
 #[op2(stack_trace)]
@@ -541,12 +590,31 @@ pub fn op_net_listen_tls(
     .into_iter()
     .map(|s| s.into_bytes())
     .collect();
+
+  let client_cert_verifier = if args.request_client_cert {
+    Some(create_client_cert_verifier(
+      state,
+      args.ca_certs,
+      args.reject_unauthorized.unwrap_or(true),
+    )?)
+  } else {
+    None
+  };
+
   let listener = match keys.take() {
     TlsKeys::Null => return Err(NetError::ListenTlsRequiresKey),
     TlsKeys::Static(TlsKey(cert, key)) => {
-      let mut tls_config = ServerConfig::builder()
-        .with_no_client_auth()
-        .with_single_cert(cert, key)?;
+      let mut tls_config = if let Some(client_cert_verifier) =
+        client_cert_verifier.clone()
+      {
+        ServerConfig::builder()
+          .with_client_cert_verifier(client_cert_verifier)
+          .with_single_cert(cert, key)?
+      } else {
+        ServerConfig::builder()
+          .with_no_client_auth()
+          .with_single_cert(cert, key)?
+      };
       tls_config.key_log = get_ssl_key_log();
       tls_config.alpn_protocols = alpn;
       TlsListener {
@@ -558,7 +626,9 @@ pub fn op_net_listen_tls(
     TlsKeys::Resolver(resolver) => TlsListener {
       tcp_listener,
       tls_config: None,
-      server_config_provider: Some(resolver.into_server_config_provider(alpn)),
+      server_config_provider: Some(
+        resolver.into_server_config_provider(alpn, client_cert_verifier),
+      ),
     },
   };
 

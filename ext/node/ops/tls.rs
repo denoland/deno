@@ -541,6 +541,7 @@ impl Resource for JSStreamTlsResource {
 pub fn op_node_tls_start(
   state: Rc<RefCell<OpState>>,
   #[scoped] args: StartJSTlsArgs,
+  #[cppgc] key_pair: Option<&TlsKeysHolder>,
   #[buffer] output: &mut [u32],
 ) -> Result<(), NetError> {
   let reject_unauthorized = args.reject_unauthorized.unwrap_or(true);
@@ -583,12 +584,13 @@ pub fn op_node_tls_start(
   let js_stream = JSStreamSocket::new(network_to_tls_rx, tls_to_network_tx);
 
   let tls_null = TlsKeysHolder::from(TlsKeys::Null);
+  let key_pair = key_pair.unwrap_or(&tls_null);
   let mut tls_config = create_client_config(TlsClientConfigOptions {
     root_cert_store,
     ca_certs,
     unsafely_ignore_certificate_errors,
     unsafely_disable_hostname_verification: false,
-    cert_chain_and_key: tls_null.take(),
+    cert_chain_and_key: key_pair.take(),
     socket_use: SocketUse::GeneralSsl,
   })?;
 
