@@ -21,6 +21,7 @@ use std::sync::atomic::Ordering;
 
 use async_trait::async_trait;
 use deno_ast::ParsedSource;
+use deno_config::deno_json::VueComponentCase as DenoVueComponentCase;
 use deno_config::glob::FileCollector;
 use deno_config::glob::FilePatterns;
 use deno_core::anyhow::Context;
@@ -31,7 +32,6 @@ use deno_core::futures;
 use deno_core::parking_lot::Mutex;
 use deno_core::unsync::spawn_blocking;
 use deno_core::url::Url;
-use deno_config::deno_json::VueComponentCase as DenoVueComponentCase;
 use log::debug;
 use log::info;
 use log::warn;
@@ -1689,7 +1689,9 @@ fn resolved_vue_component_case(
     .vue_component_case
     .unwrap_or(DenoVueComponentCase::Ignore)
   {
-    DenoVueComponentCase::Ignore => markup_fmt::config::VueComponentCase::Ignore,
+    DenoVueComponentCase::Ignore => {
+      markup_fmt::config::VueComponentCase::Ignore
+    }
     DenoVueComponentCase::PascalCase => {
       markup_fmt::config::VueComponentCase::PascalCase
     }
