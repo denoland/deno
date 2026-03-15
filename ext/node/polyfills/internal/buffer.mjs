@@ -109,12 +109,12 @@ import {
   NodeError,
 } from "ext:deno_node/internal/errors.ts";
 import { getOptionValue } from "ext:deno_node/internal/options.ts";
+import { forgivingBase64UrlEncode } from "ext:deno_web/00_infra.js";
 import {
-  forgivingBase64DecodeInto,
-  forgivingBase64Encode,
-  forgivingBase64EncodeFromBuffer,
-  forgivingBase64UrlEncode,
-} from "ext:deno_web/00_infra.js";
+  op_base64_decode_into,
+  op_base64_encode,
+  op_base64_encode_from_buffer,
+} from "ext:core/ops";
 import { atob, btoa } from "ext:deno_web/05_base64.js";
 import { Blob, blobFromObjectUrl, File } from "ext:deno_web/09_file.js";
 import { untransferableSymbol } from "ext:deno_node/internal_binding/util.ts";
@@ -972,14 +972,14 @@ Buffer.prototype.base64Slice = function base64Slice(
   offset,
   length,
 ) {
-  // Use forgivingBase64Encode (#[string] return) for small buffers where
+  // Use op_base64_encode (#[string] return) for small buffers where
   // the lighter-weight op2 string path is faster.
-  // Use forgivingBase64EncodeFromBuffer (v8::String::new_from_one_byte) for
-  // large buffers where avoiding UTF-8 processing matters.
+  // Use op_base64_encode_from_buffer (v8::String::new_external_onebyte) for
+  // large buffers where avoiding UTF-8 processing and copying matters.
   if (offset === 0 && length === this.length && length <= 4096) {
-    return forgivingBase64Encode(this);
+    return op_base64_encode(this);
   }
-  return forgivingBase64EncodeFromBuffer(this, offset, length - offset);
+  return op_base64_encode_from_buffer(this, offset, length - offset);
 };
 
 Buffer.prototype.base64Write = function base64Write(
@@ -988,7 +988,7 @@ Buffer.prototype.base64Write = function base64Write(
   length,
 ) {
   try {
-    const written = forgivingBase64DecodeInto(string, this, offset);
+    const written = op_base64_decode_into(string, this, offset);
     return length !== undefined ? MathMin(written, length) : written;
   } catch {
     // Fallback for strings with base64url chars or invalid chars
@@ -1186,9 +1186,9 @@ function fromArrayBuffer(obj, byteOffset, length) {
 
 function _base64Slice(buf, start, end) {
   if (start === 0 && end === buf.length && end <= 4096) {
-    return forgivingBase64Encode(buf);
+    return op_base64_encode(buf);
   }
-  return forgivingBase64EncodeFromBuffer(buf, start, end - start);
+  return op_base64_encode_from_buffer(buf, start, end - start);
 }
 const decoder = new TextDecoder("utf-8", { ignoreBOM: true });
 
