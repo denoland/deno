@@ -251,6 +251,9 @@ const supportedCiphers = [
   "aes128",
   "aes256",
   "chacha20-poly1305",
+  "aes-128-ccm",
+  "aes-192-ccm",
+  "aes-256-ccm",
 ];
 
 export function getCiphers(): string[] {

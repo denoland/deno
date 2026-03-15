@@ -60,6 +60,22 @@ import { normalizeEncoding } from "ext:deno_node/internal/util.mjs";
 
 const FastBuffer = Buffer[SymbolSpecies];
 
+class CipherError extends Error {
+  code: string;
+  constructor(code: string, message: string) {
+    super(message);
+    this.code = code;
+  }
+}
+
+function ccmMaxMessageSize(ivLength: number): number {
+  const q = 15 - ivLength;
+  if (q >= 7) {
+    return Number.MAX_SAFE_INTEGER;
+  }
+  return 2 ** (8 * q) - 1;
+}
+
 export function isStringOrBuffer(
   val: unknown,
 ): val is string | Buffer | ArrayBuffer | ArrayBufferView {
@@ -191,6 +207,39 @@ export function Cipheriv(
 
   const authTagLength = getUIntOption(options, "authTagLength");
 
+  this._isCCM = /^aes-(128|192|256)-ccm$/.test(cipher);
+
+  // CCM and OCB modes require authTagLength, but we must check IV
+  // validity first so that bad IVs produce the right error.
+  const isCcmOrOcb = /^aes-(128|192|256)-(ccm|ocb)$/.test(cipher);
+  if (isCcmOrOcb && authTagLength < 0) {
+    // Attempt to create the context; if IV is invalid, Rust will
+    // throw the appropriate IV error. Otherwise it will throw
+    // InvalidAuthTag which we convert to the expected message.
+    try {
+      op_node_create_cipheriv(cipher, toU8(key), toU8(iv), authTagLength);
+    } catch (e: any) {
+      if (
+        e.code === "ERR_CRYPTO_INVALID_IV" ||
+        e.code === "ERR_CRYPTO_INVALID_KEY_LENGTH"
+      ) {
+        throw e;
+      }
+    }
+    throw new Error(`authTagLength required for ${cipher}`);
+  }
+
+  this._context = op_node_create_cipheriv(
+    cipher,
+    toU8(key),
+    toU8(iv),
+    authTagLength,
+  );
+
+  if (this._context == 0) {
+    throw new TypeError("Unknown cipher");
+  }
+
   Transform.call(this, {
     transform(chunk, encoding, cb) {
       this.push(this.update(chunk, encoding));
@@ -205,23 +254,21 @@ export function Cipheriv(
 
   this._blockSize = getBlockSize(cipher);
   this._cache = new BlockModeCache(false, this._blockSize);
-  this._context = op_node_create_cipheriv(
-    cipher,
-    toU8(key),
-    toU8(iv),
-    authTagLength,
-  );
   this._needsBlockCache =
     !(cipher == "aes-128-gcm" || cipher == "aes-256-gcm" ||
       cipher == "aes-128-ctr" || cipher == "aes-192-ctr" ||
-      cipher == "aes-256-ctr" || cipher == "chacha20-poly1305");
+      cipher == "aes-256-ctr" || cipher == "chacha20-poly1305" ||
+      this._isCCM);
   this._authTag = undefined;
   this._autoPadding = true;
   this._finalized = false;
   this._decoder = undefined;
-
-  if (this._context == 0) {
-    throw new TypeError("Unknown cipher");
+  this._ccmDataLength = 0;
+  this._cipher = cipher;
+  this._ccmHasSetAAD = false;
+  if (this._isCCM) {
+    const ivBuf = toU8(iv);
+    this._ccmIvLength = ivBuf.length;
   }
 }
 
@@ -236,6 +283,34 @@ Cipheriv.prototype.final = function (
   }
 
   _lazyInitCipherDecoder(this, encoding);
+
+  // CCM: all data was buffered in Rust; now compute ciphertext + tag
+  if (this._isCCM) {
+    // If setAAD was never called and no data was pushed, the cipher state
+    // is not properly initialized (plaintext length unknown).
+    if (!this._ccmHasSetAAD && this._ccmDataLength === 0) {
+      throw new CipherError("ERR_OSSL_TAG_NOT_SET", "tag not set");
+    }
+    const outBuf = new FastBuffer(Math.max(this._ccmDataLength, 1));
+    const maybeTag = op_node_cipheriv_final(
+      this._context,
+      false,
+      new Uint8Array(0),
+      outBuf,
+    );
+    if (maybeTag) {
+      this._authTag = Buffer.from(maybeTag);
+    }
+    this._finalized = true;
+    if (this._ccmDataLength === 0) {
+      return encoding === "buffer" ? Buffer.from([]) : "";
+    }
+    const ct = outBuf.subarray(0, this._ccmDataLength);
+    if (encoding !== "buffer") {
+      return this._decoder!.end(ct);
+    }
+    return ct;
+  }
 
   const bs = this._blockSize;
   const buf = new FastBuffer(bs);
@@ -281,14 +356,30 @@ Cipheriv.prototype.getAuthTag = function (): Buffer {
 
 Cipheriv.prototype.setAAD = function (
   buffer: ArrayBufferView,
-  _options?: {
+  options?: {
     plaintextLength: number;
   },
 ) {
   if (this._finalized) {
     throw new ERR_CRYPTO_INVALID_STATE("setAAD");
   }
-  op_node_cipheriv_set_aad(this._context, buffer);
+  let plaintextLength = -1;
+  if (this._isCCM) {
+    const ptLen = getUIntOption(options, "plaintextLength");
+    if (ptLen < 0) {
+      throw new Error(
+        "options.plaintextLength required for CCM mode with AAD",
+      );
+    }
+    plaintextLength = ptLen;
+    // Validate message size limit
+    const maxMessageSize = ccmMaxMessageSize(this._ccmIvLength);
+    if (plaintextLength > maxMessageSize) {
+      throw new Error("Invalid message length");
+    }
+    this._ccmHasSetAAD = true;
+  }
+  op_node_cipheriv_set_aad(this._context, buffer, plaintextLength);
   return this;
 };
 
@@ -314,6 +405,23 @@ Cipheriv.prototype.update = function (
   _lazyInitCipherDecoder(this, outputEncoding);
 
   let output: Buffer;
+
+  if (this._isCCM) {
+    // CCM: validate message length
+    const maxMessageSize = ccmMaxMessageSize(this._ccmIvLength);
+    if (buf.length > maxMessageSize) {
+      throw new Error("Invalid message length");
+    }
+    // Buffer in Rust; return empty from update, ciphertext comes from final
+    op_node_cipheriv_encrypt(this._context, buf, new Uint8Array(0));
+    this._ccmDataLength += buf.length;
+    output = Buffer.alloc(0);
+    if (outputEncoding !== "buffer") {
+      return this._decoder!.write(output);
+    }
+    return output;
+  }
+
   if (!this._needsBlockCache) {
     output = Buffer.allocUnsafe(buf.length);
     op_node_cipheriv_encrypt(this._context, buf, output);
@@ -433,6 +541,36 @@ export function Decipheriv(
 
   const authTagLength = getUIntOption(options, "authTagLength");
 
+  this._isCCM = /^aes-(128|192|256)-ccm$/.test(cipher);
+
+  // CCM and OCB modes require authTagLength, but we must check IV
+  // validity first so that bad IVs produce the right error.
+  const isCcmOrOcb = /^aes-(128|192|256)-(ccm|ocb)$/.test(cipher);
+  if (isCcmOrOcb && authTagLength < 0) {
+    try {
+      op_node_create_decipheriv(cipher, toU8(key), toU8(iv), authTagLength);
+    } catch (e: any) {
+      if (
+        e.code === "ERR_CRYPTO_INVALID_IV" ||
+        e.code === "ERR_CRYPTO_INVALID_KEY_LENGTH"
+      ) {
+        throw e;
+      }
+    }
+    throw new Error(`authTagLength required for ${cipher}`);
+  }
+
+  this._context = op_node_create_decipheriv(
+    cipher,
+    toU8(key),
+    toU8(iv),
+    authTagLength,
+  );
+
+  if (this._context == 0) {
+    throw new TypeError("Unknown cipher");
+  }
+
   Transform.call(this, {
     transform(chunk, encoding, cb) {
       this.push(this.update(chunk, encoding));
@@ -448,22 +586,19 @@ export function Decipheriv(
   this._autoPadding = true;
   this._blockSize = getBlockSize(cipher);
   this._cache = new BlockModeCache(this._autoPadding, this._blockSize);
-  this._context = op_node_create_decipheriv(
-    cipher,
-    toU8(key),
-    toU8(iv),
-    authTagLength,
-  );
   this._needsBlockCache =
     !(cipher == "aes-128-gcm" || cipher == "aes-256-gcm" ||
       cipher == "aes-128-ctr" || cipher == "aes-192-ctr" ||
-      cipher == "aes-256-ctr" || cipher == "chacha20-poly1305");
+      cipher == "aes-256-ctr" || cipher == "chacha20-poly1305" ||
+      this._isCCM);
   this._authTag = undefined;
   this._finalized = false;
   this._decoder = undefined;
-
-  if (this._context == 0) {
-    throw new TypeError("Unknown cipher");
+  this._cipher = cipher;
+  this._ccmDataLength = 0;
+  if (this._isCCM) {
+    const ivBuf = toU8(iv);
+    this._ccmIvLength = ivBuf.length;
   }
 }
 
@@ -475,6 +610,31 @@ Decipheriv.prototype.final = function (
 ): Buffer | string {
   if (this._finalized) {
     throw new ERR_CRYPTO_INVALID_STATE("final");
+  }
+
+  // CCM: all data was buffered in Rust; now decrypt + verify tag
+  if (this._isCCM) {
+    _lazyInitDecipherDecoder(this, encoding);
+    if (!this._authTag) {
+      throw new ERR_CRYPTO_INVALID_STATE("final");
+    }
+    const outBuf = new FastBuffer(Math.max(this._ccmDataLength, 1));
+    op_node_decipheriv_final(
+      this._context,
+      false,
+      new Uint8Array(0),
+      outBuf,
+      this._authTag,
+    );
+    this._finalized = true;
+    if (this._ccmDataLength === 0) {
+      return encoding === "buffer" ? Buffer.from([]) : "";
+    }
+    const pt = outBuf.subarray(0, this._ccmDataLength);
+    if (encoding !== "buffer") {
+      return this._decoder!.end(pt);
+    }
+    return pt;
   }
 
   const bs = this._blockSize;
@@ -513,11 +673,26 @@ Decipheriv.prototype.final = function (
 
 Decipheriv.prototype.setAAD = function (
   buffer: ArrayBufferView,
-  _options?: {
+  options?: {
     plaintextLength: number;
   },
 ) {
-  op_node_decipheriv_set_aad(this._context, buffer);
+  let plaintextLength = -1;
+  if (this._isCCM) {
+    const ptLen = getUIntOption(options, "plaintextLength");
+    if (ptLen < 0) {
+      throw new Error(
+        "options.plaintextLength required for CCM mode with AAD",
+      );
+    }
+    plaintextLength = ptLen;
+    // Validate message size limit
+    const maxMessageSize = ccmMaxMessageSize(this._ccmIvLength);
+    if (plaintextLength > maxMessageSize) {
+      throw new Error("Invalid message length");
+    }
+  }
+  op_node_decipheriv_set_aad(this._context, buffer, plaintextLength);
   return this;
 };
 
@@ -556,6 +731,23 @@ Decipheriv.prototype.update = function (
   _lazyInitDecipherDecoder(this, outputEncoding);
 
   let output;
+
+  if (this._isCCM) {
+    // CCM: validate message length
+    const maxMessageSize = ccmMaxMessageSize(this._ccmIvLength);
+    if (buf.length > maxMessageSize) {
+      throw new Error("Invalid message length");
+    }
+    // Buffer in Rust; return empty from update, plaintext comes from final
+    op_node_decipheriv_decrypt(this._context, buf, new Uint8Array(0));
+    this._ccmDataLength += buf.length;
+    output = Buffer.alloc(0);
+    if (outputEncoding !== "buffer") {
+      return this._decoder!.write(output);
+    }
+    return output;
+  }
+
   if (!this._needsBlockCache) {
     output = Buffer.allocUnsafe(buf.length);
     op_node_decipheriv_decrypt(this._context, buf, output);
