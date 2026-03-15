@@ -242,7 +242,14 @@
       "body": {
         "stringValue": "server 1\n"
       },
-      "attributes": [],
+      "attributes": [
+        {
+          "key": "log.iostream",
+          "value": {
+            "stringValue": "stdout"
+          }
+        }
+      ],
       "droppedAttributesCount": 0,
       "flags": 1,
       "traceId": "00000000000000000000000000000001",
@@ -256,7 +263,14 @@
       "body": {
         "stringValue": "alice\n"
       },
-      "attributes": [],
+      "attributes": [
+        {
+          "key": "log.iostream",
+          "value": {
+            "stringValue": "stdout"
+          }
+        }
+      ],
       "droppedAttributesCount": 0,
       "flags": 1,
       "traceId": "00000000000000000000000000000001",
@@ -270,7 +284,14 @@
       "body": {
         "stringValue": "server 2\n"
       },
-      "attributes": [],
+      "attributes": [
+        {
+          "key": "log.iostream",
+          "value": {
+            "stringValue": "stdout"
+          }
+        }
+      ],
       "droppedAttributesCount": 0,
       "flags": 1,
       "traceId": "00000000000000000000000000000001",

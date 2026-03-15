@@ -6,7 +6,6 @@
 
 use std::borrow::Cow;
 use std::env;
-use std::fs;
 use std::path::Path;
 
 use deno_core::FastString;
@@ -44,7 +43,6 @@ pub use ops::vm::VM_CONTEXT_INDEX;
 pub use ops::vm::create_v8_context;
 pub use ops::vm::init_global_template;
 
-use self::ops::util::NullEnvVarsSys;
 pub use crate::global::GlobalsStorage;
 use crate::global::global_object_middleware;
 use crate::global::global_template_middleware;
@@ -102,7 +100,7 @@ fn op_node_build_os() -> String {
 enum DotEnvLoadErr {
   #[class(inherit)]
   #[error("{0}")]
-  Io(#[from] std::io::Error),
+  Fs(#[from] deno_io::fs::FsError),
   #[class(inherit)]
   #[error(transparent)]
   Permission(
@@ -118,6 +116,7 @@ fn op_node_load_env_file(
   state: &mut OpState,
   #[string] path: &str,
 ) -> Result<(), DotEnvLoadErr> {
+  let fs = state.borrow::<deno_fs::FileSystemRc>().clone();
   let path = state
     .borrow::<PermissionsContainer>()
     .check_open(
@@ -127,10 +126,8 @@ fn op_node_load_env_file(
     )
     .map_err(DotEnvLoadErr::Permission)?;
 
-  #[allow(clippy::disallowed_methods)]
-  let contents = fs::read_to_string(path)?;
-
-  parse_env_content_hook(&NullEnvVarsSys, &contents, |key, value| {
+  let contents = fs.read_text_file_lossy_sync(&path)?;
+  parse_env_content_hook(&contents, &mut |key, value| {
     // Follows Node.js behavior where null bytes are stripped from env keys and values
     let key = if let Some(null_pos) = key.find('\0') {
       &key[..null_pos]
@@ -388,16 +385,6 @@ deno_core::extension!(deno_node,
     "_fs/_fs_lutimes.ts",
     "_fs/_fs_read.ts",
     "_fs/_fs_readdir.ts",
-    "_fs/_fs_readFile.ts",
-    "_fs/_fs_readlink.ts",
-    "_fs/_fs_readv.ts",
-    "_fs/_fs_realpath.ts",
-    "_fs/_fs_stat.ts",
-    "_fs/_fs_statfs.ts",
-    "_fs/_fs_symlink.ts",
-    "_fs/_fs_truncate.ts",
-    "_fs/_fs_utimes.ts",
-    "_fs/_fs_watch.ts",
     "_next_tick.ts",
     "_process/exiting.ts",
     "_process/process.ts",
@@ -474,6 +461,7 @@ deno_core::extension!(deno_node,
     "internal/errors/error_source.ts",
     "internal/event_target.mjs",
     "internal/events/abort_listener.mjs",
+    "internal/fs/stat_utils.ts",
     "internal/fs/streams.mjs",
     "internal/fs/utils.mjs",
     "internal/fs/handle.ts",

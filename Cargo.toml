@@ -87,7 +87,7 @@ repository = "https://github.com/denoland/deno"
 [workspace.dependencies]
 deno_ast = { version = "=0.53.1", features = ["transpiling"] }
 deno_core_icudata = "0.77.0"
-deno_doc = "=0.190.1"
+deno_doc = "=0.194.1"
 deno_error = "=0.7.1"
 deno_graph = { version = "=0.107.1", default-features = false }
 deno_lint = "=0.83.0"
@@ -99,7 +99,7 @@ deno_task_shell = "=0.29.0"
 deno_terminal = "=0.2.3"
 deno_unsync = { version = "0.4.4", default-features = false }
 deno_whoami = "0.1.0"
-v8 = { version = "146.3.0", default-features = false }
+v8 = { version = "146.4.0", default-features = false }
 
 denokv_proto = "0.13.0"
 denokv_remote = "0.13.0"
@@ -362,6 +362,7 @@ dprint-plugin-markdown = "=0.20.0"
 dprint-plugin-typescript = "=0.95.15"
 env_logger = "=0.11.6"
 fancy-regex = "=0.14.0"
+imara-diff = "=0.2.0"
 libsui = "0.12.6"
 malva = "=0.12.1"
 markup_fmt = "=0.22.0"

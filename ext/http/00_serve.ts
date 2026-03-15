@@ -29,6 +29,8 @@ import {
   op_http_set_response_trailers,
   op_http_try_wait,
   op_http_upgrade_raw,
+  op_http_upgrade_raw_connect,
+  op_http_upgrade_raw_get_head,
   op_http_upgrade_websocket_next,
   op_http_wait,
 } from "ext:core/ops";
@@ -102,7 +104,7 @@ import {
 } from "ext:deno_telemetry/telemetry.ts";
 import {
   updateSpanFromRequest,
-  updateSpanFromResponse,
+  updateSpanFromServerResponse,
 } from "ext:deno_telemetry/util.ts";
 
 const _upgraded = Symbol("_upgraded");
@@ -149,6 +151,16 @@ function upgradeHttpRaw(req) {
     return inner._wantsUpgrade("upgradeHttpRaw");
   }
   throw new TypeError("'upgradeHttpRaw' may only be used with Deno.serve");
+}
+
+function upgradeHttpRawConnect(req) {
+  const inner = toInnerRequest(req);
+  if (inner?._wantsUpgrade) {
+    return inner._wantsUpgrade("upgradeConnect");
+  }
+  throw new TypeError(
+    "'upgradeHttpRawConnect' may only be used with Deno.serve",
+  );
 }
 
 function addTrailers(resp, headerList) {
@@ -224,6 +236,31 @@ class InnerRequest {
       );
 
       return { response: UPGRADE_RESPONSE_SENTINEL, conn };
+    }
+
+    if (upgradeType == "upgradeConnect") {
+      const external = this.#external;
+      const remoteAddr = this.remoteAddr;
+      const localAddr = this.#context.listener.addr;
+
+      this.url();
+      this.headerList;
+      this.close();
+
+      this.#upgraded = true;
+
+      return (async () => {
+        const upgradeRid = await op_http_upgrade_raw_connect(external);
+        const head = op_http_upgrade_raw_get_head(upgradeRid);
+
+        const conn = new UpgradedConn(
+          upgradeRid,
+          remoteAddr,
+          localAddr,
+        );
+
+        return { response: UPGRADE_RESPONSE_SENTINEL, conn, head };
+      })();
     }
 
     if (upgradeType == "upgradeWebSocket") {
@@ -565,7 +602,7 @@ function mapToCallback(context, callback, onError) {
     }
 
     if (span) {
-      updateSpanFromResponse(span, response);
+      updateSpanFromServerResponse(span, response);
     }
 
     const inner = toInnerResponse(response);
@@ -1101,6 +1138,7 @@ function serveHttpOn(context, addr, callback) {
 
 internals.addTrailers = addTrailers;
 internals.upgradeHttpRaw = upgradeHttpRaw;
+internals.upgradeHttpRawConnect = upgradeHttpRawConnect;
 internals.serveHttpOnListener = serveHttpOnListener;
 internals.serveHttpOnConnection = serveHttpOnConnection;
 
@@ -1178,4 +1216,5 @@ export {
   serveHttpOnConnection,
   serveHttpOnListener,
   upgradeHttpRaw,
+  upgradeHttpRawConnect,
 };
