@@ -161,3 +161,5 @@ _uv_mutex_destroy
 _uv_async_init
 _uv_async_send
 _uv_close
+_uv_ref
+_uv_unref
