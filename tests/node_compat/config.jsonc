@@ -1200,22 +1200,66 @@
     // "parallel/test-inspector-network-arbitrary-data.js": {},
     // "parallel/test-inspector-emit-protocol-event.js": {},
 
-    // TODO(bartlomieju): depends on `NodeRuntime` CDP domain
-    // "parallel/test-inspector-esm.js": {},
-    // "parallel/test-inspector-console.js": {},
-    // "parallel/test-inspector-async-stack-traces-promise-then.js": {},
-    // "parallel/test-inspector-exception.js": {},
-    // "parallel/test-inspector-async-hook-setup-at-inspect-brk.js": {},
-    // "parallel/test-inspector-async-stack-traces-set-interval.js": {},
-    // "parallel/test-inspector-scriptparsed-context.js": {},
-    // "parallel/test-inspector-break-e.js": {},
-    // "parallel/test-inspector-waiting-for-disconnect.js": {},
-    // "parallel/test-inspector-multisession-ws.js": {},
-    // "parallel/test-inspector-worker-target.js"
-    // "parallel/test-inspector-debug-brk-flag.js": {},
-    // "parallel/test-inspector-wait.mjs": {},
-    // "parallel/test-inspector-stop-profile-after-done.js": {},
-    // "parallel/test-inspector-break-when-eval.js": {},
+    "parallel/test-inspector-esm.js": {
+      "ignore": true,
+      "reason": "Missing Runtime.executionContextDestroyed notification on process.exit()"
+    },
+    "parallel/test-inspector-console.js": {
+      "ignore": true,
+      "reason": "Hangs waiting for Runtime.consoleAPICalled notification after script completion"
+    },
+    "parallel/test-inspector-async-stack-traces-promise-then.js": {
+      "ignore": true,
+      "reason": "Deno uses $deno$eval.mts instead of [eval] for inline script URL"
+    },
+    "parallel/test-inspector-exception.js": {
+      "ignore": true,
+      "reason": "Breaks on wrong line with --inspect-brk (line 1 instead of expected line)"
+    },
+    "parallel/test-inspector-async-hook-setup-at-inspect-brk.js": {
+      "ignore": true,
+      "reason": "Deno uses $deno$eval.mts instead of [eval] for inline script URL"
+    },
+    "parallel/test-inspector-async-stack-traces-set-interval.js": {
+      "ignore": true,
+      "reason": "Deno uses $deno$eval.mts instead of [eval] for inline script URL"
+    },
+    "parallel/test-inspector-scriptparsed-context.js": {
+      "ignore": true,
+      "reason": "Deno uses $deno$eval.mts instead of [eval] for inline script URL"
+    },
+    "parallel/test-inspector-break-e.js": {
+      "ignore": true,
+      "reason": "Deno uses $deno$eval.mts instead of [eval] for inline script URL"
+    },
+    "parallel/test-inspector-waiting-for-disconnect.js": {
+      "ignore": true,
+      "reason": "NodeRuntime.notifyWhenWaitingForDisconnect is not implemented"
+    },
+    "parallel/test-inspector-multisession-ws.js": {
+      "ignore": true,
+      "reason": "Times out — hangs during multi-session WebSocket inspector test"
+    },
+    "parallel/test-inspector-worker-target.js": {
+      "ignore": true,
+      "reason": "Times out waiting for inspector notification in worker target test"
+    },
+    "parallel/test-inspector-debug-brk-flag.js": {
+      "ignore": true,
+      "reason": "Breaks on wrong line with --inspect-brk (line 1 instead of line 0)"
+    },
+    "parallel/test-inspector-wait.mjs": {
+      "ignore": true,
+      "reason": "Times out waiting for console output — Runtime.consoleAPICalled not delivered"
+    },
+    "parallel/test-inspector-stop-profile-after-done.js": {
+      "ignore": true,
+      "reason": "Times out — hangs waiting for inspector disconnect after profiling"
+    },
+    "parallel/test-inspector-break-when-eval.js": {
+      "ignore": true,
+      "reason": "V8 reports 'Can only perform operation while paused' during Debugger.stepOver"
+    },
 
     // TODO(bartlomieju): depends on 'internal/deps/undici/undici' internal module
     // "parallel/test-inspector-network-fetch.js": {},
