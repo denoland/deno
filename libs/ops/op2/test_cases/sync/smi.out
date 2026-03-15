@@ -14,46 +14,12 @@ const fn op_smi_unsigned_return() -> ::deno_core::_ops::OpDecl {
             4usize as u8,
             false,
             Self::v8_fn_ptr as _,
-            Self::v8_fn_ptr_metrics as _,
             ::deno_core::AccessorType::None,
             Some({
                 use deno_core::v8::fast_api::Type as CType;
                 use deno_core::v8;
                 deno_core::v8::fast_api::CFunction::new(
                     Self::v8_fn_ptr_fast as _,
-                    &deno_core::v8::fast_api::CFunctionInfo::new(
-                        v8::fast_api::CTypeInfo::new(
-                            CType::Int32,
-                            v8::fast_api::Flags::empty(),
-                        ),
-                        &[
-                            CType::V8Value.as_info(),
-                            v8::fast_api::CTypeInfo::new(
-                                CType::Int32,
-                                v8::fast_api::Flags::empty(),
-                            ),
-                            v8::fast_api::CTypeInfo::new(
-                                CType::Int32,
-                                v8::fast_api::Flags::empty(),
-                            ),
-                            v8::fast_api::CTypeInfo::new(
-                                CType::Int32,
-                                v8::fast_api::Flags::empty(),
-                            ),
-                            v8::fast_api::CTypeInfo::new(
-                                CType::Int32,
-                                v8::fast_api::Flags::empty(),
-                            ),
-                        ],
-                        deno_core::v8::fast_api::Int64Representation::BigInt,
-                    ),
-                )
-            }),
-            Some({
-                use deno_core::v8::fast_api::Type as CType;
-                use deno_core::v8;
-                deno_core::v8::fast_api::CFunction::new(
-                    Self::v8_fn_ptr_fast_metrics as _,
                     &deno_core::v8::fast_api::CFunctionInfo::new(
                         v8::fast_api::CTypeInfo::new(
                             CType::Int32,
@@ -93,7 +59,7 @@ const fn op_smi_unsigned_return() -> ::deno_core::_ops::OpDecl {
             <Self as deno_core::_ops::Op>::NAME
         }
         #[allow(clippy::too_many_arguments)]
-        extern "C" fn v8_fn_ptr_fast_metrics<'s>(
+        extern "C" fn v8_fn_ptr_fast<'s>(
             this: deno_core::v8::Local<deno_core::v8::Object>,
             arg0: i32,
             arg1: i32,
@@ -103,6 +69,10 @@ const fn op_smi_unsigned_return() -> ::deno_core::_ops::OpDecl {
                 's,
             >,
         ) -> i32 {
+            #[cfg(debug_assertions)]
+            let _reentrancy_check_guard = deno_core::_ops::reentrancy_check(
+                &<Self as deno_core::_ops::Op>::DECL,
+            );
             let fast_api_callback_options: &'s mut _ = unsafe {
                 &mut *fast_api_callback_options
             };
@@ -112,29 +82,12 @@ const fn op_smi_unsigned_return() -> ::deno_core::_ops::OpDecl {
                 >::cast_unchecked(unsafe { fast_api_callback_options.data })
                     .value() as *const deno_core::_ops::OpCtx)
             };
-            deno_core::_ops::dispatch_metrics_fast(
-                opctx,
-                deno_core::_ops::OpMetricsEvent::Dispatched,
-            );
-            let res = Self::v8_fn_ptr_fast(this, arg0, arg1, arg2, arg3);
-            deno_core::_ops::dispatch_metrics_fast(
-                opctx,
-                deno_core::_ops::OpMetricsEvent::Completed,
-            );
-            res
-        }
-        #[allow(clippy::too_many_arguments)]
-        extern "C" fn v8_fn_ptr_fast<'s>(
-            this: deno_core::v8::Local<deno_core::v8::Object>,
-            arg0: i32,
-            arg1: i32,
-            arg2: i32,
-            arg3: i32,
-        ) -> i32 {
-            #[cfg(debug_assertions)]
-            let _reentrancy_check_guard = deno_core::_ops::reentrancy_check(
-                &<Self as deno_core::_ops::Op>::DECL,
-            );
+            if opctx.metrics_enabled() {
+                deno_core::_ops::dispatch_metrics_fast(
+                    opctx,
+                    deno_core::_ops::OpMetricsEvent::Dispatched,
+                );
+            }
             let result = {
                 let arg0 = arg0 as _;
                 let arg1 = arg1 as _;
@@ -142,6 +95,12 @@ const fn op_smi_unsigned_return() -> ::deno_core::_ops::OpDecl {
                 let arg3 = arg3 as _;
                 Self::call(arg0, arg1, arg2, arg3)
             };
+            if opctx.metrics_enabled() {
+                deno_core::_ops::dispatch_metrics_fast(
+                    opctx,
+                    deno_core::_ops::OpMetricsEvent::Completed,
+                );
+            }
             result as _
         }
         fn slow_function_impl<'s>(
@@ -193,12 +152,6 @@ const fn op_smi_unsigned_return() -> ::deno_core::_ops::OpDecl {
         }
         extern "C" fn v8_fn_ptr<'s>(info: *const deno_core::v8::FunctionCallbackInfo) {
             let info: &'s _ = unsafe { &*info };
-            Self::slow_function_impl(info);
-        }
-        extern "C" fn v8_fn_ptr_metrics<'s>(
-            info: *const deno_core::v8::FunctionCallbackInfo,
-        ) {
-            let info: &'s _ = unsafe { &*info };
             let args = deno_core::v8::FunctionCallbackArguments::from_function_callback_info(
                 info,
             );
@@ -208,21 +161,25 @@ const fn op_smi_unsigned_return() -> ::deno_core::_ops::OpDecl {
                 >::cast_unchecked(args.data())
                     .value() as *const deno_core::_ops::OpCtx)
             };
-            deno_core::_ops::dispatch_metrics_slow(
-                opctx,
-                deno_core::_ops::OpMetricsEvent::Dispatched,
-            );
+            if opctx.metrics_enabled() {
+                deno_core::_ops::dispatch_metrics_slow(
+                    opctx,
+                    deno_core::_ops::OpMetricsEvent::Dispatched,
+                );
+            }
             let res = Self::slow_function_impl(info);
-            if res == 0 {
-                deno_core::_ops::dispatch_metrics_slow(
-                    opctx,
-                    deno_core::_ops::OpMetricsEvent::Completed,
-                );
-            } else {
-                deno_core::_ops::dispatch_metrics_slow(
-                    opctx,
-                    deno_core::_ops::OpMetricsEvent::Error,
-                );
+            if opctx.metrics_enabled() {
+                if res == 0 {
+                    deno_core::_ops::dispatch_metrics_slow(
+                        opctx,
+                        deno_core::_ops::OpMetricsEvent::Completed,
+                    );
+                } else {
+                    deno_core::_ops::dispatch_metrics_slow(
+                        opctx,
+                        deno_core::_ops::OpMetricsEvent::Error,
+                    );
+                }
             }
         }
     }
@@ -251,46 +208,12 @@ const fn op_smi_signed_return() -> ::deno_core::_ops::OpDecl {
             4usize as u8,
             false,
             Self::v8_fn_ptr as _,
-            Self::v8_fn_ptr_metrics as _,
             ::deno_core::AccessorType::None,
             Some({
                 use deno_core::v8::fast_api::Type as CType;
                 use deno_core::v8;
                 deno_core::v8::fast_api::CFunction::new(
                     Self::v8_fn_ptr_fast as _,
-                    &deno_core::v8::fast_api::CFunctionInfo::new(
-                        v8::fast_api::CTypeInfo::new(
-                            CType::Int32,
-                            v8::fast_api::Flags::empty(),
-                        ),
-                        &[
-                            CType::V8Value.as_info(),
-                            v8::fast_api::CTypeInfo::new(
-                                CType::Int32,
-                                v8::fast_api::Flags::empty(),
-                            ),
-                            v8::fast_api::CTypeInfo::new(
-                                CType::Int32,
-                                v8::fast_api::Flags::empty(),
-                            ),
-                            v8::fast_api::CTypeInfo::new(
-                                CType::Int32,
-                                v8::fast_api::Flags::empty(),
-                            ),
-                            v8::fast_api::CTypeInfo::new(
-                                CType::Int32,
-                                v8::fast_api::Flags::empty(),
-                            ),
-                        ],
-                        deno_core::v8::fast_api::Int64Representation::BigInt,
-                    ),
-                )
-            }),
-            Some({
-                use deno_core::v8::fast_api::Type as CType;
-                use deno_core::v8;
-                deno_core::v8::fast_api::CFunction::new(
-                    Self::v8_fn_ptr_fast_metrics as _,
                     &deno_core::v8::fast_api::CFunctionInfo::new(
                         v8::fast_api::CTypeInfo::new(
                             CType::Int32,
@@ -330,7 +253,7 @@ const fn op_smi_signed_return() -> ::deno_core::_ops::OpDecl {
             <Self as deno_core::_ops::Op>::NAME
         }
         #[allow(clippy::too_many_arguments)]
-        extern "C" fn v8_fn_ptr_fast_metrics<'s>(
+        extern "C" fn v8_fn_ptr_fast<'s>(
             this: deno_core::v8::Local<deno_core::v8::Object>,
             arg0: i32,
             arg1: i32,
@@ -340,6 +263,10 @@ const fn op_smi_signed_return() -> ::deno_core::_ops::OpDecl {
                 's,
             >,
         ) -> i32 {
+            #[cfg(debug_assertions)]
+            let _reentrancy_check_guard = deno_core::_ops::reentrancy_check(
+                &<Self as deno_core::_ops::Op>::DECL,
+            );
             let fast_api_callback_options: &'s mut _ = unsafe {
                 &mut *fast_api_callback_options
             };
@@ -349,29 +276,12 @@ const fn op_smi_signed_return() -> ::deno_core::_ops::OpDecl {
                 >::cast_unchecked(unsafe { fast_api_callback_options.data })
                     .value() as *const deno_core::_ops::OpCtx)
             };
-            deno_core::_ops::dispatch_metrics_fast(
-                opctx,
-                deno_core::_ops::OpMetricsEvent::Dispatched,
-            );
-            let res = Self::v8_fn_ptr_fast(this, arg0, arg1, arg2, arg3);
-            deno_core::_ops::dispatch_metrics_fast(
-                opctx,
-                deno_core::_ops::OpMetricsEvent::Completed,
-            );
-            res
-        }
-        #[allow(clippy::too_many_arguments)]
-        extern "C" fn v8_fn_ptr_fast<'s>(
-            this: deno_core::v8::Local<deno_core::v8::Object>,
-            arg0: i32,
-            arg1: i32,
-            arg2: i32,
-            arg3: i32,
-        ) -> i32 {
-            #[cfg(debug_assertions)]
-            let _reentrancy_check_guard = deno_core::_ops::reentrancy_check(
-                &<Self as deno_core::_ops::Op>::DECL,
-            );
+            if opctx.metrics_enabled() {
+                deno_core::_ops::dispatch_metrics_fast(
+                    opctx,
+                    deno_core::_ops::OpMetricsEvent::Dispatched,
+                );
+            }
             let result = {
                 let arg0 = arg0 as _;
                 let arg1 = arg1 as _;
@@ -379,6 +289,12 @@ const fn op_smi_signed_return() -> ::deno_core::_ops::OpDecl {
                 let arg3 = arg3 as _;
                 Self::call(arg0, arg1, arg2, arg3)
             };
+            if opctx.metrics_enabled() {
+                deno_core::_ops::dispatch_metrics_fast(
+                    opctx,
+                    deno_core::_ops::OpMetricsEvent::Completed,
+                );
+            }
             result as _
         }
         fn slow_function_impl<'s>(
@@ -430,12 +346,6 @@ const fn op_smi_signed_return() -> ::deno_core::_ops::OpDecl {
         }
         extern "C" fn v8_fn_ptr<'s>(info: *const deno_core::v8::FunctionCallbackInfo) {
             let info: &'s _ = unsafe { &*info };
-            Self::slow_function_impl(info);
-        }
-        extern "C" fn v8_fn_ptr_metrics<'s>(
-            info: *const deno_core::v8::FunctionCallbackInfo,
-        ) {
-            let info: &'s _ = unsafe { &*info };
             let args = deno_core::v8::FunctionCallbackArguments::from_function_callback_info(
                 info,
             );
@@ -445,21 +355,25 @@ const fn op_smi_signed_return() -> ::deno_core::_ops::OpDecl {
                 >::cast_unchecked(args.data())
                     .value() as *const deno_core::_ops::OpCtx)
             };
-            deno_core::_ops::dispatch_metrics_slow(
-                opctx,
-                deno_core::_ops::OpMetricsEvent::Dispatched,
-            );
+            if opctx.metrics_enabled() {
+                deno_core::_ops::dispatch_metrics_slow(
+                    opctx,
+                    deno_core::_ops::OpMetricsEvent::Dispatched,
+                );
+            }
             let res = Self::slow_function_impl(info);
-            if res == 0 {
-                deno_core::_ops::dispatch_metrics_slow(
-                    opctx,
-                    deno_core::_ops::OpMetricsEvent::Completed,
-                );
-            } else {
-                deno_core::_ops::dispatch_metrics_slow(
-                    opctx,
-                    deno_core::_ops::OpMetricsEvent::Error,
-                );
+            if opctx.metrics_enabled() {
+                if res == 0 {
+                    deno_core::_ops::dispatch_metrics_slow(
+                        opctx,
+                        deno_core::_ops::OpMetricsEvent::Completed,
+                    );
+                } else {
+                    deno_core::_ops::dispatch_metrics_slow(
+                        opctx,
+                        deno_core::_ops::OpMetricsEvent::Error,
+                    );
+                }
             }
         }
     }
@@ -488,9 +402,7 @@ const fn op_smi_option() -> ::deno_core::_ops::OpDecl {
             1usize as u8,
             false,
             Self::v8_fn_ptr as _,
-            Self::v8_fn_ptr_metrics as _,
             ::deno_core::AccessorType::None,
-            None,
             None,
             ::deno_core::OpMetadata {
                 ..::deno_core::OpMetadata::default()
@@ -534,12 +446,6 @@ const fn op_smi_option() -> ::deno_core::_ops::OpDecl {
         }
         extern "C" fn v8_fn_ptr<'s>(info: *const deno_core::v8::FunctionCallbackInfo) {
             let info: &'s _ = unsafe { &*info };
-            Self::slow_function_impl(info);
-        }
-        extern "C" fn v8_fn_ptr_metrics<'s>(
-            info: *const deno_core::v8::FunctionCallbackInfo,
-        ) {
-            let info: &'s _ = unsafe { &*info };
             let args = deno_core::v8::FunctionCallbackArguments::from_function_callback_info(
                 info,
             );
@@ -549,21 +455,25 @@ const fn op_smi_option() -> ::deno_core::_ops::OpDecl {
                 >::cast_unchecked(args.data())
                     .value() as *const deno_core::_ops::OpCtx)
             };
-            deno_core::_ops::dispatch_metrics_slow(
-                opctx,
-                deno_core::_ops::OpMetricsEvent::Dispatched,
-            );
+            if opctx.metrics_enabled() {
+                deno_core::_ops::dispatch_metrics_slow(
+                    opctx,
+                    deno_core::_ops::OpMetricsEvent::Dispatched,
+                );
+            }
             let res = Self::slow_function_impl(info);
-            if res == 0 {
-                deno_core::_ops::dispatch_metrics_slow(
-                    opctx,
-                    deno_core::_ops::OpMetricsEvent::Completed,
-                );
-            } else {
-                deno_core::_ops::dispatch_metrics_slow(
-                    opctx,
-                    deno_core::_ops::OpMetricsEvent::Error,
-                );
+            if opctx.metrics_enabled() {
+                if res == 0 {
+                    deno_core::_ops::dispatch_metrics_slow(
+                        opctx,
+                        deno_core::_ops::OpMetricsEvent::Completed,
+                    );
+                } else {
+                    deno_core::_ops::dispatch_metrics_slow(
+                        opctx,
+                        deno_core::_ops::OpMetricsEvent::Error,
+                    );
+                }
             }
         }
     }

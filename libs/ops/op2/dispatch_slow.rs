@@ -78,6 +78,7 @@ pub(crate) fn generate_dispatch_slow(
   generator_state: &mut GeneratorState,
   signature: &ParsedSignature,
 ) -> Result<TokenStream, V8SignatureMappingError> {
+  let no_metrics = config.no_metrics;
   let mut output = TokenStream::new();
 
   let args = generate_dispatch_slow_call(generator_state, signature, 0)?;
@@ -176,52 +177,60 @@ pub(crate) fn generate_dispatch_slow(
     quote!()
   };
 
-  Ok(
-    gs_quote!(generator_state(opctx, info, slow_function, slow_function_metrics) => {
-      fn slow_function_impl<'s>(#info: &'s deno_core::v8::FunctionCallbackInfo) -> usize {
-        #[cfg(debug_assertions)]
-        let _reentrancy_check_guard = deno_core::_ops::reentrancy_check(&<Self as deno_core::_ops::Op>::DECL);
-
-        #with_scope
-        #with_retval
-        #with_args
-        #with_validate
-        #with_required_check
-        #with_opctx
-        #with_self
-        #with_isolate
-        #with_opstate
-        #with_stack_trace
-        #with_js_runtime_state
-
-        #output;
-        return 0;
-      }
-
+  let wrapper_fn = if no_metrics {
+    gs_quote!(generator_state(info, slow_function) => {
       extern "C" fn #slow_function<'s>(#info: *const deno_core::v8::FunctionCallbackInfo) {
         let info: &'s _ = unsafe { &*#info };
         Self::slow_function_impl(info);
       }
-
-      extern "C" fn #slow_function_metrics<'s>(#info: *const deno_core::v8::FunctionCallbackInfo) {
+    })
+  } else {
+    gs_quote!(generator_state(info, slow_function, opctx) => {
+      extern "C" fn #slow_function<'s>(#info: *const deno_core::v8::FunctionCallbackInfo) {
         let info: &'s _ = unsafe { &*#info };
         let args = deno_core::v8::FunctionCallbackArguments::from_function_callback_info(info);
-
         let #opctx: &'s _ = unsafe {
           &*(deno_core::v8::Local::<deno_core::v8::External>::cast_unchecked(args.data()).value()
               as *const deno_core::_ops::OpCtx)
         };
-
-        deno_core::_ops::dispatch_metrics_slow(#opctx, deno_core::_ops::OpMetricsEvent::Dispatched);
+        if #opctx.metrics_enabled() {
+          deno_core::_ops::dispatch_metrics_slow(#opctx, deno_core::_ops::OpMetricsEvent::Dispatched);
+        }
         let res = Self::slow_function_impl(info);
-        if res == 0 {
-          deno_core::_ops::dispatch_metrics_slow(#opctx, deno_core::_ops::OpMetricsEvent::Completed);
-        } else {
-          deno_core::_ops::dispatch_metrics_slow(#opctx, deno_core::_ops::OpMetricsEvent::Error);
+        if #opctx.metrics_enabled() {
+          if res == 0 {
+            deno_core::_ops::dispatch_metrics_slow(#opctx, deno_core::_ops::OpMetricsEvent::Completed);
+          } else {
+            deno_core::_ops::dispatch_metrics_slow(#opctx, deno_core::_ops::OpMetricsEvent::Error);
+          }
         }
       }
-    }),
-  )
+    })
+  };
+
+  Ok(gs_quote!(generator_state(info) => {
+    fn slow_function_impl<'s>(#info: &'s deno_core::v8::FunctionCallbackInfo) -> usize {
+      #[cfg(debug_assertions)]
+      let _reentrancy_check_guard = deno_core::_ops::reentrancy_check(&<Self as deno_core::_ops::Op>::DECL);
+
+      #with_scope
+      #with_retval
+      #with_args
+      #with_validate
+      #with_required_check
+      #with_opctx
+      #with_self
+      #with_isolate
+      #with_opstate
+      #with_stack_trace
+      #with_js_runtime_state
+
+      #output;
+      return 0;
+    }
+
+    #wrapper_fn
+  }))
 }
 
 pub(crate) fn with_isolate(
@@ -301,18 +310,15 @@ pub(crate) fn with_required_check(
   };
 
   let prefix = get_prefix(generator_state);
+  let err_fmt = format!(
+    "{prefix}: {required} {arguments_lit} required, but only {{}} present"
+  );
 
   let async_offset = if is_async { 1 } else { 0 };
 
   gs_quote!(generator_state(fn_args, scope) =>
     (if #fn_args.length() < (#required as i32) + #async_offset {
-      let msg = format!(
-        "{}: {} {} required, but only {} present",
-        #prefix,
-        #required,
-        #arguments_lit,
-        #fn_args.length() - #async_offset
-      );
+      let msg = format!(#err_fmt, #fn_args.length() - #async_offset);
       let msg = deno_core::v8::String::new(&mut #scope, &msg).unwrap();
       let exception = deno_core::v8::Exception::type_error(&mut #scope, msg.into());
       #scope.throw_exception(exception);

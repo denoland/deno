@@ -30,54 +30,25 @@ pub enum OpMetricsSource {
   Async,
 }
 
-/// A callback to receieve an [`OpMetricsEvent`].
+/// A callback to receive an [`OpMetricsEvent`].
 pub type OpMetricsFn = Rc<dyn Fn(&OpCtx, OpMetricsEvent, OpMetricsSource)>;
 
-// TODO(mmastrac): this would be better as a trait
+// TODO(bartlomieju): this would be better as a trait
 /// A callback to retrieve an optional [`OpMetricsFn`] for this op.
 pub type OpMetricsFactoryFn =
   Box<dyn Fn(OpId, usize, &OpDecl) -> Option<OpMetricsFn>>;
 
-/// Given two [`OpMetricsFactoryFn`] implementations, merges them so that op metric events are
-/// called on both.
-pub fn merge_op_metrics(
-  fn1: impl Fn(OpId, usize, &OpDecl) -> Option<OpMetricsFn> + 'static,
-  fn2: impl Fn(OpId, usize, &OpDecl) -> Option<OpMetricsFn> + 'static,
-) -> OpMetricsFactoryFn {
-  Box::new(move |op, count, decl| {
-    match (fn1(op, count, decl), fn2(op, count, decl)) {
-      (None, None) => None,
-      (Some(a), None) => Some(a),
-      (None, Some(b)) => Some(b),
-      (Some(a), Some(b)) => Some(Rc::new(move |ctx, event, source| {
-        a(ctx, event, source);
-        b(ctx, event, source);
-      })),
-    }
-  })
-}
-
 #[doc(hidden)]
 pub fn dispatch_metrics_fast(opctx: &OpCtx, metrics: OpMetricsEvent) {
-  // SAFETY: this should only be called from ops where we know the function is Some
-  unsafe {
-    (opctx.metrics_fn.as_ref().unwrap_unchecked())(
-      opctx,
-      metrics,
-      OpMetricsSource::Fast,
-    )
+  if let Some(f) = &opctx.metrics_fn {
+    f(opctx, metrics, OpMetricsSource::Fast);
   }
 }
 
 #[doc(hidden)]
 pub fn dispatch_metrics_slow(opctx: &OpCtx, metrics: OpMetricsEvent) {
-  // SAFETY: this should only be called from ops where we know the function is Some
-  unsafe {
-    (opctx.metrics_fn.as_ref().unwrap_unchecked())(
-      opctx,
-      metrics,
-      OpMetricsSource::Slow,
-    )
+  if let Some(f) = &opctx.metrics_fn {
+    f(opctx, metrics, OpMetricsSource::Slow);
   }
 }
 

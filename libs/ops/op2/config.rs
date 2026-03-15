@@ -23,6 +23,8 @@ pub struct MacroConfig {
   pub fast: bool,
   /// Do not generate a fastcall method (must be fastcall compatible).
   pub nofast: bool,
+  /// Do not generate metrics instrumentation for this op.
+  pub no_metrics: bool,
   /// Use other ops for the fast alternatives, rather than generating one for this op.
   pub fast_alternative: Option<String>,
   pub fake_async: bool,
@@ -113,6 +115,7 @@ impl MacroConfig {
           }
         }
         Flags::NoFast => config.nofast = true,
+        Flags::NoMetrics => config.no_metrics = true,
         Flags::Async(async_mode) => match async_mode {
           AsyncMode::Fake => config.fake_async = true,
           AsyncMode::Lazy => config.async_lazy = true,
@@ -190,6 +193,7 @@ enum Flags {
   Fast(Option<String>),
   Getter,
   NoFast,
+  NoMetrics,
   NoSideEffects,
   Reentrant,
   Rename(String),
@@ -255,6 +259,9 @@ impl Parse for Flags {
     } else if lookahead.peek(kw::nofast) {
       input.parse::<kw::nofast>()?;
       Flags::NoFast
+    } else if lookahead.peek(kw::no_metrics) {
+      input.parse::<kw::no_metrics>()?;
+      Flags::NoMetrics
     } else if lookahead.peek(Token![async]) || lookahead.peek(kw::async_method)
     {
       let list = input.parse::<CustomMeta>()?.require_list()?;
@@ -407,6 +414,7 @@ mod kw {
   custom_keyword!(setter);
   custom_keyword!(fast);
   custom_keyword!(nofast);
+  custom_keyword!(no_metrics);
   custom_keyword!(async_method);
   custom_keyword!(reentrant);
   custom_keyword!(no_side_effects);

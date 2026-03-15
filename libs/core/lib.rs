@@ -167,7 +167,6 @@ pub use crate::ops_metrics::OpMetricsEvent;
 pub use crate::ops_metrics::OpMetricsFactoryFn;
 pub use crate::ops_metrics::OpMetricsFn;
 pub use crate::ops_metrics::OpMetricsSource;
-pub use crate::ops_metrics::merge_op_metrics;
 pub use crate::runtime::CONTEXT_STATE_SLOT_INDEX;
 pub use crate::runtime::CompiledWasmModuleStore;
 pub use crate::runtime::ContextState;
