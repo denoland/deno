@@ -3071,6 +3071,7 @@ const mod = {
   constants,
   isAscii,
   isUtf8,
+  utf8Write: Buffer.prototype.utf8Write,
   get INSPECT_MAX_BYTES() {
     return INSPECT_MAX_BYTES_;
   },

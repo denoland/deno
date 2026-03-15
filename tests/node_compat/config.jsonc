@@ -179,7 +179,7 @@
     "parallel/test-buffer-tostring-range.js": {},
     "parallel/test-buffer-tostring-rangeerror.js": {},
     "parallel/test-buffer-tostring.js": {},
-    // "parallel/test-buffer-write-fast.js": {}, // https://github.com/denoland/deno/issues/32706
+    "parallel/test-buffer-write-fast.js": {},
     "parallel/test-buffer-write.js": {},
     "parallel/test-buffer-writedouble.js": {},
     "parallel/test-buffer-writefloat.js": {},
