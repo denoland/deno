@@ -6,6 +6,15 @@ use deno_core::v8;
 use deno_error::JsErrorBox;
 
 #[op2(fast)]
+pub fn op_mark_as_untransferable(
+  scope: &mut v8::PinScope<'_, '_>,
+  ab: v8::Local<v8::ArrayBuffer>,
+) {
+  let key = v8::String::new(scope, "untransferable").unwrap();
+  ab.set_detach_key(key.into());
+}
+
+#[op2(fast)]
 pub fn op_is_ascii(#[buffer] buf: &[u8]) -> bool {
   buf.is_ascii()
 }

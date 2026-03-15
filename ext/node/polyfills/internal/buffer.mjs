@@ -64,6 +64,7 @@ const {
 import {
   op_is_ascii,
   op_is_utf8,
+  op_mark_as_untransferable,
   op_node_buffer_compare,
   op_node_buffer_compare_offset,
   op_node_call_is_from_dependency,
@@ -267,6 +268,7 @@ function createPool() {
   allocBuffer = new Uint8Array(poolSize);
   allocPool = TypedArrayPrototypeGetBuffer(allocBuffer);
   allocPool[untransferableSymbol] = true;
+  op_mark_as_untransferable(allocPool);
   poolOffset = 0;
 }
 createPool();
@@ -591,7 +593,13 @@ Buffer.concat = function concat(list, length) {
         list[i],
       );
     }
-    pos += _copyActual(buf, buffer, pos, 0, TypedArrayPrototypeGetByteLength(buf));
+    pos += _copyActual(
+      buf,
+      buffer,
+      pos,
+      0,
+      TypedArrayPrototypeGetByteLength(buf),
+    );
   }
 
   // Note: `length` is always equal to `buffer.length` at this point

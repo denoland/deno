@@ -161,7 +161,7 @@
     "parallel/test-buffer-over-max-length.js": {},
     "parallel/test-buffer-parent-property.js": {},
     "parallel/test-buffer-pending-deprecation.js": {},
-    // "parallel/test-buffer-pool-untransferable.js": {}, // https://github.com/denoland/deno/issues/32706
+    "parallel/test-buffer-pool-untransferable.js": {},
     "parallel/test-buffer-prototype-inspect.js": {},
     "parallel/test-buffer-read.js": {},
     "parallel/test-buffer-readdouble.js": {},
