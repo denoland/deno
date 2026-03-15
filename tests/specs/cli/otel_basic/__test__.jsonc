@@ -100,6 +100,10 @@
     "http_server_status": {
       "args": "run -A main.ts http_server_status.ts",
       "output": "http_server_status.out"
+    },
+    "array_attributes": {
+      "args": "run -A main.ts array_attributes.ts",
+      "output": "array_attributes.out"
     }
   }
 }
