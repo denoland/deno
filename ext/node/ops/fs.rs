@@ -211,14 +211,50 @@ fn open_options_to_access_kind(open_options: &OpenOptions) -> OpenAccessKind {
   }
 }
 
-#[op2(fast, stack_trace)]
-#[smi]
+#[derive(Debug, Serialize)]
+pub struct OpenResult {
+  pub rid: ResourceId,
+  pub fd: i32,
+}
+
+/// Extract the real OS file descriptor from a Deno resource ID.
+#[cfg(unix)]
+fn get_fd_from_rid(
+  state: &mut OpState,
+  rid: ResourceId,
+) -> Result<i32, FsError> {
+  let handle = state.resource_table.get_handle(rid).map_err(|_| {
+    FsError::Io(std::io::Error::new(
+      std::io::ErrorKind::NotFound,
+      "Bad resource ID",
+    ))
+  })?;
+  match handle {
+    deno_core::ResourceHandle::Fd(fd) => Ok(fd),
+    _ => Err(FsError::Io(std::io::Error::other(
+      "Resource is not a file descriptor",
+    ))),
+  }
+}
+
+/// On Windows, RIDs are used directly as FDs (no real fd extraction).
+/// This preserves the existing behavior until Windows fd support is added.
+#[cfg(not(unix))]
+fn get_fd_from_rid(
+  _state: &mut OpState,
+  rid: ResourceId,
+) -> Result<i32, FsError> {
+  Ok(rid as i32)
+}
+
+#[op2(stack_trace)]
+#[serde]
 pub fn op_node_open_sync(
   state: &mut OpState,
   #[string] path: &str,
   #[smi] flags: i32,
   #[smi] mode: u32,
-) -> Result<ResourceId, FsError> {
+) -> Result<OpenResult, FsError> {
   let path = Path::new(path);
   let options = get_open_options(flags, Some(mode));
 
@@ -232,17 +268,18 @@ pub fn op_node_open_sync(
   let rid = state
     .resource_table
     .add(FileResource::new(file, "fsFile".to_string()));
-  Ok(rid)
+  let fd = get_fd_from_rid(state, rid)?;
+  Ok(OpenResult { rid, fd })
 }
 
 #[op2(stack_trace)]
-#[smi]
+#[serde]
 pub async fn op_node_open(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
   #[smi] flags: i32,
   #[smi] mode: u32,
-) -> Result<ResourceId, FsError> {
+) -> Result<OpenResult, FsError> {
   let path = PathBuf::from(path);
   let options = get_open_options(flags, Some(mode));
 
@@ -259,11 +296,12 @@ pub async fn op_node_open(
   };
   let file = fs.open_async(path.as_owned(), options).await?;
 
+  let mut state = state.borrow_mut();
   let rid = state
-    .borrow_mut()
     .resource_table
     .add(FileResource::new(file, "fsFile".to_string()));
-  Ok(rid)
+  let fd = get_fd_from_rid(&mut state, rid)?;
+  Ok(OpenResult { rid, fd })
 }
 #[derive(Debug, Serialize)]
 pub struct StatFs {
@@ -720,6 +758,117 @@ pub async fn op_node_rmdir(
   };
   fs.rmdir_async(path.into_owned()).await?;
   Ok(())
+}
+
+/// Check if a handle is managed by a non-fsFile internal Deno resource.
+/// fsFile and signal resources are allowed to be dup'd (for node:fs and
+/// native addons like node-pty). Other managed resources (SQLite, internal
+/// pipes) are denied. Unmanaged handles are allowed through.
+///
+/// Note: This is O(n) in the number of registered resources. Fine for typical
+/// workloads since it only runs on the first use of an unknown fd (then cached
+/// in fd_map), but could matter with thousands of open resources.
+#[cfg(unix)]
+fn deny_internal_resource_handle(
+  state: &mut OpState,
+  handle: deno_core::ResourceHandleFd,
+) -> Result<(), FsError> {
+  for (rid, name) in state.resource_table.names() {
+    if name == "fsFile" || name == "signal" {
+      continue;
+    }
+    if matches!(
+      state.resource_table.get_handle(rid),
+      Ok(deno_core::ResourceHandle::Fd(existing)) if existing == handle
+    ) {
+      return Err(FsError::Io(std::io::Error::new(
+        std::io::ErrorKind::PermissionDenied,
+        "File descriptor is managed by an internal Deno resource",
+      )));
+    }
+  }
+  Ok(())
+}
+
+/// Create a file resource from a raw file descriptor by dup'ing it first.
+/// This is safe for cross-worker use because the dup'd fd is independently
+/// owned and can be closed without affecting the original.
+///
+/// Allows dup of fds that are either unmanaged (external: child_process
+/// pipes, native addons) or owned by an "fsFile" resource (opened via node:fs).
+/// Denies dup of fds managed by non-fsFile internal Deno resources (e.g.
+/// SQLite, internal pipes) to prevent unauthorized access.
+#[cfg(unix)]
+#[op2(fast)]
+#[smi]
+pub fn op_node_dup_fd(
+  state: &mut OpState,
+  #[smi] fd: i32,
+) -> Result<ResourceId, FsError> {
+  dup_fd_impl(state, fd)
+}
+
+#[cfg(unix)]
+fn dup_fd_impl(state: &mut OpState, fd: i32) -> Result<ResourceId, FsError> {
+  use std::fs::File as StdFile;
+  use std::os::unix::io::FromRawFd;
+
+  if fd < 0 {
+    return Err(FsError::Io(std::io::Error::new(
+      std::io::ErrorKind::InvalidInput,
+      "Invalid file descriptor",
+    )));
+  }
+
+  deny_internal_resource_handle(state, fd)?;
+
+  // SAFETY: dup() creates a new fd pointing to the same open file description.
+  let new_fd = unsafe { libc::dup(fd) };
+  if new_fd < 0 {
+    return Err(FsError::Io(std::io::Error::last_os_error()));
+  }
+
+  // Clear O_NONBLOCK flag only for TTY fds (e.g. PTYs from node-pty).
+  // StdFileResourceInner uses spawn_blocking for reads which expects
+  // blocking I/O. Non-TTY fds keep their original flags.
+  // SAFETY: new_fd is valid, isatty/fcntl are safe on valid fds
+  unsafe {
+    if libc::isatty(new_fd) == 1 {
+      let flags = libc::fcntl(new_fd, libc::F_GETFL);
+      if flags >= 0 && (flags & libc::O_NONBLOCK) != 0 {
+        libc::fcntl(new_fd, libc::F_SETFL, flags & !libc::O_NONBLOCK);
+      }
+    }
+  }
+
+  // SAFETY: new_fd is a valid fd we just created via dup().
+  let std_file = unsafe { StdFile::from_raw_fd(new_fd) };
+  let file: Rc<dyn deno_io::fs::File> =
+    Rc::new(deno_io::StdFileResourceInner::file(std_file, None));
+  let rid = state
+    .resource_table
+    .add(FileResource::new(file, "fsFile".to_string()));
+  Ok(rid)
+}
+
+#[cfg(not(unix))]
+#[op2(fast)]
+#[smi]
+pub fn op_node_dup_fd(
+  state: &mut OpState,
+  #[smi] fd: i32,
+) -> Result<ResourceId, FsError> {
+  dup_fd_impl(state, fd)
+}
+
+/// On Windows, get_fd_from_rid returns rid as fd (identity mapping), so
+/// all valid fds are always in fd_map and getRid() never calls this op.
+/// The only way this runs is for invalid/unknown fds, so we return EBADF.
+/// Real Windows fd support can be added later via get_fd_from_rid.
+#[cfg(not(unix))]
+fn dup_fd_impl(_state: &mut OpState, _fd: i32) -> Result<ResourceId, FsError> {
+  // ERROR_INVALID_HANDLE (6) maps to EBADF via uvTranslateSysError
+  Err(FsError::Io(std::io::Error::from_raw_os_error(6)))
 }
 
 #[derive(Debug, Serialize)]
@@ -1584,5 +1733,132 @@ mod tests {
     assert!(is_src_subdir(&src, &src));
     assert!(!is_src_subdir(&src, &sibling));
     assert!(!is_src_subdir(&child, &src));
+  }
+
+  #[cfg(unix)]
+  #[allow(clippy::disallowed_methods)]
+  mod dup_fd_tests {
+    use std::borrow::Cow;
+    use std::rc::Rc;
+
+    use deno_core::OpState;
+    use deno_core::Resource;
+    use deno_core::ResourceHandle;
+    use deno_core::ResourceHandleFd;
+    use deno_io::fs::FileResource;
+
+    /// A mock non-fsFile resource that reports a specific fd via
+    /// `backing_handle`. Used to test that `op_node_dup_fd` denies
+    /// dup of fds managed by non-fsFile internal resources.
+    struct MockInternalResource {
+      fd: ResourceHandleFd,
+    }
+
+    impl Resource for MockInternalResource {
+      fn name(&self) -> Cow<'_, str> {
+        // Intentionally NOT "fsFile" — simulates an internal resource
+        // like a SQLite handle or internal pipe.
+        "mockInternal".into()
+      }
+
+      fn backing_handle(self: Rc<Self>) -> Option<ResourceHandle> {
+        Some(ResourceHandle::Fd(self.fd))
+      }
+    }
+
+    #[test]
+    fn dup_fd_denies_non_fsfile_resource() {
+      // Create a real fd via a temp file so dup() would succeed
+      // if the security check weren't there.
+      let tmp = std::env::temp_dir()
+        .join(format!("deno_dup_fd_test_{}", std::process::id()));
+      let file = std::fs::File::create(&tmp).unwrap();
+      use std::os::unix::io::AsRawFd;
+      let fd = file.as_raw_fd();
+
+      let mut state = OpState::new(None);
+
+      // Register the fd under a non-fsFile resource name
+      state.resource_table.add(MockInternalResource { fd });
+
+      // op_node_dup_fd should deny this fd
+      let result = super::super::dup_fd_impl(&mut state, fd);
+      assert!(result.is_err());
+      match result.unwrap_err() {
+        super::super::FsError::Io(e) => {
+          assert_eq!(e.kind(), std::io::ErrorKind::PermissionDenied);
+        }
+        other => {
+          panic!("expected FsError::Io(PermissionDenied), got: {other:?}")
+        }
+      }
+
+      drop(file);
+      let _ = std::fs::remove_file(&tmp);
+    }
+
+    #[test]
+    fn dup_fd_allows_fsfile_resource() {
+      // Create a real fd via a temp file
+      let tmp = std::env::temp_dir()
+        .join(format!("deno_dup_fd_allow_test_{}", std::process::id()));
+      let std_file = std::fs::File::create(&tmp).unwrap();
+      use std::os::unix::io::AsRawFd;
+      let fd = std_file.as_raw_fd();
+
+      let mut state = OpState::new(None);
+
+      // Register it as an "fsFile" resource (the allowed kind)
+      let file: Rc<dyn deno_io::fs::File> =
+        Rc::new(deno_io::StdFileResourceInner::file(std_file, None));
+      state
+        .resource_table
+        .add(FileResource::new(file, "fsFile".to_string()));
+
+      // op_node_dup_fd should allow this fd
+      let result = super::super::dup_fd_impl(&mut state, fd);
+      assert!(result.is_ok());
+
+      // Clean up the dup'd resource
+      let dup_rid = result.unwrap();
+      let _ = state.resource_table.take_any(dup_rid);
+
+      let _ = std::fs::remove_file(&tmp);
+    }
+
+    #[test]
+    fn dup_fd_allows_unmanaged_fd() {
+      // Create a real fd that is NOT in the resource table at all
+      let tmp = std::env::temp_dir()
+        .join(format!("deno_dup_fd_unmanaged_test_{}", std::process::id()));
+      let file = std::fs::File::create(&tmp).unwrap();
+      use std::os::unix::io::AsRawFd;
+      let fd = file.as_raw_fd();
+
+      let mut state = OpState::new(None);
+
+      // fd is valid but not in the resource table — should be allowed
+      let result = super::super::dup_fd_impl(&mut state, fd);
+      assert!(result.is_ok());
+
+      let dup_rid = result.unwrap();
+      let _ = state.resource_table.take_any(dup_rid);
+
+      drop(file);
+      let _ = std::fs::remove_file(&tmp);
+    }
+
+    #[test]
+    fn dup_fd_rejects_invalid_fd() {
+      let mut state = OpState::new(None);
+
+      // Negative fd should be rejected
+      let result = super::super::dup_fd_impl(&mut state, -1);
+      assert!(result.is_err());
+
+      // Very high fd (likely invalid) should fail with EBADF
+      let result = super::super::dup_fd_impl(&mut state, 99999);
+      assert!(result.is_err());
+    }
   }
 }
