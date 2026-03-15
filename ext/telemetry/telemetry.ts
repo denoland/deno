@@ -5,7 +5,9 @@ import {
   op_otel_collect_isolate_metrics,
   op_otel_enable_isolate_metrics,
   op_otel_log,
+  op_otel_log_exception,
   op_otel_log_foreign,
+  op_otel_log_foreign_exception,
   op_otel_metric_attribute3,
   op_otel_metric_observable_record0,
   op_otel_metric_observable_record1,
@@ -1184,22 +1186,65 @@ const otelConsoleConfig = {
   replace: 2,
 };
 
+let pendingException: Error | undefined;
+
+const OTEL_CONSOLE_METHODS = ["log", "debug", "info", "warn", "error"];
+
+function wrapOtelConsoleMethods(otelConsole: Console) {
+  for (let i = 0; i < OTEL_CONSOLE_METHODS.length; i++) {
+    const method = OTEL_CONSOLE_METHODS[i];
+    const orig = otelConsole[method];
+    otelConsole[method] = (...args: unknown[]) => {
+      if (args.length === 1 && core.isNativeError(args[0])) {
+        pendingException = args[0] as Error;
+      }
+      return ReflectApply(orig, otelConsole, args);
+    };
+  }
+}
+
 function otelLog(message: string, level: number) {
+  const exception = pendingException;
+  pendingException = undefined;
   const currentSpan = CURRENT.get()?.getValue(SPAN_KEY);
   const otelSpan = currentSpan !== undefined
     ? getOtelSpan(currentSpan)
     : undefined;
   if (otelSpan || currentSpan === undefined) {
-    op_otel_log(message, level, otelSpan);
+    if (exception) {
+      op_otel_log_exception(
+        message,
+        level,
+        otelSpan,
+        exception.name ?? "",
+        exception.message ?? "",
+        exception.stack ?? "",
+      );
+    } else {
+      op_otel_log(message, level, otelSpan);
+    }
   } else {
     const spanContext = currentSpan.spanContext();
-    op_otel_log_foreign(
-      message,
-      level,
-      spanContext.traceId,
-      spanContext.spanId,
-      spanContext.traceFlags,
-    );
+    if (exception) {
+      op_otel_log_foreign_exception(
+        message,
+        level,
+        spanContext.traceId,
+        spanContext.spanId,
+        spanContext.traceFlags,
+        exception.name ?? "",
+        exception.message ?? "",
+        exception.stack ?? "",
+      );
+    } else {
+      op_otel_log_foreign(
+        message,
+        level,
+        spanContext.traceId,
+        spanContext.spanId,
+        spanContext.traceFlags,
+      );
+    }
   }
 }
 
@@ -1849,16 +1894,22 @@ export function bootstrap(
   );
 
   switch (consoleConfig) {
-    case otelConsoleConfig.capture:
-      core.wrapConsole(globalThis.console, new Console(otelLog));
+    case otelConsoleConfig.capture: {
+      const otelConsole = new Console(otelLog);
+      wrapOtelConsoleMethods(otelConsole);
+      core.wrapConsole(globalThis.console, otelConsole);
       break;
-    case otelConsoleConfig.replace:
+    }
+    case otelConsoleConfig.replace: {
+      const otelConsole = new Console(otelLog);
+      wrapOtelConsoleMethods(otelConsole);
       ObjectDefineProperty(
         globalThis,
         "console",
-        core.propNonEnumerable(new Console(otelLog)),
+        core.propNonEnumerable(otelConsole),
       );
       break;
+    }
     default:
       break;
   }
