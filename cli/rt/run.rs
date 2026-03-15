@@ -890,9 +890,8 @@ pub async fn run_with_options(
   // use a dummy npm registry url
   let npm_registry_url = Url::parse("https://localhost/").unwrap();
   let root_dir_url = Arc::new(Url::from_directory_path(&root_path).unwrap());
-  let workspace_root_path = hmr_watch_dir
-    .clone()
-    .unwrap_or_else(|| root_path.clone());
+  let workspace_root_path =
+    hmr_watch_dir.clone().unwrap_or_else(|| root_path.clone());
   let workspace_root_dir_url =
     Arc::new(Url::from_directory_path(&workspace_root_path).unwrap());
   let main_module = if let Some(url) = override_main_module {

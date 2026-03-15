@@ -9,7 +9,6 @@
 use std::sync::Arc;
 
 use deno_core::OpState;
-
 // Re-export from runtime so denort_desktop can use them.
 pub use deno_runtime::ops::desktop::AutoUpdateState;
 pub use deno_runtime::ops::desktop::DesktopApi;
@@ -17,29 +16,12 @@ pub use deno_runtime::ops::desktop::DesktopApi;
 /// JS code that exposes desktop APIs via `Deno.BrowserWindow` and `Deno.desktop`.
 pub const DESKTOP_JS: &str = r#"
 (() => {
-  const {
-    op_desktop_set_title,
-    op_desktop_set_size,
-    op_desktop_navigate,
-    op_desktop_execute_js,
-    op_desktop_close,
-    op_desktop_set_application_menu,
-    op_desktop_recv_menu_click,
-  } = Deno[Deno.internal].core.ops;
-
-  class BrowserWindow {
-    constructor(options = {}) {
-      if (options.title) op_desktop_set_title(options.title);
-      if (options.width && options.height) op_desktop_set_size(options.width, options.height);
-    }
-    setTitle(title) { op_desktop_set_title(title); }
-    setSize(width, height) { op_desktop_set_size(width, height); }
-    navigate(url) { op_desktop_navigate(url); }
-    executeJs(script) { op_desktop_execute_js(script); }
-    close() { op_desktop_close(); }
-    setApplicationMenu(templateJson) { op_desktop_set_application_menu(templateJson); }
-  }
+  const { BrowserWindow } = Deno[Deno.internal].core.ops;
+  const BrowserWindowPrototype = BrowserWindow.prototype;
   Deno.BrowserWindow = BrowserWindow;
+
+  ObjectSetPrototypeOf(BrowserWindowPrototype, EventTargetPrototype);
+  defineEventHandler(BrowserWindowPrototype, "");
 
   // Poll for menu click events from the native side and dispatch
   // them as CustomEvents on globalThis.  Defer start so the pending
@@ -139,7 +121,8 @@ pub fn desktop_auto_update_js(
 }})();
 "#,
     version = match version {
-      Some(v) => format!("\"{}\"", v.replace('\\', "\\\\").replace('"', "\\\"")),
+      Some(v) =>
+        format!("\"{}\"", v.replace('\\', "\\\\").replace('"', "\\\"")),
       None => "null".to_string(),
     },
     rolled_back = if rolled_back { "true" } else { "false" },

@@ -770,6 +770,102 @@ pub struct CompileConfig {
   pub permissions: Option<Box<PermissionsObjectWithBase>>,
 }
 
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+struct SerializedDesktopIconsConfig {
+  pub macos: Option<String>,
+  pub windows: Option<String>,
+  pub linux: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+struct SerializedDesktopAppConfig {
+  pub name: Option<String>,
+  pub icons: Option<SerializedDesktopIconsConfig>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+struct SerializedDesktopOutputConfig {
+  pub macos: Option<String>,
+  pub windows: Option<String>,
+  pub linux: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+struct SerializedDesktopReleaseConfig {
+  #[serde(rename = "baseUrl")]
+  pub base_url: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+struct SerializedDesktopConfig {
+  pub app: Option<SerializedDesktopAppConfig>,
+  pub backend: Option<String>,
+  pub output: Option<SerializedDesktopOutputConfig>,
+  pub release: Option<SerializedDesktopReleaseConfig>,
+}
+
+impl SerializedDesktopConfig {
+  pub fn into_resolved(self) -> DesktopConfig {
+    DesktopConfig {
+      app: self.app.map(|a| DesktopAppConfig {
+        name: a.name,
+        icons: a.icons.map(|i| DesktopIconsConfig {
+          macos: i.macos,
+          windows: i.windows,
+          linux: i.linux,
+        }),
+      }),
+      backend: self.backend,
+      output: self.output.map(|o| DesktopOutputConfig {
+        macos: o.macos,
+        windows: o.windows,
+        linux: o.linux,
+      }),
+      release: self.release.map(|r| DesktopReleaseConfig {
+        base_url: r.base_url,
+      }),
+    }
+  }
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct DesktopIconsConfig {
+  pub macos: Option<String>,
+  pub windows: Option<String>,
+  pub linux: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct DesktopAppConfig {
+  pub name: Option<String>,
+  pub icons: Option<DesktopIconsConfig>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct DesktopOutputConfig {
+  pub macos: Option<String>,
+  pub windows: Option<String>,
+  pub linux: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct DesktopReleaseConfig {
+  pub base_url: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct DesktopConfig {
+  pub app: Option<DesktopAppConfig>,
+  pub backend: Option<String>,
+  pub output: Option<DesktopOutputConfig>,
+  pub release: Option<DesktopReleaseConfig>,
+}
+
 #[derive(Clone, Debug, Deserialize, PartialEq)]
 #[serde(untagged)]
 pub enum LockConfig {
@@ -1117,6 +1213,7 @@ pub struct ConfigFileJson {
   pub test: Option<Value>,
   pub bench: Option<Value>,
   pub compile: Option<Value>,
+  pub desktop: Option<Value>,
   pub lock: Option<Value>,
   pub exclude: Option<Value>,
   pub minimum_dependency_age: Option<Value>,
@@ -1844,6 +1941,24 @@ impl ConfigFile {
           })
       }
       None => Ok(CompileConfig { permissions: None }),
+    }
+  }
+
+  pub fn to_desktop_config(
+    &self,
+  ) -> Result<DesktopConfig, ToInvalidConfigError> {
+    match self.json.desktop.clone() {
+      Some(config) => {
+        let serialized: SerializedDesktopConfig =
+          serde_json::from_value(config).map_err(|error| {
+            ToInvalidConfigError::Parse {
+              config: "desktop",
+              source: error,
+            }
+          })?;
+        Ok(serialized.into_resolved())
+      }
+      None => Ok(DesktopConfig::default()),
     }
   }
 

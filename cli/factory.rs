@@ -635,6 +635,7 @@ impl CliFactory {
             | DenoSubcommand::Clean { .. }
             | DenoSubcommand::Compile { .. }
             | DenoSubcommand::Completions { .. }
+            | DenoSubcommand::Desktop { .. }
             | DenoSubcommand::Coverage { .. }
             | DenoSubcommand::Deploy { .. }
             | DenoSubcommand::Doc { .. }

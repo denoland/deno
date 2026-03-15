@@ -6,10 +6,13 @@
 //! are stable. When `DesktopApi` is not present in OpState (non-desktop
 //! builds), the ops silently no-op.
 
+use std::borrow::Cow;
 use std::sync::Arc;
 
+use deno_core::FromV8;
 use deno_core::OpState;
 use deno_core::op2;
+use deno_core::v8;
 
 /// Channel for receiving menu click events in the Deno runtime.
 pub struct MenuClickReceiver(pub tokio::sync::mpsc::UnboundedReceiver<String>);
@@ -24,64 +27,201 @@ pub fn create_menu_click_channel() -> (MenuClickSender, MenuClickReceiver) {
 /// runtime (denort_desktop) to bridge to the WEF backend.
 pub trait DesktopApi: Send + Sync + 'static {
   fn set_title(&self, title: &str);
+
+  fn get_window_size(&self) -> (i32, i32);
   fn set_window_size(&self, width: i32, height: i32);
+
+  fn get_window_position(&self) -> (i32, i32);
+  fn set_window_position(&self, width: i32, height: i32);
+
+  fn is_resizeable(&self) -> bool;
+  fn set_resizeable(&self, resizeable: bool);
+
+  fn is_always_on_top(&self) -> bool;
+  fn set_always_on_top(&self, always_on_top: bool);
+  fn is_visible(&self) -> bool;
+  fn show(&self);
+  fn hide(&self);
+  fn focus(&self);
+
+  fn bind(
+    &self,
+    name: &str,
+    scope: &mut v8::PinScope<'_, '_>,
+    this: v8::Global<v8::Object>,
+    cb: v8::Local<v8::Function>,
+  );
+  fn unbind(&self, name: &str);
+
   fn navigate(&self, url: &str);
-  fn execute_js(&self, script: &str);
+  fn execute_js(&self, scope: &mut v8::PinScope<'_, '_>, script: &str) -> Result<v8::Local<v8::Value>, v8::Local<v8::Value>>;
   fn quit(&self);
   fn set_application_menu(&self, template_json: &str);
 }
 
-fn try_api(state: &OpState) -> Option<Arc<dyn DesktopApi>> {
-  state.try_borrow::<Arc<dyn DesktopApi>>().map(|a| a.clone())
+struct BrowserWindow {
+  api: Arc<dyn DesktopApi>,
 }
 
-#[op2(fast)]
-pub fn op_desktop_set_title(state: &mut OpState, #[string] title: &str) {
-  if let Some(api) = try_api(state) {
-    api.set_title(title);
+// SAFETY: we're sure this can be GCed
+unsafe impl deno_core::GarbageCollected for BrowserWindow {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"BrowserWindow"
   }
 }
 
-#[op2(fast)]
-pub fn op_desktop_set_size(
-  state: &mut OpState,
-  #[smi] width: i32,
-  #[smi] height: i32,
-) {
-  if let Some(api) = try_api(state) {
-    api.set_window_size(width, height);
+impl deno_core::Resource for BrowserWindow {
+  fn name(&self) -> Cow<'_, str> {
+    "BrowserWindow".into()
   }
 }
 
-#[op2(fast)]
-pub fn op_desktop_navigate(state: &mut OpState, #[string] url: &str) {
-  if let Some(api) = try_api(state) {
-    api.navigate(url);
+#[op2]
+impl BrowserWindow {
+  #[constructor]
+  #[cppgc]
+  fn new(
+    state: &OpState,
+    #[scoped] options: Option<BrowserWindowOptions>,
+  ) -> BrowserWindow {
+    let api = state
+      .try_borrow::<Arc<dyn DesktopApi>>()
+      .expect("desktop mode enabled")
+      .clone();
+    if let Some(options) = options {
+      if let Some(title) = options.title {
+        api.set_title(&title);
+      }
+      api.set_window_size(
+        options.width.unwrap_or(800),
+        options.height.unwrap_or(600),
+      );
+    }
+
+    BrowserWindow { api }
+  }
+
+  #[fast]
+  fn bind(
+    &self,
+    scope: &mut v8::PinScope<'_, '_>,
+    #[this] this: v8::Global<v8::Object>,
+    #[string] name: &str,
+    cb: v8::Local<v8::Function>,
+  ) {
+    self.api.bind(name, scope, this, cb);
+  }
+
+  #[fast]
+  fn unbind(&self, #[string] name: &str) {
+    self.api.unbind(name);
+  }
+
+  #[fast]
+  fn set_title(&self, #[string] title: &str) {
+    self.api.set_title(title);
+  }
+
+  fn get_size(&self) -> (i32, i32) {
+    self.api.get_window_size()
+  }
+
+  #[fast]
+  fn set_size(&self, #[smi] width: i32, #[smi] height: i32) {
+    self.api.set_window_size(width, height);
+  }
+
+  fn get_position(&self) -> (i32, i32) {
+    self.api.get_window_position()
+  }
+
+  #[fast]
+  fn set_position(&self, #[smi] x: i32, #[smi] y: i32) {
+    self.api.set_window_position(x, y);
+  }
+
+  #[fast]
+  fn is_resizeable(&self) -> bool {
+    self.api.is_resizeable()
+  }
+
+  #[fast]
+  fn set_resizeable(&self, resizeable: bool) {
+    self.api.set_resizeable(resizeable);
+  }
+
+  #[fast]
+  fn is_always_on_top(&self) -> bool {
+    self.api.is_always_on_top()
+  }
+
+  #[fast]
+  fn set_always_on_top(&self, always_on_top: bool) {
+    self.api.set_always_on_top(always_on_top);
+  }
+
+  #[fast]
+  fn is_closed(&self) -> bool {
+    todo!("implement")
+  }
+
+  #[fast]
+  fn close(&self) {
+    self.api.quit();
+  }
+
+  #[fast]
+  fn is_visible(&self) -> bool {
+    self.api.is_visible()
+  }
+
+  #[fast]
+  fn show(&self) {
+    self.api.show();
+  }
+
+  #[fast]
+  fn hide(&self) {
+    self.api.hide();
+  }
+
+  #[fast]
+  fn focus(&self) {
+    self.api.focus();
+  }
+
+  #[fast]
+  fn navigate(&self, #[string] url: &str) {
+    self.api.navigate(url);
+  }
+
+  #[fast]
+  fn reload(&self) {
+    todo!("implement")
+  }
+
+  fn execute_js(&self, scope: &mut v8::PinScope<'_, '_>, #[string] script: &str) -> Result<v8::Local<v8::Value>, v8::Local<v8::Value>> {
+    self.api.execute_js(scope, script)
+  }
+
+  #[fast]
+  fn set_application_menu(&self, #[string] template_json: &str) {
+    // TODO
+    self.api.set_application_menu(template_json);
   }
 }
 
-#[op2(fast)]
-pub fn op_desktop_execute_js(state: &mut OpState, #[string] script: &str) {
-  if let Some(api) = try_api(state) {
-    api.execute_js(script);
-  }
-}
-
-#[op2(fast)]
-pub fn op_desktop_close(state: &mut OpState) {
-  if let Some(api) = try_api(state) {
-    api.quit();
-  }
-}
-
-#[op2(fast)]
-pub fn op_desktop_set_application_menu(
-  state: &mut OpState,
-  #[string] template_json: &str,
-) {
-  if let Some(api) = try_api(state) {
-    api.set_application_menu(template_json);
-  }
+#[derive(FromV8)]
+struct BrowserWindowOptions {
+  title: Option<String>,
+  width: Option<i32>,
+  height: Option<i32>,
+  x: Option<u64>,
+  y: Option<u64>,
+  resizable: Option<bool>,
+  always_on_top: Option<bool>,
 }
 
 /// State for the auto-update system, placed into OpState at init.
@@ -179,14 +319,9 @@ pub fn op_desktop_confirm_update(state: &mut OpState) {
 deno_core::extension!(
   deno_desktop,
   ops = [
-    op_desktop_set_title,
-    op_desktop_set_size,
-    op_desktop_navigate,
-    op_desktop_execute_js,
-    op_desktop_close,
-    op_desktop_set_application_menu,
     op_desktop_apply_patch,
     op_desktop_confirm_update,
     op_desktop_recv_menu_click,
   ],
+  objects = [BrowserWindow,],
 );

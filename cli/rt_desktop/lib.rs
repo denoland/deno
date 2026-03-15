@@ -21,10 +21,13 @@ use deno_core::anyhow::Context;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
+use deno_core::v8;
 use deno_lib::util::result::js_error_downcast_ref;
 use deno_lib::version::otel_runtime_config;
 use deno_runtime::fmt_errors::format_js_error;
 use deno_terminal::colors;
+use tokio::sync::oneshot::error::RecvError;
+use wef::Value;
 use denort::run::RunOptions;
 
 /// Port used for the embedded HTTP server.
@@ -38,16 +41,155 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
     wef::set_title(title);
   }
 
+  fn get_window_size(&self) -> (i32, i32) {
+    wef::get_window_size()
+  }
+
   fn set_window_size(&self, width: i32, height: i32) {
     wef::set_window_size(width, height);
+  }
+
+  fn get_window_position(&self) -> (i32, i32) {
+    wef::get_window_position()
+  }
+
+  fn set_window_position(&self, width: i32, height: i32) {
+    wef::set_window_position(width, height);
+  }
+
+  fn is_resizeable(&self) -> bool {
+    wef::is_resizable()
+  }
+
+  fn set_resizeable(&self, resizeable: bool) {
+    wef::set_resizable(resizeable);
+  }
+
+  fn is_always_on_top(&self) -> bool {
+    wef::is_always_on_top()
+  }
+
+  fn set_always_on_top(&self, always_on_top: bool) {
+    wef::set_always_on_top(always_on_top);
+  }
+
+  fn is_visible(&self) -> bool {
+    wef::is_visible()
+  }
+
+  fn show(&self) {
+    wef::show();
+  }
+
+  fn hide(&self) {
+    wef::hide();
+  }
+
+  fn focus(&self) {
+    wef::focus();
+  }
+
+  fn bind(
+    &self,
+    name: &str,
+    scope: &mut v8::PinScope<'_, '_>,
+    this: v8::Global<v8::Object>,
+    cb: v8::Local<v8::Function>,
+  ) {
+    wef::bind(name, |mut js_call| {
+      let this = v8::Local::new(scope, this);
+      let args = std::mem::take(&mut js_call.args)
+        .into_iter()
+        .map(|v| wef_value_to_v8(scope, v))
+        .collect::<Vec<_>>();
+
+      let tc = std::pin::pin!(v8::TryCatch::new(scope));
+      let mut tc = &tc.init();
+
+      if let Some(ret) = cb.call(tc, this.into(), &args) {
+        // Attach .then()/.catch() to resolve/reject the JsCall
+        // when the promise settles.
+        if ret.is_promise() {
+          let promise: v8::Local<v8::Promise> = ret.try_into().unwrap();
+
+          // Box the JsCall into an Option so either handler can take
+          // ownership exactly once. Store as v8::External data.
+          let js_call_ptr =
+            Box::into_raw(Box::new(Some(js_call))) as *mut std::ffi::c_void;
+          let external = v8::External::new(tc, js_call_ptr);
+
+          let on_fulfilled = v8::Function::builder(
+            |scope: &mut v8::PinScope,
+             args: v8::FunctionCallbackArguments,
+             _rv: v8::ReturnValue| {
+              let data =
+                v8::Local::<v8::External>::try_from(args.data()).unwrap();
+              let js_call = unsafe {
+                Box::<Option<wef::JsCall>>::from_raw(
+                  data.value() as *mut Option<wef::JsCall>
+                )
+              };
+              if let Some(call) = *js_call {
+                call.resolve(v8_to_wef_value(scope, args.get(0)));
+              }
+            },
+          )
+          .data(external.into())
+          .build(tc)
+          .unwrap();
+
+          let on_rejected = v8::Function::builder(
+            |scope: &mut v8::PinScope,
+             args: v8::FunctionCallbackArguments,
+             _rv: v8::ReturnValue| {
+              let data =
+                v8::Local::<v8::External>::try_from(args.data()).unwrap();
+              let js_call = unsafe {
+                Box::<Option<wef::JsCall>>::from_raw(
+                  data.value() as *mut Option<wef::JsCall>
+                )
+              };
+              if let Some(call) = *js_call {
+                call.reject(v8_to_wef_value(scope, args.get(0)));
+              }
+            },
+          )
+          .data(external.into())
+          .build(tc)
+          .unwrap();
+
+          promise.then2(tc, on_fulfilled, on_rejected);
+        } else {
+          js_call.resolve(v8_to_wef_value(tc, ret));
+        }
+      } else if let Some(err) = tc.exception() {
+        js_call.reject(v8_to_wef_value(tc, err));
+      } else {
+        let message = v8::String::new(tc, "unknown error").unwrap();
+        let err = v8::Exception::error(tc, message.into());
+        js_call.reject(v8_to_wef_value(tc, err.into()));
+      }
+    });
+  }
+
+  fn unbind(&self, name: &str) {
+    wef::unbind(name);
   }
 
   fn navigate(&self, url: &str) {
     wef::navigate(url);
   }
 
-  fn execute_js(&self, script: &str) {
-    wef::execute_js(script);
+  async fn execute_js(&self, scope: &mut v8::PinScope<'_, '_>, script: &str) -> Result<v8::Local<v8::Value>, v8::Local<v8::Value>> {
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    wef::execute_js(script, Some(|res| {
+      let _ = tx.send(res);
+    }));
+
+    match rx.await.expect("execute_js channel failed") {
+      Ok(val) => Ok(wef_value_to_v8(scope, val)),
+      Err(err) => Err(wef_value_to_v8(scope, err)),
+    }
   }
 
   fn quit(&self) {
@@ -64,6 +206,102 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
     };
     let wef_value = json_to_wef_value(&json);
     wef::set_application_menu_raw(wef_value);
+  }
+}
+
+fn wef_value_to_v8(
+  scope: &v8::PinScope<'_, '_>,
+  val: wef::Value,
+) -> v8::Local<v8::Value> {
+  match val {
+    wef::Value::Null => v8::null(scope).into(),
+    wef::Value::Bool(bool) => v8::Boolean::new(scope, bool).into(),
+    wef::Value::Int(int) => v8::Integer::new(scope, int).into(),
+    wef::Value::Double(double) => v8::Number::new(scope, double).into(),
+    wef::Value::String(str) => v8::String::new(scope, &str).into(),
+    wef::Value::List(list) => {
+      let elements = list
+        .into_iter()
+        .map(|v| wef_value_to_v8(scope, v))
+        .collect::<Vec<_>>();
+      v8::Array::new_with_elements(scope, &elements).into()
+    }
+    wef::Value::Dict(dict) => {
+      let mut names = Vec::with_capacity(dict.len());
+      let mut values = Vec::with_capacity(dict.len());
+
+      for (k, v) in dict {
+        names.push(v8::String::new(scope, &k).into());
+        values.push(wef_value_to_v8(scope, v));
+      }
+
+      let prototype = v8::null(scope).into();
+      v8::Object::with_prototype_and_properties(
+        scope, prototype, &names, &values,
+      )
+      .into()
+    }
+    wef::Value::Binary(bin) => {
+      let len = bin.len();
+      let backing_store = v8::ArrayBuffer::new_backing_store_from_vec(bin);
+      let backing_store = backing_store.make_shared();
+      let ab = v8::ArrayBuffer::with_backing_store(scope, &backing_store);
+      let uint8_array = v8::Uint8Array::new(scope, ab, 0, len).unwrap();
+      uint8_array.into()
+    }
+  }
+}
+
+fn v8_to_wef_value(
+  scope: &v8::PinScope<'_, '_>,
+  val: v8::Local<v8::Value>,
+) -> wef::Value {
+  if val.is_null_or_undefined() {
+    wef::Value::Null
+  } else if val.is_boolean() {
+    wef::Value::Bool(val.boolean_value(scope))
+  } else if val.is_int32() {
+    wef::Value::Int(val.int32_value(scope).unwrap_or(0))
+  } else if val.is_number() {
+    wef::Value::Double(val.number_value(scope).unwrap_or(0.0))
+  } else if val.is_string() {
+    let s = val.to_rust_string_lossy(scope);
+    wef::Value::String(s)
+  } else if val.is_array_buffer_view() {
+    let view: v8::Local<v8::ArrayBufferView> = val.try_into().unwrap();
+    let len = view.byte_length();
+    let mut buf = vec![0u8; len];
+    view.copy_contents(&mut buf);
+    wef::Value::Binary(buf)
+  } else if val.is_array() {
+    let arr: v8::Local<v8::Array> = val.try_into().unwrap();
+    let len = arr.length();
+    let mut list = Vec::with_capacity(len as usize);
+    for i in 0..len {
+      if let Some(elem) = arr.get_index(scope, i) {
+        list.push(v8_to_wef_value(scope, elem));
+      }
+    }
+    wef::Value::List(list)
+  } else if val.is_object() {
+    let obj: v8::Local<v8::Object> = val.try_into().unwrap();
+    let mut map = std::collections::HashMap::new();
+    if let Some(names) =
+      obj.get_own_property_names(scope, v8::GetPropertyNamesArgs::default())
+    {
+      for i in 0..names.length() {
+        if let Some(key) = names.get_index(scope, i) {
+          let key_str = key.to_rust_string_lossy(scope);
+          if let Some(value) = obj.get(scope, key) {
+            map.insert(key_str, v8_to_wef_value(scope, value));
+          }
+        }
+      }
+    }
+    wef::Value::Dict(map)
+  } else {
+    // Fallback: coerce to string
+    wef::Value::String(val.to_rust_string_lossy(scope))
   }
 }
 
@@ -495,7 +733,7 @@ async fn run_desktop(update_rolled_back: bool) -> Result<(), AnyError> {
   let hmr_on_reload: Option<denort::hmr::HmrReloadCallback> =
     if hmr_watch_dir.is_some() && !is_framework_dev {
       Some(Box::new(|| {
-        wef::execute_js("location.reload()");
+        wef::execute_js("location.reload()", None);
       }))
     } else {
       None
@@ -516,9 +754,8 @@ async fn run_desktop(update_rolled_back: bool) -> Result<(), AnyError> {
   let auto_update_version = auto_update_state
     .as_ref()
     .and_then(|s| s.app_version.clone());
-  let auto_update_rolled_back = auto_update_state
-    .as_ref()
-    .is_some_and(|s| s.rolled_back);
+  let auto_update_rolled_back =
+    auto_update_state.as_ref().is_some_and(|s| s.rolled_back);
 
   let run_opts = RunOptions {
     auto_serve: true,
@@ -537,10 +774,8 @@ async fn run_desktop(update_rolled_back: bool) -> Result<(), AnyError> {
         auto_update_state,
       );
       // Wire WEF menu click callback to the Deno runtime channel
-      let menu_tx = state
-        .borrow::<denort::desktop::MenuClickSender>()
-        .0
-        .clone();
+      let menu_tx =
+        state.borrow::<denort::desktop::MenuClickSender>().0.clone();
       wef::set_menu_click_handler(move |id| {
         let _ = menu_tx.send(id.to_string());
       });

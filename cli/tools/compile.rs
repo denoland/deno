@@ -43,8 +43,12 @@ const WEF_BACKEND_ENV: &str = "WEF_BACKEND";
 fn wef_backend_search_paths(backend: &str) -> Vec<PathBuf> {
   match backend {
     "cef" => vec![
-      PathBuf::from("/Users/divy/gh/wef/result-cef/Applications/wef.app/Contents/MacOS/wef"),
-      PathBuf::from("/Users/divy/gh/wef/result/Applications/wef.app/Contents/MacOS/wef"),
+      PathBuf::from(
+        "/Users/divy/gh/wef/result-cef/Applications/wef.app/Contents/MacOS/wef",
+      ),
+      PathBuf::from(
+        "/Users/divy/gh/wef/result/Applications/wef.app/Contents/MacOS/wef",
+      ),
       PathBuf::from("/Users/divy/gh/wef/cef/build/wef.app/Contents/MacOS/wef"),
     ],
     "servo" => vec![
@@ -52,9 +56,15 @@ fn wef_backend_search_paths(backend: &str) -> Vec<PathBuf> {
       PathBuf::from("/Users/divy/gh/wef/servo/target/debug/wef_servo"),
     ],
     _ => vec![
-      PathBuf::from("/Users/divy/gh/wef/result-1/Applications/wef_webview.app/Contents/MacOS/wef_webview"),
-      PathBuf::from("/Users/divy/gh/wef/result/Applications/wef_webview.app/Contents/MacOS/wef_webview"),
-      PathBuf::from("/Users/divy/gh/wef/webview/build/wef_webview.app/Contents/MacOS/wef_webview"),
+      PathBuf::from(
+        "/Users/divy/gh/wef/result-1/Applications/wef_webview.app/Contents/MacOS/wef_webview",
+      ),
+      PathBuf::from(
+        "/Users/divy/gh/wef/result/Applications/wef_webview.app/Contents/MacOS/wef_webview",
+      ),
+      PathBuf::from(
+        "/Users/divy/gh/wef/webview/build/wef_webview.app/Contents/MacOS/wef_webview",
+      ),
     ],
   }
 }
@@ -315,8 +325,7 @@ async fn compile_binary(
     let cwd = cli_options.initial_cwd();
     let framework = super::framework::detect_framework(cwd)?;
     let backend = compile_flags.backend.as_deref().unwrap_or("webview");
-    run_desktop_hmr(&output_path, cwd, framework.as_ref(), backend)
-      .await?;
+    run_desktop_hmr(&output_path, cwd, framework.as_ref(), backend).await?;
   } else if compile_flags.desktop {
     // Package the dylib into a platform-specific app bundle.
     let bundle_path =
@@ -659,7 +668,9 @@ fn convert_png_to_icns(
   let _ = std::fs::remove_dir_all(&iconset_dir);
 
   if !status.success() {
-    bail!("Failed to convert PNG to ICNS. Provide an .icns file directly or ensure iconutil is available.");
+    bail!(
+      "Failed to convert PNG to ICNS. Provide an .icns file directly or ensure iconutil is available."
+    );
   }
 
   Ok(())
@@ -706,9 +717,9 @@ fn strip_cef_bloat(contents_dir: &Path) {
 
 fn copy_dir_all(src: &Path, dst: &Path) -> Result<(), AnyError> {
   std::fs::create_dir_all(dst)?;
-  for entry in std::fs::read_dir(src).with_context(|| {
-    format!("Reading directory '{}'", src.display())
-  })? {
+  for entry in std::fs::read_dir(src)
+    .with_context(|| format!("Reading directory '{}'", src.display()))?
+  {
     let entry = entry?;
     let ty = entry.file_type()?;
     let dest = dst.join(entry.file_name());

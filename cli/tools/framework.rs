@@ -389,12 +389,10 @@ fn has_config_file(dir: &Path, base_name: &str) -> bool {
 }
 
 fn find_config_file(dir: &Path, base_name: &str) -> Option<String> {
-  ["js", "mjs", "ts", "mts", "cjs"]
-    .iter()
-    .find_map(|ext| {
-      let file_name = format!("{base_name}.{ext}");
-      dir.join(&file_name).exists().then_some(file_name)
-    })
+  ["js", "mjs", "ts", "mts", "cjs"].iter().find_map(|ext| {
+    let file_name = format!("{base_name}.{ext}");
+    dir.join(&file_name).exists().then_some(file_name)
+  })
 }
 
 /// Read package.json dependencies.

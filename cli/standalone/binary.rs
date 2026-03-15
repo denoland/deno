@@ -1358,9 +1358,7 @@ fn get_dev_desktop_binary_path() -> Option<OsString> {
         .any(|component| component == Component::Normal("target".as_ref()))
       {
         // Prefer release libdenort (optimized) over debug.
-        let target_dir = exec_path
-          .parent()
-          .and_then(|p| p.parent());
+        let target_dir = exec_path.parent().and_then(|p| p.parent());
         target_dir
           .and_then(|d| {
             get_libdenort_path(d.join("release").join("libdenort.dylib"))

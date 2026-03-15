@@ -180,6 +180,20 @@ pub struct CompileFlags {
   pub backend: Option<String>,
 }
 
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct DesktopFlags {
+  pub source_file: String,
+  pub output: Option<String>,
+  pub args: Vec<String>,
+  pub target: Option<String>,
+  pub icon: Option<String>,
+  pub include: Vec<String>,
+  pub exclude: Vec<String>,
+  pub hmr: bool,
+  pub backend: Option<String>,
+  pub all_targets: bool,
+}
+
 impl CompileFlags {
   pub fn resolve_target(&self) -> String {
     self
@@ -618,6 +632,7 @@ pub enum DenoSubcommand {
   Clean(CleanFlags),
   Compile(CompileFlags),
   Completions(CompletionsFlags),
+  Desktop(DesktopFlags),
   Coverage(CoverageFlags),
   Deploy(DeployFlags),
   Doc(DocFlags),
@@ -714,6 +729,10 @@ impl DenoSubcommand {
   pub fn npm_system_info(&self) -> NpmSystemInfo {
     match self {
       DenoSubcommand::Compile(CompileFlags {
+        target: Some(target),
+        ..
+      })
+      | DenoSubcommand::Desktop(DesktopFlags {
         target: Some(target),
         ..
       }) => {
@@ -1335,6 +1354,10 @@ impl Flags {
       | Compile(CompileFlags {
         source_file: script,
         ..
+      })
+      | Desktop(DesktopFlags {
+        source_file: script,
+        ..
       }) => resolve_single_folder_path(script, current_dir, |mut p| {
         if p.pop() { Some(p) } else { None }
       })
@@ -1876,6 +1899,7 @@ pub fn flags_from_vec_with_initial_cwd(
         "clean" => clean_parse(&mut flags, &mut m),
         "compile" => compile_parse(&mut flags, &mut m)?,
         "create" => create_parse(&mut flags, &mut m)?,
+        "desktop" => desktop_parse(&mut flags, &mut m)?,
         "completions" => completions_parse(&mut flags, &mut m, app),
         "coverage" => coverage_parse(&mut flags, &mut m)?,
         "doc" => doc_parse(&mut flags, &mut m)?,
@@ -1985,6 +2009,7 @@ heading! {
   DOC_HEADING = "Documentation options",
   FMT_HEADING = "Formatting options",
   COMPILE_HEADING = "Compile options",
+  DESKTOP_HEADING = "Desktop options",
   LINT_HEADING = "Linting options",
   TEST_HEADING = "Testing options",
   UPGRADE_HEADING = "Upgrade options",
@@ -2143,6 +2168,7 @@ pub fn clap_root() -> Command {
         .subcommand(clean_subcommand())
         .subcommand(compile_subcommand())
         .subcommand(create_subcommand())
+        .subcommand(desktop_subcommand())
         .subcommand(completions_subcommand())
         .subcommand(coverage_subcommand())
         .subcommand(doc_subcommand())
@@ -2725,6 +2751,14 @@ Unless --reload is specified, this command will not re-download already cached d
     )
 }
 
+const SUPPORTED_OS: [&str; 5] = [
+  "x86_64-unknown-linux-gnu",
+  "aarch64-unknown-linux-gnu",
+  "x86_64-pc-windows-msvc",
+  "x86_64-apple-darwin",
+  "aarch64-apple-darwin",
+];
+
 fn compile_subcommand() -> Command {
   command(
     "compile",
@@ -2787,13 +2821,7 @@ On the first invocation of `deno compile`, Deno will download the relevant binar
         Arg::new("target")
           .long("target")
           .help("Target OS architecture")
-          .value_parser([
-            "x86_64-unknown-linux-gnu",
-            "aarch64-unknown-linux-gnu",
-            "x86_64-pc-windows-msvc",
-            "x86_64-apple-darwin",
-            "aarch64-apple-darwin",
-          ])
+          .value_parser(SUPPORTED_OS)
           .help_heading(COMPILE_HEADING),
       )
       .arg(no_code_cache_arg())
@@ -2841,6 +2869,106 @@ On the first invocation of `deno compile`, Deno will download the relevant binar
           .default_value("webview")
           .requires("desktop")
           .help_heading(COMPILE_HEADING),
+      )
+      .arg(executable_ext_arg())
+      .arg(env_file_arg())
+      .arg(
+        script_arg()
+          .required_unless_present("help")
+          .trailing_var_arg(true),
+      )
+  })
+}
+
+fn desktop_subcommand() -> Command {
+  command(
+    "desktop",
+    cstr!("Build and run desktop applications.
+
+  <p(245)>deno desktop main.tsx</>
+  <p(245)>deno desktop --hmr main.tsx</>
+  <p(245)>deno desktop --output MyApp.app main.tsx</>
+
+Compiles the given script into a desktop application using a WEF backend for
+the UI layer. The entrypoint can be a file or <c>.</> to auto-detect a supported
+framework (Next.js, Astro, etc.).
+
+<y>Read more:</> <c>https://docs.deno.com/go/desktop</>
+"),
+    UnstableArgsConfig::ResolutionAndRuntime,
+  )
+  .defer(|cmd| {
+    runtime_args(cmd, true, false, true)
+      .arg(check_arg(true))
+      .arg(
+        Arg::new("include")
+          .long("include")
+          .help(
+            cstr!("Includes an additional module or file/directory in the compiled executable.
+  <p(245)>Use this flag if a dynamically imported module or a web worker main module
+  fails to load in the executable or to embed a file or directory in the executable.
+  This flag can be passed multiple times, to include multiple additional modules.</>",
+          ))
+          .action(ArgAction::Append)
+          .value_hint(ValueHint::FilePath)
+          .help_heading(DESKTOP_HEADING),
+      )
+      .arg(
+        Arg::new("exclude")
+          .long("exclude")
+          .help(
+            cstr!("Excludes a file/directory in the compiled executable.
+  <p(245)>Use this flag to exclude a specific file or directory within the included files.</>",
+          ))
+          .action(ArgAction::Append)
+          .value_hint(ValueHint::FilePath)
+          .help_heading(DESKTOP_HEADING),
+      )
+      .arg(
+        Arg::new("output")
+          .long("output")
+          .short('o')
+          .value_parser(value_parser!(String))
+          .help(cstr!("Output path <p(245)>(e.g. MyApp.app, MyApp.dmg, MyApp.msi)</>"))
+          .value_hint(ValueHint::FilePath)
+          .help_heading(DESKTOP_HEADING),
+      )
+      .arg(
+        Arg::new("target")
+          .long("target")
+          .help("Target OS architecture")
+          .value_parser(SUPPORTED_OS)
+          .help_heading(DESKTOP_HEADING),
+      )
+      .arg(no_code_cache_arg())
+      .arg(
+        Arg::new("icon")
+          .long("icon")
+          .help("Set the application icon (.ico on Windows, .icns or .png on macOS)")
+          .value_parser(value_parser!(String))
+          .help_heading(DESKTOP_HEADING),
+      )
+      .arg(
+        Arg::new("hmr")
+          .long("hmr")
+          .help("Run the desktop app with Hot Module Replacement enabled")
+          .action(ArgAction::SetTrue)
+          .help_heading(DESKTOP_HEADING),
+      )
+      .arg(
+        Arg::new("backend")
+          .long("backend")
+          .help("WEF backend to use for the desktop app")
+          .value_parser(["webview", "cef", "servo"])
+          .default_value("webview")
+          .help_heading(DESKTOP_HEADING),
+      )
+      .arg(
+        Arg::new("all-targets")
+          .long("all-targets")
+          .help("Build for all supported target platforms")
+          .action(ArgAction::SetTrue)
+          .help_heading(DESKTOP_HEADING),
       )
       .arg(executable_ext_arg())
       .arg(env_file_arg())
@@ -6191,6 +6319,58 @@ fn compile_parse(
     desktop,
     hmr,
     backend,
+  });
+
+  Ok(())
+}
+
+fn desktop_parse(
+  flags: &mut Flags,
+  matches: &mut ArgMatches,
+) -> clap::error::Result<()> {
+  flags.type_check_mode = TypeCheckMode::Local;
+  runtime_args_parse(flags, matches, true, false, true)?;
+
+  if let Some(initial_cwd) = flags.initial_cwd.take() {
+    flags.initial_cwd = Some(
+      crate::util::fs::canonicalize_path(&initial_cwd)
+        .ok()
+        .unwrap_or(initial_cwd),
+    );
+  }
+
+  let mut script = matches.remove_many::<String>("script_arg").unwrap();
+  let source_file = script.next().unwrap();
+  let args = script.collect();
+  let output = matches.remove_one::<String>("output");
+  let target = matches.remove_one::<String>("target");
+  let icon = matches.remove_one::<String>("icon");
+  let hmr = matches.get_flag("hmr");
+  let backend = matches.remove_one::<String>("backend");
+  let all_targets = matches.get_flag("all-targets");
+  let include = matches
+    .remove_many::<String>("include")
+    .map(|f| f.collect::<Vec<_>>())
+    .unwrap_or_default();
+  let exclude = matches
+    .remove_many::<String>("exclude")
+    .map(|f| f.collect::<Vec<_>>())
+    .unwrap_or_default();
+  ext_arg_parse(flags, matches);
+
+  flags.code_cache_enabled = !matches.get_flag("no-code-cache");
+
+  flags.subcommand = DenoSubcommand::Desktop(DesktopFlags {
+    source_file,
+    output,
+    args,
+    target,
+    icon,
+    include,
+    exclude,
+    hmr,
+    backend,
+    all_targets,
   });
 
   Ok(())

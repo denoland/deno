@@ -701,6 +701,9 @@ impl CliOptions {
           DenoSubcommand::Compile(compile_flags) => {
             resolve_url_or_path(&compile_flags.source_file, self.initial_cwd())?
           }
+          DenoSubcommand::Desktop(desktop_flags) => {
+            resolve_url_or_path(&desktop_flags.source_file, self.initial_cwd())?
+          }
           DenoSubcommand::Eval(_) => {
             let specifier = format!(
               "./$deno$eval.{}",
@@ -1070,7 +1073,9 @@ impl CliOptions {
       if name.is_empty() {
         let maybe_subcommand_permissions = match &self.flags.subcommand {
           DenoSubcommand::Bench(_) => dir.to_bench_permissions_config()?,
-          DenoSubcommand::Compile(_) => dir.to_compile_permissions_config()?,
+          DenoSubcommand::Compile(_) | DenoSubcommand::Desktop(_) => {
+            dir.to_compile_permissions_config()?
+          }
           DenoSubcommand::Test(_) => dir.to_test_permissions_config()?,
           _ => None,
         };
@@ -1090,7 +1095,7 @@ impl CliOptions {
             .to_bench_permissions_config()?
             .filter(|permissions| !permissions.permissions.is_empty())
             .map(|permissions| ("Bench", &permissions.base)),
-          DenoSubcommand::Compile(_) => dir
+          DenoSubcommand::Compile(_) | DenoSubcommand::Desktop(_) => dir
             .to_compile_permissions_config()?
             .filter(|permissions| !permissions.permissions.is_empty())
             .map(|permissions| ("Compile", &permissions.base)),

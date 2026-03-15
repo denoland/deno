@@ -7,6 +7,7 @@ pub mod clean;
 pub mod compile;
 pub mod coverage;
 pub mod deploy;
+pub mod desktop;
 pub mod doc;
 pub mod fmt;
 pub mod framework;
