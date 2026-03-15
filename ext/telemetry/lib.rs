@@ -37,6 +37,7 @@ use deno_error::JsError;
 use deno_error::JsErrorBox;
 use once_cell::sync::Lazy;
 use once_cell::sync::OnceCell;
+use opentelemetry::Array;
 use opentelemetry::InstrumentationScope;
 pub use opentelemetry::Key;
 pub use opentelemetry::KeyValue;
@@ -1227,9 +1228,61 @@ macro_rules! attr_raw {
     } else if let Ok(bigint) = $value.try_cast::<v8::BigInt>() {
       let (i64_value, _lossless) = bigint.i64_value();
       Some(Value::I64(i64_value))
-    } else if let Ok(_array) = $value.try_cast::<v8::Array>() {
-      // TODO: implement array attributes
-      None
+    } else if let Ok(array) = $value.try_cast::<v8::Array>() {
+      let len = array.length();
+      if len == 0 {
+        Some(Value::Array(Array::String(vec![])))
+      } else {
+        let first = array.get_index($scope, 0).unwrap();
+        if first.is_string() {
+          let mut vec = Vec::with_capacity(len as usize);
+          for i in 0..len {
+            let element = array.get_index($scope, i).unwrap();
+            if let Ok(s) = element.try_cast::<v8::String>() {
+              let view = v8::ValueView::new($scope, s);
+              vec.push(StringValue::from(match view.data() {
+                v8::ValueViewData::OneByte(bytes) => {
+                  String::from_utf8_lossy(bytes).into_owned()
+                }
+                v8::ValueViewData::TwoByte(bytes) => {
+                  String::from_utf16_lossy(bytes)
+                }
+              }));
+            }
+          }
+          Some(Value::Array(Array::String(vec)))
+        } else if first.is_number() {
+          let mut vec = Vec::with_capacity(len as usize);
+          for i in 0..len {
+            let element = array.get_index($scope, i).unwrap();
+            if let Ok(n) = element.try_cast::<v8::Number>() {
+              vec.push(n.value());
+            }
+          }
+          Some(Value::Array(Array::F64(vec)))
+        } else if first.is_boolean() {
+          let mut vec = Vec::with_capacity(len as usize);
+          for i in 0..len {
+            let element = array.get_index($scope, i).unwrap();
+            if let Ok(b) = element.try_cast::<v8::Boolean>() {
+              vec.push(b.is_true());
+            }
+          }
+          Some(Value::Array(Array::Bool(vec)))
+        } else if first.is_big_int() {
+          let mut vec = Vec::with_capacity(len as usize);
+          for i in 0..len {
+            let element = array.get_index($scope, i).unwrap();
+            if let Ok(b) = element.try_cast::<v8::BigInt>() {
+              let (i64_value, _lossless) = b.i64_value();
+              vec.push(i64_value);
+            }
+          }
+          Some(Value::Array(Array::I64(vec)))
+        } else {
+          None
+        }
+      }
     } else {
       None
     };
