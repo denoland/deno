@@ -298,7 +298,7 @@ pub fn op_node_statfs_sync(
 
 #[op2(stack_trace)]
 #[serde]
-#[allow(clippy::unused_async)]
+#[allow(clippy::unused_async, reason = "sometimes async")]
 pub async fn op_node_statfs(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
