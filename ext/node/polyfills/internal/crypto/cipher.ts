@@ -214,7 +214,7 @@ export function Cipheriv(
   this._needsBlockCache =
     !(cipher == "aes-128-gcm" || cipher == "aes-256-gcm" ||
       cipher == "aes-128-ctr" || cipher == "aes-192-ctr" ||
-      cipher == "aes-256-ctr");
+      cipher == "aes-256-ctr" || cipher == "chacha20-poly1305");
   this._authTag = undefined;
   this._autoPadding = true;
   this._finalized = false;
@@ -457,7 +457,7 @@ export function Decipheriv(
   this._needsBlockCache =
     !(cipher == "aes-128-gcm" || cipher == "aes-256-gcm" ||
       cipher == "aes-128-ctr" || cipher == "aes-192-ctr" ||
-      cipher == "aes-256-ctr");
+      cipher == "aes-256-ctr" || cipher == "chacha20-poly1305");
   this._authTag = undefined;
   this._finalized = false;
   this._decoder = undefined;

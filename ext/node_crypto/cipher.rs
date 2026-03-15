@@ -14,11 +14,83 @@ use deno_core::Resource;
 use deno_error::JsErrorClass;
 use digest::KeyInit;
 use digest::generic_array::GenericArray;
+use poly1305::universal_hash::UniversalHash;
 
 type Tag = Option<Vec<u8>>;
 
 type Aes128Gcm = aead_gcm_stream::AesGcm<aes::Aes128>;
 type Aes256Gcm = aead_gcm_stream::AesGcm<aes::Aes256>;
+
+struct ChaCha20Poly1305Cipher {
+  chacha: chacha20::ChaCha20,
+  poly: poly1305::Poly1305,
+  aad_len: u64,
+  ct_len: u64,
+  auth_tag_length: usize,
+}
+
+impl ChaCha20Poly1305Cipher {
+  fn new(key: &[u8], iv: &[u8], auth_tag_length: usize) -> Self {
+    let chacha_key = chacha20::Key::from_slice(key);
+    let nonce = chacha20::Nonce::from_slice(iv);
+
+    // Create ChaCha20 cipher for poly1305 key generation
+    let mut chacha = chacha20::ChaCha20::new(chacha_key, nonce);
+
+    // Generate poly1305 key from first 32 bytes of ChaCha20 keystream (block 0)
+    let mut poly_key_block = [0u8; 64];
+    chacha
+      .try_apply_keystream(&mut poly_key_block)
+      .expect("keystream");
+
+    let poly_key = poly1305::Key::from_slice(&poly_key_block[..32]).to_owned();
+    let poly = poly1305::Poly1305::new(&poly_key);
+
+    // chacha is now at counter=1, ready for encryption
+
+    ChaCha20Poly1305Cipher {
+      chacha,
+      poly,
+      aad_len: 0,
+      ct_len: 0,
+      auth_tag_length,
+    }
+  }
+
+  fn set_aad(&mut self, aad: &[u8]) {
+    self.aad_len = aad.len() as u64;
+    self.poly.update_padded(aad);
+  }
+
+  fn encrypt(&mut self, input: &[u8], output: &mut [u8]) {
+    output[..input.len()].copy_from_slice(input);
+    self.chacha.try_apply_keystream(output).expect("keystream");
+    self.ct_len += output.len() as u64;
+    self.poly.update_padded(output);
+  }
+
+  fn decrypt(&mut self, input: &[u8], output: &mut [u8]) {
+    // For decrypt: feed ciphertext to poly BEFORE decrypting
+    self.ct_len += input.len() as u64;
+    self.poly.update_padded(input);
+    output[..input.len()].copy_from_slice(input);
+    self.chacha.try_apply_keystream(output).expect("keystream");
+  }
+
+  fn compute_tag(self) -> Vec<u8> {
+    let mut poly = self.poly;
+    // Feed aad_len and ct_len as le64 in one 16-byte block
+    let mut len_block = [0u8; 16];
+    len_block[..8].copy_from_slice(&self.aad_len.to_le_bytes());
+    len_block[8..].copy_from_slice(&self.ct_len.to_le_bytes());
+    poly.update(&[poly1305::Block::clone_from_slice(&len_block)]);
+    let tag_output = poly.finalize();
+    let tag: &[u8] = tag_output.as_ref();
+    let mut tag_vec = tag.to_vec();
+    tag_vec.truncate(self.auth_tag_length);
+    tag_vec
+  }
+}
 
 enum Cipher {
   Aes128Cbc(Box<cbc::Encryptor<aes::Aes128>>),
@@ -32,6 +104,10 @@ enum Cipher {
   Aes192Ctr(Box<ctr::Ctr128BE<aes::Aes192>>),
   Aes256Ctr(Box<ctr::Ctr128BE<aes::Aes256>>),
   DesEde3Cbc(Box<cbc::Encryptor<des::TdesEde3>>),
+  ChaCha20Poly1305(Box<ChaCha20Poly1305Cipher>),
+  Aes128Ccm(()),
+  Aes192Ccm(()),
+  Aes256Ccm(()),
   // TODO(kt3k): add more algorithms Aes192Cbc, etc.
 }
 
@@ -47,6 +123,10 @@ enum Decipher {
   Aes192Ctr(Box<ctr::Ctr128BE<aes::Aes192>>),
   Aes256Ctr(Box<ctr::Ctr128BE<aes::Aes256>>),
   DesEde3Cbc(Box<cbc::Decryptor<des::TdesEde3>>),
+  ChaCha20Poly1305(Box<ChaCha20Poly1305Cipher>, Option<usize>),
+  Aes128Ccm(()),
+  Aes192Ccm(()),
+  Aes256Ccm(()),
   // TODO(kt3k): add more algorithms Aes192Cbc, Aes128GCM, etc.
 }
 
@@ -189,6 +269,7 @@ impl Resource for DecipherContext {
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
+#[property("code" = self.code())]
 pub enum CipherError {
   #[class(type)]
   #[error("IV length must be 12 bytes")]
@@ -208,6 +289,43 @@ pub enum CipherError {
   #[class(type)]
   #[error("Invalid authentication tag length: {0}")]
   InvalidAuthTag(usize),
+  #[class(type)]
+  #[error("Unsupported state or unable to authenticate data")]
+  UnsupportedState,
+  #[class(type)]
+  #[error("error:0E09A006:configuration file routines::tag not set")]
+  TagNotSet,
+}
+
+impl CipherError {
+  fn code(&self) -> deno_error::PropertyValue {
+    match self {
+      Self::InvalidIvLength => {
+        deno_error::PropertyValue::String("ERR_CRYPTO_INVALID_IV_LENGTH".into())
+      }
+      Self::InvalidKeyLength => deno_error::PropertyValue::String(
+        "ERR_CRYPTO_INVALID_KEY_LENGTH".into(),
+      ),
+      Self::InvalidAuthTag(_) => {
+        deno_error::PropertyValue::String("ERR_CRYPTO_INVALID_AUTH_TAG".into())
+      }
+      Self::InvalidInitializationVector => {
+        deno_error::PropertyValue::String("ERR_CRYPTO_INVALID_IV".into())
+      }
+      Self::TagNotSet => {
+        deno_error::PropertyValue::String("ERR_OSSL_TAG_NOT_SET".into())
+      }
+      _ => deno_error::PropertyValue::String("ERR_CRYPTO_CIPHER".into()),
+    }
+  }
+}
+
+fn is_valid_chacha20_poly1305_tag_length(tag_len: usize) -> bool {
+  (1..=16).contains(&tag_len)
+}
+
+fn is_valid_ccm_tag_length(tag_len: usize) -> bool {
+  tag_len >= 4 && tag_len <= 16 && tag_len % 2 == 0
 }
 
 impl Cipher {
@@ -311,6 +429,54 @@ impl Cipher {
         }
         DesEde3Cbc(Box::new(cbc::Encryptor::new(key.into(), iv.into())))
       }
+      "chacha20-poly1305" => {
+        if key.len() != 32 {
+          return Err(CipherError::InvalidKeyLength);
+        }
+        if iv.len() != 12 {
+          return Err(CipherError::InvalidInitializationVector);
+        }
+        let tag_len = auth_tag_length.unwrap_or(16);
+        if !is_valid_chacha20_poly1305_tag_length(tag_len) {
+          return Err(CipherError::InvalidAuthTag(tag_len));
+        }
+        ChaCha20Poly1305(Box::new(ChaCha20Poly1305Cipher::new(
+          key, iv, tag_len,
+        )))
+      }
+      "aes-128-ccm" => {
+        if key.len() != 16 {
+          return Err(CipherError::InvalidKeyLength);
+        }
+        let _tag_len = match auth_tag_length {
+          Some(t) if is_valid_ccm_tag_length(t) => t,
+          Some(t) => return Err(CipherError::InvalidAuthTag(t)),
+          None => return Err(CipherError::InvalidAuthTag(0)),
+        };
+        Aes128Ccm(())
+      }
+      "aes-192-ccm" => {
+        if key.len() != 24 {
+          return Err(CipherError::InvalidKeyLength);
+        }
+        let _tag_len = match auth_tag_length {
+          Some(t) if is_valid_ccm_tag_length(t) => t,
+          Some(t) => return Err(CipherError::InvalidAuthTag(t)),
+          None => return Err(CipherError::InvalidAuthTag(0)),
+        };
+        Aes192Ccm(())
+      }
+      "aes-256-ccm" => {
+        if key.len() != 32 {
+          return Err(CipherError::InvalidKeyLength);
+        }
+        let _tag_len = match auth_tag_length {
+          Some(t) if is_valid_ccm_tag_length(t) => t,
+          Some(t) => return Err(CipherError::InvalidAuthTag(t)),
+          None => return Err(CipherError::InvalidAuthTag(0)),
+        };
+        Aes256Ccm(())
+      }
       _ => return Err(CipherError::UnknownCipher(algorithm_name.to_string())),
     })
   }
@@ -322,6 +488,9 @@ impl Cipher {
         cipher.set_aad(aad);
       }
       Aes256Gcm(cipher, _) => {
+        cipher.set_aad(aad);
+      }
+      ChaCha20Poly1305(cipher) => {
         cipher.set_aad(aad);
       }
       _ => {}
@@ -384,6 +553,12 @@ impl Cipher {
         for (input, output) in input.chunks(8).zip(output.chunks_mut(8)) {
           encryptor.encrypt_block_b2b_mut(input.into(), output.into());
         }
+      }
+      ChaCha20Poly1305(cipher) => {
+        cipher.encrypt(input, output);
+      }
+      Aes128Ccm(_) | Aes192Ccm(_) | Aes256Ccm(_) => {
+        // CCM stub: not implemented
       }
     }
   }
@@ -477,6 +652,13 @@ impl Cipher {
         Ok(None)
       }
       (Aes256Ctr(_) | Aes128Ctr(_) | Aes192Ctr(_), _) => Ok(None),
+      (ChaCha20Poly1305(cipher), _) => {
+        let tag = cipher.compute_tag();
+        Ok(Some(tag))
+      }
+      (Aes128Ccm(_) | Aes192Ccm(_) | Aes256Ccm(_), _) => {
+        Err(CipherError::TagNotSet)
+      }
       (DesEde3Cbc(encryptor), true) => {
         let _ = (*encryptor)
           .encrypt_padded_b2b_mut::<Pkcs7>(input, output)
@@ -508,6 +690,10 @@ impl Cipher {
         if let Some(tag_len) = auth_tag_length {
           tag.truncate(tag_len);
         }
+        Some(tag)
+      }
+      ChaCha20Poly1305(cipher) => {
+        let tag = cipher.compute_tag();
         Some(tag)
       }
       _ => None,
@@ -688,6 +874,55 @@ impl Decipher {
         }
         DesEde3Cbc(Box::new(cbc::Decryptor::new(key.into(), iv.into())))
       }
+      "chacha20-poly1305" => {
+        if key.len() != 32 {
+          return Err(DecipherError::InvalidKeyLength);
+        }
+        if iv.len() != 12 {
+          return Err(DecipherError::InvalidInitializationVector);
+        }
+        let tag_len = auth_tag_length.unwrap_or(16);
+        if !is_valid_chacha20_poly1305_tag_length(tag_len) {
+          return Err(DecipherError::InvalidAuthTag(tag_len));
+        }
+        ChaCha20Poly1305(
+          Box::new(ChaCha20Poly1305Cipher::new(key, iv, tag_len)),
+          auth_tag_length,
+        )
+      }
+      "aes-128-ccm" => {
+        if key.len() != 16 {
+          return Err(DecipherError::InvalidKeyLength);
+        }
+        let _tag_len = match auth_tag_length {
+          Some(t) if is_valid_ccm_tag_length(t) => t,
+          Some(t) => return Err(DecipherError::InvalidAuthTag(t)),
+          None => return Err(DecipherError::InvalidAuthTag(0)),
+        };
+        Aes128Ccm(())
+      }
+      "aes-192-ccm" => {
+        if key.len() != 24 {
+          return Err(DecipherError::InvalidKeyLength);
+        }
+        let _tag_len = match auth_tag_length {
+          Some(t) if is_valid_ccm_tag_length(t) => t,
+          Some(t) => return Err(DecipherError::InvalidAuthTag(t)),
+          None => return Err(DecipherError::InvalidAuthTag(0)),
+        };
+        Aes192Ccm(())
+      }
+      "aes-256-ccm" => {
+        if key.len() != 32 {
+          return Err(DecipherError::InvalidKeyLength);
+        }
+        let _tag_len = match auth_tag_length {
+          Some(t) if is_valid_ccm_tag_length(t) => t,
+          Some(t) => return Err(DecipherError::InvalidAuthTag(t)),
+          None => return Err(DecipherError::InvalidAuthTag(0)),
+        };
+        Aes256Ccm(())
+      }
       _ => {
         return Err(DecipherError::UnknownCipher(algorithm_name.to_string()));
       }
@@ -707,6 +942,17 @@ impl Decipher {
           return Err(DecipherError::InvalidAuthTag(length));
         }
       }
+      Decipher::ChaCha20Poly1305(_, Some(tag_len)) => {
+        if *tag_len != length {
+          return Err(DecipherError::InvalidAuthTag(length));
+        }
+      }
+      Decipher::ChaCha20Poly1305(_, None) => {
+        // Default tag length is 16; reject anything else
+        if length != 16 {
+          return Err(DecipherError::InvalidAuthTag(length));
+        }
+      }
       _ => {}
     }
     Ok(())
@@ -719,6 +965,9 @@ impl Decipher {
         decipher.set_aad(aad);
       }
       Aes256Gcm(decipher, _) => {
+        decipher.set_aad(aad);
+      }
+      ChaCha20Poly1305(decipher, _) => {
         decipher.set_aad(aad);
       }
       _ => {}
@@ -782,6 +1031,12 @@ impl Decipher {
           decryptor.decrypt_block_b2b_mut(input.into(), output.into());
         }
       }
+      ChaCha20Poly1305(decipher, _) => {
+        decipher.decrypt(input, output);
+      }
+      Aes128Ccm(_) | Aes192Ccm(_) | Aes256Ccm(_) => {
+        // CCM stub: not implemented
+      }
     }
   }
 
@@ -803,6 +1058,7 @@ impl Decipher {
           | Aes256Ecb(..)
           | Aes128Gcm(..)
           | Aes256Gcm(..)
+          | ChaCha20Poly1305(..)
       )
     {
       return Ok(());
@@ -904,6 +1160,20 @@ impl Decipher {
         } else {
           Err(DecipherError::DataAuthenticationFailed)
         }
+      }
+      (ChaCha20Poly1305(decipher, _), _) => {
+        let expected_tag = decipher.compute_tag();
+        if auth_tag.is_empty() {
+          return Err(DecipherError::DataAuthenticationFailed);
+        }
+        if expected_tag == auth_tag {
+          Ok(())
+        } else {
+          Err(DecipherError::DataAuthenticationFailed)
+        }
+      }
+      (Aes128Ccm(_) | Aes192Ccm(_) | Aes256Ccm(_), _) => {
+        Err(DecipherError::DataAuthenticationFailed)
       }
       (Aes256Cbc(decryptor), true) => {
         assert_block_len!(input.len(), 16);
