@@ -342,6 +342,26 @@ const stringPtr = Deno.UnsafePointer.of(string);
 const stringPtrview = new Deno.UnsafePointerView(stringPtr);
 console.log(stringPtrview.getCString());
 console.log(stringPtrview.getCString(11));
+assertEquals(stringPtrview.getString(5), "Hello");
+assertEquals(Deno.UnsafePointerView.getString(stringPtr, 7, 5), " from p");
+const boundedString = Uint8Array.from([
+  ...new TextEncoder().encode("hello"),
+  0x00,
+  ...new TextEncoder().encode("world"),
+  0xC0,
+  0xAF,
+]);
+const boundedStringPtr = Deno.UnsafePointer.of(boundedString);
+const boundedStringView = new Deno.UnsafePointerView(boundedStringPtr);
+assertEquals(boundedStringView.getString(6), "hello\0");
+assertEquals(
+  boundedStringView.getString(boundedString.length),
+  new TextDecoder().decode(boundedString),
+);
+assertEquals(
+  Deno.UnsafePointerView.getString(boundedStringPtr, 6, 5),
+  new TextDecoder().decode(boundedString.subarray(5, 11)),
+);
 console.log("false", dylib.symbols.is_null_ptr(ptr0));
 console.log("true", dylib.symbols.is_null_ptr(null));
 console.log("false", dylib.symbols.is_null_ptr(Deno.UnsafePointer.of(into)));
