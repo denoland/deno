@@ -158,6 +158,7 @@ mod test {
   #![allow(clippy::disallowed_methods, reason = "test code")]
 
   use sys_traits::EnvTempDir;
+  use sys_traits::FsCreateDirAll;
   use sys_traits::impls::InMemorySys;
 
   use super::*;
@@ -179,6 +180,7 @@ mod test {
   #[test]
   fn test_resolve_temp_file_name() {
     let sys = InMemorySys::default();
+    sys.fs_create_dir_all("/").unwrap();
     let file_path = PathBuf::from("/test/test.node");
     let bytes: [u8; 3] = [1, 2, 3];
     let temp_file =
