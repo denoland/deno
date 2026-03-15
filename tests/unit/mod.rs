@@ -81,7 +81,7 @@ fn run_test(test: &CollectedTest) -> TestResult {
     .current_dir(util::root_path())
     .arg("test")
     .arg("--config")
-    .arg(util::deno_config_path())
+    .arg(util::root_path().join("unit_node").join("deno.json"))
     .arg("--no-lock")
     // TODO(bartlomieju): would be better if we could apply this unstable
     // flag to particular files, but there's many of them that rely on unstable
