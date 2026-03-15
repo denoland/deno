@@ -171,7 +171,9 @@ declare namespace Deno {
      * was not found.
      *
      * @category Errors */
-    export class NotFound extends Error {}
+    export class NotFound extends Error {
+      code: string;
+    }
     /**
      * Raised when the underlying operating system indicates the current user
      * which the Deno process is running under does not have the appropriate
