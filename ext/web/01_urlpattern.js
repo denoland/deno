@@ -22,6 +22,7 @@ const {
   RegExpPrototypeTest,
   SafeMap,
   SafeRegExp,
+  StringPrototypeSlice,
   Symbol,
   SymbolFor,
   TypeError,
@@ -137,6 +138,35 @@ class SampledLRUCache {
 }
 
 const matchInputCache = new SampledLRUCache(4096);
+
+/**
+ * Fast path: parse a URL string in JS and extract components, avoiding the
+ * Rust op + serde serialization overhead. Returns the same shape as
+ * op_urlpattern_process_match_input for string inputs without baseURL.
+ * @param {string} input
+ * @returns {[MatchInput, [string, null]] | null}
+ */
+function processMatchInputFromURLString(input) {
+  let url;
+  try {
+    url = new URL(input);
+  } catch {
+    return null;
+  }
+  const protocol = url.protocol;
+  const search = url.search;
+  const hash = url.hash;
+  return [{
+    protocol: StringPrototypeSlice(protocol, 0, -1),
+    username: url.username,
+    password: url.password,
+    hostname: url.hostname,
+    port: url.port,
+    pathname: url.pathname,
+    search: search ? StringPrototypeSlice(search, 1) : "",
+    hash: hash ? StringPrototypeSlice(hash, 1) : "",
+  }, [input, null]];
+}
 
 const _hasRegExpGroups = Symbol("[[hasRegExpGroups]]");
 
@@ -264,12 +294,18 @@ class URLPattern {
       baseURL = webidl.converters.USVString(baseURL, prefix, "Argument 2");
     }
 
-    const res = baseURL === undefined
-      ? matchInputCache.getOrInsert(
+    let res;
+    if (typeof input === "string" && baseURL === undefined) {
+      // Fast path: parse URL in JS, avoiding Rust op + serde overhead
+      res = processMatchInputFromURLString(input);
+    } else if (baseURL === undefined) {
+      res = matchInputCache.getOrInsert(
         input,
         op_urlpattern_process_match_input,
-      )
-      : op_urlpattern_process_match_input(input, baseURL);
+      );
+    } else {
+      res = op_urlpattern_process_match_input(input, baseURL);
+    }
     if (res === null) return false;
 
     const values = res[0];
@@ -306,12 +342,18 @@ class URLPattern {
       baseURL = webidl.converters.USVString(baseURL, prefix, "Argument 2");
     }
 
-    const res = baseURL === undefined
-      ? matchInputCache.getOrInsert(
+    let res;
+    if (typeof input === "string" && baseURL === undefined) {
+      // Fast path: parse URL in JS, avoiding Rust op + serde overhead
+      res = processMatchInputFromURLString(input);
+    } else if (baseURL === undefined) {
+      res = matchInputCache.getOrInsert(
         input,
         op_urlpattern_process_match_input,
-      )
-      : op_urlpattern_process_match_input(input, baseURL);
+      );
+    } else {
+      res = op_urlpattern_process_match_input(input, baseURL);
+    }
     if (res === null) {
       return null;
     }
