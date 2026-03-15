@@ -195,6 +195,7 @@ const {
   Uint32Array,
   WeakMap,
   WeakMapPrototype,
+  JSONStringify,
   WeakSet,
   WeakSetPrototype,
 } = primordials;
@@ -247,6 +248,34 @@ class AssertionError extends Error {
 function assert(cond, msg = "Assertion failed") {
   if (!cond) {
     throw new AssertionError(msg);
+  }
+}
+
+// Attempt to JSON.stringify, returning "[Circular]" only for circular
+// reference errors (matching Node.js behavior).
+const firstErrorLine = (error) =>
+  StringPrototypeSplit(error.message, "\n", 1)[0];
+let CIRCULAR_ERROR_MESSAGE;
+function tryStringify(arg) {
+  try {
+    return JSONStringify(arg);
+  } catch (err) {
+    if (!CIRCULAR_ERROR_MESSAGE) {
+      try {
+        const a = {};
+        a.a = a;
+        JSONStringify(a);
+      } catch (circularError) {
+        CIRCULAR_ERROR_MESSAGE = firstErrorLine(circularError);
+      }
+    }
+    if (
+      err.name === "TypeError" &&
+      firstErrorLine(err) === CIRCULAR_ERROR_MESSAGE
+    ) {
+      return "[Circular]";
+    }
+    throw err;
   }
 }
 
@@ -3535,6 +3564,9 @@ function inspectArgs(args, inspectOptions = { __proto__: null }) {
             } else {
               formattedArg = `${NumberParseFloat(value)}`;
             }
+          } else if (char == "j") {
+            // Format as JSON.
+            formattedArg = tryStringify(args[a++]);
           } else if (ArrayPrototypeIncludes(["O", "o"], char)) {
             // Format as an object.
             formattedArg = formatValue(ctx, args[a++], 0);

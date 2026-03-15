@@ -593,10 +593,15 @@ function _internalConnect(
     req.localAddress = localAddress;
     req.localPort = localPort;
 
-    if (addressType === 4) {
-      err = (socket._handle as TCP).connect(req, address, port);
-    } else {
-      err = (socket._handle as TCP).connect6(req, address, port);
+    try {
+      if (addressType === 4) {
+        err = (socket._handle as TCP).connect(req, address, port);
+      } else {
+        err = (socket._handle as TCP).connect6(req, address, port);
+      }
+    } catch (e) {
+      socket.destroy(e);
+      return;
     }
   } else {
     const req = new PipeConnectWrap();
