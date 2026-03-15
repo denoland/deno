@@ -685,7 +685,7 @@ function blobFromObjectUrl(url) {
   }
 
   const blob = new Blob();
-  blob[_type] = blobData.media_type;
+  blob[_type] = blobData.mediaType;
   blob[_size] = totalSize;
   blob[_parts] = parts;
   return blob;

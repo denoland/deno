@@ -2132,6 +2132,7 @@ dependencies = [
  "indexmap 2.12.0",
  "inventory",
  "libc",
+ "num-bigint",
  "parking_lot",
  "paste",
  "percent-encoding",

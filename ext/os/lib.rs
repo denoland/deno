@@ -346,7 +346,6 @@ fn op_exit(state: &mut OpState) {
 }
 
 #[op2(stack_trace)]
-#[serde]
 fn op_loadavg(
   state: &mut OpState,
 ) -> Result<(f64, f64, f64), PermissionCheckError> {
@@ -426,7 +425,6 @@ impl From<netif::Interface> for NetworkInterface {
 }
 
 #[op2(stack_trace)]
-#[serde]
 fn op_system_memory_info(
   state: &mut OpState,
 ) -> Result<Option<sys_info::MemInfo>, PermissionCheckError> {

@@ -11,13 +11,13 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
-use deno_core::ByteString;
+use deno_core::FromV8;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_core::ToV8;
+use deno_core::convert::ByteString;
 use deno_core::op2;
-use deno_core::serde::Deserialize;
-use deno_core::serde::Serialize;
 use deno_error::JsErrorBox;
 use futures::Stream;
 use tokio::io::AsyncRead;
@@ -118,8 +118,7 @@ deno_core::extension!(deno_cache,
   },
 );
 
-#[derive(Deserialize, Serialize, Debug, Clone)]
-#[serde(rename_all = "camelCase")]
+#[derive(FromV8, Debug, Clone)]
 pub struct CachePutRequest {
   pub cache_id: i64,
   pub request_url: String,
@@ -130,20 +129,17 @@ pub struct CachePutRequest {
   pub response_rid: Option<ResourceId>,
 }
 
-#[derive(Deserialize, Serialize, Debug)]
-#[serde(rename_all = "camelCase")]
+#[derive(FromV8, Debug)]
 pub struct CacheMatchRequest {
   pub cache_id: i64,
   pub request_url: String,
   pub request_headers: Vec<(ByteString, ByteString)>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, ToV8)]
 pub struct CacheMatchResponse(CacheMatchResponseMeta, Option<ResourceId>);
 
-#[derive(Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, ToV8)]
 pub struct CacheMatchResponseMeta {
   pub response_status: u16,
   pub response_status_text: String,
@@ -151,8 +147,7 @@ pub struct CacheMatchResponseMeta {
   pub response_headers: Vec<(ByteString, ByteString)>,
 }
 
-#[derive(Deserialize, Serialize, Debug)]
-#[serde(rename_all = "camelCase")]
+#[derive(FromV8, Debug)]
 pub struct CacheDeleteRequest {
   pub cache_id: i64,
   pub request_url: String,
@@ -340,7 +335,7 @@ pub async fn op_cache_storage_delete(
 #[op2]
 pub async fn op_cache_put(
   state: Rc<RefCell<OpState>>,
-  #[serde] request_response: CachePutRequest,
+  #[scoped] request_response: CachePutRequest,
 ) -> Result<(), CacheError> {
   let cache = get_cache(&state)?;
   let resource = match request_response.response_rid {
@@ -357,10 +352,9 @@ pub async fn op_cache_put(
 }
 
 #[op2]
-#[serde]
 pub async fn op_cache_match(
   state: Rc<RefCell<OpState>>,
-  #[serde] request: CacheMatchRequest,
+  #[scoped] request: CacheMatchRequest,
 ) -> Result<Option<CacheMatchResponse>, CacheError> {
   let cache = get_cache(&state)?;
   match cache.r#match(request).await? {
@@ -376,7 +370,7 @@ pub async fn op_cache_match(
 #[op2]
 pub async fn op_cache_delete(
   state: Rc<RefCell<OpState>>,
-  #[serde] request: CacheDeleteRequest,
+  #[scoped] request: CacheDeleteRequest,
 ) -> Result<bool, CacheError> {
   let cache = get_cache(&state)?;
   cache.delete(request).await

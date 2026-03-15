@@ -8,6 +8,7 @@ use std::rc::Rc;
 
 use deno_core::OpState;
 use deno_core::ResourceId;
+use deno_core::ToV8;
 use deno_core::op2;
 #[cfg(feature = "sync_fs")]
 use deno_core::unsync::spawn_blocking;
@@ -20,7 +21,6 @@ use deno_permissions::CheckedPath;
 use deno_permissions::CheckedPathBuf;
 use deno_permissions::OpenAccessKind;
 use deno_permissions::PermissionsContainer;
-use serde::Serialize;
 #[cfg(feature = "sync_fs")]
 use tokio::task::JoinError;
 
@@ -265,9 +265,9 @@ pub async fn op_node_open(
     .add(FileResource::new(file, "fsFile".to_string()));
   Ok(rid)
 }
-#[derive(Debug, Serialize)]
+#[derive(Debug, ToV8)]
 pub struct StatFs {
-  #[serde(rename = "type")]
+  #[to_v8(rename = "type")]
   pub typ: u64,
   pub bsize: u64,
   pub blocks: u64,
@@ -278,7 +278,6 @@ pub struct StatFs {
 }
 
 #[op2(stack_trace)]
-#[serde]
 pub fn op_node_statfs_sync(
   state: &mut OpState,
   #[string] path: &str,
@@ -297,7 +296,6 @@ pub fn op_node_statfs_sync(
 }
 
 #[op2(stack_trace)]
-#[serde]
 #[allow(clippy::unused_async)]
 pub async fn op_node_statfs(
   state: Rc<RefCell<OpState>>,
@@ -722,8 +720,7 @@ pub async fn op_node_rmdir(
   Ok(())
 }
 
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, ToV8)]
 pub struct CpStatInfo {
   pub dest_exists: bool,
   pub is_directory: bool,
@@ -1003,7 +1000,6 @@ async fn check_paths_impl(
 /// Validates src and dest paths for recursive cp operations.
 /// Returns stat info for the source file
 #[op2(stack_trace)]
-#[serde]
 pub async fn op_node_cp_check_paths_recursive(
   state: Rc<RefCell<OpState>>,
   #[string] src: String,
@@ -1024,7 +1020,6 @@ pub async fn op_node_cp_check_paths_recursive(
 /// parent directory exists
 /// Returns stat info for the source file
 #[op2(stack_trace)]
-#[serde]
 pub async fn op_node_cp_validate_and_prepare(
   state: Rc<RefCell<OpState>>,
   #[string] src: String,

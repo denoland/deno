@@ -145,7 +145,6 @@ pub async fn op_net_connect_unix(
 }
 
 #[op2(stack_trace)]
-#[serde]
 pub async fn op_net_recv_unixpacket(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
