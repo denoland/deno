@@ -315,6 +315,8 @@ pub struct InitFlags {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct InfoFlags {
+  pub depth: Option<usize>,
+  pub collapse_modules: bool,
   pub json: bool,
   pub file: Option<String>,
 }
@@ -3465,6 +3467,22 @@ The following information is shown:
       .arg(import_map_arg())
       .arg(node_modules_dir_arg())
       .arg(vendor_arg())
+      .arg(
+        Arg::new("depth")
+          .long("depth")
+          .help("Limit the depth of the displayed dependency tree")
+          .requires("file")
+          .conflicts_with("json")
+          .value_parser(value_parser!(usize)),
+      )
+      .arg(
+        Arg::new("collapse-modules")
+          .long("collapse-modules")
+          .help("Collapse external module subtrees into a single line")
+          .requires("file")
+          .conflicts_with("json")
+          .action(ArgAction::SetTrue),
+      )
       .arg(
         Arg::new("json")
           .long("json")
@@ -6681,8 +6699,12 @@ fn info_parse(
   no_remote_arg_parse(flags, matches);
   no_npm_arg_parse(flags, matches);
   allow_and_deny_import_parse(flags, matches)?;
+  let depth = matches.remove_one::<usize>("depth");
+  let collapse_modules = matches.get_flag("collapse-modules");
   let json = matches.get_flag("json");
   flags.subcommand = DenoSubcommand::Info(InfoFlags {
+    depth,
+    collapse_modules,
     file: matches.remove_one::<String>("file"),
     json,
   });
@@ -9601,6 +9623,8 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Info(InfoFlags {
+          depth: None,
+          collapse_modules: false,
           json: false,
           file: Some("script.ts".to_string()),
         }),
@@ -9613,6 +9637,8 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Info(InfoFlags {
+          depth: None,
+          collapse_modules: false,
           json: false,
           file: Some("script.ts".to_string()),
         }),
@@ -9626,6 +9652,8 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Info(InfoFlags {
+          depth: None,
+          collapse_modules: false,
           json: true,
           file: Some("script.ts".to_string()),
         }),
@@ -9638,6 +9666,8 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Info(InfoFlags {
+          depth: None,
+          collapse_modules: false,
           json: false,
           file: None
         }),
@@ -9650,6 +9680,8 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Info(InfoFlags {
+          depth: None,
+          collapse_modules: false,
           json: true,
           file: None
         }),
@@ -9669,6 +9701,8 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Info(InfoFlags {
+          depth: None,
+          collapse_modules: false,
           json: false,
           file: None
         }),
@@ -9677,6 +9711,60 @@ mod tests {
         no_remote: true,
         ..Flags::default()
       }
+    );
+
+    let r = flags_from_vec(svec!["deno", "info", "--depth", "1", "script.ts"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Info(InfoFlags {
+          depth: Some(1),
+          collapse_modules: false,
+          json: false,
+          file: Some("script.ts".to_string()),
+        }),
+        ..Flags::default()
+      }
+    );
+
+    let r =
+      flags_from_vec(svec!["deno", "info", "--collapse-modules", "script.ts"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Info(InfoFlags {
+          depth: None,
+          collapse_modules: true,
+          json: false,
+          file: Some("script.ts".to_string()),
+        }),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "info",
+      "--json",
+      "--depth",
+      "1",
+      "script.ts"
+    ]);
+    assert_eq!(
+      r.unwrap_err().kind(),
+      clap::error::ErrorKind::ArgumentConflict
+    );
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "info",
+      "--json",
+      "--collapse-modules",
+      "script.ts"
+    ]);
+    assert_eq!(
+      r.unwrap_err().kind(),
+      clap::error::ErrorKind::ArgumentConflict
     );
   }
 
@@ -10604,6 +10692,8 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Info(InfoFlags {
+          depth: None,
+          collapse_modules: false,
           file: Some("script.ts".to_string()),
           json: false,
         }),
@@ -12261,6 +12351,8 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Info(InfoFlags {
+          depth: None,
+          collapse_modules: false,
           json: false,
           file: Some("https://example.com".to_string()),
         }),
