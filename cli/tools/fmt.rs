@@ -31,6 +31,7 @@ use deno_core::futures;
 use deno_core::parking_lot::Mutex;
 use deno_core::unsync::spawn_blocking;
 use deno_core::url::Url;
+use deno_config::deno_json::VueComponentCase as DenoVueComponentCase;
 use log::debug;
 use log::info;
 use log::warn;
@@ -364,7 +365,10 @@ fn format_markdown(
                 text: text.to_string(),
                 config: &codeblock_config,
                 external_formatter: Some(
-                  &create_external_formatter_for_typescript(unstable_options),
+                  &create_external_formatter_for_typescript(
+                    unstable_options,
+                    fmt_options,
+                  ),
                 ),
               },
             )
@@ -492,7 +496,9 @@ pub fn format_html(
         ext if ext.starts_with("markup-fmt-jinja-") => {
           // Jinja/Nunjucks expressions may contain non-JS syntax (for example
           // filters such as `|>`), so preserve the original text instead of
-          // passing it through the TypeScript formatter.
+          // passing it through the TypeScript formatter. The ext prefix is set
+          // by markup_fmt for Jinja expression/statement callbacks:
+          // https://github.com/g-plane/markup_fmt/blob/v0.26.0/src/ctx.rs#L390-L394
           Ok(Cow::from(text))
         }
         _ => {
@@ -508,7 +514,10 @@ pub fn format_html(
               text: text.to_string(),
               config: &typescript_config,
               external_formatter: Some(
-                &create_external_formatter_for_typescript(unstable_options),
+                &create_external_formatter_for_typescript(
+                  unstable_options,
+                  fmt_options,
+                ),
               ),
             },
           )
@@ -577,6 +586,7 @@ pub fn format_html(
 /// A function for formatting embedded code blocks in JavaScript and TypeScript.
 fn create_external_formatter_for_typescript(
   unstable_options: &UnstableFmtOptions,
+  fmt_options: &FmtOptionsConfig,
 ) -> impl Fn(
   &str,
   String,
@@ -584,9 +594,18 @@ fn create_external_formatter_for_typescript(
 ) -> deno_core::anyhow::Result<Option<String>>
 + use<> {
   let unstable_sql = unstable_options.sql;
+  let vue_component_case = resolved_vue_component_case(fmt_options);
+  let angular_next_control_flow_same_line =
+    resolved_angular_next_control_flow_same_line(fmt_options);
   move |lang, text, config| match lang {
     "css" => format_embedded_css(&text, config),
-    "html" | "xml" | "svg" => format_embedded_html(lang, &text, config),
+    "html" | "xml" | "svg" => format_embedded_html(
+      lang,
+      &text,
+      config,
+      vue_component_case,
+      angular_next_control_flow_same_line,
+    ),
     "sql" => {
       if unstable_sql {
         format_embedded_sql(&text, config)
@@ -708,6 +727,8 @@ fn format_embedded_html(
   lang: &str,
   text: &str,
   config: &dprint_plugin_typescript::configuration::Configuration,
+  vue_component_case: markup_fmt::config::VueComponentCase,
+  angular_next_control_flow_same_line: bool,
 ) -> deno_core::anyhow::Result<Option<String>> {
   use markup_fmt::config;
 
@@ -765,9 +786,9 @@ fn format_embedded_html(
       component_v_slot_style: None,
       default_v_slot_style: None,
       named_v_slot_style: None,
-      vue_component_case: config::VueComponentCase::Ignore,
+      vue_component_case,
       v_bind_same_name_short_hand: None,
-      angular_next_control_flow_same_line: true,
+      angular_next_control_flow_same_line,
       strict_svelte_attr: false,
       svelte_attr_shorthand: None,
       svelte_directive_shorthand: None,
@@ -906,6 +927,7 @@ pub fn format_file(
           config: &config,
           external_formatter: Some(&create_external_formatter_for_typescript(
             unstable_options,
+            fmt_options,
           )),
         },
       )?
@@ -930,7 +952,10 @@ pub fn format_parsed_source(
   dprint_plugin_typescript::format_parsed_source(
     parsed_source,
     &get_resolved_typescript_config(fmt_options),
-    Some(&create_external_formatter_for_typescript(unstable_options)),
+    Some(&create_external_formatter_for_typescript(
+      unstable_options,
+      fmt_options,
+    )),
   )
 }
 
@@ -1639,9 +1664,10 @@ fn get_resolved_markup_fmt_config(
     component_v_slot_style: None,
     default_v_slot_style: None,
     named_v_slot_style: None,
-    vue_component_case: VueComponentCase::Ignore,
+    vue_component_case: resolved_vue_component_case(options),
     v_bind_same_name_short_hand: None,
-    angular_next_control_flow_same_line: true,
+    angular_next_control_flow_same_line:
+      resolved_angular_next_control_flow_same_line(options),
     strict_svelte_attr: false,
     svelte_attr_shorthand: Some(true),
     svelte_directive_shorthand: Some(true),
@@ -1654,6 +1680,29 @@ fn get_resolved_markup_fmt_config(
     layout: layout_options,
     language: language_options,
   }
+}
+
+fn resolved_vue_component_case(
+  options: &FmtOptionsConfig,
+) -> markup_fmt::config::VueComponentCase {
+  match options
+    .vue_component_case
+    .unwrap_or(DenoVueComponentCase::Ignore)
+  {
+    DenoVueComponentCase::Ignore => markup_fmt::config::VueComponentCase::Ignore,
+    DenoVueComponentCase::PascalCase => {
+      markup_fmt::config::VueComponentCase::PascalCase
+    }
+    DenoVueComponentCase::KebabCase => {
+      markup_fmt::config::VueComponentCase::KebabCase
+    }
+  }
+}
+
+fn resolved_angular_next_control_flow_same_line(
+  options: &FmtOptionsConfig,
+) -> bool {
+  options.angular_next_control_flow_same_line.unwrap_or(true)
 }
 
 fn get_resolved_yaml_config(
