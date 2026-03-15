@@ -356,8 +356,7 @@ fn apply_source_maps(
         column_number: new_col,
       } => {
         // Convert back to 0-based for the profile
-        call_frame["lineNumber"] =
-          serde_json::Value::from(new_line as i64 - 1);
+        call_frame["lineNumber"] = serde_json::Value::from(new_line as i64 - 1);
         call_frame["columnNumber"] =
           serde_json::Value::from(new_col as i64 - 1);
       }
@@ -367,8 +366,7 @@ fn apply_source_maps(
         column_number: new_col,
       } => {
         call_frame["url"] = serde_json::Value::from(file_name);
-        call_frame["lineNumber"] =
-          serde_json::Value::from(new_line as i64 - 1);
+        call_frame["lineNumber"] = serde_json::Value::from(new_line as i64 - 1);
         call_frame["columnNumber"] =
           serde_json::Value::from(new_col as i64 - 1);
       }
