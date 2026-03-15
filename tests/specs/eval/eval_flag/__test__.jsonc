@@ -1,0 +1,24 @@
+{
+  "tests": {
+    "short_flag_cjs": {
+      "args": ["-q", "-e", "require('./say_hello')"],
+      "output": "Hello!\n"
+    },
+    "long_flag_cjs": {
+      "args": ["--quiet", "--eval", "require('./say_hello')"],
+      "output": "Hello!\n"
+    },
+    "auto_detect_esm": {
+      "args": [
+        "--quiet",
+        "-e",
+        "import { ok } from 'node:assert'; ok(true); console.log('esm works')"
+      ],
+      "output": "esm works\n"
+    },
+    "with_ext_override": {
+      "args": ["--quiet", "--ext=mjs", "-e", "console.log('esm')"],
+      "output": "esm\n"
+    }
+  }
+}
