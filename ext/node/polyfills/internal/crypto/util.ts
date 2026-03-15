@@ -188,6 +188,38 @@ const cipherInfoTable: CipherInfoResult[] = [
     keyLength: 32,
     mode: "ctr",
   },
+  {
+    name: "chacha20-poly1305",
+    nid: 1018,
+    blockSize: 1,
+    ivLength: 12,
+    keyLength: 32,
+    mode: "",
+  },
+  {
+    name: "aes-128-ccm",
+    nid: 896,
+    blockSize: 1,
+    ivLength: 12,
+    keyLength: 16,
+    mode: "ccm",
+  },
+  {
+    name: "aes-192-ccm",
+    nid: 899,
+    blockSize: 1,
+    ivLength: 12,
+    keyLength: 24,
+    mode: "ccm",
+  },
+  {
+    name: "aes-256-ccm",
+    nid: 902,
+    blockSize: 1,
+    ivLength: 12,
+    keyLength: 32,
+    mode: "ccm",
+  },
 ];
 
 const cipherInfoByName = new Map<string, CipherInfoResult>();
@@ -218,6 +250,10 @@ const supportedCiphers = [
   "des-ede3-cbc",
   "aes128",
   "aes256",
+  "chacha20-poly1305",
+  "aes-128-ccm",
+  "aes-192-ccm",
+  "aes-256-ccm",
 ];
 
 export function getCiphers(): string[] {

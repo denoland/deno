@@ -359,6 +359,12 @@
     "parallel/test-console-table.js": {},
     "parallel/test-console-with-frozen-intrinsics.js": {},
     "parallel/test-crypto-classes.js": {},
+    "parallel/test-crypto-argon2-unsupported.js": {
+      "ignore": true,
+      "reason": "Deno supports argon2, so this unsupported test is not applicable"
+    },
+    "parallel/test-crypto-async-sign-verify.js": {},
+    "parallel/test-crypto-authenticated.js": {},
     "parallel/test-crypto-certificate.js": {},
     "parallel/test-crypto-cipheriv-decipheriv.js": {
       "exitCode": 1,

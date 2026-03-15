@@ -419,12 +419,18 @@ pub fn op_node_cipheriv_set_aad(
   state: &mut OpState,
   #[smi] rid: u32,
   #[buffer] aad: &[u8],
+  #[smi] plaintext_length: i32,
 ) -> bool {
   let context = match state.resource_table.get::<cipher::CipherContext>(rid) {
     Ok(context) => context,
     Err(_) => return false,
   };
-  context.set_aad(aad);
+  let pt_len = if plaintext_length < 0 {
+    None
+  } else {
+    Some(plaintext_length as usize)
+  };
+  context.set_aad(aad, pt_len);
   true
 }
 
@@ -505,12 +511,18 @@ pub fn op_node_decipheriv_set_aad(
   state: &mut OpState,
   #[smi] rid: u32,
   #[buffer] aad: &[u8],
+  #[smi] plaintext_length: i32,
 ) -> bool {
   let context = match state.resource_table.get::<cipher::DecipherContext>(rid) {
     Ok(context) => context,
     Err(_) => return false,
   };
-  context.set_aad(aad);
+  let pt_len = if plaintext_length < 0 {
+    None
+  } else {
+    Some(plaintext_length as usize)
+  };
+  context.set_aad(aad, pt_len);
   true
 }
 
@@ -550,7 +562,7 @@ pub fn op_node_sign(
   #[cppgc] handle: &KeyObjectHandle,
   #[buffer] digest: &[u8],
   #[string] digest_type: &str,
-  #[smi] pss_salt_length: Option<u32>,
+  #[smi] pss_salt_length: Option<i32>,
   #[smi] padding: Option<u32>,
   #[smi] dsa_signature_encoding: u32,
 ) -> Result<Box<[u8]>, sign::KeyObjectHandlePrehashedSignAndVerifyError> {
@@ -569,7 +581,7 @@ pub fn op_node_verify(
   #[buffer] digest: &[u8],
   #[string] digest_type: &str,
   #[buffer] signature: &[u8],
-  #[smi] pss_salt_length: Option<u32>,
+  #[smi] pss_salt_length: Option<i32>,
   #[smi] padding: Option<u32>,
   #[smi] dsa_signature_encoding: u32,
 ) -> Result<bool, sign::KeyObjectHandlePrehashedSignAndVerifyError> {
