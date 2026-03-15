@@ -30,7 +30,10 @@ pub fn get_ssl_key_log() -> Arc<dyn KeyLog> {
     .get_or_init(|| {
       if let Some(path) = env::var_os("SSLKEYLOGFILE")
         && let Err(e) = {
-          #[allow(clippy::disallowed_methods, reason = "keylog file uses direct fs access")]
+          #[allow(
+            clippy::disallowed_methods,
+            reason = "keylog file uses direct fs access"
+          )]
           let result = OpenOptions::new().append(true).create(true).open(&path);
           result
         }

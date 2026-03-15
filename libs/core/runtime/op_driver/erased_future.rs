@@ -176,7 +176,10 @@ mod tests {
   #[test]
   fn test_in_arena_selfref_easy() {
     let arena = ArenaUnique::<ErasedFuture<256, usize>>::with_capacity(16);
-    #[allow(clippy::useless_vec, reason = "vec is needed to test arena with heap allocation")]
+    #[allow(
+      clippy::useless_vec,
+      reason = "vec is needed to test arena with heap allocation"
+    )]
     let future = arena.allocate(ErasedFuture::new(async {
       let mut v = vec![1];
       let v = v.get_mut(0).unwrap();

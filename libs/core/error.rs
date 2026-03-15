@@ -922,7 +922,10 @@ impl JsError {
                   "JsStackFrame::from_callsite_object raised an exception",
                 )
                 .to_rust_string_lossy(tc_scope);
-              #[allow(clippy::print_stderr, reason = "intentional warning output")]
+              #[allow(
+                clippy::print_stderr,
+                reason = "intentional warning output"
+              )]
               {
                 eprintln!(
                   "warning: Failed to create JsStackFrame from callsite object: {message}. This is a bug in deno"

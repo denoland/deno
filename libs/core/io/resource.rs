@@ -217,12 +217,18 @@ impl dyn Resource {
   }
 
   #[inline(always)]
-  #[allow(clippy::needless_lifetimes, reason = "explicit lifetimes improve clarity")]
+  #[allow(
+    clippy::needless_lifetimes,
+    reason = "explicit lifetimes improve clarity"
+  )]
   pub fn downcast_rc<'a, T: Resource>(self: &'a Rc<Self>) -> Option<&'a Rc<T>> {
     if self.is::<T>() {
       let ptr = self as *const Rc<_> as *const Rc<T>;
       // TODO(piscisaureus): safety comment
-      #[allow(clippy::undocumented_unsafe_blocks, reason = "safety comment on the containing block")]
+      #[allow(
+        clippy::undocumented_unsafe_blocks,
+        reason = "safety comment on the containing block"
+      )]
       Some(unsafe { &*ptr })
     } else {
       None

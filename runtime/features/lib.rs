@@ -15,7 +15,10 @@ pub const JS_SOURCE: deno_core::FastStaticString =
 pub type ExitCb = Box<dyn Fn(&str, &str) + Send + Sync>;
 
 #[allow(clippy::print_stderr, reason = "intentional output")]
-#[allow(clippy::disallowed_methods, reason = "process::exit is the intended behavior")]
+#[allow(
+  clippy::disallowed_methods,
+  reason = "process::exit is the intended behavior"
+)]
 fn exit(feature: &str, api_name: &str) {
   eprintln!("Feature '{feature}' for '{api_name}' was not specified, exiting.");
   std::process::exit(70);

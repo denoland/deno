@@ -47,7 +47,10 @@ macro_rules! assert_napi_ok {
   ($call: expr) => {{
     assert_eq!(
       {
-        #[allow(unused_unsafe, reason = "napi_sys safe fn in unsafe extern blocks")]
+        #[allow(
+          unused_unsafe,
+          reason = "napi_sys safe fn in unsafe extern blocks"
+        )]
         unsafe {
           $call
         }

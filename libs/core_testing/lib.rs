@@ -4,7 +4,10 @@
 #![allow(clippy::print_stdout, reason = "intentional output")]
 #![allow(clippy::print_stderr, reason = "intentional output")]
 // TODO(bartlomieju): add safety comments to unsafe blocks and remove this allow
-#![allow(clippy::undocumented_unsafe_blocks, reason = "safety comment on the containing block")]
+#![allow(
+  clippy::undocumented_unsafe_blocks,
+  reason = "safety comment on the containing block"
+)]
 
 mod checkin;
 

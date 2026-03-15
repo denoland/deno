@@ -323,7 +323,10 @@ mod tests {
   ) {
     async fn task() -> i32 {
       let mut v = [0; 10 * 1024];
-      #[allow(clippy::needless_range_loop, reason = "index is used for array assignment")]
+      #[allow(
+        clippy::needless_range_loop,
+        reason = "index is used for array assignment"
+      )]
       for i in 0..10 {
         tokio::task::yield_now().await;
         v[i] = 1;

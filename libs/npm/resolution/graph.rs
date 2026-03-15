@@ -47,7 +47,10 @@ use crate::resolution::collections::OneDirectionalLinkedList;
 use crate::resolution::snapshot::SnapshotPackageCopyIndexResolver;
 
 pub trait Reporter: std::fmt::Debug + Send + Sync {
-  #[allow(unused_variables, reason = "default implementation ignores parameters")]
+  #[allow(
+    unused_variables,
+    reason = "default implementation ignores parameters"
+  )]
   fn on_resolved(&self, package_req: &PackageReq, nv: &PackageNv) {}
 }
 

@@ -119,7 +119,10 @@ struct ForeignStatic {
 #[derive(Debug)]
 enum ForeignSymbol {
   ForeignFunction(ForeignFunction),
-  ForeignStatic(#[allow(dead_code, reason = "variant data used by serde deserialization")] ForeignStatic),
+  ForeignStatic(
+    #[allow(dead_code, reason = "variant data used by serde deserialization")]
+    ForeignStatic,
+  ),
 }
 
 impl<'de> Deserialize<'de> for ForeignSymbol {

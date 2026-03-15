@@ -2,7 +2,10 @@
 
 #![allow(clippy::print_stdout, reason = "FFI test output")]
 #![allow(clippy::print_stderr, reason = "FFI test output")]
-#![allow(clippy::undocumented_unsafe_blocks, reason = "FFI test code with simple unsafe usage")]
+#![allow(
+  clippy::undocumented_unsafe_blocks,
+  reason = "FFI test code with simple unsafe usage"
+)]
 #![allow(non_upper_case_globals, reason = "matches FFI naming conventions")]
 
 use std::os::raw::c_void;
@@ -192,7 +195,10 @@ pub extern "C" fn call_fn_ptr_return_u8(func: Option<extern "C" fn() -> u8>) {
   println!("u8: {}", func());
 }
 
-#[allow(clippy::not_unsafe_ptr_arg_deref, reason = "pointer is from trusted FFI callback")]
+#[allow(
+  clippy::not_unsafe_ptr_arg_deref,
+  reason = "pointer is from trusted FFI callback"
+)]
 #[unsafe(no_mangle)]
 pub extern "C" fn call_fn_ptr_return_buffer(
   func: Option<extern "C" fn() -> *const u8>,
@@ -436,7 +442,10 @@ pub extern "C" fn return_isize() -> isize {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn return_f32() -> f32 {
-  #[allow(clippy::excessive_precision, reason = "exact f32 representation needed for test")]
+  #[allow(
+    clippy::excessive_precision,
+    reason = "exact f32 representation needed for test"
+  )]
   0.20298023223876953125
 }
 

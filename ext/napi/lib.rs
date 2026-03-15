@@ -1,8 +1,14 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 #![allow(non_camel_case_types, reason = "matches Node-API naming conventions")]
-#![allow(non_upper_case_globals, reason = "matches Node-API naming conventions")]
-#![allow(clippy::undocumented_unsafe_blocks, reason = "pervasive FFI unsafe blocks throughout NAPI implementation")]
+#![allow(
+  non_upper_case_globals,
+  reason = "matches Node-API naming conventions"
+)]
+#![allow(
+  clippy::undocumented_unsafe_blocks,
+  reason = "pervasive FFI unsafe blocks throughout NAPI implementation"
+)]
 #![deny(clippy::missing_safety_doc)]
 
 //! Symbols to be exported are now defined in this JSON file.
@@ -649,7 +655,10 @@ fn op_napi_open<'scope>(
   let type_tag = v8::Private::new(scope, Some(type_tag_name));
   let type_tag = v8::Global::new(scope, type_tag);
 
-  #[allow(clippy::disallowed_methods, reason = "napi requires file path URL conversion")]
+  #[allow(
+    clippy::disallowed_methods,
+    reason = "napi requires file path URL conversion"
+  )]
   let url_filename =
     Url::from_file_path(&path).map_err(|_| NApiError::InvalidPath)?;
   let env_shared =

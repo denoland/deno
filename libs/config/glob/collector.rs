@@ -296,8 +296,7 @@ mod test {
         .unwrap_or(false)
     });
 
-    let result =
-      file_collector.collect_file_patterns(&RealSys, &file_patterns);
+    let result = file_collector.collect_file_patterns(&RealSys, &file_patterns);
     let expected = [
       "README.md",
       "a.ts",
@@ -322,8 +321,7 @@ mod test {
       .ignore_git_folder()
       .ignore_node_modules()
       .set_vendor_folder(Some(vendor_dir.to_path_buf()));
-    let result =
-      file_collector.collect_file_patterns(&RealSys, &file_patterns);
+    let result = file_collector.collect_file_patterns(&RealSys, &file_patterns);
     let expected = [
       "README.md",
       "a.ts",
@@ -351,8 +349,7 @@ mod test {
         ignore_dir_path.to_path_buf(),
       )]),
     };
-    let result =
-      file_collector.collect_file_patterns(&RealSys, &file_patterns);
+    let result = file_collector.collect_file_patterns(&RealSys, &file_patterns);
     let expected = [
       "README.md",
       "a.ts",

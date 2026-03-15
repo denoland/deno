@@ -1342,7 +1342,10 @@ impl EszipV2 {
       }
     }
 
-    #[allow(clippy::too_many_arguments, reason = "many parameters needed for module visiting")]
+    #[allow(
+      clippy::too_many_arguments,
+      reason = "many parameters needed for module visiting"
+    )]
     fn visit_module<'a>(
       graph: &'a ModuleGraph,
       module_kind_provider: &dyn ModuleKindResolver,

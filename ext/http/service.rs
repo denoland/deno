@@ -157,7 +157,10 @@ impl std::ops::Deref for HttpServerState {
 
 enum RequestBodyState {
   Incoming(Incoming),
-  Resource(#[allow(dead_code, reason = "prevent drop until variant is dropped")] HttpRequestBodyAutocloser),
+  Resource(
+    #[allow(dead_code, reason = "prevent drop until variant is dropped")]
+    HttpRequestBodyAutocloser,
+  ),
 }
 
 impl From<Incoming> for RequestBodyState {

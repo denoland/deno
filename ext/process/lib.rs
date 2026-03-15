@@ -482,7 +482,10 @@ fn create_command(
 
   #[cfg(unix)]
   // TODO(bartlomieju):
-  #[allow(clippy::undocumented_unsafe_blocks, reason = "TODO: add safety comment")]
+  #[allow(
+    clippy::undocumented_unsafe_blocks,
+    reason = "TODO: add safety comment"
+  )]
   unsafe {
     let mut extra_pipe_rids = Vec::new();
     let mut fds_to_dup = Vec::new();
@@ -1034,7 +1037,10 @@ fn op_spawn_child(
 }
 
 #[op2]
-#[allow(clippy::await_holding_refcell_ref, reason = "ref is dropped before await points")]
+#[allow(
+  clippy::await_holding_refcell_ref,
+  reason = "ref is dropped before await points"
+)]
 async fn op_spawn_wait(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -1201,7 +1207,10 @@ mod deprecated {
 
     #[cfg(unix)]
     // TODO(bartlomieju):
-    #[allow(clippy::undocumented_unsafe_blocks, reason = "TODO: add safety comment")]
+    #[allow(
+      clippy::undocumented_unsafe_blocks,
+      reason = "TODO: add safety comment"
+    )]
     unsafe {
       c.pre_exec(|| {
         libc::setgroups(0, std::ptr::null());

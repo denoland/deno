@@ -734,7 +734,10 @@ mod tests {
         timers.take_fired_timer(*id, timer_type);
       }
       v.extend(batch.into_iter().map(|(id, _)| id));
-      #[allow(clippy::print_stderr, reason = "intentional test diagnostic output")]
+      #[allow(
+        clippy::print_stderr,
+        reason = "intentional test diagnostic output"
+      )]
       {
         eprintln!(
           "{} ({} {})",
@@ -1029,7 +1032,10 @@ mod tests {
         timers.assert_consistent();
       }
 
-      #[allow(clippy::print_stderr, reason = "intentional test diagnostic output")]
+      #[allow(
+        clippy::print_stderr,
+        reason = "intentional test diagnostic output"
+      )]
       {
         eprintln!("count={count} ref_count={ref_count}");
       }

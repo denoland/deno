@@ -147,7 +147,10 @@ pub struct Smi<T: SmallInt>(pub T);
 pub trait SmallInt {
   const NAME: &'static str;
 
-  #[allow(clippy::wrong_self_convention, reason = "takes self by value intentionally")]
+  #[allow(
+    clippy::wrong_self_convention,
+    reason = "takes self by value intentionally"
+  )]
   fn as_i32(self) -> i32;
   fn from_i32(value: i32) -> Self;
 }
@@ -218,7 +221,10 @@ pub struct Number<T: Numeric>(pub T);
 /// A trait for types that can represent a JS `number`.
 pub trait Numeric: Sized {
   const NAME: &'static str;
-  #[allow(clippy::wrong_self_convention, reason = "takes self by value intentionally")]
+  #[allow(
+    clippy::wrong_self_convention,
+    reason = "takes self by value intentionally"
+  )]
   fn as_f64(self) -> f64;
   fn from_value(value: &v8::Value) -> Option<Self>;
 }
@@ -496,7 +502,10 @@ impl<'a> FromV8<'a> for ByteString {
     }
     let len = v8str.length();
     let mut buffer = SmallVec::with_capacity(len);
-    #[allow(clippy::uninit_vec, reason = "buffer is immediately written to after set_len")]
+    #[allow(
+      clippy::uninit_vec,
+      reason = "buffer is immediately written to after set_len"
+    )]
     // SAFETY: we set length == capacity (see previous line),
     // before immediately writing into that buffer and sanity check with an assert
     unsafe {
