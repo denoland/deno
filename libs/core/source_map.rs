@@ -253,7 +253,7 @@ mod tests {
       _specifier: &str,
       _referrer: &str,
       _kind: ResolutionKind,
-    ) -> Result<ModuleSpecifier, ModuleLoaderError> {
+    ) -> crate::ModuleResolveResponse {
       unreachable!()
     }
 
