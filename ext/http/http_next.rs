@@ -1719,16 +1719,16 @@ pub fn op_http_metric_handle_otel_error(external: *const c_void) {
   http.otel_info_set_error("user");
 }
 
-#[op2]
-#[cppgc]
-pub fn op_http_get_span(
+#[op2(fast)]
+pub fn op_http_set_span(
   external: *const c_void,
-) -> Option<deno_telemetry::OtelSpan> {
+  #[cppgc] span: &deno_telemetry::OtelSpan,
+) {
   let http =
     // SAFETY: op is called with external.
-    unsafe { clone_external!(external, "op_http_get_span") };
+    unsafe { clone_external!(external, "op_http_set_span") };
 
-  http.get_otel_span()
+  http.set_otel_span(span.clone());
 }
 
 #[op2(fast)]

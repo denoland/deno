@@ -14,7 +14,7 @@ import {
   op_http_copy_span_attributes_to_otel_info,
   op_http_get_request_headers,
   op_http_get_request_method_and_url,
-  op_http_get_span,
+  op_http_set_span,
   op_http_metric_handle_otel_error,
   op_http_notify_serving,
   op_http_read_request_body,
@@ -99,10 +99,10 @@ import {
   ContextManager,
   currentSnapshot,
   enterSpan,
+  getOtelSpan,
   METRICS_ENABLED,
   PROPAGATORS,
   restoreSnapshot,
-  Span,
   TRACING_ENABLED,
 } from "ext:deno_telemetry/telemetry.ts";
 import {
@@ -673,19 +673,16 @@ function mapToCallback(context, callback, onError) {
         });
       }
 
-      // Get the span created in Rust for this request. If available, wrap it
-      // in a JS Span so the user can set attributes like http.route on it.
-      // These attributes are later copied to OtelInfo for HTTP metrics.
-      const otelSpan = op_http_get_span(req);
-      let span;
+      const span = builtinTracer().startSpan(
+        "deno.serve",
+        { kind: 1 },
+        activeContext,
+      );
+      // Store the span on the HttpRecord so its attributes (like http.route)
+      // can be copied to HTTP metrics when the response is finalized.
+      const otelSpan = getOtelSpan(span);
       if (otelSpan) {
-        span = new Span(otelSpan);
-      } else {
-        span = builtinTracer().startSpan(
-          "deno.serve",
-          { kind: 1 },
-          activeContext,
-        );
+        op_http_set_span(req, otelSpan);
       }
       enterSpan(span, activeContext);
       try {

@@ -428,7 +428,7 @@ class Tracer {
 
 export const SPAN_KEY = SymbolFor("OpenTelemetry Context Key SPAN");
 
-let getOtelSpan: (span: object) => OtelSpan | null | undefined;
+export let getOtelSpan: (span: object) => OtelSpan | null | undefined;
 
 export class Span {
   #otelSpan: OtelSpan | null;

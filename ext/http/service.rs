@@ -19,7 +19,6 @@ use deno_core::BufView;
 use deno_core::OpState;
 use deno_core::ResourceId;
 use deno_error::JsErrorBox;
-use deno_telemetry::IdGenerator as _;
 use http::request::Parts;
 use hyper::body::Body;
 use hyper::body::Frame;
@@ -248,40 +247,6 @@ pub(crate) async fn handle_request(
     None
   };
 
-  // Create an OTel span for tracing this request. This span is created in Rust
-  // so it can be shared with the HttpRecord and later exposed to JavaScript
-  // via op_http_get_span. When the response is finalized, relevant span
-  // attributes (like http.route) are copied to OtelInfo for metrics.
-  let otel_span = deno_telemetry::OTEL_GLOBALS
-    .get()
-    .filter(|o| o.has_tracing())
-    .map(|otel| {
-      let span_context = deno_telemetry::SpanContext::new(
-        otel.id_generator.new_trace_id(),
-        otel.id_generator.new_span_id(),
-        deno_telemetry::TraceFlags::SAMPLED,
-        false,
-        deno_telemetry::TraceState::NONE,
-      );
-      let span_data = deno_telemetry::SpanData {
-        span_context,
-        parent_span_id: deno_telemetry::SpanId::INVALID,
-        span_kind: deno_telemetry::SpanKind::Server,
-        name: Cow::Borrowed("deno.serve"),
-        start_time: std::time::SystemTime::now(),
-        end_time: std::time::SystemTime::UNIX_EPOCH,
-        attributes: Vec::new(),
-        dropped_attributes_count: 0,
-        status: deno_telemetry::SpanStatus::Unset,
-        events: deno_telemetry::SpanEvents::default(),
-        links: deno_telemetry::SpanLinks::default(),
-        instrumentation_scope: otel.builtin_instrumentation_scope.clone(),
-      };
-      deno_telemetry::OtelSpan(Rc::new(RefCell::new(Box::new(
-        deno_telemetry::OtelSpanState::Recording(span_data),
-      ))))
-    });
-
   // If the underlying TCP connection is closed, this future will be dropped
   // and execution could stop at any await point.
   // The HttpRecord must live until JavaScript is done processing so is wrapped
@@ -291,7 +256,6 @@ pub(crate) async fn handle_request(
       request,
       request_info,
       server_state,
-      otel_span,
       otel_info,
       legacy_abort,
     ),
@@ -375,7 +339,6 @@ impl HttpRecord {
     request: Request,
     request_info: HttpConnectionProperties,
     server_state: SignallingRc<HttpServerState>,
-    otel_span: Option<deno_telemetry::OtelSpan>,
     otel_info: Option<OtelInfo>,
     legacy_abort: bool,
   ) -> Rc<Self> {
@@ -422,7 +385,7 @@ impl HttpRecord {
       finished: false,
       legacy_abort,
       needs_close_after_finish: false,
-      otel_span,
+      otel_span: None,
       otel_info,
       client_addr,
     });
@@ -685,9 +648,9 @@ impl HttpRecord {
     }
   }
 
-  pub fn get_otel_span(&self) -> Option<deno_telemetry::OtelSpan> {
-    let inner = self.self_ref();
-    inner.otel_span.clone()
+  pub fn set_otel_span(&self, span: deno_telemetry::OtelSpan) {
+    let mut inner = self.self_mut();
+    inner.otel_span = Some(span);
   }
 
   /// Copy relevant attributes from the OTel span to OtelInfo for metrics.
