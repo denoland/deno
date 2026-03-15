@@ -1738,3 +1738,39 @@ Deno.test({
     );
   },
 });
+
+Deno.test({
+  name:
+    "[node/fs/promises FileHandle.readLines] close after readLines should not throw",
+  async fn() {
+    const tempFile = Deno.makeTempFileSync();
+    Deno.writeTextFileSync(tempFile, "line one\nline two\nline three\n");
+    try {
+      const fd = await open(tempFile, "r");
+      fd.readLines();
+      await fd.close();
+    } finally {
+      Deno.removeSync(tempFile);
+    }
+  },
+});
+
+Deno.test({
+  name:
+    "[node/fs/promises FileHandle.readLines] should iterate lines correctly",
+  async fn() {
+    const tempFile = Deno.makeTempFileSync();
+    Deno.writeTextFileSync(tempFile, "line one\nline two\nline three\n");
+    try {
+      const fd = await open(tempFile, "r");
+      const lines: string[] = [];
+      for await (const line of fd.readLines()) {
+        lines.push(line);
+      }
+      assertEquals(lines, ["line one", "line two", "line three"]);
+      await fd.close();
+    } finally {
+      Deno.removeSync(tempFile);
+    }
+  },
+});
