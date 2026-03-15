@@ -381,16 +381,16 @@ class ChildProcess {
     };
   }
 
-  kill(signo = "SIGTERM") {
+  kill(signo = "SIGTERM", killDescendants = true) {
     if (this.#waitComplete) {
       throw new TypeError("Child process has already terminated");
     }
-    op_spawn_kill(this.#rid, signo);
+    op_spawn_kill(this.#rid, signo, killDescendants);
   }
 
   async [SymbolAsyncDispose]() {
     try {
-      op_spawn_kill(this.#rid, "SIGTERM");
+      op_spawn_kill(this.#rid, "SIGTERM", true);
     } catch {
       // ignore errors from killing the process (such as ESRCH or BadResource)
     }

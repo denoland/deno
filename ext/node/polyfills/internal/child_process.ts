@@ -641,7 +641,9 @@ export class ChildProcess extends EventEmitter {
     const denoSignal = signal == null ? "SIGTERM" : toDenoSignal(signal);
     this.#closePipes();
     try {
-      this.#process.kill(denoSignal);
+      // Pass false for killDescendants to match Node.js behavior:
+      // Node.js does NOT kill descendant processes when killing a child.
+      this.#process.kill(denoSignal, false);
     } catch (err) {
       const alreadyClosed = err instanceof TypeError ||
         err instanceof Deno.errors.PermissionDenied;

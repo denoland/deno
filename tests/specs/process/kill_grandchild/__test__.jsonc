@@ -1,0 +1,9 @@
+{
+  "tests": {
+    "kill_propagates_to_grandchild": {
+      "if": "unix",
+      "args": "run --allow-all main.ts",
+      "output": "OK: grandchild was killed with parent\n"
+    }
+  }
+}
