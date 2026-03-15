@@ -38,6 +38,7 @@ export function cpSyncFn(
       opts.errorOnExist,
       opts.preserveTimestamps,
       opts.verbatimSymlinks,
+      opts.mode ?? 0,
       opts.filter,
     );
   } catch (err) {

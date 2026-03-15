@@ -25,6 +25,8 @@ use serde::Serialize;
 #[cfg(feature = "sync_fs")]
 use tokio::task::JoinError;
 
+use crate::ops::constant::UV_FS_COPYFILE_EXCL;
+
 /// When `sync_fs` is enabled, `FileSystemRc` is `Arc` (Send) and we can
 /// offload work to a blocking thread. Otherwise, run inline.
 macro_rules! maybe_spawn_blocking {
@@ -817,6 +819,7 @@ struct CpSyncOptions<'a> {
   error_on_exist: bool,
   preserve_timestamps: bool,
   verbatim_symlinks: bool,
+  mode: u32,
   filter: Option<v8::Local<'a, v8::Function>>,
 }
 
@@ -848,16 +851,12 @@ fn call_cp_sync_filter<'a>(
 
 fn cp_sync_copy_dir<'a>(
   state: &Rc<RefCell<OpState>>,
+  fs: &FileSystemRc,
   scope: &mut v8::PinScope<'a, '_>,
   src: &str,
   dest: &str,
   opts: CpSyncOptions<'a>,
 ) -> Result<CpSyncRunStatus, FsError> {
-  let fs = {
-    let state = state.borrow();
-    state.borrow::<FileSystemRc>().clone()
-  };
-
   let src_path = check_cp_path(state, src, OpenAccessKind::ReadNoFollow)?;
   let entries =
     fs.read_dir_sync(&src_path.as_checked_path())
@@ -894,15 +893,16 @@ fn cp_sync_copy_dir<'a>(
       }
     }
 
-    let stat_info = op_node_cp_check_paths_recursive_sync(
+    let stat_info = check_paths_impl_sync(
       state,
+      fs,
       &src_item,
       &dest_item,
       opts.dereference,
     )?;
 
     match cp_sync_dispatch(
-      state, scope, &stat_info, &src_item, &dest_item, opts,
+      state, fs, scope, &stat_info, &src_item, &dest_item, opts,
     )? {
       CpSyncRunStatus::Completed => {}
       CpSyncRunStatus::JsException => return Ok(CpSyncRunStatus::JsException),
@@ -914,17 +914,13 @@ fn cp_sync_copy_dir<'a>(
 
 fn cp_sync_mkdir_and_copy<'a>(
   state: &Rc<RefCell<OpState>>,
+  fs: &FileSystemRc,
   scope: &mut v8::PinScope<'a, '_>,
   src_mode: u32,
   src: &str,
   dest: &str,
   opts: CpSyncOptions<'a>,
 ) -> Result<CpSyncRunStatus, FsError> {
-  let fs = {
-    let state = state.borrow();
-    state.borrow::<FileSystemRc>().clone()
-  };
-
   let dest_path = check_cp_path(state, dest, OpenAccessKind::Write)?;
   fs.mkdir_sync(&dest_path.as_checked_path(), false, None)
     .map_err(|err| {
@@ -938,7 +934,7 @@ fn cp_sync_mkdir_and_copy<'a>(
       )
     })?;
 
-  let result = cp_sync_copy_dir(state, scope, src, dest, opts)?;
+  let result = cp_sync_copy_dir(state, fs, scope, src, dest, opts)?;
   if let CpSyncRunStatus::JsException = result {
     return Ok(result);
   }
@@ -949,6 +945,7 @@ fn cp_sync_mkdir_and_copy<'a>(
 
 fn cp_sync_on_dir<'a>(
   state: &Rc<RefCell<OpState>>,
+  fs: &FileSystemRc,
   scope: &mut v8::PinScope<'a, '_>,
   stat_info: &CpCheckPathsSyncResult,
   src: &str,
@@ -958,6 +955,7 @@ fn cp_sync_on_dir<'a>(
   if !stat_info.is_dest_exists {
     return cp_sync_mkdir_and_copy(
       state,
+      fs,
       scope,
       stat_info.src_mode,
       src,
@@ -966,11 +964,12 @@ fn cp_sync_on_dir<'a>(
     );
   }
 
-  cp_sync_copy_dir(state, scope, src, dest, opts)
+  cp_sync_copy_dir(state, fs, scope, src, dest, opts)
 }
 
 fn cp_sync_dispatch<'a>(
   state: &Rc<RefCell<OpState>>,
+  fs: &FileSystemRc,
   scope: &mut v8::PinScope<'a, '_>,
   stat_info: &CpCheckPathsSyncResult,
   src: &str,
@@ -978,7 +977,7 @@ fn cp_sync_dispatch<'a>(
   opts: CpSyncOptions<'a>,
 ) -> Result<CpSyncRunStatus, FsError> {
   if stat_info.is_src_directory && opts.recursive {
-    return cp_sync_on_dir(state, scope, stat_info, src, dest, opts);
+    return cp_sync_on_dir(state, fs, scope, stat_info, src, dest, opts);
   } else if stat_info.is_src_directory {
     return Err(
       CpError::EIsDir {
@@ -991,10 +990,11 @@ fn cp_sync_dispatch<'a>(
     || stat_info.is_src_char_device
     || stat_info.is_src_block_device
   {
-    op_node_cp_on_file_sync(state, src, dest, stat_info, &opts)?;
+    op_node_cp_on_file_sync(state, fs, src, dest, stat_info, &opts)?;
     return Ok(CpSyncRunStatus::Completed);
   } else if stat_info.is_src_symlink {
     op_node_cp_on_link_sync(
+      fs,
       state,
       src,
       dest,
@@ -1412,21 +1412,6 @@ pub async fn op_node_cp_check_paths_recursive(
   Ok(result.stat_info)
 }
 
-fn op_node_cp_check_paths_recursive_sync(
-  state: &Rc<RefCell<OpState>>,
-  src: &str,
-  dest: &str,
-  dereference: bool,
-) -> Result<CpCheckPathsSyncResult, FsError> {
-  let fs = {
-    let state = state.borrow_mut();
-    state.borrow::<FileSystemRc>().clone()
-  };
-
-  let result = check_paths_impl_sync(state, &fs, src, dest, dereference)?;
-  Ok(result)
-}
-
 /// Validates src and dest paths, checks parent paths, and ensures
 /// parent directory exists
 /// Returns stat info for the source file
@@ -1466,27 +1451,23 @@ pub async fn op_node_cp_validate_and_prepare(
 /// Returns stat info for the source file.
 fn op_node_cp_validate_and_prepare_sync(
   state: &Rc<RefCell<OpState>>,
+  fs: &FileSystemRc,
   src: &str,
   dest: &str,
   dereference: bool,
 ) -> Result<CpCheckPathsSyncResult, FsError> {
-  let fs = {
-    let state = state.borrow_mut();
-    state.borrow::<FileSystemRc>().clone()
-  };
-
-  let check_result = check_paths_impl_sync(state, &fs, src, dest, dereference)?;
+  let check_result = check_paths_impl_sync(state, fs, src, dest, dereference)?;
 
   check_parent_paths_impl_sync(
     state,
-    &fs,
+    fs,
     src,
     check_result.src_dev,
     check_result.src_ino,
     dest,
   )?;
 
-  ensure_parent_dir_impl_sync(state, &fs, dest)?;
+  ensure_parent_dir_impl_sync(state, fs, dest)?;
 
   Ok(check_result)
 }
@@ -1503,10 +1484,16 @@ pub fn op_node_cp_sync<'a>(
   error_on_exist: bool,
   preserve_timestamps: bool,
   verbatim_symlinks: bool,
+  #[smi] mode: u32,
   filter: v8::Local<'a, v8::Value>,
 ) -> Result<(), FsError> {
+  let fs = {
+    let state = state.borrow();
+    state.borrow::<FileSystemRc>().clone()
+  };
+
   let stat_info =
-    op_node_cp_validate_and_prepare_sync(&state, src, dest, dereference)?;
+    op_node_cp_validate_and_prepare_sync(&state, &fs, src, dest, dereference)?;
 
   let filter = v8::Local::<v8::Function>::try_from(filter).ok();
 
@@ -1517,10 +1504,11 @@ pub fn op_node_cp_sync<'a>(
     error_on_exist,
     preserve_timestamps,
     verbatim_symlinks,
+    mode,
     filter,
   };
 
-  match cp_sync_dispatch(&state, scope, &stat_info, src, dest, opts)? {
+  match cp_sync_dispatch(&state, &fs, scope, &stat_info, src, dest, opts)? {
     CpSyncRunStatus::Completed | CpSyncRunStatus::JsException => Ok(()),
   }
 }
@@ -1788,6 +1776,11 @@ fn file_is_not_writable(mode: u32) -> bool {
   (mode & 0o200) == 0
 }
 
+fn cp_mode_has_copyfile_excl(mode: u32) -> bool {
+  let copyfile_excl = UV_FS_COPYFILE_EXCL as u32;
+  (mode & copyfile_excl) == copyfile_excl
+}
+
 fn set_dest_mode(
   fs: &FileSystemRc,
   dest_path: &CheckedPath,
@@ -1873,6 +1866,7 @@ pub async fn op_node_cp_on_file(
   force: bool,
   error_on_exist: bool,
   preserve_timestamps: bool,
+  #[smi] mode: u32,
 ) -> Result<(), FsError> {
   let fs = {
     let state = state.borrow();
@@ -1908,24 +1902,41 @@ pub async fn op_node_cp_on_file(
   }
 
   // Copy file: read from src, write to dest
-  let (src_path, dest_path) = {
-    let mut state = state.borrow_mut();
-    (
-      state.borrow_mut::<PermissionsContainer>().check_open(
-        Cow::Owned(PathBuf::from(src)),
-        OpenAccessKind::Read,
-        Some("node:fs.cp"),
-      )?,
-      state.borrow_mut::<PermissionsContainer>().check_open(
-        Cow::Owned(PathBuf::from(dest)),
-        OpenAccessKind::Write,
-        Some("node:fs.cp"),
-      )?,
-    )
-  };
+  if cp_mode_has_copyfile_excl(mode) {
+    let dest_path = check_cp_path(&state, &dest, OpenAccessKind::ReadNoFollow)?;
+    match fs.lstat_async(dest_path.clone()).await {
+      Ok(_) => {
+        return Err(
+          CpError::EExist {
+            message: format!("{} already exists", dest),
+            path: dest.to_string(),
+          }
+          .into(),
+        );
+      }
+      Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+      Err(err) => {
+        return Err(map_fs_error_to_node_fs_error(
+          err,
+          NodeFsErrorContext {
+            path: Some(dest.to_string()),
+            syscall: Some("lstat".into()),
+            ..Default::default()
+          },
+        ));
+      }
+    }
+  }
+
+  let src_path = check_cp_path(&state, &src, OpenAccessKind::Read)?;
+  let dest_path = check_cp_path(&state, &dest, OpenAccessKind::Write)?;
 
   maybe_spawn_blocking!(move || -> Result<(), FsError> {
-    fs.copy_file_sync(&src_path, &dest_path).map_err(|err| {
+    fs.copy_file_sync(
+      &src_path.as_checked_path(),
+      &dest_path.as_checked_path(),
+    )
+    .map_err(|err| {
       map_fs_error_to_node_fs_error(
         err,
         NodeFsErrorContext {
@@ -1937,9 +1948,14 @@ pub async fn op_node_cp_on_file(
       )
     })?;
     if preserve_timestamps {
-      handle_timestamps_and_mode(&fs, &src_path, &dest_path, src_mode)?;
+      handle_timestamps_and_mode(
+        &fs,
+        &src_path.as_checked_path(),
+        &dest_path.as_checked_path(),
+        src_mode,
+      )?;
     } else {
-      set_dest_mode(&fs, &dest_path, src_mode)?;
+      set_dest_mode(&fs, &dest_path.as_checked_path(), src_mode)?;
     }
     Ok(())
   })
@@ -1947,16 +1963,12 @@ pub async fn op_node_cp_on_file(
 
 fn op_node_cp_on_file_sync(
   state: &Rc<RefCell<OpState>>,
+  fs: &FileSystemRc,
   src: &str,
   dest: &str,
   stat_info: &CpCheckPathsSyncResult,
   opts: &CpSyncOptions,
 ) -> Result<(), FsError> {
-  let fs = {
-    let state = state.borrow_mut();
-    state.borrow::<FileSystemRc>().clone()
-  };
-
   if stat_info.is_dest_exists {
     if opts.force {
       // Remove dest, then copy.
@@ -1983,6 +1995,32 @@ fn op_node_cp_on_file_sync(
     } else {
       // Neither force nor errorOnExist: do nothing.
       return Ok(());
+    }
+  }
+
+  if cp_mode_has_copyfile_excl(opts.mode) {
+    let dest_path = check_cp_path(state, dest, OpenAccessKind::ReadNoFollow)?;
+    match fs.lstat_sync(&dest_path.as_checked_path()) {
+      Ok(_) => {
+        return Err(
+          CpError::EExist {
+            message: format!("{} already exists", dest),
+            path: dest.to_string(),
+          }
+          .into(),
+        );
+      }
+      Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+      Err(err) => {
+        return Err(map_fs_error_to_node_fs_error(
+          err,
+          NodeFsErrorContext {
+            path: Some(dest.to_string()),
+            syscall: Some("lstat".into()),
+            ..Default::default()
+          },
+        ));
+      }
     }
   }
 
@@ -2221,17 +2259,13 @@ pub async fn op_node_cp_on_link(
 }
 
 fn op_node_cp_on_link_sync(
+  fs: &FileSystemRc,
   state: &Rc<RefCell<OpState>>,
   src: &str,
   dest: &str,
   dest_exists: bool,
   verbatim_symlinks: bool,
 ) -> Result<(), FsError> {
-  let fs = {
-    let state = state.borrow_mut();
-    state.borrow::<FileSystemRc>().clone()
-  };
-
   let src_path = check_cp_path(state, src, OpenAccessKind::ReadNoFollow)?;
   let resolved_src_buf = fs
     .read_link_sync(&src_path.as_checked_path())

@@ -229,6 +229,7 @@ async function onFile(
     opts.force,
     opts.errorOnExist,
     opts.preserveTimestamps,
+    opts.mode ?? 0,
   );
 }
 
