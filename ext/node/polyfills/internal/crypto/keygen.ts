@@ -1093,7 +1093,7 @@ function createJob(mode, type, options) {
         return op_node_generate_rsa_pss_key(
           modulusLength,
           publicExponent,
-          hashAlgorithm,
+          hashAlgorithm ?? hash,
           mgf1HashAlgorithm ?? mgf1Hash,
           saltLength,
         );
@@ -1101,7 +1101,7 @@ function createJob(mode, type, options) {
         return op_node_generate_rsa_pss_key_async(
           modulusLength,
           publicExponent,
-          hashAlgorithm,
+          hashAlgorithm ?? hash,
           mgf1HashAlgorithm ?? mgf1Hash,
           saltLength,
         );

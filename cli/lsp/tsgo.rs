@@ -2055,7 +2055,7 @@ fn normalize_code_action_response(
       code_action
         .kind
         .as_ref()
-        .is_none_or(|k| k.as_str() != "source.organizeImports")
+        .is_none_or(|k| *k != lsp::CodeActionKind::SOURCE_ORGANIZE_IMPORTS)
     });
   }
   for item in response {

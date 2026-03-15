@@ -868,6 +868,7 @@ impl WebWorker {
       filename,
       config.interval,
       config.md,
+      config.flamegraph,
     );
     cpu_profiler.start_profiling();
 

@@ -1214,6 +1214,26 @@ Deno.test(function consoleTestWithObjectFormatSpecifier() {
   );
 });
 
+Deno.test(function consoleTestWithJsonFormatSpecifier() {
+  assertEquals(stringify("%j"), "%j");
+  assertEquals(stringify("%j", { foo: "bar" }), `{"foo":"bar"}`);
+  assertEquals(stringify("%j", 42), "42");
+  assertEquals(stringify("%j", "foo"), `"foo"`);
+  assertEquals(stringify("%j", null), "null");
+  assertEquals(stringify("%j", [1, 2, 3]), "[1,2,3]");
+  assertEquals(
+    stringify("%j %s", { foo: "bar" }, "Hello"),
+    `{"foo":"bar"} Hello`,
+  );
+  assertEquals(stringify("%j %j", { a: 1 }, { b: 2 }), `{"a":1} {"b":2}`);
+  // Circular reference
+  const circular: Record<string, unknown> = {};
+  circular.self = circular;
+  assertEquals(stringify("%j", circular), "[Circular]");
+  // Non-circular errors (e.g., BigInt) should be re-thrown
+  assertThrows(() => stringify("%j", BigInt(1)));
+});
+
 Deno.test(function consoleTestWithStyleSpecifier() {
   assertEquals(stringify("%cfoo%cbar"), "%cfoo%cbar");
   assertEquals(stringify("%cfoo%cbar", ""), "foo%cbar");
