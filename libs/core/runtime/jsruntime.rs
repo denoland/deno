@@ -457,7 +457,6 @@ pub struct JsRuntimeState {
   pub(crate) function_templates: Rc<RefCell<FunctionTemplateData>>,
   pub(crate) callsite_prototype: RefCell<Option<v8::Global<v8::Object>>>,
   waker: Arc<AtomicWaker>,
-  safety_net_active: Arc<std::sync::atomic::AtomicBool>,
   /// Accessed through [`JsRuntimeState::with_inspector`].
   inspector: RefCell<Option<Rc<JsRuntimeInspector>>>,
   has_inspector: Cell<bool>,
@@ -785,7 +784,6 @@ impl JsRuntime {
         eval_context_set_code_cache_cb,
       ),
       waker: waker.clone(),
-      safety_net_active: Arc::new(std::sync::atomic::AtomicBool::new(false)),
       // Some fields are initialized later after isolate is created
       inspector: None.into(),
       has_inspector: false.into(),
@@ -862,12 +860,15 @@ impl JsRuntime {
 
     let isolate_ptr = unsafe { isolate.as_raw_isolate_ptr() };
 
-    // Register this isolate's waker so the custom platform can wake
-    // the event loop when V8 posts foreground tasks from background threads.
-    setup::register_isolate_waker(
-      setup::isolate_ptr_to_key(isolate_ptr),
-      waker.clone(),
-    );
+    // Register this isolate's waker and tokio handle so the custom platform
+    // can spawn foreground tasks on this isolate's runtime.
+    if !will_snapshot {
+      setup::register_isolate_waker(
+        setup::isolate_ptr_to_key(isolate_ptr),
+        waker.clone(),
+        tokio::runtime::Handle::current(),
+      );
+    }
 
     // ...isolate is fully set up, we can forward its pointer to the ops to finish
     // their' setup...
@@ -1902,14 +1903,6 @@ impl JsRuntime {
     }
   }
 
-  /// Drain and run foreground tasks queued by the custom V8 platform.
-  fn run_foreground_tasks(&self, scope: &mut v8::PinScope) {
-    let isolate_ptr = unsafe { scope.as_raw_isolate_ptr() };
-    let tasks =
-      setup::drain_isolate_tasks(setup::isolate_ptr_to_key(isolate_ptr));
-    setup::run_queued_tasks(tasks);
-  }
-
   pub fn maybe_init_inspector(&mut self) {
     let inspector = &mut self.inner.state.inspector.borrow_mut();
     if inspector.is_some() {
@@ -2112,12 +2105,9 @@ impl JsRuntime {
     let has_inspector = self.inner.state.has_inspector.get();
     self.inner.state.waker.register(cx.waker());
 
-    // Pre-phase: Inspector + V8 message loop pump
+    // Pre-phase: Inspector
     if has_inspector {
       self.inspector().poll_sessions_from_event_loop(cx);
-    }
-    if poll_options.pump_v8_message_loop {
-      self.run_foreground_tasks(scope);
     }
 
     let realm = &self.inner.main_realm;
@@ -2271,24 +2261,6 @@ impl JsRuntime {
     if !did_work && !dispatched_ops && pending_state.has_refed_immediates > 0 {
       Self::do_js_run_immediate_callbacks(scope, context_state)?;
       scope.perform_microtask_checkpoint();
-    }
-
-    // Safety net: if V8 has pending background tasks (e.g. module compilation),
-    // schedule a delayed wake to pump the message loop in case the platform
-    // callback was missed due to a race condition.
-    if pending_state.has_pending_background_tasks
-      && !self
-        .inner
-        .state
-        .safety_net_active
-        .swap(true, std::sync::atomic::Ordering::SeqCst)
-    {
-      cx.waker().wake_by_ref();
-      self
-        .inner
-        .state
-        .safety_net_active
-        .store(false, std::sync::atomic::Ordering::SeqCst);
     }
 
     // Re-wake logic for next iteration

@@ -1,7 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
-use std::collections::BinaryHeap;
 use std::collections::HashMap;
 use std::ffi::c_void;
 use std::sync::Mutex;
@@ -9,7 +8,6 @@ use std::sync::Once;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
-use std::time::Instant;
 
 use futures::task::AtomicWaker;
 
@@ -35,214 +33,68 @@ pub(crate) fn isolate_ptr_to_key(ptr: v8::UnsafeRawIsolatePtr) -> usize {
   unsafe { std::mem::transmute::<v8::UnsafeRawIsolatePtr, usize>(ptr) }
 }
 
-/// Queued V8 foreground task, either a regular task or an idle task.
-pub(crate) enum QueuedTask {
-  Regular(v8::Task),
-  Idle(v8::IdleTask),
-}
-
-/// Per-isolate state shared between the V8 platform callback and
-/// the event loop.
-struct IsolateWakeEntry {
+/// Per-isolate state: a waker to re-poll the event loop and a tokio
+/// handle to spawn foreground tasks onto.
+struct IsolateEntry {
   waker: std::sync::Arc<AtomicWaker>,
-  tasks: Vec<QueuedTask>,
+  handle: tokio::runtime::Handle,
 }
 
-/// Global registry mapping isolate pointers to their event loop wake state.
-/// When V8 posts a foreground task for an isolate, the callback looks up
-/// the state here, queues the task, and wakes the event loop.
-/// Isolates that received tasks before their state was registered
-/// are tracked in `pending_tasks` so `register_isolate_waker` can
-/// deliver them immediately.
-struct IsolateWakerRegistry {
-  entries: HashMap<usize, IsolateWakeEntry>,
-  pending_wakes: std::collections::HashSet<usize>,
-  pending_tasks: HashMap<usize, Vec<QueuedTask>>,
-}
+static ISOLATE_ENTRIES: std::sync::LazyLock<
+  Mutex<HashMap<usize, IsolateEntry>>,
+> = std::sync::LazyLock::new(|| Mutex::new(HashMap::new()));
 
-static ISOLATE_WAKERS: std::sync::LazyLock<Mutex<IsolateWakerRegistry>> =
-  std::sync::LazyLock::new(|| {
-    Mutex::new(IsolateWakerRegistry {
-      entries: HashMap::new(),
-      pending_wakes: std::collections::HashSet::new(),
-      pending_tasks: HashMap::new(),
-    })
-  });
-
-/// Register a waker for an isolate so foreground task notifications
-/// wake the correct event loop. If tasks arrived before registration,
-/// they are delivered and the waker is triggered immediately.
 pub fn register_isolate_waker(
   isolate_ptr: usize,
   waker: std::sync::Arc<AtomicWaker>,
+  handle: tokio::runtime::Handle,
 ) {
-  let mut reg = ISOLATE_WAKERS.lock().unwrap();
-  let mut tasks = reg.pending_tasks.remove(&isolate_ptr).unwrap_or_default();
-  if reg.pending_wakes.remove(&isolate_ptr) || !tasks.is_empty() {
-    waker.wake();
-  }
-  let entry = IsolateWakeEntry {
-    waker,
-    tasks: std::mem::take(&mut tasks),
-  };
-  reg.entries.insert(isolate_ptr, entry);
+  let mut map = ISOLATE_ENTRIES.lock().unwrap();
+  map.insert(isolate_ptr, IsolateEntry { waker, handle });
 }
 
-/// Unregister an isolate's wake state (called on isolate drop).
 pub fn unregister_isolate_waker(isolate_ptr: usize) {
-  let mut reg = ISOLATE_WAKERS.lock().unwrap();
-  reg.entries.remove(&isolate_ptr);
-  reg.pending_wakes.remove(&isolate_ptr);
-  reg.pending_tasks.remove(&isolate_ptr);
+  let mut map = ISOLATE_ENTRIES.lock().unwrap();
+  map.remove(&isolate_ptr);
 }
 
-/// Queue a task for a given isolate and wake the event loop.
-/// If the isolate is not yet registered, stores the task as pending.
-fn push_task_and_wake(key: usize, task: QueuedTask) {
-  let mut reg = ISOLATE_WAKERS.lock().unwrap();
-  if let Some(entry) = reg.entries.get_mut(&key) {
-    entry.tasks.push(task);
-    entry.waker.wake();
-  } else {
-    reg.pending_tasks.entry(key).or_default().push(task);
-    reg.pending_wakes.insert(key);
+/// Spawn a V8 foreground task on the isolate's tokio runtime.
+/// After the task runs, the event loop is woken to process results.
+fn spawn_task(key: usize, task: v8::Task) {
+  let map = ISOLATE_ENTRIES.lock().unwrap();
+  if let Some(entry) = map.get(&key) {
+    let waker = entry.waker.clone();
+    entry.handle.spawn(async move {
+      task.run();
+      waker.wake();
+    });
   }
 }
 
-/// Drain all queued foreground tasks for the given isolate.
-/// Called from the event loop to retrieve tasks that need to be run.
-pub fn drain_isolate_tasks(isolate_ptr: usize) -> Vec<QueuedTask> {
-  let mut reg = ISOLATE_WAKERS.lock().unwrap();
-  if let Some(entry) = reg.entries.get_mut(&isolate_ptr) {
-    std::mem::take(&mut entry.tasks)
-  } else {
-    vec![]
+/// Spawn a delayed V8 foreground task on the isolate's tokio runtime.
+fn spawn_delayed_task(key: usize, task: v8::Task, delay_in_seconds: f64) {
+  let map = ISOLATE_ENTRIES.lock().unwrap();
+  if let Some(entry) = map.get(&key) {
+    let waker = entry.waker.clone();
+    entry.handle.spawn(async move {
+      tokio::time::sleep(Duration::from_secs_f64(delay_in_seconds)).await;
+      task.run();
+      waker.wake();
+    });
   }
 }
 
-/// Run all drained tasks. Regular tasks are run directly, idle tasks
-/// are run with a zero deadline.
-pub fn run_queued_tasks(tasks: Vec<QueuedTask>) {
-  for task in tasks {
-    match task {
-      QueuedTask::Regular(t) => t.run(),
-      QueuedTask::Idle(t) => t.run(0.0),
-    }
-  }
-}
-
-/// Entry in the delayed-task timer queue.
-struct TimerEntry {
-  deadline: Instant,
-  isolate_key: usize,
-  task: v8::Task,
-}
-
-impl PartialEq for TimerEntry {
-  fn eq(&self, other: &Self) -> bool {
-    self.deadline == other.deadline
-  }
-}
-
-impl Eq for TimerEntry {}
-
-impl PartialOrd for TimerEntry {
-  fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-    Some(self.cmp(other))
-  }
-}
-
-impl Ord for TimerEntry {
-  fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-    // Reverse so BinaryHeap (max-heap) yields the earliest deadline first.
-    other.deadline.cmp(&self.deadline)
-  }
-}
-
-/// Single shared timer thread that processes all delayed V8 foreground
-/// task wake-ups, avoiding one OS thread per delayed task.
-static DELAYED_TASK_SENDER: std::sync::LazyLock<
-  Mutex<std::sync::mpsc::Sender<TimerEntry>>,
-> = std::sync::LazyLock::new(|| {
-  let (tx, rx) = std::sync::mpsc::channel();
-  std::thread::Builder::new()
-    .name("deno-v8-timer".into())
-    .spawn(move || delayed_task_thread(rx))
-    .unwrap();
-  Mutex::new(tx)
-});
-
-fn delayed_task_thread(rx: std::sync::mpsc::Receiver<TimerEntry>) {
-  let mut heap: BinaryHeap<TimerEntry> = BinaryHeap::new();
-  loop {
-    // Block until either a new entry arrives or the next timer fires.
-    if heap.is_empty() {
-      match rx.recv() {
-        Ok(entry) => heap.push(entry),
-        Err(_) => break,
-      }
-    } else {
-      let timeout = heap
-        .peek()
-        .unwrap()
-        .deadline
-        .saturating_duration_since(Instant::now());
-      match rx.recv_timeout(timeout) {
-        Ok(entry) => heap.push(entry),
-        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
-        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
-      }
-    }
-
-    // Drain any additional entries that arrived.
-    while let Ok(entry) = rx.try_recv() {
-      heap.push(entry);
-    }
-
-    // Fire all expired timers — push the task to the isolate's queue.
-    let now = Instant::now();
-    while let Some(entry) = heap.peek() {
-      if entry.deadline <= now {
-        let entry = heap.pop().unwrap();
-        push_task_and_wake(entry.isolate_key, QueuedTask::Regular(entry.task));
-      } else {
-        break;
-      }
-    }
-  }
-}
-
-/// Custom V8 platform implementation that receives foreground task
-/// ownership and queues them for the isolate's event loop to run.
+/// Custom V8 platform implementation that spawns foreground tasks
+/// directly onto the isolate's tokio runtime.
 struct DenoPlatformImpl;
-
-impl DenoPlatformImpl {
-  fn queue_immediate(&self, isolate_ptr: *mut c_void, task: v8::Task) {
-    push_task_and_wake(isolate_ptr as usize, QueuedTask::Regular(task));
-  }
-
-  fn queue_delayed(
-    &self,
-    isolate_ptr: *mut c_void,
-    task: v8::Task,
-    delay_in_seconds: f64,
-  ) {
-    let entry = TimerEntry {
-      deadline: Instant::now() + Duration::from_secs_f64(delay_in_seconds),
-      isolate_key: isolate_ptr as usize,
-      task,
-    };
-    let _ = DELAYED_TASK_SENDER.lock().unwrap().send(entry);
-  }
-}
 
 impl v8::PlatformImpl for DenoPlatformImpl {
   fn post_task(&self, isolate_ptr: *mut c_void, task: v8::Task) {
-    self.queue_immediate(isolate_ptr, task);
+    spawn_task(isolate_ptr as usize, task);
   }
 
   fn post_non_nestable_task(&self, isolate_ptr: *mut c_void, task: v8::Task) {
-    self.queue_immediate(isolate_ptr, task);
+    spawn_task(isolate_ptr as usize, task);
   }
 
   fn post_delayed_task(
@@ -251,7 +103,7 @@ impl v8::PlatformImpl for DenoPlatformImpl {
     task: v8::Task,
     delay_in_seconds: f64,
   ) {
-    self.queue_delayed(isolate_ptr, task, delay_in_seconds);
+    spawn_delayed_task(isolate_ptr as usize, task, delay_in_seconds);
   }
 
   fn post_non_nestable_delayed_task(
@@ -260,11 +112,19 @@ impl v8::PlatformImpl for DenoPlatformImpl {
     task: v8::Task,
     delay_in_seconds: f64,
   ) {
-    self.queue_delayed(isolate_ptr, task, delay_in_seconds);
+    spawn_delayed_task(isolate_ptr as usize, task, delay_in_seconds);
   }
 
   fn post_idle_task(&self, isolate_ptr: *mut c_void, task: v8::IdleTask) {
-    push_task_and_wake(isolate_ptr as usize, QueuedTask::Idle(task));
+    let key = isolate_ptr as usize;
+    let map = ISOLATE_ENTRIES.lock().unwrap();
+    if let Some(entry) = map.get(&key) {
+      let waker = entry.waker.clone();
+      entry.handle.spawn(async move {
+        task.run(0.0);
+        waker.wake();
+      });
+    }
   }
 }
 
@@ -309,8 +169,6 @@ fn v8_init(
   v8::V8::set_flags_from_string(&flags);
 
   let v8_platform = v8_platform.unwrap_or_else(|| {
-    // Use a custom platform that receives foreground task ownership
-    // and queues them for isolate event loops to run.
     let unprotected =
       cfg!(any(test, feature = "unsafe_use_unprotected_platform"));
     v8::new_custom_platform(0, false, unprotected, DenoPlatformImpl)
