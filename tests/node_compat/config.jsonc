@@ -222,6 +222,7 @@
     "parallel/test-child-process-execsync-maxbuf.js": {},
     "parallel/test-child-process-exit-code.js": {},
     "parallel/test-child-process-flush-stdio.js": {},
+    "parallel/test-child-process-fork.js": {},
     "parallel/test-child-process-fork-abort-signal.js": {},
     "parallel/test-child-process-fork-and-spawn.js": {},
     "parallel/test-child-process-fork-close.js": {},

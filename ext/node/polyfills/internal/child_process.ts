@@ -47,6 +47,7 @@ import {
   ERR_INVALID_SYNC_FORK_INPUT,
   ERR_IPC_CHANNEL_CLOSED,
   ERR_IPC_SYNC_FORK,
+  ERR_MISSING_ARGS,
   ERR_UNKNOWN_SIGNAL,
 } from "ext:deno_node/internal/errors.ts";
 import { Buffer } from "node:buffer";
@@ -1880,7 +1881,20 @@ export function setupChannel(
     options = { swallowErrors: false, ...options };
 
     if (message === undefined) {
-      throw new TypeError("ERR_MISSING_ARGS", "message");
+      throw new ERR_MISSING_ARGS("message");
+    }
+
+    if (
+      typeof message !== "string" &&
+      typeof message !== "object" &&
+      typeof message !== "number" &&
+      typeof message !== "boolean"
+    ) {
+      throw new ERR_INVALID_ARG_TYPE(
+        "message",
+        ["string", "object", "number", "boolean"],
+        message,
+      );
     }
 
     if (handle !== undefined) {
