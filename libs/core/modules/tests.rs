@@ -2518,9 +2518,9 @@ throwError();
 /// "Expected at least one stalled top-level await".
 #[tokio::test]
 async fn test_lazy_loaded_esm_with_tla_no_panic() {
-  // An async op with no .await points: resolves eagerly on first poll.
+  // An async op with no .await points
   #[op2]
-  #[allow(clippy::unused_async)]
+  #[allow(clippy::unused_async, reason = "eagerly resolves on first poll")]
   async fn op_eager_resolve() -> u32 {
     42
   }
