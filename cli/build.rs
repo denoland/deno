@@ -107,11 +107,20 @@ fn compress_decls(out_dir: &Path) {
     "lib.es2024.regexp.d.ts",
     "lib.es2024.sharedmemory.d.ts",
     "lib.es2024.string.d.ts",
+    "lib.es2025.collection.d.ts",
+    "lib.es2025.d.ts",
+    "lib.es2025.float16.d.ts",
+    "lib.es2025.full.d.ts",
+    "lib.es2025.intl.d.ts",
+    "lib.es2025.iterator.d.ts",
+    "lib.es2025.promise.d.ts",
+    "lib.es2025.regexp.d.ts",
     "lib.es5.d.ts",
     "lib.es6.d.ts",
     "lib.esnext.array.d.ts",
     "lib.esnext.collection.d.ts",
     "lib.esnext.d.ts",
+    "lib.esnext.date.d.ts",
     "lib.esnext.decorators.d.ts",
     "lib.esnext.disposable.d.ts",
     "lib.esnext.error.d.ts",
@@ -121,6 +130,8 @@ fn compress_decls(out_dir: &Path) {
     "lib.esnext.iterator.d.ts",
     "lib.esnext.promise.d.ts",
     "lib.esnext.sharedmemory.d.ts",
+    "lib.esnext.temporal.d.ts",
+    "lib.esnext.typedarrays.d.ts",
     "lib.node.d.ts",
     "lib.scripthost.d.ts",
     "lib.webworker.asynciterable.d.ts",
@@ -135,7 +146,7 @@ fn compress_decls(out_dir: &Path) {
 }
 
 fn process_node_types(out_dir: &Path) {
-  #[allow(clippy::disallowed_methods)] // build script
+  #[allow(clippy::disallowed_methods, reason = "build code")]
   let root_dir = Path::new(".").canonicalize().unwrap();
   let dts_dir = root_dir.join("tsc").join("dts");
   let node_dir = dts_dir.join("node");
@@ -202,7 +213,7 @@ fn process_node_types(out_dir: &Path) {
 }
 
 fn compress_source(out_dir: &Path, file: &str) {
-  #[allow(clippy::disallowed_methods)] // build script
+  #[allow(clippy::disallowed_methods, reason = "build code")]
   let path = Path::new(file)
     .canonicalize()
     .unwrap_or_else(|_| panic!("expected file \"{file}\" to exist"));

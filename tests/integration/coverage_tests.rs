@@ -630,13 +630,13 @@ fn test_summary_reporter() {
 
     output.assert_exit_code(0);
     output.assert_matches_text(
-      "| File        | Branch % | Line % |
-| ----------- | -------- | ------ |
-| bar.ts      |     50.0 |   57.1 |
-| baz/quux.ts |     50.0 |   28.6 |
-| baz/qux.ts  |    100.0 |  100.0 |
-| foo.ts      |     75.0 |   76.9 |
-| All files   |     70.0 |   61.0 |
+      "| File        | Branch % | Function % | Line % |
+| ----------- | -------- | ---------- | ------ |
+| bar.ts      |     50.0 |      100.0 |   57.1 |
+| baz/quux.ts |     50.0 |      100.0 |   28.6 |
+| baz/qux.ts  |    100.0 |      100.0 |  100.0 |
+| foo.ts      |     75.0 |      100.0 |   76.9 |
+| All files   |     70.0 |      100.0 |   61.0 |
 ",
     );
   }
@@ -654,11 +654,11 @@ fn test_summary_reporter() {
 
     output.assert_exit_code(0);
     output.assert_matches_text(
-      "| File       | Branch % | Line % |
-| ---------- | -------- | ------ |
-| baz/qux.ts |    100.0 |  100.0 |
-| foo.ts     |     75.0 |   76.9 |
-| All files  |     83.3 |   85.0 |
+      "| File       | Branch % | Function % | Line % |
+| ---------- | -------- | ---------- | ------ |
+| baz/qux.ts |    100.0 |      100.0 |  100.0 |
+| foo.ts     |     75.0 |      100.0 |   76.9 |
+| All files  |     83.3 |      100.0 |   85.0 |
 ",
     );
   }

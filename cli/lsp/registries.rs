@@ -541,7 +541,7 @@ impl ModuleRegistry {
       return;
     };
     let origin = base_url(&origin_url);
-    #[allow(clippy::map_entry)]
+    #[allow(clippy::map_entry, reason = "less allocations")]
     // we can't use entry().or_insert_with() because we can't use async closures
     if !self.origins.contains_key(&origin) {
       let Ok(specifier) = origin_url.join(CONFIG_PATH) else {
@@ -569,7 +569,7 @@ impl ModuleRegistry {
   async fn enable_custom(&mut self, specifier: &str) -> Result<(), AnyError> {
     let specifier = Url::parse(specifier)?;
     let origin = base_url(&specifier);
-    #[allow(clippy::map_entry)]
+    #[allow(clippy::map_entry, reason = "reduces a clone")]
     if !self.origins.contains_key(&origin) {
       let configs = self.fetch_config(&specifier).await?;
       self.origins.insert(origin, configs);

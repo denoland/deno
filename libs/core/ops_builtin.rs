@@ -8,7 +8,6 @@ use std::rc::Rc;
 
 use bytes::BytesMut;
 use deno_error::JsErrorBox;
-use futures::StreamExt;
 use serde_v8::ByteString;
 
 use crate::CancelHandle;
@@ -27,6 +26,7 @@ use crate::io::BufMutView;
 use crate::io::BufView;
 use crate::io::ResourceId;
 use crate::modules::ModuleMap;
+use crate::modules::recursive_load::RecursiveModuleLoad;
 use crate::op2;
 use crate::ops_builtin_types;
 use crate::ops_builtin_v8;
@@ -142,7 +142,7 @@ builtin_ops! {
 
 #[op2(fast)]
 pub fn op_panic(#[string] message: String) {
-  #[allow(clippy::print_stderr)]
+  #[allow(clippy::print_stderr, reason = "intentional panic output")]
   {
     eprintln!("JS PANIC: {}", message);
   }
@@ -165,7 +165,7 @@ fn op_add(a: i32, b: i32) -> i32 {
   a + b
 }
 
-#[allow(clippy::unused_async)]
+#[allow(clippy::unused_async, reason = "intentially async")]
 #[op2]
 pub async fn op_add_async(a: i32, b: i32) -> i32 {
   a + b
@@ -174,23 +174,23 @@ pub async fn op_add_async(a: i32, b: i32) -> i32 {
 #[op2(fast)]
 pub fn op_void_sync() {}
 
-#[allow(clippy::unused_async)]
+#[allow(clippy::unused_async, reason = "intentially async")]
 #[op2]
 pub async fn op_void_async() {}
 
-#[allow(clippy::unused_async)]
+#[allow(clippy::unused_async, reason = "intentially async")]
 #[op2]
 pub async fn op_error_async() -> Result<(), JsErrorBox> {
   Err(JsErrorBox::generic("error"))
 }
 
-#[allow(clippy::unused_async)]
+#[allow(clippy::unused_async, reason = "intentially async")]
 #[op2(async(deferred), fast)]
 pub async fn op_error_async_deferred() -> Result<(), JsErrorBox> {
   Err(JsErrorBox::generic("error"))
 }
 
-#[allow(clippy::unused_async)]
+#[allow(clippy::unused_async, reason = "intentially async")]
 #[op2(async(deferred), fast)]
 pub async fn op_void_async_deferred() {}
 
@@ -367,7 +367,7 @@ async fn op_read_all(
   let mut buf = BufMutView::new(buffer_strategy.buffer_size());
 
   loop {
-    #[allow(deprecated)]
+    #[allow(deprecated, reason = "needed for compatibility")]
     buf.maybe_grow(buffer_strategy.buffer_size()).unwrap();
 
     let (n, new_buf) = resource.clone().read_byob(buf).await?;
@@ -514,22 +514,19 @@ async fn do_load_job<'s, 'i>(
   specifier: &str,
   code: Option<String>,
 ) -> Result<ModuleId, CoreError> {
-  let mut load = ModuleMap::load_side(
-    module_map_rc.clone(),
+  let root_id = RecursiveModuleLoad::side(
     specifier.to_string(),
+    module_map_rc.clone(),
     crate::modules::SideModuleKind::Sync,
     code,
   )
-  .await?;
-
-  while let Some(load_result) = load.next().await {
-    let (request, info) = load_result?;
+  .await?
+  .run_to_completion(|load, request, source| {
     load
-      .register_and_recurse(scope, &request, info)
-      .map_err(|e| e.into_error(scope, false, false))?;
-  }
-
-  let root_id = load.root_module_id.expect("Root module should be loaded");
+      .register_and_recurse(scope, request, source)
+      .map_err(|e| e.into_error(scope, false, false))
+  })
+  .await?;
 
   let module = module_map_rc
     .get_module(scope, root_id)
@@ -605,7 +602,10 @@ fn wrap_module<'s, 'i>(
   let global_module = v8::Global::new(scope, module);
   scope.set_slot(global_module);
 
-  #[allow(clippy::unnecessary_wraps)]
+  #[allow(
+    clippy::unnecessary_wraps,
+    reason = "required by v8 callback signature"
+  )]
   fn resolve_callback<'s>(
     context: v8::Local<'s, v8::Context>,
     specifier: v8::Local<'s, v8::String>,

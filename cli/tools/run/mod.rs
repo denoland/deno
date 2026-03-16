@@ -1,7 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::io::Read;
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_cache_dir::file_fetcher::File;
@@ -9,14 +8,11 @@ use deno_config::deno_json::NodeModulesDirMode;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
-use deno_lib::standalone::binary::SerializedWorkspaceResolverImportMap;
 use deno_lib::worker::LibWorkerFactoryRoots;
 use deno_npm_installer::PackageCaching;
 use deno_npm_installer::graph::NpmCachingStrategy;
 use deno_path_util::resolve_url_or_path;
 use deno_runtime::WorkerExecutionMode;
-use eszip::EszipV2;
-use jsonc_parser::ParseOptions;
 
 use crate::args::EvalFlags;
 use crate::args::Flags;
@@ -24,7 +20,6 @@ use crate::args::RunFlags;
 use crate::args::WatchFlagsWithPaths;
 use crate::factory::CliFactory;
 use crate::util;
-use crate::util::env::WatchEnvTracker;
 use crate::util::file_watcher::WatcherRestartMode;
 
 pub mod hmr;
@@ -45,7 +40,7 @@ To grant permissions, set them before the script argument. For example:
 pub fn set_npm_user_agent() {
   static ONCE: std::sync::Once = std::sync::Once::new();
   ONCE.call_once(|| {
-    #[allow(clippy::undocumented_unsafe_blocks)]
+    // SAFETY: guarded by Once so only called once from a single thread
     unsafe {
       std::env::set_var(
         crate::npm::NPM_CONFIG_USER_AGENT_ENV_VAR,
@@ -179,14 +174,6 @@ async fn run_with_watch(
     WatcherRestartMode::Automatic,
     move |flags, watcher_communicator, changed_paths| {
       watcher_communicator.show_path_changed(changed_paths.clone());
-      let env_file_paths: Option<Vec<std::path::PathBuf>> = flags
-        .env_file
-        .as_ref()
-        .map(|files| files.iter().map(PathBuf::from).collect());
-      WatchEnvTracker::snapshot().load_env_variables_from_env_files(
-        env_file_paths.as_ref(),
-        flags.log_level,
-      );
       Ok(async move {
         let factory = CliFactory::from_flags_for_watcher(
           flags,
@@ -359,40 +346,4 @@ pub async fn run_eszip(
 
   let exit_code = worker.run().await?;
   Ok(exit_code)
-}
-
-#[allow(unused)]
-async fn load_import_map(
-  eszips: &[EszipV2],
-  specifier: &str,
-) -> Result<SerializedWorkspaceResolverImportMap, AnyError> {
-  let maybe_module = eszips
-    .iter()
-    .rev()
-    .find_map(|eszip| eszip.get_import_map(specifier));
-  let Some(module) = maybe_module else {
-    return Err(AnyError::msg(format!("import map not found '{specifier}'")));
-  };
-  let base_url = deno_core::url::Url::parse(specifier).map_err(|err| {
-    AnyError::msg(format!(
-      "import map specifier '{specifier}' is not a valid url: {err}"
-    ))
-  })?;
-  let bytes = module
-    .source()
-    .await
-    .ok_or_else(|| AnyError::msg("import map not found '{specifier}'"))?;
-  let text = String::from_utf8_lossy(&bytes);
-  let json_value =
-    jsonc_parser::parse_to_serde_value(&text, &ParseOptions::default())
-      .map_err(|err| {
-        AnyError::msg(format!("import map failed to parse: {err}"))
-      })?
-      .ok_or_else(|| AnyError::msg("import map is not valid JSON"))?;
-  let import_map = import_map::parse_from_value(base_url, json_value)?;
-
-  Ok(SerializedWorkspaceResolverImportMap {
-    specifier: specifier.to_string(),
-    json: import_map.import_map.to_json(),
-  })
 }

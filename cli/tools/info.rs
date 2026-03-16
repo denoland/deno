@@ -207,7 +207,7 @@ pub async fn info(
   Ok(())
 }
 
-#[allow(clippy::print_stdout)]
+#[allow(clippy::print_stdout, reason = "print method")]
 fn print_cache_info(
   factory: &CliFactory,
   json: bool,
@@ -215,7 +215,6 @@ fn print_cache_info(
 ) -> Result<(), AnyError> {
   let deno_version = DENO_VERSION_INFO.deno;
   let dir = factory.deno_dir()?;
-  #[allow(deprecated)]
   let modules_cache = factory.global_http_cache()?.dir_path();
   let npm_cache = factory.deno_dir()?.npm_folder_path();
   let typescript_cache = &dir.gen_cache.location;
