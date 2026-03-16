@@ -1517,6 +1517,21 @@ function buildCommand(
   return [file, args, includeNpmProcessState];
 }
 
+// deno-lint-ignore no-explicit-any
+function restorePrototype(obj: any) {
+  if (obj === null || typeof obj !== "object") return;
+  if (Array.isArray(obj)) {
+    for (let i = 0; i < obj.length; i++) {
+      restorePrototype(obj[i]);
+    }
+    return;
+  }
+  Object.setPrototypeOf(obj, Object.prototype);
+  for (const key of Object.keys(obj)) {
+    restorePrototype(obj[key]);
+  }
+}
+
 function _createSpawnError(
   status: string,
   command: string,
@@ -1822,6 +1837,11 @@ export function setupChannel(
   function handleMessage(msg) {
     if (!target.channel) {
       return;
+    }
+    // serde_v8 deserializes objects with null prototype, but Node.js IPC
+    // messages should have Object.prototype (as if from JSON.parse).
+    if (serialization === "json") {
+      restorePrototype(msg);
     }
     if (target.listenerCount("message") !== 0) {
       target.emit("message", msg);
