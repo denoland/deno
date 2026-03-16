@@ -387,6 +387,11 @@ export class ChildProcess extends EventEmitter {
       extraStdioNormalized.push(toDenoStdio(extraStdio[i]));
     }
 
+    // Windows does not support uid/gid options - throw ENOTSUP synchronously.
+    if (isWindows && (uid != null || gid != null)) {
+      throw _createSpawnError("ENOTSUP", command, args.slice(1));
+    }
+
     try {
       this.#process = new Deno.Command(cmd, {
         args: cmdArgs,
