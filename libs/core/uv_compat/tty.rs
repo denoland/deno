@@ -1168,7 +1168,6 @@ pub(crate) unsafe fn shutdown_tty(
 ///
 /// # Safety
 /// `tty_ptr` must be a valid pointer to an initialized `uv_tty_t`.
-#[allow(unused_variables)]
 pub(crate) unsafe fn poll_tty_handle(
   tty_ptr: *mut uv_tty_t,
   cx: &mut Context<'_>,
@@ -1474,47 +1473,6 @@ unsafe fn tty_is_slave(fd: c_int) -> bool {
 #[cfg(unix)]
 unsafe fn open_cloexec(path: *const libc::c_char, flags: c_int) -> c_int {
   unsafe { libc::open(path, flags | libc::O_CLOEXEC) }
-}
-
-/// Duplicate `new_fd` onto `old_fd` with close-on-exec set.
-/// Returns 0 on success, negative UV error on failure.
-#[cfg(unix)]
-#[allow(dead_code)]
-unsafe fn dup2_cloexec(new_fd: c_int, old_fd: c_int) -> c_int {
-  if new_fd == old_fd {
-    return UV_EINVAL;
-  }
-  // Use dup3 on Linux for atomicity; fall back to dup2 + fcntl elsewhere.
-  #[cfg(target_os = "linux")]
-  {
-    // For stdio fds (0, 1, 2), don't set O_CLOEXEC — see comment below.
-    let flags = if old_fd > 2 { libc::O_CLOEXEC } else { 0 };
-    let r = unsafe { libc::syscall(libc::SYS_dup3, new_fd, old_fd, flags) };
-    if r == -1 {
-      return -std::io::Error::last_os_error()
-        .raw_os_error()
-        .unwrap_or(libc::EINVAL);
-    }
-    return 0;
-  }
-  #[cfg(not(target_os = "linux"))]
-  {
-    let r = unsafe { libc::dup2(new_fd, old_fd) };
-    if r == -1 {
-      return -std::io::Error::last_os_error()
-        .raw_os_error()
-        .unwrap_or(libc::EINVAL);
-    }
-    // Set close-on-exec, but NOT for stdio fds (0, 1, 2).
-    // Unlike libuv which uses uv_spawn (which dup2's fds in the child
-    // after fork), Deno uses Rust's std::process::Command with
-    // Stdio::inherit() which leaves fds as-is. If we set FD_CLOEXEC on
-    // stdio fds, child processes lose them on exec.
-    if old_fd > 2 {
-      unsafe { libc::fcntl(old_fd, libc::F_SETFD, libc::FD_CLOEXEC) };
-    }
-    0
-  }
 }
 
 /// Retry-on-EINTR wrapper for tcsetattr.

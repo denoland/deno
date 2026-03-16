@@ -7,8 +7,6 @@
 // - src/stream_wrap.h
 // - src/stream_wrap.cc
 
-#![allow(non_snake_case)]
-
 use std::cell::Cell;
 use std::cell::UnsafeCell;
 use std::ffi::c_char;
