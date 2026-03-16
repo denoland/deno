@@ -43,6 +43,7 @@ import {
   AbortError,
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
+  ERR_INVALID_HANDLE_TYPE,
   ERR_INVALID_SYNC_FORK_INPUT,
   ERR_IPC_CHANNEL_CLOSED,
   ERR_IPC_SYNC_FORK,
@@ -66,7 +67,8 @@ import process from "node:process";
 import { StringPrototypeSlice } from "ext:deno_node/internal/primordials.mjs";
 import { StreamBase } from "ext:deno_node/internal_binding/stream_wrap.ts";
 import { Pipe, socketType } from "ext:deno_node/internal_binding/pipe_wrap.ts";
-import { Socket } from "node:net";
+import { Server as NetServer, Socket } from "node:net";
+import { Socket as DgramSocket } from "node:dgram";
 import {
   kExtraStdio,
   kInputOption,
@@ -1882,6 +1884,15 @@ export function setupChannel(
     }
 
     if (handle !== undefined) {
+      // Validate handle type before rejecting as not implemented.
+      // Node.js only accepts net.Server, net.Socket, or dgram.Socket.
+      if (
+        !(handle instanceof Socket) &&
+        !(handle instanceof NetServer) &&
+        !(handle instanceof DgramSocket)
+      ) {
+        throw new ERR_INVALID_HANDLE_TYPE();
+      }
       notImplemented("ChildProcess.send with handle");
     }
 
