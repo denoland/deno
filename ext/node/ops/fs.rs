@@ -1509,6 +1509,8 @@ pub fn op_node_cp_sync<'a>(
   };
 
   match cp_sync_dispatch(&state, &fs, scope, &stat_info, src, dest, opts)? {
+    // Treat JsException as success here so the pending V8 exception can propagate
+    // naturally, preserving the original JS stack instead of rethrowing from Rust.
     CpSyncRunStatus::Completed | CpSyncRunStatus::JsException => Ok(()),
   }
 }
