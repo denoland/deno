@@ -54,7 +54,6 @@ const {
   Error,
   FunctionPrototypeCall,
   NumberIsFinite,
-  NumberIsNaN,
   ObjectHasOwn,
   ObjectKeys,
   ObjectPrototypeIsPrototypeOf,
@@ -662,7 +661,7 @@ class NodeWorker extends EventEmitter {
   }
 
   cpuUsage(prevValue?: { user: number; system: number }) {
-    if (prevValue != null && !NumberIsNaN(prevValue)) {
+    if (prevValue != null) {
       validateObject(prevValue, "prevValue");
       if (typeof prevValue.user !== "number") {
         throw new ERR_INVALID_ARG_TYPE(
