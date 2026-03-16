@@ -1157,7 +1157,7 @@ where
         options,
       );
     }
-    #[allow(unreachable_code)]
+    #[allow(unreachable_code, reason = "to avoid typing closure")]
     Ok::<_, HttpNextError>(())
   });
 

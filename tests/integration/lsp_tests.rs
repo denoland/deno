@@ -7917,10 +7917,8 @@ fn lsp_quote_style_from_workspace_settings() {
   client.shutdown();
 }
 
-// TODO(nayeemrmn): Enable for tsgo when the upstream commit lands in our fork:
-// https://github.com/microsoft/typescript-go/commit/ffa96d57ad5af333fe66f7cb1b7a4f3041000d8e
-#[test(timeout = 300)]
-fn lsp_code_actions_organize_imports() {
+#[test(timeout = 300, fork_with_suffix = "_tsgo")]
+fn lsp_code_actions_organize_imports(use_tsgo: bool) {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
   let file = temp_dir.source_file(
@@ -7933,8 +7931,7 @@ import unused from "./c.ts";
 console.log(b, a, c, d, y, z);
 "#,
   );
-  let uri = file.uri();
-  let mut client = context.new_lsp_command().build();
+  let mut client = context.new_lsp_command().set_use_tsgo(use_tsgo).build();
   client.initialize_default();
   client.did_open_file(&file);
 
@@ -7942,7 +7939,7 @@ console.log(b, a, c, d, y, z);
   let res = client.write_request(
     "textDocument/codeAction",
     json!({
-      "textDocument": { "uri": uri },
+      "textDocument": { "uri": file.uri() },
       "range": {
         "start": { "line": 0, "character": 0 },
         "end": { "line": 0, "character": 0 }
@@ -7956,61 +7953,52 @@ console.log(b, a, c, d, y, z);
 
   let expected = json!([
     {
-      "title": "Organize imports",
+      "title": "Organize Imports",
       "kind": "source.organizeImports",
       "edit": {
-        "documentChanges": [
-          {
-            "textDocument": {
-              "uri": uri,
-              "version": 1
+        "changes": {
+          file.uri().as_str(): [
+            {
+              "range": {
+                "start": { "line": 0, "character": 0 },
+                "end": { "line": 1, "character": 0 },
+              },
+              // All organized imports in the first replacement:
+              // files sorted alphabetically, imports within files sorted alphabetically
+              "newText": concat!(
+                "import { d } from \"./a.ts\";\n",
+                "import { a, b, c } from \"./b.ts\";\n",
+                "import { y, z } from \"./z.ts\";\n",
+              ),
             },
-            "edits": [
-              {
-                "range": {
-                  "start": { "line": 0, "character": 0 },
-                  "end": { "line": 1, "character": 0 }
-                },
-                // All organized imports in the first replacement:
-                // files sorted alphabetically, imports within files sorted alphabetically
-                "newText": concat!(
-                  "import { d } from \"./a.ts\";\n",
-                  "import { a, b, c } from \"./b.ts\";\n",
-                  "import { y, z } from \"./z.ts\";\n",
-                )
+            {
+              "range": {
+                "start": { "line": 1, "character": 0 },
+                "end": { "line": 2, "character": 0 },
               },
-              {
-                "range": {
-                  "start": { "line": 1, "character": 0 },
-                  "end": { "line": 2, "character": 0 }
-                },
-                // Second line removed (replaced by organized imports above)
-                "newText": ""
+              // Second line removed (replaced by organized imports above)
+              "newText": "",
+            },
+            {
+              "range": {
+                "start": { "line": 2, "character": 0 },
+                "end": { "line": 3, "character": 0 },
               },
-              {
-                "range": {
-                  "start": { "line": 2, "character": 0 },
-                  "end": { "line": 3, "character": 0 }
-                },
-                // Third line removed (replaced by organized imports above)
-                "newText": ""
+              // Third line removed (replaced by organized imports above)
+              "newText": "",
+            },
+            {
+              "range": {
+                "start": { "line": 3, "character": 0 },
+                "end": { "line": 4, "character": 0 },
               },
-              {
-                "range": {
-                  "start": { "line": 3, "character": 0 },
-                  "end": { "line": 4, "character": 0 }
-                },
-                // Unused import from "./c.ts" is removed
-                "newText": ""
-              }
-            ]
-          }
-        ]
+              // Unused import from "./c.ts" is removed
+              "newText": "",
+            },
+          ],
+        },
       },
-      "data": {
-        "uri": uri
-      }
-    }
+    },
   ]);
 
   assert_eq!(res, expected);
@@ -8078,110 +8066,8 @@ console.log(a, b, c);
   client.shutdown();
 }
 
-// TODO(nayeemrmn): Enable for tsgo when the upstream commit lands in our fork:
-// https://github.com/microsoft/typescript-go/commit/ffa96d57ad5af333fe66f7cb1b7a4f3041000d8e
-#[test(timeout = 300)]
-fn lsp_code_actions_organize_imports_with_diagnostics() {
-  let context = TestContextBuilder::new().use_temp_cwd().build();
-  let temp_dir = context.temp_dir();
-  // File with unordered imports and a type error
-  let file = temp_dir.source_file(
-    "file.ts",
-    r#"import { b } from "./b.ts";
-import { a } from "./a.ts";
-import unused from "./c.ts";
-
-// Type error: using undeclared variable
-console.log(undeclaredVariable);
-"#,
-  );
-  let uri = file.uri();
-  let mut client = context.new_lsp_command().build();
-  client.initialize_default();
-  client.did_open_file(&file);
-
-  // Request "Organize Imports" action with diagnostics indicating an error
-  let res = client.write_request(
-    "textDocument/codeAction",
-    json!({
-      "textDocument": { "uri": uri },
-      "range": {
-        "start": { "line": 0, "character": 0 },
-        "end": { "line": 0, "character": 0 }
-      },
-      "context": {
-        "diagnostics": [
-          {
-            "range": {
-              "start": { "line": 5, "character": 12 },
-              "end": { "line": 5, "character": 29 }
-            },
-            "severity": 1,
-            "message": "Cannot find name 'undeclaredVariable'.",
-            "source": "deno-ts"
-          }
-        ],
-        "only": ["source.organizeImports"]
-      }
-    }),
-  );
-
-  let expected = json!([
-    {
-      "title": "Organize imports",
-      "kind": "source.organizeImports",
-      "edit": {
-        "documentChanges": [
-          {
-            "textDocument": {
-              "uri": uri,
-              "version": 1
-            },
-            "edits": [
-              {
-                "range": {
-                  "start": { "line": 0, "character": 0 },
-                  "end": { "line": 1, "character": 0 }
-                },
-                // Imports sorted alphabetically, but unused imports NOT removed due to error
-                "newText": concat!(
-                  "import { a } from \"./a.ts\";\n",
-                  "import { b } from \"./b.ts\";\n",
-                  "import unused from \"./c.ts\";\n",
-                )
-              },
-              {
-                "range": {
-                  "start": { "line": 1, "character": 0 },
-                  "end": { "line": 2, "character": 0 }
-                },
-                "newText": ""
-              },
-              {
-                "range": {
-                  "start": { "line": 2, "character": 0 },
-                  "end": { "line": 3, "character": 0 }
-                },
-                "newText": ""
-              }
-            ]
-          }
-        ]
-      },
-      "data": {
-        "uri": uri
-      }
-    }
-  ]);
-
-  assert_eq!(res, expected);
-  client.shutdown();
-}
-
-// TODO(nayeemrmn): Enable for tsgo when the upstream commit lands in our fork:
-// https://github.com/microsoft/typescript-go/commit/ffa96d57ad5af333fe66f7cb1b7a4f3041000d8e
-#[test(timeout = 300)]
-fn lsp_code_actions_organize_imports_in_a_workspace() {
+#[test(timeout = 300, fork_with_suffix = "_tsgo")]
+fn lsp_code_actions_organize_imports_in_a_workspace(use_tsgo: bool) {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
   temp_dir.write(
@@ -8222,8 +8108,7 @@ console.log(other, submodule);
     .to_string(),
   );
   temp_dir.source_file("other/other.ts", r#"export const other = 0;"#);
-  let uri = file.uri();
-  let mut client = context.new_lsp_command().build();
+  let mut client = context.new_lsp_command().set_use_tsgo(use_tsgo).build();
   client.initialize_default();
   client.did_open_file(&file);
 
@@ -8231,7 +8116,7 @@ console.log(other, submodule);
   let res = client.write_request(
     "textDocument/codeAction",
     json!({
-      "textDocument": { "uri": uri },
+      "textDocument": { "uri": file.uri() },
       "range": {
         "start": { "line": 0, "character": 0 },
         "end": { "line": 0, "character": 0 }
@@ -8245,42 +8130,33 @@ console.log(other, submodule);
 
   let expected = json!([
     {
-      "title": "Organize imports",
+      "title": "Organize Imports",
       "kind": "source.organizeImports",
       "edit": {
-        "documentChanges": [
-          {
-            "textDocument": {
-              "uri": uri,
-              "version": 1
-            },
+        "changes": {
+          file.uri().as_str(): [
             // Relative imports come after scoped imports.
-            "edits": [
-              {
-                "range": {
-                  "start": { "line": 0, "character": 0 },
-                  "end": { "line": 1, "character": 0 }
-                },
-                "newText": concat!(
-                  "import { other } from \"@scope/other\";\n",
-                  "import { submodule } from \"./submodule.ts\";\n",
-                )
+            {
+              "range": {
+                "start": { "line": 0, "character": 0 },
+                "end": { "line": 1, "character": 0 },
               },
-              {
-                "range": {
-                  "start": { "line": 1, "character": 0 },
-                  "end": { "line": 2, "character": 0 }
-                },
-                "newText": ""
-              }
-            ]
-          }
-        ]
+              "newText": concat!(
+                "import { other } from \"@scope/other\";\n",
+                "import { submodule } from \"./submodule.ts\";\n",
+              ),
+            },
+            {
+              "range": {
+                "start": { "line": 1, "character": 0 },
+                "end": { "line": 2, "character": 0 },
+              },
+              "newText": "",
+            },
+          ],
+        },
       },
-      "data": {
-        "uri": uri
-      }
-    }
+    },
   ]);
 
   assert_eq!(res, expected);

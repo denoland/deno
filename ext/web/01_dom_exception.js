@@ -7,7 +7,7 @@
 /// <reference path="../web/internal.d.ts" />
 /// <reference path="../../cli/tsc/dts/lib.deno_web.d.ts" />
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 const {
   Error,
   ErrorPrototype,
@@ -137,6 +137,18 @@ class DOMException {
     error[_name] = name;
     error[_code] = code;
     error[webidl.brand] = webidl.brand;
+    ObjectDefineProperty(error, core.hostObjectBrand, {
+      __proto__: null,
+      value: () => ({
+        type: "DOMException",
+        message,
+        name,
+        stack: error.stack,
+      }),
+      enumerable: false,
+      configurable: false,
+      writable: false,
+    });
 
     return error;
   }
@@ -216,5 +228,19 @@ for (let i = 0; i < entries.length; ++i) {
   ObjectDefineProperty(DOMException, key, desc);
   ObjectDefineProperty(DOMException.prototype, key, desc);
 }
+
+core.registerCloneableResource("DOMException", (data) => {
+  const ex = new DOMException(data.message, data.name);
+  if (data.stack !== undefined) {
+    ObjectDefineProperty(ex, "stack", {
+      __proto__: null,
+      value: data.stack,
+      configurable: true,
+      writable: true,
+      enumerable: false,
+    });
+  }
+  return ex;
+});
 
 export { DOMException, DOMExceptionPrototype };

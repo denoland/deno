@@ -62,7 +62,9 @@ deno_core::extension!(deno_web,
   deps = [ deno_webidl ],
   ops = [
     op_base64_decode,
+    op_base64_decode_into,
     op_base64_encode,
+    op_base64_encode_from_buffer,
     op_base64_atob,
     op_base64_btoa,
     op_encoding_normalize_label,
@@ -180,11 +182,69 @@ pub enum WebError {
 }
 
 #[op2]
-fn op_base64_decode(#[string] input: String) -> Result<Uint8Array, WebError> {
-  let mut s = input.into_bytes();
-  let decoded_len = forgiving_base64_decode_inplace(&mut s)?;
-  s.truncate(decoded_len);
-  Ok(s.into())
+fn op_base64_decode(
+  #[string(onebyte)] input: Cow<[u8]>,
+) -> Result<Uint8Array, WebError> {
+  // Use forgiving_decode_to_vec which handles whitespace stripping
+  // and decodes in one pass without unnecessary intermediate copies.
+  let v = base64_simd::forgiving_decode_to_vec(&input)
+    .map_err(|_| WebError::Base64Decode)?;
+  Ok(v.into())
+}
+
+/// Decode base64 directly into a target buffer at the given offset.
+/// Returns the number of bytes written.
+///
+/// Fast path: tries STANDARD.decode directly into target (zero intermediate
+/// copies). This works for properly-padded base64 without whitespace.
+/// Slow path: uses a stack/heap buffer with forgiving_decode for inputs
+/// with whitespace or missing padding.
+#[op2(fast)]
+fn op_base64_decode_into(
+  #[string(onebyte)] input: Cow<[u8]>,
+  #[buffer] target: &mut [u8],
+  #[smi] offset: u32,
+) -> Result<u32, WebError> {
+  let offset = offset as usize;
+  let target = &mut target[offset..];
+
+  // Fast path: try strict STANDARD decode directly into target.
+  // This avoids any intermediate buffer — input is read directly and
+  // decoded bytes are written to target. Works for clean padded base64
+  // (the common case from Buffer.toString('base64')).
+  //
+  // Guard: base64_simd::STANDARD.decode asserts dst.len() >= decoded_length
+  // internally (panics rather than returning Err), so we must check that
+  // the target is large enough before calling it.
+  {
+    use base64_simd::AsOut;
+    let max_decoded_len = input.len() / 4 * 3;
+    if target.len() >= max_decoded_len
+      && let Ok(decoded) = base64_simd::STANDARD.decode(&input, target.as_out())
+    {
+      return Ok(decoded.len() as u32);
+    }
+  }
+
+  // Slow path: forgiving decode for whitespace/missing padding/unpadded input.
+  // Needs a buffer >= input length for forgiving_decode's internal copy.
+  let len = input.len();
+  const STACK_BUF_SIZE: usize = 8192;
+  if len <= STACK_BUF_SIZE {
+    let mut buf = [0u8; STACK_BUF_SIZE];
+    use base64_simd::AsOut;
+    let decoded = base64_simd::forgiving_decode(&input, buf[..len].as_out())
+      .map_err(|_| WebError::Base64Decode)?;
+    let bytes_to_write = decoded.len().min(target.len());
+    target[..bytes_to_write].copy_from_slice(&decoded[..bytes_to_write]);
+    Ok(bytes_to_write as u32)
+  } else {
+    let mut s = input.into_owned();
+    let decoded_len = forgiving_base64_decode_inplace(&mut s)?;
+    let bytes_to_write = decoded_len.min(target.len());
+    target[..bytes_to_write].copy_from_slice(&s[..bytes_to_write]);
+    Ok(bytes_to_write as u32)
+  }
 }
 
 #[op2]
@@ -208,6 +268,44 @@ fn forgiving_base64_decode_inplace(
 #[string]
 fn op_base64_encode(#[buffer] s: &[u8]) -> String {
   forgiving_base64_encode(s)
+}
+
+/// Encode a sub-range of a buffer to base64, avoiding a JS-side slice copy.
+#[op2]
+fn op_base64_encode_from_buffer<'a>(
+  scope: &mut v8::PinScope<'a, '_>,
+  #[buffer] s: &[u8],
+  #[smi] offset: u32,
+  #[smi] length: u32,
+) -> Result<v8::Local<'a, v8::String>, WebError> {
+  let offset = offset as usize;
+  let length = length as usize;
+  let end = (offset + length).min(s.len());
+  base64_encode_to_v8_string(scope, &s[offset..end])
+}
+
+/// Encode bytes to base64 and create a V8 one-byte string directly.
+/// Uses v8::String::new_from_one_byte (base64 output is always ASCII).
+/// Stack-allocates for inputs up to 6KB (producing ≤8KB base64).
+#[inline]
+fn base64_encode_to_v8_string<'a>(
+  scope: &mut v8::PinScope<'a, '_>,
+  src: &[u8],
+) -> Result<v8::Local<'a, v8::String>, WebError> {
+  use base64_simd::AsOut;
+  let b64_len = src.len().div_ceil(3) * 4;
+
+  const STACK_BUF_SIZE: usize = 8192;
+  if b64_len <= STACK_BUF_SIZE {
+    let mut buf = [0u8; STACK_BUF_SIZE];
+    let encoded = base64_simd::STANDARD.encode(src, buf[..b64_len].as_out());
+    v8::String::new_from_one_byte(scope, encoded, v8::NewStringType::Normal)
+      .ok_or(WebError::BufferTooLong)
+  } else {
+    let encoded = base64_simd::STANDARD.encode_type::<Vec<u8>>(src);
+    v8::String::new_from_one_byte(scope, &encoded, v8::NewStringType::Normal)
+      .ok_or(WebError::BufferTooLong)
+  }
 }
 
 #[op2]
@@ -389,7 +487,6 @@ unsafe impl deno_core::GarbageCollected for TextDecoderResource {
 }
 
 #[op2(fast(op_encoding_encode_into_fast))]
-#[allow(deprecated)]
 fn op_encoding_encode_into(
   scope: &mut v8::PinScope<'_, '_>,
   input: v8::Local<v8::Value>,

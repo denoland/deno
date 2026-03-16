@@ -210,7 +210,7 @@ fn get_data_local_dir() -> Option<PathBuf> {
   }
   #[cfg(target_os = "macos")]
   {
-    #[allow(clippy::disallowed_types)]
+    #[allow(clippy::disallowed_types, reason = "setup code")]
     sys_traits::EnvHomeDir::env_home_dir(&sys_traits::impls::RealSys)
       .map(|h| h.join("Library").join("Application Support"))
   }
@@ -219,7 +219,7 @@ fn get_data_local_dir() -> Option<PathBuf> {
     std::env::var_os("XDG_DATA_HOME")
       .map(PathBuf::from)
       .or_else(|| {
-        #[allow(clippy::disallowed_types)]
+        #[allow(clippy::disallowed_types, reason = "setup code")]
         sys_traits::EnvHomeDir::env_home_dir(&sys_traits::impls::RealSys)
           .map(|h| h.join(".local").join("share"))
       })
@@ -617,9 +617,12 @@ impl StandaloneModules {
             .and_then(|t| self.vfs.read_file_offset_with_len(t).ok());
           bytes
         }
-        Err(err) if err.kind() == ErrorKind::NotFound => {
-          // actually use the real file system here
-          #[allow(clippy::disallowed_types)]
+        Err(err) if err.kind() == ErrorKind::NotFound =>
+        {
+          #[allow(
+            clippy::disallowed_types,
+            reason = "use real file system because not in vfs"
+          )]
           match sys_traits::impls::RealSys.fs_read(&path) {
             Ok(bytes) => bytes,
             Err(err) if err.kind() == ErrorKind::NotFound => {
@@ -800,7 +803,7 @@ impl RemoteModulesStore {
     &'a self,
     original_specifier: &'a Url,
   ) -> Result<Option<DenoCompileModuleData<'a>>, TooManyRedirectsError> {
-    #[allow(clippy::ptr_arg)]
+    #[allow(clippy::ptr_arg, reason = "Cow on data is relevant here")]
     fn handle_cow_ref(data: &Cow<'static, [u8]>) -> Cow<'static, [u8]> {
       match data {
         Cow::Borrowed(data) => Cow::Borrowed(data),
@@ -861,8 +864,8 @@ fn deserialize_npm_snapshot(
     Ok((input, id))
   }
 
-  #[allow(clippy::needless_lifetimes)] // clippy bug
-  #[allow(clippy::type_complexity)]
+  #[allow(clippy::needless_lifetimes, reason = "clippy bug")]
+  #[allow(clippy::type_complexity, reason = "private code")]
   fn parse_root_package<'a>(
     id_to_npm_id: &'a impl Fn(usize) -> Result<NpmPackageId, AnyError>,
   ) -> impl Fn(&[u8]) -> Result<(&[u8], (PackageReq, NpmPackageId)), AnyError> + 'a
@@ -875,8 +878,8 @@ fn deserialize_npm_snapshot(
     }
   }
 
-  #[allow(clippy::needless_lifetimes)] // clippy bug
-  #[allow(clippy::type_complexity)]
+  #[allow(clippy::needless_lifetimes, reason = "clippy bug")]
+  #[allow(clippy::type_complexity, reason = "private code")]
   fn parse_package_dep<'a>(
     id_to_npm_id: &'a impl Fn(usize) -> Result<NpmPackageId, AnyError>,
   ) -> impl Fn(&[u8]) -> Result<(&[u8], (StackString, NpmPackageId)), AnyError> + 'a

@@ -194,9 +194,16 @@ impl CliMainWorker {
       /// Execute the given main module emitting load and unload events before and after execution
       /// respectively.
       pub async fn execute(&mut self) -> Result<(), CoreError> {
-        self.inner.execute_main_module().await?;
-        self.inner.worker.dispatch_load_event()?;
+        // Set pending_unload before module execution so that if the future
+        // is cancelled during a top-level await, Drop will still dispatch
+        // the unload event for any handlers registered during partial
+        // module evaluation.
         self.pending_unload = true;
+        if let Err(e) = self.inner.execute_main_module().await {
+          self.pending_unload = false;
+          return Err(e);
+        }
+        self.inner.worker.dispatch_load_event()?;
 
         let result = loop {
           match self.inner.worker.run_event_loop(false).await {
@@ -228,6 +235,7 @@ impl CliMainWorker {
       fn drop(&mut self) {
         if self.pending_unload {
           let _ = self.inner.worker.dispatch_unload_event();
+          let _ = self.inner.worker.dispatch_process_exit_event();
         }
       }
     }
@@ -290,6 +298,7 @@ impl CliMainWorker {
       filename,
       config.interval,
       config.md,
+      config.flamegraph,
     );
     cpu_profiler.start_profiling();
 
@@ -345,7 +354,7 @@ pub struct CliMainWorkerFactory {
 }
 
 impl CliMainWorkerFactory {
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "construction")]
   pub fn new(
     lib_main_worker_factory: LibMainWorkerFactory<CliSys>,
     maybe_file_watcher_communicator: Option<Arc<WatcherCommunicator>>,
@@ -418,7 +427,7 @@ impl CliMainWorkerFactory {
       .await
   }
 
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "construction")]
   pub async fn create_custom_worker(
     &self,
     mode: WorkerExecutionMode,
@@ -520,8 +529,8 @@ impl CliMainWorkerFactory {
   }
 }
 
-#[allow(clippy::print_stdout)]
-#[allow(clippy::print_stderr)]
+#[allow(clippy::print_stdout, reason = "test code")]
+#[allow(clippy::print_stderr, reason = "test code")]
 #[cfg(test)]
 mod tests {
   use std::rc::Rc;
