@@ -188,7 +188,7 @@ impl HandleWrap {
 static ON_CLOSE_STR: deno_core::FastStaticString =
   deno_core::ascii_str!("_onClose");
 
-#[op2(inherit = AsyncWrap)]
+#[op2(inherit = AsyncWrap, base)]
 impl HandleWrap {
   #[constructor]
   #[cppgc]

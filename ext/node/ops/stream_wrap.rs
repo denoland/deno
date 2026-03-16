@@ -581,7 +581,7 @@ fn encode_string_to_vec(
   }
 }
 
-#[op2(base)]
+#[op2(inherit = HandleWrap, base)]
 impl LibUvStreamWrap {
   /// Called by JS immediately after construction to store the JS object
   /// reference: `stream.setHandle(stream)`
