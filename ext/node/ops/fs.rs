@@ -1738,7 +1738,10 @@ mod tests {
   }
 
   #[cfg(unix)]
-  #[allow(clippy::disallowed_methods)]
+  #[allow(
+    clippy::disallowed_methods,
+    reason = "test code uses std primitives directly"
+  )]
   mod dup_fd_tests {
     use std::borrow::Cow;
     use std::rc::Rc;
