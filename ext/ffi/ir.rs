@@ -98,7 +98,10 @@ pub union NativeValue {
 
 impl NativeValue {
   pub unsafe fn as_arg(&self, native_type: &NativeType) -> Arg<'_> {
-    #[allow(clippy::undocumented_unsafe_blocks)]
+    #[allow(
+      clippy::undocumented_unsafe_blocks,
+      reason = "safety comment on the containing block"
+    )]
     unsafe {
       match native_type {
         NativeType::Void => unreachable!(),
@@ -130,7 +133,10 @@ impl NativeValue {
     scope: &mut v8::PinScope<'scope, '_>,
     native_type: NativeType,
   ) -> v8::Local<'scope, v8::Value> {
-    #[allow(clippy::undocumented_unsafe_blocks)]
+    #[allow(
+      clippy::undocumented_unsafe_blocks,
+      reason = "safety comment on the containing block"
+    )]
     unsafe {
       match native_type {
         NativeType::Void => v8::undefined(scope).into(),

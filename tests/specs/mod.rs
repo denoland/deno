@@ -211,7 +211,10 @@ struct SingleTestMetaData {
   pub step: StepMetaData,
   #[serde(default)]
   pub ignore: bool,
-  #[allow(dead_code)]
+  #[allow(
+    dead_code,
+    reason = "deserialized but used only in multi-step conversion"
+  )]
   #[serde(default)]
   pub variants: BTreeMap<String, JsonMap>,
   /// Timeout in seconds for each step. Defaults to 300 (5 minutes).
@@ -460,7 +463,10 @@ fn test_context_from_metadata(
 
   if metadata.canonicalized_temp_dir {
     // not actually deprecated, we just want to discourage its use
-    #[allow(deprecated)]
+    #[allow(
+      deprecated,
+      reason = "not actually deprecated, just discouraging use"
+    )]
     {
       builder = builder.use_canonicalized_temp_dir();
     }
@@ -468,7 +474,10 @@ fn test_context_from_metadata(
   if metadata.symlinked_temp_dir {
     // not actually deprecated, we just want to discourage its use
     // because it's mostly used for testing purposes locally
-    #[allow(deprecated)]
+    #[allow(
+      deprecated,
+      reason = "not actually deprecated, just discouraging use"
+    )]
     {
       builder = builder.use_symlinked_temp_dir();
     }
@@ -592,7 +601,10 @@ fn run_step(
   };
   let command = match *NO_CAPTURE {
     // deprecated is only to prevent use, so this is fine here
-    #[allow(deprecated)]
+    #[allow(
+      deprecated,
+      reason = "not actually deprecated, just discouraging use"
+    )]
     true => command.show_output(),
     false => command,
   };

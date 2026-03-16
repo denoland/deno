@@ -4,7 +4,7 @@
 // while on Unix they are u32. Explicit `as` casts are needed for cross-platform
 // compatibility but trigger unnecessary_cast on the platform where the type
 // already matches.
-#![allow(clippy::unnecessary_cast)]
+#![allow(clippy::unnecessary_cast, reason = "platform specific")]
 
 use std::cell::RefCell;
 use std::cell::UnsafeCell;
@@ -698,7 +698,7 @@ unsafe extern "C" fn on_frame_recv_callback(
 
   let ft = frame_type(frame) as u32;
   let ff = frame_flags(frame);
-  #[allow(clippy::unnecessary_cast)]
+  #[allow(clippy::unnecessary_cast, reason = "cast needed for type alignment")]
   if ft == ffi::NGHTTP2_DATA as u32 {
     if ff & ffi::NGHTTP2_FLAG_END_STREAM as u8 != 0 {
       handle_data_end_stream(session, frame);
@@ -1353,7 +1353,7 @@ fn create_callbacks() -> *mut ffi::nghttp2_session_callbacks {
 
 // Session
 
-#[allow(dead_code)]
+#[allow(dead_code, reason = "fields are stored for prevent GC of v8 handles")]
 pub struct SessionCallbacks {
   pub session_internal_error_cb: v8::Global<v8::Function>,
   pub priority_frame_cb: v8::Global<v8::Function>,
@@ -1371,7 +1371,7 @@ pub struct SessionCallbacks {
 #[derive(Debug)]
 pub struct NgHttp2StreamWrite {
   pub data: bytes::Bytes,
-  #[allow(dead_code)]
+  #[allow(dead_code, reason = "stored for debugging")]
   pub stream_id: i32,
 }
 
@@ -1739,10 +1739,10 @@ pub struct Http2SessionState {
 }
 
 pub struct Http2Session {
-  #[allow(dead_code)]
+  #[allow(dead_code, reason = "stored for future use")]
   type_: SessionType,
   session: *mut ffi::nghttp2_session,
-  #[allow(dead_code)]
+  #[allow(dead_code, reason = "owns the allocation to prevent premature free")]
   callbacks: *mut ffi::nghttp2_session_callbacks,
   pub(crate) inner: *mut Session,
 }

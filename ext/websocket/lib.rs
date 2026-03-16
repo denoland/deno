@@ -1,4 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
+
 use std::borrow::Cow;
 use std::cell::Cell;
 use std::cell::RefCell;
@@ -300,7 +301,7 @@ async fn handshake_http1(
   handshake_connection(request, connection).await
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, reason = "TODO: improve")]
 async fn handshake_http2(
   client: deno_fetch::Client,
   allow_host: bool,

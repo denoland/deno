@@ -584,7 +584,7 @@ pub fn op_node_verify(
 }
 
 #[derive(Debug, PartialEq, Eq)]
-#[allow(non_camel_case_types)]
+#[allow(non_camel_case_types, reason = "matches Node.js error code naming")]
 enum ErrorCode {
   ERR_CRYPTO_INVALID_DIGEST,
 }
@@ -800,7 +800,7 @@ pub fn op_node_random_int(#[number] min: i64, #[number] max: i64) -> i64 {
   dist.sample(&mut rng)
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, reason = "all arguments are needed")]
 fn scrypt(
   password: StringOrBuffer,
   salt: StringOrBuffer,
@@ -830,7 +830,7 @@ fn scrypt(
   }
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, reason = "all arguments are needed")]
 #[op2]
 pub fn op_node_scrypt_sync(
   #[serde] password: StringOrBuffer,

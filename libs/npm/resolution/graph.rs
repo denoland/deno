@@ -47,7 +47,10 @@ use crate::resolution::collections::OneDirectionalLinkedList;
 use crate::resolution::snapshot::SnapshotPackageCopyIndexResolver;
 
 pub trait Reporter: std::fmt::Debug + Send + Sync {
-  #[allow(unused_variables)]
+  #[allow(
+    unused_variables,
+    reason = "default implementation ignores parameters"
+  )]
   fn on_resolved(&self, package_req: &PackageReq, nv: &PackageNv) {}
 }
 
@@ -973,7 +976,7 @@ impl Graph {
   // Debugging methods
 
   #[cfg(debug_assertions)]
-  #[allow(unused, clippy::print_stderr)]
+  #[allow(unused, clippy::print_stderr, reason = "debug utility")]
   fn output_path(&self, path: &Rc<GraphPath>) {
     let pkg_ids = self.compute_all_npm_pkg_ids();
     eprintln!("-----------");
@@ -1006,7 +1009,7 @@ impl Graph {
   }
 
   #[cfg(debug_assertions)]
-  #[allow(unused, clippy::print_stderr)]
+  #[allow(unused, clippy::print_stderr, reason = "debug utility")]
   fn output_node_with_ids(
     nodes: &HashMap<NodeId, Node>,
     pkg_ids: &HashMap<NodeId, NpmPackageId>,
@@ -1026,7 +1029,7 @@ impl Graph {
   }
 
   #[cfg(debug_assertions)]
-  #[allow(unused, clippy::print_stderr)]
+  #[allow(unused, clippy::print_stderr, reason = "debug utility")]
   pub fn output_nodes(&self) {
     let pkg_ids = self.compute_all_npm_pkg_ids();
     eprintln!("~~~");

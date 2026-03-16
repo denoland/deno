@@ -49,7 +49,7 @@ struct WriteReq {
 
 pub struct TCP {
   handle: RefCell<*mut UvTcp>,
-  #[allow(dead_code)]
+  #[allow(dead_code, reason = "stored for future use")]
   socket_type: Cell<SocketType>,
   provider: i32,
   async_id: i64,
@@ -424,7 +424,7 @@ impl TCP {
       Ok(uv_compat::uv_tcp_bind(
         tcp,
         sock_addr.as_ptr() as *const _,
-        #[allow(clippy::unnecessary_cast)]
+        #[allow(clippy::unnecessary_cast, reason = "depends on platform")]
         {
           sock_addr.len() as u32
         },
@@ -463,7 +463,7 @@ impl TCP {
       Ok(uv_compat::uv_tcp_bind(
         tcp,
         sock_addr.as_ptr() as *const _,
-        #[allow(clippy::unnecessary_cast)]
+        #[allow(clippy::unnecessary_cast, reason = "on some platforms")]
         {
           sock_addr.len() as u32
         },
