@@ -256,7 +256,13 @@ mod global_termios {
 
 #[cfg(windows)]
 pub(crate) mod win_console {
-  #![allow(non_snake_case, non_camel_case_types, dead_code)]
+  #![allow(
+    non_snake_case,
+    non_camel_case_types,
+    clippy::upper_case_acronyms,
+    dead_code,
+    reason = "ffi"
+  )]
 
   use std::ffi::c_int;
   use std::ffi::c_void;
@@ -364,6 +370,40 @@ pub(crate) mod win_console {
   unsafe extern "C" {
     pub fn _get_osfhandle(fd: c_int) -> isize;
     pub fn _close(fd: c_int) -> c_int;
+  }
+
+  // Invalid parameter handler type matching MSVC CRT.
+  type InvalidParameterHandler = Option<
+    unsafe extern "C" fn(*const u16, *const u16, *const u16, u32, usize),
+  >;
+
+  unsafe extern "C" {
+    fn _set_thread_local_invalid_parameter_handler(
+      handler: InvalidParameterHandler,
+    ) -> InvalidParameterHandler;
+  }
+
+  // No-op handler that prevents CRT from aborting on invalid parameters.
+  unsafe extern "C" fn noop_invalid_parameter_handler(
+    _expression: *const u16,
+    _function: *const u16,
+    _file: *const u16,
+    _line: u32,
+    _reserved: usize,
+  ) {
+  }
+
+  /// Call `_get_osfhandle` without crashing on invalid fds.
+  /// Returns -1 (INVALID_HANDLE_VALUE) for invalid fds.
+  pub unsafe fn safe_get_osfhandle(fd: c_int) -> isize {
+    unsafe {
+      let prev = _set_thread_local_invalid_parameter_handler(Some(
+        noop_invalid_parameter_handler,
+      ));
+      let handle = _get_osfhandle(fd);
+      _set_thread_local_invalid_parameter_handler(prev);
+      handle
+    }
   }
 }
 
@@ -626,7 +666,7 @@ pub unsafe fn uv_tty_init(
 
     #[cfg(windows)]
     let (win_handle, win_readable, win_saved_mode, win_handle_owned) = {
-      let raw_handle = win_console::_get_osfhandle(fd);
+      let raw_handle = win_console::safe_get_osfhandle(fd);
       if raw_handle == -1 {
         return UV_EBADF;
       }
@@ -666,10 +706,19 @@ pub unsafe fn uv_tty_init(
         let mut info: win_console::CONSOLE_SCREEN_BUFFER_INFO =
           std::mem::zeroed();
         if win_console::GetConsoleScreenBufferInfo(handle, &mut info) == 0 {
+          // Translate the Windows error to a uv error code, matching libuv's
+          // uv_translate_sys_error(GetLastError()) behavior.
+          let win_err = win_console::GetLastError();
           if fd <= 2 {
             win_console::CloseHandle(handle);
           }
-          return UV_EINVAL;
+          const ERROR_INVALID_HANDLE: u32 = 6;
+          const ERROR_ACCESS_DENIED: u32 = 5;
+          return match win_err {
+            ERROR_INVALID_HANDLE => UV_EBADF,
+            ERROR_ACCESS_DENIED => UV_EBADF,
+            _ => UV_EINVAL,
+          };
         }
         let mut current_mode: u32 = 0;
         if win_console::GetConsoleMode(handle, &mut current_mode) != 0 {
@@ -1168,6 +1217,7 @@ pub(crate) unsafe fn shutdown_tty(
 ///
 /// # Safety
 /// `tty_ptr` must be a valid pointer to an initialized `uv_tty_t`.
+#[cfg_attr(windows, allow(unused_variables, reason = "unused on windows"))]
 pub(crate) unsafe fn poll_tty_handle(
   tty_ptr: *mut uv_tty_t,
   cx: &mut Context<'_>,
@@ -1275,6 +1325,10 @@ pub(crate) unsafe fn poll_tty_handle(
             ) != 0
             && num_events > 0;
 
+          #[allow(
+            clippy::while_immutable_condition,
+            reason = "cleaner this way"
+          )]
           while has_input {
             if !(*tty_ptr).internal_reading {
               break;
