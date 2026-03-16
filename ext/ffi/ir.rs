@@ -460,10 +460,10 @@ pub fn ffi_parse_buffer_arg_nonblocking(
   // Retain the backing store before extracting the raw pointer.
   if let Ok(value) = v8::Local::<v8::ArrayBuffer>::try_from(arg) {
     holder.push(value.get_backing_store());
-  } else if let Ok(value) = v8::Local::<v8::ArrayBufferView>::try_from(arg) {
-    if let Some(ab) = value.buffer(scope) {
-      holder.push(ab.get_backing_store());
-    }
+  } else if let Ok(value) = v8::Local::<v8::ArrayBufferView>::try_from(arg)
+    && let Some(ab) = value.buffer(scope)
+  {
+    holder.push(ab.get_backing_store());
   }
   let pointer = parse_buffer_arg(arg)?;
   Ok(NativeValue { pointer })
@@ -513,10 +513,10 @@ pub fn ffi_parse_struct_arg_nonblocking(
 ) -> Result<NativeValue, IRError> {
   if let Ok(value) = v8::Local::<v8::ArrayBuffer>::try_from(arg) {
     holder.push(value.get_backing_store());
-  } else if let Ok(value) = v8::Local::<v8::ArrayBufferView>::try_from(arg) {
-    if let Some(ab) = value.buffer(scope) {
-      holder.push(ab.get_backing_store());
-    }
+  } else if let Ok(value) = v8::Local::<v8::ArrayBufferView>::try_from(arg)
+    && let Some(ab) = value.buffer(scope)
+  {
+    holder.push(ab.get_backing_store());
   }
   ffi_parse_struct_arg(scope, arg)
 }
