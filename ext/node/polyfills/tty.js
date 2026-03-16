@@ -38,9 +38,6 @@ function ReadStream(fd, options) {
     throw new ERR_INVALID_FD(fd);
   }
 
-  // We only support `stdin`.
-  // if (fd != 0) throw new Error("Only fd 0 is supported.");
-
   const ctx = {};
   const tty = new TTY(fd, ctx);
   if (ctx.code !== undefined) {

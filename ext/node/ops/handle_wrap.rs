@@ -147,7 +147,7 @@ enum State {
   Closed,
 }
 
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(PartialEq, Eq)]
 pub enum Handle {
   Old(ResourceId),
   New(*const uv_handle_t),
@@ -249,11 +249,11 @@ impl HandleWrap {
   // https://github.com/nodejs/node/blob/038d82980ab26cd79abe4409adc2fecad94d7c93/src/handle_wrap.cc#L58-L62
   #[fast]
   fn has_ref(&self, state: &mut OpState) -> bool {
-    if let Some(handle) = self.handle {
+    if let Some(handle) = &self.handle {
       return match handle {
-        Handle::Old(resource_id) => state.has_ref(resource_id),
+        Handle::Old(resource_id) => state.has_ref(*resource_id),
         // SAFETY: handle is a valid uv_handle_t pointer set during construction and remains live while HandleWrap is alive.
-        Handle::New(handle) => unsafe { uv_compat::uv_has_ref(handle) != 0 },
+        Handle::New(handle) => unsafe { uv_compat::uv_has_ref(*handle) != 0 },
       };
     }
 
@@ -267,10 +267,10 @@ impl HandleWrap {
   #[rename("ref")]
   fn ref_method(&self, state: &mut OpState) {
     if self.is_alive()
-      && let Some(handle) = self.handle
+      && let Some(handle) = &self.handle
     {
       match handle {
-        Handle::Old(resource_id) => state.uv_ref(resource_id),
+        Handle::Old(resource_id) => state.uv_ref(*resource_id),
         // SAFETY: handle is a valid uv_handle_t pointer set during construction and remains live while HandleWrap is alive.
         Handle::New(handle) => unsafe { uv_compat::uv_ref(handle.cast_mut()) },
       }
@@ -283,10 +283,10 @@ impl HandleWrap {
   #[fast]
   fn unref(&self, state: &mut OpState) {
     if self.is_alive()
-      && let Some(handle) = self.handle
+      && let Some(handle) = &self.handle
     {
       match handle {
-        Handle::Old(resource_id) => state.uv_unref(resource_id),
+        Handle::Old(resource_id) => state.uv_unref(*resource_id),
         // SAFETY: handle is a valid uv_handle_t pointer set during construction and remains live while HandleWrap is alive.
         Handle::New(handle) => unsafe {
           uv_compat::uv_unref(handle.cast_mut())

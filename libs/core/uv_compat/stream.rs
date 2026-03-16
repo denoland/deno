@@ -136,6 +136,7 @@ pub unsafe fn uv_read_stop(stream: *mut uv_stream_t) -> c_int {
 ///
 /// ### Safety
 /// `stream` must be a valid pointer to an initialized stream handle.
+#[cfg(unix)]
 pub unsafe fn uv_stream_set_blocking(
   stream: *mut uv_stream_t,
   blocking: c_int,
@@ -165,6 +166,22 @@ pub unsafe fn uv_stream_set_blocking(
     }
     0
   }
+}
+
+/// Mirrors libuv's `uv_stream_set_blocking`.
+///
+/// ### Safety
+/// `stream` must be a valid pointer to an initialized stream handle.
+#[cfg(windows)]
+pub unsafe fn uv_stream_set_blocking(
+  _stream: *mut uv_stream_t,
+  _blocking: c_int,
+) -> c_int {
+  // On Windows, libuv handles blocking mode differently (via
+  // SetNamedPipeHandleState / ioctlsocket). For now this is a no-op
+  // stub — TTY and TCP streams on Windows use their own blocking
+  // mechanisms.
+  0
 }
 
 /// ### Safety
