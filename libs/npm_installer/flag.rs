@@ -91,7 +91,8 @@ mod inner {
   /// processes to not update something on the file system at the same time,
   /// but it's not that big of a deal.
   pub struct LaxSingleProcessFsFlag<TSys: LaxSingleProcessFsFlagSys>(
-    #[allow(dead_code)] Option<LaxSingleProcessFsFlagInner<TSys>>,
+    #[allow(dead_code, reason = "kept alive for drop")]
+    Option<LaxSingleProcessFsFlagInner<TSys>>,
   );
 
   impl<TSys: LaxSingleProcessFsFlagSys> LaxSingleProcessFsFlag<TSys> {
@@ -248,7 +249,7 @@ mod inner {
   }
 }
 
-#[allow(clippy::disallowed_methods)]
+#[allow(clippy::disallowed_methods, reason = "test code")]
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod test {
   use std::sync::Arc;

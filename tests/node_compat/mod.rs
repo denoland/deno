@@ -784,7 +784,7 @@ fn run_test(
 ///
 /// Returns `Passed` when the test fails in the expected way (matching exit code
 /// and/or output pattern), and `Failed` otherwise.
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, reason = "all arguments are needed")]
 fn handle_expected_failure(
   ef: &ExpectedFailure,
   success: bool,

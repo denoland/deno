@@ -104,6 +104,10 @@ where
       let _ = map.insert("v".into(), serde_json::Value::Number(1.into()));
       let _ = map.insert(
         "datetime".into(),
+        #[allow(
+          clippy::disallowed_methods,
+          reason = "TODO: support passing in a sys here"
+        )]
         serde_json::Value::String(
           chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
         ),
@@ -417,7 +421,7 @@ impl AsRef<Path> for CheckedPathBuf {
 /// want to wastefully check for partial denials when, say, checking read
 /// access for a file.
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
-#[allow(clippy::enum_variant_names)]
+#[allow(clippy::enum_variant_names, reason = "more clear")]
 enum AllowPartial {
   TreatAsGranted,
   TreatAsDenied,
@@ -5290,6 +5294,7 @@ mod tests {
   use fqdn::fqdn;
   use prompter::tests::*;
   use serde_json::json;
+  use sys_traits::EnvCurrentDir;
 
   use super::*;
   use crate::prompter::set_prompter;
@@ -6230,8 +6235,7 @@ mod tests {
         .is_err()
     );
 
-    #[allow(clippy::disallowed_methods)]
-    let cwd = std::env::current_dir().unwrap();
+    let cwd = sys_traits::impls::RealSys.env_current_dir().unwrap();
     prompt_value.set(true);
     assert!(
       perms
@@ -6396,8 +6400,7 @@ mod tests {
     );
 
     prompt_value.set(false);
-    #[allow(clippy::disallowed_methods)]
-    let cwd = std::env::current_dir().unwrap();
+    let cwd = sys_traits::impls::RealSys.env_current_dir().unwrap();
     assert!(
       perms
         .run

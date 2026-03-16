@@ -2,7 +2,10 @@
 
 #![deny(clippy::print_stderr)]
 #![deny(clippy::print_stdout)]
-#![allow(clippy::too_many_arguments)]
+#![allow(
+  clippy::too_many_arguments,
+  reason = "op macro expansion causes issues"
+)]
 
 use std::borrow::Cow;
 use std::env;
@@ -12,7 +15,6 @@ use deno_core::FastString;
 use deno_core::OpState;
 use deno_core::op2;
 use deno_core::url::Url;
-#[allow(unused_imports)]
 use deno_core::v8;
 use deno_core::v8::ExternalReference;
 use deno_error::JsErrorBox;
@@ -51,7 +53,7 @@ pub fn is_builtin_node_module(module_name: &str) -> bool {
   DenoIsBuiltInNodeModuleChecker.is_builtin_node_module(module_name)
 }
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type NodeRequireLoaderRc = std::rc::Rc<dyn NodeRequireLoader>;
 
 pub trait NodeRequireLoader {
@@ -146,7 +148,6 @@ fn op_node_load_env_file(
     };
 
     // SAFETY: called during single-threaded initialization
-    #[allow(clippy::undocumented_unsafe_blocks)]
     unsafe {
       env::set_var(key, value);
     }
@@ -750,13 +751,12 @@ pub type NodeResolver<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys> =
     TNpmPackageFolderResolver,
     TSys,
   >;
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type NodeResolverRc<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys> =
   deno_fs::sync::MaybeArc<
     NodeResolver<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys>,
   >;
 
-#[allow(clippy::disallowed_types)]
 pub fn create_host_defined_options<'s>(
   scope: &mut v8::PinScope<'s, '_>,
 ) -> v8::Local<'s, v8::Data> {
