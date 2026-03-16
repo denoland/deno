@@ -288,7 +288,7 @@ fn next_msg_id() -> i32 {
 }
 
 impl ReplSession {
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "construction")]
   pub async fn initialize(
     cli_options: &CliOptions,
     npm_installer: Option<Arc<CliNpmInstaller>>,

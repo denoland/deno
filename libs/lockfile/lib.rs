@@ -1171,6 +1171,8 @@ impl Lockfile {
 
 #[cfg(test)]
 mod tests {
+  use std::path::Path;
+
   use deno_semver::package::PackageReq;
   use futures::FutureExt;
   use pretty_assertions::assert_eq;
@@ -1254,9 +1256,12 @@ mod tests {
     .now_or_never()
     .unwrap()
   }
+
   fn setup(overwrite: bool) -> Result<Lockfile, Box<LockfileError>> {
-    let file_path =
-      std::env::current_dir().unwrap().join("valid_lockfile.json");
+    let file_path = Path::new(file!())
+      .parent()
+      .unwrap()
+      .join("valid_lockfile.json");
     new_lockfile(NewLockfileOptions {
       file_path,
       content: LOCKFILE_JSON,

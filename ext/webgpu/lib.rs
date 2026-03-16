@@ -1,4 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
+
 #![cfg(not(target_arch = "wasm32"))]
 #![warn(unsafe_op_in_unsafe_fn)]
 
@@ -42,7 +43,7 @@ mod webidl;
 
 pub const UNSTABLE_FEATURE_NAME: &str = "webgpu";
 
-#[allow(clippy::print_stdout)]
+#[allow(clippy::print_stdout, reason = "cargo build script output")]
 pub fn print_linker_flags(name: &str) {
   if cfg!(windows) {
     // these dlls load slowly, so delay loading them

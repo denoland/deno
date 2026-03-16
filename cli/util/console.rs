@@ -232,7 +232,7 @@ pub fn confirm(options: ConfirmOptions) -> Option<bool> {
   let mut selected = default;
   loop {
     let event = crossterm::event::read().ok()?;
-    #[allow(clippy::single_match)]
+    #[allow(clippy::single_match, reason = "more extendable")]
     match event {
       crossterm::event::Event::Key(KeyEvent {
         kind: KeyEventKind::Press,

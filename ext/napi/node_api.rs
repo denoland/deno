@@ -868,7 +868,7 @@ impl TsFn {
 }
 
 #[napi_sym]
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, reason = "private code")]
 fn napi_create_threadsafe_function(
   env: *mut Env,
   func: napi_value,

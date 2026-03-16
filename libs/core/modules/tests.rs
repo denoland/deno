@@ -1,6 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-#![allow(clippy::print_stderr)]
+#![allow(clippy::print_stderr, reason = "test code")]
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -345,7 +345,7 @@ fn test_recursive_load() {
   let a_id_fut = runtime.load_main_es_module(&spec);
   let a_id = futures::executor::block_on(a_id_fut).unwrap();
 
-  #[allow(clippy::let_underscore_future)]
+  #[allow(clippy::let_underscore_future, reason = "test code")]
   let _ = runtime.mod_evaluate(a_id);
   futures::executor::block_on(runtime.run_event_loop(Default::default()))
     .unwrap();
@@ -521,7 +521,7 @@ fn test_mods() {
   runtime.instantiate_module(mod_a).unwrap();
   assert_eq!(DISPATCH_COUNT.load(Ordering::Relaxed), 0);
 
-  #[allow(clippy::let_underscore_future)]
+  #[allow(clippy::let_underscore_future, reason = "test code")]
   let _ = runtime.mod_evaluate(mod_a);
   assert_eq!(DISPATCH_COUNT.load(Ordering::Relaxed), 1);
 }
@@ -1239,7 +1239,7 @@ fn test_circular_load() {
     let result = runtime.load_main_es_module(&spec).await;
     assert!(result.is_ok());
     let circular1_id = result.unwrap();
-    #[allow(clippy::let_underscore_future)]
+    #[allow(clippy::let_underscore_future, reason = "test code")]
     let _ = runtime.mod_evaluate(circular1_id);
     runtime.run_event_loop(Default::default()).await.unwrap();
 
@@ -1341,7 +1341,7 @@ fn test_redirect_load() {
     let result = runtime.load_main_es_module(&spec).await;
     assert!(result.is_ok());
     let redirect1_id = result.unwrap();
-    #[allow(clippy::let_underscore_future)]
+    #[allow(clippy::let_underscore_future, reason = "test code")]
     let _ = runtime.mod_evaluate(redirect1_id);
     runtime.run_event_loop(Default::default()).await.unwrap();
     let l = loads.lock();
@@ -1409,7 +1409,7 @@ fn test_concurrent_redirect_load() {
     let result = runtime.load_main_es_module(&spec).await;
     assert!(result.is_ok());
     let concurrent_redirect = result.unwrap();
-    #[allow(clippy::let_underscore_future)]
+    #[allow(clippy::let_underscore_future, reason = "test code")]
     let _ = runtime.mod_evaluate(concurrent_redirect);
     runtime.run_event_loop(Default::default()).await.unwrap();
     let l = loads.lock();
@@ -1533,7 +1533,7 @@ fn recursive_load_main_with_code() {
     .boxed_local();
   let main_id = futures::executor::block_on(main_id_fut).unwrap();
 
-  #[allow(clippy::let_underscore_future)]
+  #[allow(clippy::let_underscore_future, reason = "test code")]
   let _ = runtime.mod_evaluate(main_id);
   futures::executor::block_on(runtime.run_event_loop(Default::default()))
     .unwrap();
@@ -1635,7 +1635,7 @@ fn main_and_side_module() {
   let main_id_fut = runtime.load_main_es_module(&main_specifier).boxed_local();
   let main_id = futures::executor::block_on(main_id_fut).unwrap();
 
-  #[allow(clippy::let_underscore_future)]
+  #[allow(clippy::let_underscore_future, reason = "test code")]
   let _ = runtime.mod_evaluate(main_id);
   futures::executor::block_on(runtime.run_event_loop(Default::default()))
     .unwrap();
@@ -1648,7 +1648,7 @@ fn main_and_side_module() {
   let side_id_fut = runtime.load_side_es_module(&side_specifier).boxed_local();
   let side_id = futures::executor::block_on(side_id_fut).unwrap();
 
-  #[allow(clippy::let_underscore_future)]
+  #[allow(clippy::let_underscore_future, reason = "test code")]
   let _ = runtime.mod_evaluate(side_id);
   futures::executor::block_on(runtime.run_event_loop(Default::default()))
     .unwrap();
@@ -1677,7 +1677,7 @@ fn dynamic_imports_snapshot() {
       .boxed_local();
     let main_id = futures::executor::block_on(main_id_fut).unwrap();
 
-    #[allow(clippy::let_underscore_future)]
+    #[allow(clippy::let_underscore_future, reason = "test code")]
     let _ = runtime.mod_evaluate(main_id);
     futures::executor::block_on(runtime.run_event_loop(Default::default()))
       .unwrap();
@@ -1717,7 +1717,7 @@ fn import_meta_snapshot() {
       .boxed_local();
     let main_id = futures::executor::block_on(main_id_fut).unwrap();
 
-    #[allow(clippy::let_underscore_future)]
+    #[allow(clippy::let_underscore_future, reason = "test code")]
     let eval_fut = runtime.mod_evaluate(main_id);
     futures::executor::block_on(runtime.run_event_loop(Default::default()))
       .unwrap();
@@ -1841,7 +1841,7 @@ async fn no_duplicate_loads() {
 
   let spec = resolve_url("file:///main.js").unwrap();
   let a_id = runtime.load_main_es_module(&spec).await.unwrap();
-  #[allow(clippy::let_underscore_future)]
+  #[allow(clippy::let_underscore_future, reason = "test code")]
   let _ = runtime.mod_evaluate(a_id);
   runtime.run_event_loop(Default::default()).await.unwrap();
 }
@@ -1946,7 +1946,7 @@ fn builtin_core_module() {
   let main_id_fut = runtime.load_main_es_module(&main_specifier).boxed_local();
   let main_id = futures::executor::block_on(main_id_fut).unwrap();
 
-  #[allow(clippy::let_underscore_future)]
+  #[allow(clippy::let_underscore_future, reason = "test code")]
   let _ = runtime.mod_evaluate(main_id);
   futures::executor::block_on(runtime.run_event_loop(Default::default()))
     .unwrap();
@@ -1978,7 +1978,7 @@ fn import_meta_filename_dirname() {
   let main_id_fut = runtime.load_main_es_module(&main_specifier).boxed_local();
   let main_id = futures::executor::block_on(main_id_fut).unwrap();
 
-  #[allow(clippy::let_underscore_future)]
+  #[allow(clippy::let_underscore_future, reason = "test code")]
   let _ = runtime.mod_evaluate(main_id);
   futures::executor::block_on(runtime.run_event_loop(Default::default()))
     .unwrap();
@@ -1998,7 +1998,7 @@ fn test_load_with_code_cache() {
     let a_id_fut = runtime.load_main_es_module(&spec);
     let a_id = futures::executor::block_on(a_id_fut).unwrap();
 
-    #[allow(clippy::let_underscore_future)]
+    #[allow(clippy::let_underscore_future, reason = "test code")]
     let _ = runtime.mod_evaluate(a_id);
     futures::executor::block_on(runtime.run_event_loop(Default::default()))
       .unwrap();
@@ -2041,7 +2041,7 @@ fn test_load_with_code_cache() {
     let a_id_fut = runtime.load_main_es_module(&spec);
     let a_id = futures::executor::block_on(a_id_fut).unwrap();
 
-    #[allow(clippy::let_underscore_future)]
+    #[allow(clippy::let_underscore_future, reason = "test code")]
     let _ = runtime.mod_evaluate(a_id);
     futures::executor::block_on(runtime.run_event_loop(Default::default()))
       .unwrap();
@@ -2077,7 +2077,7 @@ fn test_load_with_code_cache() {
     let a_id_fut = runtime.load_main_es_module(&spec);
     let a_id = futures::executor::block_on(a_id_fut).unwrap();
 
-    #[allow(clippy::let_underscore_future)]
+    #[allow(clippy::let_underscore_future, reason = "test code")]
     let _ = runtime.mod_evaluate(a_id);
     futures::executor::block_on(runtime.run_event_loop(Default::default()))
       .unwrap();

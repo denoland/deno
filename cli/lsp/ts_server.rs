@@ -350,7 +350,7 @@ impl TsServer {
     }
   }
 
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
   pub async fn provide_code_actions(
     &self,
     module: &DocumentModule,
@@ -1011,7 +1011,7 @@ impl TsServer {
     }
   }
 
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
   pub async fn provide_rename(
     &self,
     document: &Document,
