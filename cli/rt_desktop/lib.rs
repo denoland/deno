@@ -180,16 +180,18 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
     wef::navigate(url);
   }
 
-  async fn execute_js(&self, scope: &mut v8::PinScope<'_, '_>, script: &str) -> Result<v8::Local<v8::Value>, v8::Local<v8::Value>> {
+  fn execute_js<'a>(&self, scope: &mut v8::PinScope<'a, '_>, script: &str) -> std::pin::Pin<Box<dyn Future<Output = Result<v8::Local<'a, v8::Value>, v8::Local<'a, v8::Value>>> + 'a>> {
     let (tx, rx) = tokio::sync::oneshot::channel();
     wef::execute_js(script, Some(|res| {
       let _ = tx.send(res);
     }));
 
-    match rx.await.expect("execute_js channel failed") {
-      Ok(val) => Ok(wef_value_to_v8(scope, val)),
-      Err(err) => Err(wef_value_to_v8(scope, err)),
-    }
+    Box::pin(async move {
+      match rx.await.expect("execute_js channel failed") {
+        Ok(val) => Ok(wef_value_to_v8(scope, val)),
+        Err(err) => Err(wef_value_to_v8(scope, err)),
+      }
+    })
   }
 
   fn quit(&self) {

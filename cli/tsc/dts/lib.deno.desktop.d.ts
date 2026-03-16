@@ -74,6 +74,7 @@ declare namespace Deno {
 
     bind<N extends keyof T>(name: N, fn: T[N]): void;
     unbind<N extends keyof T>(name: N): void;
+    /** @throws {BrowserWindowValue} */
     executeJs(script: string): Promise<BrowserWindowValue>;
 
     setTitle(title: string);

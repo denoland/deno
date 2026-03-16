@@ -7,6 +7,8 @@
 //! builds), the ops silently no-op.
 
 use std::borrow::Cow;
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::Arc;
 
 use deno_core::{FromV8};
@@ -81,7 +83,7 @@ pub trait DesktopApi: Send + Sync + 'static {
   fn unbind(&self, name: &str);
 
   fn navigate(&self, url: &str);
-  fn execute_js(&self, scope: &mut v8::PinScope<'_, '_>, script: &str) -> Result<v8::Local<v8::Value>, v8::Local<v8::Value>>;
+  fn execute_js<'a>(&self, scope: &mut v8::PinScope<'a, '_>, script: &str) -> Pin<Box<dyn Future<Output = Result<v8::Local<'a, v8::Value>, v8::Local<'a, v8::Value>>> + 'a>>;
   fn quit(&self);
   fn set_application_menu(&self, template_json: &str);
 }
@@ -229,8 +231,8 @@ impl BrowserWindow {
     todo!("implement")
   }
 
-  fn execute_js(&self, scope: &mut v8::PinScope<'_, '_>, #[string] script: &str) -> Result<v8::Local<v8::Value>, v8::Local<v8::Value>> {
-    self.api.execute_js(scope, script)
+  async fn execute_js(&self, scope: &mut v8::PinScope<'_, '_>, #[string] script: &str) -> Result<v8::Local<v8::Value>, v8::Local<v8::Value>> {
+    self.api.execute_js(scope, script).await
   }
 
   #[fast]
