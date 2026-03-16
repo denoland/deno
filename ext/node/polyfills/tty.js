@@ -1,9 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { op_node_is_tty } from "ext:core/ops";
 import { primordials } from "ext:core/mod.js";
 const {
-  Error,
   FunctionPrototypeCall,
   ObjectPrototypeIsPrototypeOf,
   ObjectSetPrototypeOf,
@@ -16,7 +14,6 @@ import {
 import { TTY } from "ext:core/ops";
 import { Socket } from "node:net";
 import { setReadStream } from "ext:deno_node/_process/streams.mjs";
-import * as io from "ext:deno_io/12_io.js";
 import { WriteStream } from "ext:deno_node/internal/tty.js";
 
 // Returns true when the given numeric fd is associated with a TTY and false otherwise.

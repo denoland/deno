@@ -37,6 +37,7 @@ const {
   PromisePrototypeThen,
   Symbol,
   TypedArrayPrototypeSlice,
+  Int32Array,
   Uint8Array,
   Uint8ArrayPrototype,
 } = primordials;

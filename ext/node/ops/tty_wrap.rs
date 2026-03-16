@@ -1,3 +1,5 @@
+// Copyright 2018-2026 the Deno authors. MIT license.
+
 #![allow(non_snake_case)]
 
 use deno_core::CppgcInherits;

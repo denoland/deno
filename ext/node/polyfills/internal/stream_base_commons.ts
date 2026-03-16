@@ -41,8 +41,10 @@ import { Buffer } from "node:buffer";
 
 const {
   Array,
+  ArrayBufferPrototype,
   FunctionPrototypeBind,
   MapPrototypeGet,
+  ObjectPrototypeIsPrototypeOf,
   Symbol,
   TypedArrayPrototypeGetBuffer,
 } = primordials;
@@ -269,7 +271,7 @@ export function onStreamRead(
       // Performance note: Pass ArrayBuffer to Buffer#from to avoid
       // copy. When called from native (Rust) code, arrayBuffer is
       // already an ArrayBuffer; from JS it may be a Uint8Array.
-      const ab = arrayBuffer instanceof ArrayBuffer
+      const ab = ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, arrayBuffer)
         ? arrayBuffer
         : TypedArrayPrototypeGetBuffer(arrayBuffer);
       const buf = Buffer.from(

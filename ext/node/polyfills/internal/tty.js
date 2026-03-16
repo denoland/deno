@@ -7,13 +7,11 @@
 import { primordials } from "ext:core/mod.js";
 const {
   ArrayPrototypeSome,
-  Error,
   FunctionPrototypeCall,
   ObjectEntries,
   ObjectPrototypeHasOwnProperty,
   ObjectPrototypeIsPrototypeOf,
   ObjectSetPrototypeOf,
-  ObjectValues,
   RegExpPrototypeExec,
   SafeMap,
   SafeMapIterator,
