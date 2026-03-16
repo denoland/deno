@@ -154,7 +154,9 @@ pub unsafe fn uv_stream_set_blocking(
 
     let flags = libc::fcntl(fd, libc::F_GETFL);
     if flags == -1 {
-      return -(*(libc::__error()));
+      return -(std::io::Error::last_os_error()
+        .raw_os_error()
+        .unwrap_or(libc::EINVAL));
     }
     let new_flags = if blocking != 0 {
       flags & !libc::O_NONBLOCK
@@ -162,7 +164,9 @@ pub unsafe fn uv_stream_set_blocking(
       flags | libc::O_NONBLOCK
     };
     if new_flags != flags && libc::fcntl(fd, libc::F_SETFL, new_flags) == -1 {
-      return -(*(libc::__error()));
+      return -(std::io::Error::last_os_error()
+        .raw_os_error()
+        .unwrap_or(libc::EINVAL));
     }
     0
   }
