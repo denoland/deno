@@ -922,13 +922,17 @@ fn import_meta_resolve(
     );
   }
   let specifier = maybe_arg_str.unwrap();
+  let mut referrer_buf: [std::mem::MaybeUninit<u8>; 1024] =
+    [std::mem::MaybeUninit::uninit(); 1024];
   let referrer = {
-    let url_prop = args.data();
-    url_prop.to_rust_string_lossy(scope)
+    let url_prop: v8::Local<v8::String> = args.data().try_cast().unwrap();
+    url_prop.to_rust_cow_lossy(scope, &mut referrer_buf)
   };
   let module_map_rc = JsRealm::module_map_from(scope);
   let loader = module_map_rc.loader.clone();
-  let specifier_str = specifier.to_rust_string_lossy(scope);
+  let mut specifier_buf: [std::mem::MaybeUninit<u8>; 1024] =
+    [std::mem::MaybeUninit::uninit(); 1024];
+  let specifier_str = specifier.to_rust_cow_lossy(scope, &mut specifier_buf);
 
   let import_meta_resolve_result = {
     let loader = loader.borrow();

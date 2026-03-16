@@ -86,7 +86,7 @@
     "parallel/test-assert-class-destructuring.js": {},
     "parallel/test-assert-class.js": {},
     "parallel/test-assert-deep-with-error.js": {},
-    // "parallel/test-assert-deep.js": {}, // https://github.com/denoland/deno/issues/32706
+    "parallel/test-assert-deep.js": {},
     "parallel/test-assert-esm-cjs-message-verify.js": {},
     "parallel/test-assert-fail-deprecation.js": {},
     "parallel/test-assert-fail.js": {},
