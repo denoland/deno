@@ -1902,30 +1902,12 @@ impl JsRuntime {
     }
   }
 
-  fn pump_v8_message_loop(
-    &self,
-    scope: &mut v8::PinScope,
-  ) -> Result<(), Box<JsError>> {
-    while v8::Platform::pump_message_loop(
-      &v8::V8::get_current_platform(),
-      scope,
-      false, // don't block if there are no tasks
-    ) {
-      // do nothing
-    }
-
-    v8::tc_scope!(let tc_scope, scope);
-
-    let context_state = JsRealm::state_from_scope(tc_scope);
-    if !context_state.has_tick_scheduled() {
-      tc_scope.perform_microtask_checkpoint();
-    }
-    match tc_scope.exception() {
-      None => Ok(()),
-      Some(exception) => {
-        exception_to_err_result(tc_scope, exception, false, true)
-      }
-    }
+  /// Drain and run foreground tasks queued by the custom V8 platform.
+  fn run_foreground_tasks(&self, scope: &mut v8::PinScope) {
+    let isolate_ptr = unsafe { scope.as_raw_isolate_ptr() };
+    let tasks =
+      setup::drain_isolate_tasks(setup::isolate_ptr_to_key(isolate_ptr));
+    setup::run_queued_tasks(tasks);
   }
 
   pub fn maybe_init_inspector(&mut self) {
@@ -2135,7 +2117,7 @@ impl JsRuntime {
       self.inspector().poll_sessions_from_event_loop(cx);
     }
     if poll_options.pump_v8_message_loop {
-      self.pump_v8_message_loop(scope)?;
+      self.run_foreground_tasks(scope);
     }
 
     let realm = &self.inner.main_realm;
