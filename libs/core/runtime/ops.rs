@@ -276,22 +276,6 @@ pub fn to_str<'a, const N: usize>(
   string.to_rust_cow_lossy(scope, buffer)
 }
 
-/// Creates a [`v8::ValueView`] from a [`v8::Local<v8::Value>`] that is known to
-/// be a string. The view provides zero-copy access for ASCII strings and
-/// single-pass transcoding for non-ASCII strings.
-///
-/// # Safety
-///
-/// The caller must guarantee that `value` is a `v8::String`.
-#[inline(always)]
-pub unsafe fn value_view_from_value<'a>(
-  scope: &mut v8::Isolate,
-  value: v8::Local<'a, v8::Value>,
-) -> v8::ValueView<'a> {
-  let string: v8::Local<'a, v8::String> = unsafe { std::mem::transmute(value) };
-  v8::ValueView::new(scope, string)
-}
-
 #[inline(always)]
 pub fn to_cow_one_byte(
   scope: &mut v8::Isolate,
