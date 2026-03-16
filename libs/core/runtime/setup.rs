@@ -33,11 +33,12 @@ pub(crate) fn isolate_ptr_to_key(ptr: v8::UnsafeRawIsolatePtr) -> usize {
   unsafe { std::mem::transmute::<v8::UnsafeRawIsolatePtr, usize>(ptr) }
 }
 
-/// Per-isolate state: a waker to re-poll the event loop and a tokio
-/// handle to spawn foreground tasks onto.
+/// Per-isolate state: a waker, a tokio handle, and a queue of
+/// foreground tasks to be drained by the event loop.
 struct IsolateEntry {
   waker: std::sync::Arc<AtomicWaker>,
   handle: tokio::runtime::Handle,
+  tasks: Vec<v8::Task>,
 }
 
 static ISOLATE_ENTRIES: std::sync::LazyLock<
@@ -50,7 +51,14 @@ pub fn register_isolate_waker(
   handle: tokio::runtime::Handle,
 ) {
   let mut map = ISOLATE_ENTRIES.lock().unwrap();
-  map.insert(isolate_ptr, IsolateEntry { waker, handle });
+  map.insert(
+    isolate_ptr,
+    IsolateEntry {
+      waker,
+      handle,
+      tasks: Vec::new(),
+    },
+  );
 }
 
 pub fn unregister_isolate_waker(isolate_ptr: usize) {
@@ -58,16 +66,23 @@ pub fn unregister_isolate_waker(isolate_ptr: usize) {
   map.remove(&isolate_ptr);
 }
 
-/// Spawn a V8 foreground task on the isolate's tokio runtime.
-/// After the task runs, the event loop is woken to process results.
-fn spawn_task(key: usize, task: v8::Task) {
-  let map = ISOLATE_ENTRIES.lock().unwrap();
-  if let Some(entry) = map.get(&key) {
-    let waker = entry.waker.clone();
-    entry.handle.spawn(async move {
-      task.run();
-      waker.wake();
-    });
+/// Queue an immediate foreground task and wake the event loop.
+fn queue_task(key: usize, task: v8::Task) {
+  let mut map = ISOLATE_ENTRIES.lock().unwrap();
+  if let Some(entry) = map.get_mut(&key) {
+    entry.tasks.push(task);
+    entry.waker.wake();
+  }
+}
+
+/// Drain all queued foreground tasks for the given isolate.
+/// Called from the event loop to run tasks synchronously.
+pub fn drain_tasks(isolate_ptr: usize) -> Vec<v8::Task> {
+  let mut map = ISOLATE_ENTRIES.lock().unwrap();
+  if let Some(entry) = map.get_mut(&isolate_ptr) {
+    std::mem::take(&mut entry.tasks)
+  } else {
+    vec![]
   }
 }
 
@@ -84,17 +99,17 @@ fn spawn_delayed_task(key: usize, task: v8::Task, delay_in_seconds: f64) {
   }
 }
 
-/// Custom V8 platform implementation that spawns foreground tasks
-/// directly onto the isolate's tokio runtime.
+/// Custom V8 platform implementation that queues immediate foreground
+/// tasks for synchronous draining, and spawns delayed tasks on tokio.
 struct DenoPlatformImpl;
 
 impl v8::PlatformImpl for DenoPlatformImpl {
   fn post_task(&self, isolate_ptr: *mut c_void, task: v8::Task) {
-    spawn_task(isolate_ptr as usize, task);
+    queue_task(isolate_ptr as usize, task);
   }
 
   fn post_non_nestable_task(&self, isolate_ptr: *mut c_void, task: v8::Task) {
-    spawn_task(isolate_ptr as usize, task);
+    queue_task(isolate_ptr as usize, task);
   }
 
   fn post_delayed_task(

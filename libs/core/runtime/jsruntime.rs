@@ -2106,9 +2106,30 @@ impl JsRuntime {
     let has_inspector = self.inner.state.has_inspector.get();
     self.inner.state.waker.register(cx.waker());
 
-    // Pre-phase: Inspector
+    // Pre-phase: Inspector + drain foreground tasks + microtask checkpoint
     if has_inspector {
       self.inspector().poll_sessions_from_event_loop(cx);
+    }
+    {
+      // Drain and run foreground tasks queued by the custom V8 platform.
+      let isolate_ptr = unsafe { scope.as_raw_isolate_ptr() };
+      let tasks = setup::drain_tasks(setup::isolate_ptr_to_key(isolate_ptr));
+      for task in tasks {
+        task.run();
+      }
+
+      v8::tc_scope!(let tc_scope, scope);
+      let context_state = JsRealm::state_from_scope(tc_scope);
+      if !context_state.has_tick_scheduled() {
+        tc_scope.perform_microtask_checkpoint();
+      }
+      if let Some(exception) = tc_scope.exception() {
+        return Poll::Ready(Err(
+          exception_to_err_result::<()>(tc_scope, exception, false, true)
+            .unwrap_err()
+            .into(),
+        ));
+      }
     }
 
     let realm = &self.inner.main_realm;
