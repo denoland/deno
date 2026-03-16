@@ -127,7 +127,7 @@ pub trait PermissionedFileFetcherSys:
 {
 }
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 type PermissionedFileFetcherRc<TBlobStore, TSys, THttpClient> =
   deno_maybe_sync::MaybeArc<
     PermissionedFileFetcher<TBlobStore, TSys, THttpClient>,
@@ -384,7 +384,10 @@ impl<
 }
 
 pub trait GraphLoaderReporter: Send + Sync {
-  #[allow(unused_variables)]
+  #[allow(
+    unused_variables,
+    reason = "default trait implementation ignores arguments"
+  )]
   fn on_load(
     &self,
     specifier: &Url,
@@ -393,7 +396,7 @@ pub trait GraphLoaderReporter: Send + Sync {
   }
 }
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type GraphLoaderReporterRc =
   deno_maybe_sync::MaybeArc<dyn GraphLoaderReporter>;
 
@@ -422,8 +425,10 @@ pub struct DenoGraphLoader<
   THttpClient: HttpClient,
 > {
   file_header_overrides: HashMap<Url, HashMap<String, String>>,
-  // Arc is ok because this is for the source
-  #[allow(clippy::disallowed_types)]
+  #[allow(
+    clippy::disallowed_types,
+    reason = "Arc is needed for source content"
+  )]
   file_content_overrides: Option<HashMap<Url, std::sync::Arc<[u8]>>>,
   file_fetcher: PermissionedFileFetcherRc<TBlobStore, TSys, THttpClient>,
   global_http_cache: GlobalHttpCacheRc<TSys>,
@@ -462,8 +467,10 @@ impl<
     }
   }
 
-  // Arc is ok because this is for the source
-  #[allow(clippy::disallowed_types)]
+  #[allow(
+    clippy::disallowed_types,
+    reason = "Arc is needed for source content"
+  )]
   pub fn set_file_content_overrides(
     &mut self,
     overrides: HashMap<Url, std::sync::Arc<[u8]>>,
@@ -819,7 +826,7 @@ impl<TBlobStore: BlobStore, TSys: DenoGraphLoaderSys, THttpClient: HttpClient>
 }
 
 fn load_error(err: JsErrorBox) -> deno_graph::source::LoadError {
-  #[allow(clippy::disallowed_types)] // ok, deno_graph requires an Arc
+  #[allow(clippy::disallowed_types, reason = "deno_graph requires an Arc")]
   let err = std::sync::Arc::new(err);
   deno_graph::source::LoadError::Other(err)
 }

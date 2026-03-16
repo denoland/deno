@@ -33,7 +33,7 @@ pub trait NpmRegistryApiEx: NpmRegistryApi + MaybeSend + MaybeSync {}
 
 impl<T> NpmRegistryApiEx for T where T: NpmRegistryApi + MaybeSend + MaybeSync {}
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 type NpmRegistryApiRc = deno_maybe_sync::MaybeArc<dyn NpmRegistryApiEx>;
 
 pub struct LockfileNpmPackageInfoApiAdapter {
@@ -190,7 +190,7 @@ pub enum LockfileWriteError {
   Io(#[source] std::io::Error),
 }
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type LockfileLockRc<TSys> = deno_maybe_sync::MaybeArc<LockfileLock<TSys>>;
 
 #[derive(Debug)]

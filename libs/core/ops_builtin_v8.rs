@@ -559,7 +559,7 @@ struct SerializeDeserialize<'a> {
 }
 
 impl v8::ValueSerializerImpl for SerializeDeserialize<'_> {
-  #[allow(unused_variables)]
+  #[allow(unused_variables, reason = "parameters required by trait")]
   fn throw_data_clone_error<'s, 'i>(
     &self,
     scope: &mut v8::PinScope<'s, 'i>,
@@ -1218,7 +1218,7 @@ pub fn op_set_wasm_streaming_callback(
 
 // This op is re-entrant as it makes a v8 call. It also cannot be fast because
 // we require a JS execution scope.
-#[allow(clippy::let_and_return)]
+#[allow(clippy::let_and_return, reason = "improves readability")]
 #[op2(nofast, reentrant)]
 pub fn op_abort_wasm_streaming(
   state: Rc<RefCell<OpState>>,

@@ -135,7 +135,7 @@ impl StdioOrRid {
   }
 }
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type NpmProcessStateProviderRc =
   deno_fs::sync::MaybeArc<dyn NpmProcessStateProvider>;
 
@@ -482,7 +482,10 @@ fn create_command(
 
   #[cfg(unix)]
   // TODO(bartlomieju):
-  #[allow(clippy::undocumented_unsafe_blocks)]
+  #[allow(
+    clippy::undocumented_unsafe_blocks,
+    reason = "TODO: add safety comment"
+  )]
   unsafe {
     let mut extra_pipe_rids = Vec::new();
     let mut fds_to_dup = Vec::new();
@@ -689,7 +692,7 @@ fn spawn_child(
       if let Some(cwd) = command.get_current_dir() {
         // launching a sub process always depends on the real
         // file system so using these methods directly is ok
-        #[allow(clippy::disallowed_methods)]
+        #[allow(clippy::disallowed_methods, reason = "requires real fs")]
         if !cwd.exists() {
           return Err(
             std::io::Error::new(
@@ -704,7 +707,7 @@ fn spawn_child(
           );
         }
 
-        #[allow(clippy::disallowed_methods)]
+        #[allow(clippy::disallowed_methods, reason = "requires real fs")]
         if !cwd.is_dir() {
           return Err(
             std::io::Error::new(
@@ -885,7 +888,10 @@ fn compute_run_env(
   arg_envs: &[(String, String)],
   arg_clear_env: bool,
 ) -> Result<RunEnv, ProcessError> {
-  #[allow(clippy::disallowed_methods)]
+  #[allow(
+    clippy::disallowed_methods,
+    reason = "ok for now because launching a sub process requires the real fs"
+  )]
   let cwd =
     std::env::current_dir().map_err(ProcessError::FailedResolvingCwd)?;
   let cwd = arg_cwd
@@ -1031,7 +1037,10 @@ fn op_spawn_child(
 }
 
 #[op2]
-#[allow(clippy::await_holding_refcell_ref)]
+#[allow(
+  clippy::await_holding_refcell_ref,
+  reason = "ref is dropped before await points"
+)]
 async fn op_spawn_wait(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -1198,7 +1207,10 @@ mod deprecated {
 
     #[cfg(unix)]
     // TODO(bartlomieju):
-    #[allow(clippy::undocumented_unsafe_blocks)]
+    #[allow(
+      clippy::undocumented_unsafe_blocks,
+      reason = "TODO: add safety comment"
+    )]
     unsafe {
       c.pre_exec(|| {
         libc::setgroups(0, std::ptr::null());

@@ -54,7 +54,10 @@ unsafe fn ffi_call_rtype_struct(
   call_args: Vec<Arg>,
   out_buffer: *mut u8,
 ) {
-  #[allow(clippy::undocumented_unsafe_blocks)]
+  #[allow(
+    clippy::undocumented_unsafe_blocks,
+    reason = "safety comment on the containing block"
+  )]
   unsafe {
     libffi::raw::ffi_call(
       cif.as_raw_ptr(),

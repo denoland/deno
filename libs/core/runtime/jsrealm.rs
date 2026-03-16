@@ -67,7 +67,7 @@ pub(crate) type UnrefedOps =
   Rc<RefCell<HashSet<i32, BuildHasherDefault<IdentityHasher>>>>;
 
 /// Indices into the shared immediate_info buffer (Uint32Array).
-#[allow(dead_code)] // Documents the layout; used only from JS
+#[allow(dead_code, reason = "documents the layout; used only from JS")]
 pub(crate) const IMM_IDX_COUNT: usize = 0;
 pub(crate) const IMM_IDX_REF_COUNT: usize = 1;
 pub(crate) const IMM_IDX_HAS_OUTSTANDING: usize = 2;
