@@ -2,12 +2,12 @@
   "spans": [],
   "logs": [
     {
-      "timeUnixNano": "[WILDCARD]",
+      "timeUnixNano": "[WILDLINE]",
       "observedTimeUnixNano": "[WILDCARD]",
       "severityNumber": 9,
       "severityText": "INFO",
       "body": {
-        "stringValue": "alice\n"
+        "stringValue": "my timer: [WILDCARD]\n"
       },
       "attributes": [
         {
@@ -23,12 +23,33 @@
       "spanId": ""
     },
     {
-      "timeUnixNano": "[WILDCARD]",
+      "timeUnixNano": "[WILDLINE]",
       "observedTimeUnixNano": "[WILDCARD]",
       "severityNumber": 9,
       "severityText": "INFO",
       "body": {
-        "stringValue": "userId=alice\n"
+        "stringValue": "my counter: 1\n"
+      },
+      "attributes": [
+        {
+          "key": "log.iostream",
+          "value": {
+            "stringValue": "stdout"
+          }
+        }
+      ],
+      "droppedAttributesCount": 0,
+      "flags": 0,
+      "traceId": "",
+      "spanId": ""
+    },
+    {
+      "timeUnixNano": "[WILDLINE]",
+      "observedTimeUnixNano": "[WILDCARD]",
+      "severityNumber": 9,
+      "severityText": "INFO",
+      "body": {
+        "stringValue": "my counter: 2\n"
       },
       "attributes": [
         {
