@@ -98,8 +98,8 @@ const kRefs = Symbol("kRefs");
 const kClosePromise = Symbol("kClosePromise");
 const kCloseResolve = Symbol("kCloseResolve");
 const kCloseReject = Symbol("kCloseReject");
-const kRef = Symbol("kRef");
-const kUnref = Symbol("kUnref");
+export const kRef = Symbol("kRef");
+export const kUnref = Symbol("kUnref");
 const kLocked = Symbol("kLocked");
 
 const ftruncatePromise = promisify(ftruncateCb);
