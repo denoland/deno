@@ -862,11 +862,12 @@ impl JsRuntime {
 
     // Register this isolate's waker and tokio handle so the custom platform
     // can spawn foreground tasks on this isolate's runtime.
-    if !will_snapshot {
+    // Not all contexts have a tokio runtime (e.g. snapshot creation, unit tests).
+    if let Ok(handle) = tokio::runtime::Handle::try_current() {
       setup::register_isolate_waker(
         setup::isolate_ptr_to_key(isolate_ptr),
         waker.clone(),
-        tokio::runtime::Handle::current(),
+        handle,
       );
     }
 
