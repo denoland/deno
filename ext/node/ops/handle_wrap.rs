@@ -309,8 +309,9 @@ fn uv_close<F>(
   let on_close_str = ON_CLOSE_STR.v8_string(scope).unwrap();
   let onclose = this.get(scope, on_close_str.into());
 
-  if let Some(onclose) = onclose {
-    let fn_: v8::Local<v8::Function> = onclose.try_into().unwrap();
+  if let Some(onclose) = onclose
+    && let Ok(fn_) = v8::Local::<v8::Function>::try_from(onclose)
+  {
     fn_.call(scope, this.into(), &[]);
   }
 
