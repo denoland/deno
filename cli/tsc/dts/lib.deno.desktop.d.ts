@@ -45,10 +45,31 @@ declare namespace Deno {
     ) => Promise<BrowserWindowValue>
   >;
 
+  /** Constrains T to a record of async binding functions. */
+  type ValidBindings<T> = {
+    [K in keyof T]: (
+      this: BrowserWindow,
+      ...args: BrowserWindowValue[]
+    ) => Promise<BrowserWindowValue>;
+  };
+
   interface BrowserWindowEventMap {
+    keydown: KeyboardEvent;
+    keyup: KeyboardEvent;
   }
 
-  export class BrowserWindow<T = WindowBindings> extends EventTarget {
+  type BrowserWindowEventHandlers = {
+    [K in keyof BrowserWindowEventMap as `on${K}`]:
+      | ((this: BrowserWindow, ev: BrowserWindowEventMap[K]) => any)
+      | null;
+  };
+
+  export interface BrowserWindow<T extends ValidBindings<T> = WindowBindings>
+    extends BrowserWindowEventHandlers {}
+
+  export class BrowserWindow<
+    T extends ValidBindings<T> = WindowBindings,
+  > extends EventTarget {
     constructor(options?: BrowserWindowOptions);
 
     bind<N extends keyof T>(name: N, fn: T[N]): void;

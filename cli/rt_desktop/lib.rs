@@ -779,6 +779,27 @@ async fn run_desktop(update_rolled_back: bool) -> Result<(), AnyError> {
       wef::set_menu_click_handler(move |id| {
         let _ = menu_tx.send(id.to_string());
       });
+      // Wire WEF keyboard events to the Deno runtime channel
+      let kb_tx = state
+        .borrow::<denort::desktop::KeyboardEventSender>()
+        .0
+        .clone();
+      wef::on_keyboard_event(move |ev| {
+        let _ =
+          kb_tx.send(deno_runtime::ops::desktop::KeyboardEventData {
+            r#type: match ev.state {
+              wef::KeyState::Pressed => "keydown",
+              wef::KeyState::Released => "keyup",
+            },
+            key: ev.key,
+            code: ev.code,
+            shift: ev.modifiers.shift,
+            control: ev.modifiers.control,
+            alt: ev.modifiers.alt,
+            meta: ev.modifiers.meta,
+            repeat: ev.repeat,
+          });
+      });
     })),
     override_main_module: None,
     auto_update_version,

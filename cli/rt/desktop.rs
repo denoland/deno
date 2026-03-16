@@ -21,17 +21,35 @@ pub const DESKTOP_JS: &str = r#"
   Deno.BrowserWindow = BrowserWindow;
 
   ObjectSetPrototypeOf(BrowserWindowPrototype, EventTargetPrototype);
-  defineEventHandler(BrowserWindowPrototype, "");
+  defineEventHandler(BrowserWindowPrototype, "keydown");
+  defineEventHandler(BrowserWindowPrototype, "keyup");
 
-  // Poll for menu click events from the native side and dispatch
-  // them as CustomEvents on globalThis.  Defer start so the pending
-  // op doesn't block the pre-module event loop tick used by HMR.
+  // Defer start so the pending op doesn't block the pre-module event loop tick used by HMR.
   addEventListener("load", () => {
+    // Poll for menu click events from the native side and dispatch
+    // them as CustomEvents on globalThis.
     (async () => {
       while (true) {
         const id = await op_desktop_recv_menu_click();
         if (id == null) break;
         dispatchEvent(new CustomEvent("menuclick", { detail: { id } }));
+      }
+    })();
+    // Poll for keyboard events from the native side and dispatch
+    // them as KeyboardEvent on globalThis.
+    (async () => {
+      while (true) {
+        const ev = await op_desktop_recv_keyboard_event();
+        if (ev == null) break;
+        dispatchEvent(new KeyboardEvent(ev.type, {
+          key: ev.key,
+          code: ev.code,
+          shiftKey: ev.shift,
+          ctrlKey: ev.control,
+          altKey: ev.alt,
+          metaKey: ev.meta,
+          repeat: ev.repeat,
+        }));
       }
     })();
   }, { once: true });
@@ -129,7 +147,9 @@ pub fn desktop_auto_update_js(
   )
 }
 
+pub use deno_runtime::ops::desktop::KeyboardEventSender;
 pub use deno_runtime::ops::desktop::MenuClickSender;
+pub use deno_runtime::ops::desktop::create_keyboard_event_channel;
 pub use deno_runtime::ops::desktop::create_menu_click_channel;
 
 /// Place the DesktopApi and optional AutoUpdateState into OpState.
@@ -149,4 +169,8 @@ pub fn init_desktop_state(
   let (tx, rx) = create_menu_click_channel();
   state.put(rx);
   state.put(tx);
+  // Create keyboard event channel so op_desktop_recv_keyboard_event can work
+  let (kb_tx, kb_rx) = create_keyboard_event_channel();
+  state.put(kb_rx);
+  state.put(kb_tx);
 }

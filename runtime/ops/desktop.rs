@@ -9,7 +9,8 @@
 use std::borrow::Cow;
 use std::sync::Arc;
 
-use deno_core::FromV8;
+use deno_core::{FromV8};
+use deno_core::{ToV8};
 use deno_core::OpState;
 use deno_core::op2;
 use deno_core::v8;
@@ -21,6 +22,32 @@ pub struct MenuClickSender(pub tokio::sync::mpsc::UnboundedSender<String>);
 pub fn create_menu_click_channel() -> (MenuClickSender, MenuClickReceiver) {
   let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
   (MenuClickSender(tx), MenuClickReceiver(rx))
+}
+
+#[derive(Debug, Clone, ToV8)]
+pub struct KeyboardEventData {
+  /// "keydown" or "keyup"
+  pub r#type: &'static str,
+  pub key: String,
+  pub code: String,
+  pub shift: bool,
+  pub control: bool,
+  pub alt: bool,
+  pub meta: bool,
+  pub repeat: bool,
+}
+
+pub struct KeyboardEventReceiver(
+  pub tokio::sync::mpsc::UnboundedReceiver<KeyboardEventData>,
+);
+pub struct KeyboardEventSender(
+  pub tokio::sync::mpsc::UnboundedSender<KeyboardEventData>,
+);
+
+pub fn create_keyboard_event_channel(
+) -> (KeyboardEventSender, KeyboardEventReceiver) {
+  let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+  (KeyboardEventSender(tx), KeyboardEventReceiver(rx))
 }
 
 /// Trait for desktop window operations. Implemented by the desktop
@@ -303,6 +330,23 @@ async fn op_desktop_recv_menu_click(
   }
 }
 
+#[op2]
+async fn op_desktop_recv_keyboard_event(
+  state: std::rc::Rc<std::cell::RefCell<OpState>>,
+) -> Option<KeyboardEventData> {
+  let rx = {
+    let mut s = state.borrow_mut();
+    s.try_take::<KeyboardEventReceiver>()
+  };
+  if let Some(mut rx) = rx {
+    let result = rx.0.recv().await;
+    state.borrow_mut().put(rx);
+    result
+  } else {
+    std::future::pending().await
+  }
+}
+
 #[op2(fast)]
 pub fn op_desktop_confirm_update(state: &mut OpState) {
   if let Some(s) = state.try_borrow::<AutoUpdateState>() {
@@ -322,6 +366,7 @@ deno_core::extension!(
     op_desktop_apply_patch,
     op_desktop_confirm_update,
     op_desktop_recv_menu_click,
+    op_desktop_recv_keyboard_event,
   ],
   objects = [BrowserWindow,],
 );
