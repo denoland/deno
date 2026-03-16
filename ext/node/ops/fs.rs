@@ -1602,7 +1602,6 @@ async fn check_parent_paths_impl(
   }
 }
 
-#[allow(clippy::disallowed_methods)]
 fn check_parent_paths_impl_sync(
   state: &Rc<RefCell<OpState>>,
   fs: &FileSystemRc,
@@ -1613,20 +1612,23 @@ fn check_parent_paths_impl_sync(
 ) -> Result<(), FsError> {
   let src_parent = Path::new(src)
     .parent()
-    .map(|p| p.to_path_buf())
+    .map(Cow::Borrowed)
     .unwrap_or_default();
-  let src_parent =
-    deno_path_util::strip_unc_prefix(src_parent.canonicalize().unwrap_or_else(
-      |_| std::path::absolute(&src_parent).unwrap_or(src_parent),
-    ));
+  let src_parent = deno_path_util::strip_unc_prefix(
+    fs.realpath_sync(&CheckedPath::unsafe_new(Cow::Borrowed(&src_parent)))
+      .unwrap_or_else(|_| {
+        fs.cwd()
+          .map(|cwd| cwd.join(&src_parent))
+          .unwrap_or_else(|_| src_parent.into_owned())
+      }),
+  );
 
   let mut current = Path::new(dest)
     .parent()
     .map(|p| p.to_path_buf())
     .unwrap_or_default();
   current = deno_path_util::strip_unc_prefix(
-    current
-      .canonicalize()
+    fs.realpath_sync(&CheckedPath::unsafe_new(Cow::Borrowed(&current)))
       .unwrap_or_else(|_| std::path::absolute(&current).unwrap_or(current)),
   );
 
