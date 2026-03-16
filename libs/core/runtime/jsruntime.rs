@@ -114,7 +114,7 @@ pub(crate) struct IsolateAllocations {
 pub(crate) struct ManuallyDropRc<T>(ManuallyDrop<Rc<T>>);
 
 impl<T> ManuallyDropRc<T> {
-  #[allow(unused)]
+  #[allow(unused, reason = "used in other configurations")]
   pub fn clone(&self) -> Rc<T> {
     self.0.deref().clone()
   }
@@ -237,7 +237,10 @@ impl Drop for InnerIsolateState {
 
       if self.will_snapshot {
         // Create the snapshot and just drop it.
-        #[allow(clippy::print_stderr)]
+        #[allow(
+          clippy::print_stderr,
+          reason = "intentional warning about leaked isolate"
+        )]
         {
           eprintln!("WARNING: v8::OwnedIsolate for snapshot was leaked");
         }
@@ -1649,6 +1652,12 @@ impl JsRuntime {
     self.inner.state.op_state.clone()
   }
 
+  /// Returns the runtime's source mapper, which can be used to apply
+  /// source maps to file locations.
+  pub fn source_mapper(&self) -> Rc<RefCell<crate::source_map::SourceMapper>> {
+    self.inner.state.source_mapper.clone()
+  }
+
   /// Register a `uv_loop_t` with the runtime so that its event loop phases
   /// (timers, I/O, idle, prepare, check, close) are driven by
   /// `poll_event_loop`.
@@ -2301,7 +2310,11 @@ impl JsRuntime {
     }
 
     // Re-wake logic for next iteration
-    #[allow(clippy::suspicious_else_formatting, clippy::if_same_then_else)]
+    #[allow(
+      clippy::suspicious_else_formatting,
+      clippy::if_same_then_else,
+      reason = "intentional structure for clarity of re-wake conditions"
+    )]
     {
       if pending_state.has_pending_background_tasks
         || pending_state.has_tick_scheduled
@@ -3171,7 +3184,10 @@ fn mark_as_loaded_from_fs_during_snapshot(
   files_loaded: &mut Vec<&'static str>,
   source: &ExtensionFileSourceCode,
 ) {
-  #[allow(deprecated)]
+  #[allow(
+    deprecated,
+    reason = "needed for compatibility with snapshot loading"
+  )]
   if let ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(path) = source {
     files_loaded.push(path);
   }

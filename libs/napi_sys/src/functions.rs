@@ -4,7 +4,7 @@
 // all napi versions flattened into a single block.
 // New symbols can be added here directly without upgrading an external crate.
 
-#![allow(clippy::too_many_arguments)]
+#![allow(clippy::too_many_arguments, reason = "not code we control")]
 
 use std::os::raw::c_char;
 use std::os::raw::c_int;

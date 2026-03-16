@@ -140,7 +140,7 @@ fn check_no_duplicate_op_names(ops: &[OpDecl]) {
   }
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, reason = "all arguments are needed")]
 pub fn create_op_ctxs(
   op_decls: Vec<OpDecl>,
   op_method_decls: &mut [OpMethodDecl],

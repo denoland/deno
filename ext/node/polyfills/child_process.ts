@@ -28,6 +28,8 @@ import {
 import {
   validateAbortSignal,
   validateFunction,
+  validateInteger,
+  validateNumber,
   validateObject,
   validateString,
 } from "ext:deno_node/internal/validators.mjs";
@@ -249,21 +251,14 @@ export function spawn(
 }
 
 function validateTimeout(timeout?: number) {
-  if (timeout != null && !(Number.isInteger(timeout) && timeout >= 0)) {
-    throw new ERR_OUT_OF_RANGE("timeout", "an unsigned integer", timeout);
+  if (timeout != null) {
+    validateInteger(timeout, "timeout", 0);
   }
 }
 
 function validateMaxBuffer(maxBuffer?: number) {
-  if (
-    maxBuffer != null &&
-    !(typeof maxBuffer === "number" && maxBuffer >= 0)
-  ) {
-    throw new ERR_OUT_OF_RANGE(
-      "options.maxBuffer",
-      "a positive number",
-      maxBuffer,
-    );
+  if (maxBuffer != null) {
+    validateNumber(maxBuffer, "options.maxBuffer", 0);
   }
 }
 

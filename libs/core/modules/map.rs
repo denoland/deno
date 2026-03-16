@@ -682,7 +682,7 @@ impl ModuleMap {
   /// and attached to associated [`ModuleInfo`].
   ///
   /// Returns an ID of newly created module.
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
   pub(crate) fn new_module_from_js_source(
     &self,
     scope: &mut v8::PinScope,
@@ -784,8 +784,12 @@ impl ModuleMap {
     if !source_mapping_url_value.is_undefined()
       && !source_mapping_url_value.is_null()
     {
-      let source_mapping_url =
-        source_mapping_url_value.to_rust_string_lossy(tc_scope);
+      let mut source_mapping_url_buf: [std::mem::MaybeUninit<u8>; 1024] =
+        [std::mem::MaybeUninit::uninit(); 1024];
+      let source_mapping_url: v8::Local<v8::String> =
+        source_mapping_url_value.try_cast().unwrap();
+      let source_mapping_url = source_mapping_url
+        .to_rust_cow_lossy(tc_scope, &mut source_mapping_url_buf);
 
       let module_name = name
         .try_clone()
@@ -809,7 +813,7 @@ impl ModuleMap {
               .unwrap_or(module_url)
               .to_string()
           } else {
-            source_mapping_url
+            source_mapping_url.into_owned()
           };
 
         self
@@ -828,9 +832,11 @@ impl ModuleMap {
         module_requests.get(tc_scope, i).unwrap(),
       )
       .unwrap();
+      let mut import_specifier_buf: [std::mem::MaybeUninit<u8>; 1024] =
+        [std::mem::MaybeUninit::uninit(); 1024];
       let import_specifier = module_request
         .get_specifier()
-        .to_rust_string_lossy(tc_scope);
+        .to_rust_cow_lossy(tc_scope, &mut import_specifier_buf);
 
       let import_attributes = module_request.get_import_attributes();
 
@@ -884,7 +890,7 @@ impl ModuleMap {
           specifier: module_specifier,
           requested_module_type,
         },
-        specifier_key: Some(import_specifier),
+        specifier_key: Some(import_specifier.into_owned()),
         referrer_source_offset,
         phase: match module_request.get_phase() {
           v8::ModuleImportPhase::kEvaluation => ModuleImportPhase::Evaluation,
@@ -1010,7 +1016,10 @@ impl ModuleMap {
     Ok(self.new_synthetic_module(tc_scope, name, ModuleType::Json, exports))
   }
 
-  #[allow(clippy::unnecessary_wraps)]
+  #[allow(
+    clippy::unnecessary_wraps,
+    reason = "consistent return type with other module constructors"
+  )]
   pub(crate) fn new_text_module(
     &self,
     scope: &mut v8::PinScope,
@@ -1033,7 +1042,10 @@ impl ModuleMap {
     Ok(self.new_synthetic_module(scope, name, ModuleType::Text, exports))
   }
 
-  #[allow(clippy::unnecessary_wraps)]
+  #[allow(
+    clippy::unnecessary_wraps,
+    reason = "consistent return type with other module constructors"
+  )]
   pub(crate) fn new_bytes_module(
     &self,
     scope: &mut v8::PinScope,
@@ -1124,7 +1136,9 @@ impl ModuleMap {
       .get_name_by_module(&referrer_global)
       .expect("ModuleInfo not found");
 
-    let specifier_str = specifier.to_rust_string_lossy(scope);
+    let mut specifier_buf: [std::mem::MaybeUninit<u8>; 1024] =
+      [std::mem::MaybeUninit::uninit(); 1024];
+    let specifier_str = specifier.to_rust_cow_lossy(scope, &mut specifier_buf);
 
     let attributes = parse_import_attributes(
       scope,
@@ -1163,7 +1177,9 @@ impl ModuleMap {
       // SAFETY: We retrieve the pointer from the slot, having just set it a few stack frames up
       unsafe { scope.get_slot::<*const Self>().unwrap().as_ref().unwrap() };
 
-    let specifier_str = specifier.to_rust_string_lossy(scope);
+    let mut specifier_buf: [std::mem::MaybeUninit<u8>; 1024] =
+      [std::mem::MaybeUninit::uninit(); 1024];
+    let specifier_str = specifier.to_rust_cow_lossy(scope, &mut specifier_buf);
     let referrer_global = v8::Global::new(scope, referrer);
     let attributes = parse_import_attributes(
       scope,
@@ -1276,7 +1292,7 @@ impl ModuleMap {
   }
 
   // Initiate loading of a module graph imported using `import()`.
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "internal code")]
   pub(crate) fn load_dynamic_import(
     self: Rc<Self>,
     scope: &mut v8::PinScope,
@@ -2280,7 +2296,10 @@ impl ModuleMap {
 
 // Clippy thinks the return value doesn't need to be an Option, it's unaware
 // of the mapping that MapFnFrom<F> does for ResolveModuleCallback.
-#[allow(clippy::unnecessary_wraps)]
+#[allow(
+  clippy::unnecessary_wraps,
+  reason = "required by MapFnFrom<F> for ResolveModuleCallback"
+)]
 pub(crate) fn synthetic_module_evaluation_steps<'s>(
   context: v8::Local<'s, v8::Context>,
   module: v8::Local<'s, v8::Module>,

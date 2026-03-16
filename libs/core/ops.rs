@@ -102,7 +102,7 @@ pub struct OpCtx {
 }
 
 impl OpCtx {
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "all arguments are needed")]
   pub(crate) fn new(
     id: OpId,
     isolate: v8::UnsafeRawIsolatePtr,
