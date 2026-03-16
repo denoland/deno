@@ -1478,6 +1478,75 @@ fn get_resolved_typescript_config(
   get_typescript_config_builder(options).build()
 }
 
+/// Resolves `NewLineKind` from the deno config to the
+/// `dprint_core::configuration::NewLineKind` used by dprint plugin builders
+/// (markdown, json).
+fn resolve_new_line_kind(
+  new_line_kind: deno_config::deno_json::NewLineKind,
+) -> dprint_core::configuration::NewLineKind {
+  use deno_config::deno_json::NewLineKind;
+  match new_line_kind {
+    NewLineKind::Auto => dprint_core::configuration::NewLineKind::Auto,
+    NewLineKind::CarriageReturnLineFeed => {
+      dprint_core::configuration::NewLineKind::CarriageReturnLineFeed
+    }
+    NewLineKind::LineFeed => dprint_core::configuration::NewLineKind::LineFeed,
+    NewLineKind::System => {
+      if cfg!(windows) {
+        dprint_core::configuration::NewLineKind::CarriageReturnLineFeed
+      } else {
+        dprint_core::configuration::NewLineKind::LineFeed
+      }
+    }
+  }
+}
+
+/// Resolves `NewLineKind` to `malva::config::LineBreak`.
+fn resolve_line_break_for_malva(
+  new_line_kind: Option<deno_config::deno_json::NewLineKind>,
+) -> malva::config::LineBreak {
+  use deno_config::deno_json::NewLineKind;
+  match new_line_kind {
+    Some(NewLineKind::CarriageReturnLineFeed) => malva::config::LineBreak::Crlf,
+    Some(NewLineKind::System) if cfg!(windows) => {
+      malva::config::LineBreak::Crlf
+    }
+    _ => malva::config::LineBreak::Lf,
+  }
+}
+
+/// Resolves `NewLineKind` to `markup_fmt::config::LineBreak`.
+fn resolve_line_break_for_markup_fmt(
+  new_line_kind: Option<deno_config::deno_json::NewLineKind>,
+) -> markup_fmt::config::LineBreak {
+  use deno_config::deno_json::NewLineKind;
+  match new_line_kind {
+    Some(NewLineKind::CarriageReturnLineFeed) => {
+      markup_fmt::config::LineBreak::Crlf
+    }
+    Some(NewLineKind::System) if cfg!(windows) => {
+      markup_fmt::config::LineBreak::Crlf
+    }
+    _ => markup_fmt::config::LineBreak::Lf,
+  }
+}
+
+/// Resolves `NewLineKind` to `pretty_yaml::config::LineBreak`.
+fn resolve_line_break_for_yaml(
+  new_line_kind: Option<deno_config::deno_json::NewLineKind>,
+) -> pretty_yaml::config::LineBreak {
+  use deno_config::deno_json::NewLineKind;
+  match new_line_kind {
+    Some(NewLineKind::CarriageReturnLineFeed) => {
+      pretty_yaml::config::LineBreak::Crlf
+    }
+    Some(NewLineKind::System) if cfg!(windows) => {
+      pretty_yaml::config::LineBreak::Crlf
+    }
+    _ => pretty_yaml::config::LineBreak::Lf,
+  }
+}
+
 fn get_resolved_markdown_config(
   options: &FmtOptionsConfig,
 ) -> dprint_plugin_markdown::configuration::Configuration {
@@ -1504,6 +1573,10 @@ fn get_resolved_markdown_config(
     });
   }
 
+  if let Some(new_line_kind) = options.new_line_kind {
+    builder.new_line_kind(resolve_new_line_kind(new_line_kind));
+  }
+
   builder.build()
 }
 
@@ -1527,6 +1600,10 @@ fn get_resolved_json_config(
     builder.indent_width(indent_width);
   }
 
+  if let Some(new_line_kind) = options.new_line_kind {
+    builder.new_line_kind(resolve_new_line_kind(new_line_kind));
+  }
+
   builder.build()
 }
 
@@ -1539,7 +1616,7 @@ fn get_resolved_malva_config(
     print_width: options.line_width.unwrap_or(80) as usize,
     use_tabs: options.use_tabs.unwrap_or_default(),
     indent_width: options.indent_width.unwrap_or(2) as usize,
-    line_break: LineBreak::Lf,
+    line_break: resolve_line_break_for_malva(options.new_line_kind),
   };
 
   let language_options = LanguageOptions {
@@ -1594,7 +1671,7 @@ fn get_resolved_markup_fmt_config(
     print_width: options.line_width.unwrap_or(80) as usize,
     use_tabs: options.use_tabs.unwrap_or_default(),
     indent_width: options.indent_width.unwrap_or(2) as usize,
-    line_break: LineBreak::Lf,
+    line_break: resolve_line_break_for_markup_fmt(options.new_line_kind),
   };
 
   let language_options = LanguageOptions {
@@ -1654,7 +1731,7 @@ fn get_resolved_yaml_config(
   let layout_options = LayoutOptions {
     print_width: options.line_width.unwrap_or(80) as usize,
     indent_width: options.indent_width.unwrap_or(2) as usize,
-    line_break: LineBreak::Lf,
+    line_break: resolve_line_break_for_yaml(options.new_line_kind),
   };
 
   let language_options = LanguageOptions {
