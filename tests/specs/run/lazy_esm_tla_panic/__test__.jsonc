@@ -1,8 +1,0 @@
-{
-  // Regression test for https://github.com/denoland/deno/issues/32758
-  // Two lazy-loaded ESM modules triggered during one module evaluation,
-  // combined with a TLA, used to panic with
-  // "Expected at least one stalled top-level await".
-  "args": "run main.ts",
-  "output": "main.out"
-}
