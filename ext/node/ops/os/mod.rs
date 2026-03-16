@@ -248,6 +248,40 @@ pub fn op_getegid(state: &mut OpState) -> Result<u32, PermissionCheckError> {
 
 #[op2(stack_trace)]
 #[serde]
+pub fn op_getgroups(
+  state: &mut OpState,
+) -> Result<Vec<u32>, PermissionCheckError> {
+  {
+    let permissions = state.borrow_mut::<PermissionsContainer>();
+    permissions.check_sys("gid", "node:process.getgroups()")?;
+  }
+
+  #[cfg(windows)]
+  {
+    Ok(vec![])
+  }
+  #[cfg(unix)]
+  {
+    // SAFETY: Call to libc getgroups.
+    let ngroups = unsafe { libc::getgroups(0, std::ptr::null_mut()) };
+    if ngroups <= 0 {
+      return Ok(vec![]);
+    }
+    let mut groups = vec![0u32; ngroups as usize];
+    // SAFETY: Call to libc getgroups with properly sized buffer.
+    let ngroups = unsafe {
+      libc::getgroups(ngroups, groups.as_mut_ptr() as *mut libc::gid_t)
+    };
+    if ngroups < 0 {
+      return Ok(vec![]);
+    }
+    groups.truncate(ngroups as usize);
+    Ok(groups)
+  }
+}
+
+#[op2(stack_trace)]
+#[serde]
 pub fn op_cpus(state: &mut OpState) -> Result<Vec<cpus::CpuInfo>, OsError> {
   {
     let permissions = state.borrow_mut::<PermissionsContainer>();

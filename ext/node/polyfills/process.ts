@@ -11,6 +11,7 @@ import {
   op_fs_umask,
   op_getegid,
   op_geteuid,
+  op_getgroups,
   op_node_load_env_file,
   op_node_process_constrained_memory,
   op_node_process_kill,
@@ -854,6 +855,9 @@ process.getgid = getgid;
 
 /** This method is removed on Windows */
 process.getuid = getuid;
+
+/** This method is removed on Windows */
+process.getgroups = !isWindows ? () => op_getgroups() : undefined;
 
 /** This method is removed on Windows */
 process.getegid = getegid;
