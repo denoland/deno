@@ -18,7 +18,7 @@ use crate::ops::handle_wrap::AsyncWrap;
 // Http2Headers
 
 pub struct Http2Headers {
-  #[allow(dead_code)]
+  #[allow(dead_code, reason = "owns the backing memory for nva pointers")]
   backing_store: String,
   nva: Vec<ffi::nghttp2_nv>,
 }
@@ -146,7 +146,7 @@ pub struct Http2StreamState {
 pub struct Http2Stream {
   pub(crate) session: *mut Session,
   pub(crate) id: i32,
-  #[allow(dead_code)]
+  #[allow(dead_code, reason = "stored for future use")]
   pub(crate) current_headers_category: ffi::nghttp2_headers_category,
   pub(crate) available_outbound_length: RefCell<usize>,
   pub(crate) pending_data: RefCell<bytes::BytesMut>,

@@ -213,7 +213,7 @@ impl TryFrom<Field> for StructField {
   }
 }
 
-#[allow(dead_code)]
+#[allow(dead_code, reason = "unused properties")]
 enum StructFieldArgument {
   Default {
     name_token: kw::default,
@@ -299,7 +299,7 @@ impl TryFrom<(usize, Field)> for StructTupleField {
   }
 }
 
-#[allow(dead_code)]
+#[allow(dead_code, reason = "unused properties")]
 enum StructTupleFieldArgument {
   Serde {
     name_token: crate::conversion::kw::serde,

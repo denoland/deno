@@ -131,10 +131,10 @@ type Request = (
 #[derive(Debug, Clone, Copy, Serialize_repr)]
 #[repr(u8)]
 pub enum IndentStyle {
-  #[allow(dead_code)]
+  #[allow(dead_code, reason = "unsupported")]
   None = 0,
   Block = 1,
-  #[allow(dead_code)]
+  #[allow(dead_code, reason = "unsupported")]
   Smart = 2,
 }
 
@@ -226,7 +226,7 @@ pub enum SemicolonPreference {
 }
 
 // Allow due to false positive https://github.com/rust-lang/rust-clippy/issues/13170
-#[allow(clippy::needless_borrows_for_generic_args)]
+#[allow(clippy::needless_borrows_for_generic_args, reason = "clippy bug")]
 fn normalize_diagnostic(
   diagnostic: &mut crate::tsc::Diagnostic,
   specifier_map: &TscSpecifierMap,
@@ -730,7 +730,7 @@ impl TsJsServer {
       .await
   }
 
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub async fn get_code_fixes(
     &self,
@@ -776,7 +776,7 @@ impl TsJsServer {
       })
   }
 
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub async fn get_applicable_refactors(
     &self,
@@ -817,7 +817,7 @@ impl TsJsServer {
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
   pub async fn get_combined_code_fix(
     &self,
     snapshot: Arc<StateSnapshot>,
@@ -860,7 +860,7 @@ impl TsJsServer {
       })
   }
 
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub async fn get_edits_for_refactor(
     &self,
@@ -906,7 +906,7 @@ impl TsJsServer {
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
   pub async fn get_edits_for_file_rename(
     &self,
     snapshot: Arc<StateSnapshot>,
@@ -957,7 +957,7 @@ impl TsJsServer {
       })
   }
 
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub async fn get_document_highlights(
     &self,
@@ -1053,7 +1053,7 @@ impl TsJsServer {
       })
   }
 
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub async fn get_completions(
     &self,
@@ -1103,7 +1103,7 @@ impl TsJsServer {
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
   pub async fn get_completion_details(
     &self,
     snapshot: Arc<StateSnapshot>,
@@ -1315,7 +1315,7 @@ impl TsJsServer {
       })
   }
 
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub async fn find_rename_locations(
     &self,
@@ -1413,7 +1413,7 @@ impl TsJsServer {
       .await
   }
 
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub async fn get_signature_help_items(
     &self,
@@ -1442,7 +1442,7 @@ impl TsJsServer {
       .await
   }
 
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub async fn get_navigate_to_items(
     &self,
@@ -1476,7 +1476,7 @@ impl TsJsServer {
       })
   }
 
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub async fn provide_inlay_hints(
     &self,
@@ -1512,7 +1512,6 @@ impl TsJsServer {
     &self,
     snapshot: Arc<StateSnapshot>,
     module: &DocumentModule,
-    document_has_errors: bool,
     token: &CancellationToken,
   ) -> Result<Vec<FileTextChanges>, AnyError> {
     let req = TscRequest::OrganizeImports((
@@ -1523,11 +1522,7 @@ impl TsJsServer {
             .specifier_map
             .denormalize(&module.specifier, module.media_type),
         },
-        mode: if document_has_errors {
-          Some(OrganizeImportsMode::SortAndCombine)
-        } else {
-          Some(OrganizeImportsMode::All)
-        },
+        mode: Some(OrganizeImportsMode::All),
       },
       (&snapshot
         .config
@@ -1938,14 +1933,14 @@ pub struct TextSpan {
 impl TextSpan {
   pub fn from_range(
     range: lsp::Range,
-    line_index: Arc<LineIndex>,
+    line_index: &LineIndex,
   ) -> Result<Self, AnyError> {
     let start = line_index.offset_tsc(range.start)?;
     let length = line_index.offset_tsc(range.end)? - start;
     Ok(Self { start, length })
   }
 
-  pub fn to_range(&self, line_index: Arc<LineIndex>) -> lsp::Range {
+  pub fn to_range(&self, line_index: &LineIndex) -> lsp::Range {
     lsp::Range {
       start: line_index.position_utf16(self.start.into()),
       end: line_index.position_utf16(TextSize::from(self.start + self.length)),
@@ -2154,7 +2149,7 @@ impl QuickInfo {
         kind: lsp::MarkupKind::Markdown,
         value,
       }),
-      range: Some(self.text_span.to_range(module.line_index.clone())),
+      range: Some(self.text_span.to_range(&module.line_index)),
     }
   }
 }
@@ -2195,21 +2190,21 @@ impl DocumentSpan {
     let (target_range, target_selection_range) =
       if let Some(context_span) = &self.context_span {
         (
-          context_span.to_range(target_module.line_index.clone()),
-          self.text_span.to_range(target_module.line_index.clone()),
+          context_span.to_range(&target_module.line_index),
+          self.text_span.to_range(&target_module.line_index),
         )
       } else {
         (
-          self.text_span.to_range(target_module.line_index.clone()),
-          self.text_span.to_range(target_module.line_index.clone()),
+          self.text_span.to_range(&target_module.line_index),
+          self.text_span.to_range(&target_module.line_index),
         )
       };
     let origin_selection_range =
       if let Some(original_context_span) = &self.original_context_span {
-        Some(original_context_span.to_range(origin_module.line_index.clone()))
+        Some(original_context_span.to_range(&origin_module.line_index))
       } else {
         self.original_text_span.as_ref().map(|original_text_span| {
-          original_text_span.to_range(origin_module.line_index.clone())
+          original_text_span.to_range(&origin_module.line_index)
         })
       };
     let link = lsp::LocationLink {
@@ -2235,7 +2230,7 @@ impl DocumentSpan {
       module.scope.as_deref(),
       Some(&module.compiler_options_key),
     )?;
-    let range = self.text_span.to_range(target_module.line_index.clone());
+    let range = self.text_span.to_range(&target_module.line_index);
     let mut target = uri_to_url(&target_module.uri);
     target.set_fragment(Some(&format!(
       "{},{}-{},{}",
@@ -2265,20 +2260,6 @@ impl DocumentSpan {
     }
     Ok(Some(lsp::GotoDefinitionResponse::Link(links)))
   }
-}
-
-// TODO(bartlomieju): in Rust 1.90 some structs started getting flagged as not used
-#[allow(dead_code)]
-#[derive(Debug, Clone, Deserialize)]
-pub enum MatchKind {
-  #[serde(rename = "exact")]
-  Exact,
-  #[serde(rename = "prefix")]
-  Prefix,
-  #[serde(rename = "substring")]
-  Substring,
-  #[serde(rename = "camelCase")]
-  CamelCase,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
@@ -2318,7 +2299,7 @@ impl NavigateToItem {
       scope,
       Some(compiler_options_key),
     )?;
-    let range = self.text_span.to_range(target_module.line_index.clone());
+    let range = self.text_span.to_range(&target_module.line_index);
     let location = lsp::Location {
       uri: target_module.uri.as_ref().clone(),
       range,
@@ -2333,7 +2314,7 @@ impl NavigateToItem {
     // The field `deprecated` is deprecated but SymbolInformation does not have
     // a default, therefore we have to supply the deprecated deprecated
     // field. It is like a bad version of Inception.
-    #[allow(deprecated)]
+    #[allow(deprecated, reason = "see comment")]
     Some(lsp::SymbolInformation {
       name: self.name.clone(),
       kind: self.kind.clone().into(),
@@ -2373,7 +2354,7 @@ impl InlayHintDisplayPart {
       let range = self
         .span
         .as_ref()
-        .map(|s| s.to_range(target_module.line_index.clone()))
+        .map(|s| s.to_range(&target_module.line_index))
         .unwrap_or_else(|| {
           lsp::Range::new(lsp::Position::new(0, 0), lsp::Position::new(0, 0))
         });
@@ -2461,7 +2442,7 @@ pub struct NavigationTree {
 impl NavigationTree {
   pub fn to_code_lens(
     &self,
-    line_index: Arc<LineIndex>,
+    line_index: &LineIndex,
     uri: &Uri,
     source: code_lens::CodeLensSource,
   ) -> lsp::CodeLens {
@@ -2485,7 +2466,7 @@ impl NavigationTree {
 
   pub fn collect_document_symbols(
     &self,
-    line_index: Arc<LineIndex>,
+    line_index: &LineIndex,
     document_symbols: &mut Vec<lsp::DocumentSymbol>,
   ) -> bool {
     let mut should_include = self.should_include_entry();
@@ -2515,8 +2496,8 @@ impl NavigationTree {
           })
           .any(|child_range| range.intersect(child_range).is_some());
         if should_traverse_child {
-          let included_child = child
-            .collect_document_symbols(line_index.clone(), &mut symbol_children);
+          let included_child =
+            child.collect_document_symbols(line_index, &mut symbol_children);
           should_include = should_include || included_child;
         }
       }
@@ -2556,12 +2537,12 @@ impl NavigationTree {
         // The field `deprecated` is deprecated but DocumentSymbol does not have
         // a default, therefore we have to supply the deprecated deprecated
         // field. It is like a bad version of Inception.
-        #[allow(deprecated)]
+        #[allow(deprecated, reason = "see comment")]
         document_symbols.push(lsp::DocumentSymbol {
           name,
           kind: self.kind.clone().into(),
-          range: span.to_range(line_index.clone()),
-          selection_range: selection_span.to_range(line_index.clone()),
+          range: span.to_range(line_index),
+          selection_range: selection_span.to_range(line_index),
           tags,
           children,
           detail: None,
@@ -2707,7 +2688,7 @@ impl RenameLocation {
         range: location
           .document_span
           .text_span
-          .to_range(target_module.line_index.clone()),
+          .to_range(&target_module.line_index),
         new_text,
       });
     }
@@ -2796,7 +2777,7 @@ pub struct DocumentHighlights {
 impl DocumentHighlights {
   pub fn to_highlight(
     &self,
-    line_index: Arc<LineIndex>,
+    line_index: &LineIndex,
     token: &CancellationToken,
   ) -> Result<Vec<lsp::DocumentHighlight>, AnyError> {
     let mut highlights = Vec::with_capacity(self.highlight_spans.len());
@@ -2805,7 +2786,7 @@ impl DocumentHighlights {
         return Err(anyhow!("request cancelled"));
       }
       highlights.push(lsp::DocumentHighlight {
-        range: hs.text_span.to_range(line_index.clone()),
+        range: hs.text_span.to_range(line_index),
         kind: match hs.kind {
           HighlightSpanKind::WrittenReference => {
             Some(lsp::DocumentHighlightKind::WRITE)
@@ -2826,7 +2807,7 @@ pub struct TextChange {
 }
 
 impl TextChange {
-  pub fn as_text_edit(&self, line_index: Arc<LineIndex>) -> lsp::TextEdit {
+  pub fn as_text_edit(&self, line_index: &LineIndex) -> lsp::TextEdit {
     lsp::TextEdit {
       range: self.span.to_range(line_index),
       new_text: self.new_text.clone(),
@@ -2835,7 +2816,7 @@ impl TextChange {
 
   pub fn as_text_or_annotated_text_edit(
     &self,
-    line_index: Arc<LineIndex>,
+    line_index: &LineIndex,
   ) -> lsp::OneOf<lsp::TextEdit, lsp::AnnotatedTextEdit> {
     lsp::OneOf::Left(lsp::TextEdit {
       range: self.span.to_range(line_index),
@@ -2884,12 +2865,12 @@ impl FileTextChanges {
       .or_else(|| url_to_uri(&target_specifier).ok().map(Arc::new))?;
     let line_index = target_module
       .as_ref()
-      .map(|m| m.line_index.clone())
-      .unwrap_or_else(|| Arc::new(LineIndex::new("")));
+      .map(|m| Cow::Borrowed(m.line_index.as_ref()))
+      .unwrap_or_else(|| Cow::Owned(LineIndex::new("")));
     let edits = self
       .text_changes
       .iter()
-      .map(|tc| tc.as_text_edit(line_index.clone()))
+      .map(|tc| tc.as_text_edit(&line_index))
       .collect();
     Some((target_uri.as_ref().clone(), edits))
   }
@@ -2917,8 +2898,8 @@ impl FileTextChanges {
       .or_else(|| url_to_uri(&target_specifier).ok().map(Arc::new))?;
     let line_index = target_module
       .as_ref()
-      .map(|m| m.line_index.clone())
-      .unwrap_or_else(|| Arc::new(LineIndex::new("")));
+      .map(|m| Cow::Borrowed(m.line_index.as_ref()))
+      .unwrap_or_else(|| Cow::Owned(LineIndex::new("")));
 
     if is_new_file {
       ops.push(lsp::DocumentChangeOperation::Op(lsp::ResourceOp::Create(
@@ -2936,7 +2917,7 @@ impl FileTextChanges {
     let edits = self
       .text_changes
       .iter()
-      .map(|tc| tc.as_text_or_annotated_text_edit(line_index.clone()))
+      .map(|tc| tc.as_text_or_annotated_text_edit(&line_index))
       .collect();
     ops.push(lsp::DocumentChangeOperation::Edit(lsp::TextDocumentEdit {
       text_document: lsp::OptionalVersionedTextDocumentIdentifier {
@@ -2962,7 +2943,7 @@ pub struct Classifications {
 impl Classifications {
   pub fn to_semantic_tokens(
     &self,
-    line_index: Arc<LineIndex>,
+    line_index: &LineIndex,
     token: &CancellationToken,
   ) -> Result<lsp::SemanticTokens, AnyError> {
     // https://github.com/microsoft/vscode/blob/1.89.0/extensions/typescript-language-features/src/languageFeatures/semanticTokens.ts#L89-L115
@@ -3373,7 +3354,7 @@ impl ReferenceEntry {
       range: self
         .document_span
         .text_span
-        .to_range(target_module.line_index.clone()),
+        .to_range(&target_module.line_index),
     })
   }
 }
@@ -3449,10 +3430,10 @@ impl CallHierarchyItem {
         uri: target_module.uri.as_ref().clone(),
         detail: self.container_name.clone(),
         kind: self.kind.clone().into(),
-        range: self.span.to_range(target_module.line_index.clone()),
+        range: self.span.to_range(&target_module.line_index),
         selection_range: self
           .selection_span
-          .to_range(target_module.line_index.clone()),
+          .to_range(&target_module.line_index),
         data: None,
       },
       target_module,
@@ -3494,7 +3475,7 @@ impl CallHierarchyIncomingCall {
       from_ranges: self
         .from_spans
         .iter()
-        .map(|span| span.to_range(target_module.line_index.clone()))
+        .map(|span| span.to_range(&target_module.line_index))
         .collect(),
     })
   }
@@ -3527,7 +3508,7 @@ impl CallHierarchyOutgoingCall {
       from_ranges: self
         .from_spans
         .iter()
-        .map(|span| span.to_range(module.line_index.clone()))
+        .map(|span| span.to_range(&module.line_index))
         .collect(),
     })
   }
@@ -3551,7 +3532,7 @@ fn parse_code_actions(
       for change in &ts_action.changes {
         if module.specifier.as_str() == change.file_name {
           additional_text_edits.extend(change.text_changes.iter().map(|tc| {
-            let mut text_edit = tc.as_text_edit(module.line_index.clone());
+            let mut text_edit = tc.as_text_edit(&module.line_index);
             if let Some(specifier_rewrite) = &data.specifier_rewrite {
               let specifier_index = text_edit
                 .new_text
@@ -3860,7 +3841,7 @@ impl CompletionInfo {
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all, fields(entries = %self.entries.len())))]
   pub fn as_completion_response(
     &self,
-    line_index: Arc<LineIndex>,
+    line_index: &LineIndex,
     settings: &config::CompletionSettings,
     module: &DocumentModule,
     position: u32,
@@ -3877,7 +3858,7 @@ impl CompletionInfo {
         return Err(anyhow!("request cancelled"));
       }
       if let Some(item) = entry.as_completion_item(
-        line_index.clone(),
+        line_index,
         self,
         settings,
         module,
@@ -4122,10 +4103,10 @@ impl CompletionEntry {
     self.insert_text.clone()
   }
 
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
   fn as_completion_item(
     &self,
-    line_index: Arc<LineIndex>,
+    line_index: &LineIndex,
     info: &CompletionInfo,
     settings: &config::CompletionSettings,
     module: &DocumentModule,
@@ -4349,11 +4330,11 @@ const FOLD_END_PAIR_CHARACTERS: &[u8] = b"}])`";
 impl OutliningSpan {
   pub fn to_folding_range(
     &self,
-    line_index: Arc<LineIndex>,
+    line_index: &LineIndex,
     content: &[u8],
     line_folding_only: bool,
   ) -> lsp::FoldingRange {
-    let range = self.text_span.to_range(line_index.clone());
+    let range = self.text_span.to_range(line_index);
     lsp::FoldingRange {
       start_line: range.start.line,
       start_character: if line_folding_only {
@@ -4380,7 +4361,7 @@ impl OutliningSpan {
   fn adjust_folding_end_line(
     &self,
     range: &lsp::Range,
-    line_index: Arc<LineIndex>,
+    line_index: &LineIndex,
     content: &[u8],
     line_folding_only: bool,
   ) -> u32 {
@@ -4552,10 +4533,10 @@ pub struct SelectionRange {
 impl SelectionRange {
   pub fn to_selection_range(
     &self,
-    line_index: Arc<LineIndex>,
+    line_index: &LineIndex,
   ) -> lsp::SelectionRange {
     lsp::SelectionRange {
-      range: self.text_span.to_range(line_index.clone()),
+      range: self.text_span.to_range(line_index),
       parent: self.parent.as_ref().map(|parent_selection| {
         Box::new(parent_selection.to_selection_range(line_index))
       }),
@@ -4810,7 +4791,7 @@ fn op_release(
 }
 
 #[op2]
-#[allow(clippy::type_complexity)]
+#[allow(clippy::type_complexity, reason = "op")]
 fn op_resolve(
   state: &mut OpState,
   #[string] base: &str,
@@ -4925,7 +4906,7 @@ async fn op_poll_requests(
 }
 
 #[inline]
-#[allow(clippy::type_complexity)]
+#[allow(clippy::type_complexity, reason = "op")]
 fn op_resolve_inner(
   state: &mut OpState,
   args: ResolveArgs,
@@ -4986,7 +4967,9 @@ fn op_respond(
   }
 }
 
-struct TracingSpan(#[allow(dead_code)] Option<super::trace::EnteredSpan>);
+struct TracingSpan(
+  #[allow(dead_code, reason = "unsupported")] Option<super::trace::EnteredSpan>,
+);
 
 deno_core::external!(TracingSpan, "lsp::TracingSpan");
 
@@ -5483,7 +5466,7 @@ pub type ImportModuleSpecifierPreference = config::ImportModuleSpecifier;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "kebab-case")]
-#[allow(dead_code)]
+#[allow(dead_code, reason = "unsupported")]
 pub enum ImportModuleSpecifierEnding {
   Auto,
   Minimal,
@@ -5493,7 +5476,7 @@ pub enum ImportModuleSpecifierEnding {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "kebab-case")]
-#[allow(dead_code)]
+#[allow(dead_code, reason = "unsupported")]
 pub enum IncludeInlayParameterNameHints {
   None,
   Literals,
@@ -5514,7 +5497,7 @@ impl From<&config::InlayHintsParamNamesEnabled>
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "kebab-case")]
-#[allow(dead_code)]
+#[allow(dead_code, reason = "unsupported")]
 pub enum IncludePackageJsonAutoImports {
   Auto,
   On,
@@ -5793,7 +5776,10 @@ pub struct CombinedCodeFixScope {
 #[derive(Debug, Serialize, Clone)]
 pub enum OrganizeImportsMode {
   All,
+  #[allow(unused, reason = "unsupported")]
   SortAndCombine,
+  #[allow(unused, reason = "unsupported")]
+  RemoveUnused,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -5806,7 +5792,7 @@ pub struct OrganizeImportsArgs {
 }
 
 #[derive(Serialize, Clone, Copy)]
-#[allow(dead_code)]
+#[allow(dead_code, reason = "currently unused")]
 pub struct JsNull;
 
 #[derive(Debug, Clone, Serialize)]
@@ -5883,7 +5869,7 @@ enum TscRequest {
     )>,
   ),
   // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6205
-  #[allow(clippy::type_complexity)]
+  #[allow(clippy::type_complexity, reason = "TODO: cleanup")]
   GetCompletionEntryDetails(
     Box<(
       String,
@@ -6941,12 +6927,12 @@ mod tests {
 
   #[test]
   fn test_classification_to_semantic_tokens_multiline_tokens() {
-    let line_index = Arc::new(LineIndex::new("  to\nken  \n"));
+    let line_index = LineIndex::new("  to\nken  \n");
     let classifications = Classifications {
       spans: vec![2, 6, 2057],
     };
     let semantic_tokens = classifications
-      .to_semantic_tokens(line_index, &Default::default())
+      .to_semantic_tokens(&line_index, &Default::default())
       .unwrap();
     assert_eq!(
       &semantic_tokens.data,

@@ -567,7 +567,7 @@ impl PollFrame for BrotliResponseStream {
   }
 }
 
-#[allow(clippy::print_stderr)]
+#[allow(clippy::print_stderr, reason = "test code")]
 #[cfg(test)]
 mod tests {
   use std::future::poll_fn;

@@ -216,6 +216,10 @@ impl v8::inspector::V8InspectorClientImpl for JsRuntimeInspectorClient {
     resource_name: &v8::inspector::StringView,
   ) -> Option<v8::UniquePtr<v8::inspector::StringBuffer>> {
     let resource_name = resource_name.to_string();
+    #[allow(
+      clippy::disallowed_methods,
+      reason = "Url::from_file_path is more efficient when not using the error and this code doesn't need Wasm support"
+    )]
     let url = url::Url::from_file_path(resource_name).ok()?;
     let src_view = v8::inspector::StringView::from(url.as_str().as_bytes());
     Some(v8::inspector::StringBuffer::create(src_view))
@@ -223,7 +227,7 @@ impl v8::inspector::V8InspectorClientImpl for JsRuntimeInspectorClient {
 }
 
 impl JsRuntimeInspectorState {
-  #[allow(clippy::result_unit_err)]
+  #[allow(clippy::result_unit_err, reason = "error details not needed")]
   pub fn poll_sessions(
     &self,
     mut invoker_cx: Option<&mut Context>,
@@ -1082,7 +1086,7 @@ struct InspectorSession {
 impl InspectorSession {
   const CONTEXT_GROUP_ID: i32 = 1;
 
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "construction")]
   pub fn new(
     v8_inspector: Rc<v8::inspector::V8Inspector>,
     is_dispatching_message: Rc<RefCell<bool>>,

@@ -31,7 +31,7 @@ Deno.test("napi external finalizer", function () {
 
 Deno.test("napi external buffer", function () {
   let buf = objectWrap.test_external_buffer();
-  assertEquals(buf, new Buffer([1, 2, 3]));
+  assertEquals(buf, Buffer.from([1, 2, 3]));
   buf = null;
 });
 

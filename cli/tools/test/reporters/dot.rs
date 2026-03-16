@@ -12,7 +12,7 @@ pub struct DotTestReporter {
   failure_format_options: TestFailureFormatOptions,
 }
 
-#[allow(clippy::print_stdout)]
+#[allow(clippy::print_stdout, reason = "test reporter")]
 impl DotTestReporter {
   pub fn new(
     cwd: Url,
@@ -86,7 +86,7 @@ fn fmt_cancelled() -> String {
   colors::gray("!").to_string()
 }
 
-#[allow(clippy::print_stdout)]
+#[allow(clippy::print_stdout, reason = "test reporter")]
 impl TestReporter for DotTestReporter {
   fn report_register(&mut self, _description: &TestDescription) {}
 
