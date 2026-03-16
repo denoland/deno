@@ -110,6 +110,7 @@ const FileHandleOperations = (handle) => {
     read: (_fd, buf, offset, length, pos, cb) => {
       PromisePrototypeThen(
         handle.read(buf, offset, length, pos),
+        // deno-lint-ignore prefer-primordials
         (r) => cb(null, r.bytesRead, r.buffer),
         (err) => cb(err, 0, buf),
       );
@@ -117,6 +118,7 @@ const FileHandleOperations = (handle) => {
     write: (_fd, buf, offset, length, pos, cb) => {
       PromisePrototypeThen(
         handle.write(buf, offset, length, pos),
+        // deno-lint-ignore prefer-primordials
         (r) => cb(null, r.bytesWritten, r.buffer),
         (err) => cb(err, 0, buf),
       );
@@ -152,7 +154,7 @@ function importFd(stream, options) {
     return options.fd;
   } else if (
     typeof options.fd === "object" &&
-    options.fd instanceof FileHandle
+    ObjectPrototypeIsPrototypeOf(FileHandle.prototype, options.fd)
   ) {
     // When fd is a FileHandle we can listen for 'close' events
     if (options.fs) {
