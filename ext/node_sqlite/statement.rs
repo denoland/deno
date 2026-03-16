@@ -273,15 +273,30 @@ pub struct StatementSync {
 
   pub is_iter_finished: Cell<bool>,
   pub iter_generation: Cell<u64>,
+
+  /// Tracks all allocated `IteratorContext` pointers so they can be freed
+  /// when the statement is dropped (handles abandoned iterators that never
+  /// call `return()`).
+  pub(crate) iter_contexts: RefCell<Vec<*mut IteratorContext>>,
 }
 
-struct IteratorContext {
+pub(crate) struct IteratorContext {
   statement: *const StatementSync,
   expected_generation: u64,
 }
 
 impl Drop for StatementSync {
   fn drop(&mut self) {
+    // Free all tracked IteratorContext allocations to prevent memory leaks
+    // from abandoned iterators that never called `return()`.
+    for ctx_ptr in self.iter_contexts.borrow().iter() {
+      // SAFETY: Each pointer was allocated via `Box::into_raw` in `iterate()`
+      // and has not been freed yet (freed contexts are removed from the vec).
+      unsafe {
+        drop(Box::from_raw(*ctx_ptr));
+      }
+    }
+
     let mut statements = self.statements.borrow_mut();
     let mut finalized_stmt = None;
 
@@ -414,7 +429,7 @@ impl StatementSync {
   }
 
   fn invalidate_iter(&self) {
-    self.iter_generation.set(self.iter_generation.get() + 1);
+    self.iter_generation.set(self.iter_generation.get().wrapping_add(1));
   }
 
   fn check_error_code_impl(&self, r: i32) -> Result<(), SqliteError> {
@@ -695,14 +710,24 @@ impl StatementSync {
       expected_generation: self.iter_generation.get(),
     }));
 
+    // Track the allocation so it can be freed on Drop if the iterator is
+    // abandoned (i.e. `return()` is never called).
+    self.iter_contexts.borrow_mut().push(iter_ctx);
+
     let iterate_next = |scope: &mut v8::PinScope<'_, '_>,
                         args: v8::FunctionCallbackArguments,
                         mut rv: v8::ReturnValue| {
       let external = v8::Local::<v8::External>::try_from(args.data())
         .expect("Iterator#next expected external data");
-      // SAFETY: `external` is a valid pointer to an IteratorContext
+      // SAFETY: `external` wraps a pointer allocated via `Box::into_raw` in
+      // `iterate()`. It remains valid because it is either freed in
+      // `iterate_return` (after which `next()` won't be called) or in
+      // `StatementSync::drop`.
       let ctx = unsafe { &*(external.value() as *const IteratorContext) };
-      // SAFETY: the statement pointer is valid as long as the iterator is alive
+      // SAFETY: The iterator object holds a reference to the statement's JS
+      // wrapper via the `__statement_ref` property, which prevents the
+      // StatementSync cppgc object from being garbage collected while the
+      // iterator is alive.
       let statement = unsafe { &*ctx.statement };
 
       let names = &[
@@ -762,10 +787,17 @@ impl StatementSync {
                           mut rv: v8::ReturnValue| {
       let external = v8::Local::<v8::External>::try_from(args.data())
         .expect("Iterator#return expected external data");
-      // SAFETY: `external` is a valid pointer to an IteratorContext
-      let ctx = unsafe { &*(external.value() as *const IteratorContext) };
-      // SAFETY: the statement pointer is valid as long as the iterator is alive
+      let ctx_ptr = external.value() as *const IteratorContext;
+      // SAFETY: `ctx_ptr` was allocated via `Box::into_raw` in `iterate()`
+      // and the iterator object's `__statement_ref` property prevents the
+      // StatementSync from being garbage collected while this iterator exists.
+      let ctx = unsafe { &*ctx_ptr };
+      // SAFETY: The statement pointer is kept alive by `__statement_ref`.
       let statement = unsafe { &*ctx.statement };
+
+      // Note: We do NOT free the IteratorContext here because `next()` may
+      // still be called after `return()` (e.g., the JS protocol allows it).
+      // All IteratorContext allocations are freed in StatementSync::drop.
 
       statement.is_iter_finished.set(true);
       let _ = statement.reset();

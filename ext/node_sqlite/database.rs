@@ -934,6 +934,7 @@ impl DatabaseSync {
       allow_unknown_named_params: Cell::new(allow_unknown_named_params),
       is_iter_finished: Cell::new(false),
       iter_generation: Cell::new(0),
+      iter_contexts: RefCell::new(Vec::new()),
     })
   }
 
