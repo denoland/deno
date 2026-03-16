@@ -108,9 +108,7 @@ deno_core::extension!(
     op_otel_collect_isolate_metrics,
     op_otel_enable_isolate_metrics,
     op_otel_log,
-    op_otel_log_exception,
     op_otel_log_foreign,
-    op_otel_log_foreign_exception,
     op_otel_span_attribute1,
     op_otel_span_attribute2,
     op_otel_span_attribute3,
@@ -1326,12 +1324,27 @@ macro_rules! attr {
   };
 }
 
+/// Convert the integer log level that ext/console uses to the corresponding
+/// OpenTelemetry log severity.
+fn severity_from_level(level: i32) -> Severity {
+  match level {
+    ..=0 => Severity::Debug,
+    1 => Severity::Info,
+    2 => Severity::Warn,
+    3 | 5.. => Severity::Error,
+    4 => Severity::Trace,
+  }
+}
+
 #[op2(fast)]
 fn op_otel_log<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   message: v8::Local<'s, v8::Value>,
   #[smi] level: i32,
   span: v8::Local<'s, v8::Value>,
+  #[string] exception_type: String,
+  #[string] exception_message: String,
+  #[string] exception_stacktrace: String,
 ) {
   let Some(OtelGlobals {
     log_processor,
@@ -1342,15 +1355,7 @@ fn op_otel_log<'s>(
     return;
   };
 
-  // Convert the integer log level that ext/console uses to the corresponding
-  // OpenTelemetry log severity.
-  let severity = match level {
-    ..=0 => Severity::Debug,
-    1 => Severity::Info,
-    2 => Severity::Warn,
-    3 | 5.. => Severity::Error,
-    4 => Severity::Trace,
-  };
+  let severity = severity_from_level(level);
 
   let mut log_record = LogRecord::default();
   let now = SystemTime::now();
@@ -1394,6 +1399,13 @@ fn op_otel_log<'s>(
     }
   }
 
+  otel_log_add_exception_attributes(
+    &mut log_record,
+    &exception_type,
+    &exception_message,
+    &exception_stacktrace,
+  );
+
   log_processor.emit(&mut log_record, builtin_instrumentation_scope);
 }
 
@@ -1424,11 +1436,13 @@ fn otel_log_add_exception_attributes(
 }
 
 #[op2(fast)]
-fn op_otel_log_exception<'s>(
-  scope: &mut v8::PinScope<'s, '_>,
-  message: v8::Local<'s, v8::Value>,
+fn op_otel_log_foreign(
+  scope: &mut v8::PinScope<'_, '_>,
+  #[string] message: String,
   #[smi] level: i32,
-  span: v8::Local<'s, v8::Value>,
+  trace_id: v8::Local<'_, v8::Value>,
+  span_id: v8::Local<'_, v8::Value>,
+  #[smi] trace_flags: u8,
   #[string] exception_type: String,
   #[string] exception_message: String,
   #[string] exception_stacktrace: String,
@@ -1442,83 +1456,7 @@ fn op_otel_log_exception<'s>(
     return;
   };
 
-  let severity = match level {
-    ..=0 => Severity::Debug,
-    1 => Severity::Info,
-    2 => Severity::Warn,
-    3 | 5.. => Severity::Error,
-    4 => Severity::Trace,
-  };
-
-  let mut log_record = LogRecord::default();
-  let now = SystemTime::now();
-  log_record.set_timestamp(now);
-  log_record.set_observed_timestamp(now);
-  let Ok(message) = message.try_cast() else {
-    return;
-  };
-  log_record.set_body(owned_string(scope, message).into());
-  log_record.set_severity_number(severity);
-  log_record.set_severity_text(severity.name());
-  if let Some(span) =
-    deno_core::_ops::try_unwrap_cppgc_object::<OtelSpan>(scope, span)
-  {
-    let state = span.0.borrow();
-    match &**state {
-      OtelSpanState::Recording(span) => {
-        log_record.set_trace_context(
-          span.span_context.trace_id(),
-          span.span_context.span_id(),
-          Some(span.span_context.trace_flags()),
-        );
-      }
-      OtelSpanState::Done(span_context) => {
-        log_record.set_trace_context(
-          span_context.trace_id(),
-          span_context.span_id(),
-          Some(span_context.trace_flags()),
-        );
-      }
-    }
-  }
-
-  otel_log_add_exception_attributes(
-    &mut log_record,
-    &exception_type,
-    &exception_message,
-    &exception_stacktrace,
-  );
-
-  log_processor.emit(&mut log_record, builtin_instrumentation_scope);
-}
-
-#[op2(fast)]
-fn op_otel_log_foreign(
-  scope: &mut v8::PinScope<'_, '_>,
-  #[string] message: String,
-  #[smi] level: i32,
-  trace_id: v8::Local<'_, v8::Value>,
-  span_id: v8::Local<'_, v8::Value>,
-  #[smi] trace_flags: u8,
-) {
-  let Some(OtelGlobals {
-    log_processor,
-    builtin_instrumentation_scope,
-    ..
-  }) = OTEL_GLOBALS.get()
-  else {
-    return;
-  };
-
-  // Convert the integer log level that ext/console uses to the corresponding
-  // OpenTelemetry log severity.
-  let severity = match level {
-    ..=0 => Severity::Debug,
-    1 => Severity::Info,
-    2 => Severity::Warn,
-    3 | 5.. => Severity::Error,
-    4 => Severity::Trace,
-  };
+  let severity = severity_from_level(level);
 
   let trace_id = parse_trace_id(scope, trace_id);
   let span_id = parse_span_id(scope, span_id);
@@ -1539,57 +1477,6 @@ fn op_otel_log_foreign(
   };
   log_record.add_attribute("log.iostream", iostream);
 
-  if trace_id != TraceId::INVALID && span_id != SpanId::INVALID {
-    log_record.set_trace_context(
-      trace_id,
-      span_id,
-      Some(TraceFlags::new(trace_flags)),
-    );
-  }
-
-  log_processor.emit(&mut log_record, builtin_instrumentation_scope);
-}
-
-#[op2(fast)]
-fn op_otel_log_foreign_exception(
-  scope: &mut v8::PinScope<'_, '_>,
-  #[string] message: String,
-  #[smi] level: i32,
-  trace_id: v8::Local<'_, v8::Value>,
-  span_id: v8::Local<'_, v8::Value>,
-  #[smi] trace_flags: u8,
-  #[string] exception_type: String,
-  #[string] exception_message: String,
-  #[string] exception_stacktrace: String,
-) {
-  let Some(OtelGlobals {
-    log_processor,
-    builtin_instrumentation_scope,
-    ..
-  }) = OTEL_GLOBALS.get()
-  else {
-    return;
-  };
-
-  let severity = match level {
-    ..=0 => Severity::Debug,
-    1 => Severity::Info,
-    2 => Severity::Warn,
-    3 | 5.. => Severity::Error,
-    4 => Severity::Trace,
-  };
-
-  let trace_id = parse_trace_id(scope, trace_id);
-  let span_id = parse_span_id(scope, span_id);
-
-  let mut log_record = LogRecord::default();
-
-  let now = SystemTime::now();
-  log_record.set_timestamp(now);
-  log_record.set_observed_timestamp(now);
-  log_record.set_body(message.into());
-  log_record.set_severity_number(severity);
-  log_record.set_severity_text(severity.name());
   if trace_id != TraceId::INVALID && span_id != SpanId::INVALID {
     log_record.set_trace_context(
       trace_id,

@@ -5,9 +5,7 @@ import {
   op_otel_collect_isolate_metrics,
   op_otel_enable_isolate_metrics,
   op_otel_log,
-  op_otel_log_exception,
   op_otel_log_foreign,
-  op_otel_log_foreign_exception,
   op_otel_metric_attribute3,
   op_otel_metric_observable_record0,
   op_otel_metric_observable_record1,
@@ -1206,45 +1204,27 @@ function wrapOtelConsoleMethods(otelConsole: Console) {
 function otelLog(message: string, level: number) {
   const exception = pendingException;
   pendingException = undefined;
+  const excType = exception?.name ?? "";
+  const excMessage = exception?.message ?? "";
+  const excStacktrace = exception?.stack ?? "";
   const currentSpan = CURRENT.get()?.getValue(SPAN_KEY);
   const otelSpan = currentSpan !== undefined
     ? getOtelSpan(currentSpan)
     : undefined;
   if (otelSpan || currentSpan === undefined) {
-    if (exception) {
-      op_otel_log_exception(
-        message,
-        level,
-        otelSpan,
-        exception.name ?? "",
-        exception.message ?? "",
-        exception.stack ?? "",
-      );
-    } else {
-      op_otel_log(message, level, otelSpan);
-    }
+    op_otel_log(message, level, otelSpan, excType, excMessage, excStacktrace);
   } else {
     const spanContext = currentSpan.spanContext();
-    if (exception) {
-      op_otel_log_foreign_exception(
-        message,
-        level,
-        spanContext.traceId,
-        spanContext.spanId,
-        spanContext.traceFlags,
-        exception.name ?? "",
-        exception.message ?? "",
-        exception.stack ?? "",
-      );
-    } else {
-      op_otel_log_foreign(
-        message,
-        level,
-        spanContext.traceId,
-        spanContext.spanId,
-        spanContext.traceFlags,
-      );
-    }
+    op_otel_log_foreign(
+      message,
+      level,
+      spanContext.traceId,
+      spanContext.spanId,
+      spanContext.traceFlags,
+      excType,
+      excMessage,
+      excStacktrace,
+    );
   }
 }
 
