@@ -6,7 +6,7 @@ mod stream;
 mod tcp;
 mod tty;
 
-#[cfg(all(not(miri), test))]
+#[cfg(all(test))]
 mod tests;
 
 use std::cell::Cell;

@@ -1437,14 +1437,9 @@ unsafe fn set_errno(val: i32) {
 
 #[cfg(unix)]
 fn get_errno() -> i32 {
-  #[cfg(target_os = "macos")]
-  unsafe {
-    *libc::__error()
-  }
-  #[cfg(target_os = "linux")]
-  unsafe {
-    *libc::__errno_location()
-  }
+  std::io::Error::last_os_error()
+    .raw_os_error()
+    .unwrap_or_default()
 }
 
 #[cfg(unix)]
@@ -1463,7 +1458,9 @@ async fn tty_init_sets_fields() {
       assert_eq!(tty.loop_, uv_loop);
       assert!(tty.data.is_null());
       assert_eq!(tty.mode, uv_tty_mode_t::UV_TTY_MODE_NORMAL);
-      assert_eq!(tty.internal_fd, fds);
+      // uv_tty_init reopens slave fds so internal_fd may differ from the
+      // original fd.
+      assert!(tty.internal_fd >= 0);
       assert!(tty.internal_async_fd.is_some());
 
       uv_close(tty_ptr as *mut uv_handle_t, None);
