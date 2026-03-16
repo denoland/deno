@@ -594,10 +594,30 @@ function _lazyInitDecipherDecoder(self: any, encoding: string) {
   }
 }
 
+const ENCRYPT_UNSUPPORTED_KEY_TYPES = new Set([
+  "rsa-pss",
+  "dsa",
+  "ec",
+  "ed25519",
+  "ed448",
+  "x25519",
+  "x448",
+]);
+
+function checkUnsupportedKeyType(key) {
+  const keyType = isKeyObject(key)
+    ? key.asymmetricKeyType
+    : key?.key?.asymmetricKeyType;
+  if (keyType && ENCRYPT_UNSUPPORTED_KEY_TYPES.has(keyType)) {
+    throw new Error("operation not supported for this keytype");
+  }
+}
+
 export function privateEncrypt(
   privateKey: ArrayBufferView | string | KeyObject,
   buffer: ArrayBufferView | string | KeyObject,
 ): Buffer {
+  checkUnsupportedKeyType(privateKey);
   const { data } = prepareKey(privateKey);
   const padding = privateKey.padding || 1;
 
@@ -609,6 +629,7 @@ export function privateDecrypt(
   privateKey: ArrayBufferView | string | KeyObject,
   buffer: ArrayBufferView | string | KeyObject,
 ): Buffer {
+  checkUnsupportedKeyType(privateKey);
   const { data } = prepareKey(privateKey);
   const padding = privateKey.padding || 1;
 
@@ -620,6 +641,7 @@ export function publicEncrypt(
   publicKey: ArrayBufferView | string | KeyObject,
   buffer: ArrayBufferView | string | KeyObject,
 ): Buffer {
+  checkUnsupportedKeyType(publicKey);
   const { data } = prepareKey(publicKey);
   const padding = publicKey.padding || 1;
 

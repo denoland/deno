@@ -90,6 +90,7 @@ pub use crate::convert::FromV8;
 pub use crate::convert::FromV8Scopeless;
 pub use crate::convert::ToV8;
 pub use crate::cppgc::GarbageCollected;
+pub use crate::error::exception_to_err;
 pub use crate::extensions::AccessorType;
 pub use crate::extensions::Extension;
 pub use crate::extensions::ExtensionArguments;
@@ -181,7 +182,9 @@ pub use crate::runtime::SharedArrayBufferStore;
 pub use crate::runtime::V8_WRAPPER_OBJECT_INDEX;
 pub use crate::runtime::V8_WRAPPER_TYPE_INDEX;
 pub use crate::runtime::stats;
+pub use crate::source_map::SourceMapApplication;
 pub use crate::source_map::SourceMapData;
+pub use crate::source_map::SourceMapper;
 pub use crate::tasks::V8CrossThreadTaskSpawner;
 pub use crate::tasks::V8TaskSpawner;
 

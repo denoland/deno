@@ -81,7 +81,6 @@ use crate::sys::CliSys;
 use crate::util::extract::extract_doc_tests;
 use crate::util::file_watcher;
 use crate::util::fs::CollectSpecifiersOptions;
-use crate::util::fs::canonicalize_path;
 use crate::util::fs::collect_specifiers;
 use crate::util::path::get_extension;
 use crate::util::path::is_script_ext;
@@ -1821,8 +1820,7 @@ pub async fn run_tests_with_watch(
           // If an env file changed, reload all test modules since any
           // test could depend on environment variables.
           let env_file_changed = cli_options
-            .env_file_paths()
-            .filter_map(|path| canonicalize_path(&path).ok())
+            .possible_env_file_paths_for_watch()
             .any(|path| changed_paths.contains(&path));
           if env_file_changed {
             test_modules.clone()

@@ -220,10 +220,31 @@ function uponRejection(promise, onRejected) {
  * @returns {void}
  */
 function uponPromise(promise, onFulfilled, onRejected) {
+  // Optimized: single .then() instead of double promise chain.
+  // The original code was:
+  //   PromisePrototypeThen(
+  //     PromisePrototypeThen(promise, onFulfilled, onRejected),
+  //     undefined, rethrowAssertionErrorRejection);
+  // This created 2 promises per call. We collapse it into 1 by wrapping
+  // the handlers with try/catch to catch assertion errors thrown by them.
   PromisePrototypeThen(
-    PromisePrototypeThen(promise, onFulfilled, onRejected),
-    undefined,
-    rethrowAssertionErrorRejection,
+    promise,
+    onFulfilled && ((v) => {
+      try {
+        onFulfilled(v);
+      } catch (e) {
+        rethrowAssertionErrorRejection(e);
+      }
+    }),
+    onRejected
+      ? (e) => {
+        try {
+          onRejected(e);
+        } catch (err) {
+          rethrowAssertionErrorRejection(err);
+        }
+      }
+      : rethrowAssertionErrorRejection,
   );
 }
 
@@ -1275,20 +1296,18 @@ function readableByteStreamControllerCallPullIfNeeded(controller) {
   controller[_pulling] = true;
   /** @type {Promise<void>} */
   const pullPromise = controller[_pullAlgorithm](controller);
-  setPromiseIsHandledToTrue(
-    PromisePrototypeThen(
-      pullPromise,
-      () => {
-        controller[_pulling] = false;
-        if (controller[_pullAgain]) {
-          controller[_pullAgain] = false;
-          readableByteStreamControllerCallPullIfNeeded(controller);
-        }
-      },
-      (e) => {
-        readableByteStreamControllerError(controller, e);
-      },
-    ),
+  uponPromise(
+    pullPromise,
+    () => {
+      controller[_pulling] = false;
+      if (controller[_pullAgain]) {
+        controller[_pullAgain] = false;
+        readableByteStreamControllerCallPullIfNeeded(controller);
+      }
+    },
+    (e) => {
+      readableByteStreamControllerError(controller, e);
+    },
   );
 }
 
@@ -1737,16 +1756,19 @@ function readableStreamDefaultControllerCallPullIfNeeded(controller) {
   assert(controller[_pullAgain] === false);
   controller[_pulling] = true;
   const pullPromise = controller[_pullAlgorithm](controller);
-  uponFulfillment(pullPromise, () => {
-    controller[_pulling] = false;
-    if (controller[_pullAgain] === true) {
-      controller[_pullAgain] = false;
-      readableStreamDefaultControllerCallPullIfNeeded(controller);
-    }
-  });
-  uponRejection(pullPromise, (e) => {
-    readableStreamDefaultControllerError(controller, e);
-  });
+  uponPromise(
+    pullPromise,
+    () => {
+      controller[_pulling] = false;
+      if (controller[_pullAgain] === true) {
+        controller[_pullAgain] = false;
+        readableStreamDefaultControllerCallPullIfNeeded(controller);
+      }
+    },
+    (e) => {
+      readableStreamDefaultControllerError(controller, e);
+    },
+  );
 }
 
 /**
@@ -3555,19 +3577,17 @@ function setUpReadableByteStreamController(
   stream[_controller] = controller;
   const startResult = startAlgorithm();
   const startPromise = PromiseResolve(startResult);
-  setPromiseIsHandledToTrue(
-    PromisePrototypeThen(
-      startPromise,
-      () => {
-        controller[_started] = true;
-        assert(controller[_pulling] === false);
-        assert(controller[_pullAgain] === false);
-        readableByteStreamControllerCallPullIfNeeded(controller);
-      },
-      (r) => {
-        readableByteStreamControllerError(controller, r);
-      },
-    ),
+  uponPromise(
+    startPromise,
+    () => {
+      controller[_started] = true;
+      assert(controller[_pulling] === false);
+      assert(controller[_pullAgain] === false);
+      readableByteStreamControllerCallPullIfNeeded(controller);
+    },
+    (r) => {
+      readableByteStreamControllerError(controller, r);
+    },
   );
 }
 

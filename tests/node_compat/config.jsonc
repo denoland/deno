@@ -134,7 +134,7 @@
     "parallel/test-buffer-bytelength.js": {},
     "parallel/test-buffer-compare-offset.js": {},
     "parallel/test-buffer-compare.js": {},
-    "parallel/test-buffer-concat.js": {},
+    // "parallel/test-buffer-concat.js": {}, // https://github.com/denoland/deno/issues/32706
     "parallel/test-buffer-constants.js": {},
     "parallel/test-buffer-constructor-deprecation-error.js": {},
     "parallel/test-buffer-constructor-node-modules-paths.js": {},
@@ -161,7 +161,7 @@
     "parallel/test-buffer-over-max-length.js": {},
     "parallel/test-buffer-parent-property.js": {},
     "parallel/test-buffer-pending-deprecation.js": {},
-    "parallel/test-buffer-pool-untransferable.js": {},
+    // "parallel/test-buffer-pool-untransferable.js": {}, // https://github.com/denoland/deno/issues/32706
     "parallel/test-buffer-prototype-inspect.js": {},
     "parallel/test-buffer-read.js": {},
     "parallel/test-buffer-readdouble.js": {},
@@ -179,7 +179,7 @@
     "parallel/test-buffer-tostring-range.js": {},
     "parallel/test-buffer-tostring-rangeerror.js": {},
     "parallel/test-buffer-tostring.js": {},
-    "parallel/test-buffer-write-fast.js": {},
+    // "parallel/test-buffer-write-fast.js": {}, // https://github.com/denoland/deno/issues/32706
     "parallel/test-buffer-write.js": {},
     "parallel/test-buffer-writedouble.js": {},
     "parallel/test-buffer-writefloat.js": {},
@@ -200,14 +200,17 @@
       "flaky": true
     },
     "parallel/test-child-process-constructor.js": {},
+    "parallel/test-child-process-cwd.js": {},
     "parallel/test-child-process-default-options.js": {},
     "parallel/test-child-process-detached.js": {},
     "parallel/test-child-process-disconnect.js": {},
     "parallel/test-child-process-double-pipe.js": {},
+    "parallel/test-child-process-env.js": {},
     "parallel/test-child-process-exec-cwd.js": {},
     "parallel/test-child-process-exec-env.js": {},
     "parallel/test-child-process-exec-error.js": {},
     "parallel/test-child-process-exec-kill-throws.js": {},
+    "parallel/test-child-process-exec-maxbuf.js": {},
     "parallel/test-child-process-exec-std-encoding.js": {},
     "parallel/test-child-process-exec-stdout-stderr-data-string.js": {},
     "parallel/test-child-process-exec-timeout-expire.js": {},
@@ -216,29 +219,36 @@
     "parallel/test-child-process-execFile-promisified-abortController.js": {},
     "parallel/test-child-process-execfile-maxbuf.js": {},
     "parallel/test-child-process-execfilesync-maxbuf.js": {},
+    "parallel/test-child-process-execsync-maxbuf.js": {},
     "parallel/test-child-process-exit-code.js": {},
     "parallel/test-child-process-flush-stdio.js": {},
+    "parallel/test-child-process-fork-abort-signal.js": {},
     "parallel/test-child-process-fork-and-spawn.js": {},
     "parallel/test-child-process-fork-close.js": {},
     "parallel/test-child-process-fork-detached.js": {},
     "parallel/test-child-process-fork-no-shell.js": {},
     "parallel/test-child-process-fork-ref.js": {},
     "parallel/test-child-process-fork-ref2.js": {},
-    "parallel/test-child-process-fork-timeout-kill-signal.js": {},
+    // "parallel/test-child-process-fork-timeout-kill-signal.js": {}, // https://github.com/denoland/deno/issues/32706
+    "parallel/test-child-process-fork-url.mjs": {},
     "parallel/test-child-process-fork3.js": {},
+    "parallel/test-child-process-ipc.js": {},
     "parallel/test-child-process-ipc-next-tick.js": {},
     "parallel/test-child-process-no-deprecation.js": {},
+    "parallel/test-child-process-promisified.js": {},
     "parallel/test-child-process-reject-null-bytes.js": {},
     "parallel/test-child-process-send-after-close.js": {},
     "parallel/test-child-process-send-cb.js": {},
     "parallel/test-child-process-set-blocking.js": {},
     "parallel/test-child-process-silent.js": {},
+    "parallel/test-child-process-spawn-controller.js": {},
     "parallel/test-child-process-spawn-error.js": {},
     "parallel/test-child-process-spawn-event.js": {},
-    "parallel/test-child-process-spawn-timeout-kill-signal.js": {},
+    // "parallel/test-child-process-spawn-timeout-kill-signal.js": {}, // https://github.com/denoland/deno/issues/32706
     "parallel/test-child-process-spawn-typeerror.js": {},
     "parallel/test-child-process-spawnsync-args.js": {},
     "parallel/test-child-process-spawnsync-env.js": {},
+    "parallel/test-child-process-spawnsync-input.js": {},
     "parallel/test-child-process-spawnsync-maxbuf.js": {},
     "parallel/test-child-process-spawnsync-validation-errors.js": {},
     "parallel/test-child-process-spawnsync.js": {},
@@ -373,19 +383,41 @@
     "parallel/test-crypto-from-binary.js": {},
     "parallel/test-crypto-getcipherinfo.js": {},
     "parallel/test-crypto-hmac.js": {},
+    "parallel/test-crypto-keygen.js": {},
     "parallel/test-crypto-keygen-async-dsa-key-object.js": {},
     "parallel/test-crypto-keygen-async-elliptic-curve-jwk-ec.js": {},
     "parallel/test-crypto-keygen-async-elliptic-curve-jwk.js": {},
     "parallel/test-crypto-keygen-async-elliptic-curve-jwk-rsa.js": {},
     "parallel/test-crypto-keygen-async-named-elliptic-curve.js": {},
+    "parallel/test-crypto-keygen-async-rsa.js": {
+      "ignore": true,
+      "reason": "Decrypting legacy PEM encrypted private keys (Proc-Type/DEK-Info format) is not yet supported; only PKCS#8 encrypted key import works"
+    },
+    "parallel/test-crypto-keygen-bit-length.js": {
+      "ignore": true,
+      "reason": "DSA key generation with arbitrary bit lengths (e.g. 2049) is not supported; the Rust dsa crate only supports fixed KeySize variants (1024/160, 2048/224, 2048/256, 3072/256)"
+    },
+    "parallel/test-crypto-keygen-deprecation.js": {},
     "parallel/test-crypto-keygen-dh-classic.js": {},
     "parallel/test-crypto-keygen-duplicate-deprecated-option.js": {},
+    "parallel/test-crypto-keygen-eddsa.js": {},
+    "parallel/test-crypto-pqc-key-objects-ml-dsa.js": {},
+    "parallel/test-crypto-pqc-key-objects-ml-kem.js": {},
+    "parallel/test-crypto-pqc-key-objects-slh-dsa.js": {},
+    "parallel/test-crypto-pqc-keygen-ml-dsa.js": {},
+    "parallel/test-crypto-pqc-keygen-ml-kem.js": {},
+    "parallel/test-crypto-pqc-keygen-slh-dsa.js": {},
+    "parallel/test-crypto-pqc-sign-verify-ml-dsa.js": {},
     "parallel/test-crypto-keygen-empty-passphrase-no-error.js": {},
+    "parallel/test-crypto-keygen-key-object-without-encoding.js": {},
     "parallel/test-crypto-keygen-key-objects.js": {},
     "parallel/test-crypto-keygen-missing-oid.js": {},
     "parallel/test-crypto-keygen-non-standard-public-exponent.js": {},
+    "parallel/test-crypto-keygen-promisify.js": {},
     "parallel/test-crypto-keygen-rfc8017-9-1.js": {},
     "parallel/test-crypto-keygen-rfc8017-a-2-3.js": {},
+    "parallel/test-crypto-keygen-rsa-pss.js": {},
+    "parallel/test-crypto-keygen-sync.js": {},
     "parallel/test-crypto-key-objects-messageport.js": {
       "exitCode": 1,
       "reason": "KeyObject structured clone (MessagePort serialization) not yet implemented"
@@ -405,6 +437,7 @@
     "parallel/test-crypto-psychic-signatures.js": {},
     "parallel/test-crypto-randomfillsync-regression.js": {},
     "parallel/test-crypto-randomuuid.js": {},
+    "parallel/test-crypto-prime.js": {},
     "parallel/test-crypto-rsa-pss-default-salt-length.js": {},
     "parallel/test-crypto-sec-level.js": {},
     "parallel/test-crypto-secret-keygen.js": {},
@@ -438,7 +471,7 @@
     // "parallel/test-debugger-object-type-remote-object.js": {},
     // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
     // "parallel/test-debugger-pid.js": {},
-    "parallel/test-debugger-preserve-breaks.js": {},
+    // "parallel/test-debugger-preserve-breaks.js": {}, // https://github.com/denoland/deno/issues/32706
     // "parallel/test-debugger-profile-command.js": {},
     // "parallel/test-debugger-profile.js": {},
     // "parallel/test-debugger-random-port-with-inspect-port.js": {},
@@ -742,7 +775,7 @@
     "parallel/test-fs-fchown.js": {},
     "parallel/test-fs-filehandle-use-after-close.js": {},
     "parallel/test-fs-fsync.js": {},
-    "parallel/test-fs-glob.mjs": {},
+    // "parallel/test-fs-glob.mjs": {}, // https://github.com/denoland/deno/issues/32706
     "parallel/test-fs-internal-assertencoding.js": {},
     "parallel/test-fs-link.js": {
       "flaky": true
@@ -822,6 +855,9 @@
     "parallel/test-fs-write-optional-params.js": {},
     "parallel/test-fs-write-stream-encoding.js": {},
     "parallel/test-fs-write-sync-optional-params.js": {},
+    "parallel/test-fs-writev.js": {},
+    "parallel/test-fs-writev-promises.js": {},
+    "parallel/test-fs-writev-sync.js": {},
     "parallel/test-global-console-exists.js": {},
     "parallel/test-global-domexception.js": {},
     "parallel/test-global-encoder.js": {},
@@ -1343,7 +1379,7 @@
     "parallel/test-module-wrapper.js": {},
     "parallel/test-net-access-byteswritten.js": {},
     "parallel/test-net-after-close.js": {},
-    "parallel/test-net-autoselectfamily-attempt-timeout-default-value.js": {},
+    // "parallel/test-net-autoselectfamily-attempt-timeout-default-value.js": {}, // https://github.com/denoland/deno/issues/32706
     "parallel/test-net-autoselectfamily-ipv4first.js": {},
     "parallel/test-net-better-error-messages-listen.js": {},
     "parallel/test-net-better-error-messages-port-hostname.js": {},
@@ -1440,7 +1476,7 @@
     "parallel/test-os.js": {},
     "parallel/test-outgoing-message-destroy.js": {},
     "parallel/test-outgoing-message-pipe.js": {},
-    "parallel/test-parse-args.mjs": {},
+    // "parallel/test-parse-args.mjs": {}, // https://github.com/denoland/deno/issues/32706
     "parallel/test-path-basename.js": {},
     "parallel/test-path-dirname.js": {},
     "parallel/test-path-extname.js": {},
@@ -1583,6 +1619,7 @@
     },
     "parallel/test-pipe-head.js": {},
     "parallel/test-pipe-return-val.js": {},
+    "parallel/test-pipe-writev.js": {},
     "parallel/test-preload-worker.js": {},
     "parallel/test-primordials-apply.js": {
       "ignore": true,
@@ -1622,7 +1659,7 @@
     "parallel/test-process-exit-handler.js": {},
     "parallel/test-process-exit-recursive.js": {},
     "parallel/test-process-exit.js": {},
-    "parallel/test-process-features.js": {},
+    // "parallel/test-process-features.js": {}, // https://github.com/denoland/deno/issues/32706
     "parallel/test-process-getgroups.js": {},
     "parallel/test-process-hrtime-bigint.js": {},
     "parallel/test-process-kill-null.js": {},
@@ -1823,17 +1860,17 @@
     // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
     // "parallel/test-source-map-enable.js": {},
     "parallel/test-sqlite-authz.js": {},
-    "parallel/test-sqlite-config.js": {},
+    // "parallel/test-sqlite-config.js": {}, // https://github.com/denoland/deno/issues/32706
     "parallel/test-sqlite-custom-functions.js": {},
     "parallel/test-sqlite-data-types.js": {},
     "parallel/test-sqlite-database-sync-dispose.js": {},
     "parallel/test-sqlite-database-sync.js": {},
-    "parallel/test-sqlite-named-parameters.js": {},
+    // "parallel/test-sqlite-named-parameters.js": {}, // https://github.com/denoland/deno/issues/32706
     "parallel/test-sqlite-session.js": {
       "flaky": true
     },
     "parallel/test-sqlite-statement-sync-columns.js": {},
-    "parallel/test-sqlite-statement-sync.js": {},
+    // "parallel/test-sqlite-statement-sync.js": {}, // https://github.com/denoland/deno/issues/32706
     "parallel/test-sqlite-timeout.js": {},
     "parallel/test-sqlite-transactions.js": {},
     "parallel/test-sqlite-typed-array-and-data-view.js": {},
@@ -1886,7 +1923,7 @@
     "parallel/test-stream-duplex-readable-end.js": {},
     "parallel/test-stream-duplex-readable-writable.js": {},
     "parallel/test-stream-duplex-writable-finished.js": {},
-    "parallel/test-stream-duplex.js": {},
+    // "parallel/test-stream-duplex.js": {}, // https://github.com/denoland/deno/issues/32706
     "parallel/test-stream-duplexpair.js": {},
     "parallel/test-stream-end-of-streams.js": {},
     "parallel/test-stream-end-paused.js": {},
@@ -2152,7 +2189,7 @@
     "parallel/test-util-inherits.js": {},
     "parallel/test-util-inspect-getters-accessing-this.js": {},
     "parallel/test-util-isDeepStrictEqual.js": {},
-    "parallel/test-util-parse-env.js": {},
+    // "parallel/test-util-parse-env.js": {}, // https://github.com/denoland/deno/issues/32706
     "parallel/test-util-primordial-monkeypatching.js": {},
     "parallel/test-util-text-decoder.js": {},
     "parallel/test-util-types-exists.js": {},
@@ -2162,7 +2199,7 @@
     "parallel/test-v8-flag-pool-size-0.js": {},
     "parallel/test-v8-getheapsnapshot-twice.js": {},
     "parallel/test-v8-global-setter.js": {},
-    "parallel/test-v8-stats.js": {},
+    // "parallel/test-v8-stats.js": {}, // https://github.com/denoland/deno/issues/32706
     "parallel/test-vm-access-process-env.js": {},
     "parallel/test-vm-api-handles-getter-errors.js": {},
     "parallel/test-vm-attributes-property-not-on-sandbox.js": {},
@@ -2250,7 +2287,7 @@
     "parallel/test-worker-cleanexit-with-js.js": {},
     "parallel/test-worker-cleanexit-with-moduleload.js": {},
     "parallel/test-worker-console-listeners.js": {},
-    "parallel/test-worker-cpu-usage.js": {},
+    // "parallel/test-worker-cpu-usage.js": {}, // https://github.com/denoland/deno/issues/32706
     // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
     // "parallel/test-worker-debug.js": {},
     "parallel/test-worker-dns-terminate.js": {},
