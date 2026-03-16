@@ -2505,3 +2505,122 @@ throwError();
     err_str
   );
 }
+
+/// Regression test for https://github.com/denoland/deno/issues/32758
+///
+/// When two lazy-loaded ESM modules are triggered during the same
+/// module evaluation, and one of the importing modules has a top-level
+/// await on an eagerly-resolved async op, the `perform_microtask_checkpoint()`
+/// inside `lazy_load_es_module_with_code()` can prematurely resolve the main
+/// module's evaluation promise while `mod_evaluate()` has not yet set up
+/// its `.then()` handlers. This leaves `pending_mod_evaluation = true`
+/// permanently, causing the event loop to panic with
+/// "Expected at least one stalled top-level await".
+#[tokio::test]
+async fn test_lazy_loaded_esm_with_tla_no_panic() {
+  // An async op with no .await points: resolves eagerly on first poll.
+  #[op2]
+  #[allow(clippy::unused_async)]
+  async fn op_eager_resolve() -> u32 {
+    42
+  }
+
+  deno_core::extension!(
+    test_ext,
+    ops = [op_eager_resolve],
+    lazy_loaded_esm = [
+      dir "modules/testdata",
+      "lazy_loaded.js",
+      "lazy_loaded_2.js",
+    ]
+  );
+
+  let loader = Rc::new(TestingModuleLoader::new(NoopModuleLoader));
+
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    extensions: vec![test_ext::init()],
+    module_loader: Some(loader),
+    ..Default::default()
+  });
+
+  let module_map = runtime.module_map().clone();
+
+  // Build the module graph manually:
+  //
+  //   main.js  (main module)
+  //     ├── tla_mod.js   -- triggers lazy_loaded.js, awaits op_eager_resolve
+  //     └── lazy_mod.js  -- triggers lazy_loaded_2.js
+  //
+  // The key is that tla_mod.js's `await` resolves eagerly, and the
+  // microtask checkpoint inside lazy_loaded_2.js's lazy load can
+  // prematurely resolve the main module evaluation promise.
+
+  let (mod_main, mod_tla, mod_lazy) = {
+    deno_core::scope!(scope, runtime);
+
+    let mod_tla = module_map
+      .new_es_module(
+        scope,
+        false,
+        ascii_str!("file:///tla_mod.js").into(),
+        ascii_str!(
+          r#"
+          const lazy1 = Deno.core.createLazyLoader("ext:test_ext/lazy_loaded.js")();
+          if (lazy1.foo !== "foo") throw new Error("lazy1.foo: " + lazy1.foo);
+          if (lazy1.bar !== 123) throw new Error("lazy1.bar: " + lazy1.bar);
+          const result = await Deno.core.ops.op_eager_resolve();
+          if (result !== 42) throw new Error("unexpected: " + result);
+          "#
+        )
+        .into(),
+        false,
+        None,
+      )
+      .unwrap();
+
+    let mod_lazy = module_map
+      .new_es_module(
+        scope,
+        false,
+        ascii_str!("file:///lazy_mod.js").into(),
+        ascii_str!(
+          r#"
+          const lazy2 = Deno.core.createLazyLoader("ext:test_ext/lazy_loaded_2.js")();
+          if (lazy2.baz !== "baz") throw new Error("lazy2.baz: " + lazy2.baz);
+          "#
+        )
+        .into(),
+        false,
+        None,
+      )
+      .unwrap();
+
+    let mod_main = module_map
+      .new_es_module(
+        scope,
+        true,
+        ascii_str!("file:///main.js").into(),
+        ascii_str!(
+          r#"
+          import "./tla_mod.js";
+          import "./lazy_mod.js";
+          "#
+        )
+        .into(),
+        false,
+        None,
+      )
+      .unwrap();
+
+    (mod_main, mod_tla, mod_lazy)
+  };
+
+  runtime.instantiate_module(mod_tla).unwrap();
+  runtime.instantiate_module(mod_lazy).unwrap();
+  runtime.instantiate_module(mod_main).unwrap();
+
+  // This should not panic with "Expected at least one stalled top-level await"
+  let receiver = runtime.mod_evaluate(mod_main);
+  runtime.run_event_loop(Default::default()).await.unwrap();
+  receiver.await.unwrap();
+}
