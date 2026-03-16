@@ -1888,7 +1888,8 @@ export function setupChannel(
       typeof message !== "string" &&
       typeof message !== "object" &&
       typeof message !== "number" &&
-      typeof message !== "boolean"
+      typeof message !== "boolean" &&
+      typeof message !== "bigint"
     ) {
       throw new ERR_INVALID_ARG_TYPE(
         "message",
