@@ -160,10 +160,8 @@ pub unsafe fn uv_stream_set_blocking(
     } else {
       flags | libc::O_NONBLOCK
     };
-    if new_flags != flags {
-      if libc::fcntl(fd, libc::F_SETFL, new_flags) == -1 {
-        return -(*(libc::__error()));
-      }
+    if new_flags != flags && libc::fcntl(fd, libc::F_SETFL, new_flags) == -1 {
+      return -(*(libc::__error()));
     }
     0
   }
@@ -224,11 +222,6 @@ pub unsafe fn uv_write(
     (*req).handle = handle;
 
     if (*tcp).internal_stream.is_none() {
-      eprintln!(
-        "[uv_write] EBADF: internal_stream is None for handle {:?} type={:?}",
-        handle,
-        (*handle).r#type
-      );
       // Match libuv: return error code from uv_write, don't invoke callback.
       return UV_EBADF;
     }

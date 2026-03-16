@@ -252,6 +252,7 @@ impl HandleWrap {
     if let Some(handle) = self.handle {
       return match handle {
         Handle::Old(resource_id) => state.has_ref(resource_id),
+        // SAFETY: handle is a valid uv_handle_t pointer set during construction and remains live while HandleWrap is alive.
         Handle::New(handle) => unsafe { uv_compat::uv_has_ref(handle) != 0 },
       };
     }
@@ -270,6 +271,7 @@ impl HandleWrap {
     {
       match handle {
         Handle::Old(resource_id) => state.uv_ref(resource_id),
+        // SAFETY: handle is a valid uv_handle_t pointer set during construction and remains live while HandleWrap is alive.
         Handle::New(handle) => unsafe { uv_compat::uv_ref(handle.cast_mut()) },
       }
     }
@@ -285,6 +287,7 @@ impl HandleWrap {
     {
       match handle {
         Handle::Old(resource_id) => state.uv_unref(resource_id),
+        // SAFETY: handle is a valid uv_handle_t pointer set during construction and remains live while HandleWrap is alive.
         Handle::New(handle) => unsafe {
           uv_compat::uv_unref(handle.cast_mut())
         },

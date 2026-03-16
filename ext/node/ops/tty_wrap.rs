@@ -64,6 +64,8 @@ impl<T> OwnedPtr<T> {
     self.0
   }
 
+  /// # Safety
+  /// Caller must ensure T and U are the same type or have identical memory layout.
   pub unsafe fn cast<U>(self) -> OwnedPtr<U> {
     const {
       assert!(size_of::<T>() == size_of::<U>());
@@ -78,6 +80,7 @@ impl<T> OwnedPtr<T> {
 
 impl<T> Drop for OwnedPtr<T> {
   fn drop(&mut self) {
+    // SAFETY: self.0 was created from Box::into_raw and has not been freed yet.
     unsafe {
       let _ = Box::from_raw(self.0);
     }
@@ -92,6 +95,7 @@ pub struct TTY {
   pub(crate) handle: Option<OwnedPtr<uv_tty_t>>,
 }
 
+// SAFETY: TTY is a cppgc-managed object; the GC correctly traces it via the base field.
 unsafe impl GarbageCollected for TTY {
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"TTY"
@@ -116,9 +120,11 @@ impl TTY {
 
     let tty = OwnedPtr::from_box(Box::<uv_tty_t>::new_uninit());
 
+    // SAFETY: loop_ is a valid uv_loop_t pointer from OpState; tty points to uninit memory of the right size for uv_tty_t; fd is a valid file descriptor.
     let err = unsafe { uv_tty_init(loop_, tty.as_mut_ptr().cast(), fd, 0) };
 
     if err == 0 {
+      // SAFETY: uv_tty_init succeeded so the memory is fully initialized as a uv_tty_t.
       let tty = unsafe { tty.cast::<uv_tty_t>() };
       (
         Self {
@@ -137,6 +143,7 @@ impl TTY {
     } else {
       // Match Node: don't panic, return uninitialized handle with error code.
       // Free the uninit allocation without dropping as uv_tty_t.
+      // SAFETY: tty.0 was allocated via Box::new_uninit with the layout of uv_tty_t; we free it directly because the memory was never initialized and must not be dropped as uv_tty_t.
       unsafe {
         let layout = std::alloc::Layout::new::<uv_tty_t>();
         std::alloc::dealloc(tty.as_mut_ptr() as *mut u8, layout);
@@ -175,32 +182,31 @@ impl TTY {
 
     let obj = v8::Local::new(scope, &this);
     let (tty, err) = TTY::new(obj, fd, op_state);
-    if err != 0 {
-      if let Ok(ctx_obj) = v8::Local::<v8::Object>::try_from(ctx) {
-        let (code_name, message) = uv_error_info(err);
+    if err != 0
+      && let Ok(ctx_obj) = v8::Local::<v8::Object>::try_from(ctx)
+    {
+      let (code_name, message) = uv_error_info(err);
 
-        let code_key =
-          v8::String::new_external_onebyte_static(scope, b"code").unwrap();
-        let code_str = v8::String::new(scope, code_name).unwrap();
-        ctx_obj.set(scope, code_key.into(), code_str.into());
+      let code_key =
+        v8::String::new_external_onebyte_static(scope, b"code").unwrap();
+      let code_str = v8::String::new(scope, code_name).unwrap();
+      ctx_obj.set(scope, code_key.into(), code_str.into());
 
-        let msg_key =
-          v8::String::new_external_onebyte_static(scope, b"message").unwrap();
-        let msg_str = v8::String::new(scope, message).unwrap();
-        ctx_obj.set(scope, msg_key.into(), msg_str.into());
+      let msg_key =
+        v8::String::new_external_onebyte_static(scope, b"message").unwrap();
+      let msg_str = v8::String::new(scope, message).unwrap();
+      ctx_obj.set(scope, msg_key.into(), msg_str.into());
 
-        let errno_key =
-          v8::String::new_external_onebyte_static(scope, b"errno").unwrap();
-        let errno_val = v8::Integer::new(scope, err);
-        ctx_obj.set(scope, errno_key.into(), errno_val.into());
+      let errno_key =
+        v8::String::new_external_onebyte_static(scope, b"errno").unwrap();
+      let errno_val = v8::Integer::new(scope, err);
+      ctx_obj.set(scope, errno_key.into(), errno_val.into());
 
-        let syscall_key =
-          v8::String::new_external_onebyte_static(scope, b"syscall").unwrap();
-        let syscall_str =
-          v8::String::new_external_onebyte_static(scope, b"uv_tty_init")
-            .unwrap();
-        ctx_obj.set(scope, syscall_key.into(), syscall_str.into());
-      }
+      let syscall_key =
+        v8::String::new_external_onebyte_static(scope, b"syscall").unwrap();
+      let syscall_str =
+        v8::String::new_external_onebyte_static(scope, b"uv_tty_init").unwrap();
+      ctx_obj.set(scope, syscall_key.into(), syscall_str.into());
     }
     tty
   }
@@ -227,18 +233,18 @@ impl TTY {
     let handle = handle.as_mut_ptr();
 
     let (mut width, mut height) = (0, 0);
+    // SAFETY: handle is a valid initialized uv_tty_t pointer, verified above via the Some guard.
     let err = unsafe { uv_tty_get_winsize(handle, &mut width, &mut height) };
 
-    if err == 0 {
-      if a
+    if err == 0
+      && (a
         .set_index(scope, 0, v8::Integer::new(scope, width).into())
         .is_none()
         || a
           .set_index(scope, 1, v8::Integer::new(scope, height).into())
-          .is_none()
-      {
-        return -1;
-      }
+          .is_none())
+    {
+      return -1;
     }
 
     err
@@ -249,7 +255,8 @@ impl TTY {
     let Some(ref handle) = self.handle else {
       return UV_EBADF;
     };
-    let err = unsafe {
+    // SAFETY: handle is a valid initialized uv_tty_t pointer, verified above via the Some guard.
+    unsafe {
       uv_tty_set_mode(
         handle.as_mut_ptr(),
         if arg.is_true() {
@@ -258,8 +265,6 @@ impl TTY {
           uv_tty_mode_t::UV_TTY_MODE_NORMAL
         },
       )
-    };
-
-    err
+    }
   }
 }
