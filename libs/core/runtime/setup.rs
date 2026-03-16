@@ -115,16 +115,9 @@ impl v8::PlatformImpl for DenoPlatformImpl {
     spawn_delayed_task(isolate_ptr as usize, task, delay_in_seconds);
   }
 
-  fn post_idle_task(&self, isolate_ptr: *mut c_void, task: v8::IdleTask) {
-    let key = isolate_ptr as usize;
-    let map = ISOLATE_ENTRIES.lock().unwrap();
-    if let Some(entry) = map.get(&key) {
-      let waker = entry.waker.clone();
-      entry.handle.spawn(async move {
-        task.run(0.0);
-        waker.wake();
-      });
-    }
+  fn post_idle_task(&self, _isolate_ptr: *mut c_void, _task: v8::IdleTask) {
+    // Idle tasks are not useful in server runtimes. Node also ignores them.
+    // The task is dropped without running.
   }
 }
 
