@@ -136,30 +136,30 @@ impl AesCcmCipher {
     if let Some(aad) = &self.aad
       && !aad.is_empty()
     {
-        let mut aad_buf = Vec::new();
-        let alen = aad.len();
-        if alen < 0xFF00 {
-          aad_buf.push((alen >> 8) as u8);
-          aad_buf.push((alen & 0xFF) as u8);
-        } else {
-          aad_buf.push(0xFF);
-          aad_buf.push(0xFE);
-          aad_buf.push((alen >> 24) as u8);
-          aad_buf.push((alen >> 16) as u8);
-          aad_buf.push((alen >> 8) as u8);
-          aad_buf.push((alen & 0xFF) as u8);
-        }
-        aad_buf.extend_from_slice(aad);
-        // Pad to 16-byte boundary
-        let pad = (16 - (aad_buf.len() % 16)) % 16;
-        aad_buf.resize(aad_buf.len() + pad, 0);
+      let mut aad_buf = Vec::new();
+      let alen = aad.len();
+      if alen < 0xFF00 {
+        aad_buf.push((alen >> 8) as u8);
+        aad_buf.push((alen & 0xFF) as u8);
+      } else {
+        aad_buf.push(0xFF);
+        aad_buf.push(0xFE);
+        aad_buf.push((alen >> 24) as u8);
+        aad_buf.push((alen >> 16) as u8);
+        aad_buf.push((alen >> 8) as u8);
+        aad_buf.push((alen & 0xFF) as u8);
+      }
+      aad_buf.extend_from_slice(aad);
+      // Pad to 16-byte boundary
+      let pad = (16 - (aad_buf.len() % 16)) % 16;
+      aad_buf.resize(aad_buf.len() + pad, 0);
 
-        for chunk in aad_buf.chunks(16) {
-          for (i, &b) in chunk.iter().enumerate() {
-            x[i] ^= b;
-          }
-          self.cipher.encrypt_block_in_place(&mut x);
+      for chunk in aad_buf.chunks(16) {
+        for (i, &b) in chunk.iter().enumerate() {
+          x[i] ^= b;
         }
+        self.cipher.encrypt_block_in_place(&mut x);
+      }
     }
 
     // Process plaintext
