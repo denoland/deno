@@ -2574,6 +2574,7 @@ dependencies = [
  "arc-swap",
  "aws-lc-rs",
  "base64 0.22.1",
+ "boxed_error",
  "capacity_builder",
  "deno_bundle_runtime",
  "deno_error",
@@ -3146,6 +3147,7 @@ name = "deno_runtime"
 version = "0.246.0"
 dependencies = [
  "async-trait",
+ "boxed_error",
  "color-print",
  "deno_ast",
  "deno_bundle_runtime",
@@ -3302,6 +3304,7 @@ dependencies = [
  "opentelemetry_sdk",
  "pin-project",
  "serde",
+ "sys_traits",
  "thiserror 2.0.12",
  "tokio",
  "tokio-vsock",
@@ -10154,9 +10157,9 @@ dependencies = [
 
 [[package]]
 name = "sys_traits"
-version = "0.1.24"
+version = "0.1.25"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5410f31d223892c1ce7a098da845c99d023b4c7f18632bc8f09e60dfae3cbb75"
+checksum = "24954f769b36305ab4dc502d095da5cfd9c697c73a8f2c0636a7fca76ff1f24b"
 dependencies = [
  "filetime",
  "getrandom 0.2.14",

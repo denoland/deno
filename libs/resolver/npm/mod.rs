@@ -379,7 +379,7 @@ pub struct NpmReqResolverOptions<
   pub sys: TSys,
 }
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type NpmReqResolverRc<
   TInNpmPackageChecker,
   TIsBuiltInNodeModuleChecker,

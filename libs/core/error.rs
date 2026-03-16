@@ -933,7 +933,10 @@ impl JsError {
                 Some(s) => v8_to_rust_string(&s, tc_scope),
                 None => String::new(),
               };
-              #[allow(clippy::print_stderr)]
+              #[allow(
+                clippy::print_stderr,
+                reason = "intentional warning output"
+              )]
               {
                 eprintln!(
                   "warning: Failed to create JsStackFrame from callsite object: {message}. This is a bug in deno"
@@ -1489,10 +1492,8 @@ macro_rules! make_callsite_fn {
 fn maybe_to_path_str(string: &str) -> Option<String> {
   if string.starts_with("file://") {
     Some(
-      Url::parse(string)
-        .unwrap()
-        .to_file_path()
-        .unwrap()
+      deno_path_util::url_to_file_path(&Url::parse(string).ok()?)
+        .ok()?
         .to_string_lossy()
         .into_owned(),
     )
@@ -1990,7 +1991,7 @@ pub fn format_stack_trace<'s, 'i>(
         Some(s) => v8_to_rust_string(&s, tc_scope),
         None => String::new(),
       };
-      #[allow(clippy::print_stderr)]
+      #[allow(clippy::print_stderr, reason = "intentional warning output")]
       {
         eprintln!(
           "warning: Failed to create JsStackFrame from callsite object: {message}; Result so far: {result}. This is a bug in deno"

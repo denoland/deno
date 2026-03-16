@@ -682,7 +682,7 @@ impl ModuleMap {
   /// and attached to associated [`ModuleInfo`].
   ///
   /// Returns an ID of newly created module.
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
   pub(crate) fn new_module_from_js_source(
     &self,
     scope: &mut v8::PinScope,
@@ -1016,7 +1016,10 @@ impl ModuleMap {
     Ok(self.new_synthetic_module(tc_scope, name, ModuleType::Json, exports))
   }
 
-  #[allow(clippy::unnecessary_wraps)]
+  #[allow(
+    clippy::unnecessary_wraps,
+    reason = "consistent return type with other module constructors"
+  )]
   pub(crate) fn new_text_module(
     &self,
     scope: &mut v8::PinScope,
@@ -1039,7 +1042,10 @@ impl ModuleMap {
     Ok(self.new_synthetic_module(scope, name, ModuleType::Text, exports))
   }
 
-  #[allow(clippy::unnecessary_wraps)]
+  #[allow(
+    clippy::unnecessary_wraps,
+    reason = "consistent return type with other module constructors"
+  )]
   pub(crate) fn new_bytes_module(
     &self,
     scope: &mut v8::PinScope,
@@ -1286,7 +1292,7 @@ impl ModuleMap {
   }
 
   // Initiate loading of a module graph imported using `import()`.
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "internal code")]
   pub(crate) fn load_dynamic_import(
     self: Rc<Self>,
     scope: &mut v8::PinScope,
@@ -2290,7 +2296,10 @@ impl ModuleMap {
 
 // Clippy thinks the return value doesn't need to be an Option, it's unaware
 // of the mapping that MapFnFrom<F> does for ResolveModuleCallback.
-#[allow(clippy::unnecessary_wraps)]
+#[allow(
+  clippy::unnecessary_wraps,
+  reason = "required by MapFnFrom<F> for ResolveModuleCallback"
+)]
 pub(crate) fn synthetic_module_evaluation_steps<'s>(
   context: v8::Local<'s, v8::Context>,
   module: v8::Local<'s, v8::Module>,

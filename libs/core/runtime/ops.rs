@@ -316,7 +316,7 @@ pub fn to_cow_one_byte(
 
 /// Converts from a raw [`v8::Value`] to the expected V8 data type.
 #[inline(always)]
-#[allow(clippy::result_unit_err)]
+#[allow(clippy::result_unit_err, reason = "error details not needed")]
 pub fn v8_try_convert<'a, T>(
   value: v8::Local<'a, v8::Value>,
 ) -> Result<v8::Local<'a, T>, ()>
@@ -328,7 +328,7 @@ where
 
 /// Converts from a raw [`v8::Value`] to the expected V8 data type, wrapped in an [`Option`].
 #[inline(always)]
-#[allow(clippy::result_unit_err)]
+#[allow(clippy::result_unit_err, reason = "error details not needed")]
 pub fn v8_try_convert_option<'a, T>(
   value: v8::Local<'a, v8::Value>,
 ) -> Result<Option<v8::Local<'a, T>>, ()>
@@ -522,7 +522,12 @@ pub fn to_v8_slice_any(
   Err("expected ArrayBuffer or ArrayBufferView")
 }
 
-#[allow(clippy::print_stdout, clippy::print_stderr, clippy::unused_async)]
+#[allow(
+  clippy::print_stdout,
+  clippy::print_stderr,
+  clippy::unused_async,
+  reason = "test module uses prints for diagnostics and async signatures for op2 macro"
+)]
 #[cfg(all(test, not(miri)))]
 mod tests {
   use std::borrow::Cow;
@@ -901,7 +906,10 @@ mod tests {
     Err(JsErrorBox::generic("failed!!!"))
   }
 
-  #[allow(clippy::unnecessary_wraps)]
+  #[allow(
+    clippy::unnecessary_wraps,
+    reason = "tests Result-returning op signature"
+  )]
   #[op2(fast)]
   pub fn op_test_result_void_ok() -> Result<(), JsErrorBox> {
     Ok(())
@@ -946,7 +954,10 @@ mod tests {
     Err(JsErrorBox::generic("failed!!!"))
   }
 
-  #[allow(clippy::unnecessary_wraps)]
+  #[allow(
+    clippy::unnecessary_wraps,
+    reason = "tests Result-returning op signature"
+  )]
   #[op2(fast)]
   pub fn op_test_result_primitive_ok() -> Result<u32, JsErrorBox> {
     Ok(123)
@@ -1254,7 +1265,10 @@ mod tests {
   pub fn op_test_generics<T: Clone>() {}
 
   /// Tests v8 types without a handle scope
-  #[allow(clippy::needless_lifetimes)]
+  #[allow(
+    clippy::needless_lifetimes,
+    reason = "explicit lifetimes required by op2 macro"
+  )]
   #[op2(fast)]
   pub fn op_test_v8_types<'s>(
     s: &v8::String,
@@ -1281,7 +1295,10 @@ mod tests {
 
   /// Tests v8 types without a handle scope
   #[op2]
-  #[allow(clippy::needless_lifetimes)]
+  #[allow(
+    clippy::needless_lifetimes,
+    reason = "explicit lifetimes required by op2 macro"
+  )]
   pub fn op_test_v8_type_return<'s>(
     s: v8::Local<'s, v8::String>,
   ) -> v8::Local<'s, v8::String> {
@@ -1290,7 +1307,10 @@ mod tests {
 
   /// Tests v8 types without a handle scope
   #[op2]
-  #[allow(clippy::needless_lifetimes)]
+  #[allow(
+    clippy::needless_lifetimes,
+    reason = "explicit lifetimes required by op2 macro"
+  )]
   pub fn op_test_v8_type_return_option<'s>(
     s: Option<v8::Local<'s, v8::String>>,
   ) -> Option<v8::Local<'s, v8::String>> {
@@ -1859,7 +1879,10 @@ mod tests {
   /// Ensures that three copies are independent. Note that we cannot mutate the
   /// `bytes::Bytes`.
   #[op2(fast)]
-  #[allow(clippy::boxed_local)] // Clippy bug? It warns about input2
+  #[allow(
+    clippy::boxed_local,
+    reason = "clippy false positive on copy buffer parameter"
+  )]
   pub fn op_buffer_copy(
     #[buffer(copy)] mut input1: Vec<u8>,
     #[buffer(copy)] mut input2: Box<[u8]>,

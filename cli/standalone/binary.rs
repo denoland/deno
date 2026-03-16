@@ -214,7 +214,7 @@ pub struct DenoCompileBinaryWriter<'a> {
 }
 
 impl<'a> DenoCompileBinaryWriter<'a> {
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "construction")]
   pub fn new(
     cjs_module_export_analyzer: &'a CliCjsModuleExportAnalyzer,
     cjs_tracker: &'a CliCjsTracker,
@@ -368,7 +368,6 @@ impl<'a> DenoCompileBinaryWriter<'a> {
 
   /// This functions creates a standalone deno binary by appending a bundle
   /// and magic trailer to the currently executing binary.
-  #[allow(clippy::too_many_arguments)]
   async fn write_standalone_binary(
     &self,
     options: WriteBinOptions<'_>,
@@ -1104,7 +1103,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
   }
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, reason = "private code")]
 fn write_binary_bytes(
   mut file_writer: File,
   original_bin: Vec<u8>,
@@ -1151,7 +1150,7 @@ struct BinaryDataSectionSizes {
 /// * <vfs_headers_len><vfs_headers>
 /// * <vfs_file_data_len><vfs_file_data>
 /// * d3n0l4nd
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, reason = "private code")]
 fn serialize_binary_data_section(
   metadata: &Metadata,
   npm_snapshot: Option<SerializedNpmResolutionSnapshot>,

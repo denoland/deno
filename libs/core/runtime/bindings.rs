@@ -670,7 +670,10 @@ pub extern "C" fn wasm_async_resolve_promise_callback(
   }
 }
 
-#[allow(clippy::unnecessary_wraps)]
+#[allow(
+  clippy::unnecessary_wraps,
+  reason = "signature required by v8 callback API"
+)]
 pub fn host_import_module_dynamically_callback<'s, 'i>(
   scope: &mut v8::PinScope<'s, 'i>,
   host_defined_options: v8::Local<'s, v8::Data>,
@@ -688,7 +691,10 @@ pub fn host_import_module_dynamically_callback<'s, 'i>(
   )
 }
 
-#[allow(clippy::unnecessary_wraps)]
+#[allow(
+  clippy::unnecessary_wraps,
+  reason = "signature required by v8 callback API"
+)]
 pub fn host_import_module_with_phase_dynamically_callback<'s, 'i>(
   scope: &mut v8::PinScope<'s, 'i>,
   _host_defined_options: v8::Local<'s, v8::Data>,
@@ -871,7 +877,7 @@ fn maybe_add_import_meta_filename_dirname<'s, 'i>(
 
   // If something goes wrong acquiring a filepath, let skip instead of crashing
   // (mostly concerned about file paths on Windows).
-  let Ok(file_path) = name_url.to_file_path() else {
+  let Ok(file_path) = deno_path_util::url_to_file_path(&name_url) else {
     return;
   };
 

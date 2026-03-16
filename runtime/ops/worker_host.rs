@@ -552,7 +552,7 @@ fn capture_current_thread_handle() -> u64 {
 fn get_thread_cpu_usage_by_handle(handle: u64) -> (f64, f64) {
   let tid = handle as i32;
   let path = format!("/proc/self/task/{}/stat", tid);
-  #[allow(clippy::disallowed_methods)]
+  #[allow(clippy::disallowed_methods, reason = "requires real fs")]
   if let Ok(contents) = std::fs::read_to_string(&path) {
     // Parse utime and stime after pid(comm)
     if let Some(pos) = contents.rfind(')') {

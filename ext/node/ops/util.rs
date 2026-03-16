@@ -17,10 +17,10 @@ use crate::NodeResolverRc;
 
 #[repr(u32)]
 enum HandleType {
-  #[allow(dead_code)]
+  #[allow(dead_code, reason = "variant kept for repr(u32) mapping")]
   Tcp = 0,
   Tty,
-  #[allow(dead_code)]
+  #[allow(dead_code, reason = "variant kept for repr(u32) mapping")]
   Udp,
   File,
   Pipe,
