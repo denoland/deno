@@ -116,8 +116,7 @@ impl v8::PlatformImpl for DenoPlatformImpl {
   }
 
   fn post_idle_task(&self, _isolate_ptr: *mut c_void, _task: v8::IdleTask) {
-    // Idle tasks are not useful in server runtimes. Node also ignores them.
-    // The task is dropped without running.
+    unreachable!();
   }
 }
 
