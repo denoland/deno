@@ -24,6 +24,8 @@ import {
   op_v8_read_value,
   op_v8_release_buffer,
   op_v8_set_treat_array_buffer_views_as_host_objects,
+  op_v8_stop_coverage,
+  op_v8_take_coverage,
   op_v8_take_heap_snapshot,
   op_v8_transfer_array_buffer,
   op_v8_transfer_array_buffer_de,
@@ -40,7 +42,6 @@ import { Buffer } from "node:buffer";
 import { writeFileSync } from "node:fs";
 import { Readable } from "node:stream";
 
-import { notImplemented } from "ext:deno_node/_utils.ts";
 import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
 import { getValidatedPath } from "ext:deno_node/internal/fs/utils.mjs";
 import { validateObject } from "ext:deno_node/internal/validators.mjs";
@@ -121,10 +122,10 @@ export function setFlagsFromString() {
   // this function will just be a no-op.
 }
 export function stopCoverage() {
-  notImplemented("v8.stopCoverage");
+  op_v8_stop_coverage();
 }
 export function takeCoverage() {
-  notImplemented("v8.takeCoverage");
+  op_v8_take_coverage();
 }
 
 let heapSnapshotCounter = 0;
