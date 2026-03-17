@@ -1,6 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-use std::f32;
+use std::f64;
 use std::ops;
 
 use cssparser::ParseError;
@@ -37,7 +37,7 @@ pub enum CSSValueCustomError {
 #[derive(Clone, Debug)]
 #[cfg_attr(test, derive(PartialEq))]
 pub struct Length {
-  value: f32,
+  value: f64,
   unit: LengthUnit,
 }
 
@@ -55,10 +55,10 @@ enum LengthUnit {
 }
 
 impl Length {
-  const INCH_TO_PX: f32 = 96.0;
-  const INCH_TO_CM: f32 = 2.54;
+  const INCH_TO_PX: f64 = 96.0;
+  const INCH_TO_CM: f64 = 2.54;
 
-  pub fn to_pixels(&self) -> f32 {
+  pub fn to_pixels(&self) -> f64 {
     let value = self.value;
     match self.unit {
       LengthUnit::Cm => value * (Self::INCH_TO_PX / Self::INCH_TO_CM),
@@ -75,7 +75,7 @@ impl Length {
 #[derive(Clone, Debug)]
 #[cfg_attr(test, derive(PartialEq))]
 pub struct Angle {
-  value: f32,
+  value: f64,
   unit: AngleUnit,
 }
 
@@ -89,10 +89,10 @@ enum AngleUnit {
 }
 
 impl Angle {
-  const TURN_TO_DEG: f32 = 360.0;
-  const TURN_TO_GRAD: f32 = 400.0;
+  const TURN_TO_DEG: f64 = 360.0;
+  const TURN_TO_GRAD: f64 = 400.0;
 
-  pub fn to_degrees(&self) -> f32 {
+  pub fn to_degrees(&self) -> f64 {
     let value = self.value;
     match self.unit {
       AngleUnit::Deg => value,
@@ -102,7 +102,7 @@ impl Angle {
     }
   }
 
-  pub fn to_radians(&self) -> f32 {
+  pub fn to_radians(&self) -> f64 {
     let value = self.value;
     match self.unit {
       AngleUnit::Deg => value.to_radians(),
@@ -110,7 +110,7 @@ impl Angle {
         (value * (Self::TURN_TO_DEG / Self::TURN_TO_GRAD)).to_radians()
       }
       AngleUnit::Rad => value,
-      AngleUnit::Turn => value * f32::consts::TAU,
+      AngleUnit::Turn => value * f64::consts::TAU,
     }
   }
 }
@@ -121,15 +121,15 @@ impl Angle {
 #[cfg_attr(test, derive(PartialEq))]
 pub enum NumericValue {
   Zero,
-  Number(f32),
+  Number(f64),
   Length(Length),
   Angle(Angle),
-  Percent(f32),
+  Percent(f64),
 }
 
 impl NumericValue {
   #[inline]
-  pub fn expect_number(self) -> Result<f32, CSSValueCustomError> {
+  pub fn expect_number(self) -> Result<f64, CSSValueCustomError> {
     match self {
       NumericValue::Zero => Ok(0.0),
       NumericValue::Number(number) => Ok(number),
@@ -180,7 +180,7 @@ impl NumericValue {
   }
 
   #[inline]
-  pub fn expect_percent(self) -> Result<f32, CSSValueCustomError> {
+  pub fn expect_percent(self) -> Result<f64, CSSValueCustomError> {
     match self {
       NumericValue::Percent(percent) => Ok(percent),
       _ => Err(CSSValueCustomError::UnexpectedNumericType),
@@ -188,7 +188,7 @@ impl NumericValue {
   }
 
   #[inline]
-  pub fn expect_number_or_percent(self) -> Result<f32, CSSValueCustomError> {
+  pub fn expect_number_or_percent(self) -> Result<f64, CSSValueCustomError> {
     match self {
       NumericValue::Zero => Ok(0.0),
       NumericValue::Number(number) => Ok(number),
@@ -228,7 +228,7 @@ impl ops::SubAssign<&Dimension> for Dimension {
 #[derive(Debug)]
 #[cfg_attr(test, derive(PartialEq))]
 struct MathValue {
-  value: f32,
+  value: f64,
   dimension: Dimension,
 }
 
@@ -400,7 +400,7 @@ impl MathValue {
   }
 
   #[inline]
-  fn expect_number(self) -> Result<f32, CSSValueCustomError> {
+  fn expect_number(self) -> Result<f64, CSSValueCustomError> {
     if !self.is_number() {
       return Err(CSSValueCustomError::UnexpectedNumericType);
     }
@@ -430,7 +430,7 @@ impl MathValue {
   }
 
   #[inline]
-  fn expect_percent(self) -> Result<f32, CSSValueCustomError> {
+  fn expect_percent(self) -> Result<f64, CSSValueCustomError> {
     if !self.is_percent() {
       return Err(CSSValueCustomError::UnexpectedNumericType);
     }
@@ -493,7 +493,7 @@ impl NumericAccumulator {
   }
 
   #[inline]
-  fn expect_number(self) -> Result<f32, CSSValueCustomError> {
+  fn expect_number(self) -> Result<f64, CSSValueCustomError> {
     match self {
       NumericAccumulator::Numeric(numeric) => numeric.expect_number(),
       NumericAccumulator::Math(math) => math.expect_number(),
@@ -523,7 +523,7 @@ impl NumericAccumulator {
   }
 
   #[inline]
-  fn expect_percent(self) -> Result<f32, CSSValueCustomError> {
+  fn expect_percent(self) -> Result<f64, CSSValueCustomError> {
     match self {
       NumericAccumulator::Numeric(numeric) => numeric.expect_percent(),
       NumericAccumulator::Math(math) => math.expect_percent(),
@@ -565,18 +565,18 @@ impl NumericValue {
         if state.function_depth == 0 && *value == 0.0 {
           return Ok(NumericValue::Zero.into());
         }
-        Ok(NumericValue::Number(*value).into())
+        Ok(NumericValue::Number(*value as f64).into())
       }
       Token::Dimension { value, unit, .. } => {
         match_ignore_ascii_case! { &unit,
           // https://www.w3.org/TR/css-values-4/#absolute-lengths
-          "cm" => Ok(NumericValue::Length(Length { value: *value, unit: LengthUnit::Cm }).into()),
-          "mm" => Ok(NumericValue::Length(Length { value: *value, unit: LengthUnit::Mm }).into()),
-          "q" => Ok(NumericValue::Length(Length { value: *value, unit: LengthUnit::Q }).into()),
-          "in" => Ok(NumericValue::Length(Length { value: *value, unit: LengthUnit::In }).into()),
-          "pc" => Ok(NumericValue::Length(Length { value: *value, unit: LengthUnit::Pc }).into()),
-          "pt" => Ok(NumericValue::Length(Length { value: *value, unit: LengthUnit::Pt }).into()),
-          "px" => Ok(NumericValue::Length(Length { value: *value, unit: LengthUnit::Px }).into()),
+          "cm" => Ok(NumericValue::Length(Length { value: *value as f64, unit: LengthUnit::Cm }).into()),
+          "mm" => Ok(NumericValue::Length(Length { value: *value as f64, unit: LengthUnit::Mm }).into()),
+          "q" => Ok(NumericValue::Length(Length { value: *value as f64, unit: LengthUnit::Q }).into()),
+          "in" => Ok(NumericValue::Length(Length { value: *value as f64, unit: LengthUnit::In }).into()),
+          "pc" => Ok(NumericValue::Length(Length { value: *value as f64, unit: LengthUnit::Pc }).into()),
+          "pt" => Ok(NumericValue::Length(Length { value: *value as f64, unit: LengthUnit::Pt }).into()),
+          "px" => Ok(NumericValue::Length(Length { value: *value as f64, unit: LengthUnit::Px }).into()),
           // https://www.w3.org/TR/css-values-4/#relative-lengths
           "em" | "rem" | "ex" | "rex" | "cap" | "rcap" | "ch" | "rch" | "ic" | "ric" | "lh" | "rlh" |
           "vw" | "svw" | "lvw" | "dvw" | "vh" | "svh" | "lvh" | "dvh" | "vi" | "svi" | "lvi" | "dvi" |
@@ -585,10 +585,10 @@ impl NumericValue {
           "cqw" | "cqh" | "cqi" | "cqb" | "cqmin" | "cqmax"
           => Err(input.new_custom_error(CSSValueCustomError::ContainsRelativeLengthValues)),
           // https://www.w3.org/TR/css-values-4/#angles
-          "deg" => Ok(NumericValue::Angle(Angle { value: *value, unit: AngleUnit::Deg }).into()),
-          "grad" => Ok(NumericValue::Angle(Angle { value: *value, unit: AngleUnit::Grad }).into()),
-          "rad" => Ok(NumericValue::Angle(Angle { value: *value, unit: AngleUnit::Rad }).into()),
-          "turn" => Ok(NumericValue::Angle(Angle { value: *value, unit: AngleUnit::Turn }).into()),
+          "deg" => Ok(NumericValue::Angle(Angle { value: *value as f64, unit: AngleUnit::Deg }).into()),
+          "grad" => Ok(NumericValue::Angle(Angle { value: *value as f64, unit: AngleUnit::Grad }).into()),
+          "rad" => Ok(NumericValue::Angle(Angle { value: *value as f64, unit: AngleUnit::Rad }).into()),
+          "turn" => Ok(NumericValue::Angle(Angle { value: *value as f64, unit: AngleUnit::Turn }).into()),
           // https://www.w3.org/TR/css-values-4/#time
           "s" | "ms" => Err(input.new_custom_error(CSSValueCustomError::UnsupportedDimension("<time>"))),
           // https://www.w3.org/TR/css-values-4/#frequency
@@ -604,7 +604,7 @@ impl NumericValue {
         }
       }
       Token::Percentage { unit_value, .. } => {
-        Ok(NumericValue::Percent(*unit_value).into())
+        Ok(NumericValue::Percent(*unit_value as f64).into())
       }
       Token::Function(name) => {
         state.function_depth += 1;
@@ -797,7 +797,7 @@ impl NumericValue {
                         Err(error) => return Err(arguments.new_custom_error(error)),
                       }
                     },
-                    None => f32::NEG_INFINITY,
+                    None => f64::NEG_INFINITY,
                   };
                   let max = match max {
                     Some(numeric) => {
@@ -806,7 +806,7 @@ impl NumericValue {
                         Err(error) => return Err(arguments.new_custom_error(error)),
                       }
                     },
-                    None => f32::INFINITY,
+                    None => f64::INFINITY,
                   };
                   NumericValue::Number(maximum(min, minimum(value, max))).into()
                 },
@@ -818,7 +818,7 @@ impl NumericValue {
                         Err(error) => return Err(arguments.new_custom_error(error)),
                       }
                     },
-                    None => f32::NEG_INFINITY,
+                    None => f64::NEG_INFINITY,
                   };
                   let max = match max {
                     Some(numeric) => {
@@ -827,7 +827,7 @@ impl NumericValue {
                         Err(error) => return Err(arguments.new_custom_error(error)),
                       }
                     },
-                    None => f32::INFINITY,
+                    None => f64::INFINITY,
                   };
                   NumericValue::Length(Length {
                     value: maximum(min, minimum(value.to_pixels(), max)),
@@ -842,7 +842,7 @@ impl NumericValue {
                         Err(error) => return Err(arguments.new_custom_error(error)),
                       }
                     },
-                    None => f32::NEG_INFINITY,
+                    None => f64::NEG_INFINITY,
                   };
                   let max = match max {
                     Some(numeric) => {
@@ -851,7 +851,7 @@ impl NumericValue {
                         Err(error) => return Err(arguments.new_custom_error(error)),
                       }
                     },
-                    None => f32::INFINITY,
+                    None => f64::INFINITY,
                   };
                   NumericValue::Angle(Angle {
                     value: maximum(min, minimum(value.to_degrees(), max)),
@@ -866,7 +866,7 @@ impl NumericValue {
                         Err(error) => return Err(arguments.new_custom_error(error)),
                       }
                     },
-                    None => f32::NEG_INFINITY,
+                    None => f64::NEG_INFINITY,
                   };
                   let max = match max {
                     Some(numeric) => {
@@ -875,7 +875,7 @@ impl NumericValue {
                         Err(error) => return Err(arguments.new_custom_error(error)),
                       }
                     },
-                    None => f32::INFINITY,
+                    None => f64::INFINITY,
                   };
                   NumericValue::Percent(maximum(min, minimum(value, max))).into()
                 },
@@ -891,17 +891,17 @@ impl NumericValue {
               Down,
               ToZero,
             }
-            fn round(strategy: &RoundStrategy, value: f32, interval: f32) -> f32 {
+            fn round(strategy: &RoundStrategy, value: f64, interval: f64) -> f64 {
               if interval == 0.0 || value.is_nan() || interval.is_nan() || value.is_infinite() && interval.is_infinite() {
-                return f32::NAN;
+                return f64::NAN;
               }
               if value.is_infinite() {
                 return value;
               }
               if interval.is_infinite() {
                 return match strategy {
-                  RoundStrategy::Up => if value > 0.0 { f32::INFINITY } else if value == 0.0 && value.is_sign_positive() { 0.0 } else { -0.0 },
-                  RoundStrategy::Down => if value < 0.0 { f32::NEG_INFINITY } else if value == 0.0 && value.is_sign_negative() { -0.0 } else { 0.0 },
+                  RoundStrategy::Up => if value > 0.0 { f64::INFINITY } else if value == 0.0 && value.is_sign_positive() { 0.0 } else { -0.0 },
+                  RoundStrategy::Down => if value < 0.0 { f64::NEG_INFINITY } else if value == 0.0 && value.is_sign_negative() { -0.0 } else { 0.0 },
                   RoundStrategy::Nearest | RoundStrategy::ToZero => if value.is_sign_positive() { 0.0 } else { -0.0 },
                 }
               }
@@ -1307,7 +1307,7 @@ impl NumericValue {
             })
           },
           "hypot" => {
-            fn hypot(args: &[f32]) -> f32 {
+            fn hypot(args: &[f64]) -> f64 {
               match *args {
                 [] => 0.0,
                 [arg1] => arg1.abs(),
@@ -1473,7 +1473,7 @@ impl NumericValue {
           },
           "sign" => {
             #[inline]
-            fn sign(value: f32) -> f32 {
+            fn sign(value: f64) -> f64 {
               if value == 0.0 { value } else { value.signum() }
             }
 
@@ -1528,12 +1528,12 @@ impl NumericValue {
         }
         match_ignore_ascii_case! { &ident,
           // https://www.w3.org/TR/css-values-4/#calc-constants
-          "e" => Ok(NumericValue::Number(f32::consts::E).into()),
-          "pi" => Ok(NumericValue::Number(f32::consts::PI).into()),
+          "e" => Ok(NumericValue::Number(f64::consts::E).into()),
+          "pi" => Ok(NumericValue::Number(f64::consts::PI).into()),
           // https://www.w3.org/TR/css-values-4/#calc-error-constants
-          "infinity" => Ok(NumericValue::Number(f32::INFINITY).into()),
-          "-infinity" => Ok(NumericValue::Number(f32::NEG_INFINITY).into()),
-          "nan" => Ok(NumericValue::Number(f32::NAN).into()),
+          "infinity" => Ok(NumericValue::Number(f64::INFINITY).into()),
+          "-infinity" => Ok(NumericValue::Number(f64::NEG_INFINITY).into()),
+          "nan" => Ok(NumericValue::Number(f64::NAN).into()),
           _ => {
             let token = token.clone();
             Err(input.new_unexpected_token_error(token))
@@ -1628,9 +1628,9 @@ impl NumericValue {
   }
 }
 
-// TODO(petamoriken) Use f32::maximum instead https://github.com/rust-lang/rust/issues/91079
+// TODO(petamoriken) Use f64::maximum instead https://github.com/rust-lang/rust/issues/91079
 #[inline]
-fn maximum(a: f32, b: f32) -> f32 {
+fn maximum(a: f64, b: f64) -> f64 {
   if a > b {
     a
   } else if b > a {
@@ -1647,9 +1647,9 @@ fn maximum(a: f32, b: f32) -> f32 {
   }
 }
 
-// TODO(petamoriken) Use f32::minimum instead https://github.com/rust-lang/rust/issues/91079
+// TODO(petamoriken) Use f64::minimum instead https://github.com/rust-lang/rust/issues/91079
 #[inline]
-fn minimum(a: f32, b: f32) -> f32 {
+fn minimum(a: f64, b: f64) -> f64 {
   if a < b {
     a
   } else if b < a {
@@ -1724,15 +1724,15 @@ mod tests {
       }
     );
     assert_eq!(angle.to_degrees(), 180.0);
-    assert_relative_eq!(angle.to_radians(), f32::consts::PI);
+    assert_relative_eq!(angle.to_radians(), f64::consts::PI);
   }
 
   #[test]
   fn percent() {
-    let mut input = ParserInput::new("10%");
+    let mut input = ParserInput::new("50%");
     let mut parser = Parser::new(&mut input);
     let result = NumericValue::parse(&mut parser);
-    assert_eq!(result, Ok(NumericValue::Percent(0.1)));
+    assert_eq!(result, Ok(NumericValue::Percent(0.5)));
   }
 
   #[test]
@@ -1748,7 +1748,7 @@ mod tests {
     let mut input = ParserInput::new("calc(e)");
     let mut parser = Parser::new(&mut input);
     let result = NumericValue::parse(&mut parser);
-    assert_eq!(result, Ok(NumericValue::Number(f32::consts::E)));
+    assert_eq!(result, Ok(NumericValue::Number(f64::consts::E)));
   }
 
   #[test]
@@ -1756,7 +1756,7 @@ mod tests {
     let mut input = ParserInput::new("calc(pi)");
     let mut parser = Parser::new(&mut input);
     let result = NumericValue::parse(&mut parser);
-    assert_eq!(result, Ok(NumericValue::Number(f32::consts::PI)));
+    assert_eq!(result, Ok(NumericValue::Number(f64::consts::PI)));
   }
 
   #[test]
@@ -1764,7 +1764,7 @@ mod tests {
     let mut input = ParserInput::new("calc(infinity)");
     let mut parser = Parser::new(&mut input);
     let result = NumericValue::parse(&mut parser);
-    assert_eq!(result, Ok(NumericValue::Number(f32::INFINITY)));
+    assert_eq!(result, Ok(NumericValue::Number(f64::INFINITY)));
   }
 
   #[test]
@@ -1772,7 +1772,7 @@ mod tests {
     let mut input = ParserInput::new("calc(-infinity)");
     let mut parser = Parser::new(&mut input);
     let result = NumericValue::parse(&mut parser);
-    assert_eq!(result, Ok(NumericValue::Number(f32::NEG_INFINITY)));
+    assert_eq!(result, Ok(NumericValue::Number(f64::NEG_INFINITY)));
   }
 
   #[test]
@@ -2268,7 +2268,7 @@ mod tests {
     let Ok(NumericValue::Number(value)) = result else {
       panic!("expect number: {:?}", result);
     };
-    assert_relative_eq!(value, 10.0_f32.ln());
+    assert_relative_eq!(value, 10.0_f64.ln());
   }
 
   #[test]
@@ -2290,7 +2290,7 @@ mod tests {
     let Ok(NumericValue::Number(value)) = result else {
       panic!("expect number: {:?}", result);
     };
-    assert_relative_eq!(value, 2.0_f32.exp());
+    assert_relative_eq!(value, 2.0_f64.exp());
   }
 
   #[test]
@@ -2298,10 +2298,7 @@ mod tests {
     let mut input = ParserInput::new("abs(-3)");
     let mut parser = Parser::new(&mut input);
     let result = NumericValue::parse(&mut parser);
-    let Ok(NumericValue::Number(value)) = result else {
-      panic!("expect number: {:?}", result);
-    };
-    assert_relative_eq!(value, 3.0);
+    assert_eq!(result, Ok(NumericValue::Number(3.0)));
   }
 
   #[test]
@@ -2309,10 +2306,13 @@ mod tests {
     let mut input = ParserInput::new("abs(-3px)");
     let mut parser = Parser::new(&mut input);
     let result = NumericValue::parse(&mut parser);
-    let Ok(NumericValue::Length(length)) = result else {
-      panic!("expect length: {:?}", result);
-    };
-    assert_relative_eq!(length.to_pixels(), 3.0);
+    assert_eq!(
+      result,
+      Ok(NumericValue::Length(Length {
+        value: 3.0,
+        unit: LengthUnit::Px
+      }))
+    );
   }
 
   #[test]
@@ -2320,10 +2320,7 @@ mod tests {
     let mut input = ParserInput::new("sign(-2)");
     let mut parser = Parser::new(&mut input);
     let result = NumericValue::parse(&mut parser);
-    let Ok(NumericValue::Number(value)) = result else {
-      panic!("expect number: {:?}", result);
-    };
-    assert_eq!(value, -1.0);
+    assert_eq!(result, Ok(NumericValue::Number(-1.0)));
   }
 
   #[test]
@@ -2355,10 +2352,7 @@ mod tests {
     let mut input = ParserInput::new("sign(-2px)");
     let mut parser = Parser::new(&mut input);
     let result = NumericValue::parse(&mut parser);
-    let Ok(NumericValue::Number(value)) = result else {
-      panic!("expect number: {:?}", result);
-    };
-    assert_eq!(value, -1.0);
+    assert_eq!(result, Ok(NumericValue::Number(-1.0)));
   }
 }
 
@@ -2373,22 +2367,22 @@ pub enum Transform {
   TranslateY(Length),
   TranslateZ(Length),
   Translate3d(Length, Length, Length),
-  Scale(f32, Option<f32>),
-  ScaleX(f32),
-  ScaleY(f32),
-  ScaleZ(f32),
-  Scale3d(f32, f32, f32),
+  Scale(f64, Option<f64>),
+  ScaleX(f64),
+  ScaleY(f64),
+  ScaleZ(f64),
+  Scale3d(f64, f64, f64),
   Rotate(Angle),
   RotateX(Angle),
   RotateY(Angle),
   RotateZ(Angle),
-  Rotate3d(f32, f32, f32, Angle),
+  Rotate3d(f64, f64, f64, Angle),
   Skew(Angle, Option<Angle>),
   SkewX(Angle),
   SkewY(Angle),
   Perspective(Option<Length>),
-  Matrix([f32; 6]),
-  Matrix3d([f32; 16]),
+  Matrix([f64; 6]),
+  Matrix3d([f64; 16]),
 }
 
 impl Transform {

@@ -1415,113 +1415,88 @@ impl DOMMatrixReadOnly {
       Transform::Translate(x, y) => {
         let x = x.to_pixels();
         let y = if let Some(y) = y { y.to_pixels() } else { 0.0 };
-        self.translate_self_inner(x.into(), y.into(), 0.0);
+        self.translate_self_inner(x, y, 0.0);
       }
       Transform::TranslateX(x) => {
         let x = x.to_pixels();
-        self.translate_self_inner(x.into(), 0.0, 0.0);
+        self.translate_self_inner(x, 0.0, 0.0);
       }
       Transform::TranslateY(y) => {
         let y = y.to_pixels();
-        self.translate_self_inner(0.0, y.into(), 0.0);
+        self.translate_self_inner(0.0, y, 0.0);
       }
       Transform::TranslateZ(z) => {
         let z = z.to_pixels();
-        self.translate_self_inner(0.0, 0.0, z.into());
+        self.translate_self_inner(0.0, 0.0, z);
       }
       Transform::Translate3d(x, y, z) => {
         let x = x.to_pixels();
         let y = y.to_pixels();
         let z = z.to_pixels();
-        self.translate_self_inner(x.into(), y.into(), z.into());
+        self.translate_self_inner(x, y, z);
         self.is_2d.set(false);
       }
       Transform::Scale(x, y) => {
         let x = *x;
         let y = if let Some(y) = y { *y } else { x };
-        self.scale_without_origin_self_inner(x.into(), y.into(), 1.0);
+        self.scale_without_origin_self_inner(x, y, 1.0);
       }
       Transform::ScaleX(x) => {
         let x = *x;
-        self.scale_without_origin_self_inner(x.into(), 1.0, 1.0);
+        self.scale_without_origin_self_inner(x, 1.0, 1.0);
       }
       Transform::ScaleY(y) => {
         let y = *y;
-        self.scale_without_origin_self_inner(1.0, y.into(), 1.0);
+        self.scale_without_origin_self_inner(1.0, y, 1.0);
       }
       Transform::ScaleZ(z) => {
         let z = *z;
-        self.scale_without_origin_self_inner(1.0, 1.0, z.into());
+        self.scale_without_origin_self_inner(1.0, 1.0, z);
         self.is_2d.set(false);
       }
       Transform::Scale3d(x, y, z) => {
         let x = *x;
         let y = *y;
         let z = *z;
-        self.scale_without_origin_self_inner(x.into(), y.into(), z.into());
+        self.scale_without_origin_self_inner(x, y, z);
         self.is_2d.set(false);
       }
       Transform::Rotate(angle) => {
-        self.rotate_axis_angle_self_inner(
-          0.0,
-          0.0,
-          1.0,
-          angle.to_radians().into(),
-        );
+        self.rotate_axis_angle_self_inner(0.0, 0.0, 1.0, angle.to_radians());
       }
       Transform::RotateX(angle) => {
-        self.rotate_axis_angle_self_inner(
-          1.0,
-          0.0,
-          0.0,
-          angle.to_radians().into(),
-        );
+        self.rotate_axis_angle_self_inner(1.0, 0.0, 0.0, angle.to_radians());
         self.is_2d.set(false);
       }
       Transform::RotateY(angle) => {
-        self.rotate_axis_angle_self_inner(
-          0.0,
-          1.0,
-          0.0,
-          angle.to_radians().into(),
-        );
+        self.rotate_axis_angle_self_inner(0.0, 1.0, 0.0, angle.to_radians());
         self.is_2d.set(false);
       }
       Transform::RotateZ(angle) => {
-        self.rotate_axis_angle_self_inner(
-          0.0,
-          0.0,
-          1.0,
-          angle.to_radians().into(),
-        );
+        self.rotate_axis_angle_self_inner(0.0, 0.0, 1.0, angle.to_radians());
         self.is_2d.set(false);
       }
       Transform::Rotate3d(x, y, z, angle) => {
         let x = *x;
         let y = *y;
         let z = *z;
-        self.rotate_axis_angle_self_inner(
-          x.into(),
-          y.into(),
-          z.into(),
-          angle.to_radians().into(),
-        );
+        self.rotate_axis_angle_self_inner(x, y, z, angle.to_radians());
         self.is_2d.set(false);
       }
       Transform::Skew(x, y) => {
         let x = x.to_radians();
         let y = if let Some(y) = y { y.to_radians() } else { 0.0 };
-        self.skew_self_inner(x.into(), y.into());
+        self.skew_self_inner(x, y);
       }
       Transform::SkewX(angle) => {
-        self.skew_self_inner(angle.to_radians().into(), 0.0);
+        self.skew_self_inner(angle.to_radians(), 0.0);
       }
       Transform::SkewY(angle) => {
-        self.skew_self_inner(0.0, angle.to_radians().into());
+        self.skew_self_inner(0.0, angle.to_radians());
       }
       Transform::Perspective(length) => {
         if let Some(length) = length {
-          self.perspective_self_inner(length.to_pixels().into());
+          self.perspective_self_inner(length.to_pixels());
         }
         self.is_2d.set(false);
       }
@@ -1530,21 +1505,20 @@ impl DOMMatrixReadOnly {
         let rhs = DOMMatrixReadOnly {
           #[rustfmt::skip]
           inner: RefCell::new(Matrix4::new(
-            (*a).into(), (*c).into(), 0.0, (*e).into(),
-            (*b).into(), (*d).into(), 0.0, (*f).into(),
-                    0.0,         0.0, 1.0,         0.0,
-                    0.0,         0.0, 0.0,         1.0,
+            *a,  *c, 0.0,  *e,
+            *b,  *d, 0.0,  *f,
+           0.0, 0.0, 1.0, 0.0,
+           0.0, 0.0, 0.0, 1.0,
           )),
           is_2d: Cell::new(true),
         };
         self.multiply_self_inner(&lhs, &rhs);
       }
       Transform::Matrix3d(array) => {
-        let array: [f64; 16] = array.map(|value| value.into());
         let lhs = self.clone();
         let rhs = DOMMatrixReadOnly {
           #[rustfmt::skip]
-          inner: RefCell::new(Matrix4::from_column_slice(&array)),
+          inner: RefCell::new(Matrix4::from_column_slice(array)),
           is_2d: Cell::new(false),
         };
         self.multiply_self_inner(&lhs, &rhs);
