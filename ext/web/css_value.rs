@@ -570,13 +570,13 @@ impl NumericValue {
       Token::Dimension { value, unit, .. } => {
         match_ignore_ascii_case! { &unit,
           // https://www.w3.org/TR/css-values-4/#absolute-lengths
-          "cm" => Ok(NumericValue::Length(Length { value: *value, unit: LengthUnit::Cm}).into()),
-          "mm" => Ok(NumericValue::Length(Length { value: *value, unit: LengthUnit::Mm}).into()),
-          "q" => Ok(NumericValue::Length(Length { value: *value, unit: LengthUnit::Q}).into()),
-          "in" => Ok(NumericValue::Length(Length { value: *value, unit: LengthUnit::In}).into()),
-          "pc" => Ok(NumericValue::Length(Length { value: *value, unit: LengthUnit::Pc}).into()),
-          "pt" => Ok(NumericValue::Length(Length { value: *value, unit: LengthUnit::Pt}).into()),
-          "px" => Ok(NumericValue::Length(Length { value: *value, unit: LengthUnit::Px}).into()),
+          "cm" => Ok(NumericValue::Length(Length { value: *value, unit: LengthUnit::Cm }).into()),
+          "mm" => Ok(NumericValue::Length(Length { value: *value, unit: LengthUnit::Mm }).into()),
+          "q" => Ok(NumericValue::Length(Length { value: *value, unit: LengthUnit::Q }).into()),
+          "in" => Ok(NumericValue::Length(Length { value: *value, unit: LengthUnit::In }).into()),
+          "pc" => Ok(NumericValue::Length(Length { value: *value, unit: LengthUnit::Pc }).into()),
+          "pt" => Ok(NumericValue::Length(Length { value: *value, unit: LengthUnit::Pt }).into()),
+          "px" => Ok(NumericValue::Length(Length { value: *value, unit: LengthUnit::Px }).into()),
           // https://www.w3.org/TR/css-values-4/#relative-lengths
           "em" | "rem" | "ex" | "rex" | "cap" | "rcap" | "ch" | "rch" | "ic" | "ric" | "lh" | "rlh" |
           "vw" | "svw" | "lvw" | "dvw" | "vh" | "svh" | "lvh" | "dvh" | "vi" | "svi" | "lvi" | "dvi" |
