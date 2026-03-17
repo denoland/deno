@@ -73,12 +73,11 @@ pub trait DesktopApi: Send + Sync + 'static {
   fn hide(&self);
   fn focus(&self);
 
-  fn bind(
+  fn bind<'a>(
     &self,
     name: &str,
-    scope: &mut v8::PinScope<'_, '_>,
-    this: v8::Global<v8::Object>,
-    cb: v8::Local<v8::Function>,
+    scope: &mut v8::PinScope<'a, '_>,
+    cb: v8::Local<'a, v8::Function>,
   );
   fn unbind(&self, name: &str);
 
@@ -133,14 +132,13 @@ impl BrowserWindow {
   }
 
   #[fast]
-  fn bind(
+  fn bind<'a>(
     &self,
-    scope: &mut v8::PinScope<'_, '_>,
-    #[this] this: v8::Global<v8::Object>,
+    scope: &mut v8::PinScope<'a, '_>,
     #[string] name: &str,
-    cb: v8::Local<v8::Function>,
+    cb: v8::Local<'a, v8::Function>,
   ) {
-    self.api.bind(name, scope, this, cb);
+    self.api.bind(name, scope, cb);
   }
 
   #[fast]
@@ -231,8 +229,12 @@ impl BrowserWindow {
     todo!("implement")
   }
 
-  async fn execute_js(&self, scope: &mut v8::PinScope<'_, '_>, #[string] script: &str) -> Result<v8::Local<v8::Value>, v8::Local<v8::Value>> {
-    self.api.execute_js(scope, script).await
+  #[fast]
+  fn execute_js(&self, #[string] _script: &str) {
+    todo!("implement execute_js — async + v8 scope borrowing needs a different approach")
+    /*
+        self.api.execute_js(scope, script).await
+     */
   }
 
   #[fast]

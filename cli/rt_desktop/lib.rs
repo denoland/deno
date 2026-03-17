@@ -89,15 +89,14 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
     wef::focus();
   }
 
-  fn bind(
+  fn bind<'a>(
     &self,
     name: &str,
-    scope: &mut v8::PinScope<'_, '_>,
-    this: v8::Global<v8::Object>,
-    cb: v8::Local<v8::Function>,
+    scope: &mut v8::PinScope<'a, '_>,
+    cb: v8::Local<'a, v8::Function>,
   ) {
     wef::bind(name, |mut js_call| {
-      let this = v8::Local::new(scope, this);
+      let this = v8::null(scope);
       let args = std::mem::take(&mut js_call.args)
         .into_iter()
         .map(|v| wef_value_to_v8(scope, v))
@@ -180,7 +179,7 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
     wef::navigate(url);
   }
 
-  fn execute_js<'a>(&self, scope: &mut v8::PinScope<'a, '_>, script: &str) -> std::pin::Pin<Box<dyn Future<Output = Result<v8::Local<'a, v8::Value>, v8::Local<'a, v8::Value>>> + 'a>> {
+  fn execute_js<'a>(&self, scope: &'a mut v8::PinScope<'a, '_>, script: &str) -> std::pin::Pin<Box<dyn Future<Output = Result<v8::Local<'a, v8::Value>, v8::Local<'a, v8::Value>>> + 'a>> {
     let (tx, rx) = tokio::sync::oneshot::channel();
     wef::execute_js(script, Some(|res| {
       let _ = tx.send(res);
@@ -211,16 +210,16 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
   }
 }
 
-fn wef_value_to_v8(
-  scope: &v8::PinScope<'_, '_>,
+fn wef_value_to_v8<'a>(
+  scope: &v8::PinScope<'a, '_>,
   val: wef::Value,
-) -> v8::Local<v8::Value> {
+) -> v8::Local<'a, v8::Value> {
   match val {
     wef::Value::Null => v8::null(scope).into(),
     wef::Value::Bool(bool) => v8::Boolean::new(scope, bool).into(),
     wef::Value::Int(int) => v8::Integer::new(scope, int).into(),
     wef::Value::Double(double) => v8::Number::new(scope, double).into(),
-    wef::Value::String(str) => v8::String::new(scope, &str).into(),
+    wef::Value::String(str) => v8::String::new(scope, &str).unwrap().into(),
     wef::Value::List(list) => {
       let elements = list
         .into_iter()
@@ -233,7 +232,7 @@ fn wef_value_to_v8(
       let mut values = Vec::with_capacity(dict.len());
 
       for (k, v) in dict {
-        names.push(v8::String::new(scope, &k).into());
+        names.push(v8::String::new(scope, &k).unwrap().into());
         values.push(wef_value_to_v8(scope, v));
       }
 
@@ -254,9 +253,9 @@ fn wef_value_to_v8(
   }
 }
 
-fn v8_to_wef_value(
-  scope: &v8::PinScope<'_, '_>,
-  val: v8::Local<v8::Value>,
+fn v8_to_wef_value<'a>(
+  scope: &v8::PinScope<'a, '_>,
+  val: v8::Local<'a, v8::Value>,
 ) -> wef::Value {
   if val.is_null_or_undefined() {
     wef::Value::Null

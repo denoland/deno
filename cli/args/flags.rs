@@ -2022,7 +2022,7 @@ heading! {
   DEPENDENCY_MANAGEMENT_HEADING = "Dependency management options",
 
   UNSTABLE_HEADING = "Unstable options";
-  12
+  13
 }
 
 fn help_parse(flags: &mut Flags, mut subcommand: Command) {
