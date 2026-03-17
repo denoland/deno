@@ -276,10 +276,6 @@ pub struct CpuProfFlags {
 pub struct EvalFlags {
   pub print: bool,
   pub code: String,
-  /// When true, auto-detect CJS vs ESM based on the code content.
-  /// This is enabled for the `-e/--eval` top-level flag but not for
-  /// the `deno eval` subcommand (which defaults to ESM).
-  pub auto_detect_ext: bool,
 }
 
 #[derive(Clone, Default, Debug, Eq, PartialEq)]
@@ -1926,23 +1922,7 @@ pub fn flags_from_vec_with_initial_cwd(
             })
         });
 
-      if let Some(code) = matches.remove_one::<String>("eval") {
-        runtime_args_parse(&mut flags, &mut matches, true, true, true)?;
-        unstable_args_parse(
-          &mut flags,
-          &mut matches,
-          UnstableArgsConfig::ResolutionAndRuntime,
-        );
-        flags.allow_all();
-
-        ext_arg_parse(&mut flags, &mut matches);
-
-        flags.subcommand = DenoSubcommand::Eval(EvalFlags {
-          print: false,
-          code,
-          auto_detect_ext: true,
-        });
-      } else if has_non_globals || matches.contains_id("script_arg") {
+      if has_non_globals || matches.contains_id("script_arg") {
         run_parse(&mut flags, &mut matches, app, true)?;
       } else {
         handle_repl_flags(
@@ -2154,13 +2134,6 @@ pub fn clap_root() -> Command {
         .help("Suppress diagnostic output")
         .action(ArgAction::SetTrue)
         .global(true),
-    )
-    .arg(
-      Arg::new("eval")
-        .short('e')
-        .long("eval")
-        .help("Evaluate the given code (auto-detects CommonJS vs ESM)")
-        .value_name("CODE"),
     )
     .subcommand(run_subcommand())
     .subcommand(serve_subcommand())
@@ -6503,11 +6476,7 @@ fn eval_parse(
   let code = code_args.next().unwrap();
   flags.argv.extend(code_args);
 
-  flags.subcommand = DenoSubcommand::Eval(EvalFlags {
-    print,
-    code,
-    auto_detect_ext: false,
-  });
+  flags.subcommand = DenoSubcommand::Eval(EvalFlags { print, code });
   Ok(())
 }
 
@@ -9737,7 +9706,6 @@ mod tests {
         subcommand: DenoSubcommand::Eval(EvalFlags {
           print: false,
           code: "'console.log(\"hello\")'".to_string(),
-          auto_detect_ext: false,
         }),
         permissions: PermissionFlags {
           allow_all: true,
@@ -9757,7 +9725,6 @@ mod tests {
         subcommand: DenoSubcommand::Eval(EvalFlags {
           print: true,
           code: "1+2".to_string(),
-          auto_detect_ext: false,
         }),
         permissions: PermissionFlags {
           allow_all: true,
@@ -9782,7 +9749,6 @@ mod tests {
         subcommand: DenoSubcommand::Eval(EvalFlags {
           print: false,
           code: "'console.log(\"hello\")'".to_string(),
-          auto_detect_ext: false,
         }),
         permissions: PermissionFlags {
           allow_all: true,
@@ -9804,7 +9770,6 @@ mod tests {
         subcommand: DenoSubcommand::Eval(EvalFlags {
           print: false,
           code: "42".to_string(),
-          auto_detect_ext: false,
         }),
         import_map_path: Some("import_map.json".to_string()),
         no_remote: true,
@@ -9843,74 +9808,12 @@ mod tests {
         subcommand: DenoSubcommand::Eval(EvalFlags {
           print: false,
           code: "console.log(Deno.args)".to_string(),
-          auto_detect_ext: false,
         }),
         argv: svec!["arg1", "arg2"],
         permissions: PermissionFlags {
           allow_all: true,
           ..Default::default()
         },
-        ..Flags::default()
-      }
-    );
-  }
-
-  #[test]
-  fn eval_short_flag() {
-    let r = flags_from_vec(svec!["deno", "-e", "console.log('hello')"]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Eval(EvalFlags {
-          print: false,
-          code: "console.log('hello')".to_string(),
-          auto_detect_ext: true,
-        }),
-        permissions: PermissionFlags {
-          allow_all: true,
-          ..Default::default()
-        },
-        ..Flags::default()
-      }
-    );
-  }
-
-  #[test]
-  fn eval_long_flag() {
-    let r = flags_from_vec(svec!["deno", "--eval", "require('fs')"]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Eval(EvalFlags {
-          print: false,
-          code: "require('fs')".to_string(),
-          auto_detect_ext: true,
-        }),
-        permissions: PermissionFlags {
-          allow_all: true,
-          ..Default::default()
-        },
-        ..Flags::default()
-      }
-    );
-  }
-
-  #[test]
-  fn eval_short_flag_with_ext() {
-    let r = flags_from_vec(svec!["deno", "--ext=mjs", "-e", "import('fs')"]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Eval(EvalFlags {
-          print: false,
-          code: "import('fs')".to_string(),
-          auto_detect_ext: true,
-        }),
-        permissions: PermissionFlags {
-          allow_all: true,
-          ..Default::default()
-        },
-        ext: Some("mjs".to_string()),
         ..Flags::default()
       }
     );
