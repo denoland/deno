@@ -1401,9 +1401,9 @@ fn op_otel_log<'s>(
 
   otel_log_add_exception_attributes(
     &mut log_record,
-    &exception_type,
-    &exception_message,
-    &exception_stacktrace,
+    exception_type,
+    exception_message,
+    exception_stacktrace,
   );
 
   log_processor.emit(&mut log_record, builtin_instrumentation_scope);
@@ -1411,26 +1411,26 @@ fn op_otel_log<'s>(
 
 fn otel_log_add_exception_attributes(
   log_record: &mut LogRecord,
-  exception_type: &str,
-  exception_message: &str,
-  exception_stacktrace: &str,
+  exception_type: String,
+  exception_message: String,
+  exception_stacktrace: String,
 ) {
   if !exception_type.is_empty() {
     log_record.add_attribute(
       Key::from_static_str("exception.type"),
-      AnyValue::String(exception_type.to_owned().into()),
+      AnyValue::String(exception_type.into()),
     );
   }
   if !exception_message.is_empty() {
     log_record.add_attribute(
       Key::from_static_str("exception.message"),
-      AnyValue::String(exception_message.to_owned().into()),
+      AnyValue::String(exception_message.into()),
     );
   }
   if !exception_stacktrace.is_empty() {
     log_record.add_attribute(
       Key::from_static_str("exception.stacktrace"),
-      AnyValue::String(exception_stacktrace.to_owned().into()),
+      AnyValue::String(exception_stacktrace.into()),
     );
   }
 }
@@ -1487,9 +1487,9 @@ fn op_otel_log_foreign(
 
   otel_log_add_exception_attributes(
     &mut log_record,
-    &exception_type,
-    &exception_message,
-    &exception_stacktrace,
+    exception_type,
+    exception_message,
+    exception_stacktrace,
   );
 
   log_processor.emit(&mut log_record, builtin_instrumentation_scope);
