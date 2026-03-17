@@ -35,16 +35,12 @@ use deno_core::v8;
 /// A reference to a JS object that can switch between strong (GC root),
 /// weak (allows collection), or empty. This mirrors Node's pattern of
 /// calling `MakeWeak()` / `ClearWeak()` on `BaseObject::persistent_handle_`.
+#[derive(Default)]
 pub enum GlobalHandle<T> {
   Strong(v8::Global<T>),
   Weak(v8::Weak<T>),
+  #[default]
   None,
-}
-
-impl<T> Default for GlobalHandle<T> {
-  fn default() -> Self {
-    GlobalHandle::None
-  }
 }
 
 impl<T> GlobalHandle<T>

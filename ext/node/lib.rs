@@ -352,6 +352,7 @@ deno_core::extension!(deno_node,
     ops::udp::op_node_udp_send,
     ops::udp::op_node_udp_recv,
     ops::stream_wrap::op_stream_base_register_state,
+    ops::tty_wrap::op_tty_check_fd_permission,
   ],
   objects = [
     ops::perf_hooks::EldHistogram,

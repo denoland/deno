@@ -43,11 +43,31 @@ fn uv_error_info(err: i32) -> (&'static str, &'static str) {
   }
 }
 
+use deno_permissions::PermissionsContainer;
+
 use crate::ops::handle_wrap::AsyncWrap;
 use crate::ops::handle_wrap::Handle;
 use crate::ops::handle_wrap::HandleWrap;
 use crate::ops::handle_wrap::ProviderType;
 use crate::ops::stream_wrap::LibUvStreamWrap;
+
+/// Check that non-stdio file descriptors (fd > 2) have --allow-all permission.
+/// Stdio fds 0, 1, 2 are always allowed.
+#[op2(fast)]
+pub fn op_tty_check_fd_permission(
+  state: &mut OpState,
+  fd: i32,
+) -> Result<(), deno_permissions::PermissionCheckError> {
+  if fd > 2 {
+    state
+      .borrow_mut::<PermissionsContainer>()
+      .check_read_all("node:tty TTY()")?;
+    state
+      .borrow_mut::<PermissionsContainer>()
+      .check_write_all("node:tty TTY()")?;
+  }
+  Ok(())
+}
 
 pub struct OwnedPtr<T>(*mut T);
 

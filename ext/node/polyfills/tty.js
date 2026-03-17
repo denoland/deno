@@ -11,7 +11,7 @@ import {
   ERR_INVALID_FD,
   ERR_TTY_INIT_FAILED,
 } from "ext:deno_node/internal/errors.ts";
-import { TTY } from "ext:core/ops";
+import { op_tty_check_fd_permission, TTY } from "ext:core/ops";
 import { Socket } from "node:net";
 import { setReadStream } from "ext:deno_node/_process/streams.mjs";
 import { WriteStream } from "ext:deno_node/internal/tty.js";
@@ -34,6 +34,9 @@ function ReadStream(fd, options) {
   if (fd >> 0 !== fd || fd < 0) {
     throw new ERR_INVALID_FD(fd);
   }
+
+  // Non-stdio fds require --allow-all
+  op_tty_check_fd_permission(fd);
 
   const ctx = {};
   const tty = new TTY(fd, ctx);

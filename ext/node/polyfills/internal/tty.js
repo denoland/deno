@@ -31,7 +31,7 @@ import {
   errnoException,
 } from "ext:deno_node/internal/errors.ts";
 import { validateInteger } from "ext:deno_node/internal/validators.mjs";
-import { TTY } from "ext:core/ops";
+import { op_tty_check_fd_permission, TTY } from "ext:core/ops";
 import { Socket } from "node:net";
 import {
   clearLine,
@@ -298,6 +298,9 @@ function WriteStream(fd) {
   if (fd >> 0 !== fd || fd < 0) {
     throw new ERR_INVALID_FD(fd);
   }
+
+  // Non-stdio fds require --allow-all
+  op_tty_check_fd_permission(fd);
 
   const ctx = {};
   const tty = new TTY(fd, ctx);
