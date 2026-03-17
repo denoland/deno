@@ -1370,19 +1370,56 @@ mod deprecated {
     use winapi::um::processthreadsapi::TerminateProcess;
     use winapi::um::winnt::PROCESS_TERMINATE;
 
-    let signal_str = match signal {
-      SignalArg::Int(n) => n.to_string(),
-      SignalArg::String(s) => s.clone(),
+    let signo = match signal {
+      SignalArg::Int(n) => *n,
+      SignalArg::String(s) => deno_signals::signal_str_to_int(s)
+        .map_err(SignalError::InvalidSignalStr)?,
     };
 
-    if !matches!(signal_str.as_str(), "SIGKILL" | "SIGTERM") {
-      Err(
+    if signo == 0 {
+      // Signal 0 is a health check: verify the process is still alive.
+      // SAFETY: winapi call
+      let handle = unsafe {
+        OpenProcess(
+          winapi::um::winnt::PROCESS_QUERY_LIMITED_INFORMATION,
+          FALSE,
+          pid as DWORD,
+        )
+      };
+      if handle.is_null() {
+        return Err(Error::from(NotFound).into());
+      }
+      let mut status: DWORD = 0;
+      // SAFETY: winapi call
+      let alive = unsafe {
+        winapi::um::processthreadsapi::GetExitCodeProcess(handle, &mut status)
+          != FALSE
+          && status == 259 // STILL_ACTIVE
+      };
+      // SAFETY: winapi call
+      unsafe {
+        CloseHandle(handle);
+      }
+      if alive {
+        return Ok(());
+      } else {
+        return Err(Error::from(NotFound).into());
+      }
+    }
+
+    // On Windows, SIGINT/SIGTERM/SIGKILL/SIGQUIT/SIGABRT all result in
+    // process termination via TerminateProcess, matching libuv behavior.
+    // SIGABRT is 22 on Windows (CRT), unlike 6 on Unix.
+    if !matches!(signo, 2 | 3 | 9 | 15 | 22) {
+      return Err(
         SignalError::InvalidSignalStr(deno_signals::InvalidSignalStrError(
-          signal_str,
+          format!("{signo}"),
         ))
         .into(),
-      )
-    } else if pid <= 0 {
+      );
+    }
+
+    if pid <= 0 {
       Err(ProcessError::InvalidPid)
     } else {
       let handle =
