@@ -175,19 +175,22 @@ pub async fn install_global(
 
     // create install shims for extra bin entries
     let mut installed_extra: Vec<&str> = Vec::new();
-    let extra_install_result: Result<(), AnyError> = (|| {
-      for extra_entry in &extra_bin_entries {
-        create_install_shim(
-          extra_entry,
-          cli_options.initial_cwd(),
-          &flags,
-          &install_flags_global,
-        )?;
-        installed_extra.push(&extra_entry.name);
+    let mut extra_install_err = None;
+    for extra_entry in &extra_bin_entries {
+      match create_install_shim(
+        extra_entry,
+        cli_options.initial_cwd(),
+        &flags,
+        &install_flags_global,
+      ) {
+        Ok(()) => installed_extra.push(&extra_entry.name),
+        Err(err) => {
+          extra_install_err = Some(err);
+          break;
+        }
       }
-      Ok(())
-    })();
-    if let Err(err) = extra_install_result {
+    }
+    if let Some(err) = extra_install_err {
       // rollback: remove the primary shim and any extra shims that were created
       let primary_path = installation_dir.join(&name_and_url.name);
       let _ = remove_file_if_exists(&primary_path);
@@ -213,7 +216,7 @@ pub async fn install_global(
         extra_bin_entries.iter().map(|e| e.name.as_str()).collect();
       fs::write(
         config_dir.join("extra_bin_entries.json"),
-        serde_json::to_string(&extra_names).unwrap(),
+        serde_json::to_string(&extra_names)?,
       )?;
     }
   }
@@ -295,7 +298,9 @@ pub async fn uninstall(
   {
     for extra_name in &extra_names {
       let extra_path = installation_dir.join(extra_name);
-      remove_file_if_exists(&extra_path)?;
+      if remove_file_if_exists(&extra_path)? {
+        log::info!("deleted {}", extra_path.display());
+      }
       if cfg!(windows) {
         remove_file_if_exists(&extra_path.with_extension("cmd"))?;
         remove_file_if_exists(&extra_path.with_extension("exe"))?;
@@ -769,6 +774,8 @@ impl BinaryNameAndUrl {
         }
       }
     }
+
+    extra_entries.sort_by(|a, b| a.name.cmp(&b.name));
 
     Ok((
       BinaryNameAndUrl {
