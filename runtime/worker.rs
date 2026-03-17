@@ -930,7 +930,6 @@ impl MainWorker {
       .js_runtime
       .run_event_loop(PollEventLoopOptions {
         wait_for_inspector,
-        ..Default::default()
       })
       .await
   }

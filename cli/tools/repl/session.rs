@@ -425,10 +425,7 @@ impl ReplSession {
     self
       .worker
       .js_runtime
-      .with_event_loop_future(
-        fut,
-        Default::default(),
-      )
+      .with_event_loop_future(fut, Default::default())
       .await
       .unwrap()
   }
