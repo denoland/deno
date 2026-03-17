@@ -104,7 +104,7 @@ struct CustomNpmPackage {
 /// Creates tarballs and a registry json file for npm packages
 /// in the `tests/registry/npm/@denotest` directory.
 pub struct TestNpmRegistry {
-  #[allow(unused)]
+  #[allow(unused, reason = "retained for future use")]
   kind: NpmRegistryKind,
   // Eg. http://localhost:4544/
   hostname: String,

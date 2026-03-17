@@ -6,6 +6,8 @@ import {
   op_run,
   op_run_status,
   op_spawn_child,
+  op_spawn_child_ref,
+  op_spawn_child_unref,
   op_spawn_kill,
   op_spawn_sync,
   op_spawn_wait,
@@ -401,12 +403,18 @@ class ChildProcess {
     core.refOpPromise(this.#waitPromise);
     if (this.#stdout) readableStreamForRidUnrefableRef(this.#stdout);
     if (this.#stderr) readableStreamForRidUnrefableRef(this.#stderr);
+    if (!this.#waitComplete) {
+      op_spawn_child_ref(this.#rid);
+    }
   }
 
   unref() {
     core.unrefOpPromise(this.#waitPromise);
     if (this.#stdout) readableStreamForRidUnrefableUnref(this.#stdout);
     if (this.#stderr) readableStreamForRidUnrefableUnref(this.#stderr);
+    if (!this.#waitComplete) {
+      op_spawn_child_unref(this.#rid);
+    }
   }
 }
 

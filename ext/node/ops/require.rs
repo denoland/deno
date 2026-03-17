@@ -514,6 +514,10 @@ pub fn op_require_read_file(
 #[op2]
 #[string]
 pub fn op_require_as_file_path(#[string] file_or_url: &str) -> Option<String> {
+  #[allow(
+    clippy::disallowed_methods,
+    reason = "don't need error and this doesn't need to work in Wasm"
+  )]
   if let Ok(url) = Url::parse(file_or_url)
     && let Ok(p) = url.to_file_path()
   {

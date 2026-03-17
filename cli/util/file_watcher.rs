@@ -142,7 +142,7 @@ impl PrintConfig {
 
 fn create_print_after_restart_fn(clear_screen: bool) -> impl Fn() {
   move || {
-    #[allow(clippy::print_stderr)]
+    #[allow(clippy::print_stderr, reason = "want to clear the terminal")]
     if clear_screen && std::io::stderr().is_terminal() {
       eprint!("{}", CLEAR_SCREEN);
     }

@@ -152,10 +152,9 @@ impl Drop for TcpListener {
 }
 
 /// Bind a socket to an address and listen with the low-level options we need.
-#[allow(unused_variables)]
 fn bind_socket_and_listen(
   socket_addr: SocketAddr,
-  reuse_port: bool,
+  _reuse_port: bool,
   backlog: i32,
 ) -> Result<std::net::TcpListener, std::io::Error> {
   let socket = if socket_addr.is_ipv4() {
@@ -164,7 +163,7 @@ fn bind_socket_and_listen(
     socket2::Socket::new(Domain::IPV6, Type::STREAM, Some(Protocol::TCP))?
   };
   #[cfg(not(windows))]
-  if REUSE_PORT_LOAD_BALANCES && reuse_port {
+  if REUSE_PORT_LOAD_BALANCES && _reuse_port {
     socket.set_reuse_port(true)?;
   }
   #[cfg(not(windows))]
