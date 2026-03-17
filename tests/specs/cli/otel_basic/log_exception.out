@@ -16,38 +16,11 @@ string error with extra arg
       },
       "attributes": [
         {
-          "key": "exception.type",
+          "key": "log.iostream",
           "value": {
-            "stringValue": "Error"
+            "stringValue": "stderr"
           }
         },
-        {
-          "key": "exception.message",
-          "value": {
-            "stringValue": "test error"
-          }
-        },
-        {
-          "key": "exception.stacktrace",
-          "value": {
-            "stringValue": "Error: test error\n    at file:///test.ts:1:1"
-          }
-        }
-      ],
-      "droppedAttributesCount": 0,
-      "flags": 0,
-      "traceId": "",
-      "spanId": ""
-    },
-    {
-      "timeUnixNano": "[WILDLINE]",
-      "observedTimeUnixNano": "[WILDCARD]",
-      "severityNumber": 17,
-      "severityText": "ERROR",
-      "body": {
-        "stringValue": "Error: test error\n    at file:///test.ts:1:1 with extra context\n"
-      },
-      "attributes": [
         {
           "key": "exception.type",
           "value": {
@@ -80,7 +53,53 @@ string error with extra arg
       "body": {
         "stringValue": "plain log\n"
       },
-      "attributes": [],
+      "attributes": [
+        {
+          "key": "log.iostream",
+          "value": {
+            "stringValue": "stdout"
+          }
+        }
+      ],
+      "droppedAttributesCount": 0,
+      "flags": 0,
+      "traceId": "",
+      "spanId": ""
+    },
+    {
+      "timeUnixNano": "[WILDLINE]",
+      "observedTimeUnixNano": "[WILDCARD]",
+      "severityNumber": 17,
+      "severityText": "ERROR",
+      "body": {
+        "stringValue": "Error: test error\n    at file:///test.ts:1:1 with extra context\n"
+      },
+      "attributes": [
+        {
+          "key": "log.iostream",
+          "value": {
+            "stringValue": "stderr"
+          }
+        },
+        {
+          "key": "exception.type",
+          "value": {
+            "stringValue": "Error"
+          }
+        },
+        {
+          "key": "exception.message",
+          "value": {
+            "stringValue": "test error"
+          }
+        },
+        {
+          "key": "exception.stacktrace",
+          "value": {
+            "stringValue": "Error: test error\n    at file:///test.ts:1:1"
+          }
+        }
+      ],
       "droppedAttributesCount": 0,
       "flags": 0,
       "traceId": "",
@@ -94,7 +113,14 @@ string error with extra arg
       "body": {
         "stringValue": "string error with extra arg\n"
       },
-      "attributes": [],
+      "attributes": [
+        {
+          "key": "log.iostream",
+          "value": {
+            "stringValue": "stderr"
+          }
+        }
+      ],
       "droppedAttributesCount": 0,
       "flags": 0,
       "traceId": "",
