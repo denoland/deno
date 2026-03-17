@@ -182,7 +182,7 @@ impl InnerIsolateState {
 
     // Unregister isolate waker before dropping the isolate
     let isolate_ptr = unsafe { self.v8_isolate.as_raw_isolate_ptr() };
-    setup::unregister_isolate_waker(setup::isolate_ptr_to_key(isolate_ptr));
+    setup::unregister_isolate(setup::isolate_ptr_to_key(isolate_ptr));
 
     let state_ptr = self.v8_isolate.get_data(STATE_DATA_OFFSET);
     // SAFETY: We are sure that it's a valid pointer for whole lifetime of
@@ -457,6 +457,10 @@ pub struct JsRuntimeState {
   pub(crate) function_templates: Rc<RefCell<FunctionTemplateData>>,
   pub(crate) callsite_prototype: RefCell<Option<v8::Global<v8::Object>>>,
   waker: Arc<AtomicWaker>,
+  /// Foreground V8 tasks queued by the custom platform. Shared with the
+  /// global isolate registry so background threads can push tasks, while
+  /// the event loop drains them without touching the global map.
+  foreground_tasks: setup::ForegroundTaskQueue,
   /// Accessed through [`JsRuntimeState::with_inspector`].
   inspector: RefCell<Option<Rc<JsRuntimeInspector>>>,
   has_inspector: Cell<bool>,
@@ -585,19 +589,9 @@ impl RuntimeOptions {
   }
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Default)]
 pub struct PollEventLoopOptions {
   pub wait_for_inspector: bool,
-  pub pump_v8_message_loop: bool,
-}
-
-impl Default for PollEventLoopOptions {
-  fn default() -> Self {
-    Self {
-      wait_for_inspector: false,
-      pump_v8_message_loop: true,
-    }
-  }
 }
 
 #[derive(Default)]
@@ -784,6 +778,7 @@ impl JsRuntime {
         eval_context_set_code_cache_cb,
       ),
       waker: waker.clone(),
+      foreground_tasks: Default::default(),
       // Some fields are initialized later after isolate is created
       inspector: None.into(),
       has_inspector: false.into(),
@@ -860,14 +855,17 @@ impl JsRuntime {
 
     let isolate_ptr = unsafe { isolate.as_raw_isolate_ptr() };
 
-    // Register this isolate's waker and tokio handle so the custom platform
-    // can spawn foreground tasks on this isolate's runtime.
+    // Register this isolate in the global platform registry so V8 background
+    // threads can queue foreground tasks. The task queue Arc is already shared
+    // with JsRuntimeState (created above) so the event loop can drain it
+    // without touching the global map.
     // Not all contexts have a tokio runtime (e.g. snapshot creation, unit tests).
     if let Ok(handle) = tokio::runtime::Handle::try_current() {
-      setup::register_isolate_waker(
+      setup::register_isolate(
         setup::isolate_ptr_to_key(isolate_ptr),
         waker.clone(),
         handle,
+        state_rc.foreground_tasks.clone(),
       );
     }
 
@@ -2112,8 +2110,10 @@ impl JsRuntime {
     }
     {
       // Drain and run foreground tasks queued by the custom V8 platform.
-      let isolate_ptr = unsafe { scope.as_raw_isolate_ptr() };
-      let tasks = setup::drain_tasks(setup::isolate_ptr_to_key(isolate_ptr));
+      // Uses the local Arc shared with the registry — no global map lookup.
+      let tasks = std::mem::take(
+        &mut *self.inner.state.foreground_tasks.lock().unwrap(),
+      );
       for task in tasks {
         task.run();
       }

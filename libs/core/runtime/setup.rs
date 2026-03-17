@@ -33,22 +33,32 @@ pub(crate) fn isolate_ptr_to_key(ptr: v8::UnsafeRawIsolatePtr) -> usize {
   unsafe { std::mem::transmute::<v8::UnsafeRawIsolatePtr, usize>(ptr) }
 }
 
-/// Per-isolate state: a waker, a tokio handle, and a queue of
-/// foreground tasks to be drained by the event loop.
+/// Thread-safe queue of V8 foreground tasks, shared between the global
+/// isolate registry (written by V8 background threads) and the event
+/// loop (drained on the main thread). Cloning is cheap (Arc).
+pub type ForegroundTaskQueue = std::sync::Arc<Mutex<Vec<v8::Task>>>;
+
+/// Per-isolate state stored in the global registry. Kept minimal: just
+/// enough for platform callbacks (which only have an isolate pointer) to
+/// push tasks and wake the event loop.
 struct IsolateEntry {
   waker: std::sync::Arc<AtomicWaker>,
   handle: tokio::runtime::Handle,
-  tasks: Vec<v8::Task>,
+  tasks: ForegroundTaskQueue,
 }
 
 static ISOLATE_ENTRIES: std::sync::LazyLock<
   Mutex<HashMap<usize, IsolateEntry>>,
 > = std::sync::LazyLock::new(|| Mutex::new(HashMap::new()));
 
-pub fn register_isolate_waker(
+/// Register an isolate in the global platform registry. The `tasks`
+/// queue is shared with `JsRuntimeState` so the event loop drains it
+/// directly without touching the global map.
+pub fn register_isolate(
   isolate_ptr: usize,
   waker: std::sync::Arc<AtomicWaker>,
   handle: tokio::runtime::Handle,
+  tasks: ForegroundTaskQueue,
 ) {
   let mut map = ISOLATE_ENTRIES.lock().unwrap();
   map.insert(
@@ -56,44 +66,36 @@ pub fn register_isolate_waker(
     IsolateEntry {
       waker,
       handle,
-      tasks: Vec::new(),
+      tasks,
     },
   );
 }
 
-pub fn unregister_isolate_waker(isolate_ptr: usize) {
+pub fn unregister_isolate(isolate_ptr: usize) {
   let mut map = ISOLATE_ENTRIES.lock().unwrap();
   map.remove(&isolate_ptr);
 }
 
 /// Queue an immediate foreground task and wake the event loop.
 fn queue_task(key: usize, task: v8::Task) {
-  let mut map = ISOLATE_ENTRIES.lock().unwrap();
-  if let Some(entry) = map.get_mut(&key) {
-    entry.tasks.push(task);
+  let map = ISOLATE_ENTRIES.lock().unwrap();
+  if let Some(entry) = map.get(&key) {
+    entry.tasks.lock().unwrap().push(task);
     entry.waker.wake();
   }
 }
 
-/// Drain all queued foreground tasks for the given isolate.
-/// Called from the event loop to run tasks synchronously.
-pub fn drain_tasks(isolate_ptr: usize) -> Vec<v8::Task> {
-  let mut map = ISOLATE_ENTRIES.lock().unwrap();
-  if let Some(entry) = map.get_mut(&isolate_ptr) {
-    std::mem::take(&mut entry.tasks)
-  } else {
-    vec![]
-  }
-}
-
 /// Spawn a delayed V8 foreground task on the isolate's tokio runtime.
+/// After the delay, the task is queued for synchronous draining (not
+/// run directly on the tokio worker thread).
 fn spawn_delayed_task(key: usize, task: v8::Task, delay_in_seconds: f64) {
   let map = ISOLATE_ENTRIES.lock().unwrap();
   if let Some(entry) = map.get(&key) {
+    let tasks = entry.tasks.clone();
     let waker = entry.waker.clone();
     entry.handle.spawn(async move {
       tokio::time::sleep(Duration::from_secs_f64(delay_in_seconds)).await;
-      task.run();
+      tasks.lock().unwrap().push(task);
       waker.wake();
     });
   }
