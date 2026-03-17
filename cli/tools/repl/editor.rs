@@ -169,11 +169,8 @@ fn is_word_boundary(c: char) -> bool {
 
 fn get_expr_from_line_at_pos(line: &str, cursor_pos: usize) -> &str {
   let start = line[..cursor_pos].rfind(is_word_boundary).unwrap_or(0);
-
   let word = &line[start..cursor_pos];
-  let word = word.strip_prefix(is_word_boundary).unwrap_or(word);
-
-  word
+  word.strip_prefix(is_word_boundary).unwrap_or(word)
 }
 
 impl Completer for EditorHelper {
