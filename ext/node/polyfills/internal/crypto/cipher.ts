@@ -61,6 +61,12 @@ import { normalizeEncoding } from "ext:deno_node/internal/util.mjs";
 
 const FastBuffer = Buffer[SymbolSpecies];
 
+function opensslError(code: string, reason: string): NodeError {
+  const err = new NodeError(code, reason);
+  (err as any).reason = reason;
+  return err;
+}
+
 export function isStringOrBuffer(
   val: unknown,
 ): val is string | Buffer | ArrayBuffer | ArrayBufferView {
@@ -251,7 +257,7 @@ Cipheriv.prototype.final = function (
   }
 
   if (!this._autoPadding && this._cache.cache.byteLength != bs) {
-    throw new NodeError(
+    throw opensslError(
       "ERR_OSSL_EVP_WRONG_FINAL_BLOCK_LENGTH",
       "wrong final block length",
     );
@@ -495,7 +501,7 @@ Decipheriv.prototype.final = function (
     return encoding === "buffer" ? Buffer.from([]) : "";
   }
   if (this._cache.cache.byteLength != bs) {
-    throw new NodeError(
+    throw opensslError(
       "ERR_OSSL_EVP_WRONG_FINAL_BLOCK_LENGTH",
       "wrong final block length",
     );
@@ -504,7 +510,7 @@ Decipheriv.prototype.final = function (
   if (this._autoPadding) {
     const padLen = buf.at(-1);
     if (padLen === 0 || padLen > bs) {
-      throw new NodeError(
+      throw opensslError(
         "ERR_OSSL_EVP_BAD_DECRYPT",
         "bad decrypt",
       );
