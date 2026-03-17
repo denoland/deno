@@ -834,8 +834,10 @@ function invokeEventListeners(tuple, eventImpl) {
 function normalizeEventHandlerOptions(
   options,
 ) {
-  if (typeof options === "boolean" || typeof options === "undefined" ||
-    options === null) {
+  if (
+    typeof options === "boolean" || typeof options === "undefined" ||
+    options === null
+  ) {
     return {
       capture: Boolean(options),
     };

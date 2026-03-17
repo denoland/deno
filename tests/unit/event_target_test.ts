@@ -141,12 +141,14 @@ Deno.test(function removeEventListenerWithNullOptions() {
 
   // null options should be treated as capture: false
   target.addEventListener("test", listener);
+  // @ts-expect-error: testing runtime behavior with null (not in TS types but valid per DOM spec)
   target.removeEventListener("test", listener, null);
   target.dispatchEvent(new Event("test"));
   assertEquals(callCount, 0);
 
   // null options should not remove a capture listener
   target.addEventListener("test", listener, true);
+  // @ts-expect-error: testing runtime behavior with null (not in TS types but valid per DOM spec)
   target.removeEventListener("test", listener, null);
   target.dispatchEvent(new Event("test"));
   assertEquals(callCount, 1);
