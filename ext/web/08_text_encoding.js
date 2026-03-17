@@ -304,37 +304,25 @@ class TextDecoderStream {
       // The transform and flush functions need access to TextDecoderStream's
       // `this`, so they are defined as functions rather than methods.
       transform: (chunk, controller) => {
-        try {
-          chunk = webidl.converters.BufferSource(chunk, prefix, "chunk", {
-            allowShared: true,
-          });
-          const decoded = this.#decoder.decode(chunk, { stream: true });
-          if (decoded) {
-            controller.enqueue(decoded);
-          }
-          return PromiseResolve();
-        } catch (err) {
-          return PromiseReject(err);
+        chunk = webidl.converters.BufferSource(chunk, prefix, "chunk", {
+          allowShared: true,
+        });
+        const decoded = this.#decoder.decode(chunk, { stream: true });
+        if (decoded) {
+          controller.enqueue(decoded);
         }
+        // Return undefined for sync success - the transform algorithm
+        // wrapper in 06_streams.js handles errors and maps undefined to
+        // the cached sentinel promise.
       },
       flush: (controller) => {
-        try {
-          const final = this.#decoder.decode();
-          if (final) {
-            controller.enqueue(final);
-          }
-          return PromiseResolve();
-        } catch (err) {
-          return PromiseReject(err);
+        const final = this.#decoder.decode();
+        if (final) {
+          controller.enqueue(final);
         }
       },
       cancel: (_reason) => {
-        try {
-          const _ = this.#decoder.decode();
-          return PromiseResolve();
-        } catch (err) {
-          return PromiseReject(err);
-        }
+        this.#decoder.decode();
       },
     });
     this[webidl.brand] = webidl.brand;

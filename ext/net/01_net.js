@@ -162,9 +162,31 @@ class Conn {
     return core.shutdown(this.#rid);
   }
 
+  // Track when each side of the duplex connection is done.
+  // The resource is only closed when both sides are finished
+  // (or when only one side was ever used and it's done).
+  #readableDone = false;
+  #writableDone = false;
+
+  #maybeTryClose() {
+    const readableDone = this.#readableDone || this.#readable === undefined;
+    const writableDone = this.#writableDone || this.#writable === undefined;
+    if (readableDone && writableDone) {
+      core.tryClose(this.#rid);
+    }
+  }
+
   get readable() {
     if (this.#readable === undefined) {
-      this.#readable = readableStreamForRidUnrefable(this.#rid);
+      this.#readable = readableStreamForRidUnrefable(
+        this.#rid,
+        undefined,
+        false, // don't auto-close; Conn manages the lifecycle
+        () => {
+          this.#readableDone = true;
+          this.#maybeTryClose();
+        },
+      );
       if (this.#unref) {
         readableStreamForRidUnrefableUnref(this.#readable);
       }
@@ -174,7 +196,15 @@ class Conn {
 
   get writable() {
     if (this.#writable === undefined) {
-      this.#writable = writableStreamForRid(this.#rid);
+      this.#writable = writableStreamForRid(
+        this.#rid,
+        false, // don't auto-close; Conn manages the lifecycle
+        undefined,
+        () => {
+          this.#writableDone = true;
+          this.#maybeTryClose();
+        },
+      );
     }
     return this.#writable;
   }
