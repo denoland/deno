@@ -620,7 +620,7 @@ impl CliFactory {
             | DenoSubcommand::Cache { .. }
             | DenoSubcommand::Uninstall { .. } => true,
             DenoSubcommand::Install(flags) => match flags {
-              InstallFlags::Local(flags) => match flags {
+              InstallFlags::Local(flags, _) => match flags {
                 InstallFlagsLocal::Add { .. }
                 | InstallFlagsLocal::TopLevel { .. } => true,
                 // someone might be terribly storing dependencies in a
@@ -688,7 +688,7 @@ impl CliFactory {
       .services
       .install_reporter
       .get_or_try_init(|| match self.cli_options()?.sub_command() {
-        DenoSubcommand::Install(InstallFlags::Local(_))
+        DenoSubcommand::Install(InstallFlags::Local(_, _))
         | DenoSubcommand::Add(_)
         | DenoSubcommand::Cache(_) => Ok(Some(Arc::new(
           crate::tools::installer::InstallReporter::new(),
