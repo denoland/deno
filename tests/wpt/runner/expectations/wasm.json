@@ -291,16 +291,6 @@
       "worker-import.tentative.html": false,
       "worker.tentative.html": false,
       "worklet-import-source-phase.tentative.https.html": false
-    },
-    "wasm_stream_compile_test.html": {
-      "expectedFailures": [
-        "compileStreaming raise error if no-cors"
-      ]
-    },
-    "wasm_stream_instantiate_test.html": {
-      "expectedFailures": [
-        "instantiateStreaming raise error if no-cors"
-      ]
     }
   },
   "create_multiple_memory.worker.html": true,
@@ -332,7 +322,6 @@
     "br.wast.js.html": true,
     "br_if.wast.js.html": true,
     "br_table.wast.js.html": true,
-    "bulk.wast.js.html": true,
     "call.wast.js.html": true,
     "call_indirect.wast.js.html": true,
     "comments.wast.js.html": true,
@@ -518,10 +507,7 @@
         "#34 Test that WebAssembly compilation fails"
       ]
     },
-    "memory_copy.wast.js.html": true,
-    "memory_fill.wast.js.html": true,
     "memory_grow.wast.js.html": true,
-    "memory_init.wast.js.html": true,
     "memory_redundancy.wast.js.html": true,
     "memory_size.wast.js.html": true,
     "memory_trap.wast.js.html": true,
@@ -598,13 +584,9 @@
     "start.wast.js.html": true,
     "store.wast.js.html": true,
     "switch.wast.js.html": true,
-    "table-sub.wast.js.html": true,
     "table.wast.js.html": true,
-    "table_copy.wast.js.html": true,
-    "table_fill.wast.js.html": true,
     "table_get.wast.js.html": true,
     "table_grow.wast.js.html": true,
-    "table_init.wast.js.html": true,
     "table_set.wast.js.html": true,
     "table_size.wast.js.html": true,
     "token.wast.js.html": true,
