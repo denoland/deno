@@ -2111,9 +2111,8 @@ impl JsRuntime {
     {
       // Drain and run foreground tasks queued by the custom V8 platform.
       // Uses the local Arc shared with the registry — no global map lookup.
-      let tasks = std::mem::take(
-        &mut *self.inner.state.foreground_tasks.lock().unwrap(),
-      );
+      let tasks =
+        std::mem::take(&mut *self.inner.state.foreground_tasks.lock().unwrap());
       for task in tasks {
         task.run();
       }
