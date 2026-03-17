@@ -226,8 +226,7 @@ fn is_managed_key(
   };
   let len = str.length();
 
-  #[allow(clippy::manual_range_contains)]
-  if len < SHORTEST_MANAGED_GLOBAL || len > LONGEST_MANAGED_GLOBAL {
+  if !(SHORTEST_MANAGED_GLOBAL..=LONGEST_MANAGED_GLOBAL).contains(&len) {
     return false;
   }
   let buf = &mut [0u16; LONGEST_MANAGED_GLOBAL];

@@ -269,9 +269,10 @@ pub struct CpuProfFlags {
   pub name: Option<String>,
   pub interval: Option<u32>,
   pub md: bool,
+  pub flamegraph: bool,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Default, Debug, Eq, PartialEq)]
 pub struct EvalFlags {
   pub print: bool,
   pub code: String,
@@ -5548,6 +5549,7 @@ fn cpu_prof_args(cmd: Command) -> Command {
     .arg(cpu_prof_name_arg())
     .arg(cpu_prof_interval_arg())
     .arg(cpu_prof_md_arg())
+    .arg(cpu_prof_flamegraph_arg())
 }
 
 fn cpu_prof_parse(matches: &mut ArgMatches) -> Option<CpuProfFlags> {
@@ -5556,12 +5558,20 @@ fn cpu_prof_parse(matches: &mut ArgMatches) -> Option<CpuProfFlags> {
   let name = matches.remove_one::<String>("cpu-prof-name");
   let interval = matches.remove_one::<u32>("cpu-prof-interval");
   let md = matches.get_flag("cpu-prof-md");
-  if enabled || dir.is_some() || name.is_some() || interval.is_some() || md {
+  let flamegraph = matches.get_flag("cpu-prof-flamegraph");
+  if enabled
+    || dir.is_some()
+    || name.is_some()
+    || interval.is_some()
+    || md
+    || flamegraph
+  {
     Some(CpuProfFlags {
       dir,
       name,
       interval,
       md,
+      flamegraph,
     })
   } else {
     None
@@ -5604,6 +5614,13 @@ fn cpu_prof_md_arg() -> Arg {
   Arg::new("cpu-prof-md")
     .long("cpu-prof-md")
     .help("Generate a human-readable markdown report alongside the CPU profile")
+    .action(ArgAction::SetTrue)
+}
+
+fn cpu_prof_flamegraph_arg() -> Arg {
+  Arg::new("cpu-prof-flamegraph")
+    .long("cpu-prof-flamegraph")
+    .help("Generate an SVG flamegraph alongside the CPU profile")
     .action(ArgAction::SetTrue)
 }
 
@@ -7627,7 +7644,7 @@ fn permission_args_parse(
 
   if matches.get_flag("allow-hrtime") || matches.get_flag("deny-hrtime") {
     // use eprintln instead of log::warn because logging hasn't been initialized yet
-    #[allow(clippy::print_stderr)]
+    #[allow(clippy::print_stderr, reason = "can't use log crate yet")]
     {
       eprintln!(
         "{} `allow-hrtime` and `deny-hrtime` have been removed in Deno 2, as high resolution time is now always allowed",
@@ -14771,7 +14788,7 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
       args.extend(input);
       let r = flags_from_vec(args.clone())
         .inspect_err(|e| {
-          #[allow(clippy::print_stderr)]
+          #[allow(clippy::print_stderr, reason = "actually want to output")]
           {
             eprintln!("error: {:?} on input: {:?}", e, args);
           }

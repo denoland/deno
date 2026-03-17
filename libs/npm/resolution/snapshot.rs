@@ -952,7 +952,7 @@ pub enum IncompleteSnapshotFromLockfileError {
 }
 
 /// Constructs [`ValidSerializedNpmResolutionSnapshot`] from the given [`Lockfile`].
-#[allow(clippy::needless_lifetimes)] // clippy bug
+#[allow(clippy::needless_lifetimes, reason = "clippy bug")]
 pub fn snapshot_from_lockfile(
   params: SnapshotFromLockfileParams<'_>,
 ) -> Result<ValidSerializedNpmResolutionSnapshot, SnapshotFromLockfileError> {

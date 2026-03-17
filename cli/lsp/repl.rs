@@ -70,7 +70,7 @@ impl ReplLanguageServer {
 
     let cwd_uri = get_cwd_uri()?;
 
-    #[allow(deprecated)]
+    #[allow(deprecated, reason = "some deprecated fields used")]
     language_server
       .initialize(InitializeParams {
         process_id: None,
@@ -292,7 +292,7 @@ fn lsp_range_to_std_range(
 }
 
 fn get_cwd_uri() -> Result<ModuleSpecifier, AnyError> {
-  #[allow(clippy::disallowed_methods)] // ok, used for initialization
+  #[allow(clippy::disallowed_methods, reason = "ok, used for initialization")]
   let cwd = std::env::current_dir()?;
   ModuleSpecifier::from_directory_path(&cwd)
     .map_err(|_| anyhow!("Could not get URI from {}", cwd.display()))

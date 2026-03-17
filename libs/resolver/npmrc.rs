@@ -16,7 +16,7 @@ use sys_traits::EnvVar;
 use sys_traits::FsRead;
 use thiserror::Error;
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type ResolvedNpmRcRc = deno_maybe_sync::MaybeArc<ResolvedNpmRc>;
 
 #[derive(Debug, Boxed)]

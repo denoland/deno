@@ -1004,7 +1004,7 @@ console.log("executing javascript");
 
 #[cfg(windows)]
 // Clippy suggests to remove the `NoStd` prefix from all variants. I disagree.
-#[allow(clippy::enum_variant_names)]
+#[allow(clippy::enum_variant_names, reason = "NoStd prefix improves clarity")]
 enum WinProcConstraints {
   NoStdIn,
   NoStdOut,

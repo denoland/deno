@@ -7,7 +7,7 @@ import { Buffer } from "node:buffer";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import * as net from "node:net";
-import { assert, assertEquals } from "@std/assert";
+import { assert, assertEquals, assertRejects } from "@std/assert";
 import { curlRequest } from "../unit/test_util.ts";
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
@@ -512,4 +512,18 @@ Deno.test("[node/http2] Server.address() includes family property", async () => 
 
     await promise;
   }
+});
+
+Deno.test("[node/http2 client] connect without net permission", {
+  permissions: { net: false },
+}, async () => {
+  await assertRejects(
+    () => {
+      return new Promise((_resolve, reject) => {
+        const client = http2.connect("http://127.0.0.1:4246");
+        client.on("error", reject);
+      });
+    },
+    Deno.errors.NotCapable,
+  );
 });

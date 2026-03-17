@@ -15,7 +15,7 @@ mod future_arena;
 mod futures_unordered_driver;
 mod op_results;
 
-#[allow(unused)]
+#[allow(unused, reason = "re-exported for use by other configurations")]
 pub use futures_unordered_driver::FuturesUnorderedDriver;
 
 pub use self::op_results::OpMappingContext;
@@ -100,7 +100,7 @@ pub(crate) trait OpDriver<C: OpMappingContext = V8OpMappingContext>:
 
   /// Submits an operation that is expected to complete successfully without errors.
   #[inline(always)]
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "all arguments are needed")]
   fn submit_op_fallible_scheduling<R: 'static, E: JsErrorClass + 'static>(
     &self,
     scheduling: OpScheduling,
@@ -120,7 +120,7 @@ pub(crate) trait OpDriver<C: OpMappingContext = V8OpMappingContext>:
     }
   }
 
-  #[allow(clippy::type_complexity)]
+  #[allow(clippy::type_complexity, reason = "complex type is necessary here")]
   /// Polls the readiness of the op driver.
   fn poll_ready(
     &self,
@@ -323,7 +323,10 @@ mod tests {
   ) {
     async fn task() -> i32 {
       let mut v = [0; 10 * 1024];
-      #[allow(clippy::needless_range_loop)]
+      #[allow(
+        clippy::needless_range_loop,
+        reason = "index is used for array assignment"
+      )]
       for i in 0..10 {
         tokio::task::yield_now().await;
         v[i] = 1;

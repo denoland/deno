@@ -6,7 +6,6 @@ use std::collections::HashSet;
 use std::env;
 use std::ffi::OsString;
 use std::path::Path;
-use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::OnceLock;
@@ -20,8 +19,10 @@ pub fn resolve_cwd(
 ) -> Result<Cow<'_, Path>, std::io::Error> {
   match initial_cwd {
     Some(initial_cwd) => Ok(Cow::Borrowed(initial_cwd)),
-    // ok because the lint recommends using this method
-    #[allow(clippy::disallowed_methods)]
+    #[allow(
+      clippy::disallowed_methods,
+      reason = "ok because the lint recommends using this method"
+    )]
     None => std::env::current_dir().map(Cow::Owned).map_err(|err| {
       std::io::Error::new(
         err.kind(),
@@ -47,8 +48,8 @@ impl WatchEnvTrackerInner {
     let original_env: HashMap<OsString, OsString> = env::vars_os().collect();
 
     Self {
-      loaded_variables: HashSet::new(),
-      unused_variables: HashSet::new(),
+      loaded_variables: Default::default(),
+      unused_variables: Default::default(),
       original_env,
     }
   }
@@ -73,27 +74,30 @@ impl WatchEnvTracker {
   // Internal method that accepts an already-acquired lock to avoid deadlocks
   fn load_env_file_inner(
     &self,
-    file_path: PathBuf,
+    cwd: &Path,
+    env_file: &str,
     log_level: Option<log::Level>,
     inner: &mut WatchEnvTrackerInner,
   ) {
-    // Check if file exists
-    if !file_path.exists() {
-      // Only show warning if logging is enabled
-      #[allow(clippy::print_stderr)]
-      if log_level.map(|l| l >= log::Level::Info).unwrap_or(true) {
-        eprintln!(
-          "{} The environment file specified '{}' was not found.",
-          colors::yellow("Warning"),
-          file_path.display()
-        );
-      }
-      return;
-    }
-
-    match deno_dotenv::from_path_sanitized_iter_with_substitution(
+    let (file_path, content) = match deno_dotenv::find_path_and_content(
       &CliSys::default(),
-      &file_path,
+      cwd,
+      env_file,
+    ) {
+      Ok(Some(result)) => result,
+      Ok(None) => {
+        handle_dotenv_not_found(env_file, log_level);
+        return;
+      }
+      Err(err) => {
+        handle_dotenv_io_error(&err, log_level);
+        return;
+      }
+    };
+
+    match deno_dotenv::from_content_sanitized_iter_with_substitution(
+      &CliSys::default(),
+      &content,
     ) {
       Ok(iter) => {
         for item in iter {
@@ -105,7 +109,10 @@ impl WatchEnvTracker {
 
               // Process-level env vars should always take precedence over env files.
               if inner.original_env.contains_key(&key_os) {
-                #[allow(clippy::print_stderr)]
+                #[allow(
+                  clippy::print_stderr,
+                  reason = "can't use log crate yet"
+                )]
                 if log_level.map(|l| l >= log::Level::Debug).unwrap_or(false) {
                   eprintln!(
                     "{} Variable '{}' already exists in the process environment, skipping value from '{}'",
@@ -120,7 +127,10 @@ impl WatchEnvTracker {
               // Check if this variable is already loaded from a previous file
               if inner.loaded_variables.contains(&key_os) {
                 // Variable already exists from a previous file, skip it
-                #[allow(clippy::print_stderr)]
+                #[allow(
+                  clippy::print_stderr,
+                  reason = "can't use log crate yet"
+                )]
                 if log_level.map(|l| l >= log::Level::Debug).unwrap_or(false) {
                   eprintln!(
                     "{} Variable '{}' already loaded from '{}', skipping value from '{}'",
@@ -149,22 +159,13 @@ impl WatchEnvTracker {
               inner.unused_variables.remove(&key_os);
             }
             Err(e) => {
-              handle_dotenv_error(e, &file_path, log_level);
+              handle_dotenv_error(&e, &file_path, log_level);
             }
           }
         }
       }
-      Err(e) =>
-      {
-        #[allow(clippy::print_stderr)]
-        if log_level.map(|l| l >= log::Level::Info).unwrap_or(true) {
-          eprintln!(
-            "{} Failed to read {}: {}",
-            colors::yellow("Warning"),
-            file_path.display(),
-            e
-          );
-        }
+      Err(e) => {
+        handle_dotenv_error(&e, &file_path, log_level);
       }
     }
   }
@@ -182,7 +183,7 @@ impl WatchEnvTracker {
           env::remove_var(var_name);
         }
 
-        #[allow(clippy::print_stderr)]
+        #[allow(clippy::print_stderr, reason = "can't use log crate yet")]
         if log_level.map(|l| l >= log::Level::Debug).unwrap_or(false) {
           eprintln!(
             "{} Variable '{}' removed from environment as it's no longer present in any loaded file",
@@ -197,7 +198,7 @@ impl WatchEnvTracker {
           env::set_var(var_name, original_value);
         }
 
-        #[allow(clippy::print_stderr)]
+        #[allow(clippy::print_stderr, reason = "can't use log crate yet")]
         if log_level.map(|l| l >= log::Level::Debug).unwrap_or(false) {
           eprintln!(
             "{} Variable '{}' restored to original value as it's no longer present in any loaded file",
@@ -212,24 +213,17 @@ impl WatchEnvTracker {
   // Load multiple env files in reverse order (later files take precedence over earlier ones)
   pub fn load_env_variables_from_env_files(
     &self,
-    file_paths: Option<&Vec<PathBuf>>,
+    cwd: &Path,
+    env_files: &[String],
     log_level: Option<log::Level>,
   ) {
-    let Some(env_file_names) = file_paths else {
-      return;
-    };
-
     let mut inner = self.inner.lock().unwrap();
 
     inner.unused_variables = std::mem::take(&mut inner.loaded_variables);
     inner.loaded_variables = HashSet::new();
 
-    for env_file_name in env_file_names.iter().rev() {
-      self.load_env_file_inner(
-        env_file_name.to_path_buf(),
-        log_level,
-        &mut inner,
-      );
+    for env_file_path in env_files.iter().rev() {
+      self.load_env_file_inner(cwd, env_file_path, log_level, &mut inner);
     }
 
     self._cleanup_removed_variables(&mut inner, log_level);
@@ -237,25 +231,37 @@ impl WatchEnvTracker {
 }
 
 pub fn load_env_variables_from_env_files(
-  filename: Option<&Vec<PathBuf>>,
+  cwd: &Path,
+  env_file_names: &[String],
   flags_log_level: Option<log::Level>,
 ) {
-  let Some(env_file_names) = filename else {
-    return;
-  };
-
   let original_env_keys: HashSet<OsString> =
     env::vars_os().map(|(key, _)| key).collect();
   let mut loaded_keys = HashSet::new();
 
   for env_file_name in env_file_names.iter().rev() {
-    let iter = match deno_dotenv::from_path_sanitized_iter_with_substitution(
-      &sys_traits::impls::RealSys,
+    let (env_file_path, content) = match deno_dotenv::find_path_and_content(
+      &CliSys::default(),
+      cwd,
       env_file_name,
     ) {
+      Ok(Some(resolved)) => resolved,
+      Ok(None) => {
+        handle_dotenv_not_found(env_file_name, flags_log_level);
+        continue;
+      }
+      Err(err) => {
+        handle_dotenv_io_error(&err, flags_log_level);
+        continue;
+      }
+    };
+    let iter = match deno_dotenv::from_content_sanitized_iter_with_substitution(
+      &sys_traits::impls::RealSys,
+      &content,
+    ) {
       Ok(iter) => iter,
-      Err(error) => {
-        handle_dotenv_error(error, env_file_name, flags_log_level);
+      Err(err) => {
+        handle_dotenv_error(&err, &env_file_path, flags_log_level);
         continue;
       }
     };
@@ -264,7 +270,7 @@ pub fn load_env_variables_from_env_files(
       let (key, value) = match item {
         Ok(pair) => pair,
         Err(error) => {
-          handle_dotenv_error(error, env_file_name, flags_log_level);
+          handle_dotenv_error(&error, &env_file_path, flags_log_level);
           break;
         }
       };
@@ -283,34 +289,45 @@ pub fn load_env_variables_from_env_files(
   }
 }
 
-fn handle_dotenv_error(
-  error: deno_dotenv::Error,
+pub fn handle_dotenv_error(
+  error: &deno_dotenv::ParseError,
   file_path: &Path,
   log_level: Option<log::Level>,
 ) {
-  #[allow(clippy::print_stderr)]
+  #[allow(clippy::print_stderr, reason = "can't use log crate yet")]
   if log_level.map(|l| l >= log::Level::Info).unwrap_or(true) {
-    match error {
-      deno_dotenv::Error::LineParse(line, index) => eprintln!(
-        "{} Parsing failed within the specified environment file: {} at index: {} of the value: {}",
-        colors::yellow("Warning"),
-        file_path.display(),
-        index,
-        line
-      ),
-      deno_dotenv::Error::Io(e) => match e.kind() {
-        std::io::ErrorKind::NotFound => eprintln!(
-          "{} The `--env-file` flag was used, but the environment file specified '{}' was not found.",
-          colors::yellow("Warning"),
-          file_path.display(),
-        ),
-        _ => eprintln!(
-          "{} Error reading from environment file '{}': {}.",
-          colors::yellow("Warning"),
-          file_path.display(),
-          e,
-        ),
-      },
-    }
+    eprintln!(
+      "{} Failed parsing value '{}' at index {} within the specified environment file.\n    at {}",
+      colors::yellow("Warning"),
+      error.line,
+      error.index,
+      file_path.display(),
+    )
+  }
+}
+
+pub fn handle_dotenv_io_error(
+  error: &deno_dotenv::FindPathAndContentError,
+  log_level: Option<log::Level>,
+) {
+  #[allow(clippy::print_stderr, reason = "can't use log crate yet")]
+  if log_level.map(|l| l >= log::Level::Info).unwrap_or(true) {
+    eprintln!(
+      "{} Error reading from environment file: {}\n    at {}",
+      colors::yellow("Warning"),
+      error.source,
+      error.path.display(),
+    )
+  }
+}
+
+pub fn handle_dotenv_not_found(specifier: &str, log_level: Option<log::Level>) {
+  #[allow(clippy::print_stderr, reason = "can't use log crate yet")]
+  if log_level.map(|l| l >= log::Level::Info).unwrap_or(true) {
+    eprintln!(
+      "{} The `--env-file` flag was used, but the environment file specified '{}' was not found.",
+      colors::yellow("Warning"),
+      specifier,
+    )
   }
 }

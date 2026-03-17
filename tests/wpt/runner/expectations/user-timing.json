@@ -23,16 +23,8 @@
   "mark-entry-constructor.any.worker.html": true,
   "mark-errors.any.html": true,
   "mark-errors.any.worker.html": true,
-  "mark-l3.any.html": {
-    "expectedFailures": [
-      "mark entries' detail and startTime are customizable"
-    ]
-  },
-  "mark-l3.any.worker.html": {
-    "expectedFailures": [
-      "mark entries' detail and startTime are customizable"
-    ]
-  },
+  "mark-l3.any.html": true,
+  "mark-l3.any.worker.html": true,
   "mark-measure-return-objects.any.html": true,
   "mark-measure-return-objects.any.worker.html": true,
   "mark.any.html": true,
@@ -53,20 +45,8 @@
   "measure_syntax_err.any.worker.html": true,
   "structured-serialize-detail.any.html": true,
   "structured-serialize-detail.any.worker.html": true,
-  "supported-usertiming-types.any.html": {
-    "expectedFailures": [
-      "supportedEntryTypes contains 'mark' and 'measure'",
-      "'mark' entries should be observable",
-      "'measure' entries should be observable"
-    ]
-  },
-  "supported-usertiming-types.any.worker.html": {
-    "expectedFailures": [
-      "supportedEntryTypes contains 'mark' and 'measure'",
-      "'mark' entries should be observable",
-      "'measure' entries should be observable"
-    ]
-  },
+  "supported-usertiming-types.any.html": true,
+  "supported-usertiming-types.any.worker.html": true,
   "user_timing_exists.any.html": true,
   "user_timing_exists.any.worker.html": true,
   "invoke_with_timing_attributes.worker.html": true,

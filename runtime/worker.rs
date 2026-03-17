@@ -323,7 +323,10 @@ pub fn create_op_metrics(
     max_len.set(max_len.get().max(decl.name.len()));
     let max_len = max_len.clone();
     Some(Rc::new(
-      #[allow(clippy::print_stderr)]
+      #[allow(
+        clippy::print_stderr,
+        reason = "we actually want to output here"
+      )]
       move |op: &deno_core::_ops::OpCtx, event, source| {
         eprintln!(
           "[{: >10.3}] {name:max_len$}: {event:?} {source:?}",
@@ -385,7 +388,10 @@ impl MainWorker {
 
             Ok(CacheImpl::Lsc(x))
           };
-          #[allow(clippy::arc_with_non_send_sync)]
+          #[allow(
+            clippy::arc_with_non_send_sync,
+            reason = "fine because the Rc is in the return type"
+          )]
           return Some(CreateCache(Arc::new(create_cache_fn)));
         }
       }
@@ -1145,7 +1151,6 @@ struct CommonRuntimeOptions {
 
 struct EnableRawImports(Arc<AtomicBool>);
 
-#[allow(clippy::too_many_arguments)]
 fn common_runtime(opts: CommonRuntimeOptions) -> JsRuntime {
   let enable_raw_imports = Arc::new(AtomicBool::new(false));
 

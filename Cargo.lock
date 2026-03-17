@@ -1854,7 +1854,6 @@ dependencies = [
  "deno_tower_lsp",
  "deno_typescript_go_client_rust",
  "dhat",
- "dissimilar",
  "dprint-core",
  "dprint-plugin-json",
  "dprint-plugin-jupyter",
@@ -1869,6 +1868,7 @@ dependencies = [
  "http 1.4.0",
  "http-body 1.0.0",
  "http-body-util",
+ "imara-diff",
  "import_map",
  "indexmap 2.12.0",
  "jsonc-parser 0.28.0",
@@ -2274,7 +2274,9 @@ dependencies = [
 name = "deno_dotenv"
 version = "0.7.0"
 dependencies = [
+ "deno_path_util",
  "sys_traits",
+ "thiserror 2.0.12",
 ]
 
 [[package]]
@@ -2572,6 +2574,7 @@ dependencies = [
  "arc-swap",
  "aws-lc-rs",
  "base64 0.22.1",
+ "boxed_error",
  "capacity_builder",
  "deno_bundle_runtime",
  "deno_error",
@@ -3144,6 +3147,7 @@ name = "deno_runtime"
 version = "0.246.0"
 dependencies = [
  "async-trait",
+ "boxed_error",
  "color-print",
  "deno_ast",
  "deno_bundle_runtime",
@@ -3300,6 +3304,7 @@ dependencies = [
  "opentelemetry_sdk",
  "pin-project",
  "serde",
+ "sys_traits",
  "thiserror 2.0.12",
  "tokio",
  "tokio-vsock",
@@ -3904,12 +3909,6 @@ dependencies = [
  "quote",
  "syn 2.0.117",
 ]
-
-[[package]]
-name = "dissimilar"
-version = "1.0.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "59f8e79d1fbf76bdfbde321e902714bf6c49df88a7dda6fc682fc2979226962d"
 
 [[package]]
 name = "divan"
@@ -10152,9 +10151,9 @@ dependencies = [
 
 [[package]]
 name = "sys_traits"
-version = "0.1.24"
+version = "0.1.25"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5410f31d223892c1ce7a098da845c99d023b4c7f18632bc8f09e60dfae3cbb75"
+checksum = "24954f769b36305ab4dc502d095da5cfd9c697c73a8f2c0636a7fca76ff1f24b"
 dependencies = [
  "filetime",
  "getrandom 0.2.14",
@@ -11171,9 +11170,9 @@ dependencies = [
 
 [[package]]
 name = "v8"
-version = "146.4.0"
+version = "146.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d97bcac5cdc5a195a4813f1855a6bc658f240452aac36caa12fd6c6f16026ab1"
+checksum = "645265c5e6cade47acac9c751563c0bb4b2d6a855f4d62a0b9c9b553cd89cedb"
 dependencies = [
  "bindgen 0.72.1",
  "bitflags 2.9.3",
