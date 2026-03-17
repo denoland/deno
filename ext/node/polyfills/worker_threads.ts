@@ -30,9 +30,11 @@ import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import {
   ERR_INVALID_ARG_TYPE,
+  ERR_INVALID_URL_SCHEME,
   ERR_OUT_OF_RANGE,
   ERR_WORKER_INVALID_EXEC_ARGV,
   ERR_WORKER_NOT_RUNNING,
+  ERR_WORKER_PATH,
 } from "ext:deno_node/internal/errors.ts";
 import {
   validateArray,
@@ -268,13 +270,37 @@ class NodeWorker extends EventEmitter {
       }
     }
 
-    if (
-      typeof specifier === "object" &&
-      !(specifier.protocol === "data:" || specifier.protocol === "file:")
-    ) {
-      throw new TypeError(
-        "node:worker_threads support only 'file:' and 'data:' URLs",
-      );
+    if (typeof specifier === "object") {
+      if (
+        !(specifier.protocol === "data:" || specifier.protocol === "file:")
+      ) {
+        throw new ERR_INVALID_URL_SCHEME(["file", "data"]);
+      }
+    } else if (typeof specifier === "string" && !options?.eval) {
+      // Node.js requires string specifiers to be absolute paths or
+      // relative paths starting with './' or '../'. URLs passed as
+      // strings must be wrapped with `new URL`.
+      if (
+        specifier.startsWith("file://") ||
+        specifier.startsWith("data:") ||
+        specifier.startsWith("http://") ||
+        specifier.startsWith("https://")
+      ) {
+        throw new ERR_WORKER_PATH(specifier);
+      }
+      const path = specifier;
+      if (
+        !path.startsWith("/") &&
+        !path.startsWith("./") &&
+        !path.startsWith("../")
+      ) {
+        // On Windows, also allow drive-letter absolute paths (e.g. C:\...)
+        const isWindowsAbsolute = path.length >= 3 && path[1] === ":" &&
+          (path[2] === "\\" || path[2] === "/");
+        if (!isWindowsAbsolute) {
+          throw new ERR_WORKER_PATH(specifier);
+        }
+      }
     }
 
     // Serialize workerData before resolving the filename so that
@@ -362,10 +388,12 @@ class NodeWorker extends EventEmitter {
     let hasSourceCode = false;
 
     if (options?.eval) {
-      const code = typeof specifier === "string"
-        ? specifier
-        // deno-lint-ignore prefer-primordials
-        : specifier.toString();
+      if (typeof specifier !== "string") {
+        throw new TypeError(
+          "The property 'options.eval' must be false when 'filename' is not a string.",
+        );
+      }
+      const code = specifier;
       // Node.js runs eval workers as CJS (sloppy mode).
       // Pass as source code for execute_script (sloppy mode).
       // `require` is already available from the Node worker bootstrap.
