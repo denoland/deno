@@ -26,6 +26,7 @@ use deno_core::uv_compat::uv_write_t;
 use deno_core::v8;
 
 use crate::ops::handle_wrap::AsyncWrap;
+use crate::ops::handle_wrap::GlobalHandle;
 use crate::ops::handle_wrap::HandleWrap;
 use crate::ops::handle_wrap::ProviderType;
 use crate::ops::tty_wrap::OwnedPtr;
@@ -42,7 +43,7 @@ pub struct StreamBaseState {
 }
 
 pub(crate) struct StreamHandleData {
-  pub js_handle: UnsafeCell<Option<v8::Global<v8::Object>>>,
+  pub js_handle: UnsafeCell<GlobalHandle<v8::Object>>,
   pub isolate: UnsafeCell<v8::UnsafeRawIsolatePtr>,
 }
 
@@ -167,7 +168,7 @@ impl LibUvStreamWrap {
       bytes_read: Cell::new(0),
       bytes_written: Cell::new(0),
       handle_data: Box::new(StreamHandleData {
-        js_handle: UnsafeCell::new(None),
+        js_handle: UnsafeCell::new(GlobalHandle::default()),
         isolate: UnsafeCell::new(v8::UnsafeRawIsolatePtr::null()),
       }),
       reading_started: Cell::new(false),
@@ -193,9 +194,12 @@ impl LibUvStreamWrap {
       .cast()
   }
 
-  pub(crate) fn js_handle_global(&self) -> Option<v8::Global<v8::Object>> {
+  pub(crate) fn js_handle_global(
+    &self,
+    scope: &mut v8::PinScope,
+  ) -> Option<v8::Global<v8::Object>> {
     // SAFETY: js_handle is only written via set_handle which runs on the same thread before any read.
-    unsafe { (*self.handle_data.js_handle.get()).clone() }
+    unsafe { (*self.handle_data.js_handle.get()).to_global(scope) }
   }
 
   pub(crate) fn set_js_handle(
@@ -203,17 +207,31 @@ impl LibUvStreamWrap {
     handle: v8::Global<v8::Object>,
     scope: &mut v8::PinScope,
   ) {
+    // SAFETY: single-threaded access.
     unsafe {
-      *self.handle_data.js_handle.get() = Some(handle);
+      *self.handle_data.js_handle.get() =
+        GlobalHandle::new_weak(scope, v8::Local::new(scope, &handle));
       *self.handle_data.isolate.get() = scope.as_raw_isolate_ptr();
     }
   }
 
-  /// No-op with Option<v8::Global> — the reference is always "strong" when present.
-  pub fn make_handle_strong(&self, _scope: &mut v8::PinScope) {}
+  /// Make the js_handle reference strong, preventing GC of the JS object.
+  /// Should be called when the handle becomes actively referenced (e.g. read started).
+  pub fn make_handle_strong(&self, scope: &mut v8::PinScope) {
+    // SAFETY: single-threaded access, same as js_handle_global.
+    unsafe {
+      (*self.handle_data.js_handle.get()).make_strong(scope);
+    }
+  }
 
-  /// No-op with Option<v8::Global> — we don't weaken the reference.
-  pub fn make_handle_weak(&self, _scope: &mut v8::PinScope) {}
+  /// Make the js_handle reference weak, allowing GC to collect the JS object.
+  /// Should be called when the handle is no longer actively referenced (e.g. closed, read stopped).
+  pub fn make_handle_weak(&self, scope: &mut v8::PinScope) {
+    // SAFETY: single-threaded access, same as js_handle_global.
+    unsafe {
+      (*self.handle_data.js_handle.get()).make_weak(scope);
+    }
+  }
 }
 
 // SAFETY: LibUvStreamWrap is a cppgc-managed object; trace() correctly delegates to the base HandleWrap.
@@ -653,7 +671,7 @@ impl LibUvStreamWrap {
     //
     // SAFETY: set_handle is called once at construction on the same thread; no concurrent access occurs.
     unsafe {
-      *self.handle_data.js_handle.get() = Some(v8::Global::new(scope, handle));
+      *self.handle_data.js_handle.get() = GlobalHandle::new_weak(scope, handle);
       *self.handle_data.isolate.get() = scope.as_raw_isolate_ptr();
     }
   }
@@ -670,7 +688,7 @@ impl LibUvStreamWrap {
       return UV_EBADF;
     }
 
-    let this = if let Some(handle) = self.js_handle_global() {
+    let this = if let Some(handle) = self.js_handle_global(scope) {
       v8::Local::new(scope, handle)
     } else {
       v8::Local::new(scope, &this)
@@ -722,11 +740,11 @@ impl LibUvStreamWrap {
       return UV_EBADF;
     }
     // SAFETY: stream is a valid non-null uv_stream_t; data was set by
-      // read_start via Box::into_raw and reading_started confirms it is
-      // CallbackData.
-      unsafe {
-    let data = (*stream).data as *mut CallbackData;
-    if !data.is_null() {
+    // read_start via Box::into_raw and reading_started confirms it is
+    // CallbackData.
+    unsafe {
+      let data = (*stream).data as *mut CallbackData;
+      if !data.is_null() {
         let stream = self.stream_ptr();
         if stream.is_null() {
           return UV_EBADF;
@@ -750,10 +768,10 @@ impl LibUvStreamWrap {
 
         // SAFETY: stream is a valid non-null uv_stream_t (checked above).
         unsafe { uv_compat::uv_read_stop(stream) }
+      } else {
+        return UV_EBADF;
       }
-  }
-
-    unsafe { uv_compat::uv_read_stop(stream) }
+    }
   }
 
   #[fast]
@@ -779,7 +797,7 @@ impl LibUvStreamWrap {
     }
 
     let stream_handle = self
-      .js_handle_global()
+      .js_handle_global(scope)
       .unwrap_or_else(|| v8::Global::new(scope, v8::Object::new(scope)));
     let mut req = Box::new(uv_compat::new_shutdown());
     let cb_data = Box::new(ShutdownCallbackData {
@@ -863,7 +881,7 @@ impl LibUvStreamWrap {
     };
 
     let stream_handle = self
-      .js_handle_global()
+      .js_handle_global(scope)
       .unwrap_or_else(|| v8::Global::new(scope, v8::Object::new(scope)));
     let mut req = Box::new(uv_compat::new_write());
     let cb_data = Box::new(WriteCallbackData {
@@ -1169,7 +1187,7 @@ impl LibUvStreamWrap {
     };
 
     let stream_handle = self
-      .js_handle_global()
+      .js_handle_global(scope)
       .unwrap_or_else(|| v8::Global::new(scope, v8::Object::new(scope)));
     let mut req = Box::new(uv_compat::new_write());
     let cb_data = Box::new(WriteCallbackData {

@@ -210,9 +210,17 @@ unsafe extern "C" fn after_connect(req: *mut uv_connect_t, status: i32) {
     let context = v8::Local::new(handle_scope, cloned);
     let scope = &mut v8::ContextScope::new(handle_scope, context);
 
-    let js_obj = match *handle_data.js_handle.get() {
-      Some(ref obj) => v8::Local::new(scope, obj),
-      None => return,
+    let js_obj = match &*handle_data.js_handle.get() {
+      crate::ops::handle_wrap::GlobalHandle::Strong(global) => {
+        v8::Local::new(scope, global)
+      }
+      crate::ops::handle_wrap::GlobalHandle::Weak(weak) => {
+        match weak.to_local(scope) {
+          Some(local) => local,
+          None => return,
+        }
+      }
+      crate::ops::handle_wrap::GlobalHandle::None => return,
     };
 
     let key =
@@ -259,9 +267,17 @@ unsafe extern "C" fn on_connection(
     let context = v8::Local::new(handle_scope, cloned);
     let scope = &mut v8::ContextScope::new(handle_scope, context);
 
-    let js_obj = match *handle_data.js_handle.get() {
-      Some(ref obj) => v8::Local::new(scope, obj),
-      None => return,
+    let js_obj = match &*handle_data.js_handle.get() {
+      crate::ops::handle_wrap::GlobalHandle::Strong(global) => {
+        v8::Local::new(scope, global)
+      }
+      crate::ops::handle_wrap::GlobalHandle::Weak(weak) => {
+        match weak.to_local(scope) {
+          Some(local) => local,
+          None => return,
+        }
+      }
+      crate::ops::handle_wrap::GlobalHandle::None => return,
     };
 
     let key =
@@ -609,7 +625,7 @@ impl TCPWrap {
     handle_wrap.set_state_closing();
 
     if err == 0 {
-      let this = self.base.js_handle_global().unwrap_or(this);
+      let this = self.base.js_handle_global(scope).unwrap_or(this);
       // Fire _onClose() JS callback and schedule the close callback.
       handle_wrap.run_close_callback(op_state, this, scope, cb);
     }
