@@ -248,7 +248,12 @@ pub fn run_exit() {
 pub const SIGINT: i32 = 2;
 pub const SIGTERM: i32 = 15;
 
-/// Synthetically raise a signal, triggering all registered handlers.
+/// Synthetically raise a signal, triggering all registered JS handlers.
+///
+/// This does NOT use OS-level signal delivery — it directly invokes the
+/// handler functions under a mutex, making it safe to call from any async
+/// or sync context on all platforms (including Windows).
+///
 /// Returns true if any handler prevented the default behavior.
 pub fn raise(signal: i32) -> bool {
   handle_signal(signal)

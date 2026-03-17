@@ -408,6 +408,12 @@ where
         // Dispatch SIGINT (matching what Ctrl+C normally sends) and
         // SIGTERM to give JS code a chance for async cleanup. Some
         // libraries only listen for SIGINT, others for SIGTERM.
+        // Note: `raise()` works on all platforms (including Windows)
+        // because it synthetically invokes registered JS handlers via
+        // `handle_signal()` rather than using OS-level signal delivery.
+        //
+        // Use bitwise OR (not `||`) to ensure both signals are always
+        // raised regardless of whether the first one has handlers.
         let has_handlers = deno_signals::raise(deno_signals::SIGINT)
           | deno_signals::raise(deno_signals::SIGTERM);
         if has_handlers {
