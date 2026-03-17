@@ -371,6 +371,7 @@ fn handle_json_version_request(
 fn handle_ws_events_request(
   req: http::Request<hyper::body::Incoming>,
 ) -> http::Result<http::Response<Box<http_body_util::Full<Bytes>>>> {
+  #[allow(clippy::disallowed_methods, reason = "TODO: pass a sys in here")]
   if std::env::var("UNSTABLE_INSPECTOR_WS_EVENTS").is_err() {
     return http::Response::builder()
       .status(http::StatusCode::NOT_FOUND)
@@ -430,6 +431,7 @@ async fn pump_event_notifications(
       result = restart_rx.recv() => {
         match result {
           Ok(()) => {
+            #[allow(clippy::disallowed_methods, reason = "TODO: pass a sys in here")]
             let timestamp = std::time::SystemTime::now()
               .duration_since(std::time::UNIX_EPOCH)
               .map(|d| d.as_millis() as u64)

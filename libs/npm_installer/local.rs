@@ -152,7 +152,7 @@ impl<
   TSys: LocalNpmInstallSys,
 > LocalNpmPackageInstaller<THttpClient, TReporter, TSys>
 {
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "construction")]
   pub fn new(
     lifecycle_scripts_executor: Arc<dyn LifecycleScriptsExecutor>,
     npm_cache: Arc<NpmCache<TSys>>,

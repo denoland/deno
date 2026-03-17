@@ -34,10 +34,13 @@ use rsa::Oaep;
 use rsa::Pkcs1v15Encrypt;
 use rsa::RsaPrivateKey;
 use rsa::RsaPublicKey;
+use rsa::hazmat::rsa_decrypt_and_check;
+use rsa::hazmat::rsa_encrypt;
 use rsa::pkcs1::DecodeRsaPrivateKey;
 use rsa::pkcs1::DecodeRsaPublicKey;
 use rsa::pkcs8::DecodePrivateKey;
 use rsa::pkcs8::DecodePublicKey;
+use rsa::traits::PublicKeyParts;
 
 pub mod cipher;
 pub(crate) mod dh;
@@ -93,6 +96,7 @@ deno_core::extension!(
     op_node_pbkdf2_validate,
     op_node_private_decrypt,
     op_node_private_encrypt,
+    op_node_public_decrypt,
     op_node_public_encrypt,
     op_node_random_int,
     op_node_scrypt_async,
@@ -296,6 +300,53 @@ pub enum PrivateEncryptDecryptError {
   UnknownPadding,
 }
 
+/// PKCS#1 v1.5 type 1 padding for private key encryption (signing).
+/// EM = 0x00 || 0x01 || PS || 0x00 || M
+/// where PS is filled with 0xFF bytes and has length k - mLen - 3.
+fn pkcs1v15_type1_pad(
+  msg: &[u8],
+  k: usize,
+) -> Result<Vec<u8>, PrivateEncryptDecryptError> {
+  if msg.len() > k - 11 {
+    return Err(PrivateEncryptDecryptError::Rsa(rsa::Error::MessageTooLong));
+  }
+  let mut em = vec![0xffu8; k];
+  em[0] = 0;
+  em[1] = 1;
+  em[k - msg.len() - 1] = 0;
+  em[k - msg.len()..].copy_from_slice(msg);
+  Ok(em)
+}
+
+/// Remove PKCS#1 v1.5 type 1 padding.
+/// EM = 0x00 || 0x01 || PS (0xFF bytes) || 0x00 || M
+fn pkcs1v15_type1_unpad(
+  em: &[u8],
+  k: usize,
+) -> Result<Vec<u8>, PrivateEncryptDecryptError> {
+  if k < 11 || em.len() != k || em[0] != 0 || em[1] != 1 {
+    return Err(PrivateEncryptDecryptError::Rsa(rsa::Error::Decryption));
+  }
+  // Find the 0x00 separator after the 0xFF padding
+  let mut sep = None;
+  for (i, &byte) in em.iter().enumerate().take(k).skip(2) {
+    if byte == 0 {
+      sep = Some(i);
+      break;
+    }
+    if byte != 0xff {
+      return Err(PrivateEncryptDecryptError::Rsa(rsa::Error::Decryption));
+    }
+  }
+  let sep =
+    sep.ok_or(PrivateEncryptDecryptError::Rsa(rsa::Error::Decryption))?;
+  if sep < 10 {
+    // PS must be at least 8 bytes
+    return Err(PrivateEncryptDecryptError::Rsa(rsa::Error::Decryption));
+  }
+  Ok(em[sep + 1..].to_vec())
+}
+
 #[op2]
 pub fn op_node_private_encrypt(
   #[serde] key: StringOrBuffer,
@@ -311,20 +362,31 @@ pub fn op_node_private_encrypt(
     })?,
   };
 
+  let k = key.size();
   let mut rng = rand::thread_rng();
   match padding {
-    1 => Ok(
-      key
-        .as_ref()
-        .encrypt(&mut rng, Pkcs1v15Encrypt, &msg)?
-        .into(),
-    ),
-    4 => Ok(
-      key
-        .as_ref()
-        .encrypt(&mut rng, Oaep::new::<sha1::Sha1>(), &msg)?
-        .into(),
-    ),
+    1 => {
+      // PKCS1 type 1 padding + raw RSA private key operation
+      let em = pkcs1v15_type1_pad(&msg, k)?;
+      let int = num_bigint_dig::BigUint::from_bytes_be(&em);
+      let result = rsa_decrypt_and_check(&key, Some(&mut rng), &int)?;
+      let mut result_bytes = result.to_bytes_be();
+      // Left-pad with zeros to key size
+      while result_bytes.len() < k {
+        result_bytes.insert(0, 0);
+      }
+      Ok(result_bytes.into())
+    }
+    4 => {
+      // RSA_NO_PADDING is padding=3, OAEP is padding=4
+      // For OAEP with private encrypt, use the public key component
+      Ok(
+        key
+          .as_ref()
+          .encrypt(&mut rng, Oaep::new::<sha1::Sha1>(), &msg)?
+          .into(),
+      )
+    }
     _ => Err(PrivateEncryptDecryptError::UnknownPadding),
   }
 }
@@ -391,6 +453,59 @@ pub fn op_node_public_encrypt(
         .encrypt(&mut rng, Oaep::new::<sha1::Sha1>(), &msg)?
         .into(),
     ),
+    _ => Err(PrivateEncryptDecryptError::UnknownPadding),
+  }
+}
+
+#[op2]
+pub fn op_node_public_decrypt(
+  #[serde] key: StringOrBuffer,
+  #[serde] msg: StringOrBuffer,
+  #[smi] padding: u32,
+) -> Result<Uint8Array, PrivateEncryptDecryptError> {
+  let key = match std::str::from_utf8(&key) {
+    Ok(pem) => RsaPublicKey::from_public_key_pem(pem)
+      .or_else(|_| rsa::pkcs1::DecodeRsaPublicKey::from_pkcs1_pem(pem))
+      .or_else(|_| {
+        RsaPrivateKey::from_pkcs8_pem(pem)
+          .or_else(|_| {
+            rsa::pkcs1::DecodeRsaPrivateKey::from_pkcs1_pem(pem)
+              .map_err(pkcs8::Error::from)
+          })
+          .map(|k| k.to_public_key())
+      })
+      .map_err(|e| PrivateEncryptDecryptError::Spki(e.into()))?,
+    Err(_) => RsaPublicKey::from_public_key_der(&key)
+      .or_else(|_| {
+        RsaPublicKey::from_pkcs1_der(&key).map_err(spki::Error::from)
+      })
+      .or_else(|_| {
+        RsaPrivateKey::from_pkcs8_der(&key)
+          .or_else(|_| {
+            RsaPrivateKey::from_pkcs1_der(&key).map_err(pkcs8::Error::from)
+          })
+          .map(|k| k.to_public_key())
+          .map_err(spki::Error::from)
+      })?,
+  };
+
+  let k = key.size();
+  match padding {
+    1 => {
+      // Raw RSA with public key, then remove PKCS1 type 1 padding
+      let int = num_bigint_dig::BigUint::from_bytes_be(&msg);
+      let result = rsa_encrypt(&key, &int)?;
+      let mut em = result.to_bytes_be();
+      // Left-pad with zeros to key size
+      while em.len() < k {
+        em.insert(0, 0);
+      }
+      Ok(pkcs1v15_type1_unpad(&em, k)?.into())
+    }
+    4 => {
+      // OAEP not supported for public decrypt
+      Err(PrivateEncryptDecryptError::UnknownPadding)
+    }
     _ => Err(PrivateEncryptDecryptError::UnknownPadding),
   }
 }
@@ -584,7 +699,7 @@ pub fn op_node_verify(
 }
 
 #[derive(Debug, PartialEq, Eq)]
-#[allow(non_camel_case_types)]
+#[allow(non_camel_case_types, reason = "matches Node.js error code naming")]
 enum ErrorCode {
   ERR_CRYPTO_INVALID_DIGEST,
 }
@@ -800,7 +915,7 @@ pub fn op_node_random_int(#[number] min: i64, #[number] max: i64) -> i64 {
   dist.sample(&mut rng)
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, reason = "all arguments are needed")]
 fn scrypt(
   password: StringOrBuffer,
   salt: StringOrBuffer,
@@ -830,7 +945,7 @@ fn scrypt(
   }
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, reason = "all arguments are needed")]
 #[op2]
 pub fn op_node_scrypt_sync(
   #[serde] password: StringOrBuffer,
