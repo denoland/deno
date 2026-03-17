@@ -2420,11 +2420,13 @@ export class ERR_WORKER_PATH extends NodeTypeError {
     let detail = "";
     if (
       typeof filename === "string" &&
-      (filename.startsWith("file://") || filename.startsWith("File://"))
+      (StringPrototypeStartsWith(filename, "file://") ||
+        StringPrototypeStartsWith(filename, "File://"))
     ) {
       detail = " Wrap file:// URLs with `new URL`.";
     } else if (
-      typeof filename === "string" && filename.startsWith("data:")
+      typeof filename === "string" &&
+      StringPrototypeStartsWith(filename, "data:")
     ) {
       detail = " Wrap data: URLs with `new URL`.";
     }

@@ -281,18 +281,18 @@ class NodeWorker extends EventEmitter {
       // relative paths starting with './' or '../'. URLs passed as
       // strings must be wrapped with `new URL`.
       if (
-        specifier.startsWith("file://") ||
-        specifier.startsWith("data:") ||
-        specifier.startsWith("http://") ||
-        specifier.startsWith("https://")
+        StringPrototypeStartsWith(specifier, "file://") ||
+        StringPrototypeStartsWith(specifier, "data:") ||
+        StringPrototypeStartsWith(specifier, "http://") ||
+        StringPrototypeStartsWith(specifier, "https://")
       ) {
         throw new ERR_WORKER_PATH(specifier);
       }
       const path = specifier;
       if (
-        !path.startsWith("/") &&
-        !path.startsWith("./") &&
-        !path.startsWith("../")
+        !StringPrototypeStartsWith(path, "/") &&
+        !StringPrototypeStartsWith(path, "./") &&
+        !StringPrototypeStartsWith(path, "../")
       ) {
         // On Windows, also allow drive-letter absolute paths (e.g. C:\...)
         const isWindowsAbsolute = path.length >= 3 && path[1] === ":" &&
