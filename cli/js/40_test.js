@@ -20,6 +20,7 @@ const {
   DateNow,
   Error,
   Map,
+  NumberIsNaN,
   MapPrototypeGet,
   MapPrototypeSet,
   SafeArrayIterator,
@@ -106,18 +107,26 @@ const TEST_LOCATION_SYMBOL = SymbolFor("Deno.test.location");
  * Parsing is done from the right so that file names that contain `:` (such as
  * `file://` or `https://` URLs) are handled correctly.
  *
+ * Returns `null` if the string is not a valid location.
+ *
  * @param {string} str
- * @returns {{ fileName: string, lineNumber: number, columnNumber: number }}
+ * @returns {{ fileName: string, lineNumber: number, columnNumber: number } | null}
  */
 function parseTestLocation(str) {
+  if (typeof str !== "string") return null;
   const lastColon = StringPrototypeLastIndexOf(str, ":");
+  if (lastColon <= 0) return null;
   const secondLastColon = StringPrototypeLastIndexOf(str, ":", lastColon - 1);
+  if (secondLastColon <= 0) return null;
+  const lineNumber = parseInt(
+    StringPrototypeSlice(str, secondLastColon + 1, lastColon),
+  );
+  const columnNumber = parseInt(StringPrototypeSlice(str, lastColon + 1));
+  if (NumberIsNaN(lineNumber) || NumberIsNaN(columnNumber)) return null;
   return {
     fileName: StringPrototypeSlice(str, 0, secondLastColon),
-    lineNumber: parseInt(
-      StringPrototypeSlice(str, secondLastColon + 1, lastColon),
-    ),
-    columnNumber: parseInt(StringPrototypeSlice(str, lastColon + 1)),
+    lineNumber,
+    columnNumber,
   };
 }
 
@@ -339,10 +348,10 @@ function testInner(
     cachedOrigin = op_test_get_origin();
   }
 
-  const locationOverride = testDesc.fn[TEST_LOCATION_SYMBOL];
-  testDesc.location = locationOverride
-    ? parseTestLocation(locationOverride)
-    : core.currentUserCallSite();
+  const locationOverride = parseTestLocation(
+    testDesc.fn[TEST_LOCATION_SYMBOL],
+  );
+  testDesc.location = locationOverride ?? core.currentUserCallSite();
   testDesc.fn = wrapTest(testDesc);
   testDesc.name = escapeName(testDesc.name);
 
