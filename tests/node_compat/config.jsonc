@@ -2358,6 +2358,8 @@
     "parallel/test-worker-stdio-flush.js": {},
     "parallel/test-worker-sharedarraybuffer-from-worker-thread.js": {},
     "parallel/test-worker-stdio.js": {},
+    "parallel/test-worker-syntax-error.js": {},
+    "parallel/test-worker-syntax-error-file.js": {},
     "parallel/test-worker-terminate-microtask-loop.js": {},
     "parallel/test-worker-terminate-nested.js": {},
     "parallel/test-worker-terminate-ref-public-port.js": {},

@@ -54,6 +54,7 @@ import { createRequire } from "node:module";
 const {
   ArrayIsArray,
   Error,
+  EvalError,
   FunctionPrototypeCall,
   NumberIsFinite,
   ObjectHasOwn,
@@ -71,14 +72,31 @@ const {
   StringPrototypeSplit,
   StringPrototypeStartsWith,
   StringPrototypeTrim,
+  SyntaxError,
   Symbol,
   SymbolAsyncDispose,
   SymbolFor,
   SymbolIterator,
   TypeError,
+  URIError,
+  RangeError,
+  ReferenceError,
   Float64Array,
   FunctionPrototypeBind,
 } = primordials;
+
+// Map error names to native constructors so that worker error events
+// preserve err.constructor (e.g. SyntaxError, TypeError).
+const nativeErrorConstructors: Record<string, ErrorConstructor> = {
+  __proto__: null as unknown as ErrorConstructor,
+  Error,
+  EvalError,
+  RangeError,
+  ReferenceError,
+  SyntaxError,
+  TypeError,
+  URIError,
+};
 
 const workerCpuUsageBuffer = new Float64Array(2);
 
@@ -292,7 +310,9 @@ class NodeWorker extends EventEmitter {
       if (
         !StringPrototypeStartsWith(path, "/") &&
         !StringPrototypeStartsWith(path, "./") &&
-        !StringPrototypeStartsWith(path, "../")
+        !StringPrototypeStartsWith(path, "../") &&
+        !StringPrototypeStartsWith(path, ".\\") &&
+        !StringPrototypeStartsWith(path, "..\\")
       ) {
         // On Windows, also allow drive-letter absolute paths (e.g. C:\...)
         const isWindowsAbsolute = path.length >= 3 && path[1] === ":" &&
@@ -541,10 +561,10 @@ class NodeWorker extends EventEmitter {
               err.code = errName;
               err.name = "Error";
             } else {
-              err = new Error(errMsg);
-              if (errName) {
-                err.name = errName;
-              }
+              // Use the correct native error constructor so that
+              // err.constructor matches (e.g. SyntaxError, TypeError).
+              const Ctor = nativeErrorConstructors[errName] ?? Error;
+              err = new Ctor(errMsg);
             }
             // Stack is unavailable from the worker context (e.g. prepareStackTrace
             // may have thrown). Match Node.js behavior of setting stack to undefined.
