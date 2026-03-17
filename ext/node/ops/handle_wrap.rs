@@ -15,6 +15,101 @@ use deno_core::uv_compat;
 use deno_core::uv_compat::uv_handle_t;
 use deno_core::v8;
 
+// ---------------------------------------------------------------------------
+// GlobalHandle — mirrors Node's BaseObject::persistent_handle_ weak/strong
+// switching.
+//
+// In Node, BaseObject holds a v8::Global that can be switched between strong
+// (prevents GC of the JS object) and weak (allows GC, triggering cleanup).
+// With cppgc the C++ object's lifetime is managed by the GC, but we still
+// need to hold a reference back to the JS wrapper object for use in
+// callbacks. A strong Global would create a reference cycle (JS -> cppgc
+// -> Global -> JS) and leak. A Weak reference allows the GC to collect
+// the pair when nothing else references them.
+//
+// The handle starts Strong after construction (the active libuv handle
+// should keep the object alive). It should be made Weak when the handle
+// is closed or no longer actively referenced.
+// ---------------------------------------------------------------------------
+
+/// A reference to a JS object that can switch between strong (GC root),
+/// weak (allows collection), or empty. This mirrors Node's pattern of
+/// calling `MakeWeak()` / `ClearWeak()` on `BaseObject::persistent_handle_`.
+pub enum GlobalHandle<T> {
+  Strong(v8::Global<T>),
+  Weak(v8::Weak<T>),
+  None,
+}
+
+impl<T> Default for GlobalHandle<T> {
+  fn default() -> Self {
+    GlobalHandle::None
+  }
+}
+
+impl<T> GlobalHandle<T>
+where
+  v8::Global<T>: v8::Handle<Data = T>,
+{
+  /// Create a new strong handle.
+  pub fn new_strong(scope: &mut v8::PinScope, value: v8::Local<T>) -> Self {
+    GlobalHandle::Strong(v8::Global::new(scope, value))
+  }
+
+  /// Create a new weak handle.
+  pub fn new_weak(scope: &mut v8::PinScope, value: v8::Local<T>) -> Self {
+    GlobalHandle::Weak(v8::Weak::new(scope, value))
+  }
+
+  /// Make the handle weak, allowing the GC to collect the JS object.
+  /// Mirrors Node's `BaseObject::MakeWeak()`.
+  pub fn make_weak(&mut self, scope: &mut v8::PinScope) {
+    match std::mem::take(self) {
+      GlobalHandle::Strong(global) => {
+        let local = v8::Local::new(scope, &global);
+        *self = GlobalHandle::Weak(v8::Weak::new(scope, local));
+      }
+      other => *self = other,
+    }
+  }
+
+  /// Make the handle strong, preventing the GC from collecting the JS object.
+  /// Mirrors Node's `BaseObject::ClearWeak()`.
+  pub fn make_strong(&mut self, scope: &mut v8::PinScope) {
+    match std::mem::take(self) {
+      GlobalHandle::Weak(weak) => {
+        if let Some(local) = weak.to_local(scope) {
+          *self = GlobalHandle::Strong(v8::Global::new(scope, local));
+        }
+        // If already collected, stays None
+      }
+      other => *self = other,
+    }
+  }
+
+  /// Get a Global clone if the reference is still alive.
+  /// Returns None if empty or if the weak reference has been collected.
+  pub fn to_global(&self, scope: &mut v8::PinScope) -> Option<v8::Global<T>> {
+    match self {
+      GlobalHandle::Strong(global) => Some(global.clone()),
+      GlobalHandle::Weak(weak) => weak
+        .to_local(scope)
+        .map(|local| v8::Global::new(scope, local)),
+      GlobalHandle::None => None,
+    }
+  }
+
+  /// Returns true if this is a weak reference.
+  pub fn is_weak(&self) -> bool {
+    matches!(self, GlobalHandle::Weak(_))
+  }
+
+  /// Returns true if this handle is empty.
+  pub fn is_none(&self) -> bool {
+    matches!(self, GlobalHandle::None)
+  }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(i32)]
 pub enum ProviderType {
