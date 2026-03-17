@@ -47,6 +47,7 @@ import { getDefaultEncoding } from "ext:deno_node/internal/crypto/util.ts";
 import {
   ERR_INVALID_ARG_VALUE,
   ERR_UNKNOWN_ENCODING,
+  NodeError,
 } from "ext:deno_node/internal/errors.ts";
 
 import {
@@ -250,10 +251,10 @@ Cipheriv.prototype.final = function (
   }
 
   if (!this._autoPadding && this._cache.cache.byteLength != bs) {
-    const err = new Error("wrong final block length");
-    (err as any).code = "ERR_OSSL_EVP_WRONG_FINAL_BLOCK_LENGTH";
-    (err as any).reason = "wrong final block length";
-    throw err;
+    throw new NodeError(
+      "ERR_OSSL_EVP_WRONG_FINAL_BLOCK_LENGTH",
+      "wrong final block length",
+    );
   }
   const maybeTag = op_node_cipheriv_final(
     this._context,
@@ -494,19 +495,19 @@ Decipheriv.prototype.final = function (
     return encoding === "buffer" ? Buffer.from([]) : "";
   }
   if (this._cache.cache.byteLength != bs) {
-    const err = new Error("wrong final block length");
-    (err as any).code = "ERR_OSSL_EVP_WRONG_FINAL_BLOCK_LENGTH";
-    (err as any).reason = "wrong final block length";
-    throw err;
+    throw new NodeError(
+      "ERR_OSSL_EVP_WRONG_FINAL_BLOCK_LENGTH",
+      "wrong final block length",
+    );
   }
 
   if (this._autoPadding) {
     const padLen = buf.at(-1);
     if (padLen === 0 || padLen > bs) {
-      const err = new Error("bad decrypt");
-      (err as any).code = "ERR_OSSL_EVP_BAD_DECRYPT";
-      (err as any).reason = "bad decrypt";
-      throw err;
+      throw new NodeError(
+        "ERR_OSSL_EVP_BAD_DECRYPT",
+        "bad decrypt",
+      );
     }
     buf = buf.subarray(0, bs - padLen); // Padded in Pkcs7 mode
   }
