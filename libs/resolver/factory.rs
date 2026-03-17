@@ -14,6 +14,7 @@ use deno_cache_dir::npm::NpmCacheDir;
 use deno_config::deno_json::MinimumDependencyAgeConfig;
 use deno_config::deno_json::NewestDependencyDate;
 use deno_config::deno_json::NodeModulesDirMode;
+use deno_config::deno_json::NodeModulesLinkerMode;
 use deno_config::workspace::FolderConfigs;
 use deno_config::workspace::VendorEnablement;
 use deno_config::workspace::WorkspaceDirectory;
@@ -195,6 +196,7 @@ pub trait SpecifiedImportMapProvider:
 pub struct NpmProcessStateOptions {
   pub node_modules_dir: Option<Cow<'static, str>>,
   pub is_byonm: bool,
+  pub linker_mode: Option<NodeModulesLinkerMode>,
 }
 
 #[derive(Debug, Default)]
@@ -208,6 +210,7 @@ pub struct WorkspaceFactoryOptions {
   pub lockfile_skip_write: bool,
   pub maybe_custom_deno_dir_root: Option<PathBuf>,
   pub node_modules_dir: Option<NodeModulesDirMode>,
+  pub node_modules_linker: Option<NodeModulesLinkerMode>,
   pub no_lock: bool,
   pub no_npm: bool,
   /// The process state if using ext/node and the current process was "forked".
@@ -247,6 +250,7 @@ pub struct WorkspaceFactory<TSys: WorkspaceFactorySys> {
   npm_cache_dir: Deferred<NpmCacheDirRc>,
   npmrc: Deferred<(ResolvedNpmRcRc, Option<PathBuf>)>,
   node_modules_dir_mode: Deferred<NodeModulesDirMode>,
+  node_modules_linker_mode: Deferred<NodeModulesLinkerMode>,
   workspace_directory: Deferred<WorkspaceDirectoryRc>,
   workspace_external_import_map_loader:
     Deferred<WorkspaceExternalImportMapLoaderRc<TSys>>,
@@ -273,6 +277,7 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
       npm_cache_dir: Default::default(),
       npmrc: Default::default(),
       node_modules_dir_mode: Default::default(),
+      node_modules_linker_mode: Default::default(),
       workspace_directory: Default::default(),
       workspace_external_import_map_loader: Default::default(),
       workspace_npm_link_packages: Default::default(),
@@ -385,6 +390,29 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
         } else {
           Ok(mode)
         }
+      })
+      .copied()
+  }
+
+  pub fn node_modules_linker_mode(
+    &self,
+  ) -> Result<NodeModulesLinkerMode, anyhow::Error> {
+    self
+      .node_modules_linker_mode
+      .get_or_try_init(|| {
+        if let Some(process_state) = &self.options.npm_process_state {
+          if let Some(mode) = process_state.linker_mode {
+            return Ok(mode);
+          }
+        }
+        if let Some(flag) = self.options.node_modules_linker {
+          return Ok(flag);
+        }
+        let workspace = &self.workspace_directory()?.workspace;
+        if let Some(mode) = workspace.node_modules_linker()? {
+          return Ok(mode);
+        }
+        Ok(NodeModulesLinkerMode::default())
       })
       .copied()
   }
@@ -1082,6 +1110,7 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
             .map(|p| p.to_path_buf()),
           npm_system_info: self.options.npm_system_info.clone(),
           npmrc: self.workspace_factory.npmrc()?.clone(),
+          linker_mode: self.workspace_factory.node_modules_linker_mode()?,
         })
       }))
     })

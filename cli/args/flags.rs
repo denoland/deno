@@ -36,6 +36,7 @@ use deno_bundle_runtime::PackageHandling;
 use deno_bundle_runtime::SourceMapType;
 use deno_config::deno_json::NewestDependencyDate;
 use deno_config::deno_json::NodeModulesDirMode;
+use deno_config::deno_json::NodeModulesLinkerMode;
 use deno_config::glob::FilePatterns;
 use deno_config::glob::PathOrPatternSet;
 use deno_core::anyhow::Context;
@@ -882,6 +883,7 @@ pub struct Flags {
   pub type_check_mode: TypeCheckMode,
   pub config_flag: ConfigFlag,
   pub node_modules_dir: Option<NodeModulesDirMode>,
+  pub node_modules_linker: Option<NodeModulesLinkerMode>,
   pub vendor: Option<bool>,
   pub enable_testing_features: bool,
   pub ext: Option<String>,
@@ -3464,6 +3466,7 @@ The following information is shown:
       .arg(config_arg())
       .arg(import_map_arg())
       .arg(node_modules_dir_arg())
+      .arg(node_modules_linker_arg())
       .arg(vendor_arg())
       .arg(
         Arg::new("json")
@@ -4254,6 +4257,7 @@ Evaluate a task from string:
           ).action(ArgAction::SetTrue)
       )
       .arg(node_modules_dir_arg())
+      .arg(node_modules_linker_arg())
       .arg(tunnel_arg())
   })
 }
@@ -4663,6 +4667,7 @@ fn compile_args_without_check_args(app: Command) -> Command {
     .arg(no_remote_arg())
     .arg(no_npm_arg())
     .arg(node_modules_dir_arg())
+    .arg(node_modules_linker_arg())
     .arg(vendor_arg())
     .arg(node_conditions_arg())
     .arg(config_arg())
@@ -5816,6 +5821,41 @@ fn node_modules_dir_arg() -> Arg {
     .value_name("MODE")
     .require_equals(true)
     .help("Sets the node modules management mode for npm packages")
+    .help_heading(DEPENDENCY_MANAGEMENT_HEADING)
+}
+
+fn node_modules_linker_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  let value =
+    matches.remove_one::<NodeModulesLinkerMode>("node-modules-linker");
+  if let Some(mode) = value {
+    flags.node_modules_linker = Some(mode);
+  }
+}
+
+fn node_modules_linker_arg() -> Arg {
+  fn parse_node_modules_linker_mode(
+    s: &str,
+  ) -> Result<NodeModulesLinkerMode, String> {
+    match s {
+      "isolated" => Ok(NodeModulesLinkerMode::Isolated),
+      "hoisted" => Ok(NodeModulesLinkerMode::Hoisted),
+      _ => Err(format!(
+        "Invalid value '{}': expected \"isolated\" or \"hoisted\"",
+        s
+      )),
+    }
+  }
+
+  Arg::new("node-modules-linker")
+    .long("node-modules-linker")
+    .alias("linker")
+    .num_args(1)
+    .value_parser(clap::builder::ValueParser::new(
+      parse_node_modules_linker_mode,
+    ))
+    .value_name("MODE")
+    .require_equals(true)
+    .help("Sets the linker mode for npm packages (isolated or hoisted)")
     .help_heading(DEPENDENCY_MANAGEMENT_HEADING)
 }
 
@@ -7121,6 +7161,7 @@ fn task_parse(
 
   unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionAndRuntime);
   node_modules_arg_parse(flags, matches);
+  node_modules_linker_arg_parse(flags, matches);
   lock_args_parse(flags, matches);
 
   let mut recursive = matches.get_flag("recursive");
@@ -7906,6 +7947,7 @@ fn node_modules_and_vendor_dir_arg_parse(
   matches: &mut ArgMatches,
 ) {
   node_modules_arg_parse(flags, matches);
+  node_modules_linker_arg_parse(flags, matches);
   flags.vendor = matches.remove_one::<bool>("vendor");
 }
 
