@@ -224,8 +224,10 @@ pub async fn eval_command(
   eval_flags: EvalFlags,
 ) -> Result<i32, AnyError> {
   // Auto-detect CJS vs ESM if --ext was not explicitly provided.
-  // Uses deno_ast to parse the code and check for import/export declarations.
-  // If the code is a script (no imports/exports), treat as CJS; otherwise ESM.
+  // Default is ESM (preserving existing behavior). Only switch to CJS if
+  // the code contains CJS-specific patterns like require() calls.
+  // We check for import/export declarations first — if present, it's
+  // definitely ESM. If absent, we look for CJS patterns to decide.
   let flags = if flags.ext.is_none() {
     let source_code = if eval_flags.print {
       format!("console.log({})", &eval_flags.code)
@@ -235,7 +237,7 @@ pub async fn eval_command(
     let specifier = deno_core::url::Url::parse("file:///eval.js").unwrap();
     let is_script = deno_ast::parse_program(deno_ast::ParseParams {
       specifier,
-      text: source_code.into(),
+      text: source_code.clone().into(),
       media_type: deno_ast::MediaType::JavaScript,
       capture_tokens: false,
       scope_analysis: false,
@@ -243,9 +245,22 @@ pub async fn eval_command(
     })
     .map(|parsed| parsed.compute_is_script())
     .unwrap_or(true);
-    let mut flags = (*flags).clone();
-    flags.ext = Some(if is_script { "cjs" } else { "mjs" }.to_string());
-    Arc::new(flags)
+    // Only treat as CJS if it parses as a script AND contains CJS patterns.
+    // This preserves backward compatibility: code without imports/exports
+    // defaults to ESM (the longstanding deno eval behavior).
+    let has_cjs_patterns = is_script
+      && (source_code.contains("require(")
+        || source_code.contains("module.exports")
+        || source_code.contains("exports.")
+        || source_code.contains("__dirname")
+        || source_code.contains("__filename"));
+    if has_cjs_patterns {
+      let mut flags = (*flags).clone();
+      flags.ext = Some("cjs".to_string());
+      Arc::new(flags)
+    } else {
+      flags
+    }
   } else {
     flags
   };
