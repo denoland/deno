@@ -9,6 +9,7 @@ import {
   op_host_recv_ctrl,
   op_host_recv_message,
   op_host_terminate_worker,
+  op_mark_as_untransferable,
   op_message_port_recv_message_sync,
   op_worker_get_resource_limits,
   op_worker_threads_filename,
@@ -999,8 +1000,10 @@ export function setEnvironmentData(key: unknown, value?: unknown) {
 }
 
 export const SHARE_ENV = SymbolFor("nodejs.worker_threads.SHARE_ENV");
-export function markAsUntransferable() {
-  notImplemented("markAsUntransferable");
+export function markAsUntransferable(obj: object) {
+  if (core.isArrayBuffer(obj)) {
+    op_mark_as_untransferable(obj as ArrayBuffer);
+  }
 }
 export function moveMessagePortToContext() {
   notImplemented("moveMessagePortToContext");

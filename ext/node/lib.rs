@@ -184,6 +184,7 @@ deno_core::extension!(deno_node,
     ops::blocklist::op_blocklist_add_subnet,
     ops::blocklist::op_blocklist_check,
 
+    ops::buffer::op_mark_as_untransferable,
     ops::buffer::op_is_ascii,
     ops::buffer::op_is_utf8,
     ops::buffer::op_transcode,
