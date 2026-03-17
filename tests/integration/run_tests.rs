@@ -3513,3 +3513,38 @@ fn process_stdout_destroy_undestroy_pty() {
       console.expect("after");
     });
 }
+
+// Regression test for https://github.com/denoland/deno/issues/32782
+// Verifies that consecutive readline prompts work (e.g. @inquirer/prompts).
+#[test]
+fn readline_multi_prompt_pty() {
+  TestContext::default()
+    .new_command()
+    .args_vec(["run", "run/readline_multi_prompt.ts"])
+    .with_pty(|mut console| {
+      console.expect("Q1?");
+      console.write_line("hello");
+      console.expect("A1: hello");
+      console.expect("Q2?");
+      console.write_line("world");
+      console.expect("A2: world");
+    });
+}
+
+// Regression test for https://github.com/denoland/deno/issues/32782
+// Verifies that consecutive readline prompts work when output is a
+// PassThrough/MuteStream piped to process.stdout (like @inquirer/prompts).
+#[test]
+fn readline_muted_multi_prompt_pty() {
+  TestContext::default()
+    .new_command()
+    .args_vec(["run", "run/readline_muted_multi_prompt.ts"])
+    .with_pty(|mut console| {
+      console.expect("Q1?");
+      console.write_line("hello");
+      console.expect("A1: hello");
+      console.expect("Q2?");
+      console.write_line("world");
+      console.expect("A2: world");
+    });
+}
