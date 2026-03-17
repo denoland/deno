@@ -2749,7 +2749,15 @@ impl<'i, 't> Iterator for TransformListParser<'i, 't> {
     let input = &mut self.parser;
     if input.is_exhausted() {
       self.finished = true;
-      return None;
+      if self.has_function {
+        return None;
+      } else {
+        let token = match input.next_including_whitespace_and_comments() {
+          Ok(token) => token.clone(),
+          Err(e) => return Some(Err(e.into())),
+        };
+        return Some(Err(input.new_unexpected_token_error(token)));
+      }
     }
 
     if !self.has_function {
