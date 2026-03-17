@@ -861,7 +861,7 @@ impl LibMainWorker {
     // Module loading/TypeScript compilation creates heavy allocation churn
     // that glibc's allocator doesn't release back to the OS, causing RSS on
     // Linux to be much higher than on other platforms (see #25722).
-    #[cfg(target_os = "linux")]
+   #[cfg(all(target_os = "linux", target_env = "gnu"))]
     {
       // SAFETY: calling libc malloc_trim which is safe to call at any time.
       unsafe {
