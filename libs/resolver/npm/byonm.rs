@@ -63,7 +63,7 @@ pub trait ByonmNpmResolverSys:
 {
 }
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type ByonmNpmResolverRc<TSys> =
   deno_maybe_sync::MaybeArc<ByonmNpmResolver<TSys>>;
 

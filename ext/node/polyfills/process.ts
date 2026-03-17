@@ -484,6 +484,31 @@ function Process(this: any) {
 }
 Process.prototype = Object.create(EventEmitter.prototype);
 
+// Look up the actual registered listener for a signal event. When `once()` is
+// used, EventEmitter wraps the listener in a function with a `.listener`
+// property. We need the wrapper to pass to `Deno.removeSignalListener`.
+function _findSignalListener(
+  // deno-lint-ignore no-explicit-any
+  target: any,
+  event: string,
+  // deno-lint-ignore no-explicit-any
+  listener: (...args: any[]) => void,
+  // deno-lint-ignore no-explicit-any
+): ((...args: any[]) => void) | undefined {
+  const events = target._events;
+  if (events === undefined) return undefined;
+  const list = events[event];
+  if (list === undefined) return undefined;
+  if (typeof list === "function") {
+    if (list !== listener && list.listener === listener) return list;
+    return undefined;
+  }
+  for (let i = list.length - 1; i >= 0; i--) {
+    if (list[i] !== listener && list[i].listener === listener) return list[i];
+  }
+  return undefined;
+}
+
 /** https://nodejs.org/api/process.html#process_process_events */
 Process.prototype.on = function (
   // deno-lint-ignore no-explicit-any
@@ -529,8 +554,16 @@ Process.prototype.off = function (
     ) {
       // Ignores all signals except SIGBREAK, SIGINT, and SIGWINCH on windows.
     } else {
+      // Find the actual registered listener before EventEmitter removes it.
+      // When using `once()`, EventEmitter wraps the original listener in a
+      // wrapper with a `.listener` property pointing to the original. We need
+      // to pass the wrapper (not the original) to Deno.removeSignalListener.
+      const registered = _findSignalListener(this, event, listener);
       EventEmitter.prototype.off.call(this, event, listener);
-      Deno.removeSignalListener(event as Deno.Signal, listener);
+      Deno.removeSignalListener(
+        event as Deno.Signal,
+        registered ?? listener,
+      );
     }
   } else {
     EventEmitter.prototype.off.call(this, event, listener);
@@ -588,6 +621,49 @@ Process.prototype.removeListener = function (
 ) {
   return this.off(event, listener);
 };
+
+Process.prototype.removeAllListeners = function (
+  // deno-lint-ignore no-explicit-any
+  event?: string | any,
+) {
+  if (arguments.length === 0) {
+    // Remove all listeners for all events - find all signal events and
+    // unregister their Deno signal listeners before clearing.
+    const events = this._events;
+    if (events !== undefined) {
+      for (const key of Object.keys(events)) {
+        if (typeof key === "string" && key.startsWith("SIG")) {
+          _removeAllSignalListeners(this, key);
+        }
+      }
+    }
+    return EventEmitter.prototype.removeAllListeners.call(this);
+  }
+  if (typeof event === "string" && event.startsWith("SIG")) {
+    _removeAllSignalListeners(this, event);
+  }
+  return EventEmitter.prototype.removeAllListeners.call(this, event);
+};
+
+function _removeAllSignalListeners(
+  // deno-lint-ignore no-explicit-any
+  target: any,
+  event: string,
+) {
+  const events = target._events;
+  if (events === undefined) return;
+  const list = events[event];
+  if (list === undefined) return;
+  if (typeof list === "function") {
+    const actual = list.listener ?? list;
+    Deno.removeSignalListener(event as Deno.Signal, actual);
+  } else {
+    for (let i = 0; i < list.length; i++) {
+      const actual = list[i].listener ?? list[i];
+      Deno.removeSignalListener(event as Deno.Signal, actual);
+    }
+  }
+}
 
 /** https://nodejs.org/api/process.html#process_process */
 // @ts-ignore TS doesn't work well with ES5 classes

@@ -14,7 +14,6 @@ pub const PRIVATE_NPM_REGISTRY_MTLS_PORT: u16 = 4265;
 pub const SOCKET_DEV_API_PORT: u16 = 4268;
 pub const PUBLIC_NPM_JSR_REGISTRY_PORT: u16 = 4269;
 
-#[allow(unused)]
 pub mod tsgo {
   include!(concat!(
     env!("CARGO_MANIFEST_DIR"),

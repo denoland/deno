@@ -644,7 +644,7 @@ struct TsGoServerInner {
   stdin: Arc<Mutex<std::process::ChildStdin>>,
   pending_requests: Arc<PendingRequests>,
   next_request_id: AtomicI64,
-  #[allow(dead_code)]
+  #[allow(dead_code, reason = "TODO: investigate")]
   child: Mutex<Child>,
   runtime_handle: tokio::runtime::Handle,
 }
