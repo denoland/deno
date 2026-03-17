@@ -289,7 +289,6 @@ const IGNORED_TEST_DIRS: &[&str] = &[
   "tick-processor",
   "tools",
   "v8-updates",
-  "wasi",
   "wpt",
 ];
 

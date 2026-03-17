@@ -2397,6 +2397,11 @@ export class ERR_WASI_ALREADY_STARTED extends NodeError {
     super("ERR_WASI_ALREADY_STARTED", `WASI instance has already started`);
   }
 }
+export class ERR_WASI_NOT_STARTED extends NodeError {
+  constructor() {
+    super("ERR_WASI_NOT_STARTED", `wasi.start() has not been called`);
+  }
+}
 export class ERR_WORKER_INVALID_EXEC_ARGV extends NodeError {
   constructor(errors: string[], msg = "invalid execArgv flags") {
     super(
@@ -3310,6 +3315,7 @@ export default {
   ERR_VM_MODULE_NOT_MODULE,
   ERR_VM_MODULE_STATUS,
   ERR_WASI_ALREADY_STARTED,
+  ERR_WASI_NOT_STARTED,
   ERR_WORKER_INIT_FAILED,
   ERR_WORKER_INVALID_EXEC_ARGV,
   ERR_WORKER_NOT_RUNNING,
