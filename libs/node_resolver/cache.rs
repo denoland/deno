@@ -88,7 +88,7 @@ impl NodeResolutionCache for NodeResolutionThreadLocalCache {
   }
 }
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type NodeResolutionCacheRc =
   deno_maybe_sync::MaybeArc<dyn NodeResolutionCache>;
 

@@ -131,10 +131,10 @@ type Request = (
 #[derive(Debug, Clone, Copy, Serialize_repr)]
 #[repr(u8)]
 pub enum IndentStyle {
-  #[allow(dead_code)]
+  #[allow(dead_code, reason = "unsupported")]
   None = 0,
   Block = 1,
-  #[allow(dead_code)]
+  #[allow(dead_code, reason = "unsupported")]
   Smart = 2,
 }
 
@@ -226,7 +226,7 @@ pub enum SemicolonPreference {
 }
 
 // Allow due to false positive https://github.com/rust-lang/rust-clippy/issues/13170
-#[allow(clippy::needless_borrows_for_generic_args)]
+#[allow(clippy::needless_borrows_for_generic_args, reason = "clippy bug")]
 fn normalize_diagnostic(
   diagnostic: &mut crate::tsc::Diagnostic,
   specifier_map: &TscSpecifierMap,
@@ -730,7 +730,7 @@ impl TsJsServer {
       .await
   }
 
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub async fn get_code_fixes(
     &self,
@@ -776,7 +776,7 @@ impl TsJsServer {
       })
   }
 
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub async fn get_applicable_refactors(
     &self,
@@ -817,7 +817,7 @@ impl TsJsServer {
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
   pub async fn get_combined_code_fix(
     &self,
     snapshot: Arc<StateSnapshot>,
@@ -860,7 +860,7 @@ impl TsJsServer {
       })
   }
 
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub async fn get_edits_for_refactor(
     &self,
@@ -906,7 +906,7 @@ impl TsJsServer {
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
   pub async fn get_edits_for_file_rename(
     &self,
     snapshot: Arc<StateSnapshot>,
@@ -957,7 +957,7 @@ impl TsJsServer {
       })
   }
 
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub async fn get_document_highlights(
     &self,
@@ -1053,7 +1053,7 @@ impl TsJsServer {
       })
   }
 
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub async fn get_completions(
     &self,
@@ -1103,7 +1103,7 @@ impl TsJsServer {
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
   pub async fn get_completion_details(
     &self,
     snapshot: Arc<StateSnapshot>,
@@ -1315,7 +1315,7 @@ impl TsJsServer {
       })
   }
 
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub async fn find_rename_locations(
     &self,
@@ -1413,7 +1413,7 @@ impl TsJsServer {
       .await
   }
 
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub async fn get_signature_help_items(
     &self,
@@ -1442,7 +1442,7 @@ impl TsJsServer {
       .await
   }
 
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub async fn get_navigate_to_items(
     &self,
@@ -1476,7 +1476,7 @@ impl TsJsServer {
       })
   }
 
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub async fn provide_inlay_hints(
     &self,
@@ -2262,20 +2262,6 @@ impl DocumentSpan {
   }
 }
 
-// TODO(bartlomieju): in Rust 1.90 some structs started getting flagged as not used
-#[allow(dead_code)]
-#[derive(Debug, Clone, Deserialize)]
-pub enum MatchKind {
-  #[serde(rename = "exact")]
-  Exact,
-  #[serde(rename = "prefix")]
-  Prefix,
-  #[serde(rename = "substring")]
-  Substring,
-  #[serde(rename = "camelCase")]
-  CamelCase,
-}
-
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NavigateToItem {
@@ -2328,7 +2314,7 @@ impl NavigateToItem {
     // The field `deprecated` is deprecated but SymbolInformation does not have
     // a default, therefore we have to supply the deprecated deprecated
     // field. It is like a bad version of Inception.
-    #[allow(deprecated)]
+    #[allow(deprecated, reason = "see comment")]
     Some(lsp::SymbolInformation {
       name: self.name.clone(),
       kind: self.kind.clone().into(),
@@ -2551,7 +2537,7 @@ impl NavigationTree {
         // The field `deprecated` is deprecated but DocumentSymbol does not have
         // a default, therefore we have to supply the deprecated deprecated
         // field. It is like a bad version of Inception.
-        #[allow(deprecated)]
+        #[allow(deprecated, reason = "see comment")]
         document_symbols.push(lsp::DocumentSymbol {
           name,
           kind: self.kind.clone().into(),
@@ -4117,7 +4103,7 @@ impl CompletionEntry {
     self.insert_text.clone()
   }
 
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
   fn as_completion_item(
     &self,
     line_index: &LineIndex,
@@ -4805,7 +4791,7 @@ fn op_release(
 }
 
 #[op2]
-#[allow(clippy::type_complexity)]
+#[allow(clippy::type_complexity, reason = "op")]
 fn op_resolve(
   state: &mut OpState,
   #[string] base: &str,
@@ -4920,7 +4906,7 @@ async fn op_poll_requests(
 }
 
 #[inline]
-#[allow(clippy::type_complexity)]
+#[allow(clippy::type_complexity, reason = "op")]
 fn op_resolve_inner(
   state: &mut OpState,
   args: ResolveArgs,
@@ -4981,7 +4967,9 @@ fn op_respond(
   }
 }
 
-struct TracingSpan(#[allow(dead_code)] Option<super::trace::EnteredSpan>);
+struct TracingSpan(
+  #[allow(dead_code, reason = "unsupported")] Option<super::trace::EnteredSpan>,
+);
 
 deno_core::external!(TracingSpan, "lsp::TracingSpan");
 
@@ -5478,7 +5466,7 @@ pub type ImportModuleSpecifierPreference = config::ImportModuleSpecifier;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "kebab-case")]
-#[allow(dead_code)]
+#[allow(dead_code, reason = "unsupported")]
 pub enum ImportModuleSpecifierEnding {
   Auto,
   Minimal,
@@ -5488,7 +5476,7 @@ pub enum ImportModuleSpecifierEnding {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "kebab-case")]
-#[allow(dead_code)]
+#[allow(dead_code, reason = "unsupported")]
 pub enum IncludeInlayParameterNameHints {
   None,
   Literals,
@@ -5509,7 +5497,7 @@ impl From<&config::InlayHintsParamNamesEnabled>
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "kebab-case")]
-#[allow(dead_code)]
+#[allow(dead_code, reason = "unsupported")]
 pub enum IncludePackageJsonAutoImports {
   Auto,
   On,
@@ -5788,9 +5776,9 @@ pub struct CombinedCodeFixScope {
 #[derive(Debug, Serialize, Clone)]
 pub enum OrganizeImportsMode {
   All,
-  #[allow(unused)]
+  #[allow(unused, reason = "unsupported")]
   SortAndCombine,
-  #[allow(unused)]
+  #[allow(unused, reason = "unsupported")]
   RemoveUnused,
 }
 
@@ -5804,7 +5792,7 @@ pub struct OrganizeImportsArgs {
 }
 
 #[derive(Serialize, Clone, Copy)]
-#[allow(dead_code)]
+#[allow(dead_code, reason = "currently unused")]
 pub struct JsNull;
 
 #[derive(Debug, Clone, Serialize)]
@@ -5881,7 +5869,7 @@ enum TscRequest {
     )>,
   ),
   // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6205
-  #[allow(clippy::type_complexity)]
+  #[allow(clippy::type_complexity, reason = "TODO: cleanup")]
   GetCompletionEntryDetails(
     Box<(
       String,

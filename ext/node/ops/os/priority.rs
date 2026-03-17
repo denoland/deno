@@ -117,9 +117,8 @@ mod impl_ {
       if handle == NULL {
         Err(std::io::Error::last_os_error().into())
       } else {
-        #[allow(clippy::manual_range_contains)]
         let priority_class =
-          if priority < PRIORITY_HIGHEST || priority > PRIORITY_LOW {
+          if !(PRIORITY_HIGHEST..=PRIORITY_LOW).contains(&priority) {
             return Err(super::PriorityError::InvalidPriority);
           } else if priority < PRIORITY_HIGH {
             REALTIME_PRIORITY_CLASS

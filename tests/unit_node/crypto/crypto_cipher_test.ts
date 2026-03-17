@@ -49,12 +49,12 @@ Deno.test({
 });
 
 Deno.test({
-  name: "rsa private encrypt and private decrypt",
+  name: "rsa private encrypt and public decrypt",
   fn() {
     const encrypted = crypto.privateEncrypt(rsaPrivateKey, input);
     assert(Buffer.isBuffer(encrypted));
-    const decrypted = crypto.privateDecrypt(
-      rsaPrivateKey,
+    const decrypted = crypto.publicDecrypt(
+      rsaPublicKey,
       Buffer.from(encrypted),
     );
     assert(Buffer.isBuffer(decrypted));

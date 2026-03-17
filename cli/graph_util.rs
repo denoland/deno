@@ -600,7 +600,6 @@ impl ModuleGraphCreator {
     self.module_graph_builder.graph_valid(graph)
   }
 
-  #[allow(clippy::result_large_err)]
   fn type_check_graph(
     &self,
     graph: ModuleGraph,
@@ -683,7 +682,7 @@ pub struct ModuleGraphBuilder {
 }
 
 impl ModuleGraphBuilder {
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "construction")]
   pub fn new(
     caches: Arc<cache::Caches>,
     cjs_tracker: Arc<CliCjsTracker>,
@@ -759,7 +758,7 @@ impl ModuleGraphBuilder {
     request: BuildGraphRequest,
     options: BuildGraphWithNpmOptions<'_>,
   ) -> Result<(), BuildGraphWithNpmResolutionError> {
-    #[allow(clippy::large_enum_variant)]
+    #[allow(clippy::large_enum_variant, reason = "not important")]
     enum LoaderRef<'a> {
       Borrowed(&'a dyn Loader),
       Owned(CliDenoGraphLoader),
