@@ -23,7 +23,6 @@ import {
   ERR_TLS_CERT_ALTNAME_INVALID,
   ERR_TLS_REQUIRED_SERVER_NAME,
 } from "ext:deno_node/internal/errors.ts";
-import { emitWarning } from "node:process";
 import { debuglog } from "ext:deno_node/internal/util/debuglog.ts";
 import {
   constants as TCPConstants,
@@ -34,7 +33,6 @@ import {
   constants as PipeConstants,
   Pipe,
 } from "ext:deno_node/internal_binding/pipe_wrap.ts";
-import { EventEmitter } from "node:events";
 import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
 import { nextTick } from "ext:deno_node/_next_tick.ts";
 import {
@@ -42,10 +40,7 @@ import {
   validateNumber,
   validateObject,
 } from "ext:deno_node/internal/validators.mjs";
-import {
-  isAnyArrayBuffer,
-  isArrayBufferView,
-} from "ext:deno_node/internal/util/types.ts";
+import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
 import { op_tls_canonicalize_ipv4_address } from "ext:core/ops";
 import tls_wrap from "ext:deno_node/internal_binding/tls_wrap.ts";
 import { ownerSymbol } from "ext:deno_node/internal_binding/symbols.ts";
@@ -171,9 +166,6 @@ function scheduleSyntheticSessionEvents(socket) {
 
 function onhandshakedone() {
   debug("client onhandshakedone");
-  if (process.env.DENO_TLS_DEBUG) {
-    console.error("[tls_wrap.js] onhandshakedone: _owner?", !!this._owner);
-  }
   const owner = this._owner;
   if (owner) owner._finishInit();
 }
@@ -258,17 +250,9 @@ function TLSSocket(socket, opts) {
       wrap = socket;
     } else {
       // TODO: JSStreamSocket support for arbitrary streams
-      wrap = socket;
+      wrap = new JSStreamSocket(socket);
     }
     handle = wrap._handle;
-    if (process.env.DENO_TLS_DEBUG) {
-      console.error(
-        "[tls_wrap.js] TLSSocket ctor: socket._handle=",
-        !!socket._handle,
-        "handle=",
-        !!handle,
-      );
-    }
   } else {
     wrap = null;
   }
@@ -486,12 +470,6 @@ TLSSocket.prototype._init = function (socket, wrap) {
     ssl.onhandshakestart = noop;
     ssl.onhandshakedone = function () {
       debug("server onhandshakedone");
-      if (process.env.DENO_TLS_DEBUG) {
-        console.error(
-          "[tls_wrap.js] server onhandshakedone: _owner?",
-          !!this._owner,
-        );
-      }
       const owner = this._owner;
       if (!owner) return;
       if (owner._newSessionPending) {
@@ -549,7 +527,7 @@ TLSSocket.prototype._init = function (socket, wrap) {
   }
 };
 
-TLSSocket.prototype.renegotiate = function (options, callback) {
+TLSSocket.prototype.renegotiate = function (_options, callback) {
   // Renegotiation not supported by rustls
   if (callback) {
     nextTick(callback, new Error("Renegotiation not supported"));
@@ -585,9 +563,6 @@ TLSSocket.prototype._releaseControl = function () {
 };
 
 TLSSocket.prototype._finishInit = function () {
-  if (process.env.DENO_TLS_DEBUG) {
-    console.error("[tls_wrap.js] _finishInit called, handle?", !!this._handle);
-  }
   if (!this._handle) return;
 
   try {
@@ -597,13 +572,8 @@ TLSSocket.prototype._finishInit = function () {
     if (this.servername === null) {
       this.servername = this._handle.getServername?.() ?? null;
     }
-  } catch (e) {
-    if (process.env.DENO_TLS_DEBUG) {
-      console.error(
-        "[tls_wrap.js] _finishInit error in getAlpn/getServername:",
-        e,
-      );
-    }
+  } catch (_e) {
+    // getAlpnNegotiatedProtocol/getServername may not be available
   }
 
   debug(
@@ -633,13 +603,6 @@ TLSSocket.prototype._start = function () {
     "connecting?",
     this.connecting,
   );
-  if (process.env.DENO_TLS_DEBUG) {
-    console.error(
-      "[tls_wrap.js] _start called, isServer=" + !!this._tlsOptions?.isServer +
-        ", connecting=" + this.connecting + ", started=" +
-        !!this._handle?.started,
-    );
-  }
   if (this.connecting) {
     this.once("connect", this._start);
     return;
@@ -772,9 +735,6 @@ function makeVerifyError(code) {
 }
 
 function onServerSocketSecure() {
-  if (process.env.DENO_TLS_DEBUG) {
-    console.error("[tls_wrap.js] onServerSocketSecure called");
-  }
   if (this._requestCert) {
     const verifyError = makeVerifyError(this._handle.verifyError());
     if (verifyError) {
@@ -791,20 +751,9 @@ function onServerSocketSecure() {
     this.authorized = true;
   }
 
-  if (process.env.DENO_TLS_DEBUG) {
-    console.error(
-      "[tls_wrap.js] onServerSocketSecure: destroyed?",
-      this.destroyed,
-      "_controlReleased?",
-      this._controlReleased,
-    );
-  }
   if (!this.destroyed && this._releaseControl()) {
     debug("server emit secureConnection");
     this.secureConnecting = false;
-    if (process.env.DENO_TLS_DEBUG) {
-      console.error("[tls_wrap.js] emitting secureConnection");
-    }
     this._tlsOptions.server.emit("secureConnection", this);
   }
 }
@@ -954,9 +903,6 @@ function onConnectEnd() {
 }
 
 function onConnectSecure() {
-  if (process.env.DENO_TLS_DEBUG) {
-    console.error("[tls_wrap.js] onConnectSecure called");
-  }
   const options = this[kConnectOptions];
 
   let verifyError = makeVerifyError(this._handle.verifyError());
@@ -997,14 +943,6 @@ function onConnectSecure() {
   }
 
   this.secureConnecting = false;
-  if (process.env.DENO_TLS_DEBUG) {
-    console.error(
-      "[tls_wrap.js] emitting secureConnect, authorized:",
-      this.authorized,
-      "authError:",
-      this.authorizationError,
-    );
-  }
   this.emit("secureConnect");
 
   scheduleSyntheticSessionEvents(this);

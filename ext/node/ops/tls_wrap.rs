@@ -803,10 +803,10 @@ impl TLSWrapInner {
       // Call onerror
       let key =
         v8::String::new_external_onebyte_static(scope, b"onerror").unwrap();
-      if let Some(val) = this.get(scope, key.into()) {
-        if let Ok(func) = v8::Local::<v8::Function>::try_from(val) {
-          func.call(scope, this.into(), &[error]);
-        }
+      if let Some(val) = this.get(scope, key.into())
+        && let Ok(func) = v8::Local::<v8::Function>::try_from(val)
+      {
+        func.call(scope, this.into(), &[error]);
       }
     }
   }
@@ -844,10 +844,10 @@ impl TLSWrapInner {
       let key =
         v8::String::new_external_onebyte_static(scope, b"onhandshakedone")
           .unwrap();
-      if let Some(val) = this.get(scope, key.into()) {
-        if let Ok(func) = v8::Local::<v8::Function>::try_from(val) {
-          func.call(scope, this.into(), &[]);
-        }
+      if let Some(val) = this.get(scope, key.into())
+        && let Ok(func) = v8::Local::<v8::Function>::try_from(val)
+      {
+        func.call(scope, this.into(), &[]);
       }
     }
   }
@@ -894,16 +894,16 @@ impl TLSWrapInner {
       let handle = v8::Local::new(scope, js_handle);
       let oncomplete_str =
         v8::String::new_external_onebyte_static(scope, b"oncomplete").unwrap();
-      if let Some(oncomplete) = req_obj.get(scope, oncomplete_str.into()) {
-        if let Ok(func) = v8::Local::<v8::Function>::try_from(oncomplete) {
-          let status_val = v8::Integer::new(scope, status);
-          let undef = v8::undefined(scope);
-          func.call(
-            scope,
-            req_obj.into(),
-            &[status_val.into(), handle.into(), undef.into()],
-          );
-        }
+      if let Some(oncomplete) = req_obj.get(scope, oncomplete_str.into())
+        && let Ok(func) = v8::Local::<v8::Function>::try_from(oncomplete)
+      {
+        let status_val = v8::Integer::new(scope, status);
+        let undef = v8::undefined(scope);
+        func.call(
+          scope,
+          req_obj.into(),
+          &[status_val.into(), handle.into(), undef.into()],
+        );
       }
     }
   }
@@ -1353,13 +1353,13 @@ impl TLSWrap {
 
     // Now install our callback data on the stream (deferred from attach()
     // because connect_cb needs the original StreamHandleData pointer)
-    if !inner.underlying_stream.is_null() {
-      if let Some(ref cb_data) = inner.cb_data {
-        let cb_data_ptr =
-          &**cb_data as *const TlsCallbackData as *mut std::ffi::c_void;
-        unsafe {
-          (*inner.underlying_stream).data = cb_data_ptr;
-        }
+    if !inner.underlying_stream.is_null()
+      && let Some(ref cb_data) = inner.cb_data
+    {
+      let cb_data_ptr =
+        &**cb_data as *const TlsCallbackData as *mut std::ffi::c_void;
+      unsafe {
+        (*inner.underlying_stream).data = cb_data_ptr;
       }
     }
 
@@ -1501,7 +1501,7 @@ impl TLSWrap {
         } else if let Ok(s) = TryInto::<v8::Local<v8::String>>::try_into(chunk)
         {
           let encoding_idx = i * 2 + 1;
-          let _ = chunks.get_index(scope, encoding_idx as u32);
+          let _ = chunks.get_index(scope, encoding_idx);
           let len = s.utf8_length(scope);
           let mut buf = Vec::with_capacity(len);
           let written = s.write_utf8_uninit_v2(
@@ -1663,11 +1663,11 @@ impl TLSWrap {
     // matching Node's StreamBase shutdown callback.
     let oncomplete_key =
       v8::String::new_external_onebyte_static(scope, b"oncomplete").unwrap();
-    if let Some(val) = req_wrap_obj.get(scope, oncomplete_key.into()) {
-      if let Ok(func) = v8::Local::<v8::Function>::try_from(val) {
-        let status = v8::Integer::new(scope, 0);
-        func.call(scope, req_wrap_obj.into(), &[status.into()]);
-      }
+    if let Some(val) = req_wrap_obj.get(scope, oncomplete_key.into())
+      && let Ok(func) = v8::Local::<v8::Function>::try_from(val)
+    {
+      let status = v8::Integer::new(scope, 0);
+      func.call(scope, req_wrap_obj.into(), &[status.into()]);
     }
 
     0
@@ -1693,14 +1693,13 @@ impl TLSWrap {
     let inner = self.inner.borrow();
     let key =
       v8::String::new_external_onebyte_static(scope, b"alpnProtocol").unwrap();
-    if let Some(ref conn) = inner.tls_conn {
-      if let Some(proto) = conn.alpn_protocol() {
-        if let Ok(s) = std::str::from_utf8(proto) {
-          let val = v8::String::new(scope, s).unwrap();
-          out.set(scope, key.into(), val.into());
-          return 0;
-        }
-      }
+    if let Some(ref conn) = inner.tls_conn
+      && let Some(proto) = conn.alpn_protocol()
+      && let Ok(s) = std::str::from_utf8(proto)
+    {
+      let val = v8::String::new(scope, s).unwrap();
+      out.set(scope, key.into(), val.into());
+      return 0;
     }
     let false_val = v8::Boolean::new(scope, false);
     out.set(scope, key.into(), false_val.into());
@@ -1718,17 +1717,17 @@ impl TLSWrap {
     let inner = self.inner.borrow();
     let key =
       v8::String::new_external_onebyte_static(scope, b"protocol").unwrap();
-    if let Some(ref conn) = inner.tls_conn {
-      if let Some(version) = conn.protocol_version() {
-        let name = match version {
-          rustls::ProtocolVersion::TLSv1_2 => "TLSv1.2",
-          rustls::ProtocolVersion::TLSv1_3 => "TLSv1.3",
-          _ => "unknown",
-        };
-        let val = v8::String::new(scope, name).unwrap();
-        out.set(scope, key.into(), val.into());
-        return 0;
-      }
+    if let Some(ref conn) = inner.tls_conn
+      && let Some(version) = conn.protocol_version()
+    {
+      let name = match version {
+        rustls::ProtocolVersion::TLSv1_2 => "TLSv1.2",
+        rustls::ProtocolVersion::TLSv1_3 => "TLSv1.3",
+        _ => "unknown",
+      };
+      let val = v8::String::new(scope, name).unwrap();
+      out.set(scope, key.into(), val.into());
+      return 0;
     }
     -1
   }
@@ -1742,35 +1741,35 @@ impl TLSWrap {
     scope: &mut v8::PinScope,
   ) -> i32 {
     let inner = self.inner.borrow();
-    if let Some(ref conn) = inner.tls_conn {
-      if let Some(suite) = conn.negotiated_cipher_suite() {
-        let (openssl_name, iana_name) = cipher_suite_to_names(suite.suite());
+    if let Some(ref conn) = inner.tls_conn
+      && let Some(suite) = conn.negotiated_cipher_suite()
+    {
+      let (openssl_name, iana_name) = cipher_suite_to_names(suite.suite());
 
-        let name_key =
-          v8::String::new_external_onebyte_static(scope, b"name").unwrap();
-        let name_str = v8::String::new(scope, openssl_name).unwrap();
-        out.set(scope, name_key.into(), name_str.into());
+      let name_key =
+        v8::String::new_external_onebyte_static(scope, b"name").unwrap();
+      let name_str = v8::String::new(scope, openssl_name).unwrap();
+      out.set(scope, name_key.into(), name_str.into());
 
-        let standard_name_key =
-          v8::String::new_external_onebyte_static(scope, b"standardName")
-            .unwrap();
-        let standard_name_str = v8::String::new(scope, iana_name).unwrap();
-        out.set(scope, standard_name_key.into(), standard_name_str.into());
+      let standard_name_key =
+        v8::String::new_external_onebyte_static(scope, b"standardName")
+          .unwrap();
+      let standard_name_str = v8::String::new(scope, iana_name).unwrap();
+      out.set(scope, standard_name_key.into(), standard_name_str.into());
 
-        if let Some(version) = conn.protocol_version() {
-          let version_key =
-            v8::String::new_external_onebyte_static(scope, b"version").unwrap();
-          let version_str = match version {
-            rustls::ProtocolVersion::TLSv1_2 => "TLSv1.2",
-            rustls::ProtocolVersion::TLSv1_3 => "TLSv1.3",
-            _ => "unknown",
-          };
-          let v = v8::String::new(scope, version_str).unwrap();
-          out.set(scope, version_key.into(), v.into());
-        }
-
-        return 0;
+      if let Some(version) = conn.protocol_version() {
+        let version_key =
+          v8::String::new_external_onebyte_static(scope, b"version").unwrap();
+        let version_str = match version {
+          rustls::ProtocolVersion::TLSv1_2 => "TLSv1.2",
+          rustls::ProtocolVersion::TLSv1_3 => "TLSv1.3",
+          _ => "unknown",
+        };
+        let v = v8::String::new(scope, version_str).unwrap();
+        out.set(scope, version_key.into(), v.into());
       }
+
+      return 0;
     }
     -1
   }
@@ -1865,13 +1864,13 @@ impl TLSWrap {
     if let Ok(arr) = v8::Local::<v8::Array>::try_from(protocols) {
       // Array of strings: ["h2", "http/1.1"]
       for i in 0..arr.length() {
-        if let Some(val) = arr.get_index(scope, i) {
-          if let Ok(s) = v8::Local::<v8::String>::try_from(val) {
-            let len = s.utf8_length(scope);
-            let mut buf = vec![0u8; len];
-            s.write_utf8_v2(scope, &mut buf, v8::WriteFlags::default(), None);
-            alpn.push(buf);
-          }
+        if let Some(val) = arr.get_index(scope, i)
+          && let Ok(s) = v8::Local::<v8::String>::try_from(val)
+        {
+          let len = s.utf8_length(scope);
+          let mut buf = vec![0u8; len];
+          s.write_utf8_v2(scope, &mut buf, v8::WriteFlags::default(), None);
+          alpn.push(buf);
         }
       }
     } else if let Ok(uint8) = v8::Local::<v8::Uint8Array>::try_from(protocols) {
@@ -2198,18 +2197,16 @@ impl rustls::client::danger::ServerCertVerifier for NodeServerCertVerifier {
         // CaUsedAsEndEntity is a rustls/webpki-specific check that
         // OpenSSL does not have.  If the cert is actually in our
         // root store, trust it silently.  Otherwise store an error.
-        if let rustls::CertificateError::Other(other) = cert_error {
-          if format!("{other}").contains("CaUsedAsEndEntity") {
-            let ee_bytes: &[u8] = end_entity.as_ref();
-            let is_trusted =
-              self.root_cert_ders.iter().any(|r| r.as_slice() == ee_bytes);
-            if is_trusted {
-              return Ok(
-                rustls::client::danger::ServerCertVerified::assertion(),
-              );
-            }
-            // Not trusted — fall through to store the error below.
+        if let rustls::CertificateError::Other(other) = cert_error
+          && format!("{other}").contains("CaUsedAsEndEntity")
+        {
+          let ee_bytes: &[u8] = end_entity.as_ref();
+          let is_trusted =
+            self.root_cert_ders.iter().any(|r| r.as_slice() == ee_bytes);
+          if is_trusted {
+            return Ok(rustls::client::danger::ServerCertVerified::assertion());
           }
+          // Not trusted — fall through to store the error below.
         }
         // Store the error for verifyError() and let the handshake
         // proceed.  The JS layer will decide whether to tear down
@@ -2279,16 +2276,17 @@ fn build_client_config(
   if let Some(ca_val) = context.get(scope, ca_key.into()) {
     if let Ok(arr) = v8::Local::<v8::Array>::try_from(ca_val) {
       for i in 0..arr.length() {
-        if let Some(v) = arr.get_index(scope, i) {
-          if let Some(s) = v.to_string(scope) {
-            ca_certs.push(s.to_rust_string_lossy(scope).into_bytes());
-          }
+        if let Some(v) = arr.get_index(scope, i)
+          && let Some(s) = v.to_string(scope)
+        {
+          ca_certs.push(s.to_rust_string_lossy(scope).into_bytes());
         }
       }
-    } else if !ca_val.is_undefined() && !ca_val.is_null() {
-      if let Some(s) = ca_val.to_string(scope) {
-        ca_certs.push(s.to_rust_string_lossy(scope).into_bytes());
-      }
+    } else if !ca_val.is_undefined()
+      && !ca_val.is_null()
+      && let Some(s) = ca_val.to_string(scope)
+    {
+      ca_certs.push(s.to_rust_string_lossy(scope).into_bytes());
     }
   }
 

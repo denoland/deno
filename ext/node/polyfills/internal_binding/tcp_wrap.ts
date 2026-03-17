@@ -27,7 +27,7 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { op_net_connect_tcp, TCP as NativeTCP, TCPWrap } from "ext:core/ops";
+import { op_net_connect_tcp, TCPWrap } from "ext:core/ops";
 import { TcpConn } from "ext:deno_net/01_net.js";
 import { primordials } from "ext:core/mod.js";
 const { Error } = primordials;
@@ -38,14 +38,10 @@ import {
   providerType,
 } from "ext:deno_node/internal_binding/async_wrap.ts";
 import {
-  kArrayBufferOffset,
-  kBytesWritten,
-  kReadBytesOrError,
   kStreamBaseField,
   kUseNativeWrap,
   LibuvStreamWrap,
   ShutdownWrap,
-  streamBaseState,
   WriteWrap,
 } from "ext:deno_node/internal_binding/stream_wrap.ts";
 import { ownerSymbol } from "ext:deno_node/internal_binding/symbols.ts";
@@ -149,17 +145,15 @@ export class TCP extends ConnectionWrap {
 
     // Create native libuv TCP handle
     this.#native = new TCPWrap(type);
-    // this.#native.setOwner();
 
     // Override bytesWritten to read from native handle when using native wrap.
     // Must use defineProperty because the parent class field creates an own
     // property that shadows prototype getters.
     const native = this.#native;
-    const useNative = this;
     let fallback = 0;
     Object.defineProperty(this, "bytesWritten", {
       get() {
-        if (useNative[kUseNativeWrap] && native) {
+        if (this[kUseNativeWrap] && native) {
           return native.getBytesWritten();
         }
         return fallback;

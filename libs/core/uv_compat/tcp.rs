@@ -862,50 +862,44 @@ pub(crate) unsafe fn poll_tcp_handle(
         // we detect a broken connection (peer close / RST) promptly via
         // the readable side, rather than waiting for a TCP retransmit
         // timeout on the write side.
-        if !(*tcp_ptr).internal_reading {
-          match stream.poll_read_ready(cx) {
-            Poll::Ready(Ok(())) => {
-              // Read side is ready -- peek (without consuming) to check
-              // for EOF or errors. Using MSG_PEEK avoids consuming data
-              // that might belong to a higher-level protocol (e.g. TLS).
-              let fd = {
-                use std::os::unix::io::AsRawFd;
-                stream.as_raw_fd()
-              };
-              let mut probe = [0u8; 1];
-              let n = libc::recv(
-                fd,
-                probe.as_mut_ptr() as *mut c_void,
-                1,
-                libc::MSG_PEEK,
-              );
-              if n == 0 {
-                // EOF — the connection is broken.
-                // Drain the entire write queue with EPIPE.
-                while let Some(pw) = (*tcp_ptr).internal_write_queue.pop_front()
-                {
-                  if let Some(cb) = pw.cb {
-                    cb(pw.req, UV_EPIPE);
-                  }
-                }
-              } else if n < 0 {
-                let err = *libc::__error();
-                if err != libc::EAGAIN && err != libc::EWOULDBLOCK {
-                  // Real error — connection is broken.
-                  while let Some(pw) =
-                    (*tcp_ptr).internal_write_queue.pop_front()
-                  {
-                    if let Some(cb) = pw.cb {
-                      cb(pw.req, UV_EPIPE);
-                    }
-                  }
-                }
-                // EAGAIN/EWOULDBLOCK means no data yet, connection alive
+        if !(*tcp_ptr).internal_reading
+          && let Poll::Ready(Ok(())) = stream.poll_read_ready(cx)
+        {
+          // Read side is ready -- peek (without consuming) to check
+          // for EOF or errors. Using MSG_PEEK avoids consuming data
+          // that might belong to a higher-level protocol (e.g. TLS).
+          let fd = {
+            use std::os::unix::io::AsRawFd;
+            stream.as_raw_fd()
+          };
+          let mut probe = [0u8; 1];
+          let n = libc::recv(
+            fd,
+            probe.as_mut_ptr() as *mut c_void,
+            1,
+            libc::MSG_PEEK,
+          );
+          if n == 0 {
+            // EOF — the connection is broken.
+            // Drain the entire write queue with EPIPE.
+            while let Some(pw) = (*tcp_ptr).internal_write_queue.pop_front() {
+              if let Some(cb) = pw.cb {
+                cb(pw.req, UV_EPIPE);
               }
-              // n > 0 means data available, connection alive (data not consumed)
             }
-            _ => {}
+          } else if n < 0 {
+            let err = *libc::__error();
+            if err != libc::EAGAIN && err != libc::EWOULDBLOCK {
+              // Real error — connection is broken.
+              while let Some(pw) = (*tcp_ptr).internal_write_queue.pop_front() {
+                if let Some(cb) = pw.cb {
+                  cb(pw.req, UV_EPIPE);
+                }
+              }
+            }
+            // EAGAIN/EWOULDBLOCK means no data yet, connection alive
           }
+          // n > 0 means data available, connection alive (data not consumed)
         }
       }
 

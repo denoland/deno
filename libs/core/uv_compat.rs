@@ -573,10 +573,10 @@ impl UvLoopInner {
       }
 
       // Cancel pending shutdown with UV_ECANCELED.
-      if let Some(pending) = tty.internal_shutdown.take() {
-        if let Some(cb) = pending.cb {
-          cb(pending.req, UV_ECANCELED);
-        }
+      if let Some(pending) = tty.internal_shutdown.take()
+        && let Some(cb) = pending.cb
+      {
+        cb(pending.req, UV_ECANCELED);
       }
 
       // Drop the reactor (AsyncFd or select fallback) to deregister
@@ -632,10 +632,10 @@ impl UvLoopInner {
       tcp.internal_connection_cb = None;
 
       // Cancel in-flight connect request with UV_ECANCELED, matching libuv.
-      if let Some(pending) = tcp.internal_connect.take() {
-        if let Some(cb) = pending.cb {
-          cb(pending.req, UV_ECANCELED);
-        }
+      if let Some(pending) = tcp.internal_connect.take()
+        && let Some(cb) = pending.cb
+      {
+        cb(pending.req, UV_ECANCELED);
       }
 
       // Cancel in-flight write requests with UV_ECANCELED, matching libuv's
@@ -657,10 +657,10 @@ impl UvLoopInner {
       tcp.internal_backlog.clear();
 
       // Cancel pending shutdown with UV_ECANCELED.
-      if let Some(pending) = tcp.internal_shutdown.take() {
-        if let Some(cb) = pending.cb {
-          cb(pending.req, UV_ECANCELED);
-        }
+      if let Some(pending) = tcp.internal_shutdown.take()
+        && let Some(cb) = pending.cb
+      {
+        cb(pending.req, UV_ECANCELED);
       }
 
       tcp.flags &= !UV_HANDLE_ACTIVE;

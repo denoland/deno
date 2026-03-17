@@ -1,3 +1,5 @@
+// Copyright 2018-2026 the Deno authors. MIT license.
+
 #![allow(non_snake_case)]
 
 use std::ffi::c_void;
@@ -70,6 +72,7 @@ impl TCPWrap {
 
     let tcp = OwnedPtr::from_box(Box::<uv_tcp_t>::new_uninit());
 
+    // SAFETY: libuv call, valid (albeit uninitialized) pointer to uv_tcp_t
     let err = unsafe { uv_tcp_init(loop_, tcp.as_mut_ptr().cast()) };
 
     let provider = if socket_type == SERVER {
@@ -307,32 +310,31 @@ impl TCPWrap {
     let (tcp, err) = TCPWrap::new(-1, socket_type, op_state);
     // Store the JS object reference so libuv callbacks can call back into JS.
     tcp.base.set_js_handle(this, scope);
-    if err != 0 {
-      if let Ok(ctx_obj) = v8::Local::<v8::Object>::try_from(ctx) {
-        let (code_name, message) = uv_error_info(err);
+    if err != 0
+      && let Ok(ctx_obj) = v8::Local::<v8::Object>::try_from(ctx)
+    {
+      let (code_name, message) = uv_error_info(err);
 
-        let code_key =
-          v8::String::new_external_onebyte_static(scope, b"code").unwrap();
-        let code_str = v8::String::new(scope, code_name).unwrap();
-        ctx_obj.set(scope, code_key.into(), code_str.into());
+      let code_key =
+        v8::String::new_external_onebyte_static(scope, b"code").unwrap();
+      let code_str = v8::String::new(scope, code_name).unwrap();
+      ctx_obj.set(scope, code_key.into(), code_str.into());
 
-        let msg_key =
-          v8::String::new_external_onebyte_static(scope, b"message").unwrap();
-        let msg_str = v8::String::new(scope, message).unwrap();
-        ctx_obj.set(scope, msg_key.into(), msg_str.into());
+      let msg_key =
+        v8::String::new_external_onebyte_static(scope, b"message").unwrap();
+      let msg_str = v8::String::new(scope, message).unwrap();
+      ctx_obj.set(scope, msg_key.into(), msg_str.into());
 
-        let errno_key =
-          v8::String::new_external_onebyte_static(scope, b"errno").unwrap();
-        let errno_val = v8::Integer::new(scope, err);
-        ctx_obj.set(scope, errno_key.into(), errno_val.into());
+      let errno_key =
+        v8::String::new_external_onebyte_static(scope, b"errno").unwrap();
+      let errno_val = v8::Integer::new(scope, err);
+      ctx_obj.set(scope, errno_key.into(), errno_val.into());
 
-        let syscall_key =
-          v8::String::new_external_onebyte_static(scope, b"syscall").unwrap();
-        let syscall_str =
-          v8::String::new_external_onebyte_static(scope, b"uv_tcp_init")
-            .unwrap();
-        ctx_obj.set(scope, syscall_key.into(), syscall_str.into());
-      }
+      let syscall_key =
+        v8::String::new_external_onebyte_static(scope, b"syscall").unwrap();
+      let syscall_str =
+        v8::String::new_external_onebyte_static(scope, b"uv_tcp_init").unwrap();
+      ctx_obj.set(scope, syscall_key.into(), syscall_str.into());
     }
     tcp
   }

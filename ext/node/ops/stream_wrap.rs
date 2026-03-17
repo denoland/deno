@@ -766,8 +766,7 @@ impl LibUvStreamWrap {
         // No longer actively reading — allow GC to collect the JS object.
         self.make_handle_weak(scope);
 
-        // SAFETY: stream is a valid non-null uv_stream_t (checked above).
-        unsafe { uv_compat::uv_read_stop(stream) }
+        uv_compat::uv_read_stop(stream)
       } else {
         return UV_EBADF;
       }

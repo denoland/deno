@@ -278,13 +278,13 @@ pub unsafe fn uv_write(
     // that would suppress the completion notification if it fired
     // synchronously.
     let mut offset = 0;
-    if (*tcp).internal_write_queue.is_empty() {
-      if let Some(ref stream) = (*tcp).internal_stream {
-        while offset < write_data.len() {
-          match stream.try_write(&write_data[offset..]) {
-            Ok(n) => offset += n,
-            Err(_) => break,
-          }
+    if (*tcp).internal_write_queue.is_empty()
+      && let Some(ref stream) = (*tcp).internal_stream
+    {
+      while offset < write_data.len() {
+        match stream.try_write(&write_data[offset..]) {
+          Ok(n) => offset += n,
+          Err(_) => break,
         }
       }
     }
