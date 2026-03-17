@@ -142,6 +142,7 @@ impl RootCertStoreProvider for CliRootCertStoreProvider {
       .cell
       .get_or_try_init(|| {
         get_root_cert_store(
+          &CliSys::default(),
           self.maybe_root_path.clone(),
           self.maybe_ca_stores.clone(),
           self.maybe_ca_data.clone(),
@@ -602,6 +603,7 @@ impl CliFactory {
             Arc::new(DenoTaskLifeCycleScriptsExecutor::new(
               managed_npm_resolver.clone(),
               self.text_only_progress_bar().clone(),
+              cli_options.npm_system_info(),
             )) as Arc<dyn LifecycleScriptsExecutor>
           }
           None => Arc::new(NullLifecycleScriptsExecutor),
@@ -1129,6 +1131,7 @@ impl CliFactory {
         name: cli_options.cpu_prof_name(),
         interval: cli_options.cpu_prof_interval(),
         md: cli_options.cpu_prof_md(),
+        flamegraph: cli_options.cpu_prof_flamegraph(),
       });
 
     let lib_main_worker_factory = LibMainWorkerFactory::new(
@@ -1237,6 +1240,7 @@ impl CliFactory {
         name: cli_options.cpu_prof_name(),
         interval: cli_options.cpu_prof_interval(),
         md: cli_options.cpu_prof_md(),
+        flamegraph: cli_options.cpu_prof_flamegraph(),
       });
 
     let initial_cwd =

@@ -310,11 +310,17 @@ impl TsGoWorkspaceConfig {
   }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct TsGoWorkspaceChange {
   file_changes: Vec<TsGoFileChange>,
   new_configuration: Option<Arc<TsGoWorkspaceConfig>>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct TsGoWorkspaceInfo {
+  compiler_options_keys_for_assets: HashMap<Uri, CompilerOptionsKey>,
 }
 
 #[derive(Debug)]
@@ -419,11 +425,12 @@ enum TsGoRequest {
   WorkspaceSymbol { query: String },
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct TsGoRequestParams {
-  request: TsGoRequest,
-  workspace_change: Option<TsGoWorkspaceChange>,
+enum TsGoRequestParams {
+  ApplyWorkspaceChange(TsGoWorkspaceChange),
+  #[serde(untagged)]
+  Request(TsGoRequest),
 }
 
 /// Returns if the project files were changed.
@@ -637,7 +644,7 @@ struct TsGoServerInner {
   stdin: Arc<Mutex<std::process::ChildStdin>>,
   pending_requests: Arc<PendingRequests>,
   next_request_id: AtomicI64,
-  #[allow(dead_code)]
+  #[allow(dead_code, reason = "TODO: investigate")]
   child: Mutex<Child>,
   runtime_handle: tokio::runtime::Handle,
 }
@@ -1117,22 +1124,18 @@ impl TsGoServerInner {
 
   async fn request<R>(
     &self,
-    request: TsGoRequest,
+    params: TsGoRequestParams,
     token: &CancellationToken,
   ) -> Result<R, AnyError>
   where
     R: DeserializeOwned,
   {
-    let workspace_change = self.pending_change_tracker.lock().take_change();
-    let (_read, _write) = if workspace_change.is_some() {
-      (None, Some(self.pending_change_lock.write().await))
-    } else {
-      (Some(self.pending_change_lock.read().await), None)
-    };
-    let params = TsGoRequestParams {
-      request,
-      workspace_change,
-    };
+    let (_read, _write) =
+      if matches!(&params, TsGoRequestParams::ApplyWorkspaceChange(_)) {
+        (None, Some(self.pending_change_lock.write().await))
+      } else {
+        (Some(self.pending_change_lock.read().await), None)
+      };
 
     let request_id = self.next_request_id.fetch_add(1, Ordering::SeqCst);
 
@@ -1187,7 +1190,7 @@ impl TsGoServerInner {
 pub struct TsGoServer {
   deno_dir: DenoDir,
   http_client_provider: Arc<HttpClientProvider>,
-  inner: tokio::sync::OnceCell<TsGoServerInner>,
+  inner: tokio::sync::OnceCell<Arc<TsGoServerInner>>,
 }
 
 impl TsGoServer {
@@ -1202,7 +1205,7 @@ impl TsGoServer {
     }
   }
 
-  async fn inner(&self, snapshot: Arc<StateSnapshot>) -> &TsGoServerInner {
+  async fn inner(&self, snapshot: Arc<StateSnapshot>) -> &Arc<TsGoServerInner> {
     self
       .inner
       .get_or_init(async || {
@@ -1212,7 +1215,7 @@ impl TsGoServer {
         )
         .await
         .unwrap();
-        TsGoServerInner::init(tsgo_path, snapshot).await
+        Arc::new(TsGoServerInner::init(tsgo_path, snapshot).await)
       })
       .await
   }
@@ -1247,8 +1250,36 @@ impl TsGoServer {
   where
     R: DeserializeOwned,
   {
-    let inner = self.inner(snapshot).await;
-    inner.request(request, token).await
+    let inner = self.inner(snapshot.clone()).await;
+    let inner_clone = inner.clone();
+    tokio::task::spawn(async move {
+      let workspace_change =
+        inner_clone.pending_change_tracker.lock().take_change();
+      if let Some(workspace_change) = workspace_change {
+        let workspace_info = inner_clone
+          .request::<TsGoWorkspaceInfo>(
+            TsGoRequestParams::ApplyWorkspaceChange(workspace_change),
+            &Default::default(),
+          )
+          .await
+          .unwrap();
+        let asset_scopes = workspace_info
+          .compiler_options_keys_for_assets
+          .into_iter()
+          .map(|(asset_uri, compiler_options_key)| {
+            (
+              Arc::new(normalize_uri(&asset_uri)),
+              (None, compiler_options_key),
+            )
+          });
+        snapshot.document_modules.assign_scopes(asset_scopes);
+      }
+    })
+    .await
+    .unwrap();
+    inner
+      .request(TsGoRequestParams::Request(request), token)
+      .await
   }
 
   pub async fn get_ambient_modules(
@@ -2016,6 +2047,17 @@ fn normalize_code_action_response(
   response: &mut lsp::CodeActionResponse,
   snapshot: &StateSnapshot,
 ) {
+  if snapshot.config.client_provided_organize_imports_capable() {
+    response.retain(|item| {
+      let lsp::CodeActionOrCommand::CodeAction(code_action) = item else {
+        return true;
+      };
+      code_action
+        .kind
+        .as_ref()
+        .is_none_or(|k| *k != lsp::CodeActionKind::SOURCE_ORGANIZE_IMPORTS)
+    });
+  }
   for item in response {
     match item {
       lsp::CodeActionOrCommand::CodeAction(code_action) => {

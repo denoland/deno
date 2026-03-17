@@ -2,7 +2,12 @@
 
 import { op_node_is_tty } from "ext:core/ops";
 import { primordials } from "ext:core/mod.js";
-const { Error } = primordials;
+const {
+  Error,
+  FunctionPrototypeCall,
+  ObjectPrototypeIsPrototypeOf,
+  ObjectSetPrototypeOf,
+} = primordials;
 
 import { ERR_INVALID_FD } from "ext:deno_node/internal/errors.ts";
 import { TTY } from "ext:deno_node/internal_binding/tty_wrap.ts";
@@ -19,35 +24,44 @@ function isatty(fd) {
   return op_node_is_tty(fd);
 }
 
-export class ReadStream extends Socket {
-  constructor(fd, options) {
-    if (fd >> 0 !== fd || fd < 0) {
-      throw new ERR_INVALID_FD(fd);
-    }
-
-    // We only support `stdin`.
-    if (fd != 0) throw new Error("Only fd 0 is supported.");
-
-    const tty = new TTY(io.stdin);
-    super({
-      readableHighWaterMark: 0,
-      handle: tty,
-      manualStart: true,
-      ...options,
-    });
-
-    this.isRaw = false;
-    this.isTTY = true;
+// ReadStream needs to be callable without `new` to match Node.js behavior.
+// We use a wrapper function that delegates to the actual class.
+function ReadStream(fd, options) {
+  if (!ObjectPrototypeIsPrototypeOf(ReadStream.prototype, this)) {
+    return new ReadStream(fd, options);
   }
 
-  setRawMode(flag) {
-    flag = !!flag;
-    this._handle.setRaw(flag);
-
-    this.isRaw = flag;
-    return this;
+  if (fd >> 0 !== fd || fd < 0) {
+    throw new ERR_INVALID_FD(fd);
   }
+
+  // We only support `stdin`.
+  if (fd != 0) throw new Error("Only fd 0 is supported.");
+
+  const tty = new TTY(io.stdin);
+  FunctionPrototypeCall(Socket, this, {
+    readableHighWaterMark: 0,
+    handle: tty,
+    manualStart: true,
+    ...options,
+  });
+
+  this.isRaw = false;
+  this.isTTY = true;
 }
+
+ObjectSetPrototypeOf(ReadStream.prototype, Socket.prototype);
+ObjectSetPrototypeOf(ReadStream, Socket);
+
+ReadStream.prototype.setRawMode = function setRawMode(flag) {
+  flag = !!flag;
+  this._handle.setRaw(flag);
+
+  this.isRaw = flag;
+  return this;
+};
+
+export { ReadStream };
 
 setReadStream(ReadStream);
 

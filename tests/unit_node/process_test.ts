@@ -865,7 +865,6 @@ Deno.test("process.on, process.off, process.removeListener doesn't throw on unim
     "beforeExit",
     "disconnect",
     "message",
-    "multipleResolves",
     "rejectionHandled",
     "uncaughtException",
     "uncaughtExceptionMonitor",
@@ -1691,22 +1690,14 @@ Deno.test({
 });
 
 Deno.test({
-  name: "process.loadEnvFile() throws on invalid UTF-8 encoding",
+  name: "process.loadEnvFile() does not throw on invalid UTF-8 encoding",
   fn() {
     const dirPath = Deno.makeTempDirSync();
     const envFilePath = path.join(dirPath, "envfile.env");
     const contentArray = new Uint8Array([0xff, 0xfe, 0xfd]);
     Deno.writeFileSync(envFilePath, contentArray);
-
-    nodeAssert.throws(
-      () => process.loadEnvFile(envFilePath),
-      {
-        name: "TypeError",
-        code: "ERR_INVALID_ARG_TYPE",
-        message: `Contents of '${envFilePath}' should be a valid string.`,
-      },
-    );
-
+    // should load fine as in Node.js
+    process.loadEnvFile(envFilePath);
     Deno.removeSync(dirPath, { recursive: true });
   },
 });

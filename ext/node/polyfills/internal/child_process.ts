@@ -43,9 +43,11 @@ import {
   AbortError,
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
+  ERR_INVALID_HANDLE_TYPE,
   ERR_INVALID_SYNC_FORK_INPUT,
   ERR_IPC_CHANNEL_CLOSED,
   ERR_IPC_SYNC_FORK,
+  ERR_MISSING_ARGS,
   ERR_UNKNOWN_SIGNAL,
 } from "ext:deno_node/internal/errors.ts";
 import { Buffer } from "node:buffer";
@@ -54,8 +56,8 @@ import { errnoException } from "ext:deno_node/internal/errors.ts";
 import { ErrnoException } from "ext:deno_node/_global.d.ts";
 import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
 import {
-  isInt32,
   validateBoolean,
+  validateInt32,
   validateObject,
   validateOneOf,
   validateString,
@@ -66,7 +68,8 @@ import process from "node:process";
 import { StringPrototypeSlice } from "ext:deno_node/internal/primordials.mjs";
 import { StreamBase } from "ext:deno_node/internal_binding/stream_wrap.ts";
 import { Pipe, socketType } from "ext:deno_node/internal_binding/pipe_wrap.ts";
-import { Socket } from "node:net";
+import { Server as NetServer, Socket } from "node:net";
+import { Socket as DgramSocket } from "node:dgram";
 import {
   kExtraStdio,
   kInputOption,
@@ -512,10 +515,17 @@ export class ChildProcess extends EventEmitter {
       });
 
       if (signal) {
+        const killSignal = options.killSignal ?? "SIGTERM";
         const onAbortListener = () => {
           try {
-            if (this.kill("SIGKILL")) {
-              this.emit("error", new AbortError());
+            if (this.kill(killSignal as string)) {
+              this.emit(
+                "error",
+                new AbortError(
+                  undefined,
+                  { cause: signal.reason },
+                ),
+              );
             }
           } catch (err) {
             this.emit("error", err);
@@ -564,7 +574,51 @@ export class ChildProcess extends EventEmitter {
         // args.slice(1) to exclude argv0 (prepended by normalizeSpawnArguments)
         e = _createSpawnError("ENOENT", command, args.slice(1));
       }
+
+      // Set up stdio streams even when spawn fails (Node.js creates pipes
+      // before the OS spawn call, so they exist regardless of spawn outcome).
+      if (stdin === "pipe") {
+        this.stdin = new Writable({
+          write(_chunk, _enc, cb) {
+            cb(new Error("spawn failed"));
+          },
+        });
+      }
+      if (stdout === "pipe") {
+        this.stdout = new Readable({ read() {} });
+        this[kClosesNeeded]++;
+        this.stdout.on("close", () => {
+          maybeClose(this);
+        });
+      }
+      if (stderr === "pipe") {
+        this.stderr = new Readable({ read() {} });
+        this[kClosesNeeded]++;
+        this.stderr.on("close", () => {
+          maybeClose(this);
+        });
+      }
+
+      this.stdio[0] = this.stdin;
+      this.stdio[1] = this.stdout;
+      this.stdio[2] = this.stderr;
+
       this.#_handleError(e);
+
+      // Destroy stdio streams and emit close (matching Node.js behavior
+      // where failed spawns still trigger 'close' but not 'exit').
+      nextTick(() => {
+        if (this.stdout) {
+          this.stdout.destroy();
+        }
+        if (this.stderr) {
+          this.stderr.destroy();
+        }
+        if (this.stdin) {
+          this.stdin.destroy();
+        }
+        maybeClose(this);
+      });
     }
   }
 
@@ -574,6 +628,17 @@ export class ChildProcess extends EventEmitter {
   kill(signal?: number | string): boolean {
     if (this.killed) {
       return this.killed;
+    }
+
+    // Signal 0 is a special case: it checks if the process exists
+    // without sending a signal (POSIX kill(pid, 0)).
+    if (signal === 0 || signal === "0") {
+      try {
+        process.kill(this.pid!, 0);
+        return true;
+      } catch {
+        return false;
+      }
     }
 
     const denoSignal = signal == null ? "SIGTERM" : toDenoSignal(signal);
@@ -986,13 +1051,13 @@ export function normalizeSpawnArguments(
   }
 
   // Validate the uid, if present.
-  if (options.uid != null && !isInt32(options.uid)) {
-    throw new ERR_INVALID_ARG_TYPE("options.uid", "int32", options.uid);
+  if (options.uid != null) {
+    validateInt32(options.uid, "options.uid");
   }
 
   // Validate the gid, if present.
-  if (options.gid != null && !isInt32(options.gid)) {
-    throw new ERR_INVALID_ARG_TYPE("options.gid", "int32", options.gid);
+  if (options.gid != null) {
+    validateInt32(options.gid, "options.gid");
   }
 
   // Validate the shell, if present.
@@ -1093,10 +1158,9 @@ export function normalizeSpawnArguments(
 
   let envKeys: string[] = [];
   // Prototype values are intentionally included.
+  // deno-lint-ignore guard-for-in
   for (const key in env) {
-    if (Object.hasOwn(env, key)) {
-      ArrayPrototypePush(envKeys, key);
-    }
+    ArrayPrototypePush(envKeys, key);
   }
 
   if (process.platform === "win32") {
@@ -1456,6 +1520,21 @@ function buildCommand(
   return [file, args, includeNpmProcessState];
 }
 
+// deno-lint-ignore no-explicit-any
+function restorePrototype(obj: any) {
+  if (obj === null || typeof obj !== "object") return;
+  if (Array.isArray(obj)) {
+    for (let i = 0; i < obj.length; i++) {
+      restorePrototype(obj[i]);
+    }
+    return;
+  }
+  Object.setPrototypeOf(obj, Object.prototype);
+  for (const key of Object.keys(obj)) {
+    restorePrototype(obj[key]);
+  }
+}
+
 function _createSpawnError(
   status: string,
   command: string,
@@ -1530,10 +1609,7 @@ function normalizeInput(input: unknown) {
   if (typeof input === "string") {
     return Buffer.from(input);
   }
-  if (input instanceof Uint8Array) {
-    return input;
-  }
-  if (input instanceof DataView) {
+  if (ArrayBuffer.isView(input)) {
     return Buffer.from(input.buffer, input.byteOffset, input.byteLength);
   }
   throw new ERR_INVALID_ARG_TYPE("input", [
@@ -1765,6 +1841,11 @@ export function setupChannel(
     if (!target.channel) {
       return;
     }
+    // serde_v8 deserializes objects with null prototype, but Node.js IPC
+    // messages should have Object.prototype (as if from JSON.parse).
+    if (serialization === "json") {
+      restorePrototype(msg);
+    }
     if (target.listenerCount("message") !== 0) {
       target.emit("message", msg);
       return;
@@ -1800,10 +1881,33 @@ export function setupChannel(
     options = { swallowErrors: false, ...options };
 
     if (message === undefined) {
-      throw new TypeError("ERR_MISSING_ARGS", "message");
+      throw new ERR_MISSING_ARGS("message");
+    }
+
+    if (
+      typeof message !== "string" &&
+      typeof message !== "object" &&
+      typeof message !== "number" &&
+      typeof message !== "boolean" &&
+      typeof message !== "bigint"
+    ) {
+      throw new ERR_INVALID_ARG_TYPE(
+        "message",
+        ["string", "object", "number", "boolean"],
+        message,
+      );
     }
 
     if (handle !== undefined) {
+      // Validate handle type before rejecting as not implemented.
+      // Node.js only accepts net.Server, net.Socket, or dgram.Socket.
+      if (
+        !(handle instanceof Socket) &&
+        !(handle instanceof NetServer) &&
+        !(handle instanceof DgramSocket)
+      ) {
+        throw new ERR_INVALID_HANDLE_TYPE();
+      }
       notImplemented("ChildProcess.send with handle");
     }
 

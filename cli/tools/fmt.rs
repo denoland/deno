@@ -1259,7 +1259,7 @@ fn format_stdin(
     None,
   )?;
   if fmt_flags.check {
-    #[allow(clippy::print_stdout)]
+    #[allow(clippy::print_stdout, reason = "actually want to output")]
     if formatted_text.is_some() {
       println!("Not formatted stdin");
     }

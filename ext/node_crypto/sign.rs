@@ -8,6 +8,7 @@ use elliptic_curve::generic_array::ArrayLength;
 use rand::rngs::OsRng;
 use rsa::signature::hazmat::PrehashSigner as _;
 use rsa::signature::hazmat::PrehashVerifier as _;
+use rsa::traits::PublicKeyParts as _;
 use rsa::traits::SignatureScheme as _;
 use spki::der::Decode;
 
@@ -20,6 +21,8 @@ use super::keys::RsaPssHashAlgorithm;
 use crate::digest::match_fixed_digest;
 use crate::digest::match_fixed_digest_with_oid;
 
+/// OpenSSL RSA_PKCS1_PADDING constant value.
+const RSA_PKCS1_PADDING: u32 = 1;
 /// OpenSSL RSA_PKCS1_PSS_PADDING constant value.
 const RSA_PKCS1_PSS_PADDING: u32 = 6;
 
@@ -87,13 +90,23 @@ pub enum KeyObjectHandlePrehashedSignAndVerifyError {
   Ed25519KeyCannotBeUsedForPrehashedVerification,
   #[error("DH key cannot be used for verification")]
   DhKeyCannotBeUsedForVerification,
+  #[class(generic)]
+  #[error("illegal or unsupported padding mode")]
+  IllegalOrUnsupportedPaddingMode,
 }
 
 /// Constructs a PSS scheme for the given digest type and optional salt length.
 /// Used by both sign and verify operations on RSA keys with PSS padding.
+///
+/// When `key_size_bits` is provided and `pss_salt_length` is `None`,
+/// the default salt length is max (key_bytes - hash_len - 2), matching
+/// Node.js's documented default of `RSA_PSS_SALTLEN_MAX_SIGN`.
+/// When `key_size_bits` is `None` (verify path), the default salt length
+/// is the digest length.
 fn new_pss_scheme(
   digest_type: &str,
   pss_salt_length: Option<u32>,
+  key_size_bits: Option<usize>,
 ) -> Result<rsa::pss::Pss, KeyObjectHandlePrehashedSignAndVerifyError> {
   let pss = match_fixed_digest_with_oid!(
     digest_type,
@@ -101,6 +114,12 @@ fn new_pss_scheme(
       let _: Option<RsaPssHashAlgorithm> = algorithm;
       if let Some(salt_length) = pss_salt_length {
         rsa::pss::Pss::new_with_salt::<D>(salt_length as usize)
+      } else if let Some(key_bits) = key_size_bits {
+        // Default to max salt length for signing (RSA_PSS_SALTLEN_MAX_SIGN)
+        let key_bytes = key_bits / 8;
+        let hash_len = <D as digest::Digest>::output_size();
+        let max_salt = key_bytes.saturating_sub(hash_len + 2);
+        rsa::pss::Pss::new_with_salt::<D>(max_salt)
       } else {
         rsa::pss::Pss::new::<D>()
       }
@@ -128,7 +147,11 @@ impl KeyObjectHandle {
     match private_key {
       AsymmetricPrivateKey::Rsa(key) => {
         if padding == Some(RSA_PKCS1_PSS_PADDING) {
-          let pss = new_pss_scheme(digest_type, pss_salt_length)?;
+          let pss = new_pss_scheme(
+            digest_type,
+            pss_salt_length,
+            Some(key.n().bits()),
+          )?;
           let signature = pss
             .sign(Some(&mut OsRng), key, digest)
             .map_err(|_| KeyObjectHandlePrehashedSignAndVerifyError::FailedToSignDigestWithRsaPss)?;
@@ -155,6 +178,9 @@ impl KeyObjectHandle {
         Ok(signature.into())
       }
       AsymmetricPrivateKey::RsaPss(key) => {
+        if padding == Some(RSA_PKCS1_PADDING) {
+          return Err(KeyObjectHandlePrehashedSignAndVerifyError::IllegalOrUnsupportedPaddingMode);
+        }
         let mut hash_algorithm = None;
         let mut salt_length = None;
         if let Some(details) = &key.details {
@@ -276,7 +302,7 @@ impl KeyObjectHandle {
     match &*public_key {
       AsymmetricPublicKey::Rsa(key) => {
         if padding == Some(RSA_PKCS1_PSS_PADDING) {
-          let pss = new_pss_scheme(digest_type, pss_salt_length)?;
+          let pss = new_pss_scheme(digest_type, pss_salt_length, None)?;
           return Ok(pss.verify(key, digest, signature).is_ok());
         }
 
@@ -297,6 +323,9 @@ impl KeyObjectHandle {
         Ok(signer.verify(key, digest, signature).is_ok())
       }
       AsymmetricPublicKey::RsaPss(key) => {
+        if padding == Some(RSA_PKCS1_PADDING) {
+          return Err(KeyObjectHandlePrehashedSignAndVerifyError::IllegalOrUnsupportedPaddingMode);
+        }
         let mut hash_algorithm = None;
         let mut salt_length = None;
         if let Some(details) = &key.details {

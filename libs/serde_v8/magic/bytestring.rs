@@ -74,9 +74,9 @@ impl FromV8 for ByteString {
     }
     let len = v8str.length();
     let mut buffer = SmallVec::with_capacity(len);
-    #[allow(clippy::uninit_vec)]
+    #[allow(clippy::uninit_vec, reason = "see comment below")]
     // SAFETY: we set length == capacity (see previous line),
-    // before immediately writing into that buffer and sanity check with an assert
+    // before immediately writing into that buffer
     unsafe {
       buffer.set_len(len);
       v8str.write_one_byte_v2(scope, 0, &mut buffer, v8::WriteFlags::empty());
@@ -94,7 +94,7 @@ impl From<Vec<u8>> for ByteString {
   }
 }
 
-#[allow(clippy::from_over_into)]
+#[allow(clippy::from_over_into, reason = "old code and it's fine")]
 impl Into<Vec<u8>> for ByteString {
   fn into(self) -> Vec<u8> {
     self.0.into_vec()
