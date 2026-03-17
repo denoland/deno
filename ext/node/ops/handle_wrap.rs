@@ -147,6 +147,11 @@ enum State {
   Closed,
 }
 
+/// A handle to a libuv resource. `New` stores a raw pointer to a `uv_handle_t`
+/// whose lifetime is managed by the owning cppgc object (e.g. `TTY`). The
+/// pointer is valid as long as the handle has not been closed via `uv_close`.
+/// This mirrors Node's approach where `HandleWrap` stores a `uv_handle_t*`
+/// that becomes null after close.
 #[derive(PartialEq, Eq)]
 pub enum Handle {
   Old(ResourceId),

@@ -362,13 +362,15 @@ fn free_uv_buf(buf: *const uv_buf_t) {
 /// `deleter_data` (cast from usize) and alignment 1.
 unsafe extern "C" fn backing_store_deleter(
   data: *mut std::ffi::c_void,
-  len: usize,
+  _len: usize,
   deleter_data: *mut std::ffi::c_void,
 ) {
-  let _ = deleter_data;
-  if !data.is_null() && len > 0 {
-    let layout = std::alloc::Layout::from_size_align(len, 1).unwrap();
-    // SAFETY: data was allocated via alloc(Layout::from_size_align(len, 1)) in on_uv_alloc.
+  // Use the original allocation size (passed via deleter_data), not `_len`
+  // which may be smaller (nread < allocated size is common for partial reads).
+  let alloc_size = deleter_data as usize;
+  if !data.is_null() && alloc_size > 0 {
+    let layout = std::alloc::Layout::from_size_align(alloc_size, 1).unwrap();
+    // SAFETY: data was allocated via alloc(Layout::from_size_align(alloc_size, 1)) in on_uv_alloc.
     unsafe { std::alloc::dealloc(data as *mut u8, layout) };
   }
 }
