@@ -693,7 +693,7 @@ pub fn uv_guess_handle(fd: c_int) -> uv_handle_type {
 
   #[cfg(windows)]
   {
-    let handle = unsafe { tty::win_console::_get_osfhandle(fd) };
+    let handle = unsafe { tty::win_console::safe_get_osfhandle(fd) };
     if handle == -1 {
       return uv_handle_type::UV_UNKNOWN_HANDLE;
     }
