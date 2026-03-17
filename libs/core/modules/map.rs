@@ -237,6 +237,10 @@ pub(crate) struct ModuleMap {
   pending_tla_waiters:
     RefCell<HashMap<ModuleId, Vec<v8::Global<v8::PromiseResolver>>>>,
   pending_mod_evaluation: Cell<bool>,
+  /// Set to `true` while inside `module.evaluate()` in `mod_evaluate`.
+  /// Used to suppress microtask checkpoints in `lazy_load_es_module_with_code`
+  /// during module evaluation, preventing premature draining of TLA-related microtasks.
+  evaluating_top_level: Cell<bool>,
   code_cache_ready_futs: TrackedFutures<Pin<Box<CodeCacheReadyFuture>>>,
   module_waker: AtomicWaker,
   data: RefCell<ModuleMapData>,
@@ -320,6 +324,7 @@ impl ModuleMap {
       pending_dyn_mod_evaluations: Default::default(),
       pending_tla_waiters: Default::default(),
       pending_mod_evaluation: Default::default(),
+      evaluating_top_level: Default::default(),
       code_cache_ready_futs: Default::default(),
       module_waker: Default::default(),
       data: Default::default(),
@@ -1426,7 +1431,9 @@ impl ModuleMap {
         .unwrap_or_else(|_| Err(CoreErrorKind::ExecutionTerminated.into_box()))
     });
 
+    self.evaluating_top_level.set(true);
     let Some(value) = module.evaluate(tc_scope) else {
+      self.evaluating_top_level.set(false);
       if tc_scope.has_terminated() || tc_scope.is_execution_terminating() {
         let undefined = v8::undefined(tc_scope).into();
         _ = sender
@@ -1436,6 +1443,7 @@ impl ModuleMap {
       }
       return Either::Right(receiver);
     };
+    self.evaluating_top_level.set(false);
 
     self.pending_mod_evaluation.set(true);
 
@@ -2200,7 +2208,16 @@ impl ModuleMap {
     let value = module_local.evaluate(scope).unwrap();
     // Under Explicit microtask policy, drain microtasks so the module
     // evaluation promise resolves for synchronous modules.
-    scope.perform_microtask_checkpoint();
+    //
+    // However, skip the checkpoint when we are inside a top-level
+    // `module.evaluate()` call (i.e. `evaluating_top_level` is set).
+    // Draining microtasks at this point can prematurely resolve
+    // TLA-related microtasks (e.g. `await` resume jobs from eagerly-
+    // resolved async ops), which prevents the module evaluation promise
+    // from settling correctly later.
+    if !self.evaluating_top_level.get() {
+      scope.perform_microtask_checkpoint();
+    }
     let promise = v8::Local::<v8::Promise>::try_from(value).unwrap();
     let result = promise.result(scope);
     if !result.is_undefined() {
