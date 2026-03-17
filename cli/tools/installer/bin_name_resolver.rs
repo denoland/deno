@@ -138,9 +138,9 @@ impl<'a> BinNameResolver<'a> {
         let bin_name = name.rsplit('/').next().unwrap_or(name.as_str());
         Ok(Some(vec![(bin_name.to_string(), script.clone())]))
       }
-      deno_npm::registry::NpmPackageVersionBinEntry::Map(data) => {
-        Ok(Some(data.iter().map(|(k, v)| (k.clone(), v.clone())).collect()))
-      }
+      deno_npm::registry::NpmPackageVersionBinEntry::Map(data) => Ok(Some(
+        data.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
+      )),
     }
   }
 
@@ -149,7 +149,10 @@ impl<'a> BinNameResolver<'a> {
     npm_ref: &NpmPackageReqReference,
   ) -> Result<Option<String>, AnyError> {
     let entries = self.resolve_npm_bin_entries(npm_ref).await?;
-    Ok(Self::infer_name_from_bin_entries(entries.as_deref(), npm_ref))
+    Ok(Self::infer_name_from_bin_entries(
+      entries.as_deref(),
+      npm_ref,
+    ))
   }
 
   fn infer_name_from_bin_entries(
