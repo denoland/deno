@@ -1,6 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-#![allow(clippy::too_many_arguments)]
+#![allow(clippy::too_many_arguments, reason = "not code we control")]
 
 use std::borrow::Cow;
 use std::cell::Cell;
