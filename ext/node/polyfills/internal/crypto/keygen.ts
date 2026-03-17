@@ -1093,7 +1093,7 @@ function createJob(mode, type, options) {
         return op_node_generate_rsa_pss_key(
           modulusLength,
           publicExponent,
-          hashAlgorithm,
+          hashAlgorithm ?? hash,
           mgf1HashAlgorithm ?? mgf1Hash,
           saltLength,
         );
@@ -1101,7 +1101,7 @@ function createJob(mode, type, options) {
         return op_node_generate_rsa_pss_key_async(
           modulusLength,
           publicExponent,
-          hashAlgorithm,
+          hashAlgorithm ?? hash,
           mgf1HashAlgorithm ?? mgf1Hash,
           saltLength,
         );
@@ -1114,7 +1114,8 @@ function createJob(mode, type, options) {
 
       let { divisorLength } = options;
       if (divisorLength == null) {
-        divisorLength = 256;
+        // Match OpenSSL defaults based on modulus length (FIPS 186-4)
+        divisorLength = modulusLength <= 1024 ? 160 : 256;
       } else {
         validateInt32(divisorLength, "options.divisorLength", 0);
       }

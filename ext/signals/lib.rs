@@ -246,7 +246,18 @@ pub fn run_exit() {
 }
 
 pub fn is_forbidden(signo: i32) -> bool {
-  FORBIDDEN.contains(&signo)
+  if FORBIDDEN.contains(&signo) {
+    return true;
+  }
+  // On Windows, signal_hook's FORBIDDEN list doesn't include SIGKILL/SIGABRT
+  // (they're Unix-specific in the crate). Add them here since listening for
+  // uncatchable/fatal signals doesn't make sense on any platform.
+  #[cfg(windows)]
+  if signo == 9 || signo == 22 {
+    // SIGKILL (9) and SIGABRT (22, Windows CRT value)
+    return true;
+  }
+  false
 }
 
 pub struct SignalStream {

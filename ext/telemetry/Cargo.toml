@@ -34,6 +34,7 @@ opentelemetry-semantic-conventions.workspace = true
 opentelemetry_sdk.workspace = true
 pin-project.workspace = true
 serde.workspace = true
+sys_traits.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 tower-service.workspace = true

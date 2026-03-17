@@ -195,10 +195,6 @@ impl NpmCacheDir {
       copy_index,
     })
   }
-
-  pub fn get_cache_location(&self) -> PathBuf {
-    self.root_dir.clone()
-  }
 }
 
 pub fn mixed_case_package_name_encode(name: &str) -> String {

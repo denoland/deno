@@ -1,6 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-#![allow(non_upper_case_globals)]
+#![allow(non_upper_case_globals, reason = "native code")]
 #![deny(unsafe_op_in_unsafe_fn)]
 
 const NAPI_VERSION: u32 = 9;
@@ -216,7 +216,7 @@ fn napi_create_function<'s>(
 }
 
 #[napi_sym]
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, reason = "matches Node-API signature")]
 fn napi_define_class<'s>(
   env: &'s mut Env,
   utf8name: *const c_char,
@@ -2264,7 +2264,7 @@ fn napi_get_value_bool(
   return napi_clear_last_error(env_ptr);
 }
 
-#[allow(deprecated)]
+#[allow(deprecated, reason = "needed for compatibility")]
 #[napi_sym]
 fn napi_get_value_string_latin1(
   env_ptr: *mut Env,
@@ -2305,7 +2305,7 @@ fn napi_get_value_string_latin1(
   napi_clear_last_error(env_ptr)
 }
 
-#[allow(deprecated)]
+#[allow(deprecated, reason = "needed for compatibility")]
 #[napi_sym]
 fn napi_get_value_string_utf8(
   env_ptr: *mut Env,
@@ -2355,7 +2355,7 @@ fn napi_get_value_string_utf8(
   napi_clear_last_error(env_ptr)
 }
 
-#[allow(deprecated)]
+#[allow(deprecated, reason = "needed for compatibility")]
 #[napi_sym]
 fn napi_get_value_string_utf16(
   env_ptr: *mut Env,
@@ -2447,7 +2447,15 @@ fn napi_coerce_to_object<'s>(
   check_arg!(env, result);
 
   v8::callback_scope!(unsafe scope, env.context());
-  let Some(coerced) = value.unwrap().to_object(scope) else {
+  let val = value.unwrap();
+  // Check for null/undefined before calling to_object() to avoid
+  // V8 generating a TypeError exception that would get stored in
+  // env.last_exception and later re-thrown as a spurious unhandled
+  // rejection (ECMAScript's ToObject throws for null/undefined).
+  if val.is_null_or_undefined() {
+    return napi_invalid_arg;
+  }
+  let Some(coerced) = val.to_object(scope) else {
     return napi_object_expected;
   };
 
