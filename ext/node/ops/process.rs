@@ -43,6 +43,8 @@ struct ArgvInfo {
 // is valid for the entire process lifetime and is only accessed under ARGV_MUTEX.
 #[cfg(unix)]
 unsafe impl Send for ArgvInfo {}
+// SAFETY: The raw pointer in ArgvInfo points to the process argv buffer which
+// is valid for the entire process lifetime and is only accessed under ARGV_MUTEX.
 #[cfg(unix)]
 unsafe impl Sync for ArgvInfo {}
 
