@@ -37,6 +37,7 @@ const {
   PromisePrototypeThen,
   Symbol,
   TypedArrayPrototypeSlice,
+  Int32Array,
   Uint8Array,
   Uint8ArrayPrototype,
 } = primordials;
@@ -91,7 +92,7 @@ export const kLastWriteWasAsync = StreamBaseStateFields.kLastWriteWasAsync;
 export const kNumStreamBaseStateFields =
   StreamBaseStateFields.kNumStreamBaseStateFields;
 
-export const streamBaseState = new Uint8Array(5);
+export const streamBaseState = new Int32Array(5);
 
 // This is Deno, it always will be async.
 streamBaseState[kLastWriteWasAsync] = 1;

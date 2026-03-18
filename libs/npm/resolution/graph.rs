@@ -47,7 +47,10 @@ use crate::resolution::collections::OneDirectionalLinkedList;
 use crate::resolution::snapshot::SnapshotPackageCopyIndexResolver;
 
 pub trait Reporter: std::fmt::Debug + Send + Sync {
-  #[allow(unused_variables)]
+  #[allow(
+    unused_variables,
+    reason = "default implementation ignores parameters"
+  )]
   fn on_resolved(&self, package_req: &PackageReq, nv: &PackageNv) {}
 }
 
@@ -973,7 +976,7 @@ impl Graph {
   // Debugging methods
 
   #[cfg(debug_assertions)]
-  #[allow(unused, clippy::print_stderr)]
+  #[allow(unused, clippy::print_stderr, reason = "debug utility")]
   fn output_path(&self, path: &Rc<GraphPath>) {
     let pkg_ids = self.compute_all_npm_pkg_ids();
     eprintln!("-----------");
@@ -1006,7 +1009,7 @@ impl Graph {
   }
 
   #[cfg(debug_assertions)]
-  #[allow(unused, clippy::print_stderr)]
+  #[allow(unused, clippy::print_stderr, reason = "debug utility")]
   fn output_node_with_ids(
     nodes: &HashMap<NodeId, Node>,
     pkg_ids: &HashMap<NodeId, NpmPackageId>,
@@ -1026,7 +1029,7 @@ impl Graph {
   }
 
   #[cfg(debug_assertions)]
-  #[allow(unused, clippy::print_stderr)]
+  #[allow(unused, clippy::print_stderr, reason = "debug utility")]
   pub fn output_nodes(&self) {
     let pkg_ids = self.compute_all_npm_pkg_ids();
     eprintln!("~~~");
@@ -1050,17 +1053,19 @@ struct DepEntryCache(HashMap<Rc<PackageNv>, Rc<Vec<NpmDependencyEntry>>>);
 impl DepEntryCache {
   pub fn store(
     &mut self,
-    nv: Rc<PackageNv>,
+    nv: &Rc<PackageNv>,
     version_info: &NpmPackageVersionInfo,
   ) -> Result<Rc<Vec<NpmDependencyEntry>>, Box<NpmDependencyEntryError>> {
     debug_assert_eq!(nv.version, version_info.version);
-    debug_assert!(!self.0.contains_key(&nv)); // we should not be re-inserting
+    if let Some(deps) = self.0.get(nv) {
+      return Ok(deps.clone());
+    }
     let mut deps = version_info.dependencies_as_entries(&nv.name)?;
     // Ensure name alphabetical and then version descending
     // so these are resolved in that order
     deps.sort();
     let deps = Rc::new(deps);
-    self.0.insert(nv, deps.clone());
+    self.0.insert(nv.clone(), deps.clone());
     Ok(deps)
   }
 
@@ -1383,7 +1388,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
     let has_deps = if let Some(deps) = self.dep_entry_cache.get(&pkg_nv) {
       !deps.is_empty()
     } else {
-      let deps = self.dep_entry_cache.store(pkg_nv.clone(), info)?;
+      let deps = self.dep_entry_cache.store(&pkg_nv, info)?;
       !deps.is_empty()
     };
 
@@ -1829,7 +1834,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
     node_id: NodeId,
     parent_pkgs: &BTreeMap<StackString, NodeId>,
     visiting: &mut HashSet<NodeId>,
-    ancestors: &[PackageNv],
+    ancestors: &[Rc<PackageNv>],
   ) -> Result<PeersResolution, NpmResolutionError> {
     let nv = self
       .graph
@@ -1944,7 +1949,8 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
                 let mut diag_ancestors =
                   Vec::with_capacity(ancestors.len() + 1);
                 diag_ancestors.push((*nv).clone());
-                diag_ancestors.extend_from_slice(ancestors);
+                diag_ancestors
+                  .extend(ancestors.iter().map(|nv| nv.as_ref().clone()));
                 self.unmet_peer_diagnostics.borrow_mut().insert(
                   UnmetPeerDepDiagnostic {
                     ancestors: diag_ancestors,
@@ -2006,7 +2012,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
     let mut resolved_children: BTreeMap<StackString, NodeId> = BTreeMap::new();
 
     let mut child_ancestors = Vec::with_capacity(ancestors.len() + 1);
-    child_ancestors.push((*nv).clone());
+    child_ancestors.push(nv.clone());
     child_ancestors.extend_from_slice(ancestors);
 
     for (spec, child_id) in &all_deps_to_recurse {
@@ -2294,7 +2300,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
   /// Check if a cached peer resolution matches the current parent context.
   fn find_peers_cache_hit(
     &self,
-    nv: &PackageNv,
+    nv: &Rc<PackageNv>,
     parent_pkgs: &BTreeMap<StackString, NodeId>,
   ) -> Option<PeersResolution> {
     let mut checking = HashSet::new();
@@ -2311,10 +2317,10 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
 
   fn find_peers_cache_hit_inner(
     &self,
-    nv: &PackageNv,
+    nv: &Rc<PackageNv>,
     parent_pkgs: &BTreeMap<StackString, NodeId>,
-    checking: &mut HashSet<PackageNv>,
-    memo: &mut HashMap<PackageNv, Option<PeersResolution>>,
+    checking: &mut HashSet<Rc<PackageNv>>,
+    memo: &mut HashMap<Rc<PackageNv>, Option<PeersResolution>>,
   ) -> Option<PeersResolution> {
     // Return memoized result if we've already fully evaluated this nv.
     if let Some(result) = memo.get(nv) {
@@ -2584,8 +2590,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
           let version_info = package_info
             .version_info(&nv, &self.version_resolver.link_packages)
             .map_err(NpmPackageVersionResolutionError::VersionNotFound)?;
-          let child_deps =
-            self.dep_entry_cache.store(nv.clone(), version_info)?;
+          let child_deps = self.dep_entry_cache.store(&nv, version_info)?;
 
           if child_deps.is_empty() {
             self.graph.borrow_node_mut(path.node_id()).no_peers = true;
@@ -3040,7 +3045,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
         let version_info = package_info
           .version_info(&nv, &self.version_resolver.link_packages)
           .map_err(NpmPackageVersionResolutionError::VersionNotFound)?;
-        let deps = self.dep_entry_cache.store(nv.clone(), version_info)?;
+        let deps = self.dep_entry_cache.store(&nv, version_info)?;
         pending_dep_entries.push_back((node_id, deps));
       }
 

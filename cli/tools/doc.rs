@@ -486,11 +486,12 @@ fn generate_docs_directory(
       deno_ns: Default::default(),
       strip_trailing_html: html_options.strip_trailing_html,
     }),
-    usage_composer: Rc::new(DocComposer),
+    usage_composer: Some(Rc::new(DocComposer)),
     category_docs,
     disable_search: false,
     symbol_redirect_map,
     default_symbol_map,
+    diff_only: false,
     markdown_renderer: deno_doc::html::comrak::create_renderer(
       None, None, None,
     ),
@@ -515,12 +516,13 @@ fn generate_docs_directory(
           deno_ns: Default::default(),
           strip_trailing_html: false,
         }),
-        usage_composer: Rc::new(DocComposer),
+        usage_composer: Some(Rc::new(DocComposer)),
         rewrite_map: Default::default(),
         category_docs: Default::default(),
         disable_search: Default::default(),
         symbol_redirect_map: Default::default(),
         default_symbol_map: Default::default(),
+        diff_only: false,
         markdown_renderer: deno_doc::html::comrak::create_renderer(
           None, None, None,
         ),
@@ -532,6 +534,7 @@ fn generate_docs_directory(
         ModuleSpecifier::parse("file:///lib.deno.d.ts").unwrap(),
         built_in_types,
       )]),
+      None,
     )?;
 
     let deno_ns = deno_doc::html::compute_namespaced_symbols(
@@ -554,7 +557,7 @@ fn generate_docs_directory(
   }
 
   let ctx =
-    deno_doc::html::GenerateCtx::create_basic(options, doc_nodes_by_url)?;
+    deno_doc::html::GenerateCtx::create_basic(options, doc_nodes_by_url, None)?;
 
   let mut files = deno_doc::html::generate(ctx)
     .context("Failed to generate HTML documentation")?;
