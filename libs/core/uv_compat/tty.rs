@@ -624,11 +624,46 @@ pub unsafe fn uv_tty_init(
       if handle_type == uv_handle_type::UV_TTY && tty_is_slave(fd) {
         let mut path = [0u8; 256];
         if libc::ttyname_r(fd, path.as_mut_ptr().cast(), path.len()) == 0 {
-          let new_fd =
-            open_cloexec(path.as_ptr().cast(), mode | libc::O_NOCTTY);
-          if new_fd >= 0 {
-            actual_fd = new_fd;
-            reopened = true;
+          // On macOS, /dev/tty is a special device that is incompatible
+          // with kqueue (kevent returns EINVAL). When stdin is redirected
+          // from /dev/tty (e.g. install scripts: `curl ... | sh` with
+          // `</dev/tty`), ttyname_r returns "/dev/tty" rather than the
+          // real PTY slave path (e.g. "/dev/ttys000"). Reopening
+          // "/dev/tty" produces an fd that also can't be registered with
+          // kqueue, so we must resolve the real device path first.
+          #[cfg(target_os = "macos")]
+          if path.starts_with(b"/dev/tty\0") {
+            // Try to discover the real PTY slave path from stdout/stderr,
+            // which are typically connected to the actual PTY slave.
+            let mut resolved = false;
+            for &probe_fd in &[1 as c_int, 2] {
+              if libc::isatty(probe_fd) != 0
+                && libc::ttyname_r(
+                  probe_fd,
+                  path.as_mut_ptr().cast(),
+                  path.len(),
+                ) == 0
+                && !path.starts_with(b"/dev/tty\0")
+              {
+                resolved = true;
+                break;
+              }
+            }
+            if !resolved {
+              // Can't find the real PTY path. Skip the reopen so we
+              // fall through to use the original fd (which will have
+              // O_NONBLOCK set directly — acceptable trade-off vs panic).
+              path[0] = 0;
+            }
+          }
+
+          if path[0] != 0 {
+            let new_fd =
+              open_cloexec(path.as_ptr().cast(), mode | libc::O_NOCTTY);
+            if new_fd >= 0 {
+              actual_fd = new_fd;
+              reopened = true;
+            }
           }
         }
       }

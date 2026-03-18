@@ -2447,6 +2447,47 @@ fn fsfile_set_raw_should_not_panic_on_no_tty() {
   );
 }
 
+// Regression test for https://github.com/denoland/deno/issues/32802
+// When stdin is redirected from /dev/tty (as done by the Deno install script:
+// `curl -fsSL https://deno.land/install.sh | sh`), the bootstrap must not
+// panic. On macOS, /dev/tty is a special device that is incompatible with
+// kqueue, so uv_tty_init's AsyncFd::new fails with EINVAL.
+#[cfg(target_os = "macos")]
+#[test]
+fn tty_stdin_from_dev_tty_should_not_panic() {
+  let deno_exe = util::deno_exe_path();
+  // Use `expect` to allocate a PTY (so /dev/tty exists), then run deno
+  // with stdin redirected from /dev/tty — this is what the install script does.
+  let output = Command::new("expect")
+    .arg("-c")
+    .arg(format!(
+      concat!(
+        "set timeout 30\n",
+        "spawn sh -c {{{} eval ",
+        "'import process from \"node:process\"; ",
+        "console.log(process.stdin.constructor.name); ",
+        "process.exit(0)' </dev/tty 2>&1}}\n",
+        "expect eof\n",
+        "lassign [wait] pid spawnid os_error_flag value\n",
+        "exit $value\n",
+      ),
+      deno_exe.to_string().replace("{", "\\{").replace("}", "\\}")
+    ))
+    .output()
+    .unwrap();
+  let combined = String::from_utf8_lossy(&output.stdout);
+  let stderr = String::from_utf8_lossy(&output.stderr);
+  assert!(
+    !combined.contains("panicked"),
+    "deno panicked with stdin from /dev/tty.\nstdout:\n{combined}\nstderr:\n{stderr}"
+  );
+  assert!(
+    output.status.success(),
+    "deno failed with stdin from /dev/tty (exit={:?}).\nstdout:\n{combined}\nstderr:\n{stderr}",
+    output.status.code()
+  );
+}
+
 #[test]
 fn timeout_clear() {
   // https://github.com/denoland/deno/issues/7599
