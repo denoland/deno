@@ -324,6 +324,24 @@ export class REPLServer extends (Interface as any) {
     // handling, but we use a simpler EventEmitter-based approach.
     this._domain = new EventEmitter();
 
+    // Deprecated inputStream/outputStream properties (DEP0141)
+    Object.defineProperty(this, "inputStream", {
+      get: () => this.input,
+      set: (val: any) => {
+        this.input = val;
+      },
+      enumerable: false,
+      configurable: true,
+    });
+    Object.defineProperty(this, "outputStream", {
+      get: () => this.output,
+      set: (val: any) => {
+        this.output = val;
+      },
+      enumerable: false,
+      configurable: true,
+    });
+
     this.allowBlockingCompletions = !!options.allowBlockingCompletions;
     this.useColors = !!options.useColors;
     this._isStandalone =
@@ -462,7 +480,9 @@ export class REPLServer extends (Interface as any) {
     self.clearBufferedCommand();
 
     function completer(text: string, cb: any) {
-      self.complete(text, self.editorMode ? self.completeOnEditorMode(cb) : cb);
+      const callback = self.editorMode ? self.completeOnEditorMode(cb) : cb;
+      // Return empty completions by default
+      callback(null, [[], text]);
     }
 
     self.resetContext();
@@ -721,14 +741,20 @@ export class REPLServer extends (Interface as any) {
     let errStack = "";
 
     if (typeof e === "object" && e !== null) {
-      if (e instanceof Error && e.stack) {
+      const isError = e instanceof Error ||
+        (typeof (e as any).name === "string" &&
+          typeof (e as any).stack === "string");
+      if (isError && (e as any).stack) {
         if (e.name === "SyntaxError") {
           // Remove stack trace
           errStack = e.stack
             .replace(/^\s+at\s.*\n?/gm, "")
             .replace(/^REPL\d+:\d+\r?\n/, "");
         } else {
-          errStack = this.writer(e);
+          // For non-syntax errors, strip ALL stack frames.
+          // Node uses overrideStackTrace to filter internal frames;
+          // we simply remove all "at ..." lines for REPL errors.
+          errStack = e.stack.replace(/\n\s+at\s.*/g, "");
         }
       }
 

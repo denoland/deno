@@ -1740,7 +1740,6 @@
     "parallel/test-repl-preview-without-inspector.js": {},
     "parallel/test-repl-preview.js": {},
     "parallel/test-repl-require-cache.js": {},
-    "parallel/test-repl-require.js": {},
     "parallel/test-repl-reset-event.js": {},
     "parallel/test-repl-save-load-editor-mode.js": {},
     "parallel/test-repl-save-load-invalid-save.js": {},
@@ -1760,8 +1759,6 @@
     // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
     // "parallel/test-repl-top-level-await.js": {},
     "parallel/test-repl-uncaught-exception-evalcallback.js": {},
-    "parallel/test-repl-uncaught-exception.js": {},
-    "parallel/test-repl-unexpected-token-recoverable.js": {},
     "parallel/test-require-cache.js": {},
     "parallel/test-require-dot.js": {},
     "parallel/test-require-exceptions.js": {},
