@@ -637,6 +637,15 @@ pub unsafe fn uv_listen(
       let effective_backlog = if backlog > 0 { backlog } else { 128 };
       libc::listen(std_listener.as_raw_fd(), effective_backlog);
     }
+    #[cfg(windows)]
+    {
+      use std::os::windows::io::AsRawSocket;
+      unsafe extern "system" {
+        fn listen(s: usize, backlog: c_int) -> c_int;
+      }
+      let effective_backlog = if backlog > 0 { backlog } else { 128 };
+      listen(std_listener.as_raw_socket() as usize, effective_backlog);
+    }
     let listener_addr = std_listener.local_addr().ok();
     let tokio_listener = match tokio::net::TcpListener::from_std(std_listener) {
       Ok(l) => l,
@@ -868,17 +877,30 @@ pub(crate) unsafe fn poll_tcp_handle(
           // Read side is ready -- peek (without consuming) to check
           // for EOF or errors. Using MSG_PEEK avoids consuming data
           // that might belong to a higher-level protocol (e.g. TLS).
-          let fd = {
+          #[cfg(unix)]
+          let n = {
             use std::os::unix::io::AsRawFd;
-            stream.as_raw_fd()
+            let fd = stream.as_raw_fd();
+            let mut probe = [0u8; 1];
+            libc::recv(fd, probe.as_mut_ptr() as *mut c_void, 1, libc::MSG_PEEK)
+              as i32
           };
-          let mut probe = [0u8; 1];
-          let n = libc::recv(
-            fd,
-            probe.as_mut_ptr() as *mut c_void,
-            1,
-            libc::MSG_PEEK,
-          );
+          #[cfg(windows)]
+          let n = {
+            use std::os::windows::io::AsRawSocket;
+            unsafe extern "system" {
+              fn recv(
+                s: usize,
+                buf: *mut c_void,
+                len: c_int,
+                flags: c_int,
+              ) -> c_int;
+            }
+            const MSG_PEEK: c_int = 0x2;
+            let socket = stream.as_raw_socket() as usize;
+            let mut probe = [0u8; 1];
+            recv(socket, probe.as_mut_ptr() as *mut c_void, 1, MSG_PEEK)
+          };
           if n == 0 {
             // EOF — the connection is broken.
             // Drain the entire write queue with EPIPE.
@@ -890,7 +912,11 @@ pub(crate) unsafe fn poll_tcp_handle(
           } else if n < 0 {
             let err =
               std::io::Error::last_os_error().raw_os_error().unwrap_or(0);
-            if err != libc::EAGAIN && err != libc::EWOULDBLOCK {
+            #[cfg(unix)]
+            let would_block = err == libc::EAGAIN || err == libc::EWOULDBLOCK;
+            #[cfg(windows)]
+            let would_block = err == 10035; // WSAEWOULDBLOCK
+            if !would_block {
               // Real error — connection is broken.
               while let Some(pw) = (*tcp_ptr).internal_write_queue.pop_front() {
                 if let Some(cb) = pw.cb {

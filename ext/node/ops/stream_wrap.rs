@@ -768,7 +768,7 @@ impl LibUvStreamWrap {
 
         uv_compat::uv_read_stop(stream)
       } else {
-        return UV_EBADF;
+        UV_EBADF
       }
     }
   }

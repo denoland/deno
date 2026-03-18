@@ -1,7 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-#![allow(non_snake_case)]
-
 use std::ffi::c_void;
 use std::net::ToSocketAddrs;
 

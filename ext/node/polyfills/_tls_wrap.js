@@ -42,6 +42,7 @@ import {
 } from "ext:deno_node/internal/validators.mjs";
 import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
 import { op_tls_canonicalize_ipv4_address } from "ext:core/ops";
+// deno-lint-ignore camelcase
 import tls_wrap from "ext:deno_node/internal_binding/tls_wrap.ts";
 import { ownerSymbol } from "ext:deno_node/internal_binding/symbols.ts";
 import { X509Certificate } from "ext:deno_node/internal/crypto/x509.ts";

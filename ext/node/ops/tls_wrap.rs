@@ -19,10 +19,6 @@
 //   - OnStreamRead: Encrypted data from underlying stream → feed to rustls
 //   - Cycle:    Drive the state machine: ClearIn → ClearOut → EncOut
 
-#![allow(non_snake_case)]
-#![allow(dead_code)]
-#![allow(unused_variables)]
-
 use std::cell::RefCell;
 use std::ffi::c_char;
 use std::io::Read;
@@ -423,7 +419,7 @@ impl TLSWrapInner {
     if self.cycling {
       return;
     }
-    let side = if self.kind == Kind::Server {
+    let _side = if self.kind == Kind::Server {
       "server"
     } else {
       "client"
@@ -576,7 +572,7 @@ impl TLSWrapInner {
     }
 
     self.has_buffered_cleartext = false;
-    let side = if self.kind == Kind::Server {
+    let _side = if self.kind == Kind::Server {
       "server"
     } else {
       "client"
@@ -976,7 +972,7 @@ unsafe extern "C" fn tls_read_cb(
     inner.enc_in.extend_from_slice(slice);
     free_uv_buf(buf);
 
-    let side = if inner.kind == Kind::Server {
+    let _side = if inner.kind == Kind::Server {
       "server"
     } else {
       "client"
@@ -2259,7 +2255,7 @@ fn build_client_config(
   use deno_tls::TlsKeys;
   use deno_tls::TlsKeysHolder;
 
-  let reject_unauthorized =
+  let _reject_unauthorized =
     get_js_bool(scope, context, "rejectUnauthorized", true);
   let protocol_versions = match get_protocol_versions(scope, context) {
     ProtocolVersionSelection::Default => {
@@ -2426,11 +2422,7 @@ fn build_server_config(
     key_str.as_bytes(),
   ))
   .ok()
-  .flatten();
-
-  let Some(private_key) = private_key else {
-    return None;
-  };
+  .flatten()?;
 
   let signing_key = match rustls::crypto::ring::default_provider()
     .key_provider

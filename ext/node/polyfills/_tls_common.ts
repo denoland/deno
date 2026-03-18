@@ -1,6 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
-// deno-lint-ignore-file no-explicit-any
+// deno-lint-ignore-file no-explicit-any prefer-primordials
 
 import { crypto as cryptoConstants } from "ext:deno_node/internal_binding/constants.ts";
 import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
