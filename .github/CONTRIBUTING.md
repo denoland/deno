@@ -2,10 +2,10 @@
 
 This is the main repository that provides the `deno` CLI.
 
-If you want to fix a bug or add a new feature to `deno` this is the repository
+If you want to fix a bug or add a new feature to `deno`, this is the repository
 to contribute to.
 
-Some systems, including a large part of the Node.js compatibility layer are
+Some systems, including a large part of the Node.js compatibility layer, are
 implemented in JavaScript and TypeScript modules. These are a good place to
 start if you are looking to make your first contribution.
 
@@ -62,7 +62,7 @@ To use a development version of the LSP in VSCode:
 
 ## Submitting a PR
 
-In addition to the above make sure that:
+In addition to the above, make sure that:
 
 > To use the commands below, you need to first install the necessary tools on
 > your system as described [here](#building-from-source).
@@ -70,7 +70,7 @@ In addition to the above make sure that:
 1. `cargo test` passes - this will run full test suite for `deno` including unit
    tests, integration tests and Web Platform Tests
 
-1. Run `./tools/format.js` - this will format all of the code to adhere to the
+1. Run `./tools/format.js` - this will format all code to adhere to the
    consistent style in the repository
 
 1. Run `./tools/lint.js` - this will check Rust and JavaScript code for common
@@ -150,7 +150,7 @@ brew install cmake
 
 ##### Mac M1/M2
 
-For Apple aarch64 users `lld` must be installed.
+For Apple aarch64 users, `lld` must be installed.
 
 ```console
 brew install llvm lld
@@ -215,7 +215,7 @@ Windows users can download the latest binary release from
 
 The easiest way to build Deno is by using a precompiled version of V8.
 
-_For WSL make sure you have sufficient memory allocated in `.wslconfig`. It is
+_For WSL, make sure you have sufficient memory allocated in `.wslconfig`. It is
 recommended that you allocate at least 16GB._
 
 ```console
@@ -242,7 +242,7 @@ Build with Cargo:
 # Build:
 cargo build -vv
 
-# Build errors?  Ensure you have latest main and try building again, or if that doesn't work try:
+# Build errors?  Ensure you have latest main and try building again, or if that doesn't work, try:
 cargo clean && cargo build -vv
 
 # Run:
@@ -302,7 +302,7 @@ deno_ast = { path = "../deno_ast" }
 This will build the `deno_ast` crate from the local path and link against that
 version instead of fetching it from `crates.io`.
 
-**Note**: It's important that the version of the dependencies in the
-`Cargo.toml` match the version of the dependencies you have on disk.
+**Note**: It's important that the versions of the dependencies in the
+`Cargo.toml` match the versions of the dependencies you have on disk.
 
 Use `cargo search <dependency_name>` to inspect the versions.
