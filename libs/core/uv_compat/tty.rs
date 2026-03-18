@@ -114,6 +114,14 @@ pub(crate) const SELECT_INTEREST_READ: u8 = 1;
 #[cfg(target_os = "macos")]
 pub(crate) const SELECT_INTEREST_WRITE: u8 = 2;
 
+/// Socketpair communication:
+///
+/// ```text
+///   fake_fd (fds[0]) <──────────> int_fd (fds[1])
+///
+///   Select thread writes to int_fd  → main thread reads fake_fd (readiness signal)
+///   Main thread writes to fake_fd   → select thread reads int_fd (interrupt/shutdown)
+/// ```
 #[cfg(target_os = "macos")]
 pub(crate) struct SelectFallbackState {
   /// AsyncFd wrapping the "fake" end of the socketpair. Readiness on
@@ -121,10 +129,13 @@ pub(crate) struct SelectFallbackState {
   /// `shutdown_select_fallback` can take it to deregister from kqueue
   /// before closing the raw fd (avoiding fd-reuse races).
   pub(crate) async_fd: Option<AsyncFd<TtyFd>>,
-  /// The "fake" end of the socketpair (readable by us).
+  /// The "fake" end of the socketpair (fds[0]). The main thread reads
+  /// this (via AsyncFd) to receive readiness signals, and writes to it
+  /// to interrupt the select thread.
   pub(crate) fake_fd: RawFd,
-  /// The "interrupt" end of the socketpair. The select thread reads
-  /// this; we write to fake_fd to wake it up.
+  /// The "interrupt" end of the socketpair (fds[1]). The select thread
+  /// reads this for interrupt/shutdown signals, and writes to it to
+  /// signal readiness to the main thread.
   pub(crate) int_fd: RawFd,
   /// Join handle for the background select thread.
   pub(crate) thread: Option<std::thread::JoinHandle<()>>,
@@ -1767,6 +1778,17 @@ fn setup_select_fallback(fd: RawFd) -> Result<SelectFallbackState, c_int> {
   let fake_fd = fds[0]; // we poll this end (kqueue-compatible)
   let int_fd = fds[1]; // select thread reads this for interrupts
 
+  // select(2) uses fixed-size fd_set bitmaps (FD_SETSIZE, typically 1024).
+  // FD_SET on an fd >= FD_SETSIZE is undefined behavior (out-of-bounds write).
+  let max_fd = fd.max(int_fd);
+  if max_fd >= libc::FD_SETSIZE as RawFd {
+    unsafe {
+      libc::close(fake_fd);
+      libc::close(int_fd);
+    }
+    return Err(UV_EINVAL);
+  }
+
   // Set both ends non-blocking.
   for &sock_fd in &[fake_fd, int_fd] {
     let flags = unsafe { libc::fcntl(sock_fd, libc::F_GETFL) };
@@ -1860,13 +1882,13 @@ fn select_thread_main(
   use std::sync::atomic::Ordering;
 
   loop {
-    if close.load(Ordering::Relaxed) {
+    if close.load(Ordering::Acquire) {
       break;
     }
 
     unsafe {
       // Check what the main thread is interested in.
-      let cur_interest = interest.load(Ordering::Relaxed);
+      let cur_interest = interest.load(Ordering::Acquire);
 
       // Build fd_sets for select, only watching active directions.
       let mut read_set: libc::fd_set = std::mem::zeroed();
@@ -1910,7 +1932,7 @@ fn select_thread_main(
       // Drain interrupt fd if it was signalled.
       if libc::FD_ISSET(int_fd, &read_set) {
         drain_fd(int_fd);
-        if close.load(Ordering::Relaxed) {
+        if close.load(Ordering::Acquire) {
           break;
         }
       }
@@ -1959,7 +1981,7 @@ unsafe fn update_select_interest(tty: *mut uv_tty_t) {
       {
         flags |= SELECT_INTEREST_WRITE;
       }
-      s.interest.store(flags, Ordering::Relaxed);
+      s.interest.store(flags, Ordering::Release);
       // Interrupt the select thread so it picks up the new interest.
       // Writing to fake_fd makes data readable on int_fd.
       let _ = libc::write(s.fake_fd, b"i".as_ptr().cast(), 1);
@@ -2008,7 +2030,7 @@ fn drain_fd(fd: RawFd) -> bool {
 pub(crate) fn shutdown_select_fallback(s: &mut SelectFallbackState) {
   // Signal the thread to stop. Matches libuv's
   // `uv_sem_post(&s->close_sem)`.
-  s.close.store(true, std::sync::atomic::Ordering::Relaxed);
+  s.close.store(true, std::sync::atomic::Ordering::Release);
 
   // Post the async semaphore in case the select thread is blocked
   // waiting for the main thread to process events. Matches libuv's
