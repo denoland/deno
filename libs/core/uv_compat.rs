@@ -550,10 +550,18 @@ impl UvLoopInner {
       tty.internal_write_queue.clear();
       tty.internal_shutdown = None;
 
-      // Drop the AsyncFd to deregister from the reactor, then close the fd.
+      // Drop the reactor (AsyncFd or select fallback) to deregister
+      // from the reactor, then close the fd.
       #[cfg(unix)]
       {
-        tty.internal_async_fd = None;
+        // If using the select fallback, shut down the background thread.
+        #[cfg(target_os = "macos")]
+        if let Some(tty::TtyReactor::SelectFallback(ref mut s)) =
+          tty.internal_reactor
+        {
+          tty::shutdown_select_fallback(s);
+        }
+        tty.internal_reactor = None;
         if tty.internal_fd >= 0 {
           libc::close(tty.internal_fd);
           tty.internal_fd = -1;

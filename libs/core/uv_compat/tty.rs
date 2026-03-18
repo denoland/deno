@@ -68,6 +68,106 @@ impl AsRawFd for TtyFd {
   }
 }
 
+// ---- Reactor integration (Unix) ----
+//
+// On most platforms, we register the TTY fd directly with tokio's
+// AsyncFd (epoll/kqueue). On macOS, kqueue doesn't work with some
+// /dev devices (e.g. /dev/tty). libuv handles this with
+// `uv__stream_try_select`: a background thread polls with select(2)
+// and signals readiness through a socketpair whose read end IS
+// kqueue-compatible. We do the same.
+
+#[cfg(unix)]
+pub(crate) enum TtyReactor {
+  /// Normal path: the TTY fd is registered directly with tokio.
+  Normal(AsyncFd<TtyFd>),
+  /// macOS fallback: a background thread polls with select(2) and
+  /// signals readiness through a kqueue-compatible socketpair.
+  #[cfg(target_os = "macos")]
+  SelectFallback(SelectFallbackState),
+}
+
+#[cfg(unix)]
+impl TtyReactor {
+  /// Get a reference to the AsyncFd used for polling readiness.
+  /// In the normal case this wraps the TTY fd directly; in the
+  /// select fallback case it wraps the socketpair's read end.
+  fn async_fd(&self) -> &AsyncFd<TtyFd> {
+    match self {
+      TtyReactor::Normal(afd) => afd,
+      #[cfg(target_os = "macos")]
+      TtyReactor::SelectFallback(s) => {
+        s.async_fd.as_ref().expect("async_fd taken during shutdown")
+      }
+    }
+  }
+}
+
+#[cfg(target_os = "macos")]
+pub(crate) const SELECT_INTEREST_READ: u8 = 1;
+#[cfg(target_os = "macos")]
+pub(crate) const SELECT_INTEREST_WRITE: u8 = 2;
+
+#[cfg(target_os = "macos")]
+pub(crate) struct SelectFallbackState {
+  /// AsyncFd wrapping the "fake" end of the socketpair. Readiness on
+  /// this fd means the real TTY fd is ready. Wrapped in Option so
+  /// `shutdown_select_fallback` can take it to deregister from kqueue
+  /// before closing the raw fd (avoiding fd-reuse races).
+  pub(crate) async_fd: Option<AsyncFd<TtyFd>>,
+  /// The "fake" end of the socketpair (readable by us).
+  pub(crate) fake_fd: RawFd,
+  /// The "interrupt" end of the socketpair. The select thread reads
+  /// this; we write to fake_fd to wake it up.
+  pub(crate) int_fd: RawFd,
+  /// Join handle for the background select thread.
+  pub(crate) thread: Option<std::thread::JoinHandle<()>>,
+  /// Signalled to tell the select thread to shut down.
+  /// Matches libuv's `close_sem`.
+  pub(crate) close: std::sync::Arc<std::sync::atomic::AtomicBool>,
+  /// Current IO interest flags (SELECT_INTEREST_READ/WRITE).
+  /// Updated by the main thread, read by the select thread.
+  /// Matches libuv's `uv__io_active` checks in the select thread.
+  pub(crate) interest: std::sync::Arc<std::sync::atomic::AtomicU8>,
+  /// Semaphore for back-pressure: the select thread waits on this
+  /// after signaling readiness, and the main thread posts it after
+  /// processing events. Matches libuv's `async_sem`.
+  pub(crate) async_sem: std::sync::Arc<Semaphore>,
+}
+
+/// A simple counting semaphore matching libuv's `uv_sem_t` usage.
+/// The select thread calls `wait()` after signaling events; the main
+/// thread calls `post()` after processing them.
+#[cfg(target_os = "macos")]
+pub(crate) struct Semaphore {
+  mutex: std::sync::Mutex<u32>,
+  cond: std::sync::Condvar,
+}
+
+#[cfg(target_os = "macos")]
+impl Semaphore {
+  pub(crate) fn new(initial: u32) -> Self {
+    Self {
+      mutex: std::sync::Mutex::new(initial),
+      cond: std::sync::Condvar::new(),
+    }
+  }
+
+  pub(crate) fn post(&self) {
+    let mut count = self.mutex.lock().unwrap();
+    *count += 1;
+    self.cond.notify_one();
+  }
+
+  pub(crate) fn wait(&self) {
+    let mut count = self.mutex.lock().unwrap();
+    while *count == 0 {
+      count = self.cond.wait(count).unwrap();
+    }
+    *count -= 1;
+  }
+}
+
 // ---- The handle struct ----
 
 #[repr(C)]
@@ -91,7 +191,7 @@ pub struct uv_tty_t {
   #[cfg(unix)]
   pub(crate) internal_fd: RawFd,
   #[cfg(unix)]
-  pub(crate) internal_async_fd: Option<AsyncFd<TtyFd>>,
+  pub(crate) internal_reactor: Option<TtyReactor>,
   #[cfg(unix)]
   pub(crate) internal_orig_termios: Option<libc::termios>,
 
@@ -586,7 +686,12 @@ pub unsafe fn uv_tty_init(
     // uv__stream_init only runs after validation passes.
 
     #[cfg(unix)]
-    let (actual_fd, async_fd) = {
+    let mut actual_fd;
+    #[cfg(unix)]
+    let reactor: Option<TtyReactor>;
+
+    #[cfg(unix)]
+    {
       let handle_type = super::uv_guess_handle(fd);
       if handle_type == uv_handle_type::UV_FILE
         || handle_type == uv_handle_type::UV_UNKNOWN_HANDLE
@@ -619,7 +724,7 @@ pub unsafe fn uv_tty_init(
       // we keep the original fd untouched and use the new fd directly.
       // This prevents setting O_NONBLOCK on stdin/stdout/stderr from
       // affecting other users of those fds (e.g. rustyline in the REPL).
-      let mut actual_fd = fd;
+      actual_fd = fd;
       let mut reopened = false;
       if handle_type == uv_handle_type::UV_TTY && tty_is_slave(fd) {
         let mut path = [0u8; 256];
@@ -653,15 +758,49 @@ pub unsafe fn uv_tty_init(
       }
 
       // Wrap in AsyncFd for reactor integration.
-      let async_fd = match AsyncFd::new(TtyFd(actual_fd)) {
-        Ok(afd) => afd,
-        Err(e) => {
-          libc::fcntl(actual_fd, libc::F_SETFL, cur_flags);
-          return io_error_to_uv(&e);
+      //
+      // On macOS, kqueue doesn't work with some /dev devices (e.g.
+      // /dev/tty). When AsyncFd::new fails, we probe kqueue to
+      // confirm, then set up a select(2) fallback thread — matching
+      // libuv's uv__stream_try_select.
+      match AsyncFd::new(TtyFd(actual_fd)) {
+        Ok(afd) => {
+          reactor = Some(TtyReactor::Normal(afd));
         }
-      };
+        Err(e) => {
+          #[cfg(target_os = "macos")]
+          if kqueue_rejects_fd(actual_fd) {
+            // kqueue confirmed incompatible — set up select fallback.
+            match setup_select_fallback(actual_fd) {
+              Ok(fallback) => {
+                reactor = Some(TtyReactor::SelectFallback(fallback));
+              }
+              Err(err_code) => {
+                libc::fcntl(actual_fd, libc::F_SETFL, cur_flags);
+                if reopened {
+                  libc::close(actual_fd);
+                }
+                return err_code;
+              }
+            }
+          } else {
+            libc::fcntl(actual_fd, libc::F_SETFL, cur_flags);
+            if reopened {
+              libc::close(actual_fd);
+            }
+            return io_error_to_uv(&e);
+          }
 
-      (actual_fd, async_fd)
+          #[cfg(not(target_os = "macos"))]
+          {
+            libc::fcntl(actual_fd, libc::F_SETFL, cur_flags);
+            if reopened {
+              libc::close(actual_fd);
+            }
+            return io_error_to_uv(&e);
+          }
+        }
+      }
     };
 
     #[cfg(windows)]
@@ -748,7 +887,7 @@ pub unsafe fn uv_tty_init(
     #[cfg(unix)]
     {
       write(addr_of_mut!((*tty).internal_fd), actual_fd);
-      write(addr_of_mut!((*tty).internal_async_fd), Some(async_fd));
+      write(addr_of_mut!((*tty).internal_reactor), reactor);
       write(addr_of_mut!((*tty).internal_orig_termios), None);
     }
 
@@ -1007,6 +1146,10 @@ pub(crate) unsafe fn read_start_tty(
     (*tty).internal_reading = true;
     (*tty).flags |= UV_HANDLE_ACTIVE;
 
+    // Notify the select fallback thread about interest change.
+    #[cfg(target_os = "macos")]
+    update_select_interest(tty);
+
     let inner = get_inner((*tty).loop_);
     let mut handles = inner.tty_handles.borrow_mut();
     if !handles.iter().any(|&h| std::ptr::eq(h, tty)) {
@@ -1023,6 +1166,10 @@ pub(crate) unsafe fn read_stop_tty(tty: *mut uv_tty_t) -> c_int {
     (*tty).internal_reading = false;
     (*tty).internal_alloc_cb = None;
     (*tty).internal_read_cb = None;
+
+    // Notify the select fallback thread about interest change.
+    #[cfg(target_os = "macos")]
+    update_select_interest(tty);
     if (*tty).internal_write_queue.is_empty()
       && (*tty).internal_shutdown.is_none()
     {
@@ -1177,6 +1324,11 @@ pub(crate) unsafe fn write_tty(
 unsafe fn ensure_tty_registered(tty: *mut uv_tty_t) {
   unsafe {
     (*tty).flags |= UV_HANDLE_ACTIVE;
+
+    // Notify the select fallback thread about write interest.
+    #[cfg(target_os = "macos")]
+    update_select_interest(tty);
+
     let inner = get_inner((*tty).loop_);
     let mut handles = inner.tty_handles.borrow_mut();
     if !handles.iter().any(|&h| std::ptr::eq(h, tty)) {
@@ -1223,6 +1375,8 @@ pub(crate) unsafe fn poll_tty_handle(
   cx: &mut Context<'_>,
 ) -> bool {
   let mut any_work = false;
+  #[cfg(target_os = "macos")]
+  let mut drained_select_signal = false;
 
   // 1. Poll readable stream.
   unsafe {
@@ -1235,9 +1389,18 @@ pub(crate) unsafe fn poll_tty_handle(
         // after we've actually attempted the I/O.
         #[cfg(unix)]
         {
-          if let Some(ref async_fd) = (*tty_ptr).internal_async_fd {
-            match async_fd.poll_read_ready(cx) {
+          if let Some(ref reactor) = (*tty_ptr).internal_reactor {
+            match reactor.async_fd().poll_read_ready(cx) {
               std::task::Poll::Ready(Ok(mut guard)) => {
+                // For the select fallback, drain the signaling byte(s)
+                // from the socketpair so the AsyncFd can become
+                // not-ready again.
+                #[cfg(target_os = "macos")]
+                if let TtyReactor::SelectFallback(s) = reactor
+                  && drain_fd(s.fake_fd)
+                {
+                  drained_select_signal = true;
+                }
                 // Try reading in a loop while we hold the guard.
                 loop {
                   if !(*tty_ptr).internal_reading {
@@ -1376,8 +1539,15 @@ pub(crate) unsafe fn poll_tty_handle(
     if !(*tty_ptr).internal_write_queue.is_empty() {
       // Register write interest with reactor.
       #[cfg(unix)]
-      if let Some(ref async_fd) = (*tty_ptr).internal_async_fd {
-        let _ = async_fd.poll_write_ready(cx);
+      if let Some(ref reactor) = (*tty_ptr).internal_reactor {
+        let _ = reactor.async_fd().poll_write_ready(cx);
+        // Drain signaling bytes for the select fallback.
+        #[cfg(target_os = "macos")]
+        if let TtyReactor::SelectFallback(s) = reactor
+          && drain_fd(s.fake_fd)
+        {
+          drained_select_signal = true;
+        }
       }
 
       loop {
@@ -1445,8 +1615,27 @@ pub(crate) unsafe fn poll_tty_handle(
         && (*tty_ptr).internal_shutdown.is_none()
       {
         (*tty_ptr).flags &= !UV_HANDLE_ACTIVE;
+        #[cfg(target_os = "macos")]
+        update_select_interest(tty_ptr);
       }
       any_work = true;
+    }
+  }
+
+  // Post the select fallback semaphore so the background thread can
+  // continue. Only post when we actually drained a signal from the
+  // select thread — this matches libuv's `uv_sem_post(&s->async_sem)`
+  // in `uv__stream_osx_select_cb`, which only fires in response to
+  // the select thread's `uv_async_send`. Posting unconditionally would
+  // accumulate semaphore counts and defeat back-pressure.
+  #[cfg(target_os = "macos")]
+  unsafe {
+    if drained_select_signal
+      && let Some(TtyReactor::SelectFallback(s)) =
+        (*tty_ptr).internal_reactor.as_ref()
+      && (*tty_ptr).flags & super::UV_HANDLE_CLOSING == 0
+    {
+      s.async_sem.post();
     }
   }
 
@@ -1470,7 +1659,7 @@ pub fn new_tty() -> uv_tty_t {
     #[cfg(unix)]
     internal_fd: -1,
     #[cfg(unix)]
-    internal_async_fd: None,
+    internal_reactor: None,
     #[cfg(unix)]
     internal_orig_termios: None,
     #[cfg(windows)]
@@ -1493,6 +1682,358 @@ pub(crate) fn restore_termios_on_close(fd: RawFd) {
   global_termios::acquire();
   global_termios::restore_and_clear(fd);
   global_termios::release();
+}
+
+// ---- macOS kqueue fallback ----
+
+/// Probe whether kqueue rejects this fd by attempting a kevent.
+/// Returns `true` if kqueue returns EINVAL for this fd, meaning
+/// we need the select(2) fallback.
+#[cfg(target_os = "macos")]
+fn kqueue_rejects_fd(fd: RawFd) -> bool {
+  unsafe {
+    let kq = libc::kqueue();
+    if kq == -1 {
+      return false;
+    }
+
+    let mut changelist: libc::kevent = std::mem::zeroed();
+    changelist.ident = fd as usize;
+    changelist.filter = libc::EVFILT_READ;
+    changelist.flags = libc::EV_ADD | libc::EV_ENABLE;
+
+    let mut events: libc::kevent = std::mem::zeroed();
+    let timeout = libc::timespec {
+      tv_sec: 0,
+      tv_nsec: 1, // 1ns — just enough to capture errors
+    };
+
+    let ret = loop {
+      let r = libc::kevent(kq, &changelist, 1, &mut events, 1, &timeout);
+      if r != -1 || *errno_location_macos() != libc::EINTR {
+        break r;
+      }
+    };
+
+    libc::close(kq);
+
+    if ret == -1 {
+      return false;
+    }
+
+    // kevent returns the event with EV_ERROR set and `data` = errno
+    // when the fd is incompatible.
+    ret > 0
+      && (events.flags & libc::EV_ERROR) != 0
+      && events.data as c_int == libc::EINVAL
+  }
+}
+
+#[cfg(target_os = "macos")]
+fn errno_location_macos() -> *mut c_int {
+  unsafe extern "C" {
+    fn __error() -> *mut c_int;
+  }
+  unsafe { __error() }
+}
+
+/// Set up the select(2) fallback for a kqueue-incompatible fd.
+/// Creates a socketpair, wraps one end in AsyncFd, and spawns a
+/// background thread that polls the real fd with select(2).
+///
+/// Returns the SelectFallbackState on success or a negative uv error
+/// code on failure.
+///
+/// # Safety
+/// `fd` must be a valid, open file descriptor in non-blocking mode.
+#[cfg(target_os = "macos")]
+fn setup_select_fallback(fd: RawFd) -> Result<SelectFallbackState, c_int> {
+  use std::sync::Arc;
+  use std::sync::atomic::AtomicBool;
+
+  let mut fds = [0 as c_int; 2];
+  if unsafe {
+    libc::socketpair(libc::AF_UNIX, libc::SOCK_STREAM, 0, fds.as_mut_ptr())
+  } != 0
+  {
+    return Err(unsafe { -*errno_location_macos() });
+  }
+  let fake_fd = fds[0]; // we poll this end (kqueue-compatible)
+  let int_fd = fds[1]; // select thread reads this for interrupts
+
+  // Set both ends non-blocking.
+  for &sock_fd in &[fake_fd, int_fd] {
+    let flags = unsafe { libc::fcntl(sock_fd, libc::F_GETFL) };
+    if flags == -1
+      || unsafe {
+        libc::fcntl(sock_fd, libc::F_SETFL, flags | libc::O_NONBLOCK)
+      } == -1
+    {
+      unsafe {
+        libc::close(fake_fd);
+        libc::close(int_fd);
+      }
+      return Err(UV_EINVAL);
+    }
+  }
+
+  // Wrap fake_fd in AsyncFd — socketpairs work fine with kqueue.
+  let async_fd = match AsyncFd::new(TtyFd(fake_fd)) {
+    Ok(afd) => afd,
+    Err(e) => {
+      unsafe {
+        libc::close(fake_fd);
+        libc::close(int_fd);
+      }
+      return Err(super::io_error_to_uv(&e));
+    }
+  };
+
+  let close_flag = Arc::new(AtomicBool::new(false));
+  let close_flag2 = close_flag.clone();
+  let interest = Arc::new(std::sync::atomic::AtomicU8::new(0));
+  let interest2 = interest.clone();
+  let async_sem = Arc::new(Semaphore::new(0));
+  let async_sem2 = async_sem.clone();
+
+  let max_fd = fd.max(int_fd);
+
+  let thread = match std::thread::Builder::new()
+    .name("tty-select".into())
+    .spawn(move || {
+      select_thread_main(
+        fd,
+        int_fd,
+        max_fd,
+        close_flag2,
+        interest2,
+        async_sem2,
+      );
+    }) {
+    Ok(t) => t,
+    Err(_) => {
+      // Drop async_fd first to deregister from kqueue before closing
+      // the raw fd — avoids fd-reuse races.
+      drop(async_fd);
+      unsafe {
+        libc::close(fake_fd);
+        libc::close(int_fd);
+      }
+      return Err(UV_EINVAL);
+    }
+  };
+
+  Ok(SelectFallbackState {
+    async_fd: Some(async_fd),
+    fake_fd,
+    int_fd,
+    thread: Some(thread),
+    close: close_flag,
+    interest,
+    async_sem,
+  })
+}
+
+/// Background thread that polls the real TTY fd with select(2) and
+/// signals readiness by writing a byte to the socketpair's int_fd
+/// end, which makes data readable on fake_fd (the AsyncFd side).
+///
+/// This matches libuv's `uv__stream_osx_select` thread function.
+/// Like libuv, we only watch for directions that the stream is
+/// actively interested in (read/write), controlled via the shared
+/// `interest` atomic.
+#[cfg(target_os = "macos")]
+fn select_thread_main(
+  fd: RawFd,
+  int_fd: RawFd,
+  max_fd: RawFd,
+  close: std::sync::Arc<std::sync::atomic::AtomicBool>,
+  interest: std::sync::Arc<std::sync::atomic::AtomicU8>,
+  async_sem: std::sync::Arc<Semaphore>,
+) {
+  use std::sync::atomic::Ordering;
+
+  loop {
+    if close.load(Ordering::Relaxed) {
+      break;
+    }
+
+    unsafe {
+      // Check what the main thread is interested in.
+      let cur_interest = interest.load(Ordering::Relaxed);
+
+      // Build fd_sets for select, only watching active directions.
+      let mut read_set: libc::fd_set = std::mem::zeroed();
+      let mut write_set: libc::fd_set = std::mem::zeroed();
+
+      libc::FD_ZERO(&mut read_set);
+      libc::FD_ZERO(&mut write_set);
+
+      if cur_interest & SELECT_INTEREST_READ != 0 {
+        libc::FD_SET(fd, &mut read_set);
+      }
+      if cur_interest & SELECT_INTEREST_WRITE != 0 {
+        libc::FD_SET(fd, &mut write_set);
+      }
+      // Always watch the interrupt fd for shutdown / interest changes.
+      libc::FD_SET(int_fd, &mut read_set);
+
+      // Block indefinitely like libuv — the interrupt fd wakes us
+      // for shutdown or interest changes. No timeout needed.
+      let ret = libc::select(
+        max_fd + 1,
+        &mut read_set,
+        &mut write_set,
+        std::ptr::null_mut(),
+        std::ptr::null_mut(),
+      );
+
+      if ret == -1 {
+        let e = *errno_location_macos();
+        if e == libc::EINTR {
+          continue;
+        }
+        // Unexpected error — bail out (libuv calls abort() here).
+        break;
+      }
+
+      if ret == 0 {
+        continue;
+      }
+
+      // Drain interrupt fd if it was signalled.
+      if libc::FD_ISSET(int_fd, &read_set) {
+        drain_fd(int_fd);
+        if close.load(Ordering::Relaxed) {
+          break;
+        }
+      }
+
+      // Signal readiness by writing a byte to int_fd. In a
+      // socketpair, writing to int_fd (fds[1]) makes data readable
+      // on fake_fd (fds[0]), which is wrapped in AsyncFd.
+      let has_read = libc::FD_ISSET(fd, &read_set);
+      let has_write = libc::FD_ISSET(fd, &write_set);
+      if has_read || has_write {
+        let _ = libc::write(int_fd, b"r".as_ptr().cast(), 1);
+
+        // Wait for the main thread to process the events before
+        // looping again. This prevents busy-looping when the fd is
+        // continuously ready (e.g., writable). Matches libuv's
+        // `uv_sem_wait(&s->async_sem)` in `uv__stream_osx_select`.
+        async_sem.wait();
+      }
+    }
+  }
+}
+
+/// Update the select fallback thread's interest flags based on the
+/// current TTY state (reading, pending writes). Also interrupts the
+/// select thread so it re-evaluates its fd_sets.
+///
+/// Matches libuv's `uv__stream_osx_interrupt_select` which is called
+/// whenever IO interest changes.
+///
+/// # Safety
+/// `tty` must be a valid pointer to an initialized `uv_tty_t`.
+#[cfg(target_os = "macos")]
+unsafe fn update_select_interest(tty: *mut uv_tty_t) {
+  use std::sync::atomic::Ordering;
+
+  unsafe {
+    if let Some(TtyReactor::SelectFallback(s)) =
+      (*tty).internal_reactor.as_ref()
+    {
+      let mut flags: u8 = 0;
+      if (*tty).internal_reading {
+        flags |= SELECT_INTEREST_READ;
+      }
+      if !(*tty).internal_write_queue.is_empty()
+        || (*tty).internal_shutdown.is_some()
+      {
+        flags |= SELECT_INTEREST_WRITE;
+      }
+      s.interest.store(flags, Ordering::Relaxed);
+      // Interrupt the select thread so it picks up the new interest.
+      // Writing to fake_fd makes data readable on int_fd.
+      let _ = libc::write(s.fake_fd, b"i".as_ptr().cast(), 1);
+    }
+  }
+}
+
+/// Drain all pending bytes from a non-blocking fd.
+/// Handles EINTR by retrying, matching libuv's drain loop in
+/// `uv__stream_osx_select`.
+#[cfg(target_os = "macos")]
+fn drain_fd(fd: RawFd) -> bool {
+  unsafe {
+    let mut drained_any = false;
+    let mut buf = [0u8; 1024];
+    loop {
+      let r = libc::read(fd, buf.as_mut_ptr().cast(), buf.len());
+      if r == buf.len() as isize {
+        // Buffer was full — there may be more data.
+        drained_any = true;
+        continue;
+      }
+      if r > 0 {
+        // Read less than buffer size — done.
+        drained_any = true;
+        break;
+      }
+      if r == 0 {
+        break;
+      }
+      // r == -1: check errno.
+      let e = *errno_location_macos();
+      if e == libc::EINTR {
+        continue;
+      }
+      // EAGAIN/EWOULDBLOCK or other error — done.
+      break;
+    }
+    drained_any
+  }
+}
+
+/// Shut down the select fallback thread and close the socketpair.
+/// Called during handle close.
+#[cfg(target_os = "macos")]
+pub(crate) fn shutdown_select_fallback(s: &mut SelectFallbackState) {
+  // Signal the thread to stop. Matches libuv's
+  // `uv_sem_post(&s->close_sem)`.
+  s.close.store(true, std::sync::atomic::Ordering::Relaxed);
+
+  // Post the async semaphore in case the select thread is blocked
+  // waiting for the main thread to process events. Matches libuv's
+  // `uv_sem_post(&s->async_sem)` during close.
+  s.async_sem.post();
+
+  // Write to fake_fd to interrupt the select() call via int_fd.
+  // Matches libuv's `uv__stream_osx_interrupt_select(handle)`.
+  unsafe {
+    let _ = libc::write(s.fake_fd, b"x".as_ptr().cast(), 1);
+  }
+
+  // Join the thread.
+  if let Some(thread) = s.thread.take() {
+    let _ = thread.join();
+  }
+
+  // Close the socketpair fds. We must deregister the AsyncFd from
+  // kqueue BEFORE closing the raw fd, to avoid an fd-reuse race
+  // (another thread could reuse the fd number between close and
+  // deregistration).
+  //
+  // Take the AsyncFd out and drop it to deregister from kqueue.
+  // TtyFd doesn't impl Drop, so dropping the AsyncFd only
+  // deregisters — it doesn't close the fd.
+  drop(s.async_fd.take());
+  // Now safe to close the raw fds.
+  unsafe {
+    libc::close(s.fake_fd);
+    libc::close(s.int_fd);
+  }
 }
 
 // ---- Helpers ----
