@@ -74,8 +74,10 @@ import {
   kExtraStdio,
   kInputOption,
   kIpc,
+  kKillSignalOption,
   kNeedsNpmProcessState,
   kSerialization,
+  kTimeoutOption,
 } from "ext:deno_process/40_process.js";
 
 export function mapValues<T, O>(
@@ -1634,6 +1636,8 @@ export function spawnSync(
     uid,
     gid,
     maxBuffer,
+    timeout,
+    killSignal,
     windowsVerbatimArguments = false,
   } = options;
   const [
@@ -1668,6 +1672,8 @@ export function spawnSync(
       // deno-lint-ignore no-explicit-any
       [kNeedsNpmProcessState]: (options as any)[kNeedsNpmProcessState] ||
         includeNpmProcessState,
+      [kTimeoutOption]: timeout,
+      [kKillSignalOption]: killSignal,
     }).outputSync();
 
     const status = output.signal ? null : output.code;
@@ -1681,11 +1687,18 @@ export function spawnSync(
       result.error = _createSpawnError("ENOBUFS", command, args, true);
     }
 
+    // deno-lint-ignore no-explicit-any
+    if ((output as any).killedByTimeout) {
+      result.error = _createSpawnError("ETIMEDOUT", command, args, true);
+    }
+
     if (encoding && encoding !== "buffer") {
       stdout = stdout && stdout.toString(encoding);
       stderr = stderr && stderr.toString(encoding);
     }
 
+    // deno-lint-ignore no-explicit-any
+    result.pid = (output as any).pid;
     result.status = status;
     result.signal = output.signal;
     result.stdout = stdout;

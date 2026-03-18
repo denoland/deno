@@ -250,6 +250,11 @@ pub struct SpawnArgs {
   extra_stdio: Vec<Stdio>,
   detached: bool,
   needs_npm_process_state: bool,
+
+  #[serde(default)]
+  timeout: Option<u64>,
+  #[serde(default)]
+  kill_signal: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -393,9 +398,11 @@ impl TryFrom<ExitStatus> for ChildStatus {
 
 #[derive(ToV8)]
 pub struct SpawnOutput {
+  pid: u32,
   status: ChildStatus,
   stdout: Option<Uint8Array>,
   stderr: Option<Uint8Array>,
+  killed_by_timeout: bool,
 }
 
 type CreateCommand = (
@@ -1110,6 +1117,8 @@ fn op_spawn_sync(
   let stdout = matches!(args.stdio.stdout, StdioOrRid::Stdio(Stdio::Piped));
   let stderr = matches!(args.stdio.stderr, StdioOrRid::Stdio(Stdio::Piped));
   let input = args.input.clone();
+  let timeout = args.timeout;
+  let kill_signal_str = args.kill_signal.clone();
   let (mut command, _, _, _) =
     create_command(state, args, "Deno.Command().outputSync()")?;
 
@@ -1117,6 +1126,7 @@ fn op_spawn_sync(
     command: command.get_program().to_string_lossy().into_owned(),
     error: Box::new(e.into()),
   })?;
+  let pid = child.id();
   if let Some(input) = input {
     let mut stdin = child.stdin.take().ok_or_else(|| {
       ProcessError::Io(std::io::Error::other("stdin is not available"))
@@ -1124,6 +1134,48 @@ fn op_spawn_sync(
     stdin.write_all(&input)?;
     stdin.flush()?;
   }
+
+  // If timeout is specified, spawn a thread that will kill the child
+  // after the timeout expires.
+  let killed_by_timeout =
+    std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+  if let Some(timeout_ms) = timeout {
+    if timeout_ms > 0 {
+      let child_id = child.id();
+      let killed = killed_by_timeout.clone();
+      let kill_signal = kill_signal_str.as_deref().unwrap_or("SIGTERM");
+      #[cfg(unix)]
+      let signal =
+        deno_signals::signal_str_to_int(kill_signal).unwrap_or(libc::SIGTERM);
+      std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(timeout_ms));
+        killed.store(true, std::sync::atomic::Ordering::SeqCst);
+        #[cfg(unix)]
+        unsafe {
+          libc::kill(child_id as i32, signal);
+        }
+        #[cfg(windows)]
+        {
+          // On Windows, use TerminateProcess via the child handle
+          // We can't easily signal, so just kill the process
+          unsafe {
+            let handle = windows_sys::Win32::System::Threading::OpenProcess(
+              windows_sys::Win32::System::Threading::PROCESS_TERMINATE,
+              0,
+              child_id,
+            );
+            if handle != 0 {
+              windows_sys::Win32::System::Threading::TerminateProcess(
+                handle, 1,
+              );
+              windows_sys::Win32::Foundation::CloseHandle(handle);
+            }
+          }
+        }
+      });
+    }
+  }
+
   let output =
     child
       .wait_with_output()
@@ -1131,7 +1183,9 @@ fn op_spawn_sync(
         command: command.get_program().to_string_lossy().into_owned(),
         error: Box::new(e.into()),
       })?;
+  let timed_out = killed_by_timeout.load(std::sync::atomic::Ordering::SeqCst);
   Ok(SpawnOutput {
+    pid,
     status: output.status.try_into()?,
     stdout: if stdout {
       Some(output.stdout.into())
@@ -1143,6 +1197,7 @@ fn op_spawn_sync(
     } else {
       None
     },
+    killed_by_timeout: timed_out,
   })
 }
 

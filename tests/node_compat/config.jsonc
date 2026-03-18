@@ -253,6 +253,7 @@
     "parallel/test-child-process-spawnsync-env.js": {},
     "parallel/test-child-process-spawnsync-input.js": {},
     "parallel/test-child-process-spawnsync-maxbuf.js": {},
+    "parallel/test-child-process-spawnsync-timeout.js": {},
     "parallel/test-child-process-spawnsync-validation-errors.js": {},
     "parallel/test-child-process-spawnsync.js": {},
     "parallel/test-child-process-stdin-ipc.js": {},
@@ -2524,6 +2525,7 @@
     // "pummel/test-heapdump-inspector.js": {},
     "pummel/test-string-decoder-large-buffer.js": {},
     "sequential/test-buffer-creation-regression.js": {},
+    "sequential/test-child-process-execsync.js": {},
     "sequential/test-child-process-exit.js": {},
     "sequential/test-cli-syntax-bad.js": {},
     "sequential/test-cli-syntax-file-not-found.js": {
