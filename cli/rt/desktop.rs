@@ -110,56 +110,64 @@ pub const DESKTOP_JS: &str = r#"
     nativeUnbind.call(this, name);
   };
 
-  // Defer start so the pending op doesn't block the pre-module event loop tick used by HMR.
-  addEventListener("load", () => {
-    // Poll for menu click events from the native side and dispatch
-    // them as CustomEvents on globalThis.
-    (async () => {
-      while (true) {
-        const id = await op_desktop_recv_menu_click();
-        if (id == null) break;
-        dispatchEvent(new CustomEvent("menuclick", { detail: { id } }));
+  // Start polling loops immediately. Use core.unrefOpPromise so these
+  // pending ops don't block event loop completion (e.g. the pre-module
+  // tick used by HMR, or module evaluation with top-level await).
+  const { unrefOpPromise } = internals.core;
+
+  // Poll for menu click events from the native side and dispatch
+  // them as CustomEvents on globalThis.
+  (async () => {
+    while (true) {
+      const p = op_desktop_recv_menu_click();
+      unrefOpPromise(p);
+      const id = await p;
+      if (id == null) break;
+      dispatchEvent(new CustomEvent("menuclick", { detail: { id } }));
+    }
+  })();
+  // Poll for keyboard events from the native side and dispatch
+  // them on the active BrowserWindow instance.
+  (async () => {
+    while (true) {
+      const p = op_desktop_recv_keyboard_event();
+      unrefOpPromise(p);
+      const ev = await p;
+      if (ev == null) break;
+      const target = activeWindow;
+      if (!target) continue;
+      target.dispatchEvent(new KeyboardEvent(ev.type, {
+        key: ev.key,
+        code: ev.code,
+        shiftKey: ev.shift,
+        ctrlKey: ev.control,
+        altKey: ev.alt,
+        metaKey: ev.meta,
+        repeat: ev.repeat,
+      }));
+    }
+  })();
+  // Poll for bind calls from the webview and dispatch to JS callbacks.
+  (async () => {
+    while (true) {
+      const p = op_desktop_recv_bind_call();
+      unrefOpPromise(p);
+      const call = await p;
+      if (call == null) break;
+      const fn_ = bindCallbacks.get(call.name);
+      if (!fn_) {
+        op_desktop_reject_bind_call(call.callId, "No callback bound for: " + call.name);
+        continue;
       }
-    })();
-    // Poll for keyboard events from the native side and dispatch
-    // them on the active BrowserWindow instance.
-    (async () => {
-      while (true) {
-        const ev = await op_desktop_recv_keyboard_event();
-        if (ev == null) break;
-        const target = activeWindow;
-        if (!target) continue;
-        target.dispatchEvent(new KeyboardEvent(ev.type, {
-          key: ev.key,
-          code: ev.code,
-          shiftKey: ev.shift,
-          ctrlKey: ev.control,
-          altKey: ev.alt,
-          metaKey: ev.meta,
-          repeat: ev.repeat,
-        }));
+      try {
+        const args = Array.isArray(call.args) ? call.args : [];
+        const result = await fn_(...args);
+        op_desktop_resolve_bind_call(call.callId, result ?? null);
+      } catch (e) {
+        op_desktop_reject_bind_call(call.callId, String(e));
       }
-    })();
-    // Poll for bind calls from the webview and dispatch to JS callbacks.
-    (async () => {
-      while (true) {
-        const call = await op_desktop_recv_bind_call();
-        if (call == null) break;
-        const fn_ = bindCallbacks.get(call.name);
-        if (!fn_) {
-          op_desktop_reject_bind_call(call.callId, "No callback bound for: " + call.name);
-          continue;
-        }
-        try {
-          const args = Array.isArray(call.args) ? call.args : [];
-          const result = await fn_(...args);
-          op_desktop_resolve_bind_call(call.callId, result ?? null);
-        } catch (e) {
-          op_desktop_reject_bind_call(call.callId, String(e));
-        }
-      }
-    })();
-  }, { once: true });
+    }
+  })();
 })();
 "#;
 
