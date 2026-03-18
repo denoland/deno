@@ -687,14 +687,15 @@ export function prepareKey(key) {
       throw new TypeError("Invalid key type");
     }
 
-    // If passphrase is provided or the key might be encrypted, create a
-    // proper key handle to decrypt it, then export as unencrypted PEM.
-    if (passphrase != null && format != null) {
+    // If passphrase is provided, decrypt the key via native code and
+    // re-export as unencrypted PEM for the encrypt/decrypt ops.
+    if (passphrase != null) {
+      const keyFormat = format ?? (typeof data === "string" ? "pem" : "der");
       const keyData = getArrayBufferOrView(data, "key", encoding);
       const passphraseData = getArrayBufferOrView(passphrase, "passphrase");
       const handle = op_node_create_private_key(
         keyData,
-        format,
+        keyFormat,
         typ ?? "",
         passphraseData,
       );

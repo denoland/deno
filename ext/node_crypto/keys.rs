@@ -922,15 +922,16 @@ impl KeyObjectHandle {
       "der" => match typ {
         "pkcs8" => {
           if let Some(passphrase) = passphrase {
-            // Try encrypted first; if it fails, fall back to unencrypted
-            // (Node.js ignores passphrase for unencrypted keys)
-            if let Ok(doc) =
+            if EncryptedPrivateKeyInfo::try_from(key).is_ok() {
+              // Key is encrypted — decrypt with passphrase
               SecretDocument::from_pkcs8_encrypted_der(key, passphrase)
-            {
-              doc
+                .map_err(|_| {
+                  AsymmetricPrivateKeyError::InvalidEncryptedPkcs8PrivateKey
+                })?
             } else {
+              // Key is not encrypted — ignore passphrase (Node.js compat)
               SecretDocument::from_pkcs8_der(key).map_err(|_| {
-                AsymmetricPrivateKeyError::InvalidEncryptedPkcs8PrivateKey
+                AsymmetricPrivateKeyError::InvalidPkcs8PrivateKey
               })?
             }
           } else {
@@ -1371,8 +1372,12 @@ impl KeyObjectHandle {
 
         // Check for legacy encrypted PEM (Proc-Type headers) — these can't
         // be parsed by Document::from_pem, so handle them first by routing
-        // through the private key import path.
-        if pem.contains("Proc-Type: 4,ENCRYPTED") {
+        // through the private key import path. Only check private key labels.
+        if (pem.contains("-----BEGIN RSA PRIVATE KEY-----")
+          || pem.contains("-----BEGIN EC PRIVATE KEY-----")
+          || pem.contains("-----BEGIN PRIVATE KEY-----"))
+          && pem.contains("Proc-Type: 4,ENCRYPTED")
+        {
           let handle = KeyObjectHandle::new_asymmetric_private_key_from_js(
             key, format, typ, passphrase,
           )?;
@@ -3321,7 +3326,7 @@ fn parse_legacy_encrypted_pem<'a>(
   let iv = decode_hex(iv_hex)
     .ok_or(AsymmetricPrivateKeyError::InvalidPemPrivateKey)?;
 
-  let (key_len, _) = match cipher_name {
+  let (key_len, expected_iv_len) = match cipher_name {
     "AES-128-CBC" => (16, 16),
     "AES-192-CBC" => (24, 16),
     "AES-256-CBC" => (32, 16),
@@ -3330,6 +3335,10 @@ fn parse_legacy_encrypted_pem<'a>(
       return Err(AsymmetricPrivateKeyError::InvalidEncryptedPemPrivateKey);
     }
   };
+
+  if iv.len() < 8 || iv.len() != expected_iv_len {
+    return Err(AsymmetricPrivateKeyError::InvalidEncryptedPemPrivateKey);
+  }
 
   let mut salt = [0u8; 8];
   salt.copy_from_slice(&iv[..8]);
@@ -3374,13 +3383,14 @@ fn decrypt_legacy_pem_data(
   }
 }
 
-/// Encrypt a PKCS#8 DER-encoded private key using PBES2 with PBKDF2 + AES-256-CBC.
-/// Uses PBKDF2 instead of scrypt for performance (scrypt's default params are too slow).
+/// Encrypt a PKCS#8 DER-encoded private key using PBES2 with PBKDF2.
+/// Uses PBKDF2 instead of scrypt for performance.
 fn encrypt_pkcs8_der(
   data: &[u8],
+  cipher: &str,
   passphrase: &[u8],
-) -> Result<SecretDocument, ()> {
-  let pk_info = PrivateKeyInfo::try_from(data).map_err(|_| ())?;
+) -> Result<SecretDocument, String> {
+  let pk_info = PrivateKeyInfo::try_from(data).map_err(|e| e.to_string())?;
 
   let mut rng = thread_rng();
   let mut salt = [0u8; 16];
@@ -3388,13 +3398,24 @@ fn encrypt_pkcs8_der(
   let mut iv = [0u8; 16];
   rng.fill_bytes(&mut iv);
 
-  let pbes2_params =
-    pkcs8::pkcs5::pbes2::Parameters::pbkdf2_sha256_aes256cbc(2048, &salt, &iv)
-      .map_err(|_| ())?;
+  let pbes2_params = match cipher {
+    "aes-128-cbc" => pkcs8::pkcs5::pbes2::Parameters::pbkdf2_sha256_aes128cbc(
+      100_000, &salt, &iv,
+    ),
+    "aes-256-cbc" => pkcs8::pkcs5::pbes2::Parameters::pbkdf2_sha256_aes256cbc(
+      100_000, &salt, &iv,
+    ),
+    _ => {
+      return Err(format!(
+        "Unsupported cipher for PKCS#8 encryption: {cipher}"
+      ));
+    }
+  }
+  .map_err(|e| e.to_string())?;
 
   pk_info
     .encrypt_with_params(pbes2_params, passphrase)
-    .map_err(|_| ())
+    .map_err(|e| e.to_string())
 }
 
 fn decode_hex(s: &str) -> Option<Vec<u8>> {
@@ -3531,8 +3552,9 @@ pub fn op_node_export_private_key_pem(
     (Some(cipher), Some(passphrase)) => {
       if typ == "pkcs8" {
         // Use standard PKCS#8 EncryptedPrivateKeyInfo format
-        let encrypted_doc = encrypt_pkcs8_der(&data, passphrase.as_bytes())
-          .map_err(|_| ExportPrivateKeyPemError::EncryptionFailed)?;
+        let encrypted_doc =
+          encrypt_pkcs8_der(&data, cipher, passphrase.as_bytes())
+            .map_err(ExportPrivateKeyPemError::UnsupportedCipher)?;
         let pem = encrypted_doc
           .to_pem("ENCRYPTED PRIVATE KEY", LineEnding::LF)
           .map_err(|_| ExportPrivateKeyPemError::VeryLargeData)?;
@@ -3602,15 +3624,16 @@ pub fn op_node_export_private_key_der(
   let data = private_key.export_der(typ)?;
 
   match (&cipher, &passphrase) {
-    (Some(_cipher), Some(passphrase)) => {
+    (Some(cipher), Some(passphrase)) => {
       if typ != "pkcs8" {
         return Err(
           ExportPrivateKeyDerError::DerEncryptionOnlySupportedForPkcs8,
         );
       }
-      // Use PKCS#8 EncryptedPrivateKeyInfo (PBES2 with PBKDF2 + AES-256-CBC)
-      let encrypted_doc = encrypt_pkcs8_der(&data, passphrase.as_bytes())
-        .map_err(|_| ExportPrivateKeyDerError::EncryptionFailed)?;
+      // Use PKCS#8 EncryptedPrivateKeyInfo (PBES2)
+      let encrypted_doc =
+        encrypt_pkcs8_der(&data, cipher, passphrase.as_bytes())
+          .map_err(ExportPrivateKeyDerError::UnsupportedCipher)?;
       Ok(encrypted_doc.as_bytes().into())
     }
     (Some(_), None) | (None, Some(_)) => {
@@ -3632,8 +3655,8 @@ pub enum ExportPrivateKeyDerError {
   ),
   #[error("DER encryption is only supported for PKCS#8 keys")]
   DerEncryptionOnlySupportedForPkcs8,
-  #[error("failed to encrypt private key")]
-  EncryptionFailed,
+  #[error("{0}")]
+  UnsupportedCipher(String),
   #[error(
     "cipher and passphrase must both be provided for encrypted key export"
   )]
