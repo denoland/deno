@@ -16,6 +16,63 @@ use deno_core::uv_compat::uv_handle_t;
 use deno_core::v8;
 
 // ---------------------------------------------------------------------------
+// OwnedPtr — a raw-pointer wrapper that owns heap memory without Box's
+// uniqueness/noalias guarantees.  Needed when the pointee is accessed
+// through raw pointers during reentrant JS calls.
+// ---------------------------------------------------------------------------
+
+pub struct OwnedPtr<T>(*mut T);
+
+impl<T> OwnedPtr<T> {
+  pub fn from_box(b: Box<T>) -> Self {
+    Self(Box::into_raw(b))
+  }
+
+  pub fn as_mut_ptr(&self) -> *mut T {
+    self.0
+  }
+
+  pub fn as_ptr(&self) -> *const T {
+    self.0
+  }
+
+  /// # Safety
+  /// Caller must ensure no mutable references exist to the pointee,
+  /// and the pointer is valid.
+  pub unsafe fn as_ref(&self) -> &T {
+    unsafe { &*self.0 }
+  }
+
+  /// # Safety
+  /// Caller must ensure no other references (shared or mutable) exist
+  /// to the pointee, and the pointer is valid.
+  pub unsafe fn as_mut(&mut self) -> &mut T {
+    unsafe { &mut *self.0 }
+  }
+
+  /// # Safety
+  /// Caller must ensure T and U have identical memory layout.
+  pub unsafe fn cast<U>(self) -> OwnedPtr<U> {
+    const {
+      assert!(size_of::<T>() == size_of::<U>());
+      assert!(align_of::<T>() == align_of::<U>());
+    }
+    let ptr = self.0.cast();
+    std::mem::forget(self);
+    OwnedPtr(ptr)
+  }
+}
+
+impl<T> Drop for OwnedPtr<T> {
+  fn drop(&mut self) {
+    // SAFETY: self.0 was created from Box::into_raw and has not been freed.
+    unsafe {
+      let _ = Box::from_raw(self.0);
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
 // GlobalHandle — mirrors Node's BaseObject::persistent_handle_ weak/strong
 // switching.
 //

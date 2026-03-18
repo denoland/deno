@@ -15,7 +15,6 @@ import {
 import { codes } from "ext:deno_node/internal/errors.ts";
 import {
   isArrayBufferView,
-  isUint8Array,
 } from "ext:deno_node/internal/util/types.ts";
 import { validateString } from "ext:deno_node/internal/validators.mjs";
 import { primordials } from "ext:core/mod.js";
@@ -232,51 +231,9 @@ export function createSecurePair() {
   notImplemented("tls.createSecurePair");
 }
 
-function convertProtocols(protocols: string[]) {
-  const lengths = new Array(protocols.length);
-  const buffer = Buffer.allocUnsafe(
-    protocols.reduce((total, protocol, index) => {
-      const length = Buffer.byteLength(protocol);
-      if (length > 255) {
-        throw new codes.ERR_OUT_OF_RANGE(
-          `The byte length of the protocol at index ${index} exceeds the maximum length.`,
-          "<= 255",
-          length,
-          true,
-        );
-      }
-      lengths[index] = length;
-      return total + 1 + length;
-    }, 0),
-  );
-
-  let offset = 0;
-  for (let i = 0; i < protocols.length; i++) {
-    buffer[offset++] = lengths[i];
-    buffer.write(protocols[i], offset);
-    offset += lengths[i];
-  }
-
-  return buffer;
-}
-
-export function convertALPNProtocols(
-  protocols: unknown,
-  out: Record<string, unknown>,
-) {
-  if (ArrayIsArray(protocols)) {
-    out.ALPNProtocols = convertProtocols(protocols);
-  } else if (isUint8Array(protocols)) {
-    out.ALPNProtocols = Buffer.from(protocols);
-  } else if (isArrayBufferView(protocols)) {
-    out.ALPNProtocols = Buffer.from(
-      protocols.buffer.slice(
-        protocols.byteOffset,
-        protocols.byteOffset + protocols.byteLength,
-      ),
-    );
-  }
-}
+// Imported from shared helper (avoids circular dep with _tls_wrap.js)
+import { convertALPNProtocols } from "ext:deno_node/internal/tls_common.js";
+export { convertALPNProtocols };
 
 const exported = {
   CryptoStream,

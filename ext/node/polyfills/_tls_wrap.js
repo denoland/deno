@@ -17,7 +17,8 @@ import {
   createSecureContext,
   translatePeerCertificate,
 } from "node:_tls_common";
-import { convertALPNProtocols } from "node:tls";
+import { JSStreamSocket } from "ext:deno_node/internal/js_stream_socket.js";
+import { convertALPNProtocols } from "ext:deno_node/internal/tls_common.js";
 import { Buffer } from "node:buffer";
 import {
   connResetException,
@@ -251,7 +252,6 @@ function TLSSocket(socket, opts) {
     if (socket instanceof net.Socket && socket._handle) {
       wrap = socket;
     } else {
-      // TODO: JSStreamSocket support for arbitrary streams
       wrap = new JSStreamSocket(socket);
     }
     handle = wrap._handle;

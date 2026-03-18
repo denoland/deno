@@ -19,7 +19,6 @@
 //   - OnStreamRead: Encrypted data from underlying stream → feed to rustls
 //   - Cycle:    Drive the state machine: ClearIn → ClearOut → EncOut
 
-use std::cell::RefCell;
 use std::ffi::c_char;
 use std::io::Read;
 use std::io::Write;
@@ -44,6 +43,7 @@ use deno_node_crypto::x509::CertificateObject;
 
 use crate::ops::handle_wrap::AsyncWrap;
 use crate::ops::handle_wrap::HandleWrap;
+use crate::ops::handle_wrap::OwnedPtr;
 use crate::ops::handle_wrap::ProviderType;
 use crate::ops::stream_wrap::LibUvStreamWrap;
 use crate::ops::stream_wrap::StreamBaseState;
@@ -197,6 +197,195 @@ enum StreamBaseStateFields {
 const CLEAR_OUT_CHUNK_SIZE: usize = 16384;
 
 // ---------------------------------------------------------------------------
+// UnderlyingStream — abstracts over libuv streams and JS-backed streams
+// ---------------------------------------------------------------------------
+
+/// The underlying transport that TLSWrap encrypts/decrypts over.
+/// Mirrors Node's StreamBase polymorphism via enum dispatch.
+enum UnderlyingStream {
+  /// Not yet attached.
+  None,
+  /// Real libuv stream (e.g. TCP). I/O goes through uv_read_start / uv_write.
+  Uv {
+    stream: *mut uv_stream_t,
+    original_data: *mut std::ffi::c_void,
+    cb_data: Option<Box<TlsCallbackData>>,
+  },
+  /// JS-backed stream (e.g. Duplex wrapped via JSStreamSocket).
+  /// Reads are injected from JS via receive(). Writes call back into JS.
+  Js {
+    /// The uv_loop pointer, needed for recovering v8 context in callbacks.
+    loop_ptr: *mut uv_compat::uv_loop_t,
+  },
+}
+
+impl Default for UnderlyingStream {
+  fn default() -> Self {
+    UnderlyingStream::None
+  }
+}
+
+impl UnderlyingStream {
+  fn is_attached(&self) -> bool {
+    !matches!(self, UnderlyingStream::None)
+  }
+
+  #[allow(dead_code)]
+  fn uv_stream_ptr(&self) -> *mut uv_stream_t {
+    match self {
+      UnderlyingStream::Uv { stream, .. } => *stream,
+      _ => std::ptr::null_mut(),
+    }
+  }
+
+  fn loop_ptr(&self) -> *mut uv_compat::uv_loop_t {
+    match self {
+      UnderlyingStream::Uv { stream, .. } => {
+        if stream.is_null() {
+          std::ptr::null_mut()
+        } else {
+          // SAFETY: stream is non-null and valid
+          unsafe { (**stream).loop_ }
+        }
+      }
+      UnderlyingStream::Js { loop_ptr, .. } => *loop_ptr,
+      UnderlyingStream::None => std::ptr::null_mut(),
+    }
+  }
+
+  fn read_start(&mut self) {
+    match self {
+      UnderlyingStream::Uv { stream, .. } => {
+        if !stream.is_null() {
+          // SAFETY: stream is a valid libuv stream handle
+          unsafe {
+            uv_compat::uv_read_start(
+              *stream,
+              Some(tls_alloc_cb),
+              Some(tls_read_cb),
+            );
+          }
+        }
+      }
+      UnderlyingStream::Js { .. } => {
+        // JS stream: reads are pushed via receive(), no action needed
+      }
+      UnderlyingStream::None => {}
+    }
+  }
+
+  fn read_stop(&self) {
+    match self {
+      UnderlyingStream::Uv { stream, .. } => {
+        if !stream.is_null() {
+          // SAFETY: stream is a valid libuv stream handle
+          unsafe {
+            uv_compat::uv_read_stop(*stream);
+          }
+        }
+      }
+      UnderlyingStream::Js { .. } => {
+        // JS stream: no-op, JS side controls read flow
+      }
+      UnderlyingStream::None => {}
+    }
+  }
+
+  fn write(
+    &self,
+    write_req: Box<EncryptedWriteReq>,
+  ) -> (*mut uv_write_t, i32) {
+    match self {
+      UnderlyingStream::Uv { stream, .. } => {
+        if stream.is_null() {
+          return (std::ptr::null_mut(), UV_EBADF);
+        }
+        let mut write_req = write_req;
+        let data_len = write_req._data.len();
+        let buf = uv_buf_t {
+          base: write_req._data.as_mut_ptr() as *mut c_char,
+          len: data_len,
+        };
+        let req_ptr = &mut write_req.uv_req as *mut uv_write_t;
+        let _ = Box::into_raw(write_req); // freed in enc_write_cb
+        // SAFETY: req_ptr and stream are valid; req is reclaimed in enc_write_cb or on error
+        let ret = unsafe {
+          uv_compat::uv_write(req_ptr, *stream, &buf, 1, Some(enc_write_cb))
+        };
+        (req_ptr, ret)
+      }
+      UnderlyingStream::Js { .. } => {
+        // For JS streams, enc_out should not be called — encrypted data
+        // goes through the JS-side write callback. This path should not
+        // be reached in normal operation. If it is, treat as EBADF.
+        (std::ptr::null_mut(), UV_EBADF)
+      }
+      UnderlyingStream::None => (std::ptr::null_mut(), UV_EBADF),
+    }
+  }
+
+  fn shutdown(&self) {
+    match self {
+      UnderlyingStream::Uv { stream, .. } => {
+        if !stream.is_null() {
+          let req = Box::new(uv_compat::new_shutdown());
+          let req_ptr = Box::into_raw(req);
+          // SAFETY: stream is non-null (checked above); req_ptr reclaimed on error
+          unsafe {
+            let ret = uv_compat::uv_shutdown(req_ptr, *stream, None);
+            if ret != 0 {
+              let _ = Box::from_raw(req_ptr);
+            }
+          }
+        }
+      }
+      UnderlyingStream::Js { .. } => {
+        // JS stream shutdown is handled at the JS level
+      }
+      UnderlyingStream::None => {}
+    }
+  }
+
+  /// Install TLS callback data on the stream's data pointer (Uv only).
+  fn install_cb_data(&mut self, tls_wrap: *mut TLSWrapInner) {
+    if let UnderlyingStream::Uv {
+      stream, cb_data, ..
+    } = self
+    {
+      if !stream.is_null() {
+        if let Some(cb) = cb_data {
+          let cb_data_ptr =
+            &**cb as *const TlsCallbackData as *mut std::ffi::c_void;
+          // SAFETY: stream is non-null (checked above)
+          unsafe {
+            (**stream).data = cb_data_ptr;
+          }
+        }
+      }
+    }
+    // For Js streams: cb_data is stored locally, no need to install
+    let _ = tls_wrap;
+  }
+
+  /// Restore original data pointer on the underlying stream (Uv only).
+  fn restore_data(&self) {
+    if let UnderlyingStream::Uv {
+      stream,
+      original_data,
+      ..
+    } = self
+    {
+      if !stream.is_null() {
+        // SAFETY: stream is non-null (checked above)
+        unsafe {
+          (**stream).data = *original_data;
+        }
+      }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
 // CallbackData stored on the underlying stream's data pointer.
 // TLSWrap replaces the original data pointer to intercept reads.
 // ---------------------------------------------------------------------------
@@ -258,10 +447,7 @@ struct TLSWrapInner {
   pending_enc_out: Vec<u8>,
 
   // The underlying stream we're wrapping
-  underlying_stream: *mut uv_stream_t,
-
-  // Original data pointer on the underlying stream (so we can restore it)
-  original_stream_data: *mut std::ffi::c_void,
+  underlying: UnderlyingStream,
 
   // JS references needed for callbacks
   js_handle: Option<v8::Global<v8::Object>>,
@@ -286,8 +472,7 @@ struct TLSWrapInner {
   // Read by verifyError() to report to JS.
   verify_error: VerifyErrorStore,
 
-  // Callback data stored on the underlying stream
-  cb_data: Option<Box<TlsCallbackData>>,
+  // (cb_data is stored inside UnderlyingStream::Uv)
 
   // Deferred TLS config — stored here until start() creates the connection.
   // This allows setALPNProtocols to modify the config before the connection
@@ -380,8 +565,7 @@ impl TLSWrapInner {
       enc_writes_in_flight: 0,
       pending_cleartext: None,
       pending_enc_out: Vec::new(),
-      underlying_stream: std::ptr::null_mut(),
-      original_stream_data: std::ptr::null_mut(),
+      underlying: UnderlyingStream::None,
       js_handle: None,
       isolate: None,
       stream_base_state: None,
@@ -392,7 +576,6 @@ impl TLSWrapInner {
       bytes_written: 0,
       error: None,
       verify_error: Arc::new(std::sync::Mutex::new(None)),
-      cb_data: None,
       pending_client_config: None,
       pending_server_name: None,
       pending_server_config: None,
@@ -618,38 +801,42 @@ impl TLSWrapInner {
       self.write_callback_scheduled = true;
     }
 
-    let stream = self.underlying_stream;
-    if stream.is_null() {
+    if !self.underlying.is_attached() {
       return;
     }
 
-    // Write buffered encrypted data to the underlying stream
+    match self.underlying {
+      UnderlyingStream::Uv { .. } => {
+        self.enc_out_uv();
+      }
+      UnderlyingStream::Js { .. } => {
+        self.enc_out_js();
+      }
+      UnderlyingStream::None => {}
+    }
+  }
+
+  /// Write encrypted data to the underlying uv stream.
+  fn enc_out_uv(&mut self) {
     let enc_data = std::mem::take(&mut self.pending_enc_out);
-    let data_len = enc_data.len();
     let has_write_cb = self.write_callback_scheduled;
     let self_ptr = self as *mut TLSWrapInner;
-    let mut write_req = Box::new(EncryptedWriteReq {
+    let write_req = Box::new(EncryptedWriteReq {
       uv_req: uv_compat::new_write(),
       _data: enc_data,
       tls_wrap_inner: self_ptr,
       has_write_callback: has_write_cb,
     });
-    let buf = uv_buf_t {
-      base: write_req._data.as_mut_ptr() as *mut c_char,
-      len: data_len,
-    };
-    let req_ptr = &mut write_req.uv_req as *mut uv_write_t;
-    let _ = Box::into_raw(write_req); // freed in enc_write_cb
 
-    // SAFETY: req_ptr and stream are valid pointers; req is reclaimed in enc_write_cb or on error
-    unsafe {
-      self.enc_writes_in_flight += 1;
-      let ret =
-        uv_compat::uv_write(req_ptr, stream, &buf, 1, Some(enc_write_cb));
-      if ret != 0 {
-        self.enc_writes_in_flight -= 1;
+    self.enc_writes_in_flight += 1;
+    let (req_ptr, ret) = self.underlying.write(write_req);
+    if ret != 0 {
+      self.enc_writes_in_flight -= 1;
+      if !req_ptr.is_null() {
         // Failed to write — reclaim the request
-        let reclaimed = Box::from_raw(req_ptr as *mut EncryptedWriteReq);
+        // SAFETY: req_ptr was returned from underlying.write and is a valid EncryptedWriteReq
+        let reclaimed =
+          unsafe { Box::from_raw(req_ptr as *mut EncryptedWriteReq) };
         if ret == UV_EBADF && !self.established {
           // Stream not connected yet — put the data back so we
           // retry on the next enc_out() call (after connect).
@@ -657,9 +844,68 @@ impl TLSWrapInner {
         } else if self.write_callback_scheduled {
           self.invoke_queued(ret);
         }
+      } else if self.write_callback_scheduled {
+        self.invoke_queued(ret);
       }
-      // Note: for successful writes, invoke_queued is called from enc_write_cb
-      // when the uv_write completes asynchronously.
+    }
+    // Note: for successful writes, invoke_queued is called from enc_write_cb
+    // when the uv_write completes asynchronously.
+  }
+
+  /// Write encrypted data to a JS-backed stream by calling the JS
+  /// `onwrite` callback on the handle. The write is treated as
+  /// synchronously completing (the JS side buffers internally).
+  fn enc_out_js(&mut self) {
+    let enc_data = std::mem::take(&mut self.pending_enc_out);
+
+    let Some(ref isolate_ptr) = self.isolate else {
+      return;
+    };
+    let Some(ref js_handle) = self.js_handle else {
+      return;
+    };
+
+    let loop_ptr = self.underlying.loop_ptr();
+    if loop_ptr.is_null() {
+      return;
+    }
+
+    // SAFETY: isolate_ptr is valid while TLSWrap is alive
+    unsafe {
+      let mut isolate = v8::Isolate::from_raw_isolate_ptr(*isolate_ptr);
+      v8::scope!(let handle_scope, &mut isolate);
+
+      let ctx_ptr = (*loop_ptr).data;
+      if ctx_ptr.is_null() {
+        return;
+      }
+      let raw = NonNull::new_unchecked(ctx_ptr as *mut v8::Context);
+      let global = v8::Global::from_raw(handle_scope, raw);
+      let cloned = global.clone();
+      global.into_raw();
+
+      let context = v8::Local::new(handle_scope, cloned);
+      let scope = &mut v8::ContextScope::new(handle_scope, context);
+
+      let this = v8::Local::new(scope, js_handle);
+      let key =
+        v8::String::new_external_onebyte_static(scope, b"encOut").unwrap();
+      if let Some(val) = this.get(scope, key.into())
+        && let Ok(func) = v8::Local::<v8::Function>::try_from(val)
+      {
+        // Pass encrypted data as ArrayBuffer
+        let ab = v8::ArrayBuffer::new(scope, enc_data.len());
+        let backing = ab.get_backing_store();
+        for (i, byte) in enc_data.iter().enumerate() {
+          backing[i].set(*byte);
+        }
+        func.call(scope, this.into(), &[ab.into()]);
+      }
+    }
+
+    // For JS streams, treat the write as synchronously completed.
+    if self.write_callback_scheduled && !self.in_dowrite {
+      self.invoke_queued(0);
     }
   }
 
@@ -681,11 +927,10 @@ impl TLSWrapInner {
       v8::scope!(let handle_scope, &mut isolate);
 
       // Recover context from underlying stream's loop
-      let loop_ptr = if !self.underlying_stream.is_null() {
-        (*self.underlying_stream).loop_
-      } else {
+      let loop_ptr = self.underlying.loop_ptr();
+      if loop_ptr.is_null() {
         return;
-      };
+      }
       let ctx_ptr = (*loop_ptr).data;
       if ctx_ptr.is_null() {
         return;
@@ -761,11 +1006,10 @@ impl TLSWrapInner {
       let mut isolate = v8::Isolate::from_raw_isolate_ptr(*isolate_ptr);
       v8::scope!(let handle_scope, &mut isolate);
 
-      let loop_ptr = if !self.underlying_stream.is_null() {
-        (*self.underlying_stream).loop_
-      } else {
+      let loop_ptr = self.underlying.loop_ptr();
+      if loop_ptr.is_null() {
         return;
-      };
+      }
       let ctx_ptr = (*loop_ptr).data;
       if ctx_ptr.is_null() {
         return;
@@ -815,11 +1059,10 @@ impl TLSWrapInner {
       let mut isolate = v8::Isolate::from_raw_isolate_ptr(*isolate_ptr);
       v8::scope!(let handle_scope, &mut isolate);
 
-      let loop_ptr = if !self.underlying_stream.is_null() {
-        (*self.underlying_stream).loop_
-      } else {
+      let loop_ptr = self.underlying.loop_ptr();
+      if loop_ptr.is_null() {
         return;
-      };
+      }
       let ctx_ptr = (*loop_ptr).data;
       if ctx_ptr.is_null() {
         return;
@@ -866,11 +1109,10 @@ impl TLSWrapInner {
       let mut isolate = v8::Isolate::from_raw_isolate_ptr(*isolate_ptr);
       v8::scope!(let handle_scope, &mut isolate);
 
-      let loop_ptr = if !self.underlying_stream.is_null() {
-        (*self.underlying_stream).loop_
-      } else {
+      let loop_ptr = self.underlying.loop_ptr();
+      if loop_ptr.is_null() {
         return;
-      };
+      }
       let ctx_ptr = (*loop_ptr).data;
       if ctx_ptr.is_null() {
         return;
@@ -1030,7 +1272,7 @@ unsafe extern "C" fn enc_write_cb(req: *mut uv_write_t, status: i32) {
 #[repr(C)]
 pub struct TLSWrap {
   base: LibUvStreamWrap,
-  inner: RefCell<Box<TLSWrapInner>>,
+  inner: OwnedPtr<TLSWrapInner>,
 }
 
 // SAFETY: TLSWrap is CppGC-managed; trace correctly visits the base member
@@ -1059,7 +1301,7 @@ impl TLSWrap {
     op_state: &mut OpState,
   ) -> i32 {
     let byte_length = data.len();
-    let mut inner = self.inner.borrow_mut();
+    let inner = unsafe { &mut *self.inner.as_mut_ptr() };
 
     if inner.tls_conn.is_none() {
       inner.error = Some("Write after DestroySSL".to_string());
@@ -1117,37 +1359,20 @@ impl TLSWrap {
   }
 
   fn destroy_inner(&self) {
+    let inner = unsafe { &mut *self.inner.as_mut_ptr() };
+
     // Match Node's TLSWrap::Destroy(): if there is a pending write,
     // fire its callback with UV_ECANCELED before tearing down.
-    {
-      let mut inner = self.inner.borrow_mut();
-      if inner.tls_conn.is_none() {
-        return;
-      }
-      inner.write_callback_scheduled = true;
+    if inner.tls_conn.is_none() {
+      return;
     }
-    // invoke_queued needs scope/isolate from inner, and may re-enter JS.
-    // Use raw pointer to avoid holding RefMut across JS call.
-    {
-      let mut inner = self.inner.borrow_mut();
-      let inner_ptr: *mut TLSWrapInner = &mut **inner;
-      drop(inner);
-      // SAFETY: inner_ptr points to heap-allocated TLSWrapInner; RefMut dropped to avoid conflicts
-      unsafe { (*inner_ptr).invoke_queued(UV_ECANCELED) };
-    }
+    inner.write_callback_scheduled = true;
 
-    let mut inner = self.inner.borrow_mut();
+    // invoke_queued needs scope/isolate from inner, and may re-enter JS.
+    inner.invoke_queued(UV_ECANCELED);
 
     // Restore original data pointer on underlying stream
-    if !inner.underlying_stream.is_null() {
-      // SAFETY: underlying_stream is non-null and was set during attach
-      unsafe {
-        (*inner.underlying_stream).data = inner.original_stream_data;
-      }
-    }
-
-    // Drop callback data
-    inner.cb_data = None;
+    inner.underlying.restore_data();
     inner.tls_conn = None;
     inner.js_handle = None;
     inner.onread = None;
@@ -1187,7 +1412,7 @@ impl TLSWrap {
 
     TLSWrap {
       base,
-      inner: RefCell::new(Box::new(TLSWrapInner::new(kind))),
+      inner: OwnedPtr::from_box(Box::new(TLSWrapInner::new(kind))),
     }
   }
 
@@ -1212,14 +1437,13 @@ impl TLSWrap {
       Err(_) => return -1,
     };
 
-    let verify_error = self.inner.borrow().verify_error.clone();
+    let inner = unsafe { &mut *self.inner.as_mut_ptr() };
+    let verify_error = inner.verify_error.clone();
     let client_config =
       match build_client_config(scope, context, op_state, verify_error) {
         Some(c) => c,
         None => return -1,
       };
-
-    let mut inner = self.inner.borrow_mut();
     inner.pending_client_config = Some(Arc::new(client_config));
     inner.pending_server_name = Some(server_name);
     0
@@ -1242,7 +1466,7 @@ impl TLSWrap {
       }
     };
 
-    let mut inner = self.inner.borrow_mut();
+    let inner = unsafe { &mut *self.inner.as_mut_ptr() };
     inner.pending_server_config = Some(Arc::new(server_config));
     0
   }
@@ -1261,27 +1485,23 @@ impl TLSWrap {
       return UV_EBADF;
     }
 
-    let mut inner = self.inner.borrow_mut();
-    inner.underlying_stream = stream;
-    // SAFETY: scope is valid for the current isolate
+    let inner = unsafe { &mut *self.inner.as_mut_ptr() };
+    // SAFETY: stream is non-null (checked above), scope is valid for the current isolate
+    let original_data = unsafe { (*stream).data };
+    let cb_data = Box::new(TlsCallbackData {
+      tls_wrap: inner as *mut TLSWrapInner,
+    });
+    inner.underlying = UnderlyingStream::Uv {
+      stream,
+      original_data,
+      cb_data: Some(cb_data),
+    };
     inner.isolate = Some(unsafe { scope.as_raw_isolate_ptr() });
 
     // Get stream_base_state from OpState
     let state_global = &op_state.borrow::<StreamBaseState>().array;
     inner.stream_base_state =
       Some(v8::Global::new(scope, v8::Local::new(scope, state_global)));
-
-    // Save original data pointer (but don't replace yet - connect_cb needs it)
-    // SAFETY: stream is non-null (checked above)
-    unsafe {
-      inner.original_stream_data = (*stream).data;
-    }
-
-    // Create callback data (installed on stream later in start())
-    let cb_data = Box::new(TlsCallbackData {
-      tls_wrap: &mut **inner as *mut TLSWrapInner,
-    });
-    inner.cb_data = Some(cb_data);
 
     0
   }
@@ -1293,7 +1513,7 @@ impl TLSWrap {
     handle: v8::Local<v8::Object>,
     scope: &mut v8::PinScope,
   ) {
-    let mut inner = self.inner.borrow_mut();
+    let inner = unsafe { &mut *self.inner.as_mut_ptr() };
     inner.js_handle = Some(v8::Global::new(scope, handle));
   }
 
@@ -1304,7 +1524,7 @@ impl TLSWrap {
     onread: v8::Local<v8::Function>,
     scope: &mut v8::PinScope,
   ) {
-    let mut inner = self.inner.borrow_mut();
+    let inner = unsafe { &mut *self.inner.as_mut_ptr() };
     inner.onread = Some(v8::Global::new(scope, onread));
   }
 
@@ -1314,7 +1534,7 @@ impl TLSWrap {
   #[fast]
   #[reentrant]
   fn start(&self) -> i32 {
-    let mut inner = self.inner.borrow_mut();
+    let inner = unsafe { &mut *self.inner.as_mut_ptr() };
     if inner.started {
       // Already started — but the underlying stream may have just
       // connected.  Flush any buffered encrypted output (e.g. the
@@ -1355,28 +1575,11 @@ impl TLSWrap {
 
     // Now install our callback data on the stream (deferred from attach()
     // because connect_cb needs the original StreamHandleData pointer)
-    if !inner.underlying_stream.is_null()
-      && let Some(ref cb_data) = inner.cb_data
-    {
-      let cb_data_ptr =
-        &**cb_data as *const TlsCallbackData as *mut std::ffi::c_void;
-      // SAFETY: underlying_stream is non-null (checked above)
-      unsafe {
-        (*inner.underlying_stream).data = cb_data_ptr;
-      }
-    }
+    let inner_ptr: *mut TLSWrapInner = inner as *mut TLSWrapInner;
+    inner.underlying.install_cb_data(inner_ptr);
 
     // Start reading from the underlying stream (both client and server need this)
-    if !inner.underlying_stream.is_null() {
-      // SAFETY: underlying_stream is a valid libuv stream handle
-      unsafe {
-        uv_compat::uv_read_start(
-          inner.underlying_stream,
-          Some(tls_alloc_cb),
-          Some(tls_read_cb),
-        );
-      }
-    }
+    inner.underlying.read_start();
 
     // For client mode, initiate handshake by cycling.
     if inner.kind == Kind::Client {
@@ -1399,7 +1602,7 @@ impl TLSWrap {
     #[this] this: v8::Global<v8::Object>,
     scope: &mut v8::PinScope,
   ) -> i32 {
-    let mut inner = self.inner.borrow_mut();
+    let inner = unsafe { &mut *self.inner.as_mut_ptr() };
 
     // Get onread from the JS object
     let this_local = v8::Local::new(scope, &this);
@@ -1416,33 +1619,16 @@ impl TLSWrap {
 
     // Start reading from underlying stream if not already
     let should_cycle;
-    if !inner.underlying_stream.is_null() && inner.started {
+    if inner.underlying.is_attached() && inner.started {
       should_cycle = !inner.enc_in.is_empty() || inner.has_buffered_cleartext;
-      // SAFETY: underlying_stream is a valid libuv stream handle (non-null checked above)
-      unsafe {
-        uv_compat::uv_read_start(
-          inner.underlying_stream,
-          Some(tls_alloc_cb),
-          Some(tls_read_cb),
-        );
-      }
+      inner.underlying.read_start();
     } else {
       should_cycle = false;
     }
-    // Get raw pointer before dropping RefMut — cycle() may re-enter JS
-    // which could trigger other borrows of self.inner.
-    let inner_ptr: *mut TLSWrapInner = if should_cycle {
-      &mut **inner
-    } else {
-      std::ptr::null_mut()
-    };
-    drop(inner);
 
     if should_cycle {
-      // SAFETY: inner_ptr points to the Box<TLSWrapInner> inside self.inner,
-      // which is heap-allocated and stable. We've dropped the RefMut so
-      // re-entrant borrows from JS callbacks won't conflict.
-      unsafe { (*inner_ptr).cycle() };
+      // SAFETY: inner points to heap-allocated TLSWrapInner via OwnedPtr
+      unsafe { inner.cycle() };
     }
 
     0
@@ -1451,13 +1637,8 @@ impl TLSWrap {
   /// ReadStop
   #[fast]
   fn read_stop(&self) -> i32 {
-    let inner = self.inner.borrow();
-    if !inner.underlying_stream.is_null() {
-      // SAFETY: underlying_stream is a valid libuv stream handle
-      unsafe {
-        uv_compat::uv_read_stop(inner.underlying_stream);
-      }
-    }
+    let inner = unsafe { &*self.inner.as_mut_ptr() };
+    inner.underlying.read_stop();
     0
   }
 
@@ -1648,7 +1829,7 @@ impl TLSWrap {
     scope: &mut v8::PinScope,
   ) -> i32 {
     {
-      let mut inner = self.inner.borrow_mut();
+      let inner = unsafe { &mut *self.inner.as_mut_ptr() };
 
       if let Some(ref mut conn) = inner.tls_conn {
         conn.send_close_notify();
@@ -1660,18 +1841,7 @@ impl TLSWrap {
       // TLSWrap::DoShutdown → underlying_stream()->DoShutdown().
       // uv_shutdown defers until the write queue drains, so the
       // close_notify (written by enc_out above) is sent first.
-      if !inner.underlying_stream.is_null() {
-        let req = Box::new(uv_compat::new_shutdown());
-        let req_ptr = Box::into_raw(req);
-        // SAFETY: underlying_stream is non-null (checked above); req_ptr reclaimed on error
-        unsafe {
-          let ret =
-            uv_compat::uv_shutdown(req_ptr, inner.underlying_stream, None);
-          if ret != 0 {
-            let _ = Box::from_raw(req_ptr);
-          }
-        }
-      }
+      inner.underlying.shutdown();
     }
 
     // Call req.oncomplete(0) to signal completion to the JS side,
@@ -1705,7 +1875,7 @@ impl TLSWrap {
     out: v8::Local<v8::Object>,
     scope: &mut v8::PinScope,
   ) -> i32 {
-    let inner = self.inner.borrow();
+    let inner = unsafe { &*self.inner.as_mut_ptr() };
     let key =
       v8::String::new_external_onebyte_static(scope, b"alpnProtocol").unwrap();
     if let Some(ref conn) = inner.tls_conn
@@ -1729,7 +1899,7 @@ impl TLSWrap {
     out: v8::Local<v8::Object>,
     scope: &mut v8::PinScope,
   ) -> i32 {
-    let inner = self.inner.borrow();
+    let inner = unsafe { &*self.inner.as_mut_ptr() };
     let key =
       v8::String::new_external_onebyte_static(scope, b"protocol").unwrap();
     if let Some(ref conn) = inner.tls_conn
@@ -1755,7 +1925,7 @@ impl TLSWrap {
     out: v8::Local<v8::Object>,
     scope: &mut v8::PinScope,
   ) -> i32 {
-    let inner = self.inner.borrow();
+    let inner = unsafe { &*self.inner.as_mut_ptr() };
     if let Some(ref conn) = inner.tls_conn
       && let Some(suite) = conn.negotiated_cipher_suite()
     {
@@ -1791,7 +1961,7 @@ impl TLSWrap {
 
   #[serde]
   fn get_peer_certificate_chain(&self) -> Option<PeerCertificateChain> {
-    let inner = self.inner.borrow();
+    let inner = unsafe { &*self.inner.as_mut_ptr() };
     let conn = inner.tls_conn.as_ref()?;
     let certs = conn.peer_certificates()?;
 
@@ -1809,7 +1979,7 @@ impl TLSWrap {
 
   #[serde]
   fn get_peer_certificate(&self, detailed: bool) -> Option<CertificateObject> {
-    let inner = self.inner.borrow();
+    let inner = unsafe { &*self.inner.as_mut_ptr() };
     let conn = inner.tls_conn.as_ref()?;
     let certs = conn.peer_certificates()?;
     let cert = certs.first()?;
@@ -1819,7 +1989,7 @@ impl TLSWrap {
 
   #[buffer]
   fn get_finished(&self) -> Option<Box<[u8]>> {
-    let inner = self.inner.borrow();
+    let inner = unsafe { &*self.inner.as_mut_ptr() };
     if !inner.established {
       return None;
     }
@@ -1833,7 +2003,7 @@ impl TLSWrap {
 
   #[buffer]
   fn get_peer_finished(&self) -> Option<Box<[u8]>> {
-    let inner = self.inner.borrow();
+    let inner = unsafe { &*self.inner.as_mut_ptr() };
     if !inner.established {
       return None;
     }
@@ -1848,19 +2018,19 @@ impl TLSWrap {
   /// Check if the connection is established (handshake complete).
   #[fast]
   fn is_established(&self) -> bool {
-    self.inner.borrow().established
+    unsafe { &*self.inner.as_mut_ptr() }.established
   }
 
   // get_async_id and get_provider_type are inherited from AsyncWrap
 
   #[fast]
   fn get_bytes_read(&self) -> f64 {
-    self.inner.borrow().bytes_read as f64
+    unsafe { &*self.inner.as_mut_ptr() }.bytes_read as f64
   }
 
   #[fast]
   fn get_bytes_written(&self) -> f64 {
-    self.inner.borrow().bytes_written as f64
+    unsafe { &*self.inner.as_mut_ptr() }.bytes_written as f64
   }
 
   /// Set ALPN protocols on the pending TLS config.
@@ -1909,7 +2079,7 @@ impl TLSWrap {
       return;
     }
 
-    let mut inner = self.inner.borrow_mut();
+    let inner = unsafe { &mut *self.inner.as_mut_ptr() };
     // Apply to pending client config
     if let Some(ref config) = inner.pending_client_config {
       let mut new_config = rustls::ClientConfig::clone(config);
@@ -1934,10 +2104,11 @@ impl TLSWrap {
   /// Inject encrypted data (for testing / JSStreamSocket integration).
   /// Mirrors Node's TLSWrap::Receive().
   #[fast]
+  #[reentrant]
   fn receive(&self, #[buffer] data: &[u8]) {
-    let mut inner = self.inner.borrow_mut();
+    let inner = unsafe { &mut *self.inner.as_mut_ptr() };
     inner.enc_in.extend_from_slice(data);
-    // SAFETY: called during op execution with valid isolate/context
+    // SAFETY: inner points to heap-allocated TLSWrapInner via OwnedPtr
     unsafe { inner.cycle() };
   }
 
@@ -1945,7 +2116,7 @@ impl TLSWrap {
   /// The JS wrapper converts this to an Error object.
   #[string]
   fn verify_error(&self) -> String {
-    let inner = self.inner.borrow();
+    let inner = unsafe { &*self.inner.as_mut_ptr() };
     inner
       .verify_error
       .lock()
@@ -1974,6 +2145,66 @@ impl TLSWrap {
   /// so this currently behaves as a no-op native surface for JS compatibility.
   #[fast]
   fn set_session(&self, #[buffer] _session: &[u8]) {}
+
+  // -------------------------------------------------------------------------
+  // JSStreamSocket support — attach to a JS-backed stream instead of TCP
+  // -------------------------------------------------------------------------
+
+  /// Attach to a JS-backed stream (e.g. JSStreamSocket wrapping a Duplex).
+  /// Instead of a uv_stream_t, I/O goes through JS callbacks:
+  ///   - Encrypted reads: JS calls receive() to inject data
+  ///   - Encrypted writes: Rust calls handle.encOut(data) to send data
+  #[nofast]
+  fn attach_js_stream(
+    &self,
+    scope: &mut v8::PinScope,
+    op_state: &mut OpState,
+  ) -> i32 {
+    let inner = unsafe { &mut *self.inner.as_mut_ptr() };
+
+    let loop_ = &**op_state.borrow::<Box<uv_compat::uv_loop_t>>()
+      as *const uv_compat::uv_loop_t
+      as *mut uv_compat::uv_loop_t;
+
+    inner.underlying = UnderlyingStream::Js { loop_ptr: loop_ };
+    // SAFETY: scope is valid for the current isolate
+    inner.isolate = Some(unsafe { scope.as_raw_isolate_ptr() });
+
+    // Get stream_base_state from OpState
+    let state_global = &op_state.borrow::<StreamBaseState>().array;
+    inner.stream_base_state =
+      Some(v8::Global::new(scope, v8::Local::new(scope, state_global)));
+
+    0
+  }
+
+  /// Inject encrypted data from JS (JSStreamSocket read path).
+  /// Called when the underlying JS Duplex stream receives data.
+  /// This is the same as receive() but named to match Node's ReadBuffer.
+  #[fast]
+  #[reentrant]
+  fn read_buffer(&self, #[buffer] data: &[u8]) {
+    let inner = unsafe { &mut *self.inner.as_mut_ptr() };
+    inner.enc_in.extend_from_slice(data);
+    // SAFETY: inner points to heap-allocated TLSWrapInner via OwnedPtr
+    unsafe { inner.cycle() };
+  }
+
+  /// Signal EOF on the encrypted input (JSStreamSocket path).
+  /// Called when the underlying JS Duplex stream ends.
+  #[fast]
+  #[reentrant]
+  fn emit_eof(&self) {
+    let inner = unsafe { &mut *self.inner.as_mut_ptr() };
+    if inner.eof {
+      return;
+    }
+    inner.eof = true;
+    unsafe {
+      inner.clear_out();
+    }
+    inner.emit_read(deno_core::uv_compat::UV_EOF as isize, None);
+  }
 }
 
 // ---------------------------------------------------------------------------

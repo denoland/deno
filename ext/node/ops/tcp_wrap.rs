@@ -24,10 +24,10 @@ use deno_core::uv_compat::uv_tcp_open;
 use deno_core::uv_compat::uv_tcp_t;
 use deno_core::v8;
 
-use super::tty_wrap::OwnedPtr;
 use crate::ops::handle_wrap::AsyncWrap;
 use crate::ops::handle_wrap::Handle;
 use crate::ops::handle_wrap::HandleWrap;
+use crate::ops::handle_wrap::OwnedPtr;
 use crate::ops::handle_wrap::ProviderType;
 use crate::ops::stream_wrap::LibUvStreamWrap;
 

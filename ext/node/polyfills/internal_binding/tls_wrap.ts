@@ -2,6 +2,10 @@
 // deno-lint-ignore-file no-explicit-any prefer-primordials
 
 import { TLSWrap } from "ext:core/ops";
+// Use Symbol.for to access symbols from js_stream_socket.js
+// without importing it (avoids circular dependency).
+const kJSStreamHandle = Symbol.for("kJSStreamHandle");
+const kOwner = Symbol.for("kJSStreamOwner");
 
 export { TLSWrap };
 
@@ -9,7 +13,7 @@ export { TLSWrap };
  * Create a TLSWrap that intercepts an underlying stream handle.
  * Mirrors Node's `internalBinding('tls_wrap').wrap(handle, context, isServer)`.
  *
- * @param handle - The underlying stream handle (TCP CppGC object)
+ * @param handle - The underlying stream handle (TCP CppGC object or JSStreamSocket handle)
  * @param context - SecureContext object { ca, cert, key, rejectUnauthorized }
  * @param isServer - Whether this is a server-side TLS connection
  * @param servername - SNI hostname for client connections
@@ -21,7 +25,7 @@ export function wrap(
   servername?: string,
 ): TLSWrap {
   const kind = isServer ? 1 : 0;
-  // TODO: use a proper async_id from async_hooks
+  // TODO(@nathanwhit): use a proper async_id from async_hooks
   const asyncId = 0;
   const res = new TLSWrap(kind, asyncId);
 
@@ -40,10 +44,41 @@ export function wrap(
     throw err;
   }
 
-  // Attach to the underlying stream (TCP handle)
-  const attachResult = res.attach(handle._nativeHandle ?? handle);
-  if (attachResult !== 0) {
-    throw new Error(`TLS wrap attach failed: ${attachResult}`);
+  const nativeHandle = handle._nativeHandle ?? handle;
+
+  if (nativeHandle[kJSStreamHandle]) {
+    // JS-backed stream (e.g. JSStreamSocket wrapping a Duplex).
+    // Use attachJsStream instead of attach -I/O goes through JS callbacks.
+    const attachResult = res.attachJsStream();
+    if (attachResult !== 0) {
+      throw new Error(`TLS wrap attach (JS stream) failed: ${attachResult}`);
+    }
+
+    // Wire up the encrypted output callback: when TLSWrap has encrypted
+    // data to send, it calls res.encOut(arrayBuffer). We write that
+    // to the JSStreamSocket's underlying Duplex stream.
+    const jsStreamOwner = nativeHandle[kOwner];
+    res.encOut = (data: ArrayBuffer) => {
+      const buf = new Uint8Array(data);
+      if (jsStreamOwner?.stream) {
+        jsStreamOwner.stream.write(buf);
+      }
+    };
+
+    // Wire up readBuffer/emitEOF: JSStreamSocket calls these when the
+    // underlying Duplex stream produces data or ends.
+    nativeHandle.readBuffer = (chunk: Uint8Array) => {
+      res.readBuffer(chunk);
+    };
+    nativeHandle.emitEOF = () => {
+      res.emitEof();
+    };
+  } else {
+    // Native stream (TCP handle) -attach directly.
+    const attachResult = res.attach(nativeHandle);
+    if (attachResult !== 0) {
+      throw new Error(`TLS wrap attach failed: ${attachResult}`);
+    }
   }
 
   // Store the JS handle reference so Rust can call JS callbacks (onhandshakedone, etc.)

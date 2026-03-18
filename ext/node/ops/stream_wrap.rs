@@ -29,7 +29,7 @@ use crate::ops::handle_wrap::AsyncWrap;
 use crate::ops::handle_wrap::GlobalHandle;
 use crate::ops::handle_wrap::HandleWrap;
 use crate::ops::handle_wrap::ProviderType;
-use crate::ops::tty_wrap::OwnedPtr;
+use crate::ops::handle_wrap::OwnedPtr;
 
 // ---------------------------------------------------------------------------
 // StreamBase state fields — mirrors Node's StreamBaseStateFields enum.
