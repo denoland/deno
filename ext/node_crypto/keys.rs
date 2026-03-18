@@ -1374,9 +1374,7 @@ impl KeyObjectHandle {
         // be parsed by Document::from_pem, so handle them first by routing
         // through the private key import path. Match the first PEM label at
         // the start of a line to avoid false positives from embedded data.
-        if pem
-          .lines()
-          .any(|l| l.starts_with("Proc-Type: 4,ENCRYPTED"))
+        if pem.lines().any(|l| l.starts_with("Proc-Type: 4,ENCRYPTED"))
           && pem.lines().any(|l| {
             l == "-----BEGIN RSA PRIVATE KEY-----"
               || l == "-----BEGIN EC PRIVATE KEY-----"
