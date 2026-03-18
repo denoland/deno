@@ -203,6 +203,7 @@
     "parallel/test-child-process-cwd.js": {},
     "parallel/test-child-process-default-options.js": {},
     "parallel/test-child-process-detached.js": {},
+    "parallel/test-child-process-destroy.js": {},
     "parallel/test-child-process-disconnect.js": {},
     "parallel/test-child-process-double-pipe.js": {},
     "parallel/test-child-process-env.js": {},
@@ -1378,6 +1379,8 @@
     "parallel/test-microtask-queue-integration.js": {},
     "parallel/test-microtask-queue-run-immediate.js": {},
     "parallel/test-microtask-queue-run.js": {},
+    "parallel/test-mime-api.js": {},
+    "parallel/test-mime-whatwg.js": {},
     "parallel/test-module-cache.js": {
       "flaky": true
     },
@@ -2200,6 +2203,7 @@
     "parallel/test-url-relative.js": {},
     "parallel/test-url-urltooptions.js": {},
     "parallel/test-utf8-scripts.js": {},
+    "parallel/test-util-convert-signal-to-exit-code.mjs": {},
     "parallel/test-util-deprecate-invalid-code.js": {},
     "parallel/test-util-inherits.js": {},
     "parallel/test-util-inspect-getters-accessing-this.js": {},

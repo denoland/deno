@@ -49,9 +49,12 @@ import {
   validateString,
 } from "ext:deno_node/internal/validators.mjs";
 import { parseArgs } from "ext:deno_node/internal/util/parse_args/parse_args.js";
+import { MIMEParams, MIMEType } from "ext:deno_node/internal/mime.ts";
 import * as abortSignal from "ext:deno_web/03_abort_signal.js";
 import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
 import binding from "ext:deno_node/internal_binding/util.ts";
+import { validateOneOf } from "ext:deno_node/internal/validators.mjs";
+import { os as osConstants } from "ext:deno_node/internal_binding/constants.ts";
 
 let process: NodeJS.Process;
 const lazyLoadProcess = core.createLazyLoader<NodeJS.Process>(
@@ -65,6 +68,8 @@ export {
   format,
   formatWithOptions,
   inspect,
+  MIMEParams,
+  MIMEType,
   parseArgs,
   promisify,
   stripVTControlCharacters,
@@ -321,6 +326,14 @@ export function parseEnv(
   return binding.parseEnv(input);
 }
 
+export function convertProcessSignalToExitCode(
+  signalCode: string,
+): number {
+  const { signals } = osConstants;
+  validateOneOf(signalCode, "signalCode", ObjectKeys(signals));
+  return 128 + signals[signalCode];
+}
+
 export { getSystemErrorMessage, getSystemErrorName, isDeepStrictEqual };
 
 export default {
@@ -328,6 +341,7 @@ export default {
   formatWithOptions,
   inspect,
   _extend,
+  convertProcessSignalToExitCode,
   getCallSites,
   getSystemErrorName,
   getSystemErrorMessage,
@@ -335,6 +349,8 @@ export default {
   deprecate,
   callbackify,
   parseArgs,
+  MIMEParams,
+  MIMEType,
   promisify,
   inherits,
   types,
