@@ -61,29 +61,31 @@ pub async fn install_global(
   let cli_options = factory.cli_options()?;
   let http_client = factory.http_client_provider();
   let deps_http_cache = factory.global_http_cache()?;
-  let deps_file_fetcher = create_cli_file_fetcher(
-    Default::default(),
-    deno_cache_dir::GlobalOrLocalHttpCache::Global(deps_http_cache.clone()),
-    http_client.clone(),
-    factory.memory_files().clone(),
-    factory.sys(),
-    CreateCliFileFetcherOptions {
-      allow_remote: true,
-      cache_setting: CacheSetting::ReloadAll,
-      download_log_level: log::Level::Trace,
-      progress_bar: None,
-    },
-  );
+  let create_deps_file_fetcher = |download_log_level: log::Level| {
+    Arc::new(create_cli_file_fetcher(
+      Default::default(),
+      deno_cache_dir::GlobalOrLocalHttpCache::Global(deps_http_cache.clone()),
+      http_client.clone(),
+      factory.memory_files().clone(),
+      factory.sys(),
+      CreateCliFileFetcherOptions {
+        allow_remote: true,
+        cache_setting: CacheSetting::ReloadAll,
+        download_log_level,
+        progress_bar: None,
+      },
+    ))
+  };
 
   let npmrc = factory.npmrc()?;
 
-  let deps_file_fetcher = Arc::new(deps_file_fetcher);
+  let deps_file_fetcher = create_deps_file_fetcher(log::Level::Trace);
   let jsr_resolver = Arc::new(JsrFetchResolver::new(
     deps_file_fetcher.clone(),
     factory.jsr_version_resolver()?.clone(),
   ));
   let npm_resolver = Arc::new(NpmFetchResolver::new(
-    deps_file_fetcher.clone(),
+    deps_file_fetcher,
     npmrc.clone(),
     factory.npm_version_resolver()?.clone(),
   ));
@@ -167,9 +169,13 @@ pub async fn install_global(
     let npm_package_info_provider = factory
       .npm_installer_factory()?
       .lockfile_npm_package_info_provider()?;
+    let deps_file_fetcher = create_deps_file_fetcher(Level::Info);
     let jsr_lockfile_fetcher = JsrLockfileFetcher {
-      jsr_resolver: jsr_resolver.clone(),
-      file_fetcher: deps_file_fetcher.clone(),
+      jsr_resolver: Arc::new(JsrFetchResolver::new(
+        deps_file_fetcher.clone(),
+        factory.jsr_version_resolver()?.clone(),
+      )),
+      file_fetcher: deps_file_fetcher,
       npmrc: npmrc.clone(),
       npm_package_info_provider,
     };
