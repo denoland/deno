@@ -42,6 +42,8 @@ function initialize(args) {
       Deno.args,
       Deno.version,
       nodeDebug ?? "",
+      false,
+      runningOnMainThread,
     );
     internals.__initWorkerThreads(
       runningOnMainThread,
