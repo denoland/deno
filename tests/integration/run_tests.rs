@@ -2447,6 +2447,47 @@ fn fsfile_set_raw_should_not_panic_on_no_tty() {
   );
 }
 
+// Regression test for https://github.com/denoland/deno/issues/32803
+// After a Rust-side TTY sync write sets kLastWriteWasAsync=0, a JS Pipe
+// write must not cause ERR_MULTIPLE_CALLBACK. Needs a PTY so stdout is a
+// real TTY backed by the Rust LibUvStreamWrap.
+#[cfg(target_os = "macos")]
+#[test]
+fn pipe_write_no_double_callback_after_tty_write() {
+  let deno_exe = util::deno_exe_path();
+  let testdata = util::testdata_path();
+  let script = testdata.join("node/pipe_write_no_double_callback.mjs");
+  let output = Command::new("expect")
+    .arg("-c")
+    .arg(format!(
+      concat!(
+        "set timeout 30\n",
+        "spawn {} run --allow-all -q {}\n",
+        "expect eof\n",
+        "lassign [wait] pid spawnid os_error_flag value\n",
+        "exit $value\n",
+      ),
+      deno_exe.to_string().replace("{", "\\{").replace("}", "\\}"),
+      script.to_string().replace("{", "\\{").replace("}", "\\}"),
+    ))
+    .output()
+    .unwrap();
+  let combined = String::from_utf8_lossy(&output.stdout);
+  assert!(
+    !combined.contains("ERR_MULTIPLE_CALLBACK"),
+    "ERR_MULTIPLE_CALLBACK detected.\nstdout:\n{combined}"
+  );
+  assert!(
+    combined.contains("OK"),
+    "test did not print OK.\nstdout:\n{combined}"
+  );
+  assert!(
+    output.status.success(),
+    "test failed (exit={:?}).\nstdout:\n{combined}",
+    output.status.code()
+  );
+}
+
 #[test]
 fn timeout_clear() {
   // https://github.com/denoland/deno/issues/7599
