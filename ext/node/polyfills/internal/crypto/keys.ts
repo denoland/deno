@@ -954,10 +954,17 @@ export class PrivateKeyObject extends AsymmetricKeyObject {
     const {
       format,
       type,
+      cipher,
+      passphrase,
     } = parsePrivateKeyEncoding(options, this.asymmetricKeyType);
 
     if (format === "pem") {
-      return op_node_export_private_key_pem(this[kHandle], type);
+      return op_node_export_private_key_pem(
+        this[kHandle],
+        type,
+        cipher ?? null,
+        passphrase != null ? passphrase.toString() : null,
+      );
     } else {
       return Buffer.from(op_node_export_private_key_der(this[kHandle], type));
     }

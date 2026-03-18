@@ -4,6 +4,7 @@
 
 mod stream;
 mod tcp;
+mod tty;
 
 #[cfg(all(not(miri), test))]
 mod tests;
@@ -21,6 +22,7 @@ use std::time::Instant;
 
 pub use stream::*;
 pub use tcp::*;
+pub use tty::*;
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -30,7 +32,11 @@ pub enum uv_handle_type {
   UV_IDLE = 2,
   UV_PREPARE = 3,
   UV_CHECK = 4,
+  UV_NAMED_PIPE = 7,
   UV_TCP = 12,
+  UV_TTY = 13,
+  UV_UDP = 15,
+  UV_FILE = 17,
 }
 
 const UV_HANDLE_ACTIVE: u32 = 1 << 0;
@@ -56,7 +62,32 @@ uv_errno!(UV_EINVAL, libc::EINVAL, -4071);
 uv_errno!(UV_ENOTCONN, libc::ENOTCONN, -4053);
 uv_errno!(UV_ECANCELED, libc::ECANCELED, -4081);
 uv_errno!(UV_EPIPE, libc::EPIPE, -4047);
+uv_errno!(UV_EBUSY, libc::EBUSY, -4082);
+uv_errno!(UV_ENOBUFS, libc::ENOBUFS, -4060);
+uv_errno!(UV_ENOTSUP, libc::ENOTSUP, -4049);
 pub const UV_EOF: i32 = -4095;
+
+/// Map a `std::io::Error` to the closest libuv error code.
+pub(crate) fn io_error_to_uv(err: &std::io::Error) -> c_int {
+  use std::io::ErrorKind;
+  match err.kind() {
+    ErrorKind::AddrInUse => UV_EADDRINUSE,
+    ErrorKind::AddrNotAvailable => UV_EINVAL,
+    ErrorKind::ConnectionRefused => UV_ECONNREFUSED,
+    ErrorKind::NotConnected => UV_ENOTCONN,
+    ErrorKind::BrokenPipe => UV_EPIPE,
+    ErrorKind::InvalidInput => UV_EINVAL,
+    ErrorKind::WouldBlock => UV_EAGAIN,
+    _ => {
+      // On Unix, try to use the raw OS error for a more accurate mapping.
+      #[cfg(unix)]
+      if let Some(code) = err.raw_os_error() {
+        return -code;
+      }
+      UV_EINVAL
+    }
+  }
+}
 
 #[repr(C)]
 pub struct uv_loop_t {
@@ -137,6 +168,7 @@ pub(crate) struct UvLoopInner {
   prepare_handles: RefCell<Vec<*mut uv_prepare_t>>,
   check_handles: RefCell<Vec<*mut uv_check_t>>,
   tcp_handles: RefCell<Vec<*mut uv_tcp_t>>,
+  tty_handles: RefCell<Vec<*mut uv_tty_t>>,
   waker: RefCell<Option<Waker>>,
   closing_handles: RefCell<VecDeque<(*mut uv_handle_t, Option<uv_close_cb>)>>,
   time_origin: Instant,
@@ -152,6 +184,7 @@ impl UvLoopInner {
       prepare_handles: RefCell::new(Vec::with_capacity(8)),
       check_handles: RefCell::new(Vec::with_capacity(8)),
       tcp_handles: RefCell::new(Vec::with_capacity(8)),
+      tty_handles: RefCell::new(Vec::with_capacity(4)),
       waker: RefCell::new(None),
       closing_handles: RefCell::new(VecDeque::with_capacity(16)),
       time_origin: Instant::now(),
@@ -217,6 +250,15 @@ impl UvLoopInner {
     }
     for handle_ptr in self.tcp_handles.borrow().iter() {
       // SAFETY: Handle pointers in tcp_handles are kept valid by the C caller until uv_close.
+      let handle = unsafe { &**handle_ptr };
+      if handle.flags & UV_HANDLE_ACTIVE != 0
+        && handle.flags & UV_HANDLE_REF != 0
+      {
+        return true;
+      }
+    }
+    for handle_ptr in self.tty_handles.borrow().iter() {
+      // SAFETY: Handle pointers in tty_handles are kept valid by the C caller until uv_close.
       let handle = unsafe { &**handle_ptr };
       if handle.flags & UV_HANDLE_ACTIVE != 0
         && handle.flags & UV_HANDLE_REF != 0
@@ -406,7 +448,26 @@ impl UvLoopInner {
 
         // SAFETY: tcp_ptr is valid; checked above.
         any_work |= unsafe { tcp::poll_tcp_handle(tcp_ptr, &mut cx) };
-      } // end per-handle loop
+      } // end per-tcp-handle loop
+
+      let mut j = 0;
+      loop {
+        let tty_ptr = {
+          let handles = self.tty_handles.borrow();
+          if j >= handles.len() {
+            break;
+          }
+          handles[j]
+        };
+        j += 1;
+        // SAFETY: tty_ptr comes from tty_handles; caller guarantees validity.
+        if unsafe { (*tty_ptr).flags } & UV_HANDLE_ACTIVE == 0 {
+          continue;
+        }
+
+        // SAFETY: tty_ptr is valid; checked above.
+        any_work |= unsafe { tty::poll_tty_handle(tty_ptr, &mut cx) };
+      } // end per-tty-handle loop
 
       if !any_work {
         break;
@@ -467,6 +528,58 @@ impl UvLoopInner {
     }
   }
 
+  fn stop_tty(&self, handle: *mut uv_tty_t) {
+    self
+      .tty_handles
+      .borrow_mut()
+      .retain(|&h| !std::ptr::eq(h, handle));
+    // SAFETY: Caller guarantees handle is valid and initialized.
+    unsafe {
+      let tty = &mut *handle;
+
+      // Always check if this fd is the globally tracked one, matching
+      // libuv's unconditional check in uv__tty_close.
+      #[cfg(unix)]
+      {
+        tty::restore_termios_on_close(tty.internal_fd);
+      }
+
+      tty.internal_reading = false;
+      tty.internal_alloc_cb = None;
+      tty.internal_read_cb = None;
+      tty.internal_write_queue.clear();
+      tty.internal_shutdown = None;
+
+      // Drop the AsyncFd to deregister from the reactor, then close the fd.
+      #[cfg(unix)]
+      {
+        tty.internal_async_fd = None;
+        if tty.internal_fd >= 0 {
+          libc::close(tty.internal_fd);
+          tty.internal_fd = -1;
+        }
+      }
+
+      // Close the handle on Windows.
+      #[cfg(windows)]
+      {
+        if !tty.internal_handle.is_null() {
+          if tty.internal_handle_owned {
+            // We duplicated this handle in init — close it directly.
+            tty::win_console::CloseHandle(tty.internal_handle);
+          } else if tty.internal_fd >= 0 {
+            // Non-duplicated: close through the CRT to free the fd slot.
+            tty::win_console::_close(tty.internal_fd);
+          }
+          tty.internal_handle = std::ptr::null_mut();
+          tty.internal_fd = -1;
+        }
+      }
+
+      tty.flags &= !UV_HANDLE_ACTIVE;
+    }
+  }
+
   fn stop_tcp(&self, handle: *mut uv_tcp_t) {
     self
       .tcp_handles
@@ -496,6 +609,109 @@ impl UvLoopInner {
 unsafe fn get_inner(loop_: *mut uv_loop_t) -> &'static UvLoopInner {
   // SAFETY: Caller guarantees loop_ is valid and was initialized by uv_loop_init.
   unsafe { &*((*loop_).internal as *const UvLoopInner) }
+}
+
+/// Matches libuv's `uv_guess_handle`: detects TTYs, regular files,
+/// character devices, pipes (FIFOs), TCP/UDP sockets, and Unix domain
+/// sockets (named pipes).
+pub fn uv_guess_handle(fd: c_int) -> uv_handle_type {
+  if fd < 0 {
+    return uv_handle_type::UV_UNKNOWN_HANDLE;
+  }
+
+  #[cfg(unix)]
+  {
+    if unsafe { libc::isatty(fd) } != 0 {
+      return uv_handle_type::UV_TTY;
+    }
+
+    let mut s: libc::stat = unsafe { std::mem::zeroed() };
+    if unsafe { libc::fstat(fd, &mut s) } != 0 {
+      return uv_handle_type::UV_UNKNOWN_HANDLE;
+    }
+
+    let ft = s.st_mode & libc::S_IFMT;
+    if ft == libc::S_IFREG || ft == libc::S_IFCHR {
+      return uv_handle_type::UV_FILE;
+    }
+
+    if ft == libc::S_IFIFO {
+      return uv_handle_type::UV_NAMED_PIPE;
+    }
+
+    if ft != libc::S_IFSOCK {
+      return uv_handle_type::UV_UNKNOWN_HANDLE;
+    }
+
+    // It's a socket — determine type.
+    let mut ss: libc::sockaddr_storage = unsafe { std::mem::zeroed() };
+    let mut len: libc::socklen_t =
+      std::mem::size_of::<libc::sockaddr_storage>() as libc::socklen_t;
+    if unsafe {
+      libc::getsockname(fd, &mut ss as *mut _ as *mut libc::sockaddr, &mut len)
+    } != 0
+    {
+      return uv_handle_type::UV_UNKNOWN_HANDLE;
+    }
+
+    let mut sock_type: c_int = 0;
+    let mut type_len: libc::socklen_t =
+      std::mem::size_of::<c_int>() as libc::socklen_t;
+    if unsafe {
+      libc::getsockopt(
+        fd,
+        libc::SOL_SOCKET,
+        libc::SO_TYPE,
+        &mut sock_type as *mut _ as *mut c_void,
+        &mut type_len,
+      )
+    } != 0
+    {
+      return uv_handle_type::UV_UNKNOWN_HANDLE;
+    }
+
+    if sock_type == libc::SOCK_DGRAM
+      && (ss.ss_family == libc::AF_INET as libc::sa_family_t
+        || ss.ss_family == libc::AF_INET6 as libc::sa_family_t)
+    {
+      return uv_handle_type::UV_UDP;
+    }
+
+    if sock_type == libc::SOCK_STREAM {
+      if ss.ss_family == libc::AF_INET as libc::sa_family_t
+        || ss.ss_family == libc::AF_INET6 as libc::sa_family_t
+      {
+        return uv_handle_type::UV_TCP;
+      }
+      if ss.ss_family == libc::AF_UNIX as libc::sa_family_t {
+        return uv_handle_type::UV_NAMED_PIPE;
+      }
+    }
+
+    uv_handle_type::UV_UNKNOWN_HANDLE
+  }
+
+  #[cfg(windows)]
+  {
+    let handle = unsafe { tty::win_console::safe_get_osfhandle(fd) };
+    if handle == -1 {
+      return uv_handle_type::UV_UNKNOWN_HANDLE;
+    }
+    let h = handle as *mut c_void;
+    match unsafe { tty::win_console::GetFileType(h) } {
+      tty::win_console::FILE_TYPE_CHAR => {
+        let mut mode: u32 = 0;
+        if unsafe { tty::win_console::GetConsoleMode(h, &mut mode) } != 0 {
+          uv_handle_type::UV_TTY
+        } else {
+          uv_handle_type::UV_FILE
+        }
+      }
+      tty::win_console::FILE_TYPE_PIPE => uv_handle_type::UV_NAMED_PIPE,
+      tty::win_console::FILE_TYPE_DISK => uv_handle_type::UV_FILE,
+      _ => uv_handle_type::UV_UNKNOWN_HANDLE,
+    }
+  }
 }
 
 /// ### Safety
@@ -896,6 +1112,9 @@ pub unsafe extern "C" fn uv_close(
       uv_handle_type::UV_TCP => {
         inner.stop_tcp(handle as *mut uv_tcp_t);
       }
+      uv_handle_type::UV_TTY => {
+        inner.stop_tty(handle as *mut uv_tty_t);
+      }
       _ => {}
     }
 
@@ -926,6 +1145,19 @@ pub unsafe extern "C" fn uv_unref(handle: *mut uv_handle_t) {
   }
 }
 
+/// ### Safety
+/// `handle` must be a valid pointer to an initialized uv handle.
+#[cfg_attr(feature = "uv_compat_export", unsafe(no_mangle))]
+pub unsafe extern "C" fn uv_has_ref(handle: *const uv_handle_t) -> c_int {
+  // SAFETY: Caller guarantees handle is valid and initialized.
+  unsafe {
+    if (*handle).flags & UV_HANDLE_REF != 0 {
+      1
+    } else {
+      0
+    }
+  }
+}
 /// ### Safety
 /// `handle` must be a valid pointer to an initialized uv handle.
 #[cfg_attr(feature = "uv_compat_export", unsafe(no_mangle))]

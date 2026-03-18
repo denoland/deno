@@ -114,7 +114,7 @@ pub(crate) struct IsolateAllocations {
 pub(crate) struct ManuallyDropRc<T>(ManuallyDrop<Rc<T>>);
 
 impl<T> ManuallyDropRc<T> {
-  #[allow(unused)]
+  #[allow(unused, reason = "used in other configurations")]
   pub fn clone(&self) -> Rc<T> {
     self.0.deref().clone()
   }
@@ -180,6 +180,10 @@ impl InnerIsolateState {
     self.main_realm.0.context_state.pending_ops.shutdown();
     let inspector = self.state.inspector.take();
 
+    // Unregister isolate waker before dropping the isolate
+    let isolate_ptr = unsafe { self.v8_isolate.as_raw_isolate_ptr() };
+    setup::unregister_isolate_waker(setup::isolate_ptr_to_key(isolate_ptr));
+
     let state_ptr = self.v8_isolate.get_data(STATE_DATA_OFFSET);
     // SAFETY: We are sure that it's a valid pointer for whole lifetime of
     // the runtime.
@@ -233,7 +237,10 @@ impl Drop for InnerIsolateState {
 
       if self.will_snapshot {
         // Create the snapshot and just drop it.
-        #[allow(clippy::print_stderr)]
+        #[allow(
+          clippy::print_stderr,
+          reason = "intentional warning about leaked isolate"
+        )]
         {
           eprintln!("WARNING: v8::OwnedIsolate for snapshot was leaked");
         }
@@ -450,6 +457,7 @@ pub struct JsRuntimeState {
   pub(crate) function_templates: Rc<RefCell<FunctionTemplateData>>,
   pub(crate) callsite_prototype: RefCell<Option<v8::Global<v8::Object>>>,
   waker: Arc<AtomicWaker>,
+  safety_net_active: Arc<std::sync::atomic::AtomicBool>,
   /// Accessed through [`JsRuntimeState::with_inspector`].
   inspector: RefCell<Option<Rc<JsRuntimeInspector>>>,
   has_inspector: Cell<bool>,
@@ -776,7 +784,8 @@ impl JsRuntime {
       eval_context_code_cache_ready_cb: RefCell::new(
         eval_context_set_code_cache_cb,
       ),
-      waker,
+      waker: waker.clone(),
+      safety_net_active: Arc::new(std::sync::atomic::AtomicBool::new(false)),
       // Some fields are initialized later after isolate is created
       inspector: None.into(),
       has_inspector: false.into(),
@@ -852,6 +861,14 @@ impl JsRuntime {
     );
 
     let isolate_ptr = unsafe { isolate.as_raw_isolate_ptr() };
+
+    // Register this isolate's waker so the custom platform can wake
+    // the event loop when V8 posts foreground tasks from background threads.
+    setup::register_isolate_waker(
+      setup::isolate_ptr_to_key(isolate_ptr),
+      waker.clone(),
+    );
+
     // ...isolate is fully set up, we can forward its pointer to the ops to finish
     // their' setup...
     for op_ctx in op_ctxs.iter_mut() {
@@ -1635,6 +1652,12 @@ impl JsRuntime {
     self.inner.state.op_state.clone()
   }
 
+  /// Returns the runtime's source mapper, which can be used to apply
+  /// source maps to file locations.
+  pub fn source_mapper(&self) -> Rc<RefCell<crate::source_map::SourceMapper>> {
+    self.inner.state.source_mapper.clone()
+  }
+
   /// Register a `uv_loop_t` with the runtime so that its event loop phases
   /// (timers, I/O, idle, prepare, check, close) are driven by
   /// `poll_event_loop`.
@@ -2268,8 +2291,30 @@ impl JsRuntime {
       scope.perform_microtask_checkpoint();
     }
 
+    // Safety net: if V8 has pending background tasks (e.g. module compilation),
+    // schedule a delayed wake to pump the message loop in case the platform
+    // callback was missed due to a race condition.
+    if pending_state.has_pending_background_tasks
+      && !self
+        .inner
+        .state
+        .safety_net_active
+        .swap(true, std::sync::atomic::Ordering::SeqCst)
+    {
+      cx.waker().wake_by_ref();
+      self
+        .inner
+        .state
+        .safety_net_active
+        .store(false, std::sync::atomic::Ordering::SeqCst);
+    }
+
     // Re-wake logic for next iteration
-    #[allow(clippy::suspicious_else_formatting, clippy::if_same_then_else)]
+    #[allow(
+      clippy::suspicious_else_formatting,
+      clippy::if_same_then_else,
+      reason = "intentional structure for clarity of re-wake conditions"
+    )]
     {
       if pending_state.has_pending_background_tasks
         || pending_state.has_tick_scheduled
@@ -3139,7 +3184,10 @@ fn mark_as_loaded_from_fs_during_snapshot(
   files_loaded: &mut Vec<&'static str>,
   source: &ExtensionFileSourceCode,
 ) {
-  #[allow(deprecated)]
+  #[allow(
+    deprecated,
+    reason = "needed for compatibility with snapshot loading"
+  )]
   if let ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(path) = source {
     files_loaded.push(path);
   }

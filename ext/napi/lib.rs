@@ -1,8 +1,14 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-#![allow(non_camel_case_types)]
-#![allow(non_upper_case_globals)]
-#![allow(clippy::undocumented_unsafe_blocks)]
+#![allow(non_camel_case_types, reason = "matches Node-API naming conventions")]
+#![allow(
+  non_upper_case_globals,
+  reason = "matches Node-API naming conventions"
+)]
+#![allow(
+  clippy::undocumented_unsafe_blocks,
+  reason = "pervasive FFI unsafe blocks throughout NAPI implementation"
+)]
 #![deny(clippy::missing_safety_doc)]
 
 //! Symbols to be exported are now defined in this JSON file.
@@ -303,9 +309,22 @@ pub struct napi_node_version {
 pub trait PendingNapiAsyncWork: FnOnce() + Send + 'static {}
 impl<T> PendingNapiAsyncWork for T where T: FnOnce() + Send + 'static {}
 
+/// A pending NAPI finalizer callback to be called at environment shutdown.
+/// This matches Node.js's behavior of tracking references with finalize
+/// callbacks and calling them during `napi_env::DeleteMe()`.
+pub struct PendingNapiFinalizer {
+  pub env: napi_env,
+  pub cb: napi_finalize,
+  pub data: *mut c_void,
+  pub hint: *mut c_void,
+}
+
 pub struct NapiState {
   // Thread safe functions.
   pub env_cleanup_hooks: Rc<RefCell<Vec<(napi_cleanup_hook, *mut c_void)>>>,
+  /// Tracked finalizer callbacks that should be called at shutdown.
+  /// Matches Node.js `finalizing_reflist` / `reflist` behavior.
+  pub ref_tracker: Rc<RefCell<Vec<PendingNapiFinalizer>>>,
   pub env_shared_ptrs: Vec<*mut EnvShared>,
 }
 
@@ -344,6 +363,10 @@ impl Drop for NapiState {
         });
       }
     }
+
+    // Note: remaining ref tracker entries are not finalized here because
+    // V8 is no longer alive. MainWorker::run_napi_ref_finalizers() handles
+    // this by calling finalizers directly while V8 is still alive.
 
     // Call instance data finalize callbacks for all registered EnvShared instances.
     // Each entry should be unique since each op_napi_open creates a fresh EnvShared.
@@ -418,6 +441,7 @@ pub struct Env {
   pub shared: *mut EnvShared,
   pub async_work_sender: V8CrossThreadTaskSpawner,
   cleanup_hooks: Rc<RefCell<Vec<(napi_cleanup_hook, *mut c_void)>>>,
+  ref_tracker: Rc<RefCell<Vec<PendingNapiFinalizer>>>,
   external_ops_tracker: ExternalOpsTracker,
   pub last_error: napi_extended_error_info,
   pub last_exception: Option<v8::Global<v8::Value>>,
@@ -430,7 +454,7 @@ unsafe impl Send for Env {}
 unsafe impl Sync for Env {}
 
 impl Env {
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "construction")]
   pub fn new(
     isolate_ptr: v8::UnsafeRawIsolatePtr,
     context: v8::Global<v8::Context>,
@@ -439,6 +463,7 @@ impl Env {
     report_error: v8::Global<v8::Function>,
     sender: V8CrossThreadTaskSpawner,
     cleanup_hooks: Rc<RefCell<Vec<(napi_cleanup_hook, *mut c_void)>>>,
+    ref_tracker: Rc<RefCell<Vec<PendingNapiFinalizer>>>,
     external_ops_tracker: ExternalOpsTracker,
   ) -> Self {
     Self {
@@ -451,6 +476,7 @@ impl Env {
       open_handle_scopes: 0,
       async_work_sender: sender,
       cleanup_hooks,
+      ref_tracker,
       external_ops_tracker,
       last_error: napi_extended_error_info {
         error_message: std::ptr::null(),
@@ -533,6 +559,28 @@ impl Env {
       None => panic!("Cannot remove cleanup hook which was not registered"),
     }
   }
+
+  pub fn add_ref_finalizer(
+    &self,
+    env: napi_env,
+    cb: napi_finalize,
+    data: *mut c_void,
+    hint: *mut c_void,
+  ) {
+    self.ref_tracker.borrow_mut().push(PendingNapiFinalizer {
+      env,
+      cb,
+      data,
+      hint,
+    });
+  }
+
+  pub fn remove_ref_finalizer(&self, data: *mut c_void) {
+    let mut tracker = self.ref_tracker.borrow_mut();
+    if let Some(pos) = tracker.iter().rposition(|f| f.data == data) {
+      tracker.remove(pos);
+    }
+  }
 }
 
 deno_core::extension!(deno_napi,
@@ -545,6 +593,7 @@ deno_core::extension!(deno_napi,
   state = |state, options| {
     state.put(NapiState {
       env_cleanup_hooks: Rc::new(RefCell::new(vec![])),
+      ref_tracker: Rc::new(RefCell::new(vec![])),
       env_shared_ptrs: vec![],
     });
     if let Some(loader) = options.deno_rt_native_addon_loader {
@@ -578,6 +627,7 @@ fn op_napi_open<'scope>(
   let (
     async_work_sender,
     cleanup_hooks,
+    ref_tracker,
     external_ops_tracker,
     deno_rt_native_addon_loader,
     path,
@@ -590,6 +640,7 @@ fn op_napi_open<'scope>(
     (
       op_state.borrow::<V8CrossThreadTaskSpawner>().clone(),
       napi_state.env_cleanup_hooks.clone(),
+      napi_state.ref_tracker.clone(),
       op_state.external_ops_tracker.clone(),
       op_state.try_borrow::<DenoRtNativeAddonLoaderRc>().cloned(),
       path,
@@ -604,6 +655,10 @@ fn op_napi_open<'scope>(
   let type_tag = v8::Private::new(scope, Some(type_tag_name));
   let type_tag = v8::Global::new(scope, type_tag);
 
+  #[allow(
+    clippy::disallowed_methods,
+    reason = "napi requires file path URL conversion"
+  )]
   let url_filename =
     Url::from_file_path(&path).map_err(|_| NApiError::InvalidPath)?;
   let env_shared =
@@ -618,6 +673,7 @@ fn op_napi_open<'scope>(
     v8::Global::new(scope, report_error),
     async_work_sender,
     cleanup_hooks,
+    ref_tracker,
     external_ops_tracker,
   );
   env.shared = Box::into_raw(Box::new(env_shared));
@@ -700,7 +756,7 @@ fn op_napi_open<'scope>(
   Ok(exports)
 }
 
-#[allow(clippy::print_stdout)]
+#[allow(clippy::print_stdout, reason = "cargo build script output")]
 pub fn print_linker_flags(name: &str) {
   let symbols_path =
     include_str!(concat!(env!("OUT_DIR"), "/napi_symbol_path.txt"));
