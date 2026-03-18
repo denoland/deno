@@ -14,6 +14,7 @@ use deno_core::Resource;
 use deno_error::JsErrorClass;
 use digest::KeyInit;
 use digest::generic_array::GenericArray;
+use subtle::ConstantTimeEq;
 
 type Tag = Option<Vec<u8>>;
 
@@ -867,7 +868,7 @@ impl Decipher {
         } else {
           tag_slice
         };
-        if truncated_tag == auth_tag {
+        if truncated_tag.ct_eq(auth_tag).into() {
           Ok(())
         } else {
           Err(DecipherError::DataAuthenticationFailed)
@@ -881,7 +882,7 @@ impl Decipher {
         } else {
           tag_slice
         };
-        if truncated_tag == auth_tag {
+        if truncated_tag.ct_eq(auth_tag).into() {
           Ok(())
         } else {
           Err(DecipherError::DataAuthenticationFailed)
