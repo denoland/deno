@@ -14,6 +14,7 @@ import {
   op_node_load_env_file,
   op_node_process_constrained_memory,
   op_node_process_kill,
+  op_node_process_set_title,
   op_node_process_setegid,
   op_node_process_seteuid,
   op_node_process_setgid,
@@ -116,10 +117,8 @@ export const execArgv: string[] = [];
 
 /** https://nodejs.org/api/process.html#process_process_exit_code */
 export const exit = (code?: number | string) => {
-  if (code || code === 0) {
+  if (code !== undefined) {
     process.exitCode = code;
-  } else if (Number.isNaN(code)) {
-    process.exitCode = 1;
   }
 
   ProcessExitCode = denoOs.getExitCode();
@@ -483,6 +482,10 @@ function Process(this: any) {
   EventEmitter.call(this);
 }
 Process.prototype = Object.create(EventEmitter.prototype);
+// V8 uses the constructor's name for error messages like
+// "Cannot delete property 'exitCode' of #<process>"
+const _process = function process() {};
+Process.prototype.constructor = _process;
 
 // Look up the actual registered listener for a signal event. When `once()` is
 // used, EventEmitter wraps the listener in a function with a `.listener`
@@ -696,14 +699,17 @@ Object.defineProperty(process, "report", {
   },
 });
 
+let processTitle: string | undefined;
 Object.defineProperty(process, "title", {
   get() {
-    return "deno";
+    if (processTitle == null) {
+      return String(execPath);
+    }
+    return processTitle;
   },
-  set(_value) {
-    // NOTE(bartlomieju): this is a noop. Node.js doesn't guarantee that the
-    // process name will be properly set and visible from other tools anyway.
-    // Might revisit in the future.
+  set(value) {
+    processTitle = `${value}`;
+    op_node_process_set_title(processTitle);
   },
 });
 
@@ -807,15 +813,20 @@ Object.defineProperty(process, "exitCode", {
     if (code == null) {
       parsedCode = 0;
     } else if (typeof code === "number") {
+      if (!Number.isInteger(code)) {
+        throw new ERR_OUT_OF_RANGE("code", "an integer", code);
+      }
       parsedCode = code;
     } else if (typeof code === "string") {
+      if (
+        code === "" || !Number.isFinite(Number(code)) ||
+        !Number.isInteger(Number(code))
+      ) {
+        throw new ERR_INVALID_ARG_TYPE("code", "integer", code);
+      }
       parsedCode = Number(code);
     } else {
-      throw new ERR_INVALID_ARG_TYPE("code", "number", code);
-    }
-
-    if (!Number.isInteger(parsedCode)) {
-      throw new ERR_OUT_OF_RANGE("code", "an integer", parsedCode);
+      throw new ERR_INVALID_ARG_TYPE("code", "integer", code);
     }
 
     denoOs.setExitCode(parsedCode);
@@ -1016,6 +1027,7 @@ const features = {
   // Deno uses aws-lc, which is BoringSSL-based.
   // deno-lint-ignore camelcase
   openssl_is_boringssl: true,
+  quic: false,
   // deno-lint-ignore camelcase
   cached_builtins: true,
   // deno-lint-ignore camelcase
@@ -1222,6 +1234,7 @@ internals.__bootstrapNodeProcess = function (
   denoVersions: Record<string, string>,
   nodeDebug: string,
   warmup = false,
+  runningOnMainThread = true,
 ) {
   if (!warmup) {
     argv0 = argv0Val || "";
@@ -1293,6 +1306,11 @@ internals.__bootstrapNodeProcess = function (
     execPath = Deno.execPath();
     initializeDebugEnv(nodeDebug);
 
+    const title = getOptionValue("--title");
+    if (title) {
+      process.title = title;
+    }
+
     if (getOptionValue("--warnings")) {
       process.on("warning", onWarning);
     }
@@ -1301,6 +1319,46 @@ internals.__bootstrapNodeProcess = function (
     const newStdin = initStdin();
     if (newStdin) {
       stdin = process.stdin = newStdin;
+    }
+
+    // In worker threads, replace certain process functions with stubs
+    // that throw ERR_WORKER_UNSUPPORTED_OPERATION and have .disabled = true.
+    // Ref: https://github.com/nodejs/node/blob/main/lib/internal/bootstrap/switches/is_not_main_thread.js
+    if (!runningOnMainThread) {
+      const disabledFns = [
+        "abort",
+        "chdir",
+        "send",
+        "disconnect",
+        "setuid",
+        "seteuid",
+        "setgid",
+        "setegid",
+        "setgroups",
+        "initgroups",
+      ];
+      for (const fn of disabledFns) {
+        const stub = function () {
+          throw new ERR_WORKER_UNSUPPORTED_OPERATION(
+            `process.${fn}()`,
+          );
+        };
+        stub.disabled = true;
+        process[fn] = stub;
+      }
+
+      Object.defineProperty(process, "channel", {
+        get() {
+          throw new ERR_WORKER_UNSUPPORTED_OPERATION("process.channel");
+        },
+        configurable: true,
+      });
+      Object.defineProperty(process, "connected", {
+        get() {
+          throw new ERR_WORKER_UNSUPPORTED_OPERATION("process.connected");
+        },
+        configurable: true,
+      });
     }
 
     delete internals.__bootstrapNodeProcess;

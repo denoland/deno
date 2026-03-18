@@ -203,6 +203,7 @@
     "parallel/test-child-process-cwd.js": {},
     "parallel/test-child-process-default-options.js": {},
     "parallel/test-child-process-detached.js": {},
+    "parallel/test-child-process-destroy.js": {},
     "parallel/test-child-process-disconnect.js": {},
     "parallel/test-child-process-double-pipe.js": {},
     "parallel/test-child-process-env.js": {},
@@ -231,7 +232,7 @@
     "parallel/test-child-process-fork-stdio-string-variant.js": {},
     "parallel/test-child-process-fork-ref.js": {},
     "parallel/test-child-process-fork-ref2.js": {},
-    // "parallel/test-child-process-fork-timeout-kill-signal.js": {}, // https://github.com/denoland/deno/issues/32706
+    "parallel/test-child-process-fork-timeout-kill-signal.js": {},
     "parallel/test-child-process-fork-url.mjs": {},
     "parallel/test-child-process-fork3.js": {},
     "parallel/test-child-process-ipc.js": {},
@@ -247,7 +248,7 @@
     "parallel/test-child-process-spawn-controller.js": {},
     "parallel/test-child-process-spawn-error.js": {},
     "parallel/test-child-process-spawn-event.js": {},
-    // "parallel/test-child-process-spawn-timeout-kill-signal.js": {}, // https://github.com/denoland/deno/issues/32706
+    "parallel/test-child-process-spawn-timeout-kill-signal.js": {},
     "parallel/test-child-process-spawn-typeerror.js": {},
     "parallel/test-child-process-spawnsync-args.js": {},
     "parallel/test-child-process-spawnsync-env.js": {},
@@ -786,7 +787,7 @@
     "parallel/test-fs-fchown.js": {},
     "parallel/test-fs-filehandle-use-after-close.js": {},
     "parallel/test-fs-fsync.js": {},
-    // "parallel/test-fs-glob.mjs": {}, // https://github.com/denoland/deno/issues/32706
+    "parallel/test-fs-glob.mjs": {},
     "parallel/test-fs-internal-assertencoding.js": {},
     "parallel/test-fs-link.js": {
       "flaky": true
@@ -1378,6 +1379,8 @@
     "parallel/test-microtask-queue-integration.js": {},
     "parallel/test-microtask-queue-run-immediate.js": {},
     "parallel/test-microtask-queue-run.js": {},
+    "parallel/test-mime-api.js": {},
+    "parallel/test-mime-whatwg.js": {},
     "parallel/test-module-cache.js": {
       "flaky": true
     },
@@ -1393,7 +1396,7 @@
     "parallel/test-module-wrapper.js": {},
     "parallel/test-net-access-byteswritten.js": {},
     "parallel/test-net-after-close.js": {},
-    // "parallel/test-net-autoselectfamily-attempt-timeout-default-value.js": {}, // https://github.com/denoland/deno/issues/32706
+    "parallel/test-net-autoselectfamily-attempt-timeout-default-value.js": {},
     "parallel/test-net-autoselectfamily-ipv4first.js": {},
     "parallel/test-net-better-error-messages-listen.js": {},
     "parallel/test-net-better-error-messages-port-hostname.js": {},
@@ -1496,6 +1499,7 @@
     "parallel/test-path-extname.js": {},
     "parallel/test-path-glob.js": {},
     "parallel/test-path-isabsolute.js": {},
+    "parallel/test-path-join.js": {},
     "parallel/test-path-makelong.js": {},
     "parallel/test-path-normalize.js": {},
     "parallel/test-path-parse-format.js": {},
@@ -1669,11 +1673,12 @@
     "parallel/test-process-env-sideeffects.js": {},
     "parallel/test-process-env-tz.js": {},
     "parallel/test-process-env-windows-error-reset.js": {},
+    "parallel/test-process-exit-code-validation.js": {},
     "parallel/test-process-exit-from-before-exit.js": {},
     "parallel/test-process-exit-handler.js": {},
     "parallel/test-process-exit-recursive.js": {},
     "parallel/test-process-exit.js": {},
-    // "parallel/test-process-features.js": {}, // https://github.com/denoland/deno/issues/32706
+    "parallel/test-process-features.js": {},
     "parallel/test-process-getgroups.js": {},
     "parallel/test-process-hrtime-bigint.js": {},
     "parallel/test-process-kill-null.js": {},
@@ -1682,6 +1687,7 @@
     "parallel/test-process-no-deprecation.js": {},
     "parallel/test-process-ppid.js": {},
     "parallel/test-process-really-exit.js": {},
+    "parallel/test-process-title-cli.js": {},
     "parallel/test-process-release.js": {},
     "parallel/test-process-umask-mask.js": {},
     "parallel/test-process-umask.js": {},
@@ -1773,6 +1779,7 @@
     "parallel/test-runner-subtest-after-hook.js": {},
     // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
     // "parallel/test-set-process-debug-port.js": {},
+    "parallel/test-setproctitle.js": {},
     "parallel/test-signal-handler-remove-on-exit.js": {},
     "parallel/test-signal-handler.js": {},
     "parallel/test-snapshot-api.js": {
@@ -1937,7 +1944,7 @@
     "parallel/test-stream-duplex-readable-end.js": {},
     "parallel/test-stream-duplex-readable-writable.js": {},
     "parallel/test-stream-duplex-writable-finished.js": {},
-    // "parallel/test-stream-duplex.js": {}, // https://github.com/denoland/deno/issues/32706
+    "parallel/test-stream-duplex.js": {},
     "parallel/test-stream-duplexpair.js": {},
     "parallel/test-stream-end-of-streams.js": {},
     "parallel/test-stream-end-paused.js": {},
@@ -2200,11 +2207,12 @@
     "parallel/test-url-relative.js": {},
     "parallel/test-url-urltooptions.js": {},
     "parallel/test-utf8-scripts.js": {},
+    "parallel/test-util-convert-signal-to-exit-code.mjs": {},
     "parallel/test-util-deprecate-invalid-code.js": {},
     "parallel/test-util-inherits.js": {},
     "parallel/test-util-inspect-getters-accessing-this.js": {},
     "parallel/test-util-isDeepStrictEqual.js": {},
-    // "parallel/test-util-parse-env.js": {}, // https://github.com/denoland/deno/issues/32706
+    "parallel/test-util-parse-env.js": {},
     "parallel/test-util-primordial-monkeypatching.js": {},
     "parallel/test-util-text-decoder.js": {},
     "parallel/test-util-types-exists.js": {},
@@ -2302,7 +2310,7 @@
     "parallel/test-worker-cleanexit-with-js.js": {},
     "parallel/test-worker-cleanexit-with-moduleload.js": {},
     "parallel/test-worker-console-listeners.js": {},
-    // "parallel/test-worker-cpu-usage.js": {}, // https://github.com/denoland/deno/issues/32706
+    "parallel/test-worker-cpu-usage.js": {},
     // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
     // "parallel/test-worker-debug.js": {},
     "parallel/test-worker-dns-terminate.js": {},
@@ -2371,6 +2379,7 @@
     "parallel/test-worker-unref-from-message-during-exit.js": {},
     "parallel/test-worker-unsupported-eval-on-url.mjs": {},
     "parallel/test-worker-unsupported-path.js": {},
+    "parallel/test-worker-unsupported-things.js": {},
     "parallel/test-worker-thread-name.js": {},
     "parallel/test-worker-voluntarily-exit-followed-by-addition.js": {},
     "parallel/test-worker-voluntarily-exit-followed-by-throw.js": {},
@@ -2597,6 +2606,7 @@
     "sequential/test-net-GH-5504.js": {},
     "sequential/test-net-response-size.js": {},
     "sequential/test-net-server-bind.js": {},
+    "sequential/test-process-title.js": {},
     "sequential/test-require-cache-without-stat.js": {},
     "sequential/test-resolution-inspect-brk.js": {},
     // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
