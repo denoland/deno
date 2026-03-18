@@ -1227,6 +1227,7 @@ internals.__bootstrapNodeProcess = function (
   denoVersions: Record<string, string>,
   nodeDebug: string,
   warmup = false,
+  runningOnMainThread = true,
 ) {
   if (!warmup) {
     argv0 = argv0Val || "";
@@ -1311,6 +1312,46 @@ internals.__bootstrapNodeProcess = function (
     const newStdin = initStdin();
     if (newStdin) {
       stdin = process.stdin = newStdin;
+    }
+
+    // In worker threads, replace certain process functions with stubs
+    // that throw ERR_WORKER_UNSUPPORTED_OPERATION and have .disabled = true.
+    // Ref: https://github.com/nodejs/node/blob/main/lib/internal/bootstrap/switches/is_not_main_thread.js
+    if (!runningOnMainThread) {
+      const disabledFns = [
+        "abort",
+        "chdir",
+        "send",
+        "disconnect",
+        "setuid",
+        "seteuid",
+        "setgid",
+        "setegid",
+        "setgroups",
+        "initgroups",
+      ];
+      for (const fn of disabledFns) {
+        const stub = function () {
+          throw new ERR_WORKER_UNSUPPORTED_OPERATION(
+            `process.${fn}()`,
+          );
+        };
+        stub.disabled = true;
+        process[fn] = stub;
+      }
+
+      Object.defineProperty(process, "channel", {
+        get() {
+          throw new ERR_WORKER_UNSUPPORTED_OPERATION("process.channel");
+        },
+        configurable: true,
+      });
+      Object.defineProperty(process, "connected", {
+        get() {
+          throw new ERR_WORKER_UNSUPPORTED_OPERATION("process.connected");
+        },
+        configurable: true,
+      });
     }
 
     delete internals.__bootstrapNodeProcess;

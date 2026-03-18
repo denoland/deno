@@ -2377,6 +2377,7 @@
     "parallel/test-worker-unref-from-message-during-exit.js": {},
     "parallel/test-worker-unsupported-eval-on-url.mjs": {},
     "parallel/test-worker-unsupported-path.js": {},
+    "parallel/test-worker-unsupported-things.js": {},
     "parallel/test-worker-thread-name.js": {},
     "parallel/test-worker-voluntarily-exit-followed-by-addition.js": {},
     "parallel/test-worker-voluntarily-exit-followed-by-throw.js": {},
