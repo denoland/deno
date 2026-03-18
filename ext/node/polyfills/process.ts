@@ -36,7 +36,6 @@ import {
   denoErrorToNodeError,
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE_RANGE,
-  ERR_OUT_OF_RANGE,
   ERR_UNKNOWN_SIGNAL,
   ERR_WORKER_UNSUPPORTED_OPERATION,
   errnoException,
@@ -116,10 +115,8 @@ export const execArgv: string[] = [];
 
 /** https://nodejs.org/api/process.html#process_process_exit_code */
 export const exit = (code?: number | string) => {
-  if (code || code === 0) {
+  if (code !== undefined) {
     process.exitCode = code;
-  } else if (Number.isNaN(code)) {
-    process.exitCode = 1;
   }
 
   ProcessExitCode = denoOs.getExitCode();
@@ -483,6 +480,10 @@ function Process(this: any) {
   EventEmitter.call(this);
 }
 Process.prototype = Object.create(EventEmitter.prototype);
+// V8 uses the constructor's name for error messages like
+// "Cannot delete property 'exitCode' of #<process>"
+const _process = function process() {};
+Process.prototype.constructor = _process;
 
 // Look up the actual registered listener for a signal event. When `once()` is
 // used, EventEmitter wraps the listener in a function with a `.listener`
@@ -807,15 +808,20 @@ Object.defineProperty(process, "exitCode", {
     if (code == null) {
       parsedCode = 0;
     } else if (typeof code === "number") {
+      if (!Number.isInteger(code)) {
+        throw new ERR_INVALID_ARG_TYPE("code", "integer", code);
+      }
       parsedCode = code;
     } else if (typeof code === "string") {
+      if (
+        code === "" || !Number.isFinite(Number(code)) ||
+        !Number.isInteger(Number(code))
+      ) {
+        throw new ERR_INVALID_ARG_TYPE("code", "integer", code);
+      }
       parsedCode = Number(code);
     } else {
-      throw new ERR_INVALID_ARG_TYPE("code", "number", code);
-    }
-
-    if (!Number.isInteger(parsedCode)) {
-      throw new ERR_OUT_OF_RANGE("code", "an integer", parsedCode);
+      throw new ERR_INVALID_ARG_TYPE("code", "integer", code);
     }
 
     denoOs.setExitCode(parsedCode);
