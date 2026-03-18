@@ -888,7 +888,8 @@ pub(crate) unsafe fn poll_tcp_handle(
               }
             }
           } else if n < 0 {
-            let err = *libc::__error();
+            let err =
+              std::io::Error::last_os_error().raw_os_error().unwrap_or(0);
             if err != libc::EAGAIN && err != libc::EWOULDBLOCK {
               // Real error — connection is broken.
               while let Some(pw) = (*tcp_ptr).internal_write_queue.pop_front() {
