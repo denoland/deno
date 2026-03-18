@@ -61,6 +61,7 @@ sha3 = { workspace = true, features = ["oid"] }
 signature.workspace = true
 sm3.workspace = true
 spki.workspace = true
+subtle.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 x25519-dalek = { workspace = true, features = ["static_secrets"] }

@@ -415,6 +415,7 @@ sha3 = "0.10.8"
 signature = "2.1"
 sm3 = "0.4.2"
 spki = "0.7.2"
+subtle = "2.6.1"
 x25519-dalek = "2.0.0"
 x509-parser = "0.15.0"
 

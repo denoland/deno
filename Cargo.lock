@@ -2828,6 +2828,7 @@ dependencies = [
  "signature 2.2.0",
  "sm3",
  "spki 0.7.3",
+ "subtle",
  "thiserror 2.0.12",
  "tokio",
  "x25519-dalek",
