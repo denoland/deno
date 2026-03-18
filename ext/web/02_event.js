@@ -1543,6 +1543,7 @@ function reportError(error) {
 }
 
 internals.defineEventHandler = defineEventHandler;
+internals.setEventTargetData = setEventTargetData;
 
 export {
   CloseEvent,

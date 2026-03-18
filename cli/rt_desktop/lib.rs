@@ -774,7 +774,8 @@ async fn run_desktop(update_rolled_back: bool) -> Result<(), AnyError> {
         .0
         .clone();
       wef::on_keyboard_event(move |ev| {
-        let _ =
+        eprintln!("[desktop] on_keyboard_event: sending {:?}/{:?}", ev.key, ev.state);
+        let result =
           kb_tx.send(deno_runtime::ops::desktop::KeyboardEventData {
             r#type: match ev.state {
               wef::KeyState::Pressed => "keydown",
@@ -788,6 +789,9 @@ async fn run_desktop(update_rolled_back: bool) -> Result<(), AnyError> {
             meta: ev.modifiers.meta,
             repeat: ev.repeat,
           });
+        if let Err(e) = result {
+          eprintln!("[desktop] keyboard send failed: {}", e);
+        }
       });
     })),
     override_main_module: None,

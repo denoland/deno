@@ -140,14 +140,19 @@ impl deno_core::Resource for BrowserWindow {
   }
 }
 
+struct EventTargetSetup {
+  brand: v8::Global<v8::Value>,
+  set_event_target_data: v8::Global<v8::Value>,
+}
+
 #[op2]
 impl BrowserWindow {
   #[constructor]
-  #[cppgc]
   fn new(
     state: &OpState,
+    scope: &mut v8::PinScope<'_, '_>,
     #[scoped] options: Option<BrowserWindowOptions>,
-  ) -> BrowserWindow {
+  ) -> v8::Global<v8::Value> {
     let api = state
       .try_borrow::<Arc<dyn DesktopApi>>()
       .expect("desktop mode enabled")
@@ -168,7 +173,19 @@ impl BrowserWindow {
       }
     }
 
-    BrowserWindow { api }
+    let window = BrowserWindow { api };
+    let window = deno_core::cppgc::make_cppgc_object(scope, window);
+    let event_target_setup = state.borrow::<EventTargetSetup>();
+    let webidl_brand = v8::Local::new(scope, event_target_setup.brand.clone());
+    window.set(scope, webidl_brand, webidl_brand);
+    let set_event_target_data =
+      v8::Local::new(scope, event_target_setup.set_event_target_data.clone())
+        .cast::<v8::Function>();
+    let null = v8::null(scope);
+    set_event_target_data.call(scope, null.into(), &[window.into()]);
+    let window = window.cast::<v8::Value>();
+
+    v8::Global::new(scope, window)
   }
 
   #[fast]
@@ -377,8 +394,10 @@ async fn op_desktop_recv_keyboard_event(
     let mut s = state.borrow_mut();
     s.try_take::<KeyboardEventReceiver>()
   };
+  dbg!(rx.is_some());
   if let Some(mut rx) = rx {
     let result = rx.0.recv().await;
+    dbg!(&result);
     state.borrow_mut().put(rx);
     result
   } else {
@@ -465,11 +484,26 @@ fn op_desktop_reject_bind_call(
   }
 }
 
+#[op2(fast)]
+pub fn op_desktop_init(
+  state: &mut OpState,
+  scope: &mut v8::PinScope<'_, '_>,
+  webidl_brand: v8::Local<v8::Value>,
+  set_event_target_data: v8::Local<v8::Value>,
+) {
+  state.put(EventTargetSetup {
+    brand: v8::Global::new(scope, webidl_brand),
+    set_event_target_data: v8::Global::new(scope, set_event_target_data),
+  });
+}
+
+
 deno_core::extension!(
   deno_desktop,
   ops = [
     op_desktop_apply_patch,
     op_desktop_confirm_update,
+    op_desktop_init,
     op_desktop_recv_menu_click,
     op_desktop_recv_keyboard_event,
     op_desktop_recv_bind_call,

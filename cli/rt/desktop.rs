@@ -19,6 +19,7 @@ pub const DESKTOP_JS: &str = r#"
   const internals = Deno[Deno.internal];
   const {
     BrowserWindow,
+    op_desktop_init,
     op_desktop_recv_menu_click,
     op_desktop_recv_keyboard_event,
     op_desktop_recv_bind_call,
@@ -28,15 +29,69 @@ pub const DESKTOP_JS: &str = r#"
   const BrowserWindowPrototype = BrowserWindow.prototype;
   Object.setPrototypeOf(BrowserWindowPrototype, EventTarget.prototype);
 
-  const NativeBrowserWindow = BrowserWindow;
-  const WrappedBrowserWindow = function BrowserWindow(options) {
-    const instance = new NativeBrowserWindow(options);
-    EventTarget.call(instance);
+  class KeyboardEvent extends Event {
+    #key = "";
+    #code = "";
+    #location = 0;
+    #ctrlKey = false;
+    #shiftKey = false;
+    #altKey = false;
+    #metaKey = false;
+    #repeat = false;
+    #isComposing = false;
+
+    get key() { return this.#key; }
+    get code() { return this.#code; }
+    get location() { return this.#location; }
+    get ctrlKey() { return this.#ctrlKey; }
+    get shiftKey() { return this.#shiftKey; }
+    get altKey() { return this.#altKey; }
+    get metaKey() { return this.#metaKey; }
+    get repeat() { return this.#repeat; }
+    get isComposing() { return this.#isComposing; }
+
+    constructor(type, init = {}) {
+      super(type, init);
+      this.#key = init.key ?? "";
+      this.#code = init.code ?? "";
+      this.#location = init.location ?? 0;
+      this.#ctrlKey = init.ctrlKey ?? false;
+      this.#shiftKey = init.shiftKey ?? false;
+      this.#altKey = init.altKey ?? false;
+      this.#metaKey = init.metaKey ?? false;
+      this.#repeat = init.repeat ?? false;
+      this.#isComposing = init.isComposing ?? false;
+    }
+
+    getModifierState(key) {
+      switch (key) {
+        case "Alt": return this.#altKey;
+        case "Control": return this.#ctrlKey;
+        case "Meta": return this.#metaKey;
+        case "Shift": return this.#shiftKey;
+        default: return false;
+      }
+    }
+  }
+  globalThis.KeyboardEvent = internals.core.propNonEnumerable(KeyboardEvent);
+
+  op_desktop_init(
+    internals.webidlBrand,
+    internals.setEventTargetData,
+  );
+
+  // Track the active BrowserWindow instance for event dispatch.
+  let activeWindow = null;
+  const nativeConstructor = BrowserWindow;
+  const OrigBW = function(...args) {
+    const instance = new nativeConstructor(...args);
+    activeWindow = instance;
     return instance;
   };
-  WrappedBrowserWindow.prototype = BrowserWindowPrototype;
-  BrowserWindowPrototype.constructor = WrappedBrowserWindow;
-  Deno.BrowserWindow = WrappedBrowserWindow;
+  Object.setPrototypeOf(OrigBW, nativeConstructor);
+  Object.setPrototypeOf(OrigBW.prototype, nativeConstructor.prototype);
+  Deno.BrowserWindow = OrigBW;
+
   internals.defineEventHandler(BrowserWindowPrototype, "keydown");
   internals.defineEventHandler(BrowserWindowPrototype, "keyup");
 
@@ -67,12 +122,14 @@ pub const DESKTOP_JS: &str = r#"
       }
     })();
     // Poll for keyboard events from the native side and dispatch
-    // them as KeyboardEvent on globalThis.
+    // them on the active BrowserWindow instance.
     (async () => {
       while (true) {
         const ev = await op_desktop_recv_keyboard_event();
         if (ev == null) break;
-        dispatchEvent(new KeyboardEvent(ev.type, {
+        const target = activeWindow;
+        if (!target) continue;
+        target.dispatchEvent(new KeyboardEvent(ev.type, {
           key: ev.key,
           code: ev.code,
           shiftKey: ev.shift,

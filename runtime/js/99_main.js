@@ -543,6 +543,7 @@ const NOT_IMPORTED_OPS = [
   "BrowserWindow",
   "op_desktop_apply_patch",
   "op_desktop_confirm_update",
+  "op_desktop_init",
   "op_desktop_recv_menu_click",
   "op_desktop_recv_keyboard_event",
   "op_desktop_recv_bind_call",
