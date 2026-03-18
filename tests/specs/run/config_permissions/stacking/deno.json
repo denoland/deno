@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "foo": {
+      "read": ["./data/foo.txt"],
+      "net": ["example.org"]
+    }
+  }
+}
