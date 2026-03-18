@@ -120,7 +120,6 @@ impl GPUBuffer {
   // In the successful case, the promise should resolve to undefined, but
   // `#[undefined]` does not seem to work here.
   // https://github.com/denoland/deno/issues/29603
-  #[async_method]
   async fn map_async(
     &self,
     #[webidl(options(enforce_range = true))] mode: u32,

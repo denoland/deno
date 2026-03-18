@@ -19,14 +19,20 @@ use deno_semver::npm::NpmPackageReqReference;
 
 use super::diagnostics::PublishDiagnostic;
 use super::diagnostics::PublishDiagnosticsCollector;
+use crate::npm::CliNpmResolver;
 
 pub struct GraphDiagnosticsCollector {
+  npm_resolver: CliNpmResolver,
   parsed_source_cache: Arc<ParsedSourceCache>,
 }
 
 impl GraphDiagnosticsCollector {
-  pub fn new(parsed_source_cache: Arc<ParsedSourceCache>) -> Self {
+  pub fn new(
+    npm_resolver: CliNpmResolver,
+    parsed_source_cache: Arc<ParsedSourceCache>,
+  ) -> Self {
     Self {
+      npm_resolver,
       parsed_source_cache,
     }
   }
@@ -75,18 +81,16 @@ impl GraphDiagnosticsCollector {
               skip_specifiers.insert(resolution.specifier.clone());
 
               // check for a missing version constraint
-              if let Ok(jsr_req_ref) =
+              if let Ok(npm_req_ref) =
                 NpmPackageReqReference::from_specifier(&resolution.specifier)
-                && jsr_req_ref.req().version_req.version_text() == "*"
+                && npm_req_ref.req().version_req.version_text() == "*"
               {
-                let maybe_version = graph
-                  .get(&resolution.specifier)
-                  .and_then(|m| m.npm())
-                  .map(|n| {
-                    // TODO(dsherret): ok to use for now, but we should use the req in the future
-                    #[allow(deprecated)]
-                    let nv = n.nv_reference.nv();
-                    nv.version.clone()
+                let maybe_version =
+                  self.npm_resolver.as_managed().and_then(|managed| {
+                    managed
+                      .resolve_pkg_id_from_deno_module_req(npm_req_ref.req())
+                      .ok()
+                      .map(|id| id.nv.version.clone())
                   });
                 diagnostics_collector.push(
                   PublishDiagnostic::MissingConstraint {

@@ -69,7 +69,9 @@ use crate::file_fetcher::CliFileFetcher;
 use crate::http_util::HttpClientProvider;
 use crate::lsp::logging::lsp_warn;
 use crate::npm::CliNpmCacheHttpClient;
+use crate::npm::NpmPackumentFormat;
 use crate::sys::CliSys;
+use crate::util::fs::canonicalize_path;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
@@ -579,6 +581,13 @@ pub struct WorkspaceSettings {
   #[serde(default = "default_document_preload_limit")]
   pub document_preload_limit: usize,
 
+  /// Disables the server-capability for pull diagnostics to force push-based
+  /// diagnostics. NOTE: This is read and stored from the initialization
+  /// options. This value may be updated on configuration change events but
+  /// the new value will be ignored.
+  #[serde(default)]
+  pub force_push_based_diagnostics: bool,
+
   #[serde(default)]
   pub suggest: DenoCompletionSettings,
 
@@ -626,6 +635,7 @@ impl Default for WorkspaceSettings {
       log_file: false,
       lint: true,
       document_preload_limit: default_document_preload_limit(),
+      force_push_based_diagnostics: false,
       suggest: Default::default(),
       testing: Default::default(),
       tls_certificate: None,
@@ -1041,6 +1051,7 @@ impl Config {
       | MediaType::Wasm
       | MediaType::Css
       | MediaType::Html
+      | MediaType::Markdown
       | MediaType::SourceMap
       | MediaType::Sql
       | MediaType::Unknown => None,
@@ -1071,7 +1082,7 @@ impl Config {
   }
 
   pub fn uri_enabled(&self, uri: &Uri) -> bool {
-    if uri.scheme().is_some_and(|s| s.eq_lowercase("deno")) {
+    if uri.scheme().as_str().eq_ignore_ascii_case("deno") {
       return true;
     }
     self.specifier_enabled(&uri_to_url(uri))
@@ -1171,7 +1182,7 @@ impl Config {
   pub fn diagnostic_refresh_capable(&self) -> bool {
     (|| {
       let workspace = self.client_capabilities.workspace.as_ref()?;
-      workspace.diagnostic.as_ref()?.refresh_support
+      workspace.diagnostics.as_ref()?.refresh_support
     })()
     .unwrap_or(false)
   }
@@ -1248,7 +1259,7 @@ pub struct ConfigData {
 }
 
 impl ConfigData {
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
   async fn load(
     specified_config: Option<&Path>,
     scope: &Arc<Url>,
@@ -1281,7 +1292,10 @@ impl ConfigData {
             deno_json_cache: Some(deno_json_cache),
             pkg_json_cache: Some(pkg_json_cache),
             workspace_cache: Some(workspace_cache),
-            discover_pkg_json: !has_flag_env_var("DENO_NO_PACKAGE_JSON"),
+            discover_pkg_json: !has_flag_env_var(
+              &CliSys::default(),
+              "DENO_NO_PACKAGE_JSON",
+            ),
             maybe_vendor_override: None,
           },
         )
@@ -1473,11 +1487,13 @@ impl ConfigData {
           // will only happen in the tests
           .unwrap_or_else(|| Arc::new(HttpClientProvider::new(None, None))),
         pb.clone(),
+        NpmPackumentFormat::Abbreviated,
       )),
       Arc::new(NullLifecycleScriptsExecutor),
       pb,
       None,
       NpmInstallerFactoryOptions {
+        clean_on_install: false,
         cache_setting: NpmCacheSetting::Use,
         caching_strategy: NpmCachingStrategy::Eager,
         lifecycle_scripts_config: LifecycleScriptsConfig::default(),
@@ -1835,7 +1851,7 @@ impl ConfigTree {
     let pkg_json_cache = PackageJsonMemCache::default();
     let workspace_cache = WorkspaceMemCache::default();
     let mut scopes = BTreeMap::new();
-    let fs_root_url = std::fs::canonicalize("/")
+    let fs_root_url = canonicalize_path(Path::new("/"))
       .ok()
       .and_then(|p| Url::from_directory_path(p).ok())
       .unwrap_or_else(|| Url::parse("file:///").unwrap());
@@ -2145,6 +2161,7 @@ mod tests {
         log_file: false,
         lint: true,
         document_preload_limit: 1_000,
+        force_push_based_diagnostics: false,
         suggest: DenoCompletionSettings {
           imports: ImportCompletionSettings {
             auto_discover: true,

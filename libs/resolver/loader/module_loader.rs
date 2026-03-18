@@ -26,20 +26,15 @@ use crate::emit::EmitParsedSourceHelperError;
 use crate::emit::EmitterRc;
 use crate::factory::DenoNodeCodeTranslatorRc;
 use crate::graph::EnhanceGraphErrorMode;
+use crate::graph::EnhancedGraphError;
 use crate::graph::enhance_graph_error;
 use crate::npm::DenoInNpmPackageChecker;
 
-#[allow(clippy::disallowed_types)]
+#[allow(
+  clippy::disallowed_types,
+  reason = "source text is always stored as Arc<str>"
+)]
 type ArcStr = std::sync::Arc<str>;
-
-#[derive(Debug, thiserror::Error, deno_error::JsError)]
-#[error("{message}")]
-#[class(inherit)]
-pub struct EnhancedGraphError {
-  #[inherit]
-  pub error: deno_graph::ModuleError,
-  pub message: String,
-}
 
 #[derive(Debug, deno_error::JsError, Boxed)]
 #[class(inherit)]
@@ -118,7 +113,7 @@ pub struct LoadUnpreparedModuleError {
   maybe_referrer: Option<Url>,
 }
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type ModuleLoaderRc<TSys> = deno_maybe_sync::MaybeArc<ModuleLoader<TSys>>;
 
 #[sys_traits::auto_impl]
@@ -156,7 +151,7 @@ pub struct ModuleLoader<TSys: ModuleLoaderSys> {
 }
 
 impl<TSys: ModuleLoaderSys> ModuleLoader<TSys> {
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "all arguments are needed")]
   pub fn new(
     cjs_tracker: CjsTrackerRc<DenoInNpmPackageChecker, TSys>,
     emitter: EmitterRc<DenoInNpmPackageChecker, TSys>,
@@ -398,15 +393,13 @@ impl<TSys: ModuleLoaderSys> PreparedModuleLoader<TSys> {
     specifier: &Url,
     requested_module_type: &RequestedModuleType,
   ) -> Result<Option<CodeOrDeferredEmit<'graph>>, LoadPreparedModuleError> {
-    let maybe_module =
-      graph.try_get(specifier).map_err(|err| EnhancedGraphError {
-        message: enhance_graph_error(
-          &self.sys,
-          &deno_graph::ModuleGraphError::ModuleError(err.clone()),
-          EnhanceGraphErrorMode::ShowRange,
-        ),
-        error: err.clone(),
-      })?;
+    let maybe_module = graph.try_get(specifier).map_err(|err| {
+      enhance_graph_error(
+        &self.sys,
+        deno_graph::ModuleGraphError::ModuleError(err.clone()),
+        EnhanceGraphErrorMode::ShowRange,
+      )
+    })?;
 
     match maybe_module {
       Some(deno_graph::Module::Json(JsonModule {
@@ -499,6 +492,7 @@ impl<TSys: ModuleLoaderSys> PreparedModuleLoader<TSys> {
             | MediaType::Html
             | MediaType::Jsonc
             | MediaType::Json5
+            | MediaType::Markdown
             | MediaType::Sql
             | MediaType::Wasm
             | MediaType::SourceMap => {

@@ -79,7 +79,7 @@ pub struct CreateCliFileFetcherOptions {
   pub progress_bar: Option<ProgressBar>,
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, reason = "construction")]
 pub fn create_cli_file_fetcher(
   blob_store: Arc<BlobStore>,
   http_cache: GlobalOrLocalHttpCache<CliSys>,
@@ -1063,6 +1063,7 @@ mod tests {
   }
 
   fn create_http_client_adapter() -> HttpClientAdapter {
+    let _ = rustls::crypto::ring::default_provider().install_default();
     HttpClientAdapter {
       http_client_provider: Arc::new(HttpClientProvider::new(None, None)),
       download_log_level: log::Level::Info,

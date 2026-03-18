@@ -1,6 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 const {
   FunctionPrototypeBind,
   ObjectDefineProperty,
@@ -10,13 +10,10 @@ const {
   SafeArrayIterator,
   SafePromisePrototypeFinally,
 } = primordials;
-import { op_immediate_count, op_immediate_ref_count } from "ext:core/ops";
 import {
   getActiveTimer,
   Immediate,
-  immediateQueue,
   kDestroy,
-  kRefed,
   setUnrefTimeout,
   Timeout,
 } from "ext:deno_node/internal/timers.mjs";
@@ -156,22 +153,77 @@ export function setImmediate(
   return new Immediate(cb, ...new SafeArrayIterator(args));
 }
 
+function setImmediatePromise<T = void>(
+  value?: T,
+  options: TimerOptions = kEmptyObject,
+): Promise<T> {
+  try {
+    validateObject(options, "options");
+
+    if (typeof options?.signal !== "undefined") {
+      validateAbortSignal(options.signal, "options.signal");
+    }
+
+    if (typeof options?.ref !== "undefined") {
+      validateBoolean(options.ref, "options.ref");
+    }
+  } catch (err) {
+    return PromiseReject(err);
+  }
+
+  const { signal, ref = true } = options;
+
+  if (signal?.aborted) {
+    return PromiseReject(new AbortError(undefined, { cause: signal.reason }));
+  }
+
+  let oncancel: EventListenerOrEventListenerObject | undefined;
+  const { promise, resolve, reject } = PromiseWithResolvers();
+  const immediate = new Immediate(() => resolve(value));
+  if (!ref) {
+    immediate.unref();
+  }
+  if (signal) {
+    oncancel = FunctionPrototypeBind(
+      cancelListenerHandler,
+      immediate,
+      clearImmediate,
+      reject,
+      signal,
+    );
+
+    signal.addEventListener("abort", oncancel, {
+      __proto__: null,
+      [kResistStopPropagation]: true,
+    });
+  }
+
+  return oncancel !== undefined
+    ? SafePromisePrototypeFinally(
+      promise,
+      () => signal!.removeEventListener("abort", oncancel),
+    )
+    : promise;
+}
+
+ObjectDefineProperty(setImmediatePromise, "name", {
+  __proto__: null,
+  value: "setImmediate",
+});
+
+ObjectDefineProperty(setImmediate, promisify.custom, {
+  __proto__: null,
+  enumerable: true,
+  get() {
+    return setImmediatePromise;
+  },
+});
+
 export function clearImmediate(immediate: Immediate) {
   if (!immediate?._onImmediate || immediate._destroyed) {
     return;
   }
-
-  op_immediate_count(false);
-  immediate._destroyed = true;
-
-  if (immediate[kRefed]) {
-    op_immediate_ref_count(false);
-  }
-  immediate[kRefed] = null;
-
-  immediate._onImmediate = null;
-
-  immediateQueue.remove(immediate);
+  core.clearImmediate(immediate);
 }
 
 async function* setIntervalAsync(
@@ -254,7 +306,7 @@ async function* setIntervalAsync(
 
 export const promises = {
   setTimeout: setTimeoutPromise,
-  setImmediate: promisify(setImmediate),
+  setImmediate: setImmediatePromise,
   setInterval: setIntervalAsync,
 };
 

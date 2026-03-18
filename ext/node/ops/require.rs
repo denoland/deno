@@ -115,7 +115,6 @@ pub enum RequireErrorKind {
 pub struct UnableToGetCwdError(#[source] pub std::io::Error);
 
 #[op2]
-#[serde]
 pub fn op_require_init_paths() -> Vec<String> {
   // todo(dsherret): this code is node compat mode specific and
   // we probably don't want it for small mammal, so ignore it for now
@@ -166,7 +165,6 @@ pub fn op_require_init_paths() -> Vec<String> {
 }
 
 #[op2(stack_trace)]
-#[serde]
 pub fn op_require_node_module_paths<TSys: ExtNodeSys + 'static>(
   state: &mut OpState,
   #[string] from: &str,
@@ -296,10 +294,9 @@ pub fn op_require_is_deno_dir_package<
 }
 
 #[op2]
-#[serde]
 pub fn op_require_resolve_lookup_paths(
   #[string] request: &str,
-  #[serde] maybe_parent_paths: Option<Vec<String>>,
+  #[scoped] maybe_parent_paths: Option<Vec<String>>,
   #[string] parent_filename: &str,
 ) -> Option<Vec<String>> {
   if !request.starts_with('.')
@@ -405,7 +402,7 @@ fn path_resolve<'a>(mut parts: impl Iterator<Item = &'a str>) -> PathBuf {
 
 #[op2]
 #[string]
-pub fn op_require_path_resolve(#[serde] parts: Vec<String>) -> String {
+pub fn op_require_path_resolve(#[scoped] parts: Vec<String>) -> String {
   path_resolve(parts.iter().map(|s| s.as_str()))
     .to_string_lossy()
     .into_owned()
@@ -500,7 +497,6 @@ pub fn op_require_try_self<
 }
 
 #[op2(stack_trace)]
-#[to_v8]
 pub fn op_require_read_file(
   state: &mut OpState,
   #[string] file_path: &str,
@@ -518,6 +514,10 @@ pub fn op_require_read_file(
 #[op2]
 #[string]
 pub fn op_require_as_file_path(#[string] file_or_url: &str) -> Option<String> {
+  #[allow(
+    clippy::disallowed_methods,
+    reason = "don't need error and this doesn't need to work in Wasm"
+  )]
   if let Ok(url) = Url::parse(file_or_url)
     && let Ok(p) = url.to_file_path()
   {

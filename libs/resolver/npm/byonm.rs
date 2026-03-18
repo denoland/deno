@@ -29,6 +29,7 @@ use thiserror::Error;
 use url::Url;
 
 use super::local::normalize_pkg_name_for_node_modules_deno_folder;
+use crate::npm::join_package_name_to_path;
 
 #[derive(Debug, Error, deno_error::JsError)]
 pub enum ByonmResolvePkgFolderFromDenoReqError {
@@ -44,14 +45,14 @@ pub enum ByonmResolvePkgFolderFromDenoReqError {
   #[class(inherit)]
   #[error(transparent)]
   Io(#[from] std::io::Error),
-  #[class(generic)]
-  #[error("JSR specifiers are not supported in package.json: {req}")]
-  JsrReqUnsupported { req: PackageReq },
 }
 
 pub struct ByonmNpmResolverCreateOptions<TSys: FsRead + FsMetadata> {
-  // todo(dsherret): investigate removing this
   pub root_node_modules_dir: Option<PathBuf>,
+  /// When set, the ancestor walk for node_modules resolution will not
+  /// go above this directory. Used by deno_rt for self-extracting binaries
+  /// to prevent escaping the VFS root.
+  pub search_stop_dir: Option<PathBuf>,
   pub sys: NodeResolutionSys<TSys>,
   pub pkg_json_resolver: PackageJsonResolverRc<TSys>,
 }
@@ -62,7 +63,7 @@ pub trait ByonmNpmResolverSys:
 {
 }
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type ByonmNpmResolverRc<TSys> =
   deno_maybe_sync::MaybeArc<ByonmNpmResolver<TSys>>;
 
@@ -71,6 +72,7 @@ pub struct ByonmNpmResolver<TSys: ByonmNpmResolverSys> {
   sys: NodeResolutionSys<TSys>,
   pkg_json_resolver: PackageJsonResolverRc<TSys>,
   root_node_modules_dir: Option<PathBuf>,
+  search_stop_dir: Option<PathBuf>,
 }
 
 impl<TSys: ByonmNpmResolverSys + Clone> Clone for ByonmNpmResolver<TSys> {
@@ -79,6 +81,7 @@ impl<TSys: ByonmNpmResolverSys + Clone> Clone for ByonmNpmResolver<TSys> {
       sys: self.sys.clone(),
       pkg_json_resolver: self.pkg_json_resolver.clone(),
       root_node_modules_dir: self.root_node_modules_dir.clone(),
+      search_stop_dir: self.search_stop_dir.clone(),
     }
   }
 }
@@ -87,6 +90,7 @@ impl<TSys: ByonmNpmResolverSys> ByonmNpmResolver<TSys> {
   pub fn new(options: ByonmNpmResolverCreateOptions<TSys>) -> Self {
     Self {
       root_node_modules_dir: options.root_node_modules_dir,
+      search_stop_dir: options.search_stop_dir,
       sys: options.sys,
       pkg_json_resolver: options.pkg_json_resolver,
     }
@@ -136,13 +140,18 @@ impl<TSys: ByonmNpmResolverSys> ByonmNpmResolver<TSys> {
     ) -> std::io::Result<Option<PathBuf>> {
       for ancestor in start_dir.ancestors() {
         let node_modules_folder = ancestor.join("node_modules");
-        let sub_dir = join_package_name(Cow::Owned(node_modules_folder), alias);
-        if sys.is_dir(&sub_dir) {
-          return Ok(Some(
-            deno_path_util::fs::canonicalize_path_maybe_not_exists(
-              sys, &sub_dir,
-            )?,
-          ));
+        // When using the cache, eagerly check for the node_modules directory in order
+        // to reduce cache entries and get an answer more quickly on negative lookups.
+        if !sys.has_cache() || sys.is_dir(Cow::Borrowed(&node_modules_folder)) {
+          let sub_dir =
+            join_package_name_to_path(Cow::Owned(node_modules_folder), alias);
+          if sys.is_dir(Cow::Borrowed(&sub_dir)) {
+            return Ok(Some(
+              deno_path_util::fs::canonicalize_path_maybe_not_exists(
+                sys, &sub_dir,
+              )?,
+            ));
+          }
         }
       }
       Ok(None)
@@ -196,13 +205,6 @@ impl<TSys: ByonmNpmResolverSys> ByonmNpmResolver<TSys> {
           match value {
             PackageJsonDepValue::File(_) => {
               // skip
-            }
-            PackageJsonDepValue::JsrReq(req) => {
-              return Err(
-                ByonmResolvePkgFolderFromDenoReqError::JsrReqUnsupported {
-                  req: req.clone(),
-                },
-              );
             }
             PackageJsonDepValue::Req(dep_req) => {
               if dep_req.name == req.name
@@ -294,7 +296,7 @@ impl<TSys: ByonmNpmResolverSys> ByonmNpmResolver<TSys> {
         .and_then(|referrer_path| {
           root_node_modules_dir
             .parent()
-            .map(|root_dir| referrer_path.starts_with(root_dir))
+            .map(|search_stop_dir| referrer_path.starts_with(search_stop_dir))
         })
         .unwrap_or(false);
       if !already_searched
@@ -377,7 +379,7 @@ impl<TSys: ByonmNpmResolverSys> ByonmNpmResolver<TSys> {
     }
 
     best_version.map(|(_version, entry_name)| {
-      join_package_name(
+      join_package_name_to_path(
         Cow::Owned(node_modules_deno_dir.join(entry_name).join("node_modules")),
         &req.name,
       )
@@ -393,15 +395,21 @@ impl<TSys: FsCanonicalize + FsMetadata + FsRead + FsReadDir>
     name: &str,
     referrer: &UrlOrPathRef,
   ) -> Result<PathBuf, PackageFolderResolveError> {
-    fn inner<TSys: FsMetadata>(
+    fn inner<TSys: FsMetadata + FsCanonicalize>(
       sys: &NodeResolutionSys<TSys>,
       name: &str,
       referrer: &UrlOrPathRef,
+      search_stop_dir: Option<&Path>,
     ) -> Result<PathBuf, PackageFolderResolveError> {
       let maybe_referrer_file = referrer.path().ok();
       let maybe_start_folder =
         maybe_referrer_file.as_ref().and_then(|f| f.parent());
       if let Some(start_folder) = maybe_start_folder {
+        let start_folder = search_stop_dir
+          .is_some()
+          .then(|| sys.fs_canonicalize(start_folder).ok().map(Cow::Owned))
+          .flatten()
+          .unwrap_or(Cow::Borrowed(start_folder));
         for current_folder in start_folder.ancestors() {
           let node_modules_folder = if current_folder.ends_with("node_modules")
           {
@@ -410,9 +418,19 @@ impl<TSys: FsCanonicalize + FsMetadata + FsRead + FsReadDir>
             Cow::Owned(current_folder.join("node_modules"))
           };
 
-          let sub_dir = join_package_name(node_modules_folder, name);
-          if sys.is_dir(&sub_dir) {
-            return Ok(sub_dir);
+          // When using the cache, eagerly check for the node_modules directory in order
+          // to reduce cache entries and get an answer more quickly on negative lookups.
+          if !sys.has_cache() || sys.is_dir(Cow::Borrowed(&node_modules_folder))
+          {
+            let sub_dir = join_package_name_to_path(node_modules_folder, name);
+            if sys.is_dir(Cow::Borrowed(&sub_dir)) {
+              return Ok(sub_dir);
+            }
+          }
+
+          // prevent code like deno rt from going outside the vfs
+          if search_stop_dir == Some(current_folder) {
+            break;
           }
         }
       }
@@ -427,7 +445,8 @@ impl<TSys: FsCanonicalize + FsMetadata + FsRead + FsReadDir>
       )
     }
 
-    let path = inner(&self.sys, name, referrer)?;
+    let path =
+      inner(&self.sys, name, referrer, self.search_stop_dir.as_deref())?;
     self.sys.fs_canonicalize(&path).map_err(|err| {
       PackageFolderResolveIoError {
         package_name: name.to_string(),
@@ -461,17 +480,4 @@ impl InNpmPackageChecker for ByonmInNpmPackageChecker {
         .to_ascii_lowercase()
         .contains("/node_modules/")
   }
-}
-
-fn join_package_name(mut path: Cow<'_, Path>, package_name: &str) -> PathBuf {
-  // ensure backslashes are used on windows
-  for part in package_name.split('/') {
-    match path {
-      Cow::Borrowed(inner) => path = Cow::Owned(inner.join(part)),
-      Cow::Owned(ref mut path) => {
-        path.push(part);
-      }
-    }
-  }
-  path.into_owned()
 }

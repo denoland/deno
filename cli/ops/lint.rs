@@ -6,7 +6,9 @@ use deno_ast::ParseDiagnostic;
 use deno_ast::SourceRange;
 use deno_ast::SourceTextInfo;
 use deno_ast::SourceTextProvider;
+use deno_core::FromV8;
 use deno_core::OpState;
+use deno_core::convert::Uint8Array;
 use deno_core::op2;
 use deno_lint::diagnostic::LintDiagnostic;
 use deno_lint::diagnostic::LintDiagnosticDetails;
@@ -190,8 +192,11 @@ fn op_is_cancelled(state: &mut OpState) -> bool {
   container.token.is_cancelled()
 }
 
+#[derive(Debug, boxed_error::Boxed, deno_error::JsError)]
+pub struct LintError(pub Box<LintErrorKind>);
+
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
-pub enum LintError {
+pub enum LintErrorKind {
   #[class(inherit)]
   #[error(transparent)]
   Io(#[from] std::io::Error),
@@ -204,16 +209,15 @@ pub enum LintError {
 }
 
 #[op2]
-#[buffer]
-#[allow(clippy::result_large_err)]
 fn op_lint_create_serialized_ast(
   #[string] file_name: &str,
   #[string] source: String,
-) -> Result<Vec<u8>, LintError> {
+) -> Result<Uint8Array, LintError> {
   let file_text = deno_ast::strip_bom(source);
+  #[allow(clippy::disallowed_methods, reason = "ok for linting")]
   let path = std::env::current_dir()?.join(file_name);
   let specifier = ModuleSpecifier::from_file_path(&path)
-    .map_err(|_| LintError::PathParse(path))?;
+    .map_err(|_| LintErrorKind::PathParse(path))?;
   let media_type = MediaType::from_specifier(&specifier);
   let parsed_source = deno_ast::parse_program(deno_ast::ParseParams {
     specifier,
@@ -224,10 +228,10 @@ fn op_lint_create_serialized_ast(
     maybe_syntax: None,
   })?;
   let utf16_map = Utf16Map::new(parsed_source.text().as_ref());
-  Ok(lint::serialize_ast_to_buffer(&parsed_source, &utf16_map))
+  Ok(lint::serialize_ast_to_buffer(&parsed_source, &utf16_map).into())
 }
 
-#[derive(serde::Deserialize)]
+#[derive(FromV8)]
 struct LintReportFix {
   text: String,
   range: (usize, usize),
@@ -254,7 +258,7 @@ fn op_lint_report(
   #[string] hint: Option<String>,
   #[smi] start_utf16: usize,
   #[smi] end_utf16: usize,
-  #[serde] fix: Vec<LintReportFix>,
+  #[scoped] fix: Vec<LintReportFix>,
 ) -> Result<(), LintReportError> {
   let container = state.borrow_mut::<LintPluginContainer>();
   container.report(id, message, hint, start_utf16, end_utf16, fix)?;

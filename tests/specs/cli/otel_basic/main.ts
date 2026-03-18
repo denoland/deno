@@ -35,6 +35,7 @@ function onListen({ port }) {
       "--env-file=env_file",
       "-A",
       "-q",
+      "--unstable-cron",
       Deno.args[0],
     ],
     env: {

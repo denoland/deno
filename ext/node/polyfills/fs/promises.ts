@@ -17,7 +17,6 @@ export const symlink = fsPromises.symlink;
 export const lstat = fsPromises.lstat;
 export const stat = fsPromises.stat;
 export const statfs = fsPromises.statfs;
-export const fstat = fsPromises.fstat;
 export const link = fsPromises.link;
 export const unlink = fsPromises.unlink;
 export const chmod = fsPromises.chmod;

@@ -124,7 +124,10 @@ pub async fn publish(
   }
 
   let specifier_unfurler = SpecifierUnfurler::new(
-    Some(cli_factory.node_resolver().await?.clone()),
+    cli_factory.node_resolver().await?.clone(),
+    cli_factory.npm_req_resolver().await?.clone(),
+    cli_factory.pkg_json_resolver()?.clone(),
+    cli_factory.cli_options().unwrap().start_dir.clone(),
     cli_factory.workspace_resolver().await?.clone(),
     cli_options.unstable_bare_node_builtins(),
   );
@@ -138,7 +141,10 @@ pub async fn publish(
     cli_factory.compiler_options_resolver()?.clone(),
   ));
   let publish_preparer = PublishPreparer::new(
-    GraphDiagnosticsCollector::new(parsed_source_cache.clone()),
+    GraphDiagnosticsCollector::new(
+      cli_factory.npm_resolver().await?.clone(),
+      parsed_source_cache.clone(),
+    ),
     cli_factory.module_graph_creator().await?.clone(),
     cli_factory.type_checker().await?.clone(),
     cli_options.clone(),
@@ -406,7 +412,6 @@ impl PublishPreparer {
     }
   }
 
-  #[allow(clippy::too_many_arguments)]
   async fn prepare_publish(
     &self,
     package: &JsrPackageConfig,
@@ -1274,13 +1279,19 @@ async fn check_if_git_repo_dirty(cwd: &Path) -> Option<String> {
   }
 }
 
-static SUPPORTED_LICENSE_FILE_NAMES: [&str; 6] = [
+static SUPPORTED_LICENSE_FILE_NAMES: [&str; 12] = [
   "LICENSE",
   "LICENSE.md",
   "LICENSE.txt",
   "LICENCE",
   "LICENCE.md",
   "LICENCE.txt",
+  "COPYING",
+  "COPYING.md",
+  "COPYING.txt",
+  "COPYING.LESSER",
+  "COPYING.LESSER.md",
+  "COPYING.LESSER.txt",
 ];
 
 fn resolve_license_file(
@@ -1352,7 +1363,7 @@ fn error_missing_exports_field(deno_json: &ConfigFile) -> Result<(), AnyError> {
   );
 }
 
-#[allow(clippy::print_stderr)]
+#[allow(clippy::print_stderr, reason = "actually want to output")]
 fn ring_bell() {
   // ASCII code for the bell character.
   eprint!("\x07");

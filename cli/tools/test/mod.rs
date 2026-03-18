@@ -129,6 +129,10 @@ pub enum TestMode {
 }
 
 impl TestMode {
+  fn union(self, other: Self) -> Self {
+    if self == other { self } else { Self::Both }
+  }
+
   /// Returns `true` if the test mode indicates that code snippet extraction is
   /// needed.
   fn needs_test_extraction(&self) -> bool {
@@ -206,6 +210,7 @@ pub(crate) struct TestContainer {
   descriptions: TestDescriptions,
   test_functions: Vec<v8::Global<v8::Function>>,
   test_hooks: TestHooks,
+  registration_phase_ended: bool,
 }
 
 #[derive(Default)]
@@ -217,13 +222,26 @@ pub(crate) struct TestHooks {
 }
 
 impl TestContainer {
+  pub fn with_registration_phase_ended() -> Self {
+    Self {
+      registration_phase_ended: true,
+      ..Default::default()
+    }
+  }
+
   pub fn register(
     &mut self,
     description: TestDescription,
     function: v8::Global<v8::Function>,
-  ) {
+  ) -> Result<(), JsErrorBox> {
+    if self.registration_phase_ended {
+      return Err(JsErrorBox::type_error(
+        "Nested Deno.test() calls are not supported. Use t.step() for nested tests.",
+      ));
+    }
     self.descriptions.tests.insert(description.id, description);
-    self.test_functions.push(function)
+    self.test_functions.push(function);
+    Ok(())
   }
 
   pub fn register_hook(
@@ -276,6 +294,7 @@ pub struct TestDescription {
   pub name: String,
   pub ignore: bool,
   pub only: bool,
+  pub sanitize_only: bool,
   pub origin: String,
   pub location: TestLocation,
   pub sanitize_ops: bool,
@@ -310,7 +329,7 @@ pub struct TestFailureFormatOptions {
   pub initial_cwd: Option<Url>,
 }
 
-#[allow(clippy::derive_partial_eq_without_eq)]
+#[allow(clippy::derive_partial_eq_without_eq, reason = "not important")]
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum TestFailure {
@@ -458,7 +477,7 @@ impl TestFailure {
   }
 }
 
-#[allow(clippy::derive_partial_eq_without_eq)]
+#[allow(clippy::derive_partial_eq_without_eq, reason = "not important")]
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum TestResult {
@@ -481,7 +500,7 @@ pub struct TestStepDescription {
   pub root_name: String,
 }
 
-#[allow(clippy::derive_partial_eq_without_eq)]
+#[allow(clippy::derive_partial_eq_without_eq, reason = "not important")]
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum TestStepResult {
@@ -497,14 +516,6 @@ pub struct TestPlan {
   pub total: usize,
   pub filtered_out: usize,
   pub used_only: bool,
-}
-
-// TODO(bartlomieju): in Rust 1.90 some structs started getting flagged as not used
-#[allow(dead_code)]
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Deserialize)]
-pub enum TestStdioStream {
-  Stdout,
-  Stderr,
 }
 
 #[derive(Debug)]
@@ -654,7 +665,7 @@ fn get_test_reporter(options: &TestSpecifiersOptions) -> Box<dyn TestReporter> {
   reporter
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
 async fn configure_main_worker(
   worker_factory: Arc<CliMainWorkerFactory>,
   specifier: &Url,
@@ -716,7 +727,7 @@ async fn configure_main_worker(
 
 /// Test a single specifier as documentation containing test programs, an executable test module or
 /// both.
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
 pub async fn test_specifier(
   worker_factory: Arc<CliMainWorkerFactory>,
   permissions_container: PermissionsContainer,
@@ -912,22 +923,34 @@ pub async fn run_tests_for_worker(
   let state_rc = worker.js_runtime.op_state();
 
   // Take whatever tests have been registered
-  let container =
-    std::mem::take(&mut *state_rc.borrow_mut().borrow_mut::<TestContainer>());
+  let container = std::mem::replace(
+    &mut *state_rc.borrow_mut().borrow_mut::<TestContainer>(),
+    TestContainer::with_registration_phase_ended(),
+  );
 
   let descriptions = Arc::new(container.descriptions);
-  event_tracker.register(descriptions.clone())?;
-  run_tests_for_worker_inner(
-    worker,
-    specifier,
-    descriptions,
-    container.test_functions,
-    container.test_hooks,
-    options,
-    event_tracker,
-    fail_fast_tracker,
-  )
-  .await
+  let result = async {
+    event_tracker.register(descriptions.clone())?;
+    run_tests_for_worker_inner(
+      worker,
+      specifier,
+      descriptions,
+      container.test_functions,
+      container.test_hooks,
+      options,
+      event_tracker,
+      fail_fast_tracker,
+    )
+    .await
+  }
+  .await;
+
+  // This worker can execute another discovery/run cycle (for example in REPL),
+  // so reset to a fresh container after the current run ends.
+  *state_rc.borrow_mut().borrow_mut::<TestContainer>() =
+    TestContainer::default();
+
+  result
 }
 
 fn compute_tests_to_run(
@@ -937,20 +960,24 @@ fn compute_tests_to_run(
 ) -> (Vec<(&TestDescription, v8::Global<v8::Function>)>, bool) {
   let mut tests_to_run = Vec::with_capacity(descs.len());
   let mut used_only = false;
+  let mut has_only = false;
   for ((_, d), f) in descs.tests.iter().zip(test_functions) {
     if !filter.includes(&d.name) {
       continue;
     }
 
     // If we've seen an "only: true" test, the remaining tests must be "only: true" to be added
-    if used_only && !d.only {
+    if has_only && !d.only {
       continue;
     }
 
     // If this is the first "only: true" test we've seen, clear the other tests since they were
     // only: false.
-    if d.only && !used_only {
-      used_only = true;
+    if d.only && !has_only {
+      has_only = true;
+      if d.sanitize_only {
+        used_only = true;
+      }
       tests_to_run.clear();
     }
     tests_to_run.push((d, f));
@@ -981,7 +1008,7 @@ where
   Ok(())
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
 async fn run_tests_for_worker_inner(
   worker: &mut MainWorker,
   specifier: &ModuleSpecifier,
@@ -1365,11 +1392,14 @@ pub async fn report_tests(
           &test_steps,
         );
 
-        #[allow(clippy::print_stderr)]
+        #[allow(clippy::print_stderr, reason = "force outputting on failure")]
         if let Err(err) = reporter.flush_report(&elapsed, &tests, &test_steps) {
           eprint!("Test reporter failed to flush: {}", err)
         }
-        #[allow(clippy::disallowed_methods)]
+        #[allow(
+          clippy::disallowed_methods,
+          reason = "TODO: why is this not using deno_runtime::exit?"
+        )]
         std::process::exit(130);
       }
     }
@@ -1531,20 +1561,38 @@ async fn fetch_specifiers_with_test_mode(
   member_patterns: impl Iterator<Item = FilePatterns>,
   doc: &bool,
 ) -> Result<Vec<(ModuleSpecifier, TestMode)>, AnyError> {
-  let mut specifiers_with_mode = member_patterns
+  let mut deduped_specifiers_with_mode: IndexMap<ModuleSpecifier, TestMode> =
+    IndexMap::new();
+  for (specifier, mode) in member_patterns
     .map(|files| {
       collect_specifiers_with_test_mode(cli_options, files.clone(), doc)
     })
     .collect::<Result<Vec<_>, _>>()?
     .into_iter()
     .flatten()
-    .collect::<Vec<_>>();
+  {
+    match deduped_specifiers_with_mode.entry(specifier) {
+      indexmap::map::Entry::Occupied(mut entry) => {
+        let merged_mode = entry.get().clone().union(mode);
+        entry.insert(merged_mode);
+      }
+      indexmap::map::Entry::Vacant(entry) => {
+        entry.insert(mode);
+      }
+    }
+  }
+
+  let mut specifiers_with_mode =
+    deduped_specifiers_with_mode.into_iter().collect::<Vec<_>>();
 
   for (specifier, mode) in &mut specifiers_with_mode {
     let file = file_fetcher.fetch_bypass_permissions(specifier).await?;
 
     let (media_type, _) = file.resolve_media_type_and_charset();
-    if matches!(media_type, MediaType::Unknown | MediaType::Dts) {
+    if matches!(
+      media_type,
+      MediaType::Unknown | MediaType::Dts | MediaType::Markdown
+    ) {
       *mode = TestMode::Documentation
     }
   }
@@ -1683,7 +1731,10 @@ pub async fn run_tests_with_watch(
     loop {
       deno_signals::ctrl_c().await.unwrap();
       if !HAS_TEST_RUN_SIGINT_HANDLER.load(Ordering::Relaxed) {
-        #[allow(clippy::disallowed_methods)]
+        #[allow(
+          clippy::disallowed_methods,
+          reason = "TODO: why is this not using deno_runtime::exit?"
+        )]
         std::process::exit(130);
       }
     }
@@ -1763,18 +1814,27 @@ pub async fn run_tests_with_watch(
 
         let test_modules_to_reload = if let Some(changed_paths) = changed_paths
         {
-          let mut result = IndexSet::with_capacity(test_modules.len());
           let changed_paths = changed_paths.into_iter().collect::<HashSet<_>>();
-          for test_module_specifier in test_modules {
-            if has_graph_root_local_dependent_changed(
-              &graph,
-              test_module_specifier,
-              &changed_paths,
-            ) {
-              result.insert(test_module_specifier.clone());
+          // If an env file changed, reload all test modules since any
+          // test could depend on environment variables.
+          let env_file_changed = cli_options
+            .possible_env_file_paths_for_watch()
+            .any(|path| changed_paths.contains(&path));
+          if env_file_changed {
+            test_modules.clone()
+          } else {
+            let mut result = IndexSet::with_capacity(test_modules.len());
+            for test_module_specifier in test_modules {
+              if has_graph_root_local_dependent_changed(
+                &graph,
+                test_module_specifier,
+                &changed_paths,
+              ) {
+                result.insert(test_module_specifier.clone());
+              }
             }
+            result
           }
-          result
         } else {
           test_modules.clone()
         };

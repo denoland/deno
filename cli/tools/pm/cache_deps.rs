@@ -20,7 +20,6 @@ use deno_semver::npm::NpmPackageReqReference;
 use crate::factory::CliFactory;
 use crate::graph_container::ModuleGraphContainer;
 use crate::graph_container::ModuleGraphUpdatePermit;
-use crate::graph_util::BuildGraphRequest;
 use crate::graph_util::BuildGraphWithNpmOptions;
 
 pub struct CacheTopLevelDepsOptions {
@@ -205,10 +204,10 @@ pub async fn cache_top_level_deps(
 
     let graph_builder = factory.module_graph_builder().await?;
     graph_builder
-      .build_graph_with_npm_resolution(
+      .build_graph_roots_with_npm_resolution(
         graph,
+        roots.clone(),
         BuildGraphWithNpmOptions {
-          request: BuildGraphRequest::Roots(roots.clone()),
           loader: None,
           is_dynamic: false,
           npm_caching: NpmCachingStrategy::Manual,

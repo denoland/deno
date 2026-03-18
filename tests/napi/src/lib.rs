@@ -1,9 +1,12 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-#![allow(clippy::all)]
-#![allow(clippy::print_stdout)]
-#![allow(clippy::print_stderr)]
-#![allow(clippy::undocumented_unsafe_blocks)]
+#![allow(clippy::all, reason = "test napi code")]
+#![allow(clippy::print_stdout, reason = "test napi code")]
+#![allow(clippy::print_stderr, reason = "test napi code")]
+#![allow(clippy::undocumented_unsafe_blocks, reason = "test napi code")]
+// napi_sys declares functions as `pub safe fn` inside `unsafe extern "C"` blocks
+// on non-windows, so `unsafe { napi_call(...) }` wrappers become redundant.
+#![allow(unused_unsafe, reason = "napi_sys safe fn in unsafe extern blocks")]
 
 use std::ffi::c_void;
 
@@ -19,6 +22,7 @@ pub mod date;
 pub mod env;
 pub mod error;
 pub mod finalizer;
+pub mod instance_data;
 pub mod make_callback;
 pub mod mem;
 pub mod numbers;
@@ -43,7 +47,10 @@ macro_rules! assert_napi_ok {
   ($call: expr) => {{
     assert_eq!(
       {
-        #[allow(unused_unsafe)]
+        #[allow(
+          unused_unsafe,
+          reason = "napi_sys safe fn in unsafe extern blocks"
+        )]
         unsafe {
           $call
         }
@@ -142,12 +149,10 @@ unsafe extern "C" fn napi_register_module_v1(
   env: napi_env,
   _: napi_value,
 ) -> napi_value {
-  #[cfg(windows)]
-  {
-    unsafe {
-      napi_sys::setup();
-      libuv_sys_lite::setup();
-    }
+  unsafe {
+    #[cfg(windows)]
+    napi_sys::setup();
+    libuv_sys_lite::setup();
   }
 
   // We create a fresh exports object and leave the passed
@@ -180,6 +185,8 @@ unsafe extern "C" fn napi_register_module_v1(
   make_callback::init(env, exports);
   object::init(env, exports);
   uv::init(env, exports);
+
+  instance_data::init(env, exports);
 
   init_cleanup_hook(env, exports);
 

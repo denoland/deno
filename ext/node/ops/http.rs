@@ -14,7 +14,6 @@ use bytes::Bytes;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
 use deno_core::BufView;
-use deno_core::ByteString;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
@@ -23,6 +22,8 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_core::ToV8;
+use deno_core::convert::ByteString;
 use deno_core::error::ResourceError;
 use deno_core::futures::FutureExt;
 use deno_core::futures::Stream;
@@ -31,7 +32,6 @@ use deno_core::futures::channel::mpsc;
 use deno_core::futures::channel::oneshot;
 use deno_core::futures::stream::Peekable;
 use deno_core::op2;
-use deno_core::serde::Serialize;
 use deno_core::url::Url;
 use deno_error::JsError;
 use deno_error::JsErrorBox;
@@ -60,8 +60,7 @@ use hyper_util::rt::TokioIo;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 
-#[derive(Default, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Default, ToV8)]
 pub struct NodeHttpResponse {
   pub status: u16,
   pub status_text: String,
@@ -75,8 +74,7 @@ pub struct NodeHttpResponse {
 type CancelableResponseResult =
   Result<Result<http::Response<Incoming>, hyper::Error>, Canceled>;
 
-#[derive(Serialize, Debug)]
-#[serde(rename_all = "camelCase")]
+#[derive(ToV8, Debug)]
 struct InformationalResponse {
   status: u16,
   status_text: String,
@@ -156,17 +154,19 @@ pub enum ConnError {
   Hyper(#[from] hyper::Error),
 }
 
-#[op2(async, stack_trace)]
-#[serde]
+#[op2(stack_trace)]
 // This is triggering a known false positive for explicit drop(state) calls.
 // See https://rust-lang.github.io/rust-clippy/master/index.html#await_holding_refcell_ref
-#[allow(clippy::await_holding_refcell_ref)]
+#[allow(
+  clippy::await_holding_refcell_ref,
+  reason = "false positive, ref is explicitly dropped before await"
+)]
 pub async fn op_node_http_request_with_conn(
   state: Rc<RefCell<OpState>>,
-  #[serde] method: ByteString,
+  #[scoped] method: ByteString,
   #[string] url: String,
   #[string] request_path: Option<String>,
-  #[serde] headers: Vec<(ByteString, ByteString)>,
+  #[scoped] headers: Vec<(ByteString, ByteString)>,
   #[smi] body: Option<ResourceId>,
   #[smi] conn_rid: ResourceId,
 ) -> Result<FetchReturn, ConnError> {
@@ -179,6 +179,62 @@ pub async fn op_node_http_request_with_conn(
         .any(|part| part.trim_ascii() == b"upgrade")
   });
 
+  // Take the network stream resource for HTTP communication.
+  // On Windows, NamedPipe resources may have pending read operations
+  // (from readStart() in stream_wrap.ts) that hold extra Rc references,
+  // preventing Rc::try_unwrap(). We handle this by cancelling pending ops
+  // and yielding to let them complete before extracting the pipe.
+  #[cfg(windows)]
+  let stream = {
+    let is_pipe = state
+      .borrow()
+      .resource_table
+      .get::<deno_net::win_pipe::NamedPipe>(conn_rid)
+      .is_ok();
+    if is_pipe {
+      // Take the NamedPipe from the resource table
+      let pipe_rc = state
+        .borrow_mut()
+        .resource_table
+        .take::<deno_net::win_pipe::NamedPipe>(conn_rid)
+        .map_err(ConnError::Resource)?;
+
+      // Cancel pending read/write operations. This triggers the CancelHandle,
+      // causing in-flight ops to complete with a cancellation error and
+      // release their Rc references.
+      pipe_rc.cancel_pending_ops();
+
+      // Yield to the event loop so cancelled ops can be polled, see the
+      // cancellation, and drop their Rc references to the NamedPipe.
+      //
+      // Invariant: a single yield is sufficient because:
+      // 1. cancel_pending_ops() triggers the CancelHandle, which causes
+      //    all in-flight read/write futures to resolve on their next poll.
+      // 2. The `if (!this.#reading) return;` guard in stream_wrap.ts's
+      //    #read() (after its own PromiseResolve yield) ensures the JS
+      //    read loop bails out before starting a new op_read.
+      // 3. yield_now() gives the executor one turn to poll those cancelled
+      //    futures and drop their Rc references.
+      tokio::task::yield_now().await;
+
+      // Now we should be the sole Rc owner
+      let resource = Rc::try_unwrap(pipe_rc)
+        .map_err(|_| ConnError::Resource(ResourceError::BadResourceId))?;
+      let client = resource
+        .into_client()
+        .map_err(|_| ConnError::Resource(ResourceError::BadResourceId))?;
+      NetworkStream::WindowsPipe(deno_net::win_pipe::WindowsPipeStream::new(
+        client,
+      ))
+    } else {
+      take_network_stream_resource(
+        &mut state.borrow_mut().resource_table,
+        conn_rid,
+      )
+      .map_err(|_| ConnError::Resource(ResourceError::BadResourceId))?
+    }
+  };
+  #[cfg(not(windows))]
   let stream = take_network_stream_resource(
     &mut state.borrow_mut().resource_table,
     conn_rid,
@@ -334,8 +390,7 @@ pub async fn op_node_http_request_with_conn(
   })
 }
 
-#[op2(async)]
-#[serde]
+#[op2]
 pub async fn op_node_http_await_information(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -355,8 +410,7 @@ pub async fn op_node_http_await_information(
   rx.next().await
 }
 
-#[op2(async)]
-#[serde]
+#[op2]
 pub async fn op_node_http_await_response(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -415,7 +469,7 @@ pub async fn op_node_http_await_response(
 /// This enables keepAlive connection reuse for the Node.js HTTP Agent.
 /// Returns the new resource ID for the socket, or None if the connection
 /// cannot be reused (e.g., connection error or already retrieved).
-#[op2(async)]
+#[op2]
 #[smi]
 pub async fn op_node_http_response_reclaim_conn(
   state: Rc<RefCell<OpState>>,
@@ -471,13 +525,16 @@ pub async fn op_node_http_response_reclaim_conn(
     NetworkStream::Tunnel(_) => {
       return Ok(None);
     }
+    #[cfg(windows)]
+    NetworkStream::WindowsPipe(_) => {
+      return Ok(None);
+    }
   };
 
   Ok(Some(rid))
 }
 
-#[op2(async)]
-#[serde]
+#[op2]
 pub async fn op_node_http_fetch_response_upgrade(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -695,7 +752,7 @@ impl Resource for NodeHttpResponseResource {
   }
 }
 
-#[allow(clippy::type_complexity)]
+#[allow(clippy::type_complexity, reason = "TODO: improve")]
 pub struct NodeHttpResourceToBodyAdapter(
   Rc<dyn Resource>,
   Option<Pin<Box<dyn Future<Output = Result<BufView, JsErrorBox>>>>>,

@@ -3,10 +3,16 @@
 import { primordials } from "ext:core/mod.js";
 import { op_now, op_time_origin } from "ext:core/ops";
 const {
+  ArrayIsArray,
   ArrayPrototypeFilter,
+  ArrayPrototypeIncludes,
+  ArrayPrototypeIndexOf,
   ArrayPrototypePush,
+  ArrayPrototypeSlice,
+  ArrayPrototypeSplice,
   ObjectKeys,
   ObjectPrototypeIsPrototypeOf,
+  queueMicrotask,
   ReflectHas,
   Symbol,
   SymbolFor,
@@ -25,6 +31,7 @@ import { DOMException } from "./01_dom_exception.js";
 const illegalConstructorKey = Symbol("illegalConstructorKey");
 let performanceEntries = [];
 let timeOrigin;
+const performanceObservers = [];
 
 const hrU8 = new Uint8Array(8);
 const hr = new Uint32Array(TypedArrayPrototypeGetBuffer(hrU8));
@@ -360,6 +367,182 @@ class PerformanceMeasure extends PerformanceEntry {
 }
 webidl.configureInterface(PerformanceMeasure);
 const PerformanceMeasurePrototype = PerformanceMeasure.prototype;
+
+function queuePerformanceEntry(entry) {
+  for (let i = 0; i < performanceObservers.length; i++) {
+    const observer = performanceObservers[i];
+    if (ArrayPrototypeIncludes(observer[_entryTypes], entry.entryType)) {
+      ArrayPrototypePush(observer[_buffer], entry);
+      if (!observer[_scheduled]) {
+        observer[_scheduled] = true;
+        queueMicrotask(() => {
+          observer[_scheduled] = false;
+          const entries = observer[_buffer];
+          observer[_buffer] = [];
+          if (entries.length > 0) {
+            const entryList = new PerformanceObserverEntryList(
+              entries,
+              illegalConstructorKey,
+            );
+            observer[_callback](entryList, observer);
+          }
+        });
+      }
+    }
+  }
+}
+
+const _entries = Symbol("[[entries]]");
+
+class PerformanceObserverEntryList {
+  [_entries] = [];
+
+  constructor(entries, key = undefined) {
+    if (key !== illegalConstructorKey) {
+      webidl.illegalConstructor();
+    }
+    this[webidl.brand] = webidl.brand;
+    this[_entries] = entries;
+  }
+
+  getEntries() {
+    webidl.assertBranded(this, PerformanceObserverEntryListPrototype);
+    return ArrayPrototypeSlice(this[_entries]);
+  }
+
+  getEntriesByType(type) {
+    webidl.assertBranded(this, PerformanceObserverEntryListPrototype);
+    const prefix =
+      "Failed to execute 'getEntriesByType' on 'PerformanceObserverEntryList'";
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    type = webidl.converters.DOMString(type, prefix, "Argument 1");
+    return ArrayPrototypeFilter(
+      this[_entries],
+      (entry) => entry.entryType === type,
+    );
+  }
+
+  getEntriesByName(name, type = undefined) {
+    webidl.assertBranded(this, PerformanceObserverEntryListPrototype);
+    const prefix =
+      "Failed to execute 'getEntriesByName' on 'PerformanceObserverEntryList'";
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    name = webidl.converters.DOMString(name, prefix, "Argument 1");
+    if (type !== undefined) {
+      type = webidl.converters.DOMString(type, prefix, "Argument 2");
+    }
+    return ArrayPrototypeFilter(
+      this[_entries],
+      (entry) =>
+        entry.name === name && (type === undefined || entry.entryType === type),
+    );
+  }
+}
+webidl.configureInterface(PerformanceObserverEntryList);
+const PerformanceObserverEntryListPrototype =
+  PerformanceObserverEntryList.prototype;
+
+const _callback = Symbol("[[callback]]");
+const _entryTypes = Symbol("[[entryTypes]]");
+const _buffer = Symbol("[[buffer]]");
+const _scheduled = Symbol("[[scheduled]]");
+
+class PerformanceObserver {
+  static get supportedEntryTypes() {
+    return ["mark", "measure"];
+  }
+
+  [_callback] = null;
+  [_entryTypes] = [];
+  [_buffer] = [];
+  [_scheduled] = false;
+
+  constructor(callback) {
+    const prefix = "Failed to construct 'PerformanceObserver'";
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    if (typeof callback !== "function") {
+      throw new TypeError(
+        `${prefix}: The callback provided as parameter 1 is not a function.`,
+      );
+    }
+    this[webidl.brand] = webidl.brand;
+    this[_callback] = callback;
+  }
+
+  observe(options = { __proto__: null }) {
+    webidl.assertBranded(this, PerformanceObserverPrototype);
+    const prefix = "Failed to execute 'observe' on 'PerformanceObserver'";
+
+    if (options === undefined || options === null) {
+      throw new TypeError(
+        `${prefix}: 1 argument required, but only 0 present.`,
+      );
+    }
+
+    const { entryTypes, type } = options;
+
+    if (entryTypes !== undefined && type !== undefined) {
+      throw new TypeError(
+        `${prefix}: Cannot specify both 'entryTypes' and 'type'.`,
+      );
+    }
+
+    if (entryTypes === undefined && type === undefined) {
+      throw new TypeError(
+        `${prefix}: Either 'entryTypes' or 'type' must be specified.`,
+      );
+    }
+
+    let types;
+    if (entryTypes !== undefined) {
+      if (!ArrayIsArray(entryTypes)) {
+        throw new TypeError(`${prefix}: 'entryTypes' must be an array.`);
+      }
+      types = ArrayPrototypeFilter(
+        entryTypes,
+        (t) =>
+          ArrayPrototypeIncludes(PerformanceObserver.supportedEntryTypes, t),
+      );
+      if (types.length === 0) {
+        return;
+      }
+    } else {
+      if (
+        !ArrayPrototypeIncludes(PerformanceObserver.supportedEntryTypes, type)
+      ) {
+        return;
+      }
+      types = [type];
+    }
+
+    this[_entryTypes] = types;
+    this[_buffer] = [];
+
+    if (!ArrayPrototypeIncludes(performanceObservers, this)) {
+      ArrayPrototypePush(performanceObservers, this);
+    }
+  }
+
+  disconnect() {
+    webidl.assertBranded(this, PerformanceObserverPrototype);
+    const index = ArrayPrototypeIndexOf(performanceObservers, this);
+    if (index !== -1) {
+      ArrayPrototypeSplice(performanceObservers, index, 1);
+    }
+    this[_entryTypes] = [];
+    this[_buffer] = [];
+  }
+
+  takeRecords() {
+    webidl.assertBranded(this, PerformanceObserverPrototype);
+    const records = this[_buffer];
+    this[_buffer] = [];
+    return records;
+  }
+}
+webidl.configureInterface(PerformanceObserver);
+const PerformanceObserverPrototype = PerformanceObserver.prototype;
+
 class Performance extends EventTarget {
   constructor(key = null) {
     if (key != illegalConstructorKey) {
@@ -488,8 +671,8 @@ class Performance extends EventTarget {
     // same name as a read only attribute in the PerformanceTiming interface,
     // throw a SyntaxError. - not implemented
     const entry = new PerformanceMark(markName, markOptions);
-    // 3.1.1.7 Queue entry - not implemented
     ArrayPrototypePush(performanceEntries, entry);
+    queuePerformanceEntry(entry);
     return entry;
   }
 
@@ -525,14 +708,6 @@ class Performance extends EventTarget {
     ) {
       if (endMark) {
         throw new TypeError('Options cannot be passed with "endMark"');
-      }
-      if (
-        !ReflectHas(startOrMeasureOptions, "start") &&
-        !ReflectHas(startOrMeasureOptions, "end")
-      ) {
-        throw new TypeError(
-          'A "start" or "end" mark must be supplied in options',
-        );
       }
       if (
         ReflectHas(startOrMeasureOptions, "start") &&
@@ -592,6 +767,7 @@ class Performance extends EventTarget {
       illegalConstructorKey,
     );
     ArrayPrototypePush(performanceEntries, entry);
+    queuePerformanceEntry(entry);
     return entry;
   }
 
@@ -634,5 +810,7 @@ export {
   PerformanceEntry,
   PerformanceMark,
   PerformanceMeasure,
+  PerformanceObserver,
+  PerformanceObserverEntryList,
   setTimeOrigin,
 };

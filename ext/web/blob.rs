@@ -9,7 +9,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use deno_core::JsBuffer;
 use deno_core::OpState;
-use deno_core::ToJsBuffer;
+use deno_core::convert::Uint8Array;
 use deno_core::op2;
 use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
@@ -222,12 +222,11 @@ pub fn op_blob_slice_part(
   Ok(id)
 }
 
-#[op2(async)]
-#[serde]
+#[op2]
 pub async fn op_blob_read_part(
   state: Rc<RefCell<OpState>>,
   #[serde] id: Uuid,
-) -> Result<ToJsBuffer, BlobError> {
+) -> Result<Uint8Array, BlobError> {
   let part = {
     let state = state.borrow();
     let blob_store = state.borrow::<Arc<BlobStore>>();
@@ -235,7 +234,7 @@ pub async fn op_blob_read_part(
   }
   .ok_or(BlobError::BlobPartNotFound)?;
   let buf = part.read().await;
-  Ok(ToJsBuffer::from(buf.to_vec()))
+  Ok(Uint8Array::from(buf.to_vec()))
 }
 
 #[op2]

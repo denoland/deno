@@ -23,6 +23,8 @@ use sys_traits::FsReadLink;
 use sys_traits::FsRemoveFile;
 use sys_traits::FsSymlinkFile;
 use sys_traits::FsWrite;
+use sys_traits::PathsInErrorsExt;
+use sys_traits::SysWithPathsInErrors;
 
 /// Returns the name of the default binary for the given package.
 /// This is the package name without the organization (`@org/`), if any.
@@ -51,46 +53,6 @@ pub fn warn_missing_entrypoint(
   );
 }
 
-#[derive(Debug, thiserror::Error, deno_error::JsError)]
-pub enum BinEntriesError {
-  #[class(inherit)]
-  #[error("Creating '{path}'")]
-  Creating {
-    path: PathBuf,
-    #[source]
-    #[inherit]
-    source: std::io::Error,
-  },
-  #[class(inherit)]
-  #[error("Setting permissions on '{path}'")]
-  Permissions {
-    path: PathBuf,
-    #[source]
-    #[inherit]
-    source: std::io::Error,
-  },
-  #[class(inherit)]
-  #[error("Can't set up '{name}' bin at {path}")]
-  SetUpBin {
-    name: String,
-    path: PathBuf,
-    #[source]
-    #[inherit]
-    source: Box<Self>,
-  },
-  #[class(inherit)]
-  #[error("Setting permissions on '{path}'")]
-  RemoveBinSymlink {
-    path: PathBuf,
-    #[source]
-    #[inherit]
-    source: std::io::Error,
-  },
-  #[class(inherit)]
-  #[error(transparent)]
-  Io(#[from] std::io::Error),
-}
-
 pub struct BinEntries<'a, TSys: SetupBinEntrySys> {
   /// Packages that have colliding bin names
   collisions: HashSet<&'a NpmPackageId>,
@@ -98,11 +60,11 @@ pub struct BinEntries<'a, TSys: SetupBinEntrySys> {
   /// The bin entries
   entries: Vec<(&'a NpmResolutionPackage, PathBuf, NpmPackageExtraInfo)>,
   sorted: bool,
-  sys: &'a TSys,
+  sys: SysWithPathsInErrors<'a, TSys>,
 }
 
 impl<'a, TSys: SetupBinEntrySys> BinEntries<'a, TSys> {
-  pub fn new(sys: &'a TSys) -> Self {
+  pub fn new(sys: SysWithPathsInErrors<'a, TSys>) -> Self {
     Self {
       collisions: Default::default(),
       seen_names: Default::default(),
@@ -119,10 +81,14 @@ impl<'a, TSys: SetupBinEntrySys> BinEntries<'a, TSys> {
     extra: &'b NpmPackageExtraInfo,
     package_path: PathBuf,
   ) {
+    let Some(bin) = extra.bin.as_ref() else {
+      // likely lockfile incorrectly said that the package has a bin
+      return;
+    };
     self.sorted = false;
     // check for a new collision, if we haven't already
     // found one
-    match extra.bin.as_ref().unwrap() {
+    match bin {
       deno_npm::registry::NpmPackageVersionBinEntry::String(_) => {
         let bin_name = default_bin_name(package);
 
@@ -152,18 +118,20 @@ impl<'a, TSys: SetupBinEntrySys> BinEntries<'a, TSys> {
     &mut self,
     snapshot: &NpmResolutionSnapshot,
     mut already_seen: impl FnMut(
+      SysWithPathsInErrors<'a, TSys>,
       &Path,
       &str, // bin script
-    ) -> Result<(), BinEntriesError>,
+    ) -> Result<(), std::io::Error>,
     mut new: impl FnMut(
+      SysWithPathsInErrors<'a, TSys>,
       &NpmResolutionPackage,
       &NpmPackageExtraInfo,
       &Path,
       &str, // bin name
       &str, // bin script
-    ) -> Result<(), BinEntriesError>,
+    ) -> Result<(), std::io::Error>,
     mut filter: impl FnMut(&NpmResolutionPackage) -> bool,
-  ) -> Result<(), BinEntriesError> {
+  ) -> Result<(), std::io::Error> {
     if !self.collisions.is_empty() && !self.sorted {
       // walking the dependency tree to find out the depth of each package
       // is sort of expensive, so we only do it if there's a collision
@@ -182,20 +150,20 @@ impl<'a, TSys: SetupBinEntrySys> BinEntries<'a, TSys> {
           deno_npm::registry::NpmPackageVersionBinEntry::String(script) => {
             let name = default_bin_name(package);
             if !seen.insert(name) {
-              already_seen(package_path, script)?;
+              already_seen(self.sys, package_path, script)?;
               // we already set up a bin entry with this name
               continue;
             }
-            new(package, extra, package_path, name, script)?;
+            new(self.sys, package, extra, package_path, name, script)?;
           }
           deno_npm::registry::NpmPackageVersionBinEntry::Map(entries) => {
             for (name, script) in entries {
               if !seen.insert(name) {
-                already_seen(package_path, script)?;
+                already_seen(self.sys, package_path, script)?;
                 // we already set up a bin entry with this name
                 continue;
               }
-              new(package, extra, package_path, name, script)?;
+              new(self.sys, package, extra, package_path, name, script)?;
             }
           }
         }
@@ -214,8 +182,8 @@ impl<'a, TSys: SetupBinEntrySys> BinEntries<'a, TSys> {
     self
       .for_each_entry(
         snapshot,
-        |_, _| Ok(()),
-        |_, _, package_path, name, script| {
+        |_, _, _| Ok(()),
+        |_, _, _, package_path, name, script| {
           bins.push((name.to_string(), package_path.join(script)));
           Ok(())
         },
@@ -231,31 +199,28 @@ impl<'a, TSys: SetupBinEntrySys> BinEntries<'a, TSys> {
     bin_node_modules_dir_path: &Path,
     filter: impl FnMut(&NpmResolutionPackage) -> bool,
     mut handler: impl FnMut(&EntrySetupOutcome<'_>),
-  ) -> Result<(), BinEntriesError> {
+  ) -> Result<(), std::io::Error> {
+    // todo(dsherret): change the code below to create this
+    // folder on NotExists error instead of doing this check for
+    // if it exists first
     if !self.entries.is_empty()
       && !self.sys.fs_exists_no_err(bin_node_modules_dir_path)
     {
-      self
-        .sys
-        .fs_create_dir_all(bin_node_modules_dir_path)
-        .map_err(|source| BinEntriesError::Creating {
-          path: bin_node_modules_dir_path.to_path_buf(),
-          source,
-        })?;
+      self.sys.fs_create_dir_all(bin_node_modules_dir_path)?;
     }
 
     self.for_each_entry(
       snapshot,
-      |_package_path, _script| {
+      |sys, _package_path, _script| {
         if !sys_traits::impls::is_windows() {
           let path = _package_path.join(_script);
-          make_executable_if_exists(self.sys, &path)?;
+          make_executable_if_exists(sys.as_ref(), &path)?;
         }
         Ok(())
       },
-      |package, extra, package_path, name, script| {
+      |sys, package, extra, package_path, name, script| {
         let outcome = set_up_bin_entry(
-          self.sys,
+          sys.as_ref(),
           package,
           extra,
           name,
@@ -279,7 +244,7 @@ impl<'a, TSys: SetupBinEntrySys> BinEntries<'a, TSys> {
     snapshot: &NpmResolutionSnapshot,
     bin_node_modules_dir_path: &Path,
     handler: impl FnMut(&EntrySetupOutcome<'_>),
-  ) -> Result<(), BinEntriesError> {
+  ) -> Result<(), std::io::Error> {
     self.set_up_entries_filtered(
       snapshot,
       bin_node_modules_dir_path,
@@ -296,7 +261,7 @@ impl<'a, TSys: SetupBinEntrySys> BinEntries<'a, TSys> {
     bin_node_modules_dir_path: &Path,
     handler: impl FnMut(&EntrySetupOutcome<'_>),
     only: &HashSet<&NpmPackageId>,
-  ) -> Result<(), BinEntriesError> {
+  ) -> Result<(), std::io::Error> {
     self.set_up_entries_filtered(
       snapshot,
       bin_node_modules_dir_path,
@@ -385,7 +350,7 @@ pub fn set_up_bin_entry<'a>(
   bin_script: &str,
   package_path: &'a Path,
   bin_node_modules_dir_path: &Path,
-) -> Result<EntrySetupOutcome<'a>, BinEntriesError> {
+) -> Result<EntrySetupOutcome<'a>, std::io::Error> {
   if sys_traits::impls::is_windows() {
     windows_shim::set_up_bin_shim(
       sys,
@@ -415,35 +380,38 @@ pub fn set_up_bin_entry<'a>(
 fn make_executable_if_exists(
   sys: &impl FsOpen,
   path: &Path,
-) -> Result<bool, BinEntriesError> {
-  let mut open_options = sys_traits::OpenOptions::new();
-  open_options.read = true;
-  open_options.write = true;
-  open_options.truncate = false; // ensure false
-  let mut file = match sys.fs_open(path, &open_options) {
+) -> Result<bool, std::io::Error> {
+  let sys = sys.with_paths_in_errors();
+  // Open read-only first to check existing permissions. Some npm tarballs
+  // ship bin files as read+execute without write (e.g. mode 555), so opening
+  // with O_RDWR would fail with EACCES.
+  let mut read_options = sys_traits::OpenOptions::new();
+  read_options.read = true;
+  let file = match sys.fs_open(path, &read_options) {
     Ok(file) => file,
     Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
       return Ok(false);
     }
-    Err(err) => return Err(err.into()),
+    Err(err) => return Err(err),
   };
   let metadata = file.fs_file_metadata()?;
   let mode = metadata.mode()?;
+  drop(file);
+
   if mode & 0o111 == 0 {
-    // if the original file is not executable, make it executable
-    file
-      .fs_file_set_permissions(mode | 0o111)
-      .map_err(|source| BinEntriesError::Permissions {
-        path: path.to_path_buf(),
-        source,
-      })?;
+    // The file is not executable — reopen with write to set permissions.
+    let mut write_options = sys_traits::OpenOptions::new();
+    write_options.read = true;
+    write_options.write = true;
+    write_options.truncate = false;
+    let mut file = sys.fs_open(path, &write_options)?;
+    file.fs_file_set_permissions(mode | 0o111)?;
   }
 
   Ok(true)
 }
 
 pub enum EntrySetupOutcome<'a> {
-  #[cfg_attr(windows, allow(dead_code))]
   MissingEntrypoint {
     bin_name: &'a str,
     package_path: &'a Path,
@@ -480,7 +448,8 @@ fn symlink_bin_entry<'a>(
   bin_script: &str,
   package_path: &'a Path,
   bin_node_modules_dir_path: &Path,
-) -> Result<EntrySetupOutcome<'a>, BinEntriesError> {
+) -> Result<EntrySetupOutcome<'a>, std::io::Error> {
+  let sys = sys.with_paths_in_errors();
   let link = bin_node_modules_dir_path.join(bin_name);
   let original = package_path.join(bin_script);
 
@@ -494,13 +463,7 @@ fn symlink_bin_entry<'a>(
     return Ok(EntrySetupOutcome::Success);
   }
 
-  let found = make_executable_if_exists(sys, &original).map_err(|source| {
-    BinEntriesError::SetUpBin {
-      name: bin_name.to_string(),
-      path: original.to_path_buf(),
-      source: Box::new(source),
-    }
-  })?;
+  let found = make_executable_if_exists(sys.as_ref(), &original)?;
   if !found {
     return Ok(EntrySetupOutcome::MissingEntrypoint {
       bin_name,
@@ -514,27 +477,116 @@ fn symlink_bin_entry<'a>(
   if let Err(err) = sys.fs_symlink_file(&*original_relative, &link) {
     if err.kind() == std::io::ErrorKind::AlreadyExists {
       // remove and retry
-      sys.fs_remove_file(&link).map_err(|source| {
-        BinEntriesError::RemoveBinSymlink {
-          path: link.clone(),
-          source,
-        }
-      })?;
-      sys
-        .fs_symlink_file(&*original_relative, &link)
-        .map_err(|source| BinEntriesError::SetUpBin {
-          name: bin_name.to_string(),
-          path: original_relative.to_path_buf(),
-          source: Box::new(source.into()),
-        })?;
+      sys.fs_remove_file(&link)?;
+      sys.fs_symlink_file(&*original_relative, &link)?;
       return Ok(EntrySetupOutcome::Success);
     }
-    return Err(BinEntriesError::SetUpBin {
-      name: bin_name.to_string(),
-      path: original_relative.to_path_buf(),
-      source: Box::new(err.into()),
-    });
+    return Err(err);
   }
 
   Ok(EntrySetupOutcome::Success)
+}
+
+#[cfg(test)]
+mod test {
+  use std::path::PathBuf;
+
+  use sys_traits::FsCreateDirAll;
+  use sys_traits::FsRemoveDirAll;
+  #[cfg(unix)]
+  use sys_traits::FsWrite;
+
+  use super::*;
+
+  fn test_dir(name: &str) -> (PathBuf, impl Drop) {
+    static COUNTER: std::sync::atomic::AtomicU64 =
+      std::sync::atomic::AtomicU64::new(0);
+    let id = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let sys = sys_traits::impls::RealSys;
+    let dir = sys_traits::EnvTempDir::env_temp_dir(&sys)
+      .unwrap()
+      .join(format!("deno_test_bin_entries_{name}_{id}"));
+    sys.fs_create_dir_all(&dir).unwrap();
+    struct Cleanup(PathBuf);
+    impl Drop for Cleanup {
+      fn drop(&mut self) {
+        let _ = sys_traits::impls::RealSys.fs_remove_dir_all(&self.0);
+      }
+    }
+    let cleanup = Cleanup(dir.clone());
+    (dir, cleanup)
+  }
+
+  #[cfg(unix)]
+  fn write_and_chmod(path: &Path, contents: &[u8], mode: u32) {
+    let sys = sys_traits::impls::RealSys;
+    sys.fs_write(path, contents).unwrap();
+    let mut open_options = sys_traits::OpenOptions::new();
+    open_options.read = true;
+    open_options.write = true;
+    let mut file = sys.fs_open(path, &open_options).unwrap();
+    file.fs_file_set_permissions(mode).unwrap();
+  }
+
+  #[cfg(unix)]
+  fn file_mode(path: &Path) -> u32 {
+    let sys = sys_traits::impls::RealSys;
+    let mut open_options = sys_traits::OpenOptions::new();
+    open_options.read = true;
+    let file = sys.fs_open(path, &open_options).unwrap();
+    let metadata = file.fs_file_metadata().unwrap();
+    metadata.mode().unwrap()
+  }
+
+  /// Regression test for https://github.com/denoland/deno/issues/29847
+  /// Some npm tarballs ship bin files with read+execute but no write
+  /// permission (mode 555). make_executable_if_exists must not fail on these.
+  #[cfg(unix)]
+  #[test]
+  fn make_executable_readonly_bin_file() {
+    let sys = sys_traits::impls::RealSys;
+    let (dir, _cleanup) = test_dir("readonly");
+
+    // Create a file with mode 555 (r-xr-xr-x) — executable but not writable
+    let bin_path = dir.join("my-bin");
+    write_and_chmod(&bin_path, b"#!/bin/sh\necho hi", 0o555);
+
+    // Should succeed without EACCES
+    let result = make_executable_if_exists(&sys, &bin_path);
+    assert!(result.is_ok());
+    assert!(result.unwrap()); // file exists
+
+    // Permissions should still include execute
+    assert_ne!(file_mode(&bin_path) & 0o111, 0);
+  }
+
+  /// Verify make_executable_if_exists adds execute bit when missing.
+  #[cfg(unix)]
+  #[test]
+  fn make_executable_non_executable_file() {
+    let sys = sys_traits::impls::RealSys;
+    let (dir, _cleanup) = test_dir("non_exec");
+
+    // Create a file with mode 644 (rw-r--r--) — no execute bit
+    let bin_path = dir.join("my-bin");
+    write_and_chmod(&bin_path, b"#!/bin/sh\necho hi", 0o644);
+
+    let result = make_executable_if_exists(&sys, &bin_path);
+    assert!(result.is_ok());
+    assert!(result.unwrap());
+
+    // Execute bit should now be set
+    assert_ne!(file_mode(&bin_path) & 0o111, 0);
+  }
+
+  #[test]
+  fn make_executable_nonexistent_file() {
+    let sys = sys_traits::impls::RealSys;
+    let (dir, _cleanup) = test_dir("nonexistent");
+    let bin_path = dir.join("does-not-exist");
+
+    let result = make_executable_if_exists(&sys, &bin_path);
+    assert!(result.is_ok());
+    assert!(!result.unwrap()); // file does not exist
+  }
 }

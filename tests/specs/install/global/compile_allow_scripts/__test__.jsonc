@@ -1,0 +1,28 @@
+{
+  "tempDir": true,
+  "tests": {
+    "install_and_run": {
+      "steps": [{
+        "if": "unix",
+        "args": "install -g --compile --allow-scripts --root ./bins --name lifecycle-scripts-simple npm:@denotest/lifecycle-scripts-simple",
+        "output": "install.out"
+      }, {
+        "if": "unix",
+        "commandName": "./bins/bin/lifecycle-scripts-simple",
+        "args": [],
+        "output": "run.out",
+        "exitCode": 0
+      }, {
+        "if": "windows",
+        "args": "install -g --compile --allow-scripts --root ./bins --name lifecycle-scripts-simple npm:@denotest/lifecycle-scripts-simple",
+        "output": "install.out"
+      }, {
+        "if": "windows",
+        "commandName": "./bins/bin/lifecycle-scripts-simple.exe",
+        "args": [],
+        "output": "run.out",
+        "exitCode": 0
+      }]
+    }
+  }
+}

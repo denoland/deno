@@ -135,6 +135,8 @@ error: AssertionError: Expected values to be strictly equal:
 
 true !== false
 
+  assert.strictEqual(true, false);
+         ^
     at [WILDCARD]
 
 reject fail => [WILDLINE]

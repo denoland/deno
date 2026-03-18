@@ -1,4 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
+
 #![cfg(not(target_arch = "wasm32"))]
 #![warn(unsafe_op_in_unsafe_fn)]
 
@@ -42,16 +43,25 @@ mod webidl;
 
 pub const UNSTABLE_FEATURE_NAME: &str = "webgpu";
 
-#[allow(clippy::print_stdout)]
+#[allow(clippy::print_stdout, reason = "cargo build script output")]
 pub fn print_linker_flags(name: &str) {
   if cfg!(windows) {
-    // these dls load slowly, so delay loading them
+    // these dlls load slowly, so delay loading them
     let dlls = [
       // webgpu
       "d3dcompiler_47",
       "OPENGL32",
+      "gdi32",
+      "setupapi",
+      "oleaut32",
+      "combase",
       // network related functions
       "iphlpapi",
+      // timer functions
+      "winmm",
+      // debugging/diagnostics (only needed on panic/crash)
+      "dbghelp",
+      "psapi",
     ];
     for dll in dlls {
       println!("cargo:rustc-link-arg-bin={name}=/delayload:{dll}.dll");
@@ -149,7 +159,6 @@ impl GPU {
     Err(GPUGenericError::InvalidConstructor)
   }
 
-  #[async_method]
   #[cppgc]
   async fn request_adapter(
     &self,

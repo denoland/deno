@@ -1,6 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 //
-mod go;
+pub mod go;
 mod js;
 
 use std::collections::HashMap;
@@ -150,11 +150,17 @@ include!(concat!(env!("OUT_DIR"), "/node_types.rs"));
 
 #[derive(Clone)]
 pub enum StaticAssetSource {
-  #[cfg_attr(any(debug_assertions, feature = "hmr"), allow(dead_code))]
+  #[cfg_attr(
+    any(debug_assertions, feature = "hmr"),
+    allow(dead_code, reason = "not used for hmr")
+  )]
   Compressed(CompressedSource),
-  #[allow(dead_code)]
+  #[allow(dead_code, reason = "used for hmr")]
   Uncompressed(&'static str),
-  #[cfg_attr(not(feature = "hmr"), allow(dead_code))]
+  #[cfg_attr(
+    not(feature = "hmr"),
+    allow(dead_code, reason = "not used for hmr")
+  )]
   Owned(&'static str, std::sync::OnceLock<Arc<str>>),
 }
 
@@ -292,11 +298,20 @@ pub static LAZILY_LOADED_STATIC_ASSETS: Lazy<
     maybe_compressed_lib!("lib.es2024.regexp.d.ts"),
     maybe_compressed_lib!("lib.es2024.sharedmemory.d.ts"),
     maybe_compressed_lib!("lib.es2024.string.d.ts"),
+    maybe_compressed_lib!("lib.es2025.collection.d.ts"),
+    maybe_compressed_lib!("lib.es2025.d.ts"),
+    maybe_compressed_lib!("lib.es2025.float16.d.ts"),
+    maybe_compressed_lib!("lib.es2025.full.d.ts"),
+    maybe_compressed_lib!("lib.es2025.intl.d.ts"),
+    maybe_compressed_lib!("lib.es2025.iterator.d.ts"),
+    maybe_compressed_lib!("lib.es2025.promise.d.ts"),
+    maybe_compressed_lib!("lib.es2025.regexp.d.ts"),
     maybe_compressed_lib!("lib.es5.d.ts"),
     maybe_compressed_lib!("lib.es6.d.ts"),
     maybe_compressed_lib!("lib.esnext.array.d.ts"),
     maybe_compressed_lib!("lib.esnext.collection.d.ts"),
     maybe_compressed_lib!("lib.esnext.d.ts"),
+    maybe_compressed_lib!("lib.esnext.date.d.ts"),
     maybe_compressed_lib!("lib.esnext.decorators.d.ts"),
     maybe_compressed_lib!("lib.esnext.disposable.d.ts"),
     maybe_compressed_lib!("lib.esnext.error.d.ts"),
@@ -306,6 +321,8 @@ pub static LAZILY_LOADED_STATIC_ASSETS: Lazy<
     maybe_compressed_lib!("lib.esnext.iterator.d.ts"),
     maybe_compressed_lib!("lib.esnext.promise.d.ts"),
     maybe_compressed_lib!("lib.esnext.sharedmemory.d.ts"),
+    maybe_compressed_lib!("lib.esnext.temporal.d.ts"),
+    maybe_compressed_lib!("lib.esnext.typedarrays.d.ts"),
     maybe_compressed_lib!("lib.node.d.ts"),
     maybe_compressed_lib!("lib.scripthost.d.ts"),
     maybe_compressed_lib!("lib.webworker.asynciterable.d.ts"),
@@ -412,14 +429,6 @@ fn hash_url(specifier: &ModuleSpecifier, media_type: MediaType) -> String {
     hash,
     media_type.as_ts_extension()
   )
-}
-
-#[derive(Debug, Clone, Default, Eq, PartialEq)]
-#[allow(dead_code)]
-pub struct EmittedFile {
-  pub data: String,
-  pub maybe_specifiers: Option<Vec<ModuleSpecifier>>,
-  pub media_type: MediaType,
 }
 
 pub fn into_specifier_and_media_type(
@@ -553,6 +562,7 @@ pub fn as_ts_script_kind(media_type: MediaType) -> i32 {
     | MediaType::Html
     | MediaType::Jsonc
     | MediaType::Json5
+    | MediaType::Markdown
     | MediaType::Sql
     | MediaType::Wasm
     | MediaType::Unknown => 0,
@@ -577,18 +587,23 @@ pub enum LoadError {
   #[error("{0}")]
   ClosestPkgJson(#[from] node_resolver::errors::PackageJsonLoadError),
 }
+
+pub static BYTES_IMPORT_SOURCE: &str =
+  "const data: Uint8Array<ArrayBuffer>;\nexport default data;\n";
+pub static TEXT_IMPORT_SOURCE: &str =
+  "const data: string;\nexport default data;\n";
+
 pub fn load_raw_import_source(specifier: &Url) -> Option<&'static str> {
   let raw_import = get_specifier_raw_import(specifier)?;
   let source = match raw_import {
-    RawImportKind::Bytes => {
-      "const data: Uint8Array<ArrayBuffer>;\nexport default data;\n"
-    }
-    RawImportKind::Text => "export const data: string;\nexport default data;\n",
+    RawImportKind::Bytes => BYTES_IMPORT_SOURCE,
+    RawImportKind::Text => TEXT_IMPORT_SOURCE,
   };
   Some(source)
 }
 
-enum RawImportKind {
+#[derive(Debug, Copy, Clone)]
+pub enum RawImportKind {
   Bytes,
   Text,
 }
@@ -637,6 +652,9 @@ pub enum ResolveError {
   #[class(inherit)]
   #[error("{0}")]
   ResolvePkgFolderFromDenoReq(#[from] ResolvePkgFolderFromDenoReqError),
+  #[class(inherit)]
+  #[error(transparent)]
+  Specifier(#[from] deno_path_util::SpecifierError),
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -697,17 +715,17 @@ fn resolve_graph_specifier_types(
     Some(Module::Wasm(module)) => {
       Ok(Some((module.specifier.clone(), MediaType::Dmts)))
     }
-    Some(Module::Npm(_)) => {
-      if let Some(npm) = maybe_npm
-        && let Ok(req_ref) = NpmPackageReqReference::from_specifier(specifier)
-      {
-        let package_folder = npm
-          .npm_resolver
-          .resolve_pkg_folder_from_deno_module_req(req_ref.req(), referrer)?;
+    Some(Module::Npm(module)) => {
+      if let Some(npm) = maybe_npm {
+        let package_folder =
+          npm.npm_resolver.resolve_pkg_folder_from_deno_module_req(
+            module.pkg_req_ref.req(),
+            referrer,
+          )?;
         let res_result =
           npm.node_resolver.resolve_package_subpath_from_deno_module(
             &package_folder,
-            req_ref.sub_path(),
+            module.pkg_req_ref.sub_path(),
             Some(referrer),
             resolution_mode,
             NodeResolutionKind::Types,
@@ -716,7 +734,11 @@ fn resolve_graph_specifier_types(
           Ok(path_or_url) => Some(path_or_url.into_url()?),
           Err(err) => match err.code() {
             NodeJsErrorCode::ERR_MODULE_NOT_FOUND
-            | NodeJsErrorCode::ERR_TYPES_NOT_FOUND => None,
+            | NodeJsErrorCode::ERR_TYPES_NOT_FOUND
+            | NodeJsErrorCode::ERR_PACKAGE_PATH_NOT_EXPORTED
+            | NodeJsErrorCode::ERR_INVALID_PACKAGE_TARGET
+            | NodeJsErrorCode::ERR_UNSUPPORTED_DIR_IMPORT
+            | NodeJsErrorCode::ERR_PACKAGE_IMPORT_NOT_DEFINED => None,
             _ => return Err(ResolveError::PackageSubpathResolve(err)),
           },
         };
@@ -802,7 +824,11 @@ fn resolve_non_graph_specifier_types(
           Ok(url_or_path) => Some(url_or_path.into_url()?),
           Err(err) => match err.code() {
             NodeJsErrorCode::ERR_MODULE_NOT_FOUND
-            | NodeJsErrorCode::ERR_TYPES_NOT_FOUND => None,
+            | NodeJsErrorCode::ERR_TYPES_NOT_FOUND
+            | NodeJsErrorCode::ERR_PACKAGE_PATH_NOT_EXPORTED
+            | NodeJsErrorCode::ERR_INVALID_PACKAGE_TARGET
+            | NodeJsErrorCode::ERR_UNSUPPORTED_DIR_IMPORT
+            | NodeJsErrorCode::ERR_PACKAGE_IMPORT_NOT_DEFINED => None,
             _ => return Err(err.into()),
           },
         };
@@ -834,7 +860,10 @@ pub(crate) struct CompressedSource {
 }
 
 impl CompressedSource {
-  #[cfg_attr(any(debug_assertions, feature = "hmr"), allow(dead_code))]
+  #[cfg_attr(
+    any(debug_assertions, feature = "hmr"),
+    allow(dead_code, reason = "not used for hmr")
+  )]
   pub(crate) const fn new(bytes: &'static [u8]) -> Self {
     Self {
       bytes,
@@ -869,7 +898,6 @@ pub(crate) fn decompress_source(contents: &[u8]) -> Arc<str> {
 /// Execute a request on the supplied snapshot, returning a response which
 /// contains information, like any emitted files, diagnostics, statistics and
 /// optionally an updated TypeScript build info.
-#[allow(clippy::result_large_err)]
 pub fn exec(
   request: Request,
   code_cache: Option<Arc<dyn deno_runtime::code_cache::CodeCache>>,
@@ -881,7 +909,14 @@ pub fn exec(
   // op state so when requested, we can remap to the original specifier.
   let mut root_map = HashMap::new();
   let mut remapped_specifiers = HashMap::new();
-  log::debug!("exec request, root_names: {:?}", request.root_names);
+  log::debug!(
+    "exec request, root_names: {:?}",
+    request
+      .root_names
+      .iter()
+      .map(|r| (r.0.as_str(), r.1))
+      .collect::<Vec<_>>()
+  );
   let root_names: Vec<String> = request
     .root_names
     .iter()
@@ -936,15 +971,21 @@ pub fn resolve_specifier_for_tsc(
   referrer_module: Option<&Module>,
   remapped_specifiers: &mut HashMap<String, ModuleSpecifier>,
 ) -> Result<(String, Option<&'static str>), ResolveError> {
-  if specifier.starts_with("node:") {
-    return Ok((
-      MISSING_DEPENDENCY_SPECIFIER.to_string(),
-      Some(MediaType::Dts.as_ts_extension()),
-    ));
+  if specifier.starts_with("node:")
+    && let Ok(specifier) = ModuleSpecifier::parse(&specifier)
+  {
+    return Ok((specifier.into(), Some(MediaType::Dts.as_ts_extension())));
   }
 
   if specifier.starts_with("asset:///") {
     let ext = MediaType::from_str(&specifier).as_ts_extension();
+    return Ok((specifier, Some(ext)));
+  }
+  if referrer.scheme() == "asset"
+    && deno_path_util::is_relative_specifier(&specifier)
+  {
+    let resolved = deno_path_util::resolve_import(&specifier, referrer)?;
+    let ext = MediaType::from_specifier(&resolved).as_ts_extension();
     return Ok((specifier, Some(ext)));
   }
 
@@ -970,12 +1011,19 @@ pub fn resolve_specifier_for_tsc(
       )?
     }
     _ => {
-      match resolve_non_graph_specifier_types(
+      let result = resolve_non_graph_specifier_types(
         &specifier,
         referrer,
         resolution_mode,
         maybe_npm,
-      ) {
+      );
+      if result.is_err() && specifier == "node" {
+        return Ok((
+          "asset:///reference_types_node.d.ts".to_string(),
+          Some(MediaType::Dts.as_ts_extension()),
+        ));
+      }
+      match result {
         Ok(maybe_result) => maybe_result,
         Err(
           err
@@ -1231,6 +1279,9 @@ pub static IGNORED_DIAGNOSTIC_CODES: LazyLock<HashSet<u64>> =
       // TS2307: Cannot find module '{0}' or its corresponding type declarations.
       2307, // Relative import errors to add an extension
       2834, 2835,
+      // TS2882: Cannot find module or type declarations for side-effect import
+      // of 'foo'.
+      2882,
       // TS5009: Cannot find the common subdirectory path for the input files.
       5009,
       // TS5055: Cannot write file
@@ -1263,11 +1314,15 @@ pub static TYPES_NODE_IGNORABLE_NAMES: &[&str] = &[
   "CloseEvent",
   "CompressionStream",
   "CountQueuingStrategy",
+  "Crypto",
+  "CryptoKey",
   "CustomEvent",
   "DecompressionStream",
   "Disposable",
   "DOMException",
+  "ErrorEvent",
   "Event",
+  "EventListenerObject",
   "EventSource",
   "EventTarget",
   "fetch",
@@ -1280,13 +1335,17 @@ pub static TYPES_NODE_IGNORABLE_NAMES: &[&str] = &[
   "MessageChannel",
   "MessageEvent",
   "MessagePort",
+  "navigator",
   "Navigator",
   "performance",
+  "Performance",
   "PerformanceEntry",
   "PerformanceMark",
   "PerformanceMeasure",
   "QueuingStrategy",
   "QueuingStrategySize",
+  "QuotaExceededError",
+  "QuotaExceededErrorOptions",
   "ReadableByteStreamController",
   "ReadableStream",
   "ReadableStreamBYOBReader",
@@ -1297,6 +1356,7 @@ pub static TYPES_NODE_IGNORABLE_NAMES: &[&str] = &[
   "Request",
   "Response",
   "Storage",
+  "SubtleCrypto",
   "TextDecoder",
   "TextDecoderStream",
   "TextEncoder",

@@ -29,9 +29,10 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { unreachable } from "ext:deno_node/_util/asserts.ts";
 import { osType } from "ext:deno_node/_util/os.ts";
 import { uvTranslateSysError } from "ext:deno_node/internal_binding/_libuv_winerror.ts";
+import { primordials } from "ext:core/mod.js";
+const { Error } = primordials;
 
 // In Node these values are coming from libuv:
 // Ref: https://github.com/libuv/libuv/blob/v1.x/include/uv/errno.h
@@ -486,6 +487,10 @@ const codeToErrorOpenBSD: ErrorMapData = [
 const errorToCodeOpenBSD: CodeMapData = codeToErrorOpenBSD.map((
   [status, [code]],
 ) => [code, status]);
+
+const unreachable = () => {
+  throw new Error("Unreachable code");
+};
 
 export const errorMap = new Map<number, [string, string]>(
   osType === "windows"

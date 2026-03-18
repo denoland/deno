@@ -44,7 +44,11 @@ const modules = {
   natives: {},
   options: {},
   os: {},
-  performance: {},
+  performance: {
+    // observerCounts is an array where index is entry type and value is observer count
+    // Initialize with zeros for all entry types (0-8)
+    observerCounts: [0, 0, 0, 0, 0, 0, 0, 0, 0],
+  },
   "pipe_wrap": pipeWrap,
   "process_methods": {},
   report: {},

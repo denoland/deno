@@ -64,6 +64,10 @@ fn get_webstorage(
       let path = state
         .try_borrow::<OriginStorageDir>()
         .ok_or(WebStorageError::ContextNotSupported)?;
+      #[allow(
+        clippy::disallowed_methods,
+        reason = "web storage manages its own directory"
+      )]
       std::fs::create_dir_all(&path.0).map_err(WebStorageError::Io)?;
       let conn = Connection::open(path.0.join("local_storage"))?;
       // Enable write-ahead-logging and tweak some other stuff.
@@ -236,7 +240,6 @@ impl Storage {
 }
 
 #[op2]
-#[serde]
 fn op_webstorage_iterate_keys(
   #[cppgc] storage: &Storage,
   state: &mut OpState,

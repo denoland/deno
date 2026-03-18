@@ -45,6 +45,8 @@ pub fn create_runtime_snapshot(
     deno_fs::deno_fs::lazy_init(),
     deno_os::deno_os::lazy_init(),
     deno_process::deno_process::lazy_init(),
+    deno_node_crypto::deno_node_crypto::lazy_init(),
+    deno_node_sqlite::deno_node_sqlite::lazy_init(),
     deno_node::deno_node::lazy_init::<
       DenoInNpmPackageChecker,
       NpmResolver<sys_traits::impls::RealSys>,
@@ -95,7 +97,7 @@ pub fn create_runtime_snapshot(
   let mut snapshot = std::fs::File::create(snapshot_path).unwrap();
   snapshot.write_all(&output.output).unwrap();
 
-  #[allow(clippy::print_stdout)]
+  #[allow(clippy::print_stdout, reason = "necessary for build code")]
   for path in output.files_loaded_during_snapshot {
     println!("cargo:rerun-if-changed={}", path.display());
   }

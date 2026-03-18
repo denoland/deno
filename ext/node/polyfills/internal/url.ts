@@ -3,7 +3,9 @@
 import { fileURLToPath } from "node:url";
 import { Buffer } from "node:buffer";
 import { primordials } from "ext:core/mod.js";
+import { validateObject } from "ext:deno_node/internal/validators.mjs";
 const {
+  Boolean,
   Number,
   ObjectPrototypeIsPrototypeOf,
   StringPrototypeSlice,
@@ -12,7 +14,26 @@ const {
   decodeURIComponent,
 } = primordials;
 
+interface HttpOptions {
+  protocol: string;
+  hostname: string;
+  hash: string;
+  search: string;
+  pathname: string;
+  path: string;
+  href: string;
+  port?: number;
+  auth?: string;
+}
+
 const searchParams = Symbol("query");
+
+export function isURL(self: unknown): self is URL {
+  return Boolean(
+    self?.href && self.protocol && self.auth === undefined &&
+      self.path === undefined,
+  );
+}
 
 export function toPathIfFileURL(
   fileURLOrPath: string | Buffer | URL,
@@ -26,10 +47,9 @@ export function toPathIfFileURL(
 // Utility function that converts a URL object into an ordinary
 // options object as expected by the http.request and https.request
 // APIs.
-// deno-lint-ignore no-explicit-any
-export function urlToHttpOptions(url: any): any {
-  // deno-lint-ignore no-explicit-any
-  const options: any = {
+export function urlToHttpOptions(url: URL): HttpOptions {
+  validateObject(url, "url", { allowArray: true, allowFunction: true });
+  const options: HttpOptions = {
     protocol: url.protocol,
     hostname: typeof url.hostname === "string" &&
         StringPrototypeStartsWith(url.hostname, "[")
