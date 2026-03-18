@@ -49,18 +49,18 @@ function setTimeout(callback, timeout = 0, ...args) {
   const depth = getTimerDepth();
   const wrappedCallback = function () {
     const oldContext = getAsyncContext();
+    const prevDepth = getTimerDepth();
     try {
       setAsyncContext(asyncContext);
       // WHATWG timer nesting depth: track and clamp
-      const prevDepth = getTimerDepth();
       core.__setTimerDepth(depth + 1);
       ReflectApply(unboundCallback, globalThis, args);
-      core.__setTimerDepth(prevDepth);
     } finally {
+      core.__setTimerDepth(prevDepth);
       setAsyncContext(oldContext);
+      // One-shot: remove from map
+      MapPrototypeDelete(activeTimers, webTimerId);
     }
-    // One-shot: remove from map
-    MapPrototypeDelete(activeTimers, webTimerId);
   };
   timeout = webidl.converters.long(timeout);
   const timer = createTimer(wrappedCallback, timeout, undefined, false, true);
@@ -83,13 +83,13 @@ function setInterval(callback, timeout = 0, ...args) {
   const depth = getTimerDepth();
   const wrappedCallback = function () {
     const oldContext = getAsyncContext();
+    const prevDepth = getTimerDepth();
     try {
       setAsyncContext(asyncContext);
-      const prevDepth = getTimerDepth();
       core.__setTimerDepth(depth + 1);
       ReflectApply(unboundCallback, globalThis, args);
-      core.__setTimerDepth(prevDepth);
     } finally {
+      core.__setTimerDepth(prevDepth);
       setAsyncContext(oldContext);
     }
   };
