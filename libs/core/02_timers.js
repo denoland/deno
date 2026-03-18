@@ -319,7 +319,6 @@
           insert(timer, timer._idleTimeout, now);
         } else if (!timer._idleNext && !timer._idlePrev && !timer._destroyed) {
           timer._destroyed = true;
-          timer._onTimeout = null;
           if (timer[kRefed]) {
             decRefCount();
           }
@@ -386,7 +385,6 @@
   }
 
   function refreshTimer(timer) {
-    if (timer._destroyed) return;
     // Remove from current list
     if (timer._idlePrev || timer._idleNext) {
       L_remove(timer);
