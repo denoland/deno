@@ -2363,6 +2363,7 @@ impl JsRuntime {
         || pending_state.has_tick_scheduled
         || pending_state.has_refed_immediates > 0
         || pending_state.has_pending_timers
+        || pending_state.has_uv_alive_handles
       {
         // pass, will be polled again
       } else {
@@ -2383,6 +2384,7 @@ impl JsRuntime {
         || pending_state.has_tick_scheduled
         || pending_state.has_refed_immediates > 0
         || pending_state.has_pending_timers
+        || pending_state.has_uv_alive_handles
       {
         // pass, will be polled again
       } else if realm.modules_idle() {
