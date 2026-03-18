@@ -595,7 +595,9 @@ pub(crate) fn napi_queue_async_work(
   // Per NAPI spec, `execute` runs on a worker thread and `complete` runs on
   // the main thread. Previously both ran on the main thread which caused
   // deadlocks when `execute` called threadsafe functions.
-  std::thread::spawn(move || {
+  // Uses tokio's blocking threadpool to reuse threads instead of spawning a
+  // new OS thread per call (which has high overhead on Linux).
+  deno_core::unsync::spawn_blocking(move || {
     let work = work.take();
     let work = unsafe { &*work };
 
