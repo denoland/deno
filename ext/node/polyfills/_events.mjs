@@ -813,6 +813,9 @@ export function listenerCount(emitter, type) {
   if (typeof emitter.listenerCount === "function") {
     return emitter.listenerCount(type);
   }
+  if (emitter instanceof EventTarget) {
+    return getEventListeners(emitter, type).length;
+  }
   return FunctionPrototypeCall(_listenerCount, emitter, type);
 }
 

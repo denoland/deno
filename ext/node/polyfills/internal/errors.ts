@@ -1672,6 +1672,15 @@ export class ERR_INVALID_IP_ADDRESS extends NodeTypeError {
     super("ERR_INVALID_IP_ADDRESS", `Invalid IP address: ${x}`);
   }
 }
+export class ERR_INVALID_MIME_SYNTAX extends NodeTypeError {
+  constructor(production: string, str: string, invalidIndex: number) {
+    const msg = invalidIndex !== -1 ? ` at ${invalidIndex}` : "";
+    super(
+      "ERR_INVALID_MIME_SYNTAX",
+      `The MIME syntax for a ${production} in "${str}" is invalid` + msg,
+    );
+  }
+}
 export class ERR_INVALID_OBJECT_DEFINE_PROPERTY extends NodeTypeError {
   constructor(message: string) {
     super(
@@ -3215,6 +3224,7 @@ export default {
   ERR_INVALID_HANDLE_TYPE,
   ERR_INVALID_HTTP_TOKEN,
   ERR_INVALID_IP_ADDRESS,
+  ERR_INVALID_MIME_SYNTAX,
   ERR_INVALID_MODULE_SPECIFIER,
   ERR_INVALID_OBJECT_DEFINE_PROPERTY,
   ERR_INVALID_OPT_VALUE,

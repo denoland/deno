@@ -14,6 +14,7 @@ import {
   op_node_load_env_file,
   op_node_process_constrained_memory,
   op_node_process_kill,
+  op_node_process_set_title,
   op_node_process_setegid,
   op_node_process_seteuid,
   op_node_process_setgid,
@@ -696,14 +697,17 @@ Object.defineProperty(process, "report", {
   },
 });
 
+let processTitle: string | undefined;
 Object.defineProperty(process, "title", {
   get() {
-    return "deno";
+    if (processTitle == null) {
+      return String(execPath);
+    }
+    return processTitle;
   },
-  set(_value) {
-    // NOTE(bartlomieju): this is a noop. Node.js doesn't guarantee that the
-    // process name will be properly set and visible from other tools anyway.
-    // Might revisit in the future.
+  set(value) {
+    processTitle = `${value}`;
+    op_node_process_set_title(processTitle);
   },
 });
 
@@ -1016,6 +1020,7 @@ const features = {
   // Deno uses aws-lc, which is BoringSSL-based.
   // deno-lint-ignore camelcase
   openssl_is_boringssl: true,
+  quic: false,
   // deno-lint-ignore camelcase
   cached_builtins: true,
   // deno-lint-ignore camelcase
@@ -1292,6 +1297,11 @@ internals.__bootstrapNodeProcess = function (
     ppid = Deno.ppid;
     execPath = Deno.execPath();
     initializeDebugEnv(nodeDebug);
+
+    const title = getOptionValue("--title");
+    if (title) {
+      process.title = title;
+    }
 
     if (getOptionValue("--warnings")) {
       process.on("warning", onWarning);
