@@ -5,9 +5,7 @@ const {
   SafeMap,
   ArrayPrototypeForEach,
   ArrayPrototypePush,
-  SafeRegExp,
   StringPrototypeSlice,
-  StringPrototypeSplit,
   StringPrototypeStartsWith,
 } = primordials;
 
