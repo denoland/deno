@@ -1,0 +1,9 @@
+{
+  "$schema": "../schema.json",
+  "tests": {
+    "parallel/test-querystring-escape.js": {},
+    "parallel/test-querystring-maxKeys-non-finite.js": {},
+    "parallel/test-querystring-multichar-separator.js": {},
+    "parallel/test-querystring.js": {}
+  }
+}

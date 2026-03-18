@@ -364,12 +364,18 @@ async function generateUnabledPassingBlocks(
 
   console.log("Checking for passing-but-not-enabled tests...");
 
-  // Read config.jsonc to get enabled test names
-  const configText = await Deno.readTextFile(
-    "tests/node_compat/config.jsonc",
-  );
-  const config = parseJsonc(configText) as { tests: Record<string, unknown> };
-  const enabledTests = new Set(Object.keys(config.tests));
+  // Read all expectations/*.jsonc files to get enabled test names
+  const enabledTests = new Set<string>();
+  for await (const entry of Deno.readDir("tests/node_compat/expectations")) {
+    if (!entry.name.endsWith(".jsonc")) continue;
+    const text = await Deno.readTextFile(
+      `tests/node_compat/expectations/${entry.name}`,
+    );
+    const config = parseJsonc(text) as { tests: Record<string, unknown> };
+    for (const name of Object.keys(config.tests)) {
+      enabledTests.add(name);
+    }
+  }
 
   // Fetch today's full reports
   const todayReports = await fetchReportsForDate(todaySummary.date);
@@ -408,7 +414,7 @@ async function generateUnabledPassingBlocks(
 
   const blocks: Block[] = [];
   let text =
-    `*Passing but not enabled in config.jsonc (${sorted.length}):*\n\`\`\`\n`;
+    `*Passing but not enabled in expectations/ (${sorted.length}):*\n\`\`\`\n`;
   for (const [testName, oses] of sorted.slice(0, MAX_UNENABLED_PASSING)) {
     text += `${testName} (${formatOsList(oses)})\n`;
   }

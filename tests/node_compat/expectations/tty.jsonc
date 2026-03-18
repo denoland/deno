@@ -1,0 +1,21 @@
+{
+  "$schema": "../schema.json",
+  "tests": {
+    "parallel/test-tty-stdin-end.js": {},
+    "parallel/test-tty-stdin-pipe.js": {},
+    "parallel/test-ttywrap-invalid-fd.js": {},
+    "parallel/test-ttywrap-stack.js": {},
+    "pseudo-tty/test-set-raw-mode-reset-process-exit.js": {},
+    "pseudo-tty/test-set-raw-mode-reset.js": {},
+    "pseudo-tty/test-tty-color-support-warning-2.js": {},
+    "pseudo-tty/test-tty-color-support-warning.js": {},
+    "pseudo-tty/test-tty-color-support.js": {},
+    "pseudo-tty/test-tty-stdin-call-end.js": {},
+    "pseudo-tty/test-tty-stdin-end.js": {},
+    "pseudo-tty/test-tty-stdout-end.js": {},
+    "pseudo-tty/test-tty-stream-constructors.js": {},
+    "pseudo-tty/test-tty-window-size.js": {},
+    "pseudo-tty/test-tty-wrap.js": {},
+    "pseudo-tty/test-tty-isatty.js": {}
+  }
+}

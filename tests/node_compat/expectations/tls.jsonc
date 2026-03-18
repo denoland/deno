@@ -1,0 +1,40 @@
+{
+  "$schema": "../schema.json",
+  "tests": {
+    "parallel/test-double-tls-client.js": {
+      "ignore": true,
+      "reason": "Tests Node.js-specific CLI flags/options that are not supported in Deno"
+    },
+    "parallel/test-tls-alert.js": {},
+    "parallel/test-tls-cert-ext-encoding.js": {},
+    "parallel/test-tls-client-abort.js": {},
+    "parallel/test-tls-client-abort2.js": {},
+    "parallel/test-tls-client-renegotiation-limit.js": {},
+    "parallel/test-tls-close-event-after-write.js": {},
+    "parallel/test-tls-close-notify.js": {},
+    "parallel/test-tls-connect-hwm-option.js": {},
+    "parallel/test-tls-connect-simple.js": {},
+    "parallel/test-tls-connect-timeout-option.js": {},
+    "parallel/test-tls-dhe.js": {},
+    "parallel/test-tls-ecdh-auto.js": {},
+    "parallel/test-tls-ecdh-multiple.js": {},
+    "parallel/test-tls-ecdh.js": {},
+    "parallel/test-tls-enable-trace-cli.js": {},
+    "parallel/test-tls-enable-trace.js": {},
+    "parallel/test-tls-env-extra-ca-no-crypto.js": {},
+    "parallel/test-tls-fast-writing.js": {},
+    "parallel/test-tls-interleave.js": {},
+    "parallel/test-tls-invoke-queued.js": {},
+    "parallel/test-tls-no-sslv3.js": {},
+    "parallel/test-tls-pause.js": {},
+    "parallel/test-tls-peer-certificate-encoding.js": {},
+    "parallel/test-tls-psk-server.js": {},
+    "parallel/test-tls-server-verify.js": {},
+    "parallel/test-tls-session-cache.js": {},
+    "parallel/test-tls-timeout-server-2.js": {},
+    "parallel/test-tls-transport-destroy-after-own-gc.js": {},
+    "parallel/test-tls-zero-clear-in.js": {},
+    "sequential/test-tls-lookup.js": {},
+    "sequential/test-tls-psk-client.js": {}
+  }
+}

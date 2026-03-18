@@ -1,0 +1,14 @@
+{
+  "$schema": "../schema.json",
+  "tests": {
+    "parallel/test-dns-default-order-ipv4.js": {},
+    "parallel/test-dns-get-server.js": {},
+    "parallel/test-dns-lookupService.js": {},
+    "parallel/test-dns-lookupService-promises.js": {},
+    "parallel/test-dns-multi-channel.js": {},
+    "parallel/test-dns-promises-exists.js": {},
+    "parallel/test-dns-resolvens-typeerror.js": {},
+    "parallel/test-dns-set-default-order.js": {},
+    "parallel/test-dns-setservers-type-check.js": {}
+  }
+}

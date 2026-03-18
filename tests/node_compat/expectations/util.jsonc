@@ -1,0 +1,21 @@
+{
+  "$schema": "../schema.json",
+  "tests": {
+    // "parallel/test-inspect-address-in-use.js": {},
+    // "parallel/test-inspect-async-hook-setup-at-inspect.js": {},
+    "parallel/test-inspect-publish-uid.js": {},
+    // "parallel/test-inspect-support-for-node_options.js": {},
+    "parallel/test-mime-api.js": {},
+    "parallel/test-mime-whatwg.js": {},
+    "parallel/test-util-convert-signal-to-exit-code.mjs": {},
+    "parallel/test-util-deprecate-invalid-code.js": {},
+    "parallel/test-util-inherits.js": {},
+    "parallel/test-util-inspect-getters-accessing-this.js": {},
+    "parallel/test-util-isDeepStrictEqual.js": {},
+    // "parallel/test-util-parse-env.js": {}, // https://github.com/denoland/deno/issues/32706
+    "parallel/test-util-primordial-monkeypatching.js": {},
+    "parallel/test-util-text-decoder.js": {},
+    "parallel/test-util-types-exists.js": {},
+    "parallel/test-util.js": {}
+  }
+}

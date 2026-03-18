@@ -67,7 +67,7 @@ struct ExpectedFailure {
   output: Option<String>,
 }
 
-/// Configuration for a single test from config.jsonc
+/// Configuration for a single test from expectations/*.jsonc
 ///
 /// Platform fields (`windows`, `darwin`, `linux`) accept:
 ///   - `false` — skip the test on that OS
@@ -95,7 +95,7 @@ struct TestConfig {
   output: Option<String>,
 }
 
-/// The full config.json structure
+/// The structure of each expectations/*.jsonc file
 #[derive(Debug, Deserialize)]
 struct NodeCompatConfig {
   tests: HashMap<String, TestConfig>,
@@ -130,7 +130,7 @@ fn main() {
     // e.g. `cargo test --test node_compat -- test-assert`
     category.filter_children(filter);
   } else if !cli_args.report {
-    // Without a filter, only run tests listed in config.jsonc
+    // Without a filter, only run tests listed in expectations/*.jsonc
     let config_tests: std::collections::HashSet<&str> =
       config.tests.keys().map(|s| s.as_str()).collect();
     category.children.retain(|child| match child {
@@ -259,13 +259,27 @@ fn parse_cli_args() -> CliArgs {
 }
 
 fn load_config() -> NodeCompatConfig {
-  let config_path = tests_path().join("node_compat").join("config.jsonc");
-  let config_content = std::fs::read_to_string(&config_path).unwrap();
-  let value =
-    jsonc_parser::parse_to_serde_value(&config_content, &Default::default())
-      .unwrap()
-      .unwrap();
-  serde_json::from_value(value).unwrap()
+  let expectations_dir = tests_path().join("node_compat").join("expectations");
+  let mut all_tests = HashMap::new();
+
+  for entry in std::fs::read_dir(&expectations_dir).unwrap().flatten() {
+    let path = entry.path();
+    let name = path.file_name().unwrap().to_str().unwrap_or("");
+    if !name.ends_with(".jsonc") {
+      continue;
+    }
+
+    let content = std::fs::read_to_string(&path).unwrap();
+    let value =
+      jsonc_parser::parse_to_serde_value(&content, &Default::default())
+        .unwrap()
+        .unwrap();
+    let category_config: NodeCompatConfig =
+      serde_json::from_value(value).unwrap();
+    all_tests.extend(category_config.tests);
+  }
+
+  NodeCompatConfig { tests: all_tests }
 }
 
 // Directories that don't contain runnable tests

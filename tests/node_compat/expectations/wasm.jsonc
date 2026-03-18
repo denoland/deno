@@ -1,0 +1,6 @@
+{
+  "$schema": "../schema.json",
+  "tests": {
+    "wasm-allocation/test-wasm-allocation.js": {}
+  }
+}

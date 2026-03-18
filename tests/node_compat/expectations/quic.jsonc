@@ -1,0 +1,10 @@
+{
+  "$schema": "../schema.json",
+  "tests": {
+    "parallel/test-quic-handshake.js": {},
+    "parallel/test-quic-internal-endpoint-listen-defaults.js": {},
+    "parallel/test-quic-internal-endpoint-options.js": {},
+    "parallel/test-quic-internal-endpoint-stats-state.js": {},
+    "parallel/test-quic-internal-setcallbacks.js": {}
+  }
+}

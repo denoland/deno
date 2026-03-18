@@ -1,0 +1,9 @@
+{
+  "$schema": "../schema.json",
+  "tests": {
+    "parallel/test-promise-handled-rejection-no-warning.js": {},
+    "parallel/test-promise-unhandled-issue-43655.js": {},
+    "parallel/test-promise-unhandled-silent.js": {},
+    "parallel/test-promise-unhandled-throw-handler.js": {}
+  }
+}

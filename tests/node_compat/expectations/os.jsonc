@@ -1,0 +1,16 @@
+{
+  "$schema": "../schema.json",
+  "tests": {
+    "parallel/test-os-checked-function.js": {
+      "darwin": false,
+      "linux": false,
+      "windows": false,
+      "reason": "Node.js specific behavior to check the return value of the C++ bindings"
+    },
+    "parallel/test-os-eol.js": {},
+    "parallel/test-os-homedir-no-envvar.js": {},
+    "parallel/test-os-process-priority.js": {},
+    "parallel/test-os-userinfo-handles-getter-errors.js": {},
+    "parallel/test-os.js": {}
+  }
+}

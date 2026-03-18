@@ -1,0 +1,8 @@
+{
+  "$schema": "../schema.json",
+  "tests": {
+    "parallel/test-https-connecting-to-http.js": {},
+    "parallel/test-https-foafssl.js": {},
+    "parallel/test-https-selfsigned-no-keycertsign-no-crash.js": {}
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "$schema": "../schema.json",
+  "tests": {
+    "parallel/test-cluster-eaddrinuse.js": {},
+    "parallel/test-cluster-uncaught-exception.js": {},
+    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
+    // "sequential/test-cluster-inspect-brk.js": {},
+  }
+}

@@ -5,7 +5,7 @@ Deno.
 
 - ./runner/suite/ - vendored Node.js test cases (git submodule at
   https://github.com/denoland/node_test)
-- ./config.jsonc - has the list of passing Node.js test cases
+- ./expectations/ - per-category files listing passing Node.js test cases
 - ./mod.rs - The script entrypoint of node compat test.
 
 If you run single node.js test case, use the command:
@@ -14,10 +14,11 @@ If you run single node.js test case, use the command:
 cargo test <name of test file>
 ```
 
-## Configuration file
+## Expectation files
 
-The `config.jsonc` specifies which tests should pass in Deno and includes
-platform-specific and behavioral settings for each test.
+The `expectations/` directory contains per-category `.jsonc` files (e.g.
+`assert.jsonc`, `buffer.jsonc`, `fs.jsonc`) that specify which tests should pass
+in Deno and includes platform-specific and behavioral settings for each test.
 
 ### Options
 
@@ -63,9 +64,9 @@ Each test entry can include the following optional configuration properties:
 
 ## Add test case entry to CI check
 
-If you fixed some Node.js compabitility and some test cases started passing,
-then add those cases to `config.jsonc`. The items listed in there are checked in
-CI check.
+If you fixed some Node.js compatibility and some test cases started passing,
+then add those cases to the appropriate `expectations/<category>.jsonc` file. The
+items listed in there are checked in CI check.
 
 ## Daily test viewer
 

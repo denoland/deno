@@ -1,0 +1,14 @@
+{
+  "$schema": "../schema.json",
+  "tests": {
+    // "parallel/test-v8-coverage.js": {},
+    "parallel/test-v8-deserialize-buffer.js": {},
+    "parallel/test-v8-flag-pool-size-0.js": {},
+    "parallel/test-v8-getheapsnapshot-twice.js": {},
+    "parallel/test-v8-global-setter.js": {},
+    // "parallel/test-v8-stats.js": {}, // https://github.com/denoland/deno/issues/32706
+    // "parallel/test-v8-stop-coverage.js": {},
+    // "parallel/test-v8-take-coverage-noop.js": {},
+    // "parallel/test-v8-take-coverage.js": {},
+  }
+}

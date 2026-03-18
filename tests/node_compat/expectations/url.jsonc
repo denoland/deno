@@ -1,0 +1,14 @@
+{
+  "$schema": "../schema.json",
+  "tests": {
+    "parallel/test-url-domain-ascii-unicode.js": {},
+    "parallel/test-url-fileurltopath.js": {},
+    "parallel/test-url-format-invalid-input.js": {},
+    "parallel/test-url-format-whatwg.js": {},
+    "parallel/test-url-format.js": {},
+    "parallel/test-url-parse-format.js": {},
+    "parallel/test-url-parse-query.js": {},
+    "parallel/test-url-relative.js": {},
+    "parallel/test-url-urltooptions.js": {}
+  }
+}
