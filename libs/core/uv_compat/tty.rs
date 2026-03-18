@@ -76,6 +76,12 @@ impl AsRawFd for TtyFd {
 // `uv__stream_try_select`: a background thread polls with select(2)
 // and signals readiness through a socketpair whose read end IS
 // kqueue-compatible. We do the same.
+//
+// TODO: When we add pipe support, refactor the reactor types and
+// select fallback infrastructure (StreamReactor, SelectFallbackState,
+// setup_select_fallback, select_thread_main, drain_fd, etc.) into
+// stream.rs as a shared `stream_open()` function — mirroring libuv's
+// `uv__stream_try_select` which is called from both tty.c and pipe.c.
 
 #[cfg(unix)]
 pub(crate) enum TtyReactor {
