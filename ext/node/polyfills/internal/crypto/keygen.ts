@@ -1134,11 +1134,13 @@ function createJob(mode, type, options) {
       const { namedCurve } = options;
       validateString(namedCurve, "options.namedCurve");
       const { paramEncoding } = options;
-      if (paramEncoding == null || paramEncoding === "named") {
-        // pass.
-      } else if (paramEncoding === "explicit") {
-        // TODO(@littledivy): Explicit param encoding is very rarely used, and not supported by the ring crate.
-        throw new TypeError("Explicit encoding is not supported");
+      if (
+        paramEncoding == null || paramEncoding === "named" ||
+        paramEncoding === "explicit"
+      ) {
+        // "explicit" embeds full curve parameters instead of a named curve OID.
+        // We treat it like "named" since the generated keys are functionally
+        // equivalent and our crypto libraries use named curves internally.
       } else {
         throw new ERR_INVALID_ARG_VALUE("options.paramEncoding", paramEncoding);
       }
