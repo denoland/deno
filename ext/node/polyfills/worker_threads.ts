@@ -31,9 +31,11 @@ import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import {
   ERR_INVALID_ARG_TYPE,
+  ERR_INVALID_URL_SCHEME,
   ERR_OUT_OF_RANGE,
   ERR_WORKER_INVALID_EXEC_ARGV,
   ERR_WORKER_NOT_RUNNING,
+  ERR_WORKER_PATH,
 } from "ext:deno_node/internal/errors.ts";
 import {
   validateArray,
@@ -53,6 +55,7 @@ import { createRequire } from "node:module";
 const {
   ArrayIsArray,
   Error,
+  EvalError,
   FunctionPrototypeCall,
   NumberIsFinite,
   ObjectHasOwn,
@@ -70,14 +73,31 @@ const {
   StringPrototypeSplit,
   StringPrototypeStartsWith,
   StringPrototypeTrim,
+  SyntaxError,
   Symbol,
   SymbolAsyncDispose,
   SymbolFor,
   SymbolIterator,
   TypeError,
+  URIError,
+  RangeError,
+  ReferenceError,
   Float64Array,
   FunctionPrototypeBind,
 } = primordials;
+
+// Map error names to native constructors so that worker error events
+// preserve err.constructor (e.g. SyntaxError, TypeError).
+const nativeErrorConstructors: Record<string, ErrorConstructor> = {
+  __proto__: null as unknown as ErrorConstructor,
+  Error,
+  EvalError,
+  RangeError,
+  ReferenceError,
+  SyntaxError,
+  TypeError,
+  URIError,
+};
 
 const workerCpuUsageBuffer = new Float64Array(2);
 
@@ -269,13 +289,39 @@ class NodeWorker extends EventEmitter {
       }
     }
 
-    if (
-      typeof specifier === "object" &&
-      !(specifier.protocol === "data:" || specifier.protocol === "file:")
-    ) {
-      throw new TypeError(
-        "node:worker_threads support only 'file:' and 'data:' URLs",
-      );
+    if (typeof specifier === "object") {
+      if (
+        !(specifier.protocol === "data:" || specifier.protocol === "file:")
+      ) {
+        throw new ERR_INVALID_URL_SCHEME(["file", "data"]);
+      }
+    } else if (typeof specifier === "string" && !options?.eval) {
+      // Node.js requires string specifiers to be absolute paths or
+      // relative paths starting with './' or '../'. URLs passed as
+      // strings must be wrapped with `new URL`.
+      if (
+        StringPrototypeStartsWith(specifier, "file://") ||
+        StringPrototypeStartsWith(specifier, "data:") ||
+        StringPrototypeStartsWith(specifier, "http://") ||
+        StringPrototypeStartsWith(specifier, "https://")
+      ) {
+        throw new ERR_WORKER_PATH(specifier);
+      }
+      const path = specifier;
+      if (
+        !StringPrototypeStartsWith(path, "/") &&
+        !StringPrototypeStartsWith(path, "./") &&
+        !StringPrototypeStartsWith(path, "../") &&
+        !StringPrototypeStartsWith(path, ".\\") &&
+        !StringPrototypeStartsWith(path, "..\\")
+      ) {
+        // On Windows, also allow drive-letter absolute paths (e.g. C:\...)
+        const isWindowsAbsolute = path.length >= 3 && path[1] === ":" &&
+          (path[2] === "\\" || path[2] === "/");
+        if (!isWindowsAbsolute) {
+          throw new ERR_WORKER_PATH(specifier);
+        }
+      }
     }
 
     // Serialize workerData before resolving the filename so that
@@ -363,10 +409,12 @@ class NodeWorker extends EventEmitter {
     let hasSourceCode = false;
 
     if (options?.eval) {
-      const code = typeof specifier === "string"
-        ? specifier
-        // deno-lint-ignore prefer-primordials
-        : specifier.toString();
+      if (typeof specifier !== "string") {
+        throw new TypeError(
+          "The property 'options.eval' must be false when 'filename' is not a string.",
+        );
+      }
+      const code = specifier;
       // Node.js runs eval workers as CJS (sloppy mode).
       // Pass as source code for execute_script (sloppy mode).
       // `require` is already available from the Node worker bootstrap.
@@ -514,10 +562,10 @@ class NodeWorker extends EventEmitter {
               err.code = errName;
               err.name = "Error";
             } else {
-              err = new Error(errMsg);
-              if (errName) {
-                err.name = errName;
-              }
+              // Use the correct native error constructor so that
+              // err.constructor matches (e.g. SyntaxError, TypeError).
+              const Ctor = nativeErrorConstructors[errName] ?? Error;
+              err = new Ctor(errMsg);
             }
             // Stack is unavailable from the worker context (e.g. prepareStackTrace
             // may have thrown). Match Node.js behavior of setting stack to undefined.
