@@ -20,9 +20,7 @@ pub const DESKTOP_JS: &str = r#"
   const {
     BrowserWindow,
     op_desktop_init,
-    op_desktop_recv_menu_click,
-    op_desktop_recv_keyboard_event,
-    op_desktop_recv_bind_call,
+    op_desktop_recv_event,
     op_desktop_resolve_bind_call,
     op_desktop_reject_bind_call,
   } = internals.core.ops;
@@ -115,56 +113,46 @@ pub const DESKTOP_JS: &str = r#"
   // tick used by HMR, or module evaluation with top-level await).
   const { unrefOpPromise } = internals.core;
 
-  // Poll for menu click events from the native side and dispatch
-  // them as CustomEvents on globalThis.
+  // Single polling loop for all native desktop events.
   (async () => {
     while (true) {
-      const p = op_desktop_recv_menu_click();
-      unrefOpPromise(p);
-      const id = await p;
-      if (id == null) break;
-      dispatchEvent(new CustomEvent("menuclick", { detail: { id } }));
-    }
-  })();
-  // Poll for keyboard events from the native side and dispatch
-  // them on the active BrowserWindow instance.
-  (async () => {
-    while (true) {
-      const p = op_desktop_recv_keyboard_event();
+      const p = op_desktop_recv_event();
       unrefOpPromise(p);
       const ev = await p;
       if (ev == null) break;
-      const target = activeWindow;
-      if (!target) continue;
-      target.dispatchEvent(new KeyboardEvent(ev.type, {
-        key: ev.key,
-        code: ev.code,
-        shiftKey: ev.shift,
-        ctrlKey: ev.control,
-        altKey: ev.alt,
-        metaKey: ev.meta,
-        repeat: ev.repeat,
-      }));
-    }
-  })();
-  // Poll for bind calls from the webview and dispatch to JS callbacks.
-  (async () => {
-    while (true) {
-      const p = op_desktop_recv_bind_call();
-      unrefOpPromise(p);
-      const call = await p;
-      if (call == null) break;
-      const fn_ = bindCallbacks.get(call.name);
-      if (!fn_) {
-        op_desktop_reject_bind_call(call.callId, "No callback bound for: " + call.name);
-        continue;
-      }
-      try {
-        const args = Array.isArray(call.args) ? call.args : [];
-        const result = await fn_(...args);
-        op_desktop_resolve_bind_call(call.callId, result ?? null);
-      } catch (e) {
-        op_desktop_reject_bind_call(call.callId, String(e));
+      switch (ev.kind) {
+        case "menuClick":
+          dispatchEvent(new CustomEvent("menuclick", { detail: { id: ev.id } }));
+          break;
+        case "keyboardEvent": {
+          const target = activeWindow;
+          if (!target) break;
+          target.dispatchEvent(new KeyboardEvent(ev.type, {
+            key: ev.key,
+            code: ev.code,
+            shiftKey: ev.shift,
+            ctrlKey: ev.control,
+            altKey: ev.alt,
+            metaKey: ev.meta,
+            repeat: ev.repeat,
+          }));
+          break;
+        }
+        case "bindCall": {
+          const fn_ = bindCallbacks.get(ev.name);
+          if (!fn_) {
+            op_desktop_reject_bind_call(ev.callId, "No callback bound for: " + ev.name);
+            break;
+          }
+          try {
+            const args = Array.isArray(ev.args) ? ev.args : [];
+            const result = await fn_(...args);
+            op_desktop_resolve_bind_call(ev.callId, result ?? null);
+          } catch (e) {
+            op_desktop_reject_bind_call(ev.callId, String(e));
+          }
+          break;
+        }
       }
     }
   })();
@@ -262,15 +250,13 @@ pub fn desktop_auto_update_js(
   )
 }
 
-pub use deno_runtime::ops::desktop::BindCallReceiver;
-pub use deno_runtime::ops::desktop::BindCallSender;
-pub use deno_runtime::ops::desktop::KeyboardEventSender;
-pub use deno_runtime::ops::desktop::MenuClickSender;
+pub use deno_runtime::ops::desktop::DesktopEvent;
+pub use deno_runtime::ops::desktop::DesktopEventReceiver;
+pub use deno_runtime::ops::desktop::DesktopEventSender;
 pub use deno_runtime::ops::desktop::PendingBindCall;
 pub use deno_runtime::ops::desktop::PendingBindResponses;
-pub use deno_runtime::ops::desktop::create_bind_call_channel;
-pub use deno_runtime::ops::desktop::create_keyboard_event_channel;
-pub use deno_runtime::ops::desktop::create_menu_click_channel;
+pub use deno_runtime::ops::desktop::create_desktop_event_channel;
+pub use deno_runtime::ops::desktop::register_bind_call;
 
 /// Place the DesktopApi and optional AutoUpdateState into OpState.
 /// The ops are already registered in the snapshot; this just provides
@@ -285,14 +271,4 @@ pub fn init_desktop_state(
   if let Some(au) = auto_update {
     state.put::<AutoUpdateState>(au);
   }
-  // Create menu click channel so op_desktop_recv_menu_click can work
-  let (tx, rx) = create_menu_click_channel();
-  state.put(rx);
-  state.put(tx);
-  // Create keyboard event channel so op_desktop_recv_keyboard_event can work
-  let (kb_tx, kb_rx) = create_keyboard_event_channel();
-  state.put(kb_rx);
-  state.put(kb_tx);
-  // Initialize pending bind responses map
-  state.put(PendingBindResponses::new());
 }

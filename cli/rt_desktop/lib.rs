@@ -33,8 +33,8 @@ const DESKTOP_SERVE_PORT: u16 = 41520;
 
 /// WEF-backed implementation of [`denort::desktop::DesktopApi`].
 struct WefDesktopApi {
-  bind_call_tx:
-    tokio::sync::mpsc::UnboundedSender<denort::desktop::PendingBindCall>,
+  event_tx: tokio::sync::mpsc::UnboundedSender<deno_runtime::ops::desktop::DesktopEvent>,
+  pending_responses: deno_runtime::ops::desktop::PendingBindResponses,
 }
 
 impl denort::desktop::DesktopApi for WefDesktopApi {
@@ -91,23 +91,27 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
   }
 
   fn bind(&self, name: &str) {
-    let tx = self.bind_call_tx.clone();
+    let tx = self.event_tx.clone();
+    let responses = self.pending_responses.clone();
     let name_owned = name.to_string();
     wef::bind_async(name, move |js_call| {
       let tx = tx.clone();
+      let responses = responses.clone();
       let name = name_owned.clone();
       async move {
         let args: Vec<serde_json::Value> =
           js_call.args.iter().map(wef_value_to_json).collect();
         let (resp_tx, resp_rx) = tokio::sync::oneshot::channel();
-        let pending = denort::desktop::PendingBindCall {
+        let call_id =
+          deno_runtime::ops::desktop::register_bind_call(&responses, resp_tx);
+        let event = deno_runtime::ops::desktop::DesktopEvent::BindCall {
           name,
           args: serde_json::Value::Array(args),
-          response: resp_tx,
+          call_id,
         };
-        if tx.send(pending).is_err() {
+        if tx.send(event).is_err() {
           js_call
-            .reject(wef::Value::String("bind channel closed".to_string()));
+            .reject(wef::Value::String("event channel closed".to_string()));
           return;
         }
         match resp_rx.await {
@@ -753,33 +757,37 @@ async fn run_desktop(update_rolled_back: bool) -> Result<(), AnyError> {
     },
     hmr_on_reload,
     op_state_init: Some(Box::new(move |state| {
-      let (bind_tx, bind_rx) = denort::desktop::create_bind_call_channel();
+      let (event_tx, event_rx) =
+        denort::desktop::create_desktop_event_channel();
+      let pending_responses = denort::desktop::PendingBindResponses::new();
+      let menu_tx = event_tx.0.clone();
+      let kb_tx = event_tx.0.clone();
       denort::desktop::init_desktop_state(
         state,
         Box::new(WefDesktopApi {
-          bind_call_tx: bind_tx.0,
+          event_tx: event_tx.0.clone(),
+          pending_responses: pending_responses.clone(),
         }),
         auto_update_state,
       );
-      state.put(bind_rx);
-      // Wire WEF menu click callback to the Deno runtime channel
-      let menu_tx =
-        state.borrow::<denort::desktop::MenuClickSender>().0.clone();
+      state.put(event_rx);
+      state.put(event_tx);
+      state.put(pending_responses);
+      // Wire WEF menu click callback to the unified event channel
       wef::set_menu_click_handler(move |id| {
-        let _ = menu_tx.send(id.to_string());
+        let _ = menu_tx.send(
+          deno_runtime::ops::desktop::DesktopEvent::MenuClick {
+            id: id.to_string(),
+          },
+        );
       });
-      // Wire WEF keyboard events to the Deno runtime channel
-      let kb_tx = state
-        .borrow::<denort::desktop::KeyboardEventSender>()
-        .0
-        .clone();
+      // Wire WEF keyboard events to the unified event channel
       wef::on_keyboard_event(move |ev| {
-        eprintln!("[desktop] on_keyboard_event: sending {:?}/{:?}", ev.key, ev.state);
-        let result =
-          kb_tx.send(deno_runtime::ops::desktop::KeyboardEventData {
+        let _ = kb_tx.send(
+          deno_runtime::ops::desktop::DesktopEvent::KeyboardEvent {
             r#type: match ev.state {
-              wef::KeyState::Pressed => "keydown",
-              wef::KeyState::Released => "keyup",
+              wef::KeyState::Pressed => "keydown".to_string(),
+              wef::KeyState::Released => "keyup".to_string(),
             },
             key: ev.key,
             code: ev.code,
@@ -788,10 +796,8 @@ async fn run_desktop(update_rolled_back: bool) -> Result<(), AnyError> {
             alt: ev.modifiers.alt,
             meta: ev.modifiers.meta,
             repeat: ev.repeat,
-          });
-        if let Err(e) = result {
-          eprintln!("[desktop] keyboard send failed: {}", e);
-        }
+          },
+        );
       });
     })),
     override_main_module: None,

@@ -16,44 +16,46 @@ use std::sync::atomic::Ordering;
 
 use deno_core::FromV8;
 use deno_core::OpState;
-use deno_core::ToV8;
 use deno_core::op2;
 use deno_core::serde_json;
 use deno_core::v8;
 
-/// Channel for receiving menu click events in the Deno runtime.
-pub struct MenuClickReceiver(pub tokio::sync::mpsc::UnboundedReceiver<String>);
-pub struct MenuClickSender(pub tokio::sync::mpsc::UnboundedSender<String>);
-
-pub fn create_menu_click_channel() -> (MenuClickSender, MenuClickReceiver) {
-  let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
-  (MenuClickSender(tx), MenuClickReceiver(rx))
+/// A single event type that flows from the WEF backend to the Deno runtime.
+#[derive(Debug, serde::Serialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum DesktopEvent {
+  MenuClick {
+    id: String,
+  },
+  #[serde(rename_all = "camelCase")]
+  KeyboardEvent {
+    r#type: String,
+    key: String,
+    code: String,
+    shift: bool,
+    control: bool,
+    alt: bool,
+    meta: bool,
+    repeat: bool,
+  },
+  #[serde(rename_all = "camelCase")]
+  BindCall {
+    name: String,
+    args: serde_json::Value,
+    call_id: u32,
+  },
 }
 
-#[derive(Debug, Clone, ToV8)]
-pub struct KeyboardEventData {
-  /// "keydown" or "keyup"
-  pub r#type: &'static str,
-  pub key: String,
-  pub code: String,
-  pub shift: bool,
-  pub control: bool,
-  pub alt: bool,
-  pub meta: bool,
-  pub repeat: bool,
-}
-
-pub struct KeyboardEventReceiver(
-  pub tokio::sync::mpsc::UnboundedReceiver<KeyboardEventData>,
+pub struct DesktopEventReceiver(
+  pub tokio::sync::mpsc::UnboundedReceiver<DesktopEvent>,
 );
-pub struct KeyboardEventSender(
-  pub tokio::sync::mpsc::UnboundedSender<KeyboardEventData>,
+pub struct DesktopEventSender(
+  pub tokio::sync::mpsc::UnboundedSender<DesktopEvent>,
 );
 
-pub fn create_keyboard_event_channel(
-) -> (KeyboardEventSender, KeyboardEventReceiver) {
+pub fn create_desktop_event_channel() -> (DesktopEventSender, DesktopEventReceiver) {
   let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
-  (KeyboardEventSender(tx), KeyboardEventReceiver(rx))
+  (DesktopEventSender(tx), DesktopEventReceiver(rx))
 }
 
 /// A pending call from the webview to a bound Deno function.
@@ -64,32 +66,36 @@ pub struct PendingBindCall {
     tokio::sync::oneshot::Sender<Result<serde_json::Value, String>>,
 }
 
-pub struct BindCallReceiver(
-  pub tokio::sync::mpsc::UnboundedReceiver<PendingBindCall>,
-);
-pub struct BindCallSender(
-  pub tokio::sync::mpsc::UnboundedSender<PendingBindCall>,
-);
-
-pub fn create_bind_call_channel() -> (BindCallSender, BindCallReceiver) {
-  let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
-  (BindCallSender(tx), BindCallReceiver(rx))
-}
-
+#[derive(Clone)]
 pub struct PendingBindResponses(
-  pub HashMap<
-    u32,
-    tokio::sync::oneshot::Sender<Result<serde_json::Value, String>>,
+  pub Arc<
+    std::sync::Mutex<
+      HashMap<
+        u32,
+        tokio::sync::oneshot::Sender<Result<serde_json::Value, String>>,
+      >,
+    >,
   >,
 );
 
 impl PendingBindResponses {
   pub fn new() -> Self {
-    Self(HashMap::new())
+    Self(Arc::new(std::sync::Mutex::new(HashMap::new())))
   }
 }
 
 static BIND_CALL_COUNTER: AtomicU32 = AtomicU32::new(1);
+
+/// Assign a call_id for a bind call and register its response sender.
+/// Returns the call_id to embed in the `DesktopEvent::BindCall`.
+pub fn register_bind_call(
+  responses: &PendingBindResponses,
+  response: tokio::sync::oneshot::Sender<Result<serde_json::Value, String>>,
+) -> u32 {
+  let call_id = BIND_CALL_COUNTER.fetch_add(1, Ordering::Relaxed);
+  responses.0.lock().unwrap().insert(call_id, response);
+  call_id
+}
 
 /// Trait for desktop window operations. Implemented by the desktop
 /// runtime (denort_desktop) to bridge to the WEF backend.
@@ -368,36 +374,16 @@ pub fn op_desktop_apply_patch(
 }
 
 #[op2]
-#[string]
-async fn op_desktop_recv_menu_click(
+#[serde]
+async fn op_desktop_recv_event(
   state: std::rc::Rc<std::cell::RefCell<OpState>>,
-) -> Option<String> {
+) -> Option<DesktopEvent> {
   let rx = {
     let mut s = state.borrow_mut();
-    s.try_take::<MenuClickReceiver>()
+    s.try_take::<DesktopEventReceiver>()
   };
   if let Some(mut rx) = rx {
     let result = rx.0.recv().await;
-    state.borrow_mut().put(rx);
-    result
-  } else {
-    // No receiver — desktop not initialized, pend forever
-    std::future::pending().await
-  }
-}
-
-#[op2]
-async fn op_desktop_recv_keyboard_event(
-  state: std::rc::Rc<std::cell::RefCell<OpState>>,
-) -> Option<KeyboardEventData> {
-  let rx = {
-    let mut s = state.borrow_mut();
-    s.try_take::<KeyboardEventReceiver>()
-  };
-  dbg!(rx.is_some());
-  if let Some(mut rx) = rx {
-    let result = rx.0.recv().await;
-    dbg!(&result);
     state.borrow_mut().put(rx);
     result
   } else {
@@ -418,45 +404,6 @@ pub fn op_desktop_confirm_update(state: &mut OpState) {
   }
 }
 
-#[derive(serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-struct BindCallInfo {
-  name: String,
-  args: serde_json::Value,
-  call_id: u32,
-}
-
-#[op2]
-#[serde]
-async fn op_desktop_recv_bind_call(
-  state: std::rc::Rc<std::cell::RefCell<OpState>>,
-) -> Option<BindCallInfo> {
-  let rx = {
-    let mut s = state.borrow_mut();
-    s.try_take::<BindCallReceiver>()
-  };
-  if let Some(mut rx) = rx {
-    let result = rx.0.recv().await;
-    state.borrow_mut().put(rx);
-    if let Some(call) = result {
-      let call_id = BIND_CALL_COUNTER.fetch_add(1, Ordering::Relaxed);
-      {
-        let mut s = state.borrow_mut();
-        let responses = s.borrow_mut::<PendingBindResponses>();
-        responses.0.insert(call_id, call.response);
-      }
-      Some(BindCallInfo {
-        name: call.name,
-        args: call.args,
-        call_id,
-      })
-    } else {
-      None
-    }
-  } else {
-    std::future::pending().await
-  }
-}
 
 #[op2]
 fn op_desktop_resolve_bind_call(
@@ -464,8 +411,8 @@ fn op_desktop_resolve_bind_call(
   #[smi] call_id: u32,
   #[serde] result: serde_json::Value,
 ) {
-  if let Some(responses) = state.try_borrow_mut::<PendingBindResponses>() {
-    if let Some(tx) = responses.0.remove(&call_id) {
+  if let Some(responses) = state.try_borrow::<PendingBindResponses>() {
+    if let Some(tx) = responses.0.lock().unwrap().remove(&call_id) {
       let _ = tx.send(Ok(result));
     }
   }
@@ -477,8 +424,8 @@ fn op_desktop_reject_bind_call(
   #[smi] call_id: u32,
   #[string] error: String,
 ) {
-  if let Some(responses) = state.try_borrow_mut::<PendingBindResponses>() {
-    if let Some(tx) = responses.0.remove(&call_id) {
+  if let Some(responses) = state.try_borrow::<PendingBindResponses>() {
+    if let Some(tx) = responses.0.lock().unwrap().remove(&call_id) {
       let _ = tx.send(Err(error));
     }
   }
@@ -504,9 +451,7 @@ deno_core::extension!(
     op_desktop_apply_patch,
     op_desktop_confirm_update,
     op_desktop_init,
-    op_desktop_recv_menu_click,
-    op_desktop_recv_keyboard_event,
-    op_desktop_recv_bind_call,
+    op_desktop_recv_event,
     op_desktop_resolve_bind_call,
     op_desktop_reject_bind_call,
   ],
