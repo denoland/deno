@@ -690,17 +690,28 @@ export function prepareKey(key) {
     // If passphrase is provided, decrypt the key via native code and
     // re-export as unencrypted PEM for the encrypt/decrypt ops.
     if (passphrase != null) {
-      const keyFormat = format ?? (typeof data === "string" ? "pem" : "der");
-      const keyData = getArrayBufferOrView(data, "key", encoding);
-      const passphraseData = getArrayBufferOrView(passphrase, "passphrase");
-      const handle = op_node_create_private_key(
-        keyData,
-        keyFormat,
-        typ ?? "",
-        passphraseData,
-      );
-      const pem = op_node_export_private_key_pem(handle, "pkcs8", null, null);
-      return { data: getArrayBufferOrView(pem, "key") };
+      try {
+        const keyFormat = format ?? (typeof data === "string" ? "pem" : "der");
+        const keyData = getArrayBufferOrView(data, "key", encoding);
+        const passphraseData = getArrayBufferOrView(passphrase, "passphrase");
+        const handle = op_node_create_private_key(
+          keyData,
+          keyFormat,
+          typ ?? "",
+          passphraseData,
+        );
+        const pem = op_node_export_private_key_pem(
+          handle,
+          "pkcs8",
+          null,
+          null,
+        );
+        return { data: getArrayBufferOrView(pem, "key") };
+      } catch {
+        // Decryption failed (wrong passphrase, corrupt key, etc.)
+        // Fall through and return the raw data; the subsequent op will
+        // produce the appropriate Node-compatible error.
+      }
     }
 
     return { data: getArrayBufferOrView(data, "key", encoding) };

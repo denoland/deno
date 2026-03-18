@@ -1370,13 +1370,18 @@ impl KeyObjectHandle {
           )
         })?;
 
-        // Check for legacy encrypted PEM (Proc-Type headers) — these can't
+        // Check for legacy encrypted PEM (Proc-Type headers) -- these can't
         // be parsed by Document::from_pem, so handle them first by routing
-        // through the private key import path. Only check private key labels.
-        if (pem.contains("-----BEGIN RSA PRIVATE KEY-----")
-          || pem.contains("-----BEGIN EC PRIVATE KEY-----")
-          || pem.contains("-----BEGIN PRIVATE KEY-----"))
-          && pem.contains("Proc-Type: 4,ENCRYPTED")
+        // through the private key import path. Match the first PEM label at
+        // the start of a line to avoid false positives from embedded data.
+        if pem
+          .lines()
+          .any(|l| l.starts_with("Proc-Type: 4,ENCRYPTED"))
+          && pem.lines().any(|l| {
+            l == "-----BEGIN RSA PRIVATE KEY-----"
+              || l == "-----BEGIN EC PRIVATE KEY-----"
+              || l == "-----BEGIN PRIVATE KEY-----"
+          })
         {
           let handle = KeyObjectHandle::new_asymmetric_private_key_from_js(
             key, format, typ, passphrase,
@@ -3398,6 +3403,8 @@ fn encrypt_pkcs8_der(
   let mut iv = [0u8; 16];
   rng.fill_bytes(&mut iv);
 
+  // 100,000 iterations matches Node.js/OpenSSL default for PKCS#8 encryption.
+  // Note: aes-192-cbc is not supported by the pkcs8 crate's PBES2 params.
   let pbes2_params = match cipher {
     "aes-128-cbc" => pkcs8::pkcs5::pbes2::Parameters::pbkdf2_sha256_aes128cbc(
       100_000, &salt, &iv,
