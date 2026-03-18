@@ -252,6 +252,8 @@ impl LibUvStreamWrap {
   /// not on wrappers that borrow it (e.g. TLSWrap).
   pub(crate) fn detach_stream(&mut self) {
     if !self.stream.is_null() {
+      // SAFETY: stream pointer is non-null (checked above) and valid for the
+      // lifetime of the owning handle; we null it to prevent dangling access.
       unsafe {
         (*(self.stream as *mut uv_stream_t)).data = std::ptr::null_mut();
       }

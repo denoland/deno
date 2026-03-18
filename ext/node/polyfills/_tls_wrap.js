@@ -17,6 +17,7 @@ import {
   createSecureContext,
   translatePeerCertificate,
 } from "node:_tls_common";
+import { convertALPNProtocols } from "node:tls";
 import { Buffer } from "node:buffer";
 import {
   connResetException,
@@ -819,8 +820,7 @@ function Server(options, listener) {
   this.rejectUnauthorized = options.rejectUnauthorized !== false;
 
   if (options.ALPNProtocols) {
-    // TODO: tls.convertALPNProtocols
-    this.ALPNProtocols = options.ALPNProtocols;
+    convertALPNProtocols(options.ALPNProtocols, this);
   }
 
   this.setSecureContext(options);

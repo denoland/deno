@@ -108,13 +108,6 @@ impl TlsConnection {
     }
   }
 
-  fn wants_read(&self) -> bool {
-    match self {
-      TlsConnection::Client(c) => c.wants_read(),
-      TlsConnection::Server(c) => c.wants_read(),
-    }
-  }
-
   fn is_handshaking(&self) -> bool {
     match self {
       TlsConnection::Client(c) => c.is_handshaking(),
@@ -212,7 +205,6 @@ struct TlsCallbackData {
   /// Raw pointer back to the TLSWrap. Valid for the lifetime of the
   /// TLSWrap (we null it out on destroy).
   tls_wrap: *mut TLSWrapInner,
-  isolate: v8::UnsafeRawIsolatePtr,
 }
 
 // ---------------------------------------------------------------------------
@@ -321,9 +313,8 @@ fn rustls_error_to_node_error(e: &rustls::Error) -> (String, String) {
         "CERT_HAS_EXPIRED"
       } else if reason.contains("NotValidForName") {
         "ERR_TLS_CERT_ALTNAME_INVALID"
-      } else if reason.contains("CaUsedAsEndEntity") {
-        "UNABLE_TO_VERIFY_LEAF_SIGNATURE"
-      } else if reason.contains("IssuerNotCrlSigner")
+      } else if reason.contains("CaUsedAsEndEntity")
+        || reason.contains("IssuerNotCrlSigner")
         || reason.contains("InvalidPurpose")
       {
         "UNABLE_TO_VERIFY_LEAF_SIGNATURE"
@@ -426,6 +417,7 @@ impl TLSWrapInner {
     };
     self.cycling = true;
     self.clear_in();
+    // SAFETY: caller guarantees valid isolate/context pointers
     unsafe { self.clear_out() };
     self.enc_out();
     self.cycling = false;
@@ -649,6 +641,7 @@ impl TLSWrapInner {
     let req_ptr = &mut write_req.uv_req as *mut uv_write_t;
     let _ = Box::into_raw(write_req); // freed in enc_write_cb
 
+    // SAFETY: req_ptr and stream are valid pointers; req is reclaimed in enc_write_cb or on error
     unsafe {
       self.enc_writes_in_flight += 1;
       let ret =
@@ -682,6 +675,7 @@ impl TLSWrapInner {
       return;
     };
 
+    // SAFETY: isolate_ptr is valid while TLSWrap is alive; stream and loop pointers checked for null
     unsafe {
       let mut isolate = v8::Isolate::from_raw_isolate_ptr(*isolate_ptr);
       v8::scope!(let handle_scope, &mut isolate);
@@ -762,6 +756,7 @@ impl TLSWrapInner {
       return;
     };
 
+    // SAFETY: isolate_ptr is valid while TLSWrap is alive; stream and loop pointers checked for null
     unsafe {
       let mut isolate = v8::Isolate::from_raw_isolate_ptr(*isolate_ptr);
       v8::scope!(let handle_scope, &mut isolate);
@@ -815,6 +810,7 @@ impl TLSWrapInner {
       return;
     };
 
+    // SAFETY: isolate_ptr is valid while TLSWrap is alive; stream and loop pointers checked for null
     unsafe {
       let mut isolate = v8::Isolate::from_raw_isolate_ptr(*isolate_ptr);
       v8::scope!(let handle_scope, &mut isolate);
@@ -865,6 +861,7 @@ impl TLSWrapInner {
       return;
     };
 
+    // SAFETY: isolate_ptr is valid while TLSWrap is alive; stream and loop pointers checked for null
     unsafe {
       let mut isolate = v8::Isolate::from_raw_isolate_ptr(*isolate_ptr);
       v8::scope!(let handle_scope, &mut isolate);
@@ -914,6 +911,7 @@ unsafe extern "C" fn tls_alloc_cb(
   suggested_size: usize,
   buf: *mut uv_buf_t,
 ) {
+  // SAFETY: buf pointer is valid and provided by libuv; layout size comes from libuv's suggested_size
   unsafe {
     let layout =
       std::alloc::Layout::from_size_align(suggested_size, 1).unwrap();
@@ -935,6 +933,7 @@ unsafe extern "C" fn tls_read_cb(
   nread: isize,
   buf: *const uv_buf_t,
 ) {
+  // SAFETY: stream, buf, and cb_data pointers are valid; set up during attach/start
   unsafe {
     let cb_data_ptr = (*stream).data as *mut TlsCallbackData;
     if cb_data_ptr.is_null() {
@@ -984,6 +983,7 @@ unsafe extern "C" fn tls_read_cb(
 }
 
 fn free_uv_buf(buf: *const uv_buf_t) {
+  // SAFETY: buf was allocated in tls_alloc_cb with matching layout
   unsafe {
     if !(*buf).base.is_null() && (*buf).len > 0 {
       let layout = std::alloc::Layout::from_size_align((*buf).len, 1).unwrap();
@@ -994,6 +994,7 @@ fn free_uv_buf(buf: *const uv_buf_t) {
 
 /// Callback for when encrypted write to underlying stream completes.
 unsafe extern "C" fn enc_write_cb(req: *mut uv_write_t, status: i32) {
+  // SAFETY: req was created via Box::into_raw in enc_out; tls_wrap_inner is valid if non-null
   unsafe {
     let write_req = Box::from_raw(req as *mut EncryptedWriteReq);
     if !write_req.tls_wrap_inner.is_null() {
@@ -1032,6 +1033,7 @@ pub struct TLSWrap {
   inner: RefCell<Box<TLSWrapInner>>,
 }
 
+// SAFETY: TLSWrap is CppGC-managed; trace correctly visits the base member
 unsafe impl GarbageCollected for TLSWrap {
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"TLSWrap"
@@ -1067,6 +1069,7 @@ impl TLSWrap {
     inner.bytes_written += byte_length as u64;
 
     if byte_length == 0 {
+      // SAFETY: isolate/context pointers are valid within this op call
       unsafe { inner.clear_out() };
       inner.enc_out();
       return 0;
@@ -1129,6 +1132,7 @@ impl TLSWrap {
       let mut inner = self.inner.borrow_mut();
       let inner_ptr: *mut TLSWrapInner = &mut **inner;
       drop(inner);
+      // SAFETY: inner_ptr points to heap-allocated TLSWrapInner; RefMut dropped to avoid conflicts
       unsafe { (*inner_ptr).invoke_queued(UV_ECANCELED) };
     }
 
@@ -1136,6 +1140,7 @@ impl TLSWrap {
 
     // Restore original data pointer on underlying stream
     if !inner.underlying_stream.is_null() {
+      // SAFETY: underlying_stream is non-null and was set during attach
       unsafe {
         (*inner.underlying_stream).data = inner.original_stream_data;
       }
@@ -1258,6 +1263,7 @@ impl TLSWrap {
 
     let mut inner = self.inner.borrow_mut();
     inner.underlying_stream = stream;
+    // SAFETY: scope is valid for the current isolate
     inner.isolate = Some(unsafe { scope.as_raw_isolate_ptr() });
 
     // Get stream_base_state from OpState
@@ -1266,6 +1272,7 @@ impl TLSWrap {
       Some(v8::Global::new(scope, v8::Local::new(scope, state_global)));
 
     // Save original data pointer (but don't replace yet - connect_cb needs it)
+    // SAFETY: stream is non-null (checked above)
     unsafe {
       inner.original_stream_data = (*stream).data;
     }
@@ -1273,7 +1280,6 @@ impl TLSWrap {
     // Create callback data (installed on stream later in start())
     let cb_data = Box::new(TlsCallbackData {
       tls_wrap: &mut **inner as *mut TLSWrapInner,
-      isolate: unsafe { scope.as_raw_isolate_ptr() },
     });
     inner.cb_data = Some(cb_data);
 
@@ -1354,6 +1360,7 @@ impl TLSWrap {
     {
       let cb_data_ptr =
         &**cb_data as *const TlsCallbackData as *mut std::ffi::c_void;
+      // SAFETY: underlying_stream is non-null (checked above)
       unsafe {
         (*inner.underlying_stream).data = cb_data_ptr;
       }
@@ -1361,6 +1368,7 @@ impl TLSWrap {
 
     // Start reading from the underlying stream (both client and server need this)
     if !inner.underlying_stream.is_null() {
+      // SAFETY: underlying_stream is a valid libuv stream handle
       unsafe {
         uv_compat::uv_read_start(
           inner.underlying_stream,
@@ -1372,6 +1380,7 @@ impl TLSWrap {
 
     // For client mode, initiate handshake by cycling.
     if inner.kind == Kind::Client {
+      // SAFETY: isolate/context are valid; called during op execution
       unsafe {
         inner.clear_out();
         inner.enc_out();
@@ -1409,6 +1418,7 @@ impl TLSWrap {
     let should_cycle;
     if !inner.underlying_stream.is_null() && inner.started {
       should_cycle = !inner.enc_in.is_empty() || inner.has_buffered_cleartext;
+      // SAFETY: underlying_stream is a valid libuv stream handle (non-null checked above)
       unsafe {
         uv_compat::uv_read_start(
           inner.underlying_stream,
@@ -1443,6 +1453,7 @@ impl TLSWrap {
   fn read_stop(&self) -> i32 {
     let inner = self.inner.borrow();
     if !inner.underlying_stream.is_null() {
+      // SAFETY: underlying_stream is a valid libuv stream handle
       unsafe {
         uv_compat::uv_read_stop(inner.underlying_stream);
       }
@@ -1474,6 +1485,7 @@ impl TLSWrap {
           let byte_off = buf.byte_offset();
           let ab = buf.buffer(scope).unwrap();
           let ptr = ab.data().unwrap().as_ptr() as *const u8;
+          // SAFETY: ptr + offset is within the ArrayBuffer backing store
           let slice =
             unsafe { std::slice::from_raw_parts(ptr.add(byte_off), byte_len) };
           data.extend_from_slice(slice);
@@ -1491,6 +1503,7 @@ impl TLSWrap {
           let byte_off = buf.byte_offset();
           let ab = buf.buffer(scope).unwrap();
           let ptr = ab.data().unwrap().as_ptr() as *const u8;
+          // SAFETY: ptr + offset is within the ArrayBuffer backing store
           let slice =
             unsafe { std::slice::from_raw_parts(ptr.add(byte_off), byte_len) };
           data.extend_from_slice(slice);
@@ -1506,6 +1519,7 @@ impl TLSWrap {
             v8::WriteFlags::kReplaceInvalidUtf8,
             None,
           );
+          // SAFETY: written bytes are initialized by write_utf8_uninit_v2
           unsafe { buf.set_len(written) };
           data.extend_from_slice(&buf);
         }
@@ -1529,6 +1543,7 @@ impl TLSWrap {
     let byte_offset = buffer.byte_offset();
     let ab = buffer.buffer(scope).unwrap();
     let data_ptr = ab.data().unwrap().as_ptr() as *const u8;
+    // SAFETY: ptr + offset is within the ArrayBuffer backing store
     let data = unsafe {
       std::slice::from_raw_parts(data_ptr.add(byte_offset), byte_length)
     };
@@ -1553,6 +1568,7 @@ impl TLSWrap {
       v8::WriteFlags::kReplaceInvalidUtf8,
       None,
     );
+    // SAFETY: written bytes are initialized by write_utf8_uninit_v2
     unsafe { buf.set_len(written) };
     self.write_data(req_wrap_obj, &buf, scope, op_state)
   }
@@ -1574,6 +1590,7 @@ impl TLSWrap {
       v8::WriteFlags::kReplaceInvalidUtf8,
       None,
     );
+    // SAFETY: written bytes are initialized by write_utf8_uninit_v2
     unsafe { buf.set_len(written) };
     self.write_data(req_wrap_obj, &buf, scope, op_state)
   }
@@ -1595,6 +1612,7 @@ impl TLSWrap {
       buf.spare_capacity_mut(),
       v8::WriteFlags::empty(),
     );
+    // SAFETY: len bytes are initialized by write_one_byte_uninit_v2
     unsafe { buf.set_len(len) };
     self.write_data(req_wrap_obj, &buf, scope, op_state)
   }
@@ -1645,6 +1663,7 @@ impl TLSWrap {
       if !inner.underlying_stream.is_null() {
         let req = Box::new(uv_compat::new_shutdown());
         let req_ptr = Box::into_raw(req);
+        // SAFETY: underlying_stream is non-null (checked above); req_ptr reclaimed on error
         unsafe {
           let ret =
             uv_compat::uv_shutdown(req_ptr, inner.underlying_stream, None);
@@ -1918,6 +1937,7 @@ impl TLSWrap {
   fn receive(&self, #[buffer] data: &[u8]) {
     let mut inner = self.inner.borrow_mut();
     inner.enc_in.extend_from_slice(data);
+    // SAFETY: called during op execution with valid isolate/context
     unsafe { inner.cycle() };
   }
 
@@ -2456,60 +2476,3 @@ fn build_server_config(
   )
 }
 
-/// A cert resolver that always returns None — used when a server is created
-/// without cert/key. The handshake will fail with a "no certificate" error,
-/// matching Node/OpenSSL behavior where the error surfaces at handshake time.
-#[derive(Debug)]
-struct NoCertResolver;
-
-impl rustls::server::ResolvesServerCert for NoCertResolver {
-  fn resolve(
-    &self,
-    _client_hello: rustls::server::ClientHello<'_>,
-  ) -> Option<Arc<rustls::sign::CertifiedKey>> {
-    None
-  }
-}
-
-/// A certificate verifier that accepts anything (for rejectUnauthorized=false).
-#[derive(Debug)]
-struct UnsafeCertVerifier;
-
-impl rustls::client::danger::ServerCertVerifier for UnsafeCertVerifier {
-  fn verify_server_cert(
-    &self,
-    _end_entity: &rustls::pki_types::CertificateDer<'_>,
-    _intermediates: &[rustls::pki_types::CertificateDer<'_>],
-    _server_name: &rustls::pki_types::ServerName<'_>,
-    _ocsp_response: &[u8],
-    _now: rustls::pki_types::UnixTime,
-  ) -> Result<rustls::client::danger::ServerCertVerified, rustls::Error> {
-    Ok(rustls::client::danger::ServerCertVerified::assertion())
-  }
-
-  fn verify_tls12_signature(
-    &self,
-    _message: &[u8],
-    _cert: &rustls::pki_types::CertificateDer<'_>,
-    _dss: &rustls::DigitallySignedStruct,
-  ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error>
-  {
-    Ok(rustls::client::danger::HandshakeSignatureValid::assertion())
-  }
-
-  fn verify_tls13_signature(
-    &self,
-    _message: &[u8],
-    _cert: &rustls::pki_types::CertificateDer<'_>,
-    _dss: &rustls::DigitallySignedStruct,
-  ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error>
-  {
-    Ok(rustls::client::danger::HandshakeSignatureValid::assertion())
-  }
-
-  fn supported_verify_schemes(&self) -> Vec<rustls::SignatureScheme> {
-    rustls::crypto::ring::default_provider()
-      .signature_verification_algorithms
-      .supported_schemes()
-  }
-}

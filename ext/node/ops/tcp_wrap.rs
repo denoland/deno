@@ -45,6 +45,7 @@ pub struct TCPWrap {
   pub(crate) handle: Option<OwnedPtr<uv_tcp_t>>,
 }
 
+// SAFETY: TCPWrap correctly traces its CppGc member (base) in the trace method.
 unsafe impl GarbageCollected for TCPWrap {
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"TCPWrap"
@@ -80,6 +81,7 @@ impl TCPWrap {
     };
 
     if err == 0 {
+      // SAFETY: uv_tcp_init succeeded (err == 0), so the uv_tcp_t is fully initialized.
       let tcp = unsafe { tcp.cast::<uv_tcp_t>() };
       let base = LibUvStreamWrap::new(
         HandleWrap::create(
@@ -89,6 +91,7 @@ impl TCPWrap {
         fd,
         tcp.as_ptr().cast(),
       );
+      // SAFETY: tcp pointer is valid and initialized; setting data field for libuv callbacks.
       unsafe {
         (*tcp.as_mut_ptr()).data = base.handle_data_ptr();
       }
@@ -342,6 +345,7 @@ impl TCPWrap {
     let Some(ref handle) = self.handle else {
       return UV_EBADF;
     };
+    // SAFETY: handle is valid, initialized by uv_tcp_init in constructor.
     let err = unsafe { uv_tcp_open(handle.as_mut_ptr(), fd) };
     if err == 0 {
       self.base.set_fd(fd);
@@ -372,12 +376,13 @@ impl TCPWrap {
     // Cannot set IPV6 flags on IPv4 socket
     let flags = flags & !UV_TCP_IPV6ONLY;
 
+    // SAFETY: handle is a valid uv_tcp_t; sock_addr is valid for the duration of the call.
     unsafe {
       let sock_addr = socket2::SockAddr::from(socket_addr);
       uv_tcp_bind(
         handle.as_mut_ptr(),
         sock_addr.as_ptr() as *const c_void,
-        #[allow(clippy::unnecessary_cast)]
+        #[allow(clippy::unnecessary_cast, reason = "socklen_t may not be u32 on all platforms")]
         {
           sock_addr.len() as u32
         },
@@ -407,12 +412,13 @@ impl TCPWrap {
 
     let flags = flags.unwrap_or(0);
 
+    // SAFETY: handle is a valid uv_tcp_t; sock_addr is valid for the duration of the call.
     unsafe {
       let sock_addr = socket2::SockAddr::from(socket_addr);
       uv_tcp_bind(
         handle.as_mut_ptr(),
         sock_addr.as_ptr() as *const c_void,
-        #[allow(clippy::unnecessary_cast)]
+        #[allow(clippy::unnecessary_cast, reason = "socklen_t may not be u32 on all platforms")]
         {
           sock_addr.len() as u32
         },
@@ -427,6 +433,7 @@ impl TCPWrap {
       return UV_EBADF;
     };
 
+    // SAFETY: handle is a valid uv_tcp_t which can be cast to uv_stream_t for uv_listen.
     unsafe {
       uv_listen(
         handle.as_mut_ptr() as *mut deno_core::uv_compat::uv_stream_t,
@@ -451,6 +458,8 @@ impl TCPWrap {
       Err(_) => return UV_EINVAL,
     };
 
+    // SAFETY: handle is valid; ConnectReq is heap-allocated and freed in after_connect callback.
+    // mem::zeroed is safe for uv_connect_t (plain C struct). On error, req is reclaimed immediately.
     unsafe {
       let sock_addr = socket2::SockAddr::from(socket_addr);
       let mut connect_req = Box::new(ConnectReq {
@@ -486,6 +495,8 @@ impl TCPWrap {
       Err(_) => return UV_EINVAL,
     };
 
+    // SAFETY: handle is valid; ConnectReq is heap-allocated and freed in after_connect callback.
+    // mem::zeroed is safe for uv_connect_t (plain C struct). On error, req is reclaimed immediately.
     unsafe {
       let sock_addr = socket2::SockAddr::from(socket_addr);
       let mut connect_req = Box::new(ConnectReq {
@@ -516,6 +527,7 @@ impl TCPWrap {
       return UV_EBADF;
     };
 
+    // SAFETY: handle is valid; storage is written by uv_tcp_getsockname before assume_init.
     unsafe {
       let mut storage = std::mem::MaybeUninit::<socket2::SockAddr>::uninit();
       let mut len = std::mem::size_of::<socket2::SockAddr>() as i32;
@@ -545,6 +557,7 @@ impl TCPWrap {
       return UV_EBADF;
     };
 
+    // SAFETY: handle is valid; storage is written by uv_tcp_getpeername before assume_init.
     unsafe {
       let mut storage = std::mem::MaybeUninit::<socket2::SockAddr>::uninit();
       let mut len = std::mem::size_of::<socket2::SockAddr>() as i32;
@@ -570,6 +583,7 @@ impl TCPWrap {
     let Some(ref handle) = self.handle else {
       return UV_EBADF;
     };
+    // SAFETY: handle is a valid, initialized uv_tcp_t.
     unsafe { uv_tcp_nodelay(handle.as_mut_ptr(), enable as i32) }
   }
 
@@ -579,6 +593,7 @@ impl TCPWrap {
     let Some(ref handle) = self.handle else {
       return UV_EBADF;
     };
+    // SAFETY: handle is a valid, initialized uv_tcp_t.
     unsafe { uv_tcp_keepalive(handle.as_mut_ptr(), enable as i32, delay) }
   }
 
@@ -591,6 +606,7 @@ impl TCPWrap {
       return UV_EBADF;
     };
 
+    // SAFETY: both server and client handles are valid uv_tcp_t, castable to uv_stream_t.
     unsafe {
       uv_accept(
         server_handle.as_mut_ptr() as *mut deno_core::uv_compat::uv_stream_t,
@@ -617,6 +633,7 @@ impl TCPWrap {
 
     // uv_tcp_close_reset sets SO_LINGER to zero and calls uv_close
     // internally, which handles the native handle cleanup.
+    // SAFETY: handle is a valid uv_tcp_t; uv_tcp_close_reset sets SO_LINGER and closes.
     let err = unsafe {
       deno_core::uv_compat::uv_tcp_close_reset(handle.as_mut_ptr(), None)
     };
