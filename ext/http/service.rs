@@ -157,7 +157,10 @@ impl std::ops::Deref for HttpServerState {
 
 enum RequestBodyState {
   Incoming(Incoming),
-  Resource(#[allow(dead_code)] HttpRequestBodyAutocloser),
+  Resource(
+    #[allow(dead_code, reason = "prevent drop until variant is dropped")]
+    HttpRequestBodyAutocloser,
+  ),
 }
 
 impl From<Incoming> for RequestBodyState {
@@ -183,7 +186,7 @@ impl Drop for HttpRequestBodyAutocloser {
   }
 }
 
-#[allow(clippy::collapsible_if)] // for logic clarity
+#[allow(clippy::collapsible_if, reason = "for logic clarity")]
 fn validate_request(req: &Request) -> bool {
   if req.uri() == "*" {
     if req.method() != http::Method::OPTIONS {
@@ -321,10 +324,8 @@ fn trust_proxy_headers() -> bool {
 
   *TRUST_PROXY_HEADERS.get_or_init(|| {
     if let Some(v) = std::env::var_os(VAR_NAME) {
-      #[allow(clippy::undocumented_unsafe_blocks)]
-      unsafe {
-        std::env::remove_var(VAR_NAME)
-      };
+      // SAFETY: called once during single-threaded init via OnceLock
+      unsafe { std::env::remove_var(VAR_NAME) };
       v == "1"
     } else {
       false
@@ -360,7 +361,7 @@ impl HttpRecord {
           RECORD_COUNT.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         }
 
-        #[allow(clippy::let_and_return)]
+        #[allow(clippy::let_and_return, reason = "depends on cfg")]
         let record = Rc::new(Self(RefCell::new(None)));
         http_trace!(record, "HttpRecord::new");
         record

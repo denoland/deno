@@ -1,5 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::future::Future;
@@ -141,7 +142,7 @@ impl PrintConfig {
 
 fn create_print_after_restart_fn(clear_screen: bool) -> impl Fn() {
   move || {
-    #[allow(clippy::print_stderr)]
+    #[allow(clippy::print_stderr, reason = "want to clear the terminal")]
     if clear_screen && std::io::stderr().is_terminal() {
       eprint!("{}", CLEAR_SCREEN);
     }
@@ -304,8 +305,10 @@ where
   ) -> Result<F, AnyError>,
   F: Future<Output = Result<(), AnyError>>,
 {
-  let initial_cwd_url = flags
-    .initial_cwd
+  let initial_cwd = crate::util::env::resolve_cwd(flags.initial_cwd.as_deref())
+    .map(|cwd| cwd.into_owned())
+    .ok();
+  let initial_cwd_url = initial_cwd
     .as_ref()
     .and_then(|path| deno_path_util::url_from_directory_path(path).ok());
   let exclude_set = flags.resolve_watch_exclude_set()?;
@@ -368,20 +371,18 @@ where
         add_paths_to_watcher(&mut watcher, &maybe_paths.unwrap(), &exclude_set);
       }
     };
-    let env_file_paths: Option<Vec<PathBuf>> =
-      flags.env_file.as_ref().map(|files| {
-        files
-          .iter()
-          .map(|file| match flags.initial_cwd.as_ref() {
-            Some(cwd) => cwd.join(file),
-            None => PathBuf::from(file),
-          })
-          .collect()
-      });
-    WatchEnvTracker::snapshot().load_env_variables_from_env_files(
-      env_file_paths.as_ref(),
-      flags.log_level,
-    );
+    let snapshot = WatchEnvTracker::snapshot();
+    if let Some(env_files) = &flags.env_file {
+      let cwd = initial_cwd
+        .as_deref()
+        .map(Cow::Borrowed)
+        .unwrap_or_else(|| Cow::Owned(PathBuf::from(".")));
+      snapshot.load_env_variables_from_env_files(
+        &cwd,
+        env_files,
+        flags.log_level,
+      );
+    }
     let operation_future = error_handler(
       operation(
         flags.clone(),

@@ -89,7 +89,7 @@ pub fn fmt_duration(time: f64) -> String {
 }
 
 pub mod cpu {
-  #![allow(dead_code)]
+  #![allow(dead_code, reason = "for certain platforms")]
 
   pub fn name() -> String {
     #[cfg(target_os = "linux")]
@@ -99,7 +99,7 @@ pub mod cpu {
     #[cfg(target_os = "windows")]
     return windows();
 
-    #[allow(unreachable_code)]
+    #[allow(unreachable_code, reason = "for certain platforms")]
     {
       "unknown".to_string()
     }

@@ -19,7 +19,10 @@ where
   T: Send + 'static,
 {
   let captured_buffer = OUTPUT_BUFFER.with(|buffer| buffer.borrow().clone());
-  #[allow(clippy::disallowed_methods)]
+  #[allow(
+    clippy::disallowed_methods,
+    reason = "implementation of the method the ling lint recommends using"
+  )]
   std::thread::spawn(|| {
     OUTPUT_BUFFER.with(|buffer| {
       *buffer.borrow_mut() = captured_buffer;

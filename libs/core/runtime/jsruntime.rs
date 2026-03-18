@@ -114,7 +114,7 @@ pub(crate) struct IsolateAllocations {
 pub(crate) struct ManuallyDropRc<T>(ManuallyDrop<Rc<T>>);
 
 impl<T> ManuallyDropRc<T> {
-  #[allow(unused)]
+  #[allow(unused, reason = "used in other configurations")]
   pub fn clone(&self) -> Rc<T> {
     self.0.deref().clone()
   }
@@ -182,7 +182,7 @@ impl InnerIsolateState {
 
     // Unregister isolate waker before dropping the isolate
     let isolate_ptr = unsafe { self.v8_isolate.as_raw_isolate_ptr() };
-    setup::unregister_isolate_waker(setup::isolate_ptr_to_key(isolate_ptr));
+    setup::unregister_isolate(setup::isolate_ptr_to_key(isolate_ptr));
 
     let state_ptr = self.v8_isolate.get_data(STATE_DATA_OFFSET);
     // SAFETY: We are sure that it's a valid pointer for whole lifetime of
@@ -237,7 +237,10 @@ impl Drop for InnerIsolateState {
 
       if self.will_snapshot {
         // Create the snapshot and just drop it.
-        #[allow(clippy::print_stderr)]
+        #[allow(
+          clippy::print_stderr,
+          reason = "intentional warning about leaked isolate"
+        )]
         {
           eprintln!("WARNING: v8::OwnedIsolate for snapshot was leaked");
         }
@@ -454,7 +457,10 @@ pub struct JsRuntimeState {
   pub(crate) function_templates: Rc<RefCell<FunctionTemplateData>>,
   pub(crate) callsite_prototype: RefCell<Option<v8::Global<v8::Object>>>,
   waker: Arc<AtomicWaker>,
-  safety_net_active: Arc<std::sync::atomic::AtomicBool>,
+  /// Foreground V8 tasks queued by the custom platform. Shared with the
+  /// global isolate registry so background threads can push tasks, while
+  /// the event loop drains them without touching the global map.
+  foreground_tasks: setup::ForegroundTaskQueue,
   /// Accessed through [`JsRuntimeState::with_inspector`].
   inspector: RefCell<Option<Rc<JsRuntimeInspector>>>,
   has_inspector: Cell<bool>,
@@ -583,19 +589,9 @@ impl RuntimeOptions {
   }
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Default)]
 pub struct PollEventLoopOptions {
   pub wait_for_inspector: bool,
-  pub pump_v8_message_loop: bool,
-}
-
-impl Default for PollEventLoopOptions {
-  fn default() -> Self {
-    Self {
-      wait_for_inspector: false,
-      pump_v8_message_loop: true,
-    }
-  }
 }
 
 #[derive(Default)]
@@ -782,7 +778,7 @@ impl JsRuntime {
         eval_context_set_code_cache_cb,
       ),
       waker: waker.clone(),
-      safety_net_active: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+      foreground_tasks: Default::default(),
       // Some fields are initialized later after isolate is created
       inspector: None.into(),
       has_inspector: false.into(),
@@ -859,12 +855,19 @@ impl JsRuntime {
 
     let isolate_ptr = unsafe { isolate.as_raw_isolate_ptr() };
 
-    // Register this isolate's waker so the custom platform can wake
-    // the event loop when V8 posts foreground tasks from background threads.
-    setup::register_isolate_waker(
-      setup::isolate_ptr_to_key(isolate_ptr),
-      waker.clone(),
-    );
+    // Register this isolate in the global platform registry so V8 background
+    // threads can queue foreground tasks. The task queue Arc is already shared
+    // with JsRuntimeState (created above) so the event loop can drain it
+    // without touching the global map.
+    // Not all contexts have a tokio runtime (e.g. snapshot creation, unit tests).
+    if let Ok(handle) = tokio::runtime::Handle::try_current() {
+      setup::register_isolate(
+        setup::isolate_ptr_to_key(isolate_ptr),
+        waker.clone(),
+        handle,
+        state_rc.foreground_tasks.clone(),
+      );
+    }
 
     // ...isolate is fully set up, we can forward its pointer to the ops to finish
     // their' setup...
@@ -1649,6 +1652,12 @@ impl JsRuntime {
     self.inner.state.op_state.clone()
   }
 
+  /// Returns the runtime's source mapper, which can be used to apply
+  /// source maps to file locations.
+  pub fn source_mapper(&self) -> Rc<RefCell<crate::source_map::SourceMapper>> {
+    self.inner.state.source_mapper.clone()
+  }
+
   /// Register a `uv_loop_t` with the runtime so that its event loop phases
   /// (timers, I/O, idle, prepare, check, close) are driven by
   /// `poll_event_loop`.
@@ -1893,32 +1902,6 @@ impl JsRuntime {
     }
   }
 
-  fn pump_v8_message_loop(
-    &self,
-    scope: &mut v8::PinScope,
-  ) -> Result<(), Box<JsError>> {
-    while v8::Platform::pump_message_loop(
-      &v8::V8::get_current_platform(),
-      scope,
-      false, // don't block if there are no tasks
-    ) {
-      // do nothing
-    }
-
-    v8::tc_scope!(let tc_scope, scope);
-
-    let context_state = JsRealm::state_from_scope(tc_scope);
-    if !context_state.has_tick_scheduled() {
-      tc_scope.perform_microtask_checkpoint();
-    }
-    match tc_scope.exception() {
-      None => Ok(()),
-      Some(exception) => {
-        exception_to_err_result(tc_scope, exception, false, true)
-      }
-    }
-  }
-
   pub fn maybe_init_inspector(&mut self) {
     let inspector = &mut self.inner.state.inspector.borrow_mut();
     if inspector.is_some() {
@@ -2121,12 +2104,31 @@ impl JsRuntime {
     let has_inspector = self.inner.state.has_inspector.get();
     self.inner.state.waker.register(cx.waker());
 
-    // Pre-phase: Inspector + V8 message loop pump
+    // Pre-phase: Inspector + drain foreground tasks + microtask checkpoint
     if has_inspector {
       self.inspector().poll_sessions_from_event_loop(cx);
     }
-    if poll_options.pump_v8_message_loop {
-      self.pump_v8_message_loop(scope)?;
+    {
+      // Drain and run foreground tasks queued by the custom V8 platform.
+      // Uses the local Arc shared with the registry — no global map lookup.
+      let tasks =
+        std::mem::take(&mut *self.inner.state.foreground_tasks.lock().unwrap());
+      for task in tasks {
+        task.run();
+      }
+
+      v8::tc_scope!(let tc_scope, scope);
+      let context_state = JsRealm::state_from_scope(tc_scope);
+      if !context_state.has_tick_scheduled() {
+        tc_scope.perform_microtask_checkpoint();
+      }
+      if let Some(exception) = tc_scope.exception() {
+        return Poll::Ready(Err(
+          exception_to_err_result::<()>(tc_scope, exception, false, true)
+            .unwrap_err()
+            .into(),
+        ));
+      }
     }
 
     let realm = &self.inner.main_realm;
@@ -2282,26 +2284,12 @@ impl JsRuntime {
       scope.perform_microtask_checkpoint();
     }
 
-    // Safety net: if V8 has pending background tasks (e.g. module compilation),
-    // schedule a delayed wake to pump the message loop in case the platform
-    // callback was missed due to a race condition.
-    if pending_state.has_pending_background_tasks
-      && !self
-        .inner
-        .state
-        .safety_net_active
-        .swap(true, std::sync::atomic::Ordering::SeqCst)
-    {
-      cx.waker().wake_by_ref();
-      self
-        .inner
-        .state
-        .safety_net_active
-        .store(false, std::sync::atomic::Ordering::SeqCst);
-    }
-
     // Re-wake logic for next iteration
-    #[allow(clippy::suspicious_else_formatting, clippy::if_same_then_else)]
+    #[allow(
+      clippy::suspicious_else_formatting,
+      clippy::if_same_then_else,
+      reason = "intentional structure for clarity of re-wake conditions"
+    )]
     {
       if pending_state.has_pending_background_tasks
         || pending_state.has_tick_scheduled
@@ -2329,6 +2317,7 @@ impl JsRuntime {
         || pending_state.has_pending_external_ops
         || pending_state.has_tick_scheduled
         || pending_state.has_refed_immediates > 0
+        || pending_state.has_uv_alive_handles
       {
         // pass, will be polled again
       } else {
@@ -2348,6 +2337,7 @@ impl JsRuntime {
         || pending_state.has_pending_external_ops
         || pending_state.has_tick_scheduled
         || pending_state.has_refed_immediates > 0
+        || pending_state.has_uv_alive_handles
       {
         // pass, will be polled again
       } else if realm.modules_idle() {
@@ -3171,7 +3161,10 @@ fn mark_as_loaded_from_fs_during_snapshot(
   files_loaded: &mut Vec<&'static str>,
   source: &ExtensionFileSourceCode,
 ) {
-  #[allow(deprecated)]
+  #[allow(
+    deprecated,
+    reason = "needed for compatibility with snapshot loading"
+  )]
   if let ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(path) = source {
     files_loaded.push(path);
   }

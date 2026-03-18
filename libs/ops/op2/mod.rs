@@ -142,7 +142,7 @@ impl From<Op2Error> for syn::Error {
 }
 
 #[derive(Debug, Error)]
-#[allow(clippy::enum_variant_names)]
+#[allow(clippy::enum_variant_names, reason = "it's more clear")]
 pub enum V8SignatureMappingError {
   #[error("Unable to map return value {2:?} to {1}")]
   NoRetValMapping(Span, V8MappingError, Box<RetVal>),
@@ -498,6 +498,9 @@ mod kw {
 
 #[cfg(test)]
 mod tests {
+  #![allow(clippy::disallowed_methods, reason = "test code")]
+  #![allow(clippy::print_stdout, reason = "test code")]
+
   use std::path::PathBuf;
 
   use pretty_assertions::assert_eq;
