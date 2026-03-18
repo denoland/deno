@@ -1672,6 +1672,8 @@
     "parallel/test-process-env-sideeffects.js": {},
     "parallel/test-process-env-tz.js": {},
     "parallel/test-process-env-windows-error-reset.js": {},
+    "parallel/test-process-execve-validation.js": { "windows": false },
+    "parallel/test-process-execve-worker-threads.js": { "windows": false },
     "parallel/test-process-exit-from-before-exit.js": {},
     "parallel/test-process-exit-handler.js": {},
     "parallel/test-process-exit-recursive.js": {},

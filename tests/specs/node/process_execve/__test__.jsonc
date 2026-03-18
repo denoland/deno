@@ -1,0 +1,9 @@
+{
+  "tests": {
+    "execve": {
+      "if": "unix",
+      "args": "run -A main.mjs",
+      "output": "main.out"
+    }
+  }
+}
