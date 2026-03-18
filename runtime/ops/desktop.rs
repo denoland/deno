@@ -7,14 +7,18 @@
 //! builds), the ops silently no-op.
 
 use std::borrow::Cow;
+use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
+use std::sync::atomic::AtomicU32;
+use std::sync::atomic::Ordering;
 
-use deno_core::{FromV8};
-use deno_core::{ToV8};
+use deno_core::FromV8;
 use deno_core::OpState;
+use deno_core::ToV8;
 use deno_core::op2;
+use deno_core::serde_json;
 use deno_core::v8;
 
 /// Channel for receiving menu click events in the Deno runtime.
@@ -52,6 +56,41 @@ pub fn create_keyboard_event_channel(
   (KeyboardEventSender(tx), KeyboardEventReceiver(rx))
 }
 
+/// A pending call from the webview to a bound Deno function.
+pub struct PendingBindCall {
+  pub name: String,
+  pub args: serde_json::Value,
+  pub response:
+    tokio::sync::oneshot::Sender<Result<serde_json::Value, String>>,
+}
+
+pub struct BindCallReceiver(
+  pub tokio::sync::mpsc::UnboundedReceiver<PendingBindCall>,
+);
+pub struct BindCallSender(
+  pub tokio::sync::mpsc::UnboundedSender<PendingBindCall>,
+);
+
+pub fn create_bind_call_channel() -> (BindCallSender, BindCallReceiver) {
+  let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+  (BindCallSender(tx), BindCallReceiver(rx))
+}
+
+pub struct PendingBindResponses(
+  pub HashMap<
+    u32,
+    tokio::sync::oneshot::Sender<Result<serde_json::Value, String>>,
+  >,
+);
+
+impl PendingBindResponses {
+  pub fn new() -> Self {
+    Self(HashMap::new())
+  }
+}
+
+static BIND_CALL_COUNTER: AtomicU32 = AtomicU32::new(1);
+
 /// Trait for desktop window operations. Implemented by the desktop
 /// runtime (denort_desktop) to bridge to the WEF backend.
 pub trait DesktopApi: Send + Sync + 'static {
@@ -73,16 +112,11 @@ pub trait DesktopApi: Send + Sync + 'static {
   fn hide(&self);
   fn focus(&self);
 
-  fn bind<'a>(
-    &self,
-    name: &str,
-    scope: &mut v8::PinScope<'a, '_>,
-    cb: v8::Local<'a, v8::Function>,
-  );
+  fn bind(&self, name: &str);
   fn unbind(&self, name: &str);
 
   fn navigate(&self, url: &str);
-  fn execute_js<'a>(&self, scope: &mut v8::PinScope<'a, '_>, script: &str) -> Pin<Box<dyn Future<Output = Result<v8::Local<'a, v8::Value>, v8::Local<'a, v8::Value>>> + 'a>>;
+  fn execute_js<'a>(&self, scope: &'a mut v8::PinScope<'a, '_>, script: &str) -> Pin<Box<dyn Future<Output = Result<v8::Local<'a, v8::Value>, v8::Local<'a, v8::Value>>> + 'a>>;
   fn quit(&self);
   fn set_application_menu(&self, template_json: &str);
 }
@@ -126,19 +160,20 @@ impl BrowserWindow {
         options.width.unwrap_or(800),
         options.height.unwrap_or(600),
       );
+      if let Some(resizable) = options.resizable {
+        api.set_resizeable(resizable);
+      }
+      if let Some(always_on_top) = options.always_on_top {
+        api.set_always_on_top(always_on_top);
+      }
     }
 
     BrowserWindow { api }
   }
 
   #[fast]
-  fn bind<'a>(
-    &self,
-    scope: &mut v8::PinScope<'a, '_>,
-    #[string] name: &str,
-    cb: v8::Local<'a, v8::Function>,
-  ) {
-    self.api.bind(name, scope, cb);
+  fn bind(&self, #[string] name: &str) {
+    self.api.bind(name);
   }
 
   #[fast]
@@ -364,6 +399,72 @@ pub fn op_desktop_confirm_update(state: &mut OpState) {
   }
 }
 
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BindCallInfo {
+  name: String,
+  args: serde_json::Value,
+  call_id: u32,
+}
+
+#[op2]
+#[serde]
+async fn op_desktop_recv_bind_call(
+  state: std::rc::Rc<std::cell::RefCell<OpState>>,
+) -> Option<BindCallInfo> {
+  let rx = {
+    let mut s = state.borrow_mut();
+    s.try_take::<BindCallReceiver>()
+  };
+  if let Some(mut rx) = rx {
+    let result = rx.0.recv().await;
+    state.borrow_mut().put(rx);
+    if let Some(call) = result {
+      let call_id = BIND_CALL_COUNTER.fetch_add(1, Ordering::Relaxed);
+      {
+        let mut s = state.borrow_mut();
+        let responses = s.borrow_mut::<PendingBindResponses>();
+        responses.0.insert(call_id, call.response);
+      }
+      Some(BindCallInfo {
+        name: call.name,
+        args: call.args,
+        call_id,
+      })
+    } else {
+      None
+    }
+  } else {
+    std::future::pending().await
+  }
+}
+
+#[op2]
+fn op_desktop_resolve_bind_call(
+  state: &mut OpState,
+  #[smi] call_id: u32,
+  #[serde] result: serde_json::Value,
+) {
+  if let Some(responses) = state.try_borrow_mut::<PendingBindResponses>() {
+    if let Some(tx) = responses.0.remove(&call_id) {
+      let _ = tx.send(Ok(result));
+    }
+  }
+}
+
+#[op2(fast)]
+fn op_desktop_reject_bind_call(
+  state: &mut OpState,
+  #[smi] call_id: u32,
+  #[string] error: String,
+) {
+  if let Some(responses) = state.try_borrow_mut::<PendingBindResponses>() {
+    if let Some(tx) = responses.0.remove(&call_id) {
+      let _ = tx.send(Err(error));
+    }
+  }
+}
+
 deno_core::extension!(
   deno_desktop,
   ops = [
@@ -371,6 +472,9 @@ deno_core::extension!(
     op_desktop_confirm_update,
     op_desktop_recv_menu_click,
     op_desktop_recv_keyboard_event,
+    op_desktop_recv_bind_call,
+    op_desktop_resolve_bind_call,
+    op_desktop_reject_bind_call,
   ],
   objects = [BrowserWindow,],
 );

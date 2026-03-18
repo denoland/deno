@@ -16,13 +16,44 @@ pub use deno_runtime::ops::desktop::DesktopApi;
 /// JS code that exposes desktop APIs via `Deno.BrowserWindow` and `Deno.desktop`.
 pub const DESKTOP_JS: &str = r#"
 (() => {
-  const { BrowserWindow } = Deno[Deno.internal].core.ops;
+  const internals = Deno[Deno.internal];
+  const {
+    BrowserWindow,
+    op_desktop_recv_menu_click,
+    op_desktop_recv_keyboard_event,
+    op_desktop_recv_bind_call,
+    op_desktop_resolve_bind_call,
+    op_desktop_reject_bind_call,
+  } = internals.core.ops;
   const BrowserWindowPrototype = BrowserWindow.prototype;
-  Deno.BrowserWindow = BrowserWindow;
+  Object.setPrototypeOf(BrowserWindowPrototype, EventTarget.prototype);
 
-  ObjectSetPrototypeOf(BrowserWindowPrototype, EventTargetPrototype);
-  defineEventHandler(BrowserWindowPrototype, "keydown");
-  defineEventHandler(BrowserWindowPrototype, "keyup");
+  const NativeBrowserWindow = BrowserWindow;
+  const WrappedBrowserWindow = function BrowserWindow(options) {
+    const instance = new NativeBrowserWindow(options);
+    EventTarget.call(instance);
+    return instance;
+  };
+  WrappedBrowserWindow.prototype = BrowserWindowPrototype;
+  BrowserWindowPrototype.constructor = WrappedBrowserWindow;
+  Deno.BrowserWindow = WrappedBrowserWindow;
+  internals.defineEventHandler(BrowserWindowPrototype, "keydown");
+  internals.defineEventHandler(BrowserWindowPrototype, "keyup");
+
+  // Bind callback registry: name -> bound function
+  const bindCallbacks = new Map();
+
+  const nativeBind = BrowserWindowPrototype.bind;
+  BrowserWindowPrototype.bind = function(name, fn) {
+    bindCallbacks.set(name, fn.bind(this));
+    nativeBind.call(this, name);
+  };
+
+  const nativeUnbind = BrowserWindowPrototype.unbind;
+  BrowserWindowPrototype.unbind = function(name) {
+    bindCallbacks.delete(name);
+    nativeUnbind.call(this, name);
+  };
 
   // Defer start so the pending op doesn't block the pre-module event loop tick used by HMR.
   addEventListener("load", () => {
@@ -50,6 +81,25 @@ pub const DESKTOP_JS: &str = r#"
           metaKey: ev.meta,
           repeat: ev.repeat,
         }));
+      }
+    })();
+    // Poll for bind calls from the webview and dispatch to JS callbacks.
+    (async () => {
+      while (true) {
+        const call = await op_desktop_recv_bind_call();
+        if (call == null) break;
+        const fn_ = bindCallbacks.get(call.name);
+        if (!fn_) {
+          op_desktop_reject_bind_call(call.callId, "No callback bound for: " + call.name);
+          continue;
+        }
+        try {
+          const args = Array.isArray(call.args) ? call.args : [];
+          const result = await fn_(...args);
+          op_desktop_resolve_bind_call(call.callId, result ?? null);
+        } catch (e) {
+          op_desktop_reject_bind_call(call.callId, String(e));
+        }
       }
     })();
   }, { once: true });
@@ -147,8 +197,13 @@ pub fn desktop_auto_update_js(
   )
 }
 
+pub use deno_runtime::ops::desktop::BindCallReceiver;
+pub use deno_runtime::ops::desktop::BindCallSender;
 pub use deno_runtime::ops::desktop::KeyboardEventSender;
 pub use deno_runtime::ops::desktop::MenuClickSender;
+pub use deno_runtime::ops::desktop::PendingBindCall;
+pub use deno_runtime::ops::desktop::PendingBindResponses;
+pub use deno_runtime::ops::desktop::create_bind_call_channel;
 pub use deno_runtime::ops::desktop::create_keyboard_event_channel;
 pub use deno_runtime::ops::desktop::create_menu_click_channel;
 
@@ -173,4 +228,6 @@ pub fn init_desktop_state(
   let (kb_tx, kb_rx) = create_keyboard_event_channel();
   state.put(kb_rx);
   state.put(kb_tx);
+  // Initialize pending bind responses map
+  state.put(PendingBindResponses::new());
 }

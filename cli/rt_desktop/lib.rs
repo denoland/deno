@@ -26,15 +26,16 @@ use deno_lib::util::result::js_error_downcast_ref;
 use deno_lib::version::otel_runtime_config;
 use deno_runtime::fmt_errors::format_js_error;
 use deno_terminal::colors;
-use tokio::sync::oneshot::error::RecvError;
-use wef::Value;
 use denort::run::RunOptions;
 
 /// Port used for the embedded HTTP server.
 const DESKTOP_SERVE_PORT: u16 = 41520;
 
 /// WEF-backed implementation of [`denort::desktop::DesktopApi`].
-struct WefDesktopApi;
+struct WefDesktopApi {
+  bind_call_tx:
+    tokio::sync::mpsc::UnboundedSender<denort::desktop::PendingBindCall>,
+}
 
 impl denort::desktop::DesktopApi for WefDesktopApi {
   fn set_title(&self, title: &str) {
@@ -89,84 +90,39 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
     wef::focus();
   }
 
-  fn bind<'a>(
-    &self,
-    name: &str,
-    scope: &mut v8::PinScope<'a, '_>,
-    cb: v8::Local<'a, v8::Function>,
-  ) {
-    wef::bind(name, |mut js_call| {
-      let this = v8::null(scope);
-      let args = std::mem::take(&mut js_call.args)
-        .into_iter()
-        .map(|v| wef_value_to_v8(scope, v))
-        .collect::<Vec<_>>();
-
-      let tc = std::pin::pin!(v8::TryCatch::new(scope));
-      let mut tc = &tc.init();
-
-      if let Some(ret) = cb.call(tc, this.into(), &args) {
-        // Attach .then()/.catch() to resolve/reject the JsCall
-        // when the promise settles.
-        if ret.is_promise() {
-          let promise: v8::Local<v8::Promise> = ret.try_into().unwrap();
-
-          // Box the JsCall into an Option so either handler can take
-          // ownership exactly once. Store as v8::External data.
-          let js_call_ptr =
-            Box::into_raw(Box::new(Some(js_call))) as *mut std::ffi::c_void;
-          let external = v8::External::new(tc, js_call_ptr);
-
-          let on_fulfilled = v8::Function::builder(
-            |scope: &mut v8::PinScope,
-             args: v8::FunctionCallbackArguments,
-             _rv: v8::ReturnValue| {
-              let data =
-                v8::Local::<v8::External>::try_from(args.data()).unwrap();
-              let js_call = unsafe {
-                Box::<Option<wef::JsCall>>::from_raw(
-                  data.value() as *mut Option<wef::JsCall>
-                )
-              };
-              if let Some(call) = *js_call {
-                call.resolve(v8_to_wef_value(scope, args.get(0)));
-              }
-            },
-          )
-          .data(external.into())
-          .build(tc)
-          .unwrap();
-
-          let on_rejected = v8::Function::builder(
-            |scope: &mut v8::PinScope,
-             args: v8::FunctionCallbackArguments,
-             _rv: v8::ReturnValue| {
-              let data =
-                v8::Local::<v8::External>::try_from(args.data()).unwrap();
-              let js_call = unsafe {
-                Box::<Option<wef::JsCall>>::from_raw(
-                  data.value() as *mut Option<wef::JsCall>
-                )
-              };
-              if let Some(call) = *js_call {
-                call.reject(v8_to_wef_value(scope, args.get(0)));
-              }
-            },
-          )
-          .data(external.into())
-          .build(tc)
-          .unwrap();
-
-          promise.then2(tc, on_fulfilled, on_rejected);
-        } else {
-          js_call.resolve(v8_to_wef_value(tc, ret));
+  fn bind(&self, name: &str) {
+    let tx = self.bind_call_tx.clone();
+    let name_owned = name.to_string();
+    wef::bind_async(name, move |js_call| {
+      let tx = tx.clone();
+      let name = name_owned.clone();
+      async move {
+        let args: Vec<serde_json::Value> =
+          js_call.args.iter().map(wef_value_to_json).collect();
+        let (resp_tx, resp_rx) = tokio::sync::oneshot::channel();
+        let pending = denort::desktop::PendingBindCall {
+          name,
+          args: serde_json::Value::Array(args),
+          response: resp_tx,
+        };
+        if tx.send(pending).is_err() {
+          js_call
+            .reject(wef::Value::String("bind channel closed".to_string()));
+          return;
         }
-      } else if let Some(err) = tc.exception() {
-        js_call.reject(v8_to_wef_value(tc, err));
-      } else {
-        let message = v8::String::new(tc, "unknown error").unwrap();
-        let err = v8::Exception::error(tc, message.into());
-        js_call.reject(v8_to_wef_value(tc, err.into()));
+        match resp_rx.await {
+          Ok(Ok(result)) => {
+            js_call.resolve(json_to_wef_value(&result));
+          }
+          Ok(Err(error)) => {
+            js_call.reject(wef::Value::String(error));
+          }
+          Err(_) => {
+            js_call.reject(wef::Value::String(
+              "bind response channel dropped".to_string(),
+            ));
+          }
+        }
       }
     });
   }
@@ -179,8 +135,9 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
     wef::navigate(url);
   }
 
-  fn execute_js<'a>(&self, scope: &'a mut v8::PinScope<'a, '_>, script: &str) -> std::pin::Pin<Box<dyn Future<Output = Result<v8::Local<'a, v8::Value>, v8::Local<'a, v8::Value>>> + 'a>> {
-    let (tx, rx) = tokio::sync::oneshot::channel();
+  fn execute_js<'a>(&self, _scope: &'a mut v8::PinScope<'a, '_>, _script: &str) -> std::pin::Pin<Box<dyn Future<Output = Result<v8::Local<'a, v8::Value>, v8::Local<'a, v8::Value>>> + 'a>> {
+    todo!()
+    /*let (tx, rx) = tokio::sync::oneshot::channel();
     wef::execute_js(script, Some(|res| {
       let _ = tx.send(res);
     }));
@@ -190,7 +147,7 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
         Ok(val) => Ok(wef_value_to_v8(scope, val)),
         Err(err) => Err(wef_value_to_v8(scope, err)),
       }
-    })
+    })*/
   }
 
   fn quit(&self) {
@@ -210,6 +167,7 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
   }
 }
 
+#[allow(dead_code)]
 fn wef_value_to_v8<'a>(
   scope: &v8::PinScope<'a, '_>,
   val: wef::Value,
@@ -253,6 +211,7 @@ fn wef_value_to_v8<'a>(
   }
 }
 
+#[allow(dead_code)]
 fn v8_to_wef_value<'a>(
   scope: &v8::PinScope<'a, '_>,
   val: v8::Local<'a, v8::Value>,
@@ -639,6 +598,28 @@ fn extract_fork_script_path(
   None
 }
 
+/// Convert a wef::Value to a serde_json::Value for channel transport.
+fn wef_value_to_json(v: &wef::Value) -> serde_json::Value {
+  match v {
+    wef::Value::Null => serde_json::Value::Null,
+    wef::Value::Bool(b) => serde_json::Value::Bool(*b),
+    wef::Value::Int(i) => serde_json::json!(*i),
+    wef::Value::Double(d) => serde_json::json!(*d),
+    wef::Value::String(s) => serde_json::Value::String(s.clone()),
+    wef::Value::List(l) => {
+      serde_json::Value::Array(l.iter().map(wef_value_to_json).collect())
+    }
+    wef::Value::Dict(d) => {
+      let mut map = serde_json::Map::new();
+      for (k, v) in d {
+        map.insert(k.clone(), wef_value_to_json(v));
+      }
+      serde_json::Value::Object(map)
+    }
+    wef::Value::Binary(b) => serde_json::json!(b),
+  }
+}
+
 /// Convert a serde_json::Value to a wef::Value for the menu template.
 fn json_to_wef_value(v: &serde_json::Value) -> wef::Value {
   match v {
@@ -734,7 +715,10 @@ async fn run_desktop(update_rolled_back: bool) -> Result<(), AnyError> {
   let hmr_on_reload: Option<denort::hmr::HmrReloadCallback> =
     if hmr_watch_dir.is_some() && !is_framework_dev {
       Some(Box::new(|| {
-        wef::execute_js("location.reload()", None);
+        wef::execute_js::<fn(Result<wef::Value, wef::Value>)>(
+          "location.reload()",
+          None,
+        );
       }))
     } else {
       None
@@ -769,11 +753,15 @@ async fn run_desktop(update_rolled_back: bool) -> Result<(), AnyError> {
     },
     hmr_on_reload,
     op_state_init: Some(Box::new(move |state| {
+      let (bind_tx, bind_rx) = denort::desktop::create_bind_call_channel();
       denort::desktop::init_desktop_state(
         state,
-        Box::new(WefDesktopApi),
+        Box::new(WefDesktopApi {
+          bind_call_tx: bind_tx.0,
+        }),
         auto_update_state,
       );
+      state.put(bind_rx);
       // Wire WEF menu click callback to the Deno runtime channel
       let menu_tx =
         state.borrow::<denort::desktop::MenuClickSender>().0.clone();

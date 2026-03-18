@@ -2960,7 +2960,7 @@ framework (Next.js, Astro, etc.).
           .long("backend")
           .help("WEF backend to use for the desktop app")
           .value_parser(["webview", "cef", "servo"])
-          .default_value("webview")
+          .default_value("cef")
           .help_heading(DESKTOP_HEADING),
       )
       .arg(

@@ -41,32 +41,31 @@ const WEF_BACKEND_ENV: &str = "WEF_BACKEND";
 /// Dev builds live at `<repo>/target/{debug,release}/deno`.
 /// Resolve WEF backend binary search paths based on the chosen backend.
 fn wef_backend_search_paths(backend: &str) -> Vec<PathBuf> {
-  match backend {
-    "cef" => vec![
-      PathBuf::from(
-        "/Users/divy/gh/wef/result-cef/Applications/wef.app/Contents/MacOS/wef",
-      ),
-      PathBuf::from(
-        "/Users/divy/gh/wef/result/Applications/wef.app/Contents/MacOS/wef",
-      ),
-      PathBuf::from("/Users/divy/gh/wef/cef/build/wef.app/Contents/MacOS/wef"),
-    ],
-    "servo" => vec![
-      PathBuf::from("/Users/divy/gh/wef/servo/target/release/wef_servo"),
-      PathBuf::from("/Users/divy/gh/wef/servo/target/debug/wef_servo"),
-    ],
-    _ => vec![
-      PathBuf::from(
-        "/Users/divy/gh/wef/result-1/Applications/wef_webview.app/Contents/MacOS/wef_webview",
-      ),
-      PathBuf::from(
-        "/Users/divy/gh/wef/result/Applications/wef_webview.app/Contents/MacOS/wef_webview",
-      ),
-      PathBuf::from(
-        "/Users/divy/gh/wef/webview/build/wef_webview.app/Contents/MacOS/wef_webview",
-      ),
-    ],
+  let wef_base = option_env!("CARGO_MANIFEST_DIR")
+    .map(|d| std::path::Path::new(d).join("../../wef"))
+    .filter(|p| p.exists());
+
+  let mut paths = Vec::new();
+  if let Some(ref wef) = wef_base {
+    match backend {
+      "cef" => {
+        paths.push(wef.join("result-cef/Applications/wef.app/Contents/MacOS/wef"));
+        paths.push(wef.join("result/Applications/wef.app/Contents/MacOS/wef"));
+        paths.push(wef.join("cef/build/Release/wef.app/Contents/MacOS/wef"));
+        paths.push(wef.join("cef/build/wef.app/Contents/MacOS/wef"));
+      }
+      "servo" => {
+        paths.push(wef.join("servo/target/release/wef_servo"));
+        paths.push(wef.join("servo/target/debug/wef_servo"));
+      }
+      _ => {
+        paths.push(wef.join("result-1/Applications/wef_webview.app/Contents/MacOS/wef_webview"));
+        paths.push(wef.join("result/Applications/wef_webview.app/Contents/MacOS/wef_webview"));
+        paths.push(wef.join("webview/build/wef_webview.app/Contents/MacOS/wef_webview"));
+      }
+    }
   }
+  paths
 }
 
 pub async fn compile(
@@ -373,19 +372,31 @@ const WEF_BACKEND_APP_ENV: &str = "WEF_BACKEND_APP";
 
 /// Resolve WEF backend .app search paths based on the chosen backend.
 fn wef_backend_app_search_paths(backend: &str) -> Vec<String> {
-  match backend {
-    "cef" => vec![
-      "/Users/divy/gh/wef/result-cef/Applications/wef.app".to_string(),
-      "/Users/divy/gh/wef/result/Applications/wef.app".to_string(),
-      "/Users/divy/gh/wef/cef/build/wef.app".to_string(),
-    ],
-    "servo" => vec![], // Servo is not an .app bundle
-    _ => vec![
-      "/Users/divy/gh/wef/result-1/Applications/wef_webview.app".to_string(),
-      "/Users/divy/gh/wef/result/Applications/wef_webview.app".to_string(),
-      "/Users/divy/gh/wef/webview/build/wef_webview.app".to_string(),
-    ],
+  // Derive the wef repo path from this crate's location.
+  // CARGO_MANIFEST_DIR is cli/, the wef repo is at ../../wef relative to that
+  // (i.e. a sibling of the deno repo in the parent directory).
+  let wef_base = option_env!("CARGO_MANIFEST_DIR")
+    .map(|d| std::path::Path::new(d).join("../../wef"))
+    .filter(|p| p.exists());
+
+  let mut paths = Vec::new();
+  if let Some(ref wef) = wef_base {
+    match backend {
+      "cef" => {
+        paths.push(wef.join("result-cef/Applications/wef.app").to_string_lossy().to_string());
+        paths.push(wef.join("result/Applications/wef.app").to_string_lossy().to_string());
+        paths.push(wef.join("cef/build/Release/wef.app").to_string_lossy().to_string());
+        paths.push(wef.join("cef/build/wef.app").to_string_lossy().to_string());
+      }
+      "winit" | "servo" => {} // Not .app bundles
+      _ => {
+        paths.push(wef.join("result-1/Applications/wef_webview.app").to_string_lossy().to_string());
+        paths.push(wef.join("result/Applications/wef_webview.app").to_string_lossy().to_string());
+        paths.push(wef.join("webview/build/wef_webview.app").to_string_lossy().to_string());
+      }
+    }
   }
+  paths
 }
 
 /// Find the WEF backend .app bundle directory.
