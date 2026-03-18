@@ -808,9 +808,6 @@ function invalidArgTypeHelper(input: any) {
     }
     return ` Received ${inspect(input, { depth: -1 })}`;
   }
-  if (typeof input === "number") {
-    return ` Received ${input}`;
-  }
   let inspected = inspect(input, { colors: false });
   if (inspected.length > 25) {
     inspected = `${StringPrototypeSlice(inspected, 0, 25)}...`;

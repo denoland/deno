@@ -36,6 +36,7 @@ import {
   denoErrorToNodeError,
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE_RANGE,
+  ERR_OUT_OF_RANGE,
   ERR_UNKNOWN_SIGNAL,
   ERR_WORKER_UNSUPPORTED_OPERATION,
   errnoException,
@@ -809,7 +810,7 @@ Object.defineProperty(process, "exitCode", {
       parsedCode = 0;
     } else if (typeof code === "number") {
       if (!Number.isInteger(code)) {
-        throw new ERR_INVALID_ARG_TYPE("code", "integer", code);
+        throw new ERR_OUT_OF_RANGE("code", "an integer", code);
       }
       parsedCode = code;
     } else if (typeof code === "string") {
