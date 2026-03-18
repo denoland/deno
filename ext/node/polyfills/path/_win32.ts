@@ -530,39 +530,29 @@ export function join(...paths: string[]): string {
   // This matches Node.js behavior -- only replace `/` with `\`.
   let hasReservedComponent = false;
   {
-    let part = "";
-    for (let i = 0; i < joined.length; i++) {
-      const ch = StringPrototypeCharCodeAt(joined, i);
-      if (isPathSeparator(ch)) {
-        if (part.length > 0) {
-          const colonIdx = StringPrototypeIndexOf(part, ":");
-          if (colonIdx !== -1 && isWindowsReservedName(part, colonIdx)) {
+    let segStart = 0;
+    for (let i = 0; i <= joined.length; i++) {
+      if (
+        i === joined.length ||
+        isPathSeparator(StringPrototypeCharCodeAt(joined, i))
+      ) {
+        if (i > segStart) {
+          const seg = StringPrototypeSlice(joined, segStart, i);
+          const colonIdx = StringPrototypeIndexOf(seg, ":");
+          if (colonIdx !== -1 && isWindowsReservedName(seg, colonIdx)) {
             hasReservedComponent = true;
             break;
           }
         }
-        part = "";
-      } else {
-        part += joined[i];
-      }
-    }
-    if (!hasReservedComponent && part.length > 0) {
-      const colonIdx = StringPrototypeIndexOf(part, ":");
-      if (colonIdx !== -1 && isWindowsReservedName(part, colonIdx)) {
-        hasReservedComponent = true;
+        segStart = i + 1;
       }
     }
   }
 
   if (hasReservedComponent) {
     // Only convert forward slashes to backslashes, skip normalize.
-    let result = "";
-    for (let i = 0; i < joined.length; i++) {
-      result += isPosixPathSeparator(StringPrototypeCharCodeAt(joined, i))
-        ? "\\"
-        : joined[i];
-    }
-    return result;
+    const parts = StringPrototypeSplit(joined, "/");
+    return ArrayPrototypeJoin(parts, "\\");
   }
 
   return normalize(joined);
