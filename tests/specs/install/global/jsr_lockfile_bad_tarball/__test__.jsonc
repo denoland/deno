@@ -7,7 +7,10 @@
   }, {
     // Verify the lockfile does NOT contain the evil tarball URL
     "if": "unix",
-    "args": ["eval", "const content = Deno.readTextFileSync('./bins/bin/.echo-lockfile-bad-tarball/deno.lock'); console.log(content.includes('evil.example.com') ? 'bad tarball found' : 'clean lockfile');"],
+    "args": [
+      "eval",
+      "const content = Deno.readTextFileSync('./bins/bin/.echo-lockfile-bad-tarball/deno.lock'); console.log(content.includes('evil.example.com') ? 'bad tarball found' : 'clean lockfile');"
+    ],
     "output": "no_lockfile.out"
   }, {
     "if": "windows",
@@ -15,7 +18,10 @@
     "output": "install.out"
   }, {
     "if": "windows",
-    "args": ["eval", "const content = Deno.readTextFileSync('./bins/bin/.echo-lockfile-bad-tarball/deno.lock'); console.log(content.includes('evil.example.com') ? 'bad tarball found' : 'clean lockfile');"],
+    "args": [
+      "eval",
+      "const content = Deno.readTextFileSync('./bins/bin/.echo-lockfile-bad-tarball/deno.lock'); console.log(content.includes('evil.example.com') ? 'bad tarball found' : 'clean lockfile');"
+    ],
     "output": "no_lockfile.out"
   }]
 }
