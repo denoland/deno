@@ -22,7 +22,6 @@ use deno_ast::swc::ecma_visit::Visit;
 use deno_ast::swc::ecma_visit::VisitWith;
 use deno_ast::swc::ecma_visit::noop_visit_type;
 use deno_core::LocalInspectorSession;
-use deno_core::PollEventLoopOptions;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::error::CoreError;
@@ -288,7 +287,7 @@ fn next_msg_id() -> i32 {
 }
 
 impl ReplSession {
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "construction")]
   pub async fn initialize(
     cli_options: &CliOptions,
     npm_installer: Option<Arc<CliNpmInstaller>>,
@@ -426,16 +425,7 @@ impl ReplSession {
     self
       .worker
       .js_runtime
-      .with_event_loop_future(
-        fut,
-        PollEventLoopOptions {
-          // NOTE(bartlomieju): this is an important bit; we don't want to pump V8
-          // message loop here, so that GC won't run. Otherwise, the resulting
-          // object might be GC'ed before we have a chance to inspect it.
-          pump_v8_message_loop: false,
-          ..Default::default()
-        },
-      )
+      .with_event_loop_future(fut, Default::default())
       .await
       .unwrap()
   }

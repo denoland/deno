@@ -34,7 +34,7 @@ Deno.test("napi_is_buffer", () => {
   assert(!typedarray.test_is_buffer([]));
   assert(typedarray.test_is_buffer(new Uint8Array()));
   assert(typedarray.test_is_buffer(new Uint32Array()));
-  assert(typedarray.test_is_buffer(new Buffer([])));
+  assert(typedarray.test_is_buffer(Buffer.from([])));
 });
 
 // TODO(bartlomieju): this test causes segfaults when used with jemalloc.

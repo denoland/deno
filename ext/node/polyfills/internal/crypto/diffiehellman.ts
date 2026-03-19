@@ -136,7 +136,7 @@ export class DiffieHellmanImpl {
       }
 
       this.#prime = Buffer.from(
-        op_node_gen_prime(this.#primeLength).buffer,
+        op_node_gen_prime(this.#primeLength, false, null, null).buffer,
       );
     }
 

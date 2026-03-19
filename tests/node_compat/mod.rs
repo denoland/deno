@@ -492,8 +492,14 @@ fn parse_flags(source: &str) -> (Vec<String>, Vec<String>) {
           "--pending-deprecation" => {
             node_options.push("--pending-deprecation".to_string());
           }
+          f if f.starts_with("--dns-result-order=") => {
+            node_options.push(f.to_string());
+          }
           "--allow-natives-syntax" => {
             v8_flags.push("--allow-natives-syntax".to_string());
+          }
+          f if f.starts_with("--title=") => {
+            node_options.push(f.to_string());
           }
           _ => {}
         }
@@ -507,7 +513,7 @@ fn parse_flags(source: &str) -> (Vec<String>, Vec<String>) {
 
 fn truncate_output(output: &str, max_len: usize) -> String {
   if output.len() > max_len {
-    format!("{} ...", &output[..max_len])
+    format!("{} ...", &output[..output.floor_char_boundary(max_len)])
   } else {
     output.to_string()
   }
@@ -784,7 +790,7 @@ fn run_test(
 ///
 /// Returns `Passed` when the test fails in the expected way (matching exit code
 /// and/or output pattern), and `Failed` otherwise.
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, reason = "all arguments are needed")]
 fn handle_expected_failure(
   ef: &ExpectedFailure,
   success: bool,

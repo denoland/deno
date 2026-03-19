@@ -117,6 +117,7 @@ import internalCryptoUtil from "ext:deno_node/internal/crypto/util.ts";
 import internalCryptoX509 from "ext:deno_node/internal/crypto/x509.ts";
 import internalDgram from "ext:deno_node/internal/dgram.ts";
 import internalDnsPromises from "ext:deno_node/internal/dns/promises.ts";
+import internalBuffer from "ext:deno_node/internal/buffer.mjs";
 import internalErrors from "ext:deno_node/internal/errors.ts";
 import internalEventTarget from "ext:deno_node/internal/event_target.mjs";
 import internalFsUtils from "ext:deno_node/internal/fs/utils.mjs";
@@ -222,6 +223,7 @@ function setupBuiltinModules() {
     "internal/crypto/x509": internalCryptoX509,
     "internal/dgram": internalDgram,
     "internal/dns/promises": internalDnsPromises,
+    "internal/buffer": internalBuffer,
     "internal/errors": internalErrors,
     "internal/event_target": internalEventTarget,
     "internal/fs/utils": internalFsUtils,

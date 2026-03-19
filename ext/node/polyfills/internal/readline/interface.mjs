@@ -44,6 +44,7 @@ import {
   stripVTControlCharacters,
 } from "ext:deno_node/internal/util/inspect.mjs";
 import EventEmitter from "node:events";
+import { kFirstEventParam } from "ext:deno_node/_events.mjs";
 import { emitKeypressEvents } from "ext:deno_node/internal/readline/emitKeypressEvents.mjs";
 import {
   charLengthAt,
@@ -56,7 +57,6 @@ import {
   cursorTo,
   moveCursor,
 } from "ext:deno_node/internal/readline/callbacks.mjs";
-import { Readable } from "node:stream";
 import process from "node:process";
 
 import { StringDecoder } from "node:string_decoder";
@@ -564,6 +564,9 @@ export class Interface extends InterfaceConstructor {
    * @returns {void | Interface}
    */
   pause() {
+    if (this.closed) {
+      throw new ERR_USE_AFTER_CLOSE("readline");
+    }
     if (this.paused) return;
     this.input.pause();
     this.paused = true;
@@ -576,6 +579,9 @@ export class Interface extends InterfaceConstructor {
    * @returns {void | Interface}
    */
   resume() {
+    if (this.closed) {
+      throw new ERR_USE_AFTER_CLOSE("readline");
+    }
     if (!this.paused) return;
     this.input.resume();
     this.paused = false;
@@ -1345,36 +1351,16 @@ export class Interface extends InterfaceConstructor {
    */
   [Symbol.asyncIterator]() {
     if (this[kLineObjectStream] === undefined) {
-      const readable = new Readable({
-        objectMode: true,
-        read: () => {
-          this.resume();
+      this[kLineObjectStream] = EventEmitter.on(
+        this,
+        "line",
+        {
+          close: ["close"],
+          highWaterMark: 1024,
+          [kFirstEventParam]: true,
         },
-        destroy: (err, cb) => {
-          this.off("line", lineListener);
-          this.off("close", closeListener);
-          this.close();
-          cb(err);
-        },
-      });
-      const lineListener = (input) => {
-        if (!readable.push(input)) {
-          // TODO(rexagod): drain to resume flow
-          this.pause();
-        }
-      };
-      const closeListener = () => {
-        readable.push(null);
-      };
-      const errorListener = (err) => {
-        readable.destroy(err);
-      };
-      this.on("error", errorListener);
-      this.on("line", lineListener);
-      this.on("close", closeListener);
-      this[kLineObjectStream] = readable;
+      );
     }
-
-    return this[kLineObjectStream][Symbol.asyncIterator]();
+    return this[kLineObjectStream];
   }
 }

@@ -2,12 +2,16 @@
 import { fs as fsConstants } from "ext:deno_node/internal_binding/constants.ts";
 import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
 import {
+  type BinaryOptionsArgument,
   type CallbackWithError,
+  type FileOptions,
+  type FileOptionsArgument,
   getValidatedEncoding,
   isFd,
   isFileOptions,
   makeCallback,
   maybeCallback,
+  type TextOptionsArgument,
   type WriteFileOptions,
 } from "ext:deno_node/_fs/_fs_common.ts";
 import type { Encodings } from "ext:deno_node/_utils.ts";
@@ -15,9 +19,17 @@ import {
   AbortError,
   denoErrorToNodeError,
   denoWriteFileErrorToNodeError,
+  ERR_FS_FILE_TOO_LARGE,
 } from "ext:deno_node/internal/errors.ts";
 import * as constants from "ext:deno_node/_fs/_fs_constants.ts";
-
+import {
+  CFISBIS,
+  convertFileInfoToBigIntStats,
+  convertFileInfoToStats,
+  type statCallback,
+  type statCallbackBigInt,
+  type statOptions,
+} from "ext:deno_node/internal/fs/stat_utils.ts";
 import { copyFile, copyFileSync } from "ext:deno_node/_fs/_fs_copy.ts";
 import { cp, cpSync } from "ext:deno_node/_fs/_fs_cp.ts";
 import Dir from "ext:deno_node/_fs/_fs_dir.ts";
@@ -27,10 +39,8 @@ import { lstat, lstatSync } from "ext:deno_node/_fs/_fs_lstat.ts";
 import { lutimes, lutimesSync } from "ext:deno_node/_fs/_fs_lutimes.ts";
 import { read, readSync } from "ext:deno_node/_fs/_fs_read.ts";
 import { readdir, readdirSync } from "ext:deno_node/_fs/_fs_readdir.ts";
-import { readFile, readFileSync } from "ext:deno_node/_fs/_fs_readFile.ts";
-import { readlink, readlinkSync } from "ext:deno_node/_fs/_fs_readlink.ts";
 import { EventEmitter } from "node:events";
-import { notImplemented } from "ext:deno_node/_utils.ts";
+import { type MaybeEmpty, notImplemented } from "ext:deno_node/_utils.ts";
 import { promisify } from "node:util";
 import { delay } from "ext:deno_node/_util/async.ts";
 import promises from "ext:deno_node/internal/fs/promises.ts";
@@ -82,6 +92,8 @@ import { Buffer } from "node:buffer";
 import process from "node:process";
 import * as io from "ext:deno_io/12_io.js";
 import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
+import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
+import * as abortSignal from "ext:deno_web/03_abort_signal.js";
 import { pathFromURL } from "ext:deno_web/00_infra.js";
 import { URLPrototype } from "ext:deno_web/00_url.js";
 import { FileHandle } from "ext:deno_node/internal/fs/handle.ts";
@@ -94,6 +106,7 @@ import {
   op_fs_fchown_async,
   op_fs_fchown_sync,
   op_fs_read_file_async,
+  op_fs_read_file_sync,
   op_fs_seek_async,
   op_fs_seek_sync,
   op_node_lchmod,
@@ -151,41 +164,18 @@ const {
   StringPrototypeToString,
   SymbolAsyncIterator,
   SymbolFor,
+  ArrayPrototypePush,
   TypedArrayPrototypeGetByteLength,
+  TypedArrayPrototypeSet,
+  TypedArrayPrototypeSubarray,
   Uint8Array,
 } = primordials;
 
 const {
-  F_OK,
-  R_OK,
-  W_OK,
-  X_OK,
-  O_RDONLY,
-  O_WRONLY,
-  O_RDWR,
-  O_NOCTTY,
-  O_TRUNC,
-  O_APPEND,
-  O_DIRECTORY,
-  O_NOFOLLOW,
-  O_SYNC,
-  O_DSYNC,
-  O_SYMLINK,
-  O_NONBLOCK,
-  O_CREAT,
-  O_EXCL,
-} = constants;
-
-// -- stat --
-
-import {
-  CFISBIS,
-  convertFileInfoToBigIntStats,
-  convertFileInfoToStats,
-  type statCallback,
-  type statCallbackBigInt,
-  type statOptions,
-} from "ext:deno_node/internal/fs/stat_utils.ts";
+  kIoMaxLength,
+  kReadFileBufferLength,
+  kReadFileUnknownBufferLength,
+} = fsUtilConstants;
 
 const defaultStatOptions = { __proto__: null, bigint: false };
 const defaultStatSyncOptions = {
@@ -232,18 +222,6 @@ function stat(
       ),
   );
 }
-
-const statPromise = promisify(stat) as (
-  & ((path: string | Buffer | URL) => Promise<Stats>)
-  & ((
-    path: string | Buffer | URL,
-    options: { bigint: false },
-  ) => Promise<Stats>)
-  & ((
-    path: string | Buffer | URL,
-    options: { bigint: true },
-  ) => Promise<BigIntStats>)
-);
 
 function statSync(path: string | Buffer | URL): Stats;
 function statSync(
@@ -335,11 +313,6 @@ function realpath(
 }
 
 realpath.native = realpath;
-
-const realpathPromise = promisify(realpath) as (
-  path: string | Buffer,
-  options?: RealpathOptions,
-) => Promise<string | Buffer>;
 
 function realpathSync(
   path: string,
@@ -487,6 +460,358 @@ function readvPromise(
       else resolve({ bytesRead, buffers });
     });
   });
+}
+
+// -- readFile --
+
+const readFileDefaultOptions = {
+  __proto__: null,
+  flag: "r",
+};
+
+function readFileMaybeDecode(data: Uint8Array, encoding: Encodings): string;
+function readFileMaybeDecode(
+  data: Uint8Array,
+  encoding: null | undefined,
+): Buffer;
+function readFileMaybeDecode(
+  data: Uint8Array,
+  encoding: Encodings | null | undefined,
+): string | Buffer {
+  // deno-lint-ignore prefer-primordials
+  const buffer = Buffer.from(data.buffer, data.byteOffset, data.byteLength);
+  // deno-lint-ignore prefer-primordials
+  if (encoding) return buffer.toString(encoding);
+  return buffer;
+}
+
+type ReadFileTextCallback = (err: Error | null, data?: string) => void;
+type ReadFileBinaryCallback = (err: Error | null, data?: Buffer) => void;
+type ReadFileGenericCallback = (
+  err: Error | null,
+  data?: string | Buffer,
+) => void;
+type ReadFileCallback =
+  | ReadFileTextCallback
+  | ReadFileBinaryCallback
+  | ReadFileGenericCallback;
+type ReadFilePath = string | URL | FileHandle | number;
+
+async function readFileAsync(
+  path: string,
+  options: FileOptions | undefined,
+): Promise<Uint8Array> {
+  let cancelRid: number | undefined;
+  let abortHandler: (rid: number) => void;
+  const flagsNumber = stringToFlags(options!.flag, "options.flag");
+  if (options?.signal) {
+    options.signal.throwIfAborted();
+    cancelRid = core.createCancelHandle();
+    abortHandler = () => core.tryClose(cancelRid as number);
+    options.signal[abortSignal.add](abortHandler);
+  }
+
+  try {
+    const data = await op_fs_read_file_async(
+      path,
+      cancelRid,
+      flagsNumber,
+    );
+    return data;
+  } finally {
+    if (options?.signal) {
+      options.signal[abortSignal.remove](abortHandler);
+
+      // always throw the abort error when aborted
+      options.signal.throwIfAborted();
+    }
+  }
+}
+
+function readFileCheckAborted(signal: AbortSignal | undefined) {
+  if (signal?.aborted) {
+    throw new AbortError(undefined, { cause: signal.reason });
+  }
+}
+
+function readFileConcatBuffers(buffers: Uint8Array[]): Uint8Array {
+  let totalLen = 0;
+  for (let i = 0; i < buffers.length; ++i) {
+    totalLen += TypedArrayPrototypeGetByteLength(buffers[i]);
+  }
+
+  const contents = new Uint8Array(totalLen);
+  let n = 0;
+  for (let i = 0; i < buffers.length; ++i) {
+    const buf = buffers[i];
+    TypedArrayPrototypeSet(contents, buf, n);
+    n += TypedArrayPrototypeGetByteLength(buf);
+  }
+
+  return contents;
+}
+
+async function fsFileReadAll(fsFile: FsFile, options?: FileOptions) {
+  const signal = options?.signal;
+  const encoding = options?.encoding;
+  readFileCheckAborted(signal);
+
+  const statFields = await fsFile.stat();
+  readFileCheckAborted(signal);
+
+  let size = 0;
+  let length = 0;
+  if ((statFields.mode & fsConstants.S_IFMT) === fsConstants.S_IFREG) {
+    size = statFields.size;
+    length = encoding ? MathMin(size, kReadFileBufferLength) : size;
+  }
+  if (length === 0) {
+    length = kReadFileUnknownBufferLength;
+  }
+
+  if (size > kIoMaxLength) {
+    throw new ERR_FS_FILE_TOO_LARGE(size);
+  }
+
+  const buffer = new Uint8Array(length);
+  const buffers: Uint8Array[] = [];
+
+  while (true) {
+    readFileCheckAborted(signal);
+    const nread = await fsFile.read(buffer);
+    if (typeof nread !== "number") {
+      break;
+    }
+    ArrayPrototypePush(buffers, TypedArrayPrototypeSubarray(buffer, 0, nread));
+  }
+
+  return readFileConcatBuffers(buffers);
+}
+
+function readFile(
+  path: ReadFilePath,
+  options: TextOptionsArgument,
+  callback: ReadFileTextCallback,
+): void;
+function readFile(
+  path: ReadFilePath,
+  options: BinaryOptionsArgument,
+  callback: ReadFileBinaryCallback,
+): void;
+function readFile(
+  path: ReadFilePath,
+  options: null | undefined | FileOptionsArgument,
+  callback: ReadFileBinaryCallback,
+): void;
+function readFile(
+  path: string | URL,
+  callback: ReadFileBinaryCallback,
+): void;
+function readFile(
+  pathOrRid: ReadFilePath,
+  optOrCallback?:
+    | FileOptionsArgument
+    | ReadFileCallback
+    | null
+    | undefined,
+  callback?: ReadFileCallback,
+) {
+  if (ObjectPrototypeIsPrototypeOf(FileHandle.prototype, pathOrRid)) {
+    pathOrRid = (pathOrRid as FileHandle).fd;
+  } else if (typeof pathOrRid !== "number") {
+    pathOrRid = getValidatedPathToString(pathOrRid as string);
+  }
+
+  let cb: ReadFileCallback | undefined;
+  if (typeof optOrCallback === "function") {
+    cb = optOrCallback;
+  } else {
+    cb = callback;
+  }
+
+  const options = getOptions<FileOptions>(
+    optOrCallback,
+    readFileDefaultOptions,
+  );
+
+  let p: Promise<Uint8Array>;
+  if (typeof pathOrRid === "string") {
+    p = readFileAsync(pathOrRid, options);
+  } else {
+    const fsFile = new FsFile(
+      pathOrRid,
+      SymbolFor("Deno.internal.FsFile"),
+    );
+    p = fsFileReadAll(fsFile, options);
+  }
+
+  if (cb) {
+    PromisePrototypeThen(
+      p,
+      (data: Uint8Array) => {
+        const textOrBuffer = readFileMaybeDecode(data, options?.encoding);
+        (cb as ReadFileBinaryCallback)(null, textOrBuffer);
+      },
+      (err) =>
+        cb &&
+        cb(
+          denoErrorToNodeError(err, {
+            path: typeof pathOrRid === "string" ? pathOrRid : undefined,
+            syscall: "open",
+          }),
+        ),
+    );
+  }
+}
+
+function readFilePromise(
+  path: ReadFilePath,
+  options?: FileOptionsArgument | null | undefined,
+  // deno-lint-ignore no-explicit-any
+): Promise<any> {
+  return new Promise((resolve, reject) => {
+    readFile(path, options, (err, data) => {
+      if (err) reject(err);
+      else resolve(data);
+    });
+  });
+}
+
+function readFileSync(
+  path: string | URL | number,
+  opt: TextOptionsArgument,
+): string;
+function readFileSync(
+  path: string | URL | number,
+  opt?: BinaryOptionsArgument,
+): Buffer;
+function readFileSync(
+  path: string | URL | number,
+  opt?: FileOptionsArgument,
+): string | Buffer {
+  const options = getOptions<FileOptions>(opt, readFileDefaultOptions);
+
+  let data;
+  if (typeof path === "number") {
+    const fsFile = new FsFile(
+      path,
+      SymbolFor("Deno.internal.FsFile"),
+    );
+    data = io.readAllSync(fsFile);
+  } else {
+    // Validate/convert path to string (throws on invalid types)
+    path = getValidatedPathToString(path as unknown as string);
+
+    const flagsNumber = stringToFlags(options?.flag, "options.flag");
+    try {
+      data = op_fs_read_file_sync(path, flagsNumber);
+    } catch (err) {
+      throw denoErrorToNodeError(err, { path, syscall: "open" });
+    }
+  }
+  const textOrBuffer = readFileMaybeDecode(data, options?.encoding);
+  return textOrBuffer;
+}
+
+// -- readlink --
+
+type ReadlinkCallback = (
+  err: MaybeEmpty<Error>,
+  linkString: MaybeEmpty<string | Uint8Array>,
+) => void;
+
+interface ReadlinkOptions {
+  encoding?: string | null;
+}
+
+function readlinkMaybeEncode(
+  data: string,
+  encoding: string | null,
+): string | Uint8Array {
+  if (encoding === "buffer") {
+    return new TextEncoder().encode(data);
+  }
+  return data;
+}
+
+function readlinkGetEncoding(
+  optOrCallback?: ReadlinkOptions | ReadlinkCallback,
+): string | null {
+  if (!optOrCallback || typeof optOrCallback === "function") {
+    return null;
+  } else {
+    if (optOrCallback.encoding) {
+      if (
+        optOrCallback.encoding === "utf8" ||
+        optOrCallback.encoding === "utf-8"
+      ) {
+        return "utf8";
+      } else if (optOrCallback.encoding === "buffer") {
+        return "buffer";
+      } else {
+        notImplemented(`fs.readlink encoding=${optOrCallback.encoding}`);
+      }
+    }
+    return null;
+  }
+}
+
+function readlink(
+  path: string | Buffer | URL,
+  optOrCallback: ReadlinkCallback | ReadlinkOptions,
+  callback?: ReadlinkCallback,
+) {
+  path = getValidatedPathToString(path);
+
+  let cb: ReadlinkCallback | undefined;
+  if (typeof optOrCallback === "function") {
+    cb = optOrCallback;
+  } else {
+    cb = callback;
+  }
+  cb = makeCallback(cb);
+
+  const encoding = readlinkGetEncoding(optOrCallback);
+
+  PromisePrototypeThen(
+    Deno.readLink(path),
+    (data: string) => {
+      const res = readlinkMaybeEncode(data, encoding);
+      if (cb) cb(null, res);
+    },
+    (err: Error) => {
+      if (cb) {
+        (cb as (e: Error) => void)(denoErrorToNodeError(err, {
+          syscall: "readlink",
+          path,
+        }));
+      }
+    },
+  );
+}
+
+const readlinkPromise = promisify(readlink) as (
+  path: string | Buffer | URL,
+  opt?: ReadlinkOptions,
+) => Promise<string | Uint8Array>;
+
+function readlinkSync(
+  path: string | Buffer | URL,
+  opt?: ReadlinkOptions,
+): string | Uint8Array {
+  path = getValidatedPathToString(path);
+
+  try {
+    return readlinkMaybeEncode(
+      Deno.readLinkSync(path),
+      readlinkGetEncoding(opt),
+    );
+  } catch (error) {
+    throw denoErrorToNodeError(error, {
+      syscall: "readlink",
+      path,
+    });
+  }
 }
 
 // -- statfs --
@@ -640,17 +965,6 @@ function statfsSync(
     });
   }
 }
-
-const statfsPromise = promisify(statfs) as (
-  & ((
-    path: string | Buffer | URL,
-    options?: { bigint?: false },
-  ) => Promise<StatFs<number>>)
-  & ((
-    path: string | Buffer | URL,
-    options: { bigint: true },
-  ) => Promise<StatFs<bigint>>)
-);
 
 function access(
   path: string | Buffer | URL,
@@ -2096,7 +2410,7 @@ function writev(
     let currentOffset = 0;
     // deno-lint-ignore prefer-primordials
     while (currentOffset < buffer.byteLength) {
-      currentOffset += await io.writeSync(fd, buffer.subarray(currentOffset));
+      currentOffset += await io.write(fd, buffer.subarray(currentOffset));
     }
     return currentOffset - offset;
   };
@@ -3036,7 +3350,6 @@ export default {
   Dirent,
   exists,
   existsSync,
-  F_OK,
   fchmod,
   fchmodSync,
   fchown,
@@ -3067,20 +3380,6 @@ export default {
   mkdirSync,
   mkdtemp,
   mkdtempSync,
-  O_APPEND,
-  O_CREAT,
-  O_DIRECTORY,
-  O_DSYNC,
-  O_EXCL,
-  O_NOCTTY,
-  O_NOFOLLOW,
-  O_NONBLOCK,
-  O_RDONLY,
-  O_RDWR,
-  O_SYMLINK,
-  O_SYNC,
-  O_TRUNC,
-  O_WRONLY,
   open,
   openAsBlob,
   openSync,
@@ -3089,12 +3388,13 @@ export default {
   read,
   readSync,
   promises,
-  R_OK,
   readdir,
   readdirSync,
   readFile,
+  readFilePromise,
   readFileSync,
   readlink,
+  readlinkPromise,
   readlinkSync,
   ReadStream,
   realpath,
@@ -3121,10 +3421,8 @@ export default {
   unwatchFile,
   utimes,
   utimesSync,
-  W_OK,
   watch,
   watchFile,
-  watchPromise,
   write,
   writeFile,
   writev,
@@ -3132,7 +3430,6 @@ export default {
   writeFileSync,
   WriteStream,
   writeSync,
-  X_OK,
   // For tests
   _toUnixTimestamp,
 };
@@ -3167,7 +3464,6 @@ export {
   Dirent,
   exists,
   existsSync,
-  F_OK,
   fchmod,
   fchmodSync,
   fchown,
@@ -3198,33 +3494,20 @@ export {
   mkdirSync,
   mkdtemp,
   mkdtempSync,
-  O_APPEND,
-  O_CREAT,
-  O_DIRECTORY,
-  O_DSYNC,
-  O_EXCL,
-  O_NOCTTY,
-  O_NOFOLLOW,
-  O_NONBLOCK,
-  O_RDONLY,
-  O_RDWR,
-  O_SYMLINK,
-  O_SYNC,
-  O_TRUNC,
-  O_WRONLY,
   open,
   openAsBlob,
   opendir,
   opendirSync,
   openSync,
   promises,
-  R_OK,
   read,
   readdir,
   readdirSync,
   readFile,
+  readFilePromise,
   readFileSync,
   readlink,
+  readlinkPromise,
   readlinkSync,
   ReadStream,
   readSync,
@@ -3232,7 +3515,6 @@ export {
   readvPromise,
   readvSync,
   realpath,
-  realpathPromise,
   realpathSync,
   rename,
   renameSync,
@@ -3242,9 +3524,7 @@ export {
   rmSync,
   stat,
   statfs,
-  statfsPromise,
   statfsSync,
-  statPromise,
   Stats,
   statSync,
   symlink,
@@ -3256,7 +3536,6 @@ export {
   unwatchFile,
   utimes,
   utimesSync,
-  W_OK,
   watch,
   watchFile,
   watchPromise,
@@ -3267,5 +3546,4 @@ export {
   writeSync,
   writev,
   writevSync,
-  X_OK,
 };
