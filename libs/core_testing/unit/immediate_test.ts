@@ -80,8 +80,10 @@ test(async function testImmediateBeforeTimer() {
 });
 
 test(async function testImmediateQueuedFromImmediate() {
-  // Immediates queued from within an immediate callback should fire
-  // in the same check phase (matching Node.js behavior with outstanding queue).
+  // Immediates queued from within an immediate callback fire in the
+  // *next* event loop iteration's check phase (not the current one),
+  // matching Node.js behavior: runImmediates drains a snapshot of the
+  // queue, so newly queued immediates land in the next batch.
   const { promise, resolve } = Promise.withResolvers();
   const order: number[] = [];
   setImmediate(() => {

@@ -2204,7 +2204,7 @@ impl JsRuntime {
       Self::drain_next_tick_and_macrotasks(scope, context_state)?;
     }
 
-    // 2d. Handle promise rejections (after nextTick/macrotask, since
+    // 2e. Handle promise rejections (after nextTick/macrotask, since
     // unhandledrejection handlers are run in macrotask callbacks).
     // Note: rejections are also drained inside processTicksAndRejections
     // (via processPromiseRejections in the do-while loop). That path
@@ -2255,6 +2255,10 @@ impl JsRuntime {
     if let Some(uv_inner_ptr) = context_state.uv_loop_inner.get() {
       unsafe { (*uv_inner_ptr).run_check() };
     }
+    // Use IMM_IDX_COUNT (not IMM_IDX_REF_COUNT) so that both refed and
+    // unrefed immediates execute. Unrefed immediates should still fire
+    // when queued; they just don't keep the event loop alive (that's
+    // handled by has_refed_immediates in EventLoopPendingState).
     if context_state.immediate_info[IMM_IDX_COUNT] > 0 {
       Self::do_js_run_immediate_callbacks(scope, context_state)?;
     }
