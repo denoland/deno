@@ -102,6 +102,7 @@ const lazyLoadFsUtils = core.createLazyLoader<typeof fsUtils>(
 );
 
 const {
+  ArrayIsArray,
   NumberMAX_SAFE_INTEGER,
   ObjectDefineProperty,
   ObjectPrototypeIsPrototypeOf,
@@ -333,8 +334,20 @@ export function hrtime(time?: [number, number]): [number, number] {
   if (!time) {
     return [sec, nano];
   }
+  if (!ArrayIsArray(time)) {
+    throw new ERR_INVALID_ARG_TYPE("time", "Array", time);
+  }
+  if (time.length !== 2) {
+    throw new ERR_OUT_OF_RANGE("time", 2, time.length);
+  }
   const [prevSec, prevNano] = time;
-  return [sec - prevSec, nano - prevNano];
+  let diffSec = sec - prevSec;
+  let diffNano = nano - prevNano;
+  if (diffNano < 0) {
+    diffSec -= 1;
+    diffNano += 1_000_000_000;
+  }
+  return [diffSec, diffNano];
 }
 
 hrtime.bigint = function (): bigint {
