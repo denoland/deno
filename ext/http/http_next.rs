@@ -1718,3 +1718,15 @@ pub fn op_http_metric_handle_otel_error(external: *const c_void) {
 
   http.otel_info_set_error("user");
 }
+
+#[op2(fast)]
+pub fn op_http_copy_span_to_otel_info(
+  external: *const c_void,
+  #[cppgc] span: &deno_telemetry::OtelSpan,
+) {
+  let http =
+    // SAFETY: op is called with external.
+    unsafe { clone_external!(external, "op_http_copy_span_to_otel_info") };
+
+  http.copy_span_to_otel_info(span);
+}
