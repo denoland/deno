@@ -9,8 +9,16 @@
   } = window.__bootstrap.primordials;
   const {
     op_timer_schedule,
+    op_timer_track,
+    op_timer_untrack,
     op_timer_now,
+    op_leak_tracing_submit,
   } = window.Deno.core.ops;
+  const {
+    ErrorCaptureStackTrace,
+    StringPrototypeSlice,
+  } = window.__bootstrap.primordials;
+  const { __isLeakTracingEnabled } = window.__infra;
 
   // ---------------------------------------------------------------------------
   // Linked list helpers (matches Node.js lib/internal/linkedlist.js)
@@ -288,6 +296,7 @@
           if (timer[kRefed]) {
             decRefCount();
           }
+          op_timer_untrack(timer._timerId);
         }
         continue;
       }
@@ -302,7 +311,10 @@
       } catch (e) {
         reportException(e);
       } finally {
-        if (timer._repeat && timer._idleTimeout !== -1) {
+        if (
+          timer._repeat && timer._idleTimeout !== -1 &&
+          !timer._idlePrev && !timer._idleNext
+        ) {
           timer._idleTimeout = timer._repeat;
           insert(timer, timer._idleTimeout, now);
         } else if (!timer._idleNext && !timer._idlePrev && !timer._destroyed) {
@@ -310,6 +322,7 @@
           if (timer[kRefed]) {
             decRefCount();
           }
+          op_timer_untrack(timer._timerId);
         }
       }
     }
@@ -323,7 +336,7 @@
 
   // Timer item constructor (internal). Callers (web timers, node timers)
   // wrap this with their own validation and async context handling.
-  function createTimer(callback, after, args, isRepeat, isRefed) {
+  function createTimer(callback, after, args, isRepeat, isRefed, isSystem) {
     if (after === undefined) {
       after = 1;
     } else {
@@ -349,6 +362,12 @@
 
     if (isRefed) incRefCount();
     insert(timer, after);
+    op_timer_track(id, !!isRepeat, !!isSystem);
+    if (__isLeakTracingEnabled()) {
+      const error = new Error();
+      ErrorCaptureStackTrace(error, createTimer);
+      op_leak_tracing_submit(2, id, StringPrototypeSlice(error.stack, 6));
+    }
     return timer;
   }
 
@@ -362,6 +381,7 @@
       decRefCount();
     }
     L_remove(timer);
+    op_timer_untrack(timer._timerId);
   }
 
   function refreshTimer(timer) {

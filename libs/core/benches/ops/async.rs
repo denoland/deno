@@ -1,7 +1,9 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-// NB(bartlomieju): this is on purpose to force async ops
-#![allow(clippy::unused_async)]
+#![allow(
+  clippy::unused_async,
+  reason = "this is on purpose to force async ops"
+)]
 
 use std::ffi::c_void;
 
@@ -148,7 +150,7 @@ fn bench_op(
     .unwrap();
   let guard = tokio.enter();
   let run = runtime.execute_script("", ascii_str!("run()")).unwrap();
-  #[allow(deprecated)]
+  #[allow(deprecated, reason = "bench code")]
   let bench = tokio.block_on(runtime.resolve_value(run)).unwrap();
   let bench = {
     deno_core::scope!(scope, &mut runtime);

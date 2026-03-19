@@ -71,6 +71,7 @@ impl UnixListenerWithPath {
 
 impl Drop for UnixListenerWithPath {
   fn drop(&mut self) {
+    #[allow(clippy::disallowed_methods, reason = "requires real fs")]
     let _ = std::fs::remove_file(&self.path);
   }
 }

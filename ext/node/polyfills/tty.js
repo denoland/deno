@@ -1,14 +1,19 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { op_node_is_tty } from "ext:core/ops";
 import { primordials } from "ext:core/mod.js";
-const { Error } = primordials;
+const {
+  FunctionPrototypeCall,
+  ObjectPrototypeIsPrototypeOf,
+  ObjectSetPrototypeOf,
+} = primordials;
 
-import { ERR_INVALID_FD } from "ext:deno_node/internal/errors.ts";
-import { TTY } from "ext:deno_node/internal_binding/tty_wrap.ts";
+import {
+  ERR_INVALID_FD,
+  ERR_TTY_INIT_FAILED,
+} from "ext:deno_node/internal/errors.ts";
+import { op_tty_check_fd_permission, TTY } from "ext:core/ops";
 import { Socket } from "node:net";
 import { setReadStream } from "ext:deno_node/_process/streams.mjs";
-import * as io from "ext:deno_io/12_io.js";
 import { WriteStream } from "ext:deno_node/internal/tty.js";
 
 // Returns true when the given numeric fd is associated with a TTY and false otherwise.
@@ -16,38 +21,51 @@ function isatty(fd) {
   if (typeof fd !== "number" || fd >> 0 !== fd || fd < 0) {
     return false;
   }
-  return op_node_is_tty(fd);
+  return TTY.isTTY(fd);
 }
 
-export class ReadStream extends Socket {
-  constructor(fd, options) {
-    if (fd >> 0 !== fd || fd < 0) {
-      throw new ERR_INVALID_FD(fd);
-    }
-
-    // We only support `stdin`.
-    if (fd != 0) throw new Error("Only fd 0 is supported.");
-
-    const tty = new TTY(io.stdin);
-    super({
-      readableHighWaterMark: 0,
-      handle: tty,
-      manualStart: true,
-      ...options,
-    });
-
-    this.isRaw = false;
-    this.isTTY = true;
+// ReadStream needs to be callable without `new` to match Node.js behavior.
+// We use a wrapper function that delegates to the actual class.
+function ReadStream(fd, options) {
+  if (!ObjectPrototypeIsPrototypeOf(ReadStream.prototype, this)) {
+    return new ReadStream(fd, options);
   }
 
-  setRawMode(flag) {
-    flag = !!flag;
-    this._handle.setRaw(flag);
-
-    this.isRaw = flag;
-    return this;
+  if (fd >> 0 !== fd || fd < 0) {
+    throw new ERR_INVALID_FD(fd);
   }
+
+  // Non-stdio fds require --allow-all
+  op_tty_check_fd_permission(fd);
+
+  const ctx = {};
+  const tty = new TTY(fd, ctx);
+  if (ctx.code !== undefined) {
+    throw new ERR_TTY_INIT_FAILED(ctx);
+  }
+  FunctionPrototypeCall(Socket, this, {
+    readableHighWaterMark: 0,
+    handle: tty,
+    manualStart: true,
+    ...options,
+  });
+
+  this.isRaw = false;
+  this.isTTY = true;
 }
+
+ObjectSetPrototypeOf(ReadStream.prototype, Socket.prototype);
+ObjectSetPrototypeOf(ReadStream, Socket);
+
+ReadStream.prototype.setRawMode = function setRawMode(flag) {
+  flag = !!flag;
+  this._handle.setRawMode(flag);
+
+  this.isRaw = flag;
+  return this;
+};
+
+export { ReadStream };
 
 setReadStream(ReadStream);
 

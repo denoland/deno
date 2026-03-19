@@ -128,14 +128,6 @@
     op_leak_tracing_submit(0, id, StringPrototypeSlice(error.stack, 6));
   }
 
-  function submitTimerTrace(id) {
-    const error = new Error();
-    ErrorCaptureStackTrace(error, submitTimerTrace);
-    // We submit interval and timer traces as type "Timer"
-    // "Error\n".length == 6
-    op_leak_tracing_submit(2, id, StringPrototypeSlice(error.stack, 6));
-  }
-
   let unhandledPromiseRejectionHandler = () => false;
   let timerDepth = 0;
 
@@ -693,6 +685,14 @@
     transferableResources[name] = { send, receive };
   };
   const getTransferableResource = (name) => transferableResources[name];
+  const cloneableDeserializers = { __proto__: null };
+  const registerCloneableResource = (name, deserialize) => {
+    if (cloneableDeserializers[name]) {
+      throw new Error(`${name} is already registered`);
+    }
+    cloneableDeserializers[name] = deserialize;
+  };
+  const getCloneableDeserializers = () => cloneableDeserializers;
 
   // A helper function that will bind our own console implementation
   // with default implementation of Console from V8. This will cause
@@ -1037,11 +1037,13 @@
     hostObjectBrand,
     registerTransferableResource,
     getTransferableResource,
+    registerCloneableResource,
+    getCloneableDeserializers,
     encode: (text) => op_encode(text),
     encodeBinaryString: (buffer) => op_encode_binary_string(buffer),
     decode: (buffer) => op_decode(buffer),
     structuredClone: (value, deserializers) =>
-      op_structured_clone(value, deserializers),
+      op_structured_clone(value, deserializers ?? cloneableDeserializers),
     serialize: (
       value,
       options,

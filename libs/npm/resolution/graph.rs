@@ -47,7 +47,10 @@ use crate::resolution::collections::OneDirectionalLinkedList;
 use crate::resolution::snapshot::SnapshotPackageCopyIndexResolver;
 
 pub trait Reporter: std::fmt::Debug + Send + Sync {
-  #[allow(unused_variables)]
+  #[allow(
+    unused_variables,
+    reason = "default implementation ignores parameters"
+  )]
   fn on_resolved(&self, package_req: &PackageReq, nv: &PackageNv) {}
 }
 
@@ -973,7 +976,7 @@ impl Graph {
   // Debugging methods
 
   #[cfg(debug_assertions)]
-  #[allow(unused, clippy::print_stderr)]
+  #[allow(unused, clippy::print_stderr, reason = "debug utility")]
   fn output_path(&self, path: &Rc<GraphPath>) {
     let pkg_ids = self.compute_all_npm_pkg_ids();
     eprintln!("-----------");
@@ -1006,7 +1009,7 @@ impl Graph {
   }
 
   #[cfg(debug_assertions)]
-  #[allow(unused, clippy::print_stderr)]
+  #[allow(unused, clippy::print_stderr, reason = "debug utility")]
   fn output_node_with_ids(
     nodes: &HashMap<NodeId, Node>,
     pkg_ids: &HashMap<NodeId, NpmPackageId>,
@@ -1026,7 +1029,7 @@ impl Graph {
   }
 
   #[cfg(debug_assertions)]
-  #[allow(unused, clippy::print_stderr)]
+  #[allow(unused, clippy::print_stderr, reason = "debug utility")]
   pub fn output_nodes(&self) {
     let pkg_ids = self.compute_all_npm_pkg_ids();
     eprintln!("~~~");
@@ -1050,17 +1053,19 @@ struct DepEntryCache(HashMap<Rc<PackageNv>, Rc<Vec<NpmDependencyEntry>>>);
 impl DepEntryCache {
   pub fn store(
     &mut self,
-    nv: Rc<PackageNv>,
+    nv: &Rc<PackageNv>,
     version_info: &NpmPackageVersionInfo,
   ) -> Result<Rc<Vec<NpmDependencyEntry>>, Box<NpmDependencyEntryError>> {
     debug_assert_eq!(nv.version, version_info.version);
-    debug_assert!(!self.0.contains_key(&nv)); // we should not be re-inserting
+    if let Some(deps) = self.0.get(nv) {
+      return Ok(deps.clone());
+    }
     let mut deps = version_info.dependencies_as_entries(&nv.name)?;
     // Ensure name alphabetical and then version descending
     // so these are resolved in that order
     deps.sort();
     let deps = Rc::new(deps);
-    self.0.insert(nv, deps.clone());
+    self.0.insert(nv.clone(), deps.clone());
     Ok(deps)
   }
 
@@ -1383,7 +1388,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
     let has_deps = if let Some(deps) = self.dep_entry_cache.get(&pkg_nv) {
       !deps.is_empty()
     } else {
-      let deps = self.dep_entry_cache.store(pkg_nv.clone(), info)?;
+      let deps = self.dep_entry_cache.store(&pkg_nv, info)?;
       !deps.is_empty()
     };
 
@@ -1829,7 +1834,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
     node_id: NodeId,
     parent_pkgs: &BTreeMap<StackString, NodeId>,
     visiting: &mut HashSet<NodeId>,
-    ancestors: &[PackageNv],
+    ancestors: &[Rc<PackageNv>],
   ) -> Result<PeersResolution, NpmResolutionError> {
     let nv = self
       .graph
@@ -1944,7 +1949,8 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
                 let mut diag_ancestors =
                   Vec::with_capacity(ancestors.len() + 1);
                 diag_ancestors.push((*nv).clone());
-                diag_ancestors.extend_from_slice(ancestors);
+                diag_ancestors
+                  .extend(ancestors.iter().map(|nv| nv.as_ref().clone()));
                 self.unmet_peer_diagnostics.borrow_mut().insert(
                   UnmetPeerDepDiagnostic {
                     ancestors: diag_ancestors,
@@ -2006,7 +2012,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
     let mut resolved_children: BTreeMap<StackString, NodeId> = BTreeMap::new();
 
     let mut child_ancestors = Vec::with_capacity(ancestors.len() + 1);
-    child_ancestors.push((*nv).clone());
+    child_ancestors.push(nv.clone());
     child_ancestors.extend_from_slice(ancestors);
 
     for (spec, child_id) in &all_deps_to_recurse {
@@ -2294,22 +2300,37 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
   /// Check if a cached peer resolution matches the current parent context.
   fn find_peers_cache_hit(
     &self,
-    nv: &PackageNv,
+    nv: &Rc<PackageNv>,
     parent_pkgs: &BTreeMap<StackString, NodeId>,
   ) -> Option<PeersResolution> {
     let mut checking = HashSet::new();
-    self.find_peers_cache_hit_inner(nv, parent_pkgs, &mut checking)
+    // Memoize recursive equivalence checks within this call.
+    // `parent_pkgs` is constant throughout, so the result of
+    // "does nv X have a matching cache entry?" is the same every
+    // time we ask. Without this memo, mutually-dependent packages
+    // (like the AWS CDK v1 suite) cause combinatorial explosion:
+    // each cache entry re-checks the same peers, each of which
+    // re-checks their peers, leading to millions of redundant calls.
+    let mut memo = HashMap::new();
+    self.find_peers_cache_hit_inner(nv, parent_pkgs, &mut checking, &mut memo)
   }
 
   fn find_peers_cache_hit_inner(
     &self,
-    nv: &PackageNv,
+    nv: &Rc<PackageNv>,
     parent_pkgs: &BTreeMap<StackString, NodeId>,
-    checking: &mut HashSet<PackageNv>,
+    checking: &mut HashSet<Rc<PackageNv>>,
+    memo: &mut HashMap<Rc<PackageNv>, Option<PeersResolution>>,
   ) -> Option<PeersResolution> {
+    // Return memoized result if we've already fully evaluated this nv.
+    if let Some(result) = memo.get(nv) {
+      return result.clone();
+    }
     let entries = self.peers_cache.get(nv)?;
     if !checking.insert(nv.clone()) {
-      // Prevent infinite recursion for circular deps
+      // Prevent infinite recursion for circular deps.
+      // Don't memoize this — the result is context-dependent
+      // (it depends on which ancestors are currently being checked).
       return None;
     }
     for entry in entries {
@@ -2337,7 +2358,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
               // Not pure. Check recursively if the non-pure
               // package would resolve the same way in this context.
               if self
-                .find_peers_cache_hit_inner(cnv, parent_pkgs, checking)
+                .find_peers_cache_hit_inner(cnv, parent_pkgs, checking, memo)
                 .is_some()
               {
                 continue;
@@ -2384,10 +2405,13 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
 
       if all_match {
         checking.remove(nv);
-        return Some(entry.clone());
+        let result = Some(entry.clone());
+        memo.insert(nv.clone(), result.clone());
+        return result;
       }
     }
     checking.remove(nv);
+    memo.insert(nv.clone(), None);
     None
   }
 
@@ -2566,8 +2590,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
           let version_info = package_info
             .version_info(&nv, &self.version_resolver.link_packages)
             .map_err(NpmPackageVersionResolutionError::VersionNotFound)?;
-          let child_deps =
-            self.dep_entry_cache.store(nv.clone(), version_info)?;
+          let child_deps = self.dep_entry_cache.store(&nv, version_info)?;
 
           if child_deps.is_empty() {
             self.graph.borrow_node_mut(path.node_id()).no_peers = true;
@@ -3022,7 +3045,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
         let version_info = package_info
           .version_info(&nv, &self.version_resolver.link_packages)
           .map_err(NpmPackageVersionResolutionError::VersionNotFound)?;
-        let deps = self.dep_entry_cache.store(nv.clone(), version_info)?;
+        let deps = self.dep_entry_cache.store(&nv, version_info)?;
         pending_dep_entries.push_back((node_id, deps));
       }
 
@@ -9156,6 +9179,86 @@ mod test {
       packages.iter().any(|p| p.pkg_id.starts_with("package-b@")),
       "should have package-b"
     );
+  }
+
+  /// Test that mutual peer dependencies between many packages don't cause
+  /// combinatorial explosion in `find_peers_cache_hit_inner`.
+  /// Simulates the AWS CDK v1 pattern where ~30 packages all peer-depend
+  /// on each other (e.g. @aws-cdk/aws-ecs peers with aws-iam, aws-ec2,
+  /// aws-logs, etc., and each of those peers back).
+  /// Without memoization in `find_peers_cache_hit_inner`, this causes
+  /// millions of redundant recursive calls and hangs indefinitely.
+  /// Regression test for https://github.com/denoland/deno/issues/26430
+  #[tokio::test]
+  async fn peer_deps_mutual_many_packages_no_hang() {
+    let api = TestNpmRegistryApi::default();
+
+    // Create a "core" package that all CDK packages depend on
+    api.ensure_package_version("cdk-core", "1.0.0");
+
+    // Create N packages that mutually peer-depend on each other.
+    // With N=25, without memoization this causes combinatorial explosion
+    // in find_peers_cache_hit_inner (hangs indefinitely).
+    let n = 25;
+    let pkg_names: Vec<String> =
+      (0..n).map(|i| format!("cdk-pkg-{}", i)).collect();
+
+    for name in &pkg_names {
+      api.ensure_package_version(name, "1.0.0");
+      // Each package depends on cdk-core
+      api.add_dependency((name, "1.0.0"), ("cdk-core", "1"));
+    }
+
+    // Each package peer-depends on every other package
+    for i in 0..n {
+      for j in 0..n {
+        if i != j {
+          api.add_peer_dependency(
+            (&pkg_names[i], "1.0.0"),
+            (&pkg_names[j], "*"),
+          );
+        }
+      }
+    }
+
+    // A root package that depends on all of them
+    api.ensure_package_version("cdk-app", "1.0.0");
+    for name in &pkg_names {
+      api.add_dependency(("cdk-app", "1.0.0"), (name, "1"));
+    }
+
+    // Build root reqs: cdk-app + all cdk-pkg-N (to provide the peers)
+    let owned_reqs: Vec<String> =
+      pkg_names.iter().map(|n| format!("{}@1", n)).collect();
+    let mut root_reqs: Vec<&str> = vec!["cdk-app@1", "cdk-core@1"];
+    root_reqs.extend(owned_reqs.iter().map(|s| s.as_str()));
+
+    // Without memoization this would hang; with it, completes in < 5s
+    let result = tokio::time::timeout(
+      std::time::Duration::from_secs(30),
+      run_resolver_and_get_output(api, root_reqs),
+    )
+    .await;
+
+    let (packages, _) = result.expect(
+      "Resolution timed out — find_peers_cache_hit likely has \
+       combinatorial explosion (missing memoization)",
+    );
+
+    // Verify all packages resolved
+    assert!(
+      packages.iter().any(|p| p.pkg_id.starts_with("cdk-core@")),
+      "should have cdk-core"
+    );
+    for name in &pkg_names {
+      assert!(
+        packages
+          .iter()
+          .any(|p| p.pkg_id.starts_with(&format!("{}@", name))),
+        "should have {}",
+        name
+      );
+    }
   }
 
   /// Test that NpmPackageId serialization length stays bounded.

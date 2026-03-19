@@ -49,12 +49,12 @@ Deno.test({
 });
 
 Deno.test({
-  name: "rsa private encrypt and private decrypt",
+  name: "rsa private encrypt and public decrypt",
   fn() {
     const encrypted = crypto.privateEncrypt(rsaPrivateKey, input);
     assert(Buffer.isBuffer(encrypted));
-    const decrypted = crypto.privateDecrypt(
-      rsaPrivateKey,
+    const decrypted = crypto.publicDecrypt(
+      rsaPublicKey,
       Buffer.from(encrypted),
     );
     assert(Buffer.isBuffer(decrypted));
@@ -318,10 +318,17 @@ Deno.test({
       Iv,
     }
     const table = [
+      ["aes128", 15, 16, Invalid.Key],
+      ["aes-128-cbc", 15, 16, Invalid.Key],
+      ["aes128", 16, 15, Invalid.Iv],
+      ["aes-128-cbc", 16, 15, Invalid.Iv],
       ["aes256", 31, 16, Invalid.Key],
       ["aes-256-cbc", 31, 16, Invalid.Key],
       ["aes256", 32, 15, Invalid.Iv],
       ["aes-256-cbc", 32, 15, Invalid.Iv],
+      ["aes-128-ecb", 15, 0, Invalid.Key],
+      ["aes-192-ecb", 16, 0, Invalid.Key],
+      ["aes-256-ecb", 16, 0, Invalid.Key],
       ["aes-128-ctr", 32, 16, Invalid.Key],
       ["aes-128-ctr", 16, 32, Invalid.Iv],
       ["aes-192-ctr", 16, 16, Invalid.Key],
@@ -366,10 +373,15 @@ Deno.test({
       Iv,
     }
     const table = [
+      ["aes-128-cbc", 15, 16, Invalid.Key],
+      ["aes-128-cbc", 16, 15, Invalid.Iv],
       ["aes256", 31, 16, Invalid.Key],
       ["aes-256-cbc", 31, 16, Invalid.Key],
       ["aes256", 32, 15, Invalid.Iv],
       ["aes-256-cbc", 32, 15, Invalid.Iv],
+      ["aes-128-ecb", 15, 0, Invalid.Key],
+      ["aes-192-ecb", 16, 0, Invalid.Key],
+      ["aes-256-ecb", 16, 0, Invalid.Key],
       ["aes-128-ctr", 32, 16, Invalid.Key],
       ["aes-128-ctr", 16, 32, Invalid.Iv],
       ["aes-192-ctr", 16, 16, Invalid.Key],

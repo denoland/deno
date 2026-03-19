@@ -8,6 +8,24 @@ use libffi::middle::Arg;
 
 use crate::symbol::NativeType;
 
+/// Holds V8 backing store references to prevent GC from freeing ArrayBuffer
+/// memory while nonblocking FFI calls are in progress on background threads.
+pub struct BackingStoreHolder(Vec<v8::SharedRef<v8::BackingStore>>);
+
+// SAFETY: v8::SharedRef<v8::BackingStore> is ref-counted and safe to send
+// across threads. We hold these references solely to prevent deallocation.
+unsafe impl Send for BackingStoreHolder {}
+
+impl BackingStoreHolder {
+  pub fn new() -> Self {
+    Self(Vec::new())
+  }
+
+  fn push(&mut self, store: v8::SharedRef<v8::BackingStore>) {
+    self.0.push(store);
+  }
+}
+
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 #[class(type)]
 pub enum IRError {
@@ -75,6 +93,24 @@ pub fn out_buffer_as_ptr(
   }
 }
 
+/// Like `out_buffer_as_ptr` but also returns the backing store reference
+/// to prevent GC from freeing the buffer during nonblocking FFI calls.
+pub fn out_buffer_as_ptr_nonblocking(
+  scope: &mut v8::PinScope<'_, '_>,
+  out_buffer: Option<v8::Local<v8::TypedArray>>,
+  holder: &mut BackingStoreHolder,
+) -> Option<OutBuffer> {
+  match out_buffer {
+    Some(out_buffer) => {
+      let ab = out_buffer.buffer(scope).unwrap();
+      holder.push(ab.get_backing_store());
+      ab.data()
+        .map(|non_null| OutBuffer(non_null.as_ptr() as *mut u8))
+    }
+    None => None,
+  }
+}
+
 /// Intermediate format for easy translation from NativeType + V8 value
 /// to libffi argument types.
 #[repr(C)]
@@ -98,7 +134,10 @@ pub union NativeValue {
 
 impl NativeValue {
   pub unsafe fn as_arg(&self, native_type: &NativeType) -> Arg<'_> {
-    #[allow(clippy::undocumented_unsafe_blocks)]
+    #[allow(
+      clippy::undocumented_unsafe_blocks,
+      reason = "safety comment on the containing block"
+    )]
     unsafe {
       match native_type {
         NativeType::Void => unreachable!(),
@@ -130,7 +169,10 @@ impl NativeValue {
     scope: &mut v8::PinScope<'scope, '_>,
     native_type: NativeType,
   ) -> v8::Local<'scope, v8::Value> {
-    #[allow(clippy::undocumented_unsafe_blocks)]
+    #[allow(
+      clippy::undocumented_unsafe_blocks,
+      reason = "safety comment on the containing block"
+    )]
     unsafe {
       match native_type {
         NativeType::Void => v8::undefined(scope).into(),
@@ -406,6 +448,27 @@ pub fn ffi_parse_buffer_arg(
   Ok(NativeValue { pointer })
 }
 
+/// Like `ffi_parse_buffer_arg` but also retains the backing store reference
+/// in the holder to prevent GC from freeing the buffer during nonblocking
+/// FFI calls.
+#[inline]
+pub fn ffi_parse_buffer_arg_nonblocking(
+  scope: &mut v8::PinScope<'_, '_>,
+  arg: v8::Local<v8::Value>,
+  holder: &mut BackingStoreHolder,
+) -> Result<NativeValue, IRError> {
+  // Retain the backing store before extracting the raw pointer.
+  if let Ok(value) = v8::Local::<v8::ArrayBuffer>::try_from(arg) {
+    holder.push(value.get_backing_store());
+  } else if let Ok(value) = v8::Local::<v8::ArrayBufferView>::try_from(arg)
+    && let Some(ab) = value.buffer(scope)
+  {
+    holder.push(ab.get_backing_store());
+  }
+  let pointer = parse_buffer_arg(arg)?;
+  Ok(NativeValue { pointer })
+}
+
 #[inline]
 pub fn ffi_parse_struct_arg(
   scope: &mut v8::PinScope<'_, '_>,
@@ -438,6 +501,24 @@ pub fn ffi_parse_struct_arg(
     return Err(IRError::InvalidStructType);
   };
   Ok(NativeValue { pointer })
+}
+
+/// Like `ffi_parse_struct_arg` but also retains the backing store reference
+/// to prevent GC from freeing the buffer during nonblocking FFI calls.
+#[inline]
+pub fn ffi_parse_struct_arg_nonblocking(
+  scope: &mut v8::PinScope<'_, '_>,
+  arg: v8::Local<v8::Value>,
+  holder: &mut BackingStoreHolder,
+) -> Result<NativeValue, IRError> {
+  if let Ok(value) = v8::Local::<v8::ArrayBuffer>::try_from(arg) {
+    holder.push(value.get_backing_store());
+  } else if let Ok(value) = v8::Local::<v8::ArrayBufferView>::try_from(arg)
+    && let Some(ab) = value.buffer(scope)
+  {
+    holder.push(ab.get_backing_store());
+  }
+  ffi_parse_struct_arg(scope, arg)
 }
 
 #[inline]
@@ -517,6 +598,89 @@ where
       }
       NativeType::Struct(_) => {
         ffi_args.push(ffi_parse_struct_arg(scope, value)?);
+      }
+      NativeType::Pointer => {
+        ffi_args.push(ffi_parse_pointer_arg(scope, value)?);
+      }
+      NativeType::Function => {
+        ffi_args.push(ffi_parse_function_arg(scope, value)?);
+      }
+      NativeType::Void => {
+        unreachable!();
+      }
+    }
+  }
+
+  Ok(ffi_args)
+}
+
+/// Like `ffi_parse_args` but also retains backing store references for buffer
+/// and struct arguments, preventing GC from freeing the underlying memory
+/// while nonblocking FFI calls are in progress on background threads.
+pub fn ffi_parse_args_nonblocking<'scope>(
+  scope: &mut v8::PinScope<'scope, '_>,
+  args: v8::Local<v8::Array>,
+  parameter_types: &[NativeType],
+  holder: &mut BackingStoreHolder,
+) -> Result<Vec<NativeValue>, IRError>
+where
+  'scope: 'scope,
+{
+  if parameter_types.is_empty() {
+    return Ok(vec![]);
+  }
+
+  let mut ffi_args: Vec<NativeValue> =
+    Vec::with_capacity(parameter_types.len());
+
+  for (index, native_type) in parameter_types.iter().enumerate() {
+    let value = args.get_index(scope, index as u32).unwrap();
+    match native_type {
+      NativeType::Bool => {
+        ffi_args.push(ffi_parse_bool_arg(value)?);
+      }
+      NativeType::U8 => {
+        ffi_args.push(ffi_parse_u8_arg(value)?);
+      }
+      NativeType::I8 => {
+        ffi_args.push(ffi_parse_i8_arg(value)?);
+      }
+      NativeType::U16 => {
+        ffi_args.push(ffi_parse_u16_arg(value)?);
+      }
+      NativeType::I16 => {
+        ffi_args.push(ffi_parse_i16_arg(value)?);
+      }
+      NativeType::U32 => {
+        ffi_args.push(ffi_parse_u32_arg(value)?);
+      }
+      NativeType::I32 => {
+        ffi_args.push(ffi_parse_i32_arg(value)?);
+      }
+      NativeType::U64 => {
+        ffi_args.push(ffi_parse_u64_arg(scope, value)?);
+      }
+      NativeType::I64 => {
+        ffi_args.push(ffi_parse_i64_arg(scope, value)?);
+      }
+      NativeType::USize => {
+        ffi_args.push(ffi_parse_usize_arg(scope, value)?);
+      }
+      NativeType::ISize => {
+        ffi_args.push(ffi_parse_isize_arg(scope, value)?);
+      }
+      NativeType::F32 => {
+        ffi_args.push(ffi_parse_f32_arg(value)?);
+      }
+      NativeType::F64 => {
+        ffi_args.push(ffi_parse_f64_arg(value)?);
+      }
+      NativeType::Buffer => {
+        ffi_args.push(ffi_parse_buffer_arg_nonblocking(scope, value, holder)?);
+      }
+      NativeType::Struct(_) => {
+        // Struct args also extract pointers from ArrayBuffers
+        ffi_args.push(ffi_parse_struct_arg_nonblocking(scope, value, holder)?);
       }
       NativeType::Pointer => {
         ffi_args.push(ffi_parse_pointer_arg(scope, value)?);

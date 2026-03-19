@@ -18,6 +18,7 @@ const {
   MapPrototypeGet,
   MapPrototypeSet,
   NumberIsFinite,
+  ObjectDefineProperty,
   ReflectApply,
   SafeArrayIterator,
   SafeMap,
@@ -103,7 +104,13 @@ Timeout.prototype[createTimer] = function () {
     this._isRepeat,
     this[kRefed],
   );
-  this._timer = timer;
+  ObjectDefineProperty(this, "_timer", {
+    __proto__: null,
+    value: timer,
+    writable: true,
+    enumerable: false,
+    configurable: true,
+  });
   const id = timer._timerId;
   MapPrototypeSet(activeTimers, id, this);
   return id;

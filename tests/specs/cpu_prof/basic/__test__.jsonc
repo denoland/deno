@@ -1,0 +1,17 @@
+{
+  "tempDir": true,
+  "tests": {
+    "basic": {
+      "steps": [
+        {
+          "args": "run --cpu-prof-dir=. main.js",
+          "output": "main.out"
+        },
+        {
+          "args": "run --allow-read verify.js",
+          "output": "Valid profile with [WILDCARD] nodes\n"
+        }
+      ]
+    }
+  }
+}

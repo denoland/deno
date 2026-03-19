@@ -143,6 +143,36 @@ pub fn op_timer_schedule(scope: &mut v8::PinScope, delay_ms: f64) {
   }
 }
 
+/// Register a JS-managed timer with the Rust stats system for leak detection.
+/// System timers (e.g. AbortSignal.timeout) are tracked but excluded from
+/// sanitizer stats, matching the old `op_timer_queue_system` behavior.
+#[op2(fast)]
+pub fn op_timer_track(
+  scope: &mut v8::PinScope,
+  #[smi] id: i32,
+  is_repeat: bool,
+  is_system: bool,
+) {
+  let context_state = JsRealm::state_from_scope(scope);
+  context_state
+    .active_timers
+    .borrow_mut()
+    .insert(id as usize, (is_repeat, is_system));
+}
+
+/// Unregister a JS-managed timer from the Rust stats system.
+#[op2(fast)]
+pub fn op_timer_untrack(scope: &mut v8::PinScope, #[smi] id: i32) {
+  let context_state = JsRealm::state_from_scope(scope);
+  context_state
+    .active_timers
+    .borrow_mut()
+    .remove(&(id as usize));
+  context_state
+    .activity_traces
+    .complete(RuntimeActivityType::Timer, id as usize);
+}
+
 /// Get the current monotonic time in milliseconds (relative to process start).
 #[op2(fast)]
 pub fn op_timer_now(scope: &mut v8::PinScope) -> f64 {
@@ -529,7 +559,7 @@ struct SerializeDeserialize<'a> {
 }
 
 impl v8::ValueSerializerImpl for SerializeDeserialize<'_> {
-  #[allow(unused_variables)]
+  #[allow(unused_variables, reason = "parameters required by trait")]
   fn throw_data_clone_error<'s, 'i>(
     &self,
     scope: &mut v8::PinScope<'s, 'i>,
@@ -812,7 +842,7 @@ pub fn op_serialize<'s, 'i>(
   }
 }
 
-#[op2]
+#[op2(reentrant)]
 pub fn op_deserialize<'s, 'i>(
   scope: &mut v8::PinScope<'s, 'i>,
   #[buffer] zero_copy: JsBuffer,
@@ -1188,7 +1218,7 @@ pub fn op_set_wasm_streaming_callback(
 
 // This op is re-entrant as it makes a v8 call. It also cannot be fast because
 // we require a JS execution scope.
-#[allow(clippy::let_and_return)]
+#[allow(clippy::let_and_return, reason = "improves readability")]
 #[op2(nofast, reentrant)]
 pub fn op_abort_wasm_streaming(
   state: Rc<RefCell<OpState>>,

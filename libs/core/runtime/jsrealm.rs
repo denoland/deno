@@ -67,7 +67,7 @@ pub(crate) type UnrefedOps =
   Rc<RefCell<HashSet<i32, BuildHasherDefault<IdentityHasher>>>>;
 
 /// Indices into the shared immediate_info buffer (Uint32Array).
-#[allow(dead_code)] // Documents the layout; used only from JS
+#[allow(dead_code, reason = "documents the layout; used only from JS")]
 pub(crate) const IMM_IDX_COUNT: usize = 0;
 pub(crate) const IMM_IDX_REF_COUNT: usize = 1;
 pub(crate) const IMM_IDX_HAS_OUTSTANDING: usize = 2;
@@ -105,6 +105,11 @@ pub struct ContextState {
   /// Shared timer info buffer exposed to JS as an Int32Array.
   /// Index 0: refed timer count (managed by JS)
   pub(crate) timer_info: Box<[i32; 1]>,
+  /// Active JS-managed timers tracked for the leak sanitizer.
+  /// Maps timer ID → (is_repeat, is_system). System timers (e.g.
+  /// AbortSignal.timeout) are excluded from sanitizer stats.
+  pub(crate) active_timers:
+    RefCell<std::collections::HashMap<usize, (bool, bool)>>,
   pub(crate) external_ops_tracker: ExternalOpsTracker,
   pub(crate) ext_import_meta_proto: RefCell<Option<v8::Global<v8::Object>>>,
   /// Phase-specific state for the libuv-style event loop.
@@ -163,6 +168,7 @@ impl ContextState {
       task_spawner_factory: Default::default(),
       user_timer: Default::default(),
       timer_info: Box::new([0i32; 1]),
+      active_timers: Default::default(),
       unrefed_ops,
       external_ops_tracker,
       ext_import_meta_proto: Default::default(),
