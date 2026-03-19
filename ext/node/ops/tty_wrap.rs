@@ -70,7 +70,6 @@ pub fn op_tty_check_fd_permission(
   Ok(())
 }
 
-
 #[derive(CppgcInherits)]
 #[cppgc_inherits_from(LibUvStreamWrap)]
 #[repr(C)]

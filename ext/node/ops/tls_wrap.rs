@@ -291,10 +291,7 @@ impl UnderlyingStream {
     }
   }
 
-  fn write(
-    &self,
-    write_req: Box<EncryptedWriteReq>,
-  ) -> (*mut uv_write_t, i32) {
+  fn write(&self, write_req: Box<EncryptedWriteReq>) -> (*mut uv_write_t, i32) {
     match self {
       UnderlyingStream::Uv { stream, .. } => {
         if stream.is_null() {
@@ -2706,4 +2703,3 @@ fn build_server_config(
       ))),
   )
 }
-

@@ -7,10 +7,7 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { Socket } from "node:net";
-import {
-  codeMap,
-  UV_ECANCELED,
-} from "ext:deno_node/internal_binding/uv.ts";
+import { codeMap, UV_ECANCELED } from "ext:deno_node/internal_binding/uv.ts";
 
 const kCurrentWriteRequest = Symbol("kCurrentWriteRequest");
 const kCurrentShutdownRequest = Symbol("kCurrentShutdownRequest");

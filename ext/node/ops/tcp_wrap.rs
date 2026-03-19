@@ -382,7 +382,10 @@ impl TCPWrap {
       uv_tcp_bind(
         handle.as_mut_ptr(),
         sock_addr.as_ptr() as *const c_void,
-        #[allow(clippy::unnecessary_cast, reason = "socklen_t may not be u32 on all platforms")]
+        #[allow(
+          clippy::unnecessary_cast,
+          reason = "socklen_t may not be u32 on all platforms"
+        )]
         {
           sock_addr.len() as u32
         },
@@ -418,7 +421,10 @@ impl TCPWrap {
       uv_tcp_bind(
         handle.as_mut_ptr(),
         sock_addr.as_ptr() as *const c_void,
-        #[allow(clippy::unnecessary_cast, reason = "socklen_t may not be u32 on all platforms")]
+        #[allow(
+          clippy::unnecessary_cast,
+          reason = "socklen_t may not be u32 on all platforms"
+        )]
         {
           sock_addr.len() as u32
         },

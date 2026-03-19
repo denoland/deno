@@ -13,9 +13,7 @@ import {
   op_set_default_ca_certificates,
 } from "ext:core/ops";
 import { codes } from "ext:deno_node/internal/errors.ts";
-import {
-  isArrayBufferView,
-} from "ext:deno_node/internal/util/types.ts";
+import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
 import { validateString } from "ext:deno_node/internal/validators.mjs";
 import { primordials } from "ext:core/mod.js";
 
