@@ -1178,8 +1178,11 @@ fn find_descendant_pids(root_pid: i32) -> Vec<i32> {
 /// Build a map from parent PID to list of child PIDs by walking /proc.
 #[cfg(target_os = "linux")]
 fn build_ppid_map() -> HashMap<i32, Vec<i32>> {
+  use sys_traits::FsRead;
+  use sys_traits::FsReadDir;
+  let sys = sys_traits::impls::RealSys;
   let mut map: HashMap<i32, Vec<i32>> = HashMap::new();
-  let Ok(entries) = std::fs::read_dir("/proc") else {
+  let Ok(entries) = sys.fs_read_dir("/proc") else {
     return map;
   };
   for entry in entries.flatten() {
@@ -1188,7 +1191,7 @@ fn build_ppid_map() -> HashMap<i32, Vec<i32>> {
     let Ok(pid) = name.parse::<i32>() else {
       continue;
     };
-    let Ok(status) = std::fs::read_to_string(format!("/proc/{pid}/status"))
+    let Ok(status) = sys.fs_read_to_string(format!("/proc/{pid}/status"))
     else {
       continue;
     };
