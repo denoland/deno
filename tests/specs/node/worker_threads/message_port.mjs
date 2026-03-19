@@ -7,7 +7,7 @@ const { port1: mainPort, port2: workerPort } = new workerThreads
 const deferred = createDeferred();
 
 const worker = new workerThreads.Worker(
-  import.meta.resolve("./message_port_1.cjs"),
+  new URL("./message_port_1.cjs", import.meta.url),
   {
     workerData: workerPort,
     transferList: [workerPort],

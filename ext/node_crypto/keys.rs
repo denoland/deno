@@ -1581,9 +1581,13 @@ fn bytes_to_b64(bytes: &[u8]) -> String {
 pub enum AsymmetricPrivateKeyJwkError {
   #[error("key is not an asymmetric private key")]
   KeyIsNotAsymmetricPrivateKey,
-  #[error("Unsupported JWK EC curve: P224")]
+  #[class(generic)]
+  #[property("code" = "ERR_CRYPTO_JWK_UNSUPPORTED_CURVE")]
+  #[error("Unsupported JWK EC curve: secp224r1.")]
   UnsupportedJwkEcCurveP224,
-  #[error("jwk export not implemented for this key type")]
+  #[class(generic)]
+  #[property("code" = "ERR_CRYPTO_JWK_UNSUPPORTED_KEY_TYPE")]
+  #[error("Unsupported JWK Key Type.")]
   JwkExportNotImplementedForKeyType,
 }
 
@@ -1592,9 +1596,13 @@ pub enum AsymmetricPrivateKeyJwkError {
 pub enum AsymmetricPublicKeyJwkError {
   #[error("key is not an asymmetric public key")]
   KeyIsNotAsymmetricPublicKey,
-  #[error("Unsupported JWK EC curve: P224")]
+  #[class(generic)]
+  #[property("code" = "ERR_CRYPTO_JWK_UNSUPPORTED_CURVE")]
+  #[error("Unsupported JWK EC curve: secp224r1.")]
   UnsupportedJwkEcCurveP224,
-  #[error("jwk export not implemented for this key type")]
+  #[class(generic)]
+  #[property("code" = "ERR_CRYPTO_JWK_UNSUPPORTED_KEY_TYPE")]
+  #[error("Unsupported JWK Key Type.")]
   JwkExportNotImplementedForKeyType,
 }
 
@@ -1720,8 +1728,22 @@ impl AsymmetricPublicKey {
             .map_err(|_| AsymmetricPublicKeyDerError::InvalidRsaPublicKey)?
             .into_vec()
             .into_boxed_slice(),
-          AsymmetricPublicKey::RsaPss(_key) => {
-            return Err(AsymmetricPublicKeyDerError::ExportingNonRsaPssPublicKeyAsSpkiUnsupported)
+          AsymmetricPublicKey::RsaPss(key) => {
+            let pkcs1_der = key.key
+              .to_pkcs1_der()
+              .map_err(|_| AsymmetricPublicKeyDerError::InvalidRsaPublicKey)?;
+            let spki = SubjectPublicKeyInfoRef {
+              algorithm: rsa::pkcs8::AlgorithmIdentifierRef {
+                oid: RSASSA_PSS_OID,
+                parameters: None,
+              },
+              subject_public_key: BitStringRef::from_bytes(pkcs1_der.as_bytes())
+                .map_err(|_| AsymmetricPublicKeyDerError::InvalidRsaPublicKey)?,
+            };
+            spki
+              .to_der()
+              .map_err(|_| AsymmetricPublicKeyDerError::InvalidRsaPublicKey)?
+              .into_boxed_slice()
           }
           AsymmetricPublicKey::Dsa(key) => key
             .to_public_key_der()
@@ -2304,7 +2326,7 @@ pub enum AsymmetricKeyDetails {
     mgf1_hash_algorithm: &'static str,
     salt_length: u32,
   },
-  #[serde(rename = "rsaPss")]
+  #[serde(rename = "rsaPss", rename_all = "camelCase")]
   RsaPssBasic {
     modulus_length: usize,
     public_exponent: V8BigInt,
@@ -2689,7 +2711,10 @@ fn dsa_generate(
   use dsa::SigningKey;
 
   let key_size = match (modulus_length, divisor_length) {
-    #[allow(deprecated)]
+    #[allow(
+      deprecated,
+      reason = "needed for compatibility with legacy DSA key sizes"
+    )]
     (1024, 160) => KeySize::DSA_1024_160,
     (2048, 224) => KeySize::DSA_2048_224,
     (2048, 256) => KeySize::DSA_2048_256,

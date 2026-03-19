@@ -495,6 +495,9 @@ fn parse_flags(source: &str) -> (Vec<String>, Vec<String>) {
           "--allow-natives-syntax" => {
             v8_flags.push("--allow-natives-syntax".to_string());
           }
+          f if f.starts_with("--title=") => {
+            node_options.push(f.to_string());
+          }
           _ => {}
         }
       }
@@ -784,7 +787,7 @@ fn run_test(
 ///
 /// Returns `Passed` when the test fails in the expected way (matching exit code
 /// and/or output pattern), and `Failed` otherwise.
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, reason = "all arguments are needed")]
 fn handle_expected_failure(
   ef: &ExpectedFailure,
   success: bool,

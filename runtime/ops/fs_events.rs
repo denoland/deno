@@ -100,9 +100,15 @@ struct WatcherState {
 }
 
 fn starts_with_canonicalized(path: &Path, prefix: &Path) -> bool {
-  #[allow(clippy::disallowed_methods)]
+  #[allow(
+    clippy::disallowed_methods,
+    reason = "always using real fs with watcher"
+  )]
   let path = path.canonicalize().ok();
-  #[allow(clippy::disallowed_methods)]
+  #[allow(
+    clippy::disallowed_methods,
+    reason = "always using real fs with watcher"
+  )]
   let prefix = std::fs::canonicalize(prefix).ok();
   match (path, prefix) {
     (Some(path), Some(prefix)) => path.starts_with(prefix),

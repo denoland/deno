@@ -14,6 +14,7 @@ import {
   op_node_load_env_file,
   op_node_process_constrained_memory,
   op_node_process_kill,
+  op_node_process_set_title,
   op_node_process_setegid,
   op_node_process_seteuid,
   op_node_process_setgid,
@@ -484,6 +485,31 @@ function Process(this: any) {
 }
 Process.prototype = Object.create(EventEmitter.prototype);
 
+// Look up the actual registered listener for a signal event. When `once()` is
+// used, EventEmitter wraps the listener in a function with a `.listener`
+// property. We need the wrapper to pass to `Deno.removeSignalListener`.
+function _findSignalListener(
+  // deno-lint-ignore no-explicit-any
+  target: any,
+  event: string,
+  // deno-lint-ignore no-explicit-any
+  listener: (...args: any[]) => void,
+  // deno-lint-ignore no-explicit-any
+): ((...args: any[]) => void) | undefined {
+  const events = target._events;
+  if (events === undefined) return undefined;
+  const list = events[event];
+  if (list === undefined) return undefined;
+  if (typeof list === "function") {
+    if (list !== listener && list.listener === listener) return list;
+    return undefined;
+  }
+  for (let i = list.length - 1; i >= 0; i--) {
+    if (list[i] !== listener && list[i].listener === listener) return list[i];
+  }
+  return undefined;
+}
+
 /** https://nodejs.org/api/process.html#process_process_events */
 Process.prototype.on = function (
   // deno-lint-ignore no-explicit-any
@@ -529,8 +555,16 @@ Process.prototype.off = function (
     ) {
       // Ignores all signals except SIGBREAK, SIGINT, and SIGWINCH on windows.
     } else {
+      // Find the actual registered listener before EventEmitter removes it.
+      // When using `once()`, EventEmitter wraps the original listener in a
+      // wrapper with a `.listener` property pointing to the original. We need
+      // to pass the wrapper (not the original) to Deno.removeSignalListener.
+      const registered = _findSignalListener(this, event, listener);
       EventEmitter.prototype.off.call(this, event, listener);
-      Deno.removeSignalListener(event as Deno.Signal, listener);
+      Deno.removeSignalListener(
+        event as Deno.Signal,
+        registered ?? listener,
+      );
     }
   } else {
     EventEmitter.prototype.off.call(this, event, listener);
@@ -589,6 +623,49 @@ Process.prototype.removeListener = function (
   return this.off(event, listener);
 };
 
+Process.prototype.removeAllListeners = function (
+  // deno-lint-ignore no-explicit-any
+  event?: string | any,
+) {
+  if (arguments.length === 0) {
+    // Remove all listeners for all events - find all signal events and
+    // unregister their Deno signal listeners before clearing.
+    const events = this._events;
+    if (events !== undefined) {
+      for (const key of Object.keys(events)) {
+        if (typeof key === "string" && key.startsWith("SIG")) {
+          _removeAllSignalListeners(this, key);
+        }
+      }
+    }
+    return EventEmitter.prototype.removeAllListeners.call(this);
+  }
+  if (typeof event === "string" && event.startsWith("SIG")) {
+    _removeAllSignalListeners(this, event);
+  }
+  return EventEmitter.prototype.removeAllListeners.call(this, event);
+};
+
+function _removeAllSignalListeners(
+  // deno-lint-ignore no-explicit-any
+  target: any,
+  event: string,
+) {
+  const events = target._events;
+  if (events === undefined) return;
+  const list = events[event];
+  if (list === undefined) return;
+  if (typeof list === "function") {
+    const actual = list.listener ?? list;
+    Deno.removeSignalListener(event as Deno.Signal, actual);
+  } else {
+    for (let i = 0; i < list.length; i++) {
+      const actual = list[i].listener ?? list[i];
+      Deno.removeSignalListener(event as Deno.Signal, actual);
+    }
+  }
+}
+
 /** https://nodejs.org/api/process.html#process_process */
 // @ts-ignore TS doesn't work well with ES5 classes
 const process = new Process();
@@ -620,14 +697,17 @@ Object.defineProperty(process, "report", {
   },
 });
 
+let processTitle: string | undefined;
 Object.defineProperty(process, "title", {
   get() {
-    return "deno";
+    if (processTitle == null) {
+      return String(execPath);
+    }
+    return processTitle;
   },
-  set(_value) {
-    // NOTE(bartlomieju): this is a noop. Node.js doesn't guarantee that the
-    // process name will be properly set and visible from other tools anyway.
-    // Might revisit in the future.
+  set(value) {
+    processTitle = `${value}`;
+    op_node_process_set_title(processTitle);
   },
 });
 
@@ -940,6 +1020,7 @@ const features = {
   // Deno uses aws-lc, which is BoringSSL-based.
   // deno-lint-ignore camelcase
   openssl_is_boringssl: true,
+  quic: false,
   // deno-lint-ignore camelcase
   cached_builtins: true,
   // deno-lint-ignore camelcase
@@ -1168,6 +1249,22 @@ internals.__bootstrapNodeProcess = function (
     if (io.stdout.isTerminal()) {
       /** https://nodejs.org/api/process.html#process_process_stdout */
       stdout = process.stdout = new TTYWriteStream(1);
+      // Match Node.js: stdio streams are indestructible.
+      // Libraries like mute-stream (@inquirer/prompts) call destroy()/end()
+      // on process.stdout between prompts. Without this, the underlying TTY
+      // handle is closed, breaking subsequent I/O.
+      // _isStdio also prevents Stream.pipe() from calling end() on stdout
+      // when a piped source stream ends.
+      // Ref: https://github.com/nodejs/node/blob/main/lib/internal/bootstrap/switches/is_main_thread.js
+      stdout._isStdio = true;
+      stdout.destroySoon = stdout.destroy;
+      stdout._destroy = function (err, cb) {
+        cb(err);
+        this._undestroy();
+        if (!this._writableState.emitClose) {
+          nextTick(() => this.emit("close"));
+        }
+      };
     } else {
       stdout = process.stdout = createWritableStdioStream(
         io.stdout,
@@ -1178,6 +1275,15 @@ internals.__bootstrapNodeProcess = function (
     if (io.stderr.isTerminal()) {
       /** https://nodejs.org/api/process.html#process_process_stderr */
       stderr = process.stderr = new TTYWriteStream(2);
+      stderr._isStdio = true;
+      stderr.destroySoon = stderr.destroy;
+      stderr._destroy = function (err, cb) {
+        cb(err);
+        this._undestroy();
+        if (!this._writableState.emitClose) {
+          nextTick(() => this.emit("close"));
+        }
+      };
     } else {
       stderr = process.stderr = createWritableStdioStream(
         io.stderr,
@@ -1191,6 +1297,11 @@ internals.__bootstrapNodeProcess = function (
     ppid = Deno.ppid;
     execPath = Deno.execPath();
     initializeDebugEnv(nodeDebug);
+
+    const title = getOptionValue("--title");
+    if (title) {
+      process.title = title;
+    }
 
     if (getOptionValue("--warnings")) {
       process.on("warning", onWarning);

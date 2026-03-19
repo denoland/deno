@@ -1155,7 +1155,10 @@ impl DatabaseSync {
       e_conflict: i32,
       _: *mut libsqlite3_sys::sqlite3_changeset_iter,
     ) -> i32 {
-      #[allow(clippy::undocumented_unsafe_blocks)]
+      #[allow(
+        clippy::undocumented_unsafe_blocks,
+        reason = "safety comment on the containing block"
+      )]
       unsafe {
         let ctx = &mut *(p_ctx as *mut HandlerCtx);
 
@@ -1194,7 +1197,10 @@ impl DatabaseSync {
       p_ctx: *mut c_void,
       z_tab: *const c_char,
     ) -> i32 {
-      #[allow(clippy::undocumented_unsafe_blocks)]
+      #[allow(
+        clippy::undocumented_unsafe_blocks,
+        reason = "safety comment on the containing block"
+      )]
       unsafe {
         let ctx = &mut *(p_ctx as *mut HandlerCtx);
 

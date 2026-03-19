@@ -193,9 +193,9 @@ pub struct Dep {
   pub req: PackageReq,
   pub kind: DepKind,
   pub location: DepLocation,
-  #[allow(dead_code)]
+  #[allow(dead_code, reason = "not used yet")]
   pub id: DepId,
-  #[allow(dead_code)]
+  #[allow(dead_code, reason = "not used yet")]
   pub alias: Option<String>,
 }
 

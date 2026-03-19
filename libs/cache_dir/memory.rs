@@ -18,15 +18,28 @@ use crate::HttpCache;
 use crate::HttpCacheItemKey;
 use crate::SerializedCachedUrlMetadata;
 
-#[cfg(not(target_arch = "wasm32"))]
+/// A settable clock for use with [`MemoryHttpCache`].
+///
+/// Defaults to [`std::time::UNIX_EPOCH`]. Call [`set`](Self::set) to change
+/// the time returned by [`sys_time_now`](sys_traits::SystemTimeNow::sys_time_now).
 #[derive(Debug)]
-pub struct MemoryHttpCacheSystemTimeClock;
+pub struct MemoryHttpCacheTimeClock(Mutex<std::time::SystemTime>);
 
-#[cfg(not(target_arch = "wasm32"))]
-impl sys_traits::SystemTimeNow for MemoryHttpCacheSystemTimeClock {
+impl Default for MemoryHttpCacheTimeClock {
+  fn default() -> Self {
+    Self(Mutex::new(UNIX_EPOCH))
+  }
+}
+
+impl MemoryHttpCacheTimeClock {
+  pub fn set(&self, time: std::time::SystemTime) {
+    *self.0.lock() = time;
+  }
+}
+
+impl sys_traits::SystemTimeNow for MemoryHttpCacheTimeClock {
   fn sys_time_now(&self) -> std::time::SystemTime {
-    #[allow(clippy::disallowed_methods)]
-    std::time::SystemTime::now()
+    *self.0.lock()
   }
 }
 
@@ -37,10 +50,9 @@ pub struct MemoryHttpCache<TSys: SystemTimeNow + MaybeSend + MaybeSync> {
   clock: TSys,
 }
 
-#[cfg(not(target_arch = "wasm32"))]
-impl Default for MemoryHttpCache<MemoryHttpCacheSystemTimeClock> {
+impl Default for MemoryHttpCache<MemoryHttpCacheTimeClock> {
   fn default() -> Self {
-    Self::new(MemoryHttpCacheSystemTimeClock)
+    Self::new(MemoryHttpCacheTimeClock::default())
   }
 }
 
