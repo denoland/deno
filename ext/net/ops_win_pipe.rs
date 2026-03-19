@@ -96,6 +96,7 @@ pub fn op_pipe_connect(
     // If it does, return ENOTSOCK (not a socket)
     // If it doesn't exist, return ENOENT
     let path = Path::new(&path);
+    #[allow(clippy::disallowed_methods, reason = "pipe requires a real fs")]
     if path.exists() {
       return Err(NetError::Io(std::io::Error::other(
         "ENOTSOCK: not a socket",

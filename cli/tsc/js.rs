@@ -489,7 +489,7 @@ impl Default for State {
 }
 
 impl State {
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "construction")]
   pub fn new(
     graph: Arc<ModuleGraph>,
     jsx_import_source_config_resolver: Arc<JsxImportSourceConfigResolver>,

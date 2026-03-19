@@ -98,11 +98,8 @@ pub fn set_lsp_log_level(level: log::Level) {
 
 pub fn lsp_log_level() -> log::Level {
   let level = LSP_LOG_LEVEL.load(Ordering::SeqCst);
-  // TODO(bartlomieju):
-  #[allow(clippy::undocumented_unsafe_blocks)]
-  unsafe {
-    std::mem::transmute(level)
-  }
+  // SAFETY: level is only ever stored from valid log::Level values
+  unsafe { std::mem::transmute(level) }
 }
 
 /// Change the lsp to warn at the provided level.
@@ -112,11 +109,8 @@ pub fn set_lsp_warn_level(level: log::Level) {
 
 pub fn lsp_warn_level() -> log::Level {
   let level = LSP_LOG_LEVEL.load(Ordering::SeqCst);
-  // TODO(bartlomieju):
-  #[allow(clippy::undocumented_unsafe_blocks)]
-  unsafe {
-    std::mem::transmute(level)
-  }
+  // SAFETY: level is only ever stored from valid log::Level values
+  unsafe { std::mem::transmute(level) }
 }
 
 /// Use this macro to do "info" logs in the lsp code. This allows

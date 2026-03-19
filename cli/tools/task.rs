@@ -71,7 +71,7 @@ pub async fn execute_script(
       .map(|v| {
         // always remove so sub processes don't inherit this env var
 
-        #[allow(clippy::undocumented_unsafe_blocks)]
+        // SAFETY: single-threaded at this point in startup
         unsafe {
           std::env::remove_var(
             crate::task_runner::USE_PKG_JSON_HIDDEN_ENV_VAR_NAME,
