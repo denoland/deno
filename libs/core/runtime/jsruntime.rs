@@ -2242,13 +2242,15 @@ impl JsRuntime {
     // ===== Phase 3: Idle / Prepare =====
     // In libuv: idle runs after pending callbacks, prepare runs right
     // before I/O polling. Both must precede I/O.
+    let has_uv = context_state.uv_loop_inner.get().is_some();
     if let Some(uv_inner_ptr) = context_state.uv_loop_inner.get() {
       unsafe {
         (*uv_inner_ptr).run_idle();
         (*uv_inner_ptr).run_prepare();
       };
+      // Idle/prepare callbacks may call into JS; flush microtasks.
+      scope.perform_microtask_checkpoint();
     }
-    scope.perform_microtask_checkpoint();
 
     // ===== Phase 4: I/O =====
     // Tight I/O loop: when run_io reads data and fires callbacks, the
@@ -2265,9 +2267,14 @@ impl JsRuntime {
           break;
         }
         uv_did_io = true;
+        // Flush microtasks from I/O callbacks, then drain ticks.
+        // processTicksAndRejections runs op_run_microtasks internally,
+        // so the trailing checkpoint is only needed when no ticks ran.
         scope.perform_microtask_checkpoint();
         Self::drain_next_tick_and_macrotasks(scope, context_state)?;
-        scope.perform_microtask_checkpoint();
+        if !context_state.has_tick_scheduled() {
+          scope.perform_microtask_checkpoint();
+        }
       }
     }
 
@@ -2286,13 +2293,18 @@ impl JsRuntime {
     // participate if the iteration runs for other reasons. When only
     // unrefed immediates remain and nothing else is pending, the loop
     // exits without firing them.
-    if context_state.immediate_info[IMM_IDX_COUNT] > 0
+    let ran_immediates = context_state.immediate_info[IMM_IDX_COUNT] > 0
       && (context_state.immediate_info[IMM_IDX_REF_COUNT] > 0
         || did_work
         || dispatched_ops
-        || uv_did_io)
-    {
+        || uv_did_io);
+    if ran_immediates {
       Self::do_js_run_immediate_callbacks(scope, context_state)?;
+      // Drain ticks queued by immediate callbacks so they don't
+      // require an extra full event loop iteration.
+      if context_state.has_tick_scheduled() {
+        Self::drain_next_tick_and_macrotasks(scope, context_state)?;
+      }
     }
     scope.perform_microtask_checkpoint();
 
@@ -2305,7 +2317,10 @@ impl JsRuntime {
     if let Some(uv_inner_ptr) = context_state.uv_loop_inner.get() {
       unsafe { (*uv_inner_ptr).run_close() };
     }
-    scope.perform_microtask_checkpoint();
+    // libuv close callbacks may call into JS; flush microtasks if present.
+    if has_uv {
+      scope.perform_microtask_checkpoint();
+    }
 
     // Evaluate pending state
     let pending_state =
