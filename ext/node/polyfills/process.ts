@@ -8,6 +8,7 @@ import { core, internals, primordials } from "ext:core/mod.js";
 import { initializeDebugEnv } from "ext:deno_node/internal/util/debuglog.ts";
 import { format } from "ext:deno_node/internal/util/inspect.mjs";
 import {
+  op_current_thread_cpu_usage,
   op_fs_umask,
   op_getegid,
   op_geteuid,
@@ -227,6 +228,46 @@ export function cpuUsage(previousValue?: CpuUsage): CpuUsage {
   }
 
   return cpuValues;
+}
+
+const threadCpuValues = new Float64Array(2);
+
+export function threadCpuUsage(
+  previousValue?: CpuUsage,
+): CpuUsage {
+  if (previousValue) {
+    if (!previousCpuUsageValueIsValid(previousValue.user)) {
+      validateObject(previousValue, "prevValue");
+
+      validateNumber(previousValue.user, "prevValue.user");
+      throw new ERR_INVALID_ARG_VALUE_RANGE(
+        "prevValue.user",
+        previousValue.user,
+      );
+    }
+
+    if (!previousCpuUsageValueIsValid(previousValue.system)) {
+      validateNumber(previousValue.system, "prevValue.system");
+      throw new ERR_INVALID_ARG_VALUE_RANGE(
+        "prevValue.system",
+        previousValue.system,
+      );
+    }
+  }
+
+  op_current_thread_cpu_usage(threadCpuValues);
+
+  if (previousValue) {
+    return {
+      user: threadCpuValues[0] - previousValue.user,
+      system: threadCpuValues[1] - previousValue.system,
+    };
+  }
+
+  return {
+    user: threadCpuValues[0],
+    system: threadCpuValues[1],
+  };
 }
 
 function createWarningObject(
@@ -745,6 +786,7 @@ Object.defineProperty(process, "config", {
 });
 
 process.cpuUsage = cpuUsage;
+process.threadCpuUsage = threadCpuUsage;
 
 /** https://nodejs.org/api/process.html#process_process_cwd */
 process.cwd = cwd;
