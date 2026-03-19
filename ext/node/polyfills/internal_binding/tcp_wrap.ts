@@ -539,7 +539,8 @@ export class TCP extends ConnectionWrap {
         }
       } else {
         try {
-          self.afterConnect(req, codeMap.get("ECONNREFUSED")!);
+          // status is already a libuv error code (negative number)
+          self.afterConnect(req, status);
         } catch {
           // swallow callback errors.
         }
@@ -551,7 +552,7 @@ export class TCP extends ConnectionWrap {
       // Synchronous failure (e.g. bad address)
       nextTick(() => {
         try {
-          this.afterConnect(req, codeMap.get("ECONNREFUSED")!);
+          this.afterConnect(req, ret);
         } catch {
           // swallow callback errors.
         }
@@ -584,8 +585,6 @@ export class TCP extends ConnectionWrap {
         this.#netPermToken,
       ).then(
         ({ 0: rid, 1: localAddr, 2: remoteAddr }) => {
-          // Incorrect / backwards, but correcting the local address and port with
-          // what was actually used given we can't actually specify these in Deno.
           this.#address = req.localAddress = localAddr.hostname;
           this.#port = req.localPort = localAddr.port;
           this[kStreamBaseField] = new TcpConn(rid, remoteAddr, localAddr);
@@ -596,7 +595,7 @@ export class TCP extends ConnectionWrap {
             // swallow callback errors.
           }
         },
-        () => {
+        (_err) => {
           try {
             // TODO(cmorten): correct mapping of connection error to status code.
             this.afterConnect(req, codeMap.get("ECONNREFUSED")!);

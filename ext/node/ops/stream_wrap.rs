@@ -8,14 +8,17 @@
 // - src/stream_wrap.cc
 
 use std::cell::Cell;
+use std::cell::RefCell;
 use std::cell::UnsafeCell;
 use std::ffi::c_char;
 use std::ptr::NonNull;
+use std::rc::Rc;
 
 use deno_core::CppgcBase;
 use deno_core::CppgcInherits;
 use deno_core::GarbageCollected;
 use deno_core::OpState;
+use deno_core::error::ResourceError;
 use deno_core::op2;
 use deno_core::uv_compat;
 use deno_core::uv_compat::UV_EBADF;
@@ -210,8 +213,17 @@ impl LibUvStreamWrap {
     // SAFETY: single-threaded access.
     unsafe {
       *self.handle_data.js_handle.get() =
-        GlobalHandle::new_weak(scope, v8::Local::new(scope, &handle));
+        GlobalHandle::new_strong(scope, v8::Local::new(scope, &handle));
       *self.handle_data.isolate.get() = scope.as_raw_isolate_ptr();
+    }
+  }
+
+  /// Clear the JS handle reference when the native handle is closing so the
+  /// wrapper no longer keeps the JS object alive.
+  pub(crate) fn clear_js_handle(&self) {
+    // SAFETY: single-threaded access.
+    unsafe {
+      *self.handle_data.js_handle.get() = GlobalHandle::None;
     }
   }
 
@@ -667,15 +679,27 @@ impl LibUvStreamWrap {
     handle: v8::Local<v8::Object>,
     scope: &mut v8::PinScope,
   ) {
-    // Default to weak — with cppgc, a strong Global back to the JS object
-    // would create a reference cycle. Callers that need the object to stay
-    // alive (e.g. during active reads) should call make_handle_strong().
+    // Active libuv handles keep their JS wrappers alive in Node until close.
+    // We mirror that here and explicitly clear the back-reference on close.
     //
     // SAFETY: set_handle is called once at construction on the same thread; no concurrent access occurs.
     unsafe {
-      *self.handle_data.js_handle.get() = GlobalHandle::new_weak(scope, handle);
+      *self.handle_data.js_handle.get() =
+        GlobalHandle::new_strong(scope, handle);
       *self.handle_data.isolate.get() = scope.as_raw_isolate_ptr();
     }
+  }
+
+  #[reentrant]
+  fn close(
+    &self,
+    op_state: Rc<RefCell<OpState>>,
+    #[this] this: v8::Global<v8::Object>,
+    scope: &mut v8::PinScope<'_, '_>,
+    #[scoped] cb: Option<v8::Global<v8::Function>>,
+  ) -> Result<(), ResourceError> {
+    self.clear_js_handle();
+    self.base.close_handle(op_state, this, scope, cb)
   }
 
   #[fast]
@@ -736,7 +760,7 @@ impl LibUvStreamWrap {
 
   #[fast]
   #[reentrant]
-  pub fn read_stop(&self, scope: &mut v8::PinScope) -> i32 {
+  pub fn read_stop(&self, _scope: &mut v8::PinScope) -> i32 {
     let stream = self.stream_ptr();
     if stream.is_null() {
       return UV_EBADF;
@@ -764,9 +788,6 @@ impl LibUvStreamWrap {
           (*stream).data = std::ptr::null_mut();
           self.reading_started.set(false);
         }
-
-        // No longer actively reading — allow GC to collect the JS object.
-        self.make_handle_weak(scope);
 
         uv_compat::uv_read_stop(stream)
       } else {
