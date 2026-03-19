@@ -360,7 +360,10 @@ unsafe extern "C" fn timer_close_cb(handle: *mut uv_handle_t) {
 
 /// test_uv_timer(callback): starts a repeating timer at 10ms interval.
 /// Calls `callback(count)` each time. After 3 firings, stops and closes.
-#[allow(unused_unsafe)]
+#[allow(
+  unused_unsafe,
+  reason = "macro-generated code may wrap safe ops in unsafe"
+)]
 extern "C" fn test_uv_timer(
   env: napi_env,
   info: napi_callback_info,
@@ -399,7 +402,10 @@ extern "C" fn test_uv_timer(
 /// test_uv_timer_ref_unref(callback): starts a timer, unrefs it (so it
 /// won't keep the event loop alive on its own), then refs it again.
 /// Reports ref state via callback.
-#[allow(unused_unsafe)]
+#[allow(
+  unused_unsafe,
+  reason = "macro-generated code may wrap safe ops in unsafe"
+)]
 extern "C" fn test_uv_timer_ref_unref(
   env: napi_env,
   info: napi_callback_info,
@@ -504,7 +510,10 @@ unsafe extern "C" fn ref_unref_timer_close_cb(handle: *mut uv_handle_t) {
 }
 
 /// test_uv_timer_repeat(): tests set_repeat/get_repeat and timer_stop.
-#[allow(unused_unsafe)]
+#[allow(
+  unused_unsafe,
+  reason = "macro-generated code may wrap safe ops in unsafe"
+)]
 extern "C" fn test_uv_timer_repeat(
   env: napi_env,
   info: napi_callback_info,
@@ -602,7 +611,10 @@ unsafe extern "C" fn idle_close_cb(handle: *mut uv_handle_t) {
 
 /// test_uv_idle(callback): starts an idle handle. It fires on every event
 /// loop iteration. After 3 firings, calls callback(3) and closes.
-#[allow(unused_unsafe)]
+#[allow(
+  unused_unsafe,
+  reason = "macro-generated code may wrap safe ops in unsafe"
+)]
 extern "C" fn test_uv_idle(
   env: napi_env,
   info: napi_callback_info,
@@ -693,7 +705,10 @@ unsafe extern "C" fn check_close_cb(handle: *mut uv_handle_t) {
 /// test_uv_check(callback): starts a check handle. It fires on every
 /// event loop iteration (check phase). After 3 firings, calls callback(3)
 /// and closes.
-#[allow(unused_unsafe)]
+#[allow(
+  unused_unsafe,
+  reason = "macro-generated code may wrap safe ops in unsafe"
+)]
 extern "C" fn test_uv_check(
   env: napi_env,
   info: napi_callback_info,
