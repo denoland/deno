@@ -63,8 +63,6 @@
   "event_session_removeitem.html": false,
   "event_session_storagearea.html": false,
   "event_session_url.html": false,
-  "event_local_window_open_oldvalue.html": false,
-  "event_session_window_open_scope.html": false,
   "event_setattribute.html": false,
   "storage_local_quota_independent_from_session.window.html": true,
   "storage_session_quota_independent_from_local.window.html": true,
