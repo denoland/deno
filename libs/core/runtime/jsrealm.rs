@@ -76,18 +76,16 @@ pub struct ContextState {
   pub(crate) task_spawner_factory: Arc<V8TaskSpawnerFactory>,
   pub(crate) user_timer: UserTimer<DefaultReactor>,
   // Per-phase JS callbacks for the event loop.
-  // js_resolve_ops_and_drain_cb: resolves completed async ops AND drains
-  // nextTick/microtask queues in a single Rust-to-JS boundary crossing.
-  pub(crate) js_resolve_ops_and_drain_cb:
-    RefCell<Option<v8::Global<v8::Function>>>,
+  // js_event_loop_tick_cb: the main event loop tick function that processes
+  // timers, resolves ops, and drains ticks in a single Rust-to-JS call.
+  pub(crate) js_event_loop_tick_cb: RefCell<Option<v8::Global<v8::Function>>>,
   // js_drain_next_tick_and_macrotasks_cb: drains nextTick/microtask queues
-  // only (used when no ops were dispatched but ticks are pending).
+  // only (used in the I/O tight loop where timers/ops are not involved).
   pub(crate) js_drain_next_tick_and_macrotasks_cb:
     RefCell<Option<v8::Global<v8::Function>>>,
   pub(crate) js_handle_rejections_cb: RefCell<Option<v8::Global<v8::Function>>>,
   pub(crate) run_immediate_callbacks_cb:
     RefCell<Option<v8::Global<v8::Function>>>,
-  pub(crate) js_process_timers_cb: RefCell<Option<v8::Global<v8::Function>>>,
   pub(crate) js_wasm_streaming_cb: RefCell<Option<v8::Global<v8::Function>>>,
   pub(crate) wasm_instance_fn: RefCell<Option<v8::Global<v8::Function>>>,
   pub(crate) unrefed_ops: UnrefedOps,
@@ -110,6 +108,14 @@ pub struct ContextState {
   /// Shared timer info buffer exposed to JS as an Int32Array.
   /// Index 0: refed timer count (managed by JS)
   pub(crate) timer_info: Box<[i32; 1]>,
+  /// Shared timer expiry buffer exposed to JS as a Float64Array.
+  /// Index 0: next timer expiry written by JS after processTimers.
+  ///   positive = next expiry (has refed timers)
+  ///   negative = next expiry negated (only unrefed timers)
+  ///   0.0 = no timers remain
+  /// Rust reads this after __eventLoopTick returns to schedule the
+  /// next timer wake-up, avoiding a return-value protocol.
+  pub(crate) timer_expiry: Box<[f64; 1]>,
   /// Active JS-managed timers tracked for the leak sanitizer.
   /// Maps timer ID → (is_repeat, is_system). System timers (e.g.
   /// AbortSignal.timeout) are excluded from sanitizer stats.
@@ -158,11 +164,10 @@ impl ContextState {
       exception_state: Default::default(),
       tick_info: Box::new([0u8; 2]),
       immediate_info: Box::new([0u32; 3]),
-      js_resolve_ops_and_drain_cb: Default::default(),
+      js_event_loop_tick_cb: Default::default(),
       js_drain_next_tick_and_macrotasks_cb: Default::default(),
       js_handle_rejections_cb: Default::default(),
       run_immediate_callbacks_cb: Default::default(),
-      js_process_timers_cb: Default::default(),
       js_wasm_streaming_cb: Default::default(),
       wasm_instance_fn: Default::default(),
       activity_traces: Default::default(),
@@ -173,6 +178,7 @@ impl ContextState {
       task_spawner_factory: Default::default(),
       user_timer: Default::default(),
       timer_info: Box::new([0i32; 1]),
+      timer_expiry: Box::new([0f64; 1]),
       active_timers: Default::default(),
       unrefed_ops,
       external_ops_tracker,
@@ -286,7 +292,7 @@ impl JsRealmInner {
     v8::scope!(let scope, &mut isolate);
     // These globals will prevent snapshots from completing, take them
     state.exception_state.prepare_to_destroy();
-    std::mem::take(&mut *state.js_resolve_ops_and_drain_cb.borrow_mut());
+    std::mem::take(&mut *state.js_event_loop_tick_cb.borrow_mut());
     std::mem::take(
       &mut *state.js_drain_next_tick_and_macrotasks_cb.borrow_mut(),
     );

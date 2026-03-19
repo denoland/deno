@@ -416,26 +416,30 @@
   // Use a wrapper since reportExceptionCallback is defined later.
   __timers.setReportException((e) => reportExceptionCallback(e));
 
-  // Called from Rust at phase 1c of the event loop when the user timer fires.
-  function __processTimers(now) {
-    return __timers.processTimers(now);
-  }
+  // Shared buffer for timer next-expiry, backed by ContextState::timer_expiry.
+  // JS writes after processing timers; Rust reads to schedule next wake-up.
+  //   positive = next expiry (has refed timers)
+  //   negative = next expiry negated (only unrefed timers)
+  //   0.0 = no timers remain
+  let timerExpiry;
 
-  // Phase 2: Resolve completed async ops and drain nextTick/macrotask queues.
-  // Called from Rust with flat args: (promiseId, isOk, res, ...)
-  // Merges op resolution + tick drain into a single Rust-to-JS call.
-  function __resolveOpsAndDrain() {
-    // Resolve all completed ops
-    for (let i = 0; i < arguments.length; i += 3) {
+  // Combined event loop tick: process timers + resolve ops + drain ticks.
+  // Called from Rust with args: (timerNow, promiseId, isOk, res, ...)
+  // timerNow > 0 means timers should be processed; 0 means skip.
+  // Remaining args are completed async op results in triplets.
+  function __eventLoopTick(timerNow) {
+    // 1. Process expired timers if the timer deadline fired
+    if (timerNow > 0) {
+      timerExpiry[0] = __timers.processTimers(timerNow);
+    }
+    // 2. Resolve all completed async ops (args after timerNow)
+    for (let i = 1; i < arguments.length; i += 3) {
       const promiseId = arguments[i];
       const isOk = arguments[i + 1];
       const res = arguments[i + 2];
       __resolvePromise(promiseId, res, isOk);
     }
-    // Drain nextTick queue and microtasks. Rust performs a microtask
-    // checkpoint after this call returns, so we only need to run
-    // microtasks here if processTicksAndRejections needs them to
-    // discover pending ticks/rejections.
+    // 3. Drain nextTick queue and microtasks
     if (!hasTickScheduled() && !hasRejectionToWarn()) {
       op_run_microtasks();
     }
@@ -445,8 +449,8 @@
     processTicksAndRejections();
   }
 
-  // Called from Rust when only a tick drain is needed (no ops to resolve).
-  // E.g. after timers fire or when has_tick_scheduled is set.
+  // Drain nextTick/microtask queues only (no timers or ops).
+  // Used in the I/O tight loop and when ticks are pending without ops.
   function __drainNextTickAndMacrotasks() {
     if (!hasTickScheduled() && !hasRejectionToWarn()) {
       op_run_microtasks();
@@ -925,17 +929,19 @@
     internalRidSymbol: Symbol("Deno.internal.rid"),
     internalFdSymbol: Symbol("Deno.internal.fd"),
     resources,
-    __resolveOpsAndDrain,
+    __eventLoopTick,
     __setTickInfo(buf) {
       tickInfo = buf;
     },
     __setImmediateInfo(buf) {
       immediateInfo = buf;
     },
+    __setTimerExpiry(buf) {
+      timerExpiry = buf;
+    },
     __drainNextTickAndMacrotasks,
     __handleRejections,
     __reportException,
-    __processTimers,
     __setTimerInfo: __timers.__setTimerInfo,
     immediateRefCount(increase) {
       if (increase) {

@@ -1450,12 +1450,11 @@ impl JsRuntime {
   /// JsRuntime to operate properly.
   fn store_js_callbacks(&mut self, realm: &JsRealm, will_snapshot: bool) {
     let (
-      resolve_ops_cb,
+      event_loop_tick_cb,
       drain_next_tick_and_macrotasks_cb,
       handle_rejections_cb,
       build_custom_error_cb,
       run_immediate_callbacks_cb,
-      process_timers_cb,
       wasm_instance_fn,
     ) = {
       scope!(scope, self);
@@ -1467,11 +1466,11 @@ impl JsRuntime {
       let core_obj: v8::Local<v8::Object> =
         bindings::get(scope, deno_obj, CORE, "Deno.core");
 
-      let resolve_ops_cb: v8::Local<v8::Function> = bindings::get(
+      let event_loop_tick_cb: v8::Local<v8::Function> = bindings::get(
         scope,
         core_obj,
-        RESOLVE_OPS_AND_DRAIN,
-        "Deno.core.__resolveOpsAndDrain",
+        EVENT_LOOP_TICK,
+        "Deno.core.__eventLoopTick",
       );
       let drain_next_tick_and_macrotasks_cb: v8::Local<v8::Function> =
         bindings::get(
@@ -1497,12 +1496,6 @@ impl JsRuntime {
         core_obj,
         RUN_IMMEDIATE_CALLBACKS,
         "Deno.core.runImmediateCallbacks",
-      );
-      let process_timers_cb: v8::Local<v8::Function> = bindings::get(
-        scope,
-        core_obj,
-        PROCESS_TIMERS,
-        "Deno.core.__processTimers",
       );
       let mut wasm_instance_fn = None;
       if !will_snapshot {
@@ -1625,13 +1618,49 @@ impl JsRuntime {
         core_obj.delete(scope, key.into());
       }
 
+      // Create a shared Float64Array backed by ContextState::timer_expiry
+      // and pass it to JS via __setTimerExpiry so JS can write the next
+      // timer expiry without a return value or op call.
+      {
+        let state_rc = realm.0.state();
+        let timer_expiry_ptr =
+          state_rc.timer_expiry.as_ptr() as *mut std::ffi::c_void;
+        let timer_expiry_byte_len = std::mem::size_of::<f64>();
+        let backing_store = unsafe {
+          v8::ArrayBuffer::new_backing_store_from_ptr(
+            timer_expiry_ptr,
+            timer_expiry_byte_len,
+            _no_op_deleter,
+            std::ptr::null_mut(),
+          )
+        };
+        let backing_store_shared = backing_store.make_shared();
+        let ab =
+          v8::ArrayBuffer::with_backing_store(scope, &backing_store_shared);
+        let timer_expiry_array =
+          v8::Float64Array::new(scope, ab, 0, 1).unwrap();
+        let set_timer_expiry_fn: v8::Local<v8::Function> = bindings::get(
+          scope,
+          core_obj,
+          SET_TIMER_EXPIRY,
+          "Deno.core.__setTimerExpiry",
+        );
+        let undefined: v8::Local<v8::Value> = v8::undefined(scope).into();
+        set_timer_expiry_fn.call(
+          scope,
+          undefined,
+          &[timer_expiry_array.into()],
+        );
+        let key = SET_TIMER_EXPIRY.v8_string(scope).unwrap();
+        core_obj.delete(scope, key.into());
+      }
+
       (
-        v8::Global::new(scope, resolve_ops_cb),
+        v8::Global::new(scope, event_loop_tick_cb),
         v8::Global::new(scope, drain_next_tick_and_macrotasks_cb),
         v8::Global::new(scope, handle_rejections_cb),
         v8::Global::new(scope, build_custom_error_cb),
         v8::Global::new(scope, run_immediate_callbacks_cb),
-        v8::Global::new(scope, process_timers_cb),
         wasm_instance_fn.map(|f| v8::Global::new(scope, f)),
       )
     };
@@ -1639,9 +1668,9 @@ impl JsRuntime {
     // Put global handles in the realm's ContextState
     let state_rc = realm.0.state();
     state_rc
-      .js_resolve_ops_and_drain_cb
+      .js_event_loop_tick_cb
       .borrow_mut()
-      .replace(resolve_ops_cb);
+      .replace(event_loop_tick_cb);
     state_rc
       .js_drain_next_tick_and_macrotasks_cb
       .borrow_mut()
@@ -1659,10 +1688,6 @@ impl JsRuntime {
       .run_immediate_callbacks_cb
       .borrow_mut()
       .replace(run_immediate_callbacks_cb);
-    state_rc
-      .js_process_timers_cb
-      .borrow_mut()
-      .replace(process_timers_cb);
     if let Some(wasm_instance_fn) = wasm_instance_fn {
       state_rc
         .wasm_instance_fn
@@ -2173,11 +2198,6 @@ impl JsRuntime {
     if let Some(uv_inner_ptr) = context_state.uv_loop_inner.get() {
       unsafe { (*uv_inner_ptr).run_timers() };
     }
-    // 1b. Fire expired user timers via JS-side processTimers
-    did_work |= Self::dispatch_user_timers(cx, scope, context_state);
-    if !context_state.has_tick_scheduled() {
-      scope.perform_microtask_checkpoint();
-    }
 
     // ===== Phase 2: Pending work =====
     // Module progress polling (before ops, matching original ordering)
@@ -2192,18 +2212,20 @@ impl JsRuntime {
     // rejections via processPromiseRejections.
     Self::dispatch_handled_rejections(scope, exception_state);
 
-    // 2c. Poll completed async ops and resolve + drain ticks in one JS call.
-    // __resolveOpsAndDrain resolves all completed ops then drains the
-    // nextTick queue and microtasks, eliminating a separate Rust-to-JS hop.
-    dispatched_ops |= Self::dispatch_pending_ops(cx, scope, context_state)?;
+    // 2c. Combined event loop tick: process timers + resolve ops + drain
+    // ticks in a single Rust-to-JS call via __eventLoopTick(timerNow, ops...).
+    // Timer expiry is communicated back via shared Float64Array buffer.
+    let timer_ready = context_state.user_timer.poll_ready(cx).is_ready();
+    did_work |= timer_ready;
+    dispatched_ops |=
+      Self::dispatch_event_loop_tick(cx, scope, context_state, timer_ready)?;
+    // After the JS call, read timer_expiry shared buffer and schedule.
+    if timer_ready {
+      Self::process_timer_expiry(context_state);
+    }
 
-    // 2d. If no ops were dispatched but ticks are scheduled (from timers
-    // or other sources), drain them separately.
     let has_tick_scheduled = context_state.has_tick_scheduled();
     dispatched_ops |= has_tick_scheduled;
-    if !dispatched_ops && (did_work || has_tick_scheduled) {
-      Self::drain_next_tick_and_macrotasks(scope, context_state)?;
-    }
 
     // 2e. Handle promise rejections (after nextTick/macrotask, since
     // unhandledrejection handlers are run in macrotask callbacks).
@@ -2893,69 +2915,41 @@ impl JsRuntime {
     Ok(())
   }
 
-  /// Phase 1b: Poll the user timer and call JS processTimers(now).
+  /// Read the timer_expiry shared buffer after __eventLoopTick returns
+  /// and schedule the next timer wake-up accordingly.
   ///
-  /// The JS side manages all user timer state (linked lists, priority queue).
-  /// Rust just provides a single-deadline wake mechanism. When the deadline
-  /// arrives, we call `__processTimers(now)` which returns the next expiry:
+  /// The JS side writes the next expiry to timer_expiry[0]:
   ///   - positive: next expiry time (has refed timers)
   ///   - negative: next expiry time negated (only unrefed timers)
-  ///   - 0: no more timers
-  fn dispatch_user_timers(
-    cx: &mut Context,
-    scope: &mut v8::PinScope,
-    context_state: &ContextState,
-  ) -> bool {
-    if context_state.user_timer.poll_ready(cx).is_pending() {
-      return false;
-    }
+  ///   - 0.0: no timers remain
+  fn process_timer_expiry(context_state: &ContextState) {
+    let expiry_ms = context_state.timer_expiry[0];
 
-    let process_timers_cb = context_state.js_process_timers_cb.borrow();
-    let Some(process_timers_fn_global) = process_timers_cb.as_ref() else {
-      return false;
-    };
-    let process_timers_fn = process_timers_fn_global.open(scope);
-
-    let now = context_state.user_timer.now();
-    let now_val = v8::Number::new(scope, now);
-    let undefined: v8::Local<v8::Value> = v8::undefined(scope).into();
-
-    let result = process_timers_fn.call(scope, undefined, &[now_val.into()]);
-
-    if let Some(result) = result {
-      let expiry_ms = result.number_value(scope).unwrap_or(0.0);
-
-      if expiry_ms != 0.0 {
-        // Calculate delay from current time to next expiry
-        let next_expiry = expiry_ms.abs();
-        let current_now = context_state.user_timer.now();
-        let delay_ms = if next_expiry > current_now {
-          (next_expiry - current_now) as u64
-        } else {
-          0
-        };
-        context_state
-          .user_timer
-          .schedule(std::time::Duration::from_millis(if delay_ms > 0 {
-            delay_ms
-          } else {
-            1
-          }));
-
-        // Update ref state based on sign
-        if expiry_ms > 0.0 {
-          context_state.user_timer.ref_timer();
-        } else {
-          context_state.user_timer.unref_timer();
-        }
+    if expiry_ms != 0.0 {
+      let next_expiry = expiry_ms.abs();
+      let current_now = context_state.user_timer.now();
+      let delay_ms = if next_expiry > current_now {
+        (next_expiry - current_now) as u64
       } else {
-        // No more timers
-        context_state.user_timer.clear();
+        0
+      };
+      context_state
+        .user_timer
+        .schedule(std::time::Duration::from_millis(if delay_ms > 0 {
+          delay_ms
+        } else {
+          1
+        }));
+
+      if expiry_ms > 0.0 {
+        context_state.user_timer.ref_timer();
+      } else {
         context_state.user_timer.unref_timer();
       }
+    } else {
+      context_state.user_timer.clear();
+      context_state.user_timer.unref_timer();
     }
-
-    true
   }
 
   /// Phase 2a: Poll and dispatch V8 task spawner tasks.
@@ -2986,21 +2980,39 @@ impl JsRuntime {
     dispatched
   }
 
-  /// Phase 2c: Poll completed async ops and resolve + drain ticks via
-  /// JS `__resolveOpsAndDrain`. This merges op resolution and nextTick/
-  /// microtask draining into a single Rust-to-JS boundary crossing.
-  fn dispatch_pending_ops<'s, 'i>(
+  /// Phase 2c: Combined event loop tick - process timers, resolve ops,
+  /// and drain nextTick/microtask queues in a single Rust-to-JS call
+  /// via `__eventLoopTick(timerNow, promiseId, isOk, res, ...)`.
+  ///
+  /// When `timer_ready` is true, the first arg is the current time for
+  /// timer processing. When false, it is 0 (skip timers). Remaining args
+  /// are completed async op results in (promiseId, isOk, res) triplets.
+  ///
+  /// If neither timers nor ops are ready, returns Ok(false) and the
+  /// caller should use drain_next_tick_and_macrotasks for any pending ticks.
+  fn dispatch_event_loop_tick<'s, 'i>(
     cx: &mut Context,
     scope: &mut v8::PinScope<'s, 'i>,
     context_state: &ContextState,
+    timer_ready: bool,
   ) -> Result<bool, Box<JsError>> {
     const MAX_VEC_SIZE_FOR_OPS: usize = 1024;
 
     let mut args: SmallVec<[v8::Local<v8::Value>; 32]> =
       SmallVec::with_capacity(32);
 
+    // First arg: timer now (positive = process timers, 0 = skip)
+    let timer_now = if timer_ready {
+      context_state.user_timer.now()
+    } else {
+      0.0
+    };
+    args.push(v8::Number::new(scope, timer_now).into());
+
+    // Remaining args: completed async ops as (promiseId, isOk, res) triplets
     loop {
-      if args.len() >= MAX_VEC_SIZE_FOR_OPS {
+      // Account for the timerNow arg in the size check
+      if args.len() >= MAX_VEC_SIZE_FOR_OPS + 1 {
         cx.waker().wake_by_ref();
         break;
       }
@@ -3033,7 +3045,9 @@ impl JsRuntime {
       args.push(res.unwrap_or_else(std::convert::identity));
     }
 
-    if args.is_empty() {
+    // Skip the call if no timers fired and no ops completed
+    let has_ops = args.len() > 1;
+    if !timer_ready && !has_ops {
       return Ok(false);
     }
 
@@ -3041,9 +3055,9 @@ impl JsRuntime {
 
     v8::tc_scope!(let tc_scope, scope);
 
-    let resolve_ops_cb = context_state.js_resolve_ops_and_drain_cb.borrow();
-    let resolve_ops_fn = resolve_ops_cb.as_ref().unwrap().open(tc_scope);
-    resolve_ops_fn.call(tc_scope, undefined, args.as_slice());
+    let tick_cb = context_state.js_event_loop_tick_cb.borrow();
+    let tick_fn = tick_cb.as_ref().unwrap().open(tc_scope);
+    tick_fn.call(tc_scope, undefined, args.as_slice());
 
     if let Some(exception) = tc_scope.exception() {
       return exception_to_err_result(tc_scope, exception, false, true);
@@ -3052,7 +3066,7 @@ impl JsRuntime {
       return Ok(false);
     }
 
-    Ok(true)
+    Ok(has_ops)
   }
 
   /// Dispatch "rejectionhandled" events for promises that were previously
