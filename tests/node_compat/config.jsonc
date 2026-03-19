@@ -2220,7 +2220,7 @@
     "parallel/test-v8-flag-pool-size-0.js": {},
     "parallel/test-v8-getheapsnapshot-twice.js": {},
     "parallel/test-v8-global-setter.js": {},
-    // "parallel/test-v8-stats.js": {}, // https://github.com/denoland/deno/issues/32706
+    "parallel/test-v8-stats.js": {},
     "parallel/test-vm-access-process-env.js": {},
     "parallel/test-vm-api-handles-getter-errors.js": {},
     "parallel/test-vm-attributes-property-not-on-sandbox.js": {},
