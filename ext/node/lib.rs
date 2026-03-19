@@ -2,7 +2,10 @@
 
 #![deny(clippy::print_stderr)]
 #![deny(clippy::print_stdout)]
-#![allow(clippy::too_many_arguments)]
+#![allow(
+  clippy::too_many_arguments,
+  reason = "op macro expansion causes issues"
+)]
 
 use std::borrow::Cow;
 use std::env;
@@ -12,7 +15,6 @@ use deno_core::FastString;
 use deno_core::OpState;
 use deno_core::op2;
 use deno_core::url::Url;
-#[allow(unused_imports)]
 use deno_core::v8;
 use deno_core::v8::ExternalReference;
 use deno_error::JsErrorBox;
@@ -51,7 +53,7 @@ pub fn is_builtin_node_module(module_name: &str) -> bool {
   DenoIsBuiltInNodeModuleChecker.is_builtin_node_module(module_name)
 }
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type NodeRequireLoaderRc = std::rc::Rc<dyn NodeRequireLoader>;
 
 pub trait NodeRequireLoader {
@@ -146,7 +148,6 @@ fn op_node_load_env_file(
     };
 
     // SAFETY: called during single-threaded initialization
-    #[allow(clippy::undocumented_unsafe_blocks)]
     unsafe {
       env::set_var(key, value);
     }
@@ -183,6 +184,7 @@ deno_core::extension!(deno_node,
     ops::blocklist::op_blocklist_add_subnet,
     ops::blocklist::op_blocklist_check,
 
+    ops::buffer::op_mark_as_untransferable,
     ops::buffer::op_is_ascii,
     ops::buffer::op_is_utf8,
     ops::buffer::op_transcode,
@@ -212,6 +214,7 @@ deno_core::extension!(deno_node,
     ops::fs::op_node_cp_check_paths_recursive,
     ops::fs::op_node_cp_on_file,
     ops::fs::op_node_cp_on_link,
+    ops::fs::op_node_cp_sync,
     ops::fs::op_node_cp_validate_and_prepare,
     ops::winerror::op_node_sys_to_uv_error,
     ops::v8::op_v8_cached_data_version_tag,
@@ -350,11 +353,15 @@ deno_core::extension!(deno_node,
     ops::udp::op_node_udp_leave_source_specific,
     ops::udp::op_node_udp_send,
     ops::udp::op_node_udp_recv,
+    ops::stream_wrap::op_stream_base_register_state,
+    ops::tty_wrap::op_tty_check_fd_permission,
   ],
   objects = [
     ops::perf_hooks::EldHistogram,
     ops::handle_wrap::AsyncWrap,
     ops::handle_wrap::HandleWrap,
+    ops::stream_wrap::LibUvStreamWrap,
+    ops::tty_wrap::TTY,
     ops::zlib::BrotliDecoder,
     ops::zlib::BrotliEncoder,
     ops::zlib::Zlib,
@@ -747,13 +754,12 @@ pub type NodeResolver<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys> =
     TNpmPackageFolderResolver,
     TSys,
   >;
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type NodeResolverRc<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys> =
   deno_fs::sync::MaybeArc<
     NodeResolver<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys>,
   >;
 
-#[allow(clippy::disallowed_types)]
 pub fn create_host_defined_options<'s>(
   scope: &mut v8::PinScope<'s, '_>,
 ) -> v8::Local<'s, v8::Data> {

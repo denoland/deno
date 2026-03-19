@@ -315,8 +315,8 @@ impl WorkspaceLinter {
       )));
     }
 
-    #[allow(clippy::print_stdout)]
-    #[allow(clippy::print_stderr)]
+    #[allow(clippy::print_stdout, reason = "actually want to output")]
+    #[allow(clippy::print_stderr, reason = "actually want to output")]
     fn logger_printer(msg: &str, is_err: bool) {
       if is_err {
         eprint!("{}", msg);
@@ -507,7 +507,7 @@ fn collect_lint_files(
   .collect_file_patterns(&CliSys::default(), &files)
 }
 
-#[allow(clippy::print_stdout)]
+#[allow(clippy::print_stdout, reason = "print method")]
 pub fn print_rules_list(json: bool, maybe_rules_tags: Option<Vec<String>>) {
   let rule_provider = LintRuleProvider::new(None);
   let mut all_rules = rule_provider.all_rules();

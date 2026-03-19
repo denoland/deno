@@ -553,6 +553,9 @@ impl DecipherError {
       Self::InvalidFinalBlockLength => deno_error::PropertyValue::String(
         "ERR_OSSL_WRONG_FINAL_BLOCK_LENGTH".into(),
       ),
+      Self::CannotUnpadInputData => {
+        deno_error::PropertyValue::String("ERR_OSSL_EVP_BAD_DECRYPT".into())
+      }
       _ => deno_error::PropertyValue::String("ERR_CRYPTO_DECIPHER".into()),
     }
   }

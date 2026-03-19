@@ -460,6 +460,13 @@ pub async fn op_node_udp_send(
   #[string] hostname: String,
   #[smi] port: u16,
 ) -> Result<usize, NodeUdpError> {
+  {
+    state
+      .borrow_mut()
+      .borrow_mut::<PermissionsContainer>()
+      .check_net(&(&hostname, Some(port)), "socket.send()")?;
+  }
+
   let resource = state
     .borrow()
     .resource_table
