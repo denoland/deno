@@ -6,6 +6,26 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 2.7.7 / 2026.03.19
+
+- fix(core): implement select fallback on macOS (#32812)
+- fix(ext/node): add disabled process function stubs in worker threads (#32809)
+- fix(ext/node): add key/IV length validation for aes-128-cbc and ecb cipher
+  modes (#32824)
+- fix(ext/node): improve node:dns module compatibility (#32704)
+- fix(ext/node): improve process.title and support --title flag (#32201)
+- fix(ext/node): set kLastWriteWasAsync in JS write path to prevent double
+  callback (#32814)
+- fix(ext/node): skip normalization in path.win32.join for reserved device names
+  (#32808)
+- fix(ext/node): support interface option for IPv6 multicast membership (#32754)
+- fix(ext/node): use constant-time comparison for GCM auth tag verification
+  (#32817)
+- fix(ext/node): validate process.exitCode and fix process constructor name
+  (#32806)
+- fix(watch): support graceful shutdown via SIGTERM dispatch (#32564)
+- perf(ext/webidl): optimize dictionary converters (#32729)
+
 ### 2.7.6 / 2026.03.18
 
 - feat(core): add cloneable resource registry for structured clone (#32672)
