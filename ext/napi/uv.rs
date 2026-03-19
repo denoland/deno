@@ -160,17 +160,10 @@ struct uv_async_t {
 // Timer handle
 // ---------------------------------------------------------------------------
 
-// Platform-specific libuv uv_timer_t sizes.
-#[cfg(target_os = "macos")]
-const UV_TIMER_SIZE: usize = 152;
-#[cfg(target_os = "linux")]
-const UV_TIMER_SIZE: usize = 152;
-#[cfg(windows)]
-const UV_TIMER_SIZE: usize = 160;
-
 /// NAPI timer handle. Libuv-ABI-compatible public fields at the correct
 /// offsets, with a pointer to a shadow core `uv_compat::uv_timer_t` stored
-/// in the private area.
+/// in the private area. Must be smaller than libuv's `uv_timer_t` since
+/// addons allocate libuv-sized memory.
 #[repr(C)]
 struct uv_timer_t {
   // public members (libuv ABI)
@@ -181,27 +174,11 @@ struct uv_timer_t {
   core_handle: *mut uv_compat::uv_timer_t,
   // original callback from the addon
   timer_cb: Option<unsafe extern "C" fn(*mut uv_timer_t)>,
-  _padding: [MaybeUninit<usize>; const {
-    (UV_TIMER_SIZE
-      - size_of::<*mut c_void>()
-      - size_of::<*mut uv_loop_t>()
-      - size_of::<uv_handle_type>()
-      - size_of::<*mut uv_compat::uv_timer_t>()
-      - size_of::<Option<unsafe extern "C" fn(*mut uv_timer_t)>>())
-      / size_of::<usize>()
-  }],
 }
 
 // ---------------------------------------------------------------------------
 // Idle handle
 // ---------------------------------------------------------------------------
-
-#[cfg(target_os = "macos")]
-const UV_IDLE_SIZE: usize = 120;
-#[cfg(target_os = "linux")]
-const UV_IDLE_SIZE: usize = 120;
-#[cfg(windows)]
-const UV_IDLE_SIZE: usize = 128;
 
 #[repr(C)]
 struct uv_idle_t {
@@ -210,27 +187,11 @@ struct uv_idle_t {
   pub r#type: uv_handle_type,
   core_handle: *mut uv_compat::uv_idle_t,
   idle_cb: Option<unsafe extern "C" fn(*mut uv_idle_t)>,
-  _padding: [MaybeUninit<usize>; const {
-    (UV_IDLE_SIZE
-      - size_of::<*mut c_void>()
-      - size_of::<*mut uv_loop_t>()
-      - size_of::<uv_handle_type>()
-      - size_of::<*mut uv_compat::uv_idle_t>()
-      - size_of::<Option<unsafe extern "C" fn(*mut uv_idle_t)>>())
-      / size_of::<usize>()
-  }],
 }
 
 // ---------------------------------------------------------------------------
 // Check handle
 // ---------------------------------------------------------------------------
-
-#[cfg(target_os = "macos")]
-const UV_CHECK_SIZE: usize = 120;
-#[cfg(target_os = "linux")]
-const UV_CHECK_SIZE: usize = 120;
-#[cfg(windows)]
-const UV_CHECK_SIZE: usize = 128;
 
 #[repr(C)]
 struct uv_check_t {
@@ -239,15 +200,6 @@ struct uv_check_t {
   pub r#type: uv_handle_type,
   core_handle: *mut uv_compat::uv_check_t,
   check_cb: Option<unsafe extern "C" fn(*mut uv_check_t)>,
-  _padding: [MaybeUninit<usize>; const {
-    (UV_CHECK_SIZE
-      - size_of::<*mut c_void>()
-      - size_of::<*mut uv_loop_t>()
-      - size_of::<uv_handle_type>()
-      - size_of::<*mut uv_compat::uv_check_t>()
-      - size_of::<Option<unsafe extern "C" fn(*mut uv_check_t)>>())
-      / size_of::<usize>()
-  }],
 }
 
 // ---------------------------------------------------------------------------
@@ -823,25 +775,22 @@ mod tests {
       std::mem::size_of::<libuv_sys_lite::uv_async_t>(),
       UV_ASYNC_SIZE
     );
-    assert_eq!(
-      std::mem::size_of::<libuv_sys_lite::uv_timer_t>(),
-      UV_TIMER_SIZE
-    );
-    assert_eq!(
-      std::mem::size_of::<libuv_sys_lite::uv_idle_t>(),
-      UV_IDLE_SIZE
-    );
-    assert_eq!(
-      std::mem::size_of::<libuv_sys_lite::uv_check_t>(),
-      UV_CHECK_SIZE
-    );
     assert_eq!(std::mem::size_of::<uv_mutex_t>(), UV_MUTEX_SIZE);
     assert_eq!(std::mem::size_of::<uv_handle_t>(), UV_HANDLE_SIZE);
     assert_eq!(std::mem::size_of::<uv_async_t>(), UV_ASYNC_SIZE);
-    // NAPI handle sizes must be <= libuv sizes (we store less data but
-    // addons allocate libuv-sized memory).
-    assert!(std::mem::size_of::<uv_timer_t>() <= UV_TIMER_SIZE);
-    assert!(std::mem::size_of::<uv_idle_t>() <= UV_IDLE_SIZE);
-    assert!(std::mem::size_of::<uv_check_t>() <= UV_CHECK_SIZE);
+    // NAPI handle sizes must be <= libuv sizes since addons allocate
+    // libuv-sized memory and we only use the first N bytes.
+    assert!(
+      std::mem::size_of::<uv_timer_t>()
+        <= std::mem::size_of::<libuv_sys_lite::uv_timer_t>()
+    );
+    assert!(
+      std::mem::size_of::<uv_idle_t>()
+        <= std::mem::size_of::<libuv_sys_lite::uv_idle_t>()
+    );
+    assert!(
+      std::mem::size_of::<uv_check_t>()
+        <= std::mem::size_of::<libuv_sys_lite::uv_check_t>()
+    );
   }
 }
