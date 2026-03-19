@@ -653,6 +653,8 @@ impl UvLoopInner {
           let _ = std_stream.shutdown(std::net::Shutdown::Both);
         }
       }
+      tcp.internal_socket = None;
+      tcp.internal_delayed_error = 0;
       tcp.internal_listener = None;
       tcp.internal_backlog.clear();
 
