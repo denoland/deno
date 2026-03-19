@@ -1979,4 +1979,16 @@ mod tests {
     ]);
     assert!(super::validate_npm_tarball_urls(&content, &npmrc).is_err());
   }
+
+  #[test]
+  fn validate_npm_tarball_urls_rejects_subdomain_spoof() {
+    // ensure "https://registry.npmjs.org" (no trailing slash) doesn't
+    // match "https://registry.npmjs.org.evil.com/..." via prefix
+    let npmrc = create_npmrc_with_registries("https://registry.npmjs.org", &[]);
+    let content = create_lockfile_content_with_npm(&[(
+      "evil@1.0.0",
+      Some("https://registry.npmjs.org.evil.com/evil/-/evil-1.0.0.tgz"),
+    )]);
+    assert!(super::validate_npm_tarball_urls(&content, &npmrc).is_err());
+  }
 }
