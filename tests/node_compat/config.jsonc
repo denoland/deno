@@ -1486,6 +1486,7 @@
       "windows": false,
       "reason": "Node.js specific behavior to check the return value of the C++ bindings"
     },
+    "parallel/test-os-constants-signals.js": {},
     "parallel/test-os-eol.js": {},
     "parallel/test-os-homedir-no-envvar.js": {},
     "parallel/test-os-process-priority.js": {},
