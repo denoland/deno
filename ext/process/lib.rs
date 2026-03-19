@@ -1178,6 +1178,7 @@ fn find_descendant_pids(root_pid: i32) -> Vec<i32> {
 /// Build a map from parent PID to list of child PIDs by walking /proc.
 #[cfg(target_os = "linux")]
 fn build_ppid_map() -> HashMap<i32, Vec<i32>> {
+  use sys_traits::FsDirEntry;
   use sys_traits::FsRead;
   use sys_traits::FsReadDir;
   let sys = sys_traits::impls::RealSys;
