@@ -1467,8 +1467,12 @@ impl JsRuntime {
       let core_obj: v8::Local<v8::Object> =
         bindings::get(scope, deno_obj, CORE, "Deno.core");
 
-      let resolve_ops_cb: v8::Local<v8::Function> =
-        bindings::get(scope, core_obj, RESOLVE_OPS, "Deno.core.__resolveOps");
+      let resolve_ops_cb: v8::Local<v8::Function> = bindings::get(
+        scope,
+        core_obj,
+        RESOLVE_OPS_AND_DRAIN,
+        "Deno.core.__resolveOpsAndDrain",
+      );
       let drain_next_tick_and_macrotasks_cb: v8::Local<v8::Function> =
         bindings::get(
           scope,
@@ -1635,7 +1639,7 @@ impl JsRuntime {
     // Put global handles in the realm's ContextState
     let state_rc = realm.0.state();
     state_rc
-      .js_resolve_ops_cb
+      .js_resolve_ops_and_drain_cb
       .borrow_mut()
       .replace(resolve_ops_cb);
     state_rc
@@ -2182,25 +2186,22 @@ impl JsRuntime {
     // 2a. V8 task spawner tasks
     dispatched_ops |= Self::dispatch_task_spawner(cx, scope, context_state);
 
-    // 2b. Poll and resolve completed async ops
-    // NOTE: No microtask checkpoint here. Under Explicit microtask policy,
-    // microtasks from op completions (including await continuations) are
-    // deferred to __drainNextTickAndMacrotasks which correctly interleaves
-    // nextTick callbacks before promise microtasks.
-    dispatched_ops |= Self::dispatch_pending_ops(cx, scope, context_state)?;
-
-    // 2c. Dispatch "rejectionhandled" events before tick processing.
+    // 2b. Dispatch "rejectionhandled" events before tick processing.
     // This ensures rejectionhandled fires before unhandledrejection for
     // later promises, since processTicksAndRejections drains unhandled
     // rejections via processPromiseRejections.
     Self::dispatch_handled_rejections(scope, exception_state);
 
-    // 2d. nextTick drain + macrotask drain (before microtask checkpoint)
-    // Only drain if there's actual work (ops dispatched, tick scheduled, or timers fired).
-    // This prevents macrotask callbacks from running on empty iterations.
+    // 2c. Poll completed async ops and resolve + drain ticks in one JS call.
+    // __resolveOpsAndDrain resolves all completed ops then drains the
+    // nextTick queue and microtasks, eliminating a separate Rust-to-JS hop.
+    dispatched_ops |= Self::dispatch_pending_ops(cx, scope, context_state)?;
+
+    // 2d. If no ops were dispatched but ticks are scheduled (from timers
+    // or other sources), drain them separately.
     let has_tick_scheduled = context_state.has_tick_scheduled();
     dispatched_ops |= has_tick_scheduled;
-    if dispatched_ops || did_work || has_tick_scheduled {
+    if !dispatched_ops && (did_work || has_tick_scheduled) {
       Self::drain_next_tick_and_macrotasks(scope, context_state)?;
     }
 
@@ -2985,7 +2986,9 @@ impl JsRuntime {
     dispatched
   }
 
-  /// Phase 2b: Poll completed async ops and batch-resolve via JS __resolveOps.
+  /// Phase 2c: Poll completed async ops and resolve + drain ticks via
+  /// JS `__resolveOpsAndDrain`. This merges op resolution and nextTick/
+  /// microtask draining into a single Rust-to-JS boundary crossing.
   fn dispatch_pending_ops<'s, 'i>(
     cx: &mut Context,
     scope: &mut v8::PinScope<'s, 'i>,
@@ -3038,7 +3041,7 @@ impl JsRuntime {
 
     v8::tc_scope!(let tc_scope, scope);
 
-    let resolve_ops_cb = context_state.js_resolve_ops_cb.borrow();
+    let resolve_ops_cb = context_state.js_resolve_ops_and_drain_cb.borrow();
     let resolve_ops_fn = resolve_ops_cb.as_ref().unwrap().open(tc_scope);
     resolve_ops_fn.call(tc_scope, undefined, args.as_slice());
 
@@ -3128,7 +3131,8 @@ impl JsRuntime {
     Ok(())
   }
 
-  /// Phase 5a: Drain nextTick queue and macrotask queue.
+  /// Drain nextTick queue and macrotask queue (no op resolution).
+  /// Used when ticks are pending but no async ops completed.
   fn drain_next_tick_and_macrotasks<'s, 'i>(
     scope: &mut v8::PinScope<'s, 'i>,
     context_state: &ContextState,

@@ -75,8 +75,13 @@ pub(crate) const IMM_IDX_HAS_OUTSTANDING: usize = 2;
 pub struct ContextState {
   pub(crate) task_spawner_factory: Arc<V8TaskSpawnerFactory>,
   pub(crate) user_timer: UserTimer<DefaultReactor>,
-  // Per-phase JS callbacks (replacing monolithic eventLoopTick)
-  pub(crate) js_resolve_ops_cb: RefCell<Option<v8::Global<v8::Function>>>,
+  // Per-phase JS callbacks for the event loop.
+  // js_resolve_ops_and_drain_cb: resolves completed async ops AND drains
+  // nextTick/microtask queues in a single Rust-to-JS boundary crossing.
+  pub(crate) js_resolve_ops_and_drain_cb:
+    RefCell<Option<v8::Global<v8::Function>>>,
+  // js_drain_next_tick_and_macrotasks_cb: drains nextTick/microtask queues
+  // only (used when no ops were dispatched but ticks are pending).
   pub(crate) js_drain_next_tick_and_macrotasks_cb:
     RefCell<Option<v8::Global<v8::Function>>>,
   pub(crate) js_handle_rejections_cb: RefCell<Option<v8::Global<v8::Function>>>,
@@ -153,7 +158,7 @@ impl ContextState {
       exception_state: Default::default(),
       tick_info: Box::new([0u8; 2]),
       immediate_info: Box::new([0u32; 3]),
-      js_resolve_ops_cb: Default::default(),
+      js_resolve_ops_and_drain_cb: Default::default(),
       js_drain_next_tick_and_macrotasks_cb: Default::default(),
       js_handle_rejections_cb: Default::default(),
       run_immediate_callbacks_cb: Default::default(),
@@ -281,7 +286,7 @@ impl JsRealmInner {
     v8::scope!(let scope, &mut isolate);
     // These globals will prevent snapshots from completing, take them
     state.exception_state.prepare_to_destroy();
-    std::mem::take(&mut *state.js_resolve_ops_cb.borrow_mut());
+    std::mem::take(&mut *state.js_resolve_ops_and_drain_cb.borrow_mut());
     std::mem::take(
       &mut *state.js_drain_next_tick_and_macrotasks_cb.borrow_mut(),
     );

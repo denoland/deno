@@ -421,20 +421,32 @@
     return __timers.processTimers(now);
   }
 
-  // Phase 2: Resolve completed async ops. Called from Rust with flat args:
-  // (promiseId, isOk, res, promiseId, isOk, res, ...)
-  function __resolveOps() {
+  // Phase 2: Resolve completed async ops and drain nextTick/macrotask queues.
+  // Called from Rust with flat args: (promiseId, isOk, res, ...)
+  // Merges op resolution + tick drain into a single Rust-to-JS call.
+  function __resolveOpsAndDrain() {
+    // Resolve all completed ops
     for (let i = 0; i < arguments.length; i += 3) {
       const promiseId = arguments[i];
       const isOk = arguments[i + 1];
       const res = arguments[i + 2];
       __resolvePromise(promiseId, res, isOk);
     }
+    // Drain nextTick queue and microtasks. Rust performs a microtask
+    // checkpoint after this call returns, so we only need to run
+    // microtasks here if processTicksAndRejections needs them to
+    // discover pending ticks/rejections.
+    if (!hasTickScheduled() && !hasRejectionToWarn()) {
+      op_run_microtasks();
+    }
+    if (!hasTickScheduled() && !hasRejectionToWarn()) {
+      return;
+    }
+    processTicksAndRejections();
   }
 
-  // Matches Node.js runNextTicks() from
-  // lib/internal/process/task_queues.js.
-  // Called from Rust at phase 2c of the event loop.
+  // Called from Rust when only a tick drain is needed (no ops to resolve).
+  // E.g. after timers fire or when has_tick_scheduled is set.
   function __drainNextTickAndMacrotasks() {
     if (!hasTickScheduled() && !hasRejectionToWarn()) {
       op_run_microtasks();
@@ -913,7 +925,7 @@
     internalRidSymbol: Symbol("Deno.internal.rid"),
     internalFdSymbol: Symbol("Deno.internal.fd"),
     resources,
-    __resolveOps,
+    __resolveOpsAndDrain,
     __setTickInfo(buf) {
       tickInfo = buf;
     },

@@ -25,7 +25,7 @@ v8_static_strings!(
   DIRNAME = "dirname",
   ERR_MODULE_NOT_FOUND = "ERR_MODULE_NOT_FOUND",
   ERRORS = "errors",
-  RESOLVE_OPS = "__resolveOps",
+  RESOLVE_OPS_AND_DRAIN = "__resolveOpsAndDrain",
   DRAIN_NEXT_TICK_AND_MACROTASKS = "__drainNextTickAndMacrotasks",
   HANDLE_REJECTIONS = "__handleRejections",
   SET_TICK_INFO = "__setTickInfo",
