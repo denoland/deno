@@ -396,9 +396,15 @@
     setHasRejectionToWarn(false);
   }
 
-  // Matches Node.js runNextTicks() from
-  // lib/internal/process/task_queues.js
-  function runNextTicks() {
+  // Flush microtasks and drain the nextTick queue if work is pending.
+  // Under Explicit microtask policy, microtasks (promise continuations)
+  // don't run automatically. We run them here so that any ticks they
+  // schedule are discovered and drained in the same iteration.
+  //
+  // This is the single drain function used by: __eventLoopTick (from
+  // Rust), __drainNextTickAndMacrotasks (I/O tight loop), runNextTicks
+  // (interleaved between timer/immediate callbacks), and runImmediates.
+  function drainTicks() {
     if (!hasTickScheduled() && !hasRejectionToWarn()) {
       op_run_microtasks();
     }
@@ -407,6 +413,9 @@
     }
     processTicksAndRejections();
   }
+
+  // Alias for timer/immediate interleaving (matches Node.js name).
+  const runNextTicks = drainTicks;
 
   // Wire runNextTicks into the timer module so processTimers can
   // interleave nextTick drains between timer callbacks.
@@ -440,25 +449,13 @@
       __resolvePromise(promiseId, res, isOk);
     }
     // 3. Drain nextTick queue and microtasks
-    if (!hasTickScheduled() && !hasRejectionToWarn()) {
-      op_run_microtasks();
-    }
-    if (!hasTickScheduled() && !hasRejectionToWarn()) {
-      return;
-    }
-    processTicksAndRejections();
+    drainTicks();
   }
 
   // Drain nextTick/microtask queues only (no timers or ops).
   // Used in the I/O tight loop and when ticks are pending without ops.
   function __drainNextTickAndMacrotasks() {
-    if (!hasTickScheduled() && !hasRejectionToWarn()) {
-      op_run_microtasks();
-    }
-    if (!hasTickScheduled() && !hasRejectionToWarn()) {
-      return;
-    }
-    processTicksAndRejections();
+    drainTicks();
   }
 
   // Phase 2: Handle unhandled promise rejections.
