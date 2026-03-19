@@ -153,7 +153,7 @@ export class TCP extends ConnectionWrap {
 
     // TODO(cmorten): the handling of new connections and construction feels
     // a little off. Suspect duplicating in some fashion.
-    if (conn && provider === providerType.TCPWRAP) {
+    if (conn) {
       const localAddr = conn.localAddr as Deno.NetAddr;
       this.#address = localAddr.hostname;
       this.#port = localAddr.port;
