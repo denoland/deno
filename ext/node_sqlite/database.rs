@@ -874,8 +874,8 @@ impl DatabaseSync {
       if args.length() > 1 {
         let options = args.get(1);
         if !options.is_undefined() && !options.is_null() {
-          let options = v8::Local::<v8::Object>::try_from(options)
-            .map_err(|_| {
+          let options =
+            v8::Local::<v8::Object>::try_from(options).map_err(|_| {
               SqliteError::Validation(validators::Error::InvalidArgType(
                 "The \"options\" argument must be an object.",
               ))
@@ -893,29 +893,34 @@ impl DatabaseSync {
               let key = $key.v8_string(scope).unwrap().into();
               if let Some(val) = options.get(scope, key) {
                 if !val.is_undefined() {
-                  $target =
-                    v8::Local::<v8::Boolean>::try_from(val)
-                      .map_err(|_| {
-                        SqliteError::Validation(
-                          validators::Error::InvalidArgType(
-                            concat!(
-                              "The \"",
-                              $name,
-                              "\" argument must be a boolean."
-                            ),
-                          ),
-                        )
-                      })?
-                      .is_true();
+                  $target = v8::Local::<v8::Boolean>::try_from(val)
+                    .map_err(|_| {
+                      SqliteError::Validation(
+                        validators::Error::InvalidArgType(concat!(
+                          "The \"",
+                          $name,
+                          "\" argument must be a boolean."
+                        )),
+                      )
+                    })?
+                    .is_true();
                 }
               }
             };
           }
 
-          parse_bool_opt!(ALLOW_UNKNOWN, "options.allowUnknownNamedParameters", allow_unknown_named_params);
+          parse_bool_opt!(
+            ALLOW_UNKNOWN,
+            "options.allowUnknownNamedParameters",
+            allow_unknown_named_params
+          );
           parse_bool_opt!(READ_BIG_INTS, "options.readBigInts", use_big_ints);
           parse_bool_opt!(RETURN_ARRAYS, "options.returnArrays", return_arrays);
-          parse_bool_opt!(ALLOW_BARE, "options.allowBareNamedParameters", allow_bare_named_params);
+          parse_bool_opt!(
+            ALLOW_BARE,
+            "options.allowBareNamedParameters",
+            allow_bare_named_params
+          );
         }
       }
     }

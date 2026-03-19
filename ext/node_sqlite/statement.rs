@@ -283,6 +283,7 @@ pub struct StatementSync {
 pub(crate) struct IteratorContext {
   statement: *const StatementSync,
   expected_generation: u64,
+  finished: Cell<bool>,
 }
 
 impl Drop for StatementSync {
@@ -429,7 +430,9 @@ impl StatementSync {
   }
 
   fn invalidate_iter(&self) {
-    self.iter_generation.set(self.iter_generation.get().wrapping_add(1));
+    self
+      .iter_generation
+      .set(self.iter_generation.get().wrapping_add(1));
   }
 
   fn check_error_code_impl(&self, r: i32) -> Result<(), SqliteError> {
@@ -708,6 +711,7 @@ impl StatementSync {
     let iter_ctx = Box::into_raw(Box::new(IteratorContext {
       statement: self as *const StatementSync,
       expected_generation: self.iter_generation.get(),
+      finished: Cell::new(false),
     }));
 
     // Track the allocation so it can be freed on Drop if the iterator is
@@ -735,24 +739,9 @@ impl StatementSync {
         VALUE.v8_string(scope).unwrap().into(),
       ];
 
-      // Check if iterator was invalidated by get/all/run/iterate
-      if statement.iter_generation.get() != ctx.expected_generation {
-        let msg =
-          v8::String::new(scope, "This iterator was invalidated because the statement was reset by calling get(), all(), run(), or iterate() on the same statement object.")
-            .unwrap();
-        let err = v8::Exception::error(scope, msg);
-        let code_key = v8::String::new(scope, "code").unwrap();
-        let code_val =
-          v8::String::new(scope, "ERR_INVALID_STATE").unwrap();
-        err
-          .to_object(scope)
-          .unwrap()
-          .set(scope, code_key.into(), code_val.into());
-        scope.throw_exception(err);
-        return;
-      }
-
-      if statement.is_iter_finished.get() {
+      // If this iterator already finished, return done regardless of
+      // whether the statement was subsequently reset.
+      if ctx.finished.get() {
         let values =
           &[v8::Boolean::new(scope, true).into(), v8::null(scope).into()];
         let null = v8::null(scope).into();
@@ -762,9 +751,27 @@ impl StatementSync {
         return;
       }
 
+      // Check if iterator was invalidated by get/all/run/iterate
+      if statement.iter_generation.get() != ctx.expected_generation {
+        let msg =
+          v8::String::new(scope, "This iterator was invalidated because the statement was reset by calling get(), all(), run(), or iterate() on the same statement object.")
+            .unwrap();
+        let err = v8::Exception::error(scope, msg);
+        let code_key = v8::String::new(scope, "code").unwrap();
+        let code_val = v8::String::new(scope, "ERR_INVALID_STATE").unwrap();
+        err.to_object(scope).unwrap().set(
+          scope,
+          code_key.into(),
+          code_val.into(),
+        );
+        scope.throw_exception(err);
+        return;
+      }
+
       let Ok(Some(row)) = statement.read_row(scope) else {
         let _ = statement.reset();
         statement.is_iter_finished.set(true);
+        ctx.finished.set(true);
 
         let values =
           &[v8::Boolean::new(scope, true).into(), v8::null(scope).into()];
