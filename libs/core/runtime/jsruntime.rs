@@ -2224,18 +2224,19 @@ impl JsRuntime {
       Self::process_timer_expiry(context_state);
     }
 
+    // 2d. If __eventLoopTick didn't run (no timer, no ops) but ticks
+    // are scheduled (e.g. from task spawner callbacks), drain them.
     let has_tick_scheduled = context_state.has_tick_scheduled();
     dispatched_ops |= has_tick_scheduled;
+    if !dispatched_ops && !did_work && has_tick_scheduled {
+      Self::drain_next_tick_and_macrotasks(scope, context_state)?;
+    }
 
-    // 2e. Handle promise rejections (after nextTick/macrotask, since
-    // unhandledrejection handlers are run in macrotask callbacks).
-    // Note: rejections are also drained inside processTicksAndRejections
-    // (via processPromiseRejections in the do-while loop). That path
-    // handles rejections created by tick callbacks or their microtasks.
-    // This path handles rejections from op completions or timer callbacks
-    // when no ticks were scheduled (so processTicksAndRejections didn't
-    // run). Both drain the same pending_promise_rejections queue via
-    // pop_front/drain, so there is no double-processing.
+    // 2e. Handle any remaining promise rejections. __eventLoopTick and
+    // drain_next_tick_and_macrotasks both run processPromiseRejections
+    // (via processTicksAndRejections), which drains the same queue.
+    // This catches edge cases where rejections were created after those
+    // functions returned (e.g. by microtasks queued during cleanup).
     Self::dispatch_rejections(scope, context_state, exception_state)?;
     scope.perform_microtask_checkpoint();
 
