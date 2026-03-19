@@ -1352,11 +1352,14 @@ export class Interface extends InterfaceConstructor {
   [Symbol.asyncIterator]() {
     if (this[kLineObjectStream] === undefined) {
       this[kLineObjectStream] = EventEmitter.on(
-        this, "line", {
+        this,
+        "line",
+        {
           close: ["close"],
           highWaterMark: 1024,
           [kFirstEventParam]: true,
-        });
+        },
+      );
     }
     return this[kLineObjectStream];
   }

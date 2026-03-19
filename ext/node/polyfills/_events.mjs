@@ -1106,11 +1106,9 @@ export function on(emitter, event, options = kEmptyObject) {
   addEventListener(
     emitter,
     event,
-    options[kFirstEventParam]
-      ? eventHandler
-      : function (...args) {
-        return eventHandler(args);
-      },
+    options[kFirstEventParam] ? eventHandler : function (...args) {
+      return eventHandler(args);
+    },
   );
   if (event !== "error" && typeof emitter.on === "function") {
     addEventListener(emitter, "error", errorHandler);
