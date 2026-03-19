@@ -22,7 +22,6 @@ use deno_config::deno_json::CompilerOptions;
 use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
-use deno_core::PollEventLoopOptions;
 use deno_core::RuntimeOptions;
 use deno_core::anyhow::anyhow;
 use deno_core::convert::Smi;
@@ -5351,10 +5350,7 @@ fn run_tsc_thread(
           .lock()
           .await
           .js_runtime
-          .run_event_loop(PollEventLoopOptions {
-            wait_for_inspector: false,
-            pump_v8_message_loop: true,
-          })
+          .run_event_loop(Default::default())
           .await
         {
           log::error!("Error in TSC event loop: {e}");

@@ -14,6 +14,7 @@ use deno_core::Resource;
 use deno_error::JsErrorClass;
 use digest::KeyInit;
 use digest::generic_array::GenericArray;
+use subtle::ConstantTimeEq;
 
 type Tag = Option<Vec<u8>>;
 
@@ -220,11 +221,32 @@ impl Cipher {
     use Cipher::*;
     Ok(match algorithm_name {
       "aes128" | "aes-128-cbc" => {
+        if key.len() != 16 {
+          return Err(CipherError::InvalidKeyLength);
+        }
+        if iv.len() != 16 {
+          return Err(CipherError::InvalidInitializationVector);
+        }
         Aes128Cbc(Box::new(cbc::Encryptor::new(key.into(), iv.into())))
       }
-      "aes-128-ecb" => Aes128Ecb(Box::new(ecb::Encryptor::new(key.into()))),
-      "aes-192-ecb" => Aes192Ecb(Box::new(ecb::Encryptor::new(key.into()))),
-      "aes-256-ecb" => Aes256Ecb(Box::new(ecb::Encryptor::new(key.into()))),
+      "aes-128-ecb" => {
+        if key.len() != 16 {
+          return Err(CipherError::InvalidKeyLength);
+        }
+        Aes128Ecb(Box::new(ecb::Encryptor::new(key.into())))
+      }
+      "aes-192-ecb" => {
+        if key.len() != 24 {
+          return Err(CipherError::InvalidKeyLength);
+        }
+        Aes192Ecb(Box::new(ecb::Encryptor::new(key.into())))
+      }
+      "aes-256-ecb" => {
+        if key.len() != 32 {
+          return Err(CipherError::InvalidKeyLength);
+        }
+        Aes256Ecb(Box::new(ecb::Encryptor::new(key.into())))
+      }
       "aes-128-gcm" => {
         if key.len() != aes::Aes128::key_size() {
           return Err(CipherError::InvalidKeyLength);
@@ -553,6 +575,9 @@ impl DecipherError {
       Self::InvalidFinalBlockLength => deno_error::PropertyValue::String(
         "ERR_OSSL_WRONG_FINAL_BLOCK_LENGTH".into(),
       ),
+      Self::CannotUnpadInputData => {
+        deno_error::PropertyValue::String("ERR_OSSL_EVP_BAD_DECRYPT".into())
+      }
       _ => deno_error::PropertyValue::String("ERR_CRYPTO_DECIPHER".into()),
     }
   }
@@ -589,11 +614,32 @@ impl Decipher {
     use Decipher::*;
     Ok(match algorithm_name {
       "aes-128-cbc" => {
+        if key.len() != 16 {
+          return Err(DecipherError::InvalidKeyLength);
+        }
+        if iv.len() != 16 {
+          return Err(DecipherError::InvalidInitializationVector);
+        }
         Aes128Cbc(Box::new(cbc::Decryptor::new(key.into(), iv.into())))
       }
-      "aes-128-ecb" => Aes128Ecb(Box::new(ecb::Decryptor::new(key.into()))),
-      "aes-192-ecb" => Aes192Ecb(Box::new(ecb::Decryptor::new(key.into()))),
-      "aes-256-ecb" => Aes256Ecb(Box::new(ecb::Decryptor::new(key.into()))),
+      "aes-128-ecb" => {
+        if key.len() != 16 {
+          return Err(DecipherError::InvalidKeyLength);
+        }
+        Aes128Ecb(Box::new(ecb::Decryptor::new(key.into())))
+      }
+      "aes-192-ecb" => {
+        if key.len() != 24 {
+          return Err(DecipherError::InvalidKeyLength);
+        }
+        Aes192Ecb(Box::new(ecb::Decryptor::new(key.into())))
+      }
+      "aes-256-ecb" => {
+        if key.len() != 32 {
+          return Err(DecipherError::InvalidKeyLength);
+        }
+        Aes256Ecb(Box::new(ecb::Decryptor::new(key.into())))
+      }
       "aes-128-gcm" => {
         if key.len() != aes::Aes128::key_size() {
           return Err(DecipherError::InvalidKeyLength);
@@ -864,7 +910,7 @@ impl Decipher {
         } else {
           tag_slice
         };
-        if truncated_tag == auth_tag {
+        if truncated_tag.ct_eq(auth_tag).into() {
           Ok(())
         } else {
           Err(DecipherError::DataAuthenticationFailed)
@@ -878,7 +924,7 @@ impl Decipher {
         } else {
           tag_slice
         };
-        if truncated_tag == auth_tag {
+        if truncated_tag.ct_eq(auth_tag).into() {
           Ok(())
         } else {
           Err(DecipherError::DataAuthenticationFailed)

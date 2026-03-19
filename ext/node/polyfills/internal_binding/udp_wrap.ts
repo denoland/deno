@@ -75,7 +75,8 @@ function isValidMulticastAddress(
   interfaceAddress?: string,
 ): boolean {
   if (family === "IPv6") {
-    // IPv6 multicast - interface is specified by index, not address
+    // IPv6 multicast - interface can be address, name, or address%zone
+    // Validation of interface is done in Rust
     return isIP(multicastAddress) === 6;
   } else {
     // IPv4 multicast
@@ -159,7 +160,11 @@ export class UDP extends HandleWrap {
 
     try {
       if (this.#family === "IPv6") {
-        op_node_udp_join_multi_v6(this.#rid, multicastAddress, 0);
+        op_node_udp_join_multi_v6(
+          this.#rid,
+          multicastAddress,
+          interfaceAddress ?? null,
+        );
       } else {
         op_node_udp_join_multi_v4(
           this.#rid,
@@ -282,7 +287,11 @@ export class UDP extends HandleWrap {
 
     try {
       if (this.#family === "IPv6") {
-        op_node_udp_leave_multi_v6(this.#rid, multicastAddress, 0);
+        op_node_udp_leave_multi_v6(
+          this.#rid,
+          multicastAddress,
+          interfaceAddress ?? null,
+        );
       } else {
         op_node_udp_leave_multi_v4(
           this.#rid,
