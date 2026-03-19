@@ -165,3 +165,19 @@ EXPORTS
   uv_close
   uv_ref
   uv_unref
+  uv_has_ref
+  uv_is_active
+  uv_is_closing
+  uv_timer_init
+  uv_timer_start
+  uv_timer_stop
+  uv_timer_again
+  uv_timer_set_repeat
+  uv_timer_get_repeat
+  uv_idle_init
+  uv_idle_start
+  uv_idle_stop
+  uv_check_init
+  uv_check_start
+  uv_check_stop
+  uv_os_getpid

@@ -211,6 +211,46 @@ impl UvLoopInner {
     Instant::now().duration_since(self.time_origin).as_millis() as u64
   }
 
+  /// Returns true when there are active handles that require the event loop
+  /// to re-poll promptly: timers (deadline-driven), idle/prepare/check
+  /// (fire every iteration), and pending close callbacks. TCP and TTY
+  /// handles are excluded — they are woken by tokio's I/O reactor and
+  /// don't need busy-wake.
+  pub(crate) fn needs_poll(&self) -> bool {
+    for (_, handle_ptr) in self.timer_handles.borrow().iter() {
+      // SAFETY: Handle pointers in timer_handles are kept valid by the C caller until uv_close.
+      let handle = unsafe { &**handle_ptr };
+      if handle.flags & UV_HANDLE_ACTIVE != 0 {
+        return true;
+      }
+    }
+    for handle_ptr in self.idle_handles.borrow().iter() {
+      // SAFETY: Handle pointers in idle_handles are kept valid by the C caller until uv_close.
+      let handle = unsafe { &**handle_ptr };
+      if handle.flags & UV_HANDLE_ACTIVE != 0 {
+        return true;
+      }
+    }
+    for handle_ptr in self.prepare_handles.borrow().iter() {
+      // SAFETY: Handle pointers in prepare_handles are kept valid by the C caller until uv_close.
+      let handle = unsafe { &**handle_ptr };
+      if handle.flags & UV_HANDLE_ACTIVE != 0 {
+        return true;
+      }
+    }
+    for handle_ptr in self.check_handles.borrow().iter() {
+      // SAFETY: Handle pointers in check_handles are kept valid by the C caller until uv_close.
+      let handle = unsafe { &**handle_ptr };
+      if handle.flags & UV_HANDLE_ACTIVE != 0 {
+        return true;
+      }
+    }
+    if !self.closing_handles.borrow().is_empty() {
+      return true;
+    }
+    false
+  }
+
   pub(crate) fn has_alive_handles(&self) -> bool {
     for (_, handle_ptr) in self.timer_handles.borrow().iter() {
       // SAFETY: Handle pointers in timer_handles are kept valid by the C caller until uv_close.

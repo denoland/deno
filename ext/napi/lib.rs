@@ -448,6 +448,10 @@ pub struct Env {
   pub global: v8::Global<v8::Object>,
   pub create_buffer: v8::Global<v8::Function>,
   pub report_error: v8::Global<v8::Function>,
+  /// Pointer to the real `uv_loop_t` from `deno_core::uv_compat`, used by
+  /// NAPI uv functions (timer, idle, check, ref/unref) that need to integrate
+  /// with the core event loop.
+  pub uv_loop_ptr: *mut deno_core::uv_compat::uv_loop_t,
 }
 
 unsafe impl Send for Env {}
@@ -465,6 +469,7 @@ impl Env {
     cleanup_hooks: Rc<RefCell<Vec<(napi_cleanup_hook, *mut c_void)>>>,
     ref_tracker: Rc<RefCell<Vec<PendingNapiFinalizer>>>,
     external_ops_tracker: ExternalOpsTracker,
+    uv_loop_ptr: *mut deno_core::uv_compat::uv_loop_t,
   ) -> Self {
     Self {
       isolate_ptr,
@@ -485,6 +490,7 @@ impl Env {
         error_code: Cell::new(napi_ok),
       },
       last_exception: None,
+      uv_loop_ptr,
     }
   }
 
@@ -630,6 +636,7 @@ fn op_napi_open<'scope>(
     ref_tracker,
     external_ops_tracker,
     deno_rt_native_addon_loader,
+    uv_loop_ptr,
     path,
   ) = {
     let mut op_state = op_state.borrow_mut();
@@ -637,12 +644,17 @@ fn op_napi_open<'scope>(
       op_state.borrow_mut::<deno_permissions::PermissionsContainer>();
     let path = permissions.check_ffi(Cow::Borrowed(Path::new(path)))?;
     let napi_state = op_state.borrow::<NapiState>();
+    let uv_loop_ptr = op_state
+      .try_borrow::<Box<deno_core::uv_compat::uv_loop_t>>()
+      .map(|uv_loop| &**uv_loop as *const _ as *mut _)
+      .unwrap_or(std::ptr::null_mut());
     (
       op_state.borrow::<V8CrossThreadTaskSpawner>().clone(),
       napi_state.env_cleanup_hooks.clone(),
       napi_state.ref_tracker.clone(),
       op_state.external_ops_tracker.clone(),
       op_state.try_borrow::<DenoRtNativeAddonLoaderRc>().cloned(),
+      uv_loop_ptr,
       path,
     )
   };
@@ -675,6 +687,7 @@ fn op_napi_open<'scope>(
     cleanup_hooks,
     ref_tracker,
     external_ops_tracker,
+    uv_loop_ptr,
   );
   env.shared = Box::into_raw(Box::new(env_shared));
   // Track the EnvShared pointer so we can call instance data finalize
