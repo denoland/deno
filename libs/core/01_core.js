@@ -129,7 +129,6 @@
   }
 
   let unhandledPromiseRejectionHandler = () => false;
-  let timerDepth = 0;
 
   // ---------------------------------------------------------------------------
   // Immediate queue (ImmediateList linked list + drain loop)
@@ -468,11 +467,6 @@
         setAsyncContext(prevContext);
       }
     }
-  }
-
-  // Set timer depth before each timer callback (called from Rust).
-  function __setTimerDepth(depth) {
-    timerDepth = depth;
   }
 
   // Report an exception (called from Rust for timer callback errors).
@@ -928,7 +922,6 @@
     },
     __drainNextTickAndMacrotasks,
     __handleRejections,
-    __setTimerDepth,
     __reportException,
     __processTimers,
     __setTimerInfo: __timers.__setTimerInfo,
@@ -1113,17 +1106,11 @@
       unhandledPromiseRejectionHandler = handler,
     reportUnhandledException: (e) => op_dispatch_exception(e, false),
     reportUnhandledPromiseRejection: (e) => op_dispatch_exception(e, true),
-    getTimerDepth: () => timerDepth,
     createTimer: __timers.createTimer,
     cancelTimer: __timers.cancelTimer,
     refreshTimer: __timers.refreshTimer,
     refTimer: __timers.refTimer,
     unrefTimer: __timers.unrefTimer,
-    timerInsert: __timers.insert,
-    timerIncRefCount: __timers.incRefCount,
-    timerDecRefCount: __timers.decRefCount,
-    timerKRefed: __timers.kRefed,
-    TIMEOUT_MAX: __timers.TIMEOUT_MAX,
     currentUserCallSite,
     wrapConsole,
     v8Console,

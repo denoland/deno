@@ -1,33 +1,30 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+// Web timers (setTimeout/setInterval) built on top of Node's Timeout class.
+// The Node Timeout class is the canonical timer implementation that wraps
+// core.createTimer. Web timers add WHATWG-specific behavior on top:
+// - webidl type coercion
+// - string callback eval (WHATWG spec)
+// - timer nesting depth tracking (WHATWG spec)
+// - numeric timer IDs (vs Node's Timeout objects)
+
 import { core, primordials } from "ext:core/mod.js";
 import { op_defer } from "ext:core/ops";
 const {
-  MapPrototypeDelete,
-  MapPrototypeGet,
-  MapPrototypeSet,
   PromisePrototypeThen,
-  SafeMap,
   TypeError,
   indirectEval,
   ReflectApply,
 } = primordials;
-const {
-  getAsyncContext,
-  setAsyncContext,
-  createTimer,
-  cancelTimer: coreCancelTimer,
-  refTimer: coreRefTimer,
-  unrefTimer: coreUnrefTimer,
-  getTimerDepth,
-} = core;
 
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 
-// ---------------------------------------------------------------------------
-// Map numeric timer IDs to internal timer objects for clearTimeout/clearInterval.
-const activeTimers = new SafeMap();
-let nextWebTimerId = 1;
+const loadNodeTimers = core.createLazyLoader(
+  "ext:deno_node/internal/timers.mjs",
+);
+
+// WHATWG timer nesting depth tracking.
+let timerDepth = 0;
 
 function checkThis(thisArg) {
   if (thisArg !== null && thisArg !== undefined && thisArg !== globalThis) {
@@ -45,28 +42,20 @@ function setTimeout(callback, timeout = 0, ...args) {
     callback = () => indirectEval(unboundCallback);
   }
   const unboundCallback = callback;
-  const asyncContext = getAsyncContext();
-  const depth = getTimerDepth();
+  const depth = timerDepth;
   const wrappedCallback = function () {
-    const oldContext = getAsyncContext();
-    const prevDepth = getTimerDepth();
+    const prevDepth = timerDepth;
     try {
-      setAsyncContext(asyncContext);
-      // WHATWG timer nesting depth: track and clamp
-      core.__setTimerDepth(depth + 1);
+      timerDepth = depth + 1;
       ReflectApply(unboundCallback, globalThis, args);
     } finally {
-      core.__setTimerDepth(prevDepth);
-      setAsyncContext(oldContext);
-      // One-shot: remove from map
-      MapPrototypeDelete(activeTimers, webTimerId);
+      timerDepth = prevDepth;
     }
   };
   timeout = webidl.converters.long(timeout);
-  const timer = createTimer(wrappedCallback, timeout, undefined, false, true);
-  const webTimerId = nextWebTimerId++;
-  MapPrototypeSet(activeTimers, webTimerId, timer);
-  return webTimerId;
+  const { Timeout, kTimerId } = loadNodeTimers();
+  const t = new Timeout(wrappedCallback, timeout, undefined, false, true);
+  return t[kTimerId];
 }
 
 /**
@@ -79,25 +68,20 @@ function setInterval(callback, timeout = 0, ...args) {
     callback = () => indirectEval(unboundCallback);
   }
   const unboundCallback = callback;
-  const asyncContext = getAsyncContext();
-  const depth = getTimerDepth();
+  const depth = timerDepth;
   const wrappedCallback = function () {
-    const oldContext = getAsyncContext();
-    const prevDepth = getTimerDepth();
+    const prevDepth = timerDepth;
     try {
-      setAsyncContext(asyncContext);
-      core.__setTimerDepth(depth + 1);
+      timerDepth = depth + 1;
       ReflectApply(unboundCallback, globalThis, args);
     } finally {
-      core.__setTimerDepth(prevDepth);
-      setAsyncContext(oldContext);
+      timerDepth = prevDepth;
     }
   };
   timeout = webidl.converters.long(timeout);
-  const timer = createTimer(wrappedCallback, timeout, undefined, true, true);
-  const webTimerId = nextWebTimerId++;
-  MapPrototypeSet(activeTimers, webTimerId, timer);
-  return webTimerId;
+  const { Timeout, kTimerId } = loadNodeTimers();
+  const t = new Timeout(wrappedCallback, timeout, undefined, true, true);
+  return t[kTimerId];
 }
 
 /**
@@ -106,10 +90,10 @@ function setInterval(callback, timeout = 0, ...args) {
 function clearTimeout(id = 0) {
   checkThis(this);
   id = webidl.converters.long(id);
-  const timer = MapPrototypeGet(activeTimers, id);
+  const { getActiveTimer, kDestroy } = loadNodeTimers();
+  const timer = getActiveTimer(id);
   if (timer) {
-    coreCancelTimer(timer);
-    MapPrototypeDelete(activeTimers, id);
+    timer[kDestroy]();
   }
 }
 
@@ -119,10 +103,10 @@ function clearTimeout(id = 0) {
 function clearInterval(id = 0) {
   checkThis(this);
   id = webidl.converters.long(id);
-  const timer = MapPrototypeGet(activeTimers, id);
+  const { getActiveTimer, kDestroy } = loadNodeTimers();
+  const timer = getActiveTimer(id);
   if (timer) {
-    coreCancelTimer(timer);
-    MapPrototypeDelete(activeTimers, id);
+    timer[kDestroy]();
   }
 }
 
@@ -130,9 +114,10 @@ function clearInterval(id = 0) {
  * Mark a timer as not blocking event loop exit.
  */
 function unrefTimer(id) {
-  const timer = MapPrototypeGet(activeTimers, id);
+  const { getActiveTimer } = loadNodeTimers();
+  const timer = getActiveTimer(id);
   if (timer) {
-    coreUnrefTimer(timer);
+    timer.unref();
   }
 }
 
@@ -140,9 +125,10 @@ function unrefTimer(id) {
  * Mark a timer as blocking event loop exit.
  */
 function refTimer(id) {
-  const timer = MapPrototypeGet(activeTimers, id);
+  const { getActiveTimer } = loadNodeTimers();
+  const timer = getActiveTimer(id);
   if (timer) {
-    coreRefTimer(timer);
+    timer.ref();
   }
 }
 
