@@ -837,6 +837,15 @@ impl MainWorker {
     id: ModuleId,
   ) -> Result<(), CoreError> {
     self.wait_for_inspector_session();
+    // Mark the event loop as started before module evaluation so that
+    // eventLoopUtilization() returns non-zero values during top-level code.
+    {
+      let op_state = self.js_runtime.op_state();
+      let op_state = op_state.borrow();
+      op_state
+        .borrow::<std::rc::Rc<deno_core::EventLoopMetrics>>()
+        .record_tick_start();
+    }
     let mut receiver = self.js_runtime.mod_evaluate(id);
     tokio::select! {
       // Not using biased mode leads to non-determinism for relatively simple

@@ -5,6 +5,7 @@ import { core, internals, primordials } from "ext:core/mod.js";
 import {
   op_create_worker,
   op_host_get_worker_cpu_usage,
+  op_host_get_worker_event_loop_metrics,
   op_host_post_message,
   op_host_recv_ctrl,
   op_host_recv_message,
@@ -85,6 +86,8 @@ const {
   ReferenceError,
   Float64Array,
   FunctionPrototypeBind,
+  TypedArrayPrototypeGetBuffer,
+  Uint8Array,
 } = primordials;
 
 // Map error names to native constructors so that worker error events
@@ -769,8 +772,64 @@ class NodeWorker extends EventEmitter {
 
   readonly getHeapSnapshot = () =>
     notImplemented("Worker.prototype.getHeapSnapshot");
-  // fake performance
-  readonly performance = globalThis.performance;
+
+  #performanceObj:
+    | { eventLoopUtilization: (...args: unknown[]) => unknown }
+    | null = null;
+  get performance() {
+    if (this.#exited) {
+      return {
+        eventLoopUtilization() {
+          return { idle: 0, active: 0, utilization: 0 };
+        },
+      };
+    }
+    if (!this.#performanceObj) {
+      const workerId = this.#id;
+      const eluBuf = new Float64Array(3);
+      const eluU8 = new Uint8Array(TypedArrayPrototypeGetBuffer(eluBuf));
+      this.#performanceObj = {
+        // deno-lint-ignore no-explicit-any
+        eventLoopUtilization(util1?: any, util2?: any) {
+          op_host_get_worker_event_loop_metrics(workerId, eluU8);
+          const loopStart = eluBuf[0];
+          const idle = eluBuf[1];
+          const active = eluBuf[2];
+
+          if (loopStart <= 0) {
+            return { idle: 0, active: 0, utilization: 0 };
+          }
+
+          if (util2) {
+            const idleDelta = util1.idle - util2.idle;
+            const activeDelta = util1.active - util2.active;
+            return {
+              idle: idleDelta,
+              active: activeDelta,
+              utilization: activeDelta / (idleDelta + activeDelta),
+            };
+          }
+
+          if (!util1) {
+            return {
+              idle,
+              active,
+              utilization: active / (idle + active),
+            };
+          }
+
+          const idleDelta = idle - util1.idle;
+          const activeDelta = active - util1.active;
+          return {
+            idle: idleDelta,
+            active: activeDelta,
+            utilization: activeDelta / (idleDelta + activeDelta),
+          };
+        },
+      };
+    }
+    return this.#performanceObj;
+  }
 }
 
 export let isMainThread;

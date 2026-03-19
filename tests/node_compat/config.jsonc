@@ -1509,6 +1509,7 @@
     "parallel/test-path-zero-length-strings.js": {},
     "parallel/test-path.js": {},
     "parallel/test-perf-gc-crash.js": {},
+    "parallel/test-perf-hooks-eventlooputilization.js": {},
     "parallel/test-performance-global.js": {},
     "parallel/test-performance-many-marks.js": {},
     "parallel/test-performance-measure.js": {},
