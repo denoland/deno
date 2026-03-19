@@ -56,6 +56,12 @@ declare namespace Deno {
   interface BrowserWindowEventMap {
     keydown: KeyboardEvent;
     keyup: KeyboardEvent;
+    mousedown: MouseEvent;
+    mouseup: MouseEvent;
+    click: MouseEvent;
+    dblclick: MouseEvent;
+    mousemove: MouseEvent;
+    wheel: WheelEvent;
   }
 
   type BrowserWindowEventHandlers = {

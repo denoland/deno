@@ -2865,7 +2865,7 @@ On the first invocation of `deno compile`, Deno will download the relevant binar
         Arg::new("backend")
           .long("backend")
           .help("WEF backend to use for the desktop app")
-          .value_parser(["webview", "cef", "servo"])
+          .value_parser(["webview", "cef", "servo", "raw"])
           .default_value("webview")
           .requires("desktop")
           .help_heading(COMPILE_HEADING),

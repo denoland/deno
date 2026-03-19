@@ -762,6 +762,9 @@ async fn run_desktop(update_rolled_back: bool) -> Result<(), AnyError> {
       let pending_responses = denort::desktop::PendingBindResponses::new();
       let menu_tx = event_tx.0.clone();
       let kb_tx = event_tx.0.clone();
+      let mouse_click_tx = event_tx.0.clone();
+      let mouse_move_tx = event_tx.0.clone();
+      let wheel_tx = event_tx.0.clone();
       denort::desktop::init_desktop_state(
         state,
         Box::new(WefDesktopApi {
@@ -773,7 +776,7 @@ async fn run_desktop(update_rolled_back: bool) -> Result<(), AnyError> {
       state.put(event_rx);
       state.put(event_tx);
       state.put(pending_responses);
-      // Wire WEF menu click callback to the unified event channel
+
       wef::set_menu_click_handler(move |id| {
         let _ = menu_tx.send(
           deno_runtime::ops::desktop::DesktopEvent::MenuClick {
@@ -781,7 +784,6 @@ async fn run_desktop(update_rolled_back: bool) -> Result<(), AnyError> {
           },
         );
       });
-      // Wire WEF keyboard events to the unified event channel
       wef::on_keyboard_event(move |ev| {
         let _ = kb_tx.send(
           deno_runtime::ops::desktop::DesktopEvent::KeyboardEvent {
@@ -796,6 +798,65 @@ async fn run_desktop(update_rolled_back: bool) -> Result<(), AnyError> {
             alt: ev.modifiers.alt,
             meta: ev.modifiers.meta,
             repeat: ev.repeat,
+          },
+        );
+      });
+      // Wire WEF mouse click events to the unified event channel
+      wef::on_mouse_click(move |ev| {
+        let _ = mouse_click_tx.send(
+          deno_runtime::ops::desktop::DesktopEvent::MouseClick {
+            state: match ev.state {
+              wef::MouseButtonState::Pressed => "pressed".to_string(),
+              wef::MouseButtonState::Released => "released".to_string(),
+            },
+            button: match ev.button {
+              wef::MouseButton::Left => 0,
+              wef::MouseButton::Middle => 1,
+              wef::MouseButton::Right => 2,
+              wef::MouseButton::Back => 3,
+              wef::MouseButton::Forward => 4,
+              wef::MouseButton::Other(n) => n,
+            },
+            client_x: ev.x,
+            client_y: ev.y,
+            shift: ev.modifiers.shift,
+            control: ev.modifiers.control,
+            alt: ev.modifiers.alt,
+            meta: ev.modifiers.meta,
+            click_count: ev.click_count,
+          },
+        );
+      });
+      // Wire WEF mouse move events to the unified event channel
+      wef::on_mouse_move(move |ev| {
+        let _ = mouse_move_tx.send(
+          deno_runtime::ops::desktop::DesktopEvent::MouseMove {
+            client_x: ev.x,
+            client_y: ev.y,
+            shift: ev.modifiers.shift,
+            control: ev.modifiers.control,
+            alt: ev.modifiers.alt,
+            meta: ev.modifiers.meta,
+          },
+        );
+      });
+      // Wire WEF wheel events to the unified event channel
+      wef::on_wheel(move |ev| {
+        let _ = wheel_tx.send(
+          deno_runtime::ops::desktop::DesktopEvent::Wheel {
+            delta_x: ev.delta_x,
+            delta_y: ev.delta_y,
+            delta_mode: match ev.delta_mode {
+              wef::WheelDeltaMode::Pixel => 0,
+              wef::WheelDeltaMode::Line => 1,
+              wef::WheelDeltaMode::Page => 2,
+            },
+            client_x: ev.x,
+            client_y: ev.y,
+            shift: ev.modifiers.shift,
+            control: ev.modifiers.control,
+            alt: ev.modifiers.alt,
+            meta: ev.modifiers.meta,
           },
         );
       });

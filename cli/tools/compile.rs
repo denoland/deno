@@ -55,8 +55,12 @@ fn wef_backend_search_paths(backend: &str) -> Vec<PathBuf> {
         paths.push(wef.join("cef/build/wef.app/Contents/MacOS/wef"));
       }
       "servo" => {
-        paths.push(wef.join("servo/target/release/wef_servo"));
-        paths.push(wef.join("servo/target/debug/wef_servo"));
+        paths.push(wef.join("target/release/wef_servo"));
+        paths.push(wef.join("target/debug/wef_servo"));
+      }
+      "raw" => {
+        paths.push(wef.join("target/release/wef_winit"));
+        paths.push(wef.join("target/debug/wef_winit"));
       }
       _ => {
         paths.push(wef.join("result-1/Applications/wef_webview.app/Contents/MacOS/wef_webview"));
@@ -388,7 +392,7 @@ fn wef_backend_app_search_paths(backend: &str) -> Vec<String> {
         paths.push(wef.join("cef/build/Release/wef.app").to_string_lossy().to_string());
         paths.push(wef.join("cef/build/wef.app").to_string_lossy().to_string());
       }
-      "winit" | "servo" => {} // Not .app bundles
+      "raw" | "servo" => {} // Not .app bundles
       _ => {
         paths.push(wef.join("result-1/Applications/wef_webview.app").to_string_lossy().to_string());
         paths.push(wef.join("result/Applications/wef_webview.app").to_string_lossy().to_string());
@@ -489,7 +493,7 @@ fn package_macos_app_bundle(
     .join(format!("{}.app", app_name));
 
   // Find the WEF backend .app and its main executable.
-  let backend = compile_flags.backend.as_deref().unwrap_or("webview");
+  let backend = compile_flags.backend.as_deref().unwrap_or("cef");
   let wef_app = find_wef_backend_app_bundle(backend)?;
   let wef_plist_path = wef_app.join("Contents/Info.plist");
   let wef_executable_name = if wef_plist_path.exists() {

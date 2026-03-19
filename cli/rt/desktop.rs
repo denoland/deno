@@ -71,7 +71,74 @@ pub const DESKTOP_JS: &str = r#"
       }
     }
   }
+
+  class MouseEvent extends Event {
+    #button = 0;
+    #clientX = 0;
+    #clientY = 0;
+    #ctrlKey = false;
+    #shiftKey = false;
+    #altKey = false;
+    #metaKey = false;
+    #detail = 0;
+
+    get button() { return this.#button; }
+    get clientX() { return this.#clientX; }
+    get clientY() { return this.#clientY; }
+    get screenX() { return this.#clientX; }
+    get screenY() { return this.#clientY; }
+    get ctrlKey() { return this.#ctrlKey; }
+    get shiftKey() { return this.#shiftKey; }
+    get altKey() { return this.#altKey; }
+    get metaKey() { return this.#metaKey; }
+    get detail() { return this.#detail; }
+
+    constructor(type, init = {}) {
+      super(type, init);
+      this.#button = init.button ?? 0;
+      this.#clientX = init.clientX ?? 0;
+      this.#clientY = init.clientY ?? 0;
+      this.#ctrlKey = init.ctrlKey ?? false;
+      this.#shiftKey = init.shiftKey ?? false;
+      this.#altKey = init.altKey ?? false;
+      this.#metaKey = init.metaKey ?? false;
+      this.#detail = init.detail ?? 0;
+    }
+
+    getModifierState(key) {
+      switch (key) {
+        case "Alt": return this.#altKey;
+        case "Control": return this.#ctrlKey;
+        case "Meta": return this.#metaKey;
+        case "Shift": return this.#shiftKey;
+        default: return false;
+      }
+    }
+  }
+
+  class WheelEvent extends MouseEvent {
+    #deltaX = 0;
+    #deltaY = 0;
+    #deltaZ = 0;
+    #deltaMode = 0;
+
+    get deltaX() { return this.#deltaX; }
+    get deltaY() { return this.#deltaY; }
+    get deltaZ() { return this.#deltaZ; }
+    get deltaMode() { return this.#deltaMode; }
+
+    constructor(type, init = {}) {
+      super(type, init);
+      this.#deltaX = init.deltaX ?? 0;
+      this.#deltaY = init.deltaY ?? 0;
+      this.#deltaZ = init.deltaZ ?? 0;
+      this.#deltaMode = init.deltaMode ?? 0;
+    }
+  }
+
   globalThis.KeyboardEvent = internals.core.propNonEnumerable(KeyboardEvent);
+  globalThis.MouseEvent = internals.core.propNonEnumerable(MouseEvent);
+  globalThis.WheelEvent = internals.core.propNonEnumerable(WheelEvent);
 
   op_desktop_init(
     internals.webidlBrand,
@@ -92,6 +159,12 @@ pub const DESKTOP_JS: &str = r#"
 
   internals.defineEventHandler(BrowserWindowPrototype, "keydown");
   internals.defineEventHandler(BrowserWindowPrototype, "keyup");
+  internals.defineEventHandler(BrowserWindowPrototype, "mousedown");
+  internals.defineEventHandler(BrowserWindowPrototype, "mouseup");
+  internals.defineEventHandler(BrowserWindowPrototype, "click");
+  internals.defineEventHandler(BrowserWindowPrototype, "dblclick");
+  internals.defineEventHandler(BrowserWindowPrototype, "mousemove");
+  internals.defineEventHandler(BrowserWindowPrototype, "wheel");
 
   // Bind callback registry: name -> bound function
   const bindCallbacks = new Map();
@@ -151,6 +224,61 @@ pub const DESKTOP_JS: &str = r#"
           } catch (e) {
             op_desktop_reject_bind_call(ev.callId, String(e));
           }
+          break;
+        }
+        case "mouseClick": {
+          const target = activeWindow;
+          if (!target) break;
+          const init = {
+            button: ev.button,
+            clientX: ev.clientX,
+            clientY: ev.clientY,
+            ctrlKey: ev.control,
+            shiftKey: ev.shift,
+            altKey: ev.alt,
+            metaKey: ev.meta,
+            detail: ev.clickCount,
+          };
+          if (ev.state === "pressed") {
+            target.dispatchEvent(new MouseEvent("mousedown", init));
+          } else {
+            target.dispatchEvent(new MouseEvent("mouseup", init));
+            if (ev.button === 0) {
+              target.dispatchEvent(new MouseEvent("click", init));
+              if (ev.clickCount >= 2) {
+                target.dispatchEvent(new MouseEvent("dblclick", init));
+              }
+            }
+          }
+          break;
+        }
+        case "mouseMove": {
+          const target = activeWindow;
+          if (!target) break;
+          target.dispatchEvent(new MouseEvent("mousemove", {
+            clientX: ev.clientX,
+            clientY: ev.clientY,
+            ctrlKey: ev.control,
+            shiftKey: ev.shift,
+            altKey: ev.alt,
+            metaKey: ev.meta,
+          }));
+          break;
+        }
+        case "wheel": {
+          const target = activeWindow;
+          if (!target) break;
+          target.dispatchEvent(new WheelEvent("wheel", {
+            deltaX: ev.deltaX,
+            deltaY: ev.deltaY,
+            deltaMode: ev.deltaMode,
+            clientX: ev.clientX,
+            clientY: ev.clientY,
+            ctrlKey: ev.control,
+            shiftKey: ev.shift,
+            altKey: ev.alt,
+            metaKey: ev.meta,
+          }));
           break;
         }
       }

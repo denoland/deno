@@ -44,6 +44,39 @@ pub enum DesktopEvent {
     args: serde_json::Value,
     call_id: u32,
   },
+  #[serde(rename_all = "camelCase")]
+  MouseClick {
+    state: String,
+    button: i32,
+    client_x: f64,
+    client_y: f64,
+    shift: bool,
+    control: bool,
+    alt: bool,
+    meta: bool,
+    click_count: i32,
+  },
+  #[serde(rename_all = "camelCase")]
+  MouseMove {
+    client_x: f64,
+    client_y: f64,
+    shift: bool,
+    control: bool,
+    alt: bool,
+    meta: bool,
+  },
+  #[serde(rename_all = "camelCase")]
+  Wheel {
+    delta_x: f64,
+    delta_y: f64,
+    delta_mode: i32,
+    client_x: f64,
+    client_y: f64,
+    shift: bool,
+    control: bool,
+    alt: bool,
+    meta: bool,
+  },
 }
 
 pub struct DesktopEventReceiver(
