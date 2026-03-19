@@ -1720,22 +1720,13 @@ pub fn op_http_metric_handle_otel_error(external: *const c_void) {
 }
 
 #[op2(fast)]
-pub fn op_http_set_span(
+pub fn op_http_copy_span_to_otel_info(
   external: *const c_void,
   #[cppgc] span: &deno_telemetry::OtelSpan,
 ) {
   let http =
     // SAFETY: op is called with external.
-    unsafe { clone_external!(external, "op_http_set_span") };
+    unsafe { clone_external!(external, "op_http_copy_span_to_otel_info") };
 
-  http.set_otel_span(span.clone());
-}
-
-#[op2(fast)]
-pub fn op_http_copy_span_attributes_to_otel_info(external: *const c_void) {
-  let http =
-    // SAFETY: op is called with external.
-    unsafe { clone_external!(external, "op_http_copy_span_attributes_to_otel_info") };
-
-  http.copy_span_attributes_to_otel_info();
+  http.copy_span_to_otel_info(span);
 }

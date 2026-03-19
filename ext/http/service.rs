@@ -301,7 +301,6 @@ struct HttpRecordInner {
   finished: bool,
   needs_close_after_finish: bool,
   legacy_abort: bool,
-  otel_span: Option<deno_telemetry::OtelSpan>,
   otel_info: Option<OtelInfo>,
   client_addr: Option<http::HeaderValue>,
 }
@@ -386,7 +385,6 @@ impl HttpRecord {
       finished: false,
       legacy_abort,
       needs_close_after_finish: false,
-      otel_span: None,
       otel_info,
       client_addr,
     });
@@ -649,21 +647,10 @@ impl HttpRecord {
     }
   }
 
-  pub fn set_otel_span(&self, span: deno_telemetry::OtelSpan) {
+  /// Copy relevant attributes (like `http.route`) from a span to OtelInfo
+  /// for metrics.
+  pub fn copy_span_to_otel_info(&self, span: &deno_telemetry::OtelSpan) {
     let mut inner = self.self_mut();
-    inner.otel_span = Some(span);
-  }
-
-  /// Copy relevant attributes from the OTel span to OtelInfo for metrics.
-  /// This allows users to set attributes like `http.route` on the span
-  /// and have them reflected in the automatically recorded HTTP metrics.
-  pub fn copy_span_attributes_to_otel_info(&self) {
-    let mut inner = self.self_mut();
-    // Take the span temporarily to avoid holding both mutable and immutable
-    // borrows of fields within inner simultaneously.
-    let Some(span) = inner.otel_span.take() else {
-      return;
-    };
     let span_state = span.0.borrow();
     if let deno_telemetry::OtelSpanState::Recording(data) = &**span_state
       && let Some(info) = inner.otel_info.as_mut()
@@ -674,9 +661,6 @@ impl HttpRecord {
         }
       }
     }
-    drop(span_state);
-    // Put the span back
-    inner.otel_span = Some(span);
   }
 
   pub fn client_addr(&self) -> Ref<'_, Option<http::HeaderValue>> {

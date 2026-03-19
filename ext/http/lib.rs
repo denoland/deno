@@ -180,8 +180,7 @@ deno_core::extension!(
     http_next::op_http_close,
     http_next::op_http_cancel,
     http_next::op_http_metric_handle_otel_error,
-    http_next::op_http_set_span,
-    http_next::op_http_copy_span_attributes_to_otel_info,
+    http_next::op_http_copy_span_to_otel_info,
   ],
   esm = ["00_serve.ts", "01_http.js", "02_websocket.ts"],
   options = {
@@ -234,8 +233,7 @@ deno_core::extension!(
     http_next::op_http_close,
     http_next::op_http_cancel,
     http_next::op_http_metric_handle_otel_error,
-    http_next::op_http_set_span,
-    http_next::op_http_copy_span_attributes_to_otel_info,
+    http_next::op_http_copy_span_to_otel_info,
   ],
   esm = ["00_serve.ts", "01_http.js", "02_websocket.ts"],
   options = {

@@ -11,10 +11,9 @@ import {
   op_http_cancel,
   op_http_close,
   op_http_close_after_finish,
-  op_http_copy_span_attributes_to_otel_info,
+  op_http_copy_span_to_otel_info,
   op_http_get_request_headers,
   op_http_get_request_method_and_url,
-  op_http_set_span,
   op_http_metric_handle_otel_error,
   op_http_notify_serving,
   op_http_read_request_body,
@@ -606,6 +605,12 @@ function mapToCallback(context, callback, onError) {
 
     if (span) {
       updateSpanFromServerResponse(span, response);
+      // Copy span attributes (like http.route) to OtelInfo for HTTP metrics.
+      // Must be done here, before the request external is invalidated.
+      const otelSpan = getOtelSpan(span);
+      if (otelSpan) {
+        op_http_copy_span_to_otel_info(req, otelSpan);
+      }
     }
 
     const inner = toInnerResponse(response);
@@ -678,21 +683,11 @@ function mapToCallback(context, callback, onError) {
         { kind: 1 },
         activeContext,
       );
-      // Store the span on the HttpRecord so its attributes (like http.route)
-      // can be copied to HTTP metrics when the response is finalized.
-      const otelSpan = getOtelSpan(span);
-      if (otelSpan) {
-        op_http_set_span(req, otelSpan);
-      }
       enterSpan(span, activeContext);
       try {
         return SafePromisePrototypeFinally(
           origMapped(req, span),
-          () => {
-            // Copy span attributes (like http.route) to metrics before ending
-            op_http_copy_span_attributes_to_otel_info(req);
-            span.end();
-          },
+          () => span.end(),
         );
       } finally {
         restoreSnapshot(snapshot);
