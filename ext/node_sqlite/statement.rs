@@ -806,6 +806,7 @@ impl StatementSync {
       // still be called after `return()` (e.g., the JS protocol allows it).
       // All IteratorContext allocations are freed in StatementSync::drop.
 
+      ctx.finished.set(true);
       statement.is_iter_finished.set(true);
       let _ = statement.reset();
 
