@@ -213,6 +213,13 @@ export class LibuvStreamWrap extends HandleWrap {
       );
     }
 
+    // Mark as async so afterWriteDispatched does not fire the callback
+    // synchronously. The Rust write_buffer path sets this on the shared
+    // streamBaseState array (0 for sync, 1 for async), but the JS #write
+    // path is always async. Without this, a preceding Rust sync write
+    // leaves kLastWriteWasAsync=0, causing a double callback.
+    streamBaseState[kLastWriteWasAsync] = 1;
+
     this.#write(req, data);
 
     return 0;
@@ -243,6 +250,7 @@ export class LibuvStreamWrap extends HandleWrap {
       if (typeof chunks[0] === "string") chunks[0] = Buffer.from(chunks[0]);
       if (typeof chunks[1] === "string") chunks[1] = Buffer.from(chunks[1]);
 
+      streamBaseState[kLastWriteWasAsync] = 1;
       PromisePrototypeThen(
         op_raw_write_vectored(rid, chunks[0], chunks[1]),
         (nwritten) => {

@@ -26,7 +26,6 @@ import {
 } from "ext:deno_node/internal/validators.mjs";
 import { kEmptyObject, promisify } from "ext:deno_node/internal/util.mjs";
 export { setUnrefTimeout } from "ext:deno_node/internal/timers.mjs";
-import * as timers from "ext:deno_web/02_timers.js";
 import { AbortError } from "ext:deno_node/internal/errors.ts";
 import { kResistStopPropagation } from "ext:deno_node/internal/event_target.mjs";
 import type { Abortable } from "node:events";
@@ -34,9 +33,6 @@ import type { Abortable } from "node:events";
 interface TimerOptions extends Abortable {
   ref?: boolean | undefined;
 }
-
-const clearTimeout_ = timers.clearTimeout;
-const clearInterval_ = timers.clearInterval;
 
 export function setTimeout(
   callback: (...args: unknown[]) => void,
@@ -127,7 +123,6 @@ export function clearTimeout(timeout?: Timeout | number) {
   }
   const id = +timeout;
   getActiveTimer(id)?.[kDestroy]();
-  clearTimeout_(id);
 }
 export function setInterval(
   callback: (...args: unknown[]) => void,
@@ -143,7 +138,6 @@ export function clearInterval(timeout?: Timeout | number | string) {
   }
   const id = +timeout;
   getActiveTimer(id)?.[kDestroy]();
-  clearInterval_(id);
 }
 export function setImmediate(
   cb: (...args: unknown[]) => void,
