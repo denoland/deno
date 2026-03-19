@@ -5,6 +5,10 @@
 > this in your PR description**. There is no penalty for using AI tools, but PRs
 > will be rejected if there is suspicion of undisclosed AI usage.
 
+> **Spamming issues or PRs:** If you create multiple issues or PRs or create
+> multiple comments on issue or PRs that look AI generated, that are not
+> substantial, your account may be banned.
+
 This is the main repository that provides the `deno` CLI.
 
 If you want to fix a bug or add a new feature to `deno` this is the repository
@@ -43,9 +47,9 @@ commands.
 ## Hot Module Replacement (HMR) mode
 
 While iterating on JavaScript/TypeScript modules it is recommended to include
-`--features hmr` in your `cargo` flags. This is a special development mode
-where the JS/TS sources are not included in the binary but read at runtime,
-meaning the binary will not have to be rebuilt if they are changed.
+`--features hmr` in your `cargo` flags. This is a special development mode where
+the JS/TS sources are not included in the binary but read at runtime, meaning
+the binary will not have to be rebuilt if they are changed.
 
 ```sh
 # cargo build
