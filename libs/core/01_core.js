@@ -398,8 +398,14 @@
 
   // Flush microtasks and drain the nextTick queue if work is pending.
   // Under Explicit microtask policy, microtasks (promise continuations)
-  // don't run automatically. We run them here so that any ticks they
+  // don't run automatically. We flush them here so that any ticks they
   // schedule are discovered and drained in the same iteration.
+  //
+  // IMPORTANT: When ticks are already scheduled, we skip the microtask
+  // flush and go straight to processTicksAndRejections, which drains
+  // ticks BEFORE running microtasks. This preserves the Node.js
+  // invariant that nextTick callbacks fire before Promise.then
+  // continuations in the same event loop phase.
   //
   // This is the single drain function used by: __eventLoopTick (from
   // Rust), __drainNextTickAndMacrotasks (I/O tight loop), runNextTicks
@@ -407,9 +413,9 @@
   function drainTicks() {
     if (!hasTickScheduled() && !hasRejectionToWarn()) {
       op_run_microtasks();
-    }
-    if (!hasTickScheduled() && !hasRejectionToWarn()) {
-      return;
+      if (!hasTickScheduled() && !hasRejectionToWarn()) {
+        return;
+      }
     }
     processTicksAndRejections();
   }

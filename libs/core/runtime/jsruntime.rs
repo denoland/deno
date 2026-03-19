@@ -2224,11 +2224,16 @@ impl JsRuntime {
       Self::process_timer_expiry(context_state);
     }
 
-    // 2d. If __eventLoopTick didn't run (no timer, no ops) but ticks
-    // are scheduled (e.g. from task spawner callbacks), drain them.
+    // 2d. If __eventLoopTick didn't call into JS (no timer, no ops),
+    // ticks may still be scheduled. Drain them before the microtask
+    // checkpoint to preserve the nextTick-before-then invariant.
+    // dispatch_event_loop_tick returns true when ops were dispatched
+    // (meaning it called __eventLoopTick which includes drainTicks).
+    // timer_ready also means __eventLoopTick was called.
+    let tick_already_drained = dispatched_ops || timer_ready;
     let has_tick_scheduled = context_state.has_tick_scheduled();
     dispatched_ops |= has_tick_scheduled;
-    if !dispatched_ops && !did_work && has_tick_scheduled {
+    if !tick_already_drained && has_tick_scheduled {
       Self::drain_next_tick_and_macrotasks(scope, context_state)?;
     }
 
@@ -3028,7 +3033,7 @@ impl JsRuntime {
     // Remaining args: completed async ops as (promiseId, isOk, res) triplets
     loop {
       // Account for the timerNow arg in the size check
-      if args.len() >= MAX_VEC_SIZE_FOR_OPS + 1 {
+      if args.len() > MAX_VEC_SIZE_FOR_OPS {
         cx.waker().wake_by_ref();
         break;
       }
