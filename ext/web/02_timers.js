@@ -19,8 +19,10 @@ const {
   cancelTimer: coreCancelTimer,
   refTimer: coreRefTimer,
   unrefTimer: coreUnrefTimer,
-  getTimerDepth,
 } = core;
+
+// WHATWG timer nesting depth tracking.
+let timerDepth = 0;
 
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 
@@ -46,17 +48,16 @@ function setTimeout(callback, timeout = 0, ...args) {
   }
   const unboundCallback = callback;
   const asyncContext = getAsyncContext();
-  const depth = getTimerDepth();
+  const depth = timerDepth;
   const wrappedCallback = function () {
     const oldContext = getAsyncContext();
-    const prevDepth = getTimerDepth();
+    const prevDepth = timerDepth;
     try {
       setAsyncContext(asyncContext);
-      // WHATWG timer nesting depth: track and clamp
-      core.__setTimerDepth(depth + 1);
+      timerDepth = depth + 1;
       ReflectApply(unboundCallback, globalThis, args);
     } finally {
-      core.__setTimerDepth(prevDepth);
+      timerDepth = prevDepth;
       setAsyncContext(oldContext);
       // One-shot: remove from map
       MapPrototypeDelete(activeTimers, webTimerId);
@@ -80,16 +81,16 @@ function setInterval(callback, timeout = 0, ...args) {
   }
   const unboundCallback = callback;
   const asyncContext = getAsyncContext();
-  const depth = getTimerDepth();
+  const depth = timerDepth;
   const wrappedCallback = function () {
     const oldContext = getAsyncContext();
-    const prevDepth = getTimerDepth();
+    const prevDepth = timerDepth;
     try {
       setAsyncContext(asyncContext);
-      core.__setTimerDepth(depth + 1);
+      timerDepth = depth + 1;
       ReflectApply(unboundCallback, globalThis, args);
     } finally {
-      core.__setTimerDepth(prevDepth);
+      timerDepth = prevDepth;
       setAsyncContext(oldContext);
     }
   };
