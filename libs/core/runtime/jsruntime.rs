@@ -2255,11 +2255,20 @@ impl JsRuntime {
     if let Some(uv_inner_ptr) = context_state.uv_loop_inner.get() {
       unsafe { (*uv_inner_ptr).run_check() };
     }
-    // Use IMM_IDX_COUNT (not IMM_IDX_REF_COUNT) so that both refed and
-    // unrefed immediates execute. Unrefed immediates should still fire
-    // when queued; they just don't keep the event loop alive (that's
-    // handled by has_refed_immediates in EventLoopPendingState).
-    if context_state.immediate_info[IMM_IDX_COUNT] > 0 {
+    // Run immediates if there are refed immediates (they keep the loop
+    // alive on their own) OR if there are unrefed immediates and other
+    // work happened this iteration (meaning the loop is alive for other
+    // reasons). This matches libuv semantics: unrefed check handles
+    // don't cause `uv_run` to start an iteration, but they do
+    // participate if the iteration runs for other reasons. When only
+    // unrefed immediates remain and nothing else is pending, the loop
+    // exits without firing them.
+    if context_state.immediate_info[IMM_IDX_COUNT] > 0
+      && (context_state.immediate_info[IMM_IDX_REF_COUNT] > 0
+        || did_work
+        || dispatched_ops
+        || uv_did_io)
+    {
       Self::do_js_run_immediate_callbacks(scope, context_state)?;
     }
     scope.perform_microtask_checkpoint();
