@@ -929,10 +929,7 @@ impl MainWorker {
   ) -> Result<(), CoreError> {
     self
       .js_runtime
-      .run_event_loop(PollEventLoopOptions {
-        wait_for_inspector,
-        ..Default::default()
-      })
+      .run_event_loop(PollEventLoopOptions { wait_for_inspector })
       .await
   }
 

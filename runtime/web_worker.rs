@@ -1173,7 +1173,6 @@ pub async fn run_web_worker(
     let r = worker
       .run_event_loop(PollEventLoopOptions {
         wait_for_inspector: true,
-        ..Default::default()
       })
       .await;
     if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {

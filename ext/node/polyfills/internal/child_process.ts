@@ -663,6 +663,12 @@ export class ChildProcess extends EventEmitter {
     return this.killed;
   }
 
+  [Symbol.dispose]() {
+    if (!this.killed) {
+      this.kill();
+    }
+  }
+
   ref() {
     this.#process.ref();
   }

@@ -139,7 +139,7 @@ const DEFAULT_IPV4_ADDR = "0.0.0.0";
 const DEFAULT_IPV6_ADDR = "::";
 
 let autoSelectFamilyDefault = true;
-let autoSelectFamilyAttemptTimeoutDefault = 250;
+let autoSelectFamilyAttemptTimeoutDefault = 500;
 
 type Handle = TCP | Pipe;
 
