@@ -1241,7 +1241,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
         name: jobNameForJob("wpt"),
         needs: [buildJob],
         runsOn: buildItem.testRunner ?? buildItem.runner,
-        timeoutMinutes: 240,
+        timeoutMinutes: 30,
         defaults,
         env,
         steps: step.if(isNotTag.and(buildItem.skip.not()))(
