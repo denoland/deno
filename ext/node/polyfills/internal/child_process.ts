@@ -583,7 +583,7 @@ export class ChildProcess extends EventEmitter {
         e = _createSpawnError("ENOENT", command, args.slice(1));
       } else if (e instanceof Deno.errors.PermissionDenied) {
         // Node.js throws EPERM synchronously for uid/gid permission errors.
-        e = _createSpawnError("EPERM", command, args.slice(1));
+        throw _createSpawnError("EPERM", command, args.slice(1));
       }
 
       // Set up stdio streams even when spawn fails (Node.js creates pipes
