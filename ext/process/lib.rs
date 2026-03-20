@@ -18,11 +18,11 @@ use std::process::ExitStatus;
 #[cfg(unix)]
 use std::process::Stdio as StdStdio;
 use std::rc::Rc;
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::Condvar;
 use std::sync::Mutex;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 
 use deno_core::AsyncMutFuture;
 use deno_core::AsyncRefCell;
@@ -1114,6 +1114,19 @@ async fn op_spawn_wait(
   Ok(result)
 }
 
+/// Helper to get child process ID as u32. On Windows with some Rust
+/// versions, `Child::id()` may return `Option<u32>`.
+fn std_child_id(child: &std::process::Child) -> u32 {
+  #[cfg(windows)]
+  {
+    child.id().unwrap_or(0)
+  }
+  #[cfg(not(windows))]
+  {
+    child.id()
+  }
+}
+
 #[op2(stack_trace)]
 fn op_spawn_sync(
   state: &mut OpState,
@@ -1131,7 +1144,7 @@ fn op_spawn_sync(
     command: command.get_program().to_string_lossy().into_owned(),
     error: Box::new(e.into()),
   })?;
-  let pid = child.id();
+  let pid = std_child_id(&child);
   if let Some(input) = input {
     let mut stdin = child.stdin.take().ok_or_else(|| {
       ProcessError::Io(std::io::Error::other("stdin is not available"))
@@ -1147,7 +1160,7 @@ fn op_spawn_sync(
   let cancel = Arc::new((Mutex::new(false), Condvar::new()));
   if let Some(timeout_ms) = timeout {
     if timeout_ms > 0 {
-      let child_id = child.id();
+      let child_id = std_child_id(&child);
       let killed = killed_by_timeout.clone();
       let cancel2 = cancel.clone();
       let kill_signal = kill_signal_str.as_deref().unwrap_or("SIGTERM");
@@ -1176,7 +1189,7 @@ fn op_spawn_sync(
         unsafe {
           let handle = windows_sys::Win32::System::Threading::OpenProcess(
             windows_sys::Win32::System::Threading::PROCESS_TERMINATE,
-            0,
+            0i32,
             child_id,
           );
           if handle != 0 {

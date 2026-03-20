@@ -17,6 +17,7 @@ const {
   ArrayPrototypeMap,
   ArrayPrototypeSlice,
   TypeError,
+  ObjectDefineProperty,
   ObjectEntries,
   SafeArrayIterator,
   String,
@@ -527,12 +528,12 @@ function spawnSyncInner(command, {
     },
   };
   // Internal fields used by node:child_process, hidden from Deno public API.
-  Object.defineProperty(output, "_pid", {
+  ObjectDefineProperty(output, "_pid", {
     __proto__: null,
     value: result.pid,
     enumerable: false,
   });
-  Object.defineProperty(output, "_killedByTimeout", {
+  ObjectDefineProperty(output, "_killedByTimeout", {
     __proto__: null,
     value: result.killedByTimeout,
     enumerable: false,
