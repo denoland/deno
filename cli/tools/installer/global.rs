@@ -192,19 +192,9 @@ pub async fn install_global(
     }
     if let Some(err) = extra_install_err {
       // rollback: remove the primary shim and any extra shims that were created
-      let primary_path = installation_dir.join(&name_and_url.name);
-      let _ = remove_file_if_exists(&primary_path);
-      if cfg!(windows) {
-        let _ = remove_file_if_exists(&primary_path.with_extension("cmd"));
-        let _ = remove_file_if_exists(&primary_path.with_extension("exe"));
-      }
+      let _ = remove_shim_files(&installation_dir, &name_and_url.name);
       for extra_name in &installed_extra {
-        let extra_path = installation_dir.join(extra_name);
-        let _ = remove_file_if_exists(&extra_path);
-        if cfg!(windows) {
-          let _ = remove_file_if_exists(&extra_path.with_extension("cmd"));
-          let _ = remove_file_if_exists(&extra_path.with_extension("exe"));
-        }
+        let _ = remove_shim_files(&installation_dir, extra_name);
       }
       return Err(err);
     }
@@ -297,14 +287,7 @@ pub async fn uninstall(
     && let Ok(extra_names) = serde_json::from_str::<Vec<String>>(&content)
   {
     for extra_name in &extra_names {
-      let extra_path = installation_dir.join(extra_name);
-      if remove_file_if_exists(&extra_path)? {
-        log::info!("deleted {}", extra_path.display());
-      }
-      if cfg!(windows) {
-        remove_file_if_exists(&extra_path.with_extension("cmd"))?;
-        remove_file_if_exists(&extra_path.with_extension("exe"))?;
-      }
+      remove_shim_files(&installation_dir, extra_name)?;
     }
   }
 
@@ -735,14 +718,16 @@ impl BinaryNameAndUrl {
     };
     validate_name(&name)?;
 
-    // If a --name flag was provided, don't resolve extra bin entries
+    // Skip extra bin resolution when --name is provided (explicit single-entry
+    // intent) or when the specifier has a sub_path (e.g. npm:cowsay/cowthink).
     let mut extra_entries = Vec::new();
     if install_flags_global.name.is_none()
+      && let Ok(npm_ref) = NpmPackageReqReference::from_specifier(&module_url)
+      && npm_ref.sub_path().is_none()
       && let Some(all_bins) = bin_name_resolver
         .resolve_all_bin_entries_from_npm(&module_url)
         .await
       && all_bins.len() > 1
-      && let Ok(npm_ref) = NpmPackageReqReference::from_specifier(&module_url)
     {
       let req = npm_ref.req();
       for (bin_name, script_path) in &all_bins {
@@ -894,6 +879,20 @@ fn get_installer_root() -> Result<PathBuf, AnyError> {
       })?;
   home_path.push(".deno");
   Ok(home_path)
+}
+
+/// Remove all shim files for a given name (the main file plus .cmd/.exe on Windows).
+fn remove_shim_files(
+  installation_dir: &Path,
+  name: &str,
+) -> Result<(), AnyError> {
+  let path = installation_dir.join(name);
+  remove_file_if_exists(&path)?;
+  if cfg!(windows) {
+    remove_file_if_exists(&path.with_extension("cmd"))?;
+    remove_file_if_exists(&path.with_extension("exe"))?;
+  }
+  Ok(())
 }
 
 fn remove_file_if_exists(file_path: &Path) -> Result<bool, AnyError> {
