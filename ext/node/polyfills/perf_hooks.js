@@ -9,7 +9,7 @@ import {
   PerformanceObserver as WebPerformanceObserver,
   PerformanceObserverEntryList,
 } from "ext:deno_web/15_performance.js";
-import { EldHistogram } from "ext:core/ops";
+import { EldHistogram, op_node_event_loop_metrics } from "ext:core/ops";
 import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
 
 const constants = {
@@ -54,12 +54,98 @@ class PerformanceObserver extends WebPerformanceObserver {
   }
 }
 
-performance.eventLoopUtilization = () => {
-  // TODO(@marvinhagemeister): Return actual non-stubbed values
-  return { idle: 0, active: 0, utilization: 0 };
-};
+const eluBuf = new Float64Array(2);
+const eluU8 = new Uint8Array(eluBuf.buffer);
 
-performance.nodeTiming = {};
+function eventLoopUtilization(util1, util2) {
+  op_node_event_loop_metrics(eluU8);
+  const loopStart = eluBuf[0];
+  const idleTime = eluBuf[1];
+
+  if (loopStart <= 0) {
+    return { idle: 0, active: 0, utilization: 0 };
+  }
+
+  if (util2) {
+    const idle = util1.idle - util2.idle;
+    const active = util1.active - util2.active;
+    return { idle, active, utilization: active / (idle + active) };
+  }
+
+  const now = performance.now();
+  const active = now - loopStart - idleTime;
+
+  if (!util1) {
+    return {
+      idle: idleTime,
+      active,
+      utilization: active / (idleTime + active),
+    };
+  }
+
+  const idleDelta = idleTime - util1.idle;
+  const activeDelta = active - util1.active;
+  return {
+    idle: idleDelta,
+    active: activeDelta,
+    utilization: activeDelta / (idleDelta + activeDelta),
+  };
+}
+
+performance.eventLoopUtilization = eventLoopUtilization;
+
+performance.nodeTiming = {
+  get name() {
+    return "node";
+  },
+  get entryType() {
+    return "node";
+  },
+  get startTime() {
+    return 0;
+  },
+  get duration() {
+    return performance.now();
+  },
+  get nodeStart() {
+    return 0;
+  },
+  get v8Start() {
+    return 0;
+  },
+  get environment() {
+    return 0;
+  },
+  get loopStart() {
+    op_node_event_loop_metrics(eluU8);
+    return eluBuf[0];
+  },
+  get loopExit() {
+    return -1;
+  },
+  get bootstrapComplete() {
+    return 0;
+  },
+  get idleTime() {
+    op_node_event_loop_metrics(eluU8);
+    return eluBuf[1];
+  },
+  toJSON() {
+    return {
+      name: this.name,
+      entryType: this.entryType,
+      startTime: this.startTime,
+      duration: this.duration,
+      nodeStart: this.nodeStart,
+      v8Start: this.v8Start,
+      environment: this.environment,
+      loopStart: this.loopStart,
+      loopExit: this.loopExit,
+      bootstrapComplete: this.bootstrapComplete,
+      idleTime: this.idleTime,
+    };
+  },
+};
 
 performance.timerify = (fn) => {
   if (typeof fn !== "function") {
@@ -97,11 +183,13 @@ export default {
   PerformanceObserverEntryList,
   PerformanceEntry,
   monitorEventLoopDelay,
+  eventLoopUtilization,
   constants,
 };
 
 export {
   constants,
+  eventLoopUtilization,
   monitorEventLoopDelay,
   performance,
   PerformanceEntry,
