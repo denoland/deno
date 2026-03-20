@@ -1689,6 +1689,7 @@
     "parallel/test-process-features.js": {},
     "parallel/test-process-getgroups.js": {},
     "parallel/test-process-hrtime-bigint.js": {},
+    "parallel/test-process-hrtime.js": {},
     "parallel/test-process-kill-null.js": {},
     "parallel/test-process-kill-pid.js": {},
     "parallel/test-process-next-tick.js": {},
@@ -2543,6 +2544,7 @@
       "reason": "Node.js snapshot/heap profiling features (--build-snapshot, --heap-prof, --heapsnapshot-near-heap-limit) are not implemented in Deno"
     },
     // "pummel/test-heapdump-inspector.js": {},
+    "pummel/test-process-hrtime.js": {},
     "pummel/test-string-decoder-large-buffer.js": {},
     "sequential/test-buffer-creation-regression.js": {},
     "sequential/test-child-process-exit.js": {},
