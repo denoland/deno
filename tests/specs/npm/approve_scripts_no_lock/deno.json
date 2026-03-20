@@ -1,5 +1,0 @@
-{
-  "if": "unix",
-  "lock": false,
-  "nodeModulesDir": "auto"
-}
