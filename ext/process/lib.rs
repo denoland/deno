@@ -1248,6 +1248,13 @@ fn list_child_pids(pid: i32) -> Vec<i32> {
   buf
 }
 
+/// Stub for Unix platforms where descendant discovery is not implemented.
+/// Returns an empty vec so the kill path gracefully does nothing extra.
+#[cfg(all(unix, not(target_os = "linux"), not(target_os = "macos")))]
+fn find_descendant_pids(_root_pid: i32) -> Vec<i32> {
+  Vec::new()
+}
+
 #[op2(stack_trace)]
 fn op_spawn_kill(
   state: &mut OpState,

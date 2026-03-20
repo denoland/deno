@@ -76,6 +76,7 @@ import {
   kIpc,
   kNeedsNpmProcessState,
   kSerialization,
+  noKillDescendantsSymbol,
 } from "ext:deno_process/40_process.js";
 
 export function mapValues<T, O>(
@@ -403,6 +404,10 @@ export class ChildProcess extends EventEmitter {
         [kNeedsNpmProcessState]: options[kNeedsNpmProcessState] ||
           includeNpmProcessState,
       }).spawn();
+      // Disable descendant killing to match Node.js behavior:
+      // Node.js does NOT kill descendant processes when killing a child.
+      // deno-lint-ignore no-explicit-any
+      (this.#process as any)[noKillDescendantsSymbol] = true;
       this.pid = this.#process.pid;
 
       // Get stdio rids to create Socket instances
@@ -644,9 +649,7 @@ export class ChildProcess extends EventEmitter {
     const denoSignal = signal == null ? "SIGTERM" : toDenoSignal(signal);
     this.#closePipes();
     try {
-      // Pass false for killDescendants to match Node.js behavior:
-      // Node.js does NOT kill descendant processes when killing a child.
-      this.#process.kill(denoSignal, false);
+      this.#process.kill(denoSignal);
     } catch (err) {
       const alreadyClosed = err instanceof TypeError ||
         err instanceof Deno.errors.PermissionDenied;
