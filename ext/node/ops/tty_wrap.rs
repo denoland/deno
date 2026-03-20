@@ -89,6 +89,12 @@ unsafe impl GarbageCollected for TTY {
   }
 }
 
+impl Drop for TTY {
+  fn drop(&mut self) {
+    self.base.detach_stream();
+  }
+}
+
 impl TTY {
   pub fn new(
     _obj: v8::Local<v8::Object>,
@@ -109,16 +115,21 @@ impl TTY {
     if err == 0 {
       // SAFETY: uv_tty_init succeeded so the memory is fully initialized as a uv_tty_t.
       let tty = unsafe { tty.cast::<uv_tty_t>() };
+      let base = LibUvStreamWrap::new(
+        HandleWrap::create(
+          AsyncWrap::create(op_state, ProviderType::TtyWrap as i32),
+          Some(Handle::New(tty.as_ptr().cast())),
+        ),
+        fd,
+        tty.as_ptr().cast(),
+      );
+      // SAFETY: tty pointer is valid and initialized; setting data field for libuv callbacks.
+      unsafe {
+        (*tty.as_mut_ptr()).data = base.handle_data_ptr();
+      }
       (
         Self {
-          base: LibUvStreamWrap::new(
-            HandleWrap::create(
-              AsyncWrap::create(op_state, ProviderType::TtyWrap as i32),
-              Some(Handle::New(tty.as_ptr().cast())),
-            ),
-            fd,
-            tty.as_ptr().cast(),
-          ),
+          base,
           handle: Some(tty),
         },
         0,
