@@ -1152,15 +1152,19 @@ fn op_spawn_sync(
       let cancel2 = cancel.clone();
       let kill_signal = kill_signal_str.as_deref().unwrap_or("SIGTERM");
       #[cfg(unix)]
-      let signal =
-        deno_signals::signal_str_to_int(kill_signal).unwrap_or(libc::SIGTERM);
+      let signal = deno_signals::signal_str_to_int(kill_signal)
+        .ok()
+        .or_else(|| kill_signal.parse::<i32>().ok())
+        .unwrap_or(libc::SIGTERM);
       std::thread::spawn(move || {
         let (lock, cvar) = &*cancel2;
         let guard = lock.lock().unwrap();
         let timeout = std::time::Duration::from_millis(timeout_ms);
-        let (guard, _) = cvar.wait_timeout(guard, timeout).unwrap();
-        // If cancelled, the child already exited — don't kill.
-        if *guard {
+        let (guard, wait_result) = cvar
+          .wait_timeout_while(guard, timeout, |cancelled| !*cancelled)
+          .unwrap();
+        // If cancelled or woken before the timeout, the child already exited.
+        if *guard || !wait_result.timed_out() {
           return;
         }
         killed.store(true, Ordering::SeqCst);

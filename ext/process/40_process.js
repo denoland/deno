@@ -509,11 +509,7 @@ function spawnSyncInner(command, {
     }
   }
   const result = op_spawn_sync(spawnArgs);
-  return {
-    // Internal fields used by node:child_process but not exposed via Deno API.
-    // outputSync() below strips these before returning.
-    _pid: result.pid,
-    _killedByTimeout: result.killedByTimeout,
+  const output = {
     success: result.status.success,
     code: result.status.code,
     signal: result.status.signal,
@@ -530,6 +526,18 @@ function spawnSyncInner(command, {
       return result.stderr;
     },
   };
+  // Internal fields used by node:child_process, hidden from Deno public API.
+  Object.defineProperty(output, "_pid", {
+    __proto__: null,
+    value: result.pid,
+    enumerable: false,
+  });
+  Object.defineProperty(output, "_killedByTimeout", {
+    __proto__: null,
+    value: result.killedByTimeout,
+    enumerable: false,
+  });
+  return output;
 }
 
 class Command {
@@ -556,11 +564,7 @@ class Command {
         "Piped stdin is not supported for this function, use 'Deno.Command.spawn()' instead",
       );
     }
-    const output = spawnSyncInner(this.#command, this.#options);
-    // Strip internal fields that are not part of the Deno API.
-    delete output._pid;
-    delete output._killedByTimeout;
-    return output;
+    return spawnSyncInner(this.#command, this.#options);
   }
 
   spawn() {
