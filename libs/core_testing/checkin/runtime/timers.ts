@@ -4,50 +4,44 @@
  * Call a callback function after a delay.
  */
 export function setTimeout(callback: () => void, delay = 0) {
-  return Deno.core.queueUserTimer(
-    Deno.core.getTimerDepth() + 1,
-    false,
-    delay,
-    callback,
-  );
+  return Deno.core.createTimer(callback, delay, undefined, false, true);
 }
 
 /**
  * Call a callback function after a delay.
  */
 export function setInterval(callback: () => void, delay = 0) {
-  return Deno.core.queueUserTimer(
-    Deno.core.getTimerDepth() + 1,
-    true,
-    delay,
-    callback,
-  );
+  return Deno.core.createTimer(callback, delay, undefined, true, true);
 }
 
 /**
  * Clear a timeout or interval.
  */
-export function clearTimeout(id: number) {
-  Deno.core.cancelTimer(id);
+// deno-lint-ignore no-explicit-any
+export function clearTimeout(timer: any) {
+  Deno.core.cancelTimer(timer);
 }
 
 /**
  * Clear a timeout or interval.
  */
-export function clearInterval(id: number) {
-  Deno.core.cancelTimer(id);
+// deno-lint-ignore no-explicit-any
+export function clearInterval(timer: any) {
+  Deno.core.cancelTimer(timer);
 }
 
 /**
  * Mark a timer as not blocking event loop exit.
  */
-export function unrefTimer(id: number) {
-  Deno.core.unrefTimer(id);
+// deno-lint-ignore no-explicit-any
+export function unrefTimer(timer: any) {
+  Deno.core.unrefTimer(timer);
 }
 
 /**
  * Mark a timer as blocking event loop exit.
  */
-export function refTimer(id: number) {
-  Deno.core.refTimer(id);
+// deno-lint-ignore no-explicit-any
+export function refTimer(timer: any) {
+  Deno.core.refTimer(timer);
 }

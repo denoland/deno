@@ -18,7 +18,7 @@ import {
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 102;
+const cacheVersion = 104;
 
 const ubuntuX86Runner = "ubuntu-24.04";
 const ubuntuARMRunner = "ubuntu-24.04-arm";
@@ -1241,7 +1241,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
         name: jobNameForJob("wpt"),
         needs: [buildJob],
         runsOn: buildItem.testRunner ?? buildItem.runner,
-        timeoutMinutes: 240,
+        timeoutMinutes: 30,
         defaults,
         env,
         steps: step.if(isNotTag.and(buildItem.skip.not()))(

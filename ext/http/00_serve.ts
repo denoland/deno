@@ -11,6 +11,7 @@ import {
   op_http_cancel,
   op_http_close,
   op_http_close_after_finish,
+  op_http_copy_span_to_otel_info,
   op_http_get_request_headers,
   op_http_get_request_method_and_url,
   op_http_metric_handle_otel_error,
@@ -97,6 +98,7 @@ import {
   ContextManager,
   currentSnapshot,
   enterSpan,
+  getOtelSpan,
   METRICS_ENABLED,
   PROPAGATORS,
   restoreSnapshot,
@@ -603,6 +605,12 @@ function mapToCallback(context, callback, onError) {
 
     if (span) {
       updateSpanFromServerResponse(span, response);
+      // Copy span attributes (like http.route) to OtelInfo for HTTP metrics.
+      // Must be done here, before the request external is invalidated.
+      const otelSpan = getOtelSpan(span);
+      if (otelSpan) {
+        op_http_copy_span_to_otel_info(req, otelSpan);
+      }
     }
 
     const inner = toInnerResponse(response);
