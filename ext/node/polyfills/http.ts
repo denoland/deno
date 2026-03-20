@@ -2347,7 +2347,7 @@ export class ServerImpl extends EventEmitter {
       // handlers (like WebSocket). Treating them as regular requests lets
       // the server respond normally with HTTP/1.1.
       if (
-        req.upgrade && req.upgrade !== "h2c" &&
+        req.upgrade && req.upgrade.toLowerCase() !== "h2c" &&
         this.listenerCount("upgrade") > 0
       ) {
         const { conn, response } = upgradeHttpRaw(request);
