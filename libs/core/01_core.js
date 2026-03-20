@@ -78,6 +78,10 @@
     op_leak_tracing_submit,
     op_leak_tracing_get_all,
     op_leak_tracing_get,
+    op_immediate_check_start,
+    op_immediate_check_stop,
+    op_immediate_check_ref,
+    op_immediate_check_unref,
 
     op_is_any_array_buffer,
     op_is_arguments_object,
@@ -177,6 +181,10 @@
   let immediateInfo;
 
   function queueImmediate(immediate) {
+    if (immediateInfo[kImmCount] === 0
+      && immediateInfo[kImmHasOutstanding] === 0) {
+      op_immediate_check_start();
+    }
     immediateInfo[kImmCount]++;
     immediateQueue.append(immediate);
   }
@@ -189,10 +197,17 @@
     immediate._destroyed = true;
     if (immediate[kRefed]) {
       immediateInfo[kImmRefCount]--;
+      if (immediateInfo[kImmRefCount] === 0) {
+        op_immediate_check_unref();
+      }
     }
     immediate[kRefed] = null;
     immediate._onImmediate = null;
     immediateQueue.remove(immediate);
+    if (immediateInfo[kImmCount] === 0
+      && immediateInfo[kImmHasOutstanding] === 0) {
+      op_immediate_check_stop();
+    }
   }
 
   function runImmediates() {
@@ -224,6 +239,9 @@
       immediateInfo[kImmCount]--;
       if (immediate[kRefed]) {
         immediateInfo[kImmRefCount]--;
+        if (immediateInfo[kImmRefCount] === 0) {
+          op_immediate_check_unref();
+        }
       }
       immediate[kRefed] = null;
 
@@ -253,6 +271,9 @@
     }
 
     immediateInfo[kImmHasOutstanding] = 0;
+    if (immediateInfo[kImmCount] === 0) {
+      op_immediate_check_stop();
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -927,9 +948,15 @@
     __setTimerInfo: __timers.__setTimerInfo,
     immediateRefCount(increase) {
       if (increase) {
+        if (immediateInfo[kImmRefCount] === 0) {
+          op_immediate_check_ref();
+        }
         immediateInfo[kImmRefCount]++;
       } else {
         immediateInfo[kImmRefCount]--;
+        if (immediateInfo[kImmRefCount] === 0) {
+          op_immediate_check_unref();
+        }
       }
     },
     runImmediateCallbacks,

@@ -1385,3 +1385,64 @@ pub fn op_get_extras_binding_object<'s, 'i>(
   let context = scope.get_current_context();
   context.get_extras_binding_object(scope).into()
 }
+
+// --- Immediate check handle ops ---
+// These ops control a uv_check_t handle that fires in the check phase,
+// replacing the manual Rust-side gating for setImmediate.
+
+#[op2(fast)]
+pub fn op_immediate_check_start(scope: &mut v8::PinScope) {
+  let context_state = JsRealm::state_from_scope(scope);
+  if let Some(handle) = context_state.immediate_check_handle.get() {
+    // SAFETY: handle is valid, initialized by register_uv_loop.
+    unsafe {
+      crate::uv_compat::uv_check_start(handle, immediate_check_cb);
+    }
+  }
+}
+
+#[op2(fast)]
+pub fn op_immediate_check_stop(scope: &mut v8::PinScope) {
+  let context_state = JsRealm::state_from_scope(scope);
+  if let Some(handle) = context_state.immediate_check_handle.get() {
+    // SAFETY: handle is valid, initialized by register_uv_loop.
+    unsafe {
+      crate::uv_compat::uv_check_stop(handle);
+    }
+  }
+}
+
+#[op2(fast)]
+pub fn op_immediate_check_ref(scope: &mut v8::PinScope) {
+  let context_state = JsRealm::state_from_scope(scope);
+  if let Some(handle) = context_state.immediate_check_handle.get() {
+    // SAFETY: handle is valid, initialized by register_uv_loop.
+    unsafe {
+      crate::uv_compat::uv_ref(
+        handle as *mut crate::uv_compat::uv_handle_t,
+      );
+    }
+  }
+}
+
+#[op2(fast)]
+pub fn op_immediate_check_unref(scope: &mut v8::PinScope) {
+  let context_state = JsRealm::state_from_scope(scope);
+  if let Some(handle) = context_state.immediate_check_handle.get() {
+    // SAFETY: handle is valid, initialized by register_uv_loop.
+    unsafe {
+      crate::uv_compat::uv_unref(
+        handle as *mut crate::uv_compat::uv_handle_t,
+      );
+    }
+  }
+}
+
+/// No-op callback for the immediate check handle. The actual immediate
+/// draining is done by checking `uv_is_active` after `run_check()` in
+/// `poll_event_loop_inner`, since we need a v8 scope to call into JS.
+unsafe extern "C" fn immediate_check_cb(
+  _handle: *mut crate::uv_compat::uv_check_t,
+) {
+  // Intentionally empty — just a marker that the handle is active.
+}

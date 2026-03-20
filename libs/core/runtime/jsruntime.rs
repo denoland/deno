@@ -85,9 +85,7 @@ use crate::runtime::ContextState;
 use crate::runtime::JsRealm;
 use crate::runtime::OpDriverImpl;
 use crate::runtime::jsrealm;
-use crate::runtime::jsrealm::IMM_IDX_COUNT;
 use crate::runtime::jsrealm::IMM_IDX_HAS_OUTSTANDING;
-use crate::runtime::jsrealm::IMM_IDX_REF_COUNT;
 use crate::source_map::SourceMapData;
 use crate::source_map::SourceMapper;
 use crate::stats::RuntimeActivityType;
@@ -1711,6 +1709,24 @@ impl JsRuntime {
     unsafe {
       (*loop_ptr).data = raw.as_ptr() as *mut std::ffi::c_void;
     }
+
+    // Allocate and initialize a uv_check_t handle for setImmediate.
+    // JS controls start/stop/ref/unref via ops. The handle starts
+    // inactive and unref'd.
+    // SAFETY: zeroed memory is valid for uv_check_t (C struct).
+    let check_handle = Box::into_raw(Box::new(unsafe {
+      std::mem::MaybeUninit::<crate::uv_compat::uv_check_t>::zeroed()
+        .assume_init()
+    }));
+    // SAFETY: loop_ptr and check_handle are valid pointers.
+    unsafe {
+      crate::uv_compat::uv_check_init(loop_ptr, check_handle);
+      // Start unref'd — JS will ref when there are refed immediates.
+      crate::uv_compat::uv_unref(
+        check_handle as *mut crate::uv_compat::uv_handle_t,
+      );
+    }
+    context_state.immediate_check_handle.set(Some(check_handle));
   }
 
   /// Returns the runtime's op names, ordered by OpId.
@@ -2164,11 +2180,10 @@ impl JsRuntime {
     let mut dispatched_ops = false;
     let mut did_work = false;
     let mut uv_did_io = false;
-    let mut uv_timers_fired = false;
     // ===== Phase 1: Timers =====
     // 1a. Fire expired libuv C timers
     if let Some(uv_inner_ptr) = context_state.uv_loop_inner.get() {
-      uv_timers_fired = unsafe { (*uv_inner_ptr).run_timers() };
+      unsafe { (*uv_inner_ptr).run_timers() };
     }
     // 1b. Fire expired user timers via JS-side processTimers
     did_work |= Self::dispatch_user_timers(cx, scope, context_state);
@@ -2256,22 +2271,22 @@ impl JsRuntime {
     if let Some(uv_inner_ptr) = context_state.uv_loop_inner.get() {
       unsafe { (*uv_inner_ptr).run_check() };
     }
-    // Run immediates if there are refed immediates (they keep the loop
-    // alive on their own) OR if there are unrefed immediates and other
-    // work happened this iteration (meaning the loop is alive for other
-    // reasons). This matches libuv semantics: unrefed check handles
-    // don't cause `uv_run` to start an iteration, but they do
-    // participate if the iteration runs for other reasons. When only
-    // unrefed immediates remain and nothing else is pending, the loop
-    // exits without firing them.
-    if context_state.immediate_info[IMM_IDX_COUNT] > 0
-      && (context_state.immediate_info[IMM_IDX_REF_COUNT] > 0
-        || did_work
-        || dispatched_ops
-        || uv_did_io
-        || uv_timers_fired)
+    // Immediates: if a uv loop is registered, the check handle controls
+    // when immediates fire (JS manages start/stop/ref/unref via ops).
+    // Without a uv loop (e.g. core-only tests), fall back to checking
+    // the shared immediate_info count.
     {
-      Self::do_js_run_immediate_callbacks(scope, context_state)?;
+      let should_run = if let Some(handle) =
+        context_state.immediate_check_handle.get()
+      {
+        unsafe { (*handle).flags & 1 != 0 } // UV_HANDLE_ACTIVE
+      } else {
+        context_state.immediate_info[IMM_IDX_HAS_OUTSTANDING] != 0
+          || context_state.immediate_info[0/* IMM_IDX_COUNT */] > 0
+      };
+      if should_run {
+        Self::do_js_run_immediate_callbacks(scope, context_state)?;
+      }
     }
     scope.perform_microtask_checkpoint();
 
@@ -2322,7 +2337,6 @@ impl JsRuntime {
       if pending_state.has_pending_background_tasks
         || pending_state.has_tick_scheduled
         || pending_state.has_outstanding_immediates
-        || pending_state.has_refed_immediates > 0
         || pending_state.has_pending_promise_events
         || uv_did_io
       {
@@ -2344,7 +2358,6 @@ impl JsRuntime {
         || pending_state.has_pending_background_tasks
         || pending_state.has_pending_external_ops
         || pending_state.has_tick_scheduled
-        || pending_state.has_refed_immediates > 0
         || pending_state.has_pending_timers
         || pending_state.has_uv_alive_handles
       {
@@ -2365,7 +2378,6 @@ impl JsRuntime {
         || pending_state.has_pending_background_tasks
         || pending_state.has_pending_external_ops
         || pending_state.has_tick_scheduled
-        || pending_state.has_refed_immediates > 0
         || pending_state.has_pending_timers
         || pending_state.has_uv_alive_handles
       {
@@ -2586,7 +2598,10 @@ pub(crate) struct EventLoopPendingState {
   has_pending_promise_events: bool,
   has_pending_external_ops: bool,
   has_outstanding_immediates: bool,
-  has_refed_immediates: u32,
+  /// Fallback for environments without a uv loop (core-only tests).
+  /// When a uv loop is registered, refed immediates are tracked by the
+  /// uv_check_t handle's ref state (via has_uv_alive_handles).
+  has_refed_immediates_no_uv: bool,
   has_pending_timers: bool,
   has_uv_alive_handles: bool,
 }
@@ -2621,10 +2636,11 @@ impl EventLoopPendingState {
     let has_pending_refed_ops = has_pending_tasks
       || has_pending_refed_user_timers
       || num_pending_ops > num_unrefed_ops;
-    let (has_outstanding_immediates, has_refed_immediates) = (
-      state.immediate_info[IMM_IDX_HAS_OUTSTANDING] != 0,
-      state.immediate_info[IMM_IDX_REF_COUNT],
-    );
+    let has_outstanding_immediates =
+      state.immediate_info[IMM_IDX_HAS_OUTSTANDING] != 0;
+    // Only needed when no uv loop is registered (check handle tracks this otherwise).
+    let has_refed_immediates_no_uv = state.uv_loop_inner.get().is_none()
+      && state.immediate_info[1/* IMM_IDX_REF_COUNT */] > 0;
     let has_pending_timers = !state.active_timers.borrow().is_empty();
     let has_uv_alive_handles =
       if let Some(uv_inner_ptr) = state.uv_loop_inner.get() {
@@ -2643,7 +2659,7 @@ impl EventLoopPendingState {
       has_pending_promise_events,
       has_pending_external_ops: state.external_ops_tracker.has_pending_ops(),
       has_outstanding_immediates,
-      has_refed_immediates,
+      has_refed_immediates_no_uv,
       has_pending_timers,
       has_uv_alive_handles,
     }
@@ -2663,9 +2679,9 @@ impl EventLoopPendingState {
       || self.has_pending_module_evaluation
       || self.has_pending_background_tasks
       || self.has_tick_scheduled
-      || self.has_refed_immediates > 0
       || self.has_pending_promise_events
       || self.has_pending_external_ops
+      || self.has_refed_immediates_no_uv
       || self.has_uv_alive_handles
   }
 }
