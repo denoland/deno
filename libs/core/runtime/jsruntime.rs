@@ -87,9 +87,9 @@ use crate::runtime::OpDriverImpl;
 use crate::runtime::jsrealm;
 use crate::runtime::jsrealm::IMM_IDX_HAS_OUTSTANDING;
 use crate::source_map::SourceMapData;
-use crate::uv_compat;
 use crate::source_map::SourceMapper;
 use crate::stats::RuntimeActivityType;
+use crate::uv_compat;
 
 pub type WaitForInspectorDisconnectCallback = Box<dyn Fn()>;
 const STATE_DATA_OFFSET: u32 = 0;
@@ -1695,8 +1695,7 @@ impl JsRuntime {
   ) {
     let realm = &self.inner.main_realm;
     let context_state = &realm.0.context_state;
-    let inner_ptr =
-      unsafe { uv_compat::uv_loop_get_inner_ptr(loop_ptr) };
+    let inner_ptr = unsafe { uv_compat::uv_loop_get_inner_ptr(loop_ptr) };
     let uv_inner = inner_ptr as *const uv_compat::UvLoopInner;
     context_state.uv_loop_inner.set(Some(uv_inner));
     context_state.uv_loop_ptr.set(Some(loop_ptr));
@@ -1716,8 +1715,7 @@ impl JsRuntime {
     // SAFETY: loop_ptr is valid per caller contract.
     let check_handle =
       unsafe { uv_compat::ImmediateCheckHandle::new(loop_ptr) };
-    *context_state.immediate_check_handle.borrow_mut() =
-      Some(check_handle);
+    *context_state.immediate_check_handle.borrow_mut() = Some(check_handle);
   }
 
   /// Returns the runtime's op names, ordered by OpId.

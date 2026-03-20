@@ -320,7 +320,6 @@ impl UvLoopInner {
         unsafe { cb(handle_ptr) };
       }
     }
-
   }
 
   /// ### Safety

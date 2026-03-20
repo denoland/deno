@@ -132,9 +132,8 @@ pub fn create_runtime_from_snapshot_with_options(
   // Register a uv loop so that setImmediate check handle works.
   {
     // SAFETY: zeroed memory is valid for UvLoop before uv_loop_init.
-    let mut uv_loop = Box::new(unsafe {
-      std::mem::zeroed::<deno_core::uv_compat::UvLoop>()
-    });
+    let mut uv_loop =
+      Box::new(unsafe { std::mem::zeroed::<deno_core::uv_compat::UvLoop>() });
     // SAFETY: uv_loop points to valid zeroed memory ready for initialization.
     unsafe { deno_core::uv_compat::uv_loop_init(&mut *uv_loop) };
     let loop_ptr: *mut deno_core::uv_compat::UvLoop = &mut *uv_loop;

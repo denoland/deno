@@ -178,8 +178,10 @@
   let immediateInfo;
 
   function queueImmediate(immediate) {
-    if (immediateInfo[kImmCount] === 0
-      && immediateInfo[kImmHasOutstanding] === 0) {
+    if (
+      immediateInfo[kImmCount] === 0 &&
+      immediateInfo[kImmHasOutstanding] === 0
+    ) {
       op_immediate_check(0);
     }
     immediateInfo[kImmCount]++;
@@ -201,8 +203,10 @@
     immediate[kRefed] = null;
     immediate._onImmediate = null;
     immediateQueue.remove(immediate);
-    if (immediateInfo[kImmCount] === 0
-      && immediateInfo[kImmHasOutstanding] === 0) {
+    if (
+      immediateInfo[kImmCount] === 0 &&
+      immediateInfo[kImmHasOutstanding] === 0
+    ) {
       op_immediate_check(1);
     }
   }
