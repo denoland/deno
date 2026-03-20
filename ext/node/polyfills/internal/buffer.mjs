@@ -62,6 +62,9 @@ const {
   Uint8ArrayPrototype,
 } = primordials;
 import {
+  op_base64_decode_into,
+  op_base64_encode,
+  op_base64_encode_from_buffer,
   op_is_ascii,
   op_is_utf8,
   op_mark_as_untransferable,
@@ -111,11 +114,6 @@ import {
 } from "ext:deno_node/internal/errors.ts";
 import { getOptionValue } from "ext:deno_node/internal/options.ts";
 import { forgivingBase64UrlEncode } from "ext:deno_web/00_infra.js";
-import {
-  op_base64_decode_into,
-  op_base64_encode,
-  op_base64_encode_from_buffer,
-} from "ext:core/ops";
 import { atob, btoa } from "ext:deno_web/05_base64.js";
 import { Blob, blobFromObjectUrl, File } from "ext:deno_web/09_file.js";
 import { untransferableSymbol } from "ext:deno_node/internal_binding/util.ts";

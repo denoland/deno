@@ -290,15 +290,14 @@ fn op_base64_decode_into(
 
   // Fast path: try strict decode directly into target.
   // Works for clean padded base64 (the common case).
-  let max_decoded_len = v8::simdutf::maximal_binary_length_from_base64(&input);
-  if target.len() >= max_decoded_len
+  let max_len = v8::simdutf::maximal_binary_length_from_base64(&input);
+  if target.len() >= max_len
     && let Some(len) = simdutf_base64_decode_strict(&input, target)
   {
     return Ok(len as u32);
   }
 
   // Slow path: forgiving decode for whitespace/missing padding.
-  let max_len = v8::simdutf::maximal_binary_length_from_base64(&input);
   const STACK_BUF_SIZE: usize = 8192;
   if max_len <= STACK_BUF_SIZE {
     let mut buf = std::mem::MaybeUninit::<[u8; STACK_BUF_SIZE]>::uninit();
