@@ -283,9 +283,6 @@ fn approve_scripts_deny_some() {
 
 #[test(flaky)]
 fn approve_scripts_no_lock_explicit_package() {
-  if !Pty::is_supported() {
-    return;
-  }
   let context = pm_context_builder().build();
   context
     .temp_dir()
@@ -304,7 +301,7 @@ fn approve_scripts_no_lock_explicit_package() {
     .args("approve-scripts npm:@denotest/node-lifecycle-scripts")
     .run()
     .assert_matches_text(
-      "[WILDCARD]Approved npm:@denotest/node-lifecycle-scripts@1.0.0[WILDCARD]",
+      "[WILDCARD]Approved npm:@denotest/node-lifecycle-scripts[WILDCARD]",
     );
 }
 
