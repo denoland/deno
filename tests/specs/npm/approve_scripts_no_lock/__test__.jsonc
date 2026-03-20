@@ -1,4 +1,5 @@
 {
+  "if": "unix",
   "tempDir": true,
   "tests": {
     "approve_scripts_explicit_package": {
