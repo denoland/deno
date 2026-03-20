@@ -438,10 +438,16 @@
   //   0.0 = no timers remain
   let timerExpiry;
 
-  // Combined event loop tick: process timers + resolve ops + drain ticks.
+  // Combined event loop tick: process timers + resolve ops.
   // Called from Rust with args: (timerNow, promiseId, isOk, res, ...)
   // timerNow > 0 means timers should be processed; 0 means skip.
   // Remaining args are completed async op results in triplets.
+  //
+  // NOTE: This does NOT drain ticks. Under Explicit microtask policy,
+  // microtasks from op resolution are deferred. Rust calls
+  // __drainNextTickAndMacrotasks separately after this returns,
+  // with the correct microtask checkpoint ordering to preserve
+  // the nextTick-before-then invariant.
   function __eventLoopTick(timerNow) {
     // 1. Process expired timers if the timer deadline fired
     if (timerNow > 0) {
@@ -454,8 +460,6 @@
       const res = arguments[i + 2];
       __resolvePromise(promiseId, res, isOk);
     }
-    // 3. Drain nextTick queue and microtasks
-    drainTicks();
   }
 
   // Drain nextTick/microtask queues only (no timers or ops).

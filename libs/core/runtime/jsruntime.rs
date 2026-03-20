@@ -2206,15 +2206,11 @@ impl JsRuntime {
     // 2a. V8 task spawner tasks
     dispatched_ops |= Self::dispatch_task_spawner(cx, scope, context_state);
 
-    // 2b. Dispatch "rejectionhandled" events before tick processing.
-    // This ensures rejectionhandled fires before unhandledrejection for
-    // later promises, since processTicksAndRejections drains unhandled
-    // rejections via processPromiseRejections.
-    Self::dispatch_handled_rejections(scope, exception_state);
-
-    // 2c. Combined event loop tick: process timers + resolve ops + drain
-    // ticks in a single Rust-to-JS call via __eventLoopTick(timerNow, ops...).
-    // Timer expiry is communicated back via shared Float64Array buffer.
+    // 2b. Process timers + resolve ops in a single Rust-to-JS call via
+    // __eventLoopTick(timerNow, ops...). Does NOT drain ticks -- that
+    // happens in 2d below, matching the original ordering where Rust
+    // controls the microtask checkpoint between op resolution and tick
+    // draining to preserve the nextTick-before-then invariant.
     let timer_ready = context_state.user_timer.poll_ready(cx).is_ready();
     did_work |= timer_ready;
     dispatched_ops |=
@@ -2223,25 +2219,30 @@ impl JsRuntime {
     if timer_ready {
       Self::process_timer_expiry(context_state);
     }
+    // Microtask checkpoint after timer/op processing, but only when
+    // no ticks are scheduled (matching original guard after timers).
+    if !context_state.has_tick_scheduled() {
+      scope.perform_microtask_checkpoint();
+    }
 
-    // 2d. If __eventLoopTick didn't call into JS (no timer, no ops),
-    // ticks may still be scheduled. Drain them before the microtask
-    // checkpoint to preserve the nextTick-before-then invariant.
-    // dispatch_event_loop_tick returns true when ops were dispatched
-    // (meaning it called __eventLoopTick which includes drainTicks).
-    // timer_ready also means __eventLoopTick was called.
-    let tick_already_drained = dispatched_ops || timer_ready;
+    // 2c. Dispatch "rejectionhandled" events before tick processing.
+    // This ensures rejectionhandled fires before unhandledrejection for
+    // later promises, since processTicksAndRejections drains unhandled
+    // rejections via processPromiseRejections.
+    Self::dispatch_handled_rejections(scope, exception_state);
+
+    // 2d. nextTick drain + macrotask drain.
+    // Only drain if there's actual work (ops dispatched, tick scheduled,
+    // or timers fired). This prevents macrotask callbacks from running
+    // on empty iterations.
     let has_tick_scheduled = context_state.has_tick_scheduled();
     dispatched_ops |= has_tick_scheduled;
-    if !tick_already_drained && has_tick_scheduled {
+    if dispatched_ops || did_work || has_tick_scheduled {
       Self::drain_next_tick_and_macrotasks(scope, context_state)?;
     }
 
-    // 2e. Handle any remaining promise rejections. __eventLoopTick and
-    // drain_next_tick_and_macrotasks both run processPromiseRejections
-    // (via processTicksAndRejections), which drains the same queue.
-    // This catches edge cases where rejections were created after those
-    // functions returned (e.g. by microtasks queued during cleanup).
+    // 2e. Handle promise rejections (after nextTick/macrotask, since
+    // unhandledrejection handlers are run in macrotask callbacks).
     Self::dispatch_rejections(scope, context_state, exception_state)?;
     scope.perform_microtask_checkpoint();
 
