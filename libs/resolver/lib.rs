@@ -591,7 +591,7 @@ impl<
         })
       }
       Err(err) => {
-        // If byonm, check if the bare specifier resolves to an npm package
+        // Check if the bare specifier resolves to an npm package
         if self.is_byonm && referrer.scheme() == "file" {
           let maybe_resolution = npm_req_resolver
             .resolve_if_for_npm_pkg(
