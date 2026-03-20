@@ -21,6 +21,7 @@ use deno_core::error::AnyError;
 use deno_core::url::Url;
 use deno_npm_installer::PackagesAllowedScripts;
 use deno_path_util::resolve_url_or_path;
+use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
 use jsonc_parser::cst::CstInputValue;
 use log::Level;
@@ -42,6 +43,7 @@ use crate::args::UninstallFlags;
 use crate::args::UninstallKind;
 use crate::args::resolve_no_prompt;
 use crate::factory::CliFactory;
+use crate::file_fetcher::CliFileFetcher;
 use crate::file_fetcher::CreateCliFileFetcherOptions;
 use crate::file_fetcher::create_cli_file_fetcher;
 use crate::jsr::JsrFetchResolver;
@@ -59,29 +61,31 @@ pub async fn install_global(
   let cli_options = factory.cli_options()?;
   let http_client = factory.http_client_provider();
   let deps_http_cache = factory.global_http_cache()?;
-  let deps_file_fetcher = create_cli_file_fetcher(
-    Default::default(),
-    deno_cache_dir::GlobalOrLocalHttpCache::Global(deps_http_cache.clone()),
-    http_client.clone(),
-    factory.memory_files().clone(),
-    factory.sys(),
-    CreateCliFileFetcherOptions {
-      allow_remote: true,
-      cache_setting: CacheSetting::ReloadAll,
-      download_log_level: log::Level::Trace,
-      progress_bar: None,
-    },
-  );
+  let create_deps_file_fetcher = |download_log_level: log::Level| {
+    Arc::new(create_cli_file_fetcher(
+      Default::default(),
+      deno_cache_dir::GlobalOrLocalHttpCache::Global(deps_http_cache.clone()),
+      http_client.clone(),
+      factory.memory_files().clone(),
+      factory.sys(),
+      CreateCliFileFetcherOptions {
+        allow_remote: true,
+        cache_setting: CacheSetting::ReloadAll,
+        download_log_level,
+        progress_bar: None,
+      },
+    ))
+  };
 
   let npmrc = factory.npmrc()?;
 
-  let deps_file_fetcher = Arc::new(deps_file_fetcher);
+  let deps_file_fetcher = create_deps_file_fetcher(log::Level::Trace);
   let jsr_resolver = Arc::new(JsrFetchResolver::new(
     deps_file_fetcher.clone(),
     factory.jsr_version_resolver()?.clone(),
   ));
   let npm_resolver = Arc::new(NpmFetchResolver::new(
-    deps_file_fetcher.clone(),
+    deps_file_fetcher,
     npmrc.clone(),
     factory.npm_version_resolver()?.clone(),
   ));
@@ -162,7 +166,26 @@ pub async fn install_global(
       cli_options.initial_cwd(),
       install_flags_global.root.as_deref(),
     )?;
-    setup_config_dir(&name_and_url, &flags, &installation_dir).await?;
+    let npm_package_info_provider = factory
+      .npm_installer_factory()?
+      .lockfile_npm_package_info_provider()?;
+    let deps_file_fetcher = create_deps_file_fetcher(Level::Info);
+    let jsr_lockfile_fetcher = JsrLockfileFetcher {
+      jsr_resolver: Arc::new(JsrFetchResolver::new(
+        deps_file_fetcher.clone(),
+        factory.jsr_version_resolver()?.clone(),
+      )),
+      file_fetcher: deps_file_fetcher,
+      npmrc: npmrc.clone(),
+      npm_package_info_provider,
+    };
+    setup_config_dir(
+      &name_and_url,
+      &flags,
+      &installation_dir,
+      Some(&jsr_lockfile_fetcher),
+    )
+    .await?;
 
     // create the install shim
     create_install_shim(
@@ -347,6 +370,7 @@ async fn setup_config_dir(
   bin_name_and_url: &BinaryNameAndUrl,
   flags: &Flags,
   installation_dir: &Path,
+  jsr_lockfile_fetcher: Option<&JsrLockfileFetcher<'_>>,
 ) -> Result<(), AnyError> {
   fn resolve_implicit_node_modules_dir(
     flags: &Flags,
@@ -421,6 +445,15 @@ async fn setup_config_dir(
         req.name, req.version_req
       ),
     )?;
+  }
+
+  // fetch deno.lock from JSR if this is a JSR package
+  if !flags.no_lock
+    && let Some(fetcher) = jsr_lockfile_fetcher
+    && let Some(lockfile_content) =
+      fetcher.fetch_lockfile(&bin_name_and_url.module_url).await
+  {
+    fs::write(dir.join("deno.lock"), lockfile_content)?;
   }
 
   // create cloned flags to run cache_top_level_deps
@@ -804,6 +837,110 @@ fn is_in_path(dir: &Path) -> bool {
   false
 }
 
+struct JsrLockfileFetcher<'a> {
+  jsr_resolver: Arc<JsrFetchResolver>,
+  file_fetcher: Arc<CliFileFetcher>,
+  npmrc: Arc<deno_npm::npm_rc::ResolvedNpmRc>,
+  npm_package_info_provider: &'a dyn deno_lockfile::NpmPackageInfoProvider,
+}
+
+impl JsrLockfileFetcher<'_> {
+  async fn fetch_lockfile(&self, module_url: &Url) -> Option<String> {
+    let pkg_ref = JsrPackageReqReference::from_specifier(module_url).ok()?;
+    let req = pkg_ref.req();
+    let nv = self.jsr_resolver.req_to_nv(req).await.ok().flatten()?;
+    let lockfile_url = crate::args::jsr_url()
+      .join(&format!("{}/{}/deno.lock", &nv.name, &nv.version))
+      .ok()?;
+    let file = match self
+      .file_fetcher
+      .fetch_bypass_permissions(&lockfile_url)
+      .await
+    {
+      Ok(file) => file,
+      Err(err) => {
+        log::debug!("Not using lockfile for JSR package {}: {}", nv, err);
+        return None;
+      }
+    };
+
+    let content = match std::str::from_utf8(&file.source) {
+      Ok(s) => s,
+      Err(_) => {
+        log::debug!("Lockfile for JSR package {} is not valid UTF-8", nv);
+        return None;
+      }
+    };
+
+    // Parse and upgrade the lockfile to v5
+    let lockfile = match deno_lockfile::Lockfile::new(
+      deno_lockfile::NewLockfileOptions {
+        file_path: std::path::PathBuf::from("deno.lock"),
+        content,
+        overwrite: false,
+      },
+      self.npm_package_info_provider,
+    )
+    .await
+    {
+      Ok(lockfile) => lockfile,
+      Err(err) => {
+        log::warn!(
+          "{} Not using lockfile from JSR package {}: {}",
+          crate::colors::yellow("Warning"),
+          nv,
+          err,
+        );
+        return None;
+      }
+    };
+
+    if let Err(url) = validate_npm_tarball_urls(&lockfile.content, &self.npmrc)
+    {
+      log::warn!(
+        "{} Not using lockfile from JSR package {} because it contains an npm tarball URL (\"{}\") not from a configured npm registry. This may indicate a security issue.",
+        crate::colors::yellow("Warning"),
+        nv,
+        url,
+      );
+      return None;
+    }
+
+    log::debug!("Using lockfile from JSR package {}", nv);
+    Some(lockfile.as_json_string())
+  }
+}
+
+/// Validates that all npm tarball URLs in the lockfile come from
+/// configured npm registries (or the default registry.npmjs.org).
+/// Returns `Err(bad_url)` on the first tarball from an unknown registry.
+fn validate_npm_tarball_urls(
+  content: &deno_lockfile::LockfileContent,
+  npmrc: &deno_npm::npm_rc::ResolvedNpmRc,
+) -> Result<(), String> {
+  let mut allowed_registries = npmrc.get_all_known_registries_urls();
+  // always allow the default npm registry
+  let default_npm_registry =
+    Url::parse(deno_npm::npm_rc::NPM_DEFAULT_REGISTRY).unwrap();
+  if !allowed_registries.contains(&default_npm_registry) {
+    allowed_registries.push(default_npm_registry);
+  }
+
+  for pkg_info in content.packages.npm.values() {
+    if let Some(tarball) = &pkg_info.tarball {
+      let tarball_str = tarball.as_str();
+      let is_allowed = allowed_registries
+        .iter()
+        .any(|registry_url| tarball_str.starts_with(registry_url.as_str()));
+      if !is_allowed {
+        return Err(tarball_str.to_string());
+      }
+    }
+  }
+
+  Ok(())
+}
+
 #[cfg(test)]
 mod tests {
   use std::process::Command;
@@ -842,9 +979,14 @@ mod tests {
     let installation_dir =
       super::get_installer_bin_dir(&cwd, install_flags_global.root.as_deref())
         .unwrap();
-    super::setup_config_dir(&binary_name_and_url, flags, &installation_dir)
-      .await
-      .unwrap();
+    super::setup_config_dir(
+      &binary_name_and_url,
+      flags,
+      &installation_dir,
+      None,
+    )
+    .await
+    .unwrap();
     super::create_install_shim(
       &binary_name_and_url,
       &cwd,
@@ -1708,5 +1850,145 @@ mod tests {
       file_path = file_path.with_extension("cmd");
       assert!(!file_path.exists());
     }
+  }
+
+  fn create_npmrc_with_registries(
+    default_url: &str,
+    scope_urls: &[(&str, &str)],
+  ) -> Arc<deno_npm::npm_rc::ResolvedNpmRc> {
+    use deno_npm::npm_rc::RegistryConfig;
+    use deno_npm::npm_rc::RegistryConfigWithUrl;
+    use deno_npm::npm_rc::ResolvedNpmRc;
+
+    let mut scopes = std::collections::HashMap::new();
+    for (scope, url) in scope_urls {
+      scopes.insert(
+        scope.to_string(),
+        RegistryConfigWithUrl {
+          registry_url: Url::parse(url).unwrap(),
+          config: Arc::new(RegistryConfig::default()),
+        },
+      );
+    }
+    Arc::new(ResolvedNpmRc {
+      default_config: RegistryConfigWithUrl {
+        registry_url: Url::parse(default_url).unwrap(),
+        config: Arc::new(RegistryConfig::default()),
+      },
+      scopes,
+      registry_configs: Default::default(),
+    })
+  }
+
+  fn create_lockfile_content_with_npm(
+    packages: &[(&str, Option<&str>)],
+  ) -> deno_lockfile::LockfileContent {
+    use deno_lockfile::NpmPackageInfo;
+    let mut content = deno_lockfile::LockfileContent::default();
+    for (id, tarball) in packages {
+      content.packages.npm.insert(
+        (*id).into(),
+        NpmPackageInfo {
+          integrity: Some("sha512-test".to_string()),
+          dependencies: Default::default(),
+          optional_dependencies: Default::default(),
+          optional_peers: Default::default(),
+          os: Default::default(),
+          cpu: Default::default(),
+          tarball: tarball.map(|t| t.into()),
+          deprecated: false,
+          scripts: false,
+          bin: false,
+        },
+      );
+    }
+    content
+  }
+
+  #[test]
+  fn validate_npm_tarball_urls_allows_default_registry() {
+    let npmrc =
+      create_npmrc_with_registries("https://registry.npmjs.org/", &[]);
+    let content = create_lockfile_content_with_npm(&[(
+      "chalk@5.0.0",
+      Some("https://registry.npmjs.org/chalk/-/chalk-5.0.0.tgz"),
+    )]);
+    assert!(super::validate_npm_tarball_urls(&content, &npmrc).is_ok());
+  }
+
+  #[test]
+  fn validate_npm_tarball_urls_allows_no_tarball() {
+    let npmrc =
+      create_npmrc_with_registries("https://registry.npmjs.org/", &[]);
+    let content = create_lockfile_content_with_npm(&[("chalk@5.0.0", None)]);
+    assert!(super::validate_npm_tarball_urls(&content, &npmrc).is_ok());
+  }
+
+  #[test]
+  fn validate_npm_tarball_urls_rejects_unknown_registry() {
+    let npmrc =
+      create_npmrc_with_registries("https://registry.npmjs.org/", &[]);
+    let content = create_lockfile_content_with_npm(&[(
+      "evil@1.0.0",
+      Some("https://evil.example.com/evil/-/evil-1.0.0.tgz"),
+    )]);
+    let result = super::validate_npm_tarball_urls(&content, &npmrc);
+    assert_eq!(
+      result.unwrap_err(),
+      "https://evil.example.com/evil/-/evil-1.0.0.tgz"
+    );
+  }
+
+  #[test]
+  fn validate_npm_tarball_urls_allows_scoped_registry() {
+    let npmrc = create_npmrc_with_registries(
+      "https://registry.npmjs.org/",
+      &[("myco", "https://npm.mycompany.com/")],
+    );
+    let content = create_lockfile_content_with_npm(&[(
+      "@myco/pkg@1.0.0",
+      Some("https://npm.mycompany.com/@myco/pkg/-/pkg-1.0.0.tgz"),
+    )]);
+    assert!(super::validate_npm_tarball_urls(&content, &npmrc).is_ok());
+  }
+
+  #[test]
+  fn validate_npm_tarball_urls_allows_npmjs_when_custom_default() {
+    // Even with a custom default registry, registry.npmjs.org should be allowed
+    let npmrc = create_npmrc_with_registries("https://npm.mycompany.com/", &[]);
+    let content = create_lockfile_content_with_npm(&[(
+      "chalk@5.0.0",
+      Some("https://registry.npmjs.org/chalk/-/chalk-5.0.0.tgz"),
+    )]);
+    assert!(super::validate_npm_tarball_urls(&content, &npmrc).is_ok());
+  }
+
+  #[test]
+  fn validate_npm_tarball_urls_mixed_valid_and_invalid() {
+    let npmrc =
+      create_npmrc_with_registries("https://registry.npmjs.org/", &[]);
+    let content = create_lockfile_content_with_npm(&[
+      (
+        "chalk@5.0.0",
+        Some("https://registry.npmjs.org/chalk/-/chalk-5.0.0.tgz"),
+      ),
+      (
+        "evil@1.0.0",
+        Some("https://evil.example.com/evil/-/evil-1.0.0.tgz"),
+      ),
+    ]);
+    assert!(super::validate_npm_tarball_urls(&content, &npmrc).is_err());
+  }
+
+  #[test]
+  fn validate_npm_tarball_urls_rejects_subdomain_spoof() {
+    // ensure "https://registry.npmjs.org" (no trailing slash) doesn't
+    // match "https://registry.npmjs.org.evil.com/..." via prefix
+    let npmrc = create_npmrc_with_registries("https://registry.npmjs.org", &[]);
+    let content = create_lockfile_content_with_npm(&[(
+      "evil@1.0.0",
+      Some("https://registry.npmjs.org.evil.com/evil/-/evil-1.0.0.tgz"),
+    )]);
+    assert!(super::validate_npm_tarball_urls(&content, &npmrc).is_err());
   }
 }

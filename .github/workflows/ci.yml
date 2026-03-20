@@ -3938,7 +3938,7 @@ jobs:
     needs:
       - build-release-linux-x86_64
     runs-on: ubuntu-24.04
-    timeout-minutes: 240
+    timeout-minutes: 30
     defaults:
       run:
         shell: bash
