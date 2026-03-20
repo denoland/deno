@@ -544,6 +544,26 @@ impl<
       resolution_kind,
     );
     match resolution_result {
+      Ok(NodeResolution::BuiltIn(_))
+        if matches!(&self.npm_resolver, NpmResolver::Byonm(byonm) if byonm
+          .find_ancestor_package_json_with_dep(specifier, referrer)
+          .is_some()) =>
+      {
+        // The specifier matches a Node built-in name (e.g. "events") but
+        // it's also listed as a dependency in package.json. In BYONM mode,
+        // the npm package should take precedence over the built-in, matching
+        // Node.js behavior where node_modules packages shadow built-ins.
+        match self.node_resolver.resolve_package(
+          specifier,
+          referrer,
+          resolution_mode,
+          resolution_kind,
+        ) {
+          Ok(res) => Ok(Some(res)),
+          // If npm resolution fails, fall back to the built-in
+          Err(_) => Ok(Some(NodeResolution::BuiltIn(specifier.to_string()))),
+        }
+      }
       Ok(res) => Ok(Some(res)),
       Err(err) => {
         let err = err.into_kind();

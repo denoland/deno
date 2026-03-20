@@ -448,6 +448,37 @@ impl<
     Ok(resolve_response)
   }
 
+  /// Like `resolve`, but skips the built-in module check. This is used
+  /// when we know the specifier is an npm package dependency that happens
+  /// to share a name with a Node built-in (e.g. "events", "assert").
+  pub fn resolve_package(
+    &self,
+    specifier: &str,
+    referrer: &Url,
+    resolution_mode: ResolutionMode,
+    resolution_kind: NodeResolutionKind,
+  ) -> Result<NodeResolution, NodeResolveError> {
+    let conditions = self.condition_resolver.resolve(resolution_mode);
+    let referrer = UrlOrPathRef::from_url(referrer);
+    let (url, resolved_kind) = self.module_resolve(
+      specifier,
+      &referrer,
+      resolution_mode,
+      conditions,
+      resolution_kind,
+    )?;
+
+    let url_or_path = self.finalize_resolution(
+      url,
+      resolved_kind,
+      resolution_mode,
+      conditions,
+      resolution_kind,
+      Some(&referrer),
+    )?;
+    Ok(NodeResolution::Module(url_or_path))
+  }
+
   fn module_resolve(
     &self,
     specifier: &str,
