@@ -404,6 +404,8 @@ export const dnsException = hideStackFrames(function (code, syscall, hostname) {
     ex.hostname = hostname;
   }
 
+  ErrorCaptureStackTrace(ex, dnsException);
+
   return ex;
 });
 
@@ -3370,6 +3372,7 @@ export default {
   denoErrorToNodeError,
   denoErrorToNodeSystemError,
   dnsException,
+  DNSException: dnsException,
   errnoException,
   errorMap,
   exceptionWithHostPort,

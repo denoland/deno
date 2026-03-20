@@ -263,6 +263,7 @@
     "parallel/test-child-process-stdio-overlapped.js": {},
     "parallel/test-child-process-stdout-flush-exit.js": {},
     "parallel/test-child-process-stdout-flush.js": {},
+    "parallel/test-child-process-uid-gid.js": {},
     "parallel/test-child-process-validate-stdio.js": {},
     "parallel/test-cli-bad-options.js": {
       "ignore": true,
@@ -589,9 +590,16 @@
     // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
     // "parallel/test-disable-sigusr1.js": {},
     "parallel/test-dns-default-order-ipv4.js": {},
+    "parallel/test-dns-default-order-ipv6.js": {},
+    "parallel/test-dns-default-order-verbatim.js": {},
     "parallel/test-dns-get-server.js": {},
+    // TODO: test-dns-lookup.js and test-dns-lookup-promises.js fail due to
+    // spurious punycode DEP0040 warning and getaddrinfo error mismatch
+    // "parallel/test-dns-lookup.js": {},
+    // "parallel/test-dns-lookup-promises.js": {},
     "parallel/test-dns-lookupService.js": {},
     "parallel/test-dns-lookupService-promises.js": {},
+    "parallel/test-dns-memory-error.js": {},
     "parallel/test-dns-multi-channel.js": {},
     "parallel/test-dns-promises-exists.js": {},
     "parallel/test-dns-resolvens-typeerror.js": {},
@@ -1516,6 +1524,7 @@
       "windows": false,
       "reason": "Node.js specific behavior to check the return value of the C++ bindings"
     },
+    "parallel/test-os-constants-signals.js": {},
     "parallel/test-os-eol.js": {},
     "parallel/test-os-homedir-no-envvar.js": {},
     "parallel/test-os-process-priority.js": {},
@@ -1711,6 +1720,7 @@
     "parallel/test-process-features.js": {},
     "parallel/test-process-getgroups.js": {},
     "parallel/test-process-hrtime-bigint.js": {},
+    "parallel/test-process-hrtime.js": {},
     "parallel/test-process-kill-null.js": {},
     "parallel/test-process-kill-pid.js": {},
     "parallel/test-process-next-tick.js": {},
@@ -1719,6 +1729,8 @@
     "parallel/test-process-really-exit.js": {},
     "parallel/test-process-title-cli.js": {},
     "parallel/test-process-release.js": {},
+    "parallel/test-process-threadCpuUsage-main-thread.js": {},
+    "parallel/test-process-threadCpuUsage-worker-threads.js": {},
     "parallel/test-process-umask-mask.js": {},
     "parallel/test-process-umask.js": {},
     "parallel/test-process-uptime.js": {},
@@ -1742,12 +1754,14 @@
     "parallel/test-readable-from.js": {},
     "parallel/test-readable-large-hwm.js": {},
     "parallel/test-readable-single-end.js": {},
+    "parallel/test-readline-async-iterators-backpressure.js": {},
     "parallel/test-readline-carriage-return-between-chunks.js": {},
     "parallel/test-readline-csi.js": {},
     "parallel/test-readline-emit-keypress-events.js": {},
     "parallel/test-readline-interface-escapecodetimeout.js": {},
     "parallel/test-readline-interface-no-trailing-newline.js": {},
     "parallel/test-readline-interface-recursive-writes.js": {},
+    "parallel/test-readline-interface.js": {},
     "parallel/test-readline-line-separators.js": {},
     "parallel/test-readline-position.js": {},
     "parallel/test-readline-reopen.js": {},
@@ -1911,17 +1925,17 @@
     // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
     // "parallel/test-source-map-enable.js": {},
     "parallel/test-sqlite-authz.js": {},
-    // "parallel/test-sqlite-config.js": {}, // https://github.com/denoland/deno/issues/32706
+    "parallel/test-sqlite-config.js": {},
     "parallel/test-sqlite-custom-functions.js": {},
     "parallel/test-sqlite-data-types.js": {},
     "parallel/test-sqlite-database-sync-dispose.js": {},
     "parallel/test-sqlite-database-sync.js": {},
-    // "parallel/test-sqlite-named-parameters.js": {}, // https://github.com/denoland/deno/issues/32706
+    "parallel/test-sqlite-named-parameters.js": {},
     "parallel/test-sqlite-session.js": {
       "flaky": true
     },
     "parallel/test-sqlite-statement-sync-columns.js": {},
-    // "parallel/test-sqlite-statement-sync.js": {}, // https://github.com/denoland/deno/issues/32706
+    "parallel/test-sqlite-statement-sync.js": {},
     "parallel/test-sqlite-timeout.js": {},
     "parallel/test-sqlite-transactions.js": {},
     "parallel/test-sqlite-typed-array-and-data-view.js": {},
@@ -2314,7 +2328,7 @@
     "parallel/test-v8-flag-pool-size-0.js": {},
     "parallel/test-v8-getheapsnapshot-twice.js": {},
     "parallel/test-v8-global-setter.js": {},
-    // "parallel/test-v8-stats.js": {}, // https://github.com/denoland/deno/issues/32706
+    "parallel/test-v8-stats.js": {},
     "parallel/test-vm-access-process-env.js": {},
     "parallel/test-vm-api-handles-getter-errors.js": {},
     "parallel/test-vm-attributes-property-not-on-sandbox.js": {},
@@ -2627,6 +2641,7 @@
       "reason": "Node.js snapshot/heap profiling features (--build-snapshot, --heap-prof, --heapsnapshot-near-heap-limit) are not implemented in Deno"
     },
     // "pummel/test-heapdump-inspector.js": {},
+    "pummel/test-process-hrtime.js": {},
     "pummel/test-string-decoder-large-buffer.js": {},
     "sequential/test-buffer-creation-regression.js": {},
     "sequential/test-child-process-exit.js": {},
