@@ -1,0 +1,14 @@
+{
+  "tests": {
+    "package_flag_selects_binary": {
+      "tempDir": true,
+      "args": "x -y -p @denotest/bin cli-esm hello world",
+      "output": "run.out"
+    },
+    "package_flag_long_form": {
+      "tempDir": true,
+      "args": "x -y --package @denotest/bin cli-esm hello world",
+      "output": "run.out"
+    }
+  }
+}
