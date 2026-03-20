@@ -274,7 +274,7 @@ impl UvLoopInner {
 
   /// ### Safety
   /// All timer handle pointers stored in `timer_handles` must be valid.
-  pub(crate) unsafe fn run_timers(&self) {
+  pub(crate) unsafe fn run_timers(&self) -> bool {
     let now = self.now_ms();
     let mut expired = Vec::new();
     {
@@ -286,6 +286,8 @@ impl UvLoopInner {
         expired.push(*key);
       }
     }
+
+    let fired = !expired.is_empty();
 
     for key in expired {
       self.timers.borrow_mut().remove(&key);
@@ -320,6 +322,8 @@ impl UvLoopInner {
         unsafe { cb(handle_ptr) };
       }
     }
+
+    fired
   }
 
   /// ### Safety

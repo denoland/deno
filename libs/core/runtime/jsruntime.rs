@@ -2164,10 +2164,11 @@ impl JsRuntime {
     let mut dispatched_ops = false;
     let mut did_work = false;
     let mut uv_did_io = false;
+    let mut uv_timers_fired = false;
     // ===== Phase 1: Timers =====
     // 1a. Fire expired libuv C timers
     if let Some(uv_inner_ptr) = context_state.uv_loop_inner.get() {
-      unsafe { (*uv_inner_ptr).run_timers() };
+      uv_timers_fired = unsafe { (*uv_inner_ptr).run_timers() };
     }
     // 1b. Fire expired user timers via JS-side processTimers
     did_work |= Self::dispatch_user_timers(cx, scope, context_state);
@@ -2267,7 +2268,8 @@ impl JsRuntime {
       && (context_state.immediate_info[IMM_IDX_REF_COUNT] > 0
         || did_work
         || dispatched_ops
-        || uv_did_io)
+        || uv_did_io
+        || uv_timers_fired)
     {
       Self::do_js_run_immediate_callbacks(scope, context_state)?;
     }

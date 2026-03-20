@@ -81,3 +81,4 @@ Reflect.defineProperty(globalThis, "onrejectionhandled", {
 });
 Deno.unrefTimer = timers.unrefTimer;
 Deno.refTimer = timers.refTimer;
+Deno.unrefImmediate = timers.unrefImmediate;
