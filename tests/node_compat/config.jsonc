@@ -1493,6 +1493,7 @@
       "windows": false,
       "reason": "Node.js specific behavior to check the return value of the C++ bindings"
     },
+    "parallel/test-os-constants-signals.js": {},
     "parallel/test-os-eol.js": {},
     "parallel/test-os-homedir-no-envvar.js": {},
     "parallel/test-os-process-priority.js": {},
@@ -2231,7 +2232,7 @@
     "parallel/test-v8-flag-pool-size-0.js": {},
     "parallel/test-v8-getheapsnapshot-twice.js": {},
     "parallel/test-v8-global-setter.js": {},
-    // "parallel/test-v8-stats.js": {}, // https://github.com/denoland/deno/issues/32706
+    "parallel/test-v8-stats.js": {},
     "parallel/test-vm-access-process-env.js": {},
     "parallel/test-vm-api-handles-getter-errors.js": {},
     "parallel/test-vm-attributes-property-not-on-sandbox.js": {},
