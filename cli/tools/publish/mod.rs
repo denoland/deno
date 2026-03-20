@@ -91,7 +91,29 @@ pub async fn publish(
       Some(deno_json) => {
         debug_assert!(!deno_json.is_package() || !deno_json.should_publish());
         if deno_json.json.name.is_none() {
-          bail!("Missing 'name' field in '{}'.", deno_json.specifier);
+          // Try to get the name from jsr.json or jsr.jsonc if it exists
+          let jsr_json_path = directory_path.join("jsr.json");
+          let jsr_jsonc_path = directory_path.join("jsr.jsonc");
+          let jsr_name = if jsr_json_path.is_file() {
+            std::fs::read_to_string(&jsr_json_path)
+              .ok()
+              .and_then(|content| serde_json::from_str::<serde_json::Value>(&content).ok())
+              .and_then(|v| v.get("name").and_then(|n| n.as_str()))
+          } else if jsr_jsonc_path.is_file() {
+            // For jsr.jsonc, we can't easily parse jsonc without a parser
+            // Just skip it for now
+            None
+          } else {
+            None
+          };
+          if let Some(name) = jsr_name {
+            log::info!(
+              "Using name '{}' from jsr.json (deno.json is missing 'name' field)",
+              name
+            );
+          } else {
+            bail!("Missing 'name' field in '{}'.", deno_json.specifier);
+          }
         }
         if !deno_json.should_publish() {
           bail!(
