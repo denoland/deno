@@ -1688,7 +1688,7 @@ export function spawnSync(
     }
 
     // deno-lint-ignore no-explicit-any
-    if ((output as any).killedByTimeout) {
+    if ((output as any)._killedByTimeout) {
       result.error = _createSpawnError("ETIMEDOUT", command, args, true);
     }
 
@@ -1698,7 +1698,7 @@ export function spawnSync(
     }
 
     // deno-lint-ignore no-explicit-any
-    result.pid = (output as any).pid;
+    result.pid = (output as any)._pid;
     result.status = status;
     result.signal = output.signal;
     result.stdout = stdout;

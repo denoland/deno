@@ -510,11 +510,13 @@ function spawnSyncInner(command, {
   }
   const result = op_spawn_sync(spawnArgs);
   return {
-    pid: result.pid,
+    // Internal fields used by node:child_process but not exposed via Deno API.
+    // outputSync() below strips these before returning.
+    _pid: result.pid,
+    _killedByTimeout: result.killedByTimeout,
     success: result.status.success,
     code: result.status.code,
     signal: result.status.signal,
-    killedByTimeout: result.killedByTimeout,
     get stdout() {
       if (result.stdout == null) {
         throw new TypeError("Cannot get 'stdout': 'stdout' is not piped");
@@ -554,7 +556,11 @@ class Command {
         "Piped stdin is not supported for this function, use 'Deno.Command.spawn()' instead",
       );
     }
-    return spawnSyncInner(this.#command, this.#options);
+    const output = spawnSyncInner(this.#command, this.#options);
+    // Strip internal fields that are not part of the Deno API.
+    delete output._pid;
+    delete output._killedByTimeout;
+    return output;
   }
 
   spawn() {

@@ -18,6 +18,11 @@ use std::process::ExitStatus;
 #[cfg(unix)]
 use std::process::Stdio as StdStdio;
 use std::rc::Rc;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
+use std::sync::Condvar;
+use std::sync::Mutex;
 
 use deno_core::AsyncMutFuture;
 use deno_core::AsyncRefCell;
@@ -1136,40 +1141,43 @@ fn op_spawn_sync(
   }
 
   // If timeout is specified, spawn a thread that will kill the child
-  // after the timeout expires.
-  let killed_by_timeout =
-    std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+  // after the timeout expires. Uses a condvar so the timer thread can be
+  // cancelled promptly when the child exits before the deadline.
+  let killed_by_timeout = Arc::new(AtomicBool::new(false));
+  let cancel = Arc::new((Mutex::new(false), Condvar::new()));
   if let Some(timeout_ms) = timeout {
     if timeout_ms > 0 {
       let child_id = child.id();
       let killed = killed_by_timeout.clone();
+      let cancel2 = cancel.clone();
       let kill_signal = kill_signal_str.as_deref().unwrap_or("SIGTERM");
       #[cfg(unix)]
       let signal =
         deno_signals::signal_str_to_int(kill_signal).unwrap_or(libc::SIGTERM);
       std::thread::spawn(move || {
-        std::thread::sleep(std::time::Duration::from_millis(timeout_ms));
-        killed.store(true, std::sync::atomic::Ordering::SeqCst);
+        let (lock, cvar) = &*cancel2;
+        let guard = lock.lock().unwrap();
+        let timeout = std::time::Duration::from_millis(timeout_ms);
+        let (guard, _) = cvar.wait_timeout(guard, timeout).unwrap();
+        // If cancelled, the child already exited — don't kill.
+        if *guard {
+          return;
+        }
+        killed.store(true, Ordering::SeqCst);
         #[cfg(unix)]
         unsafe {
           libc::kill(child_id as i32, signal);
         }
         #[cfg(windows)]
-        {
-          // On Windows, use TerminateProcess via the child handle
-          // We can't easily signal, so just kill the process
-          unsafe {
-            let handle = windows_sys::Win32::System::Threading::OpenProcess(
-              windows_sys::Win32::System::Threading::PROCESS_TERMINATE,
-              0,
-              child_id,
-            );
-            if handle != 0 {
-              windows_sys::Win32::System::Threading::TerminateProcess(
-                handle, 1,
-              );
-              windows_sys::Win32::Foundation::CloseHandle(handle);
-            }
+        unsafe {
+          let handle = windows_sys::Win32::System::Threading::OpenProcess(
+            windows_sys::Win32::System::Threading::PROCESS_TERMINATE,
+            0,
+            child_id,
+          );
+          if handle != 0 {
+            windows_sys::Win32::System::Threading::TerminateProcess(handle, 1);
+            windows_sys::Win32::Foundation::CloseHandle(handle);
           }
         }
       });
@@ -1183,7 +1191,16 @@ fn op_spawn_sync(
         command: command.get_program().to_string_lossy().into_owned(),
         error: Box::new(e.into()),
       })?;
-  let timed_out = killed_by_timeout.load(std::sync::atomic::Ordering::SeqCst);
+
+  // Cancel the timeout thread if it's still waiting.
+  {
+    let (lock, cvar) = &*cancel;
+    let mut cancelled = lock.lock().unwrap();
+    *cancelled = true;
+    cvar.notify_one();
+  }
+
+  let timed_out = killed_by_timeout.load(Ordering::SeqCst);
   Ok(SpawnOutput {
     pid,
     status: output.status.try_into()?,
