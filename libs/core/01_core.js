@@ -78,10 +78,7 @@
     op_leak_tracing_submit,
     op_leak_tracing_get_all,
     op_leak_tracing_get,
-    op_immediate_check_start,
-    op_immediate_check_stop,
-    op_immediate_check_ref,
-    op_immediate_check_unref,
+    op_immediate_check,
 
     op_is_any_array_buffer,
     op_is_arguments_object,
@@ -183,7 +180,7 @@
   function queueImmediate(immediate) {
     if (immediateInfo[kImmCount] === 0
       && immediateInfo[kImmHasOutstanding] === 0) {
-      op_immediate_check_start();
+      op_immediate_check(0);
     }
     immediateInfo[kImmCount]++;
     immediateQueue.append(immediate);
@@ -198,7 +195,7 @@
     if (immediate[kRefed]) {
       immediateInfo[kImmRefCount]--;
       if (immediateInfo[kImmRefCount] === 0) {
-        op_immediate_check_unref();
+        op_immediate_check(3);
       }
     }
     immediate[kRefed] = null;
@@ -206,7 +203,7 @@
     immediateQueue.remove(immediate);
     if (immediateInfo[kImmCount] === 0
       && immediateInfo[kImmHasOutstanding] === 0) {
-      op_immediate_check_stop();
+      op_immediate_check(1);
     }
   }
 
@@ -240,7 +237,7 @@
       if (immediate[kRefed]) {
         immediateInfo[kImmRefCount]--;
         if (immediateInfo[kImmRefCount] === 0) {
-          op_immediate_check_unref();
+          op_immediate_check(3);
         }
       }
       immediate[kRefed] = null;
@@ -272,7 +269,7 @@
 
     immediateInfo[kImmHasOutstanding] = 0;
     if (immediateInfo[kImmCount] === 0) {
-      op_immediate_check_stop();
+      op_immediate_check(1);
     }
   }
 
@@ -949,13 +946,13 @@
     immediateRefCount(increase) {
       if (increase) {
         if (immediateInfo[kImmRefCount] === 0) {
-          op_immediate_check_ref();
+          op_immediate_check(2);
         }
         immediateInfo[kImmRefCount]++;
       } else {
         immediateInfo[kImmRefCount]--;
         if (immediateInfo[kImmRefCount] === 0) {
-          op_immediate_check_unref();
+          op_immediate_check(3);
         }
       }
     },

@@ -1089,6 +1089,78 @@ pub unsafe extern "C" fn uv_check_stop(handle: *mut uv_check_t) -> c_int {
   0
 }
 
+/// Safe wrapper around a `uv_check_t` handle for setImmediate.
+/// Manages the handle lifecycle and provides safe methods for
+/// start/stop/ref/unref.
+pub(crate) struct ImmediateCheckHandle {
+  handle: *mut uv_check_t,
+}
+
+/// No-op callback — the actual draining is done by checking `is_active()`
+/// after `run_check()` in the event loop, since we need a v8 scope.
+unsafe extern "C" fn immediate_check_noop_cb(_: *mut uv_check_t) {}
+
+impl ImmediateCheckHandle {
+  /// Create and initialize a new check handle on the given loop.
+  /// Starts inactive and unref'd.
+  ///
+  /// # Safety
+  /// `loop_ptr` must be a valid, initialized `uv_loop_t`.
+  pub unsafe fn new(loop_ptr: *mut uv_loop_t) -> Self {
+    let handle = Box::into_raw(Box::new(unsafe {
+      std::mem::MaybeUninit::<uv_check_t>::zeroed().assume_init()
+    }));
+    unsafe {
+      uv_check_init(loop_ptr, handle);
+      uv_unref(handle as *mut uv_handle_t);
+    }
+    Self { handle }
+  }
+
+  pub fn is_active(&self) -> bool {
+    // SAFETY: handle is valid for the lifetime of this struct.
+    unsafe { (*self.handle).flags & UV_HANDLE_ACTIVE != 0 }
+  }
+
+  pub fn start(&self) {
+    // SAFETY: handle is valid.
+    unsafe {
+      uv_check_start(self.handle, immediate_check_noop_cb);
+    }
+  }
+
+  pub fn stop(&self) {
+    // SAFETY: handle is valid.
+    unsafe {
+      uv_check_stop(self.handle);
+    }
+  }
+
+  pub fn make_ref(&self) {
+    // SAFETY: handle is valid.
+    unsafe {
+      uv_ref(self.handle as *mut uv_handle_t);
+    }
+  }
+
+  pub fn make_unref(&self) {
+    // SAFETY: handle is valid.
+    unsafe {
+      uv_unref(self.handle as *mut uv_handle_t);
+    }
+  }
+}
+
+impl Drop for ImmediateCheckHandle {
+  fn drop(&mut self) {
+    // SAFETY: handle was initialized by new().
+    unsafe {
+      uv_check_stop(self.handle);
+      drop(Box::from_raw(self.handle));
+    }
+  }
+}
+
 /// ### Safety
 /// `handle` must be a valid pointer to any uv handle type (timer, idle, tcp, etc.) initialized
 /// by the corresponding `uv_*_init` function. Must not be called twice on the same handle.

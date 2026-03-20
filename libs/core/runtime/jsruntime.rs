@@ -87,6 +87,7 @@ use crate::runtime::OpDriverImpl;
 use crate::runtime::jsrealm;
 use crate::runtime::jsrealm::IMM_IDX_HAS_OUTSTANDING;
 use crate::source_map::SourceMapData;
+use crate::uv_compat;
 use crate::source_map::SourceMapper;
 use crate::stats::RuntimeActivityType;
 
@@ -1690,13 +1691,13 @@ impl JsRuntime {
   /// outlives the runtime.
   pub unsafe fn register_uv_loop(
     &mut self,
-    loop_ptr: *mut crate::uv_compat::uv_loop_t,
+    loop_ptr: *mut uv_compat::uv_loop_t,
   ) {
     let realm = &self.inner.main_realm;
     let context_state = &realm.0.context_state;
     let inner_ptr =
-      unsafe { crate::uv_compat::uv_loop_get_inner_ptr(loop_ptr) };
-    let uv_inner = inner_ptr as *const crate::uv_compat::UvLoopInner;
+      unsafe { uv_compat::uv_loop_get_inner_ptr(loop_ptr) };
+    let uv_inner = inner_ptr as *const uv_compat::UvLoopInner;
     context_state.uv_loop_inner.set(Some(uv_inner));
     context_state.uv_loop_ptr.set(Some(loop_ptr));
 
@@ -1710,23 +1711,13 @@ impl JsRuntime {
       (*loop_ptr).data = raw.as_ptr() as *mut std::ffi::c_void;
     }
 
-    // Allocate and initialize a uv_check_t handle for setImmediate.
-    // JS controls start/stop/ref/unref via ops. The handle starts
-    // inactive and unref'd.
-    // SAFETY: zeroed memory is valid for uv_check_t (C struct).
-    let check_handle = Box::into_raw(Box::new(unsafe {
-      std::mem::MaybeUninit::<crate::uv_compat::uv_check_t>::zeroed()
-        .assume_init()
-    }));
-    // SAFETY: loop_ptr and check_handle are valid pointers.
-    unsafe {
-      crate::uv_compat::uv_check_init(loop_ptr, check_handle);
-      // Start unref'd — JS will ref when there are refed immediates.
-      crate::uv_compat::uv_unref(
-        check_handle as *mut crate::uv_compat::uv_handle_t,
-      );
-    }
-    context_state.immediate_check_handle.set(Some(check_handle));
+    // Create the check handle for setImmediate.
+    // JS controls start/stop/ref/unref via op_immediate_check.
+    // SAFETY: loop_ptr is valid per caller contract.
+    let check_handle =
+      unsafe { uv_compat::ImmediateCheckHandle::new(loop_ptr) };
+    *context_state.immediate_check_handle.borrow_mut() =
+      Some(check_handle);
   }
 
   /// Returns the runtime's op names, ordered by OpId.
@@ -2271,22 +2262,15 @@ impl JsRuntime {
     if let Some(uv_inner_ptr) = context_state.uv_loop_inner.get() {
       unsafe { (*uv_inner_ptr).run_check() };
     }
-    // Immediates: if a uv loop is registered, the check handle controls
-    // when immediates fire (JS manages start/stop/ref/unref via ops).
-    // Without a uv loop (e.g. core-only tests), fall back to checking
-    // the shared immediate_info count.
+    // Immediates: drain if the check handle is active (JS started it
+    // when immediates were queued).
+    if context_state
+      .immediate_check_handle
+      .borrow()
+      .as_ref()
+      .is_some_and(|h| h.is_active())
     {
-      let should_run = if let Some(handle) =
-        context_state.immediate_check_handle.get()
-      {
-        unsafe { (*handle).flags & 1 != 0 } // UV_HANDLE_ACTIVE
-      } else {
-        context_state.immediate_info[IMM_IDX_HAS_OUTSTANDING] != 0
-          || context_state.immediate_info[0/* IMM_IDX_COUNT */] > 0
-      };
-      if should_run {
-        Self::do_js_run_immediate_callbacks(scope, context_state)?;
-      }
+      Self::do_js_run_immediate_callbacks(scope, context_state)?;
     }
     scope.perform_microtask_checkpoint();
 
@@ -2598,10 +2582,6 @@ pub(crate) struct EventLoopPendingState {
   has_pending_promise_events: bool,
   has_pending_external_ops: bool,
   has_outstanding_immediates: bool,
-  /// Fallback for environments without a uv loop (core-only tests).
-  /// When a uv loop is registered, refed immediates are tracked by the
-  /// uv_check_t handle's ref state (via has_uv_alive_handles).
-  has_refed_immediates_no_uv: bool,
   has_pending_timers: bool,
   has_uv_alive_handles: bool,
 }
@@ -2638,9 +2618,6 @@ impl EventLoopPendingState {
       || num_pending_ops > num_unrefed_ops;
     let has_outstanding_immediates =
       state.immediate_info[IMM_IDX_HAS_OUTSTANDING] != 0;
-    // Only needed when no uv loop is registered (check handle tracks this otherwise).
-    let has_refed_immediates_no_uv = state.uv_loop_inner.get().is_none()
-      && state.immediate_info[1/* IMM_IDX_REF_COUNT */] > 0;
     let has_pending_timers = !state.active_timers.borrow().is_empty();
     let has_uv_alive_handles =
       if let Some(uv_inner_ptr) = state.uv_loop_inner.get() {
@@ -2659,7 +2636,6 @@ impl EventLoopPendingState {
       has_pending_promise_events,
       has_pending_external_ops: state.external_ops_tracker.has_pending_ops(),
       has_outstanding_immediates,
-      has_refed_immediates_no_uv,
       has_pending_timers,
       has_uv_alive_handles,
     }
@@ -2681,7 +2657,6 @@ impl EventLoopPendingState {
       || self.has_tick_scheduled
       || self.has_pending_promise_events
       || self.has_pending_external_ops
-      || self.has_refed_immediates_no_uv
       || self.has_uv_alive_handles
   }
 }

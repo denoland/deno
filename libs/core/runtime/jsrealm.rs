@@ -133,11 +133,11 @@ pub struct ContextState {
   /// # Safety
   /// Same lifetime requirements as `uv_loop_inner` above.
   pub(crate) uv_loop_ptr: Cell<Option<*mut crate::uv_compat::uv_loop_t>>,
-  /// Pointer to a `uv_check_t` handle used for setImmediate. When active,
-  /// `run_check()` fires its callback and we drain immediates. The handle's
-  /// ref/unref state controls whether immediates keep the event loop alive.
+  /// Check handle used for setImmediate. When active, immediates are
+  /// drained after `run_check()`. The handle's ref/unref state controls
+  /// whether immediates keep the event loop alive.
   pub(crate) immediate_check_handle:
-    Cell<Option<*mut crate::uv_compat::uv_check_t>>,
+    RefCell<Option<crate::uv_compat::ImmediateCheckHandle>>,
 }
 
 impl ContextState {
@@ -181,7 +181,7 @@ impl ContextState {
       event_loop_phases: Default::default(),
       uv_loop_inner: Cell::new(None),
       uv_loop_ptr: Cell::new(None),
-      immediate_check_handle: Cell::new(None),
+      immediate_check_handle: RefCell::new(None),
     }
   }
 }
