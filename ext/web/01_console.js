@@ -3961,7 +3961,16 @@ class Console {
 
   group = (...label) => {
     if (label.length > 0) {
-      this.log(...new SafeArrayIterator(label));
+      // Use #printFunc directly instead of this.log to avoid sending
+      // a duplicate "log" event to the inspector. The inspector already
+      // receives a "startGroup" event via the V8 console binding.
+      this.#printFunc(
+        inspectArgs(label, {
+          ...getConsoleInspectOptions(noColorStdout()),
+          indentLevel: this.indentLevel,
+        }) + "\n",
+        1,
+      );
     }
     this.indentLevel++;
   };
