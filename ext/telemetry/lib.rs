@@ -1649,8 +1649,8 @@ impl OtelTracer {
       links: SpanLinks::default(),
       instrumentation_scope: self.0.clone(),
     };
-    Ok(OtelSpan(RefCell::new(Box::new(OtelSpanState::Recording(
-      span_data,
+    Ok(OtelSpan(Rc::new(RefCell::new(Box::new(
+      OtelSpanState::Recording(span_data),
     )))))
   }
 
@@ -1718,8 +1718,8 @@ impl OtelTracer {
       links: SpanLinks::default(),
       instrumentation_scope: self.0.clone(),
     };
-    Ok(OtelSpan(RefCell::new(Box::new(OtelSpanState::Recording(
-      span_data,
+    Ok(OtelSpan(Rc::new(RefCell::new(Box::new(
+      OtelSpanState::Recording(span_data),
     )))))
   }
 }
@@ -1742,13 +1742,15 @@ struct OtelSpanCannotBeConstructedError;
 #[class(type)]
 struct InvalidSpanStatusCodeError;
 
-// boxed because of https://github.com/denoland/rusty_v8/issues/1676
-#[derive(Debug)]
-struct OtelSpan(RefCell<Box<OtelSpanState>>);
+// Rc-wrapped so the span can be shared between JS (via cppgc) and the HTTP
+// record (for copying attributes to metrics). The inner Box is kept to keep
+// the cppgc-traced struct small (see https://github.com/denoland/rusty_v8/issues/1676).
+#[derive(Debug, Clone)]
+pub struct OtelSpan(pub Rc<RefCell<Box<OtelSpanState>>>);
 
 #[derive(Debug)]
 #[allow(clippy::large_enum_variant, reason = "TODO: investigate")]
-enum OtelSpanState {
+pub enum OtelSpanState {
   Recording(SpanData),
   Done(SpanContext),
 }
