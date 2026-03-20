@@ -1228,24 +1228,35 @@ fn find_descendant_pids(root_pid: i32) -> Vec<i32> {
 
 #[cfg(target_os = "macos")]
 fn list_child_pids(pid: i32) -> Vec<i32> {
-  // Allocate a generous buffer. proc_listchildpids returns the number
-  // of PIDs written (as a count, not bytes).
-  let mut buf: Vec<libc::pid_t> = vec![0; 256];
+  let mut capacity: usize = 256;
 
-  // SAFETY: buf is a valid buffer of pid_t values.
-  let count = unsafe {
-    libc::proc_listchildpids(
-      pid,
-      buf.as_mut_ptr().cast(),
-      (buf.len() * std::mem::size_of::<libc::pid_t>()) as libc::c_int,
-    )
-  };
-  if count <= 0 {
-    return Vec::new();
+  loop {
+    let mut buf: Vec<libc::pid_t> = vec![0; capacity];
+
+    // SAFETY: buf is a valid buffer of pid_t values with length `capacity`.
+    let count = unsafe {
+      libc::proc_listchildpids(
+        pid,
+        buf.as_mut_ptr().cast(),
+        (buf.len() * std::mem::size_of::<libc::pid_t>()) as libc::c_int,
+      )
+    };
+    if count <= 0 {
+      return Vec::new();
+    }
+
+    let count = count as usize;
+
+    // If the buffer was completely filled, there may be more children.
+    // Grow and retry.
+    if count == capacity {
+      capacity = capacity.saturating_mul(2);
+      continue;
+    }
+
+    buf.truncate(count);
+    return buf;
   }
-
-  buf.truncate(count as usize);
-  buf
 }
 
 /// Stub for Unix platforms where descendant discovery is not implemented.
