@@ -857,7 +857,7 @@ process.getgid = getgid;
 process.getuid = getuid;
 
 /** This method is removed on Windows */
-process.getgroups = !isWindows ? () => op_getgroups() : undefined;
+process.getgroups = () => op_getgroups();
 
 /** This method is removed on Windows */
 process.getegid = getegid;
@@ -974,6 +974,7 @@ if (isWindows) {
   delete process.getuid;
   delete process.getegid;
   delete process.geteuid;
+  delete process.getgroups;
 }
 
 Object.defineProperty(process, Symbol.toStringTag, {

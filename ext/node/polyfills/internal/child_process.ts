@@ -387,9 +387,9 @@ export class ChildProcess extends EventEmitter {
       extraStdioNormalized.push(toDenoStdio(extraStdio[i]));
     }
 
-    // Windows does not support uid/gid options - throw ENOTSUP synchronously.
+    // Windows does not support uid/gid options - throw EPERM synchronously.
     if (isWindows && (uid != null || gid != null)) {
-      throw _createSpawnError("ENOTSUP", command, args.slice(1));
+      throw _createSpawnError("EPERM", command, args.slice(1));
     }
 
     try {
@@ -583,7 +583,7 @@ export class ChildProcess extends EventEmitter {
         e = _createSpawnError("ENOENT", command, args.slice(1));
       } else if (e instanceof Deno.errors.PermissionDenied) {
         // Node.js throws EPERM synchronously for uid/gid permission errors.
-        throw _createSpawnError("EPERM", command, args.slice(1));
+        e = _createSpawnError("EPERM", command, args.slice(1));
       }
 
       // Set up stdio streams even when spawn fails (Node.js creates pipes
