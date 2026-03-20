@@ -1,5 +1,10 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+#![allow(
+  clippy::undocumented_unsafe_blocks,
+  reason = "TLSWrap is an FFI-heavy Node parity port; safety invariants are documented on the surrounding methods and types."
+)]
+
 // Ported from Node.js:
 // - src/crypto/crypto_tls.h
 // - src/crypto/crypto_tls.cc
@@ -203,8 +208,10 @@ const CLEAR_OUT_CHUNK_SIZE: usize = 16384;
 
 /// The underlying transport that TLSWrap encrypts/decrypts over.
 /// Mirrors Node's StreamBase polymorphism via enum dispatch.
+#[derive(Default)]
 enum UnderlyingStream {
   /// Not yet attached.
+  #[default]
   None,
   /// Real libuv stream (e.g. TCP). Read lifecycle is owned by the underlying
   /// LibUvStreamWrap; TLS only intercepts the resulting native read callbacks.
@@ -217,18 +224,15 @@ enum UnderlyingStream {
   },
 }
 
-impl Default for UnderlyingStream {
-  fn default() -> Self {
-    UnderlyingStream::None
-  }
-}
-
 impl UnderlyingStream {
   fn is_attached(&self) -> bool {
     !matches!(self, UnderlyingStream::None)
   }
 
-  #[allow(dead_code)]
+  #[allow(
+    dead_code,
+    reason = "Useful when debugging TLS/native stream attachment."
+  )]
   fn uv_stream_ptr(&self) -> *mut uv_stream_t {
     match self {
       UnderlyingStream::Uv { stream } => *stream,

@@ -40,13 +40,19 @@ impl<T> OwnedPtr<T> {
   /// Caller must ensure no mutable references exist to the pointee,
   /// and the pointer is valid.
   pub unsafe fn as_ref(&self) -> &T {
+    // SAFETY: upheld by the caller per the method contract above.
     unsafe { &*self.0 }
   }
 
+  #[allow(
+    clippy::mut_from_ref,
+    reason = "OwnedPtr represents uniquely owned heap memory whose address must remain stable across reentrant FFI callbacks."
+  )]
   /// # Safety
   /// Caller must ensure no other references (shared or mutable) exist
   /// to the pointee, and the pointer is valid.
   pub unsafe fn as_mut(&self) -> &mut T {
+    // SAFETY: upheld by the caller per the method contract above.
     unsafe { &mut *self.0 }
   }
 

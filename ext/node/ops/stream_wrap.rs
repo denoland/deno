@@ -274,6 +274,7 @@ impl LibUvStreamWrap {
     if stream.is_null() {
       return None;
     }
+    // SAFETY: `stream` is non-null above and callers only pass valid uv stream pointers.
     NonNull::new(unsafe { (*stream).data as *mut StreamHandleData })
   }
 
@@ -323,6 +324,7 @@ impl LibUvStreamWrap {
         });
     handle_data.active_read.set(Some(key));
 
+    // SAFETY: `stream` is a valid libuv stream owned by this wrapper.
     unsafe {
       uv_compat::uv_read_start(stream, Some(on_uv_alloc), Some(on_uv_read))
     }
@@ -338,6 +340,7 @@ impl LibUvStreamWrap {
     if let Some(key) = handle_data.active_read.take() {
       let _ = handle_data.read_callbacks.borrow_mut().remove(key);
     }
+    // SAFETY: `stream` is a valid libuv stream owned by this wrapper.
     unsafe { uv_compat::uv_read_stop(stream) }
   }
 
@@ -369,6 +372,7 @@ impl LibUvStreamWrap {
     let state_array = v8::Local::new(scope, state_global);
 
     self.install_read_state(ReadCallbackState {
+      // SAFETY: `scope` is the currently active isolate scope for this op call.
       isolate: unsafe { scope.as_raw_isolate_ptr() },
       onread: Some(v8::Global::new(scope, onread)),
       stream_base_state: Some(v8::Global::new(scope, state_array)),
@@ -379,6 +383,7 @@ impl LibUvStreamWrap {
     self.reading_started.set(true);
     self.make_handle_strong(scope);
 
+    // SAFETY: `stream` is a valid libuv stream owned by this wrapper.
     unsafe {
       uv_compat::uv_read_start(stream, Some(on_uv_alloc), Some(on_uv_read))
     }
@@ -512,9 +517,8 @@ unsafe extern "C" fn on_uv_read(
       // itself before higher-level listeners observe the terminal read.
       let _ = LibUvStreamWrap::read_stop_for_stream(stream);
     }
-    unsafe {
-      (interceptor.callback)(interceptor.ptr, stream, nread, buf);
-    }
+    // SAFETY: interceptor registration guarantees the callback and payload are valid for this read dispatch.
+    unsafe { (interceptor.callback)(interceptor.ptr, stream, nread, buf) };
     return;
   }
 
@@ -632,8 +636,10 @@ unsafe fn clone_context_from_uv_loop(
   isolate: &mut v8::Isolate,
   loop_ptr: *mut uv_compat::uv_loop_t,
 ) -> v8::Global<v8::Context> {
+  // SAFETY: `loop_ptr` is valid per the function contract above.
   let raw = NonNull::new(unsafe { (*loop_ptr).data as *mut v8::Context })
     .expect("uv loop missing registered V8 context");
+  // SAFETY: `raw` came from `Global::into_raw()` and is still owned by the runtime.
   let global = unsafe { v8::Global::from_raw(isolate, raw) };
   let cloned = global.clone();
   // Leak the original back because the runtime still owns that persistent.
@@ -675,6 +681,7 @@ unsafe extern "C" fn backing_store_deleter(
 unsafe extern "C" fn after_uv_write(req: *mut uv_write_t, status: i32) {
   // SAFETY: req is a valid uv_write_t per the uv_write_cb contract.
   let req_data = unsafe { (*req).data };
+  // SAFETY: `req.handle` is a valid uv stream for the lifetime of this completion callback.
   let handle_data =
     unsafe { LibUvStreamWrap::stable_handle_data((*req).handle) };
   let Some(handle_data_ptr) = handle_data else {
@@ -741,6 +748,7 @@ unsafe extern "C" fn after_uv_write(req: *mut uv_write_t, status: i32) {
 unsafe extern "C" fn after_uv_shutdown(req: *mut uv_shutdown_t, status: i32) {
   // SAFETY: req is a valid uv_shutdown_t per the uv_shutdown_cb contract.
   let req_data = unsafe { (*req).data };
+  // SAFETY: `req.handle` is a valid uv stream for the lifetime of this completion callback.
   let handle_data =
     unsafe { LibUvStreamWrap::stable_handle_data((*req).handle) };
   let Some(handle_data_ptr) = handle_data else {
@@ -943,7 +951,9 @@ impl LibUvStreamWrap {
     };
 
     if err != 0 {
+      // SAFETY: `req_ptr` is still owned locally because `uv_shutdown` failed synchronously.
       let req_data = unsafe { (*req_ptr).data };
+      // SAFETY: `req_ptr` is valid and the callback will never observe this request after the synchronous failure.
       unsafe {
         (*req_ptr).data = std::ptr::null_mut();
       }
@@ -1034,7 +1044,9 @@ impl LibUvStreamWrap {
       uv_compat::uv_write(req_ptr, stream, &buf, 1, Some(after_uv_write))
     };
     if err != 0 {
+      // SAFETY: `req_ptr` is still owned locally because `uv_write` failed synchronously.
       let req_data = unsafe { (*req_ptr).data };
+      // SAFETY: `req_ptr` is valid and the callback will never observe this request after the synchronous failure.
       unsafe {
         (*req_ptr).data = std::ptr::null_mut();
       }
@@ -1347,7 +1359,9 @@ impl LibUvStreamWrap {
     };
 
     if err != 0 {
+      // SAFETY: `req_ptr` is still owned locally because `uv_write` failed synchronously.
       let req_data = unsafe { (*req_ptr).data };
+      // SAFETY: `req_ptr` is valid and the callback will never observe this request after the synchronous failure.
       unsafe {
         (*req_ptr).data = std::ptr::null_mut();
       }
