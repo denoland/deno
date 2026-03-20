@@ -137,7 +137,7 @@ pub struct ContextState {
   /// drained after `run_check()`. The handle's ref/unref state controls
   /// whether immediates keep the event loop alive.
   pub(crate) immediate_check_handle:
-    Cell<Option<crate::uv_compat::ImmediateCheckHandle>>,
+    Cell<crate::uv_compat::ImmediateCheckHandle>,
 }
 
 impl ContextState {
@@ -181,7 +181,7 @@ impl ContextState {
       event_loop_phases: Default::default(),
       uv_loop_inner: Cell::new(None),
       uv_loop_ptr: Cell::new(None),
-      immediate_check_handle: Cell::new(None),
+      immediate_check_handle: Cell::new(Default::default()),
     }
   }
 }

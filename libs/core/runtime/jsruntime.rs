@@ -1715,7 +1715,7 @@ impl JsRuntime {
     // SAFETY: loop_ptr is valid per caller contract.
     let check_handle =
       unsafe { uv_compat::ImmediateCheckHandle::new(loop_ptr) };
-    context_state.immediate_check_handle.set(Some(check_handle));
+    context_state.immediate_check_handle.set(check_handle);
   }
 
   /// Returns the runtime's op names, ordered by OpId.
@@ -2262,11 +2262,7 @@ impl JsRuntime {
     }
     // Immediates: drain if the check handle is active (JS started it
     // when immediates were queued).
-    if context_state
-      .immediate_check_handle
-      .get()
-      .is_some_and(|h| h.is_active())
-    {
+    if context_state.immediate_check_handle.get().is_active() {
       Self::do_js_run_immediate_callbacks(scope, context_state)?;
     }
     scope.perform_microtask_checkpoint();

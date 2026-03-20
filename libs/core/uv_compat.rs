@@ -1090,9 +1090,18 @@ pub unsafe extern "C" fn uv_check_stop(handle: *mut uv_check_t) -> c_int {
 
 /// Safe wrapper around a `uv_check_t` pointer for setImmediate.
 /// This is `Copy` so it can be stored in a `Cell`.
+/// Defaults to a null pointer; methods are no-ops until initialized.
 #[derive(Clone, Copy)]
 pub(crate) struct ImmediateCheckHandle {
   handle: *mut uv_check_t,
+}
+
+impl Default for ImmediateCheckHandle {
+  fn default() -> Self {
+    Self {
+      handle: std::ptr::null_mut(),
+    }
+  }
 }
 
 /// No-op callback — the actual draining is done by checking `is_active()`
@@ -1117,34 +1126,53 @@ impl ImmediateCheckHandle {
     Self { handle }
   }
 
+  fn is_initialized(&self) -> bool {
+    !self.handle.is_null()
+  }
+
   pub fn is_active(&self) -> bool {
-    // SAFETY: handle is valid for the lifetime of this wrapper.
+    if !self.is_initialized() {
+      return false;
+    }
+    // SAFETY: handle is valid (checked above).
     unsafe { (*self.handle).flags & UV_HANDLE_ACTIVE != 0 }
   }
 
   pub fn start(&self) {
-    // SAFETY: handle is valid.
+    if !self.is_initialized() {
+      return;
+    }
+    // SAFETY: handle is valid (checked above).
     unsafe {
       uv_check_start(self.handle, immediate_check_noop_cb);
     }
   }
 
   pub fn stop(&self) {
-    // SAFETY: handle is valid.
+    if !self.is_initialized() {
+      return;
+    }
+    // SAFETY: handle is valid (checked above).
     unsafe {
       uv_check_stop(self.handle);
     }
   }
 
   pub fn make_ref(&self) {
-    // SAFETY: handle is valid.
+    if !self.is_initialized() {
+      return;
+    }
+    // SAFETY: handle is valid (checked above).
     unsafe {
       uv_ref(self.handle as *mut uv_handle_t);
     }
   }
 
   pub fn make_unref(&self) {
-    // SAFETY: handle is valid.
+    if !self.is_initialized() {
+      return;
+    }
+    // SAFETY: handle is valid (checked above).
     unsafe {
       uv_unref(self.handle as *mut uv_handle_t);
     }

@@ -1391,9 +1391,7 @@ pub fn op_get_extras_binding_object<'s, 'i>(
 #[op2(fast)]
 pub fn op_immediate_check(scope: &mut v8::PinScope, action: u32) {
   let context_state = JsRealm::state_from_scope(scope);
-  let Some(handle) = context_state.immediate_check_handle.get() else {
-    return;
-  };
+  let handle = context_state.immediate_check_handle.get();
   match action {
     0 => handle.start(),
     1 => handle.stop(),
