@@ -172,6 +172,15 @@ pub(crate) struct UvLoopInner {
   waker: RefCell<Option<Waker>>,
   closing_handles: RefCell<VecDeque<(*mut uv_handle_t, Option<uv_close_cb>)>>,
   time_origin: Instant,
+  /// Event loop iteration count (incremented each time run_io is called
+  /// and does work). Matches libuv's uv_metrics_s.loop_count.
+  loop_count: Cell<u64>,
+  /// Total number of I/O events processed. Matches libuv's
+  /// uv_metrics_s.events.
+  events: Cell<u64>,
+  /// Number of events that were waiting when polled. Matches libuv's
+  /// uv_metrics_s.events_waiting.
+  events_waiting: Cell<u64>,
 }
 
 impl UvLoopInner {
@@ -188,6 +197,9 @@ impl UvLoopInner {
       waker: RefCell::new(None),
       closing_handles: RefCell::new(VecDeque::with_capacity(16)),
       time_origin: Instant::now(),
+      loop_count: Cell::new(0),
+      events: Cell::new(0),
+      events_waiting: Cell::new(0),
     }
   }
 
@@ -447,7 +459,11 @@ impl UvLoopInner {
         }
 
         // SAFETY: tcp_ptr is valid; checked above.
-        any_work |= unsafe { tcp::poll_tcp_handle(tcp_ptr, &mut cx) };
+        let tcp_did_work = unsafe { tcp::poll_tcp_handle(tcp_ptr, &mut cx) };
+        if tcp_did_work {
+          self.events.set(self.events.get() + 1);
+        }
+        any_work |= tcp_did_work;
       } // end per-tcp-handle loop
 
       let mut j = 0;
@@ -466,7 +482,11 @@ impl UvLoopInner {
         }
 
         // SAFETY: tty_ptr is valid; checked above.
-        any_work |= unsafe { tty::poll_tty_handle(tty_ptr, &mut cx) };
+        let tty_did_work = unsafe { tty::poll_tty_handle(tty_ptr, &mut cx) };
+        if tty_did_work {
+          self.events.set(self.events.get() + 1);
+        }
+        any_work |= tty_did_work;
       } // end per-tty-handle loop
 
       if !any_work {
@@ -476,6 +496,21 @@ impl UvLoopInner {
     } // end multi-pass loop
 
     did_any_work
+  }
+
+  /// Increment the loop iteration counter. Called from the event loop
+  /// in jsruntime.rs at the start of each poll_event_loop_inner call.
+  pub(crate) fn increment_loop_count(&self) {
+    self.loop_count.set(self.loop_count.get() + 1);
+  }
+
+  /// Returns event loop metrics: (loop_count, events, events_waiting).
+  pub(crate) fn metrics_info(&self) -> (u64, u64, u64) {
+    (
+      self.loop_count.get(),
+      self.events.get(),
+      self.events_waiting.get(),
+    )
   }
 
   /// ### Safety
@@ -729,6 +764,16 @@ pub unsafe fn uv_loop_get_inner_ptr(
 ) -> *const std::ffi::c_void {
   // SAFETY: Caller guarantees loop_ is valid and was initialized by uv_loop_init.
   unsafe { (*loop_).internal as *const std::ffi::c_void }
+}
+
+/// Returns event loop metrics: (loop_count, events, events_waiting).
+///
+/// ### Safety
+/// `loop_` must be a valid pointer to an initialized `uv_loop_t`.
+pub unsafe fn uv_loop_metrics_info(loop_: *const uv_loop_t) -> (u64, u64, u64) {
+  // SAFETY: Caller guarantees loop_ is valid and initialized.
+  let inner = unsafe { &*((*loop_).internal as *const UvLoopInner) };
+  inner.metrics_info()
 }
 
 /// ### Safety

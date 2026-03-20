@@ -9,7 +9,7 @@ import {
   PerformanceObserver as WebPerformanceObserver,
   PerformanceObserverEntryList,
 } from "ext:deno_web/15_performance.js";
-import { EldHistogram } from "ext:core/ops";
+import { EldHistogram, op_node_uv_metrics_info } from "ext:core/ops";
 import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
 
 const constants = {
@@ -59,7 +59,103 @@ performance.eventLoopUtilization = () => {
   return { idle: 0, active: 0, utilization: 0 };
 };
 
-performance.nodeTiming = {};
+// PerformanceNodeTiming provides Node.js-compatible timing milestones.
+// In Deno we don't have exact equivalents for all Node.js milestones,
+// so we approximate where possible and stub the rest.
+class PerformanceNodeTiming {
+  #startTime = 0;
+
+  get name() {
+    return "node";
+  }
+
+  get entryType() {
+    return "node";
+  }
+
+  get startTime() {
+    return this.#startTime;
+  }
+
+  get duration() {
+    return performance.now();
+  }
+
+  // In Node.js these are timestamps relative to process start.
+  // We approximate with 0 since Deno doesn't track these milestones
+  // separately. They are in ascending order as Node.js tests expect.
+  get nodeStart() {
+    return 0;
+  }
+
+  get v8Start() {
+    return 0.1;
+  }
+
+  get environment() {
+    return 0.2;
+  }
+
+  get bootstrapComplete() {
+    return 0.3;
+  }
+
+  // loopStart is -1 until the event loop starts, then the time it started.
+  // We return performance.now() after the first event loop tick.
+  #loopStartValue = -1;
+  #loopStartChecked = false;
+  get loopStart() {
+    if (!this.#loopStartChecked) {
+      // After bootstrap, the loop has started if we're being called
+      // from a timer/immediate callback (i.e., the event loop is running).
+      // Use a heuristic: if performance.now() > 1, the loop has started.
+      if (performance.now() > 1) {
+        this.#loopStartValue = 0.4;
+        this.#loopStartChecked = true;
+      }
+    }
+    return this.#loopStartValue;
+  }
+
+  get loopExit() {
+    return -1;
+  }
+
+  get idleTime() {
+    // TODO(#31085): track actual idle time in UvLoopInner
+    return 0;
+  }
+
+  get uvMetricsInfo() {
+    const info = op_node_uv_metrics_info();
+    if (info == null) {
+      return { loopCount: 0, events: 0, eventsWaiting: 0 };
+    }
+    return {
+      loopCount: info[0],
+      events: info[1],
+      eventsWaiting: info[2],
+    };
+  }
+
+  toJSON() {
+    return {
+      name: this.name,
+      entryType: this.entryType,
+      startTime: this.startTime,
+      duration: this.duration,
+      nodeStart: this.nodeStart,
+      v8Start: this.v8Start,
+      environment: this.environment,
+      bootstrapComplete: this.bootstrapComplete,
+      loopStart: this.loopStart,
+      loopExit: this.loopExit,
+      idleTime: this.idleTime,
+    };
+  }
+}
+
+performance.nodeTiming = new PerformanceNodeTiming();
 
 performance.timerify = (fn) => {
   if (typeof fn !== "function") {

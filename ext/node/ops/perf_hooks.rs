@@ -4,6 +4,7 @@ use std::cell::Cell;
 use std::cell::RefCell;
 
 use deno_core::GarbageCollected;
+use deno_core::OpState;
 use deno_core::op2;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -11,6 +12,20 @@ pub enum PerfHooksError {
   #[class(generic)]
   #[error(transparent)]
   TokioEld(#[from] tokio_eld::Error),
+}
+
+/// Returns uv metrics info as (loop_count, events, events_waiting).
+/// Returns (0, 0, 0) if no uv loop is registered.
+#[op2]
+#[serde]
+pub fn op_node_uv_metrics_info(state: &mut OpState) -> (u64, u64, u64) {
+  let Some(uv_loop) = state.try_borrow::<Box<deno_core::uv_compat::UvLoop>>()
+  else {
+    return (0, 0, 0);
+  };
+  let loop_ptr: *const deno_core::uv_compat::UvLoop = &**uv_loop as *const _;
+  // SAFETY: loop_ptr is valid; it points to the UvLoop stored in OpState.
+  unsafe { deno_core::uv_compat::uv_loop_metrics_info(loop_ptr) }
 }
 
 pub struct EldHistogram {

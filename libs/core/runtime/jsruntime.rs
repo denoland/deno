@@ -2163,6 +2163,12 @@ impl JsRuntime {
     let mut dispatched_ops = false;
     let mut did_work = false;
     let mut uv_did_io = false;
+
+    // Increment the event loop iteration counter for uv metrics.
+    if let Some(uv_inner_ptr) = context_state.uv_loop_inner.get() {
+      unsafe { (*uv_inner_ptr).increment_loop_count() };
+    }
+
     // ===== Phase 1: Timers =====
     // 1a. Fire expired libuv C timers
     if let Some(uv_inner_ptr) = context_state.uv_loop_inner.get() {
