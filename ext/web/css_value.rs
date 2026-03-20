@@ -116,7 +116,6 @@ impl Angle {
 }
 
 // Currently, units for <time>, <frequency>, <resolution>, and <flex> are not supported
-// as are combined units such as <length-percentage>
 #[derive(Debug)]
 #[cfg_attr(test, derive(PartialEq))]
 pub enum NumericValue {
@@ -225,6 +224,7 @@ impl ops::SubAssign<&Dimension> for Dimension {
 
 // Struct for intermediate representations of calculations like `calc(1px / 1px * 1px)`
 // Currently, combined units such as <length-percentage> are not supported
+// https://drafts.css-houdini.org/css-typed-om-1/#cssnumericvalue-percent-hint
 #[derive(Debug)]
 #[cfg_attr(test, derive(PartialEq))]
 struct MathValue {
