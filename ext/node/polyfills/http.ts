@@ -247,6 +247,22 @@ class ClientRequest extends OutgoingMessage {
 
     let agent = options!.agent;
     const defaultAgent = options!._defaultAgent || globalAgent;
+    const isLegacyHttpsClient = defaultAgent.protocol === "https:";
+
+    if (
+      (agent === null || agent === undefined) &&
+      isLegacyHttpsClient &&
+      typeof options!.createConnection === "function"
+    ) {
+      // Deno's HTTPS ClientRequest path still upgrades a raw socket to TLS in
+      // `_writeHeader()` via `op_tls_start()`. Libraries like `ws` provide a
+      // custom `createConnection` that returns a prebuilt TLSSocket, which
+      // bypasses that legacy path and crashes when `node:http` later expects a
+      // rid-backed raw connection. Force the default HTTPS agent path here so
+      // the request still starts from a plain TCP socket.
+      delete options!.createConnection;
+    }
+
     if (agent === false) {
       agent = new defaultAgent.constructor();
     } else if (agent === null || agent === undefined) {
