@@ -351,10 +351,10 @@ mod npm {
         // Check if any installed version of the affected packages
         // falls within the vulnerable range.
         for name in &finding_pkg_names {
-          if let Some(versions) = installed_versions.get(*name) {
-            if versions.iter().any(|v| vulnerable_range.matches(v)) {
-              return true;
-            }
+          if let Some(versions) = installed_versions.get(*name)
+            && versions.iter().any(|v| vulnerable_range.matches(v))
+          {
+            return true;
           }
         }
         false
