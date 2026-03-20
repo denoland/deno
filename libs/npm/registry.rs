@@ -391,8 +391,7 @@ fn parse_dep_entry_name_and_raw_version<'a>(
     Err(NpmDependencyEntryErrorSource::RemoteDependency {
       specifier: version_req.to_string(),
     })
-  } else if version_req.starts_with("file:")
-    || version_req.starts_with("link:")
+  } else if version_req.starts_with("file:") || version_req.starts_with("link:")
   {
     Err(NpmDependencyEntryErrorSource::LocalDependency {
       specifier: version_req.to_string(),

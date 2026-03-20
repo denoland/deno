@@ -6106,10 +6106,7 @@ mod test {
     );
     assert_eq!(
       packages,
-      vec![
-        "package-a@1.0.0".to_string(),
-        "package-b@1.0.0".to_string(),
-      ]
+      vec!["package-a@1.0.0".to_string(), "package-b@1.0.0".to_string(),]
     );
   }
 
