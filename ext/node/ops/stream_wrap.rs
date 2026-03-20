@@ -37,6 +37,10 @@ use crate::ops::stream_wrap_state::ReadCallbackKey;
 use crate::ops::stream_wrap_state::ReadCallbackRegistry;
 use crate::ops::stream_wrap_state::ReadCallbackState;
 use crate::ops::stream_wrap_state::ReadInterceptor;
+use crate::ops::stream_wrap_state::RequestCallbackRegistry;
+use crate::ops::stream_wrap_state::RequestCallbackState;
+use crate::ops::stream_wrap_state::ShutdownRequestCallbackState;
+use crate::ops::stream_wrap_state::WriteRequestCallbackState;
 
 // ---------------------------------------------------------------------------
 // StreamBase state fields — mirrors Node's StreamBaseStateFields enum.
@@ -56,6 +60,7 @@ pub(crate) struct StreamHandleData {
   pub desired_read_interceptor: Cell<Option<ReadInterceptor>>,
   pub read_callbacks: RefCell<ReadCallbackRegistry>,
   pub active_read: Cell<Option<ReadCallbackKey>>,
+  pub request_callbacks: RefCell<RequestCallbackRegistry>,
 }
 
 #[op2(fast)]
@@ -185,6 +190,7 @@ impl LibUvStreamWrap {
         desired_read_interceptor: Cell::new(None),
         read_callbacks: RefCell::new(ReadCallbackRegistry::default()),
         active_read: Cell::new(None),
+        request_callbacks: RefCell::new(RequestCallbackRegistry::default()),
       }),
       reading_started: Cell::new(false),
     }
@@ -529,18 +535,11 @@ unsafe extern "C" fn on_uv_read(
   // SAFETY: isolate is the raw isolate pointer captured in read_start and is still valid.
   let mut isolate =
     unsafe { v8::Isolate::from_raw_isolate_ptr(snapshot.isolate) };
-  v8::scope!(let handle_scope, &mut isolate);
   // SAFETY: stream is a valid uv_stream_t per the uv_read_cb contract.
   let loop_ptr = unsafe { (*stream).loop_ };
-  // SAFETY: loop_.data holds a raw Global<Context> set by register_uv_loop; we borrow and re-leak it.
-  let context = unsafe {
-    let raw = NonNull::new_unchecked((*loop_ptr).data as *mut v8::Context);
-    let global = v8::Global::from_raw(handle_scope, raw);
-    let cloned = global.clone();
-    // Leak the original back — it's owned by the runtime
-    global.into_raw();
-    cloned
-  };
+  // SAFETY: loop_ptr comes from a valid uv stream whose loop has been registered.
+  let context = unsafe { clone_context_from_uv_loop(&mut isolate, loop_ptr) };
+  v8::scope!(let handle_scope, &mut isolate);
   let context = v8::Local::new(handle_scope, context);
   let scope = &mut v8::ContextScope::new(handle_scope, context);
 
@@ -623,6 +622,25 @@ fn free_uv_buf(buf: *const uv_buf_t) {
   }
 }
 
+/// Clone the V8 context registered on a uv loop without taking ownership of
+/// the runtime's raw persistent handle stored in `loop_.data`.
+///
+/// # Safety
+/// `loop_ptr` must be a valid, initialized `uv_loop_t` whose `data` field
+/// contains the raw `Global<Context>` installed by `register_uv_loop`.
+unsafe fn clone_context_from_uv_loop(
+  isolate: &mut v8::Isolate,
+  loop_ptr: *mut uv_compat::uv_loop_t,
+) -> v8::Global<v8::Context> {
+  let raw = NonNull::new(unsafe { (*loop_ptr).data as *mut v8::Context })
+    .expect("uv loop missing registered V8 context");
+  let global = unsafe { v8::Global::from_raw(isolate, raw) };
+  let cloned = global.clone();
+  // Leak the original back because the runtime still owns that persistent.
+  global.into_raw();
+  cloned
+}
+
 /// Backing store deleter that frees memory allocated by on_uv_alloc.
 ///
 /// # Safety
@@ -651,35 +669,36 @@ unsafe extern "C" fn backing_store_deleter(
 // ---------------------------------------------------------------------------
 
 /// # Safety
-/// `req` must be a valid uv_write_t whose `data` field points to a
-/// WriteCallbackData. `req.handle.loop_.data` must be a raw
+/// `req` must be a valid uv_write_t whose `handle.data` points to the
+/// owning `StreamHandleData`. `req.handle.loop_.data` must be a raw
 /// `Global<Context>` pointer.
 unsafe extern "C" fn after_uv_write(req: *mut uv_write_t, status: i32) {
   // SAFETY: req is a valid uv_write_t per the uv_write_cb contract.
-  let cb_data_ptr = unsafe { (*req).data as *mut WriteCallbackData };
-  if cb_data_ptr.is_null() {
+  let req_data = unsafe { (*req).data };
+  let handle_data =
+    unsafe { LibUvStreamWrap::stable_handle_data((*req).handle) };
+  let Some(handle_data_ptr) = handle_data else {
     return;
-  }
-  // Take ownership back so it gets dropped after this callback
-  // SAFETY: cb_data_ptr was set from Box::into_raw in write_buffer/do_write; we take ownership here exactly once.
-  let cb_data = unsafe { Box::from_raw(cb_data_ptr) };
+  };
   // SAFETY: req is a valid uv_write_t per the uv_write_cb contract.
   unsafe { (*req).data = std::ptr::null_mut() };
+  // SAFETY: `uv_stream_t.data` points at the owning handle's stable
+  // `StreamHandleData` allocation while the native stream is alive.
+  let handle_data = unsafe { handle_data_ptr.as_ref() };
+  let Some(RequestCallbackState::Write(cb_data)) =
+    handle_data.request_callbacks.borrow_mut().take(req_data)
+  else {
+    return;
+  };
 
   // SAFETY: cb_data.isolate is the raw isolate pointer captured during the write call and is still valid.
   let mut isolate =
     unsafe { v8::Isolate::from_raw_isolate_ptr(cb_data.isolate) };
-  v8::scope!(let handle_scope, &mut isolate);
   // SAFETY: req is a valid uv_write_t; its handle and loop_ fields are valid per libuv guarantees.
   let loop_ptr = unsafe { (*(*req).handle).loop_ };
-  // SAFETY: loop_.data is a raw Global<Context> set by register_uv_loop; we borrow and re-leak it.
-  let context = unsafe {
-    let raw = NonNull::new_unchecked((*loop_ptr).data as *mut v8::Context);
-    let global = v8::Global::from_raw(handle_scope, raw);
-    let cloned = global.clone();
-    global.into_raw();
-    cloned
-  };
+  // SAFETY: loop_ptr comes from a valid uv request whose loop has been registered.
+  let context = unsafe { clone_context_from_uv_loop(&mut isolate, loop_ptr) };
+  v8::scope!(let handle_scope, &mut isolate);
   let context = v8::Local::new(handle_scope, context);
   let scope = &mut v8::ContextScope::new(handle_scope, context);
 
@@ -711,47 +730,41 @@ unsafe extern "C" fn after_uv_write(req: *mut uv_write_t, status: i32) {
   }
 }
 
-struct WriteCallbackData {
-  isolate: v8::UnsafeRawIsolatePtr,
-  req_wrap_obj: v8::Global<v8::Object>,
-  stream_handle: v8::Global<v8::Object>,
-  stream_base_state: v8::Global<v8::Int32Array>,
-  bytes: usize,
-}
-
 // ---------------------------------------------------------------------------
 // Shutdown completion callback for uv_shutdown.
 // ---------------------------------------------------------------------------
 
 /// # Safety
-/// `req` must be a valid uv_shutdown_t whose `data` field points to a
-/// ShutdownCallbackData. `req.handle.loop_.data` must be a raw
+/// `req` must be a valid uv_shutdown_t whose `handle.data` points to the
+/// owning `StreamHandleData`. `req.handle.loop_.data` must be a raw
 /// `Global<Context>` pointer.
 unsafe extern "C" fn after_uv_shutdown(req: *mut uv_shutdown_t, status: i32) {
   // SAFETY: req is a valid uv_shutdown_t per the uv_shutdown_cb contract.
-  let cb_data_ptr = unsafe { (*req).data as *mut ShutdownCallbackData };
-  if cb_data_ptr.is_null() {
+  let req_data = unsafe { (*req).data };
+  let handle_data =
+    unsafe { LibUvStreamWrap::stable_handle_data((*req).handle) };
+  let Some(handle_data_ptr) = handle_data else {
     return;
-  }
-  // SAFETY: cb_data_ptr was set from Box::into_raw in shutdown; we take ownership here exactly once.
-  let cb_data = unsafe { Box::from_raw(cb_data_ptr) };
+  };
   // SAFETY: req is a valid uv_shutdown_t per the uv_shutdown_cb contract.
   unsafe { (*req).data = std::ptr::null_mut() };
+  // SAFETY: `uv_stream_t.data` points at the owning handle's stable
+  // `StreamHandleData` allocation while the native stream is alive.
+  let handle_data = unsafe { handle_data_ptr.as_ref() };
+  let Some(RequestCallbackState::Shutdown(cb_data)) =
+    handle_data.request_callbacks.borrow_mut().take(req_data)
+  else {
+    return;
+  };
 
   // SAFETY: cb_data.isolate is the raw isolate pointer captured during the shutdown call and is still valid.
   let mut isolate =
     unsafe { v8::Isolate::from_raw_isolate_ptr(cb_data.isolate) };
-  v8::scope!(let handle_scope, &mut isolate);
   // SAFETY: req is a valid uv_shutdown_t; its handle and loop_ fields are valid per libuv guarantees.
   let loop_ptr = unsafe { (*(*req).handle).loop_ };
-  // SAFETY: loop_.data is a raw Global<Context> set by register_uv_loop; we borrow and re-leak it.
-  let context = unsafe {
-    let raw = NonNull::new_unchecked((*loop_ptr).data as *mut v8::Context);
-    let global = v8::Global::from_raw(handle_scope, raw);
-    let cloned = global.clone();
-    global.into_raw();
-    cloned
-  };
+  // SAFETY: loop_ptr comes from a valid uv request whose loop has been registered.
+  let context = unsafe { clone_context_from_uv_loop(&mut isolate, loop_ptr) };
+  v8::scope!(let handle_scope, &mut isolate);
   let context = v8::Local::new(handle_scope, context);
   let scope = &mut v8::ContextScope::new(handle_scope, context);
 
@@ -772,12 +785,6 @@ unsafe extern "C" fn after_uv_shutdown(req: *mut uv_shutdown_t, status: i32) {
       &[status_val.into(), handle.into(), undef.into()],
     );
   }
-}
-
-struct ShutdownCallbackData {
-  isolate: v8::UnsafeRawIsolatePtr,
-  req_wrap_obj: v8::Global<v8::Object>,
-  stream_handle: v8::Global<v8::Object>,
 }
 
 // ---------------------------------------------------------------------------
@@ -920,13 +927,14 @@ impl LibUvStreamWrap {
       .js_handle_global(scope)
       .unwrap_or_else(|| v8::Global::new(scope, v8::Object::new(scope)));
     let mut req = Box::new(uv_compat::new_shutdown());
-    let cb_data = Box::new(ShutdownCallbackData {
-      // SAFETY: scope is a valid PinScope for the current isolate.
-      isolate: unsafe { scope.as_raw_isolate_ptr() },
-      req_wrap_obj: v8::Global::new(scope, req_wrap_obj),
-      stream_handle,
-    });
-    req.data = Box::into_raw(cb_data) as *mut std::ffi::c_void;
+    req.data = self.handle_data.request_callbacks.borrow_mut().insert(
+      RequestCallbackState::Shutdown(ShutdownRequestCallbackState {
+        // SAFETY: scope is a valid PinScope for the current isolate.
+        isolate: unsafe { scope.as_raw_isolate_ptr() },
+        req_wrap_obj: v8::Global::new(scope, req_wrap_obj),
+        stream_handle,
+      }),
+    );
     let req_ptr = Box::into_raw(req);
 
     // SAFETY: req_ptr is a valid uv_shutdown_t and stream is a valid non-null uv_stream_t.
@@ -935,12 +943,17 @@ impl LibUvStreamWrap {
     };
 
     if err != 0 {
-      // SAFETY: uv_shutdown failed so the callback will never fire; we reclaim the boxed data and request.
+      let req_data = unsafe { (*req_ptr).data };
       unsafe {
-        let data = (*req_ptr).data as *mut ShutdownCallbackData;
-        if !data.is_null() {
-          drop(Box::from_raw(data));
-        }
+        (*req_ptr).data = std::ptr::null_mut();
+      }
+      let _ = self
+        .handle_data
+        .request_callbacks
+        .borrow_mut()
+        .take(req_data);
+      // SAFETY: uv_shutdown failed so the callback will never fire; reclaim the request.
+      unsafe {
         drop(Box::from_raw(req_ptr));
       }
     }
@@ -1004,15 +1017,16 @@ impl LibUvStreamWrap {
       .js_handle_global(scope)
       .unwrap_or_else(|| v8::Global::new(scope, v8::Object::new(scope)));
     let mut req = Box::new(uv_compat::new_write());
-    let cb_data = Box::new(WriteCallbackData {
-      // SAFETY: scope is a valid PinScope for the current isolate.
-      isolate: unsafe { scope.as_raw_isolate_ptr() },
-      req_wrap_obj: v8::Global::new(scope, req_wrap_obj),
-      stream_handle,
-      stream_base_state: v8::Global::new(scope, state_array),
-      bytes: byte_length,
-    });
-    req.data = Box::into_raw(cb_data) as *mut std::ffi::c_void;
+    req.data = self.handle_data.request_callbacks.borrow_mut().insert(
+      RequestCallbackState::Write(WriteRequestCallbackState {
+        // SAFETY: scope is a valid PinScope for the current isolate.
+        isolate: unsafe { scope.as_raw_isolate_ptr() },
+        req_wrap_obj: v8::Global::new(scope, req_wrap_obj),
+        stream_handle,
+        stream_base_state: v8::Global::new(scope, state_array),
+        bytes: byte_length,
+      }),
+    );
     let req_ptr = Box::into_raw(req);
 
     // SAFETY: req_ptr is a valid uv_write_t and stream is a valid non-null uv_stream_t.
@@ -1020,12 +1034,17 @@ impl LibUvStreamWrap {
       uv_compat::uv_write(req_ptr, stream, &buf, 1, Some(after_uv_write))
     };
     if err != 0 {
-      // SAFETY: uv_write failed so the callback will never fire; we reclaim the boxed data and request.
+      let req_data = unsafe { (*req_ptr).data };
       unsafe {
-        let data = (*req_ptr).data as *mut WriteCallbackData;
-        if !data.is_null() {
-          drop(Box::from_raw(data));
-        }
+        (*req_ptr).data = std::ptr::null_mut();
+      }
+      let _ = self
+        .handle_data
+        .request_callbacks
+        .borrow_mut()
+        .take(req_data);
+      // SAFETY: uv_write failed so the callback will never fire; reclaim the request.
+      unsafe {
         drop(Box::from_raw(req_ptr));
       }
       return err;
@@ -1310,15 +1329,16 @@ impl LibUvStreamWrap {
       .js_handle_global(scope)
       .unwrap_or_else(|| v8::Global::new(scope, v8::Object::new(scope)));
     let mut req = Box::new(uv_compat::new_write());
-    let cb_data = Box::new(WriteCallbackData {
-      // SAFETY: scope is a valid PinScope for the current isolate.
-      isolate: unsafe { scope.as_raw_isolate_ptr() },
-      req_wrap_obj: v8::Global::new(scope, req_wrap_obj),
-      stream_handle,
-      stream_base_state: v8::Global::new(scope, state_array),
-      bytes: total_bytes,
-    });
-    req.data = Box::into_raw(cb_data) as *mut std::ffi::c_void;
+    req.data = self.handle_data.request_callbacks.borrow_mut().insert(
+      RequestCallbackState::Write(WriteRequestCallbackState {
+        // SAFETY: scope is a valid PinScope for the current isolate.
+        isolate: unsafe { scope.as_raw_isolate_ptr() },
+        req_wrap_obj: v8::Global::new(scope, req_wrap_obj),
+        stream_handle,
+        stream_base_state: v8::Global::new(scope, state_array),
+        bytes: total_bytes,
+      }),
+    );
     let req_ptr = Box::into_raw(req);
 
     // SAFETY: req_ptr is a valid uv_write_t and stream is a valid non-null uv_stream_t.
@@ -1327,12 +1347,17 @@ impl LibUvStreamWrap {
     };
 
     if err != 0 {
-      // SAFETY: uv_write failed so the callback will never fire; we reclaim the boxed data and request.
+      let req_data = unsafe { (*req_ptr).data };
       unsafe {
-        let d = (*req_ptr).data as *mut WriteCallbackData;
-        if !d.is_null() {
-          drop(Box::from_raw(d));
-        }
+        (*req_ptr).data = std::ptr::null_mut();
+      }
+      let _ = self
+        .handle_data
+        .request_callbacks
+        .borrow_mut()
+        .take(req_data);
+      // SAFETY: uv_write failed so the callback will never fire; reclaim the request.
+      unsafe {
         drop(Box::from_raw(req_ptr));
       }
       return err;

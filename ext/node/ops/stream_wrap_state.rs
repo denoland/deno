@@ -1,6 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::cell::Cell;
+use std::collections::HashMap;
 use std::ffi::c_void;
 use std::rc::Rc;
 
@@ -125,5 +126,47 @@ impl ReadCallbackRegistry {
     slot.next_free = self.free_head;
     self.free_head = Some(key.index);
     Some(state)
+  }
+}
+
+pub(crate) struct WriteRequestCallbackState {
+  pub isolate: v8::UnsafeRawIsolatePtr,
+  pub req_wrap_obj: v8::Global<v8::Object>,
+  pub stream_handle: v8::Global<v8::Object>,
+  pub stream_base_state: v8::Global<v8::Int32Array>,
+  pub bytes: usize,
+}
+
+pub(crate) struct ShutdownRequestCallbackState {
+  pub isolate: v8::UnsafeRawIsolatePtr,
+  pub req_wrap_obj: v8::Global<v8::Object>,
+  pub stream_handle: v8::Global<v8::Object>,
+}
+
+pub(crate) enum RequestCallbackState {
+  Write(WriteRequestCallbackState),
+  Shutdown(ShutdownRequestCallbackState),
+}
+
+#[derive(Default)]
+pub(crate) struct RequestCallbackRegistry {
+  next_id: usize,
+  states: HashMap<usize, RequestCallbackState>,
+}
+
+impl RequestCallbackRegistry {
+  pub fn insert(&mut self, state: RequestCallbackState) -> *mut c_void {
+    let id = self.next_id.checked_add(1).unwrap_or(1);
+    self.next_id = id;
+    self.states.insert(id, state);
+    id as *mut c_void
+  }
+
+  pub fn take(&mut self, ptr: *mut c_void) -> Option<RequestCallbackState> {
+    let id = ptr as usize;
+    if id == 0 {
+      return None;
+    }
+    self.states.remove(&id)
   }
 }

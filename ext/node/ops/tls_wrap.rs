@@ -1218,7 +1218,7 @@ impl TLSWrap {
     op_state: &mut OpState,
   ) -> i32 {
     let byte_length = data.len();
-    let inner = unsafe { &mut *self.inner.as_mut_ptr() };
+    let inner = unsafe { self.inner.as_mut() };
 
     if inner.tls_conn.is_none() {
       inner.error = Some("Write after DestroySSL".to_string());
@@ -1276,7 +1276,7 @@ impl TLSWrap {
   }
 
   fn destroy_inner(&self) {
-    let inner = unsafe { &mut *self.inner.as_mut_ptr() };
+    let inner = unsafe { self.inner.as_mut() };
 
     // Match Node's TLSWrap::Destroy(): if there is a pending write,
     // fire its callback with UV_ECANCELED before tearing down.

@@ -46,7 +46,7 @@ impl<T> OwnedPtr<T> {
   /// # Safety
   /// Caller must ensure no other references (shared or mutable) exist
   /// to the pointee, and the pointer is valid.
-  pub unsafe fn as_mut(&mut self) -> &mut T {
+  pub unsafe fn as_mut(&self) -> &mut T {
     unsafe { &mut *self.0 }
   }
 
