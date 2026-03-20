@@ -14,7 +14,6 @@ use deno_path_util::url_to_file_path;
 use deno_semver::jsr::JsrDepPackageReq;
 use import_map::ImportMapWithDiagnostics;
 use indexmap::IndexMap;
-use jsonc_parser::ParseResult;
 use serde::Deserialize;
 use serde::Deserializer;
 use serde::Serialize;
