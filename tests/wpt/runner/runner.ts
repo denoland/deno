@@ -90,6 +90,31 @@ export async function runSingleTest(
   reporter: (result: TestCaseResult) => void,
   inspectBrk: boolean,
   timeouts: { long: number; default: number },
+  fileTimeout = 2 * 60_000,
+): Promise<TestResult> {
+  const result = await Promise.race([
+    runSingleTestInner(url, _options, reporter, inspectBrk, timeouts),
+    new Promise<TestResult>((resolve) =>
+      setTimeout(() => {
+        resolve({
+          cases: [],
+          harnessStatus: null,
+          duration: fileTimeout,
+          status: 1,
+          stderr: `test file timed out after ${fileTimeout / 1000}s\n`,
+        });
+      }, fileTimeout)
+    ),
+  ]);
+  return result;
+}
+
+async function runSingleTestInner(
+  url: URL,
+  _options: ManifestTestOptions,
+  reporter: (result: TestCaseResult) => void,
+  inspectBrk: boolean,
+  timeouts: { long: number; default: number },
 ): Promise<TestResult> {
   const timeout = _options.timeout === "long"
     ? timeouts.long

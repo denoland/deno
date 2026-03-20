@@ -1004,7 +1004,7 @@ console.log("executing javascript");
 
 #[cfg(windows)]
 // Clippy suggests to remove the `NoStd` prefix from all variants. I disagree.
-#[allow(clippy::enum_variant_names)]
+#[allow(clippy::enum_variant_names, reason = "NoStd prefix improves clarity")]
 enum WinProcConstraints {
   NoStdIn,
   NoStdOut,
@@ -2447,6 +2447,47 @@ fn fsfile_set_raw_should_not_panic_on_no_tty() {
   );
 }
 
+// Regression test for https://github.com/denoland/deno/issues/32803
+// After a Rust-side TTY sync write sets kLastWriteWasAsync=0, a JS Pipe
+// write must not cause ERR_MULTIPLE_CALLBACK. Needs a PTY so stdout is a
+// real TTY backed by the Rust LibUvStreamWrap.
+#[cfg(target_os = "macos")]
+#[test]
+fn pipe_write_no_double_callback_after_tty_write() {
+  let deno_exe = util::deno_exe_path();
+  let testdata = util::testdata_path();
+  let script = testdata.join("node/pipe_write_no_double_callback.mjs");
+  let output = Command::new("expect")
+    .arg("-c")
+    .arg(format!(
+      concat!(
+        "set timeout 30\n",
+        "spawn {} run --allow-all -q {}\n",
+        "expect eof\n",
+        "lassign [wait] pid spawnid os_error_flag value\n",
+        "exit $value\n",
+      ),
+      deno_exe.to_string().replace("{", "\\{").replace("}", "\\}"),
+      script.to_string().replace("{", "\\{").replace("}", "\\}"),
+    ))
+    .output()
+    .unwrap();
+  let combined = String::from_utf8_lossy(&output.stdout);
+  assert!(
+    !combined.contains("ERR_MULTIPLE_CALLBACK"),
+    "ERR_MULTIPLE_CALLBACK detected.\nstdout:\n{combined}"
+  );
+  assert!(
+    combined.contains("OK"),
+    "test did not print OK.\nstdout:\n{combined}"
+  );
+  assert!(
+    output.status.success(),
+    "test failed (exit={:?}).\nstdout:\n{combined}",
+    output.status.code()
+  );
+}
+
 #[test]
 fn timeout_clear() {
   // https://github.com/denoland/deno/issues/7599
@@ -3482,4 +3523,69 @@ fn test_permission_broker() {
 {"v":1,"pid":[WILDCARD],"id":5,"datetime":"[WILDCARD]","permission":"env","value":null}
 [WILDCARD]"#,
   );
+}
+
+// Regression test for https://github.com/denoland/deno/issues/32473
+// Verifies that process.stdout.write() and console.log() produce output
+// in the correct order when stdout is a TTY (uses PTY).
+#[test]
+fn process_stdout_write_order_pty() {
+  TestContext::default()
+    .new_command()
+    .args_vec(["run", "run/process_stdout_write_order.ts"])
+    .with_pty(|mut console| {
+      console.expect("A");
+      console.expect("B");
+      console.expect("C");
+      console.expect("D");
+      console.expect("E");
+    });
+}
+
+// Regression test for https://github.com/denoland/deno/issues/32513
+// Verifies that process.stdout survives destroy() calls (e.g. from mute-stream).
+#[test]
+fn process_stdout_destroy_undestroy_pty() {
+  TestContext::default()
+    .new_command()
+    .args_vec(["run", "run/process_stdout_destroy_undestroy.ts"])
+    .with_pty(|mut console| {
+      console.expect("before");
+      console.expect("after");
+    });
+}
+
+// Regression test for https://github.com/denoland/deno/issues/32782
+// Verifies that consecutive readline prompts work (e.g. @inquirer/prompts).
+#[test]
+fn readline_multi_prompt_pty() {
+  TestContext::default()
+    .new_command()
+    .args_vec(["run", "run/readline_multi_prompt.ts"])
+    .with_pty(|mut console| {
+      console.expect("Q1?");
+      console.write_line("hello");
+      console.expect("A1: hello");
+      console.expect("Q2?");
+      console.write_line("world");
+      console.expect("A2: world");
+    });
+}
+
+// Regression test for https://github.com/denoland/deno/issues/32782
+// Verifies that consecutive readline prompts work when output is a
+// PassThrough/MuteStream piped to process.stdout (like @inquirer/prompts).
+#[test]
+fn readline_muted_multi_prompt_pty() {
+  TestContext::default()
+    .new_command()
+    .args_vec(["run", "run/readline_muted_multi_prompt.ts"])
+    .with_pty(|mut console| {
+      console.expect("Q1?");
+      console.write_line("hello");
+      console.expect("A1: hello");
+      console.expect("Q2?");
+      console.write_line("world");
+      console.expect("A2: world");
+    });
 }

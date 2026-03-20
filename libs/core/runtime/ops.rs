@@ -1,6 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
+use std::cell::RefCell;
 use std::ffi::c_void;
 use std::future::Future;
 use std::mem::MaybeUninit;
@@ -163,34 +164,6 @@ pub fn to_external_option(external: &v8::Value) -> Option<*mut c_void> {
   }
 }
 
-/// Expands `inbuf` to `outbuf`, assuming that `outbuf` has at least 2x `input_length`.
-#[inline(always)]
-unsafe fn latin1_to_utf8(
-  input_length: usize,
-  inbuf: *const u8,
-  outbuf: *mut u8,
-) -> usize {
-  unsafe {
-    let mut output = 0;
-    let mut input = 0;
-    while input < input_length {
-      let char = *(inbuf.add(input));
-      if char < 0x80 {
-        *(outbuf.add(output)) = char;
-        output += 1;
-      } else {
-        // Top two bits
-        *(outbuf.add(output)) = (char >> 6) | 0b1100_0000;
-        // Bottom six bits
-        *(outbuf.add(output + 1)) = (char & 0b0011_1111) | 0b1000_0000;
-        output += 2;
-      }
-      input += 1;
-    }
-    output
-  }
-}
-
 /// Converts a [`v8::fast_api::FastApiOneByteString`] to either an owned string, or a borrowed string, depending on whether it fits into the
 /// provided buffer.
 pub fn to_str_ptr<'a, const N: usize>(
@@ -216,7 +189,7 @@ pub fn to_str_ptr<'a, const N: usize>(
 
     let written =
       // SAFETY: We checked that buffer is at least 2x the size of input_buf
-      unsafe { latin1_to_utf8(input_buf.len(), input_buf.as_ptr(), buffer) };
+      unsafe { v8::latin1_to_utf8(input_buf.len(), input_buf.as_ptr(), buffer) };
 
     debug_assert!(written <= output_len);
 
@@ -240,8 +213,11 @@ pub fn to_string_ptr(string: &v8::fast_api::FastApiOneByteString) -> String {
     // Create an uninitialized buffer of `capacity` bytes.
     let mut buffer = Vec::<u8>::with_capacity(capacity);
 
-    let written =
-      latin1_to_utf8(input_buf.len(), input_buf.as_ptr(), buffer.as_mut_ptr());
+    let written = v8::latin1_to_utf8(
+      input_buf.len(),
+      input_buf.as_ptr(),
+      buffer.as_mut_ptr(),
+    );
 
     debug_assert!(written <= capacity);
     buffer.set_len(written);
@@ -257,6 +233,12 @@ pub fn to_cow_byte_ptr(
 }
 
 /// Converts a [`v8::Value`] to an owned string.
+///
+/// Uses a thread-local reusable buffer with [`v8::String::write_utf8_into`] to
+/// avoid repeated heap allocation. After warmup the thread-local buffer's
+/// capacity is large enough for most strings, so `write_utf8_into` performs a
+/// single-pass write (via `ValueView` internally) with no malloc. The final
+/// `clone()` is a simple memcpy.
 #[inline(always)]
 pub fn to_string(scope: &mut v8::Isolate, string: &v8::Value) -> String {
   if !string.is_string() {
@@ -264,7 +246,16 @@ pub fn to_string(scope: &mut v8::Isolate, string: &v8::Value) -> String {
   }
 
   let string: &v8::String = unsafe { std::mem::transmute(string) };
-  string.to_rust_string_lossy(scope)
+
+  thread_local! {
+    static BUF: RefCell<String> = const { RefCell::new(String::new()) };
+  }
+
+  BUF.with(|buf| {
+    let mut buf = buf.borrow_mut();
+    string.write_utf8_into(scope, &mut buf);
+    buf.clone()
+  })
 }
 
 /// Converts a [`v8::String`] to either an owned string, or a borrowed string, depending on whether it fits into the
@@ -325,7 +316,7 @@ pub fn to_cow_one_byte(
 
 /// Converts from a raw [`v8::Value`] to the expected V8 data type.
 #[inline(always)]
-#[allow(clippy::result_unit_err)]
+#[allow(clippy::result_unit_err, reason = "error details not needed")]
 pub fn v8_try_convert<'a, T>(
   value: v8::Local<'a, v8::Value>,
 ) -> Result<v8::Local<'a, T>, ()>
@@ -337,7 +328,7 @@ where
 
 /// Converts from a raw [`v8::Value`] to the expected V8 data type, wrapped in an [`Option`].
 #[inline(always)]
-#[allow(clippy::result_unit_err)]
+#[allow(clippy::result_unit_err, reason = "error details not needed")]
 pub fn v8_try_convert_option<'a, T>(
   value: v8::Local<'a, v8::Value>,
 ) -> Result<Option<v8::Local<'a, T>>, ()>
@@ -531,7 +522,12 @@ pub fn to_v8_slice_any(
   Err("expected ArrayBuffer or ArrayBufferView")
 }
 
-#[allow(clippy::print_stdout, clippy::print_stderr, clippy::unused_async)]
+#[allow(
+  clippy::print_stdout,
+  clippy::print_stderr,
+  clippy::unused_async,
+  reason = "test module uses prints for diagnostics and async signatures for op2 macro"
+)]
 #[cfg(all(test, not(miri)))]
 mod tests {
   use std::borrow::Cow;
@@ -910,7 +906,10 @@ mod tests {
     Err(JsErrorBox::generic("failed!!!"))
   }
 
-  #[allow(clippy::unnecessary_wraps)]
+  #[allow(
+    clippy::unnecessary_wraps,
+    reason = "tests Result-returning op signature"
+  )]
   #[op2(fast)]
   pub fn op_test_result_void_ok() -> Result<(), JsErrorBox> {
     Ok(())
@@ -955,7 +954,10 @@ mod tests {
     Err(JsErrorBox::generic("failed!!!"))
   }
 
-  #[allow(clippy::unnecessary_wraps)]
+  #[allow(
+    clippy::unnecessary_wraps,
+    reason = "tests Result-returning op signature"
+  )]
   #[op2(fast)]
   pub fn op_test_result_primitive_ok() -> Result<u32, JsErrorBox> {
     Ok(123)
@@ -1263,7 +1265,10 @@ mod tests {
   pub fn op_test_generics<T: Clone>() {}
 
   /// Tests v8 types without a handle scope
-  #[allow(clippy::needless_lifetimes)]
+  #[allow(
+    clippy::needless_lifetimes,
+    reason = "explicit lifetimes required by op2 macro"
+  )]
   #[op2(fast)]
   pub fn op_test_v8_types<'s>(
     s: &v8::String,
@@ -1290,7 +1295,10 @@ mod tests {
 
   /// Tests v8 types without a handle scope
   #[op2]
-  #[allow(clippy::needless_lifetimes)]
+  #[allow(
+    clippy::needless_lifetimes,
+    reason = "explicit lifetimes required by op2 macro"
+  )]
   pub fn op_test_v8_type_return<'s>(
     s: v8::Local<'s, v8::String>,
   ) -> v8::Local<'s, v8::String> {
@@ -1299,7 +1307,10 @@ mod tests {
 
   /// Tests v8 types without a handle scope
   #[op2]
-  #[allow(clippy::needless_lifetimes)]
+  #[allow(
+    clippy::needless_lifetimes,
+    reason = "explicit lifetimes required by op2 macro"
+  )]
   pub fn op_test_v8_type_return_option<'s>(
     s: Option<v8::Local<'s, v8::String>>,
   ) -> Option<v8::Local<'s, v8::String>> {
@@ -1868,7 +1879,10 @@ mod tests {
   /// Ensures that three copies are independent. Note that we cannot mutate the
   /// `bytes::Bytes`.
   #[op2(fast)]
-  #[allow(clippy::boxed_local)] // Clippy bug? It warns about input2
+  #[allow(
+    clippy::boxed_local,
+    reason = "clippy false positive on copy buffer parameter"
+  )]
   pub fn op_buffer_copy(
     #[buffer(copy)] mut input1: Vec<u8>,
     #[buffer(copy)] mut input2: Box<[u8]>,

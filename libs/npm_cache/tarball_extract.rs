@@ -1,8 +1,10 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+use std::borrow::Cow;
 use std::collections::HashSet;
 use std::io::ErrorKind;
 use std::io::Read;
+use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -21,6 +23,7 @@ use sys_traits::FsRemoveDirAll;
 use sys_traits::FsRemoveFile;
 use sys_traits::FsRename;
 use sys_traits::OpenOptions;
+use sys_traits::PathsInErrorsExt;
 use sys_traits::SystemRandom;
 use sys_traits::ThreadSleep;
 use tar::Archive;
@@ -84,12 +87,67 @@ pub fn verify_and_decompress_tarball(
   dist_info: &NpmPackageVersionDistInfo,
 ) -> Result<Vec<u8>, VerifyAndExtractTarballError> {
   verify_tarball_integrity(package_nv, data, &dist_info.integrity())?;
+  decompress_gzip(data)
+}
+
+/// Uses libdeflater for faster gzip decompression with preallocated buffers.
+#[cfg(not(target_arch = "wasm32"))]
+fn decompress_gzip(
+  data: &[u8],
+) -> Result<Vec<u8>, VerifyAndExtractTarballError> {
+  use libdeflater::Decompressor;
+
+  let mut decompressor = Decompressor::new();
+  let size_hint = gzip_decompressed_size_hint(data);
+  let mut decompressed = Vec::new();
+  if decompressed.try_reserve(size_hint).is_err() {
+    return decompress_gzip_streaming(data);
+  }
+  // SAFETY: we reserved `size_hint` bytes above and libdeflate will
+  // write into this buffer, then we truncate to the actual size.
+  unsafe { decompressed.set_len(size_hint) };
+  match decompressor.gzip_decompress(data, &mut decompressed) {
+    Ok(actual_size) => {
+      decompressed.truncate(actual_size);
+      Ok(decompressed)
+    }
+    Err(_) => {
+      // Bad data or insufficient space — fall back
+      // to flate2 for a proper io::Error.
+      decompress_gzip_streaming(data)
+    }
+  }
+}
+
+#[cfg(target_arch = "wasm32")]
+fn decompress_gzip(
+  data: &[u8],
+) -> Result<Vec<u8>, VerifyAndExtractTarballError> {
+  decompress_gzip_streaming(data)
+}
+
+fn decompress_gzip_streaming(
+  data: &[u8],
+) -> Result<Vec<u8>, VerifyAndExtractTarballError> {
   let mut decoder = GzDecoder::new(data);
   let mut decompressed = Vec::new();
+  let _ = decompressed.try_reserve(gzip_decompressed_size_hint(data));
   decoder
     .read_to_end(&mut decompressed)
     .map_err(ExtractTarballError::from)?;
   Ok(decompressed)
+}
+
+/// Read the uncompressed size hint from the gzip trailer (last 4 bytes).
+/// This is the original size mod 2^32, so it's exact for data < 4GB
+/// (which covers virtually all npm packages).
+fn gzip_decompressed_size_hint(data: &[u8]) -> usize {
+  if data.len() >= 4 {
+    let last4 = &data[data.len() - 4..];
+    u32::from_le_bytes([last4[0], last4[1], last4[2], last4[3]]) as usize
+  } else {
+    data.len().saturating_mul(4)
+  }
 }
 
 /// Writes already-decompressed raw tar bytes to disk.
@@ -238,43 +296,11 @@ fn verify_tarball_integrity(
   Ok(())
 }
 
-#[derive(Debug, Copy, Clone)]
-pub enum IoErrorOperation {
-  Creating,
-  Canonicalizing,
-  Opening,
-  Writing,
-}
-
-impl std::fmt::Display for IoErrorOperation {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    match self {
-      IoErrorOperation::Creating => write!(f, "creating"),
-      IoErrorOperation::Canonicalizing => write!(f, "canonicalizing"),
-      IoErrorOperation::Opening => write!(f, "opening"),
-      IoErrorOperation::Writing => write!(f, "writing"),
-    }
-  }
-}
-
-#[derive(Debug, thiserror::Error, deno_error::JsError)]
-#[class(generic)]
-#[error("Failed {} '{}'", operation, path.display())]
-pub struct IoWithPathError {
-  pub path: PathBuf,
-  pub operation: IoErrorOperation,
-  #[source]
-  pub source: std::io::Error,
-}
-
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum ExtractTarballError {
   #[class(inherit)]
   #[error(transparent)]
   Io(#[from] std::io::Error),
-  #[class(inherit)]
-  #[error(transparent)]
-  IoWithPath(#[from] IoWithPathError),
   #[class(generic)]
   #[error(
     "Extracted directory '{0}' of npm tarball was not in output directory."
@@ -288,28 +314,16 @@ fn extract_tarball(
   tar_data: &[u8],
   output_folder: &Path,
 ) -> Result<(), ExtractTarballError> {
-  sys
-    .fs_create_dir_all(output_folder)
-    .map_err(|source| IoWithPathError {
-      path: output_folder.to_path_buf(),
-      operation: IoErrorOperation::Creating,
-      source,
-    })?;
-  let output_folder =
-    sys
-      .fs_canonicalize(output_folder)
-      .map_err(|source| IoWithPathError {
-        path: output_folder.to_path_buf(),
-        operation: IoErrorOperation::Canonicalizing,
-        source,
-      })?;
+  let sys = sys.with_paths_in_errors();
+  sys.fs_create_dir_all(output_folder)?;
   let mut archive = Archive::new(tar_data);
   archive.set_overwrite(true);
   archive.set_preserve_permissions(true);
   let mut created_dirs = HashSet::new();
+  let mut absolute_path = output_folder.to_path_buf();
 
   for entry in archive.entries()? {
-    let mut entry = entry?;
+    let entry = entry?;
     let path = entry.path()?;
     let entry_type = entry.header().entry_type();
 
@@ -320,32 +334,23 @@ fn extract_tarball(
     }
 
     // skip the first component which will be either "package" or the name of the package
-    let relative_path = path.components().skip(1).collect::<PathBuf>();
-    let absolute_path = output_folder.join(relative_path);
+    absolute_path.clear();
+    absolute_path.push(output_folder);
+    for component in path.components().skip(1) {
+      absolute_path.push(component);
+    }
     let dir_path = if entry_type == EntryType::Directory {
       absolute_path.as_path()
     } else {
       absolute_path.parent().unwrap()
     };
-    if created_dirs.insert(dir_path.to_path_buf()) {
-      sys
-        .fs_create_dir_all(dir_path)
-        .map_err(|source| IoWithPathError {
-          path: output_folder.to_path_buf(),
-          operation: IoErrorOperation::Creating,
-          source,
-        })?;
-      let canonicalized_dir =
-        sys
-          .fs_canonicalize(dir_path)
-          .map_err(|source| IoWithPathError {
-            path: output_folder.to_path_buf(),
-            operation: IoErrorOperation::Canonicalizing,
-            source,
-          })?;
-      if !canonicalized_dir.starts_with(&output_folder) {
+    if !created_dirs.contains(dir_path) {
+      created_dirs.insert(dir_path.to_path_buf());
+      sys.fs_create_dir_all(dir_path)?;
+      let dir_path = deno_path_util::normalize_path(Cow::Borrowed(dir_path));
+      if !dir_path.starts_with(output_folder) {
         return Err(ExtractTarballError::NotInOutputDirectory(
-          canonicalized_dir.to_path_buf(),
+          dir_path.to_path_buf(),
         ));
       }
     }
@@ -354,24 +359,39 @@ fn extract_tarball(
     match entry_type {
       EntryType::Regular => {
         let open_options = OpenOptions::new_write();
-        let mut f =
-          sys
-            .fs_open(&absolute_path, &open_options)
-            .map_err(|source| IoWithPathError {
-              path: absolute_path.to_path_buf(),
-              operation: IoErrorOperation::Opening,
-              source,
-            })?;
-        std::io::copy(&mut entry, &mut f).map_err(|source| {
-          IoWithPathError {
-            path: absolute_path,
-            operation: IoErrorOperation::Writing,
-            source,
-          }
+        let mut f = sys.fs_open(&absolute_path, &open_options)?;
+        let data_offset = entry.raw_file_position() as usize;
+        let size = entry.header().size()? as usize;
+        let end = data_offset.checked_add(size).ok_or_else(|| {
+          std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!(
+              "tar entry '{}' has invalid offset/size (offset={}, size={})",
+              absolute_path.display(),
+              data_offset,
+              size,
+            ),
+          )
         })?;
+        let entry_data =
+          tar_data.get(data_offset..end).ok_or_else(|| {
+            std::io::Error::new(
+              std::io::ErrorKind::UnexpectedEof,
+              format!(
+                "tar entry '{}' extends beyond archive (offset={}, size={}, archive_len={})",
+                absolute_path.display(),
+                data_offset,
+                size,
+                tar_data.len(),
+              ),
+            )
+          })?;
+        f.write_all(entry_data)?;
         if !sys_traits::impls::is_windows() {
           let mode = entry.header().mode()?;
-          f.fs_file_set_permissions(mode)?;
+          if mode != 0o644 {
+            f.fs_file_set_permissions(mode)?;
+          }
         }
       }
       EntryType::Symlink | EntryType::Link => {

@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_telemetry"
-version = "0.58.0"
+version = "0.62.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -33,6 +33,7 @@ opentelemetry-semantic-conventions.workspace = true
 opentelemetry_sdk.workspace = true
 pin-project.workspace = true
 serde.workspace = true
+sys_traits.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 tower-service.workspace = true

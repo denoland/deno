@@ -64,6 +64,7 @@ const {
 import {
   op_is_ascii,
   op_is_utf8,
+  op_mark_as_untransferable,
   op_node_buffer_compare,
   op_node_buffer_compare_offset,
   op_node_call_is_from_dependency,
@@ -110,7 +111,9 @@ import {
 } from "ext:deno_node/internal/errors.ts";
 import { getOptionValue } from "ext:deno_node/internal/options.ts";
 import {
+  forgivingBase64DecodeInto,
   forgivingBase64Encode,
+  forgivingBase64EncodeFromBuffer,
   forgivingBase64UrlEncode,
 } from "ext:deno_web/00_infra.js";
 import { atob, btoa } from "ext:deno_web/05_base64.js";
@@ -265,6 +268,7 @@ function createPool() {
   allocBuffer = new Uint8Array(poolSize);
   allocPool = TypedArrayPrototypeGetBuffer(allocBuffer);
   allocPool[untransferableSymbol] = true;
+  op_mark_as_untransferable(allocPool);
   poolOffset = 0;
 }
 createPool();
@@ -459,6 +463,7 @@ function fromString(string, encoding) {
   if (!BufferIsEncoding(encoding)) {
     throw new codes.ERR_UNKNOWN_ENCODING(encoding);
   }
+
   const maxLength = Buffer.poolSize >>> 1;
   const length = byteLength(string, encoding) | 0;
   if (length >= maxLength) {
@@ -566,7 +571,9 @@ Buffer.concat = function concat(list, length) {
     length = 0;
     for (let i = 0; i < list.length; i++) {
       if (list[i].length) {
-        length += list[i].length;
+        length += isUint8Array(list[i])
+          ? TypedArrayPrototypeGetByteLength(list[i])
+          : list[i].length;
       }
     }
   } else {
@@ -586,7 +593,13 @@ Buffer.concat = function concat(list, length) {
         list[i],
       );
     }
-    pos += _copyActual(buf, buffer, pos, 0, buf.length);
+    pos += _copyActual(
+      buf,
+      buffer,
+      pos,
+      0,
+      TypedArrayPrototypeGetByteLength(buf),
+    );
   }
 
   // Note: `length` is always equal to `buffer.length` at this point
@@ -734,6 +747,11 @@ Buffer.prototype.toString = function toString(encoding, start, end) {
       start,
       end,
     );
+  }
+
+  // Fast path for base64 - skip getEncodingOps dispatch overhead
+  if (encoding === "base64") {
+    return this.base64Slice(start, end);
   }
 
   const ops = getEncodingOps(encoding);
@@ -964,13 +982,14 @@ Buffer.prototype.base64Slice = function base64Slice(
   offset,
   length,
 ) {
-  if (offset === 0 && length === this.length) {
+  // Use forgivingBase64Encode (#[string] return) for small buffers where
+  // the lighter-weight op2 string path is faster.
+  // Use forgivingBase64EncodeFromBuffer (v8::String::new_from_one_byte) for
+  // large buffers where avoiding UTF-8 processing matters.
+  if (offset === 0 && length === this.length && length <= 4096) {
     return forgivingBase64Encode(this);
-  } else {
-    return forgivingBase64Encode(
-      TypedArrayPrototypeSlice(this, offset, length),
-    );
   }
+  return forgivingBase64EncodeFromBuffer(this, offset, length - offset);
 };
 
 Buffer.prototype.base64Write = function base64Write(
@@ -978,7 +997,13 @@ Buffer.prototype.base64Write = function base64Write(
   offset,
   length,
 ) {
-  return blitBuffer(base64ToBytes(string), this, offset, length);
+  try {
+    const written = forgivingBase64DecodeInto(string, this, offset);
+    return length !== undefined ? MathMin(written, length) : written;
+  } catch {
+    // Fallback for strings with base64url chars or invalid chars
+    return blitBuffer(base64ToBytes(string), this, offset, length);
+  }
 };
 
 Buffer.prototype.base64urlSlice = function base64urlSlice(
@@ -1118,6 +1143,11 @@ Buffer.prototype.write = function write(string, offset, length, encoding) {
     return this.utf8Write(string, offset, length);
   }
 
+  // Fast path for base64 - skip getEncodingOps dispatch overhead
+  if (encoding === "base64") {
+    return this.base64Write(string, offset, length);
+  }
+
   const ops = getEncodingOps(encoding);
   if (ops === undefined) {
     throw new codes.ERR_UNKNOWN_ENCODING(encoding);
@@ -1165,12 +1195,10 @@ function fromArrayBuffer(obj, byteOffset, length) {
 }
 
 function _base64Slice(buf, start, end) {
-  if (start === 0 && end === buf.length) {
+  if (start === 0 && end === buf.length && end <= 4096) {
     return forgivingBase64Encode(buf);
-  } else {
-    // deno-lint-ignore prefer-primordials
-    return forgivingBase64Encode(buf.slice(start, end));
   }
+  return forgivingBase64EncodeFromBuffer(buf, start, end - start);
 }
 const decoder = new TextDecoder("utf-8", { ignoreBOM: true });
 
@@ -3051,6 +3079,7 @@ const mod = {
   constants,
   isAscii,
   isUtf8,
+  utf8Write: Buffer.prototype.utf8Write,
   get INSPECT_MAX_BYTES() {
     return INSPECT_MAX_BYTES_;
   },

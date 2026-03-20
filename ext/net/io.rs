@@ -133,7 +133,7 @@ impl TcpStreamResource {
     self.map_socket(Box::new(move |socket| socket.set_keepalive(keepalive)))
   }
 
-  #[allow(clippy::type_complexity)]
+  #[allow(clippy::type_complexity, reason = "internal code")]
   fn map_socket(
     self: Rc<Self>,
     map: Box<dyn FnOnce(SockRef) -> Result<(), std::io::Error>>,
@@ -164,7 +164,7 @@ impl UnixStreamResource {
   fn write(self: Rc<Self>, _data: &[u8]) -> AsyncResult<usize> {
     unreachable!()
   }
-  #[allow(clippy::unused_async)]
+  #[allow(clippy::unused_async, reason = "not supported")]
   pub async fn shutdown(self: Rc<Self>) -> Result<(), JsErrorBox> {
     unreachable!()
   }
@@ -213,7 +213,7 @@ impl VsockStreamResource {
   fn write(self: Rc<Self>, _data: &[u8]) -> AsyncResult<usize> {
     unreachable!()
   }
-  #[allow(clippy::unused_async)]
+  #[allow(clippy::unused_async, reason = "not supported")]
   pub async fn shutdown(self: Rc<Self>) -> Result<(), JsErrorBox> {
     unreachable!()
   }

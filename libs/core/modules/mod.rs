@@ -19,7 +19,7 @@ use crate::module_specifier::ModuleSpecifier;
 mod loaders;
 mod map;
 mod module_map_data;
-mod recursive_load;
+pub(crate) mod recursive_load;
 
 #[cfg(all(test, not(miri)))]
 mod tests;
@@ -726,7 +726,6 @@ pub(crate) struct ModuleRequest {
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub(crate) struct ModuleInfo {
-  #[allow(unused)]
   pub id: ModuleId,
   pub main: bool,
   pub name: ModuleName,

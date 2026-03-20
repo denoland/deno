@@ -539,6 +539,7 @@ export const UV_ECANCELED = codeMap.get("ECANCELED")!;
 export const UV_EEXIST = codeMap.get("EEXIST");
 export const UV_EINVAL = codeMap.get("EINVAL")!;
 export const UV_ENOENT = codeMap.get("ENOENT");
+export const UV_ENOMEM = codeMap.get("ENOMEM")!;
 export const UV_ENOTSOCK = codeMap.get("ENOTSOCK")!;
 export const UV_ETIMEDOUT = codeMap.get("ETIMEDOUT")!;
 export const UV_UNKNOWN = codeMap.get("UNKNOWN")!;

@@ -1310,7 +1310,7 @@ fn format_stdin(
 
   if fmt_flags.check {
     let formatted = String::from_utf8_lossy(&output.stdout);
-    #[allow(clippy::print_stdout)]
+    #[allow(clippy::print_stdout, reason = "actually want to output")]
     if formatted.as_ref() != source {
       println!("Not formatted stdin");
     }

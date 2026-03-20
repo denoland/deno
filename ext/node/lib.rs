@@ -2,18 +2,19 @@
 
 #![deny(clippy::print_stderr)]
 #![deny(clippy::print_stdout)]
-#![allow(clippy::too_many_arguments)]
+#![allow(
+  clippy::too_many_arguments,
+  reason = "op macro expansion causes issues"
+)]
 
 use std::borrow::Cow;
 use std::env;
-use std::fs;
 use std::path::Path;
 
 use deno_core::FastString;
 use deno_core::OpState;
 use deno_core::op2;
 use deno_core::url::Url;
-#[allow(unused_imports)]
 use deno_core::v8;
 use deno_core::v8::ExternalReference;
 use deno_error::JsErrorBox;
@@ -52,7 +53,7 @@ pub fn is_builtin_node_module(module_name: &str) -> bool {
   DenoIsBuiltInNodeModuleChecker.is_builtin_node_module(module_name)
 }
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type NodeRequireLoaderRc = std::rc::Rc<dyn NodeRequireLoader>;
 
 pub trait NodeRequireLoader {
@@ -101,7 +102,7 @@ fn op_node_build_os() -> String {
 enum DotEnvLoadErr {
   #[class(inherit)]
   #[error("{0}")]
-  Io(#[from] std::io::Error),
+  Fs(#[from] deno_io::fs::FsError),
   #[class(inherit)]
   #[error(transparent)]
   Permission(
@@ -117,6 +118,7 @@ fn op_node_load_env_file(
   state: &mut OpState,
   #[string] path: &str,
 ) -> Result<(), DotEnvLoadErr> {
+  let fs = state.borrow::<deno_fs::FileSystemRc>().clone();
   let path = state
     .borrow::<PermissionsContainer>()
     .check_open(
@@ -126,10 +128,8 @@ fn op_node_load_env_file(
     )
     .map_err(DotEnvLoadErr::Permission)?;
 
-  #[allow(clippy::disallowed_methods)]
-  let contents = fs::read_to_string(path)?;
-
-  parse_env_content_hook(&contents, |key, value| {
+  let contents = fs.read_text_file_lossy_sync(&path)?;
+  parse_env_content_hook(&contents, &mut |key, value| {
     // Follows Node.js behavior where null bytes are stripped from env keys and values
     let key = if let Some(null_pos) = key.find('\0') {
       &key[..null_pos]
@@ -147,7 +147,7 @@ fn op_node_load_env_file(
       value
     };
 
-    #[allow(clippy::undocumented_unsafe_blocks)]
+    // SAFETY: called during single-threaded initialization
     unsafe {
       env::set_var(key, value);
     }
@@ -184,6 +184,7 @@ deno_core::extension!(deno_node,
     ops::blocklist::op_blocklist_add_subnet,
     ops::blocklist::op_blocklist_check,
 
+    ops::buffer::op_mark_as_untransferable,
     ops::buffer::op_is_ascii,
     ops::buffer::op_is_utf8,
     ops::buffer::op_transcode,
@@ -210,9 +211,18 @@ deno_core::extension!(deno_node,
     ops::fs::op_node_statfs_sync,
     ops::fs::op_node_statfs,
     ops::fs::op_node_file_from_fd,
+    ops::fs::op_node_cp_check_paths_recursive,
+    ops::fs::op_node_cp_on_file,
+    ops::fs::op_node_cp_on_link,
+    ops::fs::op_node_cp_sync,
+    ops::fs::op_node_cp_validate_and_prepare,
     ops::winerror::op_node_sys_to_uv_error,
     ops::v8::op_v8_cached_data_version_tag,
     ops::v8::op_v8_get_heap_statistics,
+    ops::v8::op_v8_number_of_heap_spaces,
+    ops::v8::op_v8_update_heap_space_statistics,
+    ops::v8::op_v8_get_heap_code_statistics,
+    ops::v8::op_v8_take_heap_snapshot,
     ops::v8::op_v8_get_wire_format_version,
     ops::v8::op_v8_new_deserializer,
     ops::v8::op_v8_new_serializer,
@@ -254,18 +264,9 @@ deno_core::extension!(deno_node,
     ops::http::op_node_http_response_reclaim_conn,
     ops::http::op_node_http_await_information,
     ops::http::op_node_http_await_response,
-    ops::http2::op_http2_connect,
-    ops::http2::op_http2_poll_client_connection,
-    ops::http2::op_http2_client_request,
-    ops::http2::op_http2_client_get_response,
-    ops::http2::op_http2_client_get_response_body_chunk,
-    ops::http2::op_http2_client_send_data,
-    ops::http2::op_http2_client_reset_stream,
-    ops::http2::op_http2_client_send_trailers,
-    ops::http2::op_http2_client_get_response_trailers,
-    ops::http2::op_http2_accept,
-    ops::http2::op_http2_listen,
-    ops::http2::op_http2_send_response,
+    ops::http2::op_http2_constants,
+    ops::http2::op_http2_callbacks,
+    ops::http2::op_http2_http_state,
     ops::os::op_node_os_get_priority,
     ops::os::op_node_os_set_priority,
     ops::os::op_node_os_user_info,
@@ -305,6 +306,7 @@ deno_core::extension!(deno_node,
     ops::util::op_node_in_npm_package<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys>,
     ops::util::op_node_parse_env,
     ops::worker_threads::op_worker_threads_filename<TSys>,
+    ops::worker_threads::op_worker_get_resource_limits,
     ops::ipc::op_node_child_ipc_pipe,
     ops::ipc::op_node_ipc_write_json,
     ops::ipc::op_node_ipc_read_json,
@@ -313,6 +315,7 @@ deno_core::extension!(deno_node,
     ops::ipc::op_node_ipc_buffer_constructor,
     ops::ipc::op_node_ipc_ref,
     ops::ipc::op_node_ipc_unref,
+    ops::process::op_node_process_set_title,
     ops::process::op_node_process_kill,
     ops::process::op_node_process_setegid,
     ops::process::op_node_process_seteuid,
@@ -351,16 +354,23 @@ deno_core::extension!(deno_node,
     ops::udp::op_node_udp_leave_source_specific,
     ops::udp::op_node_udp_send,
     ops::udp::op_node_udp_recv,
+    ops::stream_wrap::op_stream_base_register_state,
+    ops::tty_wrap::op_tty_check_fd_permission,
   ],
   objects = [
     ops::perf_hooks::EldHistogram,
     ops::handle_wrap::AsyncWrap,
     ops::handle_wrap::HandleWrap,
+    ops::stream_wrap::LibUvStreamWrap,
+    ops::tty_wrap::TTY,
     ops::zlib::BrotliDecoder,
     ops::zlib::BrotliEncoder,
     ops::zlib::Zlib,
     ops::zlib::ZstdCompress,
     ops::zlib::ZstdDecompress,
+    ops::libuv_stream::TCP,
+    ops::http2::Http2Session,
+    ops::http2::Http2Stream,
   ],
   esm_entry_point = "ext:deno_node/02_init.js",
   esm = [
@@ -368,11 +378,7 @@ deno_core::extension!(deno_node,
     "00_globals.js",
     "02_init.js",
     "_events.mjs",
-    "_fs/_fs_access.ts",
-    "_fs/_fs_appendFile.ts",
-    "_fs/_fs_chmod.ts",
-    "_fs/_fs_chown.ts",
-    "_fs/_fs_close.ts",
+    "internal/fs/promises.ts",
     "_fs/_fs_common.ts",
     "_fs/_fs_constants.ts",
     "_fs/_fs_copy.ts",
@@ -381,42 +387,12 @@ deno_core::extension!(deno_node,
     "_fs/cp/cp_sync.ts",
     "_fs/_fs_dir.ts",
     "_fs/_fs_exists.ts",
-    "_fs/_fs_fchmod.ts",
-    "_fs/_fs_fchown.ts",
-    "_fs/_fs_fdatasync.ts",
     "_fs/_fs_fstat.ts",
-    "_fs/_fs_fsync.ts",
-    "_fs/_fs_ftruncate.ts",
-    "_fs/_fs_futimes.ts",
     "_fs/_fs_glob.ts",
-    "_fs/_fs_lchmod.ts",
-    "_fs/_fs_lchown.ts",
-    "_fs/_fs_link.ts",
     "_fs/_fs_lstat.ts",
     "_fs/_fs_lutimes.ts",
-    "_fs/_fs_mkdir.ts",
-    "_fs/_fs_mkdtemp.ts",
-    "_fs/_fs_open.ts",
-    "_fs/_fs_opendir.ts",
     "_fs/_fs_read.ts",
     "_fs/_fs_readdir.ts",
-    "_fs/_fs_readFile.ts",
-    "_fs/_fs_readlink.ts",
-    "_fs/_fs_readv.ts",
-    "_fs/_fs_realpath.ts",
-    "_fs/_fs_rename.ts",
-    "_fs/_fs_rm.ts",
-    "_fs/_fs_rmdir.ts",
-    "_fs/_fs_stat.ts",
-    "_fs/_fs_statfs.ts",
-    "_fs/_fs_symlink.ts",
-    "_fs/_fs_truncate.ts",
-    "_fs/_fs_unlink.ts",
-    "_fs/_fs_utimes.ts",
-    "_fs/_fs_watch.ts",
-    "_fs/_fs_write.ts",
-    "_fs/_fs_writeFile.ts",
-    "_fs/_fs_writev.ts",
     "_next_tick.ts",
     "_process/exiting.ts",
     "_process/process.ts",
@@ -493,13 +469,16 @@ deno_core::extension!(deno_node,
     "internal/errors/error_source.ts",
     "internal/event_target.mjs",
     "internal/events/abort_listener.mjs",
+    "internal/fs/stat_utils.ts",
     "internal/fs/streams.mjs",
     "internal/fs/utils.mjs",
     "internal/fs/handle.ts",
     "internal/hide_stack_frames.ts",
     "internal/http.ts",
     "internal/http2/util.ts",
+    "internal/http2/compat.js",
     "internal/idna.ts",
+    "internal/mime.ts",
     "internal/net.ts",
     "internal/normalize_encoding.ts",
     "internal/options.ts",
@@ -638,6 +617,14 @@ deno_core::extension!(deno_node,
     }
 
     state.put(AsyncId::default());
+
+    // Initialize a uv_loop_t for libuv compat layer (used by TCP/HTTP2)
+    // SAFETY: zeroed memory is valid for UvLoop before uv_loop_init
+    let mut uv_loop = Box::new(unsafe { std::mem::zeroed::<deno_core::uv_compat::UvLoop>() });
+    // SAFETY: uv_loop points to valid zeroed memory ready for initialization
+    unsafe { deno_core::uv_compat::uv_loop_init(&mut *uv_loop) };
+    state.put(uv_loop);
+
   },
   global_template_middleware = global_template_middleware,
   global_object_middleware = global_object_middleware,
@@ -769,13 +756,12 @@ pub type NodeResolver<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys> =
     TNpmPackageFolderResolver,
     TSys,
   >;
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type NodeResolverRc<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys> =
   deno_fs::sync::MaybeArc<
     NodeResolver<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys>,
   >;
 
-#[allow(clippy::disallowed_types)]
 pub fn create_host_defined_options<'s>(
   scope: &mut v8::PinScope<'s, '_>,
 ) -> v8::Local<'s, v8::Data> {

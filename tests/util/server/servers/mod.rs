@@ -143,6 +143,8 @@ pub async fn run_all_servers() {
     npm_registry::private_npm_registry2(PRIVATE_NPM_REGISTRY_2_PORT);
   let private_npm_registry_3_server_futs =
     npm_registry::private_npm_registry3(PRIVATE_NPM_REGISTRY_3_PORT);
+  let private_npm_registry_mtls_futs =
+    npm_registry::private_npm_registry_mtls(PRIVATE_NPM_REGISTRY_MTLS_PORT);
   let npm_jsr_registry_server_futs =
     npm_registry::public_npm_jsr_registry(PUBLIC_NPM_JSR_REGISTRY_PORT);
   let socket_dev_api_futs = socket_dev::api(SOCKET_DEV_API_PORT);
@@ -188,6 +190,7 @@ pub async fn run_all_servers() {
   futures.extend(private_npm_registry_2_server_futs);
   futures.extend(private_npm_registry_3_server_futs);
   futures.extend(npm_jsr_registry_server_futs);
+  futures.extend(private_npm_registry_mtls_futs);
   futures.extend(socket_dev_api_futs);
 
   assert_eq!(futures.len(), TEST_SERVERS_COUNT);
