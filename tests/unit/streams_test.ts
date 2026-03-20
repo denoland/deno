@@ -564,6 +564,33 @@ Deno.test(async function brotliCompressionDecompressionRoundTrip() {
   assertEquals(result, original);
 });
 
+// Regression test for https://github.com/denoland/deno/issues/29829
+// DecompressionStream should handle data where the zlib stream ends
+// before all input bytes are consumed (write() returns Ok(0)).
+Deno.test(async function decompressionStreamDeflateHighRatio() {
+  // Compress data that expands significantly, triggering the case where
+  // the decoder's write() returns 0 after the stream ends.
+  const original = new Uint8Array(8192);
+  // Repetitive data compresses very well
+  for (let i = 0; i < original.length; i++) {
+    original[i] = i % 4;
+  }
+  const cs = new CompressionStream("deflate");
+  const writer = cs.writable.getWriter();
+  writer.write(original);
+  writer.close();
+  const compressed = await new Response(cs.readable).bytes();
+
+  // Now decompress — this used to fail with "failed to write whole buffer"
+  const ds = new DecompressionStream("deflate");
+  const dsWriter = ds.writable.getWriter();
+  dsWriter.write(compressed);
+  dsWriter.close();
+  const decompressed = await new Response(ds.readable).bytes();
+  assertEquals(decompressed.length, original.length);
+  assertEquals(decompressed, original);
+});
+
 Deno.test(async function decompressionStreamInvalidGzipStillReported() {
   await assertRejects(
     async () => {
