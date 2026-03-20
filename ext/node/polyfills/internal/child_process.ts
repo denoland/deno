@@ -1827,6 +1827,11 @@ export function setupChannel(
             // TODO(nathanwhit): once we add support for sending
             // handles, if we want to support deno-node IPC interop,
             // we'll need to handle the NODE_HANDLE_* messages here.
+            // Emit as internalMessage for internal consumers.
+            if (serialization === "json") {
+              restorePrototype(msg);
+            }
+            nextTick(() => target.emit("internalMessage", msg));
             continue;
           }
         }
