@@ -29,9 +29,7 @@ pub(crate) use win_sock::sockaddr_in;
 #[cfg(windows)]
 use win_sock::sockaddr_in6;
 
-use crate::uv_compat::UV_EADDRINUSE;
 use crate::uv_compat::UV_EAGAIN;
-use crate::uv_compat::UV_ECONNREFUSED;
 use crate::uv_compat::UV_EINVAL;
 use crate::uv_compat::UV_ENOTCONN;
 use crate::uv_compat::UV_EOF;
@@ -148,27 +146,8 @@ pub(crate) struct ShutdownPending {
   pub(crate) cb: Option<uv_shutdown_cb>,
 }
 
-/// Map a `std::io::Error` to the closest libuv error code.
-fn io_error_to_uv(err: &std::io::Error) -> c_int {
-  use std::io::ErrorKind;
-  match err.kind() {
-    ErrorKind::AddrInUse => UV_EADDRINUSE,
-    ErrorKind::AddrNotAvailable => UV_EINVAL,
-    ErrorKind::ConnectionRefused => UV_ECONNREFUSED,
-    ErrorKind::NotConnected => UV_ENOTCONN,
-    ErrorKind::BrokenPipe => UV_EPIPE,
-    ErrorKind::InvalidInput => UV_EINVAL,
-    ErrorKind::WouldBlock => UV_EAGAIN,
-    _ => {
-      // On Unix, try to use the raw OS error for a more accurate mapping.
-      #[cfg(unix)]
-      if let Some(code) = err.raw_os_error() {
-        return -code;
-      }
-      UV_EINVAL
-    }
-  }
-}
+// Re-export from parent module for backwards compatibility within crate.
+pub(crate) use super::io_error_to_uv;
 
 /// ### Safety
 /// `addr` must point to a valid `sockaddr_in` or `sockaddr_in6` with correct `sa_family`.
