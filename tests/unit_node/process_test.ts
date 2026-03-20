@@ -104,6 +104,8 @@ Deno.test({
     assertEquals(typeof process.versions.modules, "string");
     assertEquals(typeof process.versions.nghttp2, "string");
     assertEquals(typeof process.versions.napi, "string");
+    // Must match the NAPI_VERSION in ext/napi/js_native_api.rs
+    assertEquals(process.versions.napi, "9");
     assertEquals(typeof process.versions.llhttp, "string");
     assertEquals(typeof process.versions.openssl, "string");
     assertEquals(typeof process.versions.cldr, "string");
@@ -1077,10 +1079,14 @@ Deno.test({
 Deno.test({
   name: "process.title",
   fn() {
-    assertEquals(process.title, "deno");
-    // Verify that setting the value has no effect.
+    // Default process.title should be the execPath (matches Node.js behavior)
+    assertEquals(process.title, process.execPath);
+    // Setting process.title should work
+    const original = process.title;
     process.title = "foo";
-    assertEquals(process.title, "deno");
+    assertEquals(process.title, "foo");
+    // Restore
+    process.title = original;
   },
 });
 

@@ -1461,7 +1461,7 @@ async fn tty_init_sets_fields() {
       // uv_tty_init reopens slave fds so internal_fd may differ from the
       // original fd.
       assert!(tty.internal_fd >= 0);
-      assert!(tty.internal_async_fd.is_some());
+      assert!(tty.internal_reactor.is_some());
 
       uv_close(tty_ptr as *mut uv_handle_t, None);
     }
@@ -1485,6 +1485,127 @@ async fn tty_init_rejects_non_tty() {
       let status = uv_tty_init(uv_loop, tty.as_mut_ptr(), fd, 0);
       assert_eq!(status, UV_EINVAL);
     }
+  })
+  .await;
+}
+
+// Regression test for https://github.com/denoland/deno/issues/32802
+// On macOS, /dev/tty is a kqueue-incompatible device. uv_tty_init must
+// succeed via the select(2) fallback rather than returning EINVAL.
+// We also do a write through the handle to verify the fallback I/O path.
+#[cfg(target_os = "macos")]
+#[tokio::test(flavor = "current_thread")]
+async fn tty_init_dev_tty_select_fallback() {
+  run_test(async |runtime, uv_loop| {
+    // Open /dev/tty directly — this produces an fd that kqueue rejects.
+    let fd = unsafe { libc::open(c"/dev/tty".as_ptr(), libc::O_RDWR) };
+    if fd < 0 {
+      // No controlling terminal (e.g., CI without a PTY). Skip.
+      return;
+    }
+    let _fd_guard = FdGuard(fd);
+
+    let mut tty = std::mem::MaybeUninit::<uv_tty_t>::uninit();
+    let tty_ptr = tty.as_mut_ptr();
+    unsafe {
+      // This is the core assertion: init must succeed, not EINVAL.
+      assert_ok(uv_tty_init(uv_loop, tty_ptr, fd, 0));
+    }
+
+    // Verify the select fallback was used.
+    unsafe {
+      let tty_ref = tty.assume_init_ref();
+      assert!(tty_ref.internal_reactor.is_some());
+      assert!(matches!(
+        tty_ref.internal_reactor,
+        Some(tty::TtyReactor::SelectFallback(_))
+      ));
+    }
+
+    // Write through the handle to exercise the fallback I/O path.
+    let write_done = Rc::new(Cell::new(false));
+    let write_done_ptr = Rc::into_raw(write_done.clone());
+
+    unsafe extern "C" fn write_cb(req: *mut uv_write_t, status: i32) {
+      assert_eq!(status, 0);
+      let done = unsafe { Rc::from_raw((*req).data as *const Cell<bool>) };
+      done.set(true);
+      let _ = Rc::into_raw(done);
+    }
+
+    let payload = b"\n";
+    let mut write_req = std::mem::MaybeUninit::<uv_write_t>::uninit();
+    let write_req_ptr = write_req.as_mut_ptr();
+    unsafe {
+      (*write_req_ptr).data = write_done_ptr as *mut c_void;
+      let buf = uv_buf_t {
+        base: payload.as_ptr() as *mut _,
+        len: payload.len(),
+      };
+      assert_ok(uv_write(
+        write_req_ptr,
+        tty_ptr as *mut uv_stream_t,
+        &buf,
+        1,
+        Some(write_cb),
+      ));
+    }
+
+    // Tick until write completes.
+    for _ in 0..50 {
+      tick(runtime).await;
+      if write_done.get() {
+        break;
+      }
+      tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    }
+    assert!(write_done.get(), "write callback should have fired");
+
+    // Also verify read_start doesn't panic. We can't easily feed data
+    // to /dev/tty from a test, so just start and immediately stop.
+    unsafe extern "C" fn alloc_cb(
+      _: *mut uv_handle_t,
+      size: usize,
+      buf: *mut uv_buf_t,
+    ) {
+      let mut v = Vec::<u8>::with_capacity(size);
+      unsafe {
+        (*buf).base = v.as_mut_ptr().cast();
+        (*buf).len = size;
+      }
+      std::mem::forget(v);
+    }
+
+    unsafe extern "C" fn read_cb(
+      _handle: *mut uv_stream_t,
+      _nread: isize,
+      buf: *const uv_buf_t,
+    ) {
+      unsafe {
+        if !(*buf).base.is_null() && (*buf).len > 0 {
+          drop(Vec::<u8>::from_raw_parts((*buf).base.cast(), 0, (*buf).len));
+        }
+      }
+    }
+
+    unsafe {
+      assert_ok(uv_read_start(
+        tty_ptr as *mut uv_stream_t,
+        Some(alloc_cb),
+        Some(read_cb),
+      ));
+    }
+
+    // One tick to register interest.
+    tick(runtime).await;
+
+    // Stop reading and clean up.
+    unsafe {
+      uv_read_stop(tty_ptr as *mut uv_stream_t);
+      uv_close(tty_ptr as *mut uv_handle_t, None);
+      Rc::from_raw(write_done_ptr);
+    }
+    tick(runtime).await;
   })
   .await;
 }
