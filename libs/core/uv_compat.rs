@@ -1088,9 +1088,9 @@ pub unsafe extern "C" fn uv_check_stop(handle: *mut uv_check_t) -> c_int {
   0
 }
 
-/// Safe wrapper around a `uv_check_t` handle for setImmediate.
-/// Manages the handle lifecycle and provides safe methods for
-/// start/stop/ref/unref.
+/// Safe wrapper around a `uv_check_t` pointer for setImmediate.
+/// This is `Copy` so it can be stored in a `Cell`.
+#[derive(Clone, Copy)]
 pub(crate) struct ImmediateCheckHandle {
   handle: *mut uv_check_t,
 }
@@ -1105,6 +1105,7 @@ impl ImmediateCheckHandle {
   ///
   /// # Safety
   /// `loop_ptr` must be a valid, initialized `uv_loop_t`.
+  /// The returned handle borrows from the loop and must not outlive it.
   pub unsafe fn new(loop_ptr: *mut uv_loop_t) -> Self {
     let handle = Box::into_raw(Box::new(unsafe {
       std::mem::MaybeUninit::<uv_check_t>::zeroed().assume_init()
@@ -1117,7 +1118,7 @@ impl ImmediateCheckHandle {
   }
 
   pub fn is_active(&self) -> bool {
-    // SAFETY: handle is valid for the lifetime of this struct.
+    // SAFETY: handle is valid for the lifetime of this wrapper.
     unsafe { (*self.handle).flags & UV_HANDLE_ACTIVE != 0 }
   }
 
@@ -1146,16 +1147,6 @@ impl ImmediateCheckHandle {
     // SAFETY: handle is valid.
     unsafe {
       uv_unref(self.handle as *mut uv_handle_t);
-    }
-  }
-}
-
-impl Drop for ImmediateCheckHandle {
-  fn drop(&mut self) {
-    // SAFETY: handle was initialized by new().
-    unsafe {
-      uv_check_stop(self.handle);
-      drop(Box::from_raw(self.handle));
     }
   }
 }
