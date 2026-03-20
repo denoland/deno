@@ -11,7 +11,6 @@ use std::cell::Cell;
 use std::cell::RefCell;
 use std::cell::UnsafeCell;
 use std::ffi::c_char;
-use std::ffi::c_void;
 use std::ptr::NonNull;
 use std::rc::Rc;
 
@@ -34,6 +33,10 @@ use crate::ops::handle_wrap::GlobalHandle;
 use crate::ops::handle_wrap::HandleWrap;
 use crate::ops::handle_wrap::OwnedPtr;
 use crate::ops::handle_wrap::ProviderType;
+use crate::ops::stream_wrap_state::ReadCallbackKey;
+use crate::ops::stream_wrap_state::ReadCallbackRegistry;
+use crate::ops::stream_wrap_state::ReadCallbackState;
+use crate::ops::stream_wrap_state::ReadInterceptor;
 
 // ---------------------------------------------------------------------------
 // StreamBase state fields — mirrors Node's StreamBaseStateFields enum.
@@ -49,13 +52,10 @@ pub struct StreamBaseState {
 pub(crate) struct StreamHandleData {
   pub js_handle: UnsafeCell<GlobalHandle<v8::Object>>,
   pub isolate: UnsafeCell<v8::UnsafeRawIsolatePtr>,
-}
-
-#[derive(Clone, Copy)]
-pub(crate) struct ReadInterceptor {
-  pub ptr: *mut c_void,
-  pub callback:
-    unsafe fn(*mut c_void, *mut uv_stream_t, isize, *const uv_buf_t),
+  pub bytes_read: Rc<Cell<u64>>,
+  pub desired_read_interceptor: Cell<Option<ReadInterceptor>>,
+  pub read_callbacks: RefCell<ReadCallbackRegistry>,
+  pub active_read: Cell<Option<ReadCallbackKey>>,
 }
 
 #[op2(fast)]
@@ -159,33 +159,34 @@ pub struct LibUvStreamWrap {
   base: HandleWrap,
   fd: Cell<i32>,
   stream: *const uv_stream_t,
-  bytes_read: Cell<u64>,
-  bytes_written: Cell<u64>,
-  /// Callback state kept in a stable heap allocation so uv_handle_t.data
-  /// can point at it across moves of the wrapper object.
+  bytes_read: Rc<Cell<u64>>,
+  bytes_written: Rc<Cell<u64>>,
+  /// Stable per-handle data referenced from `uv_stream_t.data` for the
+  /// lifetime of the native stream.
   handle_data: Box<StreamHandleData>,
-  /// Whether readStart has been called (and stream.data points to CallbackData
-  /// rather than other data). Guards readStop from misinterpreting the data
-  /// pointer.
+  /// Whether readStart has been called and the handle currently has an active
+  /// callback state entry.
   reading_started: Cell<bool>,
-  /// Optional native read interceptor used by protocol wrappers like TLS.
-  read_interceptor: Cell<Option<ReadInterceptor>>,
 }
 
 impl LibUvStreamWrap {
   pub fn new(base: HandleWrap, fd: i32, stream: *const uv_stream_t) -> Self {
+    let bytes_read = Rc::new(Cell::new(0));
     Self {
       base,
       fd: Cell::new(fd),
       stream,
-      bytes_read: Cell::new(0),
-      bytes_written: Cell::new(0),
+      bytes_read: bytes_read.clone(),
+      bytes_written: Rc::new(Cell::new(0)),
       handle_data: Box::new(StreamHandleData {
         js_handle: UnsafeCell::new(GlobalHandle::default()),
         isolate: UnsafeCell::new(v8::UnsafeRawIsolatePtr::null()),
+        bytes_read,
+        desired_read_interceptor: Cell::new(None),
+        read_callbacks: RefCell::new(ReadCallbackRegistry::default()),
+        active_read: Cell::new(None),
       }),
       reading_started: Cell::new(false),
-      read_interceptor: Cell::new(None),
     }
   }
 
@@ -256,26 +257,82 @@ impl LibUvStreamWrap {
     }
   }
 
-  pub(crate) fn set_read_interceptor(
-    &self,
+  fn install_read_state(&self, state: ReadCallbackState) {
+    let key = self.handle_data.read_callbacks.borrow_mut().insert(state);
+    self.handle_data.active_read.set(Some(key));
+  }
+
+  fn stable_handle_data(
+    stream: *mut uv_stream_t,
+  ) -> Option<NonNull<StreamHandleData>> {
+    if stream.is_null() {
+      return None;
+    }
+    NonNull::new(unsafe { (*stream).data as *mut StreamHandleData })
+  }
+
+  pub(crate) fn set_read_interceptor_for_stream(
+    stream: *mut uv_stream_t,
     interceptor: Option<ReadInterceptor>,
   ) {
-    self.read_interceptor.set(interceptor);
-    if !self.reading_started.get() {
+    let Some(handle_data_ptr) = Self::stable_handle_data(stream) else {
       return;
+    };
+    // SAFETY: `uv_stream_t.data` points at the owning handle's stable
+    // `StreamHandleData` allocation while the native stream is alive.
+    let handle_data = unsafe { handle_data_ptr.as_ref() };
+    handle_data.desired_read_interceptor.set(interceptor);
+    if let Some(key) = handle_data.active_read.get() {
+      let _ = handle_data
+        .read_callbacks
+        .borrow_mut()
+        .update_interceptor(key, interceptor);
+    }
+  }
+
+  pub(crate) fn read_start_intercepted_for_stream(
+    stream: *mut uv_stream_t,
+  ) -> i32 {
+    let Some(handle_data_ptr) = Self::stable_handle_data(stream) else {
+      return UV_EBADF;
+    };
+    // SAFETY: `uv_stream_t.data` points at the owning handle's stable
+    // `StreamHandleData` allocation while the native stream is alive.
+    let handle_data = unsafe { handle_data_ptr.as_ref() };
+    if handle_data.active_read.get().is_some() {
+      return 0;
     }
 
-    let stream = self.stream_ptr();
-    if stream.is_null() {
-      return;
-    }
+    let key =
+      handle_data
+        .read_callbacks
+        .borrow_mut()
+        .insert(ReadCallbackState {
+          isolate: v8::UnsafeRawIsolatePtr::null(),
+          onread: None,
+          stream_base_state: None,
+          handle: None,
+          bytes_read: handle_data.bytes_read.clone(),
+          read_interceptor: handle_data.desired_read_interceptor.get(),
+        });
+    handle_data.active_read.set(Some(key));
 
     unsafe {
-      let data = (*stream).data as *mut CallbackData;
-      if !data.is_null() {
-        (*data).read_interceptor = interceptor;
-      }
+      uv_compat::uv_read_start(stream, Some(on_uv_alloc), Some(on_uv_read))
     }
+  }
+
+  pub(crate) fn read_stop_for_stream(stream: *mut uv_stream_t) -> i32 {
+    let Some(handle_data_ptr) = Self::stable_handle_data(stream) else {
+      return UV_EBADF;
+    };
+    // SAFETY: `uv_stream_t.data` points at the owning handle's stable
+    // `StreamHandleData` allocation while the native stream is alive.
+    let handle_data = unsafe { handle_data_ptr.as_ref() };
+    if let Some(key) = handle_data.active_read.take() {
+      let _ = handle_data.read_callbacks.borrow_mut().remove(key);
+    }
+    unsafe { uv_compat::uv_read_stop(stream) }
   }
 
   fn read_start_with_handle(
@@ -305,49 +362,16 @@ impl LibUvStreamWrap {
     let state_global = &op_state.borrow::<StreamBaseState>().array;
     let state_array = v8::Local::new(scope, state_global);
 
-    let cb_data = Box::new(CallbackData {
-      owner: self as *const LibUvStreamWrap,
+    self.install_read_state(ReadCallbackState {
       isolate: unsafe { scope.as_raw_isolate_ptr() },
       onread: Some(v8::Global::new(scope, onread)),
       stream_base_state: Some(v8::Global::new(scope, state_array)),
       handle: Some(v8::Global::new(scope, this)),
-      bytes_read: &self.bytes_read as *const Cell<u64>,
-      read_interceptor: self.read_interceptor.get(),
+      bytes_read: self.handle_data.bytes_read.clone(),
+      read_interceptor: self.handle_data.desired_read_interceptor.get(),
     });
-    unsafe {
-      (*stream).data = Box::into_raw(cb_data) as *mut std::ffi::c_void;
-    }
     self.reading_started.set(true);
     self.make_handle_strong(scope);
-
-    unsafe {
-      uv_compat::uv_read_start(stream, Some(on_uv_alloc), Some(on_uv_read))
-    }
-  }
-
-  pub(crate) fn read_start_intercepted(&self) -> i32 {
-    let stream = self.stream_ptr();
-    if stream.is_null() {
-      return UV_EBADF;
-    }
-
-    if self.reading_started.get() {
-      return 0;
-    }
-
-    let cb_data = Box::new(CallbackData {
-      owner: self as *const LibUvStreamWrap,
-      isolate: v8::UnsafeRawIsolatePtr::null(),
-      onread: None,
-      stream_base_state: None,
-      handle: None,
-      bytes_read: &self.bytes_read as *const Cell<u64>,
-      read_interceptor: self.read_interceptor.get(),
-    });
-    unsafe {
-      (*stream).data = Box::into_raw(cb_data) as *mut std::ffi::c_void;
-    }
-    self.reading_started.set(true);
 
     unsafe {
       uv_compat::uv_read_start(stream, Some(on_uv_alloc), Some(on_uv_read))
@@ -359,25 +383,11 @@ impl LibUvStreamWrap {
     if stream.is_null() {
       return UV_EBADF;
     }
-    unsafe {
-      let data = (*stream).data as *mut CallbackData;
-      if !data.is_null() {
-        let stream = self.stream_ptr();
-        if stream.is_null() {
-          return UV_EBADF;
-        }
-
-        if self.reading_started.get() {
-          drop(Box::from_raw(data));
-          (*stream).data = std::ptr::null_mut();
-          self.reading_started.set(false);
-        }
-
-        uv_compat::uv_read_stop(stream)
-      } else {
-        UV_EBADF
-      }
+    if LibUvStreamWrap::stable_handle_data(stream).is_none() {
+      return UV_EBADF;
     }
+    self.reading_started.set(false);
+    Self::read_stop_for_stream(stream)
   }
 }
 
@@ -423,8 +433,8 @@ impl LibUvStreamWrap {
 /// `ArrayBuffer::new_backing_store_uninit`.
 ///
 /// # Safety
-/// `handle` must be a valid uv_handle_t whose `data` field points to
-/// CallbackData that was set up by readStart.
+/// `handle` must be a valid uv_handle_t whose `data` field points to the
+/// owning `StreamHandleData`.
 unsafe extern "C" fn on_uv_alloc(
   _handle: *mut uv_compat::uv_handle_t,
   suggested_size: usize,
@@ -459,38 +469,42 @@ unsafe extern "C" fn on_uv_alloc(
 ///
 /// # Safety
 /// `stream` must be a valid uv_stream_t whose `data` field points to
-/// a CallbackData set up by readStart. `buf` must be the buffer from
-/// on_uv_alloc. `stream.loop_.data` must be a raw `Global<Context>`
-/// pointer set by `register_uv_loop`.
+/// the owning `StreamHandleData`, whose active read key resolves to a
+/// registered callback state. `buf` must be the buffer from on_uv_alloc.
+/// `stream.loop_.data` must be a raw `Global<Context>` pointer set by
+/// `register_uv_loop`.
 unsafe extern "C" fn on_uv_read(
   stream: *mut uv_stream_t,
   nread: isize,
   buf: *const uv_buf_t,
 ) {
-  // SAFETY: stream is a valid uv_stream_t per the uv_read_cb contract.
-  let cb_data_ptr = unsafe { (*stream).data as *mut CallbackData };
-  if cb_data_ptr.is_null() {
+  let Some(handle_data_ptr) = LibUvStreamWrap::stable_handle_data(stream)
+  else {
     free_uv_buf(buf);
     return;
-  }
-  // SAFETY: cb_data_ptr is non-null and was set by read_start via Box::into_raw.
-  let cb_data = unsafe { &mut *cb_data_ptr };
+  };
+  // SAFETY: `uv_stream_t.data` points at the owning handle's stable
+  // `StreamHandleData` allocation while the native stream is alive.
+  let handle_data = unsafe { handle_data_ptr.as_ref() };
+  let Some(snapshot) = handle_data
+    .active_read
+    .get()
+    .and_then(|key| handle_data.read_callbacks.borrow().snapshot(key))
+  else {
+    free_uv_buf(buf);
+    return;
+  };
 
-  if let Some(interceptor) = cb_data.read_interceptor {
-    let owner = cb_data.owner;
-    let bytes_read = cb_data.bytes_read;
+  if let Some(interceptor) = snapshot.read_interceptor {
     if nread > 0 {
-      unsafe {
-        let counter = &*bytes_read;
-        counter.set(counter.get() + nread as u64);
-      }
+      snapshot
+        .bytes_read
+        .set(snapshot.bytes_read.get() + nread as u64);
     }
-    if nread < 0 && !owner.is_null() {
-      unsafe {
-        // Match libuv's EOF/error behavior: the underlying stream stops
-        // itself before higher-level listeners observe the terminal read.
-        (&*owner).read_stop_internal();
-      }
+    if nread < 0 {
+      // Match libuv's EOF/error behavior: the underlying stream stops
+      // itself before higher-level listeners observe the terminal read.
+      let _ = LibUvStreamWrap::read_stop_for_stream(stream);
     }
     unsafe {
       (interceptor.callback)(interceptor.ptr, stream, nread, buf);
@@ -498,23 +512,23 @@ unsafe extern "C" fn on_uv_read(
     return;
   }
 
-  let Some(ref stream_base_state) = cb_data.stream_base_state else {
+  let Some(stream_base_state) = snapshot.stream_base_state else {
     free_uv_buf(buf);
     return;
   };
-  let Some(ref onread_global) = cb_data.onread else {
+  let Some(onread_global) = snapshot.onread else {
     free_uv_buf(buf);
     return;
   };
-  let Some(ref handle_global) = cb_data.handle else {
+  let Some(handle_global) = snapshot.handle else {
     free_uv_buf(buf);
     return;
   };
 
   // Recover isolate + context from the uv_loop
-  // SAFETY: cb_data.isolate is the raw isolate pointer captured in read_start and is still valid.
+  // SAFETY: isolate is the raw isolate pointer captured in read_start and is still valid.
   let mut isolate =
-    unsafe { v8::Isolate::from_raw_isolate_ptr(cb_data.isolate) };
+    unsafe { v8::Isolate::from_raw_isolate_ptr(snapshot.isolate) };
   v8::scope!(let handle_scope, &mut isolate);
   // SAFETY: stream is a valid uv_stream_t per the uv_read_cb contract.
   let loop_ptr = unsafe { (*stream).loop_ };
@@ -534,7 +548,7 @@ unsafe extern "C" fn on_uv_read(
     free_uv_buf(buf);
     if nread < 0 {
       // Error/EOF path
-      let state_array = v8::Local::new(scope, stream_base_state);
+      let state_array = v8::Local::new(scope, &stream_base_state);
       state_array.set_index(
         scope,
         StreamBaseStateFields::ReadBytesOrError as u32,
@@ -546,8 +560,8 @@ unsafe extern "C" fn on_uv_read(
         v8::Integer::new(scope, 0).into(),
       );
 
-      let onread = v8::Local::new(scope, onread_global);
-      let recv = v8::Local::new(scope, handle_global);
+      let onread = v8::Local::new(scope, &onread_global);
+      let recv = v8::Local::new(scope, &handle_global);
       let undef = v8::undefined(scope);
       onread.call(scope, recv.into(), &[undef.into()]);
     }
@@ -555,11 +569,9 @@ unsafe extern "C" fn on_uv_read(
   }
 
   // Update bytes_read counter (mirrors Node's EmitRead in stream_base-inl.h)
-  // SAFETY: bytes_read is a pointer to a Cell<u64> in the LibUvStreamWrap which outlives the callback.
-  unsafe {
-    let counter = &*cb_data.bytes_read;
-    counter.set(counter.get() + nread as u64);
-  }
+  snapshot
+    .bytes_read
+    .set(snapshot.bytes_read.get() + nread as u64);
 
   // Successful read: wrap data in ArrayBuffer
   let nread_usize = nread as usize;
@@ -581,7 +593,7 @@ unsafe extern "C" fn on_uv_read(
   let ab = v8::ArrayBuffer::with_backing_store(scope, &backing_store.into());
 
   // Update stream_base_state
-  let state_array = v8::Local::new(scope, stream_base_state);
+  let state_array = v8::Local::new(scope, &stream_base_state);
   state_array.set_index(
     scope,
     StreamBaseStateFields::ReadBytesOrError as u32,
@@ -595,8 +607,8 @@ unsafe extern "C" fn on_uv_read(
 
   // Call onread(arrayBuffer) with handle as `this`
   // Matches Node's convention: nread is in streamBaseState[kReadBytesOrError].
-  let onread = v8::Local::new(scope, onread_global);
-  let recv = v8::Local::new(scope, handle_global);
+  let onread = v8::Local::new(scope, &onread_global);
+  let recv = v8::Local::new(scope, &handle_global);
   onread.call(scope, recv.into(), &[ab.into()]);
 }
 
@@ -629,19 +641,6 @@ unsafe extern "C" fn backing_store_deleter(
     // SAFETY: data was allocated via alloc(Layout::from_size_align(alloc_size, 1)) in on_uv_alloc.
     unsafe { std::alloc::dealloc(data as *mut u8, layout) };
   }
-}
-
-/// Data stored on uv_stream_t.data to bridge between C callbacks and JS.
-struct CallbackData {
-  owner: *const LibUvStreamWrap,
-  isolate: v8::UnsafeRawIsolatePtr,
-  onread: Option<v8::Global<v8::Function>>,
-  stream_base_state: Option<v8::Global<v8::Int32Array>>,
-  /// The JS handle object — used as `this` when calling onread
-  handle: Option<v8::Global<v8::Object>>,
-  /// Pointer to LibUvStreamWrap.bytes_read for updating from C callback
-  bytes_read: *const Cell<u64>,
-  read_interceptor: Option<ReadInterceptor>,
 }
 
 // ---------------------------------------------------------------------------

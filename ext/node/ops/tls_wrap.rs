@@ -46,8 +46,8 @@ use crate::ops::handle_wrap::HandleWrap;
 use crate::ops::handle_wrap::OwnedPtr;
 use crate::ops::handle_wrap::ProviderType;
 use crate::ops::stream_wrap::LibUvStreamWrap;
-use crate::ops::stream_wrap::ReadInterceptor;
 use crate::ops::stream_wrap::StreamBaseState;
+use crate::ops::stream_wrap_state::ReadInterceptor;
 use crate::ops::tls::NodeTlsState;
 
 // ---------------------------------------------------------------------------
@@ -208,10 +208,7 @@ enum UnderlyingStream {
   None,
   /// Real libuv stream (e.g. TCP). Read lifecycle is owned by the underlying
   /// LibUvStreamWrap; TLS only intercepts the resulting native read callbacks.
-  Uv {
-    owner: *const LibUvStreamWrap,
-    stream: *mut uv_stream_t,
-  },
+  Uv { stream: *mut uv_stream_t },
   /// JS-backed stream (e.g. Duplex wrapped via JSStreamSocket).
   /// Reads are injected from JS via receive(). Writes call back into JS.
   Js {
@@ -234,14 +231,14 @@ impl UnderlyingStream {
   #[allow(dead_code)]
   fn uv_stream_ptr(&self) -> *mut uv_stream_t {
     match self {
-      UnderlyingStream::Uv { stream, .. } => *stream,
+      UnderlyingStream::Uv { stream } => *stream,
       _ => std::ptr::null_mut(),
     }
   }
 
   fn loop_ptr(&self) -> *mut uv_compat::uv_loop_t {
     match self {
-      UnderlyingStream::Uv { stream, .. } => {
+      UnderlyingStream::Uv { stream } => {
         if stream.is_null() {
           std::ptr::null_mut()
         } else {
@@ -266,20 +263,6 @@ impl UnderlyingStream {
     }
   }
 
-  fn owner(&self) -> Option<&LibUvStreamWrap> {
-    match self {
-      UnderlyingStream::Uv { owner, .. } => {
-        if owner.is_null() {
-          None
-        } else {
-          // SAFETY: owner is a borrowed pointer to the attached native wrap
-          Some(unsafe { &**owner })
-        }
-      }
-      _ => None,
-    }
-  }
-
   fn read_stop(&self) {
     match self {
       UnderlyingStream::Uv { .. } => {
@@ -294,7 +277,7 @@ impl UnderlyingStream {
 
   fn write(&self, write_req: Box<EncryptedWriteReq>) -> (*mut uv_write_t, i32) {
     match self {
-      UnderlyingStream::Uv { stream, .. } => {
+      UnderlyingStream::Uv { stream } => {
         if stream.is_null() {
           return (std::ptr::null_mut(), UV_EBADF);
         }
@@ -324,7 +307,7 @@ impl UnderlyingStream {
 
   fn shutdown(&self) {
     match self {
-      UnderlyingStream::Uv { stream, .. } => {
+      UnderlyingStream::Uv { stream } => {
         if !stream.is_null() {
           let req = Box::new(uv_compat::new_shutdown());
           let req_ptr = Box::into_raw(req);
@@ -345,8 +328,8 @@ impl UnderlyingStream {
   }
 
   fn set_read_interceptor(&self, interceptor: Option<ReadInterceptor>) {
-    if let Some(owner) = self.owner() {
-      owner.set_read_interceptor(interceptor);
+    if let UnderlyingStream::Uv { stream } = self {
+      LibUvStreamWrap::set_read_interceptor_for_stream(*stream, interceptor);
     }
   }
 }
@@ -1420,10 +1403,7 @@ impl TLSWrap {
 
     let inner = unsafe { &mut *self.inner.as_mut_ptr() };
     let inner_ptr = inner as *mut TLSWrapInner as *mut std::ffi::c_void;
-    inner.underlying = UnderlyingStream::Uv {
-      owner: &tcp.base as *const LibUvStreamWrap,
-      stream,
-    };
+    inner.underlying = UnderlyingStream::Uv { stream };
     inner.underlying.set_read_interceptor(Some(ReadInterceptor {
       ptr: inner_ptr,
       callback: tls_read_interceptor_cb,
@@ -1551,9 +1531,10 @@ impl TLSWrap {
     let should_cycle;
     if inner.underlying.is_attached() && inner.started {
       should_cycle = !inner.enc_in.is_empty() || inner.has_buffered_cleartext;
-      if let Some(owner) = inner.underlying.owner() {
+      if let UnderlyingStream::Uv { stream } = &inner.underlying {
         let _ = op_state;
-        let start_result = owner.read_start_intercepted();
+        let start_result =
+          LibUvStreamWrap::read_start_intercepted_for_stream(*stream);
         if start_result != 0 {
           return start_result;
         }
@@ -1576,9 +1557,9 @@ impl TLSWrap {
   #[fast]
   fn read_stop(&self, scope: &mut v8::PinScope) -> i32 {
     let inner = unsafe { &*self.inner.as_mut_ptr() };
-    if let Some(owner) = inner.underlying.owner() {
+    if let UnderlyingStream::Uv { stream } = &inner.underlying {
       let _ = scope;
-      return owner.read_stop_internal();
+      return LibUvStreamWrap::read_stop_for_stream(*stream);
     }
     inner.underlying.read_stop();
     0

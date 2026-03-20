@@ -20,6 +20,7 @@ pub mod process;
 pub mod require;
 pub mod shell;
 pub mod stream_wrap;
+pub(crate) mod stream_wrap_state;
 pub mod tcp_wrap;
 pub mod tls;
 pub mod tls_wrap;
