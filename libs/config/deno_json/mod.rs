@@ -915,19 +915,11 @@ pub enum ConfigFileReadErrorKind {
     source: std::io::Error,
   },
   #[class(type)]
-  #[error("Unable to parse config file JSON {specifier}.")]
-  Parse {
-    specifier: Url,
-    #[source]
-    source: Box<jsonc_parser::errors::ParseError>,
-  },
-  #[class(inherit)]
   #[error("Failed deserializing config file '{specifier}'.")]
   Deserialize {
     specifier: Url,
     #[source]
-    #[inherit]
-    source: serde_json::Error,
+    source: Box<jsonc_parser::errors::ParseError>,
   },
   #[class(type)]
   #[error("Config file JSON should be an object '{specifier}'.")]
@@ -1103,7 +1095,7 @@ pub struct DeployConfig {
   pub files: FilePatterns,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ConfigFileJson {
   pub compiler_options: Option<Value>,
@@ -1422,43 +1414,21 @@ impl ConfigFile {
   }
 
   pub fn new(text: &str, specifier: Url) -> Result<Self, ConfigFileReadError> {
-    let jsonc = match jsonc_parser::parse_to_ast(
-      text,
-      &Default::default(),
-      &Default::default(),
-    ) {
-      Ok(ParseResult {
-        value: Some(value @ jsonc_parser::ast::Value::Object(_)),
-        ..
-      }) => Value::from(value),
-      Ok(ParseResult { value: None, .. }) => {
-        json!({})
-      }
-      Err(e) => {
-        return Err(
-          ConfigFileReadErrorKind::Parse {
-            specifier,
-            source: Box::new(e),
+    let json: Option<ConfigFileJson> =
+      jsonc_parser::parse_to_serde_value(text, &Default::default()).map_err(
+        |err| {
+          ConfigFileReadErrorKind::Deserialize {
+            specifier: specifier.clone(),
+            source: Box::new(err),
           }
-          .into_box(),
-        );
-      }
-      _ => {
-        return Err(
-          ConfigFileReadErrorKind::NotObject { specifier }.into_box(),
-        );
-      }
-    };
-    let json: ConfigFileJson =
-      serde_json::from_value(jsonc).map_err(|err| {
-        ConfigFileReadErrorKind::Deserialize {
-          specifier: specifier.clone(),
-          source: err,
-        }
-        .into_box()
-      })?;
+          .into_box()
+        },
+      )?;
 
-    Ok(Self { specifier, json })
+    Ok(Self {
+      specifier,
+      json: json.unwrap_or_default(),
+    })
   }
 
   pub fn dir_path(&self) -> PathBuf {
