@@ -77,6 +77,24 @@ pub type UvBuf = uv_buf_t;
 pub type UvConnect = uv_connect_t;
 pub type UvShutdown = uv_shutdown_t;
 
+/// Clear `UV_HANDLE_ACTIVE` when a TCP handle no longer has any pending
+/// read/write/connect/listen/shutdown work keeping it alive.
+///
+/// # Safety
+/// `tcp` must be a valid pointer to an initialized `uv_tcp_t`.
+pub(crate) unsafe fn maybe_clear_tcp_active(tcp: *mut uv_tcp_t) {
+  unsafe {
+    if !(*tcp).internal_reading
+      && (*tcp).internal_connection_cb.is_none()
+      && (*tcp).internal_connect.is_none()
+      && (*tcp).internal_write_queue.is_empty()
+      && (*tcp).internal_shutdown.is_none()
+    {
+      (*tcp).flags &= !UV_HANDLE_ACTIVE;
+    }
+  }
+}
+
 /// ### Safety
 /// `stream` must be a valid pointer to an initialized stream handle
 /// (`uv_tcp_t` or `uv_tty_t`, cast as `uv_stream_t`).
@@ -136,12 +154,7 @@ pub unsafe fn uv_read_stop(stream: *mut uv_stream_t) -> c_int {
     tcp_ref.internal_reading = false;
     tcp_ref.internal_alloc_cb = None;
     tcp_ref.internal_read_cb = None;
-    if tcp_ref.internal_connection_cb.is_none()
-      && tcp_ref.internal_connect.is_none()
-      && tcp_ref.internal_write_queue.is_empty()
-    {
-      tcp_ref.flags &= !UV_HANDLE_ACTIVE;
-    }
+    maybe_clear_tcp_active(tcp);
   }
   0
 }
@@ -404,6 +417,13 @@ pub(crate) unsafe fn complete_shutdown(
   if let Some(cb) = pending.cb {
     // SAFETY: req and cb set by C caller via uv_shutdown.
     unsafe { cb(pending.req, status) };
+  }
+
+  // `uv_shutdown()` marks the handle active while the deferred shutdown is
+  // in flight. Once it completes, drop the active bit if nothing else keeps
+  // the stream alive.
+  unsafe {
+    maybe_clear_tcp_active(tcp);
   }
 }
 

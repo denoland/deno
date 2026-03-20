@@ -972,6 +972,7 @@ pub(crate) unsafe fn poll_tcp_handle(
             Ok(0) => {
               read_cb(tcp_ptr as *mut uv_stream_t, UV_EOF as isize, &buf);
               (*tcp_ptr).internal_reading = false;
+              crate::uv_compat::stream::maybe_clear_tcp_active(tcp_ptr);
               break;
             }
             Ok(n) => {
@@ -1000,6 +1001,7 @@ pub(crate) unsafe fn poll_tcp_handle(
               let status = io_error_to_uv(e);
               read_cb(tcp_ptr as *mut uv_stream_t, status as isize, &buf);
               (*tcp_ptr).internal_reading = false;
+              crate::uv_compat::stream::maybe_clear_tcp_active(tcp_ptr);
               break;
             }
           }

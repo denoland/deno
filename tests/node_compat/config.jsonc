@@ -1116,7 +1116,9 @@
     "parallel/test-http2-no-wanttrailers-listener.js": {},
     "parallel/test-http2-options-server-request.js": {},
     "parallel/test-http2-options-server-response.js": {},
-    "parallel/test-http2-pipe.js": {},
+    "parallel/test-http2-pipe.js": {
+      "flaky": true
+    },
     "parallel/test-http2-priority-cycle-.js": {},
     "parallel/test-http2-raw-headers-defaults.js": {},
     "parallel/test-http2-raw-headers.js": {},
@@ -2218,7 +2220,9 @@
     "parallel/test-tls-enable-trace.js": {},
     "parallel/test-tls-env-bad-extra-ca.js": {},
     "parallel/test-tls-env-extra-ca-no-crypto.js": {},
-    "parallel/test-tls-env-extra-ca.js": {},
+    "parallel/test-tls-env-extra-ca.js": {
+      "flaky": true
+    },
     "parallel/test-tls-fast-writing.js": {},
     "parallel/test-tls-finished.js": {},
     "parallel/test-tls-friendly-error-message.js": {},

@@ -46,6 +46,7 @@ use crate::ops::handle_wrap::HandleWrap;
 use crate::ops::handle_wrap::OwnedPtr;
 use crate::ops::handle_wrap::ProviderType;
 use crate::ops::stream_wrap::LibUvStreamWrap;
+use crate::ops::stream_wrap::ReadInterceptor;
 use crate::ops::stream_wrap::StreamBaseState;
 use crate::ops::tls::NodeTlsState;
 
@@ -205,11 +206,11 @@ const CLEAR_OUT_CHUNK_SIZE: usize = 16384;
 enum UnderlyingStream {
   /// Not yet attached.
   None,
-  /// Real libuv stream (e.g. TCP). I/O goes through uv_read_start / uv_write.
+  /// Real libuv stream (e.g. TCP). Read lifecycle is owned by the underlying
+  /// LibUvStreamWrap; TLS only intercepts the resulting native read callbacks.
   Uv {
+    owner: *const LibUvStreamWrap,
     stream: *mut uv_stream_t,
-    original_data: *mut std::ffi::c_void,
-    cb_data: Option<Box<TlsCallbackData>>,
   },
   /// JS-backed stream (e.g. Duplex wrapped via JSStreamSocket).
   /// Reads are injected from JS via receive(). Writes call back into JS.
@@ -255,17 +256,8 @@ impl UnderlyingStream {
 
   fn read_start(&mut self) {
     match self {
-      UnderlyingStream::Uv { stream, .. } => {
-        if !stream.is_null() {
-          // SAFETY: stream is a valid libuv stream handle
-          unsafe {
-            uv_compat::uv_read_start(
-              *stream,
-              Some(tls_alloc_cb),
-              Some(tls_read_cb),
-            );
-          }
-        }
+      UnderlyingStream::Uv { .. } => {
+        // Native reads are owned by the attached LibUvStreamWrap.
       }
       UnderlyingStream::Js { .. } => {
         // JS stream: reads are pushed via receive(), no action needed
@@ -274,15 +266,24 @@ impl UnderlyingStream {
     }
   }
 
+  fn owner(&self) -> Option<&LibUvStreamWrap> {
+    match self {
+      UnderlyingStream::Uv { owner, .. } => {
+        if owner.is_null() {
+          None
+        } else {
+          // SAFETY: owner is a borrowed pointer to the attached native wrap
+          Some(unsafe { &**owner })
+        }
+      }
+      _ => None,
+    }
+  }
+
   fn read_stop(&self) {
     match self {
-      UnderlyingStream::Uv { stream, .. } => {
-        if !stream.is_null() {
-          // SAFETY: stream is a valid libuv stream handle
-          unsafe {
-            uv_compat::uv_read_stop(*stream);
-          }
-        }
+      UnderlyingStream::Uv { .. } => {
+        // Native reads are owned by the attached LibUvStreamWrap.
       }
       UnderlyingStream::Js { .. } => {
         // JS stream: no-op, JS side controls read flow
@@ -343,54 +344,11 @@ impl UnderlyingStream {
     }
   }
 
-  /// Install TLS callback data on the stream's data pointer (Uv only).
-  fn install_cb_data(&mut self, tls_wrap: *mut TLSWrapInner) {
-    if let UnderlyingStream::Uv {
-      stream, cb_data, ..
-    } = self
-    {
-      if !stream.is_null() {
-        if let Some(cb) = cb_data {
-          let cb_data_ptr =
-            &**cb as *const TlsCallbackData as *mut std::ffi::c_void;
-          // SAFETY: stream is non-null (checked above)
-          unsafe {
-            (**stream).data = cb_data_ptr;
-          }
-        }
-      }
-    }
-    // For Js streams: cb_data is stored locally, no need to install
-    let _ = tls_wrap;
-  }
-
-  /// Restore original data pointer on the underlying stream (Uv only).
-  fn restore_data(&self) {
-    if let UnderlyingStream::Uv {
-      stream,
-      original_data,
-      ..
-    } = self
-    {
-      if !stream.is_null() {
-        // SAFETY: stream is non-null (checked above)
-        unsafe {
-          (**stream).data = *original_data;
-        }
-      }
+  fn set_read_interceptor(&self, interceptor: Option<ReadInterceptor>) {
+    if let Some(owner) = self.owner() {
+      owner.set_read_interceptor(interceptor);
     }
   }
-}
-
-// ---------------------------------------------------------------------------
-// CallbackData stored on the underlying stream's data pointer.
-// TLSWrap replaces the original data pointer to intercept reads.
-// ---------------------------------------------------------------------------
-
-struct TlsCallbackData {
-  /// Raw pointer back to the TLSWrap. Valid for the lifetime of the
-  /// TLSWrap (we null it out on destroy).
-  tls_wrap: *mut TLSWrapInner,
 }
 
 // ---------------------------------------------------------------------------
@@ -1145,42 +1103,21 @@ impl TLSWrapInner {
 // C callbacks for intercepting the underlying stream
 // ---------------------------------------------------------------------------
 
-unsafe extern "C" fn tls_alloc_cb(
-  _handle: *mut uv_compat::uv_handle_t,
-  suggested_size: usize,
-  buf: *mut uv_buf_t,
-) {
-  // SAFETY: buf pointer is valid and provided by libuv; layout size comes from libuv's suggested_size
-  unsafe {
-    let layout =
-      std::alloc::Layout::from_size_align(suggested_size, 1).unwrap();
-    let ptr = std::alloc::alloc(layout);
-    if ptr.is_null() {
-      (*buf).base = std::ptr::null_mut();
-      (*buf).len = 0;
-      return;
-    }
-    (*buf).base = ptr as *mut c_char;
-    (*buf).len = suggested_size;
-  }
-}
-
 /// Called when encrypted data arrives from the underlying stream.
-/// We buffer it and feed to rustls.
-unsafe extern "C" fn tls_read_cb(
-  stream: *mut uv_stream_t,
+/// The underlying LibUvStreamWrap owns the native read lifecycle and forwards
+/// raw read events here when TLS is registered as its read interceptor.
+unsafe fn tls_read_interceptor_cb(
+  tls_wrap: *mut std::ffi::c_void,
+  _stream: *mut uv_stream_t,
   nread: isize,
   buf: *const uv_buf_t,
 ) {
-  // SAFETY: stream, buf, and cb_data pointers are valid; set up during attach/start
   unsafe {
-    let cb_data_ptr = (*stream).data as *mut TlsCallbackData;
-    if cb_data_ptr.is_null() {
+    if tls_wrap.is_null() {
       free_uv_buf(buf);
       return;
     }
-    let cb_data = &*cb_data_ptr;
-    let inner = &mut *cb_data.tls_wrap;
+    let inner = &mut *(tls_wrap as *mut TLSWrapInner);
 
     if inner.eof {
       free_uv_buf(buf);
@@ -1222,7 +1159,7 @@ unsafe extern "C" fn tls_read_cb(
 }
 
 fn free_uv_buf(buf: *const uv_buf_t) {
-  // SAFETY: buf was allocated in tls_alloc_cb with matching layout
+  // SAFETY: buf was allocated by stream_wrap::on_uv_alloc with matching layout
   unsafe {
     if !(*buf).base.is_null() && (*buf).len > 0 {
       let layout = std::alloc::Layout::from_size_align((*buf).len, 1).unwrap();
@@ -1368,8 +1305,7 @@ impl TLSWrap {
     // invoke_queued needs scope/isolate from inner, and may re-enter JS.
     inner.invoke_queued(UV_ECANCELED);
 
-    // Restore original data pointer on underlying stream
-    inner.underlying.restore_data();
+    inner.underlying.set_read_interceptor(None);
     inner.tls_conn = None;
     inner.js_handle = None;
     inner.onread = None;
@@ -1483,16 +1419,15 @@ impl TLSWrap {
     }
 
     let inner = unsafe { &mut *self.inner.as_mut_ptr() };
-    // SAFETY: stream is non-null (checked above), scope is valid for the current isolate
-    let original_data = unsafe { (*stream).data };
-    let cb_data = Box::new(TlsCallbackData {
-      tls_wrap: inner as *mut TLSWrapInner,
-    });
+    let inner_ptr = inner as *mut TLSWrapInner as *mut std::ffi::c_void;
     inner.underlying = UnderlyingStream::Uv {
+      owner: &tcp.base as *const LibUvStreamWrap,
       stream,
-      original_data,
-      cb_data: Some(cb_data),
     };
+    inner.underlying.set_read_interceptor(Some(ReadInterceptor {
+      ptr: inner_ptr,
+      callback: tls_read_interceptor_cb,
+    }));
     inner.isolate = Some(unsafe { scope.as_raw_isolate_ptr() });
 
     // Get stream_base_state from OpState
@@ -1570,12 +1505,9 @@ impl TLSWrap {
       }
     }
 
-    // Now install our callback data on the stream (deferred from attach()
-    // because connect_cb needs the original StreamHandleData pointer)
-    let inner_ptr: *mut TLSWrapInner = inner as *mut TLSWrapInner;
-    inner.underlying.install_cb_data(inner_ptr);
-
-    // Start reading from the underlying stream (both client and server need this)
+    // Start reading is driven by TLSSocket.read(0) -> TLSWrap.read_start(),
+    // which mirrors Node's initRead timing and gives JS a chance to attach
+    // listeners first.
     inner.underlying.read_start();
 
     // For client mode, initiate handshake by cycling.
@@ -1598,6 +1530,7 @@ impl TLSWrap {
     &self,
     #[this] this: v8::Global<v8::Object>,
     scope: &mut v8::PinScope,
+    op_state: &mut OpState,
   ) -> i32 {
     let inner = unsafe { &mut *self.inner.as_mut_ptr() };
 
@@ -1618,7 +1551,15 @@ impl TLSWrap {
     let should_cycle;
     if inner.underlying.is_attached() && inner.started {
       should_cycle = !inner.enc_in.is_empty() || inner.has_buffered_cleartext;
-      inner.underlying.read_start();
+      if let Some(owner) = inner.underlying.owner() {
+        let _ = op_state;
+        let start_result = owner.read_start_intercepted();
+        if start_result != 0 {
+          return start_result;
+        }
+      } else {
+        inner.underlying.read_start();
+      }
     } else {
       should_cycle = false;
     }
@@ -1633,8 +1574,12 @@ impl TLSWrap {
 
   /// ReadStop
   #[fast]
-  fn read_stop(&self) -> i32 {
+  fn read_stop(&self, scope: &mut v8::PinScope) -> i32 {
     let inner = unsafe { &*self.inner.as_mut_ptr() };
+    if let Some(owner) = inner.underlying.owner() {
+      let _ = scope;
+      return owner.read_stop_internal();
+    }
     inner.underlying.read_stop();
     0
   }
