@@ -1114,19 +1114,6 @@ async fn op_spawn_wait(
   Ok(result)
 }
 
-/// Helper to get child process ID as u32. On Windows with some Rust
-/// versions, `Child::id()` may return `Option<u32>`.
-fn std_child_id(child: &std::process::Child) -> u32 {
-  #[cfg(windows)]
-  {
-    child.id().unwrap_or(0)
-  }
-  #[cfg(not(windows))]
-  {
-    child.id()
-  }
-}
-
 #[op2(stack_trace)]
 fn op_spawn_sync(
   state: &mut OpState,
@@ -1144,7 +1131,7 @@ fn op_spawn_sync(
     command: command.get_program().to_string_lossy().into_owned(),
     error: Box::new(e.into()),
   })?;
-  let pid = std_child_id(&child);
+  let pid = child.id();
   if let Some(input) = input {
     let mut stdin = child.stdin.take().ok_or_else(|| {
       ProcessError::Io(std::io::Error::other("stdin is not available"))
@@ -1158,47 +1145,51 @@ fn op_spawn_sync(
   // cancelled promptly when the child exits before the deadline.
   let killed_by_timeout = Arc::new(AtomicBool::new(false));
   let cancel = Arc::new((Mutex::new(false), Condvar::new()));
-  if let Some(timeout_ms) = timeout {
-    if timeout_ms > 0 {
-      let child_id = std_child_id(&child);
-      let killed = killed_by_timeout.clone();
-      let cancel2 = cancel.clone();
-      let kill_signal = kill_signal_str.as_deref().unwrap_or("SIGTERM");
+  if let Some(timeout_ms) = timeout
+    && timeout_ms > 0
+  {
+    let child_id = child.id();
+    let killed = killed_by_timeout.clone();
+    let cancel2 = cancel.clone();
+    let kill_signal = kill_signal_str.as_deref().unwrap_or("SIGTERM");
+    #[cfg(unix)]
+    let signal = deno_signals::signal_str_to_int(kill_signal)
+      .ok()
+      .or_else(|| kill_signal.parse::<i32>().ok())
+      .unwrap_or(libc::SIGTERM);
+    std::thread::spawn(move || {
+      let (lock, cvar) = &*cancel2;
+      let guard = lock.lock().unwrap();
+      let timeout = std::time::Duration::from_millis(timeout_ms);
+      let (guard, wait_result) = cvar
+        .wait_timeout_while(guard, timeout, |cancelled| !*cancelled)
+        .unwrap();
+      // If cancelled or woken before the timeout, the child already exited.
+      if *guard || !wait_result.timed_out() {
+        return;
+      }
+      killed.store(true, Ordering::SeqCst);
       #[cfg(unix)]
-      let signal = deno_signals::signal_str_to_int(kill_signal)
-        .ok()
-        .or_else(|| kill_signal.parse::<i32>().ok())
-        .unwrap_or(libc::SIGTERM);
-      std::thread::spawn(move || {
-        let (lock, cvar) = &*cancel2;
-        let guard = lock.lock().unwrap();
-        let timeout = std::time::Duration::from_millis(timeout_ms);
-        let (guard, wait_result) = cvar
-          .wait_timeout_while(guard, timeout, |cancelled| !*cancelled)
-          .unwrap();
-        // If cancelled or woken before the timeout, the child already exited.
-        if *guard || !wait_result.timed_out() {
-          return;
+      // SAFETY: child_id is a valid PID from the spawned child process.
+      unsafe {
+        libc::kill(child_id as i32, signal);
+      }
+      #[cfg(windows)]
+      // SAFETY: child_id is a valid PID from the spawned child process.
+      // OpenProcess/TerminateProcess/CloseHandle are safe to call with
+      // valid arguments.
+      unsafe {
+        let handle = windows_sys::Win32::System::Threading::OpenProcess(
+          windows_sys::Win32::System::Threading::PROCESS_TERMINATE,
+          false.into(),
+          child_id,
+        );
+        if !handle.is_null() {
+          windows_sys::Win32::System::Threading::TerminateProcess(handle, 1);
+          windows_sys::Win32::Foundation::CloseHandle(handle);
         }
-        killed.store(true, Ordering::SeqCst);
-        #[cfg(unix)]
-        unsafe {
-          libc::kill(child_id as i32, signal);
-        }
-        #[cfg(windows)]
-        unsafe {
-          let handle = windows_sys::Win32::System::Threading::OpenProcess(
-            windows_sys::Win32::System::Threading::PROCESS_TERMINATE,
-            0i32,
-            child_id,
-          );
-          if handle != 0 {
-            windows_sys::Win32::System::Threading::TerminateProcess(handle, 1);
-            windows_sys::Win32::Foundation::CloseHandle(handle);
-          }
-        }
-      });
-    }
+      }
+    });
   }
 
   let output =
