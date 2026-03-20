@@ -7,7 +7,9 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { Socket } from "node:net";
+import { nextTick } from "ext:deno_node/_next_tick.ts";
 import { codeMap, UV_ECANCELED } from "ext:deno_node/internal_binding/uv.ts";
+import { setImmediate } from "node:timers";
 
 const kCurrentWriteRequest = Symbol("kCurrentWriteRequest");
 const kCurrentShutdownRequest = Symbol("kCurrentShutdownRequest");
@@ -142,7 +144,7 @@ class JSStreamSocket extends Socket {
 
     const handle = this._handle;
 
-    process.nextTick(() => {
+    nextTick(() => {
       this.stream.end(() => {
         this.finishShutdown(handle, 0);
       });
@@ -165,6 +167,7 @@ class JSStreamSocket extends Socket {
     }
 
     const handle = this._handle;
+    // deno-lint-ignore no-this-alias
     const self = this;
 
     let pending = bufs.length;

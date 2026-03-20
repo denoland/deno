@@ -523,12 +523,11 @@ pub unsafe fn uv_tcp_getsockname(
     }
     // Query the pre-created socket's actual bound address. This correctly
     // resolves ephemeral port 0 to the real port assigned by the OS.
-    if let Some(ref socket) = (*tcp).internal_socket {
-      if let Ok(addr) = socket.local_addr() {
+    if let Some(ref socket) = (*tcp).internal_socket
+      && let Ok(addr) = socket.local_addr() {
         std_to_sockaddr(addr, name, namelen);
         return 0;
       }
-    }
     if let Some(addr) = (*tcp).internal_bind_addr {
       std_to_sockaddr(addr, name, namelen);
       return 0;
