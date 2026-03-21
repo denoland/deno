@@ -328,13 +328,20 @@ function patchEventEmitter() {
     const shouldEmitError = type === "error" &&
       this.listenerCount(type) > 0;
 
-    // Just call original `emit` if current EE instance has `error`
-    // handler, there's no active domain or this is process
-    if (
-      shouldEmitError || domain === null || domain === undefined ||
-      this === process
-    ) {
+    // No domain on this emitter or this is process - just call original emit
+    if (domain === null || domain === undefined || this === process) {
       return ReflectApply(eventEmit, this, args);
+    }
+
+    // If the emitter has an error handler and a domain, wrap with
+    // domain.enter()/exit() to preserve domain context in the handler.
+    // Only exit on success - on error, the domainUncaughtExceptionHandler
+    // handles cleanup (same pattern as timer async hooks).
+    if (shouldEmitError) {
+      domain.enter();
+      const ret = ReflectApply(eventEmit, this, args);
+      domain.exit();
+      return ret;
     }
 
     if (type === "error") {
