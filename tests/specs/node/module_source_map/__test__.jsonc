@@ -1,4 +1,5 @@
 {
+  "tempDir": true,
   "tests": {
     "source_map_class": {
       "args": "run --allow-read main.mjs",
