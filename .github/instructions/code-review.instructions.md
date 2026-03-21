@@ -36,7 +36,7 @@ Do NOT comment on:
   flakiness
 - Minor documentation wording unless it is actively misleading
 - Hypothetical edge cases that cannot realistically occur (e.g. a process having
-  >256 direct children)
+  > 256 direct children)
 
 ## Deno-specific conventions
 
