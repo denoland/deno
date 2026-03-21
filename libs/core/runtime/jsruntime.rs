@@ -1124,42 +1124,19 @@ impl JsRuntime {
       js_runtime.files_loaded_from_fs_during_snapshot = files_loaded;
     }
 
-    // Initialize a uv loop for the libuv compat layer. Every runtime
-    // gets one — it's needed for setImmediate, TCP, timers, etc.
-    // Extensions (e.g. ext/node) may have already created one during
-    // their state init; if so, register that one instead.
+    // Every runtime gets a uv loop for the libuv compat layer (timers,
+    // I/O, setImmediate, etc.). Stored in both OpState (for ext/node ops
+    // that need the raw pointer) and ContextState (for event loop phases).
     if !will_snapshot {
-      let op_state = js_runtime.inner.state.op_state.borrow();
-      let has_existing_loop = op_state
-        .try_borrow::<Box<uv_compat::UvLoop>>()
-        .is_some();
-      drop(op_state);
-
-      if has_existing_loop {
-        let op_state = js_runtime.inner.state.op_state.borrow();
-        let uv_loop = op_state.borrow::<Box<uv_compat::UvLoop>>();
-        let loop_ptr: *mut uv_compat::UvLoop =
-          &**uv_loop as *const _ as *mut _;
-        drop(op_state);
-        // SAFETY: loop_ptr is valid, initialized by the extension.
-        unsafe { js_runtime.register_uv_loop(loop_ptr) };
-      } else {
-        // SAFETY: zeroed memory is valid for UvLoop before uv_loop_init.
-        let mut uv_loop = Box::new(unsafe {
-          std::mem::zeroed::<uv_compat::UvLoop>()
-        });
-        // SAFETY: uv_loop points to valid zeroed memory.
-        unsafe { uv_compat::uv_loop_init(&mut *uv_loop) };
-        let loop_ptr: *mut uv_compat::UvLoop = &mut *uv_loop;
-        // SAFETY: loop_ptr is valid and initialized.
-        unsafe { js_runtime.register_uv_loop(loop_ptr) };
-        js_runtime
-          .inner
-          .state
-          .op_state
-          .borrow_mut()
-          .put(uv_loop);
-      }
+      // SAFETY: zeroed memory is valid for uv_loop_t before uv_loop_init.
+      let mut uv_loop =
+        Box::new(unsafe { std::mem::zeroed::<uv_compat::UvLoop>() });
+      // SAFETY: uv_loop points to valid zeroed memory.
+      unsafe { uv_compat::uv_loop_init(&mut *uv_loop) };
+      let loop_ptr: *mut uv_compat::UvLoop = &mut *uv_loop;
+      // SAFETY: loop_ptr is valid and initialized.
+      unsafe { js_runtime.register_uv_loop(loop_ptr) };
+      js_runtime.inner.state.op_state.borrow_mut().put(uv_loop);
     }
 
     // ...and we've made it; `JsRuntime` is ready to execute user code.
@@ -1739,10 +1716,6 @@ impl JsRuntime {
   ) {
     let realm = &self.inner.main_realm;
     let context_state = &realm.0.context_state;
-    // No-op if already registered (e.g. by JsRuntime::new_inner).
-    if context_state.uv_loop_inner.get().is_some() {
-      return;
-    }
     let inner_ptr = unsafe { uv_compat::uv_loop_get_inner_ptr(loop_ptr) };
     let uv_inner = inner_ptr as *const uv_compat::UvLoopInner;
     context_state.uv_loop_inner.set(Some(uv_inner));

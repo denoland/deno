@@ -618,12 +618,8 @@ deno_core::extension!(deno_node,
 
     state.put(AsyncId::default());
 
-    // Initialize a uv_loop_t for libuv compat layer (used by TCP/HTTP2)
-    // SAFETY: zeroed memory is valid for UvLoop before uv_loop_init
-    let mut uv_loop = Box::new(unsafe { std::mem::zeroed::<deno_core::uv_compat::UvLoop>() });
-    // SAFETY: uv_loop points to valid zeroed memory ready for initialization
-    unsafe { deno_core::uv_compat::uv_loop_init(&mut *uv_loop) };
-    state.put(uv_loop);
+    // The uv loop is auto-created by JsRuntime::new_inner and stored
+    // in OpState. No need to create one here.
 
   },
   global_template_middleware = global_template_middleware,
