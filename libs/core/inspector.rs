@@ -257,8 +257,11 @@ impl JsRuntimeInspectorState {
       loop {
         // Do one "handshake" with a newly connected session at a time.
         if let Some(session) = sessions.handshake.take() {
+          let id = sessions.next_local_id;
+          sessions.next_local_id += 1;
           let mut fut =
-            pump_inspector_session_messages(session.clone()).boxed_local();
+            pump_inspector_session_messages(session.clone(), id)
+              .boxed_local();
           // Only add to established if the future is still pending.
           // If the channel is already closed (e.g., worker terminated quickly),
           // the future may complete immediately on first poll. Pushing a
@@ -267,8 +270,6 @@ impl JsRuntimeInspectorState {
           if fut.poll_unpin(cx).is_pending() {
             sessions.established.push(fut);
           }
-          let id = sessions.next_local_id;
-          sessions.next_local_id += 1;
           sessions.local.insert(id, session);
 
           // Track the first session as the main session for Target events
@@ -469,7 +470,11 @@ impl JsRuntimeInspectorState {
 
         // Poll established sessions.
         match sessions.established.poll_next_unpin(cx) {
-          Poll::Ready(Some(())) => {
+          Poll::Ready(Some(completed_id)) => {
+            // A session's pump future completed (WS disconnected).
+            // Remove it from local so sessions_state() no longer
+            // reports it as active.
+            sessions.local.remove(&completed_id);
             continue;
           }
           Poll::Ready(None) => {
@@ -1221,7 +1226,7 @@ impl v8::inspector::ChannelImpl for InspectorSessionState {
 
   fn flush_protocol_notifications(&self) {}
 }
-type InspectorSessionPumpMessages = Pin<Box<dyn Future<Output = ()>>>;
+type InspectorSessionPumpMessages = Pin<Box<dyn Future<Output = i32>>>;
 /// Helper to extract a string param from CDP params
 fn get_str_param(params: &Option<serde_json::Value>, key: &str) -> String {
   params
@@ -1265,7 +1270,10 @@ impl TargetSession {
   }
 }
 
-async fn pump_inspector_session_messages(session: Rc<InspectorSession>) {
+async fn pump_inspector_session_messages(
+  session: Rc<InspectorSession>,
+  session_id: i32,
+) -> i32 {
   let mut rx = session.state.rx.borrow_mut().take().unwrap();
 
   while let Some(msg) = rx.next().await {
@@ -1391,6 +1399,7 @@ async fn pump_inspector_session_messages(session: Rc<InspectorSession>) {
       });
     }
   }
+  session_id
 }
 
 /// A local inspector session that can be used to send and receive protocol messages directly on
