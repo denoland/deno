@@ -173,6 +173,7 @@ class Stdin {
   }
 
   setRaw(mode, options = { __proto__: null }) {
+    if (!this.isTerminal()) return;
     const cbreak = !!(options.cbreak ?? false);
     op_set_raw(this.#rid, mode, cbreak);
   }
