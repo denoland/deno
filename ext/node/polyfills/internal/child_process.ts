@@ -71,6 +71,7 @@ import { Pipe, socketType } from "ext:deno_node/internal_binding/pipe_wrap.ts";
 import { Server as NetServer, Socket } from "node:net";
 import { Socket as DgramSocket } from "node:dgram";
 import {
+  kArgv0,
   kExtraStdio,
   kInputOption,
   kIpc,
@@ -365,7 +366,9 @@ export class ChildProcess extends EventEmitter {
     ] = normalizedStdio;
 
     // buildCommand handles Node.js to Deno CLI arg translation when spawning Deno
-    // Note: args[0] is argv0 (prepended by normalizeSpawnArguments), so we skip it
+    // args[0] is argv0 (prepended by normalizeSpawnArguments). Capture it
+    // before slicing so we can pass it via kArgv0 for OS-level argv[0].
+    const argv0 = args.length > 0 ? args[0] : command;
     const [cmd, cmdArgs, includeNpmProcessState] = buildCommand(
       command,
       args.slice(1),
@@ -402,6 +405,7 @@ export class ChildProcess extends EventEmitter {
         [kExtraStdio]: extraStdioNormalized,
         [kNeedsNpmProcessState]: options[kNeedsNpmProcessState] ||
           includeNpmProcessState,
+        [kArgv0]: argv0 !== cmd ? argv0 : undefined,
       }).spawn();
       this.pid = this.#process.pid;
 
@@ -1649,7 +1653,9 @@ export function spawnSync(
     _channel, // TODO(kt3k): handle this correctly
   ] = normalizeStdioOption(stdio);
   let includeNpmProcessState = false;
-  // Skip argv0 when calling buildCommand (same as #spawnInternal)
+  // args[0] is argv0 (prepended by normalizeSpawnArguments). Capture it
+  // before slicing so we can pass it via kArgv0 for OS-level argv[0].
+  const argv0 = args && args.length > 0 ? args[0] : command;
   const argsToProcess = args && args.length > 0 ? args.slice(1) : [];
   [command, args, includeNpmProcessState] = buildCommand(
     command,
@@ -1664,6 +1670,7 @@ export function spawnSync(
       args,
       cwd,
       env: mapValues(env, (value) => value.toString()),
+      [kArgv0]: argv0 !== command ? argv0 : undefined,
       stdout: toDenoStdio(stdout_),
       stderr: toDenoStdio(stderr_),
       stdin: stdin_ == "inherit" ? "inherit" : "null",
