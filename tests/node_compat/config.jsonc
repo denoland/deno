@@ -898,9 +898,9 @@
     "parallel/test-fs-realpath-pipe.js": {},
     "parallel/test-fs-rename-type-check.js": {},
     "parallel/test-fs-rm.js": {
-    "parallel/test-fs-rmSync-special-char.js": {},
-    "parallel/test-fs-rmdir-throws-not-found.js": {},
-    "parallel/test-fs-rmdir-throws-on-file.js": {},
+      "parallel/test-fs-rmSync-special-char.js": {},
+      "parallel/test-fs-rmdir-throws-not-found.js": {},
+      "parallel/test-fs-rmdir-throws-on-file.js": {},
       "darwin": false,
       "windows": false
     },

@@ -86,7 +86,7 @@ const lchmodPromise: (
   : async (path: string | Buffer | URL, mode: number) => {
     path = getValidatedPathToString(path);
     mode = parseFileMode(mode, "mode");
-    return op_node_lchmod(path, mode);
+    return await op_node_lchmod(path, mode);
   };
 
 const lchownPromise = promisify(lchown) as (
