@@ -929,7 +929,11 @@
     "parallel/test-fs-util-validateoffsetlength.js": {},
     "parallel/test-fs-utimes-y2K38.js": {},
     "parallel/test-fs-utimes.js": {},
+    "parallel/test-fs-whatwg-url.js": {},
+    "parallel/test-fs-write-buffer-large.js": {},
+    "parallel/test-fs-write-buffer.js": {},
     "parallel/test-fs-write-file-flush.js": {},
+    "parallel/test-fs-write-file-invalid-path.js": {},
     "parallel/test-fs-write-file-typedarrays.js": {},
     "parallel/test-fs-write-file.js": {
       "flaky": true
@@ -940,6 +944,7 @@
     "parallel/test-fs-write-stream-encoding.js": {},
     "parallel/test-fs-write-stream-file-handle.js": {},
     "parallel/test-fs-write-stream-file-handle-2.js": {},
+    "parallel/test-fs-write-stream-patch-open.js": {},
     "parallel/test-fs-write-stream-throw-type-error.js": {},
     "parallel/test-fs-write-sync-optional-params.js": {},
     "parallel/test-fs-write-sync.js": {},
