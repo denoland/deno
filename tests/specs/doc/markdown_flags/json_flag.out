@@ -1,19 +1,11 @@
 {
-  "version": 1,
-  "nodes": [
-    {
-      "name": "",
-      "location": {
-        "filename": "file:///[WILDCARD]/README.md",
-        "line": 1,
-        "col": 0,
-        "byteIndex": 0
-      },
-      "declarationKind": "declare",
-      "jsDoc": {
+  "version": 2,
+  "nodes": {
+    "file:///Users/crowlkats/projects/deno/denoland/deno/tests/specs/doc/markdown_flags/README.md": {
+      "module_doc": {
         "doc": "# Test\n"
       },
-      "kind": "moduleDoc"
+      "symbols": []
     }
-  ]
+  }
 }

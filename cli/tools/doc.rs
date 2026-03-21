@@ -13,7 +13,8 @@ use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_doc as doc;
-use deno_doc::{Document, ParseOutput};
+use deno_doc::Document;
+use deno_doc::ParseOutput;
 use deno_doc::html::UrlResolveKind;
 use deno_doc::html::UsageComposer;
 use deno_doc::html::UsageComposerEntry;
@@ -597,7 +598,11 @@ fn print_docs_to_stdout(
 
   let details = format!(
     "{}",
-    doc::DocPrinter::new(&documents_by_url, colors::use_color(), doc_flags.private)
+    doc::DocPrinter::new(
+      &documents_by_url,
+      colors::use_color(),
+      doc_flags.private
+    )
   );
 
   display::write_to_stdout_ignore_sigpipe(details.as_bytes())
