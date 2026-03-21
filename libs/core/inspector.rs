@@ -195,7 +195,9 @@ impl v8::inspector::V8InspectorClientImpl for JsRuntimeInspectorClient {
 
   fn run_if_waiting_for_debugger(&self, context_group_id: i32) {
     assert_eq!(context_group_id, JsRuntimeInspector::CONTEXT_GROUP_ID);
-    self.0.flags.borrow_mut().waiting_for_session = false;
+    let mut flags = self.0.flags.borrow_mut();
+    flags.waiting_for_session = false;
+    flags.paused_on_start = false;
   }
 
   fn ensure_default_context_in_group(
@@ -260,8 +262,7 @@ impl JsRuntimeInspectorState {
           let id = sessions.next_local_id;
           sessions.next_local_id += 1;
           let mut fut =
-            pump_inspector_session_messages(session.clone(), id)
-              .boxed_local();
+            pump_inspector_session_messages(session.clone(), id).boxed_local();
           // Only add to established if the future is still pending.
           // If the channel is already closed (e.g., worker terminated quickly),
           // the future may complete immediately on first poll. Pushing a
@@ -1161,14 +1162,6 @@ impl InspectorSession {
     *self.state.is_dispatching_message.borrow_mut() = false;
   }
 
-  pub fn break_on_next_statement(&self) {
-    let reason = v8::inspector::StringView::from(&b"debugCommand"[..]);
-    let detail = v8::inspector::StringView::empty();
-    self
-      .v8_session
-      .schedule_pause_on_next_statement(reason, detail);
-  }
-
   /// Queue a message to be sent to a worker
   fn queue_worker_message(&self, session_id: &str, message: String) {
     self
@@ -1319,8 +1312,15 @@ async fn pump_inspector_session_messages(
         session.state.noderuntime_enabled.set(false);
       }
       "Runtime.runIfWaitingForDebugger" => {
-        session.state.flags.borrow_mut().paused_on_start = false;
-        // Fall through to dispatch to V8
+        // Clear paused_on_start so wait_for_session_and_break_on_next_statement
+        // unblocks. Also clear waiting_for_session so poll_sessions stops
+        // blocking.
+        {
+          let mut flags = session.state.flags.borrow_mut();
+          flags.paused_on_start = false;
+          flags.waiting_for_session = false;
+        }
+        // Forward to V8 for actual processing
         session.dispatch_message(msg);
         continue;
       }
