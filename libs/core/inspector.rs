@@ -720,6 +720,18 @@ impl JsRuntimeInspector {
       self.state.flags.borrow_mut().waiting_for_session = true;
       let _ = self.state.poll_sessions(None).unwrap();
     }
+    // Schedule a V8 debugger break on the next statement. By this point
+    // the frontend has sent Debugger.enable (enabling the debugger agent)
+    // and Runtime.runIfWaitingForDebugger (which unblocked us above).
+    // The break causes a Debugger.paused notification, matching the
+    // --inspect-brk behavior where execution pauses at the first statement.
+    if let Some(session) = self.state.sessions.borrow().local.values().next() {
+      let reason = v8::inspector::StringView::from(&b"debugCommand"[..]);
+      let detail = v8::inspector::StringView::empty();
+      session
+        .v8_session
+        .schedule_pause_on_next_statement(reason, detail);
+    }
   }
 
   /// Obtain a sender for proxy channels.
