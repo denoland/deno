@@ -2,7 +2,6 @@
 
 use std::collections::BTreeMap;
 use std::path::Path;
-use std::rc::Rc;
 use std::sync::Arc;
 
 use deno_ast::MediaType;
@@ -14,8 +13,8 @@ use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_doc as doc;
-use deno_doc::DocNode;
-use deno_doc::Location;
+use deno_doc::Document;
+use deno_doc::ParseOutput;
 use deno_doc::html::UrlResolveKind;
 use deno_doc::html::UsageComposer;
 use deno_doc::html::UsageComposerEntry;
@@ -49,7 +48,7 @@ use crate::tsc::get_types_declaration_file_text;
 use crate::util::fs::CollectSpecifiersOptions;
 use crate::util::fs::collect_specifiers;
 
-const JSON_SCHEMA_VERSION: u8 = 1;
+const JSON_SCHEMA_VERSION: u8 = 2;
 
 const PRISM_CSS: &str = include_str!("./doc/prism.css");
 const PRISM_JS: &str = include_str!("./doc/prism.js");
@@ -58,7 +57,7 @@ async fn generate_doc_nodes_for_builtin_types(
   doc_flags: DocFlags,
   parser: &dyn EsParser,
   analyzer: &dyn ModuleAnalyzer,
-) -> Result<IndexMap<ModuleSpecifier, Vec<doc::DocNode>>, AnyError> {
+) -> Result<ParseOutput, AnyError> {
   let source_file_specifier =
     ModuleSpecifier::parse("file:///lib.deno.d.ts").unwrap();
   let content = get_types_declaration_file_text();
@@ -124,7 +123,7 @@ pub async fn doc(
   let analyzer = module_info_cache.as_module_analyzer();
   let file_fetcher = factory.file_fetcher()?;
 
-  let doc_nodes_by_url = match doc_flags.source_files {
+  let documents_by_url = match doc_flags.source_files {
     DocSourceFileFlag::Builtin => {
       generate_doc_nodes_for_builtin_types(
         doc_flags.clone(),
@@ -225,26 +224,16 @@ pub async fn doc(
       )
       .await?;
       for (url, decoded) in markdown_downloads {
-        let filename = url.to_string().into_boxed_str();
         doc_nodes_by_url.insert(
           url,
-          Vec::from([DocNode {
-            declaration_kind: deno_doc::node::DeclarationKind::Declare,
-            def: deno_doc::DocNodeDef::ModuleDoc,
-            location: Location {
-              filename,
-              col: 0,
-              byte_index: 0,
-              // this is 1-indexed for some reason
-              line: 1,
-            },
-            name: "".into(),
-            is_default: None,
-            js_doc: JsDoc {
+          Document {
+            module_doc: JsDoc {
               doc: Some(Box::from(&*decoded.source)),
               tags: Default::default(),
             },
-          }]),
+            imports: Default::default(),
+            symbols: Default::default(),
+          },
         );
       }
 
@@ -300,21 +289,19 @@ pub async fn doc(
 
     generate_docs_directory(
       cli_options.initial_cwd(),
-      doc_nodes_by_url,
+      documents_by_url,
       html_options,
       deno_ns,
       rewrite_map,
       main_entrypoint,
     )
   } else {
-    let modules_len = doc_nodes_by_url.len();
-    let doc_nodes =
-      doc_nodes_by_url.into_values().flatten().collect::<Vec<_>>();
+    let modules_len = documents_by_url.len();
 
     if doc_flags.json {
       let json_output = serde_json::json!({
         "version": JSON_SCHEMA_VERSION,
-        "nodes": &doc_nodes
+        "nodes": &documents_by_url
       });
       display::write_json_to_stdout(&json_output)
     } else if doc_flags.lint {
@@ -326,13 +313,13 @@ pub async fn doc(
       );
       Ok(())
     } else {
-      print_docs_to_stdout(doc_flags, doc_nodes)
+      print_docs_to_stdout(doc_flags, documents_by_url)
     }
   }
 }
 
 struct DocResolver {
-  deno_ns: std::collections::HashMap<Vec<String>, Option<Rc<ShortPath>>>,
+  deno_ns: std::collections::HashMap<Vec<String>, Option<Arc<ShortPath>>>,
   strip_trailing_html: bool,
 }
 
@@ -444,9 +431,9 @@ impl UsageComposer for DocComposer {
 
 fn generate_docs_directory(
   cwd: &Path,
-  doc_nodes_by_url: IndexMap<ModuleSpecifier, Vec<doc::DocNode>>,
+  documents_by_url: ParseOutput,
   html_options: &DocHtmlFlag,
-  built_in_types: Option<Vec<doc::DocNode>>,
+  built_in_types: Option<Document>,
   rewrite_map: Option<IndexMap<ModuleSpecifier, String>>,
   main_entrypoint: Option<ModuleSpecifier>,
 ) -> Result<(), AnyError> {
@@ -482,11 +469,11 @@ fn generate_docs_directory(
     package_name: html_options.name.clone(),
     main_entrypoint,
     rewrite_map,
-    href_resolver: Rc::new(DocResolver {
+    href_resolver: Arc::new(DocResolver {
       deno_ns: Default::default(),
       strip_trailing_html: html_options.strip_trailing_html,
     }),
-    usage_composer: Some(Rc::new(DocComposer)),
+    usage_composer: Some(Arc::new(DocComposer)),
     category_docs,
     disable_search: false,
     symbol_redirect_map,
@@ -495,8 +482,8 @@ fn generate_docs_directory(
     markdown_renderer: deno_doc::html::comrak::create_renderer(
       None, None, None,
     ),
-    markdown_stripper: Rc::new(deno_doc::html::comrak::strip),
-    head_inject: Some(Rc::new(|root| {
+    markdown_stripper: Arc::new(deno_doc::html::comrak::strip),
+    head_inject: Some(Arc::new(|root| {
       format!(
         r#"<link href="{root}{}" rel="stylesheet" /><link href="{root}prism.css" rel="stylesheet" /><script src="{root}prism.js"></script>"#,
         deno_doc::html::comrak::COMRAK_STYLESHEET_FILENAME
@@ -512,11 +499,11 @@ fn generate_docs_directory(
         main_entrypoint: Some(
           ModuleSpecifier::parse("file:///lib.deno.d.ts").unwrap(),
         ),
-        href_resolver: Rc::new(DocResolver {
+        href_resolver: Arc::new(DocResolver {
           deno_ns: Default::default(),
           strip_trailing_html: false,
         }),
-        usage_composer: Some(Rc::new(DocComposer)),
+        usage_composer: Some(Arc::new(DocComposer)),
         rewrite_map: Default::default(),
         category_docs: Default::default(),
         disable_search: Default::default(),
@@ -526,7 +513,7 @@ fn generate_docs_directory(
         markdown_renderer: deno_doc::html::comrak::create_renderer(
           None, None, None,
         ),
-        markdown_stripper: Rc::new(deno_doc::html::comrak::strip),
+        markdown_stripper: Arc::new(deno_doc::html::comrak::strip),
         head_inject: None,
         id_prefix: None,
       },
@@ -550,14 +537,14 @@ fn generate_docs_directory(
       ),
     );
 
-    options.href_resolver = Rc::new(DocResolver {
+    options.href_resolver = Arc::new(DocResolver {
       deno_ns,
       strip_trailing_html: html_options.strip_trailing_html,
     });
   }
 
   let ctx =
-    deno_doc::html::GenerateCtx::create_basic(options, doc_nodes_by_url, None)?;
+    deno_doc::html::GenerateCtx::create_basic(options, documents_by_url, None)?;
 
   let mut files = deno_doc::html::generate(ctx)
     .context("Failed to generate HTML documentation")?;
@@ -594,26 +581,29 @@ fn generate_docs_directory(
 
 fn print_docs_to_stdout(
   doc_flags: DocFlags,
-  mut doc_nodes: Vec<deno_doc::DocNode>,
+  mut documents_by_url: ParseOutput,
 ) -> Result<(), AnyError> {
-  doc_nodes.retain(|doc_node| {
-    !matches!(doc_node.def, doc::node::DocNodeDef::Import { .. })
-  });
-  let details = if let Some(filter) = doc_flags.filter {
-    let nodes = doc::find_nodes_by_name_recursively(doc_nodes, &filter);
-    if nodes.is_empty() {
-      bail!("Node {} was not found!", filter);
+  if let Some(filter) = doc_flags.filter {
+    for (_, doc) in &mut documents_by_url {
+      let symbols = std::mem::take(&mut doc.symbols);
+      doc.symbols = doc::find_nodes_by_name_recursively(symbols, &filter)
+        .into_iter()
+        .map(Arc::new)
+        .collect();
+      if doc.symbols.is_empty() {
+        bail!("Node {} was not found!", filter);
+      }
     }
-    format!(
-      "{}",
-      doc::DocPrinter::new(&nodes, colors::use_color(), doc_flags.private)
+  }
+
+  let details = format!(
+    "{}",
+    doc::DocPrinter::new(
+      &documents_by_url,
+      colors::use_color(),
+      doc_flags.private
     )
-  } else {
-    format!(
-      "{}",
-      doc::DocPrinter::new(&doc_nodes, colors::use_color(), doc_flags.private)
-    )
-  };
+  );
 
   display::write_to_stdout_ignore_sigpipe(details.as_bytes())
     .map_err(AnyError::from)
