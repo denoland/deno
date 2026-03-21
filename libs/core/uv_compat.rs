@@ -1088,93 +1088,102 @@ pub unsafe extern "C" fn uv_check_stop(handle: *mut uv_check_t) -> c_int {
   0
 }
 
-/// Safe wrapper around a `uv_check_t` pointer for setImmediate.
+/// Manages the two libuv handles that implement setImmediate, matching
+/// Node.js's architecture:
+///
+/// - **check handle** (`uv_check_t`): always started, always unref'd.
+///   Participates in `run_check()` every iteration but never keeps the
+///   event loop alive. The actual JS callback draining happens in Rust
+///   after `run_check()`, gated on the immediate count.
+///
+/// - **idle handle** (`uv_idle_t`): started/stopped to control event loop
+///   liveness. Started when refed immediates exist (keeps the loop alive),
+///   stopped when none remain (allows exit). This matches Node.js's
+///   `immediate_idle_handle_` + `ToggleImmediateRef()`.
+///
 /// This is `Copy` so it can be stored in a `Cell`.
-/// Defaults to a null pointer; methods are no-ops until initialized.
+/// Defaults to null pointers; methods are no-ops until initialized.
 #[derive(Clone, Copy)]
 pub(crate) struct ImmediateCheckHandle {
-  handle: *mut uv_check_t,
+  check_handle: *mut uv_check_t,
+  idle_handle: *mut uv_idle_t,
 }
 
 impl Default for ImmediateCheckHandle {
   fn default() -> Self {
     Self {
-      handle: std::ptr::null_mut(),
+      check_handle: std::ptr::null_mut(),
+      idle_handle: std::ptr::null_mut(),
     }
   }
 }
 
-/// No-op callback — the actual draining is done by checking `is_active()`
-/// after `run_check()` in the event loop, since we need a v8 scope.
+/// No-op callback for the check handle — the actual draining is done by
+/// checking immediate_info counts after `run_check()` in the event loop.
 unsafe extern "C" fn immediate_check_noop_cb(_: *mut uv_check_t) {}
 
+/// No-op callback for the idle handle — its only purpose is to keep
+/// the event loop alive when refed immediates exist.
+unsafe extern "C" fn immediate_idle_noop_cb(_: *mut uv_idle_t) {}
+
 impl ImmediateCheckHandle {
-  /// Create and initialize a new check handle on the given loop.
-  /// Starts inactive and unref'd.
+  /// Create and initialize both handles on the given loop.
+  ///
+  /// The check handle is immediately started and unref'd (always runs,
+  /// never keeps the loop alive). The idle handle starts stopped.
   ///
   /// # Safety
   /// `loop_ptr` must be a valid, initialized `uv_loop_t`.
-  /// The returned handle borrows from the loop and must not outlive it.
+  /// The returned handles borrow from the loop and must not outlive it.
   pub unsafe fn new(loop_ptr: *mut uv_loop_t) -> Self {
-    let handle = Box::into_raw(Box::new(unsafe {
+    // Check handle: always started, always unref'd
+    let check_handle = Box::into_raw(Box::new(unsafe {
       std::mem::MaybeUninit::<uv_check_t>::zeroed().assume_init()
     }));
     unsafe {
-      uv_check_init(loop_ptr, handle);
-      uv_unref(handle as *mut uv_handle_t);
+      uv_check_init(loop_ptr, check_handle);
+      uv_unref(check_handle as *mut uv_handle_t);
+      uv_check_start(check_handle, immediate_check_noop_cb);
     }
-    Self { handle }
+
+    // Idle handle: controls event loop liveness for refed immediates
+    let idle_handle = Box::into_raw(Box::new(unsafe {
+      std::mem::MaybeUninit::<uv_idle_t>::zeroed().assume_init()
+    }));
+    unsafe {
+      uv_idle_init(loop_ptr, idle_handle);
+      // Starts stopped — only started when refed immediates exist
+    }
+
+    Self {
+      check_handle,
+      idle_handle,
+    }
   }
 
   fn is_initialized(&self) -> bool {
-    !self.handle.is_null()
+    !self.check_handle.is_null()
   }
 
-  pub fn is_active(&self) -> bool {
-    if !self.is_initialized() {
-      return false;
-    }
-    // SAFETY: handle is valid (checked above).
-    unsafe { (*self.handle).flags & UV_HANDLE_ACTIVE != 0 }
-  }
-
-  pub fn start(&self) {
-    if !self.is_initialized() {
-      return;
-    }
-    // SAFETY: handle is valid (checked above).
-    unsafe {
-      uv_check_start(self.handle, immediate_check_noop_cb);
-    }
-  }
-
-  pub fn stop(&self) {
-    if !self.is_initialized() {
-      return;
-    }
-    // SAFETY: handle is valid (checked above).
-    unsafe {
-      uv_check_stop(self.handle);
-    }
-  }
-
+  /// Start the idle handle (keeps event loop alive for refed immediates).
   pub fn make_ref(&self) {
     if !self.is_initialized() {
       return;
     }
-    // SAFETY: handle is valid (checked above).
+    // SAFETY: idle_handle is valid (checked above).
     unsafe {
-      uv_ref(self.handle as *mut uv_handle_t);
+      uv_idle_start(self.idle_handle, immediate_idle_noop_cb);
     }
   }
 
+  /// Stop the idle handle (allows event loop to exit).
   pub fn make_unref(&self) {
     if !self.is_initialized() {
       return;
     }
-    // SAFETY: handle is valid (checked above).
+    // SAFETY: idle_handle is valid (checked above).
     unsafe {
-      uv_unref(self.handle as *mut uv_handle_t);
+      uv_idle_stop(self.idle_handle);
     }
   }
 }

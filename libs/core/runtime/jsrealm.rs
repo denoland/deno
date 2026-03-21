@@ -67,9 +67,7 @@ pub(crate) type UnrefedOps =
   Rc<RefCell<HashSet<i32, BuildHasherDefault<IdentityHasher>>>>;
 
 /// Indices into the shared immediate_info buffer (Uint32Array).
-#[allow(dead_code, reason = "documents the layout; used only from JS")]
 pub(crate) const IMM_IDX_COUNT: usize = 0;
-#[allow(dead_code, reason = "documents the layout; used only from JS")]
 pub(crate) const IMM_IDX_REF_COUNT: usize = 1;
 pub(crate) const IMM_IDX_HAS_OUTSTANDING: usize = 2;
 
@@ -133,9 +131,9 @@ pub struct ContextState {
   /// # Safety
   /// Same lifetime requirements as `uv_loop_inner` above.
   pub(crate) uv_loop_ptr: Cell<Option<*mut crate::uv_compat::uv_loop_t>>,
-  /// Check handle used for setImmediate. When active, immediates are
-  /// drained after `run_check()`. The handle's ref/unref state controls
-  /// whether immediates keep the event loop alive.
+  /// Two-handle setImmediate mechanism (matching Node.js): a check handle
+  /// (always running, always unref'd) and an idle handle that controls
+  /// event loop liveness for refed immediates.
   pub(crate) immediate_check_handle:
     Cell<crate::uv_compat::ImmediateCheckHandle>,
 }

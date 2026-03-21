@@ -178,12 +178,6 @@
   let immediateInfo;
 
   function queueImmediate(immediate) {
-    if (
-      immediateInfo[kImmCount] === 0 &&
-      immediateInfo[kImmHasOutstanding] === 0
-    ) {
-      op_immediate_check(0);
-    }
     immediateInfo[kImmCount]++;
     immediateQueue.append(immediate);
   }
@@ -197,18 +191,12 @@
     if (immediate[kRefed]) {
       immediateInfo[kImmRefCount]--;
       if (immediateInfo[kImmRefCount] === 0) {
-        op_immediate_check(3);
+        op_immediate_check(false);
       }
     }
     immediate[kRefed] = null;
     immediate._onImmediate = null;
     immediateQueue.remove(immediate);
-    if (
-      immediateInfo[kImmCount] === 0 &&
-      immediateInfo[kImmHasOutstanding] === 0
-    ) {
-      op_immediate_check(1);
-    }
   }
 
   function runImmediates() {
@@ -241,7 +229,7 @@
       if (immediate[kRefed]) {
         immediateInfo[kImmRefCount]--;
         if (immediateInfo[kImmRefCount] === 0) {
-          op_immediate_check(3);
+          op_immediate_check(false);
         }
       }
       immediate[kRefed] = null;
@@ -272,9 +260,6 @@
     }
 
     immediateInfo[kImmHasOutstanding] = 0;
-    if (immediateInfo[kImmCount] === 0) {
-      op_immediate_check(1);
-    }
   }
 
   // ---------------------------------------------------------------------------
@@ -950,13 +935,13 @@
     immediateRefCount(increase) {
       if (increase) {
         if (immediateInfo[kImmRefCount] === 0) {
-          op_immediate_check(2);
+          op_immediate_check(true);
         }
         immediateInfo[kImmRefCount]++;
       } else {
         immediateInfo[kImmRefCount]--;
         if (immediateInfo[kImmRefCount] === 0) {
-          op_immediate_check(3);
+          op_immediate_check(false);
         }
       }
     },

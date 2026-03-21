@@ -85,7 +85,9 @@ use crate::runtime::ContextState;
 use crate::runtime::JsRealm;
 use crate::runtime::OpDriverImpl;
 use crate::runtime::jsrealm;
+use crate::runtime::jsrealm::IMM_IDX_COUNT;
 use crate::runtime::jsrealm::IMM_IDX_HAS_OUTSTANDING;
+use crate::runtime::jsrealm::IMM_IDX_REF_COUNT;
 use crate::source_map::SourceMapData;
 use crate::source_map::SourceMapper;
 use crate::stats::RuntimeActivityType;
@@ -2281,10 +2283,22 @@ impl JsRuntime {
     if let Some(uv_inner_ptr) = context_state.uv_loop_inner.get() {
       unsafe { (*uv_inner_ptr).run_check() };
     }
-    // Immediates: drain if the check handle is active (JS started it
-    // when immediates were queued).
-    if context_state.immediate_check_handle.get().is_active() {
-      Self::do_js_run_immediate_callbacks(scope, context_state)?;
+    // Drain immediates in the check phase, matching Node.js semantics:
+    // - Refed immediates always fire (they keep the event loop alive).
+    // - Unrefed immediates only fire if other work drove this iteration
+    //   (did_work, dispatched_ops, or uv I/O). This matches libuv's
+    //   behavior where unrefed handles participate in iterations driven
+    //   by other work, but don't start new iterations on their own.
+    {
+      let has_immediates =
+        context_state.immediate_info[IMM_IDX_HAS_OUTSTANDING] != 0
+          || context_state.immediate_info[IMM_IDX_COUNT] > 0;
+      let has_refed = context_state.immediate_info[IMM_IDX_REF_COUNT] > 0;
+      if has_immediates
+        && (has_refed || did_work || dispatched_ops || uv_did_io)
+      {
+        Self::do_js_run_immediate_callbacks(scope, context_state)?;
+      }
     }
     scope.perform_microtask_checkpoint();
 
@@ -2335,6 +2349,7 @@ impl JsRuntime {
       if pending_state.has_pending_background_tasks
         || pending_state.has_tick_scheduled
         || pending_state.has_outstanding_immediates
+        || context_state.immediate_info[IMM_IDX_COUNT] > 0
         || pending_state.has_pending_promise_events
         || uv_did_io
       {

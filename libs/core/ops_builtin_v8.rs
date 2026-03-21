@@ -1386,17 +1386,15 @@ pub fn op_get_extras_binding_object<'s, 'i>(
   context.get_extras_binding_object(scope).into()
 }
 
-/// Single op to control the immediate check handle.
-/// action: 0 = start, 1 = stop, 2 = ref, 3 = unref
+/// Toggle whether refed immediates keep the event loop alive.
+/// `true` starts the idle handle (loop stays alive), `false` stops it.
 #[op2(fast)]
-pub fn op_immediate_check(scope: &mut v8::PinScope, action: u32) {
+pub fn op_immediate_check(scope: &mut v8::PinScope, make_ref: bool) {
   let context_state = JsRealm::state_from_scope(scope);
   let handle = context_state.immediate_check_handle.get();
-  match action {
-    0 => handle.start(),
-    1 => handle.stop(),
-    2 => handle.make_ref(),
-    3 => handle.make_unref(),
-    _ => {}
+  if make_ref {
+    handle.make_ref();
+  } else {
+    handle.make_unref();
   }
 }
