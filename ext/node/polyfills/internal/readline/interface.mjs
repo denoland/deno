@@ -405,7 +405,7 @@ export class Interface extends InterfaceConstructor {
   [kSetRawMode](mode) {
     const wasInRawMode = this.input.isRaw;
 
-    if (typeof this.input.setRawMode === "function") {
+    if (this.input.isTTY && typeof this.input.setRawMode === "function") {
       this.input.setRawMode(mode);
     }
 
