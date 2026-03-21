@@ -1730,13 +1730,113 @@ class SourceMap {
   }
 }
 
+// Cache for findSourceMap: path -> SourceMap | null (null means checked but not found)
+const sourceMapCache = new SafeMap();
+
+// Regex to match //# sourceMappingURL=<url> or //@ sourceMappingURL=<url>
+const SOURCE_MAP_URL_RE =
+  /\/\/[#@]\s*sourceMappingURL\s*=\s*(\S+)\s*(?:\n|\r\n?)?$/;
+
+/**
+ * Extract the sourceMappingURL from the last non-empty line of content.
+ * @param {string} content
+ * @returns {string | null}
+ */
+function extractSourceMapUrl(content) {
+  // Search backwards from the end for the sourceMappingURL comment.
+  // The comment must appear in the last non-empty line.
+  const match = SOURCE_MAP_URL_RE.exec(content);
+  return match ? match[1] : null;
+}
+
+/**
+ * Resolve a source map from a sourceMappingURL.
+ * Handles both inline data URIs and external file references.
+ * @param {string} url - The sourceMappingURL value
+ * @param {string} filePath - The path of the file containing the reference
+ * @returns {object | null} - Parsed source map payload or null
+ */
+function resolveSourceMapPayload(url, filePath) {
+  // Handle inline base64 data URIs
+  if (url.startsWith("data:")) {
+    const dataUrlMatch = url.match(
+      /^data:application\/json;(?:charset=utf-?8;)?base64,(.+)$/,
+    );
+    if (dataUrlMatch) {
+      try {
+        const decoded = atob(dataUrlMatch[1]);
+        return JSONParse(decoded);
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  }
+
+  // Handle external source map files
+  try {
+    let mapPath;
+    if (url.startsWith("/") || url.match(/^[a-zA-Z]:\\/)) {
+      // Absolute path
+      mapPath = url;
+    } else {
+      // Relative path - resolve against the source file's directory
+      const dir = op_require_path_dirname(filePath);
+      mapPath = op_require_path_resolve([dir, url]);
+    }
+    const mapContent = op_require_read_file(mapPath);
+    if (mapContent) {
+      return JSONParse(mapContent);
+    }
+  } catch {
+    // File not found or invalid JSON - return null
+  }
+  return null;
+}
+
 /**
  * @param {string} path
  * @returns {SourceMap | undefined}
  */
-export function findSourceMap(_path) {
-  // TODO(@marvinhagemeister): Stub implementation for now to unblock ava
-  return undefined;
+export function findSourceMap(path) {
+  if (sourceMapCache.has(path)) {
+    const cached = sourceMapCache.get(path);
+    return cached === null ? undefined : cached;
+  }
+
+  try {
+    const content = op_require_read_file(path);
+    if (!content) {
+      sourceMapCache.set(path, null);
+      return undefined;
+    }
+
+    const url = extractSourceMapUrl(content);
+    if (!url) {
+      sourceMapCache.set(path, null);
+      return undefined;
+    }
+
+    const payload = resolveSourceMapPayload(url, path);
+    if (!payload) {
+      sourceMapCache.set(path, null);
+      return undefined;
+    }
+
+    // Compute lineLengths from the source file content
+    const lines = content.replace(/\n$/, "").split("\n");
+    const lineLengths = [];
+    for (let i = 0; i < lines.length; i++) {
+      lineLengths.push(lines[i].length);
+    }
+
+    const sourceMap = new SourceMap(payload, { lineLengths });
+    sourceMapCache.set(path, sourceMap);
+    return sourceMap;
+  } catch {
+    sourceMapCache.set(path, null);
+    return undefined;
+  }
 }
 
 Module.findSourceMap = findSourceMap;
