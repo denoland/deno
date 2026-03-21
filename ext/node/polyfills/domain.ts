@@ -285,9 +285,7 @@ function domainUncaughtExceptionHandler(er) {
     if (idx !== -1) {
       ArrayPrototypeSplice(stack, idx, 1);
     }
-    active = process.domain = stack.length > 0
-      ? stack[stack.length - 1]
-      : null;
+    active = process.domain = stack.length > 0 ? stack[stack.length - 1] : null;
   }
 
   updateExceptionCapture();

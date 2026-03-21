@@ -1,0 +1,8 @@
+{
+  "tests": {
+    "domain_preserved_in_timers": {
+      "args": "run --allow-all main.mjs",
+      "output": "main.out"
+    }
+  }
+}
