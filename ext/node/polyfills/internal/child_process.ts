@@ -132,6 +132,7 @@ export function stdioStringToArray(
 const kClosesNeeded = Symbol("_closesNeeded");
 const kClosesReceived = Symbol("_closesReceived");
 const kCanDisconnect = Symbol("_canDisconnect");
+let emittedShellDeprecation = false;
 
 // We only want to emit a close event for the child process when all of
 // the writable streams have closed. The value of `child[kClosesNeeded]` should be 1 +
@@ -1118,6 +1119,15 @@ export function normalizeSpawnArguments(
     // for shell interpretation, so don't escape.
     let command;
     if (args.length > 0) {
+      if (!emittedShellDeprecation) {
+        process.emitWarning(
+          "Passing args to a child process with shell option true can lead to security " +
+            "vulnerabilities, as the arguments are not escaped, only concatenated.",
+          "DeprecationWarning",
+          "DEP0190",
+        );
+        emittedShellDeprecation = true;
+      }
       const escapedParts = [escapeShellArg(file), ...args.map(escapeShellArg)];
       command = ArrayPrototypeJoin(escapedParts, " ");
     } else {
