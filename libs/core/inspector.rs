@@ -696,29 +696,21 @@ impl JsRuntimeInspector {
   /// execution.
   pub fn wait_for_session_and_break_on_next_statement(&self) {
     self.state.flags.borrow_mut().paused_on_start = true;
-    // First wait for a session to connect
+    // Block the main thread until Runtime.runIfWaitingForDebugger is
+    // received (which clears paused_on_start). This matches Node.js
+    // --inspect-brk behavior where execution is blocked until the
+    // frontend explicitly resumes.
+    //
+    // poll_sessions will block when waiting_for_session is true and
+    // process incoming messages (including from WS clients). The pump
+    // handler intercepts Runtime.runIfWaitingForDebugger and clears
+    // paused_on_start. Since poll_sessions processes all pending
+    // messages before returning, paused_on_start will be false when
+    // poll_sessions returns (if the message was received).
     loop {
-      if self
-        .state
-        .sessions
-        .borrow_mut()
-        .local
-        .values()
-        .next()
-        .is_some()
-      {
+      if !self.state.flags.borrow().paused_on_start {
         break;
-      } else {
-        self.state.flags.borrow_mut().waiting_for_session = true;
-        let _ = self.state.poll_sessions(None).unwrap();
       }
-    }
-    // Keep processing inspector messages (blocking the main thread)
-    // until Runtime.runIfWaitingForDebugger is received, which clears
-    // paused_on_start. This matches Node.js behavior where --inspect-brk
-    // blocks execution until the frontend sends this command.
-    // We re-set waiting_for_session to keep poll_sessions blocking.
-    while self.state.flags.borrow().paused_on_start {
       self.state.flags.borrow_mut().waiting_for_session = true;
       let _ = self.state.poll_sessions(None).unwrap();
     }
