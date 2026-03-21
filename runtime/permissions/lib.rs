@@ -3844,26 +3844,27 @@ impl PermissionsContainer {
 
   /// Check the per-API resolver before falling through to category checks.
   ///
-  /// Returns:
-  /// - `Some(Ok(()))` if the API is explicitly allowed
-  /// - `Some(Err(...))` if the API is explicitly denied
-  /// - `None` if no resolver is set or the resolver defers
+  /// Resolves the `api_name` string to an [`api::ApiPermName`] and performs
+  /// an O(1) indexed lookup in the resolver. If the resolver allows or
+  /// denies, returns `Some(result)`. If no resolver is set, the API name
+  /// is unrecognized, or the resolver defers, returns `None`.
   #[inline(always)]
   fn check_api_permission(
     &self,
     api_name: Option<&str>,
-    category: &'static str,
     value_fn: impl FnOnce() -> Option<String>,
   ) -> Option<Result<(), PermissionDeniedError>> {
     let resolver = self.api_resolver.as_ref()?;
-    let api_name = api_name?;
+    let api_name_str = api_name?;
+    let api_id = api::ApiPermName::from_api_name(api_name_str)?;
     // Eagerly compute the value since we need it for the resolver check.
     // This is acceptable because this code path is only reached when
     // an api_resolver is configured.
     let value = value_fn();
     let wrapper = || value.clone();
-    match resolver.check(api_name, category, &wrapper) {
+    match resolver.check(api_id, &wrapper) {
       api::ApiCheckResult::Allow => {
+        let category = api::CompatPermissionChecker::primary_category(api_id);
         // Audit log the allowed access
         if let Some(ref v) = value {
           write_audit(category, v);
@@ -3873,6 +3874,7 @@ impl PermissionsContainer {
         Some(Ok(()))
       }
       api::ApiCheckResult::Deny { reason } => {
+        let category = api::CompatPermissionChecker::primary_category(api_id);
         Some(Err(PermissionDeniedError {
           access: PermissionState::fmt_access(category, value.as_deref()),
           name: category,
@@ -4056,17 +4058,10 @@ impl PermissionsContainer {
     // Per-API permission check: if the resolver explicitly allows/denies,
     // short-circuit before the category-level check.
     if self.api_resolver.is_some() {
-      let category = if access_kind.is_write() {
-        "write"
-      } else {
-        "read"
-      };
       let p = path.clone();
-      if let Some(result) =
-        self.check_api_permission(api_name, category, || {
-          Some(p.to_string_lossy().into_owned())
-        })
-      {
+      if let Some(result) = self.check_api_permission(api_name, || {
+        Some(p.to_string_lossy().into_owned())
+      }) {
         result?;
         // API resolver allowed — mimic the all_granted fast path
         return Ok(CheckedPath {
@@ -4148,9 +4143,7 @@ impl PermissionsContainer {
     &self,
     api_name: &str,
   ) -> Result<(), PermissionCheckError> {
-    if let Some(result) =
-      self.check_api_permission(Some(api_name), "read", || None)
-    {
+    if let Some(result) = self.check_api_permission(Some(api_name), || None) {
       return result.map_err(Into::into);
     }
     self
@@ -4171,9 +4164,7 @@ impl PermissionsContainer {
     &self,
     api_name: &str,
   ) -> Result<(), PermissionCheckError> {
-    if let Some(result) =
-      self.check_api_permission(Some(api_name), "write", || None)
-    {
+    if let Some(result) = self.check_api_permission(Some(api_name), || None) {
       return result.map_err(Into::into);
     }
     self.inner.lock().write.check_all(Some(api_name))?;
@@ -4186,11 +4177,9 @@ impl PermissionsContainer {
     path: Cow<'a, Path>,
     api_name: &str,
   ) -> Result<CheckedPath<'a>, PermissionCheckError> {
-    if let Some(result) =
-      self.check_api_permission(Some(api_name), "write", || {
-        Some(path.to_string_lossy().into_owned())
-      })
-    {
+    if let Some(result) = self.check_api_permission(Some(api_name), || {
+      Some(path.to_string_lossy().into_owned())
+    }) {
       result?;
       return Ok(CheckedPath {
         path: PathWithRequested {
@@ -4233,11 +4222,9 @@ impl PermissionsContainer {
     cmd: &RunQueryDescriptor,
     api_name: &str,
   ) -> Result<(), PermissionCheckError> {
-    if let Some(result) =
-      self.check_api_permission(Some(api_name), "run", || {
-        Some(cmd.display_name().into_owned())
-      })
-    {
+    if let Some(result) = self.check_api_permission(Some(api_name), || {
+      Some(cmd.display_name().into_owned())
+    }) {
       return result.map_err(Into::into);
     }
     self.inner.lock().run.check(cmd, Some(api_name))?;
@@ -4249,9 +4236,7 @@ impl PermissionsContainer {
     &mut self,
     api_name: &str,
   ) -> Result<(), PermissionCheckError> {
-    if let Some(result) =
-      self.check_api_permission(Some(api_name), "run", || None)
-    {
+    if let Some(result) = self.check_api_permission(Some(api_name), || None) {
       return result.map_err(Into::into);
     }
     self.inner.lock().run.check_all(Some(api_name))?;
@@ -4270,8 +4255,7 @@ impl PermissionsContainer {
     api_name: &str,
   ) -> Result<(), PermissionCheckError> {
     if let Some(result) =
-      self
-        .check_api_permission(Some(api_name), "sys", || Some(kind.to_string()))
+      self.check_api_permission(Some(api_name), || Some(kind.to_string()))
     {
       return result.map_err(Into::into);
     }
@@ -4487,7 +4471,7 @@ impl PermissionsContainer {
     api_name: &str,
   ) -> Result<(), PermissionCheckError> {
     if let Some(result) =
-      self.check_api_permission(Some(api_name), "net", || Some(url.to_string()))
+      self.check_api_permission(Some(api_name), || Some(url.to_string()))
     {
       return result.map_err(Into::into);
     }
@@ -4508,12 +4492,10 @@ impl PermissionsContainer {
     host: &(T, Option<u16>),
     api_name: &str,
   ) -> Result<(), PermissionCheckError> {
-    if let Some(result) =
-      self.check_api_permission(Some(api_name), "net", || {
-        let port_str = host.1.map(|p| format!(":{}", p)).unwrap_or_default();
-        Some(format!("{}{}", host.0.as_ref(), port_str))
-      })
-    {
+    if let Some(result) = self.check_api_permission(Some(api_name), || {
+      let port_str = host.1.map(|p| format!(":{}", p)).unwrap_or_default();
+      Some(format!("{}{}", host.0.as_ref(), port_str))
+    }) {
       return result.map_err(Into::into);
     }
     let mut inner = self.inner.lock();
@@ -4540,11 +4522,9 @@ impl PermissionsContainer {
     port: u32,
     api_name: &str,
   ) -> Result<(), PermissionCheckError> {
-    if let Some(result) =
-      self.check_api_permission(Some(api_name), "net", || {
-        Some(format!("vsock:{cid}:{port}"))
-      })
-    {
+    if let Some(result) = self.check_api_permission(Some(api_name), || {
+      Some(format!("vsock:{cid}:{port}"))
+    }) {
       return result.map_err(Into::into);
     }
     let mut inner = self.inner.lock();
@@ -9359,14 +9339,13 @@ mod tests {
   #[test]
   fn test_api_resolver_deny_specific_api() {
     // Category allows all reads, but API resolver denies Deno.readDir()
-    let mut rules = std::collections::HashMap::new();
-    rules.insert(
-      "Deno.readDir()".to_string(),
+    let mut resolver = api::IndexedApiPermissionResolver::new();
+    resolver.set(
+      api::ApiPermName::DenoReadDir,
       api::ApiRule::Deny {
         reason: Some("directory listing not allowed".to_string()),
       },
     );
-    let resolver = api::HashMapApiPermissionResolver::new(rules);
     let container =
       container_with_read_all().with_api_resolver(Arc::new(resolver));
 
@@ -9388,9 +9367,8 @@ mod tests {
   #[test]
   fn test_api_resolver_allow_specific_api_when_category_denied() {
     // Category denies all reads, but API resolver allows Deno.readFile()
-    let mut rules = std::collections::HashMap::new();
-    rules.insert("Deno.readFile()".to_string(), api::ApiRule::Allow);
-    let resolver = api::HashMapApiPermissionResolver::new(rules);
+    let mut resolver = api::IndexedApiPermissionResolver::new();
+    resolver.set(api::ApiPermName::DenoReadFile, api::ApiRule::Allow);
 
     let container = PermissionsContainer::new(
       Arc::new(TestPermissionDescriptorParser),
@@ -9430,14 +9408,13 @@ mod tests {
 
   #[test]
   fn test_api_resolver_sys_check() {
-    let mut rules = std::collections::HashMap::new();
-    rules.insert(
-      "Deno.hostname()".to_string(),
+    let mut resolver = api::IndexedApiPermissionResolver::new();
+    resolver.set(
+      api::ApiPermName::DenoHostname,
       api::ApiRule::Deny {
         reason: Some("hostname not allowed".to_string()),
       },
     );
-    let resolver = api::HashMapApiPermissionResolver::new(rules);
     let container =
       container_with_read_all().with_api_resolver(Arc::new(resolver));
 
@@ -9452,15 +9429,14 @@ mod tests {
 
   #[test]
   fn test_api_resolver_net_check() {
-    let mut rules = std::collections::HashMap::new();
-    rules.insert(
-      "fetch()".to_string(),
+    let mut resolver = api::IndexedApiPermissionResolver::new();
+    resolver.set(
+      api::ApiPermName::Fetch,
       api::ApiRule::Deny {
         reason: Some("fetch not allowed".to_string()),
       },
     );
-    rules.insert("Deno.connect()".to_string(), api::ApiRule::Allow);
-    let resolver = api::HashMapApiPermissionResolver::new(rules);
+    resolver.set(api::ApiPermName::DenoConnect, api::ApiRule::Allow);
 
     let mut container =
       container_with_read_all().with_api_resolver(Arc::new(resolver));
@@ -9478,12 +9454,11 @@ mod tests {
 
   #[test]
   fn test_api_resolver_propagated_to_child() {
-    let mut rules = std::collections::HashMap::new();
-    rules.insert(
-      "Deno.readDir()".to_string(),
+    let mut resolver = api::IndexedApiPermissionResolver::new();
+    resolver.set(
+      api::ApiPermName::DenoReadDir,
       api::ApiRule::Deny { reason: None },
     );
-    let resolver = api::HashMapApiPermissionResolver::new(rules);
     let container =
       container_with_read_all().with_api_resolver(Arc::new(resolver));
 
