@@ -1,14 +1,14 @@
 {
   "version": 2,
   "nodes": {
-    "file:///Users/crowlkats/projects/deno/denoland/deno/tests/specs/doc/json/json.js": {
+    "file:///[WILDCARD]/json.js": {
       "symbols": [
         {
           "name": "foo",
           "declarations": [
             {
               "location": {
-                "filename": "file:///Users/crowlkats/projects/deno/denoland/deno/tests/specs/doc/json/types.d.ts",
+                "filename": "file:///[WILDCARD]/types.d.ts",
                 "line": 1,
                 "col": 13,
                 "byteIndex": 39

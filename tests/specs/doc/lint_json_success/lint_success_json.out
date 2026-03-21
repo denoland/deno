@@ -1,14 +1,14 @@
 {
   "version": 2,
   "nodes": {
-    "file:///Users/crowlkats/projects/deno/denoland/deno/tests/specs/doc/lint_json_success/lint_success.ts": {
+    "file:///[WILDCARD]/lint_success.ts": {
       "symbols": [
         {
           "name": "Test",
           "declarations": [
             {
               "location": {
-                "filename": "file:///Users/crowlkats/projects/deno/denoland/deno/tests/specs/doc/lint_json_success/lint_success.ts",
+                "filename": "file:///[WILDCARD]/lint_success.ts",
                 "line": 1,
                 "col": 0,
                 "byteIndex": 22
@@ -31,7 +31,7 @@
                     },
                     "name": "prop",
                     "location": {
-                      "filename": "file:///Users/crowlkats/projects/deno/denoland/deno/tests/specs/doc/lint_json_success/lint_success.ts",
+                      "filename": "file:///[WILDCARD]/lint_success.ts",
                       "line": 3,
                       "col": 2,
                       "byteIndex": 66

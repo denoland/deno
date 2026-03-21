@@ -1,7 +1,7 @@
 {
   "version": 2,
   "nodes": {
-    "file:///Users/crowlkats/projects/deno/denoland/deno/tests/specs/doc/markdown_flags/README.md": {
+    "file:///[WILDCARD]/README.md": {
       "module_doc": {
         "doc": "# Test\n"
       },
