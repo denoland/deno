@@ -431,8 +431,9 @@ fn base64_encode_to_v8_string<'a>(
     let mut buf = std::mem::MaybeUninit::<[u8; STACK_BUF_SIZE]>::uninit();
     // Safety: buf has STACK_BUF_SIZE >= b64_len bytes.
     // simdutf writes `written` bytes without reading uninitialized data.
-    let written =
-      unsafe { simdutf_base64_encode(src, buf.as_mut_ptr() as *mut u8, b64_len) };
+    let written = unsafe {
+      simdutf_base64_encode(src, buf.as_mut_ptr() as *mut u8, b64_len)
+    };
     v8::String::new_from_one_byte(
       scope,
       // Safety: written <= b64_len <= STACK_BUF_SIZE, all initialized.
