@@ -1467,7 +1467,9 @@ function parseMappings(mappings, sources, names, sourceRoot) {
         previousOriginalColumn = originalColumn;
 
         let source = sources[sourceIndex] || "";
-        if (sourceRoot && !source.startsWith("/") && !source.match(/^\w+:\/\//)) {
+        if (
+          sourceRoot && !source.startsWith("/") && !source.match(/^\w+:\/\//)
+        ) {
           source = sourceRoot + source;
         }
 
@@ -1579,8 +1581,10 @@ class SourceMap {
    * @param {{ lineLengths?: number[] }} [options]
    */
   constructor(payload, options) {
-    if (typeof payload !== "object" || payload === null ||
-        Array.isArray(payload)) {
+    if (
+      typeof payload !== "object" || payload === null ||
+      Array.isArray(payload)
+    ) {
       let received;
       if (payload === null) {
         received = " Received null";
