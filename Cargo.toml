@@ -177,7 +177,7 @@ async-once-cell = "0.5.4"
 async-stream = "0.3"
 async-trait = "0.1.73"
 aws-lc-rs = { version = "1.16.1" }
-aws-lc-sys = { version = "0.38.0" }
+aws-lc-sys = { version = "0.39.0", features = ["prebuilt-nasm"] }
 base32 = "=0.5.1"
 base64 = "0.22.1"
 base64-simd = "0.8"
