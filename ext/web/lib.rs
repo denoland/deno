@@ -184,16 +184,18 @@ fn simdutf_base64_decode_to_vec(input: &[u8]) -> Result<Vec<u8>, WebError> {
   let max_len = simdutf::maximal_binary_length_from_base64(input);
   let mut output = Vec::with_capacity(max_len);
   // Safety: output has max_len bytes of capacity which is >= decoded size.
-  // base64_to_binary writes into the buffer without reading uninitialized data.
+  // ffi_base64_to_binary writes into the buffer without reading uninitialized data.
   let result = unsafe {
-    simdutf::base64_to_binary(
-      input,
-      std::slice::from_raw_parts_mut(output.as_mut_ptr(), max_len),
-      simdutf::Base64Options::Default,
-      simdutf::LastChunkHandling::Loose,
+    ffi_base64_to_binary(
+      input.as_ptr(),
+      input.len(),
+      output.as_mut_ptr(),
+      simdutf::Base64Options::Default as u64,
+      simdutf::LastChunkHandling::Loose as u64,
     )
   };
-  if !result.is_ok() {
+  // error == 0 means success (simdutf error_code::SUCCESS)
+  if result.error != 0 {
     return Err(WebError::Base64Decode);
   }
   // Safety: base64_to_binary wrote result.count bytes.
@@ -248,18 +250,58 @@ fn simdutf_base64_decode_strict(
   }
 }
 
+// Re-declare simdutf FFI functions to allow passing raw pointers
+// without constructing &mut [u8] from uninitialized memory (which is UB).
+#[repr(C)]
+struct SimdutfFfiResult {
+  error: i32,
+  count: usize,
+}
+
+unsafe extern "C" {
+  #[link_name = "simdutf__binary_to_base64"]
+  fn ffi_binary_to_base64(
+    input: *const u8,
+    length: usize,
+    output: *mut u8,
+    options: u64,
+  ) -> usize;
+
+  #[link_name = "simdutf__base64_to_binary"]
+  fn ffi_base64_to_binary(
+    input: *const u8,
+    length: usize,
+    output: *mut u8,
+    options: u64,
+    last_chunk_options: u64,
+  ) -> SimdutfFfiResult;
+}
+
 /// Encode binary to base64 using simdutf. Returns encoded length.
 ///
 /// # Safety
-/// `output` must have at least `base64_length_from_binary(input.len())` bytes.
+/// `output` must point to at least `base64_length_from_binary(input.len())`
+/// writable bytes. The bytes do not need to be initialized.
 #[inline]
-fn simdutf_base64_encode(input: &[u8], output: &mut [u8]) -> usize {
-  // Safety: caller provides output buffer with sufficient capacity.
+unsafe fn simdutf_base64_encode(
+  input: &[u8],
+  output: *mut u8,
+  output_len: usize,
+) -> usize {
+  debug_assert!(
+    output_len
+      >= v8::simdutf::base64_length_from_binary(
+        input.len(),
+        v8::simdutf::Base64Options::Default
+      )
+  );
+  // Safety: caller guarantees output has sufficient capacity.
   unsafe {
-    v8::simdutf::binary_to_base64(
-      input,
+    ffi_binary_to_base64(
+      input.as_ptr(),
+      input.len(),
       output,
-      v8::simdutf::Base64Options::Default,
+      v8::simdutf::Base64Options::Default as u64,
     )
   }
 }
@@ -387,11 +429,10 @@ fn base64_encode_to_v8_string<'a>(
   const STACK_BUF_SIZE: usize = 8192;
   if b64_len <= STACK_BUF_SIZE {
     let mut buf = std::mem::MaybeUninit::<[u8; STACK_BUF_SIZE]>::uninit();
-    // Safety: simdutf writes `written` bytes without reading uninitialized data.
-    let written = unsafe {
-      let ptr = buf.as_mut_ptr() as *mut u8;
-      simdutf_base64_encode(src, std::slice::from_raw_parts_mut(ptr, b64_len))
-    };
+    // Safety: buf has STACK_BUF_SIZE >= b64_len bytes.
+    // simdutf writes `written` bytes without reading uninitialized data.
+    let written =
+      unsafe { simdutf_base64_encode(src, buf.as_mut_ptr() as *mut u8, b64_len) };
     v8::String::new_from_one_byte(
       scope,
       // Safety: written <= b64_len <= STACK_BUF_SIZE, all initialized.
@@ -403,11 +444,10 @@ fn base64_encode_to_v8_string<'a>(
     // Encode into a boxed slice and hand ownership to V8 via external string.
     // This avoids a copy — V8 will free the buffer when the string is GC'd.
     let mut buf = Vec::with_capacity(b64_len);
-    // Safety: binary_to_base64 writes exactly b64_len bytes without reading.
-    let written = unsafe {
-      let slice = std::slice::from_raw_parts_mut(buf.as_mut_ptr(), b64_len);
-      simdutf_base64_encode(src, slice)
-    };
+    // Safety: buf has b64_len bytes of capacity.
+    // binary_to_base64 writes exactly b64_len bytes without reading.
+    let written =
+      unsafe { simdutf_base64_encode(src, buf.as_mut_ptr(), b64_len) };
     // Safety: written bytes are initialized by binary_to_base64.
     unsafe { buf.set_len(written) };
     let buf = buf.into_boxed_slice();
@@ -430,12 +470,10 @@ pub fn forgiving_base64_encode(s: &[u8]) -> String {
     v8::simdutf::Base64Options::Default,
   );
   let mut buf = Vec::with_capacity(b64_len);
-  // Safety: binary_to_base64 writes up to b64_len bytes, all valid ASCII.
+  // Safety: buf has b64_len bytes of capacity.
+  // binary_to_base64 writes up to b64_len bytes, all valid ASCII.
   unsafe {
-    let written = simdutf_base64_encode(
-      s,
-      std::slice::from_raw_parts_mut(buf.as_mut_ptr(), b64_len),
-    );
+    let written = simdutf_base64_encode(s, buf.as_mut_ptr(), b64_len);
     buf.set_len(written);
     String::from_utf8_unchecked(buf)
   }
