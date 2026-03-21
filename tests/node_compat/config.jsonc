@@ -804,6 +804,7 @@
     "parallel/test-fs-fsync.js": {},
     "parallel/test-fs-glob.mjs": {},
     "parallel/test-fs-internal-assertencoding.js": {},
+    "parallel/test-fs-lchmod.js": {},
     "parallel/test-fs-lchown-negative-one.js": {},
     "parallel/test-fs-lchown.js": {},
     "parallel/test-fs-link.js": {
