@@ -263,6 +263,7 @@
     "parallel/test-child-process-stdio-overlapped.js": {},
     "parallel/test-child-process-stdout-flush-exit.js": {},
     "parallel/test-child-process-stdout-flush.js": {},
+    "parallel/test-child-process-uid-gid.js": {},
     "parallel/test-child-process-validate-stdio.js": {},
     "parallel/test-cli-bad-options.js": {
       "ignore": true,
@@ -1894,17 +1895,17 @@
     // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
     // "parallel/test-source-map-enable.js": {},
     "parallel/test-sqlite-authz.js": {},
-    // "parallel/test-sqlite-config.js": {}, // https://github.com/denoland/deno/issues/32706
+    "parallel/test-sqlite-config.js": {},
     "parallel/test-sqlite-custom-functions.js": {},
     "parallel/test-sqlite-data-types.js": {},
     "parallel/test-sqlite-database-sync-dispose.js": {},
     "parallel/test-sqlite-database-sync.js": {},
-    // "parallel/test-sqlite-named-parameters.js": {}, // https://github.com/denoland/deno/issues/32706
+    "parallel/test-sqlite-named-parameters.js": {},
     "parallel/test-sqlite-session.js": {
       "flaky": true
     },
     "parallel/test-sqlite-statement-sync-columns.js": {},
-    // "parallel/test-sqlite-statement-sync.js": {}, // https://github.com/denoland/deno/issues/32706
+    "parallel/test-sqlite-statement-sync.js": {},
     "parallel/test-sqlite-timeout.js": {},
     "parallel/test-sqlite-transactions.js": {},
     "parallel/test-sqlite-typed-array-and-data-view.js": {},

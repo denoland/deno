@@ -12,6 +12,7 @@ import {
   op_fs_umask,
   op_getegid,
   op_geteuid,
+  op_getgroups,
   op_node_load_env_file,
   op_node_process_constrained_memory,
   op_node_process_kill,
@@ -998,6 +999,9 @@ process.getgid = getgid;
 process.getuid = getuid;
 
 /** This method is removed on Windows */
+process.getgroups = () => op_getgroups();
+
+/** This method is removed on Windows */
 process.getegid = getegid;
 
 /** This method is removed on Windows */
@@ -1113,6 +1117,7 @@ if (isWindows) {
   delete process.getuid;
   delete process.getegid;
   delete process.geteuid;
+  delete process.getgroups;
 }
 
 Object.defineProperty(process, Symbol.toStringTag, {
