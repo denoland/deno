@@ -1700,7 +1700,10 @@
     "parallel/test-process-title-cli.js": {},
     "parallel/test-process-release.js": {},
     "parallel/test-process-threadCpuUsage-main-thread.js": {},
-    "parallel/test-process-threadCpuUsage-worker-threads.js": {},
+    "parallel/test-process-threadCpuUsage-worker-threads.js": {
+      "windows": false,
+      "reason": "flaky on Windows CI"
+    },
     "parallel/test-process-umask-mask.js": {},
     "parallel/test-process-umask.js": {},
     "parallel/test-process-uptime.js": {},
