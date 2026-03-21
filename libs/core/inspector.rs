@@ -695,6 +695,7 @@ impl JsRuntimeInspector {
   /// Frontend must send "Runtime.runIfWaitingForDebugger" message to resume
   /// execution.
   pub fn wait_for_session_and_break_on_next_statement(&self) {
+    self.state.flags.borrow_mut().paused_on_start = true;
     loop {
       if let Some(session) =
         self.state.sessions.borrow_mut().local.values().next()
@@ -770,6 +771,10 @@ impl JsRuntimeInspector {
 struct InspectorFlags {
   waiting_for_session: bool,
   on_pause: bool,
+  /// Set when --inspect-brk is used. Remains true until
+  /// Runtime.runIfWaitingForDebugger is received, allowing
+  /// NodeRuntime.waitingForDebugger to be emitted.
+  paused_on_start: bool,
 }
 
 #[derive(Debug)]
@@ -1282,9 +1287,13 @@ async fn pump_inspector_session_messages(session: Rc<InspectorSession>) {
     match method {
       "NodeRuntime.enable" => {
         session.state.noderuntime_enabled.set(true);
-        // If the runtime is waiting for a debugger (--inspect-brk),
-        // emit NodeRuntime.waitingForDebugger notification
-        if session.state.flags.borrow().waiting_for_session {
+        // If the runtime is paused on start (--inspect-brk), emit
+        // NodeRuntime.waitingForDebugger. We check paused_on_start
+        // (not waiting_for_session) because the session has already
+        // connected by the time this message is received.
+        let flags = session.state.flags.borrow();
+        if flags.waiting_for_session || flags.paused_on_start {
+          drop(flags);
           (session.state.send)(InspectorMsg::notification(json!({
             "method": "NodeRuntime.waitingForDebugger"
           })));
@@ -1292,6 +1301,12 @@ async fn pump_inspector_session_messages(session: Rc<InspectorSession>) {
       }
       "NodeRuntime.disable" => {
         session.state.noderuntime_enabled.set(false);
+      }
+      "Runtime.runIfWaitingForDebugger" => {
+        session.state.flags.borrow_mut().paused_on_start = false;
+        // Fall through to dispatch to V8
+        session.dispatch_message(msg);
+        continue;
       }
       "NodeWorker.enable" => {
         session.state.nodeworker_enabled.set(true);
