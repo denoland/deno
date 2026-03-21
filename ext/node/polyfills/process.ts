@@ -1308,7 +1308,9 @@ function synchronizeListeners() {
     internals.nodeProcessRejectionHandledCallback = undefined;
   }
 
-  if (uncaughtExceptionListenerCount > 0 || _uncaughtExceptionCaptureFn !== null) {
+  if (
+    uncaughtExceptionListenerCount > 0 || _uncaughtExceptionCaptureFn !== null
+  ) {
     globalThis.addEventListener("error", processOnError);
   } else {
     globalThis.removeEventListener("error", processOnError);
