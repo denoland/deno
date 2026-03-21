@@ -448,9 +448,12 @@ impl<
     Ok(resolve_response)
   }
 
-  /// Like `resolve`, but skips the built-in module check. This is used
-  /// when we know the specifier is an npm package dependency that happens
-  /// to share a name with a Node built-in (e.g. "events", "assert").
+  /// Resolve a bare package specifier, skipping the built-in module check
+  /// and URL scheme handling. Only suitable for bare specifiers like
+  /// "events" or "assert" — not for URLs or relative paths.
+  ///
+  /// Used when a specifier resolved as a built-in but may be shadowed
+  /// by an npm package with the same name.
   pub fn resolve_package(
     &self,
     specifier: &str,

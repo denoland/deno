@@ -544,7 +544,7 @@ impl<
       resolution_kind,
     );
     match resolution_result {
-      Ok(NodeResolution::BuiltIn(_)) => {
+      Ok(NodeResolution::BuiltIn(builtin_name)) => {
         // The specifier matches a Node built-in name (e.g. "events") but
         // an npm package with the same name may be installed. Try resolving
         // as an npm package first -- if found, the npm package takes
@@ -557,8 +557,10 @@ impl<
           resolution_kind,
         ) {
           Ok(res) => Ok(Some(res)),
-          // If npm package resolution fails, return the built-in result
-          Err(_) => Ok(Some(NodeResolution::BuiltIn(specifier.to_string()))),
+          // If the npm package isn't found (or resolution fails for any
+          // reason), fall back to the built-in. In practice the only
+          // failure case here is "package not found in node_modules".
+          Err(_) => Ok(Some(NodeResolution::BuiltIn(builtin_name))),
         }
       }
       Ok(res) => Ok(Some(res)),
