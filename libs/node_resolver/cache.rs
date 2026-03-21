@@ -1,5 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::Path;
@@ -87,7 +88,7 @@ impl NodeResolutionCache for NodeResolutionThreadLocalCache {
   }
 }
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type NodeResolutionCacheRc =
   deno_maybe_sync::MaybeArc<dyn NodeResolutionCache>;
 
@@ -111,28 +112,35 @@ impl<TSys: FsMetadata> NodeResolutionSys<TSys> {
     Self { sys, cache: store }
   }
 
-  pub fn is_file(&self, path: &Path) -> bool {
+  pub fn has_cache(&self) -> bool {
+    self.cache.is_some()
+  }
+
+  pub fn is_file(&self, path: Cow<'_, Path>) -> bool {
     match self.get_file_type(path) {
       Ok(file_type) => file_type.is_file(),
       Err(_) => false,
     }
   }
 
-  pub fn is_dir(&self, path: &Path) -> bool {
+  pub fn is_dir(&self, path: Cow<'_, Path>) -> bool {
     match self.get_file_type(path) {
       Ok(file_type) => file_type.is_dir(),
       Err(_) => false,
     }
   }
 
-  pub fn exists_(&self, path: &Path) -> bool {
+  pub fn exists_(&self, path: Cow<'_, Path>) -> bool {
     self.get_file_type(path).is_ok()
   }
 
-  pub fn get_file_type(&self, path: &Path) -> std::io::Result<FileType> {
+  pub fn get_file_type(
+    &self,
+    path: Cow<'_, Path>,
+  ) -> std::io::Result<FileType> {
     {
       if let Some(maybe_value) =
-        self.cache.as_ref().and_then(|c| c.get_file_type(path))
+        self.cache.as_ref().and_then(|c| c.get_file_type(&path))
       {
         return match maybe_value {
           Some(value) => Ok(value),
@@ -143,16 +151,16 @@ impl<TSys: FsMetadata> NodeResolutionSys<TSys> {
         };
       }
     }
-    match self.sys.fs_metadata(path) {
+    match self.sys.fs_metadata(&path) {
       Ok(metadata) => {
         if let Some(cache) = &self.cache {
-          cache.set_file_type(path.to_path_buf(), Some(metadata.file_type()));
+          cache.set_file_type(path.into_owned(), Some(metadata.file_type()));
         }
         Ok(metadata.file_type())
       }
       Err(err) => {
         if let Some(cache) = &self.cache {
-          cache.set_file_type(path.to_path_buf(), None);
+          cache.set_file_type(path.into_owned(), None);
         }
         Err(err)
       }

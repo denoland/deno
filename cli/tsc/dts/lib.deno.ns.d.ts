@@ -3694,8 +3694,8 @@ declare namespace Deno {
    * );
    * ```
    *
-   * _Note_: On Windows only `"SIGINT"` (CTRL+C) and `"SIGBREAK"` (CTRL+Break)
-   * are supported.
+   * _Note_: On Windows only `"SIGINT"` (CTRL+C), `"SIGBREAK"` (CTRL+Break),
+   * `"SIGTERM"`, `"SIGQUIT"`, `"SIGHUP"`, and `"SIGWINCH"` are supported.
    *
    * @category Runtime
    */
@@ -3712,8 +3712,8 @@ declare namespace Deno {
    * Deno.removeSignalListener("SIGTERM", listener);
    * ```
    *
-   * _Note_: On Windows only `"SIGINT"` (CTRL+C) and `"SIGBREAK"` (CTRL+Break)
-   * are supported.
+   * _Note_: On Windows only `"SIGINT"` (CTRL+C), `"SIGBREAK"` (CTRL+Break),
+   * `"SIGTERM"`, `"SIGQUIT"`, `"SIGHUP"`, and `"SIGWINCH"` are supported.
    *
    * @category Runtime
    */

@@ -1077,10 +1077,14 @@ Deno.test({
 Deno.test({
   name: "process.title",
   fn() {
-    assertEquals(process.title, "deno");
-    // Verify that setting the value has no effect.
+    // Default process.title should be the execPath (matches Node.js behavior)
+    assertEquals(process.title, process.execPath);
+    // Setting process.title should work
+    const original = process.title;
     process.title = "foo";
-    assertEquals(process.title, "deno");
+    assertEquals(process.title, "foo");
+    // Restore
+    process.title = original;
   },
 });
 
@@ -1690,22 +1694,14 @@ Deno.test({
 });
 
 Deno.test({
-  name: "process.loadEnvFile() throws on invalid UTF-8 encoding",
+  name: "process.loadEnvFile() does not throw on invalid UTF-8 encoding",
   fn() {
     const dirPath = Deno.makeTempDirSync();
     const envFilePath = path.join(dirPath, "envfile.env");
     const contentArray = new Uint8Array([0xff, 0xfe, 0xfd]);
     Deno.writeFileSync(envFilePath, contentArray);
-
-    nodeAssert.throws(
-      () => process.loadEnvFile(envFilePath),
-      {
-        name: "TypeError",
-        code: "ERR_INVALID_ARG_TYPE",
-        message: `Contents of '${envFilePath}' should be a valid string.`,
-      },
-    );
-
+    // should load fine as in Node.js
+    process.loadEnvFile(envFilePath);
     Deno.removeSync(dirPath, { recursive: true });
   },
 });

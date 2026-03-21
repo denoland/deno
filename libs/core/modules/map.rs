@@ -237,6 +237,10 @@ pub(crate) struct ModuleMap {
   pending_tla_waiters:
     RefCell<HashMap<ModuleId, Vec<v8::Global<v8::PromiseResolver>>>>,
   pending_mod_evaluation: Cell<bool>,
+  /// Set to `true` while inside `module.evaluate()` in `mod_evaluate`.
+  /// Used to suppress microtask checkpoints in `lazy_load_es_module_with_code`
+  /// during module evaluation, preventing premature draining of TLA-related microtasks.
+  evaluating_top_level: Cell<bool>,
   code_cache_ready_futs: TrackedFutures<Pin<Box<CodeCacheReadyFuture>>>,
   module_waker: AtomicWaker,
   data: RefCell<ModuleMapData>,
@@ -320,6 +324,7 @@ impl ModuleMap {
       pending_dyn_mod_evaluations: Default::default(),
       pending_tla_waiters: Default::default(),
       pending_mod_evaluation: Default::default(),
+      evaluating_top_level: Default::default(),
       code_cache_ready_futs: Default::default(),
       module_waker: Default::default(),
       data: Default::default(),
@@ -682,7 +687,7 @@ impl ModuleMap {
   /// and attached to associated [`ModuleInfo`].
   ///
   /// Returns an ID of newly created module.
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
   pub(crate) fn new_module_from_js_source(
     &self,
     scope: &mut v8::PinScope,
@@ -784,8 +789,12 @@ impl ModuleMap {
     if !source_mapping_url_value.is_undefined()
       && !source_mapping_url_value.is_null()
     {
-      let source_mapping_url =
-        source_mapping_url_value.to_rust_string_lossy(tc_scope);
+      let mut source_mapping_url_buf: [std::mem::MaybeUninit<u8>; 1024] =
+        [std::mem::MaybeUninit::uninit(); 1024];
+      let source_mapping_url: v8::Local<v8::String> =
+        source_mapping_url_value.try_cast().unwrap();
+      let source_mapping_url = source_mapping_url
+        .to_rust_cow_lossy(tc_scope, &mut source_mapping_url_buf);
 
       let module_name = name
         .try_clone()
@@ -809,7 +818,7 @@ impl ModuleMap {
               .unwrap_or(module_url)
               .to_string()
           } else {
-            source_mapping_url
+            source_mapping_url.into_owned()
           };
 
         self
@@ -828,9 +837,11 @@ impl ModuleMap {
         module_requests.get(tc_scope, i).unwrap(),
       )
       .unwrap();
+      let mut import_specifier_buf: [std::mem::MaybeUninit<u8>; 1024] =
+        [std::mem::MaybeUninit::uninit(); 1024];
       let import_specifier = module_request
         .get_specifier()
-        .to_rust_string_lossy(tc_scope);
+        .to_rust_cow_lossy(tc_scope, &mut import_specifier_buf);
 
       let import_attributes = module_request.get_import_attributes();
 
@@ -884,7 +895,7 @@ impl ModuleMap {
           specifier: module_specifier,
           requested_module_type,
         },
-        specifier_key: Some(import_specifier),
+        specifier_key: Some(import_specifier.into_owned()),
         referrer_source_offset,
         phase: match module_request.get_phase() {
           v8::ModuleImportPhase::kEvaluation => ModuleImportPhase::Evaluation,
@@ -1010,7 +1021,10 @@ impl ModuleMap {
     Ok(self.new_synthetic_module(tc_scope, name, ModuleType::Json, exports))
   }
 
-  #[allow(clippy::unnecessary_wraps)]
+  #[allow(
+    clippy::unnecessary_wraps,
+    reason = "consistent return type with other module constructors"
+  )]
   pub(crate) fn new_text_module(
     &self,
     scope: &mut v8::PinScope,
@@ -1033,7 +1047,10 @@ impl ModuleMap {
     Ok(self.new_synthetic_module(scope, name, ModuleType::Text, exports))
   }
 
-  #[allow(clippy::unnecessary_wraps)]
+  #[allow(
+    clippy::unnecessary_wraps,
+    reason = "consistent return type with other module constructors"
+  )]
   pub(crate) fn new_bytes_module(
     &self,
     scope: &mut v8::PinScope,
@@ -1124,7 +1141,9 @@ impl ModuleMap {
       .get_name_by_module(&referrer_global)
       .expect("ModuleInfo not found");
 
-    let specifier_str = specifier.to_rust_string_lossy(scope);
+    let mut specifier_buf: [std::mem::MaybeUninit<u8>; 1024] =
+      [std::mem::MaybeUninit::uninit(); 1024];
+    let specifier_str = specifier.to_rust_cow_lossy(scope, &mut specifier_buf);
 
     let attributes = parse_import_attributes(
       scope,
@@ -1163,7 +1182,9 @@ impl ModuleMap {
       // SAFETY: We retrieve the pointer from the slot, having just set it a few stack frames up
       unsafe { scope.get_slot::<*const Self>().unwrap().as_ref().unwrap() };
 
-    let specifier_str = specifier.to_rust_string_lossy(scope);
+    let mut specifier_buf: [std::mem::MaybeUninit<u8>; 1024] =
+      [std::mem::MaybeUninit::uninit(); 1024];
+    let specifier_str = specifier.to_rust_cow_lossy(scope, &mut specifier_buf);
     let referrer_global = v8::Global::new(scope, referrer);
     let attributes = parse_import_attributes(
       scope,
@@ -1276,7 +1297,7 @@ impl ModuleMap {
   }
 
   // Initiate loading of a module graph imported using `import()`.
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "internal code")]
   pub(crate) fn load_dynamic_import(
     self: Rc<Self>,
     scope: &mut v8::PinScope,
@@ -1410,7 +1431,9 @@ impl ModuleMap {
         .unwrap_or_else(|_| Err(CoreErrorKind::ExecutionTerminated.into_box()))
     });
 
+    self.evaluating_top_level.set(true);
     let Some(value) = module.evaluate(tc_scope) else {
+      self.evaluating_top_level.set(false);
       if tc_scope.has_terminated() || tc_scope.is_execution_terminating() {
         let undefined = v8::undefined(tc_scope).into();
         _ = sender
@@ -1420,6 +1443,7 @@ impl ModuleMap {
       }
       return Either::Right(receiver);
     };
+    self.evaluating_top_level.set(false);
 
     self.pending_mod_evaluation.set(true);
 
@@ -2184,7 +2208,16 @@ impl ModuleMap {
     let value = module_local.evaluate(scope).unwrap();
     // Under Explicit microtask policy, drain microtasks so the module
     // evaluation promise resolves for synchronous modules.
-    scope.perform_microtask_checkpoint();
+    //
+    // However, skip the checkpoint when we are inside a top-level
+    // `module.evaluate()` call (i.e. `evaluating_top_level` is set).
+    // Draining microtasks at this point can prematurely resolve
+    // TLA-related microtasks (e.g. `await` resume jobs from eagerly-
+    // resolved async ops), which prevents the module evaluation promise
+    // from settling correctly later.
+    if !self.evaluating_top_level.get() {
+      scope.perform_microtask_checkpoint();
+    }
     let promise = v8::Local::<v8::Promise>::try_from(value).unwrap();
     let result = promise.result(scope);
     if !result.is_undefined() {
@@ -2280,7 +2313,10 @@ impl ModuleMap {
 
 // Clippy thinks the return value doesn't need to be an Option, it's unaware
 // of the mapping that MapFnFrom<F> does for ResolveModuleCallback.
-#[allow(clippy::unnecessary_wraps)]
+#[allow(
+  clippy::unnecessary_wraps,
+  reason = "required by MapFnFrom<F> for ResolveModuleCallback"
+)]
 pub(crate) fn synthetic_module_evaluation_steps<'s>(
   context: v8::Local<'s, v8::Context>,
   module: v8::Local<'s, v8::Module>,

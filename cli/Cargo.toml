@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "2.7.5"
+version = "2.7.7"
 authors.workspace = true
 default-run = "deno"
 edition.workspace = true
@@ -110,7 +110,6 @@ crossterm.workspace = true
 dashmap.workspace = true
 deno_dotenv.workspace = true
 dhat = { workspace = true, optional = true }
-dissimilar.workspace = true
 dprint-core.workspace = true
 dprint-plugin-json.workspace = true
 dprint-plugin-jupyter.workspace = true
@@ -125,6 +124,7 @@ fluent-uri.workspace = true
 http.workspace = true
 http-body.workspace = true
 http-body-util.workspace = true
+imara-diff.workspace = true
 import_map.workspace = true
 indexmap.workspace = true
 jsonc-parser = { workspace = true, features = ["cst", "serde"] }

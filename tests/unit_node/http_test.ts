@@ -2317,6 +2317,82 @@ Deno.test("[node/http] ServerResponse.writeEarlyHints", async () => {
   await promise;
 });
 
+// https://github.com/denoland/deno/issues/32780
+Deno.test({
+  name: "[node/http] keep-alive request close fires before socket free",
+  sanitizeResources: false,
+  async fn() {
+    const { promise, resolve: done } = Promise.withResolvers<void>();
+
+    const agent = new http.Agent({
+      keepAlive: true,
+      maxSockets: 1,
+      maxFreeSockets: 1,
+    });
+
+    const server = http.createServer((_req, res) => {
+      res.end("ok");
+    });
+
+    // Capture the shared socket so we can check its listener count
+    // even after res.socket is nulled during the keep-alive handoff.
+    let sharedSocket: Socket | null = null;
+
+    function makeRequest(path: string): Promise<void> {
+      return new Promise((resolve, reject) => {
+        const req = http.get(
+          {
+            host: "127.0.0.1",
+            port: (server.address() as { port: number }).port,
+            agent,
+            path,
+          },
+          (res) => {
+            const sock = res.socket!;
+            if (!sharedSocket) sharedSocket = sock;
+
+            // Attach a per-request listener on the socket, mimicking what
+            // node-fetch and similar libraries do.
+            const onData = () => {};
+            sock.on("data", onData);
+
+            // Clean it up on request close — this must fire BEFORE the
+            // agent reuses the socket, otherwise the listener leaks.
+            req.on("close", () => {
+              sock.removeListener("data", onData);
+            });
+
+            res.on("data", () => {});
+            res.on("end", () => resolve());
+          },
+        );
+        req.on("error", reject);
+      });
+    }
+
+    server.listen(0, async () => {
+      for (let i = 0; i < 15; i++) {
+        await makeRequest(`/req-${i}`);
+        await new Promise((resolve) => setTimeout(resolve, 5));
+      }
+
+      // Without the fix, req "close" never fires in the keep-alive path,
+      // so all 15 "data" listeners accumulate on the socket.
+      // With the fix, each listener is cleaned up before socket reuse.
+      const leakedListeners = sharedSocket!.listenerCount("data");
+      assert(
+        leakedListeners === 0,
+        `Expected 0 "data" listeners on the socket, but found ${leakedListeners}`,
+      );
+
+      agent.destroy();
+      server.close(() => done());
+    });
+
+    await promise;
+  },
+});
+
 // https://github.com/denoland/deno/issues/32311
 Deno.test("[node/http] upgrade request can be rejected with non-101 status", async () => {
   const { promise, resolve } = Promise.withResolvers<void>();

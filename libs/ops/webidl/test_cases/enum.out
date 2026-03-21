@@ -7,21 +7,26 @@ impl<'a> ::deno_core::webidl::WebIdlConverter<'a> for Enumeration {
         __context: ::deno_core::webidl::ContextFn<'b>,
         __options: &Self::Options,
     ) -> Result<Self, ::deno_core::webidl::WebIdlError> {
-        match __value.to_rust_string_lossy(__scope).as_str() {
-            "foo-bar" => Ok(Self::FooBar),
-            "baz" => Ok(Self::Baz),
-            "hello" => Ok(Self::World),
-            s => {
-                Err(
-                    ::deno_core::webidl::WebIdlError::new(
-                        __prefix,
-                        __context,
-                        ::deno_core::webidl::WebIdlErrorKind::InvalidEnumVariant {
-                            converter: "Enumeration",
-                            variant: s.to_string(),
-                        },
-                    ),
-                )
+        {
+            let mut __buf: [::std::mem::MaybeUninit<
+                u8,
+            >; deno_core::_ops::STRING_STACK_BUFFER_SIZE] = [::std::mem::MaybeUninit::uninit(); deno_core::_ops::STRING_STACK_BUFFER_SIZE];
+            match deno_core::_ops::to_str(__scope, &*__value, &mut __buf).as_ref() {
+                "foo-bar" => Ok(Self::FooBar),
+                "baz" => Ok(Self::Baz),
+                "hello" => Ok(Self::World),
+                s => {
+                    Err(
+                        ::deno_core::webidl::WebIdlError::new(
+                            __prefix,
+                            __context,
+                            ::deno_core::webidl::WebIdlErrorKind::InvalidEnumVariant {
+                                converter: "Enumeration",
+                                variant: s.to_string(),
+                            },
+                        ),
+                    )
+                }
             }
         }
     }
