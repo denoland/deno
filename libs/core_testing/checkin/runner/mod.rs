@@ -117,7 +117,7 @@ pub fn create_runtime_from_snapshot_with_options(
   extensions.extend(additional_extensions);
   let module_loader =
     Rc::new(ts_module_loader::TypescriptModuleLoader::default());
-  let mut runtime = JsRuntime::new(RuntimeOptions {
+  let runtime = JsRuntime::new(RuntimeOptions {
     extensions,
     startup_snapshot: Some(snapshot),
     module_loader: Some(module_loader.clone()),
@@ -128,20 +128,6 @@ pub fn create_runtime_from_snapshot_with_options(
     inspector,
     ..options
   });
-
-  // Register a uv loop so that setImmediate check handle works.
-  {
-    // SAFETY: zeroed memory is valid for UvLoop before uv_loop_init.
-    let mut uv_loop =
-      Box::new(unsafe { std::mem::zeroed::<deno_core::uv_compat::UvLoop>() });
-    // SAFETY: uv_loop points to valid zeroed memory ready for initialization.
-    unsafe { deno_core::uv_compat::uv_loop_init(&mut *uv_loop) };
-    let loop_ptr: *mut deno_core::uv_compat::UvLoop = &mut *uv_loop;
-    // SAFETY: loop_ptr is a valid initialized UvLoop.
-    unsafe { runtime.register_uv_loop(loop_ptr) };
-    // Store in OpState to keep alive for the runtime's lifetime.
-    runtime.op_state().borrow_mut().put(uv_loop);
-  }
 
   let stats = runtime.runtime_activity_stats_factory();
   runtime.op_state().borrow_mut().put(stats);
