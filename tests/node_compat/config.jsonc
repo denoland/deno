@@ -711,7 +711,10 @@
     "parallel/test-fs-buffertype-writesync.js": {},
     "parallel/test-fs-chmod-mask.js": {},
     "parallel/test-fs-chmod.js": {},
-    "parallel/test-fs-chown-negative-one.js": {},
+    "parallel/test-fs-chown-negative-one.js": {
+      "windows": false,
+      "reason": "Unix-specific test (chown/symlink/mode)"
+    },
     "parallel/test-fs-chown-type-check.js": {},
     "parallel/test-fs-close-errors.js": {},
     "parallel/test-fs-close.js": {},
@@ -797,7 +800,10 @@
     "parallel/test-fs-exists.js": {},
     "parallel/test-fs-existssync-false.js": {},
     "parallel/test-fs-fchmod.js": {},
-    "parallel/test-fs-fchown-negative-one.js": {},
+    "parallel/test-fs-fchown-negative-one.js": {
+      "windows": false,
+      "reason": "Unix-specific test (chown/symlink/mode)"
+    },
     "parallel/test-fs-fchown.js": {},
     "parallel/test-fs-filehandle-use-after-close.js": {},
     "parallel/test-fs-fmap.js": {},
@@ -805,7 +811,10 @@
     "parallel/test-fs-glob.mjs": {},
     "parallel/test-fs-internal-assertencoding.js": {},
     "parallel/test-fs-lchmod.js": {},
-    "parallel/test-fs-lchown-negative-one.js": {},
+    "parallel/test-fs-lchown-negative-one.js": {
+      "windows": false,
+      "reason": "Unix-specific test (chown/symlink/mode)"
+    },
     "parallel/test-fs-lchown.js": {},
     "parallel/test-fs-link.js": {
       "flaky": true
@@ -813,14 +822,20 @@
     "parallel/test-fs-long-path.js": {},
     "parallel/test-fs-make-callback.js": {},
     "parallel/test-fs-makeStatsCallback.js": {},
-    "parallel/test-fs-mkdir-recursive-eaccess.js": {},
+    "parallel/test-fs-mkdir-recursive-eaccess.js": {
+      "windows": false,
+      "reason": "Unix-specific test (chown/symlink/mode)"
+    },
     "parallel/test-fs-mkdir-rmdir.js": {},
     "parallel/test-fs-mkdir.js": {},
     "parallel/test-fs-mkdtemp-prefix-check.js": {},
     "parallel/test-fs-mkdtemp.js": {},
     "parallel/test-fs-non-number-arguments-throw.js": {},
     "parallel/test-fs-open-flags.js": {},
-    "parallel/test-fs-open-mode-mask.js": {},
+    "parallel/test-fs-open-mode-mask.js": {
+      "windows": false,
+      "reason": "Unix-specific test (chown/symlink/mode)"
+    },
     "parallel/test-fs-open-no-close.js": {},
     "parallel/test-fs-open-numeric-flags.js": {},
     "parallel/test-fs-open.js": {},
@@ -873,7 +888,6 @@
     "parallel/test-fs-readdir-recursive.js": {},
     "parallel/test-fs-readdir-stack-overflow.js": {},
     "parallel/test-fs-readdir-types-symlinks.js": {},
-    "parallel/test-fs-readdir-ucs2.js": {},
     "parallel/test-fs-readdir.js": {},
     "parallel/test-fs-readfile-empty.js": {},
     "parallel/test-fs-readfile-error.js": {},
@@ -894,7 +908,6 @@
     "parallel/test-fs-ready-event-stream.js": {},
     "parallel/test-fs-realpath-buffer-encoding.js": {},
     "parallel/test-fs-realpath-native.js": {},
-    "parallel/test-fs-realpath-on-substed-drive.js": {},
     "parallel/test-fs-realpath-pipe.js": {},
     "parallel/test-fs-rename-type-check.js": {},
     "parallel/test-fs-rm.js": {
@@ -920,7 +933,10 @@
     "parallel/test-fs-symlink-dir-junction.js": {},
     "parallel/test-fs-symlink-dir-junction-relative.js": {},
     "parallel/test-fs-symlink-dir.js": {},
-    "parallel/test-fs-symlink-longpath.js": {},
+    "parallel/test-fs-symlink-longpath.js": {
+      "windows": false,
+      "reason": "Unix-specific test (chown/symlink/mode)"
+    },
     "parallel/test-fs-symlink.js": {},
     "parallel/test-fs-timestamp-parsing-error.js": {},
     "parallel/test-fs-truncate-clear-file-zero.js": {},
@@ -933,7 +949,6 @@
     "parallel/test-fs-whatwg-url.js": {},
     "parallel/test-fs-write-buffer-large.js": {},
     "parallel/test-fs-write-buffer.js": {},
-    "parallel/test-fs-write-file-flush.js": {},
     "parallel/test-fs-write-file-invalid-path.js": {},
     "parallel/test-fs-write-file-typedarrays.js": {},
     "parallel/test-fs-write-file.js": {
