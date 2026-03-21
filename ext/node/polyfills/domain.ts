@@ -121,9 +121,28 @@ export class Domain extends EventEmitter {
     // deno-lint-ignore no-this-alias
     const self = this;
     return function () {
+      self.enter();
       try {
-        return FunctionPrototypeApply(fn, null, ArrayPrototypeSlice(arguments));
+        const ret = FunctionPrototypeApply(
+          fn,
+          this,
+          ArrayPrototypeSlice(arguments),
+        );
+        self.exit();
+        return ret;
       } catch (e) {
+        self.exit();
+        if (typeof e === "object" && e !== null) {
+          e.domainBound = fn;
+          e.domainThrown = false;
+          ObjectDefineProperty(e, "domain", {
+            __proto__: null,
+            configurable: true,
+            enumerable: false,
+            value: self,
+            writable: true,
+          });
+        }
         FunctionPrototypeCall(emitError, self, e);
       }
     };
@@ -134,15 +153,41 @@ export class Domain extends EventEmitter {
     const self = this;
     return function (e) {
       if (e) {
+        if (typeof e === "object" && e !== null) {
+          e.domainBound = fn;
+          e.domainThrown = false;
+          ObjectDefineProperty(e, "domain", {
+            __proto__: null,
+            configurable: true,
+            enumerable: false,
+            value: self,
+            writable: true,
+          });
+        }
         FunctionPrototypeCall(emitError, self, e);
       } else {
+        self.enter();
         try {
-          return FunctionPrototypeApply(
+          const ret = FunctionPrototypeApply(
             fn,
-            null,
+            this,
             ArrayPrototypeSlice(arguments, 1),
           );
+          self.exit();
+          return ret;
         } catch (e) {
+          self.exit();
+          if (typeof e === "object" && e !== null) {
+            e.domainBound = fn;
+            e.domainThrown = false;
+            ObjectDefineProperty(e, "domain", {
+              __proto__: null,
+              configurable: true,
+              enumerable: false,
+              value: self,
+              writable: true,
+            });
+          }
           FunctionPrototypeCall(emitError, self, e);
         }
       }
@@ -156,8 +201,17 @@ export class Domain extends EventEmitter {
       this.exit();
       return ret;
     } catch (e) {
-      // Exit the domain BEFORE emitting the error so the error handler
       this.exit();
+      if (typeof e === "object" && e !== null) {
+        e.domainThrown = true;
+        ObjectDefineProperty(e, "domain", {
+          __proto__: null,
+          configurable: true,
+          enumerable: false,
+          value: this,
+          writable: true,
+        });
+      }
       FunctionPrototypeCall(emitError, this, e);
     }
   }
@@ -175,9 +229,13 @@ export class Domain extends EventEmitter {
   }
 
   exit() {
-    const index = ArrayPrototypeLastIndexOf(stack, this);
-    if (index === -1) return this;
-    ArrayPrototypeSplice(stack, index, 1);
+    // Use indexOf (first occurrence) and remove everything from that position
+    // onwards. This matches Node.js behavior: exiting a domain also exits
+    // all domains that were entered after it.
+    const index = ArrayPrototypeIndexOf(stack, this);
+    if (index !== -1) {
+      ArrayPrototypeSplice(stack, index);
+    }
     active = stack.length === 0 ? null : stack[stack.length - 1];
     process.domain = active;
     updateExceptionCapture();
