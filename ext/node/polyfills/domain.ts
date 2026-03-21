@@ -170,6 +170,7 @@ export class Domain extends EventEmitter {
   enter() {
     active = process.domain = this;
     ArrayPrototypePush(stack, this);
+    updateExceptionCapture();
     return this;
   }
 
@@ -179,12 +180,61 @@ export class Domain extends EventEmitter {
     ArrayPrototypeSplice(stack, index, 1);
     active = stack.length === 0 ? null : stack[stack.length - 1];
     process.domain = active;
+    updateExceptionCapture();
     return this;
   }
 }
 
+let exceptionCaptureActive = false;
+
 function updateExceptionCapture() {
-  // TODO(kt3k): implement this
+  if (stack.length > 0 && !exceptionCaptureActive) {
+    exceptionCaptureActive = true;
+    process.setUncaughtExceptionCaptureCallback(
+      domainUncaughtExceptionHandler,
+    );
+  } else if (stack.length === 0 && exceptionCaptureActive) {
+    exceptionCaptureActive = false;
+    process.setUncaughtExceptionCaptureCallback(null);
+  }
+}
+
+function domainUncaughtExceptionHandler(er) {
+  const curDomain = process.domain;
+  if (!curDomain || curDomain._disposed) {
+    // No active domain or domain has been disposed, re-throw
+    throw er;
+  }
+
+  if (typeof er === "object" && er !== null) {
+    ObjectDefineProperty(er, "domain", {
+      __proto__: null,
+      configurable: true,
+      enumerable: false,
+      value: curDomain,
+      writable: true,
+    });
+    er.domainThrown = true;
+  }
+
+  // Remove the errored domain from the stack. This cleans up the entry
+  // left by emitBefore when the callback threw before emitAfter could run.
+  if (stack.length === 1) {
+    active = process.domain = null;
+    stack.length = 0;
+  } else {
+    const idx = ArrayPrototypeLastIndexOf(stack, curDomain);
+    if (idx !== -1) {
+      ArrayPrototypeSplice(stack, idx, 1);
+    }
+    active = process.domain = stack.length > 0
+      ? stack[stack.length - 1]
+      : null;
+  }
+
+  updateExceptionCapture();
+
+  curDomain.emit("error", er);
 }
 
 let patched = false;

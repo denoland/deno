@@ -848,10 +848,41 @@ process.reallyExit = (code: number) => {
 
 process._exiting = _exiting;
 
+// Exception capture callback (used by node:domain)
+// deno-lint-ignore no-explicit-any
+let _uncaughtExceptionCaptureFn: ((err: any) => void) | null = null;
+
+// deno-lint-ignore no-explicit-any
+process.setUncaughtExceptionCaptureCallback = function (fn: any) {
+  if (fn === null) {
+    _uncaughtExceptionCaptureFn = null;
+    synchronizeListeners();
+    return;
+  }
+  if (typeof fn !== "function") {
+    throw new TypeError("The argument must be a function or null");
+  }
+  if (_uncaughtExceptionCaptureFn !== null) {
+    throw new Error(
+      "A callback is already set. Use `process.setUncaughtExceptionCaptureCallback(null)` to unset it first.",
+    );
+  }
+  _uncaughtExceptionCaptureFn = fn;
+  synchronizeListeners();
+};
+
+process.hasUncaughtExceptionCaptureCallback = function () {
+  return _uncaughtExceptionCaptureFn !== null;
+};
+
 // deno-lint-ignore no-explicit-any
 process._fatalException = function (err: any, fromPromise?: boolean) {
   const origin = fromPromise ? "unhandledRejection" : "uncaughtException";
   process.emit("uncaughtExceptionMonitor", err, origin);
+  if (_uncaughtExceptionCaptureFn !== null) {
+    _uncaughtExceptionCaptureFn(err);
+    return true;
+  }
   if (process.listenerCount("uncaughtException") > 0) {
     process.emit("uncaughtException", err, origin);
     return true;
@@ -1277,7 +1308,7 @@ function synchronizeListeners() {
     internals.nodeProcessRejectionHandledCallback = undefined;
   }
 
-  if (uncaughtExceptionListenerCount > 0) {
+  if (uncaughtExceptionListenerCount > 0 || _uncaughtExceptionCaptureFn !== null) {
     globalThis.addEventListener("error", processOnError);
   } else {
     globalThis.removeEventListener("error", processOnError);
