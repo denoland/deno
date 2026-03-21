@@ -37,21 +37,10 @@ function prompt(message = "Prompt", defaultValue) {
     return null;
   }
 
-  // Format the prompt message, showing default value if provided
-  let formattedMessage;
-  if (message.length === 0) {
-    formattedMessage = defaultValue.length > 0 ? `[${defaultValue}] ` : "";
-  } else {
-    formattedMessage = defaultValue.length > 0
-      ? `${message} [${defaultValue}] `
-      : `${message} `;
-  }
-
+  const formattedMessage = message.length === 0 ? "" : `${message} `;
   core.print(formattedMessage, false);
 
   const answer = readLineFromStdinSync();
-
-  // Return null on EOF, otherwise return the answer or default value
   if (answer === null) {
     return null;
   }
