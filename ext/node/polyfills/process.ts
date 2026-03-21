@@ -1317,6 +1317,9 @@ internals.__bootstrapNodeProcess = function (
     if (io.stdout.isTerminal()) {
       /** https://nodejs.org/api/process.html#process_process_stdout */
       stdout = process.stdout = new TTYWriteStream(1);
+      // For supporting legacy API we put the FD here.
+      // Ref: https://github.com/nodejs/node/blob/main/lib/internal/bootstrap/switches/is_main_thread.js
+      stdout.fd = 1;
       // Match Node.js: stdio streams are indestructible.
       // Libraries like mute-stream (@inquirer/prompts) call destroy()/end()
       // on process.stdout between prompts. Without this, the underlying TTY
@@ -1343,6 +1346,8 @@ internals.__bootstrapNodeProcess = function (
     if (io.stderr.isTerminal()) {
       /** https://nodejs.org/api/process.html#process_process_stderr */
       stderr = process.stderr = new TTYWriteStream(2);
+      // For supporting legacy API we put the FD here.
+      stderr.fd = 2;
       stderr._isStdio = true;
       stderr.destroySoon = stderr.destroy;
       stderr._destroy = function (err, cb) {
