@@ -498,6 +498,9 @@ fn parse_flags(source: &str) -> (Vec<String>, Vec<String>) {
           f if f.starts_with("--title=") => {
             node_options.push(f.to_string());
           }
+          f if f.starts_with("--unhandled-rejections=") => {
+            node_options.push(f.to_string());
+          }
           _ => {}
         }
       }

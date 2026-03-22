@@ -55,6 +55,7 @@ export function getOptions() {
     ["--warnings", { value: true }],
     ["--pending-deprecation", { value: false }],
     ["--title", { value: "" }],
+    ["--unhandled-rejections", { value: undefined }],
   ]);
 
   const nodeOptions = Deno.env.get("NODE_OPTIONS");
@@ -78,6 +79,12 @@ export function getOptions() {
             "--dns-result-order=".length,
           );
           options.set("--dns-result-order", { value });
+        } else if (StringPrototypeStartsWith(arg, "--unhandled-rejections=")) {
+          const value = StringPrototypeSlice(
+            arg,
+            "--unhandled-rejections=".length,
+          );
+          options.set("--unhandled-rejections", { value });
         }
         break;
     }
