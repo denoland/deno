@@ -6,7 +6,7 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 const { ObjectPrototypeToString, SymbolSpecies } = primordials;
 import {
   op_v8_cached_data_version_tag,
@@ -383,6 +383,176 @@ export class DefaultDeserializer extends Deserializer {
     );
   }
 }
+// ---------------------------------------------------------------------------
+// v8.promiseHooks
+// https://nodejs.org/api/v8.html#promise-hooks
+// ---------------------------------------------------------------------------
+
+type PromiseHookFn = (
+  promise: Promise<unknown>,
+  parent?: Promise<unknown>,
+) => void;
+
+function validatePlainFunction(value: unknown, name: string) {
+  if (typeof value !== "function") {
+    throw new TypeError(
+      `The "${name}" argument must be of type function. Received ${typeof value}`,
+    );
+  }
+  // Reject async functions and async generators - they cannot be promise hooks
+  const ctorName = (value as Function).constructor?.name;
+  if (ctorName === "AsyncFunction" || ctorName === "AsyncGeneratorFunction") {
+    throw new TypeError(
+      `The "${name}" argument must be of type function. Received ${typeof value}`,
+    );
+  }
+}
+
+// Track all registered hooks so we can rebuild the combined hooks
+// when individual hooks are added/removed.
+const initHooks: PromiseHookFn[] = [];
+const beforeHooks: PromiseHookFn[] = [];
+const afterHooks: PromiseHookFn[] = [];
+const resolveHooks: PromiseHookFn[] = [];
+
+// Re-entrancy guard: V8 promise hooks fire for ALL promise operations,
+// including any promises created/resolved inside the hooks themselves.
+let inPromiseHook = false;
+
+// Register dispatchers once. core.setPromiseHooks is additive (no removal),
+// so we install permanent dispatchers that check the current hook arrays.
+let hooksInstalled = false;
+
+function ensureHooksInstalled() {
+  if (hooksInstalled) return;
+  hooksInstalled = true;
+  core.setPromiseHooks(
+    (promise: Promise<unknown>, parent?: Promise<unknown>) => {
+      if (inPromiseHook || initHooks.length === 0) return;
+      inPromiseHook = true;
+      try {
+        for (let i = 0; i < initHooks.length; i++) {
+          initHooks[i](promise, parent);
+        }
+      } finally {
+        inPromiseHook = false;
+      }
+    },
+    (promise: Promise<unknown>) => {
+      if (inPromiseHook || beforeHooks.length === 0) return;
+      inPromiseHook = true;
+      try {
+        for (let i = 0; i < beforeHooks.length; i++) {
+          beforeHooks[i](promise);
+        }
+      } finally {
+        inPromiseHook = false;
+      }
+    },
+    (promise: Promise<unknown>) => {
+      if (inPromiseHook || afterHooks.length === 0) return;
+      inPromiseHook = true;
+      try {
+        for (let i = 0; i < afterHooks.length; i++) {
+          afterHooks[i](promise);
+        }
+      } finally {
+        inPromiseHook = false;
+      }
+    },
+    (promise: Promise<unknown>) => {
+      if (inPromiseHook || resolveHooks.length === 0) return;
+      inPromiseHook = true;
+      try {
+        for (let i = 0; i < resolveHooks.length; i++) {
+          resolveHooks[i](promise);
+        }
+      } finally {
+        inPromiseHook = false;
+      }
+    },
+  );
+}
+
+function removeFromArray<T>(arr: T[], value: T) {
+  const idx = arr.indexOf(value);
+  if (idx !== -1) {
+    arr.splice(idx, 1);
+  }
+}
+
+export const promiseHooks = {
+  onInit(initHook: PromiseHookFn): () => void {
+    validatePlainFunction(initHook, "initHook");
+    initHooks.push(initHook);
+    ensureHooksInstalled();
+    return () => {
+      removeFromArray(initHooks, initHook);
+      ensureHooksInstalled();
+    };
+  },
+  onBefore(beforeHook: PromiseHookFn): () => void {
+    validatePlainFunction(beforeHook, "beforeHook");
+    beforeHooks.push(beforeHook);
+    ensureHooksInstalled();
+    return () => {
+      removeFromArray(beforeHooks, beforeHook);
+      ensureHooksInstalled();
+    };
+  },
+  onAfter(afterHook: PromiseHookFn): () => void {
+    validatePlainFunction(afterHook, "afterHook");
+    afterHooks.push(afterHook);
+    ensureHooksInstalled();
+    return () => {
+      removeFromArray(afterHooks, afterHook);
+      ensureHooksInstalled();
+    };
+  },
+  onSettled(resolveHook: PromiseHookFn): () => void {
+    validatePlainFunction(resolveHook, "settledHook");
+    resolveHooks.push(resolveHook);
+    ensureHooksInstalled();
+    return () => {
+      removeFromArray(resolveHooks, resolveHook);
+      ensureHooksInstalled();
+    };
+  },
+  createHook(
+    { init, before, after, settled }: {
+      init?: PromiseHookFn;
+      before?: PromiseHookFn;
+      after?: PromiseHookFn;
+      settled?: PromiseHookFn;
+    },
+  ): () => void {
+    if (init !== undefined) {
+      validatePlainFunction(init, "initHook");
+      initHooks.push(init);
+    }
+    if (before !== undefined) {
+      validatePlainFunction(before, "beforeHook");
+      beforeHooks.push(before);
+    }
+    if (after !== undefined) {
+      validatePlainFunction(after, "afterHook");
+      afterHooks.push(after);
+    }
+    if (settled !== undefined) {
+      validatePlainFunction(settled, "settledHook");
+      resolveHooks.push(settled);
+    }
+    ensureHooksInstalled();
+    return () => {
+      if (init !== undefined) removeFromArray(initHooks, init);
+      if (before !== undefined) removeFromArray(beforeHooks, before);
+      if (after !== undefined) removeFromArray(afterHooks, after);
+      if (settled !== undefined) removeFromArray(resolveHooks, settled);
+      ensureHooksInstalled();
+    };
+  },
+};
+
 export default {
   cachedDataVersionTag,
   getHeapCodeStatistics,
@@ -399,4 +569,5 @@ export default {
   Deserializer,
   DefaultSerializer,
   DefaultDeserializer,
+  promiseHooks,
 };
