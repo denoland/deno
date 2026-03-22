@@ -169,6 +169,7 @@ async fn run_subcommand(
           entrypoints: cache_flags.files,
           lockfile_only: false,
           production: false,
+          skip_types: false,
         },
       )
       .await

@@ -346,6 +346,7 @@ pub enum InstallFlagsLocal {
 pub struct InstallTopLevelFlags {
   pub lockfile_only: bool,
   pub production: bool,
+  pub skip_types: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -353,6 +354,7 @@ pub struct InstallEntrypointsFlags {
   pub entrypoints: Vec<String>,
   pub lockfile_only: bool,
   pub production: bool,
+  pub skip_types: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -3591,10 +3593,19 @@ These must be added to the path manually if required."), UnstableArgsConfig::Res
         .arg(
           Arg::new("prod")
             .long("prod")
-            .help("Only install production dependencies (excludes devDependencies and @types/* packages)")
+            .alias("production")
+            .help("Only install production dependencies (excludes devDependencies)")
             .action(ArgAction::SetTrue)
             .conflicts_with("global")
             .conflicts_with("dev"),
+        )
+        .arg(
+          Arg::new("skip-types")
+            .long("skip-types")
+            .help(cstr!("Exclude @types/* packages from installation.
+<y>Be careful, as it uses a name-based heuristic and may skip packages that ship runtime code.</>"))
+            .action(ArgAction::SetTrue)
+            .requires("prod"),
         )
     })
 }
@@ -6762,6 +6773,7 @@ fn install_parse(
   }
   let lockfile_only = matches.get_flag("lockfile-only");
   let production = matches.get_flag("prod");
+  let skip_types = matches.get_flag("skip-types");
   if matches.get_flag("entrypoint") {
     let entrypoints = matches.remove_many::<String>("cmd").unwrap_or_default();
     flags.subcommand = DenoSubcommand::Install(InstallFlags::Local(
@@ -6769,6 +6781,7 @@ fn install_parse(
         entrypoints: entrypoints.collect(),
         lockfile_only,
         production,
+        skip_types,
       }),
     ));
   } else if let Some(add_files) = matches
@@ -6790,6 +6803,7 @@ fn install_parse(
       InstallFlagsLocal::TopLevel(InstallTopLevelFlags {
         lockfile_only,
         production,
+        skip_types,
       }),
     ));
   }
@@ -14314,6 +14328,7 @@ mod tests {
           InstallFlagsLocal::TopLevel(InstallTopLevelFlags {
             lockfile_only: false,
             production: true,
+            skip_types: false,
           })
         )),
         ..Flags::default()
@@ -14338,11 +14353,36 @@ mod tests {
             entrypoints: svec!["main.ts"],
             lockfile_only: false,
             production: true,
+            skip_types: false,
           })
         )),
         ..Flags::default()
       }
     );
+  }
+
+  #[test]
+  fn install_production_with_skip_types() {
+    let r = flags_from_vec(svec!["deno", "install", "--prod", "--skip-types"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Install(InstallFlags::Local(
+          InstallFlagsLocal::TopLevel(InstallTopLevelFlags {
+            lockfile_only: false,
+            production: true,
+            skip_types: true,
+          })
+        )),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn install_skip_types_requires_prod() {
+    let r = flags_from_vec(svec!["deno", "install", "--skip-types"]);
+    assert!(r.is_err());
   }
 
   #[test]

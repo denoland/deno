@@ -1,6 +1,6 @@
 {
   "tests": {
-    "production_skips_dev_dependencies_and_types": {
+    "prod_skips_dev_dependencies": {
       "tempDir": true,
       "steps": [
         {
@@ -21,7 +21,29 @@
           "output": "no_dev_dep.out"
         },
         {
-          // Verify @types/* package is NOT in node_modules even though it's in dependencies
+          // Verify @types/* package IS still in node_modules (--prod alone doesn't strip types)
+          "args": [
+            "eval",
+            "try { Deno.statSync('node_modules/@types/denotest__index-export-no-types'); console.log('@types exists'); } catch { console.log('@types not found'); }"
+          ],
+          "output": "has_types.out"
+        }
+      ]
+    },
+    "prod_skip_types_excludes_at_types": {
+      "tempDir": true,
+      "steps": [
+        {
+          "args": "install --prod --skip-types",
+          "output": "install.out"
+        },
+        {
+          // Verify the production dependency is installed
+          "args": "run --cached-only main.js",
+          "output": "main.out"
+        },
+        {
+          // Verify @types/* package is NOT in node_modules
           "args": [
             "eval",
             "try { Deno.statSync('node_modules/@types/denotest__index-export-no-types'); console.log('@types exists'); } catch { console.log('@types not found'); }"
@@ -30,7 +52,7 @@
         }
       ]
     },
-    "without_production_installs_dev_dependencies_and_types": {
+    "without_prod_installs_all": {
       "tempDir": true,
       "steps": [
         {

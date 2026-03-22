@@ -672,7 +672,17 @@ impl CliFactory {
               match flags {
                 InstallFlagsLocal::TopLevel(f) => f.production,
                 InstallFlagsLocal::Entrypoints(f) => f.production,
-                _ => false,
+                InstallFlagsLocal::Add(_) => false,
+              }
+            }
+            _ => false,
+          },
+          skip_types: match cli_options.sub_command() {
+            DenoSubcommand::Install(InstallFlags::Local(flags)) => {
+              match flags {
+                InstallFlagsLocal::TopLevel(f) => f.skip_types,
+                InstallFlagsLocal::Entrypoints(f) => f.skip_types,
+                InstallFlagsLocal::Add(_) => false,
               }
             }
             _ => false,

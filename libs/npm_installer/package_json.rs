@@ -59,7 +59,11 @@ impl NpmInstallDepsProvider {
     Self::default()
   }
 
-  pub fn from_workspace(workspace: &Arc<Workspace>, production: bool) -> Self {
+  pub fn from_workspace(
+    workspace: &Arc<Workspace>,
+    production: bool,
+    skip_types: bool,
+  ) -> Self {
     // todo(dsherret): estimate capacity?
     let mut local_pkgs = Vec::new();
     let mut remote_pkgs = Vec::new();
@@ -84,7 +88,7 @@ impl NpmInstallDepsProvider {
             };
             let pkg_req = npm_req_ref.into_inner().req;
 
-            if production && pkg_req.name.starts_with("@types/") {
+            if skip_types && pkg_req.name.starts_with("@types/") {
               continue;
             }
 
@@ -117,13 +121,14 @@ impl NpmInstallDepsProvider {
         let mut pkg_pkgs = Vec::with_capacity(
           deps.dependencies.len() + deps.dev_dependencies.len(),
         );
+        let empty = Default::default();
         let dev_deps = if production {
-          &(Default::default())
+          &empty
         } else {
           &deps.dev_dependencies
         };
         for (alias, dep) in deps.dependencies.iter().chain(dev_deps.iter()) {
-          if production && alias.starts_with("@types/") {
+          if skip_types && alias.starts_with("@types/") {
             continue;
           }
           let dep = match dep {
