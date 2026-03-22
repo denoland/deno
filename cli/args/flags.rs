@@ -123,6 +123,11 @@ pub struct AddFlags {
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct WhyFlags {
+  pub package: String,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct AuditFlags {
   pub severity: String,
   pub ignore_registry_errors: bool,
@@ -646,6 +651,7 @@ pub enum DenoSubcommand {
   Types,
   Upgrade(UpgradeFlags),
   Vendor,
+  Why(WhyFlags),
   Publish(PublishFlags),
   Help(HelpFlags),
   X(XFlags),
@@ -1905,6 +1911,7 @@ pub fn flags_from_vec_with_initial_cwd(
         "update" => outdated_parse(&mut flags, &mut m, true)?,
         "upgrade" => upgrade_parse(&mut flags, &mut m),
         "vendor" => vendor_parse(&mut flags, &mut m),
+        "why" => why_parse(&mut flags, &mut m),
         "publish" => publish_parse(&mut flags, &mut m)?,
         "x" => x_parse(&mut flags, &mut m)?,
         _ => unreachable!(),
@@ -2174,6 +2181,7 @@ pub fn clap_root() -> Command {
         .subcommand(update_subcommand())
         .subcommand(upgrade_subcommand())
         .subcommand(vendor_subcommand())
+        .subcommand(why_subcommand())
         .subcommand(x_subcommand());
 
       let help = help_subcommand(&cmd);
@@ -2348,6 +2356,29 @@ Don't error if the audit data can't be retrieved from the registry
           .help("Ignore advisories matching the given CVE IDs")
           .action(ArgAction::Append)
           .value_name("CVE")
+      )
+  })
+}
+
+fn why_subcommand() -> Command {
+  command(
+    "why",
+    cstr!(
+      "Show why a package is installed, displaying the dependency chain from your project's direct dependencies to the specified package.
+  <p(245)>deno why express</>
+
+Show why a specific version is installed
+  <p(245)>deno why express@4.18.2</>"
+    ),
+    UnstableArgsConfig::None,
+  )
+  .defer(|cmd| {
+    cmd
+      .args(lock_args())
+      .arg(
+        Arg::new("package")
+          .required(true)
+          .help("The package name (and optional version) to explain"),
       )
   })
 }
@@ -5992,6 +6023,12 @@ fn audit_parse(
     socket,
   });
   Ok(())
+}
+
+fn why_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  lock_args_parse(flags, matches);
+  let package = matches.remove_one::<String>("package").unwrap();
+  flags.subcommand = DenoSubcommand::Why(WhyFlags { package });
 }
 
 fn add_parse(
