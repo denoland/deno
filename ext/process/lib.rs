@@ -72,7 +72,8 @@ impl Stdio {
       Stdio::Inherit => StdStdio::inherit(),
       Stdio::Piped => StdStdio::piped(),
       Stdio::Null => StdStdio::null(),
-      _ => unreachable!(),
+      // IPC uses a pipe internally
+      Stdio::IpcForInternalUse => StdStdio::piped(),
     }
   }
 }
