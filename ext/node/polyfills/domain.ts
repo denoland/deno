@@ -217,6 +217,7 @@ export class Domain extends EventEmitter {
   }
 
   dispose() {
+    this._disposed = true;
     this.removeAllListeners();
     return this;
   }
@@ -229,10 +230,10 @@ export class Domain extends EventEmitter {
   }
 
   exit() {
-    // Use indexOf (first occurrence) and remove everything from that position
-    // onwards. This matches Node.js behavior: exiting a domain also exits
-    // all domains that were entered after it.
-    const index = ArrayPrototypeIndexOf(stack, this);
+    // Use lastIndexOf (most recent occurrence) and remove everything from that
+    // position onwards. This matches Node.js behavior: exiting a domain also
+    // exits all domains that were entered after its most recent entry.
+    const index = ArrayPrototypeLastIndexOf(stack, this);
     if (index !== -1) {
       ArrayPrototypeSplice(stack, index);
     }
