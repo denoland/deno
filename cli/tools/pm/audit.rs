@@ -24,11 +24,22 @@ use crate::http_util;
 use crate::http_util::HttpClient;
 use crate::http_util::HttpClientProvider;
 
+pub struct AuditResult {
+  pub exit_code: i32,
+  pub fixable_actions: Vec<FixableAction>,
+}
+
+pub struct FixableAction {
+  pub module_name: String,
+  pub target_version: String,
+  pub is_major: bool,
+}
+
 pub async fn audit(
   flags: Arc<Flags>,
   audit_flags: AuditFlags,
 ) -> Result<i32, AnyError> {
-  let factory = CliFactory::from_flags(flags);
+  let factory = CliFactory::from_flags(flags.clone());
   let workspace = factory.workspace_resolver().await?;
   let npm_resolver = factory.npm_resolver().await?;
   let npm_resolver = npm_resolver.as_managed().unwrap();
@@ -41,8 +52,9 @@ pub async fn audit(
     .context("Failed to create HTTP client")?;
 
   let use_socket = audit_flags.socket;
+  let fix = audit_flags.fix;
 
-  let r = npm::call_audits_api(
+  let result = npm::call_audits_api(
     audit_flags,
     npm_url,
     workspace,
@@ -59,7 +71,171 @@ pub async fn audit(
     .await?;
   }
 
-  Ok(r)
+  if fix && !result.fixable_actions.is_empty() {
+    apply_fixes(flags, &result.fixable_actions).await?;
+  }
+
+  Ok(result.exit_code)
+}
+
+async fn apply_fixes(
+  flags: Arc<Flags>,
+  fixable_actions: &[FixableAction],
+) -> Result<(), AnyError> {
+  use deno_cache_dir::GlobalOrLocalHttpCache;
+  use deno_cache_dir::file_fetcher::CacheSetting;
+  use deno_semver::VersionReq;
+  use deno_semver::package::PackageReq;
+
+  use super::CacheTopLevelDepsOptions;
+  use super::deps::DepManager;
+  use super::deps::DepManagerArgs;
+  use crate::file_fetcher::CreateCliFileFetcherOptions;
+  use crate::file_fetcher::create_cli_file_fetcher;
+  use crate::jsr::JsrFetchResolver;
+  use crate::npm::NpmFetchResolver;
+
+  let factory = CliFactory::from_flags(flags.clone());
+  let cli_options = factory.cli_options()?;
+  let workspace = cli_options.workspace();
+  let http_client = factory.http_client_provider();
+  let deps_http_cache = factory.global_http_cache()?;
+  let file_fetcher = create_cli_file_fetcher(
+    Default::default(),
+    GlobalOrLocalHttpCache::Global(deps_http_cache.clone()),
+    http_client.clone(),
+    factory.memory_files().clone(),
+    factory.sys(),
+    CreateCliFileFetcherOptions {
+      allow_remote: true,
+      cache_setting: CacheSetting::RespectHeaders,
+      download_log_level: log::Level::Trace,
+      progress_bar: None,
+    },
+  );
+  let file_fetcher = Arc::new(file_fetcher);
+  let npm_fetch_resolver = Arc::new(NpmFetchResolver::new(
+    file_fetcher.clone(),
+    factory.npmrc()?.clone(),
+    factory.npm_version_resolver()?.clone(),
+  ));
+  let jsr_fetch_resolver = Arc::new(JsrFetchResolver::new(
+    file_fetcher.clone(),
+    factory.jsr_version_resolver()?.clone(),
+  ));
+
+  let args = DepManagerArgs {
+    module_load_preparer: factory.module_load_preparer().await?.clone(),
+    jsr_fetch_resolver: jsr_fetch_resolver.clone(),
+    npm_fetch_resolver,
+    npm_resolver: factory.npm_resolver().await?.clone(),
+    npm_installer: factory.npm_installer().await?.clone(),
+    npm_version_resolver: factory.npm_version_resolver()?.clone(),
+    progress_bar: factory.text_only_progress_bar().clone(),
+    permissions_container: factory.root_permissions_container()?.clone(),
+    main_module_graph_container: factory
+      .main_module_graph_container()
+      .await?
+      .clone(),
+    lockfile: factory.maybe_lockfile().await?.cloned(),
+  };
+
+  let filter_fn =
+    |_alias: Option<&str>, _req: &PackageReq, _: super::deps::DepKind| true;
+
+  let mut deps = if cli_options.start_dir.has_deno_or_pkg_json() {
+    DepManager::from_workspace_dir(&cli_options.start_dir, filter_fn, args)?
+  } else {
+    DepManager::from_workspace(workspace, filter_fn, args)?
+  };
+
+  let mut fixed = Vec::new();
+  let mut unfixable = Vec::new();
+
+  // Build a map of dep name -> (dep_id, version_req_str) for matching
+  let dep_lookup: std::collections::HashMap<
+    String,
+    (super::deps::DepId, String),
+  > = deps
+    .deps_with_ids()
+    .map(|(id, dep)| {
+      (
+        dep.req.name.to_string(),
+        (id, dep.req.version_req.to_string()),
+      )
+    })
+    .collect();
+
+  for action in fixable_actions {
+    // Skip major upgrades - too risky for automatic fixes
+    if action.is_major {
+      unfixable.push(format!(
+        "{} (major upgrade to {})",
+        action.module_name, action.target_version
+      ));
+      continue;
+    }
+
+    if let Some((dep_id, version_req_str)) = dep_lookup.get(&action.module_name)
+    {
+      // Preserve the original operator
+      let operator = if version_req_str.starts_with('~') {
+        "~"
+      } else {
+        "^"
+      };
+      let new_version_req = VersionReq::parse_from_specifier(&format!(
+        "{}{}",
+        operator, action.target_version
+      ))?;
+      deps.update_dep(*dep_id, new_version_req);
+      fixed.push(format!(
+        "{} {} -> {}{}",
+        action.module_name, version_req_str, operator, action.target_version
+      ));
+    } else {
+      unfixable.push(format!("{} (transitive dependency)", action.module_name));
+    }
+  }
+
+  if !fixed.is_empty() {
+    deps.commit_changes()?;
+
+    super::npm_install_after_modification(
+      flags,
+      Some(jsr_fetch_resolver),
+      CacheTopLevelDepsOptions {
+        lockfile_only: false,
+      },
+    )
+    .await?;
+
+    let stdout = &mut std::io::stdout();
+    _ = writeln!(
+      stdout,
+      "\nFixed {} vulnerabilit{}:",
+      fixed.len(),
+      if fixed.len() == 1 { "y" } else { "ies" }
+    );
+    for f in &fixed {
+      _ = writeln!(stdout, "  {}", f);
+    }
+  }
+
+  if !unfixable.is_empty() {
+    let stdout = &mut std::io::stdout();
+    _ = writeln!(
+      stdout,
+      "\n{} vulnerabilit{} could not be fixed automatically:",
+      unfixable.len(),
+      if unfixable.len() == 1 { "y" } else { "ies" }
+    );
+    for u in &unfixable {
+      _ = writeln!(stdout, "  {}", u);
+    }
+  }
+
+  Ok(())
 }
 
 mod npm {
@@ -232,7 +408,7 @@ mod npm {
     workspace: &WorkspaceResolver<CliSys>,
     npm_resolution_snapshot: &NpmResolutionSnapshot,
     client: HttpClient,
-  ) -> Result<i32, AnyError> {
+  ) -> Result<super::AuditResult, AnyError> {
     let top_level_packages = npm_resolution_snapshot
       .top_level_packages()
       .collect::<Vec<_>>();
@@ -304,7 +480,10 @@ mod npm {
         Err(err) => {
           if audit_flags.ignore_registry_errors {
             log::error!("Failed to get data from the registry: {}", err);
-            return Ok(0);
+            return Ok(super::AuditResult {
+              exit_code: 0,
+              fixable_actions: vec![],
+            });
           } else {
             return Err(err);
           }
@@ -344,7 +523,10 @@ mod npm {
 
     if vulns.total() == 0 {
       _ = writeln!(&mut std::io::stdout(), "No known vulnerabilities found",);
-      return Ok(0);
+      return Ok(super::AuditResult {
+        exit_code: 0,
+        fixable_actions: vec![],
+      });
     }
 
     advisories.sort_by_cached_key(|adv| {
@@ -353,6 +535,21 @@ mod npm {
 
     let minimal_severity =
       AdvisorySeverity::parse(&audit_flags.severity).unwrap();
+
+    // Extract fixable actions before passing ownership to print_report
+    let fixable_actions = response
+      .actions
+      .iter()
+      .filter(|a| {
+        a.action == "install" && a.module.is_some() && a.target.is_some()
+      })
+      .map(|a| super::FixableAction {
+        module_name: a.module.clone().unwrap(),
+        target_version: a.target.clone().unwrap(),
+        is_major: a.is_major,
+      })
+      .collect::<Vec<_>>();
+
     print_report(
       &vulns,
       advisories,
@@ -367,7 +564,10 @@ mod npm {
     } else {
       0
     };
-    Ok(exit_code)
+    Ok(super::AuditResult {
+      exit_code,
+      fixable_actions,
+    })
   }
 
   fn print_report(
