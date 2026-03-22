@@ -187,6 +187,24 @@ export function createWritableStdioStream(writer, name, warmup = false) {
     };
   }
 
+  // Node.js emits "resize" on process.stdout via tty.WriteStream._refreshSize,
+  // but WriteStream.prototype methods are lost after V8 snapshot deserialization.
+  // Bridge SIGWINCH to "resize" here since this Writable backs process.stdout.
+  if (!warmup && writer?.isTerminal()) {
+    Deno.addSignalListener("SIGWINCH", () => {
+      const size = Deno.consoleSize?.();
+      if (size) {
+        const oldCols = stream.columns;
+        const oldRows = stream.rows;
+        // Write through the setter so the cached _columns value is updated
+        stream._columns = size.columns;
+        if (oldCols !== size.columns || oldRows !== size.rows) {
+          stream.emit("resize");
+        }
+      }
+    });
+  }
+
   return stream;
 }
 
