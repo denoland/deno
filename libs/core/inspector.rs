@@ -482,11 +482,7 @@ impl JsRuntimeInspectorState {
             // or clear, so new connections can become main and
             // Target/worker notifications continue to work.
             if sessions.main_session_id == Some(completed_id) {
-              sessions.main_session_id = sessions
-                .local
-                .keys()
-                .next()
-                .copied();
+              sessions.main_session_id = sessions.local.keys().next().copied();
             }
             continue;
           }
