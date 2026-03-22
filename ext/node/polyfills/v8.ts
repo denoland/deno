@@ -400,8 +400,7 @@ function validatePlainFunction(value: unknown, name: string) {
     );
   }
   // Reject async functions and async generators - they cannot be promise hooks
-  const ctorName =
-    (value as (...args: unknown[]) => unknown).constructor?.name;
+  const ctorName = (value as (...args: unknown[]) => unknown).constructor?.name;
   if (ctorName === "AsyncFunction" || ctorName === "AsyncGeneratorFunction") {
     throw new TypeError(
       `The "${name}" argument must be of type function. Received ${typeof value}`,
