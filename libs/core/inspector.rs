@@ -267,15 +267,17 @@ impl JsRuntimeInspectorState {
           // If the channel is already closed (e.g., worker terminated quickly),
           // the future may complete immediately on first poll. Pushing a
           // completed future to FuturesUnordered would cause a panic when
-          // polled again.
+          // polled again. Also skip inserting into local — the session is
+          // already dead and would never be cleaned up (no established future
+          // to yield back its ID).
           if fut.poll_unpin(cx).is_pending() {
             sessions.established.push(fut);
-          }
-          sessions.local.insert(id, session);
+            sessions.local.insert(id, session);
 
-          // Track the first session as the main session for Target events
-          if sessions.main_session_id.is_none() {
-            sessions.main_session_id = Some(id);
+            // Track the first session as the main session for Target events
+            if sessions.main_session_id.is_none() {
+              sessions.main_session_id = Some(id);
+            }
           }
 
           continue;
@@ -476,6 +478,16 @@ impl JsRuntimeInspectorState {
             // Remove it from local so sessions_state() no longer
             // reports it as active.
             sessions.local.remove(&completed_id);
+            // If this was the main session, promote another session
+            // or clear, so new connections can become main and
+            // Target/worker notifications continue to work.
+            if sessions.main_session_id == Some(completed_id) {
+              sessions.main_session_id = sessions
+                .local
+                .keys()
+                .next()
+                .copied();
+            }
             continue;
           }
           Poll::Ready(None) => {
@@ -725,7 +737,14 @@ impl JsRuntimeInspector {
     // and Runtime.runIfWaitingForDebugger (which unblocked us above).
     // The break causes a Debugger.paused notification, matching the
     // --inspect-brk behavior where execution pauses at the first statement.
-    if let Some(session) = self.state.sessions.borrow().local.values().next() {
+    // Use the session that sent runIfWaitingForDebugger (it has Debugger
+    // enabled), falling back to any available session.
+    let sessions = self.state.sessions.borrow();
+    let resumed_by = self.state.flags.borrow().resumed_by_session_id;
+    let session = resumed_by
+      .and_then(|id| sessions.local.get(&id))
+      .or_else(|| sessions.local.values().next());
+    if let Some(session) = session {
       let reason = v8::inspector::StringView::from(&b"debugCommand"[..]);
       let detail = v8::inspector::StringView::empty();
       session
@@ -801,6 +820,9 @@ struct InspectorFlags {
   /// Runtime.runIfWaitingForDebugger is received, allowing
   /// NodeRuntime.waitingForDebugger to be emitted.
   paused_on_start: bool,
+  /// Tracks which session sent Runtime.runIfWaitingForDebugger,
+  /// so schedule_pause_on_next_statement targets the correct session.
+  resumed_by_session_id: Option<i32>,
 }
 
 #[derive(Debug)]
@@ -1326,11 +1348,13 @@ async fn pump_inspector_session_messages(
       "Runtime.runIfWaitingForDebugger" => {
         // Clear paused_on_start so wait_for_session_and_break_on_next_statement
         // unblocks. Also clear waiting_for_session so poll_sessions stops
-        // blocking.
+        // blocking. Track which session resumed us so we schedule the pause
+        // on the correct session (the one that has Debugger.enable active).
         {
           let mut flags = session.state.flags.borrow_mut();
           flags.paused_on_start = false;
           flags.waiting_for_session = false;
+          flags.resumed_by_session_id = Some(session_id);
         }
         // Forward to V8 for actual processing
         session.dispatch_message(msg);
