@@ -263,6 +263,7 @@
     "parallel/test-child-process-stdio-overlapped.js": {},
     "parallel/test-child-process-stdout-flush-exit.js": {},
     "parallel/test-child-process-stdout-flush.js": {},
+    "parallel/test-child-process-uid-gid.js": {},
     "parallel/test-child-process-validate-stdio.js": {},
     "parallel/test-cli-bad-options.js": {
       "ignore": true,
@@ -1689,6 +1690,7 @@
     "parallel/test-process-features.js": {},
     "parallel/test-process-getgroups.js": {},
     "parallel/test-process-hrtime-bigint.js": {},
+    "parallel/test-process-hrtime.js": {},
     "parallel/test-process-kill-null.js": {},
     "parallel/test-process-kill-pid.js": {},
     "parallel/test-process-next-tick.js": {},
@@ -1697,6 +1699,11 @@
     "parallel/test-process-really-exit.js": {},
     "parallel/test-process-title-cli.js": {},
     "parallel/test-process-release.js": {},
+    "parallel/test-process-threadCpuUsage-main-thread.js": {},
+    "parallel/test-process-threadCpuUsage-worker-threads.js": {
+      "windows": false,
+      "reason": "flaky on Windows CI"
+    },
     "parallel/test-process-umask-mask.js": {},
     "parallel/test-process-umask.js": {},
     "parallel/test-process-uptime.js": {},
@@ -1891,17 +1898,17 @@
     // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
     // "parallel/test-source-map-enable.js": {},
     "parallel/test-sqlite-authz.js": {},
-    // "parallel/test-sqlite-config.js": {}, // https://github.com/denoland/deno/issues/32706
+    "parallel/test-sqlite-config.js": {},
     "parallel/test-sqlite-custom-functions.js": {},
     "parallel/test-sqlite-data-types.js": {},
     "parallel/test-sqlite-database-sync-dispose.js": {},
     "parallel/test-sqlite-database-sync.js": {},
-    // "parallel/test-sqlite-named-parameters.js": {}, // https://github.com/denoland/deno/issues/32706
+    "parallel/test-sqlite-named-parameters.js": {},
     "parallel/test-sqlite-session.js": {
       "flaky": true
     },
     "parallel/test-sqlite-statement-sync-columns.js": {},
-    // "parallel/test-sqlite-statement-sync.js": {}, // https://github.com/denoland/deno/issues/32706
+    "parallel/test-sqlite-statement-sync.js": {},
     "parallel/test-sqlite-timeout.js": {},
     "parallel/test-sqlite-transactions.js": {},
     "parallel/test-sqlite-typed-array-and-data-view.js": {},
@@ -2541,6 +2548,7 @@
       "reason": "Node.js snapshot/heap profiling features (--build-snapshot, --heap-prof, --heapsnapshot-near-heap-limit) are not implemented in Deno"
     },
     // "pummel/test-heapdump-inspector.js": {},
+    "pummel/test-process-hrtime.js": {},
     "pummel/test-string-decoder-large-buffer.js": {},
     "sequential/test-buffer-creation-regression.js": {},
     "sequential/test-child-process-exit.js": {},

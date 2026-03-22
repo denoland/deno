@@ -342,6 +342,8 @@ export class ChildProcess extends EventEmitter {
       windowsVerbatimArguments = false,
       detached,
       envPairs,
+      uid,
+      gid,
     } = options;
 
     // Convert envPairs array to env object
@@ -386,6 +388,11 @@ export class ChildProcess extends EventEmitter {
       extraStdioNormalized.push(toDenoStdio(extraStdio[i]));
     }
 
+    // Windows does not support uid/gid options - throw ENOTSUP synchronously.
+    if (isWindows && (uid != null || gid != null)) {
+      throw _createSpawnError("ENOTSUP", command, args.slice(1));
+    }
+
     try {
       this.#process = new Deno.Command(cmd, {
         args: cmdArgs,
@@ -396,6 +403,8 @@ export class ChildProcess extends EventEmitter {
         stdout: toDenoStdio(stdout),
         stderr: toDenoStdio(stderr),
         windowsRawArguments: windowsVerbatimArguments,
+        uid,
+        gid,
         detached,
         [kSerialization]: serialization,
         [kIpc]: ipc, // internal
@@ -573,6 +582,9 @@ export class ChildProcess extends EventEmitter {
       if (e instanceof Deno.errors.NotFound) {
         // args.slice(1) to exclude argv0 (prepended by normalizeSpawnArguments)
         e = _createSpawnError("ENOENT", command, args.slice(1));
+      } else if (e instanceof Deno.errors.PermissionDenied) {
+        // Node.js throws EPERM synchronously for uid/gid permission errors.
+        throw _createSpawnError("EPERM", command, args.slice(1));
       }
 
       // Set up stdio streams even when spawn fails (Node.js creates pipes
