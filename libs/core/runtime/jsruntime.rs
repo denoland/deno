@@ -367,7 +367,7 @@ pub(crate) const NO_OF_BUILTIN_MODULES: usize = 2;
 /// Use [`JsRuntimeForSnapshot`] to be able to create a snapshot.
 ///
 /// Note: since V8 11.6, all runtimes must have a common parent thread that
-/// initalized the V8 platform. This can be done by calling
+/// initialized the V8 platform. This can be done by calling
 /// [`JsRuntime::init_platform`] explicitly, or it will be done automatically on
 /// the calling thread when the first runtime is created.
 pub struct JsRuntime {
@@ -618,7 +618,7 @@ macro_rules! scope {
 }
 
 impl JsRuntime {
-  /// Explicitly initalizes the V8 platform using the passed platform. This
+  /// Explicitly initializes the V8 platform using the passed platform. This
   /// should only be called once per process. Further calls will be silently
   /// ignored.
   #[cfg(not(any(test, feature = "unsafe_runtime_options")))]
@@ -626,7 +626,7 @@ impl JsRuntime {
     setup::init_v8(v8_platform, cfg!(test), false);
   }
 
-  /// Explicitly initalizes the V8 platform using the passed platform. This
+  /// Explicitly initializes the V8 platform using the passed platform. This
   /// should only be called once per process. Further calls will be silently
   /// ignored.
   ///
@@ -1753,7 +1753,7 @@ impl JsRuntime {
   /// event loop resolves the underlying promise. If the future rejects, the future will
   /// resolve with the underlying error.
   ///
-  /// The event loop must be polled seperately for this future to resolve. If the event loop
+  /// The event loop must be polled separately for this future to resolve. If the event loop
   /// is not polled, the future will never make progress.
   pub fn call(
     &mut self,
@@ -1768,7 +1768,7 @@ impl JsRuntime {
   /// event loop resolves the underlying promise. If the future rejects, the future will
   /// resolve with the underlying error.
   ///
-  /// The event loop must be polled seperately for this future to resolve. If the event loop
+  /// The event loop must be polled separately for this future to resolve. If the event loop
   /// is not polled, the future will never make progress.
   pub fn scoped_call(
     scope: &mut v8::PinScope,
@@ -1783,7 +1783,7 @@ impl JsRuntime {
   /// event loop resolves the underlying promise. If the future rejects, the future will
   /// resolve with the underlying error.
   ///
-  /// The event loop must be polled seperately for this future to resolve. If the event loop
+  /// The event loop must be polled separately for this future to resolve. If the event loop
   /// is not polled, the future will never make progress.
   pub fn call_with_args(
     &mut self,
@@ -1800,7 +1800,7 @@ impl JsRuntime {
   /// event loop resolves the underlying promise. If the future rejects, the future will
   /// resolve with the underlying error.
   ///
-  /// The event loop must be polled seperately for this future to resolve. If the event loop
+  /// The event loop must be polled separately for this future to resolve. If the event loop
   /// is not polled, the future will never make progress.
   pub fn scoped_call_with_args(
     scope: &mut v8::PinScope,
