@@ -246,7 +246,9 @@
     "parallel/test-child-process-send-type-error.js": {},
     "parallel/test-child-process-set-blocking.js": {},
     "parallel/test-child-process-silent.js": {},
-    "parallel/test-child-process-spawn-argv0.js": {},
+    "parallel/test-child-process-spawn-argv0.js": {
+      "windows": false
+    },
     "parallel/test-child-process-spawn-controller.js": {},
     "parallel/test-child-process-spawn-error.js": {},
     "parallel/test-child-process-spawn-event.js": {},
