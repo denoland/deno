@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
 
+use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_lockfile::NpmPackageInfo;
 
@@ -60,31 +61,36 @@ pub async fn why(
     .collect();
 
   if matching.is_empty() {
-    eprintln!(
-      "{}",
-      colors::red(format!(
-        "error: package '{}' not found in the dependency tree",
-        query
-      ))
+    bail!(
+      "package '{}' not found in the dependency tree",
+      query
     );
-    std::process::exit(1);
   }
 
   // Build reverse dependency map from lockfile
   // key: package_key (e.g. "accepts@1.3.8"), value: list of parent package_keys
   let mut reverse_deps: HashMap<&str, Vec<&str>> = HashMap::new();
   for (key, info) in npm_packages.iter() {
-    for (_dep_name, dep_key) in &info.dependencies {
-      reverse_deps
-        .entry(dep_key.as_str())
-        .or_default()
-        .push(key.as_str());
+    // Add reverse edges for dependencies, optional_dependencies, and
+    // optional_peers so that `deno why` reflects all reasons a package
+    // may be installed.
+    for dep_map in [
+      &info.dependencies,
+      &info.optional_dependencies,
+      &info.optional_peers,
+    ] {
+      for (_dep_name, dep_key) in dep_map {
+        reverse_deps
+          .entry(dep_key.as_str())
+          .or_default()
+          .push(key.as_str());
+      }
     }
   }
 
   // Build specifier map: which top-level specifiers resolve to which packages
   let specifiers = &content.packages.specifiers;
-  let mut root_specifier_to_pkg: HashMap<&str, Vec<String>> = HashMap::new();
+  let mut root_specifier_to_pkg: HashMap<String, Vec<String>> = HashMap::new();
   for (req, resolved) in specifiers.iter() {
     let req_str = req.to_string();
     if !req_str.starts_with("npm:") {
@@ -103,7 +109,7 @@ pub async fn why(
     // Build the expected key: name@resolved_version
     let pkg_key = format!("{}@{}", req_name, resolved);
     root_specifier_to_pkg
-      .entry(pkg_key.leak())
+      .entry(pkg_key)
       .or_default()
       .push(req_str);
   }
@@ -113,11 +119,11 @@ pub async fn why(
     let base = key.split('_').next().unwrap_or(key);
     println!("{}", colors::bold(base));
 
-    let is_root = root_specifier_to_pkg.contains_key(key);
+    let is_root = root_specifier_to_pkg.contains_key(*key);
 
     if is_root {
       // Direct dependency - show the specifier(s)
-      if let Some(specifiers) = root_specifier_to_pkg.get(key) {
+      if let Some(specifiers) = root_specifier_to_pkg.get(*key) {
         for spec in specifiers {
           println!("  {}", colors::green(spec));
         }
@@ -146,7 +152,7 @@ pub async fn why(
 fn find_paths_to_root<'a>(
   target_key: &'a str,
   reverse_deps: &HashMap<&'a str, Vec<&'a str>>,
-  root_specifiers: &HashMap<&str, Vec<String>>,
+  root_specifiers: &HashMap<String, Vec<String>>,
 ) -> Vec<Vec<&'a str>> {
   let mut paths: Vec<Vec<&'a str>> = Vec::new();
   let mut current_path: Vec<&'a str> = vec![target_key];
@@ -159,7 +165,7 @@ fn find_paths_to_root<'a>(
     visited: &mut HashSet<&'a str>,
     paths: &mut Vec<Vec<&'a str>>,
     reverse_deps: &HashMap<&'a str, Vec<&'a str>>,
-    root_specifiers: &HashMap<&str, Vec<String>>,
+    root_specifiers: &HashMap<String, Vec<String>>,
   ) {
     if root_specifiers.contains_key(current_key) {
       // Found a root - build path from root to target
@@ -183,7 +189,9 @@ fn find_paths_to_root<'a>(
           root_specifiers,
         );
         current_path.pop();
-        visited.remove(parent);
+        // Don't remove from visited — prevents infinite loops from
+        // cycles in the dependency graph. This may miss some
+        // alternative paths but guarantees termination.
       }
     }
   }
@@ -203,7 +211,7 @@ fn find_paths_to_root<'a>(
 /// Print a dependency path.
 fn print_dependency_path(
   path: &[&str],
-  root_specifiers: &HashMap<&str, Vec<String>>,
+  root_specifiers: &HashMap<String, Vec<String>>,
 ) {
   if path.is_empty() {
     return;
