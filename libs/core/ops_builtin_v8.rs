@@ -1391,10 +1391,11 @@ pub fn op_get_extras_binding_object<'s, 'i>(
 #[op2(fast)]
 pub fn op_immediate_check(scope: &mut v8::PinScope, make_ref: bool) {
   let context_state = JsRealm::state_from_scope(scope);
-  let handle = context_state.immediate_check_handle.get();
-  if make_ref {
-    handle.make_ref();
-  } else {
-    handle.make_unref();
+  if let Some(handle) = context_state.immediate_check_handle.borrow().as_ref() {
+    if make_ref {
+      handle.make_ref();
+    } else {
+      handle.make_unref();
+    }
   }
 }

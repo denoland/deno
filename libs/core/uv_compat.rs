@@ -1100,22 +1100,9 @@ pub unsafe extern "C" fn uv_check_stop(handle: *mut uv_check_t) -> c_int {
 ///   liveness. Started when refed immediates exist (keeps the loop alive),
 ///   stopped when none remain (allows exit). This matches Node.js's
 ///   `immediate_idle_handle_` + `ToggleImmediateRef()`.
-///
-/// This is `Copy` so it can be stored in a `Cell`.
-/// Defaults to null pointers; methods are no-ops until initialized.
-#[derive(Clone, Copy)]
 pub(crate) struct ImmediateCheckHandle {
   check_handle: *mut uv_check_t,
   idle_handle: *mut uv_idle_t,
-}
-
-impl Default for ImmediateCheckHandle {
-  fn default() -> Self {
-    Self {
-      check_handle: std::ptr::null_mut(),
-      idle_handle: std::ptr::null_mut(),
-    }
-  }
 }
 
 /// No-op callback for the check handle — the actual draining is done by
@@ -1161,16 +1148,9 @@ impl ImmediateCheckHandle {
     }
   }
 
-  fn is_initialized(&self) -> bool {
-    !self.check_handle.is_null()
-  }
-
   /// Start the idle handle (keeps event loop alive for refed immediates).
   pub fn make_ref(&self) {
-    if !self.is_initialized() {
-      return;
-    }
-    // SAFETY: idle_handle is valid (checked above).
+    // SAFETY: idle_handle is valid — set in new().
     unsafe {
       uv_idle_start(self.idle_handle, immediate_idle_noop_cb);
     }
@@ -1178,12 +1158,23 @@ impl ImmediateCheckHandle {
 
   /// Stop the idle handle (allows event loop to exit).
   pub fn make_unref(&self) {
-    if !self.is_initialized() {
-      return;
-    }
-    // SAFETY: idle_handle is valid (checked above).
+    // SAFETY: idle_handle is valid — set in new().
     unsafe {
       uv_idle_stop(self.idle_handle);
+    }
+  }
+
+  /// Stop both handles and free their heap allocations.
+  ///
+  /// # Safety
+  /// Must be called before the owning uv loop is closed/dropped.
+  /// Must not be called more than once.
+  pub unsafe fn close(self) {
+    unsafe {
+      uv_check_stop(self.check_handle);
+      drop(Box::from_raw(self.check_handle));
+      uv_idle_stop(self.idle_handle);
+      drop(Box::from_raw(self.idle_handle));
     }
   }
 }

@@ -1738,7 +1738,7 @@ impl JsRuntime {
     // SAFETY: loop_ptr is valid per caller contract.
     let check_handle =
       unsafe { uv_compat::ImmediateCheckHandle::new(loop_ptr) };
-    context_state.immediate_check_handle.set(check_handle);
+    *context_state.immediate_check_handle.borrow_mut() = Some(check_handle);
   }
 
   /// Returns the runtime's op names, ordered by OpId.
@@ -2349,7 +2349,7 @@ impl JsRuntime {
       if pending_state.has_pending_background_tasks
         || pending_state.has_tick_scheduled
         || pending_state.has_outstanding_immediates
-        || context_state.immediate_info[IMM_IDX_COUNT] > 0
+        || context_state.immediate_info[IMM_IDX_REF_COUNT] > 0
         || pending_state.has_pending_promise_events
         || uv_did_io
       {
