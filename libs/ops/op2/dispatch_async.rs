@@ -186,7 +186,7 @@ pub(crate) fn generate_dispatch_async(
   };
 
   Ok(
-    gs_quote!(generator_state(info, slow_function, opctx) => {
+    gs_quote!(generator_state(info, slow_function) => {
       fn slow_function_impl<'s>(info: *const deno_core::v8::FunctionCallbackInfo) -> usize {
         let info: &'s _ = unsafe { &*info };
         #[cfg(debug_assertions)]

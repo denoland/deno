@@ -177,7 +177,7 @@ pub(crate) fn generate_dispatch_slow(
   };
 
   Ok(
-    gs_quote!(generator_state(opctx, info, slow_function) => {
+    gs_quote!(generator_state(info, slow_function) => {
       fn slow_function_impl<'s>(#info: *const deno_core::v8::FunctionCallbackInfo) -> usize {
         let #info: &'s _ = unsafe { &*#info };
         #[cfg(debug_assertions)]
