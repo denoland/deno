@@ -671,6 +671,7 @@
   }
 
   const hostObjectBrand = SymbolFor("Deno.core.hostObject");
+  const uncloneableBrand = Symbol("Deno.core.uncloneable");
   const transferableResources = {};
   const registerTransferableResource = (name, send, receive) => {
     if (transferableResources[name]) {
@@ -1028,6 +1029,7 @@
       return [result, null];
     },
     hostObjectBrand,
+    uncloneableBrand,
     registerTransferableResource,
     getTransferableResource,
     registerCloneableResource,

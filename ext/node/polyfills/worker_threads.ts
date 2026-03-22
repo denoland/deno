@@ -1054,6 +1054,14 @@ export function markAsUntransferable(obj: object) {
     op_mark_as_untransferable(obj as ArrayBuffer);
   }
 }
+export function markAsUncloneable(obj: object) {
+  if (
+    (typeof obj !== "object" && typeof obj !== "function") || obj === null
+  ) {
+    return;
+  }
+  obj[core.uncloneableBrand] = true;
+}
 export function moveMessagePortToContext() {
   notImplemented("moveMessagePortToContext");
 }
@@ -1298,6 +1306,7 @@ export {
 
 const defaultExport = {
   markAsUntransferable,
+  markAsUncloneable,
   moveMessagePortToContext,
   receiveMessageOnPort,
   MessagePort,
