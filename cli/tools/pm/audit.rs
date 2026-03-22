@@ -152,19 +152,26 @@ async fn apply_fixes(
   let mut fixed = Vec::new();
   let mut unfixable = Vec::new();
 
-  // Build a map of dep name -> (dep_id, version_req_str) for matching
-  let dep_lookup: std::collections::HashMap<
+  // Build a map of dep name -> (dep_id, version_req_str) for matching.
+  // If multiple deps share the same package name (e.g. aliases), treat
+  // them as unfixable to avoid updating the wrong one.
+  let mut dep_lookup: std::collections::HashMap<
     String,
-    (super::deps::DepId, String),
-  > = deps
-    .deps_with_ids()
-    .map(|(id, dep)| {
-      (
-        dep.req.name.to_string(),
-        (id, dep.req.version_req.to_string()),
-      )
-    })
-    .collect();
+    Option<(super::deps::DepId, String)>,
+  > = std::collections::HashMap::new();
+  for (id, dep) in deps.deps_with_ids() {
+    let name = dep.req.name.to_string();
+    let entry = dep_lookup.entry(name);
+    match entry {
+      std::collections::hash_map::Entry::Vacant(e) => {
+        e.insert(Some((id, dep.req.version_req.to_string())));
+      }
+      std::collections::hash_map::Entry::Occupied(mut e) => {
+        // Duplicate - mark as ambiguous
+        e.insert(None);
+      }
+    }
+  }
 
   for action in fixable_actions {
     // Skip major upgrades - too risky for automatic fixes
@@ -176,25 +183,45 @@ async fn apply_fixes(
       continue;
     }
 
-    if let Some((dep_id, version_req_str)) = dep_lookup.get(&action.module_name)
-    {
-      // Preserve the original operator
-      let operator = if version_req_str.starts_with('~') {
-        "~"
-      } else {
-        "^"
-      };
-      let new_version_req = VersionReq::parse_from_specifier(&format!(
-        "{}{}",
-        operator, action.target_version
-      ))?;
-      deps.update_dep(*dep_id, new_version_req);
-      fixed.push(format!(
-        "{} {} -> {}{}",
-        action.module_name, version_req_str, operator, action.target_version
-      ));
-    } else {
-      unfixable.push(format!("{} (transitive dependency)", action.module_name));
+    match dep_lookup.get(&action.module_name) {
+      Some(Some((dep_id, version_req_str))) => {
+        // Preserve the original version requirement style
+        let trimmed = version_req_str.trim();
+        let new_spec = if trimmed.starts_with('~') {
+          format!("~{}", action.target_version)
+        } else if trimmed.starts_with('^') {
+          format!("^{}", action.target_version)
+        } else if trimmed
+          .chars()
+          .next()
+          .is_some_and(|c| c.is_ascii_digit())
+        {
+          // Bare version (exact pin) - keep it exact
+          action.target_version.clone()
+        } else {
+          // Unknown format, default to caret
+          format!("^{}", action.target_version)
+        };
+        let new_version_req = VersionReq::parse_from_specifier(&new_spec)?;
+        deps.update_dep(*dep_id, new_version_req);
+        fixed.push(format!(
+          "{} {} -> {}",
+          action.module_name, version_req_str, new_spec
+        ));
+      }
+      Some(None) => {
+        // Ambiguous - multiple deps with same package name
+        unfixable.push(format!(
+          "{} (ambiguous: multiple dependencies with this name)",
+          action.module_name
+        ));
+      }
+      None => {
+        unfixable.push(format!(
+          "{} (transitive dependency)",
+          action.module_name
+        ));
+      }
     }
   }
 
@@ -536,12 +563,23 @@ mod npm {
     let minimal_severity =
       AdvisorySeverity::parse(&audit_flags.severity).unwrap();
 
-    // Extract fixable actions before passing ownership to print_report
+    // Collect IDs of advisories remaining after ignore filtering
+    let remaining_advisory_ids: std::collections::HashSet<i32> =
+      advisories.iter().map(|adv| adv.id).collect();
+
+    // Extract fixable actions, filtering out actions that only resolve
+    // ignored advisories
     let fixable_actions = response
       .actions
       .iter()
       .filter(|a| {
         a.action == "install" && a.module.is_some() && a.target.is_some()
+      })
+      .filter(|a| {
+        // Keep only actions that resolve at least one non-ignored advisory
+        a.resolves
+          .iter()
+          .any(|r| remaining_advisory_ids.contains(&r.id))
       })
       .map(|a| super::FixableAction {
         module_name: a.module.clone().unwrap(),
