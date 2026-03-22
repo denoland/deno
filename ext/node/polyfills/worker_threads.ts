@@ -1092,18 +1092,24 @@ class NodeMessageChannel {
     const origClose1 = FunctionPrototypeBind(port1.close, port1);
     const origClose2 = FunctionPrototypeBind(port2.close, port2);
 
-    port1.close = () => {
+    port1.close = (callback) => {
       origClose1();
       if (!port2[nodeWorkerThreadCloseCbInvoked]) {
         port2[nodeWorkerThreadCloseCbInvoked] = true;
         port2.dispatchEvent(new Event("close"));
       }
+      if (typeof callback === "function") {
+        queueMicrotask(callback);
+      }
     };
-    port2.close = () => {
+    port2.close = (callback) => {
       origClose2();
       if (!port1[nodeWorkerThreadCloseCbInvoked]) {
         port1[nodeWorkerThreadCloseCbInvoked] = true;
         port1.dispatchEvent(new Event("close"));
+      }
+      if (typeof callback === "function") {
+        queueMicrotask(callback);
       }
     };
   }
@@ -1119,8 +1125,12 @@ function webMessagePortToNodeMessagePort(port: MessagePort) {
   port.on = port.addListener = function (this: MessagePort, name, listener) {
     // deno-lint-ignore no-explicit-any
     const _listener = (ev: any) => {
-      patchMessagePortIfFound(ev.data);
-      listener(ev.data);
+      if (name == "message" || name == "messageerror") {
+        patchMessagePortIfFound(ev.data);
+        listener(ev.data);
+      } else {
+        listener(ev.detail ?? ev.data ?? ev);
+      }
     };
     if (name == "message") {
       if (port.onmessage === null) {
@@ -1134,10 +1144,8 @@ function webMessagePortToNodeMessagePort(port: MessagePort) {
       } else {
         port.addEventListener("messageerror", _listener);
       }
-    } else if (name == "close") {
-      port.addEventListener("close", _listener);
     } else {
-      throw new Error(`Unknown event: "${name}"`);
+      port.addEventListener(name, _listener);
     }
     listeners.set(listener, _listener);
     return this;
@@ -1151,13 +1159,15 @@ function webMessagePortToNodeMessagePort(port: MessagePort) {
       port.removeEventListener("message", listeners.get(listener)!);
     } else if (name == "messageerror") {
       port.removeEventListener("messageerror", listeners.get(listener)!);
-    } else if (name == "close") {
-      port.removeEventListener("close", listeners.get(listener)!);
     } else {
-      throw new Error(`Unknown event: "${name}"`);
+      port.removeEventListener(name, listeners.get(listener)!);
     }
     listeners.delete(listener);
     return this;
+  };
+  port.emit = function (name: string, ...args: unknown[]) {
+    const ev = new CustomEvent(name, { detail: args[0] });
+    return port.dispatchEvent(ev);
   };
   port[nodeWorkerThreadCloseCb] = () => {
     port.dispatchEvent(new Event("close"));
@@ -1170,6 +1180,54 @@ function webMessagePortToNodeMessagePort(port: MessagePort) {
   };
   const webPostMessage = port.postMessage;
   port.postMessage = (message, transferList) => {
+    if (transferList !== undefined && transferList !== null) {
+      // If it's an object with a 'transfer' key, validate the transfer value
+      if (
+        typeof transferList === "object" && !ArrayIsArray(transferList) &&
+        !(Symbol.iterator in transferList)
+      ) {
+        if ("transfer" in transferList) {
+          const transfer = transferList.transfer;
+          if (transfer === undefined) {
+            // { transfer: undefined } is ok, treat as no transfer
+            return FunctionPrototypeCall(webPostMessage, port, message);
+          }
+          if (
+            transfer === null || typeof transfer !== "object" ||
+            !(Symbol.iterator in transfer)
+          ) {
+            const err = new TypeError(
+              "Optional options.transfer argument must be an iterable",
+            );
+            err.code = "ERR_INVALID_ARG_TYPE";
+            throw err;
+          }
+          try {
+            transferList = [...transfer];
+          } catch {
+            const err = new TypeError(
+              "Optional options.transfer argument must be an iterable",
+            );
+            err.code = "ERR_INVALID_ARG_TYPE";
+            throw err;
+          }
+        } else {
+          // Plain object without transfer - treat as no transfer
+          return FunctionPrototypeCall(webPostMessage, port, message);
+        }
+      } else if (
+        typeof transferList !== "object" ||
+        !(Symbol.iterator in Object(transferList))
+      ) {
+        // Not iterable (number, boolean, symbol, string)
+        const err = new TypeError(
+          "Optional transferList argument must be an iterable",
+        );
+        err.code = "ERR_INVALID_ARG_TYPE";
+        throw err;
+      }
+    }
+
     for (let i = 0; i < transferList?.length; i++) {
       const item = transferList[i];
       if (item[untransferableSymbol] === true) {
