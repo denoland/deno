@@ -1139,6 +1139,12 @@ impl JsRuntime {
       // SAFETY: loop_ptr is valid and initialized.
       unsafe { js_runtime.register_uv_loop(loop_ptr) };
       js_runtime.inner.state.op_state.borrow_mut().put(uv_loop);
+      js_runtime
+        .inner
+        .state
+        .op_state
+        .borrow_mut()
+        .put(uv_compat::AsyncId::default());
     }
 
     // ...and we've made it; `JsRuntime` is ready to execute user code.

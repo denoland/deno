@@ -37,7 +37,6 @@ pub use deno_package_json::PackageJson;
 use deno_permissions::PermissionCheckError;
 pub use node_resolver::DENO_SUPPORTED_BUILTIN_NODE_MODULES as SUPPORTED_BUILTIN_NODE_MODULES;
 pub use node_resolver::PathClean;
-use ops::handle_wrap::AsyncId;
 pub use ops::ipc::ChildPipeFd;
 use ops::vm;
 pub use ops::vm::ContextInitMode;
@@ -615,11 +614,6 @@ deno_core::extension!(deno_node,
       state.put(init.node_resolver.clone());
       state.put(init.pkg_json_resolver.clone());
     }
-
-    state.put(AsyncId::default());
-
-    // The uv loop is auto-created by JsRuntime::new_inner and stored
-    // in OpState. No need to create one here.
 
   },
   global_template_middleware = global_template_middleware,

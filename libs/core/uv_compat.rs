@@ -1284,3 +1284,22 @@ pub unsafe extern "C" fn uv_is_closing(handle: *const uv_handle_t) -> c_int {
     }
   }
 }
+
+/// Counter for libuv-style async IDs (used by Node.js async_hooks).
+/// Starts at 1 because that's the ID of the bootstrap execution context.
+pub struct AsyncId(i64);
+
+impl Default for AsyncId {
+  fn default() -> Self {
+    Self(1)
+  }
+}
+
+impl AsyncId {
+  /// Increment the internal id counter and return the value.
+  #[allow(clippy::should_implement_trait, reason = "this is more clear")]
+  pub fn next(&mut self) -> i64 {
+    self.0 += 1;
+    self.0
+  }
+}
