@@ -1222,12 +1222,58 @@ function dispatchProcessExitEvent() {
 }
 
 function synchronizeListeners() {
+  const unhandledRejectionsMode = getOptionValue("--unhandled-rejections");
+
   // Install special "unhandledrejection" handler, that will be called
   // last.
   if (
-    unhandledRejectionListenerCount > 0 || uncaughtExceptionListenerCount > 0
+    unhandledRejectionListenerCount > 0 ||
+    uncaughtExceptionListenerCount > 0 ||
+    unhandledRejectionsMode !== undefined
   ) {
-    internals.nodeProcessUnhandledRejectionCallback = (event) => {
+    internals.nodeProcessUnhandledRejectionCallback = (
+      event: PromiseRejectionEvent,
+    ) => {
+      // --unhandled-rejections=none: silence warnings/errors but still emit event
+      if (unhandledRejectionsMode === "none") {
+        event.preventDefault();
+        if (process.listenerCount("unhandledRejection") > 0) {
+          process.emit("unhandledRejection", event.reason, event.promise);
+        }
+        return;
+      }
+
+      // --unhandled-rejections=warn: emit warnings instead of throwing
+      if (unhandledRejectionsMode === "warn") {
+        event.preventDefault();
+
+        // Emit the unhandledRejection event if there are listeners
+        if (process.listenerCount("unhandledRejection") > 0) {
+          process.emit("unhandledRejection", event.reason, event.promise);
+        }
+
+        // Emit warnings (Node.js emits 2 per rejection: the reason + a note)
+        const reason = event.reason;
+        if (reason instanceof Error) {
+          process.emit("warning", reason);
+        } else {
+          const warning = new Error(
+            `Unhandled promise rejection: ${reason}`,
+          );
+          warning.name = "UnhandledPromiseRejectionWarning";
+          process.emit("warning", warning);
+        }
+        const noteWarning = new Error(
+          "Unhandled promise rejections are deprecated. In the future, " +
+            "promise rejections that are not handled will terminate the " +
+            "Node.js process with a non-zero exit code.",
+        );
+        noteWarning.name = "DeprecationWarning";
+        process.emit("warning", noteWarning);
+
+        return;
+      }
+
       if (process.listenerCount("unhandledRejection") === 0) {
         // The Node.js default behavior is to raise an uncaught exception if
         // an unhandled rejection occurs and there are no unhandledRejection
@@ -1312,6 +1358,9 @@ internals.__bootstrapNodeProcess = function (
     }
 
     enableNextTick();
+
+    // Initialize unhandled rejection handling based on --unhandled-rejections flag
+    synchronizeListeners();
 
     // Replace warmup stdout/stderr with proper streams
     if (io.stdout.isTerminal()) {
