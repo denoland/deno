@@ -46,6 +46,7 @@ import {
   ERR_INVALID_HANDLE_TYPE,
   ERR_INVALID_SYNC_FORK_INPUT,
   ERR_IPC_CHANNEL_CLOSED,
+  ERR_IPC_ONE_PIPE,
   ERR_IPC_SYNC_FORK,
   ERR_MISSING_ARGS,
   ERR_UNKNOWN_SIGNAL,
@@ -71,6 +72,7 @@ import { Pipe, socketType } from "ext:deno_node/internal_binding/pipe_wrap.ts";
 import { Server as NetServer, Socket } from "node:net";
 import { Socket as DgramSocket } from "node:dgram";
 import {
+  kArgv0,
   kExtraStdio,
   kInputOption,
   kIpc,
@@ -133,6 +135,7 @@ export function stdioStringToArray(
 const kClosesNeeded = Symbol("_closesNeeded");
 const kClosesReceived = Symbol("_closesReceived");
 const kCanDisconnect = Symbol("_canDisconnect");
+let emittedShellDeprecation = false;
 
 // We only want to emit a close event for the child process when all of
 // the writable streams have closed. The value of `child[kClosesNeeded]` should be 1 +
@@ -344,6 +347,8 @@ export class ChildProcess extends EventEmitter {
       windowsVerbatimArguments = false,
       detached,
       envPairs,
+      uid,
+      gid,
     } = options;
 
     // Convert envPairs array to env object
@@ -367,7 +372,9 @@ export class ChildProcess extends EventEmitter {
     ] = normalizedStdio;
 
     // buildCommand handles Node.js to Deno CLI arg translation when spawning Deno
-    // Note: args[0] is argv0 (prepended by normalizeSpawnArguments), so we skip it
+    // args[0] is argv0 (prepended by normalizeSpawnArguments). Capture it
+    // before slicing so we can pass it via kArgv0 for OS-level argv[0].
+    const argv0 = args.length > 0 ? args[0] : command;
     const [cmd, cmdArgs, includeNpmProcessState] = buildCommand(
       command,
       args.slice(1),
@@ -378,6 +385,9 @@ export class ChildProcess extends EventEmitter {
     this.spawnargs = [cmd, ...cmdArgs];
 
     const ipc = normalizedStdio.indexOf("ipc");
+    if (ipc !== -1 && normalizedStdio.indexOf("ipc", ipc + 1) !== -1) {
+      throw new ERR_IPC_ONE_PIPE();
+    }
 
     const extraStdioOffset = 3; // stdin, stdout, stderr
 
@@ -386,6 +396,11 @@ export class ChildProcess extends EventEmitter {
       const fd = i + extraStdioOffset;
       if (fd === ipc) extraStdioNormalized.push("null");
       extraStdioNormalized.push(toDenoStdio(extraStdio[i]));
+    }
+
+    // Windows does not support uid/gid options - throw ENOTSUP synchronously.
+    if (isWindows && (uid != null || gid != null)) {
+      throw _createSpawnError("ENOTSUP", command, args.slice(1));
     }
 
     try {
@@ -398,12 +413,15 @@ export class ChildProcess extends EventEmitter {
         stdout: toDenoStdio(stdout),
         stderr: toDenoStdio(stderr),
         windowsRawArguments: windowsVerbatimArguments,
+        uid,
+        gid,
         detached,
         [kSerialization]: serialization,
         [kIpc]: ipc, // internal
         [kExtraStdio]: extraStdioNormalized,
         [kNeedsNpmProcessState]: options[kNeedsNpmProcessState] ||
           includeNpmProcessState,
+        [kArgv0]: argv0 !== cmd ? argv0 : undefined,
       }).spawn();
       this.pid = this.#process.pid;
 
@@ -575,6 +593,9 @@ export class ChildProcess extends EventEmitter {
       if (e instanceof Deno.errors.NotFound) {
         // args.slice(1) to exclude argv0 (prepended by normalizeSpawnArguments)
         e = _createSpawnError("ENOENT", command, args.slice(1));
+      } else if (e instanceof Deno.errors.PermissionDenied) {
+        // Node.js throws EPERM synchronously for uid/gid permission errors.
+        throw _createSpawnError("EPERM", command, args.slice(1));
       }
 
       // Set up stdio streams even when spawn fails (Node.js creates pipes
@@ -1116,6 +1137,15 @@ export function normalizeSpawnArguments(
     // for shell interpretation, so don't escape.
     let command;
     if (args.length > 0) {
+      if (!emittedShellDeprecation) {
+        process.emitWarning(
+          "Passing args to a child process with shell option true can lead to security " +
+            "vulnerabilities, as the arguments are not escaped, only concatenated.",
+          "DeprecationWarning",
+          "DEP0190",
+        );
+        emittedShellDeprecation = true;
+      }
       const escapedParts = [escapeShellArg(file), ...args.map(escapeShellArg)];
       command = ArrayPrototypeJoin(escapedParts, " ");
     } else {
@@ -1653,7 +1683,9 @@ export function spawnSync(
     _channel, // TODO(kt3k): handle this correctly
   ] = normalizeStdioOption(stdio);
   let includeNpmProcessState = false;
-  // Skip argv0 when calling buildCommand (same as #spawnInternal)
+  // args[0] is argv0 (prepended by normalizeSpawnArguments). Capture it
+  // before slicing so we can pass it via kArgv0 for OS-level argv[0].
+  const argv0 = args && args.length > 0 ? args[0] : command;
   const argsToProcess = args && args.length > 0 ? args.slice(1) : [];
   [command, args, includeNpmProcessState] = buildCommand(
     command,
@@ -1668,6 +1700,7 @@ export function spawnSync(
       args,
       cwd,
       env: mapValues(env, (value) => value.toString()),
+      [kArgv0]: argv0 !== command ? argv0 : undefined,
       stdout: toDenoStdio(stdout_),
       stderr: toDenoStdio(stderr_),
       stdin: stdin_ == "inherit" ? "inherit" : "null",
@@ -1840,6 +1873,11 @@ export function setupChannel(
             // TODO(nathanwhit): once we add support for sending
             // handles, if we want to support deno-node IPC interop,
             // we'll need to handle the NODE_HANDLE_* messages here.
+            // Emit as internalMessage for internal consumers.
+            if (serialization === "json") {
+              restorePrototype(msg);
+            }
+            nextTick(() => target.emit("internalMessage", msg));
             continue;
           }
         }

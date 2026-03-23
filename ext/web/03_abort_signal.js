@@ -5,22 +5,19 @@
 
 import { core, primordials } from "ext:core/mod.js";
 const {
-  ArrayPrototypeEvery,
   ArrayPrototypePush,
   FunctionPrototypeApply,
   ObjectPrototypeIsPrototypeOf,
+  SafeFinalizationRegistry,
   SafeSet,
   SafeSetIterator,
   SafeWeakRef,
-  SafeWeakSet,
   SetPrototypeAdd,
   SetPrototypeDelete,
   Symbol,
   SymbolFor,
   TypeError,
   WeakRefPrototypeDeref,
-  WeakSetPrototypeAdd,
-  WeakSetPrototypeHas,
 } = primordials;
 
 import * as webidl from "ext:deno_webidl/00_webidl.js";
@@ -33,39 +30,6 @@ import {
   listenerCount,
   setIsTrusted,
 } from "./02_event.js";
-
-// Since WeakSet is not a iterable, WeakRefSet class is provided to store and
-// iterate objects.
-// To create an AsyncIterable using GeneratorFunction in the internal code,
-// there are many primordial considerations, so we simply implement the
-// toArray method.
-class WeakRefSet {
-  #weakSet = new SafeWeakSet();
-  #refs = [];
-
-  add(value) {
-    if (WeakSetPrototypeHas(this.#weakSet, value)) {
-      return;
-    }
-    WeakSetPrototypeAdd(this.#weakSet, value);
-    ArrayPrototypePush(this.#refs, new SafeWeakRef(value));
-  }
-
-  has(value) {
-    return WeakSetPrototypeHas(this.#weakSet, value);
-  }
-
-  toArray() {
-    const ret = [];
-    for (let i = 0; i < this.#refs.length; ++i) {
-      const value = WeakRefPrototypeDeref(this.#refs[i]);
-      if (value !== undefined) {
-        ArrayPrototypePush(ret, value);
-      }
-    }
-    return ret;
-  }
-}
 
 const add = Symbol("[[add]]");
 const signalAbort = Symbol("[[signalAbort]]");
@@ -81,6 +45,19 @@ const timerId = Symbol("[[timerId]]");
 const activeDependents = Symbol("[[activeDependents]]");
 
 const illegalConstructorKey = Symbol("illegalConstructorKey");
+
+// When a dependent signal created by AbortSignal.any() is GC'd, clean up
+// its WeakRef from each source signal's dependentSignals set.
+// This prevents unbounded growth of the set when .any() is called in a loop.
+const dependentSignalCleanupRegistry = new SafeFinalizationRegistry(
+  (prevent) => {
+    const sourceSignal = WeakRefPrototypeDeref(prevent.ref);
+    if (sourceSignal === undefined) return;
+    const deps = sourceSignal[dependentSignals];
+    if (deps === null) return;
+    SetPrototypeDelete(deps, prevent.weak);
+  },
+);
 
 class AbortSignal extends EventTarget {
   [abortReason] = undefined;
@@ -154,10 +131,12 @@ class AbortSignal extends EventTarget {
 
     const dependentSignalsToAbort = [];
     if (this[dependentSignals] !== null) {
-      const dependentSignalArray = this[dependentSignals].toArray();
-      for (let i = 0; i < dependentSignalArray.length; ++i) {
-        const dependentSignal = dependentSignalArray[i];
-        if (dependentSignal[abortReason] === undefined) {
+      for (const weakRef of new SafeSetIterator(this[dependentSignals])) {
+        const dependentSignal = WeakRefPrototypeDeref(weakRef);
+        if (
+          dependentSignal !== undefined &&
+          dependentSignal[abortReason] === undefined
+        ) {
           dependentSignal[abortReason] = this[abortReason];
           ArrayPrototypePush(dependentSignalsToAbort, dependentSignal);
         }
@@ -192,10 +171,9 @@ class AbortSignal extends EventTarget {
 
     // release strong references from source signals now that abort has been delivered
     if (this[sourceSignals] !== null) {
-      const sourceSignalArray = this[sourceSignals].toArray();
-      for (let i = 0; i < sourceSignalArray.length; ++i) {
-        const sourceSignal = sourceSignalArray[i];
-        if (sourceSignal[activeDependents]) {
+      for (const weakRef of new SafeSetIterator(this[sourceSignals])) {
+        const sourceSignal = WeakRefPrototypeDeref(weakRef);
+        if (sourceSignal !== undefined && sourceSignal[activeDependents]) {
           SetPrototypeDelete(sourceSignal[activeDependents], this);
         }
       }
@@ -241,10 +219,11 @@ class AbortSignal extends EventTarget {
       if (this[timerId] !== null) {
         core.refTimer(this[timerId]);
       } else if (this[sourceSignals] !== null) {
-        const sourceSignalArray = this[sourceSignals].toArray();
-        for (let i = 0; i < sourceSignalArray.length; ++i) {
-          const sourceSignal = sourceSignalArray[i];
-          if (sourceSignal[timerId] !== null) {
+        for (const weakRef of new SafeSetIterator(this[sourceSignals])) {
+          const sourceSignal = WeakRefPrototypeDeref(weakRef);
+          if (
+            sourceSignal !== undefined && sourceSignal[timerId] !== null
+          ) {
             core.refTimer(sourceSignal[timerId]);
             // prevent GC of this dependent signal while the timer is keeping the event loop alive
             sourceSignal[activeDependents] ??= new SafeSet();
@@ -261,19 +240,30 @@ class AbortSignal extends EventTarget {
       if (this[timerId] !== null) {
         core.unrefTimer(this[timerId]);
       } else if (this[sourceSignals] !== null) {
-        const sourceSignalArray = this[sourceSignals].toArray();
-        for (let i = 0; i < sourceSignalArray.length; ++i) {
-          const sourceSignal = sourceSignalArray[i];
-          if (sourceSignal[timerId] !== null) {
+        for (const weakRef of new SafeSetIterator(this[sourceSignals])) {
+          const sourceSignal = WeakRefPrototypeDeref(weakRef);
+          if (
+            sourceSignal !== undefined && sourceSignal[timerId] !== null
+          ) {
             // Check that all dependent signals of the timer signal do not have listeners
-            if (
-              ArrayPrototypeEvery(
-                sourceSignal[dependentSignals].toArray(),
-                (dependentSignal) =>
-                  dependentSignal === this ||
-                  listenerCount(dependentSignal, "abort") === 0,
-              )
-            ) {
+            let allInactive = true;
+            if (sourceSignal[dependentSignals] !== null) {
+              for (
+                const depRef of new SafeSetIterator(
+                  sourceSignal[dependentSignals],
+                )
+              ) {
+                const dep = WeakRefPrototypeDeref(depRef);
+                if (
+                  dep !== undefined && dep !== this &&
+                  listenerCount(dep, "abort") > 0
+                ) {
+                  allInactive = false;
+                  break;
+                }
+              }
+            }
+            if (allInactive) {
               core.unrefTimer(sourceSignal[timerId]);
             }
             // release the strong reference since no more listeners need it
@@ -369,25 +359,54 @@ function createDependentAbortSignal(signals, prefix) {
   }
 
   resultSignal[dependent] = true;
-  resultSignal[sourceSignals] = new WeakRefSet();
+  resultSignal[sourceSignals] = new SafeSet();
   for (let i = 0; i < signals.length; ++i) {
     const signal = signals[i];
     if (!signal[dependent]) {
-      signal[dependentSignals] ??= new WeakRefSet();
-      resultSignal[sourceSignals].add(signal);
-      signal[dependentSignals].add(resultSignal);
+      signal[dependentSignals] ??= new SafeSet();
+      const signalRef = new SafeWeakRef(signal);
+      const resultRef = new SafeWeakRef(resultSignal);
+      SetPrototypeAdd(resultSignal[sourceSignals], signalRef);
+      SetPrototypeAdd(signal[dependentSignals], resultRef);
+      // When resultSignal is GC'd, remove its WeakRef from signal's dependentSignals
+      dependentSignalCleanupRegistry.register(resultSignal, {
+        ref: signalRef,
+        weak: resultRef,
+      });
     } else {
-      const sourceSignalArray = signal[sourceSignals].toArray();
-      for (let j = 0; j < sourceSignalArray.length; ++j) {
-        const sourceSignal = sourceSignalArray[j];
+      for (
+        const sourceSignalRef of new SafeSetIterator(
+          signal[sourceSignals],
+        )
+      ) {
+        const sourceSignal = WeakRefPrototypeDeref(sourceSignalRef);
+        if (sourceSignal === undefined) continue;
         assert(sourceSignal[abortReason] === undefined);
         assert(!sourceSignal[dependent]);
 
-        if (resultSignal[sourceSignals].has(sourceSignal)) {
-          continue;
+        // Check if already tracking this source
+        let alreadyTracked = false;
+        for (
+          const existingRef of new SafeSetIterator(
+            resultSignal[sourceSignals],
+          )
+        ) {
+          if (WeakRefPrototypeDeref(existingRef) === sourceSignal) {
+            alreadyTracked = true;
+            break;
+          }
         }
-        resultSignal[sourceSignals].add(sourceSignal);
-        sourceSignal[dependentSignals].add(resultSignal);
+        if (alreadyTracked) continue;
+
+        sourceSignal[dependentSignals] ??= new SafeSet();
+        const newSourceRef = new SafeWeakRef(sourceSignal);
+        const resultRef = new SafeWeakRef(resultSignal);
+        SetPrototypeAdd(resultSignal[sourceSignals], newSourceRef);
+        SetPrototypeAdd(sourceSignal[dependentSignals], resultRef);
+        dependentSignalCleanupRegistry.register(resultSignal, {
+          ref: newSourceRef,
+          weak: resultRef,
+        });
       }
     }
   }
