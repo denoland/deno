@@ -4,7 +4,7 @@ import * as fsPromises from "node:fs/promises";
 // Test fs.cp with callback
 await new Promise<void>((resolve, reject) => {
   fs.cp("dir1/data.txt", "dir2/data_cb.txt", (err) => {
-    if (err) reject(err);
+    if (err) return reject(err);
     else resolve();
   });
 });
