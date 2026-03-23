@@ -1245,11 +1245,13 @@ pub(crate) unsafe fn write_tty(
         data,
         offset: 0,
         cb,
+        status: None,
       });
       return 0;
     }
 
-    // Fast path: single buffer.
+    // Never fire callbacks synchronously — always queue.
+    // This matches real libuv behavior and prevents re-entrancy panics.
     if nbufs == 1 {
       let buf = &*bufs;
       if !buf.base.is_null() && buf.len > 0 {
@@ -1260,9 +1262,14 @@ pub(crate) unsafe fn write_tty(
             Ok(n) => {
               offset += n;
               if offset >= data.len() {
-                if let Some(cb) = cb {
-                  cb(req, 0);
-                }
+                (*tty).internal_write_queue.push_back(WritePending {
+                  req,
+                  data: Vec::new(),
+                  offset: 0,
+                  cb,
+                  status: Some(0),
+                });
+                ensure_tty_registered(tty);
                 return 0;
               }
             }
@@ -1272,31 +1279,47 @@ pub(crate) unsafe fn write_tty(
                 data: data[offset..].to_vec(),
                 offset: 0,
                 cb,
+                status: None,
               });
               ensure_tty_registered(tty);
               return 0;
             }
             Err(_) => {
-              if let Some(cb) = cb {
-                cb(req, UV_EPIPE);
-              }
+              (*tty).internal_write_queue.push_back(WritePending {
+                req,
+                data: Vec::new(),
+                offset: 0,
+                cb,
+                status: Some(UV_EPIPE),
+              });
+              ensure_tty_registered(tty);
               return 0;
             }
           }
         }
       }
-      if let Some(cb) = cb {
-        cb(req, 0);
-      }
+      (*tty).internal_write_queue.push_back(WritePending {
+        req,
+        data: Vec::new(),
+        offset: 0,
+        cb,
+        status: Some(0),
+      });
+      ensure_tty_registered(tty);
       return 0;
     }
 
     // Multi-buffer: collect and write.
     let data = collect_bufs(bufs, nbufs);
     if data.is_empty() {
-      if let Some(cb) = cb {
-        cb(req, 0);
-      }
+      (*tty).internal_write_queue.push_back(WritePending {
+        req,
+        data: Vec::new(),
+        offset: 0,
+        cb,
+        status: Some(0),
+      });
+      ensure_tty_registered(tty);
       return 0;
     }
 
@@ -1306,9 +1329,14 @@ pub(crate) unsafe fn write_tty(
         Ok(n) => {
           offset += n;
           if offset >= data.len() {
-            if let Some(cb) = cb {
-              cb(req, 0);
-            }
+            (*tty).internal_write_queue.push_back(WritePending {
+              req,
+              data: Vec::new(),
+              offset: 0,
+              cb,
+              status: Some(0),
+            });
+            ensure_tty_registered(tty);
             return 0;
           }
         }
@@ -1318,14 +1346,20 @@ pub(crate) unsafe fn write_tty(
             data: data[offset..].to_vec(),
             offset: 0,
             cb,
+            status: None,
           });
           ensure_tty_registered(tty);
           return 0;
         }
         Err(_) => {
-          if let Some(cb) = cb {
-            cb(req, UV_EPIPE);
-          }
+          (*tty).internal_write_queue.push_back(WritePending {
+            req,
+            data: Vec::new(),
+            offset: 0,
+            cb,
+            status: Some(UV_EPIPE),
+          });
+          ensure_tty_registered(tty);
           return 0;
         }
       }
@@ -1570,6 +1604,19 @@ pub(crate) unsafe fn poll_tty_handle(
       loop {
         if (*tty_ptr).internal_write_queue.is_empty() {
           break;
+        }
+
+        // Check if the front entry has a pre-determined status
+        // (deferred from write_tty).
+        let pre_status =
+          (*tty_ptr).internal_write_queue.front().unwrap().status;
+        if let Some(status) = pre_status {
+          let pw = (*tty_ptr).internal_write_queue.pop_front().unwrap();
+          if let Some(cb) = pw.cb {
+            cb(pw.req, status);
+          }
+          any_work = true;
+          continue;
         }
 
         let (done, error) = {
