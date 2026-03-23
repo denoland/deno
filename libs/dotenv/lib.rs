@@ -541,8 +541,11 @@ fn find_closing_quote(input: &[u8], quote: u8, from: usize) -> Option<usize> {
     return Some(first);
   }
 
-  // There's non-whitespace content after the first quote — inner quotes
-  // are present. Find the last quote on this line instead.
+  // There's non-whitespace content after the first quote — check if
+  // there are more matching quotes on the line (inner quotes case).
+  // If so, use the last one as the closing quote, preserving inner
+  // quotes as literal content. If not, the first quote is the real
+  // closer and the trailing content is junk (standard dotenv behavior).
   let mut last = first;
   let mut i = first + 1;
   while i < line_end {
@@ -552,13 +555,7 @@ fn find_closing_quote(input: &[u8], quote: u8, from: usize) -> Option<usize> {
     i += 1;
   }
 
-  // Only return if we found a different (later) quote
-  if last > first {
-    Some(last)
-  } else {
-    // Only one quote on the line — treat as unclosed
-    None
-  }
+  Some(last)
 }
 
 #[cfg(test)]
