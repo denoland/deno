@@ -197,7 +197,12 @@ function _guessStdinType(fd) {
 }
 
 // Minimal stdin read helper that tracks the pending op promise for ref/unref.
-// This replaces the io.Stdin class from ext:deno_io for non-TTY stdin only.
+// Used for non-TTY stdin only (TTY stdin uses its own libuv handle).
+//
+// Only the latest promise is tracked -- this matches the original io.Stdin
+// behavior (which also stored a single #opPromise). This is safe because
+// Readable._read() is called sequentially: the stream won't call _read()
+// again until the previous call pushes data or signals an error.
 let _stdinOpPromise;
 let _stdinRef = true;
 
@@ -277,6 +282,13 @@ export const initStdin = (warmup = false) => {
       // as that conflates two different raw mode mechanisms (libuv vs op_set_raw).
       stdin = new readStream(fd);
       stdin.fd = fd;
+
+      // Note: we do NOT add stdin.on("close", () => core.tryClose(STDIN_RID))
+      // here. The TTY ReadStream's libuv handle owns the fd and closes it via
+      // uv_close() when the stream is destroyed. Separately closing the Deno
+      // resource (RID 0) would risk a double-close. The non-TTY path below
+      // does close the RID because those streams use core.read/core.writeSync
+      // which operate on Deno resources, not libuv handles.
 
       // `stdin` starts out life in a paused state. Explicitly readStop() it
       // to put it in the not-reading state.
