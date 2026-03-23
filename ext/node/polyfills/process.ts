@@ -8,9 +8,11 @@ import { core, internals, primordials } from "ext:core/mod.js";
 import { initializeDebugEnv } from "ext:deno_node/internal/util/debuglog.ts";
 import { format } from "ext:deno_node/internal/util/inspect.mjs";
 import {
+  op_current_thread_cpu_usage,
   op_fs_umask,
   op_getegid,
   op_geteuid,
+  op_getgroups,
   op_node_load_env_file,
   op_node_process_constrained_memory,
   op_node_process_kill,
@@ -102,6 +104,7 @@ const lazyLoadFsUtils = core.createLazyLoader<typeof fsUtils>(
 );
 
 const {
+  ArrayIsArray,
   NumberMAX_SAFE_INTEGER,
   ObjectDefineProperty,
   ObjectPrototypeIsPrototypeOf,
@@ -228,6 +231,46 @@ export function cpuUsage(previousValue?: CpuUsage): CpuUsage {
   return cpuValues;
 }
 
+const threadCpuValues = new Float64Array(2);
+
+export function threadCpuUsage(
+  previousValue?: CpuUsage,
+): CpuUsage {
+  if (previousValue) {
+    if (!previousCpuUsageValueIsValid(previousValue.user)) {
+      validateObject(previousValue, "prevValue");
+
+      validateNumber(previousValue.user, "prevValue.user");
+      throw new ERR_INVALID_ARG_VALUE_RANGE(
+        "prevValue.user",
+        previousValue.user,
+      );
+    }
+
+    if (!previousCpuUsageValueIsValid(previousValue.system)) {
+      validateNumber(previousValue.system, "prevValue.system");
+      throw new ERR_INVALID_ARG_VALUE_RANGE(
+        "prevValue.system",
+        previousValue.system,
+      );
+    }
+  }
+
+  op_current_thread_cpu_usage(threadCpuValues);
+
+  if (previousValue) {
+    return {
+      user: threadCpuValues[0] - previousValue.user,
+      system: threadCpuValues[1] - previousValue.system,
+    };
+  }
+
+  return {
+    user: threadCpuValues[0],
+    system: threadCpuValues[1],
+  };
+}
+
 function createWarningObject(
   warning: string,
   type: string,
@@ -331,8 +374,20 @@ export function hrtime(time?: [number, number]): [number, number] {
   if (!time) {
     return [sec, nano];
   }
+  if (!ArrayIsArray(time)) {
+    throw new ERR_INVALID_ARG_TYPE("time", "Array", time);
+  }
+  if (time.length !== 2) {
+    throw new ERR_OUT_OF_RANGE("time", 2, time.length);
+  }
   const [prevSec, prevNano] = time;
-  return [sec - prevSec, nano - prevNano];
+  let diffSec = sec - prevSec;
+  let diffNano = nano - prevNano;
+  if (diffNano < 0) {
+    diffSec -= 1;
+    diffNano += 1_000_000_000;
+  }
+  return [diffSec, diffNano];
 }
 
 hrtime.bigint = function (): bigint {
@@ -751,6 +806,7 @@ Object.defineProperty(process, "config", {
 });
 
 process.cpuUsage = cpuUsage;
+process.threadCpuUsage = threadCpuUsage;
 
 /** https://nodejs.org/api/process.html#process_process_cwd */
 process.cwd = cwd;
@@ -943,6 +999,9 @@ process.getgid = getgid;
 process.getuid = getuid;
 
 /** This method is removed on Windows */
+process.getgroups = () => op_getgroups();
+
+/** This method is removed on Windows */
 process.getegid = getegid;
 
 /** This method is removed on Windows */
@@ -1058,6 +1117,7 @@ if (isWindows) {
   delete process.getuid;
   delete process.getegid;
   delete process.geteuid;
+  delete process.getgroups;
 }
 
 Object.defineProperty(process, Symbol.toStringTag, {
@@ -1257,6 +1317,9 @@ internals.__bootstrapNodeProcess = function (
     if (io.stdout.isTerminal()) {
       /** https://nodejs.org/api/process.html#process_process_stdout */
       stdout = process.stdout = new TTYWriteStream(1);
+      // For supporting legacy API we put the FD here.
+      // Ref: https://github.com/nodejs/node/blob/main/lib/internal/bootstrap/switches/is_main_thread.js
+      stdout.fd = 1;
       // Match Node.js: stdio streams are indestructible.
       // Libraries like mute-stream (@inquirer/prompts) call destroy()/end()
       // on process.stdout between prompts. Without this, the underlying TTY
@@ -1283,6 +1346,8 @@ internals.__bootstrapNodeProcess = function (
     if (io.stderr.isTerminal()) {
       /** https://nodejs.org/api/process.html#process_process_stderr */
       stderr = process.stderr = new TTYWriteStream(2);
+      // For supporting legacy API we put the FD here.
+      stderr.fd = 2;
       stderr._isStdio = true;
       stderr.destroySoon = stderr.destroy;
       stderr._destroy = function (err, cb) {

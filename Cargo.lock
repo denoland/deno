@@ -403,7 +403,7 @@ version = "1.16.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "94bffc006df10ac2a68c83692d734a465f8ee6c5b384d8545a636f81d858f4bf"
 dependencies = [
- "aws-lc-sys",
+ "aws-lc-sys 0.38.0",
  "untrusted 0.7.1",
  "zeroize",
 ]
@@ -413,6 +413,18 @@ name = "aws-lc-sys"
 version = "0.38.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4321e568ed89bb5a7d291a7f37997c2c0df89809d7b6d12062c81ddb54aa782e"
+dependencies = [
+ "cc",
+ "cmake",
+ "dunce",
+ "fs_extra",
+]
+
+[[package]]
+name = "aws-lc-sys"
+version = "0.39.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1fa7e52a4c5c547c741610a2c6f123f3881e409b714cd27e6798ef020c514f0a"
 dependencies = [
  "cc",
  "cmake",
@@ -1871,7 +1883,7 @@ dependencies = [
  "imara-diff",
  "import_map",
  "indexmap 2.12.0",
- "jsonc-parser 0.28.0",
+ "jsonc-parser",
  "jupyter-protocol",
  "keyring",
  "lazy-regex",
@@ -2095,7 +2107,7 @@ dependencies = [
  "ignore",
  "import_map",
  "indexmap 2.12.0",
- "jsonc-parser 0.28.0",
+ "jsonc-parser",
  "log",
  "pretty_assertions",
  "serde",
@@ -2237,14 +2249,14 @@ dependencies = [
 name = "deno_crypto_provider"
 version = "0.34.0"
 dependencies = [
- "aws-lc-sys",
+ "aws-lc-sys 0.39.0",
 ]
 
 [[package]]
 name = "deno_doc"
-version = "0.194.1"
+version = "0.197.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "36eede374a5ecf0a6d83ecfc47d8878e35d7e3210de6e9ca18554402a5327114"
+checksum = "72868ff531723780688c97c23a9b78d9a7790ee329b1869deba3ad0f121a1c27"
 dependencies = [
  "anyhow",
  "cfg-if",
@@ -3129,7 +3141,7 @@ dependencies = [
  "imara-diff",
  "import_map",
  "indexmap 2.12.0",
- "jsonc-parser 0.28.0",
+ "jsonc-parser",
  "log",
  "node_resolver",
  "once_cell",
@@ -3996,27 +4008,27 @@ dependencies = [
 
 [[package]]
 name = "dprint-plugin-json"
-version = "0.21.1"
+version = "0.21.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "08ef56b214052af8bb5157d0d1b860e042f938abc9360586414a8ff436739508"
+checksum = "a2fe735acd073034b25ca9868f49b5265ff01a831dff89a2302dbe70178ca1db"
 dependencies = [
  "anyhow",
  "dprint-core",
  "dprint-core-macros",
- "jsonc-parser 0.28.0",
+ "jsonc-parser",
  "serde",
  "text_lines",
 ]
 
 [[package]]
 name = "dprint-plugin-jupyter"
-version = "0.2.1"
+version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "70170f0c0b85500d8a1a240d0c969903e0c282cdc92d0579fa57e26a814f9f0a"
+checksum = "f703cac0273eb41521f4bd89cc4848007655cd88ee2d1dc24e08aff6fa074b00"
 dependencies = [
  "anyhow",
  "dprint-core",
- "jsonc-parser 0.27.1",
+ "jsonc-parser",
  "serde",
  "serde_json",
 ]
@@ -4404,7 +4416,7 @@ dependencies = [
  "import_map",
  "indexmap 2.12.0",
  "insta",
- "jsonc-parser 0.28.0",
+ "jsonc-parser",
  "pretty_assertions",
  "reqwest",
  "serde",
@@ -6231,17 +6243,12 @@ dependencies = [
 
 [[package]]
 name = "jsonc-parser"
-version = "0.27.1"
+version = "0.32.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "01958dcb05b69d9612853b47df8f7881810e4f61b5cedd8894be04291f28ccb9"
-
-[[package]]
-name = "jsonc-parser"
-version = "0.28.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b187b7e06feb2c205d8ec71f12cd8f553e33477ec155ebfc34f8daa7f3ae4eab"
+checksum = "8de0ffda8def4eb16ed430641db8056c2509b20e38f2dd327bdb4c83239f88c4"
 dependencies = [
- "serde_json",
+ "serde",
+ "unicode-width 0.2.2",
 ]
 
 [[package]]
@@ -6997,7 +7004,7 @@ dependencies = [
  "chrono",
  "deno_terminal",
  "file_test_runner",
- "jsonc-parser 0.28.0",
+ "jsonc-parser",
  "regex",
  "serde",
  "serde_json",
@@ -10195,9 +10202,9 @@ checksum = "55937e1799185b12863d447f42597ed69d9928686b8d88a1df17376a097d8369"
 
 [[package]]
 name = "tar"
-version = "0.4.43"
+version = "0.4.45"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c65998313f8e17d0d553d28f91a0df93e4dbbbf770279c7bc21ca0f09ea1a1f6"
+checksum = "22692a6476a21fa75fdfc11d452fda482af402c008cdbaf3476414e122040973"
 dependencies = [
  "filetime",
  "libc",
@@ -10353,7 +10360,7 @@ dependencies = [
  "fluent-uri",
  "indexmap 2.12.0",
  "inventory",
- "jsonc-parser 0.28.0",
+ "jsonc-parser",
  "lazy-regex",
  "libc",
  "ls-types",

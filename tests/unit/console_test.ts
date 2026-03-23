@@ -377,6 +377,27 @@ Deno.test(function consoleTestStringifyCircular() {
   assertEquals(stripAnsiCode(Deno.inspect(nestedObj)), nestedObjExpected);
 });
 
+Deno.test(function consoleTestStringifyToStringTagGetterThrows() {
+  // Symbol.toStringTag getter that throws should not crash console.log
+  // https://github.com/denoland/deno/issues/32894
+  class Circular {
+    self: Circular;
+    constructor() {
+      this.self = this;
+    }
+    get [Symbol.toStringTag]() {
+      // This throws due to circular reference
+      JSON.stringify(this);
+      return "Circular";
+    }
+  }
+  const obj = new Circular();
+  // Should not throw, should handle the error gracefully
+  const result = stringify(obj);
+  assertStringIncludes(result, "Circular");
+  assertStringIncludes(result, "[Circular");
+});
+
 Deno.test(function consoleTestStringifyMultipleCircular() {
   const y = { a: { b: {} }, foo: { bar: {} } };
   y.a.b = y.a;

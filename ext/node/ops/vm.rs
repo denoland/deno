@@ -1027,9 +1027,13 @@ fn property_enumerator<'s>(
   };
 
   let context_scope = &mut v8::ContextScope::new(scope, context);
-  let Some(properties) = sandbox
-    .get_property_names(context_scope, v8::GetPropertyNamesArgs::default())
-  else {
+  let args = v8::GetPropertyNamesArgsBuilder::new()
+    .mode(v8::KeyCollectionMode::OwnOnly)
+    .property_filter(v8::PropertyFilter::ALL_PROPERTIES)
+    .index_filter(v8::IndexFilter::SkipIndices)
+    .key_conversion(v8::KeyConversionMode::ConvertToString)
+    .build();
+  let Some(properties) = sandbox.get_property_names(context_scope, args) else {
     return;
   };
 
@@ -1050,11 +1054,14 @@ fn indexed_property_enumerator<'s>(
     return;
   };
 
-  // By default, GetPropertyNames returns string and number property names, and
-  // doesn't convert the numbers to strings.
-  let Some(properties) =
-    sandbox.get_property_names(scope, v8::GetPropertyNamesArgs::default())
-  else {
+  // Return only indexed (numeric) own properties, including non-enumerable.
+  let args = v8::GetPropertyNamesArgsBuilder::new()
+    .mode(v8::KeyCollectionMode::OwnOnly)
+    .property_filter(v8::PropertyFilter::ALL_PROPERTIES)
+    .index_filter(v8::IndexFilter::IncludeIndices)
+    .key_conversion(v8::KeyConversionMode::KeepNumbers)
+    .build();
+  let Some(properties) = sandbox.get_property_names(scope, args) else {
     return;
   };
 

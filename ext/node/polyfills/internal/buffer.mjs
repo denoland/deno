@@ -423,7 +423,7 @@ Buffer.alloc = function alloc(size, fill, encoding) {
 
 function _allocUnsafe(size) {
   assertSize(size);
-  return createBuffer(size < 0 ? 0 : checked(size) | 0);
+  return createBuffer(size < 0 ? 0 : checked(size));
 }
 
 /**
@@ -465,7 +465,7 @@ function fromString(string, encoding) {
   }
 
   const maxLength = Buffer.poolSize >>> 1;
-  const length = byteLength(string, encoding) | 0;
+  const length = MathTrunc(byteLength(string, encoding));
   if (length >= maxLength) {
     let buf = createBuffer(length);
     const actual = buf.write(string, encoding);
@@ -518,7 +518,7 @@ function checked(length) {
         NumberPrototypeToString(kMaxLength, 16) + " bytes",
     );
   }
-  return length | 0;
+  return MathTrunc(length);
 }
 
 export function SlowBuffer(length) {
