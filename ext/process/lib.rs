@@ -1158,6 +1158,29 @@ fn op_spawn_sync(
     stdin.flush()?;
   }
 
+  // Take stdout/stderr pipes from child so we can read them in background
+  // threads. This lets us drop the pipes on timeout to unblock the readers
+  // (matching libuv's behavior of stopping pipe reads after process kill).
+  let child_stdout = child.stdout.take();
+  let child_stderr = child.stderr.take();
+
+  let stdout_handle = child_stdout.map(|pipe| {
+    std::thread::spawn(move || {
+      let mut buf = Vec::new();
+      let mut pipe = pipe;
+      let _ = std::io::Read::read_to_end(&mut pipe, &mut buf);
+      buf
+    })
+  });
+  let stderr_handle = child_stderr.map(|pipe| {
+    std::thread::spawn(move || {
+      let mut buf = Vec::new();
+      let mut pipe = pipe;
+      let _ = std::io::Read::read_to_end(&mut pipe, &mut buf);
+      buf
+    })
+  });
+
   // If timeout is specified, spawn a thread that will kill the child
   // after the timeout expires. Uses a condvar so the timer thread can be
   // cancelled promptly when the child exits before the deadline.
@@ -1217,13 +1240,10 @@ fn op_spawn_sync(
     });
   }
 
-  let output =
-    child
-      .wait_with_output()
-      .map_err(|e| ProcessError::SpawnFailed {
-        command: command.get_program().to_string_lossy().into_owned(),
-        error: Box::new(e.into()),
-      })?;
+  let status = child.wait().map_err(|e| ProcessError::SpawnFailed {
+    command: command.get_program().to_string_lossy().into_owned(),
+    error: Box::new(e.into()),
+  })?;
 
   // Cancel the timeout thread if it's still waiting.
   {
@@ -1234,16 +1254,45 @@ fn op_spawn_sync(
   }
 
   let timed_out = killed_by_timeout.load(Ordering::SeqCst);
+
+  // Collect stdout/stderr. On Unix, the process group kill ensures all
+  // children are dead and pipes reach EOF. On Windows (or when not timed
+  // out), pipe readers complete when the child exits normally. If timed
+  // out on Windows, grandchildren may still hold pipes open, so we use a
+  // short join timeout to avoid blocking indefinitely.
+  let collect_pipe = |handle: Option<std::thread::JoinHandle<Vec<u8>>>| {
+    let h = handle?;
+    if timed_out {
+      // Give pipe readers a brief window to flush, then give up.
+      // On Unix this completes immediately (process group killed).
+      // On Windows this avoids blocking on orphaned grandchildren.
+      let start = std::time::Instant::now();
+      loop {
+        if h.is_finished() {
+          return h.join().ok();
+        }
+        if start.elapsed() > std::time::Duration::from_millis(200) {
+          return None;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+      }
+    } else {
+      h.join().ok()
+    }
+  };
+  let stdout_bytes = collect_pipe(stdout_handle).unwrap_or_default();
+  let stderr_bytes = collect_pipe(stderr_handle).unwrap_or_default();
+
   Ok(SpawnOutput {
     pid,
-    status: output.status.try_into()?,
+    status: status.try_into()?,
     stdout: if stdout {
-      Some(output.stdout.into())
+      Some(stdout_bytes.into())
     } else {
       None
     },
     stderr: if stderr {
-      Some(output.stderr.into())
+      Some(stderr_bytes.into())
     } else {
       None
     },

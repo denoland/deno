@@ -2663,9 +2663,7 @@
     "pummel/test-process-hrtime.js": {},
     "pummel/test-string-decoder-large-buffer.js": {},
     "sequential/test-buffer-creation-regression.js": {},
-    "sequential/test-child-process-execsync.js": {
-      "windows": false
-    },
+    "sequential/test-child-process-execsync.js": {},
     "sequential/test-child-process-exit.js": {},
     "sequential/test-cli-syntax-bad.js": {},
     "sequential/test-cli-syntax-file-not-found.js": {
