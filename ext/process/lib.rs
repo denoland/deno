@@ -1127,11 +1127,21 @@ fn op_spawn_sync(
   let (mut command, _, _, _) =
     create_command(state, args, "Deno.Command().outputSync()")?;
 
+  // When timeout is specified on Unix, create a new process group so we can
+  // kill the entire tree (shell + children) on timeout, not just the shell.
+  #[cfg(unix)]
+  if timeout.is_some_and(|t| t > 0) {
+    command.process_group(0);
+  }
+
   let mut child = command.spawn().map_err(|e| ProcessError::SpawnFailed {
     command: command.get_program().to_string_lossy().into_owned(),
     error: Box::new(e.into()),
   })?;
+  #[cfg(unix)]
   let pid = child.id();
+  #[cfg(windows)]
+  let pid = child.id().expect("Process ID should be set.");
   if let Some(input) = input {
     let mut stdin = child.stdin.take().ok_or_else(|| {
       ProcessError::Io(std::io::Error::other("stdin is not available"))
@@ -1148,7 +1158,10 @@ fn op_spawn_sync(
   if let Some(timeout_ms) = timeout
     && timeout_ms > 0
   {
+    #[cfg(unix)]
     let child_id = child.id();
+    #[cfg(windows)]
+    let child_id = child.id().expect("Process ID should be set.");
     let killed = killed_by_timeout.clone();
     let cancel2 = cancel.clone();
     let kill_signal = kill_signal_str.as_deref().unwrap_or("SIGTERM");
@@ -1171,8 +1184,10 @@ fn op_spawn_sync(
       killed.store(true, Ordering::SeqCst);
       #[cfg(unix)]
       // SAFETY: child_id is a valid PID from the spawned child process.
+      // We use negative PID to kill the entire process group (created via
+      // process_group(0) above), ensuring shell children are also killed.
       unsafe {
-        libc::kill(child_id as i32, signal);
+        libc::kill(-(child_id as i32), signal);
       }
       #[cfg(windows)]
       // SAFETY: child_id is a valid PID from the spawned child process.
