@@ -43,6 +43,7 @@ deno_lockfile.workspace = true
 deno_maybe_sync.workspace = true
 deno_media_type.workspace = true
 deno_npm.workspace = true
+deno_npmrc.workspace = true
 deno_package_json.workspace = true
 deno_path_util.workspace = true
 deno_permissions = { workspace = true, optional = true }

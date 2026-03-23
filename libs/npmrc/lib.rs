@@ -1,5 +1,9 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+#![deny(clippy::print_stderr)]
+#![deny(clippy::print_stdout)]
+#![deny(clippy::unused_async)]
+
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::sync::Arc;
