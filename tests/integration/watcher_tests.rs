@@ -1347,6 +1347,202 @@ async fn test_watch_sigint() {
   assert_eq!(exit_status.code(), Some(130));
 }
 
+/// Test that the "unload" event fires on watch restart when the
+/// event loop is running (e.g. with setInterval keeping it alive).
+#[test(flaky)]
+async fn run_watch_unload_on_restart() {
+  let t = TempDir::new();
+  let file_to_watch = t.path().join("file_to_watch.js");
+  file_to_watch.write(
+    r#"
+      addEventListener("unload", () => {
+        console.log("unload event fired");
+      });
+      setInterval(() => {}, 1000);
+    "#,
+  );
+
+  let mut child = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("run")
+    .arg("--watch")
+    .arg("-L")
+    .arg("debug")
+    .arg("--allow-all")
+    .arg(&file_to_watch)
+    .env("NO_COLOR", "1")
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+
+  wait_for_watcher("file_to_watch.js", &mut stderr_lines).await;
+
+  // Trigger a restart by modifying the file
+  file_to_watch.write(
+    r#"
+      addEventListener("unload", () => {
+        console.log("unload event fired");
+      });
+      setInterval(() => {}, 1000);
+      // changed
+    "#,
+  );
+
+  // The unload handler should fire before the process restarts
+  wait_contains("unload event fired", &mut stdout_lines).await;
+  wait_contains("Restarting", &mut stderr_lines).await;
+  check_alive_then_kill(child);
+}
+
+/// Test that Node.js process "exit" event fires on watch restart.
+#[test(flaky)]
+async fn run_watch_process_exit_on_restart() {
+  let t = TempDir::new();
+  let file_to_watch = t.path().join("file_to_watch.js");
+  file_to_watch.write(
+    r#"
+      import process from "node:process";
+      process.on("exit", () => {
+        console.log("process exit fired");
+      });
+      setInterval(() => {}, 1000);
+    "#,
+  );
+
+  let mut child = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("run")
+    .arg("--watch")
+    .arg("-L")
+    .arg("debug")
+    .arg("--allow-all")
+    .arg(&file_to_watch)
+    .env("NO_COLOR", "1")
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+
+  wait_for_watcher("file_to_watch.js", &mut stderr_lines).await;
+
+  // Trigger a restart by modifying the file
+  file_to_watch.write(
+    r#"
+      import process from "node:process";
+      process.on("exit", () => {
+        console.log("process exit fired");
+      });
+      setInterval(() => {}, 1000);
+      // changed
+    "#,
+  );
+
+  // The process exit handler should fire before the process restarts
+  wait_contains("process exit fired", &mut stdout_lines).await;
+  wait_contains("Restarting", &mut stderr_lines).await;
+  check_alive_then_kill(child);
+}
+
+/// Test that SIGTERM is dispatched to JS signal handlers on watch restart,
+/// giving the process a chance to clean up before restarting.
+#[test(flaky)]
+async fn run_watch_sigterm_on_restart() {
+  let t = TempDir::new();
+  let file_to_watch = t.path().join("file_to_watch.js");
+  file_to_watch.write(
+    r#"
+      Deno.addSignalListener("SIGTERM", () => {
+        console.log("received SIGTERM");
+      });
+      setInterval(() => {}, 1000);
+    "#,
+  );
+
+  let mut child = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("run")
+    .arg("--watch")
+    .arg("-L")
+    .arg("debug")
+    .arg("--allow-all")
+    .arg(&file_to_watch)
+    .env("NO_COLOR", "1")
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+
+  wait_for_watcher("file_to_watch.js", &mut stderr_lines).await;
+
+  // Trigger a restart by modifying the file (keep same behavior)
+  file_to_watch.write(
+    r#"
+      Deno.addSignalListener("SIGTERM", () => {
+        console.log("received SIGTERM");
+      });
+      setInterval(() => {}, 1000);
+      // changed
+    "#,
+  );
+
+  // The SIGTERM handler should fire before the process restarts
+  wait_contains("received SIGTERM", &mut stdout_lines).await;
+  wait_contains("Restarting", &mut stderr_lines).await;
+  check_alive_then_kill(child);
+}
+
+/// Test that both SIGINT and SIGTERM are dispatched on Ctrl+C in watch mode.
+#[cfg(unix)]
+#[test(flaky)]
+async fn test_watch_sigint_and_sigterm_on_ctrlc() {
+  use nix::sys::signal;
+  use nix::sys::signal::Signal;
+  use nix::unistd::Pid;
+
+  let t = TempDir::new();
+  let file_to_watch = t.path().join("file_to_watch.js");
+  file_to_watch.write(
+    r#"
+      Deno.addSignalListener("SIGINT", () => {
+        console.log("received SIGINT");
+      });
+      Deno.addSignalListener("SIGTERM", () => {
+        console.log("received SIGTERM");
+      });
+      setInterval(() => {}, 1000);
+    "#,
+  );
+
+  let mut child = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("run")
+    .arg("--watch")
+    .arg("-L")
+    .arg("debug")
+    .arg("--allow-all")
+    .arg(&file_to_watch)
+    .env("NO_COLOR", "1")
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+
+  wait_for_watcher("file_to_watch.js", &mut stderr_lines).await;
+
+  // Send SIGINT (simulating Ctrl+C)
+  signal::kill(Pid::from_raw(child.id() as i32), Signal::SIGINT).unwrap();
+
+  // Both signal handlers should fire before exit
+  wait_contains("received SIGINT", &mut stdout_lines).await;
+  wait_contains("received SIGTERM", &mut stdout_lines).await;
+
+  // The watcher handles Ctrl+C gracefully and exits with 0
+  // (not 130) because it intercepts SIGINT via ctrl_c().
+  let exit_status = child.wait().unwrap();
+  assert_eq!(exit_status.code(), Some(0));
+}
+
 #[test(flaky)]
 async fn bench_watch_basic() {
   let t = TempDir::new();

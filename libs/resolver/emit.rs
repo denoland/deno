@@ -33,10 +33,13 @@ use crate::deno_json::CompilerOptionsParseError;
 use crate::deno_json::CompilerOptionsResolverRc;
 use crate::deno_json::TranspileAndEmitOptions;
 
-#[allow(clippy::disallowed_types)] // ok because we always store source text as Arc<str>
+#[allow(
+  clippy::disallowed_types,
+  reason = "source text is always stored as Arc<str>"
+)]
 type ArcStr = std::sync::Arc<str>;
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type EmitterRc<TInNpmPackageChecker, TSys> =
   deno_maybe_sync::MaybeArc<Emitter<TInNpmPackageChecker, TSys>>;
 
@@ -216,7 +219,10 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: EmitterSys>
     }
   }
 
-  #[allow(clippy::result_large_err)]
+  #[allow(
+    clippy::result_large_err,
+    reason = "EmitParsedSourceHelperError is intentionally large"
+  )]
   pub fn maybe_emit_source_sync(
     &self,
     specifier: &Url,
@@ -390,7 +396,10 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: EmitterSys>
   }
 }
 
-#[allow(clippy::result_large_err)]
+#[allow(
+  clippy::result_large_err,
+  reason = "EmitParsedSourceHelperError is intentionally large"
+)]
 trait ParsedSourceProvider: MaybeSend + MaybeSync + Clone + 'static {
   fn specifier(&self) -> &Url;
   fn media_type(&self) -> MediaType;
@@ -513,7 +522,10 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: EmitterSys>
   }
 }
 
-#[allow(clippy::result_large_err)]
+#[allow(
+  clippy::result_large_err,
+  reason = "EmitParsedSourceHelperError is intentionally large"
+)]
 fn transpile(
   parsed_source: ParsedSource,
   module_kind: deno_ast::ModuleKind,

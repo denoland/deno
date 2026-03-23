@@ -121,9 +121,28 @@ export class Domain extends EventEmitter {
     // deno-lint-ignore no-this-alias
     const self = this;
     return function () {
+      self.enter();
       try {
-        return FunctionPrototypeApply(fn, null, ArrayPrototypeSlice(arguments));
+        const ret = FunctionPrototypeApply(
+          fn,
+          this,
+          ArrayPrototypeSlice(arguments),
+        );
+        self.exit();
+        return ret;
       } catch (e) {
+        self.exit();
+        if (typeof e === "object" && e !== null) {
+          e.domainBound = fn;
+          e.domainThrown = false;
+          ObjectDefineProperty(e, "domain", {
+            __proto__: null,
+            configurable: true,
+            enumerable: false,
+            value: self,
+            writable: true,
+          });
+        }
         FunctionPrototypeCall(emitError, self, e);
       }
     };
@@ -134,15 +153,41 @@ export class Domain extends EventEmitter {
     const self = this;
     return function (e) {
       if (e) {
+        if (typeof e === "object" && e !== null) {
+          e.domainBound = fn;
+          e.domainThrown = false;
+          ObjectDefineProperty(e, "domain", {
+            __proto__: null,
+            configurable: true,
+            enumerable: false,
+            value: self,
+            writable: true,
+          });
+        }
         FunctionPrototypeCall(emitError, self, e);
       } else {
+        self.enter();
         try {
-          return FunctionPrototypeApply(
+          const ret = FunctionPrototypeApply(
             fn,
-            null,
+            this,
             ArrayPrototypeSlice(arguments, 1),
           );
+          self.exit();
+          return ret;
         } catch (e) {
+          self.exit();
+          if (typeof e === "object" && e !== null) {
+            e.domainBound = fn;
+            e.domainThrown = false;
+            ObjectDefineProperty(e, "domain", {
+              __proto__: null,
+              configurable: true,
+              enumerable: false,
+              value: self,
+              writable: true,
+            });
+          }
           FunctionPrototypeCall(emitError, self, e);
         }
       }
@@ -156,13 +201,23 @@ export class Domain extends EventEmitter {
       this.exit();
       return ret;
     } catch (e) {
-      // Exit the domain BEFORE emitting the error so the error handler
       this.exit();
+      if (typeof e === "object" && e !== null) {
+        e.domainThrown = true;
+        ObjectDefineProperty(e, "domain", {
+          __proto__: null,
+          configurable: true,
+          enumerable: false,
+          value: this,
+          writable: true,
+        });
+      }
       FunctionPrototypeCall(emitError, this, e);
     }
   }
 
   dispose() {
+    this._disposed = true;
     this.removeAllListeners();
     return this;
   }
@@ -170,21 +225,73 @@ export class Domain extends EventEmitter {
   enter() {
     active = process.domain = this;
     ArrayPrototypePush(stack, this);
+    updateExceptionCapture();
     return this;
   }
 
   exit() {
+    // Use lastIndexOf (most recent occurrence) and remove everything from that
+    // position onwards. This matches Node.js behavior: exiting a domain also
+    // exits all domains that were entered after its most recent entry.
     const index = ArrayPrototypeLastIndexOf(stack, this);
-    if (index === -1) return this;
-    ArrayPrototypeSplice(stack, index, 1);
+    if (index !== -1) {
+      ArrayPrototypeSplice(stack, index);
+    }
     active = stack.length === 0 ? null : stack[stack.length - 1];
     process.domain = active;
+    updateExceptionCapture();
     return this;
   }
 }
 
+let exceptionCaptureActive = false;
+
 function updateExceptionCapture() {
-  // TODO(kt3k): implement this
+  if (stack.length > 0 && !exceptionCaptureActive) {
+    exceptionCaptureActive = true;
+    process.setUncaughtExceptionCaptureCallback(
+      domainUncaughtExceptionHandler,
+    );
+  } else if (stack.length === 0 && exceptionCaptureActive) {
+    exceptionCaptureActive = false;
+    process.setUncaughtExceptionCaptureCallback(null);
+  }
+}
+
+function domainUncaughtExceptionHandler(er) {
+  const curDomain = process.domain;
+  if (!curDomain || curDomain._disposed) {
+    // No active domain or domain has been disposed, re-throw
+    throw er;
+  }
+
+  if (typeof er === "object" && er !== null) {
+    ObjectDefineProperty(er, "domain", {
+      __proto__: null,
+      configurable: true,
+      enumerable: false,
+      value: curDomain,
+      writable: true,
+    });
+    er.domainThrown = true;
+  }
+
+  // Remove the errored domain from the stack. This cleans up the entry
+  // left by emitBefore when the callback threw before emitAfter could run.
+  if (stack.length === 1) {
+    active = process.domain = null;
+    stack.length = 0;
+  } else {
+    const idx = ArrayPrototypeLastIndexOf(stack, curDomain);
+    if (idx !== -1) {
+      ArrayPrototypeSplice(stack, idx, 1);
+    }
+    active = process.domain = stack.length > 0 ? stack[stack.length - 1] : null;
+  }
+
+  updateExceptionCapture();
+
+  curDomain.emit("error", er);
 }
 
 let patched = false;
@@ -222,13 +329,20 @@ function patchEventEmitter() {
     const shouldEmitError = type === "error" &&
       this.listenerCount(type) > 0;
 
-    // Just call original `emit` if current EE instance has `error`
-    // handler, there's no active domain or this is process
-    if (
-      shouldEmitError || domain === null || domain === undefined ||
-      this === process
-    ) {
+    // No domain on this emitter or this is process - just call original emit
+    if (domain === null || domain === undefined || this === process) {
       return ReflectApply(eventEmit, this, args);
+    }
+
+    // If the emitter has an error handler and a domain, wrap with
+    // domain.enter()/exit() to preserve domain context in the handler.
+    // Only exit on success - on error, the domainUncaughtExceptionHandler
+    // handles cleanup (same pattern as timer async hooks).
+    if (shouldEmitError) {
+      domain.enter();
+      const ret = ReflectApply(eventEmit, this, args);
+      domain.exit();
+      return ret;
     }
 
     if (type === "error") {

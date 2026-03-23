@@ -1,8 +1,8 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-// NB(bartlomieju): this is fine for example code
-#![allow(clippy::print_stdout)]
-#![allow(clippy::print_stderr)]
+#![allow(clippy::print_stdout, reason = "example code")]
+#![allow(clippy::print_stderr, reason = "example code")]
+#![allow(clippy::disallowed_methods, reason = "example code")]
 
 use std::env::current_dir;
 use std::rc::Rc;

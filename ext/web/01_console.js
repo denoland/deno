@@ -195,6 +195,7 @@ const {
   Uint32Array,
   WeakMap,
   WeakMapPrototype,
+  JSONStringify,
   WeakSet,
   WeakSetPrototype,
 } = primordials;
@@ -247,6 +248,34 @@ class AssertionError extends Error {
 function assert(cond, msg = "Assertion failed") {
   if (!cond) {
     throw new AssertionError(msg);
+  }
+}
+
+// Attempt to JSON.stringify, returning "[Circular]" only for circular
+// reference errors (matching Node.js behavior).
+const firstErrorLine = (error) =>
+  StringPrototypeSplit(error.message, "\n", 1)[0];
+let CIRCULAR_ERROR_MESSAGE;
+function tryStringify(arg) {
+  try {
+    return JSONStringify(arg);
+  } catch (err) {
+    if (!CIRCULAR_ERROR_MESSAGE) {
+      try {
+        const a = {};
+        a.a = a;
+        JSONStringify(a);
+      } catch (circularError) {
+        CIRCULAR_ERROR_MESSAGE = firstErrorLine(circularError);
+      }
+    }
+    if (
+      err.name === "TypeError" &&
+      firstErrorLine(err) === CIRCULAR_ERROR_MESSAGE
+    ) {
+      return "[Circular]";
+    }
+    throw err;
   }
 }
 
@@ -685,7 +714,11 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
 
   let tag;
   if (!proxyDetails) {
-    tag = value[SymbolToStringTag];
+    try {
+      tag = value[SymbolToStringTag];
+    } catch {
+      // Symbol.toStringTag getter may throw (e.g. circular JSON.stringify)
+    }
   }
   // Only list the tag in case it's non-enumerable / not an own property.
   // Otherwise we'd print this twice.
@@ -3535,6 +3568,9 @@ function inspectArgs(args, inspectOptions = { __proto__: null }) {
             } else {
               formattedArg = `${NumberParseFloat(value)}`;
             }
+          } else if (char == "j") {
+            // Format as JSON.
+            formattedArg = tryStringify(args[a++]);
           } else if (ArrayPrototypeIncludes(["O", "o"], char)) {
             // Format as an object.
             formattedArg = formatValue(ctx, args[a++], 0);
@@ -3607,8 +3643,6 @@ function createStylizeWithColor(styles, colors) {
   };
 }
 
-const countMap = new SafeMap();
-const timerMap = new SafeMap();
 const isConsoleInstance = Symbol("isConsoleInstance");
 
 /** @param noColor {boolean} */
@@ -3622,6 +3656,8 @@ function getConsoleInspectOptions(noColor) {
 
 class Console {
   #printFunc = null;
+  #countMap = new SafeMap();
+  #timerMap = new SafeMap();
   [isConsoleInstance] = false;
 
   constructor(printFunc) {
@@ -3734,23 +3770,26 @@ class Console {
   count = (label = "default") => {
     label = String(label);
 
-    if (MapPrototypeHas(countMap, label)) {
-      const current = MapPrototypeGet(countMap, label) || 0;
-      MapPrototypeSet(countMap, label, current + 1);
+    if (MapPrototypeHas(this.#countMap, label)) {
+      const current = MapPrototypeGet(this.#countMap, label) || 0;
+      MapPrototypeSet(this.#countMap, label, current + 1);
     } else {
-      MapPrototypeSet(countMap, label, 1);
+      MapPrototypeSet(this.#countMap, label, 1);
     }
 
-    this.info(`${label}: ${MapPrototypeGet(countMap, label)}`);
+    this.#printFunc(
+      `${label}: ${MapPrototypeGet(this.#countMap, label)}\n`,
+      1,
+    );
   };
 
   countReset = (label = "default") => {
     label = String(label);
 
-    if (MapPrototypeHas(countMap, label)) {
-      MapPrototypeSet(countMap, label, 0);
+    if (MapPrototypeHas(this.#countMap, label)) {
+      MapPrototypeSet(this.#countMap, label, 0);
     } else {
-      this.warn(`Count for '${label}' does not exist`);
+      this.#printFunc(`Count for '${label}' does not exist\n`, 2);
     }
   };
 
@@ -3860,23 +3899,23 @@ class Console {
   time = (label = "default") => {
     label = String(label);
 
-    if (MapPrototypeHas(timerMap, label)) {
-      this.warn(`Timer '${label}' already exists`);
+    if (MapPrototypeHas(this.#timerMap, label)) {
+      this.#printFunc(`Timer '${label}' already exists\n`, 2);
       return;
     }
 
-    MapPrototypeSet(timerMap, label, currentTime());
+    MapPrototypeSet(this.#timerMap, label, currentTime());
   };
 
   timeLog = (label = "default", ...args) => {
     label = String(label);
 
-    if (!MapPrototypeHas(timerMap, label)) {
-      this.warn(`Timer '${label}' does not exist`);
+    if (!MapPrototypeHas(this.#timerMap, label)) {
+      this.#printFunc(`Timer '${label}' does not exist\n`, 2);
       return;
     }
 
-    const startTime = MapPrototypeGet(timerMap, label);
+    const startTime = MapPrototypeGet(this.#timerMap, label);
     let duration = currentTime() - startTime;
     if (duration < 1) {
       duration = NumberPrototypeToFixed(duration, 3);
@@ -3888,19 +3927,28 @@ class Console {
       duration = NumberPrototypeToFixed(duration, 0);
     }
 
-    this.info(`${label}: ${duration}ms`, ...new SafeArrayIterator(args));
+    this.#printFunc(
+      inspectArgs(
+        [`${label}: ${duration}ms`, ...new SafeArrayIterator(args)],
+        {
+          ...getConsoleInspectOptions(noColorStdout()),
+          indentLevel: this.indentLevel,
+        },
+      ) + "\n",
+      1,
+    );
   };
 
   timeEnd = (label = "default") => {
     label = String(label);
 
-    if (!MapPrototypeHas(timerMap, label)) {
-      this.warn(`Timer '${label}' does not exist`);
+    if (!MapPrototypeHas(this.#timerMap, label)) {
+      this.#printFunc(`Timer '${label}' does not exist\n`, 2);
       return;
     }
 
-    const startTime = MapPrototypeGet(timerMap, label);
-    MapPrototypeDelete(timerMap, label);
+    const startTime = MapPrototypeGet(this.#timerMap, label);
+    MapPrototypeDelete(this.#timerMap, label);
     let duration = currentTime() - startTime;
     if (duration < 1) {
       duration = NumberPrototypeToFixed(duration, 3);
@@ -3912,7 +3960,7 @@ class Console {
       duration = NumberPrototypeToFixed(duration, 0);
     }
 
-    this.info(`${label}: ${duration}ms`);
+    this.#printFunc(`${label}: ${duration}ms\n`, 1);
   };
 
   group = (...label) => {

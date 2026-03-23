@@ -1,7 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-use std::ffi::OsStr;
-use std::ffi::OsString;
 use std::path::Path;
 
 use deno_core::OpState;
@@ -19,10 +17,10 @@ use crate::NodeResolverRc;
 
 #[repr(u32)]
 enum HandleType {
-  #[allow(dead_code)]
+  #[allow(dead_code, reason = "variant kept for repr(u32) mapping")]
   Tcp = 0,
   Tty,
-  #[allow(dead_code)]
+  #[allow(dead_code, reason = "variant kept for repr(u32) mapping")]
   Udp,
   File,
   Pipe,
@@ -166,7 +164,9 @@ pub fn op_node_call_is_from_dependency<
     let Some(script) = frame.get_script_name(scope) else {
       continue;
     };
-    let name = script.to_rust_string_lossy(scope);
+    let mut name_buf: [std::mem::MaybeUninit<u8>; 1024] =
+      [std::mem::MaybeUninit::uninit(); 1024];
+    let name = script.to_rust_cow_lossy(scope, &mut name_buf);
 
     if name.starts_with("node:") || name.starts_with("ext:") {
       continue;
@@ -282,22 +282,10 @@ pub fn op_node_parse_env<'a>(
   #[string] content: &str,
 ) -> v8::Local<'a, v8::Object> {
   let env_obj = v8::Object::new(scope);
-  parse_env_content_hook(&NullEnvVarsSys, content, |key, value| {
+  parse_env_content_hook(content, &mut |key, value| {
     let key = v8::String::new(scope, key).unwrap();
     let value = v8::String::new(scope, value).unwrap();
     env_obj.set(scope, key.into(), value.into());
   });
   env_obj
-}
-
-// Avoid reading env vars here for variable substitution
-// in order to have the same behaviour as node and also
-// to not cause a security issue where people can read
-// env vars by using this API.
-pub struct NullEnvVarsSys;
-
-impl sys_traits::BaseEnvVar for NullEnvVarsSys {
-  fn base_env_var_os(&self, _key: &OsStr) -> Option<OsString> {
-    None
-  }
 }

@@ -1,5 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+#![allow(clippy::disallowed_methods, reason = "build code")]
+
 fn main() {
   let symbols_file_name = match std::env::consts::OS {
     "android" | "freebsd" | "openbsd" => {

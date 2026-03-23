@@ -6,7 +6,6 @@ use std::sync::Arc;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::futures::future::Shared;
-use deno_core::serde_json::json;
 use deno_resolver::deno_json::CompilerOptionsKey;
 use indexmap::IndexMap;
 use indexmap::IndexSet;
@@ -269,7 +268,7 @@ impl TsServer {
         let code_lenses = crate::lsp::code_lens::collect_tsc(
           &module.uri,
           settings,
-          module.line_index.clone(),
+          &module.line_index,
           &navigation_tree,
           token,
         )?;
@@ -310,7 +309,7 @@ impl TsServer {
               return Err(anyhow!("request cancelled"));
             }
             item.collect_document_symbols(
-              module.line_index.clone(),
+              &module.line_index,
               &mut document_symbols,
             );
           }
@@ -351,7 +350,7 @@ impl TsServer {
     }
   }
 
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
   pub async fn provide_code_actions(
     &self,
     module: &DocumentModule,
@@ -492,18 +491,8 @@ impl TsServer {
             o.contains(&lsp::CodeActionKind::SOURCE_ORGANIZE_IMPORTS)
           })
         {
-          let document_has_errors = context.diagnostics.iter().any(|d| {
-            // Assume diagnostics without a severity are errors
-            d.severity
-              .is_none_or(|s| s == lsp::DiagnosticSeverity::ERROR)
-          });
           let organize_imports_edit = ts_server
-            .organize_imports(
-              snapshot.clone(),
-              module,
-              document_has_errors,
-              token,
-            )
+            .organize_imports(snapshot.clone(), module, token)
             .await
             .map_err(|err| {
               anyhow!(
@@ -511,21 +500,26 @@ impl TsServer {
                 err
               )
             })?;
-          if !organize_imports_edit.is_empty() {
-            let changes_with_modules = organize_imports_edit
+          let text_edits = organize_imports_edit.first().map(|c| {
+            c.text_changes
               .iter()
-              .map(|c| (c, module))
-              .collect::<IndexMap<_, _>>();
+              .map(|c| c.as_text_edit(&module.line_index))
+              .collect::<Vec<_>>()
+          });
+          if let Some(text_edits) = text_edits
+            && !text_edits.is_empty()
+          {
             actions.push(lsp::CodeActionOrCommand::CodeAction(
               lsp::CodeAction {
-                title: "Organize imports".to_string(),
+                title: "Organize Imports".to_string(),
                 kind: Some(lsp::CodeActionKind::SOURCE_ORGANIZE_IMPORTS),
-                edit: file_text_changes_to_workspace_edit(
-                  changes_with_modules,
-                  &snapshot,
-                  token,
-                )?,
-                data: Some(json!({ "uri": &module.uri})),
+                edit: Some(lsp::WorkspaceEdit {
+                  changes: Some(
+                    std::iter::once((module.uri.as_ref().clone(), text_edits))
+                      .collect(),
+                  ),
+                  ..Default::default()
+                }),
                 ..Default::default()
               },
             ));
@@ -564,11 +558,9 @@ impl TsServer {
             highlights
               .into_iter()
               .map(|dh| {
-                dh.to_highlight(module.line_index.clone(), token).map_err(
-                  |err| {
-                    anyhow!("Unable to convert document highlights: {:#}", err)
-                  },
-                )
+                dh.to_highlight(&module.line_index, token).map_err(|err| {
+                  anyhow!("Unable to convert document highlights: {:#}", err)
+                })
               })
               .collect::<Result<Vec<_>, _>>()
               .map(|s| s.into_iter().flatten().collect())
@@ -691,7 +683,7 @@ impl TsServer {
           .map(|completion_info| {
             completion_info
               .as_completion_response(
-                module.line_index.clone(),
+                &module.line_index,
                 &snapshot
                   .config
                   .language_settings_for_specifier(&module.specifier)
@@ -860,7 +852,7 @@ impl TsServer {
                 return Err(anyhow!("request cancelled"));
               }
               Ok(span.to_folding_range(
-                module.line_index.clone(),
+                &module.line_index,
                 module.text.as_bytes(),
                 snapshot.config.line_folding_only_capable(),
               ))
@@ -1019,7 +1011,7 @@ impl TsServer {
     }
   }
 
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
   pub async fn provide_rename(
     &self,
     document: &Document,
@@ -1112,9 +1104,8 @@ impl TsServer {
               token,
             )
             .await?;
-          selection_ranges.push(
-            selection_range.to_selection_range(module.line_index.clone()),
-          );
+          selection_ranges
+            .push(selection_range.to_selection_range(&module.line_index));
         }
         Ok(Some(selection_ranges))
       }
@@ -1144,7 +1135,7 @@ impl TsServer {
               token,
             )
             .await?
-            .to_semantic_tokens(module.line_index.clone(), token),
+            .to_semantic_tokens(&module.line_index, token),
           // TODO(nayeemrmn): Fix when tsgo supports semantic tokens.
           Self::Go(_) => Ok(Default::default()),
         }
@@ -1184,7 +1175,7 @@ impl TsServer {
           token,
         )
         .await?
-        .to_semantic_tokens(module.line_index.clone(), token)?,
+        .to_semantic_tokens(&module.line_index, token)?,
       // TODO(nayeemrmn): Fix when tsgo supports semantic tokens.
       Self::Go(_) => Default::default(),
     };
@@ -1325,12 +1316,10 @@ impl TsServer {
   ) -> Result<Option<Vec<lsp::InlayHint>>, AnyError> {
     match self {
       Self::Js(ts_server) => {
-        let text_span =
-          tsc::TextSpan::from_range(range, module.line_index.clone()).map_err(
-            |err| {
-              anyhow!("Failed to convert range to tsc text span: {:#}", err)
-            },
-          )?;
+        let text_span = tsc::TextSpan::from_range(range, &module.line_index)
+          .map_err(|err| {
+            anyhow!("Failed to convert range to tsc text span: {:#}", err)
+          })?;
         let mut inlay_hints = ts_server
           .provide_inlay_hints(snapshot.clone(), module, text_span, token)
           .await;

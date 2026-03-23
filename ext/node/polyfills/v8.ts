@@ -87,7 +87,7 @@ export function getHeapSpaceStatistics() {
   return heapSpaceStatistics;
 }
 
-const buffer = new Float64Array(14);
+const buffer = new Float64Array(15);
 
 export function getHeapStatistics() {
   op_v8_get_heap_statistics(buffer);
@@ -107,6 +107,7 @@ export function getHeapStatistics() {
     total_global_handles_size: buffer[11],
     used_global_handles_size: buffer[12],
     external_memory: buffer[13],
+    total_allocated_bytes: buffer[14],
   };
 }
 
