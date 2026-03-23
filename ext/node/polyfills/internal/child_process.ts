@@ -46,6 +46,7 @@ import {
   ERR_INVALID_HANDLE_TYPE,
   ERR_INVALID_SYNC_FORK_INPUT,
   ERR_IPC_CHANNEL_CLOSED,
+  ERR_IPC_ONE_PIPE,
   ERR_IPC_SYNC_FORK,
   ERR_MISSING_ARGS,
   ERR_UNKNOWN_SIGNAL,
@@ -382,6 +383,9 @@ export class ChildProcess extends EventEmitter {
     this.spawnargs = [cmd, ...cmdArgs];
 
     const ipc = normalizedStdio.indexOf("ipc");
+    if (ipc !== -1 && normalizedStdio.indexOf("ipc", ipc + 1) !== -1) {
+      throw new ERR_IPC_ONE_PIPE();
+    }
 
     const extraStdioOffset = 3; // stdin, stdout, stderr
 
