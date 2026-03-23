@@ -787,7 +787,9 @@ impl JsRuntimeInspector {
 
     let sessions = self.state.sessions.borrow();
 
-    // Broadcast to local sessions
+    // `sessions.local` contains all active sessions — both programmatic
+    // (created via create_local_session) and WebSocket-based (added during
+    // handshake). The `established` field only holds their pump futures.
     for session in sessions.local.values() {
       let enabled = match domain {
         "Network" => session.state.network_enabled.get(),
@@ -800,13 +802,6 @@ impl JsRuntimeInspector {
         });
       }
     }
-
-    // Broadcast to established (WebSocket) sessions
-    // Established sessions are futures, we can't directly access their state.
-    // The WebSocket sessions share the same Rc<Cell<bool>> flags as local sessions
-    // since they're created from the same JsRuntimeInspectorState.
-    // However, established sessions are wrapped in futures and we can't access them here.
-    // For now, the Network domain is primarily used via local sessions (session.post()).
   }
 
   pub fn create_local_session(
