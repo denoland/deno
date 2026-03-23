@@ -498,9 +498,7 @@ impl JsRuntimeInspectorState {
 
       let should_block = {
         let flags = self.flags.borrow();
-        flags.on_pause
-          || flags.waiting_for_session
-          || flags.waiting_for_disconnect
+        flags.on_pause || flags.waiting_for_session
       };
 
       // Process any queued NodeWorker messages after polling completes
@@ -698,16 +696,23 @@ impl JsRuntimeInspector {
   /// Block the current thread until all inspector sessions have disconnected.
   /// Used after `broadcast_context_destroyed` to give debuggers a chance to
   /// process the notification before the process exits.
+  ///
+  /// Note: this intentionally does not set a blocking flag on `poll_sessions`.
+  /// Unlike `wait_for_session` (which blocks waiting for a *new* WS
+  /// connection handled by a separate server thread), disconnect detection
+  /// requires the async I/O reactor to process WebSocket close frames.
+  /// Parking the thread would prevent those events from being delivered.
+  /// The loop spins with `poll_sessions(None)` which returns quickly when
+  /// idle, yielding a brief busy-wait that is acceptable given this only
+  /// runs during process exit.
   pub fn wait_for_sessions_disconnect(&self) {
     loop {
       {
         let sessions = self.state.sessions.borrow();
         if sessions.local.is_empty() && sessions.established.is_empty() {
-          self.state.flags.borrow_mut().waiting_for_disconnect = false;
           break;
         }
       }
-      self.state.flags.borrow_mut().waiting_for_disconnect = true;
       let _ = self.state.poll_sessions(None);
     }
   }
@@ -847,9 +852,6 @@ impl JsRuntimeInspector {
 struct InspectorFlags {
   waiting_for_session: bool,
   on_pause: bool,
-  /// Set during `wait_for_sessions_disconnect` so that `poll_sessions`
-  /// parks the thread instead of returning immediately (busy-spin).
-  waiting_for_disconnect: bool,
   /// Set when --inspect-brk is used. Remains true until
   /// Runtime.runIfWaitingForDebugger is received, allowing
   /// NodeRuntime.waitingForDebugger to be emitted.
