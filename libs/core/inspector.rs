@@ -498,7 +498,9 @@ impl JsRuntimeInspectorState {
 
       let should_block = {
         let flags = self.flags.borrow();
-        flags.on_pause || flags.waiting_for_session
+        flags.on_pause
+          || flags.waiting_for_session
+          || flags.waiting_for_disconnect
       };
 
       // Process any queued NodeWorker messages after polling completes
@@ -701,9 +703,11 @@ impl JsRuntimeInspector {
       {
         let sessions = self.state.sessions.borrow();
         if sessions.local.is_empty() && sessions.established.is_empty() {
+          self.state.flags.borrow_mut().waiting_for_disconnect = false;
           break;
         }
       }
+      self.state.flags.borrow_mut().waiting_for_disconnect = true;
       let _ = self.state.poll_sessions(None);
     }
   }
@@ -843,6 +847,9 @@ impl JsRuntimeInspector {
 struct InspectorFlags {
   waiting_for_session: bool,
   on_pause: bool,
+  /// Set during `wait_for_sessions_disconnect` so that `poll_sessions`
+  /// parks the thread instead of returning immediately (busy-spin).
+  waiting_for_disconnect: bool,
   /// Set when --inspect-brk is used. Remains true until
   /// Runtime.runIfWaitingForDebugger is received, allowing
   /// NodeRuntime.waitingForDebugger to be emitted.
