@@ -1172,12 +1172,14 @@ fn op_spawn_sync(
     let child_id = child.id().expect("Process ID should be set.");
     let killed = killed_by_timeout.clone();
     let cancel2 = cancel.clone();
-    let kill_signal = kill_signal_str.as_deref().unwrap_or("SIGTERM");
     #[cfg(unix)]
-    let signal = deno_signals::signal_str_to_int(kill_signal)
-      .ok()
-      .or_else(|| kill_signal.parse::<i32>().ok())
-      .unwrap_or(libc::SIGTERM);
+    let signal = {
+      let kill_signal = kill_signal_str.as_deref().unwrap_or("SIGTERM");
+      deno_signals::signal_str_to_int(kill_signal)
+        .ok()
+        .or_else(|| kill_signal.parse::<i32>().ok())
+        .unwrap_or(libc::SIGTERM)
+    };
     std::thread::spawn(move || {
       let (lock, cvar) = &*cancel2;
       let guard = lock.lock().unwrap();
