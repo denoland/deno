@@ -22,7 +22,7 @@ use deno_lib::util::checksum;
 use deno_lib::version::DENO_VERSION_INFO;
 use deno_npm::NpmPackageId;
 use deno_npm::NpmResolutionPackage;
-use deno_npm::npm_rc::ResolvedNpmRc;
+use deno_npmrc::ResolvedNpmRc;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm_installer::graph::NpmCachingStrategy;
 use deno_path_util::resolve_url_or_path;
