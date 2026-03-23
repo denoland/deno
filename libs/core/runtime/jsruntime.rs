@@ -2316,6 +2316,7 @@ impl JsRuntime {
         || pending_state.has_outstanding_immediates
         || pending_state.has_refed_immediates > 0
         || pending_state.has_pending_promise_events
+        || pending_state.uv_needs_poll
         || uv_did_io
       {
         self.inner.state.waker.wake();
@@ -2581,6 +2582,10 @@ pub(crate) struct EventLoopPendingState {
   has_refed_immediates: u32,
   has_pending_timers: bool,
   has_uv_alive_handles: bool,
+  /// True when uv_compat has active timers, idle, check, prepare, or
+  /// pending close callbacks — handle types that need prompt re-polling.
+  /// Excludes TCP/TTY which are woken by tokio's reactor.
+  uv_needs_poll: bool,
 }
 
 impl EventLoopPendingState {
@@ -2618,11 +2623,16 @@ impl EventLoopPendingState {
       state.immediate_info[IMM_IDX_REF_COUNT],
     );
     let has_pending_timers = !state.active_timers.borrow().is_empty();
-    let has_uv_alive_handles =
+    let (has_uv_alive_handles, uv_needs_poll) =
       if let Some(uv_inner_ptr) = state.uv_loop_inner.get() {
-        unsafe { (*uv_inner_ptr).has_alive_handles() }
+        unsafe {
+          (
+            (*uv_inner_ptr).has_alive_handles(),
+            (*uv_inner_ptr).needs_poll(),
+          )
+        }
       } else {
-        false
+        (false, false)
       };
     EventLoopPendingState {
       has_pending_ops: has_pending_refed_ops || (num_pending_ops > 0),
@@ -2638,6 +2648,7 @@ impl EventLoopPendingState {
       has_refed_immediates,
       has_pending_timers,
       has_uv_alive_handles,
+      uv_needs_poll,
     }
   }
 
