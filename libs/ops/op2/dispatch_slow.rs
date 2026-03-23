@@ -176,34 +176,32 @@ pub(crate) fn generate_dispatch_slow(
     quote!()
   };
 
-  Ok(
-    gs_quote!(generator_state(info, slow_function) => {
-      fn slow_function_impl<'s>(#info: *const deno_core::v8::FunctionCallbackInfo) -> usize {
-        let #info: &'s _ = unsafe { &*#info };
-        #[cfg(debug_assertions)]
-        let _reentrancy_check_guard = deno_core::_ops::reentrancy_check(&<Self as deno_core::_ops::Op>::DECL);
+  Ok(gs_quote!(generator_state(info, slow_function) => {
+    fn slow_function_impl<'s>(#info: *const deno_core::v8::FunctionCallbackInfo) -> usize {
+      let #info: &'s _ = unsafe { &*#info };
+      #[cfg(debug_assertions)]
+      let _reentrancy_check_guard = deno_core::_ops::reentrancy_check(&<Self as deno_core::_ops::Op>::DECL);
 
-        #with_scope
-        #with_retval
-        #with_args
-        #with_validate
-        #with_required_check
-        #with_opctx
-        #with_self
-        #with_isolate
-        #with_opstate
-        #with_stack_trace
-        #with_js_runtime_state
+      #with_scope
+      #with_retval
+      #with_args
+      #with_validate
+      #with_required_check
+      #with_opctx
+      #with_self
+      #with_isolate
+      #with_opstate
+      #with_stack_trace
+      #with_js_runtime_state
 
-        #output;
-        return 0;
-      }
+      #output;
+      return 0;
+    }
 
-      extern "C" fn #slow_function(#info: *const deno_core::v8::FunctionCallbackInfo) {
-        Self::slow_function_impl(#info);
-      }
-    }),
-  )
+    extern "C" fn #slow_function(#info: *const deno_core::v8::FunctionCallbackInfo) {
+      Self::slow_function_impl(#info);
+    }
+  }))
 }
 
 pub(crate) fn with_isolate(
