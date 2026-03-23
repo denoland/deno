@@ -12,6 +12,7 @@ import {
 import { BigIntStats, Stats } from "ext:deno_node/internal/fs/utils.mjs";
 import { FsFile } from "ext:deno_fs/30_fs.js";
 import { denoErrorToNodeError } from "ext:deno_node/internal/errors.ts";
+import { getValidatedFd } from "ext:deno_node/internal/fs/utils.mjs";
 
 export function fstat(fd: number, callback: statCallback): void;
 export function fstat(
@@ -29,6 +30,7 @@ export function fstat(
   optionsOrCallback: statCallback | statCallbackBigInt | statOptions,
   maybeCallback?: statCallback | statCallbackBigInt,
 ) {
+  fd = getValidatedFd(fd);
   const callback =
     (typeof optionsOrCallback === "function"
       ? optionsOrCallback
@@ -60,6 +62,7 @@ export function fstatSync(
   fd: number,
   options?: statOptions,
 ): Stats | BigIntStats {
+  fd = getValidatedFd(fd);
   try {
     const origin = new FsFile(fd, Symbol.for("Deno.internal.FsFile"))
       .statSync();
