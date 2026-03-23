@@ -2512,3 +2512,44 @@ Deno.test(
     assertEquals(typeof remotePort, "number");
   },
 );
+
+// Regression test for https://github.com/denoland/deno/issues/30707
+Deno.test(
+  "[node/http] CONNECT socket has remoteAddress + remotePort",
+  { permissions: { net: true } },
+  async () => {
+    const { promise, resolve } = Promise.withResolvers<void>();
+
+    let remoteAddress: string | undefined;
+    let remotePort: number | undefined;
+    const server = http.createServer((_req, res) => res.end("ok"));
+
+    server.on("connect", (_req, socket) => {
+      remoteAddress = (socket as Socket).remoteAddress;
+      remotePort = (socket as Socket).remotePort;
+      socket.end(
+        "HTTP/1.1 200 Connection Established\r\n" +
+          "\r\n",
+      );
+    });
+
+    server.listen(0, "127.0.0.1", () => {
+      const addr = server.address() as { port: number };
+      const socket = net.connect(addr.port, "127.0.0.1", () => {
+        socket.write(
+          "CONNECT 127.0.0.1:80 HTTP/1.1\r\n" +
+            "Host: 127.0.0.1:80\r\n" +
+            "\r\n",
+        );
+      });
+      socket.on("data", () => {
+        socket.end();
+        server.close(() => resolve());
+      });
+    });
+
+    await promise;
+    assertEquals(remoteAddress, "127.0.0.1");
+    assertEquals(typeof remotePort, "number");
+  },
+);
