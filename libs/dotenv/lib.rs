@@ -292,7 +292,7 @@ fn parse_env_content_hook_impl(
     // Expand new line if \n it's inside double quotes
     // Example: EXPAND_NEWLINES = 'expand\nnew\nlines'
     if text[0] == CHAR_DQUOTE
-      && let Some(closing) = find_char(text, CHAR_DQUOTE, 1)
+      && let Some(closing) = find_closing_quote(text, CHAR_DQUOTE, 1)
     {
       let slice = &text[1..closing];
       let mut needs_unescape = false;
@@ -338,7 +338,7 @@ fn parse_env_content_hook_impl(
     // Handle quoted values (single quotes, double quotes, backticks)
     let quote = text[0];
     if quote == CHAR_SQUOTE || quote == CHAR_DQUOTE || quote == CHAR_BQUOTE {
-      if let Some(closing) = find_char(text, quote, 1) {
+      if let Some(closing) = find_closing_quote(text, quote, 1) {
         // Found closing quote - take content between quotes
         let value = &text[1..closing];
         emit_value(
@@ -519,6 +519,46 @@ fn find_char(input: &[u8], char_code: u8, from: usize) -> Option<usize> {
     i += 1;
   }
   None
+}
+
+/// Find the closing quote for a quoted value. First tries the nearest
+/// matching quote (standard behavior). If the text between that quote
+/// and the end of line contains non-whitespace/non-comment content,
+/// it means there are inner quotes — fall back to the last matching
+/// quote on the line. This matches dotenv's behavior of preserving
+/// inner quotes.
+fn find_closing_quote(input: &[u8], quote: u8, from: usize) -> Option<usize> {
+  let first = find_char(input, quote, from)?;
+
+  // Find the end of the current line
+  let line_end = find_char(input, CHAR_NL, first + 1).unwrap_or(input.len());
+
+  // Check if everything after the first closing quote until EOL is
+  // whitespace or a comment. If so, the first quote is the real closer.
+  let after = &input[first + 1..line_end];
+  let trimmed = trim_spaces_slice(after);
+  if trimmed.is_empty() || trimmed[0] == CHAR_HASH {
+    return Some(first);
+  }
+
+  // There's non-whitespace content after the first quote — inner quotes
+  // are present. Find the last quote on this line instead.
+  let mut last = first;
+  let mut i = first + 1;
+  while i < line_end {
+    if input[i] == quote {
+      last = i;
+    }
+    i += 1;
+  }
+
+  // Only return if we found a different (later) quote
+  if last > first {
+    Some(last)
+  } else {
+    // Only one quote on the line — treat as unclosed
+    None
+  }
 }
 
 #[cfg(test)]
@@ -1085,5 +1125,32 @@ u4QuUoobAgMBAAE=
     .unwrap();
     assert_eq!(path, Path::new("/project/sub/.envfile"));
     assert_eq!(content.as_ref(), "ANCESTOR=found");
+  }
+
+  // Regression test for https://github.com/denoland/deno/issues/32928
+  #[test]
+  fn inner_quotes_in_double_quoted_values() {
+    let input = r#"INNER_QUOTES="1: foo'bar"baz`qux"
+INNER_QUOTES_WITH_NEWLINE="2: foo bar\ni am "on" newline, 'yo'"
+"#;
+    let pairs = parse_map(input);
+    assert_eq!(
+      pairs.get("INNER_QUOTES").map(String::as_str),
+      Some("1: foo'bar\"baz`qux")
+    );
+    assert_eq!(
+      pairs.get("INNER_QUOTES_WITH_NEWLINE").map(String::as_str),
+      Some("2: foo bar\ni am \"on\" newline, 'yo'")
+    );
+  }
+
+  #[test]
+  fn inner_single_quotes_preserved() {
+    let input = "KEY='hello \"world\" goodbye'\n";
+    let pairs = parse_map(input);
+    assert_eq!(
+      pairs.get("KEY").map(String::as_str),
+      Some("hello \"world\" goodbye")
+    );
   }
 }
