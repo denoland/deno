@@ -27,165 +27,181 @@ import { guessHandleType } from "ext:deno_node/internal_binding/util.ts";
 import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
 import { op_bootstrap_color_depth } from "ext:core/ops";
 import { validateInteger } from "ext:deno_node/internal/validators.mjs";
+import { WriteStream as TTYWriteStream } from "ext:deno_node/internal/tty.js";
 
-// https://github.com/nodejs/node/blob/00738314828074243c9a52a228ab4c68b04259ef/lib/internal/bootstrap/switches/is_main_thread.js#L41
-export function createWritableStdioStream(writer, name, warmup = false) {
-  const stream = new Writable({
-    emitClose: false,
-    write(buf, enc, cb) {
-      if (!writer) {
-        this.destroy(
-          new Error(`Deno.${name} is not available in this environment`),
-        );
-        return;
-      }
-      // TODO(fraidev): This try/catch is a workaround. When process.stdout
-      // is a pipe (not a TTY), Node.js backs it with a real fd-based net.Socket
-      // so BrokenPipe flows naturally through stream_wrap.ts as EPIPE. Deno
-      // always uses createWritableStdioStream(io.stdout) regardless of pipe/TTY,
-      // so BrokenPipe throws synchronously here instead. Once net.Socket supports
-      // being created from a raw fd (new Socket({ fd: 1 })), process.stdout/stderr
-      // should be switched to net.Socket for non-TTY cases and this can be removed.
-      try {
-        let data = ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, buf)
-          ? buf
-          : Buffer.from(buf, enc);
-        // Handle partial writes - writeSync may not write all bytes at once
-        // (e.g., when stdout is a pipe and the pipe buffer is near capacity).
-        // deno-lint-ignore prefer-primordials
-        while (data.byteLength > 0) {
-          const nwritten = writer.writeSync(data);
-          // deno-lint-ignore prefer-primordials
-          if (nwritten >= data.byteLength) break;
-          data = TypedArrayPrototypeSlice(data, nwritten);
-        }
-      } catch (e) {
-        if (
-          ObjectPrototypeIsPrototypeOf(Deno.errors.BrokenPipe.prototype, e)
-        ) {
-          const err = new Error("write EPIPE");
-          err.code = "EPIPE";
-          err.errno = codeMap.get("EPIPE");
-          err.syscall = "write";
-          cb(err);
+// Matches Node.js dummyDestroy in is_main_thread.js -- stdio streams must not
+// actually close so that libraries (e.g. mute-stream / @inquirer/prompts) that
+// call destroy()/end() on process.stdout between prompts keep working.
+function dummyDestroy(err, cb) {
+  cb(err);
+  this._undestroy();
+  if (!this._writableState.emitClose) {
+    nextTick(() => this.emit("close"));
+  }
+}
+
+// Mirrors Node.js createWritableStdioStream in is_main_thread.js.
+// Detects handle type and creates the appropriate stream:
+//   TTY   -> tty.WriteStream (backed by libuv uv_tty_t handle)
+//   other -> plain Writable using Deno IO writeSync
+// https://github.com/nodejs/node/blob/main/lib/internal/bootstrap/switches/is_main_thread.js
+export function createWritableStdioStream(fd, warmup = false) {
+  const handleType = warmup ? "TTY" : guessHandleType(fd);
+  let stream;
+
+  if (handleType === "TTY" && !warmup) {
+    // TTY: use a proper tty.WriteStream backed by a libuv handle, matching
+    // Node.js exactly. All TTY features (columns, rows, getColorDepth,
+    // cursor methods, SIGWINCH) are provided natively by WriteStream.
+    stream = new TTYWriteStream(fd);
+    // Override _destroy so the fd is never actually closed -- matches Node.js
+    // dummyDestroy in is_main_thread.js.
+    stream._destroy = dummyDestroy;
+  } else {
+    // Non-TTY (PIPE, FILE, etc.) or warmup: use a Writable that writes
+    // through Deno IO. Once net.Socket supports creation from a raw fd
+    // (new Socket({ fd })), non-TTY should switch to net.Socket for PIPE/TCP
+    // and SyncWriteStream for FILE to match Node.js.
+    const writer = fd === 1 ? io.stdout : fd === 2 ? io.stderr : null;
+    const name = fd === 1 ? "stdout" : "stderr";
+
+    stream = new Writable({
+      emitClose: false,
+      write(buf, enc, cb) {
+        if (!writer) {
+          this.destroy(
+            new Error(`Deno.${name} is not available in this environment`),
+          );
           return;
         }
-        throw e;
-      }
-      cb();
-    },
-    destroy(err, cb) {
-      cb(err);
-      this._undestroy();
+        try {
+          let data = ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, buf)
+            ? buf
+            : Buffer.from(buf, enc);
+          // Handle partial writes - writeSync may not write all bytes at once
+          // (e.g., when stdout is a pipe and the pipe buffer is near capacity).
+          // deno-lint-ignore prefer-primordials
+          while (data.byteLength > 0) {
+            const nwritten = writer.writeSync(data);
+            // deno-lint-ignore prefer-primordials
+            if (nwritten >= data.byteLength) break;
+            data = TypedArrayPrototypeSlice(data, nwritten);
+          }
+        } catch (e) {
+          if (
+            ObjectPrototypeIsPrototypeOf(Deno.errors.BrokenPipe.prototype, e)
+          ) {
+            const err = new Error("write EPIPE");
+            err.code = "EPIPE";
+            err.errno = codeMap.get("EPIPE");
+            err.syscall = "write";
+            cb(err);
+            return;
+          }
+          throw e;
+        }
+        cb();
+      },
+      destroy: dummyDestroy,
+    });
 
-      // We need to emit 'close' anyway so that the closing
-      // of the stream is observable.
-      if (!this._writableState.emitClose) {
-        nextTick(() => this.emit("close"));
-      }
-    },
-  });
-  let fd = -1;
+    // For non-TTY streams, add isTTY getter (returns false) so code that
+    // checks `process.stdout.isTTY` works. Also add getColorDepth/hasColors
+    // for libraries that call these unconditionally.
+    let getIsTTY = () => writer?.isTerminal();
+    ObjectDefineProperties(stream, {
+      isTTY: {
+        __proto__: null,
+        enumerable: true,
+        configurable: true,
+        get: () => getIsTTY(),
+        set: (value) => {
+          getIsTTY = () => value;
+        },
+      },
+      getColorDepth: {
+        __proto__: null,
+        enumerable: true,
+        configurable: true,
+        writable: true,
+        value: () => op_bootstrap_color_depth(),
+      },
+      hasColors: {
+        __proto__: null,
+        enumerable: true,
+        configurable: true,
+        writable: true,
+        value: (count, env) => {
+          if (
+            env === undefined &&
+            (count === undefined ||
+              typeof count === "object" && count !== null)
+          ) {
+            env = count;
+            count = 16;
+          } else {
+            validateInteger(count, "count", 2);
+          }
+          const depth = op_bootstrap_color_depth();
+          return count <= 2 ** depth;
+        },
+      },
+    });
 
-  // deno-lint-ignore prefer-primordials
-  if (writer instanceof io.Stdout) {
-    fd = io.STDOUT_RID;
-    // deno-lint-ignore prefer-primordials
-  } else if (writer instanceof io.Stderr) {
-    fd = io.STDERR_RID;
+    // Warmup: add TTY-like methods so snapshot-time code works.
+    // Replaced at boot with a proper tty.WriteStream (TTY) or fresh Writable.
+    if (warmup) {
+      // During warmup, also add columns/rows/getWindowSize that the real
+      // TTY WriteStream would provide.
+      const getColumns = () =>
+        stream._columns ||
+        (writer?.isTerminal() ? Deno.consoleSize?.().columns : undefined);
+      ObjectDefineProperties(stream, {
+        columns: {
+          __proto__: null,
+          enumerable: true,
+          configurable: true,
+          get: () => getColumns(),
+          set: (value) => {
+            stream._columns = value;
+          },
+        },
+        rows: {
+          __proto__: null,
+          enumerable: true,
+          configurable: true,
+          get: () =>
+            writer?.isTerminal() ? Deno.consoleSize?.().rows : undefined,
+        },
+        getWindowSize: {
+          __proto__: null,
+          enumerable: true,
+          configurable: true,
+          value: () =>
+            writer?.isTerminal()
+              ? ObjectValues(Deno.consoleSize?.())
+              : undefined,
+        },
+      });
+
+      stream.cursorTo = function (x, y, callback) {
+        return cursorTo(this, x, y, callback);
+      };
+      stream.moveCursor = function (dx, dy, callback) {
+        return moveCursor(this, dx, dy, callback);
+      };
+      stream.clearLine = function (dir, callback) {
+        return clearLine(this, dir, callback);
+      };
+      stream.clearScreenDown = function (callback) {
+        return clearScreenDown(this, callback);
+      };
+    }
   }
+
   stream.fd = fd;
   stream.destroySoon = stream.destroy;
   stream._isStdio = true;
-
-  // We cannot call `writer?.isTerminal()` eagerly here
-  let getIsTTY = () => writer?.isTerminal();
-  const getColumns = () =>
-    stream._columns ||
-    (writer?.isTerminal() ? Deno.consoleSize?.().columns : undefined);
-
-  ObjectDefineProperties(stream, {
-    columns: {
-      __proto__: null,
-      enumerable: true,
-      configurable: true,
-      get: () => getColumns(),
-      set: (value) => {
-        stream._columns = value;
-      },
-    },
-    rows: {
-      __proto__: null,
-      enumerable: true,
-      configurable: true,
-      get: () => writer?.isTerminal() ? Deno.consoleSize?.().rows : undefined,
-    },
-    isTTY: {
-      __proto__: null,
-      enumerable: true,
-      configurable: true,
-      // Allow users to overwrite it
-      get: () => getIsTTY(),
-      set: (value) => {
-        getIsTTY = () => value;
-      },
-    },
-    getWindowSize: {
-      __proto__: null,
-      enumerable: true,
-      configurable: true,
-      value: () =>
-        writer?.isTerminal() ? ObjectValues(Deno.consoleSize?.()) : undefined,
-    },
-    getColorDepth: {
-      __proto__: null,
-      enumerable: true,
-      configurable: true,
-      writable: true,
-      value: () => op_bootstrap_color_depth(),
-    },
-    hasColors: {
-      __proto__: null,
-      enumerable: true,
-      configurable: true,
-      writable: true,
-      value: (count, env) => {
-        if (
-          env === undefined &&
-          (count === undefined || typeof count === "object" && count !== null)
-        ) {
-          env = count;
-          count = 16;
-        } else {
-          validateInteger(count, "count", 2);
-        }
-
-        const depth = op_bootstrap_color_depth();
-        return count <= 2 ** depth;
-      },
-    },
-  });
-
-  // If we're warming up, add TTY-like methods so snapshot-time code works.
-  // The warmup stream is replaced at boot time with a proper tty.WriteStream
-  // (for TTY) or a fresh Writable (for non-TTY).
-  if (warmup || writer?.isTerminal()) {
-    stream.cursorTo = function (x, y, callback) {
-      return cursorTo(this, x, y, callback);
-    };
-
-    stream.moveCursor = function (dx, dy, callback) {
-      return moveCursor(this, dx, dy, callback);
-    };
-
-    stream.clearLine = function (dir, callback) {
-      return clearLine(this, dir, callback);
-    };
-
-    stream.clearScreenDown = function (callback) {
-      return clearScreenDown(this, callback);
-    };
-  }
 
   return stream;
 }
@@ -241,8 +257,38 @@ export const initStdin = (warmup = false) => {
       if (warmup) {
         return null;
       }
+      // TTY stdin is a proper tty.ReadStream backed by a libuv uv_tty_t handle.
+      // It already has setRawMode (via uv_tty_set_mode), isRaw, isTTY, and a
+      // proper _handle with readStart/readStop -- do NOT override these with
+      // Deno IO layer equivalents (io.stdin.setRaw / io.stdin.isTerminal),
+      // as that conflates two different raw mode mechanisms (libuv vs op_set_raw).
       stdin = new readStream(fd);
-      break;
+      stdin.fd = io.stdin ? io.STDIN_RID : -1;
+
+      // `stdin` starts out life in a paused state. Explicitly readStop() it
+      // to put it in the not-reading state.
+      // Ref: https://github.com/nodejs/node/blob/main/lib/internal/bootstrap/switches/is_main_thread.js
+      if (stdin._handle?.readStop) {
+        stdin._handle.reading = false;
+        stdin._readableState.reading = false;
+        stdin._handle.readStop();
+      }
+
+      // If the user calls stdin.pause(), then we need to stop reading
+      // once the stream implementation does so (one nextTick later),
+      // so that the process can close down.
+      stdin.on("pause", () => {
+        nextTick(() => {
+          if (!stdin._handle) return;
+          if (stdin._handle.reading && !stdin.readableFlowing) {
+            stdin._readableState.reading = false;
+            stdin._handle.reading = false;
+            stdin._handle.readStop();
+          }
+        });
+      });
+
+      return stdin;
     }
     case "PIPE":
     case "TCP": {
@@ -253,9 +299,8 @@ export const initStdin = (warmup = false) => {
       // https://github.com/nodejs/node/blob/v18.12.1/lib/internal/bootstrap/switches/is_main_thread.js#L206
       // https://github.com/nodejs/node/blob/v18.12.1/lib/net.js#L329
       stdin = new Duplex({
-        readable: stdinType === "TTY" ? undefined : true,
-        writable: stdinType === "TTY" ? undefined : false,
-        readableHighWaterMark: stdinType === "TTY" ? 0 : undefined,
+        readable: true,
+        writable: false,
         allowHalfOpen: false,
         emitClose: false,
         autoDestroy: true,
@@ -263,10 +308,8 @@ export const initStdin = (warmup = false) => {
         read: _read,
       });
 
-      if (stdinType !== "TTY") {
-        // Make sure the stdin can't be `.end()`-ed
-        stdin._writableState.ended = true;
-      }
+      // Make sure the stdin can't be `.end()`-ed
+      stdin._writableState.ended = true;
 
       // Provide a minimal _handle so code that checks process.stdin._handle
       // (e.g. test-stdout-close-unref.js) works. We intentionally omit
@@ -300,6 +343,10 @@ export const initStdin = (warmup = false) => {
     }
   }
 
+  // Common setup for non-TTY stdin types (FILE, PIPE, TCP, default).
+  // TTY stdin returns early above -- it uses the ReadStream's own libuv handle
+  // and does not need these Deno IO layer shims.
+
   stdin.on("close", () => io.stdin?.close());
   stdin.fd = io.stdin ? io.STDIN_RID : -1;
 
@@ -330,8 +377,8 @@ export const initStdin = (warmup = false) => {
   // so that the process can close down.
   stdin.on("pause", () => nextTick(onpause));
 
-  // Allow users to overwrite isTTY for test isolation and terminal mocking.
-  // This mirrors the stdout/stderr behavior added in #26130.
+  // For non-TTY streams, provide isTTY/setRawMode/isRaw shims via Deno IO.
+  // (TTY ReadStream has these natively via its libuv handle.)
   let getStdinIsTTY = () => io.stdin?.isTerminal();
   ObjectDefineProperty(stdin, "isTTY", {
     __proto__: null,
