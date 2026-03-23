@@ -97,10 +97,14 @@ export function createWritableStdioStream(fd, warmup = false) {
       destroy: dummyDestroy,
     });
 
-    // For non-TTY streams, add isTTY getter (returns false) so code that
-    // checks `process.stdout.isTTY` works. Also add getColorDepth/hasColors
-    // for libraries that call these unconditionally.
+    // For non-TTY streams, add properties that code may access unconditionally
+    // (isTTY, columns, rows, getWindowSize, getColorDepth, hasColors).
+    // These return undefined/false for non-TTY, matching Node.js behavior where
+    // these properties simply don't exist (and accessing them yields undefined).
     let getIsTTY = () => core.isTerminal(fd);
+    const getColumns = () =>
+      stream._columns ||
+      (core.isTerminal(fd) ? Deno.consoleSize?.().columns : undefined);
     ObjectDefineProperties(stream, {
       isTTY: {
         __proto__: null,
@@ -110,6 +114,28 @@ export function createWritableStdioStream(fd, warmup = false) {
         set: (value) => {
           getIsTTY = () => value;
         },
+      },
+      columns: {
+        __proto__: null,
+        enumerable: true,
+        configurable: true,
+        get: () => getColumns(),
+        set: (value) => {
+          stream._columns = value;
+        },
+      },
+      rows: {
+        __proto__: null,
+        enumerable: true,
+        configurable: true,
+        get: () => core.isTerminal(fd) ? Deno.consoleSize?.().rows : undefined,
+      },
+      getWindowSize: {
+        __proto__: null,
+        enumerable: true,
+        configurable: true,
+        value: () =>
+          core.isTerminal(fd) ? ObjectValues(Deno.consoleSize?.()) : undefined,
       },
       getColorDepth: {
         __proto__: null,
@@ -143,39 +169,6 @@ export function createWritableStdioStream(fd, warmup = false) {
     // Warmup: add TTY-like methods so snapshot-time code works.
     // Replaced at boot with a proper tty.WriteStream (TTY) or fresh Writable.
     if (warmup) {
-      // During warmup, also add columns/rows/getWindowSize that the real
-      // TTY WriteStream would provide.
-      const getColumns = () =>
-        stream._columns ||
-        (core.isTerminal(fd) ? Deno.consoleSize?.().columns : undefined);
-      ObjectDefineProperties(stream, {
-        columns: {
-          __proto__: null,
-          enumerable: true,
-          configurable: true,
-          get: () => getColumns(),
-          set: (value) => {
-            stream._columns = value;
-          },
-        },
-        rows: {
-          __proto__: null,
-          enumerable: true,
-          configurable: true,
-          get: () =>
-            core.isTerminal(fd) ? Deno.consoleSize?.().rows : undefined,
-        },
-        getWindowSize: {
-          __proto__: null,
-          enumerable: true,
-          configurable: true,
-          value: () =>
-            core.isTerminal(fd)
-              ? ObjectValues(Deno.consoleSize?.())
-              : undefined,
-        },
-      });
-
       stream.cursorTo = function (x, y, callback) {
         return cursorTo(this, x, y, callback);
       };
