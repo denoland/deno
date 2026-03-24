@@ -1346,7 +1346,12 @@ Deno.test(async function stdoutWriteMultipleChunksNotTruncated() {
   }
 });
 
-Deno.test("[node/child_process spawn] supports numeric fd in stdio array", async () => {
+Deno.test({
+  name: "[node/child_process spawn] supports numeric fd in stdio array",
+  // On Windows, Deno's fs.openSync returns a resource ID, not a CRT file
+  // descriptor, so libc::get_osfhandle receives an invalid fd and crashes.
+  ignore: Deno.build.os === "windows",
+  async fn() {
   const tmpFile = await Deno.makeTempFile();
   try {
     const fd = fs.openSync(tmpFile, "r");
@@ -1370,4 +1375,5 @@ Deno.test("[node/child_process spawn] supports numeric fd in stdio array", async
   } finally {
     await Deno.remove(tmpFile);
   }
+  },
 });
