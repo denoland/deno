@@ -211,7 +211,8 @@ async function lintNodePolyfillDenoApis() {
     // Count actual violations per file.
     const actualCounts = {};
     const lineRegex = /--> (.+):(\d+):(\d+)/g;
-    for (const match of clean.matchAll(lineRegex)) {
+    const allMatches = [...clean.matchAll(lineRegex)];
+    for (const match of allMatches) {
       const absPath = match[1];
       const relPath = absPath.replace(ROOT_PATH + "/", "").replace(
         ROOT_PATH + "\\",
@@ -219,6 +220,44 @@ async function lintNodePolyfillDenoApis() {
       );
       actualCounts[relPath] = (actualCounts[relPath] || 0) + 1;
     }
+
+    // Debug: show what we parsed.
+    console.log(
+      `[no-deno-api] ROOT_PATH: ${ROOT_PATH}`,
+    );
+    console.log(
+      `[no-deno-api] deno lint output length: stdout=${
+        new TextDecoder().decode(stdout).length
+      } stderr=${new TextDecoder().decode(stderr).length}`,
+    );
+    console.log(
+      `[no-deno-api] regex matched ${allMatches.length} violation(s)`,
+    );
+    if (allMatches.length === 0 && clean.length > 0) {
+      // Show first few lines with --> to debug format mismatch
+      const arrowLines = clean.split("\n").filter((l) => l.includes("-->"));
+      console.log(
+        `[no-deno-api] lines containing "-->": ${arrowLines.length}`,
+      );
+      for (const line of arrowLines.slice(0, 5)) {
+        console.log(`[no-deno-api]   ${JSON.stringify(line)}`);
+      }
+    } else if (allMatches.length > 0) {
+      // Show a sample match
+      const m = allMatches[0];
+      console.log(
+        `[no-deno-api] sample match: path=${JSON.stringify(m[1])} -> relPath=${
+          JSON.stringify(
+            m[1].replace(ROOT_PATH + "/", "").replace(ROOT_PATH + "\\", ""),
+          )
+        }`,
+      );
+    }
+    console.log(
+      `[no-deno-api] actualCounts has ${
+        Object.keys(actualCounts).length
+      } file(s)`,
+    );
 
     // Compare actual vs expected.
     const errors = [];
