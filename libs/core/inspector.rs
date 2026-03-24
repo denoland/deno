@@ -178,6 +178,7 @@ struct JsRuntimeInspectorState {
   auto_attach_enabled: Rc<Cell<bool>>,
   discover_targets_enabled: Rc<Cell<bool>>,
   network_enabled: Rc<Cell<bool>>,
+  dom_storage_enabled: Rc<Cell<bool>>,
 }
 
 struct JsRuntimeInspectorClient(Rc<JsRuntimeInspectorState>);
@@ -362,6 +363,7 @@ impl JsRuntimeInspectorState {
                 self.auto_attach_enabled.clone(),
                 self.discover_targets_enabled.clone(),
                 self.network_enabled.clone(),
+                self.dom_storage_enabled.clone(),
                 self.flags.clone(),
               );
 
@@ -592,6 +594,7 @@ impl JsRuntimeInspector {
       auto_attach_enabled: Rc::new(Cell::new(false)),
       discover_targets_enabled: Rc::new(Cell::new(false)),
       network_enabled: Rc::new(Cell::new(false)),
+      dom_storage_enabled: Rc::new(Cell::new(false)),
     });
     let client = Box::new(JsRuntimeInspectorClient(state.clone()));
     let v8_inspector_client = v8::inspector::V8InspectorClient::new(client);
@@ -793,6 +796,7 @@ impl JsRuntimeInspector {
     for session in sessions.local.values() {
       let enabled = match domain {
         "Network" => session.state.network_enabled.get(),
+        "DOMStorage" => session.state.dom_storage_enabled.get(),
         _ => false,
       };
       if enabled {
@@ -824,6 +828,7 @@ impl JsRuntimeInspector {
         inspector.state.auto_attach_enabled.clone(),
         inspector.state.discover_targets_enabled.clone(),
         inspector.state.network_enabled.clone(),
+        inspector.state.dom_storage_enabled.clone(),
         inspector.state.flags.clone(),
       );
 
@@ -1023,6 +1028,14 @@ impl SessionContainer {
           session.state.network_enabled.set(false);
           true
         }
+        "DOMStorage.enable" => {
+          session.state.dom_storage_enabled.set(true);
+          true
+        }
+        "DOMStorage.disable" => {
+          session.state.dom_storage_enabled.set(false);
+          true
+        }
         _ => false,
       };
       if handled {
@@ -1199,6 +1212,8 @@ struct InspectorSessionState {
   discover_targets_enabled: Rc<Cell<bool>>,
   // Track whether Network.enable has been called (enables Network domain events)
   network_enabled: Rc<Cell<bool>>,
+  // Track whether DOMStorage.enable has been called (enables DOMStorage domain events)
+  dom_storage_enabled: Rc<Cell<bool>>,
   // Track whether NodeRuntime.enable has been called (per-session, not shared,
   // because one client disabling it should not affect another client's state)
   noderuntime_enabled: Cell<bool>,
@@ -1229,6 +1244,7 @@ impl InspectorSession {
     auto_attach_enabled: Rc<Cell<bool>>,
     discover_targets_enabled: Rc<Cell<bool>>,
     network_enabled: Rc<Cell<bool>>,
+    dom_storage_enabled: Rc<Cell<bool>>,
     flags: Rc<RefCell<InspectorFlags>>,
   ) -> Rc<Self> {
     let state = InspectorSessionState {
@@ -1242,6 +1258,7 @@ impl InspectorSession {
       auto_attach_enabled,
       discover_targets_enabled,
       network_enabled,
+      dom_storage_enabled,
       noderuntime_enabled: Cell::new(false),
       flags,
     };
@@ -1401,6 +1418,12 @@ async fn pump_inspector_session_messages(
       }
       "Network.disable" => {
         session.state.network_enabled.set(false);
+      }
+      "DOMStorage.enable" => {
+        session.state.dom_storage_enabled.set(true);
+      }
+      "DOMStorage.disable" => {
+        session.state.dom_storage_enabled.set(false);
       }
       "NodeRuntime.enable" => {
         session.state.noderuntime_enabled.set(true);
