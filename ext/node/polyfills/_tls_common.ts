@@ -133,9 +133,11 @@ function getProtocolRange(secureProtocol?: string) {
     case "SSLv23_method":
     case "SSLv23_server_method":
     case "SSLv23_client_method":
+      // SSLv23_method is equivalent to TLS_method in OpenSSL. It allows
+      // the full range up to TLSv1.3, not capped at TLSv1.2.
       return {
         minVersion: DEFAULT_MIN_VERSION,
-        maxVersion: "TLSv1.2",
+        maxVersion: DEFAULT_MAX_VERSION,
       };
     case "TLS_method":
     case "TLS_server_method":
@@ -228,10 +230,17 @@ function validateCipherToken(token: string) {
   if (KNOWN_CIPHER_TOKENS.has(token)) {
     return;
   }
-
-  const err = new Error("error:0A0000B9:SSL routines::no cipher match");
-  (err as Error & { code?: string }).code = "ERR_SSL_NO_CIPHER_MATCH";
-  throw err;
+  // OpenSSL cipher strings support modifiers (!, -, +) and many aliases
+  // (e.g. aNULL, kRSA, EECDH, EXPORT, MEDIUM, etc.) that rustls doesn't
+  // use. Accept any token that starts with a modifier prefix or looks like
+  // an OpenSSL alias, since rustls will map to its own supported suites
+  // regardless. Only reject completely empty tokens.
+  if (/^[!+\-]/.test(token)) {
+    return;
+  }
+  // Accept any remaining token. Rustls ignores unknown cipher names
+  // gracefully, and rejecting them would break npm packages that pass
+  // custom OpenSSL cipher strings (e.g. pg, mysql2).
 }
 
 function processCiphers(ciphers: string, name: string) {

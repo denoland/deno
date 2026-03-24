@@ -640,9 +640,14 @@ impl UnderlyingStream {
         if !stream.is_null() {
           let req = Box::new(uv_compat::new_shutdown());
           let req_ptr = Box::into_raw(req);
-          // SAFETY: stream is non-null (checked above); req_ptr reclaimed on error
+          // SAFETY: stream is non-null (checked above); req_ptr reclaimed
+          // in the callback on success or immediately on error.
           unsafe {
-            let ret = uv_compat::uv_shutdown(req_ptr, *stream, None);
+            let ret = uv_compat::uv_shutdown(
+              req_ptr,
+              *stream,
+              Some(shutdown_cb),
+            );
             if ret != 0 {
               let _ = Box::from_raw(req_ptr);
             }
@@ -1347,6 +1352,18 @@ fn free_uv_buf(buf: *const uv_buf_t) {
   }
 }
 
+/// Callback for shutdown request — just frees the request.
+unsafe extern "C" fn shutdown_cb(
+  req: *mut uv_compat::uv_shutdown_t,
+  _status: i32,
+) {
+  if !req.is_null() {
+    unsafe {
+      let _ = Box::from_raw(req);
+    }
+  }
+}
+
 /// Callback for when encrypted write to underlying stream completes.
 unsafe extern "C" fn enc_write_cb(req: *mut uv_write_t, status: i32) {
   // SAFETY: req was created via Box::into_raw in enc_out; tls_wrap_inner is
@@ -1679,29 +1696,33 @@ impl TLSWrap {
     }
     inner.started = true;
 
-    // Create the TLS connection from pending config
+    // Create the TLS connection from pending config.
+    // Return -1 if the config was never set (init_client_tls/init_server_tls
+    // was not called or failed).
     match inner.kind {
       Kind::Client => {
-        if let (Some(config), Some(server_name)) = (
+        let (Some(config), Some(server_name)) = (
           inner.pending_client_config.take(),
           inner.pending_server_name.take(),
-        ) {
-          match rustls::ClientConnection::new(config, server_name) {
-            Ok(conn) => {
-              inner.tls_conn = Some(TlsConnection::Client(conn));
-            }
-            Err(_) => return -1,
+        ) else {
+          return -1;
+        };
+        match rustls::ClientConnection::new(config, server_name) {
+          Ok(conn) => {
+            inner.tls_conn = Some(TlsConnection::Client(conn));
           }
+          Err(_) => return -1,
         }
       }
       Kind::Server => {
-        if let Some(config) = inner.pending_server_config.take() {
-          match rustls::ServerConnection::new(config) {
-            Ok(conn) => {
-              inner.tls_conn = Some(TlsConnection::Server(conn));
-            }
-            Err(_) => return -1,
+        let Some(config) = inner.pending_server_config.take() else {
+          return -1;
+        };
+        match rustls::ServerConnection::new(config) {
+          Ok(conn) => {
+            inner.tls_conn = Some(TlsConnection::Server(conn));
           }
+          Err(_) => return -1,
         }
       }
     }
@@ -2145,8 +2166,15 @@ impl TLSWrap {
     }
     let conn = inner.tls_conn.as_ref()?;
     let mut output = vec![0u8; 32];
+    // Note: rustls does not expose raw TLS Finished messages. We use
+    // export_keying_material with distinct labels to produce different
+    // (but synthetic) values for getFinished vs getPeerFinished.
     conn
-      .export_keying_material(&mut output, b"EXPORTER_DENO_TLS_FINISHED", None)
+      .export_keying_material(
+        &mut output,
+        b"EXPORTER_DENO_TLS_FINISHED_LOCAL",
+        None,
+      )
       .ok()?;
     Some(output.into_boxed_slice())
   }
@@ -2160,7 +2188,11 @@ impl TLSWrap {
     let conn = inner.tls_conn.as_ref()?;
     let mut output = vec![0u8; 32];
     conn
-      .export_keying_material(&mut output, b"EXPORTER_DENO_TLS_FINISHED", None)
+      .export_keying_material(
+        &mut output,
+        b"EXPORTER_DENO_TLS_FINISHED_PEER",
+        None,
+      )
       .ok()?;
     Some(output.into_boxed_slice())
   }
@@ -2246,9 +2278,18 @@ impl TLSWrap {
 
   /// Set the servername for SNI (client side).
   #[fast]
-  fn set_servername(&self, #[string] _name: &str) {
-    // SNI is set during ClientConnection creation via server_name parameter.
-    // This is a no-op after construction.
+  fn set_servername(&self, #[string] name: &str) {
+    let inner = unsafe { &mut *self.inner.as_mut_ptr() };
+    // If the connection hasn't started yet, update the pending server name
+    // so SNI is correct when start() creates the ClientConnection.
+    if !inner.started {
+      if let Ok(server_name) =
+        rustls::pki_types::ServerName::try_from(name.to_string())
+      {
+        inner.pending_server_name = Some(server_name);
+      }
+    }
+    // After start(), this is a no-op — SNI is already set on the connection.
   }
 
   /// Inject encrypted data (for testing / JSStreamSocket integration).
@@ -2271,7 +2312,7 @@ impl TLSWrap {
     inner
       .verify_error
       .lock()
-      .unwrap()
+      .unwrap_or_else(|e| e.into_inner())
       .clone()
       .unwrap_or_default()
   }
@@ -2623,7 +2664,10 @@ impl rustls::client::danger::ServerCertVerifier for NodeServerCertVerifier {
         // proceed.  The JS layer will decide whether to tear down
         // the connection based on `rejectUnauthorized`.
         let code = cert_error_to_node_code(cert_error);
-        *self.verify_error.lock().unwrap() = Some(code.to_string());
+        *self
+          .verify_error
+          .lock()
+          .unwrap_or_else(|e| e.into_inner()) = Some(code.to_string());
         Ok(rustls::client::danger::ServerCertVerified::assertion())
       }
       Err(e) => Err(e),
