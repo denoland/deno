@@ -2340,3 +2340,102 @@ async fn uv_write_callback_is_deferred() {
   })
   .await;
 }
+
+// ========== TCP batch accept under concurrent connections ==========
+
+/// Verify that multiple concurrent connections are all accepted without
+/// requiring multiple event loop iterations. This prevents starvation
+/// when the connection handler does async work (e.g., Deno.listenTls)
+/// that delays returning to the I/O phase.
+#[tokio::test(flavor = "current_thread")]
+async fn tcp_batch_accept_concurrent() {
+  run_test(async |runtime, uv_loop| {
+    let accepted_count = Rc::new(Cell::new(0u32));
+    let accepted_ptr = Rc::into_raw(accepted_count.clone());
+
+    let mut server = std::mem::MaybeUninit::<uv_tcp_t>::uninit();
+    let server_ptr = server.as_mut_ptr();
+
+    unsafe extern "C" fn on_connection(
+      server: *mut uv_stream_t,
+      status: i32,
+    ) {
+      unsafe {
+        assert_eq!(status, 0);
+        let count_ptr = (*server).data as *const Cell<u32>;
+        let count = &*count_ptr;
+
+        // Accept the connection (drains one backlog entry).
+        let mut client = std::mem::MaybeUninit::<uv_tcp_t>::uninit();
+        let client_ptr = client.as_mut_ptr();
+        let loop_ = (*(server as *const uv_tcp_t)).loop_;
+        uv_tcp_init(loop_, client_ptr);
+        let rc = uv_accept(server, client_ptr as *mut uv_stream_t);
+        assert_eq!(rc, 0);
+        count.set(count.get() + 1);
+
+        // Close the accepted client immediately.
+        uv_close(client_ptr as *mut uv_handle_t, None);
+      }
+    }
+
+    let server_port: u16;
+    unsafe {
+      uv_tcp_init(uv_loop, server_ptr);
+      (*server_ptr).data = accepted_ptr as *mut c_void;
+
+      let mut addr = std::mem::MaybeUninit::<sockaddr_in>::uninit();
+      let ip = std::ffi::CString::new("127.0.0.1").unwrap();
+      uv_ip4_addr(ip.as_ptr(), 0, addr.as_mut_ptr());
+      assert_ok(uv_tcp_bind(
+        server_ptr,
+        addr.as_ptr() as *const c_void,
+        0,
+        0,
+      ));
+      assert_ok(uv_listen(
+        server_ptr as *mut uv_stream_t,
+        128,
+        Some(on_connection),
+      ));
+
+      let mut name = std::mem::MaybeUninit::<sockaddr_in>::zeroed();
+      let mut namelen = std::mem::size_of::<sockaddr_in>() as i32;
+      uv_tcp_getsockname(
+        server_ptr,
+        name.as_mut_ptr() as *mut c_void,
+        &mut namelen,
+      );
+      server_port = u16::from_be(name.assume_init_ref().sin_port);
+    }
+
+    // Open multiple connections concurrently BEFORE ticking the event loop.
+    const NUM_CONNECTIONS: u32 = 8;
+    let mut client_streams = Vec::new();
+    for _ in 0..NUM_CONNECTIONS {
+      let stream =
+        tokio::net::TcpStream::connect(format!("127.0.0.1:{}", server_port))
+          .await
+          .unwrap();
+      client_streams.push(stream);
+    }
+
+    // A single tick should accept all connections thanks to batch-accept.
+    tick(runtime).await;
+
+    let count = accepted_count.get();
+    assert_eq!(
+      count, NUM_CONNECTIONS,
+      "Expected all {NUM_CONNECTIONS} connections to be accepted in one tick, got {count}"
+    );
+
+    // Cleanup.
+    drop(client_streams);
+    unsafe {
+      uv_close(server_ptr as *mut uv_handle_t, None);
+      Rc::from_raw(accepted_ptr);
+    }
+    tick(runtime).await;
+  })
+  .await;
+}
