@@ -24,10 +24,12 @@
 //   - OnStreamRead: Encrypted data from underlying stream → feed to rustls
 //   - Cycle:    Drive the state machine: ClearIn → ClearOut → EncOut
 
+use std::cell::Cell;
 use std::ffi::c_char;
 use std::io::Read;
 use std::io::Write;
 use std::ptr::NonNull;
+use std::rc::Rc;
 use std::sync::Arc;
 
 use deno_core::CppgcInherits;
@@ -203,6 +205,329 @@ enum StreamBaseStateFields {
 const CLEAR_OUT_CHUNK_SIZE: usize = 16384;
 
 // ---------------------------------------------------------------------------
+// Callback context — data extracted from TLSWrapInner before invoking JS.
+//
+// JS callbacks can re-enter Rust ops that access TLSWrapInner, so we must
+// not hold any Rust reference (&/&mut) to TLSWrapInner across a JS call.
+// The EmitCtx holds cloned/copied data so the JS call is reference-free.
+// ---------------------------------------------------------------------------
+
+struct EmitCtx {
+  isolate_ptr: v8::UnsafeRawIsolatePtr,
+  js_handle: v8::Global<v8::Object>,
+  loop_ptr: *mut uv_compat::uv_loop_t,
+}
+
+/// Extract callback context from the raw TLSWrapInner pointer.
+/// Returns None if isolate or js_handle are not set.
+///
+/// # Safety
+/// `ptr` must be a valid, non-null pointer to a live TLSWrapInner.
+/// The returned EmitCtx owns cloned Globals and does not borrow TLSWrapInner.
+unsafe fn extract_emit_ctx(ptr: *mut TLSWrapInner) -> Option<EmitCtx> {
+  unsafe {
+    let isolate_ptr = (*ptr).isolate?;
+    let js_handle = (*ptr).js_handle.clone()?;
+    let loop_ptr = (*ptr).underlying.loop_ptr();
+    Some(EmitCtx {
+      isolate_ptr,
+      js_handle,
+      loop_ptr,
+    })
+  }
+}
+
+/// Result of `clear_out_process` — describes what JS callbacks to fire.
+struct ClearOutResult {
+  handshake_done: bool,
+  data: Vec<u8>,
+  got_eof: bool,
+  got_error: bool,
+  /// TLS error to emit (message, code). Only set when process_new_packets fails.
+  tls_error: Option<(String, String)>,
+}
+
+/// Result of `enc_out_collect` — describes what action to take after collecting.
+enum EncOutAction {
+  /// Nothing to do.
+  None,
+  /// Write encrypted data to the uv stream.
+  WriteUv,
+  /// Write encrypted data via JS callback.
+  WriteJs,
+  /// Call invoke_queued with the given status (no encrypted data to write).
+  InvokeQueued(i32),
+}
+
+// ---------------------------------------------------------------------------
+// Free functions that emit JS callbacks.
+// These do NOT borrow TLSWrapInner — they work entirely with EmitCtx + args.
+// ---------------------------------------------------------------------------
+
+/// Emit read data to JS via onread callback.
+///
+/// # Safety
+/// EmitCtx must contain valid pointers. No TLSWrapInner reference may be held by the caller.
+unsafe fn do_emit_read(
+  ctx: &EmitCtx,
+  onread: Option<&v8::Global<v8::Function>>,
+  state: Option<&v8::Global<v8::Int32Array>>,
+  nread: isize,
+  data: Option<&[u8]>,
+) {
+  let Some(state_global) = state else {
+    return;
+  };
+  unsafe {
+    let mut isolate = v8::Isolate::from_raw_isolate_ptr(ctx.isolate_ptr);
+    v8::scope!(let handle_scope, &mut isolate);
+
+    if ctx.loop_ptr.is_null() {
+      return;
+    }
+    let ctx_ptr = (*ctx.loop_ptr).data;
+    if ctx_ptr.is_null() {
+      return;
+    }
+    let raw = NonNull::new_unchecked(ctx_ptr as *mut v8::Context);
+    let global = v8::Global::from_raw(handle_scope, raw);
+    let cloned = global.clone();
+    global.into_raw();
+
+    let context = v8::Local::new(handle_scope, cloned);
+    let scope = &mut v8::ContextScope::new(handle_scope, context);
+
+    let state_array: v8::Local<v8::Int32Array> =
+      v8::Local::new(scope, state_global);
+    state_array.set_index(
+      scope,
+      StreamBaseStateFields::ReadBytesOrError as u32,
+      v8::Integer::new(scope, nread as i32).into(),
+    );
+    state_array.set_index(
+      scope,
+      StreamBaseStateFields::ArrayBufferOffset as u32,
+      v8::Integer::new(scope, 0).into(),
+    );
+
+    let recv = v8::Local::new(scope, &ctx.js_handle);
+
+    let onread_fn = if let Some(onread) = onread {
+      v8::Local::new(scope, onread)
+    } else {
+      let key =
+        v8::String::new_external_onebyte_static(scope, b"onread").unwrap();
+      match recv.get(scope, key.into()) {
+        Some(val) => match v8::Local::<v8::Function>::try_from(val) {
+          Ok(f) => f,
+          Err(_) => return,
+        },
+        None => return,
+      }
+    };
+
+    if let Some(bytes) = data {
+      let len = bytes.len();
+      let store = v8::ArrayBuffer::new(scope, len);
+      let backing = store.get_backing_store();
+      for (i, byte) in bytes.iter().enumerate() {
+        backing[i].set(*byte);
+      }
+      let ab: v8::Local<v8::Value> = store.into();
+      onread_fn.call(scope, recv.into(), &[ab]);
+    } else {
+      let undef = v8::undefined(scope);
+      onread_fn.call(scope, recv.into(), &[undef.into()]);
+    }
+  }
+}
+
+/// Emit a TLS error to JS via the onerror callback.
+///
+/// # Safety
+/// EmitCtx must contain valid pointers. No TLSWrapInner reference may be held by the caller.
+unsafe fn do_emit_error(ctx: &EmitCtx, error_msg: &str, error_code: &str) {
+  unsafe {
+    let mut isolate = v8::Isolate::from_raw_isolate_ptr(ctx.isolate_ptr);
+    v8::scope!(let handle_scope, &mut isolate);
+
+    if ctx.loop_ptr.is_null() {
+      return;
+    }
+    let ctx_ptr = (*ctx.loop_ptr).data;
+    if ctx_ptr.is_null() {
+      return;
+    }
+    let raw = NonNull::new_unchecked(ctx_ptr as *mut v8::Context);
+    let global = v8::Global::from_raw(handle_scope, raw);
+    let cloned = global.clone();
+    global.into_raw();
+
+    let context = v8::Local::new(handle_scope, cloned);
+    let scope = &mut v8::ContextScope::new(handle_scope, context);
+
+    let this = v8::Local::new(scope, &ctx.js_handle);
+
+    let msg = v8::String::new(scope, error_msg).unwrap();
+    let error = v8::Exception::error(scope, msg);
+    let error_obj = error.to_object(scope).unwrap();
+
+    let code_key =
+      v8::String::new_external_onebyte_static(scope, b"code").unwrap();
+    let code_val = v8::String::new(scope, error_code).unwrap();
+    error_obj.set(scope, code_key.into(), code_val.into());
+
+    let key =
+      v8::String::new_external_onebyte_static(scope, b"onerror").unwrap();
+    if let Some(val) = this.get(scope, key.into())
+      && let Ok(func) = v8::Local::<v8::Function>::try_from(val)
+    {
+      func.call(scope, this.into(), &[error]);
+    }
+  }
+}
+
+/// Emit handshake done callback.
+///
+/// # Safety
+/// EmitCtx must contain valid pointers. No TLSWrapInner reference may be held by the caller.
+unsafe fn do_emit_handshake_done(ctx: &EmitCtx) {
+  unsafe {
+    let mut isolate = v8::Isolate::from_raw_isolate_ptr(ctx.isolate_ptr);
+    v8::scope!(let handle_scope, &mut isolate);
+
+    if ctx.loop_ptr.is_null() {
+      return;
+    }
+    let ctx_ptr = (*ctx.loop_ptr).data;
+    if ctx_ptr.is_null() {
+      return;
+    }
+    let raw = NonNull::new_unchecked(ctx_ptr as *mut v8::Context);
+    let global = v8::Global::from_raw(handle_scope, raw);
+    let cloned = global.clone();
+    global.into_raw();
+
+    let context = v8::Local::new(handle_scope, cloned);
+    let scope = &mut v8::ContextScope::new(handle_scope, context);
+
+    let this = v8::Local::new(scope, &ctx.js_handle);
+    let key =
+      v8::String::new_external_onebyte_static(scope, b"onhandshakedone")
+        .unwrap();
+    if let Some(val) = this.get(scope, key.into())
+      && let Ok(func) = v8::Local::<v8::Function>::try_from(val)
+    {
+      func.call(scope, this.into(), &[]);
+    }
+  }
+}
+
+/// Signal write completion to JS.
+///
+/// # Safety
+/// EmitCtx must contain valid pointers. No TLSWrapInner reference may be held by the caller.
+unsafe fn do_invoke_queued(
+  ctx: &EmitCtx,
+  write_obj: v8::Global<v8::Object>,
+  status: i32,
+) {
+  unsafe {
+    let mut isolate = v8::Isolate::from_raw_isolate_ptr(ctx.isolate_ptr);
+    v8::scope!(let handle_scope, &mut isolate);
+
+    if ctx.loop_ptr.is_null() {
+      return;
+    }
+    let ctx_ptr = (*ctx.loop_ptr).data;
+    if ctx_ptr.is_null() {
+      return;
+    }
+    let raw = NonNull::new_unchecked(ctx_ptr as *mut v8::Context);
+    let global = v8::Global::from_raw(handle_scope, raw);
+    let cloned = global.clone();
+    global.into_raw();
+
+    let context = v8::Local::new(handle_scope, cloned);
+    let scope = &mut v8::ContextScope::new(handle_scope, context);
+
+    let req_obj = v8::Local::new(scope, &write_obj);
+    let handle = v8::Local::new(scope, &ctx.js_handle);
+    let oncomplete_str =
+      v8::String::new_external_onebyte_static(scope, b"oncomplete").unwrap();
+    if let Some(oncomplete) = req_obj.get(scope, oncomplete_str.into())
+      && let Ok(func) = v8::Local::<v8::Function>::try_from(oncomplete)
+    {
+      let status_val = v8::Integer::new(scope, status);
+      let undef = v8::undefined(scope);
+      func.call(
+        scope,
+        req_obj.into(),
+        &[status_val.into(), handle.into(), undef.into()],
+      );
+    }
+  }
+}
+
+/// Write encrypted data to a JS-backed stream via the JS `encOut` callback.
+///
+/// # Safety
+/// EmitCtx must contain valid pointers. No TLSWrapInner reference may be held by the caller.
+unsafe fn do_enc_out_js(ctx: &EmitCtx, enc_data: Vec<u8>) {
+  unsafe {
+    let mut isolate = v8::Isolate::from_raw_isolate_ptr(ctx.isolate_ptr);
+    v8::scope!(let handle_scope, &mut isolate);
+
+    if ctx.loop_ptr.is_null() {
+      return;
+    }
+    let ctx_ptr = (*ctx.loop_ptr).data;
+    if ctx_ptr.is_null() {
+      return;
+    }
+    let raw = NonNull::new_unchecked(ctx_ptr as *mut v8::Context);
+    let global = v8::Global::from_raw(handle_scope, raw);
+    let cloned = global.clone();
+    global.into_raw();
+
+    let context = v8::Local::new(handle_scope, cloned);
+    let scope = &mut v8::ContextScope::new(handle_scope, context);
+
+    let this = v8::Local::new(scope, &ctx.js_handle);
+    let key =
+      v8::String::new_external_onebyte_static(scope, b"encOut").unwrap();
+    if let Some(val) = this.get(scope, key.into())
+      && let Ok(func) = v8::Local::<v8::Function>::try_from(val)
+    {
+      let ab = v8::ArrayBuffer::new(scope, enc_data.len());
+      let backing = ab.get_backing_store();
+      for (i, byte) in enc_data.iter().enumerate() {
+        backing[i].set(*byte);
+      }
+      func.call(scope, this.into(), &[ab.into()]);
+    }
+  }
+}
+
+/// Prepare invoke_queued by extracting state from TLSWrapInner.
+/// Mutates inner (clears write_callback_scheduled, takes current_write_obj).
+/// Returns (write_obj, ctx) if a JS call should be made, None otherwise.
+///
+/// # Safety
+/// `ptr` must be valid and non-null.
+unsafe fn prepare_invoke_queued(
+  ptr: *mut TLSWrapInner,
+) -> Option<(v8::Global<v8::Object>, EmitCtx)> {
+  unsafe {
+    (*ptr).write_callback_scheduled = false;
+    let write_obj = (*ptr).current_write_obj.take()?;
+    (*ptr).current_write_bytes = 0;
+    let ctx = extract_emit_ctx(ptr)?;
+    Some((write_obj, ctx))
+  }
+}
+
+// ---------------------------------------------------------------------------
 // UnderlyingStream — abstracts over libuv streams and JS-backed streams
 // ---------------------------------------------------------------------------
 
@@ -351,6 +676,11 @@ struct EncryptedWriteReq {
   /// when the encrypted write completes.
   tls_wrap_inner: *mut TLSWrapInner,
   has_write_callback: bool,
+  /// Shared flag that is set to `false` when the owning TLSWrapInner is
+  /// destroyed.  Checked in `enc_write_cb` before dereferencing
+  /// `tls_wrap_inner` to avoid use-after-free when GC collects the
+  /// TLSWrap while writes are still in-flight.
+  alive: Rc<Cell<bool>>,
 }
 
 // ---------------------------------------------------------------------------
@@ -406,6 +736,11 @@ struct TLSWrapInner {
   // Bytes counters
   bytes_read: u64,
   bytes_written: u64,
+
+  /// Shared flag checked by `enc_write_cb` to detect teardown.
+  /// Set to `false` in `destroy_inner` before the TLSWrapInner memory
+  /// is freed, so in-flight write callbacks can avoid a dangling deref.
+  alive: Rc<Cell<bool>>,
 
   // Error string (like Node's error_)
   error: Option<String>,
@@ -516,6 +851,7 @@ impl TLSWrapInner {
       current_write_bytes: 0,
       bytes_read: 0,
       bytes_written: 0,
+      alive: Rc::new(Cell::new(true)),
       error: None,
       verify_error: Arc::new(std::sync::Mutex::new(None)),
       pending_client_config: None,
@@ -524,28 +860,33 @@ impl TLSWrapInner {
     }
   }
 
-  /// Drive the TLS state machine.
+  /// Drive the TLS state machine through a raw pointer.
   /// Mirrors Node's TLSWrap::Cycle().
+  ///
+  /// Works entirely through raw pointer access to avoid holding any Rust
+  /// reference across JS callbacks (which can re-enter ops on the same object).
+  ///
   /// # Safety
-  /// Must only be called when we have valid isolate/context pointers.
-  /// Perform one ClearIn → ClearOut → EncOut pass, matching Node's Cycle().
-  /// No loop — the next cycle is driven by enc_write_cb → invoke_queued →
-  /// drain → pipe resume → read_start → cycle.
-  unsafe fn cycle(&mut self) {
-    if self.cycling {
-      return;
+  /// `ptr` must be a valid, non-null pointer to a live TLSWrapInner with
+  /// valid isolate/context pointers.
+  unsafe fn cycle(ptr: *mut TLSWrapInner) {
+    unsafe {
+      if (*ptr).cycling {
+        return;
+      }
+      (*ptr).cycling = true;
+      (*ptr).clear_in();
+      let result = (*ptr).clear_out_process();
+      let enc_action = (*ptr).enc_out_collect();
+      (*ptr).cycling = false;
+
+      // --- Callback phase: no Rust reference to TLSWrapInner is held ---
+      TLSWrapInner::dispatch_clear_out_callbacks(ptr, &result);
+      if result.tls_error.is_some() {
+        return;
+      }
+      TLSWrapInner::do_enc_out_action(ptr, enc_action);
     }
-    let _side = if self.kind == Kind::Server {
-      "server"
-    } else {
-      "client"
-    };
-    self.cycling = true;
-    self.clear_in();
-    // SAFETY: caller guarantees valid isolate/context pointers
-    unsafe { self.clear_out() };
-    self.enc_out();
-    self.cycling = false;
   }
 
   /// Feed pending cleartext into rustls writer.
@@ -580,31 +921,32 @@ impl TLSWrapInner {
     }
   }
 
-  /// Read decrypted cleartext from rustls and emit to JS via onread.
-  /// Mirrors Node's TLSWrap::ClearOut().
-  ///
-  /// We collect all data first, then emit callbacks, to avoid borrow
-  /// conflicts between the TLS connection and self.
-  ///
-  /// # Safety
-  /// Must only be called when we have valid isolate/context pointers.
-  unsafe fn clear_out(&mut self) {
+  /// Process TLS records and collect decrypted cleartext.
+  /// Returns a ClearOutResult describing what JS callbacks to fire.
+  /// Does NOT call any JS callbacks — the caller handles that.
+  fn clear_out_process(&mut self) -> ClearOutResult {
+    let empty = ClearOutResult {
+      handshake_done: false,
+      data: Vec::new(),
+      got_eof: false,
+      got_error: false,
+      tls_error: None,
+    };
+
     if self.eof {
-      return;
+      return empty;
     }
 
     let Some(ref mut conn) = self.tls_conn else {
-      return;
+      return empty;
     };
 
     let was_handshaking = conn.is_handshaking();
 
-    // Collect all available cleartext. We drain plaintext inside
-    // the read_tls loop because rustls's internal plaintext buffer
-    // is limited and read_tls will refuse more data until it's consumed.
     let mut data = Vec::new();
     let mut got_eof = false;
     let mut got_error = false;
+    let tls_error = None;
 
     // Process all buffered TLS records.
     if !self.enc_in.is_empty() {
@@ -628,8 +970,6 @@ impl TLSWrapInner {
         match conn.process_new_packets() {
           Ok(io_state) => {
             if io_state.peer_has_closed() {
-              // Peer sent close_notify — drain any remaining plaintext
-              // below, then signal EOF.
               got_eof = true;
               self.eof = true;
             }
@@ -640,9 +980,15 @@ impl TLSWrapInner {
             }
             let (error_msg, error_code) = rustls_error_to_node_error(&e);
             self.error = Some(error_msg.clone());
-            self.enc_out();
-            self.emit_error(&error_msg, &error_code);
-            return;
+            // Flush the error alert to the underlying stream
+            self.enc_out_flush_only();
+            return ClearOutResult {
+              handshake_done: false,
+              data: Vec::new(),
+              got_eof: false,
+              got_error: false,
+              tls_error: Some((error_msg, error_code)),
+            };
           }
         }
         // Drain plaintext so rustls can accept more records
@@ -682,42 +1028,25 @@ impl TLSWrapInner {
     let handshake_done =
       was_handshaking && !is_handshaking_now && !self.established;
 
-    // Now emit — conn borrow is released
-    if handshake_done {
-      self.established = true;
-      self.emit_handshake_done();
-    }
-
     self.has_buffered_cleartext = false;
-    let _side = if self.kind == Kind::Server {
-      "server"
-    } else {
-      "client"
-    };
 
-    if !data.is_empty() {
-      self.emit_read(data.len() as isize, Some(&data));
-      if self.tls_conn.is_none() {
-        return;
-      }
-    }
-    if got_eof {
-      self.emit_read(UV_EOF as isize, None);
-    } else if got_error {
-      self.emit_read(-1, None);
+    ClearOutResult {
+      handshake_done,
+      data,
+      got_eof,
+      got_error,
+      tls_error,
     }
   }
 
-  /// Write encrypted data from rustls to the underlying stream.
-  /// Mirrors Node's TLSWrap::EncOut().
-  fn enc_out(&mut self) {
+  /// Collect encrypted output from rustls and determine what action to take.
+  /// Does NOT call any JS callbacks or invoke_queued.
+  fn enc_out_collect(&mut self) -> EncOutAction {
     let Some(ref mut conn) = self.tls_conn else {
-      return;
+      return EncOutAction::None;
     };
 
     // Collect ALL encrypted output from rustls into pending buffer.
-    // write_tls may only produce one TLS record per call, so loop
-    // until rustls has nothing more to write.
     while conn.wants_write() {
       let mut tmp = Vec::with_capacity(16384);
       match conn.write_tls(&mut tmp) {
@@ -734,9 +1063,9 @@ impl TLSWrapInner {
         && self.enc_writes_in_flight == 0
         && !self.in_dowrite
       {
-        self.invoke_queued(0);
+        return EncOutAction::InvokeQueued(0);
       }
-      return;
+      return EncOutAction::None;
     }
 
     if self.established && self.current_write_obj.is_some() {
@@ -744,17 +1073,140 @@ impl TLSWrapInner {
     }
 
     if !self.underlying.is_attached() {
-      return;
+      return EncOutAction::None;
     }
 
     match self.underlying {
-      UnderlyingStream::Uv { .. } => {
-        self.enc_out_uv();
+      UnderlyingStream::Uv { .. } => EncOutAction::WriteUv,
+      UnderlyingStream::Js { .. } => EncOutAction::WriteJs,
+      UnderlyingStream::None => EncOutAction::None,
+    }
+  }
+
+  /// Flush encrypted data from rustls to the underlying stream without
+  /// invoking any JS callbacks. Used in the error path of clear_out_process
+  /// to send TLS alert records before emitting the error.
+  fn enc_out_flush_only(&mut self) {
+    let Some(ref mut conn) = self.tls_conn else {
+      return;
+    };
+    while conn.wants_write() {
+      let mut tmp = Vec::with_capacity(16384);
+      match conn.write_tls(&mut tmp) {
+        Ok(n) if n > 0 => {
+          self.pending_enc_out.extend_from_slice(&tmp);
+        }
+        _ => break,
       }
-      UnderlyingStream::Js { .. } => {
-        self.enc_out_js();
+    }
+    if self.pending_enc_out.is_empty() || !self.underlying.is_attached() {
+      return;
+    }
+    if let UnderlyingStream::Uv { .. } = self.underlying {
+      self.enc_out_uv();
+    }
+    // JS stream: the data stays in pending_enc_out; cycle's callback phase
+    // will handle it.
+  }
+
+  /// Dispatch JS callbacks from a ClearOutResult.
+  /// Works through raw pointer — no Rust reference held across JS calls.
+  ///
+  /// # Safety
+  /// `ptr` must be a valid, non-null pointer to a live TLSWrapInner.
+  unsafe fn dispatch_clear_out_callbacks(
+    ptr: *mut TLSWrapInner,
+    result: &ClearOutResult,
+  ) {
+    unsafe {
+      if let Some((ref error_msg, ref error_code)) = result.tls_error {
+        if let Some(ctx) = extract_emit_ctx(ptr) {
+          do_emit_error(&ctx, error_msg, error_code);
+        }
+        return;
       }
-      UnderlyingStream::None => {}
+
+      if result.handshake_done {
+        (*ptr).established = true;
+        if let Some(ctx) = extract_emit_ctx(ptr) {
+          do_emit_handshake_done(&ctx);
+        }
+      }
+
+      if !result.data.is_empty() {
+        if let Some(ctx) = extract_emit_ctx(ptr) {
+          let onread = (*ptr).onread.clone();
+          let state = (*ptr).stream_base_state.clone();
+          do_emit_read(
+            &ctx,
+            onread.as_ref(),
+            state.as_ref(),
+            result.data.len() as isize,
+            Some(&result.data),
+          );
+        }
+        if (*ptr).tls_conn.is_none() {
+          return;
+        }
+      }
+      if result.got_eof {
+        if let Some(ctx) = extract_emit_ctx(ptr) {
+          let onread = (*ptr).onread.clone();
+          let state = (*ptr).stream_base_state.clone();
+          do_emit_read(
+            &ctx,
+            onread.as_ref(),
+            state.as_ref(),
+            UV_EOF as isize,
+            None,
+          );
+        }
+      } else if result.got_error {
+        if let Some(ctx) = extract_emit_ctx(ptr) {
+          let onread = (*ptr).onread.clone();
+          let state = (*ptr).stream_base_state.clone();
+          do_emit_read(&ctx, onread.as_ref(), state.as_ref(), -1, None);
+        }
+      }
+    }
+  }
+
+  /// Execute the enc_out action determined by `enc_out_collect`.
+  /// This may call JS callbacks, so it works through a raw pointer.
+  ///
+  /// # Safety
+  /// `ptr` must be a valid, non-null pointer to a live TLSWrapInner.
+  unsafe fn do_enc_out_action(ptr: *mut TLSWrapInner, action: EncOutAction) {
+    unsafe {
+      match action {
+        EncOutAction::None => {}
+        EncOutAction::WriteUv => {
+          (*ptr).enc_out_uv();
+          // enc_out_uv may call invoke_queued on error; those paths
+          // already work through &mut self which is fine since we
+          // don't hold any reference here. But we should also convert
+          // those paths — for now, enc_out_uv's invoke_queued calls
+          // go through the old path (acceptable since they only fire
+          // on synchronous uv_write failure, not during normal flow).
+        }
+        EncOutAction::WriteJs => {
+          let enc_data = std::mem::take(&mut (*ptr).pending_enc_out);
+          if let Some(ctx) = extract_emit_ctx(ptr) {
+            do_enc_out_js(&ctx, enc_data);
+          }
+          // For JS streams, treat the write as synchronously completed.
+          if (*ptr).write_callback_scheduled && !(*ptr).in_dowrite {
+            if let Some((write_obj, ctx)) = prepare_invoke_queued(ptr) {
+              do_invoke_queued(&ctx, write_obj, 0);
+            }
+          }
+        }
+        EncOutAction::InvokeQueued(status) => {
+          if let Some((write_obj, ctx)) = prepare_invoke_queued(ptr) {
+            do_invoke_queued(&ctx, write_obj, status);
+          }
+        }
+      }
     }
   }
 
@@ -768,13 +1220,14 @@ impl TLSWrapInner {
       _data: enc_data,
       tls_wrap_inner: self_ptr,
       has_write_callback: has_write_cb,
+      alive: self.alive.clone(),
     });
 
     self.enc_writes_in_flight += 1;
     let (req_ptr, ret) = self.underlying.write(write_req);
     if ret != 0 {
       self.enc_writes_in_flight -= 1;
-      if !req_ptr.is_null() {
+      let should_invoke = if !req_ptr.is_null() {
         // Failed to write — reclaim the request
         // SAFETY: req_ptr was returned from underlying.write and is a valid EncryptedWriteReq
         let reclaimed =
@@ -783,307 +1236,34 @@ impl TLSWrapInner {
           // Stream not connected yet — put the data back so we
           // retry on the next enc_out() call (after connect).
           self.pending_enc_out = reclaimed._data;
-        } else if self.write_callback_scheduled {
-          self.invoke_queued(ret);
+          false
+        } else {
+          self.write_callback_scheduled
         }
-      } else if self.write_callback_scheduled {
-        self.invoke_queued(ret);
+      } else {
+        self.write_callback_scheduled
+      };
+      if should_invoke {
+        // Use raw pointer to drop the &mut self borrow before JS call
+        let ptr = self_ptr;
+        // SAFETY: self_ptr is valid (points to self); prepare_invoke_queued
+        // and do_invoke_queued do not hold references across JS calls.
+        unsafe {
+          if let Some((write_obj, ctx)) = prepare_invoke_queued(ptr) {
+            do_invoke_queued(&ctx, write_obj, ret);
+          }
+        }
       }
     }
     // Note: for successful writes, invoke_queued is called from enc_write_cb
     // when the uv_write completes asynchronously.
   }
 
-  /// Write encrypted data to a JS-backed stream by calling the JS
-  /// `onwrite` callback on the handle. The write is treated as
-  /// synchronously completing (the JS side buffers internally).
-  fn enc_out_js(&mut self) {
-    let enc_data = std::mem::take(&mut self.pending_enc_out);
-
-    let Some(ref isolate_ptr) = self.isolate else {
-      return;
-    };
-    let Some(ref js_handle) = self.js_handle else {
-      return;
-    };
-
-    let loop_ptr = self.underlying.loop_ptr();
-    if loop_ptr.is_null() {
-      return;
-    }
-
-    // SAFETY: isolate_ptr is valid while TLSWrap is alive
-    unsafe {
-      let mut isolate = v8::Isolate::from_raw_isolate_ptr(*isolate_ptr);
-      v8::scope!(let handle_scope, &mut isolate);
-
-      let ctx_ptr = (*loop_ptr).data;
-      if ctx_ptr.is_null() {
-        return;
-      }
-      let raw = NonNull::new_unchecked(ctx_ptr as *mut v8::Context);
-      let global = v8::Global::from_raw(handle_scope, raw);
-      let cloned = global.clone();
-      global.into_raw();
-
-      let context = v8::Local::new(handle_scope, cloned);
-      let scope = &mut v8::ContextScope::new(handle_scope, context);
-
-      let this = v8::Local::new(scope, js_handle);
-      let key =
-        v8::String::new_external_onebyte_static(scope, b"encOut").unwrap();
-      if let Some(val) = this.get(scope, key.into())
-        && let Ok(func) = v8::Local::<v8::Function>::try_from(val)
-      {
-        // Pass encrypted data as ArrayBuffer
-        let ab = v8::ArrayBuffer::new(scope, enc_data.len());
-        let backing = ab.get_backing_store();
-        for (i, byte) in enc_data.iter().enumerate() {
-          backing[i].set(*byte);
-        }
-        func.call(scope, this.into(), &[ab.into()]);
-      }
-    }
-
-    // For JS streams, treat the write as synchronously completed.
-    if self.write_callback_scheduled && !self.in_dowrite {
-      self.invoke_queued(0);
-    }
-  }
-
-  /// Emit read data to JS via onread callback.
-  fn emit_read(&self, nread: isize, data: Option<&[u8]>) {
-    let Some(ref isolate_ptr) = self.isolate else {
-      return;
-    };
-    let Some(ref js_handle) = self.js_handle else {
-      return;
-    };
-    let Some(ref state_global) = self.stream_base_state else {
-      return;
-    };
-
-    // SAFETY: isolate_ptr is valid while TLSWrap is alive; stream and loop pointers checked for null
-    unsafe {
-      let mut isolate = v8::Isolate::from_raw_isolate_ptr(*isolate_ptr);
-      v8::scope!(let handle_scope, &mut isolate);
-
-      // Recover context from underlying stream's loop
-      let loop_ptr = self.underlying.loop_ptr();
-      if loop_ptr.is_null() {
-        return;
-      }
-      let ctx_ptr = (*loop_ptr).data;
-      if ctx_ptr.is_null() {
-        return;
-      }
-      let raw = NonNull::new_unchecked(ctx_ptr as *mut v8::Context);
-      let global = v8::Global::from_raw(handle_scope, raw);
-      let cloned = global.clone();
-      global.into_raw();
-
-      let context = v8::Local::new(handle_scope, cloned);
-      let scope = &mut v8::ContextScope::new(handle_scope, context);
-
-      // Update stream_base_state
-      let state_array = v8::Local::new(scope, state_global);
-      state_array.set_index(
-        scope,
-        StreamBaseStateFields::ReadBytesOrError as u32,
-        v8::Integer::new(scope, nread as i32).into(),
-      );
-      state_array.set_index(
-        scope,
-        StreamBaseStateFields::ArrayBufferOffset as u32,
-        v8::Integer::new(scope, 0).into(),
-      );
-
-      let recv = v8::Local::new(scope, js_handle);
-
-      // Look up onread from stored field or JS property on the handle
-      let onread_fn = if let Some(ref onread) = self.onread {
-        v8::Local::new(scope, onread)
-      } else {
-        let key =
-          v8::String::new_external_onebyte_static(scope, b"onread").unwrap();
-        match recv.get(scope, key.into()) {
-          Some(val) => match v8::Local::<v8::Function>::try_from(val) {
-            Ok(f) => f,
-            Err(_) => return,
-          },
-          None => return,
-        }
-      };
-
-      if let Some(bytes) = data {
-        let len = bytes.len();
-        let store = v8::ArrayBuffer::new(scope, len);
-        let backing = store.get_backing_store();
-        for (i, byte) in bytes.iter().enumerate() {
-          backing[i].set(*byte);
-        }
-        let ab: v8::Local<v8::Value> = store.into();
-        onread_fn.call(scope, recv.into(), &[ab]);
-      } else {
-        let undef = v8::undefined(scope);
-        onread_fn.call(scope, recv.into(), &[undef.into()]);
-      }
-    }
-  }
-
-  /// Emit handshake done callback.
-  /// Emit a TLS error to JS via the onerror callback.
-  /// Mirrors Node's MakeCallback(env()->onerror_string(), 1, &error)
-  /// called from ClearOut() when SSL_read fails.
-  fn emit_error(&self, error_msg: &str, error_code: &str) {
-    let Some(ref isolate_ptr) = self.isolate else {
-      return;
-    };
-    let Some(ref js_handle) = self.js_handle else {
-      return;
-    };
-
-    // SAFETY: isolate_ptr is valid while TLSWrap is alive; stream and loop pointers checked for null
-    unsafe {
-      let mut isolate = v8::Isolate::from_raw_isolate_ptr(*isolate_ptr);
-      v8::scope!(let handle_scope, &mut isolate);
-
-      let loop_ptr = self.underlying.loop_ptr();
-      if loop_ptr.is_null() {
-        return;
-      }
-      let ctx_ptr = (*loop_ptr).data;
-      if ctx_ptr.is_null() {
-        return;
-      }
-      let raw = NonNull::new_unchecked(ctx_ptr as *mut v8::Context);
-      let global = v8::Global::from_raw(handle_scope, raw);
-      let cloned = global.clone();
-      global.into_raw();
-
-      let context = v8::Local::new(handle_scope, cloned);
-      let scope = &mut v8::ContextScope::new(handle_scope, context);
-
-      let this = v8::Local::new(scope, js_handle);
-
-      // Create Error object
-      let msg = v8::String::new(scope, error_msg).unwrap();
-      let error = v8::Exception::error(scope, msg);
-      let error_obj = error.to_object(scope).unwrap();
-
-      // Set code property
-      let code_key =
-        v8::String::new_external_onebyte_static(scope, b"code").unwrap();
-      let code_val = v8::String::new(scope, error_code).unwrap();
-      error_obj.set(scope, code_key.into(), code_val.into());
-
-      // Call onerror
-      let key =
-        v8::String::new_external_onebyte_static(scope, b"onerror").unwrap();
-      if let Some(val) = this.get(scope, key.into())
-        && let Ok(func) = v8::Local::<v8::Function>::try_from(val)
-      {
-        func.call(scope, this.into(), &[error]);
-      }
-    }
-  }
-
-  fn emit_handshake_done(&self) {
-    let Some(ref isolate_ptr) = self.isolate else {
-      return;
-    };
-    let Some(ref js_handle) = self.js_handle else {
-      return;
-    };
-
-    // SAFETY: isolate_ptr is valid while TLSWrap is alive; stream and loop pointers checked for null
-    unsafe {
-      let mut isolate = v8::Isolate::from_raw_isolate_ptr(*isolate_ptr);
-      v8::scope!(let handle_scope, &mut isolate);
-
-      let loop_ptr = self.underlying.loop_ptr();
-      if loop_ptr.is_null() {
-        return;
-      }
-      let ctx_ptr = (*loop_ptr).data;
-      if ctx_ptr.is_null() {
-        return;
-      }
-      let raw = NonNull::new_unchecked(ctx_ptr as *mut v8::Context);
-      let global = v8::Global::from_raw(handle_scope, raw);
-      let cloned = global.clone();
-      global.into_raw();
-
-      let context = v8::Local::new(handle_scope, cloned);
-      let scope = &mut v8::ContextScope::new(handle_scope, context);
-
-      let this = v8::Local::new(scope, js_handle);
-      let key =
-        v8::String::new_external_onebyte_static(scope, b"onhandshakedone")
-          .unwrap();
-      if let Some(val) = this.get(scope, key.into())
-        && let Ok(func) = v8::Local::<v8::Function>::try_from(val)
-      {
-        func.call(scope, this.into(), &[]);
-      }
-    }
-  }
-
-  /// Signal write completion to JS.
-  fn invoke_queued(&mut self, status: i32) {
-    self.write_callback_scheduled = false;
-    let write_obj = self.current_write_obj.take();
-    let _bytes = self.current_write_bytes;
-    self.current_write_bytes = 0;
-
-    let Some(ref isolate_ptr) = self.isolate else {
-      return;
-    };
-    let Some(ref js_handle) = self.js_handle else {
-      return;
-    };
-    let Some(write_obj) = write_obj else {
-      return;
-    };
-
-    // SAFETY: isolate_ptr is valid while TLSWrap is alive; stream and loop pointers checked for null
-    unsafe {
-      let mut isolate = v8::Isolate::from_raw_isolate_ptr(*isolate_ptr);
-      v8::scope!(let handle_scope, &mut isolate);
-
-      let loop_ptr = self.underlying.loop_ptr();
-      if loop_ptr.is_null() {
-        return;
-      }
-      let ctx_ptr = (*loop_ptr).data;
-      if ctx_ptr.is_null() {
-        return;
-      }
-      let raw = NonNull::new_unchecked(ctx_ptr as *mut v8::Context);
-      let global = v8::Global::from_raw(handle_scope, raw);
-      let cloned = global.clone();
-      global.into_raw();
-
-      let context = v8::Local::new(handle_scope, cloned);
-      let scope = &mut v8::ContextScope::new(handle_scope, context);
-
-      let req_obj = v8::Local::new(scope, &write_obj);
-      let handle = v8::Local::new(scope, js_handle);
-      let oncomplete_str =
-        v8::String::new_external_onebyte_static(scope, b"oncomplete").unwrap();
-      if let Some(oncomplete) = req_obj.get(scope, oncomplete_str.into())
-        && let Ok(func) = v8::Local::<v8::Function>::try_from(oncomplete)
-      {
-        let status_val = v8::Integer::new(scope, status);
-        let undef = v8::undefined(scope);
-        func.call(
-          scope,
-          req_obj.into(),
-          &[status_val.into(), handle.into(), undef.into()],
-        );
-      }
-    }
-  }
+  // NOTE: The JS callback methods (emit_read, emit_error, emit_handshake_done,
+  // invoke_queued, enc_out_js) are implemented as free functions above
+  // (do_emit_read, do_emit_error, do_emit_handshake_done, do_invoke_queued,
+  // do_enc_out_js) to avoid holding any Rust reference to TLSWrapInner
+  // across a JS call that could re-enter ops on the same object.
 }
 
 // ---------------------------------------------------------------------------
@@ -1104,21 +1284,39 @@ unsafe fn tls_read_interceptor_cb(
       free_uv_buf(buf);
       return;
     }
-    let inner = &mut *(tls_wrap as *mut TLSWrapInner);
+    let ptr = tls_wrap as *mut TLSWrapInner;
 
-    if inner.eof {
+    if (*ptr).eof {
       free_uv_buf(buf);
       return;
     }
 
     if nread < 0 {
       free_uv_buf(buf);
-      // Flush any remaining cleartext
-      inner.clear_out();
+      // Flush any remaining cleartext via the compute-only path
+      let result = (*ptr).clear_out_process();
       if nread == UV_EOF as isize {
-        inner.eof = true;
+        (*ptr).eof = true;
       }
-      inner.emit_read(nread, None);
+      // Emit read callbacks without holding a reference
+      if !result.data.is_empty() {
+        if let Some(ctx) = extract_emit_ctx(ptr) {
+          let onread = (*ptr).onread.clone();
+          let state = (*ptr).stream_base_state.clone();
+          do_emit_read(
+            &ctx,
+            onread.as_ref(),
+            state.as_ref(),
+            result.data.len() as isize,
+            Some(&result.data),
+          );
+        }
+      }
+      if let Some(ctx) = extract_emit_ctx(ptr) {
+        let onread = (*ptr).onread.clone();
+        let state = (*ptr).stream_base_state.clone();
+        do_emit_read(&ctx, onread.as_ref(), state.as_ref(), nread, None);
+      }
       return;
     }
 
@@ -1131,17 +1329,11 @@ unsafe fn tls_read_interceptor_cb(
     let n = nread as usize;
     let buf_ref = &*buf;
     let slice = std::slice::from_raw_parts(buf_ref.base as *const u8, n);
-    inner.enc_in.extend_from_slice(slice);
+    (*ptr).enc_in.extend_from_slice(slice);
     free_uv_buf(buf);
 
-    let _side = if inner.kind == Kind::Server {
-      "server"
-    } else {
-      "client"
-    };
-
-    // Drive the TLS state machine
-    inner.cycle();
+    // Drive the TLS state machine (uses raw pointer internally)
+    TLSWrapInner::cycle(ptr);
   }
 }
 
@@ -1157,28 +1349,30 @@ fn free_uv_buf(buf: *const uv_buf_t) {
 
 /// Callback for when encrypted write to underlying stream completes.
 unsafe extern "C" fn enc_write_cb(req: *mut uv_write_t, status: i32) {
-  // SAFETY: req was created via Box::into_raw in enc_out; tls_wrap_inner is valid if non-null
+  // SAFETY: req was created via Box::into_raw in enc_out; tls_wrap_inner is
+  // valid if non-null AND alive flag is set.
   unsafe {
     let write_req = Box::from_raw(req as *mut EncryptedWriteReq);
-    if !write_req.tls_wrap_inner.is_null() {
-      let inner = &mut *write_req.tls_wrap_inner;
-      inner.enc_writes_in_flight = inner.enc_writes_in_flight.saturating_sub(1);
-      if inner.enc_writes_in_flight == 0 && status >= 0 {
+    if !write_req.tls_wrap_inner.is_null() && write_req.alive.get() {
+      let ptr = write_req.tls_wrap_inner;
+      (*ptr).enc_writes_in_flight =
+        (*ptr).enc_writes_in_flight.saturating_sub(1);
+      if (*ptr).enc_writes_in_flight == 0 && status >= 0 {
         // Encrypted write completed successfully — try to push more
         // pending cleartext through rustls now that buffer space is freed.
-        if inner.pending_cleartext.is_some() {
-          inner.clear_in();
+        if (*ptr).pending_cleartext.is_some() {
+          (*ptr).clear_in();
         }
         // Flush any new encrypted output (from clear_in or leftover).
-        // Like Node's EncOutCb → EncOut chain.
-        inner.enc_out();
-        // enc_out will call invoke_queued when pending_enc_out is empty
-        // and write_callback_scheduled is true.
-      } else if inner.enc_writes_in_flight == 0
-        && inner.write_callback_scheduled
+        let enc_action = (*ptr).enc_out_collect();
+        TLSWrapInner::do_enc_out_action(ptr, enc_action);
+      } else if (*ptr).enc_writes_in_flight == 0
+        && (*ptr).write_callback_scheduled
       {
         // Write failed — still need to fire the JS completion callback
-        inner.invoke_queued(status);
+        if let Some((write_obj, ctx)) = prepare_invoke_queued(ptr) {
+          do_invoke_queued(&ctx, write_obj, status);
+        }
       }
     }
   }
@@ -1232,9 +1426,14 @@ impl TLSWrap {
     inner.bytes_written += byte_length as u64;
 
     if byte_length == 0 {
-      // SAFETY: isolate/context pointers are valid within this op call
-      unsafe { inner.clear_out() };
-      inner.enc_out();
+      let result = inner.clear_out_process();
+      let enc_action = inner.enc_out_collect();
+      let inner_ptr = inner as *mut TLSWrapInner;
+      // SAFETY: inner_ptr is valid; callbacks are reference-free
+      unsafe {
+        TLSWrapInner::dispatch_clear_out_callbacks(inner_ptr, &result);
+        TLSWrapInner::do_enc_out_action(inner_ptr, enc_action);
+      }
       return 0;
     }
 
@@ -1260,8 +1459,11 @@ impl TLSWrap {
 
     // Flush encrypted output to underlying stream
     inner.in_dowrite = true;
-    inner.enc_out();
+    let enc_action = inner.enc_out_collect();
     inner.in_dowrite = false;
+    let inner_ptr = inner as *mut TLSWrapInner;
+    // SAFETY: inner_ptr is valid; do_enc_out_action is reference-free
+    unsafe { TLSWrapInner::do_enc_out_action(inner_ptr, enc_action) };
 
     let state_global = &op_state.borrow::<StreamBaseState>().array;
     let state_array = v8::Local::new(scope, state_global);
@@ -1289,8 +1491,21 @@ impl TLSWrap {
     }
     inner.write_callback_scheduled = true;
 
-    // invoke_queued needs scope/isolate from inner, and may re-enter JS.
-    inner.invoke_queued(UV_ECANCELED);
+    // invoke_queued may re-enter JS — use raw pointer to avoid holding
+    // a reference across the JS call.
+    let inner_ptr = inner as *mut TLSWrapInner;
+    unsafe {
+      if let Some((write_obj, ctx)) = prepare_invoke_queued(inner_ptr) {
+        do_invoke_queued(&ctx, write_obj, UV_ECANCELED);
+      }
+    }
+
+    // Re-acquire after potential JS re-entry
+    let inner = unsafe { self.inner.as_mut() };
+
+    // Mark as dead so in-flight enc_write_cb callbacks won't dereference
+    // the TLSWrapInner pointer after it is freed.
+    inner.alive.set(false);
 
     inner.underlying.set_read_interceptor(None);
     inner.tls_conn = None;
@@ -1456,7 +1671,9 @@ impl TLSWrap {
       // connected.  Flush any buffered encrypted output (e.g. the
       // ClientHello that was generated before the socket connected).
       if !inner.pending_enc_out.is_empty() {
-        inner.enc_out();
+        let enc_action = inner.enc_out_collect();
+        let inner_ptr = inner as *mut TLSWrapInner;
+        unsafe { TLSWrapInner::do_enc_out_action(inner_ptr, enc_action) };
       }
       return 0;
     }
@@ -1496,10 +1713,13 @@ impl TLSWrap {
 
     // For client mode, initiate handshake by cycling.
     if inner.kind == Kind::Client {
-      // SAFETY: isolate/context are valid; called during op execution
+      let result = inner.clear_out_process();
+      let enc_action = inner.enc_out_collect();
+      let inner_ptr = inner as *mut TLSWrapInner;
+      // SAFETY: inner_ptr valid; callbacks are reference-free
       unsafe {
-        inner.clear_out();
-        inner.enc_out();
+        TLSWrapInner::dispatch_clear_out_callbacks(inner_ptr, &result);
+        TLSWrapInner::do_enc_out_action(inner_ptr, enc_action);
       }
     }
 
@@ -1550,8 +1770,9 @@ impl TLSWrap {
     }
 
     if should_cycle {
-      // SAFETY: inner points to heap-allocated TLSWrapInner via OwnedPtr
-      unsafe { inner.cycle() };
+      let inner_ptr = inner as *mut TLSWrapInner;
+      // SAFETY: inner_ptr points to heap-allocated TLSWrapInner via OwnedPtr
+      unsafe { TLSWrapInner::cycle(inner_ptr) };
     }
 
     0
@@ -1762,7 +1983,9 @@ impl TLSWrap {
         conn.send_close_notify();
       }
       inner.shutdown = true;
-      inner.enc_out();
+      let enc_action = inner.enc_out_collect();
+      let inner_ptr = inner as *mut TLSWrapInner;
+      unsafe { TLSWrapInner::do_enc_out_action(inner_ptr, enc_action) };
 
       // Forward shutdown to underlying stream, matching Node's
       // TLSWrap::DoShutdown → underlying_stream()->DoShutdown().
@@ -2035,8 +2258,9 @@ impl TLSWrap {
   fn receive(&self, #[buffer] data: &[u8]) {
     let inner = unsafe { &mut *self.inner.as_mut_ptr() };
     inner.enc_in.extend_from_slice(data);
-    // SAFETY: inner points to heap-allocated TLSWrapInner via OwnedPtr
-    unsafe { inner.cycle() };
+    let inner_ptr = inner as *mut TLSWrapInner;
+    // SAFETY: inner_ptr points to heap-allocated TLSWrapInner via OwnedPtr
+    unsafe { TLSWrapInner::cycle(inner_ptr) };
   }
 
   /// Get verification error code, if any. Returns empty string if no error.
@@ -2113,8 +2337,9 @@ impl TLSWrap {
   fn read_buffer(&self, #[buffer] data: &[u8]) {
     let inner = unsafe { &mut *self.inner.as_mut_ptr() };
     inner.enc_in.extend_from_slice(data);
-    // SAFETY: inner points to heap-allocated TLSWrapInner via OwnedPtr
-    unsafe { inner.cycle() };
+    let inner_ptr = inner as *mut TLSWrapInner;
+    // SAFETY: inner_ptr points to heap-allocated TLSWrapInner via OwnedPtr
+    unsafe { TLSWrapInner::cycle(inner_ptr) };
   }
 
   /// Signal EOF on the encrypted input (JSStreamSocket path).
@@ -2127,10 +2352,22 @@ impl TLSWrap {
       return;
     }
     inner.eof = true;
+    let result = inner.clear_out_process();
+    let inner_ptr = inner as *mut TLSWrapInner;
     unsafe {
-      inner.clear_out();
+      TLSWrapInner::dispatch_clear_out_callbacks(inner_ptr, &result);
+      if let Some(ctx) = extract_emit_ctx(inner_ptr) {
+        let onread = (*inner_ptr).onread.clone();
+        let state = (*inner_ptr).stream_base_state.clone();
+        do_emit_read(
+          &ctx,
+          onread.as_ref(),
+          state.as_ref(),
+          deno_core::uv_compat::UV_EOF as isize,
+          None,
+        );
+      }
     }
-    inner.emit_read(deno_core::uv_compat::UV_EOF as isize, None);
   }
 }
 

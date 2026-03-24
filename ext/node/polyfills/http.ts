@@ -247,21 +247,6 @@ class ClientRequest extends OutgoingMessage {
 
     let agent = options!.agent;
     const defaultAgent = options!._defaultAgent || globalAgent;
-    const isLegacyHttpsClient = defaultAgent.protocol === "https:";
-
-    if (
-      (agent === null || agent === undefined) &&
-      isLegacyHttpsClient &&
-      typeof options!.createConnection === "function"
-    ) {
-      // Deno's HTTPS ClientRequest path still upgrades a raw socket to TLS in
-      // `_writeHeader()` via `op_tls_start()`. Libraries like `ws` provide a
-      // custom `createConnection` that returns a prebuilt TLSSocket, which
-      // bypasses that legacy path and crashes when `node:http` later expects a
-      // rid-backed raw connection. Force the default HTTPS agent path here so
-      // the request still starts from a plain TCP socket.
-      delete options!.createConnection;
-    }
 
     if (agent === false) {
       agent = new defaultAgent.constructor();
@@ -563,11 +548,12 @@ class ClientRequest extends OutgoingMessage {
         } catch (err) {
           throw (this.socket.errored || err);
         }
-        // For reused TLS sockets, the connection is already encrypted.
-        // Skip TLS upgrade if the socket is already encrypted (reusedSocket).
-        // Use _tlsUpgraded flag instead of socket.encrypted, since TLSSocket.encrypted
-        // is always true per Node.js semantics.
-        const needsTlsUpgrade = this._encrypted && !this.socket._tlsUpgraded;
+        // Skip TLS upgrade if the socket is already encrypted:
+        // - _tlsUpgraded: set by a previous Deno op_tls_start upgrade (keepAlive reuse)
+        // - socket.encrypted: true on any TLSSocket (e.g. from custom createConnection)
+        const needsTlsUpgrade = this._encrypted &&
+          !this.socket._tlsUpgraded &&
+          !this.socket.encrypted;
         if (needsTlsUpgrade) {
           const hasCaCerts = !!this.agent?.options?.ca;
           const caCerts = hasCaCerts
@@ -589,6 +575,13 @@ class ClientRequest extends OutgoingMessage {
           // This makes yarn v1's https client working
           this.socket.authorized = true;
           // Mark the socket as having completed TLS upgrade for keepAlive reuse detection
+          this.socket._tlsUpgraded = true;
+        } else if (
+          this._encrypted && this.socket.encrypted &&
+          !this.socket._tlsUpgraded
+        ) {
+          // Socket arrived already encrypted (e.g. from custom createConnection
+          // returning a TLSSocket). Mark it as upgraded for keepAlive consistency.
           this.socket._tlsUpgraded = true;
         }
 
