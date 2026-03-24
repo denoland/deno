@@ -120,20 +120,24 @@ Deno.test({
       console.log("OK");
     `;
 
-    // Use script(1) to give the child a real PTY as its stdin/stdout
+    // Use script(1) to give the child a real PTY as its stdin/stdout.
+    // Write the helper to a temp file to avoid shell quoting issues.
+    // macOS: script -q /dev/null command args...
+    // Linux: script -q /dev/null -c "command args..."
+    const tmpScript = await Deno.makeTempFile({ suffix: ".mjs" });
+    await Deno.writeTextFile(tmpScript, helper);
+    const denoCmd = `${Deno.execPath()} run --allow-read --allow-run ${tmpScript}`;
+    const scriptArgs = Deno.build.os === "linux"
+      ? ["-q", "/dev/null", "-c", denoCmd]
+      : ["-q", "/dev/null", Deno.execPath(), "run", "--allow-read", "--allow-run", tmpScript];
     const child = new Deno.Command("script", {
-      args: [
-        "-q",
-        "/dev/null",
-        Deno.execPath(),
-        "eval",
-        helper,
-      ],
+      args: scriptArgs,
       stdout: "piped",
       stderr: "piped",
     }).spawn();
 
     const output = await child.output();
+    await Deno.remove(tmpScript);
     const stdout = new TextDecoder().decode(output.stdout);
     const stderr = new TextDecoder().decode(output.stderr);
 
