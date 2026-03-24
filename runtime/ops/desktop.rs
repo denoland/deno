@@ -8,8 +8,6 @@
 
 use std::borrow::Cow;
 use std::collections::HashMap;
-use std::future::Future;
-use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::atomic::AtomicU32;
 use std::sync::atomic::Ordering;
@@ -29,6 +27,7 @@ pub enum DesktopEvent {
   },
   #[serde(rename_all = "camelCase")]
   KeyboardEvent {
+    window_id: u32,
     r#type: String,
     key: String,
     code: String,
@@ -40,12 +39,14 @@ pub enum DesktopEvent {
   },
   #[serde(rename_all = "camelCase")]
   BindCall {
+    window_id: u32,
     name: String,
     args: serde_json::Value,
     call_id: u32,
   },
   #[serde(rename_all = "camelCase")]
   MouseClick {
+    window_id: u32,
     state: String,
     button: i32,
     client_x: f64,
@@ -58,6 +59,7 @@ pub enum DesktopEvent {
   },
   #[serde(rename_all = "camelCase")]
   MouseMove {
+    window_id: u32,
     client_x: f64,
     client_y: f64,
     shift: bool,
@@ -67,6 +69,7 @@ pub enum DesktopEvent {
   },
   #[serde(rename_all = "camelCase")]
   Wheel {
+    window_id: u32,
     delta_x: f64,
     delta_y: f64,
     delta_mode: i32,
@@ -76,6 +79,38 @@ pub enum DesktopEvent {
     control: bool,
     alt: bool,
     meta: bool,
+  },
+  #[serde(rename_all = "camelCase")]
+  CursorEnterLeave {
+    window_id: u32,
+    entered: bool,
+    client_x: f64,
+    client_y: f64,
+    shift: bool,
+    control: bool,
+    alt: bool,
+    meta: bool,
+  },
+  #[serde(rename_all = "camelCase")]
+  FocusChanged {
+    window_id: u32,
+    focused: bool,
+  },
+  #[serde(rename_all = "camelCase")]
+  WindowResize {
+    window_id: u32,
+    width: i32,
+    height: i32,
+  },
+  #[serde(rename_all = "camelCase")]
+  WindowMove {
+    window_id: u32,
+    x: i32,
+    y: i32,
+  },
+  #[serde(rename_all = "camelCase")]
+  CloseRequested {
+    window_id: u32,
   },
 }
 
@@ -132,36 +167,48 @@ pub fn register_bind_call(
 
 /// Trait for desktop window operations. Implemented by the desktop
 /// runtime (denort_desktop) to bridge to the WEF backend.
+///
+/// All per-window methods take a `window_id` identifying the target window.
 pub trait DesktopApi: Send + Sync + 'static {
-  fn set_title(&self, title: &str);
+  /// Create a new window with the given dimensions and return its ID.
+  fn create_window(&self, width: i32, height: i32) -> u32;
+  /// Close a specific window.
+  fn close_window(&self, window_id: u32);
 
-  fn get_window_size(&self) -> (i32, i32);
-  fn set_window_size(&self, width: i32, height: i32);
+  fn set_title(&self, window_id: u32, title: &str);
 
-  fn get_window_position(&self) -> (i32, i32);
-  fn set_window_position(&self, width: i32, height: i32);
+  fn get_window_size(&self, window_id: u32) -> (i32, i32);
+  fn set_window_size(&self, window_id: u32, width: i32, height: i32);
 
-  fn is_resizeable(&self) -> bool;
-  fn set_resizeable(&self, resizeable: bool);
+  fn get_window_position(&self, window_id: u32) -> (i32, i32);
+  fn set_window_position(&self, window_id: u32, x: i32, y: i32);
 
-  fn is_always_on_top(&self) -> bool;
-  fn set_always_on_top(&self, always_on_top: bool);
-  fn is_visible(&self) -> bool;
-  fn show(&self);
-  fn hide(&self);
-  fn focus(&self);
+  fn is_resizable(&self, window_id: u32) -> bool;
+  fn set_resizable(&self, window_id: u32, resizable: bool);
 
-  fn bind(&self, name: &str);
-  fn unbind(&self, name: &str);
+  fn is_always_on_top(&self, window_id: u32) -> bool;
+  fn set_always_on_top(&self, window_id: u32, always_on_top: bool);
+  fn is_visible(&self, window_id: u32) -> bool;
+  fn show(&self, window_id: u32);
+  fn hide(&self, window_id: u32);
+  fn focus(&self, window_id: u32);
 
-  fn navigate(&self, url: &str);
-  fn execute_js<'a>(&self, scope: &'a mut v8::PinScope<'a, '_>, script: &str) -> Pin<Box<dyn Future<Output = Result<v8::Local<'a, v8::Value>, v8::Local<'a, v8::Value>>> + 'a>>;
+  fn bind(&self, window_id: u32, name: &str);
+  fn unbind(&self, window_id: u32, name: &str);
+
+  fn navigate(&self, window_id: u32, url: &str);
   fn quit(&self);
   fn set_application_menu(&self, template_json: &str);
 }
 
+/// Stores the window ID of the initial window created during runtime init.
+/// The first `BrowserWindow` constructor takes this ID to wrap the existing
+/// window; subsequent constructors create new windows.
+pub struct InitialWindowId(pub std::sync::Mutex<Option<u32>>);
+
 struct BrowserWindow {
   api: Arc<dyn DesktopApi>,
+  window_id: u32,
 }
 
 // SAFETY: we're sure this can be GCed
@@ -196,23 +243,39 @@ impl BrowserWindow {
       .try_borrow::<Arc<dyn DesktopApi>>()
       .expect("desktop mode enabled")
       .clone();
-    if let Some(options) = options {
-      if let Some(title) = options.title {
-        api.set_title(&title);
+
+    // Use the initial window if this is the first BrowserWindow,
+    // otherwise create a new one.
+    let window_id = state
+      .try_borrow::<InitialWindowId>()
+      .and_then(|iw| iw.0.lock().unwrap().take())
+      .unwrap_or_else(|| {
+        let width = options.as_ref().and_then(|o| o.width).unwrap_or(800);
+        let height = options.as_ref().and_then(|o| o.height).unwrap_or(600);
+        api.create_window(width, height)
+      });
+
+    if let Some(options) = &options {
+      if let Some(title) = &options.title {
+        api.set_title(window_id, title);
       }
       api.set_window_size(
+        window_id,
         options.width.unwrap_or(800),
         options.height.unwrap_or(600),
       );
+      if let (Some(x), Some(y)) = (options.x, options.y) {
+        api.set_window_position(window_id, x, y);
+      }
       if let Some(resizable) = options.resizable {
-        api.set_resizeable(resizable);
+        api.set_resizable(window_id, resizable);
       }
       if let Some(always_on_top) = options.always_on_top {
-        api.set_always_on_top(always_on_top);
+        api.set_always_on_top(window_id, always_on_top);
       }
     }
 
-    let window = BrowserWindow { api };
+    let window = BrowserWindow { api, window_id };
     let window = deno_core::cppgc::make_cppgc_object(scope, window);
     let event_target_setup = state.borrow::<EventTargetSetup>();
     let webidl_brand = v8::Local::new(scope, event_target_setup.brand.clone());
@@ -229,55 +292,55 @@ impl BrowserWindow {
 
   #[fast]
   fn bind(&self, #[string] name: &str) {
-    self.api.bind(name);
+    self.api.bind(self.window_id, name);
   }
 
   #[fast]
   fn unbind(&self, #[string] name: &str) {
-    self.api.unbind(name);
+    self.api.unbind(self.window_id, name);
   }
 
   #[fast]
   fn set_title(&self, #[string] title: &str) {
-    self.api.set_title(title);
+    self.api.set_title(self.window_id, title);
   }
 
   fn get_size(&self) -> (i32, i32) {
-    self.api.get_window_size()
+    self.api.get_window_size(self.window_id)
   }
 
   #[fast]
   fn set_size(&self, #[smi] width: i32, #[smi] height: i32) {
-    self.api.set_window_size(width, height);
+    self.api.set_window_size(self.window_id, width, height);
   }
 
   fn get_position(&self) -> (i32, i32) {
-    self.api.get_window_position()
+    self.api.get_window_position(self.window_id)
   }
 
   #[fast]
   fn set_position(&self, #[smi] x: i32, #[smi] y: i32) {
-    self.api.set_window_position(x, y);
+    self.api.set_window_position(self.window_id, x, y);
   }
 
   #[fast]
   fn is_resizeable(&self) -> bool {
-    self.api.is_resizeable()
+    self.api.is_resizable(self.window_id)
   }
 
   #[fast]
   fn set_resizeable(&self, resizeable: bool) {
-    self.api.set_resizeable(resizeable);
+    self.api.set_resizable(self.window_id, resizeable);
   }
 
   #[fast]
   fn is_always_on_top(&self) -> bool {
-    self.api.is_always_on_top()
+    self.api.is_always_on_top(self.window_id)
   }
 
   #[fast]
   fn set_always_on_top(&self, always_on_top: bool) {
-    self.api.set_always_on_top(always_on_top);
+    self.api.set_always_on_top(self.window_id, always_on_top);
   }
 
   #[fast]
@@ -287,32 +350,32 @@ impl BrowserWindow {
 
   #[fast]
   fn close(&self) {
-    self.api.quit();
+    self.api.close_window(self.window_id);
   }
 
   #[fast]
   fn is_visible(&self) -> bool {
-    self.api.is_visible()
+    self.api.is_visible(self.window_id)
   }
 
   #[fast]
   fn show(&self) {
-    self.api.show();
+    self.api.show(self.window_id);
   }
 
   #[fast]
   fn hide(&self) {
-    self.api.hide();
+    self.api.hide(self.window_id);
   }
 
   #[fast]
   fn focus(&self) {
-    self.api.focus();
+    self.api.focus(self.window_id);
   }
 
   #[fast]
   fn navigate(&self, #[string] url: &str) {
-    self.api.navigate(url);
+    self.api.navigate(self.window_id, url);
   }
 
   #[fast]
@@ -340,8 +403,8 @@ struct BrowserWindowOptions {
   title: Option<String>,
   width: Option<i32>,
   height: Option<i32>,
-  x: Option<u64>,
-  y: Option<u64>,
+  x: Option<i32>,
+  y: Option<i32>,
   resizable: Option<bool>,
   always_on_top: Option<bool>,
 }

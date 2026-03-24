@@ -53,6 +53,16 @@ declare namespace Deno {
     ) => Promise<BrowserWindowValue>;
   };
 
+  interface BrowserWindowResizeDetail {
+    width: number;
+    height: number;
+  }
+
+  interface BrowserWindowMoveDetail {
+    x: number;
+    y: number;
+  }
+
   interface BrowserWindowEventMap {
     keydown: KeyboardEvent;
     keyup: KeyboardEvent;
@@ -61,7 +71,16 @@ declare namespace Deno {
     click: MouseEvent;
     dblclick: MouseEvent;
     mousemove: MouseEvent;
+    mouseenter: MouseEvent;
+    mouseleave: MouseEvent;
     wheel: WheelEvent;
+    focus: FocusEvent;
+    blur: FocusEvent;
+
+    // non-standard events
+    resize: CustomEvent<BrowserWindowResizeDetail>;
+    move: CustomEvent<BrowserWindowMoveDetail>;
+    close: Event;
   }
 
   type BrowserWindowEventHandlers = {

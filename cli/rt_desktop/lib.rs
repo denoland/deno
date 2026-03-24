@@ -16,6 +16,8 @@ use std::env;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::atomic::AtomicU32;
+use std::sync::atomic::Ordering;
 
 use deno_core::anyhow::Context;
 use deno_core::anyhow::bail;
@@ -26,6 +28,7 @@ use deno_lib::util::result::js_error_downcast_ref;
 use deno_lib::version::otel_runtime_config;
 use deno_runtime::fmt_errors::format_js_error;
 use deno_terminal::colors;
+use denort::desktop::DesktopApi;
 use denort::run::RunOptions;
 
 /// Port used for the embedded HTTP server.
@@ -37,64 +40,216 @@ struct WefDesktopApi {
   pending_responses: deno_runtime::ops::desktop::PendingBindResponses,
 }
 
+impl WefDesktopApi {
+  /// Set up all event handlers on a newly created window, wiring events
+  /// into the shared event channel.
+  fn setup_window_events(&self, window: wef::Window) -> wef::Window {
+    let kb_tx = self.event_tx.clone();
+    let mouse_click_tx = self.event_tx.clone();
+    let mouse_move_tx = self.event_tx.clone();
+    let wheel_tx = self.event_tx.clone();
+    let cursor_tx = self.event_tx.clone();
+    let focus_tx = self.event_tx.clone();
+    let resize_tx = self.event_tx.clone();
+    let move_tx = self.event_tx.clone();
+    let close_tx = self.event_tx.clone();
+
+    window
+      .on_keyboard_event(move |ev| {
+        let _ = kb_tx.send(
+          deno_runtime::ops::desktop::DesktopEvent::KeyboardEvent {
+            window_id: ev.window_id,
+            r#type: match ev.state {
+              wef::KeyState::Pressed => "keydown".to_string(),
+              wef::KeyState::Released => "keyup".to_string(),
+            },
+            key: ev.key,
+            code: ev.code,
+            shift: ev.modifiers.shift,
+            control: ev.modifiers.control,
+            alt: ev.modifiers.alt,
+            meta: ev.modifiers.meta,
+            repeat: ev.repeat,
+          },
+        );
+      })
+      .on_mouse_click(move |ev| {
+        let _ = mouse_click_tx.send(
+          deno_runtime::ops::desktop::DesktopEvent::MouseClick {
+            window_id: ev.window_id,
+            state: match ev.state {
+              wef::MouseButtonState::Pressed => "pressed".to_string(),
+              wef::MouseButtonState::Released => "released".to_string(),
+            },
+            button: match ev.button {
+              wef::MouseButton::Left => 0,
+              wef::MouseButton::Middle => 1,
+              wef::MouseButton::Right => 2,
+              wef::MouseButton::Back => 3,
+              wef::MouseButton::Forward => 4,
+              wef::MouseButton::Other(n) => n,
+            },
+            client_x: ev.x,
+            client_y: ev.y,
+            shift: ev.modifiers.shift,
+            control: ev.modifiers.control,
+            alt: ev.modifiers.alt,
+            meta: ev.modifiers.meta,
+            click_count: ev.click_count,
+          },
+        );
+      })
+      .on_mouse_move(move |ev| {
+        let _ = mouse_move_tx.send(
+          deno_runtime::ops::desktop::DesktopEvent::MouseMove {
+            window_id: ev.window_id,
+            client_x: ev.x,
+            client_y: ev.y,
+            shift: ev.modifiers.shift,
+            control: ev.modifiers.control,
+            alt: ev.modifiers.alt,
+            meta: ev.modifiers.meta,
+          },
+        );
+      })
+      .on_wheel(move |ev| {
+        let _ = wheel_tx.send(
+          deno_runtime::ops::desktop::DesktopEvent::Wheel {
+            window_id: ev.window_id,
+            delta_x: ev.delta_x,
+            delta_y: ev.delta_y,
+            delta_mode: match ev.delta_mode {
+              wef::WheelDeltaMode::Pixel => 0,
+              wef::WheelDeltaMode::Line => 1,
+              wef::WheelDeltaMode::Page => 2,
+            },
+            client_x: ev.x,
+            client_y: ev.y,
+            shift: ev.modifiers.shift,
+            control: ev.modifiers.control,
+            alt: ev.modifiers.alt,
+            meta: ev.modifiers.meta,
+          },
+        );
+      })
+      .on_cursor_enter_leave(move |ev| {
+        let _ = cursor_tx.send(
+          deno_runtime::ops::desktop::DesktopEvent::CursorEnterLeave {
+            window_id: ev.window_id,
+            entered: ev.entered,
+            client_x: ev.x,
+            client_y: ev.y,
+            shift: ev.modifiers.shift,
+            control: ev.modifiers.control,
+            alt: ev.modifiers.alt,
+            meta: ev.modifiers.meta,
+          },
+        );
+      })
+      .on_focused(move |ev| {
+        let _ = focus_tx.send(
+          deno_runtime::ops::desktop::DesktopEvent::FocusChanged {
+            window_id: ev.window_id,
+            focused: ev.focused,
+          },
+        );
+      })
+      .on_resize(move |ev| {
+        let _ = resize_tx.send(
+          deno_runtime::ops::desktop::DesktopEvent::WindowResize {
+            window_id: ev.window_id,
+            width: ev.width,
+            height: ev.height,
+          },
+        );
+      })
+      .on_move(move |ev| {
+        let _ = move_tx.send(
+          deno_runtime::ops::desktop::DesktopEvent::WindowMove {
+            window_id: ev.window_id,
+            x: ev.x,
+            y: ev.y,
+          },
+        );
+      })
+      .on_close_requested(move |ev| {
+        let _ = close_tx.send(
+          deno_runtime::ops::desktop::DesktopEvent::CloseRequested {
+            window_id: ev.window_id,
+          },
+        );
+      })
+  }
+}
+
 impl denort::desktop::DesktopApi for WefDesktopApi {
-  fn set_title(&self, title: &str) {
-    wef::set_title(title);
+  fn create_window(&self, width: i32, height: i32) -> u32 {
+    let window = wef::Window::new(width, height);
+    let window = self.setup_window_events(window);
+    window.id()
   }
 
-  fn get_window_size(&self) -> (i32, i32) {
-    wef::get_window_size()
+  fn close_window(&self, window_id: u32) {
+    wef::Window::from_id(window_id).close();
   }
 
-  fn set_window_size(&self, width: i32, height: i32) {
-    wef::set_window_size(width, height);
+  fn set_title(&self, window_id: u32, title: &str) {
+    wef::Window::from_id(window_id).set_title(title);
   }
 
-  fn get_window_position(&self) -> (i32, i32) {
-    wef::get_window_position()
+  fn get_window_size(&self, window_id: u32) -> (i32, i32) {
+    wef::Window::from_id(window_id).get_size()
   }
 
-  fn set_window_position(&self, width: i32, height: i32) {
-    wef::set_window_position(width, height);
+  fn set_window_size(&self, window_id: u32, width: i32, height: i32) {
+    wef::Window::from_id(window_id).set_size(width, height);
   }
 
-  fn is_resizeable(&self) -> bool {
-    wef::is_resizable()
+  fn get_window_position(&self, window_id: u32) -> (i32, i32) {
+    wef::Window::from_id(window_id).get_position()
   }
 
-  fn set_resizeable(&self, resizeable: bool) {
-    wef::set_resizable(resizeable);
+  fn set_window_position(&self, window_id: u32, x: i32, y: i32) {
+    wef::Window::from_id(window_id).set_position(x, y);
   }
 
-  fn is_always_on_top(&self) -> bool {
-    wef::is_always_on_top()
+  fn is_resizable(&self, window_id: u32) -> bool {
+    wef::Window::from_id(window_id).get_resizable()
   }
 
-  fn set_always_on_top(&self, always_on_top: bool) {
-    wef::set_always_on_top(always_on_top);
+  fn set_resizable(&self, window_id: u32, resizable: bool) {
+    wef::Window::from_id(window_id).set_resizable(resizable);
   }
 
-  fn is_visible(&self) -> bool {
-    wef::is_visible()
+  fn is_always_on_top(&self, window_id: u32) -> bool {
+    wef::Window::from_id(window_id).get_always_on_top()
   }
 
-  fn show(&self) {
-    wef::show();
+  fn set_always_on_top(&self, window_id: u32, always_on_top: bool) {
+    wef::Window::from_id(window_id).set_always_on_top(always_on_top);
   }
 
-  fn hide(&self) {
-    wef::hide();
+  fn is_visible(&self, window_id: u32) -> bool {
+    wef::Window::from_id(window_id).get_visible()
   }
 
-  fn focus(&self) {
-    wef::focus();
+  fn show(&self, window_id: u32) {
+    wef::Window::from_id(window_id).show();
   }
 
-  fn bind(&self, name: &str) {
+  fn hide(&self, window_id: u32) {
+    wef::Window::from_id(window_id).hide();
+  }
+
+  fn focus(&self, window_id: u32) {
+    wef::Window::from_id(window_id).focus();
+  }
+
+  fn bind(&self, window_id: u32, name: &str) {
     let tx = self.event_tx.clone();
     let responses = self.pending_responses.clone();
     let name_owned = name.to_string();
-    wef::bind_async(name, move |js_call| {
+    wef::Window::from_id(window_id).add_binding_async(name, move |js_call| {
       let tx = tx.clone();
       let responses = responses.clone();
       let name = name_owned.clone();
@@ -105,6 +260,7 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
         let call_id =
           deno_runtime::ops::desktop::register_bind_call(&responses, resp_tx);
         let event = deno_runtime::ops::desktop::DesktopEvent::BindCall {
+          window_id: js_call.window_id,
           name,
           args: serde_json::Value::Array(args),
           call_id,
@@ -131,27 +287,12 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
     });
   }
 
-  fn unbind(&self, name: &str) {
-    wef::unbind(name);
+  fn unbind(&self, window_id: u32, name: &str) {
+    wef::Window::from_id(window_id).unbind(name);
   }
 
-  fn navigate(&self, url: &str) {
-    wef::navigate(url);
-  }
-
-  fn execute_js<'a>(&self, _scope: &'a mut v8::PinScope<'a, '_>, _script: &str) -> std::pin::Pin<Box<dyn Future<Output = Result<v8::Local<'a, v8::Value>, v8::Local<'a, v8::Value>>> + 'a>> {
-    todo!()
-    /*let (tx, rx) = tokio::sync::oneshot::channel();
-    wef::execute_js(script, Some(|res| {
-      let _ = tx.send(res);
-    }));
-
-    Box::pin(async move {
-      match rx.await.expect("execute_js channel failed") {
-        Ok(val) => Ok(wef_value_to_v8(scope, val)),
-        Err(err) => Err(wef_value_to_v8(scope, err)),
-      }
-    })*/
+  fn navigate(&self, window_id: u32, url: &str) {
+    wef::Window::from_id(window_id).navigate(url);
   }
 
   fn quit(&self) {
@@ -716,13 +857,21 @@ async fn run_desktop(update_rolled_back: bool) -> Result<(), AnyError> {
     }
   }
 
+  // Shared initial window ID for navigate_fut and HMR reload.
+  let initial_window_id = Arc::new(AtomicU32::new(0));
+  let initial_window_id_for_hmr = initial_window_id.clone();
+  let initial_window_id_for_navigate = initial_window_id.clone();
+
   let hmr_on_reload: Option<denort::hmr::HmrReloadCallback> =
     if hmr_watch_dir.is_some() && !is_framework_dev {
-      Some(Box::new(|| {
-        wef::execute_js::<fn(Result<wef::Value, wef::Value>)>(
-          "location.reload()",
-          None,
-        );
+      Some(Box::new(move || {
+        let id = initial_window_id_for_hmr.load(Ordering::Acquire);
+        if id != 0 {
+          wef::Window::from_id(id).execute_js::<fn(Result<wef::Value, wef::Value>)>(
+            "location.reload()",
+            None,
+          );
+        }
       }))
     } else {
       None
@@ -760,103 +909,33 @@ async fn run_desktop(update_rolled_back: bool) -> Result<(), AnyError> {
       let (event_tx, event_rx) =
         denort::desktop::create_desktop_event_channel();
       let pending_responses = denort::desktop::PendingBindResponses::new();
+
+      let api = WefDesktopApi {
+        event_tx: event_tx.0.clone(),
+        pending_responses: pending_responses.clone(),
+      };
+
+      // Create the initial window and wire up event handlers.
+      let window_id = api.create_window(800, 600);
+      initial_window_id.store(window_id, Ordering::Release);
+
       let menu_tx = event_tx.0.clone();
-      let kb_tx = event_tx.0.clone();
-      let mouse_click_tx = event_tx.0.clone();
-      let mouse_move_tx = event_tx.0.clone();
-      let wheel_tx = event_tx.0.clone();
       denort::desktop::init_desktop_state(
         state,
-        Box::new(WefDesktopApi {
-          event_tx: event_tx.0.clone(),
-          pending_responses: pending_responses.clone(),
-        }),
+        Box::new(api),
         auto_update_state,
       );
       state.put(event_rx);
       state.put(event_tx);
       state.put(pending_responses);
+      state.put(denort::desktop::InitialWindowId(
+        std::sync::Mutex::new(Some(window_id)),
+      ));
 
       wef::set_menu_click_handler(move |id| {
         let _ = menu_tx.send(
           deno_runtime::ops::desktop::DesktopEvent::MenuClick {
             id: id.to_string(),
-          },
-        );
-      });
-      wef::on_keyboard_event(move |ev| {
-        let _ = kb_tx.send(
-          deno_runtime::ops::desktop::DesktopEvent::KeyboardEvent {
-            r#type: match ev.state {
-              wef::KeyState::Pressed => "keydown".to_string(),
-              wef::KeyState::Released => "keyup".to_string(),
-            },
-            key: ev.key,
-            code: ev.code,
-            shift: ev.modifiers.shift,
-            control: ev.modifiers.control,
-            alt: ev.modifiers.alt,
-            meta: ev.modifiers.meta,
-            repeat: ev.repeat,
-          },
-        );
-      });
-      // Wire WEF mouse click events to the unified event channel
-      wef::on_mouse_click(move |ev| {
-        let _ = mouse_click_tx.send(
-          deno_runtime::ops::desktop::DesktopEvent::MouseClick {
-            state: match ev.state {
-              wef::MouseButtonState::Pressed => "pressed".to_string(),
-              wef::MouseButtonState::Released => "released".to_string(),
-            },
-            button: match ev.button {
-              wef::MouseButton::Left => 0,
-              wef::MouseButton::Middle => 1,
-              wef::MouseButton::Right => 2,
-              wef::MouseButton::Back => 3,
-              wef::MouseButton::Forward => 4,
-              wef::MouseButton::Other(n) => n,
-            },
-            client_x: ev.x,
-            client_y: ev.y,
-            shift: ev.modifiers.shift,
-            control: ev.modifiers.control,
-            alt: ev.modifiers.alt,
-            meta: ev.modifiers.meta,
-            click_count: ev.click_count,
-          },
-        );
-      });
-      // Wire WEF mouse move events to the unified event channel
-      wef::on_mouse_move(move |ev| {
-        let _ = mouse_move_tx.send(
-          deno_runtime::ops::desktop::DesktopEvent::MouseMove {
-            client_x: ev.x,
-            client_y: ev.y,
-            shift: ev.modifiers.shift,
-            control: ev.modifiers.control,
-            alt: ev.modifiers.alt,
-            meta: ev.modifiers.meta,
-          },
-        );
-      });
-      // Wire WEF wheel events to the unified event channel
-      wef::on_wheel(move |ev| {
-        let _ = wheel_tx.send(
-          deno_runtime::ops::desktop::DesktopEvent::Wheel {
-            delta_x: ev.delta_x,
-            delta_y: ev.delta_y,
-            delta_mode: match ev.delta_mode {
-              wef::WheelDeltaMode::Pixel => 0,
-              wef::WheelDeltaMode::Line => 1,
-              wef::WheelDeltaMode::Page => 2,
-            },
-            client_x: ev.x,
-            client_y: ev.y,
-            shift: ev.modifiers.shift,
-            control: ev.modifiers.control,
-            alt: ev.modifiers.alt,
-            meta: ev.modifiers.meta,
           },
         );
       });
@@ -875,7 +954,7 @@ async fn run_desktop(update_rolled_back: bool) -> Result<(), AnyError> {
     denort::run::run_with_options(Arc::new(sys.clone()), sys, data, run_opts);
   let wef_fut = wef::run();
 
-  // Wait for the server to be ready, then navigate the webview.
+  // Wait for the server to be ready, then navigate the initial window.
   // Do a full HTTP request instead of just a TCP connect — frameworks
   // like Vite accept connections before they're ready to serve.
   let navigate_fut = async {
@@ -903,7 +982,8 @@ async fn run_desktop(update_rolled_back: bool) -> Result<(), AnyError> {
                 i + 1,
                 &url
               );
-              wef::navigate(&url);
+              let id = initial_window_id_for_navigate.load(Ordering::Acquire);
+              wef::Window::from_id(id).navigate(&url);
               return;
             }
           }
@@ -912,7 +992,8 @@ async fn run_desktop(update_rolled_back: bool) -> Result<(), AnyError> {
       tokio::time::sleep(std::time::Duration::from_millis(250)).await;
     }
     log::warn!("Server not ready after 15s, navigating anyway");
-    wef::navigate(&url);
+    let id = initial_window_id_for_navigate.load(Ordering::Acquire);
+    wef::Window::from_id(id).navigate(&url);
   };
 
   tokio::select! {

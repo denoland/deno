@@ -145,12 +145,13 @@ pub const DESKTOP_JS: &str = r#"
     internals.setEventTargetData,
   );
 
-  // Track the active BrowserWindow instance for event dispatch.
-  let activeWindow = null;
+  // Window registry: windowId -> BrowserWindow instance.
+  const windows = new Map();
   const nativeConstructor = BrowserWindow;
   const OrigBW = function(...args) {
     const instance = new nativeConstructor(...args);
-    activeWindow = instance;
+    const windowId = instance.getWindowId();
+    windows.set(windowId, instance);
     return instance;
   };
   Object.setPrototypeOf(OrigBW, nativeConstructor);
@@ -165,19 +166,32 @@ pub const DESKTOP_JS: &str = r#"
   internals.defineEventHandler(BrowserWindowPrototype, "dblclick");
   internals.defineEventHandler(BrowserWindowPrototype, "mousemove");
   internals.defineEventHandler(BrowserWindowPrototype, "wheel");
+  internals.defineEventHandler(BrowserWindowPrototype, "mouseenter");
+  internals.defineEventHandler(BrowserWindowPrototype, "mouseleave");
+  internals.defineEventHandler(BrowserWindowPrototype, "focus");
+  internals.defineEventHandler(BrowserWindowPrototype, "blur");
+  internals.defineEventHandler(BrowserWindowPrototype, "resize");
+  internals.defineEventHandler(BrowserWindowPrototype, "move");
+  internals.defineEventHandler(BrowserWindowPrototype, "close");
 
-  // Bind callback registry: name -> bound function
-  const bindCallbacks = new Map();
+  // Per-window bind callback registry: windowId -> Map<name, fn>
+  const windowBindCallbacks = new Map();
 
   const nativeBind = BrowserWindowPrototype.bind;
   BrowserWindowPrototype.bind = function(name, fn) {
-    bindCallbacks.set(name, fn.bind(this));
+    const windowId = this.getWindowId();
+    if (!windowBindCallbacks.has(windowId)) {
+      windowBindCallbacks.set(windowId, new Map());
+    }
+    windowBindCallbacks.get(windowId).set(name, fn.bind(this));
     nativeBind.call(this, name);
   };
 
   const nativeUnbind = BrowserWindowPrototype.unbind;
   BrowserWindowPrototype.unbind = function(name) {
-    bindCallbacks.delete(name);
+    const windowId = this.getWindowId();
+    const callbacks = windowBindCallbacks.get(windowId);
+    if (callbacks) callbacks.delete(name);
     nativeUnbind.call(this, name);
   };
 
@@ -198,7 +212,7 @@ pub const DESKTOP_JS: &str = r#"
           dispatchEvent(new CustomEvent("menuclick", { detail: { id: ev.id } }));
           break;
         case "keyboardEvent": {
-          const target = activeWindow;
+          const target = windows.get(ev.windowId);
           if (!target) break;
           target.dispatchEvent(new KeyboardEvent(ev.type, {
             key: ev.key,
@@ -212,7 +226,8 @@ pub const DESKTOP_JS: &str = r#"
           break;
         }
         case "bindCall": {
-          const fn_ = bindCallbacks.get(ev.name);
+          const callbacks = windowBindCallbacks.get(ev.windowId);
+          const fn_ = callbacks?.get(ev.name);
           if (!fn_) {
             op_desktop_reject_bind_call(ev.callId, "No callback bound for: " + ev.name);
             break;
@@ -227,7 +242,7 @@ pub const DESKTOP_JS: &str = r#"
           break;
         }
         case "mouseClick": {
-          const target = activeWindow;
+          const target = windows.get(ev.windowId);
           if (!target) break;
           const init = {
             button: ev.button,
@@ -253,7 +268,7 @@ pub const DESKTOP_JS: &str = r#"
           break;
         }
         case "mouseMove": {
-          const target = activeWindow;
+          const target = windows.get(ev.windowId);
           if (!target) break;
           target.dispatchEvent(new MouseEvent("mousemove", {
             clientX: ev.clientX,
@@ -266,7 +281,7 @@ pub const DESKTOP_JS: &str = r#"
           break;
         }
         case "wheel": {
-          const target = activeWindow;
+          const target = windows.get(ev.windowId);
           if (!target) break;
           target.dispatchEvent(new WheelEvent("wheel", {
             deltaX: ev.deltaX,
@@ -279,6 +294,49 @@ pub const DESKTOP_JS: &str = r#"
             altKey: ev.alt,
             metaKey: ev.meta,
           }));
+          break;
+        }
+        case "cursorEnterLeave": {
+          const target = windows.get(ev.windowId);
+          if (!target) break;
+          const init = {
+            clientX: ev.clientX,
+            clientY: ev.clientY,
+            ctrlKey: ev.control,
+            shiftKey: ev.shift,
+            altKey: ev.alt,
+            metaKey: ev.meta,
+          };
+          target.dispatchEvent(new MouseEvent(
+            ev.entered ? "mouseenter" : "mouseleave", init));
+          break;
+        }
+        case "focusChanged": {
+          const target = windows.get(ev.windowId);
+          if (!target) break;
+          target.dispatchEvent(new FocusEvent(ev.focused ? "focus" : "blur"));
+          break;
+        }
+        case "windowResize": {
+          const target = windows.get(ev.windowId);
+          if (!target) break;
+          target.dispatchEvent(new CustomEvent("resize", {
+            detail: { width: ev.width, height: ev.height },
+          }));
+          break;
+        }
+        case "windowMove": {
+          const target = windows.get(ev.windowId);
+          if (!target) break;
+          target.dispatchEvent(new CustomEvent("move", {
+            detail: { x: ev.x, y: ev.y },
+          }));
+          break;
+        }
+        case "closeRequested": {
+          const target = windows.get(ev.windowId);
+          if (!target) break;
+          target.dispatchEvent(new Event("close"));
           break;
         }
       }
@@ -381,6 +439,7 @@ pub fn desktop_auto_update_js(
 pub use deno_runtime::ops::desktop::DesktopEvent;
 pub use deno_runtime::ops::desktop::DesktopEventReceiver;
 pub use deno_runtime::ops::desktop::DesktopEventSender;
+pub use deno_runtime::ops::desktop::InitialWindowId;
 pub use deno_runtime::ops::desktop::PendingBindCall;
 pub use deno_runtime::ops::desktop::PendingBindResponses;
 pub use deno_runtime::ops::desktop::create_desktop_event_channel;
