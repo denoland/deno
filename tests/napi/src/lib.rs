@@ -21,7 +21,10 @@ pub mod coerce;
 pub mod date;
 pub mod env;
 pub mod error;
+pub mod exception;
+
 pub mod finalizer;
+pub mod handle_scope;
 pub mod instance_data;
 pub mod make_callback;
 pub mod mem;
@@ -30,6 +33,7 @@ pub mod object;
 pub mod object_wrap;
 pub mod primitives;
 pub mod promise;
+pub mod reference;
 pub mod properties;
 pub mod strings;
 pub mod symbol;
@@ -187,6 +191,9 @@ unsafe extern "C" fn napi_register_module_v1(
   uv::init(env, exports);
 
   instance_data::init(env, exports);
+  handle_scope::init(env, exports);
+  reference::init(env, exports);
+  exception::init(env, exports);
 
   init_cleanup_hook(env, exports);
 
