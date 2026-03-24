@@ -35,15 +35,13 @@ pub enum CSSValueCustomError {
     "contains relative <length> values that cannot be resolved at parse time"
   )]
   ContainsRelativeLengthValues,
-  #[error(
-    "contains <length-percentage> calculations that cannot be resolved at parse time"
-  )]
-  UnresolvableAtParseTime,
+  #[error("contains {0} calculations that cannot be resolved at parse time")]
+  ContainPercentAndDimensionCalculations(&'static str),
   #[error("cannot add or subtract different numeric types")]
   NumericTypeMismatch,
   #[error("the dimension of the calculation result is incorrect")]
   InvalidDimension,
-  #[error("contains invalid function name: {0}")]
+  #[error("contains invalid function: {0}")]
   InvalidFunction(String),
 }
 
@@ -620,11 +618,32 @@ impl MathValue {
     other: &MathValue,
   ) -> Result<(), CSSValueCustomError> {
     if self.dimension != other.dimension {
-      // <length-percentage>
-      if self.is_percent() && other.is_length()
-        || self.is_length() && other.is_percent()
-      {
-        return Err(CSSValueCustomError::UnresolvableAtParseTime);
+      if self.is_percent() || other.is_percent() {
+        if self.is_length() || other.is_length() {
+          return Err(
+            CSSValueCustomError::ContainPercentAndDimensionCalculations(
+              "<length-percentage>",
+            ),
+          );
+        } else if self.is_angle() || other.is_angle() {
+          return Err(
+            CSSValueCustomError::ContainPercentAndDimensionCalculations(
+              "<angle-percentage>",
+            ),
+          );
+        } else if self.is_time() || other.is_time() {
+          return Err(
+            CSSValueCustomError::ContainPercentAndDimensionCalculations(
+              "<time-percentage>",
+            ),
+          );
+        } else if self.is_frequency() || other.is_frequency() {
+          return Err(
+            CSSValueCustomError::ContainPercentAndDimensionCalculations(
+              "<frequency-percentage>",
+            ),
+          );
+        }
       }
       return Err(CSSValueCustomError::NumericTypeMismatch);
     }
@@ -638,11 +657,32 @@ impl MathValue {
     other: &MathValue,
   ) -> Result<(), CSSValueCustomError> {
     if self.dimension != other.dimension {
-      // <length-percentage>
-      if self.is_percent() && other.is_length()
-        || self.is_length() && other.is_percent()
-      {
-        return Err(CSSValueCustomError::UnresolvableAtParseTime);
+      if self.is_percent() || other.is_percent() {
+        if self.is_length() || other.is_length() {
+          return Err(
+            CSSValueCustomError::ContainPercentAndDimensionCalculations(
+              "<length-percentage>",
+            ),
+          );
+        } else if self.is_angle() || other.is_angle() {
+          return Err(
+            CSSValueCustomError::ContainPercentAndDimensionCalculations(
+              "<angle-percentage>",
+            ),
+          );
+        } else if self.is_time() || other.is_time() {
+          return Err(
+            CSSValueCustomError::ContainPercentAndDimensionCalculations(
+              "<time-percentage>",
+            ),
+          );
+        } else if self.is_frequency() || other.is_frequency() {
+          return Err(
+            CSSValueCustomError::ContainPercentAndDimensionCalculations(
+              "<frequency-percentage>",
+            ),
+          );
+        }
       }
       return Err(CSSValueCustomError::NumericTypeMismatch);
     }
