@@ -7,10 +7,10 @@ use std::path::PathBuf;
 
 use boxed_error::Boxed;
 use deno_config::workspace::Workspace;
-use deno_npm::npm_rc::NpmRc;
-use deno_npm::npm_rc::NpmRegistryUrl;
-use deno_npm::npm_rc::RegistryConfigWithUrl;
-use deno_npm::npm_rc::ResolvedNpmRc;
+use deno_npmrc::NpmRc;
+use deno_npmrc::NpmRegistryUrl;
+use deno_npmrc::RegistryConfigWithUrl;
+use deno_npmrc::ResolvedNpmRc;
 use sys_traits::EnvHomeDir;
 use sys_traits::EnvVar;
 use sys_traits::FsRead;
@@ -47,7 +47,7 @@ pub struct NpmRcLoadError {
 pub struct NpmRcParseError {
   path: PathBuf,
   #[source]
-  source: deno_npm::npm_rc::NpmRcParseError,
+  source: deno_npmrc::NpmRcParseError,
 }
 
 #[derive(Debug, Error)]
@@ -55,7 +55,7 @@ pub struct NpmRcParseError {
 pub struct NpmRcOptionsResolveError {
   path: PathBuf,
   #[source]
-  source: deno_npm::npm_rc::ResolveError,
+  source: deno_npmrc::ResolveError,
 }
 
 /// Discover `.npmrc` file - currently we only support it next to `package.json`,
@@ -224,7 +224,7 @@ fn discover_npmrc<TSys: EnvVar + EnvHomeDir + FsRead>(
 
 pub fn create_default_npmrc(sys: &impl EnvVar) -> ResolvedNpmRc {
   ResolvedNpmRc {
-    default_config: deno_npm::npm_rc::RegistryConfigWithUrl {
+    default_config: deno_npmrc::RegistryConfigWithUrl {
       registry_url: NpmRegistryUrl::for_npm(sys).url,
       config: Default::default(),
     },

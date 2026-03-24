@@ -1324,12 +1324,27 @@ macro_rules! attr {
   };
 }
 
+/// Convert the integer log level that ext/console uses to the corresponding
+/// OpenTelemetry log severity.
+fn severity_from_level(level: i32) -> Severity {
+  match level {
+    ..=0 => Severity::Debug,
+    1 => Severity::Info,
+    2 => Severity::Warn,
+    3 | 5.. => Severity::Error,
+    4 => Severity::Trace,
+  }
+}
+
 #[op2(fast)]
 fn op_otel_log<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   message: v8::Local<'s, v8::Value>,
   #[smi] level: i32,
   span: v8::Local<'s, v8::Value>,
+  #[string] exception_type: String,
+  #[string] exception_message: String,
+  #[string] exception_stacktrace: String,
 ) {
   let Some(OtelGlobals {
     log_processor,
@@ -1340,15 +1355,7 @@ fn op_otel_log<'s>(
     return;
   };
 
-  // Convert the integer log level that ext/console uses to the corresponding
-  // OpenTelemetry log severity.
-  let severity = match level {
-    ..=0 => Severity::Debug,
-    1 => Severity::Info,
-    2 => Severity::Warn,
-    3 | 5.. => Severity::Error,
-    4 => Severity::Trace,
-  };
+  let severity = severity_from_level(level);
 
   let mut log_record = LogRecord::default();
   let now = SystemTime::now();
@@ -1392,7 +1399,40 @@ fn op_otel_log<'s>(
     }
   }
 
+  otel_log_add_exception_attributes(
+    &mut log_record,
+    exception_type,
+    exception_message,
+    exception_stacktrace,
+  );
+
   log_processor.emit(&mut log_record, builtin_instrumentation_scope);
+}
+
+fn otel_log_add_exception_attributes(
+  log_record: &mut LogRecord,
+  exception_type: String,
+  exception_message: String,
+  exception_stacktrace: String,
+) {
+  if !exception_type.is_empty() {
+    log_record.add_attribute(
+      Key::from_static_str("exception.type"),
+      AnyValue::String(exception_type.into()),
+    );
+  }
+  if !exception_message.is_empty() {
+    log_record.add_attribute(
+      Key::from_static_str("exception.message"),
+      AnyValue::String(exception_message.into()),
+    );
+  }
+  if !exception_stacktrace.is_empty() {
+    log_record.add_attribute(
+      Key::from_static_str("exception.stacktrace"),
+      AnyValue::String(exception_stacktrace.into()),
+    );
+  }
 }
 
 #[op2(fast)]
@@ -1403,6 +1443,9 @@ fn op_otel_log_foreign(
   trace_id: v8::Local<'_, v8::Value>,
   span_id: v8::Local<'_, v8::Value>,
   #[smi] trace_flags: u8,
+  #[string] exception_type: String,
+  #[string] exception_message: String,
+  #[string] exception_stacktrace: String,
 ) {
   let Some(OtelGlobals {
     log_processor,
@@ -1413,15 +1456,7 @@ fn op_otel_log_foreign(
     return;
   };
 
-  // Convert the integer log level that ext/console uses to the corresponding
-  // OpenTelemetry log severity.
-  let severity = match level {
-    ..=0 => Severity::Debug,
-    1 => Severity::Info,
-    2 => Severity::Warn,
-    3 | 5.. => Severity::Error,
-    4 => Severity::Trace,
-  };
+  let severity = severity_from_level(level);
 
   let trace_id = parse_trace_id(scope, trace_id);
   let span_id = parse_span_id(scope, span_id);
@@ -1449,6 +1484,13 @@ fn op_otel_log_foreign(
       Some(TraceFlags::new(trace_flags)),
     );
   }
+
+  otel_log_add_exception_attributes(
+    &mut log_record,
+    exception_type,
+    exception_message,
+    exception_stacktrace,
+  );
 
   log_processor.emit(&mut log_record, builtin_instrumentation_scope);
 }
@@ -1607,8 +1649,8 @@ impl OtelTracer {
       links: SpanLinks::default(),
       instrumentation_scope: self.0.clone(),
     };
-    Ok(OtelSpan(RefCell::new(Box::new(OtelSpanState::Recording(
-      span_data,
+    Ok(OtelSpan(Rc::new(RefCell::new(Box::new(
+      OtelSpanState::Recording(span_data),
     )))))
   }
 
@@ -1676,8 +1718,8 @@ impl OtelTracer {
       links: SpanLinks::default(),
       instrumentation_scope: self.0.clone(),
     };
-    Ok(OtelSpan(RefCell::new(Box::new(OtelSpanState::Recording(
-      span_data,
+    Ok(OtelSpan(Rc::new(RefCell::new(Box::new(
+      OtelSpanState::Recording(span_data),
     )))))
   }
 }
@@ -1700,13 +1742,15 @@ struct OtelSpanCannotBeConstructedError;
 #[class(type)]
 struct InvalidSpanStatusCodeError;
 
-// boxed because of https://github.com/denoland/rusty_v8/issues/1676
-#[derive(Debug)]
-struct OtelSpan(RefCell<Box<OtelSpanState>>);
+// Rc-wrapped so the span can be shared between JS (via cppgc) and the HTTP
+// record (for copying attributes to metrics). The inner Box is kept to keep
+// the cppgc-traced struct small (see https://github.com/denoland/rusty_v8/issues/1676).
+#[derive(Debug, Clone)]
+pub struct OtelSpan(pub Rc<RefCell<Box<OtelSpanState>>>);
 
 #[derive(Debug)]
 #[allow(clippy::large_enum_variant, reason = "TODO: investigate")]
-enum OtelSpanState {
+pub enum OtelSpanState {
   Recording(SpanData),
   Done(SpanContext),
 }
