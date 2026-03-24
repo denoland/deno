@@ -131,9 +131,8 @@ pub fn make_wait_for_inspector_disconnect_callback() -> Box<dyn Fn()> {
     if !has_notified_of_inspector_disconnect
       .swap(true, std::sync::atomic::Ordering::SeqCst)
     {
-      log::info!(
-        "Program finished. Waiting for inspector to disconnect to exit the process..."
-      );
+      // Match Node.js message format that debugger clients rely on
+      log::info!("Waiting for the debugger to disconnect...");
     }
   })
 }
