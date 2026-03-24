@@ -772,6 +772,16 @@
           "default": true,
           "type": "boolean"
         },
+        "vueComponentCase": {
+          "description": "Case style for Vue component tags.",
+          "default": "ignore",
+          "enum": ["ignore", "pascal-case", "kebab-case"]
+        },
+        "angularNextControlFlowSameLine": {
+          "description": "Whether Angular next control-flow clauses stay on the same line.",
+          "default": true,
+          "type": "boolean"
+        },
         "options": {
           "type": "object",
           "properties": {

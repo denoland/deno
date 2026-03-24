@@ -24,12 +24,7 @@ extern "C" fn test_open_close_scope(
   // Return a value created in the outer (implicit) scope to prove
   // scope management does not crash.
   let mut result: napi_value = ptr::null_mut();
-  assert_napi_ok!(napi_create_string_utf8(
-    env,
-    c"ok".as_ptr(),
-    2,
-    &mut result
-  ));
+  assert_napi_ok!(napi_create_string_utf8(env, c"ok".as_ptr(), 2, &mut result));
   result
 }
 
@@ -81,8 +76,7 @@ extern "C" fn test_escape_twice(
 
   // Second escape should fail with napi_escape_called_twice.
   let mut second: napi_value = ptr::null_mut();
-  let status =
-    unsafe { napi_escape_handle(env, scope, inner, &mut second) };
+  let status = unsafe { napi_escape_handle(env, scope, inner, &mut second) };
   assert_eq!(status, Status::napi_escape_called_twice);
 
   assert_napi_ok!(napi_close_escapable_handle_scope(env, scope));

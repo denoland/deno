@@ -294,12 +294,7 @@ extern "C" fn test_delete_property(
   assert_eq!(argc, 2);
 
   let mut deleted = false;
-  assert_napi_ok!(napi_delete_property(
-    env,
-    args[0],
-    args[1],
-    &mut deleted
-  ));
+  assert_napi_ok!(napi_delete_property(env, args[0], args[1], &mut deleted));
 
   let mut result: napi_value = ptr::null_mut();
   assert_napi_ok!(napi_get_boolean(env, deleted, &mut result));
@@ -375,12 +370,7 @@ extern "C" fn test_delete_element(
   assert_napi_ok!(napi_get_value_uint32(env, args[1], &mut index));
 
   let mut deleted = false;
-  assert_napi_ok!(napi_delete_element(
-    env,
-    args[0],
-    index,
-    &mut deleted
-  ));
+  assert_napi_ok!(napi_delete_element(env, args[0], index, &mut deleted));
 
   let mut result: napi_value = ptr::null_mut();
   assert_napi_ok!(napi_get_boolean(env, deleted, &mut result));
@@ -433,12 +423,7 @@ extern "C" fn test_strict_equals(
   assert_eq!(argc, 2);
 
   let mut is_equal = false;
-  assert_napi_ok!(napi_strict_equals(
-    env,
-    args[0],
-    args[1],
-    &mut is_equal
-  ));
+  assert_napi_ok!(napi_strict_equals(env, args[0], args[1], &mut is_equal));
 
   let mut result: napi_value = ptr::null_mut();
   assert_napi_ok!(napi_get_boolean(env, is_equal, &mut result));

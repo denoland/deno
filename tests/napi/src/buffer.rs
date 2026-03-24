@@ -86,12 +86,7 @@ extern "C" fn test_is_buffer(
 ) -> napi_value {
   // Create a buffer
   let mut buf: napi_value = ptr::null_mut();
-  assert_napi_ok!(napi_create_buffer(
-    env,
-    5,
-    ptr::null_mut(),
-    &mut buf
-  ));
+  assert_napi_ok!(napi_create_buffer(env, 5, ptr::null_mut(), &mut buf));
 
   let mut is_buf = false;
   assert_napi_ok!(napi_is_buffer(env, buf, &mut is_buf));

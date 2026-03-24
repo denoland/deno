@@ -368,6 +368,16 @@ pub enum SeparatorKind {
   Comma,
 }
 
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, Hash, PartialEq)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+pub enum VueComponentCase {
+  Ignore,
+  #[serde(alias = "pascalCase", alias = "PascalCase")]
+  PascalCase,
+  #[serde(alias = "kebabCase")]
+  KebabCase,
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize, Hash, PartialEq)]
 #[serde(default, deny_unknown_fields, rename_all = "camelCase")]
 pub struct FmtOptionsConfig {
@@ -391,6 +401,8 @@ pub struct FmtOptionsConfig {
   pub type_literal_separator_kind: Option<SeparatorKind>,
   pub space_around: Option<bool>,
   pub space_surrounding_properties: Option<bool>,
+  pub vue_component_case: Option<VueComponentCase>,
+  pub angular_next_control_flow_same_line: Option<bool>,
 }
 
 impl FmtOptionsConfig {
@@ -415,6 +427,8 @@ impl FmtOptionsConfig {
       && self.type_literal_separator_kind.is_none()
       && self.space_around.is_none()
       && self.space_surrounding_properties.is_none()
+      && self.vue_component_case.is_none()
+      && self.angular_next_control_flow_same_line.is_none()
   }
 }
 
@@ -488,6 +502,8 @@ struct SerializedFmtConfig {
   pub type_literal_separator_kind: Option<SeparatorKind>,
   pub space_around: Option<bool>,
   pub space_surrounding_properties: Option<bool>,
+  pub vue_component_case: Option<VueComponentCase>,
+  pub angular_next_control_flow_same_line: Option<bool>,
   #[serde(rename = "options")]
   pub deprecated_options: FmtOptionsConfig,
   pub include: Option<Vec<String>>,
@@ -525,6 +541,9 @@ impl SerializedFmtConfig {
       type_literal_separator_kind: self.type_literal_separator_kind,
       space_around: self.space_around,
       space_surrounding_properties: self.space_surrounding_properties,
+      vue_component_case: self.vue_component_case,
+      angular_next_control_flow_same_line: self
+        .angular_next_control_flow_same_line,
     };
     if !self.deprecated_files.is_null() {
       log::warn!(
@@ -2404,7 +2423,9 @@ mod tests {
         "jsx.multiLineParens": "never",
         "typeLiteral.separatorKind": "semiColon",
         "spaceAround": true,
-        "spaceSurroundingProperties": true
+        "spaceSurroundingProperties": true,
+        "vueComponentCase": "pascal-case",
+        "angularNextControlFlowSameLine": false
       },
       "tasks": {
         "build": "deno run --allow-read --allow-write build.ts",
@@ -2478,6 +2499,8 @@ mod tests {
           type_literal_separator_kind: Some(SeparatorKind::SemiColon),
           space_around: Some(true),
           space_surrounding_properties: Some(true),
+          vue_component_case: Some(VueComponentCase::PascalCase),
+          angular_next_control_flow_same_line: Some(false),
         },
       }
     );

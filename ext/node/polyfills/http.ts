@@ -90,6 +90,7 @@ import {
 import { timerId } from "ext:deno_web/03_abort_signal.js";
 import { clearTimeout as webClearTimeout } from "ext:deno_web/02_timers.js";
 import { resourceForReadableStream } from "ext:deno_web/06_streams.js";
+import { kReinitializeHandle } from "ext:deno_node/internal/net.ts";
 import {
   kDestroyed,
   kEnded,
@@ -471,7 +472,9 @@ class ClientRequest extends OutgoingMessage {
             // we apply sock-init-workaround
             // This covers npm:ws and npm:mqtt
             // https://github.com/denoland/deno/issues/27694
-            newSocket._needsSockInitWorkaround = true;
+            if (newSocket.encrypted !== true) {
+              newSocket._needsSockInitWorkaround = true;
+            }
             oncreate(null, newSocket);
           }
         } catch (err) {
@@ -706,9 +709,41 @@ class ClientRequest extends OutgoingMessage {
               port: info[3],
             },
           );
-          const socket = new Socket({
-            handle: new TCP(constants.SOCKET, conn),
-          });
+          const upgradeHandle = new TCP(constants.SOCKET, conn);
+          let socket = this.socket;
+          // Only reuse the existing socket when it was provided via
+          // createConnection (encrypted TLS socket). For plain HTTP
+          // upgrades, create a fresh Socket to avoid dangling state.
+          if (
+            socket?.encrypted === true &&
+            socket?.[kReinitializeHandle]
+          ) {
+            if (this._socketErrorListener) {
+              socket.removeListener("error", this._socketErrorListener);
+              this._socketErrorListener = null;
+            }
+            socket.emit("agentRemove");
+            const tlsWrapState = socket.encrypted === true &&
+                socket._tlsUpgraded &&
+                socket._handle
+              ? {
+                verifyError: socket._handle.verifyError,
+                parentWrap: socket._handle._parentWrap,
+              }
+              : null;
+            if (tlsWrapState) {
+              delete socket._handle.afterConnectTls;
+            }
+            socket[kReinitializeHandle](upgradeHandle);
+            if (tlsWrapState) {
+              upgradeHandle.verifyError = tlsWrapState.verifyError;
+              upgradeHandle._parent = upgradeHandle;
+              upgradeHandle._parentWrap = tlsWrapState.parentWrap;
+              socket._tlsUpgraded = true;
+            }
+          } else {
+            socket = new Socket({ handle: upgradeHandle });
+          }
 
           this.upgradeOrConnect = true;
 
@@ -867,7 +902,9 @@ class ClientRequest extends OutgoingMessage {
         };
         this._socketErrorListener = socketErrorListener;
         socket.once("error", socketErrorListener);
-        if (socket.readyState === "opening") {
+        if (socket.encrypted === true && socket.secureConnecting) {
+          socket.once("secureConnect", onConnect);
+        } else if (socket.readyState === "opening") {
           socket.on("connect", onConnect);
         } else {
           onConnect();
