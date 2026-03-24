@@ -3,7 +3,8 @@
 import { once } from "node:events";
 import https from "node:https";
 import tls from "node:tls";
-import type { AddressInfo, Socket } from "node:net";
+import type { AddressInfo } from "node:net";
+import type { Duplex } from "node:stream";
 
 import { assert, assertStrictEquals } from "@std/assert";
 
@@ -19,7 +20,7 @@ Deno.test({
 }, async () => {
   const cert = Deno.readTextFileSync("tests/testdata/tls/localhost.crt");
   const key = Deno.readTextFileSync("tests/testdata/tls/localhost.key");
-  let serverSocket: Socket | undefined;
+  let serverSocket: Duplex | undefined;
 
   const server = https.createServer({ cert, key });
   server.on("upgrade", (_req, socket, _head) => {
@@ -56,31 +57,25 @@ Deno.test({
     },
   });
 
-  await new Promise<void>((resolve, reject) => {
-    req.on("upgrade", (_res, socket, _head) => {
-      try {
-        assertStrictEquals(socket, tlsSocket);
-        // @ts-ignore TLSSocket-specific property
-        assert(socket.encrypted);
-
-        const socketClosed = once(socket, "close");
-        const peerClosed = serverSocket
-          ? once(serverSocket, "close")
-          : Promise.resolve();
-        const serverClosed = once(server, "close");
-        socket.destroy();
-        serverSocket?.destroy();
-        server.close();
-        Promise.all([socketClosed, peerClosed, serverClosed]).then(
-          () => resolve(),
-          reject,
-        );
-      } catch (error) {
-        reject(error);
-      }
-    });
-
+  const [_res, socket, _head] = await new Promise<
+    [unknown, Duplex, unknown]
+  >((resolve, reject) => {
+    req.on("upgrade", (...args) => resolve(args));
     req.on("error", reject);
     req.end();
   });
+
+  assertStrictEquals(socket, tlsSocket);
+  // @ts-ignore TLSSocket-specific property
+  assert(socket.encrypted);
+
+  const socketClosed = once(socket, "close");
+  const peerClosed = serverSocket
+    ? once(serverSocket, "close")
+    : Promise.resolve();
+  const serverClosed = once(server, "close");
+  socket.destroy();
+  serverSocket?.destroy();
+  server.close();
+  await Promise.all([socketClosed, peerClosed, serverClosed]);
 });
