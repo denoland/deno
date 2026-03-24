@@ -832,7 +832,7 @@ impl TsFn {
     self.sender.spawn(move |scope: &mut v8::PinScope<'_, '_>| {
       let data = data.take();
 
-      // If is_closed then the TsFn struct has been freed — don't read from
+      // If is_closed then the TsFn struct has been freed. Don't read from
       // the tsfn pointer. We still pass the real env (not null) because:
       // 1. The env is valid (leaked via Box::into_raw, never freed)
       // 2. V8 is alive (we're running on the V8 thread with a scope)

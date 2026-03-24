@@ -141,7 +141,7 @@ unsafe extern "C" fn tsfn_call_js(
 ) {
   // Release the tsfn from the JS thread after being called.
   // We get the tsfn from the callback info that was stashed earlier.
-  // For simplicity, just do nothing here — the complete callback handles cleanup.
+  // For simplicity, just do nothing here. The complete callback handles cleanup.
   let _ = env;
 }
 
@@ -256,7 +256,7 @@ unsafe extern "C" fn tsfn_race_call_js(
   // Before the fix, env could be null here when the tsfn was already closed.
   assert!(
     !env.is_null(),
-    "call_js_cb received null env — this is the bug that crashes node-pty"
+    "call_js_cb received null env, this is the bug that crashes node-pty"
   );
   unsafe {
     let mut global: napi_value = ptr::null_mut();
@@ -349,7 +349,7 @@ extern "C" fn test_tsfn_close_race(
   // Thread B: releases the tsfn, which triggers the close (thread_count
   // drops from 1 to 0). The drop is queued via sender.spawn. If Thread A's
   // sender.spawn calls are interleaved with this, some calls will land in
-  // the queue after the drop — those calls see is_closed=true.
+  // the queue after the drop. Those calls see is_closed=true.
   let tsfn_b = tsfn_addr;
   std::thread::spawn(move || {
     let tsfn = tsfn_b as napi_threadsafe_function;
@@ -419,7 +419,7 @@ extern "C" fn test_tsfn_abort_race(
     }
   });
 
-  // Use abort mode to close — this forces close regardless of thread_count.
+  // Use abort mode to close. This forces close regardless of thread_count.
   let tsfn_b = tsfn_addr;
   std::thread::spawn(move || {
     let tsfn = tsfn_b as napi_threadsafe_function;
