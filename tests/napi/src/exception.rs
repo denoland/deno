@@ -121,11 +121,7 @@ extern "C" fn test_exception_from_call(
 
 pub fn init(env: napi_env, exports: napi_value) {
   let properties = &[
-    napi_new_property!(
-      env,
-      "test_exception_pending",
-      test_exception_pending
-    ),
+    napi_new_property!(env, "test_exception_pending", test_exception_pending),
     napi_new_property!(
       env,
       "test_get_clear_exception",
