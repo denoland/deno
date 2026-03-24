@@ -179,6 +179,9 @@ async function lintNodePolyfillDenoApis() {
     );
 
     const sourceFiles = await getSources(ROOT_PATH, [
+      "ext/node/polyfills/*.ts",
+      "ext/node/polyfills/*.js",
+      "ext/node/polyfills/*.mjs",
       "ext/node/polyfills/**/*.ts",
       "ext/node/polyfills/**/*.js",
       "ext/node/polyfills/**/*.mjs",
