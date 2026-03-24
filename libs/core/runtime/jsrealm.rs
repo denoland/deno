@@ -76,7 +76,8 @@ pub struct ContextState {
   pub(crate) user_timer: UserTimer<DefaultReactor>,
   // Per-phase JS callbacks for the event loop.
   // js_event_loop_tick_cb: the main event loop tick function that processes
-  // timers, resolves ops, and drains ticks in a single Rust-to-JS call.
+  // timers and resolves ops in a single Rust-to-JS call. Tick draining is
+  // handled separately by js_drain_next_tick_and_macrotasks_cb.
   pub(crate) js_event_loop_tick_cb: RefCell<Option<v8::Global<v8::Function>>>,
   // js_drain_next_tick_and_macrotasks_cb: drains nextTick/microtask queues
   // only (used in the I/O tight loop where timers/ops are not involved).

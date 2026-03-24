@@ -457,7 +457,7 @@
   // the nextTick-before-then invariant.
   function __eventLoopTick(timerNow) {
     // 1. Process expired timers if the timer deadline fired
-    if (timerNow > 0) {
+    if (timerNow >= 0) {
       timerExpiry[0] = __timers.processTimers(timerNow);
     }
     // 2. Resolve all completed async ops (args after timerNow)

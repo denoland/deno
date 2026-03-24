@@ -3030,9 +3030,9 @@ impl JsRuntime {
     dispatched
   }
 
-  /// Phase 2c: Combined event loop tick - process timers, resolve ops,
-  /// and drain nextTick/microtask queues in a single Rust-to-JS call
-  /// via `__eventLoopTick(timerNow, promiseId, isOk, res, ...)`.
+  /// Phase 2c: Combined event loop tick - process timers and resolve ops
+  /// in a single Rust-to-JS call via
+  /// `__eventLoopTick(timerNow, promiseId, isOk, res, ...)`.
   ///
   /// When `timer_ready` is true, the first arg is the current time for
   /// timer processing. When false, it is 0 (skip timers). Remaining args
@@ -3051,18 +3051,21 @@ impl JsRuntime {
     let mut args: SmallVec<[v8::Local<v8::Value>; 32]> =
       SmallVec::with_capacity(32);
 
-    // First arg: timer now (positive = process timers, 0 = skip)
+    // First arg: timer now (positive = process timers, -1 = skip)
     let timer_now = if timer_ready {
-      context_state.user_timer.now()
+      let now = context_state.user_timer.now();
+      // Ensure JS always sees a positive value when timers are ready,
+      // even if elapsed time is exactly 0.0 at startup.
+      if now <= 0.0 { f64::EPSILON } else { now }
     } else {
-      0.0
+      -1.0
     };
     args.push(v8::Number::new(scope, timer_now).into());
 
     // Remaining args: completed async ops as (promiseId, isOk, res) triplets
     loop {
-      // Account for the timerNow arg in the size check
-      if args.len() > MAX_VEC_SIZE_FOR_OPS {
+      // Ensure there is room for the next (promiseId, isOk, res) triplet
+      if args.len() + 3 > MAX_VEC_SIZE_FOR_OPS {
         cx.waker().wake_by_ref();
         break;
       }
