@@ -128,9 +128,6 @@ impl NpmInstallDepsProvider {
           &deps.dev_dependencies
         };
         for (alias, dep) in deps.dependencies.iter().chain(dev_deps.iter()) {
-          if skip_types && alias.starts_with("@types/") {
-            continue;
-          }
           let dep = match dep {
             Ok(dep) => dep,
             Err(err) => {
@@ -152,6 +149,9 @@ impl NpmInstallDepsProvider {
               })
             }
             PackageJsonDepValue::Req(pkg_req) => {
+              if skip_types && pkg_req.name.starts_with("@types/") {
+                continue;
+              }
               let workspace_pkg = workspace_npm_pkgs.iter().find(|pkg| {
                 pkg.matches_req(pkg_req)
                         // do not resolve to the current package
