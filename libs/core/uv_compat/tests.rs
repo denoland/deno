@@ -19,23 +19,10 @@ fn assert_ok(status: i32) {
 
 async fn run_test(f: impl AsyncFnOnce(&mut JsRuntime, *mut uv_loop_t)) {
   let mut runtime = JsRuntime::new(Default::default());
-  let uv_loop = Box::into_raw(Box::<uv_loop_t>::new_uninit());
-  let uv_loop = unsafe {
-    assert_ok(uv_loop_init(uv_loop.cast()));
-    uv_loop.cast()
-  };
-
-  unsafe {
-    runtime.register_uv_loop(uv_loop);
-  }
-
+  let uv_loop = runtime
+    .uv_loop_ptr()
+    .expect("JsRuntime should have a uv loop");
   f(&mut runtime, uv_loop).await;
-
-  unsafe {
-    uv_loop_close(uv_loop);
-  }
-  drop(runtime);
-  let _ = unsafe { Box::from_raw(uv_loop) };
 }
 
 /// Tick the event loop once with a real waker (so tokio's reactor works).
