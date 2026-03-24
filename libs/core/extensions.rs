@@ -159,7 +159,13 @@ impl ExtensionFileSource {
 
 pub type OpFnRef = v8::FunctionCallback;
 /// Function pointer type for the slow op implementation that returns a status code.
-/// 0 = success, nonzero = error (for sync ops: any nonzero; for async ops: 1 = error).
+///
+/// Status codes:
+/// - `0`: op completed synchronously without error.
+/// - `1`: op completed with an error/exception.
+/// - `2`: async op was deferred; completion/error metrics will be emitted later.
+///
+/// Sync ops only return `0` or `1`. Async ops may return `0`, `1`, or `2`.
 pub type SlowFnImplRef = fn(*const v8::FunctionCallbackInfo) -> usize;
 pub type OpMiddlewareFn = dyn Fn(OpDecl) -> OpDecl;
 pub type OpStateFn = dyn FnOnce(&mut OpState);
