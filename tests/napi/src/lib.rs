@@ -14,11 +14,13 @@ use napi_sys::*;
 
 pub mod array;
 pub mod arraybuffer;
+pub mod buffer;
 pub mod r#async;
 pub mod bigint;
 pub mod callback;
 pub mod coerce;
 pub mod date;
+pub mod dataview;
 pub mod env;
 pub mod error;
 pub mod exception;
@@ -191,6 +193,8 @@ unsafe extern "C" fn napi_register_module_v1(
   uv::init(env, exports);
 
   instance_data::init(env, exports);
+  buffer::init(env, exports);
+  dataview::init(env, exports);
   handle_scope::init(env, exports);
   reference::init(env, exports);
   exception::init(env, exports);
