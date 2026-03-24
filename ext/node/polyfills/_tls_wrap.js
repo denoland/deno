@@ -154,6 +154,9 @@ export class TLSSocket extends net.Socket {
     this.servername = null;
     this.alpnProtocol = null;
     this.alpnProtocols = tlsOptions.ALPNProtocols;
+    // Just a documented property to make secure sockets
+    // distinguishable from regular ones.
+    this.encrypted = true;
     this.authorized = false;
     this.authorizationError = null;
     this[kRes] = null;
@@ -195,11 +198,9 @@ export class TLSSocket extends net.Socket {
       const { promise, resolve } = Promise.withResolvers();
 
       // Set `afterConnectTls` hook. This is called in the `afterConnect` method of net.Socket
-      handle.afterConnectTls = async () => {
+      handle.afterConnectTls = async function () {
         options.hostname ??= undefined; // coerce to undefined if null, startTls expects hostname to be undefined
         if (tlssock._needsSockInitWorkaround) {
-          // skips the TLS handshake for @npmcli/agent as it's handled by
-          // onSocket handler of ClientRequest object.
           tlssock.emit("secure");
           tlssock.removeListener("end", onConnectEnd);
           return;
@@ -208,7 +209,7 @@ export class TLSSocket extends net.Socket {
         try {
           const conn = await startTls(
             wrap,
-            handle,
+            this,
             options,
           );
           try {
@@ -224,13 +225,14 @@ export class TLSSocket extends net.Socket {
           }
 
           // Assign the TLS connection to the handle and resume reading.
-          handle[kStreamBaseField] = conn;
-          handle.upgrading = false;
-          if (!handle.pauseOnCreate) {
-            handle.readStart();
+          this[kStreamBaseField] = conn;
+          this.upgrading = false;
+          if (!this.pauseOnCreate) {
+            this.readStart();
           }
 
-          resolve();
+          this.afterConnectTlsResolve?.();
+          delete this.afterConnectTlsResolve;
 
           tlssock.emit("secure");
           tlssock.removeListener("end", onConnectEnd);
@@ -239,6 +241,7 @@ export class TLSSocket extends net.Socket {
         }
       };
 
+      handle.afterConnectTlsResolve = resolve;
       handle.upgrading = promise;
       handle.verifyError = function () {
         return null; // Never fails, rejectUnauthorized is always true in Deno.
@@ -302,6 +305,8 @@ export class TLSSocket extends net.Socket {
 
 class JSStreamSocket {
   #rid;
+  #channelRid;
+  #closed = false;
 
   constructor(stream) {
     this.stream = stream;
@@ -310,7 +315,8 @@ class JSStreamSocket {
   init(options) {
     op_node_tls_start(options, tlsStreamRids);
     this.#rid = tlsStreamRids[0];
-    const channelRid = tlsStreamRids[1];
+    this.#channelRid = tlsStreamRids[1];
+    const channelRid = this.#channelRid;
 
     this.stream.on("data", (data) => {
       core.write(channelRid, data);
@@ -320,7 +326,9 @@ class JSStreamSocket {
     (async () => {
       while (true) {
         try {
-          const nread = await core.read(channelRid, buf);
+          const readPromise = core.read(channelRid, buf);
+          core.unrefOpPromise(readPromise);
+          const nread = await readPromise;
           this.stream.write(buf.slice(0, nread));
         } catch {
           break;
@@ -329,9 +337,31 @@ class JSStreamSocket {
     })();
 
     this.stream.on("close", () => {
-      core.close(this.#rid);
-      core.close(channelRid);
+      this.close();
     });
+  }
+
+  // Called by stream_wrap's _onClose() via kStreamBaseField.close(),
+  // or by event listeners when the transport/DuplexPair is destroyed.
+  close() {
+    if (this.#closed) return;
+    this.#closed = true;
+    if (this.#rid !== undefined) {
+      try {
+        core.close(this.#rid);
+      } catch {
+        // already closed
+      }
+      this.#rid = undefined;
+    }
+    if (this.#channelRid !== undefined) {
+      try {
+        core.close(this.#channelRid);
+      } catch {
+        // already closed
+      }
+      this.#channelRid = undefined;
+    }
   }
 
   handshake() {
@@ -339,7 +369,9 @@ class JSStreamSocket {
   }
 
   read(buf) {
-    return core.read(this.#rid, buf);
+    const promise = core.read(this.#rid, buf);
+    core.unrefOpPromise(promise);
+    return promise;
   }
 
   write(data) {

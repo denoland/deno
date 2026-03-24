@@ -43,9 +43,12 @@ import {
   AbortError,
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
+  ERR_INVALID_HANDLE_TYPE,
   ERR_INVALID_SYNC_FORK_INPUT,
   ERR_IPC_CHANNEL_CLOSED,
+  ERR_IPC_ONE_PIPE,
   ERR_IPC_SYNC_FORK,
+  ERR_MISSING_ARGS,
   ERR_UNKNOWN_SIGNAL,
 } from "ext:deno_node/internal/errors.ts";
 import { Buffer } from "node:buffer";
@@ -54,8 +57,8 @@ import { errnoException } from "ext:deno_node/internal/errors.ts";
 import { ErrnoException } from "ext:deno_node/_global.d.ts";
 import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
 import {
-  isInt32,
   validateBoolean,
+  validateInt32,
   validateObject,
   validateOneOf,
   validateString,
@@ -66,8 +69,10 @@ import process from "node:process";
 import { StringPrototypeSlice } from "ext:deno_node/internal/primordials.mjs";
 import { StreamBase } from "ext:deno_node/internal_binding/stream_wrap.ts";
 import { Pipe, socketType } from "ext:deno_node/internal_binding/pipe_wrap.ts";
-import { Socket } from "node:net";
+import { Server as NetServer, Socket } from "node:net";
+import { Socket as DgramSocket } from "node:dgram";
 import {
+  kArgv0,
   kExtraStdio,
   kInputOption,
   kIpc,
@@ -128,6 +133,7 @@ export function stdioStringToArray(
 const kClosesNeeded = Symbol("_closesNeeded");
 const kClosesReceived = Symbol("_closesReceived");
 const kCanDisconnect = Symbol("_canDisconnect");
+let emittedShellDeprecation = false;
 
 // We only want to emit a close event for the child process when all of
 // the writable streams have closed. The value of `child[kClosesNeeded]` should be 1 +
@@ -339,6 +345,8 @@ export class ChildProcess extends EventEmitter {
       windowsVerbatimArguments = false,
       detached,
       envPairs,
+      uid,
+      gid,
     } = options;
 
     // Convert envPairs array to env object
@@ -362,7 +370,9 @@ export class ChildProcess extends EventEmitter {
     ] = normalizedStdio;
 
     // buildCommand handles Node.js to Deno CLI arg translation when spawning Deno
-    // Note: args[0] is argv0 (prepended by normalizeSpawnArguments), so we skip it
+    // args[0] is argv0 (prepended by normalizeSpawnArguments). Capture it
+    // before slicing so we can pass it via kArgv0 for OS-level argv[0].
+    const argv0 = args.length > 0 ? args[0] : command;
     const [cmd, cmdArgs, includeNpmProcessState] = buildCommand(
       command,
       args.slice(1),
@@ -373,6 +383,9 @@ export class ChildProcess extends EventEmitter {
     this.spawnargs = [cmd, ...cmdArgs];
 
     const ipc = normalizedStdio.indexOf("ipc");
+    if (ipc !== -1 && normalizedStdio.indexOf("ipc", ipc + 1) !== -1) {
+      throw new ERR_IPC_ONE_PIPE();
+    }
 
     const extraStdioOffset = 3; // stdin, stdout, stderr
 
@@ -381,6 +394,11 @@ export class ChildProcess extends EventEmitter {
       const fd = i + extraStdioOffset;
       if (fd === ipc) extraStdioNormalized.push("null");
       extraStdioNormalized.push(toDenoStdio(extraStdio[i]));
+    }
+
+    // Windows does not support uid/gid options - throw ENOTSUP synchronously.
+    if (isWindows && (uid != null || gid != null)) {
+      throw _createSpawnError("ENOTSUP", command, args.slice(1));
     }
 
     try {
@@ -393,12 +411,15 @@ export class ChildProcess extends EventEmitter {
         stdout: toDenoStdio(stdout),
         stderr: toDenoStdio(stderr),
         windowsRawArguments: windowsVerbatimArguments,
+        uid,
+        gid,
         detached,
         [kSerialization]: serialization,
         [kIpc]: ipc, // internal
         [kExtraStdio]: extraStdioNormalized,
         [kNeedsNpmProcessState]: options[kNeedsNpmProcessState] ||
           includeNpmProcessState,
+        [kArgv0]: argv0 !== cmd ? argv0 : undefined,
       }).spawn();
       this.pid = this.#process.pid;
 
@@ -512,10 +533,17 @@ export class ChildProcess extends EventEmitter {
       });
 
       if (signal) {
+        const killSignal = options.killSignal ?? "SIGTERM";
         const onAbortListener = () => {
           try {
-            if (this.kill("SIGKILL")) {
-              this.emit("error", new AbortError());
+            if (this.kill(killSignal as string)) {
+              this.emit(
+                "error",
+                new AbortError(
+                  undefined,
+                  { cause: signal.reason },
+                ),
+              );
             }
           } catch (err) {
             this.emit("error", err);
@@ -563,8 +591,55 @@ export class ChildProcess extends EventEmitter {
       if (e instanceof Deno.errors.NotFound) {
         // args.slice(1) to exclude argv0 (prepended by normalizeSpawnArguments)
         e = _createSpawnError("ENOENT", command, args.slice(1));
+      } else if (e instanceof Deno.errors.PermissionDenied) {
+        // Node.js throws EPERM synchronously for uid/gid permission errors.
+        throw _createSpawnError("EPERM", command, args.slice(1));
       }
+
+      // Set up stdio streams even when spawn fails (Node.js creates pipes
+      // before the OS spawn call, so they exist regardless of spawn outcome).
+      if (stdin === "pipe") {
+        this.stdin = new Writable({
+          write(_chunk, _enc, cb) {
+            cb(new Error("spawn failed"));
+          },
+        });
+      }
+      if (stdout === "pipe") {
+        this.stdout = new Readable({ read() {} });
+        this[kClosesNeeded]++;
+        this.stdout.on("close", () => {
+          maybeClose(this);
+        });
+      }
+      if (stderr === "pipe") {
+        this.stderr = new Readable({ read() {} });
+        this[kClosesNeeded]++;
+        this.stderr.on("close", () => {
+          maybeClose(this);
+        });
+      }
+
+      this.stdio[0] = this.stdin;
+      this.stdio[1] = this.stdout;
+      this.stdio[2] = this.stderr;
+
       this.#_handleError(e);
+
+      // Destroy stdio streams and emit close (matching Node.js behavior
+      // where failed spawns still trigger 'close' but not 'exit').
+      nextTick(() => {
+        if (this.stdout) {
+          this.stdout.destroy();
+        }
+        if (this.stderr) {
+          this.stderr.destroy();
+        }
+        if (this.stdin) {
+          this.stdin.destroy();
+        }
+        maybeClose(this);
+      });
     }
   }
 
@@ -574,6 +649,17 @@ export class ChildProcess extends EventEmitter {
   kill(signal?: number | string): boolean {
     if (this.killed) {
       return this.killed;
+    }
+
+    // Signal 0 is a special case: it checks if the process exists
+    // without sending a signal (POSIX kill(pid, 0)).
+    if (signal === 0 || signal === "0") {
+      try {
+        process.kill(this.pid!, 0);
+        return true;
+      } catch {
+        return false;
+      }
     }
 
     const denoSignal = signal == null ? "SIGTERM" : toDenoSignal(signal);
@@ -596,6 +682,12 @@ export class ChildProcess extends EventEmitter {
     this.killed = true;
     this.signalCode = denoSignal;
     return this.killed;
+  }
+
+  [Symbol.dispose]() {
+    if (!this.killed) {
+      this.kill();
+    }
   }
 
   ref() {
@@ -986,13 +1078,13 @@ export function normalizeSpawnArguments(
   }
 
   // Validate the uid, if present.
-  if (options.uid != null && !isInt32(options.uid)) {
-    throw new ERR_INVALID_ARG_TYPE("options.uid", "int32", options.uid);
+  if (options.uid != null) {
+    validateInt32(options.uid, "options.uid");
   }
 
   // Validate the gid, if present.
-  if (options.gid != null && !isInt32(options.gid)) {
-    throw new ERR_INVALID_ARG_TYPE("options.gid", "int32", options.gid);
+  if (options.gid != null) {
+    validateInt32(options.gid, "options.gid");
   }
 
   // Validate the shell, if present.
@@ -1043,6 +1135,15 @@ export function normalizeSpawnArguments(
     // for shell interpretation, so don't escape.
     let command;
     if (args.length > 0) {
+      if (!emittedShellDeprecation) {
+        process.emitWarning(
+          "Passing args to a child process with shell option true can lead to security " +
+            "vulnerabilities, as the arguments are not escaped, only concatenated.",
+          "DeprecationWarning",
+          "DEP0190",
+        );
+        emittedShellDeprecation = true;
+      }
       const escapedParts = [escapeShellArg(file), ...args.map(escapeShellArg)];
       command = ArrayPrototypeJoin(escapedParts, " ");
     } else {
@@ -1093,10 +1194,9 @@ export function normalizeSpawnArguments(
 
   let envKeys: string[] = [];
   // Prototype values are intentionally included.
+  // deno-lint-ignore guard-for-in
   for (const key in env) {
-    if (Object.hasOwn(env, key)) {
-      ArrayPrototypePush(envKeys, key);
-    }
+    ArrayPrototypePush(envKeys, key);
   }
 
   if (process.platform === "win32") {
@@ -1284,13 +1384,15 @@ function transformDenoShellCommand(
         return a;
       })
       : result.deno_args.map((a) => {
-        // POSIX: args with shell variable refs use double quotes to
-        // preserve variable expansion. Other metacharacters use single
-        // quotes.
-        if (/\$\{[^}]+\}|\$[A-Za-z_]/.test(a)) {
-          return '"' + a.replace(/"/g, '\\"') + '"';
-        }
-        if (/[();&|<>`!\n\r\s"'\\$]/.test(a)) {
+        // POSIX shell quoting for translated args.
+        const hasShellVarRef = /\$\{[^}]+\}|\$[A-Za-z_]/.test(a);
+        const unsafeInDoubleQuotes = /`|\$\(|\\/.test(a);
+        const hasShellMetachars = /[();&|<>`!\n\r\s"'\\$]/.test(a);
+
+        if (hasShellMetachars) {
+          if (hasShellVarRef && !unsafeInDoubleQuotes) {
+            return '"' + a.replace(/"/g, '\\"') + '"';
+          }
           return "'" + a.replace(/'/g, "'\\''") + "'";
         }
         return a;
@@ -1454,6 +1556,21 @@ function buildCommand(
   return [file, args, includeNpmProcessState];
 }
 
+// deno-lint-ignore no-explicit-any
+function restorePrototype(obj: any) {
+  if (obj === null || typeof obj !== "object") return;
+  if (Array.isArray(obj)) {
+    for (let i = 0; i < obj.length; i++) {
+      restorePrototype(obj[i]);
+    }
+    return;
+  }
+  Object.setPrototypeOf(obj, Object.prototype);
+  for (const key of Object.keys(obj)) {
+    restorePrototype(obj[key]);
+  }
+}
+
 function _createSpawnError(
   status: string,
   command: string,
@@ -1528,10 +1645,7 @@ function normalizeInput(input: unknown) {
   if (typeof input === "string") {
     return Buffer.from(input);
   }
-  if (input instanceof Uint8Array) {
-    return input;
-  }
-  if (input instanceof DataView) {
+  if (ArrayBuffer.isView(input)) {
     return Buffer.from(input.buffer, input.byteOffset, input.byteLength);
   }
   throw new ERR_INVALID_ARG_TYPE("input", [
@@ -1565,7 +1679,9 @@ export function spawnSync(
     _channel, // TODO(kt3k): handle this correctly
   ] = normalizeStdioOption(stdio);
   let includeNpmProcessState = false;
-  // Skip argv0 when calling buildCommand (same as #spawnInternal)
+  // args[0] is argv0 (prepended by normalizeSpawnArguments). Capture it
+  // before slicing so we can pass it via kArgv0 for OS-level argv[0].
+  const argv0 = args && args.length > 0 ? args[0] : command;
   const argsToProcess = args && args.length > 0 ? args.slice(1) : [];
   [command, args, includeNpmProcessState] = buildCommand(
     command,
@@ -1580,6 +1696,7 @@ export function spawnSync(
       args,
       cwd,
       env: mapValues(env, (value) => value.toString()),
+      [kArgv0]: argv0 !== command ? argv0 : undefined,
       stdout: toDenoStdio(stdout_),
       stderr: toDenoStdio(stderr_),
       stdin: stdin_ == "inherit" ? "inherit" : "null",
@@ -1743,6 +1860,11 @@ export function setupChannel(
             // TODO(nathanwhit): once we add support for sending
             // handles, if we want to support deno-node IPC interop,
             // we'll need to handle the NODE_HANDLE_* messages here.
+            // Emit as internalMessage for internal consumers.
+            if (serialization === "json") {
+              restorePrototype(msg);
+            }
+            nextTick(() => target.emit("internalMessage", msg));
             continue;
           }
         }
@@ -1762,6 +1884,11 @@ export function setupChannel(
   function handleMessage(msg) {
     if (!target.channel) {
       return;
+    }
+    // serde_v8 deserializes objects with null prototype, but Node.js IPC
+    // messages should have Object.prototype (as if from JSON.parse).
+    if (serialization === "json") {
+      restorePrototype(msg);
     }
     if (target.listenerCount("message") !== 0) {
       target.emit("message", msg);
@@ -1798,10 +1925,33 @@ export function setupChannel(
     options = { swallowErrors: false, ...options };
 
     if (message === undefined) {
-      throw new TypeError("ERR_MISSING_ARGS", "message");
+      throw new ERR_MISSING_ARGS("message");
+    }
+
+    if (
+      typeof message !== "string" &&
+      typeof message !== "object" &&
+      typeof message !== "number" &&
+      typeof message !== "boolean" &&
+      typeof message !== "bigint"
+    ) {
+      throw new ERR_INVALID_ARG_TYPE(
+        "message",
+        ["string", "object", "number", "boolean"],
+        message,
+      );
     }
 
     if (handle !== undefined) {
+      // Validate handle type before rejecting as not implemented.
+      // Node.js only accepts net.Server, net.Socket, or dgram.Socket.
+      if (
+        !(handle instanceof Socket) &&
+        !(handle instanceof NetServer) &&
+        !(handle instanceof DgramSocket)
+      ) {
+        throw new ERR_INVALID_HANDLE_TYPE();
+      }
       notImplemented("ChildProcess.send with handle");
     }
 

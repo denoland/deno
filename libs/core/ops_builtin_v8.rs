@@ -124,66 +124,60 @@ pub fn op_leak_tracing_get<'s, 'i>(
   )
 }
 
-/// Queue a timer. We return a "large integer" timer ID in an f64 which allows for up
-/// to `MAX_SAFE_INTEGER` (2^53) timers to exist, versus 2^32 timers if we used
-/// `u32`.
+/// Schedule the user-timer wake-up.
+///
+/// - `delay_ms >= 0`: schedule a wakeup in `delay_ms` milliseconds
+/// - `delay_ms == -1`: ref the timer handle (keep event loop alive)
+/// - `delay_ms == -2`: unref the timer handle (allow event loop to exit)
 #[op2(fast)]
-pub fn op_timer_queue(
-  scope: &mut v8::PinScope,
-  depth: u32,
-  repeat: bool,
-  timeout_ms: f64,
-  task: v8::Local<v8::Function>,
-) -> f64 {
-  let task = v8::Global::new(scope, task);
+pub fn op_timer_schedule(scope: &mut v8::PinScope, delay_ms: f64) {
   let context_state = JsRealm::state_from_scope(scope);
-  if repeat {
-    context_state
-      .timers
-      .queue_timer_repeat(timeout_ms as _, (task, depth)) as _
+  if delay_ms == -1.0 {
+    context_state.user_timer.ref_timer();
+  } else if delay_ms == -2.0 {
+    context_state.user_timer.unref_timer();
   } else {
     context_state
-      .timers
-      .queue_timer(timeout_ms as _, (task, depth)) as _
+      .user_timer
+      .schedule(std::time::Duration::from_millis(delay_ms as u64));
   }
 }
 
-/// Queue a timer. We return a "large integer" timer ID in an f64 which allows for up
-/// to `MAX_SAFE_INTEGER` (2^53) timers to exist, versus 2^32 timers if we used
-/// `u32`.
+/// Register a JS-managed timer with the Rust stats system for leak detection.
+/// System timers (e.g. AbortSignal.timeout) are tracked but excluded from
+/// sanitizer stats, matching the old `op_timer_queue_system` behavior.
 #[op2(fast)]
-pub fn op_timer_queue_system(
+pub fn op_timer_track(
   scope: &mut v8::PinScope,
-  repeat: bool,
-  timeout_ms: f64,
-  task: v8::Local<v8::Function>,
-) -> f64 {
-  let task = v8::Global::new(scope, task);
+  #[smi] id: i32,
+  is_repeat: bool,
+  is_system: bool,
+) {
   let context_state = JsRealm::state_from_scope(scope);
   context_state
-    .timers
-    .queue_system_timer(repeat, timeout_ms as _, (task, 0)) as _
+    .active_timers
+    .borrow_mut()
+    .insert(id as usize, (is_repeat, is_system));
 }
 
+/// Unregister a JS-managed timer from the Rust stats system.
 #[op2(fast)]
-pub fn op_timer_cancel(scope: &mut v8::PinScope, id: f64) {
+pub fn op_timer_untrack(scope: &mut v8::PinScope, #[smi] id: i32) {
   let context_state = JsRealm::state_from_scope(scope);
-  context_state.timers.cancel_timer(id as _);
+  context_state
+    .active_timers
+    .borrow_mut()
+    .remove(&(id as usize));
   context_state
     .activity_traces
-    .complete(RuntimeActivityType::Timer, id as _);
+    .complete(RuntimeActivityType::Timer, id as usize);
 }
 
+/// Get the current monotonic time in milliseconds (relative to process start).
 #[op2(fast)]
-pub fn op_timer_ref(scope: &mut v8::PinScope, id: f64) {
+pub fn op_timer_now(scope: &mut v8::PinScope) -> f64 {
   let context_state = JsRealm::state_from_scope(scope);
-  context_state.timers.ref_timer(id as _);
-}
-
-#[op2(fast)]
-pub fn op_timer_unref(scope: &mut v8::PinScope, id: f64) {
-  let context_state = JsRealm::state_from_scope(scope);
-  context_state.timers.unref_timer(id as _);
+  context_state.user_timer.now()
 }
 
 #[op2(reentrant)]
@@ -212,66 +206,33 @@ pub fn op_run_microtasks(isolate: &mut v8::Isolate) {
   isolate.perform_microtask_checkpoint()
 }
 
-#[op2(fast)]
-pub fn op_has_tick_scheduled(scope: &mut v8::PinScope) -> bool {
-  JsRealm::state_from_scope(scope)
-    .has_next_tick_scheduled
-    .get()
-}
-
-#[op2(fast)]
-pub fn op_set_has_tick_scheduled(scope: &mut v8::PinScope, v: bool) {
-  JsRealm::state_from_scope(scope)
-    .has_next_tick_scheduled
-    .set(v);
-}
-
-#[op2(fast)]
-pub fn op_immediate_count(scope: &mut v8::PinScope, increase: bool) -> u32 {
-  let state = JsRealm::state_from_scope(scope);
-  let mut immediate_info = state.immediate_info.borrow_mut();
-
-  if increase {
-    immediate_info.count += 1;
-  } else {
-    immediate_info.count -= 1;
+/// Drain all pending promise rejections from the Rust-side queue and return
+/// them as a flat JS array: [promise, reason, asyncContext, ...].
+/// Returns an empty array if there are no pending rejections.
+/// This allows JS-side processTicksAndRejections to interleave rejection
+/// processing with tick draining, matching Node.js behavior.
+#[op2]
+pub fn op_drain_pending_rejections<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+) -> v8::Local<'s, v8::Value> {
+  let exception_state = JsRealm::exception_state_from_scope(scope);
+  let mut pending = exception_state.pending_promise_rejections.borrow_mut();
+  if pending.is_empty() {
+    return v8::undefined(scope).into();
   }
-
-  immediate_info.count
-}
-
-#[op2(fast)]
-pub fn op_immediate_ref_count(scope: &mut v8::PinScope, increase: bool) -> u32 {
-  let state = JsRealm::state_from_scope(scope);
-  let mut immediate_info = state.immediate_info.borrow_mut();
-
-  if increase {
-    immediate_info.ref_count += 1;
-  } else {
-    immediate_info.ref_count -= 1;
+  let len = pending.len();
+  let arr = v8::Array::new(scope, (len * 3) as i32);
+  let mut idx = 0u32;
+  while let Some((promise, reason, async_context)) = pending.pop_front() {
+    let p = v8::Local::new(scope, promise);
+    let r = v8::Local::new(scope, reason);
+    let c = v8::Local::new(scope, async_context);
+    arr.set_index(scope, idx, p.into());
+    arr.set_index(scope, idx + 1, r);
+    arr.set_index(scope, idx + 2, c);
+    idx += 3;
   }
-
-  immediate_info.ref_count
-}
-
-#[op2(fast)]
-pub fn op_immediate_set_has_outstanding(
-  scope: &mut v8::PinScope,
-  has_outstanding: bool,
-) {
-  JsRealm::state_from_scope(scope)
-    .immediate_info
-    .borrow_mut()
-    .has_outstanding = has_outstanding;
-}
-
-#[op2(fast)]
-pub fn op_immediate_has_ref_count(scope: &mut v8::PinScope) -> bool {
-  JsRealm::state_from_scope(scope)
-    .immediate_info
-    .borrow()
-    .ref_count
-    > 0
+  arr.into()
 }
 
 pub struct EvalContextError<'s> {
@@ -416,6 +377,133 @@ pub fn op_eval_context<'s, 'i>(
   }
 }
 
+#[op2(reentrant)]
+pub fn op_compile_function<'s, 'i>(
+  scope: &mut v8::PinScope<'s, 'i>,
+  source: v8::Local<'s, v8::Value>,
+  #[string] specifier: String,
+  host_defined_options: Option<v8::Local<'s, v8::Array>>,
+  params_buf: v8::Local<'s, v8::Array>,
+) -> Result<v8::Local<'s, v8::Value>, JsErrorBox> {
+  let out = v8::Array::new(scope, 2);
+  let state = JsRuntime::state_from(scope);
+  v8::tc_scope!(let tc_scope, scope);
+
+  let source = v8::Local::<v8::String>::try_from(source)
+    .map_err(|_| JsErrorBox::type_error("Invalid source"))?;
+  let specifier = resolve_url(&specifier).map_err(JsErrorBox::from_err)?;
+  let specifier_v8 = v8::String::new(tc_scope, specifier.as_str()).unwrap();
+  let host_defined_options = match host_defined_options {
+    Some(array) => {
+      let output = v8::PrimitiveArray::new(tc_scope, array.length() as _);
+      for i in 0..array.length() {
+        let value = array.get_index(tc_scope, i).unwrap();
+        let value = value
+          .try_cast::<v8::Primitive>()
+          .map_err(|e| JsErrorBox::from_err(crate::error::DataError(e)))?;
+        output.set(tc_scope, i as _, value);
+      }
+      Some(output.into())
+    }
+    None => None,
+  };
+  let origin =
+    script_origin(tc_scope, specifier_v8, false, host_defined_options);
+
+  let mut params = Vec::with_capacity(params_buf.length() as _);
+  for i in 0..params_buf.length() {
+    let ext = params_buf
+      .get_index(tc_scope, i)
+      .unwrap()
+      .try_into()
+      .unwrap();
+    params.push(ext);
+  }
+
+  let (maybe_function, maybe_code_cache_hash) = state
+    .eval_context_get_code_cache_cb
+    .borrow()
+    .as_ref()
+    .map(|cb| {
+      let code_cache = cb(&specifier, &source).unwrap();
+      if let Some(code_cache_data) = &code_cache.data {
+        let mut source = v8::script_compiler::Source::new_with_cached_data(
+          source,
+          Some(&origin),
+          v8::CachedData::new(code_cache_data),
+        );
+        let function = v8::script_compiler::compile_function(
+          tc_scope,
+          &mut source,
+          &params,
+          &[],
+          v8::script_compiler::CompileOptions::ConsumeCodeCache,
+          v8::script_compiler::NoCacheReason::NoReason,
+        );
+        // Check if the provided code cache is rejected by V8.
+        let rejected = match source.get_cached_data() {
+          Some(cached_data) => cached_data.rejected(),
+          _ => true,
+        };
+        let maybe_code_cache_hash = if rejected {
+          Some(code_cache.hash) // recreate the cache
+        } else {
+          None
+        };
+        (Some(function), maybe_code_cache_hash)
+      } else {
+        (None, Some(code_cache.hash))
+      }
+    })
+    .unwrap_or_else(|| (None, None));
+
+  let function = match maybe_function {
+    Some(f) => f,
+    None => {
+      let mut source = v8::script_compiler::Source::new(source, Some(&origin));
+      v8::script_compiler::compile_function(
+        tc_scope,
+        &mut source,
+        &params,
+        &[],
+        v8::script_compiler::CompileOptions::NoCompileOptions,
+        v8::script_compiler::NoCacheReason::NoReason,
+      )
+    }
+  };
+
+  let null = v8::null(tc_scope);
+  let function = match function {
+    Some(s) => s,
+    None => {
+      assert!(tc_scope.has_caught());
+      let exception = tc_scope.exception().unwrap();
+      let e = EvalContextError {
+        thrown: exception,
+        is_native_error: is_instance_of_error(tc_scope, exception),
+        is_compile_error: true,
+      };
+      let eval_context_error = e.to_v8(tc_scope);
+      out.set_index(tc_scope, 0, null.into());
+      out.set_index(tc_scope, 1, eval_context_error);
+      return Ok(out.into());
+    }
+  };
+
+  if let Some(code_cache_hash) = maybe_code_cache_hash
+    && let Some(cb) = state.eval_context_code_cache_ready_cb.borrow().as_ref()
+  {
+    let code_cache = function.create_code_cache().ok_or_else(|| {
+      JsErrorBox::type_error("Unable to create code cache from function")
+    })?;
+    cb(specifier, code_cache_hash, &code_cache);
+  };
+
+  out.set_index(tc_scope, 0, function.into());
+  out.set_index(tc_scope, 1, null.into());
+  Ok(out.into())
+}
+
 #[op2]
 pub fn op_encode<'s, 'i>(
   scope: &mut v8::PinScope<'s, 'i>,
@@ -471,7 +559,7 @@ struct SerializeDeserialize<'a> {
 }
 
 impl v8::ValueSerializerImpl for SerializeDeserialize<'_> {
-  #[allow(unused_variables)]
+  #[allow(unused_variables, reason = "parameters required by trait")]
   fn throw_data_clone_error<'s, 'i>(
     &self,
     scope: &mut v8::PinScope<'s, 'i>,
@@ -754,7 +842,7 @@ pub fn op_serialize<'s, 'i>(
   }
 }
 
-#[op2]
+#[op2(reentrant)]
 pub fn op_deserialize<'s, 'i>(
   scope: &mut v8::PinScope<'s, 'i>,
   #[buffer] zero_copy: JsBuffer,
@@ -1130,7 +1218,7 @@ pub fn op_set_wasm_streaming_callback(
 
 // This op is re-entrant as it makes a v8 call. It also cannot be fast because
 // we require a JS execution scope.
-#[allow(clippy::let_and_return)]
+#[allow(clippy::let_and_return, reason = "improves readability")]
 #[op2(nofast, reentrant)]
 pub fn op_abort_wasm_streaming(
   state: Rc<RefCell<OpState>>,

@@ -18,18 +18,15 @@ import {
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 98;
+const cacheVersion = 104;
 
 const ubuntuX86Runner = "ubuntu-24.04";
-const ubuntuX86XlRunner = "ghcr.io/cirruslabs/ubuntu-runner-amd64:24.04";
-const ubuntuARMXlRunner = "ghcr.io/cirruslabs/ubuntu-runner-arm64:24.04-plus";
 const ubuntuARMRunner = "ubuntu-24.04-arm";
 const windowsX86Runner = "windows-2022";
 const windowsX86XlRunner = "windows-2022-xl";
 const windowsArmRunner = "windows-11-arm";
 const macosX86Runner = "macos-15-intel";
 const macosArmRunner = "macos-14";
-const selfHostedMacosArmRunner = "ghcr.io/cirruslabs/macos-runner:sonoma";
 
 // shared conditions
 const isDenoland = conditions.isRepository("denoland/deno");
@@ -50,14 +47,12 @@ const Runners = {
   linuxX86Xl: {
     os: "linux",
     arch: "x86_64",
-    runner: isDenoland.then(ubuntuX86XlRunner).else(ubuntuX86Runner),
-    testRunner: ubuntuX86Runner,
+    runner: ubuntuX86Runner,
   },
   linuxArm: {
     os: "linux",
     arch: "aarch64",
-    runner: ubuntuARMXlRunner,
-    testRunner: ubuntuARMRunner,
+    runner: ubuntuARMRunner,
   },
   macosX86: {
     os: "macos",
@@ -72,10 +67,7 @@ const Runners = {
   macosArmSelfHosted: {
     os: "macos",
     arch: "aarch64",
-    // actually use self-hosted runner only in denoland/deno on `main` branch and for tags (release) builds
-    runner: isDenoland.and(isMainOrTag).then(selfHostedMacosArmRunner)
-      .else(macosArmRunner),
-    testRunner: macosArmRunner,
+    runner: macosArmRunner,
   },
   windowsX86: {
     os: "windows",
@@ -293,7 +285,7 @@ function createRestoreAndSaveCacheSteps(m: {
   const path = m.path.join("\n");
   const restoreCacheStep = step({
     name: `Restore cache ${m.name}`,
-    uses: "cirruslabs/cache/restore@v4",
+    uses: "actions/cache/restore@v4",
     with: {
       path,
       key: "never_saved",
@@ -302,7 +294,7 @@ function createRestoreAndSaveCacheSteps(m: {
   });
   const saveCacheStep = step({
     name: `Cache ${m.name}`,
-    uses: "cirruslabs/cache/save@v4",
+    uses: "actions/cache/save@v4",
     with: {
       path,
       // We force saving a new cache on every main run so that PRs can
@@ -485,15 +477,28 @@ const preBuildCheckStep = step({
   outputs: ["skip_build"] as const,
 });
 
+const denoCoreChangesCheckStep = step({
+  id: "deno_core_changes",
+  run: [
+    // Fetch the base SHA so it's available even in shallow clones
+    `git fetch --depth=1 origin \${{ github.event.pull_request.base.sha }}`,
+    `deno run -A tools/check_deno_core_changes.js \${{ github.event.pull_request.base.sha }}`,
+  ],
+  outputs: ["skip_deno_core_test"] as const,
+});
+
 const preBuildJob = job("pre_build", {
   name: "pre-build",
   runsOn: "ubuntu-latest",
-  steps: step.if(conditions.isDraftPr())(
+  steps: step.if(isPr)(
     cloneRepoStep,
-    preBuildCheckStep,
+    installDenoStep,
+    step.if(conditions.isDraftPr())(preBuildCheckStep),
+    denoCoreChangesCheckStep,
   ),
   outputs: {
     skip_build: preBuildCheckStep.outputs.skip_build,
+    skip_deno_core_test: denoCoreChangesCheckStep.outputs.skip_deno_core_test,
   },
 });
 
@@ -1236,7 +1241,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
         name: jobNameForJob("wpt"),
         needs: [buildJob],
         runsOn: buildItem.testRunner ?? buildItem.runner,
-        timeoutMinutes: 240,
+        timeoutMinutes: 30,
         defaults,
         env,
         steps: step.if(isNotTag.and(buildItem.skip.not()))(
@@ -1260,7 +1265,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
               "deno run -RWNE --allow-run --lock=tools/deno.lock.json --config tests/config/deno.json \\",
               "    ./tests/wpt/wpt.ts setup",
               "deno run -RWNE --allow-run --lock=tools/deno.lock.json --config tests/config/deno.json --unsafely-ignore-certificate-errors \\",
-              '    ./tests/wpt/wpt.ts run --quiet --binary="$DENO_BIN"',
+              '    ./tests/wpt/wpt.ts run --all --quiet --binary="$DENO_BIN"',
             ],
           },
           {
@@ -1273,7 +1278,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
               "deno run -RWNE --allow-run --lock=tools/deno.lock.json --config tests/config/deno.json \\",
               "    ./tests/wpt/wpt.ts setup",
               "deno run -RWNE --allow-run --lock=tools/deno.lock.json --config tests/config/deno.json --unsafely-ignore-certificate-errors \\",
-              '    ./tests/wpt/wpt.ts run --quiet --release --binary="$DENO_BIN" --json=wpt.json --wptreport=wptreport.json',
+              '    ./tests/wpt/wpt.ts run --all --quiet --release --binary="$DENO_BIN" --json=wpt.json --wptreport=wptreport.json',
             ],
           },
           {
@@ -1532,7 +1537,8 @@ const denoCoreTestCacheSteps = createCacheSteps({
 const denoCoreTestJob = job("deno-core-test", {
   name: `deno_core test linux-x86_64`,
   needs: [preBuildJob],
-  if: preBuildJob.outputs.skip_build.notEquals("true"),
+  if: preBuildJob.outputs.skip_build.notEquals("true")
+    .and(preBuildJob.outputs.skip_deno_core_test.notEquals("true")),
   runsOn: denoCoreTestProfile.runner,
   timeoutMinutes: 60,
   defaults: {
@@ -1635,10 +1641,10 @@ const denoCoreMiriJob = job("deno-core-miri", {
   ),
 });
 
-// === lint ci status job (status check gate) ===
+// === ci status job (status check gate) ===
 
-const lintCiStatusJob = job("lint-ci-status", {
-  name: "lint ci status",
+const ciStatusJob = job("ci-status", {
+  name: "ci status",
   // We use this job in the main branch rule status checks for PRs.
   // All jobs that are required to pass on a PR should be listed here.
   needs: [
@@ -1698,7 +1704,7 @@ const workflow = createWorkflow({
     lintJob,
     denoCoreTestJob,
     denoCoreMiriJob,
-    lintCiStatusJob,
+    ciStatusJob,
     publishCanaryJob,
   ],
 });

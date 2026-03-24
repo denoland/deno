@@ -2,7 +2,6 @@
 
 use std::borrow::Cow;
 use std::collections::HashMap;
-use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::Instant;
@@ -184,7 +183,10 @@ pub fn create_snapshot(
   warmup_script: Option<&'static str>,
 ) -> Result<CreateSnapshotOutput, CoreError> {
   let mut mark = Instant::now();
-  #[allow(clippy::print_stdout)]
+  #[allow(
+    clippy::print_stdout,
+    reason = "intentional build-time progress output"
+  )]
   {
     println!("Creating a snapshot...",);
   }
@@ -206,7 +208,10 @@ pub fn create_snapshot(
     ..Default::default()
   });
 
-  #[allow(clippy::print_stdout)]
+  #[allow(
+    clippy::print_stdout,
+    reason = "intentional build-time progress output"
+  )]
   {
     println!("JsRuntimeForSnapshot prepared, took {:#?}", mark.elapsed(),);
   }
@@ -248,7 +253,10 @@ pub fn create_snapshot(
     snapshot = js_runtime.snapshot();
   }
 
-  #[allow(clippy::print_stdout)]
+  #[allow(
+    clippy::print_stdout,
+    reason = "intentional build-time progress output"
+  )]
   {
     println!(
       "Snapshot size: {}, took {:#?}",
@@ -258,7 +266,10 @@ pub fn create_snapshot(
   }
   mark = Instant::now();
 
-  #[allow(clippy::print_stdout)]
+  #[allow(
+    clippy::print_stdout,
+    reason = "intentional build-time progress output"
+  )]
   {
     println!(
       "Snapshot written, took: {:#?}",
@@ -270,29 +281,6 @@ pub fn create_snapshot(
     files_loaded_during_snapshot,
     output: snapshot,
   })
-}
-
-pub type FilterFn = Box<dyn Fn(&PathBuf) -> bool>;
-
-pub fn get_js_files(
-  cargo_manifest_dir: &'static str,
-  directory: &str,
-  filter: Option<FilterFn>,
-) -> Vec<PathBuf> {
-  let manifest_dir = Path::new(cargo_manifest_dir);
-  let mut js_files = std::fs::read_dir(directory)
-    .unwrap()
-    .map(|dir_entry| {
-      let file = dir_entry.unwrap();
-      manifest_dir.join(file.path())
-    })
-    .filter(|path| {
-      path.extension().unwrap_or_default() == "js"
-        && filter.as_ref().map(|filter| filter(path)).unwrap_or(true)
-    })
-    .collect::<Vec<PathBuf>>();
-  js_files.sort();
-  js_files
 }
 
 /// The data we intend to snapshot, separated from any V8 objects that

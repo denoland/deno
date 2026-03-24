@@ -13,7 +13,7 @@ pub mod resolve_addr;
 pub mod tcp;
 pub mod tunnel;
 #[cfg(windows)]
-mod win_pipe;
+pub mod win_pipe;
 
 use std::sync::Arc;
 
@@ -74,6 +74,7 @@ deno_core::extension!(deno_net,
     ops::op_net_set_broadcast_udp,
     ops::op_net_validate_multicast,
     ops::op_dns_resolve,
+    ops::op_net_get_system_dns_servers,
     ops::op_set_nodelay,
     ops::op_set_keepalive,
     ops::op_net_listen_vsock,

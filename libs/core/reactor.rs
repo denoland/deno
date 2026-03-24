@@ -2,7 +2,7 @@
 
 //! Reactor abstraction for timer and I/O primitives.
 //!
-//! Currently used by [`WebTimers`](crate::web_timeout::WebTimers) to abstract
+//! Currently used by [`UserTimer`](crate::web_timeout::UserTimer) to abstract
 //! over the timer backend. The default implementation (`reactor-tokio` feature)
 //! delegates to tokio.
 //!

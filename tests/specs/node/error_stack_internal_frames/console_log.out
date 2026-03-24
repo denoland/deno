@@ -1,0 +1,9 @@
+Error: ENOENT: no such file or directory, open '/non/existent/file'
+    at readFileSync (node:fs:[WILDCARD])
+    at [WILDCARD]console_log.ts:6:5
+    at processTicksAndRejections (ext:core/01_core.js:[WILDCARD]) {
+  errno: [WILDCARD],
+  syscall: "open",
+  code: "ENOENT",
+  path: "/non/existent/file"
+}

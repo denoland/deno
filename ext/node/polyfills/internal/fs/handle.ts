@@ -7,6 +7,9 @@ import { EventEmitter } from "node:events";
 import { Buffer } from "node:buffer";
 import {
   type BigIntStats,
+  fchmod,
+  fdatasync,
+  fsync,
   Mode,
   promises,
   read as readAsync,
@@ -24,15 +27,34 @@ import {
   FileOptionsArgument,
   TextOptionsArgument,
 } from "ext:deno_node/_fs/_fs_common.ts";
-import { ftruncatePromise } from "ext:deno_node/_fs/_fs_ftruncate.ts";
-import { writevPromise, WriteVResult } from "ext:deno_node/_fs/_fs_writev.ts";
-import { readvPromise, ReadVResult } from "ext:deno_node/_fs/_fs_readv.ts";
-import { fchmodPromise } from "ext:deno_node/_fs/_fs_fchmod.ts";
-import { fchownPromise } from "ext:deno_node/_fs/_fs_fchown.ts";
-import { fdatasyncPromise } from "ext:deno_node/_fs/_fs_fdatasync.ts";
+import { writev } from "node:fs";
+
+export interface WriteVResult {
+  bytesWritten: number;
+  buffers: ReadonlyArray<ArrayBufferView>;
+}
+
+function writevPromise(
+  fd: number,
+  buffers: ArrayBufferView[],
+  position?: number,
+): Promise<WriteVResult> {
+  return new Promise((resolve, reject) => {
+    writev(fd, buffers, position, (err, bytesWritten, buffers) => {
+      if (err) reject(err);
+      else resolve({ bytesWritten, buffers });
+    });
+  });
+}
+import { readvPromise, type ReadVResult } from "node:fs";
 import { fstatPromise } from "ext:deno_node/_fs/_fs_fstat.ts";
-import { fsyncPromise } from "ext:deno_node/_fs/_fs_fsync.ts";
-import { futimesPromise } from "ext:deno_node/_fs/_fs_futimes.ts";
+import {
+  fchown as fchownCb,
+  ftruncate as ftruncateCb,
+  futimes as futimesCb,
+} from "node:fs";
+import { kEmptyObject, promisify } from "ext:deno_node/internal/util.mjs";
+
 import {
   CreateReadStreamOptions,
   CreateWriteStreamOptions,
@@ -47,8 +69,16 @@ import {
   validateBoolean,
   validateObject,
 } from "ext:deno_node/internal/validators.mjs";
-import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
 import process from "node:process";
+
+const fchmodPromise = promisify(fchmod) as (
+  fd: number,
+  mode: string | number,
+) => Promise<void>;
+const fdatasyncPromise = promisify(fdatasync) as (
+  fd: number,
+) => Promise<void>;
+const fsyncPromise = promisify(fsync) as (fd: number) => Promise<void>;
 
 const {
   Error,
@@ -68,9 +98,13 @@ const kRefs = Symbol("kRefs");
 const kClosePromise = Symbol("kClosePromise");
 const kCloseResolve = Symbol("kCloseResolve");
 const kCloseReject = Symbol("kCloseReject");
-const kRef = Symbol("kRef");
-const kUnref = Symbol("kUnref");
+export const kRef = Symbol("kRef");
+export const kUnref = Symbol("kUnref");
 const kLocked = Symbol("kLocked");
+
+const ftruncatePromise = promisify(ftruncateCb);
+const fchownPromise = promisify(fchownCb);
+const futimesPromise = promisify(futimesCb);
 
 interface WriteResult {
   bytesWritten: number;
@@ -275,11 +309,11 @@ export class FileHandle extends EventEmitter {
   }
 
   createReadStream(options?: CreateReadStreamOptions): ReadStream {
-    return new ReadStream(undefined, { ...options, fd: this.fd });
+    return new ReadStream(undefined, { ...options, fd: this });
   }
 
   createWriteStream(options?: CreateWriteStreamOptions): WriteStream {
-    return new WriteStream(undefined, { ...options, fd: this.fd });
+    return new WriteStream(undefined, { ...options, fd: this });
   }
 
   readLines(options?: CreateReadStreamOptions): ReadlineInterface {
@@ -401,12 +435,19 @@ function readPromise(
   position?: number | null,
 ): Promise<ReadResult> {
   if (ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, bufferOrOpt)) {
-    if (typeof length !== "number" && typeof position !== "number") {
+    if (
+      typeof offsetOrOpt !== "number" && typeof length !== "number" &&
+      typeof position !== "number"
+    ) {
+      // fileHandle.read(buffer) or fileHandle.read(buffer, options)
+      const opts = (offsetOrOpt ?? {}) as ReadAsyncOptions<
+        NodeJS.ArrayBufferView
+      >;
       return new Promise((resolve, reject) => {
         readAsync(
           rid,
           bufferOrOpt,
-          offsetOrOpt,
+          opts,
           (err: Error, bytesRead: number, buffer: Buffer) => {
             if (err) reject(err);
             else resolve({ buffer, bytesRead });

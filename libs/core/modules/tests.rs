@@ -1,6 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-#![allow(clippy::print_stderr)]
+#![allow(clippy::print_stderr, reason = "test code")]
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -345,7 +345,7 @@ fn test_recursive_load() {
   let a_id_fut = runtime.load_main_es_module(&spec);
   let a_id = futures::executor::block_on(a_id_fut).unwrap();
 
-  #[allow(clippy::let_underscore_future)]
+  #[allow(clippy::let_underscore_future, reason = "test code")]
   let _ = runtime.mod_evaluate(a_id);
   futures::executor::block_on(runtime.run_event_loop(Default::default()))
     .unwrap();
@@ -521,7 +521,7 @@ fn test_mods() {
   runtime.instantiate_module(mod_a).unwrap();
   assert_eq!(DISPATCH_COUNT.load(Ordering::Relaxed), 0);
 
-  #[allow(clippy::let_underscore_future)]
+  #[allow(clippy::let_underscore_future, reason = "test code")]
   let _ = runtime.mod_evaluate(mod_a);
   assert_eq!(DISPATCH_COUNT.load(Ordering::Relaxed), 1);
 }
@@ -1111,7 +1111,7 @@ async fn dyn_import_err() {
     // We should get an error here.
     let result = runtime.poll_event_loop(cx, Default::default());
     assert!(matches!(result, Poll::Ready(Err(_))));
-    assert_eq!(loader.counts(), ModuleLoadEventCounts::new(4, 1, 1, 1));
+    assert_eq!(loader.counts(), ModuleLoadEventCounts::new(2, 1, 1, 1));
     Poll::Ready(())
   })
   .await;
@@ -1173,12 +1173,12 @@ async fn dyn_import_ok() {
       runtime.poll_event_loop(cx, Default::default()),
       Poll::Ready(Ok(_))
     ));
-    assert_eq!(loader.counts(), ModuleLoadEventCounts::new(5, 1, 1, 1));
+    assert_eq!(loader.counts(), ModuleLoadEventCounts::new(3, 1, 1, 1));
     assert!(matches!(
       runtime.poll_event_loop(cx, Default::default()),
       Poll::Ready(Ok(_))
     ));
-    assert_eq!(loader.counts(), ModuleLoadEventCounts::new(5, 1, 1, 1));
+    assert_eq!(loader.counts(), ModuleLoadEventCounts::new(3, 1, 1, 1));
     Poll::Ready(())
   })
   .await;
@@ -1216,10 +1216,10 @@ async fn dyn_import_borrow_mut_error() {
     // Old comments that are likely wrong:
     // First poll runs `prepare_load` hook.
     let _ = runtime.poll_event_loop(cx, Default::default());
-    assert_eq!(loader.counts(), ModuleLoadEventCounts::new(4, 1, 1, 1));
+    assert_eq!(loader.counts(), ModuleLoadEventCounts::new(2, 1, 1, 1));
     // Second poll triggers error
     let _ = runtime.poll_event_loop(cx, Default::default());
-    assert_eq!(loader.counts(), ModuleLoadEventCounts::new(4, 1, 1, 1));
+    assert_eq!(loader.counts(), ModuleLoadEventCounts::new(2, 1, 1, 1));
     Poll::Ready(())
   })
   .await;
@@ -1239,7 +1239,7 @@ fn test_circular_load() {
     let result = runtime.load_main_es_module(&spec).await;
     assert!(result.is_ok());
     let circular1_id = result.unwrap();
-    #[allow(clippy::let_underscore_future)]
+    #[allow(clippy::let_underscore_future, reason = "test code")]
     let _ = runtime.mod_evaluate(circular1_id);
     runtime.run_event_loop(Default::default()).await.unwrap();
 
@@ -1341,7 +1341,7 @@ fn test_redirect_load() {
     let result = runtime.load_main_es_module(&spec).await;
     assert!(result.is_ok());
     let redirect1_id = result.unwrap();
-    #[allow(clippy::let_underscore_future)]
+    #[allow(clippy::let_underscore_future, reason = "test code")]
     let _ = runtime.mod_evaluate(redirect1_id);
     runtime.run_event_loop(Default::default()).await.unwrap();
     let l = loads.lock();
@@ -1409,7 +1409,7 @@ fn test_concurrent_redirect_load() {
     let result = runtime.load_main_es_module(&spec).await;
     assert!(result.is_ok());
     let concurrent_redirect = result.unwrap();
-    #[allow(clippy::let_underscore_future)]
+    #[allow(clippy::let_underscore_future, reason = "test code")]
     let _ = runtime.mod_evaluate(concurrent_redirect);
     runtime.run_event_loop(Default::default()).await.unwrap();
     let l = loads.lock();
@@ -1533,7 +1533,7 @@ fn recursive_load_main_with_code() {
     .boxed_local();
   let main_id = futures::executor::block_on(main_id_fut).unwrap();
 
-  #[allow(clippy::let_underscore_future)]
+  #[allow(clippy::let_underscore_future, reason = "test code")]
   let _ = runtime.mod_evaluate(main_id);
   futures::executor::block_on(runtime.run_event_loop(Default::default()))
     .unwrap();
@@ -1635,7 +1635,7 @@ fn main_and_side_module() {
   let main_id_fut = runtime.load_main_es_module(&main_specifier).boxed_local();
   let main_id = futures::executor::block_on(main_id_fut).unwrap();
 
-  #[allow(clippy::let_underscore_future)]
+  #[allow(clippy::let_underscore_future, reason = "test code")]
   let _ = runtime.mod_evaluate(main_id);
   futures::executor::block_on(runtime.run_event_loop(Default::default()))
     .unwrap();
@@ -1648,7 +1648,7 @@ fn main_and_side_module() {
   let side_id_fut = runtime.load_side_es_module(&side_specifier).boxed_local();
   let side_id = futures::executor::block_on(side_id_fut).unwrap();
 
-  #[allow(clippy::let_underscore_future)]
+  #[allow(clippy::let_underscore_future, reason = "test code")]
   let _ = runtime.mod_evaluate(side_id);
   futures::executor::block_on(runtime.run_event_loop(Default::default()))
     .unwrap();
@@ -1677,7 +1677,7 @@ fn dynamic_imports_snapshot() {
       .boxed_local();
     let main_id = futures::executor::block_on(main_id_fut).unwrap();
 
-    #[allow(clippy::let_underscore_future)]
+    #[allow(clippy::let_underscore_future, reason = "test code")]
     let _ = runtime.mod_evaluate(main_id);
     futures::executor::block_on(runtime.run_event_loop(Default::default()))
       .unwrap();
@@ -1717,7 +1717,7 @@ fn import_meta_snapshot() {
       .boxed_local();
     let main_id = futures::executor::block_on(main_id_fut).unwrap();
 
-    #[allow(clippy::let_underscore_future)]
+    #[allow(clippy::let_underscore_future, reason = "test code")]
     let eval_fut = runtime.mod_evaluate(main_id);
     futures::executor::block_on(runtime.run_event_loop(Default::default()))
       .unwrap();
@@ -1841,7 +1841,7 @@ async fn no_duplicate_loads() {
 
   let spec = resolve_url("file:///main.js").unwrap();
   let a_id = runtime.load_main_es_module(&spec).await.unwrap();
-  #[allow(clippy::let_underscore_future)]
+  #[allow(clippy::let_underscore_future, reason = "test code")]
   let _ = runtime.mod_evaluate(a_id);
   runtime.run_event_loop(Default::default()).await.unwrap();
 }
@@ -1946,7 +1946,7 @@ fn builtin_core_module() {
   let main_id_fut = runtime.load_main_es_module(&main_specifier).boxed_local();
   let main_id = futures::executor::block_on(main_id_fut).unwrap();
 
-  #[allow(clippy::let_underscore_future)]
+  #[allow(clippy::let_underscore_future, reason = "test code")]
   let _ = runtime.mod_evaluate(main_id);
   futures::executor::block_on(runtime.run_event_loop(Default::default()))
     .unwrap();
@@ -1978,7 +1978,7 @@ fn import_meta_filename_dirname() {
   let main_id_fut = runtime.load_main_es_module(&main_specifier).boxed_local();
   let main_id = futures::executor::block_on(main_id_fut).unwrap();
 
-  #[allow(clippy::let_underscore_future)]
+  #[allow(clippy::let_underscore_future, reason = "test code")]
   let _ = runtime.mod_evaluate(main_id);
   futures::executor::block_on(runtime.run_event_loop(Default::default()))
     .unwrap();
@@ -1998,7 +1998,7 @@ fn test_load_with_code_cache() {
     let a_id_fut = runtime.load_main_es_module(&spec);
     let a_id = futures::executor::block_on(a_id_fut).unwrap();
 
-    #[allow(clippy::let_underscore_future)]
+    #[allow(clippy::let_underscore_future, reason = "test code")]
     let _ = runtime.mod_evaluate(a_id);
     futures::executor::block_on(runtime.run_event_loop(Default::default()))
       .unwrap();
@@ -2041,7 +2041,7 @@ fn test_load_with_code_cache() {
     let a_id_fut = runtime.load_main_es_module(&spec);
     let a_id = futures::executor::block_on(a_id_fut).unwrap();
 
-    #[allow(clippy::let_underscore_future)]
+    #[allow(clippy::let_underscore_future, reason = "test code")]
     let _ = runtime.mod_evaluate(a_id);
     futures::executor::block_on(runtime.run_event_loop(Default::default()))
       .unwrap();
@@ -2077,7 +2077,7 @@ fn test_load_with_code_cache() {
     let a_id_fut = runtime.load_main_es_module(&spec);
     let a_id = futures::executor::block_on(a_id_fut).unwrap();
 
-    #[allow(clippy::let_underscore_future)]
+    #[allow(clippy::let_underscore_future, reason = "test code")]
     let _ = runtime.mod_evaluate(a_id);
     futures::executor::block_on(runtime.run_event_loop(Default::default()))
       .unwrap();
@@ -2504,4 +2504,123 @@ throwError();
     "Error should not contain excessive ../ sequences: {}",
     err_str
   );
+}
+
+/// Regression test for https://github.com/denoland/deno/issues/32758
+///
+/// When two lazy-loaded ESM modules are triggered during the same
+/// module evaluation, and one of the importing modules has a top-level
+/// await on an eagerly-resolved async op, the `perform_microtask_checkpoint()`
+/// inside `lazy_load_es_module_with_code()` can prematurely resolve the main
+/// module's evaluation promise while `mod_evaluate()` has not yet set up
+/// its `.then()` handlers. This leaves `pending_mod_evaluation = true`
+/// permanently, causing the event loop to panic with
+/// "Expected at least one stalled top-level await".
+#[tokio::test]
+async fn test_lazy_loaded_esm_with_tla_no_panic() {
+  // An async op with no .await points
+  #[op2]
+  #[allow(clippy::unused_async, reason = "eagerly resolves on first poll")]
+  async fn op_eager_resolve() -> u32 {
+    42
+  }
+
+  deno_core::extension!(
+    test_ext,
+    ops = [op_eager_resolve],
+    lazy_loaded_esm = [
+      dir "modules/testdata",
+      "lazy_loaded.js",
+      "lazy_loaded_2.js",
+    ]
+  );
+
+  let loader = Rc::new(TestingModuleLoader::new(NoopModuleLoader));
+
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    extensions: vec![test_ext::init()],
+    module_loader: Some(loader),
+    ..Default::default()
+  });
+
+  let module_map = runtime.module_map().clone();
+
+  // Build the module graph manually:
+  //
+  //   main.js  (main module)
+  //     ├── tla_mod.js   -- triggers lazy_loaded.js, awaits op_eager_resolve
+  //     └── lazy_mod.js  -- triggers lazy_loaded_2.js
+  //
+  // The key is that tla_mod.js's `await` resolves eagerly, and the
+  // microtask checkpoint inside lazy_loaded_2.js's lazy load can
+  // prematurely resolve the main module evaluation promise.
+
+  let (mod_main, mod_tla, mod_lazy) = {
+    deno_core::scope!(scope, runtime);
+
+    let mod_tla = module_map
+      .new_es_module(
+        scope,
+        false,
+        ascii_str!("file:///tla_mod.js").into(),
+        ascii_str!(
+          r#"
+          const lazy1 = Deno.core.createLazyLoader("ext:test_ext/lazy_loaded.js")();
+          if (lazy1.foo !== "foo") throw new Error("lazy1.foo: " + lazy1.foo);
+          if (lazy1.bar !== 123) throw new Error("lazy1.bar: " + lazy1.bar);
+          const result = await Deno.core.ops.op_eager_resolve();
+          if (result !== 42) throw new Error("unexpected: " + result);
+          "#
+        )
+        .into(),
+        false,
+        None,
+      )
+      .unwrap();
+
+    let mod_lazy = module_map
+      .new_es_module(
+        scope,
+        false,
+        ascii_str!("file:///lazy_mod.js").into(),
+        ascii_str!(
+          r#"
+          const lazy2 = Deno.core.createLazyLoader("ext:test_ext/lazy_loaded_2.js")();
+          if (lazy2.baz !== "baz") throw new Error("lazy2.baz: " + lazy2.baz);
+          "#
+        )
+        .into(),
+        false,
+        None,
+      )
+      .unwrap();
+
+    let mod_main = module_map
+      .new_es_module(
+        scope,
+        true,
+        ascii_str!("file:///main.js").into(),
+        ascii_str!(
+          r#"
+          import "./tla_mod.js";
+          import "./lazy_mod.js";
+          "#
+        )
+        .into(),
+        false,
+        None,
+      )
+      .unwrap();
+
+    (mod_main, mod_tla, mod_lazy)
+  };
+
+  runtime.instantiate_module(mod_tla).unwrap();
+  runtime.instantiate_module(mod_lazy).unwrap();
+  runtime.instantiate_module(mod_main).unwrap();
+
+  // This should not panic with "Expected at least one stalled top-level await"
+  let receiver = runtime.mod_evaluate(mod_main);
+  runtime.run_event_loop(Default::default()).await.unwrap();
+  receiver.await.unwrap();
 }
