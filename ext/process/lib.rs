@@ -142,7 +142,6 @@ impl StdioOrFdOrRid {
         }
         #[cfg(windows)]
         {
-          use std::os::windows::io::FromRawHandle;
           // SAFETY: get_osfhandle converts a CRT fd to a Windows HANDLE; returns -1 on error.
           let handle = unsafe { libc::get_osfhandle(*fd) };
           if handle == -1 {
