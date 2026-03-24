@@ -489,6 +489,13 @@ pub fn format_html(
             },
           )
         }
+        ext if ext.starts_with("markup-fmt-jinja-") => {
+          // Jinja/Nunjucks expressions may contain non-JS syntax (e.g.
+          // filters such as `|>`), so preserve the original text instead
+          // of passing it through the TypeScript formatter.
+          // Ref: https://github.com/g-plane/markup_fmt/blob/v0.27.0/src/ctx.rs
+          Ok(Cow::from(text))
+        }
         _ => {
           let mut typescript_config_builder =
             get_typescript_config_builder(fmt_options);
@@ -637,6 +644,7 @@ fn format_embedded_css(
       single_line_block_threshold: None,
       keyframe_selector_notation: None,
       attr_value_quotes: config::AttrValueQuotes::Always,
+      attr_selector_quotes: None,
       prefer_single_line: false,
       selectors_prefer_single_line: None,
       function_args_prefer_single_line: None,
@@ -760,6 +768,8 @@ fn format_embedded_html(
       default_v_slot_style: None,
       named_v_slot_style: None,
       v_bind_same_name_short_hand: None,
+      vue_component_case: config::VueComponentCase::default(),
+      angular_next_control_flow_same_line: true,
       strict_svelte_attr: false,
       svelte_attr_shorthand: None,
       svelte_directive_shorthand: None,
@@ -1561,6 +1571,7 @@ fn get_resolved_malva_config(
     single_line_block_threshold: None,
     keyframe_selector_notation: None,
     attr_value_quotes: AttrValueQuotes::Always,
+    attr_selector_quotes: None,
     prefer_single_line: false,
     selectors_prefer_single_line: None,
     function_args_prefer_single_line: None,
@@ -1632,6 +1643,8 @@ fn get_resolved_markup_fmt_config(
     default_v_slot_style: None,
     named_v_slot_style: None,
     v_bind_same_name_short_hand: None,
+    vue_component_case: VueComponentCase::default(),
+    angular_next_control_flow_same_line: true,
     strict_svelte_attr: false,
     svelte_attr_shorthand: Some(true),
     svelte_directive_shorthand: Some(true),
