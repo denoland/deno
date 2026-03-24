@@ -56,7 +56,7 @@ pub struct NpmRc {
 impl NpmRc {
   pub fn parse(
     input: &str,
-    get_env_var: &impl Fn(&str) -> Option<String>,
+    sys: &impl EnvVar,
   ) -> Result<Self, NpmRcParseError> {
     let kv_or_sections = ini::parse_ini(input)?;
     let mut registry = None;
@@ -72,13 +72,13 @@ impl NpmRc {
                 if right == "registry"
                   && let Value::String(text) = &kv.value
                 {
-                  let value = expand_vars(text, get_env_var);
+                  let value = expand_vars(text, sys);
                   scope_registries.insert(scope.to_string(), value);
                 }
               } else if let Some(host_and_path) = left.strip_prefix("//")
                 && let Value::String(text) = &kv.value
               {
-                let value = expand_vars(text, get_env_var);
+                let value = expand_vars(text, sys);
                 let config = registry_configs
                   .entry(host_and_path.to_string())
                   .or_default();
@@ -110,7 +110,7 @@ impl NpmRc {
             } else if key == "registry"
               && let Value::String(text) = &kv.value
             {
-              let value = expand_vars(text, get_env_var);
+              let value = expand_vars(text, sys);
               registry = Some(value);
             }
           }
@@ -294,10 +294,7 @@ impl ResolvedNpmRc {
   }
 }
 
-fn expand_vars(
-  input: &str,
-  get_env_var: &impl Fn(&str) -> Option<String>,
-) -> String {
+fn expand_vars(input: &str, sys: &impl EnvVar) -> String {
   fn escaped_char(input: &str) -> ParseResult<'_, char> {
     preceded(ch('\\'), next_char)(input)
   }
@@ -315,7 +312,7 @@ fn expand_vars(
   let (input, results) = many0(or3(
     map(escaped_char, |c| c.to_string()),
     map(env_var, |var_name| {
-      if let Some(var_value) = get_env_var(var_name) {
+      if let Ok(var_value) = sys.env_var(var_name) {
         var_value
       } else {
         format!("${{{}}}", var_name)
@@ -391,6 +388,8 @@ impl NpmRegistryUrl {
 #[cfg(test)]
 mod test {
   use pretty_assertions::assert_eq;
+  use sys_traits::EnvSetVar;
+  use sys_traits::impls::InMemorySys;
 
   use super::*;
 
@@ -421,7 +420,7 @@ mod test {
 //yet.another.com/yet_another/:_authToken=MYTOKEN3
 registry=https://registry.npmjs.org/
 "#,
-      &|_| None,
+      &InMemorySys::default(),
     )
     .unwrap();
     assert_eq!(
@@ -692,6 +691,8 @@ registry=https://registry.npmjs.org/
 
   #[test]
   fn test_parse_env_vars() {
+    let sys = InMemorySys::default();
+    sys.env_set_var("VAR_FOUND", "SOME_VALUE");
     let npm_rc = NpmRc::parse(
       r#"
 @myorg:registry=${VAR_FOUND}
@@ -700,10 +701,7 @@ registry=https://registry.npmjs.org/
 //registry.npmjs.org/:_authToken=${VAR_FOUND}
 registry=${VAR_FOUND}
 "#,
-      &|var_name| match var_name {
-        "VAR_FOUND" => Some("SOME_VALUE".to_string()),
-        _ => None,
-      },
+      &sys,
     )
     .unwrap();
     assert_eq!(
@@ -728,49 +726,26 @@ registry=${VAR_FOUND}
 
   #[test]
   fn test_expand_vars() {
-    assert_eq!(
-      expand_vars("test${VAR}test", &|var_name| {
-        match var_name {
-          "VAR" => Some("VALUE".to_string()),
-          _ => None,
-        }
-      }),
-      "testVALUEtest"
-    );
-    assert_eq!(
-      expand_vars("${A}${B}${C}", &|var_name| {
-        match var_name {
-          "A" => Some("1".to_string()),
-          "B" => Some("2".to_string()),
-          "C" => Some("3".to_string()),
-          _ => None,
-        }
-      }),
-      "123"
-    );
-    assert_eq!(
-      expand_vars("test\\${VAR}test", &|var_name| {
-        match var_name {
-          "VAR" => Some("VALUE".to_string()),
-          _ => None,
-        }
-      }),
-      "test${VAR}test"
-    );
-    assert_eq!(
-      // npm ignores values with $ in them
-      expand_vars("test${VA$R}test", &|_| {
-        unreachable!();
-      }),
-      "test${VA$R}test"
-    );
-    assert_eq!(
-      // npm ignores values with { in them
-      expand_vars("test${VA{R}test", &|_| {
-        unreachable!();
-      }),
-      "test${VA{R}test"
-    );
+    let sys = InMemorySys::default();
+    sys.env_set_var("VAR", "VALUE");
+    assert_eq!(expand_vars("test${VAR}test", &sys), "testVALUEtest");
+
+    let sys = InMemorySys::default();
+    sys.env_set_var("A", "1");
+    sys.env_set_var("B", "2");
+    sys.env_set_var("C", "3");
+    assert_eq!(expand_vars("${A}${B}${C}", &sys), "123");
+
+    let sys = InMemorySys::default();
+    sys.env_set_var("VAR", "VALUE");
+    assert_eq!(expand_vars("test\\${VAR}test", &sys), "test${VAR}test");
+
+    let sys = InMemorySys::default();
+    // npm ignores values with $ in them
+    assert_eq!(expand_vars("test${VA$R}test", &sys), "test${VA$R}test");
+
+    // npm ignores values with { in them
+    assert_eq!(expand_vars("test${VA{R}test", &sys), "test${VA{R}test");
   }
 
   #[test]
@@ -779,7 +754,7 @@ registry=${VAR_FOUND}
       r#"
 @example:registry=https://example.com/
 "#,
-      &|_| None,
+      &InMemorySys::default(),
     )
     .unwrap();
     let npm_rc = npm_rc
@@ -809,7 +784,7 @@ registry=${VAR_FOUND}
 ; This one is borked - the URL must match registry URL exactly
 //example.com2/example/:_authToken=MY_AUTH_TOKEN2
 "#,
-      &|_| None,
+      &InMemorySys::default(),
     )
     .unwrap();
     let npm_rc = npm_rc
@@ -846,7 +821,7 @@ registry=${VAR_FOUND}
       r#"
 @jsr:registry=https://registry.npmjs.org/
 "#,
-      &|_| None,
+      &InMemorySys::default(),
     )
     .unwrap();
     let npm_rc = npm_rc
@@ -862,9 +837,11 @@ registry=${VAR_FOUND}
   #[test]
   fn test_npm_config_registry_overrides_npmrc() {
     // NPM_CONFIG_REGISTRY should override the registry in .npmrc files
-    let npm_rc =
-      NpmRc::parse("registry=http://wrong.registry.example.com/", &|_| None)
-        .unwrap();
+    let npm_rc = NpmRc::parse(
+      "registry=http://wrong.registry.example.com/",
+      &InMemorySys::default(),
+    )
+    .unwrap();
 
     // This simulates what npm_registry_url() would return when NPM_CONFIG_REGISTRY is set
     let env_registry_url =
@@ -886,9 +863,11 @@ registry=${VAR_FOUND}
   #[test]
   fn test_npmrc_registry_used_when_no_env_var() {
     // When NPM_CONFIG_REGISTRY is not set, should use .npmrc registry
-    let npm_rc =
-      NpmRc::parse("registry=http://npmrc.registry.example.com/", &|_| None)
-        .unwrap();
+    let npm_rc = NpmRc::parse(
+      "registry=http://npmrc.registry.example.com/",
+      &InMemorySys::default(),
+    )
+    .unwrap();
 
     let resolved = npm_rc
       .as_resolved(&NpmRegistryUrl {
