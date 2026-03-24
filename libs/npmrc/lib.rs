@@ -55,8 +55,8 @@ pub struct NpmRc {
 
 impl NpmRc {
   pub fn parse(
-    input: &str,
     sys: &impl EnvVar,
+    input: &str,
   ) -> Result<Self, NpmRcParseError> {
     let kv_or_sections = ini::parse_ini(input)?;
     let mut registry = None;
@@ -397,6 +397,7 @@ mod test {
   fn test_parse_basic() {
     // https://docs.npmjs.com/cli/v10/configuring-npm/npmrc#auth-related-configuration
     let npm_rc = NpmRc::parse(
+      &InMemorySys::default(),
       r#"
 @myorg:registry=https://example.com/myorg
 @another:registry=https://example.com/another
@@ -420,7 +421,6 @@ mod test {
 //yet.another.com/yet_another/:_authToken=MYTOKEN3
 registry=https://registry.npmjs.org/
 "#,
-      &InMemorySys::default(),
     )
     .unwrap();
     assert_eq!(
@@ -694,6 +694,7 @@ registry=https://registry.npmjs.org/
     let sys = InMemorySys::default();
     sys.env_set_var("VAR_FOUND", "SOME_VALUE");
     let npm_rc = NpmRc::parse(
+      &sys,
       r#"
 @myorg:registry=${VAR_FOUND}
 @another:registry=${VAR_NOT_FOUND}
@@ -701,7 +702,6 @@ registry=https://registry.npmjs.org/
 //registry.npmjs.org/:_authToken=${VAR_FOUND}
 registry=${VAR_FOUND}
 "#,
-      &sys,
     )
     .unwrap();
     assert_eq!(
@@ -751,10 +751,10 @@ registry=${VAR_FOUND}
   #[test]
   fn test_scope_registry_url_only() {
     let npm_rc = NpmRc::parse(
+      &InMemorySys::default(),
       r#"
 @example:registry=https://example.com/
 "#,
-      &InMemorySys::default(),
     )
     .unwrap();
     let npm_rc = npm_rc
@@ -777,6 +777,7 @@ registry=${VAR_FOUND}
   #[test]
   fn test_scope_with_auth() {
     let npm_rc = NpmRc::parse(
+      &InMemorySys::default(),
       r#"
 @example:registry=https://example.com/foo
 @example2:registry=https://example2.com/
@@ -784,7 +785,6 @@ registry=${VAR_FOUND}
 ; This one is borked - the URL must match registry URL exactly
 //example.com2/example/:_authToken=MY_AUTH_TOKEN2
 "#,
-      &InMemorySys::default(),
     )
     .unwrap();
     let npm_rc = npm_rc
@@ -818,10 +818,10 @@ registry=${VAR_FOUND}
     // set to the default registry like this and so we want to ensure it's
     // still used and not overwritten
     let npm_rc = NpmRc::parse(
+      &InMemorySys::default(),
       r#"
 @jsr:registry=https://registry.npmjs.org/
 "#,
-      &InMemorySys::default(),
     )
     .unwrap();
     let npm_rc = npm_rc
@@ -838,8 +838,8 @@ registry=${VAR_FOUND}
   fn test_npm_config_registry_overrides_npmrc() {
     // NPM_CONFIG_REGISTRY should override the registry in .npmrc files
     let npm_rc = NpmRc::parse(
-      "registry=http://wrong.registry.example.com/",
       &InMemorySys::default(),
+      "registry=http://wrong.registry.example.com/",
     )
     .unwrap();
 
@@ -864,8 +864,8 @@ registry=${VAR_FOUND}
   fn test_npmrc_registry_used_when_no_env_var() {
     // When NPM_CONFIG_REGISTRY is not set, should use .npmrc registry
     let npm_rc = NpmRc::parse(
-      "registry=http://npmrc.registry.example.com/",
       &InMemorySys::default(),
+      "registry=http://npmrc.registry.example.com/",
     )
     .unwrap();
 
