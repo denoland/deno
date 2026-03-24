@@ -11,6 +11,21 @@ use cssparser::match_ignore_ascii_case;
 
 pub type CSSValueError<'i> = ParseError<'i, CSSValueCustomError>;
 
+macro_rules! try_extract {
+  ($expr:expr, $method:ident($($arg:expr),*), $arguments:expr) => {
+    match $expr.$method($($arg),*) {
+      Ok(v) => v,
+      Err(e) => return Err($arguments.new_custom_error(e)),
+    }
+  };
+  ($expr:expr, $method:ident($($arg:expr),*), $map:ident(), $arguments:expr) => {
+    match $expr.$method($($arg),*) {
+      Ok(v) => v.$map(),
+      Err(e) => return Err($arguments.new_custom_error(e)),
+    }
+  };
+}
+
 #[derive(Debug, thiserror::Error)]
 #[cfg_attr(test, derive(PartialEq))]
 pub enum CSSValueCustomError {
@@ -621,10 +636,7 @@ impl NumericValue {
           "min" => {
             input.parse_nested_block(|arguments| {
               let value = Self::parse_additive_expression(arguments, state)?;
-              let numeric = match value.expect_numeric() {
-                Ok(numeric) => numeric,
-                Err(error) => return Err(arguments.new_custom_error(error)),
-              };
+              let numeric = try_extract!(value, expect_numeric(), arguments);
               let result: NumericAccumulator = match numeric {
                 NumericValue::Zero => unreachable!(),
                 NumericValue::Number(number) => {
@@ -632,10 +644,7 @@ impl NumericValue {
                   while !arguments.is_exhausted() {
                     arguments.expect_comma()?;
                     let value = Self::parse_additive_expression(arguments, state)?;
-                    let value = match value.expect_number() {
-                      Ok(number) => number,
-                      Err(error) => return Err(arguments.new_custom_error(error)),
-                    };
+                    let value = try_extract!(value, expect_number(), arguments);
                     current = minimum(current, value);
                   }
                   NumericValue::Number(current).into()
@@ -645,10 +654,7 @@ impl NumericValue {
                   while !arguments.is_exhausted() {
                     arguments.expect_comma()?;
                     let value = Self::parse_additive_expression(arguments, state)?;
-                    let value = match value.expect_length(false) {
-                      Ok(length) => length.to_pixels(),
-                      Err(error) => return Err(arguments.new_custom_error(error)),
-                    };
+                    let value = try_extract!(value, expect_length(false), to_pixels(), arguments);
                     current = minimum(current, value);
                   }
                   NumericValue::Length(Length { value: current, unit: LengthUnit::Px }).into()
@@ -658,10 +664,7 @@ impl NumericValue {
                   while !arguments.is_exhausted() {
                     arguments.expect_comma()?;
                     let value = Self::parse_additive_expression(arguments, state)?;
-                    let value = match value.expect_angle(false) {
-                      Ok(length) => length.to_degrees(),
-                      Err(error) => return Err(arguments.new_custom_error(error)),
-                    };
+                    let value = try_extract!(value, expect_angle(false), to_degrees(), arguments);
                     current = minimum(current, value);
                   }
                   NumericValue::Angle(Angle { value: current, unit: AngleUnit::Deg }).into()
@@ -671,10 +674,7 @@ impl NumericValue {
                   while !arguments.is_exhausted() {
                     arguments.expect_comma()?;
                     let value = Self::parse_additive_expression(arguments, state)?;
-                    let value = match value.expect_percent() {
-                      Ok(percent) => percent,
-                      Err(error) => return Err(arguments.new_custom_error(error)),
-                    };
+                    let value = try_extract!(value, expect_percent(), arguments);
                     current = minimum(current, value);
                   }
                   NumericValue::Percent(current).into()
@@ -686,10 +686,7 @@ impl NumericValue {
           "max" => {
             input.parse_nested_block(|arguments| {
               let value = Self::parse_additive_expression(arguments, state)?;
-              let numeric = match value.expect_numeric() {
-                Ok(numeric) => numeric,
-                Err(error) => return Err(arguments.new_custom_error(error)),
-              };
+              let numeric = try_extract!(value, expect_numeric(), arguments);
               let result: NumericAccumulator = match numeric {
                 NumericValue::Zero => unreachable!(),
                 NumericValue::Number(number) => {
@@ -697,10 +694,7 @@ impl NumericValue {
                   while !arguments.is_exhausted() {
                     arguments.expect_comma()?;
                     let value = Self::parse_additive_expression(arguments, state)?;
-                    let value = match value.expect_number() {
-                      Ok(number) => number,
-                      Err(error) => return Err(arguments.new_custom_error(error)),
-                    };
+                    let value = try_extract!(value, expect_number(), arguments);
                     current = maximum(current, value);
                   }
                   NumericValue::Number(current).into()
@@ -710,10 +704,7 @@ impl NumericValue {
                   while !arguments.is_exhausted() {
                     arguments.expect_comma()?;
                     let value = Self::parse_additive_expression(arguments, state)?;
-                    let value = match value.expect_length(false) {
-                      Ok(length) => length.to_pixels(),
-                      Err(error) => return Err(arguments.new_custom_error(error)),
-                    };
+                    let value = try_extract!(value, expect_length(false), to_pixels(), arguments);
                     current = maximum(current, value);
                   }
                   NumericValue::Length(Length { value: current, unit: LengthUnit::Px }).into()
@@ -723,10 +714,7 @@ impl NumericValue {
                   while !arguments.is_exhausted() {
                     arguments.expect_comma()?;
                     let value = Self::parse_additive_expression(arguments, state)?;
-                    let value = match value.expect_angle(false) {
-                      Ok(length) => length.to_degrees(),
-                      Err(error) => return Err(arguments.new_custom_error(error)),
-                    };
+                    let value = try_extract!(value, expect_angle(false), to_degrees(), arguments);
                     current = maximum(current, value);
                   }
                   NumericValue::Angle(Angle { value: current, unit: AngleUnit::Deg }).into()
@@ -736,10 +724,7 @@ impl NumericValue {
                   while !arguments.is_exhausted() {
                     arguments.expect_comma()?;
                     let value = Self::parse_additive_expression(arguments, state)?;
-                    let value = match value.expect_percent() {
-                      Ok(percent) => percent,
-                      Err(error) => return Err(arguments.new_custom_error(error)),
-                    };
+                    let value = try_extract!(value, expect_percent(), arguments);
                     current = maximum(current, value);
                   }
                   NumericValue::Percent(current).into()
@@ -757,19 +742,13 @@ impl NumericValue {
                 } else {
                   arguments.reset(&start);
                   let value = Self::parse_additive_expression(arguments, state)?;
-                  let numeric = match value.expect_numeric() {
-                    Ok(numeric) => numeric,
-                    Err(error) => return Err(arguments.new_custom_error(error)),
-                  };
+                  let numeric = try_extract!(value, expect_numeric(), arguments);
                   Some(numeric)
                 }
               };
               arguments.expect_comma()?;
               let value = Self::parse_additive_expression(arguments, state)?;
-              let value = match value.expect_numeric() {
-                Ok(numeric) => numeric,
-                Err(error) => return Err(arguments.new_custom_error(error)),
-              };
+              let value = try_extract!(value, expect_numeric(), arguments);
               arguments.expect_comma()?;
               let max: Option<NumericValue> = {
                 let start = arguments.state();
@@ -778,10 +757,7 @@ impl NumericValue {
                 } else {
                   arguments.reset(&start);
                   let value = Self::parse_additive_expression(arguments, state)?;
-                  let numeric = match value.expect_numeric() {
-                    Ok(numeric) => numeric,
-                    Err(error) => return Err(arguments.new_custom_error(error)),
-                  };
+                  let numeric = try_extract!(value, expect_numeric(), arguments);
                   Some(numeric)
                 }
               };
@@ -791,42 +767,22 @@ impl NumericValue {
                 NumericValue::Zero => unreachable!(),
                 NumericValue::Number(value) => {
                   let min = match min {
-                    Some(numeric) => {
-                      match numeric.expect_number() {
-                        Ok(number) => number,
-                        Err(error) => return Err(arguments.new_custom_error(error)),
-                      }
-                    },
+                    Some(numeric) => try_extract!(numeric, expect_number(), arguments),
                     None => f64::NEG_INFINITY,
                   };
                   let max = match max {
-                    Some(numeric) => {
-                      match numeric.expect_number() {
-                        Ok(number) => number,
-                        Err(error) => return Err(arguments.new_custom_error(error)),
-                      }
-                    },
+                    Some(numeric) => try_extract!(numeric, expect_number(), arguments),
                     None => f64::INFINITY,
                   };
                   NumericValue::Number(maximum(min, minimum(value, max))).into()
                 },
                 NumericValue::Length(value) => {
                   let min = match min {
-                    Some(numeric) => {
-                      match numeric.expect_length(false) {
-                        Ok(length) => length.to_pixels(),
-                        Err(error) => return Err(arguments.new_custom_error(error)),
-                      }
-                    },
+                    Some(numeric) => try_extract!(numeric, expect_length(false), to_pixels(), arguments),
                     None => f64::NEG_INFINITY,
                   };
                   let max = match max {
-                    Some(numeric) => {
-                      match numeric.expect_length(false) {
-                        Ok(length) => length.to_pixels(),
-                        Err(error) => return Err(arguments.new_custom_error(error)),
-                      }
-                    },
+                    Some(numeric) => try_extract!(numeric, expect_length(false), to_pixels(), arguments),
                     None => f64::INFINITY,
                   };
                   NumericValue::Length(Length {
@@ -836,21 +792,11 @@ impl NumericValue {
                 },
                 NumericValue::Angle(value) => {
                   let min = match min {
-                    Some(numeric) => {
-                      match numeric.expect_angle(false) {
-                        Ok(angle) => angle.to_degrees(),
-                        Err(error) => return Err(arguments.new_custom_error(error)),
-                      }
-                    },
+                    Some(numeric) => try_extract!(numeric, expect_angle(false), to_degrees(), arguments),
                     None => f64::NEG_INFINITY,
                   };
                   let max = match max {
-                    Some(numeric) => {
-                      match numeric.expect_angle(false) {
-                        Ok(angle) => angle.to_degrees(),
-                        Err(error) => return Err(arguments.new_custom_error(error)),
-                      }
-                    },
+                    Some(numeric) => try_extract!(numeric, expect_angle(false), to_degrees(), arguments),
                     None => f64::INFINITY,
                   };
                   NumericValue::Angle(Angle {
@@ -860,21 +806,11 @@ impl NumericValue {
                 },
                 NumericValue::Percent(value) => {
                   let min = match min {
-                    Some(numeric) => {
-                      match numeric.expect_percent() {
-                        Ok(percent) => percent,
-                        Err(error) => return Err(arguments.new_custom_error(error)),
-                      }
-                    },
+                    Some(numeric) => try_extract!(numeric, expect_percent(), arguments),
                     None => f64::NEG_INFINITY,
                   };
                   let max = match max {
-                    Some(numeric) => {
-                      match numeric.expect_percent() {
-                        Ok(percent) => percent,
-                        Err(error) => return Err(arguments.new_custom_error(error)),
-                      }
-                    },
+                    Some(numeric) => try_extract!(numeric, expect_percent(), arguments),
                     None => f64::INFINITY,
                   };
                   NumericValue::Percent(maximum(min, minimum(value, max))).into()
@@ -942,39 +878,16 @@ impl NumericValue {
                 }
               };
               let value = Self::parse_additive_expression(arguments, state)?;
-              let value = match value.expect_numeric() {
-                Ok(numeric) => numeric,
-                Err(error) => return Err(arguments.new_custom_error(error)),
-              };
+              let value = try_extract!(value, expect_numeric(), arguments);
               let interval = if !arguments.is_exhausted() {
                 arguments.expect_comma()?;
                 let interval = Self::parse_additive_expression(arguments, state)?;
                 let interval = match value {
                   NumericValue::Zero => unreachable!(),
-                  NumericValue::Number(_) => {
-                    match interval.expect_number() {
-                      Ok(number) => number,
-                      Err(error) => return Err(arguments.new_custom_error(error)),
-                    }
-                  },
-                  NumericValue::Length(_) => {
-                    match interval.expect_length(false) {
-                      Ok(length) => length.to_pixels(),
-                      Err(error) => return Err(arguments.new_custom_error(error)),
-                    }
-                  },
-                  NumericValue::Angle(_) => {
-                    match interval.expect_angle(false) {
-                      Ok(angle) => angle.to_degrees(),
-                      Err(error) => return Err(arguments.new_custom_error(error)),
-                    }
-                  },
-                  NumericValue::Percent(_) => {
-                    match interval.expect_percent() {
-                      Ok(percent) => percent,
-                      Err(error) => return Err(arguments.new_custom_error(error)),
-                    }
-                  }
+                  NumericValue::Number(_) => try_extract!(interval, expect_number(), arguments),
+                  NumericValue::Length(_) => try_extract!(interval, expect_length(false), to_pixels(), arguments),
+                  NumericValue::Angle(_) => try_extract!(interval, expect_angle(false), to_degrees(), arguments),
+                  NumericValue::Percent(_) => try_extract!(interval, expect_percent(), arguments),
                 };
                 arguments.expect_exhausted()?;
                 interval
@@ -1006,29 +919,20 @@ impl NumericValue {
           "mod" => {
             input.parse_nested_block(|arguments| {
               let dividend = Self::parse_additive_expression(arguments, state)?;
-              let dividend = match dividend.expect_numeric() {
-                Ok(numeric) => numeric,
-                Err(error) => return Err(arguments.new_custom_error(error)),
-              };
+              let dividend = try_extract!(dividend, expect_numeric(), arguments);
               arguments.expect_comma()?;
               let result: NumericAccumulator = match dividend {
                 NumericValue::Zero => unreachable!(),
                 NumericValue::Number(dividend) => {
                   let divisor = Self::parse_additive_expression(arguments, state)?;
-                  let divisor = match divisor.expect_number() {
-                    Ok(number) => number,
-                    Err(error) => return Err(arguments.new_custom_error(error)),
-                  };
+                  let divisor = try_extract!(divisor, expect_number(), arguments);
                   arguments.expect_exhausted()?;
                   NumericValue::Number(dividend.rem_euclid(divisor)).into()
                 },
                 NumericValue::Length(dividend) => {
                   let dividend = dividend.to_pixels();
                   let divisor = Self::parse_additive_expression(arguments, state)?;
-                  let divisor = match divisor.expect_length(false) {
-                    Ok(length) => length.to_pixels(),
-                    Err(error) => return Err(arguments.new_custom_error(error)),
-                  };
+                  let divisor = try_extract!(divisor, expect_length(false), to_pixels(), arguments);
                   arguments.expect_exhausted()?;
                   NumericValue::Length(Length {
                     value: dividend.rem_euclid(divisor),
@@ -1038,10 +942,7 @@ impl NumericValue {
                 NumericValue::Angle(dividend) => {
                   let dividend = dividend.to_degrees();
                   let divisor = Self::parse_additive_expression(arguments, state)?;
-                  let divisor = match divisor.expect_angle(false) {
-                    Ok(angle) => angle.to_degrees(),
-                    Err(error) => return Err(arguments.new_custom_error(error)),
-                  };
+                  let divisor = try_extract!(divisor, expect_angle(false), to_degrees(), arguments);
                   arguments.expect_exhausted()?;
                   NumericValue::Angle(Angle {
                     value: dividend.rem_euclid(divisor),
@@ -1050,10 +951,7 @@ impl NumericValue {
                 },
                 NumericValue::Percent(dividend) => {
                   let divisor = Self::parse_additive_expression(arguments, state)?;
-                  let divisor = match divisor.expect_percent() {
-                    Ok(percent) => percent,
-                    Err(error) => return Err(arguments.new_custom_error(error)),
-                  };
+                  let divisor = try_extract!(divisor, expect_percent(), arguments);
                   arguments.expect_exhausted()?;
                   NumericValue::Percent(dividend.rem_euclid(divisor)).into()
                 },
@@ -1064,29 +962,20 @@ impl NumericValue {
           "rem" => {
             input.parse_nested_block(|arguments| {
               let dividend = Self::parse_additive_expression(arguments, state)?;
-              let dividend = match dividend.expect_numeric() {
-                Ok(numeric) => numeric,
-                Err(error) => return Err(arguments.new_custom_error(error)),
-              };
+              let dividend = try_extract!(dividend, expect_numeric(), arguments);
               arguments.expect_comma()?;
               let result: NumericAccumulator = match dividend {
                 NumericValue::Zero => unreachable!(),
                 NumericValue::Number(dividend) => {
                   let divisor = Self::parse_additive_expression(arguments, state)?;
-                  let divisor = match divisor.expect_number() {
-                    Ok(number) => number,
-                    Err(error) => return Err(arguments.new_custom_error(error)),
-                  };
+                  let divisor = try_extract!(divisor, expect_number(), arguments);
                   arguments.expect_exhausted()?;
                   NumericValue::Number(dividend % divisor).into()
                 },
                 NumericValue::Length(dividend) => {
                   let dividend = dividend.to_pixels();
                   let divisor = Self::parse_additive_expression(arguments, state)?;
-                  let divisor = match divisor.expect_length(false) {
-                    Ok(length) => length.to_pixels(),
-                    Err(error) => return Err(arguments.new_custom_error(error)),
-                  };
+                  let divisor = try_extract!(divisor, expect_length(false), to_pixels(), arguments);
                   arguments.expect_exhausted()?;
                   NumericValue::Length(Length {
                     value: dividend % divisor,
@@ -1096,10 +985,7 @@ impl NumericValue {
                 NumericValue::Angle(dividend) => {
                   let dividend = dividend.to_degrees();
                   let divisor = Self::parse_additive_expression(arguments, state)?;
-                  let divisor = match divisor.expect_angle(false) {
-                    Ok(angle) => angle.to_degrees(),
-                    Err(error) => return Err(arguments.new_custom_error(error)),
-                  };
+                  let divisor = try_extract!(divisor, expect_angle(false), to_degrees(), arguments);
                   arguments.expect_exhausted()?;
                   NumericValue::Angle(Angle {
                     value: dividend % divisor,
@@ -1108,10 +994,7 @@ impl NumericValue {
                 },
                 NumericValue::Percent(dividend) => {
                   let divisor = Self::parse_additive_expression(arguments, state)?;
-                  let divisor = match divisor.expect_percent() {
-                    Ok(percent) => percent,
-                    Err(error) => return Err(arguments.new_custom_error(error)),
-                  };
+                  let divisor = try_extract!(divisor, expect_percent(), arguments);
                   arguments.expect_exhausted()?;
                   NumericValue::Percent(dividend % divisor).into()
                 },
@@ -1123,10 +1006,7 @@ impl NumericValue {
           "sin" => {
             input.parse_nested_block(|arguments| {
               let value = Self::parse_additive_expression(arguments, state)?;
-              let numeric = match value.expect_numeric() {
-                Ok(numeric) => numeric,
-                Err(error) => return Err(arguments.new_custom_error(error)),
-              };
+              let numeric = try_extract!(value, expect_numeric(), arguments);
               arguments.expect_exhausted()?;
               let result: NumericAccumulator = match numeric {
                 NumericValue::Zero => unreachable!(),
@@ -1145,10 +1025,7 @@ impl NumericValue {
           "cos" => {
             input.parse_nested_block(|arguments| {
               let value = Self::parse_additive_expression(arguments, state)?;
-              let numeric = match value.expect_numeric() {
-                Ok(numeric) => numeric,
-                Err(error) => return Err(arguments.new_custom_error(error)),
-              };
+              let numeric = try_extract!(value, expect_numeric(), arguments);
               arguments.expect_exhausted()?;
               let result: NumericAccumulator = match numeric {
                 NumericValue::Zero => unreachable!(),
@@ -1167,10 +1044,7 @@ impl NumericValue {
           "tan" => {
             input.parse_nested_block(|arguments| {
               let value = Self::parse_additive_expression(arguments, state)?;
-              let numeric = match value.expect_numeric() {
-                Ok(numeric) => numeric,
-                Err(error) => return Err(arguments.new_custom_error(error)),
-              };
+              let numeric = try_extract!(value, expect_numeric(), arguments);
               arguments.expect_exhausted()?;
               let result: NumericAccumulator = match numeric {
                 NumericValue::Zero => unreachable!(),
@@ -1189,10 +1063,7 @@ impl NumericValue {
           "asin" => {
             input.parse_nested_block(|arguments| {
               let value = Self::parse_additive_expression(arguments, state)?;
-              let number = match value.expect_number() {
-                Ok(number) => number,
-                Err(error) => return Err(arguments.new_custom_error(error)),
-              };
+              let number = try_extract!(value, expect_number(), arguments);
               arguments.expect_exhausted()?;
               let result: NumericAccumulator = NumericValue::Angle(Angle {
                 value: number.asin(),
@@ -1204,10 +1075,7 @@ impl NumericValue {
           "acos" => {
             input.parse_nested_block(|arguments| {
               let value = Self::parse_additive_expression(arguments, state)?;
-              let number = match value.expect_number() {
-                Ok(number) => number,
-                Err(error) => return Err(arguments.new_custom_error(error)),
-              };
+              let number = try_extract!(value, expect_number(), arguments);
               arguments.expect_exhausted()?;
               let result: NumericAccumulator = NumericValue::Angle(Angle {
                 value: number.acos(),
@@ -1219,10 +1087,7 @@ impl NumericValue {
           "atan" => {
             input.parse_nested_block(|arguments| {
               let value = Self::parse_additive_expression(arguments, state)?;
-              let number = match value.expect_number() {
-                Ok(number) => number,
-                Err(error) => return Err(arguments.new_custom_error(error)),
-              };
+              let number = try_extract!(value, expect_number(), arguments);
               arguments.expect_exhausted()?;
               let result: NumericAccumulator = NumericValue::Angle(Angle {
                 value: number.atan(),
@@ -1234,16 +1099,10 @@ impl NumericValue {
           "atan2" => {
             input.parse_nested_block(|arguments| {
               let y = Self::parse_additive_expression(arguments, state)?;
-              let y = match y.expect_numeric() {
-                Ok(numeric) => numeric,
-                Err(error) => return Err(arguments.new_custom_error(error)),
-              };
+              let y = try_extract!(y, expect_numeric(), arguments);
               arguments.expect_comma()?;
               let x = Self::parse_additive_expression(arguments, state)?;
-              let x = match x.expect_numeric() {
-                Ok(numeric) => numeric,
-                Err(error) => return Err(arguments.new_custom_error(error)),
-              };
+              let x = try_extract!(x, expect_numeric(), arguments);
               arguments.expect_exhausted()?;
               let result: NumericAccumulator = match (y, x) {
                 (NumericValue::Number(y), NumericValue::Number(x)) => {
@@ -1279,16 +1138,10 @@ impl NumericValue {
           "pow" => {
             input.parse_nested_block(|arguments| {
               let base = Self::parse_additive_expression(arguments, state)?;
-              let base = match base.expect_number() {
-                Ok(number) => number,
-                Err(error) => return Err(arguments.new_custom_error(error)),
-              };
+              let base = try_extract!(base, expect_number(), arguments);
               arguments.expect_comma()?;
               let exponent = Self::parse_additive_expression(arguments, state)?;
-              let exponent = match exponent.expect_number() {
-                Ok(number) => number,
-                Err(error) => return Err(arguments.new_custom_error(error)),
-              };
+              let exponent = try_extract!(exponent, expect_number(), arguments);
               arguments.expect_exhausted()?;
               let result = NumericValue::Number(base.powf(exponent)).into();
               Ok(result)
@@ -1297,10 +1150,7 @@ impl NumericValue {
           "sqrt" => {
             input.parse_nested_block(|arguments| {
               let value = Self::parse_additive_expression(arguments, state)?;
-              let value = match value.expect_number() {
-                Ok(number) => number,
-                Err(error) => return Err(arguments.new_custom_error(error)),
-              };
+              let value = try_extract!(value, expect_number(), arguments);
               arguments.expect_exhausted()?;
               let result = NumericValue::Number(value.sqrt()).into();
               Ok(result)
@@ -1336,10 +1186,7 @@ impl NumericValue {
 
             input.parse_nested_block(|arguments| {
               let first = Self::parse_additive_expression(arguments, state)?;
-              let first = match first.expect_numeric() {
-                Ok(numeric) => numeric,
-                Err(error) => return Err(arguments.new_custom_error(error)),
-              };
+              let first = try_extract!(first, expect_numeric(), arguments);
               let result: NumericAccumulator = match first {
                 NumericValue::Zero => unreachable!(),
                 NumericValue::Number(first) => {
@@ -1347,10 +1194,7 @@ impl NumericValue {
                   while !arguments.is_exhausted() {
                     arguments.expect_comma()?;
                     let value = Self::parse_additive_expression(arguments, state)?;
-                    let value = match value.expect_number() {
-                      Ok(number) => number,
-                      Err(error) => return Err(arguments.new_custom_error(error)),
-                    };
+                    let value = try_extract!(value, expect_number(), arguments);
                     args.push(value);
                   }
                   NumericValue::Number(hypot(&args)).into()
@@ -1360,10 +1204,7 @@ impl NumericValue {
                   while !arguments.is_exhausted() {
                     arguments.expect_comma()?;
                     let value = Self::parse_additive_expression(arguments, state)?;
-                    let value = match value.expect_length(false) {
-                      Ok(length) => length.to_pixels(),
-                      Err(error) => return Err(arguments.new_custom_error(error)),
-                    };
+                    let value = try_extract!(value, expect_length(false), to_pixels(), arguments);
                     args.push(value);
                   }
                   NumericValue::Length(Length {
@@ -1376,10 +1217,7 @@ impl NumericValue {
                   while !arguments.is_exhausted() {
                     arguments.expect_comma()?;
                     let value = Self::parse_additive_expression(arguments, state)?;
-                    let value = match value.expect_angle(false) {
-                      Ok(angle) => angle.to_degrees(),
-                      Err(error) => return Err(arguments.new_custom_error(error)),
-                    };
+                    let value = try_extract!(value, expect_angle(false), to_degrees(), arguments);
                     args.push(value);
                   }
                   NumericValue::Angle(Angle {
@@ -1392,10 +1230,7 @@ impl NumericValue {
                   while !arguments.is_exhausted() {
                     arguments.expect_comma()?;
                     let value = Self::parse_additive_expression(arguments, state)?;
-                    let value = match value.expect_percent() {
-                      Ok(percent) => percent,
-                      Err(error) => return Err(arguments.new_custom_error(error)),
-                    };
+                    let value = try_extract!(value, expect_percent(), arguments);
                     args.push(value);
                   }
                   NumericValue::Number(hypot(&args)).into()
@@ -1407,17 +1242,11 @@ impl NumericValue {
           "log" => {
             input.parse_nested_block(|arguments| {
               let value = Self::parse_additive_expression(arguments, state)?;
-              let value = match value.expect_number() {
-                Ok(number) => number,
-                Err(error) => return Err(arguments.new_custom_error(error)),
-              };
+              let value = try_extract!(value, expect_number(), arguments);
               let result: NumericAccumulator = if !arguments.is_exhausted() {
                 arguments.expect_comma()?;
                 let base = Self::parse_additive_expression(arguments, state)?;
-                let base = match base.expect_number() {
-                  Ok(number) => number,
-                  Err(error) => return Err(arguments.new_custom_error(error)),
-                };
+                let base = try_extract!(base, expect_number(), arguments);
                 arguments.expect_exhausted()?;
                 NumericValue::Number(value.log(base)).into()
               } else {
@@ -1429,10 +1258,7 @@ impl NumericValue {
           "exp" => {
             input.parse_nested_block(|arguments| {
               let value = Self::parse_additive_expression(arguments, state)?;
-              let number = match value.expect_number() {
-                Ok(number) => number,
-                Err(error) => return Err(arguments.new_custom_error(error)),
-              };
+              let number = try_extract!(value, expect_number(), arguments);
               arguments.expect_exhausted()?;
               let result: NumericAccumulator = NumericValue::Number(number.exp()).into();
               Ok(result)
@@ -1442,10 +1268,7 @@ impl NumericValue {
           "abs" => {
             input.parse_nested_block(|arguments| {
               let value = Self::parse_additive_expression(arguments, state)?;
-              let value = match value.expect_numeric() {
-                Ok(numeric) => numeric,
-                Err(error) => return Err(arguments.new_custom_error(error)),
-              };
+              let value = try_extract!(value, expect_numeric(), arguments);
               arguments.expect_exhausted()?;
               let result: NumericAccumulator = match value {
                 NumericValue::Zero => unreachable!(),
@@ -1479,10 +1302,7 @@ impl NumericValue {
 
             input.parse_nested_block(|arguments| {
               let value = Self::parse_additive_expression(arguments, state)?;
-              let value = match value.expect_numeric() {
-                Ok(numeric) => numeric,
-                Err(error) => return Err(arguments.new_custom_error(error)),
-              };
+              let value = try_extract!(value, expect_numeric(), arguments);
               arguments.expect_exhausted()?;
               let result: NumericAccumulator = match value {
                 NumericValue::Zero => unreachable!(),
@@ -2394,17 +2214,11 @@ impl Transform {
       "translate" => {
         input.parse_nested_block(|arguments| {
           let x = NumericValue::parse(arguments)?;
-          let x = match x.expect_length(true) {
-            Ok(length) => length,
-            Err(error) => return Err(arguments.new_custom_error(error)),
-          };
+          let x = try_extract!(x, expect_length(true), arguments);
           let y = if !arguments.is_exhausted() {
             arguments.expect_comma()?;
             let value = NumericValue::parse(arguments)?;
-            let value = match value.expect_length(true) {
-              Ok(length) => length,
-              Err(error) => return Err(arguments.new_custom_error(error)),
-            };
+            let value = try_extract!(value, expect_length(true), arguments);
             arguments.expect_exhausted()?;
             Some(value)
           } else { None };
@@ -2414,10 +2228,7 @@ impl Transform {
       "translatex" => {
         input.parse_nested_block(|arguments| {
           let value = NumericValue::parse(arguments)?;
-          let value = match value.expect_length(true) {
-            Ok(length) => length,
-            Err(error) => return Err(arguments.new_custom_error(error)),
-          };
+          let value = try_extract!(value, expect_length(true), arguments);
           arguments.expect_exhausted()?;
           Ok(Transform::TranslateX(value))
         })
@@ -2425,10 +2236,7 @@ impl Transform {
       "translatey" => {
         input.parse_nested_block(|arguments| {
           let value = NumericValue::parse(arguments)?;
-          let value = match value.expect_length(true) {
-            Ok(length) => length,
-            Err(error) => return Err(arguments.new_custom_error(error)),
-          };
+          let value = try_extract!(value, expect_length(true), arguments);
           arguments.expect_exhausted()?;
           Ok(Transform::TranslateY(value))
         })
@@ -2436,10 +2244,7 @@ impl Transform {
       "translatez" => {
         input.parse_nested_block(|arguments| {
           let value = NumericValue::parse(arguments)?;
-          let value = match value.expect_length(true) {
-            Ok(length) => length,
-            Err(error) => return Err(arguments.new_custom_error(error)),
-          };
+          let value = try_extract!(value, expect_length(true), arguments);
           arguments.expect_exhausted()?;
           Ok(Transform::TranslateZ(value))
         })
@@ -2447,22 +2252,13 @@ impl Transform {
       "translate3d" => {
         input.parse_nested_block(|arguments| {
           let x = NumericValue::parse(arguments)?;
-          let x = match x.expect_length(true) {
-            Ok(length) => length,
-            Err(error) => return Err(arguments.new_custom_error(error)),
-          };
+          let x = try_extract!(x, expect_length(true), arguments);
           arguments.expect_comma()?;
           let y = NumericValue::parse(arguments)?;
-          let y = match y.expect_length(true) {
-            Ok(length) => length,
-            Err(error) => return Err(arguments.new_custom_error(error)),
-          };
+          let y = try_extract!(y, expect_length(true), arguments);
           arguments.expect_comma()?;
           let z = NumericValue::parse(arguments)?;
-          let z = match z.expect_length(true) {
-            Ok(length) => length,
-            Err(error) => return Err(arguments.new_custom_error(error)),
-          };
+          let z = try_extract!(z, expect_length(true), arguments);
           arguments.expect_exhausted()?;
           Ok(Transform::Translate3d(x, y, z))
         })
@@ -2470,17 +2266,11 @@ impl Transform {
       "scale" => {
         input.parse_nested_block(|arguments| {
           let x = NumericValue::parse(arguments)?;
-          let x = match x.expect_number_or_percent() {
-            Ok(value) => value,
-            Err(error) => return Err(arguments.new_custom_error(error)),
-          };
+          let x = try_extract!(x, expect_number_or_percent(), arguments);
           let y = if !arguments.is_exhausted() {
             arguments.expect_comma()?;
             let value = NumericValue::parse(arguments)?;
-            let value = match value.expect_number_or_percent() {
-              Ok(value) => value,
-              Err(error) => return Err(arguments.new_custom_error(error)),
-            };
+            let value = try_extract!(value, expect_number_or_percent(), arguments);
             arguments.expect_exhausted()?;
             Some(value)
           } else { None };
@@ -2490,10 +2280,7 @@ impl Transform {
       "scalex" => {
         input.parse_nested_block(|arguments| {
           let value = NumericValue::parse(arguments)?;
-          let value = match value.expect_number_or_percent() {
-            Ok(value) => value,
-            Err(error) => return Err(arguments.new_custom_error(error)),
-          };
+          let value = try_extract!(value, expect_number_or_percent(), arguments);
           arguments.expect_exhausted()?;
           Ok(Transform::ScaleX(value))
         })
@@ -2501,10 +2288,7 @@ impl Transform {
       "scaley" => {
         input.parse_nested_block(|arguments| {
           let value = NumericValue::parse(arguments)?;
-          let value = match value.expect_number_or_percent() {
-            Ok(value) => value,
-            Err(error) => return Err(arguments.new_custom_error(error)),
-          };
+          let value = try_extract!(value, expect_number_or_percent(), arguments);
           arguments.expect_exhausted()?;
           Ok(Transform::ScaleY(value))
         })
@@ -2512,10 +2296,7 @@ impl Transform {
       "scalez" => {
         input.parse_nested_block(|arguments| {
           let value = NumericValue::parse(arguments)?;
-          let value = match value.expect_number_or_percent() {
-            Ok(value) => value,
-            Err(error) => return Err(arguments.new_custom_error(error)),
-          };
+          let value = try_extract!(value, expect_number_or_percent(), arguments);
           arguments.expect_exhausted()?;
           Ok(Transform::ScaleZ(value))
         })
@@ -2523,22 +2304,13 @@ impl Transform {
       "scale3d" => {
         input.parse_nested_block(|arguments| {
           let x = NumericValue::parse(arguments)?;
-          let x = match x.expect_number_or_percent() {
-            Ok(value) => value,
-            Err(error) => return Err(arguments.new_custom_error(error)),
-          };
+          let x = try_extract!(x, expect_number_or_percent(), arguments);
           arguments.expect_comma()?;
           let y = NumericValue::parse(arguments)?;
-          let y = match y.expect_number_or_percent() {
-            Ok(value) => value,
-            Err(error) => return Err(arguments.new_custom_error(error)),
-          };
+          let y = try_extract!(y, expect_number_or_percent(), arguments);
           arguments.expect_comma()?;
           let z = NumericValue::parse(arguments)?;
-          let z = match z.expect_number_or_percent() {
-            Ok(value) => value,
-            Err(error) => return Err(arguments.new_custom_error(error)),
-          };
+          let z = try_extract!(z, expect_number_or_percent(), arguments);
           arguments.expect_exhausted()?;
           Ok(Transform::Scale3d(x, y, z))
         })
@@ -2546,10 +2318,7 @@ impl Transform {
       "rotate" => {
         input.parse_nested_block(|arguments| {
           let value = NumericValue::parse(arguments)?;
-          let value = match value.expect_angle(true) {
-            Ok(angle) => angle,
-            Err(error) => return Err(arguments.new_custom_error(error)),
-          };
+          let value = try_extract!(value, expect_angle(true), arguments);
           arguments.expect_exhausted()?;
           Ok(Transform::Rotate(value))
         })
@@ -2557,10 +2326,7 @@ impl Transform {
       "rotatex" => {
         input.parse_nested_block(|arguments| {
           let value = NumericValue::parse(arguments)?;
-          let value = match value.expect_angle(true) {
-            Ok(angle) => angle,
-            Err(error) => return Err(arguments.new_custom_error(error)),
-          };
+          let value = try_extract!(value, expect_angle(true), arguments);
           arguments.expect_exhausted()?;
           Ok(Transform::RotateX(value))
         })
@@ -2568,10 +2334,7 @@ impl Transform {
       "rotatey" => {
         input.parse_nested_block(|arguments| {
           let value = NumericValue::parse(arguments)?;
-          let value = match value.expect_angle(true) {
-            Ok(angle) => angle,
-            Err(error) => return Err(arguments.new_custom_error(error)),
-          };
+          let value = try_extract!(value, expect_angle(true), arguments);
           arguments.expect_exhausted()?;
           Ok(Transform::RotateY(value))
         })
@@ -2579,10 +2342,7 @@ impl Transform {
       "rotatez" => {
         input.parse_nested_block(|arguments| {
           let value = NumericValue::parse(arguments)?;
-          let value = match value.expect_angle(true) {
-            Ok(angle) => angle,
-            Err(error) => return Err(arguments.new_custom_error(error)),
-          };
+          let value = try_extract!(value, expect_angle(true), arguments);
           arguments.expect_exhausted()?;
           Ok(Transform::RotateZ(value))
         })
@@ -2590,28 +2350,16 @@ impl Transform {
       "rotate3d" => {
         input.parse_nested_block(|arguments| {
           let x = NumericValue::parse(arguments)?;
-          let x = match x.expect_number() {
-            Ok(number) => number,
-            Err(error) => return Err(arguments.new_custom_error(error)),
-          };
+          let x = try_extract!(x, expect_number(), arguments);
           arguments.expect_comma()?;
           let y = NumericValue::parse(arguments)?;
-          let y = match y.expect_number() {
-            Ok(number) => number,
-            Err(error) => return Err(arguments.new_custom_error(error)),
-          };
+          let y = try_extract!(y, expect_number(), arguments);
           arguments.expect_comma()?;
           let z = NumericValue::parse(arguments)?;
-          let z = match z.expect_number() {
-            Ok(number) => number,
-            Err(error) => return Err(arguments.new_custom_error(error)),
-          };
+          let z = try_extract!(z, expect_number(), arguments);
           arguments.expect_comma()?;
           let a = NumericValue::parse(arguments)?;
-          let a = match a.expect_angle(true) {
-            Ok(angle) => angle,
-            Err(error) => return Err(arguments.new_custom_error(error)),
-          };
+          let a = try_extract!(a, expect_angle(true), arguments);
           arguments.expect_exhausted()?;
           Ok(Transform::Rotate3d(x, y, z, a))
         })
@@ -2619,17 +2367,11 @@ impl Transform {
       "skew" => {
         input.parse_nested_block(|arguments| {
           let x = NumericValue::parse(arguments)?;
-          let x = match x.expect_angle(true) {
-            Ok(angle) => angle,
-            Err(error) => return Err(arguments.new_custom_error(error)),
-          };
+          let x = try_extract!(x, expect_angle(true), arguments);
           let y = if !arguments.is_exhausted() {
             arguments.expect_comma()?;
             let value = NumericValue::parse(arguments)?;
-            let value = match value.expect_angle(true) {
-              Ok(angle) => angle,
-              Err(error) => return Err(arguments.new_custom_error(error)),
-            };
+            let value = try_extract!(value, expect_angle(true), arguments);
             arguments.expect_exhausted()?;
             Some(value)
           } else { None };
@@ -2639,10 +2381,7 @@ impl Transform {
       "skewx" => {
         input.parse_nested_block(|arguments| {
           let value = NumericValue::parse(arguments)?;
-          let value = match value.expect_angle(true) {
-            Ok(angle) => angle,
-            Err(error) => return Err(arguments.new_custom_error(error)),
-          };
+          let value = try_extract!(value, expect_angle(true), arguments);
           arguments.expect_exhausted()?;
           Ok(Transform::SkewX(value))
         })
@@ -2650,10 +2389,7 @@ impl Transform {
       "skewy" => {
         input.parse_nested_block(|arguments| {
           let value = NumericValue::parse(arguments)?;
-          let value = match value.expect_angle(true) {
-            Ok(angle) => angle,
-            Err(error) => return Err(arguments.new_custom_error(error)),
-          };
+          let value = try_extract!(value, expect_angle(true), arguments);
           arguments.expect_exhausted()?;
           Ok(Transform::SkewY(value))
         })
@@ -2667,10 +2403,7 @@ impl Transform {
             } else {
               arguments.reset(&start);
               let value = NumericValue::parse(arguments)?;
-              let value = match value.expect_length(true) {
-                Ok(length) => length,
-                Err(error) => return Err(arguments.new_custom_error(error)),
-              };
+              let value = try_extract!(value, expect_length(true), arguments);
               Some(value)
             }
           };
@@ -2686,10 +2419,7 @@ impl Transform {
               arguments.expect_comma()?;
             }
             let value = NumericValue::parse(arguments)?;
-            let number = match value.expect_number() {
-              Ok(number) => number,
-              Err(error) => return Err(arguments.new_custom_error(error)),
-            };
+            let number = try_extract!(value, expect_number(), arguments);
             *slot = number;
           }
           arguments.expect_exhausted()?;
@@ -2704,10 +2434,7 @@ impl Transform {
               arguments.expect_comma()?;
             }
             let value = NumericValue::parse(arguments)?;
-            let number = match value.expect_number() {
-              Ok(number) => number,
-              Err(error) => return Err(arguments.new_custom_error(error)),
-            };
+            let number = try_extract!(value, expect_number(), arguments);
             *slot = number;
           }
           arguments.expect_exhausted()?;
