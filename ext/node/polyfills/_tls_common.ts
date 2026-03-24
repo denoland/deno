@@ -34,7 +34,7 @@ const DEFAULT_MIN_VERSION = "TLSv1.2";
 const DEFAULT_MAX_VERSION = "TLSv1.3";
 let extraCACerts: string[] | undefined;
 
-function loadExtraCACerts() {
+export function loadExtraCACerts() {
   if (extraCACerts !== undefined) {
     return extraCACerts;
   }
@@ -615,5 +615,6 @@ export function translatePeerCertificate(c: any) {
 export default {
   SecureContext,
   createSecureContext,
+  loadExtraCACerts,
   translatePeerCertificate,
 };

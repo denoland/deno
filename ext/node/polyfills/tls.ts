@@ -6,7 +6,6 @@ import { notImplemented } from "ext:deno_node/_utils.ts";
 import tlsCommon from "node:_tls_common";
 import tlsWrap from "node:_tls_wrap";
 import { Buffer } from "node:buffer";
-import { readFileSync } from "node:fs";
 import process from "node:process";
 import {
   op_get_root_certificates,
@@ -120,15 +119,14 @@ export const rootCertificates = new Proxy([] as string[], {
   },
 });
 
+// Reuse the loadExtraCACerts from _tls_common which has proper error
+// handling (emits a warning instead of throwing on read failure).
 let extraCACertificates: string[] | undefined;
 function cacheExtraCACertificates() {
   if (extraCACertificates) {
     return extraCACertificates;
   }
-  const path = process.env.NODE_EXTRA_CA_CERTS;
-  extraCACertificates = ObjectFreeze(
-    path ? [readFileSync(path, "utf8")] : [],
-  );
+  extraCACertificates = ObjectFreeze(tlsCommon.loadExtraCACerts());
   return extraCACertificates;
 }
 

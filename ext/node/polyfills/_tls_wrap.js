@@ -630,7 +630,10 @@ TLSSocket.prototype.setSession = function (_session) {
     _session = Buffer.from(_session, "latin1");
   }
   this._session = _session ? Buffer.from(_session) : null;
-  this._sessionReused = !!_session;
+  // Note: rustls does not support session resumption via setSession.
+  // Do not set _sessionReused = true here; the session buffer is stored
+  // but not actually sent to the native TLS layer for 0-RTT reuse.
+  // Reporting true would mislead connection pooling logic.
 };
 
 TLSSocket.prototype.getPeerCertificate = function (detailed) {

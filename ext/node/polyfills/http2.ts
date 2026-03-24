@@ -2688,7 +2688,16 @@ function setupHandle(socket, type, options) {
     // socket so the data goes through TLS encryption if applicable.
     handle.onsenddata = (data) => {
       if (!this.destroyed && socket.writable) {
-        socket.write(data);
+        const canContinue = socket.write(data);
+        if (!canContinue) {
+          // Socket buffer is full. Pause until it drains to apply
+          // backpressure to the native nghttp2 session.
+          socket.once("drain", () => {
+            if (!this.destroyed) {
+              socket.resume();
+            }
+          });
+        }
       }
     };
     socket.resume();

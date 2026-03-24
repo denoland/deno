@@ -237,7 +237,28 @@ unsafe fn extract_emit_ctx(ptr: *mut TLSWrapInner) -> Option<EmitCtx> {
   }
 }
 
-/// Result of `clear_out_process` — describes what JS callbacks to fire.
+/// Clone a v8::Context Global from a raw pointer stored in a uv loop's data
+/// field. The original global is "leaked back" via into_raw so the loop
+/// retains ownership.
+///
+/// # Safety
+/// `ctx_ptr` must be a valid pointer to a v8::Context that was previously
+/// stored via `Global::into_raw`.
+unsafe fn clone_context_global(
+  isolate: &mut v8::Isolate,
+  ctx_ptr: *mut std::ffi::c_void,
+) -> v8::Global<v8::Context> {
+  unsafe {
+    let raw = NonNull::new_unchecked(ctx_ptr as *mut v8::Context);
+    let global = v8::Global::from_raw(isolate, raw);
+    let cloned = global.clone();
+    // Leak the original back so the loop retains its reference.
+    global.into_raw();
+    cloned
+  }
+}
+
+/// Result of `clear_out_process`: describes what JS callbacks to fire.
 struct ClearOutResult {
   handshake_done: bool,
   data: Vec<u8>,
@@ -280,7 +301,6 @@ unsafe fn do_emit_read(
   };
   unsafe {
     let mut isolate = v8::Isolate::from_raw_isolate_ptr(ctx.isolate_ptr);
-    v8::scope!(let handle_scope, &mut isolate);
 
     if ctx.loop_ptr.is_null() {
       return;
@@ -289,12 +309,11 @@ unsafe fn do_emit_read(
     if ctx_ptr.is_null() {
       return;
     }
-    let raw = NonNull::new_unchecked(ctx_ptr as *mut v8::Context);
-    let global = v8::Global::from_raw(handle_scope, raw);
-    let cloned = global.clone();
-    global.into_raw();
+    // Clone context before creating the handle scope (which borrows isolate).
+    let context_global = clone_context_global(&mut isolate, ctx_ptr);
 
-    let context = v8::Local::new(handle_scope, cloned);
+    v8::scope!(let handle_scope, &mut isolate);
+    let context = v8::Local::new(handle_scope, context_global);
     let scope = &mut v8::ContextScope::new(handle_scope, context);
 
     let state_array: v8::Local<v8::Int32Array> =
@@ -349,7 +368,6 @@ unsafe fn do_emit_read(
 unsafe fn do_emit_error(ctx: &EmitCtx, error_msg: &str, error_code: &str) {
   unsafe {
     let mut isolate = v8::Isolate::from_raw_isolate_ptr(ctx.isolate_ptr);
-    v8::scope!(let handle_scope, &mut isolate);
 
     if ctx.loop_ptr.is_null() {
       return;
@@ -358,12 +376,11 @@ unsafe fn do_emit_error(ctx: &EmitCtx, error_msg: &str, error_code: &str) {
     if ctx_ptr.is_null() {
       return;
     }
-    let raw = NonNull::new_unchecked(ctx_ptr as *mut v8::Context);
-    let global = v8::Global::from_raw(handle_scope, raw);
-    let cloned = global.clone();
-    global.into_raw();
+    // Clone context before creating the handle scope (which borrows isolate).
+    let context_global = clone_context_global(&mut isolate, ctx_ptr);
 
-    let context = v8::Local::new(handle_scope, cloned);
+    v8::scope!(let handle_scope, &mut isolate);
+    let context = v8::Local::new(handle_scope, context_global);
     let scope = &mut v8::ContextScope::new(handle_scope, context);
 
     let this = v8::Local::new(scope, &ctx.js_handle);
@@ -394,7 +411,6 @@ unsafe fn do_emit_error(ctx: &EmitCtx, error_msg: &str, error_code: &str) {
 unsafe fn do_emit_handshake_done(ctx: &EmitCtx) {
   unsafe {
     let mut isolate = v8::Isolate::from_raw_isolate_ptr(ctx.isolate_ptr);
-    v8::scope!(let handle_scope, &mut isolate);
 
     if ctx.loop_ptr.is_null() {
       return;
@@ -403,12 +419,11 @@ unsafe fn do_emit_handshake_done(ctx: &EmitCtx) {
     if ctx_ptr.is_null() {
       return;
     }
-    let raw = NonNull::new_unchecked(ctx_ptr as *mut v8::Context);
-    let global = v8::Global::from_raw(handle_scope, raw);
-    let cloned = global.clone();
-    global.into_raw();
+    // Clone context before creating the handle scope (which borrows isolate).
+    let context_global = clone_context_global(&mut isolate, ctx_ptr);
 
-    let context = v8::Local::new(handle_scope, cloned);
+    v8::scope!(let handle_scope, &mut isolate);
+    let context = v8::Local::new(handle_scope, context_global);
     let scope = &mut v8::ContextScope::new(handle_scope, context);
 
     let this = v8::Local::new(scope, &ctx.js_handle);
@@ -434,7 +449,6 @@ unsafe fn do_invoke_queued(
 ) {
   unsafe {
     let mut isolate = v8::Isolate::from_raw_isolate_ptr(ctx.isolate_ptr);
-    v8::scope!(let handle_scope, &mut isolate);
 
     if ctx.loop_ptr.is_null() {
       return;
@@ -443,12 +457,11 @@ unsafe fn do_invoke_queued(
     if ctx_ptr.is_null() {
       return;
     }
-    let raw = NonNull::new_unchecked(ctx_ptr as *mut v8::Context);
-    let global = v8::Global::from_raw(handle_scope, raw);
-    let cloned = global.clone();
-    global.into_raw();
+    // Clone context before creating the handle scope (which borrows isolate).
+    let context_global = clone_context_global(&mut isolate, ctx_ptr);
 
-    let context = v8::Local::new(handle_scope, cloned);
+    v8::scope!(let handle_scope, &mut isolate);
+    let context = v8::Local::new(handle_scope, context_global);
     let scope = &mut v8::ContextScope::new(handle_scope, context);
 
     let req_obj = v8::Local::new(scope, &write_obj);
@@ -476,7 +489,6 @@ unsafe fn do_invoke_queued(
 unsafe fn do_enc_out_js(ctx: &EmitCtx, enc_data: Vec<u8>) {
   unsafe {
     let mut isolate = v8::Isolate::from_raw_isolate_ptr(ctx.isolate_ptr);
-    v8::scope!(let handle_scope, &mut isolate);
 
     if ctx.loop_ptr.is_null() {
       return;
@@ -485,12 +497,11 @@ unsafe fn do_enc_out_js(ctx: &EmitCtx, enc_data: Vec<u8>) {
     if ctx_ptr.is_null() {
       return;
     }
-    let raw = NonNull::new_unchecked(ctx_ptr as *mut v8::Context);
-    let global = v8::Global::from_raw(handle_scope, raw);
-    let cloned = global.clone();
-    global.into_raw();
+    // Clone context before creating the handle scope (which borrows isolate).
+    let context_global = clone_context_global(&mut isolate, ctx_ptr);
 
-    let context = v8::Local::new(handle_scope, cloned);
+    v8::scope!(let handle_scope, &mut isolate);
+    let context = v8::Local::new(handle_scope, context_global);
     let scope = &mut v8::ContextScope::new(handle_scope, context);
 
     let this = v8::Local::new(scope, &ctx.js_handle);
@@ -911,16 +922,20 @@ impl TLSWrapInner {
 
     // Write as much as possible, saving only the unwritten remainder.
     let mut offset = 0;
+    let mut write_error = false;
     while offset < data.len() {
       match conn.writer().write(&data[offset..]) {
         Ok(0) => break,
         Ok(n) => offset += n,
-        Err(_) => {
+        Err(e) => {
+          // Store the error so it can be surfaced to JS.
+          self.error = Some(format!("SSL write error: {e}"));
+          write_error = true;
           break;
         }
       }
     }
-    if offset < data.len() {
+    if offset < data.len() && !write_error {
       // Save only the unwritten portion for retry
       self.pending_cleartext = Some(data[offset..].to_vec());
     }
@@ -1555,7 +1570,7 @@ impl TLSWrap {
       Kind::Client
     };
 
-    let provider = ProviderType::TcpWrap as i32; // TODO: add TlsWrap provider
+    let provider = ProviderType::TlsWrap as i32;
     let base = LibUvStreamWrap::new(
       HandleWrap::create(AsyncWrap::create(op_state, provider), None),
       -1,
