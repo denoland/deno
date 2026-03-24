@@ -885,7 +885,7 @@ unsafe impl GarbageCollected for DOMMatrixReadOnly {
 /*
  * NOTE: column-major order
  *
- * For a 2D 3x2 matrix, the index of properties in
+ * For a 2D 2x3 matrix, the index of properties in
  * | a c 0 e |    | 0 4 _ 12 |
  * | b d 0 f |    | 1 5 _ 13 |
  * | 0 0 1 0 | is | _ _ _  _ |

@@ -416,6 +416,7 @@ struct Dimension {
 }
 
 impl ops::AddAssign<&Dimension> for Dimension {
+  #[inline]
   fn add_assign(&mut self, rhs: &Self) {
     self.percent += rhs.percent;
     self.length += rhs.length;
@@ -428,6 +429,7 @@ impl ops::AddAssign<&Dimension> for Dimension {
 }
 
 impl ops::SubAssign<&Dimension> for Dimension {
+  #[inline]
   fn sub_assign(&mut self, rhs: &Self) {
     self.percent -= rhs.percent;
     self.length -= rhs.length;
@@ -885,17 +887,17 @@ impl MathValue {
 
 impl ops::MulAssign<&MathValue> for MathValue {
   #[inline]
-  fn mul_assign(&mut self, other: &MathValue) {
-    self.value *= other.value;
-    self.dimension += &other.dimension;
+  fn mul_assign(&mut self, rhs: &Self) {
+    self.value *= rhs.value;
+    self.dimension += &rhs.dimension;
   }
 }
 
 impl ops::DivAssign<&MathValue> for MathValue {
   #[inline]
-  fn div_assign(&mut self, other: &MathValue) {
-    self.value /= other.value;
-    self.dimension -= &other.dimension;
+  fn div_assign(&mut self, rhs: &Self) {
+    self.value /= rhs.value;
+    self.dimension -= &rhs.dimension;
   }
 }
 
