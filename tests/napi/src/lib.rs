@@ -26,6 +26,7 @@ pub mod error;
 pub mod exception;
 
 pub mod finalizer;
+pub mod general;
 pub mod handle_scope;
 pub mod instance_data;
 pub mod make_callback;
@@ -195,6 +196,7 @@ unsafe extern "C" fn napi_register_module_v1(
   instance_data::init(env, exports);
   buffer::init(env, exports);
   dataview::init(env, exports);
+  general::init(env, exports);
   handle_scope::init(env, exports);
   reference::init(env, exports);
   exception::init(env, exports);
