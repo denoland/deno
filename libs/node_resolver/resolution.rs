@@ -273,7 +273,7 @@ pub trait NodeResolverSys:
 {
 }
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type NodeResolverRc<
   TInNpmPackageChecker,
   TIsBuiltInNodeModuleChecker,
@@ -1007,7 +1007,7 @@ impl<
     })))
   }
 
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "all arguments are needed")]
   pub fn resolve_package_import(
     &self,
     name: &str,
@@ -1028,7 +1028,7 @@ impl<
       .map(|url| url.0.into_url_or_path())
   }
 
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "all arguments are needed")]
   fn package_imports_resolve_internal(
     &self,
     name: &str,
@@ -1080,7 +1080,7 @@ impl<
     )
   }
 
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "all arguments are needed")]
   fn resolve_package_target_string(
     &self,
     target: &str,
@@ -1267,7 +1267,7 @@ impl<
     )?)
   }
 
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "all arguments are needed")]
   fn resolve_package_target(
     &self,
     package_json_path: &Path,
@@ -1323,7 +1323,7 @@ impl<
     }
   }
 
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "all arguments are needed")]
   fn resolve_package_target_inner(
     &self,
     package_json_path: &Path,
@@ -1445,7 +1445,7 @@ impl<
     version_req.matches(ts_version)
   }
 
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "all arguments are needed")]
   pub fn package_exports_resolve(
     &self,
     package_json_path: &Path,
@@ -1469,7 +1469,7 @@ impl<
       .map(|url| url.0.into_url_or_path())
   }
 
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "all arguments are needed")]
   fn package_exports_resolve_internal(
     &self,
     package_json_path: &Path,
@@ -1629,7 +1629,7 @@ impl<
     )
   }
 
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "all arguments are needed")]
   fn resolve_package_subpath_for_package(
     &self,
     package_name: &str,
@@ -1671,7 +1671,7 @@ impl<
     result
   }
 
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "all arguments are needed")]
   fn resolve_package_dir_subpath(
     &self,
     package_dir_path: &Path,
@@ -1733,7 +1733,7 @@ impl<
     }
   }
 
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "all arguments are needed")]
   fn resolve_package_subpath(
     &self,
     package_json: &PackageJson,
@@ -1838,7 +1838,7 @@ impl<
       })
   }
 
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "all arguments are needed")]
   fn resolve_subpath_exact(
     &self,
     directory: &Path,

@@ -480,7 +480,6 @@ pub struct CliOptions {
 }
 
 impl CliOptions {
-  #[allow(clippy::too_many_arguments)]
   pub fn new(
     flags: Arc<Flags>,
     initial_cwd: PathBuf,
@@ -594,7 +593,7 @@ impl CliOptions {
     };
     if let Some(node_channel_fd) = maybe_node_channel_fd {
       // Remove so that child processes don't inherit this environment variables.
-      #[allow(clippy::undocumented_unsafe_blocks)]
+      // SAFETY: single-threaded at this point in startup
       unsafe {
         std::env::remove_var("NODE_CHANNEL_FD");
         std::env::remove_var("NODE_CHANNEL_SERIALIZATION_MODE");
@@ -1263,10 +1262,8 @@ impl CliOptions {
           Ok(var) => {
             // remove the env var so that child sub processes won't pick this up
 
-            #[allow(clippy::undocumented_unsafe_blocks)]
-            unsafe {
-              std::env::remove_var(NPM_CMD_NAME_ENV_VAR_NAME)
-            };
+            // SAFETY: single-threaded at this point in startup
+            unsafe { std::env::remove_var(NPM_CMD_NAME_ENV_VAR_NAME) };
             Some(var)
           }
           Err(_) => NpmPackageReqReference::from_str(&flags.script).ok().map(
@@ -1529,7 +1526,7 @@ fn resolve_import_map_specifier(
 
 /// Resolves the no_prompt value based on the cli flags and environment.
 pub fn resolve_no_prompt(flags: &PermissionFlags) -> bool {
-  flags.no_prompt || has_flag_env_var("DENO_NO_PROMPT")
+  flags.no_prompt || has_flag_env_var(&CliSys::default(), "DENO_NO_PROMPT")
 }
 
 pub fn config_to_deno_graph_workspace_member(

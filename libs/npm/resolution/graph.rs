@@ -47,7 +47,10 @@ use crate::resolution::collections::OneDirectionalLinkedList;
 use crate::resolution::snapshot::SnapshotPackageCopyIndexResolver;
 
 pub trait Reporter: std::fmt::Debug + Send + Sync {
-  #[allow(unused_variables)]
+  #[allow(
+    unused_variables,
+    reason = "default implementation ignores parameters"
+  )]
   fn on_resolved(&self, package_req: &PackageReq, nv: &PackageNv) {}
 }
 
@@ -973,7 +976,7 @@ impl Graph {
   // Debugging methods
 
   #[cfg(debug_assertions)]
-  #[allow(unused, clippy::print_stderr)]
+  #[allow(unused, clippy::print_stderr, reason = "debug utility")]
   fn output_path(&self, path: &Rc<GraphPath>) {
     let pkg_ids = self.compute_all_npm_pkg_ids();
     eprintln!("-----------");
@@ -1006,7 +1009,7 @@ impl Graph {
   }
 
   #[cfg(debug_assertions)]
-  #[allow(unused, clippy::print_stderr)]
+  #[allow(unused, clippy::print_stderr, reason = "debug utility")]
   fn output_node_with_ids(
     nodes: &HashMap<NodeId, Node>,
     pkg_ids: &HashMap<NodeId, NpmPackageId>,
@@ -1026,7 +1029,7 @@ impl Graph {
   }
 
   #[cfg(debug_assertions)]
-  #[allow(unused, clippy::print_stderr)]
+  #[allow(unused, clippy::print_stderr, reason = "debug utility")]
   pub fn output_nodes(&self) {
     let pkg_ids = self.compute_all_npm_pkg_ids();
     eprintln!("~~~");
@@ -6079,6 +6082,32 @@ mod test {
       },
       _ => unreachable!(),
     }
+  }
+
+  #[tokio::test]
+  async fn skips_file_dep() {
+    let api = TestNpmRegistryApi::default();
+    api.ensure_package_version("package-a", "1.0.0");
+    api.ensure_package_version("package-b", "1.0.0");
+    api.add_dependency(("package-a", "1.0.0"), ("package-b", "*"));
+    api.add_dependency(
+      ("package-b", "1.0.0"),
+      ("local-pkg", "file:./local-pkg"),
+    );
+    // Should resolve successfully, skipping the file: dependency
+    let snapshot =
+      run_resolver_and_get_snapshot(api, vec!["package-a@1.0.0"]).await;
+    let packages = package_names_with_info(
+      &snapshot,
+      &NpmSystemInfo {
+        os: "darwin".into(),
+        cpu: "x86_64".into(),
+      },
+    );
+    assert_eq!(
+      packages,
+      vec!["package-a@1.0.0".to_string(), "package-b@1.0.0".to_string(),]
+    );
   }
 
   #[tokio::test]

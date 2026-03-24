@@ -494,11 +494,10 @@ pub fn format_html(
           )
         }
         ext if ext.starts_with("markup-fmt-jinja-") => {
-          // Jinja/Nunjucks expressions may contain non-JS syntax (for example
-          // filters such as `|>`), so preserve the original text instead of
-          // passing it through the TypeScript formatter. The ext prefix is set
-          // by markup_fmt for Jinja expression/statement callbacks:
-          // https://github.com/g-plane/markup_fmt/blob/v0.26.0/src/ctx.rs#L390-L394
+          // Jinja/Nunjucks expressions may contain non-JS syntax (e.g.
+          // filters such as `|>`), so preserve the original text instead
+          // of passing it through the TypeScript formatter.
+          // Ref: https://github.com/g-plane/markup_fmt/blob/v0.27.0/src/ctx.rs
           Ok(Cow::from(text))
         }
         _ => {
@@ -656,6 +655,7 @@ fn format_embedded_css(
       single_line_block_threshold: None,
       keyframe_selector_notation: None,
       attr_value_quotes: config::AttrValueQuotes::Always,
+      attr_selector_quotes: None,
       prefer_single_line: false,
       selectors_prefer_single_line: None,
       function_args_prefer_single_line: None,
@@ -1241,7 +1241,7 @@ fn format_stdin(
     None,
   )?;
   if fmt_flags.check {
-    #[allow(clippy::print_stdout)]
+    #[allow(clippy::print_stdout, reason = "actually want to output")]
     if formatted_text.is_some() {
       println!("Not formatted stdin");
     }
@@ -1543,6 +1543,7 @@ fn get_resolved_malva_config(
     single_line_block_threshold: None,
     keyframe_selector_notation: None,
     attr_value_quotes: AttrValueQuotes::Always,
+    attr_selector_quotes: None,
     prefer_single_line: false,
     selectors_prefer_single_line: None,
     function_args_prefer_single_line: None,

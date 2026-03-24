@@ -1,10 +1,13 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 // NB(bartlomieju): these are fine for testing
-#![allow(clippy::print_stdout)]
-#![allow(clippy::print_stderr)]
+#![allow(clippy::print_stdout, reason = "intentional output")]
+#![allow(clippy::print_stderr, reason = "intentional output")]
 // TODO(bartlomieju): add safety comments to unsafe blocks and remove this allow
-#![allow(clippy::undocumented_unsafe_blocks)]
+#![allow(
+  clippy::undocumented_unsafe_blocks,
+  reason = "safety comment on the containing block"
+)]
 
 mod checkin;
 
@@ -44,6 +47,7 @@ macro_rules! integration_test {
 unit_test!(
   encode_decode_test,
   error_test,
+  immediate_test,
   microtask_test,
   ops_async_test,
   ops_buffer_test,

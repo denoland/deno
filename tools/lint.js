@@ -31,6 +31,7 @@ if (!js && !rs) {
 if (rs) {
   promises.push(clippy());
   promises.push(ensureNoNonPermissionCapitalLetterShortFlags());
+  promises.push(ensureDisallowedMethodsEnforced());
 }
 
 if (js) {
@@ -187,6 +188,8 @@ async function clippy() {
     "clippy::print_stdout",
     "--deny",
     "clippy::large_futures",
+    "--deny",
+    "clippy::allow_attributes_without_reason",
   ];
 
   // Run clippy for the whole workspace except deno_core with --all-features.
@@ -395,6 +398,126 @@ async function listTopLevelEntries() {
         }),
     ),
   ].sort();
+}
+
+// every ext/ and libs/ crate must have a clippy.toml with the correct
+// disallowed methods
+async function ensureDisallowedMethodsEnforced() {
+  // methods that must be banned in both ext and libs crates
+  const COMMON_METHODS = [
+    "std::path::Path::canonicalize",
+    "std::path::Path::is_dir",
+    "std::path::Path::is_file",
+    "std::path::Path::is_symlink",
+    "std::path::Path::metadata",
+    "std::path::Path::read_dir",
+    "std::path::Path::read_link",
+    "std::path::Path::symlink_metadata",
+    "std::path::Path::try_exists",
+    "std::path::Path::exists",
+    "std::fs::canonicalize",
+    "std::fs::copy",
+    "std::fs::create_dir_all",
+    "std::fs::create_dir",
+    "std::fs::DirBuilder::new",
+    "std::fs::hard_link",
+    "std::fs::metadata",
+    "std::fs::OpenOptions::new",
+    "std::fs::read_dir",
+    "std::fs::read_link",
+    "std::fs::read_to_string",
+    "std::fs::read",
+    "std::fs::remove_dir_all",
+    "std::fs::remove_dir",
+    "std::fs::remove_file",
+    "std::fs::rename",
+    "std::fs::set_permissions",
+    "std::fs::symlink_metadata",
+    "std::fs::write",
+    "url::Url::to_file_path",
+    "url::Url::from_file_path",
+    "url::Url::from_directory_path",
+  ];
+
+  // additional methods that must be banned in libs crates
+  const LIBS_EXTRA_METHODS = [
+    "std::path::absolute",
+    "std::env::var",
+    "std::env::var_os",
+    "std::env::current_dir",
+    "std::env::set_current_dir",
+    "std::env::temp_dir",
+    "std::time::SystemTime::now",
+    "chrono::Utc::now",
+  ];
+
+  const errors = [];
+
+  async function checkCrateDir(crateDir, kind) {
+    const clippyToml = join(crateDir, "clippy.toml");
+    let clippyContent;
+    try {
+      clippyContent = await Deno.readTextFile(clippyToml);
+    } catch {
+      errors.push(`Missing clippy.toml: ${clippyToml}`);
+      return;
+    }
+
+    const requiredMethods = kind === "libs"
+      ? [...COMMON_METHODS, ...LIBS_EXTRA_METHODS]
+      : COMMON_METHODS;
+    for (const method of requiredMethods) {
+      if (!clippyContent.includes(`"${method}"`)) {
+        errors.push(`Missing disallowed method "${method}" in: ${clippyToml}`);
+      }
+    }
+  }
+
+  // check ext crates
+  for await (
+    const entry of Deno.readDir(join(ROOT_PATH, "ext"))
+  ) {
+    if (!entry.isDirectory) continue;
+    const crateDir = join(ROOT_PATH, "ext", entry.name);
+    try {
+      await Deno.stat(join(crateDir, "Cargo.toml"));
+    } catch {
+      continue;
+    }
+    await checkCrateDir(crateDir, "ext");
+  }
+
+  // check libs crates
+  for await (
+    const entry of Deno.readDir(join(ROOT_PATH, "libs"))
+  ) {
+    if (entry.name === "core_testing") {
+      continue; // skip only test crates
+    }
+    if (!entry.isDirectory) continue;
+    const crateDir = join(ROOT_PATH, "libs", entry.name);
+    try {
+      await Deno.stat(join(crateDir, "Cargo.toml"));
+    } catch {
+      continue;
+    }
+    await checkCrateDir(crateDir, "libs");
+  }
+
+  // check runtime crate (treated like ext - no env/time restrictions)
+  await checkCrateDir(join(ROOT_PATH, "runtime"), "ext");
+  // check runtime/permissions (treated like libs)
+  await checkCrateDir(join(ROOT_PATH, "runtime", "permissions"), "libs");
+
+  if (errors.length > 0) {
+    errors.sort();
+    for (const msg of errors) {
+      console.error(msg);
+    }
+    throw new Error(
+      `${errors.length} disallowed-methods enforcement error(s)`,
+    );
+  }
 }
 
 async function ensureNoNewTopLevelEntries() {

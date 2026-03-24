@@ -36,7 +36,7 @@ use crate::reactor::DefaultReactor;
 use crate::stats::RuntimeActivityTraces;
 use crate::tasks::V8TaskSpawnerFactory;
 use crate::uv_compat::UvLoopInner;
-use crate::web_timeout::WebTimers;
+use crate::web_timeout::UserTimer;
 
 pub const CONTEXT_STATE_SLOT_INDEX: i32 = 1;
 pub const MODULE_MAP_SLOT_INDEX: i32 = 2;
@@ -67,23 +67,21 @@ pub(crate) type UnrefedOps =
   Rc<RefCell<HashSet<i32, BuildHasherDefault<IdentityHasher>>>>;
 
 /// Indices into the shared immediate_info buffer (Uint32Array).
-#[allow(dead_code)] // Documents the layout; used only from JS
 pub(crate) const IMM_IDX_COUNT: usize = 0;
 pub(crate) const IMM_IDX_REF_COUNT: usize = 1;
 pub(crate) const IMM_IDX_HAS_OUTSTANDING: usize = 2;
 
 pub struct ContextState {
   pub(crate) task_spawner_factory: Arc<V8TaskSpawnerFactory>,
-  pub(crate) timers: WebTimers<(v8::Global<v8::Function>, u32), DefaultReactor>,
+  pub(crate) user_timer: UserTimer<DefaultReactor>,
   // Per-phase JS callbacks (replacing monolithic eventLoopTick)
   pub(crate) js_resolve_ops_cb: RefCell<Option<v8::Global<v8::Function>>>,
   pub(crate) js_drain_next_tick_and_macrotasks_cb:
     RefCell<Option<v8::Global<v8::Function>>>,
   pub(crate) js_handle_rejections_cb: RefCell<Option<v8::Global<v8::Function>>>,
-  pub(crate) js_set_timer_depth_cb: RefCell<Option<v8::Global<v8::Function>>>,
-  pub(crate) js_report_exception_cb: RefCell<Option<v8::Global<v8::Function>>>,
   pub(crate) run_immediate_callbacks_cb:
     RefCell<Option<v8::Global<v8::Function>>>,
+  pub(crate) js_process_timers_cb: RefCell<Option<v8::Global<v8::Function>>>,
   pub(crate) js_wasm_streaming_cb: RefCell<Option<v8::Global<v8::Function>>>,
   pub(crate) wasm_instance_fn: RefCell<Option<v8::Global<v8::Function>>>,
   pub(crate) unrefed_ops: UnrefedOps,
@@ -103,6 +101,14 @@ pub struct ContextState {
   /// Shared immediate info buffer exposed to JS as a Uint32Array.
   /// Indices: IMM_IDX_COUNT, IMM_IDX_REF_COUNT, IMM_IDX_HAS_OUTSTANDING
   pub(crate) immediate_info: Box<[u32; 3]>,
+  /// Shared timer info buffer exposed to JS as an Int32Array.
+  /// Index 0: refed timer count (managed by JS)
+  pub(crate) timer_info: Box<[i32; 1]>,
+  /// Active JS-managed timers tracked for the leak sanitizer.
+  /// Maps timer ID → (is_repeat, is_system). System timers (e.g.
+  /// AbortSignal.timeout) are excluded from sanitizer stats.
+  pub(crate) active_timers:
+    RefCell<std::collections::HashMap<usize, (bool, bool)>>,
   pub(crate) external_ops_tracker: ExternalOpsTracker,
   pub(crate) ext_import_meta_proto: RefCell<Option<v8::Global<v8::Object>>>,
   /// Phase-specific state for the libuv-style event loop.
@@ -125,6 +131,12 @@ pub struct ContextState {
   /// # Safety
   /// Same lifetime requirements as `uv_loop_inner` above.
   pub(crate) uv_loop_ptr: Cell<Option<*mut crate::uv_compat::uv_loop_t>>,
+  /// Two-handle setImmediate mechanism (matching Node.js): a check handle
+  /// (always running, always unref'd) and an idle handle that controls
+  /// event loop liveness for refed immediates. `None` when no uv loop is
+  /// registered (e.g. during snapshotting).
+  pub(crate) immediate_check_handle:
+    RefCell<Option<crate::uv_compat::ImmediateCheckHandle>>,
 }
 
 impl ContextState {
@@ -149,9 +161,8 @@ impl ContextState {
       js_resolve_ops_cb: Default::default(),
       js_drain_next_tick_and_macrotasks_cb: Default::default(),
       js_handle_rejections_cb: Default::default(),
-      js_set_timer_depth_cb: Default::default(),
-      js_report_exception_cb: Default::default(),
       run_immediate_callbacks_cb: Default::default(),
+      js_process_timers_cb: Default::default(),
       js_wasm_streaming_cb: Default::default(),
       wasm_instance_fn: Default::default(),
       activity_traces: Default::default(),
@@ -160,13 +171,16 @@ impl ContextState {
       methods_ctx_offset,
       pending_ops: op_driver,
       task_spawner_factory: Default::default(),
-      timers: Default::default(),
+      user_timer: Default::default(),
+      timer_info: Box::new([0i32; 1]),
+      active_timers: Default::default(),
       unrefed_ops,
       external_ops_tracker,
       ext_import_meta_proto: Default::default(),
       event_loop_phases: Default::default(),
       uv_loop_inner: Cell::new(None),
       uv_loop_ptr: Cell::new(None),
+      immediate_check_handle: RefCell::new(None),
     }
   }
 }
@@ -252,6 +266,12 @@ impl JsRealmInner {
     // SAFETY: We know the isolate outlives the realm
     let mut isolate = unsafe { v8::Isolate::from_raw_isolate_ptr(raw_ptr) };
 
+    // Close the immediate check/idle handles before the uv loop is dropped.
+    // SAFETY: The uv loop is still alive (op_state hasn't been cleared yet).
+    if let Some(handle) = state.immediate_check_handle.borrow_mut().take() {
+      unsafe { handle.close() };
+    }
+
     if let Some(loop_ptr) = state.uv_loop_ptr.get() {
       // SAFETY: `loop_ptr` is valid for the lifetime of the runtime
       // (guaranteed by `register_uv_loop`). `data` was set to a
@@ -278,8 +298,6 @@ impl JsRealmInner {
       &mut *state.js_drain_next_tick_and_macrotasks_cb.borrow_mut(),
     );
     std::mem::take(&mut *state.js_handle_rejections_cb.borrow_mut());
-    std::mem::take(&mut *state.js_set_timer_depth_cb.borrow_mut());
-    std::mem::take(&mut *state.js_report_exception_cb.borrow_mut());
     std::mem::take(&mut *state.run_immediate_callbacks_cb.borrow_mut());
     std::mem::take(&mut *state.js_wasm_streaming_cb.borrow_mut());
 

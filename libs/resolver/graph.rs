@@ -37,7 +37,7 @@ use crate::npm::managed::ManagedResolvePkgFolderFromDenoReqError;
 use crate::workspace::MappedResolutionDiagnostic;
 use crate::workspace::sloppy_imports_resolve;
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type FoundPackageJsonDepFlagRc =
   deno_maybe_sync::MaybeArc<FoundPackageJsonDepFlag>;
 
@@ -157,7 +157,7 @@ pub struct MappedResolutionDiagnosticWithPosition<'a> {
   pub start: deno_graph::Position,
 }
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type OnMappedResolutionDiagnosticFn = deno_maybe_sync::MaybeArc<
   dyn Fn(MappedResolutionDiagnosticWithPosition) + Send + Sync,
 >;
@@ -179,7 +179,7 @@ pub type DefaultDenoResolverRc<TSys> = DenoResolverRc<
   TSys,
 >;
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type DenoResolverRc<
   TInNpmPackageChecker,
   TIsBuiltInNodeModuleChecker,
@@ -960,7 +960,10 @@ mod test {
       let specifier = Url::parse("file:///file.ts").unwrap();
       let err = import_map.resolve(input, &specifier).err().unwrap();
       let err = ResolutionError::ResolverError {
-        #[allow(clippy::disallowed_types)]
+        #[allow(
+          clippy::disallowed_types,
+          reason = "ResolutionError requires Arc"
+        )]
         error: std::sync::Arc::new(ResolveError::from_err(err)),
         specifier: input.to_string(),
         range: Range {

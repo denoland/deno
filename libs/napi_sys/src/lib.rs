@@ -39,7 +39,13 @@ macro_rules! generate {
           }
       };
 
-      #[allow(clippy::missing_safety_doc)]
+      /// Loads N-API symbols from the given host library into the
+      /// global function table.
+      ///
+      /// # Safety
+      ///
+      /// Must only be called once from a single thread (e.g. via
+      /// [`setup`]). The host library must export valid N-API symbols.
       pub unsafe fn load(
           host: &libloading::Library,
       ) -> Result<(), libloading::Error> {
@@ -66,8 +72,10 @@ macro_rules! generate {
       }
 
       $(
+          /// # Safety
+          ///
+          /// Caller must ensure NAPI has been initialized via [`setup`].
           #[inline]
-          #[allow(clippy::missing_safety_doc)]
           pub unsafe fn $name($($param: $ptype,)*)$( -> $rtype)* {
               // SAFETY: caller must ensure NAPI has been initialized via setup().
               unsafe { (NAPI.$name)($($param,)*) }
@@ -104,9 +112,11 @@ static SETUP: Once = Once::new();
 /// Loads N-API symbols from host process.
 /// Must be called at least once before using any functions in bindings or
 /// they will panic.
-/// Safety: `env` must be a valid `napi_env` for the current thread
+///
+/// # Safety
+///
+/// `env` must be a valid `napi_env` for the current thread.
 #[cfg(windows)]
-#[allow(clippy::missing_safety_doc)]
 pub unsafe fn setup() {
   SETUP.call_once(|| {
     let host = match libloading::os::windows::Library::this() {

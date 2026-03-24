@@ -191,7 +191,10 @@ function getRandomValues(typedArray) {
 function hash(
   algorithm: string,
   data: BinaryLike,
-  outputEncoding: BinaryToTextEncoding = "hex",
+  outputEncodingOrOptions: BinaryToTextEncoding | {
+    outputEncoding?: BinaryToTextEncoding;
+    outputLength?: number;
+  } = "hex",
 ) {
   validateString(algorithm, "algorithm");
   if (typeof data !== "string" && !isArrayBufferView(data)) {
@@ -202,6 +205,17 @@ function hash(
       "string",
     ], data);
   }
+
+  let outputEncoding: string;
+  let outputLength: number | undefined;
+
+  if (typeof outputEncodingOrOptions === "object") {
+    outputEncoding = outputEncodingOrOptions.outputEncoding ?? "hex";
+    outputLength = outputEncodingOrOptions.outputLength;
+  } else {
+    outputEncoding = outputEncodingOrOptions;
+  }
+
   let normalized = outputEncoding;
   // Fast case: if it's 'hex', we don't need to validate it further.
   if (outputEncoding !== "hex") {
@@ -217,9 +231,33 @@ function hash(
       }
     }
   }
-  const hash = createHash(algorithm);
-  hash.update(data);
-  return hash.digest(outputEncoding);
+
+  const algoLower = algorithm.toLowerCase();
+  const isXof = algoLower === "shake128" || algoLower === "shake256";
+
+  if (outputLength != null && !isXof) {
+    // For non-XOF hashes, outputLength must match the algorithm's digest size.
+    const testHash = createHash(algorithm);
+    testHash.update("");
+    const expectedLen = testHash.digest().length;
+    if (outputLength !== expectedLen) {
+      throw new Error(
+        `Output length ${outputLength} is invalid for ${algoLower}, which does not support XOF`,
+      );
+    }
+  }
+
+  const h = createHash(
+    algorithm,
+    outputLength != null ? { outputLength } : undefined,
+  );
+  h.update(data);
+
+  if (outputLength === 0) {
+    return normalized === "buffer" ? globalThis.Buffer.alloc(0) : "";
+  }
+
+  return h.digest(outputEncoding);
 }
 
 function validateCipherivArgs(
