@@ -177,8 +177,6 @@ struct JsRuntimeInspectorState {
   nodeworker_enabled: Rc<Cell<bool>>,
   auto_attach_enabled: Rc<Cell<bool>>,
   discover_targets_enabled: Rc<Cell<bool>>,
-  network_enabled: Rc<Cell<bool>>,
-  dom_storage_enabled: Rc<Cell<bool>>,
 }
 
 struct JsRuntimeInspectorClient(Rc<JsRuntimeInspectorState>);
@@ -362,8 +360,6 @@ impl JsRuntimeInspectorState {
                 self.nodeworker_enabled.clone(),
                 self.auto_attach_enabled.clone(),
                 self.discover_targets_enabled.clone(),
-                self.network_enabled.clone(),
-                self.dom_storage_enabled.clone(),
                 self.flags.clone(),
               );
 
@@ -593,8 +589,6 @@ impl JsRuntimeInspector {
       nodeworker_enabled: Rc::new(Cell::new(false)),
       auto_attach_enabled: Rc::new(Cell::new(false)),
       discover_targets_enabled: Rc::new(Cell::new(false)),
-      network_enabled: Rc::new(Cell::new(false)),
-      dom_storage_enabled: Rc::new(Cell::new(false)),
     });
     let client = Box::new(JsRuntimeInspectorClient(state.clone()));
     let v8_inspector_client = v8::inspector::V8InspectorClient::new(client);
@@ -784,7 +778,7 @@ impl JsRuntimeInspector {
     let notification = json!({
       "method": event_name,
       "params": serde_json::from_str::<serde_json::Value>(params_json)
-        .unwrap_or_default()
+        .unwrap_or_else(|_| json!({}))
     })
     .to_string();
 
@@ -827,8 +821,6 @@ impl JsRuntimeInspector {
         inspector.state.nodeworker_enabled.clone(),
         inspector.state.auto_attach_enabled.clone(),
         inspector.state.discover_targets_enabled.clone(),
-        inspector.state.network_enabled.clone(),
-        inspector.state.dom_storage_enabled.clone(),
         inspector.state.flags.clone(),
       );
 
@@ -1210,10 +1202,10 @@ struct InspectorSessionState {
   auto_attach_enabled: Rc<Cell<bool>>,
   // Track whether Target.setDiscoverTargets has been called (enables target discovery)
   discover_targets_enabled: Rc<Cell<bool>>,
-  // Track whether Network.enable has been called (enables Network domain events)
-  network_enabled: Rc<Cell<bool>>,
-  // Track whether DOMStorage.enable has been called (enables DOMStorage domain events)
-  dom_storage_enabled: Rc<Cell<bool>>,
+  // Track whether Network.enable has been called (per-session, not shared)
+  network_enabled: Cell<bool>,
+  // Track whether DOMStorage.enable has been called (per-session, not shared)
+  dom_storage_enabled: Cell<bool>,
   // Track whether NodeRuntime.enable has been called (per-session, not shared,
   // because one client disabling it should not affect another client's state)
   noderuntime_enabled: Cell<bool>,
@@ -1243,8 +1235,6 @@ impl InspectorSession {
     nodeworker_enabled: Rc<Cell<bool>>,
     auto_attach_enabled: Rc<Cell<bool>>,
     discover_targets_enabled: Rc<Cell<bool>>,
-    network_enabled: Rc<Cell<bool>>,
-    dom_storage_enabled: Rc<Cell<bool>>,
     flags: Rc<RefCell<InspectorFlags>>,
   ) -> Rc<Self> {
     let state = InspectorSessionState {
@@ -1257,8 +1247,8 @@ impl InspectorSession {
       nodeworker_enabled,
       auto_attach_enabled,
       discover_targets_enabled,
-      network_enabled,
-      dom_storage_enabled,
+      network_enabled: Cell::new(false),
+      dom_storage_enabled: Cell::new(false),
       noderuntime_enabled: Cell::new(false),
       flags,
     };

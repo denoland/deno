@@ -179,8 +179,8 @@ fn capture_initiator(scope: &mut v8::PinScope<'_, '_>) -> serde_json::Value {
       .get_script_name(scope)
       .map(|n| n.to_rust_string_lossy(scope))
       .unwrap_or_default();
-    let line_number = frame.get_line_number() - 1; // CDP uses 0-based
-    let column_number = frame.get_column() - 1;
+    let line_number = frame.get_line_number().saturating_sub(1); // CDP uses 0-based
+    let column_number = frame.get_column().saturating_sub(1);
 
     call_frames.push(serde_json::json!({
       "functionName": function_name,
