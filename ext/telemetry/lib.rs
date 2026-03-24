@@ -102,6 +102,8 @@ use thiserror::Error;
 use tokio::sync::oneshot;
 use tokio::task::JoinSet;
 
+mod console_exporter;
+
 deno_core::extension!(
   deno_telemetry,
   ops = [
@@ -885,10 +887,13 @@ pub fn init(
   // Parse the `OTEL_EXPORTER_OTLP_PROTOCOL` variable. The opentelemetry_*
   // crates don't do this automatically.
   // TODO(piscisaureus): enable GRPC support.
-  let protocol = match sys.env_var("OTEL_EXPORTER_OTLP_PROTOCOL").as_deref() {
-    Ok("http/protobuf") => Protocol::HttpBinary,
-    Ok("http/json") => Protocol::HttpJson,
-    Ok("") | Err(std::env::VarError::NotPresent) => Protocol::HttpBinary,
+  let protocol_var = sys.env_var("OTEL_EXPORTER_OTLP_PROTOCOL");
+  let (use_console_exporter, protocol) = match protocol_var.as_deref() {
+    Ok("console") => (true, Protocol::HttpBinary),
+    Ok("http/protobuf") | Ok("") | Err(std::env::VarError::NotPresent) => {
+      (false, Protocol::HttpBinary)
+    }
+    Ok("http/json") => (false, Protocol::HttpJson),
     Ok(protocol) => {
       return Err(deno_core::anyhow::anyhow!(
         "Env var OTEL_EXPORTER_OTLP_PROTOCOL specifies an unsupported protocol: {}",
