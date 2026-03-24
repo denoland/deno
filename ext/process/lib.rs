@@ -132,20 +132,24 @@ impl StdioOrFdOrRid {
         // Convert a raw FD to a Stdio by dup'ing it into a std::fs::File.
         #[cfg(unix)]
         {
+          // SAFETY: libc::dup is safe to call with any fd; returns -1 on error.
           let duped = unsafe { libc::dup(*fd) };
           if duped < 0 {
             return Err(ProcessError::Io(std::io::Error::last_os_error()));
           }
+          // SAFETY: duped is a valid fd we own (just created by dup).
           Ok(unsafe { std::fs::File::from_raw_fd(duped) }.into())
         }
         #[cfg(windows)]
         {
           use std::os::windows::io::FromRawHandle;
-          // CRT fd → Windows HANDLE, then dup so we own it.
+          // SAFETY: get_osfhandle converts a CRT fd to a Windows HANDLE; returns -1 on error.
           let handle = unsafe { libc::get_osfhandle(*fd) };
           if handle == -1 {
             return Err(ProcessError::Io(std::io::Error::last_os_error()));
           }
+          // SAFETY: handle is a valid Windows HANDLE (verified non-negative above).
+          // BorrowedHandle does not take ownership.
           let borrowed = unsafe {
             std::os::windows::io::BorrowedHandle::borrow_raw(
               handle as *mut std::ffi::c_void,
@@ -635,7 +639,7 @@ fn create_command(
         }
         StdioOrFdOrRid::Fd(raw_fd) => {
           // Raw file descriptor (from fs.openSync etc.)
-          // — dup2 it to the target fd in the child process.
+          // dup2 it to the target fd in the child process.
           fds_to_dup.push((raw_fd, fd));
           extra_pipe_rids.push(None);
         }
@@ -734,7 +738,7 @@ fn create_command(
           extra_pipe_rids.push(Some(rid));
         }
         StdioOrFdOrRid::Fd(raw_fd) => {
-          // CRT fd → Windows HANDLE to pass to the child.
+          // SAFETY: get_osfhandle converts a CRT fd to a Windows HANDLE; returns -1 on error.
           let handle = unsafe { libc::get_osfhandle(raw_fd) };
           if handle != -1 {
             command.extra_handle(Some(handle as _));
