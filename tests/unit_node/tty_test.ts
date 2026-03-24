@@ -126,10 +126,19 @@ Deno.test({
     // Linux: script -q /dev/null -c "command args..."
     const tmpScript = await Deno.makeTempFile({ suffix: ".mjs" });
     await Deno.writeTextFile(tmpScript, helper);
-    const denoCmd = `${Deno.execPath()} run --allow-read --allow-run ${tmpScript}`;
+    const denoCmd =
+      `${Deno.execPath()} run --allow-read --allow-run ${tmpScript}`;
     const scriptArgs = Deno.build.os === "linux"
       ? ["-q", "/dev/null", "-c", denoCmd]
-      : ["-q", "/dev/null", Deno.execPath(), "run", "--allow-read", "--allow-run", tmpScript];
+      : [
+        "-q",
+        "/dev/null",
+        Deno.execPath(),
+        "run",
+        "--allow-read",
+        "--allow-run",
+        tmpScript,
+      ];
     const child = new Deno.Command("script", {
       args: scriptArgs,
       stdout: "piped",
