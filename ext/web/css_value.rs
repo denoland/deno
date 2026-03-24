@@ -73,6 +73,15 @@ impl Length {
   const INCH_TO_PX: f64 = 96.0;
   const INCH_TO_CM: f64 = 2.54;
 
+  #[inline]
+  pub fn from_pixels(value: f64) -> Self {
+    Self {
+      value: value,
+      unit: LengthUnit::Px,
+    }
+  }
+
+  #[inline]
   pub fn to_pixels(&self) -> f64 {
     let value = self.value;
     match self.unit {
@@ -107,6 +116,23 @@ impl Angle {
   const TURN_TO_DEG: f64 = 360.0;
   const TURN_TO_GRAD: f64 = 400.0;
 
+  #[inline]
+  pub fn from_degrees(value: f64) -> Self {
+    Self {
+      value: value,
+      unit: AngleUnit::Deg,
+    }
+  }
+
+  #[inline]
+  pub fn from_radians(value: f64) -> Self {
+    Self {
+      value: value,
+      unit: AngleUnit::Rad,
+    }
+  }
+
+  #[inline]
   pub fn to_degrees(&self) -> f64 {
     let value = self.value;
     match self.unit {
@@ -117,6 +143,7 @@ impl Angle {
     }
   }
 
+  #[inline]
   pub fn to_radians(&self) -> f64 {
     let value = self.value;
     match self.unit {
@@ -141,6 +168,20 @@ pub enum NumericValue {
   Percent(f64),
 }
 
+impl From<Length> for NumericValue {
+  #[inline]
+  fn from(value: Length) -> Self {
+    NumericValue::Length(value)
+  }
+}
+
+impl From<Angle> for NumericValue {
+  #[inline]
+  fn from(value: Angle) -> Self {
+    NumericValue::Angle(value)
+  }
+}
+
 impl NumericValue {
   #[inline]
   pub fn expect_number(self) -> Result<f64, CSSValueCustomError> {
@@ -159,10 +200,7 @@ impl NumericValue {
     match self {
       NumericValue::Zero => {
         if allow_zero {
-          Ok(Length {
-            value: 0.0,
-            unit: LengthUnit::Px,
-          })
+          Ok(Length::from_pixels(0.0))
         } else {
           Err(CSSValueCustomError::UnexpectedNumericType)
         }
@@ -180,10 +218,7 @@ impl NumericValue {
     match self {
       NumericValue::Zero => {
         if allow_zero {
-          Ok(Angle {
-            value: 0.0,
-            unit: AngleUnit::Deg,
-          })
+          Ok(Angle::from_degrees(0.0))
         } else {
           Err(CSSValueCustomError::UnexpectedNumericType)
         }
@@ -307,18 +342,12 @@ impl TryFrom<MathValue> for NumericValue {
         length: 1,
         angle: 0,
         percent: 0,
-      } => Ok(NumericValue::Length(Length {
-        value,
-        unit: LengthUnit::Px,
-      })),
+      } => Ok(Length::from_pixels(value).into()),
       Dimension {
         length: 0,
         angle: 1,
         percent: 0,
-      } => Ok(NumericValue::Angle(Angle {
-        value,
-        unit: AngleUnit::Deg,
-      })),
+      } => Ok(Angle::from_degrees(value).into()),
       Dimension {
         length: 0,
         angle: 0,
@@ -427,10 +456,7 @@ impl MathValue {
     if !self.is_length() {
       return Err(CSSValueCustomError::UnexpectedNumericType);
     }
-    Ok(Length {
-      value: self.value,
-      unit: LengthUnit::Px,
-    })
+    Ok(Length::from_pixels(self.value))
   }
 
   #[inline]
@@ -438,10 +464,7 @@ impl MathValue {
     if !self.is_angle() {
       return Err(CSSValueCustomError::UnexpectedNumericType);
     }
-    Ok(Angle {
-      value: self.value,
-      unit: AngleUnit::Deg,
-    })
+    Ok(Angle::from_degrees(self.value))
   }
 
   #[inline]
@@ -657,7 +680,7 @@ impl NumericValue {
                     let value = try_extract!(value, expect_length(false), to_pixels(), arguments);
                     current = minimum(current, value);
                   }
-                  NumericValue::Length(Length { value: current, unit: LengthUnit::Px }).into()
+                  NumericValue::Length(Length::from_pixels(current)).into()
                 },
                 NumericValue::Angle(angle) => {
                   let mut current = angle.to_degrees();
@@ -667,7 +690,7 @@ impl NumericValue {
                     let value = try_extract!(value, expect_angle(false), to_degrees(), arguments);
                     current = minimum(current, value);
                   }
-                  NumericValue::Angle(Angle { value: current, unit: AngleUnit::Deg }).into()
+                  NumericValue::Angle(Angle::from_degrees(current)).into()
                 },
                 NumericValue::Percent(percent) => {
                   let mut current = percent;
@@ -707,7 +730,7 @@ impl NumericValue {
                     let value = try_extract!(value, expect_length(false), to_pixels(), arguments);
                     current = maximum(current, value);
                   }
-                  NumericValue::Length(Length { value: current, unit: LengthUnit::Px }).into()
+                  NumericValue::Length(Length::from_pixels(current)).into()
                 },
                 NumericValue::Angle(angle) => {
                   let mut current = angle.to_degrees();
@@ -717,7 +740,7 @@ impl NumericValue {
                     let value = try_extract!(value, expect_angle(false), to_degrees(), arguments);
                     current = maximum(current, value);
                   }
-                  NumericValue::Angle(Angle { value: current, unit: AngleUnit::Deg }).into()
+                  NumericValue::Angle(Angle::from_degrees(current)).into()
                 },
                 NumericValue::Percent(percent) => {
                   let mut current = percent;
@@ -785,10 +808,7 @@ impl NumericValue {
                     Some(numeric) => try_extract!(numeric, expect_length(false), to_pixels(), arguments),
                     None => f64::INFINITY,
                   };
-                  NumericValue::Length(Length {
-                    value: maximum(min, minimum(value.to_pixels(), max)),
-                    unit: LengthUnit::Px,
-                  }).into()
+                  NumericValue::Length(Length::from_pixels(maximum(min, minimum(value.to_pixels(), max)))).into()
                 },
                 NumericValue::Angle(value) => {
                   let min = match min {
@@ -799,10 +819,7 @@ impl NumericValue {
                     Some(numeric) => try_extract!(numeric, expect_angle(false), to_degrees(), arguments),
                     None => f64::INFINITY,
                   };
-                  NumericValue::Angle(Angle {
-                    value: maximum(min, minimum(value.to_degrees(), max)),
-                    unit: AngleUnit::Deg,
-                  }).into()
+                  NumericValue::Angle(Angle::from_degrees(maximum(min, minimum(value.to_degrees(), max)))).into()
                 },
                 NumericValue::Percent(value) => {
                   let min = match min {
@@ -898,16 +915,10 @@ impl NumericValue {
                   NumericValue::Number(round(&strategy, value, interval)).into()
                 },
                 NumericValue::Length(value) => {
-                  NumericValue::Length(Length {
-                    value: round(&strategy, value.to_pixels(), interval),
-                    unit: LengthUnit::Px,
-                  }).into()
+                  NumericValue::Length(Length::from_pixels(round(&strategy, value.to_pixels(), interval))).into()
                 },
                 NumericValue::Angle(value) => {
-                  NumericValue::Angle(Angle {
-                    value: round(&strategy, value.to_degrees(), interval),
-                    unit: AngleUnit::Deg,
-                  }).into()
+                  NumericValue::Angle(Angle::from_degrees(round(&strategy, value.to_degrees(), interval))).into()
                 },
                 NumericValue::Percent(value) => {
                   NumericValue::Percent(round(&strategy, value, interval)).into()
@@ -934,20 +945,14 @@ impl NumericValue {
                   let divisor = Self::parse_additive_expression(arguments, state)?;
                   let divisor = try_extract!(divisor, expect_length(false), to_pixels(), arguments);
                   arguments.expect_exhausted()?;
-                  NumericValue::Length(Length {
-                    value: dividend.rem_euclid(divisor),
-                    unit: LengthUnit::Px,
-                  }).into()
+                  NumericValue::Length(Length::from_pixels(dividend.rem_euclid(divisor))).into()
                 },
                 NumericValue::Angle(dividend) => {
                   let dividend = dividend.to_degrees();
                   let divisor = Self::parse_additive_expression(arguments, state)?;
                   let divisor = try_extract!(divisor, expect_angle(false), to_degrees(), arguments);
                   arguments.expect_exhausted()?;
-                  NumericValue::Angle(Angle {
-                    value: dividend.rem_euclid(divisor),
-                    unit: AngleUnit::Deg,
-                  }).into()
+                  NumericValue::Angle(Angle::from_degrees(dividend.rem_euclid(divisor))).into()
                 },
                 NumericValue::Percent(dividend) => {
                   let divisor = Self::parse_additive_expression(arguments, state)?;
@@ -977,20 +982,14 @@ impl NumericValue {
                   let divisor = Self::parse_additive_expression(arguments, state)?;
                   let divisor = try_extract!(divisor, expect_length(false), to_pixels(), arguments);
                   arguments.expect_exhausted()?;
-                  NumericValue::Length(Length {
-                    value: dividend % divisor,
-                    unit: LengthUnit::Px,
-                  }).into()
+                  NumericValue::Length(Length::from_pixels(dividend % divisor)).into()
                 },
                 NumericValue::Angle(dividend) => {
                   let dividend = dividend.to_degrees();
                   let divisor = Self::parse_additive_expression(arguments, state)?;
                   let divisor = try_extract!(divisor, expect_angle(false), to_degrees(), arguments);
                   arguments.expect_exhausted()?;
-                  NumericValue::Angle(Angle {
-                    value: dividend % divisor,
-                    unit: AngleUnit::Deg,
-                  }).into()
+                  NumericValue::Angle(Angle::from_degrees(dividend % divisor)).into()
                 },
                 NumericValue::Percent(dividend) => {
                   let divisor = Self::parse_additive_expression(arguments, state)?;
@@ -1065,10 +1064,7 @@ impl NumericValue {
               let value = Self::parse_additive_expression(arguments, state)?;
               let number = try_extract!(value, expect_number(), arguments);
               arguments.expect_exhausted()?;
-              let result: NumericAccumulator = NumericValue::Angle(Angle {
-                value: number.asin(),
-                unit: AngleUnit::Rad,
-              }).into();
+              let result: NumericAccumulator = NumericValue::Angle(Angle::from_radians(number.asin())).into();
               Ok(result)
             })
           },
@@ -1077,10 +1073,7 @@ impl NumericValue {
               let value = Self::parse_additive_expression(arguments, state)?;
               let number = try_extract!(value, expect_number(), arguments);
               arguments.expect_exhausted()?;
-              let result: NumericAccumulator = NumericValue::Angle(Angle {
-                value: number.acos(),
-                unit: AngleUnit::Rad,
-              }).into();
+              let result: NumericAccumulator = NumericValue::Angle(Angle::from_radians(number.acos())).into();
               Ok(result)
             })
           },
@@ -1089,10 +1082,7 @@ impl NumericValue {
               let value = Self::parse_additive_expression(arguments, state)?;
               let number = try_extract!(value, expect_number(), arguments);
               arguments.expect_exhausted()?;
-              let result: NumericAccumulator = NumericValue::Angle(Angle {
-                value: number.atan(),
-                unit: AngleUnit::Rad,
-              }).into();
+              let result: NumericAccumulator = NumericValue::Angle(Angle::from_radians(number.atan())).into();
               Ok(result)
             })
           },
@@ -1106,28 +1096,16 @@ impl NumericValue {
               arguments.expect_exhausted()?;
               let result: NumericAccumulator = match (y, x) {
                 (NumericValue::Number(y), NumericValue::Number(x)) => {
-                  NumericValue::Angle(Angle {
-                    value: y.atan2(x),
-                    unit: AngleUnit::Rad,
-                  }).into()
+                  NumericValue::Angle(Angle::from_radians(y.atan2(x))).into()
                 },
                 (NumericValue::Length(y), NumericValue::Length(x)) => {
-                  NumericValue::Angle(Angle {
-                    value: y.to_pixels().atan2(x.to_pixels()),
-                    unit: AngleUnit::Rad,
-                  }).into()
+                  NumericValue::Angle(Angle::from_radians(y.to_pixels().atan2(x.to_pixels()))).into()
                 },
                 (NumericValue::Angle(y), NumericValue::Angle(x)) => {
-                  NumericValue::Angle(Angle {
-                    value: y.to_degrees().atan2(x.to_degrees()),
-                    unit: AngleUnit::Rad,
-                  }).into()
+                  NumericValue::Angle(Angle::from_radians(y.to_degrees().atan2(x.to_degrees()))).into()
                 },
                 (NumericValue::Percent(y), NumericValue::Percent(x)) => {
-                  NumericValue::Angle(Angle {
-                    value: y.atan2(x),
-                    unit: AngleUnit::Rad,
-                  }).into()
+                  NumericValue::Angle(Angle::from_radians(y.atan2(x))).into()
                 },
                 _ => return Err(arguments.new_custom_error(CSSValueCustomError::UnexpectedNumericType)),
               };
@@ -1207,10 +1185,7 @@ impl NumericValue {
                     let value = try_extract!(value, expect_length(false), to_pixels(), arguments);
                     args.push(value);
                   }
-                  NumericValue::Length(Length {
-                    value: hypot(&args),
-                    unit: LengthUnit::Px,
-                  }).into()
+                  NumericValue::Length(Length::from_pixels(hypot(&args))).into()
                 },
                 NumericValue::Angle(first) => {
                   let mut args = vec![first.to_degrees()];
@@ -1220,10 +1195,7 @@ impl NumericValue {
                     let value = try_extract!(value, expect_angle(false), to_degrees(), arguments);
                     args.push(value);
                   }
-                  NumericValue::Angle(Angle {
-                    value: hypot(&args),
-                    unit: AngleUnit::Deg,
-                  }).into()
+                  NumericValue::Angle(Angle::from_degrees(hypot(&args))).into()
                 },
                 NumericValue::Percent(first) => {
                   let mut args = vec![first];
