@@ -473,40 +473,120 @@
     "parallel/test-crypto-verify-failure.js": {},
     "parallel/test-crypto-webcrypto-aes-decrypt-tag-too-small.js": {},
     "parallel/test-datetime-change-notify.js": {},
-    // "parallel/test-debugger-address.mjs": {},
-    // "parallel/test-debugger-auto-resume.mjs": {},
+    "parallel/test-debugger-address.mjs": {
+      "ignore": true,
+      "reason": "Tests 'node inspect' CLI subcommand which Deno does not implement"
+    },
+    "parallel/test-debugger-auto-resume.mjs": {
+      "ignore": true,
+      "reason": "Tests 'node inspect' CLI subcommand which Deno does not implement"
+    },
     "parallel/test-debugger-backtrace.js": {},
-    // "parallel/test-debugger-break.js": {},
-    // "parallel/test-debugger-breakpoint-exists.js": {},
-    // "parallel/test-debugger-clear-breakpoints.js": {},
-    // "parallel/test-debugger-exceptions.js": {},
-    // "parallel/test-debugger-exec-scope.mjs": {},
+    "parallel/test-debugger-break.js": {
+      "ignore": true,
+      "reason": "Tests 'node inspect' CLI subcommand which Deno does not implement"
+    },
+    "parallel/test-debugger-breakpoint-exists.js": {
+      "ignore": true,
+      "reason": "Tests 'node inspect' CLI subcommand which Deno does not implement"
+    },
+    "parallel/test-debugger-clear-breakpoints.js": {
+      "ignore": true,
+      "reason": "Tests 'node inspect' CLI subcommand which Deno does not implement"
+    },
+    "parallel/test-debugger-exceptions.js": {
+      "ignore": true,
+      "reason": "Tests 'node inspect' CLI subcommand which Deno does not implement"
+    },
+    "parallel/test-debugger-exec-scope.mjs": {
+      "ignore": true,
+      "reason": "Tests 'node inspect' CLI subcommand which Deno does not implement"
+    },
     "parallel/test-debugger-exec.js": {},
-    // "parallel/test-debugger-extract-function-name.mjs": {},
-    // "parallel/test-debugger-heap-profiler.js": {},
-    // "parallel/test-debugger-help.mjs": {},
+    "parallel/test-debugger-extract-function-name.mjs": {
+      "ignore": true,
+      "reason": "Tests 'node inspect' CLI subcommand which Deno does not implement"
+    },
+    "parallel/test-debugger-heap-profiler.js": {
+      "ignore": true,
+      "reason": "Tests 'node inspect' CLI subcommand which Deno does not implement"
+    },
+    "parallel/test-debugger-help.mjs": {
+      "ignore": true,
+      "reason": "Tests 'node inspect' CLI subcommand which Deno does not implement"
+    },
     "parallel/test-debugger-invalid-json.mjs": {},
-    // "parallel/test-debugger-list.js": {},
+    "parallel/test-debugger-list.js": {
+      "ignore": true,
+      "reason": "Tests 'node inspect' CLI subcommand which Deno does not implement"
+    },
     "parallel/test-debugger-low-level.js": {},
-    // "parallel/test-debugger-object-type-remote-object.js": {},
-    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
-    // "parallel/test-debugger-pid.js": {},
-    // "parallel/test-debugger-preserve-breaks.js": {}, // https://github.com/denoland/deno/issues/32706
-    // "parallel/test-debugger-profile-command.js": {},
-    // "parallel/test-debugger-profile.js": {},
-    // "parallel/test-debugger-random-port-with-inspect-port.js": {},
-    // "parallel/test-debugger-random-port.js": {},
+    "parallel/test-debugger-object-type-remote-object.js": {
+      "ignore": true,
+      "reason": "Tests 'node inspect' CLI subcommand which Deno does not implement"
+    },
+    "parallel/test-debugger-pid.js": {
+      "ignore": true,
+      "reason": "Tests 'node inspect' CLI subcommand which Deno does not implement"
+    },
+    "parallel/test-debugger-preserve-breaks.js": {
+      "ignore": true,
+      "reason": "Tests 'node inspect' CLI subcommand which Deno does not implement"
+    },
+    "parallel/test-debugger-profile-command.js": {
+      "ignore": true,
+      "reason": "Tests 'node inspect' CLI subcommand which Deno does not implement"
+    },
+    "parallel/test-debugger-profile.js": {
+      "ignore": true,
+      "reason": "Tests 'node inspect' CLI subcommand which Deno does not implement"
+    },
+    "parallel/test-debugger-random-port-with-inspect-port.js": {
+      "ignore": true,
+      "reason": "Tests 'node inspect' CLI subcommand which Deno does not implement"
+    },
+    "parallel/test-debugger-random-port.js": {
+      "ignore": true,
+      "reason": "Tests 'node inspect' CLI subcommand which Deno does not implement"
+    },
     "parallel/test-debugger-repeat-last.js": {},
     "parallel/test-debugger-restart-message.js": {},
-    // "parallel/test-debugger-run-after-quit-restart.js": {},
-    // "parallel/test-debugger-sb-before-load.js": {},
-    // "parallel/test-debugger-scripts.js": {},
-    // "parallel/test-debugger-set-context-line-number.mjs": {},
-    // "parallel/test-debugger-unavailable-port.js": {},
-    // "parallel/test-debugger-use-strict.js": {},
-    // "parallel/test-debugger-watch-validation.js": {},
-    // "parallel/test-debugger-watchers.mjs": {},
-    // "parallel/test-debugger-websocket-secret-mismatch.js": {},
+    "parallel/test-debugger-run-after-quit-restart.js": {
+      "ignore": true,
+      "reason": "Tests 'node inspect' CLI subcommand which Deno does not implement"
+    },
+    "parallel/test-debugger-sb-before-load.js": {
+      "ignore": true,
+      "reason": "Tests 'node inspect' CLI subcommand which Deno does not implement"
+    },
+    "parallel/test-debugger-scripts.js": {
+      "ignore": true,
+      "reason": "Tests 'node inspect' CLI subcommand which Deno does not implement"
+    },
+    "parallel/test-debugger-set-context-line-number.mjs": {
+      "ignore": true,
+      "reason": "Tests 'node inspect' CLI subcommand which Deno does not implement"
+    },
+    "parallel/test-debugger-unavailable-port.js": {
+      "ignore": true,
+      "reason": "Tests 'node inspect' CLI subcommand which Deno does not implement"
+    },
+    "parallel/test-debugger-use-strict.js": {
+      "ignore": true,
+      "reason": "Tests 'node inspect' CLI subcommand which Deno does not implement"
+    },
+    "parallel/test-debugger-watch-validation.js": {
+      "ignore": true,
+      "reason": "Tests 'node inspect' CLI subcommand which Deno does not implement"
+    },
+    "parallel/test-debugger-watchers.mjs": {
+      "ignore": true,
+      "reason": "Tests 'node inspect' CLI subcommand which Deno does not implement"
+    },
+    "parallel/test-debugger-websocket-secret-mismatch.js": {
+      "ignore": true,
+      "reason": "Tests 'node inspect' CLI subcommand which Deno does not implement"
+    },
     "parallel/test-delayed-require.js": {},
     "parallel/test-destroy-socket-in-lookup.js": {},
     "parallel/test-dgram-abort-closed.js": {},
@@ -2702,11 +2782,26 @@
     // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
     // "sequential/test-cpu-prof-worker-argv.js": {},
     "sequential/test-debug-prompt.js": {},
-    // "sequential/test-debugger-custom-port.js": {},
-    // "sequential/test-debugger-debug-brk.js": {},
-    // "sequential/test-debugger-invalid-args.js": {},
-    // "sequential/test-debugger-launch.mjs": {},
-    // "sequential/test-debugger-pid.js": {},
+    "sequential/test-debugger-custom-port.js": {
+      "ignore": true,
+      "reason": "Tests 'node inspect' CLI subcommand which Deno does not implement"
+    },
+    "sequential/test-debugger-debug-brk.js": {
+      "ignore": true,
+      "reason": "Tests 'node inspect' CLI subcommand which Deno does not implement"
+    },
+    "sequential/test-debugger-invalid-args.js": {
+      "ignore": true,
+      "reason": "Tests 'node inspect' CLI subcommand which Deno does not implement"
+    },
+    "sequential/test-debugger-launch.mjs": {
+      "ignore": true,
+      "reason": "Tests 'node inspect' CLI subcommand which Deno does not implement"
+    },
+    "sequential/test-debugger-pid.js": {
+      "ignore": true,
+      "reason": "Tests 'node inspect' CLI subcommand which Deno does not implement"
+    },
     // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
     // "sequential/test-diagnostic-dir-cpu-prof.js": {},
     // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
