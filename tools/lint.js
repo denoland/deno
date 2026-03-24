@@ -160,11 +160,8 @@ async function dlintPreferPrimordials() {
 // to internal ops or ext: imports. The expected violation counts are tracked
 // per file in no_deno_api_in_polyfills.ts -- any mismatch is a hard error.
 async function lintNodePolyfillDenoApis() {
-  const pluginPath = join(
-    ROOT_PATH,
-    "tools",
-    "lint_plugins",
-    "no_deno_api_in_polyfills.ts",
+  const pluginPath = import.meta.resolve(
+    "./lint_plugins/no_deno_api_in_polyfills.ts",
   );
 
   const { EXPECTED_VIOLATIONS } = await import(pluginPath);
