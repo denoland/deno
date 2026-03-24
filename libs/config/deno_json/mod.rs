@@ -1118,6 +1118,8 @@ pub struct ConfigFileJson {
   pub deploy: Option<Value>,
   pub allow_scripts: Option<Value>,
 
+  pub catalog: Option<IndexMap<String, String>>,
+
   pub name: Option<String>,
   pub version: Option<String>,
   pub workspace: Option<Value>,
@@ -1536,6 +1538,10 @@ impl ConfigFile {
       value.insert("scopes".to_string(), scopes.clone());
     }
     import_map::ext::expand_import_map_value(Value::Object(value))
+  }
+
+  pub fn catalog(&self) -> Option<&IndexMap<String, String>> {
+    self.json.catalog.as_ref()
   }
 
   pub fn is_an_import_map(&self) -> bool {

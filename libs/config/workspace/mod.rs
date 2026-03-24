@@ -447,6 +447,7 @@ pub struct Workspace {
   config_folders: IndexMap<UrlRc, FolderConfigs>,
   links: BTreeMap<UrlRc, FolderConfigs>,
   pub(crate) vendor_dir: Option<PathBuf>,
+  catalog: IndexMap<String, String>,
   cached: WorkspaceCachedValues,
 }
 
@@ -458,6 +459,10 @@ impl Workspace {
     vendor_dir: Option<PathBuf>,
   ) -> Self {
     let root_dir_url = new_rc(root.folder_url());
+    let catalog = root
+      .deno_json()
+      .and_then(|dj| dj.catalog().cloned())
+      .unwrap_or_default();
     let mut config_folders = IndexMap::with_capacity(members.len() + 1);
     config_folders.insert(
       root_dir_url.clone(),
@@ -476,6 +481,7 @@ impl Workspace {
         .map(|(url, folder)| (url, FolderConfigs::from_config_folder(folder)))
         .collect(),
       vendor_dir,
+      catalog,
       cached: Default::default(),
     }
   }
@@ -494,6 +500,10 @@ impl Workspace {
 
   pub fn root_folder_configs(&self) -> &FolderConfigs {
     self.config_folders.get(&self.root_dir_url).unwrap()
+  }
+
+  pub fn catalog(&self) -> &IndexMap<String, String> {
+    &self.catalog
   }
 
   pub fn root_deno_json(&self) -> Option<&ConfigFileRc> {
@@ -654,6 +664,7 @@ impl Workspace {
       }
     }
 
+    let catalog = &self.catalog;
     let mut folders = Vec::with_capacity(self.config_folders.len());
     for (index, (dir_url, folder)) in self.config_folders.iter().enumerate() {
       folders.push(Folder {
@@ -725,6 +736,22 @@ impl Workspace {
                           },
                         },
                       }))
+                    }
+                    PackageJsonDepValue::Catalog => {
+                      // Resolve from workspace catalog
+                      catalog.get(k.as_str()).and_then(|version_req_str| {
+                        VersionReq::parse_from_npm(version_req_str).ok().map(
+                          |version_req| {
+                            Dep::Req(JsrDepPackageReq {
+                              kind: PackageKind::Npm,
+                              req: PackageReq {
+                                name: k.clone(),
+                                version_req,
+                              },
+                            })
+                          },
+                        )
+                      })
                     }
                   })
               })
@@ -1088,6 +1115,12 @@ impl Workspace {
         diagnostics.push(WorkspaceDiagnostic {
           config_url: member_config.specifier.clone(),
           kind: WorkspaceDiagnosticKind::RootOnlyOption("nodeModulesDir"),
+        });
+      }
+      if member_config.json.catalog.is_some() {
+        diagnostics.push(WorkspaceDiagnostic {
+          config_url: member_config.specifier.clone(),
+          kind: WorkspaceDiagnosticKind::RootOnlyOption("catalog"),
         });
       }
       if member_config.json.links.is_some() {
@@ -1628,6 +1661,7 @@ impl WorkspaceDirectory {
         VendorEnablement::Enable { cwd } => Some(cwd.join("vendor")),
         VendorEnablement::Disable => None,
       },
+      catalog: IndexMap::new(),
       cached: Default::default(),
     });
     workspace.resolve_member_dir(&opts.root_dir)
@@ -1712,6 +1746,7 @@ impl WorkspaceDirectory {
           root_dir_url: start_dir.clone(),
           links: BTreeMap::new(),
           vendor_dir,
+          catalog: IndexMap::new(),
           cached: Default::default(),
         });
         workspace.resolve_member_dir(&start_dir)

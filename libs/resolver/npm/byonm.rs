@@ -220,6 +220,13 @@ impl<TSys: ByonmNpmResolverSys> ByonmNpmResolver<TSys> {
                 return Ok(Some(key.clone()));
               }
             }
+            PackageJsonDepValue::Catalog => {
+              // Catalog deps are resolved to their actual version during
+              // install. At BYONM resolution time, check by alias name.
+              if key.as_str() == req.name {
+                return Ok(Some(key.clone()));
+              }
+            }
           }
         }
       }

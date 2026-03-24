@@ -66,7 +66,7 @@ pub fn categorize_installed_npm_deps(
 
   for package_json in workspace.package_jsons() {
     let deps = package_json.resolve_local_package_json_deps();
-    for (_k, v) in deps.dependencies.iter() {
+    for (k, v) in deps.dependencies.iter() {
       let Ok(s) = v else {
         continue;
       };
@@ -78,15 +78,19 @@ pub fn categorize_installed_npm_deps(
         deno_package_json::PackageJsonDepValue::Req(package_req) => {
           normal_deps.insert(package_req.name.to_string());
         }
-        deno_package_json::PackageJsonDepValue::Workspace(
-          _package_json_dep_workspace_req,
-        ) => {
+        deno_package_json::PackageJsonDepValue::Workspace(_) => {
           // ignore workspace deps
+        }
+        deno_package_json::PackageJsonDepValue::Catalog => {
+          // resolve from catalog
+          if workspace.catalog().contains_key(k.as_str()) {
+            normal_deps.insert(k.to_string());
+          }
         }
       }
     }
 
-    for (_k, v) in deps.dev_dependencies.iter() {
+    for (k, v) in deps.dev_dependencies.iter() {
       let Ok(s) = v else {
         continue;
       };
@@ -98,10 +102,14 @@ pub fn categorize_installed_npm_deps(
         deno_package_json::PackageJsonDepValue::Req(package_req) => {
           dev_deps.insert(package_req.name.to_string());
         }
-        deno_package_json::PackageJsonDepValue::Workspace(
-          _package_json_dep_workspace_req,
-        ) => {
+        deno_package_json::PackageJsonDepValue::Workspace(_) => {
           // ignore workspace deps
+        }
+        deno_package_json::PackageJsonDepValue::Catalog => {
+          // resolve from catalog
+          if workspace.catalog().contains_key(k.as_str()) {
+            dev_deps.insert(k.to_string());
+          }
         }
       }
     }

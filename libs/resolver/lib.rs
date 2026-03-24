@@ -455,6 +455,26 @@ impl<
                     })
                 })
                 .and_then(|r| Ok(r.into_url()?)),
+              PackageJsonDepValue::Catalog => self
+                .workspace_resolver
+                .resolve_catalog_dep(alias)
+                .ok_or_else(|| {
+                  DenoResolveErrorKind::PackageJsonDepValueUrlParse(
+                    url::ParseError::EmptyHost,
+                  )
+                  .into_box()
+                })
+                .and_then(|req| {
+                  Url::parse(&format!(
+                    "npm:{}{}",
+                    req,
+                    sub_path.map(|s| format!("/{}", s)).unwrap_or_default()
+                  ))
+                  .map_err(|e| {
+                    DenoResolveErrorKind::PackageJsonDepValueUrlParse(e)
+                      .into_box()
+                  })
+                }),
             })
         }
         MappedResolution::PackageJsonImport { pkg_json } => self

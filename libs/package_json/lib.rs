@@ -147,6 +147,7 @@ pub enum PackageJsonDepValue {
   File(String),
   Req(PackageReq),
   Workspace(PackageJsonDepWorkspaceReq),
+  Catalog,
 }
 
 impl PackageJsonDepValue {
@@ -190,6 +191,7 @@ impl PackageJsonDepValue {
             from_name_and_version_req(value.into(), "*")
           }
         }
+        "catalog" => Ok(Self::Catalog),
         "workspace" => {
           let workspace_req = match value {
             "~" => PackageJsonDepWorkspaceReq::Tilde,
@@ -871,6 +873,7 @@ mod test {
       ("work-test-star".to_string(), "workspace:*".to_string()),
       ("work-test-tilde".to_string(), "workspace:~".to_string()),
       ("work-test-caret".to_string(), "workspace:^".to_string()),
+      ("catalog-test".to_string(), "catalog:".to_string()),
       ("file-test".to_string(), "file:something".to_string()),
       ("git-test".to_string(), "git:something".to_string()),
       ("http-test".to_string(), "http://something".to_string()),
@@ -914,6 +917,7 @@ mod test {
             PackageJsonDepWorkspaceReq::Caret
           ))
         ),
+        ("catalog-test".to_string(), Ok(PackageJsonDepValue::Catalog),),
         (
           "file-test".to_string(),
           Ok(PackageJsonDepValue::File("something".to_string())),

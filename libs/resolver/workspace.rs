@@ -845,6 +845,7 @@ pub struct WorkspaceResolver<TSys: FsMetadata + FsRead> {
   fs_cache_options: FsCacheOptions,
   compiler_options_resolver: CompilerOptionsResolverCellRc,
   sloppy_imports_resolver: SloppyImportsResolverRc<TSys>,
+  catalog: IndexMap<String, String>,
 }
 
 impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
@@ -979,6 +980,7 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
       fs_cache_options: options.fs_cache_options,
       compiler_options_resolver,
       sloppy_imports_resolver,
+      catalog: workspace.catalog().clone(),
     })
   }
 
@@ -1033,6 +1035,7 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
       fs_cache_options,
       compiler_options_resolver,
       sloppy_imports_resolver,
+      catalog: IndexMap::new(),
     }
   }
 
@@ -1077,6 +1080,7 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
       pkg_json_resolution: self.pkg_json_dep_resolution(),
       sloppy_imports_options: self.sloppy_imports_options,
       fs_cache_options: self.fs_cache_options,
+      catalog: self.catalog.clone(),
     }
   }
 
@@ -1549,6 +1553,19 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
     }
   }
 
+  pub fn catalog(&self) -> &IndexMap<String, String> {
+    &self.catalog
+  }
+
+  pub fn resolve_catalog_dep(&self, name: &str) -> Option<PackageReq> {
+    let version_req_str = self.catalog.get(name)?;
+    let version_req = VersionReq::parse_from_npm(version_req_str).ok()?;
+    Some(PackageReq {
+      name: name.into(),
+      version_req,
+    })
+  }
+
   pub fn pkg_json_dep_resolution(&self) -> PackageJsonDepResolution {
     self.pkg_json_dep_resolution
   }
@@ -1593,6 +1610,8 @@ pub struct SerializableWorkspaceResolver<'a> {
   pub pkg_json_resolution: PackageJsonDepResolution,
   pub sloppy_imports_options: SloppyImportsOptions,
   pub fs_cache_options: FsCacheOptions,
+  #[serde(default)]
+  pub catalog: IndexMap<String, String>,
 }
 
 #[derive(Debug, Clone, Copy)]

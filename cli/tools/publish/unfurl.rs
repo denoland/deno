@@ -506,6 +506,27 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
                   .ok()
                 }
               }
+              PackageJsonDepValue::Catalog => {
+                let catalog = self.workspace_resolver.catalog();
+                match catalog.get(alias) {
+                  Some(version_req_str) => {
+                    match VersionReq::parse_from_npm(version_req_str) {
+                      Ok(version_req) => ModuleSpecifier::parse(&format!(
+                        "npm:{}@{}{}",
+                        alias,
+                        version_req,
+                        sub_path
+                          .as_ref()
+                          .map(|s| format!("/{}", s))
+                          .unwrap_or_default()
+                      ))
+                      .ok(),
+                      Err(_) => None,
+                    }
+                  }
+                  None => None,
+                }
+              }
               PackageJsonDepValue::Workspace(workspace_version_req) => {
                 let version_req = match workspace_version_req {
                   PackageJsonDepWorkspaceReq::VersionReq(version_req) => {
