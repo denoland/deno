@@ -475,6 +475,14 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
                   },
                 );
               }
+              PackageJsonDepValue::Tarball(_) => {
+                return Err(
+                  UnfurlSpecifierError::UnsupportedPkgJsonSpecifier {
+                    package_name: alias.to_string(),
+                    scheme: "tarball".to_string(),
+                  },
+                );
+              }
               PackageJsonDepValue::Req(pkg_req) => {
                 // todo(#24612): consider warning or error when this is an npm workspace
                 // member that's also a jsr package?

@@ -1,0 +1,15 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      // Install a local tarball package
+      "args": "install ./tarball-pkg.tgz",
+      "output": "install.out"
+    },
+    {
+      // Verify the package is usable
+      "args": "eval -p require('@denotest/tarball-pkg').greet()",
+      "output": "greet.out"
+    }
+  ]
+}
