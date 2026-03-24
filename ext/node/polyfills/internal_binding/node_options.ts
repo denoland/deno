@@ -71,8 +71,14 @@ export function getOptions() {
       case "--pending-deprecation":
         options.set("--pending-deprecation", { value: true });
         break;
-      // TODO(kt3k): Handle other options.
       default:
+        if (StringPrototypeStartsWith(arg, "--dns-result-order=")) {
+          const value = StringPrototypeSlice(
+            arg,
+            "--dns-result-order=".length,
+          );
+          options.set("--dns-result-order", { value });
+        }
         break;
     }
   });

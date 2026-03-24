@@ -403,7 +403,7 @@ version = "1.16.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "94bffc006df10ac2a68c83692d734a465f8ee6c5b384d8545a636f81d858f4bf"
 dependencies = [
- "aws-lc-sys",
+ "aws-lc-sys 0.38.0",
  "untrusted 0.7.1",
  "zeroize",
 ]
@@ -413,6 +413,18 @@ name = "aws-lc-sys"
 version = "0.38.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4321e568ed89bb5a7d291a7f37997c2c0df89809d7b6d12062c81ddb54aa782e"
+dependencies = [
+ "cc",
+ "cmake",
+ "dunce",
+ "fs_extra",
+]
+
+[[package]]
+name = "aws-lc-sys"
+version = "0.39.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1fa7e52a4c5c547c741610a2c6f123f3881e409b714cd27e6798ef020c514f0a"
 dependencies = [
  "cc",
  "cmake",
@@ -1803,7 +1815,7 @@ dependencies = [
 
 [[package]]
 name = "deno"
-version = "2.7.6"
+version = "2.7.7"
 dependencies = [
  "anstream",
  "async-trait",
@@ -1839,6 +1851,7 @@ dependencies = [
  "deno_npm",
  "deno_npm_cache",
  "deno_npm_installer",
+ "deno_npmrc",
  "deno_package_json",
  "deno_panic",
  "deno_path_util",
@@ -1871,7 +1884,7 @@ dependencies = [
  "imara-diff",
  "import_map",
  "indexmap 2.12.0",
- "jsonc-parser 0.28.0",
+ "jsonc-parser",
  "jupyter-protocol",
  "keyring",
  "lazy-regex",
@@ -2002,7 +2015,7 @@ dependencies = [
 
 [[package]]
 name = "deno_bench_util"
-version = "0.233.0"
+version = "0.234.0"
 dependencies = [
  "bencher",
  "deno_core",
@@ -2011,7 +2024,7 @@ dependencies = [
 
 [[package]]
 name = "deno_bundle_runtime"
-version = "0.26.0"
+version = "0.27.0"
 dependencies = [
  "async-trait",
  "deno_core",
@@ -2023,7 +2036,7 @@ dependencies = [
 
 [[package]]
 name = "deno_cache"
-version = "0.172.0"
+version = "0.173.0"
 dependencies = [
  "async-stream",
  "async-trait",
@@ -2050,7 +2063,7 @@ dependencies = [
 
 [[package]]
 name = "deno_cache_dir"
-version = "0.31.0"
+version = "0.32.0"
 dependencies = [
  "async-trait",
  "base32",
@@ -2081,7 +2094,7 @@ dependencies = [
 
 [[package]]
 name = "deno_config"
-version = "0.89.0"
+version = "0.90.0"
 dependencies = [
  "boxed_error",
  "capacity_builder",
@@ -2095,7 +2108,7 @@ dependencies = [
  "ignore",
  "import_map",
  "indexmap 2.12.0",
- "jsonc-parser 0.28.0",
+ "jsonc-parser",
  "log",
  "pretty_assertions",
  "serde",
@@ -2108,7 +2121,7 @@ dependencies = [
 
 [[package]]
 name = "deno_core"
-version = "0.392.0"
+version = "0.393.0"
 dependencies = [
  "anyhow",
  "az",
@@ -2178,7 +2191,7 @@ dependencies = [
 
 [[package]]
 name = "deno_cron"
-version = "0.119.0"
+version = "0.120.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2195,7 +2208,7 @@ dependencies = [
 
 [[package]]
 name = "deno_crypto"
-version = "0.253.0"
+version = "0.254.0"
 dependencies = [
  "aes",
  "aes-gcm",
@@ -2235,16 +2248,16 @@ dependencies = [
 
 [[package]]
 name = "deno_crypto_provider"
-version = "0.33.0"
+version = "0.34.0"
 dependencies = [
- "aws-lc-sys",
+ "aws-lc-sys 0.39.0",
 ]
 
 [[package]]
 name = "deno_doc"
-version = "0.194.1"
+version = "0.197.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "36eede374a5ecf0a6d83ecfc47d8878e35d7e3210de6e9ca18554402a5327114"
+checksum = "72868ff531723780688c97c23a9b78d9a7790ee329b1869deba3ad0f121a1c27"
 dependencies = [
  "anyhow",
  "cfg-if",
@@ -2272,7 +2285,7 @@ dependencies = [
 
 [[package]]
 name = "deno_dotenv"
-version = "0.8.0"
+version = "0.9.0"
 dependencies = [
  "deno_path_util",
  "sys_traits",
@@ -2306,7 +2319,7 @@ dependencies = [
 
 [[package]]
 name = "deno_features"
-version = "0.36.0"
+version = "0.37.0"
 dependencies = [
  "deno_core",
  "serde",
@@ -2315,7 +2328,7 @@ dependencies = [
 
 [[package]]
 name = "deno_fetch"
-version = "0.263.0"
+version = "0.264.0"
 dependencies = [
  "base64 0.22.1",
  "bytes",
@@ -2355,7 +2368,7 @@ dependencies = [
 
 [[package]]
 name = "deno_ffi"
-version = "0.226.0"
+version = "0.227.0"
 dependencies = [
  "cranelift",
  "cranelift-native",
@@ -2379,7 +2392,7 @@ dependencies = [
 
 [[package]]
 name = "deno_fs"
-version = "0.149.0"
+version = "0.150.0"
 dependencies = [
  "async-trait",
  "base32",
@@ -2438,7 +2451,7 @@ dependencies = [
 
 [[package]]
 name = "deno_http"
-version = "0.237.0"
+version = "0.238.0"
 dependencies = [
  "async-compression",
  "async-trait",
@@ -2482,7 +2495,7 @@ dependencies = [
 
 [[package]]
 name = "deno_image"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "bytemuck",
  "deno_core",
@@ -2495,7 +2508,7 @@ dependencies = [
 
 [[package]]
 name = "deno_inspector_server"
-version = "0.13.0"
+version = "0.14.0"
 dependencies = [
  "deno_core",
  "deno_error",
@@ -2512,7 +2525,7 @@ dependencies = [
 
 [[package]]
 name = "deno_io"
-version = "0.149.0"
+version = "0.150.0"
 dependencies = [
  "async-trait",
  "deno_core",
@@ -2536,7 +2549,7 @@ dependencies = [
 
 [[package]]
 name = "deno_kv"
-version = "0.147.0"
+version = "0.148.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2569,7 +2582,7 @@ dependencies = [
 
 [[package]]
 name = "deno_lib"
-version = "0.57.0"
+version = "0.58.0"
 dependencies = [
  "arc-swap",
  "aws-lc-rs",
@@ -2625,7 +2638,7 @@ dependencies = [
 
 [[package]]
 name = "deno_lockfile"
-version = "0.41.0"
+version = "0.42.0"
 dependencies = [
  "async-executor",
  "async-trait",
@@ -2641,7 +2654,7 @@ dependencies = [
 
 [[package]]
 name = "deno_maybe_sync"
-version = "0.26.0"
+version = "0.27.0"
 dependencies = [
  "dashmap",
 ]
@@ -2660,7 +2673,7 @@ dependencies = [
 
 [[package]]
 name = "deno_napi"
-version = "0.170.0"
+version = "0.171.0"
 dependencies = [
  "deno_core",
  "deno_error",
@@ -2690,7 +2703,7 @@ dependencies = [
 
 [[package]]
 name = "deno_net"
-version = "0.231.0"
+version = "0.232.0"
 dependencies = [
  "deno_core",
  "deno_error",
@@ -2719,7 +2732,7 @@ dependencies = [
 
 [[package]]
 name = "deno_node"
-version = "0.177.0"
+version = "0.178.0"
 dependencies = [
  "base64 0.22.1",
  "boxed_error",
@@ -2778,7 +2791,7 @@ dependencies = [
 
 [[package]]
 name = "deno_node_crypto"
-version = "0.9.0"
+version = "0.10.0"
 dependencies = [
  "aead-gcm-stream",
  "aes",
@@ -2838,7 +2851,7 @@ dependencies = [
 
 [[package]]
 name = "deno_node_sqlite"
-version = "0.9.0"
+version = "0.10.0"
 dependencies = [
  "deno_core",
  "deno_error",
@@ -2849,7 +2862,7 @@ dependencies = [
 
 [[package]]
 name = "deno_npm"
-version = "0.51.0"
+version = "0.52.0"
 dependencies = [
  "async-trait",
  "capacity_builder",
@@ -2869,15 +2882,13 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
- "sys_traits",
  "thiserror 2.0.12",
  "tokio",
- "url",
 ]
 
 [[package]]
 name = "deno_npm_cache"
-version = "0.58.0"
+version = "0.59.0"
 dependencies = [
  "async-trait",
  "aws-lc-rs",
@@ -2886,6 +2897,7 @@ dependencies = [
  "deno_cache_dir",
  "deno_error",
  "deno_npm",
+ "deno_npmrc",
  "deno_path_util",
  "deno_semver",
  "deno_unsync",
@@ -2910,7 +2922,7 @@ dependencies = [
 
 [[package]]
 name = "deno_npm_installer"
-version = "0.34.0"
+version = "0.35.0"
 dependencies = [
  "anyhow",
  "async-once-cell",
@@ -2951,8 +2963,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "deno_npmrc"
+version = "0.1.0"
+dependencies = [
+ "log",
+ "monch",
+ "pretty_assertions",
+ "serde",
+ "sys_traits",
+ "thiserror 2.0.12",
+ "url",
+]
+
+[[package]]
 name = "deno_ops"
-version = "0.268.0"
+version = "0.269.0"
 dependencies = [
  "indexmap 2.12.0",
  "pretty_assertions",
@@ -2982,7 +3007,7 @@ dependencies = [
 
 [[package]]
 name = "deno_os"
-version = "0.56.0"
+version = "0.57.0"
 dependencies = [
  "deno_core",
  "deno_error",
@@ -3001,7 +3026,7 @@ dependencies = [
 
 [[package]]
 name = "deno_package_json"
-version = "0.41.0"
+version = "0.42.0"
 dependencies = [
  "boxed_error",
  "capacity_builder",
@@ -3042,7 +3067,7 @@ dependencies = [
 
 [[package]]
 name = "deno_permissions"
-version = "0.98.0"
+version = "0.99.0"
 dependencies = [
  "capacity_builder",
  "chrono",
@@ -3070,7 +3095,7 @@ dependencies = [
 
 [[package]]
 name = "deno_process"
-version = "0.54.0"
+version = "0.55.0"
 dependencies = [
  "deno_core",
  "deno_error",
@@ -3099,7 +3124,7 @@ dependencies = [
 
 [[package]]
 name = "deno_resolver"
-version = "0.70.0"
+version = "0.71.0"
 dependencies = [
  "anyhow",
  "async-once-cell",
@@ -3118,6 +3143,7 @@ dependencies = [
  "deno_maybe_sync",
  "deno_media_type",
  "deno_npm",
+ "deno_npmrc",
  "deno_package_json",
  "deno_path_util",
  "deno_permissions",
@@ -3129,7 +3155,7 @@ dependencies = [
  "imara-diff",
  "import_map",
  "indexmap 2.12.0",
- "jsonc-parser 0.28.0",
+ "jsonc-parser",
  "log",
  "node_resolver",
  "once_cell",
@@ -3146,7 +3172,7 @@ dependencies = [
 
 [[package]]
 name = "deno_runtime"
-version = "0.247.0"
+version = "0.248.0"
 dependencies = [
  "async-trait",
  "boxed_error",
@@ -3234,7 +3260,7 @@ dependencies = [
 
 [[package]]
 name = "deno_signals"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "deno_error",
  "libc",
@@ -3246,14 +3272,14 @@ dependencies = [
 
 [[package]]
 name = "deno_snapshots"
-version = "0.54.0"
+version = "0.55.0"
 dependencies = [
  "deno_runtime",
 ]
 
 [[package]]
 name = "deno_subprocess_windows"
-version = "0.34.0"
+version = "0.35.0"
 dependencies = [
  "fastrand",
  "futures-channel",
@@ -3285,7 +3311,7 @@ dependencies = [
 
 [[package]]
 name = "deno_telemetry"
-version = "0.61.0"
+version = "0.62.0"
 dependencies = [
  "async-trait",
  "deno_core",
@@ -3325,7 +3351,7 @@ dependencies = [
 
 [[package]]
 name = "deno_tls"
-version = "0.226.0"
+version = "0.227.0"
 dependencies = [
  "deno_core",
  "deno_error",
@@ -3382,7 +3408,7 @@ dependencies = [
 
 [[package]]
 name = "deno_typescript_go_client_rust"
-version = "0.21.0"
+version = "0.22.0"
 dependencies = [
  "indexmap 2.12.0",
  "log",
@@ -3410,10 +3436,9 @@ version = "0.222.0"
 
 [[package]]
 name = "deno_web"
-version = "0.270.0"
+version = "0.271.0"
 dependencies = [
  "async-trait",
- "base64-simd",
  "brotli",
  "bytes",
  "deno_bench_util",
@@ -3434,7 +3459,7 @@ dependencies = [
 
 [[package]]
 name = "deno_webgpu"
-version = "0.206.0"
+version = "0.207.0"
 dependencies = [
  "deno_core",
  "deno_error",
@@ -3451,7 +3476,7 @@ dependencies = [
 
 [[package]]
 name = "deno_webidl"
-version = "0.239.0"
+version = "0.240.0"
 dependencies = [
  "deno_bench_util",
  "deno_core",
@@ -3459,7 +3484,7 @@ dependencies = [
 
 [[package]]
 name = "deno_websocket"
-version = "0.244.0"
+version = "0.245.0"
 dependencies = [
  "bytes",
  "deno_core",
@@ -3483,7 +3508,7 @@ dependencies = [
 
 [[package]]
 name = "deno_webstorage"
-version = "0.234.0"
+version = "0.235.0"
 dependencies = [
  "deno_core",
  "deno_error",
@@ -3570,7 +3595,7 @@ dependencies = [
 
 [[package]]
 name = "denort"
-version = "2.7.6"
+version = "2.7.7"
 dependencies = [
  "async-trait",
  "bincode",
@@ -3581,6 +3606,7 @@ dependencies = [
  "deno_lib",
  "deno_media_type",
  "deno_npm",
+ "deno_npmrc",
  "deno_package_json",
  "deno_path_util",
  "deno_resolver",
@@ -3608,7 +3634,7 @@ dependencies = [
 
 [[package]]
 name = "denort_helper"
-version = "0.37.0"
+version = "0.38.0"
 dependencies = [
  "deno_error",
  "deno_path_util",
@@ -3996,27 +4022,27 @@ dependencies = [
 
 [[package]]
 name = "dprint-plugin-json"
-version = "0.21.1"
+version = "0.21.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "08ef56b214052af8bb5157d0d1b860e042f938abc9360586414a8ff436739508"
+checksum = "a2fe735acd073034b25ca9868f49b5265ff01a831dff89a2302dbe70178ca1db"
 dependencies = [
  "anyhow",
  "dprint-core",
  "dprint-core-macros",
- "jsonc-parser 0.28.0",
+ "jsonc-parser",
  "serde",
  "text_lines",
 ]
 
 [[package]]
 name = "dprint-plugin-jupyter"
-version = "0.2.1"
+version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "70170f0c0b85500d8a1a240d0c969903e0c282cdc92d0579fa57e26a814f9f0a"
+checksum = "f703cac0273eb41521f4bd89cc4848007655cd88ee2d1dc24e08aff6fa074b00"
 dependencies = [
  "anyhow",
  "dprint-core",
- "jsonc-parser 0.27.1",
+ "jsonc-parser",
  "serde",
  "serde_json",
 ]
@@ -4389,7 +4415,7 @@ dependencies = [
 
 [[package]]
 name = "eszip"
-version = "0.117.0"
+version = "0.118.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4404,7 +4430,7 @@ dependencies = [
  "import_map",
  "indexmap 2.12.0",
  "insta",
- "jsonc-parser 0.28.0",
+ "jsonc-parser",
  "pretty_assertions",
  "reqwest",
  "serde",
@@ -6231,17 +6257,12 @@ dependencies = [
 
 [[package]]
 name = "jsonc-parser"
-version = "0.27.1"
+version = "0.32.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "01958dcb05b69d9612853b47df8f7881810e4f61b5cedd8894be04291f28ccb9"
-
-[[package]]
-name = "jsonc-parser"
-version = "0.28.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b187b7e06feb2c205d8ec71f12cd8f553e33477ec155ebfc34f8daa7f3ae4eab"
+checksum = "8de0ffda8def4eb16ed430641db8056c2509b20e38f2dd327bdb4c83239f88c4"
 dependencies = [
- "serde_json",
+ "serde",
+ "unicode-width 0.2.2",
 ]
 
 [[package]]
@@ -6915,7 +6936,7 @@ dependencies = [
 
 [[package]]
 name = "napi_sym"
-version = "0.169.0"
+version = "0.170.0"
 dependencies = [
  "quote",
  "serde",
@@ -6997,7 +7018,7 @@ dependencies = [
  "chrono",
  "deno_terminal",
  "file_test_runner",
- "jsonc-parser 0.28.0",
+ "jsonc-parser",
  "regex",
  "serde",
  "serde_json",
@@ -7006,7 +7027,7 @@ dependencies = [
 
 [[package]]
 name = "node_resolver"
-version = "0.77.0"
+version = "0.78.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -7036,7 +7057,7 @@ dependencies = [
 
 [[package]]
 name = "node_shim"
-version = "0.14.0"
+version = "0.15.0"
 dependencies = [
  "exec",
  "serde_json",
@@ -9141,7 +9162,7 @@ dependencies = [
 
 [[package]]
 name = "serde_v8"
-version = "0.301.0"
+version = "0.302.0"
 dependencies = [
  "bencher",
  "deno_error",
@@ -9157,7 +9178,7 @@ dependencies = [
 
 [[package]]
 name = "serde_v8_utilities"
-version = "0.8.0"
+version = "0.9.0"
 dependencies = [
  "v8",
 ]
@@ -10195,9 +10216,9 @@ checksum = "55937e1799185b12863d447f42597ed69d9928686b8d88a1df17376a097d8369"
 
 [[package]]
 name = "tar"
-version = "0.4.43"
+version = "0.4.45"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c65998313f8e17d0d553d28f91a0df93e4dbbbf770279c7bc21ca0f09ea1a1f6"
+checksum = "22692a6476a21fa75fdfc11d452fda482af402c008cdbaf3476414e122040973"
 dependencies = [
  "filetime",
  "libc",
@@ -10353,7 +10374,7 @@ dependencies = [
  "fluent-uri",
  "indexmap 2.12.0",
  "inventory",
- "jsonc-parser 0.28.0",
+ "jsonc-parser",
  "lazy-regex",
  "libc",
  "ls-types",
@@ -11172,9 +11193,9 @@ dependencies = [
 
 [[package]]
 name = "v8"
-version = "146.8.0"
+version = "146.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "67519d234f7bc5a54a71f7fbc52258b0f3a7e9c11f365213d49016a59207ec10"
+checksum = "59b21777080203cb33828681f177e53402fa2927a1e2d17adead072b0c26b401"
 dependencies = [
  "bindgen 0.72.1",
  "bitflags 2.9.3",

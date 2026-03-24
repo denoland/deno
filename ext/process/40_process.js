@@ -166,6 +166,7 @@ export const kExtraStdio = Symbol("extraStdio");
 export const kIpc = Symbol("ipc");
 export const kNeedsNpmProcessState = Symbol("needsNpmProcessState");
 export const kSerialization = Symbol("serialization");
+const kArgv0 = Symbol("argv0");
 
 const illegalConstructorKey = Symbol("illegalConstructorKey");
 
@@ -186,12 +187,14 @@ function spawnChildInner(command, apiName, {
   [kExtraStdio]: extraStdio = [],
   [kIpc]: ipc = -1,
   [kNeedsNpmProcessState]: needsNpmProcessState = false,
+  [kArgv0]: argv0 = undefined,
 } = { __proto__: null }) {
   const child = op_spawn_child({
     cmd: pathFromURL(command),
     args: ArrayPrototypeMap(args, String),
     cwd: pathFromURL(cwd),
     clearEnv,
+    argv0,
     env: ObjectEntries(env),
     uid,
     gid,
@@ -471,6 +474,7 @@ function spawnSyncInner(command, {
   windowsRawArguments = false,
   [kInputOption]: input,
   [kNeedsNpmProcessState]: needsNpmProcessState = false,
+  [kArgv0]: argv0 = undefined,
 } = { __proto__: null }) {
   if (stdin === "piped") {
     throw new TypeError(
@@ -493,6 +497,7 @@ function spawnSyncInner(command, {
     detached: false,
     needsNpmProcessState,
     input,
+    argv0,
   });
   return {
     success: result.status.success,
@@ -595,6 +600,7 @@ function spawnAndWaitSync(command, argsOrOptions, maybeOptions) {
 export {
   ChildProcess,
   Command,
+  kArgv0,
   kill,
   kInputOption,
   Process,
