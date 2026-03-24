@@ -78,6 +78,7 @@
     op_leak_tracing_submit,
     op_leak_tracing_get_all,
     op_leak_tracing_get,
+    op_immediate_check,
 
     op_is_any_array_buffer,
     op_is_arguments_object,
@@ -189,6 +190,9 @@
     immediate._destroyed = true;
     if (immediate[kRefed]) {
       immediateInfo[kImmRefCount]--;
+      if (immediateInfo[kImmRefCount] === 0) {
+        op_immediate_check(false);
+      }
     }
     immediate[kRefed] = null;
     immediate._onImmediate = null;
@@ -224,6 +228,9 @@
       immediateInfo[kImmCount]--;
       if (immediate[kRefed]) {
         immediateInfo[kImmRefCount]--;
+        if (immediateInfo[kImmRefCount] === 0) {
+          op_immediate_check(false);
+        }
       }
       immediate[kRefed] = null;
 
@@ -927,9 +934,15 @@
     __setTimerInfo: __timers.__setTimerInfo,
     immediateRefCount(increase) {
       if (increase) {
+        if (immediateInfo[kImmRefCount] === 0) {
+          op_immediate_check(true);
+        }
         immediateInfo[kImmRefCount]++;
       } else {
         immediateInfo[kImmRefCount]--;
+        if (immediateInfo[kImmRefCount] === 0) {
+          op_immediate_check(false);
+        }
       }
     },
     runImmediateCallbacks,

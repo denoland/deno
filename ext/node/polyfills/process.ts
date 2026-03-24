@@ -40,6 +40,7 @@ import {
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE_RANGE,
   ERR_OUT_OF_RANGE,
+  ERR_UNCAUGHT_EXCEPTION_CAPTURE_ALREADY_SET,
   ERR_UNKNOWN_SIGNAL,
   ERR_WORKER_UNSUPPORTED_OPERATION,
   errnoException,
@@ -520,8 +521,7 @@ function uncaughtExceptionHandler(err: any, origin: string) {
   // module are reported as 'unhandledRejection'. Deno does not have a true
   // CommonJS implementation, so all exceptions thrown from the top level are
   // reported as 'uncaughtException'.
-  process.emit("uncaughtExceptionMonitor", err, origin);
-  process.emit("uncaughtException", err, origin);
+  process._fatalException(err, origin === "unhandledRejection");
 }
 
 export let execPath: string = "";
@@ -848,10 +848,39 @@ process.reallyExit = (code: number) => {
 
 process._exiting = _exiting;
 
+// Exception capture callback (used by node:domain)
+// deno-lint-ignore no-explicit-any
+let _uncaughtExceptionCaptureFn: ((err: any) => void) | null = null;
+
+// deno-lint-ignore no-explicit-any
+process.setUncaughtExceptionCaptureCallback = function (fn: any) {
+  if (fn === null) {
+    _uncaughtExceptionCaptureFn = null;
+    synchronizeListeners();
+    return;
+  }
+  if (typeof fn !== "function") {
+    throw new ERR_INVALID_ARG_TYPE("fn", ["function", "null"], fn);
+  }
+  if (_uncaughtExceptionCaptureFn !== null) {
+    throw new ERR_UNCAUGHT_EXCEPTION_CAPTURE_ALREADY_SET();
+  }
+  _uncaughtExceptionCaptureFn = fn;
+  synchronizeListeners();
+};
+
+process.hasUncaughtExceptionCaptureCallback = function () {
+  return _uncaughtExceptionCaptureFn !== null;
+};
+
 // deno-lint-ignore no-explicit-any
 process._fatalException = function (err: any, fromPromise?: boolean) {
   const origin = fromPromise ? "unhandledRejection" : "uncaughtException";
   process.emit("uncaughtExceptionMonitor", err, origin);
+  if (_uncaughtExceptionCaptureFn !== null) {
+    _uncaughtExceptionCaptureFn(err);
+    return true;
+  }
   if (process.listenerCount("uncaughtException") > 0) {
     process.emit("uncaughtException", err, origin);
     return true;
@@ -1225,7 +1254,9 @@ function synchronizeListeners() {
   // Install special "unhandledrejection" handler, that will be called
   // last.
   if (
-    unhandledRejectionListenerCount > 0 || uncaughtExceptionListenerCount > 0
+    unhandledRejectionListenerCount > 0 ||
+    uncaughtExceptionListenerCount > 0 ||
+    _uncaughtExceptionCaptureFn !== null
   ) {
     internals.nodeProcessUnhandledRejectionCallback = (event) => {
       if (process.listenerCount("unhandledRejection") === 0) {
@@ -1277,7 +1308,9 @@ function synchronizeListeners() {
     internals.nodeProcessRejectionHandledCallback = undefined;
   }
 
-  if (uncaughtExceptionListenerCount > 0) {
+  if (
+    uncaughtExceptionListenerCount > 0 || _uncaughtExceptionCaptureFn !== null
+  ) {
     globalThis.addEventListener("error", processOnError);
   } else {
     globalThis.removeEventListener("error", processOnError);
@@ -1317,6 +1350,9 @@ internals.__bootstrapNodeProcess = function (
     if (io.stdout.isTerminal()) {
       /** https://nodejs.org/api/process.html#process_process_stdout */
       stdout = process.stdout = new TTYWriteStream(1);
+      // For supporting legacy API we put the FD here.
+      // Ref: https://github.com/nodejs/node/blob/main/lib/internal/bootstrap/switches/is_main_thread.js
+      stdout.fd = 1;
       // Match Node.js: stdio streams are indestructible.
       // Libraries like mute-stream (@inquirer/prompts) call destroy()/end()
       // on process.stdout between prompts. Without this, the underlying TTY
@@ -1343,6 +1379,8 @@ internals.__bootstrapNodeProcess = function (
     if (io.stderr.isTerminal()) {
       /** https://nodejs.org/api/process.html#process_process_stderr */
       stderr = process.stderr = new TTYWriteStream(2);
+      // For supporting legacy API we put the FD here.
+      stderr.fd = 2;
       stderr._isStdio = true;
       stderr.destroySoon = stderr.destroy;
       stderr._destroy = function (err, cb) {

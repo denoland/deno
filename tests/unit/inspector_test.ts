@@ -896,6 +896,51 @@ Deno.test("inspector_node_worker_enable", async () => {
   }
 });
 
+Deno.test("inspector_noderuntime_waiting_for_debugger", async () => {
+  // Verifies that NodeRuntime.enable emits NodeRuntime.waitingForDebugger
+  // when --inspect-brk is used, and that Runtime.runIfWaitingForDebugger
+  // unblocks execution and triggers Debugger.paused.
+  const script = `${testdataPath}/inspector2.js`;
+  const tester = await InspectorTester.create(
+    ["run", "-A", "--inspect-brk=0", script],
+    { notificationFilter: ignoreScriptParsed },
+  );
+
+  try {
+    await tester.assertStderrForInspectBrk();
+
+    // Enable NodeRuntime first - should emit waitingForDebugger
+    tester.send({ id: 1, method: "NodeRuntime.enable" });
+    await tester.expectNotification("NodeRuntime.waitingForDebugger");
+
+    // Now enable Runtime and Debugger
+    tester.sendMany([
+      { id: 2, method: "Runtime.enable" },
+      { id: 3, method: "Debugger.enable" },
+    ]);
+
+    await tester.expectResponse(2);
+    await tester.expectResponse(3);
+
+    // Resume - should unblock and pause at first statement
+    tester.send({ id: 4, method: "Runtime.runIfWaitingForDebugger" });
+    await tester.expectResponse(4);
+    await tester.expectNotification("Debugger.paused");
+
+    // Resume execution
+    tester.send({ id: 5, method: "Debugger.resume" });
+    await tester.expectResponse(5);
+
+    // Script should run to completion
+    const scriptOutput = await tester.nextStdoutLine();
+    assertEquals(scriptOutput, "hello from the script");
+  } finally {
+    await tester.close();
+    tester.kill();
+    await tester.waitForExit();
+  }
+});
+
 Deno.test("inspector_runtime_evaluate_does_not_crash", async () => {
   const tester = await InspectorTester.create(
     ["repl", "-A", "--inspect=0"],

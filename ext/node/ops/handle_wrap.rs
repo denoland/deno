@@ -224,24 +224,7 @@ impl From<ProviderType> for i32 {
   }
 }
 
-pub struct AsyncId(i64);
-
-impl Default for AsyncId {
-  // `kAsyncIdCounter` should start at `1` because that'll be the id the execution
-  // context during bootstrap.
-  fn default() -> Self {
-    Self(1)
-  }
-}
-
-impl AsyncId {
-  // Increment the internal id counter and return the value.
-  #[allow(clippy::should_implement_trait, reason = "this is more clear")]
-  pub fn next(&mut self) -> i64 {
-    self.0 += 1;
-    self.0
-  }
-}
+pub use deno_core::uv_compat::AsyncId;
 
 fn next_async_id(state: &mut OpState) -> i64 {
   state.borrow_mut::<AsyncId>().next()

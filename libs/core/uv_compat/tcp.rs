@@ -894,33 +894,35 @@ pub(crate) unsafe fn poll_tcp_handle(
   }
 
   // 2. Poll listener for new connections.
-  //    Match libuv's uv__server_io: accept one connection, fire
-  //    connection_cb once, then stop accepting until uv_accept drains
-  //    the backlog. This prevents connection_cb from firing repeatedly
-  //    for the same pending connection.
+  //    Drain all ready connections from poll_accept before firing callbacks.
+  //    This prevents starvation under high concurrency: tokio's reactor
+  //    only re-polls epoll when poll_event_loop_inner returns Pending, so
+  //    connections that arrived during the same epoll batch must be accepted
+  //    now or they'll be invisible until the next reactor turn.
+  //    After draining, fire the connection callback once per accepted stream
+  //    (libuv fires the callback once per connection). If the user doesn't
+  //    call uv_accept in the callback, stop firing to avoid spinning.
   unsafe {
-    let has_listener = (*tcp_ptr).internal_listener.is_some();
-    let has_cb = (*tcp_ptr).internal_connection_cb.is_some();
-    let backlog_empty = (*tcp_ptr).internal_backlog.is_empty();
-    let accepted = if has_listener && has_cb && backlog_empty {
-      let listener = (*tcp_ptr).internal_listener.as_ref().unwrap();
-      if let Poll::Ready(Ok((stream, _))) = listener.poll_accept(cx) {
-        Some(stream)
-      } else {
-        None
-      }
-    } else {
-      None
-    };
-    // Listener borrow dropped.
-    if let Some(stream) = accepted {
-      (*tcp_ptr).internal_backlog.push_back(stream);
-      any_work = true;
-    }
-    if !(*tcp_ptr).internal_backlog.is_empty()
-      && let Some(cb) = (*tcp_ptr).internal_connection_cb
+    if (*tcp_ptr).internal_listener.is_some()
+      && (*tcp_ptr).internal_connection_cb.is_some()
+      && (*tcp_ptr).internal_backlog.is_empty()
     {
-      cb(tcp_ptr as *mut uv_stream_t, 0);
+      let listener = (*tcp_ptr).internal_listener.as_ref().unwrap();
+      while let Poll::Ready(Ok((stream, _))) = listener.poll_accept(cx) {
+        (*tcp_ptr).internal_backlog.push_back(stream);
+        any_work = true;
+      }
+    }
+    while !(*tcp_ptr).internal_backlog.is_empty() {
+      let backlog_len = (*tcp_ptr).internal_backlog.len();
+      if let Some(cb) = (*tcp_ptr).internal_connection_cb {
+        cb(tcp_ptr as *mut uv_stream_t, 0);
+      }
+      // If the callback did not call uv_accept (backlog didn't shrink),
+      // stop firing to avoid an infinite loop.
+      if (*tcp_ptr).internal_backlog.len() >= backlog_len {
+        break;
+      }
     }
   }
 

@@ -67,7 +67,6 @@ pub(crate) type UnrefedOps =
   Rc<RefCell<HashSet<i32, BuildHasherDefault<IdentityHasher>>>>;
 
 /// Indices into the shared immediate_info buffer (Uint32Array).
-#[allow(dead_code, reason = "documents the layout; used only from JS")]
 pub(crate) const IMM_IDX_COUNT: usize = 0;
 pub(crate) const IMM_IDX_REF_COUNT: usize = 1;
 pub(crate) const IMM_IDX_HAS_OUTSTANDING: usize = 2;
@@ -132,6 +131,12 @@ pub struct ContextState {
   /// # Safety
   /// Same lifetime requirements as `uv_loop_inner` above.
   pub(crate) uv_loop_ptr: Cell<Option<*mut crate::uv_compat::uv_loop_t>>,
+  /// Two-handle setImmediate mechanism (matching Node.js): a check handle
+  /// (always running, always unref'd) and an idle handle that controls
+  /// event loop liveness for refed immediates. `None` when no uv loop is
+  /// registered (e.g. during snapshotting).
+  pub(crate) immediate_check_handle:
+    RefCell<Option<crate::uv_compat::ImmediateCheckHandle>>,
 }
 
 impl ContextState {
@@ -175,6 +180,7 @@ impl ContextState {
       event_loop_phases: Default::default(),
       uv_loop_inner: Cell::new(None),
       uv_loop_ptr: Cell::new(None),
+      immediate_check_handle: RefCell::new(None),
     }
   }
 }
@@ -259,6 +265,12 @@ impl JsRealmInner {
     let raw_ptr = self.state().isolate.unwrap();
     // SAFETY: We know the isolate outlives the realm
     let mut isolate = unsafe { v8::Isolate::from_raw_isolate_ptr(raw_ptr) };
+
+    // Close the immediate check/idle handles before the uv loop is dropped.
+    // SAFETY: The uv loop is still alive (op_state hasn't been cleared yet).
+    if let Some(handle) = state.immediate_check_handle.borrow_mut().take() {
+      unsafe { handle.close() };
+    }
 
     if let Some(loop_ptr) = state.uv_loop_ptr.get() {
       // SAFETY: `loop_ptr` is valid for the lifetime of the runtime

@@ -714,7 +714,11 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
 
   let tag;
   if (!proxyDetails) {
-    tag = value[SymbolToStringTag];
+    try {
+      tag = value[SymbolToStringTag];
+    } catch {
+      // Symbol.toStringTag getter may throw (e.g. circular JSON.stringify)
+    }
   }
   // Only list the tag in case it's non-enumerable / not an own property.
   // Otherwise we'd print this twice.
