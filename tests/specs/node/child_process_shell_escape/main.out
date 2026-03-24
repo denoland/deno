@@ -15,7 +15,7 @@ PASS: Args with spaces work
 Test 8: Shell features work with string command
 PASS: Shell features work
 Test 9: Async spawn escapes args
-PASS: Async spawn injection blocked
+[WILDCARD]PASS: Async spawn injection blocked
 Test 10: Backtick + $VAR injection in args
 PASS: Backtick + $VAR injection blocked
 Test 11: $() + $VAR injection in args

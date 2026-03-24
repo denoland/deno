@@ -134,6 +134,11 @@ pub(crate) struct WritePending {
   pub(crate) data: Vec<u8>,
   pub(crate) offset: usize,
   pub(crate) cb: Option<uv_write_cb>,
+  /// Pre-determined completion status. When `Some`, the write is already
+  /// complete and the callback should be fired with this status without
+  /// attempting any I/O. This is used to defer synchronous write
+  /// completions to the event loop, preventing re-entrancy issues.
+  pub(crate) status: Option<c_int>,
 }
 
 /// Pending shutdown request, deferred until the write queue drains.
@@ -708,6 +713,19 @@ pub(crate) unsafe fn poll_tcp_handle(
           || (*tcp_ptr).internal_stream.is_none()
         {
           break;
+        }
+
+        // Check if the front entry has a pre-determined status
+        // (deferred from uv_write).
+        let pre_status =
+          (*tcp_ptr).internal_write_queue.front().unwrap().status;
+        if let Some(status) = pre_status {
+          let pw = (*tcp_ptr).internal_write_queue.pop_front().unwrap();
+          if let Some(cb) = pw.cb {
+            cb(pw.req, status);
+          }
+          any_work = true;
+          continue;
         }
 
         // Try writing in a limited scope.
