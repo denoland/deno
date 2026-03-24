@@ -634,8 +634,11 @@ pub(crate) unsafe fn poll_tcp_handle(
     {
       let before = (*tcp_ptr).internal_backlog.len();
       cb(tcp_ptr as *mut uv_stream_t, 0);
-      // If uv_accept wasn't called, backlog didn't shrink — stop.
-      if (*tcp_ptr).internal_backlog.len() >= before {
+      let after = (*tcp_ptr).internal_backlog.len();
+      if after < before {
+        any_work = true;
+      } else {
+        // If uv_accept wasn't called, backlog didn't shrink — stop.
         break;
       }
     }

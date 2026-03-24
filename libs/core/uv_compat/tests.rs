@@ -2341,17 +2341,27 @@ async fn uv_write_callback_is_deferred() {
   .await;
 }
 
-// ========== TCP batch accept under concurrent connections ==========
+// ========== TCP batch accept ==========
 
-/// Verify that multiple concurrent connections are all accepted without
-/// requiring multiple event loop iterations. This prevents starvation
-/// when the connection handler does async work (e.g., Deno.listenTls)
-/// that delays returning to the I/O phase.
+/// Verify that multiple connections queued before a tick are all accepted
+/// in a single event loop iteration. This prevents starvation when the
+/// connection handler does async work (e.g., Deno.listenTls) that delays
+/// returning to the I/O phase.
 #[tokio::test(flavor = "current_thread")]
-async fn tcp_batch_accept_concurrent() {
+async fn tcp_batch_accept() {
   run_test(async |runtime, uv_loop| {
-    let accepted_count = Rc::new(Cell::new(0u32));
-    let accepted_ptr = Rc::into_raw(accepted_count.clone());
+    // Shared state passed through server.data: a counter and a Vec of
+    // heap-allocated accepted client handles (so uv_close's deferred
+    // processing doesn't hit a dangling stack pointer).
+    struct AcceptState {
+      count: Cell<u32>,
+      clients: RefCell<Vec<*mut uv_tcp_t>>,
+    }
+    let state = Rc::new(AcceptState {
+      count: Cell::new(0),
+      clients: RefCell::new(Vec::new()),
+    });
+    let state_ptr = Rc::into_raw(state.clone());
 
     let mut server = std::mem::MaybeUninit::<uv_tcp_t>::uninit();
     let server_ptr = server.as_mut_ptr();
@@ -2362,27 +2372,29 @@ async fn tcp_batch_accept_concurrent() {
     ) {
       unsafe {
         assert_eq!(status, 0);
-        let count_ptr = (*server).data as *const Cell<u32>;
-        let count = &*count_ptr;
+        let state_ptr = (*server).data as *const AcceptState;
+        let state = &*state_ptr;
 
-        // Accept the connection (drains one backlog entry).
-        let mut client = std::mem::MaybeUninit::<uv_tcp_t>::uninit();
-        let client_ptr = client.as_mut_ptr();
+        // Heap-allocate the client handle so it stays valid until
+        // uv_close processes it in the close phase.
+        let client_ptr = Box::into_raw(Box::new(
+          std::mem::MaybeUninit::<uv_tcp_t>::uninit(),
+        )) as *mut uv_tcp_t;
         let loop_ = (*(server as *const uv_tcp_t)).loop_;
         uv_tcp_init(loop_, client_ptr);
         let rc = uv_accept(server, client_ptr as *mut uv_stream_t);
         assert_eq!(rc, 0);
-        count.set(count.get() + 1);
+        state.count.set(state.count.get() + 1);
 
-        // Close the accepted client immediately.
-        uv_close(client_ptr as *mut uv_handle_t, None);
+        // Track the heap pointer so the outer scope can close + free them.
+        state.clients.borrow_mut().push(client_ptr);
       }
     }
 
     let server_port: u16;
     unsafe {
       uv_tcp_init(uv_loop, server_ptr);
-      (*server_ptr).data = accepted_ptr as *mut c_void;
+      (*server_ptr).data = state_ptr as *mut c_void;
 
       let mut addr = std::mem::MaybeUninit::<sockaddr_in>::uninit();
       let ip = std::ffi::CString::new("127.0.0.1").unwrap();
@@ -2409,7 +2421,8 @@ async fn tcp_batch_accept_concurrent() {
       server_port = u16::from_be(name.assume_init_ref().sin_port);
     }
 
-    // Open multiple connections concurrently BEFORE ticking the event loop.
+    // Open multiple connections BEFORE ticking the event loop so they all
+    // land in the same poll_accept batch.
     const NUM_CONNECTIONS: u32 = 8;
     let mut client_streams = Vec::new();
     for _ in 0..NUM_CONNECTIONS {
@@ -2423,19 +2436,32 @@ async fn tcp_batch_accept_concurrent() {
     // A single tick should accept all connections thanks to batch-accept.
     tick(runtime).await;
 
-    let count = accepted_count.get();
+    let count = state.count.get();
     assert_eq!(
       count, NUM_CONNECTIONS,
       "Expected all {NUM_CONNECTIONS} connections to be accepted in one tick, got {count}"
     );
 
-    // Cleanup.
+    // Cleanup: close all accepted client handles, then the server.
     drop(client_streams);
     unsafe {
+      for client_ptr in state.clients.borrow().iter() {
+        uv_close(*client_ptr as *mut uv_handle_t, None);
+      }
       uv_close(server_ptr as *mut uv_handle_t, None);
-      Rc::from_raw(accepted_ptr);
     }
+    // Tick to process deferred closes.
     tick(runtime).await;
+
+    // Free heap-allocated client handles now that close phase is done.
+    unsafe {
+      for client_ptr in state.clients.borrow().iter() {
+        drop(Box::from_raw(
+          *client_ptr as *mut std::mem::MaybeUninit<uv_tcp_t>,
+        ));
+      }
+      Rc::from_raw(state_ptr);
+    }
   })
   .await;
 }
