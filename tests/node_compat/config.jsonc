@@ -1326,9 +1326,8 @@
     // "parallel/test-inspector-network-arbitrary-data.js": {},
     // "parallel/test-inspector-emit-protocol-event.js": {},
 
-    // TODO(bartlomieju): depends on `NodeRuntime` CDP domain
-    // "parallel/test-inspector-esm.js": {},
-    // "parallel/test-inspector-console.js": {},
+    "parallel/test-inspector-esm.js": {},
+    "parallel/test-inspector-console.js": {},
     // "parallel/test-inspector-async-stack-traces-promise-then.js": {},
     // "parallel/test-inspector-exception.js": {},
     // "parallel/test-inspector-async-hook-setup-at-inspect-brk.js": {},

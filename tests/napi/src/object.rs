@@ -192,6 +192,54 @@ extern "C" fn test_create_object_with_custom_prototype(
   result
 }
 
+extern "C" fn test_create_object_with_named_properties(
+  env: napi_env,
+  _info: napi_callback_info,
+) -> napi_value {
+  let mut values: [napi_value; 3] = [ptr::null_mut(); 3];
+  let names: [*const std::ffi::c_char; 3] =
+    [c"name".as_ptr(), c"age".as_ptr(), c"active".as_ptr()];
+
+  // Create values
+  assert_napi_ok!(napi_create_string_utf8(
+    env,
+    c"Foo".as_ptr(),
+    3,
+    &mut values[0]
+  ));
+  assert_napi_ok!(napi_create_int32(env, 42, &mut values[1]));
+  assert_napi_ok!(napi_get_boolean(env, true, &mut values[2]));
+
+  let mut result: napi_value = ptr::null_mut();
+
+  assert_napi_ok!(node_api_create_object_with_named_properties(
+    env,
+    &mut result,
+    3,
+    names.as_ptr(),
+    values.as_ptr(),
+  ));
+
+  result
+}
+
+extern "C" fn test_create_object_with_named_properties_empty(
+  env: napi_env,
+  _info: napi_callback_info,
+) -> napi_value {
+  let mut result: napi_value = ptr::null_mut();
+
+  assert_napi_ok!(node_api_create_object_with_named_properties(
+    env,
+    &mut result,
+    0,
+    ptr::null(),
+    ptr::null(),
+  ));
+
+  result
+}
+
 pub fn init(env: napi_env, exports: napi_value) {
   let properties = &[
     napi_new_property!(env, "test_object_new", test_object_new),
@@ -215,6 +263,16 @@ pub fn init(env: napi_env, exports: napi_value) {
       env,
       "test_create_object_with_custom_prototype",
       test_create_object_with_custom_prototype
+    ),
+    napi_new_property!(
+      env,
+      "test_create_object_with_named_properties",
+      test_create_object_with_named_properties
+    ),
+    napi_new_property!(
+      env,
+      "test_create_object_with_named_properties_empty",
+      test_create_object_with_named_properties_empty
     ),
   ];
 
