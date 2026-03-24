@@ -5,7 +5,6 @@
  * ERR_MANIFEST_ASSERT_INTEGRITY
  * ERR_QUICSESSION_VERSION_NEGOTIATION
  * ERR_REQUIRE_ESM
- * ERR_WORKER_PATH
  * ERR_QUIC_ERROR
  * ERR_SYSTEM_ERROR //System error, shouldn't ever happen inside Deno
  * ERR_TTY_INIT_FAILED //System error, shouldn't ever happen inside Deno
@@ -404,6 +403,8 @@ export const dnsException = hideStackFrames(function (code, syscall, hostname) {
   if (hostname) {
     ex.hostname = hostname;
   }
+
+  ErrorCaptureStackTrace(ex, dnsException);
 
   return ex;
 });
@@ -1673,6 +1674,15 @@ export class ERR_INVALID_IP_ADDRESS extends NodeTypeError {
     super("ERR_INVALID_IP_ADDRESS", `Invalid IP address: ${x}`);
   }
 }
+export class ERR_INVALID_MIME_SYNTAX extends NodeTypeError {
+  constructor(production: string, str: string, invalidIndex: number) {
+    const msg = invalidIndex !== -1 ? ` at ${invalidIndex}` : "";
+    super(
+      "ERR_INVALID_MIME_SYNTAX",
+      `The MIME syntax for a ${production} in "${str}" is invalid` + msg,
+    );
+  }
+}
 export class ERR_INVALID_OBJECT_DEFINE_PROPERTY extends NodeTypeError {
   constructor(message: string) {
     super(
@@ -2412,6 +2422,26 @@ export class ERR_WORKER_INVALID_EXEC_ARGV extends NodeError {
 export class ERR_WORKER_INIT_FAILED extends NodeError {
   constructor(x: string) {
     super("ERR_WORKER_INIT_FAILED", `Worker initialization failure: ${x}`);
+  }
+}
+export class ERR_WORKER_PATH extends NodeTypeError {
+  constructor(filename: string) {
+    const base =
+      "The worker script or module filename must be an absolute path or a relative path starting with './' or '../'.";
+    let detail = "";
+    if (
+      typeof filename === "string" &&
+      (StringPrototypeStartsWith(filename, "file://") ||
+        StringPrototypeStartsWith(filename, "File://"))
+    ) {
+      detail = " Wrap file:// URLs with `new URL`.";
+    } else if (
+      typeof filename === "string" &&
+      StringPrototypeStartsWith(filename, "data:")
+    ) {
+      detail = " Wrap data: URLs with `new URL`.";
+    }
+    super("ERR_WORKER_PATH", base + detail);
   }
 }
 export class ERR_WORKER_NOT_RUNNING extends NodeError {
@@ -3196,6 +3226,7 @@ export default {
   ERR_INVALID_HANDLE_TYPE,
   ERR_INVALID_HTTP_TOKEN,
   ERR_INVALID_IP_ADDRESS,
+  ERR_INVALID_MIME_SYNTAX,
   ERR_INVALID_MODULE_SPECIFIER,
   ERR_INVALID_OBJECT_DEFINE_PROPERTY,
   ERR_INVALID_OPT_VALUE,
@@ -3318,6 +3349,7 @@ export default {
   ERR_WORKER_INVALID_EXEC_ARGV,
   ERR_WORKER_NOT_RUNNING,
   ERR_WORKER_OUT_OF_MEMORY,
+  ERR_WORKER_PATH,
   ERR_WORKER_UNSERIALIZABLE_ERROR,
   ERR_WORKER_UNSUPPORTED_EXTENSION,
   ERR_WORKER_UNSUPPORTED_OPERATION,
@@ -3334,6 +3366,7 @@ export default {
   denoErrorToNodeError,
   denoErrorToNodeSystemError,
   dnsException,
+  DNSException: dnsException,
   errnoException,
   errorMap,
   exceptionWithHostPort,

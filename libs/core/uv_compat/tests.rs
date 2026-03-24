@@ -1,6 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::cell::Cell;
+use std::cell::RefCell;
 use std::ffi::c_void;
 use std::future::poll_fn;
 use std::rc::Rc;
@@ -785,8 +786,6 @@ async fn phase_ordering_idle_prepare_check() {
     // by recording the order callbacks fire in.
     let order = Rc::new(RefCell::new(Vec::<&'static str>::new()));
 
-    use std::cell::RefCell;
-
     let order_idle = Rc::into_raw(order.clone());
     let order_prepare = Rc::into_raw(order.clone());
     let order_check = Rc::into_raw(order.clone());
@@ -1461,7 +1460,7 @@ async fn tty_init_sets_fields() {
       // uv_tty_init reopens slave fds so internal_fd may differ from the
       // original fd.
       assert!(tty.internal_fd >= 0);
-      assert!(tty.internal_async_fd.is_some());
+      assert!(tty.internal_reactor.is_some());
 
       uv_close(tty_ptr as *mut uv_handle_t, None);
     }
@@ -1485,6 +1484,127 @@ async fn tty_init_rejects_non_tty() {
       let status = uv_tty_init(uv_loop, tty.as_mut_ptr(), fd, 0);
       assert_eq!(status, UV_EINVAL);
     }
+  })
+  .await;
+}
+
+// Regression test for https://github.com/denoland/deno/issues/32802
+// On macOS, /dev/tty is a kqueue-incompatible device. uv_tty_init must
+// succeed via the select(2) fallback rather than returning EINVAL.
+// We also do a write through the handle to verify the fallback I/O path.
+#[cfg(target_os = "macos")]
+#[tokio::test(flavor = "current_thread")]
+async fn tty_init_dev_tty_select_fallback() {
+  run_test(async |runtime, uv_loop| {
+    // Open /dev/tty directly — this produces an fd that kqueue rejects.
+    let fd = unsafe { libc::open(c"/dev/tty".as_ptr(), libc::O_RDWR) };
+    if fd < 0 {
+      // No controlling terminal (e.g., CI without a PTY). Skip.
+      return;
+    }
+    let _fd_guard = FdGuard(fd);
+
+    let mut tty = std::mem::MaybeUninit::<uv_tty_t>::uninit();
+    let tty_ptr = tty.as_mut_ptr();
+    unsafe {
+      // This is the core assertion: init must succeed, not EINVAL.
+      assert_ok(uv_tty_init(uv_loop, tty_ptr, fd, 0));
+    }
+
+    // Verify the select fallback was used.
+    unsafe {
+      let tty_ref = tty.assume_init_ref();
+      assert!(tty_ref.internal_reactor.is_some());
+      assert!(matches!(
+        tty_ref.internal_reactor,
+        Some(tty::TtyReactor::SelectFallback(_))
+      ));
+    }
+
+    // Write through the handle to exercise the fallback I/O path.
+    let write_done = Rc::new(Cell::new(false));
+    let write_done_ptr = Rc::into_raw(write_done.clone());
+
+    unsafe extern "C" fn write_cb(req: *mut uv_write_t, status: i32) {
+      assert_eq!(status, 0);
+      let done = unsafe { Rc::from_raw((*req).data as *const Cell<bool>) };
+      done.set(true);
+      let _ = Rc::into_raw(done);
+    }
+
+    let payload = b"\n";
+    let mut write_req = std::mem::MaybeUninit::<uv_write_t>::uninit();
+    let write_req_ptr = write_req.as_mut_ptr();
+    unsafe {
+      (*write_req_ptr).data = write_done_ptr as *mut c_void;
+      let buf = uv_buf_t {
+        base: payload.as_ptr() as *mut _,
+        len: payload.len(),
+      };
+      assert_ok(uv_write(
+        write_req_ptr,
+        tty_ptr as *mut uv_stream_t,
+        &buf,
+        1,
+        Some(write_cb),
+      ));
+    }
+
+    // Tick until write completes.
+    for _ in 0..50 {
+      tick(runtime).await;
+      if write_done.get() {
+        break;
+      }
+      tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    }
+    assert!(write_done.get(), "write callback should have fired");
+
+    // Also verify read_start doesn't panic. We can't easily feed data
+    // to /dev/tty from a test, so just start and immediately stop.
+    unsafe extern "C" fn alloc_cb(
+      _: *mut uv_handle_t,
+      size: usize,
+      buf: *mut uv_buf_t,
+    ) {
+      let mut v = Vec::<u8>::with_capacity(size);
+      unsafe {
+        (*buf).base = v.as_mut_ptr().cast();
+        (*buf).len = size;
+      }
+      std::mem::forget(v);
+    }
+
+    unsafe extern "C" fn read_cb(
+      _handle: *mut uv_stream_t,
+      _nread: isize,
+      buf: *const uv_buf_t,
+    ) {
+      unsafe {
+        if !(*buf).base.is_null() && (*buf).len > 0 {
+          drop(Vec::<u8>::from_raw_parts((*buf).base.cast(), 0, (*buf).len));
+        }
+      }
+    }
+
+    unsafe {
+      assert_ok(uv_read_start(
+        tty_ptr as *mut uv_stream_t,
+        Some(alloc_cb),
+        Some(read_cb),
+      ));
+    }
+
+    // One tick to register interest.
+    tick(runtime).await;
+
+    // Stop reading and clean up.
+    unsafe {
+      uv_read_stop(tty_ptr as *mut uv_stream_t);
+      uv_close(tty_ptr as *mut uv_handle_t, None);
+      Rc::from_raw(write_done_ptr);
+    }
+    tick(runtime).await;
   })
   .await;
 }
@@ -2050,6 +2170,171 @@ async fn tty_read_stop() {
     unsafe {
       uv_close(tty_ptr as *mut uv_handle_t, None);
       libc::close(fdm);
+    }
+    tick(runtime).await;
+  })
+  .await;
+}
+
+// ========== Regression: uv_write must not fire callbacks synchronously ==========
+
+/// Regression test for https://github.com/denoland/deno/issues/32891
+///
+/// uv_write must never fire the write callback synchronously. Doing so causes
+/// re-entrancy panics when callers (e.g. StreamWrap ops) hold an OpState borrow
+/// during the call to uv_write. This test verifies that the callback is deferred
+/// to the event loop (poll_tcp_handle/run_io) rather than firing inline.
+#[tokio::test(flavor = "current_thread")]
+async fn uv_write_callback_is_deferred() {
+  run_test(async |runtime, uv_loop| {
+    let fired = Rc::new(Cell::new(false));
+    let fired_ptr = Rc::into_raw(fired.clone());
+
+    unsafe extern "C" fn write_cb(req: *mut uv_write_t, status: i32) {
+      assert_eq!(status, 0);
+      let fired = unsafe { Rc::from_raw((*req).data as *const Cell<bool>) };
+      fired.set(true);
+      let _ = Rc::into_raw(fired);
+    }
+
+    // --- Set up a server ---
+    let mut server = std::mem::MaybeUninit::<uv_tcp_t>::uninit();
+    let server_ptr = server.as_mut_ptr();
+
+    unsafe extern "C" fn on_connection(server: *mut uv_stream_t, _status: i32) {
+      let _ = server;
+    }
+
+    let server_port: u16;
+    unsafe {
+      uv_tcp_init(uv_loop, server_ptr);
+
+      let mut addr = std::mem::MaybeUninit::<sockaddr_in>::uninit();
+      let ip = std::ffi::CString::new("127.0.0.1").unwrap();
+      uv_ip4_addr(ip.as_ptr(), 0, addr.as_mut_ptr());
+
+      assert_ok(uv_tcp_bind(
+        server_ptr,
+        addr.as_ptr() as *const c_void,
+        0,
+        0,
+      ));
+      assert_ok(uv_listen(
+        server_ptr as *mut uv_stream_t,
+        1,
+        Some(on_connection),
+      ));
+
+      let mut name = std::mem::MaybeUninit::<sockaddr_in>::zeroed();
+      let mut namelen = std::mem::size_of::<sockaddr_in>() as i32;
+      uv_tcp_getsockname(
+        server_ptr,
+        name.as_mut_ptr() as *mut c_void,
+        &mut namelen,
+      );
+      server_port = u16::from_be(name.assume_init_ref().sin_port);
+    }
+
+    // --- Connect a client ---
+    let connected = Rc::new(Cell::new(false));
+    let connected_ptr = Rc::into_raw(connected.clone());
+
+    unsafe extern "C" fn on_connect(req: *mut uv_connect_t, status: i32) {
+      assert_eq!(status, 0);
+      let connected = unsafe { Rc::from_raw((*req).data as *const Cell<bool>) };
+      connected.set(true);
+      let _ = Rc::into_raw(connected);
+    }
+
+    let mut client = std::mem::MaybeUninit::<uv_tcp_t>::uninit();
+    let client_ptr = client.as_mut_ptr();
+    let mut connect_req = std::mem::MaybeUninit::<uv_connect_t>::uninit();
+    let connect_req_ptr = connect_req.as_mut_ptr();
+
+    unsafe {
+      uv_tcp_init(uv_loop, client_ptr);
+      (*connect_req_ptr).data = connected_ptr as *mut c_void;
+
+      let mut addr = std::mem::MaybeUninit::<sockaddr_in>::uninit();
+      let ip = std::ffi::CString::new("127.0.0.1").unwrap();
+      uv_ip4_addr(ip.as_ptr(), server_port as i32, addr.as_mut_ptr());
+
+      assert_ok(uv_tcp_connect(
+        connect_req_ptr,
+        client_ptr,
+        addr.as_ptr() as *const c_void,
+        Some(on_connect),
+      ));
+    }
+
+    // Poll until connected.
+    for _ in 0..100 {
+      tick(runtime).await;
+      if connected.get() {
+        break;
+      }
+      tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+    }
+    assert!(connected.get(), "Client should have connected");
+
+    // Accept the connection on the server side.
+    let mut accepted = std::mem::MaybeUninit::<uv_tcp_t>::uninit();
+    let accepted_ptr = accepted.as_mut_ptr();
+    unsafe {
+      uv_tcp_init(uv_loop, accepted_ptr);
+      assert_ok(uv_accept(
+        server_ptr as *mut uv_stream_t,
+        accepted_ptr as *mut uv_stream_t,
+      ));
+    }
+
+    // Now write a small buffer — should succeed via try_write but the
+    // callback must NOT fire synchronously.
+    let write_data = b"hello";
+    let mut write_req = std::mem::MaybeUninit::<uv_write_t>::uninit();
+    let write_req_ptr = write_req.as_mut_ptr();
+
+    unsafe {
+      (*write_req_ptr).data = fired_ptr as *mut c_void;
+      let buf = uv_buf_t {
+        base: write_data.as_ptr() as *mut _,
+        len: write_data.len(),
+      };
+      assert_ok(uv_write(
+        write_req_ptr,
+        client_ptr as *mut uv_stream_t,
+        &buf,
+        1,
+        Some(write_cb),
+      ));
+    }
+
+    // The callback must NOT have fired yet (it should be deferred).
+    assert!(
+      !fired.get(),
+      "uv_write callback must not fire synchronously"
+    );
+
+    // Tick the event loop — now the callback should fire.
+    for _ in 0..100 {
+      tick(runtime).await;
+      if fired.get() {
+        break;
+      }
+      tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+    }
+    assert!(
+      fired.get(),
+      "write callback should fire after event loop tick"
+    );
+
+    // Cleanup.
+    unsafe {
+      uv_close(accepted_ptr as *mut uv_handle_t, None);
+      uv_close(client_ptr as *mut uv_handle_t, None);
+      uv_close(server_ptr as *mut uv_handle_t, None);
+      Rc::from_raw(connected_ptr);
+      Rc::from_raw(fired_ptr);
     }
     tick(runtime).await;
   })

@@ -1179,10 +1179,10 @@ impl<
       }
     })?;
     log::debug!("tsconfig.json file found at '{}'", path.display());
-    let value = jsonc_parser::parse_to_serde_value(&text, &Default::default())
-      .inspect_err(|e| warn(e))
-      .ok()
-      .flatten();
+    let value: Option<serde_json::Value> =
+      jsonc_parser::parse_to_serde_value(&text, &Default::default())
+        .inspect_err(|e| warn(e))
+        .ok();
     let object = value.as_ref().and_then(|v| v.as_object());
     let extends_targets = object
       .and_then(|o| o.get("extends"))
