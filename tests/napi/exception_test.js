@@ -9,14 +9,9 @@ Deno.test("napi is_exception_pending and get_and_clear", function () {
   assertEquals(result, true);
 });
 
-Deno.test({
-  name: "napi get_and_clear_last_exception returns thrown value",
-  // napi_throw with a raw string value does not work correctly in Deno
-  ignore: true,
-  fn() {
-    const result = lib.test_get_clear_exception();
-    assertEquals(result, "my error message");
-  },
+Deno.test("napi get_and_clear_last_exception returns thrown value", function () {
+  const result = lib.test_get_clear_exception();
+  assertEquals(result, "my error message");
 });
 
 Deno.test("napi exception propagation through call_function", function () {

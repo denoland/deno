@@ -14,14 +14,9 @@ Deno.test("napi escapable handle scope", function () {
   assertEquals(result, "escaped");
 });
 
-Deno.test({
-  name: "napi escape handle twice returns error",
-  // Deno panics instead of returning napi_escape_called_twice
-  ignore: true,
-  fn() {
-    const result = lib.test_escape_twice();
-    assertEquals(result, true);
-  },
+Deno.test("napi escape handle twice returns error", function () {
+  const result = lib.test_escape_twice();
+  assertEquals(result, true);
 });
 
 Deno.test("napi nested handle scopes", function () {
