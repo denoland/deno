@@ -364,6 +364,76 @@ extern "C" fn test_tsfn_close_race(
   ptr::null_mut()
 }
 
+// Same as test_tsfn_close_race but uses napi_tsfn_abort instead of
+// napi_tsfn_release to close the tsfn. Abort mode immediately marks
+// the tsfn as closing regardless of thread_count.
+extern "C" fn test_tsfn_abort_race(
+  env: napi_env,
+  info: napi_callback_info,
+) -> napi_value {
+  let (args, argc, _) = napi_get_callback_info!(env, info, 1);
+  assert_eq!(argc, 1);
+
+  let mut resource_name: napi_value = ptr::null_mut();
+  assert_napi_ok!(napi_create_string_utf8(
+    env,
+    c"tsfn_abort".as_ptr(),
+    usize::MAX,
+    &mut resource_name,
+  ));
+
+  let mut func: napi_ref = ptr::null_mut();
+  assert_napi_ok!(napi_create_reference(env, args[0], 1, &mut func));
+
+  let mut tsfn: napi_threadsafe_function = ptr::null_mut();
+  assert_napi_ok!(napi_create_threadsafe_function(
+    env,
+    ptr::null_mut(),
+    ptr::null_mut(),
+    resource_name,
+    0,
+    1,
+    func as *mut c_void,
+    Some(tsfn_race_finalize),
+    ptr::null_mut(),
+    Some(tsfn_race_call_js),
+    &mut tsfn,
+  ));
+
+  let tsfn_addr = tsfn as usize;
+
+  let tsfn_a = tsfn_addr;
+  std::thread::spawn(move || {
+    let tsfn = tsfn_a as napi_threadsafe_function;
+    for _ in 0..100 {
+      let status = unsafe {
+        napi_call_threadsafe_function(
+          tsfn,
+          ptr::null_mut(),
+          ThreadsafeFunctionCallMode::nonblocking,
+        )
+      };
+      if status != napi_ok {
+        break;
+      }
+    }
+  });
+
+  // Use abort mode to close — this forces close regardless of thread_count.
+  let tsfn_b = tsfn_addr;
+  std::thread::spawn(move || {
+    let tsfn = tsfn_b as napi_threadsafe_function;
+    unsafe {
+      napi_release_threadsafe_function(
+        tsfn,
+        ThreadsafeFunctionReleaseMode::abort,
+      );
+    }
+  });
+
+  ptr::null_mut()
+}
+
 pub fn init(env: napi_env, exports: napi_value) {
   let properties = &[
     napi_new_property!(env, "test_async_work", test_async_work),
@@ -373,6 +443,7 @@ pub fn init(env: napi_env, exports: napi_value) {
       test_async_work_with_tsfn
     ),
     napi_new_property!(env, "test_tsfn_close_race", test_tsfn_close_race),
+    napi_new_property!(env, "test_tsfn_abort_race", test_tsfn_abort_race),
   ];
 
   assert_napi_ok!(napi_define_properties(

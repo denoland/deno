@@ -41,3 +41,13 @@ Deno.test("napi tsfn call_js_cb receives valid env after close race", async () =
     });
   });
 });
+
+Deno.test("napi tsfn call_js_cb receives valid env after abort race", async () => {
+  // Same race as above, but uses napi_tsfn_abort mode to close the tsfn.
+  // Abort forces immediate close regardless of thread_count.
+  await new Promise((resolve) => {
+    asyncTask.test_tsfn_abort_race(() => {
+      resolve();
+    });
+  });
+});
