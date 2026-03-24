@@ -24,7 +24,7 @@ import { nextTick } from "ext:deno_node/_next_tick.ts";
 import { Duplex, Readable, Writable } from "node:stream";
 import { guessHandleType } from "ext:deno_node/internal_binding/util.ts";
 import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
-import { op_bootstrap_color_depth, op_set_raw } from "ext:core/ops";
+import { op_bootstrap_color_depth } from "ext:core/ops";
 import { validateInteger } from "ext:deno_node/internal/validators.mjs";
 import { WriteStream as TTYWriteStream } from "ext:deno_node/internal/tty.js";
 
@@ -99,8 +99,10 @@ export function createWritableStdioStream(fd, warmup = false) {
 
     // For non-TTY streams, add properties that code may access unconditionally
     // (isTTY, columns, rows, getWindowSize, getColorDepth, hasColors).
-    // These return undefined/false for non-TTY, matching Node.js behavior where
-    // these properties simply don't exist (and accessing them yields undefined).
+    // Unlike Node.js where these properties don't exist on non-TTY streams
+    // (so accessing them yields undefined), Deno always defines them: isTTY
+    // reflects core.isTerminal(fd) (returns false for non-TTY), while columns,
+    // rows, and getWindowSize return undefined when the fd is not a TTY.
     let getIsTTY = () => core.isTerminal(fd);
     const getColumns = () =>
       stream._columns ||
@@ -197,7 +199,9 @@ function _guessStdinType(fd) {
 }
 
 // Minimal stdin read helper that tracks the pending op promise for ref/unref.
-// Used for non-TTY stdin only (TTY stdin uses its own libuv handle).
+// Used by non-TTY stdin only -- TTY stdin uses its own libuv handle and never
+// calls these functions. Module-scoped state is fine because there is exactly
+// one stdin per process.
 //
 // Only the latest promise is tracked -- this matches the original io.Stdin
 // behavior (which also stored a single #opPromise). This is safe because
@@ -302,6 +306,9 @@ export const initStdin = (warmup = false) => {
       // If the user calls stdin.pause(), then we need to stop reading
       // once the stream implementation does so (one nextTick later),
       // so that the process can close down.
+      // Note: unlike the non-TTY onpause handler below, this can always
+      // access _handle.readStop directly (the TTY ReadStream's libuv handle
+      // always provides it), so there is no need for the unref-only fallback.
       stdin.on("pause", () => {
         nextTick(() => {
           if (!stdin._handle) return;
@@ -417,10 +424,11 @@ export const initStdin = (warmup = false) => {
     },
   });
   stdin._isRawMode = false;
+  // Non-TTY setRawMode is a no-op shim — it records the requested state
+  // but does not actually change terminal mode (there is no terminal).
+  // This exists so code that unconditionally calls process.stdin.setRawMode
+  // doesn't throw on non-TTY streams.
   stdin.setRawMode = (enable) => {
-    if (core.isTerminal(STDIN_RID)) {
-      op_set_raw(STDIN_RID, enable, false);
-    }
     stdin._isRawMode = enable;
     return stdin;
   };
