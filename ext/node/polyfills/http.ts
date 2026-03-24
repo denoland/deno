@@ -711,7 +711,13 @@ class ClientRequest extends OutgoingMessage {
           );
           const upgradeHandle = new TCP(constants.SOCKET, conn);
           let socket = this.socket;
-          if (socket?.[kReinitializeHandle]) {
+          // Only reuse the existing socket when it was provided via
+          // createConnection (encrypted TLS socket). For plain HTTP
+          // upgrades, create a fresh Socket to avoid dangling state.
+          if (
+            socket?.encrypted === true &&
+            socket?.[kReinitializeHandle]
+          ) {
             if (this._socketErrorListener) {
               socket.removeListener("error", this._socketErrorListener);
               this._socketErrorListener = null;
