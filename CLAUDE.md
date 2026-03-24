@@ -48,10 +48,10 @@ The user visible interface and high level integration is in the `deno` crate
 This includes flag parsing, subcommands, package management tooling, etc. Flag
 parsing is in `cli/args/flags.rs`. Tools are in `cli/tools/<tool>`.
 
-The `deno_runtime` crate (`./runtime`) assembles the javascript runtime,
-including all of the "extensions" (native functionality exposed to javascript).
-The extensions themselves are in the `ext/` directory, and provide system access
-to javascript – for instance filesystem operations and networking.
+The `deno_runtime` crate (`./runtime`) assembles the JavaScript runtime,
+including all "extensions" (native functionality exposed to JavaScript). The
+extensions themselves are in the `ext/` directory, and provide system access to
+JavaScript – for instance filesystem operations and networking.
 
 ### Key Directories
 
@@ -63,6 +63,10 @@ to javascript – for instance filesystem operations and networking.
 - `tests/testdata/` - Test fixtures and data files
 
 ## Quick Start
+
+Before building, install the required prerequisites (Rust, native compilers,
+cmake, protobuf, etc.) and clone with `--recurse-submodules` as described in
+[`.github/CONTRIBUTING.md`](.github/CONTRIBUTING.md#building-from-source).
 
 ### Building Deno
 
@@ -274,11 +278,7 @@ cargo outdated  # Requires cargo-outdated
 
 ### Debugging Rust Code
 
-Use your IDE's debugger (VS Code with rust-analyzer, IntelliJ IDEA, etc.):
-
-1. Set breakpoints in Rust code
-2. Run tests in debug mode through your IDE
-3. Or use `lldb` directly:
+Use `lldb` directly:
 
 ```bash
 lldb ./target/debug/deno
@@ -287,14 +287,7 @@ lldb ./target/debug/deno
 
 ### Debugging JavaScript Runtime Issues
 
-```bash
-# Enable V8 inspector
-./target/debug/deno run --inspect-brk script.ts
-
-# Then connect Chrome DevTools to chrome://inspect
-```
-
-Or use println debugging.
+Use println debugging.
 
 ### Verbose Logging
 
@@ -315,7 +308,7 @@ eprintln!("Debug: {:?}", some_variable);
 dbg!(some_variable);
 ```
 
-In the JavaScript runtime:
+In JavaScript/TypeScript code:
 
 ```javascript
 console.log("Debug:", value);
@@ -362,6 +355,10 @@ console.log("Debug:", value);
 - Try `cargo clean` then rebuild
 - Check if behind a proxy, configure cargo accordingly
 
+For other build failures (missing `cmake`, `stdarg.h`, etc.), see the full
+prerequisites in
+[`.github/CONTRIBUTING.md`](.github/CONTRIBUTING.md#building-from-source).
+
 ### Test Failures
 
 **Spec test failures**
@@ -403,7 +400,6 @@ console.log("Debug:", value);
 **Unexpected behavior**
 
 - Add debug prints liberally
-- Use the inspector for JS-side debugging
 - Check permission grants - many features require explicit permissions
 
 ### Getting Help

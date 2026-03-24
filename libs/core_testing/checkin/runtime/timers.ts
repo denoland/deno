@@ -59,6 +59,17 @@ export function clearImmediate(immediate: any) {
 }
 
 /**
+ * Mark an immediate as not blocking event loop exit.
+ */
+// deno-lint-ignore no-explicit-any
+export function unrefImmediate(immediate: any) {
+  if (immediate && immediate[Deno.core.kRefed]) {
+    immediate[Deno.core.kRefed] = false;
+    Deno.core.immediateRefCount(false);
+  }
+}
+
+/**
  * Mark a timer as not blocking event loop exit.
  */
 // deno-lint-ignore no-explicit-any

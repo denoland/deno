@@ -129,6 +129,32 @@ test(async function testImmediateException() {
   }
 });
 
+test(async function testUnrefImmediateFiresWithOtherWork() {
+  // An unrefed immediate should still fire when other work (a timer)
+  // keeps the event loop alive — matching libuv semantics where unrefed
+  // handles participate in iterations that run for other reasons.
+  const { promise, resolve } = Promise.withResolvers();
+  let immediateFired = false;
+  const imm = setImmediate(() => {
+    immediateFired = true;
+  });
+  // deno-lint-ignore no-explicit-any
+  (Deno as any).unrefImmediate(imm);
+  // The timer keeps the loop alive. After it fires, check the flag.
+  setTimeout(() => {
+    // Use a second immediate (refed) to check after the check phase
+    // of the iteration where the timer fired.
+    setImmediate(() => {
+      resolve(null);
+    });
+  }, 50);
+  await promise;
+  assert(
+    immediateFired,
+    "unrefed immediate should fire when other work keeps loop alive",
+  );
+});
+
 test(async function testManyImmediates() {
   const { promise, resolve } = Promise.withResolvers();
   let count = 0;

@@ -63,3 +63,17 @@ Deno.test("napi create_object_with_custom_prototype", function () {
   assertEquals(objectWithCustomPrototype.value, 42);
   assertEquals(typeof objectWithCustomPrototype.test, "function");
 });
+
+Deno.test("napi create_object_with_named_properties", function () {
+  const obj = object.test_create_object_with_named_properties();
+  assertEquals(typeof obj, "object");
+  assertEquals(obj.name, "Foo");
+  assertEquals(obj.age, 42);
+  assertEquals(obj.active, true);
+});
+
+Deno.test("napi create_object_with_named_properties_empty", function () {
+  const emptyObj = object.test_create_object_with_named_properties_empty();
+  assertEquals(typeof emptyObj, "object");
+  assertEquals(Object.keys(emptyObj).length, 0);
+});

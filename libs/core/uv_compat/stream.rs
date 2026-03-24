@@ -254,10 +254,14 @@ pub unsafe fn uv_write(
         data: write_data,
         offset: 0,
         cb,
+        status: None,
       });
       return 0;
     }
 
+    // Never fire callbacks synchronously from uv_write — always queue.
+    // This matches real libuv behavior and prevents re-entrancy panics
+    // when callers (e.g. StreamWrap ops) hold OpState borrows.
     if nbufs == 1 {
       let buf = &*bufs;
       if !buf.base.is_null() && buf.len > 0 {
@@ -274,9 +278,15 @@ pub unsafe fn uv_write(
             Ok(n) => {
               offset += n;
               if offset >= data.len() {
-                if let Some(cb) = cb {
-                  cb(req, 0);
-                }
+                // Fully written — queue a completed entry for the
+                // callback to fire from poll_tcp_handle/run_io.
+                (*tcp).internal_write_queue.push_back(WritePending {
+                  req,
+                  data: Vec::new(),
+                  offset: 0,
+                  cb,
+                  status: Some(0),
+                });
                 return 0;
               }
             }
@@ -286,21 +296,32 @@ pub unsafe fn uv_write(
                 data: data[offset..].to_vec(),
                 offset: 0,
                 cb,
+                status: None,
               });
               return 0;
             }
             Err(_) => {
-              if let Some(cb) = cb {
-                cb(req, UV_EPIPE);
-              }
+              // Queue a completed-with-error entry.
+              (*tcp).internal_write_queue.push_back(WritePending {
+                req,
+                data: Vec::new(),
+                offset: 0,
+                cb,
+                status: Some(UV_EPIPE),
+              });
               return 0;
             }
           }
         }
       }
-      if let Some(cb) = cb {
-        cb(req, 0);
-      }
+      // Empty buffer — queue a completed entry.
+      (*tcp).internal_write_queue.push_back(WritePending {
+        req,
+        data: Vec::new(),
+        offset: 0,
+        cb,
+        status: Some(0),
+      });
       return 0;
     }
 
@@ -321,9 +342,13 @@ pub unsafe fn uv_write(
 
     let total_len: usize = iovecs.iter().map(|s| s.len()).sum();
     if total_len == 0 {
-      if let Some(cb) = cb {
-        cb(req, 0);
-      }
+      (*tcp).internal_write_queue.push_back(WritePending {
+        req,
+        data: Vec::new(),
+        offset: 0,
+        cb,
+        status: Some(0),
+      });
       return 0;
     }
 
@@ -335,10 +360,13 @@ pub unsafe fn uv_write(
       .try_write_vectored(&iovecs);
     match write_result {
       Ok(n) if n >= total_len => {
-        if let Some(cb) = cb {
-          cb(req, 0);
-        }
-        return 0;
+        (*tcp).internal_write_queue.push_back(WritePending {
+          req,
+          data: Vec::new(),
+          offset: 0,
+          cb,
+          status: Some(0),
+        });
       }
       Ok(n) => {
         let mut write_data = Vec::with_capacity(total_len - n);
@@ -356,6 +384,7 @@ pub unsafe fn uv_write(
           data: write_data,
           offset: 0,
           cb,
+          status: None,
         });
       }
       Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
@@ -365,12 +394,17 @@ pub unsafe fn uv_write(
           data: write_data,
           offset: 0,
           cb,
+          status: None,
         });
       }
       Err(_) => {
-        if let Some(cb) = cb {
-          cb(req, UV_EPIPE);
-        }
+        (*tcp).internal_write_queue.push_back(WritePending {
+          req,
+          data: Vec::new(),
+          offset: 0,
+          cb,
+          status: Some(UV_EPIPE),
+        });
       }
     }
   }

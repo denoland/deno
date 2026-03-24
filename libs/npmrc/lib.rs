@@ -1,5 +1,9 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+#![deny(clippy::print_stderr)]
+#![deny(clippy::print_stdout)]
+#![deny(clippy::unused_async)]
+
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -13,6 +17,9 @@ use self::ini::KeyValueOrSection;
 use self::ini::Value;
 
 mod ini;
+
+/// The default npm registry URL.
+pub static NPM_DEFAULT_REGISTRY: &str = "https://registry.npmjs.org";
 
 #[derive(Debug, thiserror::Error)]
 pub enum ResolveError {
@@ -331,7 +338,7 @@ pub struct NpmRegistryUrl {
 impl NpmRegistryUrl {
   /// Gets the NPM_CONFIG_REGISTRY or falls back to https://registry.npmjs.org
   pub fn for_npm(sys: &impl EnvVar) -> Self {
-    Self::from_env(sys, "NPM_CONFIG_REGISTRY", "https://registry.npmjs.org")
+    Self::from_env(sys, "NPM_CONFIG_REGISTRY", NPM_DEFAULT_REGISTRY)
   }
 
   /// Gets the JSR_NPM_URL or falls back to https://npm.jsr.io

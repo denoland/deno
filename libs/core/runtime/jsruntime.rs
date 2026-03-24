@@ -91,6 +91,7 @@ use crate::runtime::jsrealm::IMM_IDX_REF_COUNT;
 use crate::source_map::SourceMapData;
 use crate::source_map::SourceMapper;
 use crate::stats::RuntimeActivityType;
+use crate::uv_compat;
 
 pub type WaitForInspectorDisconnectCallback = Box<dyn Fn()>;
 const STATE_DATA_OFFSET: u32 = 0;
@@ -1125,6 +1126,27 @@ impl JsRuntime {
       js_runtime.files_loaded_from_fs_during_snapshot = files_loaded;
     }
 
+    // Every runtime gets a uv loop for the libuv compat layer (timers,
+    // I/O, setImmediate, etc.). Stored in both OpState (for ext/node ops
+    // that need the raw pointer) and ContextState (for event loop phases).
+    if !will_snapshot {
+      // SAFETY: zeroed memory is valid for uv_loop_t before uv_loop_init.
+      let mut uv_loop =
+        Box::new(unsafe { std::mem::zeroed::<uv_compat::UvLoop>() });
+      // SAFETY: uv_loop points to valid zeroed memory.
+      unsafe { uv_compat::uv_loop_init(&mut *uv_loop) };
+      let loop_ptr: *mut uv_compat::UvLoop = &mut *uv_loop;
+      // SAFETY: loop_ptr is valid and initialized.
+      unsafe { js_runtime.register_uv_loop(loop_ptr) };
+      js_runtime.inner.state.op_state.borrow_mut().put(uv_loop);
+      js_runtime
+        .inner
+        .state
+        .op_state
+        .borrow_mut()
+        .put(uv_compat::AsyncId::default());
+    }
+
     // ...and we've made it; `JsRuntime` is ready to execute user code.
     Ok(js_runtime)
   }
@@ -1702,6 +1724,12 @@ impl JsRuntime {
     self.inner.state.op_state.clone()
   }
 
+  /// Returns the raw `uv_loop_t` pointer registered with this runtime,
+  /// or `None` if no loop is registered.
+  pub fn uv_loop_ptr(&self) -> Option<*mut uv_compat::uv_loop_t> {
+    self.inner.main_realm.0.context_state.uv_loop_ptr.get()
+  }
+
   /// Returns the runtime's source mapper, which can be used to apply
   /// source maps to file locations.
   pub fn source_mapper(&self) -> Rc<RefCell<crate::source_map::SourceMapper>> {
@@ -1721,13 +1749,12 @@ impl JsRuntime {
   /// outlives the runtime.
   pub unsafe fn register_uv_loop(
     &mut self,
-    loop_ptr: *mut crate::uv_compat::uv_loop_t,
+    loop_ptr: *mut uv_compat::uv_loop_t,
   ) {
     let realm = &self.inner.main_realm;
     let context_state = &realm.0.context_state;
-    let inner_ptr =
-      unsafe { crate::uv_compat::uv_loop_get_inner_ptr(loop_ptr) };
-    let uv_inner = inner_ptr as *const crate::uv_compat::UvLoopInner;
+    let inner_ptr = unsafe { uv_compat::uv_loop_get_inner_ptr(loop_ptr) };
+    let uv_inner = inner_ptr as *const uv_compat::UvLoopInner;
     context_state.uv_loop_inner.set(Some(uv_inner));
     context_state.uv_loop_ptr.set(Some(loop_ptr));
 
@@ -1740,6 +1767,13 @@ impl JsRuntime {
     unsafe {
       (*loop_ptr).data = raw.as_ptr() as *mut std::ffi::c_void;
     }
+
+    // Create the check handle for setImmediate.
+    // JS controls start/stop/ref/unref via op_immediate_check.
+    // SAFETY: loop_ptr is valid per caller contract.
+    let check_handle =
+      unsafe { uv_compat::ImmediateCheckHandle::new(loop_ptr) };
+    *context_state.immediate_check_handle.borrow_mut() = Some(check_handle);
   }
 
   /// Returns the runtime's op names, ordered by OpId.
@@ -2292,25 +2326,26 @@ impl JsRuntime {
     if let Some(uv_inner_ptr) = context_state.uv_loop_inner.get() {
       unsafe { (*uv_inner_ptr).run_check() };
     }
-    // Run immediates if there are refed immediates (they keep the loop
-    // alive on their own) OR if there are unrefed immediates and other
-    // work happened this iteration (meaning the loop is alive for other
-    // reasons). This matches libuv semantics: unrefed check handles
-    // don't cause `uv_run` to start an iteration, but they do
-    // participate if the iteration runs for other reasons. When only
-    // unrefed immediates remain and nothing else is pending, the loop
-    // exits without firing them.
-    let ran_immediates = context_state.immediate_info[IMM_IDX_COUNT] > 0
-      && (context_state.immediate_info[IMM_IDX_REF_COUNT] > 0
-        || did_work
-        || dispatched_ops
-        || uv_did_io);
-    if ran_immediates {
-      Self::do_js_run_immediate_callbacks(scope, context_state)?;
-      // Drain ticks queued by immediate callbacks so they don't
-      // require an extra full event loop iteration.
-      if context_state.has_tick_scheduled() {
-        Self::drain_next_tick_and_macrotasks(scope, context_state)?;
+    // Drain immediates in the check phase, matching Node.js semantics:
+    // - Refed immediates always fire (they keep the event loop alive).
+    // - Unrefed immediates only fire if other work drove this iteration
+    //   (did_work, dispatched_ops, or uv I/O). This matches libuv's
+    //   behavior where unrefed handles participate in iterations driven
+    //   by other work, but don't start new iterations on their own.
+    {
+      let has_immediates =
+        context_state.immediate_info[IMM_IDX_HAS_OUTSTANDING] != 0
+          || context_state.immediate_info[IMM_IDX_COUNT] > 0;
+      let has_refed = context_state.immediate_info[IMM_IDX_REF_COUNT] > 0;
+      if has_immediates
+        && (has_refed || did_work || dispatched_ops || uv_did_io)
+      {
+        Self::do_js_run_immediate_callbacks(scope, context_state)?;
+        // Drain ticks queued by immediate callbacks so they don't
+        // require an extra full event loop iteration.
+        if context_state.has_tick_scheduled() {
+          Self::drain_next_tick_and_macrotasks(scope, context_state)?;
+        }
       }
     }
     scope.perform_microtask_checkpoint();
@@ -2365,7 +2400,7 @@ impl JsRuntime {
       if pending_state.has_pending_background_tasks
         || pending_state.has_tick_scheduled
         || pending_state.has_outstanding_immediates
-        || pending_state.has_refed_immediates > 0
+        || context_state.immediate_info[IMM_IDX_REF_COUNT] > 0
         || pending_state.has_pending_promise_events
         || uv_did_io
       {
@@ -2387,7 +2422,6 @@ impl JsRuntime {
         || pending_state.has_pending_background_tasks
         || pending_state.has_pending_external_ops
         || pending_state.has_tick_scheduled
-        || pending_state.has_refed_immediates > 0
         || pending_state.has_pending_timers
         || pending_state.has_uv_alive_handles
       {
@@ -2408,7 +2442,6 @@ impl JsRuntime {
         || pending_state.has_pending_background_tasks
         || pending_state.has_pending_external_ops
         || pending_state.has_tick_scheduled
-        || pending_state.has_refed_immediates > 0
         || pending_state.has_pending_timers
         || pending_state.has_uv_alive_handles
       {
@@ -2629,7 +2662,6 @@ pub(crate) struct EventLoopPendingState {
   has_pending_promise_events: bool,
   has_pending_external_ops: bool,
   has_outstanding_immediates: bool,
-  has_refed_immediates: u32,
   has_pending_timers: bool,
   has_uv_alive_handles: bool,
 }
@@ -2664,10 +2696,8 @@ impl EventLoopPendingState {
     let has_pending_refed_ops = has_pending_tasks
       || has_pending_refed_user_timers
       || num_pending_ops > num_unrefed_ops;
-    let (has_outstanding_immediates, has_refed_immediates) = (
-      state.immediate_info[IMM_IDX_HAS_OUTSTANDING] != 0,
-      state.immediate_info[IMM_IDX_REF_COUNT],
-    );
+    let has_outstanding_immediates =
+      state.immediate_info[IMM_IDX_HAS_OUTSTANDING] != 0;
     let has_pending_timers = !state.active_timers.borrow().is_empty();
     let has_uv_alive_handles =
       if let Some(uv_inner_ptr) = state.uv_loop_inner.get() {
@@ -2686,7 +2716,6 @@ impl EventLoopPendingState {
       has_pending_promise_events,
       has_pending_external_ops: state.external_ops_tracker.has_pending_ops(),
       has_outstanding_immediates,
-      has_refed_immediates,
       has_pending_timers,
       has_uv_alive_handles,
     }
@@ -2706,7 +2735,6 @@ impl EventLoopPendingState {
       || self.has_pending_module_evaluation
       || self.has_pending_background_tasks
       || self.has_tick_scheduled
-      || self.has_refed_immediates > 0
       || self.has_pending_promise_events
       || self.has_pending_external_ops
       || self.has_uv_alive_handles
