@@ -35,8 +35,6 @@ pub enum CSSValueCustomError {
     "contains relative <length> values that cannot be resolved at parse time"
   )]
   ContainsRelativeLengthValues,
-  #[error("the {0} dimension is currently not supported")]
-  UnsupportedDimension(&'static str),
   #[error(
     "contains <length-percentage> calculations that cannot be resolved at parse time"
   )]
@@ -74,9 +72,9 @@ impl Length {
   const INCH_TO_CM: f64 = 2.54;
 
   #[inline]
-  pub fn from_pixels(value: f64) -> Self {
+  fn from_pixels(value: f64) -> Self {
     Self {
-      value: value,
+      value,
       unit: LengthUnit::Px,
     }
   }
@@ -117,17 +115,17 @@ impl Angle {
   const TURN_TO_GRAD: f64 = 400.0;
 
   #[inline]
-  pub fn from_degrees(value: f64) -> Self {
+  fn from_degrees(value: f64) -> Self {
     Self {
-      value: value,
+      value,
       unit: AngleUnit::Deg,
     }
   }
 
   #[inline]
-  pub fn from_radians(value: f64) -> Self {
+  fn from_radians(value: f64) -> Self {
     Self {
-      value: value,
+      value,
       unit: AngleUnit::Rad,
     }
   }
@@ -157,15 +155,122 @@ impl Angle {
   }
 }
 
-// Currently, units for <time>, <frequency>, <resolution>, and <flex> are not supported
+#[derive(Clone, Debug)]
+#[cfg_attr(test, derive(PartialEq))]
+pub struct Time {
+  value: f64,
+  unit: TimeUnit,
+}
+
+#[derive(Clone, Copy, Debug)]
+#[cfg_attr(test, derive(Eq, PartialEq))]
+enum TimeUnit {
+  S,
+  Ms,
+}
+
+impl Time {
+  #[inline]
+  fn from_second(value: f64) -> Self {
+    Self {
+      value,
+      unit: TimeUnit::S,
+    }
+  }
+
+  #[inline]
+  pub fn to_seconds(&self) -> f64 {
+    let value = self.value;
+    match self.unit {
+      TimeUnit::S => value,
+      TimeUnit::Ms => value * 1000.0,
+    }
+  }
+}
+
+#[derive(Clone, Debug)]
+#[cfg_attr(test, derive(PartialEq))]
+pub struct Frequency {
+  value: f64,
+  unit: FrequencyUnit,
+}
+
+#[derive(Clone, Copy, Debug)]
+#[cfg_attr(test, derive(Eq, PartialEq))]
+enum FrequencyUnit {
+  Hz,
+  Khz,
+}
+
+impl Frequency {
+  #[inline]
+  fn from_hertz(value: f64) -> Self {
+    Self {
+      value,
+      unit: FrequencyUnit::Hz,
+    }
+  }
+
+  #[inline]
+  pub fn to_hertz(&self) -> f64 {
+    let value = self.value;
+    match self.unit {
+      FrequencyUnit::Hz => value,
+      FrequencyUnit::Khz => value * 1000.0,
+    }
+  }
+}
+
+#[derive(Clone, Debug)]
+#[cfg_attr(test, derive(PartialEq))]
+pub struct Resolution {
+  value: f64,
+  unit: ResolutionUnit,
+}
+
+#[derive(Clone, Copy, Debug)]
+#[cfg_attr(test, derive(Eq, PartialEq))]
+enum ResolutionUnit {
+  Dpi,
+  Dpcm,
+  Dppx,
+}
+
+impl Resolution {
+  const INCH_TO_PX: f64 = 96.0;
+  const INCH_TO_CM: f64 = 2.54;
+
+  #[inline]
+  fn from_dot_per_pixels(value: f64) -> Self {
+    Self {
+      value,
+      unit: ResolutionUnit::Dppx,
+    }
+  }
+
+  #[inline]
+  fn to_dot_per_pixels(&self) -> f64 {
+    let value = self.value;
+    match self.unit {
+      ResolutionUnit::Dpi => value / Self::INCH_TO_PX,
+      ResolutionUnit::Dpcm => value / (Self::INCH_TO_PX / Self::INCH_TO_CM),
+      ResolutionUnit::Dppx => value,
+    }
+  }
+}
+
 #[derive(Debug)]
 #[cfg_attr(test, derive(PartialEq))]
 pub enum NumericValue {
   Zero,
   Number(f64),
+  Percent(f64),
   Length(Length),
   Angle(Angle),
-  Percent(f64),
+  Time(Time),
+  Frequency(Frequency),
+  Resolution(Resolution),
+  Flex(f64),
 }
 
 impl From<Length> for NumericValue {
@@ -182,12 +287,51 @@ impl From<Angle> for NumericValue {
   }
 }
 
+impl From<Time> for NumericValue {
+  #[inline]
+  fn from(value: Time) -> Self {
+    NumericValue::Time(value)
+  }
+}
+
+impl From<Frequency> for NumericValue {
+  #[inline]
+  fn from(value: Frequency) -> Self {
+    NumericValue::Frequency(value)
+  }
+}
+
+impl From<Resolution> for NumericValue {
+  #[inline]
+  fn from(value: Resolution) -> Self {
+    NumericValue::Resolution(value)
+  }
+}
+
 impl NumericValue {
   #[inline]
   pub fn expect_number(self) -> Result<f64, CSSValueCustomError> {
     match self {
       NumericValue::Zero => Ok(0.0),
       NumericValue::Number(number) => Ok(number),
+      _ => Err(CSSValueCustomError::UnexpectedNumericType),
+    }
+  }
+
+  #[inline]
+  pub fn expect_percent(self) -> Result<f64, CSSValueCustomError> {
+    match self {
+      NumericValue::Percent(percent) => Ok(percent),
+      _ => Err(CSSValueCustomError::UnexpectedNumericType),
+    }
+  }
+
+  #[inline]
+  pub fn expect_number_or_percent(self) -> Result<f64, CSSValueCustomError> {
+    match self {
+      NumericValue::Zero => Ok(0.0),
+      NumericValue::Number(number) => Ok(number),
+      NumericValue::Percent(percent) => Ok(percent),
       _ => Err(CSSValueCustomError::UnexpectedNumericType),
     }
   }
@@ -229,46 +373,71 @@ impl NumericValue {
   }
 
   #[inline]
-  pub fn expect_percent(self) -> Result<f64, CSSValueCustomError> {
+  pub fn expect_time(self) -> Result<Time, CSSValueCustomError> {
     match self {
-      NumericValue::Percent(percent) => Ok(percent),
+      NumericValue::Time(time) => Ok(time),
       _ => Err(CSSValueCustomError::UnexpectedNumericType),
     }
   }
 
   #[inline]
-  pub fn expect_number_or_percent(self) -> Result<f64, CSSValueCustomError> {
+  pub fn expect_frequency(self) -> Result<Frequency, CSSValueCustomError> {
     match self {
-      NumericValue::Zero => Ok(0.0),
-      NumericValue::Number(number) => Ok(number),
-      NumericValue::Percent(percent) => Ok(percent),
+      NumericValue::Frequency(frequency) => Ok(frequency),
+      _ => Err(CSSValueCustomError::UnexpectedNumericType),
+    }
+  }
+
+  #[inline]
+  pub fn expect_resolution(self) -> Result<Resolution, CSSValueCustomError> {
+    match self {
+      NumericValue::Resolution(resolution) => Ok(resolution),
+      _ => Err(CSSValueCustomError::UnexpectedNumericType),
+    }
+  }
+
+  #[inline]
+  pub fn expect_flex(self) -> Result<f64, CSSValueCustomError> {
+    match self {
+      NumericValue::Flex(flex) => Ok(flex),
       _ => Err(CSSValueCustomError::UnexpectedNumericType),
     }
   }
 }
 
-// Currently, units for <time>, <frequency>, <resolution>, and <flex> are not supported
 // https://drafts.css-houdini.org/css-typed-om-1/#numeric-typing
 #[derive(Debug, Default, PartialEq)]
 struct Dimension {
+  percent: i8,
   length: i8,
   angle: i8,
-  percent: i8,
+  time: i8,
+  frequency: i8,
+  resolution: i8,
+  flex: i8,
 }
 
 impl ops::AddAssign<&Dimension> for Dimension {
   fn add_assign(&mut self, rhs: &Self) {
+    self.percent += rhs.percent;
     self.length += rhs.length;
     self.angle += rhs.angle;
-    self.percent += rhs.percent;
+    self.time += rhs.time;
+    self.frequency += rhs.frequency;
+    self.resolution += rhs.resolution;
+    self.flex += rhs.flex;
   }
 }
 
 impl ops::SubAssign<&Dimension> for Dimension {
   fn sub_assign(&mut self, rhs: &Self) {
+    self.percent -= rhs.percent;
     self.length -= rhs.length;
     self.angle -= rhs.angle;
-    self.percent -= rhs.percent;
+    self.time -= rhs.time;
+    self.frequency -= rhs.frequency;
+    self.resolution -= rhs.resolution;
+    self.flex -= rhs.flex;
   }
 }
 
@@ -293,14 +462,20 @@ impl From<NumericValue> for MathValue {
         value,
         dimension: Default::default(),
       },
+      NumericValue::Percent(value) => MathValue {
+        value,
+        dimension: Dimension {
+          percent: 1,
+          ..Default::default()
+        },
+      },
       NumericValue::Length(length) => {
         let value = length.to_pixels();
         MathValue {
           value,
           dimension: Dimension {
             length: 1,
-            angle: 0,
-            percent: 0,
+            ..Default::default()
           },
         }
       }
@@ -309,18 +484,46 @@ impl From<NumericValue> for MathValue {
         MathValue {
           value,
           dimension: Dimension {
-            length: 0,
             angle: 1,
-            percent: 0,
+            ..Default::default()
           },
         }
       }
-      NumericValue::Percent(value) => MathValue {
+      NumericValue::Time(time) => {
+        let value = time.to_seconds();
+        MathValue {
+          value,
+          dimension: Dimension {
+            time: 1,
+            ..Default::default()
+          },
+        }
+      }
+      NumericValue::Frequency(frequency) => {
+        let value = frequency.to_hertz();
+        MathValue {
+          value,
+          dimension: Dimension {
+            frequency: 1,
+            ..Default::default()
+          },
+        }
+      }
+      NumericValue::Resolution(resolution) => {
+        let value = resolution.to_dot_per_pixels();
+        MathValue {
+          value,
+          dimension: Dimension {
+            resolution: 1,
+            ..Default::default()
+          },
+        }
+      }
+      NumericValue::Flex(value) => MathValue {
         value,
         dimension: Dimension {
-          length: 0,
-          angle: 0,
-          percent: 1,
+          flex: 1,
+          ..Default::default()
         },
       },
     }
@@ -334,25 +537,77 @@ impl TryFrom<MathValue> for NumericValue {
     let value = accumulator.value;
     match accumulator.dimension {
       Dimension {
+        percent: 0,
         length: 0,
         angle: 0,
-        percent: 0,
+        time: 0,
+        frequency: 0,
+        resolution: 0,
+        flex: 0,
       } => Ok(NumericValue::Number(value)),
       Dimension {
+        percent: 1,
+        length: 0,
+        angle: 0,
+        time: 0,
+        frequency: 0,
+        resolution: 0,
+        flex: 0,
+      } => Ok(NumericValue::Percent(value)),
+      Dimension {
+        percent: 0,
         length: 1,
         angle: 0,
-        percent: 0,
+        time: 0,
+        frequency: 0,
+        resolution: 0,
+        flex: 0,
       } => Ok(Length::from_pixels(value).into()),
       Dimension {
+        percent: 0,
         length: 0,
         angle: 1,
-        percent: 0,
+        time: 0,
+        frequency: 0,
+        resolution: 0,
+        flex: 0,
       } => Ok(Angle::from_degrees(value).into()),
       Dimension {
+        percent: 0,
         length: 0,
         angle: 0,
-        percent: 1,
-      } => Ok(NumericValue::Percent(value)),
+        time: 1,
+        frequency: 0,
+        resolution: 0,
+        flex: 0,
+      } => Ok(Time::from_second(value).into()),
+      Dimension {
+        percent: 0,
+        length: 0,
+        angle: 0,
+        time: 0,
+        frequency: 1,
+        resolution: 0,
+        flex: 0,
+      } => Ok(Frequency::from_hertz(value).into()),
+      Dimension {
+        percent: 0,
+        length: 0,
+        angle: 0,
+        time: 0,
+        frequency: 0,
+        resolution: 1,
+        flex: 0,
+      } => Ok(Resolution::from_dot_per_pixels(value).into()),
+      Dimension {
+        percent: 0,
+        length: 0,
+        angle: 0,
+        time: 0,
+        frequency: 0,
+        resolution: 0,
+        flex: 1,
+      } => Ok(NumericValue::Flex(value)),
       _ => Err(CSSValueCustomError::InvalidDimension),
     }
   }
@@ -400,33 +655,13 @@ impl MathValue {
     matches!(
       self.dimension,
       Dimension {
+        percent: 0,
         length: 0,
         angle: 0,
-        percent: 0
-      }
-    )
-  }
-
-  #[inline]
-  fn is_length(&self) -> bool {
-    matches!(
-      self.dimension,
-      Dimension {
-        length: 1,
-        angle: 0,
-        percent: 0
-      }
-    )
-  }
-
-  #[inline]
-  fn is_angle(&self) -> bool {
-    matches!(
-      self.dimension,
-      Dimension {
-        length: 0,
-        angle: 1,
-        percent: 0
+        time: 0,
+        frequency: 0,
+        resolution: 0,
+        flex: 0,
       }
     )
   }
@@ -436,9 +671,109 @@ impl MathValue {
     matches!(
       self.dimension,
       Dimension {
+        percent: 1,
         length: 0,
         angle: 0,
-        percent: 1
+        time: 0,
+        frequency: 0,
+        resolution: 0,
+        flex: 0,
+      }
+    )
+  }
+
+  #[inline]
+  fn is_length(&self) -> bool {
+    matches!(
+      self.dimension,
+      Dimension {
+        percent: 0,
+        length: 1,
+        angle: 0,
+        time: 0,
+        frequency: 0,
+        resolution: 0,
+        flex: 0,
+      }
+    )
+  }
+
+  #[inline]
+  fn is_angle(&self) -> bool {
+    matches!(
+      self.dimension,
+      Dimension {
+        percent: 0,
+        length: 0,
+        angle: 1,
+        time: 0,
+        frequency: 0,
+        resolution: 0,
+        flex: 0,
+      }
+    )
+  }
+
+  #[inline]
+  fn is_time(&self) -> bool {
+    matches!(
+      self.dimension,
+      Dimension {
+        percent: 0,
+        length: 0,
+        angle: 0,
+        time: 1,
+        frequency: 0,
+        resolution: 0,
+        flex: 0,
+      }
+    )
+  }
+
+  #[inline]
+  fn is_frequency(&self) -> bool {
+    matches!(
+      self.dimension,
+      Dimension {
+        percent: 0,
+        length: 0,
+        angle: 0,
+        time: 0,
+        frequency: 1,
+        resolution: 0,
+        flex: 0,
+      }
+    )
+  }
+
+  #[inline]
+  fn is_resolution(&self) -> bool {
+    matches!(
+      self.dimension,
+      Dimension {
+        percent: 0,
+        length: 0,
+        angle: 0,
+        time: 0,
+        frequency: 0,
+        resolution: 1,
+        flex: 0,
+      }
+    )
+  }
+
+  #[inline]
+  fn is_flex(&self) -> bool {
+    matches!(
+      self.dimension,
+      Dimension {
+        percent: 0,
+        length: 0,
+        angle: 0,
+        time: 0,
+        frequency: 0,
+        resolution: 0,
+        flex: 1,
       }
     )
   }
@@ -446,6 +781,14 @@ impl MathValue {
   #[inline]
   fn expect_number(self) -> Result<f64, CSSValueCustomError> {
     if !self.is_number() {
+      return Err(CSSValueCustomError::UnexpectedNumericType);
+    }
+    Ok(self.value)
+  }
+
+  #[inline]
+  fn expect_percent(self) -> Result<f64, CSSValueCustomError> {
+    if !self.is_percent() {
       return Err(CSSValueCustomError::UnexpectedNumericType);
     }
     Ok(self.value)
@@ -468,8 +811,32 @@ impl MathValue {
   }
 
   #[inline]
-  fn expect_percent(self) -> Result<f64, CSSValueCustomError> {
-    if !self.is_percent() {
+  fn expect_time(self) -> Result<Time, CSSValueCustomError> {
+    if !self.is_time() {
+      return Err(CSSValueCustomError::UnexpectedNumericType);
+    }
+    Ok(Time::from_second(self.value))
+  }
+
+  #[inline]
+  fn expect_frequency(self) -> Result<Frequency, CSSValueCustomError> {
+    if !self.is_frequency() {
+      return Err(CSSValueCustomError::UnexpectedNumericType);
+    }
+    Ok(Frequency::from_hertz(self.value))
+  }
+
+  #[inline]
+  fn expect_resolution(self) -> Result<Resolution, CSSValueCustomError> {
+    if !self.is_resolution() {
+      return Err(CSSValueCustomError::UnexpectedNumericType);
+    }
+    Ok(Resolution::from_dot_per_pixels(self.value))
+  }
+
+  #[inline]
+  fn expect_flex(self) -> Result<f64, CSSValueCustomError> {
+    if !self.is_flex() {
       return Err(CSSValueCustomError::UnexpectedNumericType);
     }
     Ok(self.value)
@@ -539,6 +906,14 @@ impl NumericAccumulator {
   }
 
   #[inline]
+  fn expect_percent(self) -> Result<f64, CSSValueCustomError> {
+    match self {
+      NumericAccumulator::Numeric(numeric) => numeric.expect_percent(),
+      NumericAccumulator::Math(math) => math.expect_percent(),
+    }
+  }
+
+  #[inline]
   fn expect_length(
     self,
     allow_zero: bool,
@@ -561,10 +936,34 @@ impl NumericAccumulator {
   }
 
   #[inline]
-  fn expect_percent(self) -> Result<f64, CSSValueCustomError> {
+  fn expect_time(self) -> Result<Time, CSSValueCustomError> {
     match self {
-      NumericAccumulator::Numeric(numeric) => numeric.expect_percent(),
-      NumericAccumulator::Math(math) => math.expect_percent(),
+      NumericAccumulator::Numeric(numeric) => numeric.expect_time(),
+      NumericAccumulator::Math(math) => math.expect_time(),
+    }
+  }
+
+  #[inline]
+  fn expect_frequency(self) -> Result<Frequency, CSSValueCustomError> {
+    match self {
+      NumericAccumulator::Numeric(numeric) => numeric.expect_frequency(),
+      NumericAccumulator::Math(math) => math.expect_frequency(),
+    }
+  }
+
+  #[inline]
+  fn expect_resolution(self) -> Result<Resolution, CSSValueCustomError> {
+    match self {
+      NumericAccumulator::Numeric(numeric) => numeric.expect_resolution(),
+      NumericAccumulator::Math(math) => math.expect_resolution(),
+    }
+  }
+
+  #[inline]
+  fn expect_flex(self) -> Result<f64, CSSValueCustomError> {
+    match self {
+      NumericAccumulator::Numeric(numeric) => numeric.expect_flex(),
+      NumericAccumulator::Math(math) => math.expect_flex(),
     }
   }
 }
@@ -628,13 +1027,17 @@ impl NumericValue {
           "rad" => Ok(NumericValue::Angle(Angle { value: *value as f64, unit: AngleUnit::Rad }).into()),
           "turn" => Ok(NumericValue::Angle(Angle { value: *value as f64, unit: AngleUnit::Turn }).into()),
           // https://www.w3.org/TR/css-values-4/#time
-          "s" | "ms" => Err(input.new_custom_error(CSSValueCustomError::UnsupportedDimension("<time>"))),
+          "s" => Ok(NumericValue::Time(Time { value: *value as f64, unit: TimeUnit::S }).into()),
+          "ms" => Ok(NumericValue::Time(Time { value: *value as f64, unit: TimeUnit::Ms }).into()),
           // https://www.w3.org/TR/css-values-4/#frequency
-          "hz" | "khz" => Err(input.new_custom_error(CSSValueCustomError::UnsupportedDimension("<frequency>"))),
+          "hz" => Ok(NumericValue::Frequency(Frequency { value: *value as f64, unit: FrequencyUnit::Hz }).into()),
+          "khz" => Ok(NumericValue::Frequency(Frequency { value: *value as f64, unit: FrequencyUnit::Khz }).into()),
           // https://www.w3.org/TR/css-values-4/#resolution
-          "dpi" | "dpcm" | "dppx" | "x" => Err(input.new_custom_error(CSSValueCustomError::UnsupportedDimension("<resolution>"))),
+          "dpi" => Ok(NumericValue::Resolution(Resolution { value: *value as f64, unit: ResolutionUnit::Dpi }).into()),
+          "dpcm" => Ok(NumericValue::Resolution(Resolution { value: *value as f64, unit: ResolutionUnit::Dpcm }).into()),
+          "dppx" | "x" => Ok(NumericValue::Resolution(Resolution { value: *value as f64, unit: ResolutionUnit::Dppx }).into()),
           // https://www.w3.org/TR/css-grid-2/#fr-unit
-          "fr" => Err(input.new_custom_error(CSSValueCustomError::UnsupportedDimension("<flex>"))),
+          "fr" => Ok(NumericValue::Flex(*value as f64).into()),
           _ => {
             let token = token.clone();
             Err(input.new_unexpected_token_error(token))
@@ -672,6 +1075,16 @@ impl NumericValue {
                   }
                   NumericValue::Number(current).into()
                 },
+                NumericValue::Percent(percent) => {
+                  let mut current = percent;
+                  while !arguments.is_exhausted() {
+                    arguments.expect_comma()?;
+                    let value = Self::parse_additive_expression(arguments, state)?;
+                    let value = try_extract!(value, expect_percent(), arguments);
+                    current = minimum(current, value);
+                  }
+                  NumericValue::Percent(current).into()
+                }
                 NumericValue::Length(length) => {
                   let mut current = length.to_pixels();
                   while !arguments.is_exhausted() {
@@ -692,15 +1105,45 @@ impl NumericValue {
                   }
                   NumericValue::Angle(Angle::from_degrees(current)).into()
                 },
-                NumericValue::Percent(percent) => {
-                  let mut current = percent;
+                NumericValue::Time(time) => {
+                  let mut current = time.to_seconds();
                   while !arguments.is_exhausted() {
                     arguments.expect_comma()?;
                     let value = Self::parse_additive_expression(arguments, state)?;
-                    let value = try_extract!(value, expect_percent(), arguments);
+                    let value = try_extract!(value, expect_time(), to_seconds(), arguments);
                     current = minimum(current, value);
                   }
-                  NumericValue::Percent(current).into()
+                  NumericValue::Time(Time::from_second(current)).into()
+                },
+                NumericValue::Frequency(frequency) => {
+                  let mut current = frequency.to_hertz();
+                  while !arguments.is_exhausted() {
+                    arguments.expect_comma()?;
+                    let value = Self::parse_additive_expression(arguments, state)?;
+                    let value = try_extract!(value, expect_frequency(), to_hertz(), arguments);
+                    current = minimum(current, value);
+                  }
+                  NumericValue::Frequency(Frequency::from_hertz(current)).into()
+                },
+                NumericValue::Resolution(resolution) => {
+                  let mut current = resolution.to_dot_per_pixels();
+                  while !arguments.is_exhausted() {
+                    arguments.expect_comma()?;
+                    let value = Self::parse_additive_expression(arguments, state)?;
+                    let value = try_extract!(value, expect_resolution(), to_dot_per_pixels(), arguments);
+                    current = minimum(current, value);
+                  }
+                  NumericValue::Resolution(Resolution::from_dot_per_pixels(current)).into()
+                },
+                NumericValue::Flex(flex) => {
+                  let mut current = flex;
+                  while !arguments.is_exhausted() {
+                    arguments.expect_comma()?;
+                    let value = Self::parse_additive_expression(arguments, state)?;
+                    let value = try_extract!(value, expect_flex(), arguments);
+                    current = minimum(current, value);
+                  }
+                  NumericValue::Flex(current).into()
                 },
               };
               Ok(result)
@@ -722,6 +1165,16 @@ impl NumericValue {
                   }
                   NumericValue::Number(current).into()
                 },
+                NumericValue::Percent(percent) => {
+                  let mut current = percent;
+                  while !arguments.is_exhausted() {
+                    arguments.expect_comma()?;
+                    let value = Self::parse_additive_expression(arguments, state)?;
+                    let value = try_extract!(value, expect_percent(), arguments);
+                    current = maximum(current, value);
+                  }
+                  NumericValue::Percent(current).into()
+                },
                 NumericValue::Length(length) => {
                   let mut current = length.to_pixels();
                   while !arguments.is_exhausted() {
@@ -742,15 +1195,45 @@ impl NumericValue {
                   }
                   NumericValue::Angle(Angle::from_degrees(current)).into()
                 },
-                NumericValue::Percent(percent) => {
-                  let mut current = percent;
+                NumericValue::Time(time) => {
+                  let mut current = time.to_seconds();
                   while !arguments.is_exhausted() {
                     arguments.expect_comma()?;
                     let value = Self::parse_additive_expression(arguments, state)?;
-                    let value = try_extract!(value, expect_percent(), arguments);
+                    let value = try_extract!(value, expect_time(), to_seconds(), arguments);
                     current = maximum(current, value);
                   }
-                  NumericValue::Percent(current).into()
+                  NumericValue::Time(Time::from_second(current)).into()
+                },
+                NumericValue::Frequency(frequency) => {
+                  let mut current = frequency.to_hertz();
+                  while !arguments.is_exhausted() {
+                    arguments.expect_comma()?;
+                    let value = Self::parse_additive_expression(arguments, state)?;
+                    let value = try_extract!(value, expect_frequency(), to_hertz(), arguments);
+                    current = maximum(current, value);
+                  }
+                  NumericValue::Frequency(Frequency::from_hertz(current)).into()
+                },
+                NumericValue::Resolution(resolution) => {
+                  let mut current = resolution.to_dot_per_pixels();
+                  while !arguments.is_exhausted() {
+                    arguments.expect_comma()?;
+                    let value = Self::parse_additive_expression(arguments, state)?;
+                    let value = try_extract!(value, expect_resolution(), to_dot_per_pixels(), arguments);
+                    current = maximum(current, value);
+                  }
+                  NumericValue::Resolution(Resolution::from_dot_per_pixels(current)).into()
+                },
+                NumericValue::Flex(flex) => {
+                  let mut current = flex;
+                  while !arguments.is_exhausted() {
+                    arguments.expect_comma()?;
+                    let value = Self::parse_additive_expression(arguments, state)?;
+                    let value = try_extract!(value, expect_flex(), arguments);
+                    current = maximum(current, value);
+                  }
+                  NumericValue::Flex(current).into()
                 },
               };
               Ok(result)
@@ -799,6 +1282,17 @@ impl NumericValue {
                   };
                   NumericValue::Number(maximum(min, minimum(value, max))).into()
                 },
+                NumericValue::Percent(value) => {
+                  let min = match min {
+                    Some(numeric) => try_extract!(numeric, expect_percent(), arguments),
+                    None => f64::NEG_INFINITY,
+                  };
+                  let max = match max {
+                    Some(numeric) => try_extract!(numeric, expect_percent(), arguments),
+                    None => f64::INFINITY,
+                  };
+                  NumericValue::Percent(maximum(min, minimum(value, max))).into()
+                },
                 NumericValue::Length(value) => {
                   let min = match min {
                     Some(numeric) => try_extract!(numeric, expect_length(false), to_pixels(), arguments),
@@ -821,16 +1315,49 @@ impl NumericValue {
                   };
                   NumericValue::Angle(Angle::from_degrees(maximum(min, minimum(value.to_degrees(), max)))).into()
                 },
-                NumericValue::Percent(value) => {
+                NumericValue::Time(value) => {
                   let min = match min {
-                    Some(numeric) => try_extract!(numeric, expect_percent(), arguments),
+                    Some(numeric) => try_extract!(numeric, expect_time(), to_seconds(), arguments),
                     None => f64::NEG_INFINITY,
                   };
                   let max = match max {
-                    Some(numeric) => try_extract!(numeric, expect_percent(), arguments),
+                    Some(numeric) => try_extract!(numeric, expect_time(), to_seconds(), arguments),
                     None => f64::INFINITY,
                   };
-                  NumericValue::Percent(maximum(min, minimum(value, max))).into()
+                  NumericValue::Time(Time::from_second(maximum(min, minimum(value.to_seconds(), max)))).into()
+                },
+                NumericValue::Frequency(value) => {
+                  let min = match min {
+                    Some(numeric) => try_extract!(numeric, expect_frequency(), to_hertz(), arguments),
+                    None => f64::NEG_INFINITY,
+                  };
+                  let max = match max {
+                    Some(numeric) => try_extract!(numeric, expect_frequency(), to_hertz(), arguments),
+                    None => f64::INFINITY,
+                  };
+                  NumericValue::Frequency(Frequency::from_hertz(maximum(min, minimum(value.to_hertz(), max)))).into()
+                },
+                NumericValue::Resolution(value) => {
+                  let min = match min {
+                    Some(numeric) => try_extract!(numeric, expect_resolution(), to_dot_per_pixels(), arguments),
+                    None => f64::NEG_INFINITY,
+                  };
+                  let max = match max {
+                    Some(numeric) => try_extract!(numeric, expect_resolution(), to_dot_per_pixels(), arguments),
+                    None => f64::INFINITY,
+                  };
+                  NumericValue::Resolution(Resolution::from_dot_per_pixels(maximum(min, minimum(value.to_dot_per_pixels(), max)))).into()
+                },
+                NumericValue::Flex(value) => {
+                  let min = match min {
+                    Some(numeric) => try_extract!(numeric, expect_flex(), arguments),
+                    None => f64::NEG_INFINITY,
+                  };
+                  let max = match max {
+                    Some(numeric) => try_extract!(numeric, expect_flex(), arguments),
+                    None => f64::INFINITY,
+                  };
+                  NumericValue::Flex(maximum(min, minimum(value, max))).into()
                 },
               };
               Ok(result)
@@ -902,9 +1429,13 @@ impl NumericValue {
                 let interval = match value {
                   NumericValue::Zero => unreachable!(),
                   NumericValue::Number(_) => try_extract!(interval, expect_number(), arguments),
+                  NumericValue::Percent(_) => try_extract!(interval, expect_percent(), arguments),
                   NumericValue::Length(_) => try_extract!(interval, expect_length(false), to_pixels(), arguments),
                   NumericValue::Angle(_) => try_extract!(interval, expect_angle(false), to_degrees(), arguments),
-                  NumericValue::Percent(_) => try_extract!(interval, expect_percent(), arguments),
+                  NumericValue::Time(_) => try_extract!(interval, expect_time(), to_seconds(), arguments),
+                  NumericValue::Frequency(_) => try_extract!(interval, expect_frequency(), to_hertz(), arguments),
+                  NumericValue::Resolution(_) => try_extract!(interval, expect_resolution(), to_dot_per_pixels(), arguments),
+                  NumericValue::Flex(_) => try_extract!(interval, expect_flex(), arguments),
                 };
                 arguments.expect_exhausted()?;
                 interval
@@ -914,15 +1445,27 @@ impl NumericValue {
                 NumericValue::Number(value) => {
                   NumericValue::Number(round(&strategy, value, interval)).into()
                 },
+                NumericValue::Percent(value) => {
+                  NumericValue::Percent(round(&strategy, value, interval)).into()
+                },
                 NumericValue::Length(value) => {
                   NumericValue::Length(Length::from_pixels(round(&strategy, value.to_pixels(), interval))).into()
                 },
                 NumericValue::Angle(value) => {
                   NumericValue::Angle(Angle::from_degrees(round(&strategy, value.to_degrees(), interval))).into()
                 },
-                NumericValue::Percent(value) => {
-                  NumericValue::Percent(round(&strategy, value, interval)).into()
-                }
+                NumericValue::Time(value) => {
+                  NumericValue::Time(Time::from_second(round(&strategy, value.to_seconds(), interval))).into()
+                },
+                NumericValue::Frequency(value) => {
+                  NumericValue::Frequency(Frequency::from_hertz(round(&strategy, value.to_hertz(), interval))).into()
+                },
+                NumericValue::Resolution(value) => {
+                  NumericValue::Resolution(Resolution::from_dot_per_pixels(round(&strategy, value.to_dot_per_pixels(), interval))).into()
+                },
+                NumericValue::Flex(value) => {
+                  NumericValue::Flex(round(&strategy, value, interval)).into()
+                },
               };
               Ok(result)
             })
@@ -939,27 +1482,54 @@ impl NumericValue {
                   let divisor = try_extract!(divisor, expect_number(), arguments);
                   arguments.expect_exhausted()?;
                   NumericValue::Number(dividend.rem_euclid(divisor)).into()
-                },
+                }
+                NumericValue::Percent(dividend) => {
+                  let divisor = Self::parse_additive_expression(arguments, state)?;
+                  let divisor = try_extract!(divisor, expect_percent(), arguments);
+                  arguments.expect_exhausted()?;
+                  NumericValue::Percent(dividend.rem_euclid(divisor)).into()
+                }
                 NumericValue::Length(dividend) => {
                   let dividend = dividend.to_pixels();
                   let divisor = Self::parse_additive_expression(arguments, state)?;
                   let divisor = try_extract!(divisor, expect_length(false), to_pixels(), arguments);
                   arguments.expect_exhausted()?;
                   NumericValue::Length(Length::from_pixels(dividend.rem_euclid(divisor))).into()
-                },
+                }
                 NumericValue::Angle(dividend) => {
                   let dividend = dividend.to_degrees();
                   let divisor = Self::parse_additive_expression(arguments, state)?;
                   let divisor = try_extract!(divisor, expect_angle(false), to_degrees(), arguments);
                   arguments.expect_exhausted()?;
                   NumericValue::Angle(Angle::from_degrees(dividend.rem_euclid(divisor))).into()
-                },
-                NumericValue::Percent(dividend) => {
+                }
+                NumericValue::Time(dividend) => {
+                  let dividend = dividend.to_seconds();
                   let divisor = Self::parse_additive_expression(arguments, state)?;
-                  let divisor = try_extract!(divisor, expect_percent(), arguments);
+                  let divisor = try_extract!(divisor, expect_time(), to_seconds(), arguments);
                   arguments.expect_exhausted()?;
-                  NumericValue::Percent(dividend.rem_euclid(divisor)).into()
-                },
+                  NumericValue::Time(Time::from_second(dividend.rem_euclid(divisor))).into()
+                }
+                NumericValue::Frequency(dividend) => {
+                  let dividend = dividend.to_hertz();
+                  let divisor = Self::parse_additive_expression(arguments, state)?;
+                  let divisor = try_extract!(divisor, expect_frequency(), to_hertz(), arguments);
+                  arguments.expect_exhausted()?;
+                  NumericValue::Frequency(Frequency::from_hertz(dividend.rem_euclid(divisor))).into()
+                }
+                NumericValue::Resolution(dividend) => {
+                  let dividend = dividend.to_dot_per_pixels();
+                  let divisor = Self::parse_additive_expression(arguments, state)?;
+                  let divisor = try_extract!(divisor, expect_resolution(), to_dot_per_pixels(), arguments);
+                  arguments.expect_exhausted()?;
+                  NumericValue::Resolution(Resolution::from_dot_per_pixels(dividend.rem_euclid(divisor))).into()
+                }
+                NumericValue::Flex(dividend) => {
+                  let divisor = Self::parse_additive_expression(arguments, state)?;
+                  let divisor = try_extract!(divisor, expect_flex(), arguments);
+                  arguments.expect_exhausted()?;
+                  NumericValue::Flex(dividend.rem_euclid(divisor)).into()
+                }
               };
               Ok(result)
             })
@@ -976,27 +1546,54 @@ impl NumericValue {
                   let divisor = try_extract!(divisor, expect_number(), arguments);
                   arguments.expect_exhausted()?;
                   NumericValue::Number(dividend % divisor).into()
-                },
+                }
+                NumericValue::Percent(dividend) => {
+                  let divisor = Self::parse_additive_expression(arguments, state)?;
+                  let divisor = try_extract!(divisor, expect_percent(), arguments);
+                  arguments.expect_exhausted()?;
+                  NumericValue::Percent(dividend % divisor).into()
+                }
                 NumericValue::Length(dividend) => {
                   let dividend = dividend.to_pixels();
                   let divisor = Self::parse_additive_expression(arguments, state)?;
                   let divisor = try_extract!(divisor, expect_length(false), to_pixels(), arguments);
                   arguments.expect_exhausted()?;
                   NumericValue::Length(Length::from_pixels(dividend % divisor)).into()
-                },
+                }
                 NumericValue::Angle(dividend) => {
                   let dividend = dividend.to_degrees();
                   let divisor = Self::parse_additive_expression(arguments, state)?;
                   let divisor = try_extract!(divisor, expect_angle(false), to_degrees(), arguments);
                   arguments.expect_exhausted()?;
                   NumericValue::Angle(Angle::from_degrees(dividend % divisor)).into()
-                },
-                NumericValue::Percent(dividend) => {
+                }
+                NumericValue::Time(dividend) => {
+                  let dividend = dividend.to_seconds();
                   let divisor = Self::parse_additive_expression(arguments, state)?;
-                  let divisor = try_extract!(divisor, expect_percent(), arguments);
+                  let divisor = try_extract!(divisor, expect_time(), to_seconds(), arguments);
                   arguments.expect_exhausted()?;
-                  NumericValue::Percent(dividend % divisor).into()
-                },
+                  NumericValue::Time(Time::from_second(dividend % divisor)).into()
+                }
+                NumericValue::Frequency(dividend) => {
+                  let dividend = dividend.to_hertz();
+                  let divisor = Self::parse_additive_expression(arguments, state)?;
+                  let divisor = try_extract!(divisor, expect_frequency(), to_hertz(), arguments);
+                  arguments.expect_exhausted()?;
+                  NumericValue::Frequency(Frequency::from_hertz(dividend % divisor)).into()
+                }
+                NumericValue::Resolution(dividend) => {
+                  let dividend = dividend.to_dot_per_pixels();
+                  let divisor = Self::parse_additive_expression(arguments, state)?;
+                  let divisor = try_extract!(divisor, expect_resolution(), to_dot_per_pixels(), arguments);
+                  arguments.expect_exhausted()?;
+                  NumericValue::Resolution(Resolution::from_dot_per_pixels(dividend % divisor)).into()
+                }
+                NumericValue::Flex(dividend) => {
+                  let divisor = Self::parse_additive_expression(arguments, state)?;
+                  let divisor = try_extract!(divisor, expect_flex(), arguments);
+                  arguments.expect_exhausted()?;
+                  NumericValue::Flex(dividend % divisor).into()
+                }
               };
               Ok(result)
             })
@@ -1011,12 +1608,11 @@ impl NumericValue {
                 NumericValue::Zero => unreachable!(),
                 NumericValue::Number(number) => {
                   NumericValue::Number(number.sin()).into()
-                },
+                }
                 NumericValue::Angle(angle) => {
                   NumericValue::Number(angle.to_radians().sin()).into()
-                },
-                NumericValue::Length(_) |
-                NumericValue::Percent(_) => return Err(arguments.new_custom_error(CSSValueCustomError::UnexpectedNumericType)),
+                }
+                _ => return Err(arguments.new_custom_error(CSSValueCustomError::UnexpectedNumericType)),
               };
               Ok(result)
             })
@@ -1030,12 +1626,11 @@ impl NumericValue {
                 NumericValue::Zero => unreachable!(),
                 NumericValue::Number(number) => {
                   NumericValue::Number(number.cos()).into()
-                },
+                }
                 NumericValue::Angle(angle) => {
                   NumericValue::Number(angle.to_radians().cos()).into()
-                },
-                NumericValue::Length(_) |
-                NumericValue::Percent(_) => return Err(arguments.new_custom_error(CSSValueCustomError::UnexpectedNumericType)),
+                }
+                _ => return Err(arguments.new_custom_error(CSSValueCustomError::UnexpectedNumericType)),
               };
               Ok(result)
             })
@@ -1049,12 +1644,11 @@ impl NumericValue {
                 NumericValue::Zero => unreachable!(),
                 NumericValue::Number(number) => {
                   NumericValue::Number(number.tan()).into()
-                },
+                }
                 NumericValue::Angle(angle) => {
                   NumericValue::Number(angle.to_radians().tan()).into()
-                },
-                NumericValue::Length(_) |
-                NumericValue::Percent(_) => return Err(arguments.new_custom_error(CSSValueCustomError::UnexpectedNumericType)),
+                }
+                _ => return Err(arguments.new_custom_error(CSSValueCustomError::UnexpectedNumericType)),
               };
               Ok(result)
             })
@@ -1097,16 +1691,28 @@ impl NumericValue {
               let result: NumericAccumulator = match (y, x) {
                 (NumericValue::Number(y), NumericValue::Number(x)) => {
                   NumericValue::Angle(Angle::from_radians(y.atan2(x))).into()
-                },
-                (NumericValue::Length(y), NumericValue::Length(x)) => {
-                  NumericValue::Angle(Angle::from_radians(y.to_pixels().atan2(x.to_pixels()))).into()
-                },
-                (NumericValue::Angle(y), NumericValue::Angle(x)) => {
-                  NumericValue::Angle(Angle::from_radians(y.to_degrees().atan2(x.to_degrees()))).into()
-                },
+                }
                 (NumericValue::Percent(y), NumericValue::Percent(x)) => {
                   NumericValue::Angle(Angle::from_radians(y.atan2(x))).into()
-                },
+                }
+                (NumericValue::Length(y), NumericValue::Length(x)) => {
+                  NumericValue::Angle(Angle::from_radians(y.to_pixels().atan2(x.to_pixels()))).into()
+                }
+                (NumericValue::Angle(y), NumericValue::Angle(x)) => {
+                  NumericValue::Angle(Angle::from_radians(y.to_degrees().atan2(x.to_degrees()))).into()
+                }
+                (NumericValue::Time(y), NumericValue::Time(x)) => {
+                  NumericValue::Angle(Angle::from_radians(y.to_seconds().atan2(x.to_seconds()))).into()
+                }
+                (NumericValue::Frequency(y), NumericValue::Frequency(x)) => {
+                  NumericValue::Angle(Angle::from_radians(y.to_hertz().atan2(x.to_hertz()))).into()
+                }
+                (NumericValue::Resolution(y), NumericValue::Resolution(x)) => {
+                  NumericValue::Angle(Angle::from_radians(y.to_dot_per_pixels().atan2(x.to_dot_per_pixels()))).into()
+                }
+                (NumericValue::Flex(y), NumericValue::Flex(x)) => {
+                  NumericValue::Angle(Angle::from_radians(y.atan2(x))).into()
+                }
                 _ => return Err(arguments.new_custom_error(CSSValueCustomError::UnexpectedNumericType)),
               };
               Ok(result)
@@ -1176,27 +1782,7 @@ impl NumericValue {
                     args.push(value);
                   }
                   NumericValue::Number(hypot(&args)).into()
-                },
-                NumericValue::Length(first) => {
-                  let mut args = vec![first.to_pixels()];
-                  while !arguments.is_exhausted() {
-                    arguments.expect_comma()?;
-                    let value = Self::parse_additive_expression(arguments, state)?;
-                    let value = try_extract!(value, expect_length(false), to_pixels(), arguments);
-                    args.push(value);
-                  }
-                  NumericValue::Length(Length::from_pixels(hypot(&args))).into()
-                },
-                NumericValue::Angle(first) => {
-                  let mut args = vec![first.to_degrees()];
-                  while !arguments.is_exhausted() {
-                    arguments.expect_comma()?;
-                    let value = Self::parse_additive_expression(arguments, state)?;
-                    let value = try_extract!(value, expect_angle(false), to_degrees(), arguments);
-                    args.push(value);
-                  }
-                  NumericValue::Angle(Angle::from_degrees(hypot(&args))).into()
-                },
+                }
                 NumericValue::Percent(first) => {
                   let mut args = vec![first];
                   while !arguments.is_exhausted() {
@@ -1206,7 +1792,67 @@ impl NumericValue {
                     args.push(value);
                   }
                   NumericValue::Number(hypot(&args)).into()
-                },
+                }
+                NumericValue::Length(first) => {
+                  let mut args = vec![first.to_pixels()];
+                  while !arguments.is_exhausted() {
+                    arguments.expect_comma()?;
+                    let value = Self::parse_additive_expression(arguments, state)?;
+                    let value = try_extract!(value, expect_length(false), to_pixels(), arguments);
+                    args.push(value);
+                  }
+                  NumericValue::Length(Length::from_pixels(hypot(&args))).into()
+                }
+                NumericValue::Angle(first) => {
+                  let mut args = vec![first.to_degrees()];
+                  while !arguments.is_exhausted() {
+                    arguments.expect_comma()?;
+                    let value = Self::parse_additive_expression(arguments, state)?;
+                    let value = try_extract!(value, expect_angle(false), to_degrees(), arguments);
+                    args.push(value);
+                  }
+                  NumericValue::Angle(Angle::from_degrees(hypot(&args))).into()
+                }
+                NumericValue::Time(first) => {
+                  let mut args = vec![first.to_seconds()];
+                  while !arguments.is_exhausted() {
+                    arguments.expect_comma()?;
+                    let value = Self::parse_additive_expression(arguments, state)?;
+                    let value = try_extract!(value, expect_time(), to_seconds(), arguments);
+                    args.push(value);
+                  }
+                  NumericValue::Time(Time::from_second(hypot(&args))).into()
+                }
+                NumericValue::Frequency(first) => {
+                  let mut args = vec![first.to_hertz()];
+                  while !arguments.is_exhausted() {
+                    arguments.expect_comma()?;
+                    let value = Self::parse_additive_expression(arguments, state)?;
+                    let value = try_extract!(value, expect_frequency(), to_hertz(), arguments);
+                    args.push(value);
+                  }
+                  NumericValue::Frequency(Frequency::from_hertz(hypot(&args))).into()
+                }
+                NumericValue::Resolution(first) => {
+                  let mut args = vec![first.to_dot_per_pixels()];
+                  while !arguments.is_exhausted() {
+                    arguments.expect_comma()?;
+                    let value = Self::parse_additive_expression(arguments, state)?;
+                    let value = try_extract!(value, expect_resolution(), to_dot_per_pixels(), arguments);
+                    args.push(value);
+                  }
+                  NumericValue::Resolution(Resolution::from_dot_per_pixels(hypot(&args))).into()
+                }
+                NumericValue::Flex(first) => {
+                  let mut args = vec![first];
+                  while !arguments.is_exhausted() {
+                    arguments.expect_comma()?;
+                    let value = Self::parse_additive_expression(arguments, state)?;
+                    let value = try_extract!(value, expect_flex(), arguments);
+                    args.push(value);
+                  }
+                  NumericValue::Flex(hypot(&args)).into()
+                }
               };
               Ok(result)
             })
@@ -1246,22 +1892,43 @@ impl NumericValue {
                 NumericValue::Zero => unreachable!(),
                 NumericValue::Number(number) => {
                   NumericValue::Number(number.abs()).into()
-                },
+                }
+                NumericValue::Percent(percent) => {
+                  NumericValue::Percent(percent.abs()).into()
+                }
                 NumericValue::Length(length) => {
                   NumericValue::Length(Length {
                     value: length.value.abs(),
                     unit: length.unit,
                   }).into()
-                },
+                }
                 NumericValue::Angle(angle) => {
                   NumericValue::Angle(Angle {
                     value: angle.value.abs(),
                     unit: angle.unit,
                   }).into()
-                },
-                NumericValue::Percent(percent) => {
-                  NumericValue::Percent(percent.abs()).into()
-                },
+                }
+                NumericValue::Time(time) => {
+                  NumericValue::Time(Time {
+                    value: time.value.abs(),
+                    unit: time.unit,
+                  }).into()
+                }
+                NumericValue::Frequency(frequency) => {
+                  NumericValue::Frequency(Frequency {
+                    value: frequency.value.abs(),
+                    unit: frequency.unit,
+                  }).into()
+                }
+                NumericValue::Resolution(resolution) => {
+                  NumericValue::Resolution(Resolution {
+                    value: resolution.value.abs(),
+                    unit: resolution.unit,
+                  }).into()
+                }
+                NumericValue::Flex(flex) => {
+                  NumericValue::Flex(flex.abs()).into()
+                }
               };
               Ok(result)
             })
@@ -1280,16 +1947,28 @@ impl NumericValue {
                 NumericValue::Zero => unreachable!(),
                 NumericValue::Number(number) => {
                   NumericValue::Number(sign(number)).into()
-                },
-                NumericValue::Length(length) => {
-                  NumericValue::Number(sign(length.value)).into()
-                },
-                NumericValue::Angle(angle) => {
-                  NumericValue::Number(sign(angle.value)).into()
-                },
+                }
                 NumericValue::Percent(percent) => {
                   NumericValue::Number(sign(percent)).into()
-                },
+                }
+                NumericValue::Length(length) => {
+                  NumericValue::Number(sign(length.value)).into()
+                }
+                NumericValue::Angle(angle) => {
+                  NumericValue::Number(sign(angle.value)).into()
+                }
+                NumericValue::Time(time) => {
+                  NumericValue::Number(sign(time.value)).into()
+                }
+                NumericValue::Frequency(frequency) => {
+                  NumericValue::Number(sign(frequency.value)).into()
+                }
+                NumericValue::Resolution(resolution) => {
+                  NumericValue::Number(sign(resolution.value)).into()
+                }
+                NumericValue::Flex(flex) => {
+                  NumericValue::Number(sign(flex)).into()
+                }
               };
               Ok(result)
             })
@@ -1483,6 +2162,14 @@ mod tests {
   }
 
   #[test]
+  fn percent() {
+    let mut input = ParserInput::new("50%");
+    let mut parser = Parser::new(&mut input);
+    let result = NumericValue::parse(&mut parser);
+    assert_eq!(result, Ok(NumericValue::Percent(0.5)));
+  }
+
+  #[test]
   fn length() {
     let mut input = ParserInput::new("-1cm");
     let mut parser = Parser::new(&mut input);
@@ -1520,11 +2207,65 @@ mod tests {
   }
 
   #[test]
-  fn percent() {
-    let mut input = ParserInput::new("50%");
+  fn time() {
+    let mut input = ParserInput::new("3s");
     let mut parser = Parser::new(&mut input);
     let result = NumericValue::parse(&mut parser);
-    assert_eq!(result, Ok(NumericValue::Percent(0.5)));
+    let Ok(NumericValue::Time(time)) = result else {
+      panic!("expect time: {:?}", result);
+    };
+    assert_eq!(
+      time,
+      Time {
+        value: 3.0,
+        unit: TimeUnit::S,
+      }
+    );
+    assert_eq!(time.to_seconds(), 3.0);
+  }
+
+  #[test]
+  fn frequency() {
+    let mut input = ParserInput::new("3hz");
+    let mut parser = Parser::new(&mut input);
+    let result = NumericValue::parse(&mut parser);
+    let Ok(NumericValue::Frequency(frequency)) = result else {
+      panic!("expect frequency: {:?}", result);
+    };
+    assert_eq!(
+      frequency,
+      Frequency {
+        value: 3.0,
+        unit: FrequencyUnit::Hz,
+      }
+    );
+    assert_eq!(frequency.to_hertz(), 3.0);
+  }
+
+  #[test]
+  fn resolution() {
+    let mut input = ParserInput::new("3dppx");
+    let mut parser = Parser::new(&mut input);
+    let result = NumericValue::parse(&mut parser);
+    let Ok(NumericValue::Resolution(resolution)) = result else {
+      panic!("expect resolution: {:?}", result);
+    };
+    assert_eq!(
+      resolution,
+      Resolution {
+        value: 3.0,
+        unit: ResolutionUnit::Dppx,
+      }
+    );
+    assert_eq!(resolution.to_dot_per_pixels(), 3.0);
+  }
+
+  #[test]
+  fn flex() {
+    let mut input = ParserInput::new("1fr");
+    let mut parser = Parser::new(&mut input);
+    let result = NumericValue::parse(&mut parser);
+    assert_eq!(result, Ok(NumericValue::Flex(1.0)));
   }
 
   #[test]
