@@ -158,6 +158,32 @@ extern "C" fn test_external_reference(
   result
 }
 
+/// Test that deleting a reference twice returns napi_generic_failure
+/// (or at least does not crash / corrupt state).
+extern "C" fn test_reference_double_delete(
+  env: napi_env,
+  _info: napi_callback_info,
+) -> napi_value {
+  let mut obj: napi_value = ptr::null_mut();
+  assert_napi_ok!(napi_create_object(env, &mut obj));
+
+  let mut ref_: napi_ref = ptr::null_mut();
+  assert_napi_ok!(napi_create_reference(env, obj, 1, &mut ref_));
+
+  // First delete should succeed
+  assert_napi_ok!(napi_delete_reference(env, ref_));
+
+  // Second delete on the same handle -- must not crash.
+  // The status may vary by implementation but the process must survive.
+  unsafe {
+    let _status = napi_delete_reference(env, ref_);
+  }
+
+  let mut result: napi_value = ptr::null_mut();
+  assert_napi_ok!(napi_get_boolean(env, true, &mut result));
+  result
+}
+
 pub fn init(env: napi_env, exports: napi_value) {
   let properties = &[
     napi_new_property!(env, "test_reference_strong", test_reference_strong),
@@ -171,6 +197,11 @@ pub fn init(env: napi_env, exports: napi_value) {
       env,
       "test_create_external_reference",
       test_external_reference
+    ),
+    napi_new_property!(
+      env,
+      "test_reference_double_delete",
+      test_reference_double_delete
     ),
   ];
 
