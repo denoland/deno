@@ -575,13 +575,12 @@ function onStreamClose(code) {
     // deno-lint-ignore prefer-primordials
     stream.push(null);
 
-    // If the user hasn't tried to consume the stream (and this is a server
-    // session) then just dump the incoming data so that the stream can
-    // be destroyed.
+    // If the user hasn't tried to consume the stream then just dump the
+    // incoming data so that the stream can be destroyed.
     if (
       !stream[kState].didRead &&
       stream.readableFlowing === null
-+   ) {
+    ) {
       stream.resume();
     } else {
       stream.read(0);
