@@ -2,7 +2,7 @@
 
 [package]
 name = "denort"
-version = "2.7.7"
+version = "2.7.8"
 authors.workspace = true
 default-run = "denort"
 edition.workspace = true
@@ -36,6 +36,7 @@ deno_error.workspace = true
 deno_lib.workspace = true
 deno_media_type = { workspace = true, features = ["data_url", "decoding"] }
 deno_npm.workspace = true
+deno_npmrc.workspace = true
 deno_package_json = { workspace = true, features = ["sync"] }
 deno_path_util.workspace = true
 deno_resolver = { workspace = true, features = ["sync"] }

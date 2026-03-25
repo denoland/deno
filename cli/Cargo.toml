@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "2.7.7"
+version = "2.7.8"
 authors.workspace = true
 default-run = "deno"
 edition.workspace = true
@@ -73,6 +73,7 @@ deno_media_type = { workspace = true, features = ["data_url", "decoding", "modul
 deno_npm.workspace = true
 deno_npm_cache.workspace = true
 deno_npm_installer = { workspace = true }
+deno_npmrc.workspace = true
 deno_package_json = { workspace = true, features = ["sync"] }
 deno_panic = { version = "0.2.0", optional = true }
 deno_path_util.workspace = true
@@ -190,7 +191,7 @@ zip = { workspace = true, features = ["deflate-flate2"] }
 zstd.workspace = true
 
 [target.'cfg(windows)'.dependencies]
-winapi = { workspace = true, features = ["knownfolders", "mswsock", "objbase", "shlobj", "tlhelp32", "winbase", "winerror", "winsock2"] }
+winapi = { workspace = true, features = ["consoleapi", "knownfolders", "mswsock", "objbase", "processenv", "shlobj", "tlhelp32", "winbase", "winerror", "winsock2"] }
 deno_subprocess_windows.workspace = true
 
 [target.'cfg(unix)'.dependencies]

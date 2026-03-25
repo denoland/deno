@@ -2660,6 +2660,15 @@ function setupHandle(socket, type, options) {
   const tcpHandle = socket._handle;
   const nativeHandle = tcpHandle?._nativeHandle;
 
+  if (nativeHandle && !tcpHandle[kUseNativeWrap]) {
+    const streamBase = tcpHandle[kStreamBaseField];
+    const rid = streamBase?.rid ?? streamBase?.[internalRidSymbol];
+    if (typeof rid !== "number" || nativeHandle.openFromRid(rid) < 0) {
+      socket.destroy(new Error("Failed to open TCP handle from resource"));
+      return;
+    }
+  }
+
   if (nativeHandle) {
     // Cache socket address info before detaching the native handle,
     // since getpeername/getsockname won't work after detach.

@@ -37,6 +37,7 @@ if (rs) {
 if (js) {
   promises.push(dlint());
   promises.push(dlintPreferPrimordials());
+  promises.push(lintNodePolyfillDenoApis());
   promises.push(ensureCiYmlUpToDate());
   promises.push(ensureNoUnusedOutFiles());
   promises.push(ensureNoNewTopLevelEntries());
@@ -152,6 +153,155 @@ async function dlintPreferPrimordials() {
     if (code > 0) {
       throw new Error("prefer-primordials failed");
     }
+  }
+}
+
+// Lint ext/node/polyfills for Deno.* API usage. These should be migrated
+// to internal ops or ext: imports. The expected violation counts are tracked
+// per file in no_deno_api_in_polyfills.ts -- any mismatch is a hard error.
+async function lintNodePolyfillDenoApis() {
+  const pluginPath = import.meta.resolve(
+    "./lint_plugins/no_deno_api_in_polyfills.ts",
+  );
+
+  const { EXPECTED_VIOLATIONS } = await import(pluginPath);
+
+  // Create a temp deno.json config that only enables our plugin.
+  const configPath = await Deno.makeTempFile({ suffix: ".json" });
+  try {
+    await Deno.writeTextFile(
+      configPath,
+      JSON.stringify({
+        lint: {
+          plugins: [pluginPath],
+        },
+      }),
+    );
+
+    const sourceFiles = await getSources(ROOT_PATH, [
+      "ext/node/polyfills/*.ts",
+      "ext/node/polyfills/*.js",
+      "ext/node/polyfills/*.mjs",
+      "ext/node/polyfills/**/*.ts",
+      "ext/node/polyfills/**/*.js",
+      "ext/node/polyfills/**/*.mjs",
+      ":!:ext/node/polyfills/deps/**",
+    ]);
+
+    if (!sourceFiles.length) {
+      return;
+    }
+
+    const cmd = new Deno.Command(Deno.execPath(), {
+      cwd: ROOT_PATH,
+      args: [
+        "lint",
+        "--config=" + configPath,
+        ...sourceFiles,
+      ],
+      stdout: "piped",
+      stderr: "piped",
+    });
+
+    const { stdout, stderr } = await cmd.output();
+    const output = new TextDecoder().decode(stdout) +
+      new TextDecoder().decode(stderr);
+
+    // Strip ANSI codes for reliable parsing.
+    // deno-lint-ignore no-control-regex
+    const clean = output.replace(/\x1b\[[0-9;]*m/g, "");
+
+    // Count actual violations per file.
+    const actualCounts = {};
+    const lineRegex = /--> (.+):(\d+):(\d+)/g;
+    const allMatches = [...clean.matchAll(lineRegex)];
+    for (const match of allMatches) {
+      const absPath = match[1];
+      const relPath = absPath.replace(ROOT_PATH + "/", "").replace(
+        ROOT_PATH + "\\",
+        "",
+      ).replaceAll("\\", "/");
+      actualCounts[relPath] = (actualCounts[relPath] || 0) + 1;
+    }
+
+    // Debug: show what we parsed.
+    console.log(
+      `[no-deno-api] ROOT_PATH: ${ROOT_PATH}`,
+    );
+    console.log(
+      `[no-deno-api] deno lint output length: stdout=${
+        new TextDecoder().decode(stdout).length
+      } stderr=${new TextDecoder().decode(stderr).length}`,
+    );
+    console.log(
+      `[no-deno-api] regex matched ${allMatches.length} violation(s)`,
+    );
+    if (allMatches.length === 0 && clean.length > 0) {
+      // Show first few lines with --> to debug format mismatch
+      const arrowLines = clean.split("\n").filter((l) => l.includes("-->"));
+      console.log(
+        `[no-deno-api] lines containing "-->": ${arrowLines.length}`,
+      );
+      for (const line of arrowLines.slice(0, 5)) {
+        console.log(`[no-deno-api]   ${JSON.stringify(line)}`);
+      }
+    } else if (allMatches.length > 0) {
+      // Show a sample match
+      const m = allMatches[0];
+      console.log(
+        `[no-deno-api] sample match: path=${JSON.stringify(m[1])} -> relPath=${
+          JSON.stringify(
+            m[1].replace(ROOT_PATH + "/", "").replace(ROOT_PATH + "\\", "")
+              .replaceAll("\\", "/"),
+          )
+        }`,
+      );
+    }
+    console.log(
+      `[no-deno-api] actualCounts has ${
+        Object.keys(actualCounts).length
+      } file(s)`,
+    );
+
+    // Compare actual vs expected.
+    const errors = [];
+    const allFiles = new Set([
+      ...Object.keys(EXPECTED_VIOLATIONS),
+      ...Object.keys(actualCounts),
+    ]);
+
+    for (const file of [...allFiles].sort()) {
+      const expected = EXPECTED_VIOLATIONS[file] || 0;
+      const actual = actualCounts[file] || 0;
+
+      if (actual > expected) {
+        errors.push(
+          `${file}: expected ${expected} Deno.* violations but found ${actual} (+${
+            actual - expected
+          }). ` +
+            "New Deno.* API usage is not allowed in node polyfills.",
+        );
+      } else if (actual < expected) {
+        errors.push(
+          `${file}: expected ${expected} Deno.* violations but found ${actual} (-${
+            expected - actual
+          }). ` +
+            "Please update EXPECTED_VIOLATIONS in tools/lint_plugins/no_deno_api_in_polyfills.ts.",
+        );
+      }
+    }
+
+    if (errors.length > 0) {
+      console.log("\n------ node polyfills Deno API usage ------");
+      for (const err of errors) {
+        console.error(err);
+      }
+      throw new Error(
+        `${errors.length} file(s) have mismatched Deno.* API violation counts`,
+      );
+    }
+  } finally {
+    await Deno.remove(configPath);
   }
 }
 

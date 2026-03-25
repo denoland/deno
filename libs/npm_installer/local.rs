@@ -869,27 +869,25 @@ impl<
         let mut output = String::new();
         let _ = writeln!(
           &mut output,
-          "{} The following packages are deprecated:",
-          colors::yellow("Warning")
+          "{} {}",
+          colors::yellow("╭"),
+          colors::yellow_bold("Warning")
         );
-        let len = packages_with_deprecation_warnings.len();
-        for (idx, (package_nv, msg)) in
-          packages_with_deprecation_warnings.iter().enumerate()
-        {
-          if idx != len - 1 {
-            let _ = writeln!(
-              &mut output,
-              "┠─ {}",
-              colors::gray(format!("npm:{:?} ({})", package_nv, msg))
-            );
-          } else {
-            let _ = write!(
-              &mut output,
-              "┖─ {}",
-              colors::gray(format!("npm:{:?} ({})", package_nv, msg))
-            );
-          }
+        let _ = writeln!(&mut output, "{}", colors::yellow("│"));
+        let _ = writeln!(
+          &mut output,
+          "{}  The following packages are deprecated:",
+          colors::yellow("│"),
+        );
+        for (package_nv, msg) in packages_with_deprecation_warnings.iter() {
+          let _ = writeln!(
+            &mut output,
+            "{}  {}",
+            colors::yellow("│"),
+            colors::gray(format!("npm:{:?} ({})", package_nv, msg))
+          );
         }
+        let _ = write!(&mut output, "{}", colors::yellow("╰─"));
         if let Some(install_reporter) = &self.install_reporter {
           install_reporter.deprecated_message(output);
         } else {

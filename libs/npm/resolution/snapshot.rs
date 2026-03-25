@@ -914,11 +914,8 @@ impl DefaultTarballUrlProvider for NpmRegistryDefaultTarballUrlProvider {
       &nv.name
     };
     format!(
-      "{}/{}/-/{}-{}.tgz",
-      crate::npm_rc::NPM_DEFAULT_REGISTRY,
-      nv.name,
-      package_name,
-      nv.version
+      "https://registry.npmjs.org/{}/-/{}-{}.tgz",
+      nv.name, package_name, nv.version
     )
   }
 }

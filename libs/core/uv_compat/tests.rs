@@ -1,6 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::cell::Cell;
+use std::cell::RefCell;
 use std::ffi::c_void;
 use std::future::poll_fn;
 use std::rc::Rc;
@@ -18,23 +19,10 @@ fn assert_ok(status: i32) {
 
 async fn run_test(f: impl AsyncFnOnce(&mut JsRuntime, *mut uv_loop_t)) {
   let mut runtime = JsRuntime::new(Default::default());
-  let uv_loop = Box::into_raw(Box::<uv_loop_t>::new_uninit());
-  let uv_loop = unsafe {
-    assert_ok(uv_loop_init(uv_loop.cast()));
-    uv_loop.cast()
-  };
-
-  unsafe {
-    runtime.register_uv_loop(uv_loop);
-  }
-
+  let uv_loop = runtime
+    .uv_loop_ptr()
+    .expect("JsRuntime should have a uv loop");
   f(&mut runtime, uv_loop).await;
-
-  unsafe {
-    uv_loop_close(uv_loop);
-  }
-  drop(runtime);
-  let _ = unsafe { Box::from_raw(uv_loop) };
 }
 
 /// Tick the event loop once with a real waker (so tokio's reactor works).
@@ -784,8 +772,6 @@ async fn phase_ordering_idle_prepare_check() {
     // Verify that idle runs before prepare, and prepare before check,
     // by recording the order callbacks fire in.
     let order = Rc::new(RefCell::new(Vec::<&'static str>::new()));
-
-    use std::cell::RefCell;
 
     let order_idle = Rc::into_raw(order.clone());
     let order_prepare = Rc::into_raw(order.clone());
@@ -2173,6 +2159,296 @@ async fn tty_read_stop() {
       libc::close(fdm);
     }
     tick(runtime).await;
+  })
+  .await;
+}
+
+// ========== Regression: uv_write must not fire callbacks synchronously ==========
+
+/// Regression test for https://github.com/denoland/deno/issues/32891
+///
+/// uv_write must never fire the write callback synchronously. Doing so causes
+/// re-entrancy panics when callers (e.g. StreamWrap ops) hold an OpState borrow
+/// during the call to uv_write. This test verifies that the callback is deferred
+/// to the event loop (poll_tcp_handle/run_io) rather than firing inline.
+#[tokio::test(flavor = "current_thread")]
+async fn uv_write_callback_is_deferred() {
+  run_test(async |runtime, uv_loop| {
+    let fired = Rc::new(Cell::new(false));
+    let fired_ptr = Rc::into_raw(fired.clone());
+
+    unsafe extern "C" fn write_cb(req: *mut uv_write_t, status: i32) {
+      assert_eq!(status, 0);
+      let fired = unsafe { Rc::from_raw((*req).data as *const Cell<bool>) };
+      fired.set(true);
+      let _ = Rc::into_raw(fired);
+    }
+
+    // --- Set up a server ---
+    let mut server = std::mem::MaybeUninit::<uv_tcp_t>::uninit();
+    let server_ptr = server.as_mut_ptr();
+
+    unsafe extern "C" fn on_connection(server: *mut uv_stream_t, _status: i32) {
+      let _ = server;
+    }
+
+    let server_port: u16;
+    unsafe {
+      uv_tcp_init(uv_loop, server_ptr);
+
+      let mut addr = std::mem::MaybeUninit::<sockaddr_in>::uninit();
+      let ip = std::ffi::CString::new("127.0.0.1").unwrap();
+      uv_ip4_addr(ip.as_ptr(), 0, addr.as_mut_ptr());
+
+      assert_ok(uv_tcp_bind(
+        server_ptr,
+        addr.as_ptr() as *const c_void,
+        0,
+        0,
+      ));
+      assert_ok(uv_listen(
+        server_ptr as *mut uv_stream_t,
+        1,
+        Some(on_connection),
+      ));
+
+      let mut name = std::mem::MaybeUninit::<sockaddr_in>::zeroed();
+      let mut namelen = std::mem::size_of::<sockaddr_in>() as i32;
+      uv_tcp_getsockname(
+        server_ptr,
+        name.as_mut_ptr() as *mut c_void,
+        &mut namelen,
+      );
+      server_port = u16::from_be(name.assume_init_ref().sin_port);
+    }
+
+    // --- Connect a client ---
+    let connected = Rc::new(Cell::new(false));
+    let connected_ptr = Rc::into_raw(connected.clone());
+
+    unsafe extern "C" fn on_connect(req: *mut uv_connect_t, status: i32) {
+      assert_eq!(status, 0);
+      let connected = unsafe { Rc::from_raw((*req).data as *const Cell<bool>) };
+      connected.set(true);
+      let _ = Rc::into_raw(connected);
+    }
+
+    let mut client = std::mem::MaybeUninit::<uv_tcp_t>::uninit();
+    let client_ptr = client.as_mut_ptr();
+    let mut connect_req = std::mem::MaybeUninit::<uv_connect_t>::uninit();
+    let connect_req_ptr = connect_req.as_mut_ptr();
+
+    unsafe {
+      uv_tcp_init(uv_loop, client_ptr);
+      (*connect_req_ptr).data = connected_ptr as *mut c_void;
+
+      let mut addr = std::mem::MaybeUninit::<sockaddr_in>::uninit();
+      let ip = std::ffi::CString::new("127.0.0.1").unwrap();
+      uv_ip4_addr(ip.as_ptr(), server_port as i32, addr.as_mut_ptr());
+
+      assert_ok(uv_tcp_connect(
+        connect_req_ptr,
+        client_ptr,
+        addr.as_ptr() as *const c_void,
+        Some(on_connect),
+      ));
+    }
+
+    // Poll until connected.
+    for _ in 0..100 {
+      tick(runtime).await;
+      if connected.get() {
+        break;
+      }
+      tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+    }
+    assert!(connected.get(), "Client should have connected");
+
+    // Accept the connection on the server side.
+    let mut accepted = std::mem::MaybeUninit::<uv_tcp_t>::uninit();
+    let accepted_ptr = accepted.as_mut_ptr();
+    unsafe {
+      uv_tcp_init(uv_loop, accepted_ptr);
+      assert_ok(uv_accept(
+        server_ptr as *mut uv_stream_t,
+        accepted_ptr as *mut uv_stream_t,
+      ));
+    }
+
+    // Now write a small buffer — should succeed via try_write but the
+    // callback must NOT fire synchronously.
+    let write_data = b"hello";
+    let mut write_req = std::mem::MaybeUninit::<uv_write_t>::uninit();
+    let write_req_ptr = write_req.as_mut_ptr();
+
+    unsafe {
+      (*write_req_ptr).data = fired_ptr as *mut c_void;
+      let buf = uv_buf_t {
+        base: write_data.as_ptr() as *mut _,
+        len: write_data.len(),
+      };
+      assert_ok(uv_write(
+        write_req_ptr,
+        client_ptr as *mut uv_stream_t,
+        &buf,
+        1,
+        Some(write_cb),
+      ));
+    }
+
+    // The callback must NOT have fired yet (it should be deferred).
+    assert!(
+      !fired.get(),
+      "uv_write callback must not fire synchronously"
+    );
+
+    // Tick the event loop — now the callback should fire.
+    for _ in 0..100 {
+      tick(runtime).await;
+      if fired.get() {
+        break;
+      }
+      tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+    }
+    assert!(
+      fired.get(),
+      "write callback should fire after event loop tick"
+    );
+
+    // Cleanup.
+    unsafe {
+      uv_close(accepted_ptr as *mut uv_handle_t, None);
+      uv_close(client_ptr as *mut uv_handle_t, None);
+      uv_close(server_ptr as *mut uv_handle_t, None);
+      Rc::from_raw(connected_ptr);
+      Rc::from_raw(fired_ptr);
+    }
+    tick(runtime).await;
+  })
+  .await;
+}
+
+// ========== TCP batch accept ==========
+
+/// Verify that multiple connections queued before a tick are all accepted
+/// in a single event loop iteration. This prevents starvation when the
+/// connection handler does async work (e.g., Deno.listenTls) that delays
+/// returning to the I/O phase.
+#[tokio::test(flavor = "current_thread")]
+async fn tcp_batch_accept() {
+  run_test(async |runtime, uv_loop| {
+    // Shared state passed through server.data: a counter and a Vec of
+    // heap-allocated accepted client handles (so uv_close's deferred
+    // processing doesn't hit a dangling stack pointer).
+    struct AcceptState {
+      count: Cell<u32>,
+      clients: RefCell<Vec<*mut uv_tcp_t>>,
+    }
+    let state = Rc::new(AcceptState {
+      count: Cell::new(0),
+      clients: RefCell::new(Vec::new()),
+    });
+    let state_ptr = Rc::into_raw(state.clone());
+
+    let mut server = std::mem::MaybeUninit::<uv_tcp_t>::uninit();
+    let server_ptr = server.as_mut_ptr();
+
+    unsafe extern "C" fn on_connection(
+      server: *mut uv_stream_t,
+      status: i32,
+    ) {
+      unsafe {
+        assert_eq!(status, 0);
+        let state_ptr = (*server).data as *const AcceptState;
+        let state = &*state_ptr;
+
+        // Heap-allocate the client handle so it stays valid until
+        // uv_close processes it in the close phase.
+        let client_ptr = Box::into_raw(Box::new(
+          std::mem::MaybeUninit::<uv_tcp_t>::uninit(),
+        )) as *mut uv_tcp_t;
+        let loop_ = (*(server as *const uv_tcp_t)).loop_;
+        uv_tcp_init(loop_, client_ptr);
+        let rc = uv_accept(server, client_ptr as *mut uv_stream_t);
+        assert_eq!(rc, 0);
+        state.count.set(state.count.get() + 1);
+
+        // Track the heap pointer so the outer scope can close + free them.
+        state.clients.borrow_mut().push(client_ptr);
+      }
+    }
+
+    let server_port: u16;
+    unsafe {
+      uv_tcp_init(uv_loop, server_ptr);
+      (*server_ptr).data = state_ptr as *mut c_void;
+
+      let mut addr = std::mem::MaybeUninit::<sockaddr_in>::uninit();
+      let ip = std::ffi::CString::new("127.0.0.1").unwrap();
+      uv_ip4_addr(ip.as_ptr(), 0, addr.as_mut_ptr());
+      assert_ok(uv_tcp_bind(
+        server_ptr,
+        addr.as_ptr() as *const c_void,
+        0,
+        0,
+      ));
+      assert_ok(uv_listen(
+        server_ptr as *mut uv_stream_t,
+        128,
+        Some(on_connection),
+      ));
+
+      let mut name = std::mem::MaybeUninit::<sockaddr_in>::zeroed();
+      let mut namelen = std::mem::size_of::<sockaddr_in>() as i32;
+      uv_tcp_getsockname(
+        server_ptr,
+        name.as_mut_ptr() as *mut c_void,
+        &mut namelen,
+      );
+      server_port = u16::from_be(name.assume_init_ref().sin_port);
+    }
+
+    // Open multiple connections BEFORE ticking the event loop so they all
+    // land in the same poll_accept batch.
+    const NUM_CONNECTIONS: u32 = 8;
+    let mut client_streams = Vec::new();
+    for _ in 0..NUM_CONNECTIONS {
+      let stream =
+        tokio::net::TcpStream::connect(format!("127.0.0.1:{}", server_port))
+          .await
+          .unwrap();
+      client_streams.push(stream);
+    }
+
+    // A single tick should accept all connections thanks to batch-accept.
+    tick(runtime).await;
+
+    let count = state.count.get();
+    assert_eq!(
+      count, NUM_CONNECTIONS,
+      "Expected all {NUM_CONNECTIONS} connections to be accepted in one tick, got {count}"
+    );
+
+    // Cleanup: close all accepted client handles, then the server.
+    drop(client_streams);
+    unsafe {
+      for client_ptr in state.clients.borrow().iter() {
+        uv_close(*client_ptr as *mut uv_handle_t, None);
+      }
+      uv_close(server_ptr as *mut uv_handle_t, None);
+    }
+    // Tick to process deferred closes.
+    tick(runtime).await;
+
+    // Free heap-allocated client handles now that close phase is done.
+    unsafe {
+      for client_ptr in state.clients.borrow().iter() {
+        drop(Box::from_raw(
+          *client_ptr as *mut std::mem::MaybeUninit<uv_tcp_t>,
+        ));
+      }
+      Rc::from_raw(state_ptr);
+    }
   })
   .await;
 }
