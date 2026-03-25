@@ -77,6 +77,7 @@ const { AsyncVariable, getAsyncContext, setAsyncContext } = core;
 
 export let TRACING_ENABLED = false;
 export let METRICS_ENABLED = false;
+export let GENAI_ENABLED = false;
 export let PROPAGATORS: TextMapPropagator[] = [];
 let ISOLATE_METRICS = false;
 
@@ -1829,6 +1830,15 @@ export function builtinTracer(): Tracer {
   return builtinTracerCache;
 }
 
+let builtinMeterCache: Meter;
+
+export function builtinMeter(): Meter {
+  if (!builtinMeterCache) {
+    builtinMeterCache = new Meter(OtelMeter.builtin());
+  }
+  return builtinMeterCache;
+}
+
 function enableIsolateMetrics() {
   op_otel_enable_isolate_metrics();
   ISOLATE_METRICS = true;
@@ -1844,6 +1854,7 @@ export function bootstrap(
   config: [
     0 | 1,
     0 | 1,
+    0 | 1,
     (typeof otelConsoleConfig)[keyof typeof otelConsoleConfig],
     ...Array<(typeof otelPropagators)[keyof typeof otelPropagators]>,
   ],
@@ -1851,12 +1862,14 @@ export function bootstrap(
   const {
     0: tracingEnabled,
     1: metricsEnabled,
-    2: consoleConfig,
+    2: genaiEnabled,
+    3: consoleConfig,
     ...propagators
   } = config;
 
   TRACING_ENABLED = tracingEnabled === 1;
   METRICS_ENABLED = metricsEnabled === 1;
+  GENAI_ENABLED = genaiEnabled === 1;
 
   PROPAGATORS = ArrayPrototypeMap(
     ArrayPrototypeFilter(

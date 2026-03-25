@@ -1,0 +1,18 @@
+{
+  "tests": {
+    "chat": {
+      "envs": {
+        "OTEL_METRIC_EXPORT_INTERVAL": "1000"
+      },
+      "args": "run -A main.ts chat.ts",
+      "output": "chat.out"
+    },
+    "chat_streaming": {
+      "envs": {
+        "OTEL_METRIC_EXPORT_INTERVAL": "1000"
+      },
+      "args": "run -A main.ts chat_streaming.ts",
+      "output": "chat_streaming.out"
+    }
+  }
+}

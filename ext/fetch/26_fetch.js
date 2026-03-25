@@ -23,6 +23,7 @@ const {
   ArrayPrototypeSplice,
   ArrayPrototypeFilter,
   ArrayPrototypeIncludes,
+  DateNow,
   Error,
   ObjectPrototypeIsPrototypeOf,
   Promise,
@@ -32,6 +33,7 @@ const {
   SafePromisePrototypeFinally,
   String,
   StringPrototypeEndsWith,
+  StringPrototypeIncludes,
   StringPrototypeStartsWith,
   StringPrototypeToLowerCase,
   TypeError,
@@ -62,6 +64,7 @@ import {
   builtinTracer,
   ContextManager,
   enterSpan,
+  GENAI_ENABLED,
   PROPAGATORS,
   restoreSnapshot,
   TRACING_ENABLED,
@@ -71,6 +74,13 @@ import {
   updateSpanFromError,
   updateSpanFromRequest,
 } from "ext:deno_telemetry/util.ts";
+import {
+  detectGenAI,
+  instrumentGenAIResponse,
+  parseGenAIRequestBody,
+  setGenAIRequestAttributes,
+  wrapStreamingResponse,
+} from "ext:deno_telemetry/genai.ts";
 
 const REQUEST_BODY_HEADER_NAMES = [
   "content-encoding",
@@ -355,6 +365,10 @@ function httpRedirectFetch(request, response, terminator) {
 function fetch(input, init = { __proto__: null }) {
   let span;
   let snapshot;
+  let genaiInfo;
+  let genaiRequestData;
+  let genaiStartTime;
+  let genaiOwnsSpan = false;
   try {
     if (TRACING_ENABLED) {
       span = builtinTracer().startSpan("fetch", { kind: 2 });
@@ -384,6 +398,28 @@ function fetch(input, init = { __proto__: null }) {
         }
 
         updateSpanFromRequest(span, requestObject);
+      }
+
+      // Detect GenAI API calls and enrich span
+      if (GENAI_ENABLED) {
+        try {
+          const url = new URL(requestObject.url);
+          genaiInfo = detectGenAI(requestObject.method, url);
+          if (genaiInfo) {
+            genaiStartTime = DateNow();
+            const innerReq = toInnerRequest(requestObject);
+            genaiRequestData = parseGenAIRequestBody(
+              innerReq.body?.source,
+            );
+            if (span) {
+              setGenAIRequestAttributes(span, genaiInfo, genaiRequestData);
+              const model = genaiRequestData?.model ?? "unknown";
+              span.updateName(genaiInfo.operation + " " + model);
+            }
+          }
+        } catch {
+          // GenAI detection is best-effort
+        }
       }
 
       // 3.
@@ -453,6 +489,41 @@ function fetch(input, init = { __proto__: null }) {
               updateSpanFromClientResponse(span, responseObject);
             }
 
+            // GenAI response instrumentation: GenAI takes ownership of
+            // span ending so that response body can be read for token
+            // usage before the span is finalized.
+            if (genaiInfo && span && responseObject) {
+              try {
+                const contentType =
+                  responseObject.headers.get("content-type") ?? "";
+                if (StringPrototypeIncludes(contentType, "text/event-stream")) {
+                  const innerResp = toInnerResponse(responseObject);
+                  if (innerResp.body) {
+                    const wrapped = wrapStreamingResponse(
+                      span,
+                      innerResp.body.stream,
+                      genaiInfo,
+                      genaiRequestData,
+                      genaiStartTime,
+                    );
+                    innerResp.body = new InnerBody(wrapped);
+                    genaiOwnsSpan = true;
+                  }
+                } else {
+                  instrumentGenAIResponse(
+                    span,
+                    responseObject,
+                    genaiInfo,
+                    genaiRequestData,
+                    genaiStartTime,
+                  );
+                  genaiOwnsSpan = true;
+                }
+              } catch {
+                // GenAI instrumentation is best-effort
+              }
+            }
+
             resolve(responseObject);
             requestObject.signal[abortSignal.remove](onabort);
           },
@@ -468,6 +539,11 @@ function fetch(input, init = { __proto__: null }) {
       PromisePrototypeCatch(result, (e) => {
         if (span) {
           updateSpanFromError(span, e);
+          // If GenAI owns the span, end it here since the GenAI response
+          // handler may not run. Keep genaiOwnsSpan=true so the finally
+          // block won't double-end. Double-ending is a no-op on the
+          // Rust side.
+          if (genaiOwnsSpan) span.end();
         }
       });
       return (async function fetch() {
@@ -475,7 +551,7 @@ function fetch(input, init = { __proto__: null }) {
           await opPromise;
           return result;
         } finally {
-          span?.end();
+          if (!genaiOwnsSpan) span?.end();
         }
       })();
     }
@@ -484,7 +560,7 @@ function fetch(input, init = { __proto__: null }) {
     // This means we cannot wrap the promise if it is already settled.
     // But this is OK, because we can just immediately end the span
     // in that case.
-    if (span) {
+    if (span && !genaiOwnsSpan) {
       // XXX: This should always be true, otherwise `opPromise` would be present.
       if (op_fetch_promise_is_settled(result)) {
         // It's already settled.
