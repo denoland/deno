@@ -185,7 +185,10 @@ async fn apply_fixes(
 
     match dep_lookup.get(&action.module_name) {
       Some(Some((dep_id, version_req_str))) => {
-        // Preserve the original version requirement style
+        // Preserve the original version requirement style.
+        // Only handle simple spec styles (caret, tilde, exact pin)
+        // to avoid silently rewriting complex ranges like ">=1 <2",
+        // "1.x", tags, or aliases into a different constraint shape.
         let trimmed = version_req_str.trim();
         let new_spec = if trimmed.starts_with('~') {
           format!("~{}", action.target_version)
@@ -199,8 +202,13 @@ async fn apply_fixes(
           // Bare version (exact pin) - keep it exact
           action.target_version.clone()
         } else {
-          // Unknown format, default to caret
-          format!("^{}", action.target_version)
+          // Unsupported spec style (e.g. ">=1 <2", "1.x", tags,
+          // aliases) - skip to avoid changing the constraint shape
+          unfixable.push(format!(
+            "{} (unsupported version spec: {})",
+            action.module_name, version_req_str
+          ));
+          continue;
         };
         let new_version_req = VersionReq::parse_from_specifier(&new_spec)?;
         deps.update_dep(*dep_id, new_version_req);
