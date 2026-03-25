@@ -639,6 +639,8 @@ fn create_command(
         StdioOrFdOrRid::Fd(raw_fd) => {
           // Raw file descriptor (from fs.openSync etc.)
           // dup2 it to the target fd in the child process.
+          // The caller retains ownership of raw_fd so we don't
+          // add it to fds_to_close.
           fds_to_dup.push((raw_fd, fd));
           extra_pipe_rids.push(None);
         }
@@ -716,7 +718,7 @@ fn create_command(
     for (i, stdio) in args.extra_stdio.into_iter().enumerate() {
       // index 0 in `extra_stdio` actually refers to fd 3
       // because we handle stdin,stdout,stderr specially
-      let _fd = (i + 3) as i32;
+      let fd = (i + 3) as i32;
       match stdio {
         StdioOrFdOrRid::Stdio(Stdio::Piped) => {
           let (fd1, fd2) = deno_io::bi_pipe_pair_raw()?;
@@ -726,7 +728,7 @@ fn create_command(
               Ok(v) => v,
               Err(e) => {
                 log::warn!(
-                  "Failed to open bidirectional pipe for fd {_fd}: {e}"
+                  "Failed to open bidirectional pipe for fd {fd}: {e}"
                 );
                 extra_pipe_rids.push(None);
                 continue;
@@ -746,12 +748,9 @@ fn create_command(
           }
           extra_pipe_rids.push(None);
         }
-        StdioOrFdOrRid::Rid(_) => {
-          command.extra_handle(None);
-          extra_pipe_rids.push(None);
-        }
         _ => {
-          // no handle, push an empty handle so we need get the right fds for following handles
+          // No handle -- push an empty slot so subsequent handles
+          // get the right fd indices.
           command.extra_handle(None);
           extra_pipe_rids.push(None);
         }
