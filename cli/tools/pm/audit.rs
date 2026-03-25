@@ -194,11 +194,7 @@ async fn apply_fixes(
           format!("~{}", action.target_version)
         } else if trimmed.starts_with('^') {
           format!("^{}", action.target_version)
-        } else if trimmed
-          .chars()
-          .next()
-          .is_some_and(|c| c.is_ascii_digit())
-        {
+        } else if trimmed.chars().next().is_some_and(|c| c.is_ascii_digit()) {
           // Bare version (exact pin) - keep it exact
           action.target_version.clone()
         } else {
@@ -225,10 +221,8 @@ async fn apply_fixes(
         ));
       }
       None => {
-        unfixable.push(format!(
-          "{} (transitive dependency)",
-          action.module_name
-        ));
+        unfixable
+          .push(format!("{} (transitive dependency)", action.module_name));
       }
     }
   }
