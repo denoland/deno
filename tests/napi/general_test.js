@@ -30,3 +30,13 @@ Deno.test("napi get_node_version", function () {
   const major = lib.test_get_node_version();
   assert(major >= 1);
 });
+
+Deno.test("napi get_last_error_info", function () {
+  assertEquals(lib.test_get_last_error_info(), true);
+});
+
+Deno.test("napi get_module_file_name", function () {
+  const filename = lib.test_get_module_file_name();
+  assert(typeof filename === "string");
+  assert(filename.length > 0);
+});

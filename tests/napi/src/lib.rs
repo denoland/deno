@@ -18,6 +18,7 @@ pub mod r#async;
 pub mod bigint;
 pub mod buffer;
 pub mod callback;
+pub mod callback_scope;
 pub mod coerce;
 pub mod dataview;
 pub mod date;
@@ -199,6 +200,7 @@ unsafe extern "C" fn napi_register_module_v1(
   handle_scope::init(env, exports);
   reference::init(env, exports);
   exception::init(env, exports);
+  callback_scope::init(env, exports);
 
   init_cleanup_hook(env, exports);
 
