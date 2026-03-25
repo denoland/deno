@@ -517,6 +517,7 @@ pub struct DatabaseSync {
   location: String,
   ignore_next_sqlite_error: Rc<Cell<bool>>,
   authorizer_data: Rc<RefCell<Option<*mut AuthorizerData>>>,
+  enable_load_extension: Cell<bool>,
 }
 
 // SAFETY: we're sure this can be GCed
@@ -718,6 +719,7 @@ impl DatabaseSync {
       None
     };
 
+    let allow_ext = options.allow_extension;
     Ok(DatabaseSync {
       conn: Rc::new(RefCell::new(db)),
       statements: Rc::new(RefCell::new(Vec::new())),
@@ -725,6 +727,7 @@ impl DatabaseSync {
       options,
       ignore_next_sqlite_error: Rc::new(Cell::new(false)),
       authorizer_data: Rc::new(RefCell::new(None)),
+      enable_load_extension: Cell::new(allow_ext),
     })
   }
 
@@ -1311,7 +1314,7 @@ impl DatabaseSync {
     let db = self.conn.borrow();
     let db = db.as_ref().ok_or(SqliteError::AlreadyClosed)?;
 
-    if !self.options.allow_extension {
+    if !self.options.allow_extension || !self.enable_load_extension.get() {
       return Err(SqliteError::LoadExensionFailed(
         "Cannot load SQLite extensions when allowExtension is not enabled"
           .to_string(),
@@ -1366,6 +1369,28 @@ impl DatabaseSync {
         "Unknown error loading SQLite extension".to_string(),
       ))
     }
+  }
+
+  #[fast]
+  #[undefined]
+  fn enable_load_extension(
+    &self,
+    allow: bool,
+  ) -> Result<(), SqliteError> {
+    let db = self.conn.borrow();
+    let db = db.as_ref().ok_or(SqliteError::AlreadyClosed)?;
+
+    if allow && !self.options.allow_extension {
+      return Err(SqliteError::LoadExensionFailed(
+        "Cannot enable extension loading because it was disabled at database creation."
+          .to_string(),
+      ));
+    }
+
+    set_db_config(db, SQLITE_DBCONFIG_ENABLE_LOAD_EXTENSION, allow);
+    self.enable_load_extension.set(allow);
+
+    Ok(())
   }
 
   // Creates and attaches a session to the database.
