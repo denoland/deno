@@ -1,0 +1,7 @@
+{
+  // Regression test for https://github.com/denoland/deno/issues/32966
+  // fs Dir objects should be disposable via Symbol.dispose and Symbol.asyncDispose.
+  "args": "run -A main.js",
+  "output": "main.out",
+  "exitCode": 0
+}
