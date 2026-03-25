@@ -6064,6 +6064,7 @@ fn outdated_parse(
     recursive,
     kind,
   });
+  lock_args_parse(flags, matches);
   min_dep_age_arg_parse(flags, matches);
   Ok(())
 }
@@ -14666,6 +14667,22 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
         args
       );
     }
+  }
+
+  #[test]
+  fn update_subcommand_frozen_flag() {
+    let r = flags_from_vec(svec!["deno", "update", "--frozen=false"]).unwrap();
+    assert_eq!(r.frozen_lockfile, Some(false));
+
+    let r = flags_from_vec(svec!["deno", "update", "--frozen"]).unwrap();
+    assert_eq!(r.frozen_lockfile, Some(true));
+  }
+
+  #[test]
+  fn outdated_subcommand_frozen_flag() {
+    let r =
+      flags_from_vec(svec!["deno", "outdated", "--frozen=false"]).unwrap();
+    assert_eq!(r.frozen_lockfile, Some(false));
   }
 
   #[test]

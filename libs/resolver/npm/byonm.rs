@@ -160,27 +160,45 @@ impl<TSys: ByonmNpmResolverSys> ByonmNpmResolver<TSys> {
     // now attempt to resolve if it's found in any package.json
     let maybe_pkg_json_and_alias =
       self.resolve_pkg_json_and_alias_for_req(req, referrer)?;
-    match maybe_pkg_json_and_alias {
-      Some((pkg_json, alias)) => {
-        // now try node resolution
-        if let Some(resolved) =
-          node_resolve_dir(&self.sys, &alias, pkg_json.dir_path())?
-        {
+    if let Some((pkg_json, alias)) = &maybe_pkg_json_and_alias {
+      // now try node resolution
+      if let Some(resolved) =
+        node_resolve_dir(&self.sys, alias, pkg_json.dir_path())?
+      {
+        // Verify the resolved package version actually satisfies the
+        // requirement. The package.json dep may intersect the req (e.g.,
+        // dep is ^1.3.5, req is @1.3.6) but the physically installed
+        // version might not satisfy it (e.g., 1.3.5 is installed).
+        // In that case, fall through to the .deno/ search.
+        let version_matches = self
+          .pkg_json_resolver
+          .load_package_json(&resolved.join("package.json"))
+          .ok()
+          .flatten()
+          .and_then(|pkg| {
+            let version =
+              Version::parse_from_npm(pkg.version.as_ref()?).ok()?;
+            Some(req.version_req.matches(&version))
+          })
+          .unwrap_or(true);
+        if version_matches {
           return Ok(resolved);
         }
+      }
+    }
 
+    // check if node_modules/.deno/ matches this constraint
+    if let Some(folder) = self.resolve_folder_in_root_node_modules(req) {
+      return Ok(folder);
+    }
+
+    match maybe_pkg_json_and_alias {
+      Some((_, alias)) => {
         Err(ByonmResolvePkgFolderFromDenoReqError::MissingAlias(alias))
       }
-      None => {
-        // now check if node_modules/.deno/ matches this constraint
-        if let Some(folder) = self.resolve_folder_in_root_node_modules(req) {
-          return Ok(folder);
-        }
-
-        Err(ByonmResolvePkgFolderFromDenoReqError::UnmatchedReq(
-          req.clone(),
-        ))
-      }
+      None => Err(ByonmResolvePkgFolderFromDenoReqError::UnmatchedReq(
+        req.clone(),
+      )),
     }
   }
 
@@ -368,6 +386,16 @@ impl<TSys: ByonmNpmResolverSys> ByonmNpmResolver<TSys> {
           }
         }
       } else if req.version_req.matches(&version) {
+        // Prefer an exact version match over the highest matching version.
+        // When a user specifies `npm:pkg@1.3.5`, the version_text is "1.3.5"
+        // and we should return that exact version if it exists, not a higher
+        // one that also satisfies the range.
+        let is_exact = Version::parse_from_npm(req.version_req.version_text())
+          .is_ok_and(|v| v == version);
+        if is_exact {
+          best_version = Some((version, entry_name));
+          break;
+        }
         if let Some((best_version_version, _)) = &best_version {
           if version > *best_version_version {
             best_version = Some((version, entry_name));
