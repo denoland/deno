@@ -261,6 +261,7 @@ pub struct SpawnArgs {
 
   #[serde(default)]
   timeout: Option<u64>,
+  #[cfg(unix)]
   #[serde(default)]
   kill_signal: Option<String>,
 }
