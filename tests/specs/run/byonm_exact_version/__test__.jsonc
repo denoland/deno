@@ -1,0 +1,20 @@
+{
+  "tempDir": true,
+  "tests": {
+    "exact_version_in_byonm": {
+      "steps": [
+        {
+          // Set up node_modules/.deno/ with both 0.5.0 and 1.0.0
+          "args": "run -A setup.ts",
+          "output": "setup done\n"
+        },
+        {
+          // Import npm:@denotest/add@0.5.0 should resolve to 0.5.0
+          // even though 1.0.0 also exists and is higher.
+          "args": "run -A main.ts",
+          "output": "0.5.0\n"
+        }
+      ]
+    }
+  }
+}
