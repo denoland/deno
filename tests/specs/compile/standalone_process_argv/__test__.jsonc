@@ -1,0 +1,18 @@
+{
+  "tempDir": true,
+  "tests": {
+    "argv_no_temp_path": {
+      "steps": [
+        {
+          "args": "compile -A --output main main.ts",
+          "output": "[WILDCARD]"
+        },
+        {
+          "commandName": "./main",
+          "args": ["--foo", "bar"],
+          "output": "main.out"
+        }
+      ]
+    }
+  }
+}
