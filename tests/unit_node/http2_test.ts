@@ -527,3 +527,37 @@ Deno.test("[node/http2 client] connect without net permission", {
     Deno.errors.NotCapable,
   );
 });
+
+Deno.test("[node/http2 client] response and end events fire (issue #32937)", {
+  ignore: Deno.build.os === "windows",
+}, async () => {
+  const { promise, resolve, reject } = Promise.withResolvers<void>();
+
+  const session = http2.connect("http://localhost:4246");
+  session.on("error", reject);
+
+  const req = session.request({ ":path": "/" });
+  req.end();
+
+  let responseReceived = false;
+
+  req.on("response", (headers) => {
+    responseReceived = true;
+    assert(headers[":status"] !== undefined);
+  });
+
+  req.on("data", () => {});
+
+  req.on("end", () => {
+    assert(responseReceived, "response event must fire before end");
+    session.close();
+    resolve();
+  });
+
+  const timeout = setTimeout(
+    () => reject(new Error("Timed out: end event never fired")),
+    5000,
+  );
+
+  await promise.finally(() => clearTimeout(timeout));
+});
