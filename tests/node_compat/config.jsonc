@@ -1669,6 +1669,34 @@
     "parallel/test-next-tick-when-exiting.js": {},
     "parallel/test-next-tick.js": {},
     "parallel/test-no-node-snapshot.js": {},
+    "parallel/test-node-output-console.mjs": {
+      "ignore": true,
+      "reason": "Snapshot output tests depend on exact Node.js CLI output formatting and process.config.variables"
+    },
+    "parallel/test-node-output-errors.mjs": {
+      "ignore": true,
+      "reason": "Snapshot output tests depend on exact Node.js CLI output formatting and process.config.variables"
+    },
+    "parallel/test-node-output-eval.mjs": {
+      "ignore": true,
+      "reason": "Snapshot output tests depend on exact Node.js CLI output formatting and process.config.variables"
+    },
+    "parallel/test-node-output-sourcemaps.mjs": {
+      "ignore": true,
+      "reason": "Snapshot output tests depend on exact Node.js CLI output formatting and process.config.variables"
+    },
+    "parallel/test-node-output-v8-warning.mjs": {
+      "ignore": true,
+      "reason": "Snapshot output tests depend on exact Node.js CLI output formatting and process.config.variables"
+    },
+    "parallel/test-node-output-vm.mjs": {
+      "ignore": true,
+      "reason": "Snapshot output tests depend on exact Node.js CLI output formatting and process.config.variables"
+    },
+    "parallel/test-node-run.js": {
+      "ignore": true,
+      "reason": "Tests node --run CLI subcommand which is not implemented in Deno"
+    },
     "parallel/test-nodeeventtarget.js": {},
     "parallel/test-os-checked-function.js": {
       "darwin": false,
