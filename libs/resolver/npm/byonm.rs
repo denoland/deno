@@ -368,6 +368,17 @@ impl<TSys: ByonmNpmResolverSys> ByonmNpmResolver<TSys> {
           }
         }
       } else if req.version_req.matches(&version) {
+        // Prefer an exact version match over the highest matching version.
+        // When a user specifies `npm:pkg@1.3.5`, the version_text is "1.3.5"
+        // and we should return that exact version if it exists, not a higher
+        // one that also satisfies the range.
+        let is_exact =
+          Version::parse_from_npm(req.version_req.version_text())
+            .is_ok_and(|v| v == version);
+        if is_exact {
+          best_version = Some((version, entry_name));
+          break;
+        }
         if let Some((best_version_version, _)) = &best_version {
           if version > *best_version_version {
             best_version = Some((version, entry_name));
