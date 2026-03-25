@@ -720,11 +720,27 @@ async fn find_package_and_select_version_for_req(
     };
     let prefixed_name = format!("{}:{}", T::SPECIFIER_PREFIX, req.name);
     let help_if_found_in_fallback = S::HELP;
-    // Tags like "latest" cannot be used with VersionReq::matches and
-    // would panic in deno_semver. Resolve them to the latest version.
-    if req.version_req.tag().is_some() {
-      let Some(version) = main_resolver.latest_version(&req.name).await
-      else {
+    // JSR does not support dist-tags, so tags like "latest" cannot be used
+    // with VersionReq::matches (it would panic in deno_semver). Resolve
+    // them to the latest version instead. npm handles tags natively via
+    // its registry metadata, so we only intercept for JSR here.
+    if matches!(&add_package_req.value, AddRmPackageReqValue::Jsr(_))
+      && req.version_req.tag().is_some()
+    {
+      let Some(version) = main_resolver.latest_version(&req.name).await else {
+        if fallback_resolver
+          .req_to_nv(req)
+          .await
+          .ok()
+          .flatten()
+          .is_some()
+        {
+          return Ok(PackageAndVersion::NotFound {
+            package: prefixed_name,
+            help: Some(help_if_found_in_fallback),
+            package_req: req.clone(),
+          });
+        }
         return Ok(PackageAndVersion::NotFound {
           package: prefixed_name,
           help: None,
