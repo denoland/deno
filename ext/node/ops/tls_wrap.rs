@@ -654,11 +654,8 @@ impl UnderlyingStream {
           // SAFETY: stream is non-null (checked above); req_ptr reclaimed
           // in the callback on success or immediately on error.
           unsafe {
-            let ret = uv_compat::uv_shutdown(
-              req_ptr,
-              *stream,
-              Some(shutdown_cb),
-            );
+            let ret =
+              uv_compat::uv_shutdown(req_ptr, *stream, Some(shutdown_cb));
             if ret != 0 {
               let _ = Box::from_raw(req_ptr);
             }
@@ -2679,10 +2676,8 @@ impl rustls::client::danger::ServerCertVerifier for NodeServerCertVerifier {
         // proceed.  The JS layer will decide whether to tear down
         // the connection based on `rejectUnauthorized`.
         let code = cert_error_to_node_code(cert_error);
-        *self
-          .verify_error
-          .lock()
-          .unwrap_or_else(|e| e.into_inner()) = Some(code.to_string());
+        *self.verify_error.lock().unwrap_or_else(|e| e.into_inner()) =
+          Some(code.to_string());
         Ok(rustls::client::danger::ServerCertVerified::assertion())
       }
       Err(e) => Err(e),
