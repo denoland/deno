@@ -515,8 +515,19 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
       let diff = crate::display::diff(&contents, &new_contents);
       // has an extra newline at the end
       let diff = diff.trim_end();
+      const MAX_DIFF_LINES: usize = 50;
+      let truncated_diff = {
+        let lines: Vec<&str> = diff.lines().collect();
+        if lines.len() > MAX_DIFF_LINES {
+          let shown: String = lines[..MAX_DIFF_LINES].join("\n");
+          let remaining = lines.len() - MAX_DIFF_LINES;
+          format!("{shown}\n... {remaining} more lines omitted ...")
+        } else {
+          diff.to_string()
+        }
+      };
       Err(JsErrorBox::generic(format!(
-        "The lockfile is out of date. Run `deno install --frozen=false`, or rerun with `--frozen=false` to update it.\nchanges:\n{diff}"
+        "The lockfile is out of date. Run `deno install --frozen=false`, or rerun with `--frozen=false` to update it.\nchanges:\n{truncated_diff}"
       )))
     } else {
       Ok(())
