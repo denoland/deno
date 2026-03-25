@@ -28,3 +28,26 @@ Deno.test("napi async work with threadsafe function from execute", async () => {
   });
   assertEquals(called, true);
 });
+
+Deno.test("napi tsfn call_js_cb receives valid env after close race", async () => {
+  // Reproduces a crash seen with node-pty: when a tsfn is released while
+  // calls are still pending, the call_js_cb must receive a valid env (not
+  // null). The native test spawns two threads (one calling the tsfn and
+  // one releasing it) to trigger the race. The call_js_cb asserts env is
+  // not null and uses it, which would SIGSEGV before the fix.
+  await new Promise((resolve) => {
+    asyncTask.test_tsfn_close_race(() => {
+      resolve();
+    });
+  });
+});
+
+Deno.test("napi tsfn call_js_cb receives valid env after abort race", async () => {
+  // Same race as above, but uses napi_tsfn_abort mode to close the tsfn.
+  // Abort forces immediate close regardless of thread_count.
+  await new Promise((resolve) => {
+    asyncTask.test_tsfn_abort_race(() => {
+      resolve();
+    });
+  });
+});

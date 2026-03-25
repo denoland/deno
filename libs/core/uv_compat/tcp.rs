@@ -134,6 +134,11 @@ pub(crate) struct WritePending {
   pub(crate) data: Vec<u8>,
   pub(crate) offset: usize,
   pub(crate) cb: Option<uv_write_cb>,
+  /// Pre-determined completion status. When `Some`, the write is already
+  /// complete and the callback should be fired with this status without
+  /// attempting any I/O. This is used to defer synchronous write
+  /// completions to the event loop, preventing re-entrancy issues.
+  pub(crate) status: Option<c_int>,
 }
 
 /// Pending shutdown request, deferred until the write queue drains.
@@ -601,34 +606,41 @@ pub(crate) unsafe fn poll_tcp_handle(
   }
 
   // 2. Poll listener for new connections.
-  //    Match libuv: accept one connection at a time. Only poll when the
-  //    backlog is empty. If the user doesn't call uv_accept in the
-  //    callback, we stop polling to avoid spinning.
-  //    Poll with a short-lived borrow on the listener, drop it before the
-  //    connection callback.
+  //    Drain all ready connections from poll_accept before firing callbacks.
+  //    This prevents starvation under high concurrency: tokio's reactor
+  //    only re-polls epoll when poll_event_loop_inner returns Pending, so
+  //    connections that arrived during the same epoll batch must be accepted
+  //    now or they'll be invisible until the next reactor turn.
+  //    After draining, fire the connection callback once per accepted stream
+  //    (libuv fires the callback once per connection). If the user doesn't
+  //    call uv_accept in the callback, stop firing to avoid spinning.
   unsafe {
-    let accepted = if (*tcp_ptr).internal_listener.is_some()
+    if (*tcp_ptr).internal_listener.is_some()
       && (*tcp_ptr).internal_connection_cb.is_some()
       && (*tcp_ptr).internal_backlog.is_empty()
     {
       let listener = (*tcp_ptr).internal_listener.as_ref().unwrap();
-      if let Poll::Ready(Ok((stream, _))) = listener.poll_accept(cx) {
-        Some(stream)
-      } else {
-        None
+      while let Poll::Ready(Ok((stream, _))) = listener.poll_accept(cx) {
+        (*tcp_ptr).internal_backlog.push_back(stream);
+        any_work = true;
       }
-    } else {
-      None
-    };
-    // Listener borrow dropped.
-    if let Some(stream) = accepted {
-      (*tcp_ptr).internal_backlog.push_back(stream);
-      any_work = true;
     }
-    if !(*tcp_ptr).internal_backlog.is_empty()
+    // Fire the connection callback once per backlog entry.
+    // After each callback, re-check that the user called uv_accept
+    // (which drains one entry). If backlog didn't shrink, the user
+    // isn't consuming connections — stop to avoid infinite loop.
+    while !(*tcp_ptr).internal_backlog.is_empty()
       && let Some(cb) = (*tcp_ptr).internal_connection_cb
     {
+      let before = (*tcp_ptr).internal_backlog.len();
       cb(tcp_ptr as *mut uv_stream_t, 0);
+      let after = (*tcp_ptr).internal_backlog.len();
+      if after < before {
+        any_work = true;
+      } else {
+        // If uv_accept wasn't called, backlog didn't shrink — stop.
+        break;
+      }
     }
   }
 
@@ -708,6 +720,19 @@ pub(crate) unsafe fn poll_tcp_handle(
           || (*tcp_ptr).internal_stream.is_none()
         {
           break;
+        }
+
+        // Check if the front entry has a pre-determined status
+        // (deferred from uv_write).
+        let pre_status =
+          (*tcp_ptr).internal_write_queue.front().unwrap().status;
+        if let Some(status) = pre_status {
+          let pw = (*tcp_ptr).internal_write_queue.pop_front().unwrap();
+          if let Some(cb) = pw.cb {
+            cb(pw.req, status);
+          }
+          any_work = true;
+          continue;
         }
 
         // Try writing in a limited scope.

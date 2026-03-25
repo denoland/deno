@@ -1851,6 +1851,7 @@ dependencies = [
  "deno_npm",
  "deno_npm_cache",
  "deno_npm_installer",
+ "deno_npmrc",
  "deno_package_json",
  "deno_panic",
  "deno_path_util",
@@ -2881,10 +2882,8 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
- "sys_traits",
  "thiserror 2.0.12",
  "tokio",
- "url",
 ]
 
 [[package]]
@@ -2898,6 +2897,7 @@ dependencies = [
  "deno_cache_dir",
  "deno_error",
  "deno_npm",
+ "deno_npmrc",
  "deno_path_util",
  "deno_semver",
  "deno_unsync",
@@ -2960,6 +2960,19 @@ dependencies = [
  "twox-hash 2.1.0",
  "url",
  "winapi",
+]
+
+[[package]]
+name = "deno_npmrc"
+version = "0.1.0"
+dependencies = [
+ "log",
+ "monch",
+ "pretty_assertions",
+ "serde",
+ "sys_traits",
+ "thiserror 2.0.12",
+ "url",
 ]
 
 [[package]]
@@ -3130,6 +3143,7 @@ dependencies = [
  "deno_maybe_sync",
  "deno_media_type",
  "deno_npm",
+ "deno_npmrc",
  "deno_package_json",
  "deno_path_util",
  "deno_permissions",
@@ -3304,6 +3318,7 @@ dependencies = [
  "deno_error",
  "deno_net",
  "deno_signals",
+ "deno_terminal",
  "deno_tls",
  "http-body-util",
  "hyper 1.6.0",
@@ -3425,7 +3440,6 @@ name = "deno_web"
 version = "0.271.0"
 dependencies = [
  "async-trait",
- "base64-simd",
  "brotli",
  "bytes",
  "deno_bench_util",
@@ -3593,6 +3607,7 @@ dependencies = [
  "deno_lib",
  "deno_media_type",
  "deno_npm",
+ "deno_npmrc",
  "deno_package_json",
  "deno_path_util",
  "deno_resolver",
@@ -6704,9 +6719,9 @@ dependencies = [
 
 [[package]]
 name = "malva"
-version = "0.12.1"
+version = "0.15.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aa8f6005fe3f2348f1fc59d647ee6945d5832fd080178e6d034bab1bf7976348"
+checksum = "7402fe65a61b31ddfcd60f3d965547baab1f1bbdd4506afa73edabed8ed002af"
 dependencies = [
  "aho-corasick",
  "itertools 0.14.0",
@@ -6717,13 +6732,13 @@ dependencies = [
 
 [[package]]
 name = "markup_fmt"
-version = "0.22.0"
+version = "0.27.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2cc6a5130d40b34be77fbd52645323c199d2db25f90922d5cef1da2a9eca96b0"
+checksum = "0223c1b7a3a55b4d5bdc3aec6445f51754e1156b7b5615bc49dd8fa3b1d95e71"
 dependencies = [
  "aho-corasick",
  "css_dataset",
- "itertools 0.13.0",
+ "itertools 0.14.0",
  "memchr",
  "tiny_pretty",
 ]
@@ -8199,9 +8214,9 @@ dependencies = [
 
 [[package]]
 name = "raffia"
-version = "0.9.2"
+version = "0.12.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fffe6643ba09b12af3816c6d3687d8c16c8a306bdbf60e2804b4bbd2c1f5447e"
+checksum = "826278ad840a1f047475ac36c40569b953b0b5359b126d7a09058e2a42151f89"
 dependencies = [
  "raffia_macro",
  "smallvec",
@@ -8209,9 +8224,9 @@ dependencies = [
 
 [[package]]
 name = "raffia_macro"
-version = "0.1.1"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4fdb50eb5bf734fa5a770680a61876a6ec77b99c1e0e52d1f18ad6ebfa85759f"
+checksum = "8ac21f5e4bc6b29ea5d5e691a9aa08b2b9fd8891f48a99157b9f02d8a48e1318"
 dependencies = [
  "heck 0.5.0",
  "quote",
@@ -9416,9 +9431,9 @@ dependencies = [
 
 [[package]]
 name = "smallvec"
-version = "1.14.0"
+version = "1.15.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7fcf8323ef1faaee30a44a340193b1ac6814fd9b7b4e88e9d4519a3e4abe1cfd"
+checksum = "67b1b7a3b5fe4f1376887184045fcf45c69e92af734b7aaddc05fb777b6fbd03"
 dependencies = [
  "serde",
 ]
@@ -11179,9 +11194,9 @@ dependencies = [
 
 [[package]]
 name = "v8"
-version = "146.8.0"
+version = "147.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "67519d234f7bc5a54a71f7fbc52258b0f3a7e9c11f365213d49016a59207ec10"
+checksum = "a98a7a54a2cbb941924658340efeff052840ab2dcb925c34260142ba85310023"
 dependencies = [
  "bindgen 0.72.1",
  "bitflags 2.9.3",

@@ -194,7 +194,9 @@ impl v8::inspector::V8InspectorClientImpl for JsRuntimeInspectorClient {
 
   fn run_if_waiting_for_debugger(&self, context_group_id: i32) {
     assert_eq!(context_group_id, JsRuntimeInspector::CONTEXT_GROUP_ID);
-    self.0.flags.borrow_mut().waiting_for_session = false;
+    let mut flags = self.0.flags.borrow_mut();
+    flags.waiting_for_session = false;
+    flags.paused_on_start = false;
   }
 
   fn ensure_default_context_in_group(
@@ -256,23 +258,25 @@ impl JsRuntimeInspectorState {
       loop {
         // Do one "handshake" with a newly connected session at a time.
         if let Some(session) = sessions.handshake.take() {
+          let id = sessions.next_local_id;
+          sessions.next_local_id += 1;
           let mut fut =
-            pump_inspector_session_messages(session.clone()).boxed_local();
+            pump_inspector_session_messages(session.clone(), id).boxed_local();
           // Only add to established if the future is still pending.
           // If the channel is already closed (e.g., worker terminated quickly),
           // the future may complete immediately on first poll. Pushing a
           // completed future to FuturesUnordered would cause a panic when
-          // polled again.
+          // polled again. Also skip inserting into local — the session is
+          // already dead and would never be cleaned up (no established future
+          // to yield back its ID).
           if fut.poll_unpin(cx).is_pending() {
             sessions.established.push(fut);
-          }
-          let id = sessions.next_local_id;
-          sessions.next_local_id += 1;
-          sessions.local.insert(id, session);
+            sessions.local.insert(id, session);
 
-          // Track the first session as the main session for Target events
-          if sessions.main_session_id.is_none() {
-            sessions.main_session_id = Some(id);
+            // Track the first session as the main session for Target events
+            if sessions.main_session_id.is_none() {
+              sessions.main_session_id = Some(id);
+            }
           }
 
           continue;
@@ -356,6 +360,7 @@ impl JsRuntimeInspectorState {
                 self.nodeworker_enabled.clone(),
                 self.auto_attach_enabled.clone(),
                 self.discover_targets_enabled.clone(),
+                self.flags.clone(),
               );
 
               let prev = sessions.handshake.replace(session);
@@ -466,7 +471,20 @@ impl JsRuntimeInspectorState {
 
         // Poll established sessions.
         match sessions.established.poll_next_unpin(cx) {
-          Poll::Ready(Some(())) => {
+          Poll::Ready(Some(completed_id)) => {
+            // A session's pump future completed (WS disconnected).
+            // Remove it from local so sessions_state() no longer
+            // reports it as active.
+            sessions.local.remove(&completed_id);
+            // If this was the main session, promote another session
+            // or clear, so new connections can become main and
+            // Target/worker notifications continue to work.
+            if sessions.main_session_id == Some(completed_id) {
+              // Promote an arbitrary remaining session. HashMap iteration
+              // order is non-deterministic, but in practice there is
+              // typically only one debugger client connected at a time.
+              sessions.main_session_id = sessions.local.keys().next().copied();
+            }
             continue;
           }
           Poll::Ready(None) => {
@@ -660,6 +678,45 @@ impl JsRuntimeInspector {
     );
   }
 
+  /// Broadcast `Runtime.executionContextDestroyed` to all connected sessions
+  /// without requiring a V8 scope. This is used during `process.exit()` to
+  /// notify debuggers that the execution context is being torn down before
+  /// calling `std::process::exit()`, which would skip the normal event-loop
+  /// shutdown path where V8's `context_destroyed` is called.
+  pub fn broadcast_context_destroyed(&self) {
+    let sessions = self.state.sessions.borrow();
+    for session in sessions.local.values() {
+      (session.state.send)(InspectorMsg::notification(json!({
+        "method": "Runtime.executionContextDestroyed",
+        "params": { "executionContextId": Self::CONTEXT_GROUP_ID }
+      })));
+    }
+  }
+
+  /// Block the current thread until all inspector sessions have disconnected.
+  /// Used after `broadcast_context_destroyed` to give debuggers a chance to
+  /// process the notification before the process exits.
+  ///
+  /// Note: this intentionally does not set a blocking flag on `poll_sessions`.
+  /// Unlike `wait_for_session` (which blocks waiting for a *new* WS
+  /// connection handled by a separate server thread), disconnect detection
+  /// requires the async I/O reactor to process WebSocket close frames.
+  /// Parking the thread would prevent those events from being delivered.
+  /// The loop spins with `poll_sessions(None)` which returns quickly when
+  /// idle, yielding a brief busy-wait that is acceptable given this only
+  /// runs during process exit.
+  pub fn wait_for_sessions_disconnect(&self) {
+    loop {
+      {
+        let sessions = self.state.sessions.borrow();
+        if sessions.local.is_empty() && sessions.established.is_empty() {
+          break;
+        }
+      }
+      let _ = self.state.poll_sessions(None);
+    }
+  }
+
   pub fn sessions_state(&self) -> SessionsState {
     self.state.sessions.borrow().sessions_state()
   }
@@ -691,16 +748,46 @@ impl JsRuntimeInspector {
   /// Frontend must send "Runtime.runIfWaitingForDebugger" message to resume
   /// execution.
   pub fn wait_for_session_and_break_on_next_statement(&self) {
+    self.state.flags.borrow_mut().paused_on_start = true;
+    // Block the main thread until Runtime.runIfWaitingForDebugger is
+    // received (which clears paused_on_start). This matches Node.js
+    // --inspect-brk behavior where execution is blocked until the
+    // frontend explicitly resumes.
+    //
+    // poll_sessions will block when waiting_for_session is true and
+    // process incoming messages (including from WS clients). The pump
+    // handler intercepts Runtime.runIfWaitingForDebugger and clears
+    // paused_on_start. Since poll_sessions processes all pending
+    // messages before returning, paused_on_start will be false when
+    // poll_sessions returns (if the message was received).
     loop {
-      if let Some(session) =
-        self.state.sessions.borrow_mut().local.values().next()
-      {
-        break session.break_on_next_statement();
-      } else {
-        self.state.flags.borrow_mut().waiting_for_session = true;
-        let _ = self.state.poll_sessions(None).unwrap();
+      if !self.state.flags.borrow().paused_on_start {
+        break;
       }
+      self.state.flags.borrow_mut().waiting_for_session = true;
+      let _ = self.state.poll_sessions(None).unwrap();
     }
+    // Schedule a V8 debugger break on the next statement. By this point
+    // the frontend has sent Debugger.enable (enabling the debugger agent)
+    // and Runtime.runIfWaitingForDebugger (which unblocked us above).
+    // The break causes a Debugger.paused notification, matching the
+    // --inspect-brk behavior where execution pauses at the first statement.
+    // Use the session that sent runIfWaitingForDebugger (it has Debugger
+    // enabled), falling back to any available session.
+    let sessions = self.state.sessions.borrow();
+    let resumed_by = self.state.flags.borrow().resumed_by_session_id;
+    let session = resumed_by
+      .and_then(|id| sessions.local.get(&id))
+      .or_else(|| sessions.local.values().next());
+    if let Some(session) = session {
+      let reason = v8::inspector::StringView::from(&b"debugCommand"[..]);
+      let detail = v8::inspector::StringView::empty();
+      session
+        .v8_session
+        .schedule_pause_on_next_statement(reason, detail);
+    }
+    // Clear so it doesn't stale-reference a session in future cycles.
+    self.state.flags.borrow_mut().resumed_by_session_id = None;
   }
 
   /// Obtain a sender for proxy channels.
@@ -742,6 +829,7 @@ impl JsRuntimeInspector {
         inspector.state.nodeworker_enabled.clone(),
         inspector.state.auto_attach_enabled.clone(),
         inspector.state.discover_targets_enabled.clone(),
+        inspector.state.flags.clone(),
       );
 
       let session_id = {
@@ -764,6 +852,13 @@ impl JsRuntimeInspector {
 struct InspectorFlags {
   waiting_for_session: bool,
   on_pause: bool,
+  /// Set when --inspect-brk is used. Remains true until
+  /// Runtime.runIfWaitingForDebugger is received, allowing
+  /// NodeRuntime.waitingForDebugger to be emitted.
+  paused_on_start: bool,
+  /// Tracks which session sent Runtime.runIfWaitingForDebugger,
+  /// so schedule_pause_on_next_statement targets the correct session.
+  resumed_by_session_id: Option<i32>,
 }
 
 #[derive(Debug)]
@@ -1074,6 +1169,11 @@ struct InspectorSessionState {
   auto_attach_enabled: Rc<Cell<bool>>,
   // Track whether Target.setDiscoverTargets has been called (enables target discovery)
   discover_targets_enabled: Rc<Cell<bool>>,
+  // Track whether NodeRuntime.enable has been called (per-session, not shared,
+  // because one client disabling it should not affect another client's state)
+  noderuntime_enabled: Cell<bool>,
+  // Inspector flags (shared with JsRuntimeInspectorState) for checking waiting_for_session
+  flags: Rc<RefCell<InspectorFlags>>,
 }
 
 /// An inspector session that proxies messages to concrete "transport layer",
@@ -1098,6 +1198,7 @@ impl InspectorSession {
     nodeworker_enabled: Rc<Cell<bool>>,
     auto_attach_enabled: Rc<Cell<bool>>,
     discover_targets_enabled: Rc<Cell<bool>>,
+    flags: Rc<RefCell<InspectorFlags>>,
   ) -> Rc<Self> {
     let state = InspectorSessionState {
       is_dispatching_message,
@@ -1109,6 +1210,8 @@ impl InspectorSession {
       nodeworker_enabled,
       auto_attach_enabled,
       discover_targets_enabled,
+      noderuntime_enabled: Cell::new(false),
+      flags,
     };
 
     let v8_session = v8_inspector.connect(
@@ -1127,14 +1230,6 @@ impl InspectorSession {
     let msg = v8::inspector::StringView::from(msg.as_bytes());
     self.v8_session.dispatch_protocol_message(msg);
     *self.state.is_dispatching_message.borrow_mut() = false;
-  }
-
-  pub fn break_on_next_statement(&self) {
-    let reason = v8::inspector::StringView::from(&b"debugCommand"[..]);
-    let detail = v8::inspector::StringView::empty();
-    self
-      .v8_session
-      .schedule_pause_on_next_statement(reason, detail);
   }
 
   /// Queue a message to be sent to a worker
@@ -1194,7 +1289,7 @@ impl v8::inspector::ChannelImpl for InspectorSessionState {
 
   fn flush_protocol_notifications(&self) {}
 }
-type InspectorSessionPumpMessages = Pin<Box<dyn Future<Output = ()>>>;
+type InspectorSessionPumpMessages = Pin<Box<dyn Future<Output = i32>>>;
 /// Helper to extract a string param from CDP params
 fn get_str_param(params: &Option<serde_json::Value>, key: &str) -> String {
   params
@@ -1238,7 +1333,10 @@ impl TargetSession {
   }
 }
 
-async fn pump_inspector_session_messages(session: Rc<InspectorSession>) {
+async fn pump_inspector_session_messages(
+  session: Rc<InspectorSession>,
+  session_id: i32,
+) -> i32 {
   let mut rx = session.state.rx.borrow_mut().take().unwrap();
 
   while let Some(msg) = rx.next().await {
@@ -1266,6 +1364,38 @@ async fn pump_inspector_session_messages(session: Rc<InspectorSession>) {
     let msg_id = parsed.get("id").cloned();
 
     match method {
+      "NodeRuntime.enable" => {
+        session.state.noderuntime_enabled.set(true);
+        // If the runtime is paused on start (--inspect-brk), emit
+        // NodeRuntime.waitingForDebugger. We check paused_on_start
+        // (not waiting_for_session) because the session has already
+        // connected by the time this message is received.
+        let flags = session.state.flags.borrow();
+        if flags.waiting_for_session || flags.paused_on_start {
+          drop(flags);
+          (session.state.send)(InspectorMsg::notification(json!({
+            "method": "NodeRuntime.waitingForDebugger"
+          })));
+        }
+      }
+      "NodeRuntime.disable" => {
+        session.state.noderuntime_enabled.set(false);
+      }
+      "Runtime.runIfWaitingForDebugger" => {
+        // Clear paused_on_start so wait_for_session_and_break_on_next_statement
+        // unblocks. Also clear waiting_for_session so poll_sessions stops
+        // blocking. Track which session resumed us so we schedule the pause
+        // on the correct session (the one that has Debugger.enable active).
+        {
+          let mut flags = session.state.flags.borrow_mut();
+          flags.paused_on_start = false;
+          flags.waiting_for_session = false;
+          flags.resumed_by_session_id = Some(session_id);
+        }
+        // Forward to V8 for actual processing
+        session.dispatch_message(msg);
+        continue;
+      }
       "NodeWorker.enable" => {
         session.state.nodeworker_enabled.set(true);
         session.notify_workers(|ts, send| {
@@ -1341,6 +1471,7 @@ async fn pump_inspector_session_messages(session: Rc<InspectorSession>) {
       });
     }
   }
+  session_id
 }
 
 /// A local inspector session that can be used to send and receive protocol messages directly on
