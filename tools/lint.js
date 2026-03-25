@@ -220,7 +220,7 @@ async function lintNodePolyfillDenoApis() {
       const relPath = absPath.replace(ROOT_PATH + "/", "").replace(
         ROOT_PATH + "\\",
         "",
-      );
+      ).replaceAll("\\", "/");
       actualCounts[relPath] = (actualCounts[relPath] || 0) + 1;
     }
 
@@ -251,7 +251,8 @@ async function lintNodePolyfillDenoApis() {
       console.log(
         `[no-deno-api] sample match: path=${JSON.stringify(m[1])} -> relPath=${
           JSON.stringify(
-            m[1].replace(ROOT_PATH + "/", "").replace(ROOT_PATH + "\\", ""),
+            m[1].replace(ROOT_PATH + "/", "").replace(ROOT_PATH + "\\", "")
+              .replaceAll("\\", "/"),
           )
         }`,
       );
