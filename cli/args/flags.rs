@@ -14671,12 +14671,10 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
 
   #[test]
   fn update_subcommand_frozen_flag() {
-    let r =
-      flags_from_vec(svec!["deno", "update", "--frozen=false"]).unwrap();
+    let r = flags_from_vec(svec!["deno", "update", "--frozen=false"]).unwrap();
     assert_eq!(r.frozen_lockfile, Some(false));
 
-    let r =
-      flags_from_vec(svec!["deno", "update", "--frozen"]).unwrap();
+    let r = flags_from_vec(svec!["deno", "update", "--frozen"]).unwrap();
     assert_eq!(r.frozen_lockfile, Some(true));
   }
 
