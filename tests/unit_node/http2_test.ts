@@ -530,10 +530,23 @@ Deno.test("[node/http2 client] connect without net permission", {
 
 Deno.test("[node/http2 client] response and end events fire (issue #32937)", {
   ignore: Deno.build.os === "windows",
+  sanitizeResources: false,
+  sanitizeOps: false,
 }, async () => {
   const { promise, resolve, reject } = Promise.withResolvers<void>();
 
-  const session = http2.connect("http://localhost:4246");
+  const server = http2.createServer((_req, res) => {
+    res.writeHead(200);
+    res.end("ok");
+  });
+
+  const listening = Promise.withResolvers<number>();
+  server.listen(0, () => {
+    listening.resolve((server.address() as net.AddressInfo).port);
+  });
+  const port = await listening.promise;
+
+  const session = http2.connect(`http://localhost:${port}`);
   session.on("error", reject);
 
   const req = session.request({ ":path": "/" });
@@ -551,6 +564,7 @@ Deno.test("[node/http2 client] response and end events fire (issue #32937)", {
   req.on("end", () => {
     assert(responseReceived, "response event must fire before end");
     session.close();
+    server.close();
     resolve();
   });
 
