@@ -1290,11 +1290,18 @@ Deno.test({
     // @ts-expect-error enableLoadExtension is not in @types/node yet
     db.enableLoadExtension(true);
 
-    // loadExtension should be re-enabled (will fail with file error, not permission error)
-    assertThrows(
-      () => db.loadExtension("/path/to/nonexistent/extension"),
-      Error,
-    );
+    // loadExtension should be re-enabled; verify it fails with a file error,
+    // not the permission error from enableLoadExtension being disabled
+    try {
+      db.loadExtension("/path/to/nonexistent/extension");
+      throw new Error("Expected loadExtension to throw");
+    } catch (e) {
+      assert(e instanceof Error);
+      assert(
+        !e.message.includes("allowExtension is not enabled"),
+        `Expected file loading error, got permission error: ${e.message}`,
+      );
+    }
 
     db.close();
   },
