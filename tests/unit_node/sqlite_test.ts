@@ -1236,3 +1236,78 @@ Deno.test("sql.db returns the associated DatabaseSync instance", () => {
   sql.clear();
   assertStrictEquals(sql.db, db);
 });
+
+Deno.test("[node/sqlite] enableLoadExtension throws when allowExtension is not set", () => {
+  using db = new DatabaseSync(":memory:");
+
+  assertThrows(
+    // @ts-expect-error enableLoadExtension is not in @types/node yet
+    () => db.enableLoadExtension(true),
+    Error,
+    "Cannot enable extension loading because it was disabled at database creation.",
+  );
+});
+
+Deno.test("[node/sqlite] enableLoadExtension(false) succeeds without allowExtension", () => {
+  using db = new DatabaseSync(":memory:");
+
+  // @ts-expect-error enableLoadExtension is not in @types/node yet
+  db.enableLoadExtension(false);
+});
+
+Deno.test({
+  name:
+    "[node/sqlite] enableLoadExtension(false) prevents loadExtension even with allowExtension",
+  permissions: { read: true, write: true, ffi: true },
+  fn() {
+    const db = new DatabaseSync(":memory:", {
+      allowExtension: true,
+    });
+
+    // @ts-expect-error enableLoadExtension is not in @types/node yet
+    db.enableLoadExtension(false);
+
+    assertThrows(
+      () => db.loadExtension("/path/to/nonexistent/extension"),
+      Error,
+      "Cannot load SQLite extensions when allowExtension is not enabled",
+    );
+
+    db.close();
+  },
+});
+
+Deno.test({
+  name: "[node/sqlite] enableLoadExtension can re-enable after disabling",
+  permissions: { read: true, write: true, ffi: true },
+  fn() {
+    const db = new DatabaseSync(":memory:", {
+      allowExtension: true,
+    });
+
+    // @ts-expect-error enableLoadExtension is not in @types/node yet
+    db.enableLoadExtension(false);
+    // @ts-expect-error enableLoadExtension is not in @types/node yet
+    db.enableLoadExtension(true);
+
+    // loadExtension should be re-enabled (will fail with file error, not permission error)
+    assertThrows(
+      () => db.loadExtension("/path/to/nonexistent/extension"),
+      Error,
+    );
+
+    db.close();
+  },
+});
+
+Deno.test("[node/sqlite] enableLoadExtension throws on closed database", () => {
+  const db = new DatabaseSync(":memory:");
+  db.close();
+
+  assertThrows(
+    // @ts-expect-error enableLoadExtension is not in @types/node yet
+    () => db.enableLoadExtension(true),
+    Error,
+    "database is not open",
+  );
+});
