@@ -530,8 +530,6 @@ Deno.test("[node/http2 client] connect without net permission", {
 
 Deno.test("[node/http2 client] response and end events fire (issue #32937)", {
   ignore: Deno.build.os === "windows",
-  sanitizeResources: false,
-  sanitizeOps: false,
 }, async () => {
   const { promise, resolve, reject } = Promise.withResolvers<void>();
 
