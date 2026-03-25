@@ -1131,6 +1131,7 @@ fn op_spawn_sync(
   let stderr = matches!(args.stdio.stderr, StdioOrRid::Stdio(Stdio::Piped));
   let input = args.input.clone();
   let timeout = args.timeout;
+  #[cfg(unix)]
   let kill_signal_str = args.kill_signal.clone();
   let (mut command, _, _, _) =
     create_command(state, args, "Deno.Command().outputSync()")?;
