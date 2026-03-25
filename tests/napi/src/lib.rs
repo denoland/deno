@@ -19,6 +19,7 @@ pub mod bigint;
 pub mod buffer;
 pub mod callback;
 pub mod callback_scope;
+pub mod cleanup_hook_async;
 pub mod coerce;
 pub mod dataview;
 pub mod date;
@@ -203,6 +204,8 @@ unsafe extern "C" fn napi_register_module_v1(
   exception::init(env, exports);
   callback_scope::init(env, exports);
   fatal::init(env, exports);
+
+  cleanup_hook_async::init(env, exports);
 
   init_cleanup_hook(env, exports);
 
