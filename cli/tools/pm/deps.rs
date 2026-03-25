@@ -766,7 +766,11 @@ impl DepManager {
                 // alphanumeric pre-release identifiers higher than numeric ones,
                 // so beta.9-commit.hash > beta.32.
                 // Ref: https://github.com/denoland/deno/issues/29647
-                Some(latest_tag.clone())
+                if version_resolver.matches_newest_dependency_date(latest_tag) {
+                  Some(latest_tag.clone())
+                } else {
+                  None
+                }
               })
               .map(|version| PackageNv {
                 name: semver_req.name.clone(),
