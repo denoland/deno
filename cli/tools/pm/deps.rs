@@ -811,7 +811,7 @@ impl DepManager {
                       }
                     },
                   ) {
-                    if best.map_or(true, |b| version > b) {
+                    if best.is_none_or(|b| version > b) {
                       best = Some(version);
                     }
                   }
