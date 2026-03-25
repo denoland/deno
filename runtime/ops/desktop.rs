@@ -121,7 +121,8 @@ pub struct DesktopEventSender(
   pub tokio::sync::mpsc::UnboundedSender<DesktopEvent>,
 );
 
-pub fn create_desktop_event_channel() -> (DesktopEventSender, DesktopEventReceiver) {
+pub fn create_desktop_event_channel()
+-> (DesktopEventSender, DesktopEventReceiver) {
   let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
   (DesktopEventSender(tx), DesktopEventReceiver(rx))
 }
@@ -130,13 +131,12 @@ pub fn create_desktop_event_channel() -> (DesktopEventSender, DesktopEventReceiv
 pub struct PendingBindCall {
   pub name: String,
   pub args: serde_json::Value,
-  pub response:
-    tokio::sync::oneshot::Sender<Result<serde_json::Value, String>>,
+  pub response: tokio::sync::oneshot::Sender<Result<serde_json::Value, String>>,
 }
 
 #[derive(Clone)]
 pub struct PendingBindResponses(
-  pub Arc<
+  pub  Arc<
     std::sync::Mutex<
       HashMap<
         u32,
@@ -385,10 +385,12 @@ impl BrowserWindow {
 
   #[fast]
   fn execute_js(&self, #[string] _script: &str) {
-    todo!("implement execute_js — async + v8 scope borrowing needs a different approach")
+    todo!(
+      "implement execute_js — async + v8 scope borrowing needs a different approach"
+    )
     /*
-        self.api.execute_js(scope, script).await
-     */
+       self.api.execute_js(scope, script).await
+    */
   }
 
   #[fast]
@@ -500,7 +502,6 @@ pub fn op_desktop_confirm_update(state: &mut OpState) {
   }
 }
 
-
 #[op2]
 fn op_desktop_resolve_bind_call(
   state: &mut OpState,
@@ -539,7 +540,6 @@ pub fn op_desktop_init(
     set_event_target_data: v8::Global::new(scope, set_event_target_data),
   });
 }
-
 
 deno_core::extension!(
   deno_desktop,

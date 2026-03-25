@@ -175,9 +175,6 @@ pub struct CompileFlags {
   pub exclude: Vec<String>,
   pub eszip: bool,
   pub self_extracting: bool,
-  pub desktop: bool,
-  pub hmr: bool,
-  pub backend: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -6290,9 +6287,6 @@ fn compile_parse(
   let no_terminal = matches.get_flag("no-terminal");
   let eszip = matches.get_flag("eszip-internal-do-not-use");
   let self_extracting = matches.get_flag("self-extracting");
-  let desktop = matches.get_flag("desktop");
-  let hmr = matches.get_flag("hmr");
-  let backend = matches.remove_one::<String>("backend");
   let include = matches
     .remove_many::<String>("include")
     .map(|f| f.collect::<Vec<_>>())
@@ -6316,9 +6310,6 @@ fn compile_parse(
     exclude,
     eszip,
     self_extracting,
-    desktop,
-    hmr,
-    backend,
   });
 
   Ok(())
@@ -12708,8 +12699,6 @@ mod tests {
           exclude: Default::default(),
           eszip: false,
           self_extracting: false,
-          desktop: false,
-          hmr: false,
         }),
         type_check_mode: TypeCheckMode::Local,
         code_cache_enabled: true,
@@ -12737,8 +12726,6 @@ mod tests {
           exclude: vec!["exclude.txt".to_string()],
           eszip: false,
           self_extracting: false,
-          desktop: false,
-          hmr: false,
         }),
         import_map_path: Some("import_map.json".to_string()),
         no_remote: true,
@@ -15054,8 +15041,6 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
           exclude: Default::default(),
           eszip: false,
           self_extracting: false,
-          desktop: false,
-          hmr: false,
         }),
         type_check_mode: TypeCheckMode::Local,
         preload: svec!["p1.js", "./p2.js"],

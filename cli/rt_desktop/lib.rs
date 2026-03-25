@@ -36,7 +36,9 @@ const DESKTOP_SERVE_PORT: u16 = 41520;
 
 /// WEF-backed implementation of [`denort::desktop::DesktopApi`].
 struct WefDesktopApi {
-  event_tx: tokio::sync::mpsc::UnboundedSender<deno_runtime::ops::desktop::DesktopEvent>,
+  event_tx: tokio::sync::mpsc::UnboundedSender<
+    deno_runtime::ops::desktop::DesktopEvent,
+  >,
   pending_responses: deno_runtime::ops::desktop::PendingBindResponses,
 }
 
@@ -56,8 +58,8 @@ impl WefDesktopApi {
 
     window
       .on_keyboard_event(move |ev| {
-        let _ = kb_tx.send(
-          deno_runtime::ops::desktop::DesktopEvent::KeyboardEvent {
+        let _ =
+          kb_tx.send(deno_runtime::ops::desktop::DesktopEvent::KeyboardEvent {
             window_id: ev.window_id,
             r#type: match ev.state {
               wef::KeyState::Pressed => "keydown".to_string(),
@@ -70,8 +72,7 @@ impl WefDesktopApi {
             alt: ev.modifiers.alt,
             meta: ev.modifiers.meta,
             repeat: ev.repeat,
-          },
-        );
+          });
       })
       .on_mouse_click(move |ev| {
         let _ = mouse_click_tx.send(
@@ -113,8 +114,8 @@ impl WefDesktopApi {
         );
       })
       .on_wheel(move |ev| {
-        let _ = wheel_tx.send(
-          deno_runtime::ops::desktop::DesktopEvent::Wheel {
+        let _ =
+          wheel_tx.send(deno_runtime::ops::desktop::DesktopEvent::Wheel {
             window_id: ev.window_id,
             delta_x: ev.delta_x,
             delta_y: ev.delta_y,
@@ -129,8 +130,7 @@ impl WefDesktopApi {
             control: ev.modifiers.control,
             alt: ev.modifiers.alt,
             meta: ev.modifiers.meta,
-          },
-        );
+          });
       })
       .on_cursor_enter_leave(move |ev| {
         let _ = cursor_tx.send(
@@ -164,13 +164,12 @@ impl WefDesktopApi {
         );
       })
       .on_move(move |ev| {
-        let _ = move_tx.send(
-          deno_runtime::ops::desktop::DesktopEvent::WindowMove {
+        let _ =
+          move_tx.send(deno_runtime::ops::desktop::DesktopEvent::WindowMove {
             window_id: ev.window_id,
             x: ev.x,
             y: ev.y,
-          },
-        );
+          });
       })
       .on_close_requested(move |ev| {
         let _ = close_tx.send(
@@ -867,10 +866,11 @@ async fn run_desktop(update_rolled_back: bool) -> Result<(), AnyError> {
       Some(Box::new(move || {
         let id = initial_window_id_for_hmr.load(Ordering::Acquire);
         if id != 0 {
-          wef::Window::from_id(id).execute_js::<fn(Result<wef::Value, wef::Value>)>(
-            "location.reload()",
-            None,
-          );
+          wef::Window::from_id(id)
+            .execute_js::<fn(Result<wef::Value, wef::Value>)>(
+              "location.reload()",
+              None,
+            );
         }
       }))
     } else {
@@ -928,16 +928,15 @@ async fn run_desktop(update_rolled_back: bool) -> Result<(), AnyError> {
       state.put(event_rx);
       state.put(event_tx);
       state.put(pending_responses);
-      state.put(denort::desktop::InitialWindowId(
-        std::sync::Mutex::new(Some(window_id)),
-      ));
+      state.put(denort::desktop::InitialWindowId(std::sync::Mutex::new(
+        Some(window_id),
+      )));
 
       wef::set_menu_click_handler(move |id| {
-        let _ = menu_tx.send(
-          deno_runtime::ops::desktop::DesktopEvent::MenuClick {
+        let _ =
+          menu_tx.send(deno_runtime::ops::desktop::DesktopEvent::MenuClick {
             id: id.to_string(),
-          },
-        );
+          });
       });
     })),
     override_main_module: None,

@@ -997,6 +997,7 @@ impl CliFactory {
 
   pub async fn create_compile_binary_writer(
     &self,
+    is_desktop: bool,
   ) -> Result<DenoCompileBinaryWriter<'_>, AnyError> {
     let cli_options = self.cli_options()?;
     Ok(DenoCompileBinaryWriter::new(
@@ -1010,6 +1011,7 @@ impl CliFactory {
       self.npm_resolver().await?,
       self.workspace_resolver().await?.as_ref(),
       cli_options.npm_system_info(),
+      is_desktop,
     ))
   }
 

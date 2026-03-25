@@ -208,6 +208,7 @@ pub struct DenoCompileBinaryWriter<'a> {
   npm_resolver: &'a CliNpmResolver,
   workspace_resolver: &'a WorkspaceResolver<CliSys>,
   npm_system_info: NpmSystemInfo,
+  is_desktop: bool,
 }
 
 impl<'a> DenoCompileBinaryWriter<'a> {
@@ -223,6 +224,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     npm_resolver: &'a CliNpmResolver,
     workspace_resolver: &'a WorkspaceResolver<CliSys>,
     npm_system_info: NpmSystemInfo,
+    is_desktop: bool,
   ) -> Self {
     Self {
       cjs_module_export_analyzer,
@@ -235,6 +237,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       npm_resolver,
       workspace_resolver,
       npm_system_info,
+      is_desktop,
     }
   }
 
@@ -260,7 +263,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     if options.compile_flags.icon.is_some() {
       let target = options.compile_flags.resolve_target();
       // Desktop builds handle icons during app bundle packaging.
-      if !target.contains("windows") && !options.compile_flags.desktop {
+      if !target.contains("windows") && !self.is_desktop {
         bail!(
           "The `--icon` flag is only available when targeting Windows (current: {})",
           target,
@@ -274,7 +277,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     &self,
     compile_flags: &CompileFlags,
   ) -> Result<Vec<u8>, AnyError> {
-    if compile_flags.desktop {
+    if self.is_desktop {
       return self.get_desktop_base_binary(compile_flags).await;
     }
 
