@@ -452,6 +452,13 @@ pub(crate) mod win_console {
       lpNumberOfBytesRead: *mut DWORD,
       lpOverlapped: *mut c_void,
     ) -> BOOL;
+    pub fn WriteConsoleW(
+      hConsoleOutput: HANDLE,
+      lpBuffer: *const u16,
+      nNumberOfCharsToWrite: DWORD,
+      lpNumberOfCharsWritten: *mut DWORD,
+      lpReserved: *mut c_void,
+    ) -> BOOL;
     pub fn GetFileType(hFile: HANDLE) -> DWORD;
     pub fn CloseHandle(hObject: HANDLE) -> BOOL;
     pub fn GetCurrentProcess() -> HANDLE;
@@ -643,20 +650,70 @@ unsafe fn tty_try_write(
   data: &[u8],
 ) -> std::io::Result<usize> {
   let handle = unsafe { (*tty).internal_handle };
-  let mut written: u32 = 0;
+
+  // Use WriteConsoleW for TTY output to correctly handle UTF-8
+  // regardless of the console's active code page. This matches libuv
+  // which converts to UTF-16 and calls WriteConsoleW.
+  let utf16: Vec<u16> = match std::str::from_utf8(data) {
+    Ok(s) => s.encode_utf16().collect(),
+    Err(_) => {
+      // Not valid UTF-8 — fall back to WriteFile (raw bytes).
+      let mut written: u32 = 0;
+      let ret = unsafe {
+        win_console::WriteFile(
+          handle,
+          data.as_ptr(),
+          data.len() as u32,
+          &mut written,
+          std::ptr::null_mut(),
+        )
+      };
+      return if ret == 0 {
+        Err(std::io::Error::last_os_error())
+      } else {
+        Ok(written as usize)
+      };
+    }
+  };
+
+  if utf16.is_empty() {
+    return Ok(0);
+  }
+
+  let mut chars_written: u32 = 0;
   let ret = unsafe {
-    win_console::WriteFile(
+    win_console::WriteConsoleW(
       handle,
-      data.as_ptr(),
-      data.len() as u32,
-      &mut written,
+      utf16.as_ptr(),
+      utf16.len() as u32,
+      &mut chars_written,
       std::ptr::null_mut(),
     )
   };
   if ret == 0 {
     Err(std::io::Error::last_os_error())
   } else {
-    Ok(written as usize)
+    // WriteConsoleW reports UTF-16 code units written. We need to
+    // return the number of input bytes consumed. If everything was
+    // written, that's all of `data`. For partial writes, count the
+    // bytes of the UTF-8 that produced the written UTF-16 units.
+    if chars_written as usize >= utf16.len() {
+      Ok(data.len())
+    } else {
+      // Find byte offset corresponding to chars_written UTF-16 units.
+      let s = std::str::from_utf8(data).unwrap();
+      let mut utf16_count = 0usize;
+      let mut byte_offset = 0usize;
+      for ch in s.chars() {
+        let ch_utf16_len = ch.len_utf16();
+        if utf16_count + ch_utf16_len > chars_written as usize {
+          break;
+        }
+        utf16_count += ch_utf16_len;
+        byte_offset += ch.len_utf8();
+      }
+      Ok(byte_offset)
+    }
   }
 }
 
@@ -1037,12 +1094,12 @@ pub unsafe fn uv_tty_set_mode(
       // mechanisms for different console modes. Once we have threaded
       // reads, add stop/restart logic here.
       let (flags, try_flags) = match mode {
-        UV_TTY_MODE_NORMAL => (
-          win_console::ENABLE_ECHO_INPUT
-            | win_console::ENABLE_LINE_INPUT
-            | win_console::ENABLE_PROCESSED_INPUT,
-          0,
-        ),
+        // Restore the original console mode saved at init time,
+        // matching libuv which restores `uv__tty_console_orig_mode`.
+        // This preserves flags like ENABLE_QUICK_EDIT_MODE,
+        // ENABLE_INSERT_MODE, and ENABLE_EXTENDED_FLAGS that are
+        // present by default on Windows.
+        UV_TTY_MODE_NORMAL => ((*tty).internal_saved_mode, 0),
         UV_TTY_MODE_RAW => (win_console::ENABLE_WINDOW_INPUT, 0),
         UV_TTY_MODE_RAW_VT => (
           win_console::ENABLE_WINDOW_INPUT,
@@ -1528,25 +1585,24 @@ pub(crate) unsafe fn poll_tty_handle(
         // spawn reads onto a blocking thread.
         #[cfg(not(unix))]
         {
-          // Check if there are console input events available before
-          // attempting a potentially blocking read.
-          let mut num_events: u32 = 0;
-          let has_input = (*tty_ptr).internal_readable
-            && (*tty_ptr).internal_reading
-            && win_console::GetNumberOfConsoleInputEvents(
-              (*tty_ptr).internal_handle,
-              &mut num_events,
-            ) != 0
-            && num_events > 0;
-
-          #[allow(
-            clippy::while_immutable_condition,
-            reason = "cleaner this way"
-          )]
-          while has_input {
-            if !(*tty_ptr).internal_reading {
+          loop {
+            if !(*tty_ptr).internal_readable || !(*tty_ptr).internal_reading {
               break;
             }
+
+            // Re-check event availability before each read to avoid
+            // calling ReadFile when no events remain — ReadFile on a
+            // console handle blocks until input is available.
+            let mut num_events: u32 = 0;
+            if win_console::GetNumberOfConsoleInputEvents(
+              (*tty_ptr).internal_handle,
+              &mut num_events,
+            ) == 0
+              || num_events == 0
+            {
+              break;
+            }
+
             let mut buf = uv_buf_t {
               base: std::ptr::null_mut(),
               len: 0,

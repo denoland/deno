@@ -3572,6 +3572,45 @@ fn readline_multi_prompt_pty() {
     });
 }
 
+// Regression test for https://github.com/denoland/deno/issues/32997
+// Verifies that toggling raw mode between consecutive prompts (like
+// vite create, @clack/prompts) properly restores console mode so
+// stdin continues to work for subsequent prompts.
+#[test]
+fn tty_raw_mode_toggle_pty() {
+  TestContext::default()
+    .new_command()
+    .args_vec(["run", "run/tty_raw_mode_toggle.ts"])
+    .with_pty(|mut console| {
+      console.expect("Step1?");
+      console.write_line("a");
+      console.expect("Got1: a");
+      console.expect("Step2?");
+      console.write_line("b");
+      console.expect("Got2: b");
+      console.expect("Step3?");
+      console.write_line("c");
+      console.expect("Got3: c");
+    });
+}
+
+// Regression test for https://github.com/denoland/deno/issues/32996
+// Verifies that Unicode characters are correctly written through TTY
+// output (WriteConsoleW), regardless of console code page.
+#[test]
+fn tty_unicode_output_pty() {
+  TestContext::default()
+    .new_command()
+    .args_vec(["run", "run/tty_unicode_output.ts"])
+    .with_pty(|mut console| {
+      console.expect("┌─────────────┐");
+      console.expect("│ Hello World │");
+      console.expect("└─────────────┘");
+      console.expect("café résumé naïve");
+      console.expect("OK");
+    });
+}
+
 // Regression test for https://github.com/denoland/deno/issues/32782
 // Verifies that consecutive readline prompts work when output is a
 // PassThrough/MuteStream piped to process.stdout (like @inquirer/prompts).
