@@ -259,11 +259,7 @@ extern "C" fn throw_syntax_error(
   _info: napi_callback_info,
 ) -> napi_value {
   unsafe {
-    node_api_throw_syntax_error(
-      env,
-      ptr::null(),
-      cstr!("syntax error"),
-    );
+    node_api_throw_syntax_error(env, ptr::null(), cstr!("syntax error"));
   }
   ptr::null_mut()
 }

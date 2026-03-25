@@ -64,12 +64,7 @@ extern "C" fn test_is_dataview(
 
   // A Uint8Array is not a DataView
   let mut ab: napi_value = ptr::null_mut();
-  assert_napi_ok!(napi_create_arraybuffer(
-    env,
-    8,
-    ptr::null_mut(),
-    &mut ab
-  ));
+  assert_napi_ok!(napi_create_arraybuffer(env, 8, ptr::null_mut(), &mut ab));
   let mut ta: napi_value = ptr::null_mut();
   assert_napi_ok!(napi_create_typedarray(
     env,

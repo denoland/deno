@@ -375,8 +375,11 @@ pub fn init(env: napi_env, exports: napi_value) {
   ));
 
   // Register test_remove_wrap as a standalone function on exports
-  let remove_wrap_props =
-    &[napi_new_property!(env, "test_remove_wrap", test_remove_wrap)];
+  let remove_wrap_props = &[napi_new_property!(
+    env,
+    "test_remove_wrap",
+    test_remove_wrap
+  )];
   assert_napi_ok!(napi_define_properties(
     env,
     exports,

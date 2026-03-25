@@ -97,9 +97,13 @@ Deno.test("napi error", function () {
     "type error",
   );
 
-  assertThrows(() => {
-    testError.throwSyntaxError();
-  }, SyntaxError, "syntax error");
+  assertThrows(
+    () => {
+      testError.throwSyntaxError();
+    },
+    SyntaxError,
+    "syntax error",
+  );
 
   [42, {}, [], Symbol("xyzzy"), true, "ball", undefined, null, NaN]
     .forEach((value) => {

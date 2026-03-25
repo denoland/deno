@@ -3318,6 +3318,7 @@ dependencies = [
  "deno_error",
  "deno_net",
  "deno_signals",
+ "deno_terminal",
  "deno_tls",
  "http-body-util",
  "hyper 1.6.0",
@@ -11193,9 +11194,9 @@ dependencies = [
 
 [[package]]
 name = "v8"
-version = "146.9.0"
+version = "147.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "59b21777080203cb33828681f177e53402fa2927a1e2d17adead072b0c26b401"
+checksum = "a98a7a54a2cbb941924658340efeff052840ab2dcb925c34260142ba85310023"
 dependencies = [
  "bindgen 0.72.1",
  "bitflags 2.9.3",
