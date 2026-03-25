@@ -290,6 +290,11 @@ impl BrowserWindow {
     v8::Global::new(scope, window)
   }
 
+  #[getter]
+  fn window_id(&self) -> u32 {
+    self.window_id
+  }
+
   #[fast]
   fn bind(&self, #[string] name: &str) {
     self.api.bind(self.window_id, name);

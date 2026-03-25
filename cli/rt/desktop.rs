@@ -150,7 +150,7 @@ pub const DESKTOP_JS: &str = r#"
   const nativeConstructor = BrowserWindow;
   const OrigBW = function(...args) {
     const instance = new nativeConstructor(...args);
-    const windowId = instance.getWindowId();
+    const windowId = instance.windowId;
     windows.set(windowId, instance);
     return instance;
   };
