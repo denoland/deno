@@ -879,9 +879,7 @@ impl<
           "{}  The following packages are deprecated:",
           colors::yellow("│"),
         );
-        for (package_nv, msg) in
-          packages_with_deprecation_warnings.iter()
-        {
+        for (package_nv, msg) in packages_with_deprecation_warnings.iter() {
           let _ = writeln!(
             &mut output,
             "{}  {}",
