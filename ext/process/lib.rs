@@ -1240,10 +1240,19 @@ fn op_spawn_sync(
     });
   }
 
+  #[cfg(unix)]
   let status = child.wait().map_err(|e| ProcessError::SpawnFailed {
     command: command.get_program().to_string_lossy().into_owned(),
     error: Box::new(e.into()),
   })?;
+  #[cfg(windows)]
+  let status =
+    child
+      .wait_blocking()
+      .map_err(|e| ProcessError::SpawnFailed {
+        command: command.get_program().to_string_lossy().into_owned(),
+        error: Box::new(e.into()),
+      })?;
 
   // Cancel the timeout thread if it's still waiting.
   {
