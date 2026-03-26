@@ -1613,30 +1613,26 @@ impl CompilerOptionsResolver {
 
   #[cfg(feature = "graph")]
   pub fn to_graph_imports(&self) -> Vec<deno_graph::ReferrerImports> {
-    // Resolve all the imports from every config file. These can be separated
-    // them later based on the folder we're type checking.
-    let mut imports_by_referrer =
-      IndexMap::<_, Vec<_>>::with_capacity(self.size());
-    for (_, compiler_options_data, maybe_files) in self.entries() {
+    // Start with compilerOptions.types imports, then add tsconfig files.
+    let mut imports_by_referrer = IndexMap::<Url, Vec<String>>::new();
+    for ri in self.to_compiler_options_types_imports() {
+      imports_by_referrer
+        .entry(ri.referrer)
+        .or_default()
+        .extend(ri.imports);
+    }
+    for (_, _, maybe_files) in self.entries() {
       if let Some((referrer, files)) = maybe_files {
         imports_by_referrer
-          .entry(referrer.as_ref())
+          .entry(referrer.as_ref().clone())
           .or_default()
           .extend(files.iter().map(|f| f.relative_specifier.clone()));
-      }
-      for (referrer, types) in
-        compiler_options_data.compiler_options_types().as_ref()
-      {
-        imports_by_referrer
-          .entry(referrer)
-          .or_default()
-          .extend(types.iter().cloned());
       }
     }
     imports_by_referrer
       .into_iter()
       .map(|(referrer, imports)| deno_graph::ReferrerImports {
-        referrer: referrer.clone(),
+        referrer,
         imports,
       })
       .collect()
