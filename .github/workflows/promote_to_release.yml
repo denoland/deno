@@ -33,24 +33,28 @@ jobs:
           submodules: false
 
       - name: Install deno
-        uses: denoland/setup-deno@v2
+        uses: denoland/setup-deno@667a34cdef165d8d2b2e98dde39547c9daac7282 # v2
         with:
           deno-version: v2.x
 
       - name: Download Windows binaries
         run: |
-          $CANARY_URL="https://dl.deno.land/canary/${{github.event.inputs.commitHash}}"
+          $CANARY_URL="https://dl.deno.land/canary/${INPUT_COMMITHASH}"
           Invoke-WebRequest -Uri "$CANARY_URL/deno-x86_64-pc-windows-msvc.zip" -OutFile "deno-windows.zip"
           Invoke-WebRequest -Uri "$CANARY_URL/denort-x86_64-pc-windows-msvc.zip" -OutFile "denort-windows.zip"
           Expand-Archive -Path "deno-windows.zip" -DestinationPath "."
           Expand-Archive -Path "denort-windows.zip" -DestinationPath "."
 
+        env:
+          INPUT_COMMITHASH: ${{github.event.inputs.commitHash}}
       - name: Run patchver for Windows
         run: |
-          deno run -A ./tools/release/promote_to_release_windows.ts ${{github.event.inputs.releaseKind}}
+          deno run -A ./tools/release/promote_to_release_windows.ts ${INPUT_RELEASEKIND}
 
+        env:
+          INPUT_RELEASEKIND: ${{github.event.inputs.releaseKind}}
       - name: Authenticate with Azure
-        uses: azure/login@v1
+        uses: azure/login@cb79c773a3cfa27f31f25eb3f677781210c9ce3d # v1
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
@@ -58,7 +62,7 @@ jobs:
           enable-AzPSSession: true
 
       - name: Code sign deno.exe
-        uses: Azure/artifact-signing-action@v0
+        uses: Azure/artifact-signing-action@1d365fec12862c4aa68fcac418143d73f0cea293 # v0
         with:
           cache-dependencies: false
           trace: true
@@ -112,7 +116,7 @@ jobs:
           submodules: recursive
 
       - name: Authenticate with Google Cloud
-        uses: google-github-actions/auth@v3
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
         with:
           project_id: denoland
           credentials_json: ${{ secrets.GCP_SA_KEY }}
@@ -120,12 +124,12 @@ jobs:
           create_credentials_file: true
 
       - name: Setup gcloud
-        uses: google-github-actions/setup-gcloud@v3
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3
         with:
           project_id: denoland
 
       - name: Install deno
-        uses: denoland/setup-deno@v2
+        uses: denoland/setup-deno@667a34cdef165d8d2b2e98dde39547c9daac7282 # v2
         with:
           deno-version: v2.x
 
@@ -138,8 +142,10 @@ jobs:
         env:
           APPLE_CODESIGN_KEY: '${{ secrets.APPLE_CODESIGN_KEY }}'
           APPLE_CODESIGN_PASSWORD: '${{ secrets.APPLE_CODESIGN_PASSWORD }}'
+          INPUT_RELEASEKIND: ${{github.event.inputs.releaseKind}}
+          INPUT_COMMITHASH: ${{github.event.inputs.commitHash}}
         run: |
-          deno run -A ./tools/release/promote_to_release.ts ${{github.event.inputs.releaseKind}} ${{github.event.inputs.commitHash}}
+          deno run -A ./tools/release/promote_to_release.ts ${INPUT_RELEASEKIND} ${INPUT_COMMITHASH}
 
       - name: Download Windows binaries
         uses: actions/download-artifact@v7
@@ -152,17 +158,20 @@ jobs:
           # Unzip a binary to get the version
           unzip -o deno-x86_64-apple-darwin.zip
           DENO_VERSION=$(./deno -V | cut -d ' ' -f 2 | cut -d '+' -f 1)
-          echo "v${DENO_VERSION}" > release-${{github.event.inputs.releaseKind}}-latest.txt
+          echo "v${DENO_VERSION}" > release-${INPUT_RELEASEKIND}-latest.txt
           rm -f ./deno
 
+        env:
+          INPUT_RELEASEKIND: ${{github.event.inputs.releaseKind}}
       - name: Upload archives to dl.deno.land
         env:
           AWS_ACCESS_KEY_ID: ${{ vars.S3_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.S3_SECRET_ACCESS_KEY }}
           AWS_ENDPOINT_URL_S3: ${{ vars.S3_ENDPOINT }}
           AWS_DEFAULT_REGION: ${{vars.S3_REGION }}
+          INPUT_RELEASEKIND: ${{github.event.inputs.releaseKind}}
         run: |
-          gsutil -h "Cache-Control: public, max-age=3600" cp ./*.zip gs://dl.deno.land/release/$(cat release-${{github.event.inputs.releaseKind}}-latest.txt)/
-          gsutil -h "Cache-Control: no-cache" cp release-${{github.event.inputs.releaseKind}}-latest.txt gs://dl.deno.land/release-${{github.event.inputs.releaseKind}}-latest.txt
-          aws s3 sync ./ s3://dl-deno-land/release/$(cat release-${{github.event.inputs.releaseKind}}-latest.txt)/ --exclude "*" --include "*.zip"
-          aws s3 cp release-${{github.event.inputs.releaseKind}}-latest.txt s3://dl-deno-land/release-${{github.event.inputs.releaseKind}}-latest.txt
+          gsutil -h "Cache-Control: public, max-age=3600" cp ./*.zip gs://dl.deno.land/release/$(cat release-${INPUT_RELEASEKIND}-latest.txt)/
+          gsutil -h "Cache-Control: no-cache" cp release-${INPUT_RELEASEKIND}-latest.txt gs://dl.deno.land/release-${INPUT_RELEASEKIND}-latest.txt
+          aws s3 sync ./ s3://dl-deno-land/release/$(cat release-${INPUT_RELEASEKIND}-latest.txt)/ --exclude "*" --include "*.zip"
+          aws s3 cp release-${INPUT_RELEASEKIND}-latest.txt s3://dl-deno-land/release-${INPUT_RELEASEKIND}-latest.txt

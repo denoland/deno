@@ -31,10 +31,10 @@ jobs:
           token: ${{ secrets.DENOBOT_PAT }}
           submodules: recursive
 
-      - uses: dsherret/rust-toolchain-file@v1
+      - uses: dsherret/rust-toolchain-file@3551321aa44dd44a0393eb3b6bdfbc5d25ecf621 # v1
 
       - name: Install deno
-        uses: denoland/setup-deno@v2
+        uses: denoland/setup-deno@667a34cdef165d8d2b2e98dde39547c9daac7282 # v2
         with:
           deno-version: v2.x
 
