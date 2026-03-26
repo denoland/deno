@@ -996,10 +996,7 @@ async fn run_desktop(update_rolled_back: bool) -> Result<(), AnyError> {
   };
 
   tokio::select! {
-    result = async {
-      // Drive the navigate future alongside the runtime.
-      tokio::join!(navigate_fut, run_fut).1
-    } => {
+    result = run_fut => {
       match result {
         Ok(exit_code) => {
           eprintln!("[desktop] Deno runtime exited with code {}", exit_code);
@@ -1010,6 +1007,7 @@ async fn run_desktop(update_rolled_back: bool) -> Result<(), AnyError> {
         }
       }
     }
+    _ = navigate_fut => {}
     _ = wef_fut => {
       eprintln!("[desktop] WEF event loop ended (window closed)");
     }

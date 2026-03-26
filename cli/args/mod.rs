@@ -543,7 +543,11 @@ impl CliOptions {
   }
 
   pub fn ts_type_lib_window(&self) -> TsTypeLib {
-    TsTypeLib::DenoWindow
+    if self.flags.internal.is_desktop {
+      TsTypeLib::DenoDesktop
+    } else {
+      TsTypeLib::DenoWindow
+    }
   }
 
   pub fn ts_type_lib_worker(&self) -> TsTypeLib {

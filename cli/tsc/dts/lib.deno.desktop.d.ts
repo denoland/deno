@@ -2,10 +2,11 @@
 
 /// <reference no-default-lib="true" />
 /// <reference lib="deno.ns" />
+/// <reference lib="deno.shared_globals" />
+/// <reference lib="deno.webstorage" />
 /// <reference lib="esnext" />
+/// <reference lib="deno.cache" />
 /// <reference lib="es2022.intl" />
-
-// TODO: hook this file up
 
 declare namespace Deno {
   export {}; // stop default export type behavior

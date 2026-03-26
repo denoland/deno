@@ -874,6 +874,8 @@ pub struct InternalFlags {
   pub root_node_modules_dir_override: Option<PathBuf>,
   /// Only reads to the lockfile instead of writing to it.
   pub lockfile_skip_write: bool,
+  /// Set when running the desktop subcommand to use desktop type libs.
+  pub is_desktop: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Default)]

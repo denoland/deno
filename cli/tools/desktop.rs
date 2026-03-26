@@ -166,6 +166,7 @@ async fn compile_desktop(
 
   let mut temp_flags = flags.clone();
   temp_flags.subcommand = DenoSubcommand::Compile(compile_flags.clone());
+  temp_flags.internal.is_desktop = true;
 
   let output_path = super::compile::compile_binary(
     Arc::new(temp_flags),

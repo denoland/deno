@@ -1590,6 +1590,7 @@ pub enum TsTypeLib {
   #[default]
   DenoWindow,
   DenoWorker,
+  DenoDesktop,
 }
 
 #[derive(Debug, Clone)]

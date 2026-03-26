@@ -134,6 +134,20 @@ pub async fn compile_binary(
   );
   validate_output_path(&output_path)?;
 
+  // Clean up stale temp files from previous interrupted compilations.
+  if let Some(parent) = output_path.parent() {
+    if let Some(stem) = output_path.file_name() {
+      let prefix = format!("{}.tmp-", stem.to_string_lossy());
+      if let Ok(entries) = std::fs::read_dir(parent) {
+        for entry in entries.flatten() {
+          if entry.file_name().to_string_lossy().starts_with(&prefix) {
+            let _ = std::fs::remove_file(entry.path());
+          }
+        }
+      }
+    }
+  }
+
   let mut temp_filename = output_path.file_name().unwrap().to_owned();
   temp_filename.push(format!(
     ".tmp-{}",

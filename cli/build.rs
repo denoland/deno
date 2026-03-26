@@ -14,6 +14,7 @@ fn compress_decls(out_dir: &Path) {
     "lib.deno.window.d.ts",
     "lib.deno.worker.d.ts",
     "lib.deno.shared_globals.d.ts",
+    "lib.deno.desktop.d.ts",
     "lib.deno.unstable.d.ts",
     "lib.deno_console.d.ts",
     "lib.deno_url.d.ts",
