@@ -426,6 +426,26 @@ pub(crate) mod win_console {
     pub dwMaximumWindowSize: COORD,
   }
 
+  pub const KEY_EVENT: u16 = 0x0001;
+
+  #[repr(C)]
+  pub struct KEY_EVENT_RECORD {
+    pub bKeyDown: BOOL,
+    pub wRepeatCount: u16,
+    pub wVirtualKeyCode: u16,
+    pub wVirtualScanCode: u16,
+    pub uChar: u16, // UChar union - we only need the UnicodeChar member
+    pub dwControlKeyState: DWORD,
+  }
+
+  // INPUT_RECORD is a tagged union. We represent it with the largest
+  // variant (KEY_EVENT_RECORD) and interpret based on EventType.
+  #[repr(C)]
+  pub struct INPUT_RECORD {
+    pub EventType: u16,
+    pub Event: KEY_EVENT_RECORD,
+  }
+
   unsafe extern "system" {
     pub fn GetConsoleMode(hConsoleHandle: HANDLE, lpMode: *mut DWORD) -> BOOL;
     pub fn SetConsoleMode(hConsoleHandle: HANDLE, dwMode: DWORD) -> BOOL;
@@ -436,6 +456,18 @@ pub(crate) mod win_console {
     pub fn GetNumberOfConsoleInputEvents(
       hConsoleHandle: HANDLE,
       lpcNumberOfEvents: *mut DWORD,
+    ) -> BOOL;
+    pub fn PeekConsoleInputW(
+      hConsoleInput: HANDLE,
+      lpBuffer: *mut INPUT_RECORD,
+      nLength: DWORD,
+      lpNumberOfEventsRead: *mut DWORD,
+    ) -> BOOL;
+    pub fn ReadConsoleInputW(
+      hConsoleInput: HANDLE,
+      lpBuffer: *mut INPUT_RECORD,
+      nLength: DWORD,
+      lpNumberOfEventsRead: *mut DWORD,
     ) -> BOOL;
     pub fn GetLastError() -> DWORD;
     pub fn WriteFile(
@@ -1579,36 +1611,54 @@ pub(crate) unsafe fn poll_tty_handle(
         // On non-Unix (Windows), check for available input before reading.
         // TODO: This is still not fully async. libuv uses threaded reads
         // (ReadConsoleW on a worker thread for raw mode,
-        // ReadConsoleInputW for line mode). We use
-        // GetNumberOfConsoleInputEvents as a readiness gate to avoid
-        // blocking the event loop, but a proper implementation should
-        // spawn reads onto a blocking thread.
+        // ReadConsoleInputW for line mode). We use PeekConsoleInputW
+        // as a readiness gate to avoid blocking the event loop, but a
+        // proper implementation should spawn reads onto a blocking
+        // thread.
         #[cfg(not(unix))]
         {
-          // Check if there are console input events available before
-          // attempting a potentially blocking read.
-          // NOTE: We intentionally check once and do at most one read
-          // per poll cycle. GetNumberOfConsoleInputEvents counts ALL
-          // input records (KEY_UP, FOCUS, MOUSE, etc.), but ReadFile
-          // only consumes KEY_DOWN events that produce characters. If
-          // we looped while num_events > 0, we would re-enter ReadFile
-          // after consuming the character-producing event while
-          // non-character events (like KEY_UP) remain in the buffer,
-          // causing ReadFile to block the event loop. The event loop
-          // will re-poll on the next tick if more input arrives.
-          let mut num_events: u32 = 0;
-          let has_input = (*tty_ptr).internal_readable
-            && (*tty_ptr).internal_reading
-            && win_console::GetNumberOfConsoleInputEvents(
-              (*tty_ptr).internal_handle,
-              &mut num_events,
-            ) != 0
-            && num_events > 0;
+          if (*tty_ptr).internal_readable && (*tty_ptr).internal_reading {
+            // Drain non-character events (KEY_UP, FOCUS, MOUSE, etc.)
+            // from the console input buffer. ReadFile only consumes
+            // KEY_DOWN events that produce characters, so if we call
+            // ReadFile while only non-character events remain, it will
+            // block the event loop. We peek at the front of the queue
+            // and discard anything that is not a character-producing
+            // KEY_DOWN.
+            let handle = (*tty_ptr).internal_handle;
+            let has_readable_input = loop {
+              let mut record: win_console::INPUT_RECORD = std::mem::zeroed();
+              let mut peeked: u32 = 0;
+              if win_console::PeekConsoleInputW(
+                handle,
+                &mut record,
+                1,
+                &mut peeked,
+              ) == 0
+                || peeked == 0
+              {
+                // No events at all or error.
+                break false;
+              }
+              // Check if this is a KEY_DOWN event with a character.
+              if record.EventType == win_console::KEY_EVENT
+                && record.Event.bKeyDown != 0
+                && record.Event.uChar != 0
+              {
+                break true;
+              }
+              // Non-character event -- consume and discard it so it
+              // does not block ReadFile.
+              let mut discarded: u32 = 0;
+              win_console::ReadConsoleInputW(
+                handle,
+                &mut record,
+                1,
+                &mut discarded,
+              );
+            };
 
-          if has_input {
-            if !(*tty_ptr).internal_reading {
-              // Reading was stopped between the check and here.
-            } else {
+            if has_readable_input && (*tty_ptr).internal_reading {
               let mut buf = uv_buf_t {
                 base: std::ptr::null_mut(),
                 len: 0,
@@ -1631,7 +1681,6 @@ pub(crate) unsafe fn poll_tty_handle(
                     read_cb(tty_ptr as *mut uv_stream_t, n as isize, &buf);
                   }
                   Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                    // Signal the caller to free the buffer (nread=0).
                     read_cb(tty_ptr as *mut uv_stream_t, 0, &buf);
                   }
                   Err(_) => {
