@@ -2379,14 +2379,7 @@ export class ServerImpl extends EventEmitter {
         request.headers.get("upgrade");
       req[kRawHeaders] = request.headers;
 
-      // Don't fire the "upgrade" event for h2c (HTTP/2 cleartext) upgrades.
-      // These are protocol-level upgrades that aren't meant for user-space
-      // handlers (like WebSocket). Treating them as regular requests lets
-      // the server respond normally with HTTP/1.1.
-      if (
-        req.upgrade && req.upgrade.toLowerCase() !== "h2c" &&
-        this.listenerCount("upgrade") > 0
-      ) {
+      if (req.upgrade && this.listenerCount("upgrade") > 0) {
         const { conn, response } = upgradeHttpRaw(request);
         const socket = new Socket({
           handle: new TCP(constants.SERVER, conn),
