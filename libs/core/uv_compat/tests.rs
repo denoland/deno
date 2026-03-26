@@ -1527,7 +1527,6 @@ async fn tcp_shutdown_returns_ealready() {
     let mut server = std::mem::MaybeUninit::<uv_tcp_t>::uninit();
     let server_ptr = server.as_mut_ptr();
     unsafe extern "C" fn noop_conn(_: *mut uv_stream_t, _: i32) {}
-    unsafe extern "C" fn noop_connect(_: *mut uv_connect_t, _: i32) {}
 
     let port: u16;
     unsafe {
@@ -1712,7 +1711,6 @@ async fn tcp_close_cancels_pending_writes() {
     let mut server = std::mem::MaybeUninit::<uv_tcp_t>::uninit();
     let server_ptr = server.as_mut_ptr();
     unsafe extern "C" fn noop_conn(_: *mut uv_stream_t, _: i32) {}
-    unsafe extern "C" fn noop_connect(_: *mut uv_connect_t, _: i32) {}
 
     let port: u16;
     unsafe {
