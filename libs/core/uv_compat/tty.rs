@@ -1746,6 +1746,16 @@ pub(crate) unsafe fn read_start_tty(
     if !handles.iter().any(|&h| std::ptr::eq(h, tty)) {
       handles.push(tty);
     }
+    drop(handles);
+
+    // Wake the event loop so poll_tty_handle runs on the next tick.
+    // This registers the RegisterWaitForSingleObject (for future
+    // input notifications) and drains any pending stdout write
+    // callbacks. Without this, the event loop may park before the
+    // first poll_tty_handle call, causing the prompt to not render
+    // until the user presses a key.
+    #[cfg(windows)]
+    inner.wake();
   }
   0
 }
