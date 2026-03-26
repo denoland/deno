@@ -509,7 +509,7 @@ impl ModuleGraphCreator {
       .create_graph_with_options(CreateGraphOptions {
         is_dynamic: false,
         graph_kind: deno_graph::GraphKind::All,
-        roots: roots.clone(),
+        roots,
         // do not include the tsconfig imports for `deno publish`
         imports: Vec::new(),
         loader: Some(&publish_loader),
@@ -525,24 +525,22 @@ impl ModuleGraphCreator {
       // Include compilerOptions.types imports for type checking so that
       // ambient type declarations (e.g. Vite's import.meta.hot) are
       // available, but do not include them in the publish graph itself.
-      let ts_imports = self
+      let types_imports = self
         .module_graph_builder
-        .maybe_resolve_ts_config_imports(deno_graph::GraphKind::All);
-      if !ts_imports.is_empty() {
-        let tc_loader = PublishLoader(
-          self
-            .module_graph_builder
-            .create_graph_loader_with_root_permissions(),
-        );
-        let type_check_graph = self
-          .create_graph_with_options(CreateGraphOptions {
-            is_dynamic: false,
-            graph_kind: deno_graph::GraphKind::All,
-            roots,
-            imports: ts_imports,
-            loader: Some(&tc_loader),
-            npm_caching: self.options.default_npm_caching_strategy(),
-          })
+        .resolve_compiler_options_types_imports(deno_graph::GraphKind::All);
+      if !types_imports.is_empty() {
+        let mut type_check_graph = graph.clone();
+        self
+          .module_graph_builder
+          .build_graph_with_npm_resolution(
+            &mut type_check_graph,
+            BuildGraphRequest::Roots(vec![], types_imports),
+            BuildGraphWithNpmOptions {
+              is_dynamic: false,
+              loader: Some(&publish_loader),
+              npm_caching: self.options.default_npm_caching_strategy(),
+            },
+          )
           .await?;
         self.type_check_graph(type_check_graph)?;
       } else {
@@ -1089,6 +1087,19 @@ impl ModuleGraphBuilder {
         allow_unknown_jsr_exports,
       },
     )
+  }
+
+  fn resolve_compiler_options_types_imports(
+    &self,
+    graph_kind: GraphKind,
+  ) -> Vec<deno_graph::ReferrerImports> {
+    if graph_kind.include_types() {
+      self
+        .compiler_options_resolver
+        .to_compiler_options_types_imports()
+    } else {
+      Vec::new()
+    }
   }
 
   fn maybe_resolve_ts_config_imports(
