@@ -2276,6 +2276,16 @@ pub fn new_tty() -> uv_tty_t {
     internal_handle_owned: false,
     #[cfg(windows)]
     internal_fd: -1,
+    #[cfg(windows)]
+    internal_last_key: [0u8; 32],
+    #[cfg(windows)]
+    internal_last_key_len: 0,
+    #[cfg(windows)]
+    internal_last_key_offset: 0,
+    #[cfg(windows)]
+    internal_last_repeat_count: 0,
+    #[cfg(windows)]
+    internal_utf16_high_surrogate: 0,
   }
 }
 
