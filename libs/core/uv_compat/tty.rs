@@ -24,7 +24,6 @@ use super::UV_EPIPE;
 use super::UV_HANDLE_ACTIVE;
 use super::UV_HANDLE_REF;
 use super::get_inner;
-#[cfg(unix)]
 use super::io_error_to_uv;
 use super::tcp::ShutdownPending;
 use super::tcp::WritePending;
