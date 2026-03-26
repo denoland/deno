@@ -856,32 +856,6 @@ unsafe fn tty_try_write(
   }
 }
 
-/// Line-mode read for Windows: uses ReadFile which blocks until Enter.
-/// Only safe to call when GetNumberOfConsoleInputEvents indicates events
-/// AND the console is in line mode (ENABLE_LINE_INPUT set).
-#[cfg(windows)]
-unsafe fn tty_try_read_line(
-  tty: *const uv_tty_t,
-  buf: &mut [u8],
-) -> std::io::Result<usize> {
-  let handle = unsafe { (*tty).internal_handle };
-  let mut read: u32 = 0;
-  let ret = unsafe {
-    win_console::ReadFile(
-      handle,
-      buf.as_mut_ptr(),
-      buf.len() as u32,
-      &mut read,
-      std::ptr::null_mut(),
-    )
-  };
-  if ret == 0 {
-    Err(std::io::Error::last_os_error())
-  } else {
-    Ok(read as usize)
-  }
-}
-
 /// Map a virtual key code + modifiers to a VT100/xterm escape sequence.
 /// Returns None for keys we don't handle (caller should skip them).
 /// Matches libuv's get_vt100_fn_key (Cygwin-compatible mappings).
@@ -2350,7 +2324,27 @@ pub(crate) unsafe fn poll_tty_handle(
                 }
               }
 
-              // 2. Spawn a worker thread if no read is in flight.
+              // 2. Before spawning the read thread, drain pending
+              // write callbacks. The JS stream layer may have prompt
+              // text buffered that only reaches the native write call
+              // after a write callback fires. Without this, the
+              // ReadConsoleW thread starts before the prompt appears.
+              if !(*tty_ptr).internal_write_queue.is_empty() {
+                while let Some(pw) = (*tty_ptr).internal_write_queue.front() {
+                  if let Some(status) = pw.status {
+                    let pw =
+                      (*tty_ptr).internal_write_queue.pop_front().unwrap();
+                    if let Some(cb) = pw.cb {
+                      cb(pw.req, status);
+                    }
+                    any_work = true;
+                  } else {
+                    break;
+                  }
+                }
+              }
+
+              // 3. Spawn a worker thread if no read is in flight.
               if (*tty_ptr).internal_reading
                 && !(*tty_ptr).internal_line_read_pending
               {
@@ -2376,15 +2370,13 @@ pub(crate) unsafe fn poll_tty_handle(
                     let mut chars_read: u32 = 0;
 
                     let h = handle_usize as *mut c_void;
-                    let ok = unsafe {
-                      win_console::ReadConsoleW(
-                        h,
-                        utf16_buf.as_mut_ptr(),
-                        max_chars as u32,
-                        &mut chars_read,
-                        std::ptr::null_mut(),
-                      )
-                    };
+                    let ok = win_console::ReadConsoleW(
+                      h,
+                      utf16_buf.as_mut_ptr(),
+                      max_chars as u32,
+                      &mut chars_read,
+                      std::ptr::null_mut(),
+                    );
 
                     let result = if ok != 0 && chars_read > 0 {
                       let utf16 = &utf16_buf[..chars_read as usize];
