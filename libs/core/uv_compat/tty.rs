@@ -2324,27 +2324,7 @@ pub(crate) unsafe fn poll_tty_handle(
                 }
               }
 
-              // 2. Before spawning the read thread, drain pending
-              // write callbacks. The JS stream layer may have prompt
-              // text buffered that only reaches the native write call
-              // after a write callback fires. Without this, the
-              // ReadConsoleW thread starts before the prompt appears.
-              if !(*tty_ptr).internal_write_queue.is_empty() {
-                while let Some(pw) = (*tty_ptr).internal_write_queue.front() {
-                  if let Some(status) = pw.status {
-                    let pw =
-                      (*tty_ptr).internal_write_queue.pop_front().unwrap();
-                    if let Some(cb) = pw.cb {
-                      cb(pw.req, status);
-                    }
-                    any_work = true;
-                  } else {
-                    break;
-                  }
-                }
-              }
-
-              // 3. Spawn a worker thread if no read is in flight.
+              // 2. Spawn a worker thread if no read is in flight.
               if (*tty_ptr).internal_reading
                 && !(*tty_ptr).internal_line_read_pending
               {

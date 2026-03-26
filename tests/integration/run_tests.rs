@@ -3611,6 +3611,58 @@ fn tty_unicode_output_pty() {
     });
 }
 
+// Tests that line-mode TTY reading works correctly with the threaded
+// ReadConsoleW approach (matching libuv's uv_tty_line_read_thread).
+// Exercises consecutive line-mode prompts without raw mode.
+#[test]
+fn tty_line_mode_read_pty() {
+  TestContext::default()
+    .new_command()
+    .args_vec(["run", "run/tty_line_mode_read.ts"])
+    .with_pty(|mut console| {
+      console.expect("Name?");
+      console.write_line("Alice");
+      console.expect("Hello, Alice");
+      console.expect("Color?");
+      console.write_line("blue");
+      console.expect("You like blue");
+    });
+}
+
+// Tests that arrow keys in raw mode are correctly mapped to VT100
+// escape sequences via ReadConsoleInputW + get_vt100_fn_key.
+#[test]
+fn tty_raw_mode_arrow_keys_pty() {
+  TestContext::default()
+    .new_command()
+    .args_vec(["run", "run/tty_raw_mode_arrow_keys.ts"])
+    .with_pty(|mut console| {
+      console.write_raw("\x1b[A"); // Up arrow
+      console.expect("UP");
+      console.write_raw("\x1b[B"); // Down arrow
+      console.expect("DOWN");
+      console.write_raw("\x1b[C"); // Right arrow
+      console.expect("RIGHT");
+      console.write_raw("\x1b[D"); // Left arrow
+      console.expect("LEFT");
+    });
+}
+
+// Tests that Ctrl+C (0x03) is delivered as data in raw mode.
+// Without proper INPUT_RECORD processing via ReadConsoleInputW,
+// the event loop would block and Ctrl+C data would never arrive.
+#[test]
+fn tty_ctrl_c_raw_mode_pty() {
+  TestContext::default()
+    .new_command()
+    .args_vec(["run", "run/tty_ctrl_c_raw_mode.ts"])
+    .with_pty(|mut console| {
+      console.expect("READY");
+      console.write_raw("\x03"); // Ctrl+C
+      console.expect("GOT_CTRL_C");
+    });
+}
+
 // Regression test for https://github.com/denoland/deno/issues/32782
 // Verifies that consecutive readline prompts work when output is a
 // PassThrough/MuteStream piped to process.stdout (like @inquirer/prompts).
