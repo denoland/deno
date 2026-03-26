@@ -48,6 +48,10 @@ use webpki_root_certs;
 #[derive(Clone)]
 pub(crate) struct NodeTlsState {
   pub(crate) custom_ca_certs: Option<Vec<String>>,
+  /// Shared client session store across all TLS connections.
+  /// Enables session resumption when the same server is connected to twice.
+  pub(crate) client_session_store:
+    std::sync::Arc<rustls::client::ClientSessionMemoryCache>,
 }
 
 fn bundled_root_certificates() -> Vec<String> {
@@ -87,6 +91,9 @@ pub fn op_set_default_ca_certificates(
   } else {
     state.put(NodeTlsState {
       custom_ca_certs: Some(certs),
+      client_session_store: std::sync::Arc::new(
+        rustls::client::ClientSessionMemoryCache::new(256),
+      ),
     });
   }
 }

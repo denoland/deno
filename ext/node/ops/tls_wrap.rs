@@ -153,6 +153,13 @@ impl TlsConnection {
     }
   }
 
+  fn handshake_kind(&self) -> Option<rustls::HandshakeKind> {
+    match self {
+      TlsConnection::Client(c) => c.handshake_kind(),
+      TlsConnection::Server(c) => c.handshake_kind(),
+    }
+  }
+
   fn export_keying_material(
     &self,
     output: &mut [u8],
@@ -715,6 +722,7 @@ struct TLSWrapInner {
   shutdown: bool,
   eof: bool,
   cycling: bool,
+  session_was_set: bool,
   /// Set by clear_out when it emitted data — indicates rustls may have
   /// more buffered plaintext. Cleared when clear_out returns no data.
   has_buffered_cleartext: bool,
@@ -849,6 +857,7 @@ impl TLSWrapInner {
       shutdown: false,
       eof: false,
       cycling: false,
+      session_was_set: false,
       has_buffered_cleartext: false,
       in_dowrite: false,
       write_callback_scheduled: false,
@@ -1718,24 +1727,32 @@ impl TLSWrap {
           inner.pending_client_config.take(),
           inner.pending_server_name.take(),
         ) else {
+          inner.error = Some("TLS config not initialized".to_string());
           return -1;
         };
         match rustls::ClientConnection::new(config, server_name) {
           Ok(conn) => {
             inner.tls_conn = Some(TlsConnection::Client(conn));
           }
-          Err(_) => return -1,
+          Err(e) => {
+            inner.error = Some(format!("TLS connection error: {e}"));
+            return -1;
+          }
         }
       }
       Kind::Server => {
         let Some(config) = inner.pending_server_config.take() else {
+          inner.error = Some("TLS config not initialized".to_string());
           return -1;
         };
         match rustls::ServerConnection::new(config) {
           Ok(conn) => {
             inner.tls_conn = Some(TlsConnection::Server(conn));
           }
-          Err(_) => return -1,
+          Err(e) => {
+            inner.error = Some(format!("TLS connection error: {e}"));
+            return -1;
+          }
         }
       }
     }
@@ -2180,15 +2197,15 @@ impl TLSWrap {
     let conn = inner.tls_conn.as_ref()?;
     let mut output = vec![0u8; 32];
     // Note: rustls does not expose raw TLS Finished messages. We use
-    // export_keying_material with distinct labels to produce different
-    // (but synthetic) values for getFinished vs getPeerFinished.
-    conn
-      .export_keying_material(
-        &mut output,
-        b"EXPORTER_DENO_TLS_FINISHED_LOCAL",
-        None,
-      )
-      .ok()?;
+    // export_keying_material with role-based labels so that
+    // server.getFinished() == client.getPeerFinished() and vice versa.
+    // export_keying_material produces the same value on both sides for
+    // the same label, so we use the local role's label here.
+    let label = match inner.kind {
+      Kind::Client => b"EXPORTER_DENO_TLS_FINISHED_CLIENT" as &[u8],
+      Kind::Server => b"EXPORTER_DENO_TLS_FINISHED_SERVER" as &[u8],
+    };
+    conn.export_keying_material(&mut output, label, None).ok()?;
     Some(output.into_boxed_slice())
   }
 
@@ -2200,13 +2217,12 @@ impl TLSWrap {
     }
     let conn = inner.tls_conn.as_ref()?;
     let mut output = vec![0u8; 32];
-    conn
-      .export_keying_material(
-        &mut output,
-        b"EXPORTER_DENO_TLS_FINISHED_PEER",
-        None,
-      )
-      .ok()?;
+    // Use the peer's role label so the values match across sides.
+    let label = match inner.kind {
+      Kind::Client => b"EXPORTER_DENO_TLS_FINISHED_SERVER" as &[u8],
+      Kind::Server => b"EXPORTER_DENO_TLS_FINISHED_CLIENT" as &[u8],
+    };
+    conn.export_keying_material(&mut output, label, None).ok()?;
     Some(output.into_boxed_slice())
   }
 
@@ -2345,10 +2361,25 @@ impl TLSWrap {
   }
 
   /// Set the serialized TLS session for client resumption.
-  /// rustls resumption is not wired to Node-compatible opaque session blobs yet,
-  /// so this currently behaves as a no-op native surface for JS compatibility.
+  /// With the shared session store, rustls handles resumption automatically.
+  /// This is still needed to signal that a session was provided (so JS
+  /// can check isSessionReused after handshake).
   #[fast]
-  fn set_session(&self, #[buffer] _session: &[u8]) {}
+  fn set_session(&self, #[buffer] _session: &[u8]) {
+    let inner = unsafe { &mut *self.inner.as_mut_ptr() };
+    inner.session_was_set = true;
+  }
+
+  /// Check if the TLS session was resumed (reused from a previous connection).
+  #[fast]
+  fn is_session_reused(&self) -> bool {
+    let inner = unsafe { &*self.inner.as_mut_ptr() };
+    if let Some(ref conn) = inner.tls_conn {
+      matches!(conn.handshake_kind(), Some(rustls::HandshakeKind::Resumed))
+    } else {
+      false
+    }
+  }
 
   // -------------------------------------------------------------------------
   // JSStreamSocket support — attach to a JS-backed stream instead of TCP
@@ -2836,6 +2867,13 @@ fn build_client_config(
     TlsKeys::Null => config_builder.with_no_client_auth(),
     TlsKeys::Resolver(_) => return None,
   };
+
+  // Enable session resumption using the shared session store from NodeTlsState.
+  if let Some(node_tls_state) = op_state.try_borrow::<NodeTlsState>() {
+    config.resumption = rustls::client::Resumption::store(
+      node_tls_state.client_session_store.clone(),
+    );
+  }
 
   // Install NodeServerCertVerifier to store verification errors for
   // verifyError().  This verifier never aborts the handshake — it

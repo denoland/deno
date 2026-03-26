@@ -661,6 +661,9 @@ TLSSocket.prototype.getEphemeralKeyInfo = function () {
 };
 
 TLSSocket.prototype.isSessionReused = function () {
+  if (this._handle?.isSessionReused) {
+    return this._handle.isSessionReused();
+  }
   return this._sessionReused;
 };
 

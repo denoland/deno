@@ -212,12 +212,12 @@ function validateKeyEntries(name: string, value: unknown, passphrase: unknown) {
   }
 }
 
-function validateCipherToken(token: string) {
+function validateCipherToken(token: string): boolean {
   if (token.startsWith("@SECLEVEL=")) {
-    return;
+    return true;
   }
   if (KNOWN_CIPHER_SELECTORS.has(token)) {
-    return;
+    return true;
   }
   const selector = token.split("@", 1)[0];
   if (
@@ -225,34 +225,36 @@ function validateCipherToken(token: string) {
     KNOWN_CIPHER_SELECTORS.has(selector) &&
     /@SECLEVEL=\d+$/.test(token)
   ) {
-    return;
+    return true;
   }
   if (KNOWN_CIPHER_TOKENS.has(token)) {
-    return;
+    return true;
   }
   // OpenSSL cipher strings support modifiers (!, -, +) and many aliases
   // (e.g. aNULL, kRSA, EECDH, EXPORT, MEDIUM, etc.) that rustls doesn't
   // use. Accept any token that starts with a modifier prefix or looks like
   // an OpenSSL alias, since rustls will map to its own supported suites
-  // regardless. Only reject completely empty tokens.
+  // regardless.
   if (/^[!+\-]/.test(token)) {
-    return;
+    return true;
   }
-  // Accept any remaining token. Rustls ignores unknown cipher names
-  // gracefully, and rejecting them would break npm packages that pass
-  // custom OpenSSL cipher strings (e.g. pg, mysql2).
+  // Unknown cipher token - not a known cipher, selector, or modifier.
+  return false;
 }
 
 function processCiphers(ciphers: string, name: string) {
   const entries = (ciphers || getDefaultCiphers()).split(":");
   const cipherListEntries = [];
   const cipherSuitesEntries = [];
+  let hasKnownCipher = false;
 
   for (const entry of entries) {
     if (entry.length === 0) {
       continue;
     }
-    validateCipherToken(entry);
+    if (validateCipherToken(entry)) {
+      hasKnownCipher = true;
+    }
     if (entry.startsWith("TLS_") || entry.startsWith("!TLS_")) {
       cipherSuitesEntries.push(entry);
     } else {
@@ -265,6 +267,12 @@ function processCiphers(ciphers: string, name: string) {
 
   if (cipherList === "" && cipherSuites === "") {
     throw new codes.ERR_INVALID_ARG_VALUE(name, entries);
+  }
+
+  if (!hasKnownCipher) {
+    const err = new Error("no cipher match");
+    (err as Error & { code?: string }).code = "ERR_SSL_NO_CIPHER_MATCH";
+    throw err;
   }
 
   return { cipherList, cipherSuites };
