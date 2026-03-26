@@ -1245,18 +1245,133 @@ pub(crate) unsafe fn write_tty(
     let tty = handle as *mut uv_tty_t;
     (*req).handle = handle;
 
-    // Always queue the write for the poll loop to process, matching
-    // libuv's behavior of deferring completion callbacks through the
-    // event loop rather than invoking them synchronously.
+    // If writes are already queued, just append.
+    if !(*tty).internal_write_queue.is_empty() {
+      let data = collect_bufs(bufs, nbufs);
+      (*tty).internal_write_queue.push_back(WritePending {
+        req,
+        data,
+        offset: 0,
+        cb,
+        status: None,
+      });
+      return 0;
+    }
+
+    // Never fire callbacks synchronously — always queue.
+    // This matches real libuv behavior and prevents re-entrancy panics.
+    if nbufs == 1 {
+      let buf = &*bufs;
+      if !buf.base.is_null() && buf.len > 0 {
+        let data = std::slice::from_raw_parts(buf.base as *const u8, buf.len);
+        let mut offset = 0;
+        loop {
+          match tty_try_write(tty, &data[offset..]) {
+            Ok(n) => {
+              offset += n;
+              if offset >= data.len() {
+                (*tty).internal_write_queue.push_back(WritePending {
+                  req,
+                  data: Vec::new(),
+                  offset: 0,
+                  cb,
+                  status: Some(0),
+                });
+                ensure_tty_registered(tty);
+                return 0;
+              }
+            }
+            Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+              (*tty).internal_write_queue.push_back(WritePending {
+                req,
+                data: data[offset..].to_vec(),
+                offset: 0,
+                cb,
+                status: None,
+              });
+              ensure_tty_registered(tty);
+              return 0;
+            }
+            Err(_) => {
+              (*tty).internal_write_queue.push_back(WritePending {
+                req,
+                data: Vec::new(),
+                offset: 0,
+                cb,
+                status: Some(UV_EPIPE),
+              });
+              ensure_tty_registered(tty);
+              return 0;
+            }
+          }
+        }
+      }
+      (*tty).internal_write_queue.push_back(WritePending {
+        req,
+        data: Vec::new(),
+        offset: 0,
+        cb,
+        status: Some(0),
+      });
+      ensure_tty_registered(tty);
+      return 0;
+    }
+
+    // Multi-buffer: collect and write.
     let data = collect_bufs(bufs, nbufs);
-    (*tty).internal_write_queue.push_back(WritePending {
-      req,
-      data,
-      offset: 0,
-      cb,
-    });
-    ensure_tty_registered(tty);
-    0
+    if data.is_empty() {
+      (*tty).internal_write_queue.push_back(WritePending {
+        req,
+        data: Vec::new(),
+        offset: 0,
+        cb,
+        status: Some(0),
+      });
+      ensure_tty_registered(tty);
+      return 0;
+    }
+
+    let mut offset = 0;
+    loop {
+      match tty_try_write(tty, &data[offset..]) {
+        Ok(n) => {
+          offset += n;
+          if offset >= data.len() {
+            (*tty).internal_write_queue.push_back(WritePending {
+              req,
+              data: Vec::new(),
+              offset: 0,
+              cb,
+              status: Some(0),
+            });
+            ensure_tty_registered(tty);
+            return 0;
+          }
+        }
+        Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+          (*tty).internal_write_queue.push_back(WritePending {
+            req,
+            data: data[offset..].to_vec(),
+            offset: 0,
+            cb,
+            status: None,
+          });
+          ensure_tty_registered(tty);
+          return 0;
+        }
+        Err(_) => {
+          (*tty).internal_write_queue.push_back(WritePending {
+            req,
+            data: Vec::new(),
+            offset: 0,
+            cb,
+            status: Some(UV_EPIPE),
+          });
+          ensure_tty_registered(tty);
+          return 0;
+        }
+      }
+    }
   }
 }
 
@@ -1510,6 +1625,19 @@ pub(crate) unsafe fn poll_tty_handle(
       loop {
         if (*tty_ptr).internal_write_queue.is_empty() {
           break;
+        }
+
+        // Check if the front entry has a pre-determined status
+        // (deferred from write_tty).
+        let pre_status =
+          (*tty_ptr).internal_write_queue.front().unwrap().status;
+        if let Some(status) = pre_status {
+          let pw = (*tty_ptr).internal_write_queue.pop_front().unwrap();
+          if let Some(cb) = pw.cb {
+            cb(pw.req, status);
+          }
+          any_work = true;
+          continue;
         }
 
         let (done, error) = {

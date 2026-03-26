@@ -307,6 +307,7 @@ pub unsafe fn uv_write(
       data: write_data,
       offset,
       cb,
+      status: None,
     });
     0
   }
