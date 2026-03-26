@@ -245,6 +245,16 @@ pub struct uv_tty_t {
   pub(crate) internal_wait_handle: *mut c_void, // HANDLE from RegisterWait
   #[cfg(windows)]
   pub(crate) internal_wait_waker: Option<Box<std::sync::Mutex<Option<Waker>>>>,
+
+  // Line-mode threaded read state. ReadConsoleW blocks until Enter,
+  // so it runs on a worker thread (matching libuv's
+  // uv_tty_line_read_thread). The result is collected on the next
+  // poll_tty_handle call.
+  #[cfg(windows)]
+  pub(crate) internal_line_read_result:
+    Option<std::sync::Arc<std::sync::Mutex<Option<Result<Vec<u8>, i32>>>>>,
+  #[cfg(windows)]
+  pub(crate) internal_line_read_pending: bool,
 }
 
 pub type UvTty = uv_tty_t;
@@ -541,6 +551,13 @@ pub(crate) mod win_console {
       lpBuffer: *mut INPUT_RECORD,
       nLength: DWORD,
       lpNumberOfEventsRead: *mut DWORD,
+    ) -> BOOL;
+    pub fn ReadConsoleW(
+      hConsoleInput: HANDLE,
+      lpBuffer: *mut u16,
+      nNumberOfCharsToRead: DWORD,
+      lpNumberOfCharsRead: *mut DWORD,
+      pInputControl: *mut c_void,
     ) -> BOOL;
     pub fn GetLastError() -> DWORD;
     pub fn WriteFile(
@@ -1489,6 +1506,8 @@ pub unsafe fn uv_tty_init(
         std::ptr::null_mut(),
       );
       write(addr_of_mut!((*tty).internal_wait_waker), None);
+      write(addr_of_mut!((*tty).internal_line_read_result), None);
+      write(addr_of_mut!((*tty).internal_line_read_pending), false);
     }
   }
   0
@@ -2190,15 +2209,14 @@ pub(crate) unsafe fn poll_tty_handle(
         // On non-Unix (Windows), use mode-aware reading.
         // Raw mode: ReadConsoleInputW to process individual INPUT_RECORD
         // structs (matching libuv's uv_process_tty_read_raw_req).
-        // Line mode: ReadFile (blocking, gated by event count check).
-        // TODO: Line mode should use a worker thread like libuv does
-        // with QueueUserWorkItem + ReadConsoleW.
+        // Line mode: ReadConsoleW on a worker thread (matching libuv's
+        // uv_tty_line_read_thread + QueueUserWorkItem).
         #[cfg(not(unix))]
         {
           if (*tty_ptr).internal_readable && (*tty_ptr).internal_reading {
-            let has_pending = if is_raw_tty_mode((*tty_ptr).mode) {
-              // Pending decoded bytes or repeat count from prev key?
-              (*tty_ptr).internal_last_key_offset
+            if is_raw_tty_mode((*tty_ptr).mode) {
+              // === Raw mode ===
+              let has_pending = (*tty_ptr).internal_last_key_offset
                 < (*tty_ptr).internal_last_key_len
                 || (*tty_ptr).internal_last_repeat_count > 0
                 || {
@@ -2208,62 +2226,181 @@ pub(crate) unsafe fn poll_tty_handle(
                     &mut n,
                   ) != 0
                     && n > 0
-                }
-            } else {
-              let mut n: u32 = 0;
-              win_console::GetNumberOfConsoleInputEvents(
-                (*tty_ptr).internal_handle,
-                &mut n,
-              ) != 0
-                && n > 0
-            };
-
-            if has_pending {
-              let mut buf = uv_buf_t {
-                base: std::ptr::null_mut(),
-                len: 0,
-              };
-              alloc_cb(tty_ptr as *mut uv_handle_t, 65536, &mut buf);
-              if buf.base.is_null() || buf.len == 0 {
-                read_cb(tty_ptr as *mut uv_stream_t, UV_ENOBUFS as isize, &buf);
-              } else {
-                let slice = std::slice::from_raw_parts_mut(
-                  buf.base.cast::<u8>(),
-                  buf.len,
-                );
-
-                let result = if is_raw_tty_mode((*tty_ptr).mode) {
-                  tty_try_read_raw(tty_ptr, slice)
-                } else {
-                  tty_try_read_line(tty_ptr, slice)
                 };
 
-                match result {
-                  Ok(0) => {
-                    read_cb(tty_ptr as *mut uv_stream_t, UV_EOF as isize, &buf);
-                    (*tty_ptr).internal_reading = false;
-                  }
-                  Ok(n) => {
-                    any_work = true;
-                    read_cb(tty_ptr as *mut uv_stream_t, n as isize, &buf);
-                  }
-                  Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                    read_cb(tty_ptr as *mut uv_stream_t, 0, &buf);
-                  }
-                  Err(_) => {
-                    read_cb(tty_ptr as *mut uv_stream_t, UV_EOF as isize, &buf);
-                    (*tty_ptr).internal_reading = false;
+              if has_pending {
+                let mut buf = uv_buf_t {
+                  base: std::ptr::null_mut(),
+                  len: 0,
+                };
+                alloc_cb(tty_ptr as *mut uv_handle_t, 65536, &mut buf);
+                if buf.base.is_null() || buf.len == 0 {
+                  read_cb(
+                    tty_ptr as *mut uv_stream_t,
+                    UV_ENOBUFS as isize,
+                    &buf,
+                  );
+                } else {
+                  let slice = std::slice::from_raw_parts_mut(
+                    buf.base.cast::<u8>(),
+                    buf.len,
+                  );
+                  match tty_try_read_raw(tty_ptr, slice) {
+                    Ok(0) => {
+                      read_cb(
+                        tty_ptr as *mut uv_stream_t,
+                        UV_EOF as isize,
+                        &buf,
+                      );
+                      (*tty_ptr).internal_reading = false;
+                    }
+                    Ok(n) => {
+                      any_work = true;
+                      read_cb(tty_ptr as *mut uv_stream_t, n as isize, &buf);
+                    }
+                    Err(ref e)
+                      if e.kind() == std::io::ErrorKind::WouldBlock =>
+                    {
+                      read_cb(tty_ptr as *mut uv_stream_t, 0, &buf);
+                    }
+                    Err(_) => {
+                      read_cb(
+                        tty_ptr as *mut uv_stream_t,
+                        UV_EOF as isize,
+                        &buf,
+                      );
+                      (*tty_ptr).internal_reading = false;
+                    }
                   }
                 }
               }
-            }
 
-            // (Re-)register the wait so the event loop wakes up when
-            // new console input arrives. This is a one-shot wait
-            // (WT_EXECUTEONLYONCE) so it must be re-registered after
-            // each signal, matching libuv's uv__tty_queue_read_raw.
-            if (*tty_ptr).internal_reading {
-              tty_register_wait(tty_ptr, cx.waker());
+              // Re-register the wait for raw mode.
+              if (*tty_ptr).internal_reading {
+                tty_register_wait(tty_ptr, cx.waker());
+              }
+            } else {
+              // === Line mode (NORMAL) ===
+              // ReadConsoleW blocks until Enter, so it runs on a
+              // worker thread matching libuv's
+              // uv_tty_line_read_thread.
+
+              // 1. Check for completed line-read result from thread.
+              if let Some(ref arc) = (*tty_ptr).internal_line_read_result {
+                let result = {
+                  if let Ok(mut guard) = arc.lock() {
+                    guard.take()
+                  } else {
+                    None
+                  }
+                };
+                if let Some(result) = result {
+                  (*tty_ptr).internal_line_read_pending = false;
+                  let mut buf = uv_buf_t {
+                    base: std::ptr::null_mut(),
+                    len: 0,
+                  };
+                  match result {
+                    Ok(ref data) if data.is_empty() => {
+                      alloc_cb(tty_ptr as *mut uv_handle_t, 65536, &mut buf);
+                      read_cb(
+                        tty_ptr as *mut uv_stream_t,
+                        UV_EOF as isize,
+                        &buf,
+                      );
+                      (*tty_ptr).internal_reading = false;
+                    }
+                    Ok(ref data) => {
+                      alloc_cb(
+                        tty_ptr as *mut uv_handle_t,
+                        data.len(),
+                        &mut buf,
+                      );
+                      if buf.base.is_null() || buf.len == 0 {
+                        read_cb(
+                          tty_ptr as *mut uv_stream_t,
+                          UV_ENOBUFS as isize,
+                          &buf,
+                        );
+                      } else {
+                        let copy_len = data.len().min(buf.len);
+                        std::ptr::copy_nonoverlapping(
+                          data.as_ptr(),
+                          buf.base as *mut u8,
+                          copy_len,
+                        );
+                        any_work = true;
+                        read_cb(
+                          tty_ptr as *mut uv_stream_t,
+                          copy_len as isize,
+                          &buf,
+                        );
+                      }
+                    }
+                    Err(_) => {
+                      alloc_cb(tty_ptr as *mut uv_handle_t, 65536, &mut buf);
+                      read_cb(
+                        tty_ptr as *mut uv_stream_t,
+                        UV_EOF as isize,
+                        &buf,
+                      );
+                      (*tty_ptr).internal_reading = false;
+                    }
+                  }
+                }
+              }
+
+              // 2. Spawn a worker thread if no read is in flight.
+              if (*tty_ptr).internal_reading
+                && !(*tty_ptr).internal_line_read_pending
+              {
+                let handle = (*tty_ptr).internal_handle;
+                let result_arc: std::sync::Arc<
+                  std::sync::Mutex<Option<Result<Vec<u8>, i32>>>,
+                > = std::sync::Arc::new(std::sync::Mutex::new(None));
+                (*tty_ptr).internal_line_read_result = Some(result_arc.clone());
+                (*tty_ptr).internal_line_read_pending = true;
+
+                let waker = cx.waker().clone();
+
+                // SAFETY: handle is a duplicated console input
+                // HANDLE that remains valid until uv_close.
+                let handle_usize = handle as usize;
+
+                let _ = std::thread::Builder::new()
+                  .name("tty-line-read".into())
+                  .spawn(move || {
+                    const MAX_BUF: usize = 8192;
+                    let max_chars = MAX_BUF / 3;
+                    let mut utf16_buf = vec![0u16; max_chars];
+                    let mut chars_read: u32 = 0;
+
+                    let h = handle_usize as *mut c_void;
+                    let ok = unsafe {
+                      win_console::ReadConsoleW(
+                        h,
+                        utf16_buf.as_mut_ptr(),
+                        max_chars as u32,
+                        &mut chars_read,
+                        std::ptr::null_mut(),
+                      )
+                    };
+
+                    let result = if ok != 0 && chars_read > 0 {
+                      let utf16 = &utf16_buf[..chars_read as usize];
+                      Ok(String::from_utf16_lossy(utf16).into_bytes())
+                    } else if ok != 0 {
+                      Ok(Vec::new())
+                    } else {
+                      Err(-1)
+                    };
+
+                    if let Ok(mut guard) = result_arc.lock() {
+                      *guard = Some(result);
+                    }
+                    waker.wake();
+                  });
+              }
             }
           }
         }
@@ -2436,6 +2573,10 @@ pub fn new_tty() -> uv_tty_t {
     internal_wait_handle: std::ptr::null_mut(),
     #[cfg(windows)]
     internal_wait_waker: None,
+    #[cfg(windows)]
+    internal_line_read_result: None,
+    #[cfg(windows)]
+    internal_line_read_pending: false,
   }
 }
 
