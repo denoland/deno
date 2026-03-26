@@ -1168,7 +1168,7 @@ unsafe fn tty_try_read_raw(
       let total_len = offset + encoded.len();
 
       unsafe {
-        (*tty).internal_last_key[..total_len]
+        (&mut (*tty).internal_last_key)[..total_len]
           .copy_from_slice(&key_buf[..total_len]);
         (*tty).internal_last_key_len = total_len as u8;
         (*tty).internal_last_key_offset = 0;
@@ -1201,7 +1201,8 @@ unsafe fn tty_try_read_raw(
         if prefix_len > 0 {
           (*tty).internal_last_key[0] = 0x1b; // ESC
         }
-        (*tty).internal_last_key[prefix_len..total_len].copy_from_slice(vt100);
+        (&mut (*tty).internal_last_key)[prefix_len..total_len]
+          .copy_from_slice(vt100);
         (*tty).internal_last_key_len = total_len as u8;
         (*tty).internal_last_key_offset = 0;
         (*tty).internal_last_repeat_count = kev.wRepeatCount.saturating_sub(1);
