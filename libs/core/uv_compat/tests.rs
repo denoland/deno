@@ -1428,19 +1428,12 @@ async fn tcp_bind_eaddrinuse_deferred_to_listen() {
       let mut addr = std::mem::MaybeUninit::<sockaddr_in>::uninit();
       let ip = std::ffi::CString::new("127.0.0.1").unwrap();
       uv_ip4_addr(ip.as_ptr(), port as i32, addr.as_mut_ptr());
-      let bind_status = uv_tcp_bind(
-        server_b_ptr,
-        addr.as_ptr() as *const c_void,
-        0,
-        0,
-      );
+      let bind_status =
+        uv_tcp_bind(server_b_ptr, addr.as_ptr() as *const c_void, 0, 0);
       assert_eq!(bind_status, 0, "bind should defer the error");
 
-      let listen_status = uv_listen(
-        server_b_ptr as *mut uv_stream_t,
-        128,
-        Some(noop_conn),
-      );
+      let listen_status =
+        uv_listen(server_b_ptr as *mut uv_stream_t, 128, Some(noop_conn));
       assert_eq!(
         listen_status, UV_EADDRINUSE,
         "listen should report the deferred EADDRINUSE"
@@ -1610,11 +1603,8 @@ async fn tcp_shutdown_returns_ealready() {
         client_ptr as *mut uv_stream_t,
         None,
       ));
-      let status = uv_shutdown(
-        req2.as_mut_ptr(),
-        client_ptr as *mut uv_stream_t,
-        None,
-      );
+      let status =
+        uv_shutdown(req2.as_mut_ptr(), client_ptr as *mut uv_stream_t, None);
       assert_eq!(status, UV_EALREADY);
 
       uv_close(client_ptr as *mut uv_handle_t, None);
@@ -1673,11 +1663,8 @@ async fn tcp_shutdown_on_closing_handle() {
       uv_tcp_init(uv_loop, tcp_ptr);
       uv_close(tcp_ptr as *mut uv_handle_t, None);
 
-      let status = uv_shutdown(
-        req.as_mut_ptr(),
-        tcp_ptr as *mut uv_stream_t,
-        None,
-      );
+      let status =
+        uv_shutdown(req.as_mut_ptr(), tcp_ptr as *mut uv_stream_t, None);
       assert_eq!(status, UV_ENOTCONN);
     }
   })
@@ -1696,12 +1683,7 @@ async fn tcp_getsockname_after_bind_before_listen() {
       let mut addr = std::mem::MaybeUninit::<sockaddr_in>::uninit();
       let ip = std::ffi::CString::new("127.0.0.1").unwrap();
       uv_ip4_addr(ip.as_ptr(), 0, addr.as_mut_ptr());
-      assert_ok(uv_tcp_bind(
-        tcp_ptr,
-        addr.as_ptr() as *const c_void,
-        0,
-        0,
-      ));
+      assert_ok(uv_tcp_bind(tcp_ptr, addr.as_ptr() as *const c_void, 0, 0));
 
       // getsockname should resolve the ephemeral port from the
       // pre-created socket, even before listen/connect.
@@ -1801,8 +1783,7 @@ async fn tcp_close_cancels_pending_writes() {
     let write_status_ptr = Rc::into_raw(write_status.clone());
 
     unsafe extern "C" fn on_write(req: *mut uv_write_t, status: i32) {
-      let s =
-        unsafe { Rc::from_raw((*req).data as *const Cell<Option<i32>>) };
+      let s = unsafe { Rc::from_raw((*req).data as *const Cell<Option<i32>>) };
       s.set(Some(status));
       let _ = Rc::into_raw(s);
     }
