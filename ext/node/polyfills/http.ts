@@ -70,11 +70,7 @@ import {
 } from "ext:deno_node/internal/errors.ts";
 import { getTimerDuration } from "ext:deno_node/internal/timers.mjs";
 import { getIPFamily } from "ext:deno_node/internal/net.ts";
-import {
-  serveHttpOnListener,
-  upgradeHttpRaw,
-  upgradeHttpRawConnect,
-} from "ext:deno_http/00_serve.ts";
+import { serveHttpOnListener, upgradeHttpRaw } from "ext:deno_http/00_serve.ts";
 import { op_http_serve_address_override } from "ext:core/ops";
 import { listen as listenDeno } from "ext:deno_net/01_net.js";
 import { headersEntries } from "ext:deno_fetch/20_headers.js";
@@ -2347,33 +2343,9 @@ export class ServerImpl extends EventEmitter {
       });
 
       const req = new IncomingMessageForServer(socket);
-      req.method = request.method;
-
-      if (request.method === "CONNECT") {
-        // For CONNECT, the URL should be in authority form (host:port).
-        // Deno's server adds an "http://" prefix, so strip it.
-        req.url = request.url.replace(/^https?:\/\//, "");
-        req[kRawHeaders] = request.headers;
-
-        if (this.listenerCount("connect") > 0) {
-          return (async () => {
-            const { conn, response, head } = await upgradeHttpRawConnect(
-              request,
-            );
-            const socket = new Socket({
-              handle: new TCP(constants.SERVER, conn),
-            });
-            req.socket = socket;
-            this.emit("connect", req, socket, Buffer.from(head));
-            return response;
-          })();
-        } else {
-          return new Response(null, { status: 405 });
-        }
-      }
-
       // Slice off the origin so that we only have pathname + search
       req.url = request.url?.slice(request.url.indexOf("/", 8));
+      req.method = request.method;
       req.upgrade =
         request.headers.get("connection")?.toLowerCase().includes("upgrade") &&
         request.headers.get("upgrade");
