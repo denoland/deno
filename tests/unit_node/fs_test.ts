@@ -44,6 +44,7 @@ import {
   lstatSync,
   mkdtempSync,
   openAsBlob,
+  opendirSync,
   openSync,
   promises,
   promises as fsPromises,
@@ -1738,3 +1739,21 @@ Deno.test({
     );
   },
 });
+
+Deno.test(
+  "[node/fs Dir] Dir is disposable via Symbol.dispose",
+  { permissions: { read: true } },
+  () => {
+    using dir = opendirSync(".");
+    void dir;
+  },
+);
+
+Deno.test(
+  "[node/fs Dir] Dir is async-disposable via Symbol.asyncDispose",
+  { permissions: { read: true } },
+  async () => {
+    await using dir = await fsPromises.opendir(".");
+    void dir;
+  },
+);
