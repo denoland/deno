@@ -1,5 +1,0 @@
-{
-  "args": "info --quiet 005_more_imports.ts",
-  "output": "054_info_local_imports.out",
-  "exitCode": 0
-}

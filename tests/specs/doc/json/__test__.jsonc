@@ -1,4 +1,0 @@
-{
-  "args": "doc --json json.js",
-  "output": "json.out"
-}

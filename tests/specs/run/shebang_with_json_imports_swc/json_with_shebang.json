@@ -1,4 +1,0 @@
-#!/usr/env -S deno run
-{
-  "test": null
-}

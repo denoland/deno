@@ -1,9 +1,0 @@
-{
-  "workspace": [
-    "foo",
-    "bar"
-  ],
-  "tasks": {
-    "dev": "deno run --watch main.ts"
-  }
-}

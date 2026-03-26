@@ -1,5 +1,0 @@
-{
-  "args": "info --allow-import myentry/welcome.ts",
-  "output": "with_import_map.out",
-  "exitCode": 0
-}

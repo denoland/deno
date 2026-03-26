@@ -1,8 +1,0 @@
-{
-  "name": "@test/a",
-  "exports": {
-    ".": "./mod.js",
-    "./foo": "./foo.js"
-  },
-  "version": "0.1.0"
-}

@@ -1,6 +1,0 @@
-{
-  "nodeModulesDir": "manual",
-  "imports": {
-    "@denotest/esm-basic": "npm:@denotest/esm-basic@^1.0.0"
-  }
-}

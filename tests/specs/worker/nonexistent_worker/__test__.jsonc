@@ -1,5 +1,0 @@
-{
-  "args": "run --allow-read nonexistent_worker.ts",
-  "output": "nonexistent_worker.out",
-  "exitCode": 1
-}

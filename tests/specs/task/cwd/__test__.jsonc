@@ -1,5 +1,0 @@
-{
-  "args": "task -q --config deno.json --cwd .. echo_cwd",
-  "output": "task_cwd.out",
-  "exitCode": 0
-}

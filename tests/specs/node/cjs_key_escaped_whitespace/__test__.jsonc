@@ -1,4 +1,0 @@
-{
-  "args": "run -A main.js",
-  "output": "output.out"
-}

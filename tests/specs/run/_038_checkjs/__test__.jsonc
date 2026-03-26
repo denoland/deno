@@ -1,6 +1,0 @@
-{
-  // checking if JS file is run through TS compiler
-  "args": "run --reload --config checkjs.tsconfig.json --check 038_checkjs.js",
-  "exitCode": 1,
-  "output": "038_checkjs.js.out"
-}

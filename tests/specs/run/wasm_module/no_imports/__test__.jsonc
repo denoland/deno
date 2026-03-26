@@ -1,4 +1,0 @@
-{
-  "args": "run --allow-import main.ts",
-  "output": "main.out"
-}

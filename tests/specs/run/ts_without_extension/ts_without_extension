@@ -1,3 +1,0 @@
-interface Lollipop {}
-
-console.log("executing typescript with no extension");

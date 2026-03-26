@@ -1,9 +1,0 @@
-{
-  "imports": {
-    "preact": "npm:preact"
-  },
-  "compilerOptions": {
-    "jsx": "precompile",
-    "jsxImportSource": "preact"
-  }
-}

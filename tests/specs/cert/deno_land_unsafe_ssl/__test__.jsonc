@@ -1,5 +1,0 @@
-{
-  "flaky": true,
-  "args": "run --quiet --reload --allow-net --unsafely-ignore-certificate-errors=deno.land deno_land_unsafe_ssl.ts",
-  "output": "deno_land_unsafe_ssl.ts.out"
-}

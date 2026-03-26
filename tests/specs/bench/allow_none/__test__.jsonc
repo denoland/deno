@@ -1,5 +1,0 @@
-{
-  "args": "bench allow_none.ts",
-  "output": "allow_none.out",
-  "exitCode": 1
-}

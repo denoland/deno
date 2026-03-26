@@ -1,9 +1,0 @@
-{
-  "tempDir": true,
-  "steps": [
-    {
-      "args": "lint main.ts",
-      "output": "log.out"
-    }
-  ]
-}

@@ -1,5 +1,0 @@
-{
-  "args": "test --trace-leaks ops_sanitizer_closed_inside_started_before.ts",
-  "exitCode": 1,
-  "output": "ops_sanitizer_closed_inside_started_before.out"
-}

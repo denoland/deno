@@ -1,7 +1,0 @@
-{
-  "test": {
-    "include": [
-      "./test/**/*.test.mjs"
-    ]
-  }
-}

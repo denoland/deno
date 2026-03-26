@@ -1,5 +1,0 @@
-{
-  "args": "run --allow-read wasm_unreachable.js",
-  "output": "wasm_unreachable.out",
-  "exitCode": 1
-}

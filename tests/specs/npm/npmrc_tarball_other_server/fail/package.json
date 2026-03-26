@@ -1,7 +1,0 @@
-{
-  "name": "npmrc_test",
-  "version": "0.0.1",
-  "dependencies": {
-    "@denotest/tarballs-privateserver2": "1.0.0"
-  }
-}

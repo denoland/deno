@@ -1,3 +1,0 @@
-export const snapshot = {};
-
-snapshot[`snapshot excluded from coverage 1`] = `{}`;

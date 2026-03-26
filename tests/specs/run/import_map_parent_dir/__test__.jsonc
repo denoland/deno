@@ -1,9 +1,0 @@
-{
-  "steps": [{
-    "args": "info --config=sub/deno.json sub/main.ts",
-    "output": "info.out"
-  }, {
-    "args": "run --check sub/main.ts",
-    "output": "run.out"
-  }]
-}

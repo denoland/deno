@@ -1,4 +1,0 @@
-{
-  "args": "run --env=invalid_utf8_env --allow-env foo.ts",
-  "output": "main.out"
-}

@@ -1,5 +1,0 @@
-{
-  "dependencies": {
-    "@denotest/multiple-arch-deps": "*"
-  }
-}

@@ -1,8 +1,0 @@
-{
-  "workspace": {
-    "members": [
-      "packages/package1",
-      "packages/package2"
-    ]
-  }
-}

@@ -1,6 +1,0 @@
-{
-  "workspace": ["packages/foo", "packages/bar"],
-  "imports": {
-    "@denotest/subtract": "jsr:@denotest/subtract@^1.0.0"
-  }
-}

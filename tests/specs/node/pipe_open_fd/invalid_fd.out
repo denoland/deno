@@ -1,3 +1,0 @@
-open(-1) returned: -22
-PASS: Invalid fd returns error code
-[WILDCARD]

@@ -1,8 +1,0 @@
-error: Uncaught (in promise) TypeError: Unsupported scheme "xxx" for module "xxx:". Supported schemes:
- - "blob"
- - "data"
- - "file"
- - "http"
- - "https"
- - "jsr"
- - "npm"

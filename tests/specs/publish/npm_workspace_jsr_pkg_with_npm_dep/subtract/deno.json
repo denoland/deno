@@ -1,5 +1,0 @@
-{
-  "name": "@scope/subtract",
-  "version": "1.0.0",
-  "exports": "./index.ts"
-}

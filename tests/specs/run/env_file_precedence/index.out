@@ -1,3 +1,0 @@
-FOO=overridden_by_process_level_env
-BAR=loaded_from_env_file
-

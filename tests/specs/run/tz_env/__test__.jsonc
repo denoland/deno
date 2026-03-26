@@ -1,9 +1,0 @@
-{
-  "steps": [
-    {
-      "if": "unix",
-      "args": "run -A main.ts",
-      "output": "ok\n"
-    }
-  ]
-}

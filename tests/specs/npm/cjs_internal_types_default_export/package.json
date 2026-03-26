@@ -1,5 +1,0 @@
-{
-  "dependencies": {
-    "@denotest/cjs-internal-types-default-export": "*"
-  }
-}

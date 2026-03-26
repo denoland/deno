@@ -1,9 +1,0 @@
-{
-  "workspace": ["./member", "./member2"],
-  "tasks": {
-    "should-be-inherited": {
-      "description": "Should be inherited",
-      "command": "deno should-be-inherited"
-    }
-  }
-}

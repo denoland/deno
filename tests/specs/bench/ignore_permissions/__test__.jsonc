@@ -1,5 +1,0 @@
-{
-  "args": "bench ignore_permissions.ts",
-  "output": "ignore_permissions.out",
-  "exitCode": 0
-}

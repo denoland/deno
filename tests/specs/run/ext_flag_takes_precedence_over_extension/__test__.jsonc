@@ -1,5 +1,0 @@
-{
-  "args": "run --ext ts --check ts_with_js_extension.js",
-  "output": "ts_with_js_extension.out",
-  "exitCode": 0
-}

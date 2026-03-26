@@ -1,1 +1,0 @@
-import "npm:package/esm";

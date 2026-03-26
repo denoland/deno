@@ -1,7 +1,0 @@
-{
-  "name": "@denotest/try-write",
-  "version": "1.0.0",
-  "bin": {
-    "try-write": "./cli.mjs"
-  }
-}

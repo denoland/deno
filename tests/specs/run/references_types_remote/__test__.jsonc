@@ -1,4 +1,0 @@
-{
-  "args": "run --reload --quiet reference_types_remote.ts",
-  "output": "reference_types_remote.ts.out"
-}

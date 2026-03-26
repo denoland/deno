@@ -1,5 +1,0 @@
-{
-  "args": "lint --config Deno.jsonc with_config/",
-  "output": "with_config.out",
-  "exitCode": 1
-}

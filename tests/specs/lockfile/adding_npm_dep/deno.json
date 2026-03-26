@@ -1,9 +1,0 @@
-{
-  "tasks": {
-    "cat": "cat"
-  },
-  "imports": {
-    "add": "npm:@denotest/add@1",
-    "subtract": "npm:@denotest/subtract@1"
-  }
-}

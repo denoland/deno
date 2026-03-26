@@ -1,3 +1,0 @@
-[WILDCARD]error: Uncaught (in promise) SyntaxError: foo
-[WILDCARD]
-    at file:///[WILDCARD]/dom_exception_formatting.ts:[WILDCARD]

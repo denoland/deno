@@ -1,9 +1,0 @@
-// Copyright 2018-2026 the Deno authors. MIT license.
-
-#![deny(warnings)]
-deno_ops_compile_test_runner::prelude!();
-
-#[op2]
-pub async fn op_async(x: i32) -> std::io::Result<i32> {
-  Ok(x)
-}

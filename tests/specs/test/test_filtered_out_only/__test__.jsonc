@@ -1,4 +1,0 @@
-{
-  "args": "test --quiet --filter foo main.ts",
-  "output": "main.out"
-}

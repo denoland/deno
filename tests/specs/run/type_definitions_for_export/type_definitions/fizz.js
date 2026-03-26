@@ -1,1 +1,0 @@
-globalThis.fizz = "fizz";

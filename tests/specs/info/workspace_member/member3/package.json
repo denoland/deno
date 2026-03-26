@@ -1,7 +1,0 @@
-{
-  "name": "@denotest/workspace-member-package-json",
-  "exports": {
-    ".": "./mod.ts",
-    "./foo": "./bar.ts"
-  }
-}

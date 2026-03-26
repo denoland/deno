@@ -1,8 +1,0 @@
-{
-  "tasks": {
-    "cat": "cat"
-  },
-  "imports": {
-    "different-deps-per-export": "jsr:@denotest/different-deps-per-export@1"
-  }
-}

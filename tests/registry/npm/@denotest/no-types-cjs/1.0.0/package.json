@@ -1,5 +1,0 @@
-{
-  "name": "@denotest/no-types-cjs",
-  "version": "1.0.0",
-  "main": "./main.js"
-}

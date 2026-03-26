@@ -1,4 +1,0 @@
-{
-  "name": "@scope/pkg",
-  "exports": "./mod.ts"
-}

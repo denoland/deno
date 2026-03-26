@@ -1,5 +1,0 @@
-{
-  "imports": {
-    "add": "npm:@denotest/add"
-  }
-}

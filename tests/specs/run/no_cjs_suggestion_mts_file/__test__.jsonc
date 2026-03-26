@@ -1,5 +1,0 @@
-{
-  "args": "run --allow-read main.mts",
-  "exitCode": 1,
-  "output": "main.out"
-}

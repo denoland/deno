@@ -1,5 +1,0 @@
-{
-  "args": "bench group_baseline.ts",
-  "output": "group_baseline.out",
-  "exitCode": 0
-}

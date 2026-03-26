@@ -1,5 +1,0 @@
-{
-  "args": "run --reload error_worker_permissions_local.ts",
-  "output": "error_worker_permissions_local.ts.out",
-  "exitCode": 1
-}

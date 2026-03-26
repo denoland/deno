@@ -1,3 +1,0 @@
-throw {
-  foo: new Error(),
-};

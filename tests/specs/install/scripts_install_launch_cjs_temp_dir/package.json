@@ -1,5 +1,0 @@
-{
-  "dependencies": {
-    "@denotest/install-launch-cjs-temp-dir": "*"
-  }
-}

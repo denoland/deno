@@ -1,1 +1,0 @@
-await import("./import.ts");

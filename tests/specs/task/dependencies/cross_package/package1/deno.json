@@ -1,8 +1,0 @@
-{
-  "tasks": {
-    "run": {
-      "command": "deno run.js",
-      "dependencies": ["../package2:run"]
-    }
-  }
-}

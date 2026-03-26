@@ -1,8 +1,0 @@
-{
-  "workspace": [
-    "./packages/*"
-  ],
-  "imports": {
-    "chalk": "npm:chalk"
-  }
-}

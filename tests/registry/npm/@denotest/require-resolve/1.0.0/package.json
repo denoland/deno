@@ -1,5 +1,0 @@
-{
-    "name": "@denotest/require-resolve",
-    "version": "1.0.0",
-    "main": "index.cjs"
-  }

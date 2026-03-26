@@ -1,5 +1,0 @@
-{
-  "args": "test --doc main.md",
-  "exitCode": 0,
-  "output": "main.out"
-}

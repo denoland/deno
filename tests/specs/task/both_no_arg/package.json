@@ -1,9 +1,0 @@
-{
-  "scripts": {
-    "bin": "cli-esm testing this out",
-    "output": "echo should never be called or shown"
-  },
-  "dependencies": {
-    "other": "npm:@denotest/bin@1.0"
-  }
-}

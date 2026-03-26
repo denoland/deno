@@ -1,7 +1,0 @@
-{
-  "files": ["main.dom.ts"],
-  "compilerOptions": {
-    "composite": true,
-    "lib": ["esnext", "dom"]
-  }
-}

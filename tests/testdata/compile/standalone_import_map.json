@@ -1,5 +1,0 @@
-{
-  "imports": {
-    "hello": "../run/001_hello.js"
-  }
-}

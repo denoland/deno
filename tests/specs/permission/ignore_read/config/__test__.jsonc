@@ -1,4 +1,0 @@
-{
-  "args": "run --quiet -P main.ts",
-  "output": "true\n"
-}

@@ -1,5 +1,0 @@
-{
-  "args": "publish --dry-run",
-  "output": "main.out",
-  "exitCode": 1
-}

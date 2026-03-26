@@ -1,7 +1,0 @@
-{
-  "name": "@denotest/b",
-  "version": "1.0.0",
-  "dependencies": {
-    "addPkg": "npm:@denotest/add@1.0.0"
-  }
-}

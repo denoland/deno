@@ -1,7 +1,0 @@
-╭ Warning
-│
-│  Ignored build scripts for packages:
-│  npm:@denotest/node-lifecycle-scripts@1.0.0
-│
-│  Run "deno approve-scripts" to run build scripts.
-╰─

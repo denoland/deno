@@ -1,9 +1,0 @@
-{
-  "modules": {
-    "http://localhost:4547/redirects/redirect4.ts": {
-      "headers": {
-        "location": "http://localhost:4545/subdir/redirects/redirect4.ts"
-      }
-    }
-  }
-}

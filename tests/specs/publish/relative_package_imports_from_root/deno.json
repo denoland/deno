@@ -1,7 +1,0 @@
-{
-  "workspace": ["./add"],
-  "name": "@denotest/root",
-  "version": "1.0.0",
-  "license": "MIT",
-  "exports": "./mod.ts"
-}

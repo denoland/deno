@@ -1,1 +1,0 @@
-reportError(new Error("foo"));

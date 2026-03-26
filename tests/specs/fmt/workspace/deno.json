@@ -1,9 +1,0 @@
-{
-  "workspace": [
-    "./a",
-    "./b"
-  ],
-  "fmt": {
-    "singleQuote": true
-  }
-}

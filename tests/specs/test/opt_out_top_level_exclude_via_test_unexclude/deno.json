@@ -1,6 +1,0 @@
-{
-  "test": {
-    "exclude": ["!excluded.test.ts"]
-  },
-  "exclude": ["excluded.test.ts", "actually_excluded.test.ts"]
-}

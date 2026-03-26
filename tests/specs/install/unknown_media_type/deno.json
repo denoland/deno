@@ -1,5 +1,0 @@
-{
-  "imports": {
-    "foo": "./foo.ts"
-  }
-}

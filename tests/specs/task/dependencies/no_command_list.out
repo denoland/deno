@@ -1,7 +1,0 @@
-Available tasks:
-- a
-    depends on: b, c
-- b
-    echo 'b'
-- c
-    echo 'c'

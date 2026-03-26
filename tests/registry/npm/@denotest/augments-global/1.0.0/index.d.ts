@@ -1,1 +1,0 @@
-import "./other.d.ts";

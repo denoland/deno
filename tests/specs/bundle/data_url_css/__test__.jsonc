@@ -1,8 +1,0 @@
-{
-  "steps": [
-    {
-      "args": "bundle test.css",
-      "output": "bundle.out"
-    }
-  ]
-}

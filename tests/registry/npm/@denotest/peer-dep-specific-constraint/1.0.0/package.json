@@ -1,7 +1,0 @@
-{
-  "name": "@denotest/peer-dep-specific-constraint",
-  "version": "1.0.0",
-  "peerDependencies": {
-    "@denotest/add": "0.5"
-  }
-}

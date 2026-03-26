@@ -1,6 +1,0 @@
-{
-  "tasks": {
-    "main": "deno run main.ts",
-    "main:foo": "deno run main.ts"
-  }
-}

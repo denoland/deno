@@ -1,4 +1,0 @@
-{
-  "args": "info --allow-import main.js",
-  "output": "main.out"
-}

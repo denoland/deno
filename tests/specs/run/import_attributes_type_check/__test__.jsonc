@@ -1,5 +1,0 @@
-{
-  "args": "run --allow-read --check type_check.ts",
-  "output": "type_check.out",
-  "exitCode": 1
-}

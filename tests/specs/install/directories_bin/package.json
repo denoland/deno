@@ -1,8 +1,0 @@
-{
-  "scripts": {
-    "output": "cli 1 2 3"
-  },
-  "dependencies": {
-    "@denotest/directories-bin": "*"
-  }
-}

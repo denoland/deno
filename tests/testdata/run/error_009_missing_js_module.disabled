@@ -1,4 +1,0 @@
-args: tests/error_009_missing_js_module.js
-check_stderr: true
-exit_code: 1
-output: tests/error_009_missing_js_module.js.out

@@ -1,4 +1,0 @@
-{
-  "args": "eval --env-file=missing console.log(Deno.env.get(\"ANOTHER_FOO\"));",
-  "output": "main.out"
-}

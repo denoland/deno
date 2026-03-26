@@ -1,5 +1,0 @@
-{
-  "args": "run -L debug main.ts",
-  "output": "main.out",
-  "exitCode": 1
-}

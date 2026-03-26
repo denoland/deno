@@ -1,6 +1,0 @@
-{
-  "dependencies": {
-    "@denotest/esm-basic": "latest"
-  },
-  "workspaces": ["package1"]
-}

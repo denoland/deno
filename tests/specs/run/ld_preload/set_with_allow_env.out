@@ -1,4 +1,0 @@
-NotCapable: Requires --allow-run permissions to spawn subprocess with LD_PRELOAD environment variable. Alternatively, spawn with the environment variable unset.
-  [WILDCARD]
-NotCapable: Requires --allow-run permissions to spawn subprocess with DYLD_FALLBACK_LIBRARY_PATH, LD_PRELOAD environment variables. Alternatively, spawn with these environment variables unset.
-  [WILDCARD]

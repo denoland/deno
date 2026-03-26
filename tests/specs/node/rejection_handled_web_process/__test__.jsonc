@@ -1,6 +1,0 @@
-// Ensure that Web `onrejectionhandled` is fired before
-// Node's `process.on('rejectionHandled')`.
-{
-  "args": "run -A --quiet rejection_handled_web_process.ts",
-  "output": "rejection_handled_web_process.ts.out"
-}

@@ -1,5 +1,0 @@
-Task not found: ../package2:run
-Available tasks:
-- run
-    deno run.js
-    depends on: ../package2:run

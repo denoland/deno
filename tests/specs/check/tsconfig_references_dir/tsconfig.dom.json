@@ -1,9 +1,0 @@
-{
-  "files": [],
-  "compilerOptions": {
-    "composite": true
-  },
-  "references": [
-    { "path": "tsconfig_dom" }
-  ]
-}

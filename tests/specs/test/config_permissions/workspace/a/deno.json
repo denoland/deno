@@ -1,7 +1,0 @@
-{
-  "test": {
-    "permissions": {
-      "read": ["./other"]
-    }
-  }
-}

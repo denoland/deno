@@ -1,1 +1,0 @@
-export const grandchild1 = "grandchild1";

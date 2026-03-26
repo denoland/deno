@@ -1,4 +1,0 @@
-{
-  "args": "run --quiet --reload tsc/test.js",
-  "output": "fix_tsc_file_exists.out"
-}

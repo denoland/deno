@@ -1,4 +1,0 @@
-{
-  "args": "run --quiet --reload 012_async.ts",
-  "output": "012_async.ts.out"
-}

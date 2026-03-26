@@ -1,5 +1,0 @@
-{
-  "dependencies": {
-    "@denotest/dual-cjs-esm": "*"
-  }
-}

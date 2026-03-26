@@ -1,5 +1,0 @@
-{
-  "dependencies": {
-    "my-alias": "npm:@denotest/add@^1.0.0"
-  }
-}

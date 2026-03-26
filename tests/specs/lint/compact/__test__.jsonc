@@ -1,5 +1,0 @@
-{
-  "args": "lint --compact file1.js ignored_file.tss",
-  "output": "expected_compact.out",
-  "exitCode": 1
-}

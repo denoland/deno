@@ -1,1 +1,0 @@
-declare class Test {}

@@ -1,3 +1,0 @@
-stdout.fd: number 1
-stderr.fd: number 2
-writeSync works

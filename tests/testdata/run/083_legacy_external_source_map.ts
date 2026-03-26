@@ -1,2 +1,0 @@
-// -
-throw new Error("foo");

@@ -1,4 +1,0 @@
-{
-  "args": "run --quiet --reload --allow-read --unstable-net unstable_net.js",
-  "output": "unstable_net.enabled.out"
-}

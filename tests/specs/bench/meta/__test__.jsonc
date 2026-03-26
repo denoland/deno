@@ -1,5 +1,0 @@
-{
-  "args": "bench meta.ts",
-  "output": "meta.out",
-  "exitCode": 0
-}

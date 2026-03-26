@@ -1,5 +1,0 @@
-{
-  "args": "test --allow-read resource_sanitizer.ts",
-  "output": "resource_sanitizer.out",
-  "exitCode": 1
-}

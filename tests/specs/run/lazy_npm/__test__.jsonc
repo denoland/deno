@@ -1,9 +1,0 @@
-{
-  "tempDir": true,
-  "steps": [
-    {
-      "args": "run --unstable-npm-lazy-caching -A main.ts",
-      "output": "main.out"
-    }
-  ]
-}

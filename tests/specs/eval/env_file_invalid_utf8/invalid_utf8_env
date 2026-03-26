@@ -1,4 +1,0 @@
-FOO=WORLD
-#extra data that should not be read
-BAR= ¡r
-BAZ=baz

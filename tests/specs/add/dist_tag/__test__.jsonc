@@ -1,9 +1,0 @@
-{
-  "tempDir": true,
-  "steps": [
-    {
-      "args": "add npm:ajv@latest",
-      "output": "add.out"
-    }
-  ]
-}

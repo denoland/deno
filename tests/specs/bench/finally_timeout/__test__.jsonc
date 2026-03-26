@@ -1,5 +1,0 @@
-{
-  "args": "bench finally_timeout.ts",
-  "output": "finally_timeout.out",
-  "exitCode": 1
-}

@@ -1,5 +1,0 @@
-{
-  "tasks": {
-    "run": "deno run.js"
-  }
-}

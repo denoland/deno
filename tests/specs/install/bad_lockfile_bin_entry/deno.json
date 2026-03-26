@@ -1,6 +1,0 @@
-{
-  "imports": {
-    "@denotest/add": "npm:@denotest/add@^1.0.0"
-  },
-  "nodeModulesDir": "manual"
-}

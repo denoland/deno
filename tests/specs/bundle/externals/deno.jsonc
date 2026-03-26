@@ -1,5 +1,0 @@
-{
-  "imports": {
-    "mappedfoo": "./ext/foo.ts"
-  }
-}

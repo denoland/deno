@@ -1,3 +1,0 @@
-before await fn()
-catch
-after try-catch

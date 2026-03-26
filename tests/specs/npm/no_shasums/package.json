@@ -1,5 +1,0 @@
-{
-  "dependencies": {
-    "@denotest/no-shasums": "*"
-  }
-}

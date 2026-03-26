@@ -1,2 +1,0 @@
-Storage {[WILDCARD]
-Storage { hello: "deno", length: 1 }

@@ -1,9 +1,0 @@
-{
-  "name": "@foo/baz",
-  "scripts": {
-    "dev": "echo '@foo/baz'"
-  },
-  "dependencies": {
-    "@foo/bar": "workspace:*"
-  }
-}

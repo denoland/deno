@@ -1,6 +1,0 @@
-{
-  "exports": {
-    "./unanalyzable": "./unanalyzable.ts",
-    "./analyzable": "./analyzable.ts"
-  }
-}

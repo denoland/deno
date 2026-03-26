@@ -1,5 +1,0 @@
-{
-  "imports": {
-    "myentry/": "http://localhost:4545/"
-  }
-}

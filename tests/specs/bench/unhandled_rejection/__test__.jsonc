@@ -1,5 +1,0 @@
-{
-  "args": "bench unhandled_rejection.ts",
-  "output": "unhandled_rejection.out",
-  "exitCode": 1
-}

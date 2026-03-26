@@ -1,9 +1,0 @@
-{
-  "tempDir": true,
-  "envs": {
-    "MY_ENV_VAR": "I'm in a lint plugin"
-  },
-  "args": "lint a.ts",
-  "output": "lint.out",
-  "exitCode": 1
-}

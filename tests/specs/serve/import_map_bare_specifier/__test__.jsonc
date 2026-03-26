@@ -1,9 +1,0 @@
-{
-  "tempDir": true,
-  "steps": [
-    {
-      "args": "serve my-server",
-      "output": "Listening\n"
-    }
-  ]
-}

@@ -1,5 +1,0 @@
-{
-  "args": "run --cached-only cached_only/main.ts",
-  "output": "cached_only/main.out",
-  "exitCode": 1
-}

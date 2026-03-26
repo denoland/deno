@@ -1,4 +1,0 @@
-{
-  "args": "run --allow-read static_export.ts",
-  "output": "static_export.out"
-}

@@ -1,4 +1,0 @@
-{
-  "args": "task -q --config deno.json deno_echo",
-  "output": "task_deno_exe_no_env.out"
-}

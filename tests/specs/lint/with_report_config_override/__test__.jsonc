@@ -1,5 +1,0 @@
-{
-  "args": "lint --config Deno.compact.format.jsonc with_config/ --json",
-  "output": "with_report_config_override.out",
-  "exitCode": 1
-}

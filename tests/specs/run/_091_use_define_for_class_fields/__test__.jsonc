@@ -1,5 +1,0 @@
-{
-  "args": "run --check 091_use_define_for_class_fields.ts",
-  "output": "091_use_define_for_class_fields.ts.out",
-  "exitCode": 1
-}

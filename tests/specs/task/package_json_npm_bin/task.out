@@ -1,7 +1,0 @@
-Task bin bin hi && cli-esm testing this out && npx cli-cjs test "extra"
-hi
-testing
-this
-out
-test
-extra

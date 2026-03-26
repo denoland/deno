@@ -1,9 +1,0 @@
-{
-  "tests": {
-    "outside_cwd": {
-      "args": "run outside_cwd.js",
-      "output": "outside_cwd.js.out",
-      "exitCode": 1
-    }
-  }
-}

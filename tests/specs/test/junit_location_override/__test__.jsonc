@@ -1,4 +1,0 @@
-{
-  "args": "test --reporter junit main.ts",
-  "output": "main.out"
-}

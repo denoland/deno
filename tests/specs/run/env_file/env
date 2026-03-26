@@ -1,4 +1,0 @@
-FOO=BAR
-ANOTHER_FOO=ANOTHER_${FOO}
-MULTILINE="First Line
-Second Line"

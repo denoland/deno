@@ -1,5 +1,0 @@
-{
-  "args": "run --quiet --reload --allow-net=localhost:4545 permissions_data_local.ts",
-  "output": "permissions_data_local.ts.out",
-  "exitCode": 1
-}

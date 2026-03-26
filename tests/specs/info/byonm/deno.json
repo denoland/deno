@@ -1,6 +1,0 @@
-{
-  "nodeModulesDir": "manual",
-  "imports": {
-    "chalk": "npm:@denotest/add"
-  }
-}

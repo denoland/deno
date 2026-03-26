@@ -1,3 +1,0 @@
-[WILDCARD]
-Task echo deno eval 'console.log(1)'
-1

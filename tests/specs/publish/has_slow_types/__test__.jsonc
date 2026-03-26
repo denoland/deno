@@ -1,5 +1,0 @@
-{
-  "args": "publish --token 'sadfasdf'",
-  "output": "has_slow_types.out",
-  "exitCode": 1
-}

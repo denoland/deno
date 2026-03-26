@@ -1,5 +1,0 @@
-[WILDCARD]
-Hello world!
-globalThis.addEventListener("unhandledrejection");
-process.on("unhandledRejection");
-Success

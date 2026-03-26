@@ -1,4 +1,0 @@
-{
-  "args": "run --quiet --reload --allow-read main.js",
-  "output": "main.out"
-}

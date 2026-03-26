@@ -1,4 +1,0 @@
-{
-  "args": "run --quiet --reload import_data_url_jsx.ts",
-  "output": "import_data_url_jsx.ts.out"
-}

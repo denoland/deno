@@ -1,5 +1,0 @@
-{
-  "args": "bench --quiet quiet.ts",
-  "output": "quiet.out",
-  "exitCode": 0
-}

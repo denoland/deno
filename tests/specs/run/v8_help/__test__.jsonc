@@ -1,4 +1,0 @@
-{
-  "args": "repl --v8-flags=--help",
-  "output": "v8_help.out"
-}

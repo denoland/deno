@@ -1,6 +1,0 @@
-{
-  "name": "@foo/bar",
-  "scripts": {
-    "dev": "echo '@foo/bar'"
-  }
-}

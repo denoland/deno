@@ -1,4 +1,0 @@
-{
-  "args": "run --reload --no-check import_type.ts",
-  "output": "import_type.ts.out"
-}

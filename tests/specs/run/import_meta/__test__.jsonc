@@ -1,4 +1,0 @@
-{
-  "args": "run --allow-import --quiet --reload --import-map=importmap.json main.ts",
-  "output": "main.out"
-}

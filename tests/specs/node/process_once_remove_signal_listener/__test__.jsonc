@@ -1,9 +1,0 @@
-{
-  "tests": {
-    "process_once_remove_signal_listener": {
-      "if": "unix",
-      "args": "run main.ts",
-      "output": "main.out"
-    }
-  }
-}

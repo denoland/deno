@@ -1,7 +1,0 @@
-stdout instanceof Socket: true
-stdout has unref: true
-stderr instanceof Socket: true
-stderr has unref: true
-stdin instanceof Socket: true
-stdin has unref: true
-unref() calls succeeded

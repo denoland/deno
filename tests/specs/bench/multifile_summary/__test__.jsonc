@@ -1,5 +1,0 @@
-{
-  "args": "bench group_baseline.ts pass.ts multiple_group.ts",
-  "output": "multifile_summary.out",
-  "exitCode": 0
-}

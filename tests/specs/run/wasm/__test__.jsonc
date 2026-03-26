@@ -1,4 +1,0 @@
-{
-  "args": "run --quiet wasm.ts",
-  "output": "wasm.ts.out"
-}

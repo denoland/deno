@@ -1,6 +1,0 @@
-{
-  "tasks": {
-    "help": "deno help | echo",
-    "version": "deno --version | echo"
-  }
-}

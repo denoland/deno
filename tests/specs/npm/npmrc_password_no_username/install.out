@@ -1,4 +1,0 @@
-error: Failed loading http://localhost:4261/@denotest%2fbasic for package "@denotest/basic"
-
-Caused by:
-    Both the username / email and password must be provided for basic auth

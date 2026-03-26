@@ -1,4 +1,0 @@
-Task build echo root
-root
-Task root-depending-root echo test
-test

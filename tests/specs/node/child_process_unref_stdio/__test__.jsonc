@@ -1,8 +1,0 @@
-{
-  "tests": {
-    "unref_stdio_allows_exit": {
-      "args": "run --allow-all main.ts",
-      "output": "main.out"
-    }
-  }
-}

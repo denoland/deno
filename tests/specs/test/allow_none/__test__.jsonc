@@ -1,5 +1,0 @@
-{
-  "args": "test --config deno.json main.ts",
-  "exitCode": 1,
-  "output": "main.out"
-}

@@ -1,1 +1,0 @@
-Deno.unrefTimer(setTimeout(() => {}));

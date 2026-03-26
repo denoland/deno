@@ -1,5 +1,0 @@
-{
-  "args": "run error_cause.ts",
-  "output": "error_cause.ts.out",
-  "exitCode": 1
-}

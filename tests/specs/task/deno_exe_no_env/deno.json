@@ -1,5 +1,0 @@
-{
-  "tasks": {
-    "deno_echo": "deno eval 'console.log(5)'"
-  }
-}

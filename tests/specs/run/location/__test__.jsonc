@@ -1,8 +1,0 @@
-{
-  "tests": {
-    "location_object_define_property": {
-      "args": "run location.js",
-      "output": "location.out"
-    }
-  }
-}

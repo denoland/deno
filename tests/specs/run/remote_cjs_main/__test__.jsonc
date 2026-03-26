@@ -1,5 +1,0 @@
-{
-  "args": "run http://localhost:4545/run/add.cjs",
-  "output": "output.out",
-  "exitCode": 1
-}

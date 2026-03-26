@@ -1,5 +1,0 @@
-{
-  "args": "test --reporter junit main.ts",
-  "exitCode": 1,
-  "output": "main.out"
-}

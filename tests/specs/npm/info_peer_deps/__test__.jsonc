@@ -1,5 +1,0 @@
-{
-  "args": "info --quiet main.ts",
-  "output": "main_info.out",
-  "exitCode": 0
-}

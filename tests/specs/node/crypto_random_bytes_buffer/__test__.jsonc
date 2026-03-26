@@ -1,8 +1,0 @@
-{
-  "tests": {
-    "buffer_has_unique_arraybuffer": {
-      "args": "run --no-lock main.ts",
-      "output": "main.out"
-    }
-  }
-}

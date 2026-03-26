@@ -1,5 +1,0 @@
-Module {
-  id: ".",
-  [WILDCARD]
-  filename: "[WILDCARD]main.cjs",
-[WILDCARD]

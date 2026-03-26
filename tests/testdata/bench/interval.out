@@ -1,9 +1,0 @@
-Check [WILDCARD]/bench/interval.ts
-    CPU | [WILDCARD]
-Runtime | Deno [WILDCARD] ([WILDCARD])
-
-[WILDCARD]/bench/interval.ts
-
-benchmark   time/iter (avg)        iter/s      (min … max)           p75      p99     p995
------------ ----------------------------- --------------------- --------------------------
-

@@ -1,8 +1,0 @@
-{
-  "args": [
-    "bench",
-    "file_protocol.ts"
-  ],
-  "output": "file_protocol.out",
-  "exitCode": 0
-}

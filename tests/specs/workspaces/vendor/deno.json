@@ -1,9 +1,0 @@
-{
-  "vendor": true,
-  "workspace": [
-    "package-a"
-  ],
-  "imports": {
-    "@denotest/add": "jsr:@denotest/add"
-  }
-}

@@ -1,7 +1,0 @@
-{
-  "name": "@denotest/unsafe-proto-bin",
-  "version": "1.0.0",
-  "bin": {
-    "unsafe-proto-bin": "./cli.mjs"
-  }
-}

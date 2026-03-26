@@ -1,4 +1,0 @@
-{
-  "args": "bench --filter=foo",
-  "output": "filter.out"
-}

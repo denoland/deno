@@ -1,3 +1,0 @@
-disallowed-methods = [
-  { path = "std::thread::spawn", reason = "use crate::print::spawn_thread instead in order to maintain logging capture" },
-]

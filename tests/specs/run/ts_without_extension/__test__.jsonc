@@ -1,5 +1,0 @@
-{
-  "args": "run --ext ts --check ts_without_extension",
-  "output": "ts_without_extension.out",
-  "exitCode": 0
-}

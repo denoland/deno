@@ -1,6 +1,0 @@
-{
-  "tasks": {
-    "echo-package-b": "echo 'hi' $PWD",
-    "echo-root": "echo 'override root' $PWD"
-  }
-}

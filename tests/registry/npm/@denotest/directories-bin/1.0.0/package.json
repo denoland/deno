@@ -1,7 +1,0 @@
-{
-  "name": "@denotest/directories-bin",
-  "version": "1.0.0",
-  "directories": {
-    "bin": "./bins"
-  }
-}

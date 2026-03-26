@@ -1,4 +1,0 @@
-error: Uncaught SyntaxError: The requested module './add.js' does not provide an export named 'add'
-import { add } from "./add.js";
-         ^
-    at <anonymous> (file:///[WILDLINE])

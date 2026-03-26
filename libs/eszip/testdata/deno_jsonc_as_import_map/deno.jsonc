@@ -1,9 +1,0 @@
-{
-  "tasks": {
-    "run": "deno run main.ts"
-  },
-  // comment
-  "imports": {
-    "a": "./a.ts"
-  }
-}

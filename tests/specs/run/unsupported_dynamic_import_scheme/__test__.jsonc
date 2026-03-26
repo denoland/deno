@@ -1,5 +1,0 @@
-{
-  "args": "eval import('xxx:')",
-  "output": "unsupported_dynamic_import_scheme.out",
-  "exitCode": 1
-}

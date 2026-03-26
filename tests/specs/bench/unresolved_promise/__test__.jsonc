@@ -1,5 +1,0 @@
-{
-  "args": "bench unresolved_promise.ts",
-  "output": "unresolved_promise.out",
-  "exitCode": 1
-}

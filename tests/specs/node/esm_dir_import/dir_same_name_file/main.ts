@@ -1,1 +1,0 @@
-import {} from "package/dir";

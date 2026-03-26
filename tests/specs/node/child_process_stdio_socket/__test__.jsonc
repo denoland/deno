@@ -1,8 +1,0 @@
-{
-  "tests": {
-    "stdio_is_socket_instance": {
-      "args": "run --allow-all main.ts",
-      "output": "main.out"
-    }
-  }
-}

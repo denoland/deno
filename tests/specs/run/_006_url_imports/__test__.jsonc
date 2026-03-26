@@ -1,4 +1,0 @@
-{
-  "args": "run --quiet --reload --allow-import 006_url_imports.ts",
-  "output": "006_url_imports.ts.out"
-}

@@ -1,6 +1,0 @@
-Available tasks (bar):
-- dev (package.json)
-    echo 'bar'
-Available tasks (foo):
-- dev (package.json)
-    echo 'foo'

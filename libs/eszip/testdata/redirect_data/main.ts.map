@@ -1,1 +1,0 @@
-{"version":3,"sources":["file:///main.ts"],"sourcesContent":["export * as a from \"./a.ts\";\n"],"names":[],"mappings":"AAAA,MAAM,MAAM,CAAC,MAAM,CAAQ"}

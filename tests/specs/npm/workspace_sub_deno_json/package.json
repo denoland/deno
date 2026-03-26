@@ -1,3 +1,0 @@
-{
-  "workspaces": ["./member", "./member_with_deno_json"]
-}

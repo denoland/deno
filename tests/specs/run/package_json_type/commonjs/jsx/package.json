@@ -1,7 +1,0 @@
-{
-  "type": "commonjs",
-  "dependencies": {
-    "@types/react": "*",
-    "react": "*"
-  }
-}

@@ -1,6 +1,0 @@
-{
-  "dependencies": {
-    "@denotest/esm-basic": "*",
-    "@denotest/node-addon": "*"
-  }
-}

@@ -1,5 +1,0 @@
-{
-  "imports": {
-    "@denotest/multiple-exports": "jsr:@denotest/multiple-exports@^0.7.0"
-  }
-}

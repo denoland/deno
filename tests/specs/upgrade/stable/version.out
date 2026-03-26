@@ -1,3 +1,0 @@
-deno [WILDCARD] (stable, release, [WILDCARD])
-v8 [WILDCARD]
-typescript [WILDCARD]

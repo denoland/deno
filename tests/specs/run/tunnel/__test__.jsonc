@@ -1,4 +1,0 @@
-{
-  "args": "run -A --unstable-net test.ts",
-  "output": "test.out"
-}

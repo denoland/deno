@@ -1,4 +1,0 @@
-error: Uncaught (in promise) {
-  foo: Error
-      at file:///[WILDCARD]/main.ts:2:8
-}

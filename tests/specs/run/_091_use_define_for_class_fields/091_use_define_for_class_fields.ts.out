@@ -1,4 +1,0 @@
-[WILDCARD]TS2729 [ERROR]: Property 'a' is used before its initialization.
-  b = this.a;
-           ^
-[WILDCARD]

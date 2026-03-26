@@ -1,6 +1,0 @@
-{
-  "compilerOptions": {
-    // This should imply `"moduleResolution": "bundler"`.
-    "module": "preserve"
-  }
-}

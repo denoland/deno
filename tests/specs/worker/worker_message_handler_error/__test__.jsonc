@@ -1,5 +1,0 @@
-{
-  "args": "run -A --quiet --reload worker_message_handler_error.ts",
-  "output": "worker_message_handler_error.ts.out",
-  "exitCode": 1
-}

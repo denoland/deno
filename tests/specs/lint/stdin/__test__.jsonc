@@ -1,5 +1,0 @@
-{
-  "args": "lint main.ts",
-  "output": "expected_from_stdin.out",
-  "exitCode": 1
-}

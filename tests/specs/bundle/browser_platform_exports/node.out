@@ -1,5 +1,0 @@
-// node_modules/package/node.js
-var node_default = "node";
-
-// main.ts
-console.log(node_default, node_default);

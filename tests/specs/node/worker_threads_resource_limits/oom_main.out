@@ -1,3 +1,0 @@
-error code: ERR_WORKER_OUT_OF_MEMORY
-error message: Worker terminated due to reaching memory limit: JS heap out of memory
-exit: 1

@@ -1,5 +1,0 @@
-{
-  "dependencies": {
-    "@denotest/non-existent-optional-peer": "1.0.0"
-  }
-}

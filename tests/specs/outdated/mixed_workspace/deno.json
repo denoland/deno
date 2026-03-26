@@ -1,6 +1,0 @@
-{
-  "workspace": ["./member-a", "./member-b"],
-  "imports": {
-    "@denotest/subtract": "jsr:@denotest/subtract@^0.2.0"
-  }
-}

@@ -1,5 +1,0 @@
-{
-  "args": "bench  --allow-all allow_all.ts",
-  "output": "allow_all.out",
-  "exitCode": 0
-}

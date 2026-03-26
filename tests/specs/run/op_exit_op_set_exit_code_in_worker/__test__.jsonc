@@ -1,5 +1,0 @@
-{
-  "args": "run --no-check --allow-read op_exit_op_set_exit_code_in_worker.ts",
-  "output": "",
-  "exitCode": 21
-}

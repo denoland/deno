@@ -1,7 +1,0 @@
-{
-  "compilerOptions": {
-    "types": [
-      "./types.d.ts"
-    ]
-  }
-}

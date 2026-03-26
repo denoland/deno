@@ -1,5 +1,0 @@
-{
-  "dependencies": {
-    "@denotest/mjs-reexport-cjs": "*"
-  }
-}

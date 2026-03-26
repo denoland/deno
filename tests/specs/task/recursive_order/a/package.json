@@ -1,9 +1,0 @@
-{
-  "name": "a",
-  "scripts": {
-    "build": "echo a"
-  },
-  "dependencies": {
-    "b": "*"
-  }
-}

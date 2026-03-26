@@ -1,5 +1,0 @@
-{
-  "args": "info --quiet info_recursive_imports_test.ts",
-  "output": "info_recursive_imports_test.out",
-  "exitCode": 0
-}

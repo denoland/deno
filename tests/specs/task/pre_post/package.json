@@ -1,7 +1,0 @@
-{
-  "scripts": {
-    "pretest": "echo 'pretest'",
-    "posttest": "echo 'posttest'",
-    "test": "echo 'test'"
-  }
-}

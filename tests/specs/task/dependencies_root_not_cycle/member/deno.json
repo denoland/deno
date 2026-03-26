@@ -1,8 +1,0 @@
-{
-  "tasks": {
-    "a": {
-      "dependencies": ["b"],
-      "command": "echo a"
-    }
-  }
-}

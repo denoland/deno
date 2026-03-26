@@ -1,6 +1,0 @@
-{
-  "dependencies": {
-    "package": "*",
-    "@types/package": "*"
-  }
-}

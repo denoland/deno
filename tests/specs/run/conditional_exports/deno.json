@@ -1,6 +1,0 @@
-{
-  "imports": {
-    "react": "npm:react"
-  },
-  "nodeModulesDir": "auto"
-}

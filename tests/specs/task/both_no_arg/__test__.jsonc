@@ -1,5 +1,0 @@
-{
-  "args": "task --config deno.json",
-  "output": "no_args.out",
-  "exitCode": 0
-}

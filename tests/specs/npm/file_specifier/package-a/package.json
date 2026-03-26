@@ -1,6 +1,0 @@
-{
-  "name": "package-a",
-  "dependencies": {
-    "package-b": "file:../package-b"
-  }
-}

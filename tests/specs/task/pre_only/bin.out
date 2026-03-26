@@ -1,4 +1,0 @@
-Task not found: test
-Available tasks:
-- pretest (package.json)
-    echo 'pretest'

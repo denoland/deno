@@ -1,5 +1,0 @@
-{
-  "imports": {
-    "jsx/jsx-runtime": "./jsx_runtime.ts"
-  }
-}

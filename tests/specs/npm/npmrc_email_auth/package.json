@@ -1,7 +1,0 @@
-{
-  "name": "npmrc_email_auth_test",
-  "version": "0.0.1",
-  "dependencies": {
-    "@denotest/basic": "^=1.0.0"
-  }
-}

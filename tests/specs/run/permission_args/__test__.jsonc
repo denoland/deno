@@ -1,4 +1,0 @@
-{
-  "args": "run 001_hello.js --allow-net",
-  "output": "permission_args.out"
-}

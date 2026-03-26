@@ -1,5 +1,0 @@
-{
-  "args": "run --quiet --no-config --check frontend_work.ts",
-  "output": "no_auto_discovery.out",
-  "exitCode": 1
-}

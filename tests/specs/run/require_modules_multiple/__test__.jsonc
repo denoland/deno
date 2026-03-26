@@ -1,5 +1,0 @@
-{
-  "args": "run --require require_first.js --require require_second.js main_multiple.ts",
-  "exitCode": 0,
-  "output": "multiple.out"
-}

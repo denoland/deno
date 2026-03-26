@@ -1,5 +1,0 @@
-{
-  "args": "test test.js",
-  "output": "test.out",
-  "exitCode": 1
-}

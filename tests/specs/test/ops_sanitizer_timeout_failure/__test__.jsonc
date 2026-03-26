@@ -1,4 +1,0 @@
-{
-  "args": "test ops_sanitizer_timeout_failure.ts",
-  "output": "ops_sanitizer_timeout_failure.out"
-}

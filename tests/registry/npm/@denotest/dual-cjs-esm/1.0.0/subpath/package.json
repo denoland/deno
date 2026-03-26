@@ -1,5 +1,0 @@
-{
-  "type": "module",
-  "main": "./main.cjs",
-  "module": "./main.mjs"
-}

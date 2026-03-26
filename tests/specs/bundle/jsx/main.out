@@ -1,9 +1,0 @@
-{
-  "$$typeof": Symbol(react.element),
-  type: "div",
-  key: null,
-  ref: null,
-  props: {},
-  _owner: null,
-  _store: {}
-}

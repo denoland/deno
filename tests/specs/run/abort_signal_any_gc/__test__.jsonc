@@ -1,8 +1,0 @@
-{
-  "tests": {
-    "dependent_signal_survives_gc": {
-      "args": "run --v8-flags=--expose-gc main.ts",
-      "output": "ok\n"
-    }
-  }
-}

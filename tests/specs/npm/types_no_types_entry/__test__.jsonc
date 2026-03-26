@@ -1,5 +1,0 @@
-{
-  "args": "check --all types_no_types_entry/main.ts",
-  "output": "types_no_types_entry/main.out",
-  "exitCode": 1
-}

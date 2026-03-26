@@ -1,3 +1,0 @@
-[# do not allow exfiltrating data via the deno.json]
-error: Requires import access to "localhost:4545", run again with the --allow-import flag
-    at file:///[WILDLINE]/main.tsx:1:1

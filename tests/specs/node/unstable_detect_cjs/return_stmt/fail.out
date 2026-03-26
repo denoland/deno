@@ -1,4 +1,0 @@
-error: Uncaught SyntaxError: Illegal return statement
-  return;
-  ^
-    at <anonymous> (file:///[WILDLINE])

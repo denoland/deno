@@ -1,5 +1,0 @@
-{
-  "args": "test --doc --allow-all main.ts",
-  "exitCode": 1,
-  "output": "main.out"
-}

@@ -1,7 +1,0 @@
-{
-  "extends": "./tsconfig.dom.json",
-  "files": ["main.dom.ts"],
-  "compilerOptions": {
-    "composite": true
-  }
-}

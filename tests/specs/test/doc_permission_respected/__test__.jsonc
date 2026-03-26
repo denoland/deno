@@ -1,5 +1,0 @@
-{
-  "args": "test --doc --allow-env=PATH --reload main.ts",
-  "exitCode": 1,
-  "output": "main.out"
-}

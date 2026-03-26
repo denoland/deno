@@ -1,6 +1,0 @@
-{
-  "dependencies": {
-    "chalk": "4",
-    "@denotest/conditional-exports-strict": "1"
-  }
-}

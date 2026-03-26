@@ -1,2 +1,0 @@
-error[no-unused-vars]: `a` is never used
-error[prefer-const]: `a` is never reassigned

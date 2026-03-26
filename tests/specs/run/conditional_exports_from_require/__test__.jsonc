@@ -1,4 +1,0 @@
-{
-  "args": "run --conditions some-condition main.cjs",
-  "output": "good\n"
-}

@@ -1,4 +1,0 @@
-{
-  "args": "run wasm_async.js",
-  "output": "wasm_async.out"
-}

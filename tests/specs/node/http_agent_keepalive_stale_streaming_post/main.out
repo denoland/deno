@@ -1,3 +1,0 @@
-Request 1: OK {"received":"{\"test\":true}"}
-Request 2: OK {"received":"{\"test\":true}"}
-PASS

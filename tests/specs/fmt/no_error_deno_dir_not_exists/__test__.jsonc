@@ -1,8 +1,0 @@
-{
-  "tempDir": true,
-  "envs": {
-    "DENO_DIR": "$DENO_DIR/not_exists"
-  },
-  "args": "fmt --log-level=debug main.ts",
-  "output": "fmt.out"
-}

@@ -1,9 +1,0 @@
-{
-  "name": "@denotest/file-dep",
-  "version": "1.0.0",
-  "type": "module",
-  "main": "main.mjs",
-  "dependencies": {
-    "local-pkg": "file:./local-pkg"
-  }
-}

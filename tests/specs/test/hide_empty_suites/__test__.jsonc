@@ -1,5 +1,0 @@
-{
-  "args": "test --filter none main.ts",
-  "exitCode": 0,
-  "output": "main.out"
-}

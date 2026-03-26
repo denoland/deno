@@ -1,5 +1,0 @@
-{
-  "args": "check file_dts_dmts_dcts/main.ts",
-  "output": "file_dts_dmts_dcts/main.out",
-  "exitCode": 1
-}

@@ -1,9 +1,0 @@
-{
-  "steps": [{
-    "args": "check --all main.ts",
-    "output": "main.out"
-  }, {
-    "args": "publish --dry-run",
-    "output": "publish.out"
-  }]
-}

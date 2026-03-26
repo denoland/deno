@@ -1,4 +1,0 @@
-{
-  "args": "run --quiet --reload --check main.ts",
-  "output": "main.out"
-}

@@ -1,5 +1,0 @@
-{
-  "args": "run --allow-read dynamic_error.ts",
-  "output": "dynamic_error.out",
-  "exitCode": 1
-}

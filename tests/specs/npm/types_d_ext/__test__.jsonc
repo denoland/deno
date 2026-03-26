@@ -1,4 +1,0 @@
-{
-  "args": "check --all d_ext/main.ts",
-  "output": "d_ext/main.out"
-}

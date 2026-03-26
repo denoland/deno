@@ -1,4 +1,0 @@
-{
-  "args": "run -A sqlite_attach_perms.js",
-  "output": "sqlite_attach_perms.out"
-}

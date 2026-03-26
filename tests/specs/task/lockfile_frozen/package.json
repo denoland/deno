@@ -1,8 +1,0 @@
-{
-  "scripts": {
-    "echo": "deno eval 'console.log(1)'"
-  },
-  "dependencies": {
-    "cowsay": "*"
-  }
-}
