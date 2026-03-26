@@ -1585,54 +1585,60 @@ pub(crate) unsafe fn poll_tty_handle(
         // spawn reads onto a blocking thread.
         #[cfg(not(unix))]
         {
-          loop {
-            if !(*tty_ptr).internal_readable || !(*tty_ptr).internal_reading {
-              break;
-            }
-
-            // Re-check event availability before each read to avoid
-            // calling ReadFile when no events remain — ReadFile on a
-            // console handle blocks until input is available.
-            let mut num_events: u32 = 0;
-            if win_console::GetNumberOfConsoleInputEvents(
+          // Check if there are console input events available before
+          // attempting a potentially blocking read.
+          // NOTE: We intentionally check once and do at most one read
+          // per poll cycle. GetNumberOfConsoleInputEvents counts ALL
+          // input records (KEY_UP, FOCUS, MOUSE, etc.), but ReadFile
+          // only consumes KEY_DOWN events that produce characters. If
+          // we looped while num_events > 0, we would re-enter ReadFile
+          // after consuming the character-producing event while
+          // non-character events (like KEY_UP) remain in the buffer,
+          // causing ReadFile to block the event loop. The event loop
+          // will re-poll on the next tick if more input arrives.
+          let mut num_events: u32 = 0;
+          let has_input = (*tty_ptr).internal_readable
+            && (*tty_ptr).internal_reading
+            && win_console::GetNumberOfConsoleInputEvents(
               (*tty_ptr).internal_handle,
               &mut num_events,
-            ) == 0
-              || num_events == 0
-            {
-              break;
-            }
+            ) != 0
+            && num_events > 0;
 
-            let mut buf = uv_buf_t {
-              base: std::ptr::null_mut(),
-              len: 0,
-            };
-            alloc_cb(tty_ptr as *mut uv_handle_t, 65536, &mut buf);
-            if buf.base.is_null() || buf.len == 0 {
-              read_cb(tty_ptr as *mut uv_stream_t, UV_ENOBUFS as isize, &buf);
-              break;
-            }
-            let slice =
-              std::slice::from_raw_parts_mut(buf.base.cast::<u8>(), buf.len);
-            match tty_try_read(tty_ptr, slice) {
-              Ok(0) => {
-                read_cb(tty_ptr as *mut uv_stream_t, UV_EOF as isize, &buf);
-                (*tty_ptr).internal_reading = false;
-                break;
-              }
-              Ok(n) => {
-                any_work = true;
-                read_cb(tty_ptr as *mut uv_stream_t, n as isize, &buf);
-              }
-              Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                // Signal the caller to free the buffer (nread=0).
-                read_cb(tty_ptr as *mut uv_stream_t, 0, &buf);
-                break;
-              }
-              Err(_) => {
-                read_cb(tty_ptr as *mut uv_stream_t, UV_EOF as isize, &buf);
-                (*tty_ptr).internal_reading = false;
-                break;
+          if has_input {
+            if !(*tty_ptr).internal_reading {
+              // Reading was stopped between the check and here.
+            } else {
+              let mut buf = uv_buf_t {
+                base: std::ptr::null_mut(),
+                len: 0,
+              };
+              alloc_cb(tty_ptr as *mut uv_handle_t, 65536, &mut buf);
+              if buf.base.is_null() || buf.len == 0 {
+                read_cb(tty_ptr as *mut uv_stream_t, UV_ENOBUFS as isize, &buf);
+              } else {
+                let slice = std::slice::from_raw_parts_mut(
+                  buf.base.cast::<u8>(),
+                  buf.len,
+                );
+                match tty_try_read(tty_ptr, slice) {
+                  Ok(0) => {
+                    read_cb(tty_ptr as *mut uv_stream_t, UV_EOF as isize, &buf);
+                    (*tty_ptr).internal_reading = false;
+                  }
+                  Ok(n) => {
+                    any_work = true;
+                    read_cb(tty_ptr as *mut uv_stream_t, n as isize, &buf);
+                  }
+                  Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                    // Signal the caller to free the buffer (nread=0).
+                    read_cb(tty_ptr as *mut uv_stream_t, 0, &buf);
+                  }
+                  Err(_) => {
+                    read_cb(tty_ptr as *mut uv_stream_t, UV_EOF as isize, &buf);
+                    (*tty_ptr).internal_reading = false;
+                  }
+                }
               }
             }
           }
