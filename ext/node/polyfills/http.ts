@@ -550,8 +550,8 @@ class ClientRequest extends OutgoingMessage {
           // For TLSSocket handles (already encrypted), the TLSWrap CppGC
           // object doesn't carry kStreamBaseField - fall back to its
           // underlying TCP handle via _parent.
-          const streamBase = (handle[kStreamBaseField] ??
-            handle._parent?.[kStreamBaseField]);
+          const streamBase = handle[kStreamBaseField] ??
+            handle._parent?.[kStreamBaseField];
           baseConnRid = streamBase[internalRidSymbol];
         } catch (err) {
           throw (this.socket.errored || err);
