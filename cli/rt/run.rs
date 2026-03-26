@@ -821,6 +821,8 @@ pub struct RunOptions {
   /// Version and rollback state for desktop auto-update JS initialization.
   pub auto_update_version: Option<String>,
   pub auto_update_rolled_back: bool,
+  /// Error reporting URL from deno.json `desktop.errorReporting.url`.
+  pub error_reporting_url: Option<String>,
 }
 
 impl Default for RunOptions {
@@ -835,6 +837,7 @@ impl Default for RunOptions {
       override_main_module: None,
       auto_update_version: None,
       auto_update_rolled_back: false,
+      error_reporting_url: None,
     }
   }
 }
@@ -1291,6 +1294,14 @@ pub async fn run_with_options(
     worker
       .js_runtime()
       .execute_script("ext:deno_desktop/auto_update", js)?;
+
+    let js = crate::desktop::desktop_error_reporting_js(
+      options.error_reporting_url.as_deref(),
+      options.auto_update_version.as_deref(),
+    );
+    worker
+      .js_runtime()
+      .execute_script("ext:deno_desktop/error_reporting", js)?;
   }
 
   if let Some(watch_dir) = hmr_watch_dir {

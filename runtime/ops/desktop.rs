@@ -112,6 +112,11 @@ pub enum DesktopEvent {
   CloseRequested {
     window_id: u32,
   },
+  #[serde(rename_all = "camelCase")]
+  RuntimeError {
+    message: String,
+    stack: Option<String>,
+  },
 }
 
 pub struct DesktopEventReceiver(
@@ -562,9 +567,83 @@ pub fn op_desktop_init(
 }
 
 #[op2(fast)]
-fn op_desktop_alert(state: &mut OpState, #[string] message: &str) {
+fn op_desktop_alert(
+  state: &mut OpState,
+  #[string] title: &str,
+  #[string] message: &str,
+) {
   if let Some(api) = state.try_borrow::<Arc<dyn DesktopApi>>() {
-    api.alert("", message);
+    api.alert(title, message);
+  }
+}
+
+#[op2(fast)]
+fn op_desktop_send_error_report(
+  state: &mut OpState,
+  #[string] url: &str,
+  #[string] body: &str,
+) {
+  let url = url.to_string();
+  let body = body.to_string();
+
+  let Ok(parsed) = deno_core::url::Url::parse(&url) else {
+    // Not a valid URL — treat as a file path.
+    let mut line = body;
+    line.push('\n');
+    let _ = std::fs::OpenOptions::new()
+      .create(true)
+      .append(true)
+      .open(&url)
+      .and_then(|mut f| std::io::Write::write_all(&mut f, line.as_bytes()));
+    return;
+  };
+
+  match parsed.scheme() {
+    "file" => {
+      if let Ok(path) = parsed.to_file_path() {
+        let mut line = body;
+        line.push('\n');
+        let _ = std::fs::OpenOptions::new()
+          .create(true)
+          .append(true)
+          .open(path)
+          .and_then(|mut f| {
+            std::io::Write::write_all(&mut f, line.as_bytes())
+          });
+      }
+    }
+    "http" | "https" => {
+      let Ok(client) =
+        deno_fetch::get_or_create_client_from_state(state)
+      else {
+        return;
+      };
+      let _ = std::thread::spawn(move || {
+        let Ok(runtime) = tokio::runtime::Builder::new_current_thread()
+          .enable_io()
+          .enable_time()
+          .build()
+        else {
+          return;
+        };
+        runtime.block_on(async move {
+          let Ok(uri) = parsed.as_str().parse::<http::Uri>() else {
+            return;
+          };
+          let mut req =
+            http::Request::new(deno_fetch::ReqBody::full(body.into()));
+          *req.method_mut() = http::Method::POST;
+          *req.uri_mut() = uri;
+          req.headers_mut().insert(
+            http::header::CONTENT_TYPE,
+            http::HeaderValue::from_static("application/json"),
+          );
+          let _ = client.send(req).await;
+        });
+      })
+      .join();
+    }
+    _ => {}
   }
 }
 
@@ -616,6 +695,7 @@ deno_core::extension!(
     op_desktop_alert,
     op_desktop_confirm,
     op_desktop_prompt,
+    op_desktop_send_error_report,
   ],
   objects = [BrowserWindow,],
 );

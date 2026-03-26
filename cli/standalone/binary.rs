@@ -911,6 +911,12 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         .workspace()
         .root_deno_json()
         .and_then(|c| c.json.version.clone()),
+      error_reporting_url: self
+        .cli_options
+        .start_dir
+        .to_desktop_config()
+        .ok()
+        .and_then(|c| c.error_reporting.as_ref()?.url.clone()),
     };
 
     let (data_section_bytes, section_sizes) = serialize_binary_data_section(

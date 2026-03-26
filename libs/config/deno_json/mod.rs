@@ -801,12 +801,20 @@ struct SerializedDesktopReleaseConfig {
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields, rename_all = "camelCase")]
+struct SerializedDesktopErrorReportingConfig {
+  pub url: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
 struct SerializedDesktopConfig {
   pub app: Option<SerializedDesktopAppConfig>,
   pub backend: Option<String>,
   pub output: Option<SerializedDesktopOutputConfig>,
   pub release: Option<SerializedDesktopReleaseConfig>,
+  #[serde(rename = "errorReporting")]
+  pub error_reporting: Option<SerializedDesktopErrorReportingConfig>,
 }
 
 impl SerializedDesktopConfig {
@@ -828,6 +836,9 @@ impl SerializedDesktopConfig {
       }),
       release: self.release.map(|r| DesktopReleaseConfig {
         base_url: r.base_url,
+      }),
+      error_reporting: self.error_reporting.map(|e| {
+        DesktopErrorReportingConfig { url: e.url }
       }),
     }
   }
@@ -859,11 +870,17 @@ pub struct DesktopReleaseConfig {
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
+pub struct DesktopErrorReportingConfig {
+  pub url: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct DesktopConfig {
   pub app: Option<DesktopAppConfig>,
   pub backend: Option<String>,
   pub output: Option<DesktopOutputConfig>,
   pub release: Option<DesktopReleaseConfig>,
+  pub error_reporting: Option<DesktopErrorReportingConfig>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq)]

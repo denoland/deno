@@ -217,7 +217,7 @@ pub const DESKTOP_JS: &str = r#"
   };
 
   function alert(message = "Alert") {
-    op_desktop_alert(String(message));
+    op_desktop_alert("", String(message));
   }
 
   function confirm(message = "Confirm") {
@@ -384,6 +384,13 @@ pub const DESKTOP_JS: &str = r#"
           target.dispatchEvent(new Event("close"));
           break;
         }
+        case "runtimeError": {
+          dispatchEvent(new ErrorEvent("error", {
+            message: ev.message,
+            error: new Error(ev.message),
+          }));
+          break;
+        }
       }
     }
   })();
@@ -478,6 +485,74 @@ pub fn desktop_auto_update_js(
       None => "null".to_string(),
     },
     rolled_back = if rolled_back { "true" } else { "false" },
+  )
+}
+
+/// JS code that initializes error reporting. Installs `"error"` and
+/// `"unhandledrejection"` listeners that show a native alert and
+/// optionally POST error reports to a configured URL.
+pub fn desktop_error_reporting_js(
+  url: Option<&str>,
+  version: Option<&str>,
+) -> String {
+  format!(
+    r#"(() => {{
+  const {{ op_desktop_alert, op_desktop_send_error_report }} = Deno[Deno.internal].core.ops;
+  const _errorReportingUrl = {url};
+  const _appVersion = {version};
+
+  function handleError(message, stack) {{
+    if (_errorReportingUrl) {{
+      const body = JSON.stringify({{
+        version: 1,
+        message: String(message),
+        stack: stack ?? null,
+        appVersion: _appVersion,
+        timestamp: new Date().toISOString(),
+        platform: Deno.build.os,
+        arch: Deno.build.arch,
+      }});
+      op_desktop_send_error_report(_errorReportingUrl, body);
+    }}
+
+    try {{
+      op_desktop_alert("Application Error", String(message));
+    }} catch (_) {{}}
+  }}
+
+  addEventListener("error", (ev) => {{
+    if (ev.defaultPrevented) return;
+    const err = ev.error;
+    handleError(
+      err?.message ?? ev.message ?? "Unknown error",
+      err?.stack ?? null,
+    );
+  }});
+
+  addEventListener("unhandledrejection", (ev) => {{
+    if (ev.defaultPrevented) return;
+    const err = ev.reason;
+    handleError(
+      err?.message ?? String(err ?? "Unhandled promise rejection"),
+      err?.stack ?? null,
+    );
+  }});
+}})();
+"#,
+    url = match url {
+      Some(u) => format!(
+        "\"{}\"",
+        u.replace('\\', "\\\\").replace('"', "\\\"")
+      ),
+      None => "null".to_string(),
+    },
+    version = match version {
+      Some(v) => format!(
+        "\"{}\"",
+        v.replace('\\', "\\\\").replace('"', "\\\"")
+      ),
+      None => "null".to_string(),
+    },
   )
 }
 

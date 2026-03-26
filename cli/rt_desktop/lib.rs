@@ -608,6 +608,7 @@ wef::main!(|| {
     match run_desktop(update_rolled_back).await {
       Ok(()) => eprintln!("[desktop] run_desktop completed OK"),
       Err(error) => {
+        let is_js_error = js_error_downcast_ref(&error).is_some();
         let error_string = match js_error_downcast_ref(&error) {
           Some(js_error) => format_js_error(js_error, None),
           None => format!("{:?}", error),
@@ -617,6 +618,14 @@ wef::main!(|| {
           colors::red_bold("error"),
           error_string.trim_start_matches("error: ")
         );
+        // Only show native alert for non-JS errors (startup crashes).
+        // JS errors are already handled by the error reporting JS listener.
+        if !is_js_error {
+          wef::alert(
+            "Application Error",
+            error_string.trim_start_matches("error: "),
+          );
+        }
       }
     }
   });
@@ -965,6 +974,7 @@ async fn run_desktop(update_rolled_back: bool) -> Result<(), AnyError> {
     override_main_module: None,
     auto_update_version,
     auto_update_rolled_back,
+    error_reporting_url: data.metadata.error_reporting_url.clone(),
   };
 
   // Run the Deno runtime and WEF event loop concurrently.

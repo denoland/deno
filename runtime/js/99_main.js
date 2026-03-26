@@ -550,6 +550,7 @@ const NOT_IMPORTED_OPS = [
   "op_desktop_alert",
   "op_desktop_confirm",
   "op_desktop_prompt",
+  "op_desktop_send_error_report",
 
   // deno deploy subcommand
   "op_deploy_token_get",

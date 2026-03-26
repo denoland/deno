@@ -100,6 +100,9 @@ pub struct Metadata {
   /// auto-update support in desktop apps.
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub app_version: Option<String>,
+  /// Error reporting URL from deno.json `desktop.errorReporting.url`.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub error_reporting_url: Option<String>,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]

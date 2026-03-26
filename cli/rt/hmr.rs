@@ -264,6 +264,9 @@ pub struct DesktopHmrRunner {
   _watcher: notify::RecommendedWatcher,
   /// Optional callback to trigger a reload (e.g. refresh the webview).
   on_reload: Option<HmrReloadCallback>,
+  /// Optional sender to dispatch errors as DesktopEvents for the error reporter.
+  desktop_event_tx:
+    Option<tokio::sync::mpsc::UnboundedSender<crate::desktop::DesktopEvent>>,
 }
 
 impl DesktopHmrRunner {
@@ -314,6 +317,7 @@ impl DesktopHmrRunner {
       vfs_root,
       _watcher: watcher,
       on_reload: None,
+      desktop_event_tx: None,
     })
   }
 
@@ -339,6 +343,12 @@ impl DesktopHmrRunner {
         maybe_error = self.exception_rx.recv() => {
           if let Some(err) = maybe_error {
             log::error!("HMR exception: {}", err);
+            if let Some(tx) = &self.desktop_event_tx {
+              let _ = tx.send(crate::desktop::DesktopEvent::RuntimeError {
+                message: err.to_string(),
+                stack: None,
+              });
+            }
           }
         }
 
@@ -500,6 +510,17 @@ pub fn setup_desktop_hmr(
 
   let mut runner =
     DesktopHmrRunner::new(session, state, watch_dir, vfs_root, exception_rx)?;
+
+  // Extract the desktop event sender from OpState if available, so HMR
+  // errors can be dispatched as DesktopEvent::RuntimeError.
+  let desktop_event_tx = worker
+    .js_runtime()
+    .op_state()
+    .borrow()
+    .try_borrow::<crate::desktop::DesktopEventSender>()
+    .map(|s| s.0.clone());
+  runner.desktop_event_tx = desktop_event_tx;
+
   runner.start();
   Ok(runner)
 }
