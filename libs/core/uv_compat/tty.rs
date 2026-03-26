@@ -251,11 +251,14 @@ pub struct uv_tty_t {
   // uv_tty_line_read_thread). The result is collected on the next
   // poll_tty_handle call.
   #[cfg(windows)]
-  pub(crate) internal_line_read_result:
-    Option<std::sync::Arc<std::sync::Mutex<Option<Result<Vec<u8>, i32>>>>>,
+  pub(crate) internal_line_read_result: Option<LineReadResult>,
   #[cfg(windows)]
   pub(crate) internal_line_read_pending: bool,
 }
+
+#[cfg(windows)]
+type LineReadResult =
+  std::sync::Arc<std::sync::Mutex<Option<Result<Vec<u8>, i32>>>>;
 
 pub type UvTty = uv_tty_t;
 
@@ -2329,9 +2332,8 @@ pub(crate) unsafe fn poll_tty_handle(
                 && !(*tty_ptr).internal_line_read_pending
               {
                 let handle = (*tty_ptr).internal_handle;
-                let result_arc: std::sync::Arc<
-                  std::sync::Mutex<Option<Result<Vec<u8>, i32>>>,
-                > = std::sync::Arc::new(std::sync::Mutex::new(None));
+                let result_arc: LineReadResult =
+                  std::sync::Arc::new(std::sync::Mutex::new(None));
                 (*tty_ptr).internal_line_read_result = Some(result_arc.clone());
                 (*tty_ptr).internal_line_read_pending = true;
 
