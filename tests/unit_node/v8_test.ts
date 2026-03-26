@@ -25,6 +25,7 @@ Deno.test({
       "number_of_detached_contexts",
       "number_of_native_contexts",
       "peak_malloced_memory",
+      "total_allocated_bytes",
       "total_available_size",
       "total_global_handles_size",
       "total_heap_size",

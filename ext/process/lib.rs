@@ -1,10 +1,13 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
+use std::cell::Cell;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ffi::OsString;
 use std::io::Write;
+#[cfg(unix)]
+use std::os::fd::FromRawFd;
 #[cfg(unix)]
 use std::os::unix::prelude::ExitStatusExt;
 #[cfg(unix)]
@@ -71,18 +74,21 @@ impl Stdio {
       Stdio::Inherit => StdStdio::inherit(),
       Stdio::Piped => StdStdio::piped(),
       Stdio::Null => StdStdio::null(),
-      _ => unreachable!(),
+      // IPC uses a pipe internally
+      Stdio::IpcForInternalUse => StdStdio::piped(),
     }
   }
 }
 
 #[derive(Copy, Clone, Eq, PartialEq)]
-pub enum StdioOrRid {
+pub enum StdioOrFdOrRid {
   Stdio(Stdio),
+  /// A raw file descriptor (e.g. from Node's `fs.openSync`).
+  Fd(i32),
   Rid(ResourceId),
 }
 
-impl<'de> Deserialize<'de> for StdioOrRid {
+impl<'de> Deserialize<'de> for StdioOrFdOrRid {
   fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
   where
     D: serde::Deserializer<'de>,
@@ -91,38 +97,69 @@ impl<'de> Deserialize<'de> for StdioOrRid {
     let value = Value::deserialize(deserializer)?;
     match value {
       Value::String(val) => match val.as_str() {
-        "inherit" => Ok(StdioOrRid::Stdio(Stdio::Inherit)),
-        "piped" => Ok(StdioOrRid::Stdio(Stdio::Piped)),
-        "null" => Ok(StdioOrRid::Stdio(Stdio::Null)),
+        "inherit" => Ok(StdioOrFdOrRid::Stdio(Stdio::Inherit)),
+        "piped" => Ok(StdioOrFdOrRid::Stdio(Stdio::Piped)),
+        "null" => Ok(StdioOrFdOrRid::Stdio(Stdio::Null)),
         "ipc_for_internal_use" => {
-          Ok(StdioOrRid::Stdio(Stdio::IpcForInternalUse))
+          Ok(StdioOrFdOrRid::Stdio(Stdio::IpcForInternalUse))
         }
         val => Err(serde::de::Error::unknown_variant(
           val,
           &["inherit", "piped", "null"],
         )),
       },
-      Value::Number(val) => match val.as_u64() {
-        Some(val) if val <= ResourceId::MAX as u64 => {
-          Ok(StdioOrRid::Rid(val as ResourceId))
+      Value::Number(val) => match val.as_i64() {
+        Some(val) if val >= 0 && val <= i32::MAX as i64 => {
+          Ok(StdioOrFdOrRid::Fd(val as i32))
         }
-        _ => Err(serde::de::Error::custom("Expected a positive integer")),
+        _ => Err(serde::de::Error::custom("Expected a non-negative integer")),
       },
       _ => Err(serde::de::Error::custom(
-        r#"Expected a resource id, "inherit", "piped", or "null""#,
+        r#"Expected a file descriptor, "inherit", "piped", or "null""#,
       )),
     }
   }
 }
 
-impl StdioOrRid {
+impl StdioOrFdOrRid {
   pub fn as_stdio(
     &self,
     state: &mut OpState,
   ) -> Result<StdStdio, ProcessError> {
     match &self {
-      StdioOrRid::Stdio(val) => Ok(val.as_stdio()),
-      StdioOrRid::Rid(rid) => {
+      StdioOrFdOrRid::Stdio(val) => Ok(val.as_stdio()),
+      StdioOrFdOrRid::Fd(fd) => {
+        // Convert a raw FD to a Stdio by dup'ing it into a std::fs::File.
+        #[cfg(unix)]
+        {
+          // SAFETY: libc::dup is safe to call with any fd; returns -1 on error.
+          let duped = unsafe { libc::dup(*fd) };
+          if duped < 0 {
+            return Err(ProcessError::Io(std::io::Error::last_os_error()));
+          }
+          // SAFETY: duped is a valid fd we own (just created by dup).
+          Ok(unsafe { std::fs::File::from_raw_fd(duped) }.into())
+        }
+        #[cfg(windows)]
+        {
+          // SAFETY: get_osfhandle converts a CRT fd to a Windows HANDLE; returns -1 on error.
+          let handle = unsafe { libc::get_osfhandle(*fd) };
+          if handle == -1 {
+            return Err(ProcessError::Io(std::io::Error::last_os_error()));
+          }
+          // SAFETY: handle is a valid Windows HANDLE (verified non-negative above).
+          // BorrowedHandle does not take ownership.
+          let borrowed = unsafe {
+            std::os::windows::io::BorrowedHandle::borrow_raw(
+              handle as *mut std::ffi::c_void,
+            )
+          };
+          let owned =
+            borrowed.try_clone_to_owned().map_err(ProcessError::Io)?;
+          Ok(std::fs::File::from(owned).into())
+        }
+      }
+      StdioOrFdOrRid::Rid(rid) => {
         Ok(FileResource::with_file(state, *rid, |file| {
           file.as_stdio().map_err(deno_error::JsErrorBox::from_err)
         })?)
@@ -131,11 +168,11 @@ impl StdioOrRid {
   }
 
   pub fn is_ipc(&self) -> bool {
-    matches!(self, StdioOrRid::Stdio(Stdio::IpcForInternalUse))
+    matches!(self, StdioOrFdOrRid::Stdio(Stdio::IpcForInternalUse))
   }
 }
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type NpmProcessStateProviderRc =
   deno_fs::sync::MaybeArc<dyn NpmProcessStateProvider>;
 
@@ -165,6 +202,8 @@ deno_core::extension!(
     op_spawn_wait,
     op_spawn_sync,
     op_spawn_kill,
+    op_spawn_child_ref,
+    op_spawn_child_unref,
     deprecated::op_run,
     deprecated::op_run_status,
     deprecated::op_kill,
@@ -176,13 +215,48 @@ deno_core::extension!(
   },
 );
 
-/// Second member stores the pid separately from the RefCell. It's needed for
-/// `op_spawn_kill`, where the RefCell is borrowed mutably by `op_spawn_wait`.
-struct ChildResource(RefCell<AsyncChild>, u32);
+/// Wraps an async child process handle.
+///
+/// `pid` is stored separately from the `RefCell` because it's needed for
+/// `op_spawn_kill`, where the `RefCell` is borrowed mutably by `op_spawn_wait`.
+///
+/// `kill_on_drop` controls whether the child process is killed when this
+/// resource is dropped (e.g. when the parent process exits). It defaults to
+/// `true` for non-detached processes. Calling `unref()` sets it to `false`,
+/// allowing the child to outlive the parent — matching Node.js semantics.
+struct ChildResource {
+  child: RefCell<AsyncChild>,
+  pid: u32,
+  kill_on_drop: Cell<bool>,
+}
 
 impl Resource for ChildResource {
   fn name(&self) -> Cow<'_, str> {
     "child".into()
+  }
+}
+
+impl Drop for ChildResource {
+  fn drop(&mut self) {
+    if self.kill_on_drop.get() {
+      #[cfg(unix)]
+      {
+        // Send SIGKILL to the child process. Best-effort; ignore errors
+        // (e.g. the process may have already exited).
+        // SAFETY: libc::kill is safe to call with any pid/signal combination;
+        // it simply returns an error for invalid inputs.
+        unsafe {
+          libc::kill(self.pid as i32, libc::SIGKILL);
+        }
+      }
+      #[cfg(windows)]
+      {
+        let _ = deno_subprocess_windows::process_kill(
+          self.pid as i32,
+          /* SIGTERM */ 15,
+        );
+      }
+    }
   }
 }
 
@@ -209,9 +283,11 @@ pub struct SpawnArgs {
 
   input: Option<JsBuffer>,
 
-  extra_stdio: Vec<Stdio>,
+  extra_stdio: Vec<StdioOrFdOrRid>,
   detached: bool,
   needs_npm_process_state: bool,
+  #[cfg(unix)]
+  argv0: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -308,9 +384,9 @@ pub enum ProcessError {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChildStdio {
-  stdin: StdioOrRid,
-  stdout: StdioOrRid,
-  stderr: StdioOrRid,
+  stdin: StdioOrFdOrRid,
+  stdout: StdioOrFdOrRid,
+  stderr: StdioOrFdOrRid,
 }
 
 #[derive(ToV8)]
@@ -448,7 +524,12 @@ fn create_command(
   }
 
   #[cfg(not(windows))]
-  command.args(args.args);
+  {
+    if let Some(ref argv0) = args.argv0 {
+      command.arg0(argv0);
+    }
+    command.args(args.args);
+  }
 
   command.current_dir(run_env.cwd);
   command.env_clear();
@@ -472,17 +553,24 @@ fn create_command(
   }
 
   command.stdout(match args.stdio.stdout {
-    StdioOrRid::Stdio(Stdio::Inherit) => StdioOrRid::Rid(1).as_stdio(state)?,
+    StdioOrFdOrRid::Stdio(Stdio::Inherit) => {
+      StdioOrFdOrRid::Rid(1).as_stdio(state)?
+    }
     value => value.as_stdio(state)?,
   });
   command.stderr(match args.stdio.stderr {
-    StdioOrRid::Stdio(Stdio::Inherit) => StdioOrRid::Rid(2).as_stdio(state)?,
+    StdioOrFdOrRid::Stdio(Stdio::Inherit) => {
+      StdioOrFdOrRid::Rid(2).as_stdio(state)?
+    }
     value => value.as_stdio(state)?,
   });
 
   #[cfg(unix)]
   // TODO(bartlomieju):
-  #[allow(clippy::undocumented_unsafe_blocks)]
+  #[allow(
+    clippy::undocumented_unsafe_blocks,
+    reason = "TODO: add safety comment"
+  )]
   unsafe {
     let mut extra_pipe_rids = Vec::new();
     let mut fds_to_dup = Vec::new();
@@ -529,26 +617,36 @@ fn create_command(
       // index 0 in `extra_stdio` actually refers to fd 3
       // because we handle stdin,stdout,stderr specially
       let fd = (i + 3) as i32;
-      // TODO(nathanwhit): handle inherited, but this relies on the parent process having
-      // fds open already. since we don't generally support dealing with raw fds,
-      // we can't properly support this
-      if matches!(stdio, Stdio::Piped) {
-        let (fd1, fd2) = deno_io::bi_pipe_pair_raw()?;
-        fds_to_dup.push((fd2, fd));
-        fds_to_close.push(fd2);
-        let rid = state.resource_table.add(
-          match deno_io::BiPipeResource::from_raw_handle(fd1) {
-            Ok(v) => v,
-            Err(e) => {
-              log::warn!("Failed to open bidirectional pipe for fd {fd}: {e}");
-              extra_pipe_rids.push(None);
-              continue;
-            }
-          },
-        );
-        extra_pipe_rids.push(Some(rid));
-      } else {
-        extra_pipe_rids.push(None);
+      match stdio {
+        StdioOrFdOrRid::Stdio(Stdio::Piped) => {
+          let (fd1, fd2) = deno_io::bi_pipe_pair_raw()?;
+          fds_to_dup.push((fd2, fd));
+          fds_to_close.push(fd2);
+          let rid = state.resource_table.add(
+            match deno_io::BiPipeResource::from_raw_handle(fd1) {
+              Ok(v) => v,
+              Err(e) => {
+                log::warn!(
+                  "Failed to open bidirectional pipe for fd {fd}: {e}"
+                );
+                extra_pipe_rids.push(None);
+                continue;
+              }
+            },
+          );
+          extra_pipe_rids.push(Some(rid));
+        }
+        StdioOrFdOrRid::Fd(raw_fd) => {
+          // Raw file descriptor (from fs.openSync etc.)
+          // dup2 it to the target fd in the child process.
+          // The caller retains ownership of raw_fd so we don't
+          // add it to fds_to_close.
+          fds_to_dup.push((raw_fd, fd));
+          extra_pipe_rids.push(None);
+        }
+        _ => {
+          extra_pipe_rids.push(None);
+        }
       }
     }
 
@@ -621,28 +719,41 @@ fn create_command(
       // index 0 in `extra_stdio` actually refers to fd 3
       // because we handle stdin,stdout,stderr specially
       let fd = (i + 3) as i32;
-      // TODO(nathanwhit): handle inherited, but this relies on the parent process having
-      // fds open already. since we don't generally support dealing with raw fds,
-      // we can't properly support this
-      if matches!(stdio, Stdio::Piped) {
-        let (fd1, fd2) = deno_io::bi_pipe_pair_raw()?;
-        handles_to_close.push(fd2);
-        let rid = state.resource_table.add(
-          match deno_io::BiPipeResource::from_raw_handle(fd1) {
-            Ok(v) => v,
-            Err(e) => {
-              log::warn!("Failed to open bidirectional pipe for fd {fd}: {e}");
-              extra_pipe_rids.push(None);
-              continue;
-            }
-          },
-        );
-        command.extra_handle(Some(fd2));
-        extra_pipe_rids.push(Some(rid));
-      } else {
-        // no handle, push an empty handle so we need get the right fds for following handles
-        command.extra_handle(None);
-        extra_pipe_rids.push(None);
+      match stdio {
+        StdioOrFdOrRid::Stdio(Stdio::Piped) => {
+          let (fd1, fd2) = deno_io::bi_pipe_pair_raw()?;
+          handles_to_close.push(fd2);
+          let rid = state.resource_table.add(
+            match deno_io::BiPipeResource::from_raw_handle(fd1) {
+              Ok(v) => v,
+              Err(e) => {
+                log::warn!(
+                  "Failed to open bidirectional pipe for fd {fd}: {e}"
+                );
+                extra_pipe_rids.push(None);
+                continue;
+              }
+            },
+          );
+          command.extra_handle(Some(fd2));
+          extra_pipe_rids.push(Some(rid));
+        }
+        StdioOrFdOrRid::Fd(raw_fd) => {
+          // SAFETY: get_osfhandle converts a CRT fd to a Windows HANDLE; returns -1 on error.
+          let handle = unsafe { libc::get_osfhandle(raw_fd) };
+          if handle != -1 {
+            command.extra_handle(Some(handle as _));
+          } else {
+            command.extra_handle(None);
+          }
+          extra_pipe_rids.push(None);
+        }
+        _ => {
+          // No handle -- push an empty slot so subsequent handles
+          // get the right fd indices.
+          command.extra_handle(None);
+          extra_pipe_rids.push(None);
+        }
       }
     }
 
@@ -672,12 +783,11 @@ fn spawn_child(
   let mut command = command;
   #[cfg(not(windows))]
   let mut command = tokio::process::Command::from(command);
-  // TODO(@crowlkats): allow detaching processes.
-  //  currently deno will orphan a process when exiting with an error or Deno.exit()
-  // We want to kill child when it's closed
-  if !detached {
-    command.kill_on_drop(true);
-  }
+  // Note: we do NOT set `command.kill_on_drop(true)` here. Instead,
+  // `ChildResource` implements its own `Drop` that kills the child process
+  // by PID when `kill_on_drop` is true. This allows `unref()` to disable
+  // kill-on-drop, so the child can outlive the parent (matching Node.js
+  // semantics for `child_process.unref()`).
 
   let mut child = match command.spawn() {
     Ok(child) => child,
@@ -689,7 +799,7 @@ fn spawn_child(
       if let Some(cwd) = command.get_current_dir() {
         // launching a sub process always depends on the real
         // file system so using these methods directly is ok
-        #[allow(clippy::disallowed_methods)]
+        #[allow(clippy::disallowed_methods, reason = "requires real fs")]
         if !cwd.exists() {
           return Err(
             std::io::Error::new(
@@ -704,7 +814,7 @@ fn spawn_child(
           );
         }
 
-        #[allow(clippy::disallowed_methods)]
+        #[allow(clippy::disallowed_methods, reason = "requires real fs")]
         if !cwd.is_dir() {
           return Err(
             std::io::Error::new(
@@ -771,9 +881,11 @@ fn spawn_child(
     .transpose()?
     .map(|stderr| state.resource_table.add(ChildStderrResource::from(stderr)));
 
-  let child_rid = state
-    .resource_table
-    .add(ChildResource(RefCell::new(child), pid));
+  let child_rid = state.resource_table.add(ChildResource {
+    child: RefCell::new(child),
+    pid,
+    kill_on_drop: Cell::new(!detached),
+  });
 
   Ok(Child {
     rid: child_rid,
@@ -885,7 +997,10 @@ fn compute_run_env(
   arg_envs: &[(String, String)],
   arg_clear_env: bool,
 ) -> Result<RunEnv, ProcessError> {
-  #[allow(clippy::disallowed_methods)]
+  #[allow(
+    clippy::disallowed_methods,
+    reason = "ok for now because launching a sub process requires the real fs"
+  )]
   let cwd =
     std::env::current_dir().map_err(ProcessError::FailedResolvingCwd)?;
   let cwd = arg_cwd
@@ -1031,7 +1146,10 @@ fn op_spawn_child(
 }
 
 #[op2]
-#[allow(clippy::await_holding_refcell_ref)]
+#[allow(
+  clippy::await_holding_refcell_ref,
+  reason = "ref is dropped before await points"
+)]
 async fn op_spawn_wait(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -1042,7 +1160,7 @@ async fn op_spawn_wait(
     .get::<ChildResource>(rid)
     .map_err(ProcessError::Resource)?;
   let result = resource
-    .0
+    .child
     .try_borrow_mut()
     .map_err(ProcessError::BorrowMut)?
     .wait()
@@ -1059,8 +1177,8 @@ fn op_spawn_sync(
   state: &mut OpState,
   #[serde] args: SpawnArgs,
 ) -> Result<SpawnOutput, ProcessError> {
-  let stdout = matches!(args.stdio.stdout, StdioOrRid::Stdio(Stdio::Piped));
-  let stderr = matches!(args.stdio.stderr, StdioOrRid::Stdio(Stdio::Piped));
+  let stdout = matches!(args.stdio.stdout, StdioOrFdOrRid::Stdio(Stdio::Piped));
+  let stderr = matches!(args.stdio.stderr, StdioOrFdOrRid::Stdio(Stdio::Piped));
   let input = args.input.clone();
   let (mut command, _, _, _) =
     create_command(state, args, "Deno.Command().outputSync()")?;
@@ -1112,10 +1230,34 @@ fn op_spawn_kill(
   #[serde] signal: SignalArg,
 ) -> Result<(), ProcessError> {
   if let Ok(child_resource) = state.resource_table.get::<ChildResource>(rid) {
-    deprecated::kill(child_resource.1 as i32, &signal)?;
+    deprecated::kill(child_resource.pid as i32, &signal)?;
     return Ok(());
   }
   Err(ProcessError::ChildProcessAlreadyTerminated)
+}
+
+/// Disable kill-on-drop for a child process, allowing it to outlive the parent.
+/// Called from JS `ChildProcess.unref()`.
+#[op2(fast)]
+fn op_spawn_child_unref(
+  state: &mut OpState,
+  #[smi] rid: ResourceId,
+) -> Result<(), deno_core::error::ResourceError> {
+  let resource = state.resource_table.get::<ChildResource>(rid)?;
+  resource.kill_on_drop.set(false);
+  Ok(())
+}
+
+/// Re-enable kill-on-drop for a child process.
+/// Called from JS `ChildProcess.ref()`.
+#[op2(fast)]
+fn op_spawn_child_ref(
+  state: &mut OpState,
+  #[smi] rid: ResourceId,
+) -> Result<(), deno_core::error::ResourceError> {
+  let resource = state.resource_table.get::<ChildResource>(rid)?;
+  resource.kill_on_drop.set(true);
+  Ok(())
 }
 
 mod deprecated {
@@ -1133,11 +1275,11 @@ mod deprecated {
     cwd: Option<String>,
     env: Vec<(String, String)>,
     #[from_v8(serde)]
-    stdin: StdioOrRid,
+    stdin: StdioOrFdOrRid,
     #[from_v8(serde)]
-    stdout: StdioOrRid,
+    stdout: StdioOrFdOrRid,
     #[from_v8(serde)]
-    stderr: StdioOrRid,
+    stderr: StdioOrFdOrRid,
   }
 
   struct ChildResource {
@@ -1198,7 +1340,10 @@ mod deprecated {
 
     #[cfg(unix)]
     // TODO(bartlomieju):
-    #[allow(clippy::undocumented_unsafe_blocks)]
+    #[allow(
+      clippy::undocumented_unsafe_blocks,
+      reason = "TODO: add safety comment"
+    )]
     unsafe {
       c.pre_exec(|| {
         libc::setgroups(0, std::ptr::null());
@@ -1210,14 +1355,14 @@ mod deprecated {
     c.stdin(run_args.stdin.as_stdio(state)?);
     c.stdout(
       match run_args.stdout {
-        StdioOrRid::Stdio(Stdio::Inherit) => StdioOrRid::Rid(1),
+        StdioOrFdOrRid::Stdio(Stdio::Inherit) => StdioOrFdOrRid::Rid(1),
         value => value,
       }
       .as_stdio(state)?,
     );
     c.stderr(
       match run_args.stderr {
-        StdioOrRid::Stdio(Stdio::Inherit) => StdioOrRid::Rid(2),
+        StdioOrFdOrRid::Stdio(Stdio::Inherit) => StdioOrFdOrRid::Rid(2),
         value => value,
       }
       .as_stdio(state)?,
@@ -1358,19 +1503,56 @@ mod deprecated {
     use winapi::um::processthreadsapi::TerminateProcess;
     use winapi::um::winnt::PROCESS_TERMINATE;
 
-    let signal_str = match signal {
-      SignalArg::Int(n) => n.to_string(),
-      SignalArg::String(s) => s.clone(),
+    let signo = match signal {
+      SignalArg::Int(n) => *n,
+      SignalArg::String(s) => deno_signals::signal_str_to_int(s)
+        .map_err(SignalError::InvalidSignalStr)?,
     };
 
-    if !matches!(signal_str.as_str(), "SIGKILL" | "SIGTERM") {
-      Err(
+    if signo == 0 {
+      // Signal 0 is a health check: verify the process is still alive.
+      // SAFETY: winapi call
+      let handle = unsafe {
+        OpenProcess(
+          winapi::um::winnt::PROCESS_QUERY_LIMITED_INFORMATION,
+          FALSE,
+          pid as DWORD,
+        )
+      };
+      if handle.is_null() {
+        return Err(Error::from(NotFound).into());
+      }
+      let mut status: DWORD = 0;
+      // SAFETY: winapi call
+      let alive = unsafe {
+        winapi::um::processthreadsapi::GetExitCodeProcess(handle, &mut status)
+          != FALSE
+          && status == 259 // STILL_ACTIVE
+      };
+      // SAFETY: winapi call
+      unsafe {
+        CloseHandle(handle);
+      }
+      if alive {
+        return Ok(());
+      } else {
+        return Err(Error::from(NotFound).into());
+      }
+    }
+
+    // On Windows, SIGINT/SIGTERM/SIGKILL/SIGQUIT/SIGABRT all result in
+    // process termination via TerminateProcess, matching libuv behavior.
+    // SIGABRT is 22 on Windows (CRT), unlike 6 on Unix.
+    if !matches!(signo, 2 | 3 | 9 | 15 | 22) {
+      return Err(
         SignalError::InvalidSignalStr(deno_signals::InvalidSignalStrError(
-          signal_str,
+          format!("{signo}"),
         ))
         .into(),
-      )
-    } else if pid <= 0 {
+      );
+    }
+
+    if pid <= 0 {
       Err(ProcessError::InvalidPid)
     } else {
       let handle =

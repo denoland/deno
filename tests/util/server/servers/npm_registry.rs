@@ -12,6 +12,7 @@ use base64::Engine;
 use base64::prelude::BASE64_STANDARD;
 use bytes::Bytes;
 use futures::FutureExt;
+use futures::StreamExt;
 use futures::future::LocalBoxFuture;
 use http::HeaderMap;
 use http::HeaderValue;
@@ -30,6 +31,7 @@ use super::custom_headers;
 use super::empty_body;
 use super::hyper_utils::HandlerOutput;
 use super::run_server;
+use super::run_server_with_acceptor;
 use super::string_body;
 use crate::npm;
 use crate::root_path;
@@ -82,6 +84,40 @@ pub fn private_npm_registry3(port: u16) -> Vec<LocalBoxFuture<'static, ()>> {
     "npm private registry server error",
     private_npm_registry3_handler,
   )
+}
+
+/// An HTTPS npm registry that requires mutual TLS (client certificate)
+pub fn private_npm_registry_mtls(
+  port: u16,
+) -> Vec<LocalBoxFuture<'static, ()>> {
+  vec![async move {
+    ensure_esbuild_prebuilt().await.unwrap();
+    let mut tls =
+      super::super::https::get_tls_listener_stream_with_required_client_auth(
+        "npm_mtls_registry",
+        port,
+      )
+      .await;
+    let tls = async_stream::stream! {
+      while let Some(Ok(mut tls)) = tls.next().await {
+        let handshake = tls.handshake().await?;
+        match handshake.has_peer_certificates {
+          true => { yield Ok(tls); },
+          false => { eprintln!("npm_mtls_registry: no valid client certificate"); },
+        };
+      }
+    };
+    run_server_with_acceptor(
+      tls.boxed_local(),
+      |req| async move {
+        handle_req_for_registry(req, &npm::PRIVATE_TEST_NPM_REGISTRY_MTLS).await
+      },
+      "npm mTLS registry server error",
+      ServerKind::Auto,
+    )
+    .await
+  }
+  .boxed_local()]
 }
 
 fn run_npm_server<F, S>(

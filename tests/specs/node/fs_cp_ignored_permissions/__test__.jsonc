@@ -1,0 +1,8 @@
+{
+  // Regression test for https://github.com/denoland/deno/issues/32923
+  // fs.cp across allowed directories should work when read permissions
+  // outside those directories are ignored.
+  "args": "run -P main.ts",
+  "output": "main.out",
+  "exitCode": 0
+}

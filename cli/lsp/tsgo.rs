@@ -644,7 +644,7 @@ struct TsGoServerInner {
   stdin: Arc<Mutex<std::process::ChildStdin>>,
   pending_requests: Arc<PendingRequests>,
   next_request_id: AtomicI64,
-  #[allow(dead_code)]
+  #[allow(dead_code, reason = "TODO: investigate")]
   child: Mutex<Child>,
   runtime_handle: tokio::runtime::Handle,
 }
@@ -2047,6 +2047,17 @@ fn normalize_code_action_response(
   response: &mut lsp::CodeActionResponse,
   snapshot: &StateSnapshot,
 ) {
+  if snapshot.config.client_provided_organize_imports_capable() {
+    response.retain(|item| {
+      let lsp::CodeActionOrCommand::CodeAction(code_action) = item else {
+        return true;
+      };
+      code_action
+        .kind
+        .as_ref()
+        .is_none_or(|k| *k != lsp::CodeActionKind::SOURCE_ORGANIZE_IMPORTS)
+    });
+  }
   for item in response {
     match item {
       lsp::CodeActionOrCommand::CodeAction(code_action) => {

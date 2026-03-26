@@ -3,16 +3,22 @@
 
 import { core, primordials } from "ext:core/mod.js";
 const {
+  createTimer: createTimer_,
+  cancelTimer: cancelTimer_,
+  refreshTimer: refreshTimer_,
+  refTimer: refTimer_,
+  unrefTimer: unrefTimer_,
   getAsyncContext,
   setAsyncContext,
   immediateRefCount,
 } = core;
 const {
-  FunctionPrototypeBind,
+  FunctionPrototypeCall,
   MapPrototypeDelete,
   MapPrototypeGet,
   MapPrototypeSet,
   NumberIsFinite,
+  ObjectDefineProperty,
   ReflectApply,
   SafeArrayIterator,
   SafeMap,
@@ -20,6 +26,9 @@ const {
   SymbolToPrimitive,
 } = primordials;
 import {
+  emitAfter,
+  emitBefore,
+  emitDestroy,
   emitInit,
   executionAsyncId,
   newAsyncId as nextAsyncId,
@@ -31,11 +40,6 @@ import {
 } from "ext:deno_node/internal/validators.mjs";
 import { ERR_OUT_OF_RANGE } from "ext:deno_node/internal/errors.ts";
 import { emitWarning } from "node:process";
-import {
-  clearTimeout as clearTimeout_,
-  setInterval as setInterval_,
-  setTimeout as setTimeout_,
-} from "ext:deno_web/02_timers.js";
 
 // Timeout values > TIMEOUT_MAX are set to 1.
 export const TIMEOUT_MAX = 2 ** 31 - 1;
@@ -73,40 +77,80 @@ export function Timeout(callback, after, args, isRepeat, isRefed) {
   this._isRepeat = isRepeat;
   this._destroyed = false;
   this[kRefed] = isRefed;
+
+  const asyncId = nextAsyncId();
+  const triggerAsyncId = executionAsyncId();
+  this._asyncId = asyncId;
+  this._triggerAsyncId = triggerAsyncId;
+  this._asyncDestroyed = false;
+
   this[kTimerId] = this[createTimer]();
+
+  emitInit(asyncId, "Timeout", triggerAsyncId, this);
 }
 
 Timeout.prototype[createTimer] = function () {
+  const self = this;
   const callback = this._onTimeout;
-  const cb = (...args) => {
-    if (!this._isRepeat) {
-      MapPrototypeDelete(activeTimers, this[kTimerId]);
+  const asyncContext = getAsyncContext();
+  const asyncId = this._asyncId;
+  const triggerAsyncId = this._triggerAsyncId;
+  const cb = function () {
+    const oldContext = getAsyncContext();
+    try {
+      setAsyncContext(asyncContext);
+      emitBefore(asyncId, triggerAsyncId, self);
+      if (!self._isRepeat) {
+        MapPrototypeDelete(activeTimers, self[kTimerId]);
+      }
+      const args = self._timerArgs;
+      let ret;
+      if (args !== undefined && args.length > 0) {
+        ret = ReflectApply(callback, self, args);
+      } else {
+        ret = FunctionPrototypeCall(callback, self);
+      }
+      // Only emit after/destroy on success. On error, the domain's
+      // uncaught exception handler manages the stack cleanup.
+      emitAfter(asyncId);
+      if (!self._isRepeat && !self._asyncDestroyed) {
+        self._asyncDestroyed = true;
+        emitDestroy(asyncId);
+      }
+      return ret;
+    } finally {
+      setAsyncContext(oldContext);
     }
-    return FunctionPrototypeBind(callback, this)(
-      ...new SafeArrayIterator(args),
-    );
   };
-  const id = this._isRepeat
-    ? setInterval_(
-      cb,
-      this._idleTimeout,
-      ...new SafeArrayIterator(this._timerArgs),
-    )
-    : setTimeout_(
-      cb,
-      this._idleTimeout,
-      ...new SafeArrayIterator(this._timerArgs),
-    );
-  if (!this[kRefed]) {
-    Deno.unrefTimer(id);
-  }
+  const timer = createTimer_(
+    cb,
+    this._idleTimeout,
+    undefined,
+    this._isRepeat,
+    this[kRefed],
+  );
+  ObjectDefineProperty(this, "_timer", {
+    __proto__: null,
+    value: timer,
+    writable: true,
+    enumerable: false,
+    configurable: true,
+  });
+  const id = timer._timerId;
   MapPrototypeSet(activeTimers, id, this);
   return id;
 };
 
 Timeout.prototype[kDestroy] = function () {
-  this._destroyed = true;
-  MapPrototypeDelete(activeTimers, this[kTimerId]);
+  if (!this._destroyed) {
+    this._destroyed = true;
+    cancelTimer_(this._timer);
+    MapPrototypeDelete(activeTimers, this[kTimerId]);
+    if (this._asyncId !== undefined && !this._asyncDestroyed) {
+      this._asyncDestroyed = true;
+      emitDestroy(this._asyncId);
+    }
+  }
 };
 
 // Make sure the linked list only shows the minimal necessary information.
@@ -122,9 +166,7 @@ Timeout.prototype[inspect.custom] = function (_, options) {
 
 Timeout.prototype.refresh = function () {
   if (!this._destroyed) {
-    clearTimeout_(this[kTimerId]);
-    MapPrototypeDelete(activeTimers, this[kTimerId]);
-    this[kTimerId] = this[createTimer]();
+    refreshTimer_(this._timer);
   }
   return this;
 };
@@ -132,7 +174,9 @@ Timeout.prototype.refresh = function () {
 Timeout.prototype.unref = function () {
   if (this[kRefed]) {
     this[kRefed] = false;
-    Deno.unrefTimer(this[kTimerId]);
+    if (!this._destroyed) {
+      unrefTimer_(this._timer);
+    }
   }
   return this;
 };
@@ -140,7 +184,9 @@ Timeout.prototype.unref = function () {
 Timeout.prototype.ref = function () {
   if (!this[kRefed]) {
     this[kRefed] = true;
-    Deno.refTimer(this[kTimerId]);
+    if (!this._destroyed) {
+      refTimer_(this._timer);
+    }
   }
   return this;
 };

@@ -27,6 +27,8 @@ pub enum CryptoNamedCurve {
   P256,
   #[serde(rename = "P-384")]
   P384,
+  #[serde(rename = "P-521")]
+  P521,
 }
 
 impl From<CryptoNamedCurve> for &RingAlgorithm {
@@ -34,6 +36,7 @@ impl From<CryptoNamedCurve> for &RingAlgorithm {
     match curve {
       CryptoNamedCurve::P256 => &aws_lc_rs::agreement::ECDH_P256,
       CryptoNamedCurve::P384 => &aws_lc_rs::agreement::ECDH_P384,
+      CryptoNamedCurve::P521 => &aws_lc_rs::agreement::ECDH_P521,
     }
   }
 }
@@ -47,6 +50,9 @@ impl From<CryptoNamedCurve> for &EcdsaSigningAlgorithm {
       CryptoNamedCurve::P384 => {
         &aws_lc_rs::signature::ECDSA_P384_SHA384_FIXED_SIGNING
       }
+      CryptoNamedCurve::P521 => {
+        &aws_lc_rs::signature::ECDSA_P521_SHA512_FIXED_SIGNING
+      }
     }
   }
 }
@@ -56,6 +62,7 @@ impl From<CryptoNamedCurve> for &EcdsaVerificationAlgorithm {
     match curve {
       CryptoNamedCurve::P256 => &aws_lc_rs::signature::ECDSA_P256_SHA256_FIXED,
       CryptoNamedCurve::P384 => &aws_lc_rs::signature::ECDSA_P384_SHA384_FIXED,
+      CryptoNamedCurve::P521 => &aws_lc_rs::signature::ECDSA_P521_SHA512_FIXED,
     }
   }
 }
