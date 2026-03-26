@@ -48,16 +48,10 @@ pub const fn op_from_v8_arg() -> ::deno_core::_ops::OpDecl {
                 let arg0 = {
                     use deno_core::FromV8;
                     use deno_core::FromV8Scopeless;
-                    match <Foo>::from_v8(&mut scope, arg0) {
-                        Ok(t) => t,
-                        Err(arg0_err) => {
-                            deno_core::_ops::throw_error_js_error_class(
-                                &mut scope,
-                                &arg0_err,
-                            );
-                            return 1;
-                        }
-                    }
+                    <Foo>::from_v8(&mut scope, arg0)
+                };
+                let Some(arg0) = deno_core::_ops::ok_or_throw(&mut scope, arg0) else {
+                    return 1;
                 };
                 Self::call(arg0)
             };

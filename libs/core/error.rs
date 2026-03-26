@@ -2210,6 +2210,23 @@ pub fn format_frame<F: ErrorFormat>(
   result
 }
 
+/// Unwraps a `Result`, throwing the error as a JS exception if it fails.
+/// Returns `Some(value)` on success, `None` on error (after throwing).
+/// Used by generated op code: `let Some(v) = ok_or_throw(...) else { return 1; };`
+#[inline]
+pub fn ok_or_throw<'s, 'i, T, E: JsErrorClass>(
+  scope: &mut v8::PinCallbackScope<'s, 'i>,
+  result: Result<T, E>,
+) -> Option<T> {
+  match result {
+    Ok(t) => Some(t),
+    Err(err) => {
+      throw_error_js_error_class(scope, &err);
+      None
+    }
+  }
+}
+
 pub fn throw_error_one_byte_info(
   info: &v8::FunctionCallbackInfo,
   message: &str,

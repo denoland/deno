@@ -52,12 +52,16 @@ pub const fn op_string_return() -> ::deno_core::_ops::OpDecl {
                 };
                 Self::call(arg0)
             };
-            match deno_core::_ops::RustToV8Fallible::to_v8_fallible(result, &mut scope) {
-                Ok(v) => rv.set(v),
-                Err(rv_err) => {
-                    deno_core::_ops::throw_error_js_error_class(&mut scope, &rv_err);
+            {
+                let rv_result = deno_core::_ops::RustToV8Fallible::to_v8_fallible(
+                    result,
+                    &mut scope,
+                );
+                let Some(rv_v8) = deno_core::_ops::ok_or_throw(&mut scope, rv_result)
+                else {
                     return 1;
-                }
+                };
+                rv.set(rv_v8);
             };
             return 0;
         }

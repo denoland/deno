@@ -45,7 +45,7 @@ const fn op_webidl() -> ::deno_core::_ops::OpDecl {
             );
             let result = {
                 let arg0 = args.get(0usize as i32);
-                let arg0 = match <String as deno_core::webidl::WebIdlConverter>::convert(
+                let arg0 = <String as deno_core::webidl::WebIdlConverter>::convert(
                     &mut scope,
                     arg0,
                     "Failed to execute 'UNINIT.call'".into(),
@@ -53,18 +53,12 @@ const fn op_webidl() -> ::deno_core::_ops::OpDecl {
                         &|| std::borrow::Cow::Borrowed("Argument 0"),
                     ),
                     &Default::default(),
-                ) {
-                    Ok(t) => t,
-                    Err(arg0_err) => {
-                        deno_core::_ops::throw_error_js_error_class(
-                            &mut scope,
-                            &arg0_err,
-                        );
-                        return 1;
-                    }
+                );
+                let Some(arg0) = deno_core::_ops::ok_or_throw(&mut scope, arg0) else {
+                    return 1;
                 };
                 let arg1 = args.get(1usize as i32);
-                let arg1 = match <u32 as deno_core::webidl::WebIdlConverter>::convert(
+                let arg1 = <u32 as deno_core::webidl::WebIdlConverter>::convert(
                     &mut scope,
                     arg1,
                     "Failed to execute 'UNINIT.call'".into(),
@@ -72,15 +66,9 @@ const fn op_webidl() -> ::deno_core::_ops::OpDecl {
                         &|| std::borrow::Cow::Borrowed("Argument 1"),
                     ),
                     &Default::default(),
-                ) {
-                    Ok(t) => t,
-                    Err(arg1_err) => {
-                        deno_core::_ops::throw_error_js_error_class(
-                            &mut scope,
-                            &arg1_err,
-                        );
-                        return 1;
-                    }
+                );
+                let Some(arg1) = deno_core::_ops::ok_or_throw(&mut scope, arg1) else {
+                    return 1;
                 };
                 Self::call(arg0, arg1)
             };

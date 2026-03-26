@@ -205,6 +205,7 @@ pub mod _ops {
   pub use super::cppgc::try_unwrap_cppgc_base_persistent_object;
   pub use super::cppgc::try_unwrap_cppgc_object;
   pub use super::cppgc::try_unwrap_cppgc_persistent_object;
+  pub use super::error::ok_or_throw;
   pub use super::error::throw_error_js_error_class;
   pub use super::error::throw_error_one_byte;
   pub use super::error::throw_error_one_byte_info;

@@ -639,15 +639,9 @@ pub fn from_arg(
     Arg::SerdeV8(_class) => {
       *needs_scope = true;
       let scope = scope.clone();
-      let err = format_ident!("{}_err", arg_ident);
-      let throw_exception = throw_type_error_string(generator_state, &err);
       quote! {
-        let #arg_ident = match deno_core::_ops::serde_v8_to_rust(&mut #scope, #arg_ident) {
-          Ok(t) => t,
-          Err(#err) => {
-            #throw_exception;
-          }
-        };
+        let #arg_ident = deno_core::_ops::serde_v8_to_rust(&mut #scope, #arg_ident);
+        let Some(#arg_ident) = deno_core::_ops::ok_or_throw(&mut #scope, #arg_ident) else { return 1; };
       }
     }
     Arg::FromV8(ty, true) => {
@@ -655,20 +649,13 @@ pub fn from_arg(
       let ty = syn::parse_str::<syn::Type>(ty)
         .map_err(|_| "failed to reparse type")?;
       let scope = scope.clone();
-      let err = format_ident!("{}_err", arg_ident);
-      let throw_exception = throw_type_error_string(generator_state, &err);
       quote! {
         let #arg_ident = {
           use deno_core::FromV8;
           use deno_core::FromV8Scopeless;
-
-          match <#ty>::from_v8(&mut #scope, #arg_ident) {
-            Ok(t) => t,
-            Err(#err) => {
-              #throw_exception;
-            }
-          }
+          <#ty>::from_v8(&mut #scope, #arg_ident)
         };
+        let Some(#arg_ident) = deno_core::_ops::ok_or_throw(&mut #scope, #arg_ident) else { return 1; };
       }
     }
     Arg::FromV8(ty, false) => {
@@ -690,8 +677,6 @@ pub fn from_arg(
       let ty = syn::parse_str::<syn::Type>(ty)
         .map_err(|_| "failed to reparse type")?;
       let scope = scope.clone();
-      let err = format_ident!("{}_err", arg_ident);
-      let throw_exception = throw_type_error_string(generator_state, &err);
       let prefix = get_prefix(generator_state);
       let context = format!("Argument {}", index);
 
@@ -763,18 +748,14 @@ pub fn from_arg(
       quote! {
         #default
         #alias
-        let #arg_ident = match <#ty as deno_core::webidl::WebIdlConverter>::convert(
+        let #arg_ident = <#ty as deno_core::webidl::WebIdlConverter>::convert(
           &mut #scope,
           #arg_ident,
           #prefix.into(),
           deno_core::webidl::ContextFn::new_borrowed(&|| std::borrow::Cow::Borrowed(#context)),
           &#options,
-        ) {
-          Ok(t) => t,
-          Err(#err) => {
-            #throw_exception;
-          }
-        };
+        );
+        let Some(#arg_ident) = deno_core::_ops::ok_or_throw(&mut #scope, #arg_ident) else { return 1; };
       }
     }
     Arg::CppGcResource(proto, ty) => {
@@ -1110,14 +1091,11 @@ pub fn return_value_infallible(
     }
     ArgSlowRetval::RetValFallible => {
       generator_state.needs_scope = true;
-      let err = format_ident!("{}_err", generator_state.retval);
-      let throw_exception = throw_type_error_string(generator_state, &err);
 
-      gs_quote!(generator_state(scope, retval) => (match deno_core::_ops::RustToV8Fallible::to_v8_fallible(#result, &mut #scope) {
-        Ok(v) => #retval.set(v),
-        Err(#err) => {
-          #throw_exception
-        },
+      gs_quote!(generator_state(scope, retval) => ({
+        let rv_result = deno_core::_ops::RustToV8Fallible::to_v8_fallible(#result, &mut #scope);
+        let Some(rv_v8) = deno_core::_ops::ok_or_throw(&mut #scope, rv_result) else { return 1; };
+        #retval.set(rv_v8);
       }))
     }
     ArgSlowRetval::V8Local => {
@@ -1129,14 +1107,11 @@ pub fn return_value_infallible(
     }
     ArgSlowRetval::V8LocalFalliable => {
       generator_state.needs_scope = true;
-      let err = format_ident!("{}_err", generator_state.retval);
-      let throw_exception = throw_type_error_string(generator_state, &err);
 
-      gs_quote!(generator_state(scope, retval) => (match deno_core::_ops::RustToV8Fallible::to_v8_fallible(#result, &mut #scope) {
-        Ok(v) => #retval.set(v),
-        Err(#err) => {
-          #throw_exception
-        },
+      gs_quote!(generator_state(scope, retval) => ({
+        let rv_result = deno_core::_ops::RustToV8Fallible::to_v8_fallible(#result, &mut #scope);
+        let Some(rv_v8) = deno_core::_ops::ok_or_throw(&mut #scope, rv_result) else { return 1; };
+        #retval.set(rv_v8);
       }))
     }
     ArgSlowRetval::None => return Err("a slow return value"),

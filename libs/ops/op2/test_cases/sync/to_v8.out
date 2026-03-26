@@ -41,18 +41,19 @@ pub const fn op_to_v8_return() -> ::deno_core::_ops::OpDecl {
             let mut scope = scope.init();
             let mut rv = deno_core::v8::ReturnValue::from_function_callback_info(info);
             let result = { Self::call() };
-            match deno_core::_ops::RustToV8Fallible::to_v8_fallible(
-                deno_core::_ops::RustToV8Marker::<
-                    deno_core::_ops::ToV8Marker,
-                    _,
-                >::from(result),
-                &mut scope,
-            ) {
-                Ok(v) => rv.set(v),
-                Err(rv_err) => {
-                    deno_core::_ops::throw_error_js_error_class(&mut scope, &rv_err);
+            {
+                let rv_result = deno_core::_ops::RustToV8Fallible::to_v8_fallible(
+                    deno_core::_ops::RustToV8Marker::<
+                        deno_core::_ops::ToV8Marker,
+                        _,
+                    >::from(result),
+                    &mut scope,
+                );
+                let Some(rv_v8) = deno_core::_ops::ok_or_throw(&mut scope, rv_result)
+                else {
                     return 1;
-                }
+                };
+                rv.set(rv_v8);
             };
             return 0;
         }

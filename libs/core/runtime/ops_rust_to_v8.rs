@@ -429,7 +429,7 @@ typedarray!(f64, Float64Array);
 impl<'a, T: serde::Serialize> RustToV8Fallible<'a>
   for RustToV8Marker<SerdeMarker, T>
 {
-  #[inline(always)]
+  #[inline]
   fn to_v8_fallible<'i>(
     self,
     scope: &mut v8::PinScope<'a, 'i>,
@@ -444,7 +444,7 @@ impl<'a, T: serde::Serialize> RustToV8Fallible<'a>
 impl<'a, T: crate::cppgc::GarbageCollected + 'static> RustToV8<'a>
   for RustToV8Marker<CppGcMarker, T>
 {
-  #[inline(always)]
+  #[inline]
   fn to_v8<'i>(
     self,
     scope: &mut v8::PinScope<'a, 'i>,
@@ -471,7 +471,7 @@ impl<'a> RustToV8<'a> for RustToV8Marker<Undefined, ()> {
 impl<'a, T: crate::ToV8<'a>> RustToV8Fallible<'a>
   for RustToV8Marker<ToV8Marker, T>
 {
-  #[inline(always)]
+  #[inline]
   fn to_v8_fallible<'i>(
     self,
     scope: &mut v8::PinScope<'a, 'i>,

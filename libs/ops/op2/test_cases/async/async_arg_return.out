@@ -46,10 +46,8 @@ pub const fn op_async() -> ::deno_core::_ops::OpDecl {
             if args.length() < (1u8 as i32) + 1i32 {
                 let msg = format!(
                     "{}: {} {} required, but only {} present",
-                    "Failed to execute 'UNINIT.call'",
-                    1u8,
-                    "argument",
-                    args.length() - 1i32,
+                    "Failed to execute 'UNINIT.call'", 1u8, "argument", args.length() -
+                    1i32
                 );
                 let msg = deno_core::v8::String::new(&mut scope, &msg).unwrap();
                 let exception = deno_core::v8::Exception::type_error(
