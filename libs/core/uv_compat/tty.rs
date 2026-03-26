@@ -2006,10 +2006,10 @@ unsafe extern "system" fn win_tty_wait_callback(
   // leaked in tty_register_wait. We must NOT drop it here -- just
   // clone the waker and wake.
   let mutex = unsafe { &*(context as *const std::sync::Mutex<Option<Waker>>) };
-  if let Ok(guard) = mutex.lock() {
-    if let Some(waker) = guard.as_ref() {
-      waker.wake_by_ref();
-    }
+  if let Ok(guard) = mutex.lock()
+    && let Some(waker) = guard.as_ref()
+  {
+    waker.wake_by_ref();
   }
 }
 
