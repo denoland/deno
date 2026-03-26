@@ -686,6 +686,8 @@ unsafe extern "C" fn after_uv_write(req: *mut uv_write_t, status: i32) {
     unsafe { LibUvStreamWrap::stable_handle_data((*req).handle) };
   let Some(handle_data_ptr) = handle_data else {
     // Handle was detached (e.g. GC). Free the request to avoid a leak.
+    // SAFETY: `req` was allocated with `Box::new` in `do_write` and is
+    // valid per the uv_write_cb contract.
     unsafe { drop(Box::from_raw(req)) };
     return;
   };
@@ -755,6 +757,8 @@ unsafe extern "C" fn after_uv_shutdown(req: *mut uv_shutdown_t, status: i32) {
     unsafe { LibUvStreamWrap::stable_handle_data((*req).handle) };
   let Some(handle_data_ptr) = handle_data else {
     // Handle was detached (e.g. GC). Free the request to avoid a leak.
+    // SAFETY: `req` was allocated with `Box::new` in `do_shutdown` and is
+    // valid per the uv_shutdown_cb contract.
     unsafe { drop(Box::from_raw(req)) };
     return;
   };

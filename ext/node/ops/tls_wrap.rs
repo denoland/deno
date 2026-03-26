@@ -1178,12 +1178,12 @@ impl TLSWrapInner {
             None,
           );
         }
-      } else if result.got_error {
-        if let Some(ctx) = extract_emit_ctx(ptr) {
-          let onread = (*ptr).onread.clone();
-          let state = (*ptr).stream_base_state.clone();
-          do_emit_read(&ctx, onread.as_ref(), state.as_ref(), -1, None);
-        }
+      } else if result.got_error
+        && let Some(ctx) = extract_emit_ctx(ptr)
+      {
+        let onread = (*ptr).onread.clone();
+        let state = (*ptr).stream_base_state.clone();
+        do_emit_read(&ctx, onread.as_ref(), state.as_ref(), -1, None);
       }
     }
   }
@@ -1212,10 +1212,11 @@ impl TLSWrapInner {
             do_enc_out_js(&ctx, enc_data);
           }
           // For JS streams, treat the write as synchronously completed.
-          if (*ptr).write_callback_scheduled && !(*ptr).in_dowrite {
-            if let Some((write_obj, ctx)) = prepare_invoke_queued(ptr) {
-              do_invoke_queued(&ctx, write_obj, 0);
-            }
+          if (*ptr).write_callback_scheduled
+            && !(*ptr).in_dowrite
+            && let Some((write_obj, ctx)) = prepare_invoke_queued(ptr)
+          {
+            do_invoke_queued(&ctx, write_obj, 0);
           }
         }
         EncOutAction::InvokeQueued(status) => {
@@ -1316,18 +1317,18 @@ unsafe fn tls_read_interceptor_cb(
         (*ptr).eof = true;
       }
       // Emit read callbacks without holding a reference
-      if !result.data.is_empty() {
-        if let Some(ctx) = extract_emit_ctx(ptr) {
-          let onread = (*ptr).onread.clone();
-          let state = (*ptr).stream_base_state.clone();
-          do_emit_read(
-            &ctx,
-            onread.as_ref(),
-            state.as_ref(),
-            result.data.len() as isize,
-            Some(&result.data),
-          );
-        }
+      if !result.data.is_empty()
+        && let Some(ctx) = extract_emit_ctx(ptr)
+      {
+        let onread = (*ptr).onread.clone();
+        let state = (*ptr).stream_base_state.clone();
+        do_emit_read(
+          &ctx,
+          onread.as_ref(),
+          state.as_ref(),
+          result.data.len() as isize,
+          Some(&result.data),
+        );
       }
       if let Some(ctx) = extract_emit_ctx(ptr) {
         let onread = (*ptr).onread.clone();
@@ -2294,12 +2295,11 @@ impl TLSWrap {
     let inner = unsafe { &mut *self.inner.as_mut_ptr() };
     // If the connection hasn't started yet, update the pending server name
     // so SNI is correct when start() creates the ClientConnection.
-    if !inner.started {
-      if let Ok(server_name) =
+    if !inner.started
+      && let Ok(server_name) =
         rustls::pki_types::ServerName::try_from(name.to_string())
-      {
-        inner.pending_server_name = Some(server_name);
-      }
+    {
+      inner.pending_server_name = Some(server_name);
     }
     // After start(), this is a no-op — SNI is already set on the connection.
   }
