@@ -199,6 +199,16 @@ impl UvLoopInner {
     }
   }
 
+  /// Wake the event loop so it re-polls on the next tick. Used on
+  /// Windows to ensure pending TTY write callbacks are processed
+  /// promptly when there is no async I/O notification mechanism.
+  #[cfg(windows)]
+  pub(crate) fn wake(&self) {
+    if let Some(waker) = self.waker.borrow().as_ref() {
+      waker.wake_by_ref();
+    }
+  }
+
   #[inline]
   fn alloc_timer_id(&self) -> u64 {
     let id = self.next_timer_id.get();
@@ -568,12 +578,13 @@ impl UvLoopInner {
         }
       }
 
-      // Close the handle on Windows.
+      // Tear down Windows async read machinery, then close the handle.
       #[cfg(windows)]
       {
+        tty::close_tty_read(handle);
         if !tty.internal_handle.is_null() {
           if tty.internal_handle_owned {
-            // We duplicated this handle in init — close it directly.
+            // We duplicated this handle in init -- close it directly.
             tty::win_console::CloseHandle(tty.internal_handle);
           } else if tty.internal_fd >= 0 {
             // Non-duplicated: close through the CRT to free the fd slot.
