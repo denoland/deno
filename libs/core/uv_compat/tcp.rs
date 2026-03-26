@@ -349,15 +349,13 @@ pub unsafe fn uv_tcp_bind(
       const SOL_SOCKET: c_int = 0xffff;
       const SO_EXCLUSIVEADDRUSE: c_int = -5; // ~SO_REUSEADDR
       let one: c_int = 1;
-      unsafe {
-        setsockopt(
-          socket.as_raw_socket() as usize,
-          SOL_SOCKET,
-          SO_EXCLUSIVEADDRUSE,
-          &one as *const c_int as *const c_void,
-          std::mem::size_of::<c_int>() as c_int,
-        );
-      }
+      setsockopt(
+        socket.as_raw_socket() as usize,
+        SOL_SOCKET,
+        SO_EXCLUSIVEADDRUSE,
+        &one as *const c_int as *const c_void,
+        std::mem::size_of::<c_int>() as c_int,
+      );
     }
 
     // Store the raw fd so uv_tcp_nodelay etc. can
