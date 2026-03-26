@@ -51,3 +51,22 @@ Deno.test("napi tsfn call_js_cb receives valid env after abort race", async () =
     });
   });
 });
+
+Deno.test("napi tsfn acquire and release", async function () {
+  await new Promise((resolve) => {
+    asyncTask.test_tsfn_acquire_release(resolve);
+  });
+});
+
+Deno.test("napi tsfn get context", function () {
+  assertEquals(asyncTask.test_tsfn_get_context(), true);
+});
+
+Deno.test("napi cancel async work", async function () {
+  const result = await new Promise((resolve) => {
+    asyncTask.test_cancel_async_work((cancelled) => {
+      resolve(cancelled);
+    });
+  });
+  assertEquals(result, true);
+});

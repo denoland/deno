@@ -106,12 +106,11 @@ fn discover_npmrc<TSys: EnvVar + EnvHomeDir + FsRead>(
     source: &str,
     path: &Path,
   ) -> Result<NpmRc, NpmRcDiscoverError> {
-    let npmrc = NpmRc::parse(source, &|name| sys.env_var(name).ok()).map_err(
-      |source| NpmRcParseError {
+    let npmrc =
+      NpmRc::parse(sys, source).map_err(|source| NpmRcParseError {
         path: path.to_path_buf(),
         source,
-      },
-    )?;
+      })?;
     log::debug!(".npmrc found at: '{}'", path.display());
     Ok(npmrc)
   }
