@@ -93,25 +93,24 @@ pub fn extract_standalone(
   let cli_args = cli_args.into_owned();
   let current_exe = std::env::current_exe().ok();
   let mut args_iter = cli_args.into_iter();
-  args_iter.next(); // skip argv[0] (the binary itself)
+  args_iter.next(); // skip argv[0]
 
-  // When Node.js apps relaunch themselves they typically do:
-  //   spawn(process.execPath, [process.argv[1], ...args])
-  // In standalone binaries process.argv[1] is the exe path, so the
-  // first arg after the binary will be a duplicate of the exe path.
-  // Strip it so it doesn't leak into Deno.args / process.argv as a
-  // user argument.
-  let mut first = true;
-  for arg in args_iter {
-    if first {
-      first = false;
-      if let Some(exe) = &current_exe {
-        let arg_path = Path::new(&arg);
-        if arg_path == exe.as_path() {
-          continue;
-        }
-      }
+  // Node.js apps relaunch with spawn(process.execPath, [process.argv[1], ...args]).
+  // In standalone mode process.argv[1] === execPath (#32990), so the first arg
+  // after argv[0] is a duplicate of the exe path. Strip it.
+  //
+  // NOTE: this means `./myapp ./myapp --foo` would silently lose the first
+  // `./myapp` arg. In practice standalone binaries are never invoked this way,
+  // and this matches how Node.js SEA handles the relaunch pattern.
+  if let Some(first) = args_iter.next() {
+    let is_exe_dup = current_exe
+      .as_ref()
+      .is_some_and(|exe| Path::new(&first) == exe.as_path());
+    if !is_exe_dup {
+      metadata.argv.push(first.into_string().unwrap());
     }
+  }
+  for arg in args_iter {
     metadata.argv.push(arg.into_string().unwrap());
   }
   let vfs = {
