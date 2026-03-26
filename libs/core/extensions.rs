@@ -158,6 +158,15 @@ impl ExtensionFileSource {
 }
 
 pub type OpFnRef = v8::FunctionCallback;
+/// Function pointer type for the slow op implementation that returns a status code.
+///
+/// Status codes:
+/// - `0`: op completed synchronously without error.
+/// - `1`: op completed with an error/exception.
+/// - `2`: async op was deferred; completion/error metrics will be emitted later.
+///
+/// Sync ops only return `0` or `1`. Async ops may return `0`, `1`, or `2`.
+pub type SlowFnImplRef = fn(*const v8::FunctionCallbackInfo) -> usize;
 pub type OpMiddlewareFn = dyn Fn(OpDecl) -> OpDecl;
 pub type OpStateFn = dyn FnOnce(&mut OpState);
 /// Trait implemented by all generated ops.
@@ -210,6 +219,9 @@ pub struct OpDecl {
   pub no_side_effects: bool,
   /// The slow dispatch call. If metrics are disabled, the `v8::Function` is created with this callback.
   pub(crate) slow_fn: OpFnRef,
+  /// The slow dispatch implementation, returning a status code. Used by the shared
+  /// metrics wrapper to call the op and check success/error.
+  pub(crate) slow_fn_impl: SlowFnImplRef,
   /// The slow dispatch call with metrics enabled. If metrics are enabled, the `v8::Function` is created with this callback.
   pub(crate) slow_fn_with_metrics: OpFnRef,
   /// The fast dispatch call. If metrics are disabled, the `v8::Function`'s fastcall is created with this callback.
@@ -232,7 +244,7 @@ impl OpDecl {
     arg_count: u8,
     no_side_effects: bool,
     slow_fn: OpFnRef,
-    slow_fn_with_metrics: OpFnRef,
+    slow_fn_impl: SlowFnImplRef,
     accessor_type: AccessorType,
     fast_fn: Option<CFunction>,
     fast_fn_with_metrics: Option<CFunction>,
@@ -248,7 +260,8 @@ impl OpDecl {
       arg_count,
       no_side_effects,
       slow_fn,
-      slow_fn_with_metrics,
+      slow_fn_impl,
+      slow_fn_with_metrics: crate::ops_metrics::slow_metrics_dispatch,
       accessor_type,
       fast_fn,
       fast_fn_with_metrics,
@@ -280,6 +293,7 @@ impl OpDecl {
   /// `OpDecl`.
   pub const fn with_implementation_from(mut self, from: &Self) -> Self {
     self.slow_fn = from.slow_fn;
+    self.slow_fn_impl = from.slow_fn_impl;
     self.slow_fn_with_metrics = from.slow_fn_with_metrics;
     self.fast_fn = from.fast_fn;
     self.fast_fn_with_metrics = from.fast_fn_with_metrics;
