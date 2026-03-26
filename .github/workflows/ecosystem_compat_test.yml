@@ -23,7 +23,7 @@ jobs:
         with:
           submodules: true
       - name: Setup Deno
-        uses: denoland/setup-deno@v2
+        uses: denoland/setup-deno@667a34cdef165d8d2b2e98dde39547c9daac7282 # v2
         with:
           deno-version: canary
       - name: Install Python
@@ -31,14 +31,14 @@ jobs:
         with:
           python-version: 3.11
       - name: Authenticate with Google Cloud
-        uses: google-github-actions/auth@v3
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
         with:
           project_id: denoland
           credentials_json: '${{ secrets.GCP_SA_KEY }}'
           export_environment_variables: true
           create_credentials_file: true
       - name: Setup gcloud
-        uses: google-github-actions/setup-gcloud@v3
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3
         with:
           project_id: denoland
       - name: Run tests
@@ -62,20 +62,20 @@ jobs:
         with:
           submodules: true
       - name: Setup Deno
-        uses: denoland/setup-deno@v2
+        uses: denoland/setup-deno@667a34cdef165d8d2b2e98dde39547c9daac7282 # v2
       - name: Install Python
         uses: actions/setup-python@v6
         with:
           python-version: 3.11
       - name: Authenticate with Google Cloud
-        uses: google-github-actions/auth@v3
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
         with:
           project_id: denoland
           credentials_json: '${{ secrets.GCP_SA_KEY }}'
           export_environment_variables: true
           create_credentials_file: true
       - name: Setup gcloud
-        uses: google-github-actions/setup-gcloud@v3
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3
         with:
           project_id: denoland
       - name: Post message to slack channel
