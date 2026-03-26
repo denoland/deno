@@ -223,6 +223,18 @@ pub struct uv_tty_t {
   pub(crate) internal_handle_owned: bool, // true if we duplicated (fd <= 2)
   #[cfg(windows)]
   pub(crate) internal_fd: c_int, // original CRT fd
+
+  // Raw mode read state (mirrors libuv's tty.rd fields)
+  #[cfg(windows)]
+  pub(crate) internal_last_key: [u8; 32],
+  #[cfg(windows)]
+  pub(crate) internal_last_key_len: u8,
+  #[cfg(windows)]
+  pub(crate) internal_last_key_offset: u8,
+  #[cfg(windows)]
+  pub(crate) internal_last_repeat_count: u16,
+  #[cfg(windows)]
+  pub(crate) internal_utf16_high_surrogate: u16,
 }
 
 pub type UvTty = uv_tty_t;
@@ -426,7 +438,58 @@ pub(crate) mod win_console {
     pub dwMaximumWindowSize: COORD,
   }
 
+  // Console input event types
   pub const KEY_EVENT: u16 = 0x0001;
+  pub const WINDOW_BUFFER_SIZE_EVENT: u16 = 0x0004;
+
+  // Virtual key codes
+  pub const VK_BACK: u16 = 0x08;
+  pub const VK_TAB: u16 = 0x09;
+  pub const VK_RETURN: u16 = 0x0D;
+  pub const VK_ESCAPE: u16 = 0x1B;
+  pub const VK_PRIOR: u16 = 0x21; // Page Up
+  pub const VK_NEXT: u16 = 0x22; // Page Down
+  pub const VK_END: u16 = 0x23;
+  pub const VK_HOME: u16 = 0x24;
+  pub const VK_LEFT: u16 = 0x25;
+  pub const VK_UP: u16 = 0x26;
+  pub const VK_RIGHT: u16 = 0x27;
+  pub const VK_DOWN: u16 = 0x28;
+  pub const VK_INSERT: u16 = 0x2D;
+  pub const VK_DELETE: u16 = 0x2E;
+  pub const VK_NUMPAD0: u16 = 0x60;
+  pub const VK_NUMPAD1: u16 = 0x61;
+  pub const VK_NUMPAD2: u16 = 0x62;
+  pub const VK_NUMPAD3: u16 = 0x63;
+  pub const VK_NUMPAD4: u16 = 0x64;
+  pub const VK_NUMPAD5: u16 = 0x65;
+  pub const VK_NUMPAD6: u16 = 0x66;
+  pub const VK_NUMPAD7: u16 = 0x67;
+  pub const VK_NUMPAD8: u16 = 0x68;
+  pub const VK_NUMPAD9: u16 = 0x69;
+  pub const VK_DECIMAL: u16 = 0x6E;
+  pub const VK_F1: u16 = 0x70;
+  pub const VK_F2: u16 = 0x71;
+  pub const VK_F3: u16 = 0x72;
+  pub const VK_F4: u16 = 0x73;
+  pub const VK_F5: u16 = 0x74;
+  pub const VK_F6: u16 = 0x75;
+  pub const VK_F7: u16 = 0x76;
+  pub const VK_F8: u16 = 0x77;
+  pub const VK_F9: u16 = 0x78;
+  pub const VK_F10: u16 = 0x79;
+  pub const VK_F11: u16 = 0x7A;
+  pub const VK_F12: u16 = 0x7B;
+  pub const VK_MENU: u16 = 0x12; // Alt key
+  pub const VK_CLEAR: u16 = 0x0C;
+
+  // Control key state flags
+  pub const SHIFT_PRESSED: u32 = 0x0010;
+  pub const LEFT_ALT_PRESSED: u32 = 0x0002;
+  pub const RIGHT_ALT_PRESSED: u32 = 0x0001;
+  pub const LEFT_CTRL_PRESSED: u32 = 0x0008;
+  pub const RIGHT_CTRL_PRESSED: u32 = 0x0004;
+  pub const ENHANCED_KEY: u32 = 0x0100;
 
   #[repr(C)]
   pub struct KEY_EVENT_RECORD {
@@ -749,8 +812,11 @@ unsafe fn tty_try_write(
   }
 }
 
+/// Line-mode read for Windows: uses ReadFile which blocks until Enter.
+/// Only safe to call when GetNumberOfConsoleInputEvents indicates events
+/// AND the console is in line mode (ENABLE_LINE_INPUT set).
 #[cfg(windows)]
-unsafe fn tty_try_read(
+unsafe fn tty_try_read_line(
   tty: *const uv_tty_t,
   buf: &mut [u8],
 ) -> std::io::Result<usize> {
@@ -769,6 +835,387 @@ unsafe fn tty_try_read(
     Err(std::io::Error::last_os_error())
   } else {
     Ok(read as usize)
+  }
+}
+
+/// Map a virtual key code + modifiers to a VT100/xterm escape sequence.
+/// Returns None for keys we don't handle (caller should skip them).
+/// Matches libuv's get_vt100_fn_key (Cygwin-compatible mappings).
+#[cfg(windows)]
+fn get_vt100_fn_key(
+  code: u16,
+  shift: bool,
+  ctrl: bool,
+) -> Option<&'static [u8]> {
+  use win_console::*;
+  match (code, shift, ctrl) {
+    // Arrow keys
+    (VK_UP, false, false) => Some(b"\x1b[A"),
+    (VK_UP, true, false) => Some(b"\x1b[1;2A"),
+    (VK_UP, false, true) => Some(b"\x1b[1;5A"),
+    (VK_UP, true, true) => Some(b"\x1b[1;6A"),
+    (VK_DOWN, false, false) => Some(b"\x1b[B"),
+    (VK_DOWN, true, false) => Some(b"\x1b[1;2B"),
+    (VK_DOWN, false, true) => Some(b"\x1b[1;5B"),
+    (VK_DOWN, true, true) => Some(b"\x1b[1;6B"),
+    (VK_RIGHT, false, false) => Some(b"\x1b[C"),
+    (VK_RIGHT, true, false) => Some(b"\x1b[1;2C"),
+    (VK_RIGHT, false, true) => Some(b"\x1b[1;5C"),
+    (VK_RIGHT, true, true) => Some(b"\x1b[1;6C"),
+    (VK_LEFT, false, false) => Some(b"\x1b[D"),
+    (VK_LEFT, true, false) => Some(b"\x1b[1;2D"),
+    (VK_LEFT, false, true) => Some(b"\x1b[1;5D"),
+    (VK_LEFT, true, true) => Some(b"\x1b[1;6D"),
+    // Clear (numpad 5)
+    (VK_CLEAR, false, false) => Some(b"\x1b[G"),
+    (VK_CLEAR, true, false) => Some(b"\x1b[1;2G"),
+    (VK_CLEAR, false, true) => Some(b"\x1b[1;5G"),
+    (VK_CLEAR, true, true) => Some(b"\x1b[1;6G"),
+    // Home / End
+    (VK_HOME, false, false) => Some(b"\x1b[1~"),
+    (VK_HOME, true, false) => Some(b"\x1b[1;2~"),
+    (VK_HOME, false, true) => Some(b"\x1b[1;5~"),
+    (VK_HOME, true, true) => Some(b"\x1b[1;6~"),
+    (VK_END, false, false) => Some(b"\x1b[4~"),
+    (VK_END, true, false) => Some(b"\x1b[4;2~"),
+    (VK_END, false, true) => Some(b"\x1b[4;5~"),
+    (VK_END, true, true) => Some(b"\x1b[4;6~"),
+    // Insert / Delete
+    (VK_INSERT, false, false) => Some(b"\x1b[2~"),
+    (VK_INSERT, true, false) => Some(b"\x1b[2;2~"),
+    (VK_INSERT, false, true) => Some(b"\x1b[2;5~"),
+    (VK_INSERT, true, true) => Some(b"\x1b[2;6~"),
+    (VK_DELETE, false, false) => Some(b"\x1b[3~"),
+    (VK_DELETE, true, false) => Some(b"\x1b[3;2~"),
+    (VK_DELETE, false, true) => Some(b"\x1b[3;5~"),
+    (VK_DELETE, true, true) => Some(b"\x1b[3;6~"),
+    // Page Up / Page Down
+    (VK_PRIOR, false, false) => Some(b"\x1b[5~"),
+    (VK_PRIOR, true, false) => Some(b"\x1b[5;2~"),
+    (VK_PRIOR, false, true) => Some(b"\x1b[5;5~"),
+    (VK_PRIOR, true, true) => Some(b"\x1b[5;6~"),
+    (VK_NEXT, false, false) => Some(b"\x1b[6~"),
+    (VK_NEXT, true, false) => Some(b"\x1b[6;2~"),
+    (VK_NEXT, false, true) => Some(b"\x1b[6;5~"),
+    (VK_NEXT, true, true) => Some(b"\x1b[6;6~"),
+    // Numpad (same sequences as the corresponding navigation keys)
+    (VK_NUMPAD0, false, false) => Some(b"\x1b[2~"),
+    (VK_NUMPAD0, true, false) => Some(b"\x1b[2;2~"),
+    (VK_NUMPAD0, false, true) => Some(b"\x1b[2;5~"),
+    (VK_NUMPAD0, true, true) => Some(b"\x1b[2;6~"),
+    (VK_NUMPAD1, false, false) => Some(b"\x1b[4~"),
+    (VK_NUMPAD1, true, false) => Some(b"\x1b[4;2~"),
+    (VK_NUMPAD1, false, true) => Some(b"\x1b[4;5~"),
+    (VK_NUMPAD1, true, true) => Some(b"\x1b[4;6~"),
+    (VK_NUMPAD2, false, false) => Some(b"\x1b[B"),
+    (VK_NUMPAD2, true, false) => Some(b"\x1b[1;2B"),
+    (VK_NUMPAD2, false, true) => Some(b"\x1b[1;5B"),
+    (VK_NUMPAD2, true, true) => Some(b"\x1b[1;6B"),
+    (VK_NUMPAD3, false, false) => Some(b"\x1b[6~"),
+    (VK_NUMPAD3, true, false) => Some(b"\x1b[6;2~"),
+    (VK_NUMPAD3, false, true) => Some(b"\x1b[6;5~"),
+    (VK_NUMPAD3, true, true) => Some(b"\x1b[6;6~"),
+    (VK_NUMPAD4, false, false) => Some(b"\x1b[D"),
+    (VK_NUMPAD4, true, false) => Some(b"\x1b[1;2D"),
+    (VK_NUMPAD4, false, true) => Some(b"\x1b[1;5D"),
+    (VK_NUMPAD4, true, true) => Some(b"\x1b[1;6D"),
+    (VK_NUMPAD5, false, false) => Some(b"\x1b[G"),
+    (VK_NUMPAD5, true, false) => Some(b"\x1b[1;2G"),
+    (VK_NUMPAD5, false, true) => Some(b"\x1b[1;5G"),
+    (VK_NUMPAD5, true, true) => Some(b"\x1b[1;6G"),
+    (VK_NUMPAD6, false, false) => Some(b"\x1b[C"),
+    (VK_NUMPAD6, true, false) => Some(b"\x1b[1;2C"),
+    (VK_NUMPAD6, false, true) => Some(b"\x1b[1;5C"),
+    (VK_NUMPAD6, true, true) => Some(b"\x1b[1;6C"),
+    (VK_NUMPAD7, false, false) => Some(b"\x1b[A"),
+    (VK_NUMPAD7, true, false) => Some(b"\x1b[1;2A"),
+    (VK_NUMPAD7, false, true) => Some(b"\x1b[1;5A"),
+    (VK_NUMPAD7, true, true) => Some(b"\x1b[1;6A"),
+    (VK_NUMPAD8, false, false) => Some(b"\x1b[1~"),
+    (VK_NUMPAD8, true, false) => Some(b"\x1b[1;2~"),
+    (VK_NUMPAD8, false, true) => Some(b"\x1b[1;5~"),
+    (VK_NUMPAD8, true, true) => Some(b"\x1b[1;6~"),
+    (VK_NUMPAD9, false, false) => Some(b"\x1b[5~"),
+    (VK_NUMPAD9, true, false) => Some(b"\x1b[5;2~"),
+    (VK_NUMPAD9, false, true) => Some(b"\x1b[5;5~"),
+    (VK_NUMPAD9, true, true) => Some(b"\x1b[5;6~"),
+    (VK_DECIMAL, false, false) => Some(b"\x1b[3~"),
+    (VK_DECIMAL, true, false) => Some(b"\x1b[3;2~"),
+    (VK_DECIMAL, false, true) => Some(b"\x1b[3;5~"),
+    (VK_DECIMAL, true, true) => Some(b"\x1b[3;6~"),
+    // Function keys
+    (VK_F1, false, false) => Some(b"\x1b[[A"),
+    (VK_F1, true, false) => Some(b"\x1b[23~"),
+    (VK_F1, false, true) => Some(b"\x1b[11^"),
+    (VK_F1, true, true) => Some(b"\x1b[23^"),
+    (VK_F2, false, false) => Some(b"\x1b[[B"),
+    (VK_F2, true, false) => Some(b"\x1b[24~"),
+    (VK_F2, false, true) => Some(b"\x1b[12^"),
+    (VK_F2, true, true) => Some(b"\x1b[24^"),
+    (VK_F3, false, false) => Some(b"\x1b[[C"),
+    (VK_F3, true, false) => Some(b"\x1b[25~"),
+    (VK_F3, false, true) => Some(b"\x1b[13^"),
+    (VK_F3, true, true) => Some(b"\x1b[25^"),
+    (VK_F4, false, false) => Some(b"\x1b[[D"),
+    (VK_F4, true, false) => Some(b"\x1b[26~"),
+    (VK_F4, false, true) => Some(b"\x1b[14^"),
+    (VK_F4, true, true) => Some(b"\x1b[26^"),
+    (VK_F5, false, false) => Some(b"\x1b[[E"),
+    (VK_F5, true, false) => Some(b"\x1b[28~"),
+    (VK_F5, false, true) => Some(b"\x1b[15^"),
+    (VK_F5, true, true) => Some(b"\x1b[28^"),
+    (VK_F6, false, false) => Some(b"\x1b[17~"),
+    (VK_F6, true, false) => Some(b"\x1b[29~"),
+    (VK_F6, false, true) => Some(b"\x1b[17^"),
+    (VK_F6, true, true) => Some(b"\x1b[29^"),
+    (VK_F7, false, false) => Some(b"\x1b[18~"),
+    (VK_F7, true, false) => Some(b"\x1b[31~"),
+    (VK_F7, false, true) => Some(b"\x1b[18^"),
+    (VK_F7, true, true) => Some(b"\x1b[31^"),
+    (VK_F8, false, false) => Some(b"\x1b[19~"),
+    (VK_F8, true, false) => Some(b"\x1b[32~"),
+    (VK_F8, false, true) => Some(b"\x1b[19^"),
+    (VK_F8, true, true) => Some(b"\x1b[32^"),
+    (VK_F9, false, false) => Some(b"\x1b[20~"),
+    (VK_F9, true, false) => Some(b"\x1b[33~"),
+    (VK_F9, false, true) => Some(b"\x1b[20^"),
+    (VK_F9, true, true) => Some(b"\x1b[33^"),
+    (VK_F10, false, false) => Some(b"\x1b[21~"),
+    (VK_F10, true, false) => Some(b"\x1b[34~"),
+    (VK_F10, false, true) => Some(b"\x1b[21^"),
+    (VK_F10, true, true) => Some(b"\x1b[34^"),
+    (VK_F11, false, false) => Some(b"\x1b[23~"),
+    (VK_F11, true, false) => Some(b"\x1b[23$"),
+    (VK_F11, false, true) => Some(b"\x1b[23^"),
+    (VK_F11, true, true) => Some(b"\x1b[23@"),
+    (VK_F12, false, false) => Some(b"\x1b[24~"),
+    (VK_F12, true, false) => Some(b"\x1b[24$"),
+    (VK_F12, false, true) => Some(b"\x1b[24^"),
+    (VK_F12, true, true) => Some(b"\x1b[24@"),
+    _ => None,
+  }
+}
+
+/// Returns true if the mode is a raw mode (RAW or RAW_VT).
+#[cfg(windows)]
+fn is_raw_tty_mode(mode: uv_tty_mode_t) -> bool {
+  matches!(
+    mode,
+    uv_tty_mode_t::UV_TTY_MODE_RAW | uv_tty_mode_t::UV_TTY_MODE_RAW_VT
+  )
+}
+
+/// Raw-mode read for Windows: uses ReadConsoleInputW to process individual
+/// INPUT_RECORD structs. This avoids ReadFile which blocks on non-character
+/// events (KEY_UP, FOCUS, MOUSE, etc.). Matches libuv's
+/// uv_process_tty_read_raw_req approach.
+///
+/// Fills `buf` with decoded UTF-8 bytes and returns the number of bytes
+/// written. Returns WouldBlock if no character-producing events are
+/// available.
+#[cfg(windows)]
+unsafe fn tty_try_read_raw(
+  tty: *mut uv_tty_t,
+  buf: &mut [u8],
+) -> std::io::Result<usize> {
+  let handle = unsafe { (*tty).internal_handle };
+  let mut buf_used: usize = 0;
+
+  loop {
+    // Phase 1: Drain any pending bytes from the last decoded key.
+    unsafe {
+      while (*tty).internal_last_key_offset < (*tty).internal_last_key_len {
+        if buf_used >= buf.len() {
+          return Ok(buf_used);
+        }
+        buf[buf_used] =
+          (*tty).internal_last_key[(*tty).internal_last_key_offset as usize];
+        (*tty).internal_last_key_offset += 1;
+        buf_used += 1;
+      }
+
+      // Phase 2: Handle repeat count from previous key.
+      if (*tty).internal_last_key_len > 0 {
+        if (*tty).internal_last_repeat_count > 0 {
+          (*tty).internal_last_repeat_count -= 1;
+          (*tty).internal_last_key_offset = 0;
+          continue;
+        }
+        (*tty).internal_last_key_len = 0;
+      }
+    }
+
+    // Phase 3: Check if there are more input records to process.
+    let mut num_events: u32 = 0;
+    if unsafe {
+      win_console::GetNumberOfConsoleInputEvents(handle, &mut num_events)
+    } == 0
+      || num_events == 0
+    {
+      break;
+    }
+
+    // Phase 4: Read the next input record.
+    let mut record: win_console::INPUT_RECORD = unsafe { std::mem::zeroed() };
+    let mut records_read: u32 = 0;
+    if unsafe {
+      win_console::ReadConsoleInputW(handle, &mut record, 1, &mut records_read)
+    } == 0
+    {
+      return Err(std::io::Error::last_os_error());
+    }
+    if records_read == 0 {
+      break;
+    }
+
+    // Skip non-key events.
+    if record.EventType != win_console::KEY_EVENT {
+      // TODO: handle WINDOW_BUFFER_SIZE_EVENT for resize signaling
+      continue;
+    }
+
+    let kev = &record.Event;
+
+    // Skip KEY_UP events, unless the Alt key was released with a valid
+    // Unicode character (Alt-code composition).
+    if kev.bKeyDown == 0
+      && (kev.wVirtualKeyCode != win_console::VK_MENU || kev.uChar == 0)
+    {
+      continue;
+    }
+
+    // Skip numpad keys during Alt-code composition (LEFT_ALT held,
+    // no ENHANCED_KEY flag).
+    if (kev.dwControlKeyState & win_console::LEFT_ALT_PRESSED) != 0
+      && (kev.dwControlKeyState & win_console::ENHANCED_KEY) == 0
+      && matches!(
+        kev.wVirtualKeyCode,
+        win_console::VK_INSERT
+          | win_console::VK_END
+          | win_console::VK_DOWN
+          | win_console::VK_NEXT
+          | win_console::VK_LEFT
+          | win_console::VK_CLEAR
+          | win_console::VK_RIGHT
+          | win_console::VK_HOME
+          | win_console::VK_UP
+          | win_console::VK_PRIOR
+          | win_console::VK_NUMPAD0
+          | win_console::VK_NUMPAD1
+          | win_console::VK_NUMPAD2
+          | win_console::VK_NUMPAD3
+          | win_console::VK_NUMPAD4
+          | win_console::VK_NUMPAD5
+          | win_console::VK_NUMPAD6
+          | win_console::VK_NUMPAD7
+          | win_console::VK_NUMPAD8
+          | win_console::VK_NUMPAD9
+      )
+    {
+      continue;
+    }
+
+    if kev.uChar != 0 {
+      // Character key pressed.
+      let unicode_char = kev.uChar;
+
+      // Handle UTF-16 high surrogates.
+      if (0xD800..0xDC00).contains(&unicode_char) {
+        unsafe {
+          (*tty).internal_utf16_high_surrogate = unicode_char;
+        }
+        continue;
+      }
+
+      // Determine Alt prefix: ESC before character if Alt held
+      // without Ctrl (Ctrl+Alt = AltGr on some layouts).
+      let alt_held = (kev.dwControlKeyState
+        & (win_console::LEFT_ALT_PRESSED | win_console::RIGHT_ALT_PRESSED))
+        != 0;
+      let ctrl_held = (kev.dwControlKeyState
+        & (win_console::LEFT_CTRL_PRESSED | win_console::RIGHT_CTRL_PRESSED))
+        != 0;
+      let prefix_len = if alt_held && !ctrl_held && kev.bKeyDown != 0 {
+        1usize
+      } else {
+        0usize
+      };
+
+      // Encode UTF-16 to UTF-8.
+      let high_surrogate = unsafe { (*tty).internal_utf16_high_surrogate };
+      let decoded = if high_surrogate != 0 {
+        unsafe {
+          (*tty).internal_utf16_high_surrogate = 0;
+        }
+        char::decode_utf16([high_surrogate, unicode_char].iter().copied())
+          .next()
+      } else {
+        char::decode_utf16(std::iter::once(unicode_char)).next()
+      };
+
+      let ch = match decoded {
+        Some(Ok(c)) => c,
+        _ => continue, // Invalid surrogate pair, skip
+      };
+
+      let mut key_buf = [0u8; 32];
+      let mut offset = 0;
+      if prefix_len > 0 {
+        key_buf[0] = 0x1b; // ESC
+        offset = 1;
+      }
+      let encoded = ch.encode_utf8(&mut key_buf[offset..]);
+      let total_len = offset + encoded.len();
+
+      unsafe {
+        (*tty).internal_last_key[..total_len]
+          .copy_from_slice(&key_buf[..total_len]);
+        (*tty).internal_last_key_len = total_len as u8;
+        (*tty).internal_last_key_offset = 0;
+        (*tty).internal_last_repeat_count = kev.wRepeatCount.saturating_sub(1);
+      }
+    } else {
+      // Function key pressed (no Unicode character).
+      let shift = (kev.dwControlKeyState & win_console::SHIFT_PRESSED) != 0;
+      let ctrl = (kev.dwControlKeyState
+        & (win_console::LEFT_CTRL_PRESSED | win_console::RIGHT_CTRL_PRESSED))
+        != 0;
+
+      let vt100 = match get_vt100_fn_key(kev.wVirtualKeyCode, shift, ctrl) {
+        Some(seq) => seq,
+        None => continue, // Unknown function key, skip
+      };
+
+      // Alt prefix for function keys.
+      let alt_held = (kev.dwControlKeyState
+        & (win_console::LEFT_ALT_PRESSED | win_console::RIGHT_ALT_PRESSED))
+        != 0;
+      let prefix_len = if alt_held { 1usize } else { 0usize };
+
+      let total_len = prefix_len + vt100.len();
+      if total_len > 32 {
+        continue; // Sequence too long, skip
+      }
+
+      unsafe {
+        if prefix_len > 0 {
+          (*tty).internal_last_key[0] = 0x1b; // ESC
+        }
+        (*tty).internal_last_key[prefix_len..total_len].copy_from_slice(vt100);
+        (*tty).internal_last_key_len = total_len as u8;
+        (*tty).internal_last_key_offset = 0;
+        (*tty).internal_last_repeat_count = kev.wRepeatCount.saturating_sub(1);
+      }
+    }
+  }
+
+  if buf_used > 0 {
+    Ok(buf_used)
+  } else {
+    Err(std::io::Error::new(
+      std::io::ErrorKind::WouldBlock,
+      "no console input available",
+    ))
   }
 }
 
@@ -1004,6 +1451,11 @@ pub unsafe fn uv_tty_init(
       write(addr_of_mut!((*tty).internal_saved_mode), win_saved_mode);
       write(addr_of_mut!((*tty).internal_handle_owned), win_handle_owned);
       write(addr_of_mut!((*tty).internal_fd), fd);
+      write(addr_of_mut!((*tty).internal_last_key), [0u8; 32]);
+      write(addr_of_mut!((*tty).internal_last_key_len), 0);
+      write(addr_of_mut!((*tty).internal_last_key_offset), 0);
+      write(addr_of_mut!((*tty).internal_last_repeat_count), 0);
+      write(addr_of_mut!((*tty).internal_utf16_high_surrogate), 0);
     }
   }
   0
@@ -1608,85 +2060,62 @@ pub(crate) unsafe fn poll_tty_handle(
           }
         }
 
-        // On non-Unix (Windows), check for available input before reading.
-        // TODO: This is still not fully async. libuv uses threaded reads
-        // (ReadConsoleW on a worker thread for raw mode,
-        // ReadConsoleInputW for line mode). We use PeekConsoleInputW
-        // as a readiness gate to avoid blocking the event loop, but a
-        // proper implementation should spawn reads onto a blocking
-        // thread.
+        // On non-Unix (Windows), use mode-aware reading.
+        // Raw mode: ReadConsoleInputW to process individual INPUT_RECORD
+        // structs (matching libuv's uv_process_tty_read_raw_req).
+        // Line mode: ReadFile (blocking, gated by event count check).
+        // TODO: Line mode should use a worker thread like libuv does
+        // with QueueUserWorkItem + ReadConsoleW.
         #[cfg(not(unix))]
         {
           if (*tty_ptr).internal_readable && (*tty_ptr).internal_reading {
-            // Drain non-character events (KEY_UP, FOCUS, MOUSE, etc.)
-            // from the console input buffer. ReadFile only consumes
-            // KEY_DOWN events that produce characters, so if we call
-            // ReadFile while only non-character events remain, it will
-            // block the event loop. We peek at the front of the queue
-            // and discard anything that is not a character-producing
-            // KEY_DOWN.
-            let handle = (*tty_ptr).internal_handle;
-            let has_readable_input = loop {
-              let mut record: win_console::INPUT_RECORD = std::mem::zeroed();
-              let mut peeked: u32 = 0;
-              if win_console::PeekConsoleInputW(
-                handle,
-                &mut record,
-                1,
-                &mut peeked,
-              ) == 0
-                || peeked == 0
-              {
-                // No events at all or error.
-                break false;
-              }
-              // Check if this is a KEY_DOWN event with a character.
-              if record.EventType == win_console::KEY_EVENT
-                && record.Event.bKeyDown != 0
-                && record.Event.uChar != 0
-              {
-                break true;
-              }
-              // Non-character event -- consume and discard it so it
-              // does not block ReadFile.
-              let mut discarded: u32 = 0;
-              win_console::ReadConsoleInputW(
-                handle,
-                &mut record,
-                1,
-                &mut discarded,
-              );
+            let mut buf = uv_buf_t {
+              base: std::ptr::null_mut(),
+              len: 0,
             };
+            alloc_cb(tty_ptr as *mut uv_handle_t, 65536, &mut buf);
+            if buf.base.is_null() || buf.len == 0 {
+              read_cb(tty_ptr as *mut uv_stream_t, UV_ENOBUFS as isize, &buf);
+            } else {
+              let slice =
+                std::slice::from_raw_parts_mut(buf.base.cast::<u8>(), buf.len);
 
-            if has_readable_input && (*tty_ptr).internal_reading {
-              let mut buf = uv_buf_t {
-                base: std::ptr::null_mut(),
-                len: 0,
-              };
-              alloc_cb(tty_ptr as *mut uv_handle_t, 65536, &mut buf);
-              if buf.base.is_null() || buf.len == 0 {
-                read_cb(tty_ptr as *mut uv_stream_t, UV_ENOBUFS as isize, &buf);
+              let result = if is_raw_tty_mode((*tty_ptr).mode) {
+                // Raw mode: process INPUT_RECORD structs directly.
+                tty_try_read_raw(tty_ptr, slice)
               } else {
-                let slice = std::slice::from_raw_parts_mut(
-                  buf.base.cast::<u8>(),
-                  buf.len,
-                );
-                match tty_try_read(tty_ptr, slice) {
-                  Ok(0) => {
-                    read_cb(tty_ptr as *mut uv_stream_t, UV_EOF as isize, &buf);
-                    (*tty_ptr).internal_reading = false;
-                  }
-                  Ok(n) => {
-                    any_work = true;
-                    read_cb(tty_ptr as *mut uv_stream_t, n as isize, &buf);
-                  }
-                  Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                    read_cb(tty_ptr as *mut uv_stream_t, 0, &buf);
-                  }
-                  Err(_) => {
-                    read_cb(tty_ptr as *mut uv_stream_t, UV_EOF as isize, &buf);
-                    (*tty_ptr).internal_reading = false;
-                  }
+                // Line mode: use ReadFile, gated by event count.
+                let mut num_events: u32 = 0;
+                if win_console::GetNumberOfConsoleInputEvents(
+                  (*tty_ptr).internal_handle,
+                  &mut num_events,
+                ) != 0
+                  && num_events > 0
+                {
+                  tty_try_read_line(tty_ptr, slice)
+                } else {
+                  Err(std::io::Error::new(
+                    std::io::ErrorKind::WouldBlock,
+                    "no input",
+                  ))
+                }
+              };
+
+              match result {
+                Ok(0) => {
+                  read_cb(tty_ptr as *mut uv_stream_t, UV_EOF as isize, &buf);
+                  (*tty_ptr).internal_reading = false;
+                }
+                Ok(n) => {
+                  any_work = true;
+                  read_cb(tty_ptr as *mut uv_stream_t, n as isize, &buf);
+                }
+                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                  read_cb(tty_ptr as *mut uv_stream_t, 0, &buf);
+                }
+                Err(_) => {
+                  read_cb(tty_ptr as *mut uv_stream_t, UV_EOF as isize, &buf);
+                  (*tty_ptr).internal_reading = false;
                 }
               }
             }
