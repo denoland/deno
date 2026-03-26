@@ -12768,7 +12768,9 @@ fn lsp_format_css(use_tsgo: bool) {
   );
   let sass_file = source_file(
     temp_dir.path().join("file.sass"),
-    "  $font-stack: Helvetica, sans-serif\n\nbody\n  font: 100% $font-stack\n",
+    // Note: avoid $var references in property values in Sass indented syntax
+    // due to upstream raffia regression: https://github.com/g-plane/raffia/issues/13
+    "  $color: red\n\nbody\n  color: blue\n  margin: 0\n",
   );
   let less_file = source_file(
     temp_dir.path().join("file.less"),
@@ -12838,7 +12840,7 @@ fn lsp_format_css(use_tsgo: bool) {
           "start": { "line": 0, "character": 0 },
           "end": { "line": 1, "character": 0 },
         },
-        "newText": "$font-stack: Helvetica, sans-serif\n",
+        "newText": "$color: red\n",
       },
     ]),
   );

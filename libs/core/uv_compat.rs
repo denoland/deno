@@ -199,6 +199,16 @@ impl UvLoopInner {
     }
   }
 
+  /// Wake the event loop so it re-polls on the next tick. Used on
+  /// Windows to ensure pending TTY write callbacks are processed
+  /// promptly when there is no async I/O notification mechanism.
+  #[cfg(windows)]
+  pub(crate) fn wake(&self) {
+    if let Some(waker) = self.waker.borrow().as_ref() {
+      waker.wake_by_ref();
+    }
+  }
+
   #[inline]
   fn alloc_timer_id(&self) -> u64 {
     let id = self.next_timer_id.get();
@@ -568,12 +578,13 @@ impl UvLoopInner {
         }
       }
 
-      // Close the handle on Windows.
+      // Tear down Windows async read machinery, then close the handle.
       #[cfg(windows)]
       {
+        tty::close_tty_read(handle);
         if !tty.internal_handle.is_null() {
           if tty.internal_handle_owned {
-            // We duplicated this handle in init — close it directly.
+            // We duplicated this handle in init -- close it directly.
             tty::win_console::CloseHandle(tty.internal_handle);
           } else if tty.internal_fd >= 0 {
             // Non-duplicated: close through the CRT to free the fd slot.
@@ -1088,6 +1099,97 @@ pub unsafe extern "C" fn uv_check_stop(handle: *mut uv_check_t) -> c_int {
   0
 }
 
+/// Manages the two libuv handles that implement setImmediate, matching
+/// Node.js's architecture:
+///
+/// - **check handle** (`uv_check_t`): always started, always unref'd.
+///   Participates in `run_check()` every iteration but never keeps the
+///   event loop alive. The actual JS callback draining happens in Rust
+///   after `run_check()`, gated on the immediate count.
+///
+/// - **idle handle** (`uv_idle_t`): started/stopped to control event loop
+///   liveness. Started when refed immediates exist (keeps the loop alive),
+///   stopped when none remain (allows exit). This matches Node.js's
+///   `immediate_idle_handle_` + `ToggleImmediateRef()`.
+pub(crate) struct ImmediateCheckHandle {
+  check_handle: *mut uv_check_t,
+  idle_handle: *mut uv_idle_t,
+}
+
+/// No-op callback for the check handle — the actual draining is done by
+/// checking immediate_info counts after `run_check()` in the event loop.
+unsafe extern "C" fn immediate_check_noop_cb(_: *mut uv_check_t) {}
+
+/// No-op callback for the idle handle — its only purpose is to keep
+/// the event loop alive when refed immediates exist.
+unsafe extern "C" fn immediate_idle_noop_cb(_: *mut uv_idle_t) {}
+
+impl ImmediateCheckHandle {
+  /// Create and initialize both handles on the given loop.
+  ///
+  /// The check handle is immediately started and unref'd (always runs,
+  /// never keeps the loop alive). The idle handle starts stopped.
+  ///
+  /// # Safety
+  /// `loop_ptr` must be a valid, initialized `uv_loop_t`.
+  /// The returned handles borrow from the loop and must not outlive it.
+  pub unsafe fn new(loop_ptr: *mut uv_loop_t) -> Self {
+    // Check handle: always started, always unref'd
+    let check_handle = Box::into_raw(Box::new(unsafe {
+      std::mem::MaybeUninit::<uv_check_t>::zeroed().assume_init()
+    }));
+    unsafe {
+      uv_check_init(loop_ptr, check_handle);
+      uv_unref(check_handle as *mut uv_handle_t);
+      uv_check_start(check_handle, immediate_check_noop_cb);
+    }
+
+    // Idle handle: controls event loop liveness for refed immediates
+    let idle_handle = Box::into_raw(Box::new(unsafe {
+      std::mem::MaybeUninit::<uv_idle_t>::zeroed().assume_init()
+    }));
+    unsafe {
+      uv_idle_init(loop_ptr, idle_handle);
+      // Starts stopped — only started when refed immediates exist
+    }
+
+    Self {
+      check_handle,
+      idle_handle,
+    }
+  }
+
+  /// Start the idle handle (keeps event loop alive for refed immediates).
+  pub fn make_ref(&self) {
+    // SAFETY: idle_handle is valid — set in new().
+    unsafe {
+      uv_idle_start(self.idle_handle, immediate_idle_noop_cb);
+    }
+  }
+
+  /// Stop the idle handle (allows event loop to exit).
+  pub fn make_unref(&self) {
+    // SAFETY: idle_handle is valid — set in new().
+    unsafe {
+      uv_idle_stop(self.idle_handle);
+    }
+  }
+
+  /// Stop both handles and free their heap allocations.
+  ///
+  /// # Safety
+  /// Must be called before the owning uv loop is closed/dropped.
+  /// Must not be called more than once.
+  pub unsafe fn close(self) {
+    unsafe {
+      uv_check_stop(self.check_handle);
+      drop(Box::from_raw(self.check_handle));
+      uv_idle_stop(self.idle_handle);
+      drop(Box::from_raw(self.idle_handle));
+    }
+  }
+}
+
 /// ### Safety
 /// `handle` must be a valid pointer to any uv handle type (timer, idle, tcp, etc.) initialized
 /// by the corresponding `uv_*_init` function. Must not be called twice on the same handle.
@@ -1191,5 +1293,24 @@ pub unsafe extern "C" fn uv_is_closing(handle: *const uv_handle_t) -> c_int {
     } else {
       0
     }
+  }
+}
+
+/// Counter for libuv-style async IDs (used by Node.js async_hooks).
+/// Starts at 1 because that's the ID of the bootstrap execution context.
+pub struct AsyncId(i64);
+
+impl Default for AsyncId {
+  fn default() -> Self {
+    Self(1)
+  }
+}
+
+impl AsyncId {
+  /// Increment the internal id counter and return the value.
+  #[allow(clippy::should_implement_trait, reason = "this is more clear")]
+  pub fn next(&mut self) -> i64 {
+    self.0 += 1;
+    self.0
   }
 }

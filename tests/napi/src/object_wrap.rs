@@ -259,6 +259,40 @@ extern "C" fn accessor_setter(
   ptr::null_mut()
 }
 
+/// Test napi_remove_wrap: wraps an object, then removes the wrap.
+extern "C" fn test_remove_wrap(
+  env: napi_env,
+  info: napi_callback_info,
+) -> napi_value {
+  let (args, argc, _) = napi_get_callback_info!(env, info, 1);
+  assert_eq!(argc, 1);
+
+  // Wrap the object with some native data
+  let data = Box::into_raw(Box::new(42i32)) as *mut std::ffi::c_void;
+  assert_napi_ok!(napi_wrap(
+    env,
+    args[0],
+    data,
+    None,
+    ptr::null_mut(),
+    ptr::null_mut(),
+  ));
+
+  // Remove the wrap and verify we get the same pointer back
+  let mut removed_data: *mut std::ffi::c_void = ptr::null_mut();
+  assert_napi_ok!(napi_remove_wrap(env, args[0], &mut removed_data));
+  assert_eq!(removed_data, data);
+
+  // Clean up
+  unsafe {
+    let _ = Box::from_raw(removed_data as *mut i32);
+  }
+
+  let mut result: napi_value = ptr::null_mut();
+  assert_napi_ok!(napi_get_boolean(env, true, &mut result));
+  result
+}
+
 pub fn init(env: napi_env, exports: napi_value) {
   let mut static_prop = napi_new_property!(env, "factory", NapiObject::factory);
   static_prop.attributes = PropertyAttributes::static_;
@@ -338,5 +372,18 @@ pub fn init(env: napi_env, exports: napi_value) {
     exports,
     c"NapiAccessorObject".as_ptr(),
     cons,
+  ));
+
+  // Register test_remove_wrap as a standalone function on exports
+  let remove_wrap_props = &[napi_new_property!(
+    env,
+    "test_remove_wrap",
+    test_remove_wrap
+  )];
+  assert_napi_ok!(napi_define_properties(
+    env,
+    exports,
+    remove_wrap_props.len(),
+    remove_wrap_props.as_ptr()
   ));
 }

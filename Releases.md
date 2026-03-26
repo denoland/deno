@@ -6,6 +6,82 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 2.7.8 / 2026.03.25
+
+- feat(core): implement NodeRuntime CDP domain and fix --inspect-brk blocking
+  (#32714)
+- feat(ext/crypto): implement P-521 sign, verify, and ECDH derive (#32602)
+- feat(ext/napi): add node_api_create_object_with_named_properties (#32906)
+- feat(ext/telemetry): add console exporter for OpenTelemetry (#32717)
+- feat(ext/telemetry): copy relevant span attributes to HTTP metrics (#32720)
+- feat: use lockfile from jsr package for global install (#32490)
+- fix(audit): respect package.json overrides in vulnerability checks (#32878)
+- fix(cli): fix arrow keys in interactive picker on Windows (#32978)
+- fix(cli): parse --frozen flag for deno update and deno outdated (#32975)
+- fix(compile): skip Node-to-Deno arg translation in standalone binaries
+  (#32980)
+- fix(ext/console): handle throwing Symbol.toStringTag getter gracefully
+  (#32917)
+- fix(ext/napi): pass valid env to tsfn call_js_cb after close race (#32957)
+- fix(ext/node): `fs.cp` across allowed dirs with ignored read permissions
+  (#32927)
+- fix(ext/node): child_process improvements (internalMessage, argv0, DEP0190)
+  (#32885)
+- fix(ext/node): close libuv handle on HandleWrap.close() for new-style handles
+  (#32958)
+- fix(ext/node): defer uv_write callbacks to prevent re-entrancy panic (#32919)
+- fix(ext/node): do not throw error for `readline.createInterface` outside TTY
+  (#32874)
+- fix(ext/node): don't fire upgrade event for h2c requests (#32866)
+- fix(ext/node): drain all ready connections in poll_tcp_handle to prevent
+  accept starvation (#32943)
+- fix(ext/node): emit request "close" before socket "free" in keep-alive path
+  (#32811)
+- fix(ext/node): enable node compat test for v8.getHeapStatistics (#32833)
+- fix(ext/node): enable node:fs compat tests + lchmod fix (#32892)
+- fix(ext/node): fix Buffer.concat truncating buffers larger than 4GB (#32913)
+- fix(ext/node): fix IPC stdio handling in child_process (#32920)
+- fix(ext/node): fix node:domain across async boundaries (#32897)
+- fix(ext/node): freeze os.constants.signals to match Node.js (#32836)
+- fix(ext/node): implement process.threadCpuUsage() (#32829)
+- fix(ext/node): improve process.hrtime argument validation (#32837)
+- fix(ext/node): improve readline and EventEmitter compat (#32826)
+- fix(ext/node): pass uid/gid to spawn and implement process.getgroups (#32772)
+- fix(ext/node): preserve TLS upgrade state on reconnect (#32838)
+- fix(ext/node): return all own properties from VM context property enumerator
+  (#32911)
+- fix(ext/node): set fd property on TTY ReadStream and WriteStream (#32880)
+- fix(ext/node): sqlite prepare() options, defensive default, iterator
+  invalidation (#32756)
+- fix(ext/node): support http2 createConnection sockets (#32733)
+- fix(ext/node): support numeric FDs in child_process stdio array (#32959)
+- fix(ext/node): update process.versions.napi to 9 (#32870)
+- fix(ext/web): AbortSignal.any() memory leak with long-lived signals (#32916)
+- fix(ext/web): handle null options in removeEventListener (#32605)
+- fix(fmt): delegate component expression formatting to markup_fmt (#29763)
+- fix(fmt): update markup_fmt to 0.27.0 and malva to 0.15.2 (#32949)
+- fix(inspector): send executionContextDestroyed on process.exit() (#32934)
+- fix(lockfile): truncate frozen lockfile error diff to 50 lines (#32976)
+- fix(napi): add test coverage and fix escape_handle/throw bugs (#32960)
+- fix(node/http): stop leaking TCP wrappers on HTTPS upgrade with
+  createConnection TLSSocket (#32961)
+- fix(npm): `approve-scripts` detects packages when lockfile is disabled
+  (#32842)
+- fix(npm): create shims for all bin entries during global npm install (#32607)
+- fix(npm): skip `file:` and `link:` dependencies in npm packages (#32876)
+- fix(npm): use box-drawing style for deprecated package warnings (#32979)
+- fix(resolver): fall through to .deno/ when BYONM node_modules version
+  mismatches (#32981)
+- fix(resolver): prefer exact version match in BYONM npm resolution (#32977)
+- fix: handle inner quotes in double-quoted env values in .env file (#32930)
+- fix: include Temporal types in deno types output (#32952)
+- fix: make flamegraph SVG fill full browser viewport (#32727)
+- fix: rewrite approve_scripts_no_lock as PTY tests, skip lockfile test on
+  Windows (#32853)
+- fix: skip flaky test-process-threadCpuUsage-worker-threads on Windows (#32886)
+- perf(ext/web): use simdutf for base64 encode/decode (#32743)
+- perf: upgrade to jsonc-parser 0.32 (#32864)
+
 ### 2.7.7 / 2026.03.19
 
 - fix(core): implement select fallback on macOS (#32812)

@@ -292,7 +292,7 @@ fn parse_env_content_hook_impl(
     // Expand new line if \n it's inside double quotes
     // Example: EXPAND_NEWLINES = 'expand\nnew\nlines'
     if text[0] == CHAR_DQUOTE
-      && let Some(closing) = find_char(text, CHAR_DQUOTE, 1)
+      && let Some(closing) = find_closing_quote(text, CHAR_DQUOTE, 1)
     {
       let slice = &text[1..closing];
       let mut needs_unescape = false;
@@ -338,7 +338,7 @@ fn parse_env_content_hook_impl(
     // Handle quoted values (single quotes, double quotes, backticks)
     let quote = text[0];
     if quote == CHAR_SQUOTE || quote == CHAR_DQUOTE || quote == CHAR_BQUOTE {
-      if let Some(closing) = find_char(text, quote, 1) {
+      if let Some(closing) = find_closing_quote(text, quote, 1) {
         // Found closing quote - take content between quotes
         let value = &text[1..closing];
         emit_value(
@@ -519,6 +519,54 @@ fn find_char(input: &[u8], char_code: u8, from: usize) -> Option<usize> {
     i += 1;
   }
   None
+}
+
+/// Find the closing quote for a quoted value.
+///
+/// First tries the nearest matching quote (standard behavior). If there is
+/// non-whitespace/non-comment content after that quote on the same line,
+/// inner quotes are present. In that case, scan backwards from the end of
+/// the line for the best closing candidate. A quote followed by a `#`
+/// comment is preferred over one followed by just whitespace/EOL, since
+/// it's a stronger signal of a real closing delimiter. This matches the
+/// npm `dotenv` package's greedy quote-stripping behavior.
+fn find_closing_quote(input: &[u8], quote: u8, from: usize) -> Option<usize> {
+  let first = find_char(input, quote, from)?;
+
+  // Find the end of the current line.
+  let line_end = find_char(input, CHAR_NL, first + 1).unwrap_or(input.len());
+
+  // Check if everything after the first closing quote until EOL is
+  // whitespace or a comment. If so, the first quote is the real closer.
+  let after_first = &input[first + 1..line_end];
+  let trimmed_first = trim_spaces_slice(after_first);
+  if trimmed_first.is_empty() || trimmed_first[0] == CHAR_HASH {
+    return Some(first);
+  }
+
+  // Inner quotes detected. Scan backwards from the end of line. Prefer
+  // a quote followed by a `#` comment (strong signal) over one followed
+  // by just whitespace/EOL (weaker — could be a quote inside a comment).
+  let mut best_empty = None;
+  let mut i = line_end;
+  while i > first + 1 {
+    i -= 1;
+    if input[i] == quote {
+      let after = &input[i + 1..line_end];
+      let trimmed = trim_spaces_slice(after);
+      if !trimmed.is_empty() && trimmed[0] == CHAR_HASH {
+        // Comment follows — this is the real closing quote.
+        return Some(i);
+      }
+      if trimmed.is_empty() && best_empty.is_none() {
+        best_empty = Some(i);
+      }
+    }
+  }
+
+  // No comment-delimited candidate — use the last quote at EOL, or
+  // fall back to the first quote if nothing else matched.
+  Some(best_empty.unwrap_or(first))
 }
 
 #[cfg(test)]
@@ -1085,5 +1133,58 @@ u4QuUoobAgMBAAE=
     .unwrap();
     assert_eq!(path, Path::new("/project/sub/.envfile"));
     assert_eq!(content.as_ref(), "ANCESTOR=found");
+  }
+
+  // Regression test for https://github.com/denoland/deno/issues/32928
+  #[test]
+  fn inner_quotes_in_double_quoted_values() {
+    let input = r#"INNER_QUOTES="1: foo'bar"baz`qux"
+INNER_QUOTES_WITH_NEWLINE="2: foo bar\ni am "on" newline, 'yo'"
+"#;
+    let pairs = parse_map(input);
+    assert_eq!(
+      pairs.get("INNER_QUOTES").map(String::as_str),
+      Some("1: foo'bar\"baz`qux")
+    );
+    assert_eq!(
+      pairs.get("INNER_QUOTES_WITH_NEWLINE").map(String::as_str),
+      Some("2: foo bar\ni am \"on\" newline, 'yo'")
+    );
+  }
+
+  #[test]
+  fn inner_double_quotes_in_double_quoted_value() {
+    // Tests find_closing_quote with same-type inner quotes
+    let input = "KEY=\"hello \"world\" goodbye\"\n";
+    let pairs = parse_map(input);
+    assert_eq!(
+      pairs.get("KEY").map(String::as_str),
+      Some("hello \"world\" goodbye")
+    );
+  }
+
+  #[test]
+  fn inner_quotes_with_inline_comment() {
+    // Inner quotes followed by an inline comment containing quotes.
+    // The comment should not be included in the value.
+    let input = "KEY=\"hello \"world\"\" # a \"comment\"\n";
+    let pairs = parse_map(input);
+    assert_eq!(
+      pairs.get("KEY").map(String::as_str),
+      Some("hello \"world\"")
+    );
+  }
+
+  #[test]
+  fn inner_single_quotes_preserved() {
+    // Cross-quote-type inner quotes: single-quoted value with inner
+    // double quotes. These are handled by find_char since the inner
+    // quotes are a different character type.
+    let input = "KEY='hello \"world\" goodbye'\n";
+    let pairs = parse_map(input);
+    assert_eq!(
+      pairs.get("KEY").map(String::as_str),
+      Some("hello \"world\" goodbye")
+    );
   }
 }

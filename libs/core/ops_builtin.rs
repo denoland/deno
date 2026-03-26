@@ -132,6 +132,7 @@ builtin_ops! {
   ops_builtin_v8::op_current_user_call_site,
   ops_builtin_v8::op_set_format_exception_callback,
   ops_builtin_v8::op_event_loop_has_more_work,
+  ops_builtin_v8::op_immediate_check,
   ops_builtin_v8::op_leak_tracing_enable,
   ops_builtin_v8::op_leak_tracing_submit,
   ops_builtin_v8::op_leak_tracing_get_all,
