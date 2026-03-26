@@ -1,0 +1,8 @@
+{
+  "tests": {
+    "publish_with_ambient_types": {
+      "args": "publish --dry-run",
+      "output": "publish.out"
+    }
+  }
+}

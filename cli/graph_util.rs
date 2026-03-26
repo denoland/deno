@@ -509,7 +509,7 @@ impl ModuleGraphCreator {
       .create_graph_with_options(CreateGraphOptions {
         is_dynamic: false,
         graph_kind: deno_graph::GraphKind::All,
-        roots,
+        roots: roots.clone(),
         // do not include the tsconfig imports for `deno publish`
         imports: Vec::new(),
         loader: Some(&publish_loader),
@@ -522,7 +522,32 @@ impl ModuleGraphCreator {
     if self.options.type_check_mode().is_true()
       && !graph_has_external_remote(&graph)
     {
-      self.type_check_graph(graph.clone())?;
+      // Include compilerOptions.types imports for type checking so that
+      // ambient type declarations (e.g. Vite's import.meta.hot) are
+      // available, but do not include them in the publish graph itself.
+      let ts_imports = self
+        .module_graph_builder
+        .maybe_resolve_ts_config_imports(deno_graph::GraphKind::All);
+      if !ts_imports.is_empty() {
+        let tc_loader = PublishLoader(
+          self
+            .module_graph_builder
+            .create_graph_loader_with_root_permissions(),
+        );
+        let type_check_graph = self
+          .create_graph_with_options(CreateGraphOptions {
+            is_dynamic: false,
+            graph_kind: deno_graph::GraphKind::All,
+            roots,
+            imports: ts_imports,
+            loader: Some(&tc_loader),
+            npm_caching: self.options.default_npm_caching_strategy(),
+          })
+          .await?;
+        self.type_check_graph(type_check_graph)?;
+      } else {
+        self.type_check_graph(graph.clone())?;
+      }
     }
 
     if options.build_fast_check_graph {
