@@ -8,6 +8,8 @@ use std::os::unix::io::AsRawFd;
 #[cfg(unix)]
 use std::os::unix::io::RawFd;
 use std::task::Context;
+#[cfg(windows)]
+use std::task::Waker;
 
 #[cfg(unix)]
 use tokio::io::unix::AsyncFd;
@@ -235,6 +237,14 @@ pub struct uv_tty_t {
   pub(crate) internal_last_repeat_count: u16,
   #[cfg(windows)]
   pub(crate) internal_utf16_high_surrogate: u16,
+
+  // RegisterWaitForSingleObject state for async console input
+  // notification (matching libuv's approach). The wait callback runs
+  // on a thread pool thread and wakes the tokio event loop.
+  #[cfg(windows)]
+  pub(crate) internal_wait_handle: *mut c_void, // HANDLE from RegisterWait
+  #[cfg(windows)]
+  pub(crate) internal_wait_waker: Option<Box<std::sync::Mutex<Option<Waker>>>>,
 }
 
 pub type UvTty = uv_tty_t;
@@ -566,7 +576,24 @@ pub(crate) mod win_console {
       bInheritHandle: BOOL,
       dwOptions: DWORD,
     ) -> BOOL;
+    pub fn RegisterWaitForSingleObject(
+      phNewWaitObject: *mut HANDLE,
+      hObject: HANDLE,
+      Callback: unsafe extern "system" fn(*mut c_void, u8),
+      Context: *mut c_void,
+      dwMilliseconds: DWORD,
+      dwFlags: DWORD,
+    ) -> BOOL;
+    pub fn UnregisterWaitEx(
+      WaitHandle: HANDLE,
+      CompletionEvent: HANDLE,
+    ) -> BOOL;
   }
+
+  pub const INFINITE: DWORD = 0xFFFFFFFF;
+  pub const WT_EXECUTEINWAITTHREAD: DWORD = 0x00000004;
+  pub const WT_EXECUTEONLYONCE: DWORD = 0x00000008;
+  pub const INVALID_HANDLE_VALUE_ISIZE: isize = -1;
 
   pub const GENERIC_READ: DWORD = 0x80000000;
   pub const GENERIC_WRITE: DWORD = 0x40000000;
@@ -1457,6 +1484,11 @@ pub unsafe fn uv_tty_init(
       write(addr_of_mut!((*tty).internal_last_key_offset), 0);
       write(addr_of_mut!((*tty).internal_last_repeat_count), 0);
       write(addr_of_mut!((*tty).internal_utf16_high_surrogate), 0);
+      write(
+        addr_of_mut!((*tty).internal_wait_handle),
+        std::ptr::null_mut(),
+      );
+      write(addr_of_mut!((*tty).internal_wait_waker), None);
     }
   }
   0
@@ -1726,6 +1758,10 @@ pub(crate) unsafe fn read_stop_tty(tty: *mut uv_tty_t) -> c_int {
     (*tty).internal_alloc_cb = None;
     (*tty).internal_read_cb = None;
 
+    // Unregister the console input wait.
+    #[cfg(windows)]
+    tty_unregister_wait(tty);
+
     // Notify the select fallback thread about interest change.
     #[cfg(target_os = "macos")]
     update_select_interest(tty);
@@ -1958,11 +1994,84 @@ pub(crate) unsafe fn shutdown_tty(
 // ---- Polling ----
 
 /// Poll a single TTY handle for I/O readiness and fire callbacks.
+/// Callback invoked by the thread pool when the console input handle is
+/// signaled (input available). Wakes the tokio event loop so
+/// poll_tty_handle runs again. Matches libuv's uv_tty_post_raw_read.
+#[cfg(windows)]
+unsafe extern "system" fn win_tty_wait_callback(
+  context: *mut c_void,
+  _timer_or_wait_fired: u8,
+) {
+  // context is a raw pointer to Box<Mutex<Option<Waker>>> that we
+  // leaked in tty_register_wait. We must NOT drop it here -- just
+  // clone the waker and wake.
+  let mutex = unsafe { &*(context as *const std::sync::Mutex<Option<Waker>>) };
+  if let Ok(guard) = mutex.lock() {
+    if let Some(waker) = guard.as_ref() {
+      waker.wake_by_ref();
+    }
+  }
+}
+
+/// Register a thread pool wait on the console input handle. When input
+/// becomes available, the callback wakes the tokio event loop.
+/// Matches libuv's uv__tty_queue_read_raw which uses
+/// RegisterWaitForSingleObject.
+#[cfg(windows)]
+unsafe fn tty_register_wait(tty: *mut uv_tty_t, waker: &Waker) {
+  unsafe {
+    // Unregister any existing wait first.
+    tty_unregister_wait(tty);
+
+    // Create or update the shared waker.
+    if (*tty).internal_wait_waker.is_none() {
+      (*tty).internal_wait_waker =
+        Some(Box::new(std::sync::Mutex::new(Some(waker.clone()))));
+    } else if let Some(ref mutex) = (*tty).internal_wait_waker {
+      *mutex.lock().unwrap() = Some(waker.clone());
+    }
+
+    // Get a raw pointer to the Mutex for the callback context.
+    // The Box keeps it alive as long as the tty handle exists.
+    let ctx = (*tty).internal_wait_waker.as_ref().unwrap().as_ref()
+      as *const std::sync::Mutex<Option<Waker>> as *mut c_void;
+
+    let mut wait_handle: *mut c_void = std::ptr::null_mut();
+    let ret = win_console::RegisterWaitForSingleObject(
+      &mut wait_handle,
+      (*tty).internal_handle,
+      win_tty_wait_callback,
+      ctx,
+      win_console::INFINITE,
+      win_console::WT_EXECUTEINWAITTHREAD | win_console::WT_EXECUTEONLYONCE,
+    );
+    if ret != 0 {
+      (*tty).internal_wait_handle = wait_handle;
+    }
+  }
+}
+
+/// Unregister the thread pool wait. Safe to call even if no wait is
+/// registered.
+#[cfg(windows)]
+unsafe fn tty_unregister_wait(tty: *mut uv_tty_t) {
+  unsafe {
+    if !(*tty).internal_wait_handle.is_null() {
+      // INVALID_HANDLE_VALUE tells UnregisterWaitEx to block until
+      // the callback has finished (if running).
+      win_console::UnregisterWaitEx(
+        (*tty).internal_wait_handle,
+        -1isize as *mut c_void,
+      );
+      (*tty).internal_wait_handle = std::ptr::null_mut();
+    }
+  }
+}
+
 /// Returns `true` if any work was completed.
 ///
 /// # Safety
 /// `tty_ptr` must be a valid pointer to an initialized `uv_tty_t`.
-#[cfg_attr(windows, allow(unused_variables, reason = "unused on windows"))]
 pub(crate) unsafe fn poll_tty_handle(
   tty_ptr: *mut uv_tty_t,
   cx: &mut Context<'_>,
@@ -2070,11 +2179,6 @@ pub(crate) unsafe fn poll_tty_handle(
         #[cfg(not(unix))]
         {
           if (*tty_ptr).internal_readable && (*tty_ptr).internal_reading {
-            // Gate: only allocate a buffer and attempt a read when we
-            // know there is something to process. On Unix,
-            // poll_read_ready(cx) serves this role. Without this gate
-            // we would call alloc_cb + read_cb(nread=0) on every poll
-            // cycle, which causes the JS readline layer to malfunction.
             let has_pending = if is_raw_tty_mode((*tty_ptr).mode) {
               // Pending decoded bytes or repeat count from prev key?
               (*tty_ptr).internal_last_key_offset
@@ -2127,9 +2231,6 @@ pub(crate) unsafe fn poll_tty_handle(
                     read_cb(tty_ptr as *mut uv_stream_t, n as isize, &buf);
                   }
                   Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                    // Events existed but none produced characters
-                    // (e.g. only KEY_UP). Free the buffer but keep
-                    // reading.
                     read_cb(tty_ptr as *mut uv_stream_t, 0, &buf);
                   }
                   Err(_) => {
@@ -2138,6 +2239,14 @@ pub(crate) unsafe fn poll_tty_handle(
                   }
                 }
               }
+            }
+
+            // (Re-)register the wait so the event loop wakes up when
+            // new console input arrives. This is a one-shot wait
+            // (WT_EXECUTEONLYONCE) so it must be re-registered after
+            // each signal, matching libuv's uv__tty_queue_read_raw.
+            if (*tty_ptr).internal_reading {
+              tty_register_wait(tty_ptr, cx.waker());
             }
           }
         }
@@ -2306,6 +2415,10 @@ pub fn new_tty() -> uv_tty_t {
     internal_last_repeat_count: 0,
     #[cfg(windows)]
     internal_utf16_high_surrogate: 0,
+    #[cfg(windows)]
+    internal_wait_handle: std::ptr::null_mut(),
+    #[cfg(windows)]
+    internal_wait_waker: None,
   }
 }
 
