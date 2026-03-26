@@ -1963,6 +1963,13 @@ unsafe fn ensure_tty_registered(tty: *mut uv_tty_t) {
     if !handles.iter().any(|&h| std::ptr::eq(h, tty)) {
       handles.push(tty);
     }
+    drop(handles);
+
+    // On Windows, wake the event loop so pending write callbacks are
+    // processed promptly. Without this, deferred callbacks can stall
+    // until something else wakes the loop (e.g. console input).
+    #[cfg(windows)]
+    inner.wake();
   }
 }
 

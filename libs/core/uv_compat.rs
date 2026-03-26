@@ -199,6 +199,16 @@ impl UvLoopInner {
     }
   }
 
+  /// Wake the event loop so it re-polls on the next tick. Used on
+  /// Windows to ensure pending TTY write callbacks are processed
+  /// promptly when there is no async I/O notification mechanism.
+  #[cfg(windows)]
+  pub(crate) fn wake(&self) {
+    if let Some(waker) = self.waker.borrow().as_ref() {
+      waker.wake_by_ref();
+    }
+  }
+
   #[inline]
   fn alloc_timer_id(&self) -> u64 {
     let id = self.next_timer_id.get();
