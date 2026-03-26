@@ -309,6 +309,29 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
     let wef_value = json_to_wef_value(&json);
     wef::set_application_menu_raw(wef_value);
   }
+
+  fn alert(&self, title: &str, message: &str) {
+    wef::alert(title, message);
+  }
+
+  fn confirm(
+    &self,
+    title: &str,
+    message: &str,
+    callback: Box<dyn FnOnce(bool) + Send + 'static>,
+  ) {
+    wef::confirm(title, message, callback);
+  }
+
+  fn prompt(
+    &self,
+    title: &str,
+    message: &str,
+    default_value: &str,
+    callback: Box<dyn FnOnce(Option<String>) + Send + 'static>,
+  ) {
+    wef::prompt(title, message, default_value, callback);
+  }
 }
 
 #[allow(dead_code)]

@@ -199,6 +199,21 @@ pub trait DesktopApi: Send + Sync + 'static {
   fn navigate(&self, window_id: u32, url: &str);
   fn quit(&self);
   fn set_application_menu(&self, template_json: &str);
+
+  fn alert(&self, title: &str, message: &str);
+  fn confirm(
+    &self,
+    title: &str,
+    message: &str,
+    callback: Box<dyn FnOnce(bool) + Send + 'static>,
+  );
+  fn prompt(
+    &self,
+    title: &str,
+    message: &str,
+    default_value: &str,
+    callback: Box<dyn FnOnce(Option<String>) + Send + 'static>,
+  );
 }
 
 /// Stores the window ID of the initial window created during runtime init.
@@ -546,6 +561,49 @@ pub fn op_desktop_init(
   });
 }
 
+#[op2(fast)]
+fn op_desktop_alert(state: &mut OpState, #[string] message: &str) {
+  if let Some(api) = state.try_borrow::<Arc<dyn DesktopApi>>() {
+    api.alert("", message);
+  }
+}
+
+#[op2(fast)]
+fn op_desktop_confirm(state: &mut OpState, #[string] message: &str) -> bool {
+  if let Some(api) = state.try_borrow::<Arc<dyn DesktopApi>>() {
+    let (tx, rx) = std::sync::mpsc::channel();
+    api.confirm("", message, Box::new(move |result| {
+      let _ = tx.send(result);
+    }));
+    rx.recv().unwrap_or(false)
+  } else {
+    false
+  }
+}
+
+#[op2]
+#[string]
+fn op_desktop_prompt(
+  state: &mut OpState,
+  #[string] message: &str,
+  #[string] default_value: Option<String>,
+) -> Option<String> {
+  if let Some(api) = state.try_borrow::<Arc<dyn DesktopApi>>() {
+    let (tx, rx) = std::sync::mpsc::channel();
+    api.prompt(
+      "",
+      message,
+      default_value.as_deref().unwrap_or(""),
+      Box::new(move |result| {
+        let _ = tx.send(result);
+      }),
+    );
+    rx.recv().unwrap_or(None)
+  } else {
+    None
+  }
+}
+
 deno_core::extension!(
   deno_desktop,
   ops = [
@@ -555,6 +613,9 @@ deno_core::extension!(
     op_desktop_recv_event,
     op_desktop_resolve_bind_call,
     op_desktop_reject_bind_call,
+    op_desktop_alert,
+    op_desktop_confirm,
+    op_desktop_prompt,
   ],
   objects = [BrowserWindow,],
 );

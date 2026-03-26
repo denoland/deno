@@ -23,6 +23,9 @@ pub const DESKTOP_JS: &str = r#"
     op_desktop_recv_event,
     op_desktop_resolve_bind_call,
     op_desktop_reject_bind_call,
+    op_desktop_alert,
+    op_desktop_confirm,
+    op_desktop_prompt,
   } = internals.core.ops;
   const BrowserWindowPrototype = BrowserWindow.prototype;
   Object.setPrototypeOf(BrowserWindowPrototype, EventTarget.prototype);
@@ -158,12 +161,6 @@ pub const DESKTOP_JS: &str = r#"
     }
   }
 
-  globalThis.UIEvent = internals.core.propNonEnumerable(UIEvent);
-  globalThis.FocusEvent = internals.core.propNonEnumerable(FocusEvent);
-  globalThis.KeyboardEvent = internals.core.propNonEnumerable(KeyboardEvent);
-  globalThis.MouseEvent = internals.core.propNonEnumerable(MouseEvent);
-  globalThis.WheelEvent = internals.core.propNonEnumerable(WheelEvent);
-
   op_desktop_init(
     internals.webidlBrand,
     internals.setEventTargetData,
@@ -218,6 +215,30 @@ pub const DESKTOP_JS: &str = r#"
     if (callbacks) callbacks.delete(name);
     nativeUnbind.call(this, name);
   };
+
+  function alert(message = "Alert") {
+    op_desktop_alert(String(message));
+  }
+
+  function confirm(message = "Confirm") {
+    return op_desktop_confirm(String(message));
+  }
+
+  function prompt(message = "Prompt", defaultValue) {
+    return op_desktop_prompt(String(message), defaultValue != null ? String(defaultValue) : null);
+  }
+
+
+  Object.defineProperties(globalThis, {
+    alert: internals.core.propWritable(alert),
+    confirm: internals.core.propWritable(confirm),
+    prompt: internals.core.propWritable(prompt),
+    UIEvent: internals.core.propNonEnumerable(UIEvent),
+    FocusEvent: internals.core.propNonEnumerable(FocusEvent),
+    KeyboardEvent: internals.core.propNonEnumerable(KeyboardEvent),
+    MouseEvent: internals.core.propNonEnumerable(MouseEvent),
+    WheelEvent: internals.core.propNonEnumerable(WheelEvent),
+  });
 
   // Start polling loops immediately. Use core.unrefOpPromise so these
   // pending ops don't block event loop completion (e.g. the pre-module
