@@ -6,7 +6,6 @@ import { notImplemented } from "ext:deno_node/_utils.ts";
 import tlsCommon from "node:_tls_common";
 import tlsWrap from "node:_tls_wrap";
 import { Buffer } from "node:buffer";
-import process from "node:process";
 import {
   op_get_root_certificates,
   op_set_default_ca_certificates,
