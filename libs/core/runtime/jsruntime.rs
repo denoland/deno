@@ -2230,6 +2230,8 @@ impl JsRuntime {
     // ===== Phase 1: Timers =====
     // 1a. Fire expired libuv C timers
     if let Some(uv_inner_ptr) = context_state.uv_loop_inner.get() {
+      // Update cached loop time at the start of each tick, matching libuv.
+      unsafe { (*uv_inner_ptr).update_time() };
       unsafe { (*uv_inner_ptr).run_timers() };
     }
 
