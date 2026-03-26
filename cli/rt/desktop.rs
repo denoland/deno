@@ -27,7 +27,32 @@ pub const DESKTOP_JS: &str = r#"
   const BrowserWindowPrototype = BrowserWindow.prototype;
   Object.setPrototypeOf(BrowserWindowPrototype, EventTarget.prototype);
 
-  class KeyboardEvent extends Event {
+  class UIEvent extends Event {
+    #detail = 0;
+    #view = null;
+
+    get detail() { return this.#detail; }
+    get view() { return this.#view; }
+
+    constructor(type, init = {}) {
+      super(type, init);
+      this.#detail = init.detail ?? 0;
+      this.#view = init.view ?? null;
+    }
+  }
+
+  class FocusEvent extends UIEvent {
+    #relatedTarget = null;
+
+    get relatedTarget() { return this.#relatedTarget; }
+
+    constructor(type, init = {}) {
+      super(type, init);
+      this.#relatedTarget = init.relatedTarget ?? null;
+    }
+  }
+
+  class KeyboardEvent extends UIEvent {
     #key = "";
     #code = "";
     #location = 0;
@@ -72,7 +97,7 @@ pub const DESKTOP_JS: &str = r#"
     }
   }
 
-  class MouseEvent extends Event {
+  class MouseEvent extends UIEvent {
     #button = 0;
     #clientX = 0;
     #clientY = 0;
@@ -80,7 +105,6 @@ pub const DESKTOP_JS: &str = r#"
     #shiftKey = false;
     #altKey = false;
     #metaKey = false;
-    #detail = 0;
 
     get button() { return this.#button; }
     get clientX() { return this.#clientX; }
@@ -91,7 +115,6 @@ pub const DESKTOP_JS: &str = r#"
     get shiftKey() { return this.#shiftKey; }
     get altKey() { return this.#altKey; }
     get metaKey() { return this.#metaKey; }
-    get detail() { return this.#detail; }
 
     constructor(type, init = {}) {
       super(type, init);
@@ -102,7 +125,6 @@ pub const DESKTOP_JS: &str = r#"
       this.#shiftKey = init.shiftKey ?? false;
       this.#altKey = init.altKey ?? false;
       this.#metaKey = init.metaKey ?? false;
-      this.#detail = init.detail ?? 0;
     }
 
     getModifierState(key) {
@@ -136,6 +158,8 @@ pub const DESKTOP_JS: &str = r#"
     }
   }
 
+  globalThis.UIEvent = internals.core.propNonEnumerable(UIEvent);
+  globalThis.FocusEvent = internals.core.propNonEnumerable(FocusEvent);
   globalThis.KeyboardEvent = internals.core.propNonEnumerable(KeyboardEvent);
   globalThis.MouseEvent = internals.core.propNonEnumerable(MouseEvent);
   globalThis.WheelEvent = internals.core.propNonEnumerable(WheelEvent);
