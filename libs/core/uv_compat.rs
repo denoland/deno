@@ -578,12 +578,13 @@ impl UvLoopInner {
         }
       }
 
-      // Close the handle on Windows.
+      // Tear down Windows async read machinery, then close the handle.
       #[cfg(windows)]
       {
+        tty::close_tty_read(handle);
         if !tty.internal_handle.is_null() {
           if tty.internal_handle_owned {
-            // We duplicated this handle in init — close it directly.
+            // We duplicated this handle in init -- close it directly.
             tty::win_console::CloseHandle(tty.internal_handle);
           } else if tty.internal_fd >= 0 {
             // Non-duplicated: close through the CRT to free the fd slot.

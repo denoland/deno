@@ -2064,6 +2064,33 @@ unsafe fn tty_register_wait(tty: *mut uv_tty_t, waker: &Waker) {
   }
 }
 
+/// Tear down Windows-specific async read machinery before closing
+/// the console handle.  Must be called from `stop_tty()` *before*
+/// `CloseHandle`/`_close` so the wait callback cannot fire on a
+/// closed handle or freed waker.
+#[cfg(windows)]
+pub(crate) unsafe fn close_tty_read(tty: *mut uv_tty_t) {
+  unsafe {
+    // 1. Unregister the thread-pool wait so the callback cannot fire
+    //    after the handle is closed.
+    tty_unregister_wait(tty);
+
+    // 2. Drop the waker box so the callback context pointer is
+    //    invalidated deterministically (after the wait is fully
+    //    unregistered above).
+    (*tty).internal_wait_waker = None;
+
+    // 3. Detach from any in-flight line-mode reader.  The spawned
+    //    thread only touches its own Arc clone and a copied handle
+    //    value, so closing the console handle will unblock
+    //    ReadConsoleW with an error and the thread will exit
+    //    gracefully.  Clear our side so poll_tty_handle will not try
+    //    to collect the result after the handle is freed.
+    (*tty).internal_line_read_result = None;
+    (*tty).internal_line_read_pending = false;
+  }
+}
+
 /// Unregister the thread pool wait. Safe to call even if no wait is
 /// registered.
 #[cfg(windows)]
