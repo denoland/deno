@@ -91,8 +91,27 @@ pub fn extract_standalone(
   } = deserialize_binary_data_section(&root_url, remaining)?;
 
   let cli_args = cli_args.into_owned();
-  metadata.argv.reserve(cli_args.len() - 1);
-  for arg in cli_args.into_iter().skip(1) {
+  let current_exe = std::env::current_exe().ok();
+  let mut args_iter = cli_args.into_iter();
+  args_iter.next(); // skip argv[0] (the binary itself)
+
+  // When Node.js apps relaunch themselves they typically do:
+  //   spawn(process.execPath, [process.argv[1], ...args])
+  // In standalone binaries process.argv[1] is the exe path, so the
+  // first arg after the binary will be a duplicate of the exe path.
+  // Strip it so it doesn't leak into Deno.args / process.argv as a
+  // user argument.
+  let mut first = true;
+  for arg in args_iter {
+    if first {
+      first = false;
+      if let Some(exe) = &current_exe {
+        let arg_path = Path::new(&arg);
+        if arg_path == exe.as_path() {
+          continue;
+        }
+      }
+    }
     metadata.argv.push(arg.into_string().unwrap());
   }
   let vfs = {
