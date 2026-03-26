@@ -169,7 +169,7 @@ enum TimeUnit {
 
 impl Time {
   #[inline]
-  fn from_second(value: f64) -> Self {
+  fn from_seconds(value: f64) -> Self {
     Self {
       value,
       unit: TimeUnit::S,
@@ -580,7 +580,7 @@ impl TryFrom<MathValue> for NumericValue {
         frequency: 0,
         resolution: 0,
         flex: 0,
-      } => Ok(Time::from_second(value).into()),
+      } => Ok(Time::from_seconds(value).into()),
       Dimension {
         percent: 0,
         length: 0,
@@ -857,7 +857,7 @@ impl MathValue {
     if !self.is_time() {
       return Err(CSSValueCustomError::UnexpectedNumericType);
     }
-    Ok(Time::from_second(self.value))
+    Ok(Time::from_seconds(self.value))
   }
 
   #[inline]
@@ -1047,15 +1047,16 @@ impl NumericValue {
         Ok(NumericValue::Number(*value as f64).into())
       }
       Token::Dimension { value, unit, .. } => {
+        let value = *value as f64;
         match_ignore_ascii_case! { &unit,
           // https://www.w3.org/TR/css-values-4/#absolute-lengths
-          "cm" => Ok(NumericValue::Length(Length { value: *value as f64, unit: LengthUnit::Cm }).into()),
-          "mm" => Ok(NumericValue::Length(Length { value: *value as f64, unit: LengthUnit::Mm }).into()),
-          "q" => Ok(NumericValue::Length(Length { value: *value as f64, unit: LengthUnit::Q }).into()),
-          "in" => Ok(NumericValue::Length(Length { value: *value as f64, unit: LengthUnit::In }).into()),
-          "pc" => Ok(NumericValue::Length(Length { value: *value as f64, unit: LengthUnit::Pc }).into()),
-          "pt" => Ok(NumericValue::Length(Length { value: *value as f64, unit: LengthUnit::Pt }).into()),
-          "px" => Ok(NumericValue::Length(Length { value: *value as f64, unit: LengthUnit::Px }).into()),
+          "cm" => Ok(NumericValue::Length(Length { value, unit: LengthUnit::Cm }).into()),
+          "mm" => Ok(NumericValue::Length(Length { value, unit: LengthUnit::Mm }).into()),
+          "q" => Ok(NumericValue::Length(Length { value, unit: LengthUnit::Q }).into()),
+          "in" => Ok(NumericValue::Length(Length { value, unit: LengthUnit::In }).into()),
+          "pc" => Ok(NumericValue::Length(Length { value, unit: LengthUnit::Pc }).into()),
+          "pt" => Ok(NumericValue::Length(Length { value, unit: LengthUnit::Pt }).into()),
+          "px" => Ok(NumericValue::Length(Length { value, unit: LengthUnit::Px }).into()),
           // https://www.w3.org/TR/css-values-4/#relative-lengths
           "em" | "rem" | "ex" | "rex" | "cap" | "rcap" | "ch" | "rch" | "ic" | "ric" | "lh" | "rlh" |
           "vw" | "svw" | "lvw" | "dvw" | "vh" | "svh" | "lvh" | "dvh" | "vi" | "svi" | "lvi" | "dvi" |
@@ -1064,22 +1065,22 @@ impl NumericValue {
           "cqw" | "cqh" | "cqi" | "cqb" | "cqmin" | "cqmax"
           => Err(input.new_custom_error(CSSValueCustomError::ContainsRelativeLengthValues)),
           // https://www.w3.org/TR/css-values-4/#angles
-          "deg" => Ok(NumericValue::Angle(Angle { value: *value as f64, unit: AngleUnit::Deg }).into()),
-          "grad" => Ok(NumericValue::Angle(Angle { value: *value as f64, unit: AngleUnit::Grad }).into()),
-          "rad" => Ok(NumericValue::Angle(Angle { value: *value as f64, unit: AngleUnit::Rad }).into()),
-          "turn" => Ok(NumericValue::Angle(Angle { value: *value as f64, unit: AngleUnit::Turn }).into()),
+          "deg" => Ok(NumericValue::Angle(Angle { value, unit: AngleUnit::Deg }).into()),
+          "grad" => Ok(NumericValue::Angle(Angle { value, unit: AngleUnit::Grad }).into()),
+          "rad" => Ok(NumericValue::Angle(Angle { value, unit: AngleUnit::Rad }).into()),
+          "turn" => Ok(NumericValue::Angle(Angle { value, unit: AngleUnit::Turn }).into()),
           // https://www.w3.org/TR/css-values-4/#time
-          "s" => Ok(NumericValue::Time(Time { value: *value as f64, unit: TimeUnit::S }).into()),
-          "ms" => Ok(NumericValue::Time(Time { value: *value as f64, unit: TimeUnit::Ms }).into()),
+          "s" => Ok(NumericValue::Time(Time { value, unit: TimeUnit::S }).into()),
+          "ms" => Ok(NumericValue::Time(Time { value, unit: TimeUnit::Ms }).into()),
           // https://www.w3.org/TR/css-values-4/#frequency
-          "hz" => Ok(NumericValue::Frequency(Frequency { value: *value as f64, unit: FrequencyUnit::Hz }).into()),
-          "khz" => Ok(NumericValue::Frequency(Frequency { value: *value as f64, unit: FrequencyUnit::Khz }).into()),
+          "hz" => Ok(NumericValue::Frequency(Frequency { value, unit: FrequencyUnit::Hz }).into()),
+          "khz" => Ok(NumericValue::Frequency(Frequency { value, unit: FrequencyUnit::Khz }).into()),
           // https://www.w3.org/TR/css-values-4/#resolution
-          "dpi" => Ok(NumericValue::Resolution(Resolution { value: *value as f64, unit: ResolutionUnit::Dpi }).into()),
-          "dpcm" => Ok(NumericValue::Resolution(Resolution { value: *value as f64, unit: ResolutionUnit::Dpcm }).into()),
-          "dppx" | "x" => Ok(NumericValue::Resolution(Resolution { value: *value as f64, unit: ResolutionUnit::Dppx }).into()),
+          "dpi" => Ok(NumericValue::Resolution(Resolution { value, unit: ResolutionUnit::Dpi }).into()),
+          "dpcm" => Ok(NumericValue::Resolution(Resolution { value, unit: ResolutionUnit::Dpcm }).into()),
+          "dppx" | "x" => Ok(NumericValue::Resolution(Resolution { value, unit: ResolutionUnit::Dppx }).into()),
           // https://www.w3.org/TR/css-grid-2/#fr-unit
-          "fr" => Ok(NumericValue::Flex(*value as f64).into()),
+          "fr" => Ok(NumericValue::Flex(value).into()),
           _ => {
             let token = token.clone();
             Err(input.new_unexpected_token_error(token))
@@ -1155,7 +1156,7 @@ impl NumericValue {
                     let value = try_extract!(value, expect_time(), to_seconds(), arguments);
                     current = minimum(current, value);
                   }
-                  NumericValue::Time(Time::from_second(current)).into()
+                  NumericValue::Time(Time::from_seconds(current)).into()
                 },
                 NumericValue::Frequency(frequency) => {
                   let mut current = frequency.to_hertz();
@@ -1245,7 +1246,7 @@ impl NumericValue {
                     let value = try_extract!(value, expect_time(), to_seconds(), arguments);
                     current = maximum(current, value);
                   }
-                  NumericValue::Time(Time::from_second(current)).into()
+                  NumericValue::Time(Time::from_seconds(current)).into()
                 },
                 NumericValue::Frequency(frequency) => {
                   let mut current = frequency.to_hertz();
@@ -1366,7 +1367,7 @@ impl NumericValue {
                     Some(numeric) => try_extract!(numeric, expect_time(), to_seconds(), arguments),
                     None => f64::INFINITY,
                   };
-                  NumericValue::Time(Time::from_second(maximum(min, minimum(value.to_seconds(), max)))).into()
+                  NumericValue::Time(Time::from_seconds(maximum(min, minimum(value.to_seconds(), max)))).into()
                 },
                 NumericValue::Frequency(value) => {
                   let min = match min {
@@ -1497,7 +1498,7 @@ impl NumericValue {
                   NumericValue::Angle(Angle::from_degrees(round(&strategy, value.to_degrees(), interval))).into()
                 },
                 NumericValue::Time(value) => {
-                  NumericValue::Time(Time::from_second(round(&strategy, value.to_seconds(), interval))).into()
+                  NumericValue::Time(Time::from_seconds(round(&strategy, value.to_seconds(), interval))).into()
                 },
                 NumericValue::Frequency(value) => {
                   NumericValue::Frequency(Frequency::from_hertz(round(&strategy, value.to_hertz(), interval))).into()
@@ -1550,7 +1551,7 @@ impl NumericValue {
                   let divisor = Self::parse_additive_expression(arguments, state)?;
                   let divisor = try_extract!(divisor, expect_time(), to_seconds(), arguments);
                   arguments.expect_exhausted()?;
-                  NumericValue::Time(Time::from_second(dividend.rem_euclid(divisor))).into()
+                  NumericValue::Time(Time::from_seconds(dividend.rem_euclid(divisor))).into()
                 }
                 NumericValue::Frequency(dividend) => {
                   let dividend = dividend.to_hertz();
@@ -1614,7 +1615,7 @@ impl NumericValue {
                   let divisor = Self::parse_additive_expression(arguments, state)?;
                   let divisor = try_extract!(divisor, expect_time(), to_seconds(), arguments);
                   arguments.expect_exhausted()?;
-                  NumericValue::Time(Time::from_second(dividend % divisor)).into()
+                  NumericValue::Time(Time::from_seconds(dividend % divisor)).into()
                 }
                 NumericValue::Frequency(dividend) => {
                   let dividend = dividend.to_hertz();
@@ -1863,7 +1864,7 @@ impl NumericValue {
                     let value = try_extract!(value, expect_time(), to_seconds(), arguments);
                     args.push(value);
                   }
-                  NumericValue::Time(Time::from_second(hypot(&args))).into()
+                  NumericValue::Time(Time::from_seconds(hypot(&args))).into()
                 }
                 NumericValue::Frequency(first) => {
                   let mut args = vec![first.to_hertz()];
