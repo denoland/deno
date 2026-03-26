@@ -2432,10 +2432,10 @@ Deno.test("[node/http] upgrade request can be rejected with non-101 status", asy
 });
 
 // Regression test for https://github.com/denoland/deno/issues/32857
-// h2c upgrade requests should not fire the "upgrade" event and should
-// be handled as normal HTTP/1.1 requests.
+// Only WebSocket upgrades should fire the "upgrade" event. Other upgrade
+// types (h2c, etc.) should be handled as normal HTTP/1.1 requests.
 Deno.test(
-  "[node/http] h2c upgrade does not hang when upgrade listener exists",
+  "[node/http] non-websocket upgrade does not hang when upgrade listener exists",
   { permissions: { net: true } },
   async () => {
     const { promise, resolve } = Promise.withResolvers<void>();
@@ -2445,21 +2445,31 @@ Deno.test(
     });
     server.on("upgrade", (_req, socket) => {
       // This listener exists (e.g. for WebSocket) but should NOT be
-      // triggered for h2c upgrades.
+      // triggered for non-websocket upgrades.
       socket.end();
     });
 
     server.listen(0, "127.0.0.1", async () => {
       const addr = server.address() as { port: number };
-      // Send a request with Upgrade: h2c header, simulating what browsers do
-      const res = await fetch(`http://127.0.0.1:${addr.port}/`, {
+      // h2c upgrade
+      const res1 = await fetch(`http://127.0.0.1:${addr.port}/`, {
         headers: {
           "Connection": "Upgrade, HTTP2-Settings",
           "Upgrade": "h2c",
         },
       });
-      assertEquals(res.status, 200);
-      assertEquals(await res.text(), "ok");
+      assertEquals(res1.status, 200);
+      assertEquals(await res1.text(), "ok");
+
+      // Arbitrary non-websocket upgrade (e.g. some custom protocol)
+      const res2 = await fetch(`http://127.0.0.1:${addr.port}/`, {
+        headers: {
+          "Connection": "Upgrade",
+          "Upgrade": "TLS/1.0",
+        },
+      });
+      assertEquals(res2.status, 200);
+      assertEquals(await res2.text(), "ok");
 
       server.close(() => resolve());
     });
