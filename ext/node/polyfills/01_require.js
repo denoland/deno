@@ -312,6 +312,11 @@ let hasInspectBrk = false;
 let usesLocalNodeModulesDir = false;
 let patched = false;
 
+// ESM loader hooks registered via module.register()
+// Each entry is { fn, url } where fn is the hook function
+const esmResolveHooks = [];
+const esmLoadHooks = [];
+
 function stat(filename) {
   if (statCache !== null) {
     const result = statCache.get(filename);
@@ -776,6 +781,22 @@ Module._resolveFilename = function (
     return request;
   }
 
+  // Run resolve hooks if registered
+  if (esmResolveHooks.length > 0) {
+    const parentURL = parent?.filename
+      ? url.pathToFileURL(parent.filename).toString()
+      : undefined;
+    const result = executeResolveHooks(request, parentURL);
+    if (result != null && result.url != null) {
+      let resolved = result.url;
+      // Convert file:// URLs back to paths for the CJS loader
+      if (resolved.startsWith("file://")) {
+        resolved = url.fileURLToPath(resolved);
+      }
+      return resolved;
+    }
+  }
+
   let paths;
 
   if (typeof options === "object" && options !== null) {
@@ -1147,11 +1168,114 @@ function loadCjs(module, filename) {
   module._compile(content, filename, "commonjs");
 }
 
+// Execute the registered load hook chain for a given URL.
+// Returns { format, source } if hooks handled it, or null if no hooks.
+function executeLoadHooks(resolvedUrl, context) {
+  if (esmLoadHooks.length === 0) return null;
+
+  const chain = esmLoadHooks;
+  let index = 0;
+
+  function nextLoad(u, ctx) {
+    if (index >= chain.length) {
+      // Default load: read from filesystem (or use provided source)
+      let source = ctx?.source;
+      if (source == null) {
+        try {
+          const filePath = u.startsWith("file://") ? url.fileURLToPath(u) : u;
+          source = op_require_read_file(filePath);
+        } catch {
+          source = undefined;
+        }
+      }
+      return {
+        format: ctx?.format ?? "module",
+        source,
+        shortCircuit: true,
+      };
+    }
+    const hook = chain[index++];
+    const result = hook.fn(u, ctx ?? context, nextLoad);
+    // Handle both sync returns and promises
+    if (result != null && typeof result.then === "function") {
+      throw new Error(
+        "Async loader hooks are not supported in Deno. " +
+          "Use synchronous hooks with module.registerHooks() instead.",
+      );
+    }
+    return result;
+  }
+
+  return nextLoad(resolvedUrl, context);
+}
+
+// Execute the registered resolve hook chain for a given specifier.
+// Returns { url, format } if hooks handled it, or null if no hooks.
+function executeResolveHooks(specifier, parentURL, importAttributes) {
+  if (esmResolveHooks.length === 0) return null;
+
+  const chain = esmResolveHooks;
+  let index = 0;
+
+  const context = {
+    parentURL,
+    importAttributes: importAttributes ?? { __proto__: null },
+    conditions: ["node", "import"],
+  };
+
+  function nextResolve(spec, ctx) {
+    if (index >= chain.length) {
+      // Default resolve: just return the specifier as file URL
+      let resolvedUrl = spec;
+      if (!spec.startsWith("file://") && !spec.startsWith("node:")) {
+        // Try to resolve as a file path
+        try {
+          resolvedUrl = url.pathToFileURL(
+            op_require_path_resolve(spec),
+          ).toString();
+        } catch {
+          resolvedUrl = spec;
+        }
+      }
+      return { url: resolvedUrl, shortCircuit: true };
+    }
+    const hook = chain[index++];
+    const result = hook.fn(spec, ctx ?? context, nextResolve);
+    if (result != null && typeof result.then === "function") {
+      throw new Error(
+        "Async loader hooks are not supported in Deno. " +
+          "Use synchronous hooks with module.registerHooks() instead.",
+      );
+    }
+    return result;
+  }
+
+  return nextResolve(specifier, context);
+}
+
 function loadESMFromCJS(module, filename, code) {
-  const namespace = op_import_sync(
-    url.pathToFileURL(filename).toString(),
-    code,
-  );
+  const fileUrl = url.pathToFileURL(filename).toString();
+  let importUrl = fileUrl;
+
+  // Run load hooks if registered
+  if (esmLoadHooks.length > 0) {
+    const loadResult = executeLoadHooks(fileUrl, {
+      format: "module",
+      source: code,
+      importAttributes: { __proto__: null },
+    });
+    if (loadResult != null && loadResult.source != null) {
+      const source = typeof loadResult.source === "string"
+        ? loadResult.source
+        : new TextDecoder().decode(loadResult.source);
+      // Use a data: URL so V8 evaluates the transformed source
+      // instead of loading from the filesystem
+      importUrl = "data:text/javascript," + encodeURIComponent(source);
+      code = undefined; // data: URL carries the source
+    }
+  }
+
+  const namespace = op_import_sync(importUrl, code);
   if (ObjectHasOwn(namespace, "module.exports")) {
     module.exports = namespace["module.exports"];
   } else {
@@ -1298,6 +1422,8 @@ Module.isBuiltin = isBuiltin;
 
 Module.createRequire = createRequire;
 
+Module.register = register;
+
 Module._initPaths = function () {
   const paths = op_require_init_paths();
   modulePaths = paths;
@@ -1376,14 +1502,77 @@ export function findSourceMap(_path) {
 Module.findSourceMap = findSourceMap;
 
 /**
- * @param {string | URL} _specifier
- * @param {string | URL} _parentUrl
- * @param {{ parentURL: string | URL, data: any, transferList: any[] }} [_options]
+ * Register ESM loader hooks.
+ * @param {string | URL} specifier - The module specifier to load hooks from
+ * @param {string | URL | { parentURL?: string | URL, data?: any, transferList?: any[] }} [parentUrl]
+ * @param {{ parentURL?: string | URL, data?: any, transferList?: any[] }} [options]
  */
-export function register(_specifier, _parentUrl, _options) {
-  // TODO(@marvinhagemeister): Stub implementation for programs registering
-  // TypeScript loaders. We don't support registering loaders for file
-  // types that Deno itself doesn't support at the moment.
+export function register(specifier, parentUrl, options) {
+  // Handle overloaded signatures: register(specifier, options)
+  if (
+    parentUrl != null && typeof parentUrl === "object" &&
+    !(parentUrl instanceof URL)
+  ) {
+    options = parentUrl;
+    parentUrl = options.parentURL;
+  }
+
+  if (typeof specifier === "object" && specifier instanceof URL) {
+    specifier = specifier.href;
+  }
+  if (typeof parentUrl === "object" && parentUrl instanceof URL) {
+    parentUrl = parentUrl.href;
+  }
+
+  // Resolve the specifier relative to parentURL
+  let resolvedUrl;
+  if (parentUrl) {
+    resolvedUrl = new URL(specifier, parentUrl).href;
+  } else {
+    // If no parentURL, try to resolve as file path or URL
+    try {
+      resolvedUrl = new URL(specifier).href;
+    } catch {
+      resolvedUrl = url.pathToFileURL(
+        op_require_path_resolve(specifier),
+      ).href;
+    }
+  }
+
+  // Load the hook module synchronously
+  const loaderNamespace = op_import_sync(resolvedUrl);
+
+  // Extract hooks from the module
+  const {
+    resolve: resolveHook,
+    load: loadHook,
+    initialize,
+  } = loaderNamespace;
+
+  if (typeof resolveHook === "function") {
+    ArrayPrototypePush(esmResolveHooks, {
+      fn: resolveHook,
+      url: resolvedUrl,
+    });
+  }
+
+  if (typeof loadHook === "function") {
+    ArrayPrototypePush(esmLoadHooks, {
+      fn: loadHook,
+      url: resolvedUrl,
+    });
+  }
+
+  // Call the initialize hook if provided
+  if (typeof initialize === "function") {
+    const result = initialize(options?.data);
+    if (result != null && typeof result.then === "function") {
+      throw new Error(
+        "Async initialize hooks are not supported in Deno. " +
+          "The initialize hook must be synchronous.",
+      );
+    }
+  }
 
   return undefined;
 }

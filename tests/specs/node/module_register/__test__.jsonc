@@ -1,0 +1,16 @@
+{
+  "tests": {
+    "load_hook": {
+      "args": "run -A main_load.cjs",
+      "output": "main_load.out"
+    },
+    "resolve_hook": {
+      "args": "run -A main_resolve.cjs",
+      "output": "main_resolve.out"
+    },
+    "initialize_hook": {
+      "args": "run -A main_initialize.cjs",
+      "output": "main_initialize.out"
+    }
+  }
+}
