@@ -8,8 +8,6 @@ https://github.com/denoland/deno_install
 
 ### 2.7.9 / 2026.03.27
 
-- Revert "fix(ext/node): support numeric FDs in child_process stdio array
-  (#32959)" (#33017)
 - fix(cli): show clean error instead of panic for invalid
   --unsafely-ignore-certificate-errors value (#32868)
 - fix(compile): strip duplicate exe path from argv when standalone binary
