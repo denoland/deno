@@ -37,7 +37,6 @@ pub use deno_package_json::PackageJson;
 use deno_permissions::PermissionCheckError;
 pub use node_resolver::DENO_SUPPORTED_BUILTIN_NODE_MODULES as SUPPORTED_BUILTIN_NODE_MODULES;
 pub use node_resolver::PathClean;
-use ops::handle_wrap::AsyncId;
 pub use ops::ipc::ChildPipeFd;
 use ops::vm;
 pub use ops::vm::ContextInitMode;
@@ -184,6 +183,7 @@ deno_core::extension!(deno_node,
     ops::blocklist::op_blocklist_add_subnet,
     ops::blocklist::op_blocklist_check,
 
+    ops::buffer::op_mark_as_untransferable,
     ops::buffer::op_is_ascii,
     ops::buffer::op_is_utf8,
     ops::buffer::op_transcode,
@@ -214,6 +214,7 @@ deno_core::extension!(deno_node,
     ops::fs::op_node_cp_check_paths_recursive,
     ops::fs::op_node_cp_on_file,
     ops::fs::op_node_cp_on_link,
+    ops::fs::op_node_cp_sync,
     ops::fs::op_node_cp_validate_and_prepare,
     ops::winerror::op_node_sys_to_uv_error,
     ops::v8::op_v8_cached_data_version_tag,
@@ -271,6 +272,7 @@ deno_core::extension!(deno_node,
     ops::os::op_node_os_user_info,
     ops::os::op_geteuid,
     ops::os::op_getegid,
+    ops::os::op_getgroups,
     ops::os::op_cpus,
     ops::os::op_homedir,
     op_node_build_os,
@@ -314,6 +316,7 @@ deno_core::extension!(deno_node,
     ops::ipc::op_node_ipc_buffer_constructor,
     ops::ipc::op_node_ipc_ref,
     ops::ipc::op_node_ipc_unref,
+    ops::process::op_node_process_set_title,
     ops::process::op_node_process_kill,
     ops::process::op_node_process_setegid,
     ops::process::op_node_process_seteuid,
@@ -352,11 +355,15 @@ deno_core::extension!(deno_node,
     ops::udp::op_node_udp_leave_source_specific,
     ops::udp::op_node_udp_send,
     ops::udp::op_node_udp_recv,
+    ops::stream_wrap::op_stream_base_register_state,
+    ops::tty_wrap::op_tty_check_fd_permission,
   ],
   objects = [
     ops::perf_hooks::EldHistogram,
     ops::handle_wrap::AsyncWrap,
     ops::handle_wrap::HandleWrap,
+    ops::stream_wrap::LibUvStreamWrap,
+    ops::tty_wrap::TTY,
     ops::zlib::BrotliDecoder,
     ops::zlib::BrotliEncoder,
     ops::zlib::Zlib,
@@ -473,6 +480,7 @@ deno_core::extension!(deno_node,
     "internal/http2/util.ts",
     "internal/http2/compat.js",
     "internal/idna.ts",
+    "internal/mime.ts",
     "internal/net.ts",
     "internal/normalize_encoding.ts",
     "internal/options.ts",
@@ -609,15 +617,6 @@ deno_core::extension!(deno_node,
       state.put(init.node_resolver.clone());
       state.put(init.pkg_json_resolver.clone());
     }
-
-    state.put(AsyncId::default());
-
-    // Initialize a uv_loop_t for libuv compat layer (used by TCP/HTTP2)
-    // SAFETY: zeroed memory is valid for UvLoop before uv_loop_init
-    let mut uv_loop = Box::new(unsafe { std::mem::zeroed::<deno_core::uv_compat::UvLoop>() });
-    // SAFETY: uv_loop points to valid zeroed memory ready for initialization
-    unsafe { deno_core::uv_compat::uv_loop_init(&mut *uv_loop) };
-    state.put(uv_loop);
 
   },
   global_template_middleware = global_template_middleware,

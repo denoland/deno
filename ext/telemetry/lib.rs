@@ -42,6 +42,7 @@ use deno_error::JsError;
 use deno_error::JsErrorBox;
 use once_cell::sync::Lazy;
 use once_cell::sync::OnceCell;
+use opentelemetry::Array;
 use opentelemetry::InstrumentationScope;
 pub use opentelemetry::Key;
 pub use opentelemetry::KeyValue;
@@ -100,6 +101,8 @@ use sys_traits::FsRead;
 use thiserror::Error;
 use tokio::sync::oneshot;
 use tokio::task::JoinSet;
+
+mod console_exporter;
 
 deno_core::extension!(
   deno_telemetry,
@@ -380,9 +383,9 @@ const METRIC_EXPORT_INTERVAL_NAME: &str = "OTEL_METRIC_EXPORT_INTERVAL";
 const DEFAULT_INTERVAL: Duration = Duration::from_secs(60);
 
 impl DenoPeriodicReader {
-  fn new(
+  fn new<E: PushMetricExporter + 'static>(
     sys: &impl TelemetrySys,
-    exporter: opentelemetry_otlp::MetricExporter,
+    exporter: E,
   ) -> Self {
     let interval = sys
       .env_var(METRIC_EXPORT_INTERVAL_NAME)
@@ -884,10 +887,13 @@ pub fn init(
   // Parse the `OTEL_EXPORTER_OTLP_PROTOCOL` variable. The opentelemetry_*
   // crates don't do this automatically.
   // TODO(piscisaureus): enable GRPC support.
-  let protocol = match sys.env_var("OTEL_EXPORTER_OTLP_PROTOCOL").as_deref() {
-    Ok("http/protobuf") => Protocol::HttpBinary,
-    Ok("http/json") => Protocol::HttpJson,
-    Ok("") | Err(std::env::VarError::NotPresent) => Protocol::HttpBinary,
+  let protocol_var = sys.env_var("OTEL_EXPORTER_OTLP_PROTOCOL");
+  let (use_console_exporter, protocol) = match protocol_var.as_deref() {
+    Ok("console") => (true, Protocol::HttpBinary),
+    Ok("http/protobuf") | Ok("") | Err(std::env::VarError::NotPresent) => {
+      (false, Protocol::HttpBinary)
+    }
+    Ok("http/json") => (false, Protocol::HttpJson),
     Ok(protocol) => {
       return Err(deno_core::anyhow::anyhow!(
         "Env var OTEL_EXPORTER_OTLP_PROTOCOL specifies an unsupported protocol: {}",
@@ -943,16 +949,6 @@ pub fn init(
   // `OTEL_EXPORTER_OTLP_ENDPOINT` environment variable. Additional headers can
   // be specified using `OTEL_EXPORTER_OTLP_HEADERS`.
 
-  let client = hyper_client::HyperClient::new(sys)?;
-
-  let span_exporter = HttpExporterBuilder::default()
-    .with_http_client(client.clone())
-    .with_protocol(protocol)
-    .build_span_exporter()?;
-  let mut span_processor =
-    BatchSpanProcessor::builder(span_exporter, OtelSharedRuntime).build();
-  span_processor.set_resource(&resource);
-
   let temporality_preference = sys
     .env_var("OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE")
     .ok()
@@ -968,23 +964,59 @@ pub fn init(
       ));
     }
   };
-  let metric_exporter = HttpExporterBuilder::default()
-    .with_http_client(client.clone())
-    .with_protocol(protocol)
-    .build_metrics_exporter(temporality)?;
-  let metric_reader = DenoPeriodicReader::new(sys, metric_exporter);
-  let meter_provider = SdkMeterProvider::builder()
-    .with_reader(metric_reader)
-    .with_resource(resource.clone())
-    .build();
 
-  let log_exporter = HttpExporterBuilder::default()
-    .with_http_client(client)
-    .with_protocol(protocol)
-    .build_log_exporter()?;
-  let log_processor =
-    BatchLogProcessor::builder(log_exporter, OtelSharedRuntime).build();
-  log_processor.set_resource(&resource);
+  let (span_processor, meter_provider, log_processor) = if use_console_exporter
+  {
+    let span_exporter = console_exporter::ConsoleSpanExporter::new();
+    let mut span_processor =
+      BatchSpanProcessor::builder(span_exporter, OtelSharedRuntime).build();
+    span_processor.set_resource(&resource);
+
+    let metric_exporter =
+      console_exporter::ConsoleMetricExporter::new(temporality);
+    let metric_reader = DenoPeriodicReader::new(sys, metric_exporter);
+    let meter_provider = SdkMeterProvider::builder()
+      .with_reader(metric_reader)
+      .with_resource(resource.clone())
+      .build();
+
+    let log_exporter = console_exporter::ConsoleLogExporter::new();
+    let log_processor =
+      BatchLogProcessor::builder(log_exporter, OtelSharedRuntime).build();
+    log_processor.set_resource(&resource);
+
+    (span_processor, meter_provider, log_processor)
+  } else {
+    let client = hyper_client::HyperClient::new(sys)?;
+
+    let span_exporter = HttpExporterBuilder::default()
+      .with_http_client(client.clone())
+      .with_protocol(protocol)
+      .build_span_exporter()?;
+    let mut span_processor =
+      BatchSpanProcessor::builder(span_exporter, OtelSharedRuntime).build();
+    span_processor.set_resource(&resource);
+
+    let metric_exporter = HttpExporterBuilder::default()
+      .with_http_client(client.clone())
+      .with_protocol(protocol)
+      .build_metrics_exporter(temporality)?;
+    let metric_reader = DenoPeriodicReader::new(sys, metric_exporter);
+    let meter_provider = SdkMeterProvider::builder()
+      .with_reader(metric_reader)
+      .with_resource(resource.clone())
+      .build();
+
+    let log_exporter = HttpExporterBuilder::default()
+      .with_http_client(client)
+      .with_protocol(protocol)
+      .build_log_exporter()?;
+    let log_processor =
+      BatchLogProcessor::builder(log_exporter, OtelSharedRuntime).build();
+    log_processor.set_resource(&resource);
+
+    (span_processor, meter_provider, log_processor)
+  };
 
   let builtin_instrumentation_scope =
     opentelemetry::InstrumentationScope::builder("deno")
@@ -1243,9 +1275,61 @@ macro_rules! attr_raw {
     } else if let Ok(bigint) = $value.try_cast::<v8::BigInt>() {
       let (i64_value, _lossless) = bigint.i64_value();
       Some(Value::I64(i64_value))
-    } else if let Ok(_array) = $value.try_cast::<v8::Array>() {
-      // TODO: implement array attributes
-      None
+    } else if let Ok(array) = $value.try_cast::<v8::Array>() {
+      let len = array.length();
+      if len == 0 {
+        Some(Value::Array(Array::String(vec![])))
+      } else {
+        let first = array.get_index($scope, 0).unwrap();
+        if first.is_string() {
+          let mut vec = Vec::with_capacity(len as usize);
+          for i in 0..len {
+            let element = array.get_index($scope, i).unwrap();
+            if let Ok(s) = element.try_cast::<v8::String>() {
+              let view = v8::ValueView::new($scope, s);
+              vec.push(StringValue::from(match view.data() {
+                v8::ValueViewData::OneByte(bytes) => {
+                  String::from_utf8_lossy(bytes).into_owned()
+                }
+                v8::ValueViewData::TwoByte(bytes) => {
+                  String::from_utf16_lossy(bytes)
+                }
+              }));
+            }
+          }
+          Some(Value::Array(Array::String(vec)))
+        } else if first.is_number() {
+          let mut vec = Vec::with_capacity(len as usize);
+          for i in 0..len {
+            let element = array.get_index($scope, i).unwrap();
+            if let Ok(n) = element.try_cast::<v8::Number>() {
+              vec.push(n.value());
+            }
+          }
+          Some(Value::Array(Array::F64(vec)))
+        } else if first.is_boolean() {
+          let mut vec = Vec::with_capacity(len as usize);
+          for i in 0..len {
+            let element = array.get_index($scope, i).unwrap();
+            if let Ok(b) = element.try_cast::<v8::Boolean>() {
+              vec.push(b.is_true());
+            }
+          }
+          Some(Value::Array(Array::Bool(vec)))
+        } else if first.is_big_int() {
+          let mut vec = Vec::with_capacity(len as usize);
+          for i in 0..len {
+            let element = array.get_index($scope, i).unwrap();
+            if let Ok(b) = element.try_cast::<v8::BigInt>() {
+              let (i64_value, _lossless) = b.i64_value();
+              vec.push(i64_value);
+            }
+          }
+          Some(Value::Array(Array::I64(vec)))
+        } else {
+          None
+        }
+      }
     } else {
       None
     };
@@ -1271,12 +1355,27 @@ macro_rules! attr {
   };
 }
 
+/// Convert the integer log level that ext/console uses to the corresponding
+/// OpenTelemetry log severity.
+fn severity_from_level(level: i32) -> Severity {
+  match level {
+    ..=0 => Severity::Debug,
+    1 => Severity::Info,
+    2 => Severity::Warn,
+    3 | 5.. => Severity::Error,
+    4 => Severity::Trace,
+  }
+}
+
 #[op2(fast)]
 fn op_otel_log<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   message: v8::Local<'s, v8::Value>,
   #[smi] level: i32,
   span: v8::Local<'s, v8::Value>,
+  #[string] exception_type: String,
+  #[string] exception_message: String,
+  #[string] exception_stacktrace: String,
 ) {
   let Some(OtelGlobals {
     log_processor,
@@ -1287,15 +1386,7 @@ fn op_otel_log<'s>(
     return;
   };
 
-  // Convert the integer log level that ext/console uses to the corresponding
-  // OpenTelemetry log severity.
-  let severity = match level {
-    ..=0 => Severity::Debug,
-    1 => Severity::Info,
-    2 => Severity::Warn,
-    3 | 5.. => Severity::Error,
-    4 => Severity::Trace,
-  };
+  let severity = severity_from_level(level);
 
   let mut log_record = LogRecord::default();
   let now = SystemTime::now();
@@ -1339,7 +1430,40 @@ fn op_otel_log<'s>(
     }
   }
 
+  otel_log_add_exception_attributes(
+    &mut log_record,
+    exception_type,
+    exception_message,
+    exception_stacktrace,
+  );
+
   log_processor.emit(&mut log_record, builtin_instrumentation_scope);
+}
+
+fn otel_log_add_exception_attributes(
+  log_record: &mut LogRecord,
+  exception_type: String,
+  exception_message: String,
+  exception_stacktrace: String,
+) {
+  if !exception_type.is_empty() {
+    log_record.add_attribute(
+      Key::from_static_str("exception.type"),
+      AnyValue::String(exception_type.into()),
+    );
+  }
+  if !exception_message.is_empty() {
+    log_record.add_attribute(
+      Key::from_static_str("exception.message"),
+      AnyValue::String(exception_message.into()),
+    );
+  }
+  if !exception_stacktrace.is_empty() {
+    log_record.add_attribute(
+      Key::from_static_str("exception.stacktrace"),
+      AnyValue::String(exception_stacktrace.into()),
+    );
+  }
 }
 
 #[op2(fast)]
@@ -1350,6 +1474,9 @@ fn op_otel_log_foreign(
   trace_id: v8::Local<'_, v8::Value>,
   span_id: v8::Local<'_, v8::Value>,
   #[smi] trace_flags: u8,
+  #[string] exception_type: String,
+  #[string] exception_message: String,
+  #[string] exception_stacktrace: String,
 ) {
   let Some(OtelGlobals {
     log_processor,
@@ -1360,15 +1487,7 @@ fn op_otel_log_foreign(
     return;
   };
 
-  // Convert the integer log level that ext/console uses to the corresponding
-  // OpenTelemetry log severity.
-  let severity = match level {
-    ..=0 => Severity::Debug,
-    1 => Severity::Info,
-    2 => Severity::Warn,
-    3 | 5.. => Severity::Error,
-    4 => Severity::Trace,
-  };
+  let severity = severity_from_level(level);
 
   let trace_id = parse_trace_id(scope, trace_id);
   let span_id = parse_span_id(scope, span_id);
@@ -1396,6 +1515,13 @@ fn op_otel_log_foreign(
       Some(TraceFlags::new(trace_flags)),
     );
   }
+
+  otel_log_add_exception_attributes(
+    &mut log_record,
+    exception_type,
+    exception_message,
+    exception_stacktrace,
+  );
 
   log_processor.emit(&mut log_record, builtin_instrumentation_scope);
 }
@@ -1554,8 +1680,8 @@ impl OtelTracer {
       links: SpanLinks::default(),
       instrumentation_scope: self.0.clone(),
     };
-    Ok(OtelSpan(RefCell::new(Box::new(OtelSpanState::Recording(
-      span_data,
+    Ok(OtelSpan(Rc::new(RefCell::new(Box::new(
+      OtelSpanState::Recording(span_data),
     )))))
   }
 
@@ -1623,8 +1749,8 @@ impl OtelTracer {
       links: SpanLinks::default(),
       instrumentation_scope: self.0.clone(),
     };
-    Ok(OtelSpan(RefCell::new(Box::new(OtelSpanState::Recording(
-      span_data,
+    Ok(OtelSpan(Rc::new(RefCell::new(Box::new(
+      OtelSpanState::Recording(span_data),
     )))))
   }
 }
@@ -1647,13 +1773,15 @@ struct OtelSpanCannotBeConstructedError;
 #[class(type)]
 struct InvalidSpanStatusCodeError;
 
-// boxed because of https://github.com/denoland/rusty_v8/issues/1676
-#[derive(Debug)]
-struct OtelSpan(RefCell<Box<OtelSpanState>>);
+// Rc-wrapped so the span can be shared between JS (via cppgc) and the HTTP
+// record (for copying attributes to metrics). The inner Box is kept to keep
+// the cppgc-traced struct small (see https://github.com/denoland/rusty_v8/issues/1676).
+#[derive(Debug, Clone)]
+pub struct OtelSpan(pub Rc<RefCell<Box<OtelSpanState>>>);
 
 #[derive(Debug)]
 #[allow(clippy::large_enum_variant, reason = "TODO: investigate")]
-enum OtelSpanState {
+pub enum OtelSpanState {
   Recording(SpanData),
   Done(SpanContext),
 }

@@ -1,0 +1,20 @@
+{
+  "tests": {
+    "auto_detect_cjs": {
+      "args": ["eval", "--quiet", "require('./say_hello')"],
+      "output": "Hello!\n"
+    },
+    "auto_detect_esm": {
+      "args": [
+        "eval",
+        "--quiet",
+        "import { ok } from 'node:assert'; ok(true); console.log('esm works')"
+      ],
+      "output": "esm works\n"
+    },
+    "ext_override": {
+      "args": ["eval", "--quiet", "--ext=mjs", "console.log('esm')"],
+      "output": "esm\n"
+    }
+  }
+}

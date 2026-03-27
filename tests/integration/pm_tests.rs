@@ -280,3 +280,59 @@ fn approve_scripts_deny_some() {
     .join("install.txt")
     .assert_matches_text("Installed by @denotest/node-lifecycle-scripts!");
 }
+
+#[test(flaky)]
+fn approve_scripts_no_lock_explicit_package() {
+  let context = pm_context_builder().build();
+  context
+    .temp_dir()
+    .write("deno.json", r#"{"lock": false, "nodeModulesDir": "auto"}"#);
+  context.temp_dir().write(
+    "package.json",
+    r#"{"dependencies": {"@denotest/node-lifecycle-scripts": "*"}}"#,
+  );
+  context
+    .new_command()
+    .args("install")
+    .run()
+    .skip_output_check();
+  context
+    .new_command()
+    .args("approve-scripts npm:@denotest/node-lifecycle-scripts")
+    .run()
+    .assert_matches_text(
+      "[WILDCARD]Approved npm:@denotest/node-lifecycle-scripts[WILDCARD]",
+    );
+}
+
+#[test(flaky)]
+fn approve_scripts_no_lock_detects_packages() {
+  if !Pty::is_supported() {
+    return;
+  }
+  let context = pm_context_builder().build();
+  context
+    .temp_dir()
+    .write("deno.json", r#"{"lock": false, "nodeModulesDir": "auto"}"#);
+  context.temp_dir().write(
+    "package.json",
+    r#"{"dependencies": {"@denotest/node-lifecycle-scripts": "*"}}"#,
+  );
+  context
+    .new_command()
+    .args("install")
+    .run()
+    .skip_output_check();
+  // Without explicit package args, approve-scripts should detect packages
+  // with lifecycle scripts and show the interactive picker.
+  context
+    .new_command()
+    .args("approve-scripts")
+    .with_pty(|mut pty| {
+      pty.expect("Select which packages to approve lifecycle scripts for");
+      pty.expect("@denotest/node-lifecycle-scripts@1.0.0");
+      pty.write_line(" ");
+      pty.write_line("\r\n");
+      pty.expect("Approved npm:@denotest/node-lifecycle-scripts@1.0.0");
+    });
+}

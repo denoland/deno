@@ -11,26 +11,156 @@ use deno_core::OpState;
 use deno_core::ResourceId;
 use deno_core::error::ResourceError;
 use deno_core::op2;
+use deno_core::uv_compat;
+use deno_core::uv_compat::uv_handle_t;
 use deno_core::v8;
 
-pub struct AsyncId(i64);
+// ---------------------------------------------------------------------------
+// GlobalHandle — mirrors Node's BaseObject::persistent_handle_ weak/strong
+// switching.
+//
+// In Node, BaseObject holds a v8::Global that can be switched between strong
+// (prevents GC of the JS object) and weak (allows GC, triggering cleanup).
+// With cppgc the C++ object's lifetime is managed by the GC, but we still
+// need to hold a reference back to the JS wrapper object for use in
+// callbacks. A strong Global would create a reference cycle (JS -> cppgc
+// -> Global -> JS) and leak. A Weak reference allows the GC to collect
+// the pair when nothing else references them.
+//
+// The handle starts Strong after construction (the active libuv handle
+// should keep the object alive). It should be made Weak when the handle
+// is closed or no longer actively referenced.
+// ---------------------------------------------------------------------------
 
-impl Default for AsyncId {
-  // `kAsyncIdCounter` should start at `1` because that'll be the id the execution
-  // context during bootstrap.
-  fn default() -> Self {
-    Self(1)
+/// A reference to a JS object that can switch between strong (GC root),
+/// weak (allows collection), or empty. This mirrors Node's pattern of
+/// calling `MakeWeak()` / `ClearWeak()` on `BaseObject::persistent_handle_`.
+#[derive(Default)]
+pub enum GlobalHandle<T> {
+  Strong(v8::Global<T>),
+  Weak(v8::Weak<T>),
+  #[default]
+  None,
+}
+
+impl<T> GlobalHandle<T>
+where
+  v8::Global<T>: v8::Handle<Data = T>,
+{
+  /// Create a new strong handle.
+  pub fn new_strong(scope: &mut v8::PinScope, value: v8::Local<T>) -> Self {
+    GlobalHandle::Strong(v8::Global::new(scope, value))
+  }
+
+  /// Create a new weak handle.
+  pub fn new_weak(scope: &mut v8::PinScope, value: v8::Local<T>) -> Self {
+    GlobalHandle::Weak(v8::Weak::new(scope, value))
+  }
+
+  /// Make the handle weak, allowing the GC to collect the JS object.
+  /// Mirrors Node's `BaseObject::MakeWeak()`.
+  pub fn make_weak(&mut self, scope: &mut v8::PinScope) {
+    match std::mem::take(self) {
+      GlobalHandle::Strong(global) => {
+        let local = v8::Local::new(scope, &global);
+        *self = GlobalHandle::Weak(v8::Weak::new(scope, local));
+      }
+      other => *self = other,
+    }
+  }
+
+  /// Make the handle strong, preventing the GC from collecting the JS object.
+  /// Mirrors Node's `BaseObject::ClearWeak()`.
+  pub fn make_strong(&mut self, scope: &mut v8::PinScope) {
+    match std::mem::take(self) {
+      GlobalHandle::Weak(weak) => {
+        if let Some(local) = weak.to_local(scope) {
+          *self = GlobalHandle::Strong(v8::Global::new(scope, local));
+        }
+        // If already collected, stays None
+      }
+      other => *self = other,
+    }
+  }
+
+  /// Get a Global clone if the reference is still alive.
+  /// Returns None if empty or if the weak reference has been collected.
+  pub fn to_global(&self, scope: &mut v8::PinScope) -> Option<v8::Global<T>> {
+    match self {
+      GlobalHandle::Strong(global) => Some(global.clone()),
+      GlobalHandle::Weak(weak) => weak
+        .to_local(scope)
+        .map(|local| v8::Global::new(scope, local)),
+      GlobalHandle::None => None,
+    }
+  }
+
+  /// Returns true if this is a weak reference.
+  pub fn is_weak(&self) -> bool {
+    matches!(self, GlobalHandle::Weak(_))
+  }
+
+  /// Returns true if this handle is empty.
+  pub fn is_none(&self) -> bool {
+    matches!(self, GlobalHandle::None)
   }
 }
 
-impl AsyncId {
-  // Increment the internal id counter and return the value.
-  #[allow(clippy::should_implement_trait, reason = "this is more clear")]
-  pub fn next(&mut self) -> i64 {
-    self.0 += 1;
-    self.0
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(i32)]
+pub enum ProviderType {
+  None = 0,
+  DirHandle,
+  DnsChannel,
+  EldHistogram,
+  FileHandle,
+  FileHandleCloseReq,
+  FixedSizeBlobCopy,
+  FsEventWrap,
+  FsReqCallback,
+  FsReqPromise,
+  GetAddrInfoReqWrap,
+  GetNameInfoReqWrap,
+  HeapSnapshot,
+  Http2Session,
+  Http2Stream,
+  Http2Ping,
+  Http2Settings,
+  HttpIncomingMessage,
+  HttpClientRequest,
+  JsStream,
+  JsUdpWrap,
+  MessagePort,
+  PipeConnectWrap,
+  PipeServerWrap,
+  PipeWrap,
+  ProcessWrap,
+  Promise,
+  QueryWrap,
+  ShutdownWrap,
+  SignalWrap,
+  StatWatcher,
+  StreamPipe,
+  TcpConnectWrap,
+  TcpServerWrap,
+  TcpWrap,
+  TtyWrap,
+  UdpSendWrap,
+  UdpWrap,
+  SigIntWatchdog,
+  Worker,
+  WorkerHeapSnapshot,
+  WriteWrap,
+  Zlib,
+}
+
+impl From<ProviderType> for i32 {
+  fn from(provider: ProviderType) -> Self {
+    provider as i32
   }
 }
+
+pub use deno_core::uv_compat::AsyncId;
 
 fn next_async_id(state: &mut OpState) -> i64 {
   state.borrow_mut::<AsyncId>().next()
@@ -91,12 +221,23 @@ enum State {
   Closed,
 }
 
+/// A handle to a libuv resource. `New` stores a raw pointer to a `uv_handle_t`
+/// whose lifetime is managed by the owning cppgc object (e.g. `TTY`). The
+/// pointer is valid as long as the handle has not been closed via `uv_close`.
+/// This mirrors Node's approach where `HandleWrap` stores a `uv_handle_t*`
+/// that becomes null after close.
+#[derive(PartialEq, Eq)]
+pub enum Handle {
+  Old(ResourceId),
+  New(*const uv_handle_t),
+}
+
 #[derive(CppgcBase, CppgcInherits)]
 #[cppgc_inherits_from(AsyncWrap)]
 #[repr(C)]
 pub struct HandleWrap {
   base: AsyncWrap,
-  handle: Option<ResourceId>,
+  handle: Option<Handle>,
   state: Rc<Cell<State>>,
 }
 
@@ -110,7 +251,7 @@ unsafe impl GarbageCollected for HandleWrap {
 }
 
 impl HandleWrap {
-  pub(crate) fn create(base: AsyncWrap, handle: Option<ResourceId>) -> Self {
+  pub(crate) fn create(base: AsyncWrap, handle: Option<Handle>) -> Self {
     Self {
       base,
       handle,
@@ -126,7 +267,7 @@ impl HandleWrap {
 static ON_CLOSE_STR: deno_core::FastStaticString =
   deno_core::ascii_str!("_onClose");
 
-#[op2(inherit = AsyncWrap)]
+#[op2(inherit = AsyncWrap, base)]
 impl HandleWrap {
   #[constructor]
   #[cppgc]
@@ -135,7 +276,10 @@ impl HandleWrap {
     #[smi] provider: i32,
     #[smi] handle: Option<ResourceId>,
   ) -> HandleWrap {
-    HandleWrap::create(AsyncWrap::create(state, provider), handle)
+    HandleWrap::create(
+      AsyncWrap::create(state, provider),
+      handle.map(Handle::Old),
+    )
   }
 
   // Ported from Node.js
@@ -173,6 +317,18 @@ impl HandleWrap {
       }
     };
 
+    // For new-style handles (uv_compat), call uv_compat::uv_close to
+    // properly shut down the libuv handle (e.g. close FDs for TTY).
+    // Without this, the libuv handle cleanup never runs and resources
+    // like PTY master file descriptors are leaked.
+    if let Some(Handle::New(handle)) = &self.handle {
+      // SAFETY: handle is a valid uv_handle_t pointer set during
+      // construction and remains live while HandleWrap is alive.
+      unsafe {
+        uv_compat::uv_close(handle.cast_mut(), None);
+      }
+    }
+
     uv_close(scope, op_state, this, on_close);
     self.state.set(State::Closing);
 
@@ -184,8 +340,12 @@ impl HandleWrap {
   // https://github.com/nodejs/node/blob/038d82980ab26cd79abe4409adc2fecad94d7c93/src/handle_wrap.cc#L58-L62
   #[fast]
   fn has_ref(&self, state: &mut OpState) -> bool {
-    if let Some(handle) = self.handle {
-      return state.has_ref(handle);
+    if let Some(handle) = &self.handle {
+      return match handle {
+        Handle::Old(resource_id) => state.has_ref(*resource_id),
+        // SAFETY: handle is a valid uv_handle_t pointer set during construction and remains live while HandleWrap is alive.
+        Handle::New(handle) => unsafe { uv_compat::uv_has_ref(*handle) != 0 },
+      };
     }
 
     true
@@ -198,9 +358,13 @@ impl HandleWrap {
   #[rename("ref")]
   fn ref_method(&self, state: &mut OpState) {
     if self.is_alive()
-      && let Some(handle) = self.handle
+      && let Some(handle) = &self.handle
     {
-      state.uv_ref(handle);
+      match handle {
+        Handle::Old(resource_id) => state.uv_ref(*resource_id),
+        // SAFETY: handle is a valid uv_handle_t pointer set during construction and remains live while HandleWrap is alive.
+        Handle::New(handle) => unsafe { uv_compat::uv_ref(handle.cast_mut()) },
+      }
     }
   }
 
@@ -210,9 +374,15 @@ impl HandleWrap {
   #[fast]
   fn unref(&self, state: &mut OpState) {
     if self.is_alive()
-      && let Some(handle) = self.handle
+      && let Some(handle) = &self.handle
     {
-      state.uv_unref(handle);
+      match handle {
+        Handle::Old(resource_id) => state.uv_unref(*resource_id),
+        // SAFETY: handle is a valid uv_handle_t pointer set during construction and remains live while HandleWrap is alive.
+        Handle::New(handle) => unsafe {
+          uv_compat::uv_unref(handle.cast_mut())
+        },
+      }
     }
   }
 }
@@ -230,8 +400,9 @@ fn uv_close<F>(
   let on_close_str = ON_CLOSE_STR.v8_string(scope).unwrap();
   let onclose = this.get(scope, on_close_str.into());
 
-  if let Some(onclose) = onclose {
-    let fn_: v8::Local<v8::Function> = onclose.try_into().unwrap();
+  if let Some(onclose) = onclose
+    && let Ok(fn_) = v8::Local::<v8::Function>::try_from(onclose)
+  {
     fn_.call(scope, this.into(), &[]);
   }
 

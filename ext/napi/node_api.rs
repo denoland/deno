@@ -595,7 +595,9 @@ pub(crate) fn napi_queue_async_work(
   // Per NAPI spec, `execute` runs on a worker thread and `complete` runs on
   // the main thread. Previously both ran on the main thread which caused
   // deadlocks when `execute` called threadsafe functions.
-  std::thread::spawn(move || {
+  // Uses tokio's blocking threadpool to reuse threads instead of spawning a
+  // new OS thread per call (which has high overhead on Linux).
+  deno_core::unsync::spawn_blocking(move || {
     let work = work.take();
     let work = unsafe { &*work };
 
@@ -822,15 +824,24 @@ impl TsFn {
     let data = SendPtr(data);
     let context = SendPtr(self.context);
     let call_js_cb = self.call_js_cb;
+    // Capture env so we can pass it even after the tsfn is freed. The env
+    // pointer is always valid here because it was created via Box::into_raw
+    // in op_napi_open and is intentionally leaked (never freed).
+    let env = SendPtr(self.env);
 
     self.sender.spawn(move |scope: &mut v8::PinScope<'_, '_>| {
       let data = data.take();
 
-      // if is_closed then tsfn is freed, don't read from it.
+      // If is_closed then the TsFn struct has been freed. Don't read from
+      // the tsfn pointer. We still pass the real env (not null) because:
+      // 1. The env is valid (leaked via Box::into_raw, never freed)
+      // 2. V8 is alive (we're running on the V8 thread with a scope)
+      // 3. Many native addons (e.g. node-pty) dereference env without a
+      //    null check, causing SIGSEGV if we pass null
       if is_closed.load(Ordering::Relaxed) {
         unsafe {
           call_js_cb(
-            std::ptr::null_mut(),
+            env.take() as _,
             None::<v8::Local<v8::Value>>.into(),
             context.take() as _,
             data as _,

@@ -1,6 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
+use std::cell::Cell;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ffi::OsString;
@@ -71,7 +72,8 @@ impl Stdio {
       Stdio::Inherit => StdStdio::inherit(),
       Stdio::Piped => StdStdio::piped(),
       Stdio::Null => StdStdio::null(),
-      _ => unreachable!(),
+      // IPC uses a pipe internally
+      Stdio::IpcForInternalUse => StdStdio::piped(),
     }
   }
 }
@@ -165,6 +167,8 @@ deno_core::extension!(
     op_spawn_wait,
     op_spawn_sync,
     op_spawn_kill,
+    op_spawn_child_ref,
+    op_spawn_child_unref,
     deprecated::op_run,
     deprecated::op_run_status,
     deprecated::op_kill,
@@ -176,13 +180,48 @@ deno_core::extension!(
   },
 );
 
-/// Second member stores the pid separately from the RefCell. It's needed for
-/// `op_spawn_kill`, where the RefCell is borrowed mutably by `op_spawn_wait`.
-struct ChildResource(RefCell<AsyncChild>, u32);
+/// Wraps an async child process handle.
+///
+/// `pid` is stored separately from the `RefCell` because it's needed for
+/// `op_spawn_kill`, where the `RefCell` is borrowed mutably by `op_spawn_wait`.
+///
+/// `kill_on_drop` controls whether the child process is killed when this
+/// resource is dropped (e.g. when the parent process exits). It defaults to
+/// `true` for non-detached processes. Calling `unref()` sets it to `false`,
+/// allowing the child to outlive the parent — matching Node.js semantics.
+struct ChildResource {
+  child: RefCell<AsyncChild>,
+  pid: u32,
+  kill_on_drop: Cell<bool>,
+}
 
 impl Resource for ChildResource {
   fn name(&self) -> Cow<'_, str> {
     "child".into()
+  }
+}
+
+impl Drop for ChildResource {
+  fn drop(&mut self) {
+    if self.kill_on_drop.get() {
+      #[cfg(unix)]
+      {
+        // Send SIGKILL to the child process. Best-effort; ignore errors
+        // (e.g. the process may have already exited).
+        // SAFETY: libc::kill is safe to call with any pid/signal combination;
+        // it simply returns an error for invalid inputs.
+        unsafe {
+          libc::kill(self.pid as i32, libc::SIGKILL);
+        }
+      }
+      #[cfg(windows)]
+      {
+        let _ = deno_subprocess_windows::process_kill(
+          self.pid as i32,
+          /* SIGTERM */ 15,
+        );
+      }
+    }
   }
 }
 
@@ -212,6 +251,8 @@ pub struct SpawnArgs {
   extra_stdio: Vec<Stdio>,
   detached: bool,
   needs_npm_process_state: bool,
+  #[cfg(unix)]
+  argv0: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -448,7 +489,12 @@ fn create_command(
   }
 
   #[cfg(not(windows))]
-  command.args(args.args);
+  {
+    if let Some(ref argv0) = args.argv0 {
+      command.arg0(argv0);
+    }
+    command.args(args.args);
+  }
 
   command.current_dir(run_env.cwd);
   command.env_clear();
@@ -675,12 +721,11 @@ fn spawn_child(
   let mut command = command;
   #[cfg(not(windows))]
   let mut command = tokio::process::Command::from(command);
-  // TODO(@crowlkats): allow detaching processes.
-  //  currently deno will orphan a process when exiting with an error or Deno.exit()
-  // We want to kill child when it's closed
-  if !detached {
-    command.kill_on_drop(true);
-  }
+  // Note: we do NOT set `command.kill_on_drop(true)` here. Instead,
+  // `ChildResource` implements its own `Drop` that kills the child process
+  // by PID when `kill_on_drop` is true. This allows `unref()` to disable
+  // kill-on-drop, so the child can outlive the parent (matching Node.js
+  // semantics for `child_process.unref()`).
 
   let mut child = match command.spawn() {
     Ok(child) => child,
@@ -774,9 +819,11 @@ fn spawn_child(
     .transpose()?
     .map(|stderr| state.resource_table.add(ChildStderrResource::from(stderr)));
 
-  let child_rid = state
-    .resource_table
-    .add(ChildResource(RefCell::new(child), pid));
+  let child_rid = state.resource_table.add(ChildResource {
+    child: RefCell::new(child),
+    pid,
+    kill_on_drop: Cell::new(!detached),
+  });
 
   Ok(Child {
     rid: child_rid,
@@ -1051,7 +1098,7 @@ async fn op_spawn_wait(
     .get::<ChildResource>(rid)
     .map_err(ProcessError::Resource)?;
   let result = resource
-    .0
+    .child
     .try_borrow_mut()
     .map_err(ProcessError::BorrowMut)?
     .wait()
@@ -1121,10 +1168,34 @@ fn op_spawn_kill(
   #[serde] signal: SignalArg,
 ) -> Result<(), ProcessError> {
   if let Ok(child_resource) = state.resource_table.get::<ChildResource>(rid) {
-    deprecated::kill(child_resource.1 as i32, &signal)?;
+    deprecated::kill(child_resource.pid as i32, &signal)?;
     return Ok(());
   }
   Err(ProcessError::ChildProcessAlreadyTerminated)
+}
+
+/// Disable kill-on-drop for a child process, allowing it to outlive the parent.
+/// Called from JS `ChildProcess.unref()`.
+#[op2(fast)]
+fn op_spawn_child_unref(
+  state: &mut OpState,
+  #[smi] rid: ResourceId,
+) -> Result<(), deno_core::error::ResourceError> {
+  let resource = state.resource_table.get::<ChildResource>(rid)?;
+  resource.kill_on_drop.set(false);
+  Ok(())
+}
+
+/// Re-enable kill-on-drop for a child process.
+/// Called from JS `ChildProcess.ref()`.
+#[op2(fast)]
+fn op_spawn_child_ref(
+  state: &mut OpState,
+  #[smi] rid: ResourceId,
+) -> Result<(), deno_core::error::ResourceError> {
+  let resource = state.resource_table.get::<ChildResource>(rid)?;
+  resource.kill_on_drop.set(true);
+  Ok(())
 }
 
 mod deprecated {
@@ -1370,19 +1441,56 @@ mod deprecated {
     use winapi::um::processthreadsapi::TerminateProcess;
     use winapi::um::winnt::PROCESS_TERMINATE;
 
-    let signal_str = match signal {
-      SignalArg::Int(n) => n.to_string(),
-      SignalArg::String(s) => s.clone(),
+    let signo = match signal {
+      SignalArg::Int(n) => *n,
+      SignalArg::String(s) => deno_signals::signal_str_to_int(s)
+        .map_err(SignalError::InvalidSignalStr)?,
     };
 
-    if !matches!(signal_str.as_str(), "SIGKILL" | "SIGTERM") {
-      Err(
+    if signo == 0 {
+      // Signal 0 is a health check: verify the process is still alive.
+      // SAFETY: winapi call
+      let handle = unsafe {
+        OpenProcess(
+          winapi::um::winnt::PROCESS_QUERY_LIMITED_INFORMATION,
+          FALSE,
+          pid as DWORD,
+        )
+      };
+      if handle.is_null() {
+        return Err(Error::from(NotFound).into());
+      }
+      let mut status: DWORD = 0;
+      // SAFETY: winapi call
+      let alive = unsafe {
+        winapi::um::processthreadsapi::GetExitCodeProcess(handle, &mut status)
+          != FALSE
+          && status == 259 // STILL_ACTIVE
+      };
+      // SAFETY: winapi call
+      unsafe {
+        CloseHandle(handle);
+      }
+      if alive {
+        return Ok(());
+      } else {
+        return Err(Error::from(NotFound).into());
+      }
+    }
+
+    // On Windows, SIGINT/SIGTERM/SIGKILL/SIGQUIT/SIGABRT all result in
+    // process termination via TerminateProcess, matching libuv behavior.
+    // SIGABRT is 22 on Windows (CRT), unlike 6 on Unix.
+    if !matches!(signo, 2 | 3 | 9 | 15 | 22) {
+      return Err(
         SignalError::InvalidSignalStr(deno_signals::InvalidSignalStrError(
-          signal_str,
+          format!("{signo}"),
         ))
         .into(),
-      )
-    } else if pid <= 0 {
+      );
+    }
+
+    if pid <= 0 {
       Err(ProcessError::InvalidPid)
     } else {
       let handle =

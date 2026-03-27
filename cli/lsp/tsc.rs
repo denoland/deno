@@ -22,7 +22,6 @@ use deno_config::deno_json::CompilerOptions;
 use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
-use deno_core::PollEventLoopOptions;
 use deno_core::RuntimeOptions;
 use deno_core::anyhow::anyhow;
 use deno_core::convert::Smi;
@@ -2312,7 +2311,7 @@ impl NavigateToItem {
     }
 
     // The field `deprecated` is deprecated but SymbolInformation does not have
-    // a default, therefore we have to supply the deprecated deprecated
+    // a default, therefore we have to supply the deprecated
     // field. It is like a bad version of Inception.
     #[allow(deprecated, reason = "see comment")]
     Some(lsp::SymbolInformation {
@@ -2535,7 +2534,7 @@ impl NavigationTree {
         };
 
         // The field `deprecated` is deprecated but DocumentSymbol does not have
-        // a default, therefore we have to supply the deprecated deprecated
+        // a default, therefore we have to supply the deprecated
         // field. It is like a bad version of Inception.
         #[allow(deprecated, reason = "see comment")]
         document_symbols.push(lsp::DocumentSymbol {
@@ -5351,10 +5350,7 @@ fn run_tsc_thread(
           .lock()
           .await
           .js_runtime
-          .run_event_loop(PollEventLoopOptions {
-            wait_for_inspector: false,
-            pump_v8_message_loop: true,
-          })
+          .run_event_loop(Default::default())
           .await
         {
           log::error!("Error in TSC event loop: {e}");

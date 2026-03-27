@@ -12326,28 +12326,10 @@ fn lsp_format_mbc(use_tsgo: bool) {
     res,
     json!([{
       "range": {
-        "start": { "line": 0, "character": 12 },
-        "end": { "line": 0, "character": 13 }
+        "start": { "line": 0, "character": 0 },
+        "end": { "line": 2, "character": 0 }
       },
-      "newText": "\""
-    }, {
-      "range": {
-        "start": { "line": 0, "character": 21 },
-        "end": { "line": 0, "character": 22 }
-      },
-      "newText": "\";"
-    }, {
-      "range": {
-        "start": { "line": 1, "character": 12 },
-        "end": { "line": 1, "character": 13 }
-      },
-      "newText": "\""
-    }, {
-      "range": {
-        "start": { "line": 1, "character": 23 },
-        "end": { "line": 1, "character": 25 }
-      },
-      "newText": "\");"
+      "newText": "const bar = \"👍🇺🇸😃\";\nconsole.log(\"hello deno\");\n"
     }])
   );
   client.shutdown();
@@ -12488,9 +12470,9 @@ fn lsp_format_untitled(use_tsgo: bool) {
       {
         "range": {
           "start": { "line": 0, "character": 0 },
-          "end": { "line": 0, "character": 2 },
+          "end": { "line": 1, "character": 0 },
         },
-        "newText": "",
+        "newText": "console.log();\n",
       },
     ])
   );
@@ -12524,22 +12506,10 @@ fn lsp_format_json(use_tsgo: bool) {
     json!([
       {
         "range": {
-          "start": { "line": 0, "character": 1 },
-          "end": { "line": 0, "character": 1 }
-        },
-        "newText": " "
-      }, {
-        "range": {
-          "start": { "line": 0, "character": 7 },
-          "end": { "line": 0, "character": 7 }
-        },
-        "newText": " "
-      }, {
-        "range": {
-          "start": { "line": 0, "character": 14 },
+          "start": { "line": 0, "character": 0 },
           "end": { "line": 0, "character": 15 }
         },
-        "newText": " }\n"
+        "newText": "{ \"key\": \"value\" }\n"
       }
     ])
   );
@@ -12577,9 +12547,9 @@ fn lsp_format_vscode_userdata(use_tsgo: bool) {
       {
         "range": {
           "start": { "line": 0, "character": 0 },
-          "end": { "line": 0, "character": 2 },
+          "end": { "line": 1, "character": 0 },
         },
-        "newText": "",
+        "newText": "// foo\n",
       },
     ]),
   );
@@ -12614,9 +12584,9 @@ fn lsp_format_editor_options(use_tsgo: bool) {
       {
         "range": {
           "start": { "line": 1, "character": 0 },
-          "end": { "line": 1, "character": 0 },
+          "end": { "line": 2, "character": 0 },
         },
-        "newText": "  ",
+        "newText": "    console.log();\n",
       },
     ])
   );
@@ -12638,9 +12608,9 @@ fn lsp_format_editor_options(use_tsgo: bool) {
       {
         "range": {
           "start": { "line": 1, "character": 0 },
-          "end": { "line": 1, "character": 2 },
+          "end": { "line": 2, "character": 0 },
         },
-        "newText": "\t",
+        "newText": "\tconsole.log();\n",
       },
     ])
   );
@@ -12745,16 +12715,10 @@ fn lsp_format_markdown(use_tsgo: bool) {
     json!([
       {
         "range": {
-          "start": { "line": 0, "character": 1 },
-          "end": { "line": 0, "character": 3 }
-        },
-        "newText": ""
-      }, {
-        "range": {
-          "start": { "line": 0, "character": 15 },
+          "start": { "line": 0, "character": 0 },
           "end": { "line": 0, "character": 15 }
         },
-        "newText": "\n"
+        "newText": "# Hello World\n"
       }
     ])
   );
@@ -12784,16 +12748,9 @@ fn lsp_format_html(use_tsgo: bool) {
       {
         "range": {
           "start": { "line": 0, "character": 0 },
-          "end": { "line": 0, "character": 2 },
-        },
-        "newText": "",
-      },
-      {
-        "range": {
-          "start": { "line": 0, "character": 15 },
           "end": { "line": 0, "character": 15 },
         },
-        "newText": "\n",
+        "newText": "<html></html>\n",
       },
     ]),
   );
@@ -12811,7 +12768,9 @@ fn lsp_format_css(use_tsgo: bool) {
   );
   let sass_file = source_file(
     temp_dir.path().join("file.sass"),
-    "  $font-stack: Helvetica, sans-serif\n\nbody\n  font: 100% $font-stack\n",
+    // Note: avoid $var references in property values in Sass indented syntax
+    // due to upstream raffia regression: https://github.com/g-plane/raffia/issues/13
+    "  $color: red\n\nbody\n  color: blue\n  margin: 0\n",
   );
   let less_file = source_file(
     temp_dir.path().join("file.less"),
@@ -12835,9 +12794,9 @@ fn lsp_format_css(use_tsgo: bool) {
       {
         "range": {
           "start": { "line": 0, "character": 0 },
-          "end": { "line": 0, "character": 2 },
+          "end": { "line": 1, "character": 0 },
         },
-        "newText": "",
+        "newText": "foo {}\n",
       },
     ]),
   );
@@ -12857,9 +12816,9 @@ fn lsp_format_css(use_tsgo: bool) {
       {
         "range": {
           "start": { "line": 0, "character": 0 },
-          "end": { "line": 0, "character": 2 },
+          "end": { "line": 1, "character": 0 },
         },
-        "newText": "",
+        "newText": "$font-stack: Helvetica, sans-serif;\n",
       },
     ]),
   );
@@ -12879,9 +12838,9 @@ fn lsp_format_css(use_tsgo: bool) {
       {
         "range": {
           "start": { "line": 0, "character": 0 },
-          "end": { "line": 0, "character": 2 },
+          "end": { "line": 1, "character": 0 },
         },
-        "newText": "",
+        "newText": "$color: red\n",
       },
     ]),
   );
@@ -12901,9 +12860,9 @@ fn lsp_format_css(use_tsgo: bool) {
       {
         "range": {
           "start": { "line": 0, "character": 0 },
-          "end": { "line": 0, "character": 2 },
+          "end": { "line": 1, "character": 0 },
         },
-        "newText": "",
+        "newText": "@width: 10px;\n",
       },
     ]),
   );
@@ -12933,16 +12892,9 @@ fn lsp_format_yaml(use_tsgo: bool) {
       {
         "range": {
           "start": { "line": 0, "character": 0 },
-          "end": { "line": 0, "character": 2 },
-        },
-        "newText": "",
-      },
-      {
-        "range": {
-          "start": { "line": 0, "character": 8 },
           "end": { "line": 0, "character": 8 },
         },
-        "newText": "\n",
+        "newText": "foo: 1\n",
       },
     ]),
   );
@@ -12982,16 +12934,9 @@ fn lsp_format_sql(use_tsgo: bool) {
       {
         "range": {
           "start": { "line": 0, "character": 0 },
-          "end": { "line": 0, "character": 2 },
-        },
-        "newText": "",
-      },
-      {
-        "range": {
-          "start": { "line": 0, "character": 52 },
           "end": { "line": 0, "character": 52 },
         },
-        "newText": "\n",
+        "newText": "CREATE TABLE item (id int NOT NULL IDENTITY(1, 1))\n",
       },
     ]),
   );
@@ -13047,9 +12992,9 @@ fn lsp_format_component(use_tsgo: bool) {
       {
         "range": {
           "start": { "line": 0, "character": 0 },
-          "end": { "line": 0, "character": 2 },
+          "end": { "line": 1, "character": 0 },
         },
-        "newText": "",
+        "newText": "<script module>\n",
       },
     ]),
   );
@@ -13069,9 +13014,9 @@ fn lsp_format_component(use_tsgo: bool) {
       {
         "range": {
           "start": { "line": 0, "character": 0 },
-          "end": { "line": 0, "character": 2 },
+          "end": { "line": 1, "character": 0 },
         },
-        "newText": "",
+        "newText": "<script setup>\n",
       },
     ]),
   );
@@ -13091,9 +13036,9 @@ fn lsp_format_component(use_tsgo: bool) {
       {
         "range": {
           "start": { "line": 0, "character": 0 },
-          "end": { "line": 0, "character": 2 },
+          "end": { "line": 1, "character": 0 },
         },
-        "newText": "",
+        "newText": "---\n",
       },
     ]),
   );
@@ -13113,9 +13058,9 @@ fn lsp_format_component(use_tsgo: bool) {
       {
         "range": {
           "start": { "line": 0, "character": 0 },
-          "end": { "line": 0, "character": 2 },
+          "end": { "line": 1, "character": 0 },
         },
-        "newText": "",
+        "newText": "{{ layout \"foo.vto\" }}\n",
       },
     ]),
   );
@@ -13135,9 +13080,9 @@ fn lsp_format_component(use_tsgo: bool) {
       {
         "range": {
           "start": { "line": 0, "character": 0 },
-          "end": { "line": 0, "character": 2 },
+          "end": { "line": 1, "character": 0 },
         },
-        "newText": "",
+        "newText": "{% block header %}\n",
       },
     ]),
   );
@@ -13201,51 +13146,9 @@ fn lsp_format_with_config(use_tsgo: bool) {
     json!([{
         "range": {
           "start": { "line": 1, "character": 0 },
-          "end": { "line": 1, "character": 0 }
-        },
-        "newText": "\t"
-      }, {
-        "range": {
-          "start": { "line": 1, "character": 23 },
-          "end": { "line": 1, "character": 24 }
-        },
-        "newText": "\n\t\t'"
-      }, {
-        "range": {
-          "start": { "line": 1, "character": 73 },
-          "end": { "line": 1, "character": 74 }
-        },
-        "newText": "',\n\t"
-      }, {
-        "range": {
-          "start": { "line": 2, "character": 0 },
-          "end": { "line": 2, "character": 0 }
-        },
-        "newText": "\t"
-      }, {
-        "range": {
-          "start": { "line": 3, "character": 0 },
-          "end": { "line": 3, "character": 0 }
-        },
-        "newText": "\t"
-      }, {
-        "range": {
-          "start": { "line": 3, "character": 12 },
-          "end": { "line": 3, "character": 13 }
-        },
-        "newText": "'"
-      }, {
-        "range": {
-          "start": { "line": 3, "character": 22 },
-          "end": { "line": 3, "character": 24 }
-        },
-        "newText": "');"
-      }, {
-        "range": {
-          "start": { "line": 4, "character": 1 },
           "end": { "line": 4, "character": 1 }
         },
-        "newText": "\n"
+        "newText": "\tconst response = fetch(\n\t\t'http://localhost:4545/some/non/existent/path.json',\n\t);\n\tconsole.log(response.text());\n\tconsole.log('finished!');\n}\n"
       }]
     )
   );
@@ -16694,10 +16597,10 @@ fn lsp_deno_json_workspace_fmt_config(use_tsgo: bool) {
     res,
     json!([{
       "range": {
-        "start": { "line": 0, "character": 15 },
-        "end": { "line": 0, "character": 16 },
+        "start": { "line": 0, "character": 0 },
+        "end": { "line": 1, "character": 0 },
       },
-      "newText": "",
+      "newText": "console.log(\"\")\n",
     }])
   );
   client.did_open(json!({
@@ -16724,10 +16627,10 @@ fn lsp_deno_json_workspace_fmt_config(use_tsgo: bool) {
     res,
     json!([{
       "range": {
-        "start": { "line": 0, "character": 12 },
-        "end": { "line": 0, "character": 16 },
+        "start": { "line": 0, "character": 0 },
+        "end": { "line": 1, "character": 0 },
       },
-      "newText": "'')",
+      "newText": "console.log('')\n",
     }])
   );
   // `project2/file.ts` should use the fmt settings from `deno.json`, since it
@@ -16756,10 +16659,10 @@ fn lsp_deno_json_workspace_fmt_config(use_tsgo: bool) {
     res,
     json!([{
       "range": {
-        "start": { "line": 0, "character": 15 },
-        "end": { "line": 0, "character": 16 },
+        "start": { "line": 0, "character": 0 },
+        "end": { "line": 1, "character": 0 },
       },
-      "newText": "",
+      "newText": "console.log(\"\")\n",
     }])
   );
   client.shutdown();
