@@ -1,0 +1,5 @@
+sync: sync write via fdsync overwrite
+async: async write via fdasync overwrite
+path: via path
+multi: write 0write 1write 2write 3write 4write 5write 6write 7write 8write 9
+ok

@@ -25,7 +25,6 @@ function isatty(fd) {
 }
 
 // ReadStream needs to be callable without `new` to match Node.js behavior.
-// We use a wrapper function that delegates to the actual class.
 function ReadStream(fd, options) {
   if (!ObjectPrototypeIsPrototypeOf(ReadStream.prototype, this)) {
     return new ReadStream(fd, options);

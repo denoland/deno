@@ -22,6 +22,7 @@ import {
 import { createInterface } from "node:readline";
 import type { Interface as ReadlineInterface } from "node:readline";
 import { core, primordials } from "ext:core/mod.js";
+import { getRid, unregisterFd } from "ext:deno_node/internal/fs/fd_map.ts";
 import {
   BinaryOptionsArgument,
   FileOptionsArgument,
@@ -118,15 +119,17 @@ interface ReadResult {
 
 export class FileHandle extends EventEmitter {
   #rid: number;
+  #fd: number;
   [kRefs]: number;
   [kClosePromise]?: Promise<void> | null;
   [kCloseResolve]?: () => void;
   [kCloseReject]?: (err: Error) => void;
   [kLocked]: boolean;
 
-  constructor(rid: number) {
+  constructor(fd: number) {
     super();
-    this.#rid = rid;
+    this.#fd = fd;
+    this.#rid = getRid(fd);
 
     this[kRefs] = 1;
     this[kClosePromise] = null;
@@ -134,7 +137,7 @@ export class FileHandle extends EventEmitter {
   }
 
   get fd() {
-    return this.#rid;
+    return this.#fd;
   }
 
   read(
@@ -234,12 +237,15 @@ export class FileHandle extends EventEmitter {
   #close(): Promise<void> {
     return new Promise((resolve, reject) => {
       try {
-        core.close(this.fd);
-        this.#rid = -1;
-        resolve();
+        core.close(this.#rid);
       } catch (err) {
         reject(denoErrorToNodeError(err as Error, { syscall: "close" }));
+        return;
       }
+      unregisterFd(this.#fd);
+      this.#rid = -1;
+      this.#fd = -1;
+      resolve();
     });
   }
 

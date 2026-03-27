@@ -230,14 +230,50 @@ fn open_options_to_access_kind(open_options: &OpenOptions) -> OpenAccessKind {
   }
 }
 
-#[op2(fast, stack_trace)]
-#[smi]
+#[derive(Debug, Serialize)]
+pub struct OpenResult {
+  pub rid: ResourceId,
+  pub fd: i32,
+}
+
+/// Extract the real OS file descriptor from a Deno resource ID.
+#[cfg(unix)]
+fn get_fd_from_rid(
+  state: &mut OpState,
+  rid: ResourceId,
+) -> Result<i32, FsError> {
+  let handle = state.resource_table.get_handle(rid).map_err(|_| {
+    FsError::Io(std::io::Error::new(
+      std::io::ErrorKind::NotFound,
+      "Bad resource ID",
+    ))
+  })?;
+  match handle {
+    deno_core::ResourceHandle::Fd(fd) => Ok(fd),
+    _ => Err(FsError::Io(std::io::Error::other(
+      "Resource is not a file descriptor",
+    ))),
+  }
+}
+
+/// On Windows, RIDs are used directly as FDs (no real fd extraction).
+/// This preserves the existing behavior until Windows fd support is added.
+#[cfg(not(unix))]
+fn get_fd_from_rid(
+  _state: &mut OpState,
+  rid: ResourceId,
+) -> Result<i32, FsError> {
+  Ok(rid as i32)
+}
+
+#[op2(stack_trace)]
+#[serde]
 pub fn op_node_open_sync(
   state: &mut OpState,
   #[string] path: &str,
   #[smi] flags: i32,
   #[smi] mode: u32,
-) -> Result<ResourceId, FsError> {
+) -> Result<OpenResult, FsError> {
   let path = Path::new(path);
   let options = get_open_options(flags, Some(mode));
 
@@ -251,17 +287,18 @@ pub fn op_node_open_sync(
   let rid = state
     .resource_table
     .add(FileResource::new(file, "fsFile".to_string()));
-  Ok(rid)
+  let fd = get_fd_from_rid(state, rid)?;
+  Ok(OpenResult { rid, fd })
 }
 
 #[op2(stack_trace)]
-#[smi]
+#[serde]
 pub async fn op_node_open(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
   #[smi] flags: i32,
   #[smi] mode: u32,
-) -> Result<ResourceId, FsError> {
+) -> Result<OpenResult, FsError> {
   let path = PathBuf::from(path);
   let options = get_open_options(flags, Some(mode));
 
@@ -278,11 +315,12 @@ pub async fn op_node_open(
   };
   let file = fs.open_async(path.as_owned(), options).await?;
 
+  let mut state = state.borrow_mut();
   let rid = state
-    .borrow_mut()
     .resource_table
     .add(FileResource::new(file, "fsFile".to_string()));
-  Ok(rid)
+  let fd = get_fd_from_rid(&mut state, rid)?;
+  Ok(OpenResult { rid, fd })
 }
 #[derive(Debug, Serialize)]
 pub struct StatFs {
