@@ -3,7 +3,6 @@
 import { primordials } from "ext:core/mod.js";
 
 const {
-  Error,
   MapPrototypeGet,
   MapPrototypeHas,
   MapPrototypeSet,
@@ -32,7 +31,9 @@ export function getRid(fd: number): number {
   if (fd < 3) {
     return fd;
   }
-  throw new Error(
+  // Throw BadResource so callers using denoErrorToNodeError() translate
+  // this to EBADF, matching Node.js behavior for invalid file descriptors.
+  throw new Deno.errors.BadResource(
     `File descriptor ${fd} is not open or not managed by node:fs`,
   );
 }
