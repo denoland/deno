@@ -54,6 +54,7 @@ export const EXPECTED_VIOLATIONS: Record<string, number> = {
   "ext/node/polyfills/_fs/cp/cp.ts": 1,
   "ext/node/polyfills/_fs/_fs_lutimes.ts": 1,
   "ext/node/polyfills/_events.mjs": 1,
+  "ext/node/polyfills/internal/fs/fd_map.ts": 1,
 };
 
 const plugin: Deno.lint.Plugin = {
