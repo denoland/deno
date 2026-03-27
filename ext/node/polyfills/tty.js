@@ -11,7 +11,7 @@ import {
   ERR_INVALID_FD,
   ERR_TTY_INIT_FAILED,
 } from "ext:deno_node/internal/errors.ts";
-import { op_tty_check_fd_permission, TTY } from "ext:core/ops";
+import { op_node_is_tty, op_tty_check_fd_permission, TTY } from "ext:core/ops";
 import { Socket } from "node:net";
 import { setReadStream } from "ext:deno_node/_process/streams.mjs";
 import { WriteStream } from "ext:deno_node/internal/tty.js";
@@ -21,7 +21,7 @@ function isatty(fd) {
   if (typeof fd !== "number" || fd >> 0 !== fd || fd < 0) {
     return false;
   }
-  return TTY.isTTY(fd);
+  return op_node_is_tty(fd);
 }
 
 // ReadStream needs to be callable without `new` to match Node.js behavior.

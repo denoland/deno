@@ -65,6 +65,88 @@ Deno.test("[node/tty isatty] returns false for raw file fd", () => {
 });
 
 Deno.test({
+  name: "[node/tty isatty] preserves reopened stdio tty descriptors",
+  ignore: Deno.build.os === "windows",
+  fn: async () => {
+    const helper = `
+      import fs from "node:fs";
+      import tty from "node:tty";
+
+      const descriptors = [
+        [0, "/dev/stdin", "r"],
+        [1, "/dev/stdout", "w"],
+        [2, "/dev/stderr", "w"],
+      ];
+
+      if (!descriptors.every(([fd]) => tty.isatty(fd))) {
+        console.log("SKIP");
+        process.exit(0);
+      }
+
+      for (const [fd, path, flags] of descriptors) {
+        const reopenedFd = fs.openSync(path, flags);
+        try {
+          if (!tty.isatty(reopenedFd)) {
+            console.error(
+              "NOT_TTY:" + JSON.stringify({ fd, path, reopenedFd }),
+            );
+            process.exit(1);
+          }
+        } finally {
+          fs.closeSync(reopenedFd);
+        }
+      }
+
+      console.log("OK");
+    `;
+
+    const tmpScript = await Deno.makeTempFile({ suffix: ".mjs" });
+    await Deno.writeTextFile(tmpScript, helper);
+    const denoCmd =
+      `${Deno.execPath()} run --allow-read --allow-write ${tmpScript}`;
+    const scriptArgs = Deno.build.os === "linux"
+      ? ["-q", "/dev/null", "-c", denoCmd]
+      : [
+        "-q",
+        "/dev/null",
+        Deno.execPath(),
+        "run",
+        "--allow-read",
+        "--allow-write",
+        tmpScript,
+      ];
+
+    let output;
+    try {
+      output = await new Deno.Command("script", {
+        args: scriptArgs,
+        stdout: "piped",
+        stderr: "piped",
+      }).output();
+    } catch (error) {
+      await Deno.remove(tmpScript);
+      if (error instanceof Deno.errors.NotFound) {
+        return;
+      }
+      throw error;
+    }
+
+    await Deno.remove(tmpScript);
+    const stdout = new TextDecoder().decode(output.stdout);
+    const stderr = new TextDecoder().decode(output.stderr);
+
+    if (stdout.includes("SKIP")) {
+      return;
+    }
+
+    assert(
+      output.success,
+      `Reopened stdio descriptors should preserve tty status: ${stdout} ${stderr}`,
+    );
+  },
+});
+
+Deno.test({
   name: "[node/tty] HandleWrap.close calls uv_close for TTY handles",
   ignore: Deno.build.os === "windows",
   fn: async () => {
