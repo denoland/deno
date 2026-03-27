@@ -6,6 +6,23 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 2.7.9 / 2026.03.27
+
+- fix(cli): show clean error instead of panic for invalid
+  --unsafely-ignore-certificate-errors value (#32868)
+- fix(compile): strip duplicate exe path from argv when standalone binary
+  relaunches (#33016)
+- fix(compile): use execPath for process.argv[1] in standalone binaries (#32990)
+- fix(ext/http): use clone_external in op_http_metric_handle_otel_error (#33005)
+- fix(ext/node): `util.stripVTControlCharacters` compatibility (#32942)
+- fix(ext/node): add Symbol.dispose and Symbol.asyncDispose to fs.Dir (#33000)
+- fix(ext/node): rewrite Windows TTY reading to match libuv (console mode,
+  encoding, raw + line mode) (#32999)
+- fix(ext/node): use constant-time comparison for secret key equality (#32994)
+- fix(publish): vite import.meta.hot not type checking (#32127)
+- perf(ops): replace per-op generated slow metrics wrappers with shared dispatch
+  (#32889)
+
 ### 2.7.8 / 2026.03.25
 
 - feat(core): implement NodeRuntime CDP domain and fix --inspect-brk blocking
